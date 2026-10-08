@@ -1,0 +1,6 @@
+.claude/
+.DS_Store
+/bin/
+*.test
+*.out
+node_modules/
