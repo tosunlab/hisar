@@ -164,6 +164,10 @@ func (c *Client) RemoveAccess(ctx context.Context, vaultID, accountID string) er
 	return c.sendRequest(ctx, "DELETE", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/access/"+url.PathEscape(accountID), nil, nil, nil, nil)
 }
 
+func (c *Client) RotateVault(ctx context.Context, vaultID string, request *proto.RotateVaultRequest) error {
+	return c.sendRequest(ctx, "POST", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/rotate", nil, request, nil, nil)
+}
+
 func (c *Client) ListAllChange(ctx context.Context, vaultID string, since int64, limit int) (*proto.ChangesResponse, error) {
 	var response proto.ChangesResponse
 	query := url.Values{"since": {strconv.FormatInt(since, 10)}}

@@ -41,6 +41,8 @@ type Session struct {
 	Role      string
 	Keyset    *crypt.Keyset
 	SeqStore  SeqStore
+	// MemberVerifier, when set, is asked to accept each member a vault key is wrapped for (e.g. key pinning).
+	MemberVerifier func(member *proto.Member) error
 }
 
 type Vault struct {

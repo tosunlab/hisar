@@ -31,6 +31,7 @@ var allCommand = []command{
 	{"generate", "[-n length] [-no-symbols]", "generate a password", runGenerate},
 	{"members", "", "list family members", runListAllMember},
 	{"share", "<vault> <email> [-r role]", "share a vault (role: owner, editor, reader)", runShare},
+	{"unshare", "<vault> <email>", "remove someone from a vault and rotate its key", runUnshare},
 	{"invite", "<email> [-r role]", "invite someone (admin only)", runInvite},
 	{"devices", "", "list your signed-in devices", runListAllDevice},
 	{"revoke-device", "<id>", "sign out a device", runRevokeDevice},

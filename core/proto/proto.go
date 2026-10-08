@@ -176,3 +176,25 @@ type PutItemResponse struct {
 type ConflictResponse struct {
 	Current *Item `json:"current"`
 }
+
+type RotatedAccess struct {
+	AccountID  string `json:"accountId"`
+	Role       string `json:"role"`
+	WrappedKey []byte `json:"wrappedKey"`
+}
+
+type RotatedItem struct {
+	ID           string `json:"id"`
+	BaseRevision string `json:"baseRevision"`
+	Revision     string `json:"revision"`
+	Deleted      bool   `json:"deleted"`
+	Overview     []byte `json:"overview"`
+	Details      []byte `json:"details"`
+}
+
+// RotateVaultRequest replaces the vault key: every member's wrapped key and every item, re-encrypted.
+type RotateVaultRequest struct {
+	EncName   []byte          `json:"encName"`
+	AllAccess []RotatedAccess `json:"access"`
+	AllItem   []RotatedItem   `json:"items"`
+}

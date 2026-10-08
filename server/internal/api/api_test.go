@@ -248,4 +248,68 @@ func TestEndToEnd(t *testing.T) {
 			t.Errorf("revoked device: %v", err)
 		}
 	})
+
+	t.Run("removing a member rotates the vault key", func(t *testing.T) {
+		trip := requireValue[*session.Vault](t)(alice.CreateVault(ctx, "Trip", proto.VaultShared))
+		requireValue[*item.Item](t)(alice.SaveItem(ctx, trip, &item.Item{Overview: item.Overview{Title: "Hotel"}, Details: item.Details{Password: "hotel-pass"}}))
+		deletedItem := &item.Item{Overview: item.Overview{Title: "Old"}, Details: item.Details{Password: "old"}}
+		requireValue[*item.Item](t)(alice.SaveItem(ctx, trip, deletedItem))
+		requireValue[*item.Item](t)(alice.DeleteItem(ctx, trip, deletedItem))
+		if err := alice.ShareVault(ctx, trip, bobMember, proto.VaultEditor); err != nil {
+			t.Fatal(err)
+		}
+		bobTrip := requireValue[*session.Vault](t)(bob.FindVault(ctx, "Trip"))
+		if allItem := requireValue[[]item.Item](t)(bob.ListAllItem(ctx, bobTrip)); len(allItem) != 1 {
+			t.Fatalf("bob items before removal: %d", len(allItem))
+		}
+		oldVaultKey := append([]byte(nil), bobTrip.Key...)
+
+		if err := bob.RotateVaultKey(ctx, bobTrip, []session.AccessGrant{{AccountID: bob.AccountID, Role: proto.VaultOwner}}); !client.IsStatus(err, http.StatusForbidden) {
+			t.Errorf("editor rotated the key: %v", err)
+		}
+		if err := alice.RotateVaultKey(ctx, trip, []session.AccessGrant{{AccountID: bob.AccountID, Role: proto.VaultOwner}}); !client.IsStatus(err, http.StatusBadRequest) {
+			t.Errorf("rotation dropping the rotating owner: %v", err)
+		}
+		if err := alice.RemoveVaultMember(ctx, trip, alice.AccountID); err == nil {
+			t.Error("owner removed themselves")
+		}
+
+		if err := alice.RemoveVaultMember(ctx, trip, bob.AccountID); err != nil {
+			t.Fatal(err)
+		}
+		if bytes.Equal(trip.Key, oldVaultKey) {
+			t.Error("vault key did not change")
+		}
+		if _, err := bob.Client.ListAllChange(ctx, trip.ID, 0, 0); !client.IsStatus(err, http.StatusNotFound) {
+			t.Errorf("removed member still reads the vault: %v", err)
+		}
+		if _, err := bob.FindVault(ctx, "Trip"); !errors.Is(err, session.ErrNotFound) {
+			t.Errorf("removed member still lists the vault: %v", err)
+		}
+
+		allChange := requireValue[*proto.ChangesResponse](t)(alice.Client.ListAllChange(ctx, trip.ID, 0, 0))
+		if len(allChange.Items) != 2 {
+			t.Fatalf("items after rotation (live + deleted): %d", len(allChange.Items))
+		}
+		for _, protoItem := range allChange.Items {
+			if _, err := crypt.OpenItemPart(oldVaultKey, trip.ID, protoItem.ID, protoItem.Revision, crypt.Details, protoItem.Details); err == nil {
+				t.Error("old vault key still decrypts rotated items")
+			}
+		}
+
+		reloaded := requireValue[*session.Session](t)(session.LogIn(ctx, client.Create(baseURL), "alice@example.com", alicePassword, aliceSecretKey, testDevice))
+		reloadedTrip := requireValue[*session.Vault](t)(reloaded.FindVault(ctx, "Trip"))
+		allItem := requireValue[[]item.Item](t)(reloaded.ListAllItem(ctx, reloadedTrip))
+		if len(allItem) != 1 || allItem[0].Details.Password != "hotel-pass" {
+			t.Errorf("owner items after rotation: %+v", allItem)
+		}
+
+		staleRequest := &proto.RotateVaultRequest{
+			EncName:   []byte{1},
+			AllAccess: []proto.RotatedAccess{{AccountID: alice.AccountID, Role: proto.VaultOwner, WrappedKey: []byte{1}}},
+		}
+		if err := alice.Client.RotateVault(ctx, trip.ID, staleRequest); !client.IsStatus(err, http.StatusConflict) {
+			t.Errorf("rotation without the vault's items: %v", err)
+		}
+	})
 }
