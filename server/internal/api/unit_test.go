@@ -164,6 +164,25 @@ func TestErrorHandler(t *testing.T) {
 	}
 }
 
+func TestNormalEndpointsKeepSmallBodyLimit(t *testing.T) {
+	server, err := CreateServer(nil, generateAllSecret(), Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server.limiter = createIPLimiter(rate.Inf, 1)
+	app := server.CreateApp()
+	largeBody := `{"email":"` + strings.Repeat("a", maxBody+1) + `"}`
+	request := httptest.NewRequest("POST", "/api/v1/auth/login/start", strings.NewReader(largeBody))
+	request.Header.Set("Content-Type", "application/json")
+	response, err := app.Test(request, fiber.TestConfig{Timeout: 10 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.StatusCode != fiber.StatusRequestEntityTooLarge {
+		t.Errorf("3 MB body on a normal endpoint: %d", response.StatusCode)
+	}
+}
+
 func TestValidators(t *testing.T) {
 	if !isValidUUID("0f8fad5b-d9cb-469f-a165-70867728950e") || isValidUUID("0f8fad5bd9cb469fa16570867728950e") || isValidUUID("../x") {
 		t.Error("isValidUUID")

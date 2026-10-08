@@ -117,7 +117,11 @@ The server stores `encKeyset`, the KEM public key, the Ed25519 public key and th
 - Each vault has a random 32-byte `K_vault`.
 - For every member, the server stores `0x01 || HPKE.Seal(memberKEMPub, info="hisar/v1/vault-key" || vaultID || memberAccountID, K_vault)`.
 - The recovery group (§6.6) gets the same wrapping for every vault that opts into recovery.
-- Removing a member rotates `K_vault`: new key, all items re-encrypted by an admin client, new wrappings for the remaining members. Until rotation, the removed member could still decrypt copies they already downloaded. That is unavoidable.
+- Removing a member rotates `K_vault` (`session.RemoveVaultMember`, `POST /vaults/{id}/rotate`, owner only):
+  - The owner's client generates a new key, re-encrypts the vault name and every item, including tombstones, under a new revision, and wraps the new key for each remaining member. Each member's signed KEM key is verified, and the client's `MemberVerifier` hook (key pinning in the CLI) must accept it.
+  - The server applies it in one transaction. It returns 409 unless the submitted items match the stored items and revisions exactly, so concurrent edits are never lost; the client then retries, up to 3 times. It replaces all access grants, gives every item a new seq so all devices resync, and drops the vault's item history, because that history is encrypted with the old key.
+  - The rotating owner must keep owner access. Rotation requests may be up to 32 MiB; every other endpoint is limited to 2 MiB.
+  - Copies the removed member downloaded before the rotation stay readable to them; that is unavoidable.
 
 ### 4.5 Items
 

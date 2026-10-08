@@ -19,7 +19,11 @@ import (
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
-const maxBody = 2 << 20
+// The transport accepts rotation-sized bodies; decodeBody enforces maxBody everywhere else.
+const (
+	maxBody         = 2 << 20
+	maxRotationBody = 32 << 20
+)
 
 type Config struct {
 	PublicURL  string
@@ -76,7 +80,7 @@ func CreateServer(database *store.Store, secrets *Secrets, config Config) (*Serv
 func (s *Server) CreateApp() *fiber.App {
 	app := fiber.New(fiber.Config{
 		AppName:      "hisar-server",
-		BodyLimit:    maxBody,
+		BodyLimit:    maxRotationBody,
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		IdleTimeout:  120 * time.Second,
@@ -106,6 +110,7 @@ func (s *Server) CreateApp() *fiber.App {
 	apiGroup.Get("/vaults/:vault/members", s.requireSession, s.handleListAllVaultMember)
 	apiGroup.Put("/vaults/:vault/access/:account", s.requireSession, s.handleSetAccess)
 	apiGroup.Delete("/vaults/:vault/access/:account", s.requireSession, s.handleRemoveAccess)
+	apiGroup.Post("/vaults/:vault/rotate", s.requireSession, s.handleRotateVault)
 	apiGroup.Get("/vaults/:vault/changes", s.requireSession, s.handleListAllChange)
 	apiGroup.Put("/vaults/:vault/items/:item", s.requireSession, s.handlePutItem)
 	apiGroup.Get("/vaults/:vault/items/:item/history", s.requireSession, s.handleGetItemHistory)
@@ -197,6 +202,13 @@ func hashToken(token string) []byte {
 }
 
 func decodeBody(c fiber.Ctx, target any) error {
+	return decodeBodyWithLimit(c, target, maxBody)
+}
+
+func decodeBodyWithLimit(c fiber.Ctx, target any, limit int) error {
+	if len(c.Body()) > limit {
+		return createAPIError(fiber.StatusRequestEntityTooLarge, "request too large")
+	}
 	decoder := json.NewDecoder(bytes.NewReader(c.Body()))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {

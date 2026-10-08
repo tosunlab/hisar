@@ -64,6 +64,9 @@ LEFT=$(printf '%s\n' "$PW" | B ls -v Family 2>/dev/null | tail -n +2)
 [[ -z "$LEFT" ]] || fail "items left after delete: $LEFT"
 echo "ok   delete propagates"
 
+expect "unshare rotates the vault key" "$(printf '%s\n' "$PW" | A unshare Family bob@example.com 2>&1)" "rotated the vault key"
+expect "removed member cannot read the vault" "$(printf '%s\n' "$PW" | B ls -v Family 2>&1 || true)" "not found"
+
 expect "logout" "$(A logout && A whoami 2>&1 || true)" "not logged in"
 
 DESKTOP_INVITE=$("$BIN/hisar-server" invite --email desktop@example.com --role member </dev/null | tail -1)

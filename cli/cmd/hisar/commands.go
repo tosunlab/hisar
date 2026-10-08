@@ -577,6 +577,48 @@ func runListAllMember(ctx context.Context, flags *flag.FlagSet, allArg []string)
 	return writer.Flush()
 }
 
+func runUnshare(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
+	allPositional, err := parse(flags, allArg)
+	if err != nil {
+		return err
+	}
+	if len(allPositional) != 2 {
+		return errUsage
+	}
+	currentState, unlockedSession, err := unlock(ctx)
+	if err != nil {
+		return err
+	}
+	err = func() error {
+		vault, err := unlockedSession.FindVault(ctx, allPositional[0])
+		if err != nil {
+			return err
+		}
+		member, err := unlockedSession.GetVerifiedMember(ctx, allPositional[1])
+		if err != nil {
+			return err
+		}
+		unlockedSession.MemberVerifier = func(remainingMember *proto.Member) error {
+			return checkMemberPin(currentState, remainingMember)
+		}
+		if err := unlockedSession.RemoveVaultMember(ctx, vault, member.AccountID); err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "Removed %s from %q and rotated the vault key.\n", member.Email, vault.Name)
+		return nil
+	}()
+	return finishSession(currentState, unlockedSession, err)
+}
+
+// checkMemberPin trusts a member's signing key on first use and refuses it if it changes later.
+func checkMemberPin(currentState *localstate.State, member *proto.Member) error {
+	if pinned, ok := currentState.AllPin[member.AccountID]; ok && !bytes.Equal(pinned, member.PublicKeys.Sign) {
+		return fmt.Errorf("the signing key of %s changed since you last shared with them; stopping", member.Email)
+	}
+	currentState.AllPin[member.AccountID] = member.PublicKeys.Sign
+	return nil
+}
+
 func runShare(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
 	role := flags.String("r", proto.VaultEditor, "owner, editor or reader")
 	allPositional, err := parse(flags, allArg)
@@ -602,13 +644,12 @@ func runShare(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
 		if err != nil {
 			return err
 		}
-		if pinned, ok := currentState.AllPin[member.AccountID]; ok && !bytes.Equal(pinned, member.PublicKeys.Sign) {
-			return fmt.Errorf("the signing key of %s changed since you last shared with them; not sharing", member.Email)
+		if err := checkMemberPin(currentState, member); err != nil {
+			return err
 		}
 		if err := unlockedSession.ShareVault(ctx, vault, member, *role); err != nil {
 			return err
 		}
-		currentState.AllPin[member.AccountID] = member.PublicKeys.Sign
 		fmt.Fprintf(os.Stderr, "Shared %q with %s as %s.\n", vault.Name, member.Email, *role)
 		return nil
 	}()
