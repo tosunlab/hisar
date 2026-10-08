@@ -1,6 +1,7 @@
 package item
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
@@ -68,5 +69,33 @@ func TestGenerateDistribution(t *testing.T) {
 	}
 	if len(countByCharacter) != alphabetSize {
 		t.Errorf("used %d distinct chars, want %d", len(countByCharacter), alphabetSize)
+	}
+}
+
+func TestOverviewCategoryJSON(t *testing.T) {
+	encoded, err := json.Marshal(Overview{Title: "GitHub"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(encoded), "category") {
+		t.Errorf("empty category serialized: %s", encoded)
+	}
+	encoded, err = json.Marshal(Overview{Title: "Deploy key", Category: CategorySSHKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded Overview
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Category != "ssh-key" {
+		t.Errorf("category = %q, want ssh-key", decoded.Category)
+	}
+	var legacy Overview
+	if err := json.Unmarshal([]byte(`{"title":"Old"}`), &legacy); err != nil {
+		t.Fatal(err)
+	}
+	if legacy.Category != "" {
+		t.Errorf("legacy category = %q, want empty", legacy.Category)
 	}
 }
