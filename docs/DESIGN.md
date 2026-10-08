@@ -171,7 +171,7 @@ Sharing a vault means wrapping `K_vault` to the recipient's X25519 public key, w
 
 - Each user's X25519 key is signed with their Ed25519 key.
 - Clients pin (trust on first use) every other member's Ed25519 key and warn loudly if it changes.
-- The UI shows a short fingerprint (e.g. 6 words) per member that family members can compare in person once.
+- The UI shows a short fingerprint (e.g. 6 words) per member that family members can optionally compare in person once.
 
 ### 5.7 Changing the master password
 
@@ -183,7 +183,7 @@ Zero-knowledge means a forgotten master password or lost Secret Key loses data, 
 
 ### 6.1 Recovery group
 
-- The admin (and optionally a second trusted person) holds a **recovery keyset** (X25519 + Ed25519), encrypted with each recovery member's `K_user`.
+- Only the admin holds the **recovery keyset** (X25519 + Ed25519), encrypted with the admin's `K_user`. If the admin loses access, recoverable vaults can still be opened by their members, but nobody can perform further recoveries until a new recovery keyset is created.
 - Every vault that opts into recovery also has its `K_vault` wrapped to the recovery public key. Shared vaults always opt in. Personal vaults opt in by default, and the user can opt out with a clear warning.
 
 ### 6.2 Recovery flow
@@ -201,7 +201,7 @@ The server never sees a vault key. The admin's client can technically decrypt re
 
 - Each vault has a monotonic `seq` counter on the server.
 - Each item has an `id` (UUIDv7, client generated), a `revision` (UUIDv7, client generated per edit), a `seq` (assigned by the server on write) and a `deleted` flag (tombstone).
-- The server stores the current version and keeps the last N item versions as history.
+- The server stores the current version and keeps item versions as history for 90 days.
 
 ### 7.2 Pull
 
@@ -284,7 +284,7 @@ All under `/api/v1`. JSON bodies, base64url for binary fields.
 ### 8.4 Deployment
 
 - Single static binary `hisar-server` in a Docker image, with Postgres 17 alongside it in Docker Compose.
-- TLS terminated by Caddy (automatic certificates) in front. Optionally reachable only over Tailscale/WireGuard.
+- Served publicly at `https://tryhisar.com`, TLS terminated by Caddy (automatic certificates) in front.
 - Attachments on local disk (later: S3-compatible storage).
 - Nightly `pg_dump` + attachments encrypted with `age` and copied off-server. Restore tested quarterly.
 
@@ -292,7 +292,7 @@ All under `/api/v1`. JSON bodies, base64url for binary fields.
 
 All clients use `core/` for crypto, the local store and sync.
 
-### 9.1 Desktop — Wails (Go + Vue/TypeScript)
+### 9.1 Desktop — Wails v3 (Go + Vue/TypeScript)
 
 - The Go side owns the unlocked keyset and vault keys (in `memguard` locked buffers). The web UI calls Go methods and receives only the decrypted data it asks for.
 - Local store: SQLite (`modernc.org/sqlite`, pure Go) holding the server's ciphertext as-is plus sync state. Nothing is stored decrypted on disk.
@@ -349,11 +349,13 @@ go.work     Ties the Go modules together for local development
 | 4 | Mobile apps with system autofill | Logins on phones |
 | 5 | TOTP, passkeys, attachments, Watchtower (reused/weak/breached via HIBP k-anonymity), import from 1Password/Bitwarden/CSV, SSE push sync | — |
 
-## 12. Open questions
+## 12. Decisions
 
-1. Argon2id parameters: benchmark on the slowest phone and laptop. Target ≈ 0.5–1 s.
-2. Wails v2 (stable) or v3 (multi-window, better tray support)? Decide at the start of Phase 2.
-3. Server domain name, and whether it is public or VPN-only.
-4. Who besides the admin joins the recovery group?
-5. Item history retention (N versions / days).
-6. Is the Ed25519 fingerprint check (§5.6) required at join time or optional?
+| # | Question | Decision |
+|---|---|---|
+| 1 | Argon2id parameters | Default t=3, m=64 MiB, p=4; confirmed by benchmark in Phase 1, re-checked on phones in Phase 4. Target ≈ 0.5–1 s |
+| 2 | Wails version | v3 |
+| 3 | Server domain | `tryhisar.com`, public |
+| 4 | Recovery group members | Admin only |
+| 5 | Item history retention | 90 days |
+| 6 | Fingerprint check (§5.6) | Optional; key-change warnings are always on |
