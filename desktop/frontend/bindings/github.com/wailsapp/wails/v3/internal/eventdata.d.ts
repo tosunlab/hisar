@@ -5,10 +5,16 @@
 // @ts-ignore: Unused imports
 import type { Events } from "@wailsio/runtime";
 
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as agent$0 from "../../../../tryhisar/hisar/desktop/agent/models.js";
+
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
             "locked": string;
+            "ssh-approval": agent$0.ApprovalEvent;
+            "ssh-approval-closed": string;
         }
     }
 }

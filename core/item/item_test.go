@@ -99,3 +99,33 @@ func TestOverviewCategoryJSON(t *testing.T) {
 		t.Errorf("legacy category = %q, want empty", legacy.Category)
 	}
 }
+
+func TestSSHKeyFieldJSON(t *testing.T) {
+	encodedOverview, _ := json.Marshal(Overview{Title: "GitHub"})
+	encodedDetails, _ := json.Marshal(Details{Password: "secret"})
+	for _, name := range []string{"publicKey", "fingerprint", "keyType", "privateKey"} {
+		if strings.Contains(string(encodedOverview)+string(encodedDetails), name) {
+			t.Errorf("empty %s serialized: %s %s", name, encodedOverview, encodedDetails)
+		}
+	}
+	overview := Overview{Title: "Deploy", Category: CategorySSHKey, PublicKey: "ssh-ed25519 AAAA deploy", Fingerprint: "SHA256:abc", KeyType: "ssh-ed25519"}
+	details := Details{PrivateKey: "-----BEGIN OPENSSH PRIVATE KEY-----\n"}
+	encodedOverview, _ = json.Marshal(overview)
+	encodedDetails, _ = json.Marshal(details)
+	if strings.Contains(string(encodedOverview), "PRIVATE KEY") {
+		t.Errorf("private key in overview: %s", encodedOverview)
+	}
+	var decoded Item
+	if err := json.Unmarshal(encodedOverview, &decoded.Overview); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(encodedDetails, &decoded.Details); err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Overview.PublicKey != overview.PublicKey || decoded.Overview.Fingerprint != overview.Fingerprint || decoded.Overview.KeyType != overview.KeyType {
+		t.Errorf("overview = %+v", decoded.Overview)
+	}
+	if decoded.Details.PrivateKey != details.PrivateKey {
+		t.Errorf("private key = %q", decoded.Details.PrivateKey)
+	}
+}

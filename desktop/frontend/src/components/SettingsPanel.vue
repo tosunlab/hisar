@@ -1,6 +1,14 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from "vue";
-import { disableBiometricUnlock, enableBiometricUnlock, signOut, store } from "../store";
+import {
+  configureSSHConfig,
+  disableBiometricUnlock,
+  enableBiometricUnlock,
+  loadSSHAgentStatus,
+  removeSSHConfig,
+  signOut,
+  store,
+} from "../store";
 import AppIcon from "./AppIcon.vue";
 
 const isEnablingTouchID = ref(false);
@@ -25,7 +33,10 @@ function closeOnEscape(event: KeyboardEvent): void {
   }
 }
 
-onMounted(() => window.addEventListener("keydown", closeOnEscape));
+onMounted(() => {
+  window.addEventListener("keydown", closeOnEscape);
+  loadSSHAgentStatus();
+});
 onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
 </script>
 
@@ -91,6 +102,49 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
             <strong>Auto-lock</strong>
             <p class="muted">Hisar locks after 10 minutes without activity. Copied values are cleared after 90 seconds.</p>
           </div>
+        </div>
+      </section>
+
+      <section data-testid="ssh-agent-section">
+        <p class="section-label">SSH agent</p>
+        <div class="setting">
+          <span class="setting-icon"><AppIcon name="terminal" /></span>
+          <div class="setting-text">
+            <strong>Hisar SSH agent</strong>
+            <p v-if="!store.sshAgentStatus" class="muted">Checking the SSH agent…</p>
+            <p v-else-if="store.sshAgentStatus.isRunning" class="muted" data-testid="ssh-agent-state">
+              <span class="state-dot running"></span>Running at <span class="monospace">{{ store.sshAgentStatus.socketPath }}</span>
+            </p>
+            <p v-else class="muted" data-testid="ssh-agent-state">
+              <span class="state-dot stopped"></span>Not running<template v-if="store.sshAgentStatus.errorMessage">: {{ store.sshAgentStatus.errorMessage }}</template>
+            </p>
+          </div>
+          <template v-if="store.sshAgentStatus">
+            <button v-if="store.sshAgentStatus.isSSHConfigured" data-testid="remove-ssh-config" :disabled="store.isBusy" @click="removeSSHConfig">
+              Remove from SSH config
+            </button>
+            <button v-else class="primary" data-testid="configure-ssh-config" :disabled="store.isBusy" @click="configureSSHConfig">Use Hisar for SSH</button>
+          </template>
+        </div>
+        <p v-if="store.sshAgentErrorMessage" class="error" role="alert">{{ store.sshAgentErrorMessage }}</p>
+        <div v-if="store.sshAgentStatus" class="ssh-explanation">
+          <p class="muted">
+            <template v-if="store.sshAgentStatus.isSSHConfigured">
+              <span class="monospace">ssh</span> and <span class="monospace">git</span> use the SSH keys in your vaults while Hisar is unlocked.
+            </template>
+            <template v-else>
+              “Use Hisar for SSH” adds this section to the top of <span class="monospace">{{ store.sshAgentStatus.configPath }}</span>, after saving a backup, so
+              <span class="monospace">ssh</span> and <span class="monospace">git</span> use the SSH keys in your vaults:
+            </template>
+          </p>
+          <pre v-if="!store.sshAgentStatus.isSSHConfigured" class="config-snippet monospace" data-testid="ssh-config-snippet">{{ store.sshAgentStatus.configSection }}</pre>
+          <p class="muted">
+            {{
+              store.sshAgentStatus.isTouchIDApproval
+                ? "Each new program that uses a key asks for Touch ID. Approvals last until Hisar locks."
+                : "Each new program that uses a key asks for your approval in Hisar. Approvals last until Hisar locks."
+            }}
+          </p>
         </div>
       </section>
 
@@ -183,6 +237,45 @@ section {
 .setting-text p {
   margin: 2px 0 0;
   font-size: 12px;
+}
+
+.ssh-explanation {
+  padding: 0 0 4px 44px;
+}
+
+.ssh-explanation p {
+  margin: 0 0 8px;
+  font-size: 12px;
+}
+
+.config-snippet {
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  white-space: pre-wrap;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.state-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  vertical-align: 1px;
+}
+
+.state-dot.running {
+  background: var(--color-success);
+}
+
+.state-dot.stopped {
+  background: var(--color-danger);
 }
 
 .enable-form {

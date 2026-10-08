@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { reactive, ref } from "vue";
 import { createEmptyItem, type ItemDetail } from "../api";
+import { sshKeyCategory } from "../util";
 import { cancelEditing, saveItem, store } from "../store";
 import AppIcon from "./AppIcon.vue";
 import ItemTile from "./ItemTile.vue";
@@ -19,6 +20,7 @@ const draft = reactive<ItemDetail>(createDraft());
 const urlText = ref(draft.urls.join("\n"));
 const isPasswordVisible = ref(false);
 const isGeneratorOpen = ref(store.editorMode === "create");
+const isSSHKey = draft.category === sshKeyCategory;
 
 function usePassword(password: string): void {
   draft.password = password;
@@ -46,11 +48,15 @@ async function submitItem(): Promise<void> {
 <template>
   <form class="item-editor" @submit.prevent="submitItem">
     <header>
-      <ItemTile :title="draft.title || '?'" :size="52" />
+      <ItemTile :title="draft.title || '?'" :size="52" :icon="isSSHKey ? 'key' : undefined" />
       <input v-model="draft.title" class="title-input" name="title" placeholder="Item title" aria-label="Title" required autofocus />
     </header>
 
-    <section class="card editor-card">
+    <p v-if="isSSHKey" class="card ssh-key-note muted" data-testid="ssh-key-note">
+      <AppIcon name="key" :size="14" /> The key itself cannot be changed. To replace it, add a new SSH key.
+    </p>
+
+    <section v-if="!isSSHKey" class="card editor-card">
       <label>
         <span>Username</span>
         <input v-model="draft.username" name="username" autocomplete="off" placeholder="Username or email" />
@@ -86,7 +92,7 @@ async function submitItem(): Promise<void> {
       </label>
     </section>
 
-    <section class="card editor-card">
+    <section v-if="!isSSHKey" class="card editor-card">
       <p class="section-label">Other fields</p>
       <div v-for="(field, index) in draft.fields" :key="index" class="custom-field">
         <input v-model="field.name" :name="`fieldName${index}`" placeholder="Name" aria-label="Field name" />
@@ -152,6 +158,15 @@ header {
 
 label.last {
   margin-bottom: 0;
+}
+
+.ssh-key-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 12px 16px;
+  font-size: 12px;
 }
 
 .row input {

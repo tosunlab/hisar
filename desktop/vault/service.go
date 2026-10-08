@@ -118,7 +118,8 @@ func (s *Service) lockSession() {
 		s.lockTimer.Stop()
 		s.lockTimer = nil
 	}
-	if s.unlockedSession != nil {
+	wasUnlocked := s.unlockedSession != nil
+	if wasUnlocked {
 		s.unlockedSession.Lock()
 		s.unlockedSession = nil
 	}
@@ -127,6 +128,9 @@ func (s *Service) lockSession() {
 	}
 	s.allVaultByID = nil
 	s.allItemByVaultID = nil
+	if wasUnlocked && s.config.OnLock != nil {
+		s.config.OnLock()
+	}
 }
 
 func (s *Service) Lock() Status {
@@ -440,14 +444,18 @@ func (s *Service) GetItem(vaultID, itemID string) (ItemDetail, error) {
 
 func convertToItemDetail(vaultItem *item.Item) ItemDetail {
 	detail := ItemDetail{
-		ID:       vaultItem.ID,
-		Revision: vaultItem.Revision,
-		Title:    vaultItem.Overview.Title,
-		Username: vaultItem.Overview.Username,
-		URLs:     append([]string{}, vaultItem.Overview.URLs...),
-		Password: vaultItem.Details.Password,
-		Notes:    vaultItem.Details.Notes,
-		Fields:   []ItemField{},
+		ID:          vaultItem.ID,
+		Revision:    vaultItem.Revision,
+		Category:    vaultItem.Overview.Category,
+		Title:       vaultItem.Overview.Title,
+		Username:    vaultItem.Overview.Username,
+		URLs:        append([]string{}, vaultItem.Overview.URLs...),
+		Password:    vaultItem.Details.Password,
+		Notes:       vaultItem.Details.Notes,
+		Fields:      []ItemField{},
+		PublicKey:   vaultItem.Overview.PublicKey,
+		Fingerprint: vaultItem.Overview.Fingerprint,
+		KeyType:     vaultItem.Overview.KeyType,
 	}
 	for _, field := range vaultItem.Details.Fields {
 		detail.Fields = append(detail.Fields, ItemField{Name: field.Name, Value: field.Value, Concealed: field.Concealed})
@@ -491,12 +499,42 @@ func (s *Service) SaveItem(vaultID string, detail ItemDetail) (ItemDetail, error
 	if err != nil {
 		return ItemDetail{}, err
 	}
-	vaultItem := convertFromItemDetail(detail)
+	vaultItem, err := s.buildSavedItem(vaultID, detail)
+	if err != nil {
+		return ItemDetail{}, err
+	}
 	if _, err := s.unlockedSession.SaveItem(ctx, vault, &vaultItem); err != nil {
 		return ItemDetail{}, convertError(err)
 	}
 	s.replaceCachedItem(vaultID, vaultItem)
 	return convertToItemDetail(&vaultItem), nil
+}
+
+// buildSavedItem keeps the category of an existing item; an ssh-key item only takes the title and notes from the editor.
+func (s *Service) buildSavedItem(vaultID string, detail ItemDetail) (item.Item, error) {
+	var cachedItem *item.Item
+	if detail.ID != "" {
+		cachedItem, _ = s.findItem(vaultID, detail.ID)
+	}
+	if cachedItem == nil {
+		if detail.Category == item.CategorySSHKey {
+			if detail.ID == "" {
+				return item.Item{}, errors.New("generate or import an SSH key instead")
+			}
+			return item.Item{}, errors.New("this SSH key is not loaded; reload the vault and try again")
+		}
+		return convertFromItemDetail(detail), nil
+	}
+	if cachedItem.Overview.Category != item.CategorySSHKey {
+		vaultItem := convertFromItemDetail(detail)
+		vaultItem.Overview.Category = cachedItem.Overview.Category
+		return vaultItem, nil
+	}
+	vaultItem := *cachedItem
+	vaultItem.Revision = detail.Revision
+	vaultItem.Overview.Title = strings.TrimSpace(detail.Title)
+	vaultItem.Details.Notes = detail.Notes
+	return vaultItem, nil
 }
 
 func (s *Service) replaceCachedItem(vaultID string, vaultItem item.Item) {
@@ -599,6 +637,10 @@ func getFieldValue(vaultItem *item.Item, fieldName string) (string, bool) {
 		return vaultItem.Overview.URLs[0], true
 	case "notes":
 		return vaultItem.Details.Notes, true
+	case "public key":
+		return vaultItem.Overview.PublicKey, true
+	case "fingerprint":
+		return vaultItem.Overview.Fingerprint, true
 	}
 	for _, field := range vaultItem.Details.Fields {
 		if strings.EqualFold(field.Name, fieldName) {

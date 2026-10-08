@@ -361,6 +361,8 @@ func TestIntegrationDesktopFlow(t *testing.T) {
 		t.Errorf("clipboard = %q", text)
 	}
 
+	checkSSHAgentFlow(t, service, personalID, password)
+
 	if status := service.Lock(); status.State != StateLocked {
 		t.Fatalf("lock: %+v", status)
 	}

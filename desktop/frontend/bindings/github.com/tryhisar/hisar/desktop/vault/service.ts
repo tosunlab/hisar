@@ -43,12 +43,26 @@ export function GeneratePassword(config: $models.PasswordConfig): $CancellablePr
     return $Call.ByID(3064323257, config);
 }
 
+/**
+ * GenerateSSHKey creates an ssh-key item with a new Ed25519 (default) or RSA 4096 key.
+ */
+export function GenerateSSHKey(vaultID: string, title: string, keyType: string): $CancellablePromise<$models.ItemDetail> {
+    return $Call.ByID(3886306793, vaultID, title, keyType);
+}
+
 export function GetItem(vaultID: string, itemID: string): $CancellablePromise<$models.ItemDetail> {
     return $Call.ByID(2079656282, vaultID, itemID);
 }
 
 export function GetStatus(): $CancellablePromise<$models.Status> {
     return $Call.ByID(1179137283);
+}
+
+/**
+ * ImportSSHKey stores an existing OpenSSH or PEM private key, decrypted with the passphrase if it has one.
+ */
+export function ImportSSHKey(vaultID: string, title: string, privateKeyText: string, passphrase: string): $CancellablePromise<$models.ItemDetail> {
+    return $Call.ByID(2985839267, vaultID, title, privateKeyText, passphrase);
 }
 
 /**

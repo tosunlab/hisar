@@ -18,6 +18,10 @@ type Overview struct {
 	Username string   `json:"username,omitempty"`
 	URLs     []string `json:"urls,omitempty"`
 	Tags     []string `json:"tags,omitempty"`
+	// PublicKey is the authorized_keys line of an ssh-key item.
+	PublicKey   string `json:"publicKey,omitempty"`
+	Fingerprint string `json:"fingerprint,omitempty"`
+	KeyType     string `json:"keyType,omitempty"`
 }
 
 type Field struct {
@@ -30,6 +34,8 @@ type Details struct {
 	Password string  `json:"password,omitempty"`
 	Notes    string  `json:"notes,omitempty"`
 	Fields   []Field `json:"fields,omitempty"`
+	// PrivateKey is an unencrypted OpenSSH PEM key; the vault encryption protects it.
+	PrivateKey string `json:"privateKey,omitempty"`
 }
 
 type Item struct {

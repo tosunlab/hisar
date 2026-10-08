@@ -1,17 +1,20 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { createVault, filterAllItem, lock, selectItem, selectVault, startCreatingItem, store } from "../store";
-import { getDomain, getInitials, isMacPlatform } from "../util";
+import { createVault, filterAllItem, lock, selectItem, selectVault, startCreatingItem, startCreatingSSHKey, store } from "../store";
+import { formatKeyType, getDomain, getInitials, isMacPlatform, sshKeyCategory } from "../util";
 import AppIcon from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
 import ItemDetailPanel from "./ItemDetailPanel.vue";
 import ItemEditor from "./ItemEditor.vue";
 import ItemTile from "./ItemTile.vue";
 import SettingsPanel from "./SettingsPanel.vue";
+import SSHKeyForm from "./SSHKeyForm.vue";
 
 const isCreatingVault = ref(false);
 const newVaultName = ref("");
 const searchInput = ref<HTMLInputElement | null>(null);
+const isNewItemMenuOpen = ref(false);
+const newItemMenu = ref<HTMLElement | null>(null);
 const shortcutModifier = isMacPlatform() ? "⌘" : "Ctrl+";
 
 const allVisibleItem = computed(() => filterAllItem(store.allItem, store.searchQuery));
@@ -22,6 +25,20 @@ async function submitNewVault(): Promise<void> {
   if (await createVault(newVaultName.value)) {
     newVaultName.value = "";
     isCreatingVault.value = false;
+  }
+}
+
+function chooseNewItem(create: () => void): void {
+  isNewItemMenuOpen.value = false;
+  create();
+}
+
+function closeNewItemMenu(event: Event): void {
+  if (!isNewItemMenuOpen.value) {
+    return;
+  }
+  if (event instanceof KeyboardEvent ? event.key === "Escape" : !newItemMenu.value?.contains(event.target as Node)) {
+    isNewItemMenuOpen.value = false;
   }
 }
 
@@ -45,8 +62,16 @@ function handleShortcut(event: KeyboardEvent): void {
   }
 }
 
-onMounted(() => window.addEventListener("keydown", handleShortcut));
-onBeforeUnmount(() => window.removeEventListener("keydown", handleShortcut));
+onMounted(() => {
+  window.addEventListener("keydown", handleShortcut);
+  window.addEventListener("keydown", closeNewItemMenu);
+  window.addEventListener("pointerdown", closeNewItemMenu);
+});
+onBeforeUnmount(() => {
+  window.removeEventListener("keydown", handleShortcut);
+  window.removeEventListener("keydown", closeNewItemMenu);
+  window.removeEventListener("pointerdown", closeNewItemMenu);
+});
 </script>
 
 <template>
@@ -96,9 +121,27 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleShortcut));
           <h2>{{ selectedVault?.name ?? "" }}</h2>
           <span class="muted">{{ store.allItem.length }} {{ store.allItem.length === 1 ? "item" : "items" }}</span>
         </div>
-        <button class="primary icon-button new-item" :disabled="!canEdit" :title="`New item (${shortcutModifier}N)`" aria-label="New item" @click="startCreatingItem">
-          <AppIcon name="plus" />
-        </button>
+        <div ref="newItemMenu" class="new-item">
+          <button
+            class="primary icon-button"
+            :disabled="!canEdit"
+            :title="`New item (${shortcutModifier}N for a login)`"
+            aria-label="New item"
+            aria-haspopup="menu"
+            :aria-expanded="isNewItemMenuOpen"
+            @click="isNewItemMenuOpen = !isNewItemMenuOpen"
+          >
+            <AppIcon name="plus" />
+          </button>
+          <div v-if="isNewItemMenuOpen" class="card new-item-menu" role="menu" aria-label="New item">
+            <button class="ghost" role="menuitem" data-testid="new-login" @click="chooseNewItem(startCreatingItem)">
+              <AppIcon name="globe" /> Login <kbd>{{ shortcutModifier }}N</kbd>
+            </button>
+            <button class="ghost" role="menuitem" data-testid="new-ssh-key" @click="chooseNewItem(startCreatingSSHKey)">
+              <AppIcon name="key" /> SSH key
+            </button>
+          </div>
+        </div>
       </div>
       <div class="search">
         <AppIcon name="search" />
@@ -114,10 +157,11 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleShortcut));
       <ul v-else>
         <li v-for="vaultItem in allVisibleItem" :key="vaultItem.id">
           <button class="item" :class="{ selected: store.selectedItem?.id === vaultItem.id }" @click="selectItem(vaultItem.id)">
-            <ItemTile :title="vaultItem.title" />
+            <ItemTile :title="vaultItem.title" :icon="vaultItem.category === sshKeyCategory ? 'key' : undefined" />
             <span class="item-text">
               <span class="item-title">{{ vaultItem.title }}</span>
-              <span class="item-subtitle">{{ vaultItem.username || (vaultItem.urls[0] ? getDomain(vaultItem.urls[0]) : "") }}</span>
+              <span v-if="vaultItem.category === sshKeyCategory" class="item-subtitle">{{ formatKeyType(vaultItem.keyType) }} SSH key</span>
+              <span v-else class="item-subtitle">{{ vaultItem.username || (vaultItem.urls[0] ? getDomain(vaultItem.urls[0]) : "") }}</span>
             </span>
           </button>
         </li>
@@ -128,7 +172,8 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleShortcut));
       <div class="title-bar"></div>
       <div class="detail-content">
         <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
-        <ItemEditor v-if="store.editorMode !== 'view'" :key="store.editorMode + (store.selectedItem?.id ?? '')" />
+        <SSHKeyForm v-if="store.editorMode === 'create-ssh-key'" />
+        <ItemEditor v-else-if="store.editorMode !== 'view'" :key="store.editorMode + (store.selectedItem?.id ?? '')" />
         <ItemDetailPanel v-else-if="store.selectedItem" :can-edit="canEdit" :vault-name="selectedVault?.name ?? ''" :is-shared="selectedVault?.type === 'shared'" />
         <div v-else class="detail-empty">
           <span class="detail-empty-icon"><AppIcon name="vault" :size="28" /></span>
@@ -297,7 +342,32 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleShortcut));
 }
 
 .new-item {
+  position: relative;
   --wails-draggable: no-drag;
+}
+
+.new-item-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  min-width: 168px;
+  padding: 4px;
+  background: var(--color-surface-raised);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 45%);
+}
+
+.new-item-menu button {
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 7px 8px;
+  color: var(--color-text);
+}
+
+.new-item-menu kbd {
+  margin-left: auto;
 }
 
 .search {

@@ -47,15 +47,20 @@ type ItemField struct {
 	Concealed bool   `json:"concealed"`
 }
 
+// ItemDetail never carries an SSH private key; the agent reads it from the cached item.
 type ItemDetail struct {
-	ID       string      `json:"id"`
-	Revision string      `json:"revision"`
-	Title    string      `json:"title"`
-	Username string      `json:"username"`
-	URLs     []string    `json:"urls"`
-	Password string      `json:"password"`
-	Notes    string      `json:"notes"`
-	Fields   []ItemField `json:"fields"`
+	ID          string      `json:"id"`
+	Revision    string      `json:"revision"`
+	Category    string      `json:"category"`
+	Title       string      `json:"title"`
+	Username    string      `json:"username"`
+	URLs        []string    `json:"urls"`
+	Password    string      `json:"password"`
+	Notes       string      `json:"notes"`
+	Fields      []ItemField `json:"fields"`
+	PublicKey   string      `json:"publicKey"`
+	Fingerprint string      `json:"fingerprint"`
+	KeyType     string      `json:"keyType"`
 }
 
 type SignUpResult struct {
@@ -111,4 +116,6 @@ type Config struct {
 	// BiometricPasswordInterval is how long Touch ID may unlock before the master password is required again.
 	BiometricPasswordInterval time.Duration
 	Now                       func() time.Time
+	// OnLock runs under the service mutex whenever an unlocked session ends; it must not call the service.
+	OnLock func()
 }

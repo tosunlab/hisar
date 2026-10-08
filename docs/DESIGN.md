@@ -358,30 +358,45 @@ Like 1Password, the desktop app is an SSH agent for keys stored in vaults, so pr
 
 **SSH Key items**
 
-- A new item type. The overview holds the title, public key, fingerprint and comment; the details hold the private key in OpenSSH format.
-- Generate inside the app (Ed25519 by default, RSA-4096 if requested), or import existing OpenSSH or PEM keys. Passphrase-protected keys are decrypted on import and stored without the passphrase, because the vault encryption protects them.
-- Export the public key (copy, or write `~/.ssh/<name>.pub`) for `authorized_keys`, GitHub and so on.
+- Item category `ssh-key` (`item.Overview.Category`). The overview holds the title, the public key as an `authorized_keys` line (`publicKey`), the SHA-256 fingerprint and the key type (`ssh-ed25519`, `ssh-rsa`, `ecdsa-sha2-*`); the details hold the private key as an unencrypted OpenSSH PEM (`privateKey`), protected by the vault encryption like every other secret.
+- Generate inside the app (Ed25519 by default, RSA 4096 if requested), or import an existing OpenSSH, PKCS#1, SEC 1 or PKCS#8 key. Passphrase-protected keys are decrypted on import and stored without the passphrase.
+- The UI never receives a private key: `ItemDetail` carries only the category, public key, fingerprint and key type. Editing an SSH key changes only its title and notes; the backend keeps the key material from the cached item.
+- The detail view shows the key type, fingerprint and public key with "Copy public key" (copied through the backend and cleared after 90 seconds) for `authorized_keys`, GitHub and so on.
 
 **Agent**
 
-- Implements the OpenSSH agent protocol with `golang.org/x/crypto/ssh/agent`.
-- Listens on `~/.hisar/agent.sock` (directory 0700, socket 0600). The app offers to add `Host *` → `IdentityAgent ~/.hisar/agent.sock` to `~/.ssh/config`.
-- Offers SSH keys from the vaults the user enables for the agent (default: Personal). It is read-only: requests to add or remove keys, and the agent's lock/unlock requests, are refused.
+- Implements the OpenSSH agent protocol with `golang.org/x/crypto/ssh/agent`, including `session-bind@openssh.com`.
+- Listens on `~/.hisar/agent.sock` (directory 0700, socket 0600; `HISAR_SSH_AGENT_SOCKET` overrides the path). It starts with the app and stops when the app quits. If the socket cannot be created (for example another agent is listening there), Settings shows the error.
+- Offers the SSH keys of every vault the user can access while Hisar is unlocked; personal vault keys come first. Locked or signed out, it offers no keys. It is read-only: requests to add or remove keys, and the agent's lock/unlock requests, are refused.
+- Settings → SSH agent shows the status and, only when the user clicks "Use Hisar for SSH", adds this section to the top of `~/.ssh/config` after copying the file to `~/.ssh/config.hisar-backup-<timestamp>` (the file is created with mode 0600 and `~/.ssh` with 0700 if missing):
+
+  ```
+  # Added by Hisar: use the Hisar SSH agent
+  Host *
+    IdentityAgent "~/.hisar/agent.sock"
+  # End of Hisar section
+  ```
+
+  Nothing changes if the start line is already present. "Remove from SSH config" backs the file up again and deletes the lines between the markers; backups never overwrite each other, and a symlinked config is written through to its target.
 - Servers allow about 6 key attempts per connection (`MaxAuthTries`). With more keys, the user points `IdentityFile` in `~/.ssh/config` at the exported public key to pick one per host; the agent still does the signing.
 - Works for `git` over SSH and for SSH commit signing (`gpg.format ssh`), since both go through the agent.
 
 **Approval**
 
-- If Hisar is locked, a request first triggers unlock (Touch ID or password).
-- The first use of a key by a client process asks for approval. The prompt names the requesting application, found from the socket peer PID via `LOCAL_PEERPID` → executable path, and, when OpenSSH sends the `session-bind.com` extension, the destination host. Approval uses Touch ID.
-- Approvals are remembered per (key, application) until Hisar locks. "Ask every time" can be set per key.
-- Agent forwarding (`ssh -A`) exposes the agent to the remote host. The per-use approval makes this visible, and the docs recommend `ProxyJump` instead.
+- If Hisar is locked, the agent lists no keys and signing fails; the user unlocks Hisar and retries.
+- The first use of a key by a client process asks for approval. The prompt names the requesting application, found from the socket peer PID (`LOCAL_PEERPID` on macOS, `SO_PEERCRED` on Linux) → executable path, and the destination host: OpenSSH sends the server host key with `session-bind@openssh.com`, and the agent looks it up in `~/.ssh/known_hosts` and `/etc/ssh/ssh_known_hosts` (the host key fingerprint is shown if it is not there).
+- With Touch ID available, approval is a Touch ID prompt with the reason `allow "<program>" to use the SSH key "<title>" for <host>`. It uses the system dialog because the Hisar window may be in the background; one prompt is shown at a time, and cancelling denies.
+- Without Touch ID, the app brings its window to the front and shows an in-app prompt ("<program> wants to use <key>", destination, program path, key fingerprint) with Deny and Allow. The backend emits the Wails event `ssh-approval` with a random request ID and waits for `RespondSSHApproval(requestID, isAllowed)`; after 60 seconds, or if the client disconnects, it denies and emits `ssh-approval-closed`. Unknown or finished request IDs are ignored.
+- Approvals are remembered per (key fingerprint, program path) until Hisar locks; the vault backend calls the agent's `ClearAllApproval` from its lock hook. Requests through a forwarded agent and from programs without a known path always ask. "Ask every time" can be set per key (`SetAllAlwaysAskKeyID`; no UI yet).
+- Agent forwarding (`ssh -A`) exposes the agent to the remote host. The per-use approval makes this visible ("through a forwarded agent"), and the docs recommend `ProxyJump` instead.
 
 **Implementation**
 
-- `core/sshagent` implements `agent.ExtendedAgent` over two interfaces: a key source (unlocked vault items) and an approver. It has no UI dependency and is tested in CI with an in-memory approver and a real `x/crypto/ssh` client and server.
-- The desktop app supplies the Touch ID approver and the socket listener.
-- Linux (Unix socket) and Windows (named pipe `\\.\pipe\openssh-ssh-agent`) come later. The CLI gets `hisar ssh-key generate|import|list|public-key`.
+- `core/sshagent` implements `agent.ExtendedAgent` over two interfaces: a key source and an approver. It has no UI dependency and is tested in CI with an in-memory approver and a real `x/crypto/ssh` client and server.
+- `desktop/vault` stores SSH Key items (`GenerateSSHKey`, `ImportSSHKey`) and provides the key source, `vault.SSHKeySource`. It is a separate type from the bound `vault.Service`, so no method callable from the UI returns private keys.
+- `desktop/agent` holds the approver (Touch ID or in-app, with the Wails event emitter injected), the `~/.ssh/config` editing and the bound status service. It does not import Wails and is unit-tested; `main.go` wires it to Touch ID, the window and the socket.
+- The end-to-end test generates a key in a vault, serves it with the agent on a Unix socket and logs in to an in-process `x/crypto/ssh` server with a real SSH client; after Lock the agent lists no keys.
+- Linux uses the same Unix socket; Windows (named pipe `\\.\pipe\openssh-ssh-agent`) comes later. The CLI gets `hisar ssh-key generate|import|list|public-key`.
 
 ## 10. Repository layout
 
@@ -389,7 +404,7 @@ Like 1Password, the desktop app is an SSH agent for keys stored in vaults, so pr
 core/       Go module: crypto, item model, local store, sync client   (github.com/tryhisar/hisar/core)
 server/     Go module: hisar-server                                   (github.com/tryhisar/hisar/server)
 cli/        Go module: hisar CLI                                      (github.com/tryhisar/hisar/cli)
-desktop/    Wails v3 app (Go + Vue): vault/ backend, frontend/ UI          (Phase 2)
+desktop/    Wails v3 app (Go + Vue): vault/ backend, agent/ SSH agent, frontend/ UI (Phase 2)
 extension/  Browser extension (TypeScript)                            (Phase 3)
 mobile/     iOS + Android apps on top of gomobile-bound core          (Phase 4)
 docs/       Design and decisions
