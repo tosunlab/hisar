@@ -7,12 +7,13 @@ import (
 	"flag"
 	"fmt"
 	"log"
-	"net/http"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/gofiber/fiber/v3"
 
 	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/server/internal/api"
@@ -27,6 +28,7 @@ func usage() {
 commands:
   serve    run the API server (default)
   invite   create an invite link
+  migrate  up | down | status: manage database migrations
 
 environment:
   HISAR_DATABASE_URL   Postgres connection string (required)
@@ -34,32 +36,35 @@ environment:
   HISAR_PUBLIC_URL     public base URL (default https://tryhisar.com)
   HISAR_SECRETS_FILE   server secrets file, created on first start (default hisar-secrets.json)
   HISAR_TRUST_PROXY    trust X-Forwarded-For from the reverse proxy (default false)
+  HISAR_AUTO_MIGRATE   apply pending migrations on start (default true)
 `)
 }
 
-func env(key, def string) string {
-	if v := os.Getenv(key); v != "" {
-		return v
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
 	}
-	return def
+	return defaultValue
 }
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.LUTC)
-	cmd, args := "serve", os.Args[1:]
-	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
-		cmd, args = args[0], args[1:]
+	command, allArg := "serve", os.Args[1:]
+	if len(allArg) > 0 && !strings.HasPrefix(allArg[0], "-") {
+		command, allArg = allArg[0], allArg[1:]
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
 	var err error
-	switch cmd {
+	switch command {
 	case "serve":
-		err = serve(ctx, args)
+		err = serve(ctx, allArg)
 	case "invite":
-		err = invite(ctx, args)
+		err = invite(ctx, allArg)
+	case "migrate":
+		err = migrate(ctx, allArg)
 	default:
 		usage()
 		os.Exit(2)
@@ -70,113 +75,106 @@ func main() {
 }
 
 func setup(ctx context.Context) (*store.Store, *api.Server, error) {
-	dbURL := os.Getenv("HISAR_DATABASE_URL")
-	if dbURL == "" {
+	databaseURL := os.Getenv("HISAR_DATABASE_URL")
+	if databaseURL == "" {
 		return nil, nil, errors.New("HISAR_DATABASE_URL is required")
 	}
-	st, err := store.Open(ctx, dbURL)
+	database, err := store.Open(ctx, databaseURL)
 	if err != nil {
 		return nil, nil, fmt.Errorf("open database: %w", err)
 	}
-	if err := st.Migrate(ctx); err != nil {
-		st.Close()
-		return nil, nil, fmt.Errorf("migrate: %w", err)
+	if getEnv("HISAR_AUTO_MIGRATE", "true") == "true" {
+		allResult, err := database.Migrate(ctx)
+		if err != nil {
+			database.Close()
+			return nil, nil, fmt.Errorf("migrate: %w", err)
+		}
+		for _, result := range allResult {
+			log.Printf("applied migration %s", result.Source.Path)
+		}
 	}
-	sec, err := api.LoadOrCreateSecrets(env("HISAR_SECRETS_FILE", "hisar-secrets.json"))
+	secrets, err := api.LoadOrCreateSecrets(getEnv("HISAR_SECRETS_FILE", "hisar-secrets.json"))
 	if err != nil {
-		st.Close()
+		database.Close()
 		return nil, nil, fmt.Errorf("secrets: %w", err)
 	}
-	srv, err := api.New(st, sec, api.Config{
-		PublicURL:  env("HISAR_PUBLIC_URL", "https://tryhisar.com"),
-		TrustProxy: env("HISAR_TRUST_PROXY", "false") == "true",
+	server, err := api.New(database, secrets, api.Config{
+		PublicURL:  getEnv("HISAR_PUBLIC_URL", "https://tryhisar.com"),
+		TrustProxy: getEnv("HISAR_TRUST_PROXY", "false") == "true",
 	})
 	if err != nil {
-		st.Close()
+		database.Close()
 		return nil, nil, err
 	}
-	return st, srv, nil
+	return database, server, nil
 }
 
-func serve(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("serve", flag.ExitOnError)
-	addr := fs.String("addr", env("HISAR_ADDR", ":8080"), "listen address")
-	fs.Parse(args)
+func serve(ctx context.Context, allArg []string) error {
+	flags := flag.NewFlagSet("serve", flag.ExitOnError)
+	addr := flags.String("addr", getEnv("HISAR_ADDR", ":8080"), "listen address")
+	flags.Parse(allArg)
 
-	st, srv, err := setup(ctx)
+	database, server, err := setup(ctx)
 	if err != nil {
 		return err
 	}
-	defer st.Close()
+	defer database.Close()
 
-	go pruneHistory(ctx, st)
+	go pruneHistory(ctx, database)
 
-	hs := &http.Server{
-		Addr:              *addr,
-		Handler:           srv.Handler(),
-		ReadHeaderTimeout: 10 * time.Second,
-		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      30 * time.Second,
-		IdleTimeout:       120 * time.Second,
-	}
-	go func() {
-		<-ctx.Done()
-		shutdown, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		hs.Shutdown(shutdown)
-	}()
-
+	app := server.App()
 	log.Printf("hisar-server listening on %s", *addr)
-	if err := hs.ListenAndServe(); !errors.Is(err, http.ErrServerClosed) {
-		return err
-	}
-	return nil
+	return app.Listen(*addr, fiber.ListenConfig{
+		DisableStartupMessage: true,
+		GracefulContext:       ctx,
+		ShutdownTimeout:       10 * time.Second,
+	})
 }
 
-func pruneHistory(ctx context.Context, st *store.Store) {
-	t := time.NewTicker(24 * time.Hour)
-	defer t.Stop()
+func pruneHistory(ctx context.Context, database *store.Store) {
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
 	for {
-		if n, err := st.PruneHistory(ctx, historyRetention); err != nil {
+		if pruned, err := database.PruneHistory(ctx, historyRetention); err != nil {
 			log.Printf("prune history: %v", err)
-		} else if n > 0 {
-			log.Printf("pruned %d history entries", n)
+		} else if pruned > 0 {
+			log.Printf("pruned %d history entries", pruned)
 		}
 		select {
 		case <-ctx.Done():
 			return
-		case <-t.C:
+		case <-ticker.C:
 		}
 	}
 }
 
-func invite(ctx context.Context, args []string) error {
-	fs := flag.NewFlagSet("invite", flag.ExitOnError)
-	email := fs.String("email", "", "email address of the invitee")
-	role := fs.String("role", "", "admin or member")
-	fs.Parse(args)
+func invite(ctx context.Context, allArg []string) error {
+	flags := flag.NewFlagSet("invite", flag.ExitOnError)
+	email := flags.String("email", "", "email address of the invitee")
+	role := flags.String("role", "", "admin or member")
+	flags.Parse(allArg)
 
-	st, srv, err := setup(ctx)
+	database, server, err := setup(ctx)
 	if err != nil {
 		return err
 	}
-	defer st.Close()
+	defer database.Close()
 
-	accts, err := st.ListAccounts(ctx)
+	allAccount, err := database.ListAccounts(ctx)
 	if err != nil {
 		return err
 	}
 	defaultRole := proto.RoleMember
-	if len(accts) == 0 {
+	if len(allAccount) == 0 {
 		defaultRole = proto.RoleAdmin
 	}
 
-	in := bufio.NewReader(os.Stdin)
+	input := bufio.NewReader(os.Stdin)
 	if *email == "" {
-		*email = prompt(in, "Email", "")
+		*email = prompt(input, "Email", "")
 	}
 	if *role == "" {
-		*role = prompt(in, "Role (admin/member)", defaultRole)
+		*role = prompt(input, "Role (admin/member)", defaultRole)
 	}
 	*email = strings.ToLower(strings.TrimSpace(*email))
 	if !strings.Contains(*email, "@") {
@@ -186,23 +184,73 @@ func invite(ctx context.Context, args []string) error {
 		return fmt.Errorf("invalid role %q", *role)
 	}
 
-	resp, err := srv.CreateInvite(ctx, *email, *role, nil)
+	response, err := server.CreateInvite(ctx, *email, *role, nil)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Invite for %s (%s), valid for 7 days:\n%s\n", *email, *role, resp.URL)
+	fmt.Printf("Invite for %s (%s), valid for 7 days:\n%s\n", *email, *role, response.URL)
 	return nil
 }
 
-func prompt(in *bufio.Reader, label, def string) string {
-	if def != "" {
-		fmt.Printf("%s [%s]: ", label, def)
+func migrate(ctx context.Context, allArg []string) error {
+	if len(allArg) != 1 {
+		return errors.New("usage: hisar-server migrate up|down|status")
+	}
+	databaseURL := os.Getenv("HISAR_DATABASE_URL")
+	if databaseURL == "" {
+		return errors.New("HISAR_DATABASE_URL is required")
+	}
+	database, err := store.Open(ctx, databaseURL)
+	if err != nil {
+		return fmt.Errorf("open database: %w", err)
+	}
+	defer database.Close()
+
+	switch allArg[0] {
+	case "up":
+		allResult, err := database.Migrate(ctx)
+		if err != nil {
+			return err
+		}
+		if len(allResult) == 0 {
+			fmt.Println("no pending migrations")
+		}
+		for _, result := range allResult {
+			fmt.Printf("applied %s (%s)\n", result.Source.Path, result.Duration)
+		}
+	case "down":
+		result, err := database.RollbackMigration(ctx)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("rolled back %s\n", result.Source.Path)
+	case "status":
+		allStatus, err := database.GetAllMigrationStatus(ctx)
+		if err != nil {
+			return err
+		}
+		for _, status := range allStatus {
+			appliedAt := "pending"
+			if !status.AppliedAt.IsZero() {
+				appliedAt = status.AppliedAt.Format(time.RFC3339)
+			}
+			fmt.Printf("%-24s %s\n", status.Source.Path, appliedAt)
+		}
+	default:
+		return fmt.Errorf("unknown migrate command %q", allArg[0])
+	}
+	return nil
+}
+
+func prompt(input *bufio.Reader, label, defaultValue string) string {
+	if defaultValue != "" {
+		fmt.Printf("%s [%s]: ", label, defaultValue)
 	} else {
 		fmt.Printf("%s: ", label)
 	}
-	line, _ := in.ReadString('\n')
+	line, _ := input.ReadString('\n')
 	if line = strings.TrimSpace(line); line == "" {
-		return def
+		return defaultValue
 	}
 	return line
 }

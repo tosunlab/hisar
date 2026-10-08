@@ -26,7 +26,7 @@ type Member struct {
 }
 
 func (s *Store) CreateVault(ctx context.Context, v *Vault, ownerWrappedKey []byte) error {
-	return s.tx(ctx, func(tx pgx.Tx) error {
+	return s.runInTransaction(ctx, func(tx pgx.Tx) error {
 		_, err := tx.Exec(ctx,
 			`INSERT INTO vaults (id, type, enc_name, created_by) VALUES ($1, $2, $3, $4)`,
 			v.ID, v.Type, v.EncName, v.CreatedBy)
@@ -62,7 +62,7 @@ func (s *Store) VaultRole(ctx context.Context, vaultID, accountID string) (strin
 	var role string
 	err := s.pool.QueryRow(ctx,
 		`SELECT role FROM vault_access WHERE vault_id = $1 AND account_id = $2`, vaultID, accountID).Scan(&role)
-	return role, notFound(err)
+	return role, convertNoRowsToNotFound(err)
 }
 
 func (s *Store) ListMembers(ctx context.Context, vaultID string) ([]Member, error) {

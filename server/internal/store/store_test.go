@@ -32,7 +32,7 @@ func testStore(t *testing.T) *Store {
 		t.Fatal(err)
 	}
 	t.Cleanup(s.Close)
-	if err := s.Migrate(ctx); err != nil {
+	if _, err := s.Migrate(ctx); err != nil {
 		t.Fatal(err)
 	}
 	return s
@@ -63,10 +63,36 @@ func newVault(t *testing.T, s *Store, owner string) string {
 	return id
 }
 
-func TestMigrateIdempotent(t *testing.T) {
-	s := testStore(t)
-	if err := s.Migrate(context.Background()); err != nil {
+func TestMigrations(t *testing.T) {
+	database := testStore(t)
+	ctx := context.Background()
+
+	allResult, err := database.Migrate(ctx)
+	if err != nil || len(allResult) != 0 {
+		t.Fatalf("second migrate applied %d: %v", len(allResult), err)
+	}
+	allStatus, err := database.GetAllMigrationStatus(ctx)
+	if err != nil || len(allStatus) == 0 {
+		t.Fatalf("status: %v", err)
+	}
+	for _, status := range allStatus {
+		if status.AppliedAt.IsZero() {
+			t.Errorf("%s not applied", status.Source.Path)
+		}
+	}
+
+	rolledBack, err := database.RollbackMigration(ctx)
+	if err != nil {
 		t.Fatal(err)
+	}
+	var tableCount int
+	database.pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.tables WHERE table_name = 'accounts'`).Scan(&tableCount)
+	if tableCount != 0 {
+		t.Errorf("accounts table still exists after rolling back %s", rolledBack.Source.Path)
+	}
+
+	if allResult, err = database.Migrate(ctx); err != nil || len(allResult) != 1 {
+		t.Fatalf("re-apply: %d %v", len(allResult), err)
 	}
 }
 

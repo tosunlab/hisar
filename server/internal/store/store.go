@@ -4,18 +4,18 @@ import (
 	"context"
 	"embed"
 	"errors"
-	"fmt"
 	"io/fs"
-	"sort"
-	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/stdlib"
+	"github.com/pressly/goose/v3"
+	"github.com/pressly/goose/v3/lock"
 )
 
 //go:embed migrations/*.sql
-var migrations embed.FS
+var allMigrationFile embed.FS
 
 var (
 	ErrNotFound = errors.New("store: not found")
@@ -27,8 +27,8 @@ type Store struct {
 	pool *pgxpool.Pool
 }
 
-func Open(ctx context.Context, url string) (*Store, error) {
-	pool, err := pgxpool.New(ctx, url)
+func Open(ctx context.Context, databaseURL string) (*Store, error) {
+	pool, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
 		return nil, err
 	}
@@ -41,62 +41,61 @@ func Open(ctx context.Context, url string) (*Store, error) {
 
 func (s *Store) Close() { s.pool.Close() }
 
-func (s *Store) Migrate(ctx context.Context) error {
-	names, err := fs.Glob(migrations, "migrations/*.sql")
+// createMigrator uses a Postgres advisory lock so concurrent server starts migrate only once.
+func (s *Store) createMigrator() (*goose.Provider, error) {
+	migrationDirectory, err := fs.Sub(allMigrationFile, "migrations")
 	if err != nil {
-		return err
+		return nil, err
 	}
-	sort.Strings(names)
-
-	return s.tx(ctx, func(tx pgx.Tx) error {
-		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(7268391)`); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (version text PRIMARY KEY, applied_at timestamptz NOT NULL DEFAULT now())`); err != nil {
-			return err
-		}
-		for _, name := range names {
-			version := strings.TrimSuffix(strings.TrimPrefix(name, "migrations/"), ".sql")
-			var exists bool
-			if err := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE version = $1)`, version).Scan(&exists); err != nil {
-				return err
-			}
-			if exists {
-				continue
-			}
-			sql, err := migrations.ReadFile(name)
-			if err != nil {
-				return err
-			}
-			if _, err := tx.Exec(ctx, string(sql)); err != nil {
-				return fmt.Errorf("migration %s: %w", version, err)
-			}
-			if _, err := tx.Exec(ctx, `INSERT INTO schema_migrations (version) VALUES ($1)`, version); err != nil {
-				return err
-			}
-		}
-		return nil
-	})
+	locker, err := lock.NewPostgresSessionLocker()
+	if err != nil {
+		return nil, err
+	}
+	return goose.NewProvider(goose.DialectPostgres, stdlib.OpenDBFromPool(s.pool), migrationDirectory, goose.WithSessionLocker(locker))
 }
 
-func (s *Store) tx(ctx context.Context, fn func(pgx.Tx) error) error {
-	tx, err := s.pool.Begin(ctx)
+func (s *Store) Migrate(ctx context.Context) ([]*goose.MigrationResult, error) {
+	migrator, err := s.createMigrator()
+	if err != nil {
+		return nil, err
+	}
+	return migrator.Up(ctx)
+}
+
+func (s *Store) RollbackMigration(ctx context.Context) (*goose.MigrationResult, error) {
+	migrator, err := s.createMigrator()
+	if err != nil {
+		return nil, err
+	}
+	return migrator.Down(ctx)
+}
+
+func (s *Store) GetAllMigrationStatus(ctx context.Context) ([]*goose.MigrationStatus, error) {
+	migrator, err := s.createMigrator()
+	if err != nil {
+		return nil, err
+	}
+	return migrator.Status(ctx)
+}
+
+func (s *Store) runInTransaction(ctx context.Context, run func(pgx.Tx) error) error {
+	transaction, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	defer tx.Rollback(ctx)
-	if err := fn(tx); err != nil {
+	defer transaction.Rollback(ctx)
+	if err := run(transaction); err != nil {
 		return err
 	}
-	return tx.Commit(ctx)
+	return transaction.Commit(ctx)
 }
 
 func isUniqueViolation(err error) bool {
-	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == "23505"
+	var postgresError *pgconn.PgError
+	return errors.As(err, &postgresError) && postgresError.Code == "23505"
 }
 
-func notFound(err error) error {
+func convertNoRowsToNotFound(err error) error {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrNotFound
 	}

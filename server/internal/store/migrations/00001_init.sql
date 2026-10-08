@@ -1,3 +1,4 @@
+-- +goose Up
 CREATE TABLE accounts (
     id              text PRIMARY KEY,
     email           text NOT NULL UNIQUE,
@@ -102,3 +103,14 @@ CREATE TABLE audit_events (
     ip              text,
     created_at      timestamptz NOT NULL DEFAULT now()
 );
+
+-- +goose Down
+DROP TABLE audit_events;
+DROP TABLE item_history;
+DROP TABLE items;
+DROP TABLE vault_access;
+DROP TABLE vaults;
+DROP TABLE invites;
+DROP TABLE sessions;
+DROP TABLE devices;
+DROP TABLE accounts;

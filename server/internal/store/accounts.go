@@ -52,7 +52,7 @@ func scanAccount(row pgx.Row) (*Account, error) {
 	var a Account
 	err := row.Scan(&a.ID, &a.Email, &a.Name, &a.Role, &a.Argon2Params, &a.Salt, &a.OpaqueRecord, &a.EncKeyset, &a.KEMPub, &a.SignPub, &a.KEMSig, &a.CreatedAt)
 	if err != nil {
-		return nil, notFound(err)
+		return nil, convertNoRowsToNotFound(err)
 	}
 	return &a, nil
 }
@@ -95,20 +95,20 @@ func (s *Store) InviteByHash(ctx context.Context, tokenHash []byte) (*Invite, er
 		`SELECT email, role, expires_at FROM invites WHERE token_hash = $1 AND used_at IS NULL AND expires_at > now()`,
 		tokenHash).Scan(&inv.Email, &inv.Role, &inv.ExpiresAt)
 	if err != nil {
-		return nil, notFound(err)
+		return nil, convertNoRowsToNotFound(err)
 	}
 	return &inv, nil
 }
 
 // RedeemInvite atomically consumes the invite and creates the account, its first device and a session.
 func (s *Store) RedeemInvite(ctx context.Context, tokenHash []byte, a *Account, d *Device, sess *Session) error {
-	return s.tx(ctx, func(tx pgx.Tx) error {
+	return s.runInTransaction(ctx, func(tx pgx.Tx) error {
 		var email, role string
 		err := tx.QueryRow(ctx,
 			`SELECT email, role FROM invites WHERE token_hash = $1 AND used_at IS NULL AND expires_at > now() FOR UPDATE`,
 			tokenHash).Scan(&email, &role)
 		if err != nil {
-			return notFound(err)
+			return convertNoRowsToNotFound(err)
 		}
 		if email != a.Email {
 			return ErrNotFound
@@ -132,7 +132,7 @@ func (s *Store) RedeemInvite(ctx context.Context, tokenHash []byte, a *Account, 
 }
 
 func (s *Store) CreateDeviceSession(ctx context.Context, d *Device, sess *Session) error {
-	return s.tx(ctx, func(tx pgx.Tx) error { return insertDeviceSession(ctx, tx, d, sess) })
+	return s.runInTransaction(ctx, func(tx pgx.Tx) error { return insertDeviceSession(ctx, tx, d, sess) })
 }
 
 func insertDeviceSession(ctx context.Context, tx pgx.Tx, d *Device, sess *Session) error {
@@ -158,7 +158,7 @@ func (s *Store) SessionByHash(ctx context.Context, tokenHash []byte, ttl time.Du
 		RETURNING s.token_hash, s.account_id, s.device_id, a.role, s.expires_at`,
 		tokenHash, ttl).Scan(&sess.TokenHash, &sess.AccountID, &sess.DeviceID, &sess.Role, &sess.ExpiresAt)
 	if err != nil {
-		return nil, notFound(err)
+		return nil, convertNoRowsToNotFound(err)
 	}
 	s.pool.Exec(ctx, `UPDATE devices SET last_seen_at = now() WHERE id = $1`, sess.DeviceID)
 	return &sess, nil
@@ -184,7 +184,7 @@ func (s *Store) ListDevices(ctx context.Context, accountID string) ([]Device, er
 }
 
 func (s *Store) RevokeDevice(ctx context.Context, accountID, deviceID string) error {
-	return s.tx(ctx, func(tx pgx.Tx) error {
+	return s.runInTransaction(ctx, func(tx pgx.Tx) error {
 		tag, err := tx.Exec(ctx,
 			`UPDATE devices SET revoked_at = now() WHERE id = $1 AND account_id = $2 AND revoked_at IS NULL`,
 			deviceID, accountID)

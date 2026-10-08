@@ -7,12 +7,12 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"net/http"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/bytemare/opaque"
+	"github.com/gofiber/fiber/v3"
 	"github.com/google/uuid"
 
 	"github.com/tryhisar/hisar/core/crypt"
@@ -40,75 +40,68 @@ func (s *Server) mac(parts ...string) []byte {
 }
 
 // Unknown emails get a stable fake salt so prelogin does not reveal which accounts exist.
-func (s *Server) prelogin(w http.ResponseWriter, r *http.Request) {
-	email := normalizeEmail(r.URL.Query().Get("email"))
+func (s *Server) prelogin(c fiber.Ctx) error {
+	email := normalizeEmail(c.Query("email"))
 	if email == "" {
-		writeError(w, http.StatusBadRequest, "email required")
-		return
+		return apiError(fiber.StatusBadRequest, "email required")
 	}
-	a, err := s.store.AccountByEmail(r.Context(), email)
+	a, err := s.store.AccountByEmail(c.Context(), email)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		writeJSON(w, http.StatusOK, proto.PreloginResponse{
+		return c.JSON(proto.PreloginResponse{
 			Salt:   s.mac("prelogin-salt", email)[:crypt.SaltSize],
 			Argon2: crypt.DefaultArgon2Params,
 		})
 	case err != nil:
-		internalError(w, err)
-	default:
-		var p crypt.Argon2Params
-		if err := json.Unmarshal(a.Argon2Params, &p); err != nil {
-			internalError(w, err)
-			return
-		}
-		writeJSON(w, http.StatusOK, proto.PreloginResponse{Salt: a.Salt, Argon2: p})
+		return err
 	}
+	var p crypt.Argon2Params
+	if err := json.Unmarshal(a.Argon2Params, &p); err != nil {
+		return err
+	}
+	return c.JSON(proto.PreloginResponse{Salt: a.Salt, Argon2: p})
 }
 
-func (s *Server) checkInvite(r *http.Request, token, email string) bool {
-	inv, err := s.store.InviteByHash(r.Context(), hashToken(token))
+func (s *Server) checkInvite(c fiber.Ctx, token, email string) bool {
+	inv, err := s.store.InviteByHash(c.Context(), hashToken(token))
 	return err == nil && inv.Email == normalizeEmail(email)
 }
 
-func (s *Server) registerStart(w http.ResponseWriter, r *http.Request) {
+var errInvalidInvite = apiError(fiber.StatusForbidden, "invalid invite")
+
+func (s *Server) registerStart(c fiber.Ctx) error {
 	var req proto.RegisterStartRequest
-	if !decode(w, r, &req) {
-		return
+	if err := decode(c, &req); err != nil {
+		return err
 	}
-	if !s.checkInvite(r, req.Invite, req.Email) {
-		writeError(w, http.StatusForbidden, "invalid invite")
-		return
+	if !s.checkInvite(c, req.Invite, req.Email) {
+		return errInvalidInvite
 	}
 	if !crypt.ValidAccountID(req.AccountID) {
-		writeError(w, http.StatusBadRequest, "invalid account ID")
-		return
+		return apiError(fiber.StatusBadRequest, "invalid account ID")
 	}
-	if _, err := s.store.AccountByID(r.Context(), req.AccountID); err == nil {
-		writeError(w, http.StatusConflict, "account ID taken")
-		return
+	if _, err := s.store.AccountByID(c.Context(), req.AccountID); err == nil {
+		return apiError(fiber.StatusConflict, "account ID taken")
 	}
 	regReq, err := s.opaque.Deserialize.RegistrationRequest(req.Request)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid registration request")
-		return
+		return apiError(fiber.StatusBadRequest, "invalid registration request")
 	}
 	resp, err := s.opaque.RegistrationResponse(regReq, []byte(req.AccountID), nil)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid registration request")
-		return
+		return apiError(fiber.StatusBadRequest, "invalid registration request")
 	}
-	writeJSON(w, http.StatusOK, proto.RegisterStartResponse{Response: resp.Serialize()})
+	return c.JSON(proto.RegisterStartResponse{Response: resp.Serialize()})
 }
 
-func (s *Server) registerFinish(w http.ResponseWriter, r *http.Request) {
+func (s *Server) registerFinish(c fiber.Ctx) error {
 	var req proto.RegisterFinishRequest
-	if !decode(w, r, &req) {
-		return
+	if err := decode(c, &req); err != nil {
+		return err
 	}
 	email := normalizeEmail(req.Email)
-	if !s.checkInvite(r, req.Invite, email) {
-		writeError(w, http.StatusForbidden, "invalid invite")
-		return
+	if !s.checkInvite(c, req.Invite, email) {
+		return errInvalidInvite
 	}
 	switch {
 	case !crypt.ValidAccountID(req.AccountID),
@@ -118,12 +111,10 @@ func (s *Server) registerFinish(w http.ResponseWriter, r *http.Request) {
 		len(req.EncKeyset) == 0 || len(req.EncKeyset) > maxKeysetSize,
 		req.PublicKeys.Verify(req.AccountID) != nil,
 		!validDevice(req.Device):
-		writeError(w, http.StatusBadRequest, "invalid registration")
-		return
+		return apiError(fiber.StatusBadRequest, "invalid registration")
 	}
 	if _, err := s.opaque.Deserialize.RegistrationRecord(req.Record); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid registration record")
-		return
+		return apiError(fiber.StatusBadRequest, "invalid registration record")
 	}
 	params, _ := json.Marshal(req.Argon2)
 
@@ -140,19 +131,16 @@ func (s *Server) registerFinish(w http.ResponseWriter, r *http.Request) {
 		KEMSig:       req.PublicKeys.KEMSig,
 	}
 	token, dev, sess := s.newSession(acct.ID, req.Device)
-	switch err := s.store.RedeemInvite(r.Context(), hashToken(req.Invite), acct, dev, sess); {
+	switch err := s.store.RedeemInvite(c.Context(), hashToken(req.Invite), acct, dev, sess); {
 	case errors.Is(err, store.ErrNotFound):
-		writeError(w, http.StatusForbidden, "invalid invite")
-		return
+		return errInvalidInvite
 	case errors.Is(err, store.ErrExists):
-		writeError(w, http.StatusConflict, "account already exists")
-		return
+		return apiError(fiber.StatusConflict, "account already exists")
 	case err != nil:
-		internalError(w, err)
-		return
+		return err
 	}
-	s.audit(r, acct.ID, dev.ID, "signup", map[string]string{"email": email, "role": acct.Role})
-	writeJSON(w, http.StatusOK, proto.SessionResponse{Token: token, AccountID: acct.ID, DeviceID: dev.ID})
+	s.audit(c, acct.ID, dev.ID, "signup", map[string]string{"email": email, "role": acct.Role})
+	return c.JSON(proto.SessionResponse{Token: token, AccountID: acct.ID, DeviceID: dev.ID})
 }
 
 func (s *Server) newSession(accountID string, info proto.DeviceInfo) (string, *store.Device, *store.Session) {
@@ -166,37 +154,35 @@ func validDevice(d proto.DeviceInfo) bool {
 	return d.Name != "" && len(d.Name) <= 100 && d.Platform != "" && len(d.Platform) <= 50
 }
 
-func (s *Server) loginStart(w http.ResponseWriter, r *http.Request) {
+var errInvalidLogin = apiError(fiber.StatusBadRequest, "invalid login request")
+
+func (s *Server) loginStart(c fiber.Ctx) error {
 	var req proto.LoginStartRequest
-	if !decode(w, r, &req) {
-		return
+	if err := decode(c, &req); err != nil {
+		return err
 	}
 	email := normalizeEmail(req.Email)
 	ke1, err := s.opaque.Deserialize.KE1(req.KE1)
 	if err != nil || email == "" {
-		writeError(w, http.StatusBadRequest, "invalid login request")
-		return
+		return errInvalidLogin
 	}
 
 	var rec *opaque.ClientRecord
 	var accountID string
-	a, err := s.store.AccountByEmail(r.Context(), email)
+	a, err := s.store.AccountByEmail(c.Context(), email)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		fakeID := base64.RawURLEncoding.EncodeToString(s.mac("fake-credential", email))
 		if rec, err = s.conf.GetFakeRecord([]byte(fakeID)); err != nil {
-			internalError(w, err)
-			return
+			return err
 		}
 		rec.ClientIdentity = []byte(fakeID)
 	case err != nil:
-		internalError(w, err)
-		return
+		return err
 	default:
 		regRec, err := s.opaque.Deserialize.RegistrationRecord(a.OpaqueRecord)
 		if err != nil {
-			internalError(w, err)
-			return
+			return err
 		}
 		accountID = a.ID
 		rec = &opaque.ClientRecord{RegistrationRecord: regRec, CredentialIdentifier: []byte(a.ID), ClientIdentity: []byte(a.ID)}
@@ -204,49 +190,45 @@ func (s *Server) loginStart(w http.ResponseWriter, r *http.Request) {
 
 	ke2, out, err := s.opaque.GenerateKE2(ke1, rec)
 	if err != nil {
-		writeError(w, http.StatusBadRequest, "invalid login request")
-		return
+		return errInvalidLogin
 	}
 	id := s.logins.put(&pendingLogin{accountID: accountID, clientMAC: out.ClientMAC})
 	clear(out.SessionSecret)
-	writeJSON(w, http.StatusOK, proto.LoginStartResponse{LoginID: id, KE2: ke2.Serialize()})
+	return c.JSON(proto.LoginStartResponse{LoginID: id, KE2: ke2.Serialize()})
 }
 
-func (s *Server) loginFinish(w http.ResponseWriter, r *http.Request) {
+var errLoginFailed = apiError(fiber.StatusUnauthorized, "login failed")
+
+func (s *Server) loginFinish(c fiber.Ctx) error {
 	var req proto.LoginFinishRequest
-	if !decode(w, r, &req) {
-		return
+	if err := decode(c, &req); err != nil {
+		return err
 	}
 	if !validDevice(req.Device) {
-		writeError(w, http.StatusBadRequest, "invalid device")
-		return
+		return apiError(fiber.StatusBadRequest, "invalid device")
 	}
 	p := s.logins.take(req.LoginID)
 	if p == nil || p.accountID == "" {
-		writeError(w, http.StatusUnauthorized, "login failed")
-		return
+		return errLoginFailed
 	}
 	ke3, err := s.opaque.Deserialize.KE3(req.KE3)
 	if err != nil || s.opaque.LoginFinish(ke3, p.clientMAC) != nil {
-		s.audit(r, p.accountID, "", "login_failed", nil)
-		writeError(w, http.StatusUnauthorized, "login failed")
-		return
+		s.audit(c, p.accountID, "", "login_failed", nil)
+		return errLoginFailed
 	}
 	token, dev, sess := s.newSession(p.accountID, req.Device)
-	if err := s.store.CreateDeviceSession(r.Context(), dev, sess); err != nil {
-		internalError(w, err)
-		return
+	if err := s.store.CreateDeviceSession(c.Context(), dev, sess); err != nil {
+		return err
 	}
-	s.audit(r, p.accountID, dev.ID, "login", map[string]string{"device": dev.Name, "platform": dev.Platform})
-	writeJSON(w, http.StatusOK, proto.SessionResponse{Token: token, AccountID: p.accountID, DeviceID: dev.ID})
+	s.audit(c, p.accountID, dev.ID, "login", map[string]string{"device": dev.Name, "platform": dev.Platform})
+	return c.JSON(proto.SessionResponse{Token: token, AccountID: p.accountID, DeviceID: dev.ID})
 }
 
-func (s *Server) logout(w http.ResponseWriter, r *http.Request) {
-	if err := s.store.DeleteSession(r.Context(), sessionOf(r).TokenHash); err != nil {
-		internalError(w, err)
-		return
+func (s *Server) logout(c fiber.Ctx) error {
+	if err := s.store.DeleteSession(c.Context(), sessionOf(c).TokenHash); err != nil {
+		return err
 	}
-	w.WriteHeader(http.StatusNoContent)
+	return c.SendStatus(fiber.StatusNoContent)
 }
 
 type pendingLogin struct {

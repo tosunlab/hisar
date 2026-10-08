@@ -1,18 +1,17 @@
 package api
 
 import (
-	"context"
+	"bytes"
 	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"log"
-	"net"
-	"net/http"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/bytemare/opaque"
+	"github.com/gofiber/fiber/v3"
 	"golang.org/x/time/rate"
 
 	"github.com/tryhisar/hisar/core/pake"
@@ -69,97 +68,114 @@ func New(st *store.Store, sec *Secrets, cfg Config) (*Server, error) {
 	}, nil
 }
 
-func (s *Server) Handler() http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("ok\n")) })
-
-	auth := func(h http.HandlerFunc) http.Handler { return s.limit(h) }
-	mux.Handle("GET /api/v1/auth/prelogin", auth(s.prelogin))
-	mux.Handle("POST /api/v1/auth/register/start", auth(s.registerStart))
-	mux.Handle("POST /api/v1/auth/register/finish", auth(s.registerFinish))
-	mux.Handle("POST /api/v1/auth/login/start", auth(s.loginStart))
-	mux.Handle("POST /api/v1/auth/login/finish", auth(s.loginFinish))
-
-	mux.Handle("POST /api/v1/auth/logout", s.authed(s.logout))
-	mux.Handle("GET /api/v1/account", s.authed(s.getAccount))
-	mux.Handle("GET /api/v1/members", s.authed(s.listMembers))
-	mux.Handle("POST /api/v1/invites", s.authed(s.createInvite))
-	mux.Handle("GET /api/v1/devices", s.authed(s.listDevices))
-	mux.Handle("DELETE /api/v1/devices/{id}", s.authed(s.revokeDevice))
-
-	mux.Handle("GET /api/v1/vaults", s.authed(s.listVaults))
-	mux.Handle("POST /api/v1/vaults", s.authed(s.createVault))
-	mux.Handle("GET /api/v1/vaults/{vault}/members", s.authed(s.listVaultMembers))
-	mux.Handle("PUT /api/v1/vaults/{vault}/access/{account}", s.authed(s.setAccess))
-	mux.Handle("DELETE /api/v1/vaults/{vault}/access/{account}", s.authed(s.removeAccess))
-	mux.Handle("GET /api/v1/vaults/{vault}/changes", s.authed(s.changes))
-	mux.Handle("PUT /api/v1/vaults/{vault}/items/{item}", s.authed(s.putItem))
-	mux.Handle("GET /api/v1/vaults/{vault}/items/{item}/history", s.authed(s.itemHistory))
-
-	return securityHeaders(mux)
-}
-
-func securityHeaders(h http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
-		w.Header().Set("X-Content-Type-Options", "nosniff")
-		w.Header().Set("X-Frame-Options", "DENY")
-		w.Header().Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
-		w.Header().Set("Cache-Control", "no-store")
-		h.ServeHTTP(w, r)
+func (s *Server) App() *fiber.App {
+	app := fiber.New(fiber.Config{
+		AppName:      "hisar-server",
+		BodyLimit:    maxBody,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  120 * time.Second,
+		// fasthttp reuses request buffers after a handler returns.
+		Immutable:    true,
+		ErrorHandler: errorHandler,
 	})
+	app.Use(securityHeaders)
+	app.Get("/healthz", func(c fiber.Ctx) error { return c.SendString("ok\n") })
+
+	api := app.Group("/api/v1")
+	api.Get("/auth/prelogin", s.limit, s.prelogin)
+	api.Post("/auth/register/start", s.limit, s.registerStart)
+	api.Post("/auth/register/finish", s.limit, s.registerFinish)
+	api.Post("/auth/login/start", s.limit, s.loginStart)
+	api.Post("/auth/login/finish", s.limit, s.loginFinish)
+
+	api.Post("/auth/logout", s.authed, s.logout)
+	api.Get("/account", s.authed, s.getAccount)
+	api.Get("/members", s.authed, s.listMembers)
+	api.Post("/invites", s.authed, s.createInvite)
+	api.Get("/devices", s.authed, s.listDevices)
+	api.Delete("/devices/:id", s.authed, s.revokeDevice)
+
+	api.Get("/vaults", s.authed, s.listVaults)
+	api.Post("/vaults", s.authed, s.createVault)
+	api.Get("/vaults/:vault/members", s.authed, s.listVaultMembers)
+	api.Put("/vaults/:vault/access/:account", s.authed, s.setAccess)
+	api.Delete("/vaults/:vault/access/:account", s.authed, s.removeAccess)
+	api.Get("/vaults/:vault/changes", s.authed, s.changes)
+	api.Put("/vaults/:vault/items/:item", s.authed, s.putItem)
+	api.Get("/vaults/:vault/items/:item/history", s.authed, s.itemHistory)
+
+	return app
 }
+
+func securityHeaders(c fiber.Ctx) error {
+	c.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
+	c.Set("X-Content-Type-Options", "nosniff")
+	c.Set("X-Frame-Options", "DENY")
+	c.Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
+	c.Set("Cache-Control", "no-store")
+	return c.Next()
+}
+
+// errorHandler renders *fiber.Error as JSON and hides all other errors behind a 500.
+func errorHandler(c fiber.Ctx, err error) error {
+	var fe *fiber.Error
+	if !errors.As(err, &fe) {
+		log.Printf("internal error: %s %s: %v", c.Method(), c.Path(), err)
+		fe = fiber.NewError(fiber.StatusInternalServerError, "internal error")
+	}
+	msg := fe.Message
+	if fe.Code == fiber.StatusRequestEntityTooLarge {
+		msg = "request too large"
+	}
+	return c.Status(fe.Code).JSON(proto.Error{Error: msg})
+}
+
+func apiError(status int, msg string) error { return fiber.NewError(status, msg) }
+
+var errNotFound = apiError(fiber.StatusNotFound, "not found")
 
 type ctxKey struct{}
 
-func sessionOf(r *http.Request) *store.Session {
-	return r.Context().Value(ctxKey{}).(*store.Session)
+func sessionOf(c fiber.Ctx) *store.Session {
+	return c.Locals(ctxKey{}).(*store.Session)
 }
 
-func (s *Server) authed(h http.HandlerFunc) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		token, ok := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-		if !ok || token == "" {
-			writeError(w, http.StatusUnauthorized, "unauthorized")
-			return
+func (s *Server) authed(c fiber.Ctx) error {
+	token, ok := strings.CutPrefix(c.Get("Authorization"), "Bearer ")
+	if !ok || token == "" {
+		return apiError(fiber.StatusUnauthorized, "unauthorized")
+	}
+	sess, err := s.store.SessionByHash(c.Context(), hashToken(token), s.cfg.SessionTTL)
+	if err != nil {
+		if !errors.Is(err, store.ErrNotFound) {
+			log.Printf("session lookup: %v", err)
 		}
-		sess, err := s.store.SessionByHash(r.Context(), hashToken(token), s.cfg.SessionTTL)
-		if err != nil {
-			if !errors.Is(err, store.ErrNotFound) {
-				log.Printf("session lookup: %v", err)
-			}
-			writeError(w, http.StatusUnauthorized, "unauthorized")
-			return
-		}
-		h(w, r.WithContext(context.WithValue(r.Context(), ctxKey{}, sess)))
-	})
+		return apiError(fiber.StatusUnauthorized, "unauthorized")
+	}
+	c.Locals(ctxKey{}, sess)
+	return c.Next()
 }
 
-func (s *Server) limit(h http.HandlerFunc) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !s.limiter.allow(s.clientIP(r)) {
-			writeError(w, http.StatusTooManyRequests, "too many requests")
-			return
-		}
-		h(w, r)
-	})
+func (s *Server) limit(c fiber.Ctx) error {
+	if !s.limiter.allow(s.clientIP(c)) {
+		return apiError(fiber.StatusTooManyRequests, "too many requests")
+	}
+	return c.Next()
 }
 
-func (s *Server) clientIP(r *http.Request) string {
+// With TrustProxy, the last X-Forwarded-For entry is the one appended by our reverse proxy.
+func (s *Server) clientIP(c fiber.Ctx) string {
 	if s.cfg.TrustProxy {
-		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		if xff := c.Get("X-Forwarded-For"); xff != "" {
 			parts := strings.Split(xff, ",")
 			return strings.TrimSpace(parts[len(parts)-1])
 		}
 	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
+	return c.RequestCtx().RemoteIP().String()
 }
 
-func (s *Server) audit(r *http.Request, accountID, deviceID string, typ string, detail any) {
+func (s *Server) audit(c fiber.Ctx, accountID, deviceID string, typ string, detail any) {
 	var a, d *string
 	if accountID != "" {
 		a = &accountID
@@ -167,7 +183,7 @@ func (s *Server) audit(r *http.Request, accountID, deviceID string, typ string, 
 	if deviceID != "" {
 		d = &deviceID
 	}
-	s.store.Audit(r.Context(), a, d, typ, detail, s.clientIP(r))
+	s.store.Audit(c.Context(), a, d, typ, detail, s.clientIP(c))
 }
 
 func hashToken(token string) []byte {
@@ -175,29 +191,13 @@ func hashToken(token string) []byte {
 	return h[:]
 }
 
-func decode(w http.ResponseWriter, r *http.Request, v any) bool {
-	dec := json.NewDecoder(http.MaxBytesReader(w, r.Body, maxBody))
+func decode(c fiber.Ctx, v any) error {
+	dec := json.NewDecoder(bytes.NewReader(c.Body()))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(v); err != nil {
-		writeError(w, http.StatusBadRequest, "invalid request body")
-		return false
+		return apiError(fiber.StatusBadRequest, "invalid request body")
 	}
-	return true
-}
-
-func writeJSON(w http.ResponseWriter, status int, v any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
-}
-
-func writeError(w http.ResponseWriter, status int, msg string) {
-	writeJSON(w, status, proto.Error{Error: msg})
-}
-
-func internalError(w http.ResponseWriter, err error) {
-	log.Printf("internal error: %v", err)
-	writeError(w, http.StatusInternalServerError, "internal error")
+	return nil
 }
 
 type ipLimiter struct {

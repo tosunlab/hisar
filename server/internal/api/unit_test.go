@@ -2,12 +2,19 @@ package api
 
 import (
 	"bytes"
+	"encoding/json"
+	"errors"
+	"io"
+	"net"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/gofiber/fiber/v3"
 	"golang.org/x/time/rate"
 
 	"github.com/tryhisar/hisar/core/proto"
@@ -15,25 +22,25 @@ import (
 
 func TestSecretsCreatedOnceWithPrivateMode(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "secrets.json")
-	a, err := LoadOrCreateSecrets(path)
+	created, err := LoadOrCreateSecrets(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	fi, err := os.Stat(path)
+	fileInfo, err := os.Stat(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if fi.Mode().Perm() != 0o600 {
-		t.Errorf("mode = %o", fi.Mode().Perm())
+	if fileInfo.Mode().Perm() != 0o600 {
+		t.Errorf("mode = %o", fileInfo.Mode().Perm())
 	}
-	b, err := LoadOrCreateSecrets(path)
+	reloaded, err := LoadOrCreateSecrets(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(a.OpaqueKeyMaterial, b.OpaqueKeyMaterial) || !bytes.Equal(a.HMACKey, b.HMACKey) {
+	if !bytes.Equal(created.OpaqueKeyMaterial, reloaded.OpaqueKeyMaterial) || !bytes.Equal(created.HMACKey, reloaded.HMACKey) {
 		t.Error("secrets changed on reload")
 	}
-	if _, err := New(nil, b, Config{}); err != nil {
+	if _, err := New(nil, reloaded, Config{}); err != nil {
 		t.Errorf("reloaded secrets unusable: %v", err)
 	}
 }
@@ -47,49 +54,113 @@ func TestSecretsRejectsIncomplete(t *testing.T) {
 }
 
 func TestLoginCache(t *testing.T) {
-	c := newLoginCache(50 * time.Millisecond)
-	id := c.put(&pendingLogin{accountID: "A"})
-	if p := c.take(id); p == nil || p.accountID != "A" {
+	cache := newLoginCache(50 * time.Millisecond)
+	loginID := cache.put(&pendingLogin{accountID: "A"})
+	if pending := cache.take(loginID); pending == nil || pending.accountID != "A" {
 		t.Fatal("take failed")
 	}
-	if c.take(id) != nil {
+	if cache.take(loginID) != nil {
 		t.Error("login state reusable")
 	}
-	id = c.put(&pendingLogin{accountID: "A"})
+	loginID = cache.put(&pendingLogin{accountID: "A"})
 	time.Sleep(60 * time.Millisecond)
-	if c.take(id) != nil {
+	if cache.take(loginID) != nil {
 		t.Error("expired login state returned")
 	}
-	if c.take("nope") != nil {
+	if cache.take("nope") != nil {
 		t.Error("unknown id returned state")
 	}
 }
 
 func TestIPLimiter(t *testing.T) {
-	l := newIPLimiter(rate.Every(time.Hour), 3)
-	for i := range 3 {
-		if !l.allow("1.1.1.1") {
-			t.Fatalf("request %d denied", i)
+	limiter := newIPLimiter(rate.Every(time.Hour), 3)
+	for attempt := range 3 {
+		if !limiter.allow("1.1.1.1") {
+			t.Fatalf("request %d denied", attempt)
 		}
 	}
-	if l.allow("1.1.1.1") {
+	if limiter.allow("1.1.1.1") {
 		t.Error("burst exceeded")
 	}
-	if !l.allow("2.2.2.2") {
+	if !limiter.allow("2.2.2.2") {
 		t.Error("other IP limited")
 	}
 }
 
-func TestClientIP(t *testing.T) {
-	r := httptest.NewRequest("GET", "/", nil)
-	r.RemoteAddr = "10.0.0.1:1234"
-	r.Header.Set("X-Forwarded-For", "6.6.6.6, 1.2.3.4")
-
-	if got := (&Server{}).clientIP(r); got != "10.0.0.1" {
-		t.Errorf("untrusted proxy: %s", got)
+func get(t *testing.T, app *fiber.App, path string, header map[string]string) (int, string) {
+	t.Helper()
+	request := httptest.NewRequest("GET", path, nil)
+	for key, value := range header {
+		request.Header.Set(key, value)
 	}
-	if got := (&Server{cfg: Config{TrustProxy: true}}).clientIP(r); got != "1.2.3.4" {
-		t.Errorf("trusted proxy: %s", got)
+	response, err := app.Test(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(response.Body)
+	return response.StatusCode, string(body)
+}
+
+func TestClientIP(t *testing.T) {
+	forwarded := map[string]string{"X-Forwarded-For": "6.6.6.6, 1.2.3.4"}
+	for _, trustProxy := range []bool{false, true} {
+		server := &Server{cfg: Config{TrustProxy: trustProxy}}
+		app := fiber.New()
+		app.Get("/", func(c fiber.Ctx) error { return c.SendString(server.clientIP(c)) })
+		_, clientIP := get(t, app, "/", forwarded)
+		if trustProxy && clientIP != "1.2.3.4" {
+			t.Errorf("trusted proxy: %s", clientIP)
+		}
+		if !trustProxy && (clientIP == "1.2.3.4" || clientIP == "6.6.6.6") {
+			t.Errorf("untrusted proxy header used: %s", clientIP)
+		}
+	}
+}
+
+func TestErrorHandler(t *testing.T) {
+	app := fiber.New(fiber.Config{ErrorHandler: errorHandler, BodyLimit: 16})
+	app.Use(securityHeaders)
+	app.Get("/internal", func(c fiber.Ctx) error { return errors.New("database password is hunter2") })
+	app.Get("/forbidden", func(c fiber.Ctx) error { return apiError(fiber.StatusForbidden, "admin only") })
+	app.Post("/body", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) })
+
+	allCase := []struct {
+		path   string
+		status int
+		error  string
+	}{
+		{"/internal", 500, "internal error"},
+		{"/forbidden", 403, "admin only"},
+		{"/missing", 404, ""},
+	}
+	for _, testCase := range allCase {
+		status, body := get(t, app, testCase.path, nil)
+		var decoded proto.Error
+		if status != testCase.status || json.Unmarshal([]byte(body), &decoded) != nil || (testCase.error != "" && decoded.Error != testCase.error) {
+			t.Errorf("%s: %d %s", testCase.path, status, body)
+		}
+		if strings.Contains(body, "hunter2") {
+			t.Errorf("%s leaked internal error: %s", testCase.path, body)
+		}
+	}
+
+	// app.Test surfaces the body limit as a transport error, so use a real listener.
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go app.Listener(listener, fiber.ListenConfig{DisableStartupMessage: true})
+	defer app.Shutdown()
+	response, err := http.Post("http://"+listener.Addr().String()+"/body", "text/plain", strings.NewReader(strings.Repeat("x", 100)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != fiber.StatusRequestEntityTooLarge {
+		t.Errorf("oversized body: %d", response.StatusCode)
+	}
+	if response.Header.Get("X-Frame-Options") != "DENY" || response.Header.Get("Cache-Control") != "no-store" {
+		t.Errorf("security headers missing: %v", response.Header)
 	}
 }
 

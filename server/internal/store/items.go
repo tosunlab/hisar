@@ -27,7 +27,7 @@ func scanItem(r pgx.CollectableRow) (Item, error) {
 // Changes returns items with seq > since, and the vault's current seq.
 func (s *Store) Changes(ctx context.Context, vaultID string, since int64, limit int) (items []Item, vaultSeq int64, err error) {
 	if err := s.pool.QueryRow(ctx, `SELECT seq FROM vaults WHERE id = $1`, vaultID).Scan(&vaultSeq); err != nil {
-		return nil, 0, notFound(err)
+		return nil, 0, convertNoRowsToNotFound(err)
 	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, revision, seq, deleted, overview, details, updated_at, updated_by
@@ -44,10 +44,10 @@ func (s *Store) Changes(ctx context.Context, vaultID string, since int64, limit 
 // Re-sending an already stored revision is a no-op so that clients can retry safely.
 func (s *Store) PutItem(ctx context.Context, vaultID, baseRevision string, it *Item) (*Item, error) {
 	var current *Item
-	err := s.tx(ctx, func(tx pgx.Tx) error {
+	err := s.runInTransaction(ctx, func(tx pgx.Tx) error {
 		var vaultSeq int64
 		if err := tx.QueryRow(ctx, `SELECT seq FROM vaults WHERE id = $1 FOR UPDATE`, vaultID).Scan(&vaultSeq); err != nil {
-			return notFound(err)
+			return convertNoRowsToNotFound(err)
 		}
 
 		rows, err := tx.Query(ctx, `
