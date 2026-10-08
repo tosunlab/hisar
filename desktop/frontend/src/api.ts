@@ -1,4 +1,5 @@
 import { Browser } from "@wailsio/runtime";
+import { TouchIDPromptService } from "../bindings/github.com/tryhisar/hisar/desktop";
 import { Service } from "../bindings/github.com/tryhisar/hisar/desktop/vault";
 import type {
   ItemDetail as BoundItemDetail,
@@ -43,6 +44,15 @@ const wailsApi = {
     Service.CopyField(vaultID, itemID, fieldName),
   copyText: (text: string): Promise<void> => Service.CopyText(text),
   openURL: (link: string): Promise<void> => Browser.OpenURL(link),
+  unlockWithBiometric: (): Promise<Status> => Service.UnlockWithBiometric(),
+  enableBiometricUnlock: (password: string): Promise<Status> => Service.EnableBiometricUnlock(password),
+  disableBiometricUnlock: (): Promise<Status> => Service.DisableBiometricUnlock(),
+  setTouchIDPromptFrame: (x: number, y: number, width: number, height: number): Promise<void> =>
+    TouchIDPromptService.SetPromptFrame(x, y, width, height),
+  clearTouchIDPromptFrame: (): Promise<void> => TouchIDPromptService.ClearPromptFrame(),
+  cancelTouchIDPrompt: (): Promise<void> => TouchIDPromptService.CancelPrompt(),
+  // hasNativeTouchIDView is true when macOS draws the Touch ID glyph over the prompt slot.
+  hasNativeTouchIDView: true,
 };
 
 // main.ts swaps in the preview backend before mounting when VITE_PREVIEW is set.

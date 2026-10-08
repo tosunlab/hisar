@@ -1,17 +1,69 @@
 <script setup lang="ts">
-import { ref } from "vue";
-import { signOut, store, unlock } from "../store";
+import { nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import { api } from "../api";
+import { signOut, store, unlock, unlockWithBiometric } from "../store";
 import { getInitials } from "../util";
 import AppIcon from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
 
+type Mode = "touch-id" | "password";
+
+const mode = ref<Mode>(store.status.biometricReady ? "touch-id" : "password");
 const password = ref("");
 const isConfirmingSignOut = ref(false);
+const isWaitingForTouchID = ref(false);
+const promptSlot = ref<HTMLElement | null>(null);
+const passwordInput = ref<HTMLInputElement | null>(null);
+
+function sendPromptFrame(): void {
+  const slot = promptSlot.value;
+  if (!slot) {
+    return;
+  }
+  const rectangle = slot.getBoundingClientRect();
+  api.setTouchIDPromptFrame(rectangle.x, rectangle.y, rectangle.width, rectangle.height).catch(() => undefined);
+}
+
+async function startTouchID(): Promise<void> {
+  mode.value = "touch-id";
+  await nextTick();
+  sendPromptFrame();
+  isWaitingForTouchID.value = true;
+  const isUnlocked = await unlockWithBiometric();
+  isWaitingForTouchID.value = false;
+  api.clearTouchIDPromptFrame().catch(() => undefined);
+  if (!isUnlocked && mode.value === "touch-id") {
+    switchToPassword();
+  }
+}
+
+function switchToPassword(): void {
+  if (isWaitingForTouchID.value) {
+    api.cancelTouchIDPrompt().catch(() => undefined);
+  }
+  mode.value = "password";
+  nextTick(() => passwordInput.value?.focus());
+}
 
 async function submitUnlock(): Promise<void> {
   await unlock(password.value);
   password.value = "";
 }
+
+onMounted(() => {
+  window.addEventListener("resize", sendPromptFrame);
+  if (mode.value === "touch-id") {
+    startTouchID();
+  }
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("resize", sendPromptFrame);
+  if (isWaitingForTouchID.value) {
+    api.cancelTouchIDPrompt().catch(() => undefined);
+  }
+  api.clearTouchIDPromptFrame().catch(() => undefined);
+});
 </script>
 
 <template>
@@ -29,22 +81,38 @@ async function submitUnlock(): Promise<void> {
           </div>
         </div>
         <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
-        <form class="unlock-form" @submit.prevent="submitUnlock">
-          <span class="password-field">
-            <AppIcon name="lock" />
-            <input
-              v-model="password"
-              name="password"
-              type="password"
-              aria-label="Master password"
-              placeholder="Master password"
-              autocomplete="current-password"
-              autofocus
-              required
-            />
-          </span>
-          <button class="primary" type="submit" :disabled="store.isBusy">{{ store.isBusy ? "Unlocking…" : "Unlock" }}</button>
-        </form>
+
+        <section v-if="mode === 'touch-id'" class="card touch-id" aria-live="polite">
+          <div ref="promptSlot" class="prompt-slot" data-testid="touch-id-slot">
+            <AppIcon v-if="!api.hasNativeTouchIDView" name="fingerprint" :size="56" />
+          </div>
+          <strong>Touch ID to unlock</strong>
+          <p class="muted">Place your finger on Touch ID.</p>
+          <button class="link" data-testid="use-master-password" @click="switchToPassword">Use master password</button>
+        </section>
+
+        <template v-else>
+          <form class="unlock-form" @submit.prevent="submitUnlock">
+            <span class="password-field">
+              <AppIcon name="lock" />
+              <input
+                ref="passwordInput"
+                v-model="password"
+                name="password"
+                type="password"
+                aria-label="Master password"
+                placeholder="Master password"
+                autocomplete="current-password"
+                autofocus
+                required
+              />
+            </span>
+            <button class="primary" type="submit" :disabled="store.isBusy">{{ store.isBusy ? "Unlocking…" : "Unlock" }}</button>
+          </form>
+          <button v-if="store.status.biometricReady" class="ghost touch-id-switch" data-testid="use-touch-id" @click="startTouchID">
+            <AppIcon name="fingerprint" /> Use Touch ID
+          </button>
+        </template>
 
         <div class="sign-out">
           <button v-if="!isConfirmingSignOut" class="link" @click="isConfirmingSignOut = true">Sign out of this device</button>
@@ -103,6 +171,33 @@ h1 {
   font-weight: 600;
 }
 
+.touch-id {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  padding: 26px 20px 20px;
+  text-align: center;
+}
+
+.prompt-slot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  margin-bottom: 14px;
+  color: var(--color-text-secondary);
+}
+
+.touch-id strong {
+  font-size: 15px;
+}
+
+.touch-id p {
+  margin: 4px 0 16px;
+}
+
 .unlock-form {
   display: flex;
   gap: 8px;
@@ -125,6 +220,10 @@ h1 {
 .password-field input {
   padding: 9px 10px 9px 34px;
   color: var(--color-text);
+}
+
+.touch-id-switch {
+  margin-top: 12px;
 }
 
 .error {

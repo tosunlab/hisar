@@ -21,6 +21,8 @@ const allPath = {
   field: "M4 6h16M4 12h16M4 18h10",
   close: "M6 6l12 12M18 6L6 18",
   signOut: "M15 4h4v16h-4M10 8l-4 4 4 4M6 12h11",
+  fingerprint: "M12 11v3a8 8 0 0 0 1.5 4.7M8.5 8.8A4 4 0 0 1 16 11v1.5M8 12v1.5a11 11 0 0 0 1.3 5.2M5.3 15a14 14 0 0 1-.3-3 7 7 0 0 1 11.6-5.3M19 12v.5a15 15 0 0 1-.5 3.9M15.8 15.6a12 12 0 0 1-.8 3.6",
+  settings: "M4 7h9M17 7h3M4 17h3M11 17h9M15 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM9 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4z",
 } as const;
 
 export type IconName = keyof typeof allPath;

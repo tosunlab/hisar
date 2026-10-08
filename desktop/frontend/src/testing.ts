@@ -2,7 +2,7 @@ import { vi } from "vitest";
 import type { ItemDetail, Status, VaultSummary } from "./api";
 
 export function createStatus(state: string): Status {
-  return { state, server: "https://hisar.test", email: "alice@example.com", name: "Alice" };
+  return { state, server: "https://hisar.test", email: "alice@example.com", name: "Alice", biometricAvailable: false, biometricEnabled: false, biometricReady: false };
 }
 
 export function createItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
@@ -33,5 +33,12 @@ export function createApiMock() {
     copyField: vi.fn(),
     copyText: vi.fn(),
     openURL: vi.fn().mockResolvedValue(undefined),
+    unlockWithBiometric: vi.fn(),
+    enableBiometricUnlock: vi.fn(),
+    disableBiometricUnlock: vi.fn(),
+    setTouchIDPromptFrame: vi.fn().mockResolvedValue(undefined),
+    clearTouchIDPromptFrame: vi.fn().mockResolvedValue(undefined),
+    cancelTouchIDPrompt: vi.fn().mockResolvedValue(undefined),
+    hasNativeTouchIDView: false,
   };
 }

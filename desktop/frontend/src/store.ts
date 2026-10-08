@@ -4,7 +4,15 @@ import { api, getErrorMessage, type ItemDetail, type Status, type VaultSummary }
 export type EditorMode = "view" | "edit" | "create";
 
 export const store = reactive({
-  status: { state: "signed-out", server: "", email: "", name: "" } as Status,
+  status: {
+    state: "signed-out",
+    server: "",
+    email: "",
+    name: "",
+    biometricAvailable: false,
+    biometricEnabled: false,
+    biometricReady: false,
+  } as Status,
   allVault: [] as VaultSummary[],
   selectedVaultID: "",
   allItem: [] as ItemDetail[],
@@ -15,6 +23,7 @@ export const store = reactive({
   errorMessage: "",
   noticeMessage: "",
   isBusy: false,
+  isSettingsOpen: false,
 });
 
 let noticeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -48,6 +57,7 @@ async function runAction<Result>(action: () => Promise<Result>): Promise<Result 
 }
 
 function clearAllVaultData(): void {
+  store.isSettingsOpen = false;
   store.allVault = [];
   store.selectedVaultID = "";
   store.allItem = [];
@@ -96,6 +106,47 @@ export async function unlock(password: string): Promise<boolean> {
     await applyStatus(status);
   }
   return status !== undefined;
+}
+
+export function isCancelledTouchID(message: string): boolean {
+  return /cancel/i.test(message);
+}
+
+// unlockWithBiometric does not use runAction: the prompt can wait long, and cancelling is not an error.
+export async function unlockWithBiometric(): Promise<boolean> {
+  try {
+    const status = await api.unlockWithBiometric();
+    store.errorMessage = "";
+    await applyStatus(status);
+    return true;
+  } catch (error) {
+    const message = getErrorMessage(error);
+    if (!isCancelledTouchID(message)) {
+      store.errorMessage = message;
+    }
+    const status = await api.getStatus().catch(() => undefined);
+    if (status) {
+      store.status = status;
+    }
+    return false;
+  }
+}
+
+export async function enableBiometricUnlock(password: string): Promise<boolean> {
+  const status = await runAction(() => api.enableBiometricUnlock(password));
+  if (status) {
+    store.status = status;
+    showNotice("Touch ID unlock is on");
+  }
+  return status !== undefined;
+}
+
+export async function disableBiometricUnlock(): Promise<void> {
+  const status = await runAction(() => api.disableBiometricUnlock());
+  if (status) {
+    store.status = status;
+    showNotice("Touch ID unlock is off");
+  }
 }
 
 export async function lock(): Promise<void> {

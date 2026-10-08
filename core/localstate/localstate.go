@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/zalando/go-keyring"
 
@@ -24,6 +25,10 @@ type State struct {
 	DeviceID  string            `json:"deviceId"`
 	AllPin    map[string][]byte `json:"pins,omitempty"`
 	AllSeq    map[string]int64  `json:"seqs,omitempty"`
+
+	// BiometricUnlock is the account unlock key sealed with a key kept in the OS keychain.
+	BiometricUnlock      []byte    `json:"biometricUnlock,omitempty"`
+	LastPasswordUnlockAt time.Time `json:"lastPasswordUnlockAt,omitzero"`
 
 	path string
 }

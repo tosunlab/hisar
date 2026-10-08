@@ -27,15 +27,16 @@ var (
 )
 
 type Service struct {
-	mutex               sync.Mutex
-	config              Config
-	state               *localstate.State
-	unlockedSession     *session.Session
-	allVaultByID        map[string]*session.Vault
-	allItemByVaultID    map[string][]item.Item
-	lockTimer           *time.Timer
-	clipboardClearTimer *time.Timer
-	name                string
+	mutex                        sync.Mutex
+	config                       Config
+	state                        *localstate.State
+	unlockedSession              *session.Session
+	allVaultByID                 map[string]*session.Vault
+	allItemByVaultID             map[string][]item.Item
+	lockTimer                    *time.Timer
+	clipboardClearTimer          *time.Timer
+	name                         string
+	hasPasswordUnlockSinceLaunch bool
 }
 
 func CreateService(config Config) (*Service, error) {
@@ -47,6 +48,12 @@ func CreateService(config Config) (*Service, error) {
 	}
 	if config.SecretKeyStore == nil {
 		config.SecretKeyStore = KeychainSecretKeyStore{}
+	}
+	if config.BiometricPasswordInterval == 0 {
+		config.BiometricPasswordInterval = 14 * 24 * time.Hour
+	}
+	if config.Now == nil {
+		config.Now = time.Now
 	}
 	state, err := localstate.Load(config.StatePath)
 	if err != nil {
@@ -67,6 +74,9 @@ func (s *Service) buildStatus() Status {
 	case s.state.IsLoggedIn():
 		status.State = StateLocked
 	}
+	status.BiometricAvailable = s.config.Biometric != nil && s.config.Biometric.IsAvailable()
+	status.BiometricEnabled = len(s.state.BiometricUnlock) > 0
+	status.BiometricReady = status.State == StateLocked && s.isBiometricReady()
 	return status
 }
 
@@ -156,6 +166,7 @@ func (s *Service) SignIn(server, email, secretKeyText, password string) (Status,
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.lockSession()
+	s.forgetBiometricUnlock()
 	s.state.Reset()
 	s.state.Server, s.state.Email, s.state.AccountID, s.state.Token = server, loggedIn.Email, loggedIn.AccountID, loggedIn.Client.Token
 	if err := s.state.Save(); err != nil {
@@ -167,6 +178,7 @@ func (s *Service) SignIn(server, email, secretKeyText, password string) (Status,
 		return Status{}, fmt.Errorf("could not save the Secret Key to the keychain: %w", err)
 	}
 	s.openSession(loggedIn)
+	s.recordPasswordUnlock()
 	return s.buildStatus(), nil
 }
 
@@ -206,6 +218,7 @@ func (s *Service) SignUp(inviteLink, email, name, password string) (SignUpResult
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.lockSession()
+	s.forgetBiometricUnlock()
 	s.state.Reset()
 	s.state.Server, s.state.Email, s.state.AccountID, s.state.Token = server, strings.ToLower(strings.TrimSpace(email)), signedUp.AccountID, signedUp.Client.Token
 	if err := s.state.Save(); err != nil {
@@ -214,6 +227,7 @@ func (s *Service) SignUp(inviteLink, email, name, password string) (SignUpResult
 	}
 	keychainErr := s.config.SecretKeyStore.StoreSecretKey(secretKey)
 	s.openSession(signedUp)
+	s.recordPasswordUnlock()
 	result := SignUpResult{Status: s.buildStatus(), SecretKey: secretKey.Encode()}
 	if keychainErr != nil {
 		return result, fmt.Errorf("account created, but the Secret Key could not be saved to the keychain (%v); write it down: %s", keychainErr, result.SecretKey)
@@ -253,6 +267,7 @@ func (s *Service) Unlock(password string) (Status, error) {
 	defer s.mutex.Unlock()
 	s.lockSession()
 	s.openSession(unlocked)
+	s.recordPasswordUnlock()
 	return s.buildStatus(), nil
 }
 
@@ -271,6 +286,7 @@ func (s *Service) SignOut() (Status, error) {
 	}
 	s.lockSession()
 	s.name = ""
+	s.forgetBiometricUnlock()
 	s.state.Reset()
 	return s.buildStatus(), s.state.Save()
 }

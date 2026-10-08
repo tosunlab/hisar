@@ -7,6 +7,7 @@ import HisarLogo from "./HisarLogo.vue";
 import ItemDetailPanel from "./ItemDetailPanel.vue";
 import ItemEditor from "./ItemEditor.vue";
 import ItemTile from "./ItemTile.vue";
+import SettingsPanel from "./SettingsPanel.vue";
 
 const isCreatingVault = ref(false);
 const newVaultName = ref("");
@@ -38,6 +39,9 @@ function handleShortcut(event: KeyboardEvent): void {
   } else if (key === "l") {
     event.preventDefault();
     lock();
+  } else if (key === ",") {
+    event.preventDefault();
+    store.isSettingsOpen = true;
   }
 }
 
@@ -81,6 +85,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleShortcut));
           <strong>{{ store.status.name || store.status.email }}</strong>
           <span class="muted">{{ store.status.email }}</span>
         </div>
+        <button class="ghost icon-button" :title="`Settings (${shortcutModifier},)`" aria-label="Settings" @click="store.isSettingsOpen = true"><AppIcon name="settings" /></button>
         <button class="ghost icon-button" :title="`Lock (${shortcutModifier}L)`" aria-label="Lock" @click="lock"><AppIcon name="lock" /></button>
       </div>
     </aside>
@@ -137,6 +142,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleShortcut));
         </div>
       </div>
     </main>
+    <SettingsPanel v-if="store.isSettingsOpen" />
   </div>
 </template>
 

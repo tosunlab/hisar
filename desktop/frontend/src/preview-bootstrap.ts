@@ -17,6 +17,9 @@ export async function applyPreviewParameter(): Promise<void> {
   if (parameter.get("secretKey") === "1") {
     store.pendingSecretKey = "H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M";
   }
+  if (parameter.get("settings") === "1") {
+    store.isSettingsOpen = true;
+  }
   if (parameter.get("error")) {
     store.errorMessage = parameter.get("error") ?? "";
   }

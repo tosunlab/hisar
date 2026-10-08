@@ -18,6 +18,19 @@ type Status struct {
 	Server string `json:"server"`
 	Email  string `json:"email"`
 	Name   string `json:"name"`
+	// BiometricReady means Touch ID can unlock now: enabled, and the master password was used since launch and recently.
+	BiometricAvailable bool `json:"biometricAvailable"`
+	BiometricEnabled   bool `json:"biometricEnabled"`
+	BiometricReady     bool `json:"biometricReady"`
+}
+
+// Biometric is the platform's user-presence check and keychain storage for the biometric unlock key.
+type Biometric interface {
+	IsAvailable() bool
+	Authenticate(reason string) error
+	StoreKey(accountID string, key []byte) error
+	LoadKey(accountID string) ([]byte, error)
+	DeleteKey(accountID string) error
 }
 
 type VaultSummary struct {
@@ -94,4 +107,8 @@ type Config struct {
 	SecretKeyStore      SecretKeyStore
 	AutoLockAfter       time.Duration
 	ClipboardClearAfter time.Duration
+	Biometric           Biometric
+	// BiometricPasswordInterval is how long Touch ID may unlock before the master password is required again.
+	BiometricPasswordInterval time.Duration
+	Now                       func() time.Time
 }

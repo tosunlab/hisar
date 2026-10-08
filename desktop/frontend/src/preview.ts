@@ -38,7 +38,16 @@ function getInitialState(): string {
 }
 
 let previewState = getInitialState();
-const previewStatus = (): Status => ({ state: previewState, server: "https://tryhisar.com", email: "alper@tryhisar.com", name: "Alper" });
+let isPreviewBiometricEnabled = new URLSearchParams(window.location.search).get("touchId") === "1";
+const previewStatus = (): Status => ({
+  state: previewState,
+  server: "https://tryhisar.com",
+  email: "alper@tryhisar.com",
+  name: "Alper",
+  biometricAvailable: true,
+  biometricEnabled: isPreviewBiometricEnabled,
+  biometricReady: isPreviewBiometricEnabled && previewState === "locked",
+});
 const resolveAfterDelay = <Value>(value: Value): Promise<Value> => new Promise((resolve) => setTimeout(() => resolve(value), 80));
 
 export const previewApi = {
@@ -98,6 +107,35 @@ export const previewApi = {
   },
   copyField: () => resolveAfterDelay(undefined),
   copyText: () => resolveAfterDelay(undefined),
+  unlockWithBiometric: () =>
+    new Promise<Status>((resolve, reject) => {
+      if (new URLSearchParams(window.location.search).get("touchIdWait") === "1") {
+        return;
+      }
+      setTimeout(() => {
+        if (previewState !== "locked") {
+          reject(new Error("Touch ID was cancelled"));
+          return;
+        }
+        previewState = "unlocked";
+        resolve(previewStatus());
+      }, 1500);
+    }),
+  enableBiometricUnlock: (password: string) => {
+    if (password.length < 4) {
+      return Promise.reject(new Error("incorrect email, master password or Secret Key"));
+    }
+    isPreviewBiometricEnabled = true;
+    return resolveAfterDelay(previewStatus());
+  },
+  disableBiometricUnlock: () => {
+    isPreviewBiometricEnabled = false;
+    return resolveAfterDelay(previewStatus());
+  },
+  setTouchIDPromptFrame: () => Promise.resolve(),
+  clearTouchIDPromptFrame: () => Promise.resolve(),
+  cancelTouchIDPrompt: () => Promise.resolve(),
+  hasNativeTouchIDView: false,
   openURL: (link: string) => {
     window.open(link, "_blank", "noopener");
     return Promise.resolve();
