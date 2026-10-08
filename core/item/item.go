@@ -7,8 +7,14 @@ import (
 	"strings"
 )
 
+const (
+	CategoryLogin  = "login"
+	CategorySSHKey = "ssh-key"
+)
+
 type Overview struct {
 	Title    string   `json:"title"`
+	Category string   `json:"category,omitempty"`
 	Username string   `json:"username,omitempty"`
 	URLs     []string `json:"urls,omitempty"`
 	Tags     []string `json:"tags,omitempty"`
