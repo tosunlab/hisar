@@ -10,7 +10,7 @@ vi.mock("../api", async () => {
   return {
     api: apiMock.current,
     getErrorMessage: (error: unknown) => (error instanceof Error ? error.message : String(error)),
-    createEmptyItem: () => ({ id: "", revision: "", title: "", username: "", urls: [], password: "", notes: "", fields: [] }),
+    createEmptyItem: () => ({ id: "", revision: "", category: "", title: "", username: "", urls: [], password: "", notes: "", fields: [], publicKey: "", fingerprint: "", keyType: "" }),
   };
 });
 

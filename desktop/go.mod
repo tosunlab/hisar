@@ -2,7 +2,10 @@ module github.com/tryhisar/hisar/desktop
 
 go 1.26.0
 
-require github.com/wailsapp/wails/v3 v3.0.0-beta.23
+require (
+	github.com/wailsapp/wails/v3 v3.0.0-beta.23
+	golang.org/x/crypto v0.57.0
+)
 
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
@@ -17,7 +20,6 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gtank/ristretto255 v0.2.0 // indirect
 	github.com/zalando/go-keyring v0.2.8 // indirect
-	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/text v0.42.0 // indirect
 )
 

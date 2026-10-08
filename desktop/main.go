@@ -1,14 +1,19 @@
 package main
 
 import (
+	"context"
 	"embed"
 	"log"
 	"os"
+	"path/filepath"
 	"runtime"
+	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"github.com/tryhisar/hisar/core/localstate"
+	"github.com/tryhisar/hisar/core/sshagent"
+	"github.com/tryhisar/hisar/desktop/agent"
 	"github.com/tryhisar/hisar/desktop/biometric"
 	"github.com/tryhisar/hisar/desktop/vault"
 )
@@ -18,6 +23,8 @@ var allAsset embed.FS
 
 func init() {
 	application.RegisterEvent[string]("locked")
+	application.RegisterEvent[agent.ApprovalEvent](agent.ApprovalEventName)
+	application.RegisterEvent[string](agent.ApprovalClosedEventName)
 }
 
 type wailsClipboard struct{ app *application.App }
@@ -47,9 +54,14 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	homeDirectory, err := os.UserHomeDir()
+	if err != nil {
+		log.Fatal(err)
+	}
 	clipboard := &wailsClipboard{}
 	touchID := biometric.Create("Hisar Touch ID")
 	lockNotifier := &wailsLockNotifier{}
+	var agentServer *sshagent.Server
 	vaultConfig := vault.Config{
 		StatePath:    statePath,
 		DeviceName:   getDeviceName(),
@@ -57,18 +69,59 @@ func main() {
 		Clipboard:    clipboard,
 		LockNotifier: lockNotifier,
 		Biometric:    touchID,
+		OnLock: func() {
+			if agentServer != nil {
+				agentServer.ClearAllApproval()
+			}
+		},
 	}
 	vaultService, err := vault.CreateService(vaultConfig)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	app := application.New(application.Options{
+	var app *application.App
+	var window *application.WebviewWindow
+	approver := agent.CreateApprover(agent.ApproverConfig{
+		Biometric: touchID,
+		Emit:      func(eventName string, data any) { app.Event.Emit(eventName, data) },
+		ShowWindow: func() {
+			app.Show()
+			window.UnMinimise()
+			window.Show()
+			window.Focus()
+		},
+	})
+	agentServer = sshagent.CreateServer(vault.CreateSSHKeySource(vaultService), approver, sshagent.SystemPeerResolver{})
+	agentServer.SetAllKnownHostsPath([]string{filepath.Join(homeDirectory, ".ssh", "known_hosts"), "/etc/ssh/ssh_known_hosts"})
+	socketPath := os.Getenv("HISAR_SSH_AGENT_SOCKET")
+	if socketPath == "" {
+		socketPath = agent.GetDefaultSocketPath(homeDirectory)
+	}
+	agentService := agent.CreateService(agent.Config{
+		HomeDirectory: homeDirectory,
+		SocketPath:    socketPath,
+		Server:        agentServer,
+		Approver:      approver,
+	})
+	agentContext, stopAgent := context.WithCancel(context.Background())
+	agentStopped := make(chan struct{})
+
+	app = application.New(application.Options{
 		Name:        "Hisar",
 		Description: "Self-hosted, end-to-end encrypted password manager",
 		Services: []application.Service{
 			application.NewService(vaultService),
 			application.NewService(&TouchIDPromptService{biometric: touchID}),
+			application.NewService(agentService),
+		},
+		OnShutdown: func() {
+			stopAgent()
+			// A pending Touch ID approval can keep a connection open; do not hold up quitting for it.
+			select {
+			case <-agentStopped:
+			case <-time.After(2 * time.Second):
+			}
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(allAsset),
@@ -79,7 +132,7 @@ func main() {
 	})
 	clipboard.app, lockNotifier.app = app, app
 
-	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
+	window = app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:     "Hisar",
 		Width:     1100,
 		Height:    700,
@@ -94,6 +147,13 @@ func main() {
 		URL:              "/",
 	})
 	touchID.SetWindowProvider(window.NativeWindow)
+
+	go func() {
+		defer close(agentStopped)
+		if err := agent.Serve(agentContext, agentService); err != nil {
+			log.Printf("SSH agent on %s: %v", socketPath, err)
+		}
+	}()
 
 	if err := app.Run(); err != nil {
 		log.Fatal(err)

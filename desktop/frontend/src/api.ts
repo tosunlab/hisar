@@ -1,5 +1,7 @@
 import { Browser } from "@wailsio/runtime";
 import { TouchIDPromptService } from "../bindings/github.com/tryhisar/hisar/desktop";
+import { Service as AgentService } from "../bindings/github.com/tryhisar/hisar/desktop/agent";
+import type { ApprovalEvent, Status as SSHAgentStatus } from "../bindings/github.com/tryhisar/hisar/desktop/agent";
 import { Service } from "../bindings/github.com/tryhisar/hisar/desktop/vault";
 import type {
   ItemDetail as BoundItemDetail,
@@ -10,7 +12,9 @@ import type {
   VaultSummary,
 } from "../bindings/github.com/tryhisar/hisar/desktop/vault";
 
-export type { ItemField, PasswordConfig, SignUpResult, Status, VaultSummary };
+export type { ApprovalEvent, ItemField, PasswordConfig, SignUpResult, SSHAgentStatus, Status, VaultSummary };
+
+export type SSHKeyType = "ed25519" | "rsa";
 
 // ItemDetail mirrors the Go type with nil slices normalized to empty arrays.
 export interface ItemDetail extends Omit<BoundItemDetail, "urls" | "fields"> {
@@ -40,6 +44,14 @@ const wailsApi = {
     normalizeItem(await Service.SaveItem(vaultID, detail)),
   deleteItem: (vaultID: string, itemID: string): Promise<void> => Service.DeleteItem(vaultID, itemID),
   generatePassword: (config: PasswordConfig): Promise<string> => Service.GeneratePassword(config),
+  generateSSHKey: async (vaultID: string, title: string, keyType: SSHKeyType): Promise<ItemDetail> =>
+    normalizeItem(await Service.GenerateSSHKey(vaultID, title, keyType)),
+  importSSHKey: async (vaultID: string, title: string, privateKeyText: string, passphrase: string): Promise<ItemDetail> =>
+    normalizeItem(await Service.ImportSSHKey(vaultID, title, privateKeyText, passphrase)),
+  getSSHAgentStatus: (): Promise<SSHAgentStatus> => AgentService.GetStatus(),
+  configureSSHConfig: (): Promise<SSHAgentStatus> => AgentService.ConfigureSSHConfig(),
+  removeSSHConfig: (): Promise<SSHAgentStatus> => AgentService.RemoveSSHConfig(),
+  respondSSHApproval: (requestID: string, isAllowed: boolean): Promise<void> => AgentService.RespondSSHApproval(requestID, isAllowed),
   copyField: (vaultID: string, itemID: string, fieldName: string): Promise<void> =>
     Service.CopyField(vaultID, itemID, fieldName),
   copyText: (text: string): Promise<void> => Service.CopyText(text),
@@ -69,5 +81,18 @@ export function getErrorMessage(error: unknown): string {
 }
 
 export function createEmptyItem(): ItemDetail {
-  return { id: "", revision: "", title: "", username: "", urls: [], password: "", notes: "", fields: [] };
+  return {
+    id: "",
+    revision: "",
+    category: "",
+    title: "",
+    username: "",
+    urls: [],
+    password: "",
+    notes: "",
+    fields: [],
+    publicKey: "",
+    fingerprint: "",
+    keyType: "",
+  };
 }

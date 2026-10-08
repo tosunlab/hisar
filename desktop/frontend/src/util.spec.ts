@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computePasswordStrength, getDomain, getInitials, getTileColor } from "./util";
+import { computePasswordStrength, formatKeyType, getDomain, getInitials, getTileColor } from "./util";
 
 describe("computePasswordStrength", () => {
   it("rates random passwords by length and character classes", () => {
@@ -42,5 +42,14 @@ describe("getTileColor", () => {
   it("is stable per title and case-insensitive", () => {
     expect(getTileColor("GitHub")).toBe(getTileColor("github"));
     expect(getTileColor("GitHub")).toMatch(/^#[0-9a-f]{6}$/);
+  });
+});
+
+describe("formatKeyType", () => {
+  it("names common SSH key types and keeps unknown ones", () => {
+    expect(formatKeyType("ssh-ed25519")).toBe("Ed25519");
+    expect(formatKeyType("ssh-rsa")).toBe("RSA");
+    expect(formatKeyType("ecdsa-sha2-nistp256")).toBe("ECDSA P-256");
+    expect(formatKeyType("sk-ssh-ed25519@openssh.com")).toBe("sk-ssh-ed25519@openssh.com");
   });
 });

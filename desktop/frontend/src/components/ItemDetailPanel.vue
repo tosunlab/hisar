@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { copyField, deleteItem, openWebsite, startEditingItem, store } from "../store";
-import { getDomain } from "../util";
+import { formatKeyType, getDomain, sshKeyCategory } from "../util";
 import AppIcon from "./AppIcon.vue";
 import ItemTile from "./ItemTile.vue";
 import StrengthMeter from "./StrengthMeter.vue";
@@ -11,6 +11,7 @@ defineProps<{ canEdit: boolean; vaultName: string; isShared: boolean }>();
 const isPasswordRevealed = ref(false);
 const allRevealedFieldName = ref<string[]>([]);
 const isConfirmingDelete = ref(false);
+const isSSHKey = computed(() => store.selectedItem?.category === sshKeyCategory);
 
 watch(
   () => store.selectedItem?.id,
@@ -35,13 +36,14 @@ function maskSecret(secret: string): string {
 <template>
   <article v-if="store.selectedItem" class="item-detail">
     <header>
-      <ItemTile :title="store.selectedItem.title" :size="52" />
+      <ItemTile :title="store.selectedItem.title" :size="52" :icon="isSSHKey ? 'key' : undefined" />
       <div class="heading">
         <h2>{{ store.selectedItem.title }}</h2>
         <div class="meta">
           <span class="badge"><AppIcon :name="isShared ? 'users' : 'user'" :size="12" /> {{ vaultName }}</span>
           <span v-if="isShared" class="badge">shared</span>
-          <span v-if="store.selectedItem.urls[0]" class="muted">{{ getDomain(store.selectedItem.urls[0]) }}</span>
+          <span v-if="isSSHKey" class="muted">SSH key</span>
+          <span v-else-if="store.selectedItem.urls[0]" class="muted">{{ getDomain(store.selectedItem.urls[0]) }}</span>
         </div>
       </div>
       <div v-if="canEdit" class="header-actions">
@@ -60,7 +62,33 @@ function maskSecret(secret: string): string {
       </div>
     </div>
 
-    <section class="card field-card">
+    <template v-if="isSSHKey">
+      <section class="card field-card" data-testid="ssh-key-fields">
+        <div class="field">
+          <span class="field-label">Key type</span>
+          <span class="field-value">{{ formatKeyType(store.selectedItem.keyType) }}</span>
+          <span class="field-actions"></span>
+        </div>
+        <div class="field">
+          <span class="field-label">Fingerprint</span>
+          <span class="field-value monospace" data-testid="fingerprint">{{ store.selectedItem.fingerprint }}</span>
+          <span class="field-actions">
+            <button class="ghost icon-button" aria-label="Copy fingerprint" title="Copy" @click="copyField('fingerprint', 'Fingerprint')"><AppIcon name="copy" /></button>
+          </span>
+        </div>
+        <div class="public-key-field">
+          <div class="row">
+            <span class="field-label">Public key</span>
+            <div class="spacer"></div>
+            <button data-testid="copy-public-key" @click="copyField('public key', 'Public key')"><AppIcon name="copy" /> Copy public key</button>
+          </div>
+          <p class="public-key monospace" data-testid="public-key">{{ store.selectedItem.publicKey }}</p>
+        </div>
+      </section>
+      <p class="agent-hint muted"><AppIcon name="terminal" :size="14" /> Hisar's SSH agent offers this key while Hisar is unlocked.</p>
+    </template>
+
+    <section v-else class="card field-card">
       <div v-if="store.selectedItem.username" class="field">
         <span class="field-label">Username</span>
         <span class="field-value">{{ store.selectedItem.username }}</span>
@@ -206,6 +234,31 @@ h2 {
 
 .field:last-child {
   border-bottom: none;
+}
+
+.public-key-field {
+  padding: 12px 10px 14px 16px;
+}
+
+.public-key {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.agent-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 2px 0;
+  font-size: 12px;
 }
 
 .field-label {

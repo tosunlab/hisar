@@ -1,5 +1,5 @@
 // Development-only stand-in for the Go backend, used with `npm run preview:ui` to view the UI in a browser.
-import type { ItemDetail, PasswordConfig, SignUpResult, Status, VaultSummary } from "./api";
+import type { ItemDetail, PasswordConfig, SignUpResult, SSHAgentStatus, SSHKeyType, Status, VaultSummary } from "./api";
 
 const allPreviewVault: VaultSummary[] = [
   { id: "personal", name: "Personal", type: "personal", role: "owner", itemCount: 0 },
@@ -8,7 +8,37 @@ const allPreviewVault: VaultSummary[] = [
 ];
 
 function createPreviewItem(id: string, title: string, username: string, link: string, password: string, extra: Partial<ItemDetail> = {}): ItemDetail {
-  return { id, revision: "rev", title, username, urls: link ? [link] : [], password, notes: "", fields: [], ...extra };
+  return {
+    id,
+    revision: "rev",
+    category: "",
+    title,
+    username,
+    urls: link ? [link] : [],
+    password,
+    notes: "",
+    fields: [],
+    publicKey: "",
+    fingerprint: "",
+    keyType: "",
+    ...extra,
+  };
+}
+
+function createRandomText(length: number): string {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+  return Array.from(crypto.getRandomValues(new Uint32Array(length)), (random) => alphabet[random % alphabet.length]).join("");
+}
+
+function createPreviewSSHKey(id: string, title: string, keyType: string, notes = ""): ItemDetail {
+  const keyBody = keyType === "ssh-rsa" ? `AAAAB3NzaC1yc2EAAAADAQABAAACAQ${createRandomText(680)}` : `AAAAC3NzaC1lZDI1NTE5AAAAI${createRandomText(43)}`;
+  return createPreviewItem(id, title, "", "", "", {
+    category: "ssh-key",
+    publicKey: `${keyType} ${keyBody} ${title}`,
+    fingerprint: `SHA256:${createRandomText(43)}`,
+    keyType,
+    notes,
+  });
 }
 
 const allPreviewItemByVaultID: Record<string, ItemDetail[]> = {
@@ -24,11 +54,14 @@ const allPreviewItemByVaultID: Record<string, ItemDetail[]> = {
     createPreviewItem("aws", "AWS Console", "root@tryhisar.com", "https://console.aws.amazon.com", "Hj4!pQ8&zW2^nB6*Ty1%"),
     createPreviewItem("figma", "Figma", "alper@tryhisar.com", "https://figma.com", "password1"),
     createPreviewItem("linear", "Linear", "alper@tryhisar.com", "https://linear.app", "Mx9$Lp2!Qw7@"),
+    createPreviewSSHKey("github-ssh", "GitHub SSH key", "ssh-ed25519", "Also used for commit signing."),
+    createPreviewSSHKey("raspberry", "Raspberry Pi", "ssh-rsa"),
   ],
   family: [
     createPreviewItem("netflix", "Netflix", "family@example.com", "https://netflix.com", "netflix-family-pass", { notes: "Shared family account" }),
     createPreviewItem("wifi", "Home Wi-Fi", "", "", "wifi-password-123", { fields: [{ name: "Network", value: "Hisar-Home", concealed: false }] }),
     createPreviewItem("spotify", "Spotify Family", "family@example.com", "https://spotify.com", "Tg5!kP9#vL2@"),
+    createPreviewSSHKey("home-server", "Home server", "ssh-ed25519"),
   ],
   work: [createPreviewItem("vpn", "Office VPN", "alper", "https://vpn.example.com", "Vq8@Lm3!Zr6#")],
 };
@@ -48,6 +81,26 @@ const previewStatus = (): Status => ({
   biometricEnabled: isPreviewBiometricEnabled,
   biometricReady: isPreviewBiometricEnabled && previewState === "locked",
 });
+let isPreviewSSHConfigured = new URLSearchParams(window.location.search).get("sshConfigured") === "1";
+const previewAgentStatus = (backupPath = ""): SSHAgentStatus => {
+  const hasError = new URLSearchParams(window.location.search).get("agent") === "error";
+  return {
+    socketPath: "/Users/alper/.hisar/agent.sock",
+    isRunning: !hasError,
+    errorMessage: hasError ? "sshagent: another agent is listening on /Users/alper/.hisar/agent.sock" : "",
+    isSSHConfigured: isPreviewSSHConfigured,
+    configPath: "/Users/alper/.ssh/config",
+    configSection: '# Added by Hisar: use the Hisar SSH agent\nHost *\n  IdentityAgent "~/.hisar/agent.sock"\n# End of Hisar section\n',
+    isTouchIDApproval: new URLSearchParams(window.location.search).get("approval") !== "1",
+    backupPath,
+  };
+};
+
+function addPreviewItem(vaultID: string, detail: ItemDetail): ItemDetail {
+  allPreviewItemByVaultID[vaultID].push(detail);
+  return detail;
+}
+
 const resolveAfterDelay = <Value>(value: Value): Promise<Value> => new Promise((resolve) => setTimeout(() => resolve(value), 80));
 
 export const previewApi = {
@@ -105,6 +158,33 @@ export const previewApi = {
     const allRandom = crypto.getRandomValues(new Uint32Array(config.length || 24));
     return resolveAfterDelay(Array.from(allRandom, (random) => alphabet[random % alphabet.length]).join(""));
   },
+  generateSSHKey: (vaultID: string, title: string, keyType: SSHKeyType) => {
+    if (!title.trim()) {
+      return Promise.reject(new Error("enter a title"));
+    }
+    const detail = createPreviewSSHKey(`ssh-${Date.now()}`, title.trim(), keyType === "rsa" ? "ssh-rsa" : "ssh-ed25519");
+    return resolveAfterDelay(structuredClone(addPreviewItem(vaultID, detail)));
+  },
+  importSSHKey: (vaultID: string, title: string, privateKeyText: string, passphrase: string) => {
+    if (!privateKeyText.includes("PRIVATE KEY")) {
+      return Promise.reject(new Error("this is not a private key in OpenSSH or PEM format"));
+    }
+    if (privateKeyText.includes("ENCRYPTED") && !passphrase) {
+      return Promise.reject(new Error("this key is protected by a passphrase; enter it to import the key"));
+    }
+    const detail = createPreviewSSHKey(`ssh-${Date.now()}`, title.trim(), "ssh-ed25519");
+    return resolveAfterDelay(structuredClone(addPreviewItem(vaultID, detail)));
+  },
+  getSSHAgentStatus: () => resolveAfterDelay(previewAgentStatus()),
+  configureSSHConfig: () => {
+    isPreviewSSHConfigured = true;
+    return resolveAfterDelay(previewAgentStatus("/Users/alper/.ssh/config.hisar-backup-20261008-093000"));
+  },
+  removeSSHConfig: () => {
+    isPreviewSSHConfigured = false;
+    return resolveAfterDelay(previewAgentStatus("/Users/alper/.ssh/config.hisar-backup-20261008-093100"));
+  },
+  respondSSHApproval: () => resolveAfterDelay(undefined),
   copyField: () => resolveAfterDelay(undefined),
   copyText: () => resolveAfterDelay(undefined),
   unlockWithBiometric: () =>

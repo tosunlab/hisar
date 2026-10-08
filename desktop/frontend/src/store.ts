@@ -1,7 +1,16 @@
 import { reactive } from "vue";
-import { api, getErrorMessage, type ItemDetail, type Status, type VaultSummary } from "./api";
+import {
+  api,
+  getErrorMessage,
+  type ApprovalEvent,
+  type ItemDetail,
+  type SSHAgentStatus,
+  type SSHKeyType,
+  type Status,
+  type VaultSummary,
+} from "./api";
 
-export type EditorMode = "view" | "edit" | "create";
+export type EditorMode = "view" | "edit" | "create" | "create-ssh-key";
 
 export const store = reactive({
   status: {
@@ -24,6 +33,9 @@ export const store = reactive({
   noticeMessage: "",
   isBusy: false,
   isSettingsOpen: false,
+  sshAgentStatus: null as SSHAgentStatus | null,
+  sshAgentErrorMessage: "",
+  allPendingApproval: [] as ApprovalEvent[],
 });
 
 let noticeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -236,6 +248,41 @@ export function startCreatingItem(): void {
   store.editorMode = "create";
 }
 
+export function startCreatingSSHKey(): void {
+  store.selectedItem = null;
+  store.editorMode = "create-ssh-key";
+}
+
+async function showCreatedItem(created: ItemDetail): Promise<void> {
+  const allItem = await runAction(() => api.listAllItem(store.selectedVaultID));
+  if (allItem) {
+    store.allItem = sortAllItem(allItem);
+    updateSelectedVaultItemCount();
+  }
+  store.selectedItem = created;
+  store.editorMode = "view";
+}
+
+export async function generateSSHKey(title: string, keyType: SSHKeyType): Promise<boolean> {
+  const created = await runAction(() => api.generateSSHKey(store.selectedVaultID, title, keyType));
+  if (!created) {
+    return false;
+  }
+  await showCreatedItem(created);
+  showNotice("SSH key generated");
+  return true;
+}
+
+export async function importSSHKey(title: string, privateKeyText: string, passphrase: string): Promise<boolean> {
+  const created = await runAction(() => api.importSSHKey(store.selectedVaultID, title, privateKeyText, passphrase));
+  if (!created) {
+    return false;
+  }
+  await showCreatedItem(created);
+  showNotice("SSH key imported");
+  return true;
+}
+
 export function startEditingItem(): void {
   if (store.selectedItem) {
     store.editorMode = "edit";
@@ -304,6 +351,55 @@ export async function openWebsite(link: string): Promise<void> {
     return;
   }
   await runAction(() => api.openURL(normalizedLink));
+}
+
+// SSH agent actions report errors inside the settings section, not as a page error.
+export async function loadSSHAgentStatus(): Promise<void> {
+  try {
+    store.sshAgentStatus = await api.getSSHAgentStatus();
+    store.sshAgentErrorMessage = "";
+  } catch (error) {
+    store.sshAgentErrorMessage = getErrorMessage(error);
+  }
+}
+
+async function changeSSHConfig(change: () => Promise<SSHAgentStatus>, notice: string): Promise<void> {
+  store.isBusy = true;
+  try {
+    const status = await change();
+    store.sshAgentStatus = status;
+    store.sshAgentErrorMessage = "";
+    showNotice(status.backupPath ? `${notice}; backup saved` : notice);
+  } catch (error) {
+    const message = getErrorMessage(error);
+    await loadSSHAgentStatus();
+    store.sshAgentErrorMessage = message;
+  } finally {
+    store.isBusy = false;
+  }
+}
+
+export async function configureSSHConfig(): Promise<void> {
+  await changeSSHConfig(() => api.configureSSHConfig(), "SSH now uses Hisar");
+}
+
+export async function removeSSHConfig(): Promise<void> {
+  await changeSSHConfig(() => api.removeSSHConfig(), "Removed Hisar from the SSH config");
+}
+
+export function addSSHApproval(approval: ApprovalEvent): void {
+  if (!store.allPendingApproval.some((pending) => pending.requestID === approval.requestID)) {
+    store.allPendingApproval.push(approval);
+  }
+}
+
+export function removeSSHApproval(requestID: string): void {
+  store.allPendingApproval = store.allPendingApproval.filter((pending) => pending.requestID !== requestID);
+}
+
+export async function respondSSHApproval(requestID: string, isAllowed: boolean): Promise<void> {
+  removeSSHApproval(requestID);
+  await api.respondSSHApproval(requestID, isAllowed).catch(() => undefined);
 }
 
 export async function copyText(text: string, label: string): Promise<void> {
