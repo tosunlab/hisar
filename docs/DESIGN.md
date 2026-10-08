@@ -75,7 +75,8 @@ keyset = { sym key K_user, KEM seed (ML-KEM-768+X25519), Ed25519 signing key }
 - 128 bits from `crypto/rand`, generated on the user's first device. Never sent to the server.
 - Display format: `H1-AAAAAA-XXXXX-XXXXX-XXXXX-XXXXX-XXXXXX` — version, 6-char account ID, 26 Crockford base32 chars.
 - Stored on each device in the OS keychain (macOS Keychain, Windows Credential Manager, libsecret, iOS Keychain, Android Keystore).
-- Printed on the Emergency Kit (PDF generated client-side) together with the server URL and email.
+- Printed on the Emergency Kit together with the server URL and email. The A4 PDF is generated client-side (`core/emergencykit`, gopdf with the embedded Go fonts) and has a blank line for the master password, which is never printed. Its QR code holds `hisar://sign-in?server=…&email=…&secretKey=…`.
+- Desktop saves the kit through a native save dialog: right after sign up (the Secret Key stays in memory until the user confirms or the app locks), and later from Settings after re-entering the master password. The CLI has `hisar emergency-kit [-o file]`. Files are written with mode 0600, and the CLI never overwrites an existing file.
 
 ### 4.2 Deriving AUK and the auth secret
 
