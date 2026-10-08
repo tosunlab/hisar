@@ -133,3 +133,45 @@ describe("store", () => {
     expect(store.noticeMessage).toContain("clears in 90 seconds");
   });
 });
+
+describe("openWebsite", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetStore();
+  });
+
+  it("opens http(s) links and adds https to bare domains", async () => {
+    await storeModule.openWebsite("https://github.com");
+    await storeModule.openWebsite("netflix.com");
+    expect(api.openURL).toHaveBeenNthCalledWith(1, "https://github.com");
+    expect(api.openURL).toHaveBeenNthCalledWith(2, "https://netflix.com");
+  });
+
+  it("refuses other URL schemes", async () => {
+    await storeModule.openWebsite("javascript:alert(1)");
+    await storeModule.openWebsite("file:///etc/passwd");
+    expect(api.openURL).not.toHaveBeenCalled();
+    expect(store.errorMessage).toContain("Only http and https");
+  });
+});
+
+describe("vault item counts", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetStore();
+  });
+
+  it("updates the selected vault's count after saving and deleting", async () => {
+    store.allVault = [{ id: "personal", name: "Personal", type: "personal", role: "owner", itemCount: 1 }];
+    store.selectedVaultID = "personal";
+    store.allItem = [createItem({ id: "1" })];
+    api.saveItem.mockResolvedValue(createItem({ id: "2" }));
+    api.listAllItem.mockResolvedValue([createItem({ id: "1" }), createItem({ id: "2" })]);
+    await storeModule.saveItem(createItem({ id: "", title: "New" }));
+    expect(store.allVault[0].itemCount).toBe(2);
+
+    api.deleteItem.mockResolvedValue(undefined);
+    await storeModule.deleteItem("1");
+    expect(store.allVault[0].itemCount).toBe(1);
+  });
+});

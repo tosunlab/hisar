@@ -138,6 +138,7 @@ export async function selectVault(vaultID: string): Promise<void> {
   store.searchQuery = "";
   const allItem = await runAction(() => api.listAllItem(vaultID));
   store.allItem = allItem ? sortAllItem(allItem) : [];
+  updateSelectedVaultItemCount();
 }
 
 export async function createVault(name: string): Promise<boolean> {
@@ -162,6 +163,13 @@ export function filterAllItem(allItem: ItemDetail[], query: string): ItemDetail[
   return allItem.filter((vaultItem) =>
     [vaultItem.title, vaultItem.username, ...vaultItem.urls].some((text) => text.toLowerCase().includes(normalizedQuery)),
   );
+}
+
+function updateSelectedVaultItemCount(): void {
+  const vault = store.allVault.find((candidate) => candidate.id === store.selectedVaultID);
+  if (vault) {
+    vault.itemCount = store.allItem.length;
+  }
 }
 
 export async function selectItem(itemID: string): Promise<void> {
@@ -195,6 +203,7 @@ export async function saveItem(detail: ItemDetail): Promise<boolean> {
   const allItem = await runAction(() => api.listAllItem(store.selectedVaultID));
   if (allItem) {
     store.allItem = sortAllItem(allItem);
+    updateSelectedVaultItemCount();
   }
   store.selectedItem = saved;
   store.editorMode = "view";
@@ -209,6 +218,7 @@ export async function deleteItem(itemID: string): Promise<void> {
   });
   if (deleted) {
     store.allItem = store.allItem.filter((vaultItem) => vaultItem.id !== itemID);
+    updateSelectedVaultItemCount();
     store.selectedItem = null;
     store.editorMode = "view";
     showNotice("Deleted");
@@ -227,6 +237,22 @@ export async function copyField(fieldName: string, label: string): Promise<void>
   if (copied) {
     showNotice(`${label} copied, clears in 90 seconds`);
   }
+}
+
+// openWebsite only opens http(s) links, so stored items cannot launch other URL schemes.
+export async function openWebsite(link: string): Promise<void> {
+  const normalizedLink = link.includes("://") ? link : `https://${link}`;
+  let protocol = "";
+  try {
+    protocol = new URL(normalizedLink).protocol;
+  } catch {
+    protocol = "";
+  }
+  if (protocol !== "https:" && protocol !== "http:") {
+    store.errorMessage = "Only http and https websites can be opened";
+    return;
+  }
+  await runAction(() => api.openURL(normalizedLink));
 }
 
 export async function copyText(text: string, label: string): Promise<void> {

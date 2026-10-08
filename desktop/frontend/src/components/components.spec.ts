@@ -60,7 +60,7 @@ describe("App", () => {
     api.getStatus.mockResolvedValue(createStatus("signed-out"));
     const wrapper = mount(App);
     await flushPromises();
-    expect(wrapper.text()).toContain("Sign in to your account");
+    expect(wrapper.text()).toContain("Sign in to use Hisar on this device");
 
     api.getStatus.mockResolvedValue(createStatus("locked"));
     store.status = createStatus("locked");
@@ -124,8 +124,8 @@ describe("SecretKeyView", () => {
   it("only continues after the user confirms saving the Secret Key", async () => {
     store.pendingSecretKey = "H1-ABC123-SECRET";
     const wrapper = mount(SecretKeyView);
-    expect(wrapper.find('[data-testid="secret-key"]').text()).toBe("H1-ABC123-SECRET");
-    const continueButton = wrapper.findAll("button").find((button) => button.text() === "Continue")!;
+    expect(wrapper.find('[data-testid="secret-key"]').attributes("aria-label")).toBe("H1-ABC123-SECRET");
+    const continueButton = wrapper.findAll("button").find((button) => button.text() === "Continue to Hisar")!;
     expect(continueButton.attributes("disabled")).toBeDefined();
     await wrapper.find('input[name="hasSaved"]').setValue(true);
     await continueButton.trigger("click");
@@ -141,26 +141,25 @@ describe("ItemDetailPanel", () => {
   });
 
   it("masks the password until revealed", async () => {
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true } });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false } });
     expect(wrapper.text()).not.toContain("hunter2hunter2");
     expect(wrapper.text()).not.toContain("1234");
-    await wrapper.findAll("button").find((button) => button.text() === "Reveal")!.trigger("click");
+    await wrapper.find('button[aria-label="Reveal password"]').trigger("click");
     expect(wrapper.find('[data-testid="password-value"]').text()).toBe("hunter2hunter2");
   });
 
   it("copies through the backend instead of exposing the clipboard to the page", async () => {
     api.copyField.mockResolvedValue(undefined);
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true } });
-    const allCopyButton = wrapper.findAll("button").filter((button) => button.text() === "Copy");
-    await allCopyButton[1].trigger("click");
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false } });
+    await wrapper.find('button[aria-label="Copy password"]').trigger("click");
     await flushPromises();
     expect(api.copyField).toHaveBeenCalledWith("personal", "item-1", "password");
   });
 
   it("asks for confirmation before deleting", async () => {
     api.deleteItem.mockResolvedValue(undefined);
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true } });
-    await wrapper.findAll("button").find((button) => button.text() === "Delete")!.trigger("click");
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false } });
+    await wrapper.find('button[aria-label="Delete item"]').trigger("click");
     expect(api.deleteItem).not.toHaveBeenCalled();
     await wrapper.find('[data-testid="confirm-delete"]').trigger("click");
     await flushPromises();
@@ -168,10 +167,9 @@ describe("ItemDetailPanel", () => {
   });
 
   it("hides edit and delete for read-only vaults", () => {
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: false } });
-    const allButtonText = wrapper.findAll("button").map((button) => button.text());
-    expect(allButtonText).not.toContain("Edit");
-    expect(allButtonText).not.toContain("Delete");
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: false, vaultName: "Work", isShared: true } });
+    expect(wrapper.findAll("button").map((button) => button.text())).not.toContain("Edit");
+    expect(wrapper.find('button[aria-label="Delete item"]').exists()).toBe(false);
   });
 });
 

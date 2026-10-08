@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from "vue";
 import { api, getErrorMessage } from "../api";
+import AppIcon from "./AppIcon.vue";
+import StrengthMeter from "./StrengthMeter.vue";
 
 const emit = defineEmits<{ use: [password: string]; close: [] }>();
 
@@ -29,22 +31,28 @@ watch([length, includeDigits, includeSymbols], generatePassword);
 
 <template>
   <div class="generator">
-    <p class="generated monospace" data-testid="generated-password">{{ generatedPassword }}</p>
-    <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
-    <label class="row">
-      <span class="length-label">Length {{ length }}</span>
-      <input v-model.number="length" name="length" type="range" min="12" max="64" />
-    </label>
-    <div class="row options">
-      <label class="row"><input v-model="includeDigits" name="digits" type="checkbox" /> Digits</label>
-      <label class="row"><input v-model="includeSymbols" name="symbols" type="checkbox" /> Symbols</label>
+    <div class="generated-row">
+      <p class="generated monospace" data-testid="generated-password">{{ generatedPassword }}</p>
+      <button type="button" class="ghost icon-button" aria-label="Regenerate" title="Regenerate" @click="generatePassword">
+        <AppIcon name="refresh" />
+      </button>
     </div>
-    <div class="row">
-      <button type="button" @click="generatePassword">Regenerate</button>
+    <StrengthMeter :password="generatedPassword" />
+    <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
+    <div class="options">
+      <label class="length">
+        <span>Length</span>
+        <input v-model.number="length" name="length" type="range" min="12" max="64" />
+        <span class="length-value">{{ length }}</span>
+      </label>
+      <label class="toggle"><input v-model="includeDigits" name="digits" type="checkbox" /> <span>Digits</span></label>
+      <label class="toggle"><input v-model="includeSymbols" name="symbols" type="checkbox" /> <span>Symbols</span></label>
+    </div>
+    <div class="row actions">
       <div class="spacer"></div>
-      <button type="button" @click="emit('close')">Cancel</button>
+      <button type="button" class="ghost" @click="emit('close')">Cancel</button>
       <button type="button" class="primary" :disabled="!generatedPassword" @click="emit('use', generatedPassword)">
-        Use password
+        <AppIcon name="check" /> Use password
       </button>
     </div>
   </div>
@@ -52,34 +60,69 @@ watch([length, includeDigits, includeSymbols], generatePassword);
 
 <style scoped>
 .generator {
-  margin: 0 0 12px;
-  padding: 12px;
-  border: 1px solid var(--color-border);
+  margin: -4px 0 16px;
+  padding: 14px;
+  border: 1px solid var(--color-border-strong);
   border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.generated-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .generated {
-  margin: 0 0 12px;
+  flex: 1;
+  margin: 0;
   font-size: 15px;
   overflow-wrap: anywhere;
   user-select: text;
   -webkit-user-select: text;
 }
 
-.length-label {
-  min-width: 80px;
+.options {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-top: 14px;
+}
+
+.options label {
   margin: 0;
 }
 
-.options {
-  gap: 16px;
+.length {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
 }
 
-.options input {
-  width: auto;
+.length span:first-child {
+  margin: 0;
 }
 
-label.row {
-  margin-bottom: 8px;
+.length-value {
+  min-width: 22px;
+  font-variant-numeric: tabular-nums;
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.toggle span {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--color-text-secondary);
+}
+
+.actions {
+  margin-top: 12px;
 }
 </style>

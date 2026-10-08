@@ -2,7 +2,10 @@
 import { reactive, ref } from "vue";
 import { createEmptyItem, type ItemDetail } from "../api";
 import { cancelEditing, saveItem, store } from "../store";
+import AppIcon from "./AppIcon.vue";
+import ItemTile from "./ItemTile.vue";
 import PasswordGenerator from "./PasswordGenerator.vue";
+import StrengthMeter from "./StrengthMeter.vue";
 
 function createDraft(): ItemDetail {
   if (store.editorMode === "edit" && store.selectedItem) {
@@ -42,32 +45,50 @@ async function submitItem(): Promise<void> {
 
 <template>
   <form class="item-editor" @submit.prevent="submitItem">
-    <h2>{{ store.editorMode === "create" ? "New item" : "Edit item" }}</h2>
-    <label><span>Title</span><input v-model="draft.title" name="title" required autofocus /></label>
-    <label><span>Username</span><input v-model="draft.username" name="username" autocomplete="off" /></label>
-    <label>
-      <span>Password</span>
-      <div class="row">
-        <input
-          v-model="draft.password"
-          name="password"
-          class="monospace"
-          :type="isPasswordVisible ? 'text' : 'password'"
-          autocomplete="new-password"
-        />
-        <button type="button" @click="isPasswordVisible = !isPasswordVisible">{{ isPasswordVisible ? "Hide" : "Show" }}</button>
-        <button type="button" @click="isGeneratorOpen = !isGeneratorOpen">Generate</button>
-      </div>
-    </label>
-    <PasswordGenerator v-if="isGeneratorOpen" @use="usePassword" @close="isGeneratorOpen = false" />
-    <label>
-      <span>Websites (one per line)</span>
-      <textarea v-model="urlText" name="urls" rows="2" placeholder="https://example.com"></textarea>
-    </label>
+    <header>
+      <ItemTile :title="draft.title || '?'" :size="52" />
+      <input v-model="draft.title" class="title-input" name="title" placeholder="Item title" aria-label="Title" required autofocus />
+    </header>
 
-    <div class="fields">
-      <span class="fields-title">Other fields</span>
-      <div v-for="(field, index) in draft.fields" :key="index" class="row custom-field">
+    <section class="card editor-card">
+      <label>
+        <span>Username</span>
+        <input v-model="draft.username" name="username" autocomplete="off" placeholder="Username or email" />
+      </label>
+      <label>
+        <span>Password</span>
+        <span class="row">
+          <input
+            v-model="draft.password"
+            name="password"
+            class="monospace"
+            :type="isPasswordVisible ? 'text' : 'password'"
+            autocomplete="new-password"
+          />
+          <button
+            type="button"
+            class="icon-button"
+            :aria-label="isPasswordVisible ? 'Hide password' : 'Show password'"
+            @click="isPasswordVisible = !isPasswordVisible"
+          >
+            <AppIcon :name="isPasswordVisible ? 'eyeOff' : 'eye'" />
+          </button>
+          <button type="button" :class="{ active: isGeneratorOpen }" @click="isGeneratorOpen = !isGeneratorOpen">
+            <AppIcon name="refresh" /> Generate
+          </button>
+        </span>
+        <StrengthMeter :password="draft.password" />
+      </label>
+      <PasswordGenerator v-if="isGeneratorOpen" @use="usePassword" @close="isGeneratorOpen = false" />
+      <label class="last">
+        <span>Websites</span>
+        <textarea v-model="urlText" name="urls" rows="2" placeholder="https://example.com (one per line)"></textarea>
+      </label>
+    </section>
+
+    <section class="card editor-card">
+      <p class="section-label">Other fields</p>
+      <div v-for="(field, index) in draft.fields" :key="index" class="custom-field">
         <input v-model="field.name" :name="`fieldName${index}`" placeholder="Name" aria-label="Field name" />
         <input
           v-model="field.value"
@@ -76,59 +97,107 @@ async function submitItem(): Promise<void> {
           placeholder="Value"
           aria-label="Field value"
         />
-        <label class="row concealed"><input v-model="field.concealed" type="checkbox" /> Secret</label>
-        <button type="button" class="danger" aria-label="Remove field" @click="removeField(index)">×</button>
+        <label class="concealed" :title="'Hide this value until revealed'">
+          <input v-model="field.concealed" type="checkbox" /> <span>Secret</span>
+        </label>
+        <button type="button" class="ghost icon-button" aria-label="Remove field" @click="removeField(index)"><AppIcon name="close" /></button>
       </div>
-      <button type="button" class="link" @click="addField">+ Add field</button>
-    </div>
+      <button type="button" class="ghost add-field" @click="addField"><AppIcon name="plus" /> Add field</button>
+    </section>
 
-    <label><span>Notes</span><textarea v-model="draft.notes" name="notes" rows="4"></textarea></label>
+    <section class="card editor-card">
+      <label class="last">
+        <span>Notes</span>
+        <textarea v-model="draft.notes" name="notes" rows="4" placeholder="Anything else worth keeping safe"></textarea>
+      </label>
+    </section>
 
-    <div class="row">
+    <div class="row footer">
+      <span class="muted"><AppIcon name="shield" :size="12" /> Encrypted on this device before saving</span>
       <div class="spacer"></div>
-      <button type="button" @click="cancelEditing">Cancel</button>
-      <button class="primary" type="submit" :disabled="store.isBusy">Save</button>
+      <button type="button" class="ghost" @click="cancelEditing">Cancel</button>
+      <button class="primary" type="submit" :disabled="store.isBusy">{{ store.editorMode === "create" ? "Add item" : "Save" }}</button>
     </div>
   </form>
 </template>
 
 <style scoped>
-h2 {
-  margin: 0 0 16px;
-  font-size: 22px;
+.item-editor {
+  max-width: 640px;
 }
 
-.item-editor {
-  max-width: 560px;
+header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.title-input {
+  padding: 6px 8px;
+  border-color: transparent;
+  background: transparent;
+  font-size: 20px;
+  font-weight: 650;
+}
+
+.title-input:hover {
+  border-color: var(--color-border);
+}
+
+.editor-card {
+  margin-bottom: 12px;
+  padding: 16px;
+}
+
+label.last {
+  margin-bottom: 0;
 }
 
 .row input {
   flex: 1;
 }
 
-.fields {
-  margin-bottom: 12px;
-}
-
-.fields-title {
-  display: block;
-  margin-bottom: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--color-text-muted);
+button.active {
+  background: var(--color-selected);
 }
 
 .custom-field {
-  margin-bottom: 6px;
+  display: grid;
+  grid-template-columns: 1fr 1.4fr auto auto;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
 .concealed {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   margin: 0;
   white-space: nowrap;
 }
 
-.concealed input {
-  flex: none;
-  width: auto;
+.concealed span {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--color-text-secondary);
+}
+
+.add-field {
+  padding-left: 0;
+  color: var(--color-text-muted);
+}
+
+.footer {
+  margin-top: 4px;
+}
+
+.footer .muted {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
 }
 </style>

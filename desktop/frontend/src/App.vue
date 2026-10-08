@@ -7,6 +7,7 @@ import SignInView from "./components/SignInView.vue";
 import SecretKeyView from "./components/SecretKeyView.vue";
 import UnlockView from "./components/UnlockView.vue";
 import MainView from "./components/MainView.vue";
+import AppIcon from "./components/AppIcon.vue";
 
 const activityReportInterval = 30_000;
 let lastActivityReport = 0;
@@ -40,5 +41,5 @@ onBeforeUnmount(() => {
   <SignInView v-else-if="store.status.state === 'signed-out'" />
   <UnlockView v-else-if="store.status.state === 'locked'" />
   <MainView v-else />
-  <div v-if="store.noticeMessage" class="notice" role="status">{{ store.noticeMessage }}</div>
+  <div v-if="store.noticeMessage" class="notice" role="status"><AppIcon name="check" /> {{ store.noticeMessage }}</div>
 </template>

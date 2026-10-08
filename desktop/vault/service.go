@@ -314,7 +314,12 @@ func (s *Service) ListAllVault() ([]VaultSummary, error) {
 	}
 	allSummary := make([]VaultSummary, 0, len(s.allVaultByID))
 	for _, vault := range s.allVaultByID {
-		allSummary = append(allSummary, VaultSummary{ID: vault.ID, Name: vault.Name, Type: vault.Type, Role: vault.Role})
+		allItem, err := s.unlockedSession.ListAllItem(ctx, vault)
+		if err != nil {
+			return nil, convertError(err)
+		}
+		s.allItemByVaultID[vault.ID] = allItem
+		allSummary = append(allSummary, VaultSummary{ID: vault.ID, Name: vault.Name, Type: vault.Type, Role: vault.Role, ItemCount: len(allItem)})
 	}
 	sortAllVaultSummary(allSummary)
 	return allSummary, nil

@@ -10,8 +10,8 @@ export function createItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
 }
 
 export const allTestVault: VaultSummary[] = [
-  { id: "personal", name: "Personal", type: "personal", role: "owner" },
-  { id: "family", name: "Family", type: "shared", role: "reader" },
+  { id: "personal", name: "Personal", type: "personal", role: "owner", itemCount: 2 },
+  { id: "family", name: "Family", type: "shared", role: "reader", itemCount: 0 },
 ];
 
 export function createApiMock() {
@@ -32,5 +32,6 @@ export function createApiMock() {
     generatePassword: vi.fn(),
     copyField: vi.fn(),
     copyText: vi.fn(),
+    openURL: vi.fn().mockResolvedValue(undefined),
   };
 }

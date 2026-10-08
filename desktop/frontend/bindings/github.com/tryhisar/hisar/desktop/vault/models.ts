@@ -41,4 +41,5 @@ export interface VaultSummary {
     "name": string;
     "type": string;
     "role": string;
+    "itemCount": number;
 }

@@ -22,6 +22,16 @@ open desktop/bin/Hisar.app
 
 For development with hot reload: `cd desktop && wails3 dev`.
 
+To work on the design without a server, run the UI in a browser with sample data:
+
+```sh
+cd desktop/frontend && npm run preview:ui
+# http://127.0.0.1:5180/?state=signed-out | locked | unlocked
+# extra parameters: &vault=family &item=netflix &editor=create|edit &secretKey=1 &search=git
+```
+
+The preview backend (`src/preview.ts`) is loaded with a dynamic import behind a build-time flag; `npm run check:bundle` (run in CI) fails if it ever ends up in the production bundle.
+
 The app keeps its session in `~/Library/Application Support/hisar/desktop.json` (override with `HISAR_DESKTOP_STATE`) and the Secret Key in the macOS Keychain under the service `hisar`.
 
 ## Tests
