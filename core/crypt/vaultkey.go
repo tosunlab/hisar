@@ -4,31 +4,31 @@ import "crypto/hpke"
 
 // WrapVaultKey encrypts a vault key to a recipient's KEM public key.
 // recipientID is the recipient's account ID, or "recovery" for the recovery keyset.
-func WrapVaultKey(recipientKEM []byte, vaultID, recipientID string, vaultKey []byte) ([]byte, error) {
+func WrapVaultKey(recipientKEMPublicKey []byte, vaultID, recipientID string, vaultKey []byte) ([]byte, error) {
 	if len(vaultKey) != KeySize {
 		return nil, ErrBadKeySize
 	}
-	pub, err := kem.NewPublicKey(recipientKEM)
+	recipientPublicKey, err := hybridKeyEncapsulation.NewPublicKey(recipientKEMPublicKey)
 	if err != nil {
 		return nil, err
 	}
-	ct, err := hpke.Seal(pub, hpke.HKDFSHA256(), hpke.ChaCha20Poly1305(), bind("hisar/v1/vault-key", vaultID, recipientID), vaultKey)
+	ciphertext, err := hpke.Seal(recipientPublicKey, hpke.HKDFSHA256(), hpke.ChaCha20Poly1305(), encodeContext("hisar/v1/vault-key", vaultID, recipientID), vaultKey)
 	if err != nil {
 		return nil, err
 	}
-	return append([]byte{version1}, ct...), nil
+	return append([]byte{version1}, ciphertext...), nil
 }
 
-func (ks *Keyset) UnwrapVaultKey(vaultID, recipientID string, wrapped []byte) ([]byte, error) {
-	if len(wrapped) < 1 {
+func (keyset *Keyset) UnwrapVaultKey(vaultID, recipientID string, wrappedKey []byte) ([]byte, error) {
+	if len(wrappedKey) < 1 {
 		return nil, ErrShortCipher
 	}
-	if wrapped[0] != version1 {
+	if wrappedKey[0] != version1 {
 		return nil, ErrBadVersion
 	}
-	key, err := hpke.Open(ks.kemPriv, hpke.HKDFSHA256(), hpke.ChaCha20Poly1305(), bind("hisar/v1/vault-key", vaultID, recipientID), wrapped[1:])
-	if err != nil || len(key) != KeySize {
+	vaultKey, err := hpke.Open(keyset.kemPrivateKey, hpke.HKDFSHA256(), hpke.ChaCha20Poly1305(), encodeContext("hisar/v1/vault-key", vaultID, recipientID), wrappedKey[1:])
+	if err != nil || len(vaultKey) != KeySize {
 		return nil, ErrDecrypt
 	}
-	return key, nil
+	return vaultKey, nil
 }

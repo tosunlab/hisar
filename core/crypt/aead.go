@@ -20,56 +20,56 @@ var (
 	ErrShortCipher = errors.New("crypt: ciphertext too short")
 )
 
-func NewKey() []byte {
-	k := make([]byte, KeySize)
-	rand.Read(k)
-	return k
+func GenerateKey() []byte {
+	key := make([]byte, KeySize)
+	rand.Read(key)
+	return key
 }
 
 // Seal output: version(1) || nonce(24) || ciphertext+tag.
-func Seal(key, plaintext, aad []byte) ([]byte, error) {
+func Seal(key, plaintext, associatedData []byte) ([]byte, error) {
 	if len(key) != KeySize {
 		return nil, ErrBadKeySize
 	}
-	aead, err := chacha20poly1305.NewX(key)
+	cipher, err := chacha20poly1305.NewX(key)
 	if err != nil {
 		return nil, err
 	}
-	hdr := 1 + aead.NonceSize()
-	out := make([]byte, hdr, hdr+len(plaintext)+aead.Overhead())
-	out[0] = version1
-	rand.Read(out[1:hdr])
-	return aead.Seal(out, out[1:hdr], plaintext, aad), nil
+	headerSize := 1 + cipher.NonceSize()
+	sealed := make([]byte, headerSize, headerSize+len(plaintext)+cipher.Overhead())
+	sealed[0] = version1
+	rand.Read(sealed[1:headerSize])
+	return cipher.Seal(sealed, sealed[1:headerSize], plaintext, associatedData), nil
 }
 
-func Open(key, ciphertext, aad []byte) ([]byte, error) {
+func Open(key, ciphertext, associatedData []byte) ([]byte, error) {
 	if len(key) != KeySize {
 		return nil, ErrBadKeySize
 	}
-	aead, err := chacha20poly1305.NewX(key)
+	cipher, err := chacha20poly1305.NewX(key)
 	if err != nil {
 		return nil, err
 	}
-	hdr := 1 + aead.NonceSize()
-	if len(ciphertext) < hdr+aead.Overhead() {
+	headerSize := 1 + cipher.NonceSize()
+	if len(ciphertext) < headerSize+cipher.Overhead() {
 		return nil, ErrShortCipher
 	}
 	if ciphertext[0] != version1 {
 		return nil, ErrBadVersion
 	}
-	pt, err := aead.Open(nil, ciphertext[1:hdr], ciphertext[hdr:], aad)
+	plaintext, err := cipher.Open(nil, ciphertext[1:headerSize], ciphertext[headerSize:], associatedData)
 	if err != nil {
 		return nil, ErrDecrypt
 	}
-	return pt, nil
+	return plaintext, nil
 }
 
-// Length-prefixed so that field boundaries are unambiguous.
-func bind(label string, fields ...string) []byte {
-	b := []byte(label)
-	for _, f := range fields {
-		b = binary.BigEndian.AppendUint32(b, uint32(len(f)))
-		b = append(b, f...)
+// encodeContext length-prefixes each field so that field boundaries are unambiguous.
+func encodeContext(label string, allField ...string) []byte {
+	encoded := []byte(label)
+	for _, field := range allField {
+		encoded = binary.BigEndian.AppendUint32(encoded, uint32(len(field)))
+		encoded = append(encoded, field...)
 	}
-	return b
+	return encoded
 }
