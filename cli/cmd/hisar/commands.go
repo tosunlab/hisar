@@ -15,6 +15,7 @@ import (
 	"github.com/tryhisar/hisar/core/client"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/item"
+	"github.com/tryhisar/hisar/core/localstate"
 	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/core/session"
 )
@@ -32,19 +33,19 @@ func getDeviceInfo() proto.DeviceInfo {
 	return proto.DeviceInfo{Name: host, Platform: runtime.GOOS + "/cli"}
 }
 
-func createAuthedClient(currentState *state) *client.Client {
+func createAuthedClient(currentState *localstate.State) *client.Client {
 	authedClient := client.Create(currentState.Server)
 	authedClient.Token = currentState.Token
 	return authedClient
 }
 
 // unlock prompts for the master password and decrypts the keyset.
-func unlock(ctx context.Context) (*state, *session.Session, error) {
+func unlock(ctx context.Context) (*localstate.State, *session.Session, error) {
 	currentState, err := loadState()
 	if err != nil {
 		return nil, nil, err
 	}
-	if err := currentState.requireLogin(); err != nil {
+	if err := requireLogin(currentState); err != nil {
 		return nil, nil, err
 	}
 	secretKey, err := loadSecretKey(currentState.AccountID)
@@ -67,11 +68,11 @@ func unlock(ctx context.Context) (*state, *session.Session, error) {
 	return currentState, unlockedSession, nil
 }
 
-func finishSession(currentState *state, currentSession *session.Session, err error) error {
+func finishSession(currentState *localstate.State, currentSession *session.Session, err error) error {
 	if currentSession != nil {
 		currentSession.Lock()
 	}
-	if saveErr := currentState.save(); err == nil {
+	if saveErr := currentState.Save(); err == nil {
 		err = saveErr
 	}
 	return err
@@ -115,11 +116,12 @@ func runSignup(ctx context.Context, flags *flag.FlagSet, allArg []string) error 
 	if err != nil {
 		return err
 	}
-	*currentState = state{path: currentState.path, Server: server, Email: strings.ToLower(email), AccountID: currentSession.AccountID, Token: currentSession.Client.Token, AllPin: map[string][]byte{}, AllSeq: map[string]int64{}}
-	if err := currentState.save(); err != nil {
+	currentState.Reset()
+	currentState.Server, currentState.Email, currentState.AccountID, currentState.Token = server, strings.ToLower(email), currentSession.AccountID, currentSession.Client.Token
+	if err := currentState.Save(); err != nil {
 		return err
 	}
-	if err := storeSecretKey(secretKey); err != nil {
+	if err := localstate.StoreSecretKey(secretKey); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: could not save Secret Key to keychain: %v\n", err)
 	}
 
@@ -188,13 +190,13 @@ func runLogin(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
 	defer currentSession.Lock()
 
 	if currentState.AccountID != currentSession.AccountID {
-		*currentState = state{path: currentState.path, AllPin: map[string][]byte{}, AllSeq: map[string]int64{}}
+		currentState.Reset()
 	}
 	currentState.Server, currentState.Email, currentState.AccountID, currentState.Token = server, currentSession.Email, currentSession.AccountID, currentSession.Client.Token
-	if err := currentState.save(); err != nil {
+	if err := currentState.Save(); err != nil {
 		return err
 	}
-	if err := storeSecretKey(secretKey); err != nil {
+	if err := localstate.StoreSecretKey(secretKey); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: could not save Secret Key to keychain: %v\n", err)
 	}
 	fmt.Fprintf(os.Stderr, "Signed in as %s (%s).\n", currentSession.Name, currentSession.Email)
@@ -218,14 +220,14 @@ func runLogout(ctx context.Context, flags *flag.FlagSet, allArg []string) error 
 	if err != nil {
 		return err
 	}
-	if err := currentState.requireLogin(); err != nil {
+	if err := requireLogin(currentState); err != nil {
 		return err
 	}
 	if err := createAuthedClient(currentState).Logout(ctx); err != nil && !client.IsStatus(err, 401) {
 		return err
 	}
 	currentState.Token = ""
-	return currentState.save()
+	return currentState.Save()
 }
 
 func runWhoami(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
@@ -236,7 +238,7 @@ func runWhoami(ctx context.Context, flags *flag.FlagSet, allArg []string) error 
 	if err != nil {
 		return err
 	}
-	if err := currentState.requireLogin(); err != nil {
+	if err := requireLogin(currentState); err != nil {
 		return err
 	}
 	account, err := createAuthedClient(currentState).GetAccount(ctx)
@@ -560,7 +562,7 @@ func runListAllMember(ctx context.Context, flags *flag.FlagSet, allArg []string)
 	if err != nil {
 		return err
 	}
-	if err := currentState.requireLogin(); err != nil {
+	if err := requireLogin(currentState); err != nil {
 		return err
 	}
 	allMember, err := createAuthedClient(currentState).ListAllMember(ctx)
@@ -623,7 +625,7 @@ func runInvite(ctx context.Context, flags *flag.FlagSet, allArg []string) error 
 	if err != nil {
 		return err
 	}
-	if err := currentState.requireLogin(); err != nil {
+	if err := requireLogin(currentState); err != nil {
 		return err
 	}
 	var email string
@@ -649,7 +651,7 @@ func runListAllDevice(ctx context.Context, flags *flag.FlagSet, allArg []string)
 	if err != nil {
 		return err
 	}
-	if err := currentState.requireLogin(); err != nil {
+	if err := requireLogin(currentState); err != nil {
 		return err
 	}
 	allDevice, err := createAuthedClient(currentState).ListAllDevice(ctx)
@@ -680,7 +682,7 @@ func runRevokeDevice(ctx context.Context, flags *flag.FlagSet, allArg []string) 
 	if err != nil {
 		return err
 	}
-	if err := currentState.requireLogin(); err != nil {
+	if err := requireLogin(currentState); err != nil {
 		return err
 	}
 	if err := createAuthedClient(currentState).RevokeDevice(ctx, allPositional[0]); err != nil {

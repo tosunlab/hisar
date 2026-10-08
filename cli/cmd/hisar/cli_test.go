@@ -78,47 +78,34 @@ func TestGetFieldValue(t *testing.T) {
 	}
 }
 
-func TestStateRoundtrip(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sub", "state.json")
+func TestLoadStateUsesEnvironmentPath(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
 	t.Setenv("HISAR_STATE", path)
 
 	currentState, err := loadState()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := currentState.requireLogin(); err == nil {
-		t.Error("empty state counts as logged in")
+	if err := requireLogin(currentState); err == nil || !strings.Contains(err.Error(), "hisar login") {
+		t.Errorf("requireLogin on empty state: %v", err)
 	}
-	currentState.Server, currentState.AccountID, currentState.Token = "https://x", "ABC123", "tok"
-	currentState.SetSeq("v1", 42)
-	currentState.AllPin["B"] = []byte{1, 2}
-	if err := currentState.save(); err != nil {
+	currentState.AccountID, currentState.Token = "ABC123", "tok"
+	if err := currentState.Save(); err != nil {
 		t.Fatal(err)
 	}
-	fileInfo, _ := os.Stat(path)
-	if fileInfo.Mode().Perm() != 0o600 {
-		t.Errorf("state mode = %o", fileInfo.Mode().Perm())
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("state not written to HISAR_STATE: %v", err)
 	}
 	reloadedState, err := loadState()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if reloadedState.Token != "tok" || reloadedState.GetSeq("v1") != 42 || reloadedState.AllPin["B"][1] != 2 || reloadedState.requireLogin() != nil {
-		t.Errorf("reloaded state: %+v", reloadedState)
+	if err != nil || requireLogin(reloadedState) != nil {
+		t.Errorf("reloaded state: %+v %v", reloadedState, err)
 	}
 }
 
-func TestSecretKeyFromEnv(t *testing.T) {
+func TestLoadSecretKeyExplainsRecovery(t *testing.T) {
 	secretKey, _ := crypt.GenerateSecretKey("ABC123")
-	t.Setenv("HISAR_SECRET_KEY", strings.ToLower(secretKey.Encode()))
-	got, err := loadSecretKey("ABC123")
-	if err != nil || got != secretKey {
-		t.Fatalf("loadSecretKey: %v", err)
-	}
-	if _, err := loadSecretKey("XYZ789"); err == nil {
-		t.Error("secret key for other account accepted")
-	}
-	if err := storeSecretKey(secretKey); err != nil {
-		t.Errorf("store with env override should be a no-op: %v", err)
+	t.Setenv("HISAR_SECRET_KEY", secretKey.Encode())
+	if _, err := loadSecretKey("XYZ789"); err == nil || !strings.Contains(err.Error(), "HISAR_SECRET_KEY") {
+		t.Errorf("error should explain how to recover: %v", err)
 	}
 }

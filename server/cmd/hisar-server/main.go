@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -37,6 +38,7 @@ environment:
   HISAR_SECRETS_FILE   server secrets file, created on first start (default hisar-secrets.json)
   HISAR_TRUST_PROXY    trust X-Forwarded-For from the reverse proxy (default false)
   HISAR_AUTO_MIGRATE   apply pending migrations on start (default true)
+  HISAR_AUTH_BURST     auth requests per IP before limiting to one per 6 seconds (default 10)
 `)
 }
 
@@ -98,9 +100,15 @@ func setup(ctx context.Context) (*store.Store, *api.Server, error) {
 		database.Close()
 		return nil, nil, fmt.Errorf("secrets: %w", err)
 	}
+	authBurst, err := strconv.Atoi(getEnv("HISAR_AUTH_BURST", "10"))
+	if err != nil || authBurst < 1 {
+		database.Close()
+		return nil, nil, fmt.Errorf("HISAR_AUTH_BURST must be a positive number")
+	}
 	server, err := api.CreateServer(database, secrets, api.Config{
 		PublicURL:  getEnv("HISAR_PUBLIC_URL", "https://tryhisar.com"),
 		TrustProxy: getEnv("HISAR_TRUST_PROXY", "false") == "true",
+		AuthBurst:  authBurst,
 	})
 	if err != nil {
 		database.Close()

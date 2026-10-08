@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Name=Hisar
+Comment=Self-hosted, end-to-end encrypted password manager
+# The Exec line includes %u to pass the URL to the application
+Exec=/usr/local/bin/Hisar %u
+Terminal=false
+Type=Application
+Icon=Hisar
+Categories=Utility;
+StartupWMClass=Hisar
+
+ 

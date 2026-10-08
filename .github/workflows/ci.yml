@@ -26,13 +26,14 @@ jobs:
         with:
           go-version-file: go.work
       - name: Check formatting (gofmt)
-        run: test -z "$(gofmt -l core server cli)" || (gofmt -l core server cli; exit 1)
+        run: test -z "$(gofmt -l core server cli desktop/vault desktop/main.go)" || (gofmt -l core server cli desktop/vault desktop/main.go; exit 1)
       - name: Vet all modules
         run: make vet
       - name: Run unit and database tests (fails if any test is skipped)
+        # TestIntegrationDesktopFlow needs a running server and runs in the end-to-end job.
         run: |
           make test TESTFLAGS=-v 2>&1 | tee test.log
-          ! grep -- "--- SKIP" test.log
+          if grep -- "--- SKIP" test.log | grep -v "TestIntegrationDesktopFlow"; then exit 1; fi
         env:
           HISAR_TEST_DATABASE_URL: ${{ env.PG_URL }}
       - name: Build server and CLI
@@ -93,3 +94,70 @@ jobs:
       - name: Show container logs
         if: always()
         run: docker logs hisar
+
+  desktop-frontend:
+    name: "Desktop frontend: type-check and component tests"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/frontend/package-lock.json
+      - name: Type-check and run Vitest
+        run: make test-desktop-frontend
+
+  desktop-macos:
+    name: "Desktop macOS: build and package Hisar.app"
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.work
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/frontend/package-lock.json
+      - name: Install the pinned wails3 CLI
+        run: make install-wails
+      - name: Build and package Hisar.app
+        run: make package-desktop
+      - name: Check the app bundle
+        run: |
+          test -x desktop/bin/Hisar.app/Contents/MacOS/Hisar
+          plutil -extract CFBundleIdentifier raw desktop/bin/Hisar.app/Contents/Info.plist | grep -qx com.tryhisar.hisar
+          codesign --verify --deep desktop/bin/Hisar.app
+      - name: Fail if the build changed the committed bindings
+        run: git diff --exit-code -- desktop/frontend/bindings
+      - name: Zip Hisar.app
+        run: cd desktop/bin && ditto -c -k --keepParent Hisar.app Hisar-macos.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Hisar-macos
+          path: desktop/bin/Hisar-macos.zip
+          retention-days: 14
+
+  desktop-linux:
+    name: "Desktop Linux: build the app"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.work
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/frontend/package-lock.json
+      - name: Install GTK and WebKitGTK development packages
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev
+      - name: Install the pinned wails3 CLI
+        run: make install-wails
+      - name: Build the app
+        run: make build-desktop
+      - name: Check the binary
+        run: test -x desktop/bin/Hisar

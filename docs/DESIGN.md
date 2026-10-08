@@ -377,7 +377,7 @@ Like 1Password, the desktop app is an SSH agent for keys stored in vaults, so pr
 core/       Go module: crypto, item model, local store, sync client   (github.com/tryhisar/hisar/core)
 server/     Go module: hisar-server                                   (github.com/tryhisar/hisar/server)
 cli/        Go module: hisar CLI                                      (github.com/tryhisar/hisar/cli)
-desktop/    Wails app (Go + Vue)                                      (Phase 2)
+desktop/    Wails v3 app (Go + Vue): vault/ backend, frontend/ UI          (Phase 2)
 extension/  Browser extension (TypeScript)                            (Phase 3)
 mobile/     iOS + Android apps on top of gomobile-bound core          (Phase 4)
 docs/       Design and decisions
@@ -402,7 +402,7 @@ go.work     Ties the Go modules together for local development
 | # | Question | Decision |
 |---|---|---|
 | 1 | Argon2id parameters | t=24, m=64 MiB, p=4 (≈ 270 ms on M2 Pro); re-check on phones in Phase 4. Target ≈ 0.5–1 s on the slowest device |
-| 2 | Wails version | v3 |
+| 2 | Wails version | v3, pinned beta (`v3.0.0-beta.23`; no stable v3 exists yet). Upgrade deliberately, one beta at a time, with the macOS and Linux CI builds as the gate |
 | 3 | Server domain | `tryhisar.com`, public |
 | 4 | Recovery group members | Admin only |
 | 5 | Item history retention | 90 days |

@@ -26,6 +26,8 @@ type Config struct {
 	SessionTTL time.Duration
 	InviteTTL  time.Duration
 	TrustProxy bool
+	// AuthBurst is how many auth requests one IP may make before being limited to one per 6 seconds.
+	AuthBurst int
 }
 
 type Server struct {
@@ -44,6 +46,9 @@ func CreateServer(database *store.Store, secrets *Secrets, config Config) (*Serv
 	}
 	if config.InviteTTL == 0 {
 		config.InviteTTL = 7 * 24 * time.Hour
+	}
+	if config.AuthBurst == 0 {
+		config.AuthBurst = 10
 	}
 	opaqueConfiguration := pake.CreateConfig()
 	serverKeyMaterial, err := opaqueConfiguration.DecodeServerKeyMaterial(secrets.OpaqueKeyMaterial)
@@ -64,7 +69,7 @@ func CreateServer(database *store.Store, secrets *Secrets, config Config) (*Serv
 		opaqueConfiguration: opaqueConfiguration,
 		opaque:              opaqueServer,
 		loginCache:          createLoginCache(time.Minute),
-		limiter:             createIPLimiter(rate.Every(6*time.Second), 10),
+		limiter:             createIPLimiter(rate.Every(6*time.Second), config.AuthBurst),
 	}, nil
 }
 

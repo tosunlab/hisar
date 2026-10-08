@@ -9,6 +9,8 @@ T=$(mktemp -d)
 PORT=${END_TO_END_PORT:-18081}
 export HISAR_PUBLIC_URL=http://127.0.0.1:$PORT
 export HISAR_SECRETS_FILE=$T/secrets.json
+# Many sign-ins come from one IP during this test.
+export HISAR_AUTH_BURST=1000
 : "${HISAR_DATABASE_URL:?set HISAR_DATABASE_URL to an empty database}"
 
 "$BIN/hisar-server" serve -addr "127.0.0.1:$PORT" >"$T/server.log" 2>&1 &
@@ -63,4 +65,9 @@ LEFT=$(printf '%s\n' "$PW" | B ls -v Family 2>/dev/null | tail -n +2)
 echo "ok   delete propagates"
 
 expect "logout" "$(A logout && A whoami 2>&1 || true)" "not logged in"
+
+DESKTOP_INVITE=$("$BIN/hisar-server" invite --email desktop@example.com --role member </dev/null | tail -1)
+DESKTOP_RESULT=$(HISAR_TEST_SERVER_URL="http://127.0.0.1:$PORT" HISAR_TEST_INVITE_LINK="$DESKTOP_INVITE" \
+  go -C "$ROOT/desktop" test -count=1 -v -run TestIntegrationDesktopFlow ./vault/ 2>&1 || true)
+expect "desktop app backend against the server" "$DESKTOP_RESULT" "--- PASS: TestIntegrationDesktopFlow"
 echo "end-to-end test passed"
