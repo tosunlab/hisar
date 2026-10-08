@@ -51,7 +51,7 @@ All from the Go standard library or `golang.org/x/crypto`. No custom primitives.
 | Password stretching | Argon2id | `golang.org/x/crypto/argon2` |
 | Key derivation | HKDF-SHA256 | `crypto/hkdf` |
 | Symmetric AEAD | XChaCha20-Poly1305 (24-byte random nonce) | `golang.org/x/crypto/chacha20poly1305` |
-| Public-key wrapping | HPKE base mode, DHKEM(X25519, HKDF-SHA256), HKDF-SHA256, ChaCha20-Poly1305 (RFC 9180) | `crypto/hpke` |
+| Public-key wrapping | HPKE base mode, hybrid post-quantum KEM ML-KEM-768 + X25519, HKDF-SHA256, ChaCha20-Poly1305 (RFC 9180) | `crypto/hpke` |
 | Signatures (key fingerprints, invites) | Ed25519 | `crypto/ed25519` |
 | Authentication | OPAQUE (RFC 9807), ristretto255 suite | `github.com/bytemare/opaque` |
 | Randomness | OS CSPRNG | `crypto/rand` |
@@ -65,8 +65,8 @@ master password ──Argon2id──► k_pw ─┐
                                     ├─HKDF──► AUK  (Account Unlock Key) ──decrypts──► keyset
 Secret Key ───────HKDF────────► k_sk ┘   └──HKDF──► auth secret ──► OPAQUE login
 
-keyset = { sym key K_user, X25519 private key, Ed25519 signing key }
-   └─ X25519 public key ◄── HPKE-wraps ── vault key K_vault (one per vault, per member)
+keyset = { sym key K_user, KEM seed (ML-KEM-768+X25519), Ed25519 signing key }
+   └─ KEM public key ◄── HPKE-wraps ── vault key K_vault (one per vault, per member)
                                               └─ XChaCha20-Poly1305 ── items, attachments keys
 ```
 
@@ -82,14 +82,15 @@ keyset = { sym key K_user, X25519 private key, Ed25519 signing key }
 ```
 pw      = NFKD(master password), UTF-8
 salt    = random 16 bytes, per account, stored on server (public)
-k_pw    = Argon2id(pw, salt, t=3, m=64 MiB, p=4, len=32)
+k_pw    = Argon2id(pw, salt, t=24, m=64 MiB, p=4, len=32)
 k_sk    = HKDF-SHA256(ikm=SecretKey, salt=accountID, info="hisar/v1/secret-key", len=32)
 ikm     = k_pw || k_sk
 AUK     = HKDF-SHA256(ikm, salt=nil, info="hisar/v1/auk",  len=32)
 authKey = HKDF-SHA256(ikm, salt=nil, info="hisar/v1/auth", len=32)
 ```
 
-- Argon2id parameters are stored per account so they can be raised later. 64 MiB is chosen to fit inside the iOS AutoFill extension memory limit. Benchmark on the slowest target device before freezing.
+- Argon2id parameters are stored per account so they can be raised later. 64 MiB is chosen to fit inside the iOS AutoFill extension memory limit, so cost is tuned with `t`. t=24 takes ≈ 270 ms on an M2 Pro; re-check on phones in Phase 4.
+- Clients enforce minimum and maximum parameters (`MinArgon2Params`/`MaxArgon2Params` in `core/crypt`) because the server supplies them: a malicious server must not be able to weaken stretching or exhaust memory.
 - `authKey` is the OPAQUE password input. OPAQUE's internal key-stretching function is set to identity because stretching already happened. A server that steals the OPAQUE record still needs the Secret Key to guess the password.
 - AUK and `authKey` are independent HKDF outputs: the server learns nothing about AUK from the login.
 
@@ -98,8 +99,10 @@ authKey = HKDF-SHA256(ikm, salt=nil, info="hisar/v1/auth", len=32)
 Generated at signup on the first device:
 
 - `K_user`: 32 random bytes, encrypts the user's private data that is not in a vault (settings, device list labels).
-- X25519 keypair: receives vault keys.
-- Ed25519 keypair: signs the X25519 public key and invites, so others can verify it (§5.6).
+- Hybrid KEM keypair (ML-KEM-768 + X25519, derived from a 32-byte seed): receives vault keys. The hybrid stays secure as long as either half holds, so recorded traffic and DB dumps remain safe against a future quantum computer.
+- Ed25519 keypair: signs the KEM public key bound to the account ID, and invites, so others can verify it (§5.6).
+
+The keyset is stored as three 32-byte seeds (`K_user`, KEM seed, Ed25519 seed); the key pairs are derived from them.
 
 The private half is serialised and encrypted:
 
@@ -107,12 +110,12 @@ The private half is serialised and encrypted:
 encKeyset = XChaCha20-Poly1305(key=AUK, nonce=random24, aad="hisar/v1/keyset"||accountID, plaintext=keyset)
 ```
 
-The server stores `encKeyset`, the X25519 public key, the Ed25519 public key and the signature over the X25519 public key.
+The server stores `encKeyset`, the KEM public key, the Ed25519 public key and the signature `Ed25519.Sign("hisar/v1/kem-key" || accountID || kemPub)`.
 
 ### 4.4 Vault keys
 
 - Each vault has a random 32-byte `K_vault`.
-- For every member, the server stores `HPKE.Seal(memberX25519Pub, info="hisar/v1/vault-key"||vaultID, aad=memberAccountID, K_vault)`.
+- For every member, the server stores `0x01 || HPKE.Seal(memberKEMPub, info="hisar/v1/vault-key" || vaultID || memberAccountID, K_vault)`.
 - The recovery group (§6.6) gets the same wrapping for every vault that opts into recovery.
 - Removing a member rotates `K_vault`: new key, all items re-encrypted by an admin client, new wrappings for the remaining members. Until rotation, the removed member could still decrypt copies they already downloaded. That is unavoidable.
 
@@ -124,11 +127,13 @@ An item has two encrypted parts so lists and search don't decrypt every secret:
 - **details**: fields, passwords, notes, TOTP seeds, passkeys, history of field values.
 
 ```
-aad      = "hisar/v1/item" || vaultID || itemID || part      (part ∈ {"overview","details"})
+aad      = "hisar/v1/item" || vaultID || itemID || revision || part      (part ∈ {"overview","details"})
 ct_part  = XChaCha20-Poly1305(key=K_vault, nonce=random24, aad, plaintext=JSON(part))
 ```
 
-Binding vault and item IDs in the AAD stops a malicious server from moving an item into another vault or swapping overview/details between items.
+Binding vault ID, item ID and revision in the AAD stops a malicious server from moving an item into another vault, swapping overview/details between items, or mixing parts of different revisions.
+
+All `||` concatenations of variable-length fields are length-prefixed (4-byte big-endian length before each field), so field boundaries are unambiguous.
 
 ### 4.6 Attachments
 
@@ -167,9 +172,9 @@ The device already has the Secret Key in the keychain and a local copy of `encKe
 
 ### 5.6 Public key authenticity
 
-Sharing a vault means wrapping `K_vault` to the recipient's X25519 public key, which the server delivers. A malicious server could substitute its own key. Mitigations:
+Sharing a vault means wrapping `K_vault` to the recipient's KEM public key, which the server delivers. A malicious server could substitute its own key. Mitigations:
 
-- Each user's X25519 key is signed with their Ed25519 key.
+- Each user's KEM public key is signed with their Ed25519 key, bound to their account ID.
 - Clients pin (trust on first use) every other member's Ed25519 key and warn loudly if it changes.
 - The UI shows a short fingerprint (e.g. 6 words) per member that family members can optionally compare in person once.
 
@@ -183,7 +188,7 @@ Zero-knowledge means a forgotten master password or lost Secret Key loses data, 
 
 ### 6.1 Recovery group
 
-- Only the admin holds the **recovery keyset** (X25519 + Ed25519), encrypted with the admin's `K_user`. If the admin loses access, recoverable vaults can still be opened by their members, but nobody can perform further recoveries until a new recovery keyset is created.
+- Only the admin holds the **recovery keyset** (hybrid KEM + Ed25519), encrypted with the admin's `K_user`. If the admin loses access, recoverable vaults can still be opened by their members, but nobody can perform further recoveries until a new recovery keyset is created.
 - Every vault that opts into recovery also has its `K_vault` wrapped to the recovery public key. Shared vaults always opt in. Personal vaults opt in by default, and the user can opt out with a clear warning.
 
 ### 6.2 Recovery flow
@@ -354,7 +359,7 @@ go.work     Ties the Go modules together for local development
 
 | # | Question | Decision |
 |---|---|---|
-| 1 | Argon2id parameters | Default t=3, m=64 MiB, p=4; confirmed by benchmark in Phase 1, re-checked on phones in Phase 4. Target ≈ 0.5–1 s |
+| 1 | Argon2id parameters | t=24, m=64 MiB, p=4 (≈ 270 ms on M2 Pro); re-check on phones in Phase 4. Target ≈ 0.5–1 s on the slowest device |
 | 2 | Wails version | v3 |
 | 3 | Server domain | `tryhisar.com`, public |
 | 4 | Recovery group members | Admin only |
