@@ -67,6 +67,28 @@ echo "ok   delete propagates"
 expect "unshare rotates the vault key" "$(printf '%s\n' "$PW" | A unshare Family bob@example.com 2>&1)" "rotated the vault key"
 expect "removed member cannot read the vault" "$(printf '%s\n' "$PW" | B ls -v Family 2>&1 || true)" "not found"
 
+expect "recovery setup" "$(printf '%s\n' "$PW" | A recovery-setup 2>&1)" "Recovery is set up"
+expect "bob enables recovery" "$(printf '%s\n' "$PW" | B recovery-enable 2>&1)" 'Enabled recovery for "Personal"'
+printf '%s\n' "$PW" | A vault-create Household 2>/dev/null
+printf '%s\nWifi\n\n\nwifi-password-1\n\n' "$PW" | A add -v Household 2>/dev/null
+expect "share recoverable vault" "$(printf '%s\n' "$PW" | A share Household bob@example.com 2>&1)" "as editor"
+expect "member cannot start a recovery" "$(B recovery-start alice@example.com 2>&1 || true)" "admin only"
+
+RECOVERY_LINK=$(A recovery-start bob@example.com 2>/dev/null)
+expect "recovery link" "$RECOVERY_LINK" "$HISAR_PUBLIC_URL/recover/"
+NEW_PW='new correct horse battery'
+printf 'bob@example.com\n%s\n%s\n' "$NEW_PW" "$NEW_PW" | HISAR_STATE=$T/bob.json HISAR_SECRET_KEY=- hisar recover "$RECOVERY_LINK" 2>"$T/bob-recover.txt"
+BOB_NEW_SK=$(grep -oE 'H1-[0-9A-Z-]+' "$T/bob-recover.txt" || true)
+[[ "$BOB_NEW_SK" == H1-* && "$BOB_NEW_SK" != "$BOB_SK" ]] || fail "recover did not print a new Secret Key: $(cat "$T/bob-recover.txt")"
+echo "ok   recover prints a new Secret Key"
+expect "recovery link is single use" "$(printf 'bob@example.com\n%s\n%s\n' "$NEW_PW" "$NEW_PW" | HISAR_STATE=$T/bob-again.json HISAR_SECRET_KEY=- hisar recover "$RECOVERY_LINK" 2>&1 || true)" "invalid recovery link"
+expect "recovery pending" "$(A recovery-list 2>&1)" "bob@example.com"
+expect "recovery complete" "$(printf 'y\n%s\n' "$PW" | A recovery-complete bob@example.com 2>&1)" "Recovered bob@example.com"
+expect "old Secret Key stops working" "$(printf 'http://127.0.0.1:%s\nbob@example.com\n%s\n%s\n' "$PORT" "$BOB_SK" "$PW" | HISAR_STATE=$T/bob-old.json HISAR_SECRET_KEY=- hisar login 2>&1 || true)" "incorrect email, password or Secret Key"
+expect "login with the new Secret Key" "$(printf 'http://127.0.0.1:%s\nbob@example.com\n%s\n%s\n' "$PORT" "$BOB_NEW_SK" "$NEW_PW" | HISAR_STATE=$T/bob.json HISAR_SECRET_KEY=- hisar login 2>&1)" "Signed in as Bob"
+RB() { HISAR_STATE=$T/bob.json HISAR_SECRET_KEY=$BOB_NEW_SK hisar "$@"; }
+expect "recovered bob reads item" "$(printf '%s\n' "$NEW_PW" | RB get wifi -v Household -f password 2>/dev/null)" "wifi-password-1"
+
 expect "logout" "$(A logout && A whoami 2>&1 || true)" "not logged in"
 
 DESKTOP_INVITE=$("$BIN/hisar-server" invite --email desktop@example.com --role member </dev/null | tail -1)

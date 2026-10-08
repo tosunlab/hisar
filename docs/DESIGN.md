@@ -116,7 +116,7 @@ The server stores `encKeyset`, the KEM public key, the Ed25519 public key and th
 
 - Each vault has a random 32-byte `K_vault`.
 - For every member, the server stores `0x01 || HPKE.Seal(memberKEMPub, info="hisar/v1/vault-key" || vaultID || memberAccountID, K_vault)`.
-- The recovery group (§6.6) gets the same wrapping for every vault that opts into recovery.
+- The recovery keyset (§6.1) gets the same wrapping, with recipient ID `"recovery"`, for every vault that opts into recovery.
 - Removing a member rotates `K_vault` (`session.RemoveVaultMember`, `POST /vaults/{id}/rotate`, owner only):
   - The owner's client generates a new key, re-encrypts the vault name and every item, including tombstones, under a new revision, and wraps the new key for each remaining member. Each member's signed KEM key is verified, and the client's `MemberVerifier` hook (key pinning in the CLI) must accept it.
   - The server applies it in one transaction. It returns 409 unless the submitted items match the stored items and revisions exactly, so concurrent edits are never lost; the client then retries, up to 3 times. It replaces all access grants, gives every item a new seq so all devices resync, and drops the vault's item history, because that history is encrypted with the old key.
@@ -205,17 +205,36 @@ The client derives a new AUK and `authKey` (new salt), re-encrypts the keyset an
 
 Zero-knowledge means a forgotten master password or lost Secret Key loses data, unless recovery is set up ahead of time.
 
-### 6.1 Recovery group
+### 6.1 Recovery keyset
 
-- Only the admin holds the **recovery keyset** (hybrid KEM + Ed25519), encrypted with the admin's `K_user`. If the admin loses access, recoverable vaults can still be opened by their members, but nobody can perform further recoveries until a new recovery keyset is created.
-- Every vault that opts into recovery also has its `K_vault` wrapped to the recovery public key. Shared vaults always opt in. Personal vaults opt in by default, and the user can opt out with a clear warning.
+- Only the admin holds the **recovery keyset**, a regular `crypt` keyset created once with `session.CreateRecoveryKeyset` (`hisar recovery-setup`):
+  - Its private part is encrypted with the admin's `K_user`: `XChaCha20-Poly1305(key=K_user, aad="hisar/v1/recovery-keyset"||adminAccountID)`.
+  - Its KEM public key is signed with the admin's Ed25519 key, bound to the literal recipient ID `"recovery"`: `Ed25519.Sign("hisar/v1/kem-key" || "recovery" || kemPub)`, the same format as account keys (§4.3), so `PublicKeys.Verify("recovery")` checks it.
+  - The server stores the KEM public key, the admin's signing public key, the signature, the encrypted keyset and `created_by`. It accepts the keyset only from an admin, only once, and only signed by that admin's current signing key. `GET /recovery/keyset` returns the encrypted keyset to its creator only.
+- Before wrapping anything to the recovery key, clients verify it (`session.GetRecoveryPublicKey`): `created_by` must be an admin in `/members`, whose own signed keys verify and whose signing key is the one that signed the recovery key. The CLI then pins the recovery KEM key trust-on-first-use (`AllPin["recovery"]`), like member keys (§5.6).
+- Vault keys are wrapped to the recovery key with recipient ID `"recovery"` (§4.4) and stored in `vault_recovery`:
+  - `session.CreateVault` wraps every new vault when a recovery keyset exists. Shared vaults must be wrapped: the server rejects a shared vault without the wrapping. Personal vaults are wrapped by default.
+  - `PUT /vaults/{id}/recovery` (owner) sets the wrapping. `DELETE /vaults/{id}/recovery` (owner, personal vaults only) removes it and records the opt-out (`vaults.recovery_opt_out`), so later bulk enabling skips the vault. The UI must warn that an opted-out vault is lost if the user loses access.
+  - `GET /vaults` returns `recoverable` and `recoveryOptOut` per vault. `session.ListAllVaultWithoutRecovery` lists owned vaults without a wrapping, and `session.EnableRecoveryForAllVault` (`hisar recovery-enable`, and `hisar recovery-setup` for the admin) wraps the ones that are not opted out. Vaults created before the keyset existed need this.
+  - Key rotation (§4.4) carries the new key wrapped to the recovery key when the vault had a wrapping. The server replaces it in the rotation transaction, and returns 409 if the vault has a wrapping and the rotation does not carry one.
+- If the admin loses access, recoverable vaults can still be opened by their members, but nobody can perform further recoveries until a new recovery keyset is created. When another admin recovers the creating admin, the recovery keyset and all recovery wrappings are deleted in the same transaction (they were sealed with the old `K_user`), and recovery must be set up again.
 
 ### 6.2 Recovery flow
 
-1. Admin starts recovery for a user. The server marks the account "recovering" and emails a recovery link.
-2. User opens the link on a device, chooses a new master password, and gets a new Secret Key and keyset. The new public keys are uploaded.
-3. Admin approves on their own device: the client decrypts each of the user's vault keys with the recovery key and wraps them to the user's new public key.
-4. The user's old sessions and devices are revoked.
+1. **Start (admin).** `POST /admin/recovery/{accountID}` (`hisar recovery-start <email>`) creates a one-time token (the server stores its SHA-256 hash; it expires after 7 days) and returns `<PublicURL>/recover/<token>`. Starting again replaces the token and any pending submission. The account keeps working until completion. Admins cannot recover themselves; another admin must do it.
+2. **Submit (user).** `session.StartRecovery` (`hisar recover <link>`) asks for the email and a new master password:
+   - `POST /auth/recovery/account {token, email}` returns the account ID, because the Secret Key and the derived keys (§4.2) depend on it.
+   - The client then does what signup does for the existing account ID: new Secret Key, salt, Argon2 params and keyset, and OPAQUE registration with credential identifier = account ID (`POST /auth/recovery/start {token, email, request}`).
+   - `POST /auth/recovery/finish {token, email, record, salt, argon2, encKeyset, publicKeys, device}` is validated like signup (signature, params, sizes), consumes the token and stores the submission as pending (`account_recovery`, one row per account).
+   - The user gets the new Secret Key but cannot sign in with it until the admin completes the recovery; until then the old credentials still work. An expired, used or unknown token, or a different email, returns 403 `invalid recovery link`. These endpoints are rate-limited like the other auth endpoints.
+3. **Review (admin).** `GET /admin/recovery` (`hisar recovery-list`) lists pending recoveries: account ID, email, name, the new public keys and signature, submission time, and every vault the account can access with its recovery wrapped key (`null` when it has none).
+4. **Complete (admin).** `session.CompleteRecovery` (`hisar recovery-complete <email>`), run by the admin who created the recovery keyset:
+   - The client verifies the new public keys (`PublicKeys.Verify(accountID)`), decrypts the recovery keyset with its `K_user`, unwraps each vault key (recipient `"recovery"`) and wraps it to the user's new KEM key (recipient = account ID).
+   - `POST /admin/recovery/{accountID}/complete {vaultKeys: [{vaultId, wrappedKey}]}` applies it in one transaction: it replaces the account's OPAQUE record, salt, Argon2 params, encrypted keyset and public keys with the pending ones, updates the account's wrapped key for each provided vault, removes its access to every other vault, deletes all of its sessions and devices, and deletes the pending row and the token.
+   - The response lists the vaults that could not be recovered (opted out, or without a wrapping), and the UI tells the admin. The admin's CLI re-pins the user's new signing key; other members see a key-change warning (§5.6).
+5. **Sign in (user).** The user signs in normally with the email, the new Secret Key and the new master password.
+
+Every step is audit-logged (`recovery_keyset_created`, `vault_recovery_set`, `vault_recovery_opt_out`, `recovery_started`, `recovery_submitted`, `recovery_completed`).
 
 The server never sees a vault key. The admin's client can technically decrypt recoverable vaults; this is the trust trade-off of recovery, and it is shown to users at signup.
 
@@ -270,10 +289,12 @@ accounts       (id, email, name, role[admin|member], state, argon2_params, salt,
 devices        (id, account_id, name, platform, created_at, last_seen_at, revoked_at)
 sessions       (token_hash, account_id, device_id, expires_at)
 invites        (token_hash, email, created_by, signature, expires_at, used_at)
-vaults         (id, type[personal|shared], enc_name, seq, recoverable, created_at)
+vaults         (id, type[personal|shared], enc_name, seq, recovery_opt_out, created_at)
 vault_access   (vault_id, account_id, wrapped_key, role[owner|editor|reader], granted_by)
-recovery_keys  (vault_id, wrapped_key)
-recovery_group (id, x25519_pub, ed25519_pub, members...)
+vault_recovery (vault_id, wrapped_key, updated_at)
+recovery_keyset  (kem_pub, sign_pub, kem_sig, enc_keyset, created_by, created_at)   -- at most one row
+recovery_tokens  (account_id, token_hash, created_by, created_at, expires_at, used_at)
+account_recovery (account_id, argon2_params, salt, opaque_record, enc_keyset, kem_pub, sign_pub, kem_sig, submitted_at)
 items          (vault_id, id, revision, seq, deleted, overview_ct, details_ct, updated_at, updated_by)
 item_history   (vault_id, id, revision, overview_ct, details_ct, updated_at, updated_by)
 attachments    (id, vault_id, item_id, size, chunk_count, storage_path)
@@ -290,10 +311,10 @@ audit_events   (id, account_id, device_id, type, ip, created_at)
 | Account | `GET/PUT /account`, `GET /account/keyset`, `PUT /account/password` |
 | Devices | `GET /devices`, `DELETE /devices/{id}` |
 | Members | `GET /members` (public keys, signatures), `POST /invites`, `GET /invites/{token}` |
-| Vaults | `GET /vaults`, `POST /vaults`, `GET /vaults/{id}/members`, `PUT /vaults/{id}/access/{accountID}`, `DELETE /vaults/{id}/access/{accountID}`, `POST /vaults/{id}/rotate` (Phase 2) |
+| Vaults | `GET /vaults`, `POST /vaults` (optional `recoveryWrappedKey`), `GET /vaults/{id}/members`, `PUT /vaults/{id}/access/{accountID}`, `DELETE /vaults/{id}/access/{accountID}`, `POST /vaults/{id}/rotate` (Phase 2, optional `recoveryWrappedKey`), `PUT /vaults/{id}/recovery`, `DELETE /vaults/{id}/recovery` (owner; delete is personal vaults only) |
 | Items | `GET /vaults/{id}/changes`, `PUT /vaults/{id}/items/{itemID}`, `GET /vaults/{id}/items/{itemID}/history` |
 | Attachments | `PUT/GET /vaults/{id}/attachments/{attID}/chunks/{n}` |
-| Recovery (Phase 2) | `POST /recovery/{accountID}/start`, `POST /recovery/{accountID}/complete` |
+| Recovery (Phase 2) | `GET /recovery/keyset` (any member; the encrypted keyset only for its creator), `POST /recovery/keyset` (admin, once); `POST /auth/recovery/account`, `POST /auth/recovery/start`, `POST /auth/recovery/finish` (recovery token, rate-limited); `GET /admin/recovery`, `POST /admin/recovery/{accountID}`, `POST /admin/recovery/{accountID}/complete` (admin) |
 | Admin | `GET /admin/audit`, `GET /admin/accounts` |
 
 All under `/api/v1`. JSON bodies, base64url for binary fields.

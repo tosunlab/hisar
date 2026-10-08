@@ -57,7 +57,7 @@ func createTestAccount(t *testing.T, database *Store, accountID, email string) (
 func createTestVault(t *testing.T, database *Store, owner string) string {
 	t.Helper()
 	vaultID := uuid.NewString()
-	if err := database.CreateVault(context.Background(), &Vault{ID: vaultID, Type: "shared", EncName: []byte{1}, CreatedBy: owner}, []byte{1}); err != nil {
+	if err := database.CreateVault(context.Background(), &Vault{ID: vaultID, Type: "shared", EncName: []byte{1}, CreatedBy: owner}, []byte{1}, nil); err != nil {
 		t.Fatal(err)
 	}
 	return vaultID
@@ -81,18 +81,45 @@ func TestMigrations(t *testing.T) {
 		}
 	}
 
+	countTable := func(tableName string) int {
+		var tableCount int
+		database.pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.tables WHERE table_name = $1`, tableName).Scan(&tableCount)
+		return tableCount
+	}
+	countColumn := func(tableName, columnName string) int {
+		var columnCount int
+		database.pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.columns WHERE table_name = $1 AND column_name = $2`, tableName, columnName).Scan(&columnCount)
+		return columnCount
+	}
+	allRecoveryTable := []string{"recovery_keyset", "vault_recovery", "recovery_tokens", "account_recovery"}
+
 	rolledBack, err := database.RollbackMigration(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var tableCount int
-	database.pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.tables WHERE table_name = 'accounts'`).Scan(&tableCount)
-	if tableCount != 0 {
+	for _, tableName := range allRecoveryTable {
+		if countTable(tableName) != 0 {
+			t.Errorf("%s still exists after rolling back %s", tableName, rolledBack.Source.Path)
+		}
+	}
+	if countColumn("vaults", "recovery_opt_out") != 0 || countTable("accounts") != 1 {
+		t.Errorf("rolling back %s left the wrong schema", rolledBack.Source.Path)
+	}
+
+	if rolledBack, err = database.RollbackMigration(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if countTable("accounts") != 0 {
 		t.Errorf("accounts table still exists after rolling back %s", rolledBack.Source.Path)
 	}
 
-	if allResult, err = database.Migrate(ctx); err != nil || len(allResult) != 1 {
+	if allResult, err = database.Migrate(ctx); err != nil || len(allResult) != 2 {
 		t.Fatalf("re-apply: %d %v", len(allResult), err)
+	}
+	for _, tableName := range allRecoveryTable {
+		if countTable(tableName) != 1 {
+			t.Errorf("%s missing after re-applying", tableName)
+		}
 	}
 }
 
@@ -294,7 +321,7 @@ func TestVaultAccess(t *testing.T) {
 	if err := database.RemoveAccess(ctx, vaultID, "BBBBBB"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("double remove: %v", err)
 	}
-	if err := database.CreateVault(ctx, &Vault{ID: vaultID, Type: "shared", EncName: []byte{1}, CreatedBy: "AAAAAA"}, []byte{1}); !errors.Is(err, ErrExists) {
+	if err := database.CreateVault(ctx, &Vault{ID: vaultID, Type: "shared", EncName: []byte{1}, CreatedBy: "AAAAAA"}, []byte{1}, nil); !errors.Is(err, ErrExists) {
 		t.Errorf("duplicate vault: %v", err)
 	}
 }

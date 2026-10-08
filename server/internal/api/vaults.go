@@ -51,7 +51,10 @@ func (s *Server) handleListAllVault(c fiber.Ctx) error {
 	}
 	allVault := make([]proto.Vault, 0, len(allStoredVault))
 	for _, vault := range allStoredVault {
-		allVault = append(allVault, proto.Vault{ID: vault.ID, Type: vault.Type, EncName: vault.EncName, Seq: vault.Seq, Role: vault.Role, WrappedKey: vault.WrappedKey})
+		allVault = append(allVault, proto.Vault{
+			ID: vault.ID, Type: vault.Type, EncName: vault.EncName, Seq: vault.Seq, Role: vault.Role, WrappedKey: vault.WrappedKey,
+			Recoverable: vault.Recoverable, RecoveryOptOut: vault.RecoveryOptOut,
+		})
 	}
 	return c.JSON(allVault)
 }
@@ -67,8 +70,21 @@ func (s *Server) handleCreateVault(c fiber.Ctx) error {
 		len(request.WrappedKey) == 0 || len(request.WrappedKey) > maxWrappedKey {
 		return createAPIError(fiber.StatusBadRequest, "invalid vault")
 	}
+	if len(request.RecoveryWrappedKey) > maxWrappedKey {
+		return createAPIError(fiber.StatusBadRequest, "invalid vault")
+	}
+	isRecoverySetUp, err := s.checkRecoverySetUp(c)
+	if err != nil {
+		return err
+	}
+	switch {
+	case !isRecoverySetUp && request.RecoveryWrappedKey != nil:
+		return errRecoveryNotSetUp
+	case isRecoverySetUp && request.Type == proto.VaultShared && len(request.RecoveryWrappedKey) == 0:
+		return createAPIError(fiber.StatusBadRequest, "shared vaults must be wrapped to the recovery key")
+	}
 	vault := &store.Vault{ID: request.ID, Type: request.Type, EncName: request.EncName, CreatedBy: currentSession.AccountID}
-	switch err := s.store.CreateVault(c.Context(), vault, request.WrappedKey); {
+	switch err := s.store.CreateVault(c.Context(), vault, request.WrappedKey, request.RecoveryWrappedKey); {
 	case errors.Is(err, store.ErrExists):
 		return createAPIError(fiber.StatusConflict, "vault exists")
 	case err != nil:

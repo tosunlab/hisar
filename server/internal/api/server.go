@@ -26,10 +26,11 @@ const (
 )
 
 type Config struct {
-	PublicURL  string
-	SessionTTL time.Duration
-	InviteTTL  time.Duration
-	TrustProxy bool
+	PublicURL   string
+	SessionTTL  time.Duration
+	InviteTTL   time.Duration
+	RecoveryTTL time.Duration
+	TrustProxy  bool
 	// AuthBurst is how many auth requests one IP may make before being limited to one per 6 seconds.
 	AuthBurst int
 }
@@ -50,6 +51,9 @@ func CreateServer(database *store.Store, secrets *Secrets, config Config) (*Serv
 	}
 	if config.InviteTTL == 0 {
 		config.InviteTTL = 7 * 24 * time.Hour
+	}
+	if config.RecoveryTTL == 0 {
+		config.RecoveryTTL = 7 * 24 * time.Hour
 	}
 	if config.AuthBurst == 0 {
 		config.AuthBurst = 10
@@ -97,6 +101,9 @@ func (s *Server) CreateApp() *fiber.App {
 	apiGroup.Post("/auth/register/finish", s.limitRate, s.handleRegisterFinish)
 	apiGroup.Post("/auth/login/start", s.limitRate, s.handleLoginStart)
 	apiGroup.Post("/auth/login/finish", s.limitRate, s.handleLoginFinish)
+	apiGroup.Post("/auth/recovery/account", s.limitRate, s.handleFindRecoveryAccount)
+	apiGroup.Post("/auth/recovery/start", s.limitRate, s.handleRecoveryStart)
+	apiGroup.Post("/auth/recovery/finish", s.limitRate, s.handleRecoveryFinish)
 
 	apiGroup.Post("/auth/logout", s.requireSession, s.handleLogout)
 	apiGroup.Get("/account", s.requireSession, s.handleGetAccount)
@@ -114,6 +121,14 @@ func (s *Server) CreateApp() *fiber.App {
 	apiGroup.Get("/vaults/:vault/changes", s.requireSession, s.handleListAllChange)
 	apiGroup.Put("/vaults/:vault/items/:item", s.requireSession, s.handlePutItem)
 	apiGroup.Get("/vaults/:vault/items/:item/history", s.requireSession, s.handleGetItemHistory)
+	apiGroup.Put("/vaults/:vault/recovery", s.requireSession, s.handleSetVaultRecovery)
+	apiGroup.Delete("/vaults/:vault/recovery", s.requireSession, s.handleRemoveVaultRecovery)
+
+	apiGroup.Get("/recovery/keyset", s.requireSession, s.handleGetRecoveryKeyset)
+	apiGroup.Post("/recovery/keyset", s.requireSession, s.requireAdmin, s.handleCreateRecoveryKeyset)
+	apiGroup.Get("/admin/recovery", s.requireSession, s.requireAdmin, s.handleListAllPendingRecovery)
+	apiGroup.Post("/admin/recovery/:account", s.requireSession, s.requireAdmin, s.handleCreateRecoveryLink)
+	apiGroup.Post("/admin/recovery/:account/complete", s.requireSession, s.requireAdmin, s.handleCompleteRecovery)
 
 	return app
 }
@@ -164,6 +179,13 @@ func (s *Server) requireSession(c fiber.Ctx) error {
 		return createAPIError(fiber.StatusUnauthorized, "unauthorized")
 	}
 	c.Locals(ctxKey{}, currentSession)
+	return c.Next()
+}
+
+func (s *Server) requireAdmin(c fiber.Ctx) error {
+	if getSession(c).Role != proto.RoleAdmin {
+		return createAPIError(fiber.StatusForbidden, "admin only")
+	}
 	return c.Next()
 }
 

@@ -35,12 +35,18 @@ var allCommand = []command{
 	{"invite", "<email> [-r role]", "invite someone (admin only)", runInvite},
 	{"devices", "", "list your signed-in devices", runListAllDevice},
 	{"revoke-device", "<id>", "sign out a device", runRevokeDevice},
+	{"recovery-setup", "", "create the recovery key and wrap your vaults to it (admin only)", runRecoverySetup},
+	{"recovery-enable", "", "make your vaults recoverable by the admin", runRecoveryEnable},
+	{"recovery-start", "<email>", "create a recovery link for someone (admin only)", runRecoveryStart},
+	{"recover", "<recovery-link>", "choose a new master password and Secret Key", runRecover},
+	{"recovery-list", "", "list pending recoveries (admin only)", runListAllPendingRecovery},
+	{"recovery-complete", "<email>", "give someone their vaults back after recovery (admin only)", runRecoveryComplete},
 }
 
 func printUsage() {
 	fmt.Fprintln(os.Stderr, "usage: hisar <command> [arguments]\n\ncommands:")
 	for _, command := range allCommand {
-		fmt.Fprintf(os.Stderr, "  %-14s %-32s %s\n", command.name, command.argumentUsage, command.summary)
+		fmt.Fprintf(os.Stderr, "  %-18s %-32s %s\n", command.name, command.argumentUsage, command.summary)
 	}
 }
 
