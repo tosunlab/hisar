@@ -22,7 +22,7 @@ import (
 
 const historyRetention = 90 * 24 * time.Hour
 
-func usage() {
+func printUsage() {
 	fmt.Fprint(os.Stderr, `usage: hisar-server <command>
 
 commands:
@@ -66,7 +66,7 @@ func main() {
 	case "migrate":
 		err = migrate(ctx, allArg)
 	default:
-		usage()
+		printUsage()
 		os.Exit(2)
 	}
 	if err != nil {
@@ -93,12 +93,12 @@ func setup(ctx context.Context) (*store.Store, *api.Server, error) {
 			log.Printf("applied migration %s", result.Source.Path)
 		}
 	}
-	secrets, err := api.LoadOrCreateSecrets(getEnv("HISAR_SECRETS_FILE", "hisar-secrets.json"))
+	secrets, err := api.LoadOrCreateAllSecret(getEnv("HISAR_SECRETS_FILE", "hisar-secrets.json"))
 	if err != nil {
 		database.Close()
 		return nil, nil, fmt.Errorf("secrets: %w", err)
 	}
-	server, err := api.New(database, secrets, api.Config{
+	server, err := api.CreateServer(database, secrets, api.Config{
 		PublicURL:  getEnv("HISAR_PUBLIC_URL", "https://tryhisar.com"),
 		TrustProxy: getEnv("HISAR_TRUST_PROXY", "false") == "true",
 	})
@@ -110,9 +110,9 @@ func setup(ctx context.Context) (*store.Store, *api.Server, error) {
 }
 
 func serve(ctx context.Context, allArg []string) error {
-	flags := flag.NewFlagSet("serve", flag.ExitOnError)
-	addr := flags.String("addr", getEnv("HISAR_ADDR", ":8080"), "listen address")
-	flags.Parse(allArg)
+	flagSet := flag.NewFlagSet("serve", flag.ExitOnError)
+	address := flagSet.String("addr", getEnv("HISAR_ADDR", ":8080"), "listen address")
+	flagSet.Parse(allArg)
 
 	database, server, err := setup(ctx)
 	if err != nil {
@@ -122,9 +122,9 @@ func serve(ctx context.Context, allArg []string) error {
 
 	go pruneHistory(ctx, database)
 
-	app := server.App()
-	log.Printf("hisar-server listening on %s", *addr)
-	return app.Listen(*addr, fiber.ListenConfig{
+	app := server.CreateApp()
+	log.Printf("hisar-server listening on %s", *address)
+	return app.Listen(*address, fiber.ListenConfig{
 		DisableStartupMessage: true,
 		GracefulContext:       ctx,
 		ShutdownTimeout:       10 * time.Second,
@@ -149,10 +149,10 @@ func pruneHistory(ctx context.Context, database *store.Store) {
 }
 
 func invite(ctx context.Context, allArg []string) error {
-	flags := flag.NewFlagSet("invite", flag.ExitOnError)
-	email := flags.String("email", "", "email address of the invitee")
-	role := flags.String("role", "", "admin or member")
-	flags.Parse(allArg)
+	flagSet := flag.NewFlagSet("invite", flag.ExitOnError)
+	email := flagSet.String("email", "", "email address of the invitee")
+	role := flagSet.String("role", "", "admin or member")
+	flagSet.Parse(allArg)
 
 	database, server, err := setup(ctx)
 	if err != nil {
@@ -160,7 +160,7 @@ func invite(ctx context.Context, allArg []string) error {
 	}
 	defer database.Close()
 
-	allAccount, err := database.ListAccounts(ctx)
+	allAccount, err := database.ListAllAccount(ctx)
 	if err != nil {
 		return err
 	}

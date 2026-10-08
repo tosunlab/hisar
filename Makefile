@@ -1,7 +1,7 @@
 MODULES := core server cli
 CLI_TARGETS := linux/amd64 linux/arm64 darwin/arm64 darwin/amd64 windows/amd64
 
-.PHONY: build build-cli-all test vet smoke docker
+.PHONY: build build-cli-all test vet test-end-to-end docker
 
 build:
 	go build -o bin/hisar-server ./server/cmd/hisar-server
@@ -20,8 +20,8 @@ test:
 vet:
 	@for m in $(MODULES); do (cd $$m && go vet ./...) || exit 1; done
 
-smoke: build
-	./scripts/smoke.sh
+test-end-to-end: build
+	./scripts/test-end-to-end.sh
 
 docker:
 	docker build -f deploy/Dockerfile -t hisar-server:dev .

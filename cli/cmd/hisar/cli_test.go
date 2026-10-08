@@ -13,15 +13,15 @@ import (
 )
 
 func TestParseInterspersedFlags(t *testing.T) {
-	fs := flag.NewFlagSet("get", flag.ContinueOnError)
-	v := fs.String("v", "Personal", "")
-	f := fs.String("f", "", "")
-	pos, err := parse(fs, []string{"netflix", "-f", "password", "-v", "Family"})
+	flags := flag.NewFlagSet("get", flag.ContinueOnError)
+	vaultName := flags.String("v", "Personal", "")
+	fieldName := flags.String("f", "", "")
+	allPositional, err := parse(flags, []string{"netflix", "-f", "password", "-v", "Family"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !reflect.DeepEqual(pos, []string{"netflix"}) || *v != "Family" || *f != "password" {
-		t.Errorf("pos=%v v=%q f=%q", pos, *v, *f)
+	if !reflect.DeepEqual(allPositional, []string{"netflix"}) || *vaultName != "Family" || *fieldName != "password" {
+		t.Errorf("pos=%v v=%q f=%q", allPositional, *vaultName, *fieldName)
 	}
 }
 
@@ -30,48 +30,50 @@ func TestParseInvite(t *testing.T) {
 	if err != nil || server != "https://tryhisar.com" || token != "abc_DEF-123" {
 		t.Errorf("got %q %q %v", server, token, err)
 	}
-	for _, bad := range []string{"", "tryhisar.com/invite/x", "https://tryhisar.com/invite/", "https://tryhisar.com/other/x", "ftp://h/invite/x", "https://h/invite/a/b"} {
-		if _, _, err := parseInvite(bad); err == nil {
-			t.Errorf("%q accepted", bad)
+	allBad := []string{"", "tryhisar.com/invite/x", "https://tryhisar.com/invite/", "https://tryhisar.com/other/x", "ftp://h/invite/x", "https://h/invite/a/b"}
+	for _, badLink := range allBad {
+		if _, _, err := parseInvite(badLink); err == nil {
+			t.Errorf("%q accepted", badLink)
 		}
 	}
 }
 
 func TestFindItem(t *testing.T) {
-	items := []item.Item{
+	allItem := []item.Item{
 		{ID: "1", Overview: item.Overview{Title: "GitHub"}},
 		{ID: "2", Overview: item.Overview{Title: "GitHub Enterprise"}},
 		{ID: "3", Overview: item.Overview{Title: "Netflix"}},
 	}
-	cases := map[string]string{"github": "1", "3": "3", "net": "3", "enterprise": "2"}
-	for q, want := range cases {
-		it, err := findItem(items, q)
-		if err != nil || it.ID != want {
-			t.Errorf("%q: %v %v", q, it, err)
+	allCase := map[string]string{"github": "1", "3": "3", "net": "3", "enterprise": "2"}
+	for query, want := range allCase {
+		vaultItem, err := findItem(allItem, query)
+		if err != nil || vaultItem.ID != want {
+			t.Errorf("%q: %v %v", query, vaultItem, err)
 		}
 	}
-	if _, err := findItem(items, "git"); err == nil || !strings.Contains(err.Error(), "matches 2 items") {
+	if _, err := findItem(allItem, "git"); err == nil || !strings.Contains(err.Error(), "matches 2 items") {
 		t.Errorf("ambiguous: %v", err)
 	}
-	if _, err := findItem(items, "bank"); err == nil {
+	if _, err := findItem(allItem, "bank"); err == nil {
 		t.Error("missing item found")
 	}
 }
 
-func TestFieldValue(t *testing.T) {
-	it := &item.Item{
+func TestGetFieldValue(t *testing.T) {
+	vaultItem := &item.Item{
 		Overview: item.Overview{Title: "T", Username: "u", URLs: []string{"https://a", "https://b"}},
 		Details:  item.Details{Password: "p", Notes: "n", Fields: []item.Field{{Name: "PIN", Value: "1234"}}},
 	}
-	for name, want := range map[string]string{"title": "T", "Username": "u", "url": "https://a", "password": "p", "notes": "n", "pin": "1234"} {
-		if got, ok := fieldValue(it, name); !ok || got != want {
+	allCase := map[string]string{"title": "T", "Username": "u", "url": "https://a", "password": "p", "notes": "n", "pin": "1234"}
+	for name, want := range allCase {
+		if got, ok := getFieldValue(vaultItem, name); !ok || got != want {
 			t.Errorf("%s = %q, %v", name, got, ok)
 		}
 	}
-	if _, ok := fieldValue(it, "missing"); ok {
+	if _, ok := getFieldValue(vaultItem, "missing"); ok {
 		t.Error("missing field found")
 	}
-	if _, ok := fieldValue(&item.Item{}, "url"); ok {
+	if _, ok := getFieldValue(&item.Item{}, "url"); ok {
 		t.Error("url found on item without URLs")
 	}
 }
@@ -80,43 +82,43 @@ func TestStateRoundtrip(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sub", "state.json")
 	t.Setenv("HISAR_STATE", path)
 
-	st, err := loadState()
+	currentState, err := loadState()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := st.requireLogin(); err == nil {
+	if err := currentState.requireLogin(); err == nil {
 		t.Error("empty state counts as logged in")
 	}
-	st.Server, st.AccountID, st.Token = "https://x", "ABC123", "tok"
-	st.SetSeq("v1", 42)
-	st.Pins["B"] = []byte{1, 2}
-	if err := st.save(); err != nil {
+	currentState.Server, currentState.AccountID, currentState.Token = "https://x", "ABC123", "tok"
+	currentState.SetSeq("v1", 42)
+	currentState.AllPin["B"] = []byte{1, 2}
+	if err := currentState.save(); err != nil {
 		t.Fatal(err)
 	}
-	fi, _ := os.Stat(path)
-	if fi.Mode().Perm() != 0o600 {
-		t.Errorf("state mode = %o", fi.Mode().Perm())
+	fileInfo, _ := os.Stat(path)
+	if fileInfo.Mode().Perm() != 0o600 {
+		t.Errorf("state mode = %o", fileInfo.Mode().Perm())
 	}
-	again, err := loadState()
+	reloadedState, err := loadState()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if again.Token != "tok" || again.Seq("v1") != 42 || again.Pins["B"][1] != 2 || again.requireLogin() != nil {
-		t.Errorf("reloaded state: %+v", again)
+	if reloadedState.Token != "tok" || reloadedState.GetSeq("v1") != 42 || reloadedState.AllPin["B"][1] != 2 || reloadedState.requireLogin() != nil {
+		t.Errorf("reloaded state: %+v", reloadedState)
 	}
 }
 
 func TestSecretKeyFromEnv(t *testing.T) {
-	sk, _ := crypt.NewSecretKey("ABC123")
-	t.Setenv("HISAR_SECRET_KEY", strings.ToLower(sk.Encode()))
+	secretKey, _ := crypt.GenerateSecretKey("ABC123")
+	t.Setenv("HISAR_SECRET_KEY", strings.ToLower(secretKey.Encode()))
 	got, err := loadSecretKey("ABC123")
-	if err != nil || got != sk {
+	if err != nil || got != secretKey {
 		t.Fatalf("loadSecretKey: %v", err)
 	}
 	if _, err := loadSecretKey("XYZ789"); err == nil {
 		t.Error("secret key for other account accepted")
 	}
-	if err := storeSecretKey(sk); err != nil {
+	if err := storeSecretKey(secretKey); err != nil {
 		t.Errorf("store with env override should be a no-op: %v", err)
 	}
 }

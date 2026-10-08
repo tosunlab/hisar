@@ -24,7 +24,7 @@ import (
 var testDevice = proto.DeviceInfo{Name: "test", Platform: "go"}
 
 // Requires HISAR_TEST_DATABASE_URL pointing at a disposable database: the public schema is dropped.
-func setup(t *testing.T) (baseURL string, server *Server, databaseURL string) {
+func setupServer(t *testing.T) (baseURL string, server *Server, databaseURL string) {
 	t.Helper()
 	databaseURL = os.Getenv("HISAR_TEST_DATABASE_URL")
 	if databaseURL == "" {
@@ -48,13 +48,13 @@ func setup(t *testing.T) (baseURL string, server *Server, databaseURL string) {
 	if _, err := database.Migrate(ctx); err != nil {
 		t.Fatal(err)
 	}
-	server, err = New(database, newSecrets(), Config{PublicURL: "https://hisar.test"})
+	server, err = CreateServer(database, generateAllSecret(), Config{PublicURL: "https://hisar.test"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	server.limiter = newIPLimiter(rate.Inf, 1)
+	server.limiter = createIPLimiter(rate.Inf, 1)
 
-	app := server.App()
+	app := server.CreateApp()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -66,10 +66,10 @@ func setup(t *testing.T) (baseURL string, server *Server, databaseURL string) {
 
 type seqStore map[string]int64
 
-func (store seqStore) Seq(vaultID string) int64          { return store[vaultID] }
+func (store seqStore) GetSeq(vaultID string) int64      { return store[vaultID] }
 func (store seqStore) SetSeq(vaultID string, seq int64) { store[vaultID] = seq }
 
-func must[T any](t *testing.T) func(T, error) T {
+func requireValue[T any](t *testing.T) func(T, error) T {
 	return func(value T, err error) T {
 		t.Helper()
 		if err != nil {
@@ -80,26 +80,26 @@ func must[T any](t *testing.T) func(T, error) T {
 }
 
 func TestEndToEnd(t *testing.T) {
-	baseURL, server, databaseURL := setup(t)
+	baseURL, server, databaseURL := setupServer(t)
 	ctx := context.Background()
 	alicePassword := []byte("alice password")
 
-	aliceInvite := must[*proto.InviteResponse](t)(server.CreateInvite(ctx, "alice@example.com", proto.RoleAdmin, nil))
-	alice, aliceSecretKey, err := session.Signup(ctx, client.New(baseURL), aliceInvite.Token, "Alice@Example.com", "Alice", alicePassword, testDevice)
+	aliceInvite := requireValue[*proto.InviteResponse](t)(server.CreateInvite(ctx, "alice@example.com", proto.RoleAdmin, nil))
+	alice, aliceSecretKey, err := session.SignUp(ctx, client.Create(baseURL), aliceInvite.Token, "Alice@Example.com", "Alice", alicePassword, testDevice)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := session.Signup(ctx, client.New(baseURL), aliceInvite.Token, "alice@example.com", "Again", alicePassword, testDevice); !client.IsStatus(err, http.StatusForbidden) {
+	if _, _, err := session.SignUp(ctx, client.Create(baseURL), aliceInvite.Token, "alice@example.com", "Again", alicePassword, testDevice); !client.IsStatus(err, http.StatusForbidden) {
 		t.Fatalf("invite reuse: %v", err)
 	}
 
-	allVault := must[[]session.Vault](t)(alice.Vaults(ctx))
+	allVault := requireValue[[]session.Vault](t)(alice.ListAllVault(ctx))
 	if len(allVault) != 1 || allVault[0].Name != "Personal" || allVault[0].Type != proto.VaultPersonal {
 		t.Fatalf("vaults after signup: %+v", allVault)
 	}
 
 	t.Run("login", func(t *testing.T) {
-		otherSecretKey, _ := crypt.NewSecretKey(aliceSecretKey.AccountID)
+		otherSecretKey, _ := crypt.GenerateSecretKey(aliceSecretKey.AccountID)
 		allCase := map[string]struct {
 			email     string
 			password  []byte
@@ -110,33 +110,33 @@ func TestEndToEnd(t *testing.T) {
 			"unknown email":    {"nobody@example.com", alicePassword, aliceSecretKey},
 		}
 		for name, testCase := range allCase {
-			if _, err := session.Login(ctx, client.New(baseURL), testCase.email, testCase.password, testCase.secretKey, testDevice); !errors.Is(err, session.ErrBadCredentials) {
+			if _, err := session.LogIn(ctx, client.Create(baseURL), testCase.email, testCase.password, testCase.secretKey, testDevice); !errors.Is(err, session.ErrBadCredentials) {
 				t.Errorf("%s: %v", name, err)
 			}
 		}
-		loggedIn := must[*session.Session](t)(session.Login(ctx, client.New(baseURL), "alice@example.com", alicePassword, aliceSecretKey, testDevice))
+		loggedIn := requireValue[*session.Session](t)(session.LogIn(ctx, client.Create(baseURL), "alice@example.com", alicePassword, aliceSecretKey, testDevice))
 		if loggedIn.Role != proto.RoleAdmin {
 			t.Errorf("role = %q", loggedIn.Role)
 		}
-		tokenClient := client.New(baseURL)
+		tokenClient := client.Create(baseURL)
 		tokenClient.Token = loggedIn.Client.Token
-		must[*session.Session](t)(session.Unlock(ctx, tokenClient, alicePassword, aliceSecretKey))
+		requireValue[*session.Session](t)(session.Unlock(ctx, tokenClient, alicePassword, aliceSecretKey))
 		if _, err := session.Unlock(ctx, tokenClient, []byte("nope"), aliceSecretKey); !errors.Is(err, session.ErrBadCredentials) {
 			t.Errorf("unlock wrong password: %v", err)
 		}
 	})
 
 	t.Run("prelogin hides unknown accounts", func(t *testing.T) {
-		anonymous := client.New(baseURL)
-		first := must[*proto.PreloginResponse](t)(anonymous.Prelogin(ctx, "ghost@example.com"))
-		second := must[*proto.PreloginResponse](t)(anonymous.Prelogin(ctx, "ghost@example.com"))
+		anonymous := client.Create(baseURL)
+		first := requireValue[*proto.PreloginResponse](t)(anonymous.FetchPrelogin(ctx, "ghost@example.com"))
+		second := requireValue[*proto.PreloginResponse](t)(anonymous.FetchPrelogin(ctx, "ghost@example.com"))
 		if len(first.Salt) != crypt.SaltSize || !bytes.Equal(first.Salt, second.Salt) || first.Argon2 != crypt.DefaultArgon2Params {
 			t.Errorf("fake prelogin not stable: %+v %+v", first, second)
 		}
 	})
 
-	bobInvite := must[*proto.InviteResponse](t)(alice.Client.Invite(ctx, &proto.InviteRequest{Email: "bob@example.com", Role: proto.RoleMember}))
-	bob, _, err := session.Signup(ctx, client.New(baseURL), bobInvite.Token, "bob@example.com", "Bob", []byte("bob password"), testDevice)
+	bobInvite := requireValue[*proto.InviteResponse](t)(alice.Client.Invite(ctx, &proto.InviteRequest{Email: "bob@example.com", Role: proto.RoleMember}))
+	bob, _, err := session.SignUp(ctx, client.Create(baseURL), bobInvite.Token, "bob@example.com", "Bob", []byte("bob password"), testDevice)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,20 +144,20 @@ func TestEndToEnd(t *testing.T) {
 		t.Errorf("member invite: %v", err)
 	}
 
-	family := must[*session.Vault](t)(alice.CreateVault(ctx, "Family", proto.VaultShared))
+	family := requireValue[*session.Vault](t)(alice.CreateVault(ctx, "Family", proto.VaultShared))
 	netflix := &item.Item{
 		Overview: item.Overview{Title: "Netflix", Username: "family@example.com", URLs: []string{"https://netflix.com"}},
 		Details:  item.Details{Password: "hunter2"},
 	}
-	must[*item.Item](t)(alice.SaveItem(ctx, family, netflix))
+	requireValue[*item.Item](t)(alice.SaveItem(ctx, family, netflix))
 
-	bobMember := must[*proto.Member](t)(alice.VerifiedMember(ctx, "bob@example.com"))
-	if err := alice.Share(ctx, family, bobMember, proto.VaultEditor); err != nil {
+	bobMember := requireValue[*proto.Member](t)(alice.GetVerifiedMember(ctx, "bob@example.com"))
+	if err := alice.ShareVault(ctx, family, bobMember, proto.VaultEditor); err != nil {
 		t.Fatal(err)
 	}
 
-	bobFamily := must[*session.Vault](t)(bob.FindVault(ctx, "family"))
-	allBobItem := must[[]item.Item](t)(bob.Items(ctx, bobFamily))
+	bobFamily := requireValue[*session.Vault](t)(bob.FindVault(ctx, "family"))
+	allBobItem := requireValue[[]item.Item](t)(bob.ListAllItem(ctx, bobFamily))
 	if len(allBobItem) != 1 || allBobItem[0].Details.Password != "hunter2" {
 		t.Fatalf("bob items: %+v", allBobItem)
 	}
@@ -165,7 +165,7 @@ func TestEndToEnd(t *testing.T) {
 	t.Run("conflict", func(t *testing.T) {
 		staleCopy := allBobItem[0]
 		netflix.Details.Password = "alice-new"
-		must[*item.Item](t)(alice.SaveItem(ctx, family, netflix))
+		requireValue[*item.Item](t)(alice.SaveItem(ctx, family, netflix))
 
 		staleCopy.Details.Password = "bob-new"
 		current, err := bob.SaveItem(ctx, bobFamily, &staleCopy)
@@ -173,26 +173,26 @@ func TestEndToEnd(t *testing.T) {
 			t.Fatalf("conflict: %v %+v", err, current)
 		}
 		baseRevision := netflix.Revision
-		must[*item.Item](t)(alice.SaveItem(ctx, family, &item.Item{ID: netflix.ID, Revision: baseRevision, Overview: netflix.Overview, Details: netflix.Details}))
+		requireValue[*item.Item](t)(alice.SaveItem(ctx, family, &item.Item{ID: netflix.ID, Revision: baseRevision, Overview: netflix.Overview, Details: netflix.Details}))
 		if _, err := alice.SaveItem(ctx, family, &item.Item{ID: netflix.ID, Revision: baseRevision, Overview: netflix.Overview}); !errors.Is(err, session.ErrConflict) {
 			t.Errorf("stale base accepted: %v", err)
 		}
 	})
 
 	t.Run("delete and history", func(t *testing.T) {
-		allItem := must[[]item.Item](t)(bob.Items(ctx, bobFamily))
-		must[*item.Item](t)(bob.DeleteItem(ctx, bobFamily, &allItem[0]))
-		if allRemaining := must[[]item.Item](t)(alice.Items(ctx, family)); len(allRemaining) != 0 {
+		allItem := requireValue[[]item.Item](t)(bob.ListAllItem(ctx, bobFamily))
+		requireValue[*item.Item](t)(bob.DeleteItem(ctx, bobFamily, &allItem[0]))
+		if allRemaining := requireValue[[]item.Item](t)(alice.ListAllItem(ctx, family)); len(allRemaining) != 0 {
 			t.Errorf("items after delete: %+v", allRemaining)
 		}
-		allHistory := must[[]proto.Item](t)(alice.Client.ItemHistory(ctx, family.ID, netflix.ID))
+		allHistory := requireValue[[]proto.Item](t)(alice.Client.GetItemHistory(ctx, family.ID, netflix.ID))
 		if len(allHistory) != 4 || !allHistory[0].Deleted {
 			t.Errorf("history: %d entries", len(allHistory))
 		}
 	})
 
 	t.Run("reader cannot write", func(t *testing.T) {
-		if err := alice.Share(ctx, family, bobMember, proto.VaultReader); err != nil {
+		if err := alice.ShareVault(ctx, family, bobMember, proto.VaultReader); err != nil {
 			t.Fatal(err)
 		}
 		_, err := bob.SaveItem(ctx, bobFamily, &item.Item{Overview: item.Overview{Title: "x"}})
@@ -202,8 +202,8 @@ func TestEndToEnd(t *testing.T) {
 	})
 
 	t.Run("non-member gets 404", func(t *testing.T) {
-		bobPersonal := must[*session.Vault](t)(bob.FindVault(ctx, "Personal"))
-		if _, err := alice.Client.Changes(ctx, bobPersonal.ID, 0, 0); !client.IsStatus(err, http.StatusNotFound) {
+		bobPersonal := requireValue[*session.Vault](t)(bob.FindVault(ctx, "Personal"))
+		if _, err := alice.Client.ListAllChange(ctx, bobPersonal.ID, 0, 0); !client.IsStatus(err, http.StatusNotFound) {
 			t.Errorf("changes on foreign vault: %v", err)
 		}
 		if err := alice.Client.SetAccess(ctx, bobPersonal.ID, alice.AccountID, &proto.SetAccessRequest{WrappedKey: []byte{1}, Role: proto.VaultOwner}); !client.IsStatus(err, http.StatusNotFound) {
@@ -212,29 +212,29 @@ func TestEndToEnd(t *testing.T) {
 	})
 
 	t.Run("rollback detected", func(t *testing.T) {
-		alice.Seqs = seqStore{family.ID: 1 << 40}
-		defer func() { alice.Seqs = nil }()
-		if _, err := alice.Items(ctx, family); !errors.Is(err, session.ErrRollback) {
+		alice.SeqStore = seqStore{family.ID: 1 << 40}
+		defer func() { alice.SeqStore = nil }()
+		if _, err := alice.ListAllItem(ctx, family); !errors.Is(err, session.ErrRollback) {
 			t.Errorf("rollback: %v", err)
 		}
 	})
 
 	t.Run("tampered ciphertext rejected", func(t *testing.T) {
 		bank := &item.Item{Overview: item.Overview{Title: "Bank"}, Details: item.Details{Password: "secret"}}
-		must[*item.Item](t)(alice.SaveItem(ctx, family, bank))
-		connection := must[*pgx.Conn](t)(pgx.Connect(ctx, databaseURL))
+		requireValue[*item.Item](t)(alice.SaveItem(ctx, family, bank))
+		connection := requireValue[*pgx.Conn](t)(pgx.Connect(ctx, databaseURL))
 		defer connection.Close(ctx)
 		if _, err := connection.Exec(ctx, `UPDATE items SET details = set_byte(details, 30, get_byte(details, 30) # 1) WHERE id = $1`, bank.ID); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := alice.Items(ctx, family); !errors.Is(err, crypt.ErrDecrypt) {
+		if _, err := alice.ListAllItem(ctx, family); !errors.Is(err, crypt.ErrDecrypt) {
 			t.Errorf("tampered item: %v", err)
 		}
 	})
 
 	t.Run("revoked device loses access", func(t *testing.T) {
-		laptop := must[*session.Session](t)(session.Login(ctx, client.New(baseURL), "alice@example.com", alicePassword, aliceSecretKey, proto.DeviceInfo{Name: "laptop", Platform: "go"}))
-		allDevice := must[[]proto.Device](t)(alice.Client.Devices(ctx))
+		laptop := requireValue[*session.Session](t)(session.LogIn(ctx, client.Create(baseURL), "alice@example.com", alicePassword, aliceSecretKey, proto.DeviceInfo{Name: "laptop", Platform: "go"}))
+		allDevice := requireValue[[]proto.Device](t)(alice.Client.ListAllDevice(ctx))
 		var laptopID string
 		for _, device := range allDevice {
 			if device.Name == "laptop" {
@@ -244,7 +244,7 @@ func TestEndToEnd(t *testing.T) {
 		if err := alice.Client.RevokeDevice(ctx, laptopID); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := laptop.Client.Vaults(ctx); !client.IsStatus(err, http.StatusUnauthorized) {
+		if _, err := laptop.Client.ListAllVault(ctx); !client.IsStatus(err, http.StatusUnauthorized) {
 			t.Errorf("revoked device: %v", err)
 		}
 	})

@@ -11,37 +11,37 @@ import (
 	"golang.org/x/term"
 )
 
-var stdin = bufio.NewReader(os.Stdin)
+var stdinReader = bufio.NewReader(os.Stdin)
 
 func readLine() (string, error) {
-	line, err := stdin.ReadString('\n')
+	line, err := stdinReader.ReadString('\n')
 	if err != nil && line == "" {
 		return "", err
 	}
 	return strings.TrimRight(line, "\r\n"), nil
 }
 
-func prompt(label, def string) (string, error) {
-	if def != "" {
-		fmt.Fprintf(os.Stderr, "%s [%s]: ", label, def)
+func prompt(label, defaultValue string) (string, error) {
+	if defaultValue != "" {
+		fmt.Fprintf(os.Stderr, "%s [%s]: ", label, defaultValue)
 	} else {
 		fmt.Fprintf(os.Stderr, "%s: ", label)
 	}
-	v, err := readLine()
+	answer, err := readLine()
 	if err != nil {
 		return "", err
 	}
-	if v = strings.TrimSpace(v); v == "" {
-		return def, nil
+	if answer = strings.TrimSpace(answer); answer == "" {
+		return defaultValue, nil
 	}
-	return v, nil
+	return answer, nil
 }
 
-func promptRequired(label, def string) (string, error) {
+func promptRequired(label, defaultValue string) (string, error) {
 	for {
-		v, err := prompt(label, def)
-		if err != nil || v != "" {
-			return v, err
+		answer, err := prompt(label, defaultValue)
+		if err != nil || answer != "" {
+			return answer, err
 		}
 		fmt.Fprintf(os.Stderr, "%s is required\n", label)
 	}
@@ -50,11 +50,11 @@ func promptRequired(label, def string) (string, error) {
 // promptSecret reads without echo on a terminal, or a plain line when stdin is piped.
 func promptSecret(label string) ([]byte, error) {
 	fmt.Fprintf(os.Stderr, "%s: ", label)
-	fd := int(os.Stdin.Fd())
-	if term.IsTerminal(fd) {
-		b, err := term.ReadPassword(fd)
+	stdinFD := int(os.Stdin.Fd())
+	if term.IsTerminal(stdinFD) {
+		secret, err := term.ReadPassword(stdinFD)
 		fmt.Fprintln(os.Stderr)
-		return b, err
+		return secret, err
 	}
 	line, err := readLine()
 	fmt.Fprintln(os.Stderr)
@@ -63,44 +63,44 @@ func promptSecret(label string) ([]byte, error) {
 
 func promptNewPassword() ([]byte, error) {
 	for {
-		pw, err := promptSecret("Master password")
+		password, err := promptSecret("Master password")
 		if err != nil {
 			return nil, err
 		}
-		if len(pw) < 10 {
+		if len(password) < 10 {
 			fmt.Fprintln(os.Stderr, "Use at least 10 characters.")
 			continue
 		}
-		again, err := promptSecret("Repeat master password")
+		repeatedPassword, err := promptSecret("Repeat master password")
 		if err != nil {
 			return nil, err
 		}
-		if string(pw) == string(again) {
-			clear(again)
-			return pw, nil
+		if string(password) == string(repeatedPassword) {
+			clear(repeatedPassword)
+			return password, nil
 		}
 		fmt.Fprintln(os.Stderr, "Passwords do not match.")
 	}
 }
 
 func confirm(label string) (bool, error) {
-	v, err := prompt(label+" (y/N)", "")
-	return strings.EqualFold(v, "y") || strings.EqualFold(v, "yes"), err
+	answer, err := prompt(label+" (y/N)", "")
+	return strings.EqualFold(answer, "y") || strings.EqualFold(answer, "yes"), err
 }
 
 // parse allows flags before and after positional arguments.
-func parse(fs *flag.FlagSet, args []string) ([]string, error) {
-	var pos []string
+func parse(flags *flag.FlagSet, allArg []string) ([]string, error) {
+	var allPositional []string
 	for {
-		if err := fs.Parse(args); err != nil {
+		if err := flags.Parse(allArg); err != nil {
 			return nil, err
 		}
-		args = fs.Args()
-		if len(args) == 0 {
-			return pos, nil
+		allArg = flags.Args()
+		if len(allArg) == 0 {
+			return allPositional, nil
 		}
-		pos = append(pos, args[0])
-		args = args[1:]
+		allPositional = append(allPositional, allArg[0])
+		allArg = allArg[1:]
 	}
 }
 

@@ -1,4 +1,4 @@
-name: ci
+name: CI
 
 on:
   push:
@@ -10,7 +10,7 @@ env:
 
 jobs:
   go:
-    name: vet, test, cross-build
+    name: "Go: format, vet, unit and database tests, cross-compile CLI"
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -25,21 +25,23 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.work
-      - name: gofmt
+      - name: Check formatting (gofmt)
         run: test -z "$(gofmt -l core server cli)" || (gofmt -l core server cli; exit 1)
-      - run: make vet
-      - name: Test (database tests must not be skipped)
+      - name: Vet all modules
+        run: make vet
+      - name: Run unit and database tests (fails if any test is skipped)
         run: |
           make test TESTFLAGS=-v 2>&1 | tee test.log
           ! grep -- "--- SKIP" test.log
         env:
           HISAR_TEST_DATABASE_URL: ${{ env.PG_URL }}
-      - run: make build
-      - name: Cross-compile CLI
+      - name: Build server and CLI
+        run: make build
+      - name: Cross-compile CLI for Linux, macOS and Windows
         run: make build-cli-all
 
-  smoke:
-    name: CLI + server smoke test
+  end-to-end:
+    name: "End-to-end: built server and CLI, two users against Postgres"
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -54,12 +56,13 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.work
-      - run: make smoke
+      - name: "Sign up, share a vault, edit, delete, log in on a second device"
+        run: make test-end-to-end
         env:
           HISAR_DATABASE_URL: ${{ env.PG_URL }}
 
   docker:
-    name: server Docker image
+    name: "Docker: build server image and boot it against Postgres"
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -71,16 +74,22 @@ jobs:
         options: --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
-      - name: Build image
+      - name: Build server image
         run: make docker
-      - name: Run image, check health and invite command
+      - name: Start container and wait for /healthz
         run: |
           docker run -d --name hisar --network host \
             -e HISAR_DATABASE_URL="$PG_URL" -e HISAR_ADDR=127.0.0.1:8080 \
             hisar-server:dev
-          if ! curl -sf --retry 20 --retry-connrefused --retry-delay 1 http://127.0.0.1:8080/healthz; then
+          if ! curl -sf --retry 20 --retry-all-errors --retry-delay 1 http://127.0.0.1:8080/healthz; then
             docker logs hisar
             exit 1
           fi
+      - name: Check migrations are applied and invite command works in the container
+        run: |
+          docker exec hisar hisar-server migrate status | tee status.log
+          ! grep -q pending status.log
           docker exec hisar hisar-server invite --email ci@example.com --role admin | grep -q "/invite/"
-          docker logs hisar
+      - name: Show container logs
+        if: always()
+        run: docker logs hisar

@@ -13,98 +13,98 @@ import (
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
-func (s *Server) getAccount(c fiber.Ctx) error {
-	a, err := s.store.AccountByID(c.Context(), sessionOf(c).AccountID)
+func (s *Server) handleGetAccount(c fiber.Ctx) error {
+	account, err := s.store.GetAccountByID(c.Context(), getSession(c).AccountID)
 	if err != nil {
 		return err
 	}
-	var p crypt.Argon2Params
-	if err := json.Unmarshal(a.Argon2Params, &p); err != nil {
+	var argon2Params crypt.Argon2Params
+	if err := json.Unmarshal(account.Argon2Params, &argon2Params); err != nil {
 		return err
 	}
 	return c.JSON(proto.Account{
-		AccountID:  a.ID,
-		Email:      a.Email,
-		Name:       a.Name,
-		Role:       a.Role,
-		Argon2:     p,
-		Salt:       a.Salt,
-		EncKeyset:  a.EncKeyset,
-		PublicKeys: publicKeys(a),
+		AccountID:  account.ID,
+		Email:      account.Email,
+		Name:       account.Name,
+		Role:       account.Role,
+		Argon2:     argon2Params,
+		Salt:       account.Salt,
+		EncKeyset:  account.EncKeyset,
+		PublicKeys: getAllPublicKey(account),
 	})
 }
 
-func publicKeys(a *store.Account) crypt.PublicKeys {
-	return crypt.PublicKeys{KEM: a.KEMPub, Sign: a.SignPub, KEMSig: a.KEMSig}
+func getAllPublicKey(account *store.Account) crypt.PublicKeys {
+	return crypt.PublicKeys{KEM: account.KEMPub, Sign: account.SignPub, KEMSig: account.KEMSig}
 }
 
-func (s *Server) listMembers(c fiber.Ctx) error {
-	accts, err := s.store.ListAccounts(c.Context())
+func (s *Server) handleListAllMember(c fiber.Ctx) error {
+	allAccount, err := s.store.ListAllAccount(c.Context())
 	if err != nil {
 		return err
 	}
-	out := make([]proto.Member, 0, len(accts))
-	for i := range accts {
-		a := &accts[i]
-		out = append(out, proto.Member{AccountID: a.ID, Email: a.Email, Name: a.Name, Role: a.Role, PublicKeys: publicKeys(a)})
+	allMember := make([]proto.Member, 0, len(allAccount))
+	for index := range allAccount {
+		account := &allAccount[index]
+		allMember = append(allMember, proto.Member{AccountID: account.ID, Email: account.Email, Name: account.Name, Role: account.Role, PublicKeys: getAllPublicKey(account)})
 	}
-	return c.JSON(out)
+	return c.JSON(allMember)
 }
 
-func (s *Server) createInvite(c fiber.Ctx) error {
-	sess := sessionOf(c)
-	if sess.Role != proto.RoleAdmin {
-		return apiError(fiber.StatusForbidden, "admin only")
+func (s *Server) handleCreateInvite(c fiber.Ctx) error {
+	currentSession := getSession(c)
+	if currentSession.Role != proto.RoleAdmin {
+		return createAPIError(fiber.StatusForbidden, "admin only")
 	}
-	var req proto.InviteRequest
-	if err := decode(c, &req); err != nil {
+	var request proto.InviteRequest
+	if err := decodeBody(c, &request); err != nil {
 		return err
 	}
-	email := normalizeEmail(req.Email)
-	if !strings.Contains(email, "@") || (req.Role != proto.RoleAdmin && req.Role != proto.RoleMember) {
-		return apiError(fiber.StatusBadRequest, "invalid invite")
+	email := normalizeEmail(request.Email)
+	if !strings.Contains(email, "@") || (request.Role != proto.RoleAdmin && request.Role != proto.RoleMember) {
+		return createAPIError(fiber.StatusBadRequest, "invalid invite")
 	}
-	resp, err := s.CreateInvite(c.Context(), email, req.Role, &sess.AccountID)
+	response, err := s.CreateInvite(c.Context(), email, request.Role, &currentSession.AccountID)
 	if err != nil {
 		return err
 	}
-	s.audit(c, sess.AccountID, sess.DeviceID, "invite", map[string]string{"email": email, "role": req.Role})
-	return c.JSON(resp)
+	s.recordAudit(c, currentSession.AccountID, currentSession.DeviceID, "invite", map[string]string{"email": email, "role": request.Role})
+	return c.JSON(response)
 }
 
 func (s *Server) CreateInvite(ctx context.Context, email, role string, createdBy *string) (*proto.InviteResponse, error) {
-	token := newToken()
-	if err := s.store.CreateInvite(ctx, hashToken(token), email, role, createdBy, s.cfg.InviteTTL); err != nil {
+	token := generateToken()
+	if err := s.store.CreateInvite(ctx, hashToken(token), email, role, createdBy, s.config.InviteTTL); err != nil {
 		return nil, err
 	}
-	return &proto.InviteResponse{Token: token, URL: strings.TrimRight(s.cfg.PublicURL, "/") + "/invite/" + token}, nil
+	return &proto.InviteResponse{Token: token, URL: strings.TrimRight(s.config.PublicURL, "/") + "/invite/" + token}, nil
 }
 
-func (s *Server) listDevices(c fiber.Ctx) error {
-	sess := sessionOf(c)
-	devs, err := s.store.ListDevices(c.Context(), sess.AccountID)
+func (s *Server) handleListAllDevice(c fiber.Ctx) error {
+	currentSession := getSession(c)
+	allStoredDevice, err := s.store.ListAllDevice(c.Context(), currentSession.AccountID)
 	if err != nil {
 		return err
 	}
-	out := make([]proto.Device, 0, len(devs))
-	for _, d := range devs {
-		out = append(out, proto.Device{ID: d.ID, Name: d.Name, Platform: d.Platform, CreatedAt: d.CreatedAt, LastSeenAt: d.LastSeenAt, Current: d.ID == sess.DeviceID})
+	allDevice := make([]proto.Device, 0, len(allStoredDevice))
+	for _, device := range allStoredDevice {
+		allDevice = append(allDevice, proto.Device{ID: device.ID, Name: device.Name, Platform: device.Platform, CreatedAt: device.CreatedAt, LastSeenAt: device.LastSeenAt, Current: device.ID == currentSession.DeviceID})
 	}
-	return c.JSON(out)
+	return c.JSON(allDevice)
 }
 
-func (s *Server) revokeDevice(c fiber.Ctx) error {
-	sess := sessionOf(c)
-	id := c.Params("id")
-	if !validUUID(id) {
+func (s *Server) handleRevokeDevice(c fiber.Ctx) error {
+	currentSession := getSession(c)
+	deviceID := c.Params("id")
+	if !isValidUUID(deviceID) {
 		return errNotFound
 	}
-	switch err := s.store.RevokeDevice(c.Context(), sess.AccountID, id); {
+	switch err := s.store.RevokeDevice(c.Context(), currentSession.AccountID, deviceID); {
 	case errors.Is(err, store.ErrNotFound):
 		return errNotFound
 	case err != nil:
 		return err
 	}
-	s.audit(c, sess.AccountID, sess.DeviceID, "device_revoked", map[string]string{"device": id})
+	s.recordAudit(c, currentSession.AccountID, currentSession.DeviceID, "device_revoked", map[string]string{"device": deviceID})
 	return c.SendStatus(fiber.StatusNoContent)
 }

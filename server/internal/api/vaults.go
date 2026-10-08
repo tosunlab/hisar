@@ -22,126 +22,126 @@ const (
 	maxLimit      = 1000
 )
 
-func validUUID(s string) bool {
-	_, err := uuid.Parse(s)
-	return err == nil && len(s) == 36
+func isValidUUID(value string) bool {
+	_, err := uuid.Parse(value)
+	return err == nil && len(value) == 36
 }
 
-func validVaultRole(r string) bool {
-	return r == proto.VaultOwner || r == proto.VaultEditor || r == proto.VaultReader
+func isValidVaultRole(role string) bool {
+	return role == proto.VaultOwner || role == proto.VaultEditor || role == proto.VaultReader
 }
 
-// vaultRole returns the caller's role; missing vaults and non-members both get 404.
-func (s *Server) vaultRole(c fiber.Ctx) (string, error) {
-	id := c.Params("vault")
-	if !validUUID(id) {
+// getVaultRole returns the caller's role; missing vaults and non-members both get 404.
+func (s *Server) getVaultRole(c fiber.Ctx) (string, error) {
+	vaultID := c.Params("vault")
+	if !isValidUUID(vaultID) {
 		return "", errNotFound
 	}
-	role, err := s.store.VaultRole(c.Context(), id, sessionOf(c).AccountID)
+	role, err := s.store.GetVaultRole(c.Context(), vaultID, getSession(c).AccountID)
 	if errors.Is(err, store.ErrNotFound) {
 		return "", errNotFound
 	}
 	return role, err
 }
 
-func (s *Server) listVaults(c fiber.Ctx) error {
-	vs, err := s.store.ListVaults(c.Context(), sessionOf(c).AccountID)
+func (s *Server) handleListAllVault(c fiber.Ctx) error {
+	allStoredVault, err := s.store.ListAllVault(c.Context(), getSession(c).AccountID)
 	if err != nil {
 		return err
 	}
-	out := make([]proto.Vault, 0, len(vs))
-	for _, v := range vs {
-		out = append(out, proto.Vault{ID: v.ID, Type: v.Type, EncName: v.EncName, Seq: v.Seq, Role: v.Role, WrappedKey: v.WrappedKey})
+	allVault := make([]proto.Vault, 0, len(allStoredVault))
+	for _, vault := range allStoredVault {
+		allVault = append(allVault, proto.Vault{ID: vault.ID, Type: vault.Type, EncName: vault.EncName, Seq: vault.Seq, Role: vault.Role, WrappedKey: vault.WrappedKey})
 	}
-	return c.JSON(out)
+	return c.JSON(allVault)
 }
 
-func (s *Server) createVault(c fiber.Ctx) error {
-	sess := sessionOf(c)
-	var req proto.CreateVaultRequest
-	if err := decode(c, &req); err != nil {
+func (s *Server) handleCreateVault(c fiber.Ctx) error {
+	currentSession := getSession(c)
+	var request proto.CreateVaultRequest
+	if err := decodeBody(c, &request); err != nil {
 		return err
 	}
-	if !validUUID(req.ID) || (req.Type != proto.VaultPersonal && req.Type != proto.VaultShared) ||
-		len(req.EncName) == 0 || len(req.EncName) > maxEncName ||
-		len(req.WrappedKey) == 0 || len(req.WrappedKey) > maxWrappedKey {
-		return apiError(fiber.StatusBadRequest, "invalid vault")
+	if !isValidUUID(request.ID) || (request.Type != proto.VaultPersonal && request.Type != proto.VaultShared) ||
+		len(request.EncName) == 0 || len(request.EncName) > maxEncName ||
+		len(request.WrappedKey) == 0 || len(request.WrappedKey) > maxWrappedKey {
+		return createAPIError(fiber.StatusBadRequest, "invalid vault")
 	}
-	v := &store.Vault{ID: req.ID, Type: req.Type, EncName: req.EncName, CreatedBy: sess.AccountID}
-	switch err := s.store.CreateVault(c.Context(), v, req.WrappedKey); {
+	vault := &store.Vault{ID: request.ID, Type: request.Type, EncName: request.EncName, CreatedBy: currentSession.AccountID}
+	switch err := s.store.CreateVault(c.Context(), vault, request.WrappedKey); {
 	case errors.Is(err, store.ErrExists):
-		return apiError(fiber.StatusConflict, "vault exists")
+		return createAPIError(fiber.StatusConflict, "vault exists")
 	case err != nil:
 		return err
 	}
-	s.audit(c, sess.AccountID, sess.DeviceID, "vault_created", map[string]string{"vault": v.ID, "type": v.Type})
-	return c.Status(fiber.StatusCreated).JSON(proto.Vault{ID: v.ID, Type: v.Type, EncName: v.EncName, Role: proto.VaultOwner, WrappedKey: req.WrappedKey})
+	s.recordAudit(c, currentSession.AccountID, currentSession.DeviceID, "vault_created", map[string]string{"vault": vault.ID, "type": vault.Type})
+	return c.Status(fiber.StatusCreated).JSON(proto.Vault{ID: vault.ID, Type: vault.Type, EncName: vault.EncName, Role: proto.VaultOwner, WrappedKey: request.WrappedKey})
 }
 
-func (s *Server) listVaultMembers(c fiber.Ctx) error {
-	if _, err := s.vaultRole(c); err != nil {
+func (s *Server) handleListAllVaultMember(c fiber.Ctx) error {
+	if _, err := s.getVaultRole(c); err != nil {
 		return err
 	}
-	ms, err := s.store.ListMembers(c.Context(), c.Params("vault"))
+	allStoredMember, err := s.store.ListAllMember(c.Context(), c.Params("vault"))
 	if err != nil {
 		return err
 	}
-	out := make([]proto.VaultMember, 0, len(ms))
-	for _, m := range ms {
-		out = append(out, proto.VaultMember{AccountID: m.AccountID, Role: m.Role, GrantedBy: m.GrantedBy})
+	allMember := make([]proto.VaultMember, 0, len(allStoredMember))
+	for _, member := range allStoredMember {
+		allMember = append(allMember, proto.VaultMember{AccountID: member.AccountID, Role: member.Role, GrantedBy: member.GrantedBy})
 	}
-	return c.JSON(out)
+	return c.JSON(allMember)
 }
 
-func (s *Server) setAccess(c fiber.Ctx) error {
-	sess := sessionOf(c)
-	role, err := s.vaultRole(c)
+func (s *Server) handleSetAccess(c fiber.Ctx) error {
+	currentSession := getSession(c)
+	role, err := s.getVaultRole(c)
 	if err != nil {
 		return err
 	}
 	if role != proto.VaultOwner {
-		return apiError(fiber.StatusForbidden, "owner only")
+		return createAPIError(fiber.StatusForbidden, "owner only")
 	}
 	target := c.Params("account")
-	if target == sess.AccountID {
-		return apiError(fiber.StatusBadRequest, "cannot change own access")
+	if target == currentSession.AccountID {
+		return createAPIError(fiber.StatusBadRequest, "cannot change own access")
 	}
-	var req proto.SetAccessRequest
-	if err := decode(c, &req); err != nil {
+	var request proto.SetAccessRequest
+	if err := decodeBody(c, &request); err != nil {
 		return err
 	}
-	if !validVaultRole(req.Role) || len(req.WrappedKey) == 0 || len(req.WrappedKey) > maxWrappedKey {
-		return apiError(fiber.StatusBadRequest, "invalid access")
+	if !isValidVaultRole(request.Role) || len(request.WrappedKey) == 0 || len(request.WrappedKey) > maxWrappedKey {
+		return createAPIError(fiber.StatusBadRequest, "invalid access")
 	}
-	errNoAccount := apiError(fiber.StatusNotFound, "account not found")
-	if !crypt.ValidAccountID(target) {
+	errNoAccount := createAPIError(fiber.StatusNotFound, "account not found")
+	if !crypt.IsValidAccountID(target) {
 		return errNoAccount
 	}
-	if _, err := s.store.AccountByID(c.Context(), target); errors.Is(err, store.ErrNotFound) {
+	if _, err := s.store.GetAccountByID(c.Context(), target); errors.Is(err, store.ErrNotFound) {
 		return errNoAccount
 	} else if err != nil {
 		return err
 	}
 	vaultID := c.Params("vault")
-	if err := s.store.SetAccess(c.Context(), vaultID, store.Member{AccountID: target, Role: req.Role, WrappedKey: req.WrappedKey, GrantedBy: sess.AccountID}); err != nil {
+	if err := s.store.SetAccess(c.Context(), vaultID, store.Member{AccountID: target, Role: request.Role, WrappedKey: request.WrappedKey, GrantedBy: currentSession.AccountID}); err != nil {
 		return err
 	}
-	s.audit(c, sess.AccountID, sess.DeviceID, "vault_access_set", map[string]string{"vault": vaultID, "account": target, "role": req.Role})
+	s.recordAudit(c, currentSession.AccountID, currentSession.DeviceID, "vault_access_set", map[string]string{"vault": vaultID, "account": target, "role": request.Role})
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func (s *Server) removeAccess(c fiber.Ctx) error {
-	sess := sessionOf(c)
-	role, err := s.vaultRole(c)
+func (s *Server) handleRemoveAccess(c fiber.Ctx) error {
+	currentSession := getSession(c)
+	role, err := s.getVaultRole(c)
 	if err != nil {
 		return err
 	}
 	target := c.Params("account")
 	switch {
-	case target == sess.AccountID && role == proto.VaultOwner:
-		return apiError(fiber.StatusBadRequest, "owner cannot leave vault")
-	case target != sess.AccountID && role != proto.VaultOwner:
-		return apiError(fiber.StatusForbidden, "owner only")
+	case target == currentSession.AccountID && role == proto.VaultOwner:
+		return createAPIError(fiber.StatusBadRequest, "owner cannot leave vault")
+	case target != currentSession.AccountID && role != proto.VaultOwner:
+		return createAPIError(fiber.StatusForbidden, "owner only")
 	}
 	vaultID := c.Params("vault")
 	switch err := s.store.RemoveAccess(c.Context(), vaultID, target); {
@@ -150,103 +150,103 @@ func (s *Server) removeAccess(c fiber.Ctx) error {
 	case err != nil:
 		return err
 	}
-	s.audit(c, sess.AccountID, sess.DeviceID, "vault_access_removed", map[string]string{"vault": vaultID, "account": target})
+	s.recordAudit(c, currentSession.AccountID, currentSession.DeviceID, "vault_access_removed", map[string]string{"vault": vaultID, "account": target})
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func toProtoItem(it *store.Item) proto.Item {
-	return proto.Item{ID: it.ID, Revision: it.Revision, Seq: it.Seq, Deleted: it.Deleted, Overview: it.Overview, Details: it.Details, UpdatedAt: it.UpdatedAt, UpdatedBy: it.UpdatedBy}
+func convertToProtoItem(storeItem *store.Item) proto.Item {
+	return proto.Item{ID: storeItem.ID, Revision: storeItem.Revision, Seq: storeItem.Seq, Deleted: storeItem.Deleted, Overview: storeItem.Overview, Details: storeItem.Details, UpdatedAt: storeItem.UpdatedAt, UpdatedBy: storeItem.UpdatedBy}
 }
 
-func (s *Server) changes(c fiber.Ctx) error {
-	if _, err := s.vaultRole(c); err != nil {
+func (s *Server) handleListAllChange(c fiber.Ctx) error {
+	if _, err := s.getVaultRole(c); err != nil {
 		return err
 	}
 	var since int64
-	if q := c.Query("since"); q != "" {
+	if sinceQuery := c.Query("since"); sinceQuery != "" {
 		var err error
-		if since, err = strconv.ParseInt(q, 10, 64); err != nil || since < 0 {
-			return apiError(fiber.StatusBadRequest, "invalid since")
+		if since, err = strconv.ParseInt(sinceQuery, 10, 64); err != nil || since < 0 {
+			return createAPIError(fiber.StatusBadRequest, "invalid since")
 		}
 	}
 	limit := defaultLimit
-	if q := c.Query("limit"); q != "" {
+	if limitQuery := c.Query("limit"); limitQuery != "" {
 		var err error
-		if limit, err = strconv.Atoi(q); err != nil || limit < 1 || limit > maxLimit {
-			return apiError(fiber.StatusBadRequest, "invalid limit")
+		if limit, err = strconv.Atoi(limitQuery); err != nil || limit < 1 || limit > maxLimit {
+			return createAPIError(fiber.StatusBadRequest, "invalid limit")
 		}
 	}
 
-	items, vaultSeq, err := s.store.Changes(c.Context(), c.Params("vault"), since, limit)
+	allItem, vaultSeq, err := s.store.ListAllChange(c.Context(), c.Params("vault"), since, limit)
 	if err != nil {
 		return err
 	}
 	// NextSeq below the client's since signals a server rollback; it is not clamped.
-	resp := proto.ChangesResponse{Items: make([]proto.Item, 0, len(items)), NextSeq: vaultSeq}
-	for i := range items {
-		resp.Items = append(resp.Items, toProtoItem(&items[i]))
+	response := proto.ChangesResponse{Items: make([]proto.Item, 0, len(allItem)), NextSeq: vaultSeq}
+	for index := range allItem {
+		response.Items = append(response.Items, convertToProtoItem(&allItem[index]))
 	}
-	if len(items) == limit {
-		resp.More = true
-		resp.NextSeq = items[len(items)-1].Seq
-	} else if len(items) > 0 {
-		resp.NextSeq = max(vaultSeq, items[len(items)-1].Seq)
+	if len(allItem) == limit {
+		response.More = true
+		response.NextSeq = allItem[len(allItem)-1].Seq
+	} else if len(allItem) > 0 {
+		response.NextSeq = max(vaultSeq, allItem[len(allItem)-1].Seq)
 	}
-	return c.JSON(resp)
+	return c.JSON(response)
 }
 
-func (s *Server) putItem(c fiber.Ctx) error {
-	sess := sessionOf(c)
-	role, err := s.vaultRole(c)
+func (s *Server) handlePutItem(c fiber.Ctx) error {
+	currentSession := getSession(c)
+	role, err := s.getVaultRole(c)
 	if err != nil {
 		return err
 	}
 	if role == proto.VaultReader {
-		return apiError(fiber.StatusForbidden, "read only")
+		return createAPIError(fiber.StatusForbidden, "read only")
 	}
 	itemID := c.Params("item")
-	var req proto.PutItemRequest
-	if err := decode(c, &req); err != nil {
+	var request proto.PutItemRequest
+	if err := decodeBody(c, &request); err != nil {
 		return err
 	}
-	base := strings.Trim(strings.TrimPrefix(c.Get("If-Match"), "W/"), `"`)
-	if !validUUID(itemID) || !validUUID(req.Revision) || (base != "" && !validUUID(base)) ||
-		len(req.Overview) == 0 || len(req.Overview) > maxOverview ||
-		len(req.Details) == 0 || len(req.Details) > maxDetails {
-		return apiError(fiber.StatusBadRequest, "invalid item")
+	baseRevision := strings.Trim(strings.TrimPrefix(c.Get("If-Match"), "W/"), `"`)
+	if !isValidUUID(itemID) || !isValidUUID(request.Revision) || (baseRevision != "" && !isValidUUID(baseRevision)) ||
+		len(request.Overview) == 0 || len(request.Overview) > maxOverview ||
+		len(request.Details) == 0 || len(request.Details) > maxDetails {
+		return createAPIError(fiber.StatusBadRequest, "invalid item")
 	}
 
-	it := &store.Item{ID: itemID, Revision: req.Revision, Deleted: req.Deleted, Overview: req.Overview, Details: req.Details, UpdatedBy: sess.AccountID}
-	current, err := s.store.PutItem(c.Context(), c.Params("vault"), base, it)
+	storeItem := &store.Item{ID: itemID, Revision: request.Revision, Deleted: request.Deleted, Overview: request.Overview, Details: request.Details, UpdatedBy: currentSession.AccountID}
+	currentStoreItem, err := s.store.PutItem(c.Context(), c.Params("vault"), baseRevision, storeItem)
 	switch {
 	case errors.Is(err, store.ErrConflict):
-		resp := proto.ConflictResponse{}
-		if current != nil {
-			cur := toProtoItem(current)
-			resp.Current = &cur
+		conflictResponse := proto.ConflictResponse{}
+		if currentStoreItem != nil {
+			currentItem := convertToProtoItem(currentStoreItem)
+			conflictResponse.Current = &currentItem
 		}
-		return c.Status(fiber.StatusConflict).JSON(resp)
+		return c.Status(fiber.StatusConflict).JSON(conflictResponse)
 	case err != nil:
 		return err
 	}
-	return c.JSON(proto.PutItemResponse{Seq: it.Seq})
+	return c.JSON(proto.PutItemResponse{Seq: storeItem.Seq})
 }
 
-func (s *Server) itemHistory(c fiber.Ctx) error {
-	if _, err := s.vaultRole(c); err != nil {
+func (s *Server) handleGetItemHistory(c fiber.Ctx) error {
+	if _, err := s.getVaultRole(c); err != nil {
 		return err
 	}
 	itemID := c.Params("item")
-	if !validUUID(itemID) {
+	if !isValidUUID(itemID) {
 		return errNotFound
 	}
-	items, err := s.store.ItemHistory(c.Context(), c.Params("vault"), itemID)
+	allItem, err := s.store.GetItemHistory(c.Context(), c.Params("vault"), itemID)
 	if err != nil {
 		return err
 	}
-	out := make([]proto.Item, 0, len(items))
-	for i := range items {
-		out = append(out, toProtoItem(&items[i]))
+	allProtoItem := make([]proto.Item, 0, len(allItem))
+	for index := range allItem {
+		allProtoItem = append(allProtoItem, convertToProtoItem(&allItem[index]))
 	}
-	return c.JSON(out)
+	return c.JSON(allProtoItem)
 }

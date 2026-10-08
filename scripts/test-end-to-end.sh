@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# End-to-end smoke test of the built hisar-server and hisar CLI.
+# End-to-end test of the built hisar-server and hisar CLI with two users.
 # Requires HISAR_DATABASE_URL pointing at an empty, disposable database.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 BIN=$ROOT/bin
 T=$(mktemp -d)
-PORT=${SMOKE_PORT:-18081}
+PORT=${END_TO_END_PORT:-18081}
 export HISAR_PUBLIC_URL=http://127.0.0.1:$PORT
 export HISAR_SECRETS_FILE=$T/secrets.json
 : "${HISAR_DATABASE_URL:?set HISAR_DATABASE_URL to an empty database}"
@@ -14,7 +14,7 @@ export HISAR_SECRETS_FILE=$T/secrets.json
 "$BIN/hisar-server" serve -addr "127.0.0.1:$PORT" >"$T/server.log" 2>&1 &
 SERVER=$!
 trap 'kill $SERVER 2>/dev/null || true; rm -rf "$T"' EXIT
-curl -sf --retry 20 --retry-connrefused --retry-delay 1 "http://127.0.0.1:$PORT/healthz" >/dev/null
+curl -sf --retry 20 --retry-all-errors --retry-delay 1 "http://127.0.0.1:$PORT/healthz" >/dev/null
 
 fail() { echo "FAIL: $*" >&2; cat "$T/server.log" >&2; exit 1; }
 expect() { [[ "$2" == *"$3"* ]] || fail "$1: expected '$3', got '$2'"; echo "ok   $1"; }
@@ -63,4 +63,4 @@ LEFT=$(printf '%s\n' "$PW" | B ls -v Family 2>/dev/null | tail -n +2)
 echo "ok   delete propagates"
 
 expect "logout" "$(A logout && A whoami 2>&1 || true)" "not logged in"
-echo "smoke test passed"
+echo "end-to-end test passed"

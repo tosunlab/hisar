@@ -29,46 +29,46 @@ type Config struct {
 }
 
 type Server struct {
-	cfg     Config
-	store   *store.Store
-	secrets *Secrets
-	conf    *opaque.Configuration
-	opaque  *opaque.Server
-	logins  *loginCache
-	limiter *ipLimiter
+	config              Config
+	store               *store.Store
+	secrets             *Secrets
+	opaqueConfiguration *opaque.Configuration
+	opaque              *opaque.Server
+	loginCache          *loginCache
+	limiter             *ipLimiter
 }
 
-func New(st *store.Store, sec *Secrets, cfg Config) (*Server, error) {
-	if cfg.SessionTTL == 0 {
-		cfg.SessionTTL = 30 * 24 * time.Hour
+func CreateServer(database *store.Store, secrets *Secrets, config Config) (*Server, error) {
+	if config.SessionTTL == 0 {
+		config.SessionTTL = 30 * 24 * time.Hour
 	}
-	if cfg.InviteTTL == 0 {
-		cfg.InviteTTL = 7 * 24 * time.Hour
+	if config.InviteTTL == 0 {
+		config.InviteTTL = 7 * 24 * time.Hour
 	}
-	conf := pake.Config()
-	skm, err := conf.DecodeServerKeyMaterial(sec.OpaqueKeyMaterial)
+	opaqueConfiguration := pake.CreateConfig()
+	serverKeyMaterial, err := opaqueConfiguration.DecodeServerKeyMaterial(secrets.OpaqueKeyMaterial)
 	if err != nil {
 		return nil, err
 	}
-	srv, err := conf.Server()
+	opaqueServer, err := opaqueConfiguration.Server()
 	if err != nil {
 		return nil, err
 	}
-	if err := srv.SetKeyMaterial(skm); err != nil {
+	if err := opaqueServer.SetKeyMaterial(serverKeyMaterial); err != nil {
 		return nil, err
 	}
 	return &Server{
-		cfg:     cfg,
-		store:   st,
-		secrets: sec,
-		conf:    conf,
-		opaque:  srv,
-		logins:  newLoginCache(time.Minute),
-		limiter: newIPLimiter(rate.Every(6*time.Second), 10),
+		config:              config,
+		store:               database,
+		secrets:             secrets,
+		opaqueConfiguration: opaqueConfiguration,
+		opaque:              opaqueServer,
+		loginCache:          createLoginCache(time.Minute),
+		limiter:             createIPLimiter(rate.Every(6*time.Second), 10),
 	}, nil
 }
 
-func (s *Server) App() *fiber.App {
+func (s *Server) CreateApp() *fiber.App {
 	app := fiber.New(fiber.Config{
 		AppName:      "hisar-server",
 		BodyLimit:    maxBody,
@@ -77,38 +77,38 @@ func (s *Server) App() *fiber.App {
 		IdleTimeout:  120 * time.Second,
 		// fasthttp reuses request buffers after a handler returns.
 		Immutable:    true,
-		ErrorHandler: errorHandler,
+		ErrorHandler: handleError,
 	})
-	app.Use(securityHeaders)
+	app.Use(setAllSecurityHeader)
 	app.Get("/healthz", func(c fiber.Ctx) error { return c.SendString("ok\n") })
 
-	api := app.Group("/api/v1")
-	api.Get("/auth/prelogin", s.limit, s.prelogin)
-	api.Post("/auth/register/start", s.limit, s.registerStart)
-	api.Post("/auth/register/finish", s.limit, s.registerFinish)
-	api.Post("/auth/login/start", s.limit, s.loginStart)
-	api.Post("/auth/login/finish", s.limit, s.loginFinish)
+	apiGroup := app.Group("/api/v1")
+	apiGroup.Get("/auth/prelogin", s.limitRate, s.handlePrelogin)
+	apiGroup.Post("/auth/register/start", s.limitRate, s.handleRegisterStart)
+	apiGroup.Post("/auth/register/finish", s.limitRate, s.handleRegisterFinish)
+	apiGroup.Post("/auth/login/start", s.limitRate, s.handleLoginStart)
+	apiGroup.Post("/auth/login/finish", s.limitRate, s.handleLoginFinish)
 
-	api.Post("/auth/logout", s.authed, s.logout)
-	api.Get("/account", s.authed, s.getAccount)
-	api.Get("/members", s.authed, s.listMembers)
-	api.Post("/invites", s.authed, s.createInvite)
-	api.Get("/devices", s.authed, s.listDevices)
-	api.Delete("/devices/:id", s.authed, s.revokeDevice)
+	apiGroup.Post("/auth/logout", s.requireSession, s.handleLogout)
+	apiGroup.Get("/account", s.requireSession, s.handleGetAccount)
+	apiGroup.Get("/members", s.requireSession, s.handleListAllMember)
+	apiGroup.Post("/invites", s.requireSession, s.handleCreateInvite)
+	apiGroup.Get("/devices", s.requireSession, s.handleListAllDevice)
+	apiGroup.Delete("/devices/:id", s.requireSession, s.handleRevokeDevice)
 
-	api.Get("/vaults", s.authed, s.listVaults)
-	api.Post("/vaults", s.authed, s.createVault)
-	api.Get("/vaults/:vault/members", s.authed, s.listVaultMembers)
-	api.Put("/vaults/:vault/access/:account", s.authed, s.setAccess)
-	api.Delete("/vaults/:vault/access/:account", s.authed, s.removeAccess)
-	api.Get("/vaults/:vault/changes", s.authed, s.changes)
-	api.Put("/vaults/:vault/items/:item", s.authed, s.putItem)
-	api.Get("/vaults/:vault/items/:item/history", s.authed, s.itemHistory)
+	apiGroup.Get("/vaults", s.requireSession, s.handleListAllVault)
+	apiGroup.Post("/vaults", s.requireSession, s.handleCreateVault)
+	apiGroup.Get("/vaults/:vault/members", s.requireSession, s.handleListAllVaultMember)
+	apiGroup.Put("/vaults/:vault/access/:account", s.requireSession, s.handleSetAccess)
+	apiGroup.Delete("/vaults/:vault/access/:account", s.requireSession, s.handleRemoveAccess)
+	apiGroup.Get("/vaults/:vault/changes", s.requireSession, s.handleListAllChange)
+	apiGroup.Put("/vaults/:vault/items/:item", s.requireSession, s.handlePutItem)
+	apiGroup.Get("/vaults/:vault/items/:item/history", s.requireSession, s.handleGetItemHistory)
 
 	return app
 }
 
-func securityHeaders(c fiber.Ctx) error {
+func setAllSecurityHeader(c fiber.Ctx) error {
 	c.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
 	c.Set("X-Content-Type-Options", "nosniff")
 	c.Set("X-Frame-Options", "DENY")
@@ -117,121 +117,121 @@ func securityHeaders(c fiber.Ctx) error {
 	return c.Next()
 }
 
-// errorHandler renders *fiber.Error as JSON and hides all other errors behind a 500.
-func errorHandler(c fiber.Ctx, err error) error {
-	var fe *fiber.Error
-	if !errors.As(err, &fe) {
+// handleError renders *fiber.Error as JSON and hides all other errors behind a 500.
+func handleError(c fiber.Ctx, err error) error {
+	var fiberError *fiber.Error
+	if !errors.As(err, &fiberError) {
 		log.Printf("internal error: %s %s: %v", c.Method(), c.Path(), err)
-		fe = fiber.NewError(fiber.StatusInternalServerError, "internal error")
+		fiberError = fiber.NewError(fiber.StatusInternalServerError, "internal error")
 	}
-	msg := fe.Message
-	if fe.Code == fiber.StatusRequestEntityTooLarge {
-		msg = "request too large"
+	message := fiberError.Message
+	if fiberError.Code == fiber.StatusRequestEntityTooLarge {
+		message = "request too large"
 	}
-	return c.Status(fe.Code).JSON(proto.Error{Error: msg})
+	return c.Status(fiberError.Code).JSON(proto.Error{Error: message})
 }
 
-func apiError(status int, msg string) error { return fiber.NewError(status, msg) }
+func createAPIError(status int, message string) error { return fiber.NewError(status, message) }
 
-var errNotFound = apiError(fiber.StatusNotFound, "not found")
+var errNotFound = createAPIError(fiber.StatusNotFound, "not found")
 
 type ctxKey struct{}
 
-func sessionOf(c fiber.Ctx) *store.Session {
+func getSession(c fiber.Ctx) *store.Session {
 	return c.Locals(ctxKey{}).(*store.Session)
 }
 
-func (s *Server) authed(c fiber.Ctx) error {
+func (s *Server) requireSession(c fiber.Ctx) error {
 	token, ok := strings.CutPrefix(c.Get("Authorization"), "Bearer ")
 	if !ok || token == "" {
-		return apiError(fiber.StatusUnauthorized, "unauthorized")
+		return createAPIError(fiber.StatusUnauthorized, "unauthorized")
 	}
-	sess, err := s.store.SessionByHash(c.Context(), hashToken(token), s.cfg.SessionTTL)
+	currentSession, err := s.store.GetSessionByHash(c.Context(), hashToken(token), s.config.SessionTTL)
 	if err != nil {
 		if !errors.Is(err, store.ErrNotFound) {
 			log.Printf("session lookup: %v", err)
 		}
-		return apiError(fiber.StatusUnauthorized, "unauthorized")
+		return createAPIError(fiber.StatusUnauthorized, "unauthorized")
 	}
-	c.Locals(ctxKey{}, sess)
+	c.Locals(ctxKey{}, currentSession)
 	return c.Next()
 }
 
-func (s *Server) limit(c fiber.Ctx) error {
-	if !s.limiter.allow(s.clientIP(c)) {
-		return apiError(fiber.StatusTooManyRequests, "too many requests")
+func (s *Server) limitRate(c fiber.Ctx) error {
+	if !s.limiter.allow(s.getClientIP(c)) {
+		return createAPIError(fiber.StatusTooManyRequests, "too many requests")
 	}
 	return c.Next()
 }
 
 // With TrustProxy, the last X-Forwarded-For entry is the one appended by our reverse proxy.
-func (s *Server) clientIP(c fiber.Ctx) string {
-	if s.cfg.TrustProxy {
-		if xff := c.Get("X-Forwarded-For"); xff != "" {
-			parts := strings.Split(xff, ",")
-			return strings.TrimSpace(parts[len(parts)-1])
+func (s *Server) getClientIP(c fiber.Ctx) string {
+	if s.config.TrustProxy {
+		if forwardedFor := c.Get("X-Forwarded-For"); forwardedFor != "" {
+			allForwardedIP := strings.Split(forwardedFor, ",")
+			return strings.TrimSpace(allForwardedIP[len(allForwardedIP)-1])
 		}
 	}
 	return c.RequestCtx().RemoteIP().String()
 }
 
-func (s *Server) audit(c fiber.Ctx, accountID, deviceID string, typ string, detail any) {
-	var a, d *string
+func (s *Server) recordAudit(c fiber.Ctx, accountID, deviceID string, eventType string, detail any) {
+	var optionalAccountID, optionalDeviceID *string
 	if accountID != "" {
-		a = &accountID
+		optionalAccountID = &accountID
 	}
 	if deviceID != "" {
-		d = &deviceID
+		optionalDeviceID = &deviceID
 	}
-	s.store.Audit(c.Context(), a, d, typ, detail, s.clientIP(c))
+	s.store.RecordAudit(c.Context(), optionalAccountID, optionalDeviceID, eventType, detail, s.getClientIP(c))
 }
 
 func hashToken(token string) []byte {
-	h := sha256.Sum256([]byte(token))
-	return h[:]
+	hash := sha256.Sum256([]byte(token))
+	return hash[:]
 }
 
-func decode(c fiber.Ctx, v any) error {
-	dec := json.NewDecoder(bytes.NewReader(c.Body()))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(v); err != nil {
-		return apiError(fiber.StatusBadRequest, "invalid request body")
+func decodeBody(c fiber.Ctx, target any) error {
+	decoder := json.NewDecoder(bytes.NewReader(c.Body()))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return createAPIError(fiber.StatusBadRequest, "invalid request body")
 	}
 	return nil
 }
 
 type ipLimiter struct {
-	mu      sync.Mutex
-	every   rate.Limit
-	burst   int
-	clients map[string]*ipEntry
+	mutex     sync.Mutex
+	every     rate.Limit
+	burst     int
+	allClient map[string]*ipEntry
 }
 
 type ipEntry struct {
-	lim  *rate.Limiter
-	seen time.Time
+	limiter *rate.Limiter
+	seen    time.Time
 }
 
-func newIPLimiter(every rate.Limit, burst int) *ipLimiter {
-	return &ipLimiter{every: every, burst: burst, clients: map[string]*ipEntry{}}
+func createIPLimiter(every rate.Limit, burst int) *ipLimiter {
+	return &ipLimiter{every: every, burst: burst, allClient: map[string]*ipEntry{}}
 }
 
 func (l *ipLimiter) allow(ip string) bool {
-	l.mu.Lock()
-	defer l.mu.Unlock()
+	l.mutex.Lock()
+	defer l.mutex.Unlock()
 	now := time.Now()
-	if len(l.clients) > 10000 {
-		for k, e := range l.clients {
-			if now.Sub(e.seen) > 10*time.Minute {
-				delete(l.clients, k)
+	if len(l.allClient) > 10000 {
+		for clientIP, entry := range l.allClient {
+			if now.Sub(entry.seen) > 10*time.Minute {
+				delete(l.allClient, clientIP)
 			}
 		}
 	}
-	e, ok := l.clients[ip]
+	entry, ok := l.allClient[ip]
 	if !ok {
-		e = &ipEntry{lim: rate.NewLimiter(l.every, l.burst)}
-		l.clients[ip] = e
+		entry = &ipEntry{limiter: rate.NewLimiter(l.every, l.burst)}
+		l.allClient[ip] = entry
 	}
-	e.seen = now
-	return e.lim.Allow()
+	entry.seen = now
+	return entry.limiter.Allow()
 }

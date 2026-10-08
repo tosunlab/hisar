@@ -22,210 +22,210 @@ import (
 
 const maxKeysetSize = 1024
 
-func normalizeEmail(e string) string { return strings.ToLower(strings.TrimSpace(e)) }
+func normalizeEmail(email string) string { return strings.ToLower(strings.TrimSpace(email)) }
 
-func newToken() string {
-	b := make([]byte, 32)
-	rand.Read(b)
-	return base64.RawURLEncoding.EncodeToString(b)
+func generateToken() string {
+	allRandomByte := make([]byte, 32)
+	rand.Read(allRandomByte)
+	return base64.RawURLEncoding.EncodeToString(allRandomByte)
 }
 
-func (s *Server) mac(parts ...string) []byte {
-	m := hmac.New(sha256.New, s.secrets.HMACKey)
-	for _, p := range parts {
-		m.Write([]byte(p))
-		m.Write([]byte{0})
+func (s *Server) computeMAC(allPart ...string) []byte {
+	hmacHash := hmac.New(sha256.New, s.secrets.HMACKey)
+	for _, part := range allPart {
+		hmacHash.Write([]byte(part))
+		hmacHash.Write([]byte{0})
 	}
-	return m.Sum(nil)
+	return hmacHash.Sum(nil)
 }
 
 // Unknown emails get a stable fake salt so prelogin does not reveal which accounts exist.
-func (s *Server) prelogin(c fiber.Ctx) error {
+func (s *Server) handlePrelogin(c fiber.Ctx) error {
 	email := normalizeEmail(c.Query("email"))
 	if email == "" {
-		return apiError(fiber.StatusBadRequest, "email required")
+		return createAPIError(fiber.StatusBadRequest, "email required")
 	}
-	a, err := s.store.AccountByEmail(c.Context(), email)
+	account, err := s.store.GetAccountByEmail(c.Context(), email)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		return c.JSON(proto.PreloginResponse{
-			Salt:   s.mac("prelogin-salt", email)[:crypt.SaltSize],
+			Salt:   s.computeMAC("prelogin-salt", email)[:crypt.SaltSize],
 			Argon2: crypt.DefaultArgon2Params,
 		})
 	case err != nil:
 		return err
 	}
-	var p crypt.Argon2Params
-	if err := json.Unmarshal(a.Argon2Params, &p); err != nil {
+	var argon2Params crypt.Argon2Params
+	if err := json.Unmarshal(account.Argon2Params, &argon2Params); err != nil {
 		return err
 	}
-	return c.JSON(proto.PreloginResponse{Salt: a.Salt, Argon2: p})
+	return c.JSON(proto.PreloginResponse{Salt: account.Salt, Argon2: argon2Params})
 }
 
 func (s *Server) checkInvite(c fiber.Ctx, token, email string) bool {
-	inv, err := s.store.InviteByHash(c.Context(), hashToken(token))
-	return err == nil && inv.Email == normalizeEmail(email)
+	invite, err := s.store.GetInviteByHash(c.Context(), hashToken(token))
+	return err == nil && invite.Email == normalizeEmail(email)
 }
 
-var errInvalidInvite = apiError(fiber.StatusForbidden, "invalid invite")
+var errInvalidInvite = createAPIError(fiber.StatusForbidden, "invalid invite")
 
-func (s *Server) registerStart(c fiber.Ctx) error {
-	var req proto.RegisterStartRequest
-	if err := decode(c, &req); err != nil {
+func (s *Server) handleRegisterStart(c fiber.Ctx) error {
+	var request proto.RegisterStartRequest
+	if err := decodeBody(c, &request); err != nil {
 		return err
 	}
-	if !s.checkInvite(c, req.Invite, req.Email) {
+	if !s.checkInvite(c, request.Invite, request.Email) {
 		return errInvalidInvite
 	}
-	if !crypt.ValidAccountID(req.AccountID) {
-		return apiError(fiber.StatusBadRequest, "invalid account ID")
+	if !crypt.IsValidAccountID(request.AccountID) {
+		return createAPIError(fiber.StatusBadRequest, "invalid account ID")
 	}
-	if _, err := s.store.AccountByID(c.Context(), req.AccountID); err == nil {
-		return apiError(fiber.StatusConflict, "account ID taken")
+	if _, err := s.store.GetAccountByID(c.Context(), request.AccountID); err == nil {
+		return createAPIError(fiber.StatusConflict, "account ID taken")
 	}
-	regReq, err := s.opaque.Deserialize.RegistrationRequest(req.Request)
+	registrationRequest, err := s.opaque.Deserialize.RegistrationRequest(request.Request)
 	if err != nil {
-		return apiError(fiber.StatusBadRequest, "invalid registration request")
+		return createAPIError(fiber.StatusBadRequest, "invalid registration request")
 	}
-	resp, err := s.opaque.RegistrationResponse(regReq, []byte(req.AccountID), nil)
+	response, err := s.opaque.RegistrationResponse(registrationRequest, []byte(request.AccountID), nil)
 	if err != nil {
-		return apiError(fiber.StatusBadRequest, "invalid registration request")
+		return createAPIError(fiber.StatusBadRequest, "invalid registration request")
 	}
-	return c.JSON(proto.RegisterStartResponse{Response: resp.Serialize()})
+	return c.JSON(proto.RegisterStartResponse{Response: response.Serialize()})
 }
 
-func (s *Server) registerFinish(c fiber.Ctx) error {
-	var req proto.RegisterFinishRequest
-	if err := decode(c, &req); err != nil {
+func (s *Server) handleRegisterFinish(c fiber.Ctx) error {
+	var request proto.RegisterFinishRequest
+	if err := decodeBody(c, &request); err != nil {
 		return err
 	}
-	email := normalizeEmail(req.Email)
-	if !s.checkInvite(c, req.Invite, email) {
+	email := normalizeEmail(request.Email)
+	if !s.checkInvite(c, request.Invite, email) {
 		return errInvalidInvite
 	}
 	switch {
-	case !crypt.ValidAccountID(req.AccountID),
-		strings.TrimSpace(req.Name) == "",
-		len(req.Salt) != crypt.SaltSize,
-		req.Argon2.Validate() != nil,
-		len(req.EncKeyset) == 0 || len(req.EncKeyset) > maxKeysetSize,
-		req.PublicKeys.Verify(req.AccountID) != nil,
-		!validDevice(req.Device):
-		return apiError(fiber.StatusBadRequest, "invalid registration")
+	case !crypt.IsValidAccountID(request.AccountID),
+		strings.TrimSpace(request.Name) == "",
+		len(request.Salt) != crypt.SaltSize,
+		request.Argon2.Validate() != nil,
+		len(request.EncKeyset) == 0 || len(request.EncKeyset) > maxKeysetSize,
+		request.PublicKeys.Verify(request.AccountID) != nil,
+		!isValidDevice(request.Device):
+		return createAPIError(fiber.StatusBadRequest, "invalid registration")
 	}
-	if _, err := s.opaque.Deserialize.RegistrationRecord(req.Record); err != nil {
-		return apiError(fiber.StatusBadRequest, "invalid registration record")
+	if _, err := s.opaque.Deserialize.RegistrationRecord(request.Record); err != nil {
+		return createAPIError(fiber.StatusBadRequest, "invalid registration record")
 	}
-	params, _ := json.Marshal(req.Argon2)
+	argon2ParamsJSON, _ := json.Marshal(request.Argon2)
 
-	acct := &store.Account{
-		ID:           req.AccountID,
+	account := &store.Account{
+		ID:           request.AccountID,
 		Email:        email,
-		Name:         strings.TrimSpace(req.Name),
-		Argon2Params: params,
-		Salt:         req.Salt,
-		OpaqueRecord: req.Record,
-		EncKeyset:    req.EncKeyset,
-		KEMPub:       req.PublicKeys.KEM,
-		SignPub:      req.PublicKeys.Sign,
-		KEMSig:       req.PublicKeys.KEMSig,
+		Name:         strings.TrimSpace(request.Name),
+		Argon2Params: argon2ParamsJSON,
+		Salt:         request.Salt,
+		OpaqueRecord: request.Record,
+		EncKeyset:    request.EncKeyset,
+		KEMPub:       request.PublicKeys.KEM,
+		SignPub:      request.PublicKeys.Sign,
+		KEMSig:       request.PublicKeys.KEMSig,
 	}
-	token, dev, sess := s.newSession(acct.ID, req.Device)
-	switch err := s.store.RedeemInvite(c.Context(), hashToken(req.Invite), acct, dev, sess); {
+	token, device, currentSession := s.createSession(account.ID, request.Device)
+	switch err := s.store.RedeemInvite(c.Context(), hashToken(request.Invite), account, device, currentSession); {
 	case errors.Is(err, store.ErrNotFound):
 		return errInvalidInvite
 	case errors.Is(err, store.ErrExists):
-		return apiError(fiber.StatusConflict, "account already exists")
+		return createAPIError(fiber.StatusConflict, "account already exists")
 	case err != nil:
 		return err
 	}
-	s.audit(c, acct.ID, dev.ID, "signup", map[string]string{"email": email, "role": acct.Role})
-	return c.JSON(proto.SessionResponse{Token: token, AccountID: acct.ID, DeviceID: dev.ID})
+	s.recordAudit(c, account.ID, device.ID, "signup", map[string]string{"email": email, "role": account.Role})
+	return c.JSON(proto.SessionResponse{Token: token, AccountID: account.ID, DeviceID: device.ID})
 }
 
-func (s *Server) newSession(accountID string, info proto.DeviceInfo) (string, *store.Device, *store.Session) {
-	token := newToken()
-	dev := &store.Device{ID: uuid.NewString(), AccountID: accountID, Name: info.Name, Platform: info.Platform}
-	sess := &store.Session{TokenHash: hashToken(token), AccountID: accountID, DeviceID: dev.ID, ExpiresAt: time.Now().Add(s.cfg.SessionTTL)}
-	return token, dev, sess
+func (s *Server) createSession(accountID string, deviceInfo proto.DeviceInfo) (string, *store.Device, *store.Session) {
+	token := generateToken()
+	device := &store.Device{ID: uuid.NewString(), AccountID: accountID, Name: deviceInfo.Name, Platform: deviceInfo.Platform}
+	currentSession := &store.Session{TokenHash: hashToken(token), AccountID: accountID, DeviceID: device.ID, ExpiresAt: time.Now().Add(s.config.SessionTTL)}
+	return token, device, currentSession
 }
 
-func validDevice(d proto.DeviceInfo) bool {
-	return d.Name != "" && len(d.Name) <= 100 && d.Platform != "" && len(d.Platform) <= 50
+func isValidDevice(device proto.DeviceInfo) bool {
+	return device.Name != "" && len(device.Name) <= 100 && device.Platform != "" && len(device.Platform) <= 50
 }
 
-var errInvalidLogin = apiError(fiber.StatusBadRequest, "invalid login request")
+var errInvalidLogin = createAPIError(fiber.StatusBadRequest, "invalid login request")
 
-func (s *Server) loginStart(c fiber.Ctx) error {
-	var req proto.LoginStartRequest
-	if err := decode(c, &req); err != nil {
+func (s *Server) handleLoginStart(c fiber.Ctx) error {
+	var request proto.LoginStartRequest
+	if err := decodeBody(c, &request); err != nil {
 		return err
 	}
-	email := normalizeEmail(req.Email)
-	ke1, err := s.opaque.Deserialize.KE1(req.KE1)
+	email := normalizeEmail(request.Email)
+	keyExchange1, err := s.opaque.Deserialize.KE1(request.KE1)
 	if err != nil || email == "" {
 		return errInvalidLogin
 	}
 
-	var rec *opaque.ClientRecord
+	var clientRecord *opaque.ClientRecord
 	var accountID string
-	a, err := s.store.AccountByEmail(c.Context(), email)
+	account, err := s.store.GetAccountByEmail(c.Context(), email)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		fakeID := base64.RawURLEncoding.EncodeToString(s.mac("fake-credential", email))
-		if rec, err = s.conf.GetFakeRecord([]byte(fakeID)); err != nil {
+		fakeCredentialID := base64.RawURLEncoding.EncodeToString(s.computeMAC("fake-credential", email))
+		if clientRecord, err = s.opaqueConfiguration.GetFakeRecord([]byte(fakeCredentialID)); err != nil {
 			return err
 		}
-		rec.ClientIdentity = []byte(fakeID)
+		clientRecord.ClientIdentity = []byte(fakeCredentialID)
 	case err != nil:
 		return err
 	default:
-		regRec, err := s.opaque.Deserialize.RegistrationRecord(a.OpaqueRecord)
+		registrationRecord, err := s.opaque.Deserialize.RegistrationRecord(account.OpaqueRecord)
 		if err != nil {
 			return err
 		}
-		accountID = a.ID
-		rec = &opaque.ClientRecord{RegistrationRecord: regRec, CredentialIdentifier: []byte(a.ID), ClientIdentity: []byte(a.ID)}
+		accountID = account.ID
+		clientRecord = &opaque.ClientRecord{RegistrationRecord: registrationRecord, CredentialIdentifier: []byte(account.ID), ClientIdentity: []byte(account.ID)}
 	}
 
-	ke2, out, err := s.opaque.GenerateKE2(ke1, rec)
+	keyExchange2, serverOutput, err := s.opaque.GenerateKE2(keyExchange1, clientRecord)
 	if err != nil {
 		return errInvalidLogin
 	}
-	id := s.logins.put(&pendingLogin{accountID: accountID, clientMAC: out.ClientMAC})
-	clear(out.SessionSecret)
-	return c.JSON(proto.LoginStartResponse{LoginID: id, KE2: ke2.Serialize()})
+	loginID := s.loginCache.put(&pendingLogin{accountID: accountID, clientMAC: serverOutput.ClientMAC})
+	clear(serverOutput.SessionSecret)
+	return c.JSON(proto.LoginStartResponse{LoginID: loginID, KE2: keyExchange2.Serialize()})
 }
 
-var errLoginFailed = apiError(fiber.StatusUnauthorized, "login failed")
+var errLoginFailed = createAPIError(fiber.StatusUnauthorized, "login failed")
 
-func (s *Server) loginFinish(c fiber.Ctx) error {
-	var req proto.LoginFinishRequest
-	if err := decode(c, &req); err != nil {
+func (s *Server) handleLoginFinish(c fiber.Ctx) error {
+	var request proto.LoginFinishRequest
+	if err := decodeBody(c, &request); err != nil {
 		return err
 	}
-	if !validDevice(req.Device) {
-		return apiError(fiber.StatusBadRequest, "invalid device")
+	if !isValidDevice(request.Device) {
+		return createAPIError(fiber.StatusBadRequest, "invalid device")
 	}
-	p := s.logins.take(req.LoginID)
-	if p == nil || p.accountID == "" {
+	pending := s.loginCache.take(request.LoginID)
+	if pending == nil || pending.accountID == "" {
 		return errLoginFailed
 	}
-	ke3, err := s.opaque.Deserialize.KE3(req.KE3)
-	if err != nil || s.opaque.LoginFinish(ke3, p.clientMAC) != nil {
-		s.audit(c, p.accountID, "", "login_failed", nil)
+	keyExchange3, err := s.opaque.Deserialize.KE3(request.KE3)
+	if err != nil || s.opaque.LoginFinish(keyExchange3, pending.clientMAC) != nil {
+		s.recordAudit(c, pending.accountID, "", "login_failed", nil)
 		return errLoginFailed
 	}
-	token, dev, sess := s.newSession(p.accountID, req.Device)
-	if err := s.store.CreateDeviceSession(c.Context(), dev, sess); err != nil {
+	token, device, currentSession := s.createSession(pending.accountID, request.Device)
+	if err := s.store.CreateDeviceSession(c.Context(), device, currentSession); err != nil {
 		return err
 	}
-	s.audit(c, p.accountID, dev.ID, "login", map[string]string{"device": dev.Name, "platform": dev.Platform})
-	return c.JSON(proto.SessionResponse{Token: token, AccountID: p.accountID, DeviceID: dev.ID})
+	s.recordAudit(c, pending.accountID, device.ID, "login", map[string]string{"device": device.Name, "platform": device.Platform})
+	return c.JSON(proto.SessionResponse{Token: token, AccountID: pending.accountID, DeviceID: device.ID})
 }
 
-func (s *Server) logout(c fiber.Ctx) error {
-	if err := s.store.DeleteSession(c.Context(), sessionOf(c).TokenHash); err != nil {
+func (s *Server) handleLogout(c fiber.Ctx) error {
+	if err := s.store.DeleteSession(c.Context(), getSession(c).TokenHash); err != nil {
 		return err
 	}
 	return c.SendStatus(fiber.StatusNoContent)
@@ -238,40 +238,40 @@ type pendingLogin struct {
 }
 
 type loginCache struct {
-	mu  sync.Mutex
-	ttl time.Duration
-	m   map[string]*pendingLogin
+	mutex      sync.Mutex
+	ttl        time.Duration
+	allPending map[string]*pendingLogin
 }
 
-func newLoginCache(ttl time.Duration) *loginCache {
-	return &loginCache{ttl: ttl, m: map[string]*pendingLogin{}}
+func createLoginCache(ttl time.Duration) *loginCache {
+	return &loginCache{ttl: ttl, allPending: map[string]*pendingLogin{}}
 }
 
-func (c *loginCache) put(p *pendingLogin) string {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+func (c *loginCache) put(pending *pendingLogin) string {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
 	now := time.Now()
-	for k, v := range c.m {
-		if now.After(v.expires) {
-			delete(c.m, k)
+	for existingLoginID, existingLogin := range c.allPending {
+		if now.After(existingLogin.expires) {
+			delete(c.allPending, existingLoginID)
 		}
 	}
-	p.expires = now.Add(c.ttl)
-	id := newToken()
-	c.m[id] = p
-	return id
+	pending.expires = now.Add(c.ttl)
+	loginID := generateToken()
+	c.allPending[loginID] = pending
+	return loginID
 }
 
-func (c *loginCache) take(id string) *pendingLogin {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	p, ok := c.m[id]
+func (c *loginCache) take(loginID string) *pendingLogin {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	pending, ok := c.allPending[loginID]
 	if !ok {
 		return nil
 	}
-	delete(c.m, id)
-	if time.Now().After(p.expires) {
+	delete(c.allPending, loginID)
+	if time.Now().After(pending.expires) {
 		return nil
 	}
-	return p
+	return pending
 }

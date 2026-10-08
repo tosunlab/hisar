@@ -29,13 +29,13 @@ make build-cli-all       # cross-compile the CLI
 make docker              # build the server image
 ```
 
-Smoke test of the built binaries against an empty database:
+End-to-end test of the built server and CLI binaries against an empty database:
 
 ```sh
-docker exec hisar-pg createdb -U postgres hisar_smoke
-HISAR_DATABASE_URL="postgres://postgres:hisar@127.0.0.1:55432/hisar_smoke?sslmode=disable" make smoke
+docker exec hisar-pg createdb -U postgres hisar_end_to_end
+HISAR_DATABASE_URL="postgres://postgres:hisar@127.0.0.1:55432/hisar_end_to_end?sslmode=disable" make test-end-to-end
 ```
 
-CI (`.github/workflows/ci.yml`) runs gofmt, vet, all tests against Postgres (failing if any are skipped), CLI cross-compiles, the smoke test, and builds and boots the server Docker image.
+CI (`.github/workflows/ci.yml`) runs gofmt, vet, all tests against Postgres (failing if any are skipped), CLI cross-compiles, the end-to-end test of the built binaries, and builds and boots the server Docker image.
 
 Deployment: see [deploy/README.md](deploy/README.md).

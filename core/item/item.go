@@ -34,57 +34,57 @@ type Item struct {
 }
 
 const (
-	lower   = "abcdefghijkmnopqrstuvwxyz"
-	upper   = "ABCDEFGHJKLMNPQRSTUVWXYZ"
-	digits  = "23456789"
-	symbols = "!@#$%^&*-_=+?"
+	lowerClass  = "abcdefghijkmnopqrstuvwxyz"
+	upperClass  = "ABCDEFGHJKLMNPQRSTUVWXYZ"
+	digitClass  = "23456789"
+	symbolClass = "!@#$%^&*-_=+?"
 )
 
-type GenOptions struct {
+type GeneratorConfig struct {
 	Length  int
 	Digits  bool
 	Symbols bool
 }
 
-var DefaultGenOptions = GenOptions{Length: 24, Digits: true, Symbols: true}
+var DefaultGeneratorConfig = GeneratorConfig{Length: 24, Digits: true, Symbols: true}
 
-// Generate returns a random password containing at least one character of each enabled class.
-func Generate(o GenOptions) (string, error) {
-	classes := []string{lower, upper}
-	if o.Digits {
-		classes = append(classes, digits)
+// GeneratePassword returns a random password containing at least one character of each enabled class.
+func GeneratePassword(config GeneratorConfig) (string, error) {
+	allClass := []string{lowerClass, upperClass}
+	if config.Digits {
+		allClass = append(allClass, digitClass)
 	}
-	if o.Symbols {
-		classes = append(classes, symbols)
+	if config.Symbols {
+		allClass = append(allClass, symbolClass)
 	}
-	if o.Length < len(classes) || o.Length > 256 {
+	if config.Length < len(allClass) || config.Length > 256 {
 		return "", errors.New("item: invalid password length")
 	}
-	all := strings.Join(classes, "")
+	alphabet := strings.Join(allClass, "")
 	for {
-		b := make([]byte, o.Length)
-		for i := range b {
-			b[i] = all[randInt(len(all))]
+		password := make([]byte, config.Length)
+		for i := range password {
+			password[i] = alphabet[generateRandomIndex(len(alphabet))]
 		}
-		if containsAll(string(b), classes) {
-			return string(b), nil
+		if containsAllClass(string(password), allClass) {
+			return string(password), nil
 		}
 	}
 }
 
-func containsAll(s string, classes []string) bool {
-	for _, c := range classes {
-		if !strings.ContainsAny(s, c) {
+func containsAllClass(password string, allClass []string) bool {
+	for _, class := range allClass {
+		if !strings.ContainsAny(password, class) {
 			return false
 		}
 	}
 	return true
 }
 
-func randInt(n int) int {
-	v, err := rand.Int(rand.Reader, big.NewInt(int64(n)))
+func generateRandomIndex(limit int) int {
+	randomIndex, err := rand.Int(rand.Reader, big.NewInt(int64(limit)))
 	if err != nil {
 		panic(err)
 	}
-	return int(v.Int64())
+	return int(randomIndex.Int64())
 }

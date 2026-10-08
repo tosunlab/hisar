@@ -12,59 +12,59 @@ import (
 )
 
 // Requires HISAR_TEST_DATABASE_URL pointing at a disposable database: the public schema is dropped.
-func testStore(t *testing.T) *Store {
+func createTestStore(t *testing.T) *Store {
 	t.Helper()
-	url := os.Getenv("HISAR_TEST_DATABASE_URL")
-	if url == "" {
+	databaseURL := os.Getenv("HISAR_TEST_DATABASE_URL")
+	if databaseURL == "" {
 		t.Skip("HISAR_TEST_DATABASE_URL not set")
 	}
 	ctx := context.Background()
-	conn, err := pgx.Connect(ctx, url)
+	connection, err := pgx.Connect(ctx, databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := conn.Exec(ctx, `DROP SCHEMA public CASCADE; CREATE SCHEMA public`); err != nil {
+	if _, err := connection.Exec(ctx, `DROP SCHEMA public CASCADE; CREATE SCHEMA public`); err != nil {
 		t.Fatal(err)
 	}
-	conn.Close(ctx)
-	s, err := Open(ctx, url)
+	connection.Close(ctx)
+	database, err := Open(ctx, databaseURL)
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(s.Close)
-	if _, err := s.Migrate(ctx); err != nil {
+	t.Cleanup(database.Close)
+	if _, err := database.Migrate(ctx); err != nil {
 		t.Fatal(err)
 	}
-	return s
+	return database
 }
 
-func newAccount(t *testing.T, s *Store, id, email string) (*Device, *Session) {
+func createTestAccount(t *testing.T, database *Store, accountID, email string) (*Device, *Session) {
 	t.Helper()
 	ctx := context.Background()
-	hash := []byte("invite-" + id)
-	if err := s.CreateInvite(ctx, hash, email, "member", nil, time.Hour); err != nil {
+	inviteHash := []byte("invite-" + accountID)
+	if err := database.CreateInvite(ctx, inviteHash, email, "member", nil, time.Hour); err != nil {
 		t.Fatal(err)
 	}
-	a := &Account{ID: id, Email: email, Name: id, Argon2Params: []byte(`{}`), Salt: []byte{1}, OpaqueRecord: []byte{1}, EncKeyset: []byte{1}, KEMPub: []byte{1}, SignPub: []byte{1}, KEMSig: []byte{1}}
-	d := &Device{ID: uuid.NewString(), AccountID: id, Name: "d", Platform: "p"}
-	sess := &Session{TokenHash: []byte("token-" + id), AccountID: id, DeviceID: d.ID, ExpiresAt: time.Now().Add(time.Hour)}
-	if err := s.RedeemInvite(ctx, hash, a, d, sess); err != nil {
+	account := &Account{ID: accountID, Email: email, Name: accountID, Argon2Params: []byte(`{}`), Salt: []byte{1}, OpaqueRecord: []byte{1}, EncKeyset: []byte{1}, KEMPub: []byte{1}, SignPub: []byte{1}, KEMSig: []byte{1}}
+	device := &Device{ID: uuid.NewString(), AccountID: accountID, Name: "d", Platform: "p"}
+	session := &Session{TokenHash: []byte("token-" + accountID), AccountID: accountID, DeviceID: device.ID, ExpiresAt: time.Now().Add(time.Hour)}
+	if err := database.RedeemInvite(ctx, inviteHash, account, device, session); err != nil {
 		t.Fatal(err)
 	}
-	return d, sess
+	return device, session
 }
 
-func newVault(t *testing.T, s *Store, owner string) string {
+func createTestVault(t *testing.T, database *Store, owner string) string {
 	t.Helper()
-	id := uuid.NewString()
-	if err := s.CreateVault(context.Background(), &Vault{ID: id, Type: "shared", EncName: []byte{1}, CreatedBy: owner}, []byte{1}); err != nil {
+	vaultID := uuid.NewString()
+	if err := database.CreateVault(context.Background(), &Vault{ID: vaultID, Type: "shared", EncName: []byte{1}, CreatedBy: owner}, []byte{1}); err != nil {
 		t.Fatal(err)
 	}
-	return id
+	return vaultID
 }
 
 func TestMigrations(t *testing.T) {
-	database := testStore(t)
+	database := createTestStore(t)
 	ctx := context.Background()
 
 	allResult, err := database.Migrate(ctx)
@@ -97,144 +97,144 @@ func TestMigrations(t *testing.T) {
 }
 
 func TestInvites(t *testing.T) {
-	s := testStore(t)
+	database := createTestStore(t)
 	ctx := context.Background()
-	newAccount(t, s, "AAAAAA", "a@example.com")
+	createTestAccount(t, database, "AAAAAA", "a@example.com")
 
-	a := &Account{ID: "BBBBBB", Email: "b@example.com", Argon2Params: []byte(`{}`)}
-	d := &Device{ID: uuid.NewString(), AccountID: "BBBBBB", Name: "d", Platform: "p"}
-	sess := &Session{TokenHash: []byte("t"), AccountID: "BBBBBB", DeviceID: d.ID, ExpiresAt: time.Now().Add(time.Hour)}
+	account := &Account{ID: "BBBBBB", Email: "b@example.com", Argon2Params: []byte(`{}`)}
+	device := &Device{ID: uuid.NewString(), AccountID: "BBBBBB", Name: "d", Platform: "p"}
+	session := &Session{TokenHash: []byte("t"), AccountID: "BBBBBB", DeviceID: device.ID, ExpiresAt: time.Now().Add(time.Hour)}
 
-	if err := s.RedeemInvite(ctx, []byte("invite-AAAAAA"), a, d, sess); !errors.Is(err, ErrNotFound) {
+	if err := database.RedeemInvite(ctx, []byte("invite-AAAAAA"), account, device, session); !errors.Is(err, ErrNotFound) {
 		t.Errorf("used invite: %v", err)
 	}
-	s.CreateInvite(ctx, []byte("wrong-email"), "other@example.com", "member", nil, time.Hour)
-	if err := s.RedeemInvite(ctx, []byte("wrong-email"), a, d, sess); !errors.Is(err, ErrNotFound) {
+	database.CreateInvite(ctx, []byte("wrong-email"), "other@example.com", "member", nil, time.Hour)
+	if err := database.RedeemInvite(ctx, []byte("wrong-email"), account, device, session); !errors.Is(err, ErrNotFound) {
 		t.Errorf("wrong email: %v", err)
 	}
-	s.CreateInvite(ctx, []byte("expired"), "b@example.com", "member", nil, -time.Minute)
-	if err := s.RedeemInvite(ctx, []byte("expired"), a, d, sess); !errors.Is(err, ErrNotFound) {
+	database.CreateInvite(ctx, []byte("expired"), "b@example.com", "member", nil, -time.Minute)
+	if err := database.RedeemInvite(ctx, []byte("expired"), account, device, session); !errors.Is(err, ErrNotFound) {
 		t.Errorf("expired invite: %v", err)
 	}
-	if _, err := s.InviteByHash(ctx, []byte("expired")); !errors.Is(err, ErrNotFound) {
+	if _, err := database.GetInviteByHash(ctx, []byte("expired")); !errors.Is(err, ErrNotFound) {
 		t.Errorf("expired InviteByHash: %v", err)
 	}
-	s.CreateInvite(ctx, []byte("dup"), "a@example.com", "member", nil, time.Hour)
-	dup := &Account{ID: "CCCCCC", Email: "a@example.com", Name: "c", Argon2Params: []byte(`{}`), Salt: []byte{1}, OpaqueRecord: []byte{1}, EncKeyset: []byte{1}, KEMPub: []byte{1}, SignPub: []byte{1}, KEMSig: []byte{1}}
-	if err := s.RedeemInvite(ctx, []byte("dup"), dup, d, sess); !errors.Is(err, ErrExists) {
+	database.CreateInvite(ctx, []byte("dup"), "a@example.com", "member", nil, time.Hour)
+	duplicateAccount := &Account{ID: "CCCCCC", Email: "a@example.com", Name: "c", Argon2Params: []byte(`{}`), Salt: []byte{1}, OpaqueRecord: []byte{1}, EncKeyset: []byte{1}, KEMPub: []byte{1}, SignPub: []byte{1}, KEMSig: []byte{1}}
+	if err := database.RedeemInvite(ctx, []byte("dup"), duplicateAccount, device, session); !errors.Is(err, ErrExists) {
 		t.Errorf("duplicate email: %v", err)
 	}
-	if _, err := s.InviteByHash(ctx, []byte("dup")); err != nil {
+	if _, err := database.GetInviteByHash(ctx, []byte("dup")); err != nil {
 		t.Errorf("failed redeem consumed invite: %v", err)
 	}
 }
 
 func TestSessions(t *testing.T) {
-	s := testStore(t)
+	database := createTestStore(t)
 	ctx := context.Background()
-	d, sess := newAccount(t, s, "AAAAAA", "a@example.com")
+	device, session := createTestAccount(t, database, "AAAAAA", "a@example.com")
 
-	got, err := s.SessionByHash(ctx, sess.TokenHash, 24*time.Hour)
-	if err != nil || got.AccountID != "AAAAAA" || got.Role != "member" {
-		t.Fatalf("session: %+v %v", got, err)
+	foundSession, err := database.GetSessionByHash(ctx, session.TokenHash, 24*time.Hour)
+	if err != nil || foundSession.AccountID != "AAAAAA" || foundSession.Role != "member" {
+		t.Fatalf("session: %+v %v", foundSession, err)
 	}
-	if time.Until(got.ExpiresAt) < 23*time.Hour {
-		t.Errorf("expiry not extended: %v", got.ExpiresAt)
+	if time.Until(foundSession.ExpiresAt) < 23*time.Hour {
+		t.Errorf("expiry not extended: %v", foundSession.ExpiresAt)
 	}
 
-	if err := s.RevokeDevice(ctx, "BBBBBB", d.ID); !errors.Is(err, ErrNotFound) {
+	if err := database.RevokeDevice(ctx, "BBBBBB", device.ID); !errors.Is(err, ErrNotFound) {
 		t.Errorf("revoke other's device: %v", err)
 	}
-	if err := s.RevokeDevice(ctx, "AAAAAA", d.ID); err != nil {
+	if err := database.RevokeDevice(ctx, "AAAAAA", device.ID); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.SessionByHash(ctx, sess.TokenHash, time.Hour); !errors.Is(err, ErrNotFound) {
+	if _, err := database.GetSessionByHash(ctx, session.TokenHash, time.Hour); !errors.Is(err, ErrNotFound) {
 		t.Errorf("revoked session: %v", err)
 	}
 
-	d2 := &Device{ID: uuid.NewString(), AccountID: "AAAAAA", Name: "d2", Platform: "p"}
-	expired := &Session{TokenHash: []byte("old"), AccountID: "AAAAAA", DeviceID: d2.ID, ExpiresAt: time.Now().Add(-time.Minute)}
-	if err := s.CreateDeviceSession(ctx, d2, expired); err != nil {
+	secondDevice := &Device{ID: uuid.NewString(), AccountID: "AAAAAA", Name: "d2", Platform: "p"}
+	expired := &Session{TokenHash: []byte("old"), AccountID: "AAAAAA", DeviceID: secondDevice.ID, ExpiresAt: time.Now().Add(-time.Minute)}
+	if err := database.CreateDeviceSession(ctx, secondDevice, expired); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := s.SessionByHash(ctx, []byte("old"), time.Hour); !errors.Is(err, ErrNotFound) {
+	if _, err := database.GetSessionByHash(ctx, []byte("old"), time.Hour); !errors.Is(err, ErrNotFound) {
 		t.Errorf("expired session: %v", err)
 	}
 }
 
 func TestPutItem(t *testing.T) {
-	s := testStore(t)
+	database := createTestStore(t)
 	ctx := context.Background()
-	newAccount(t, s, "AAAAAA", "a@example.com")
-	v := newVault(t, s, "AAAAAA")
-	id, r1, r2, r3 := uuid.NewString(), uuid.NewString(), uuid.NewString(), uuid.NewString()
+	createTestAccount(t, database, "AAAAAA", "a@example.com")
+	vaultID := createTestVault(t, database, "AAAAAA")
+	itemID, revision1, revision2, revision3 := uuid.NewString(), uuid.NewString(), uuid.NewString(), uuid.NewString()
 
-	item := func(rev string) *Item {
-		return &Item{ID: id, Revision: rev, Overview: []byte("o-" + rev), Details: []byte("d"), UpdatedBy: "AAAAAA"}
+	createItem := func(revision string) *Item {
+		return &Item{ID: itemID, Revision: revision, Overview: []byte("o-" + revision), Details: []byte("d"), UpdatedBy: "AAAAAA"}
 	}
 
-	if _, err := s.PutItem(ctx, v, r1, item(r2)); !errors.Is(err, ErrConflict) {
+	if _, err := database.PutItem(ctx, vaultID, revision1, createItem(revision2)); !errors.Is(err, ErrConflict) {
 		t.Errorf("base for missing item: %v", err)
 	}
-	first := item(r1)
-	if _, err := s.PutItem(ctx, v, "", first); err != nil || first.Seq != 1 {
+	first := createItem(revision1)
+	if _, err := database.PutItem(ctx, vaultID, "", first); err != nil || first.Seq != 1 {
 		t.Fatalf("create: seq=%d %v", first.Seq, err)
 	}
-	retry := item(r1)
-	if _, err := s.PutItem(ctx, v, "", retry); err != nil || retry.Seq != 1 {
+	retry := createItem(revision1)
+	if _, err := database.PutItem(ctx, vaultID, "", retry); err != nil || retry.Seq != 1 {
 		t.Errorf("retry: seq=%d %v", retry.Seq, err)
 	}
-	cur, err := s.PutItem(ctx, v, "", item(r2))
-	if !errors.Is(err, ErrConflict) || cur == nil || cur.Revision != r1 {
-		t.Errorf("create over existing: %v %+v", err, cur)
+	currentItem, err := database.PutItem(ctx, vaultID, "", createItem(revision2))
+	if !errors.Is(err, ErrConflict) || currentItem == nil || currentItem.Revision != revision1 {
+		t.Errorf("create over existing: %v %+v", err, currentItem)
 	}
-	second := item(r2)
-	if _, err := s.PutItem(ctx, v, r1, second); err != nil || second.Seq != 2 {
+	second := createItem(revision2)
+	if _, err := database.PutItem(ctx, vaultID, revision1, second); err != nil || second.Seq != 2 {
 		t.Fatalf("update: seq=%d %v", second.Seq, err)
 	}
-	cur, err = s.PutItem(ctx, v, r1, item(r3))
-	if !errors.Is(err, ErrConflict) || cur.Revision != r2 || string(cur.Overview) != "o-"+r2 {
-		t.Errorf("stale base: %v %+v", err, cur)
+	currentItem, err = database.PutItem(ctx, vaultID, revision1, createItem(revision3))
+	if !errors.Is(err, ErrConflict) || currentItem.Revision != revision2 || string(currentItem.Overview) != "o-"+revision2 {
+		t.Errorf("stale base: %v %+v", err, currentItem)
 	}
 
-	items, seq, err := s.Changes(ctx, v, 0, 10)
-	if err != nil || seq != 2 || len(items) != 1 || items[0].Revision != r2 {
-		t.Errorf("changes: seq=%d items=%+v %v", seq, items, err)
+	allItem, seq, err := database.ListAllChange(ctx, vaultID, 0, 10)
+	if err != nil || seq != 2 || len(allItem) != 1 || allItem[0].Revision != revision2 {
+		t.Errorf("changes: seq=%d items=%+v %v", seq, allItem, err)
 	}
-	if items, _, _ := s.Changes(ctx, v, 2, 10); len(items) != 0 {
-		t.Errorf("changes since current: %d items", len(items))
+	if allItem, _, _ := database.ListAllChange(ctx, vaultID, 2, 10); len(allItem) != 0 {
+		t.Errorf("changes since current: %d items", len(allItem))
 	}
-	if _, _, err := s.Changes(ctx, uuid.NewString(), 0, 10); !errors.Is(err, ErrNotFound) {
+	if _, _, err := database.ListAllChange(ctx, uuid.NewString(), 0, 10); !errors.Is(err, ErrNotFound) {
 		t.Errorf("changes on missing vault: %v", err)
 	}
-	if hist, _ := s.ItemHistory(ctx, v, id); len(hist) != 2 {
-		t.Errorf("history: %d entries", len(hist))
+	if allHistory, _ := database.GetItemHistory(ctx, vaultID, itemID); len(allHistory) != 2 {
+		t.Errorf("history: %d entries", len(allHistory))
 	}
 }
 
 func TestChangesPaging(t *testing.T) {
-	s := testStore(t)
+	database := createTestStore(t)
 	ctx := context.Background()
-	newAccount(t, s, "AAAAAA", "a@example.com")
-	v := newVault(t, s, "AAAAAA")
+	createTestAccount(t, database, "AAAAAA", "a@example.com")
+	vaultID := createTestVault(t, database, "AAAAAA")
 	for range 5 {
-		it := &Item{ID: uuid.NewString(), Revision: uuid.NewString(), Overview: []byte{1}, Details: []byte{1}, UpdatedBy: "AAAAAA"}
-		if _, err := s.PutItem(ctx, v, "", it); err != nil {
+		item := &Item{ID: uuid.NewString(), Revision: uuid.NewString(), Overview: []byte{1}, Details: []byte{1}, UpdatedBy: "AAAAAA"}
+		if _, err := database.PutItem(ctx, vaultID, "", item); err != nil {
 			t.Fatal(err)
 		}
 	}
 	var since int64
 	var total int
 	for {
-		items, _, err := s.Changes(ctx, v, since, 2)
+		allItem, _, err := database.ListAllChange(ctx, vaultID, since, 2)
 		if err != nil {
 			t.Fatal(err)
 		}
-		total += len(items)
-		if len(items) < 2 {
+		total += len(allItem)
+		if len(allItem) < 2 {
 			break
 		}
-		since = items[len(items)-1].Seq
+		since = allItem[len(allItem)-1].Seq
 	}
 	if total != 5 {
 		t.Errorf("paged %d items, want 5", total)
@@ -242,59 +242,59 @@ func TestChangesPaging(t *testing.T) {
 }
 
 func TestPruneHistory(t *testing.T) {
-	s := testStore(t)
+	database := createTestStore(t)
 	ctx := context.Background()
-	newAccount(t, s, "AAAAAA", "a@example.com")
-	v := newVault(t, s, "AAAAAA")
-	id, r1, r2 := uuid.NewString(), uuid.NewString(), uuid.NewString()
-	s.PutItem(ctx, v, "", &Item{ID: id, Revision: r1, Overview: []byte{1}, Details: []byte{1}, UpdatedBy: "AAAAAA"})
-	s.PutItem(ctx, v, r1, &Item{ID: id, Revision: r2, Overview: []byte{2}, Details: []byte{2}, UpdatedBy: "AAAAAA"})
-	if _, err := s.pool.Exec(ctx, `UPDATE item_history SET updated_at = now() - interval '100 days'`); err != nil {
+	createTestAccount(t, database, "AAAAAA", "a@example.com")
+	vaultID := createTestVault(t, database, "AAAAAA")
+	itemID, revision1, revision2 := uuid.NewString(), uuid.NewString(), uuid.NewString()
+	database.PutItem(ctx, vaultID, "", &Item{ID: itemID, Revision: revision1, Overview: []byte{1}, Details: []byte{1}, UpdatedBy: "AAAAAA"})
+	database.PutItem(ctx, vaultID, revision1, &Item{ID: itemID, Revision: revision2, Overview: []byte{2}, Details: []byte{2}, UpdatedBy: "AAAAAA"})
+	if _, err := database.pool.Exec(ctx, `UPDATE item_history SET updated_at = now() - interval '100 days'`); err != nil {
 		t.Fatal(err)
 	}
-	n, err := s.PruneHistory(ctx, 90*24*time.Hour)
-	if err != nil || n != 1 {
-		t.Fatalf("pruned %d, %v", n, err)
+	prunedCount, err := database.PruneHistory(ctx, 90*24*time.Hour)
+	if err != nil || prunedCount != 1 {
+		t.Fatalf("pruned %d, %v", prunedCount, err)
 	}
-	hist, _ := s.ItemHistory(ctx, v, id)
-	if len(hist) != 1 || hist[0].Revision != r2 {
-		t.Errorf("remaining history: %+v", hist)
+	allHistory, _ := database.GetItemHistory(ctx, vaultID, itemID)
+	if len(allHistory) != 1 || allHistory[0].Revision != revision2 {
+		t.Errorf("remaining history: %+v", allHistory)
 	}
 }
 
 func TestVaultAccess(t *testing.T) {
-	s := testStore(t)
+	database := createTestStore(t)
 	ctx := context.Background()
-	newAccount(t, s, "AAAAAA", "a@example.com")
-	newAccount(t, s, "BBBBBB", "b@example.com")
-	v := newVault(t, s, "AAAAAA")
+	createTestAccount(t, database, "AAAAAA", "a@example.com")
+	createTestAccount(t, database, "BBBBBB", "b@example.com")
+	vaultID := createTestVault(t, database, "AAAAAA")
 
-	if _, err := s.VaultRole(ctx, v, "BBBBBB"); !errors.Is(err, ErrNotFound) {
+	if _, err := database.GetVaultRole(ctx, vaultID, "BBBBBB"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("non-member role: %v", err)
 	}
-	if err := s.SetAccess(ctx, v, Member{AccountID: "BBBBBB", Role: "reader", WrappedKey: []byte{1}, GrantedBy: "AAAAAA"}); err != nil {
+	if err := database.SetAccess(ctx, vaultID, Member{AccountID: "BBBBBB", Role: "reader", WrappedKey: []byte{1}, GrantedBy: "AAAAAA"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.SetAccess(ctx, v, Member{AccountID: "BBBBBB", Role: "editor", WrappedKey: []byte{2}, GrantedBy: "AAAAAA"}); err != nil {
+	if err := database.SetAccess(ctx, vaultID, Member{AccountID: "BBBBBB", Role: "editor", WrappedKey: []byte{2}, GrantedBy: "AAAAAA"}); err != nil {
 		t.Fatal(err)
 	}
-	if role, _ := s.VaultRole(ctx, v, "BBBBBB"); role != "editor" {
+	if role, _ := database.GetVaultRole(ctx, vaultID, "BBBBBB"); role != "editor" {
 		t.Errorf("role after update = %q", role)
 	}
-	vs, _ := s.ListVaults(ctx, "BBBBBB")
-	if len(vs) != 1 || vs[0].WrappedKey[0] != 2 {
-		t.Errorf("bob vaults: %+v", vs)
+	allVault, _ := database.ListAllVault(ctx, "BBBBBB")
+	if len(allVault) != 1 || allVault[0].WrappedKey[0] != 2 {
+		t.Errorf("bob vaults: %+v", allVault)
 	}
-	if ms, _ := s.ListMembers(ctx, v); len(ms) != 2 {
-		t.Errorf("members: %d", len(ms))
+	if allMember, _ := database.ListAllMember(ctx, vaultID); len(allMember) != 2 {
+		t.Errorf("members: %d", len(allMember))
 	}
-	if err := s.RemoveAccess(ctx, v, "BBBBBB"); err != nil {
+	if err := database.RemoveAccess(ctx, vaultID, "BBBBBB"); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.RemoveAccess(ctx, v, "BBBBBB"); !errors.Is(err, ErrNotFound) {
+	if err := database.RemoveAccess(ctx, vaultID, "BBBBBB"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("double remove: %v", err)
 	}
-	if err := s.CreateVault(ctx, &Vault{ID: v, Type: "shared", EncName: []byte{1}, CreatedBy: "AAAAAA"}, []byte{1}); !errors.Is(err, ErrExists) {
+	if err := database.CreateVault(ctx, &Vault{ID: vaultID, Type: "shared", EncName: []byte{1}, CreatedBy: "AAAAAA"}, []byte{1}); !errors.Is(err, ErrExists) {
 		t.Errorf("duplicate vault: %v", err)
 	}
 }

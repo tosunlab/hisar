@@ -296,6 +296,7 @@ All under `/api/v1`. JSON bodies, base64url for binary fields.
 ### 8.4 Deployment
 
 - Single static binary `hisar-server` in a Docker image, with Postgres 17 alongside it in Docker Compose.
+- Schema migrations: goose (`pressly/goose`), SQL files embedded in the binary, up and down sections, applied on start under a Postgres advisory lock or explicitly with `hisar-server migrate up|down|status`.
 - HTTP framework: Fiber v3 (fasthttp). It serves plain HTTP behind the reverse proxy; HTTP/2 and TLS are handled by Caddy.
 - Served publicly at `https://tryhisar.com`, TLS terminated by Caddy (automatic certificates) in front.
 - Attachments on local disk (later: S3-compatible storage).
@@ -381,7 +382,7 @@ extension/  Browser extension (TypeScript)                            (Phase 3)
 mobile/     iOS + Android apps on top of gomobile-bound core          (Phase 4)
 docs/       Design and decisions
 deploy/     Dockerfile, Docker Compose (Postgres + server + Caddy), deployment notes
-scripts/    smoke.sh: end-to-end test of the built server and CLI (run in CI)
+scripts/    test-end-to-end.sh: end-to-end test of the built server and CLI (run in CI)
 go.work     Ties the Go modules together for local development
 ```
 
@@ -390,7 +391,7 @@ go.work     Ties the Go modules together for local development
 | Phase | Scope | Exit criteria |
 |---|---|---|
 | 0 | This document, repo skeleton, CI | Design reviewed and agreed |
-| 1 | `core/crypt` with test vectors, OPAQUE auth, server (accounts, vaults, items, sync), CLI, Docker deployment, CI (tests, smoke test, image build) | Two CLI clients on two machines sync a shared vault through a self-hosted server |
+| 1 | `core/crypt` with test vectors, OPAQUE auth, server (accounts, vaults, items, sync), CLI, Docker deployment, CI (unit and database tests, end-to-end test of the built binaries, image build) | Two CLI clients on two machines sync a shared vault through a self-hosted server |
 | 2 (MVP) | Desktop app (macOS first): signup + Emergency Kit, unlock, **Touch ID unlock** (§5.4), items, generator, search, Personal + Family vaults, invites, recovery, vault key rotation, auto-lock, **SSH agent with SSH Key items and Touch ID approval** (§9.6), local encrypted cache. CI builds the desktop app | Family uses it daily on macOS; `ssh` and `git` use keys from Hisar |
 | 3 | Browser extension via native messaging: fill, save, generate | Daily logins without copy-paste |
 | 4 | Mobile apps with system autofill | Logins on phones |

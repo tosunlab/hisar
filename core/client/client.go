@@ -21,7 +21,7 @@ type Client struct {
 	HTTP    *http.Client
 }
 
-func New(baseURL string) *Client {
+func Create(baseURL string) *Client {
 	return &Client{BaseURL: strings.TrimRight(baseURL, "/"), HTTP: &http.Client{Timeout: 30 * time.Second}}
 }
 
@@ -33,162 +33,162 @@ type APIError struct {
 func (e *APIError) Error() string { return fmt.Sprintf("server: %s (%d)", e.Message, e.Status) }
 
 func IsStatus(err error, status int) bool {
-	e, ok := err.(*APIError)
-	return ok && e.Status == status
+	apiError, ok := err.(*APIError)
+	return ok && apiError.Status == status
 }
 
-// do sends a JSON request; for a 409 the body is decoded into conflict when non-nil.
-func (c *Client) do(ctx context.Context, method, path string, hdr http.Header, in, out, conflict any) error {
+// sendRequest sends a JSON request; for a 409 the body is decoded into conflict when non-nil.
+func (c *Client) sendRequest(ctx context.Context, method, path string, header http.Header, input, output, conflict any) error {
 	var body io.Reader
-	if in != nil {
-		b, err := json.Marshal(in)
+	if input != nil {
+		encoded, err := json.Marshal(input)
 		if err != nil {
 			return err
 		}
-		body = bytes.NewReader(b)
+		body = bytes.NewReader(encoded)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, c.BaseURL+path, body)
+	request, err := http.NewRequestWithContext(ctx, method, c.BaseURL+path, body)
 	if err != nil {
 		return err
 	}
-	for k, v := range hdr {
-		req.Header[k] = v
+	for headerName, allHeaderValue := range header {
+		request.Header[headerName] = allHeaderValue
 	}
-	if in != nil {
-		req.Header.Set("Content-Type", "application/json")
+	if input != nil {
+		request.Header.Set("Content-Type", "application/json")
 	}
 	if c.Token != "" {
-		req.Header.Set("Authorization", "Bearer "+c.Token)
+		request.Header.Set("Authorization", "Bearer "+c.Token)
 	}
-	resp, err := c.HTTP.Do(req)
+	response, err := c.HTTP.Do(request)
 	if err != nil {
 		return err
 	}
-	defer resp.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(resp.Body, 64<<20))
+	defer response.Body.Close()
+	data, err := io.ReadAll(io.LimitReader(response.Body, 64<<20))
 	if err != nil {
 		return err
 	}
 
-	if resp.StatusCode == http.StatusConflict && conflict != nil {
+	if response.StatusCode == http.StatusConflict && conflict != nil {
 		if err := json.Unmarshal(data, conflict); err != nil {
 			return err
 		}
-		return &APIError{Status: resp.StatusCode, Message: "conflict"}
+		return &APIError{Status: response.StatusCode, Message: "conflict"}
 	}
-	if resp.StatusCode >= 300 {
-		var e proto.Error
-		if json.Unmarshal(data, &e) != nil || e.Error == "" {
-			e.Error = http.StatusText(resp.StatusCode)
+	if response.StatusCode >= 300 {
+		var errorBody proto.Error
+		if json.Unmarshal(data, &errorBody) != nil || errorBody.Error == "" {
+			errorBody.Error = http.StatusText(response.StatusCode)
 		}
-		return &APIError{Status: resp.StatusCode, Message: e.Error}
+		return &APIError{Status: response.StatusCode, Message: errorBody.Error}
 	}
-	if out != nil && len(data) > 0 {
-		return json.Unmarshal(data, out)
+	if output != nil && len(data) > 0 {
+		return json.Unmarshal(data, output)
 	}
 	return nil
 }
 
-func (c *Client) Prelogin(ctx context.Context, email string) (*proto.PreloginResponse, error) {
-	var out proto.PreloginResponse
-	return &out, c.do(ctx, "GET", "/api/v1/auth/prelogin?email="+url.QueryEscape(email), nil, nil, &out, nil)
+func (c *Client) FetchPrelogin(ctx context.Context, email string) (*proto.PreloginResponse, error) {
+	var response proto.PreloginResponse
+	return &response, c.sendRequest(ctx, "GET", "/api/v1/auth/prelogin?email="+url.QueryEscape(email), nil, nil, &response, nil)
 }
 
-func (c *Client) RegisterStart(ctx context.Context, req *proto.RegisterStartRequest) (*proto.RegisterStartResponse, error) {
-	var out proto.RegisterStartResponse
-	return &out, c.do(ctx, "POST", "/api/v1/auth/register/start", nil, req, &out, nil)
+func (c *Client) StartRegistration(ctx context.Context, request *proto.RegisterStartRequest) (*proto.RegisterStartResponse, error) {
+	var response proto.RegisterStartResponse
+	return &response, c.sendRequest(ctx, "POST", "/api/v1/auth/register/start", nil, request, &response, nil)
 }
 
-func (c *Client) RegisterFinish(ctx context.Context, req *proto.RegisterFinishRequest) (*proto.SessionResponse, error) {
-	var out proto.SessionResponse
-	return &out, c.do(ctx, "POST", "/api/v1/auth/register/finish", nil, req, &out, nil)
+func (c *Client) FinishRegistration(ctx context.Context, request *proto.RegisterFinishRequest) (*proto.SessionResponse, error) {
+	var response proto.SessionResponse
+	return &response, c.sendRequest(ctx, "POST", "/api/v1/auth/register/finish", nil, request, &response, nil)
 }
 
-func (c *Client) LoginStart(ctx context.Context, req *proto.LoginStartRequest) (*proto.LoginStartResponse, error) {
-	var out proto.LoginStartResponse
-	return &out, c.do(ctx, "POST", "/api/v1/auth/login/start", nil, req, &out, nil)
+func (c *Client) StartLogin(ctx context.Context, request *proto.LoginStartRequest) (*proto.LoginStartResponse, error) {
+	var response proto.LoginStartResponse
+	return &response, c.sendRequest(ctx, "POST", "/api/v1/auth/login/start", nil, request, &response, nil)
 }
 
-func (c *Client) LoginFinish(ctx context.Context, req *proto.LoginFinishRequest) (*proto.SessionResponse, error) {
-	var out proto.SessionResponse
-	return &out, c.do(ctx, "POST", "/api/v1/auth/login/finish", nil, req, &out, nil)
+func (c *Client) FinishLogin(ctx context.Context, request *proto.LoginFinishRequest) (*proto.SessionResponse, error) {
+	var response proto.SessionResponse
+	return &response, c.sendRequest(ctx, "POST", "/api/v1/auth/login/finish", nil, request, &response, nil)
 }
 
 func (c *Client) Logout(ctx context.Context) error {
-	return c.do(ctx, "POST", "/api/v1/auth/logout", nil, nil, nil, nil)
+	return c.sendRequest(ctx, "POST", "/api/v1/auth/logout", nil, nil, nil, nil)
 }
 
-func (c *Client) Account(ctx context.Context) (*proto.Account, error) {
-	var out proto.Account
-	return &out, c.do(ctx, "GET", "/api/v1/account", nil, nil, &out, nil)
+func (c *Client) GetAccount(ctx context.Context) (*proto.Account, error) {
+	var account proto.Account
+	return &account, c.sendRequest(ctx, "GET", "/api/v1/account", nil, nil, &account, nil)
 }
 
-func (c *Client) Members(ctx context.Context) ([]proto.Member, error) {
-	var out []proto.Member
-	return out, c.do(ctx, "GET", "/api/v1/members", nil, nil, &out, nil)
+func (c *Client) ListAllMember(ctx context.Context) ([]proto.Member, error) {
+	var allMember []proto.Member
+	return allMember, c.sendRequest(ctx, "GET", "/api/v1/members", nil, nil, &allMember, nil)
 }
 
-func (c *Client) Invite(ctx context.Context, req *proto.InviteRequest) (*proto.InviteResponse, error) {
-	var out proto.InviteResponse
-	return &out, c.do(ctx, "POST", "/api/v1/invites", nil, req, &out, nil)
+func (c *Client) Invite(ctx context.Context, request *proto.InviteRequest) (*proto.InviteResponse, error) {
+	var response proto.InviteResponse
+	return &response, c.sendRequest(ctx, "POST", "/api/v1/invites", nil, request, &response, nil)
 }
 
-func (c *Client) Devices(ctx context.Context) ([]proto.Device, error) {
-	var out []proto.Device
-	return out, c.do(ctx, "GET", "/api/v1/devices", nil, nil, &out, nil)
+func (c *Client) ListAllDevice(ctx context.Context) ([]proto.Device, error) {
+	var allDevice []proto.Device
+	return allDevice, c.sendRequest(ctx, "GET", "/api/v1/devices", nil, nil, &allDevice, nil)
 }
 
-func (c *Client) RevokeDevice(ctx context.Context, id string) error {
-	return c.do(ctx, "DELETE", "/api/v1/devices/"+url.PathEscape(id), nil, nil, nil, nil)
+func (c *Client) RevokeDevice(ctx context.Context, deviceID string) error {
+	return c.sendRequest(ctx, "DELETE", "/api/v1/devices/"+url.PathEscape(deviceID), nil, nil, nil, nil)
 }
 
-func (c *Client) Vaults(ctx context.Context) ([]proto.Vault, error) {
-	var out []proto.Vault
-	return out, c.do(ctx, "GET", "/api/v1/vaults", nil, nil, &out, nil)
+func (c *Client) ListAllVault(ctx context.Context) ([]proto.Vault, error) {
+	var allVault []proto.Vault
+	return allVault, c.sendRequest(ctx, "GET", "/api/v1/vaults", nil, nil, &allVault, nil)
 }
 
-func (c *Client) CreateVault(ctx context.Context, req *proto.CreateVaultRequest) error {
-	return c.do(ctx, "POST", "/api/v1/vaults", nil, req, nil, nil)
+func (c *Client) CreateVault(ctx context.Context, request *proto.CreateVaultRequest) error {
+	return c.sendRequest(ctx, "POST", "/api/v1/vaults", nil, request, nil, nil)
 }
 
-func (c *Client) VaultMembers(ctx context.Context, vaultID string) ([]proto.VaultMember, error) {
-	var out []proto.VaultMember
-	return out, c.do(ctx, "GET", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/members", nil, nil, &out, nil)
+func (c *Client) ListAllVaultMember(ctx context.Context, vaultID string) ([]proto.VaultMember, error) {
+	var allVaultMember []proto.VaultMember
+	return allVaultMember, c.sendRequest(ctx, "GET", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/members", nil, nil, &allVaultMember, nil)
 }
 
-func (c *Client) SetAccess(ctx context.Context, vaultID, accountID string, req *proto.SetAccessRequest) error {
-	return c.do(ctx, "PUT", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/access/"+url.PathEscape(accountID), nil, req, nil, nil)
+func (c *Client) SetAccess(ctx context.Context, vaultID, accountID string, request *proto.SetAccessRequest) error {
+	return c.sendRequest(ctx, "PUT", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/access/"+url.PathEscape(accountID), nil, request, nil, nil)
 }
 
 func (c *Client) RemoveAccess(ctx context.Context, vaultID, accountID string) error {
-	return c.do(ctx, "DELETE", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/access/"+url.PathEscape(accountID), nil, nil, nil, nil)
+	return c.sendRequest(ctx, "DELETE", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/access/"+url.PathEscape(accountID), nil, nil, nil, nil)
 }
 
-func (c *Client) Changes(ctx context.Context, vaultID string, since int64, limit int) (*proto.ChangesResponse, error) {
-	var out proto.ChangesResponse
-	q := url.Values{"since": {strconv.FormatInt(since, 10)}}
+func (c *Client) ListAllChange(ctx context.Context, vaultID string, since int64, limit int) (*proto.ChangesResponse, error) {
+	var response proto.ChangesResponse
+	query := url.Values{"since": {strconv.FormatInt(since, 10)}}
 	if limit > 0 {
-		q.Set("limit", strconv.Itoa(limit))
+		query.Set("limit", strconv.Itoa(limit))
 	}
-	return &out, c.do(ctx, "GET", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/changes?"+q.Encode(), nil, nil, &out, nil)
+	return &response, c.sendRequest(ctx, "GET", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/changes?"+query.Encode(), nil, nil, &response, nil)
 }
 
 // PutItem returns the server's current item on a 409 (nil if the item does not exist).
-func (c *Client) PutItem(ctx context.Context, vaultID, itemID, baseRevision string, req *proto.PutItemRequest) (int64, *proto.Item, error) {
-	hdr := http.Header{}
+func (c *Client) PutItem(ctx context.Context, vaultID, itemID, baseRevision string, request *proto.PutItemRequest) (int64, *proto.Item, error) {
+	header := http.Header{}
 	if baseRevision != "" {
-		hdr.Set("If-Match", `"`+baseRevision+`"`)
+		header.Set("If-Match", `"`+baseRevision+`"`)
 	}
-	var out proto.PutItemResponse
+	var response proto.PutItemResponse
 	var conflict proto.ConflictResponse
-	err := c.do(ctx, "PUT", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/items/"+url.PathEscape(itemID), hdr, req, &out, &conflict)
+	err := c.sendRequest(ctx, "PUT", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/items/"+url.PathEscape(itemID), header, request, &response, &conflict)
 	if IsStatus(err, http.StatusConflict) {
 		return 0, conflict.Current, err
 	}
-	return out.Seq, nil, err
+	return response.Seq, nil, err
 }
 
-func (c *Client) ItemHistory(ctx context.Context, vaultID, itemID string) ([]proto.Item, error) {
-	var out []proto.Item
-	return out, c.do(ctx, "GET", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/items/"+url.PathEscape(itemID)+"/history", nil, nil, &out, nil)
+func (c *Client) GetItemHistory(ctx context.Context, vaultID, itemID string) ([]proto.Item, error) {
+	var allItem []proto.Item
+	return allItem, c.sendRequest(ctx, "GET", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/items/"+url.PathEscape(itemID)+"/history", nil, nil, &allItem, nil)
 }

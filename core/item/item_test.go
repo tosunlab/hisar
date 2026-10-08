@@ -6,67 +6,67 @@ import (
 )
 
 func TestGenerate(t *testing.T) {
-	cases := []GenOptions{
-		DefaultGenOptions,
+	allConfig := []GeneratorConfig{
+		DefaultGeneratorConfig,
 		{Length: 4, Digits: true, Symbols: true},
 		{Length: 12},
 		{Length: 64, Digits: true},
 	}
-	for _, o := range cases {
-		seen := map[string]bool{}
+	for _, config := range allConfig {
+		seenPassword := map[string]bool{}
 		for range 50 {
-			pw, err := Generate(o)
+			password, err := GeneratePassword(config)
 			if err != nil {
-				t.Fatalf("%+v: %v", o, err)
+				t.Fatalf("%+v: %v", config, err)
 			}
-			if len(pw) != o.Length {
-				t.Fatalf("%+v: length %d", o, len(pw))
+			if len(password) != config.Length {
+				t.Fatalf("%+v: length %d", config, len(password))
 			}
-			if !strings.ContainsAny(pw, lower) || !strings.ContainsAny(pw, upper) {
-				t.Errorf("%+v: missing letters in %q", o, pw)
+			if !strings.ContainsAny(password, lowerClass) || !strings.ContainsAny(password, upperClass) {
+				t.Errorf("%+v: missing letters in %q", config, password)
 			}
-			if o.Digits != strings.ContainsAny(pw, digits) {
-				t.Errorf("%+v: digits mismatch in %q", o, pw)
+			if config.Digits != strings.ContainsAny(password, digitClass) {
+				t.Errorf("%+v: digits mismatch in %q", config, password)
 			}
-			if o.Symbols != strings.ContainsAny(pw, symbols) {
-				t.Errorf("%+v: symbols mismatch in %q", o, pw)
+			if config.Symbols != strings.ContainsAny(password, symbolClass) {
+				t.Errorf("%+v: symbols mismatch in %q", config, password)
 			}
-			if strings.ContainsAny(pw, "lIO01") {
-				t.Errorf("%+v: ambiguous character in %q", o, pw)
+			if strings.ContainsAny(password, "lIO01") {
+				t.Errorf("%+v: ambiguous character in %q", config, password)
 			}
-			seen[pw] = true
+			seenPassword[password] = true
 		}
-		if o.Length >= 12 && len(seen) != 50 {
-			t.Errorf("%+v: duplicate passwords generated", o)
+		if config.Length >= 12 && len(seenPassword) != 50 {
+			t.Errorf("%+v: duplicate passwords generated", config)
 		}
 	}
 }
 
 func TestGenerateRejectsBadLength(t *testing.T) {
-	for _, o := range []GenOptions{{Length: 3, Digits: true, Symbols: true}, {Length: 1}, {Length: 257}} {
-		if _, err := Generate(o); err == nil {
-			t.Errorf("%+v accepted", o)
+	for _, config := range []GeneratorConfig{{Length: 3, Digits: true, Symbols: true}, {Length: 1}, {Length: 257}} {
+		if _, err := GeneratePassword(config); err == nil {
+			t.Errorf("%+v accepted", config)
 		}
 	}
 }
 
 func TestGenerateDistribution(t *testing.T) {
-	counts := map[byte]int{}
-	const n = 2000
-	for range n {
-		pw, _ := Generate(GenOptions{Length: 32})
-		for i := range len(pw) {
-			counts[pw[i]]++
+	countByCharacter := map[byte]int{}
+	const passwordCount = 2000
+	for range passwordCount {
+		password, _ := GeneratePassword(GeneratorConfig{Length: 32})
+		for i := range len(password) {
+			countByCharacter[password[i]]++
 		}
 	}
-	alphabet := len(lower) + len(upper)
-	want := n * 32 / alphabet
-	for c, got := range counts {
+	alphabetSize := len(lowerClass) + len(upperClass)
+	want := passwordCount * 32 / alphabetSize
+	for character, got := range countByCharacter {
 		if got < want/2 || got > want*2 {
-			t.Errorf("char %q appeared %d times, expected about %d", c, got, want)
+			t.Errorf("char %q appeared %d times, expected about %d", character, got, want)
 		}
 	}
-	if len(counts) != alphabet {
-		t.Errorf("used %d distinct chars, want %d", len(counts), alphabet)
+	if len(countByCharacter) != alphabetSize {
+		t.Errorf("used %d distinct chars, want %d", len(countByCharacter), alphabetSize)
 	}
 }

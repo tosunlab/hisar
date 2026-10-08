@@ -21,63 +21,63 @@ type state struct {
 	AccountID string            `json:"accountId"`
 	Token     string            `json:"token"`
 	DeviceID  string            `json:"deviceId"`
-	Pins      map[string][]byte `json:"pins,omitempty"`
-	Seqs      map[string]int64  `json:"seqs,omitempty"`
+	AllPin    map[string][]byte `json:"pins,omitempty"`
+	AllSeq    map[string]int64  `json:"seqs,omitempty"`
 
 	path string
 }
 
-func (s *state) Seq(vaultID string) int64         { return s.Seqs[vaultID] }
-func (s *state) SetSeq(vaultID string, seq int64) { s.Seqs[vaultID] = seq }
+func (s *state) GetSeq(vaultID string) int64      { return s.AllSeq[vaultID] }
+func (s *state) SetSeq(vaultID string, seq int64) { s.AllSeq[vaultID] = seq }
 
-func statePath() (string, error) {
-	if p := os.Getenv("HISAR_STATE"); p != "" {
-		return p, nil
+func getStatePath() (string, error) {
+	if path := os.Getenv("HISAR_STATE"); path != "" {
+		return path, nil
 	}
-	dir, err := os.UserConfigDir()
+	configDir, err := os.UserConfigDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "hisar", "state.json"), nil
+	return filepath.Join(configDir, "hisar", "state.json"), nil
 }
 
 func loadState() (*state, error) {
-	p, err := statePath()
+	path, err := getStatePath()
 	if err != nil {
 		return nil, err
 	}
-	st := &state{path: p}
-	b, err := os.ReadFile(p)
+	currentState := &state{path: path}
+	encodedState, err := os.ReadFile(path)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return nil, err
 	}
-	if len(b) > 0 {
-		if err := json.Unmarshal(b, st); err != nil {
-			return nil, fmt.Errorf("%s: %w", p, err)
+	if len(encodedState) > 0 {
+		if err := json.Unmarshal(encodedState, currentState); err != nil {
+			return nil, fmt.Errorf("%s: %w", path, err)
 		}
 	}
-	if st.Pins == nil {
-		st.Pins = map[string][]byte{}
+	if currentState.AllPin == nil {
+		currentState.AllPin = map[string][]byte{}
 	}
-	if st.Seqs == nil {
-		st.Seqs = map[string]int64{}
+	if currentState.AllSeq == nil {
+		currentState.AllSeq = map[string]int64{}
 	}
-	return st, nil
+	return currentState, nil
 }
 
 func (s *state) save() error {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
 		return err
 	}
-	b, err := json.MarshalIndent(s, "", "  ")
+	encodedState, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return err
 	}
-	tmp := s.path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+	temporaryPath := s.path + ".tmp"
+	if err := os.WriteFile(temporaryPath, encodedState, 0o600); err != nil {
 		return err
 	}
-	return os.Rename(tmp, s.path)
+	return os.Rename(temporaryPath, s.path)
 }
 
 func (s *state) requireLogin() error {
@@ -89,26 +89,26 @@ func (s *state) requireLogin() error {
 
 // HISAR_SECRET_KEY overrides the keychain, for headless machines and scripting.
 func loadSecretKey(accountID string) (crypt.SecretKey, error) {
-	v := os.Getenv("HISAR_SECRET_KEY")
-	if v == "" {
+	encodedSecretKey := os.Getenv("HISAR_SECRET_KEY")
+	if encodedSecretKey == "" {
 		var err error
-		if v, err = keyring.Get(keyringService, accountID); err != nil {
+		if encodedSecretKey, err = keyring.Get(keyringService, accountID); err != nil {
 			return crypt.SecretKey{}, fmt.Errorf("Secret Key not found in keychain (set HISAR_SECRET_KEY or log in again): %w", err)
 		}
 	}
-	sk, err := crypt.ParseSecretKey(v)
+	secretKey, err := crypt.ParseSecretKey(encodedSecretKey)
 	if err != nil {
-		return sk, err
+		return secretKey, err
 	}
-	if sk.AccountID != accountID {
-		return sk, errors.New("Secret Key belongs to a different account")
+	if secretKey.AccountID != accountID {
+		return secretKey, errors.New("Secret Key belongs to a different account")
 	}
-	return sk, nil
+	return secretKey, nil
 }
 
-func storeSecretKey(sk crypt.SecretKey) error {
+func storeSecretKey(secretKey crypt.SecretKey) error {
 	if os.Getenv("HISAR_SECRET_KEY") != "" {
 		return nil
 	}
-	return keyring.Set(keyringService, sk.AccountID, sk.Encode())
+	return keyring.Set(keyringService, secretKey.AccountID, secretKey.Encode())
 }

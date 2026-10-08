@@ -10,60 +10,60 @@ import (
 )
 
 type command struct {
-	name    string
-	args    string
-	summary string
-	run     func(ctx context.Context, fs *flag.FlagSet, args []string) error
+	name          string
+	argumentUsage string
+	summary       string
+	run           func(ctx context.Context, flags *flag.FlagSet, allArg []string) error
 }
 
-var commands = []command{
-	{"signup", "<invite-link>", "create your account from an invite", cmdSignup},
-	{"login", "", "sign in on this device", cmdLogin},
-	{"logout", "", "sign out on this device", cmdLogout},
-	{"whoami", "", "show the signed-in account", cmdWhoami},
-	{"vaults", "", "list vaults", cmdVaults},
-	{"vault-create", "<name>", "create a shared vault", cmdVaultCreate},
-	{"ls", "[-v vault]", "list items", cmdList},
-	{"get", "<item> [-f field] [-v vault]", "show an item, or one field of it", cmdGet},
-	{"add", "[-v vault]", "add a login", cmdAdd},
-	{"edit", "<item> [-v vault]", "edit an item", cmdEdit},
-	{"rm", "<item> [-v vault]", "delete an item", cmdRemove},
-	{"generate", "[-n length] [-no-symbols]", "generate a password", cmdGenerate},
-	{"members", "", "list family members", cmdMembers},
-	{"share", "<vault> <email> [-r role]", "share a vault (role: owner, editor, reader)", cmdShare},
-	{"invite", "<email> [-r role]", "invite someone (admin only)", cmdInvite},
-	{"devices", "", "list your signed-in devices", cmdDevices},
-	{"revoke-device", "<id>", "sign out a device", cmdRevokeDevice},
+var allCommand = []command{
+	{"signup", "<invite-link>", "create your account from an invite", runSignup},
+	{"login", "", "sign in on this device", runLogin},
+	{"logout", "", "sign out on this device", runLogout},
+	{"whoami", "", "show the signed-in account", runWhoami},
+	{"vaults", "", "list vaults", runListAllVault},
+	{"vault-create", "<name>", "create a shared vault", runCreateVault},
+	{"ls", "[-v vault]", "list items", runListAllItem},
+	{"get", "<item> [-f field] [-v vault]", "show an item, or one field of it", runGet},
+	{"add", "[-v vault]", "add a login", runAdd},
+	{"edit", "<item> [-v vault]", "edit an item", runEdit},
+	{"rm", "<item> [-v vault]", "delete an item", runRemove},
+	{"generate", "[-n length] [-no-symbols]", "generate a password", runGenerate},
+	{"members", "", "list family members", runListAllMember},
+	{"share", "<vault> <email> [-r role]", "share a vault (role: owner, editor, reader)", runShare},
+	{"invite", "<email> [-r role]", "invite someone (admin only)", runInvite},
+	{"devices", "", "list your signed-in devices", runListAllDevice},
+	{"revoke-device", "<id>", "sign out a device", runRevokeDevice},
 }
 
-func usage() {
+func printUsage() {
 	fmt.Fprintln(os.Stderr, "usage: hisar <command> [arguments]\n\ncommands:")
-	for _, c := range commands {
-		fmt.Fprintf(os.Stderr, "  %-14s %-32s %s\n", c.name, c.args, c.summary)
+	for _, command := range allCommand {
+		fmt.Fprintf(os.Stderr, "  %-14s %-32s %s\n", command.name, command.argumentUsage, command.summary)
 	}
 }
 
 func main() {
 	if len(os.Args) < 2 {
-		usage()
+		printUsage()
 		os.Exit(2)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
-	for _, c := range commands {
-		if c.name != os.Args[1] {
+	for _, command := range allCommand {
+		if command.name != os.Args[1] {
 			continue
 		}
-		fs := flag.NewFlagSet(c.name, flag.ContinueOnError)
-		fs.Usage = func() {
-			fmt.Fprintf(os.Stderr, "usage: hisar %s %s\n", c.name, c.args)
-			fs.PrintDefaults()
+		flags := flag.NewFlagSet(command.name, flag.ContinueOnError)
+		flags.Usage = func() {
+			fmt.Fprintf(os.Stderr, "usage: hisar %s %s\n", command.name, command.argumentUsage)
+			flags.PrintDefaults()
 		}
-		err := c.run(ctx, fs, os.Args[2:])
+		err := command.run(ctx, flags, os.Args[2:])
 		switch {
 		case errors.Is(err, errUsage):
-			fs.Usage()
+			flags.Usage()
 			os.Exit(2)
 		case errors.Is(err, flag.ErrHelp):
 			os.Exit(2)
@@ -73,6 +73,6 @@ func main() {
 		}
 		return
 	}
-	usage()
+	printUsage()
 	os.Exit(2)
 }

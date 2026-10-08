@@ -29,7 +29,7 @@ var (
 
 // SeqStore remembers the highest vault seq seen, to detect server rollbacks.
 type SeqStore interface {
-	Seq(vaultID string) int64
+	GetSeq(vaultID string) int64
 	SetSeq(vaultID string, seq int64)
 }
 
@@ -40,7 +40,7 @@ type Session struct {
 	Name      string
 	Role      string
 	Keyset    *crypt.Keyset
-	Seqs      SeqStore
+	SeqStore  SeqStore
 }
 
 type Vault struct {
@@ -58,356 +58,356 @@ func (s *Session) Lock() {
 	}
 }
 
-func Signup(ctx context.Context, c *client.Client, invite, email, name string, password []byte, dev proto.DeviceInfo) (*Session, crypt.SecretKey, error) {
-	accountID := crypt.NewAccountID()
-	sk, err := crypt.NewSecretKey(accountID)
+func SignUp(ctx context.Context, apiClient *client.Client, invite, email, name string, password []byte, device proto.DeviceInfo) (*Session, crypt.SecretKey, error) {
+	accountID := crypt.GenerateAccountID()
+	secretKey, err := crypt.GenerateSecretKey(accountID)
 	if err != nil {
-		return nil, sk, err
+		return nil, secretKey, err
 	}
-	salt := crypt.NewSalt()
-	params := crypt.DefaultArgon2Params
-	dk, err := crypt.DeriveKeys(password, salt, params, sk)
+	salt := crypt.GenerateSalt()
+	argon2Params := crypt.DefaultArgon2Params
+	derivedKeys, err := crypt.DeriveAllKey(password, salt, argon2Params, secretKey)
 	if err != nil {
-		return nil, sk, err
+		return nil, secretKey, err
 	}
-	defer dk.Wipe()
+	defer derivedKeys.Wipe()
 
-	ks, err := crypt.NewKeyset()
+	keyset, err := crypt.GenerateKeyset()
 	if err != nil {
-		return nil, sk, err
+		return nil, secretKey, err
 	}
-	encKS, err := ks.Encrypt(dk.AUK, accountID)
+	encryptedKeyset, err := keyset.Encrypt(derivedKeys.AccountUnlockKey, accountID)
 	if err != nil {
-		return nil, sk, err
+		return nil, secretKey, err
 	}
 
-	oc, err := pake.Config().Client()
+	opaqueClient, err := pake.CreateConfig().Client()
 	if err != nil {
-		return nil, sk, err
+		return nil, secretKey, err
 	}
-	regReq, err := oc.RegistrationInit(dk.AuthKey)
+	registrationRequest, err := opaqueClient.RegistrationInit(derivedKeys.AuthKey)
 	if err != nil {
-		return nil, sk, err
+		return nil, secretKey, err
 	}
-	start, err := c.RegisterStart(ctx, &proto.RegisterStartRequest{Invite: invite, Email: email, AccountID: accountID, Request: regReq.Serialize()})
+	startResponse, err := apiClient.StartRegistration(ctx, &proto.RegisterStartRequest{Invite: invite, Email: email, AccountID: accountID, Request: registrationRequest.Serialize()})
 	if err != nil {
-		return nil, sk, err
+		return nil, secretKey, err
 	}
-	regResp, err := oc.Deserialize.RegistrationResponse(start.Response)
+	registrationResponse, err := opaqueClient.Deserialize.RegistrationResponse(startResponse.Response)
 	if err != nil {
-		return nil, sk, err
+		return nil, secretKey, err
 	}
-	record, _, err := oc.RegistrationFinalize(regResp, []byte(accountID), pake.ServerIdentity)
+	record, _, err := opaqueClient.RegistrationFinalize(registrationResponse, []byte(accountID), pake.ServerIdentity)
 	if err != nil {
-		return nil, sk, err
+		return nil, secretKey, err
 	}
-	oc.ClearState()
+	opaqueClient.ClearState()
 
-	sess, err := c.RegisterFinish(ctx, &proto.RegisterFinishRequest{
+	sessionResponse, err := apiClient.FinishRegistration(ctx, &proto.RegisterFinishRequest{
 		Invite:     invite,
 		Email:      email,
 		Name:       name,
 		AccountID:  accountID,
 		Record:     record.Serialize(),
 		Salt:       salt,
-		Argon2:     params,
-		EncKeyset:  encKS,
-		PublicKeys: ks.PublicKeys(accountID),
-		Device:     dev,
+		Argon2:     argon2Params,
+		EncKeyset:  encryptedKeyset,
+		PublicKeys: keyset.GetAllPublicKey(accountID),
+		Device:     device,
 	})
 	if err != nil {
-		return nil, sk, err
+		return nil, secretKey, err
 	}
-	c.Token = sess.Token
+	apiClient.Token = sessionResponse.Token
 
-	s := &Session{Client: c, AccountID: accountID, Email: email, Name: name, Keyset: ks}
-	if _, err := s.CreateVault(ctx, "Personal", proto.VaultPersonal); err != nil {
-		return nil, sk, fmt.Errorf("create personal vault: %w", err)
+	newSession := &Session{Client: apiClient, AccountID: accountID, Email: email, Name: name, Keyset: keyset}
+	if _, err := newSession.CreateVault(ctx, "Personal", proto.VaultPersonal); err != nil {
+		return nil, secretKey, fmt.Errorf("create personal vault: %w", err)
 	}
-	return s, sk, nil
+	return newSession, secretKey, nil
 }
 
-func Login(ctx context.Context, c *client.Client, email string, password []byte, sk crypt.SecretKey, dev proto.DeviceInfo) (*Session, error) {
-	pre, err := c.Prelogin(ctx, email)
+func LogIn(ctx context.Context, apiClient *client.Client, email string, password []byte, secretKey crypt.SecretKey, device proto.DeviceInfo) (*Session, error) {
+	prelogin, err := apiClient.FetchPrelogin(ctx, email)
 	if err != nil {
 		return nil, err
 	}
-	dk, err := crypt.DeriveKeys(password, pre.Salt, pre.Argon2, sk)
+	derivedKeys, err := crypt.DeriveAllKey(password, prelogin.Salt, prelogin.Argon2, secretKey)
 	if err != nil {
 		return nil, err
 	}
-	defer dk.Wipe()
+	defer derivedKeys.Wipe()
 
-	oc, err := pake.Config().Client()
+	opaqueClient, err := pake.CreateConfig().Client()
 	if err != nil {
 		return nil, err
 	}
-	ke1, err := oc.GenerateKE1(dk.AuthKey)
+	keyExchange1, err := opaqueClient.GenerateKE1(derivedKeys.AuthKey)
 	if err != nil {
 		return nil, err
 	}
-	start, err := c.LoginStart(ctx, &proto.LoginStartRequest{Email: email, KE1: ke1.Serialize()})
+	startResponse, err := apiClient.StartLogin(ctx, &proto.LoginStartRequest{Email: email, KE1: keyExchange1.Serialize()})
 	if err != nil {
 		return nil, err
 	}
-	ke2, err := oc.Deserialize.KE2(start.KE2)
+	keyExchange2, err := opaqueClient.Deserialize.KE2(startResponse.KE2)
 	if err != nil {
 		return nil, ErrBadCredentials
 	}
-	ke3, _, _, err := oc.GenerateKE3(ke2, []byte(sk.AccountID), pake.ServerIdentity)
-	oc.ClearState()
+	keyExchange3, _, _, err := opaqueClient.GenerateKE3(keyExchange2, []byte(secretKey.AccountID), pake.ServerIdentity)
+	opaqueClient.ClearState()
 	if err != nil {
 		return nil, ErrBadCredentials
 	}
-	sess, err := c.LoginFinish(ctx, &proto.LoginFinishRequest{LoginID: start.LoginID, KE3: ke3.Serialize(), Device: dev})
+	sessionResponse, err := apiClient.FinishLogin(ctx, &proto.LoginFinishRequest{LoginID: startResponse.LoginID, KE3: keyExchange3.Serialize(), Device: device})
 	if client.IsStatus(err, http.StatusUnauthorized) {
 		return nil, ErrBadCredentials
 	}
 	if err != nil {
 		return nil, err
 	}
-	c.Token = sess.Token
-	if sess.AccountID != sk.AccountID {
+	apiClient.Token = sessionResponse.Token
+	if sessionResponse.AccountID != secretKey.AccountID {
 		return nil, ErrBadCredentials
 	}
-	return open(ctx, c, dk.AUK, sk.AccountID)
+	return openSession(ctx, apiClient, derivedKeys.AccountUnlockKey, secretKey.AccountID)
 }
 
 // Unlock decrypts the keyset using an existing session token.
-func Unlock(ctx context.Context, c *client.Client, password []byte, sk crypt.SecretKey) (*Session, error) {
-	acct, err := c.Account(ctx)
+func Unlock(ctx context.Context, apiClient *client.Client, password []byte, secretKey crypt.SecretKey) (*Session, error) {
+	account, err := apiClient.GetAccount(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if acct.AccountID != sk.AccountID {
+	if account.AccountID != secretKey.AccountID {
 		return nil, ErrBadCredentials
 	}
-	dk, err := crypt.DeriveKeys(password, acct.Salt, acct.Argon2, sk)
+	derivedKeys, err := crypt.DeriveAllKey(password, account.Salt, account.Argon2, secretKey)
 	if err != nil {
 		return nil, err
 	}
-	defer dk.Wipe()
-	return openAccount(acct, c, dk.AUK)
+	defer derivedKeys.Wipe()
+	return decryptAccountKeyset(account, apiClient, derivedKeys.AccountUnlockKey)
 }
 
-func open(ctx context.Context, c *client.Client, auk []byte, accountID string) (*Session, error) {
-	acct, err := c.Account(ctx)
+func openSession(ctx context.Context, apiClient *client.Client, accountUnlockKey []byte, accountID string) (*Session, error) {
+	account, err := apiClient.GetAccount(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if acct.AccountID != accountID {
+	if account.AccountID != accountID {
 		return nil, ErrBadCredentials
 	}
-	return openAccount(acct, c, auk)
+	return decryptAccountKeyset(account, apiClient, accountUnlockKey)
 }
 
-func openAccount(acct *proto.Account, c *client.Client, auk []byte) (*Session, error) {
-	ks, err := crypt.DecryptKeyset(auk, acct.AccountID, acct.EncKeyset)
+func decryptAccountKeyset(account *proto.Account, apiClient *client.Client, accountUnlockKey []byte) (*Session, error) {
+	keyset, err := crypt.DecryptKeyset(accountUnlockKey, account.AccountID, account.EncKeyset)
 	if err != nil {
 		return nil, ErrBadCredentials
 	}
-	own := ks.PublicKeys(acct.AccountID)
-	if !bytes.Equal(own.KEM, acct.PublicKeys.KEM) || !bytes.Equal(own.Sign, acct.PublicKeys.Sign) {
-		ks.Wipe()
+	ownPublicKeyBundle := keyset.GetAllPublicKey(account.AccountID)
+	if !bytes.Equal(ownPublicKeyBundle.KEM, account.PublicKeys.KEM) || !bytes.Equal(ownPublicKeyBundle.Sign, account.PublicKeys.Sign) {
+		keyset.Wipe()
 		return nil, ErrKeyMismatch
 	}
-	return &Session{Client: c, AccountID: acct.AccountID, Email: acct.Email, Name: acct.Name, Role: acct.Role, Keyset: ks}, nil
+	return &Session{Client: apiClient, AccountID: account.AccountID, Email: account.Email, Name: account.Name, Role: account.Role, Keyset: keyset}, nil
 }
 
-func (s *Session) CreateVault(ctx context.Context, name, typ string) (*Vault, error) {
-	id := uuid.NewString()
-	key := crypt.NewKey()
-	encName, err := crypt.SealVaultName(key, id, []byte(name))
+func (s *Session) CreateVault(ctx context.Context, name, vaultType string) (*Vault, error) {
+	vaultID := uuid.NewString()
+	vaultKey := crypt.GenerateKey()
+	encryptedName, err := crypt.SealVaultName(vaultKey, vaultID, []byte(name))
 	if err != nil {
 		return nil, err
 	}
-	wrapped, err := crypt.WrapVaultKey(s.Keyset.PublicKeys(s.AccountID).KEM, id, s.AccountID, key)
+	wrappedKey, err := crypt.WrapVaultKey(s.Keyset.GetAllPublicKey(s.AccountID).KEM, vaultID, s.AccountID, vaultKey)
 	if err != nil {
 		return nil, err
 	}
-	if err := s.Client.CreateVault(ctx, &proto.CreateVaultRequest{ID: id, Type: typ, EncName: encName, WrappedKey: wrapped}); err != nil {
+	if err := s.Client.CreateVault(ctx, &proto.CreateVaultRequest{ID: vaultID, Type: vaultType, EncName: encryptedName, WrappedKey: wrappedKey}); err != nil {
 		return nil, err
 	}
-	return &Vault{ID: id, Type: typ, Name: name, Role: proto.VaultOwner, Key: key}, nil
+	return &Vault{ID: vaultID, Type: vaultType, Name: name, Role: proto.VaultOwner, Key: vaultKey}, nil
 }
 
-func (s *Session) Vaults(ctx context.Context) ([]Vault, error) {
-	vs, err := s.Client.Vaults(ctx)
+func (s *Session) ListAllVault(ctx context.Context) ([]Vault, error) {
+	allProtoVault, err := s.Client.ListAllVault(ctx)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]Vault, 0, len(vs))
-	for _, v := range vs {
-		key, err := s.Keyset.UnwrapVaultKey(v.ID, s.AccountID, v.WrappedKey)
+	allVault := make([]Vault, 0, len(allProtoVault))
+	for _, protoVault := range allProtoVault {
+		vaultKey, err := s.Keyset.UnwrapVaultKey(protoVault.ID, s.AccountID, protoVault.WrappedKey)
 		if err != nil {
-			return nil, fmt.Errorf("vault %s: %w", v.ID, err)
+			return nil, fmt.Errorf("vault %s: %w", protoVault.ID, err)
 		}
-		name, err := crypt.OpenVaultName(key, v.ID, v.EncName)
+		name, err := crypt.OpenVaultName(vaultKey, protoVault.ID, protoVault.EncName)
 		if err != nil {
-			return nil, fmt.Errorf("vault %s: %w", v.ID, err)
+			return nil, fmt.Errorf("vault %s: %w", protoVault.ID, err)
 		}
-		out = append(out, Vault{ID: v.ID, Type: v.Type, Name: string(name), Role: v.Role, Key: key})
+		allVault = append(allVault, Vault{ID: protoVault.ID, Type: protoVault.Type, Name: string(name), Role: protoVault.Role, Key: vaultKey})
 	}
-	return out, nil
+	return allVault, nil
 }
 
 func (s *Session) FindVault(ctx context.Context, nameOrID string) (*Vault, error) {
-	vs, err := s.Vaults(ctx)
+	allVault, err := s.ListAllVault(ctx)
 	if err != nil {
 		return nil, err
 	}
-	for i := range vs {
-		if vs[i].ID == nameOrID || strings.EqualFold(vs[i].Name, nameOrID) {
-			return &vs[i], nil
+	for i := range allVault {
+		if allVault[i].ID == nameOrID || strings.EqualFold(allVault[i].Name, nameOrID) {
+			return &allVault[i], nil
 		}
 	}
 	return nil, fmt.Errorf("vault %q: %w", nameOrID, ErrNotFound)
 }
 
-// Items fetches and decrypts all live items of a vault.
-func (s *Session) Items(ctx context.Context, v *Vault) ([]item.Item, error) {
-	var since, next int64
-	byID := map[string]proto.Item{}
+// ListAllItem fetches and decrypts all live items of a vault.
+func (s *Session) ListAllItem(ctx context.Context, vault *Vault) ([]item.Item, error) {
+	var since, nextSeq int64
+	allProtoItemByID := map[string]proto.Item{}
 	for {
-		resp, err := s.Client.Changes(ctx, v.ID, since, 0)
+		changeResponse, err := s.Client.ListAllChange(ctx, vault.ID, since, 0)
 		if err != nil {
 			return nil, err
 		}
-		for _, it := range resp.Items {
-			byID[it.ID] = it
+		for _, protoItem := range changeResponse.Items {
+			allProtoItemByID[protoItem.ID] = protoItem
 		}
-		next = resp.NextSeq
-		if !resp.More {
+		nextSeq = changeResponse.NextSeq
+		if !changeResponse.More {
 			break
 		}
-		since = resp.NextSeq
+		since = changeResponse.NextSeq
 	}
-	if s.Seqs != nil {
-		if next < s.Seqs.Seq(v.ID) {
+	if s.SeqStore != nil {
+		if nextSeq < s.SeqStore.GetSeq(vault.ID) {
 			return nil, ErrRollback
 		}
-		s.Seqs.SetSeq(v.ID, next)
+		s.SeqStore.SetSeq(vault.ID, nextSeq)
 	}
 
-	out := make([]item.Item, 0, len(byID))
-	for _, p := range byID {
-		if p.Deleted {
+	allItem := make([]item.Item, 0, len(allProtoItemByID))
+	for _, protoItem := range allProtoItemByID {
+		if protoItem.Deleted {
 			continue
 		}
-		it, err := decryptItem(v, &p)
+		vaultItem, err := decryptItem(vault, &protoItem)
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, *it)
+		allItem = append(allItem, *vaultItem)
 	}
-	sort.Slice(out, func(i, j int) bool {
-		return strings.ToLower(out[i].Overview.Title) < strings.ToLower(out[j].Overview.Title)
+	sort.Slice(allItem, func(i, j int) bool {
+		return strings.ToLower(allItem[i].Overview.Title) < strings.ToLower(allItem[j].Overview.Title)
 	})
-	return out, nil
+	return allItem, nil
 }
 
-func decryptItem(v *Vault, p *proto.Item) (*item.Item, error) {
-	it := &item.Item{ID: p.ID, Revision: p.Revision}
-	ov, err := crypt.OpenItemPart(v.Key, v.ID, p.ID, p.Revision, crypt.Overview, p.Overview)
+func decryptItem(vault *Vault, protoItem *proto.Item) (*item.Item, error) {
+	vaultItem := &item.Item{ID: protoItem.ID, Revision: protoItem.Revision}
+	overview, err := crypt.OpenItemPart(vault.Key, vault.ID, protoItem.ID, protoItem.Revision, crypt.Overview, protoItem.Overview)
 	if err != nil {
-		return nil, fmt.Errorf("item %s: %w", p.ID, err)
+		return nil, fmt.Errorf("item %s: %w", protoItem.ID, err)
 	}
-	det, err := crypt.OpenItemPart(v.Key, v.ID, p.ID, p.Revision, crypt.Details, p.Details)
+	details, err := crypt.OpenItemPart(vault.Key, vault.ID, protoItem.ID, protoItem.Revision, crypt.Details, protoItem.Details)
 	if err != nil {
-		return nil, fmt.Errorf("item %s: %w", p.ID, err)
+		return nil, fmt.Errorf("item %s: %w", protoItem.ID, err)
 	}
-	defer clear(det)
-	if err := json.Unmarshal(ov, &it.Overview); err != nil {
+	defer clear(details)
+	if err := json.Unmarshal(overview, &vaultItem.Overview); err != nil {
 		return nil, err
 	}
-	if err := json.Unmarshal(det, &it.Details); err != nil {
+	if err := json.Unmarshal(details, &vaultItem.Details); err != nil {
 		return nil, err
 	}
-	return it, nil
+	return vaultItem, nil
 }
 
-// SaveItem creates or updates an item. it.Revision is the base revision and is
+// SaveItem creates or updates an item. vaultItem.Revision is the base revision and is
 // replaced by the new one on success. On ErrConflict, current holds the server's version.
-func (s *Session) SaveItem(ctx context.Context, v *Vault, it *item.Item) (current *item.Item, err error) {
-	return s.put(ctx, v, it, false)
+func (s *Session) SaveItem(ctx context.Context, vault *Vault, vaultItem *item.Item) (current *item.Item, err error) {
+	return s.putItem(ctx, vault, vaultItem, false)
 }
 
-func (s *Session) DeleteItem(ctx context.Context, v *Vault, it *item.Item) (current *item.Item, err error) {
-	return s.put(ctx, v, &item.Item{ID: it.ID, Revision: it.Revision}, true)
+func (s *Session) DeleteItem(ctx context.Context, vault *Vault, vaultItem *item.Item) (current *item.Item, err error) {
+	return s.putItem(ctx, vault, &item.Item{ID: vaultItem.ID, Revision: vaultItem.Revision}, true)
 }
 
-func (s *Session) put(ctx context.Context, v *Vault, it *item.Item, deleted bool) (*item.Item, error) {
-	if it.ID == "" {
-		it.ID = uuid.NewString()
+func (s *Session) putItem(ctx context.Context, vault *Vault, vaultItem *item.Item, deleted bool) (*item.Item, error) {
+	if vaultItem.ID == "" {
+		vaultItem.ID = uuid.NewString()
 	}
-	rev, err := uuid.NewV7()
+	revision, err := uuid.NewV7()
 	if err != nil {
 		return nil, err
 	}
-	ov, err := json.Marshal(it.Overview)
+	overview, err := json.Marshal(vaultItem.Overview)
 	if err != nil {
 		return nil, err
 	}
-	det, err := json.Marshal(it.Details)
+	details, err := json.Marshal(vaultItem.Details)
 	if err != nil {
 		return nil, err
 	}
-	defer clear(det)
-	encOv, err := crypt.SealItemPart(v.Key, v.ID, it.ID, rev.String(), crypt.Overview, ov)
+	defer clear(details)
+	encryptedOverview, err := crypt.SealItemPart(vault.Key, vault.ID, vaultItem.ID, revision.String(), crypt.Overview, overview)
 	if err != nil {
 		return nil, err
 	}
-	encDet, err := crypt.SealItemPart(v.Key, v.ID, it.ID, rev.String(), crypt.Details, det)
+	encryptedDetails, err := crypt.SealItemPart(vault.Key, vault.ID, vaultItem.ID, revision.String(), crypt.Details, details)
 	if err != nil {
 		return nil, err
 	}
 
-	_, cur, err := s.Client.PutItem(ctx, v.ID, it.ID, it.Revision, &proto.PutItemRequest{
-		Revision: rev.String(), Deleted: deleted, Overview: encOv, Details: encDet,
+	_, serverItem, err := s.Client.PutItem(ctx, vault.ID, vaultItem.ID, vaultItem.Revision, &proto.PutItemRequest{
+		Revision: revision.String(), Deleted: deleted, Overview: encryptedOverview, Details: encryptedDetails,
 	})
 	if client.IsStatus(err, http.StatusConflict) {
-		if cur == nil || cur.Deleted {
+		if serverItem == nil || serverItem.Deleted {
 			return nil, ErrConflict
 		}
-		current, derr := decryptItem(v, cur)
-		if derr != nil {
-			return nil, derr
+		current, decryptErr := decryptItem(vault, serverItem)
+		if decryptErr != nil {
+			return nil, decryptErr
 		}
 		return current, ErrConflict
 	}
 	if err != nil {
 		return nil, err
 	}
-	it.Revision = rev.String()
+	vaultItem.Revision = revision.String()
 	return nil, nil
 }
 
-// VerifiedMember returns a member whose KEM key is signed by their signing key.
-// Callers should additionally pin m.PublicKeys.Sign (trust on first use).
-func (s *Session) VerifiedMember(ctx context.Context, emailOrID string) (*proto.Member, error) {
-	ms, err := s.Client.Members(ctx)
+// GetVerifiedMember returns a member whose KEM key is signed by their signing key.
+// Callers should additionally pin the member's PublicKeys.Sign (trust on first use).
+func (s *Session) GetVerifiedMember(ctx context.Context, emailOrID string) (*proto.Member, error) {
+	allMember, err := s.Client.ListAllMember(ctx)
 	if err != nil {
 		return nil, err
 	}
-	for i := range ms {
-		m := &ms[i]
-		if m.AccountID == emailOrID || strings.EqualFold(m.Email, emailOrID) {
-			if err := m.PublicKeys.Verify(m.AccountID); err != nil {
-				return nil, fmt.Errorf("member %s: %w", m.Email, err)
+	for i := range allMember {
+		member := &allMember[i]
+		if member.AccountID == emailOrID || strings.EqualFold(member.Email, emailOrID) {
+			if err := member.PublicKeys.Verify(member.AccountID); err != nil {
+				return nil, fmt.Errorf("member %s: %w", member.Email, err)
 			}
-			return m, nil
+			return member, nil
 		}
 	}
 	return nil, fmt.Errorf("member %q: %w", emailOrID, ErrNotFound)
 }
 
-func (s *Session) Share(ctx context.Context, v *Vault, m *proto.Member, role string) error {
-	if err := m.PublicKeys.Verify(m.AccountID); err != nil {
+func (s *Session) ShareVault(ctx context.Context, vault *Vault, member *proto.Member, role string) error {
+	if err := member.PublicKeys.Verify(member.AccountID); err != nil {
 		return err
 	}
-	wrapped, err := crypt.WrapVaultKey(m.PublicKeys.KEM, v.ID, m.AccountID, v.Key)
+	wrappedKey, err := crypt.WrapVaultKey(member.PublicKeys.KEM, vault.ID, member.AccountID, vault.Key)
 	if err != nil {
 		return err
 	}
-	return s.Client.SetAccess(ctx, v.ID, m.AccountID, &proto.SetAccessRequest{WrappedKey: wrapped, Role: role})
+	return s.Client.SetAccess(ctx, vault.ID, member.AccountID, &proto.SetAccessRequest{WrappedKey: wrappedKey, Role: role})
 }
