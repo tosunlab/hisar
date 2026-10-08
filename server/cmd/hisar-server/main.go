@@ -3,18 +3,18 @@ package main
 import (
 	"flag"
 	"log"
-	"net/http"
+
+	"github.com/gofiber/fiber/v3"
 )
 
 func main() {
 	addr := flag.String("addr", ":8080", "listen address")
 	flag.Parse()
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("ok\n"))
+	app := fiber.New(fiber.Config{AppName: "hisar-server"})
+	app.Get("/healthz", func(c fiber.Ctx) error {
+		return c.SendString("ok\n")
 	})
 
-	log.Printf("hisar-server listening on %s", *addr)
-	log.Fatal(http.ListenAndServe(*addr, mux))
+	log.Fatal(app.Listen(*addr, fiber.ListenConfig{DisableStartupMessage: true}))
 }
