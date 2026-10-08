@@ -289,6 +289,7 @@ All under `/api/v1`. JSON bodies, base64url for binary fields.
 ### 8.4 Deployment
 
 - Single static binary `hisar-server` in a Docker image, with Postgres 17 alongside it in Docker Compose.
+- HTTP framework: Fiber v3 (fasthttp). It serves plain HTTP behind the reverse proxy; HTTP/2 and TLS are handled by Caddy.
 - Served publicly at `https://tryhisar.com`, TLS terminated by Caddy (automatic certificates) in front.
 - Attachments on local disk (later: S3-compatible storage).
 - Nightly `pg_dump` + attachments encrypted with `age` and copied off-server. Restore tested quarterly.
