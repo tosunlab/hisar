@@ -33,7 +33,7 @@ hisar signup https://tryhisar.com/invite/<token>
 Migrations live in `server/internal/store/migrations` and run with [goose](https://github.com/pressly/goose). `hisar-server serve` applies pending migrations on start, guarded by a Postgres advisory lock. For production upgrades you can run them explicitly first:
 
 ```sh
-docker compose run --rm -e HISAR_AUTO_MIGRATE=false hisar migrate status
+docker compose run --rm hisar migrate status
 docker compose run --rm hisar migrate up
 docker compose run --rm hisar migrate down    # roll back the latest migration
 ```
