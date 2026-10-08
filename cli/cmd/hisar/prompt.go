@@ -1,0 +1,107 @@
+package main
+
+import (
+	"bufio"
+	"errors"
+	"flag"
+	"fmt"
+	"os"
+	"strings"
+
+	"golang.org/x/term"
+)
+
+var stdinReader = bufio.NewReader(os.Stdin)
+
+func readLine() (string, error) {
+	line, err := stdinReader.ReadString('\n')
+	if err != nil && line == "" {
+		return "", err
+	}
+	return strings.TrimRight(line, "\r\n"), nil
+}
+
+func prompt(label, defaultValue string) (string, error) {
+	if defaultValue != "" {
+		fmt.Fprintf(os.Stderr, "%s [%s]: ", label, defaultValue)
+	} else {
+		fmt.Fprintf(os.Stderr, "%s: ", label)
+	}
+	answer, err := readLine()
+	if err != nil {
+		return "", err
+	}
+	if answer = strings.TrimSpace(answer); answer == "" {
+		return defaultValue, nil
+	}
+	return answer, nil
+}
+
+func promptRequired(label, defaultValue string) (string, error) {
+	for {
+		answer, err := prompt(label, defaultValue)
+		if err != nil || answer != "" {
+			return answer, err
+		}
+		fmt.Fprintf(os.Stderr, "%s is required\n", label)
+	}
+}
+
+// promptSecret reads without echo on a terminal, or a plain line when stdin is piped.
+func promptSecret(label string) ([]byte, error) {
+	fmt.Fprintf(os.Stderr, "%s: ", label)
+	stdinFD := int(os.Stdin.Fd())
+	if term.IsTerminal(stdinFD) {
+		secret, err := term.ReadPassword(stdinFD)
+		fmt.Fprintln(os.Stderr)
+		return secret, err
+	}
+	line, err := readLine()
+	fmt.Fprintln(os.Stderr)
+	return []byte(line), err
+}
+
+func promptNewPassword() ([]byte, error) {
+	for {
+		password, err := promptSecret("Master password")
+		if err != nil {
+			return nil, err
+		}
+		if len(password) < 10 {
+			fmt.Fprintln(os.Stderr, "Use at least 10 characters.")
+			continue
+		}
+		repeatedPassword, err := promptSecret("Repeat master password")
+		if err != nil {
+			return nil, err
+		}
+		if string(password) == string(repeatedPassword) {
+			clear(repeatedPassword)
+			return password, nil
+		}
+		fmt.Fprintln(os.Stderr, "Passwords do not match.")
+	}
+}
+
+func confirm(label string) (bool, error) {
+	answer, err := prompt(label+" (y/N)", "")
+	return strings.EqualFold(answer, "y") || strings.EqualFold(answer, "yes"), err
+}
+
+// parse allows flags before and after positional arguments.
+func parse(flags *flag.FlagSet, allArg []string) ([]string, error) {
+	var allPositional []string
+	for {
+		if err := flags.Parse(allArg); err != nil {
+			return nil, err
+		}
+		allArg = flags.Args()
+		if len(allArg) == 0 {
+			return allPositional, nil
+		}
+		allPositional = append(allPositional, allArg[0])
+		allArg = allArg[1:]
+	}
+}
+
+var errUsage = errors.New("usage")

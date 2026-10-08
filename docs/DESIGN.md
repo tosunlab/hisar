@@ -156,13 +156,20 @@ The admin creates an invite: email + one-time token, signed with the admin's Ed2
 ### 5.3 Login on a new device
 
 1. User enters server URL, email, Secret Key (or scans the Emergency Kit QR code) and master password.
-2. Client fetches salt and params, derives `authKey`, runs OPAQUE login and gets a session.
+2. Client fetches salt and params, derives `authKey`, runs OPAQUE login and gets a session. OPAQUE identities: client = account ID, server = the constant `"hisar"` (`core/pake`; `bytemare/opaque` v0.18.0 cannot decode key material with an empty identity). The server's OPAQUE key material and an HMAC key live in `hisar-secrets.json`, created on first start.
 3. Client downloads `encKeyset` and decrypts it with AUK.
 4. The device registers (name, platform, public device key). Other devices see "new device signed in".
 
 ### 5.4 Unlock (known device)
 
-The device already has the Secret Key in the keychain and a local copy of `encKeyset`. Unlock is offline: derive AUK, decrypt the keyset. Biometric unlock stores AUK in the keychain under a biometry-protected access control (Touch ID / Face ID / Android BiometricPrompt). The keychain entry is invalidated when biometrics change and expires after N days, forcing the password again.
+The device already has the Secret Key in the keychain and a local copy of `encKeyset`. Unlock is offline: derive AUK, decrypt the keyset.
+
+**Touch ID (macOS, MVP).** When the user enables it, the desktop app stores AUK in a Keychain item protected by `SecAccessControl` with `kSecAccessControlBiometryCurrentSet` and `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` (never synced to iCloud). Unlocking reads the item, which makes macOS show the Touch ID prompt; AUK then decrypts the keyset as usual.
+
+- Re-enrolling fingerprints invalidates the item (`BiometryCurrentSet`), so the master password is needed again.
+- The master password is still required after an app restart and at least every 14 days (configurable). The app enforces this by deleting the Keychain item.
+- Implemented with cgo against `Security.framework` and `LocalAuthentication.framework` in the desktop app. Keychain items with biometric access control require a code-signed app with a team ID (see §12).
+- Touch ID also approves SSH agent requests (§9.6). Face ID and Android BiometricPrompt follow the same pattern in Phase 4.
 
 ### 5.5 Sessions
 
@@ -271,10 +278,10 @@ audit_events   (id, account_id, device_id, type, ip, created_at)
 | Account | `GET/PUT /account`, `GET /account/keyset`, `PUT /account/password` |
 | Devices | `GET /devices`, `DELETE /devices/{id}` |
 | Members | `GET /members` (public keys, signatures), `POST /invites`, `GET /invites/{token}` |
-| Vaults | `GET /vaults`, `POST /vaults`, `PUT /vaults/{id}/access/{accountID}`, `DELETE /vaults/{id}/access/{accountID}`, `POST /vaults/{id}/rotate` |
+| Vaults | `GET /vaults`, `POST /vaults`, `GET /vaults/{id}/members`, `PUT /vaults/{id}/access/{accountID}`, `DELETE /vaults/{id}/access/{accountID}`, `POST /vaults/{id}/rotate` (Phase 2) |
 | Items | `GET /vaults/{id}/changes`, `PUT /vaults/{id}/items/{itemID}`, `GET /vaults/{id}/items/{itemID}/history` |
 | Attachments | `PUT/GET /vaults/{id}/attachments/{attID}/chunks/{n}` |
-| Recovery | `POST /recovery/{accountID}/start`, `POST /recovery/{accountID}/complete` |
+| Recovery (Phase 2) | `POST /recovery/{accountID}/start`, `POST /recovery/{accountID}/complete` |
 | Admin | `GET /admin/audit`, `GET /admin/accounts` |
 
 All under `/api/v1`. JSON bodies, base64url for binary fields.
@@ -289,6 +296,7 @@ All under `/api/v1`. JSON bodies, base64url for binary fields.
 ### 8.4 Deployment
 
 - Single static binary `hisar-server` in a Docker image, with Postgres 17 alongside it in Docker Compose.
+- Schema migrations: goose (`pressly/goose`), SQL files embedded in the binary, up and down sections, applied on start under a Postgres advisory lock or explicitly with `hisar-server migrate up|down|status`.
 - HTTP framework: Fiber v3 (fasthttp). It serves plain HTTP behind the reverse proxy; HTTP/2 and TLS are handled by Caddy.
 - Served publicly at `https://tryhisar.com`, TLS terminated by Caddy (automatic certificates) in front.
 - Attachments on local disk (later: S3-compatible storage).
@@ -304,6 +312,7 @@ All clients use `core/` for crypto, the local store and sync.
 - Local store: SQLite (`modernc.org/sqlite`, pure Go) holding the server's ciphertext as-is plus sync state. Nothing is stored decrypted on disk.
 - Auto-lock after idle time and on screen lock/sleep. Clipboard cleared after 90 s.
 - Ships the native-messaging host for the browser extension.
+- Runs the SSH agent (§9.6) and handles Touch ID (§5.4).
 
 ### 9.2 Browser extension — TypeScript, MV3
 
@@ -331,6 +340,37 @@ Go's garbage collector can copy memory and strings are immutable, so secrets can
 - Long-lived keys (AUK, keyset, vault keys) live in `memguard` enclaves and are opened only for the duration of an operation.
 - Plaintext item data is zeroed after use where possible, and the lock action drops all references.
 
+### 9.6 SSH agent (MVP)
+
+Like 1Password, the desktop app is an SSH agent for keys stored in vaults, so private keys never sit in `~/.ssh`.
+
+**SSH Key items**
+
+- A new item type. The overview holds the title, public key, fingerprint and comment; the details hold the private key in OpenSSH format.
+- Generate inside the app (Ed25519 by default, RSA-4096 if requested), or import existing OpenSSH or PEM keys. Passphrase-protected keys are decrypted on import and stored without the passphrase, because the vault encryption protects them.
+- Export the public key (copy, or write `~/.ssh/<name>.pub`) for `authorized_keys`, GitHub and so on.
+
+**Agent**
+
+- Implements the OpenSSH agent protocol with `golang.org/x/crypto/ssh/agent`.
+- Listens on `~/.hisar/agent.sock` (directory 0700, socket 0600). The app offers to add `Host *` → `IdentityAgent ~/.hisar/agent.sock` to `~/.ssh/config`.
+- Offers SSH keys from the vaults the user enables for the agent (default: Personal). It is read-only: requests to add or remove keys, and the agent's lock/unlock requests, are refused.
+- Servers allow about 6 key attempts per connection (`MaxAuthTries`). With more keys, the user points `IdentityFile` in `~/.ssh/config` at the exported public key to pick one per host; the agent still does the signing.
+- Works for `git` over SSH and for SSH commit signing (`gpg.format ssh`), since both go through the agent.
+
+**Approval**
+
+- If Hisar is locked, a request first triggers unlock (Touch ID or password).
+- The first use of a key by a client process asks for approval. The prompt names the requesting application, found from the socket peer PID via `LOCAL_PEERPID` → executable path, and, when OpenSSH sends the `session-bind.com` extension, the destination host. Approval uses Touch ID.
+- Approvals are remembered per (key, application) until Hisar locks. "Ask every time" can be set per key.
+- Agent forwarding (`ssh -A`) exposes the agent to the remote host. The per-use approval makes this visible, and the docs recommend `ProxyJump` instead.
+
+**Implementation**
+
+- `core/sshagent` implements `agent.ExtendedAgent` over two interfaces: a key source (unlocked vault items) and an approver. It has no UI dependency and is tested in CI with an in-memory approver and a real `x/crypto/ssh` client and server.
+- The desktop app supplies the Touch ID approver and the socket listener.
+- Linux (Unix socket) and Windows (named pipe `\\.\pipe\openssh-ssh-agent`) come later. The CLI gets `hisar ssh-key generate|import|list|public-key`.
+
 ## 10. Repository layout
 
 ```
@@ -341,6 +381,8 @@ desktop/    Wails app (Go + Vue)                                      (Phase 2)
 extension/  Browser extension (TypeScript)                            (Phase 3)
 mobile/     iOS + Android apps on top of gomobile-bound core          (Phase 4)
 docs/       Design and decisions
+deploy/     Dockerfile, Docker Compose (Postgres + server + Caddy), deployment notes
+scripts/    test-end-to-end.sh: end-to-end test of the built server and CLI (run in CI)
 go.work     Ties the Go modules together for local development
 ```
 
@@ -349,8 +391,8 @@ go.work     Ties the Go modules together for local development
 | Phase | Scope | Exit criteria |
 |---|---|---|
 | 0 | This document, repo skeleton, CI | Design reviewed and agreed |
-| 1 | `core/crypto` with test vectors, OPAQUE auth, server (accounts, vaults, items, sync), CLI | Two CLI clients on two machines sync a shared vault through a self-hosted server |
-| 2 | Desktop app: signup + Emergency Kit, unlock, items, generator, search, Personal + Family vaults, invites, recovery, auto-lock, Touch ID | Family uses it daily on macOS |
+| 1 | `core/crypt` with test vectors, OPAQUE auth, server (accounts, vaults, items, sync), CLI, Docker deployment, CI (unit and database tests, end-to-end test of the built binaries, image build) | Two CLI clients on two machines sync a shared vault through a self-hosted server |
+| 2 (MVP) | Desktop app (macOS first): signup + Emergency Kit, unlock, **Touch ID unlock** (§5.4), items, generator, search, Personal + Family vaults, invites, recovery, vault key rotation, auto-lock, **SSH agent with SSH Key items and Touch ID approval** (§9.6), local encrypted cache. CI builds the desktop app | Family uses it daily on macOS; `ssh` and `git` use keys from Hisar |
 | 3 | Browser extension via native messaging: fill, save, generate | Daily logins without copy-paste |
 | 4 | Mobile apps with system autofill | Logins on phones |
 | 5 | TOTP, passkeys, attachments, Watchtower (reused/weak/breached via HIBP k-anonymity), import from 1Password/Bitwarden/CSV, SSE push sync | — |
@@ -365,3 +407,4 @@ go.work     Ties the Go modules together for local development
 | 4 | Recovery group members | Admin only |
 | 5 | Item history retention | 90 days |
 | 6 | Fingerprint check (§5.6) | Optional; key-change warnings are always on |
+| 7 | Apple Developer Program membership (code signing and notarization; required for biometric Keychain items and Gatekeeper) | **Open**: needed before Touch ID can ship. During development, local signing with a free Apple ID team works on your own Mac |

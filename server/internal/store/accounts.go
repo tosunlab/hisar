@@ -1,0 +1,206 @@
+package store
+
+import (
+	"context"
+	"encoding/json"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+)
+
+type Account struct {
+	ID           string
+	Email        string
+	Name         string
+	Role         string
+	Argon2Params json.RawMessage
+	Salt         []byte
+	OpaqueRecord []byte
+	EncKeyset    []byte
+	KEMPub       []byte
+	SignPub      []byte
+	KEMSig       []byte
+	CreatedAt    time.Time
+}
+
+type Invite struct {
+	Email     string
+	Role      string
+	ExpiresAt time.Time
+}
+
+type Device struct {
+	ID         string
+	AccountID  string
+	Name       string
+	Platform   string
+	CreatedAt  time.Time
+	LastSeenAt time.Time
+}
+
+type Session struct {
+	TokenHash []byte
+	AccountID string
+	DeviceID  string
+	Role      string
+	ExpiresAt time.Time
+}
+
+const accountColumnList = `id, email, name, role, argon2_params, salt, opaque_record, enc_keyset, kem_pub, sign_pub, kem_sig, created_at`
+
+func scanAccount(row pgx.Row) (*Account, error) {
+	var account Account
+	err := row.Scan(&account.ID, &account.Email, &account.Name, &account.Role, &account.Argon2Params, &account.Salt, &account.OpaqueRecord, &account.EncKeyset, &account.KEMPub, &account.SignPub, &account.KEMSig, &account.CreatedAt)
+	if err != nil {
+		return nil, convertNoRowsToNotFound(err)
+	}
+	return &account, nil
+}
+
+func (s *Store) GetAccountByEmail(ctx context.Context, email string) (*Account, error) {
+	return scanAccount(s.pool.QueryRow(ctx, `SELECT `+accountColumnList+` FROM accounts WHERE email = $1`, email))
+}
+
+func (s *Store) GetAccountByID(ctx context.Context, accountID string) (*Account, error) {
+	return scanAccount(s.pool.QueryRow(ctx, `SELECT `+accountColumnList+` FROM accounts WHERE id = $1`, accountID))
+}
+
+func (s *Store) ListAllAccount(ctx context.Context) ([]Account, error) {
+	allRow, err := s.pool.Query(ctx, `SELECT `+accountColumnList+` FROM accounts ORDER BY created_at`)
+	if err != nil {
+		return nil, err
+	}
+	defer allRow.Close()
+	var allAccount []Account
+	for allRow.Next() {
+		account, err := scanAccount(allRow)
+		if err != nil {
+			return nil, err
+		}
+		allAccount = append(allAccount, *account)
+	}
+	return allAccount, allRow.Err()
+}
+
+func (s *Store) CreateInvite(ctx context.Context, tokenHash []byte, email, role string, createdBy *string, ttl time.Duration) error {
+	_, err := s.pool.Exec(ctx,
+		`INSERT INTO invites (token_hash, email, role, created_by, expires_at) VALUES ($1, $2, $3, $4, $5)`,
+		tokenHash, email, role, createdBy, time.Now().Add(ttl))
+	return err
+}
+
+func (s *Store) GetInviteByHash(ctx context.Context, tokenHash []byte) (*Invite, error) {
+	var invite Invite
+	err := s.pool.QueryRow(ctx,
+		`SELECT email, role, expires_at FROM invites WHERE token_hash = $1 AND used_at IS NULL AND expires_at > now()`,
+		tokenHash).Scan(&invite.Email, &invite.Role, &invite.ExpiresAt)
+	if err != nil {
+		return nil, convertNoRowsToNotFound(err)
+	}
+	return &invite, nil
+}
+
+// RedeemInvite atomically consumes the invite and creates the account, its first device and a session.
+func (s *Store) RedeemInvite(ctx context.Context, tokenHash []byte, account *Account, device *Device, session *Session) error {
+	return s.runInTransaction(ctx, func(transaction pgx.Tx) error {
+		var email, role string
+		err := transaction.QueryRow(ctx,
+			`SELECT email, role FROM invites WHERE token_hash = $1 AND used_at IS NULL AND expires_at > now() FOR UPDATE`,
+			tokenHash).Scan(&email, &role)
+		if err != nil {
+			return convertNoRowsToNotFound(err)
+		}
+		if email != account.Email {
+			return ErrNotFound
+		}
+		account.Role = role
+		_, err = transaction.Exec(ctx,
+			`INSERT INTO accounts (id, email, name, role, argon2_params, salt, opaque_record, enc_keyset, kem_pub, sign_pub, kem_sig)
+			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+			account.ID, account.Email, account.Name, account.Role, account.Argon2Params, account.Salt, account.OpaqueRecord, account.EncKeyset, account.KEMPub, account.SignPub, account.KEMSig)
+		if isUniqueViolation(err) {
+			return ErrExists
+		}
+		if err != nil {
+			return err
+		}
+		if _, err := transaction.Exec(ctx, `UPDATE invites SET used_at = now() WHERE token_hash = $1`, tokenHash); err != nil {
+			return err
+		}
+		return insertDeviceSession(ctx, transaction, device, session)
+	})
+}
+
+func (s *Store) CreateDeviceSession(ctx context.Context, device *Device, session *Session) error {
+	return s.runInTransaction(ctx, func(transaction pgx.Tx) error { return insertDeviceSession(ctx, transaction, device, session) })
+}
+
+func insertDeviceSession(ctx context.Context, transaction pgx.Tx, device *Device, session *Session) error {
+	if _, err := transaction.Exec(ctx,
+		`INSERT INTO devices (id, account_id, name, platform) VALUES ($1, $2, $3, $4)`,
+		device.ID, device.AccountID, device.Name, device.Platform); err != nil {
+		return err
+	}
+	_, err := transaction.Exec(ctx,
+		`INSERT INTO sessions (token_hash, account_id, device_id, expires_at) VALUES ($1, $2, $3, $4)`,
+		session.TokenHash, session.AccountID, session.DeviceID, session.ExpiresAt)
+	return err
+}
+
+// GetSessionByHash returns a live session and slides its expiry forward.
+func (s *Store) GetSessionByHash(ctx context.Context, tokenHash []byte, ttl time.Duration) (*Session, error) {
+	var session Session
+	err := s.pool.QueryRow(ctx, `
+		UPDATE sessions s SET expires_at = now() + $2::interval
+		FROM accounts a, devices d
+		WHERE s.token_hash = $1 AND s.expires_at > now()
+		  AND a.id = s.account_id AND d.id = s.device_id AND d.revoked_at IS NULL
+		RETURNING s.token_hash, s.account_id, s.device_id, a.role, s.expires_at`,
+		tokenHash, ttl).Scan(&session.TokenHash, &session.AccountID, &session.DeviceID, &session.Role, &session.ExpiresAt)
+	if err != nil {
+		return nil, convertNoRowsToNotFound(err)
+	}
+	s.pool.Exec(ctx, `UPDATE devices SET last_seen_at = now() WHERE id = $1`, session.DeviceID)
+	return &session, nil
+}
+
+func (s *Store) DeleteSession(ctx context.Context, tokenHash []byte) error {
+	_, err := s.pool.Exec(ctx, `DELETE FROM sessions WHERE token_hash = $1`, tokenHash)
+	return err
+}
+
+func (s *Store) ListAllDevice(ctx context.Context, accountID string) ([]Device, error) {
+	allRow, err := s.pool.Query(ctx,
+		`SELECT id, account_id, name, platform, created_at, last_seen_at FROM devices
+		 WHERE account_id = $1 AND revoked_at IS NULL ORDER BY created_at`, accountID)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(allRow, func(row pgx.CollectableRow) (Device, error) {
+		var device Device
+		err := row.Scan(&device.ID, &device.AccountID, &device.Name, &device.Platform, &device.CreatedAt, &device.LastSeenAt)
+		return device, err
+	})
+}
+
+func (s *Store) RevokeDevice(ctx context.Context, accountID, deviceID string) error {
+	return s.runInTransaction(ctx, func(transaction pgx.Tx) error {
+		commandTag, err := transaction.Exec(ctx,
+			`UPDATE devices SET revoked_at = now() WHERE id = $1 AND account_id = $2 AND revoked_at IS NULL`,
+			deviceID, accountID)
+		if err != nil {
+			return err
+		}
+		if commandTag.RowsAffected() == 0 {
+			return ErrNotFound
+		}
+		_, err = transaction.Exec(ctx, `DELETE FROM sessions WHERE device_id = $1`, deviceID)
+		return err
+	})
+}
+
+func (s *Store) RecordAudit(ctx context.Context, accountID, deviceID *string, eventType string, detail any, ip string) {
+	s.pool.Exec(ctx,
+		`INSERT INTO audit_events (account_id, device_id, type, detail, ip) VALUES ($1, $2, $3, $4, $5)`,
+		accountID, deviceID, eventType, detail, ip)
+}

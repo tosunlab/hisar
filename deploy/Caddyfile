@@ -1,0 +1,4 @@
+tryhisar.com {
+	encode zstd gzip
+	reverse_proxy hisar:8080
+}
