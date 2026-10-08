@@ -18,9 +18,24 @@ The server stores only ciphertext. Keys are derived on your devices from your ma
 
 ## Development
 
-Requires Go 1.26+.
+Requires Go 1.26+ and Docker (for Postgres).
 
 ```sh
-make vet test build
-./bin/hisar-server -addr :8080
+docker run -d --name hisar-pg -e POSTGRES_PASSWORD=hisar -e POSTGRES_DB=hisar -p 127.0.0.1:55432:5432 postgres:18
+export HISAR_TEST_DATABASE_URL="postgres://postgres:hisar@127.0.0.1:55432/hisar?sslmode=disable"
+
+make vet test build      # database tests drop and recreate the public schema of that database
+make build-cli-all       # cross-compile the CLI
+make docker              # build the server image
 ```
+
+Smoke test of the built binaries against an empty database:
+
+```sh
+docker exec hisar-pg createdb -U postgres hisar_smoke
+HISAR_DATABASE_URL="postgres://postgres:hisar@127.0.0.1:55432/hisar_smoke?sslmode=disable" make smoke
+```
+
+CI (`.github/workflows/ci.yml`) runs gofmt, vet, all tests against Postgres (failing if any are skipped), CLI cross-compiles, the smoke test, and builds and boots the server Docker image.
+
+Deployment: see [deploy/README.md](deploy/README.md).

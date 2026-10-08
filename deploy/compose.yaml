@@ -1,0 +1,48 @@
+services:
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hisar
+      POSTGRES_DB: hisar
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+    secrets: [db_password]
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "hisar"]
+      interval: 5s
+      retries: 10
+
+  hisar:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file: hisar.env
+    volumes:
+      - hisar-data:/data
+    ports:
+      - 127.0.0.1:8080:8080
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - 80:80
+      - 443:443
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+
+secrets:
+  db_password:
+    file: db_password.txt
+
+volumes:
+  pgdata:
+  hisar-data:
+  caddy-data:

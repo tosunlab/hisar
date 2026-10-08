@@ -4,3 +4,6 @@
 *.test
 *.out
 node_modules/
+hisar-secrets.json
+deploy/db_password.txt
+deploy/hisar.env
