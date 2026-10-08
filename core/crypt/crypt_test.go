@@ -161,6 +161,18 @@ func TestDeriveKeysProperties(t *testing.T) {
 	}
 }
 
+func TestDeriveKeysKeepsInput(t *testing.T) {
+	for _, s := range []string{"ascii password", "café"} {
+		pw := []byte(s)
+		if _, err := DeriveKeys(pw, NewSalt(), MinArgon2Params, testSecretKey(t)); err != nil {
+			t.Fatal(err)
+		}
+		if string(pw) != s {
+			t.Errorf("DeriveKeys modified password %q", s)
+		}
+	}
+}
+
 func TestDeriveKeysRejects(t *testing.T) {
 	sk := testSecretKey(t)
 	weak := []Argon2Params{

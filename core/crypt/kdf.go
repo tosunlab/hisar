@@ -66,7 +66,8 @@ func DeriveKeys(password, salt []byte, p Argon2Params, sk SecretKey) (*DerivedKe
 		return nil, ErrBadAccountID
 	}
 
-	pw := norm.NFKD.Bytes(password)
+	// Append into a fresh slice: norm.Bytes may return its input, and pw is wiped below.
+	pw := norm.NFKD.Append(nil, password...)
 	kPw := argon2.IDKey(pw, salt, p.Time, p.MemoryKiB, p.Threads, 32)
 	clear(pw)
 	kSk, err := hkdf.Key(sha256.New, sk.key[:], []byte(sk.AccountID), "hisar/v1/secret-key", 32)
