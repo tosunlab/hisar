@@ -1,49 +1,79 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import { confirmSecretKeySaved, copyText, store } from "../store";
+import AppIcon from "./AppIcon.vue";
+import HisarLogo from "./HisarLogo.vue";
 
 const hasSaved = ref(false);
+const allKeyPart = computed(() => store.pendingSecretKey.split("-"));
 </script>
 
 <template>
-  <div class="centered-page">
-    <div class="title-bar" style="width: 100%"></div>
-    <div class="card">
-      <h1>Your Secret Key</h1>
-      <p class="subtitle muted">
-        You need it together with your master password to sign in on a new device. It never leaves your devices, so nobody
-        can recover it for you. Write it down and keep it somewhere safe.
-      </p>
-      <p class="secret-key monospace" data-testid="secret-key">{{ store.pendingSecretKey }}</p>
-      <div class="row">
-        <button @click="copyText(store.pendingSecretKey, 'Secret Key')">Copy</button>
+  <div class="page">
+    <div class="title-bar"></div>
+    <div class="page-body">
+      <div class="card page-card secret-key-card">
+        <HisarLogo :size="32" />
+        <h1>Save your Secret Key</h1>
+        <p class="subtitle">
+          You need it, together with your master password, to sign in on a new device. It never leaves your devices, so
+          nobody, including your Hisar admin, can recover it for you.
+        </p>
+        <div class="key" data-testid="secret-key" :aria-label="store.pendingSecretKey">
+          <span v-for="(part, index) in allKeyPart" :key="index" class="key-part monospace">{{ part }}</span>
+        </div>
+        <div class="row actions">
+          <button @click="copyText(store.pendingSecretKey, 'Secret Key')"><AppIcon name="copy" /> Copy</button>
+        </div>
+        <label class="row confirmation">
+          <input v-model="hasSaved" type="checkbox" name="hasSaved" />
+          <span class="confirmation-text">I have written down or stored my Secret Key somewhere safe</span>
+        </label>
+        <button class="primary full-width" :disabled="!hasSaved" @click="confirmSecretKeySaved">Continue to Hisar</button>
       </div>
-      <label class="row confirmation">
-        <input v-model="hasSaved" type="checkbox" name="hasSaved" />
-        I have written down or stored my Secret Key
-      </label>
-      <button class="primary" :disabled="!hasSaved" @click="confirmSecretKeySaved">Continue</button>
     </div>
   </div>
 </template>
 
 <style scoped>
-.secret-key {
-  padding: 16px;
-  border: 1px dashed var(--color-border);
+.secret-key-card {
+  width: min(580px, 100%);
+}
+
+.key {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px;
+  padding: 18px 12px;
+  border: 1px dashed var(--color-border-strong);
   border-radius: var(--radius);
-  font-size: 16px;
-  text-align: center;
-  word-break: break-all;
+  background: var(--color-surface);
   user-select: text;
   -webkit-user-select: text;
 }
 
-.confirmation {
-  margin: 16px 0;
+.key-part {
+  padding: 4px 6px;
+  border-radius: var(--radius-small);
+  background: var(--color-surface-raised);
+  font-size: 14px;
 }
 
-.confirmation input {
-  width: auto;
+.actions {
+  justify-content: center;
+  margin: 14px 0 20px;
+}
+
+.confirmation {
+  margin-bottom: 18px;
+  align-items: flex-start;
+}
+
+.confirmation-text {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--color-text);
 }
 </style>

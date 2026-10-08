@@ -21,10 +21,11 @@ type Status struct {
 }
 
 type VaultSummary struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
-	Type string `json:"type"`
-	Role string `json:"role"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Type      string `json:"type"`
+	Role      string `json:"role"`
+	ItemCount int    `json:"itemCount"`
 }
 
 type ItemField struct {

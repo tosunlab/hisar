@@ -1,3 +1,4 @@
+import { Browser } from "@wailsio/runtime";
 import { Service } from "../bindings/github.com/tryhisar/hisar/desktop/vault";
 import type {
   ItemDetail as BoundItemDetail,
@@ -20,7 +21,7 @@ function normalizeItem(boundItem: BoundItemDetail): ItemDetail {
   return { ...boundItem, urls: boundItem.urls ?? [], fields: boundItem.fields ?? [] };
 }
 
-export const api = {
+const wailsApi = {
   getStatus: (): Promise<Status> => Service.GetStatus(),
   signIn: (server: string, email: string, secretKey: string, password: string): Promise<Status> =>
     Service.SignIn(server, email, secretKey, password),
@@ -41,7 +42,11 @@ export const api = {
   copyField: (vaultID: string, itemID: string, fieldName: string): Promise<void> =>
     Service.CopyField(vaultID, itemID, fieldName),
   copyText: (text: string): Promise<void> => Service.CopyText(text),
+  openURL: (link: string): Promise<void> => Browser.OpenURL(link),
 };
+
+// main.ts swaps in the preview backend before mounting when VITE_PREVIEW is set.
+export const api: typeof wailsApi = { ...wailsApi };
 
 export function getErrorMessage(error: unknown): string {
   if (error instanceof Error && error.message) {

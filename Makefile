@@ -34,7 +34,7 @@ install-wails:
 	go install github.com/wailsapp/wails/v3/cmd/wails3@$(WAILS_VERSION)
 
 test-desktop-frontend:
-	cd desktop/frontend && npm ci --no-audit --no-fund && npm run typecheck && npm test
+	cd desktop/frontend && npm ci --no-audit --no-fund && npm run typecheck && npm test && npm run check:bundle
 
 build-desktop:
 	cd desktop && wails3 build

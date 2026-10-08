@@ -317,7 +317,7 @@ func TestIntegrationDesktopFlow(t *testing.T) {
 		t.Fatalf("create vault: %+v %v", family, err)
 	}
 	allVault, _ = service.ListAllVault()
-	if len(allVault) != 2 || allVault[0].Name != "Personal" || allVault[1].Name != "Family" {
+	if len(allVault) != 2 || allVault[0].Name != "Personal" || allVault[1].Name != "Family" || allVault[0].ItemCount != 1 || allVault[1].ItemCount != 0 {
 		t.Errorf("vaults: %+v", allVault)
 	}
 
