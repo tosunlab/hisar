@@ -28,6 +28,17 @@ export function DeleteItem(vaultID: string, itemID: string): $CancellablePromise
     return $Call.ByID(4013544763, vaultID, itemID);
 }
 
+export function DisableBiometricUnlock(): $CancellablePromise<$models.Status> {
+    return $Call.ByID(3456338865);
+}
+
+/**
+ * EnableBiometricUnlock seals the account unlock key with a new key stored in the OS keychain.
+ */
+export function EnableBiometricUnlock(password: string): $CancellablePromise<$models.Status> {
+    return $Call.ByID(2915723006, password);
+}
+
 export function GeneratePassword(config: $models.PasswordConfig): $CancellablePromise<string> {
     return $Call.ByID(3064323257, config);
 }
@@ -83,4 +94,8 @@ export function SignUp(inviteLink: string, email: string, name: string, password
 
 export function Unlock(password: string): $CancellablePromise<$models.Status> {
     return $Call.ByID(3966657583, password);
+}
+
+export function UnlockWithBiometric(): $CancellablePromise<$models.Status> {
+    return $Call.ByID(1722696203);
 }

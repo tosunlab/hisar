@@ -84,6 +84,54 @@ func (store *memorySecretKeyStore) DeleteSecretKey(accountID string) error {
 	return nil
 }
 
+type fakeBiometric struct {
+	mutex             sync.Mutex
+	authenticateError error
+	allKey            map[string][]byte
+}
+
+func createFakeBiometric() *fakeBiometric {
+	return &fakeBiometric{allKey: map[string][]byte{}}
+}
+
+func (biometric *fakeBiometric) IsAvailable() bool { return true }
+
+func (biometric *fakeBiometric) setAuthenticateError(err error) {
+	biometric.mutex.Lock()
+	defer biometric.mutex.Unlock()
+	biometric.authenticateError = err
+}
+
+func (biometric *fakeBiometric) Authenticate(reason string) error {
+	biometric.mutex.Lock()
+	defer biometric.mutex.Unlock()
+	return biometric.authenticateError
+}
+
+func (biometric *fakeBiometric) StoreKey(accountID string, key []byte) error {
+	biometric.mutex.Lock()
+	defer biometric.mutex.Unlock()
+	biometric.allKey[accountID] = append([]byte(nil), key...)
+	return nil
+}
+
+func (biometric *fakeBiometric) LoadKey(accountID string) ([]byte, error) {
+	biometric.mutex.Lock()
+	defer biometric.mutex.Unlock()
+	key, found := biometric.allKey[accountID]
+	if !found {
+		return nil, errors.New("no key")
+	}
+	return append([]byte(nil), key...), nil
+}
+
+func (biometric *fakeBiometric) DeleteKey(accountID string) error {
+	biometric.mutex.Lock()
+	defer biometric.mutex.Unlock()
+	delete(biometric.allKey, accountID)
+	return nil
+}
+
 func createTestService(t *testing.T, statePath string, secretKeyStore SecretKeyStore) (*Service, *fakeClipboard, *fakeLockNotifier) {
 	t.Helper()
 	clipboard := &fakeClipboard{}
@@ -96,6 +144,7 @@ func createTestService(t *testing.T, statePath string, secretKeyStore SecretKeyS
 		LockNotifier:        lockNotifier,
 		SecretKeyStore:      secretKeyStore,
 		ClipboardClearAfter: 100 * time.Millisecond,
+		Biometric:           createFakeBiometric(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -116,6 +165,31 @@ func TestSignedOutService(t *testing.T) {
 	}
 	if status, err := service.SignOut(); err != nil || status.State != StateSignedOut {
 		t.Errorf("SignOut while signed out: %+v %v", status, err)
+	}
+}
+
+func TestBiometricNeedsPasswordAfterLaunch(t *testing.T) {
+	statePath := filepath.Join(t.TempDir(), "desktop.json")
+	state, _ := localstate.Load(statePath)
+	state.Server, state.Email, state.AccountID, state.Token = "https://hisar.test", "a@example.com", "ABC123", "token"
+	state.BiometricUnlock = []byte("sealed")
+	state.LastPasswordUnlockAt = time.Now()
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+	service, _, _ := createTestService(t, statePath, createMemorySecretKeyStore())
+	status := service.GetStatus()
+	if !status.BiometricAvailable || !status.BiometricEnabled || status.BiometricReady {
+		t.Fatalf("status after launch: %+v", status)
+	}
+	if _, err := service.UnlockWithBiometric(); !errors.Is(err, ErrBiometricNotReady) {
+		t.Errorf("Touch ID before master password: %v", err)
+	}
+	if _, err := service.EnableBiometricUnlock("password"); !errors.Is(err, ErrLocked) {
+		t.Errorf("enable while locked: %v", err)
+	}
+	if status, err := service.DisableBiometricUnlock(); err != nil || status.BiometricEnabled {
+		t.Errorf("disable: %+v %v", status, err)
 	}
 }
 
@@ -328,22 +402,83 @@ func TestIntegrationDesktopFlow(t *testing.T) {
 		t.Errorf("items after delete: %+v", allItem)
 	}
 
+	biometric := service.config.Biometric.(*fakeBiometric)
+	accountID := service.state.AccountID
+	if _, err := service.EnableBiometricUnlock("wrong password"); err == nil || len(biometric.allKey) != 0 {
+		t.Errorf("enable Touch ID with wrong password: %v", err)
+	}
+	if status, err := service.EnableBiometricUnlock(password); err != nil || !status.BiometricEnabled || status.BiometricReady {
+		t.Fatalf("enable Touch ID: %+v %v", status, err)
+	}
+	if status := service.Lock(); !status.BiometricReady {
+		t.Fatalf("Touch ID not ready after lock: %+v", status)
+	}
+	biometric.setAuthenticateError(errors.New("Touch ID was cancelled"))
+	if _, err := service.UnlockWithBiometric(); err == nil || service.GetStatus().State != StateLocked {
+		t.Errorf("cancelled Touch ID unlocked: %v", err)
+	}
+	biometric.setAuthenticateError(nil)
+	if status, err := service.UnlockWithBiometric(); err != nil || status.State != StateUnlocked {
+		t.Fatalf("unlock with Touch ID: %+v %v", status, err)
+	}
+	if allVault, err := service.ListAllVault(); err != nil || len(allVault) != 2 {
+		t.Errorf("vaults after Touch ID unlock: %d %v", len(allVault), err)
+	}
+
+	service.config.Now = func() time.Time { return time.Now().Add(15 * 24 * time.Hour) }
+	if status := service.Lock(); status.BiometricReady {
+		t.Error("Touch ID ready after 15 days without master password")
+	}
+	if _, err := service.UnlockWithBiometric(); !errors.Is(err, ErrBiometricNotReady) {
+		t.Errorf("expired Touch ID unlock: %v", err)
+	}
+	service.config.Now = time.Now
+	if _, err := service.Unlock(password); err != nil {
+		t.Fatal(err)
+	}
+
+	biometric.allKey[accountID] = crypt.GenerateKey()
+	service.Lock()
+	if _, err := service.UnlockWithBiometric(); err == nil || !strings.Contains(err.Error(), "turned off") {
+		t.Errorf("tampered Touch ID key: %v", err)
+	}
+	if status := service.GetStatus(); status.BiometricEnabled || len(biometric.allKey) != 0 {
+		t.Errorf("Touch ID still enabled after failure: %+v", status)
+	}
+	if _, err := service.Unlock(password); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.EnableBiometricUnlock(password); err != nil {
+		t.Fatal(err)
+	}
+
 	if status, err := service.SignOut(); err != nil || status.State != StateSignedOut {
 		t.Fatalf("sign out: %+v %v", status, err)
 	}
 	if len(secretKeyStore.allByAccountID) != 0 {
 		t.Error("Secret Key kept after sign out")
 	}
+	if len(biometric.allKey) != 0 || service.GetStatus().BiometricEnabled {
+		t.Error("Touch ID key kept after sign out")
+	}
 
 	if _, err := service.SignIn(serverURL, email, signUpResult.SecretKey, password); err != nil {
 		t.Fatalf("sign in: %v", err)
 	}
+	if _, err := service.EnableBiometricUnlock(password); err != nil {
+		t.Fatal(err)
+	}
 	service.Lock()
 
 	restarted, _, lockNotifier := createTestService(t, statePath, secretKeyStore)
+	restarted.config.Biometric = biometric
 	restarted.config.AutoLockAfter = 300 * time.Millisecond
-	if status := restarted.GetStatus(); status.State != StateLocked || status.Email != email {
-		t.Fatalf("restarted status: %+v", status)
+	status := restarted.GetStatus()
+	if status.State != StateLocked || status.Email != email || !status.BiometricEnabled || status.BiometricReady {
+		t.Fatalf("restarted status (Touch ID must wait for the master password): %+v", status)
+	}
+	if _, err := restarted.UnlockWithBiometric(); !errors.Is(err, ErrBiometricNotReady) {
+		t.Errorf("Touch ID before master password after restart: %v", err)
 	}
 	if _, err := restarted.Unlock(password); err != nil {
 		t.Fatal(err)

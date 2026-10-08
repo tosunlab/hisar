@@ -34,6 +34,13 @@ export interface Status {
     "server": string;
     "email": string;
     "name": string;
+
+    /**
+     * BiometricReady means Touch ID can unlock now: enabled, and the master password was used since launch and recently.
+     */
+    "biometricAvailable": boolean;
+    "biometricEnabled": boolean;
+    "biometricReady": boolean;
 }
 
 export interface VaultSummary {

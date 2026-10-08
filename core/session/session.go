@@ -170,7 +170,7 @@ func LogIn(ctx context.Context, apiClient *client.Client, email string, password
 	if sessionResponse.AccountID != secretKey.AccountID {
 		return nil, ErrBadCredentials
 	}
-	return openSession(ctx, apiClient, derivedKeys.AccountUnlockKey, secretKey.AccountID)
+	return UnlockWithAccountUnlockKey(ctx, apiClient, derivedKeys.AccountUnlockKey, secretKey.AccountID)
 }
 
 // Unlock decrypts the keyset using an existing session token.
@@ -190,7 +190,30 @@ func Unlock(ctx context.Context, apiClient *client.Client, password []byte, secr
 	return decryptAccountKeyset(account, apiClient, derivedKeys.AccountUnlockKey)
 }
 
-func openSession(ctx context.Context, apiClient *client.Client, accountUnlockKey []byte, accountID string) (*Session, error) {
+// DeriveAccountUnlockKey returns a copy of the account unlock key after checking it opens the keyset; the caller wipes it.
+func DeriveAccountUnlockKey(ctx context.Context, apiClient *client.Client, password []byte, secretKey crypt.SecretKey) ([]byte, error) {
+	account, err := apiClient.GetAccount(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if account.AccountID != secretKey.AccountID {
+		return nil, ErrBadCredentials
+	}
+	derivedKeys, err := crypt.DeriveAllKey(password, account.Salt, account.Argon2, secretKey)
+	if err != nil {
+		return nil, err
+	}
+	defer derivedKeys.Wipe()
+	keyset, err := crypt.DecryptKeyset(derivedKeys.AccountUnlockKey, account.AccountID, account.EncKeyset)
+	if err != nil {
+		return nil, ErrBadCredentials
+	}
+	keyset.Wipe()
+	return append([]byte(nil), derivedKeys.AccountUnlockKey...), nil
+}
+
+// UnlockWithAccountUnlockKey decrypts the keyset with an already derived account unlock key.
+func UnlockWithAccountUnlockKey(ctx context.Context, apiClient *client.Client, accountUnlockKey []byte, accountID string) (*Session, error) {
 	account, err := apiClient.GetAccount(ctx)
 	if err != nil {
 		return nil, err

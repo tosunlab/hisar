@@ -9,6 +9,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 
 	"github.com/tryhisar/hisar/core/localstate"
+	"github.com/tryhisar/hisar/desktop/biometric"
 	"github.com/tryhisar/hisar/desktop/vault"
 )
 
@@ -47,6 +48,7 @@ func main() {
 		log.Fatal(err)
 	}
 	clipboard := &wailsClipboard{}
+	touchID := biometric.Create("Hisar Touch ID")
 	lockNotifier := &wailsLockNotifier{}
 	vaultConfig := vault.Config{
 		StatePath:    statePath,
@@ -54,6 +56,7 @@ func main() {
 		Platform:     runtime.GOOS + "/desktop",
 		Clipboard:    clipboard,
 		LockNotifier: lockNotifier,
+		Biometric:    touchID,
 	}
 	vaultService, err := vault.CreateService(vaultConfig)
 	if err != nil {
@@ -65,6 +68,7 @@ func main() {
 		Description: "Self-hosted, end-to-end encrypted password manager",
 		Services: []application.Service{
 			application.NewService(vaultService),
+			application.NewService(&TouchIDPromptService{biometric: touchID}),
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(allAsset),
@@ -75,7 +79,7 @@ func main() {
 	})
 	clipboard.app, lockNotifier.app = app, app
 
-	app.Window.NewWithOptions(application.WebviewWindowOptions{
+	window := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:     "Hisar",
 		Width:     1100,
 		Height:    700,
@@ -89,6 +93,7 @@ func main() {
 		BackgroundColour: application.NewRGB(13, 14, 16),
 		URL:              "/",
 	})
+	touchID.SetWindowProvider(window.NativeWindow)
 
 	if err := app.Run(); err != nil {
 		log.Fatal(err)

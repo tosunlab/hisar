@@ -164,11 +164,19 @@ The admin creates an invite: email + one-time token, signed with the admin's Ed2
 
 The device already has the Secret Key in the keychain and a local copy of `encKeyset`. Unlock is offline: derive AUK, decrypt the keyset.
 
-**Touch ID (macOS, MVP).** When the user enables it, the desktop app stores AUK in a Keychain item protected by `SecAccessControl` with `kSecAccessControlBiometryCurrentSet` and `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` (never synced to iCloud). Unlocking reads the item, which makes macOS show the Touch ID prompt; AUK then decrypts the keyset as usual.
+**Touch ID (macOS, MVP).** Target design, once the app is signed with a team ID (§12 #7): the desktop app stores AUK in a Keychain item protected by `SecAccessControl` with `kSecAccessControlBiometryCurrentSet` and `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` (never synced to iCloud), so macOS itself releases it only after Touch ID, and re-enrolling fingerprints invalidates it.
 
-- Re-enrolling fingerprints invalidates the item (`BiometryCurrentSet`), so the master password is needed again.
-- The master password is still required after an app restart and at least every 14 days (configurable). The app enforces this by deleting the Keychain item.
-- Implemented with cgo against `Security.framework` and `LocalAuthentication.framework` in the desktop app. Keychain items with biometric access control require a code-signed app with a team ID (see §12).
+**Interim implementation (ad-hoc signed builds).** Keychain items with biometric access control need a team-signed app, so until then:
+
+- Enabling Touch ID requires the master password and a Touch ID check. The app derives AUK, generates a random 32-byte wrapping key, stores `Seal(wrappingKey, AUK, "hisar/v1/biometric-unlock:" || accountID)` in the local state file, and stores the wrapping key as a generic password in the login Keychain via `Security.framework` (so the item's ACL trusts the Hisar binary, not a shared CLI tool).
+- Unlocking with Touch ID: `LAContext.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics)` succeeds, then the app loads the wrapping key, opens AUK and decrypts the keyset. The fingerprint check is enforced by the app, not by the Keychain; this is the weaker part that the target design removes.
+- If the sealed key no longer opens the keyset (master password changed elsewhere) or the Keychain item is missing, Touch ID unlock is turned off and the master password is required.
+- The upgrade keeps the UI and the `Biometric` interface (`desktop/vault`); only the storage in `desktop/biometric` changes.
+
+Common to both:
+
+- The master password is still required after every app launch and at least every 14 days (`LastPasswordUnlockAt` in the state file).
+- **In-window prompt**: like 1Password, the lock screen embeds Apple's `LAAuthenticationView` (`LocalAuthenticationEmbeddedUI`, macOS 12+) in Hisar's own window instead of the system dialog. The UI measures a slot on the lock screen and the app places the native view over it; "Use master password" cancels the evaluation (`LAContext.invalidate`).
 - Touch ID also approves SSH agent requests (§9.6). Face ID and Android BiometricPrompt follow the same pattern in Phase 4.
 
 ### 5.5 Sessions
