@@ -11,7 +11,7 @@ The server stores only ciphertext. Keys are derived on your devices from your ma
 | `core/` | Shared Go library: crypto, item model, local store, sync |
 | `server/` | `hisar-server` sync server (Go + Postgres) |
 | `cli/` | `hisar` command-line client |
-| `desktop/` | Desktop app (Wails) |
+| `desktop/` | Desktop app (Wails v3 + Vue), see [desktop/README.md](desktop/README.md) |
 | `extension/` | Browser extension |
 | `mobile/` | iOS and Android apps |
 | `docs/` | Design docs |
