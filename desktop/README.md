@@ -4,7 +4,7 @@ Wails v3 (pinned beta, see `WAILS_VERSION` in the root `Makefile`) with a Vue 3 
 
 | Path | What |
 |---|---|
-| `vault/` | Go backend bound to the UI: session, lock/auto-lock, clipboard clearing, SSH Key items, sharing, invites, devices and account recovery. No Wails import, so it is tested on any OS |
+| `vault/` | Go backend bound to the UI: session, lock/auto-lock, clipboard clearing, SSH Key items, sharing, invites, devices, account recovery and import. No Wails import, so it is tested on any OS |
 | `agent/` | SSH agent in the app: approval (Touch ID or in-app prompt), `~/.ssh/config` setup, agent status. No Wails import |
 | `biometric/` | Touch ID and the macOS Keychain (cgo) |
 | `main.go` | Wails app: window, clipboard, lock-event and approval-event adapters; starts the SSH agent |
@@ -39,6 +39,7 @@ cd desktop/frontend && npm run preview:ui
 # personal vault: &vaultRecovery=1 (recovery panel) &disableRecovery=1 (opt-out warning) &optOut=1
 # recovering an account: &state=signed-out&recover=form|filled &secretKey=recovery (new Secret Key) &recoverySubmitted=1
 # offline: &offline=1 (offline notice)
+# import: &import=choose | preview | saving (stops halfway) | done | deleted, &importVault=family (target vault), &newItemMenu=1 (open the + menu)
 ```
 
 The preview backend (`src/preview.ts`) is loaded with a dynamic import behind a build-time flag; `npm run check:bundle` (run in CI) fails if it ever ends up in the production bundle.
@@ -64,6 +65,15 @@ Design: `docs/DESIGN.md` §6. Recovery lets an admin help someone who forgot the
 - **Recover (the person who lost access)**: on the sign-in screen, **Recover account**, then paste the link, enter the email and a new master password. Hisar shows the new Secret Key (and can save it as an Emergency Kit); it works once the admin completes the recovery.
 - **Complete (the admin who set up recovery)**: Settings → Account recovery lists pending recoveries with how many of their vaults can be recovered. **Complete** signs out their devices, gives them their recoverable vaults under the new keys, re-pins their new signing key on this device and lists the vaults they lost.
 - **Opt out**: the owner of a personal vault can press **Private** in its header and turn recovery off, after a warning that the vault is lost if they lose access, and turn it back on later. Shared vaults always stay recoverable.
+
+## Import from other password managers
+
+Settings → Import → **Import…**, or **+** → **Import…** in a vault. The parsing is `core/importer` (design: `docs/DESIGN.md` §9.7).
+
+1. Choose the vault (only vaults you can edit) and the format, or let Hisar detect it, then pick the file in the open dialog: a 1Password `.1pux` or CSV export, an unencrypted Bitwarden `.json` or CSV export, or a CSV export from Chrome, Edge, Firefox, Safari or another manager (header row with columns such as title, username, password, url, notes).
+2. The preview counts logins, secure notes and SSH keys, lists what is not imported and why (cards, identities, documents, archived items, passphrase-protected SSH keys), and lists items already in the vault with the same title, username and website, which are skipped unless you untick the box. Nothing is saved before **Import**.
+3. Items are saved in batches of 10 with a progress bar; if the connection drops, **Try again** continues where it stopped. Locking Hisar discards the parsed file.
+4. The export holds every password in plain text, so Hisar offers to delete it (**Delete file** removes it directly, not through the Trash).
 
 ## Browser extension bridge
 

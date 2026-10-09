@@ -44,6 +44,51 @@ export interface FamilyMember {
     "isKeyChanged": boolean;
 }
 
+export interface ImportDuplicate {
+    "title": string;
+    "username": string;
+    "url": string;
+}
+
+export interface ImportFormat {
+    "id": string;
+    "name": string;
+}
+
+/**
+ * ImportPreview: an empty FileName means the user cancelled the file dialog.
+ */
+export interface ImportPreview {
+    "fileName": string;
+    "filePath": string;
+    "format": string;
+    "formatName": string;
+    "vaultId": string;
+    "vaultName": string;
+    "itemCount": number;
+    "loginCount": number;
+    "secureNoteCount": number;
+    "sshKeyCount": number;
+    "allSkipped": ImportSkippedEntry[] | null;
+    "allDuplicate": ImportDuplicate[] | null;
+}
+
+export interface ImportProgress {
+    "fileName": string;
+    "filePath": string;
+    "vaultId": string;
+    "vaultName": string;
+    "savedCount": number;
+    "totalCount": number;
+    "isDone": boolean;
+    "allFailed": ImportSkippedEntry[] | null;
+}
+
+export interface ImportSkippedEntry {
+    "title": string;
+    "reason": string;
+}
+
 /**
  * ItemDetail never carries an SSH private key; the agent reads it from the cached item.
  */

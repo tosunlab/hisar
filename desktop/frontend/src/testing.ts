@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import type { ApprovalEvent, BrowserStatus, Device, FamilyMember, ItemDetail, PendingRecovery, RecoveryStatus, SSHAgentStatus, Status, VaultMember, VaultSummary } from "./api";
+import type { ApprovalEvent, BrowserStatus, Device, FamilyMember, ImportPreview, ImportProgress, ItemDetail, PendingRecovery, RecoveryStatus, SSHAgentStatus, Status, VaultMember, VaultSummary } from "./api";
 
 export function createStatus(state: string): Status {
   return { state, server: "https://hisar.test", email: "alice@example.com", name: "Alice", biometricAvailable: false, biometricEnabled: false, biometricReady: false, isOffline: false };
@@ -191,9 +191,48 @@ export function createApiMock() {
     removePairedBrowser: vi.fn(),
     setExactHostMatch: vi.fn(),
     cancelBrowserPairing: vi.fn().mockResolvedValue(undefined),
+    listAllImportFormat: vi.fn().mockResolvedValue([]),
+    chooseImportFile: vi.fn(),
+    previewImport: vi.fn(),
+    startImport: vi.fn(),
+    continueImport: vi.fn(),
+    cancelImport: vi.fn().mockResolvedValue(undefined),
+    deleteImportFile: vi.fn(),
   };
 }
 
 export function createBrowserStatus(overrides: Partial<BrowserStatus> = {}): BrowserStatus {
   return { allInstallation: [], allPairedBrowser: [], isExactHostMatch: false, pendingPairing: null, ...overrides };
+}
+
+export function createImportPreview(overrides: Partial<ImportPreview> = {}): ImportPreview {
+  return {
+    fileName: "bitwarden_export.json",
+    filePath: "/Users/alice/Downloads/bitwarden_export.json",
+    format: "bitwarden-json",
+    formatName: "Bitwarden JSON (not encrypted)",
+    vaultId: "personal",
+    vaultName: "Personal",
+    itemCount: 12,
+    loginCount: 9,
+    secureNoteCount: 2,
+    sshKeyCount: 1,
+    allSkipped: [{ title: "Visa", reason: "Bitwarden cards are not supported in Hisar yet" }],
+    allDuplicate: [{ title: "GitHub", username: "alice", url: "https://github.com" }],
+    ...overrides,
+  };
+}
+
+export function createImportProgress(overrides: Partial<ImportProgress> = {}): ImportProgress {
+  return {
+    fileName: "bitwarden_export.json",
+    filePath: "/Users/alice/Downloads/bitwarden_export.json",
+    vaultId: "personal",
+    vaultName: "Personal",
+    savedCount: 0,
+    totalCount: 11,
+    isDone: false,
+    allFailed: [],
+    ...overrides,
+  };
 }

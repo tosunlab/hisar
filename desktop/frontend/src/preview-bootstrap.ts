@@ -1,6 +1,7 @@
 // Development-only: puts the preview UI into a given screen from URL parameters, for screenshots and design review.
 import { nextTick } from "vue";
 import {
+  openImport,
   openSharing,
   openVaultRecovery,
   selectItem,
@@ -129,6 +130,35 @@ async function applySharingParameter(parameter: URLSearchParams): Promise<void> 
   }
 }
 
+// applyImportParameter: &import=choose | preview | saving (stops halfway) | done | deleted, &importVault=<vault> picks the target vault.
+async function applyImportParameter(parameter: URLSearchParams): Promise<void> {
+  await waitForUnlocked();
+  await openImport();
+  const importVaultID = parameter.get("importVault");
+  if (importVaultID) {
+    const vaultSelect = await waitForElement('[data-testid="import-vault"]');
+    (vaultSelect as HTMLSelectElement).value = importVaultID;
+    vaultSelect.dispatchEvent(new Event("change"));
+    await nextTick();
+  }
+  const step = parameter.get("import");
+  if (step === "choose" || step === "1") {
+    return;
+  }
+  await clickElement('[data-testid="choose-import-file"]');
+  if (step === "preview") {
+    return;
+  }
+  await clickElement('[data-testid="start-import"]');
+  if (step === "saving") {
+    return;
+  }
+  await waitForElement('[data-testid="import-done"]');
+  if (step === "deleted") {
+    await clickElement('[data-testid="delete-import-file"]');
+  }
+}
+
 export async function applyPreviewParameter(): Promise<void> {
   const parameter = new URLSearchParams(window.location.search);
   if (parameter.get("secretKey") === "1" || parameter.get("secretKey") === "recovery") {
@@ -144,6 +174,12 @@ export async function applyPreviewParameter(): Promise<void> {
   if (parameter.get("settings") === "1") {
     store.isSettingsOpen = true;
     applySettingsParameter(parameter);
+  }
+  if (parameter.get("import")) {
+    applyImportParameter(parameter);
+  }
+  if (parameter.get("newItemMenu") === "1") {
+    waitForUnlocked().then(() => clickElement('button[aria-label="New item"]'));
   }
   if (parameter.get("error")) {
     store.errorMessage = parameter.get("error") ?? "";

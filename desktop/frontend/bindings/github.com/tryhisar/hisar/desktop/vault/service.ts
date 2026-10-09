@@ -9,6 +9,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 // @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
+export function CancelImport(): $CancellablePromise<void> {
+    return $Call.ByID(113979528);
+}
+
 /**
  * ChangeVaultMemberRole shares the vault again with the member under the new role.
  */
@@ -17,11 +21,22 @@ export function ChangeVaultMemberRole(vaultID: string, accountID: string, role: 
 }
 
 /**
+ * ChooseImportFile asks for an export file and reads it; format "" detects it from the file.
+ */
+export function ChooseImportFile(vaultID: string, format: string): $CancellablePromise<$models.ImportPreview> {
+    return $Call.ByID(710634129, vaultID, format);
+}
+
+/**
  * CompleteAccountRecovery gives the member their recoverable vaults under their new keys, pins their new signing key
  * and returns the names of the vaults they lost.
  */
 export function CompleteAccountRecovery(accountID: string): $CancellablePromise<string[] | null> {
     return $Call.ByID(2056141888, accountID);
+}
+
+export function ContinueImport(): $CancellablePromise<$models.ImportProgress> {
+    return $Call.ByID(3395358083);
 }
 
 /**
@@ -37,6 +52,13 @@ export function CopyText(text: string): $CancellablePromise<void> {
 
 export function CreateVault(name: string): $CancellablePromise<$models.VaultSummary> {
     return $Call.ByID(3598661641, name);
+}
+
+/**
+ * DeleteImportFile removes the export file after a finished import, since it holds every password in plain text.
+ */
+export function DeleteImportFile(): $CancellablePromise<void> {
+    return $Call.ByID(933330351);
 }
 
 export function DeleteItem(vaultID: string, itemID: string): $CancellablePromise<void> {
@@ -130,6 +152,10 @@ export function ListAllDevice(): $CancellablePromise<$models.Device[] | null> {
     return $Call.ByID(4009114300);
 }
 
+export function ListAllImportFormat(): $CancellablePromise<$models.ImportFormat[] | null> {
+    return $Call.ByID(4119511936);
+}
+
 /**
  * ListAllItem fetches the vault's items from the server and returns them without secrets in a stable order.
  */
@@ -164,6 +190,13 @@ export function ListAllVaultMember(vaultID: string): $CancellablePromise<$models
 
 export function Lock(): $CancellablePromise<$models.Status> {
     return $Call.ByID(3111200640);
+}
+
+/**
+ * PreviewImport shows the chosen file again for another vault, with that vault's duplicates.
+ */
+export function PreviewImport(vaultID: string): $CancellablePromise<$models.ImportPreview> {
+    return $Call.ByID(1775440280, vaultID);
 }
 
 /**
@@ -249,6 +282,13 @@ export function SignUp(inviteLink: string, email: string, name: string, password
  */
 export function StartAccountRecovery(accountID: string): $CancellablePromise<string> {
     return $Call.ByID(3868711419, accountID);
+}
+
+/**
+ * StartImport queues the previewed items for vaultID; ContinueImport then saves them in batches.
+ */
+export function StartImport(vaultID: string, isSkippingDuplicate: boolean): $CancellablePromise<$models.ImportProgress> {
+    return $Call.ByID(62050268, vaultID, isSkippingDuplicate);
 }
 
 export function Unlock(password: string): $CancellablePromise<$models.Status> {

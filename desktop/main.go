@@ -56,6 +56,14 @@ func (fileSaver *wailsFileSaver) ChooseSavePath(defaultFileName string) (string,
 	return fileSaver.chooseSavePath(defaultFileName)
 }
 
+type wailsFileOpener struct {
+	chooseOpenPath func() (string, error)
+}
+
+func (fileOpener *wailsFileOpener) ChooseOpenPath() (string, error) {
+	return fileOpener.chooseOpenPath()
+}
+
 func getDeviceName() string {
 	hostname, err := os.Hostname()
 	if err != nil || hostname == "" {
@@ -84,6 +92,7 @@ func main() {
 	touchID := biometric.Create("Hisar Touch ID")
 	lockNotifier := &wailsLockNotifier{}
 	fileSaver := &wailsFileSaver{}
+	fileOpener := &wailsFileOpener{}
 	var agentServer *sshagent.Server
 	vaultConfig := vault.Config{
 		StatePath:    statePath,
@@ -94,6 +103,7 @@ func main() {
 		LockNotifier: lockNotifier,
 		Biometric:    touchID,
 		FileSaver:    fileSaver,
+		FileOpener:   fileOpener,
 		OnLock: func() {
 			if agentServer != nil {
 				agentServer.ClearAllApproval()
@@ -221,6 +231,14 @@ func main() {
 			SetFilename(defaultFileName).
 			AddFilter("PDF document", "*.pdf").
 			CanCreateDirectories(true).
+			AttachToWindow(window).
+			PromptForSingleSelection()
+	}
+	// No file type filter: exports often have other extensions, and the importer detects the format from the content.
+	fileOpener.chooseOpenPath = func() (string, error) {
+		return app.Dialog.OpenFile().
+			SetTitle("Import passwords").
+			CanChooseFiles(true).
 			AttachToWindow(window).
 			PromptForSingleSelection()
 	}

@@ -1,0 +1,211 @@
+{
+  "encrypted": false,
+  "folders": [
+    {
+      "id": "f1",
+      "name": "Work"
+    }
+  ],
+  "items": [
+    {
+      "id": "b1",
+      "organizationId": null,
+      "folderId": "f1",
+      "type": 1,
+      "reprompt": 0,
+      "name": "GitHub",
+      "notes": "Line one\nLine \"two\", with a comma",
+      "favorite": true,
+      "fields": [
+        {
+          "name": "Account ID",
+          "value": "12345",
+          "type": 0,
+          "linkedId": null
+        },
+        {
+          "name": "PIN",
+          "value": "0000",
+          "type": 1,
+          "linkedId": null
+        },
+        {
+          "name": "Linked",
+          "value": null,
+          "type": 3,
+          "linkedId": 100
+        },
+        {
+          "name": "Admin",
+          "value": "true",
+          "type": 2,
+          "linkedId": null
+        }
+      ],
+      "login": {
+        "uris": [
+          {
+            "match": null,
+            "uri": "https://github.com"
+          },
+          {
+            "match": 3,
+            "uri": "https://gist.github.com"
+          }
+        ],
+        "username": "alice",
+        "password": "pässwörd-ünïcode",
+        "totp": "JBSWY3DPEHPK3PXP",
+        "fido2Credentials": []
+      },
+      "collectionIds": null
+    },
+    {
+      "id": "b2",
+      "organizationId": null,
+      "folderId": null,
+      "type": 2,
+      "reprompt": 0,
+      "name": "Server notes",
+      "notes": "Rack 4\nPort 22",
+      "favorite": false,
+      "secureNote": {
+        "type": 0
+      },
+      "collectionIds": null
+    },
+    {
+      "id": "b3",
+      "organizationId": null,
+      "folderId": null,
+      "type": 3,
+      "reprompt": 0,
+      "name": "Visa",
+      "notes": null,
+      "favorite": false,
+      "card": {
+        "cardholderName": "Alice",
+        "brand": "Visa",
+        "number": "4111111111111111",
+        "expMonth": "12",
+        "expYear": "2027",
+        "code": "123"
+      },
+      "collectionIds": null
+    },
+    {
+      "id": "b4",
+      "organizationId": null,
+      "folderId": null,
+      "type": 4,
+      "reprompt": 0,
+      "name": "Alice Example",
+      "notes": null,
+      "favorite": false,
+      "identity": {
+        "firstName": "Alice"
+      },
+      "collectionIds": null
+    },
+    {
+      "id": "b5",
+      "organizationId": null,
+      "folderId": null,
+      "type": 5,
+      "reprompt": 0,
+      "name": "Laptop",
+      "notes": "Main key",
+      "favorite": false,
+      "sshKey": {
+        "privateKey": "{{OPENSSH_PRIVATE_KEY}}",
+        "publicKey": "{{OPENSSH_PUBLIC_KEY}}",
+        "keyFingerprint": "{{OPENSSH_FINGERPRINT}}"
+      },
+      "collectionIds": null
+    },
+    {
+      "id": "b6",
+      "organizationId": null,
+      "folderId": null,
+      "type": 5,
+      "reprompt": 0,
+      "name": "Protected key",
+      "notes": null,
+      "favorite": false,
+      "sshKey": {
+        "privateKey": "{{PROTECTED_PRIVATE_KEY}}",
+        "publicKey": "",
+        "keyFingerprint": ""
+      },
+      "collectionIds": null
+    },
+    {
+      "id": "e1",
+      "organizationId": null,
+      "folderId": null,
+      "type": 1,
+      "reprompt": 0,
+      "name": "Empty password",
+      "notes": null,
+      "favorite": false,
+      "login": {
+        "uris": [
+          {
+            "match": null,
+            "uri": "https://shop.example.com"
+          }
+        ],
+        "username": "alice",
+        "password": null,
+        "totp": null,
+        "fido2Credentials": []
+      },
+      "collectionIds": null
+    },
+    {
+      "id": "e2",
+      "organizationId": null,
+      "folderId": null,
+      "type": 1,
+      "reprompt": 0,
+      "name": "Empty password",
+      "notes": null,
+      "favorite": false,
+      "login": {
+        "uris": [
+          {
+            "match": null,
+            "uri": "https://shop.example.com"
+          }
+        ],
+        "username": "alice",
+        "password": null,
+        "totp": null,
+        "fido2Credentials": []
+      },
+      "collectionIds": null
+    },
+    {
+      "id": "b9",
+      "organizationId": null,
+      "folderId": "missing",
+      "type": 1,
+      "reprompt": 0,
+      "name": "",
+      "notes": null,
+      "favorite": false,
+      "login": {
+        "uris": [
+          {
+            "match": null,
+            "uri": "https://www.example.org/login"
+          }
+        ],
+        "username": "bob",
+        "password": "example-pass",
+        "totp": null
+      },
+      "collectionIds": null
+    }
+  ]
+}

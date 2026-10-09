@@ -1,0 +1,4 @@
+Title,URL,Username,Password,Notes,OTPAuth
+GitHub (alice),https://github.com/,alice,safari-pass,"Work account
+second line",otpauth://totp/GitHub:alice?secret=JBSWY3DPEHPK3PXP&issuer=GitHub
+Bank,https://bank.example.com/,1234567,bank-pass,,

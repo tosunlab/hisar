@@ -11,6 +11,7 @@ import {
   loadRecoveryData,
   loadSettingsData,
   loadSSHAgentStatus,
+  openImport,
   removeSSHConfig,
   revokeDevice,
   saveEmergencyKit,
@@ -207,6 +208,18 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
           <button type="button" class="ghost" @click="isSavingEmergencyKit = false">Cancel</button>
           <button class="primary" type="submit" :disabled="store.isBusy">Save</button>
         </form>
+      </section>
+
+      <section data-testid="import-section">
+        <p class="section-label">Import</p>
+        <div class="setting">
+          <span class="setting-icon"><AppIcon name="import" /></span>
+          <div class="setting-text">
+            <strong>Import from another password manager</strong>
+            <p class="muted">1Password (.1pux or CSV), Bitwarden (JSON or CSV), or a CSV export from Chrome, Firefox, Safari or Edge.</p>
+          </div>
+          <button data-testid="open-import" @click="openImport">Import…</button>
+        </div>
       </section>
 
       <section data-testid="family-section">

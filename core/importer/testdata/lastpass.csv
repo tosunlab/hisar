@@ -1,0 +1,4 @@
+url,username,password,totp,extra,name,grouping,fav
+https://github.com,alice,lp-pass,,,GitHub,Work,0
+http://sn,,,,"NoteType:Server
+Hostname:db.example.com",Database notes,Servers,0

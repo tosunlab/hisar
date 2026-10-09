@@ -7,6 +7,9 @@ import {
   type Device,
   type FamilyMember,
   type FamilyRole,
+  type ImportFormat,
+  type ImportPreview,
+  type ImportProgress,
   type ItemDetail,
   type PendingRecovery,
   type RecoveryStatus,
@@ -19,6 +22,7 @@ import {
 } from "./api";
 
 export type EditorMode = "view" | "edit" | "create" | "create-ssh-key";
+export type ImportStep = "choose" | "preview" | "saving" | "done";
 
 export const store = reactive({
   status: {
@@ -54,6 +58,12 @@ export const store = reactive({
   recoveryStatus: null as RecoveryStatus | null,
   allPendingRecovery: [] as PendingRecovery[],
   isVaultRecoveryOpen: false,
+  isImportOpen: false,
+  importStep: "choose" as ImportStep,
+  allImportFormat: [] as ImportFormat[],
+  importPreview: null as ImportPreview | null,
+  importProgress: null as ImportProgress | null,
+  isImportFileDeleted: false,
 });
 
 let noticeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -87,6 +97,7 @@ async function runAction<Result>(action: () => Promise<Result>): Promise<Result 
 }
 
 function clearAllVaultData(): void {
+  resetImport();
   store.isSettingsOpen = false;
   store.isSharingOpen = false;
   store.allVaultMember = [];
@@ -721,4 +732,114 @@ export function openVaultRecovery(): void {
 export function closeVaultRecovery(): void {
   store.isVaultRecoveryOpen = false;
   store.errorMessage = "";
+}
+
+function resetImport(): void {
+  store.isImportOpen = false;
+  store.importStep = "choose";
+  store.importPreview = null;
+  store.importProgress = null;
+  store.isImportFileDeleted = false;
+}
+
+export async function openImport(): Promise<void> {
+  resetImport();
+  store.isSettingsOpen = false;
+  store.isSharingOpen = false;
+  store.isVaultRecoveryOpen = false;
+  store.errorMessage = "";
+  store.isImportOpen = true;
+  if (store.allImportFormat.length === 0) {
+    store.allImportFormat = (await runAction(() => api.listAllImportFormat())) ?? [];
+  }
+}
+
+// closeImport drops the parsed export in the backend; it is not offered while items are being saved.
+export function closeImport(): void {
+  if (store.importStep === "saving") {
+    return;
+  }
+  if (store.importPreview || store.importProgress) {
+    api.cancelImport().catch(() => undefined);
+  }
+  resetImport();
+  store.errorMessage = "";
+}
+
+export function getAllEditableVault(): VaultSummary[] {
+  return store.allVault.filter((vault) => vault.role !== "reader");
+}
+
+export async function chooseImportFile(vaultID: string, format: string): Promise<boolean> {
+  const preview = await runAction(() => api.chooseImportFile(vaultID, format));
+  if (!preview?.fileName) {
+    return false;
+  }
+  store.importPreview = preview;
+  store.importStep = "preview";
+  return true;
+}
+
+export async function changeImportVault(vaultID: string): Promise<void> {
+  const preview = await runAction(() => api.previewImport(vaultID));
+  if (preview) {
+    store.importPreview = preview;
+  }
+}
+
+export async function startImport(isSkippingDuplicate: boolean): Promise<void> {
+  if (!store.importPreview) {
+    return;
+  }
+  const vaultID = store.importPreview.vaultId;
+  store.importStep = "saving";
+  const progress = await runAction(() => api.startImport(vaultID, isSkippingDuplicate));
+  if (!progress) {
+    store.importStep = "preview";
+    return;
+  }
+  store.importProgress = progress;
+  await continueImport();
+}
+
+// continueImport saves the queued items batch by batch; after an error the user can continue where it stopped.
+export async function continueImport(): Promise<void> {
+  while (store.isImportOpen && store.importProgress && !store.importProgress.isDone) {
+    const progress = await runAction(() => api.continueImport());
+    if (!progress) {
+      return;
+    }
+    store.importProgress = progress;
+  }
+  if (store.isImportOpen && store.importProgress?.isDone) {
+    await finishImport(store.importProgress);
+  }
+}
+
+async function finishImport(progress: ImportProgress): Promise<void> {
+  store.importStep = "done";
+  const allVault = await runAction(() => api.listAllVault());
+  if (allVault) {
+    store.allVault = allVault;
+  }
+  if (progress.vaultId === store.selectedVaultID) {
+    const allItem = await runAction(() => api.listAllItem(progress.vaultId));
+    if (allItem) {
+      store.allItem = sortAllItem(allItem);
+    }
+  }
+  showNotice(`Imported ${progress.savedCount} ${progress.savedCount === 1 ? "item" : "items"} into ${progress.vaultName}`);
+}
+
+export async function deleteImportFile(): Promise<boolean> {
+  const fileName = store.importProgress?.fileName ?? "the export file";
+  const deleted = await runAction(async () => {
+    await api.deleteImportFile();
+    return true;
+  });
+  if (deleted) {
+    store.isImportFileDeleted = true;
+    showNotice(`Deleted ${fileName}`);
+  }
+  return deleted === true;
 }

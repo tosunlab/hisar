@@ -442,7 +442,7 @@ The desktop keeps paired browsers (`instanceID`, browser name, SHA-256 of the to
 
 ### 9.4 CLI
 
-`hisar` CLI for development and scripting: login, unlock, list, get, generate, and later `hisar run` to inject secrets into processes.
+`hisar` CLI for development and scripting: login, unlock, list, get, generate, import (§9.7), and later `hisar run` to inject secrets into processes.
 
 ### 9.5 Go memory handling
 
@@ -498,6 +498,24 @@ Like 1Password, the desktop app is an SSH agent for keys stored in vaults, so pr
 - `desktop/agent` holds the approver (Touch ID or in-app, with the Wails event emitter injected), the `~/.ssh/config` editing and the bound status service. It does not import Wails and is unit-tested; `main.go` wires it to Touch ID, the window and the socket.
 - The end-to-end test generates a key in a vault, serves it with the agent on a Unix socket and logs in to an in-process `x/crypto/ssh` server with a real SSH client; after Lock the agent lists no keys.
 - Linux uses the same Unix socket; Windows (named pipe `\\.\pipe\openssh-ssh-agent`) comes later. The CLI gets `hisar ssh-key generate|import|list|public-key`.
+
+### 9.7 Import from other password managers
+
+`core/importer` turns an export into items. It is pure Go: it reads only the bytes it is given, never logs, and its errors carry positions (CSV line, JSON byte offset) but never values from the file.
+
+| Format | Detected by | Imported | Not imported (reported with a reason) |
+|---|---|---|---|
+| 1Password `.1pux` (ZIP with `export.data`) | ZIP signature | Login and Password items with extra login fields and section fields (concealed and one-time password fields stay concealed); Secure Notes; Server, Database, Wireless Router, Email Account, API Credential and Software License items as logins with their fields; SSH Keys with a private key | Credit cards, identities, documents and other personal records; archived items; attachments |
+| 1Password CSV | header with `Title`, `OTPAuth` and `Archived` | title, URL, username, password, one-time password, tags, notes | archived rows |
+| Bitwarden JSON (not encrypted) | JSON with `items` | logins with all URIs, notes, custom fields (hidden ones concealed, linked ones dropped), TOTP; secure notes; SSH keys; folder as tag | encrypted exports (the whole file is refused), cards, identities, passphrase-protected SSH keys |
+| Bitwarden CSV | `login_username`/`login_password`/`login_uri` columns | as JSON, without hidden-field markers | rows of other types |
+| CSV (Chrome, Edge, Firefox, Safari, LastPass and others) | a header row naming the columns | title (or the website's host), username, password, URL, notes, one-time password; other columns become fields. Comma, semicolon or tab separated; BOM, CRLF and quoted multiline values | rows with no content |
+
+- Secure notes have no category of their own yet: they are logins with only a title and notes, and the preview counts them separately.
+- An entry that repeats an earlier one exactly is reported, not imported twice. Items already in the target vault are matched by title, username and the first website (case and `www.`/scheme ignored; SSH keys by fingerprint) and skipped unless the user includes them.
+- SSH private keys go through `sshagent.ImportPrivateKey` and are stored as OpenSSH keys, as in §9.6.
+- Desktop (`desktop/vault/import.go`): the file comes from a native open dialog; the parsed items stay in memory only until the import finishes, is cancelled or Hisar locks. Items are saved in batches of 10 called by the UI, so it can show progress, and connection, permission and rate-limit errors pause the import instead of failing every remaining item. Afterwards the app offers to delete the export file.
+- CLI: `hisar import <file> [-v vault] [-format f] [-y] [-include-duplicates]` parses the file before asking for the master password and asks before saving and before deleting the file; `-y` imports without questions and never deletes.
 
 ## 10. Repository layout
 

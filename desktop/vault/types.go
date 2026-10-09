@@ -189,8 +189,14 @@ type Config struct {
 	IsEventStreamDisabled bool
 	// FileSaver asks where to save a file; it returns "" when the user cancels.
 	FileSaver FileSaver
+	// FileOpener asks which file to open; it returns "" when the user cancels.
+	FileOpener FileOpener
 }
 
 type FileSaver interface {
 	ChooseSavePath(defaultFileName string) (string, error)
+}
+
+type FileOpener interface {
+	ChooseOpenPath() (string, error)
 }

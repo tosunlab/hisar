@@ -93,6 +93,14 @@ func (fileSaver *fakeFileSaver) ChooseSavePath(defaultFileName string) (string, 
 	return fileSaver.path, nil
 }
 
+type fakeFileOpener struct {
+	path string
+}
+
+func (fileOpener *fakeFileOpener) ChooseOpenPath() (string, error) {
+	return fileOpener.path, nil
+}
+
 type fakeBiometric struct {
 	mutex             sync.Mutex
 	authenticateError error
@@ -156,6 +164,7 @@ func createTestService(t *testing.T, statePath string, secretKeyStore SecretKeyS
 		ClipboardClearAfter: 100 * time.Millisecond,
 		Biometric:           createFakeBiometric(),
 		FileSaver:           &fakeFileSaver{},
+		FileOpener:          &fakeFileOpener{},
 	})
 	if err != nil {
 		t.Fatal(err)

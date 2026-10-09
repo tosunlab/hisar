@@ -4,6 +4,8 @@ import type {
   BrowserStatus,
   Device,
   FamilyMember,
+  ImportPreview,
+  ImportProgress,
   ItemDetail,
   PasswordConfig,
   PendingRecovery,
@@ -250,7 +252,115 @@ const previewBrowserStatus: BrowserStatus = {
     previewParameter.get("browserPairing") === "1" ? { browser: "Arc", code: "482913", expiresAt: new Date(Date.now() + 110_000).toISOString() } : null,
 };
 
+const previewImportFilePath = "/Users/alper/Downloads/1PasswordExport-AQ7X2LMK-20261009-101512.1pux";
+
+const allPreviewImportItem: ItemDetail[] = [
+  createPreviewItem("import-github", "GitHub", "alper", "https://github.com", "imported-1"),
+  createPreviewItem("import-google", "Google", "alper@gmail.com", "https://accounts.google.com", "imported-2"),
+  createPreviewItem("import-figma", "Figma", "alper@tryhisar.com", "https://figma.com", "imported-3"),
+  createPreviewItem("import-netflix", "Netflix", "family@example.com", "https://netflix.com", "imported-4"),
+  createPreviewItem("import-dropbox", "Dropbox", "alper@tryhisar.com", "https://dropbox.com", "imported-5"),
+  createPreviewItem("import-notion", "Notion", "alper@tryhisar.com", "https://notion.so", "imported-6"),
+  createPreviewItem("import-slack", "Slack", "alper@tryhisar.com", "https://tryhisar.slack.com", "imported-7"),
+  createPreviewItem("import-amazon", "Amazon", "alper@gmail.com", "https://amazon.com.tr", "imported-8"),
+  createPreviewItem("import-apple", "Apple Account", "alper@icloud.com", "https://account.apple.com", "imported-9"),
+  createPreviewItem("import-hetzner", "Hetzner Cloud", "alper@tryhisar.com", "https://console.hetzner.cloud", "imported-10"),
+  createPreviewItem("import-cloudflare", "Cloudflare", "alper@tryhisar.com", "https://dash.cloudflare.com", "imported-11"),
+  createPreviewItem("import-trendyol", "Trendyol", "alper@gmail.com", "https://trendyol.com", "imported-12"),
+  createPreviewItem("import-turkcell", "Turkcell", "5321234567", "https://turkcell.com.tr", "imported-13"),
+  createPreviewItem("import-garanti", "Garanti BBVA", "48211990", "https://garantibbva.com.tr", "imported-14"),
+  createPreviewItem("import-cabin", "Wi-Fi at the cabin", "", "", "", { notes: "Network: Kale\nKey: under the mat" }),
+  createPreviewItem("import-codes", "Server recovery codes", "", "", "", { notes: "1. 4821-9930\n2. 1177-0042" }),
+  createPreviewItem("import-insurance", "Car insurance", "", "", "", { notes: "Policy 88-120-4471, renews in March" }),
+  createPreviewSSHKey("import-deploy", "Deploy key", "ssh-ed25519", "Used by CI."),
+];
+
+const allPreviewImportSkipped = [
+  { title: "Visa", reason: "1Password Credit Card items are not supported in Hisar yet" },
+  { title: "Personal details", reason: "1Password Identity items are not supported in Hisar yet" },
+  { title: "Passport scan", reason: "1Password Document items are not supported in Hisar yet" },
+  { title: "Old forum", reason: "archived in 1Password" },
+];
+
+function buildPreviewDuplicateKey(detail: ItemDetail): string {
+  const domain = detail.urls[0] ? new URL(detail.urls[0]).hostname.replace(/^www\./, "") : "";
+  return [detail.title.toLowerCase(), detail.username.toLowerCase(), domain].join("\n");
+}
+
+function findAllPreviewImportDuplicate(vaultID: string): ItemDetail[] {
+  const allExistingKey = new Set((allPreviewItemByVaultID[vaultID] ?? []).map(buildPreviewDuplicateKey));
+  return allPreviewImportItem.filter((detail) => allExistingKey.has(buildPreviewDuplicateKey(detail)));
+}
+
+function buildPreviewImportPreview(vaultID: string): ImportPreview {
+  const vault = allPreviewVault.find((candidate) => candidate.id === vaultID)!;
+  return {
+    fileName: previewImportFilePath.split("/").pop()!,
+    filePath: previewImportFilePath,
+    format: "1pux",
+    formatName: "1Password export (.1pux)",
+    vaultId: vaultID,
+    vaultName: vault.name,
+    itemCount: allPreviewImportItem.length,
+    loginCount: allPreviewImportItem.filter((detail) => detail.category === "" && (detail.username || detail.password || detail.urls.length > 0)).length,
+    secureNoteCount: allPreviewImportItem.filter((detail) => detail.category === "" && !detail.username && !detail.password && detail.urls.length === 0).length,
+    sshKeyCount: allPreviewImportItem.filter((detail) => detail.category === "ssh-key").length,
+    allSkipped: allPreviewImportSkipped,
+    allDuplicate: findAllPreviewImportDuplicate(vaultID).map((detail) => ({ title: detail.title, username: detail.username, url: detail.urls[0] ?? "" })),
+  };
+}
+
+let previewImportRun = { vaultID: "", allQueued: [] as ItemDetail[], savedCount: 0 };
+
+function buildPreviewImportProgress(): ImportProgress {
+  const vault = allPreviewVault.find((candidate) => candidate.id === previewImportRun.vaultID)!;
+  return {
+    fileName: previewImportFilePath.split("/").pop()!,
+    filePath: previewImportFilePath,
+    vaultId: vault.id,
+    vaultName: vault.name,
+    savedCount: previewImportRun.savedCount,
+    totalCount: previewImportRun.savedCount + previewImportRun.allQueued.length,
+    isDone: previewImportRun.allQueued.length === 0,
+    allFailed: [],
+  };
+}
+
+// continuePreviewImport saves four items per call; ?import=saving stops halfway so the progress stays on screen.
+function continuePreviewImport(): Promise<ImportProgress> {
+  if (previewParameter.get("import") === "saving" && previewImportRun.savedCount >= 8) {
+    return new Promise(() => undefined);
+  }
+  return new Promise((resolve) =>
+    setTimeout(() => {
+      for (const detail of previewImportRun.allQueued.splice(0, 4)) {
+        allPreviewItemByVaultID[previewImportRun.vaultID].push({ ...structuredClone(detail), id: `${detail.id}-${Date.now()}` });
+        previewImportRun.savedCount++;
+      }
+      resolve(buildPreviewImportProgress());
+    }, 350),
+  );
+}
+
 export const previewApi = {
+  listAllImportFormat: () =>
+    resolveAfterDelay([
+      { id: "1pux", name: "1Password export (.1pux)" },
+      { id: "1password-csv", name: "1Password CSV" },
+      { id: "bitwarden-json", name: "Bitwarden JSON (not encrypted)" },
+      { id: "bitwarden-csv", name: "Bitwarden CSV" },
+      { id: "csv", name: "CSV (Chrome, Firefox, Safari, Edge and others)" },
+    ]),
+  chooseImportFile: (vaultID: string) => resolveAfterDelay(buildPreviewImportPreview(vaultID)),
+  previewImport: (vaultID: string) => resolveAfterDelay(buildPreviewImportPreview(vaultID)),
+  startImport: (vaultID: string, isSkippingDuplicate: boolean) => {
+    const allDuplicate = isSkippingDuplicate ? findAllPreviewImportDuplicate(vaultID) : [];
+    previewImportRun = { vaultID, allQueued: allPreviewImportItem.filter((detail) => !allDuplicate.includes(detail)), savedCount: 0 };
+    return resolveAfterDelay(buildPreviewImportProgress());
+  },
+  continueImport: continuePreviewImport,
+  cancelImport: () => Promise.resolve(),
+  deleteImportFile: () => resolveAfterDelay(undefined),
   getStatus: () => resolveAfterDelay(previewStatus()),
   signIn: () => {
     previewState = "unlocked";

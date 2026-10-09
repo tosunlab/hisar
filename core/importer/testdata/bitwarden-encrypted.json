@@ -1,0 +1,9 @@
+{
+  "encrypted": true,
+  "passwordProtected": true,
+  "salt": "c2FsdHNhbHRzYWx0c2FsdA==",
+  "kdfType": 0,
+  "kdfIterations": 600000,
+  "encKeyValidation_DO_NOT_EDIT": "2.c2FtcGxl|ZW5jcnlwdGVk|dmFsaWRhdGlvbg==",
+  "data": "2.ZW5jcnlwdGVk|ZGF0YQ==|bWFj"
+}

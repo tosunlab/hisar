@@ -1,0 +1,7 @@
+folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp
+Work,1,login,GitHub,"Multi
+line notes","Account ID: 12345
+PIN: 0000",0,"https://github.com,https://gist.github.com",alice,"bw,pass""word",JBSWY3DPEHPK3PXP
+,,note,Recipe,Secret sauce: more garlic,,0,,,,
+,,login,Bank,,,0,https://bank.example.com,alice,,
+,,card,Visa,,,0,,,,

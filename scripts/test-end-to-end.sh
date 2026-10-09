@@ -62,6 +62,25 @@ expect "emergency kit" "$(printf '%s\n' "$PW" | A emergency-kit -o "$T/kit.pdf" 
 expect "emergency kit is a private PDF" "$(head -c 5 "$T/kit.pdf") $(stat -c %a "$T/kit.pdf" 2>/dev/null || stat -f %Lp "$T/kit.pdf")" "%PDF- 600"
 expect "emergency kit never overwrites" "$(printf '%s\n' "$PW" | A emergency-kit -o "$T/kit.pdf" 2>&1 || true)" "already exists"
 
+printf '%s\n' 'name,url,username,password,note' \
+  'Imported Bank,https://bank.example.com,alice,"bank,pass""word",' \
+  'Imported Mail,https://mail.example.com,alice@example.com,mail-pass-1,"First line' \
+  'Second line"' \
+  'GitHub,https://github.com,alice,should-not-replace,' >"$T/import.csv"
+expect "CLI import of a generic CSV skips the GitHub item already in Personal" "$(printf '%s\n' "$PW" | A import "$T/import.csv" -y 2>&1)" "Imported 2 items into Personal"
+expect "imported password keeps its comma and quote" "$(printf '%s\n' "$PW" | A get "Imported Bank" -f password 2>/dev/null)" 'bank,pass"word'
+expect "imported notes keep their line break" "$(printf '%s\n' "$PW" | A get "Imported Mail" -f notes 2>/dev/null)" $'First line\nSecond line'
+GITHUB_COUNT=$(printf '%s\n' "$PW" | A ls 2>/dev/null | grep -c '^GitHub ' || true)
+[[ "$GITHUB_COUNT" == 1 ]] || fail "import added a second GitHub item ($GITHUB_COUNT)"
+echo "ok   import did not duplicate GitHub"
+[[ -f "$T/import.csv" ]] || fail "import -y deleted the export file"
+echo "ok   import -y keeps the export file"
+expect "interactive import declines the items already in the vault" "$(printf '%s\nn\n' "$PW" | A import "$T/import.csv" 2>&1)" "Nothing to import."
+printf '%s\n' "$PW" | A vault-create Imports 2>/dev/null
+expect "interactive import deletes the export file when asked" "$(printf '%s\ny\ny\n' "$PW" | A import "$T/import.csv" -v Imports 2>&1)" "Deleted $T/import.csv"
+[[ ! -e "$T/import.csv" ]] || fail "export file still exists after the import deleted it"
+echo "ok   export file deleted"
+
 expect "delete" "$(printf '%s\ny\n' "$PW" | A rm netflix -v Family 2>&1)" "Deleted"
 LEFT=$(printf '%s\n' "$PW" | B ls -v Family 2>/dev/null | tail -n +2)
 [[ -z "$LEFT" ]] || fail "items left after delete: $LEFT"

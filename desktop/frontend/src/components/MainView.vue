@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { createVault, filterAllItem, lock, openSharing, openVaultRecovery, selectItem, selectVault, startCreatingItem, startCreatingSSHKey, store, syncInBackground, syncInterval } from "../store";
+import { createVault, filterAllItem, lock, openImport, openSharing, openVaultRecovery, selectItem, selectVault, startCreatingItem, startCreatingSSHKey, store, syncInBackground, syncInterval } from "../store";
 import { formatKeyType, getDomain, getInitials, isMacPlatform, sshKeyCategory } from "../util";
 import AppIcon from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
 import ItemDetailPanel from "./ItemDetailPanel.vue";
 import ItemEditor from "./ItemEditor.vue";
+import ImportPanel from "./ImportPanel.vue";
 import ItemTile from "./ItemTile.vue";
 import SettingsPanel from "./SettingsPanel.vue";
 import SSHKeyForm from "./SSHKeyForm.vue";
@@ -176,6 +177,9 @@ onBeforeUnmount(() => {
             <button class="ghost" role="menuitem" data-testid="new-ssh-key" @click="chooseNewItem(startCreatingSSHKey)">
               <AppIcon name="key" /> SSH key
             </button>
+            <button class="ghost" role="menuitem" data-testid="new-import" @click="chooseNewItem(openImport)">
+              <AppIcon name="import" /> Import…
+            </button>
           </div>
         </div>
       </div>
@@ -226,6 +230,7 @@ onBeforeUnmount(() => {
     <SettingsPanel v-if="store.isSettingsOpen" />
     <VaultSharingPanel v-if="store.isSharingOpen" />
     <VaultRecoveryPanel v-if="store.isVaultRecoveryOpen" />
+    <ImportPanel v-if="store.isImportOpen" />
   </div>
 </template>
 

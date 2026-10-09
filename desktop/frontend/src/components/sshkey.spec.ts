@@ -72,7 +72,7 @@ describe("New item menu", () => {
     expect(wrapper.find('[role="menu"]').exists()).toBe(false);
     await wrapper.find('button[aria-label="New item"]').trigger("click");
     const allMenuItem = wrapper.findAll('[role="menuitem"]');
-    expect(allMenuItem.map((menuItem) => menuItem.text())).toEqual([expect.stringContaining("Login"), "SSH key"]);
+    expect(allMenuItem.map((menuItem) => menuItem.text())).toEqual([expect.stringContaining("Login"), "SSH key", "Import…"]);
 
     await wrapper.find('[data-testid="new-ssh-key"]').trigger("click");
     expect(store.editorMode).toBe("create-ssh-key");

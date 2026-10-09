@@ -10,6 +10,11 @@ import type {
   Device,
   PairedBrowser,
   FamilyMember,
+  ImportDuplicate,
+  ImportFormat,
+  ImportPreview as BoundImportPreview,
+  ImportProgress as BoundImportProgress,
+  ImportSkippedEntry,
   ItemDetail as BoundItemDetail,
   ItemField,
   PasswordConfig,
@@ -26,6 +31,9 @@ export type {
   ApprovalEvent,
   Device,
   FamilyMember,
+  ImportDuplicate,
+  ImportFormat,
+  ImportSkippedEntry,
   ItemField,
   PasswordConfig,
   PendingRecovery,
@@ -61,6 +69,23 @@ export interface BrowserStatus extends Omit<BoundBrowserStatus, "allInstallation
 
 function normalizeBrowserStatus(boundStatus: BoundBrowserStatus): BrowserStatus {
   return { ...boundStatus, allInstallation: boundStatus.allInstallation ?? [], allPairedBrowser: boundStatus.allPairedBrowser ?? [] };
+}
+
+export interface ImportPreview extends Omit<BoundImportPreview, "allSkipped" | "allDuplicate"> {
+  allSkipped: ImportSkippedEntry[];
+  allDuplicate: ImportDuplicate[];
+}
+
+function normalizeImportPreview(boundPreview: BoundImportPreview): ImportPreview {
+  return { ...boundPreview, allSkipped: boundPreview.allSkipped ?? [], allDuplicate: boundPreview.allDuplicate ?? [] };
+}
+
+export interface ImportProgress extends Omit<BoundImportProgress, "allFailed"> {
+  allFailed: ImportSkippedEntry[];
+}
+
+function normalizeImportProgress(boundProgress: BoundImportProgress): ImportProgress {
+  return { ...boundProgress, allFailed: boundProgress.allFailed ?? [] };
 }
 
 const wailsApi = {
@@ -137,6 +162,15 @@ const wailsApi = {
   completeAccountRecovery: async (accountID: string): Promise<string[]> => (await Service.CompleteAccountRecovery(accountID)) ?? [],
   recoverAccount: (recoveryLink: string, email: string, newPassword: string): Promise<RecoverAccountResult> =>
     Service.RecoverAccount(recoveryLink, email, newPassword),
+  listAllImportFormat: async (): Promise<ImportFormat[]> => (await Service.ListAllImportFormat()) ?? [],
+  chooseImportFile: async (vaultID: string, format: string): Promise<ImportPreview> =>
+    normalizeImportPreview(await Service.ChooseImportFile(vaultID, format)),
+  previewImport: async (vaultID: string): Promise<ImportPreview> => normalizeImportPreview(await Service.PreviewImport(vaultID)),
+  startImport: async (vaultID: string, isSkippingDuplicate: boolean): Promise<ImportProgress> =>
+    normalizeImportProgress(await Service.StartImport(vaultID, isSkippingDuplicate)),
+  continueImport: async (): Promise<ImportProgress> => normalizeImportProgress(await Service.ContinueImport()),
+  cancelImport: (): Promise<void> => Service.CancelImport(),
+  deleteImportFile: (): Promise<void> => Service.DeleteImportFile(),
 };
 
 // main.ts swaps in the preview backend before mounting when VITE_PREVIEW is set.

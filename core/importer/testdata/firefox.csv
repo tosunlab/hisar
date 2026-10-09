@@ -1,0 +1,3 @@
+"url","username","password","httpRealm","formActionOrigin","guid","timeCreated","timeLastUsed","timePasswordChanged"
+"https://www.mozilla.org","alice","firefox-pass-1",,"https://www.mozilla.org","{0b5f2e3c-1d1e-4f3a-9a77-5d1c2e3f4a5b}","1700000000000","1700000100000","1700000000000"
+"https://bugzilla.mozilla.org","alice@example.com","",,"https://bugzilla.mozilla.org","{1c6a3f4d-2e2f-4a4b-8b88-6e2d3f4a5b6c}","1700000200000","1700000300000","1700000200000"

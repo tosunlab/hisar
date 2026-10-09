@@ -42,6 +42,7 @@ type Service struct {
 	newAccountSecretKey          *crypt.SecretKey
 	recoveredAccountSecretKey    *crypt.SecretKey
 	localCache                   *cache.Cache
+	pendingImport                *pendingImport
 	stopEvents                   context.CancelFunc
 }
 
@@ -174,6 +175,7 @@ func (s *Service) lockSession() {
 	}
 	s.allVaultByID = nil
 	s.allItemByVaultID = nil
+	s.pendingImport = nil
 	if wasUnlocked && s.config.OnLock != nil {
 		s.config.OnLock()
 	}

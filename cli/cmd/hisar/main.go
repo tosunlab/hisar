@@ -28,6 +28,7 @@ var allCommand = []command{
 	{"add", "[-v vault]", "add a login", runAdd},
 	{"edit", "<item> [-v vault]", "edit an item", runEdit},
 	{"rm", "<item> [-v vault]", "delete an item", runRemove},
+	{"import", "<file> [-v vault] [-format f] [-y]", "import a 1Password, Bitwarden or browser CSV export", runImport},
 	{"generate", "[-n length] [-no-symbols]", "generate a password", runGenerate},
 	{"members", "", "list family members", runListAllMember},
 	{"share", "<vault> <email> [-r role]", "share a vault (role: owner, editor, reader)", runShare},
@@ -47,7 +48,7 @@ var allCommand = []command{
 func printUsage() {
 	fmt.Fprintln(os.Stderr, "usage: hisar <command> [arguments]\n\ncommands:")
 	for _, command := range allCommand {
-		fmt.Fprintf(os.Stderr, "  %-18s %-32s %s\n", command.name, command.argumentUsage, command.summary)
+		fmt.Fprintf(os.Stderr, "  %-18s %-35s %s\n", command.name, command.argumentUsage, command.summary)
 	}
 }
 
