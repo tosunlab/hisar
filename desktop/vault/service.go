@@ -563,6 +563,8 @@ func convertToItemDetail(vaultItem *item.Item) ItemDetail {
 
 		OneTimePassword:    vaultItem.Details.OneTimePassword,
 		HasOneTimePassword: vaultItem.Details.OneTimePassword != "",
+
+		AllPasskey: convertToAllItemPasskey(vaultItem.Details.Passkeys),
 	}
 	for _, field := range vaultItem.Details.Fields {
 		detail.Fields = append(detail.Fields, ItemField{Name: field.Name, Value: field.Value, Concealed: field.Concealed})
@@ -626,7 +628,7 @@ func (s *Service) SaveItem(vaultID string, detail ItemDetail) (ItemDetail, error
 	return convertToItemDetail(&vaultItem), nil
 }
 
-// buildSavedItem keeps the category of an existing item; an ssh-key item only takes the title and notes from the editor.
+// buildSavedItem keeps the category and passkeys of an existing item; an ssh-key item only takes the title and notes from the editor.
 func (s *Service) buildSavedItem(vaultID string, detail ItemDetail) (item.Item, error) {
 	var cachedItem *item.Item
 	if detail.ID != "" {
@@ -644,6 +646,8 @@ func (s *Service) buildSavedItem(vaultID string, detail ItemDetail) (item.Item, 
 	if cachedItem.Overview.Category != item.CategorySSHKey {
 		vaultItem := convertFromItemDetail(detail)
 		vaultItem.Overview.Category = cachedItem.Overview.Category
+		vaultItem.Details.Passkeys = cachedItem.Details.Passkeys
+		item.UpdatePasskeyOverview(&vaultItem)
 		return vaultItem, nil
 	}
 	vaultItem := *cachedItem

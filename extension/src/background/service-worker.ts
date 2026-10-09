@@ -5,6 +5,7 @@ import { BackgroundController, type BrowserBridge } from "./controller";
 import { InlineMenuService } from "./inline-menu";
 import type { FrameInfo } from "./frames";
 import { NativeClient } from "./native-client";
+import { createPasskeyService } from "./passkey-wiring";
 import { routeMessage } from "./router";
 import { ExtensionStorage } from "./storage";
 
@@ -84,6 +85,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   void routeMessage({ controller: getController(), inlineMenu: getInlineMenu() }, message, sender, routerContext).then(sendResponse);
   return true;
 });
+
+const passkeyService = createPasskeyService(client, storage, () => getController(), () => crypto.randomUUID());
+chrome.runtime.onConnect.addListener((port) => passkeyService.handlePort(port));
 
 chrome.commands.onCommand.addListener((command, tab) => {
   if (command !== "fill-login" || tab?.id === undefined) return;

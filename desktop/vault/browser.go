@@ -150,6 +150,9 @@ func (bridge *BrowserBridge) handleRequest(ctx context.Context, request *browser
 		}
 		return browser.PasswordResult{Password: password}, nil
 	}
+	if strings.HasPrefix(request.Type, "passkeys.") {
+		return bridge.handlePasskeyRequest(ctx, request)
+	}
 	return nil, browser.CreateError(browser.ErrorInvalidRequest, fmt.Sprintf("unknown request type %q", request.Type))
 }
 

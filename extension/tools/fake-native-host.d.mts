@@ -20,6 +20,19 @@ export interface FakeHostState {
   allPairing: { instanceID: string; browser: string; tokenHash: string; pairedAt: number }[];
   exactHostOnly: boolean;
   allLogin: FakeLogin[];
+  allPasskey?: FakePasskey[];
+}
+
+export interface FakePasskey {
+  credentialId: string;
+  relyingPartyId: string;
+  userHandle: string;
+  userName: string;
+  userDisplayName: string;
+  privateKey: string;
+  vaultID: string;
+  itemID: string;
+  createdAt: number;
 }
 
 export const protocolVersion: number;

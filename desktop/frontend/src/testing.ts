@@ -21,6 +21,7 @@ export function createItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
     keyType: "",
     oneTimePassword: "",
     hasOneTimePassword: false,
+    passkeys: [],
     ...overrides,
   };
 }
@@ -148,6 +149,7 @@ export function createApiMock() {
     getItem: vi.fn(),
     saveItem: vi.fn(),
     deleteItem: vi.fn(),
+    deletePasskey: vi.fn(),
     generatePassword: vi.fn(),
     generateSSHKey: vi.fn(),
     importSSHKey: vi.fn(),

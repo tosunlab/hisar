@@ -101,6 +101,8 @@ type ItemDetail struct {
 	// OneTimePassword is the otpauth:// URI; summaries leave it empty and set HasOneTimePassword instead.
 	OneTimePassword    string `json:"oneTimePassword"`
 	HasOneTimePassword bool   `json:"hasOneTimePassword"`
+
+	AllPasskey []ItemPasskey `json:"passkeys"`
 }
 
 // OneTimeCode is the current code of an item's one-time password; ExpiresAt is RFC 3339.

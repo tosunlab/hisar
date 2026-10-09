@@ -4,7 +4,9 @@ import (
 	"crypto/rand"
 	"errors"
 	"math/big"
+	"slices"
 	"strings"
+	"time"
 )
 
 const (
@@ -22,6 +24,8 @@ type Overview struct {
 	PublicKey   string `json:"publicKey,omitempty"`
 	Fingerprint string `json:"fingerprint,omitempty"`
 	KeyType     string `json:"keyType,omitempty"`
+	// PasskeyRelyingPartyIDs marks an item with passkeys without the details; UpdatePasskeyOverview keeps it in step.
+	PasskeyRelyingPartyIDs []string `json:"passkeyRelyingPartyIds,omitempty"`
 }
 
 type Field struct {
@@ -38,6 +42,19 @@ type Details struct {
 	PrivateKey string `json:"privateKey,omitempty"`
 	// OneTimePassword is an otpauth://totp URI (core/totp normalizes pasted secrets into one).
 	OneTimePassword string `json:"oneTimePassword,omitempty"`
+
+	Passkeys []Passkey `json:"passkeys,omitempty"`
+}
+
+// Passkey is a WebAuthn credential; PrivateKey is the PKCS#8 DER of an ES256 key.
+type Passkey struct {
+	CredentialID    []byte    `json:"credentialId"`
+	RelyingPartyID  string    `json:"relyingPartyId"`
+	UserHandle      []byte    `json:"userHandle"`
+	UserName        string    `json:"userName,omitempty"`
+	UserDisplayName string    `json:"userDisplayName,omitempty"`
+	PrivateKey      []byte    `json:"privateKey"`
+	CreatedAt       time.Time `json:"createdAt"`
 }
 
 type Item struct {
@@ -45,6 +62,16 @@ type Item struct {
 	Revision string
 	Overview Overview
 	Details  Details
+}
+
+func UpdatePasskeyOverview(vaultItem *Item) {
+	var allRelyingPartyID []string
+	for _, passkey := range vaultItem.Details.Passkeys {
+		if !slices.Contains(allRelyingPartyID, passkey.RelyingPartyID) {
+			allRelyingPartyID = append(allRelyingPartyID, passkey.RelyingPartyID)
+		}
+	}
+	vaultItem.Overview.PasskeyRelyingPartyIDs = allRelyingPartyID
 }
 
 const (

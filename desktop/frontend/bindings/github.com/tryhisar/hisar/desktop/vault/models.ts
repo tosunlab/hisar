@@ -111,12 +111,24 @@ export interface ItemDetail {
      */
     "oneTimePassword": string;
     "hasOneTimePassword": boolean;
+    "passkeys": ItemPasskey[] | null;
 }
 
 export interface ItemField {
     "name": string;
     "value": string;
     "concealed": boolean;
+}
+
+/**
+ * ItemPasskey describes a stored passkey without its private key.
+ */
+export interface ItemPasskey {
+    "credentialId": string;
+    "relyingPartyId": string;
+    "userName": string;
+    "userDisplayName": string;
+    "createdAt": string;
 }
 
 /**

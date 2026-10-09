@@ -56,6 +56,7 @@ function createPreviewItem(id: string, title: string, username: string, link: st
     keyType: "",
     oneTimePassword: "",
     hasOneTimePassword: false,
+    passkeys: [],
     ...extra,
   };
 }
@@ -83,6 +84,7 @@ const allPreviewItemByVaultID: Record<string, ItemDetail[]> = {
       fields: [{ name: "Recovery code", value: "a1b2-c3d4-e5f6", concealed: true }],
       oneTimePassword: "otpauth://totp/GitHub:alper?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&issuer=GitHub",
       hasOneTimePassword: true,
+      passkeys: [{ credentialId: "preview-passkey", relyingPartyId: "github.com", userName: "alper", userDisplayName: "Alper", createdAt: "2026-10-02T09:41:00Z" }],
     }),
     createPreviewItem("google", "Google", "alper@gmail.com", "https://accounts.google.com", "Spring2024!"),
     createPreviewItem("bank", "İş Bankası", "48211990", "https://www.isbank.com.tr", "93-Kale-Kapı-71", {
@@ -410,6 +412,11 @@ export const previewApi = {
       allItem.push(saved);
     }
     return resolveAfterDelay(saved);
+  },
+  deletePasskey: (vaultID: string, itemID: string, credentialID: string) => {
+    const vaultItem = allPreviewItemByVaultID[vaultID].find((candidate) => candidate.id === itemID)!;
+    vaultItem.passkeys = vaultItem.passkeys.filter((passkey) => passkey.credentialId !== credentialID);
+    return resolveAfterDelay(structuredClone(vaultItem));
   },
   deleteItem: (vaultID: string, itemID: string) => {
     allPreviewItemByVaultID[vaultID] = allPreviewItemByVaultID[vaultID].filter((vaultItem) => vaultItem.id !== itemID);

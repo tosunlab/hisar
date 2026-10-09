@@ -424,6 +424,21 @@ export async function deleteItem(itemID: string): Promise<void> {
   }
 }
 
+export async function deletePasskey(credentialID: string): Promise<void> {
+  if (!store.selectedItem) {
+    return;
+  }
+  const itemID = store.selectedItem.id;
+  const updated = await runAction(() => api.deletePasskey(store.selectedVaultID, itemID, credentialID));
+  if (updated) {
+    store.allItem = store.allItem.map((vaultItem) => (vaultItem.id === itemID ? { ...vaultItem, passkeys: updated.passkeys } : vaultItem));
+    if (store.selectedItem?.id === itemID) {
+      store.selectedItem = updated;
+    }
+    showNotice("Passkey deleted");
+  }
+}
+
 export async function copyField(fieldName: string, label: string): Promise<void> {
   if (!store.selectedItem) {
     return;

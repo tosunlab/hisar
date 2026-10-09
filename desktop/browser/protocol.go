@@ -3,6 +3,7 @@ package browser
 
 import (
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -47,6 +48,8 @@ type Request struct {
 	Length           int    `json:"length,omitempty"`
 	Digits           *bool  `json:"digits,omitempty"`
 	Symbols          *bool  `json:"symbols,omitempty"`
+
+	Passkey json.RawMessage `json:"passkey,omitempty"`
 }
 
 type Response struct {

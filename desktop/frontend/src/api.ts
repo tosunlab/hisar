@@ -17,6 +17,7 @@ import type {
   ImportSkippedEntry,
   ItemDetail as BoundItemDetail,
   ItemField,
+  ItemPasskey,
   OneTimeCode,
   PasswordConfig,
   PendingRecovery,
@@ -36,6 +37,7 @@ export type {
   ImportFormat,
   ImportSkippedEntry,
   ItemField,
+  ItemPasskey,
   OneTimeCode,
   PasswordConfig,
   PendingRecovery,
@@ -53,13 +55,14 @@ export type VaultRole = "owner" | "editor" | "reader";
 export type FamilyRole = "admin" | "member";
 
 // ItemDetail mirrors the Go type with nil slices normalized to empty arrays.
-export interface ItemDetail extends Omit<BoundItemDetail, "urls" | "fields"> {
+export interface ItemDetail extends Omit<BoundItemDetail, "urls" | "fields" | "passkeys"> {
   urls: string[];
   fields: ItemField[];
+  passkeys: ItemPasskey[];
 }
 
 function normalizeItem(boundItem: BoundItemDetail): ItemDetail {
-  return { ...boundItem, urls: boundItem.urls ?? [], fields: boundItem.fields ?? [] };
+  return { ...boundItem, urls: boundItem.urls ?? [], fields: boundItem.fields ?? [], passkeys: boundItem.passkeys ?? [] };
 }
 
 export type { BrowserInstallation, BrowserPairingRequest, PairedBrowser };
@@ -107,6 +110,8 @@ const wailsApi = {
   saveItem: async (vaultID: string, detail: ItemDetail): Promise<ItemDetail> =>
     normalizeItem(await Service.SaveItem(vaultID, detail)),
   deleteItem: (vaultID: string, itemID: string): Promise<void> => Service.DeleteItem(vaultID, itemID),
+  deletePasskey: async (vaultID: string, itemID: string, credentialID: string): Promise<ItemDetail> =>
+    normalizeItem(await Service.DeletePasskey(vaultID, itemID, credentialID)),
   generatePassword: (config: PasswordConfig): Promise<string> => Service.GeneratePassword(config),
   generateSSHKey: async (vaultID: string, title: string, keyType: SSHKeyType): Promise<ItemDetail> =>
     normalizeItem(await Service.GenerateSSHKey(vaultID, title, keyType)),
@@ -205,5 +210,6 @@ export function createEmptyItem(): ItemDetail {
     keyType: "",
     oneTimePassword: "",
     hasOneTimePassword: false,
+    passkeys: [],
   };
 }

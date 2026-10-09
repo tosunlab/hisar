@@ -65,6 +65,13 @@ export function DeleteItem(vaultID: string, itemID: string): $CancellablePromise
     return $Call.ByID(4013544763, vaultID, itemID);
 }
 
+/**
+ * DeletePasskey removes one passkey from an item; credentialID is base64url.
+ */
+export function DeletePasskey(vaultID: string, itemID: string, credentialID: string): $CancellablePromise<$models.ItemDetail> {
+    return $Call.ByID(1337987028, vaultID, itemID, credentialID);
+}
+
 export function DisableBiometricUnlock(): $CancellablePromise<$models.Status> {
     return $Call.ByID(3456338865);
 }

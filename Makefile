@@ -18,11 +18,11 @@ build-cli-all:
 # desktop: the vault, biometric and agent packages; the Wails main package needs cgo and the built frontend.
 test:
 	@for m in $(MODULES); do (cd $$m && go test -p 1 -count=1 $(TESTFLAGS) ./...) || exit 1; done
-	cd desktop && go test -count=1 $(TESTFLAGS) ./vault/ ./biometric/ ./agent/ ./appinfo/ ./browser/ ./cmd/...
+	cd desktop && go test -count=1 $(TESTFLAGS) ./vault/ ./biometric/ ./agent/ ./appinfo/ ./browser/ ./passkey/ ./cmd/...
 
 vet:
 	@for m in $(MODULES); do (cd $$m && go vet ./...) || exit 1; done
-	cd desktop && go vet ./vault/ ./biometric/ ./agent/ ./appinfo/ ./browser/ ./cmd/...
+	cd desktop && go vet ./vault/ ./biometric/ ./agent/ ./appinfo/ ./browser/ ./passkey/ ./cmd/...
 
 test-end-to-end: build
 	./scripts/test-end-to-end.sh

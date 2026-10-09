@@ -130,3 +130,22 @@ func TestWriteNewPrivateFile(t *testing.T) {
 		t.Errorf("content changed: %q", content)
 	}
 }
+
+func TestWriteItemShowsPasskeysWithoutKeys(t *testing.T) {
+	vaultItem := &item.Item{
+		Overview: item.Overview{Title: "Example", Username: "alex", URLs: []string{"https://example.com"}},
+		Details: item.Details{Password: "pw", Passkeys: []item.Passkey{
+			{CredentialID: []byte{1}, RelyingPartyID: "example.com", UserName: "alex@example.com", PrivateKey: []byte("PRIVATE-KEY-BYTES"), UserHandle: []byte("HANDLE")},
+		}},
+	}
+	var output strings.Builder
+	if err := writeItem(&output, vaultItem); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "passkey:   example.com (alex@example.com)") {
+		t.Errorf("output:\n%s", output.String())
+	}
+	if strings.Contains(output.String(), "PRIVATE") || strings.Contains(output.String(), "HANDLE") || strings.Contains(output.String(), "UFJJVkFURS") {
+		t.Errorf("key material printed:\n%s", output.String())
+	}
+}

@@ -35,6 +35,29 @@
       "all_frames": true,
       "match_about_blank": true,
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "passkey-main.js"
+      ],
+      "all_frames": true,
+      "match_about_blank": true,
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "passkey-content.js"
+      ],
+      "all_frames": true,
+      "match_about_blank": true,
+      "run_at": "document_start"
     }
   ],
   "commands": {
@@ -59,7 +82,8 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "inline-menu.html"
+        "inline-menu.html",
+        "passkey-prompt.html"
       ],
       "matches": [
         "<all_urls>"

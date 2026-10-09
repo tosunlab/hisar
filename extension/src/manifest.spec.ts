@@ -36,8 +36,17 @@ describe("manifest.json", () => {
     expect(manifest.commands["fill-login"].suggested_key).toEqual({ default: "Ctrl+Shift+L", mac: "Command+Shift+L" });
   });
 
-  it("exposes only the inline menu page to web pages, through a dynamic URL", () => {
-    expect(manifest.web_accessible_resources).toEqual([{ resources: ["inline-menu.html"], matches: ["<all_urls>"], use_dynamic_url: true }]);
+  it("exposes only the inline menu and passkey prompt pages to web pages, through a dynamic URL", () => {
+    expect(manifest.web_accessible_resources).toEqual([
+      { resources: ["inline-menu.html", "passkey-prompt.html"], matches: ["<all_urls>"], use_dynamic_url: true },
+    ]);
+  });
+
+  it("wraps navigator.credentials in the page's world before page scripts run", () => {
+    expect(manifest.content_scripts.slice(1)).toEqual([
+      { matches: ["<all_urls>"], js: ["passkey-main.js"], all_frames: true, match_about_blank: true, run_at: "document_start", world: "MAIN" },
+      { matches: ["<all_urls>"], js: ["passkey-content.js"], all_frames: true, match_about_blank: true, run_at: "document_start" },
+    ]);
   });
 
   it("has the same version as package.json", () => {

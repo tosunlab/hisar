@@ -6,6 +6,7 @@ import { dirname } from "node:path";
 import { endianness, homedir } from "node:os";
 import { pathToFileURL } from "node:url";
 import { isIP } from "node:net";
+import { handlePasskeyRequest, PasskeyError } from "./fake-passkey-authenticator.mjs";
 
 export const protocolVersion = 1;
 const maximumMessageBytes = 1024 * 1024;
@@ -243,6 +244,7 @@ export function handleRequest(state, request, now = Date.now(), log = () => unde
       if (state.state === "signed-out") throw new ProtocolError("signed-out", "Hisar is signed out");
       return { password: generatePassword(request) };
     default:
+      if (typeof type === "string" && type.startsWith("passkeys.")) return handlePasskeyRequest(state, request, now, findAllMatchingLogin);
       throw new ProtocolError("invalid-request", `Unknown type ${String(type)}`);
   }
 }
@@ -253,7 +255,7 @@ export function respond(state, request, now, log) {
     if (!id || typeof request.type !== "string") throw new ProtocolError("invalid-request", "id and type are required");
     return { id, ok: true, result: handleRequest(state, request, now, log) };
   } catch (error) {
-    const code = error instanceof ProtocolError ? error.code : "internal";
+    const code = error instanceof ProtocolError || error instanceof PasskeyError ? error.code : "internal";
     return { id, ok: false, error: { code, message: error instanceof Error ? error.message : String(error) } };
   }
 }

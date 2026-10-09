@@ -5,6 +5,7 @@ import { formatKeyType, getDomain, sshKeyCategory } from "../util";
 import AppIcon from "./AppIcon.vue";
 import ItemTile from "./ItemTile.vue";
 import OneTimeCodeField from "./OneTimeCodeField.vue";
+import PasskeyList from "./PasskeyList.vue";
 import StrengthMeter from "./StrengthMeter.vue";
 
 defineProps<{ canEdit: boolean; vaultName: string; isShared: boolean }>();
@@ -147,10 +148,15 @@ function maskSecret(secret: string): string {
         </span>
       </div>
 
-      <p v-if="!store.selectedItem.username && !store.selectedItem.password && store.selectedItem.urls.length === 0 && store.selectedItem.fields.length === 0" class="muted no-fields">
+      <p
+        v-if="!store.selectedItem.username && !store.selectedItem.password && store.selectedItem.urls.length === 0 && store.selectedItem.fields.length === 0 && (store.selectedItem.passkeys ?? []).length === 0"
+        class="muted no-fields"
+      >
         This item has no fields yet.
       </p>
     </section>
+
+    <PasskeyList v-if="(store.selectedItem.passkeys ?? []).length > 0" :passkeys="store.selectedItem.passkeys ?? []" :can-delete="canEdit" />
 
     <section v-if="store.selectedItem.notes" class="card notes-card">
       <p class="section-label">Notes</p>

@@ -144,6 +144,11 @@ ct_part  = XChaCha20-Poly1305(key=K_vault, nonce=random24, aad, plaintext=JSON(p
 - **CLI:** `hisar get <item> -f code`.
 - **Later:** the browser extension filling codes into two-factor fields, and the iOS app.
 
+**Passkeys.** `details.passkeys` holds the item's WebAuthn credentials (§9.8): `[{credentialId, relyingPartyId, userHandle, userName, userDisplayName, privateKey, createdAt}]`. Binary values are base64 in the JSON; `privateKey` is the PKCS#8 DER of an ES256 (P-256) key.
+
+- The overview carries only `passkeyRelyingPartyIds`, the sites of the item's passkeys, so lists can mark an item as having a passkey without its details.
+- Editing an item never changes its passkeys: the backend copies them (and the overview marker) from the cached item, so editors that don't know about passkeys, such as today's iOS app, keep them. Only "Delete passkey" removes one.
+
 Binding vault ID, item ID and revision in the AAD stops a malicious server from moving an item into another vault, swapping overview/details between items, or mixing parts of different revisions.
 
 All `||` concatenations of variable-length fields are length-prefixed (4-byte big-endian length before each field), so field boundaries are unambiguous.
@@ -536,13 +541,83 @@ Like 1Password, the desktop app is an SSH agent for keys stored in vaults, so pr
 - Desktop (`desktop/vault/import.go`): the file comes from a native open dialog; the parsed items stay in memory only until the import finishes, is cancelled or Hisar locks. Items are saved in batches of 10 called by the UI, so it can show progress, and connection, permission and rate-limit errors pause the import instead of failing every remaining item. Afterwards the app offers to delete the export file.
 - CLI: `hisar import <file> [-v vault] [-format f] [-y] [-include-duplicates]` parses the file before asking for the master password and asks before saving and before deleting the file; `-y` imports without questions and never deletes.
 
+### 9.8 Passkeys (WebAuthn)
+
+Hisar is a passkey provider for Chromium browsers: the extension takes over `navigator.credentials.create` and `get` for public-key credentials, and the desktop app holds the keys and signs. Private keys never leave the desktop's Go backend; neither the extension nor the UI sees them. iOS (a passkey credential provider) comes later: it needs the paid Apple team to test (§12 #7).
+
+**Authenticator**
+
+| Property | Value |
+|---|---|
+| Algorithm | ES256 only (COSE `-7`, P-256). A `create` whose non-empty `pubKeyCredParams` lacks `-7` is left to the browser |
+| AAGUID | `fb041679-042a-49ae-b616-8779e2ac14ce`, fixed for Hisar |
+| Credential ID | 32 random bytes; every credential is discoverable (stored with its user handle) |
+| Sign count | always 0, as for other synced passkeys; relying parties then skip the counter check |
+| Flags | UP, UV, BE and BS; AT on create |
+| Attestation | `none` (`fmt: "none"`, empty `attStmt`), whatever the relying party asks |
+| Extensions | none processed; `credProps` reports `{rk: true}` when asked on create |
+| Transports | `["hybrid", "internal"]`, attachment `platform` |
+
+- **User presence and verification:** every create and get needs a click in Hisar's prompt in the page (presence), and Hisar must be unlocked, which took the master password or Touch ID (verification). So UV is set whatever `userVerification` asks. There is no extra Touch ID check per use: the SSH approval window (§9.6) would be the model, but it is built around per-process SSH approvals; "Ask for Touch ID before using a passkey" is a later option.
+- `desktop/passkey` builds the authenticator data, the COSE key and the attestation object (CTAP2 canonical CBOR, hand-written for these few shapes) and signs with `crypto/ecdsa` (ASN.1 DER signature over `authenticatorData || SHA-256(clientDataJSON)`).
+
+**Origin and relying party ID**
+
+- The origin never comes from the page. The service worker takes it from the message sender: the calling frame's `sender.origin` (which must equal the origin of `sender.url`), and the top-level origin from `sender.tab.url`.
+- Only `https:` origins, and `http://localhost` or `http://*.localhost`, as in browsers.
+- The RP ID defaults to the origin's host. An explicit RP ID must equal the host or be a suffix of it at a label boundary, and must not be a public suffix (`golang.org/x/net/publicsuffix`, as for URL matching in §9.2); for IP addresses it must equal the host. The desktop checks this on every passkey request, so the extension never decides it alone.
+- Frames: in the top frame and in frames with the top frame's origin (the frame rule of §9.2), `crossOrigin` is false. A cross-origin frame is served only when its permissions policy allows `publickey-credentials-get` (or `-create`), which the isolated content script checks with `document.featurePolicy.allowsFeature`; then `crossOrigin` is true and `topOrigin` is the tab's origin. Otherwise the browser decides.
+- The desktop builds `clientDataJSON` as `{"type","challenge","origin","crossOrigin"[,"topOrigin"]}` in this order, with the challenge in base64url without padding.
+
+**Creating a passkey**
+
+- The prompt shows "Save passkey" for the user name and site, with the logins in writable vaults that match the origin (§9.2) and "New login". A login whose username equals the user name is preselected; with no matching login, "New login" is the only choice.
+- A new login is created in the Personal vault, titled by the RP ID without `www.`, with the user name as its username and `https://<rpId>` as its URL.
+- Saving to a login that already has a passkey with the same RP ID and user handle replaces it, as WebAuthn requires for discoverable credentials.
+- `excludeCredentials`: when Hisar already has one of the listed credentials for the RP ID, the prompt says so; "OK" rejects with `InvalidStateError`, and "Use another device or browser" falls back. The desktop refuses such a create too.
+
+**Signing in**
+
+- The prompt lists Hisar's passkeys whose RP ID equals the request's (title, user name), only those in `allowCredentials` when it is not empty. Choosing one signs. With no matching passkey, Hisar steps aside and the browser handles the request without a Hisar prompt.
+- **Conditional mediation** (`mediation: "conditional"`, passkey autofill): when Hisar is unlocked and has passkeys for the RP, the request stays pending, and focusing an input whose `autocomplete` contains `webauthn` opens the prompt, at the top right like the modal one so it does not cover the inline menu under the field. Otherwise the browser's own conditional request runs. Conditional requests have no timeout.
+
+**Extension**
+
+- `passkey-main.js`, a content script in the MAIN world at `document_start` in all frames, replaces `navigator.credentials.create` and `get`, `PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable` (true when the browser's is, or when this browser is paired with a signed-in Hisar) and `isConditionalMediationAvailable` (true). Requests without `publicKey` go to the browser untouched.
+- It turns the options into JSON (BufferSources as base64url) and dispatches a `CustomEvent` with a JSON string on `document`. `passkey-content.js`, an isolated-world content script at `document_start`, forwards it to the service worker as `passkey.start` and answers with another event. Only strings cross between the worlds. A page that fakes these events gains nothing it could not get by calling `navigator.credentials` itself, and the origin still comes from the sender.
+- The service worker validates the request (challenge 1–1024 bytes, user ID 1–64 bytes, at most 64 listed credentials of at most 1023 bytes, names at most 256 characters) and answers `fallback`, `prompt` (with a session and the prompt URL) or an error name.
+- **Falls back to the browser without a prompt** when the native host or Hisar is unavailable, the browser is not paired, Hisar is signed out, the request is not for ES256 or asks for a `cross-platform` authenticator, Hisar has no matching passkey (get), or the desktop refuses the request (for example an RP ID that does not fit the origin, which the browser then rejects itself).
+- **Locked:** the prompt shows "Unlock Hisar" (as the inline menu: `unlock`, then polling) and continues once Hisar is unlocked. Closing it while locked falls back to the browser.
+- **Prompt:** an extension page (`passkey-prompt.html`, `web_accessible_resources` with `use_dynamic_url`) in an iframe in a closed shadow root at the top right of the calling frame. It uses the inline menu's style and its clickjacking defences (§9.2): before every action that reaches the desktop, the service worker asks the content script whether the prompt was visible and uncovered for 300 ms; the page ignores untrusted clicks, and uses IntersectionObserver v2 where available. It always offers "Use another device or browser", which calls the browser's original implementation with the same options. Closing it (×, Escape) rejects with `NotAllowedError`.
+- **Timeouts and aborts:** the content script rejects with `NotAllowedError` after the request's `timeout` (clamped to 30 s–10 min, 5 min by default). An aborted `signal` closes the prompt and rejects with the signal's reason.
+- **Result:** the MAIN-world script builds the credential with `PublicKeyCredential.prototype` (and `AuthenticatorAttestationResponse.prototype` or `AuthenticatorAssertionResponse.prototype`) as prototypes and own properties, so `instanceof` checks pass: `id`, `rawId`, `type`, `authenticatorAttachment`, `response` (`clientDataJSON`; `attestationObject`, `getAuthenticatorData()`, `getPublicKey()` as SPKI DER, `getPublicKeyAlgorithm()` and `getTransports()` for create; `authenticatorData`, `signature` and `userHandle` for get), `getClientExtensionResults()` and `toJSON()`.
+
+**Messages** (extension ⇄ desktop, §9.2 framing, all need the token). Parameters are in a nested `passkey` object; binary values are base64url without padding.
+
+| Type | `passkey` parameters | Result |
+|---|---|---|
+| `passkeys.list` | `origin`, `relyingPartyId`, `allowCredentials` | `passkeys`: `[{credentialId, vaultID, itemID, title, userName, userDisplayName}]` |
+| `passkeys.prepare` | `origin`, `relyingPartyId`, `excludeCredentials` | `isExcluded`, `logins` (writable logins matching the origin) |
+| `passkeys.create` | `origin`, `topOrigin`, `isCrossOrigin`, `relyingPartyId`, `userHandle`, `userName`, `userDisplayName`, `challenge`, `excludeCredentials`, optional `vaultID` + `itemID` | `credentialId`, `clientDataJSON`, `attestationObject`, `authenticatorData`, `publicKey`, `publicKeyAlgorithm`, `vaultID`, `itemID` |
+| `passkeys.get` | `origin`, `topOrigin`, `isCrossOrigin`, `relyingPartyId`, `challenge`, `allowCredentials`, `credentialId` | `credentialId`, `clientDataJSON`, `authenticatorData`, `signature`, `userHandle` |
+
+The desktop checks the RP ID against the origin on each request, applies `allowCredentials` and `excludeCredentials` again, and signs only with a credential whose RP ID equals the request's.
+
+**Desktop app and CLI**
+
+- `desktop/vault/passkey.go` finds, creates and signs. These are unexported methods or plain functions, so nothing bound to the UI returns a private key. `ItemDetail.passkeys` carries `{credentialId, relyingPartyId, userName, userDisplayName, createdAt}`.
+- The item view lists the passkeys (site, user name, created) with Delete (`DeletePasskey(vaultID, itemID, credentialId)`, after a confirmation). The editor shows them read-only and the backend keeps them.
+- `hisar get` prints `passkey: <rpId> (<user name>)` per passkey, never the key.
+
+**Not supported yet:** WebAuthn extensions (PRF, large blob, …), `getClientCapabilities`, the signal API, Firefox and Safari, and iOS.
+
 ## 10. Repository layout
 
 ```
 core/       Go module: crypto, item model, local store, sync client   (github.com/tryhisar/hisar/core)
 server/     Go module: hisar-server                                   (github.com/tryhisar/hisar/server)
 cli/        Go module: hisar CLI                                      (github.com/tryhisar/hisar/cli)
-desktop/    Wails v3 app (Go + Vue): vault/ backend, agent/ SSH agent, frontend/ UI (Phase 2)
+desktop/    Wails v3 app (Go + Vue): vault/ backend, agent/ SSH agent, passkey/ WebAuthn authenticator, frontend/ UI (Phase 2)
 extension/  Browser extension (TypeScript)                            (Phase 3)
 mobile/     iOS + Android apps on top of gomobile-bound core          (Phase 4)
 docs/       Design and decisions

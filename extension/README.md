@@ -8,18 +8,22 @@ The manifest's `key` gives the fixed ID `mmipiffoogblblocokimpemdopmdjghf`, both
 
 ```
 public/manifest.json      MV3 manifest (version must equal package.json)
-popup.html, inline-menu.html
+popup.html, inline-menu.html, passkey-prompt.html
 src/background/           service worker: native port (native-client.ts), popup/content handlers (controller.ts, router.ts),
                           frame rule (frames.ts), save offers (save.ts), chrome.storage.local (storage.ts)
 src/content/              content script (all frames): form detection, fill, submit capture, save bar (closed shadow root)
 src/content/inline-menu/  inline icon and menu frame placement, eligibility, keyboard, clickjacking checks
 src/inline-menu/          the menu page shown in the iframe under a login field (inline-menu.html)
+src/content/passkey/      passkeys (DESIGN §9.8): the MAIN-world navigator.credentials wrapper (passkey-main.js), the
+                          isolated-world bridge and prompt frame (passkey-content.js)
+src/background/passkey*.ts  passkey requests: sender origin, option checks, prompt sessions over ports
+src/passkey-prompt/       the passkey prompt page shown in the iframe (passkey-prompt.html)
 src/popup/                Vue popup: pairing, desktop unavailable, signed out, locked, logins, generator, settings
 tools/                    fake native host, its registration script, packaging
 end-to-end/               Playwright tests and screenshot capture
 ```
 
-The build runs Vite twice: once for the popup, the inline menu page and the service worker (an ES module), and once for the content script as a single IIFE file, because content scripts cannot be modules. Icons come from `assets/logo/png` (rendered by `scripts/render-logo.sh`).
+The build runs Vite four times: once for the popup, the inline menu and passkey prompt pages and the service worker (an ES module), and once each for the content script and the two passkey content scripts as single IIFE files, because content scripts cannot be modules. Icons come from `assets/logo/png` (rendered by `scripts/render-logo.sh`).
 
 ## Develop and test
 
@@ -50,6 +54,13 @@ npm run test:end-to-end     # builds, then runs the Playwright tests with the fa
 - the suggested password on a sign-up page;
 - the settings;
 - clicks ignored while the page hides the menu (transparent page, or an overlay with `pointer-events: none`).
+
+`end-to-end/passkey.spec.ts` runs a relying party on `http://localhost` that verifies with `@simplewebauthn/server`; the fake host signs like the desktop (`tools/fake-passkey-authenticator.mjs`):
+
+- registers a passkey into an existing login, signs in with it, and gets `InvalidStateError` for an excluded credential;
+- conditional mediation (passkey autofill) from a `webauthn` field;
+- "Use another device or browser" and an unpaired browser fall back to the browser (a CDP virtual authenticator);
+- unlocking from the prompt, and closing it while locked.
 
 To watch it run, use `HISAR_HEADED=1 npm run test:end-to-end`.
 

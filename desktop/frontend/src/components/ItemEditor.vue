@@ -11,7 +11,7 @@ import StrengthMeter from "./StrengthMeter.vue";
 function createDraft(): ItemDetail {
   if (store.editorMode === "edit" && store.selectedItem) {
     const selected = store.selectedItem;
-    return { ...selected, urls: [...selected.urls], fields: selected.fields.map((field) => ({ ...field })) };
+    return { ...selected, urls: [...selected.urls], fields: selected.fields.map((field) => ({ ...field })), passkeys: [...(selected.passkeys ?? [])] };
   }
   return createEmptyItem();
 }
@@ -122,6 +122,14 @@ async function submitItem(): Promise<void> {
       <button type="button" class="ghost add-field" @click="addField"><AppIcon name="plus" /> Add field</button>
     </section>
 
+    <section v-if="(draft.passkeys ?? []).length > 0" class="card editor-card" data-testid="editor-passkeys">
+      <p class="section-label">Passkeys</p>
+      <p v-for="passkey in draft.passkeys" :key="passkey.credentialId" class="passkey-line">
+        <AppIcon name="passkey" :size="14" /> {{ passkey.relyingPartyId }} <span class="muted">{{ passkey.userName }}</span>
+      </p>
+      <p class="muted passkey-note">Passkeys stay as they are when you save. Delete one from the item view.</p>
+    </section>
+
     <section class="card editor-card">
       <label class="last">
         <span>Notes</span>
@@ -225,5 +233,17 @@ button.active {
   align-items: center;
   gap: 6px;
   font-size: 11px;
+}
+
+.passkey-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+}
+
+.passkey-note {
+  margin: 8px 0 0;
+  font-size: 12px;
 }
 </style>

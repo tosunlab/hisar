@@ -32,6 +32,7 @@ export default defineConfig({
       input: {
         popup: resolve(import.meta.dirname, "popup.html"),
         "inline-menu": resolve(import.meta.dirname, "inline-menu.html"),
+        "passkey-prompt": resolve(import.meta.dirname, "passkey-prompt.html"),
         "service-worker": resolve(import.meta.dirname, "src/background/service-worker.ts"),
       },
       output: {

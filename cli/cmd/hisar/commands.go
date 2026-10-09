@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"runtime"
@@ -395,25 +396,32 @@ func runGet(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
 			fmt.Println(value)
 			return nil
 		}
-		writer := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-		fmt.Fprintf(writer, "title:\t%s\n", vaultItem.Overview.Title)
-		if vaultItem.Overview.Username != "" {
-			fmt.Fprintf(writer, "username:\t%s\n", vaultItem.Overview.Username)
-		}
-		for _, link := range vaultItem.Overview.URLs {
-			fmt.Fprintf(writer, "url:\t%s\n", link)
-		}
-		if vaultItem.Details.Password != "" {
-			fmt.Fprintf(writer, "password:\t%s\n", vaultItem.Details.Password)
-		}
-		for _, field := range vaultItem.Details.Fields {
-			fmt.Fprintf(writer, "%s:\t%s\n", field.Name, field.Value)
-		}
-		if vaultItem.Details.Notes != "" {
-			fmt.Fprintf(writer, "notes:\t%s\n", vaultItem.Details.Notes)
-		}
-		return writer.Flush()
+		return writeItem(os.Stdout, vaultItem)
 	})
+}
+
+func writeItem(output io.Writer, vaultItem *item.Item) error {
+	writer := tabwriter.NewWriter(output, 0, 4, 2, ' ', 0)
+	fmt.Fprintf(writer, "title:\t%s\n", vaultItem.Overview.Title)
+	if vaultItem.Overview.Username != "" {
+		fmt.Fprintf(writer, "username:\t%s\n", vaultItem.Overview.Username)
+	}
+	for _, link := range vaultItem.Overview.URLs {
+		fmt.Fprintf(writer, "url:\t%s\n", link)
+	}
+	if vaultItem.Details.Password != "" {
+		fmt.Fprintf(writer, "password:\t%s\n", vaultItem.Details.Password)
+	}
+	for _, field := range vaultItem.Details.Fields {
+		fmt.Fprintf(writer, "%s:\t%s\n", field.Name, field.Value)
+	}
+	for _, passkey := range vaultItem.Details.Passkeys {
+		fmt.Fprintf(writer, "passkey:\t%s (%s)\n", passkey.RelyingPartyID, passkey.UserName)
+	}
+	if vaultItem.Details.Notes != "" {
+		fmt.Fprintf(writer, "notes:\t%s\n", vaultItem.Details.Notes)
+	}
+	return writer.Flush()
 }
 
 func getFieldValue(vaultItem *item.Item, name string) (string, bool) {
