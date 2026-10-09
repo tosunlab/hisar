@@ -5,16 +5,26 @@ import (
 	"unsafe"
 )
 
+// PromptSize is the AppKit control size of the embedded Touch ID view (NSControlSize values).
+type PromptSize int
+
+const (
+	PromptSizeRegular PromptSize = 0
+	PromptSizeSmall   PromptSize = 1
+	PromptSizeLarge   PromptSize = 3
+)
+
 // WindowPrompt is a Touch ID prompt embedded in a window of its own, e.g. the SSH approval window.
 type WindowPrompt struct {
 	biometric      *Biometric
 	mutex          sync.Mutex
 	windowProvider func() unsafe.Pointer
 	promptFrame    *PromptFrame
+	size           PromptSize
 }
 
-func (biometric *Biometric) CreateWindowPrompt(windowProvider func() unsafe.Pointer) *WindowPrompt {
-	return &WindowPrompt{biometric: biometric, windowProvider: windowProvider}
+func (biometric *Biometric) CreateWindowPrompt(windowProvider func() unsafe.Pointer, size PromptSize) *WindowPrompt {
+	return &WindowPrompt{biometric: biometric, windowProvider: windowProvider, size: size}
 }
 
 func (prompt *WindowPrompt) IsAvailable() bool {
@@ -43,7 +53,7 @@ func (prompt *WindowPrompt) Authenticate(reason string) error {
 	}
 	frame := prompt.promptFrame
 	prompt.mutex.Unlock()
-	return authenticateInWindow(reason, window, frame)
+	return authenticateInWindow(reason, window, frame, prompt.size)
 }
 
 // CancelPrompt ends a pending Authenticate call with ErrCancelled.

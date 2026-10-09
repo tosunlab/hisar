@@ -116,7 +116,7 @@ func main() {
 			return nil
 		}
 		return approvalWindow.NativeWindow()
-	})
+	}, biometric.PromptSizeSmall)
 	approver := agent.CreateApprover(agent.ApproverConfig{
 		Biometric:       approvalTouchID,
 		CancelBiometric: approvalTouchID.CancelPrompt,

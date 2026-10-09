@@ -31,10 +31,10 @@ func (biometric *Biometric) IsAvailable() bool {
 // Authenticate blocks until the user passes or cancels Touch ID; it must not be called on the main thread.
 func (biometric *Biometric) Authenticate(reason string) error {
 	window, frame := biometric.getPromptTarget()
-	return authenticateInWindow(reason, window, frame)
+	return authenticateInWindow(reason, window, frame, PromptSizeLarge)
 }
 
-func authenticateInWindow(reason string, window unsafe.Pointer, frame *PromptFrame) error {
+func authenticateInWindow(reason string, window unsafe.Pointer, frame *PromptFrame, size PromptSize) error {
 	embed := C.int(0)
 	var x, y, width, height C.double
 	if window != nil && frame != nil {
@@ -44,7 +44,7 @@ func authenticateInWindow(reason string, window unsafe.Pointer, frame *PromptFra
 	reasonText := C.CString(reason)
 	defer C.free(unsafe.Pointer(reasonText))
 	var errorMessage *C.char
-	result := C.hisarBiometricAuthenticate(reasonText, window, embed, x, y, width, height, &errorMessage)
+	result := C.hisarBiometricAuthenticate(reasonText, window, embed, C.int(size), x, y, width, height, &errorMessage)
 	if errorMessage != nil {
 		defer C.free(unsafe.Pointer(errorMessage))
 	}

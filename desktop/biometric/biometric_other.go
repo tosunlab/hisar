@@ -13,6 +13,6 @@ func (biometric *Biometric) DeleteKey(accountID string) error            { retur
 
 func moveActivePrompt(frame PromptFrame) {}
 
-func authenticateInWindow(reason string, window unsafe.Pointer, frame *PromptFrame) error {
+func authenticateInWindow(reason string, window unsafe.Pointer, frame *PromptFrame, size PromptSize) error {
 	return ErrUnavailable
 }
