@@ -4,17 +4,22 @@ import { Service as AgentService } from "../bindings/github.com/tryhisar/hisar/d
 import type { ApprovalEvent, Status as SSHAgentStatus } from "../bindings/github.com/tryhisar/hisar/desktop/agent";
 import { Service } from "../bindings/github.com/tryhisar/hisar/desktop/vault";
 import type {
+  Device,
+  FamilyMember,
   ItemDetail as BoundItemDetail,
   ItemField,
   PasswordConfig,
   SignUpResult,
   Status,
+  VaultMember,
   VaultSummary,
 } from "../bindings/github.com/tryhisar/hisar/desktop/vault";
 
-export type { ApprovalEvent, ItemField, PasswordConfig, SignUpResult, SSHAgentStatus, Status, VaultSummary };
+export type { ApprovalEvent, Device, FamilyMember, ItemField, PasswordConfig, SignUpResult, SSHAgentStatus, Status, VaultMember, VaultSummary };
 
 export type SSHKeyType = "ed25519" | "rsa";
+export type VaultRole = "owner" | "editor" | "reader";
+export type FamilyRole = "admin" | "member";
 
 // ItemDetail mirrors the Go type with nil slices normalized to empty arrays.
 export interface ItemDetail extends Omit<BoundItemDetail, "urls" | "fields"> {
@@ -48,6 +53,15 @@ const wailsApi = {
     normalizeItem(await Service.GenerateSSHKey(vaultID, title, keyType)),
   importSSHKey: async (vaultID: string, title: string, privateKeyText: string, passphrase: string): Promise<ItemDetail> =>
     normalizeItem(await Service.ImportSSHKey(vaultID, title, privateKeyText, passphrase)),
+  listAllMember: async (): Promise<FamilyMember[]> => (await Service.ListAllMember()) ?? [],
+  listAllVaultMember: async (vaultID: string): Promise<VaultMember[]> => (await Service.ListAllVaultMember(vaultID)) ?? [],
+  shareVault: (vaultID: string, email: string, role: VaultRole): Promise<void> => Service.ShareVault(vaultID, email, role),
+  changeVaultMemberRole: (vaultID: string, accountID: string, role: VaultRole): Promise<void> =>
+    Service.ChangeVaultMemberRole(vaultID, accountID, role),
+  removeVaultMember: (vaultID: string, accountID: string): Promise<void> => Service.RemoveVaultMember(vaultID, accountID),
+  inviteMember: (email: string, role: FamilyRole): Promise<string> => Service.InviteMember(email, role),
+  listAllDevice: async (): Promise<Device[]> => (await Service.ListAllDevice()) ?? [],
+  revokeDevice: (deviceID: string): Promise<void> => Service.RevokeDevice(deviceID),
   getSSHAgentStatus: (): Promise<SSHAgentStatus> => AgentService.GetStatus(),
   configureSSHConfig: (): Promise<SSHAgentStatus> => AgentService.ConfigureSSHConfig(),
   removeSSHConfig: (): Promise<SSHAgentStatus> => AgentService.RemoveSSHConfig(),

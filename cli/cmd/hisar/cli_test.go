@@ -10,8 +10,6 @@ import (
 
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/item"
-	"github.com/tryhisar/hisar/core/localstate"
-	"github.com/tryhisar/hisar/core/proto"
 )
 
 func TestParseInterspersedFlags(t *testing.T) {
@@ -126,23 +124,5 @@ func TestWriteNewPrivateFile(t *testing.T) {
 	}
 	if content, _ := os.ReadFile(path); string(content) != "%PDF-1" {
 		t.Errorf("content changed: %q", content)
-	}
-}
-
-func TestCheckMemberPin(t *testing.T) {
-	currentState, err := localstate.Load(filepath.Join(t.TempDir(), "state.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	member := &proto.Member{AccountID: "BOB111", Email: "bob@example.com", PublicKeys: crypt.PublicKeys{Sign: []byte{1, 2, 3}}}
-	if err := checkMemberPin(currentState, member); err != nil {
-		t.Fatalf("first use: %v", err)
-	}
-	if err := checkMemberPin(currentState, member); err != nil {
-		t.Errorf("same key again: %v", err)
-	}
-	substitutedMember := &proto.Member{AccountID: "BOB111", Email: "bob@example.com", PublicKeys: crypt.PublicKeys{Sign: []byte{9, 9, 9}}}
-	if err := checkMemberPin(currentState, substitutedMember); err == nil || !strings.Contains(err.Error(), "changed") {
-		t.Errorf("changed signing key accepted: %v", err)
 	}
 }

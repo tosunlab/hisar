@@ -1,5 +1,6 @@
 // Development-only: puts the preview UI into a given screen from URL parameters, for screenshots and design review.
-import { addSSHApproval, selectItem, selectVault, startCreatingItem, startCreatingSSHKey, startEditingItem, store } from "./store";
+import { nextTick } from "vue";
+import { addSSHApproval, openSharing, selectItem, selectVault, startCreatingItem, startCreatingSSHKey, startEditingItem, store } from "./store";
 
 function waitForUnlocked(): Promise<void> {
   return new Promise((resolve) => {
@@ -12,6 +13,61 @@ function waitForUnlocked(): Promise<void> {
   });
 }
 
+function waitForElement(selector: string): Promise<HTMLElement> {
+  return new Promise((resolve) => {
+    const timer = setInterval(() => {
+      const element = document.querySelector<HTMLElement>(selector);
+      if (element && !store.isBusy) {
+        clearInterval(timer);
+        resolve(element);
+      }
+    }, 20);
+  });
+}
+
+async function clickElement(selector: string): Promise<void> {
+  (await waitForElement(selector)).click();
+  await nextTick();
+}
+
+async function applySettingsParameter(parameter: URLSearchParams): Promise<void> {
+  if (parameter.get("invite") === "1") {
+    await clickElement('[data-testid="start-invite"]');
+    const emailInput = await waitForElement('input[name="inviteEmail"]');
+    (emailInput as HTMLInputElement).value = "zeynep.demir@example.com";
+    emailInput.dispatchEvent(new Event("input"));
+    await nextTick();
+    (await waitForElement('[data-testid="invite-form"]')).dispatchEvent(new Event("submit"));
+  } else if (parameter.get("invite") === "form") {
+    await clickElement('[data-testid="start-invite"]');
+  }
+  const deviceID = parameter.get("revoke");
+  if (deviceID) {
+    await clickElement(`[data-testid="revoke-device-${deviceID}"]`);
+  }
+  const scrollTarget = parameter.get("scroll");
+  if (scrollTarget) {
+    (await waitForElement(`[data-testid="${scrollTarget}-section"]`)).scrollIntoView();
+  }
+}
+
+// applySharingParameter opens the sharing panel; &code=<account> expands a security code, &remove=<account> asks to remove.
+async function applySharingParameter(parameter: URLSearchParams): Promise<void> {
+  await waitForUnlocked();
+  if (!parameter.get("vault")) {
+    await selectVault("family");
+  }
+  await openSharing();
+  const codeAccountID = parameter.get("code");
+  if (codeAccountID) {
+    await clickElement(`[data-testid="security-code-toggle-${codeAccountID}"]`);
+  }
+  const removeAccountID = parameter.get("remove");
+  if (removeAccountID) {
+    await clickElement(`[data-testid="remove-member-${removeAccountID}"]`);
+  }
+}
+
 export async function applyPreviewParameter(): Promise<void> {
   const parameter = new URLSearchParams(window.location.search);
   if (parameter.get("secretKey") === "1") {
@@ -19,6 +75,7 @@ export async function applyPreviewParameter(): Promise<void> {
   }
   if (parameter.get("settings") === "1") {
     store.isSettingsOpen = true;
+    applySettingsParameter(parameter);
   }
   if (parameter.get("approval") === "1") {
     addSSHApproval({
@@ -35,7 +92,7 @@ export async function applyPreviewParameter(): Promise<void> {
   if (parameter.get("error")) {
     store.errorMessage = parameter.get("error") ?? "";
   }
-  if (!parameter.get("vault") && !parameter.get("item") && !parameter.get("editor")) {
+  if (!parameter.get("vault") && !parameter.get("item") && !parameter.get("editor") && parameter.get("sharing") !== "1") {
     return;
   }
   await waitForUnlocked();
@@ -57,5 +114,8 @@ export async function applyPreviewParameter(): Promise<void> {
   const search = parameter.get("search");
   if (search) {
     store.searchQuery = search;
+  }
+  if (parameter.get("sharing") === "1") {
+    await applySharingParameter(parameter);
   }
 }

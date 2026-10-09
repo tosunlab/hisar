@@ -119,7 +119,7 @@ The server stores `encKeyset`, the KEM public key, the Ed25519 public key and th
 - For every member, the server stores `0x01 || HPKE.Seal(memberKEMPub, info="hisar/v1/vault-key" || vaultID || memberAccountID, K_vault)`.
 - The recovery keyset (§6.1) gets the same wrapping, with recipient ID `"recovery"`, for every vault that opts into recovery.
 - Removing a member rotates `K_vault` (`session.RemoveVaultMember`, `POST /vaults/{id}/rotate`, owner only):
-  - The owner's client generates a new key, re-encrypts the vault name and every item, including tombstones, under a new revision, and wraps the new key for each remaining member. Each member's signed KEM key is verified, and the client's `MemberVerifier` hook (key pinning in the CLI) must accept it.
+  - The owner's client generates a new key, re-encrypts the vault name and every item, including tombstones, under a new revision, and wraps the new key for each remaining member. Each member's signed KEM key is verified, and the client's `MemberVerifier` hook (key pinning in the CLI and the desktop app) must accept it.
   - The server applies it in one transaction. It returns 409 unless the submitted items match the stored items and revisions exactly, so concurrent edits are never lost; the client then retries, up to 3 times. It replaces all access grants, gives every item a new seq so all devices resync, and drops the vault's item history, because that history is encrypted with the old key.
   - The rotating owner must keep owner access. Rotation requests may be up to 32 MiB; every other endpoint is limited to 2 MiB.
   - Copies the removed member downloaded before the rotation stay readable to them; that is unavoidable.
@@ -195,8 +195,8 @@ Common to both:
 Sharing a vault means wrapping `K_vault` to the recipient's KEM public key, which the server delivers. A malicious server could substitute its own key. Mitigations:
 
 - Each user's KEM public key is signed with their Ed25519 key, bound to their account ID.
-- Clients pin (trust on first use) every other member's Ed25519 key and warn loudly if it changes.
-- The UI shows a short fingerprint (e.g. 6 words) per member that family members can optionally compare in person once.
+- Clients pin (trust on first use) every other member's Ed25519 key in their local state when they first share with them (`localstate.State.CheckMemberPin`, used by the CLI and the desktop app). Sharing, changing a member's role and key rotation stop if a pinned key changes; the desktop app also marks that member in its member lists.
+- The UI shows a short security code per member that family members can optionally compare in person once: the first 8 bytes of SHA-256 of their Ed25519 public key as 4 groups of 4 uppercase hex digits, e.g. `3F2A 91C0 7B44 E1D8` (`crypt.FormatKeyFingerprint`).
 
 ### 5.7 Changing the master password
 
@@ -455,5 +455,5 @@ go.work     Ties the Go modules together for local development
 | 3 | Server domain | `tryhisar.com`, public |
 | 4 | Recovery group members | Admin only |
 | 5 | Item history retention | 90 days |
-| 6 | Fingerprint check (§5.6) | Optional; key-change warnings are always on |
+| 6 | Fingerprint check (§5.6) | Optional: a 16-hex-digit security code per member, shown in the desktop app's sharing panel and Settings → Family. Key pinning and key-change refusals are always on |
 | 7 | Apple Developer Program membership (code signing and notarization; required for biometric Keychain items and Gatekeeper) | **Open**: needed before Touch ID can ship. During development, local signing with a free Apple ID team works on your own Mac |

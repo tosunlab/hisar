@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { createVault, filterAllItem, lock, selectItem, selectVault, startCreatingItem, startCreatingSSHKey, store } from "../store";
+import { createVault, filterAllItem, lock, openSharing, selectItem, selectVault, showNotice, startCreatingItem, startCreatingSSHKey, store } from "../store";
 import { formatKeyType, getDomain, getInitials, isMacPlatform, sshKeyCategory } from "../util";
 import AppIcon from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
@@ -9,6 +9,9 @@ import ItemEditor from "./ItemEditor.vue";
 import ItemTile from "./ItemTile.vue";
 import SettingsPanel from "./SettingsPanel.vue";
 import SSHKeyForm from "./SSHKeyForm.vue";
+import VaultSharingPanel from "./VaultSharingPanel.vue";
+
+const personalVaultNotice = "Personal vaults are private. Create a shared vault to share with your family.";
 
 const isCreatingVault = ref(false);
 const newVaultName = ref("");
@@ -123,6 +126,24 @@ onBeforeUnmount(() => {
         </div>
         <div ref="newItemMenu" class="new-item">
           <button
+            v-if="selectedVault?.type === 'shared'"
+            class="share-button"
+            title="Share this vault"
+            data-testid="share-vault"
+            @click="openSharing"
+          >
+            <AppIcon name="users" :size="14" /> Share
+          </button>
+          <button
+            v-else-if="selectedVault"
+            class="ghost private-button"
+            :title="personalVaultNotice"
+            data-testid="personal-vault-private"
+            @click="showNotice(personalVaultNotice)"
+          >
+            <AppIcon name="lock" :size="13" /> Private
+          </button>
+          <button
             class="primary icon-button"
             :disabled="!canEdit"
             :title="`New item (${shortcutModifier}N for a login)`"
@@ -188,6 +209,7 @@ onBeforeUnmount(() => {
       </div>
     </main>
     <SettingsPanel v-if="store.isSettingsOpen" />
+    <VaultSharingPanel v-if="store.isSharingOpen" />
   </div>
 </template>
 
@@ -343,7 +365,22 @@ onBeforeUnmount(() => {
 
 .new-item {
   position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
   --wails-draggable: no-drag;
+}
+
+.share-button,
+.private-button {
+  gap: 5px;
+  padding: 5px 9px;
+  font-size: 12px;
+}
+
+.private-button {
+  color: var(--color-text-muted);
+  cursor: help;
 }
 
 .new-item-menu {

@@ -1,5 +1,5 @@
 // Development-only stand-in for the Go backend, used with `npm run preview:ui` to view the UI in a browser.
-import type { ItemDetail, PasswordConfig, SignUpResult, SSHAgentStatus, SSHKeyType, Status, VaultSummary } from "./api";
+import type { Device, FamilyMember, ItemDetail, PasswordConfig, SignUpResult, SSHAgentStatus, SSHKeyType, Status, VaultMember, VaultRole, VaultSummary } from "./api";
 
 const allPreviewVault: VaultSummary[] = [
   { id: "personal", name: "Personal", type: "personal", role: "owner", itemCount: 0 },
@@ -96,6 +96,47 @@ const previewAgentStatus = (backupPath = ""): SSHAgentStatus => {
   };
 };
 
+const allPreviewFamilyMember: FamilyMember[] = [
+  { accountId: "alper", name: "Alper", email: "alper@tryhisar.com", role: "admin", securityCode: "3F2A 91C0 7B44 E1D8", isCurrentUser: true, isKeyChanged: false },
+  { accountId: "elif", name: "Elif Yılmaz", email: "elif@tryhisar.com", role: "admin", securityCode: "A7C2 5E19 04BD 6F3A", isCurrentUser: false, isKeyChanged: false },
+  { accountId: "deniz", name: "Deniz Aydın", email: "deniz@tryhisar.com", role: "member", securityCode: "1D88 C4F0 9A27 B35E", isCurrentUser: false, isKeyChanged: false },
+  { accountId: "murat", name: "Murat Kaya", email: "murat@tryhisar.com", role: "member", securityCode: "6B0E 72AD F915 3C84", isCurrentUser: false, isKeyChanged: false },
+  { accountId: "zeynep", name: "Zeynep Demir", email: "zeynep@tryhisar.com", role: "member", securityCode: "E24F 8B61 0DC7 59A3", isCurrentUser: false, isKeyChanged: false },
+];
+
+const allPreviewAccessByVaultID: Record<string, { accountId: string; role: string }[]> = {
+  family: [
+    { accountId: "alper", role: "owner" },
+    { accountId: "elif", role: "editor" },
+    { accountId: "deniz", role: "reader" },
+  ],
+  work: [
+    { accountId: "murat", role: "owner" },
+    { accountId: "alper", role: "reader" },
+  ],
+};
+
+const hourInMilliseconds = 3600_000;
+let allPreviewDevice: Device[] = [
+  { id: "macbook", name: "Alper's MacBook Pro", platform: "darwin/desktop", createdAt: "2026-08-01T09:00:00Z", lastSeenAt: new Date().toISOString(), isCurrent: true },
+  { id: "mac-mini", name: "Mac mini", platform: "darwin/desktop", createdAt: "2026-08-12T09:00:00Z", lastSeenAt: new Date(Date.now() - 2 * hourInMilliseconds).toISOString(), isCurrent: false },
+  { id: "dev-box", name: "alper-dev", platform: "linux/cli", createdAt: "2026-09-03T09:00:00Z", lastSeenAt: new Date(Date.now() - 5 * 24 * hourInMilliseconds).toISOString(), isCurrent: false },
+];
+
+function listAllPreviewVaultMember(vaultID: string): VaultMember[] {
+  const roleOrder = ["owner", "editor", "reader"];
+  return (allPreviewAccessByVaultID[vaultID] ?? [])
+    .map((access) => {
+      const member = allPreviewFamilyMember.find((candidate) => candidate.accountId === access.accountId)!;
+      return { ...member, role: access.role };
+    })
+    .sort((first, second) => roleOrder.indexOf(first.role) - roleOrder.indexOf(second.role));
+}
+
+function findPreviewAccess(vaultID: string, accountID: string) {
+  return (allPreviewAccessByVaultID[vaultID] ?? []).find((access) => access.accountId === accountID);
+}
+
 function addPreviewItem(vaultID: string, detail: ItemDetail): ItemDetail {
   allPreviewItemByVaultID[vaultID].push(detail);
   return detail;
@@ -132,6 +173,7 @@ export const previewApi = {
     const vault = { id: name.toLowerCase(), name, type: "shared", role: "owner", itemCount: 0 };
     allPreviewVault.push(vault);
     allPreviewItemByVaultID[vault.id] = [];
+    allPreviewAccessByVaultID[vault.id] = [{ accountId: "alper", role: "owner" }];
     return resolveAfterDelay(vault);
   },
   listAllItem: (vaultID: string) =>
@@ -174,6 +216,41 @@ export const previewApi = {
     }
     const detail = createPreviewSSHKey(`ssh-${Date.now()}`, title.trim(), "ssh-ed25519");
     return resolveAfterDelay(structuredClone(addPreviewItem(vaultID, detail)));
+  },
+  listAllMember: () => resolveAfterDelay(structuredClone(allPreviewFamilyMember)),
+  listAllVaultMember: (vaultID: string) => resolveAfterDelay(listAllPreviewVaultMember(vaultID)),
+  shareVault: (vaultID: string, email: string, role: VaultRole) => {
+    const member = allPreviewFamilyMember.find((candidate) => candidate.email === email);
+    if (!member) {
+      return Promise.reject(new Error("nobody in your family uses that email; invite them first in Settings"));
+    }
+    if (vaultID === "personal") {
+      return Promise.reject(new Error("personal vaults are private and cannot be shared; create a shared vault instead"));
+    }
+    allPreviewAccessByVaultID[vaultID] = [...(allPreviewAccessByVaultID[vaultID] ?? [{ accountId: "alper", role: "owner" }]), { accountId: member.accountId, role }];
+    return resolveAfterDelay(undefined);
+  },
+  changeVaultMemberRole: (vaultID: string, accountID: string, role: VaultRole) => {
+    const access = findPreviewAccess(vaultID, accountID);
+    if (access) {
+      access.role = role;
+    }
+    return resolveAfterDelay(undefined);
+  },
+  removeVaultMember: (vaultID: string, accountID: string) => {
+    allPreviewAccessByVaultID[vaultID] = (allPreviewAccessByVaultID[vaultID] ?? []).filter((access) => access.accountId !== accountID);
+    return new Promise<void>((resolve) => setTimeout(resolve, 600));
+  },
+  inviteMember: (email: string) => {
+    if (!email.includes("@")) {
+      return Promise.reject(new Error("enter the email address of the person you are inviting"));
+    }
+    return resolveAfterDelay("https://tryhisar.com/invite/kq3Vx9TzR2mW8pLc4NbY7hJd");
+  },
+  listAllDevice: () => resolveAfterDelay(structuredClone(allPreviewDevice)),
+  revokeDevice: (deviceID: string) => {
+    allPreviewDevice = allPreviewDevice.filter((device) => device.id !== deviceID);
+    return resolveAfterDelay(undefined);
   },
   getSSHAgentStatus: () => resolveAfterDelay(previewAgentStatus()),
   configureSSHConfig: () => {

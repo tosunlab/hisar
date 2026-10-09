@@ -103,3 +103,47 @@ const allKeyTypeLabel: Record<string, string> = {
 export function formatKeyType(keyType: string): string {
   return allKeyTypeLabel[keyType] ?? keyType;
 }
+
+export function formatRole(role: string): string {
+  return role ? role[0].toUpperCase() + role.slice(1) : "";
+}
+
+const allOperatingSystemLabel: Record<string, string> = { darwin: "macOS", linux: "Linux", windows: "Windows", ios: "iOS", android: "Android" };
+const allAppLabel: Record<string, string> = { desktop: "app", cli: "command line", extension: "browser extension", mobile: "app" };
+
+// formatPlatform turns a device platform such as "darwin/desktop" into "macOS app".
+export function formatPlatform(platform: string): string {
+  const [operatingSystem, app] = platform.split("/");
+  const operatingSystemLabel = allOperatingSystemLabel[operatingSystem] ?? operatingSystem;
+  return app ? `${operatingSystemLabel} ${allAppLabel[app] ?? app}` : operatingSystemLabel;
+}
+
+export function getPlatformIcon(platform: string): "laptop" | "phone" | "terminal" {
+  if (platform.endsWith("/cli")) {
+    return "terminal";
+  }
+  return /^(ios|android)\//.test(platform) ? "phone" : "laptop";
+}
+
+export function formatLastSeen(timestamp: string, now = new Date()): string {
+  const seenAt = new Date(timestamp);
+  const minuteCount = Math.floor((now.getTime() - seenAt.getTime()) / 60000);
+  if (Number.isNaN(minuteCount)) {
+    return "";
+  }
+  if (minuteCount < 2) {
+    return "Active now";
+  }
+  if (minuteCount < 60) {
+    return `${minuteCount} minutes ago`;
+  }
+  const hourCount = Math.floor(minuteCount / 60);
+  if (hourCount < 24) {
+    return hourCount === 1 ? "1 hour ago" : `${hourCount} hours ago`;
+  }
+  const dayCount = Math.floor(hourCount / 24);
+  if (dayCount < 30) {
+    return dayCount === 1 ? "Yesterday" : `${dayCount} days ago`;
+  }
+  return seenAt.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+}

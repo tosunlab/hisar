@@ -326,7 +326,8 @@ func TestConvertError(t *testing.T) {
 	}
 }
 
-// Requires HISAR_TEST_SERVER_URL and HISAR_TEST_INVITE_LINK (an unused invite for desktop@example.com).
+// Requires HISAR_TEST_SERVER_URL and HISAR_TEST_INVITE_LINK (an unused admin invite for desktop@example.com);
+// the admin invites the second account used for sharing.
 func TestIntegrationDesktopFlow(t *testing.T) {
 	serverURL, inviteLink := os.Getenv("HISAR_TEST_SERVER_URL"), os.Getenv("HISAR_TEST_INVITE_LINK")
 	if serverURL == "" || inviteLink == "" {
@@ -433,6 +434,8 @@ func TestIntegrationDesktopFlow(t *testing.T) {
 	if len(allVault) != 2 || allVault[0].Name != "Personal" || allVault[1].Name != "Family" || allVault[0].ItemCount != 1 || allVault[1].ItemCount != 0 {
 		t.Errorf("vaults: %+v", allVault)
 	}
+
+	checkSharingFlow(t, service, family.ID)
 
 	if err := service.DeleteItem(personalID, saved.ID); err != nil {
 		t.Fatal(err)

@@ -24,6 +24,11 @@ const allPath = {
   fingerprint: "M12 11v3a8 8 0 0 0 1.5 4.7M8.5 8.8A4 4 0 0 1 16 11v1.5M8 12v1.5a11 11 0 0 0 1.3 5.2M5.3 15a14 14 0 0 1-.3-3 7 7 0 0 1 11.6-5.3M19 12v.5a15 15 0 0 1-.5 3.9M15.8 15.6a12 12 0 0 1-.8 3.6",
   settings: "M4 7h9M17 7h3M4 17h3M11 17h9M15 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM9 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4z",
   terminal: "M4 5h16v14H4zM8 10l3 2.5L8 15M13 15h3",
+  chevronDown: "M6 9l6 6 6-6",
+  laptop: "M5 6h14v10H5zM2 19h20",
+  phone: "M8 3h8v18H8zM11 18h2",
+  mail: "M3 6h18v12H3zM3 7l9 6 9-6",
+  warning: "M12 4l9 16H3zM12 10v4M12 17h.01",
 } as const;
 
 export type IconName = keyof typeof allPath;
