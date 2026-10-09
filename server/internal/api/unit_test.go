@@ -164,6 +164,28 @@ func TestErrorHandler(t *testing.T) {
 	}
 }
 
+func TestPrivacyPolicy(t *testing.T) {
+	server, err := CreateServer(nil, generateAllSecret(), Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := server.CreateApp().Test(httptest.NewRequest("GET", "/privacy", nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(response.Body)
+	if response.StatusCode != fiber.StatusOK || !strings.HasPrefix(response.Header.Get("Content-Type"), "text/html") ||
+		!strings.Contains(string(body), "Hisar privacy policy") {
+		t.Fatalf("privacy policy: %d %q", response.StatusCode, response.Header.Get("Content-Type"))
+	}
+	if policy := response.Header.Get("Content-Security-Policy"); policy != "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'" {
+		t.Errorf("content security policy = %q", policy)
+	}
+	if response.Header.Get("X-Frame-Options") != "DENY" {
+		t.Error("the privacy page lost the other security headers")
+	}
+}
+
 func TestNormalEndpointsKeepSmallBodyLimit(t *testing.T) {
 	server, err := CreateServer(nil, generateAllSecret(), Config{})
 	if err != nil {

@@ -8,6 +8,7 @@
     "test": "vitest run",
     "build": "vite build && vite build --config vite.content.config.ts",
     "package": "node tools/package-extension.mjs",
+    "package:store": "node tools/package-store-extension.mjs",
     "test:end-to-end": "npm run build && playwright test extension.spec inline-menu.spec",
     "register-fake-host": "node tools/register-fake-host.mjs",
     "screenshots": "npm run build && playwright test screenshots.spec inline-screenshots.spec"

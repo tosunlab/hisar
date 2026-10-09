@@ -99,3 +99,7 @@ When a username or password field of a login form gets the focus, a Hisar icon a
 The popup copies usernames, passwords and generated passwords itself, with `navigator.clipboard.writeText`. It gets a password from the service worker, which asks the desktop with the tab's URL. A focused extension page may write to the clipboard without a clipboard permission.
 
 The extension does not clear the clipboard afterwards: a copied value stays until something else is copied. The desktop app still clears what it copies itself after 90 s.
+
+## Chrome Web Store
+
+`npm run package:store` builds the store upload without the manifest `key`. The first upload, listing text, permission justifications and screenshots are in [store/README.md](store/README.md).
