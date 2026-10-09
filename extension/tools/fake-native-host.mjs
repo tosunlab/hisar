@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Development stand-in for hisar-browser-host + the desktop app: speaks the §9.2 protocol over stdio with data from a JSON state file.
-import { createHash, randomBytes, randomInt } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomInt } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { endianness, homedir } from "node:os";
@@ -98,6 +98,31 @@ export function doesUrlMatch(itemUrl, pageUrl, exactHostOnly) {
   return getRegistrableDomain(itemHost) === getRegistrableDomain(pageHost);
 }
 
+function decodeBase32(text) {
+  const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  let bits = "";
+  for (const character of text.toUpperCase().replace(/[\s=-]/g, "")) {
+    const value = alphabet.indexOf(character);
+    if (value < 0) throw new ProtocolError("not-found", "The one-time password is not valid");
+    bits += value.toString(2).padStart(5, "0");
+  }
+  const allByte = [];
+  for (let index = 0; index + 8 <= bits.length; index += 8) allByte.push(Number.parseInt(bits.slice(index, index + 8), 2));
+  return Buffer.from(allByte);
+}
+
+// generateOneTimeCode: RFC 6238 with SHA-1, 6 digits and 30 s, for a base32 setup key.
+export function generateOneTimeCode(setupKey, now) {
+  const period = 30;
+  const counter = Math.floor(now / 1000 / period);
+  const counterBytes = Buffer.alloc(8);
+  counterBytes.writeBigUInt64BE(BigInt(counter));
+  const digest = createHmac("sha1", decodeBase32(setupKey)).update(counterBytes).digest();
+  const offset = digest[digest.length - 1] & 0x0f;
+  const value = digest.readUInt32BE(offset) & 0x7fffffff;
+  return { code: String(value % 1_000_000).padStart(6, "0"), expiresAt: new Date((counter + 1) * period * 1000).toISOString().replace(".000Z", "Z"), period };
+}
+
 function generatePassword({ length = 24, digits = true, symbols = true } = {}) {
   const allLetter = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ";
   const allDigit = "23456789";
@@ -188,7 +213,14 @@ export function handleRequest(state, request, now = Date.now(), log = () => unde
       requireUnlocked(state);
       const url = requireString(request, "url");
       const allLogin = findAllMatchingLogin(state, url)
-        .map(({ vaultID, itemID, title, username, vaultName }) => ({ vaultID, itemID, title, username, vaultName }))
+        .map(({ vaultID, itemID, title, username, vaultName, oneTimePassword }) => ({
+          vaultID,
+          itemID,
+          title,
+          username,
+          vaultName,
+          hasOneTimePassword: Boolean(oneTimePassword),
+        }))
         .sort((first, second) => first.title.localeCompare(second.title));
       return { logins: allLogin };
     }
@@ -198,7 +230,16 @@ export function handleRequest(state, request, now = Date.now(), log = () => unde
       const login = state.allLogin.find((candidate) => candidate.vaultID === request.vaultID && candidate.itemID === request.itemID);
       if (!login) throw new ProtocolError("not-found", "No such login");
       if (!doesUrlMatch(login.url, url, state.exactHostOnly)) throw new ProtocolError("no-match", "This login is not for this page");
-      return { username: login.username, password: login.password };
+      return { username: login.username, password: login.password, hasOneTimePassword: Boolean(login.oneTimePassword) };
+    }
+    case "logins.code": {
+      requireUnlocked(state);
+      const url = requireString(request, "url");
+      const login = state.allLogin.find((candidate) => candidate.vaultID === request.vaultID && candidate.itemID === request.itemID);
+      if (!login || !doesUrlMatch(login.url, url, state.exactHostOnly)) throw new ProtocolError("no-match", "This login is not for this page");
+      if (!login.oneTimePassword) throw new ProtocolError("not-found", "This login has no one-time password");
+      state.allCodeRequest = [...(state.allCodeRequest ?? []), { itemID: login.itemID, url }];
+      return generateOneTimeCode(login.oneTimePassword, now);
     }
     case "logins.check": {
       requireUnlocked(state);

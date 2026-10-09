@@ -101,6 +101,7 @@ Then load `dist` unpacked in that profile. The host's log goes to Chrome's stder
 When a username or password field of a login form gets the focus, a Hisar icon appears inside the field's right edge, and a menu opens under the field.
 
 - **Menu contents:** matching logins, a suggested password on sign-up forms, or what to do when Hisar is not paired, locked or not running.
+- **One-time codes:** in a two-factor field (`autocomplete="one-time-code"`, or a field named or labelled like otp, 2fa or verification code), and in a code split into one-character boxes, the menu offers the codes of the matching logins and fills the chosen one.
 - **Settings:** the popup's settings (the sliders button in the header) turn the icon off, or open the menu only on a click on the icon or the down arrow.
 - **Isolation:** the menu is an extension page in an iframe, so the page never sees login titles or usernames.
 - **Clickjacking checks:** the menu fills only after it has been visible and uncovered for 300 ms. [docs/DESIGN.md §9.2](../docs/DESIGN.md#92-browser-extension--typescript-mv3) describes these checks.
@@ -108,6 +109,8 @@ When a username or password field of a login form gets the focus, a Hisar icon a
 ## Copying
 
 The popup copies usernames, passwords and generated passwords itself, with `navigator.clipboard.writeText`. It gets a password from the service worker, which asks the desktop with the tab's URL. A focused extension page may write to the clipboard without a clipboard permission.
+
+After filling a login that has a one-time password, the service worker copies the current code through an offscreen document (it has no clipboard of its own), so the code is ready for the next page. The popup shows the code with a countdown and copies it too.
 
 The extension does not clear the clipboard afterwards: a copied value stays until something else is copied. The desktop app still clears what it copies itself after 90 s.
 

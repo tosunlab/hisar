@@ -86,7 +86,7 @@ class HisarUITestCase: XCTestCase {
         return secretKey
     }
 
-    func addLogin(title: String, username: String, password: String, website: String) {
+    func addLogin(title: String, username: String, password: String, website: String, oneTimePassword: String = "") {
         app.buttons["vault-Personal"].tap()
         waitFor(app.buttons["add-item"])
         app.buttons["add-item"].tap()
@@ -94,6 +94,9 @@ class HisarUITestCase: XCTestCase {
         type(username, into: app.textFields["editor-username"])
         type(password, into: app.secureTextFields["editor-password"])
         type(website, into: app.textFields["editor-website-0"])
+        if !oneTimePassword.isEmpty {
+            type(oneTimePassword, into: app.textFields["editor-one-time-password"])
+        }
         saveScreenshot("add-item")
         app.buttons["editor-save"].tap()
         waitFor(app.buttons["item-\(title)"])

@@ -180,7 +180,7 @@ func (hisar *Hisar) ListAllVault() (string, error) {
 	return encodeJSON(hisar.service.ListAllVault())
 }
 
-// ListAllItem returns []vault.ItemDetail without passwords, notes and fields, as JSON.
+// ListAllItem returns []vault.ItemDetail without passwords, notes, fields and one-time password secrets (hasOneTimePassword says whether there is one), as JSON.
 func (hisar *Hisar) ListAllItem(vaultID string) (string, error) {
 	return encodeJSON(hisar.service.ListAllItem(vaultID))
 }
@@ -203,6 +203,11 @@ func (hisar *Hisar) DeleteItem(vaultID, itemID string) error {
 	return hisar.service.DeleteItem(vaultID, itemID)
 }
 
+// GetOneTimeCode returns vault.OneTimeCode ({"code", "expiresAt", "period"}) as JSON; the app asks again once it expires.
+func (hisar *Hisar) GetOneTimeCode(vaultID, itemID string) (string, error) {
+	return encodeJSON(hisar.service.GetOneTimeCode(vaultID, itemID))
+}
+
 // CopyField copies a field to the pasteboard and clears it after 90 seconds if it still holds that value.
 func (hisar *Hisar) CopyField(vaultID, itemID, fieldName string) error {
 	return hisar.service.CopyField(vaultID, itemID, fieldName)
@@ -217,9 +222,14 @@ func (hisar *Hisar) ListAllLoginForService(serviceIdentifier string) (string, er
 	return encodeJSON(vault.ListAllLoginForURL(hisar.service, convertServiceIdentifierToURL(serviceIdentifier)))
 }
 
-// GetLoginForService returns {"username", "password"} as JSON after checking the login matches the service again.
+// GetLoginForService returns {"username", "password", "hasOneTimePassword"} as JSON after checking the login matches the service again.
 func (hisar *Hisar) GetLoginForService(vaultID, itemID, serviceIdentifier string) (string, error) {
 	return encodeJSON(vault.GetLoginForURL(hisar.service, vaultID, itemID, convertServiceIdentifierToURL(serviceIdentifier)))
+}
+
+// GetOneTimeCodeForService returns vault.OneTimeCode as JSON after checking the login matches the service, as GetLoginForService does.
+func (hisar *Hisar) GetOneTimeCodeForService(vaultID, itemID, serviceIdentifier string) (string, error) {
+	return encodeJSON(vault.GetOneTimeCodeForURL(hisar.service, vaultID, itemID, convertServiceIdentifierToURL(serviceIdentifier)))
 }
 
 func convertServiceIdentifierToURL(serviceIdentifier string) string {

@@ -28,6 +28,7 @@ export interface SaveOfferView {
 export interface FillOutcome {
   filledUsername: boolean;
   filledPassword: boolean;
+  filledOneTimeCode?: boolean;
 }
 
 export interface FrameProbe {
@@ -35,9 +36,10 @@ export interface FrameProbe {
   hasUsernameField: boolean;
   hasFocusedField: boolean;
   hasFocusedLoginField: boolean;
+  hasOneTimeCodeField?: boolean;
 }
 
-export type InlineMenuPurpose = "login" | "new-password";
+export type InlineMenuPurpose = "login" | "new-password" | "one-time-code";
 export type InlineMenuKey = "ArrowDown" | "ArrowUp" | "Enter";
 export type InlineMenuView = PopupView | "logins";
 
@@ -59,6 +61,7 @@ export type PopupMessage =
   | { type: "popup.matchLogins"; tabId: number }
   | { type: "popup.fillLogin"; tabId: number; vaultID: string; itemID: string }
   | { type: "popup.getPassword"; tabId: number; vaultID: string; itemID: string }
+  | { type: "popup.getOneTimeCode"; tabId: number; vaultID: string; itemID: string }
   | { type: "popup.generatePassword"; options: GenerateOptions }
   | { type: "popup.fillPassword"; tabId: number; password: string };
 
@@ -74,6 +77,7 @@ export type ContentToBackgroundMessage =
 export type InlineMenuMessage =
   | { type: "inlineMenu.getState"; sessionID: string }
   | { type: "inlineMenu.fillLogin"; sessionID: string; vaultID: string; itemID: string }
+  | { type: "inlineMenu.fillOneTimeCode"; sessionID: string; vaultID: string; itemID: string }
   | { type: "inlineMenu.useSuggestedPassword"; sessionID: string }
   | { type: "inlineMenu.unlock"; sessionID: string }
   | { type: "inlineMenu.openHisar"; sessionID: string }
@@ -92,9 +96,16 @@ export type BackgroundToContentMessage =
   | { type: "content.probe" }
   | { type: "content.fillLogin"; expectedOrigin: string; username: string; password: string; sessionID?: string }
   | { type: "content.fillPassword"; expectedOrigin: string; password: string; sessionID?: string }
+  | { type: "content.fillOneTimeCode"; expectedOrigin: string; code: string; sessionID?: string }
   | { type: "content.showSaveOffer"; offer: SaveOfferView }
   | { type: "content.isInlineMenuVisible"; sessionID: string }
   | { type: "content.resizeInlineMenu"; sessionID: string; height: number }
   | { type: "content.dismissInlineMenu"; sessionID: string };
+
+export interface OffscreenCopyMessage {
+  target: "offscreen";
+  type: "offscreen.copy";
+  text: string;
+}
 
 export type MessageResponse<Result> = { ok: true; result: Result } | { ok: false; error: { code: ErrorCode; message: string } };

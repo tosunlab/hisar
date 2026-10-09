@@ -82,6 +82,25 @@ describe("inline menu page", () => {
     expect(allMessage).toContainEqual({ type: "inlineMenu.fillLogin", sessionID: "session-1", vaultID: "v2", itemID: "i2" });
   });
 
+  it("offers the one-time codes of matching logins in a code field and fills the chosen one", async () => {
+    respondWith(createState({ purpose: "one-time-code", allLogin: [{ ...allLogin[0], hasOneTimePassword: true }] }));
+    const wrapper = await mountMenu();
+    expect(wrapper.find('[data-testid="inline-login"]').exists()).toBe(false);
+    const row = wrapper.get('[data-testid="inline-code"]');
+    expect(row.text()).toBe("ExampleOne-time code · alex@example.com");
+    broadcast("ArrowDown");
+    broadcast("Enter");
+    await flushPromises();
+    expect(allMessage).toContainEqual({ type: "inlineMenu.fillOneTimeCode", sessionID: "session-1", vaultID: "v1", itemID: "i1" });
+    expect(allMessage.some((message) => message.type === "inlineMenu.fillLogin")).toBe(false);
+  });
+
+  it("says when no login for the site has a one-time code", async () => {
+    respondWith(createState({ purpose: "one-time-code", allLogin: [] }));
+    const wrapper = await mountMenu();
+    expect(wrapper.get('[data-testid="inline-no-codes"]').text()).toContain("No one-time codes for example.com");
+  });
+
   it("reports its height so the page can size the frame", async () => {
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ height: 96.4 } as DOMRect);
     respondWith(createState());

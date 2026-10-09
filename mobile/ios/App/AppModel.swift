@@ -259,6 +259,7 @@ final class AppModel: ObservableObject {
         summary.password = ""
         summary.notes = ""
         summary.allField = []
+        summary.oneTimePassword = ""
         if let index = allItem.firstIndex(where: { $0.id == savedItem.id }) {
             allItem[index] = summary
         } else {
@@ -275,6 +276,11 @@ final class AppModel: ObservableObject {
         allItemByVaultID[vaultID]?.removeAll { $0.id == itemID }
         await credentialIdentityStore.replaceAllIdentity(VaultLogic.buildAllCredentialIdentity(listAllItemReference()))
         return true
+    }
+
+    func loadOneTimeCode(vaultID: String, itemID: String) async -> OneTimeCode? {
+        guard let backend else { return nil }
+        return try? await runInBackground { try backend.getOneTimeCode(vaultID: vaultID, itemID: itemID) }
     }
 
     func copyField(vaultID: String, itemID: String, fieldName: String, label: String) async {

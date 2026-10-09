@@ -143,6 +143,9 @@ struct ItemDetailView: View {
             if !item.password.isEmpty {
                 buildFieldRow(label: "Password", value: item.password, isConcealed: true, isRevealed: isPasswordRevealed, toggleReveal: { isPasswordRevealed.toggle() }, copy: { copy(fieldName: "password", label: "Password") })
             }
+            if item.hasOneTimePassword {
+                OneTimeCodeRow(vaultID: vaultID, itemID: item.id) { copy(fieldName: "one-time code", label: "One-time code") }
+            }
         }
     }
 

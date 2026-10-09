@@ -25,6 +25,7 @@ const props = withDefaults(
 
 type MenuAction =
   | { kind: "login"; login: LoginSummary }
+  | { kind: "code"; login: LoginSummary }
   | { kind: "more" }
   | { kind: "suggest" }
   | { kind: "pair" }
@@ -41,6 +42,8 @@ let observer: IntersectionObserver | undefined;
 let pollTimer: ReturnType<typeof setTimeout> | undefined;
 let lastReportedHeight = 0;
 
+const isOneTimeCodeMenu = computed(() => menuState.value?.purpose === "one-time-code");
+
 const allAction = computed<MenuAction[]>(() => {
   const state = menuState.value;
   if (!state) return [];
@@ -48,7 +51,7 @@ const allAction = computed<MenuAction[]>(() => {
     case "logins":
       if (state.purpose === "new-password") return state.suggestedPassword ? [{ kind: "suggest" }] : [];
       return [
-        ...state.allLogin.map((login): MenuAction => ({ kind: "login", login })),
+        ...state.allLogin.map((login): MenuAction => ({ kind: state.purpose === "one-time-code" ? "code" : "login", login })),
         ...(state.hasMoreLogin ? [{ kind: "more" } as MenuAction] : []),
       ];
     case "not-paired":
@@ -99,6 +102,9 @@ async function runAction(action: MenuAction): Promise<void> {
     switch (action.kind) {
       case "login":
         await sendToBackground({ type: "inlineMenu.fillLogin", sessionID: props.sessionID, vaultID: action.login.vaultID, itemID: action.login.itemID });
+        return;
+      case "code":
+        await sendToBackground({ type: "inlineMenu.fillOneTimeCode", sessionID: props.sessionID, vaultID: action.login.vaultID, itemID: action.login.itemID });
         return;
       case "suggest":
         await sendToBackground({ type: "inlineMenu.useSuggestedPassword", sessionID: props.sessionID });
@@ -223,13 +229,16 @@ defineExpose({ pressKey });
         type="button"
         class="item"
         :class="{ selected: selectedIndex === index }"
-        data-testid="inline-login"
-        @click="chooseAction({ kind: 'login', login }, $event)"
+        :data-testid="isOneTimeCodeMenu ? 'inline-code' : 'inline-login'"
+        @click="chooseAction({ kind: isOneTimeCodeMenu ? 'code' : 'login', login }, $event)"
       >
-        <span class="avatar" aria-hidden="true">{{ (login.title || "?").slice(0, 1).toUpperCase() }}</span>
+        <span v-if="isOneTimeCodeMenu" class="avatar key" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="13" r="8" /><path d="M12 9v4l2.5 2.5M10 2h4" /></svg>
+        </span>
+        <span v-else class="avatar" aria-hidden="true">{{ (login.title || "?").slice(0, 1).toUpperCase() }}</span>
         <span class="text">
           <span class="title">{{ login.title }}</span>
-          <span class="subtitle">{{ login.username || "No username" }}</span>
+          <span class="subtitle">{{ isOneTimeCodeMenu ? `One-time code · ${login.username || "no username"}` : login.username || "No username" }}</span>
         </span>
       </button>
       <button
@@ -242,7 +251,11 @@ defineExpose({ pressKey });
       >
         More in Hisar…
       </button>
-      <div v-if="menuState.allLogin.length === 0" class="message" data-testid="inline-no-logins">
+      <div v-if="menuState.allLogin.length === 0 && isOneTimeCodeMenu" class="message" data-testid="inline-no-codes">
+        <p class="title">No one-time codes for {{ menuState.host }}</p>
+        <p class="muted">Add the setup key to the login in Hisar.</p>
+      </div>
+      <div v-else-if="menuState.allLogin.length === 0" class="message" data-testid="inline-no-logins">
         <p class="title">No logins for {{ menuState.host }}</p>
         <p class="muted">Hisar offers to save the login after you sign in.</p>
       </div>

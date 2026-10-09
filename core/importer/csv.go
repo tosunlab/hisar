@@ -197,9 +197,7 @@ func convertCSVRecord(layout *csvLayout, allValue []string, format string) (item
 		Details:  item.Details{Password: getValue(columnPassword), Notes: getValue(columnNotes)},
 	}
 	vaultItem.Overview.URLs = splitAllURL(getValue(columnURL), format)
-	if otp := strings.TrimSpace(getValue(columnOTP)); otp != "" {
-		vaultItem.Details.Fields = append(vaultItem.Details.Fields, item.Field{Name: "One-time password", Value: otp, Concealed: true})
-	}
+	addOneTimePassword(&vaultItem, "One-time password", strings.TrimSpace(getValue(columnOTP)))
 	if tagText := getValue(columnTags); tagText != "" {
 		if format == FormatBitwardenCSV {
 			vaultItem.Overview.Tags = []string{tagText}

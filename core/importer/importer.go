@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/tryhisar/hisar/core/item"
+	"github.com/tryhisar/hisar/core/totp"
 )
 
 const (
@@ -263,7 +264,7 @@ func finishItem(vaultItem *item.Item) bool {
 		vaultItem.Details.Fields = allField
 	}
 	hasContent := vaultItem.Overview.Username != "" || vaultItem.Details.Password != "" || len(vaultItem.Overview.URLs) > 0 ||
-		vaultItem.Details.Notes != "" || len(vaultItem.Details.Fields) > 0 || vaultItem.Details.PrivateKey != ""
+		vaultItem.Details.Notes != "" || len(vaultItem.Details.Fields) > 0 || vaultItem.Details.PrivateKey != "" || vaultItem.Details.OneTimePassword != ""
 	if vaultItem.Overview.Title == "" {
 		if !hasContent {
 			return false
@@ -274,6 +275,20 @@ func finishItem(vaultItem *item.Item) bool {
 		vaultItem.Overview.Category = item.CategoryLogin
 	}
 	return true
+}
+
+// addOneTimePassword keeps the first valid secret as the item's one-time password; anything else stays a concealed field.
+func addOneTimePassword(vaultItem *item.Item, name, value string) {
+	if strings.TrimSpace(value) == "" {
+		return
+	}
+	if vaultItem.Details.OneTimePassword == "" {
+		if normalized, err := totp.Normalize(value); err == nil {
+			vaultItem.Details.OneTimePassword = normalized
+			return
+		}
+	}
+	vaultItem.Details.Fields = append(vaultItem.Details.Fields, item.Field{Name: name, Value: value, Concealed: true})
 }
 
 func getFallbackTitle(vaultItem *item.Item) string {

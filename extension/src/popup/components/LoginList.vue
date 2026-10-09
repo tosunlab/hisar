@@ -5,6 +5,7 @@ import type { LoginSummary } from "../../shared/protocol";
 import { closePopup, describeError, sendToBackground } from "../api";
 import { writeToClipboard } from "../clipboard";
 import AppIcon from "./AppIcon.vue";
+import OneTimeCodeRow from "./OneTimeCodeRow.vue";
 
 const props = defineProps<{ tabId: number | undefined }>();
 const emit = defineEmits<{ notice: [message: string] }>();
@@ -100,46 +101,49 @@ onMounted(loadLogins);
     </p>
     <p v-else-if="allVisibleLogin.length === 0" class="muted empty">No logins match "{{ query }}".</p>
     <ul v-else class="list">
-      <li v-for="login in allVisibleLogin" :key="login.vaultID + login.itemID" class="login" data-testid="login-row">
-        <div class="avatar" aria-hidden="true">{{ (login.title || "?").slice(0, 1).toUpperCase() }}</div>
-        <div class="text">
-          <p class="title-row">
-            <span class="title">{{ login.title }}</span>
-            <span class="tag">{{ login.vaultName }}</span>
-          </p>
-          <p class="username muted">{{ login.username || "No username" }}</p>
+      <li v-for="login in allVisibleLogin" :key="login.vaultID + login.itemID" class="entry" data-testid="login-row">
+        <div class="login">
+          <div class="avatar" aria-hidden="true">{{ (login.title || "?").slice(0, 1).toUpperCase() }}</div>
+          <div class="text">
+            <p class="title-row">
+              <span class="title">{{ login.title }}</span>
+              <span class="tag">{{ login.vaultName }}</span>
+            </p>
+            <p class="username muted">{{ login.username || "No username" }}</p>
+          </div>
+          <button
+            type="button"
+            class="ghost icon-button"
+            title="Copy username"
+            aria-label="Copy username"
+            :disabled="busyItemID !== '' || !login.username"
+            data-testid="copy-username"
+            @click="copyUsername(login)"
+          >
+            <AppIcon name="user" />
+          </button>
+          <button
+            type="button"
+            class="ghost icon-button"
+            title="Copy password"
+            aria-label="Copy password"
+            :disabled="busyItemID !== ''"
+            data-testid="copy-password"
+            @click="copyPassword(login)"
+          >
+            <AppIcon name="key" />
+          </button>
+          <button
+            type="button"
+            class="primary small"
+            :disabled="busyItemID !== ''"
+            data-testid="fill"
+            @click="fillLogin(login)"
+          >
+            Fill
+          </button>
         </div>
-        <button
-          type="button"
-          class="ghost icon-button"
-          title="Copy username"
-          aria-label="Copy username"
-          :disabled="busyItemID !== '' || !login.username"
-          data-testid="copy-username"
-          @click="copyUsername(login)"
-        >
-          <AppIcon name="user" />
-        </button>
-        <button
-          type="button"
-          class="ghost icon-button"
-          title="Copy password"
-          aria-label="Copy password"
-          :disabled="busyItemID !== ''"
-          data-testid="copy-password"
-          @click="copyPassword(login)"
-        >
-          <AppIcon name="key" />
-        </button>
-        <button
-          type="button"
-          class="primary small"
-          :disabled="busyItemID !== ''"
-          data-testid="fill"
-          @click="fillLogin(login)"
-        >
-          Fill
-        </button>
+        <OneTimeCodeRow v-if="login.hasOneTimePassword && tabId !== undefined" :tab-id="tabId" :login="login" @notice="emit('notice', $event)" />
       </li>
     </ul>
   </div>
@@ -177,16 +181,19 @@ onMounted(loadLogins);
   list-style: none;
 }
 
-.login {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.entry {
   padding: 7px 8px;
   border-radius: var(--radius);
 }
 
-.login:hover {
+.entry:hover {
   background: var(--color-hover);
+}
+
+.login {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .avatar {

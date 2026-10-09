@@ -11,9 +11,15 @@ final class AutoFillModel: ObservableObject {
         case configuration
     }
 
+    enum RequestKind: Equatable {
+        case password
+        case oneTimeCode
+    }
+
     struct PendingCredentialRequest: Equatable {
         var recordIdentifier: String
         var serviceIdentifier: String
+        var kind: RequestKind
     }
 
     @Published private(set) var screen: Screen = .starting
@@ -29,6 +35,7 @@ final class AutoFillModel: ObservableObject {
         }
     }
     @Published private(set) var lockCount = 0
+    @Published private(set) var requestKind = RequestKind.password
 
     private(set) var allServiceIdentifier: [String] = []
     private var pendingRequest: PendingCredentialRequest?
@@ -36,11 +43,21 @@ final class AutoFillModel: ObservableObject {
     private var backend: VaultBackend?
     private let createBackend: () throws -> VaultBackend
     private let completeRequest: (LoginCredential) -> Void
+    private let completeOneTimeCodeRequest: (String) -> Void
+    private let copyOneTimeCode: (String) -> Void
     private let cancelRequest: () -> Void
 
-    init(createBackend: @escaping () throws -> VaultBackend, completeRequest: @escaping (LoginCredential) -> Void, cancelRequest: @escaping () -> Void) {
+    init(
+        createBackend: @escaping () throws -> VaultBackend,
+        completeRequest: @escaping (LoginCredential) -> Void,
+        completeOneTimeCodeRequest: @escaping (String) -> Void,
+        copyOneTimeCode: @escaping (String) -> Void,
+        cancelRequest: @escaping () -> Void
+    ) {
         self.createBackend = createBackend
         self.completeRequest = completeRequest
+        self.completeOneTimeCodeRequest = completeOneTimeCodeRequest
+        self.copyOneTimeCode = copyOneTimeCode
         self.cancelRequest = cancelRequest
     }
 
@@ -49,13 +66,17 @@ final class AutoFillModel: ObservableObject {
     }
 
     var allVisibleMatchingLogin: [LoginMatch] {
-        Self.filterAllLogin(allMatchingLogin, searchText: searchText)
+        Self.filterAllLogin(filterForRequest(allMatchingLogin), searchText: searchText)
     }
 
     var allVisibleOtherLogin: [LoginMatch] {
         guard !searchText.isEmpty else { return [] }
         let allMatchingID = Set(allMatchingLogin.map(\.id))
-        return Self.filterAllLogin(allOtherLogin.filter { !allMatchingID.contains($0.id) }, searchText: searchText)
+        return Self.filterAllLogin(filterForRequest(allOtherLogin).filter { !allMatchingID.contains($0.id) }, searchText: searchText)
+    }
+
+    private func filterForRequest(_ allLogin: [LoginMatch]) -> [LoginMatch] {
+        requestKind == .oneTimeCode ? allLogin.filter(\.hasOneTimePassword) : allLogin
     }
 
     static func filterAllLogin(_ allLogin: [LoginMatch], searchText: String) -> [LoginMatch] {
@@ -103,8 +124,9 @@ final class AutoFillModel: ObservableObject {
         }
     }
 
-    func prepareCredentialList(allServiceIdentifier: [String]) async {
+    func prepareCredentialList(allServiceIdentifier: [String], kind: RequestKind = .password) async {
         self.allServiceIdentifier = allServiceIdentifier
+        requestKind = kind
         pendingRequest = nil
         guard let backend = prepareBackend() else { return }
         applyStatus(backend.getStatus())
@@ -113,9 +135,10 @@ final class AutoFillModel: ObservableObject {
         }
     }
 
-    func prepareInterfaceToProvideCredential(recordIdentifier: String, serviceIdentifier: String) async {
+    func prepareInterfaceToProvideCredential(recordIdentifier: String, serviceIdentifier: String, kind: RequestKind = .password) async {
         allServiceIdentifier = [serviceIdentifier]
-        pendingRequest = PendingCredentialRequest(recordIdentifier: recordIdentifier, serviceIdentifier: serviceIdentifier)
+        requestKind = kind
+        pendingRequest = PendingCredentialRequest(recordIdentifier: recordIdentifier, serviceIdentifier: serviceIdentifier, kind: kind)
         guard let backend = prepareBackend() else { return }
         applyStatus(backend.getStatus())
         if status.isUnlocked {
@@ -126,9 +149,35 @@ final class AutoFillModel: ObservableObject {
     // Without user interaction only an extension process that is still unlocked can answer.
     func provideCredentialWithoutUserInteraction(recordIdentifier: String, serviceIdentifier: String) async -> LoginCredential? {
         guard let backend, backend.getStatus().isUnlocked,
+              let reference = LoginMatch.parseRecordIdentifier(recordIdentifier),
+              let credential = try? await runInBackground({
+                  try backend.getLoginForService(vaultID: reference.vaultID, itemID: reference.itemID, serviceIdentifier: serviceIdentifier)
+              }) else { return nil }
+        if credential.hasOneTimePassword {
+            await copyCode(vaultID: reference.vaultID, itemID: reference.itemID, serviceIdentifier: serviceIdentifier)
+        }
+        return credential
+    }
+
+    func provideOneTimeCodeWithoutUserInteraction(recordIdentifier: String, serviceIdentifier: String) async -> String? {
+        guard let backend, backend.getStatus().isUnlocked,
               let reference = LoginMatch.parseRecordIdentifier(recordIdentifier) else { return nil }
         return try? await runInBackground {
-            try backend.getLoginForService(vaultID: reference.vaultID, itemID: reference.itemID, serviceIdentifier: serviceIdentifier)
+            try backend.getOneTimeCodeForService(vaultID: reference.vaultID, itemID: reference.itemID, serviceIdentifier: serviceIdentifier).code
+        }
+    }
+
+    // The code goes to the pasteboard after a password fill, for the site's next step; a failure never stops the fill.
+    private func copyCode(vaultID: String, itemID: String, serviceIdentifier: String?) async {
+        guard let backend else { return }
+        let code = try? await runInBackground { () -> OneTimeCode in
+            if let serviceIdentifier {
+                return try backend.getOneTimeCodeForService(vaultID: vaultID, itemID: itemID, serviceIdentifier: serviceIdentifier)
+            }
+            return try backend.getOneTimeCode(vaultID: vaultID, itemID: itemID)
+        }
+        if let code {
+            copyOneTimeCode(code.code)
         }
     }
 
@@ -167,12 +216,20 @@ final class AutoFillModel: ObservableObject {
             return
         }
         let serviceIdentifier = pendingRequest.serviceIdentifier
-        if let credential = await perform({ try $0.getLoginForService(vaultID: reference.vaultID, itemID: reference.itemID, serviceIdentifier: serviceIdentifier) }) {
+        if pendingRequest.kind == .oneTimeCode {
+            if let code = await perform({ try $0.getOneTimeCodeForService(vaultID: reference.vaultID, itemID: reference.itemID, serviceIdentifier: serviceIdentifier) }) {
+                completeOneTimeCodeRequest(code.code)
+                return
+            }
+        } else if let credential = await perform({ try $0.getLoginForService(vaultID: reference.vaultID, itemID: reference.itemID, serviceIdentifier: serviceIdentifier) }) {
+            if credential.hasOneTimePassword {
+                await copyCode(vaultID: reference.vaultID, itemID: reference.itemID, serviceIdentifier: serviceIdentifier)
+            }
             completeRequest(credential)
-        } else {
-            self.pendingRequest = nil
-            await loadAllMatchingLogin()
+            return
         }
+        self.pendingRequest = nil
+        await loadAllMatchingLogin()
     }
 
     func loadAllMatchingLogin() async {
@@ -201,7 +258,7 @@ final class AutoFillModel: ObservableObject {
             var allLogin: [LoginMatch] = []
             for vault in try backend.listAllVault() {
                 for item in try backend.listAllItem(vaultID: vault.id) where item.isLogin {
-                    allLogin.append(LoginMatch(vaultID: vault.id, itemID: item.id, title: item.title, username: item.username, vaultName: vault.name))
+                    allLogin.append(LoginMatch(vaultID: vault.id, itemID: item.id, title: item.title, username: item.username, vaultName: vault.name, hasOneTimePassword: item.hasOneTimePassword))
                 }
             }
             return allLogin.sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
@@ -211,18 +268,33 @@ final class AutoFillModel: ObservableObject {
     }
 
     func select(_ login: LoginMatch) async {
+        let serviceIdentifier = serviceIdentifierByLoginID[login.id]
+        if requestKind == .oneTimeCode {
+            let code = await perform { backend -> OneTimeCode in
+                if let serviceIdentifier {
+                    return try backend.getOneTimeCodeForService(vaultID: login.vaultID, itemID: login.itemID, serviceIdentifier: serviceIdentifier)
+                }
+                return try backend.getOneTimeCode(vaultID: login.vaultID, itemID: login.itemID)
+            }
+            if let code {
+                completeOneTimeCodeRequest(code.code)
+            }
+            return
+        }
         let credential: LoginCredential?
-        if let serviceIdentifier = serviceIdentifierByLoginID[login.id] {
+        if let serviceIdentifier {
             credential = await perform { try $0.getLoginForService(vaultID: login.vaultID, itemID: login.itemID, serviceIdentifier: serviceIdentifier) }
         } else {
             credential = await perform { backend in
                 let item = try backend.getItem(vaultID: login.vaultID, itemID: login.itemID)
-                return LoginCredential(username: item.username, password: item.password)
+                return LoginCredential(username: item.username, password: item.password, hasOneTimePassword: item.hasOneTimePassword)
             }
         }
-        if let credential {
-            completeRequest(credential)
+        guard let credential else { return }
+        if credential.hasOneTimePassword {
+            await copyCode(vaultID: login.vaultID, itemID: login.itemID, serviceIdentifier: serviceIdentifier)
         }
+        completeRequest(credential)
     }
 
     func cancel() {

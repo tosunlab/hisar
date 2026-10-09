@@ -108,6 +108,28 @@ describe("InlineMenuController", () => {
     await vi.waitFor(() => expect(controller.getIconElement()).toBeUndefined());
   });
 
+  it("keeps one menu for split code boxes, placed under all of them, while the focus moves between boxes", async () => {
+    vi.useFakeTimers();
+    controller.stop();
+    document.body.innerHTML = `<div>${Array.from({ length: 6 }, (_, index) => `<input id="box-${index}" maxlength="1" />`).join("")}</div>`;
+    controller = createController({
+      getRect: (element) =>
+        element.tagName === "IFRAME" ? { left: 10, top: 60, width: 300, height: 120 } : { left: 10 + Number(element.id.slice(4)) * 50, top: 20, width: 40, height: 40 },
+    });
+    controller.start();
+    getInput("#box-0").focus();
+    await vi.waitFor(() => expect(controller.getMenuElement()).toBeDefined());
+    expect(allSent[0]).toEqual({ type: "content.openInlineMenu", purpose: "one-time-code" });
+    expect(controller.getIconElement()!.style.left).toBe(`${10 + 290 + 8}px`);
+    getInput("#box-1").focus();
+    vi.runAllTimers();
+    expect(controller.getMenuElement()).toBeDefined();
+    expect(controller.getAnchoredField("session-1")).toBe(getInput("#box-0"));
+    expect(allSent.filter((message) => message.type === "content.openInlineMenu")).toHaveLength(1);
+    getInput("#box-1").dispatchEvent(new InputEvent("input", { bubbles: true, composed: true }));
+    expect(controller.getMenuElement()).toBeUndefined();
+  });
+
   it("shows only the icon when opening on focus is off, and opens on ArrowDown", async () => {
     controller.updateSettings({ isInlineMenuEnabled: true, isInlineMenuOpenedOnFocus: false });
     const field = getInput("#login_field");

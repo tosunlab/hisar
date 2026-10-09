@@ -4,6 +4,8 @@ import Foundation
 class FakeBackend: VaultBackend {
     static let password = "correct horse battery"
     static let secretKey = "H1-ABC123-AAAAA-BBBBB-CCCCC-DDDDD-EEEEEE"
+    static let oneTimePassword = "otpauth://totp/GitHub:alice?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
+    static let oneTimeCode = OneTimeCode(code: "287082", expiresAt: "2027-01-15T08:00:30Z", period: 30)
 
     private let callLock = NSLock()
     var status = VaultStatus.signedOut
@@ -30,7 +32,7 @@ class FakeBackend: VaultBackend {
         ]
         allItemByVaultID = [
             "personal": [
-                ItemDetail(id: "github", revision: "r1", category: "login", title: "GitHub", username: "alice", allURL: ["https://github.com"], password: "github-password", notes: "work account", allField: [ItemField(name: "PIN", value: "1234", concealed: true)]),
+                ItemDetail(id: "github", revision: "r1", category: "login", title: "GitHub", username: "alice", allURL: ["https://github.com"], password: "github-password", notes: "work account", allField: [ItemField(name: "PIN", value: "1234", concealed: true)], oneTimePassword: Self.oneTimePassword, hasOneTimePassword: true),
                 ItemDetail(id: "bank", revision: "r1", category: "login", title: "Bank", username: "alice@example.com", allURL: ["bank.example.com"], password: "bank-password"),
             ],
             "family": [
@@ -133,6 +135,7 @@ class FakeBackend: VaultBackend {
             summary.password = ""
             summary.notes = ""
             summary.allField = []
+            summary.oneTimePassword = ""
             return summary
         }
     }
@@ -149,6 +152,12 @@ class FakeBackend: VaultBackend {
         try requireUnlocked()
         guard !item.title.trimmingCharacters(in: .whitespaces).isEmpty else { throw BackendError(message: "Enter a title") }
         var savedItem = item
+        let oneTimePassword = item.oneTimePassword.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard oneTimePassword.isEmpty || oneTimePassword.hasPrefix("otpauth://totp/") || oneTimePassword.replacingOccurrences(of: " ", with: "").allSatisfy({ "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".contains($0.uppercased()) }) else {
+            throw BackendError(message: "The one-time password is not a valid secret or otpauth:// link")
+        }
+        savedItem.oneTimePassword = oneTimePassword.isEmpty ? "" : (oneTimePassword.hasPrefix("otpauth://") ? oneTimePassword : "otpauth://totp/?secret=\(oneTimePassword.uppercased().replacingOccurrences(of: " ", with: ""))")
+        savedItem.hasOneTimePassword = !oneTimePassword.isEmpty
         if savedItem.id.isEmpty {
             savedItem.id = "new-\(nextItemNumber)"
             nextItemNumber += 1
@@ -170,6 +179,20 @@ class FakeBackend: VaultBackend {
         allItemByVaultID[vaultID]?.removeAll { $0.id == itemID }
     }
 
+    func getOneTimeCode(vaultID: String, itemID: String) throws -> OneTimeCode {
+        record("getOneTimeCode")
+        guard try getItem(vaultID: vaultID, itemID: itemID).hasOneTimePassword else { throw BackendError(message: "One-time password not found") }
+        return Self.oneTimeCode
+    }
+
+    func getOneTimeCodeForService(vaultID: String, itemID: String, serviceIdentifier: String) throws -> OneTimeCode {
+        record("getOneTimeCodeForService")
+        guard try listAllLoginForService(serviceIdentifier: serviceIdentifier).contains(where: { $0.vaultID == vaultID && $0.itemID == itemID }) else {
+            throw BackendError(message: "This login is not saved for this site")
+        }
+        return try getOneTimeCode(vaultID: vaultID, itemID: itemID)
+    }
+
     func copyField(vaultID: String, itemID: String, fieldName: String) throws {
         record("copyField")
         let item = try getItem(vaultID: vaultID, itemID: itemID)
@@ -188,7 +211,7 @@ class FakeBackend: VaultBackend {
         var allLogin: [LoginMatch] = []
         for vault in allVault {
             for item in allItemByVaultID[vault.id] ?? [] where item.allURL.contains(where: { VaultLogic.extractHost($0).map { host.hasSuffix($0) || $0.hasSuffix(host) } ?? false }) {
-                allLogin.append(LoginMatch(vaultID: vault.id, itemID: item.id, title: item.title, username: item.username, vaultName: vault.name))
+                allLogin.append(LoginMatch(vaultID: vault.id, itemID: item.id, title: item.title, username: item.username, vaultName: vault.name, hasOneTimePassword: item.hasOneTimePassword))
             }
         }
         return allLogin
@@ -200,7 +223,7 @@ class FakeBackend: VaultBackend {
             throw BackendError(message: "This login is not saved for this site")
         }
         let item = try getItem(vaultID: vaultID, itemID: itemID)
-        return LoginCredential(username: item.username, password: item.password)
+        return LoginCredential(username: item.username, password: item.password, hasOneTimePassword: item.hasOneTimePassword)
     }
 }
 

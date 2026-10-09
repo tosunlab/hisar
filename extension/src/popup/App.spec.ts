@@ -74,6 +74,53 @@ afterEach(() => {
   document.body.innerHTML = "";
 });
 
+describe("one-time codes", () => {
+  it("shows the code with the seconds left for logins that have one, asks again when it expires, and copies it", async () => {
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "setTimeout", "clearTimeout", "Date"] });
+    vi.setSystemTime(new Date("2026-10-09T12:00:20Z"));
+    let requestCount = 0;
+    respondWithState(
+      { view: "unlocked", email: "alex@example.com", isOffline: false },
+      {
+        "popup.matchLogins": () => ({ url: "https://example.com/login", allLogin: [{ ...allLogin[0], hasOneTimePassword: true }, allLogin[1]] }),
+        "popup.getOneTimeCode": () => {
+          requestCount += 1;
+          return requestCount === 1
+            ? { code: "123456", expiresAt: "2026-10-09T12:00:30Z", period: 30 }
+            : { code: "654321", expiresAt: "2026-10-09T12:01:00Z", period: 30 };
+        },
+      },
+    );
+    const wrapper = await mountApp();
+    expect(wrapper.findAll('[data-testid="one-time-code"]')).toHaveLength(1);
+    expect(allMessage).toContainEqual({ type: "popup.getOneTimeCode", tabId: 42, vaultID: "v1", itemID: "i1" });
+    expect(wrapper.get('[data-testid="one-time-code-value"]').text()).toBe("123 456");
+    expect(wrapper.get('[data-testid="one-time-code-seconds"]').text()).toBe("10s");
+    await wrapper.get('[data-testid="copy-one-time-code"]').trigger("click");
+    await flushPromises();
+    expect(allClipboardText).toEqual(["123456"]);
+    expect(wrapper.get('[data-testid="notice"]').text()).toBe("One-time code copied");
+    vi.advanceTimersByTime(10_000);
+    await flushPromises();
+    expect(wrapper.get('[data-testid="one-time-code-value"]').text()).toBe("654 321");
+    expect(wrapper.get('[data-testid="one-time-code-seconds"]').text()).toBe("30s");
+  });
+
+  it("shows why the code is not available", async () => {
+    respondWithState(
+      { view: "unlocked", email: "alex@example.com", isOffline: false },
+      {
+        "popup.matchLogins": () => ({ url: "https://example.com/login", allLogin: [{ ...allLogin[0], hasOneTimePassword: true }] }),
+        "popup.getOneTimeCode": () => {
+          throw Object.assign(new Error("This login is not saved for this site"), { code: "no-match" });
+        },
+      },
+    );
+    const wrapper = await mountApp();
+    expect(wrapper.get('[data-testid="one-time-code"]').text()).toBe("This login is not saved for this site");
+  });
+});
+
 describe("popup states", () => {
   it("shows the pairing flow when not paired and pairs with the 6-digit code", async () => {
     let state: PopupState = { view: "not-paired" };

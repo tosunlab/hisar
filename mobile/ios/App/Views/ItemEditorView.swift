@@ -70,6 +70,18 @@ struct ItemEditorView: View {
                         }
                         .listRowBackground(Theme.surface)
                     }
+                    Section {
+                        TextField("Setup key or otpauth:// link", text: $draft.oneTimePassword)
+                            .font(.system(.body, design: .monospaced))
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .accessibilityIdentifier("editor-one-time-password")
+                            .listRowBackground(Theme.surface)
+                    } header: {
+                        Text("One-time password")
+                    } footer: {
+                        Text("The setup key or link from the site's two-factor setup. Hisar then shows the current code.")
+                    }
                     Section("Websites") {
                         ForEach(allURLText.indices, id: \.self) { index in
                             TextField("Website", text: $allURLText[index], prompt: Text(verbatim: "https://example.com"))

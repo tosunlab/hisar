@@ -1,0 +1,9 @@
+<main>
+  <h1>Two-factor authentication</h1>
+  <form id="two-factor" action="/sessions/two-factor" method="post">
+    <input type="hidden" name="authenticity_token" value="abc" />
+    <label for="app_totp">Authentication code</label>
+    <input type="text" name="app_otp" id="app_totp" inputmode="numeric" autocomplete="one-time-code" autofocus />
+    <button type="submit">Verify</button>
+  </form>
+</main>

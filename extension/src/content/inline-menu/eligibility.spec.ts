@@ -3,6 +3,7 @@ import changePasswordPage from "../fixtures/change-password.html?raw";
 import emailFirstStepOnePage from "../fixtures/email-first-step-one.html?raw";
 import signUpPage from "../fixtures/sign-up.html?raw";
 import simpleLoginPage from "../fixtures/simple-login.html?raw";
+import twoFactorPage from "../fixtures/two-factor.html?raw";
 import { findInlineMenuPurpose, isFrameEligibleForInlineMenu } from "./eligibility";
 import type { Rect } from "./placement";
 
@@ -90,6 +91,19 @@ describe("findInlineMenuPurpose", () => {
     const shadowRoot = host.attachShadow({ mode: "open" });
     shadowRoot.innerHTML = `<form><input id="user" autocomplete="username" /><input id="pass" type="password" /></form>`;
     expect(findInlineMenuPurpose(document, shadowRoot.getElementById("pass")!, wideRect)).toBeUndefined();
+  });
+
+  it("offers one-time codes on a code field and on split code boxes as a whole", () => {
+    document.body.innerHTML = twoFactorPage;
+    expect(findInlineMenuPurpose(document, getInput("#app_totp"), wideRect)).toBe("one-time-code");
+    document.body.innerHTML = `<form><input id="user" autocomplete="username" /><input id="pass" type="password" /><input id="otp" name="otp" /></form>`;
+    expect(findInlineMenuPurpose(document, getInput("#otp"), wideRect)).toBe("one-time-code");
+    expect(findInlineMenuPurpose(document, getInput("#pass"), wideRect)).toBe("login");
+    document.body.innerHTML = `<div>${Array.from({ length: 6 }, (_, index) => `<input id="box-${index}" maxlength="1" />`).join("")}</div>`;
+    vi.spyOn(document.documentElement, "getClientRects").mockReturnValue([{}] as unknown as DOMRectList);
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ left: 0, top: 0, width: 40, height: 40 } as DOMRect);
+    const getBoxRect = (element: Element): Rect => ({ left: Number(element.id.slice(4)) * 48, top: 0, width: 40, height: 40 });
+    expect(findInlineMenuPurpose(document, getInput("#box-2"), getBoxRect)).toBe("one-time-code");
   });
 
   it("ignores elements that are not inputs", () => {

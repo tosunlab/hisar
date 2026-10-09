@@ -127,6 +127,9 @@ func (bridge *BrowserBridge) handleRequest(ctx context.Context, request *browser
 	case "logins.fill":
 		result, err := bridge.service.getLoginForFill(ctx, request.VaultID, request.ItemID, request.URL)
 		return result, convertBrowserError(err)
+	case "logins.code":
+		result, err := bridge.service.getOneTimeCodeForFill(ctx, request.VaultID, request.ItemID, request.URL)
+		return result, convertBrowserError(err)
 	case "logins.check":
 		result, err := bridge.service.checkLogin(ctx, request.URL, request.Username, request.Password)
 		return result, convertBrowserError(err)
@@ -373,7 +376,10 @@ func (s *Service) listAllLoginForURL(ctx context.Context, pageURL string) ([]bro
 			}) {
 				continue
 			}
-			allLogin = append(allLogin, browser.Login{VaultID: vaultID, ItemID: vaultItem.ID, Title: vaultItem.Overview.Title, Username: vaultItem.Overview.Username, VaultName: vault.Name})
+			allLogin = append(allLogin, browser.Login{
+				VaultID: vaultID, ItemID: vaultItem.ID, Title: vaultItem.Overview.Title, Username: vaultItem.Overview.Username, VaultName: vault.Name,
+				HasOneTimePassword: vaultItem.Details.OneTimePassword != "",
+			})
 			allItemByKey[vaultID+"/"+vaultItem.ID] = vaultItem
 		}
 	}
@@ -433,6 +439,11 @@ func GetLoginForURL(s *Service, vaultID, itemID, pageURL string) (browser.FillRe
 	return result, convertBrowserError(err)
 }
 
+func GetOneTimeCodeForURL(s *Service, vaultID, itemID, pageURL string) (OneTimeCode, error) {
+	result, err := s.getOneTimeCodeForFill(context.Background(), vaultID, itemID, pageURL)
+	return result, convertBrowserError(err)
+}
+
 func (s *Service) listAllMatchingLogin(ctx context.Context, pageURL string) ([]browser.Login, error) {
 	allLogin, _, err := s.listAllLoginForURL(ctx, pageURL)
 	return allLogin, err
@@ -447,7 +458,20 @@ func (s *Service) getLoginForFill(ctx context.Context, vaultID, itemID, pageURL 
 	if !found {
 		return browser.FillResult{}, errNoURLMatch
 	}
-	return browser.FillResult{Username: vaultItem.Overview.Username, Password: vaultItem.Details.Password}, nil
+	return browser.FillResult{Username: vaultItem.Overview.Username, Password: vaultItem.Details.Password, HasOneTimePassword: vaultItem.Details.OneTimePassword != ""}, nil
+}
+
+// getOneTimeCodeForFill applies the fill rule: the item must match pageURL. Only the code leaves, never the secret.
+func (s *Service) getOneTimeCodeForFill(ctx context.Context, vaultID, itemID, pageURL string) (OneTimeCode, error) {
+	_, allItemByKey, err := s.listAllLoginForURL(ctx, pageURL)
+	if err != nil {
+		return OneTimeCode{}, err
+	}
+	vaultItem, found := allItemByKey[vaultID+"/"+itemID]
+	if !found {
+		return OneTimeCode{}, errNoURLMatch
+	}
+	return generateOneTimeCode(&vaultItem, s.config.Now())
 }
 
 func (s *Service) checkLogin(ctx context.Context, pageURL, username, password string) (browser.CheckResult, error) {

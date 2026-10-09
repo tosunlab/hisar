@@ -6,6 +6,7 @@ export interface FakeLogin {
   username: string;
   password: string;
   url: string;
+  oneTimePassword?: string;
 }
 
 export interface FakeHostState {
@@ -20,6 +21,7 @@ export interface FakeHostState {
   allPairing: { instanceID: string; browser: string; tokenHash: string; pairedAt: number }[];
   exactHostOnly: boolean;
   allLogin: FakeLogin[];
+  allCodeRequest?: { itemID: string; url: string }[];
   allPasskey?: FakePasskey[];
 }
 
@@ -47,5 +49,6 @@ export function respond(
   now?: number,
   log?: (line: string) => void,
 ): { id: string; ok: boolean; result?: unknown; error?: { code: string; message: string } };
+export function generateOneTimeCode(setupKey: string, now: number): { code: string; expiresAt: string; period: number };
 export function encodeFrame(message: unknown): Buffer;
 export function createFrameReader(onMessage: (message: unknown) => void): (chunk: Buffer) => void;

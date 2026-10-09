@@ -7,8 +7,10 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/tryhisar/hisar/core/crypt"
+	"github.com/tryhisar/hisar/core/totp"
 )
 
 type memorySecretKeyStore struct {
@@ -133,6 +135,12 @@ func TestNewAndSignedOutStatus(t *testing.T) {
 	if _, err := hisar.ListAllVault(); err == nil {
 		t.Error("vaults listed while signed out")
 	}
+	if _, err := hisar.GetOneTimeCode("vault", "item"); err == nil {
+		t.Error("a one-time code while signed out")
+	}
+	if _, err := hisar.GetOneTimeCodeForService("vault", "item", "github.com"); err == nil {
+		t.Error("a one-time code for a service while signed out")
+	}
 	if password, err := hisar.GeneratePassword(24, true, true); err != nil || len(password) != 24 {
 		t.Errorf("generate: %q %v", password, err)
 	}
@@ -221,30 +229,53 @@ func TestIntegrationMobileFlow(t *testing.T) {
 	}
 	saved := decodeJSON[struct {
 		ID string `json:"id"`
-	}](t)(hisar.SaveItem(personalID, `{"title":"GitHub","username":"octocat","password":"mobile-secret","urls":["https://github.com"],"fields":[]}`))
+	}](t)(hisar.SaveItem(personalID, `{"title":"GitHub","username":"octocat","password":"mobile-secret","urls":["https://github.com"],"fields":[],"oneTimePassword":"gezd gnbv gy3t qojq gezd gnbv gy3t qojq"}`))
 	if saved.ID == "" {
 		t.Fatal("saved item has no id")
 	}
 	allItem := decodeJSON[[]struct {
-		Title    string `json:"title"`
-		Password string `json:"password"`
+		Title              string `json:"title"`
+		Password           string `json:"password"`
+		OneTimePassword    string `json:"oneTimePassword"`
+		HasOneTimePassword bool   `json:"hasOneTimePassword"`
 	}](t)(hisar.ListAllItem(personalID))
-	if len(allItem) != 1 || allItem[0].Title != "GitHub" || allItem[0].Password != "" {
+	if len(allItem) != 1 || allItem[0].Title != "GitHub" || allItem[0].Password != "" || allItem[0].OneTimePassword != "" || !allItem[0].HasOneTimePassword {
 		t.Errorf("items (without secrets) = %+v", allItem)
+	}
+	type oneTimeCode struct {
+		Code      string `json:"code"`
+		ExpiresAt string `json:"expiresAt"`
+		Period    int    `json:"period"`
+	}
+	totpConfig, _ := totp.Parse("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ")
+	codeBefore, _ := totpConfig.GenerateCode(time.Now())
+	code := decodeJSON[oneTimeCode](t)(hisar.GetOneTimeCode(personalID, saved.ID))
+	codeAfter, _ := totpConfig.GenerateCode(time.Now())
+	if (code.Code != codeBefore && code.Code != codeAfter) || code.Period != 30 || code.ExpiresAt == "" {
+		t.Errorf("one-time code = %+v, want %s", code, codeBefore)
+	}
+	serviceCode := decodeJSON[oneTimeCode](t)(hisar.GetOneTimeCodeForService(personalID, saved.ID, "github.com"))
+	if len(serviceCode.Code) != 6 {
+		t.Errorf("one-time code for github.com = %+v", serviceCode)
+	}
+	if _, err := hisar.GetOneTimeCodeForService(personalID, saved.ID, "github.com.evil.net"); err == nil {
+		t.Error("one-time code handed out for another site")
 	}
 
 	allLogin := decodeJSON[[]struct {
-		ItemID   string `json:"itemID"`
-		Username string `json:"username"`
+		ItemID             string `json:"itemID"`
+		Username           string `json:"username"`
+		HasOneTimePassword bool   `json:"hasOneTimePassword"`
 	}](t)(hisar.ListAllLoginForService("github.com"))
-	if len(allLogin) != 1 || allLogin[0].ItemID != saved.ID || allLogin[0].Username != "octocat" {
+	if len(allLogin) != 1 || allLogin[0].ItemID != saved.ID || allLogin[0].Username != "octocat" || !allLogin[0].HasOneTimePassword {
 		t.Fatalf("logins for github.com = %+v", allLogin)
 	}
 	login := decodeJSON[struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
+		Username           string `json:"username"`
+		Password           string `json:"password"`
+		HasOneTimePassword bool   `json:"hasOneTimePassword"`
 	}](t)(hisar.GetLoginForService(personalID, saved.ID, "https://github.com/login"))
-	if login.Password != "mobile-secret" {
+	if login.Password != "mobile-secret" || !login.HasOneTimePassword {
 		t.Errorf("login = %+v", login)
 	}
 	if _, err := hisar.GetLoginForService(personalID, saved.ID, "github.com.evil.net"); err == nil {

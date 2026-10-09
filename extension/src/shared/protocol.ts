@@ -24,6 +24,7 @@ export interface LoginSummary {
   title: string;
   username: string;
   vaultName: string;
+  hasOneTimePassword?: boolean;
 }
 
 export interface HelloResult {
@@ -41,6 +42,13 @@ export interface StatusResult {
 export interface Credentials {
   username: string;
   password: string;
+  hasOneTimePassword?: boolean;
+}
+
+export interface OneTimeCode {
+  code: string;
+  expiresAt: string;
+  period: number;
 }
 
 export type CheckStatus = "new" | "changed" | "unchanged";
@@ -66,6 +74,7 @@ export interface RequestMap {
   unlock: { parameters: Record<string, never>; result: Record<string, never> };
   "logins.match": { parameters: { url: string }; result: { logins: LoginSummary[] } };
   "logins.fill": { parameters: { vaultID: string; itemID: string; url: string }; result: Credentials };
+  "logins.code": { parameters: { vaultID: string; itemID: string; url: string }; result: OneTimeCode };
   "logins.check": { parameters: { url: string; username: string; password: string }; result: CheckResult };
   "logins.save": {
     parameters: { url: string; username: string; password: string; vaultID?: string; itemID?: string };

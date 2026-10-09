@@ -21,6 +21,14 @@ export function isFieldLargeEnough(rect: Rect): boolean {
   return rect.width >= iconSize * 3 && rect.height >= 16;
 }
 
+export function computeUnionRect(allRect: Rect[]): Rect {
+  const left = Math.min(...allRect.map((rect) => rect.left));
+  const top = Math.min(...allRect.map((rect) => rect.top));
+  const right = Math.max(...allRect.map((rect) => rect.left + rect.width));
+  const bottom = Math.max(...allRect.map((rect) => rect.top + rect.height));
+  return { left, top, width: right - left, height: bottom - top };
+}
+
 export function isRectInViewport(rect: Rect, viewport: Viewport): boolean {
   return rect.top + rect.height > 0 && rect.top < viewport.height && rect.left + rect.width > 0 && rect.left < viewport.width;
 }
@@ -32,6 +40,11 @@ export function computeIconRect(fieldRect: Rect): Rect {
     width: iconSize,
     height: iconSize,
   };
+}
+
+// computeIconRectBeside keeps the icon out of split code boxes, which are too narrow to hold it.
+export function computeIconRectBeside(fieldRect: Rect): Rect {
+  return { left: fieldRect.left + fieldRect.width + menuGap * 2, top: fieldRect.top + (fieldRect.height - iconSize) / 2, width: iconSize, height: iconSize };
 }
 
 export function computeMenuRect(fieldRect: Rect, menuHeight: number, viewport: Viewport): Rect {

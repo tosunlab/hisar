@@ -33,13 +33,18 @@ func checkRemoteChangeFlow(t *testing.T, service *Service, serverURL, email, sec
 	if err != nil {
 		t.Fatal(err)
 	}
-	select {
-	case <-remoteChangeChannel:
-	case <-time.After(10 * time.Second):
-		t.Fatal("the first device did not hear about the change")
-	}
-	if detail, err := service.GetItem(personalID, saved.ID); err != nil || detail.Username != "pushed" {
-		t.Errorf("synced item: %+v %v", detail, err)
+	// Late events from this device's own earlier saves can arrive first, so wait for the one that brings the item.
+	deadline := time.After(10 * time.Second)
+	for {
+		select {
+		case <-remoteChangeChannel:
+		case <-deadline:
+			detail, err := service.GetItem(personalID, saved.ID)
+			t.Fatalf("the first device did not sync the change: %+v %v", detail, err)
+		}
+		if detail, err := service.GetItem(personalID, saved.ID); err == nil && detail.Username == "pushed" {
+			break
+		}
 	}
 	if err := service.DeleteItem(personalID, saved.ID); err != nil {
 		t.Fatal(err)

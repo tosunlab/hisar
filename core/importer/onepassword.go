@@ -178,10 +178,19 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 			if name == "" {
 				name = getFirstNonEmpty(section.Title, sectionField.ID)
 			}
+			if isOnePasswordOneTimePassword(sectionField, value) {
+				addOneTimePassword(&vaultItem, name, value)
+				continue
+			}
 			vaultItem.Details.Fields = append(vaultItem.Details.Fields, item.Field{Name: name, Value: value, Concealed: isConcealed})
 		}
 	}
 	return vaultItem, ""
+}
+
+func isOnePasswordOneTimePassword(sectionField onePasswordField, value string) bool {
+	_, isTOTP := sectionField.Value["totp"]
+	return isTOTP || strings.HasPrefix(sectionField.ID, "TOTP_") || strings.HasPrefix(strings.ToLower(strings.TrimSpace(value)), "otpauth://")
 }
 
 // promoteOnePasswordField moves a credential category's username, password and URL fields into the item itself.

@@ -33,3 +33,7 @@ export function chooseLoginFrame(allProbed: ProbedFrame[]): ProbedFrame | undefi
 export function chooseFocusedFrame(allProbed: ProbedFrame[]): ProbedFrame | undefined {
   return allProbed.find((frame) => frame.probe.hasFocusedField);
 }
+
+export function chooseOneTimeCodeFrame(allProbed: ProbedFrame[]): ProbedFrame | undefined {
+  return allProbed.find((frame) => frame.frameId === 0 && frame.probe.hasOneTimeCodeField) ?? allProbed.find((frame) => frame.probe.hasOneTimeCodeField);
+}

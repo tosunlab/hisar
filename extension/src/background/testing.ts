@@ -72,6 +72,7 @@ export interface HarnessOptions {
   tabUrl?: string;
   isHostMissing?: boolean;
   isMenuVisible?: boolean;
+  isClipboardUnavailable?: boolean;
 }
 
 export function createHarness(options: HarnessOptions = {}) {
@@ -82,6 +83,7 @@ export function createHarness(options: HarnessOptions = {}) {
   const allFrameMessage: { frameId: number; message: BackgroundToContentMessage }[] = [];
   const allBroadcast: InlineMenuBroadcast[] = [];
   const allOpenedPopupTab: number[] = [];
+  const allClipboardText: string[] = [];
   let injectionCount = 0;
   const tabUrl = options.tabUrl ?? "https://example.com/login";
   const allFrame = options.allFrame ?? [{ frameId: 0, url: tabUrl, origin: new URL(tabUrl).origin, allAncestorOrigin: [] }];
@@ -110,6 +112,10 @@ export function createHarness(options: HarnessOptions = {}) {
     },
     openPopup: async (tabId) => {
       allOpenedPopupTab.push(tabId);
+    },
+    writeToClipboard: async (text) => {
+      if (options.isClipboardUnavailable) throw new Error("The clipboard is not available");
+      allClipboardText.push(text);
     },
     getInlineMenuUrl: () => "chrome-extension://dynamic-id/inline-menu.html",
     getBrowserName: () => "Chrome",
@@ -147,6 +153,7 @@ export function createHarness(options: HarnessOptions = {}) {
     allFrameMessage,
     allBroadcast,
     allOpenedPopupTab,
+    allClipboardText,
     bridge,
     getInjectionCount: () => injectionCount,
     advanceTime: (milliseconds: number) => (currentTime += milliseconds),

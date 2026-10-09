@@ -27,6 +27,8 @@ describe("manifest.json", () => {
       "scripting",
       "activeTab",
       "tabs",
+      "offscreen",
+      "clipboardWrite",
     ]);
     expect(manifest.host_permissions).toEqual(["<all_urls>"]);
   });

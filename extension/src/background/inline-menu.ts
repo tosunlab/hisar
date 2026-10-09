@@ -50,7 +50,8 @@ export class InlineMenuService {
         session.suggestedPassword = await this.controller.generatePassword({});
         return { ...base, view: "logins", suggestedPassword: session.suggestedPassword };
       }
-      const allLogin = await this.controller.matchLoginsForUrl(session.frameUrl);
+      let allLogin = await this.controller.matchLoginsForUrl(session.frameUrl);
+      if (session.purpose === "one-time-code") allLogin = allLogin.filter((login) => login.hasOneTimePassword);
       return { ...base, view: "logins", allLogin: allLogin.slice(0, maximumInlineLoginCount), hasMoreLogin: allLogin.length > maximumInlineLoginCount };
     } catch (error) {
       const hisarError = toHisarError(error);
@@ -74,6 +75,22 @@ export class InlineMenuService {
       sessionID,
     });
     if (!outcome?.filledUsername && !outcome?.filledPassword) throw new HisarError("not-found", "The login field is gone");
+    this.allSession.remove(sessionID);
+    await this.controller.copyOneTimeCodeAfterFill(credentials, vaultID, itemID, session.frameUrl);
+  }
+
+  async fillOneTimeCode(menuSender: InlineMenuSender, sessionID: string, vaultID: string, itemID: string): Promise<void> {
+    const session = this.requireSession(menuSender, sessionID);
+    if (session.purpose !== "one-time-code") throw new HisarError("invalid-request", "This field does not take a one-time code");
+    await this.requireVisibleMenu(session);
+    const { code } = await this.controller.getOneTimeCode(vaultID, itemID, session.frameUrl);
+    const isFilled = await this.browser.sendToFrame<boolean>(session.tabId, session.frameId, {
+      type: "content.fillOneTimeCode",
+      expectedOrigin: getOrigin(session.frameUrl),
+      code,
+      sessionID,
+    });
+    if (!isFilled) throw new HisarError("not-found", "The one-time code field is gone");
     this.allSession.remove(sessionID);
   }
 

@@ -2,7 +2,8 @@ import type { InlineMenuPurpose } from "../../shared/messages";
 import { getAutocompleteTokens } from "../detection";
 import { isInputElement, isVisible } from "../dom";
 import { findScopeOfField } from "../fill";
-import { isFieldLargeEnough, type Rect } from "./placement";
+import { findOneTimeCodeTarget } from "../one-time-code";
+import { computeUnionRect, isFieldLargeEnough, type Rect } from "./placement";
 
 export const allOwnHostTagName = ["HISAR-SAVE-BAR", "HISAR-INLINE-MENU"];
 
@@ -21,6 +22,11 @@ export function findInlineMenuPurpose(document: Document, element: Element, getR
   if (!isInputElement(element) || element.disabled || element.readOnly || isInsideOwnHost(element)) return undefined;
   if (!isVisible(element)) return undefined;
   const hasLayout = document.documentElement.getClientRects().length > 0;
+  const allCodeField = findOneTimeCodeTarget(element);
+  if (allCodeField) {
+    if (hasLayout && !isFieldLargeEnough(computeUnionRect(allCodeField.map(getRect)))) return undefined;
+    return "one-time-code";
+  }
   if (hasLayout && !isFieldLargeEnough(getRect(element))) return undefined;
   const scope = findScopeOfField(document, element);
   if (!scope) return undefined;

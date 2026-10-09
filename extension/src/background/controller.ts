@@ -8,9 +8,17 @@ import type {
   SaveOfferAction,
   SaveOfferView,
 } from "../shared/messages";
-import { HisarError, toHisarError, type Credentials, type GenerateOptions, type HelloResult, type LoginSummary } from "../shared/protocol";
+import {
+  HisarError,
+  toHisarError,
+  type Credentials,
+  type GenerateOptions,
+  type HelloResult,
+  type LoginSummary,
+  type OneTimeCode,
+} from "../shared/protocol";
 import { getHost, getOrigin, isWebUrl } from "../shared/url";
-import { chooseFocusedFrame, chooseLoginFrame, selectAllFillableFrame, type FrameInfo, type ProbedFrame } from "./frames";
+import { chooseFocusedFrame, chooseLoginFrame, chooseOneTimeCodeFrame, selectAllFillableFrame, type FrameInfo, type ProbedFrame } from "./frames";
 import type { NativeClient } from "./native-client";
 import { decideSaveOffer, RememberedUsernameStore, SaveOfferStore, toSaveOfferView } from "./save";
 import type { ExtensionStorage } from "./storage";
@@ -22,6 +30,7 @@ export interface BrowserBridge {
   sendToFrame<Result>(tabId: number, frameId: number, message: BackgroundToContentMessage): Promise<Result>;
   broadcastToInlineMenu(message: InlineMenuBroadcast): Promise<void>;
   openPopup(tabId: number): Promise<void>;
+  writeToClipboard(text: string): Promise<void>;
   getInlineMenuUrl(): string;
   getBrowserName(): string;
   getExtensionVersion(): string;
@@ -109,9 +118,36 @@ export class BackgroundController {
     return { url, allLogin: result.logins ?? [] };
   }
 
+  async getOneTimeCode(vaultID: string, itemID: string, url: string): Promise<OneTimeCode> {
+    return this.request(() => this.client.request("logins.code", { vaultID, itemID, url }));
+  }
+
+  async getOneTimeCodeForTab(tabId: number, vaultID: string, itemID: string): Promise<OneTimeCode> {
+    const url = await this.browser.getTabUrl(tabId);
+    if (!isWebUrl(url)) throw new HisarError("no-match", "This page has no web address");
+    return this.getOneTimeCode(vaultID, itemID, url);
+  }
+
+  // copyOneTimeCodeAfterFill puts the code on the clipboard for the next step of the sign-in; the fill has already succeeded.
+  async copyOneTimeCodeAfterFill(credentials: Credentials, vaultID: string, itemID: string, url: string): Promise<boolean> {
+    if (!credentials.hasOneTimePassword) return false;
+    try {
+      const { code } = await this.getOneTimeCode(vaultID, itemID, url);
+      await this.browser.writeToClipboard(code);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async fillLogin(tabId: number, vaultID: string, itemID: string): Promise<FillOutcome> {
-    const target = chooseLoginFrame(await this.probeFillableFrames(tabId));
-    if (!target) throw new HisarError("not-found", "No login form found on this page");
+    const allProbed = await this.probeFillableFrames(tabId);
+    const target = chooseLoginFrame(allProbed);
+    if (!target) {
+      const codeTarget = chooseOneTimeCodeFrame(allProbed);
+      if (codeTarget) return this.fillOneTimeCodeIntoFrame(tabId, codeTarget, vaultID, itemID);
+      throw new HisarError("not-found", "No login form found on this page");
+    }
     const credentials = await this.request(() => this.client.request("logins.fill", { vaultID, itemID, url: target.url }));
     const outcome = await this.browser.sendToFrame<FillOutcome>(tabId, target.frameId, {
       type: "content.fillLogin",
@@ -120,7 +156,18 @@ export class BackgroundController {
       password: credentials.password,
     });
     if (!outcome?.filledUsername && !outcome?.filledPassword) throw new HisarError("not-found", "No login form found on this page");
+    await this.copyOneTimeCodeAfterFill(credentials, vaultID, itemID, target.url);
     return outcome;
+  }
+
+  private async fillOneTimeCodeIntoFrame(tabId: number, target: FrameInfo, vaultID: string, itemID: string): Promise<FillOutcome> {
+    const { code } = await this.getOneTimeCode(vaultID, itemID, target.url).catch((error: unknown) => {
+      const hisarError = toHisarError(error);
+      throw hisarError.code === "not-found" ? new HisarError("not-found", "This login has no one-time password") : hisarError;
+    });
+    const isFilled = await this.browser.sendToFrame<boolean>(tabId, target.frameId, { type: "content.fillOneTimeCode", expectedOrigin: target.origin, code });
+    if (!isFilled) throw new HisarError("not-found", "No one-time code field found on this page");
+    return { filledUsername: false, filledPassword: false, filledOneTimeCode: true };
   }
 
   async fillFirstLogin(tabId: number): Promise<FillOutcome> {

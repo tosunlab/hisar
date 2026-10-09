@@ -15,14 +15,17 @@ final class SystemCredentialIdentityStore: CredentialIdentityUpdating {
 
     func replaceAllIdentity(_ allIdentity: [CredentialIdentityRecord]) async {
         guard await checkIsEnabled() else { return }
-        let allPasswordIdentity: [ASCredentialIdentity] = allIdentity.map { identity in
-            ASPasswordCredentialIdentity(
-                serviceIdentifier: ASCredentialServiceIdentifier(identifier: identity.host, type: .domain),
-                user: identity.username,
-                recordIdentifier: identity.recordIdentifier
-            )
+        let allSystemIdentity: [ASCredentialIdentity] = allIdentity.compactMap { identity in
+            let serviceIdentifier = ASCredentialServiceIdentifier(identifier: identity.host, type: .domain)
+            switch identity.kind {
+            case .password:
+                return ASPasswordCredentialIdentity(serviceIdentifier: serviceIdentifier, user: identity.username, recordIdentifier: identity.recordIdentifier)
+            case .oneTimeCode:
+                guard #available(iOS 18.0, *) else { return nil }
+                return ASOneTimeCodeCredentialIdentity(serviceIdentifier: serviceIdentifier, label: identity.username, recordIdentifier: identity.recordIdentifier)
+            }
         }
-        try? await store.replaceCredentialIdentities(allPasswordIdentity)
+        try? await store.replaceCredentialIdentities(allSystemIdentity)
     }
 
     func removeAllIdentity() async {

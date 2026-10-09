@@ -27,6 +27,12 @@ struct SignInLink: Equatable {
 }
 
 struct CredentialIdentityRecord: Hashable {
+    enum Kind: Hashable {
+        case password
+        case oneTimeCode
+    }
+
+    var kind: Kind = .password
     var host: String
     var username: String
     var recordIdentifier: String
@@ -66,11 +72,17 @@ enum VaultLogic {
         var allSeen = Set<CredentialIdentityRecord>()
         for reference in allItem where reference.item.isLogin {
             let username = reference.item.username.trimmingCharacters(in: .whitespaces)
-            guard !username.isEmpty else { continue }
             for url in reference.item.allURL {
                 guard let host = extractHost(url) else { continue }
-                let identity = CredentialIdentityRecord(host: host, username: username, recordIdentifier: reference.id)
-                if allSeen.insert(identity).inserted {
+                var allCandidate: [CredentialIdentityRecord] = []
+                if !username.isEmpty {
+                    allCandidate.append(CredentialIdentityRecord(host: host, username: username, recordIdentifier: reference.id))
+                }
+                if reference.item.hasOneTimePassword {
+                    let label = username.isEmpty ? reference.item.title : username
+                    allCandidate.append(CredentialIdentityRecord(kind: .oneTimeCode, host: host, username: label, recordIdentifier: reference.id))
+                }
+                for identity in allCandidate where allSeen.insert(identity).inserted {
                     allIdentity.append(identity)
                 }
             }

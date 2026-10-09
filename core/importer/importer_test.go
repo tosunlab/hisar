@@ -167,9 +167,9 @@ func TestParseOnePasswordExport(t *testing.T) {
 			Fields: []item.Field{
 				{Name: "organization", Value: "org-alice"},
 				{Name: "Recovery code", Value: "a1b2-c3d4-e5f6", Concealed: true},
-				{Name: "one-time password", Value: "otpauth://totp/GitHub:alice?secret=JBSWY3DPEHPK3PXP&issuer=GitHub", Concealed: true},
 				{Name: "Security", Value: "untitled value"},
 			},
+			OneTimePassword: "otpauth://totp/GitHub:alice?issuer=GitHub&secret=JBSWY3DPEHPK3PXP",
 		},
 	}
 	if !reflect.DeepEqual(github, wantGitHub) {
@@ -235,11 +235,11 @@ func TestParseBitwardenJSON(t *testing.T) {
 			Password: "pässwörd-ünïcode",
 			Notes:    "Line one\nLine \"two\", with a comma",
 			Fields: []item.Field{
-				{Name: "One-time password", Value: "JBSWY3DPEHPK3PXP", Concealed: true},
 				{Name: "Account ID", Value: "12345"},
 				{Name: "PIN", Value: "0000", Concealed: true},
 				{Name: "Admin", Value: "true"},
 			},
+			OneTimePassword: "otpauth://totp/?secret=JBSWY3DPEHPK3PXP",
 		},
 	}
 	if github := findTestItem(t, result, "GitHub"); !reflect.DeepEqual(github, wantGitHub) {
@@ -278,10 +278,10 @@ func TestParseBitwardenCSV(t *testing.T) {
 			Password: `bw,pass"word`,
 			Notes:    "Multi\nline notes",
 			Fields: []item.Field{
-				{Name: "One-time password", Value: "JBSWY3DPEHPK3PXP", Concealed: true},
 				{Name: "Account ID", Value: "12345"},
 				{Name: "PIN", Value: "0000"},
 			},
+			OneTimePassword: "otpauth://totp/?secret=JBSWY3DPEHPK3PXP",
 		},
 	}
 	if github := findTestItem(t, result, "GitHub"); !reflect.DeepEqual(github, wantGitHub) {
@@ -305,7 +305,7 @@ func TestParseOnePasswordCSV(t *testing.T) {
 	}
 	checkSkipped(t, result, map[string]string{"Old forum": "archived"})
 	github := findTestItem(t, result, "GitHub")
-	if github.Details.Notes != "Line 1\nLine 2" || !reflect.DeepEqual(github.Overview.Tags, []string{"work", "dev"}) || len(github.Details.Fields) != 1 || !github.Details.Fields[0].Concealed {
+	if github.Details.Notes != "Line 1\nLine 2" || !reflect.DeepEqual(github.Overview.Tags, []string{"work", "dev"}) || github.Details.Fields != nil || github.Details.OneTimePassword != "otpauth://totp/GitHub:alice?issuer=GitHub&secret=JBSWY3DPEHPK3PXP" {
 		t.Errorf("GitHub = %+v", github)
 	}
 	if recipe := findTestItem(t, result, "Recipe"); GetKind(recipe) != KindSecureNote {
@@ -346,7 +346,7 @@ func TestParseBrowserCSV(t *testing.T) {
 
 	safari := parseFixture(t, "Passwords.csv", readFixture(t, "safari.csv", testKeySet{}), FormatAutomatic)
 	safariGitHub := findTestItem(t, safari, "GitHub (alice)")
-	if safariGitHub.Details.Notes != "Work account\nsecond line" || safariGitHub.Details.Fields[0].Name != "One-time password" || !safariGitHub.Details.Fields[0].Concealed {
+	if safariGitHub.Details.Notes != "Work account\nsecond line" || safariGitHub.Details.Fields != nil || safariGitHub.Details.OneTimePassword != "otpauth://totp/GitHub:alice?issuer=GitHub&secret=JBSWY3DPEHPK3PXP" {
 		t.Errorf("safari = %+v", safariGitHub)
 	}
 
@@ -362,6 +362,35 @@ func TestParseBrowserCSV(t *testing.T) {
 	lastPass := parseFixture(t, "lastpass_export.csv", readFixture(t, "lastpass.csv", testKeySet{}), FormatAutomatic)
 	if note := findTestItem(t, lastPass, "Database notes"); GetKind(note) != KindSecureNote || !reflect.DeepEqual(note.Overview.Tags, []string{"Servers"}) {
 		t.Errorf("lastpass note = %+v", note)
+	}
+}
+
+func TestParseKeepsInvalidOneTimePasswordAsConcealedField(t *testing.T) {
+	wantField := []item.Field{{Name: "One-time password", Value: "steam://ABCDEF", Concealed: true}}
+	csvResult := parseFixture(t, "data.csv", []byte("name,url,username,password,totp\nGame,https://store.example.com,alice,pw,steam://ABCDEF\nMail,https://mail.example.com,alice,pw,jbsw y3dp ehpk 3pxp\n"), FormatAutomatic)
+	if game := findTestItem(t, csvResult, "Game"); game.Details.OneTimePassword != "" || !reflect.DeepEqual(game.Details.Fields, wantField) {
+		t.Errorf("CSV invalid secret = %+v", game.Details)
+	}
+	if mail := findTestItem(t, csvResult, "Mail"); mail.Details.OneTimePassword != "otpauth://totp/?secret=JBSWY3DPEHPK3PXP" || mail.Details.Fields != nil {
+		t.Errorf("CSV setup key = %+v", mail.Details)
+	}
+
+	bitwardenResult := parseFixture(t, "export.json", []byte(`{"encrypted":false,"items":[{"type":1,"name":"Game","login":{"username":"alice","totp":"steam://ABCDEF"}}]}`), FormatAutomatic)
+	if game := findTestItem(t, bitwardenResult, "Game"); game.Details.OneTimePassword != "" || !reflect.DeepEqual(game.Details.Fields, wantField) {
+		t.Errorf("Bitwarden invalid secret = %+v", game.Details)
+	}
+
+	onePasswordData := `{"accounts":[{"vaults":[{"items":[{"categoryUuid":"001","overview":{"title":"Game"},"details":{"sections":[{"title":"","fields":[
+		{"title":"one-time password","id":"TOTP_1","value":{"totp":"steam://ABCDEF"}},
+		{"title":"second code","id":"TOTP_2","value":{"totp":"JBSWY3DPEHPK3PXP"}},
+		{"title":"backup","id":"backup","value":{"string":"otpauth://totp/Game:alice?secret=GEZDGNBVGY3TQOJQ"}}]}]}}]}]}]}`
+	onePasswordResult := parseFixture(t, "export.1pux", buildOnePasswordExport(t, []byte(onePasswordData)), FormatAutomatic)
+	allWantOnePasswordField := []item.Field{
+		{Name: "one-time password", Value: "steam://ABCDEF", Concealed: true},
+		{Name: "backup", Value: "otpauth://totp/Game:alice?secret=GEZDGNBVGY3TQOJQ", Concealed: true},
+	}
+	if game := findTestItem(t, onePasswordResult, "Game"); game.Details.OneTimePassword != "otpauth://totp/?secret=JBSWY3DPEHPK3PXP" || !reflect.DeepEqual(game.Details.Fields, allWantOnePasswordField) {
+		t.Errorf("1Password secrets = %+v", game.Details)
 	}
 }
 

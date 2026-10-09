@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		01A6FE523D8DA1B696665F6B /* OneTimeCodeRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52CA41C98B20CCCC570ECDA2 /* OneTimeCodeRow.swift */; };
 		0519427F1A30123623C1514D /* PasswordGeneratorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A031DA382226E9A30A8DA85C /* PasswordGeneratorView.swift */; };
 		0738F234B5FC729D53DFCB1F /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = F067661397CABF889DA6CF7C /* Theme.swift */; };
 		0A578F219707B0B5B090842E /* SignInView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A27E1D1B8F40B6BD8851EA2 /* SignInView.swift */; };
@@ -49,6 +50,7 @@
 		6B7BC9DF0F93E81A2CF47B21 /* LockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56632F6C54EBD5227BCBED2E /* LockView.swift */; };
 		6DB05471C2C91B766AE077F9 /* VaultLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E76E121835129E45189D709A /* VaultLogicTests.swift */; };
 		6E067186CA8E3B3F7B57CE1A /* AutoFillModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7ACF599EDF05A1F19E55537F /* AutoFillModel.swift */; };
+		739E3C3C505950494AF65FE2 /* OneTimeCodeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7689BDDB94FD64917944388 /* OneTimeCodeUITests.swift */; };
 		739F4863584CE3912731463A /* SystemCredentialIdentityStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FAD214270656E02E761B8B2 /* SystemCredentialIdentityStore.swift */; };
 		770689DFEAFC62A0A76A43DD /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3766EC2BF71158CD0225F090 /* Models.swift */; };
 		7960514E951A2A90C671BA9C /* ItemIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47989259B86D2ABA32773725 /* ItemIcon.swift */; };
@@ -63,6 +65,7 @@
 		90BC5BC6D357C99DE6AB9ACA /* BiometricKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC328A5FA6A28DF1ACC5DC64 /* BiometricKeychain.swift */; };
 		90EB584A6FAAE235E13B0C90 /* UnlockPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F56BEC5782A64AB5EE308FF /* UnlockPanel.swift */; };
 		92B9F53A4E1B60F74F0F6498 /* EmergencyKitScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFB5B60894F52BB5DA1D9AA /* EmergencyKitScanner.swift */; };
+		92DEBF6DCCA2636F6AE63A04 /* OneTimeCodeRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52CA41C98B20CCCC570ECDA2 /* OneTimeCodeRow.swift */; };
 		944EF0E34DA8F818A4F0700F /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 477BEA6CA38721F987A7FA77 /* AppModel.swift */; };
 		9C287B952870C5A23543D04D /* AutoFillPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22698CECCF02525330145455 /* AutoFillPreviewView.swift */; };
 		9C438376F2EE0D0B6481F189 /* LogoMark.swift in Sources */ = {isa = PBXBuildFile; fileRef = A238D14B92DA27E1CCAE99DA /* LogoMark.swift */; };
@@ -166,6 +169,7 @@
 		477BEA6CA38721F987A7FA77 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		47989259B86D2ABA32773725 /* ItemIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemIcon.swift; sourceTree = "<group>"; };
 		51192750875FAC5488F2567C /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		52CA41C98B20CCCC570ECDA2 /* OneTimeCodeRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OneTimeCodeRow.swift; sourceTree = "<group>"; };
 		56632F6C54EBD5227BCBED2E /* LockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockView.swift; sourceTree = "<group>"; };
 		58725D5CFD94EED72E93193F /* ItemEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemEditorView.swift; sourceTree = "<group>"; };
 		5C081C11B996ABE21B047D8D /* HisarUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HisarUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -179,6 +183,7 @@
 		A031DA382226E9A30A8DA85C /* PasswordGeneratorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasswordGeneratorView.swift; sourceTree = "<group>"; };
 		A238D14B92DA27E1CCAE99DA /* LogoMark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogoMark.swift; sourceTree = "<group>"; };
 		AA05D6AEDA2B1F45CB3B9F26 /* KeychainSecretKeyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainSecretKeyStore.swift; sourceTree = "<group>"; };
+		B7689BDDB94FD64917944388 /* OneTimeCodeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OneTimeCodeUITests.swift; sourceTree = "<group>"; };
 		BADDC2475A604991BB81DEE6 /* Hisar.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Hisar.xcconfig; sourceTree = "<group>"; };
 		BC328A5FA6A28DF1ACC5DC64 /* BiometricKeychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiometricKeychain.swift; sourceTree = "<group>"; };
 		CA215E0ABDBB6E239127F971 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -233,6 +238,7 @@
 				D5829FBCBCC42B40AFEF68F3 /* FaceIDUITests.swift */,
 				36F2BE095F513A43A814C85D /* HisarUITestCase.swift */,
 				13B49F20D7B3678555E885AD /* HisarUITests.swift */,
+				B7689BDDB94FD64917944388 /* OneTimeCodeUITests.swift */,
 			);
 			path = UI;
 			sourceTree = "<group>";
@@ -342,6 +348,7 @@
 				41FBB5DC69E33D5A27FE6041 /* ItemListView.swift */,
 				56632F6C54EBD5227BCBED2E /* LockView.swift */,
 				FE0912D6FEC796C6B4E10A87 /* NewSecretKeyView.swift */,
+				52CA41C98B20CCCC570ECDA2 /* OneTimeCodeRow.swift */,
 				A031DA382226E9A30A8DA85C /* PasswordGeneratorView.swift */,
 				6A0557C083DC71D33D7D838B /* PrivacyShield.swift */,
 				DDEDF97D4D5D844AB4DA42AD /* RootView.swift */,
@@ -576,6 +583,7 @@
 				BA22AA3DF1A43D357843EA5E /* FaceIDUITests.swift in Sources */,
 				0B2C04782778BD9D153F4512 /* HisarUITestCase.swift in Sources */,
 				385610A06FAE72AFC83F4F07 /* HisarUITests.swift in Sources */,
+				739E3C3C505950494AF65FE2 /* OneTimeCodeUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -639,6 +647,7 @@
 				870E80A7AC2AE8E44FF97B2B /* LogoMark.swift in Sources */,
 				D957D25D3E989C88988B83B3 /* Models.swift in Sources */,
 				293744D6350E91145A6182AD /* NewSecretKeyView.swift in Sources */,
+				92DEBF6DCCA2636F6AE63A04 /* OneTimeCodeRow.swift in Sources */,
 				28F7374E5C1FBBD30F6B6E54 /* PasswordGeneratorView.swift in Sources */,
 				A94B4DF0B3BDD0E2EED6122E /* PasteboardClipboard.swift in Sources */,
 				AAECE1D2035800767C3F33E1 /* PrivacyShield.swift in Sources */,
@@ -677,6 +686,7 @@
 				6ADB90127213F9204645DD32 /* LogoMark.swift in Sources */,
 				770689DFEAFC62A0A76A43DD /* Models.swift in Sources */,
 				6384BDCCFB9C112662CE3350 /* NewSecretKeyView.swift in Sources */,
+				01A6FE523D8DA1B696665F6B /* OneTimeCodeRow.swift in Sources */,
 				0519427F1A30123623C1514D /* PasswordGeneratorView.swift in Sources */,
 				4023A7B395E9788AB14768F7 /* PasteboardClipboard.swift in Sources */,
 				D9D6621F9568AC3A3CDBED9D /* PrivacyShield.swift in Sources */,

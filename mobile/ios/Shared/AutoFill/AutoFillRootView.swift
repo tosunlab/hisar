@@ -72,7 +72,7 @@ private struct AutoFillLockView: View {
         ScrollView {
             VStack(spacing: 16) {
                 if !model.serviceName.isEmpty {
-                    Text("Fill a login for \(model.serviceName)")
+                    Text(model.requestKind == .oneTimeCode ? "Fill a one-time code for \(model.serviceName)" : "Fill a login for \(model.serviceName)")
                         .font(.subheadline)
                         .foregroundStyle(Theme.textMuted)
                         .padding(.top, 24)
@@ -112,7 +112,7 @@ private struct AutoFillListView: View {
             }
             Section {
                 if model.allVisibleMatchingLogin.isEmpty {
-                    Text(model.searchText.isEmpty ? "No logins saved for this site. Search all logins above." : "No matching logins for this site.")
+                    Text(emptyMessage)
                         .foregroundStyle(Theme.textMuted)
                         .listRowBackground(Theme.surface)
                 }
@@ -120,7 +120,7 @@ private struct AutoFillListView: View {
                     buildLoginRow(login)
                 }
             } header: {
-                Text(model.serviceName.isEmpty ? "Matching logins" : "Logins for \(model.serviceName)")
+                Text(sectionTitle)
                     .textCase(nil)
             }
             if !model.searchText.isEmpty {
@@ -144,6 +144,20 @@ private struct AutoFillListView: View {
         .disabled(model.isBusy)
     }
 
+    private var sectionTitle: String {
+        let noun = model.requestKind == .oneTimeCode ? "One-time codes" : "Logins"
+        return model.serviceName.isEmpty ? "Matching \(noun.lowercased())" : "\(noun) for \(model.serviceName)"
+    }
+
+    private var emptyMessage: String {
+        switch (model.requestKind, model.searchText.isEmpty) {
+        case (.oneTimeCode, true): "No login for this site has a one-time password. Search all logins above."
+        case (.oneTimeCode, false): "No matching one-time codes for this site."
+        case (.password, true): "No logins saved for this site. Search all logins above."
+        case (.password, false): "No matching logins for this site."
+        }
+    }
+
     private func buildLoginRow(_ login: LoginMatch) -> some View {
         Button {
             Task { await model.select(login) }
@@ -158,6 +172,11 @@ private struct AutoFillListView: View {
                         .foregroundStyle(Theme.textMuted)
                 }
                 Spacer()
+                if login.hasOneTimePassword {
+                    Image(systemName: "timer")
+                        .foregroundStyle(Theme.textMuted)
+                        .accessibilityLabel("Has a one-time code")
+                }
             }
             .contentShape(Rectangle())
         }

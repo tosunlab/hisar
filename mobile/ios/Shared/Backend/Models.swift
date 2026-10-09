@@ -90,14 +90,16 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     var publicKey: String
     var fingerprint: String
     var keyType: String
+    var oneTimePassword: String
+    var hasOneTimePassword: Bool
 
     enum CodingKeys: String, CodingKey {
-        case id, revision, category, title, username, password, notes, publicKey, fingerprint, keyType
+        case id, revision, category, title, username, password, notes, publicKey, fingerprint, keyType, oneTimePassword, hasOneTimePassword
         case allURL = "urls"
         case allField = "fields"
     }
 
-    init(id: String = "", revision: String = "", category: String = ItemDetail.categoryLogin, title: String = "", username: String = "", allURL: [String] = [], password: String = "", notes: String = "", allField: [ItemField] = [], publicKey: String = "", fingerprint: String = "", keyType: String = "") {
+    init(id: String = "", revision: String = "", category: String = ItemDetail.categoryLogin, title: String = "", username: String = "", allURL: [String] = [], password: String = "", notes: String = "", allField: [ItemField] = [], publicKey: String = "", fingerprint: String = "", keyType: String = "", oneTimePassword: String = "", hasOneTimePassword: Bool = false) {
         self.id = id
         self.revision = revision
         self.category = category
@@ -110,6 +112,8 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         self.publicKey = publicKey
         self.fingerprint = fingerprint
         self.keyType = keyType
+        self.oneTimePassword = oneTimePassword
+        self.hasOneTimePassword = hasOneTimePassword
     }
 
     init(from decoder: Decoder) throws {
@@ -126,6 +130,8 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         publicKey = try container.decodeIfPresent(String.self, forKey: .publicKey) ?? ""
         fingerprint = try container.decodeIfPresent(String.self, forKey: .fingerprint) ?? ""
         keyType = try container.decodeIfPresent(String.self, forKey: .keyType) ?? ""
+        oneTimePassword = try container.decodeIfPresent(String.self, forKey: .oneTimePassword) ?? ""
+        hasOneTimePassword = try container.decodeIfPresent(Bool.self, forKey: .hasOneTimePassword) ?? false
     }
 
     var isLogin: Bool { category.isEmpty || category == Self.categoryLogin }
@@ -143,6 +149,26 @@ struct LoginMatch: Codable, Hashable, Identifiable {
     var title: String
     var username: String
     var vaultName: String
+    var hasOneTimePassword: Bool
+
+    init(vaultID: String, itemID: String, title: String, username: String, vaultName: String, hasOneTimePassword: Bool = false) {
+        self.vaultID = vaultID
+        self.itemID = itemID
+        self.title = title
+        self.username = username
+        self.vaultName = vaultName
+        self.hasOneTimePassword = hasOneTimePassword
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        vaultID = try container.decode(String.self, forKey: .vaultID)
+        itemID = try container.decode(String.self, forKey: .itemID)
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+        username = try container.decodeIfPresent(String.self, forKey: .username) ?? ""
+        vaultName = try container.decodeIfPresent(String.self, forKey: .vaultName) ?? ""
+        hasOneTimePassword = try container.decodeIfPresent(Bool.self, forKey: .hasOneTimePassword) ?? false
+    }
 
     var id: String { LoginMatch.buildRecordIdentifier(vaultID: vaultID, itemID: itemID) }
 
@@ -158,4 +184,36 @@ struct LoginMatch: Codable, Hashable, Identifiable {
 struct LoginCredential: Codable, Equatable {
     var username: String
     var password: String
+    var hasOneTimePassword: Bool
+
+    init(username: String, password: String, hasOneTimePassword: Bool = false) {
+        self.username = username
+        self.password = password
+        self.hasOneTimePassword = hasOneTimePassword
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        username = try container.decodeIfPresent(String.self, forKey: .username) ?? ""
+        password = try container.decodeIfPresent(String.self, forKey: .password) ?? ""
+        hasOneTimePassword = try container.decodeIfPresent(Bool.self, forKey: .hasOneTimePassword) ?? false
+    }
+}
+
+struct OneTimeCode: Codable, Equatable {
+    var code: String
+    var expiresAt: String
+    var period: Int
+
+    var expiryDate: Date? { ISO8601DateFormatter().date(from: expiresAt) }
+
+    var formattedCode: String {
+        let middle = code.index(code.startIndex, offsetBy: (code.count + 1) / 2)
+        return "\(code[..<middle]) \(code[middle...])".trimmingCharacters(in: .whitespaces)
+    }
+
+    func countSecondsLeft(at date: Date) -> Int {
+        guard let expiryDate else { return 0 }
+        return max(0, Int(expiryDate.timeIntervalSince(date).rounded(.up)))
+    }
 }

@@ -157,6 +157,35 @@ final class AppModelTests: XCTestCase {
         let allHost = Set(identityStore.allIdentity.map(\.host))
         XCTAssertEqual(allHost, ["github.com", "bank.example.com", "www.netflix.com"])
         XCTAssertTrue(identityStore.allIdentity.contains(CredentialIdentityRecord(host: "github.com", username: "alice", recordIdentifier: "personal/github")))
+        XCTAssertEqual(identityStore.allIdentity.filter { $0.kind == .oneTimeCode }, [CredentialIdentityRecord(kind: .oneTimeCode, host: "github.com", username: "alice", recordIdentifier: "personal/github")])
+    }
+
+    func testOneTimePasswordIsSavedLoadedAndCopied() async {
+        let model = await createUnlockedModel()
+        XCTAssertEqual(model.listAllItemReference(vaultID: "personal").first { $0.item.id == "github" }?.item.hasOneTimePassword, true)
+        XCTAssertEqual(model.listAllItemReference(vaultID: "personal").first { $0.item.id == "github" }?.item.oneTimePassword, "", "summaries never carry the secret")
+        let code = await model.loadOneTimeCode(vaultID: "personal", itemID: "github")
+        XCTAssertEqual(code, FakeBackend.oneTimeCode)
+        let noCode = await model.loadOneTimeCode(vaultID: "personal", itemID: "bank")
+        XCTAssertNil(noCode)
+        await model.copyField(vaultID: "personal", itemID: "github", fieldName: "one-time code", label: "One-time code")
+        XCTAssertEqual(backend.allCopiedField, ["github.one-time code"])
+        XCTAssertEqual(model.noticeMessage, "One-time code copied. It clears in 90 seconds.")
+
+        let draft = ItemDetail(title: "Mastodon", username: "alice", allURL: ["mastodon.social"], password: "secret", oneTimePassword: "jbsw y3dp ehpk 3pxp")
+        let savedItem = await model.saveItem(vaultID: "personal", item: draft)
+        XCTAssertEqual(savedItem?.oneTimePassword, "otpauth://totp/?secret=JBSWY3DPEHPK3PXP")
+        let summary = model.listAllItemReference(vaultID: "personal").first { $0.item.title == "Mastodon" }?.item
+        XCTAssertEqual(summary?.oneTimePassword, "")
+        XCTAssertEqual(summary?.hasOneTimePassword, true)
+        XCTAssertTrue(identityStore.allIdentity.contains { $0.kind == .oneTimeCode && $0.host == "mastodon.social" })
+    }
+
+    func testInvalidOneTimePasswordShowsTheDesktopMessage() async {
+        let model = await createUnlockedModel()
+        let savedItem = await model.saveItem(vaultID: "personal", item: ItemDetail(title: "Broken", oneTimePassword: "not a secret!"))
+        XCTAssertNil(savedItem)
+        XCTAssertEqual(model.errorMessage, "The one-time password is not a valid secret or otpauth:// link")
     }
 
     func testSaveNewItemAddsItWithoutSecretsAndUpdatesIdentities() async {

@@ -26,6 +26,7 @@ create_invite() {
 INVITE_LINK=$(create_invite ios-ui@example.com)
 AUTOFILL_INVITE_LINK=$(create_invite ios-autofill@example.com)
 BIOMETRIC_INVITE_LINK=$(create_invite ios-face-id@example.com)
+ONE_TIME_CODE_INVITE_LINK=$(create_invite ios-one-time-code@example.com)
 
 SIMULATOR_ID=${IOS_SIMULATOR_ID:-$("$ROOT/mobile/ios/scripts/find-simulator.sh")}
 
@@ -33,6 +34,7 @@ if ! TEST_RUNNER_HISAR_UI_TEST_SERVER="$HISAR_PUBLIC_URL" \
   TEST_RUNNER_HISAR_UI_TEST_INVITE_LINK="$INVITE_LINK" \
   TEST_RUNNER_HISAR_UI_TEST_AUTOFILL_INVITE_LINK="$AUTOFILL_INVITE_LINK" \
   TEST_RUNNER_HISAR_UI_TEST_BIOMETRIC_INVITE_LINK="$BIOMETRIC_INVITE_LINK" \
+  TEST_RUNNER_HISAR_UI_TEST_ONE_TIME_CODE_INVITE_LINK="$ONE_TIME_CODE_INVITE_LINK" \
   TEST_RUNNER_HISAR_UI_TEST_SCREENSHOT_DIRECTORY="${HISAR_UI_TEST_SCREENSHOT_DIRECTORY:-}" \
   xcodebuild test -project "$ROOT/mobile/ios/Hisar.xcodeproj" -scheme Hisar -only-testing:"${IOS_UI_TESTS:-HisarUITests}" \
   -destination "id=$SIMULATOR_ID" ${IOS_DERIVED_DATA:+-derivedDataPath "$IOS_DERIVED_DATA"} ${IOS_RESULT_BUNDLE:+-resultBundlePath "$IOS_RESULT_BUNDLE"}; then

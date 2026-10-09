@@ -538,11 +538,15 @@ func (s *Service) GetOneTimeCode(vaultID, itemID string) (OneTimeCode, error) {
 	if err != nil {
 		return OneTimeCode{}, err
 	}
+	return generateOneTimeCode(vaultItem, s.config.Now())
+}
+
+func generateOneTimeCode(vaultItem *item.Item, now time.Time) (OneTimeCode, error) {
 	config, err := totp.Parse(vaultItem.Details.OneTimePassword)
 	if err != nil {
 		return OneTimeCode{}, fmt.Errorf("one-time password %w", ErrNotFound)
 	}
-	code, expiresAt := config.GenerateCode(s.config.Now())
+	code, expiresAt := config.GenerateCode(now)
 	return OneTimeCode{Code: code, ExpiresAt: expiresAt.UTC().Format(time.RFC3339), Period: config.Period}, nil
 }
 

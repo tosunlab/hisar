@@ -92,11 +92,12 @@ type StatusResult struct {
 }
 
 type Login struct {
-	VaultID   string `json:"vaultID"`
-	ItemID    string `json:"itemID"`
-	Title     string `json:"title"`
-	Username  string `json:"username"`
-	VaultName string `json:"vaultName"`
+	VaultID            string `json:"vaultID"`
+	ItemID             string `json:"itemID"`
+	Title              string `json:"title"`
+	Username           string `json:"username"`
+	VaultName          string `json:"vaultName"`
+	HasOneTimePassword bool   `json:"hasOneTimePassword"`
 }
 
 type MatchResult struct {
@@ -104,8 +105,9 @@ type MatchResult struct {
 }
 
 type FillResult struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+	Username           string `json:"username"`
+	Password           string `json:"password"`
+	HasOneTimePassword bool   `json:"hasOneTimePassword"`
 }
 
 type CheckResult struct {

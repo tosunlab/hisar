@@ -108,9 +108,7 @@ func convertBitwardenItem(entry bitwardenItem) (item.Item, string) {
 		for _, uri := range entry.Login.AllURI {
 			vaultItem.Overview.URLs = append(vaultItem.Overview.URLs, uri.URI)
 		}
-		if entry.Login.TOTP != "" {
-			vaultItem.Details.Fields = append(vaultItem.Details.Fields, item.Field{Name: "One-time password", Value: entry.Login.TOTP, Concealed: true})
-		}
+		addOneTimePassword(&vaultItem, "One-time password", entry.Login.TOTP)
 	}
 	for _, field := range entry.AllField {
 		if field.Type == bitwardenFieldLinked {

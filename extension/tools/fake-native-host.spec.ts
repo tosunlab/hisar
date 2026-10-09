@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { createFrameReader, createInitialState, doesUrlMatch, encodeFrame, respond } from "./fake-native-host.mjs";
+import { createFrameReader, createInitialState, doesUrlMatch, encodeFrame, generateOneTimeCode, respond } from "./fake-native-host.mjs";
 import { registerFakeHost } from "./register-fake-host.mjs";
 
 const allTemporaryDirectory: string[] = [];
@@ -17,6 +17,25 @@ function createTemporaryDirectory(): string {
 
 afterEach(() => {
   for (const directory of allTemporaryDirectory.splice(0)) rmSync(directory, { recursive: true, force: true });
+});
+
+describe("generateOneTimeCode", () => {
+  it.each([
+    [59, "287082", "1970-01-01T00:01:00Z"],
+    [1111111109, "081804", "2005-03-18T01:58:30Z"],
+    [1234567890, "005924", "2009-02-13T23:32:00Z"],
+  ])("matches the RFC 6238 SHA-1 vector at %i s", (seconds, code, expiresAt) => {
+    expect(generateOneTimeCode("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", seconds * 1000)).toEqual({ code, expiresAt, period: 30 });
+  });
+
+  it("answers logins.code only for a matching login with a one-time password", () => {
+    const state = { ...createInitialState(), allPairing: [{ instanceID: "i", browser: "Chrome", tokenHash: "", pairedAt: 0 }] };
+    state.allLogin[0].oneTimePassword = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+    state.allPairing[0].tokenHash = "e3b98a4da31a127d4bde6e43033f66ba274cab0eb7eb1c70ec41402bf6273dd8";
+    const request = { id: "1", type: "logins.code", token: "t", vaultID: "vault-personal", itemID: "item-example" };
+    expect(respond(state, { ...request, url: "https://example.com/2fa" }, 59_000).result).toEqual({ code: "287082", expiresAt: "1970-01-01T00:01:00Z", period: 30 });
+    expect(respond(state, { ...request, url: "https://example.org/2fa" }, 59_000).error?.code).toBe("no-match");
+  });
 });
 
 describe("doesUrlMatch", () => {

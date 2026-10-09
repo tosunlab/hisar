@@ -118,6 +118,14 @@ final class HisarKitBackend: VaultBackend {
         try callReturningNothing { try hisar.deleteItem(vaultID, itemID: itemID) }
     }
 
+    func getOneTimeCode(vaultID: String, itemID: String) throws -> OneTimeCode {
+        try decode(OneTimeCode.self, from: callReturningText { hisar.getOneTimeCode(vaultID, itemID: itemID, error: $0) })
+    }
+
+    func getOneTimeCodeForService(vaultID: String, itemID: String, serviceIdentifier: String) throws -> OneTimeCode {
+        try decode(OneTimeCode.self, from: callReturningText { hisar.getOneTimeCode(forService: vaultID, itemID: itemID, serviceIdentifier: serviceIdentifier, error: $0) })
+    }
+
     func copyField(vaultID: String, itemID: String, fieldName: String) throws {
         try callReturningNothing { try hisar.copyField(vaultID, itemID: itemID, fieldName: fieldName) }
     }

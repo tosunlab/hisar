@@ -52,6 +52,8 @@ The store rejects a manifest with a `key` field, so `package:store` removes it. 
 | `scripting` | Lists the frames of the current tab and fills a login into the page only after the user chooses it, respecting the same-site frame rule. |
 | `activeTab` | Reads the address of the tab the user opened the popup or pressed the fill shortcut on, to find matching logins. |
 | `tabs` | Finds the current tab's address for the popup and keeps save offers with their tab while the page navigates after signing in. |
+| `offscreen` | Opens a hidden extension page whose only job is to put the current one-time code on the clipboard after the user fills a login that has one; a service worker cannot reach the clipboard itself. |
+| `clipboardWrite` | That hidden page copies without a user gesture of its own, which Chrome allows only with this permission. Only the code of the login the user just filled is copied. |
 | Host permission `<all_urls>` | The content script detects login forms on any site to show the Hisar icon and to offer saving a login after the user signs in; users keep logins for any website. |
 | Remote code | No: all code is in the package. |
 

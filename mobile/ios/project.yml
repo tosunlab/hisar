@@ -118,6 +118,7 @@ targets:
             ASCredentialProviderExtensionShowsConfigurationUI: false
             ASCredentialProviderExtensionCapabilities:
               ProvidesPasswords: true
+              ProvidesOneTimeCodes: true
 
   HisarTests:
     type: bundle.unit-test

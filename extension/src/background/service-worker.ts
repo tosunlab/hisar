@@ -1,4 +1,4 @@
-import type { BackgroundToContentMessage } from "../shared/messages";
+import type { BackgroundToContentMessage, OffscreenCopyMessage } from "../shared/messages";
 import { nativeHostName, toHisarError } from "../shared/protocol";
 import { getBrowserName } from "../shared/url";
 import { BackgroundController, type BrowserBridge } from "./controller";
@@ -19,6 +19,26 @@ async function getAllFrameInfo(tabId: number): Promise<FrameInfo[]> {
     }),
   });
   return allResult.flatMap((injection) => (injection.result ? [{ frameId: injection.frameId, ...injection.result }] : []));
+}
+
+let offscreenCreation: Promise<void> | undefined;
+
+async function ensureOffscreenDocument(): Promise<void> {
+  const documentUrl = chrome.runtime.getURL("offscreen.html");
+  const allContext = await chrome.runtime.getContexts({ contextTypes: [chrome.runtime.ContextType.OFFSCREEN_DOCUMENT], documentUrls: [documentUrl] });
+  if (allContext.length > 0) return;
+  offscreenCreation ??= chrome.offscreen
+    .createDocument({ url: "offscreen.html", reasons: [chrome.offscreen.Reason.CLIPBOARD], justification: "Copy the one-time code after filling a login" })
+    .finally(() => (offscreenCreation = undefined));
+  await offscreenCreation;
+}
+
+// A service worker has no clipboard, so an offscreen document copies.
+async function writeToClipboard(text: string): Promise<void> {
+  await ensureOffscreenDocument();
+  const message: OffscreenCopyMessage = { target: "offscreen", type: "offscreen.copy", text };
+  const isCopied = await chrome.runtime.sendMessage(message);
+  if (isCopied !== true) throw new Error("The clipboard is not available");
 }
 
 const navigatorWithBrands = navigator as Navigator & { userAgentData?: { brands?: { brand: string }[] }; brave?: unknown };
@@ -45,6 +65,7 @@ const bridge: BrowserBridge = {
       await chrome.tabs.create({ url: chrome.runtime.getURL(`popup.html?tabId=${tabId}`), index: tab.index + 1, openerTabId: tabId });
     }
   },
+  writeToClipboard,
   // In the service worker getURL uses the dynamic ID of web_accessible_resources (use_dynamic_url); content scripts get the static one.
   getInlineMenuUrl: () => chrome.runtime.getURL("inline-menu.html"),
   getBrowserName: () => getBrowserName(navigatorWithBrands.userAgentData, navigator.userAgent, navigatorWithBrands.brave !== undefined),

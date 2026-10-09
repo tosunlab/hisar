@@ -19,7 +19,9 @@ export function getAutocompleteTokens(input: HTMLInputElement): string[] {
 }
 
 export function isPasswordField(element: Element): element is HTMLInputElement {
-  return isInputElement(element) && element.type === "password" && !element.disabled && isVisible(element);
+  return (
+    isInputElement(element) && element.type === "password" && !element.disabled && !getAutocompleteTokens(element).includes("one-time-code") && isVisible(element)
+  );
 }
 
 export function isTextField(element: Element): element is HTMLInputElement {

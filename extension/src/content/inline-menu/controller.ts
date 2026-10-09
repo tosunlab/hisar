@@ -2,8 +2,9 @@ import { VisibilityGuard } from "../../shared/click-guard";
 import type { ContentToBackgroundMessage, InlineMenuKey, InlineMenuPurpose, MessageResponse } from "../../shared/messages";
 import { defaultInlineMenuSettings, type InlineMenuSettings } from "../../shared/settings";
 import { getParentAcrossShadow } from "../dom";
+import { findOneTimeCodeTarget } from "../one-time-code";
 import { findInlineMenuPurpose, isFrameEligibleForInlineMenu } from "./eligibility";
-import { computeIconRect, computeMenuRect, iconSize, isRectInViewport, type Rect } from "./placement";
+import { computeIconRect, computeIconRectBeside, computeMenuRect, computeUnionRect, iconSize, isRectInViewport, type Rect } from "./placement";
 
 export interface InlineMenuDependencies {
   sendToBackground: <Result>(message: ContentToBackgroundMessage) => Promise<MessageResponse<Result>>;
@@ -45,6 +46,7 @@ interface OpenMenu {
 export class InlineMenuController {
   private settings: InlineMenuSettings = { ...defaultInlineMenuSettings };
   private field: HTMLInputElement | undefined;
+  private allGroupField: HTMLInputElement[] = [];
   private purpose: InlineMenuPurpose | undefined;
   private host: HTMLElement | undefined;
   private shadowRoot: ShadowRoot | undefined;
@@ -152,6 +154,7 @@ export class InlineMenuController {
   hide(): void {
     this.closeMenu();
     this.field = undefined;
+    this.allGroupField = [];
     this.purpose = undefined;
     if (this.frameHandle !== undefined) this.dependencies.cancelFrame(this.frameHandle);
     this.frameHandle = undefined;
@@ -171,7 +174,7 @@ export class InlineMenuController {
     const target = event.composedPath()[0];
     if (!(target instanceof Element)) return;
     if (this.host && (target === this.host || this.host.contains(target))) return;
-    if (target === this.field) return;
+    if (this.isFieldOfMenu(target)) return;
     const purpose = findInlineMenuPurpose(this.document, target, this.dependencies.getRect);
     if (!purpose) {
       this.hide();
@@ -179,6 +182,7 @@ export class InlineMenuController {
     }
     this.hide();
     this.field = target as HTMLInputElement;
+    this.allGroupField = purpose === "one-time-code" ? (findOneTimeCodeTarget(target) ?? [this.field]) : [this.field];
     this.purpose = purpose;
     this.showIcon();
     if (this.settings.isInlineMenuOpenedOnFocus) void this.openMenu();
@@ -191,12 +195,13 @@ export class InlineMenuController {
       if (active === this.host) return;
       let deepActive: Element | null = active;
       while (deepActive?.shadowRoot?.activeElement) deepActive = deepActive.shadowRoot.activeElement;
-      if (deepActive !== this.field) this.hide();
+      if (!deepActive || !this.isFieldOfMenu(deepActive)) this.hide();
     }, 0);
   }
 
   private handleKeydown(event: KeyboardEvent): void {
-    if (!this.field || !this.isTrusted(event) || event.composedPath()[0] !== this.field) return;
+    const target = event.composedPath()[0];
+    if (!this.field || !this.isTrusted(event) || !(target instanceof Element) || !this.isFieldOfMenu(target)) return;
     if (event.key === "Escape" && this.menu) {
       event.preventDefault();
       this.closeMenu();
@@ -220,7 +225,8 @@ export class InlineMenuController {
   }
 
   private handleInput(event: Event): void {
-    if (!this.isTrusted(event) || event.composedPath()[0] !== this.field) return;
+    const target = event.composedPath()[0];
+    if (!this.isTrusted(event) || !(target instanceof Element) || !this.isFieldOfMenu(target)) return;
     this.trustedInputCount += 1;
     this.closeMenu();
   }
@@ -228,8 +234,17 @@ export class InlineMenuController {
   private handlePointerDown(event: Event): void {
     const target = event.composedPath()[0];
     if (!this.host || !(target instanceof Node)) return;
-    if (target === this.host || this.host.contains(target) || target === this.field) return;
+    if (target === this.host || this.host.contains(target) || (target instanceof Element && this.isFieldOfMenu(target))) return;
     this.closeMenu();
+  }
+
+  private isFieldOfMenu(element: Element): boolean {
+    return element === this.field || this.allGroupField.includes(element as HTMLInputElement);
+  }
+
+  private getFieldRect(): Rect {
+    if (this.allGroupField.length <= 1 || !this.field) return this.dependencies.getRect(this.field as Element);
+    return computeUnionRect(this.allGroupField.map((field) => this.dependencies.getRect(field)));
   }
 
   private showIcon(): void {
@@ -274,13 +289,13 @@ export class InlineMenuController {
     const field = this.field;
     if (!field || !this.icon) return;
     const viewport = { width: this.window.innerWidth, height: this.window.innerHeight };
-    const fieldRect = this.dependencies.getRect(field);
+    const fieldRect = this.getFieldRect();
     const hasLayout = this.document.documentElement.getClientRects().length > 0;
     if (!field.isConnected || (hasLayout && !isRectInViewport(fieldRect, viewport))) {
       this.hide();
       return;
     }
-    placeElement(this.icon, computeIconRect(fieldRect));
+    placeElement(this.icon, this.allGroupField.length > 1 ? computeIconRectBeside(fieldRect) : computeIconRect(fieldRect));
     if (!this.menu) return;
     placeElement(this.menu.iframe, computeMenuRect(fieldRect, this.menu.height, viewport));
     this.guard.recordVisibility(this.isMenuUnobscured(viewport), this.dependencies.now());

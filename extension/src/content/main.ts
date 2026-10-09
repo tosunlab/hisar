@@ -1,7 +1,16 @@
 import type { BackgroundToContentMessage, ContentToBackgroundMessage, MessageResponse, SaveOfferView } from "../shared/messages";
 import { attachSubmissionCapture } from "./capture";
 import { readInlineMenuSettings, parseInlineMenuSettings, allInlineMenuSettingKey } from "../shared/settings";
-import { fillLogin, fillLoginIntoScopeOf, fillPasswordIntoField, fillPasswordIntoFocusedField, isFrameFillable, probeFrame } from "./fill";
+import {
+  fillLogin,
+  fillLoginIntoScopeOf,
+  fillOneTimeCodeIntoField,
+  fillOneTimeCodeIntoPage,
+  fillPasswordIntoField,
+  fillPasswordIntoFocusedField,
+  isFrameFillable,
+  probeFrame,
+} from "./fill";
 import { InlineMenuController } from "./inline-menu/controller";
 import { showSaveBar } from "./save-bar";
 
@@ -36,6 +45,14 @@ export function handleBackgroundMessage(message: BackgroundToContentMessage, inl
       inlineMenu.dismissMenu(message.sessionID);
       fillPasswordIntoField(document, field, message.password);
       return true;
+    }
+    case "content.fillOneTimeCode": {
+      if (!isFrameFillable(window, message.expectedOrigin)) return false;
+      if (message.sessionID === undefined) return fillOneTimeCodeIntoPage(document, message.code);
+      const field = inlineMenu.getAnchoredField(message.sessionID);
+      if (!field) return false;
+      inlineMenu.dismissMenu(message.sessionID);
+      return fillOneTimeCodeIntoField(field, message.code);
     }
     case "content.showSaveOffer":
       if (window.top !== window) return false;

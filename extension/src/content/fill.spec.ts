@@ -148,7 +148,7 @@ describe("isFrameFillable (frame rule)", () => {
 describe("probeFrame", () => {
   it("reports login forms and the focused field", () => {
     document.body.innerHTML = simpleLoginPage;
-    expect(probeFrame(document)).toEqual({ hasLoginForm: true, hasUsernameField: false, hasFocusedField: false, hasFocusedLoginField: false });
+    expect(probeFrame(document)).toEqual({ hasLoginForm: true, hasUsernameField: false, hasFocusedField: false, hasFocusedLoginField: false, hasOneTimeCodeField: false });
     getInput("#login_field").focus();
     expect(probeFrame(document)).toMatchObject({ hasFocusedField: true, hasFocusedLoginField: true });
   });
@@ -156,6 +156,6 @@ describe("probeFrame", () => {
   it("reports a focused sign-up field as focused but not as a login field", () => {
     document.body.innerHTML = signUpPage;
     getInput("#new-password").focus();
-    expect(probeFrame(document)).toEqual({ hasLoginForm: false, hasUsernameField: false, hasFocusedField: true, hasFocusedLoginField: false });
+    expect(probeFrame(document)).toEqual({ hasLoginForm: false, hasUsernameField: false, hasFocusedField: true, hasFocusedLoginField: false, hasOneTimeCodeField: false });
   });
 });

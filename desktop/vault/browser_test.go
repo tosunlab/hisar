@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tryhisar/hisar/core/totp"
 	"github.com/tryhisar/hisar/desktop/browser"
 )
 
@@ -333,5 +334,63 @@ func TestBrowserLogins(t *testing.T) {
 	}
 	if _, code := testBridge.sendRequest(browser.Request{Type: "explode", Token: token}); code != browser.ErrorInvalidRequest {
 		t.Errorf("unknown type: %s", code)
+	}
+}
+
+func TestBrowserOneTimeCode(t *testing.T) {
+	testBridge := createBrowserTestBridge(t)
+	service := testBridge.testService.service
+	personalID := testBridge.testService.personalID
+	token := testBridge.pair(t, "chrome-1")
+	setupKey := "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
+	github, err := service.SaveItem(personalID, ItemDetail{Title: "GitHub", Username: "alper", Password: "gh-password", URLs: []string{"https://github.com"}, OneTimePassword: setupKey})
+	if err != nil {
+		t.Fatal(err)
+	}
+	gitlab, err := service.SaveItem(personalID, ItemDetail{Title: "GitLab", Username: "alper", Password: "gl-password", URLs: []string{"https://gitlab.com"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	match, _ := testBridge.sendRequest(browser.Request{Type: "logins.match", Token: token, URL: "https://github.com/sessions/two-factor"})
+	if allLogin := match.(browser.MatchResult).Logins; len(allLogin) != 1 || !allLogin[0].HasOneTimePassword {
+		t.Fatalf("match: %+v", allLogin)
+	}
+	fill, _ := testBridge.sendRequest(browser.Request{Type: "logins.fill", Token: token, VaultID: personalID, ItemID: github.ID, URL: "https://github.com/login"})
+	if !fill.(browser.FillResult).HasOneTimePassword {
+		t.Errorf("fill: %+v", fill)
+	}
+
+	result, code := testBridge.sendRequest(browser.Request{Type: "logins.code", Token: token, VaultID: personalID, ItemID: github.ID, URL: "https://github.com/sessions/two-factor"})
+	config, _ := totp.Parse(setupKey)
+	wantCode, wantExpiry := config.GenerateCode(testBridge.currentTime)
+	if oneTimeCode, isCode := result.(OneTimeCode); code != "" || !isCode || oneTimeCode.Code != wantCode || oneTimeCode.ExpiresAt != wantExpiry.UTC().Format(time.RFC3339) || oneTimeCode.Period != 30 {
+		t.Errorf("code: %+v %s, want %s", result, code, wantCode)
+	}
+	encoded, _ := json.Marshal(result)
+	if bytes.Contains(encoded, []byte(setupKey)) || bytes.Contains(encoded, []byte("otpauth")) {
+		t.Errorf("the response carries the secret: %s", encoded)
+	}
+
+	for _, testCase := range []struct {
+		name, itemID, url, want string
+	}{
+		{"another site", github.ID, "https://github.com.evil.net/two-factor", browser.ErrorNoMatch},
+		{"no one-time password", gitlab.ID, "https://gitlab.com/users/sign_in", browser.ErrorNotFound},
+		{"unknown item", "missing", "https://github.com/", browser.ErrorNoMatch},
+	} {
+		if _, code := testBridge.sendRequest(browser.Request{Type: "logins.code", Token: token, VaultID: personalID, ItemID: testCase.itemID, URL: testCase.url}); code != testCase.want {
+			t.Errorf("%s: %s, want %s", testCase.name, code, testCase.want)
+		}
+	}
+	if _, code := testBridge.sendRequest(browser.Request{Type: "logins.code", VaultID: personalID, ItemID: github.ID, URL: "https://github.com/"}); code != browser.ErrorNotPaired {
+		t.Errorf("without token: %s", code)
+	}
+	if mobileCode, err := GetOneTimeCodeForURL(service, personalID, github.ID, "https://github.com"); err != nil || mobileCode.Code != wantCode {
+		t.Errorf("GetOneTimeCodeForURL: %+v %v", mobileCode, err)
+	}
+	service.Lock()
+	if _, code := testBridge.sendRequest(browser.Request{Type: "logins.code", Token: token, VaultID: personalID, ItemID: github.ID, URL: "https://github.com/"}); code != browser.ErrorLocked {
+		t.Errorf("while locked: %s", code)
 	}
 }

@@ -1,6 +1,7 @@
 import type { FillOutcome, FrameProbe } from "../shared/messages";
 import { findAllLoginScope, getAutocompleteTokens, isTextField, type LoginScope } from "./detection";
 import { containsAcrossShadow, getDeepActiveElement, isInputElement } from "./dom";
+import { findFirstOneTimeCodeTarget, fillOneTimeCodeIntoTarget, findOneTimeCodeTarget } from "./one-time-code";
 
 export function isFrameFillable(window: Window, expectedOrigin: string): boolean {
   if (window.location.origin !== expectedOrigin || expectedOrigin === "null") return false;
@@ -95,5 +96,16 @@ export function probeFrame(document: Document): FrameProbe {
     hasUsernameField: allScope.some((scope) => scope.kind === "username-only"),
     hasFocusedField: focusedField !== undefined,
     hasFocusedLoginField: focusedScope?.kind === "login" || focusedScope?.kind === "username-only",
+    hasOneTimeCodeField: findFirstOneTimeCodeTarget(document) !== undefined,
   };
+}
+
+export function fillOneTimeCodeIntoPage(document: Document, code: string): boolean {
+  const target = findFirstOneTimeCodeTarget(document);
+  return target !== undefined && fillOneTimeCodeIntoTarget(target, code);
+}
+
+export function fillOneTimeCodeIntoField(field: HTMLInputElement, code: string): boolean {
+  const target = findOneTimeCodeTarget(field);
+  return target !== undefined && fillOneTimeCodeIntoTarget(target, code);
 }
