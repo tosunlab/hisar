@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from "vue";
 import type { MatchResult } from "../../shared/messages";
 import type { LoginSummary } from "../../shared/protocol";
 import { closePopup, describeError, sendToBackground } from "../api";
+import { writeToClipboard } from "../clipboard";
 import AppIcon from "./AppIcon.vue";
 
 const props = defineProps<{ tabId: number | undefined }>();
@@ -69,7 +70,7 @@ function fillLogin(login: LoginSummary): Promise<void> {
 
 function copyUsername(login: LoginSummary): Promise<void> {
   return runForLogin(login, async () => {
-    await sendToBackground({ type: "popup.copyText", text: login.username });
+    await writeToClipboard(login.username);
     emit("notice", "Username copied");
   });
 }
@@ -77,8 +78,9 @@ function copyUsername(login: LoginSummary): Promise<void> {
 function copyPassword(login: LoginSummary): Promise<void> {
   return runForLogin(login, async () => {
     if (props.tabId === undefined) return;
-    await sendToBackground({ type: "popup.copyPassword", tabId: props.tabId, vaultID: login.vaultID, itemID: login.itemID });
-    emit("notice", "Password copied. Clears in 90 s");
+    const password = await sendToBackground<string>({ type: "popup.getPassword", tabId: props.tabId, vaultID: login.vaultID, itemID: login.itemID });
+    await writeToClipboard(password);
+    emit("notice", "Password copied");
   });
 }
 

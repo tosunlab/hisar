@@ -20,16 +20,13 @@ describe("manifest.json", () => {
     expect(registerScript).toContain(`"mmipiffoogblblocokimpemdopmdjghf"`);
   });
 
-  it("asks for the permissions in the design plus the offscreen clipboard ones", () => {
+  it("asks for exactly the permissions in the design", () => {
     expect(manifest.permissions).toEqual([
       "nativeMessaging",
       "storage",
       "scripting",
       "activeTab",
       "tabs",
-      "offscreen",
-      "clipboardRead",
-      "clipboardWrite",
     ]);
     expect(manifest.host_permissions).toEqual(["<all_urls>"]);
   });

@@ -17,12 +17,13 @@ function getTabId(url: string): Promise<number> {
   return harness.getTabId(url);
 }
 
-test.beforeAll(async () => {
+// Every test gets its own browser profile and fake host state, so a failure cannot leak into the next test.
+test.beforeEach(async () => {
   harness = await launchHarness();
   ({ stateFile, site, context } = harness);
 });
 
-test.afterAll(async () => {
+test.afterEach(async () => {
   await harness?.close();
 });
 
@@ -73,6 +74,7 @@ test("pairs, fills only same-origin frames, and offers to update a changed passw
 });
 
 test("offers to save a new login and stores it in the desktop", async () => {
+  await harness.pairWithoutPopup();
   const loginPage = await context.newPage();
   await loginPage.goto(`${site.origin}/login`);
   await loginPage.locator("#username").fill("someone-new@example.com");
@@ -88,32 +90,21 @@ test("offers to save a new login and stores it in the desktop", async () => {
     .toBe("brand new");
 });
 
-test("the offscreen document clears the clipboard when it still holds the copied value", async () => {
-  await context.grantPermissions(["clipboard-read", "clipboard-write"], { origin: site.origin });
-  const page = await context.newPage();
-  await page.goto(`${site.origin}/login`);
-  const readClipboard = () => page.evaluate(() => navigator.clipboard.readText());
-  const copyThroughOffscreen = (text: string) =>
-    harness.evaluateInExtension(async (copiedText: string) => {
-      const url = chrome.runtime.getURL("offscreen.html");
-      const allContext = await chrome.runtime.getContexts({ contextTypes: [chrome.runtime.ContextType.OFFSCREEN_DOCUMENT], documentUrls: [url] });
-      if (allContext.length === 0) {
-        await chrome.offscreen.createDocument({ url: "offscreen.html", reasons: [chrome.offscreen.Reason.CLIPBOARD], justification: "test" });
-      }
-      return chrome.runtime.sendMessage({ target: "offscreen", type: "offscreen.copy", text: copiedText, clearAfterMilliseconds: 1000 });
-    }, text);
-
-  expect(await copyThroughOffscreen("temporary secret")).toEqual({ ok: true });
-  expect(await readClipboard()).toBe("temporary secret");
-  await expect.poll(readClipboard, { timeout: 5000 }).toBe("");
-
-  expect(await copyThroughOffscreen("second secret")).toEqual({ ok: true });
-  await page.evaluate(() => navigator.clipboard.writeText("something the user copied"));
-  await page.waitForTimeout(1500);
-  expect(await readClipboard()).toBe("something the user copied");
+test("copies a password from the popup, and it stays on the clipboard", async () => {
+  await harness.pairWithoutPopup();
+  await context.grantPermissions(["clipboard-read"], { origin: site.origin });
+  const loginPage = await context.newPage();
+  await loginPage.goto(`${site.origin}/login`);
+  const popup = await context.newPage();
+  await popup.goto(`chrome-extension://${extensionID}/popup.html?tabId=${await getTabId(`${site.origin}/login`)}`);
+  await popup.getByTestId("copy-password").click();
+  await expect(popup.getByTestId("notice")).toHaveText("Password copied");
+  await loginPage.bringToFront();
+  expect(await loginPage.evaluate(() => navigator.clipboard.readText())).toBe("old password");
 });
 
 test("Never for this site stops offers for the origin", async () => {
+  await harness.pairWithoutPopup();
   const loginPage = await context.newPage();
   await loginPage.goto(`${site.origin}/login`);
   await loginPage.locator("#username").fill("third@example.com");

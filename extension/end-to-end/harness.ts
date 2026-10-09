@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -45,6 +46,7 @@ export interface Harness {
   readState: () => FakeHostState;
   getTabId: (url: string) => Promise<number>;
   pair: (tabId: number) => Promise<Page>;
+  pairWithoutPopup: () => Promise<void>;
   readShadowHost: (page: Page, tagName: string) => Promise<{ text: string; clickButton: (label: string) => Promise<void> } | undefined>;
   findInlineMenuFrame: (page: Page) => Frame | undefined;
   readInlineMenuSource: (page: Page) => Promise<string | undefined>;
@@ -146,6 +148,14 @@ export async function launchHarness(options: HarnessOptions = {}): Promise<Harne
       await popup.getByTestId("finish-pairing").click();
       await popup.getByTestId("unlocked-view").waitFor();
       return popup;
+    },
+    async pairWithoutPopup() {
+      const instanceID = "instance-end-to-end";
+      const token = randomBytes(32).toString("hex");
+      const current = readState(stateFile);
+      current.allPairing.push({ instanceID, browser: "Chrome", tokenHash: createHash("sha256").update(token).digest("hex"), pairedAt: Date.now() });
+      writeState(stateFile, current);
+      await evaluateInExtension((stored) => chrome.storage.local.set(stored), { instanceID, token });
     },
     readShadowHost,
     async readInlineMenuSource(page) {

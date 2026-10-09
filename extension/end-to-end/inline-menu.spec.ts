@@ -18,15 +18,14 @@ async function waitForClickGuard(page: Page): Promise<void> {
   await page.waitForTimeout(500);
 }
 
-test.beforeAll(async () => {
+// Every test gets its own browser profile and fake host state, so a failure cannot leak into the next test.
+test.beforeEach(async () => {
   harness = await launchHarness();
 });
 
-test.afterAll(async () => {
+test.afterEach(async () => {
   await harness?.close();
 });
-
-test.describe.configure({ mode: "serial" });
 
 test("offers pairing in the field before the browser is paired", async () => {
   const page = await harness.context.newPage();
@@ -40,11 +39,9 @@ test("offers pairing in the field before the browser is paired", async () => {
 });
 
 test("lists matching logins under the focused field and fills the chosen one", async () => {
+  await harness.pairWithoutPopup();
   const page = await harness.context.newPage();
   await page.goto(`${harness.site.origin}/login`);
-  const popup = await harness.pair(await harness.getTabId(`${harness.site.origin}/login`));
-  await popup.close();
-  await page.bringToFront();
   await page.locator("#password").focus();
   const menu = await waitForMenu(page);
   await expect(menu.getByTestId("inline-login")).toHaveCount(1);
@@ -72,6 +69,7 @@ test("serves the menu from a dynamic extension URL", async () => {
 });
 
 test("ignores clicks while the page makes the menu transparent", async () => {
+  await harness.pairWithoutPopup();
   const page = await harness.context.newPage();
   await page.goto(`${harness.site.origin}/login`);
   await page.locator("#username").focus();
@@ -90,6 +88,7 @@ test("ignores clicks while the page makes the menu transparent", async () => {
 });
 
 test("ignores clicks through an overlay that lets pointer events pass", async () => {
+  await harness.pairWithoutPopup();
   const page = await harness.context.newPage();
   await page.goto(`${harness.site.origin}/login`);
   await page.locator("#username").focus();
@@ -110,6 +109,7 @@ test("ignores clicks through an overlay that lets pointer events pass", async ()
 });
 
 test("fills with the arrow keys and Enter from the field", async () => {
+  await harness.pairWithoutPopup();
   const page = await harness.context.newPage();
   await page.goto(`${harness.site.origin}/login`);
   await page.locator("#username").focus();
@@ -149,6 +149,7 @@ test("shows no icon in a cross-origin frame", async () => {
 });
 
 test("suggests a password on a sign-up form and fills both fields", async () => {
+  await harness.pairWithoutPopup();
   const page = await harness.context.newPage();
   await page.goto(`${harness.site.origin}/sign-up`);
   await page.locator("#new-password").focus();
@@ -168,6 +169,7 @@ test("suggests a password on a sign-up form and fills both fields", async () => 
 });
 
 test("asks to unlock when Hisar is locked and lists logins once unlocked", async () => {
+  await harness.pairWithoutPopup();
   harness.updateState((state) => {
     state.state = "locked";
     state.unlockDelayMilliseconds = 500;
@@ -184,6 +186,7 @@ test("asks to unlock when Hisar is locked and lists logins once unlocked", async
 });
 
 test("offers Open Hisar when the app is not running", async () => {
+  await harness.pairWithoutPopup();
   harness.updateState((state) => (state.isDesktopUnavailable = true));
   const page = await harness.context.newPage();
   await page.goto(`${harness.site.origin}/login`);
@@ -211,6 +214,5 @@ test("follows the settings: no icon when turned off, no menu on focus when that 
   await expect.poll(() => hasInlineHost(page)).toBe(true);
   await page.waitForTimeout(500);
   expect(harness.findInlineMenuFrame(page)).toBeUndefined();
-  await harness.evaluateInExtension(() => chrome.storage.local.set({ isInlineMenuOpenedOnFocus: true }), undefined);
   await page.close();
 });

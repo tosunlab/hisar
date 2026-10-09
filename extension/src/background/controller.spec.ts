@@ -109,11 +109,11 @@ describe("logins", () => {
     await expectHisarError(harness.controller.matchLogins(1), "locked");
   });
 
-  it("copies the password through the clipboard bridge", async () => {
+  it("gives the popup the password for copying, checked against the tab's URL", async () => {
     const harness = createHarness();
     await harness.pair();
-    await harness.controller.copyPassword(1, "vault-personal", "item-example");
-    expect(harness.allCopied).toEqual(["correct horse battery staple"]);
+    expect(await harness.controller.getPasswordForTab(1, "vault-personal", "item-example")).toBe("correct horse battery staple");
+    expect(harness.allRequest.find((request) => request.type === "logins.fill")).toMatchObject({ url: "https://example.com/login" });
   });
 
   it("generates passwords with the requested options", async () => {

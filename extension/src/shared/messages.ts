@@ -58,8 +58,7 @@ export type PopupMessage =
   | { type: "popup.unlock" }
   | { type: "popup.matchLogins"; tabId: number }
   | { type: "popup.fillLogin"; tabId: number; vaultID: string; itemID: string }
-  | { type: "popup.copyPassword"; tabId: number; vaultID: string; itemID: string }
-  | { type: "popup.copyText"; text: string }
+  | { type: "popup.getPassword"; tabId: number; vaultID: string; itemID: string }
   | { type: "popup.generatePassword"; options: GenerateOptions }
   | { type: "popup.fillPassword"; tabId: number; password: string };
 
@@ -97,12 +96,5 @@ export type BackgroundToContentMessage =
   | { type: "content.isInlineMenuVisible"; sessionID: string }
   | { type: "content.resizeInlineMenu"; sessionID: string; height: number }
   | { type: "content.dismissInlineMenu"; sessionID: string };
-
-export interface OffscreenCopyMessage {
-  target: "offscreen";
-  type: "offscreen.copy";
-  text: string;
-  clearAfterMilliseconds: number;
-}
 
 export type MessageResponse<Result> = { ok: true; result: Result } | { ok: false; error: { code: ErrorCode; message: string } };

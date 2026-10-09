@@ -8,19 +8,18 @@ The manifest's `key` gives the fixed ID `mmipiffoogblblocokimpemdopmdjghf`, both
 
 ```
 public/manifest.json      MV3 manifest (version must equal package.json)
-popup.html, offscreen.html, inline-menu.html
+popup.html, inline-menu.html
 src/background/           service worker: native port (native-client.ts), popup/content handlers (controller.ts, router.ts),
                           frame rule (frames.ts), save offers (save.ts), chrome.storage.local (storage.ts)
 src/content/              content script (all frames): form detection, fill, submit capture, save bar (closed shadow root)
 src/content/inline-menu/  inline icon and menu frame placement, eligibility, keyboard, clickjacking checks
 src/inline-menu/          the menu page shown in the iframe under a login field (inline-menu.html)
 src/popup/                Vue popup: pairing, desktop unavailable, signed out, locked, logins, generator, settings
-src/offscreen/            offscreen document that copies to the clipboard and clears it after 90 s
 tools/                    fake native host, its registration script, packaging
 end-to-end/               Playwright tests and screenshot capture
 ```
 
-The build runs Vite twice: once for the popup, the offscreen page, the inline menu page and the service worker (an ES module), and once for the content script as a single IIFE file, because content scripts cannot be modules. Icons come from `assets/logo/png` (rendered by `scripts/render-logo.sh`).
+The build runs Vite twice: once for the popup, the inline menu page and the service worker (an ES module), and once for the content script as a single IIFE file, because content scripts cannot be modules. Icons come from `assets/logo/png` (rendered by `scripts/render-logo.sh`).
 
 ## Develop and test
 
@@ -95,10 +94,8 @@ When a username or password field of a login form gets the focus, a Hisar icon a
 - **Isolation:** the menu is an extension page in an iframe, so the page never sees login titles or usernames.
 - **Clickjacking checks:** the menu fills only after it has been visible and uncovered for 300 ms. [docs/DESIGN.md §9.2](../docs/DESIGN.md#92-browser-extension--typescript-mv3) describes these checks.
 
-## Clipboard in MV3
+## Copying
 
-MV3 service workers have no DOM, so they cannot use the clipboard. Copying goes through an offscreen document (reason `CLIPBOARD`), which writes with `document.execCommand("copy")`.
+The popup copies usernames, passwords and generated passwords itself, with `navigator.clipboard.writeText`. It gets a password from the service worker, which asks the desktop with the tab's URL. A focused extension page may write to the clipboard without a clipboard permission.
 
-After 90 s, the offscreen document reads the clipboard back with `execCommand("paste")` and clears it only if it still holds the copied value. It clears anyway when the clipboard cannot be read. Then it closes.
-
-This needs the `offscreen`, `clipboardWrite` and `clipboardRead` permissions. Clearing is best effort: it does not happen if the browser quits within the 90 s, and clipboard managers keep their own history.
+The extension does not clear the clipboard afterwards: a copied value stays until something else is copied. The desktop app still clears what it copies itself after 90 s.

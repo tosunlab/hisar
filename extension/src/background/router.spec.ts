@@ -72,8 +72,8 @@ describe("routeMessage", () => {
     expect(response).toEqual({ ok: false, error: { code: "not-found", message: "This save offer has expired" } });
   });
 
-  it("leaves offscreen messages and unknown shapes alone", async () => {
-    expect(await routeMessage(createServices(createController()), { type: "offscreen.copy", target: "offscreen" }, popupSender, context)).toBeUndefined();
+  it("leaves broadcast messages and unknown shapes alone", async () => {
+    expect(await routeMessage(createServices(createController()), { type: "inlineMenu.pressKey", target: "inline-menu" }, popupSender, context)).toBeUndefined();
     expect(await routeMessage(createServices(createController()), {}, popupSender, context)).toBeUndefined();
     expect(await routeMessage(createServices(createController()), { type: "other.thing" }, popupSender, context)).toMatchObject({ ok: false });
   });
