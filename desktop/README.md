@@ -38,11 +38,12 @@ cd desktop/frontend && npm run preview:ui
 # recovery (member): &settings=1&scroll=recovery&role=member &optOut=1 (personal vault opted out)
 # personal vault: &vaultRecovery=1 (recovery panel) &disableRecovery=1 (opt-out warning) &optOut=1
 # recovering an account: &state=signed-out&recover=form|filled &secretKey=recovery (new Secret Key) &recoverySubmitted=1
+# offline: &offline=1 (offline notice)
 ```
 
 The preview backend (`src/preview.ts`) is loaded with a dynamic import behind a build-time flag; `npm run check:bundle` (run in CI) fails if it ever ends up in the production bundle.
 
-The app keeps its session in `~/Library/Application Support/hisar/desktop.json` (override with `HISAR_DESKTOP_STATE`) and the Secret Key in the macOS Keychain under the service `hisar`.
+The app keeps its session in `~/Library/Application Support/hisar/desktop.json` (override with `HISAR_DESKTOP_STATE`), the encrypted offline cache in `desktop-cache.db` next to it (override with `HISAR_DESKTOP_CACHE`), and the Secret Key in the macOS Keychain under the service `hisar`.
 
 ## Sharing, family and devices
 

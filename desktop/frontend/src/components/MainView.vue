@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { createVault, filterAllItem, lock, openSharing, openVaultRecovery, selectItem, selectVault, startCreatingItem, startCreatingSSHKey, store } from "../store";
+import { createVault, filterAllItem, lock, openSharing, openVaultRecovery, selectItem, selectVault, startCreatingItem, startCreatingSSHKey, store, syncInBackground, syncInterval } from "../store";
 import { formatKeyType, getDomain, getInitials, isMacPlatform, sshKeyCategory } from "../util";
 import AppIcon from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
@@ -66,15 +66,21 @@ function handleShortcut(event: KeyboardEvent): void {
   }
 }
 
+let syncTimer: ReturnType<typeof setInterval> | undefined;
+
 onMounted(() => {
   window.addEventListener("keydown", handleShortcut);
   window.addEventListener("keydown", closeNewItemMenu);
   window.addEventListener("pointerdown", closeNewItemMenu);
+  window.addEventListener("focus", syncInBackground);
+  syncTimer = setInterval(syncInBackground, syncInterval);
 });
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", handleShortcut);
   window.removeEventListener("keydown", closeNewItemMenu);
   window.removeEventListener("pointerdown", closeNewItemMenu);
+  window.removeEventListener("focus", syncInBackground);
+  clearInterval(syncTimer);
 });
 </script>
 
@@ -108,6 +114,13 @@ onBeforeUnmount(() => {
       </nav>
 
       <div class="spacer"></div>
+      <div v-if="store.status.isOffline" class="offline" role="status" data-testid="offline-notice">
+        <AppIcon name="offline" />
+        <div>
+          <strong>Offline</strong>
+          <p class="muted">Showing the copy saved on this device. Changes can be saved once Hisar reconnects.</p>
+        </div>
+      </div>
       <div class="account">
         <span class="avatar">{{ getInitials(store.status.name || store.status.email) }}</span>
         <div class="account-text">
@@ -298,6 +311,28 @@ onBeforeUnmount(() => {
 
 .new-vault .row {
   justify-content: flex-end;
+}
+
+.offline {
+  display: flex;
+  gap: 10px;
+  margin: 0 8px 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-warning);
+}
+
+.offline strong {
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.offline p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .account {

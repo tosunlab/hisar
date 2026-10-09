@@ -62,6 +62,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	cachePath, err := localstate.GetPath("HISAR_DESKTOP_CACHE", "desktop-cache.db")
+	if err != nil {
+		log.Fatal(err)
+	}
 	homeDirectory, err := os.UserHomeDir()
 	if err != nil {
 		log.Fatal(err)
@@ -73,6 +77,7 @@ func main() {
 	var agentServer *sshagent.Server
 	vaultConfig := vault.Config{
 		StatePath:    statePath,
+		CachePath:    cachePath,
 		DeviceName:   getDeviceName(),
 		Platform:     runtime.GOOS + "/desktop",
 		Clipboard:    clipboard,

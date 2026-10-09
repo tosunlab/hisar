@@ -22,6 +22,8 @@ type Status struct {
 	BiometricAvailable bool `json:"biometricAvailable"`
 	BiometricEnabled   bool `json:"biometricEnabled"`
 	BiometricReady     bool `json:"biometricReady"`
+	// IsOffline: the server could not be reached, so vaults and items come from this device's encrypted cache.
+	IsOffline bool `json:"isOffline"`
 }
 
 // Biometric is the platform's user-presence check and keychain storage for the biometric unlock key.
@@ -162,7 +164,9 @@ func (KeychainSecretKeyStore) DeleteSecretKey(accountID string) error {
 }
 
 type Config struct {
-	StatePath           string
+	StatePath string
+	// CachePath is the encrypted offline cache; empty keeps Hisar online-only.
+	CachePath           string
 	DeviceName          string
 	Platform            string
 	Clipboard           Clipboard

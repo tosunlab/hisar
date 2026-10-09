@@ -28,6 +28,7 @@ export const store = reactive({
     biometricAvailable: false,
     biometricEnabled: false,
     biometricReady: false,
+    isOffline: false,
   } as Status,
   allVault: [] as VaultSummary[],
   selectedVaultID: "",
@@ -243,6 +244,41 @@ export async function loadAllVault(): Promise<void> {
   const stillExists = allVault.some((vault) => vault.id === store.selectedVaultID);
   if (!stillExists && allVault.length > 0) {
     await selectVault(allVault[0].id);
+  }
+}
+
+export const syncInterval = 60_000;
+
+// syncInBackground refreshes vaults and the open item without showing errors; the offline notice covers a lost connection.
+export async function syncInBackground(): Promise<void> {
+  if (store.status.state !== "unlocked" || store.isBusy || store.editorMode !== "view") {
+    return;
+  }
+  try {
+    const allVault = await api.listAllVault();
+    const status = await api.getStatus();
+    if (store.status.state !== "unlocked" || status.state !== "unlocked") {
+      return;
+    }
+    store.allVault = allVault;
+    store.status = status;
+    if (!allVault.some((vault) => vault.id === store.selectedVaultID)) {
+      if (allVault.length > 0) {
+        await selectVault(allVault[0].id);
+      }
+      return;
+    }
+    const allItem = sortAllItem(await api.listAllItem(store.selectedVaultID));
+    if (store.editorMode !== "view") {
+      return;
+    }
+    store.allItem = allItem;
+    const selectedItemID = store.selectedItem?.id;
+    if (selectedItemID) {
+      store.selectedItem = allItem.some((vaultItem) => vaultItem.id === selectedItemID) ? await api.getItem(store.selectedVaultID, selectedItemID) : null;
+    }
+  } catch {
+    return;
   }
 }
 
