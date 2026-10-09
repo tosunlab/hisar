@@ -59,7 +59,7 @@ expect "second device login" "$(printf 'http://127.0.0.1:%s\nalice@example.com\n
 expect "wrong password" "$(printf 'nope\n' | A ls 2>&1 || true)" "incorrect email, password or Secret Key"
 expect "devices" "$(A devices)" "(this device)"
 expect "emergency kit" "$(printf '%s\n' "$PW" | A emergency-kit -o "$T/kit.pdf" 2>&1)" "Saved your Emergency Kit"
-expect "emergency kit is a private PDF" "$(head -c 5 "$T/kit.pdf") $(stat -f %Lp "$T/kit.pdf" 2>/dev/null || stat -c %a "$T/kit.pdf")" "%PDF- 600"
+expect "emergency kit is a private PDF" "$(head -c 5 "$T/kit.pdf") $(stat -c %a "$T/kit.pdf" 2>/dev/null || stat -f %Lp "$T/kit.pdf")" "%PDF- 600"
 expect "emergency kit never overwrites" "$(printf '%s\n' "$PW" | A emergency-kit -o "$T/kit.pdf" 2>&1 || true)" "already exists"
 
 expect "delete" "$(printf '%s\ny\n' "$PW" | A rm netflix -v Family 2>&1)" "Deleted"
