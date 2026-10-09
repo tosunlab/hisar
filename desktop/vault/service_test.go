@@ -409,6 +409,7 @@ func TestIntegrationDesktopFlow(t *testing.T) {
 	}
 
 	checkSSHAgentFlow(t, service, personalID, password)
+	checkBrowserFlow(t, service, personalID)
 
 	if status := service.Lock(); status.State != StateLocked {
 		t.Fatalf("lock: %+v", status)

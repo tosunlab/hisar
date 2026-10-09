@@ -2,9 +2,13 @@ import { Browser } from "@wailsio/runtime";
 import { TouchIDPromptService } from "../bindings/github.com/tryhisar/hisar/desktop";
 import { Service as AgentService } from "../bindings/github.com/tryhisar/hisar/desktop/agent";
 import type { ApprovalEvent, Status as SSHAgentStatus } from "../bindings/github.com/tryhisar/hisar/desktop/agent";
-import { Service } from "../bindings/github.com/tryhisar/hisar/desktop/vault";
+import { BrowserBridge, Service } from "../bindings/github.com/tryhisar/hisar/desktop/vault";
+import type { BrowserInstallation } from "../bindings/github.com/tryhisar/hisar/desktop/browser";
 import type {
+  BrowserPairingRequest,
+  BrowserStatus as BoundBrowserStatus,
   Device,
+  PairedBrowser,
   FamilyMember,
   ItemDetail as BoundItemDetail,
   ItemField,
@@ -46,6 +50,17 @@ export interface ItemDetail extends Omit<BoundItemDetail, "urls" | "fields"> {
 
 function normalizeItem(boundItem: BoundItemDetail): ItemDetail {
   return { ...boundItem, urls: boundItem.urls ?? [], fields: boundItem.fields ?? [] };
+}
+
+export type { BrowserInstallation, BrowserPairingRequest, PairedBrowser };
+
+export interface BrowserStatus extends Omit<BoundBrowserStatus, "allInstallation" | "allPairedBrowser"> {
+  allInstallation: BrowserInstallation[];
+  allPairedBrowser: PairedBrowser[];
+}
+
+function normalizeBrowserStatus(boundStatus: BoundBrowserStatus): BrowserStatus {
+  return { ...boundStatus, allInstallation: boundStatus.allInstallation ?? [], allPairedBrowser: boundStatus.allPairedBrowser ?? [] };
 }
 
 const wailsApi = {
@@ -99,6 +114,12 @@ const wailsApi = {
   saveNewAccountEmergencyKit: (): Promise<string> => Service.SaveNewAccountEmergencyKit(),
   saveEmergencyKit: (password: string): Promise<string> => Service.SaveEmergencyKit(password),
   forgetNewAccountSecretKey: (): Promise<void> => Service.ForgetNewAccountSecretKey(),
+  getBrowserStatus: async (): Promise<BrowserStatus> => normalizeBrowserStatus(await BrowserBridge.GetBrowserStatus()),
+  removePairedBrowser: async (instanceID: string): Promise<BrowserStatus> =>
+    normalizeBrowserStatus(await BrowserBridge.RemovePairedBrowser(instanceID)),
+  setExactHostMatch: async (isExactHostMatch: boolean): Promise<BrowserStatus> =>
+    normalizeBrowserStatus(await BrowserBridge.SetExactHostMatch(isExactHostMatch)),
+  cancelBrowserPairing: (): Promise<void> => BrowserBridge.CancelBrowserPairing(),
   getRecoveryStatus: (): Promise<RecoveryStatus> => Service.GetRecoveryStatus(),
   setUpRecovery: async (): Promise<string[]> => (await Service.SetUpRecovery()) ?? [],
   enableRecoveryForAllVault: async (): Promise<string[]> => (await Service.EnableRecoveryForAllVault()) ?? [],

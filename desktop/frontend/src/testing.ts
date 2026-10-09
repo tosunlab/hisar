@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import type { ApprovalEvent, Device, FamilyMember, ItemDetail, PendingRecovery, RecoveryStatus, SSHAgentStatus, Status, VaultMember, VaultSummary } from "./api";
+import type { ApprovalEvent, BrowserStatus, Device, FamilyMember, ItemDetail, PendingRecovery, RecoveryStatus, SSHAgentStatus, Status, VaultMember, VaultSummary } from "./api";
 
 export function createStatus(state: string): Status {
   return { state, server: "https://hisar.test", email: "alice@example.com", name: "Alice", biometricAvailable: false, biometricEnabled: false, biometricReady: false, isOffline: false };
@@ -179,5 +179,13 @@ export function createApiMock() {
     listAllPendingRecovery: vi.fn().mockResolvedValue([]),
     completeAccountRecovery: vi.fn(),
     recoverAccount: vi.fn(),
+    getBrowserStatus: vi.fn().mockResolvedValue(createBrowserStatus()),
+    removePairedBrowser: vi.fn(),
+    setExactHostMatch: vi.fn(),
+    cancelBrowserPairing: vi.fn().mockResolvedValue(undefined),
   };
+}
+
+export function createBrowserStatus(overrides: Partial<BrowserStatus> = {}): BrowserStatus {
+  return { allInstallation: [], allPairedBrowser: [], isExactHostMatch: false, pendingPairing: null, ...overrides };
 }

@@ -20,6 +20,7 @@ import {
 } from "../store";
 import { formatLastSeen, formatPlatform, formatRole, getPlatformIcon, isMacPlatform } from "../util";
 import AccountRecoverySection from "./AccountRecoverySection.vue";
+import BrowserExtensionSection from "./BrowserExtensionSection.vue";
 import AppIcon from "./AppIcon.vue";
 import MemberAvatar from "./MemberAvatar.vue";
 
@@ -312,6 +313,8 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
           </template>
         </div>
       </section>
+
+      <BrowserExtensionSection />
 
       <section data-testid="ssh-agent-section">
         <p class="section-label">SSH agent</p>

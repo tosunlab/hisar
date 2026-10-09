@@ -1,5 +1,6 @@
 // Development-only stand-in for the Go backend, used with `npm run preview:ui` to view the UI in a browser.
 import type {
+  BrowserStatus,
   Device,
   FamilyMember,
   ItemDetail,
@@ -208,6 +209,22 @@ function addPreviewItem(vaultID: string, detail: ItemDetail): ItemDetail {
 
 const resolveAfterDelay = <Value>(value: Value): Promise<Value> => new Promise((resolve) => setTimeout(() => resolve(value), 80));
 
+const hasNoPreviewBrowser = previewParameter.get("browsers") === "none";
+const previewBrowserStatus: BrowserStatus = {
+  allInstallation: hasNoPreviewBrowser
+    ? []
+    : [
+        { name: "Google Chrome", manifestPath: "", isInstalled: true, errorMessage: "" },
+        { name: "Arc", manifestPath: "", isInstalled: true, errorMessage: "" },
+      ],
+  allPairedBrowser: hasNoPreviewBrowser
+    ? []
+    : [{ instanceID: "chrome-preview", browser: "Chrome", pairedAt: "2026-10-01T09:00:00Z", lastUsedAt: new Date(Date.now() - 3 * 3600_000).toISOString() }],
+  isExactHostMatch: false,
+  pendingPairing:
+    previewParameter.get("browserPairing") === "1" ? { browser: "Arc", code: "482913", expiresAt: new Date(Date.now() + 110_000).toISOString() } : null,
+};
+
 export const previewApi = {
   getStatus: () => resolveAfterDelay(previewStatus()),
   signIn: () => {
@@ -392,6 +409,19 @@ export const previewApi = {
     }
     previewSignedOutEmail = email.trim().toLowerCase();
     return new Promise((resolve) => setTimeout(() => resolve({ status: previewStatus(), secretKey: "H1-GVC2KA-R8MPL-4XQZT-7HN2C-WK5DB-Q3J6RA" }), 600));
+  },
+  getBrowserStatus: () => resolveAfterDelay({ ...previewBrowserStatus, allPairedBrowser: [...previewBrowserStatus.allPairedBrowser] }),
+  removePairedBrowser: (instanceID: string) => {
+    previewBrowserStatus.allPairedBrowser = previewBrowserStatus.allPairedBrowser.filter((pairedBrowser) => pairedBrowser.instanceID !== instanceID);
+    return resolveAfterDelay({ ...previewBrowserStatus });
+  },
+  setExactHostMatch: (isExactHostMatch: boolean) => {
+    previewBrowserStatus.isExactHostMatch = isExactHostMatch;
+    return resolveAfterDelay({ ...previewBrowserStatus });
+  },
+  cancelBrowserPairing: () => {
+    previewBrowserStatus.pendingPairing = null;
+    return Promise.resolve();
   },
   openURL: (link: string) => {
     window.open(link, "_blank", "noopener");
