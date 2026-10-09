@@ -1,0 +1,425 @@
+<script setup lang="ts">
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { VisibilityGuard } from "../shared/click-guard";
+import type { InlineMenuBroadcast, InlineMenuState } from "../shared/messages";
+import type { LoginSummary } from "../shared/protocol";
+import { sendToBackground } from "./api";
+
+const props = withDefaults(
+  defineProps<{
+    sessionID: string;
+    isVisibilityTracked?: boolean;
+    pollIntervalMilliseconds?: number;
+    pollLimit?: number;
+    now?: () => number;
+    isEventTrusted?: (event: Event) => boolean;
+  }>(),
+  {
+    isVisibilityTracked: false,
+    pollIntervalMilliseconds: 1000,
+    pollLimit: 120,
+    now: () => performance.now(),
+    isEventTrusted: (event: Event) => event.isTrusted,
+  },
+);
+
+type MenuAction =
+  | { kind: "login"; login: LoginSummary }
+  | { kind: "more" }
+  | { kind: "suggest" }
+  | { kind: "pair" }
+  | { kind: "unlock" }
+  | { kind: "open-hisar" };
+
+const menuState = ref<InlineMenuState>();
+const selectedIndex = ref(-1);
+const errorMessage = ref("");
+const isWaiting = ref(false);
+const root = ref<HTMLElement>();
+const guard = new VisibilityGuard();
+let observer: IntersectionObserver | undefined;
+let pollTimer: ReturnType<typeof setTimeout> | undefined;
+let lastReportedHeight = 0;
+
+const allAction = computed<MenuAction[]>(() => {
+  const state = menuState.value;
+  if (!state) return [];
+  switch (state.view) {
+    case "logins":
+      if (state.purpose === "new-password") return state.suggestedPassword ? [{ kind: "suggest" }] : [];
+      return [
+        ...state.allLogin.map((login): MenuAction => ({ kind: "login", login })),
+        ...(state.hasMoreLogin ? [{ kind: "more" } as MenuAction] : []),
+      ];
+    case "not-paired":
+      return [{ kind: "pair" }];
+    case "locked":
+      return [{ kind: "unlock" }];
+    case "desktop-unavailable":
+      return [{ kind: "open-hisar" }];
+    default:
+      return [];
+  }
+});
+
+function isClickAllowed(event: Event): boolean {
+  if (!props.isEventTrusted(event)) return false;
+  return !props.isVisibilityTracked || guard.isInteractionAllowed(props.now());
+}
+
+async function loadState(): Promise<void> {
+  try {
+    menuState.value = await sendToBackground<InlineMenuState>({ type: "inlineMenu.getState", sessionID: props.sessionID });
+    errorMessage.value = menuState.value.view === "logins" ? (menuState.value.errorMessage ?? "") : "";
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : String(error);
+  }
+}
+
+function stopPolling(): void {
+  if (pollTimer !== undefined) clearTimeout(pollTimer);
+  pollTimer = undefined;
+  isWaiting.value = false;
+}
+
+function pollUntilUnlocked(remaining: number): void {
+  pollTimer = setTimeout(async () => {
+    await loadState();
+    if (menuState.value?.view !== "locked" || remaining <= 1) {
+      stopPolling();
+      return;
+    }
+    pollUntilUnlocked(remaining - 1);
+  }, props.pollIntervalMilliseconds);
+}
+
+async function runAction(action: MenuAction): Promise<void> {
+  errorMessage.value = "";
+  try {
+    switch (action.kind) {
+      case "login":
+        await sendToBackground({ type: "inlineMenu.fillLogin", sessionID: props.sessionID, vaultID: action.login.vaultID, itemID: action.login.itemID });
+        return;
+      case "suggest":
+        await sendToBackground({ type: "inlineMenu.useSuggestedPassword", sessionID: props.sessionID });
+        return;
+      case "more":
+      case "pair":
+        await sendToBackground({ type: "inlineMenu.openPopup", sessionID: props.sessionID });
+        return;
+      case "unlock":
+        isWaiting.value = true;
+        await sendToBackground({ type: "inlineMenu.unlock", sessionID: props.sessionID });
+        pollUntilUnlocked(props.pollLimit);
+        return;
+      case "open-hisar":
+        isWaiting.value = true;
+        menuState.value = await sendToBackground<InlineMenuState>({ type: "inlineMenu.openHisar", sessionID: props.sessionID });
+        isWaiting.value = false;
+        return;
+    }
+  } catch (error) {
+    isWaiting.value = false;
+    errorMessage.value = error instanceof Error ? error.message : String(error);
+  }
+}
+
+function chooseAction(action: MenuAction, event: Event): void {
+  if (!isClickAllowed(event)) return;
+  void runAction(action);
+}
+
+function pressKey(key: InlineMenuBroadcast["key"]): void {
+  const count = allAction.value.length;
+  if (count === 0) return;
+  if (key === "ArrowDown") selectedIndex.value = (selectedIndex.value + 1) % count;
+  else if (key === "ArrowUp") selectedIndex.value = selectedIndex.value <= 0 ? count - 1 : selectedIndex.value - 1;
+  else if (key === "Enter" && selectedIndex.value >= 0) {
+    if (props.isVisibilityTracked && !guard.isInteractionAllowed(props.now())) return;
+    void runAction(allAction.value[selectedIndex.value]);
+  }
+}
+
+function handleBroadcast(message: InlineMenuBroadcast): void {
+  if (message?.target !== "inline-menu" || message.sessionID !== props.sessionID) return;
+  if (message.type === "inlineMenu.pressKey") pressKey(message.key);
+}
+
+function handleKeydown(event: KeyboardEvent): void {
+  if (event.key === "Escape") void sendToBackground({ type: "inlineMenu.close", sessionID: props.sessionID }).catch(() => undefined);
+  else if (event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "Enter") {
+    event.preventDefault();
+    pressKey(event.key);
+  }
+}
+
+async function reportHeight(): Promise<void> {
+  await nextTick();
+  const height = Math.ceil(root.value?.getBoundingClientRect().height ?? 0);
+  if (height <= 0 || height === lastReportedHeight) return;
+  lastReportedHeight = height;
+  await sendToBackground({ type: "inlineMenu.resize", sessionID: props.sessionID, height }).catch(() => undefined);
+}
+
+function trackVisibility(): void {
+  if (!props.isVisibilityTracked || !root.value) return;
+  observer = new IntersectionObserver(
+    (allEntry) => {
+      for (const entry of allEntry) {
+        const isVisible = (entry as IntersectionObserverEntry & { isVisible?: boolean }).isVisible === true;
+        guard.recordVisibility(isVisible, props.now());
+      }
+    },
+    { threshold: [1], trackVisibility: true, delay: 100 } as IntersectionObserverInit,
+  );
+  observer.observe(root.value);
+}
+
+watch([menuState, errorMessage], reportHeight);
+watch(allAction, () => (selectedIndex.value = -1));
+
+onMounted(async () => {
+  chrome.runtime.onMessage.addListener(handleBroadcast);
+  window.addEventListener("keydown", handleKeydown);
+  trackVisibility();
+  await loadState();
+});
+
+onBeforeUnmount(() => {
+  stopPolling();
+  observer?.disconnect();
+  chrome.runtime.onMessage.removeListener(handleBroadcast);
+  window.removeEventListener("keydown", handleKeydown);
+});
+
+defineExpose({ pressKey });
+</script>
+
+<template>
+  <div ref="root" class="menu" role="listbox" aria-label="Hisar">
+    <p v-if="!menuState && !errorMessage" class="message muted">Loading…</p>
+    <template v-else-if="menuState?.view === 'logins' && menuState.purpose === 'new-password'">
+      <button
+        v-if="menuState.suggestedPassword"
+        type="button"
+        class="item"
+        :class="{ selected: selectedIndex === 0 }"
+        data-testid="suggested-password"
+        @click="chooseAction({ kind: 'suggest' }, $event)"
+      >
+        <span class="avatar key" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M15 9a4 4 0 1 1-3.5 6L5 21H3v-3l1-1h2v-2h2l1.5-1.5A4 4 0 0 1 15 9zM16 8h.01" /></svg>
+        </span>
+        <span class="text">
+          <span class="title">Use suggested password</span>
+          <span class="subtitle monospace">{{ menuState.suggestedPassword }}</span>
+        </span>
+      </button>
+    </template>
+    <template v-else-if="menuState?.view === 'logins'">
+      <button
+        v-for="(login, index) in menuState.allLogin"
+        :key="login.vaultID + login.itemID"
+        type="button"
+        class="item"
+        :class="{ selected: selectedIndex === index }"
+        data-testid="inline-login"
+        @click="chooseAction({ kind: 'login', login }, $event)"
+      >
+        <span class="avatar" aria-hidden="true">{{ (login.title || "?").slice(0, 1).toUpperCase() }}</span>
+        <span class="text">
+          <span class="title">{{ login.title }}</span>
+          <span class="subtitle">{{ login.username || "No username" }}</span>
+        </span>
+      </button>
+      <button
+        v-if="menuState.hasMoreLogin"
+        type="button"
+        class="item more"
+        :class="{ selected: selectedIndex === menuState.allLogin.length }"
+        data-testid="inline-more"
+        @click="chooseAction({ kind: 'more' }, $event)"
+      >
+        More in Hisar…
+      </button>
+      <div v-if="menuState.allLogin.length === 0" class="message" data-testid="inline-no-logins">
+        <p class="title">No logins for {{ menuState.host }}</p>
+        <p class="muted">Hisar offers to save the login after you sign in.</p>
+      </div>
+    </template>
+    <template v-else-if="menuState">
+      <div class="message">
+        <p class="title" data-testid="inline-status">
+          {{
+            menuState.view === "not-paired"
+              ? "This browser is not paired with Hisar"
+              : menuState.view === "locked"
+                ? "Hisar is locked"
+                : menuState.view === "signed-out"
+                  ? "Sign in to Hisar on this computer"
+                  : "Hisar is not running"
+          }}
+        </p>
+      </div>
+      <button
+        v-if="allAction.length > 0"
+        type="button"
+        class="item action"
+        :class="{ selected: selectedIndex === 0 }"
+        :disabled="isWaiting"
+        data-testid="inline-action"
+        @click="chooseAction(allAction[0], $event)"
+      >
+        {{
+          menuState.view === "not-paired"
+            ? "Pair with Hisar"
+            : menuState.view === "locked"
+              ? isWaiting
+                ? "Waiting for Hisar…"
+                : "Unlock Hisar"
+              : isWaiting
+                ? "Opening Hisar…"
+                : "Open Hisar"
+        }}
+      </button>
+    </template>
+    <p v-if="errorMessage" class="message error" data-testid="inline-error">{{ errorMessage }}</p>
+  </div>
+</template>
+
+<style>
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  overflow: hidden;
+}
+
+body {
+  font: 13px/1.45 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  color: #e8eaed;
+  color-scheme: dark;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+.menu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  box-sizing: border-box;
+  padding: 6px;
+  border: 1px solid #30343a;
+  border-radius: 10px;
+  background: #111214;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 8px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.item:hover:not(:disabled),
+.item.selected {
+  background: #262a30;
+}
+
+.item:focus-visible {
+  outline: 2px solid #8a95a5;
+  outline-offset: -2px;
+}
+
+.item.more {
+  color: #b4b9c0;
+}
+
+.item.action {
+  justify-content: center;
+  border: 1px solid #eceef1;
+  background: #eceef1;
+  color: #0b0c0e;
+  font-weight: 600;
+}
+
+.item.action:hover:not(:disabled),
+.item.action.selected {
+  background: #ffffff;
+}
+
+.item:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.avatar {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: 1px solid #30343a;
+  border-radius: 7px;
+  background: #1c1f23;
+  color: #b4b9c0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.title,
+.subtitle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.title {
+  margin: 0;
+  font-weight: 500;
+}
+
+.subtitle {
+  font-size: 12px;
+  color: #7c838d;
+}
+
+.monospace {
+  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+}
+
+.message {
+  margin: 0;
+  padding: 6px 8px;
+}
+
+.message p {
+  margin: 0;
+}
+
+.muted {
+  color: #7c838d;
+  font-size: 12px;
+}
+
+.error {
+  color: #f2a7a9;
+  font-size: 12px;
+}
+</style>

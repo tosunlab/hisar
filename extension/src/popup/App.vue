@@ -6,7 +6,9 @@ import HisarLogo from "./components/HisarLogo.vue";
 import LoginList from "./components/LoginList.vue";
 import PairingView from "./components/PairingView.vue";
 import PasswordGenerator from "./components/PasswordGenerator.vue";
+import SettingsView from "./components/SettingsView.vue";
 import StatusView from "./components/StatusView.vue";
+import AppIcon from "./components/AppIcon.vue";
 
 const props = withDefaults(defineProps<{ pollIntervalMilliseconds?: number; pollLimit?: number }>(), {
   pollIntervalMilliseconds: 1000,
@@ -19,6 +21,7 @@ const isWaiting = ref(false);
 const errorMessage = ref("");
 const activeSection = ref<"logins" | "generator">("logins");
 const noticeMessage = ref("");
+const isSettingsOpen = ref(false);
 let noticeTimer: ReturnType<typeof setTimeout> | undefined;
 let pollTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -98,9 +101,21 @@ onBeforeUnmount(() => {
       <span v-if="popupState?.view === 'unlocked' && popupState.email" class="email muted" :title="popupState.email">
         {{ popupState.email }}
       </span>
+      <button
+        type="button"
+        class="ghost icon-button"
+        :class="{ active: isSettingsOpen }"
+        title="Settings"
+        aria-label="Settings"
+        data-testid="open-settings"
+        @click="isSettingsOpen = !isSettingsOpen"
+      >
+        <AppIcon name="settings" />
+      </button>
     </header>
-    <p v-if="errorMessage" class="error page-error">{{ errorMessage }}</p>
-    <p v-if="!popupState" class="muted connecting" data-testid="connecting">Connecting to Hisar…</p>
+    <p v-if="errorMessage && !isSettingsOpen" class="error page-error">{{ errorMessage }}</p>
+    <SettingsView v-if="isSettingsOpen" @close="isSettingsOpen = false" />
+    <p v-else-if="!popupState" class="muted connecting" data-testid="connecting">Connecting to Hisar…</p>
     <PairingView v-else-if="popupState.view === 'not-paired'" @paired="refreshState()" />
     <section v-else-if="popupState.view === 'unlocked'" class="unlocked" data-testid="unlocked-view">
       <div class="segments" role="tablist">
@@ -156,6 +171,11 @@ onBeforeUnmount(() => {
   gap: 8px;
   padding: 12px 16px;
   border-bottom: 1px solid var(--color-border);
+}
+
+.header .icon-button.active {
+  background: var(--color-selected);
+  color: var(--color-text);
 }
 
 .email {
