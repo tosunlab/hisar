@@ -27,10 +27,15 @@ import (
 
 // fakeAPIServer stores encrypted vaults and items in memory, like the Hisar server API.
 type fakeAPIServer struct {
-	mutex            sync.Mutex
-	allVault         []proto.Vault
-	allItemByVaultID map[string]map[string]proto.Item
-	seq              int64
+	mutex              sync.Mutex
+	allVault           []proto.Vault
+	allItemByVaultID   map[string]map[string]proto.Item
+	seq                int64
+	accountID          string
+	role               string
+	allMember          []proto.Member
+	allAccessByVaultID map[string][]proto.RotatedAccess
+	allDevice          []proto.Device
 }
 
 func writeJSON(writer http.ResponseWriter, status int, value any) {
@@ -56,6 +61,7 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 		defer server.mutex.Unlock()
 		server.allVault = append(server.allVault, proto.Vault{ID: createRequest.ID, Type: createRequest.Type, EncName: createRequest.EncName, Role: proto.VaultOwner, WrappedKey: createRequest.WrappedKey})
 		server.allItemByVaultID[createRequest.ID] = map[string]proto.Item{}
+		server.allAccessByVaultID[createRequest.ID] = []proto.RotatedAccess{{AccountID: server.accountID, Role: proto.VaultOwner, WrappedKey: createRequest.WrappedKey}}
 		writer.WriteHeader(http.StatusCreated)
 	})
 	mux.HandleFunc("GET /api/v1/vaults/{vaultID}/changes", func(writer http.ResponseWriter, request *http.Request) {
@@ -95,6 +101,7 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 		allItem[itemID] = proto.Item{ID: itemID, Revision: putRequest.Revision, Seq: server.seq, Deleted: putRequest.Deleted, Overview: putRequest.Overview, Details: putRequest.Details}
 		writeJSON(writer, http.StatusOK, proto.PutItemResponse{Seq: server.seq})
 	})
+	server.addAllSharingRoute(mux)
 	return mux
 }
 
@@ -102,6 +109,7 @@ type unlockedTestService struct {
 	service     *Service
 	clipboard   *fakeClipboard
 	apiServer   *fakeAPIServer
+	accountID   string
 	personalID  string
 	familyID    string
 	lockedCount *int
@@ -110,21 +118,27 @@ type unlockedTestService struct {
 // createUnlockedTestService opens a session against the in-memory API with a Personal and a Family vault.
 func createUnlockedTestService(t *testing.T) unlockedTestService {
 	t.Helper()
-	apiServer := &fakeAPIServer{allItemByVaultID: map[string]map[string]proto.Item{}}
+	keyset, err := crypt.GenerateKeyset()
+	if err != nil {
+		t.Fatal(err)
+	}
+	accountID := crypt.GenerateAccountID()
+	apiServer := &fakeAPIServer{
+		allItemByVaultID:   map[string]map[string]proto.Item{},
+		accountID:          accountID,
+		role:               proto.RoleAdmin,
+		allMember:          []proto.Member{{AccountID: accountID, Email: "a@example.com", Name: "Alice", Role: proto.RoleAdmin, PublicKeys: keyset.GetAllPublicKey(accountID)}},
+		allAccessByVaultID: map[string][]proto.RotatedAccess{},
+	}
 	httpServer := httptest.NewServer(apiServer.createHandler())
 	t.Cleanup(httpServer.Close)
 
 	service, clipboard, _ := createTestService(t, filepath.Join(t.TempDir(), "desktop.json"), createMemorySecretKeyStore())
 	lockedCount := 0
 	service.config.OnLock = func() { lockedCount++ }
-	keyset, err := crypt.GenerateKeyset()
-	if err != nil {
-		t.Fatal(err)
-	}
-	accountID := crypt.GenerateAccountID()
 	apiClient := client.Create(httpServer.URL)
 	apiClient.Token = "token"
-	unlockedSession := &session.Session{Client: apiClient, AccountID: accountID, Email: "a@example.com", Name: "Alice", Keyset: keyset}
+	unlockedSession := &session.Session{Client: apiClient, AccountID: accountID, Email: "a@example.com", Name: "Alice", Role: proto.RoleAdmin, Keyset: keyset}
 	ctx := context.Background()
 	personal, err := unlockedSession.CreateVault(ctx, "Personal", proto.VaultPersonal)
 	if err != nil {
@@ -140,7 +154,7 @@ func createUnlockedTestService(t *testing.T) unlockedTestService {
 	service.openSession(unlockedSession)
 	service.mutex.Unlock()
 	t.Cleanup(func() { service.Lock() })
-	return unlockedTestService{service: service, clipboard: clipboard, apiServer: apiServer, personalID: personal.ID, familyID: family.ID, lockedCount: &lockedCount}
+	return unlockedTestService{service: service, clipboard: clipboard, apiServer: apiServer, accountID: accountID, personalID: personal.ID, familyID: family.ID, lockedCount: &lockedCount}
 }
 
 func getCachedItem(t *testing.T, service *Service, vaultID, itemID string) item.Item {

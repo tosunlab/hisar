@@ -142,6 +142,7 @@ func (s *Service) Lock() Status {
 
 func (s *Service) openSession(unlockedSession *session.Session) {
 	unlockedSession.SeqStore = s.state
+	unlockedSession.MemberVerifier = s.state.CheckMemberPin
 	s.unlockedSession = unlockedSession
 	s.name = unlockedSession.Name
 	s.allItemByVaultID = map[string][]item.Item{}

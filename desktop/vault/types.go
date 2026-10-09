@@ -41,6 +41,38 @@ type VaultSummary struct {
 	ItemCount int    `json:"itemCount"`
 }
 
+// FamilyMember is an account on the server. SecurityCode is derived from their signing key; IsKeyChanged
+// means it differs from the key pinned when this device first shared with them.
+type FamilyMember struct {
+	AccountID     string `json:"accountId"`
+	Name          string `json:"name"`
+	Email         string `json:"email"`
+	Role          string `json:"role"`
+	SecurityCode  string `json:"securityCode"`
+	IsCurrentUser bool   `json:"isCurrentUser"`
+	IsKeyChanged  bool   `json:"isKeyChanged"`
+}
+
+type VaultMember struct {
+	AccountID     string `json:"accountId"`
+	Name          string `json:"name"`
+	Email         string `json:"email"`
+	Role          string `json:"role"`
+	SecurityCode  string `json:"securityCode"`
+	IsCurrentUser bool   `json:"isCurrentUser"`
+	IsKeyChanged  bool   `json:"isKeyChanged"`
+}
+
+// Device is a signed-in device of the current account; LastSeenAt is RFC 3339.
+type Device struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Platform   string `json:"platform"`
+	CreatedAt  string `json:"createdAt"`
+	LastSeenAt string `json:"lastSeenAt"`
+	IsCurrent  bool   `json:"isCurrent"`
+}
+
 type ItemField struct {
 	Name      string `json:"name"`
 	Value     string `json:"value"`
