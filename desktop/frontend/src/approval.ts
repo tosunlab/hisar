@@ -55,7 +55,13 @@ export async function authorizeApproval(requestID: string): Promise<void> {
   }
 }
 
+// denyApproval also ends a Touch ID check that is waiting for the sensor.
 export async function denyApproval(requestID: string): Promise<void> {
   removeApproval(requestID);
   await api.respondSSHApproval(requestID, false, false).catch(() => undefined);
+}
+
+export async function setForAllApplication(requestID: string, isForAllApplication: boolean): Promise<void> {
+  approvalStore.isForAllApplication = isForAllApplication;
+  await api.setSSHApprovalForAllApplication(requestID, isForAllApplication).catch(() => undefined);
 }

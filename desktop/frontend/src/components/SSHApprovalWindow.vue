@@ -1,31 +1,70 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { Events } from "@wailsio/runtime";
-import { addApproval, approvalStore, authorizeApproval, denyApproval, failApproval, loadAllPendingApproval, removeApproval } from "../approval";
+import { api } from "../api";
+import { addApproval, approvalStore, authorizeApproval, denyApproval, failApproval, loadAllPendingApproval, removeApproval, setForAllApplication } from "../approval";
 import AppIcon from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
 
 const isDetailOpen = ref(false);
+const promptSlot = ref<HTMLElement | null>(null);
 const approval = computed(() => approvalStore.allApproval[0]);
 const destination = computed(() => approval.value?.destinationHost || approval.value?.destinationFingerprint || "");
 const isProgramShownSeparately = computed(() => approval.value !== undefined && approval.value.clientName !== approval.value.appName);
+const isWaitingForTouchID = computed(() => approvalStore.isAuthorizing && approval.value?.isTouchIDApproval === true);
 let allRemoveListener: (() => void)[] = [];
+
+// sendPromptFrame places macOS's Touch ID view over the slot, so touching the sensor approves without a click.
+async function sendPromptFrame(): Promise<void> {
+  await nextTick();
+  const slot = promptSlot.value;
+  if (!slot) {
+    return;
+  }
+  const rectangle = slot.getBoundingClientRect();
+  await api.setApprovalTouchIDFrame(rectangle.x, rectangle.y, rectangle.width, rectangle.height).catch(() => undefined);
+}
+
+async function startAuthorizing(): Promise<void> {
+  const current = approval.value;
+  if (!current || approvalStore.isAuthorizing) {
+    return;
+  }
+  if (current.isTouchIDApproval) {
+    approvalStore.isAuthorizing = true;
+    await sendPromptFrame();
+  }
+  await authorizeApproval(current.requestID);
+}
 
 watch(
   () => approval.value?.requestID,
-  () => (isDetailOpen.value = false),
+  (requestID) => {
+    isDetailOpen.value = false;
+    if (!requestID) {
+      api.clearApprovalTouchIDFrame().catch(() => undefined);
+    } else if (approval.value?.isTouchIDApproval) {
+      startAuthorizing();
+    }
+  },
 );
 
+watch(isDetailOpen, () => {
+  if (isWaitingForTouchID.value) {
+    sendPromptFrame();
+  }
+});
+
 function handleKey(event: KeyboardEvent): void {
-  if (!approval.value || approvalStore.isAuthorizing) {
+  if (!approval.value) {
     return;
   }
   if (event.key === "Escape") {
     event.preventDefault();
     denyApproval(approval.value.requestID);
-  } else if (event.key === "Enter" && !(event.target instanceof HTMLButtonElement)) {
+  } else if (event.key === "Enter" && !approvalStore.isAuthorizing && !(event.target instanceof HTMLButtonElement)) {
     event.preventDefault();
-    authorizeApproval(approval.value.requestID);
+    startAuthorizing();
   }
 }
 
@@ -37,11 +76,14 @@ onMounted(() => {
   ];
   loadAllPendingApproval();
   window.addEventListener("keydown", handleKey);
+  window.addEventListener("resize", sendPromptFrame);
 });
 
 onBeforeUnmount(() => {
   allRemoveListener.forEach((removeListener) => removeListener());
   window.removeEventListener("keydown", handleKey);
+  window.removeEventListener("resize", sendPromptFrame);
+  api.clearApprovalTouchIDFrame().catch(() => undefined);
 });
 </script>
 
@@ -89,18 +131,29 @@ onBeforeUnmount(() => {
       </p>
 
       <label class="all-applications">
-        <input v-model="approvalStore.isForAllApplication" type="checkbox" name="isForAllApplication" :disabled="approvalStore.isAuthorizing" />
+        <input
+          type="checkbox"
+          name="isForAllApplication"
+          :checked="approvalStore.isForAllApplication"
+          @change="setForAllApplication(approval.requestID, ($event.target as HTMLInputElement).checked)"
+        />
         Approve for all applications
       </label>
 
       <p v-if="approvalStore.failureMessage" class="failure" role="alert">{{ approvalStore.failureMessage }}</p>
 
       <div class="actions">
-        <span v-if="approvalStore.allApproval.length > 1" class="muted waiting">{{ approvalStore.allApproval.length - 1 }} more waiting</span>
-        <button data-testid="deny-approval" :disabled="approvalStore.isAuthorizing" @click="denyApproval(approval.requestID)">Deny</button>
-        <button class="primary" data-testid="authorize-approval" :disabled="approvalStore.isAuthorizing" @click="authorizeApproval(approval.requestID)">
+        <div v-if="isWaitingForTouchID" class="touch-id" data-testid="approval-touch-id">
+          <div ref="promptSlot" class="prompt-slot">
+            <AppIcon v-if="!api.hasNativeTouchIDView" name="fingerprint" :size="30" />
+          </div>
+          <span>Touch ID to approve</span>
+        </div>
+        <span v-else-if="approvalStore.allApproval.length > 1" class="muted waiting">{{ approvalStore.allApproval.length - 1 }} more waiting</span>
+        <button data-testid="deny-approval" @click="denyApproval(approval.requestID)">Deny</button>
+        <button v-if="!isWaitingForTouchID" class="primary" data-testid="authorize-approval" :disabled="approvalStore.isAuthorizing" @click="startAuthorizing">
           <AppIcon v-if="approval.isTouchIDApproval" name="fingerprint" :size="16" />
-          {{ approvalStore.isAuthorizing && approval.isTouchIDApproval ? "Waiting for Touch ID…" : "Authorize" }}
+          Authorize
         </button>
       </div>
       <p class="muted note">Approvals last for an hour, or until Hisar locks.</p>
@@ -301,6 +354,24 @@ h1 {
 .waiting {
   margin-right: auto;
   font-size: 12px;
+}
+
+.touch-id {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-right: auto;
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
+
+.prompt-slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  color: var(--color-text-secondary);
 }
 
 .note {

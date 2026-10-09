@@ -301,3 +301,75 @@ func TestBuildApprovalReason(t *testing.T) {
 		t.Errorf("reason = %q", reason)
 	}
 }
+
+type waitingBiometric struct {
+	startedChannel chan struct{}
+	resultChannel  chan error
+}
+
+func createWaitingBiometric() *waitingBiometric {
+	return &waitingBiometric{startedChannel: make(chan struct{}, 10), resultChannel: make(chan error, 10)}
+}
+
+func (biometric *waitingBiometric) IsAvailable() bool { return true }
+
+func (biometric *waitingBiometric) Authenticate(reason string) error {
+	biometric.startedChannel <- struct{}{}
+	return <-biometric.resultChannel
+}
+
+func (biometric *waitingBiometric) waitForStart(t *testing.T) {
+	t.Helper()
+	select {
+	case <-biometric.startedChannel:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Touch ID did not start")
+	}
+}
+
+func TestDenyCancelsTouchIDInProgress(t *testing.T) {
+	biometric := createWaitingBiometric()
+	emitter := createFakeEmitter()
+	cancelCount := 0
+	approver := CreateApprover(ApproverConfig{
+		Biometric: biometric, Emit: emitter.emit,
+		CancelBiometric: func() {
+			cancelCount++
+			biometric.resultChannel <- errors.New("cancelled")
+		},
+	})
+	resultChannel := startApproval(approver, context.Background(), createTestRequest())
+	approvalEvent := waitForApprovalEvent(t, emitter)
+	approver.Respond(approvalEvent.RequestID, true, false)
+	biometric.waitForStart(t)
+	if !approver.Respond(approvalEvent.RequestID, false, false) {
+		t.Fatal("Deny during Touch ID not accepted")
+	}
+	if result := waitForResult(t, resultChannel); result.result.IsAllowed {
+		t.Error("Deny during Touch ID allowed the request")
+	}
+	if cancelCount != 1 {
+		t.Errorf("Touch ID cancelled %d times", cancelCount)
+	}
+	for _, eventName := range emitter.listAllEventName() {
+		if eventName == ApprovalFailedEventName {
+			t.Error("a denied request reported a failed Touch ID")
+		}
+	}
+}
+
+func TestForAllApplicationChangedWhileTouchIDWaits(t *testing.T) {
+	biometric := createWaitingBiometric()
+	emitter := createFakeEmitter()
+	approver := CreateApprover(ApproverConfig{Biometric: biometric, Emit: emitter.emit})
+	resultChannel := startApproval(approver, context.Background(), createTestRequest())
+	approvalEvent := waitForApprovalEvent(t, emitter)
+	approver.Respond(approvalEvent.RequestID, true, false)
+	biometric.waitForStart(t)
+	approver.SetForAllApplication(approvalEvent.RequestID, true)
+	approver.SetForAllApplication("unknown", false)
+	biometric.resultChannel <- nil
+	if result := waitForResult(t, resultChannel); !result.result.IsAllowed || !result.result.IsForAllClient {
+		t.Errorf("result = %+v", result)
+	}
+}

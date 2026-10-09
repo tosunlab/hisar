@@ -368,7 +368,7 @@ export const previewApi = {
     return resolveAfterDelay(previewAgentStatus("/Users/alper/.ssh/config.hisar-backup-20261008-093100"));
   },
   respondSSHApproval: (requestID: string, isAuthorized: boolean) => {
-    if (isAuthorized) {
+    if (isAuthorized && previewParameter.get("approvalCompletes") === "1") {
       setTimeout(() => import("./approval").then(({ removeApproval }) => removeApproval(requestID)), 900);
     }
     return resolveAfterDelay(undefined);
@@ -403,6 +403,9 @@ export const previewApi = {
   },
   setTouchIDPromptFrame: () => Promise.resolve(),
   clearTouchIDPromptFrame: () => Promise.resolve(),
+  setSSHApprovalForAllApplication: () => Promise.resolve(),
+  setApprovalTouchIDFrame: () => Promise.resolve(),
+  clearApprovalTouchIDFrame: () => Promise.resolve(),
   cancelTouchIDPrompt: () => Promise.resolve(),
   hasNativeTouchIDView: false,
   saveNewAccountEmergencyKit: () => resolveAfterDelay("/Users/you/Documents/Hisar Emergency Kit.pdf"),

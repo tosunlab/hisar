@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"time"
+	"unsafe"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
@@ -110,9 +111,16 @@ func main() {
 		})
 	}
 	var approvalWindow *application.WebviewWindow
+	approvalTouchID := touchID.CreateWindowPrompt(func() unsafe.Pointer {
+		if approvalWindow == nil {
+			return nil
+		}
+		return approvalWindow.NativeWindow()
+	})
 	approver := agent.CreateApprover(agent.ApproverConfig{
-		Biometric: touchID,
-		Emit:      func(eventName string, data any) { app.Event.Emit(eventName, data) },
+		Biometric:       approvalTouchID,
+		CancelBiometric: approvalTouchID.CancelPrompt,
+		Emit:            func(eventName string, data any) { app.Event.Emit(eventName, data) },
 		ShowApprovalWindow: func() {
 			application.InvokeAsync(func() {
 				approvalWindow.Center()
@@ -166,6 +174,7 @@ func main() {
 		Services: []application.Service{
 			application.NewService(vaultService),
 			application.NewService(&TouchIDPromptService{biometric: touchID}),
+			application.NewService(&ApprovalTouchIDService{prompt: approvalTouchID}),
 			application.NewService(agentService),
 			application.NewService(browserBridge),
 		},

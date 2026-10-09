@@ -54,6 +54,8 @@ type ApproverConfig struct {
 	Emit               func(eventName string, data any)
 	ShowApprovalWindow func()
 	HideApprovalWindow func()
+	// CancelBiometric ends a Touch ID check in progress, so Deny does not wait for the sensor.
+	CancelBiometric func()
 	// FindApp names the app a process belongs to; nil shows only the program.
 	FindApp func(pid int) (appinfo.App, bool)
 	Timeout time.Duration
@@ -68,6 +70,9 @@ type approvalResponse struct {
 type pendingApproval struct {
 	event           ApprovalEvent
 	responseChannel chan approvalResponse
+	// isForAllApplication and isAuthenticating are guarded by Approver.mutex.
+	isForAllApplication bool
+	isAuthenticating    bool
 }
 
 // Approver shows the approval window for each signing request; Authorize then asks for Touch ID when the Mac has it.
@@ -158,8 +163,16 @@ func (approver *Approver) Approve(ctx context.Context, request sshagent.Approval
 			if !response.isAuthorized {
 				return sshagent.ApprovalResult{}, nil
 			}
-			if !approver.IsTouchIDApproval() || approver.authenticate(buildApprovalReason(pending.event.AppName, request)) {
-				return sshagent.ApprovalResult{IsAllowed: true, IsForAllClient: response.isForAllApplication}, nil
+			if !approver.IsTouchIDApproval() || approver.authenticatePending(pending, buildApprovalReason(pending.event.AppName, request)) {
+				return sshagent.ApprovalResult{IsAllowed: true, IsForAllClient: approver.isPendingForAllApplication(pending)}, nil
+			}
+			select {
+			case deniedResponse := <-pending.responseChannel:
+				if !deniedResponse.isAuthorized {
+					return sshagent.ApprovalResult{}, nil
+				}
+				pending.responseChannel <- deniedResponse
+			default:
 			}
 			approver.config.Emit(ApprovalFailedEventName, ApprovalFailedEvent{RequestID: pending.event.RequestID, Message: "Touch ID did not confirm it's you. Try again, or deny."})
 		case <-timer.C:
@@ -170,11 +183,43 @@ func (approver *Approver) Approve(ctx context.Context, request sshagent.Approval
 	}
 }
 
-// authenticate shows one Touch ID prompt at a time.
-func (approver *Approver) authenticate(reason string) bool {
+// authenticatePending shows one Touch ID prompt at a time and marks the request so Deny can cancel it.
+func (approver *Approver) authenticatePending(pending *pendingApproval, reason string) bool {
 	approver.biometricMutex.Lock()
 	defer approver.biometricMutex.Unlock()
+	approver.mutex.Lock()
+	pending.isAuthenticating = true
+	approver.mutex.Unlock()
+	defer func() {
+		approver.mutex.Lock()
+		pending.isAuthenticating = false
+		approver.mutex.Unlock()
+	}()
 	return approver.config.Biometric.Authenticate(reason) == nil
+}
+
+func (approver *Approver) isPendingForAllApplication(pending *pendingApproval) bool {
+	approver.mutex.Lock()
+	defer approver.mutex.Unlock()
+	return pending.isForAllApplication
+}
+
+// SetForAllApplication follows the checkbox while Touch ID waits; the value at the time of approval counts.
+func (approver *Approver) SetForAllApplication(requestID string, isForAllApplication bool) {
+	approver.mutex.Lock()
+	defer approver.mutex.Unlock()
+	if pending := approver.findPending(requestID); pending != nil {
+		pending.isForAllApplication = isForAllApplication
+	}
+}
+
+func (approver *Approver) findPending(requestID string) *pendingApproval {
+	for _, pending := range approver.allPending {
+		if pending.event.RequestID == requestID {
+			return pending
+		}
+	}
+	return nil
 }
 
 func (approver *Approver) finishApproval(pending *pendingApproval) {
@@ -202,29 +247,42 @@ func (approver *Approver) ListAllPendingApproval() []ApprovalEvent {
 // Respond answers a pending approval; it returns false for an unknown or finished request, or one already being answered.
 func (approver *Approver) Respond(requestID string, isAuthorized, isForAllApplication bool) bool {
 	approver.mutex.Lock()
-	defer approver.mutex.Unlock()
-	for _, pending := range approver.allPending {
-		if pending.event.RequestID != requestID {
-			continue
-		}
-		select {
-		case pending.responseChannel <- approvalResponse{isAuthorized: isAuthorized, isForAllApplication: isForAllApplication}:
-			return true
-		default:
-			return false
-		}
+	pending := approver.findPending(requestID)
+	if pending == nil {
+		approver.mutex.Unlock()
+		return false
 	}
-	return false
+	if isAuthorized {
+		pending.isForAllApplication = isForAllApplication
+	}
+	isSent := approver.sendResponse(pending, approvalResponse{isAuthorized: isAuthorized, isForAllApplication: isForAllApplication})
+	isCancellingTouchID := !isAuthorized && pending.isAuthenticating
+	approver.mutex.Unlock()
+	if isCancellingTouchID && approver.config.CancelBiometric != nil {
+		approver.config.CancelBiometric()
+	}
+	return isSent
+}
+
+func (approver *Approver) sendResponse(pending *pendingApproval, response approvalResponse) bool {
+	select {
+	case pending.responseChannel <- response:
+		return true
+	default:
+		return false
+	}
 }
 
 // DenyAll answers every pending approval with Deny, e.g. when the approval window is closed.
 func (approver *Approver) DenyAll() {
 	approver.mutex.Lock()
-	defer approver.mutex.Unlock()
+	isCancellingTouchID := false
 	for _, pending := range approver.allPending {
-		select {
-		case pending.responseChannel <- approvalResponse{}:
-		default:
-		}
+		approver.sendResponse(pending, approvalResponse{})
+		isCancellingTouchID = isCancellingTouchID || pending.isAuthenticating
+	}
+	approver.mutex.Unlock()
+	if isCancellingTouchID && approver.config.CancelBiometric != nil {
+		approver.config.CancelBiometric()
 	}
 }

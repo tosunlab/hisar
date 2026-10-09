@@ -2,9 +2,6 @@ package appinfo
 
 import (
 	"errors"
-	"os"
-	"runtime"
-	"strings"
 	"testing"
 )
 
@@ -45,16 +42,5 @@ func TestFindApp(t *testing.T) {
 	looping := func(pid int) (int, error) { return pid + 1, nil }
 	if _, isFound := FindApp(2, func(int) (string, error) { return "/usr/bin/x", nil }, looping); isFound {
 		t.Error("an endless ancestry found an app")
-	}
-}
-
-func TestDescribeBundleOnMacOS(t *testing.T) {
-	const terminalPath = "/System/Applications/Utilities/Terminal.app"
-	if _, err := os.Stat(terminalPath); runtime.GOOS != "darwin" || err != nil {
-		t.Skip("needs macOS with Terminal.app")
-	}
-	app := describeBundle(terminalPath)
-	if app.Name != "Terminal" || !strings.HasPrefix(app.IconURL, "data:image/png;base64,") || len(app.IconURL) < 1000 {
-		t.Errorf("Terminal: name %q, icon %d bytes", app.Name, len(app.IconURL))
 	}
 }

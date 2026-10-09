@@ -1,5 +1,5 @@
 import { Browser } from "@wailsio/runtime";
-import { TouchIDPromptService } from "../bindings/github.com/tryhisar/hisar/desktop";
+import { ApprovalTouchIDService, TouchIDPromptService } from "../bindings/github.com/tryhisar/hisar/desktop";
 import { Service as AgentService } from "../bindings/github.com/tryhisar/hisar/desktop/agent";
 import type { ApprovalEvent, Status as SSHAgentStatus } from "../bindings/github.com/tryhisar/hisar/desktop/agent";
 import { BrowserBridge, Service } from "../bindings/github.com/tryhisar/hisar/desktop/vault";
@@ -100,6 +100,11 @@ const wailsApi = {
   respondSSHApproval: (requestID: string, isAuthorized: boolean, isForAllApplication: boolean): Promise<void> =>
     AgentService.RespondSSHApproval(requestID, isAuthorized, isForAllApplication),
   listAllPendingSSHApproval: async (): Promise<ApprovalEvent[]> => (await AgentService.ListAllPendingSSHApproval()) ?? [],
+  setSSHApprovalForAllApplication: (requestID: string, isForAllApplication: boolean): Promise<void> =>
+    AgentService.SetSSHApprovalForAllApplication(requestID, isForAllApplication),
+  setApprovalTouchIDFrame: (x: number, y: number, width: number, height: number): Promise<void> =>
+    ApprovalTouchIDService.SetApprovalPromptFrame(x, y, width, height),
+  clearApprovalTouchIDFrame: (): Promise<void> => ApprovalTouchIDService.ClearApprovalPromptFrame(),
   copyField: (vaultID: string, itemID: string, fieldName: string): Promise<void> =>
     Service.CopyField(vaultID, itemID, fieldName),
   copyText: (text: string): Promise<void> => Service.CopyText(text),

@@ -52,51 +52,53 @@ describe("SSHApprovalWindow", () => {
     wrapper.unmount();
   });
 
-  it("authorizes with Touch ID, for all applications when checked", async () => {
+  it("starts Touch ID in the window as soon as a request arrives", async () => {
     const wrapper = mount(SSHApprovalWindow);
     sendEvent("ssh-approval", createApprovalEvent());
     await flushPromises();
+    expect(api.setApprovalTouchIDFrame).toHaveBeenCalled();
+    expect(api.respondSSHApproval).toHaveBeenCalledWith("request-1", true, false);
+    expect(wrapper.find('[data-testid="approval-touch-id"]').text()).toContain("Touch ID to approve");
+    expect(wrapper.find('[data-testid="authorize-approval"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="deny-approval"]').attributes("disabled")).toBeUndefined();
+
     await wrapper.find('input[name="isForAllApplication"]').setValue(true);
-    await wrapper.find('[data-testid="authorize-approval"]').trigger("click");
-    await flushPromises();
-    expect(api.respondSSHApproval).toHaveBeenCalledWith("request-1", true, true);
-    expect(wrapper.find('[data-testid="authorize-approval"]').text()).toBe("Waiting for Touch ID…");
-    expect(wrapper.find('[data-testid="deny-approval"]').attributes("disabled")).toBeDefined();
+    expect(api.setSSHApprovalForAllApplication).toHaveBeenCalledWith("request-1", true);
 
     sendEvent("ssh-approval-closed", "request-1");
     await flushPromises();
     expect(wrapper.find('[data-testid="ssh-approval"]').exists()).toBe(false);
+    expect(api.clearApprovalTouchIDFrame).toHaveBeenCalled();
     expect(approvalStore.isForAllApplication).toBe(false);
     wrapper.unmount();
   });
 
-  it("lets the user try again after Touch ID fails", async () => {
+  it("offers Authorize again after Touch ID fails", async () => {
     const wrapper = mount(SSHApprovalWindow);
     sendEvent("ssh-approval", createApprovalEvent());
     await flushPromises();
-    await wrapper.find('[data-testid="authorize-approval"]').trigger("click");
     sendEvent("ssh-approval-failed", { requestID: "request-1", message: "Touch ID did not confirm it's you. Try again, or deny." });
     await flushPromises();
     expect(wrapper.find('[role="alert"]').text()).toContain("Touch ID did not confirm");
-    expect(wrapper.find('[data-testid="authorize-approval"]').text()).toBe("Authorize");
+    expect(wrapper.find('[data-testid="approval-touch-id"]').exists()).toBe(false);
     await wrapper.find('[data-testid="authorize-approval"]').trigger("click");
+    await flushPromises();
     expect(api.respondSSHApproval).toHaveBeenCalledTimes(2);
+    expect(wrapper.find('[data-testid="approval-touch-id"]').exists()).toBe(true);
     wrapper.unmount();
   });
 
-  it("denies with the button or Escape and moves to the next request", async () => {
+  it("denies while Touch ID waits, with the button or Escape", async () => {
     const wrapper = mount(SSHApprovalWindow);
     sendEvent("ssh-approval", createApprovalEvent());
-    sendEvent("ssh-approval", createApprovalEvent({ requestID: "request-2", appName: "Visual Studio Code", isForwarded: true, isTouchIDApproval: false }));
-    sendEvent("ssh-approval", createApprovalEvent());
+    sendEvent("ssh-approval", createApprovalEvent({ requestID: "request-2", appName: "Visual Studio Code", isForwarded: true }));
     await flushPromises();
-    expect(wrapper.text()).toContain("1 more waiting");
     await wrapper.find('[data-testid="deny-approval"]').trigger("click");
     await flushPromises();
     expect(api.respondSSHApproval).toHaveBeenCalledWith("request-1", false, false);
     expect(wrapper.find('[data-testid="approval-app"]').text()).toBe("Visual Studio Code");
     expect(wrapper.find('[data-testid="approval-forwarded"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="authorize-approval"]').text()).toBe("Authorize");
+    expect(api.respondSSHApproval).toHaveBeenCalledWith("request-2", true, false);
 
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
     await flushPromises();
@@ -105,16 +107,20 @@ describe("SSHApprovalWindow", () => {
     wrapper.unmount();
   });
 
-  it("authorizes with Enter and ignores keys while waiting", async () => {
+  it("waits for a click on Macs without Touch ID", async () => {
     const wrapper = mount(SSHApprovalWindow);
-    sendEvent("ssh-approval", createApprovalEvent());
+    sendEvent("ssh-approval", createApprovalEvent({ isTouchIDApproval: false }));
+    sendEvent("ssh-approval", createApprovalEvent({ requestID: "request-2", isTouchIDApproval: false }));
     await flushPromises();
+    expect(api.respondSSHApproval).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain("1 more waiting");
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
     await flushPromises();
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
     await flushPromises();
     expect(api.respondSSHApproval).toHaveBeenCalledTimes(1);
     expect(api.respondSSHApproval).toHaveBeenCalledWith("request-1", true, false);
     wrapper.unmount();
   });
+
 });

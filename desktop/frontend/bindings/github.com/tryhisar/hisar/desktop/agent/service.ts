@@ -39,3 +39,7 @@ export function RemoveSSHConfig(): $CancellablePromise<$models.Status> {
 export function RespondSSHApproval(requestID: string, isAuthorized: boolean, isForAllApplication: boolean): $CancellablePromise<void> {
     return $Call.ByID(1303786858, requestID, isAuthorized, isForAllApplication);
 }
+
+export function SetSSHApprovalForAllApplication(requestID: string, isForAllApplication: boolean): $CancellablePromise<void> {
+    return $Call.ByID(1985530551, requestID, isForAllApplication);
+}

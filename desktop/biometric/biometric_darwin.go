@@ -31,6 +31,10 @@ func (biometric *Biometric) IsAvailable() bool {
 // Authenticate blocks until the user passes or cancels Touch ID; it must not be called on the main thread.
 func (biometric *Biometric) Authenticate(reason string) error {
 	window, frame := biometric.getPromptTarget()
+	return authenticateInWindow(reason, window, frame)
+}
+
+func authenticateInWindow(reason string, window unsafe.Pointer, frame *PromptFrame) error {
 	embed := C.int(0)
 	var x, y, width, height C.double
 	if window != nil && frame != nil {

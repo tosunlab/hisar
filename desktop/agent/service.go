@@ -98,6 +98,12 @@ func (s *Service) RespondSSHApproval(requestID string, isAuthorized, isForAllApp
 	}
 }
 
+func (s *Service) SetSSHApprovalForAllApplication(requestID string, isForAllApplication bool) {
+	if s.config.Approver != nil {
+		s.config.Approver.SetForAllApplication(requestID, isForAllApplication)
+	}
+}
+
 func (s *Service) ListAllPendingSSHApproval() []ApprovalEvent {
 	if s.config.Approver == nil {
 		return []ApprovalEvent{}
