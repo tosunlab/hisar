@@ -24,8 +24,8 @@ const api = apiMock.current;
 
 function createVaultList(familyRole: string): VaultSummary[] {
   return [
-    { id: "personal", name: "Personal", type: "personal", role: "owner", itemCount: 0 },
-    { id: "family", name: "Family", type: "shared", role: familyRole, itemCount: 1 },
+    { id: "personal", name: "Personal", type: "personal", role: "owner", itemCount: 0, recoverable: true, recoveryOptOut: false },
+    { id: "family", name: "Family", type: "shared", role: familyRole, itemCount: 1, recoverable: true, recoveryOptOut: false },
   ];
 }
 
@@ -192,7 +192,8 @@ describe("Vault sharing panel", () => {
     const privateButton = wrapper.find('[data-testid="personal-vault-private"]');
     expect(privateButton.attributes("title")).toContain("Personal vaults are private");
     await privateButton.trigger("click");
-    expect(store.noticeMessage).toContain("Personal vaults are private");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="vault-recovery-panel"]').text()).toContain("“Personal” is private");
     expect(store.isSharingOpen).toBe(false);
     wrapper.unmount();
   });
