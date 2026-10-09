@@ -17,6 +17,14 @@ export function ChangeVaultMemberRole(vaultID: string, accountID: string, role: 
 }
 
 /**
+ * CompleteAccountRecovery gives the member their recoverable vaults under their new keys, pins their new signing key
+ * and returns the names of the vaults they lost.
+ */
+export function CompleteAccountRecovery(accountID: string): $CancellablePromise<string[] | null> {
+    return $Call.ByID(2056141888, accountID);
+}
+
+/**
  * CopyField copies an item's value and clears the clipboard later if it still holds that value.
  */
 export function CopyField(vaultID: string, itemID: string, fieldName: string): $CancellablePromise<void> {
@@ -40,6 +48,13 @@ export function DisableBiometricUnlock(): $CancellablePromise<$models.Status> {
 }
 
 /**
+ * DisableVaultRecovery opts a personal vault out of recovery: if the owner loses access, nobody can recover it.
+ */
+export function DisableVaultRecovery(vaultID: string): $CancellablePromise<$models.VaultSummary> {
+    return $Call.ByID(3941572800, vaultID);
+}
+
+/**
  * EnableBiometricUnlock seals the account unlock key with a new key stored in the OS keychain.
  */
 export function EnableBiometricUnlock(password: string): $CancellablePromise<$models.Status> {
@@ -47,7 +62,22 @@ export function EnableBiometricUnlock(password: string): $CancellablePromise<$mo
 }
 
 /**
- * ForgetNewAccountSecretKey drops the sign-up Secret Key once the user confirmed saving it.
+ * EnableRecoveryForAllVault turns recovery on for every vault this account owns, except personal vaults it opted out.
+ * It returns the names of vaults that could not be turned on.
+ */
+export function EnableRecoveryForAllVault(): $CancellablePromise<string[] | null> {
+    return $Call.ByID(721413323);
+}
+
+/**
+ * EnableVaultRecovery lets the recovery admin recover this vault again, also undoing an opt-out.
+ */
+export function EnableVaultRecovery(vaultID: string): $CancellablePromise<$models.VaultSummary> {
+    return $Call.ByID(1412681819, vaultID);
+}
+
+/**
+ * ForgetNewAccountSecretKey drops the sign-up or recovery Secret Key once the user confirmed saving it.
  */
 export function ForgetNewAccountSecretKey(): $CancellablePromise<void> {
     return $Call.ByID(4014028838);
@@ -66,6 +96,13 @@ export function GenerateSSHKey(vaultID: string, title: string, keyType: string):
 
 export function GetItem(vaultID: string, itemID: string): $CancellablePromise<$models.ItemDetail> {
     return $Call.ByID(2079656282, vaultID, itemID);
+}
+
+/**
+ * GetRecoveryStatus reports whether an admin set up account recovery and whether this account can complete recoveries.
+ */
+export function GetRecoveryStatus(): $CancellablePromise<$models.RecoveryStatus> {
+    return $Call.ByID(3974845164);
 }
 
 export function GetStatus(): $CancellablePromise<$models.Status> {
@@ -107,6 +144,13 @@ export function ListAllMember(): $CancellablePromise<$models.FamilyMember[] | nu
     return $Call.ByID(2917355364);
 }
 
+/**
+ * ListAllPendingRecovery returns the recoveries that family members submitted, oldest first.
+ */
+export function ListAllPendingRecovery(): $CancellablePromise<$models.PendingRecovery[] | null> {
+    return $Call.ByID(1603422670);
+}
+
 export function ListAllVault(): $CancellablePromise<$models.VaultSummary[] | null> {
     return $Call.ByID(1115915958);
 }
@@ -120,6 +164,14 @@ export function ListAllVaultMember(vaultID: string): $CancellablePromise<$models
 
 export function Lock(): $CancellablePromise<$models.Status> {
     return $Call.ByID(3111200640);
+}
+
+/**
+ * RecoverAccount submits a new Secret Key and master password with the recovery link an admin sent. The account keeps
+ * its old credentials until the admin completes the recovery; then the user signs in with the returned Secret Key.
+ */
+export function RecoverAccount(recoveryLink: string, email: string, newPassword: string): $CancellablePromise<$models.RecoverAccountResult> {
+    return $Call.ByID(1173199188, recoveryLink, email, newPassword);
 }
 
 /**
@@ -158,10 +210,19 @@ export function SaveItem(vaultID: string, detail: $models.ItemDetail): $Cancella
 }
 
 /**
- * SaveNewAccountEmergencyKit saves the kit right after sign up; it returns the saved path, or "" when cancelled.
+ * SaveNewAccountEmergencyKit saves the kit right after sign up or account recovery; it returns the saved path, or ""
+ * when cancelled.
  */
 export function SaveNewAccountEmergencyKit(): $CancellablePromise<string> {
     return $Call.ByID(1236938624);
+}
+
+/**
+ * SetUpRecovery creates the recovery keyset unless an admin already did, then turns recovery on for the vaults this
+ * account owns. It returns the names of vaults that could not be turned on.
+ */
+export function SetUpRecovery(): $CancellablePromise<string[] | null> {
+    return $Call.ByID(3619151279);
 }
 
 /**
@@ -181,6 +242,13 @@ export function SignOut(): $CancellablePromise<$models.Status> {
 
 export function SignUp(inviteLink: string, email: string, name: string, password: string): $CancellablePromise<$models.SignUpResult> {
     return $Call.ByID(392821103, inviteLink, email, name, password);
+}
+
+/**
+ * StartAccountRecovery creates a one-time recovery link for a family member, valid for 7 days.
+ */
+export function StartAccountRecovery(accountID: string): $CancellablePromise<string> {
+    return $Call.ByID(3868711419, accountID);
 }
 
 export function Unlock(password: string): $CancellablePromise<$models.Status> {

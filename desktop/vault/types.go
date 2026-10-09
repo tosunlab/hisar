@@ -35,12 +35,15 @@ type Biometric interface {
 	DeleteKey(accountID string) error
 }
 
+// VaultSummary: Recoverable means the vault key is wrapped to the recovery keyset; RecoveryOptOut means its owner turned that off.
 type VaultSummary struct {
-	ID        string `json:"id"`
-	Name      string `json:"name"`
-	Type      string `json:"type"`
-	Role      string `json:"role"`
-	ItemCount int    `json:"itemCount"`
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	Type           string `json:"type"`
+	Role           string `json:"role"`
+	ItemCount      int    `json:"itemCount"`
+	Recoverable    bool   `json:"recoverable"`
+	RecoveryOptOut bool   `json:"recoveryOptOut"`
 }
 
 // FamilyMember is an account on the server. SecurityCode is derived from their signing key; IsKeyChanged
@@ -98,6 +101,29 @@ type ItemDetail struct {
 }
 
 type SignUpResult struct {
+	Status    Status `json:"status"`
+	SecretKey string `json:"secretKey"`
+}
+
+// RecoveryStatus: only the admin who set up recovery (IsCreatedByCurrentUser) can complete recoveries.
+type RecoveryStatus struct {
+	IsSetUp                bool   `json:"isSetUp"`
+	IsAdmin                bool   `json:"isAdmin"`
+	IsCreatedByCurrentUser bool   `json:"isCreatedByCurrentUser"`
+	CreatedByName          string `json:"createdByName"`
+}
+
+// PendingRecovery is a recovery the account holder submitted; SubmittedAt is RFC 3339.
+type PendingRecovery struct {
+	AccountID               string `json:"accountId"`
+	Name                    string `json:"name"`
+	Email                   string `json:"email"`
+	SubmittedAt             string `json:"submittedAt"`
+	RecoverableVaultCount   int    `json:"recoverableVaultCount"`
+	UnrecoverableVaultCount int    `json:"unrecoverableVaultCount"`
+}
+
+type RecoverAccountResult struct {
 	Status    Status `json:"status"`
 	SecretKey string `json:"secretKey"`
 }

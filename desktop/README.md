@@ -4,7 +4,7 @@ Wails v3 (pinned beta, see `WAILS_VERSION` in the root `Makefile`) with a Vue 3 
 
 | Path | What |
 |---|---|
-| `vault/` | Go backend bound to the UI: session, lock/auto-lock, clipboard clearing, SSH Key items, sharing, invites and devices. No Wails import, so it is tested on any OS |
+| `vault/` | Go backend bound to the UI: session, lock/auto-lock, clipboard clearing, SSH Key items, sharing, invites, devices and account recovery. No Wails import, so it is tested on any OS |
 | `agent/` | SSH agent in the app: approval (Touch ID or in-app prompt), `~/.ssh/config` setup, agent status. No Wails import |
 | `biometric/` | Touch ID and the macOS Keychain (cgo) |
 | `main.go` | Wails app: window, clipboard, lock-event and approval-event adapters; starts the SSH agent |
@@ -32,7 +32,12 @@ cd desktop/frontend && npm run preview:ui
 # extra parameters: &vault=family &item=netflix &editor=create|edit|ssh-key &secretKey=1 &search=git
 # SSH: &item=raspberry (SSH key) &settings=1 &approval=1 (in-app approval prompt) &agent=error &sshConfigured=1
 # sharing: &sharing=1 (sharing panel; add &vault=work for the read-only view) &code=elif (security code) &remove=deniz
-# settings: &settings=1 &invite=form|1 (invite form, or a created link) &revoke=mac-mini &scroll=family|devices
+# settings: &settings=1 &invite=form|1 (invite form, or a created link) &revoke=mac-mini &scroll=family|recovery|devices
+# recovery (admin): &settings=1&scroll=recovery, plus &recovery=off&setUpRecovery=1 (setup confirmation), &recovery=other (set up by
+#   another admin), &startRecovery=deniz (created link; use &scroll=family), &completeRecovery=deniz | &completedRecovery=deniz
+# recovery (member): &settings=1&scroll=recovery&role=member &optOut=1 (personal vault opted out)
+# personal vault: &vaultRecovery=1 (recovery panel) &disableRecovery=1 (opt-out warning) &optOut=1
+# recovering an account: &state=signed-out&recover=form|filled &secretKey=recovery (new Secret Key) &recoverySubmitted=1
 # offline: &offline=1 (offline notice)
 ```
 
@@ -49,6 +54,16 @@ Design: `docs/DESIGN.md` §4.4 (vault keys and rotation), §5.1 (invites) and §
 - **Key pinning**: the first time this device shares with someone, it pins their signing key in `desktop.json` (`pins`), like the CLI (`localstate.State.CheckMemberPin`). Sharing, changing a role or re-encrypting the vault stops if a pinned key changes. Each person has a security code (`crypt.FormatKeyFingerprint`: the first 8 bytes of SHA-256 of their Ed25519 signing key, as 4 groups of 4 hex digits); expand a member in the sharing panel or open Settings → Family to see it, and compare it in person.
 - **Settings → Family** lists everyone on the server with their role and security code. Admins can **Invite someone**: the link is valid for 7 days and works once.
 - **Settings → Devices** lists the devices signed in to your account. **Revoke** signs another device out; to sign out this Mac, use **Sign out** under Account.
+
+## Account recovery
+
+Design: `docs/DESIGN.md` §6. Recovery lets an admin help someone who forgot their master password or lost their Secret Key; the trade-off is that the admin's devices can open every recoverable vault.
+
+- **Set up (admin)**: Settings → Account recovery → **Set up** creates the recovery key and makes the vaults you own recoverable. Only the admin who set it up can complete recoveries. Settings also lists your own vaults with their state, and **Make recoverable** fixes vaults created before recovery was set up.
+- **Start (admin)**: Settings → Family → **Start recovery** on someone's row creates a one-time link, valid for 7 days. Send it to them; their account keeps working until you complete the recovery.
+- **Recover (the person who lost access)**: on the sign-in screen, **Recover account**, then paste the link, enter the email and a new master password. Hisar shows the new Secret Key (and can save it as an Emergency Kit); it works once the admin completes the recovery.
+- **Complete (the admin who set up recovery)**: Settings → Account recovery lists pending recoveries with how many of their vaults can be recovered. **Complete** signs out their devices, gives them their recoverable vaults under the new keys, re-pins their new signing key on this device and lists the vaults they lost.
+- **Opt out**: the owner of a personal vault can press **Private** in its header and turn recovery off, after a warning that the vault is lost if they lose access, and turn it back on later. Shared vaults always stay recoverable.
 
 ## SSH agent
 

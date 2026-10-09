@@ -16,27 +16,38 @@ const emergencyKitFileName = "Hisar Emergency Kit.pdf"
 
 var ErrNoNewAccountSecretKey = errors.New("the new account's Secret Key is no longer in memory; save the Emergency Kit from Settings")
 
-// SaveNewAccountEmergencyKit saves the kit right after sign up; it returns the saved path, or "" when cancelled.
+// SaveNewAccountEmergencyKit saves the kit right after sign up or account recovery; it returns the saved path, or ""
+// when cancelled.
 func (s *Service) SaveNewAccountEmergencyKit() (string, error) {
 	s.mutex.Lock()
-	if err := s.requireUnlocked(); err != nil {
-		s.mutex.Unlock()
+	kit, err := s.buildNewAccountEmergencyKit()
+	s.mutex.Unlock()
+	if err != nil {
 		return "", err
 	}
-	if s.newAccountSecretKey == nil {
-		s.mutex.Unlock()
-		return "", ErrNoNewAccountSecretKey
-	}
-	kit := s.buildEmergencyKit(*s.newAccountSecretKey)
-	s.mutex.Unlock()
 	return s.writeEmergencyKit(kit)
 }
 
-// ForgetNewAccountSecretKey drops the sign-up Secret Key once the user confirmed saving it.
+// buildNewAccountEmergencyKit works signed out after a recovery: the recovered account cannot sign in yet.
+func (s *Service) buildNewAccountEmergencyKit() (emergencykit.Kit, error) {
+	if s.unlockedSession == nil && s.recoveredAccountSecretKey != nil {
+		return s.buildEmergencyKit(*s.recoveredAccountSecretKey), nil
+	}
+	if err := s.requireUnlocked(); err != nil {
+		return emergencykit.Kit{}, err
+	}
+	if s.newAccountSecretKey == nil {
+		return emergencykit.Kit{}, ErrNoNewAccountSecretKey
+	}
+	return s.buildEmergencyKit(*s.newAccountSecretKey), nil
+}
+
+// ForgetNewAccountSecretKey drops the sign-up or recovery Secret Key once the user confirmed saving it.
 func (s *Service) ForgetNewAccountSecretKey() {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	s.newAccountSecretKey = nil
+	s.recoveredAccountSecretKey = nil
 }
 
 // SaveEmergencyKit checks the master password before exporting the Secret Key.

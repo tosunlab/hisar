@@ -1,10 +1,39 @@
 // Development-only stand-in for the Go backend, used with `npm run preview:ui` to view the UI in a browser.
-import type { Device, FamilyMember, ItemDetail, PasswordConfig, SignUpResult, SSHAgentStatus, SSHKeyType, Status, VaultMember, VaultRole, VaultSummary } from "./api";
+import type {
+  Device,
+  FamilyMember,
+  ItemDetail,
+  PasswordConfig,
+  PendingRecovery,
+  RecoverAccountResult,
+  RecoveryStatus,
+  SignUpResult,
+  SSHAgentStatus,
+  SSHKeyType,
+  Status,
+  VaultMember,
+  VaultRole,
+  VaultSummary,
+} from "./api";
+
+const previewParameter = new URLSearchParams(window.location.search);
+// recovery=off: not set up; recovery=other: set up by Elif, so only she can complete recoveries.
+const previewRecoveryMode = previewParameter.get("recovery") ?? "on";
+const isPreviewAdmin = previewParameter.get("role") !== "member";
+const isPreviewOptOut = previewParameter.get("optOut") === "1";
 
 const allPreviewVault: VaultSummary[] = [
-  { id: "personal", name: "Personal", type: "personal", role: "owner", itemCount: 0 },
-  { id: "family", name: "Family", type: "shared", role: "owner", itemCount: 0 },
-  { id: "work", name: "Work", type: "shared", role: "reader", itemCount: 0 },
+  {
+    id: "personal",
+    name: "Personal",
+    type: "personal",
+    role: "owner",
+    itemCount: 0,
+    recoverable: previewRecoveryMode !== "off" && !isPreviewOptOut,
+    recoveryOptOut: isPreviewOptOut,
+  },
+  { id: "family", name: "Family", type: "shared", role: "owner", itemCount: 0, recoverable: previewRecoveryMode !== "off", recoveryOptOut: false },
+  { id: "work", name: "Work", type: "shared", role: "reader", itemCount: 0, recoverable: previewRecoveryMode !== "off", recoveryOptOut: false },
 ];
 
 function createPreviewItem(id: string, title: string, username: string, link: string, password: string, extra: Partial<ItemDetail> = {}): ItemDetail {
@@ -71,11 +100,12 @@ function getInitialState(): string {
 }
 
 let previewState = getInitialState();
+let previewSignedOutEmail = "alper@tryhisar.com";
 let isPreviewBiometricEnabled = new URLSearchParams(window.location.search).get("touchId") === "1";
 const previewStatus = (): Status => ({
   state: previewState,
   server: "https://tryhisar.com",
-  email: "alper@tryhisar.com",
+  email: previewState === "signed-out" ? previewSignedOutEmail : "alper@tryhisar.com",
   name: "Alper",
   biometricAvailable: true,
   biometricEnabled: isPreviewBiometricEnabled,
@@ -98,7 +128,7 @@ const previewAgentStatus = (backupPath = ""): SSHAgentStatus => {
 };
 
 const allPreviewFamilyMember: FamilyMember[] = [
-  { accountId: "alper", name: "Alper", email: "alper@tryhisar.com", role: "admin", securityCode: "3F2A 91C0 7B44 E1D8", isCurrentUser: true, isKeyChanged: false },
+  { accountId: "alper", name: "Alper", email: "alper@tryhisar.com", role: isPreviewAdmin ? "admin" : "member", securityCode: "3F2A 91C0 7B44 E1D8", isCurrentUser: true, isKeyChanged: false },
   { accountId: "elif", name: "Elif Yılmaz", email: "elif@tryhisar.com", role: "admin", securityCode: "A7C2 5E19 04BD 6F3A", isCurrentUser: false, isKeyChanged: false },
   { accountId: "deniz", name: "Deniz Aydın", email: "deniz@tryhisar.com", role: "member", securityCode: "1D88 C4F0 9A27 B35E", isCurrentUser: false, isKeyChanged: false },
   { accountId: "murat", name: "Murat Kaya", email: "murat@tryhisar.com", role: "member", securityCode: "6B0E 72AD F915 3C84", isCurrentUser: false, isKeyChanged: false },
@@ -118,6 +148,39 @@ const allPreviewAccessByVaultID: Record<string, { accountId: string; role: strin
 };
 
 const hourInMilliseconds = 3600_000;
+
+const previewRecoveryStatus: RecoveryStatus = {
+  isSetUp: previewRecoveryMode !== "off",
+  isAdmin: isPreviewAdmin,
+  isCreatedByCurrentUser: previewRecoveryMode === "on" && isPreviewAdmin,
+  createdByName: previewRecoveryMode === "on" && isPreviewAdmin ? "Alper" : previewRecoveryMode === "off" ? "" : "Elif Yılmaz",
+};
+
+let allPreviewPendingRecovery: PendingRecovery[] = [
+  {
+    accountId: "deniz",
+    name: "Deniz Aydın",
+    email: "deniz@tryhisar.com",
+    submittedAt: new Date(Date.now() - 3 * hourInMilliseconds).toISOString(),
+    recoverableVaultCount: 2,
+    unrecoverableVaultCount: 1,
+  },
+  {
+    accountId: "murat",
+    name: "Murat Kaya",
+    email: "murat@tryhisar.com",
+    submittedAt: new Date(Date.now() - 26 * hourInMilliseconds).toISOString(),
+    recoverableVaultCount: 3,
+    unrecoverableVaultCount: 0,
+  },
+];
+
+function setPreviewVaultRecovery(vaultID: string, isRecoverable: boolean): VaultSummary {
+  const vault = allPreviewVault.find((candidate) => candidate.id === vaultID)!;
+  vault.recoverable = isRecoverable;
+  vault.recoveryOptOut = !isRecoverable;
+  return { ...vault, itemCount: allPreviewItemByVaultID[vaultID]?.length ?? 0 };
+}
 let allPreviewDevice: Device[] = [
   { id: "macbook", name: "Alper's MacBook Pro", platform: "darwin/desktop", createdAt: "2026-08-01T09:00:00Z", lastSeenAt: new Date().toISOString(), isCurrent: true },
   { id: "mac-mini", name: "Mac mini", platform: "darwin/desktop", createdAt: "2026-08-12T09:00:00Z", lastSeenAt: new Date(Date.now() - 2 * hourInMilliseconds).toISOString(), isCurrent: false },
@@ -171,7 +234,7 @@ export const previewApi = {
   listAllVault: () =>
     resolveAfterDelay(allPreviewVault.map((vault) => ({ ...vault, itemCount: allPreviewItemByVaultID[vault.id]?.length ?? 0 }))),
   createVault: (name: string) => {
-    const vault = { id: name.toLowerCase(), name, type: "shared", role: "owner", itemCount: 0 };
+    const vault = { id: name.toLowerCase(), name, type: "shared", role: "owner", itemCount: 0, recoverable: previewRecoveryStatus.isSetUp, recoveryOptOut: false };
     allPreviewVault.push(vault);
     allPreviewItemByVaultID[vault.id] = [];
     allPreviewAccessByVaultID[vault.id] = [{ accountId: "alper", role: "owner" }];
@@ -298,6 +361,38 @@ export const previewApi = {
   saveEmergencyKit: (password: string) =>
     password.length < 4 ? Promise.reject(new Error("incorrect email, master password or Secret Key")) : resolveAfterDelay("/Users/you/Documents/Hisar Emergency Kit.pdf"),
   forgetNewAccountSecretKey: () => Promise.resolve(),
+  getRecoveryStatus: () => resolveAfterDelay({ ...previewRecoveryStatus }),
+  setUpRecovery: () => {
+    previewRecoveryStatus.isSetUp = true;
+    previewRecoveryStatus.isCreatedByCurrentUser = true;
+    previewRecoveryStatus.createdByName = "Alper";
+    allPreviewVault.filter((vault) => vault.role === "owner" && !vault.recoveryOptOut).forEach((vault) => (vault.recoverable = true));
+    return resolveAfterDelay([] as string[]);
+  },
+  enableRecoveryForAllVault: () => {
+    allPreviewVault.filter((vault) => vault.role === "owner" && !vault.recoveryOptOut).forEach((vault) => (vault.recoverable = true));
+    return resolveAfterDelay([] as string[]);
+  },
+  enableVaultRecovery: (vaultID: string) => resolveAfterDelay(setPreviewVaultRecovery(vaultID, true)),
+  disableVaultRecovery: (vaultID: string) => resolveAfterDelay(setPreviewVaultRecovery(vaultID, false)),
+  startAccountRecovery: (accountID: string) => resolveAfterDelay(`https://tryhisar.com/recover/r7Kp2xQ9mVt4Lw8Nc3Bz6Hd-${accountID}`),
+  listAllPendingRecovery: () => resolveAfterDelay(structuredClone(allPreviewPendingRecovery)),
+  completeAccountRecovery: (accountID: string) => {
+    const pending = allPreviewPendingRecovery.find((candidate) => candidate.accountId === accountID);
+    allPreviewPendingRecovery = allPreviewPendingRecovery.filter((candidate) => candidate.accountId !== accountID);
+    const firstName = pending?.name.split(" ")[0] ?? accountID;
+    return new Promise<string[]>((resolve) => setTimeout(() => resolve(pending?.unrecoverableVaultCount ? [`${firstName}'s personal vault`] : []), 600));
+  },
+  recoverAccount: (recoveryLink: string, email: string, newPassword: string): Promise<RecoverAccountResult> => {
+    if (!recoveryLink.includes("/recover/")) {
+      return Promise.reject(new Error("paste the full recovery link you received from your admin"));
+    }
+    if (newPassword.length < 10) {
+      return Promise.reject(new Error("use a master password with at least 10 characters"));
+    }
+    previewSignedOutEmail = email.trim().toLowerCase();
+    return new Promise((resolve) => setTimeout(() => resolve({ status: previewStatus(), secretKey: "H1-GVC2KA-R8MPL-4XQZT-7HN2C-WK5DB-Q3J6RA" }), 600));
+  },
   openURL: (link: string) => {
     window.open(link, "_blank", "noopener");
     return Promise.resolve();
