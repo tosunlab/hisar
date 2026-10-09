@@ -2,6 +2,7 @@
 package localstate
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"github.com/zalando/go-keyring"
 
 	"github.com/tryhisar/hisar/core/crypt"
+	"github.com/tryhisar/hisar/core/proto"
 )
 
 const keyringService = "hisar"
@@ -86,6 +88,22 @@ func (s *State) Save() error {
 // Reset forgets the account, session, pins and seqs but keeps the file location.
 func (s *State) Reset() {
 	*s = State{path: s.path, AllPin: map[string][]byte{}, AllSeq: map[string]int64{}}
+}
+
+// IsMemberKeyChanged reports whether a signing key differs from the one pinned for the account.
+func (s *State) IsMemberKeyChanged(accountID string, signingPublicKey []byte) bool {
+	pinned, found := s.AllPin[accountID]
+	return found && !bytes.Equal(pinned, signingPublicKey)
+}
+
+// CheckMemberPin trusts a member's signing key on first use and refuses it if it changes later.
+// The caller saves the state.
+func (s *State) CheckMemberPin(member *proto.Member) error {
+	if s.IsMemberKeyChanged(member.AccountID, member.PublicKeys.Sign) {
+		return fmt.Errorf("the signing key of %s changed since you last shared with them; stopping", member.Email)
+	}
+	s.AllPin[member.AccountID] = append([]byte(nil), member.PublicKeys.Sign...)
+	return nil
 }
 
 func (s *State) IsLoggedIn() bool {

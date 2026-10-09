@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"flag"
@@ -598,9 +597,7 @@ func runUnshare(ctx context.Context, flags *flag.FlagSet, allArg []string) error
 		if err != nil {
 			return err
 		}
-		unlockedSession.MemberVerifier = func(remainingMember *proto.Member) error {
-			return checkMemberPin(currentState, remainingMember)
-		}
+		unlockedSession.MemberVerifier = currentState.CheckMemberPin
 		if err := unlockedSession.RemoveVaultMember(ctx, vault, member.AccountID); err != nil {
 			return err
 		}
@@ -608,15 +605,6 @@ func runUnshare(ctx context.Context, flags *flag.FlagSet, allArg []string) error
 		return nil
 	}()
 	return finishSession(currentState, unlockedSession, err)
-}
-
-// checkMemberPin trusts a member's signing key on first use and refuses it if it changes later.
-func checkMemberPin(currentState *localstate.State, member *proto.Member) error {
-	if pinned, ok := currentState.AllPin[member.AccountID]; ok && !bytes.Equal(pinned, member.PublicKeys.Sign) {
-		return fmt.Errorf("the signing key of %s changed since you last shared with them; stopping", member.Email)
-	}
-	currentState.AllPin[member.AccountID] = member.PublicKeys.Sign
-	return nil
 }
 
 func runShare(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
@@ -644,7 +632,7 @@ func runShare(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
 		if err != nil {
 			return err
 		}
-		if err := checkMemberPin(currentState, member); err != nil {
+		if err := currentState.CheckMemberPin(member); err != nil {
 			return err
 		}
 		if err := unlockedSession.ShareVault(ctx, vault, member, *role); err != nil {

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/tryhisar/hisar/core/crypt"
+	"github.com/tryhisar/hisar/core/proto"
 )
 
 func TestGetPath(t *testing.T) {
@@ -82,5 +83,32 @@ func TestSecretKeyFromEnvironment(t *testing.T) {
 	}
 	if err := DeleteSecretKey("ABC123"); err != nil {
 		t.Errorf("delete with environment override should be a no-op: %v", err)
+	}
+}
+
+func TestCheckMemberPin(t *testing.T) {
+	state, err := Load(filepath.Join(t.TempDir(), "state.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	member := &proto.Member{AccountID: "BOB111", Email: "bob@example.com", PublicKeys: crypt.PublicKeys{Sign: []byte{1, 2, 3}}}
+	if state.IsMemberKeyChanged(member.AccountID, member.PublicKeys.Sign) {
+		t.Error("unpinned key reported as changed")
+	}
+	if err := state.CheckMemberPin(member); err != nil {
+		t.Fatalf("first use: %v", err)
+	}
+	if err := state.CheckMemberPin(member); err != nil {
+		t.Errorf("same key again: %v", err)
+	}
+	substitutedMember := &proto.Member{AccountID: "BOB111", Email: "bob@example.com", PublicKeys: crypt.PublicKeys{Sign: []byte{9, 9, 9}}}
+	if !state.IsMemberKeyChanged(substitutedMember.AccountID, substitutedMember.PublicKeys.Sign) {
+		t.Error("substituted key not reported as changed")
+	}
+	if err := state.CheckMemberPin(substitutedMember); err == nil || !strings.Contains(err.Error(), "signing key of bob@example.com changed") {
+		t.Errorf("changed signing key accepted: %v", err)
+	}
+	if pinned := state.AllPin["BOB111"]; len(pinned) != 3 || pinned[0] != 1 {
+		t.Errorf("pin overwritten: %v", pinned)
 	}
 }
