@@ -200,6 +200,16 @@ func TestBiometricNeedsPasswordAfterLaunch(t *testing.T) {
 	if !status.BiometricAvailable || !status.BiometricEnabled || status.BiometricReady {
 		t.Fatalf("status after launch: %+v", status)
 	}
+	service.config.IsBiometricAllowedAfterLaunch = true
+	if !service.GetStatus().BiometricReady {
+		t.Error("biometrics not ready after launch on a platform whose keychain enforces them")
+	}
+	service.config.Now = func() time.Time { return time.Now().Add(15 * 24 * time.Hour) }
+	if service.GetStatus().BiometricReady {
+		t.Error("the password interval does not apply after launch")
+	}
+	service.config.IsBiometricAllowedAfterLaunch = false
+	service.config.Now = time.Now
 	if _, err := service.UnlockWithBiometric(); !errors.Is(err, ErrBiometricNotReady) {
 		t.Errorf("Touch ID before master password: %v", err)
 	}

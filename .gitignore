@@ -16,3 +16,4 @@ deploy/hisar.env
 /extension/test-results/
 /extension/playwright-report/
 /extension/.fake-host/
+/mobile/build/

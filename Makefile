@@ -1,8 +1,8 @@
-MODULES := core server cli
+MODULES := core server cli mobile
 CLI_TARGETS := linux/amd64 linux/arm64 darwin/arm64 darwin/amd64 windows/amd64
 WAILS_VERSION := v3.0.0-beta.23
 
-.PHONY: build build-cli-all test vet test-end-to-end docker install-wails test-desktop-frontend build-desktop package-desktop test-extension test-extension-end-to-end build-extension
+.PHONY: build build-cli-all test vet test-end-to-end docker install-wails test-desktop-frontend build-desktop package-desktop test-extension test-extension-end-to-end build-extension build-ios-framework
 
 build:
 	go build -o bin/hisar-server ./server/cmd/hisar-server
@@ -41,6 +41,11 @@ build-desktop:
 
 package-desktop:
 	cd desktop && wails3 task package
+
+# The gomobile version follows golang.org/x/mobile in mobile/go.mod.
+build-ios-framework:
+	cd mobile && GOWORK=off go install golang.org/x/mobile/cmd/gomobile golang.org/x/mobile/cmd/gobind
+	./mobile/build-framework.sh
 
 test-extension:
 	cd extension && npm ci --no-audit --no-fund && npm run typecheck && npm test
