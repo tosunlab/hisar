@@ -177,7 +177,10 @@ type Config struct {
 	Biometric           Biometric
 	// BiometricPasswordInterval is how long Touch ID may unlock before the master password is required again.
 	BiometricPasswordInterval time.Duration
-	Now                       func() time.Time
+	// IsBiometricAllowedAfterLaunch lets biometrics unlock before the first password unlock, for platforms whose
+	// keychain enforces the biometric check itself (iOS); the desktop keeps the launch rule of DESIGN §5.4.
+	IsBiometricAllowedAfterLaunch bool
+	Now                           func() time.Time
 	// OnLock runs under the service mutex whenever an unlocked session ends; it must not call the service.
 	OnLock func()
 	// FileSaver asks where to save a file; it returns "" when the user cancels.

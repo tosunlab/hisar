@@ -415,6 +415,20 @@ The desktop keeps paired browsers (`instanceID`, browser name, SHA-256 of the to
 - System autofill: iOS AutoFill Credential Provider extension, Android AutofillService. Both share the app's encrypted store through an app group / shared storage.
 - Memory constraint: the iOS AutoFill extension must stay well below the system limit (Argon2 64 MiB).
 
+**iOS (Phase 4, first).** `mobile/hisarkit` wraps the desktop backend (`desktop/vault`, which has no Wails import and compiles for `ios/arm64`), so the phone gets the same sign-in, offline cache, matching, sharing and recovery logic. `make build-ios-framework` runs `gomobile bind -target=ios,iossimulator -iosversion=17.0` and writes `mobile/build/HisarKit.xcframework` (Swift module `HisarKit`, classes prefixed `Hisarkit`).
+
+- gomobile passes only strings, numbers, `[]byte` and interfaces, so lists and items cross as JSON strings with the desktop's types (`vault.Status`, `VaultSummary`, `ItemDetail`, `browser.Login`).
+- `HisarkitNew(stateDirectory, deviceName, secretKeyStore, biometric, clipboard, listener)` keeps `hisar.json` and `hisar-cache.db` in `stateDirectory`, the app group container, so the app and the AutoFill extension share the state and the encrypted cache.
+- **Methods:** `Status`, `SignIn`, `SignUp` (returns the status and the new Secret Key), `Unlock`, `UnlockWithBiometric`, `EnableBiometricUnlock`, `DisableBiometricUnlock`, `Lock`, `SignOut`, `ReportActivity`, `ListAllVault`, `ListAllItem` (no secrets), `GetItem`, `SaveItem` (item JSON in, item JSON out), `DeleteItem`, `CopyField`, `GeneratePassword`, `ListAllLoginForService` and `GetLoginForService`.
+- **Interfaces implemented in Swift:**
+  - `SecretKeyStore`: the Secret Key in the Keychain, in a keychain access group shared with the extension.
+  - `Biometric`: Face ID or Touch ID. `StoreKey` writes the biometric unlock key to a Keychain item with `SecAccessControl` `.biometryCurrentSet` and `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`. `Authenticate` evaluates an `LAContext` that `LoadKey` passes as `kSecUseAuthenticationContext`, so the user sees one Face ID prompt.
+  - `Clipboard`: `UIPasteboard`.
+  - `EventListener`: auto-lock notification.
+- **Biometrics after launch:** because iOS enforces the biometric check in the Keychain itself, `IsBiometricAllowedAfterLaunch` is on and Face ID can unlock after a launch without the master password first. The 14-day password interval still applies. Auto-lock is 5 minutes.
+- **AutoFill:** the extension receives `ASCredentialServiceIdentifier`s (a domain or a URL; bare domains are read as `https://`). `ListAllLoginForService` uses the same matching as the browser extension (§9.2), and `GetLoginForService` checks the match again before returning the password.
+- **Signing:** until the Apple Developer Program membership (§12 #7), the app runs on the developer's own iPhone with a free Apple ID (re-signed every 7 days). App groups and the AutoFill extension need the paid membership on a device, so the extension is developed and tested in the simulator until then.
+
 ### 9.4 CLI
 
 `hisar` CLI for development and scripting: login, unlock, list, get, generate, and later `hisar run` to inject secrets into processes.

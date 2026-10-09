@@ -30,14 +30,14 @@ jobs:
         with:
           go-version-file: go.work
       - name: Check formatting (gofmt)
-        run: test -z "$(gofmt -l core server cli desktop/vault desktop/biometric desktop/agent desktop/appinfo desktop/browser desktop/cmd desktop/main.go desktop/touchid.go)" || (gofmt -l core server cli desktop/vault desktop/biometric desktop/agent desktop/appinfo desktop/browser desktop/cmd desktop/main.go desktop/touchid.go; exit 1)
+        run: test -z "$(gofmt -l core server cli mobile desktop/vault desktop/biometric desktop/agent desktop/appinfo desktop/browser desktop/cmd desktop/main.go desktop/touchid.go)" || (gofmt -l core server cli mobile desktop/vault desktop/biometric desktop/agent desktop/appinfo desktop/browser desktop/cmd desktop/main.go desktop/touchid.go; exit 1)
       - name: Vet all modules
         run: make vet
       - name: Run unit and database tests (fails if any test is skipped)
-        # TestIntegrationDesktopFlow needs a running server and runs in the end-to-end job.
+        # TestIntegrationDesktopFlow and TestIntegrationMobileFlow need a running server and run in the end-to-end step.
         run: |
           make test TESTFLAGS=-v 2>&1 | tee test.log
-          if grep -- "--- SKIP" test.log | grep -v "TestIntegrationDesktopFlow"; then exit 1; fi
+          if grep -- "--- SKIP" test.log | grep -v -E "TestIntegrationDesktopFlow|TestIntegrationMobileFlow"; then exit 1; fi
         env:
           HISAR_TEST_DATABASE_URL: ${{ env.PG_URL }}
       - name: Build server and CLI
@@ -130,6 +130,21 @@ jobs:
           name: Hisar-macos
           path: desktop/bin/Hisar-macos.zip
           retention-days: 14
+
+  ios:
+    name: "iOS: build HisarKit.xcframework with gomobile"
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.work
+      - name: Install gomobile and build the framework
+        run: make build-ios-framework
+      - name: Check the framework slices
+        run: |
+          test -d mobile/build/HisarKit.xcframework/ios-arm64/HisarKit.framework
+          test -d mobile/build/HisarKit.xcframework/ios-arm64_x86_64-simulator/HisarKit.framework
 
   desktop-linux:
     name: "Desktop Linux: build the app"

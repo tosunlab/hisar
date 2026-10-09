@@ -25,7 +25,7 @@ func (s *Service) isBiometricReady() bool {
 	if s.config.Biometric == nil || !s.config.Biometric.IsAvailable() || len(s.state.BiometricUnlock) == 0 {
 		return false
 	}
-	if !s.hasPasswordUnlockSinceLaunch {
+	if !s.hasPasswordUnlockSinceLaunch && !s.config.IsBiometricAllowedAfterLaunch {
 		return false
 	}
 	return s.config.Now().Sub(s.state.LastPasswordUnlockAt) < s.config.BiometricPasswordInterval

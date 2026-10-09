@@ -4,5 +4,6 @@ use (
 	./cli
 	./core
 	./desktop
+	./mobile
 	./server
 )

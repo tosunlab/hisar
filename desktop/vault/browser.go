@@ -419,6 +419,17 @@ func (s *Service) loadAllItemOfAllVault(ctx context.Context) error {
 	return nil
 }
 
+// ListAllLoginForURL and GetLoginForURL serve the mobile AutoFill extensions; as functions, Wails does not bind them.
+func ListAllLoginForURL(s *Service, pageURL string) ([]browser.Login, error) {
+	allLogin, err := s.listAllMatchingLogin(context.Background(), pageURL)
+	return allLogin, convertBrowserError(err)
+}
+
+func GetLoginForURL(s *Service, vaultID, itemID, pageURL string) (browser.FillResult, error) {
+	result, err := s.getLoginForFill(context.Background(), vaultID, itemID, pageURL)
+	return result, convertBrowserError(err)
+}
+
 func (s *Service) listAllMatchingLogin(ctx context.Context, pageURL string) ([]browser.Login, error) {
 	allLogin, _, err := s.listAllLoginForURL(ctx, pageURL)
 	return allLogin, err
