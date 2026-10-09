@@ -36,6 +36,13 @@ type fakeAPIServer struct {
 	allMember          []proto.Member
 	allAccessByVaultID map[string][]proto.RotatedAccess
 	allDevice          []proto.Device
+	isUnreachable      bool
+}
+
+func (server *fakeAPIServer) setUnreachable(isUnreachable bool) {
+	server.mutex.Lock()
+	defer server.mutex.Unlock()
+	server.isUnreachable = isUnreachable
 }
 
 func writeJSON(writer http.ResponseWriter, status int, value any) {
@@ -102,7 +109,16 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 		writeJSON(writer, http.StatusOK, proto.PutItemResponse{Seq: server.seq})
 	})
 	server.addAllSharingRoute(mux)
-	return mux
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		server.mutex.Lock()
+		isUnreachable := server.isUnreachable
+		server.mutex.Unlock()
+		if isUnreachable {
+			writer.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		mux.ServeHTTP(writer, request)
+	})
 }
 
 type unlockedTestService struct {

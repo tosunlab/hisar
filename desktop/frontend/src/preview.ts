@@ -80,6 +80,7 @@ const previewStatus = (): Status => ({
   biometricAvailable: true,
   biometricEnabled: isPreviewBiometricEnabled,
   biometricReady: isPreviewBiometricEnabled && previewState === "locked",
+  isOffline: new URLSearchParams(window.location.search).get("offline") === "1",
 });
 let isPreviewSSHConfigured = new URLSearchParams(window.location.search).get("sshConfigured") === "1";
 const previewAgentStatus = (backupPath = ""): SSHAgentStatus => {

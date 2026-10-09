@@ -114,3 +114,18 @@ func TestQueryEscaping(t *testing.T) {
 		t.Fatal(changeResponse, err)
 	}
 }
+
+func TestIsUnreachable(t *testing.T) {
+	stoppedServer := httptest.NewServer(http.NotFoundHandler())
+	stoppedServer.Close()
+	if _, err := Create(stoppedServer.URL).GetAccount(context.Background()); !IsUnreachable(err) {
+		t.Errorf("connection refused: %v", err)
+	}
+	allCase := map[int]bool{http.StatusBadGateway: true, http.StatusServiceUnavailable: true, http.StatusGatewayTimeout: true, http.StatusUnauthorized: false, http.StatusInternalServerError: false}
+	for status, want := range allCase {
+		fakeClient := startFakeServer(t, func(writer http.ResponseWriter, request *http.Request) { writer.WriteHeader(status) })
+		if _, err := fakeClient.GetAccount(context.Background()); IsUnreachable(err) != want {
+			t.Errorf("%d: unreachable = %v", status, !want)
+		}
+	}
+}

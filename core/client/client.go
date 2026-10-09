@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -35,6 +36,15 @@ func (e *APIError) Error() string { return fmt.Sprintf("server: %s (%d)", e.Mess
 func IsStatus(err error, status int) bool {
 	apiError, ok := err.(*APIError)
 	return ok && apiError.Status == status
+}
+
+// IsUnreachable reports a failed connection or a reverse proxy that cannot reach the server.
+func IsUnreachable(err error) bool {
+	var urlError *url.Error
+	if errors.As(err, &urlError) {
+		return true
+	}
+	return IsStatus(err, http.StatusBadGateway) || IsStatus(err, http.StatusServiceUnavailable) || IsStatus(err, http.StatusGatewayTimeout)
 }
 
 // sendRequest sends a JSON request; for a 409 the body is decoded into conflict when non-nil.

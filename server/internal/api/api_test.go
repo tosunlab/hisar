@@ -120,8 +120,8 @@ func TestEndToEnd(t *testing.T) {
 		}
 		tokenClient := client.Create(baseURL)
 		tokenClient.Token = loggedIn.Client.Token
-		requireValue[*session.Session](t)(session.Unlock(ctx, tokenClient, alicePassword, aliceSecretKey))
-		if _, err := session.Unlock(ctx, tokenClient, []byte("nope"), aliceSecretKey); !errors.Is(err, session.ErrBadCredentials) {
+		requireValue[*session.Session](t)(session.Unlock(ctx, tokenClient, nil, alicePassword, aliceSecretKey))
+		if _, err := session.Unlock(ctx, tokenClient, nil, []byte("nope"), aliceSecretKey); !errors.Is(err, session.ErrBadCredentials) {
 			t.Errorf("unlock wrong password: %v", err)
 		}
 	})

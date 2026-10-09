@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -146,6 +147,7 @@ func createTestService(t *testing.T, statePath string, secretKeyStore SecretKeyS
 	lockNotifier := &fakeLockNotifier{}
 	service, err := CreateService(Config{
 		StatePath:           statePath,
+		CachePath:           filepath.Join(filepath.Dir(statePath), "desktop-cache.db"),
 		DeviceName:          "test",
 		Platform:            "test/desktop",
 		Clipboard:           clipboard,
@@ -158,6 +160,13 @@ func createTestService(t *testing.T, statePath string, secretKeyStore SecretKeyS
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() {
+		service.mutex.Lock()
+		defer service.mutex.Unlock()
+		if service.localCache != nil {
+			service.localCache.Close()
+		}
+	})
 	return service, clipboard, lockNotifier
 }
 
@@ -528,5 +537,39 @@ func TestIntegrationDesktopFlow(t *testing.T) {
 	time.Sleep(700 * time.Millisecond)
 	if status := restarted.GetStatus(); status.State != StateLocked || lockNotifier.getLockedCount() != 1 {
 		t.Errorf("auto-lock: %+v, notified %d times", status, lockNotifier.getLockedCount())
+	}
+
+	checkOfflineFlow(t, statePath, secretKeyStore, password)
+}
+
+// checkOfflineFlow syncs from the real server, then unlocks and reads with only the cache.
+func checkOfflineFlow(t *testing.T, statePath string, secretKeyStore SecretKeyStore, password string) {
+	t.Helper()
+	service, _, _ := createTestService(t, statePath, secretKeyStore)
+	if _, err := service.Unlock(password); err != nil {
+		t.Fatal(err)
+	}
+	allOnlineVault, err := service.ListAllVault()
+	if err != nil || len(allOnlineVault) == 0 {
+		t.Fatalf("vaults before going offline: %+v %v", allOnlineVault, err)
+	}
+	service.Lock()
+
+	service.mutex.Lock()
+	service.state.Server = "http://127.0.0.1:1"
+	service.mutex.Unlock()
+	status, err := service.Unlock(password)
+	if err != nil || !status.IsOffline {
+		t.Fatalf("offline unlock: %+v %v", status, err)
+	}
+	if _, err := service.Unlock("wrong password"); err == nil || !strings.Contains(err.Error(), "incorrect") {
+		t.Errorf("offline unlock with a wrong password: %v", err)
+	}
+	allOfflineVault, err := service.ListAllVault()
+	if err != nil || !reflect.DeepEqual(allOfflineVault, allOnlineVault) {
+		t.Errorf("offline vaults = %+v, online %+v (%v)", allOfflineVault, allOnlineVault, err)
+	}
+	if _, err := service.SaveItem(allOnlineVault[0].ID, ItemDetail{Title: "Written offline"}); !errors.Is(err, ErrOffline) {
+		t.Errorf("save offline: %v", err)
 	}
 }

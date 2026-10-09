@@ -2,7 +2,7 @@ import { vi } from "vitest";
 import type { ApprovalEvent, Device, FamilyMember, ItemDetail, SSHAgentStatus, Status, VaultMember, VaultSummary } from "./api";
 
 export function createStatus(state: string): Status {
-  return { state, server: "https://hisar.test", email: "alice@example.com", name: "Alice", biometricAvailable: false, biometricEnabled: false, biometricReady: false };
+  return { state, server: "https://hisar.test", email: "alice@example.com", name: "Alice", biometricAvailable: false, biometricEnabled: false, biometricReady: false, isOffline: false };
 }
 
 export function createItem(overrides: Partial<ItemDetail> = {}): ItemDetail {

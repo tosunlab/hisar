@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync/atomic"
 
 	"github.com/google/uuid"
 
@@ -45,6 +46,9 @@ type Session struct {
 	MemberVerifier func(member *proto.Member) error
 	// RecoveryKeyVerifier, when set, is asked to accept the recovery KEM public key before anything is wrapped to it.
 	RecoveryKeyVerifier func(recoveryKEMPublicKey []byte) error
+	// Cache, when set, stores the server's encrypted records; reads fall back to it while the server is unreachable.
+	Cache     Cache
+	isOffline atomic.Bool
 }
 
 type Vault struct {
@@ -210,12 +214,12 @@ func LogIn(ctx context.Context, apiClient *client.Client, email string, password
 	if sessionResponse.AccountID != secretKey.AccountID {
 		return nil, ErrBadCredentials
 	}
-	return UnlockWithAccountUnlockKey(ctx, apiClient, derivedKeys.AccountUnlockKey, secretKey.AccountID)
+	return UnlockWithAccountUnlockKey(ctx, apiClient, nil, derivedKeys.AccountUnlockKey, secretKey.AccountID)
 }
 
-// Unlock decrypts the keyset using an existing session token.
-func Unlock(ctx context.Context, apiClient *client.Client, password []byte, secretKey crypt.SecretKey) (*Session, error) {
-	account, err := apiClient.GetAccount(ctx)
+// Unlock decrypts the keyset; with a non-nil accountCache it works offline from the cached account.
+func Unlock(ctx context.Context, apiClient *client.Client, accountCache Cache, password []byte, secretKey crypt.SecretKey) (*Session, error) {
+	account, isOffline, err := getAccount(ctx, apiClient, accountCache, secretKey.AccountID)
 	if err != nil {
 		return nil, err
 	}
@@ -227,12 +231,12 @@ func Unlock(ctx context.Context, apiClient *client.Client, password []byte, secr
 		return nil, err
 	}
 	defer derivedKeys.Wipe()
-	return decryptAccountKeyset(account, apiClient, derivedKeys.AccountUnlockKey)
+	return decryptAccountKeyset(account, apiClient, accountCache, isOffline, derivedKeys.AccountUnlockKey)
 }
 
 // DeriveAccountUnlockKey returns a copy of the account unlock key after checking it opens the keyset; the caller wipes it.
-func DeriveAccountUnlockKey(ctx context.Context, apiClient *client.Client, password []byte, secretKey crypt.SecretKey) ([]byte, error) {
-	account, err := apiClient.GetAccount(ctx)
+func DeriveAccountUnlockKey(ctx context.Context, apiClient *client.Client, accountCache Cache, password []byte, secretKey crypt.SecretKey) ([]byte, error) {
+	account, _, err := getAccount(ctx, apiClient, accountCache, secretKey.AccountID)
 	if err != nil {
 		return nil, err
 	}
@@ -253,18 +257,18 @@ func DeriveAccountUnlockKey(ctx context.Context, apiClient *client.Client, passw
 }
 
 // UnlockWithAccountUnlockKey decrypts the keyset with an already derived account unlock key.
-func UnlockWithAccountUnlockKey(ctx context.Context, apiClient *client.Client, accountUnlockKey []byte, accountID string) (*Session, error) {
-	account, err := apiClient.GetAccount(ctx)
+func UnlockWithAccountUnlockKey(ctx context.Context, apiClient *client.Client, accountCache Cache, accountUnlockKey []byte, accountID string) (*Session, error) {
+	account, isOffline, err := getAccount(ctx, apiClient, accountCache, accountID)
 	if err != nil {
 		return nil, err
 	}
 	if account.AccountID != accountID {
 		return nil, ErrBadCredentials
 	}
-	return decryptAccountKeyset(account, apiClient, accountUnlockKey)
+	return decryptAccountKeyset(account, apiClient, accountCache, isOffline, accountUnlockKey)
 }
 
-func decryptAccountKeyset(account *proto.Account, apiClient *client.Client, accountUnlockKey []byte) (*Session, error) {
+func decryptAccountKeyset(account *proto.Account, apiClient *client.Client, accountCache Cache, isOffline bool, accountUnlockKey []byte) (*Session, error) {
 	keyset, err := crypt.DecryptKeyset(accountUnlockKey, account.AccountID, account.EncKeyset)
 	if err != nil {
 		return nil, ErrBadCredentials
@@ -274,7 +278,9 @@ func decryptAccountKeyset(account *proto.Account, apiClient *client.Client, acco
 		keyset.Wipe()
 		return nil, ErrKeyMismatch
 	}
-	return &Session{Client: apiClient, AccountID: account.AccountID, Email: account.Email, Name: account.Name, Role: account.Role, Keyset: keyset}, nil
+	unlockedSession := &Session{Client: apiClient, AccountID: account.AccountID, Email: account.Email, Name: account.Name, Role: account.Role, Keyset: keyset, Cache: accountCache}
+	unlockedSession.isOffline.Store(isOffline)
+	return unlockedSession, nil
 }
 
 func (s *Session) CreateVault(ctx context.Context, name, vaultType string) (*Vault, error) {
@@ -306,7 +312,7 @@ func (s *Session) CreateVault(ctx context.Context, name, vaultType string) (*Vau
 }
 
 func (s *Session) ListAllVault(ctx context.Context) ([]Vault, error) {
-	allProtoVault, err := s.Client.ListAllVault(ctx)
+	allProtoVault, err := s.listAllProtoVault(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -341,8 +347,34 @@ func (s *Session) FindVault(ctx context.Context, nameOrID string) (*Vault, error
 	return nil, fmt.Errorf("vault %q: %w", nameOrID, ErrNotFound)
 }
 
-// ListAllItem fetches and decrypts all live items of a vault.
+// ListAllItem fetches and decrypts all live items of a vault; with a Cache it downloads only the changes.
 func (s *Session) ListAllItem(ctx context.Context, vault *Vault) ([]item.Item, error) {
+	if s.Cache == nil {
+		allProtoItem, err := s.downloadAllItem(ctx, vault)
+		if err != nil {
+			return nil, err
+		}
+		return decryptAllItem(vault, allProtoItem)
+	}
+	allProtoItem, err := s.syncVault(ctx, vault)
+	if err != nil {
+		return nil, err
+	}
+	allItem, err := decryptAllItem(vault, allProtoItem)
+	if err == nil || s.IsOffline() {
+		return allItem, err
+	}
+	// A cached item that no longer decrypts, e.g. after a key rotation raced a sync, is downloaded again.
+	if err := s.Cache.ResetVault(vault.ID); err != nil {
+		return nil, err
+	}
+	if allProtoItem, err = s.syncVault(ctx, vault); err != nil {
+		return nil, err
+	}
+	return decryptAllItem(vault, allProtoItem)
+}
+
+func (s *Session) downloadAllItem(ctx context.Context, vault *Vault) ([]proto.Item, error) {
 	var since, nextSeq int64
 	allProtoItemByID := map[string]proto.Item{}
 	for {
@@ -365,12 +397,18 @@ func (s *Session) ListAllItem(ctx context.Context, vault *Vault) ([]item.Item, e
 		}
 		s.SeqStore.SetSeq(vault.ID, nextSeq)
 	}
-
-	allItem := make([]item.Item, 0, len(allProtoItemByID))
+	allProtoItem := make([]proto.Item, 0, len(allProtoItemByID))
 	for _, protoItem := range allProtoItemByID {
-		if protoItem.Deleted {
-			continue
+		if !protoItem.Deleted {
+			allProtoItem = append(allProtoItem, protoItem)
 		}
+	}
+	return allProtoItem, nil
+}
+
+func decryptAllItem(vault *Vault, allProtoItem []proto.Item) ([]item.Item, error) {
+	allItem := make([]item.Item, 0, len(allProtoItem))
+	for _, protoItem := range allProtoItem {
 		vaultItem, err := decryptItem(vault, &protoItem)
 		if err != nil {
 			return nil, err

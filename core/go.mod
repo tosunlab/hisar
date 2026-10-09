@@ -12,6 +12,7 @@ require (
 	golang.org/x/image v0.46.0
 	golang.org/x/sys v0.48.0
 	golang.org/x/text v0.42.0
+	modernc.org/sqlite v1.60.1
 )
 
 require (
@@ -23,8 +24,15 @@ require (
 	github.com/bytemare/ksf v0.5.0 // indirect
 	github.com/bytemare/secp256k1 v0.3.0 // indirect
 	github.com/danieljoos/wincred v1.2.3 // indirect
+	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/gtank/ristretto255 v0.2.0 // indirect
+	github.com/mattn/go-isatty v0.0.24 // indirect
+	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/phpdave11/gofpdi v1.0.14-0.20211212211723-1f10f9844311 // indirect
 	github.com/pkg/errors v0.8.1 // indirect
+	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
+	modernc.org/libc v1.77.1 // indirect
+	modernc.org/mathutil v1.7.1 // indirect
+	modernc.org/memory v1.12.1 // indirect
 )

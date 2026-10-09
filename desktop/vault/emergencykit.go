@@ -46,7 +46,7 @@ func (s *Service) SaveEmergencyKit(password string) (string, error) {
 		s.mutex.Unlock()
 		return "", err
 	}
-	apiClient := s.unlockedSession.Client
+	apiClient, accountCache := s.unlockedSession.Client, s.unlockedSession.Cache
 	accountID := s.state.AccountID
 	s.mutex.Unlock()
 
@@ -58,7 +58,7 @@ func (s *Service) SaveEmergencyKit(password string) (string, error) {
 	defer clear(passwordBytes)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	accountUnlockKey, err := session.DeriveAccountUnlockKey(ctx, apiClient, passwordBytes, secretKey)
+	accountUnlockKey, err := session.DeriveAccountUnlockKey(ctx, apiClient, accountCache, passwordBytes, secretKey)
 	if err != nil {
 		return "", convertError(err)
 	}
