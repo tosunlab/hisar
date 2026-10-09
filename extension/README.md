@@ -8,28 +8,30 @@ The manifest's `key` gives the fixed ID `mmipiffoogblblocokimpemdopmdjghf`, both
 
 ```
 public/manifest.json      MV3 manifest (version must equal package.json)
-popup.html, offscreen.html
+popup.html, offscreen.html, inline-menu.html
 src/background/           service worker: native port (native-client.ts), popup/content handlers (controller.ts, router.ts),
                           frame rule (frames.ts), save offers (save.ts), chrome.storage.local (storage.ts)
 src/content/              content script (all frames): form detection, fill, submit capture, save bar (closed shadow root)
-src/popup/                Vue popup: pairing, desktop unavailable, signed out, locked, logins, generator
+src/content/inline-menu/  inline icon and menu frame placement, eligibility, keyboard, clickjacking checks
+src/inline-menu/          the menu page shown in the iframe under a login field (inline-menu.html)
+src/popup/                Vue popup: pairing, desktop unavailable, signed out, locked, logins, generator, settings
 src/offscreen/            offscreen document that copies to the clipboard and clears it after 90 s
 tools/                    fake native host, its registration script, packaging
 end-to-end/               Playwright tests and screenshot capture
 ```
 
-The build runs Vite twice: once for the popup, the offscreen page and the service worker (an ES module), and once for the content script as a single IIFE file, because content scripts cannot be modules. Icons come from `assets/logo/png` (rendered by `scripts/render-logo.sh`).
+The build runs Vite twice: once for the popup, the offscreen page, the inline menu page and the service worker (an ES module), and once for the content script as a single IIFE file, because content scripts cannot be modules. Icons come from `assets/logo/png` (rendered by `scripts/render-logo.sh`).
 
 ## Develop and test
 
 ```sh
 npm ci
 npm run typecheck
-npm test                    # Vitest: detection fixtures, fill, frame rule, capture, save bar, service worker, popup, fake host
+npm test                    # Vitest: detection fixtures, fill, frame rule, capture, save bar, inline menu, service worker, popup, fake host
 npm run build               # dist/
 npm run package             # hisar-extension-<version>.zip (not committed)
 npx playwright install chromium
-npm run test:end-to-end     # builds, then runs Playwright with the fake host
+npm run test:end-to-end     # builds, then runs the Playwright tests with the fake host
 ```
 
 `npm run test:end-to-end` starts Playwright's Chromium in headless mode. It uses a temporary profile, with the fake host registered in `<profile>/NativeMessagingHosts`, and a local test login page. The test loads the unpacked build, then:
@@ -40,9 +42,19 @@ npm run test:end-to-end     # builds, then runs Playwright with the fake host
 - updates a changed password and saves a new login from the save bar;
 - checks that "Never for this site" works.
 
+`end-to-end/inline-menu.spec.ts` covers the inline menu:
+
+- the icon and the menu in the login field;
+- choosing a login with the mouse and with the arrow keys;
+- no icon in the cross-origin iframe;
+- the not-paired, locked and not-running states;
+- the suggested password on a sign-up page;
+- the settings;
+- clicks ignored while the page hides the menu (transparent page, or an overlay with `pointer-events: none`).
+
 To watch it run, use `HISAR_HEADED=1 npm run test:end-to-end`.
 
-`HISAR_SCREENSHOT_DIRECTORY=/tmp/shots npm run screenshots` saves the popup states and the save bar as PNGs. Add `HISAR_CHROME_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"` to use the installed Chrome. Branded Chrome ignores `--load-extension`, so the script loads the build over the DevTools protocol (`Extensions.loadUnpacked`) instead.
+`HISAR_SCREENSHOT_DIRECTORY=/tmp/shots npm run screenshots` saves the popup states, the save bar and the inline menu states as PNGs. Add `HISAR_CHROME_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"` to use the installed Chrome. Branded Chrome ignores `--load-extension`, so the script loads the build over the DevTools protocol (`Extensions.loadUnpacked`) instead.
 
 ## Load unpacked
 
@@ -73,6 +85,15 @@ open -na "Google Chrome" --args --user-data-dir=/tmp/hisar-chrome-profile
 Then load `dist` unpacked in that profile. The host's log goes to Chrome's stderr. The state file and the launcher live in `extension/.fake-host/`, or wherever `--state` and `--host-dir` point.
 
 **Warning:** registering the fake host in your normal browser profile (with no `--user-data-dir`) overwrites the `com.tryhisar.hisar.json` that the Hisar app installed. The script refuses unless you also pass `--replace-hisar-registration`. Hisar writes its own manifest back the next time it starts.
+
+## Inline menu
+
+When a username or password field of a login form gets the focus, a Hisar icon appears inside the field's right edge, and a menu opens under the field.
+
+- **Menu contents:** matching logins, a suggested password on sign-up forms, or what to do when Hisar is not paired, locked or not running.
+- **Settings:** the popup's settings (the sliders button in the header) turn the icon off, or open the menu only on a click on the icon or the down arrow.
+- **Isolation:** the menu is an extension page in an iframe, so the page never sees login titles or usernames.
+- **Clickjacking checks:** the menu fills only after it has been visible and uncovered for 300 ms. [docs/DESIGN.md §9.2](../docs/DESIGN.md#92-browser-extension--typescript-mv3) describes these checks.
 
 ## Clipboard in MV3
 

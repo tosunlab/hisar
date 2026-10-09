@@ -8,6 +8,7 @@ type Handler = (message: PopupMessage) => unknown;
 
 let handler: Handler;
 let allMessage: PopupMessage[];
+let storedSettings: Record<string, unknown>;
 const closeWindow = vi.fn();
 
 const allLogin: LoginSummary[] = [
@@ -29,6 +30,12 @@ function installChrome(): void {
       }),
     },
     tabs: { query: vi.fn(async () => [{ id: 42 }]) },
+    storage: {
+      local: {
+        get: vi.fn(async (allKey: string[]) => Object.fromEntries(allKey.filter((key) => key in storedSettings).map((key) => [key, storedSettings[key]]))),
+        set: vi.fn(async (allEntry: Record<string, unknown>) => Object.assign(storedSettings, allEntry)),
+      },
+    },
   });
 }
 
@@ -51,6 +58,7 @@ async function mountApp(props: Record<string, unknown> = {}) {
 
 beforeEach(() => {
   allMessage = [];
+  storedSettings = {};
   installChrome();
   closeWindow.mockReset();
   vi.spyOn(window, "close").mockImplementation(closeWindow);
@@ -234,5 +242,29 @@ describe("unlocked popup", () => {
     await flushPromises();
     expect(allMessage).toContainEqual({ type: "popup.fillPassword", tabId: 42, password: "generated-40-true-false" });
     expect(closeWindow).toHaveBeenCalled();
+  });
+});
+
+describe("settings", () => {
+  it("shows the inline menu settings from any state and stores changes", async () => {
+    storedSettings = { isInlineMenuOpenedOnFocus: false };
+    respondWithState({ view: "locked" });
+    const wrapper = await mountApp();
+    await wrapper.find('[data-testid="open-settings"]').trigger("click");
+    await flushPromises();
+    const enabled = wrapper.find<HTMLInputElement>('[data-testid="setting-inline-menu"]');
+    const openOnFocus = wrapper.find<HTMLInputElement>('[data-testid="setting-open-on-focus"]');
+    expect(enabled.element.checked).toBe(true);
+    expect(openOnFocus.element.checked).toBe(false);
+    expect(wrapper.find('[data-testid="status-locked"]').exists()).toBe(false);
+    await openOnFocus.setValue(true);
+    await flushPromises();
+    expect(storedSettings).toEqual({ isInlineMenuOpenedOnFocus: true });
+    await enabled.setValue(false);
+    await flushPromises();
+    expect(storedSettings).toEqual({ isInlineMenuOpenedOnFocus: true, isInlineMenuEnabled: false });
+    expect(wrapper.find<HTMLInputElement>('[data-testid="setting-open-on-focus"]').element.disabled).toBe(true);
+    await wrapper.find('[data-testid="settings-done"]').trigger("click");
+    expect(wrapper.find('[data-testid="status-locked"]').exists()).toBe(true);
   });
 });
