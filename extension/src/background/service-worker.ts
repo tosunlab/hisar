@@ -1,4 +1,4 @@
-import type { BackgroundToContentMessage, OffscreenCopyMessage } from "../shared/messages";
+import type { BackgroundToContentMessage } from "../shared/messages";
 import { nativeHostName, toHisarError } from "../shared/protocol";
 import { getBrowserName } from "../shared/url";
 import { BackgroundController, type BrowserBridge } from "./controller";
@@ -7,28 +7,6 @@ import type { FrameInfo } from "./frames";
 import { NativeClient } from "./native-client";
 import { routeMessage } from "./router";
 import { ExtensionStorage } from "./storage";
-
-const clipboardClearMilliseconds = 90000;
-let offscreenCreation: Promise<void> | undefined;
-
-async function ensureOffscreenDocument(): Promise<void> {
-  const documentUrl = chrome.runtime.getURL("offscreen.html");
-  const allContext = await chrome.runtime.getContexts({
-    contextTypes: [chrome.runtime.ContextType.OFFSCREEN_DOCUMENT],
-    documentUrls: [documentUrl],
-  });
-  if (allContext.length > 0) return;
-  offscreenCreation ??= chrome.offscreen
-    .createDocument({
-      url: "offscreen.html",
-      reasons: [chrome.offscreen.Reason.CLIPBOARD],
-      justification: "Copy usernames and passwords and clear the clipboard after 90 seconds",
-    })
-    .finally(() => {
-      offscreenCreation = undefined;
-    });
-  await offscreenCreation;
-}
 
 async function getAllFrameInfo(tabId: number): Promise<FrameInfo[]> {
   const allResult = await chrome.scripting.executeScript({
@@ -54,17 +32,6 @@ const bridge: BrowserBridge = {
   },
   sendToFrame<Result>(tabId: number, frameId: number, message: BackgroundToContentMessage): Promise<Result> {
     return chrome.tabs.sendMessage(tabId, message, { frameId });
-  },
-  async copyToClipboard(text) {
-    await ensureOffscreenDocument();
-    const message: OffscreenCopyMessage = {
-      target: "offscreen",
-      type: "offscreen.copy",
-      text,
-      clearAfterMilliseconds: clipboardClearMilliseconds,
-    };
-    const response: { ok: boolean; message?: string } | undefined = await chrome.runtime.sendMessage(message);
-    if (!response?.ok) throw new Error(response?.message || "Could not copy to the clipboard");
   },
   async broadcastToInlineMenu(message) {
     await chrome.runtime.sendMessage(message).catch(() => undefined);

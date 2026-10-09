@@ -9,6 +9,7 @@ type Handler = (message: PopupMessage) => unknown;
 let handler: Handler;
 let allMessage: PopupMessage[];
 let storedSettings: Record<string, unknown>;
+let allClipboardText: string[];
 const closeWindow = vi.fn();
 
 const allLogin: LoginSummary[] = [
@@ -45,6 +46,7 @@ function respondWithState(state: PopupState, overrides: Partial<Record<PopupMess
     if (override) return override(message);
     if (message.type === "popup.getState") return state;
     if (message.type === "popup.matchLogins") return { url: "https://example.com/login", allLogin };
+    if (message.type === "popup.getPassword") return `password-of-${message.itemID}`;
     if (message.type === "popup.generatePassword") return `generated-${message.options.length}-${message.options.digits}-${message.options.symbols}`;
     return null;
   };
@@ -59,7 +61,9 @@ async function mountApp(props: Record<string, unknown> = {}) {
 beforeEach(() => {
   allMessage = [];
   storedSettings = {};
+  allClipboardText = [];
   installChrome();
+  vi.stubGlobal("navigator", { clipboard: { writeText: vi.fn(async (text: string) => void allClipboardText.push(text)) } });
   closeWindow.mockReset();
   vi.spyOn(window, "close").mockImplementation(closeWindow);
 });
@@ -213,16 +217,17 @@ describe("unlocked popup", () => {
     expect(closeWindow).not.toHaveBeenCalled();
   });
 
-  it("copies the username and the password", async () => {
+  it("copies the username and the password straight from the popup", async () => {
     respondWithState({ view: "unlocked" });
     const wrapper = await mountApp();
     await wrapper.find('[data-testid="copy-username"]').trigger("click");
     await flushPromises();
-    expect(allMessage).toContainEqual({ type: "popup.copyText", text: "alex@example.com" });
+    expect(allClipboardText).toEqual(["alex@example.com"]);
     await wrapper.find('[data-testid="copy-password"]').trigger("click");
     await flushPromises();
-    expect(allMessage).toContainEqual({ type: "popup.copyPassword", tabId: 42, vaultID: "v1", itemID: "i1" });
-    expect(wrapper.find('[data-testid="notice"]').text()).toContain("Clears in 90 s");
+    expect(allMessage).toContainEqual({ type: "popup.getPassword", tabId: 42, vaultID: "v1", itemID: "i1" });
+    expect(allClipboardText).toEqual(["alex@example.com", "password-of-i1"]);
+    expect(wrapper.find('[data-testid="notice"]').text()).toBe("Password copied");
   });
 
   it("generates passwords with the chosen options, copies them and fills the focused field", async () => {
@@ -237,7 +242,7 @@ describe("unlocked popup", () => {
     expect(wrapper.find('[data-testid="generated-password"]').text()).toBe("generated-40-true-false");
     await wrapper.find('[data-testid="copy-generated"]').trigger("click");
     await flushPromises();
-    expect(allMessage).toContainEqual({ type: "popup.copyText", text: "generated-40-true-false" });
+    expect(allClipboardText).toEqual(["generated-40-true-false"]);
     await wrapper.find('[data-testid="fill-generated"]').trigger("click");
     await flushPromises();
     expect(allMessage).toContainEqual({ type: "popup.fillPassword", tabId: 42, password: "generated-40-true-false" });

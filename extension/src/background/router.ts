@@ -38,10 +38,8 @@ async function routePopupMessage(controller: BackgroundController, message: Popu
       return controller.matchLogins(message.tabId);
     case "popup.fillLogin":
       return controller.fillLogin(message.tabId, message.vaultID, message.itemID);
-    case "popup.copyPassword":
-      return controller.copyPassword(message.tabId, message.vaultID, message.itemID);
-    case "popup.copyText":
-      return controller.copyText(message.text);
+    case "popup.getPassword":
+      return controller.getPasswordForTab(message.tabId, message.vaultID, message.itemID);
     case "popup.generatePassword":
       return controller.generatePassword(message.options);
     case "popup.fillPassword":

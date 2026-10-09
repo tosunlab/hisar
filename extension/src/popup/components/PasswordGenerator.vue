@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref, watch } from "vue";
 import { closePopup, describeError, sendToBackground } from "../api";
+import { writeToClipboard } from "../clipboard";
 import AppIcon from "./AppIcon.vue";
 
 const props = defineProps<{ tabId: number | undefined }>();
@@ -26,8 +27,8 @@ async function generatePassword(): Promise<void> {
 
 async function copyPassword(): Promise<void> {
   try {
-    await sendToBackground({ type: "popup.copyText", text: generatedPassword.value });
-    emit("notice", "Password copied. Clears in 90 s");
+    await writeToClipboard(generatedPassword.value);
+    emit("notice", "Password copied");
   } catch (error) {
     errorMessage.value = describeError(error);
   }

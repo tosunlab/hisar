@@ -20,7 +20,6 @@ export interface BrowserBridge {
   getAllFrameInfo(tabId: number): Promise<FrameInfo[]>;
   injectContentScript(tabId: number): Promise<void>;
   sendToFrame<Result>(tabId: number, frameId: number, message: BackgroundToContentMessage): Promise<Result>;
-  copyToClipboard(text: string): Promise<void>;
   broadcastToInlineMenu(message: InlineMenuBroadcast): Promise<void>;
   openPopup(tabId: number): Promise<void>;
   getInlineMenuUrl(): string;
@@ -131,15 +130,11 @@ export class BackgroundController {
     return this.fillLogin(tabId, firstLogin.vaultID, firstLogin.itemID);
   }
 
-  async copyPassword(tabId: number, vaultID: string, itemID: string): Promise<void> {
+  async getPasswordForTab(tabId: number, vaultID: string, itemID: string): Promise<string> {
     const url = await this.browser.getTabUrl(tabId);
     if (!isWebUrl(url)) throw new HisarError("no-match", "This page has no web address");
     const credentials = await this.request(() => this.client.request("logins.fill", { vaultID, itemID, url }));
-    await this.browser.copyToClipboard(credentials.password);
-  }
-
-  async copyText(text: string): Promise<void> {
-    await this.browser.copyToClipboard(text);
+    return credentials.password;
   }
 
   async generatePassword(options: GenerateOptions): Promise<string> {

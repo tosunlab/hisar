@@ -80,7 +80,6 @@ export function createHarness(options: HarnessOptions = {}) {
   let idCounter = 0;
   const allRequest: Record<string, unknown>[] = [];
   const allFrameMessage: { frameId: number; message: BackgroundToContentMessage }[] = [];
-  const allCopied: string[] = [];
   const allBroadcast: InlineMenuBroadcast[] = [];
   const allOpenedPopupTab: number[] = [];
   let injectionCount = 0;
@@ -105,9 +104,6 @@ export function createHarness(options: HarnessOptions = {}) {
       if (message.type === "content.fillLogin") return { filledUsername: true, filledPassword: true } as Result;
       if (message.type === "content.isInlineMenuVisible") return (options.isMenuVisible ?? true) as Result;
       return true as Result;
-    },
-    copyToClipboard: async (text) => {
-      allCopied.push(text);
     },
     broadcastToInlineMenu: async (message) => {
       allBroadcast.push(message);
@@ -149,7 +145,6 @@ export function createHarness(options: HarnessOptions = {}) {
     area,
     allRequest,
     allFrameMessage,
-    allCopied,
     allBroadcast,
     allOpenedPopupTab,
     bridge,

@@ -51,10 +51,7 @@
     "storage",
     "scripting",
     "activeTab",
-    "tabs",
-    "offscreen",
-    "clipboardRead",
-    "clipboardWrite"
+    "tabs"
   ],
   "host_permissions": [
     "<all_urls>"
