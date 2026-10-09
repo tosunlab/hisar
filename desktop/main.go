@@ -98,11 +98,14 @@ func main() {
 
 	var app *application.App
 	var window *application.WebviewWindow
+	// The SSH agent and the browser bridge call this from their own goroutines; AppKit aborts unless it runs on the main thread.
 	showWindow := func() {
-		app.Show()
-		window.UnMinimise()
-		window.Show()
-		window.Focus()
+		application.InvokeAsync(func() {
+			app.Show()
+			window.UnMinimise()
+			window.Show()
+			window.Focus()
+		})
 	}
 	approver := agent.CreateApprover(agent.ApproverConfig{
 		Biometric:  touchID,
