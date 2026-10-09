@@ -1,9 +1,13 @@
 name: CI
 
+# Pull requests only: a merge to main was already tested as its pull request.
 on:
-  push:
-    branches: [main]
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 env:
   PG_URL: postgres://postgres:hisar@localhost:5432/hisar?sslmode=disable
