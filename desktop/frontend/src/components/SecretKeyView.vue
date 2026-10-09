@@ -14,11 +14,20 @@ const allKeyPart = computed(() => store.pendingSecretKey.split("-"));
     <div class="page-body">
       <div class="card page-card secret-key-card">
         <HisarLogo :size="32" />
-        <h1>Save your Secret Key</h1>
-        <p class="subtitle">
-          You need it, together with your master password, to sign in on a new device. It never leaves your devices, so
-          nobody, including your Hisar admin, can recover it for you.
-        </p>
+        <template v-if="store.isRecoverySubmitted">
+          <h1>Save your new Secret Key</h1>
+          <p class="subtitle" data-testid="recovery-secret-key-note">
+            Your admin now completes the recovery. Then you sign in with this Secret Key and your new master password; until then, your old
+            ones keep working.
+          </p>
+        </template>
+        <template v-else>
+          <h1>Save your Secret Key</h1>
+          <p class="subtitle">
+            You need it, together with your master password, to sign in on a new device. It never leaves your devices, so
+            nobody, including your Hisar admin, can recover it for you.
+          </p>
+        </template>
         <div class="key" data-testid="secret-key" :aria-label="store.pendingSecretKey">
           <span v-for="(part, index) in allKeyPart" :key="index" class="key-part monospace">{{ part }}</span>
         </div>
@@ -30,7 +39,9 @@ const allKeyPart = computed(() => store.pendingSecretKey.split("-"));
           <input v-model="hasSaved" type="checkbox" name="hasSaved" />
           <span class="confirmation-text">I have written down or stored my Secret Key somewhere safe</span>
         </label>
-        <button class="primary full-width" :disabled="!hasSaved" @click="confirmSecretKeySaved">Continue to Hisar</button>
+        <button class="primary full-width" :disabled="!hasSaved" @click="confirmSecretKeySaved">
+          {{ store.isRecoverySubmitted ? "Continue to sign in" : "Continue to Hisar" }}
+        </button>
       </div>
     </div>
   </div>

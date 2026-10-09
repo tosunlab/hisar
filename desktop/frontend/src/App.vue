@@ -2,7 +2,7 @@
 import { onBeforeUnmount, onMounted } from "vue";
 import { Events } from "@wailsio/runtime";
 import { api } from "./api";
-import { addSSHApproval, handleLocked, loadBrowserStatus, loadStatus, removeSSHApproval, showBrowserPairing, store } from "./store";
+import { addSSHApproval, handleLocked, loadStatus, removeSSHApproval, restoreBrowserPairing, showBrowserPairing, store } from "./store";
 import SignInView from "./components/SignInView.vue";
 import SecretKeyView from "./components/SecretKeyView.vue";
 import UnlockView from "./components/UnlockView.vue";
@@ -32,7 +32,7 @@ onMounted(() => {
     Events.On("ssh-approval-closed", (event) => removeSSHApproval(event.data)),
     Events.On("browser-pairing", (event) => showBrowserPairing(event.data ?? null)),
   ];
-  loadBrowserStatus();
+  restoreBrowserPairing();
   window.addEventListener("keydown", reportActivity);
   window.addEventListener("pointerdown", reportActivity);
 });

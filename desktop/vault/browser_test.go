@@ -1,8 +1,12 @@
 package vault
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -149,6 +153,94 @@ func TestBrowserPairingLimits(t *testing.T) {
 	if _, err := CreateBrowserRequestHandler(signedOutBridge).HandleRequest(context.Background(), &browser.Request{Type: "pair.start", InstanceID: "x"}); err == nil {
 		t.Error("pairing while signed out")
 	}
+}
+
+// checkBrowserFlow drives the extension protocol through RunHost and the socket server against a real server's data.
+func checkBrowserFlow(t *testing.T, service *Service, personalID string) {
+	t.Helper()
+	if _, err := service.SaveItem(personalID, ItemDetail{Title: "Intranet", Username: "desktop", Password: "intranet-password", URLs: []string{"https://intranet.example.com"}}); err != nil {
+		t.Fatal(err)
+	}
+	var pairingCode string
+	bridge := CreateBrowserBridge(service, BrowserBridgeConfig{ShowPairing: func(request *BrowserPairingRequest) {
+		if request != nil {
+			pairingCode = request.Code
+		}
+	}})
+	socketDirectory, err := os.MkdirTemp("/tmp", "hisar-browser-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(socketDirectory)
+	socketPath := filepath.Join(socketDirectory, "browser.sock")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go browser.CreateServer(CreateBrowserRequestHandler(bridge), nil, "").Serve(ctx, socketPath)
+	for range 100 {
+		if _, err := os.Stat(socketPath); err == nil {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	sendAllMessage := func(allMessage ...string) []browser.Response {
+		t.Helper()
+		var input, output bytes.Buffer
+		for _, message := range allMessage {
+			browser.WriteMessage(&input, []byte(message))
+		}
+		if err := browser.RunHost(&input, &output, browser.HostConfig{SocketPath: socketPath, ExtensionOrigin: browser.AllowedOrigin}); err != nil {
+			t.Fatal(err)
+		}
+		allResponse := []browser.Response{}
+		for {
+			message, err := browser.ReadMessage(&output)
+			if err != nil {
+				return allResponse
+			}
+			var response browser.Response
+			json.Unmarshal(message, &response)
+			allResponse = append(allResponse, response)
+		}
+	}
+	sendAllMessage(`{"id":"1","type":"pair.start","instanceID":"integration","browser":"Chrome"}`)
+	allResponse := sendAllMessage(fmt.Sprintf(`{"id":"2","type":"pair.finish","instanceID":"integration","code":%q}`, pairingCode))
+	if len(allResponse) != 1 || !allResponse[0].OK {
+		t.Fatalf("pairing over the host: %+v", allResponse)
+	}
+	token := allResponse[0].Result.(map[string]any)["token"].(string)
+
+	allResponse = sendAllMessage(fmt.Sprintf(`{"id":"3","type":"logins.match","token":%q,"url":"https://intranet.example.com/login"}`, token))
+	allLogin := allResponse[0].Result.(map[string]any)["logins"].([]any)
+	if len(allLogin) != 1 {
+		t.Fatalf("match over the host: %+v", allResponse)
+	}
+	itemID := allLogin[0].(map[string]any)["itemID"].(string)
+	allResponse = sendAllMessage(
+		fmt.Sprintf(`{"id":"4","type":"logins.fill","token":%q,"vaultID":%q,"itemID":%q,"url":"https://intranet.example.com/login"}`, token, personalID, itemID),
+		fmt.Sprintf(`{"id":"5","type":"logins.fill","token":%q,"vaultID":%q,"itemID":%q,"url":"https://phishing.example.net/login"}`, token, personalID, itemID),
+		fmt.Sprintf(`{"id":"6","type":"logins.save","token":%q,"url":"https://shop.example.org/signin","username":"desktop","password":"shop-password"}`, token),
+		`{"id":"7","type":"status","token":"wrong"}`,
+	)
+	if len(allResponse) != 4 || allResponse[0].Result.(map[string]any)["password"] != "intranet-password" {
+		t.Fatalf("fill over the host: %+v", allResponse)
+	}
+	if allResponse[1].Error == nil || allResponse[1].Error.Code != browser.ErrorNoMatch {
+		t.Errorf("fill on another site: %+v", allResponse[1])
+	}
+	if !allResponse[2].OK || allResponse[3].Error.Code != browser.ErrorNotPaired {
+		t.Errorf("save and wrong token: %+v %+v", allResponse[2], allResponse[3])
+	}
+	savedID := allResponse[2].Result.(map[string]any)["itemID"].(string)
+	if saved, err := service.GetItem(personalID, savedID); err != nil || saved.Title != "shop.example.org" || saved.Password != "shop-password" {
+		t.Errorf("saved login: %+v %v", saved, err)
+	}
+	for _, createdID := range []string{savedID, itemID} {
+		if err := service.DeleteItem(personalID, createdID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	bridge.RemovePairedBrowser("integration")
 }
 
 func TestBrowserLogins(t *testing.T) {

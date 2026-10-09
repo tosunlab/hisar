@@ -13,13 +13,30 @@ import type {
   ItemDetail as BoundItemDetail,
   ItemField,
   PasswordConfig,
+  PendingRecovery,
+  RecoverAccountResult,
+  RecoveryStatus,
   SignUpResult,
   Status,
   VaultMember,
   VaultSummary,
 } from "../bindings/github.com/tryhisar/hisar/desktop/vault";
 
-export type { ApprovalEvent, Device, FamilyMember, ItemField, PasswordConfig, SignUpResult, SSHAgentStatus, Status, VaultMember, VaultSummary };
+export type {
+  ApprovalEvent,
+  Device,
+  FamilyMember,
+  ItemField,
+  PasswordConfig,
+  PendingRecovery,
+  RecoverAccountResult,
+  RecoveryStatus,
+  SignUpResult,
+  SSHAgentStatus,
+  Status,
+  VaultMember,
+  VaultSummary,
+};
 
 export type SSHKeyType = "ed25519" | "rsa";
 export type VaultRole = "owner" | "editor" | "reader";
@@ -103,6 +120,16 @@ const wailsApi = {
   setExactHostMatch: async (isExactHostMatch: boolean): Promise<BrowserStatus> =>
     normalizeBrowserStatus(await BrowserBridge.SetExactHostMatch(isExactHostMatch)),
   cancelBrowserPairing: (): Promise<void> => BrowserBridge.CancelBrowserPairing(),
+  getRecoveryStatus: (): Promise<RecoveryStatus> => Service.GetRecoveryStatus(),
+  setUpRecovery: async (): Promise<string[]> => (await Service.SetUpRecovery()) ?? [],
+  enableRecoveryForAllVault: async (): Promise<string[]> => (await Service.EnableRecoveryForAllVault()) ?? [],
+  enableVaultRecovery: (vaultID: string): Promise<VaultSummary> => Service.EnableVaultRecovery(vaultID),
+  disableVaultRecovery: (vaultID: string): Promise<VaultSummary> => Service.DisableVaultRecovery(vaultID),
+  startAccountRecovery: (accountID: string): Promise<string> => Service.StartAccountRecovery(accountID),
+  listAllPendingRecovery: async (): Promise<PendingRecovery[]> => (await Service.ListAllPendingRecovery()) ?? [],
+  completeAccountRecovery: async (accountID: string): Promise<string[]> => (await Service.CompleteAccountRecovery(accountID)) ?? [],
+  recoverAccount: (recoveryLink: string, email: string, newPassword: string): Promise<RecoverAccountResult> =>
+    Service.RecoverAccount(recoveryLink, email, newPassword),
 };
 
 // main.ts swaps in the preview backend before mounting when VITE_PREVIEW is set.

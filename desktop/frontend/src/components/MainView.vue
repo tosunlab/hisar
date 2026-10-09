@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { createVault, filterAllItem, lock, openSharing, selectItem, selectVault, showNotice, startCreatingItem, startCreatingSSHKey, store, syncInBackground, syncInterval } from "../store";
+import { createVault, filterAllItem, lock, openSharing, openVaultRecovery, selectItem, selectVault, startCreatingItem, startCreatingSSHKey, store, syncInBackground, syncInterval } from "../store";
 import { formatKeyType, getDomain, getInitials, isMacPlatform, sshKeyCategory } from "../util";
 import AppIcon from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
@@ -9,9 +9,10 @@ import ItemEditor from "./ItemEditor.vue";
 import ItemTile from "./ItemTile.vue";
 import SettingsPanel from "./SettingsPanel.vue";
 import SSHKeyForm from "./SSHKeyForm.vue";
+import VaultRecoveryPanel from "./VaultRecoveryPanel.vue";
 import VaultSharingPanel from "./VaultSharingPanel.vue";
 
-const personalVaultNotice = "Personal vaults are private. Create a shared vault to share with your family.";
+const personalVaultNotice = "Personal vaults are private. Create a shared vault to share with your family. Click to see who can recover this vault.";
 
 const isCreatingVault = ref(false);
 const newVaultName = ref("");
@@ -152,9 +153,10 @@ onBeforeUnmount(() => {
             class="ghost private-button"
             :title="personalVaultNotice"
             data-testid="personal-vault-private"
-            @click="showNotice(personalVaultNotice)"
+            @click="openVaultRecovery"
           >
             <AppIcon name="lock" :size="13" /> Private
+            <AppIcon v-if="selectedVault.recoveryOptOut" name="warning" :size="13" class="warning-text" data-testid="vault-recovery-off" />
           </button>
           <button
             class="primary icon-button"
@@ -223,6 +225,7 @@ onBeforeUnmount(() => {
     </main>
     <SettingsPanel v-if="store.isSettingsOpen" />
     <VaultSharingPanel v-if="store.isSharingOpen" />
+    <VaultRecoveryPanel v-if="store.isVaultRecoveryOpen" />
   </div>
 </template>
 
@@ -415,7 +418,6 @@ onBeforeUnmount(() => {
 
 .private-button {
   color: var(--color-text-muted);
-  cursor: help;
 }
 
 .new-item-menu {

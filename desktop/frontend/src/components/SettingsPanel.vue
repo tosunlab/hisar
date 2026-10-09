@@ -1,21 +1,26 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import type { Device, FamilyRole } from "../api";
+import type { Device, FamilyMember, FamilyRole } from "../api";
 import {
   configureSSHConfig,
   copyText,
   disableBiometricUnlock,
   enableBiometricUnlock,
+  getFirstName,
   inviteMember,
+  loadRecoveryData,
   loadSettingsData,
   loadSSHAgentStatus,
   removeSSHConfig,
   revokeDevice,
   saveEmergencyKit,
   signOut,
+  startAccountRecovery,
   store,
 } from "../store";
 import { formatLastSeen, formatPlatform, formatRole, getPlatformIcon, isMacPlatform } from "../util";
+import AccountRecoverySection from "./AccountRecoverySection.vue";
+import BrowserExtensionSection from "./BrowserExtensionSection.vue";
 import AppIcon from "./AppIcon.vue";
 import MemberAvatar from "./MemberAvatar.vue";
 
@@ -28,9 +33,27 @@ const inviteRole = ref<FamilyRole>("member");
 const invitedEmail = ref("");
 const inviteLink = ref("");
 const revokingDeviceID = ref("");
+const recoveringAccountID = ref("");
+const recoveryLink = ref("");
 
 const isAdmin = computed(() => store.allFamilyMember.some((familyMember) => familyMember.isCurrentUser && familyMember.role === "admin"));
 const currentDeviceLabel = isMacPlatform() ? "This Mac" : "This device";
+
+function canStartRecovery(familyMember: FamilyMember): boolean {
+  return isAdmin.value && !familyMember.isCurrentUser && store.recoveryStatus?.isSetUp === true;
+}
+
+function startRecoveryConfirmation(familyMember: FamilyMember): void {
+  recoveringAccountID.value = familyMember.accountId;
+  recoveryLink.value = "";
+}
+
+async function submitStartRecovery(familyMember: FamilyMember): Promise<void> {
+  const link = await startAccountRecovery(familyMember);
+  if (link) {
+    recoveryLink.value = link;
+  }
+}
 
 async function submitInvite(): Promise<void> {
   const link = await inviteMember(inviteEmail.value.trim(), inviteRole.value);
@@ -94,6 +117,7 @@ onMounted(() => {
   window.addEventListener("keydown", closeOnEscape);
   loadSSHAgentStatus();
   loadSettingsData();
+  loadRecoveryData();
 });
 onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
 </script>
@@ -188,22 +212,53 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
       <section data-testid="family-section">
         <p class="section-label">Family</p>
         <p v-if="store.allFamilyMember.length === 0" class="muted empty-note">{{ store.isBusy ? "Loading family members…" : "No family members to show." }}</p>
-        <div v-for="familyMember in store.allFamilyMember" :key="familyMember.accountId" class="setting" :data-testid="`family-member-${familyMember.accountId}`">
-          <MemberAvatar :name="familyMember.name || familyMember.email" />
-          <div class="setting-text">
-            <strong class="title-line">
-              <span class="title-text">{{ familyMember.name || familyMember.email }}</span>
-              <span v-if="familyMember.isCurrentUser" class="tag accent">you</span>
-              <span class="tag" :data-testid="`family-role-${familyMember.accountId}`">{{ formatRole(familyMember.role) }}</span>
-            </strong>
-            <p class="muted">{{ familyMember.email }}</p>
-            <p v-if="familyMember.isKeyChanged" class="warning-text">Their key changed since you last shared with them. Compare security codes in person.</p>
+        <template v-for="familyMember in store.allFamilyMember" :key="familyMember.accountId">
+          <div class="setting" :data-testid="`family-member-${familyMember.accountId}`">
+            <MemberAvatar :name="familyMember.name || familyMember.email" />
+            <div class="setting-text">
+              <strong class="title-line">
+                <span class="title-text">{{ familyMember.name || familyMember.email }}</span>
+                <span v-if="familyMember.isCurrentUser" class="tag accent">you</span>
+                <span class="tag" :data-testid="`family-role-${familyMember.accountId}`">{{ formatRole(familyMember.role) }}</span>
+              </strong>
+              <p class="muted">{{ familyMember.email }}</p>
+              <p v-if="familyMember.isKeyChanged" class="warning-text">Their key changed since you last shared with them. Compare security codes in person.</p>
+            </div>
+            <div class="security-code" :title="familyMember.isCurrentUser ? 'Your security code' : 'Compare this code in person'">
+              <span class="code-label">Security code</span>
+              <span class="monospace" data-testid="family-security-code">{{ familyMember.securityCode }}</span>
+            </div>
+            <button
+              v-if="canStartRecovery(familyMember)"
+              class="ghost recovery-button"
+              :title="`Start account recovery for ${getFirstName(familyMember)}`"
+              :data-testid="`start-recovery-${familyMember.accountId}`"
+              @click="startRecoveryConfirmation(familyMember)"
+            >
+              Start recovery
+            </button>
           </div>
-          <div class="security-code" :title="familyMember.isCurrentUser ? 'Your security code' : 'Compare this code in person'">
-            <span class="code-label">Security code</span>
-            <span class="monospace" data-testid="family-security-code">{{ familyMember.securityCode }}</span>
+          <div v-if="recoveringAccountID === familyMember.accountId && !recoveryLink" class="inline-confirmation" data-testid="start-recovery-confirmation">
+            <p>
+              Create a recovery link for {{ getFirstName(familyMember) }}? They use it to choose a new master password and get a new Secret Key. Their
+              account keeps working until you complete the recovery.
+            </p>
+            <div class="row">
+              <button class="ghost" :disabled="store.isBusy" @click="recoveringAccountID = ''">Cancel</button>
+              <button class="primary" data-testid="confirm-start-recovery" :disabled="store.isBusy" @click="submitStartRecovery(familyMember)">Create link</button>
+            </div>
           </div>
-        </div>
+          <div v-if="recoveringAccountID === familyMember.accountId && recoveryLink" class="invite-result" data-testid="recovery-link-result">
+            <div class="invite-link">
+              <span class="monospace" data-testid="recovery-link">{{ recoveryLink }}</span>
+              <button data-testid="copy-recovery-link" @click="copyText(recoveryLink, 'Recovery link')"><AppIcon name="copy" :size="14" /> Copy</button>
+            </div>
+            <p class="muted">
+              Send this link to {{ getFirstName(familyMember) }}. It is valid for 7 days and works once. Their recovery appears under Account recovery
+              once they use it.
+            </p>
+          </div>
+        </template>
         <template v-if="isAdmin">
           <div class="setting">
             <span class="setting-icon"><AppIcon name="mail" /></span>
@@ -232,6 +287,8 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
         </template>
       </section>
 
+      <AccountRecoverySection />
+
       <section data-testid="devices-section">
         <p class="section-label">Devices</p>
         <p v-if="store.allDevice.length === 0" class="muted empty-note">{{ store.isBusy ? "Loading devices…" : "No devices to show." }}</p>
@@ -256,6 +313,8 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
           </template>
         </div>
       </section>
+
+      <BrowserExtensionSection />
 
       <section data-testid="ssh-agent-section">
         <p class="section-label">SSH agent</p>
@@ -356,41 +415,6 @@ section {
   margin-bottom: 18px;
 }
 
-.setting {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 0;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.setting:last-child {
-  border-bottom: none;
-}
-
-.setting-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  flex: none;
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius);
-  background: var(--color-surface);
-  color: var(--color-text-secondary);
-}
-
-.setting-text {
-  flex: 1;
-  min-width: 0;
-}
-
-.setting-text p {
-  margin: 2px 0 0;
-  font-size: 12px;
-}
-
 .ssh-explanation {
   padding: 0 0 4px 44px;
 }
@@ -447,24 +471,6 @@ section {
   white-space: nowrap;
 }
 
-.empty-note {
-  margin: 0 0 8px;
-  font-size: 12px;
-}
-
-.title-line {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.title-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .security-code {
   display: flex;
   flex: none;
@@ -512,6 +518,30 @@ section {
 .invite-result p {
   margin: 6px 0 0;
   font-size: 12px;
+}
+
+.recovery-button {
+  flex: none;
+  padding: 5px 8px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.inline-confirmation {
+  margin: 0 0 12px 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  font-size: 12px;
+}
+
+.inline-confirmation p {
+  margin: 0 0 8px;
+}
+
+.inline-confirmation .row {
+  justify-content: flex-end;
 }
 
 .setting-text .revoke-note {

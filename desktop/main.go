@@ -14,8 +14,8 @@ import (
 	"github.com/tryhisar/hisar/core/localstate"
 	"github.com/tryhisar/hisar/core/sshagent"
 	"github.com/tryhisar/hisar/desktop/agent"
-	"github.com/tryhisar/hisar/desktop/browser"
 	"github.com/tryhisar/hisar/desktop/biometric"
+	"github.com/tryhisar/hisar/desktop/browser"
 	"github.com/tryhisar/hisar/desktop/vault"
 )
 

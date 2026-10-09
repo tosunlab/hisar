@@ -81,6 +81,33 @@ export interface PasswordConfig {
     "symbols": boolean;
 }
 
+/**
+ * PendingRecovery is a recovery the account holder submitted; SubmittedAt is RFC 3339.
+ */
+export interface PendingRecovery {
+    "accountId": string;
+    "name": string;
+    "email": string;
+    "submittedAt": string;
+    "recoverableVaultCount": number;
+    "unrecoverableVaultCount": number;
+}
+
+export interface RecoverAccountResult {
+    "status": Status;
+    "secretKey": string;
+}
+
+/**
+ * RecoveryStatus: only the admin who set up recovery (IsCreatedByCurrentUser) can complete recoveries.
+ */
+export interface RecoveryStatus {
+    "isSetUp": boolean;
+    "isAdmin": boolean;
+    "isCreatedByCurrentUser": boolean;
+    "createdByName": string;
+}
+
 export interface SignUpResult {
     "status": Status;
     "secretKey": string;
@@ -115,10 +142,15 @@ export interface VaultMember {
     "isKeyChanged": boolean;
 }
 
+/**
+ * VaultSummary: Recoverable means the vault key is wrapped to the recovery keyset; RecoveryOptOut means its owner turned that off.
+ */
 export interface VaultSummary {
     "id": string;
     "name": string;
     "type": string;
     "role": string;
     "itemCount": number;
+    "recoverable": boolean;
+    "recoveryOptOut": boolean;
 }
