@@ -1,0 +1,8 @@
+framework module "HisarKit" {
+	header "ref.h"
+    header "Hisarkit.objc.h"
+    header "Universe.objc.h"
+    header "HisarKit.h"
+
+    export *
+}

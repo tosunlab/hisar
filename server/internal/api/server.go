@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"crypto/sha256"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"log"
@@ -94,6 +95,7 @@ func (s *Server) CreateApp() *fiber.App {
 	})
 	app.Use(setAllSecurityHeader)
 	app.Get("/healthz", func(c fiber.Ctx) error { return c.SendString("ok\n") })
+	app.Get("/privacy", sendPrivacyPolicy)
 
 	apiGroup := app.Group("/api/v1")
 	apiGroup.Get("/auth/prelogin", s.limitRate, s.handlePrelogin)
@@ -131,6 +133,18 @@ func (s *Server) CreateApp() *fiber.App {
 	apiGroup.Post("/admin/recovery/:account/complete", s.requireSession, s.requireAdmin, s.handleCompleteRecovery)
 
 	return app
+}
+
+// privacyPolicy is linked from the Chrome Web Store and App Store listings.
+//
+//go:embed privacy.html
+var privacyPolicy []byte
+
+func sendPrivacyPolicy(c fiber.Ctx) error {
+	c.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'")
+	c.Set("Cache-Control", "public, max-age=3600")
+	c.Set(fiber.HeaderContentType, fiber.MIMETextHTMLCharsetUTF8)
+	return c.Send(privacyPolicy)
 }
 
 func setAllSecurityHeader(c fiber.Ctx) error {
