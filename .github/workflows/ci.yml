@@ -131,8 +131,36 @@ jobs:
           path: desktop/bin/Hisar-macos.zip
           retention-days: 14
 
+  mobile-changes:
+    name: "Check whether the pull request changes mobile/"
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      has-mobile-change: ${{ steps.check.outputs.has-mobile-change }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          PULL_REQUEST_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "has-mobile-change=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          allChangedFile=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PULL_REQUEST_NUMBER/files" --jq '.[].filename')
+          if grep -q '^mobile/' <<< "$allChangedFile"; then
+            echo "has-mobile-change=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has-mobile-change=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # macOS minutes are expensive, so iOS only runs when mobile/ changes (or when started by hand).
   ios:
     name: "iOS: build the framework and app, unit and UI tests in the simulator"
+    needs: mobile-changes
+    if: needs.mobile-changes.outputs.has-mobile-change == 'true'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
