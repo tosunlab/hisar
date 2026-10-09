@@ -58,6 +58,9 @@ expect "bob cannot read alice personal" "$(printf '%s\n' "$PW" | B ls -v "$(prin
 expect "second device login" "$(printf 'http://127.0.0.1:%s\nalice@example.com\n%s\n%s\n' "$PORT" "$ALICE_SK" "$PW" | HISAR_STATE=$T/alice2.json HISAR_SECRET_KEY=- hisar login 2>&1)" "Signed in as Alice"
 expect "wrong password" "$(printf 'nope\n' | A ls 2>&1 || true)" "incorrect email, password or Secret Key"
 expect "devices" "$(A devices)" "(this device)"
+expect "emergency kit" "$(printf '%s\n' "$PW" | A emergency-kit -o "$T/kit.pdf" 2>&1)" "Saved your Emergency Kit"
+expect "emergency kit is a private PDF" "$(head -c 5 "$T/kit.pdf") $(stat -c %a "$T/kit.pdf" 2>/dev/null || stat -f %Lp "$T/kit.pdf")" "%PDF- 600"
+expect "emergency kit never overwrites" "$(printf '%s\n' "$PW" | A emergency-kit -o "$T/kit.pdf" 2>&1 || true)" "already exists"
 
 expect "delete" "$(printf '%s\ny\n' "$PW" | A rm netflix -v Family 2>&1)" "Deleted"
 LEFT=$(printf '%s\n' "$PW" | B ls -v Family 2>/dev/null | tail -n +2)

@@ -7,3 +7,7 @@ node_modules/
 hisar-secrets.json
 deploy/db_password.txt
 deploy/hisar.env
+/cli/hisar
+/server/hisar-server
+/server/cmd/hisar-server/hisar-server
+/cli/cmd/hisar/hisar

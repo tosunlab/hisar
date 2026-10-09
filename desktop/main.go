@@ -38,6 +38,14 @@ type wailsLockNotifier struct{ app *application.App }
 
 func (notifier *wailsLockNotifier) NotifyLocked() { notifier.app.Event.Emit("locked", "auto-lock") }
 
+type wailsFileSaver struct {
+	chooseSavePath func(defaultFileName string) (string, error)
+}
+
+func (fileSaver *wailsFileSaver) ChooseSavePath(defaultFileName string) (string, error) {
+	return fileSaver.chooseSavePath(defaultFileName)
+}
+
 func getDeviceName() string {
 	hostname, err := os.Hostname()
 	if err != nil || hostname == "" {
@@ -61,6 +69,7 @@ func main() {
 	clipboard := &wailsClipboard{}
 	touchID := biometric.Create("Hisar Touch ID")
 	lockNotifier := &wailsLockNotifier{}
+	fileSaver := &wailsFileSaver{}
 	var agentServer *sshagent.Server
 	vaultConfig := vault.Config{
 		StatePath:    statePath,
@@ -69,6 +78,7 @@ func main() {
 		Clipboard:    clipboard,
 		LockNotifier: lockNotifier,
 		Biometric:    touchID,
+		FileSaver:    fileSaver,
 		OnLock: func() {
 			if agentServer != nil {
 				agentServer.ClearAllApproval()
@@ -146,6 +156,14 @@ func main() {
 		BackgroundColour: application.NewRGB(13, 14, 16),
 		URL:              "/",
 	})
+	fileSaver.chooseSavePath = func(defaultFileName string) (string, error) {
+		return app.Dialog.SaveFile().
+			SetFilename(defaultFileName).
+			AddFilter("PDF document", "*.pdf").
+			CanCreateDirectories(true).
+			AttachToWindow(window).
+			PromptForSingleSelection()
+	}
 	touchID.SetWindowProvider(window.NativeWindow)
 
 	go func() {

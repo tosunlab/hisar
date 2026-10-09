@@ -33,6 +33,7 @@ var allCommand = []command{
 	{"share", "<vault> <email> [-r role]", "share a vault (role: owner, editor, reader)", runShare},
 	{"unshare", "<vault> <email>", "remove someone from a vault and rotate its key", runUnshare},
 	{"invite", "<email> [-r role]", "invite someone (admin only)", runInvite},
+	{"emergency-kit", "[-o file]", "save your Emergency Kit PDF (sign-in address, email, Secret Key)", runEmergencyKit},
 	{"devices", "", "list your signed-in devices", runListAllDevice},
 	{"revoke-device", "<id>", "sign out a device", runRevokeDevice},
 	{"recovery-setup", "", "create the recovery key and wrap your vaults to it (admin only)", runRecoverySetup},

@@ -118,4 +118,10 @@ type Config struct {
 	Now                       func() time.Time
 	// OnLock runs under the service mutex whenever an unlocked session ends; it must not call the service.
 	OnLock func()
+	// FileSaver asks where to save a file; it returns "" when the user cancels.
+	FileSaver FileSaver
+}
+
+type FileSaver interface {
+	ChooseSavePath(defaultFileName string) (string, error)
 }

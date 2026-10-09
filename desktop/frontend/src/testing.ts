@@ -102,5 +102,8 @@ export function createApiMock() {
     clearTouchIDPromptFrame: vi.fn().mockResolvedValue(undefined),
     cancelTouchIDPrompt: vi.fn().mockResolvedValue(undefined),
     hasNativeTouchIDView: false,
+    saveNewAccountEmergencyKit: vi.fn(),
+    saveEmergencyKit: vi.fn(),
+    forgetNewAccountSecretKey: vi.fn().mockResolvedValue(undefined),
   };
 }
