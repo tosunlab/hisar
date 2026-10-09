@@ -38,6 +38,7 @@ type Service struct {
 	name                         string
 	hasPasswordUnlockSinceLaunch bool
 	newAccountSecretKey          *crypt.SecretKey
+	recoveredAccountSecretKey    *crypt.SecretKey
 }
 
 func CreateService(config Config) (*Service, error) {
@@ -145,6 +146,7 @@ func (s *Service) Lock() Status {
 func (s *Service) openSession(unlockedSession *session.Session) {
 	unlockedSession.SeqStore = s.state
 	unlockedSession.MemberVerifier = s.state.CheckMemberPin
+	unlockedSession.RecoveryKeyVerifier = s.checkRecoveryPin
 	s.unlockedSession = unlockedSession
 	s.name = unlockedSession.Name
 	s.allItemByVaultID = map[string][]item.Item{}
@@ -174,6 +176,7 @@ func (s *Service) SignIn(server, email, secretKeyText, password string) (Status,
 	defer s.mutex.Unlock()
 	s.lockSession()
 	s.forgetBiometricUnlock()
+	s.recoveredAccountSecretKey = nil
 	s.state.Reset()
 	s.state.Server, s.state.Email, s.state.AccountID, s.state.Token = server, loggedIn.Email, loggedIn.AccountID, loggedIn.Client.Token
 	if err := s.state.Save(); err != nil {
@@ -189,16 +192,20 @@ func (s *Service) SignIn(server, email, secretKeyText, password string) (Status,
 	return s.buildStatus(), nil
 }
 
-func parseInviteLink(link string) (server, token string, err error) {
+func parseLinkToken(link, pathPrefix string, errInvalid error) (server, token string, err error) {
 	parsedURL, err := url.Parse(strings.TrimSpace(link))
 	if err != nil || (parsedURL.Scheme != "https" && parsedURL.Scheme != "http") || parsedURL.Host == "" {
-		return "", "", errors.New("paste the full invite link you received")
+		return "", "", errInvalid
 	}
-	token, found := strings.CutPrefix(parsedURL.Path, "/invite/")
+	token, found := strings.CutPrefix(parsedURL.Path, pathPrefix)
 	if !found || token == "" || strings.Contains(token, "/") {
-		return "", "", errors.New("paste the full invite link you received")
+		return "", "", errInvalid
 	}
 	return parsedURL.Scheme + "://" + parsedURL.Host, token, nil
+}
+
+func parseInviteLink(link string) (server, token string, err error) {
+	return parseLinkToken(link, "/invite/", errors.New("paste the full invite link you received"))
 }
 
 func (s *Service) SignUp(inviteLink, email, name, password string) (SignUpResult, error) {
@@ -226,6 +233,7 @@ func (s *Service) SignUp(inviteLink, email, name, password string) (SignUpResult
 	defer s.mutex.Unlock()
 	s.lockSession()
 	s.forgetBiometricUnlock()
+	s.recoveredAccountSecretKey = nil
 	s.state.Reset()
 	s.state.Server, s.state.Email, s.state.AccountID, s.state.Token = server, strings.ToLower(strings.TrimSpace(email)), signedUp.AccountID, signedUp.Client.Token
 	if err := s.state.Save(); err != nil {
@@ -295,6 +303,7 @@ func (s *Service) SignOut() (Status, error) {
 	s.lockSession()
 	s.name = ""
 	s.forgetBiometricUnlock()
+	s.recoveredAccountSecretKey = nil
 	s.state.Reset()
 	return s.buildStatus(), s.state.Save()
 }
@@ -343,10 +352,22 @@ func (s *Service) ListAllVault() ([]VaultSummary, error) {
 			return nil, convertError(err)
 		}
 		s.allItemByVaultID[vault.ID] = allItem
-		allSummary = append(allSummary, VaultSummary{ID: vault.ID, Name: vault.Name, Type: vault.Type, Role: vault.Role, ItemCount: len(allItem)})
+		allSummary = append(allSummary, convertToVaultSummary(vault, len(allItem)))
 	}
 	sortAllVaultSummary(allSummary)
 	return allSummary, nil
+}
+
+func convertToVaultSummary(vault *session.Vault, itemCount int) VaultSummary {
+	return VaultSummary{
+		ID:             vault.ID,
+		Name:           vault.Name,
+		Type:           vault.Type,
+		Role:           vault.Role,
+		ItemCount:      itemCount,
+		Recoverable:    vault.Recoverable,
+		RecoveryOptOut: vault.RecoveryOptOut,
+	}
 }
 
 // sortAllVaultSummary puts personal vaults first, then sorts by name.
@@ -373,15 +394,18 @@ func (s *Service) CreateVault(name string) (VaultSummary, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	vault, err := s.unlockedSession.CreateVault(ctx, strings.TrimSpace(name), proto.VaultShared)
-	if err != nil {
-		return VaultSummary{}, convertError(err)
+	vault, createErr := s.unlockedSession.CreateVault(ctx, strings.TrimSpace(name), proto.VaultShared)
+	if err := s.state.Save(); createErr == nil && err != nil {
+		return VaultSummary{}, err
+	}
+	if createErr != nil {
+		return VaultSummary{}, convertError(createErr)
 	}
 	if s.allVaultByID == nil {
 		s.allVaultByID = map[string]*session.Vault{}
 	}
 	s.allVaultByID[vault.ID] = vault
-	return VaultSummary{ID: vault.ID, Name: vault.Name, Type: vault.Type, Role: vault.Role}, nil
+	return convertToVaultSummary(vault, 0), nil
 }
 
 func (s *Service) findVault(ctx context.Context, vaultID string) (*session.Vault, error) {

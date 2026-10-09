@@ -96,6 +96,7 @@ expect "logout" "$(A logout && A whoami 2>&1 || true)" "not logged in"
 
 DESKTOP_INVITE=$("$BIN/hisar-server" invite --email desktop@example.com --role admin </dev/null | tail -1)
 DESKTOP_RESULT=$(HISAR_TEST_SERVER_URL="http://127.0.0.1:$PORT" HISAR_TEST_INVITE_LINK="$DESKTOP_INVITE" \
+  HISAR_TEST_RECOVERY_ADMIN_EMAIL=alice@example.com HISAR_TEST_RECOVERY_ADMIN_SECRET_KEY="$ALICE_SK" HISAR_TEST_RECOVERY_ADMIN_PASSWORD="$PW" \
   go -C "$ROOT/desktop" test -count=1 -v -run TestIntegrationDesktopFlow ./vault/ 2>&1 || true)
 expect "desktop app backend against the server" "$DESKTOP_RESULT" "--- PASS: TestIntegrationDesktopFlow"
 echo "end-to-end test passed"

@@ -36,6 +36,11 @@ type fakeAPIServer struct {
 	allMember          []proto.Member
 	allAccessByVaultID map[string][]proto.RotatedAccess
 	allDevice          []proto.Device
+	recoveryKeyset     *proto.RecoveryKeyset
+	// allRecoveryWrappedKeyByVaultID holds each vault key wrapped to the recovery keyset.
+	allRecoveryWrappedKeyByVaultID map[string][]byte
+	allPendingRecovery             []proto.PendingRecovery
+	allCompletedVaultKeyByAccount  map[string][]proto.VaultKey
 }
 
 func writeJSON(writer http.ResponseWriter, status int, value any) {
@@ -59,7 +64,10 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 		}
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
-		server.allVault = append(server.allVault, proto.Vault{ID: createRequest.ID, Type: createRequest.Type, EncName: createRequest.EncName, Role: proto.VaultOwner, WrappedKey: createRequest.WrappedKey})
+		server.allVault = append(server.allVault, proto.Vault{ID: createRequest.ID, Type: createRequest.Type, EncName: createRequest.EncName, Role: proto.VaultOwner, WrappedKey: createRequest.WrappedKey, Recoverable: createRequest.RecoveryWrappedKey != nil})
+		if createRequest.RecoveryWrappedKey != nil {
+			server.setRecoveryWrappedKey(createRequest.ID, createRequest.RecoveryWrappedKey)
+		}
 		server.allItemByVaultID[createRequest.ID] = map[string]proto.Item{}
 		server.allAccessByVaultID[createRequest.ID] = []proto.RotatedAccess{{AccountID: server.accountID, Role: proto.VaultOwner, WrappedKey: createRequest.WrappedKey}}
 		writer.WriteHeader(http.StatusCreated)
@@ -102,6 +110,7 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 		writeJSON(writer, http.StatusOK, proto.PutItemResponse{Seq: server.seq})
 	})
 	server.addAllSharingRoute(mux)
+	server.addAllRecoveryRoute(mux)
 	return mux
 }
 
