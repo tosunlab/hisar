@@ -17,3 +17,6 @@ deploy/hisar.env
 /extension/playwright-report/
 /extension/.fake-host/
 /mobile/build/
+/mobile/ios/Configuration/Local.xcconfig
+xcuserdata/
+*.xcresult

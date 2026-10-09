@@ -132,19 +132,50 @@ jobs:
           retention-days: 14
 
   ios:
-    name: "iOS: build HisarKit.xcframework with gomobile"
+    name: "iOS: build the framework and app, unit and UI tests in the simulator"
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.work
+      - name: Install the pinned XcodeGen and PostgreSQL
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/xcodegen.zip" https://github.com/yonaskolb/XcodeGen/releases/download/2.46.0/xcodegen.zip
+          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/xcodegen/bin" >> "$GITHUB_PATH"
+          brew install postgresql@17
+      - name: Fail if the committed Xcode project differs from project.yml
+        run: |
+          make generate-ios-project
+          git diff --exit-code -- mobile/ios
       - name: Install gomobile and build the framework
         run: make build-ios-framework
       - name: Check the framework slices
         run: |
           test -d mobile/build/HisarKit.xcframework/ios-arm64/HisarKit.framework
           test -d mobile/build/HisarKit.xcframework/ios-arm64_x86_64-simulator/HisarKit.framework
+      - name: Build the app with the AutoFill extension, and the free personal team variant, for the simulator
+        run: make build-ios
+      - name: Run unit tests in the simulator
+        run: make test-ios
+      - name: Build the server for the UI tests
+        run: make build
+      - name: Start PostgreSQL and create the UI test database
+        run: |
+          brew services start postgresql@17
+          for attempt in $(seq 30); do "$(brew --prefix postgresql@17)/bin/pg_isready" -h localhost && break; sleep 1; done
+          "$(brew --prefix postgresql@17)/bin/createdb" -h localhost hisar_ios
+      - name: Run UI tests in the simulator against a local server (sign up, items, lock, sign in, Face ID, AutoFill screens)
+        run: HISAR_DATABASE_URL="postgres://$(whoami)@localhost:5432/hisar_ios?sslmode=disable" make test-ios-ui
+        env:
+          IOS_RESULT_BUNDLE: ${{ runner.temp }}/HisarUITests.xcresult
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: ios-ui-test-results
+          path: ${{ runner.temp }}/HisarUITests.xcresult
+          retention-days: 7
 
   desktop-linux:
     name: "Desktop Linux: build the app"

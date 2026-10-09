@@ -1,0 +1,288 @@
+import Foundation
+import SwiftUI
+
+@MainActor
+final class AppModel: ObservableObject {
+    enum Screen: Equatable {
+        case starting
+        case failed(String)
+        case signedOut
+        case locked
+        case unlocked
+    }
+
+    static let autoLockInterval: TimeInterval = 5 * 60
+
+    @Published private(set) var screen: Screen = .starting
+    @Published private(set) var status: VaultStatus = .signedOut
+    @Published private(set) var isBusy = false
+    @Published private(set) var isRefreshing = false
+    @Published var errorMessage: String?
+    @Published var noticeMessage: String?
+    @Published private(set) var allVault: [VaultSummary] = []
+    @Published private(set) var allItemByVaultID: [String: [ItemDetail]] = [:]
+    @Published var newSecretKey: String?
+    @Published var pendingSignInLink: SignInLink?
+    @Published private(set) var lockCount = 0
+
+    private var backend: VaultBackend?
+    private let credentialIdentityStore: CredentialIdentityUpdating
+    private let getCurrentDate: () -> Date
+    private var enteredBackgroundAt: Date?
+    private var noticeTask: Task<Void, Never>?
+
+    init(credentialIdentityStore: CredentialIdentityUpdating, getCurrentDate: @escaping () -> Date = Date.init) {
+        self.credentialIdentityStore = credentialIdentityStore
+        self.getCurrentDate = getCurrentDate
+    }
+
+    func start(createBackend: () throws -> VaultBackend) {
+        do {
+            let backend = try createBackend()
+            self.backend = backend
+            applyStatus(backend.getStatus())
+            if status.isUnlocked {
+                Task { await refreshAll() }
+            }
+        } catch {
+            screen = .failed(describeError(error))
+        }
+    }
+
+    private func applyStatus(_ newStatus: VaultStatus) {
+        let wasUnlocked = status.isUnlocked
+        status = newStatus
+        switch newStatus.state {
+        case VaultStatus.stateUnlocked: screen = .unlocked
+        case VaultStatus.stateLocked: screen = .locked
+        default: screen = .signedOut
+        }
+        if wasUnlocked && !newStatus.isUnlocked {
+            allVault = []
+            allItemByVaultID = [:]
+            lockCount += 1
+        }
+    }
+
+    private func perform<Value>(isBusyShown: Bool = true, _ operation: @escaping (VaultBackend) throws -> Value) async -> Value? {
+        guard let backend else { return nil }
+        if isBusyShown { isBusy = true }
+        defer { if isBusyShown { isBusy = false } }
+        do {
+            let value = try await runInBackground { try operation(backend) }
+            errorMessage = nil
+            return value
+        } catch {
+            errorMessage = describeError(error)
+            return nil
+        }
+    }
+
+    func clearError() {
+        errorMessage = nil
+    }
+
+    func showNotice(_ message: String) {
+        noticeMessage = message
+        noticeTask?.cancel()
+        noticeTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            guard !Task.isCancelled else { return }
+            self?.noticeMessage = nil
+        }
+    }
+
+    @discardableResult
+    func signIn(server: String, email: String, secretKey: String, password: String) async -> Bool {
+        let secretKey = VaultLogic.formatSecretKey(secretKey)
+        let server = server.trimmingCharacters(in: .whitespacesAndNewlines)
+        let email = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let newStatus = await perform({ try $0.signIn(server: server, email: email, secretKey: secretKey, password: password) }) else { return false }
+        applyStatus(newStatus)
+        await refreshAll()
+        return true
+    }
+
+    @discardableResult
+    func signUp(inviteLink: String, email: String, name: String, password: String) async -> Bool {
+        let inviteLink = inviteLink.trimmingCharacters(in: .whitespacesAndNewlines)
+        let email = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let result = await perform({ try $0.signUp(inviteLink: inviteLink, email: email, name: name, password: password) }) else { return false }
+        newSecretKey = result.secretKey
+        applyStatus(result.status)
+        await refreshAll()
+        return true
+    }
+
+    func dismissNewSecretKey() {
+        newSecretKey = nil
+    }
+
+    @discardableResult
+    func unlock(password: String) async -> Bool {
+        guard let newStatus = await perform({ try $0.unlock(password: password) }) else { return false }
+        applyStatus(newStatus)
+        await refreshAll()
+        return true
+    }
+
+    @discardableResult
+    func unlockWithBiometric() async -> Bool {
+        guard status.biometricReady, let newStatus = await perform({ try $0.unlockWithBiometric() }) else {
+            refreshStatus()
+            return false
+        }
+        applyStatus(newStatus)
+        await refreshAll()
+        return true
+    }
+
+    func lock() {
+        guard let backend else { return }
+        applyStatus(backend.lock())
+    }
+
+    func handleLockedEvent() {
+        refreshStatus()
+    }
+
+    func refreshStatus() {
+        guard let backend else { return }
+        applyStatus(backend.getStatus())
+    }
+
+    @discardableResult
+    func signOut() async -> Bool {
+        guard let newStatus = await perform({ try $0.signOut() }) else { return false }
+        applyStatus(newStatus)
+        await credentialIdentityStore.removeAllIdentity()
+        return true
+    }
+
+    @discardableResult
+    func setBiometricUnlock(isEnabled: Bool, password: String) async -> Bool {
+        let newStatus: VaultStatus?
+        if isEnabled {
+            newStatus = await perform { try $0.enableBiometricUnlock(password: password) }
+        } else {
+            newStatus = await perform { try $0.disableBiometricUnlock() }
+        }
+        guard let newStatus else { return false }
+        applyStatus(newStatus)
+        return true
+    }
+
+    func reportActivity() {
+        guard let backend, status.isUnlocked else { return }
+        Task { _ = try? await runInBackground { backend.reportActivity() } }
+    }
+
+    func handleDidEnterBackground() {
+        enteredBackgroundAt = getCurrentDate()
+    }
+
+    func handleWillEnterForeground() {
+        defer { enteredBackgroundAt = nil }
+        guard let enteredBackgroundAt else {
+            refreshStatus()
+            return
+        }
+        if status.isUnlocked && getCurrentDate().timeIntervalSince(enteredBackgroundAt) >= Self.autoLockInterval {
+            lock()
+        } else {
+            refreshStatus()
+        }
+    }
+
+    func refreshAll() async {
+        guard status.isUnlocked else { return }
+        isRefreshing = true
+        defer { isRefreshing = false }
+        guard let result = await perform(isBusyShown: false, { backend -> ([VaultSummary], [String: [ItemDetail]]) in
+            let allVault = try backend.listAllVault()
+            var allItemByVaultID: [String: [ItemDetail]] = [:]
+            for vault in allVault {
+                allItemByVaultID[vault.id] = try backend.listAllItem(vaultID: vault.id)
+            }
+            return (allVault, allItemByVaultID)
+        }) else {
+            refreshStatus()
+            return
+        }
+        allVault = result.0.sorted { Self.sortVault($0, $1) }
+        allItemByVaultID = result.1
+        refreshStatus()
+        await credentialIdentityStore.replaceAllIdentity(VaultLogic.buildAllCredentialIdentity(listAllItemReference()))
+    }
+
+    private static func sortVault(_ first: VaultSummary, _ second: VaultSummary) -> Bool {
+        let isFirstPersonal = first.type == "personal"
+        let isSecondPersonal = second.type == "personal"
+        if isFirstPersonal != isSecondPersonal { return isFirstPersonal }
+        return first.name.localizedCaseInsensitiveCompare(second.name) == .orderedAscending
+    }
+
+    func refreshVault(vaultID: String) async {
+        guard let allItem = await perform(isBusyShown: false, { try $0.listAllItem(vaultID: vaultID) }) else {
+            refreshStatus()
+            return
+        }
+        allItemByVaultID[vaultID] = allItem
+        refreshStatus()
+    }
+
+    func findVault(vaultID: String) -> VaultSummary? {
+        allVault.first { $0.id == vaultID }
+    }
+
+    func listAllItemReference(vaultID: String? = nil) -> [VaultItemReference] {
+        let allSelectedVault = allVault.filter { vaultID == nil || $0.id == vaultID }
+        let allReference = allSelectedVault.flatMap { vault in
+            (allItemByVaultID[vault.id] ?? []).map { VaultItemReference(vaultID: vault.id, vaultName: vault.name, item: $0) }
+        }
+        return VaultLogic.sortAllItem(allReference)
+    }
+
+    func countItem(vaultID: String) -> Int {
+        allItemByVaultID[vaultID]?.count ?? findVault(vaultID: vaultID)?.itemCount ?? 0
+    }
+
+    func loadItem(vaultID: String, itemID: String) async -> ItemDetail? {
+        await perform(isBusyShown: false) { try $0.getItem(vaultID: vaultID, itemID: itemID) }
+    }
+
+    func saveItem(vaultID: String, item: ItemDetail) async -> ItemDetail? {
+        guard let savedItem = await perform({ try $0.saveItem(vaultID: vaultID, item: item) }) else { return nil }
+        var allItem = allItemByVaultID[vaultID] ?? []
+        var summary = savedItem
+        summary.password = ""
+        summary.notes = ""
+        summary.allField = []
+        if let index = allItem.firstIndex(where: { $0.id == savedItem.id }) {
+            allItem[index] = summary
+        } else {
+            allItem.append(summary)
+        }
+        allItemByVaultID[vaultID] = allItem
+        await credentialIdentityStore.replaceAllIdentity(VaultLogic.buildAllCredentialIdentity(listAllItemReference()))
+        return savedItem
+    }
+
+    @discardableResult
+    func deleteItem(vaultID: String, itemID: String) async -> Bool {
+        guard await perform({ try $0.deleteItem(vaultID: vaultID, itemID: itemID) }) != nil else { return false }
+        allItemByVaultID[vaultID]?.removeAll { $0.id == itemID }
+        await credentialIdentityStore.replaceAllIdentity(VaultLogic.buildAllCredentialIdentity(listAllItemReference()))
+        return true
+    }
+
+    func copyField(vaultID: String, itemID: String, fieldName: String, label: String) async {
+        guard await perform(isBusyShown: false, { try $0.copyField(vaultID: vaultID, itemID: itemID, fieldName: fieldName) }) != nil else { return }
+        showNotice("\(label) copied. It clears in 90 seconds.")
+    }
+
+    func generatePassword(length: Int, isDigitIncluded: Bool, isSymbolIncluded: Bool) async -> String? {
+        await perform(isBusyShown: false) { try $0.generatePassword(length: length, isDigitIncluded: isDigitIncluded, isSymbolIncluded: isSymbolIncluded) }
+    }
+}

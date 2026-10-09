@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -119,6 +120,11 @@ func encodeJSON(value any, err error) (string, error) {
 	return string(encoded), err
 }
 
+// releaseMemory hands Argon2's 64 MiB back to iOS right after a key derivation; the AutoFill extension has a tight memory limit.
+func releaseMemory() {
+	debug.FreeOSMemory()
+}
+
 // Status returns vault.Status as JSON.
 func (hisar *Hisar) Status() string {
 	encoded, _ := encodeJSON(hisar.service.GetStatus(), nil)
@@ -126,23 +132,28 @@ func (hisar *Hisar) Status() string {
 }
 
 func (hisar *Hisar) SignIn(server, email, secretKey, password string) (string, error) {
+	defer releaseMemory()
 	return encodeJSON(hisar.service.SignIn(server, email, secretKey, password))
 }
 
 // SignUp returns {"status": …, "secretKey": "H1-…"} as JSON.
 func (hisar *Hisar) SignUp(inviteLink, email, name, password string) (string, error) {
+	defer releaseMemory()
 	return encodeJSON(hisar.service.SignUp(inviteLink, email, name, password))
 }
 
 func (hisar *Hisar) Unlock(password string) (string, error) {
+	defer releaseMemory()
 	return encodeJSON(hisar.service.Unlock(password))
 }
 
 func (hisar *Hisar) UnlockWithBiometric() (string, error) {
+	defer releaseMemory()
 	return encodeJSON(hisar.service.UnlockWithBiometric())
 }
 
 func (hisar *Hisar) EnableBiometricUnlock(password string) (string, error) {
+	defer releaseMemory()
 	return encodeJSON(hisar.service.EnableBiometricUnlock(password))
 }
 

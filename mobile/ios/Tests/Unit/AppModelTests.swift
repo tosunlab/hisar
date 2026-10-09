@@ -1,0 +1,231 @@
+import XCTest
+@testable import Hisar
+
+@MainActor
+final class AppModelTests: XCTestCase {
+    private var backend: FakeBackend!
+    private var identityStore: FakeCredentialIdentityStore!
+    private var currentDate = Date(timeIntervalSince1970: 1_800_000_000)
+
+    override func setUp() async throws {
+        backend = FakeBackend()
+        identityStore = FakeCredentialIdentityStore()
+    }
+
+    private func createModel() -> AppModel {
+        let model = AppModel(credentialIdentityStore: identityStore, getCurrentDate: { [unowned self] in currentDate })
+        model.start { self.backend }
+        return model
+    }
+
+    private func createUnlockedModel() async -> AppModel {
+        backend.seedSignedIn()
+        let model = createModel()
+        await model.refreshAll()
+        return model
+    }
+
+    func testStartsSignedOut() {
+        let model = createModel()
+        XCTAssertEqual(model.screen, .signedOut)
+    }
+
+    func testStartFailureShowsMessage() {
+        let model = AppModel(credentialIdentityStore: identityStore)
+        model.start { throw BackendError(message: "Disk full") }
+        XCTAssertEqual(model.screen, .failed("Disk full"))
+    }
+
+    func testSignInLoadsVaultsAndItems() async {
+        let model = createModel()
+        let isSignedIn = await model.signIn(server: " http://127.0.0.1:18080 ", email: "alice@example.com", secretKey: "h1-abc123-aaaaa-bbbbb-ccccc-ddddd-eeeeee", password: FakeBackend.password)
+        XCTAssertTrue(isSignedIn)
+        XCTAssertEqual(model.screen, .unlocked)
+        XCTAssertEqual(model.status.server, "http://127.0.0.1:18080")
+        XCTAssertEqual(model.allVault.map(\.name), ["Personal", "Family"])
+        XCTAssertEqual(model.listAllItemReference().map(\.item.title), ["Bank", "GitHub", "Netflix"])
+        XCTAssertEqual(model.countItem(vaultID: "personal"), 2)
+        XCTAssertNil(model.errorMessage)
+        XCTAssertFalse(model.isBusy)
+    }
+
+    func testSignInFailureKeepsSignedOutWithMessage() async {
+        let model = createModel()
+        let isSignedIn = await model.signIn(server: "http://127.0.0.1:18080", email: "alice@example.com", secretKey: FakeBackend.secretKey, password: "wrong")
+        XCTAssertFalse(isSignedIn)
+        XCTAssertEqual(model.screen, .signedOut)
+        XCTAssertEqual(model.errorMessage, "Incorrect email, master password or Secret Key")
+    }
+
+    func testSignUpShowsNewSecretKey() async {
+        let model = createModel()
+        let isSignedUp = await model.signUp(inviteLink: "http://127.0.0.1:18080/invite/abc", email: "bob@example.com", name: "Bob", password: FakeBackend.password)
+        XCTAssertTrue(isSignedUp)
+        XCTAssertEqual(model.newSecretKey, FakeBackend.secretKey)
+        XCTAssertEqual(model.screen, .unlocked)
+        model.dismissNewSecretKey()
+        XCTAssertNil(model.newSecretKey)
+    }
+
+    func testLockAndUnlockWithPassword() async {
+        let model = await createUnlockedModel()
+        model.lock()
+        XCTAssertEqual(model.screen, .locked)
+        XCTAssertTrue(model.allVault.isEmpty, "vault data is dropped on lock")
+        let isWrongUnlocked = await model.unlock(password: "nope")
+        XCTAssertFalse(isWrongUnlocked)
+        XCTAssertEqual(model.screen, .locked)
+        XCTAssertNotNil(model.errorMessage)
+        let isUnlocked = await model.unlock(password: FakeBackend.password)
+        XCTAssertTrue(isUnlocked)
+        XCTAssertEqual(model.screen, .unlocked)
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(model.allVault.count, 2)
+    }
+
+    func testLockedEventFromBackendShowsLockScreen() async {
+        let model = await createUnlockedModel()
+        let lockCountBefore = model.lockCount
+        _ = backend.lock()
+        model.handleLockedEvent()
+        XCTAssertEqual(model.screen, .locked)
+        XCTAssertEqual(model.lockCount, lockCountBefore + 1)
+    }
+
+    func testBackgroundLongerThanAutoLockLocks() async {
+        let model = await createUnlockedModel()
+        model.handleDidEnterBackground()
+        currentDate += AppModel.autoLockInterval + 1
+        model.handleWillEnterForeground()
+        XCTAssertEqual(model.screen, .locked)
+    }
+
+    func testShortBackgroundStaysUnlocked() async {
+        let model = await createUnlockedModel()
+        model.handleDidEnterBackground()
+        currentDate += 30
+        model.handleWillEnterForeground()
+        XCTAssertEqual(model.screen, .unlocked)
+    }
+
+    func testBiometricUnlockNeedsReadyStatus() async {
+        let model = await createUnlockedModel()
+        model.lock()
+        let isUnlockedWithoutEnabling = await model.unlockWithBiometric()
+        XCTAssertFalse(isUnlockedWithoutEnabling)
+        XCTAssertFalse(backend.allCallName.contains("unlockWithBiometric"))
+    }
+
+    func testEnableBiometricRequiresMasterPasswordThenUnlocks() async {
+        let model = await createUnlockedModel()
+        let isEnabledWithWrongPassword = await model.setBiometricUnlock(isEnabled: true, password: "wrong")
+        XCTAssertFalse(isEnabledWithWrongPassword)
+        XCTAssertFalse(model.status.biometricEnabled)
+        let isEnabled = await model.setBiometricUnlock(isEnabled: true, password: FakeBackend.password)
+        XCTAssertTrue(isEnabled)
+        XCTAssertTrue(model.status.biometricEnabled)
+        model.lock()
+        let isUnlocked = await model.unlockWithBiometric()
+        XCTAssertTrue(isUnlocked)
+        XCTAssertEqual(model.screen, .unlocked)
+        _ = await model.setBiometricUnlock(isEnabled: false, password: "")
+        XCTAssertFalse(model.status.biometricEnabled)
+    }
+
+    func testFailedBiometricStaysLocked() async {
+        let model = await createUnlockedModel()
+        _ = await model.setBiometricUnlock(isEnabled: true, password: FakeBackend.password)
+        model.lock()
+        backend.isBiometricSucceeding = false
+        let isUnlocked = await model.unlockWithBiometric()
+        XCTAssertFalse(isUnlocked)
+        XCTAssertEqual(model.screen, .locked)
+        XCTAssertEqual(model.errorMessage, "Face ID was cancelled.")
+    }
+
+    func testSignOutClearsIdentities() async {
+        let model = await createUnlockedModel()
+        XCTAssertFalse(identityStore.allIdentity.isEmpty)
+        let isSignedOut = await model.signOut()
+        XCTAssertTrue(isSignedOut)
+        XCTAssertEqual(model.screen, .signedOut)
+        XCTAssertTrue(identityStore.allIdentity.isEmpty)
+    }
+
+    func testRefreshPublishesCredentialIdentities() async {
+        _ = await createUnlockedModel()
+        let allHost = Set(identityStore.allIdentity.map(\.host))
+        XCTAssertEqual(allHost, ["github.com", "bank.example.com", "www.netflix.com"])
+        XCTAssertTrue(identityStore.allIdentity.contains(CredentialIdentityRecord(host: "github.com", username: "alice", recordIdentifier: "personal/github")))
+    }
+
+    func testSaveNewItemAddsItWithoutSecretsAndUpdatesIdentities() async {
+        let model = await createUnlockedModel()
+        let draft = ItemDetail(title: "Mastodon", username: "alice", allURL: ["mastodon.social"], password: "secret")
+        let savedItem = await model.saveItem(vaultID: "personal", item: draft)
+        XCTAssertEqual(savedItem?.password, "secret")
+        let summary = model.listAllItemReference(vaultID: "personal").first { $0.item.title == "Mastodon" }
+        XCTAssertNotNil(summary)
+        XCTAssertEqual(summary?.item.password, "", "list summaries never keep the password")
+        XCTAssertTrue(identityStore.allIdentity.contains { $0.host == "mastodon.social" })
+    }
+
+    func testSaveWithoutTitleShowsError() async {
+        let model = await createUnlockedModel()
+        let savedItem = await model.saveItem(vaultID: "personal", item: ItemDetail(title: "  "))
+        XCTAssertNil(savedItem)
+        XCTAssertEqual(model.errorMessage, "Enter a title")
+    }
+
+    func testEditExistingItemReplacesIt() async {
+        let model = await createUnlockedModel()
+        guard var item = await model.loadItem(vaultID: "personal", itemID: "github") else { return XCTFail("item missing") }
+        XCTAssertEqual(item.password, "github-password")
+        item.title = "GitHub Work"
+        _ = await model.saveItem(vaultID: "personal", item: item)
+        XCTAssertEqual(model.listAllItemReference(vaultID: "personal").map(\.item.title), ["Bank", "GitHub Work"])
+    }
+
+    func testDeleteItemRemovesIt() async {
+        let model = await createUnlockedModel()
+        let isDeleted = await model.deleteItem(vaultID: "family", itemID: "netflix")
+        XCTAssertTrue(isDeleted)
+        XCTAssertTrue(model.listAllItemReference(vaultID: "family").isEmpty)
+        XCTAssertFalse(identityStore.allIdentity.contains { $0.host == "www.netflix.com" })
+    }
+
+    func testCopyFieldShowsNotice() async {
+        let model = await createUnlockedModel()
+        await model.copyField(vaultID: "personal", itemID: "github", fieldName: "password", label: "Password")
+        XCTAssertEqual(backend.allCopiedField, ["github.password"])
+        XCTAssertEqual(model.noticeMessage, "Password copied. It clears in 90 seconds.")
+    }
+
+    func testOfflineStatusIsPublished() async {
+        backend.isOffline = true
+        let model = await createUnlockedModel()
+        XCTAssertTrue(model.status.isOffline)
+    }
+
+    func testGeneratePasswordUsesOptions() async {
+        let model = await createUnlockedModel()
+        let password = await model.generatePassword(length: 12, isDigitIncluded: true, isSymbolIncluded: false)
+        XCTAssertEqual(password, "111111111111")
+    }
+
+    func testOperationsRunOffTheMainThread() async {
+        final class ThreadRecordingBackend: FakeBackend {
+            var isListCalledOnMainThread: Bool?
+            override func listAllVault() throws -> [VaultSummary] {
+                isListCalledOnMainThread = Thread.isMainThread
+                return try super.listAllVault()
+            }
+        }
+        let recordingBackend = ThreadRecordingBackend()
+        recordingBackend.seedSignedIn()
+        let model = AppModel(credentialIdentityStore: identityStore)
+        model.start { recordingBackend }
+        await model.refreshAll()
+        XCTAssertEqual(recordingBackend.isListCalledOnMainThread, false)
+    }
+}

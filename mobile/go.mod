@@ -48,3 +48,8 @@ replace (
 	github.com/tryhisar/hisar/core => ../core
 	github.com/tryhisar/hisar/desktop => ../desktop
 )
+
+tool (
+	golang.org/x/mobile/cmd/gobind
+	golang.org/x/mobile/cmd/gomobile
+)

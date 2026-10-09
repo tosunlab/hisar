@@ -2,7 +2,7 @@ MODULES := core server cli mobile
 CLI_TARGETS := linux/amd64 linux/arm64 darwin/arm64 darwin/amd64 windows/amd64
 WAILS_VERSION := v3.0.0-beta.23
 
-.PHONY: build build-cli-all test vet test-end-to-end docker install-wails test-desktop-frontend build-desktop package-desktop test-extension test-extension-end-to-end build-extension build-ios-framework
+.PHONY: build build-cli-all test vet test-end-to-end docker install-wails test-desktop-frontend build-desktop package-desktop test-extension test-extension-end-to-end build-extension build-ios-framework generate-ios-project build-ios test-ios test-ios-ui
 
 build:
 	go build -o bin/hisar-server ./server/cmd/hisar-server
@@ -46,6 +46,25 @@ package-desktop:
 build-ios-framework:
 	cd mobile && GOWORK=off go install golang.org/x/mobile/cmd/gomobile golang.org/x/mobile/cmd/gobind
 	./mobile/build-framework.sh
+
+# The generated Hisar.xcodeproj is committed; regenerate it after changing mobile/ios/project.yml (brew install xcodegen).
+generate-ios-project:
+	cd mobile/ios && xcodegen generate
+
+IOS_PROJECT := mobile/ios/Hisar.xcodeproj
+IOS_SIMULATOR_ID ?= $(shell mobile/ios/scripts/find-simulator.sh)
+
+# Needs mobile/build/HisarKit.xcframework (make build-ios-framework).
+build-ios:
+	xcodebuild build -project $(IOS_PROJECT) -scheme Hisar -destination "generic/platform=iOS Simulator" -quiet
+	xcodebuild build -project $(IOS_PROJECT) -scheme "Hisar Personal Team" -destination "generic/platform=iOS Simulator" -quiet
+
+test-ios:
+	xcodebuild test -project $(IOS_PROJECT) -scheme HisarUnitTests -destination "id=$(IOS_SIMULATOR_ID)"
+
+# Needs bin/hisar-server (make build) and HISAR_DATABASE_URL pointing at an empty database.
+test-ios-ui:
+	IOS_SIMULATOR_ID=$(IOS_SIMULATOR_ID) ./scripts/test-ios-ui.sh
 
 test-extension:
 	cd extension && npm ci --no-audit --no-fund && npm run typecheck && npm test
