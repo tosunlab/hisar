@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
@@ -54,6 +55,9 @@ type Approver interface {
 	Approve(ctx context.Context, request ApprovalRequest) (bool, error)
 }
 
+// DefaultApprovalLifetime is how long an approved key and program pair is used without asking again; locking clears it sooner.
+const DefaultApprovalLifetime = time.Hour
+
 type approvalCacheKey struct {
 	fingerprint string
 	clientPath  string
@@ -64,7 +68,9 @@ type Server struct {
 	approver          Approver
 	peerResolver      PeerResolver
 	mutex             sync.Mutex
-	allApproved       map[approvalCacheKey]bool
+	allApprovedAt     map[approvalCacheKey]time.Time
+	approvalLifetime  time.Duration
+	getNow            func() time.Time
 	approvalEpoch     uint64
 	allAlwaysAskKeyID map[string]bool
 	allKnownHostsPath []string
@@ -75,7 +81,9 @@ func CreateServer(keySource KeySource, approver Approver, peerResolver PeerResol
 		keySource:         keySource,
 		approver:          approver,
 		peerResolver:      peerResolver,
-		allApproved:       map[approvalCacheKey]bool{},
+		allApprovedAt:     map[approvalCacheKey]time.Time{},
+		approvalLifetime:  DefaultApprovalLifetime,
+		getNow:            time.Now,
 		allAlwaysAskKeyID: map[string]bool{},
 	}
 }
@@ -98,7 +106,7 @@ func (s *Server) SetAllKnownHostsPath(allPath []string) {
 func (s *Server) ClearAllApproval() {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	s.allApproved = map[approvalCacheKey]bool{}
+	s.allApprovedAt = map[approvalCacheKey]time.Time{}
 	s.approvalEpoch++
 }
 
@@ -110,7 +118,8 @@ func (s *Server) requestApproval(ctx context.Context, request ApprovalRequest) e
 	cacheKey := approvalCacheKey{fingerprint: request.Fingerprint, clientPath: request.ClientPath}
 	s.mutex.Lock()
 	isCacheable := !s.allAlwaysAskKeyID[request.KeyID] && !request.IsForwarded && request.ClientPath != ""
-	isApproved := isCacheable && s.allApproved[cacheKey]
+	approvedAt, isFound := s.allApprovedAt[cacheKey]
+	isApproved := isCacheable && isFound && s.getNow().Sub(approvedAt) < s.approvalLifetime
 	epoch := s.approvalEpoch
 	s.mutex.Unlock()
 	if isApproved {
@@ -126,7 +135,7 @@ func (s *Server) requestApproval(ctx context.Context, request ApprovalRequest) e
 	if isCacheable {
 		s.mutex.Lock()
 		if s.approvalEpoch == epoch {
-			s.allApproved[cacheKey] = true
+			s.allApprovedAt[cacheKey] = s.getNow()
 		}
 		s.mutex.Unlock()
 	}
