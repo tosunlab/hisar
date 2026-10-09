@@ -22,10 +22,13 @@ type VaultRotation struct {
 	AllAccess []Member
 	AllItem   []RotatedItem
 	RotatedBy string
+	// RecoveryWrappedKey replaces the vault's recovery wrapping; it is required when the vault has one.
+	RecoveryWrappedKey []byte
 }
 
 // RotateVault replaces the vault name, all access grants and all items in one transaction.
-// It returns ErrConflict unless rotation.AllItem matches the stored items and revisions exactly.
+// It returns ErrConflict unless rotation.AllItem matches the stored items and revisions exactly,
+// or when the vault has a recovery wrapping and the rotation carries none.
 // Item history is dropped because it is encrypted with the previous key.
 func (s *Store) RotateVault(ctx context.Context, rotation VaultRotation) error {
 	return s.runInTransaction(ctx, func(transaction pgx.Tx) error {
@@ -58,6 +61,21 @@ func (s *Store) RotateVault(ctx context.Context, rotation VaultRotation) error {
 			if currentRevision, found := allCurrentRevisionByID[rotatedItem.ID]; !found || currentRevision != rotatedItem.BaseRevision {
 				return ErrConflict
 			}
+		}
+
+		if rotation.RecoveryWrappedKey == nil {
+			var isRecoverable bool
+			if err := transaction.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM vault_recovery WHERE vault_id = $1)`, rotation.VaultID).Scan(&isRecoverable); err != nil {
+				return err
+			}
+			if isRecoverable {
+				return ErrConflict
+			}
+		} else if _, err := transaction.Exec(ctx, `
+			INSERT INTO vault_recovery (vault_id, wrapped_key) VALUES ($1, $2)
+			ON CONFLICT (vault_id) DO UPDATE SET wrapped_key = $2, updated_at = now()`,
+			rotation.VaultID, rotation.RecoveryWrappedKey); err != nil {
+			return err
 		}
 
 		if _, err := transaction.Exec(ctx, `UPDATE vaults SET enc_name = $2 WHERE id = $1`, rotation.VaultID, rotation.EncName); err != nil {
