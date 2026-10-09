@@ -39,6 +39,10 @@ describe("manifest.json", () => {
     expect(manifest.commands["fill-login"].suggested_key).toEqual({ default: "Ctrl+Shift+L", mac: "Command+Shift+L" });
   });
 
+  it("exposes only the inline menu page to web pages, through a dynamic URL", () => {
+    expect(manifest.web_accessible_resources).toEqual([{ resources: ["inline-menu.html"], matches: ["<all_urls>"], use_dynamic_url: true }]);
+  });
+
   it("has the same version as package.json", () => {
     expect(manifest.version).toBe(packageJson.version);
   });

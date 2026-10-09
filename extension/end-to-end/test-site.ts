@@ -3,7 +3,7 @@ import type { AddressInfo } from "node:net";
 
 const loginPage = (frameUrl: string) => `<!doctype html>
 <html><head><meta charset="utf-8"><title>Test login</title>
-<style>body{font-family:sans-serif;background:#f4f4f5;margin:40px} form{display:grid;gap:8px;width:280px} iframe{margin-top:24px;width:340px;height:160px;border:1px dashed #999}</style>
+<style>body{font-family:sans-serif;background:#f4f4f5;margin:40px} form{display:grid;gap:8px;width:280px} input{padding:8px;font-size:14px} iframe{margin-top:24px;width:340px;height:160px;border:1px dashed #999}</style>
 </head><body>
 <h1>Sign in to the test site</h1>
 <form id="login" method="post" action="/welcome">
@@ -17,6 +17,19 @@ const loginPage = (frameUrl: string) => `<!doctype html>
 const framePage = `<!doctype html>
 <html><head><meta charset="utf-8"></head><body>
 <form><input id="frame-username" autocomplete="username"><input id="frame-password" type="password"><button>Sign in</button></form>
+</body></html>`;
+
+const signUpPage = `<!doctype html>
+<html><head><meta charset="utf-8"><title>Create an account</title>
+<style>body{font-family:sans-serif;background:#f4f4f5;margin:40px} form{display:grid;gap:8px;width:280px} input{padding:8px;font-size:14px}</style>
+</head><body>
+<h1>Create an account</h1>
+<form id="sign-up" method="post" action="/welcome">
+  <input id="email" name="email" type="email" autocomplete="email" placeholder="Email">
+  <input id="new-password" name="password" type="password" autocomplete="new-password" placeholder="Password">
+  <input id="confirm-password" name="confirm" type="password" autocomplete="new-password" placeholder="Repeat the password">
+  <button type="submit">Create account</button>
+</form>
 </body></html>`;
 
 const welcomePage = `<!doctype html>
@@ -39,6 +52,7 @@ export async function startTestSite(): Promise<TestSite> {
       return;
     }
     if (request.url?.startsWith("/frame")) return response.end(framePage);
+    if (request.url?.startsWith("/sign-up")) return response.end(signUpPage);
     response.end(loginPage(`http://localhost:${port}/frame`));
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));

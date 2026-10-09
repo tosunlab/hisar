@@ -2,6 +2,7 @@ import type { BackgroundToContentMessage, OffscreenCopyMessage } from "../shared
 import { nativeHostName, toHisarError } from "../shared/protocol";
 import { getBrowserName } from "../shared/url";
 import { BackgroundController, type BrowserBridge } from "./controller";
+import { InlineMenuService } from "./inline-menu";
 import type { FrameInfo } from "./frames";
 import { NativeClient } from "./native-client";
 import { routeMessage } from "./router";
@@ -65,6 +66,19 @@ const bridge: BrowserBridge = {
     const response: { ok: boolean; message?: string } | undefined = await chrome.runtime.sendMessage(message);
     if (!response?.ok) throw new Error(response?.message || "Could not copy to the clipboard");
   },
+  async broadcastToInlineMenu(message) {
+    await chrome.runtime.sendMessage(message).catch(() => undefined);
+  },
+  async openPopup(tabId) {
+    const tab = await chrome.tabs.get(tabId);
+    try {
+      await chrome.action.openPopup({ windowId: tab.windowId });
+    } catch {
+      await chrome.tabs.create({ url: chrome.runtime.getURL(`popup.html?tabId=${tabId}`), index: tab.index + 1, openerTabId: tabId });
+    }
+  },
+  // In the service worker getURL uses the dynamic ID of web_accessible_resources (use_dynamic_url); content scripts get the static one.
+  getInlineMenuUrl: () => chrome.runtime.getURL("inline-menu.html"),
   getBrowserName: () => getBrowserName(navigatorWithBrands.userAgentData, navigator.userAgent, navigatorWithBrands.brave !== undefined),
   getExtensionVersion: () => chrome.runtime.getManifest().version,
   createID: () => crypto.randomUUID(),
@@ -84,16 +98,23 @@ const client = new NativeClient({
   allReconnectDelayMilliseconds: [],
 });
 
+let inlineMenu: InlineMenuService | undefined;
+
 function getController(): BackgroundController {
   controller ??= new BackgroundController(client, storage, bridge);
   return controller;
 }
 
+function getInlineMenu(): InlineMenuService {
+  inlineMenu ??= new InlineMenuService(getController(), bridge);
+  return inlineMenu;
+}
+
 const routerContext = { extensionID: chrome.runtime.id, extensionOrigin: chrome.runtime.getURL("") };
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message?.target === "offscreen") return false;
-  void routeMessage(getController(), message, sender, routerContext).then(sendResponse);
+  if (message?.target !== undefined) return false;
+  void routeMessage({ controller: getController(), inlineMenu: getInlineMenu() }, message, sender, routerContext).then(sendResponse);
   return true;
 });
 
@@ -107,4 +128,7 @@ chrome.commands.onCommand.addListener((command, tab) => {
     .catch(() => undefined);
 });
 
-chrome.tabs.onRemoved.addListener((tabId) => getController().handleTabRemoved(tabId));
+chrome.tabs.onRemoved.addListener((tabId) => {
+  getController().handleTabRemoved(tabId);
+  getInlineMenu().handleTabRemoved(tabId);
+});

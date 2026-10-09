@@ -31,7 +31,20 @@ export function chooseFillScope(document: Document): LoginScope | undefined {
 }
 
 export function fillLogin(document: Document, username: string, password: string): FillOutcome {
-  const scope = chooseFillScope(document);
+  return fillLoginIntoScope(chooseFillScope(document), username, password);
+}
+
+export function findScopeOfField(document: Document, field: HTMLInputElement): LoginScope | undefined {
+  return findAllLoginScope(document).find((scope) => scope.usernameField === field || scope.allPasswordField.includes(field));
+}
+
+export function fillLoginIntoScopeOf(document: Document, field: HTMLInputElement, username: string, password: string): FillOutcome {
+  const scope = findScopeOfField(document, field);
+  if (!scope || (scope.kind !== "login" && scope.kind !== "username-only")) return { filledUsername: false, filledPassword: false };
+  return fillLoginIntoScope(scope, username, password);
+}
+
+function fillLoginIntoScope(scope: LoginScope | undefined, username: string, password: string): FillOutcome {
   const outcome: FillOutcome = { filledUsername: false, filledPassword: false };
   if (!scope) return outcome;
   if (scope.usernameField && username && !scope.usernameField.readOnly) {
@@ -56,17 +69,21 @@ function getFocusedField(document: Document): HTMLInputElement | undefined {
 export function fillPasswordIntoFocusedField(document: Document, password: string): boolean {
   const focused = getFocusedField(document);
   if (!focused) return false;
+  fillPasswordIntoField(document, focused, password);
+  return true;
+}
+
+export function fillPasswordIntoField(document: Document, focused: HTMLInputElement, password: string): void {
   setInputValue(focused, password);
-  if (focused.type !== "password") return true;
+  if (focused.type !== "password") return;
   const scope = findAllLoginScope(document).find((candidate) => candidate.allPasswordField.includes(focused));
-  if (!scope || scope.kind === "login") return true;
+  if (!scope || scope.kind === "login") return;
   for (const confirmField of scope.allPasswordField) {
     if (confirmField === focused || getAutocompleteTokens(confirmField).includes("current-password")) continue;
     if (scope.allPasswordField.indexOf(confirmField) < scope.allPasswordField.indexOf(focused)) continue;
     setInputValue(confirmField, password);
   }
   focused.focus();
-  return true;
 }
 
 export function probeFrame(document: Document): FrameProbe {

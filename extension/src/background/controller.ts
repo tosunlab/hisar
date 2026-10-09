@@ -1,5 +1,6 @@
 import type {
   BackgroundToContentMessage,
+  InlineMenuBroadcast,
   FillOutcome,
   FrameProbe,
   MatchResult,
@@ -7,7 +8,7 @@ import type {
   SaveOfferAction,
   SaveOfferView,
 } from "../shared/messages";
-import { HisarError, toHisarError, type GenerateOptions, type HelloResult } from "../shared/protocol";
+import { HisarError, toHisarError, type Credentials, type GenerateOptions, type HelloResult, type LoginSummary } from "../shared/protocol";
 import { getHost, getOrigin, isWebUrl } from "../shared/url";
 import { chooseFocusedFrame, chooseLoginFrame, selectAllFillableFrame, type FrameInfo, type ProbedFrame } from "./frames";
 import type { NativeClient } from "./native-client";
@@ -20,6 +21,9 @@ export interface BrowserBridge {
   injectContentScript(tabId: number): Promise<void>;
   sendToFrame<Result>(tabId: number, frameId: number, message: BackgroundToContentMessage): Promise<Result>;
   copyToClipboard(text: string): Promise<void>;
+  broadcastToInlineMenu(message: InlineMenuBroadcast): Promise<void>;
+  openPopup(tabId: number): Promise<void>;
+  getInlineMenuUrl(): string;
   getBrowserName(): string;
   getExtensionVersion(): string;
   createID(): string;
@@ -83,6 +87,20 @@ export class BackgroundController {
 
   async unlock(): Promise<void> {
     await this.request(() => this.client.request("unlock", {}));
+  }
+
+  async getTabUrl(tabId: number): Promise<string | undefined> {
+    return this.browser.getTabUrl(tabId);
+  }
+
+  async matchLoginsForUrl(url: string): Promise<LoginSummary[]> {
+    if (!isWebUrl(url)) return [];
+    const result = await this.request(() => this.client.request("logins.match", { url }));
+    return result.logins ?? [];
+  }
+
+  async getCredentials(vaultID: string, itemID: string, url: string): Promise<Credentials> {
+    return this.request(() => this.client.request("logins.fill", { vaultID, itemID, url }));
   }
 
   async matchLogins(tabId: number): Promise<MatchResult> {

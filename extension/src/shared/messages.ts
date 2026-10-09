@@ -37,6 +37,20 @@ export interface FrameProbe {
   hasFocusedLoginField: boolean;
 }
 
+export type InlineMenuPurpose = "login" | "new-password";
+export type InlineMenuKey = "ArrowDown" | "ArrowUp" | "Enter";
+export type InlineMenuView = PopupView | "logins";
+
+export interface InlineMenuState {
+  view: InlineMenuView;
+  purpose: InlineMenuPurpose;
+  host: string;
+  allLogin: LoginSummary[];
+  hasMoreLogin: boolean;
+  suggestedPassword?: string;
+  errorMessage?: string;
+}
+
 export type PopupMessage =
   | { type: "popup.getState"; shouldReconnect?: boolean }
   | { type: "popup.startPairing" }
@@ -53,13 +67,36 @@ export type ContentToBackgroundMessage =
   | { type: "content.loginSubmitted"; username: string; password: string }
   | { type: "content.usernameSubmitted"; username: string }
   | { type: "content.getPendingSaveOffer" }
-  | { type: "content.actOnSaveOffer"; offerID: string; action: SaveOfferAction };
+  | { type: "content.actOnSaveOffer"; offerID: string; action: SaveOfferAction }
+  | { type: "content.openInlineMenu"; purpose: InlineMenuPurpose }
+  | { type: "content.closeInlineMenu"; sessionID: string }
+  | { type: "content.pressInlineMenuKey"; sessionID: string; key: InlineMenuKey };
+
+export type InlineMenuMessage =
+  | { type: "inlineMenu.getState"; sessionID: string }
+  | { type: "inlineMenu.fillLogin"; sessionID: string; vaultID: string; itemID: string }
+  | { type: "inlineMenu.useSuggestedPassword"; sessionID: string }
+  | { type: "inlineMenu.unlock"; sessionID: string }
+  | { type: "inlineMenu.openHisar"; sessionID: string }
+  | { type: "inlineMenu.openPopup"; sessionID: string }
+  | { type: "inlineMenu.resize"; sessionID: string; height: number }
+  | { type: "inlineMenu.close"; sessionID: string };
+
+export interface InlineMenuBroadcast {
+  target: "inline-menu";
+  type: "inlineMenu.pressKey";
+  sessionID: string;
+  key: InlineMenuKey;
+}
 
 export type BackgroundToContentMessage =
   | { type: "content.probe" }
-  | { type: "content.fillLogin"; expectedOrigin: string; username: string; password: string }
-  | { type: "content.fillPassword"; expectedOrigin: string; password: string }
-  | { type: "content.showSaveOffer"; offer: SaveOfferView };
+  | { type: "content.fillLogin"; expectedOrigin: string; username: string; password: string; sessionID?: string }
+  | { type: "content.fillPassword"; expectedOrigin: string; password: string; sessionID?: string }
+  | { type: "content.showSaveOffer"; offer: SaveOfferView }
+  | { type: "content.isInlineMenuVisible"; sessionID: string }
+  | { type: "content.resizeInlineMenu"; sessionID: string; height: number }
+  | { type: "content.dismissInlineMenu"; sessionID: string };
 
 export interface OffscreenCopyMessage {
   target: "offscreen";

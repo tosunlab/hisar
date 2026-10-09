@@ -32,6 +32,7 @@ export default defineConfig({
       input: {
         popup: resolve(import.meta.dirname, "popup.html"),
         offscreen: resolve(import.meta.dirname, "offscreen.html"),
+        "inline-menu": resolve(import.meta.dirname, "inline-menu.html"),
         "service-worker": resolve(import.meta.dirname, "src/background/service-worker.ts"),
       },
       output: {
