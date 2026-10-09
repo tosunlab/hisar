@@ -11,3 +11,8 @@ deploy/hisar.env
 /server/hisar-server
 /server/cmd/hisar-server/hisar-server
 /cli/cmd/hisar/hisar
+/extension/dist/
+/extension/hisar-extension-*.zip
+/extension/test-results/
+/extension/playwright-report/
+/extension/.fake-host/

@@ -1,0 +1,56 @@
+{
+  "manifest_version": 3,
+  "name": "Hisar",
+  "short_name": "Hisar",
+  "description": "Fill and save logins with the Hisar password manager on this computer.",
+  "version": "0.1.0",
+  "minimum_chrome_version": "116",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA44tKlb4JSqS7t/OBiYad1Cun+nCSgodz0B371tKcJXB2prjbSxOifa+F1c1l5L40vnuUCu69A5k+rJpFOYDbWG7HbalywsbWGVQij2qSPHiVzGmhwDUU052QDPrprH6ifb2bjNjOWt0ar+n2MeRGKhqr4hSXo/AUdifxfF3U2MGP7ctR2kwXNN9LmPoeCn6Vij9YLhc5xOjffJPoT+m5Sjn9CfYeNLDAhQajbXN/YEmbzoE+/Jyzw+5xx/yhjGONH4hVtdHYtET7XkimFpj4pX4EgcIBmliEanoMcYkXcJKb6NrLPezXqk7xa0ZdUnLI4zez9xISdpxk8lAhs8NMNwIDAQAB",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "Hisar",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png"
+    }
+  },
+  "background": {
+    "service_worker": "service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "all_frames": true,
+      "match_about_blank": true,
+      "run_at": "document_idle"
+    }
+  ],
+  "commands": {
+    "fill-login": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+L",
+        "mac": "Command+Shift+L"
+      },
+      "description": "Fill the first matching login"
+    }
+  },
+  "permissions": [
+    "nativeMessaging",
+    "storage",
+    "scripting",
+    "activeTab",
+    "tabs",
+    "offscreen",
+    "clipboardRead",
+    "clipboardWrite"
+  ],
+  "host_permissions": ["<all_urls>"]
+}

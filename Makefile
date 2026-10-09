@@ -2,7 +2,7 @@ MODULES := core server cli
 CLI_TARGETS := linux/amd64 linux/arm64 darwin/arm64 darwin/amd64 windows/amd64
 WAILS_VERSION := v3.0.0-beta.23
 
-.PHONY: build build-cli-all test vet test-end-to-end docker install-wails test-desktop-frontend build-desktop package-desktop
+.PHONY: build build-cli-all test vet test-end-to-end docker install-wails test-desktop-frontend build-desktop package-desktop test-extension test-extension-end-to-end build-extension
 
 build:
 	go build -o bin/hisar-server ./server/cmd/hisar-server
@@ -41,3 +41,13 @@ build-desktop:
 
 package-desktop:
 	cd desktop && wails3 task package
+
+test-extension:
+	cd extension && npm ci --no-audit --no-fund && npm run typecheck && npm test
+
+# Needs Playwright's Chromium: cd extension && npx playwright install chromium
+test-extension-end-to-end:
+	cd extension && npm ci --no-audit --no-fund && npm run test:end-to-end
+
+build-extension:
+	cd extension && npm ci --no-audit --no-fund && npm run build && npm run package

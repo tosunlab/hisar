@@ -1,0 +1,221 @@
+<script setup lang="ts">
+import { onBeforeUnmount, onMounted, ref } from "vue";
+import type { PopupState } from "../shared/messages";
+import { describeError, getTargetTabId, sendToBackground } from "./api";
+import HisarLogo from "./components/HisarLogo.vue";
+import LoginList from "./components/LoginList.vue";
+import PairingView from "./components/PairingView.vue";
+import PasswordGenerator from "./components/PasswordGenerator.vue";
+import StatusView from "./components/StatusView.vue";
+
+const props = withDefaults(defineProps<{ pollIntervalMilliseconds?: number; pollLimit?: number }>(), {
+  pollIntervalMilliseconds: 1000,
+  pollLimit: 120,
+});
+
+const popupState = ref<PopupState>();
+const tabId = ref<number>();
+const isWaiting = ref(false);
+const errorMessage = ref("");
+const activeSection = ref<"logins" | "generator">("logins");
+const noticeMessage = ref("");
+let noticeTimer: ReturnType<typeof setTimeout> | undefined;
+let pollTimer: ReturnType<typeof setTimeout> | undefined;
+
+async function refreshState(shouldReconnect = false): Promise<void> {
+  try {
+    popupState.value = await sendToBackground<PopupState>({ type: "popup.getState", shouldReconnect });
+    errorMessage.value = "";
+  } catch (error) {
+    errorMessage.value = describeError(error);
+  }
+}
+
+function stopPolling(): void {
+  if (pollTimer !== undefined) clearTimeout(pollTimer);
+  pollTimer = undefined;
+  isWaiting.value = false;
+}
+
+function pollUntilChanged(previousView: PopupState["view"], remaining: number): void {
+  pollTimer = setTimeout(async () => {
+    await refreshState();
+    if (popupState.value?.view !== previousView || remaining <= 1) {
+      stopPolling();
+      return;
+    }
+    pollUntilChanged(previousView, remaining - 1);
+  }, props.pollIntervalMilliseconds);
+}
+
+async function unlock(): Promise<void> {
+  isWaiting.value = true;
+  errorMessage.value = "";
+  try {
+    await sendToBackground({ type: "popup.unlock" });
+    pollUntilChanged("locked", props.pollLimit);
+  } catch (error) {
+    errorMessage.value = describeError(error);
+    isWaiting.value = false;
+  }
+}
+
+async function openHisar(): Promise<void> {
+  isWaiting.value = true;
+  await refreshState(true);
+  isWaiting.value = false;
+}
+
+async function retry(): Promise<void> {
+  isWaiting.value = true;
+  await refreshState(true);
+  isWaiting.value = false;
+}
+
+function showNotice(message: string): void {
+  noticeMessage.value = message;
+  if (noticeTimer !== undefined) clearTimeout(noticeTimer);
+  noticeTimer = setTimeout(() => (noticeMessage.value = ""), 2500);
+}
+
+onMounted(async () => {
+  tabId.value = await getTargetTabId().catch(() => undefined);
+  await refreshState();
+});
+
+onBeforeUnmount(() => {
+  stopPolling();
+  if (noticeTimer !== undefined) clearTimeout(noticeTimer);
+});
+</script>
+
+<template>
+  <div class="popup">
+    <header class="header">
+      <HisarLogo show-wordmark />
+      <span class="spacer"></span>
+      <span v-if="popupState?.isOffline" class="tag warning" data-testid="offline">Offline</span>
+      <span v-if="popupState?.view === 'unlocked' && popupState.email" class="email muted" :title="popupState.email">
+        {{ popupState.email }}
+      </span>
+    </header>
+    <p v-if="errorMessage" class="error page-error">{{ errorMessage }}</p>
+    <p v-if="!popupState" class="muted connecting" data-testid="connecting">Connecting to Hisar…</p>
+    <PairingView v-else-if="popupState.view === 'not-paired'" @paired="refreshState()" />
+    <section v-else-if="popupState.view === 'unlocked'" class="unlocked" data-testid="unlocked-view">
+      <div class="segments" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          :class="{ active: activeSection === 'logins' }"
+          :aria-selected="activeSection === 'logins'"
+          data-testid="section-logins"
+          @click="activeSection = 'logins'"
+        >
+          Logins
+        </button>
+        <button
+          type="button"
+          role="tab"
+          :class="{ active: activeSection === 'generator' }"
+          :aria-selected="activeSection === 'generator'"
+          data-testid="section-generator"
+          @click="activeSection = 'generator'"
+        >
+          Generator
+        </button>
+      </div>
+      <LoginList v-if="activeSection === 'logins'" :tab-id="tabId" @notice="showNotice" />
+      <PasswordGenerator v-else :tab-id="tabId" @notice="showNotice" />
+    </section>
+    <StatusView
+      v-else
+      :view="popupState.view"
+      :detail="popupState.errorMessage"
+      :is-waiting="isWaiting"
+      @unlock="unlock"
+      @open-hisar="openHisar"
+      @refresh="retry"
+    />
+    <p v-if="noticeMessage" class="notice" role="status" data-testid="notice">{{ noticeMessage }}</p>
+  </div>
+</template>
+
+<style scoped>
+.popup {
+  position: relative;
+  min-height: 200px;
+  background:
+    radial-gradient(600px 240px at 50% -40%, #1a1d22 0%, transparent 70%),
+    var(--color-background);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.email {
+  max-width: 170px;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.page-error {
+  margin: 12px 16px 0;
+}
+
+.connecting {
+  margin: 0;
+  padding: 40px 16px;
+  text-align: center;
+}
+
+.unlocked {
+  padding: 12px 12px 16px;
+}
+
+.segments {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 12px;
+  padding: 2px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-panel);
+}
+
+.segments button {
+  flex: 1;
+  padding: 5px 10px;
+  border: none;
+  border-radius: var(--radius-small);
+  background: transparent;
+  color: var(--color-text-secondary);
+}
+
+.segments button.active {
+  background: var(--color-selected);
+  color: var(--color-text);
+}
+
+.notice {
+  position: fixed;
+  bottom: 12px;
+  left: 50%;
+  margin: 0;
+  padding: 7px 12px;
+  transform: translateX(-50%);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius);
+  background: var(--color-surface-raised);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
+  font-size: 12px;
+  white-space: nowrap;
+}
+</style>

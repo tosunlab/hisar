@@ -148,3 +148,27 @@ jobs:
         run: make build-desktop
       - name: Check the binary
         run: test -x desktop/bin/Hisar
+
+  extension:
+    name: "Browser extension: type-check, unit tests, end-to-end test in Chromium, build and package"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+      - name: Type-check and run Vitest
+        run: make test-extension
+      - name: Install Playwright's Chromium
+        run: cd extension && npx playwright install --with-deps chromium
+      - name: End-to-end test (unpacked extension, fake native host, local login page)
+        run: make test-extension-end-to-end
+      - name: Build and zip the extension
+        run: make build-extension
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hisar-extension
+          path: extension/hisar-extension-*.zip
+          retention-days: 14

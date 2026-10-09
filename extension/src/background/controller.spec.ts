@@ -1,0 +1,456 @@
+import { describe, expect, it } from "vitest";
+import { createInitialState, respond, type FakeHostState } from "../../tools/fake-native-host.mjs";
+import type { BackgroundToContentMessage, FrameProbe } from "../shared/messages";
+import { HisarError } from "../shared/protocol";
+import { BackgroundController, type BrowserBridge } from "./controller";
+import type { FrameInfo } from "./frames";
+import { NativeClient } from "./native-client";
+import { ExtensionStorage } from "./storage";
+import { createMemoryArea, FakePort } from "./testing";
+
+const emptyProbe: FrameProbe = { hasLoginForm: false, hasUsernameField: false, hasFocusedField: false, hasFocusedLoginField: false };
+
+interface HarnessOptions {
+  state?: Partial<FakeHostState>;
+  allFrame?: FrameInfo[];
+  allProbe?: Record<number, FrameProbe | "no-content-script">;
+  tabUrl?: string;
+  isHostMissing?: boolean;
+}
+
+function createHarness(options: HarnessOptions = {}) {
+  const state: FakeHostState = { ...createInitialState(), pairingCode: "123456", unlockDelayMilliseconds: 1000, ...options.state };
+  let currentTime = 1_000_000;
+  let idCounter = 0;
+  const allRequest: Record<string, unknown>[] = [];
+  const allFrameMessage: { frameId: number; message: BackgroundToContentMessage }[] = [];
+  const allCopied: string[] = [];
+  let injectionCount = 0;
+  const tabUrl = options.tabUrl ?? "https://example.com/login";
+  const allFrame = options.allFrame ?? [{ frameId: 0, url: tabUrl, origin: new URL(tabUrl).origin, allAncestorOrigin: [] }];
+  const allProbe = { ...(options.allProbe ?? { 0: { ...emptyProbe, hasLoginForm: true } }) };
+
+  const bridge: BrowserBridge = {
+    getTabUrl: async () => tabUrl,
+    getAllFrameInfo: async () => allFrame,
+    injectContentScript: async () => {
+      injectionCount += 1;
+      for (const [frameId, probe] of Object.entries(allProbe)) {
+        if (probe === "no-content-script") allProbe[Number(frameId)] = { ...emptyProbe, hasLoginForm: true };
+      }
+    },
+    sendToFrame: async <Result,>(_tabId: number, frameId: number, message: BackgroundToContentMessage): Promise<Result> => {
+      allFrameMessage.push({ frameId, message });
+      const probe = allProbe[frameId];
+      if (probe === "no-content-script") throw new Error("Could not establish connection. Receiving end does not exist.");
+      if (message.type === "content.probe") return (probe ?? emptyProbe) as Result;
+      if (message.type === "content.fillLogin") return { filledUsername: true, filledPassword: true } as Result;
+      return true as Result;
+    },
+    copyToClipboard: async (text) => {
+      allCopied.push(text);
+    },
+    getBrowserName: () => "Chrome",
+    getExtensionVersion: () => "0.1.0",
+    createID: () => `id-${(idCounter += 1)}`,
+    now: () => currentTime,
+  };
+
+  const area = createMemoryArea();
+  const storage = new ExtensionStorage(area, () => "instance-1");
+  let controller: BackgroundController;
+  const client = new NativeClient({
+    connectNative: () => {
+      if (options.isHostMissing) throw new Error("Specified native messaging host not found.");
+      return new FakePort((request) => {
+        allRequest.push(request);
+        return respond(state, request, currentTime);
+      });
+    },
+    getLastErrorMessage: () => undefined,
+    getHelloParameters: () => controller.getHelloParameters(),
+    getToken: () => storage.getToken(),
+    createID: () => `request-${(idCounter += 1)}`,
+    onHello: (result) => controller.handleHello(result),
+    allReconnectDelayMilliseconds: [],
+  });
+  controller = new BackgroundController(client, storage, bridge);
+
+  return {
+    state,
+    controller,
+    storage,
+    area,
+    allRequest,
+    allFrameMessage,
+    allCopied,
+    getInjectionCount: () => injectionCount,
+    advanceTime: (milliseconds: number) => (currentTime += milliseconds),
+    getRequestTypes: () => allRequest.map((request) => request.type),
+    async pair() {
+      await controller.startPairing();
+      await controller.finishPairing("123456");
+    },
+  };
+}
+
+async function expectHisarError(promise: Promise<unknown>, code: string): Promise<void> {
+  const error = await promise.then(
+    () => undefined,
+    (caught: unknown) => caught,
+  );
+  expect(error).toBeInstanceOf(HisarError);
+  expect((error as HisarError).code).toBe(code);
+}
+
+describe("popup state", () => {
+  it("is desktop-unavailable when the native host cannot be started", async () => {
+    const harness = createHarness({ isHostMissing: true });
+    expect(await harness.controller.getPopupState()).toEqual({
+      view: "desktop-unavailable",
+      errorMessage: "Specified native messaging host not found.",
+    });
+  });
+
+  it("is desktop-unavailable when the host reports that the app is not running", async () => {
+    const harness = createHarness({ state: { isDesktopUnavailable: true } });
+    expect((await harness.controller.getPopupState()).view).toBe("desktop-unavailable");
+  });
+
+  it("is not-paired before pairing and signed-out when the desktop is signed out", async () => {
+    expect((await createHarness().controller.getPopupState()).view).toBe("not-paired");
+    expect((await createHarness({ state: { state: "signed-out" } }).controller.getPopupState()).view).toBe("signed-out");
+  });
+
+  it("follows the desktop state after pairing", async () => {
+    const harness = createHarness({ state: { isOffline: true } });
+    await harness.pair();
+    expect(await harness.controller.getPopupState()).toEqual({ view: "unlocked", email: "alex@example.com", isOffline: true });
+    harness.state.state = "locked";
+    expect((await harness.controller.getPopupState()).view).toBe("locked");
+  });
+
+  it("drops the token and asks to pair again when the desktop forgot this browser", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    harness.state.allPairing = [];
+    expect((await harness.controller.getPopupState()).view).toBe("not-paired");
+    expect(await harness.storage.getToken()).toBeUndefined();
+  });
+
+  it("drops the token when hello says the browser is not paired", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    harness.state.allPairing = [];
+    expect((await harness.controller.getPopupState(true)).view).toBe("not-paired");
+    expect(await harness.storage.getToken()).toBeUndefined();
+  });
+});
+
+describe("pairing", () => {
+  it("sends the instance ID and browser name and stores the token", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    const token = await harness.storage.getToken();
+    expect(token).toMatch(/^[0-9a-f]{64}$/);
+    expect(harness.allRequest.find((request) => request.type === "pair.start")).toMatchObject({ instanceID: "instance-1", browser: "Chrome" });
+    expect(harness.state.allPairing.map((pairing) => pairing.instanceID)).toEqual(["instance-1"]);
+  });
+
+  it("accepts a code typed with a space", async () => {
+    const harness = createHarness();
+    await harness.controller.startPairing();
+    await harness.controller.finishPairing("123 456");
+    expect(await harness.storage.getToken()).toBeDefined();
+  });
+
+  it("reports pairing-failed for a wrong code", async () => {
+    const harness = createHarness();
+    await harness.controller.startPairing();
+    await expectHisarError(harness.controller.finishPairing("000000"), "pairing-failed");
+    expect(await harness.storage.getToken()).toBeUndefined();
+  });
+
+  it("rejects a malformed code without asking the desktop", async () => {
+    const harness = createHarness();
+    await expectHisarError(harness.controller.finishPairing("12345"), "invalid-request");
+    expect(harness.getRequestTypes()).not.toContain("pair.finish");
+  });
+});
+
+describe("unlock", () => {
+  it("asks the desktop to unlock; the state changes once the user unlocks", async () => {
+    const harness = createHarness({ state: { state: "locked" } });
+    await harness.pair();
+    await harness.controller.unlock();
+    expect((await harness.controller.getPopupState()).view).toBe("locked");
+    harness.advanceTime(1000);
+    expect((await harness.controller.getPopupState()).view).toBe("unlocked");
+  });
+});
+
+describe("logins", () => {
+  it("matches logins for the tab's URL", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    const result = await harness.controller.matchLogins(1);
+    expect(result.url).toBe("https://example.com/login");
+    expect(result.allLogin.map((login) => login.title)).toEqual(["Example"]);
+  });
+
+  it("does not ask the desktop for pages that are not web pages", async () => {
+    const harness = createHarness({ tabUrl: "chrome://settings/" });
+    await harness.pair();
+    expect((await harness.controller.matchLogins(1)).allLogin).toEqual([]);
+    expect(harness.getRequestTypes()).not.toContain("logins.match");
+  });
+
+  it("reports locked when the desktop is locked", async () => {
+    const harness = createHarness({ state: { state: "locked" } });
+    await harness.pair();
+    await expectHisarError(harness.controller.matchLogins(1), "locked");
+  });
+
+  it("copies the password through the clipboard bridge", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    await harness.controller.copyPassword(1, "vault-personal", "item-example");
+    expect(harness.allCopied).toEqual(["correct horse battery staple"]);
+  });
+
+  it("generates passwords with the requested options", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    const password = await harness.controller.generatePassword({ length: 32, digits: false, symbols: false });
+    expect(password).toMatch(/^[a-zA-Z]{32}$/);
+  });
+});
+
+describe("fill and the frame rule", () => {
+  const top = { frameId: 0, url: "https://example.com/login", origin: "https://example.com", allAncestorOrigin: [] };
+  const sameOriginFrame = { frameId: 4, url: "https://example.com/embedded-login", origin: "https://example.com", allAncestorOrigin: ["https://example.com"] };
+  const crossOriginFrame = { frameId: 7, url: "https://example.org/login", origin: "https://example.org", allAncestorOrigin: ["https://example.com"] };
+
+  it("fills the top frame and asks the desktop with its URL", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    await harness.controller.fillLogin(1, "vault-personal", "item-example");
+    expect(harness.allRequest.find((request) => request.type === "logins.fill")).toMatchObject({ url: "https://example.com/login" });
+    const fillMessage = harness.allFrameMessage.find((entry) => entry.message.type === "content.fillLogin");
+    expect(fillMessage).toEqual({
+      frameId: 0,
+      message: { type: "content.fillLogin", expectedOrigin: "https://example.com", username: "alex@example.com", password: "correct horse battery staple" },
+    });
+  });
+
+  it("fills a same-origin frame with the focused login field and never touches cross-origin frames", async () => {
+    const harness = createHarness({
+      allFrame: [top, sameOriginFrame, crossOriginFrame],
+      allProbe: {
+        0: emptyProbe,
+        4: { ...emptyProbe, hasLoginForm: true, hasFocusedField: true, hasFocusedLoginField: true },
+        7: { ...emptyProbe, hasLoginForm: true, hasFocusedLoginField: true },
+      },
+    });
+    await harness.pair();
+    await harness.controller.fillLogin(1, "vault-personal", "item-example");
+    expect(harness.allRequest.find((request) => request.type === "logins.fill")).toMatchObject({ url: "https://example.com/embedded-login" });
+    expect(harness.allFrameMessage.filter((entry) => entry.message.type === "content.fillLogin").map((entry) => entry.frameId)).toEqual([4]);
+    expect(harness.allFrameMessage.some((entry) => entry.frameId === 7)).toBe(false);
+  });
+
+  it("refuses when only a cross-origin frame has a login form", async () => {
+    const harness = createHarness({
+      allFrame: [top, crossOriginFrame],
+      allProbe: { 0: emptyProbe, 7: { ...emptyProbe, hasLoginForm: true } },
+    });
+    await harness.pair();
+    await expectHisarError(harness.controller.fillLogin(1, "vault-personal", "item-example"), "not-found");
+    expect(harness.getRequestTypes()).not.toContain("logins.fill");
+    expect(harness.allFrameMessage.some((entry) => entry.frameId === 7)).toBe(false);
+  });
+
+  it("refuses to fill on pages that are not web pages", async () => {
+    const harness = createHarness({ tabUrl: "chrome://newtab/" });
+    await harness.pair();
+    await expectHisarError(harness.controller.fillLogin(1, "vault-personal", "item-example"), "not-found");
+  });
+
+  it("passes on the desktop's no-match when the item is for another site", async () => {
+    const harness = createHarness({ tabUrl: "https://example.net/login" });
+    await harness.pair();
+    await expectHisarError(harness.controller.fillLogin(1, "vault-personal", "item-example"), "no-match");
+    expect(harness.allFrameMessage.some((entry) => entry.message.type === "content.fillLogin")).toBe(false);
+  });
+
+  it("injects the content script into tabs that were open before the extension was installed", async () => {
+    const harness = createHarness({ allProbe: { 0: "no-content-script" } });
+    await harness.pair();
+    await harness.controller.fillLogin(1, "vault-personal", "item-example");
+    expect(harness.getInjectionCount()).toBe(1);
+  });
+
+  it("fills the first match for the keyboard shortcut", async () => {
+    const harness = createHarness();
+    harness.state.allLogin.push({ ...harness.state.allLogin[0], itemID: "item-aardvark", title: "Aardvark", username: "first" });
+    await harness.pair();
+    await harness.controller.fillFirstLogin(1);
+    const fillMessage = harness.allFrameMessage.find((entry) => entry.message.type === "content.fillLogin")?.message;
+    expect(fillMessage).toMatchObject({ username: "first" });
+  });
+
+  it("reports no-match for the keyboard shortcut when nothing matches", async () => {
+    const harness = createHarness({ tabUrl: "https://example.net/" });
+    await harness.pair();
+    await expectHisarError(harness.controller.fillFirstLogin(1), "no-match");
+  });
+
+  it("fills a generated password into the focused field of an allowed frame", async () => {
+    const harness = createHarness({
+      allFrame: [top, sameOriginFrame],
+      allProbe: { 0: emptyProbe, 4: { ...emptyProbe, hasFocusedField: true } },
+    });
+    await harness.pair();
+    await harness.controller.fillPassword(1, "generated");
+    expect(harness.allFrameMessage.find((entry) => entry.message.type === "content.fillPassword")).toEqual({
+      frameId: 4,
+      message: { type: "content.fillPassword", expectedOrigin: "https://example.com", password: "generated" },
+    });
+  });
+
+  it("asks to focus a field when none has the focus", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    await expectHisarError(harness.controller.fillPassword(1, "generated"), "not-found");
+  });
+});
+
+describe("save offers", () => {
+  it("offers to save a new login and pushes the bar to the top frame", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    const offer = await harness.controller.handleLoginSubmitted(1, "https://example.com/login", "new-user", "pw");
+    expect(offer).toEqual({ offerID: expect.any(String), kind: "save", host: "example.com", username: "new-user", title: undefined });
+    expect(harness.allFrameMessage.at(-1)).toEqual({ frameId: 0, message: { type: "content.showSaveOffer", offer } });
+    expect(harness.controller.getPendingSaveOffer(1)).toEqual(offer);
+  });
+
+  it("offers to update a changed password", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    const offer = await harness.controller.handleLoginSubmitted(1, "https://example.com/login", "alex@example.com", "new password");
+    expect(offer).toMatchObject({ kind: "update", title: "Example" });
+  });
+
+  it("offers nothing for an unchanged login", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    expect(await harness.controller.handleLoginSubmitted(1, "https://example.com/", "alex@example.com", "correct horse battery staple")).toBeUndefined();
+    expect(harness.controller.getPendingSaveOffer(1)).toBeNull();
+  });
+
+  it("offers nothing and does not ask the desktop on a never-listed site", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    await harness.storage.addNeverOrigin("https://example.com");
+    expect(await harness.controller.handleLoginSubmitted(1, "https://example.com/login", "a", "b")).toBeUndefined();
+    expect(harness.getRequestTypes()).not.toContain("logins.check");
+  });
+
+  it("offers nothing while not paired, locked, or on non-web pages", async () => {
+    const notPaired = createHarness();
+    expect(await notPaired.controller.handleLoginSubmitted(1, "https://example.com/", "a", "b")).toBeUndefined();
+    const locked = createHarness({ state: { state: "locked" } });
+    await locked.pair();
+    expect(await locked.controller.handleLoginSubmitted(1, "https://example.com/", "a", "b")).toBeUndefined();
+    const unlocked = createHarness();
+    await unlocked.pair();
+    expect(await unlocked.controller.handleLoginSubmitted(1, "file:///tmp/login.html", "a", "b")).toBeUndefined();
+  });
+
+  it("uses the username from the first step of a two-step sign-in", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    harness.controller.handleUsernameSubmitted(1, "https://example.com/identifier", "alex@example.com");
+    const offer = await harness.controller.handleLoginSubmitted(1, "https://example.com/password", "", "rotated");
+    expect(offer).toMatchObject({ kind: "update", username: "alex@example.com" });
+    expect(harness.allRequest.find((request) => request.type === "logins.check")).toMatchObject({ username: "alex@example.com" });
+  });
+
+  it("does not use a username remembered on another site or after it expired", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    harness.controller.handleUsernameSubmitted(1, "https://other.example.net/", "someone");
+    expect(await harness.controller.handleLoginSubmitted(1, "https://example.com/", "", "pw")).toMatchObject({ username: "" });
+    harness.controller.handleUsernameSubmitted(2, "https://example.com/", "alex@example.com");
+    harness.advanceTime(11 * 60 * 1000);
+    expect(await harness.controller.handleLoginSubmitted(2, "https://example.com/", "", "pw")).toMatchObject({ username: "" });
+  });
+
+  it("saves a new login in the desktop", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    const offer = (await harness.controller.handleLoginSubmitted(1, "https://shop.example.com/login", "buyer", "pw"))!;
+    await harness.controller.actOnSaveOffer(1, offer.offerID, "save");
+    const saved = harness.state.allLogin.find((login) => login.username === "buyer");
+    expect(saved).toMatchObject({ title: "shop.example.com", password: "pw" });
+    expect(harness.allRequest.find((request) => request.type === "logins.save")).not.toHaveProperty("itemID");
+    expect(harness.controller.getPendingSaveOffer(1)).toBeNull();
+  });
+
+  it("updates the matching item for a changed password", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    const offer = (await harness.controller.handleLoginSubmitted(1, "https://example.com/", "alex@example.com", "rotated"))!;
+    await harness.controller.actOnSaveOffer(1, offer.offerID, "save");
+    expect(harness.allRequest.find((request) => request.type === "logins.save")).toMatchObject({ vaultID: "vault-personal", itemID: "item-example" });
+    expect(harness.state.allLogin[0].password).toBe("rotated");
+    expect(harness.state.allLogin).toHaveLength(1);
+  });
+
+  it("keeps the offer when saving fails so the user can retry", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    const offer = (await harness.controller.handleLoginSubmitted(1, "https://example.com/", "new", "pw"))!;
+    harness.state.isOffline = true;
+    await expectHisarError(harness.controller.actOnSaveOffer(1, offer.offerID, "save"), "offline");
+    expect(harness.controller.getPendingSaveOffer(1)).toEqual(offer);
+  });
+
+  it("remembers Never for this site per origin", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    const offer = (await harness.controller.handleLoginSubmitted(1, "https://example.com/a", "new", "pw"))!;
+    await harness.controller.actOnSaveOffer(1, offer.offerID, "never");
+    expect(harness.area.data.allNeverOrigin).toEqual(["https://example.com"]);
+    expect(await harness.controller.handleLoginSubmitted(1, "https://example.com/b", "new", "pw")).toBeUndefined();
+    expect(await harness.controller.handleLoginSubmitted(1, "https://www.example.com/", "new", "pw")).toBeDefined();
+  });
+
+  it("drops the offer on Not now", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    const offer = (await harness.controller.handleLoginSubmitted(1, "https://example.com/", "new", "pw"))!;
+    await harness.controller.actOnSaveOffer(1, offer.offerID, "not-now");
+    expect(harness.controller.getPendingSaveOffer(1)).toBeNull();
+    expect(harness.getRequestTypes()).not.toContain("logins.save");
+  });
+
+  it("expires offers after two minutes and forgets them when the tab closes", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    const offer = (await harness.controller.handleLoginSubmitted(1, "https://example.com/", "new", "pw"))!;
+    harness.advanceTime(121_000);
+    await expectHisarError(harness.controller.actOnSaveOffer(1, offer.offerID, "save"), "not-found");
+    await harness.controller.handleLoginSubmitted(2, "https://example.com/", "new", "pw");
+    harness.controller.handleTabRemoved(2);
+    expect(harness.controller.getPendingSaveOffer(2)).toBeNull();
+  });
+
+  it("refuses an offer ID from another tab", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    const offer = (await harness.controller.handleLoginSubmitted(1, "https://example.com/", "new", "pw"))!;
+    await expectHisarError(harness.controller.actOnSaveOffer(2, offer.offerID, "save"), "not-found");
+  });
+});
