@@ -26,7 +26,7 @@ jobs:
         with:
           go-version-file: go.work
       - name: Check formatting (gofmt)
-        run: test -z "$(gofmt -l core server cli desktop/vault desktop/biometric desktop/agent desktop/main.go desktop/touchid.go)" || (gofmt -l core server cli desktop/vault desktop/biometric desktop/agent desktop/main.go desktop/touchid.go; exit 1)
+        run: test -z "$(gofmt -l core server cli desktop/vault desktop/biometric desktop/agent desktop/browser desktop/cmd desktop/main.go desktop/touchid.go)" || (gofmt -l core server cli desktop/vault desktop/biometric desktop/agent desktop/browser desktop/cmd desktop/main.go desktop/touchid.go; exit 1)
       - name: Vet all modules
         run: make vet
       - name: Run unit and database tests (fails if any test is skipped)

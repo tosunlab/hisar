@@ -32,7 +32,19 @@ type State struct {
 	BiometricUnlock      []byte    `json:"biometricUnlock,omitempty"`
 	LastPasswordUnlockAt time.Time `json:"lastPasswordUnlockAt,omitzero"`
 
+	AllPairedBrowser []PairedBrowser `json:"pairedBrowsers,omitempty"`
+	// IsExactHostMatch limits browser autofill to the item's exact host instead of its registrable domain.
+	IsExactHostMatch bool `json:"exactHostMatch,omitempty"`
+
 	path string
+}
+
+type PairedBrowser struct {
+	InstanceID string    `json:"instanceId"`
+	Browser    string    `json:"browser"`
+	TokenHash  []byte    `json:"tokenHash"`
+	PairedAt   time.Time `json:"pairedAt"`
+	LastUsedAt time.Time `json:"lastUsedAt"`
 }
 
 func (s *State) GetSeq(vaultID string) int64      { return s.AllSeq[vaultID] }

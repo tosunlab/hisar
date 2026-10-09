@@ -336,7 +336,7 @@ func TestConvertError(t *testing.T) {
 }
 
 // Requires HISAR_TEST_SERVER_URL and HISAR_TEST_INVITE_LINK (an unused admin invite for desktop@example.com);
-// the admin invites the second account used for sharing.
+// the admin invites the accounts used for sharing and recovery. checkRecoveryFlow also needs HISAR_TEST_RECOVERY_ADMIN_*.
 func TestIntegrationDesktopFlow(t *testing.T) {
 	serverURL, inviteLink := os.Getenv("HISAR_TEST_SERVER_URL"), os.Getenv("HISAR_TEST_INVITE_LINK")
 	if serverURL == "" || inviteLink == "" {
@@ -409,6 +409,7 @@ func TestIntegrationDesktopFlow(t *testing.T) {
 	}
 
 	checkSSHAgentFlow(t, service, personalID, password)
+	checkBrowserFlow(t, service, personalID)
 
 	if status := service.Lock(); status.State != StateLocked {
 		t.Fatalf("lock: %+v", status)
@@ -445,6 +446,7 @@ func TestIntegrationDesktopFlow(t *testing.T) {
 	}
 
 	checkSharingFlow(t, service, family.ID)
+	checkRecoveryFlow(t, service, serverURL, personalID, family.ID)
 
 	if err := service.DeleteItem(personalID, saved.ID); err != nil {
 		t.Fatal(err)

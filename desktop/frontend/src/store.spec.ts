@@ -1,5 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { allTestVault, createApiMock, createDevice, createFamilyMember, createItem, createStatus, createVaultMember, testBob, testCarol } from "./testing";
+import {
+  allTestVault,
+  createApiMock,
+  createDevice,
+  createFamilyMember,
+  createItem,
+  createPendingRecovery,
+  createRecoveryStatus,
+  createStatus,
+  createVaultMember,
+  testBob,
+  testCarol,
+} from "./testing";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
 
@@ -162,7 +174,7 @@ describe("vault item counts", () => {
   });
 
   it("updates the selected vault's count after saving and deleting", async () => {
-    store.allVault = [{ id: "personal", name: "Personal", type: "personal", role: "owner", itemCount: 1 }];
+    store.allVault = [{ id: "personal", name: "Personal", type: "personal", role: "owner", itemCount: 1, recoverable: true, recoveryOptOut: false }];
     store.selectedVaultID = "personal";
     store.allItem = [createItem({ id: "1" })];
     api.saveItem.mockResolvedValue(createItem({ id: "2" }));
@@ -260,5 +272,110 @@ describe("sharing, family and devices", () => {
     expect(store.allVaultMember).toEqual([]);
     expect(store.allFamilyMember).toEqual([]);
     expect(store.allDevice).toEqual([]);
+  });
+});
+
+describe("account recovery", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetStore();
+    Object.assign(store, {
+      status: createStatus("unlocked"),
+      allVault: structuredClone(allTestVault),
+      recoveryStatus: null,
+      allPendingRecovery: [],
+      isRecoverySubmitted: false,
+      isVaultRecoveryOpen: false,
+    });
+  });
+
+  it("loads the pending recoveries only for admins once recovery is set up", async () => {
+    api.getRecoveryStatus.mockResolvedValue(createRecoveryStatus({ isSetUp: false }));
+    await storeModule.loadRecoveryData();
+    expect(store.recoveryStatus?.isSetUp).toBe(false);
+    expect(api.listAllPendingRecovery).not.toHaveBeenCalled();
+
+    api.getRecoveryStatus.mockResolvedValue(createRecoveryStatus({ isAdmin: false }));
+    await storeModule.loadRecoveryData();
+    expect(api.listAllPendingRecovery).not.toHaveBeenCalled();
+
+    api.getRecoveryStatus.mockResolvedValue(createRecoveryStatus());
+    api.listAllPendingRecovery.mockResolvedValue([createPendingRecovery()]);
+    await storeModule.loadRecoveryData();
+    expect(store.allPendingRecovery.map((pending) => pending.accountId)).toEqual(["BOB222"]);
+  });
+
+  it("sets up recovery and reloads the vaults", async () => {
+    api.setUpRecovery.mockResolvedValue(["Old vault"]);
+    api.getRecoveryStatus.mockResolvedValue(createRecoveryStatus());
+    api.listAllVault.mockResolvedValue([{ ...allTestVault[0], recoverable: true }]);
+    expect(await storeModule.setUpRecovery()).toEqual(["Old vault"]);
+    expect(store.recoveryStatus?.isSetUp).toBe(true);
+    expect(store.allVault).toHaveLength(1);
+    expect(store.noticeMessage).toBe("Account recovery is set up");
+
+    api.setUpRecovery.mockRejectedValue(new Error("only family admins can manage account recovery"));
+    expect(await storeModule.setUpRecovery()).toBeUndefined();
+    expect(store.errorMessage).toContain("only family admins");
+  });
+
+  it("turns recovery off and on for a vault and keeps its item count", async () => {
+    store.allVault[0].itemCount = 5;
+    api.disableVaultRecovery.mockResolvedValue({ ...allTestVault[0], itemCount: 0, recoverable: false, recoveryOptOut: true });
+    expect(await storeModule.setVaultRecovery("personal", false)).toBe(true);
+    expect(api.disableVaultRecovery).toHaveBeenCalledWith("personal");
+    expect(store.allVault[0]).toMatchObject({ itemCount: 5, recoverable: false, recoveryOptOut: true });
+    expect(store.noticeMessage).toBe("Recovery is off for Personal");
+
+    api.enableVaultRecovery.mockResolvedValue({ ...allTestVault[0], recoverable: true, recoveryOptOut: false });
+    expect(await storeModule.setVaultRecovery("personal", true)).toBe(true);
+    expect(store.allVault[0].recoverable).toBe(true);
+    expect(store.noticeMessage).toBe("Personal can be recovered again");
+  });
+
+  it("starts and completes a recovery and reloads the family", async () => {
+    api.startAccountRecovery.mockResolvedValue("https://hisar.test/recover/abc");
+    expect(await storeModule.startAccountRecovery(createFamilyMember({ ...testBob, role: "member" }))).toBe("https://hisar.test/recover/abc");
+    expect(api.startAccountRecovery).toHaveBeenCalledWith("BOB222");
+
+    const pending = createPendingRecovery();
+    store.allPendingRecovery = [pending];
+    api.completeAccountRecovery.mockResolvedValue(["Bob's personal vault"]);
+    api.getRecoveryStatus.mockResolvedValue(createRecoveryStatus());
+    api.listAllPendingRecovery.mockResolvedValue([]);
+    api.listAllMember.mockResolvedValue([createFamilyMember(), createFamilyMember({ ...testBob, role: "member" })]);
+    expect(await storeModule.completeAccountRecovery(pending)).toEqual(["Bob's personal vault"]);
+    expect(api.completeAccountRecovery).toHaveBeenCalledWith("BOB222");
+    expect(store.allPendingRecovery).toEqual([]);
+    expect(store.allFamilyMember).toHaveLength(2);
+    expect(store.noticeMessage).toBe("Recovered Bob");
+
+    api.completeAccountRecovery.mockRejectedValue(new Error("only the admin who set up recovery can complete it"));
+    expect(await storeModule.completeAccountRecovery(pending)).toBeUndefined();
+    expect(store.errorMessage).toContain("only the admin who set up recovery");
+  });
+
+  it("shows the new Secret Key after recovering an account while signed out", async () => {
+    store.status = createStatus("signed-out");
+    api.recoverAccount.mockResolvedValue({ status: { ...createStatus("signed-out"), email: "bob@example.com" }, secretKey: "H1-NEW" });
+    expect(await storeModule.recoverAccount("https://hisar.test/recover/abc", "bob@example.com", "new master password")).toBe(true);
+    expect(api.recoverAccount).toHaveBeenCalledWith("https://hisar.test/recover/abc", "bob@example.com", "new master password");
+    expect(store.pendingSecretKey).toBe("H1-NEW");
+    expect(store.isRecoverySubmitted).toBe(true);
+    expect(store.status.email).toBe("bob@example.com");
+
+    storeModule.confirmSecretKeySaved();
+    expect(api.forgetNewAccountSecretKey).toHaveBeenCalled();
+    api.signIn.mockResolvedValue(createStatus("signed-out"));
+    await storeModule.signIn("https://hisar.test", "bob@example.com", "H1-NEW", "new master password");
+    expect(store.isRecoverySubmitted).toBe(false);
+  });
+
+  it("forgets recovery data when Hisar locks", () => {
+    Object.assign(store, { recoveryStatus: createRecoveryStatus(), allPendingRecovery: [createPendingRecovery()], isVaultRecoveryOpen: true });
+    storeModule.handleLocked();
+    expect(store.recoveryStatus).toBeNull();
+    expect(store.allPendingRecovery).toEqual([]);
+    expect(store.isVaultRecoveryOpen).toBe(false);
   });
 });

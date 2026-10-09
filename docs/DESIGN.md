@@ -237,6 +237,8 @@ Zero-knowledge means a forgotten master password or lost Secret Key loses data, 
 
 Every step is audit-logged (`recovery_keyset_created`, `vault_recovery_set`, `vault_recovery_opt_out`, `recovery_started`, `recovery_submitted`, `recovery_completed`).
 
+The desktop app (`desktop/vault/recovery.go`) offers the same steps: Settings → Account recovery lets an admin set up recovery, lists pending recoveries and completes them (showing the vaults that could not be recovered), and a family member's row starts a recovery and shows the link. Members see whether their vaults are recoverable, and the owner of a personal vault can turn recovery off there (with the warning above) and back on. The sign-in screen's **Recover account** submits a recovery link while signed out, shows the new Secret Key and can save it as an Emergency Kit. Like the CLI, the desktop app pins the recovery KEM key on first use and re-pins a member's signing key after completing their recovery.
+
 The server never sees a vault key. The admin's client can technically decrypt recoverable vaults; this is the trust trade-off of recovery, and it is shown to users at signup.
 
 ## 7. Sync protocol

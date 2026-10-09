@@ -3,10 +3,14 @@ import {
   api,
   getErrorMessage,
   type ApprovalEvent,
+  type BrowserPairingRequest,
+  type BrowserStatus,
   type Device,
   type FamilyMember,
   type FamilyRole,
   type ItemDetail,
+  type PendingRecovery,
+  type RecoveryStatus,
   type SSHAgentStatus,
   type SSHKeyType,
   type Status,
@@ -35,6 +39,7 @@ export const store = reactive({
   editorMode: "view" as EditorMode,
   searchQuery: "",
   pendingSecretKey: "",
+  isRecoverySubmitted: false,
   errorMessage: "",
   noticeMessage: "",
   isBusy: false,
@@ -46,6 +51,11 @@ export const store = reactive({
   allVaultMember: [] as VaultMember[],
   allFamilyMember: [] as FamilyMember[],
   allDevice: [] as Device[],
+  browserPairing: null as BrowserPairingRequest | null,
+  browserStatus: null as BrowserStatus | null,
+  recoveryStatus: null as RecoveryStatus | null,
+  allPendingRecovery: [] as PendingRecovery[],
+  isVaultRecoveryOpen: false,
 });
 
 let noticeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -84,6 +94,9 @@ function clearAllVaultData(): void {
   store.allVaultMember = [];
   store.allFamilyMember = [];
   store.allDevice = [];
+  store.recoveryStatus = null;
+  store.allPendingRecovery = [];
+  store.isVaultRecoveryOpen = false;
   store.allVault = [];
   store.selectedVaultID = "";
   store.allItem = [];
@@ -108,6 +121,7 @@ export async function loadStatus(): Promise<void> {
 export async function signIn(server: string, email: string, secretKey: string, password: string): Promise<boolean> {
   const status = await runAction(() => api.signIn(server, email, secretKey, password));
   if (status) {
+    store.isRecoverySubmitted = false;
     await applyStatus(status);
   }
   return status !== undefined;
@@ -117,6 +131,7 @@ export async function signUp(inviteLink: string, email: string, name: string, pa
   const result = await runAction(() => api.signUp(inviteLink, email, name, password));
   if (result) {
     store.pendingSecretKey = result.secretKey;
+    store.isRecoverySubmitted = false;
     await applyStatus(result.status);
   }
   return result !== undefined;
@@ -125,6 +140,17 @@ export async function signUp(inviteLink: string, email: string, name: string, pa
 export function confirmSecretKeySaved(): void {
   store.pendingSecretKey = "";
   api.forgetNewAccountSecretKey().catch(() => undefined);
+}
+
+// recoverAccount shows the new Secret Key; the account can sign in with it once an admin completes the recovery.
+export async function recoverAccount(recoveryLink: string, email: string, newPassword: string): Promise<boolean> {
+  const result = await runAction(() => api.recoverAccount(recoveryLink, email, newPassword));
+  if (result) {
+    store.pendingSecretKey = result.secretKey;
+    store.isRecoverySubmitted = true;
+    await applyStatus(result.status);
+  }
+  return result !== undefined;
 }
 
 function showSavedNotice(savedPath: string | undefined): boolean {
@@ -573,6 +599,47 @@ export async function respondSSHApproval(requestID: string, isAllowed: boolean):
   await api.respondSSHApproval(requestID, isAllowed).catch(() => undefined);
 }
 
+export function showBrowserPairing(request: BrowserPairingRequest | null): void {
+  store.browserPairing = request;
+  loadBrowserStatus();
+}
+
+export async function cancelBrowserPairing(): Promise<void> {
+  store.browserPairing = null;
+  await api.cancelBrowserPairing().catch(() => undefined);
+}
+
+export async function loadBrowserStatus(): Promise<void> {
+  try {
+    store.browserStatus = await api.getBrowserStatus();
+  } catch {
+    store.browserStatus = null;
+  }
+}
+
+// restoreBrowserPairing shows a pairing that started before the window loaded; later ones arrive as events.
+export async function restoreBrowserPairing(): Promise<void> {
+  await loadBrowserStatus();
+  store.browserPairing = store.browserStatus?.pendingPairing ?? null;
+}
+
+export async function removePairedBrowser(instanceID: string): Promise<boolean> {
+  const browserStatus = await runAction(() => api.removePairedBrowser(instanceID));
+  if (!browserStatus) {
+    return false;
+  }
+  store.browserStatus = browserStatus;
+  showNotice("Browser removed; it must be paired again to use Hisar");
+  return true;
+}
+
+export async function setExactHostMatch(isExactHostMatch: boolean): Promise<void> {
+  const browserStatus = await runAction(() => api.setExactHostMatch(isExactHostMatch));
+  if (browserStatus) {
+    store.browserStatus = browserStatus;
+  }
+}
+
 export async function copyText(text: string, label: string): Promise<void> {
   const copied = await runAction(async () => {
     await api.copyText(text);
@@ -581,4 +648,94 @@ export async function copyText(text: string, label: string): Promise<void> {
   if (copied) {
     showNotice(`${label} copied, clears in 90 seconds`);
   }
+}
+
+export async function loadRecoveryData(): Promise<void> {
+  const recoveryStatus = await runAction(() => api.getRecoveryStatus());
+  if (!recoveryStatus) {
+    return;
+  }
+  store.recoveryStatus = recoveryStatus;
+  if (recoveryStatus.isAdmin && recoveryStatus.isSetUp) {
+    const allPendingRecovery = await runAction(() => api.listAllPendingRecovery());
+    if (allPendingRecovery) {
+      store.allPendingRecovery = allPendingRecovery;
+    }
+  }
+}
+
+async function reloadVaultRecovery(): Promise<void> {
+  const allVault = await runAction(() => api.listAllVault());
+  if (allVault) {
+    store.allVault = allVault;
+  }
+}
+
+// setUpRecovery returns the vaults that could not be made recoverable, or undefined when it failed.
+export async function setUpRecovery(): Promise<string[] | undefined> {
+  const allFailedVaultName = await runAction(() => api.setUpRecovery());
+  if (!allFailedVaultName) {
+    return undefined;
+  }
+  await loadRecoveryData();
+  await reloadVaultRecovery();
+  showNotice("Account recovery is set up");
+  return allFailedVaultName;
+}
+
+export async function enableRecoveryForAllVault(): Promise<string[] | undefined> {
+  const allFailedVaultName = await runAction(() => api.enableRecoveryForAllVault());
+  if (!allFailedVaultName) {
+    return undefined;
+  }
+  await reloadVaultRecovery();
+  showNotice("Your vaults can be recovered");
+  return allFailedVaultName;
+}
+
+export async function setVaultRecovery(vaultID: string, isEnabled: boolean): Promise<boolean> {
+  const summary = await runAction(() => (isEnabled ? api.enableVaultRecovery(vaultID) : api.disableVaultRecovery(vaultID)));
+  if (!summary) {
+    return false;
+  }
+  const vault = store.allVault.find((candidate) => candidate.id === vaultID);
+  if (vault) {
+    vault.recoverable = summary.recoverable;
+    vault.recoveryOptOut = summary.recoveryOptOut;
+  }
+  showNotice(isEnabled ? `${summary.name} can be recovered again` : `Recovery is off for ${summary.name}`);
+  return true;
+}
+
+export async function startAccountRecovery(member: FamilyMember): Promise<string | undefined> {
+  const link = await runAction(() => api.startAccountRecovery(member.accountId));
+  if (link) {
+    showNotice("Recovery link created");
+  }
+  return link;
+}
+
+// completeAccountRecovery returns the vaults the member lost, or undefined when it failed.
+export async function completeAccountRecovery(pending: PendingRecovery): Promise<string[] | undefined> {
+  const allUnrecoverableVaultName = await runAction(() => api.completeAccountRecovery(pending.accountId));
+  if (!allUnrecoverableVaultName) {
+    return undefined;
+  }
+  await loadRecoveryData();
+  const allFamilyMember = await runAction(() => api.listAllMember());
+  if (allFamilyMember) {
+    store.allFamilyMember = allFamilyMember;
+  }
+  showNotice(`Recovered ${getFirstName(pending)}`);
+  return allUnrecoverableVaultName;
+}
+
+export function openVaultRecovery(): void {
+  store.isVaultRecoveryOpen = true;
+  loadRecoveryData();
+}
+
+export function closeVaultRecovery(): void {
+  store.isVaultRecoveryOpen = false;
+  store.errorMessage = "";
 }
