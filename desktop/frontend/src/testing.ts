@@ -54,6 +54,8 @@ export function createSSHAgentStatus(overrides: Partial<SSHAgentStatus> = {}): S
 export function createApprovalEvent(overrides: Partial<ApprovalEvent> = {}): ApprovalEvent {
   return {
     requestID: "request-1",
+    appName: "Terminal",
+    appIconURL: "",
     clientName: "ssh",
     clientPath: "/usr/bin/ssh",
     keyTitle: "Laptop key",
@@ -61,6 +63,8 @@ export function createApprovalEvent(overrides: Partial<ApprovalEvent> = {}): App
     destinationHost: "github.com",
     destinationFingerprint: "SHA256:hostFingerprint",
     isForwarded: false,
+    isTouchIDApproval: true,
+    timeoutAt: "2026-10-09T12:01:00Z",
     ...overrides,
   };
 }
@@ -157,6 +161,7 @@ export function createApiMock() {
     configureSSHConfig: vi.fn(),
     removeSSHConfig: vi.fn(),
     respondSSHApproval: vi.fn().mockResolvedValue(undefined),
+    listAllPendingSSHApproval: vi.fn().mockResolvedValue([]),
     copyField: vi.fn(),
     copyText: vi.fn(),
     openURL: vi.fn().mockResolvedValue(undefined),
@@ -165,6 +170,9 @@ export function createApiMock() {
     disableBiometricUnlock: vi.fn(),
     setTouchIDPromptFrame: vi.fn().mockResolvedValue(undefined),
     clearTouchIDPromptFrame: vi.fn().mockResolvedValue(undefined),
+    setSSHApprovalForAllApplication: vi.fn().mockResolvedValue(undefined),
+    setApprovalTouchIDFrame: vi.fn().mockResolvedValue(undefined),
+    clearApprovalTouchIDFrame: vi.fn().mockResolvedValue(undefined),
     cancelTouchIDPrompt: vi.fn().mockResolvedValue(undefined),
     hasNativeTouchIDView: false,
     saveNewAccountEmergencyKit: vi.fn(),

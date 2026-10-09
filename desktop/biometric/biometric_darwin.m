@@ -38,7 +38,7 @@ static void runOnMainThread(dispatch_block_t block) {
     }
 }
 
-int hisarBiometricAuthenticate(const char *reason, void *window, int embed, double x, double y, double width, double height, char **errorMessage) {
+int hisarBiometricAuthenticate(const char *reason, void *window, int embed, int controlSize, double x, double y, double width, double height, char **errorMessage) {
     LAContext *context = [[LAContext alloc] init];
     context.localizedFallbackTitle = @"";
     NSError *availabilityError = nil;
@@ -51,7 +51,7 @@ int hisarBiometricAuthenticate(const char *reason, void *window, int embed, doub
         runOnMainThread(^{
             NSWindow *nativeWindow = (__bridge NSWindow *)window;
             NSView *contentView = nativeWindow.contentView;
-            LAAuthenticationView *authenticationView = [[LAAuthenticationView alloc] initWithContext:context controlSize:NSControlSizeLarge];
+            LAAuthenticationView *authenticationView = [[LAAuthenticationView alloc] initWithContext:context controlSize:(NSControlSize)controlSize];
             authenticationView.frame = convertToContentRect(contentView, x, y, width, height);
             [contentView addSubview:authenticationView positioned:NSWindowAbove relativeTo:nil];
             activeView = authenticationView;

@@ -91,10 +91,24 @@ func (s *Service) RemoveSSHConfig() (Status, error) {
 	return status, err
 }
 
-func (s *Service) RespondSSHApproval(requestID string, isAllowed bool) {
+// RespondSSHApproval answers the approval window: Authorize (then Touch ID when available) or Deny.
+func (s *Service) RespondSSHApproval(requestID string, isAuthorized, isForAllApplication bool) {
 	if s.config.Approver != nil {
-		s.config.Approver.Respond(requestID, isAllowed)
+		s.config.Approver.Respond(requestID, isAuthorized, isForAllApplication)
 	}
+}
+
+func (s *Service) SetSSHApprovalForAllApplication(requestID string, isForAllApplication bool) {
+	if s.config.Approver != nil {
+		s.config.Approver.SetForAllApplication(requestID, isForAllApplication)
+	}
+}
+
+func (s *Service) ListAllPendingSSHApproval() []ApprovalEvent {
+	if s.config.Approver == nil {
+		return []ApprovalEvent{}
+	}
+	return s.config.Approver.ListAllPendingApproval()
 }
 
 func (s *Service) setServing(isRunning bool, serveError error) {

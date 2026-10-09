@@ -51,9 +51,17 @@ type ApprovalRequest struct {
 	IsForwarded            bool
 }
 
-type Approver interface {
-	Approve(ctx context.Context, request ApprovalRequest) (bool, error)
+type ApprovalResult struct {
+	IsAllowed bool
+	// IsForAllClient remembers the approval for every program instead of only the requesting one.
+	IsForAllClient bool
 }
+
+type Approver interface {
+	Approve(ctx context.Context, request ApprovalRequest) (ApprovalResult, error)
+}
+
+const anyClientPath = "*"
 
 // DefaultApprovalLifetime is how long an approved key and program pair is used without asking again; locking clears it sooner.
 const DefaultApprovalLifetime = time.Hour
@@ -115,31 +123,41 @@ func (s *Server) CreateAgent(ctx context.Context, peer PeerInfo) agent.ExtendedA
 }
 
 func (s *Server) requestApproval(ctx context.Context, request ApprovalRequest) error {
-	cacheKey := approvalCacheKey{fingerprint: request.Fingerprint, clientPath: request.ClientPath}
+	clientCacheKey := approvalCacheKey{fingerprint: request.Fingerprint, clientPath: request.ClientPath}
+	anyClientCacheKey := approvalCacheKey{fingerprint: request.Fingerprint, clientPath: anyClientPath}
 	s.mutex.Lock()
-	isCacheable := !s.allAlwaysAskKeyID[request.KeyID] && !request.IsForwarded && request.ClientPath != ""
-	approvedAt, isFound := s.allApprovedAt[cacheKey]
-	isApproved := isCacheable && isFound && s.getNow().Sub(approvedAt) < s.approvalLifetime
+	isKeyCacheable := !s.allAlwaysAskKeyID[request.KeyID] && !request.IsForwarded
+	isClientCacheable := isKeyCacheable && request.ClientPath != ""
+	isApproved := (isClientCacheable && s.isApprovalCurrent(clientCacheKey)) || (isKeyCacheable && s.isApprovalCurrent(anyClientCacheKey))
 	epoch := s.approvalEpoch
 	s.mutex.Unlock()
 	if isApproved {
 		return nil
 	}
-	isApproved, err := s.approver.Approve(ctx, request)
+	result, err := s.approver.Approve(ctx, request)
 	if err != nil {
 		return fmt.Errorf("sshagent: approval: %w", err)
 	}
-	if !isApproved {
+	if !result.IsAllowed {
 		return ErrDenied
 	}
-	if isCacheable {
-		s.mutex.Lock()
-		if s.approvalEpoch == epoch {
-			s.allApprovedAt[cacheKey] = s.getNow()
-		}
-		s.mutex.Unlock()
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if s.approvalEpoch != epoch {
+		return nil
+	}
+	switch {
+	case result.IsForAllClient && isKeyCacheable:
+		s.allApprovedAt[anyClientCacheKey] = s.getNow()
+	case isClientCacheable:
+		s.allApprovedAt[clientCacheKey] = s.getNow()
 	}
 	return nil
+}
+
+func (s *Server) isApprovalCurrent(cacheKey approvalCacheKey) bool {
+	approvedAt, isFound := s.allApprovedAt[cacheKey]
+	return isFound && s.getNow().Sub(approvedAt) < s.approvalLifetime
 }
 
 type sessionBinding struct {

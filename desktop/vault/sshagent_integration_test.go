@@ -24,11 +24,11 @@ type recordingApprover struct {
 	allRequest []sshagent.ApprovalRequest
 }
 
-func (approver *recordingApprover) Approve(ctx context.Context, request sshagent.ApprovalRequest) (bool, error) {
+func (approver *recordingApprover) Approve(ctx context.Context, request sshagent.ApprovalRequest) (sshagent.ApprovalResult, error) {
 	approver.mutex.Lock()
 	defer approver.mutex.Unlock()
 	approver.allRequest = append(approver.allRequest, request)
-	return approver.isAllowed, nil
+	return sshagent.ApprovalResult{IsAllowed: approver.isAllowed}, nil
 }
 
 func (approver *recordingApprover) setAllowed(isAllowed bool) {

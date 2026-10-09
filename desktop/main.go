@@ -8,12 +8,15 @@ import (
 	"path/filepath"
 	"runtime"
 	"time"
+	"unsafe"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 
 	"github.com/tryhisar/hisar/core/localstate"
 	"github.com/tryhisar/hisar/core/sshagent"
 	"github.com/tryhisar/hisar/desktop/agent"
+	"github.com/tryhisar/hisar/desktop/appinfo"
 	"github.com/tryhisar/hisar/desktop/biometric"
 	"github.com/tryhisar/hisar/desktop/browser"
 	"github.com/tryhisar/hisar/desktop/vault"
@@ -98,7 +101,7 @@ func main() {
 
 	var app *application.App
 	var window *application.WebviewWindow
-	// The SSH agent and the browser bridge call this from their own goroutines; AppKit aborts unless it runs on the main thread.
+	// The browser bridge calls this from its own goroutines; AppKit aborts unless window calls run on the main thread.
 	showWindow := func() {
 		application.InvokeAsync(func() {
 			app.Show()
@@ -107,10 +110,28 @@ func main() {
 			window.Focus()
 		})
 	}
+	var approvalWindow *application.WebviewWindow
+	approvalTouchID := touchID.CreateWindowPrompt(func() unsafe.Pointer {
+		if approvalWindow == nil {
+			return nil
+		}
+		return approvalWindow.NativeWindow()
+	}, biometric.PromptSizeSmall)
 	approver := agent.CreateApprover(agent.ApproverConfig{
-		Biometric:  touchID,
-		Emit:       func(eventName string, data any) { app.Event.Emit(eventName, data) },
-		ShowWindow: showWindow,
+		Biometric:       approvalTouchID,
+		CancelBiometric: approvalTouchID.CancelPrompt,
+		Emit:            func(eventName string, data any) { app.Event.Emit(eventName, data) },
+		ShowApprovalWindow: func() {
+			application.InvokeAsync(func() {
+				approvalWindow.Center()
+				approvalWindow.Show()
+				approvalWindow.Focus()
+			})
+		},
+		HideApprovalWindow: func() { application.InvokeAsync(func() { approvalWindow.Hide() }) },
+		FindApp: func(pid int) (appinfo.App, bool) {
+			return appinfo.FindApp(pid, sshagent.GetProcessPath, sshagent.GetParentPID)
+		},
 	})
 	agentServer = sshagent.CreateServer(vault.CreateSSHKeySource(vaultService), approver, sshagent.SystemPeerResolver{})
 	agentServer.SetAllKnownHostsPath([]string{filepath.Join(homeDirectory, ".ssh", "known_hosts"), "/etc/ssh/ssh_known_hosts"})
@@ -153,6 +174,7 @@ func main() {
 		Services: []application.Service{
 			application.NewService(vaultService),
 			application.NewService(&TouchIDPromptService{biometric: touchID}),
+			application.NewService(&ApprovalTouchIDService{prompt: approvalTouchID}),
 			application.NewService(agentService),
 			application.NewService(browserBridge),
 		},
@@ -196,6 +218,32 @@ func main() {
 			PromptForSingleSelection()
 	}
 	touchID.SetWindowProvider(window.NativeWindow)
+
+	approvalWindow = app.Window.NewWithOptions(application.WebviewWindowOptions{
+		Name:                "ssh-approval",
+		Title:               "Hisar Access Requested",
+		Width:               460,
+		Height:              430,
+		Hidden:              true,
+		AlwaysOnTop:         true,
+		DisableResize:       true,
+		InitialPosition:     application.WindowCentered,
+		MinimiseButtonState: application.ButtonHidden,
+		MaximiseButtonState: application.ButtonHidden,
+		Mac: application.MacWindow{
+			InvisibleTitleBarHeight: 36,
+			Backdrop:                application.MacBackdropTranslucent,
+			TitleBar:                application.MacTitleBarHiddenInset,
+		},
+		BackgroundColour: application.NewRGB(13, 14, 16),
+		URL:              "/?window=ssh-approval",
+	})
+	// Closing the approval window denies what it shows; the window is reused for the next request.
+	approvalWindow.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
+		event.Cancel()
+		approver.DenyAll()
+		approvalWindow.Hide()
+	})
 
 	go func() {
 		defer close(agentStopped)

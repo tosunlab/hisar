@@ -2,13 +2,12 @@
 import { onBeforeUnmount, onMounted } from "vue";
 import { Events } from "@wailsio/runtime";
 import { api } from "./api";
-import { addSSHApproval, handleLocked, loadStatus, removeSSHApproval, restoreBrowserPairing, showBrowserPairing, store } from "./store";
+import { handleLocked, loadStatus, restoreBrowserPairing, showBrowserPairing, store } from "./store";
 import SignInView from "./components/SignInView.vue";
 import SecretKeyView from "./components/SecretKeyView.vue";
 import UnlockView from "./components/UnlockView.vue";
 import MainView from "./components/MainView.vue";
 import AppIcon from "./components/AppIcon.vue";
-import SSHApprovalModal from "./components/SSHApprovalModal.vue";
 import BrowserPairingModal from "./components/BrowserPairingModal.vue";
 
 const activityReportInterval = 30_000;
@@ -28,8 +27,6 @@ onMounted(() => {
   loadStatus();
   allRemoveListener = [
     Events.On("locked", () => handleLocked()),
-    Events.On("ssh-approval", (event) => addSSHApproval(event.data)),
-    Events.On("ssh-approval-closed", (event) => removeSSHApproval(event.data)),
     Events.On("browser-pairing", (event) => showBrowserPairing(event.data ?? null)),
   ];
   restoreBrowserPairing();
@@ -49,7 +46,6 @@ onBeforeUnmount(() => {
   <SignInView v-else-if="store.status.state === 'signed-out'" />
   <UnlockView v-else-if="store.status.state === 'locked'" />
   <MainView v-else />
-  <SSHApprovalModal />
   <BrowserPairingModal />
   <div v-if="store.noticeMessage" class="notice" role="status"><AppIcon name="check" /> {{ store.noticeMessage }}</div>
 </template>

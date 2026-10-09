@@ -18,3 +18,16 @@ func (service *TouchIDPromptService) ClearPromptFrame() {
 func (service *TouchIDPromptService) CancelPrompt() {
 	service.biometric.CancelPrompt()
 }
+
+// ApprovalTouchIDService places the Touch ID view inside the SSH approval window.
+type ApprovalTouchIDService struct {
+	prompt *biometric.WindowPrompt
+}
+
+func (service *ApprovalTouchIDService) SetApprovalPromptFrame(x, y, width, height float64) {
+	service.prompt.SetPromptFrame(biometric.PromptFrame{X: x, Y: y, Width: width, Height: height})
+}
+
+func (service *ApprovalTouchIDService) ClearApprovalPromptFrame() {
+	service.prompt.ClearPromptFrame()
+}

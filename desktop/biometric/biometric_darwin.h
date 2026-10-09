@@ -1,7 +1,7 @@
 #include <stdint.h>
 
 int hisarBiometricIsAvailable(void);
-int hisarBiometricAuthenticate(const char *reason, void *window, int embed, double x, double y, double width, double height, char **errorMessage);
+int hisarBiometricAuthenticate(const char *reason, void *window, int embed, int controlSize, double x, double y, double width, double height, char **errorMessage);
 void hisarBiometricMovePrompt(double x, double y, double width, double height);
 void hisarBiometricCancel(void);
 int hisarKeychainStore(const char *service, const char *account, const void *data, int length);

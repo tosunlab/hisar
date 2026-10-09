@@ -43,22 +43,23 @@ func (source *fakeKeySource) setLocked(isLocked bool) {
 }
 
 type fakeApprover struct {
-	mutex       sync.Mutex
-	isApproving bool
-	allRequest  []ApprovalRequest
-	onApprove   func()
+	mutex          sync.Mutex
+	isApproving    bool
+	isForAllClient bool
+	allRequest     []ApprovalRequest
+	onApprove      func()
 }
 
-func (approver *fakeApprover) Approve(ctx context.Context, request ApprovalRequest) (bool, error) {
+func (approver *fakeApprover) Approve(ctx context.Context, request ApprovalRequest) (ApprovalResult, error) {
 	approver.mutex.Lock()
 	approver.allRequest = append(approver.allRequest, request)
-	isApproving := approver.isApproving
+	result := ApprovalResult{IsAllowed: approver.isApproving, IsForAllClient: approver.isForAllClient}
 	onApprove := approver.onApprove
 	approver.mutex.Unlock()
 	if onApprove != nil {
 		onApprove()
 	}
-	return isApproving, nil
+	return result, nil
 }
 
 func (approver *fakeApprover) setApproving(isApproving bool) {
@@ -364,6 +365,31 @@ func TestApprovalCachedPerClientPath(t *testing.T) {
 	fixture.server.ClearAllApproval()
 	connect(3)
 	connect(3)
+}
+
+func TestApprovalForAllClient(t *testing.T) {
+	key := createTestKey(t, "id", "Work", getAllTestMaterial()["ed25519"])
+	fixture := startAgent(t, []Key{key})
+	address := startSSHServer(t, getPublicKey(t, key))
+	fixture.approver.mutex.Lock()
+	fixture.approver.isForAllClient = true
+	fixture.approver.mutex.Unlock()
+	connect := func(wantCount int) {
+		t.Helper()
+		if err := fixture.connectSSH(t, address); err != nil {
+			t.Fatalf("ssh auth failed: %v", err)
+		}
+		if count := fixture.approver.countRequest(); count != wantCount {
+			t.Fatalf("approval count = %d, want %d", count, wantCount)
+		}
+	}
+	connect(1)
+	fixture.resolver.setPath("/usr/bin/git")
+	connect(1)
+	fixture.resolver.setPath("")
+	connect(1)
+	fixture.server.ClearAllApproval()
+	connect(2)
 }
 
 func TestApprovalExpiresAfterLifetime(t *testing.T) {
