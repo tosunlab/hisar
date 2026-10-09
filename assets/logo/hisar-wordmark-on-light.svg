@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="168" height="48" viewBox="0 0 168 48">
+  <g transform="translate(0 0) scale(1.5)">
+    <rect width="32" height="32" rx="8" fill="#0b0c0e"/>
+    <path d="M8 26V12h3V9h2.5v3h5V9H21v3h3v14h-6v-5a2 2 0 0 0-4 0v5z" fill="#f2f3f5"/>
+  </g>
+  <text x="62" y="35" font-family="-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', Helvetica, Arial, sans-serif" font-size="32" font-weight="700" letter-spacing="-0.3" fill="#0b0c0e">Hisar</text>
+</svg>
