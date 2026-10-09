@@ -36,6 +36,8 @@ type Details struct {
 	Fields   []Field `json:"fields,omitempty"`
 	// PrivateKey is an unencrypted OpenSSH PEM key; the vault encryption protects it.
 	PrivateKey string `json:"privateKey,omitempty"`
+	// OneTimePassword is an otpauth://totp URI (core/totp normalizes pasted secrets into one).
+	OneTimePassword string `json:"oneTimePassword,omitempty"`
 }
 
 type Item struct {

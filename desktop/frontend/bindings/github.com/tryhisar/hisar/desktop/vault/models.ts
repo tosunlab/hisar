@@ -105,12 +105,27 @@ export interface ItemDetail {
     "publicKey": string;
     "fingerprint": string;
     "keyType": string;
+
+    /**
+     * OneTimePassword is the otpauth:// URI; summaries leave it empty and set HasOneTimePassword instead.
+     */
+    "oneTimePassword": string;
+    "hasOneTimePassword": boolean;
 }
 
 export interface ItemField {
     "name": string;
     "value": string;
     "concealed": boolean;
+}
+
+/**
+ * OneTimeCode is the current code of an item's one-time password; ExpiresAt is RFC 3339.
+ */
+export interface OneTimeCode {
+    "code": string;
+    "expiresAt": string;
+    "period": number;
 }
 
 export interface PairedBrowser {

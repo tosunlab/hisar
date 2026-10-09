@@ -17,6 +17,7 @@ import type {
   ImportSkippedEntry,
   ItemDetail as BoundItemDetail,
   ItemField,
+  OneTimeCode,
   PasswordConfig,
   PendingRecovery,
   RecoverAccountResult,
@@ -35,6 +36,7 @@ export type {
   ImportFormat,
   ImportSkippedEntry,
   ItemField,
+  OneTimeCode,
   PasswordConfig,
   PendingRecovery,
   RecoverAccountResult,
@@ -130,6 +132,7 @@ const wailsApi = {
   setApprovalTouchIDFrame: (x: number, y: number, width: number, height: number): Promise<void> =>
     ApprovalTouchIDService.SetApprovalPromptFrame(x, y, width, height),
   clearApprovalTouchIDFrame: (): Promise<void> => ApprovalTouchIDService.ClearApprovalPromptFrame(),
+  getOneTimeCode: (vaultID: string, itemID: string): Promise<OneTimeCode> => Service.GetOneTimeCode(vaultID, itemID),
   copyField: (vaultID: string, itemID: string, fieldName: string): Promise<void> =>
     Service.CopyField(vaultID, itemID, fieldName),
   copyText: (text: string): Promise<void> => Service.CopyText(text),
@@ -200,5 +203,7 @@ export function createEmptyItem(): ItemDetail {
     publicKey: "",
     fingerprint: "",
     keyType: "",
+    oneTimePassword: "",
+    hasOneTimePassword: false,
   };
 }

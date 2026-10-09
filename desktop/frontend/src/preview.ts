@@ -54,6 +54,8 @@ function createPreviewItem(id: string, title: string, username: string, link: st
     publicKey: "",
     fingerprint: "",
     keyType: "",
+    oneTimePassword: "",
+    hasOneTimePassword: false,
     ...extra,
   };
 }
@@ -77,8 +79,10 @@ function createPreviewSSHKey(id: string, title: string, keyType: string, notes =
 const allPreviewItemByVaultID: Record<string, ItemDetail[]> = {
   personal: [
     createPreviewItem("github", "GitHub", "alper", "https://github.com", "k7#Vq2!mZp9@Lx4$Rt8w", {
-      notes: "Recovery codes are in the safe.\nTwo-factor via the authenticator app.",
+      notes: "Recovery codes are in the safe.",
       fields: [{ name: "Recovery code", value: "a1b2-c3d4-e5f6", concealed: true }],
+      oneTimePassword: "otpauth://totp/GitHub:alper?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&issuer=GitHub",
+      hasOneTimePassword: true,
     }),
     createPreviewItem("google", "Google", "alper@gmail.com", "https://accounts.google.com", "Spring2024!"),
     createPreviewItem("bank", "İş Bankası", "48211990", "https://www.isbank.com.tr", "93-Kale-Kapı-71", {
@@ -485,6 +489,12 @@ export const previewApi = {
   },
   listAllPendingSSHApproval: () => resolveAfterDelay(listAllPreviewApproval()),
   copyField: () => resolveAfterDelay(undefined),
+  getOneTimeCode: () => {
+    const period = 30;
+    const counter = Math.floor(Date.now() / 1000 / period);
+    const code = String((counter * 7919 + 482913) % 1_000_000).padStart(6, "0");
+    return resolveAfterDelay({ code, expiresAt: new Date((counter + 1) * period * 1000).toISOString(), period });
+  },
   copyText: () => resolveAfterDelay(undefined),
   unlockWithBiometric: () =>
     new Promise<Status>((resolve, reject) => {

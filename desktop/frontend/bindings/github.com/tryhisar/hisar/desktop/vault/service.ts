@@ -121,6 +121,13 @@ export function GetItem(vaultID: string, itemID: string): $CancellablePromise<$m
 }
 
 /**
+ * GetOneTimeCode returns the item's current one-time code; the UI asks again once ExpiresAt passes.
+ */
+export function GetOneTimeCode(vaultID: string, itemID: string): $CancellablePromise<$models.OneTimeCode> {
+    return $Call.ByID(1202742415, vaultID, itemID);
+}
+
+/**
  * GetRecoveryStatus reports whether an admin set up account recovery and whether this account can complete recoveries.
  */
 export function GetRecoveryStatus(): $CancellablePromise<$models.RecoveryStatus> {

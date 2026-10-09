@@ -86,9 +86,20 @@ async function submitItem(): Promise<void> {
         <StrengthMeter :password="draft.password" />
       </label>
       <PasswordGenerator v-if="isGeneratorOpen" @use="usePassword" @close="isGeneratorOpen = false" />
-      <label class="last">
+      <label>
         <span>Websites</span>
         <textarea v-model="urlText" name="urls" rows="2" placeholder="https://example.com (one per line)"></textarea>
+      </label>
+      <label class="last">
+        <span>One-time password</span>
+        <input
+          v-model="draft.oneTimePassword"
+          name="oneTimePassword"
+          class="monospace"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="Setup key or otpauth:// link from the site's two-factor setup"
+        />
       </label>
     </section>
 

@@ -20,6 +20,7 @@ export type {
     ImportSkippedEntry,
     ItemDetail,
     ItemField,
+    OneTimeCode,
     PairedBrowser,
     PasswordConfig,
     PendingRecovery,

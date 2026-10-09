@@ -98,6 +98,16 @@ type ItemDetail struct {
 	PublicKey   string      `json:"publicKey"`
 	Fingerprint string      `json:"fingerprint"`
 	KeyType     string      `json:"keyType"`
+	// OneTimePassword is the otpauth:// URI; summaries leave it empty and set HasOneTimePassword instead.
+	OneTimePassword    string `json:"oneTimePassword"`
+	HasOneTimePassword bool   `json:"hasOneTimePassword"`
+}
+
+// OneTimeCode is the current code of an item's one-time password; ExpiresAt is RFC 3339.
+type OneTimeCode struct {
+	Code      string `json:"code"`
+	ExpiresAt string `json:"expiresAt"`
+	Period    int    `json:"period"`
 }
 
 type SignUpResult struct {

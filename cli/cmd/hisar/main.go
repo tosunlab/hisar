@@ -24,7 +24,7 @@ var allCommand = []command{
 	{"vaults", "", "list vaults", runListAllVault},
 	{"vault-create", "<name>", "create a shared vault", runCreateVault},
 	{"ls", "[-v vault]", "list items", runListAllItem},
-	{"get", "<item> [-f field] [-v vault]", "show an item, or one field of it", runGet},
+	{"get", "<item> [-f field] [-v vault]", "show an item, or one field of it (e.g. -f password, -f code)", runGet},
 	{"add", "[-v vault]", "add a login", runAdd},
 	{"edit", "<item> [-v vault]", "edit an item", runEdit},
 	{"rm", "<item> [-v vault]", "delete an item", runRemove},

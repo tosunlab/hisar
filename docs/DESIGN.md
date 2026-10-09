@@ -136,6 +136,14 @@ aad      = "hisar/v1/item" || vaultID || itemID || revision || part      (part �
 ct_part  = XChaCha20-Poly1305(key=K_vault, nonce=random24, aad, plaintext=JSON(part))
 ```
 
+**One-time passwords (TOTP).** `details.oneTimePassword` holds an `otpauth://totp` URI, in the encrypted details part.
+
+- **Saving:** a pasted setup key or link is normalized into the URI (`core/totp`): base32 secret, SHA-1/256/512, 6–8 digits, a period of 1–300 s. Anything else is refused.
+- **Codes:** `core/totp` generates them per RFC 6238 and is tested against its Appendix B vectors.
+- **Desktop:** `GetOneTimeCode` returns the code with its expiry, and the item shows it with a countdown and asks for the next one when it expires. `CopyField("one-time code")` copies it. Item lists only carry `hasOneTimePassword`, never the secret.
+- **CLI:** `hisar get <item> -f code`.
+- **Later:** the browser extension filling codes into two-factor fields, and the iOS app.
+
 Binding vault ID, item ID and revision in the AAD stops a malicious server from moving an item into another vault, swapping overview/details between items, or mixing parts of different revisions.
 
 All `||` concatenations of variable-length fields are length-prefixed (4-byte big-endian length before each field), so field boundaries are unambiguous.

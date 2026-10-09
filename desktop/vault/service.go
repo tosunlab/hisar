@@ -19,6 +19,7 @@ import (
 	"github.com/tryhisar/hisar/core/localstate"
 	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/core/session"
+	"github.com/tryhisar/hisar/core/totp"
 )
 
 var (
@@ -498,7 +499,7 @@ func (s *Service) ListAllItem(vaultID string) ([]ItemDetail, error) {
 	allSummary := make([]ItemDetail, 0, len(allItem))
 	for index := range allItem {
 		summary := convertToItemDetail(&allItem[index])
-		summary.Password, summary.Notes, summary.Fields = "", "", nil
+		summary.Password, summary.Notes, summary.Fields, summary.OneTimePassword = "", "", nil, ""
 		allSummary = append(allSummary, summary)
 	}
 	return allSummary, nil
@@ -526,6 +527,25 @@ func (s *Service) GetItem(vaultID, itemID string) (ItemDetail, error) {
 	return convertToItemDetail(vaultItem), nil
 }
 
+// GetOneTimeCode returns the item's current one-time code; the UI asks again once ExpiresAt passes.
+func (s *Service) GetOneTimeCode(vaultID, itemID string) (OneTimeCode, error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if err := s.requireUnlocked(); err != nil {
+		return OneTimeCode{}, err
+	}
+	vaultItem, err := s.findItem(vaultID, itemID)
+	if err != nil {
+		return OneTimeCode{}, err
+	}
+	config, err := totp.Parse(vaultItem.Details.OneTimePassword)
+	if err != nil {
+		return OneTimeCode{}, fmt.Errorf("one-time password %w", ErrNotFound)
+	}
+	code, expiresAt := config.GenerateCode(s.config.Now())
+	return OneTimeCode{Code: code, ExpiresAt: expiresAt.UTC().Format(time.RFC3339), Period: config.Period}, nil
+}
+
 func convertToItemDetail(vaultItem *item.Item) ItemDetail {
 	detail := ItemDetail{
 		ID:          vaultItem.ID,
@@ -540,6 +560,9 @@ func convertToItemDetail(vaultItem *item.Item) ItemDetail {
 		PublicKey:   vaultItem.Overview.PublicKey,
 		Fingerprint: vaultItem.Overview.Fingerprint,
 		KeyType:     vaultItem.Overview.KeyType,
+
+		OneTimePassword:    vaultItem.Details.OneTimePassword,
+		HasOneTimePassword: vaultItem.Details.OneTimePassword != "",
 	}
 	for _, field := range vaultItem.Details.Fields {
 		detail.Fields = append(detail.Fields, ItemField{Name: field.Name, Value: field.Value, Concealed: field.Concealed})
@@ -552,7 +575,7 @@ func convertFromItemDetail(detail ItemDetail) item.Item {
 		ID:       detail.ID,
 		Revision: detail.Revision,
 		Overview: item.Overview{Title: strings.TrimSpace(detail.Title), Username: strings.TrimSpace(detail.Username)},
-		Details:  item.Details{Password: detail.Password, Notes: detail.Notes},
+		Details:  item.Details{Password: detail.Password, Notes: detail.Notes, OneTimePassword: detail.OneTimePassword},
 	}
 	for _, link := range detail.URLs {
 		if link = strings.TrimSpace(link); link != "" {
@@ -576,6 +599,15 @@ func (s *Service) SaveItem(vaultID string, detail ItemDetail) (ItemDetail, error
 	}
 	if strings.TrimSpace(detail.Title) == "" {
 		return ItemDetail{}, errors.New("enter a title")
+	}
+	if strings.TrimSpace(detail.OneTimePassword) != "" {
+		normalized, err := totp.Normalize(detail.OneTimePassword)
+		if err != nil {
+			return ItemDetail{}, errors.New("the one-time password is not a valid secret or otpauth:// link")
+		}
+		detail.OneTimePassword = normalized
+	} else {
+		detail.OneTimePassword = ""
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -618,6 +650,7 @@ func (s *Service) buildSavedItem(vaultID string, detail ItemDetail) (item.Item, 
 	vaultItem.Revision = detail.Revision
 	vaultItem.Overview.Title = strings.TrimSpace(detail.Title)
 	vaultItem.Details.Notes = detail.Notes
+	vaultItem.Details.OneTimePassword = detail.OneTimePassword
 	return vaultItem, nil
 }
 
@@ -725,6 +758,13 @@ func getFieldValue(vaultItem *item.Item, fieldName string) (string, bool) {
 		return vaultItem.Overview.PublicKey, true
 	case "fingerprint":
 		return vaultItem.Overview.Fingerprint, true
+	case "one-time code":
+		config, err := totp.Parse(vaultItem.Details.OneTimePassword)
+		if err != nil {
+			return "", false
+		}
+		code, _ := config.GenerateCode(time.Now())
+		return code, true
 	}
 	for _, field := range vaultItem.Details.Fields {
 		if strings.EqualFold(field.Name, fieldName) {

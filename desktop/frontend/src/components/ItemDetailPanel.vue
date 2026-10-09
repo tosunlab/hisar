@@ -4,6 +4,7 @@ import { copyField, deleteItem, openWebsite, startEditingItem, store } from "../
 import { formatKeyType, getDomain, sshKeyCategory } from "../util";
 import AppIcon from "./AppIcon.vue";
 import ItemTile from "./ItemTile.vue";
+import OneTimeCodeField from "./OneTimeCodeField.vue";
 import StrengthMeter from "./StrengthMeter.vue";
 
 defineProps<{ canEdit: boolean; vaultName: string; isShared: boolean }>();
@@ -117,6 +118,8 @@ function maskSecret(secret: string): string {
           <button class="ghost icon-button" aria-label="Copy password" title="Copy" @click="copyField('password', 'Password')"><AppIcon name="copy" /></button>
         </span>
       </div>
+
+      <OneTimeCodeField v-if="store.selectedItem.hasOneTimePassword" :vault-i-d="store.selectedVaultID" :item-i-d="store.selectedItem.id" />
 
       <div v-for="link in store.selectedItem.urls" :key="link" class="field">
         <span class="field-label">Website</span>

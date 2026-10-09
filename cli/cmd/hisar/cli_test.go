@@ -64,6 +64,10 @@ func TestGetFieldValue(t *testing.T) {
 		Overview: item.Overview{Title: "T", Username: "u", URLs: []string{"https://a", "https://b"}},
 		Details:  item.Details{Password: "p", Notes: "n", Fields: []item.Field{{Name: "PIN", Value: "1234"}}},
 	}
+	vaultItem.Details.OneTimePassword = "otpauth://totp/?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
+	if code, ok := getFieldValue(vaultItem, "code"); !ok || len(code) != 6 {
+		t.Errorf("code = %q, %v", code, ok)
+	}
 	allCase := map[string]string{"title": "T", "Username": "u", "url": "https://a", "password": "p", "notes": "n", "pin": "1234"}
 	for name, want := range allCase {
 		if got, ok := getFieldValue(vaultItem, name); !ok || got != want {

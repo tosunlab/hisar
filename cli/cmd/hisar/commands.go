@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"strings"
 	"text/tabwriter"
+	"time"
 
 	"github.com/tryhisar/hisar/core/client"
 	"github.com/tryhisar/hisar/core/crypt"
@@ -17,6 +18,7 @@ import (
 	"github.com/tryhisar/hisar/core/localstate"
 	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/core/session"
+	"github.com/tryhisar/hisar/core/totp"
 )
 
 const defaultServer = "https://tryhisar.com"
@@ -429,6 +431,13 @@ func getFieldValue(vaultItem *item.Item, name string) (string, bool) {
 		return vaultItem.Details.Password, true
 	case "notes":
 		return vaultItem.Details.Notes, true
+	case "code", "one-time code":
+		config, err := totp.Parse(vaultItem.Details.OneTimePassword)
+		if err != nil {
+			return "", false
+		}
+		code, _ := config.GenerateCode(time.Now())
+		return code, true
 	}
 	for _, field := range vaultItem.Details.Fields {
 		if strings.EqualFold(field.Name, name) {

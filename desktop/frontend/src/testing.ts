@@ -19,6 +19,8 @@ export function createItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
     publicKey: "",
     fingerprint: "",
     keyType: "",
+    oneTimePassword: "",
+    hasOneTimePassword: false,
     ...overrides,
   };
 }
@@ -163,6 +165,7 @@ export function createApiMock() {
     respondSSHApproval: vi.fn().mockResolvedValue(undefined),
     listAllPendingSSHApproval: vi.fn().mockResolvedValue([]),
     copyField: vi.fn(),
+    getOneTimeCode: vi.fn(),
     copyText: vi.fn(),
     openURL: vi.fn().mockResolvedValue(undefined),
     unlockWithBiometric: vi.fn(),
