@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { allTestVault, createApiMock, createItem, createStatus } from "./testing";
+import { allTestVault, createApiMock, createDevice, createFamilyMember, createItem, createStatus, createVaultMember, testBob, testCarol } from "./testing";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
 
@@ -173,5 +173,92 @@ describe("vault item counts", () => {
     api.deleteItem.mockResolvedValue(undefined);
     await storeModule.deleteItem("1");
     expect(store.allVault[0].itemCount).toBe(1);
+  });
+});
+
+describe("sharing, family and devices", () => {
+  const bob = createVaultMember({ ...testBob, role: "editor" });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetStore();
+    Object.assign(store, { selectedVaultID: "family", isSharingOpen: false, allVaultMember: [], allFamilyMember: [], allDevice: [] });
+    api.listAllVaultMember.mockResolvedValue([createVaultMember(), bob]);
+    api.listAllMember.mockResolvedValue([createFamilyMember(), createFamilyMember({ ...testBob, role: "member" })]);
+  });
+
+  it("opens sharing and loads the vault and family members", async () => {
+    await storeModule.openSharing();
+    expect(store.isSharingOpen).toBe(true);
+    expect(api.listAllVaultMember).toHaveBeenCalledWith("family");
+    expect(store.allVaultMember.map((member) => member.accountId)).toEqual(["ALICE1", "BOB222"]);
+    expect(store.allFamilyMember).toHaveLength(2);
+
+    store.errorMessage = "old error";
+    storeModule.closeSharing();
+    expect(store.isSharingOpen).toBe(false);
+    expect(store.errorMessage).toBe("");
+  });
+
+  it("shares, changes roles and reloads the members", async () => {
+    api.shareVault.mockResolvedValue(undefined);
+    expect(await storeModule.shareVault(createFamilyMember({ ...testCarol, role: "member" }), "reader")).toBe(true);
+    expect(api.shareVault).toHaveBeenCalledWith("family", "carol@example.com", "reader");
+    expect(api.listAllVaultMember).toHaveBeenCalledTimes(1);
+    expect(store.noticeMessage).toBe("Shared with Carol");
+
+    api.changeVaultMemberRole.mockResolvedValue(undefined);
+    expect(await storeModule.changeVaultMemberRole(bob, "owner")).toBe(true);
+    expect(api.changeVaultMemberRole).toHaveBeenCalledWith("family", "BOB222", "owner");
+    expect(store.noticeMessage).toBe("Bob is now an owner");
+
+    api.shareVault.mockRejectedValue(new Error("the signing key of carol@example.com changed since you last shared with them; stopping"));
+    expect(await storeModule.shareVault(createFamilyMember({ ...testCarol }), "reader")).toBe(false);
+    expect(store.errorMessage).toContain("signing key of carol@example.com changed");
+  });
+
+  it("reloads the items after removing a member because the vault was re-encrypted", async () => {
+    store.selectedItem = createItem({ revision: "old" });
+    api.removeVaultMember.mockResolvedValue(undefined);
+    api.listAllItem.mockResolvedValue([createItem({ revision: "new" })]);
+    expect(await storeModule.removeVaultMember(bob)).toBe(true);
+    expect(api.removeVaultMember).toHaveBeenCalledWith("family", "BOB222");
+    expect(store.allItem[0].revision).toBe("new");
+    expect(store.selectedItem).toBeNull();
+    expect(store.noticeMessage).toBe("Removed Bob and re-encrypted the vault");
+
+    api.removeVaultMember.mockRejectedValue(new Error("only owners of this vault can share it, change roles or remove members"));
+    expect(await storeModule.removeVaultMember(bob)).toBe(false);
+    expect(store.errorMessage).toContain("only owners");
+  });
+
+  it("loads settings data, invites and revokes devices", async () => {
+    api.listAllDevice.mockResolvedValue([createDevice(), createDevice({ id: "old", name: "Old laptop", isCurrent: false })]);
+    await storeModule.loadSettingsData();
+    expect(store.allFamilyMember).toHaveLength(2);
+    expect(store.allDevice).toHaveLength(2);
+
+    api.inviteMember.mockResolvedValue("https://hisar.test/invite/abc");
+    expect(await storeModule.inviteMember("dan@example.com", "member")).toBe("https://hisar.test/invite/abc");
+    api.inviteMember.mockRejectedValue(new Error("only family admins can invite people"));
+    expect(await storeModule.inviteMember("dan@example.com", "member")).toBeUndefined();
+    expect(store.errorMessage).toBe("only family admins can invite people");
+
+    api.revokeDevice.mockResolvedValue(undefined);
+    api.listAllDevice.mockResolvedValue([createDevice()]);
+    expect(await storeModule.revokeDevice(store.allDevice[1])).toBe(true);
+    expect(api.revokeDevice).toHaveBeenCalledWith("old");
+    expect(store.allDevice).toHaveLength(1);
+    expect(store.noticeMessage).toBe("Old laptop was signed out");
+  });
+
+  it("forgets sharing data when Hisar locks", async () => {
+    await storeModule.openSharing();
+    store.allDevice = [createDevice()];
+    storeModule.handleLocked();
+    expect(store.isSharingOpen).toBe(false);
+    expect(store.allVaultMember).toEqual([]);
+    expect(store.allFamilyMember).toEqual([]);
+    expect(store.allDevice).toEqual([]);
   });
 });

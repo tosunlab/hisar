@@ -1,19 +1,65 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import type { Device, FamilyRole } from "../api";
 import {
   configureSSHConfig,
+  copyText,
   disableBiometricUnlock,
   enableBiometricUnlock,
+  inviteMember,
+  loadSettingsData,
   loadSSHAgentStatus,
   removeSSHConfig,
+  revokeDevice,
   signOut,
   store,
 } from "../store";
+import { formatLastSeen, formatPlatform, formatRole, getPlatformIcon, isMacPlatform } from "../util";
 import AppIcon from "./AppIcon.vue";
+import MemberAvatar from "./MemberAvatar.vue";
 
 const isEnablingTouchID = ref(false);
 const touchIDPassword = ref("");
 const isConfirmingSignOut = ref(false);
+const isInviting = ref(false);
+const inviteEmail = ref("");
+const inviteRole = ref<FamilyRole>("member");
+const invitedEmail = ref("");
+const inviteLink = ref("");
+const revokingDeviceID = ref("");
+
+const isAdmin = computed(() => store.allFamilyMember.some((familyMember) => familyMember.isCurrentUser && familyMember.role === "admin"));
+const currentDeviceLabel = isMacPlatform() ? "This Mac" : "This device";
+
+async function submitInvite(): Promise<void> {
+  const link = await inviteMember(inviteEmail.value.trim(), inviteRole.value);
+  if (link) {
+    invitedEmail.value = inviteEmail.value.trim();
+    inviteLink.value = link;
+    inviteEmail.value = "";
+    inviteRole.value = "member";
+    isInviting.value = false;
+  }
+}
+
+function startInviting(): void {
+  inviteLink.value = "";
+  isInviting.value = true;
+}
+
+function describeActivity(device: Device): string {
+  const lastSeen = formatLastSeen(device.lastSeenAt);
+  if (device.isCurrent || lastSeen === "Active now") {
+    return "Active now";
+  }
+  return lastSeen ? `Last seen ${lastSeen === "Yesterday" ? "yesterday" : lastSeen}` : "";
+}
+
+async function confirmRevoke(device: Device): Promise<void> {
+  if (await revokeDevice(device)) {
+    revokingDeviceID.value = "";
+  }
+}
 
 function closeSettings(): void {
   store.isSettingsOpen = false;
@@ -36,6 +82,7 @@ function closeOnEscape(event: KeyboardEvent): void {
 onMounted(() => {
   window.addEventListener("keydown", closeOnEscape);
   loadSSHAgentStatus();
+  loadSettingsData();
 });
 onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
 </script>
@@ -102,6 +149,78 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
             <strong>Auto-lock</strong>
             <p class="muted">Hisar locks after 10 minutes without activity. Copied values are cleared after 90 seconds.</p>
           </div>
+        </div>
+      </section>
+
+      <section data-testid="family-section">
+        <p class="section-label">Family</p>
+        <p v-if="store.allFamilyMember.length === 0" class="muted empty-note">{{ store.isBusy ? "Loading family members…" : "No family members to show." }}</p>
+        <div v-for="familyMember in store.allFamilyMember" :key="familyMember.accountId" class="setting" :data-testid="`family-member-${familyMember.accountId}`">
+          <MemberAvatar :name="familyMember.name || familyMember.email" />
+          <div class="setting-text">
+            <strong class="title-line">
+              <span class="title-text">{{ familyMember.name || familyMember.email }}</span>
+              <span v-if="familyMember.isCurrentUser" class="tag accent">you</span>
+              <span class="tag" :data-testid="`family-role-${familyMember.accountId}`">{{ formatRole(familyMember.role) }}</span>
+            </strong>
+            <p class="muted">{{ familyMember.email }}</p>
+            <p v-if="familyMember.isKeyChanged" class="warning-text">Their key changed since you last shared with them. Compare security codes in person.</p>
+          </div>
+          <div class="security-code" :title="familyMember.isCurrentUser ? 'Your security code' : 'Compare this code in person'">
+            <span class="code-label">Security code</span>
+            <span class="monospace" data-testid="family-security-code">{{ familyMember.securityCode }}</span>
+          </div>
+        </div>
+        <template v-if="isAdmin">
+          <div class="setting">
+            <span class="setting-icon"><AppIcon name="mail" /></span>
+            <div class="setting-text">
+              <strong>Invite someone</strong>
+              <p class="muted">Create a link they use to set up their account on this server.</p>
+            </div>
+            <button v-if="!isInviting" data-testid="start-invite" @click="startInviting">Invite</button>
+          </div>
+          <form v-if="isInviting" class="inline-form" data-testid="invite-form" @submit.prevent="submitInvite">
+            <input v-model="inviteEmail" name="inviteEmail" type="email" aria-label="Email" placeholder="Email address" autocomplete="off" autofocus required />
+            <select v-model="inviteRole" class="invite-role" aria-label="Family role" data-testid="invite-role">
+              <option value="member">Member</option>
+              <option value="admin">Admin</option>
+            </select>
+            <button type="button" class="ghost" @click="isInviting = false">Cancel</button>
+            <button class="primary" type="submit" :disabled="store.isBusy || !inviteEmail.trim()">Create link</button>
+          </form>
+          <div v-if="inviteLink" class="invite-result" data-testid="invite-result">
+            <div class="invite-link">
+              <span class="monospace" data-testid="invite-link">{{ inviteLink }}</span>
+              <button data-testid="copy-invite-link" @click="copyText(inviteLink, 'Invite link')"><AppIcon name="copy" :size="14" /> Copy</button>
+            </div>
+            <p class="muted">Send this link to {{ invitedEmail }}. It is valid for 7 days and works once.</p>
+          </div>
+        </template>
+      </section>
+
+      <section data-testid="devices-section">
+        <p class="section-label">Devices</p>
+        <p v-if="store.allDevice.length === 0" class="muted empty-note">{{ store.isBusy ? "Loading devices…" : "No devices to show." }}</p>
+        <div v-for="device in store.allDevice" :key="device.id" class="setting" :data-testid="`device-${device.id}`">
+          <span class="setting-icon"><AppIcon :name="getPlatformIcon(device.platform)" /></span>
+          <div class="setting-text">
+            <strong class="title-line">
+              <span class="title-text">{{ device.name }}</span>
+              <span v-if="device.isCurrent" class="tag accent">{{ currentDeviceLabel }}</span>
+            </strong>
+            <p class="muted">{{ formatPlatform(device.platform) }} · {{ describeActivity(device) }}</p>
+            <p v-if="revokingDeviceID === device.id" class="revoke-note">
+              {{ device.name }} will be signed out and needs the master password and Secret Key to sign in again.
+            </p>
+          </div>
+          <template v-if="!device.isCurrent">
+            <button v-if="revokingDeviceID !== device.id" class="danger" :data-testid="`revoke-device-${device.id}`" @click="revokingDeviceID = device.id">Revoke</button>
+            <template v-else>
+              <button class="ghost" @click="revokingDeviceID = ''">Cancel</button>
+              <button class="danger-solid" data-testid="confirm-revoke-device" :disabled="store.isBusy" @click="confirmRevoke(device)">Sign out device</button>
+            </template>
+          </template>
         </div>
       </section>
 
@@ -278,10 +397,93 @@ section {
   background: var(--color-danger);
 }
 
-.enable-form {
+.enable-form,
+.inline-form {
   display: flex;
   gap: 8px;
   padding: 0 0 12px 44px;
+}
+
+.invite-role {
+  flex: none;
+  width: 110px;
+}
+
+.inline-form button {
+  flex: none;
+  white-space: nowrap;
+}
+
+.empty-note {
+  margin: 0 0 8px;
+  font-size: 12px;
+}
+
+.title-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.title-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.security-code {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.code-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.invite-result {
+  padding: 0 0 12px 44px;
+}
+
+.invite-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px 6px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.invite-link .monospace {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.invite-result p {
+  margin: 6px 0 0;
+  font-size: 12px;
+}
+
+.setting-text .revoke-note {
+  margin-top: 6px;
+  color: #f2a7a9;
 }
 
 .version {

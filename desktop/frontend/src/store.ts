@@ -3,10 +3,15 @@ import {
   api,
   getErrorMessage,
   type ApprovalEvent,
+  type Device,
+  type FamilyMember,
+  type FamilyRole,
   type ItemDetail,
   type SSHAgentStatus,
   type SSHKeyType,
   type Status,
+  type VaultMember,
+  type VaultRole,
   type VaultSummary,
 } from "./api";
 
@@ -36,6 +41,10 @@ export const store = reactive({
   sshAgentStatus: null as SSHAgentStatus | null,
   sshAgentErrorMessage: "",
   allPendingApproval: [] as ApprovalEvent[],
+  isSharingOpen: false,
+  allVaultMember: [] as VaultMember[],
+  allFamilyMember: [] as FamilyMember[],
+  allDevice: [] as Device[],
 });
 
 let noticeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -70,6 +79,10 @@ async function runAction<Result>(action: () => Promise<Result>): Promise<Result 
 
 function clearAllVaultData(): void {
   store.isSettingsOpen = false;
+  store.isSharingOpen = false;
+  store.allVaultMember = [];
+  store.allFamilyMember = [];
+  store.allDevice = [];
   store.allVault = [];
   store.selectedVaultID = "";
   store.allItem = [];
@@ -351,6 +364,111 @@ export async function openWebsite(link: string): Promise<void> {
     return;
   }
   await runAction(() => api.openURL(normalizedLink));
+}
+
+export function getSelectedVault(): VaultSummary | undefined {
+  return store.allVault.find((vault) => vault.id === store.selectedVaultID);
+}
+
+export function getFirstName(member: { name: string; email: string }): string {
+  return member.name.trim().split(/\s+/)[0] || member.email;
+}
+
+export async function loadSharing(): Promise<void> {
+  const vaultID = store.selectedVaultID;
+  const result = await runAction(() => Promise.all([api.listAllVaultMember(vaultID), api.listAllMember()]));
+  if (result && vaultID === store.selectedVaultID) {
+    [store.allVaultMember, store.allFamilyMember] = result;
+  }
+}
+
+export async function openSharing(): Promise<void> {
+  store.allVaultMember = [];
+  store.isSharingOpen = true;
+  await loadSharing();
+}
+
+export function closeSharing(): void {
+  store.isSharingOpen = false;
+  store.errorMessage = "";
+}
+
+export async function shareVault(member: FamilyMember, role: VaultRole): Promise<boolean> {
+  const vaultID = store.selectedVaultID;
+  const shared = await runAction(async () => {
+    await api.shareVault(vaultID, member.email, role);
+    return true;
+  });
+  if (shared) {
+    await loadSharing();
+    showNotice(`Shared with ${getFirstName(member)}`);
+  }
+  return shared === true;
+}
+
+export async function changeVaultMemberRole(member: VaultMember, role: VaultRole): Promise<boolean> {
+  const vaultID = store.selectedVaultID;
+  const changed = await runAction(async () => {
+    await api.changeVaultMemberRole(vaultID, member.accountId, role);
+    return true;
+  });
+  await loadSharing();
+  if (changed) {
+    showNotice(`${getFirstName(member)} is now ${role === "owner" ? "an owner" : `a ${role}`}`);
+  }
+  return changed === true;
+}
+
+// removeVaultMember also reloads the items: the vault was re-encrypted, so every item has a new revision.
+export async function removeVaultMember(member: VaultMember): Promise<boolean> {
+  const vaultID = store.selectedVaultID;
+  const removed = await runAction(async () => {
+    await api.removeVaultMember(vaultID, member.accountId);
+    return true;
+  });
+  if (!removed) {
+    return false;
+  }
+  await loadSharing();
+  const allItem = await runAction(() => api.listAllItem(vaultID));
+  if (allItem && vaultID === store.selectedVaultID) {
+    store.allItem = sortAllItem(allItem);
+    store.selectedItem = null;
+    store.editorMode = "view";
+  }
+  showNotice(`Removed ${getFirstName(member)} and re-encrypted the vault`);
+  return true;
+}
+
+export async function loadSettingsData(): Promise<void> {
+  const result = await runAction(() => Promise.all([api.listAllMember(), api.listAllDevice()]));
+  if (result) {
+    [store.allFamilyMember, store.allDevice] = result;
+  }
+}
+
+export async function inviteMember(email: string, role: FamilyRole): Promise<string | undefined> {
+  const link = await runAction(() => api.inviteMember(email, role));
+  if (link) {
+    showNotice("Invite link created");
+  }
+  return link;
+}
+
+export async function revokeDevice(device: Device): Promise<boolean> {
+  const revoked = await runAction(async () => {
+    await api.revokeDevice(device.id);
+    return true;
+  });
+  if (!revoked) {
+    return false;
+  }
+  const allDevice = await runAction(() => api.listAllDevice());
+  if (allDevice) {
+    store.allDevice = allDevice;
+  }
+  showNotice(`${device.name} was signed out`);
+  return true;
 }
 
 // SSH agent actions report errors inside the settings section, not as a page error.

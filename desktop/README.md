@@ -4,7 +4,7 @@ Wails v3 (pinned beta, see `WAILS_VERSION` in the root `Makefile`) with a Vue 3 
 
 | Path | What |
 |---|---|
-| `vault/` | Go backend bound to the UI: session, lock/auto-lock, clipboard clearing, SSH Key items. No Wails import, so it is tested on any OS |
+| `vault/` | Go backend bound to the UI: session, lock/auto-lock, clipboard clearing, SSH Key items, sharing, invites and devices. No Wails import, so it is tested on any OS |
 | `agent/` | SSH agent in the app: approval (Touch ID or in-app prompt), `~/.ssh/config` setup, agent status. No Wails import |
 | `biometric/` | Touch ID and the macOS Keychain (cgo) |
 | `main.go` | Wails app: window, clipboard, lock-event and approval-event adapters; starts the SSH agent |
@@ -31,11 +31,23 @@ cd desktop/frontend && npm run preview:ui
 # http://127.0.0.1:5180/?state=signed-out | locked | unlocked
 # extra parameters: &vault=family &item=netflix &editor=create|edit|ssh-key &secretKey=1 &search=git
 # SSH: &item=raspberry (SSH key) &settings=1 &approval=1 (in-app approval prompt) &agent=error &sshConfigured=1
+# sharing: &sharing=1 (sharing panel; add &vault=work for the read-only view) &code=elif (security code) &remove=deniz
+# settings: &settings=1 &invite=form|1 (invite form, or a created link) &revoke=mac-mini &scroll=family|devices
 ```
 
 The preview backend (`src/preview.ts`) is loaded with a dynamic import behind a build-time flag; `npm run check:bundle` (run in CI) fails if it ever ends up in the production bundle.
 
 The app keeps its session in `~/Library/Application Support/hisar/desktop.json` (override with `HISAR_DESKTOP_STATE`) and the Secret Key in the macOS Keychain under the service `hisar`.
+
+## Sharing, family and devices
+
+Design: `docs/DESIGN.md` §4.4 (vault keys and rotation), §5.1 (invites) and §5.6 (public key pinning).
+
+- **Share a vault**: select a shared vault and press **Share** in the item list header. Everyone with access is listed with their role; owners can add a family member (owner, editor or reader), change roles and remove people. Editors and readers see the list read-only. Personal vaults show **Private** instead and cannot be shared.
+- **Removing someone** re-encrypts the vault: the owner's device generates a new vault key, re-encrypts every item and wraps the new key only for the remaining members (`session.RemoveVaultMember`). Copies the removed person already downloaded stay readable to them.
+- **Key pinning**: the first time this device shares with someone, it pins their signing key in `desktop.json` (`pins`), like the CLI (`localstate.State.CheckMemberPin`). Sharing, changing a role or re-encrypting the vault stops if a pinned key changes. Each person has a security code (`crypt.FormatKeyFingerprint`: the first 8 bytes of SHA-256 of their Ed25519 signing key, as 4 groups of 4 hex digits); expand a member in the sharing panel or open Settings → Family to see it, and compare it in person.
+- **Settings → Family** lists everyone on the server with their role and security code. Admins can **Invite someone**: the link is valid for 7 days and works once.
+- **Settings → Devices** lists the devices signed in to your account. **Revoke** signs another device out; to sign out this Mac, use **Sign out** under Account.
 
 ## SSH agent
 

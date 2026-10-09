@@ -10,6 +10,13 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
+ * ChangeVaultMemberRole shares the vault again with the member under the new role.
+ */
+export function ChangeVaultMemberRole(vaultID: string, accountID: string, role: string): $CancellablePromise<void> {
+    return $Call.ByID(2299777943, vaultID, accountID, role);
+}
+
+/**
  * CopyField copies an item's value and clears the clipboard later if it still holds that value.
  */
 export function CopyField(vaultID: string, itemID: string, fieldName: string): $CancellablePromise<void> {
@@ -66,18 +73,53 @@ export function ImportSSHKey(vaultID: string, title: string, privateKeyText: str
 }
 
 /**
+ * InviteMember creates a sign-up link for a new family member; only admins can invite.
+ */
+export function InviteMember(email: string, role: string): $CancellablePromise<string> {
+    return $Call.ByID(4027974812, email, role);
+}
+
+/**
+ * ListAllDevice returns the devices signed in to this account, this device first, then the most recently seen.
+ */
+export function ListAllDevice(): $CancellablePromise<$models.Device[] | null> {
+    return $Call.ByID(4009114300);
+}
+
+/**
  * ListAllItem fetches the vault's items from the server and returns them without secrets in a stable order.
  */
 export function ListAllItem(vaultID: string): $CancellablePromise<$models.ItemDetail[] | null> {
     return $Call.ByID(304571137, vaultID);
 }
 
+/**
+ * ListAllMember returns everyone in the family with the security code of their signing key.
+ */
+export function ListAllMember(): $CancellablePromise<$models.FamilyMember[] | null> {
+    return $Call.ByID(2917355364);
+}
+
 export function ListAllVault(): $CancellablePromise<$models.VaultSummary[] | null> {
     return $Call.ByID(1115915958);
 }
 
+/**
+ * ListAllVaultMember returns who has access to a vault, owners first.
+ */
+export function ListAllVaultMember(vaultID: string): $CancellablePromise<$models.VaultMember[] | null> {
+    return $Call.ByID(638585760, vaultID);
+}
+
 export function Lock(): $CancellablePromise<$models.Status> {
     return $Call.ByID(3111200640);
+}
+
+/**
+ * RemoveVaultMember removes a member and re-encrypts the vault with a new key that only the remaining members get.
+ */
+export function RemoveVaultMember(vaultID: string, accountID: string): $CancellablePromise<void> {
+    return $Call.ByID(1680404315, vaultID, accountID);
 }
 
 /**
@@ -88,10 +130,24 @@ export function ReportActivity(): $CancellablePromise<void> {
 }
 
 /**
+ * RevokeDevice signs another device out; this device signs out with SignOut instead.
+ */
+export function RevokeDevice(deviceID: string): $CancellablePromise<void> {
+    return $Call.ByID(1335595451, deviceID);
+}
+
+/**
  * SaveItem creates the item when detail.ID is empty, otherwise updates it based on detail.Revision.
  */
 export function SaveItem(vaultID: string, detail: $models.ItemDetail): $CancellablePromise<$models.ItemDetail> {
     return $Call.ByID(2941695129, vaultID, detail);
+}
+
+/**
+ * ShareVault gives a family member access to a shared vault the current user owns.
+ */
+export function ShareVault(vaultID: string, email: string, role: string): $CancellablePromise<void> {
+    return $Call.ByID(3088566786, vaultID, email, role);
 }
 
 export function SignIn(server: string, email: string, secretKeyText: string, password: string): $CancellablePromise<$models.Status> {

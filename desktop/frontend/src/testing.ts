@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import type { ApprovalEvent, ItemDetail, SSHAgentStatus, Status, VaultSummary } from "./api";
+import type { ApprovalEvent, Device, FamilyMember, ItemDetail, SSHAgentStatus, Status, VaultMember, VaultSummary } from "./api";
 
 export function createStatus(state: string): Status {
   return { state, server: "https://hisar.test", email: "alice@example.com", name: "Alice", biometricAvailable: false, biometricEnabled: false, biometricReady: false };
@@ -65,6 +65,47 @@ export function createApprovalEvent(overrides: Partial<ApprovalEvent> = {}): App
   };
 }
 
+export function createFamilyMember(overrides: Partial<FamilyMember> = {}): FamilyMember {
+  return {
+    accountId: "ALICE1",
+    name: "Alice",
+    email: "alice@example.com",
+    role: "admin",
+    securityCode: "3F2A 91C0 7B44 E1D8",
+    isCurrentUser: true,
+    isKeyChanged: false,
+    ...overrides,
+  };
+}
+
+export function createVaultMember(overrides: Partial<VaultMember> = {}): VaultMember {
+  return {
+    accountId: "ALICE1",
+    name: "Alice",
+    email: "alice@example.com",
+    role: "owner",
+    securityCode: "3F2A 91C0 7B44 E1D8",
+    isCurrentUser: true,
+    isKeyChanged: false,
+    ...overrides,
+  };
+}
+
+export const testBob = { accountId: "BOB222", name: "Bob Stone", email: "bob@example.com", securityCode: "C0FF EE12 3456 789A", isCurrentUser: false };
+export const testCarol = { accountId: "CAROL3", name: "Carol", email: "carol@example.com", securityCode: "0A1B 2C3D 4E5F 6071", isCurrentUser: false };
+
+export function createDevice(overrides: Partial<Device> = {}): Device {
+  return {
+    id: "device-1",
+    name: "Alice's MacBook",
+    platform: "darwin/desktop",
+    createdAt: "2026-09-01T10:00:00Z",
+    lastSeenAt: new Date().toISOString(),
+    isCurrent: true,
+    ...overrides,
+  };
+}
+
 export const allTestVault: VaultSummary[] = [
   { id: "personal", name: "Personal", type: "personal", role: "owner", itemCount: 2 },
   { id: "family", name: "Family", type: "shared", role: "reader", itemCount: 0 },
@@ -88,6 +129,14 @@ export function createApiMock() {
     generatePassword: vi.fn(),
     generateSSHKey: vi.fn(),
     importSSHKey: vi.fn(),
+    listAllMember: vi.fn().mockResolvedValue([]),
+    listAllVaultMember: vi.fn().mockResolvedValue([]),
+    shareVault: vi.fn(),
+    changeVaultMemberRole: vi.fn(),
+    removeVaultMember: vi.fn(),
+    inviteMember: vi.fn(),
+    listAllDevice: vi.fn().mockResolvedValue([]),
+    revokeDevice: vi.fn(),
     getSSHAgentStatus: vi.fn().mockResolvedValue(createSSHAgentStatus()),
     configureSSHConfig: vi.fn(),
     removeSSHConfig: vi.fn(),

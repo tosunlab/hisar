@@ -7,10 +7,13 @@ export {
 };
 
 export type {
+    Device,
+    FamilyMember,
     ItemDetail,
     ItemField,
     PasswordConfig,
     SignUpResult,
     Status,
+    VaultMember,
     VaultSummary
 } from "./models.js";
