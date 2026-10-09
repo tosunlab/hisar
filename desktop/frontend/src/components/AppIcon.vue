@@ -25,6 +25,7 @@ const allPath = {
   settings: "M4 7h9M17 7h3M4 17h3M11 17h9M15 9a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM9 19a2 2 0 1 0 0-4 2 2 0 0 0 0 4z",
   terminal: "M4 5h16v14H4zM8 10l3 2.5L8 15M13 15h3",
   chevronDown: "M6 9l6 6 6-6",
+  chevronRight: "M9 6l6 6-6 6",
   laptop: "M5 6h14v10H5zM2 19h20",
   phone: "M8 3h8v18H8zM11 18h2",
   mail: "M3 6h18v12H3zM3 7l9 6 9-6",

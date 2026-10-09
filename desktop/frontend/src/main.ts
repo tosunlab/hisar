@@ -1,5 +1,6 @@
 import { createApp } from "vue";
 import App from "./App.vue";
+import SSHApprovalWindow from "./components/SSHApprovalWindow.vue";
 import { api } from "./api";
 import "./style.css";
 
@@ -9,7 +10,8 @@ async function startApp(): Promise<void> {
     const { previewApi } = await import("./preview");
     Object.assign(api, previewApi);
   }
-  createApp(App).mount("#app");
+  const isApprovalWindow = new URLSearchParams(window.location.search).get("window") === "ssh-approval";
+  createApp(isApprovalWindow ? SSHApprovalWindow : App).mount("#app");
   if (import.meta.env.VITE_PREVIEW === "true") {
     const { applyPreviewParameter } = await import("./preview-bootstrap");
     await applyPreviewParameter();

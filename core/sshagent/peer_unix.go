@@ -11,6 +11,10 @@ import (
 
 type SystemPeerResolver struct{}
 
+func GetProcessPath(pid int) (string, error) {
+	return getExecutablePath(pid)
+}
+
 func (SystemPeerResolver) ResolvePeer(connection net.Conn) (PeerInfo, error) {
 	syscallConnection, ok := connection.(syscall.Conn)
 	if !ok {

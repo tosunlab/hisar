@@ -136,12 +136,19 @@ func TestServiceRespondsToApproval(t *testing.T) {
 	emitter := createFakeEmitter()
 	approver := CreateApprover(ApproverConfig{Emit: emitter.emit})
 	service := CreateService(Config{HomeDirectory: t.TempDir(), Approver: approver})
-	resultChannel := startApproval(approver, context.Background())
+	resultChannel := startApproval(approver, context.Background(), createTestRequest())
 	approvalEvent := waitForApprovalEvent(t, emitter)
-	service.RespondSSHApproval("unknown", false)
-	service.RespondSSHApproval(approvalEvent.RequestID, true)
-	if result := waitForResult(t, resultChannel); !result.isAllowed {
+	if allPending := service.ListAllPendingSSHApproval(); len(allPending) != 1 {
+		t.Errorf("pending = %+v", allPending)
+	}
+	service.RespondSSHApproval("unknown", false, false)
+	service.RespondSSHApproval(approvalEvent.RequestID, true, true)
+	if result := waitForResult(t, resultChannel); !result.result.IsAllowed || !result.result.IsForAllClient {
 		t.Errorf("result = %+v", result)
 	}
-	CreateService(Config{HomeDirectory: t.TempDir()}).RespondSSHApproval("any", true)
+	withoutApprover := CreateService(Config{HomeDirectory: t.TempDir()})
+	withoutApprover.RespondSSHApproval("any", true, false)
+	if allPending := withoutApprover.ListAllPendingSSHApproval(); len(allPending) != 0 {
+		t.Errorf("pending without approver = %+v", allPending)
+	}
 }

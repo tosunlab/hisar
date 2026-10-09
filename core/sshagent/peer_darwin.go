@@ -44,3 +44,12 @@ func readProcessArgumentPath(pid int) (string, error) {
 	}
 	return string(path), nil
 }
+
+// GetParentPID returns the parent of a process, 0 when it has none.
+func GetParentPID(pid int) (int, error) {
+	processInfo, err := unix.SysctlKinfoProc("kern.proc.pid", pid)
+	if err != nil {
+		return 0, err
+	}
+	return int(processInfo.Eproc.Ppid), nil
+}

@@ -91,7 +91,7 @@ Hisar is an SSH agent for the SSH keys in your vaults (design: `docs/DESIGN.md` 
 
    **Remove from SSH config** takes the section out again. To try it without changing the config: `SSH_AUTH_SOCK=~/.hisar/agent.sock ssh-add -l`.
 
-The agent listens on `~/.hisar/agent.sock` while the app runs (`HISAR_SSH_AGENT_SOCKET` overrides the path) and offers keys from all your vaults only while Hisar is unlocked. The first time a program (`ssh`, `git`, …) uses a key, Hisar asks for Touch ID, or shows an Allow/Deny prompt in its window on Macs without Touch ID (denied after 60 seconds). Approvals last for an hour, or until Hisar locks.
+The agent listens on `~/.hisar/agent.sock` while the app runs (`HISAR_SSH_AGENT_SOCKET` overrides the path) and offers keys from all your vaults only while Hisar is unlocked. The first time a program (`ssh`, `git`, …) uses a key, Hisar opens its approval window ("Hisar Access Requested", with the app the program runs in); Authorize then asks for Touch ID on Macs that have it. Unanswered requests are denied after 60 seconds. Preview: `?window=ssh-approval&approval=1` (or `=2` for two waiting, `&forwarded=1`, `&noTouchID=1`). Approvals last for an hour, or until Hisar locks.
 
 ## Tests
 

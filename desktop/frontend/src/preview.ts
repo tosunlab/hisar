@@ -1,5 +1,6 @@
 // Development-only stand-in for the Go backend, used with `npm run preview:ui` to view the UI in a browser.
 import type {
+  ApprovalEvent,
   BrowserStatus,
   Device,
   FamilyMember,
@@ -209,6 +210,30 @@ function addPreviewItem(vaultID: string, detail: ItemDetail): ItemDetail {
 
 const resolveAfterDelay = <Value>(value: Value): Promise<Value> => new Promise((resolve) => setTimeout(() => resolve(value), 80));
 
+// listAllPreviewApproval: ?window=ssh-approval&approval=1 (one request), =2 (two waiting), &forwarded=1, &noTouchID=1.
+function listAllPreviewApproval(): ApprovalEvent[] {
+  const approvalCount = Number(previewParameter.get("approval") ?? "0");
+  const firstApproval: ApprovalEvent = {
+    requestID: "preview-request",
+    appName: "Terminal",
+    appIconURL: "",
+    clientName: "ssh",
+    clientPath: "/usr/bin/ssh",
+    keyTitle: "GitHub SSH key",
+    fingerprint: "SHA256:Jx3o1VZ0kq7vZr6S8m2E3yQ2Lw7bQb4pN5uD9cF1aKs",
+    destinationHost: "github.com",
+    destinationFingerprint: "SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU",
+    isForwarded: previewParameter.get("forwarded") === "1",
+    isTouchIDApproval: previewParameter.get("noTouchID") !== "1",
+    timeoutAt: new Date(Date.now() + 60_000).toISOString(),
+  };
+  const allApproval = approvalCount >= 1 ? [firstApproval] : [];
+  if (approvalCount >= 2) {
+    allApproval.push({ ...firstApproval, requestID: "preview-request-2", appName: "Visual Studio Code", clientName: "git", clientPath: "/usr/bin/git", keyTitle: "Deploy key" });
+  }
+  return allApproval;
+}
+
 const hasNoPreviewBrowser = previewParameter.get("browsers") === "none";
 const previewBrowserStatus: BrowserStatus = {
   allInstallation: hasNoPreviewBrowser
@@ -342,7 +367,13 @@ export const previewApi = {
     isPreviewSSHConfigured = false;
     return resolveAfterDelay(previewAgentStatus("/Users/alper/.ssh/config.hisar-backup-20261008-093100"));
   },
-  respondSSHApproval: () => resolveAfterDelay(undefined),
+  respondSSHApproval: (requestID: string, isAuthorized: boolean) => {
+    if (isAuthorized) {
+      setTimeout(() => import("./approval").then(({ removeApproval }) => removeApproval(requestID)), 900);
+    }
+    return resolveAfterDelay(undefined);
+  },
+  listAllPendingSSHApproval: () => resolveAfterDelay(listAllPreviewApproval()),
   copyField: () => resolveAfterDelay(undefined),
   copyText: () => resolveAfterDelay(undefined),
   unlockWithBiometric: () =>

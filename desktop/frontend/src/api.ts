@@ -97,7 +97,9 @@ const wailsApi = {
   getSSHAgentStatus: (): Promise<SSHAgentStatus> => AgentService.GetStatus(),
   configureSSHConfig: (): Promise<SSHAgentStatus> => AgentService.ConfigureSSHConfig(),
   removeSSHConfig: (): Promise<SSHAgentStatus> => AgentService.RemoveSSHConfig(),
-  respondSSHApproval: (requestID: string, isAllowed: boolean): Promise<void> => AgentService.RespondSSHApproval(requestID, isAllowed),
+  respondSSHApproval: (requestID: string, isAuthorized: boolean, isForAllApplication: boolean): Promise<void> =>
+    AgentService.RespondSSHApproval(requestID, isAuthorized, isForAllApplication),
+  listAllPendingSSHApproval: async (): Promise<ApprovalEvent[]> => (await AgentService.ListAllPendingSSHApproval()) ?? [],
   copyField: (vaultID: string, itemID: string, fieldName: string): Promise<void> =>
     Service.CopyField(vaultID, itemID, fieldName),
   copyText: (text: string): Promise<void> => Service.CopyText(text),

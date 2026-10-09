@@ -1,7 +1,6 @@
 // Development-only: puts the preview UI into a given screen from URL parameters, for screenshots and design review.
 import { nextTick } from "vue";
 import {
-  addSSHApproval,
   openSharing,
   openVaultRecovery,
   selectItem,
@@ -145,18 +144,6 @@ export async function applyPreviewParameter(): Promise<void> {
   if (parameter.get("settings") === "1") {
     store.isSettingsOpen = true;
     applySettingsParameter(parameter);
-  }
-  if (parameter.get("approval") === "1") {
-    addSSHApproval({
-      requestID: "preview-request",
-      clientName: "git",
-      clientPath: "/usr/bin/git",
-      keyTitle: "GitHub SSH key",
-      fingerprint: "SHA256:Jx3o1VZ0kq7vZr6S8m2E3yQ2Lw7bQb4pN5uD9cF1aKs",
-      destinationHost: "github.com",
-      destinationFingerprint: "SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU",
-      isForwarded: false,
-    });
   }
   if (parameter.get("error")) {
     store.errorMessage = parameter.get("error") ?? "";

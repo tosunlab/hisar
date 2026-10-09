@@ -2,7 +2,6 @@ import { reactive } from "vue";
 import {
   api,
   getErrorMessage,
-  type ApprovalEvent,
   type BrowserPairingRequest,
   type BrowserStatus,
   type Device,
@@ -46,7 +45,6 @@ export const store = reactive({
   isSettingsOpen: false,
   sshAgentStatus: null as SSHAgentStatus | null,
   sshAgentErrorMessage: "",
-  allPendingApproval: [] as ApprovalEvent[],
   isSharingOpen: false,
   allVaultMember: [] as VaultMember[],
   allFamilyMember: [] as FamilyMember[],
@@ -582,21 +580,6 @@ export async function configureSSHConfig(): Promise<void> {
 
 export async function removeSSHConfig(): Promise<void> {
   await changeSSHConfig(() => api.removeSSHConfig(), "Removed Hisar from the SSH config");
-}
-
-export function addSSHApproval(approval: ApprovalEvent): void {
-  if (!store.allPendingApproval.some((pending) => pending.requestID === approval.requestID)) {
-    store.allPendingApproval.push(approval);
-  }
-}
-
-export function removeSSHApproval(requestID: string): void {
-  store.allPendingApproval = store.allPendingApproval.filter((pending) => pending.requestID !== requestID);
-}
-
-export async function respondSSHApproval(requestID: string, isAllowed: boolean): Promise<void> {
-  removeSSHApproval(requestID);
-  await api.respondSSHApproval(requestID, isAllowed).catch(() => undefined);
 }
 
 export function showBrowserPairing(request: BrowserPairingRequest | null): void {

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
-import { allTestVault, createApiMock, createApprovalEvent, createItem, createSSHAgentStatus, createSSHKeyItem, createStatus } from "../testing";
+import { allTestVault, createApiMock, createItem, createSSHAgentStatus, createSSHKeyItem, createStatus } from "../testing";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
 const eventListener = vi.hoisted(() => ({ allByName: {} as Record<string, (event: { data: unknown }) => void> }));
@@ -25,13 +25,11 @@ vi.mock("@wailsio/runtime", () => ({
 }));
 
 const { store } = await import("../store");
-const App = (await import("../App.vue")).default;
 const MainView = (await import("./MainView.vue")).default;
 const SSHKeyForm = (await import("./SSHKeyForm.vue")).default;
 const ItemDetailPanel = (await import("./ItemDetailPanel.vue")).default;
 const ItemEditor = (await import("./ItemEditor.vue")).default;
 const SettingsPanel = (await import("./SettingsPanel.vue")).default;
-const SSHApprovalModal = (await import("./SSHApprovalModal.vue")).default;
 const api = apiMock.current;
 
 function resetStore(): void {
@@ -264,45 +262,5 @@ describe("Settings SSH agent section", () => {
     await wrapper.find('[data-testid="configure-ssh-config"]').trigger("click");
     await flushPromises();
     expect(wrapper.find('[data-testid="ssh-agent-section"] [role="alert"]').text()).toBe("permission denied");
-  });
-});
-
-describe("SSH approval", () => {
-  it("allows or denies the first pending request", async () => {
-    store.allPendingApproval = [createApprovalEvent(), createApprovalEvent({ requestID: "request-2", clientName: "git", destinationHost: "" })];
-    const wrapper = mount(SSHApprovalModal);
-    expect(wrapper.find("h2").text()).toBe("ssh wants to use Laptop key");
-    expect(wrapper.find('[data-testid="approval-destination"]').text()).toBe("github.com");
-    expect(wrapper.text()).toContain("1 more waiting");
-
-    await wrapper.find('[data-testid="allow-approval"]').trigger("click");
-    await flushPromises();
-    expect(api.respondSSHApproval).toHaveBeenCalledWith("request-1", true);
-    expect(wrapper.find("h2").text()).toBe("git wants to use Laptop key");
-    expect(wrapper.find('[data-testid="approval-destination"]').text()).toBe("SHA256:hostFingerprint");
-
-    await wrapper.find('[data-testid="deny-approval"]').trigger("click");
-    await flushPromises();
-    expect(api.respondSSHApproval).toHaveBeenCalledWith("request-2", false);
-    expect(wrapper.find('[role="alertdialog"]').exists()).toBe(false);
-  });
-
-  it("opens from the backend event and closes when the request times out", async () => {
-    api.getStatus.mockResolvedValue(createStatus("unlocked"));
-    api.listAllVault.mockResolvedValue([]);
-    const wrapper = mount(App);
-    await flushPromises();
-    expect(wrapper.find('[role="alertdialog"]').exists()).toBe(false);
-
-    eventListener.allByName["ssh-approval"]({ data: createApprovalEvent({ isForwarded: true }) });
-    await flushPromises();
-    expect(wrapper.find('[role="alertdialog"]').text()).toContain("ssh wants to use Laptop key");
-    expect(wrapper.text()).toContain("forwarded agent");
-
-    eventListener.allByName["ssh-approval-closed"]({ data: "request-1" });
-    await flushPromises();
-    expect(wrapper.find('[role="alertdialog"]').exists()).toBe(false);
-    expect(api.respondSSHApproval).not.toHaveBeenCalled();
-    wrapper.unmount();
   });
 });
