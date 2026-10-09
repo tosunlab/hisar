@@ -91,6 +91,7 @@ func (s *Server) handleCreateVault(c fiber.Ctx) error {
 		return err
 	}
 	s.recordAudit(c, currentSession.AccountID, currentSession.DeviceID, "vault_created", map[string]string{"vault": vault.ID, "type": vault.Type})
+	s.publishVaultsChanged(currentSession.AccountID)
 	return c.Status(fiber.StatusCreated).JSON(proto.Vault{ID: vault.ID, Type: vault.Type, EncName: vault.EncName, Role: proto.VaultOwner, WrappedKey: request.WrappedKey})
 }
 
@@ -143,6 +144,7 @@ func (s *Server) handleSetAccess(c fiber.Ctx) error {
 		return err
 	}
 	s.recordAudit(c, currentSession.AccountID, currentSession.DeviceID, "vault_access_set", map[string]string{"vault": vaultID, "account": target, "role": request.Role})
+	s.publishVaultsChanged(target)
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -167,6 +169,7 @@ func (s *Server) handleRemoveAccess(c fiber.Ctx) error {
 		return err
 	}
 	s.recordAudit(c, currentSession.AccountID, currentSession.DeviceID, "vault_access_removed", map[string]string{"vault": vaultID, "account": target})
+	s.publishVaultsChanged(target)
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -245,6 +248,7 @@ func (s *Server) handlePutItem(c fiber.Ctx) error {
 	case err != nil:
 		return err
 	}
+	s.publishVaultChanged(c.Context(), c.Params("vault"), storeItem.Seq)
 	return c.JSON(proto.PutItemResponse{Seq: storeItem.Seq})
 }
 

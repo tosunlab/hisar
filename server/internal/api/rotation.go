@@ -76,6 +76,10 @@ func (s *Server) handleRotateVault(c fiber.Ctx) error {
 	}
 
 	vaultID := c.Params("vault")
+	allPreviousMember, err := s.store.ListAllMember(c.Context(), vaultID)
+	if err != nil {
+		return err
+	}
 	err = s.store.RotateVault(c.Context(), store.VaultRotation{
 		VaultID: vaultID, EncName: request.EncName, AllAccess: allMember, AllItem: allRotatedItem, RotatedBy: currentSession.AccountID,
 		RecoveryWrappedKey: request.RecoveryWrappedKey,
@@ -89,5 +93,11 @@ func (s *Server) handleRotateVault(c fiber.Ctx) error {
 	s.recordAudit(c, currentSession.AccountID, currentSession.DeviceID, "vault_rotated", map[string]string{
 		"vault": vaultID, "members": strconv.Itoa(len(allMember)), "items": strconv.Itoa(len(allRotatedItem)),
 	})
+	allPreviousAccountID := make([]string, 0, len(allPreviousMember))
+	for _, member := range allPreviousMember {
+		allPreviousAccountID = append(allPreviousAccountID, member.AccountID)
+	}
+	s.publishVaultsChanged(allPreviousAccountID...)
+	s.publishVaultChanged(c.Context(), vaultID, 0)
 	return c.SendStatus(fiber.StatusNoContent)
 }

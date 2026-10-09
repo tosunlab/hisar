@@ -183,6 +183,10 @@ type Config struct {
 	Now                           func() time.Time
 	// OnLock runs under the service mutex whenever an unlocked session ends; it must not call the service.
 	OnLock func()
+	// OnRemoteChange runs after the backend synced a change another device made (DESIGN §7.2); the UI refreshes.
+	OnRemoteChange func()
+	// IsEventStreamDisabled skips the server's event stream, e.g. in tests whose fake server has none.
+	IsEventStreamDisabled bool
 	// FileSaver asks where to save a file; it returns "" when the user cancels.
 	FileSaver FileSaver
 }

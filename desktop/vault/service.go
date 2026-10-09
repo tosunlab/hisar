@@ -42,6 +42,7 @@ type Service struct {
 	newAccountSecretKey          *crypt.SecretKey
 	recoveredAccountSecretKey    *crypt.SecretKey
 	localCache                   *cache.Cache
+	stopEvents                   context.CancelFunc
 }
 
 // getCache opens the offline cache on first use; if it cannot be opened, even after starting it over, Hisar stays online-only.
@@ -155,6 +156,10 @@ func (s *Service) lockFromTimer() {
 
 func (s *Service) lockSession() {
 	s.newAccountSecretKey = nil
+	if s.stopEvents != nil {
+		s.stopEvents()
+		s.stopEvents = nil
+	}
 	if s.lockTimer != nil {
 		s.lockTimer.Stop()
 		s.lockTimer = nil
@@ -189,6 +194,11 @@ func (s *Service) openSession(unlockedSession *session.Session) {
 	s.name = unlockedSession.Name
 	s.allItemByVaultID = map[string][]item.Item{}
 	s.resetLockTimer()
+	if !s.config.IsEventStreamDisabled {
+		eventContext, stopEvents := context.WithCancel(context.Background())
+		s.stopEvents = stopEvents
+		go s.watchEvents(eventContext, unlockedSession.Client)
+	}
 }
 
 func (s *Service) SignIn(server, email, secretKeyText, password string) (Status, error) {

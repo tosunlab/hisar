@@ -303,5 +303,6 @@ func (s *Server) handleCompleteRecovery(c fiber.Ctx) error {
 	s.recordAudit(c, currentSession.AccountID, currentSession.DeviceID, "recovery_completed", map[string]string{
 		"account": target, "recovered": strconv.Itoa(len(allVaultKey)), "unrecoverable": strconv.Itoa(len(allUnrecoverableVaultID)),
 	})
+	s.publishVaultsChanged(target)
 	return c.JSON(proto.CompleteRecoveryResponse{AllUnrecoverableVaultID: allUnrecoverableVaultID})
 }

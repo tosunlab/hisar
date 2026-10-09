@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -42,6 +43,7 @@ type fakeAPIServer struct {
 	allPendingRecovery             []proto.PendingRecovery
 	allCompletedVaultKeyByAccount  map[string][]proto.VaultKey
 	isUnreachable                  bool
+	eventChannel                   chan string
 }
 
 func (server *fakeAPIServer) setUnreachable(isUnreachable bool) {
@@ -115,6 +117,27 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 		server.seq++
 		allItem[itemID] = proto.Item{ID: itemID, Revision: putRequest.Revision, Seq: server.seq, Deleted: putRequest.Deleted, Overview: putRequest.Overview, Details: putRequest.Details}
 		writeJSON(writer, http.StatusOK, proto.PutItemResponse{Seq: server.seq})
+	})
+	mux.HandleFunc("GET /api/v1/events", func(writer http.ResponseWriter, request *http.Request) {
+		server.mutex.Lock()
+		eventChannel := server.eventChannel
+		server.mutex.Unlock()
+		if eventChannel == nil {
+			http.NotFound(writer, request)
+			return
+		}
+		writer.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(writer, ": connected\n\n")
+		writer.(http.Flusher).Flush()
+		for {
+			select {
+			case <-request.Context().Done():
+				return
+			case eventName := <-eventChannel:
+				fmt.Fprintf(writer, "event: %s\ndata: {}\n\n", eventName)
+				writer.(http.Flusher).Flush()
+			}
+		}
 	})
 	server.addAllSharingRoute(mux)
 	server.addAllRecoveryRoute(mux)

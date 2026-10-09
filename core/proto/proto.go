@@ -177,6 +177,19 @@ type PutItemResponse struct {
 	Seq int64 `json:"seq"`
 }
 
+// Server-sent events on GET /api/v1/events (DESIGN §7.2).
+const (
+	EventVaultChanged  = "vault-changed"
+	EventVaultsChanged = "vaults-changed"
+	MaxEventSize       = 64 << 10
+)
+
+// VaultChangedEvent says a vault reached Seq; Seq is 0 when the server does not know it, and clients sync either way.
+type VaultChangedEvent struct {
+	VaultID string `json:"vaultID"`
+	Seq     int64  `json:"seq"`
+}
+
 type ConflictResponse struct {
 	Current *Item `json:"current"`
 }

@@ -256,7 +256,18 @@ GET /api/v1/vaults/{vaultID}/changes?since={seq}&limit=500
 → { items: [ {id, revision, seq, deleted, overview, details, updatedAt, updatedBy} ], nextSeq, more }
 ```
 
-The client applies changes to its local SQLite cache and stores `nextSeq`. Polling starts with a simple interval (60 s plus on focus). A WebSocket/SSE `vault-changed` notification is added later.
+The client applies changes to its local SQLite cache and stores `nextSeq`. Changes arrive in two ways: server push, and polling (every 60 s and on focus) as a fallback.
+
+**Push (server-sent events).** `GET /api/v1/events` (session required) is a `text/event-stream` that tells clients when to sync. It carries no vault data, only IDs and sequence numbers.
+
+- `event: vault-changed` with `{"vaultID", "seq"}` goes to every member of a vault after an item is written (with the new `seq`) or the key is rotated (`seq` 0).
+- `event: vaults-changed` with `{}` tells an account that its list of vaults changed: it was given or lost access, created a vault, was part of a vault before a rotation, or was recovered.
+- The server sends a `: heartbeat` comment every 25 s and re-checks the stream's session each time, so logging out or revoking the device ends the stream.
+- Each write pushes the connection's write deadline forward, so the server's 30 s response write timeout does not cut the stream.
+- An account may hold 8 streams. A subscriber whose 32-event buffer fills is closed, so the client reconnects and resyncs.
+- The broker lives in one server process, which is what a self-hosted deployment runs; several processes would need Postgres `LISTEN/NOTIFY`.
+- The desktop backend keeps one stream open while unlocked. Its client has no overall request timeout, but closes a stream that sends nothing, not even a heartbeat, for 90 s. It reconnects with backoff from 1 s to 60 s, and stops on 401.
+- On an event the backend syncs every vault incrementally (bursts collapse into one sync), so the SSH agent and the browser bridge see the change even when the window is hidden. It then emits `remote-change`, and the UI runs its background refresh.
 
 ### 7.3 Push
 

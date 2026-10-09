@@ -34,6 +34,10 @@ type Config struct {
 	TrustProxy  bool
 	// AuthBurst is how many auth requests one IP may make before being limited to one per 6 seconds.
 	AuthBurst int
+	// EventHeartbeatInterval keeps event streams alive through proxies and rechecks their session.
+	EventHeartbeatInterval time.Duration
+	// WriteTimeout limits writing one response; event streams extend it with every write.
+	WriteTimeout time.Duration
 }
 
 type Server struct {
@@ -44,6 +48,7 @@ type Server struct {
 	opaque              *opaque.Server
 	loginCache          *loginCache
 	limiter             *ipLimiter
+	events              *eventBroker
 }
 
 func CreateServer(database *store.Store, secrets *Secrets, config Config) (*Server, error) {
@@ -58,6 +63,12 @@ func CreateServer(database *store.Store, secrets *Secrets, config Config) (*Serv
 	}
 	if config.AuthBurst == 0 {
 		config.AuthBurst = 10
+	}
+	if config.EventHeartbeatInterval == 0 {
+		config.EventHeartbeatInterval = eventHeartbeatInterval
+	}
+	if config.WriteTimeout == 0 {
+		config.WriteTimeout = 30 * time.Second
 	}
 	opaqueConfiguration := pake.CreateConfig()
 	serverKeyMaterial, err := opaqueConfiguration.DecodeServerKeyMaterial(secrets.OpaqueKeyMaterial)
@@ -79,6 +90,7 @@ func CreateServer(database *store.Store, secrets *Secrets, config Config) (*Serv
 		opaque:              opaqueServer,
 		loginCache:          createLoginCache(time.Minute),
 		limiter:             createIPLimiter(rate.Every(6*time.Second), config.AuthBurst),
+		events:              createEventBroker(),
 	}, nil
 }
 
@@ -87,7 +99,7 @@ func (s *Server) CreateApp() *fiber.App {
 		AppName:      "hisar-server",
 		BodyLimit:    maxRotationBody,
 		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 30 * time.Second,
+		WriteTimeout: s.config.WriteTimeout,
 		IdleTimeout:  120 * time.Second,
 		// fasthttp reuses request buffers after a handler returns.
 		Immutable:    true,
@@ -108,6 +120,7 @@ func (s *Server) CreateApp() *fiber.App {
 	apiGroup.Post("/auth/recovery/finish", s.limitRate, s.handleRecoveryFinish)
 
 	apiGroup.Post("/auth/logout", s.requireSession, s.handleLogout)
+	apiGroup.Get("/events", s.requireSession, s.handleStreamEvents)
 	apiGroup.Get("/account", s.requireSession, s.handleGetAccount)
 	apiGroup.Get("/members", s.requireSession, s.handleListAllMember)
 	apiGroup.Post("/invites", s.requireSession, s.handleCreateInvite)

@@ -42,6 +42,12 @@ type wailsLockNotifier struct{ app *application.App }
 
 func (notifier *wailsLockNotifier) NotifyLocked() { notifier.app.Event.Emit("locked", "auto-lock") }
 
+func (notifier *wailsLockNotifier) NotifyRemoteChange() {
+	if notifier.app != nil {
+		notifier.app.Event.Emit("remote-change", nil)
+	}
+}
+
 type wailsFileSaver struct {
 	chooseSavePath func(defaultFileName string) (string, error)
 }
@@ -93,6 +99,7 @@ func main() {
 				agentServer.ClearAllApproval()
 			}
 		},
+		OnRemoteChange: lockNotifier.NotifyRemoteChange,
 	}
 	vaultService, err := vault.CreateService(vaultConfig)
 	if err != nil {

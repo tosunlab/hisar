@@ -420,6 +420,7 @@ func TestIntegrationDesktopFlow(t *testing.T) {
 
 	checkSSHAgentFlow(t, service, personalID, password)
 	checkBrowserFlow(t, service, personalID)
+	checkRemoteChangeFlow(t, service, serverURL, email, signUpResult.SecretKey, password, personalID)
 
 	if status := service.Lock(); status.State != StateLocked {
 		t.Fatalf("lock: %+v", status)
