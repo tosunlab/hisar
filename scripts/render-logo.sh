@@ -39,7 +39,7 @@ EOF
   echo "$(basename "$output") ${width}x${height}"
 }
 
-for size in 1024 512 256 128 64 32 16; do
+for size in 1024 512 256 128 64 48 32 16; do
   render_svg "$LOGO_DIR/hisar-mark.svg" "$PNG_DIR/hisar-mark-$size.png" "$size" "$size"
 done
 for width in 1008 504; do
