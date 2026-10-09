@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tryhisar/hisar/core/cache"
 	"github.com/tryhisar/hisar/core/client"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/item"
@@ -24,6 +25,7 @@ var (
 	ErrLocked    = errors.New("Hisar is locked")
 	ErrSignedOut = errors.New("not signed in")
 	ErrNotFound  = errors.New("not found")
+	ErrOffline   = errors.New("cannot reach the Hisar server; changes can be saved once you are back online")
 )
 
 type Service struct {
@@ -38,6 +40,41 @@ type Service struct {
 	name                         string
 	hasPasswordUnlockSinceLaunch bool
 	newAccountSecretKey          *crypt.SecretKey
+	localCache                   *cache.Cache
+}
+
+// getCache opens the offline cache on first use; if it cannot be opened, even after starting it over, Hisar stays online-only.
+func (s *Service) getCache() session.Cache {
+	if s.config.CachePath == "" {
+		return nil
+	}
+	if s.localCache == nil {
+		openedCache, err := cache.Open(s.config.CachePath)
+		if err != nil {
+			cache.Remove(s.config.CachePath)
+			if openedCache, err = cache.Open(s.config.CachePath); err != nil {
+				return nil
+			}
+		}
+		s.localCache = openedCache
+	}
+	return s.localCache
+}
+
+func (s *Service) removeCache() {
+	if s.localCache != nil {
+		s.localCache.Close()
+		s.localCache = nil
+	}
+	if s.config.CachePath != "" {
+		cache.Remove(s.config.CachePath)
+	}
+}
+
+func (s *Service) attachCache(ctx context.Context, unlockedSession *session.Session) {
+	if localCache := s.getCache(); localCache != nil {
+		unlockedSession.AttachCache(ctx, localCache)
+	}
 }
 
 func CreateService(config Config) (*Service, error) {
@@ -72,6 +109,7 @@ func (s *Service) buildStatus() Status {
 	switch {
 	case s.unlockedSession != nil:
 		status.State = StateUnlocked
+		status.IsOffline = s.unlockedSession.IsOffline()
 	case s.state.IsLoggedIn():
 		status.State = StateLocked
 	}
@@ -174,6 +212,7 @@ func (s *Service) SignIn(server, email, secretKeyText, password string) (Status,
 	defer s.mutex.Unlock()
 	s.lockSession()
 	s.forgetBiometricUnlock()
+	s.removeCache()
 	s.state.Reset()
 	s.state.Server, s.state.Email, s.state.AccountID, s.state.Token = server, loggedIn.Email, loggedIn.AccountID, loggedIn.Client.Token
 	if err := s.state.Save(); err != nil {
@@ -184,6 +223,7 @@ func (s *Service) SignIn(server, email, secretKeyText, password string) (Status,
 		loggedIn.Lock()
 		return Status{}, fmt.Errorf("could not save the Secret Key to the keychain: %w", err)
 	}
+	s.attachCache(ctx, loggedIn)
 	s.openSession(loggedIn)
 	s.recordPasswordUnlock()
 	return s.buildStatus(), nil
@@ -226,6 +266,7 @@ func (s *Service) SignUp(inviteLink, email, name, password string) (SignUpResult
 	defer s.mutex.Unlock()
 	s.lockSession()
 	s.forgetBiometricUnlock()
+	s.removeCache()
 	s.state.Reset()
 	s.state.Server, s.state.Email, s.state.AccountID, s.state.Token = server, strings.ToLower(strings.TrimSpace(email)), signedUp.AccountID, signedUp.Client.Token
 	if err := s.state.Save(); err != nil {
@@ -233,6 +274,7 @@ func (s *Service) SignUp(inviteLink, email, name, password string) (SignUpResult
 		return SignUpResult{}, err
 	}
 	keychainErr := s.config.SecretKeyStore.StoreSecretKey(secretKey)
+	s.attachCache(ctx, signedUp)
 	s.openSession(signedUp)
 	s.newAccountSecretKey = &secretKey
 	s.recordPasswordUnlock()
@@ -250,6 +292,7 @@ func (s *Service) Unlock(password string) (Status, error) {
 		return Status{}, ErrSignedOut
 	}
 	server, token, accountID := s.state.Server, s.state.Token, s.state.AccountID
+	accountCache := s.getCache()
 	s.mutex.Unlock()
 
 	secretKey, err := s.config.SecretKeyStore.LoadSecretKey(accountID)
@@ -263,7 +306,7 @@ func (s *Service) Unlock(password string) (Status, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	unlocked, err := session.Unlock(ctx, apiClient, passwordBytes, secretKey)
+	unlocked, err := session.Unlock(ctx, apiClient, accountCache, passwordBytes, secretKey)
 	if client.IsStatus(err, http.StatusUnauthorized) {
 		return Status{}, errors.New("this device was signed out; sign in again")
 	}
@@ -295,6 +338,7 @@ func (s *Service) SignOut() (Status, error) {
 	s.lockSession()
 	s.name = ""
 	s.forgetBiometricUnlock()
+	s.removeCache()
 	s.state.Reset()
 	return s.buildStatus(), s.state.Save()
 }
@@ -668,10 +712,8 @@ func convertError(err error) error {
 		return errors.New("you do not have permission to do that")
 	case client.IsStatus(err, http.StatusTooManyRequests):
 		return errors.New("too many attempts; wait a minute and try again")
-	}
-	var urlError *url.Error
-	if errors.As(err, &urlError) {
-		return errors.New("cannot reach the Hisar server; check your connection")
+	case client.IsUnreachable(err):
+		return ErrOffline
 	}
 	return err
 }

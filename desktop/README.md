@@ -33,11 +33,12 @@ cd desktop/frontend && npm run preview:ui
 # SSH: &item=raspberry (SSH key) &settings=1 &approval=1 (in-app approval prompt) &agent=error &sshConfigured=1
 # sharing: &sharing=1 (sharing panel; add &vault=work for the read-only view) &code=elif (security code) &remove=deniz
 # settings: &settings=1 &invite=form|1 (invite form, or a created link) &revoke=mac-mini &scroll=family|devices
+# offline: &offline=1 (offline notice)
 ```
 
 The preview backend (`src/preview.ts`) is loaded with a dynamic import behind a build-time flag; `npm run check:bundle` (run in CI) fails if it ever ends up in the production bundle.
 
-The app keeps its session in `~/Library/Application Support/hisar/desktop.json` (override with `HISAR_DESKTOP_STATE`) and the Secret Key in the macOS Keychain under the service `hisar`.
+The app keeps its session in `~/Library/Application Support/hisar/desktop.json` (override with `HISAR_DESKTOP_STATE`), the encrypted offline cache in `desktop-cache.db` next to it (override with `HISAR_DESKTOP_CACHE`), and the Secret Key in the macOS Keychain under the service `hisar`.
 
 ## Sharing, family and devices
 

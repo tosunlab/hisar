@@ -74,6 +74,11 @@ export interface Status {
     "biometricAvailable": boolean;
     "biometricEnabled": boolean;
     "biometricReady": boolean;
+
+    /**
+     * IsOffline: the server could not be reached, so vaults and items come from this device's encrypted cache.
+     */
+    "isOffline": boolean;
 }
 
 export interface VaultMember {

@@ -65,7 +65,7 @@ func (s *Service) EnableBiometricUnlock(password string) (Status, error) {
 	defer clear(passwordBytes)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	accountUnlockKey, err := session.DeriveAccountUnlockKey(ctx, s.unlockedSession.Client, passwordBytes, secretKey)
+	accountUnlockKey, err := session.DeriveAccountUnlockKey(ctx, s.unlockedSession.Client, s.unlockedSession.Cache, passwordBytes, secretKey)
 	if err != nil {
 		return Status{}, convertError(err)
 	}
@@ -103,6 +103,7 @@ func (s *Service) UnlockWithBiometric() (Status, error) {
 		return Status{}, ErrBiometricNotReady
 	}
 	server, token, accountID, sealedUnlockKey := s.state.Server, s.state.Token, s.state.AccountID, s.state.BiometricUnlock
+	accountCache := s.getCache()
 	s.mutex.Unlock()
 
 	if err := s.config.Biometric.Authenticate("unlock Hisar"); err != nil {
@@ -123,7 +124,7 @@ func (s *Service) UnlockWithBiometric() (Status, error) {
 	apiClient.Token = token
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	unlocked, err := session.UnlockWithAccountUnlockKey(ctx, apiClient, accountUnlockKey, accountID)
+	unlocked, err := session.UnlockWithAccountUnlockKey(ctx, apiClient, accountCache, accountUnlockKey, accountID)
 	if client.IsStatus(err, 401) {
 		return Status{}, errors.New("this device was signed out; sign in again")
 	}
