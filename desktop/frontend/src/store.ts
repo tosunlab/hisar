@@ -3,6 +3,8 @@ import {
   api,
   getErrorMessage,
   type ApprovalEvent,
+  type BrowserPairingRequest,
+  type BrowserStatus,
   type Device,
   type FamilyMember,
   type FamilyRole,
@@ -46,6 +48,8 @@ export const store = reactive({
   allVaultMember: [] as VaultMember[],
   allFamilyMember: [] as FamilyMember[],
   allDevice: [] as Device[],
+  browserPairing: null as BrowserPairingRequest | null,
+  browserStatus: null as BrowserStatus | null,
 });
 
 let noticeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -571,6 +575,42 @@ export function removeSSHApproval(requestID: string): void {
 export async function respondSSHApproval(requestID: string, isAllowed: boolean): Promise<void> {
   removeSSHApproval(requestID);
   await api.respondSSHApproval(requestID, isAllowed).catch(() => undefined);
+}
+
+export function showBrowserPairing(request: BrowserPairingRequest | null): void {
+  store.browserPairing = request;
+  loadBrowserStatus();
+}
+
+export async function cancelBrowserPairing(): Promise<void> {
+  store.browserPairing = null;
+  await api.cancelBrowserPairing().catch(() => undefined);
+}
+
+export async function loadBrowserStatus(): Promise<void> {
+  try {
+    store.browserStatus = await api.getBrowserStatus();
+    store.browserPairing = store.browserStatus.pendingPairing;
+  } catch {
+    store.browserStatus = null;
+  }
+}
+
+export async function removePairedBrowser(instanceID: string): Promise<boolean> {
+  const browserStatus = await runAction(() => api.removePairedBrowser(instanceID));
+  if (!browserStatus) {
+    return false;
+  }
+  store.browserStatus = browserStatus;
+  showNotice("Browser removed; it must be paired again to use Hisar");
+  return true;
+}
+
+export async function setExactHostMatch(isExactHostMatch: boolean): Promise<void> {
+  const browserStatus = await runAction(() => api.setExactHostMatch(isExactHostMatch));
+  if (browserStatus) {
+    store.browserStatus = browserStatus;
+  }
 }
 
 export async function copyText(text: string, label: string): Promise<void> {

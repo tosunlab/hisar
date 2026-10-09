@@ -14,6 +14,7 @@ import (
 	"github.com/tryhisar/hisar/core/localstate"
 	"github.com/tryhisar/hisar/core/sshagent"
 	"github.com/tryhisar/hisar/desktop/agent"
+	"github.com/tryhisar/hisar/desktop/browser"
 	"github.com/tryhisar/hisar/desktop/biometric"
 	"github.com/tryhisar/hisar/desktop/vault"
 )
@@ -97,15 +98,16 @@ func main() {
 
 	var app *application.App
 	var window *application.WebviewWindow
+	showWindow := func() {
+		app.Show()
+		window.UnMinimise()
+		window.Show()
+		window.Focus()
+	}
 	approver := agent.CreateApprover(agent.ApproverConfig{
-		Biometric: touchID,
-		Emit:      func(eventName string, data any) { app.Event.Emit(eventName, data) },
-		ShowWindow: func() {
-			app.Show()
-			window.UnMinimise()
-			window.Show()
-			window.Focus()
-		},
+		Biometric:  touchID,
+		Emit:       func(eventName string, data any) { app.Event.Emit(eventName, data) },
+		ShowWindow: showWindow,
 	})
 	agentServer = sshagent.CreateServer(vault.CreateSSHKeySource(vaultService), approver, sshagent.SystemPeerResolver{})
 	agentServer.SetAllKnownHostsPath([]string{filepath.Join(homeDirectory, ".ssh", "known_hosts"), "/etc/ssh/ssh_known_hosts"})
@@ -122,6 +124,26 @@ func main() {
 	agentContext, stopAgent := context.WithCancel(context.Background())
 	agentStopped := make(chan struct{})
 
+	browserHostPath := ""
+	if executablePath, err := os.Executable(); err == nil {
+		browserHostPath = filepath.Join(filepath.Dir(executablePath), "hisar-browser-host")
+	}
+	browserBridge := vault.CreateBrowserBridge(vaultService, vault.BrowserBridgeConfig{
+		ShowPairing: func(request *vault.BrowserPairingRequest) { app.Event.Emit("browser-pairing", request) },
+		ShowWindow:  showWindow,
+		InstallAllHostManifest: func() []browser.BrowserInstallation {
+			if _, err := os.Stat(browserHostPath); err != nil {
+				return []browser.BrowserInstallation{}
+			}
+			return browser.InstallAllHostManifest(homeDirectory, browserHostPath)
+		},
+	})
+	browserSocketPath := os.Getenv("HISAR_BROWSER_SOCKET")
+	if browserSocketPath == "" {
+		browserSocketPath = browser.GetDefaultSocketPath(homeDirectory)
+	}
+	browserServer := browser.CreateServer(vault.CreateBrowserRequestHandler(browserBridge), sshagent.SystemPeerResolver{}, browserHostPath)
+
 	app = application.New(application.Options{
 		Name:        "Hisar",
 		Description: "Self-hosted, end-to-end encrypted password manager",
@@ -129,6 +151,7 @@ func main() {
 			application.NewService(vaultService),
 			application.NewService(&TouchIDPromptService{biometric: touchID}),
 			application.NewService(agentService),
+			application.NewService(browserBridge),
 		},
 		OnShutdown: func() {
 			stopAgent()
@@ -175,6 +198,12 @@ func main() {
 		defer close(agentStopped)
 		if err := agent.Serve(agentContext, agentService); err != nil {
 			log.Printf("SSH agent on %s: %v", socketPath, err)
+		}
+	}()
+	go func() {
+		vault.InstallBrowserHostManifest(browserBridge)
+		if err := browserServer.Serve(agentContext, browserSocketPath); err != nil {
+			log.Printf("browser extension bridge on %s: %v", browserSocketPath, err)
 		}
 	}()
 
