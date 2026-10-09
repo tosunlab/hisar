@@ -109,3 +109,20 @@ func TestLoadSecretKeyExplainsRecovery(t *testing.T) {
 		t.Errorf("error should explain how to recover: %v", err)
 	}
 }
+
+func TestWriteNewPrivateFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "kit.pdf")
+	if err := writeNewPrivateFile(path, []byte("%PDF-1")); err != nil {
+		t.Fatal(err)
+	}
+	fileInfo, err := os.Stat(path)
+	if err != nil || fileInfo.Mode().Perm() != 0o600 {
+		t.Fatalf("mode: %v %v", fileInfo, err)
+	}
+	if err := writeNewPrivateFile(path, []byte("other")); err == nil {
+		t.Error("existing file replaced")
+	}
+	if content, _ := os.ReadFile(path); string(content) != "%PDF-1" {
+		t.Errorf("content changed: %q", content)
+	}
+}

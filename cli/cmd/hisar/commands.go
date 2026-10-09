@@ -64,6 +64,8 @@ func unlock(ctx context.Context) (*localstate.State, *session.Session, error) {
 		return nil, nil, err
 	}
 	unlockedSession.SeqStore = currentState
+	unlockedSession.MemberVerifier = currentState.CheckMemberPin
+	unlockedSession.RecoveryKeyVerifier = func(recoveryKEMPublicKey []byte) error { return checkRecoveryPin(currentState, recoveryKEMPublicKey) }
 	return currentState, unlockedSession, nil
 }
 
@@ -136,13 +138,17 @@ You need both to sign in on a new device; nobody can recover it for you.
 }
 
 func parseInvite(link string) (server, token string, err error) {
+	return parseLinkToken(link, "/invite/", errors.New("invalid invite link"))
+}
+
+func parseLinkToken(link, pathPrefix string, errInvalid error) (server, token string, err error) {
 	parsedURL, err := url.Parse(strings.TrimSpace(link))
 	if err != nil || (parsedURL.Scheme != "https" && parsedURL.Scheme != "http") || parsedURL.Host == "" {
-		return "", "", errors.New("invalid invite link")
+		return "", "", errInvalid
 	}
-	token, ok := strings.CutPrefix(parsedURL.Path, "/invite/")
+	token, ok := strings.CutPrefix(parsedURL.Path, pathPrefix)
 	if !ok || token == "" || strings.Contains(token, "/") {
-		return "", "", errors.New("invalid invite link")
+		return "", "", errInvalid
 	}
 	return parsedURL.Scheme + "://" + parsedURL.Host, token, nil
 }
@@ -597,7 +603,6 @@ func runUnshare(ctx context.Context, flags *flag.FlagSet, allArg []string) error
 		if err != nil {
 			return err
 		}
-		unlockedSession.MemberVerifier = currentState.CheckMemberPin
 		if err := unlockedSession.RemoveVaultMember(ctx, vault, member.AccountID); err != nil {
 			return err
 		}

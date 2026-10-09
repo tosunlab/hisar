@@ -79,6 +79,9 @@ const wailsApi = {
   cancelTouchIDPrompt: (): Promise<void> => TouchIDPromptService.CancelPrompt(),
   // hasNativeTouchIDView is true when macOS draws the Touch ID glyph over the prompt slot.
   hasNativeTouchIDView: true,
+  saveNewAccountEmergencyKit: (): Promise<string> => Service.SaveNewAccountEmergencyKit(),
+  saveEmergencyKit: (password: string): Promise<string> => Service.SaveEmergencyKit(password),
+  forgetNewAccountSecretKey: (): Promise<void> => Service.ForgetNewAccountSecretKey(),
 };
 
 // main.ts swaps in the preview backend before mounting when VITE_PREVIEW is set.

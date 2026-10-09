@@ -16,6 +16,9 @@ type Vault struct {
 	CreatedAt  time.Time
 	Role       string
 	WrappedKey []byte
+	// Recoverable: the vault has a vault_recovery row. RecoveryOptOut: its owner opted out.
+	Recoverable    bool
+	RecoveryOptOut bool
 }
 
 type Member struct {
@@ -25,7 +28,8 @@ type Member struct {
 	GrantedBy  string
 }
 
-func (s *Store) CreateVault(ctx context.Context, vault *Vault, ownerWrappedKey []byte) error {
+// CreateVault also stores recoveryWrappedKey when it is not nil.
+func (s *Store) CreateVault(ctx context.Context, vault *Vault, ownerWrappedKey, recoveryWrappedKey []byte) error {
 	return s.runInTransaction(ctx, func(transaction pgx.Tx) error {
 		_, err := transaction.Exec(ctx,
 			`INSERT INTO vaults (id, type, enc_name, created_by) VALUES ($1, $2, $3, $4)`,
@@ -39,23 +43,33 @@ func (s *Store) CreateVault(ctx context.Context, vault *Vault, ownerWrappedKey [
 		_, err = transaction.Exec(ctx,
 			`INSERT INTO vault_access (vault_id, account_id, wrapped_key, role, granted_by) VALUES ($1, $2, $3, 'owner', $2)`,
 			vault.ID, vault.CreatedBy, ownerWrappedKey)
+		if err != nil || recoveryWrappedKey == nil {
+			return err
+		}
+		_, err = transaction.Exec(ctx, `INSERT INTO vault_recovery (vault_id, wrapped_key) VALUES ($1, $2)`, vault.ID, recoveryWrappedKey)
 		return err
 	})
 }
 
 func (s *Store) ListAllVault(ctx context.Context, accountID string) ([]Vault, error) {
 	allRow, err := s.pool.Query(ctx, `
-		SELECT v.id, v.type, v.enc_name, v.seq, v.created_by, v.created_at, a.role, a.wrapped_key
-		FROM vaults v JOIN vault_access a ON a.vault_id = v.id
+		SELECT v.id, v.type, v.enc_name, v.seq, v.created_by, v.created_at, a.role, a.wrapped_key, r.vault_id IS NOT NULL, v.recovery_opt_out
+		FROM vaults v JOIN vault_access a ON a.vault_id = v.id LEFT JOIN vault_recovery r ON r.vault_id = v.id
 		WHERE a.account_id = $1 ORDER BY v.created_at`, accountID)
 	if err != nil {
 		return nil, err
 	}
 	return pgx.CollectRows(allRow, func(row pgx.CollectableRow) (Vault, error) {
 		var vault Vault
-		err := row.Scan(&vault.ID, &vault.Type, &vault.EncName, &vault.Seq, &vault.CreatedBy, &vault.CreatedAt, &vault.Role, &vault.WrappedKey)
+		err := row.Scan(&vault.ID, &vault.Type, &vault.EncName, &vault.Seq, &vault.CreatedBy, &vault.CreatedAt, &vault.Role, &vault.WrappedKey, &vault.Recoverable, &vault.RecoveryOptOut)
 		return vault, err
 	})
+}
+
+func (s *Store) GetVaultType(ctx context.Context, vaultID string) (string, error) {
+	var vaultType string
+	err := s.pool.QueryRow(ctx, `SELECT type FROM vaults WHERE id = $1`, vaultID).Scan(&vaultType)
+	return vaultType, convertNoRowsToNotFound(err)
 }
 
 func (s *Store) GetVaultRole(ctx context.Context, vaultID, accountID string) (string, error) {

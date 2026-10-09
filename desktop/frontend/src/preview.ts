@@ -293,6 +293,10 @@ export const previewApi = {
   clearTouchIDPromptFrame: () => Promise.resolve(),
   cancelTouchIDPrompt: () => Promise.resolve(),
   hasNativeTouchIDView: false,
+  saveNewAccountEmergencyKit: () => resolveAfterDelay("/Users/you/Documents/Hisar Emergency Kit.pdf"),
+  saveEmergencyKit: (password: string) =>
+    password.length < 4 ? Promise.reject(new Error("incorrect email, master password or Secret Key")) : resolveAfterDelay("/Users/you/Documents/Hisar Emergency Kit.pdf"),
+  forgetNewAccountSecretKey: () => Promise.resolve(),
   openURL: (link: string) => {
     window.open(link, "_blank", "noopener");
     return Promise.resolve();

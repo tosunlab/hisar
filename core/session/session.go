@@ -43,6 +43,8 @@ type Session struct {
 	SeqStore  SeqStore
 	// MemberVerifier, when set, is asked to accept each member a vault key is wrapped for (e.g. key pinning).
 	MemberVerifier func(member *proto.Member) error
+	// RecoveryKeyVerifier, when set, is asked to accept the recovery KEM public key before anything is wrapped to it.
+	RecoveryKeyVerifier func(recoveryKEMPublicKey []byte) error
 }
 
 type Vault struct {
@@ -51,6 +53,9 @@ type Vault struct {
 	Name string
 	Role string
 	Key  []byte
+	// Recoverable: the vault key is wrapped to the recovery keyset. RecoveryOptOut: its owner opted out.
+	Recoverable    bool
+	RecoveryOptOut bool
 }
 
 func (s *Session) Lock() {
@@ -60,69 +65,102 @@ func (s *Session) Lock() {
 	}
 }
 
-func SignUp(ctx context.Context, apiClient *client.Client, invite, email, name string, password []byte, device proto.DeviceInfo) (*Session, crypt.SecretKey, error) {
-	accountID := crypt.GenerateAccountID()
+// accountCredential is what signup and recovery generate: a new Secret Key, salt, keyset and OPAQUE record.
+type accountCredential struct {
+	secretKey       crypt.SecretKey
+	salt            []byte
+	argon2Params    crypt.Argon2Params
+	keyset          *crypt.Keyset
+	encryptedKeyset []byte
+	record          []byte
+}
+
+// createAccountCredential runs OPAQUE registration through register, which sends the request and returns the server's response.
+func createAccountCredential(accountID string, password []byte, register func(registrationRequest []byte) ([]byte, error)) (*accountCredential, error) {
 	secretKey, err := crypt.GenerateSecretKey(accountID)
 	if err != nil {
-		return nil, secretKey, err
+		return nil, err
 	}
-	salt := crypt.GenerateSalt()
-	argon2Params := crypt.DefaultArgon2Params
-	derivedKeys, err := crypt.DeriveAllKey(password, salt, argon2Params, secretKey)
+	credential := &accountCredential{secretKey: secretKey, salt: crypt.GenerateSalt(), argon2Params: crypt.DefaultArgon2Params}
+	derivedKeys, err := crypt.DeriveAllKey(password, credential.salt, credential.argon2Params, secretKey)
 	if err != nil {
-		return nil, secretKey, err
+		return nil, err
 	}
 	defer derivedKeys.Wipe()
 
-	keyset, err := crypt.GenerateKeyset()
-	if err != nil {
-		return nil, secretKey, err
+	if credential.keyset, err = crypt.GenerateKeyset(); err != nil {
+		return nil, err
 	}
-	encryptedKeyset, err := keyset.Encrypt(derivedKeys.AccountUnlockKey, accountID)
-	if err != nil {
-		return nil, secretKey, err
+	if err := credential.registerOpaque(derivedKeys, accountID, register); err != nil {
+		credential.keyset.Wipe()
+		return nil, err
 	}
+	return credential, nil
+}
 
+func (credential *accountCredential) registerOpaque(derivedKeys *crypt.DerivedKeys, accountID string, register func([]byte) ([]byte, error)) error {
+	var err error
+	if credential.encryptedKeyset, err = credential.keyset.Encrypt(derivedKeys.AccountUnlockKey, accountID); err != nil {
+		return err
+	}
 	opaqueClient, err := pake.CreateConfig().Client()
 	if err != nil {
-		return nil, secretKey, err
+		return err
 	}
+	defer opaqueClient.ClearState()
 	registrationRequest, err := opaqueClient.RegistrationInit(derivedKeys.AuthKey)
 	if err != nil {
-		return nil, secretKey, err
+		return err
 	}
-	startResponse, err := apiClient.StartRegistration(ctx, &proto.RegisterStartRequest{Invite: invite, Email: email, AccountID: accountID, Request: registrationRequest.Serialize()})
+	encodedResponse, err := register(registrationRequest.Serialize())
 	if err != nil {
-		return nil, secretKey, err
+		return err
 	}
-	registrationResponse, err := opaqueClient.Deserialize.RegistrationResponse(startResponse.Response)
+	registrationResponse, err := opaqueClient.Deserialize.RegistrationResponse(encodedResponse)
 	if err != nil {
-		return nil, secretKey, err
+		return err
 	}
 	record, _, err := opaqueClient.RegistrationFinalize(registrationResponse, []byte(accountID), pake.ServerIdentity)
 	if err != nil {
-		return nil, secretKey, err
+		return err
 	}
-	opaqueClient.ClearState()
+	credential.record = record.Serialize()
+	return nil
+}
+
+func SignUp(ctx context.Context, apiClient *client.Client, invite, email, name string, password []byte, device proto.DeviceInfo) (*Session, crypt.SecretKey, error) {
+	accountID := crypt.GenerateAccountID()
+	credential, err := createAccountCredential(accountID, password, func(registrationRequest []byte) ([]byte, error) {
+		startResponse, err := apiClient.StartRegistration(ctx, &proto.RegisterStartRequest{Invite: invite, Email: email, AccountID: accountID, Request: registrationRequest})
+		if err != nil {
+			return nil, err
+		}
+		return startResponse.Response, nil
+	})
+	if err != nil {
+		return nil, crypt.SecretKey{}, err
+	}
+	secretKey := credential.secretKey
 
 	sessionResponse, err := apiClient.FinishRegistration(ctx, &proto.RegisterFinishRequest{
 		Invite:     invite,
 		Email:      email,
 		Name:       name,
 		AccountID:  accountID,
-		Record:     record.Serialize(),
-		Salt:       salt,
-		Argon2:     argon2Params,
-		EncKeyset:  encryptedKeyset,
-		PublicKeys: keyset.GetAllPublicKey(accountID),
+		Record:     credential.record,
+		Salt:       credential.salt,
+		Argon2:     credential.argon2Params,
+		EncKeyset:  credential.encryptedKeyset,
+		PublicKeys: credential.keyset.GetAllPublicKey(accountID),
 		Device:     device,
 	})
 	if err != nil {
+		credential.keyset.Wipe()
 		return nil, secretKey, err
 	}
 	apiClient.Token = sessionResponse.Token
 
-	newSession := &Session{Client: apiClient, AccountID: accountID, Email: email, Name: name, Keyset: keyset}
+	newSession := &Session{Client: apiClient, AccountID: accountID, Email: email, Name: name, Keyset: credential.keyset}
 	if _, err := newSession.CreateVault(ctx, "Personal", proto.VaultPersonal); err != nil {
 		return nil, secretKey, fmt.Errorf("create personal vault: %w", err)
 	}
@@ -250,10 +288,21 @@ func (s *Session) CreateVault(ctx context.Context, name, vaultType string) (*Vau
 	if err != nil {
 		return nil, err
 	}
-	if err := s.Client.CreateVault(ctx, &proto.CreateVaultRequest{ID: vaultID, Type: vaultType, EncName: encryptedName, WrappedKey: wrappedKey}); err != nil {
+	request := &proto.CreateVaultRequest{ID: vaultID, Type: vaultType, EncName: encryptedName, WrappedKey: wrappedKey}
+	recoveryPublicKeys, err := s.GetRecoveryPublicKey(ctx)
+	switch {
+	case errors.Is(err, ErrNoRecoveryKeyset):
+	case err != nil:
+		return nil, err
+	default:
+		if request.RecoveryWrappedKey, err = crypt.WrapVaultKey(recoveryPublicKeys.KEM, vaultID, crypt.RecoveryRecipientID, vaultKey); err != nil {
+			return nil, err
+		}
+	}
+	if err := s.Client.CreateVault(ctx, request); err != nil {
 		return nil, err
 	}
-	return &Vault{ID: vaultID, Type: vaultType, Name: name, Role: proto.VaultOwner, Key: vaultKey}, nil
+	return &Vault{ID: vaultID, Type: vaultType, Name: name, Role: proto.VaultOwner, Key: vaultKey, Recoverable: request.RecoveryWrappedKey != nil}, nil
 }
 
 func (s *Session) ListAllVault(ctx context.Context) ([]Vault, error) {
@@ -271,7 +320,10 @@ func (s *Session) ListAllVault(ctx context.Context) ([]Vault, error) {
 		if err != nil {
 			return nil, fmt.Errorf("vault %s: %w", protoVault.ID, err)
 		}
-		allVault = append(allVault, Vault{ID: protoVault.ID, Type: protoVault.Type, Name: string(name), Role: protoVault.Role, Key: vaultKey})
+		allVault = append(allVault, Vault{
+			ID: protoVault.ID, Type: protoVault.Type, Name: string(name), Role: protoVault.Role, Key: vaultKey,
+			Recoverable: protoVault.Recoverable, RecoveryOptOut: protoVault.RecoveryOptOut,
+		})
 	}
 	return allVault, nil
 }

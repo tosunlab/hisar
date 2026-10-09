@@ -32,7 +32,7 @@ func (s *Server) handleRotateVault(c fiber.Ctx) error {
 	errInvalidRotation := createAPIError(fiber.StatusBadRequest, "invalid rotation")
 	if len(request.EncName) == 0 || len(request.EncName) > maxEncName ||
 		len(request.AllAccess) == 0 || len(request.AllAccess) > maxRotatedAccessCount ||
-		len(request.AllItem) > maxRotatedItemCount {
+		len(request.AllItem) > maxRotatedItemCount || len(request.RecoveryWrappedKey) > maxWrappedKey {
 		return errInvalidRotation
 	}
 
@@ -78,6 +78,7 @@ func (s *Server) handleRotateVault(c fiber.Ctx) error {
 	vaultID := c.Params("vault")
 	err = s.store.RotateVault(c.Context(), store.VaultRotation{
 		VaultID: vaultID, EncName: request.EncName, AllAccess: allMember, AllItem: allRotatedItem, RotatedBy: currentSession.AccountID,
+		RecoveryWrappedKey: request.RecoveryWrappedKey,
 	})
 	if errors.Is(err, store.ErrConflict) {
 		return createAPIError(fiber.StatusConflict, "the vault changed during the key rotation; try again")

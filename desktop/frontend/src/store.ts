@@ -123,6 +123,23 @@ export async function signUp(inviteLink: string, email: string, name: string, pa
 
 export function confirmSecretKeySaved(): void {
   store.pendingSecretKey = "";
+  api.forgetNewAccountSecretKey().catch(() => undefined);
+}
+
+function showSavedNotice(savedPath: string | undefined): boolean {
+  if (!savedPath) {
+    return false;
+  }
+  showNotice(`Emergency Kit saved to ${savedPath.split("/").pop()}`);
+  return true;
+}
+
+export async function saveNewAccountEmergencyKit(): Promise<boolean> {
+  return showSavedNotice(await runAction(() => api.saveNewAccountEmergencyKit()));
+}
+
+export async function saveEmergencyKit(password: string): Promise<boolean> {
+  return showSavedNotice(await runAction(() => api.saveEmergencyKit(password)));
 }
 
 export async function unlock(password: string): Promise<boolean> {

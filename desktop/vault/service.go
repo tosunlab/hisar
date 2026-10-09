@@ -37,6 +37,7 @@ type Service struct {
 	clipboardClearTimer          *time.Timer
 	name                         string
 	hasPasswordUnlockSinceLaunch bool
+	newAccountSecretKey          *crypt.SecretKey
 }
 
 func CreateService(config Config) (*Service, error) {
@@ -114,6 +115,7 @@ func (s *Service) lockFromTimer() {
 }
 
 func (s *Service) lockSession() {
+	s.newAccountSecretKey = nil
 	if s.lockTimer != nil {
 		s.lockTimer.Stop()
 		s.lockTimer = nil
@@ -232,6 +234,7 @@ func (s *Service) SignUp(inviteLink, email, name, password string) (SignUpResult
 	}
 	keychainErr := s.config.SecretKeyStore.StoreSecretKey(secretKey)
 	s.openSession(signedUp)
+	s.newAccountSecretKey = &secretKey
 	s.recordPasswordUnlock()
 	result := SignUpResult{Status: s.buildStatus(), SecretKey: secretKey.Encode()}
 	if keychainErr != nil {

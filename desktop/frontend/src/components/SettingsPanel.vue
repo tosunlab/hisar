@@ -11,6 +11,7 @@ import {
   loadSSHAgentStatus,
   removeSSHConfig,
   revokeDevice,
+  saveEmergencyKit,
   signOut,
   store,
 } from "../store";
@@ -59,6 +60,16 @@ async function confirmRevoke(device: Device): Promise<void> {
   if (await revokeDevice(device)) {
     revokingDeviceID.value = "";
   }
+}
+
+const isSavingEmergencyKit = ref(false);
+const emergencyKitPassword = ref("");
+
+async function submitSaveEmergencyKit(): Promise<void> {
+  if (await saveEmergencyKit(emergencyKitPassword.value)) {
+    isSavingEmergencyKit.value = false;
+  }
+  emergencyKitPassword.value = "";
 }
 
 function closeSettings(): void {
@@ -150,6 +161,28 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
             <p class="muted">Hisar locks after 10 minutes without activity. Copied values are cleared after 90 seconds.</p>
           </div>
         </div>
+        <div class="setting">
+          <span class="setting-icon"><AppIcon name="note" /></span>
+          <div class="setting-text">
+            <strong>Emergency Kit</strong>
+            <p class="muted">A printable PDF with your sign-in address, email and Secret Key, for signing in on a new device.</p>
+          </div>
+          <button v-if="!isSavingEmergencyKit" data-testid="save-emergency-kit" @click="isSavingEmergencyKit = true">Save PDF</button>
+        </div>
+        <form v-if="isSavingEmergencyKit" class="enable-form" @submit.prevent="submitSaveEmergencyKit">
+          <input
+            v-model="emergencyKitPassword"
+            name="emergencyKitPassword"
+            type="password"
+            aria-label="Master password"
+            placeholder="Enter your master password to save the Emergency Kit"
+            autocomplete="current-password"
+            autofocus
+            required
+          />
+          <button type="button" class="ghost" @click="isSavingEmergencyKit = false">Cancel</button>
+          <button class="primary" type="submit" :disabled="store.isBusy">Save</button>
+        </form>
       </section>
 
       <section data-testid="family-section">

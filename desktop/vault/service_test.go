@@ -84,6 +84,14 @@ func (store *memorySecretKeyStore) DeleteSecretKey(accountID string) error {
 	return nil
 }
 
+type fakeFileSaver struct {
+	path string
+}
+
+func (fileSaver *fakeFileSaver) ChooseSavePath(defaultFileName string) (string, error) {
+	return fileSaver.path, nil
+}
+
 type fakeBiometric struct {
 	mutex             sync.Mutex
 	authenticateError error
@@ -145,6 +153,7 @@ func createTestService(t *testing.T, statePath string, secretKeyStore SecretKeyS
 		SecretKeyStore:      secretKeyStore,
 		ClipboardClearAfter: 100 * time.Millisecond,
 		Biometric:           createFakeBiometric(),
+		FileSaver:           &fakeFileSaver{},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -335,6 +344,34 @@ func TestIntegrationDesktopFlow(t *testing.T) {
 	}
 	if signUpResult.Status.State != StateUnlocked || !strings.HasPrefix(signUpResult.SecretKey, "H1-") {
 		t.Fatalf("sign up: %+v", signUpResult)
+	}
+
+	fileSaver := service.config.FileSaver.(*fakeFileSaver)
+	fileSaver.path = filepath.Join(t.TempDir(), "kit.pdf")
+	if savedPath, err := service.SaveNewAccountEmergencyKit(); err != nil || savedPath != fileSaver.path {
+		t.Fatalf("save new account kit: %q %v", savedPath, err)
+	}
+	if document, err := os.ReadFile(fileSaver.path); err != nil || !strings.HasPrefix(string(document), "%PDF-") {
+		t.Errorf("saved kit is not a PDF: %v", err)
+	}
+	if fileInfo, _ := os.Stat(fileSaver.path); fileInfo.Mode().Perm() != 0o600 {
+		t.Errorf("kit mode = %o", fileInfo.Mode().Perm())
+	}
+	cancelledPath := fileSaver.path
+	fileSaver.path = ""
+	if savedPath, err := service.SaveNewAccountEmergencyKit(); err != nil || savedPath != "" {
+		t.Errorf("cancelled save: %q %v", savedPath, err)
+	}
+	fileSaver.path = cancelledPath
+	if _, err := service.SaveEmergencyKit("wrong password"); err == nil {
+		t.Error("kit saved with a wrong master password")
+	}
+	if _, err := service.SaveEmergencyKit(password); err != nil {
+		t.Errorf("save kit from settings: %v", err)
+	}
+	service.ForgetNewAccountSecretKey()
+	if _, err := service.SaveNewAccountEmergencyKit(); !errors.Is(err, ErrNoNewAccountSecretKey) {
+		t.Errorf("new account kit after confirming: %v", err)
 	}
 
 	allVault, err := service.ListAllVault()

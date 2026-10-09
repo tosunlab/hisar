@@ -46,6 +46,13 @@ export function EnableBiometricUnlock(password: string): $CancellablePromise<$mo
     return $Call.ByID(2915723006, password);
 }
 
+/**
+ * ForgetNewAccountSecretKey drops the sign-up Secret Key once the user confirmed saving it.
+ */
+export function ForgetNewAccountSecretKey(): $CancellablePromise<void> {
+    return $Call.ByID(4014028838);
+}
+
 export function GeneratePassword(config: $models.PasswordConfig): $CancellablePromise<string> {
     return $Call.ByID(3064323257, config);
 }
@@ -137,10 +144,24 @@ export function RevokeDevice(deviceID: string): $CancellablePromise<void> {
 }
 
 /**
+ * SaveEmergencyKit checks the master password before exporting the Secret Key.
+ */
+export function SaveEmergencyKit(password: string): $CancellablePromise<string> {
+    return $Call.ByID(916347077, password);
+}
+
+/**
  * SaveItem creates the item when detail.ID is empty, otherwise updates it based on detail.Revision.
  */
 export function SaveItem(vaultID: string, detail: $models.ItemDetail): $CancellablePromise<$models.ItemDetail> {
     return $Call.ByID(2941695129, vaultID, detail);
+}
+
+/**
+ * SaveNewAccountEmergencyKit saves the kit right after sign up; it returns the saved path, or "" when cancelled.
+ */
+export function SaveNewAccountEmergencyKit(): $CancellablePromise<string> {
+    return $Call.ByID(1236938624);
 }
 
 /**
