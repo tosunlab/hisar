@@ -29,7 +29,7 @@ const destination = computed(() => approval.value?.destinationHost || approval.v
         </div>
       </dl>
       <p v-if="approval.isForwarded" class="warning">This request comes through a forwarded agent on another machine.</p>
-      <p class="muted note">Allowing lets this program use the key until Hisar locks.</p>
+      <p class="muted note">Allowing lets this program use the key for an hour, or until Hisar locks.</p>
       <div class="row actions">
         <span v-if="store.allPendingApproval.length > 1" class="muted">{{ store.allPendingApproval.length - 1 }} more waiting</span>
         <div class="spacer"></div>

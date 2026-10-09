@@ -366,6 +366,42 @@ func TestApprovalCachedPerClientPath(t *testing.T) {
 	connect(3)
 }
 
+func TestApprovalExpiresAfterLifetime(t *testing.T) {
+	key := createTestKey(t, "id", "Work", getAllTestMaterial()["ed25519"])
+	fixture := startAgent(t, []Key{key})
+	address := startSSHServer(t, getPublicKey(t, key))
+	var clockMutex sync.Mutex
+	currentTime := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	fixture.server.mutex.Lock()
+	fixture.server.getNow = func() time.Time {
+		clockMutex.Lock()
+		defer clockMutex.Unlock()
+		return currentTime
+	}
+	fixture.server.mutex.Unlock()
+	advanceClock := func(duration time.Duration) {
+		clockMutex.Lock()
+		defer clockMutex.Unlock()
+		currentTime = currentTime.Add(duration)
+	}
+	connect := func(wantCount int) {
+		t.Helper()
+		if err := fixture.connectSSH(t, address); err != nil {
+			t.Fatalf("ssh auth failed: %v", err)
+		}
+		if count := fixture.approver.countRequest(); count != wantCount {
+			t.Fatalf("approval count = %d, want %d", count, wantCount)
+		}
+	}
+	connect(1)
+	advanceClock(DefaultApprovalLifetime - time.Minute)
+	connect(1)
+	advanceClock(2 * time.Minute)
+	connect(2)
+	advanceClock(30 * time.Minute)
+	connect(2)
+}
+
 func TestAlwaysAskKeyPromptsEveryTime(t *testing.T) {
 	allMaterial := getAllTestMaterial()
 	alwaysAskKey := createTestKey(t, "always", "Production", allMaterial["ed25519"])

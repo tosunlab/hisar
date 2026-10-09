@@ -352,8 +352,8 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
           <p class="muted">
             {{
               store.sshAgentStatus.isTouchIDApproval
-                ? "Each new program that uses a key asks for Touch ID. Approvals last until Hisar locks."
-                : "Each new program that uses a key asks for your approval in Hisar. Approvals last until Hisar locks."
+                ? "Each new program that uses a key asks for Touch ID. Approvals last for an hour, or until Hisar locks."
+                : "Each new program that uses a key asks for your approval in Hisar. Approvals last for an hour, or until Hisar locks."
             }}
           </p>
         </div>
