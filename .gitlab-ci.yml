@@ -17,7 +17,8 @@ default:
 variables:
   GO_VERSION: "1.26.0"
   GOPATH: $CI_PROJECT_DIR/.go
-  GOFLAGS: -buildvcs=false
+  # -modcacherw: shell runners reuse the build folder, and a read-only module cache stops GitLab from cleaning it.
+  GOFLAGS: -buildvcs=false -modcacherw
   npm_config_cache: $CI_PROJECT_DIR/.npm
   POSTGRES_PASSWORD: hisar
   POSTGRES_DB: hisar
@@ -143,6 +144,9 @@ extension:
   variables:
     GOPATH: $CI_PROJECT_DIR/.go
   before_script:
+    # The runner service has no login shell, so Node installed with nvm is not on its PATH.
+    - if ! command -v npm >/dev/null && [ -s "$HOME/.nvm/nvm.sh" ]; then . "$HOME/.nvm/nvm.sh" && nvm use --silent default; fi
+    - command -v npm >/dev/null || { echo "Node is not on the runner's PATH; install it with Homebrew or nvm"; exit 1; }
     - export PATH=$GOPATH/bin:$PATH
 
 desktop-macos:
