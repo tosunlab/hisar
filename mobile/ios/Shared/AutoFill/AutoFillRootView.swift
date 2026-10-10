@@ -9,7 +9,7 @@ struct AutoFillRootView: View {
                 Theme.background.ignoresSafeArea()
                 content
             }
-            .navigationTitle(model.screen == .list ? "Hisar" : "")
+            .navigationTitle(model.screen == .list || model.screen == .passkeyRegistration ? "Hisar" : "")
             .navigationBarTitleDisplayMode(.inline)
             .applyNavigationBarTheme()
             .toolbar {
@@ -38,6 +38,8 @@ struct AutoFillRootView: View {
             AutoFillLockView(model: model)
         case .list:
             AutoFillListView(model: model)
+        case .passkeyRegistration:
+            AutoFillPasskeyRegistrationView(model: model)
         }
     }
 }
@@ -72,7 +74,7 @@ private struct AutoFillLockView: View {
         ScrollView {
             VStack(spacing: 16) {
                 if !model.serviceName.isEmpty {
-                    Text(model.requestKind == .oneTimeCode ? "Fill a one-time code for \(model.serviceName)" : "Fill a login for \(model.serviceName)")
+                    Text(requestDescription)
                         .font(.subheadline)
                         .foregroundStyle(Theme.textMuted)
                         .padding(.top, 24)
@@ -98,6 +100,15 @@ private struct AutoFillLockView: View {
     }
 }
 
+extension AutoFillLockView {
+    fileprivate var requestDescription: String {
+        if model.passkeyRegistrationRequest != nil { return "Save a passkey for \(model.serviceName)" }
+        if model.requestKind == .oneTimeCode { return "Fill a one-time code for \(model.serviceName)" }
+        if model.passkeyAssertionRequest != nil && model.allServiceIdentifier.isEmpty { return "Sign in with a passkey for \(model.serviceName)" }
+        return "Fill a login for \(model.serviceName)"
+    }
+}
+
 private struct AutoFillListView: View {
     @ObservedObject var model: AutoFillModel
 
@@ -108,6 +119,16 @@ private struct AutoFillListView: View {
                     ErrorBanner(message: errorMessage)
                         .listRowInsets(EdgeInsets())
                         .listRowBackground(Color.clear)
+                }
+            }
+            if !model.allVisibleMatchingPasskey.isEmpty, let request = model.passkeyAssertionRequest {
+                Section {
+                    ForEach(model.allVisibleMatchingPasskey) { passkey in
+                        buildPasskeyRow(passkey)
+                    }
+                } header: {
+                    Text("Passkeys for \(request.relyingPartyID)")
+                        .textCase(nil)
                 }
             }
             Section {
@@ -158,6 +179,30 @@ private struct AutoFillListView: View {
         }
     }
 
+    private func buildPasskeyRow(_ passkey: StoredPasskey) -> some View {
+        Button {
+            Task { await model.selectPasskey(passkey) }
+        } label: {
+            HStack(spacing: 14) {
+                ItemIcon(item: ItemDetail(title: passkey.title))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(passkey.title)
+                        .foregroundStyle(Theme.text)
+                    Text(passkey.userName.isEmpty ? passkey.userDisplayName : passkey.userName)
+                        .font(.caption)
+                        .foregroundStyle(Theme.textMuted)
+                }
+                Spacer()
+                Image(systemName: "person.badge.key")
+                    .foregroundStyle(Theme.textMuted)
+                    .accessibilityLabel("Passkey")
+            }
+            .contentShape(Rectangle())
+        }
+        .listRowBackground(Theme.surface)
+        .accessibilityIdentifier("autofill-passkey-\(passkey.title)")
+    }
+
     private func buildLoginRow(_ login: LoginMatch) -> some View {
         Button {
             Task { await model.select(login) }
@@ -182,5 +227,117 @@ private struct AutoFillListView: View {
         }
         .listRowBackground(Theme.surface)
         .accessibilityIdentifier("autofill-login-\(login.title)")
+    }
+}
+
+private struct AutoFillPasskeyRegistrationView: View {
+    @ObservedObject var model: AutoFillModel
+
+    var body: some View {
+        List {
+            Section {
+                VStack(spacing: 10) {
+                    Image(systemName: "person.badge.key")
+                        .font(.system(size: 36))
+                        .foregroundStyle(Theme.textSecondary)
+                    Text("Save passkey")
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(Theme.text)
+                    if let request = model.passkeyRegistrationRequest {
+                        Text(request.userName.isEmpty ? request.relyingPartyID : "\(request.userName) on \(request.relyingPartyID)")
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(Theme.textMuted)
+                            .accessibilityIdentifier("autofill-passkey-account")
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .listRowBackground(Color.clear)
+            }
+            if let errorMessage = model.errorMessage {
+                Section {
+                    ErrorBanner(message: errorMessage)
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
+                }
+            }
+            if let options = model.passkeyRegistrationOptions {
+                if options.isExcluded {
+                    buildExcludedSection()
+                } else {
+                    buildLoginSection(options: options)
+                    Section {
+                        Button {
+                            Task { await model.savePasskey() }
+                        } label: {
+                            Text("Save passkey")
+                                .font(.body.weight(.semibold))
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(PrimaryButtonStyle())
+                        .listRowInsets(EdgeInsets())
+                        .listRowBackground(Color.clear)
+                        .accessibilityIdentifier("autofill-save-passkey")
+                    }
+                }
+            } else {
+                ProgressView().tint(Theme.textMuted).frame(maxWidth: .infinity).listRowBackground(Color.clear)
+            }
+        }
+        .listStyle(.insetGrouped)
+        .applyListTheme()
+        .disabled(model.isBusy)
+    }
+
+    private func buildExcludedSection() -> some View {
+        Section {
+            Text("Hisar already has a passkey for this account. Sign in with it instead.")
+                .foregroundStyle(Theme.text)
+                .listRowBackground(Theme.surface)
+                .accessibilityIdentifier("autofill-passkey-excluded")
+            Button("OK") { model.rejectExcludedPasskeyRegistration() }
+                .listRowBackground(Theme.surface)
+                .accessibilityIdentifier("autofill-passkey-excluded-ok")
+        }
+    }
+
+    private func buildLoginSection(options: PasskeyRegistrationOptions) -> some View {
+        Section {
+            ForEach(options.allLogin) { login in
+                buildChoiceRow(title: login.title, subtitle: login.username.isEmpty ? login.vaultName : "\(login.username) · \(login.vaultName)", loginID: login.id)
+                    .accessibilityIdentifier("autofill-passkey-login-\(login.title)")
+            }
+            buildChoiceRow(title: "New login", subtitle: "In your Personal vault", loginID: nil)
+                .accessibilityIdentifier("autofill-passkey-new-login")
+        } header: {
+            Text("Save to")
+                .textCase(nil)
+        }
+    }
+
+    private func buildChoiceRow(title: String, subtitle: String, loginID: String?) -> some View {
+        Button {
+            model.selectedRegistrationLoginID = loginID
+        } label: {
+            HStack(spacing: 14) {
+                ItemIcon(item: ItemDetail(title: title))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .foregroundStyle(Theme.text)
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundStyle(Theme.textMuted)
+                }
+                Spacer()
+                if model.selectedRegistrationLoginID == loginID {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(Theme.primary)
+                        .accessibilityLabel("Selected")
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .listRowBackground(Theme.surface)
+        .accessibilityAddTraits(model.selectedRegistrationLoginID == loginID ? .isSelected : [])
     }
 }

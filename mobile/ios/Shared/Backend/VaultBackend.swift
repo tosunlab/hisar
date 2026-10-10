@@ -22,6 +22,12 @@ protocol VaultBackend: AnyObject {
     func generatePassword(length: Int, isDigitIncluded: Bool, isSymbolIncluded: Bool) throws -> String
     func listAllLoginForService(serviceIdentifier: String) throws -> [LoginMatch]
     func getLoginForService(vaultID: String, itemID: String, serviceIdentifier: String) throws -> LoginCredential
+    func listAllPasskey() throws -> [StoredPasskey]
+    func listAllPasskeyForRelyingParty(relyingPartyID: String, allAllowedCredentialID: [Data]) throws -> [StoredPasskey]
+    func preparePasskeyRegistration(relyingPartyID: String, allExcludedCredentialID: [Data]) throws -> PasskeyRegistrationOptions
+    func createPasskey(_ request: PasskeyRegistrationRequest, vaultID: String, itemID: String) throws -> PasskeyRegistrationResult
+    func assertPasskey(relyingPartyID: String, credentialID: Data, clientDataHash: Data) throws -> PasskeyAssertionResult
+    func deletePasskey(vaultID: String, itemID: String, credentialID: String) throws -> ItemDetail
 }
 
 struct BackendError: LocalizedError, Equatable {

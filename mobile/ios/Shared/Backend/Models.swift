@@ -92,14 +92,16 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     var keyType: String
     var oneTimePassword: String
     var hasOneTimePassword: Bool
+    var allPasskey: [ItemPasskey]
 
     enum CodingKeys: String, CodingKey {
         case id, revision, category, title, username, password, notes, publicKey, fingerprint, keyType, oneTimePassword, hasOneTimePassword
         case allURL = "urls"
         case allField = "fields"
+        case allPasskey = "passkeys"
     }
 
-    init(id: String = "", revision: String = "", category: String = ItemDetail.categoryLogin, title: String = "", username: String = "", allURL: [String] = [], password: String = "", notes: String = "", allField: [ItemField] = [], publicKey: String = "", fingerprint: String = "", keyType: String = "", oneTimePassword: String = "", hasOneTimePassword: Bool = false) {
+    init(id: String = "", revision: String = "", category: String = ItemDetail.categoryLogin, title: String = "", username: String = "", allURL: [String] = [], password: String = "", notes: String = "", allField: [ItemField] = [], publicKey: String = "", fingerprint: String = "", keyType: String = "", oneTimePassword: String = "", hasOneTimePassword: Bool = false, allPasskey: [ItemPasskey] = []) {
         self.id = id
         self.revision = revision
         self.category = category
@@ -114,6 +116,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         self.keyType = keyType
         self.oneTimePassword = oneTimePassword
         self.hasOneTimePassword = hasOneTimePassword
+        self.allPasskey = allPasskey
     }
 
     init(from decoder: Decoder) throws {
@@ -132,6 +135,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         keyType = try container.decodeIfPresent(String.self, forKey: .keyType) ?? ""
         oneTimePassword = try container.decodeIfPresent(String.self, forKey: .oneTimePassword) ?? ""
         hasOneTimePassword = try container.decodeIfPresent(Bool.self, forKey: .hasOneTimePassword) ?? false
+        allPasskey = try container.decodeIfPresent([ItemPasskey].self, forKey: .allPasskey) ?? []
     }
 
     var isLogin: Bool { category.isEmpty || category == Self.categoryLogin }
@@ -215,5 +219,196 @@ struct OneTimeCode: Codable, Equatable {
     func countSecondsLeft(at date: Date) -> Int {
         guard let expiryDate else { return 0 }
         return max(0, Int(expiryDate.timeIntervalSince(date).rounded(.up)))
+    }
+}
+
+enum Base64URL {
+    static func encode(_ data: Data) -> String {
+        data.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
+    }
+
+    static func decode(_ text: String) -> Data? {
+        var base64 = text.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        base64 += String(repeating: "=", count: (4 - base64.count % 4) % 4)
+        return Data(base64Encoded: base64)
+    }
+}
+
+struct ItemPasskey: Codable, Hashable, Identifiable {
+    var credentialID: String
+    var relyingPartyID: String
+    var userName: String
+    var userDisplayName: String
+    var createdAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case userName, userDisplayName, createdAt
+        case credentialID = "credentialId"
+        case relyingPartyID = "relyingPartyId"
+    }
+
+    init(credentialID: String, relyingPartyID: String, userName: String, userDisplayName: String = "", createdAt: String = "") {
+        self.credentialID = credentialID
+        self.relyingPartyID = relyingPartyID
+        self.userName = userName
+        self.userDisplayName = userDisplayName
+        self.createdAt = createdAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        credentialID = try container.decode(String.self, forKey: .credentialID)
+        relyingPartyID = try container.decodeIfPresent(String.self, forKey: .relyingPartyID) ?? ""
+        userName = try container.decodeIfPresent(String.self, forKey: .userName) ?? ""
+        userDisplayName = try container.decodeIfPresent(String.self, forKey: .userDisplayName) ?? ""
+        createdAt = try container.decodeIfPresent(String.self, forKey: .createdAt) ?? ""
+    }
+
+    var id: String { credentialID }
+    var createdDate: Date? { ISO8601DateFormatter().date(from: createdAt) }
+}
+
+struct StoredPasskey: Codable, Hashable, Identifiable {
+    var credentialID: String
+    var relyingPartyID: String
+    var userName: String
+    var userDisplayName: String
+    var userHandle: String
+    var vaultID: String
+    var itemID: String
+    var title: String
+
+    enum CodingKeys: String, CodingKey {
+        case userName, userDisplayName, userHandle, vaultID, itemID, title
+        case credentialID = "credentialId"
+        case relyingPartyID = "relyingPartyId"
+    }
+
+    init(credentialID: String, relyingPartyID: String, userName: String, userDisplayName: String = "", userHandle: String, vaultID: String, itemID: String, title: String) {
+        self.credentialID = credentialID
+        self.relyingPartyID = relyingPartyID
+        self.userName = userName
+        self.userDisplayName = userDisplayName
+        self.userHandle = userHandle
+        self.vaultID = vaultID
+        self.itemID = itemID
+        self.title = title
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        credentialID = try container.decode(String.self, forKey: .credentialID)
+        relyingPartyID = try container.decodeIfPresent(String.self, forKey: .relyingPartyID) ?? ""
+        userName = try container.decodeIfPresent(String.self, forKey: .userName) ?? ""
+        userDisplayName = try container.decodeIfPresent(String.self, forKey: .userDisplayName) ?? ""
+        userHandle = try container.decodeIfPresent(String.self, forKey: .userHandle) ?? ""
+        vaultID = try container.decode(String.self, forKey: .vaultID)
+        itemID = try container.decode(String.self, forKey: .itemID)
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+    }
+
+    var id: String { credentialID }
+    var recordIdentifier: String { LoginMatch.buildRecordIdentifier(vaultID: vaultID, itemID: itemID) }
+}
+
+struct PasskeyRegistrationOptions: Codable, Equatable {
+    var isExcluded: Bool
+    var allLogin: [LoginMatch]
+
+    enum CodingKeys: String, CodingKey {
+        case isExcluded
+        case allLogin = "logins"
+    }
+
+    init(isExcluded: Bool, allLogin: [LoginMatch]) {
+        self.isExcluded = isExcluded
+        self.allLogin = allLogin
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        isExcluded = try container.decodeIfPresent(Bool.self, forKey: .isExcluded) ?? false
+        allLogin = try container.decodeIfPresent([LoginMatch].self, forKey: .allLogin) ?? []
+    }
+}
+
+struct PasskeyAssertionRequest: Equatable {
+    var relyingPartyID: String
+    var clientDataHash: Data
+    var allAllowedCredentialID: [Data] = []
+}
+
+struct PasskeyRegistrationRequest: Equatable {
+    static let algorithmES256 = -7
+
+    var relyingPartyID: String
+    var userName: String
+    var userHandle: Data
+    var clientDataHash: Data
+    var allSupportedAlgorithm: [Int] = []
+    var allExcludedCredentialID: [Data] = []
+
+    var isAlgorithmSupported: Bool {
+        allSupportedAlgorithm.isEmpty || allSupportedAlgorithm.contains(Self.algorithmES256)
+    }
+}
+
+struct PasskeyRegistrationResult: Codable, Equatable {
+    var credentialID: String
+    var attestationObject: String
+    var authenticatorData: String
+    var vaultID: String
+    var itemID: String
+
+    enum CodingKeys: String, CodingKey {
+        case attestationObject, authenticatorData, vaultID, itemID
+        case credentialID = "credentialId"
+    }
+}
+
+struct PasskeyAssertionResult: Codable, Equatable {
+    var credentialID: String
+    var authenticatorData: String
+    var signature: String
+    var userHandle: String
+
+    enum CodingKeys: String, CodingKey {
+        case authenticatorData, signature, userHandle
+        case credentialID = "credentialId"
+    }
+}
+
+struct PasskeyAssertionCredential: Equatable {
+    var relyingPartyID: String
+    var clientDataHash: Data
+    var credentialID: Data
+    var authenticatorData: Data
+    var signature: Data
+    var userHandle: Data
+
+    init?(relyingPartyID: String, clientDataHash: Data, result: PasskeyAssertionResult) {
+        guard let credentialID = Base64URL.decode(result.credentialID), let authenticatorData = Base64URL.decode(result.authenticatorData),
+              let signature = Base64URL.decode(result.signature), let userHandle = Base64URL.decode(result.userHandle) else { return nil }
+        self.relyingPartyID = relyingPartyID
+        self.clientDataHash = clientDataHash
+        self.credentialID = credentialID
+        self.authenticatorData = authenticatorData
+        self.signature = signature
+        self.userHandle = userHandle
+    }
+}
+
+struct PasskeyRegistrationCredential: Equatable {
+    var relyingPartyID: String
+    var clientDataHash: Data
+    var credentialID: Data
+    var attestationObject: Data
+
+    init?(relyingPartyID: String, clientDataHash: Data, result: PasskeyRegistrationResult) {
+        guard let credentialID = Base64URL.decode(result.credentialID), let attestationObject = Base64URL.decode(result.attestationObject) else { return nil }
+        self.relyingPartyID = relyingPartyID
+        self.clientDataHash = clientDataHash
+        self.credentialID = credentialID
+        self.attestationObject = attestationObject
     }
 }

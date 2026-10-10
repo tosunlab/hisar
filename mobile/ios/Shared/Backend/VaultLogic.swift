@@ -30,12 +30,15 @@ struct CredentialIdentityRecord: Hashable {
     enum Kind: Hashable {
         case password
         case oneTimeCode
+        case passkey
     }
 
     var kind: Kind = .password
     var host: String
     var username: String
     var recordIdentifier: String
+    var credentialID = Data()
+    var userHandle = Data()
 }
 
 enum VaultLogic {
@@ -67,7 +70,7 @@ enum VaultLogic {
         convertToOpenableURL(text)?.host?.lowercased()
     }
 
-    static func buildAllCredentialIdentity(_ allItem: [VaultItemReference]) -> [CredentialIdentityRecord] {
+    static func buildAllCredentialIdentity(_ allItem: [VaultItemReference], allPasskey: [StoredPasskey] = []) -> [CredentialIdentityRecord] {
         var allIdentity: [CredentialIdentityRecord] = []
         var allSeen = Set<CredentialIdentityRecord>()
         for reference in allItem where reference.item.isLogin {
@@ -85,6 +88,15 @@ enum VaultLogic {
                 for identity in allCandidate where allSeen.insert(identity).inserted {
                     allIdentity.append(identity)
                 }
+            }
+        }
+        let allLoginID = Set(allItem.filter(\.item.isLogin).map(\.id))
+        for passkey in allPasskey where allLoginID.contains(passkey.recordIdentifier) {
+            guard let credentialID = Base64URL.decode(passkey.credentialID), let userHandle = Base64URL.decode(passkey.userHandle),
+                  !credentialID.isEmpty, !userHandle.isEmpty else { continue }
+            let identity = CredentialIdentityRecord(kind: .passkey, host: passkey.relyingPartyID, username: passkey.userName, recordIdentifier: passkey.recordIdentifier, credentialID: credentialID, userHandle: userHandle)
+            if allSeen.insert(identity).inserted {
+                allIdentity.append(identity)
             }
         }
         return allIdentity

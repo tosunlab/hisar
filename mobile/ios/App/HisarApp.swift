@@ -48,8 +48,8 @@ struct HisarApp: App {
     @ViewBuilder
     private var mainView: some View {
         #if DEBUG
-        if let serviceIdentifier = AutoFillPreviewView.readServiceIdentifier() {
-            AutoFillPreviewView(serviceIdentifier: serviceIdentifier)
+        if let mode = AutoFillPreviewView.readMode() {
+            AutoFillPreviewView(mode: mode)
         } else {
             RootView()
         }
@@ -60,7 +60,7 @@ struct HisarApp: App {
 
     private func startModel() {
         #if DEBUG
-        guard AutoFillPreviewView.readServiceIdentifier() == nil else { return }
+        guard AutoFillPreviewView.readMode() == nil else { return }
         #endif
         guard model.screen == .starting else { return }
         lockEventRelay.setHandler { [weak model] in model?.handleLockedEvent() }

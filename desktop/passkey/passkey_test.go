@@ -368,3 +368,142 @@ func TestSignAssertionRejectsBadKey(t *testing.T) {
 		t.Error("P-384 key accepted")
 	}
 }
+
+func TestValidateRelyingPartyID(t *testing.T) {
+	allCase := []struct {
+		relyingPartyID  string
+		expectedID      string
+		isErrorExpected bool
+	}{
+		{"example.com", "example.com", false},
+		{" Login.Example.COM ", "login.example.com", false},
+		{"example.co.uk", "example.co.uk", false},
+		{"alice.github.io", "alice.github.io", false},
+		{"xn--bcher-kva.example", "xn--bcher-kva.example", false},
+		{"", "", true},
+		{"com", "", true},
+		{"co.uk", "", true},
+		{"github.io", "", true},
+		{"localhost", "", true},
+		{"192.168.1.10", "", true},
+		{"::1", "", true},
+		{".example.com", "", true},
+		{"example.com.", "", true},
+		{"example.com:443", "", true},
+		{"example.com/path", "", true},
+		{"user@example.com", "", true},
+		{"*.example.com", "", true},
+		{"exa mple.com", "", true},
+		{strings.Repeat("a", 250) + ".com", "", true},
+	}
+	for _, testCase := range allCase {
+		relyingPartyID, err := ValidateRelyingPartyID(testCase.relyingPartyID)
+		if testCase.isErrorExpected {
+			if !errors.Is(err, ErrInvalidRelyingPartyID) {
+				t.Errorf("%q accepted as %q (%v)", testCase.relyingPartyID, relyingPartyID, err)
+			}
+			continue
+		}
+		if err != nil || relyingPartyID != testCase.expectedID {
+			t.Errorf("%q = %q, %v; want %q", testCase.relyingPartyID, relyingPartyID, err, testCase.expectedID)
+		}
+	}
+}
+
+func buildPlatformClientDataJSON(t *testing.T, ceremonyType protocol.CeremonyType, challenge protocol.URLEncodedBase64, origin string) ([]byte, []byte) {
+	t.Helper()
+	clientDataJSON, err := json.Marshal(protocol.CollectedClientData{Type: ceremonyType, Challenge: challenge.String(), Origin: origin})
+	if err != nil {
+		t.Fatal(err)
+	}
+	clientDataHash := sha256.Sum256(clientDataJSON)
+	return clientDataJSON, clientDataHash[:]
+}
+
+func TestClientDataHashCeremoniesVerifiedByWebAuthnLibrary(t *testing.T) {
+	relyingParty := createTestRelyingParty(t, "example.com", "https://login.example.com")
+	user := &testUser{userHandle: []byte("ios-user-handle"), userName: "alex@example.com"}
+	options, session, err := relyingParty.BeginRegistration(user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clientDataJSON, clientDataHash := buildPlatformClientDataJSON(t, protocol.CreateCeremony, options.Response.Challenge, "https://login.example.com")
+	creation, err := CreateCredentialWithClientDataHash("Example.com", clientDataHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if creation.ClientDataJSON != nil || len(creation.CredentialID) != CredentialIDLength {
+		t.Errorf("creation = %+v", creation)
+	}
+	body, _ := json.Marshal(map[string]any{
+		"id": encodeBase64URL(creation.CredentialID), "rawId": encodeBase64URL(creation.CredentialID), "type": "public-key", "clientExtensionResults": map[string]any{},
+		"response": map[string]any{"clientDataJSON": encodeBase64URL(clientDataJSON), "attestationObject": encodeBase64URL(creation.AttestationObject)},
+	})
+	parsedCreation, err := protocol.ParseCredentialCreationResponseBody(bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	credential, err := relyingParty.CreateCredential(user, *session, parsedCreation)
+	if err != nil {
+		t.Fatalf("registration from a client data hash rejected: %v", err)
+	}
+	if credential.AttestationFormat != "none" || !credential.Flags.UserPresent || !credential.Flags.UserVerified || !credential.Flags.BackupEligible || !credential.Flags.BackupState || credential.Authenticator.SignCount != 0 {
+		t.Errorf("credential = %+v", credential)
+	}
+	user.allCredential = []webauthn.Credential{*credential}
+
+	assertionOptions, assertionSession, err := relyingParty.BeginDiscoverableLogin()
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertionClientDataJSON, assertionClientDataHash := buildPlatformClientDataJSON(t, protocol.AssertCeremony, assertionOptions.Response.Challenge, "https://login.example.com")
+	assertion, err := SignAssertionWithClientDataHash("example.com", "example.com", assertionClientDataHash, creation.PrivateKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if assertion.ClientDataJSON != nil {
+		t.Errorf("assertion carries client data %s", assertion.ClientDataJSON)
+	}
+	assertionBody, _ := json.Marshal(map[string]any{
+		"id": encodeBase64URL(creation.CredentialID), "rawId": encodeBase64URL(creation.CredentialID), "type": "public-key", "clientExtensionResults": map[string]any{},
+		"response": map[string]any{
+			"clientDataJSON": encodeBase64URL(assertionClientDataJSON), "authenticatorData": encodeBase64URL(assertion.AuthenticatorData),
+			"signature": encodeBase64URL(assertion.Signature), "userHandle": encodeBase64URL(user.userHandle),
+		},
+	})
+	parsedAssertion, err := protocol.ParseCredentialRequestResponseBody(bytes.NewReader(assertionBody))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := relyingParty.ValidateDiscoverableLogin(func(_, userHandle []byte) (webauthn.User, error) {
+		if !bytes.Equal(userHandle, user.userHandle) {
+			return nil, errors.New("unknown user")
+		}
+		return user, nil
+	}, *assertionSession, parsedAssertion); err != nil {
+		t.Fatalf("assertion from a client data hash rejected: %v", err)
+	}
+}
+
+func TestClientDataHashRefusals(t *testing.T) {
+	validHash := make([]byte, ClientDataHashLength)
+	if _, err := CreateCredentialWithClientDataHash("co.uk", validHash); !errors.Is(err, ErrInvalidRelyingPartyID) {
+		t.Errorf("public suffix: %v", err)
+	}
+	if _, err := CreateCredentialWithClientDataHash("example.com", validHash[:31]); !errors.Is(err, ErrInvalidRequest) {
+		t.Errorf("31-byte hash: %v", err)
+	}
+	creation, err := CreateCredentialWithClientDataHash("example.com", validHash)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := SignAssertionWithClientDataHash("login.example.com", "example.com", validHash, creation.PrivateKey); !errors.Is(err, ErrInvalidRelyingPartyID) {
+		t.Errorf("another relying party ID: %v", err)
+	}
+	if _, err := SignAssertionWithClientDataHash("example.com", "example.com", nil, creation.PrivateKey); !errors.Is(err, ErrInvalidRequest) {
+		t.Errorf("missing hash: %v", err)
+	}
+	if _, err := SignAssertionWithClientDataHash("example.com", "example.com", validHash, []byte("not a key")); err == nil {
+		t.Error("garbage key accepted")
+	}
+}

@@ -6,6 +6,10 @@ class FakeBackend: VaultBackend {
     static let secretKey = "H1-ABC123-AAAAA-BBBBB-CCCCC-DDDDD-EEEEEE"
     static let oneTimePassword = "otpauth://totp/GitHub:alice?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
     static let oneTimeCode = OneTimeCode(code: "287082", expiresAt: "2027-01-15T08:00:30Z", period: 30)
+    static let gitHubPasskey = StoredPasskey(
+        credentialID: Base64URL.encode(Data([1, 1, 1])), relyingPartyID: "github.com", userName: "alice", userDisplayName: "Alice",
+        userHandle: Base64URL.encode(Data("alice-handle".utf8)), vaultID: "personal", itemID: "github", title: "GitHub"
+    )
 
     private let callLock = NSLock()
     var status = VaultStatus.signedOut
@@ -17,6 +21,7 @@ class FakeBackend: VaultBackend {
     var allCopiedField: [String] = []
     var allCallName: [String] = []
     var nextItemNumber = 1
+    var allPasskey: [StoredPasskey] = []
 
     private func record(_ name: String) {
         callLock.lock()
@@ -32,13 +37,14 @@ class FakeBackend: VaultBackend {
         ]
         allItemByVaultID = [
             "personal": [
-                ItemDetail(id: "github", revision: "r1", category: "login", title: "GitHub", username: "alice", allURL: ["https://github.com"], password: "github-password", notes: "work account", allField: [ItemField(name: "PIN", value: "1234", concealed: true)], oneTimePassword: Self.oneTimePassword, hasOneTimePassword: true),
+                ItemDetail(id: "github", revision: "r1", category: "login", title: "GitHub", username: "alice", allURL: ["https://github.com"], password: "github-password", notes: "work account", allField: [ItemField(name: "PIN", value: "1234", concealed: true)], oneTimePassword: Self.oneTimePassword, hasOneTimePassword: true, allPasskey: [ItemPasskey(credentialID: Self.gitHubPasskey.credentialID, relyingPartyID: "github.com", userName: "alice", userDisplayName: "Alice", createdAt: "2026-10-09T12:00:00Z")]),
                 ItemDetail(id: "bank", revision: "r1", category: "login", title: "Bank", username: "alice@example.com", allURL: ["bank.example.com"], password: "bank-password"),
             ],
             "family": [
                 ItemDetail(id: "netflix", revision: "r1", category: "login", title: "Netflix", username: "family@example.com", allURL: ["https://www.netflix.com/login"], password: "netflix-password"),
             ],
         ]
+        allPasskey = [Self.gitHubPasskey]
     }
 
     private func requireUnlocked() throws {
@@ -177,6 +183,7 @@ class FakeBackend: VaultBackend {
         record("deleteItem")
         try requireUnlocked()
         allItemByVaultID[vaultID]?.removeAll { $0.id == itemID }
+        allPasskey.removeAll { $0.vaultID == vaultID && $0.itemID == itemID }
     }
 
     func getOneTimeCode(vaultID: String, itemID: String) throws -> OneTimeCode {
@@ -224,6 +231,94 @@ class FakeBackend: VaultBackend {
         }
         let item = try getItem(vaultID: vaultID, itemID: itemID)
         return LoginCredential(username: item.username, password: item.password, hasOneTimePassword: item.hasOneTimePassword)
+    }
+}
+
+extension FakeBackend {
+    func listAllPasskey() throws -> [StoredPasskey] {
+        record("listAllPasskey")
+        try requireUnlocked()
+        return allPasskey
+    }
+
+    func listAllPasskeyForRelyingParty(relyingPartyID: String, allAllowedCredentialID: [Data]) throws -> [StoredPasskey] {
+        record("listAllPasskeyForRelyingParty")
+        try requireUnlocked()
+        let allAllowedID = Set(allAllowedCredentialID.map(Base64URL.encode))
+        return allPasskey.filter { $0.relyingPartyID == relyingPartyID && (allAllowedID.isEmpty || allAllowedID.contains($0.credentialID)) }
+    }
+
+    func preparePasskeyRegistration(relyingPartyID: String, allExcludedCredentialID: [Data]) throws -> PasskeyRegistrationOptions {
+        record("preparePasskeyRegistration")
+        let allLogin = try listAllLoginForService(serviceIdentifier: "https://\(relyingPartyID)").filter { login in
+            allVault.first { $0.id == login.vaultID }?.role != "reader"
+        }
+        return PasskeyRegistrationOptions(isExcluded: checkIsExcluded(relyingPartyID: relyingPartyID, allExcludedCredentialID: allExcludedCredentialID), allLogin: allLogin)
+    }
+
+    private func checkIsExcluded(relyingPartyID: String, allExcludedCredentialID: [Data]) -> Bool {
+        let allExcludedID = Set(allExcludedCredentialID.map(Base64URL.encode))
+        return allPasskey.contains { $0.relyingPartyID == relyingPartyID && allExcludedID.contains($0.credentialID) }
+    }
+
+    func createPasskey(_ request: PasskeyRegistrationRequest, vaultID: String, itemID: String) throws -> PasskeyRegistrationResult {
+        record("createPasskey")
+        try requireUnlocked()
+        guard !checkIsExcluded(relyingPartyID: request.relyingPartyID, allExcludedCredentialID: request.allExcludedCredentialID) else {
+            throw BackendError(message: "Hisar already has a passkey for this account")
+        }
+        guard request.clientDataHash.count == 32 else { throw BackendError(message: "the request is not valid") }
+        var targetVaultID = vaultID
+        var item: ItemDetail
+        if vaultID.isEmpty {
+            targetVaultID = "personal"
+            item = try saveItem(vaultID: targetVaultID, item: ItemDetail(title: request.relyingPartyID, username: request.userName, allURL: ["https://\(request.relyingPartyID)"]))
+        } else {
+            guard try preparePasskeyRegistration(relyingPartyID: request.relyingPartyID, allExcludedCredentialID: []).allLogin.contains(where: { $0.vaultID == vaultID && $0.itemID == itemID }) else {
+                throw BackendError(message: "this login is not saved for this site")
+            }
+            item = try getItem(vaultID: vaultID, itemID: itemID)
+        }
+        let userHandle = Base64URL.encode(request.userHandle)
+        let credentialID = Base64URL.encode(Data([UInt8(allPasskey.count + 2), 7, 7]))
+        let replacedID = Set(allPasskey.filter { $0.vaultID == targetVaultID && $0.itemID == item.id && $0.relyingPartyID == request.relyingPartyID && $0.userHandle == userHandle }.map(\.credentialID))
+        allPasskey.removeAll { replacedID.contains($0.credentialID) }
+        allPasskey.append(StoredPasskey(credentialID: credentialID, relyingPartyID: request.relyingPartyID, userName: request.userName, userHandle: userHandle, vaultID: targetVaultID, itemID: item.id, title: item.title))
+        item.allPasskey.removeAll { replacedID.contains($0.credentialID) }
+        item.allPasskey.append(ItemPasskey(credentialID: credentialID, relyingPartyID: request.relyingPartyID, userName: request.userName))
+        replaceItem(vaultID: targetVaultID, item: item)
+        return PasskeyRegistrationResult(
+            credentialID: credentialID, attestationObject: Base64URL.encode(Data("attestation for \(request.relyingPartyID)".utf8)),
+            authenticatorData: Base64URL.encode(Data("authenticator data".utf8)), vaultID: targetVaultID, itemID: item.id
+        )
+    }
+
+    private func replaceItem(vaultID: String, item: ItemDetail) {
+        guard let index = allItemByVaultID[vaultID]?.firstIndex(where: { $0.id == item.id }) else { return }
+        allItemByVaultID[vaultID]?[index] = item
+    }
+
+    func assertPasskey(relyingPartyID: String, credentialID: Data, clientDataHash: Data) throws -> PasskeyAssertionResult {
+        record("assertPasskey")
+        try requireUnlocked()
+        guard clientDataHash.count == 32 else { throw BackendError(message: "the request is not valid") }
+        guard let passkey = allPasskey.first(where: { $0.relyingPartyID == relyingPartyID && $0.credentialID == Base64URL.encode(credentialID) }) else {
+            throw BackendError(message: "passkey not found")
+        }
+        return PasskeyAssertionResult(
+            credentialID: passkey.credentialID, authenticatorData: Base64URL.encode(Data("authenticator data for \(relyingPartyID)".utf8)),
+            signature: Base64URL.encode(Data("signature over ".utf8) + clientDataHash), userHandle: passkey.userHandle
+        )
+    }
+
+    func deletePasskey(vaultID: String, itemID: String, credentialID: String) throws -> ItemDetail {
+        record("deletePasskey")
+        var item = try getItem(vaultID: vaultID, itemID: itemID)
+        guard item.allPasskey.contains(where: { $0.credentialID == credentialID }) else { throw BackendError(message: "passkey not found") }
+        item.allPasskey.removeAll { $0.credentialID == credentialID }
+        allPasskey.removeAll { $0.credentialID == credentialID }
+        replaceItem(vaultID: vaultID, item: item)
+        return item
     }
 }
 

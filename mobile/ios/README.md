@@ -38,16 +38,22 @@ the project; CI fails if the committed project differs.
 What the UI tests cover: create an account from an invite and read the new Secret Key, add a login, item detail
 (reveal, copy), editing with the password generator, search, lock and unlock with the master password, sign out and
 sign in with the Secret Key, the privacy cover, Face ID (the test enrolls a face in the simulator and posts the
-simulator's "matching face" notification), and the AutoFill screens.
+simulator's "matching face" notification), the AutoFill screens, and passkeys: register a passkey into a login, sign in
+with it, check the attestation and the ES256 signature with CryptoKit, then see and delete it in the item.
 
 **AutoFill in the simulator.** A simulator build without a development team ("Sign to Run Locally") is registered
 (`pluginkit` lists the extension), but iOS 26.4 does not list it in Settings → General → AutoFill & Passwords, and
 `ASSettingsHelper.requestToTurnOnCredentialProviderExtension()` fails without showing its prompt. Turning it on with
 `pluginkit -e use` is not enough either: `ASCredentialIdentityStore` still reports it as off. So the UI test drives the
 extension's screens and model through a debug-only preview in the app: launch with
-`-HisarAutoFillPreview https://example.com/login`. The full flow (enable Hisar in Settings or with the "Turn on Hisar
+`-HisarAutoFillPreview https://example.com/login` (passwords), `-HisarAutoFillOneTimeCodePreview <site>`,
+`-HisarAutoFillPasskeyPreview example.com` (passkey sign-in) or `-HisarAutoFillPasskeyRegistrationPreview example.com`
+(save passkey, with `-HisarAutoFillPasskeyUserName`, `-HisarAutoFillPasskeyUserHandle` and
+`-HisarAutoFillPasskeyClientDataHash`, base64url). The preview shows the produced credential ID, attestation object,
+authenticator data, signature and user handle so the UI test can verify them. The full flow (enable Hisar in Settings or with the "Turn on Hisar
 AutoFill" button in the app's Settings, open a login page in Safari, tap the password field) should work once a team
-is set in `Configuration/Local.xcconfig`. That has not been verified yet.
+is set in `Configuration/Local.xcconfig`. That has not been verified yet, and neither has the system passkey flow
+(Safari offering Hisar for a passkey sign-in or "Save passkey"): both need the paid team.
 
 Manual run: open `Hisar.xcodeproj`, choose the **Hisar** scheme and an iPhone simulator, and Run. The simulator
 reaches a server on your Mac at `http://127.0.0.1:<port>`; plain `http` is allowed for local addresses only

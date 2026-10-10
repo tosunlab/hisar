@@ -23,6 +23,8 @@ final class SystemCredentialIdentityStore: CredentialIdentityUpdating {
             case .oneTimeCode:
                 guard #available(iOS 18.0, *) else { return nil }
                 return ASOneTimeCodeCredentialIdentity(serviceIdentifier: serviceIdentifier, label: identity.username, recordIdentifier: identity.recordIdentifier)
+            case .passkey:
+                return ASPasskeyCredentialIdentity(relyingPartyIdentifier: identity.host, userName: identity.username, credentialID: identity.credentialID, userHandle: identity.userHandle, recordIdentifier: identity.recordIdentifier)
             }
         }
         try? await store.replaceCredentialIdentities(allSystemIdentity)

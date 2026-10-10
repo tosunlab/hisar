@@ -118,6 +118,7 @@ targets:
             ASCredentialProviderExtensionShowsConfigurationUI: false
             ASCredentialProviderExtensionCapabilities:
               ProvidesPasswords: true
+              ProvidesPasskeys: true
               ProvidesOneTimeCodes: true
 
   HisarTests:

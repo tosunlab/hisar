@@ -16,8 +16,26 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
             _ = PasteboardClipboard().setText(code)
         },
         cancelRequest: { [weak self] in
-            self?.extensionContext.cancelRequest(withError: NSError(domain: ASExtensionErrorDomain, code: ASExtensionError.userCanceled.rawValue))
-        }
+            self?.cancelRequest(code: .userCanceled)
+        },
+        passkeyCompletion: AutoFillModel.PasskeyCompletion(
+            completeAssertion: { [weak self] credential in
+                self?.completePasskeyAssertion(credential)
+            },
+            completeRegistration: { [weak self] credential in
+                self?.extensionContext.completeRegistrationRequest(using: ASPasskeyRegistrationCredential(
+                    relyingParty: credential.relyingPartyID, clientDataHash: credential.clientDataHash,
+                    credentialID: credential.credentialID, attestationObject: credential.attestationObject
+                ))
+            },
+            rejectExcludedRegistration: { [weak self] in
+                if #available(iOS 18.0, *) {
+                    self?.cancelRequest(code: .matchedExcludedCredential)
+                } else {
+                    self?.cancelRequest(code: .userCanceled)
+                }
+            }
+        )
     )
 
     override func viewDidLoad() {
@@ -42,6 +60,14 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         Task { await model.prepareCredentialList(allServiceIdentifier: allServiceIdentifier) }
     }
 
+    override func prepareCredentialList(for allRequestedServiceIdentifier: [ASCredentialServiceIdentifier], requestParameters: ASPasskeyCredentialRequestParameters) {
+        let allServiceIdentifier = allRequestedServiceIdentifier.map(\.identifier)
+        let passkeyRequest = PasskeyAssertionRequest(
+            relyingPartyID: requestParameters.relyingPartyIdentifier, clientDataHash: requestParameters.clientDataHash, allAllowedCredentialID: requestParameters.allowedCredentials
+        )
+        Task { await model.prepareCredentialList(allServiceIdentifier: allServiceIdentifier, passkeyRequest: passkeyRequest) }
+    }
+
     @available(iOS 18.0, *)
     override func prepareOneTimeCodeCredentialList(for allRequestedServiceIdentifier: [ASCredentialServiceIdentifier]) {
         let allServiceIdentifier = allRequestedServiceIdentifier.map(\.identifier)
@@ -49,6 +75,16 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     }
 
     override func provideCredentialWithoutUserInteraction(for credentialRequest: ASCredentialRequest) {
+        if let passkeyRequest = readPasskeyRequest(credentialRequest) {
+            Task {
+                if let credential = await model.providePasskeyWithoutUserInteraction(request: passkeyRequest.request, credentialID: passkeyRequest.credentialID) {
+                    completePasskeyAssertion(credential)
+                } else {
+                    cancelForUserInteraction()
+                }
+            }
+            return
+        }
         if let oneTimeCodeRequest = readOneTimeCodeRequest(credentialRequest) {
             Task {
                 if let code = await model.provideOneTimeCodeWithoutUserInteraction(recordIdentifier: oneTimeCodeRequest.recordIdentifier, serviceIdentifier: oneTimeCodeRequest.serviceIdentifier) {
@@ -75,6 +111,10 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     }
 
     override func prepareInterfaceToProvideCredential(for credentialRequest: ASCredentialRequest) {
+        if let passkeyRequest = readPasskeyRequest(credentialRequest) {
+            Task { await model.prepareInterfaceToProvidePasskey(request: passkeyRequest.request, credentialID: passkeyRequest.credentialID) }
+            return
+        }
         if let oneTimeCodeRequest = readOneTimeCodeRequest(credentialRequest) {
             Task {
                 await model.prepareInterfaceToProvideCredential(
@@ -94,8 +134,44 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         Task { await model.prepareInterfaceToProvideCredential(recordIdentifier: recordIdentifier, serviceIdentifier: serviceIdentifier) }
     }
 
+    override func prepareInterface(forPasskeyRegistration registrationRequest: ASCredentialRequest) {
+        guard let passkeyRequest = registrationRequest as? ASPasskeyCredentialRequest,
+              let identity = passkeyRequest.credentialIdentity as? ASPasskeyCredentialIdentity else {
+            cancelRequest(code: .failed)
+            return
+        }
+        var allExcludedCredentialID: [Data] = []
+        if #available(iOS 18.0, *) {
+            allExcludedCredentialID = passkeyRequest.excludedCredentials?.map(\.credentialID) ?? []
+        }
+        let request = PasskeyRegistrationRequest(
+            relyingPartyID: identity.relyingPartyIdentifier, userName: identity.userName, userHandle: identity.userHandle,
+            clientDataHash: passkeyRequest.clientDataHash, allSupportedAlgorithm: passkeyRequest.supportedAlgorithms.map(\.rawValue),
+            allExcludedCredentialID: allExcludedCredentialID
+        )
+        Task { await model.prepareInterfaceForPasskeyRegistration(request) }
+    }
+
     override func prepareInterfaceForExtensionConfiguration() {
         model.showConfiguration()
+    }
+
+    private func readPasskeyRequest(_ credentialRequest: ASCredentialRequest) -> (request: PasskeyAssertionRequest, credentialID: Data)? {
+        guard credentialRequest.type == .passkeyAssertion,
+              let passkeyRequest = credentialRequest as? ASPasskeyCredentialRequest,
+              let identity = passkeyRequest.credentialIdentity as? ASPasskeyCredentialIdentity else { return nil }
+        return (PasskeyAssertionRequest(relyingPartyID: identity.relyingPartyIdentifier, clientDataHash: passkeyRequest.clientDataHash), identity.credentialID)
+    }
+
+    private func completePasskeyAssertion(_ credential: PasskeyAssertionCredential) {
+        extensionContext.completeAssertionRequest(using: ASPasskeyAssertionCredential(
+            userHandle: credential.userHandle, relyingParty: credential.relyingPartyID, signature: credential.signature,
+            clientDataHash: credential.clientDataHash, authenticatorData: credential.authenticatorData, credentialID: credential.credentialID
+        ))
+    }
+
+    private func cancelRequest(code: ASExtensionError.Code) {
+        extensionContext.cancelRequest(withError: NSError(domain: ASExtensionErrorDomain, code: code.rawValue))
     }
 
     private func readOneTimeCodeRequest(_ credentialRequest: ASCredentialRequest) -> (recordIdentifier: String, serviceIdentifier: String)? {
@@ -111,6 +187,6 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     }
 
     private func cancelForUserInteraction() {
-        extensionContext.cancelRequest(withError: NSError(domain: ASExtensionErrorDomain, code: ASExtensionError.userInteractionRequired.rawValue))
+        cancelRequest(code: .userInteractionRequired)
     }
 }
