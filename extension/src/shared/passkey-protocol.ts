@@ -1,3 +1,5 @@
+import type { PasskeyPRFOutputJSON, SerializedPRFInput } from "./passkey";
+
 export interface DesktopPasskeyParameters {
   origin: string;
   topOrigin?: string;
@@ -12,6 +14,8 @@ export interface DesktopPasskeyParameters {
   credentialId?: string;
   vaultID?: string;
   itemID?: string;
+  prf?: SerializedPRFInput;
+  allAcceptedCredentialIds?: string[];
 }
 
 export interface DesktopPasskeySummary {
@@ -32,6 +36,7 @@ export interface DesktopPasskeyCreation {
   publicKeyAlgorithm: number;
   vaultID: string;
   itemID: string;
+  prf?: PasskeyPRFOutputJSON;
 }
 
 export interface DesktopPasskeyAssertion {
@@ -40,7 +45,12 @@ export interface DesktopPasskeyAssertion {
   authenticatorData: string;
   signature: string;
   userHandle: string;
+  prf?: PasskeyPRFOutputJSON;
 }
+
+export const allPasskeySignalType = ["passkeys.signalUnknownCredential", "passkeys.signalAllAcceptedCredentials", "passkeys.signalCurrentUserDetails"] as const;
+
+export type PasskeySignalType = (typeof allPasskeySignalType)[number];
 
 declare module "./protocol" {
   interface RequestMap {
@@ -48,5 +58,8 @@ declare module "./protocol" {
     "passkeys.prepare": { parameters: { passkey: DesktopPasskeyParameters }; result: { isExcluded: boolean; logins: LoginSummary[] } };
     "passkeys.create": { parameters: { passkey: DesktopPasskeyParameters }; result: DesktopPasskeyCreation };
     "passkeys.get": { parameters: { passkey: DesktopPasskeyParameters }; result: DesktopPasskeyAssertion };
+    "passkeys.signalUnknownCredential": { parameters: { passkey: DesktopPasskeyParameters }; result: { changedPasskeyCount: number } };
+    "passkeys.signalAllAcceptedCredentials": { parameters: { passkey: DesktopPasskeyParameters }; result: { changedPasskeyCount: number } };
+    "passkeys.signalCurrentUserDetails": { parameters: { passkey: DesktopPasskeyParameters }; result: { changedPasskeyCount: number } };
   }
 }

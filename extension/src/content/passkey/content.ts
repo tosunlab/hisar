@@ -42,10 +42,20 @@ export function isWebAuthnField(target: EventTarget | null | undefined): target 
   return autocomplete.toLowerCase().split(/\s+/).includes("webauthn");
 }
 
+function isSessionRequest(request: PasskeyPageRequest): request is Extract<PasskeyPageRequest, { kind: "create" | "get" }> {
+  return request.kind === "create" || request.kind === "get";
+}
+
+function buildUnansweredResponse(request: PasskeyPageRequest): PasskeyPageResponse {
+  if (request.kind === "availability") return { requestID: request.requestID, outcome: "availability", isAvailable: false };
+  if (request.kind === "signal") return { requestID: request.requestID, outcome: "signal" };
+  return { requestID: request.requestID, outcome: "fallback" };
+}
+
 function parseRequest(detail: unknown): PasskeyPageRequest | undefined {
   try {
     const request = JSON.parse(String(detail)) as PasskeyPageRequest;
-    if (typeof request?.requestID !== "string" || !["create", "get", "availability"].includes(request.kind)) return undefined;
+    if (typeof request?.requestID !== "string" || !["create", "get", "availability", "signal"].includes(request.kind)) return undefined;
     return request;
   } catch {
     return undefined;
@@ -92,7 +102,7 @@ export class PasskeyContentBridge {
   handleRequest(detail: unknown): void {
     const request = parseRequest(detail);
     if (!request) return;
-    if (request.kind !== "availability") {
+    if (isSessionRequest(request)) {
       this.respond({ requestID: request.requestID, outcome: "accepted" });
       if (this.active) this.settle(this.active, { requestID: this.active.requestID, outcome: "error", name: "NotAllowedError", message: "Another passkey request started" });
     }
@@ -100,19 +110,16 @@ export class PasskeyContentBridge {
     try {
       port = this.dependencies.connect();
     } catch {
-      this.respond(request.kind === "availability" ? { requestID: request.requestID, outcome: "availability", isAvailable: false } : { requestID: request.requestID, outcome: "fallback" });
+      this.respond(buildUnansweredResponse(request));
       return;
     }
     const active: ActiveRequest = { requestID: request.requestID, port, isConditional: false, isSettled: false };
-    if (request.kind !== "availability") {
+    if (isSessionRequest(request)) {
       this.active = active;
       active.keepAliveTimer = this.dependencies.setInterval(() => this.post(active, { type: "keepAlive" }), keepAliveMilliseconds);
     }
     port.onMessage.addListener((message) => this.handlePortMessage(active, message));
-    port.onDisconnect.addListener(() => {
-      if (request.kind === "availability") this.settle(active, { requestID: request.requestID, outcome: "availability", isAvailable: false });
-      else this.settle(active, { requestID: request.requestID, outcome: "fallback" });
-    });
+    port.onDisconnect.addListener(() => this.settle(active, buildUnansweredResponse(request)));
     const feature = request.kind === "create" ? "publickey-credentials-create" : "publickey-credentials-get";
     this.post(active, {
       type: "start",
@@ -138,6 +145,13 @@ export class PasskeyContentBridge {
         return;
       case "availability":
         this.settle(active, { requestID: active.requestID, outcome: "availability", isAvailable: message.isAvailable === true });
+        return;
+      case "signal":
+        this.settle(active, {
+          requestID: active.requestID,
+          outcome: "signal",
+          ...(typeof message.errorName === "string" ? { errorName: message.errorName, message: String(message.message ?? "") } : {}),
+        });
         return;
       case "credential":
         this.settle(active, { requestID: active.requestID, outcome: "credential", credential: message.credential });

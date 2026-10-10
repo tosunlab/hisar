@@ -1,7 +1,10 @@
 // Development stand-in for the desktop's passkey authenticator, used by the fake host.
-import { createHash, createPrivateKey, generateKeyPairSync, randomBytes, sign } from "node:crypto";
+import { createHash, createHmac, createPrivateKey, generateKeyPairSync, hkdfSync, randomBytes, sign } from "node:crypto";
 
 export const hisarAAGUID = "fb041679-042a-49ae-b616-8779e2ac14ce";
+const prfSecretInfo = "hisar passkey prf v1";
+const maximumPRFInputBytes = 1024;
+const allSignalType = ["passkeys.signalUnknownCredential", "passkeys.signalAllAcceptedCredentials", "passkeys.signalCurrentUserDetails"];
 
 class PasskeyError extends Error {
   constructor(code, message) {
@@ -67,6 +70,71 @@ function buildAuthenticatorData(relyingPartyID, flags, attestedCredentialData = 
   return Buffer.concat([createHash("sha256").update(relyingPartyID).digest(), Buffer.from([flags]), Buffer.alloc(4), attestedCredentialData]);
 }
 
+// The PRF secret derivation, as the desktop computes it.
+export function derivePRFSecret(privateKeyDERBase64) {
+  const key = createPrivateKey({ key: Buffer.from(privateKeyDERBase64, "base64"), format: "der", type: "pkcs8" });
+  const scalar = Buffer.from(key.export({ format: "jwk" }).d, "base64url");
+  return Buffer.from(hkdfSync("sha256", scalar, Buffer.alloc(0), prfSecretInfo, 32));
+}
+
+export function evaluatePRF(secret, input) {
+  const transformed = createHash("sha256").update(Buffer.concat([Buffer.from("WebAuthn PRF", "utf8"), Buffer.from([0]), input])).digest();
+  return createHmac("sha256", secret).update(transformed).digest();
+}
+
+function decodePRFInput(text) {
+  if (typeof text !== "string" || !/^[A-Za-z0-9_-]*$/.test(text)) throw new PasskeyError("invalid-request", "PRF input is not base64url");
+  const input = Buffer.from(text, "base64url");
+  if (input.length > maximumPRFInputBytes) throw new PasskeyError("invalid-request", "PRF input is too long");
+  return input;
+}
+
+function evaluatePRFValues(values, privateKeyDERBase64) {
+  const secret = derivePRFSecret(privateKeyDERBase64);
+  const results = { first: encodeBase64URL(evaluatePRF(secret, decodePRFInput(values.first))) };
+  if (values.second !== undefined) results.second = encodeBase64URL(evaluatePRF(secret, decodePRFInput(values.second)));
+  return results;
+}
+
+function selectPRFValues(prf, allAllowed, credentialID) {
+  const allEntry = Object.entries(prf.evalByCredential ?? {});
+  if (allEntry.length > 0 && allAllowed.length === 0) throw new PasskeyError("invalid-request", "evalByCredential needs allowCredentials");
+  if (allEntry.some(([key]) => !allAllowed.includes(key))) throw new PasskeyError("invalid-request", "evalByCredential key outside allowCredentials");
+  return allEntry.find(([key]) => key === credentialID)?.[1] ?? prf.eval;
+}
+
+function handleSignal(state, type, passkey) {
+  if (typeof passkey.relyingPartyId !== "string" || passkey.relyingPartyId === "") throw new PasskeyError("invalid-request", "relyingPartyId is required");
+  const relyingPartyID = resolveRelyingPartyID(passkey.origin, passkey.relyingPartyId);
+  if (state.state !== "unlocked") return { changedPasskeyCount: 0 };
+  state.allPasskey ??= [];
+  let changedPasskeyCount = 0;
+  const allKept = [];
+  for (const stored of state.allPasskey) {
+    if (stored.relyingPartyId !== relyingPartyID) {
+      allKept.push(stored);
+      continue;
+    }
+    const isUser = stored.userHandle === passkey.userHandle;
+    if (type === "passkeys.signalUnknownCredential" && stored.credentialId === passkey.credentialId) {
+      changedPasskeyCount++;
+      continue;
+    }
+    if (type === "passkeys.signalAllAcceptedCredentials" && isUser && !(passkey.allAcceptedCredentialIds ?? []).includes(stored.credentialId)) {
+      changedPasskeyCount++;
+      continue;
+    }
+    if (type === "passkeys.signalCurrentUserDetails" && isUser && (stored.userName !== passkey.userName || stored.userDisplayName !== passkey.userDisplayName)) {
+      changedPasskeyCount++;
+      allKept.push({ ...stored, userName: passkey.userName ?? "", userDisplayName: passkey.userDisplayName ?? "" });
+      continue;
+    }
+    allKept.push(stored);
+  }
+  state.allPasskey = allKept;
+  return { changedPasskeyCount };
+}
+
 function requireUnlocked(state) {
   if (state.state === "signed-out") throw new PasskeyError("signed-out", "Hisar is signed out");
   if (state.state === "locked") throw new PasskeyError("locked", "Hisar is locked");
@@ -82,8 +150,12 @@ function findLogin(state, vaultID, itemID) {
 }
 
 export function handlePasskeyRequest(state, request, now, findAllMatchingLogin) {
-  requireUnlocked(state);
   const passkey = request.passkey;
+  if (allSignalType.includes(request.type)) {
+    if (typeof passkey !== "object" || passkey === null) throw new PasskeyError("invalid-request", "passkey parameters are required");
+    return handleSignal(state, request.type, passkey);
+  }
+  requireUnlocked(state);
   if (typeof passkey !== "object" || passkey === null) throw new PasskeyError("invalid-request", "passkey parameters are required");
   const relyingPartyID = resolveRelyingPartyID(passkey.origin, passkey.relyingPartyId);
   const allMatch = findAllPasskey(state, relyingPartyID);
@@ -129,7 +201,10 @@ export function handlePasskeyRequest(state, request, now, findAllMatchingLogin) 
         };
         state.allLogin.push(login);
       }
+      if (passkey.prf?.evalByCredential !== undefined) throw new PasskeyError("invalid-request", "evalByCredential is not supported on create");
       const { privateKey, publicKey } = generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+      const privateKeyDERBase64 = privateKey.export({ format: "der", type: "pkcs8" }).toString("base64");
+      const prf = passkey.prf ? { enabled: true, ...(passkey.prf.eval ? { results: evaluatePRFValues(passkey.prf.eval, privateKeyDERBase64) } : {}) } : undefined;
       const jwk = publicKey.export({ format: "jwk" });
       const coseKey = Buffer.concat([
         encodeHeader(5, 5),
@@ -167,7 +242,7 @@ export function handlePasskeyRequest(state, request, now, findAllMatchingLogin) 
         userHandle,
         userName: passkey.userName ?? "",
         userDisplayName: passkey.userDisplayName ?? "",
-        privateKey: privateKey.export({ format: "der", type: "pkcs8" }).toString("base64"),
+        privateKey: privateKeyDERBase64,
         vaultID: login.vaultID,
         itemID: login.itemID,
         createdAt: now,
@@ -181,6 +256,7 @@ export function handlePasskeyRequest(state, request, now, findAllMatchingLogin) 
         publicKeyAlgorithm: -7,
         vaultID: login.vaultID,
         itemID: login.itemID,
+        ...(prf ? { prf } : {}),
       };
     }
     case "passkeys.get": {
@@ -188,6 +264,8 @@ export function handlePasskeyRequest(state, request, now, findAllMatchingLogin) 
       const stored = allMatch.find((match) => match.credentialId === passkey.credentialId);
       if (!stored) throw new PasskeyError("not-found", "passkey not found");
       decodeBase64URL(passkey.challenge, "challenge");
+      const selectedPRF = passkey.prf ? selectPRFValues(passkey.prf, allAllowed, stored.credentialId) : undefined;
+      const prf = passkey.prf ? (selectedPRF ? { results: evaluatePRFValues(selectedPRF, stored.privateKey) } : {}) : undefined;
       const clientDataJSON = buildClientDataJSON("webauthn.get", passkey);
       const authenticatorData = buildAuthenticatorData(relyingPartyID, 0x1d);
       const signedData = Buffer.concat([authenticatorData, createHash("sha256").update(clientDataJSON).digest()]);
@@ -198,6 +276,7 @@ export function handlePasskeyRequest(state, request, now, findAllMatchingLogin) 
         authenticatorData: encodeBase64URL(authenticatorData),
         signature: encodeBase64URL(sign("sha256", signedData, { key, dsaEncoding: "der" })),
         userHandle: stored.userHandle,
+        ...(prf ? { prf } : {}),
       };
     }
     default:

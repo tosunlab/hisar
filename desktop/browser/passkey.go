@@ -15,6 +15,9 @@ type PasskeyRequest struct {
 	CredentialID            string   `json:"credentialId,omitempty"`
 	VaultID                 string   `json:"vaultID,omitempty"`
 	ItemID                  string   `json:"itemID,omitempty"`
+
+	PRF                     *PasskeyPRFRequest `json:"prf,omitempty"`
+	AllAcceptedCredentialID []string           `json:"allAcceptedCredentialIds,omitempty"`
 }
 
 type PasskeySummary struct {
@@ -44,6 +47,8 @@ type PasskeyCreationResult struct {
 	PublicKeyAlgorithm int    `json:"publicKeyAlgorithm"`
 	VaultID            string `json:"vaultID"`
 	ItemID             string `json:"itemID"`
+
+	PRF *PasskeyPRFResult `json:"prf,omitempty"`
 }
 
 type PasskeyAssertionResult struct {
@@ -52,4 +57,6 @@ type PasskeyAssertionResult struct {
 	AuthenticatorData string `json:"authenticatorData"`
 	Signature         string `json:"signature"`
 	UserHandle        string `json:"userHandle"`
+
+	PRF *PasskeyPRFResult `json:"prf,omitempty"`
 }

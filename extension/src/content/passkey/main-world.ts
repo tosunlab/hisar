@@ -11,6 +11,8 @@ import {
   type SerializedCredentialDescriptor,
   type SerializedRequestOptions,
 } from "../../shared/passkey";
+import { buildPRFExtensionResult, buildPRFExtensionResultJSON, findPRFInputError, serializePRFInput } from "./prf";
+import { installClientCapabilities, installPasskeySignals } from "./signal";
 
 export const defaultTimeoutMilliseconds = 5 * 60 * 1000;
 export const minimumTimeoutMilliseconds = 30 * 1000;
@@ -27,10 +29,14 @@ export interface PasskeyTransport {
 
 type CredentialMethod = (this: CredentialsContainer, options?: CredentialCreationOptions | CredentialRequestOptions) => Promise<Credential | null>;
 
-interface PasskeyClass {
+export interface PasskeyClass {
   prototype: object;
   isUserVerifyingPlatformAuthenticatorAvailable?: () => Promise<boolean>;
   isConditionalMediationAvailable?: () => Promise<boolean>;
+  getClientCapabilities?: () => Promise<Record<string, boolean>>;
+  signalUnknownCredential?: (options: unknown) => Promise<void>;
+  signalAllAcceptedCredentials?: (options: unknown) => Promise<void>;
+  signalCurrentUserDetails?: (options: unknown) => Promise<void>;
 }
 
 export interface PasskeyGlobalScope {
@@ -68,7 +74,13 @@ export function serializeCreationOptions(publicKey: PublicKeyCredentialCreationO
     excludeCredentials: serializeDescriptors(publicKey.excludeCredentials),
     ...(publicKey.authenticatorSelection?.authenticatorAttachment ? { authenticatorAttachment: String(publicKey.authenticatorSelection.authenticatorAttachment) } : {}),
     hasCredPropsExtension: publicKey.extensions?.credProps === true,
+    ...withPRF(publicKey.extensions),
   };
+}
+
+function withPRF(extensions: unknown): { prf?: ReturnType<typeof serializePRFInput> } {
+  const prf = serializePRFInput(extensions);
+  return prf ? { prf } : {};
 }
 
 export function serializeRequestOptions(publicKey: PublicKeyCredentialRequestOptions): SerializedRequestOptions {
@@ -77,6 +89,7 @@ export function serializeRequestOptions(publicKey: PublicKeyCredentialRequestOpt
     ...(publicKey.timeout === undefined ? {} : { timeout: Number(publicKey.timeout) }),
     ...(publicKey.rpId === undefined ? {} : { rpId: String(publicKey.rpId) }),
     allowCredentials: serializeDescriptors(publicKey.allowCredentials),
+    ...withPRF(publicKey.extensions),
   };
 }
 
@@ -100,7 +113,12 @@ function defineAll(target: object, allProperty: Record<string, unknown>): void {
 // Own properties on the native prototypes, so instanceof works and the native getters are never called.
 export function buildCredential(json: PasskeyCredentialJSON, scope: PasskeyGlobalScope): PublicKeyCredential {
   const credential = Object.create(scope.PublicKeyCredential?.prototype ?? Object.prototype) as object;
-  const clientExtensionResults = json.kind === "create" && json.hasCredPropsExtension ? { credProps: { rk: true } } : {};
+  const clientExtensionResults: Record<string, unknown> = json.kind === "create" && json.hasCredPropsExtension ? { credProps: { rk: true } } : {};
+  const clientExtensionResultsJSON: Record<string, unknown> = { ...clientExtensionResults };
+  if (json.prf) {
+    clientExtensionResults.prf = buildPRFExtensionResult(json.prf);
+    clientExtensionResultsJSON.prf = buildPRFExtensionResultJSON(json.prf);
+  }
   let response: object;
   let responseJSON: Record<string, unknown>;
   if (json.kind === "create") {
@@ -150,7 +168,7 @@ export function buildCredential(json: PasskeyCredentialJSON, scope: PasskeyGloba
       type: "public-key",
       authenticatorAttachment: "platform",
       response: responseJSON,
-      clientExtensionResults: structuredClone(clientExtensionResults),
+      clientExtensionResults: structuredClone(clientExtensionResultsJSON),
     }),
   });
   return credential as PublicKeyCredential;
@@ -173,6 +191,14 @@ function serializeRequest(
   }
 }
 
+function findPRFInputSafely(kind: "create" | "get", options: CredentialCreationOptions | CredentialRequestOptions, scope: PasskeyGlobalScope): Error | undefined {
+  try {
+    return findPRFInputError(kind, options.publicKey as PublicKeyCredentialRequestOptions, (message, name) => new scope.DOMException(message, name));
+  } catch {
+    return undefined;
+  }
+}
+
 async function runPasskeyRequest(
   kind: "create" | "get",
   original: CredentialMethod,
@@ -183,6 +209,8 @@ async function runPasskeyRequest(
   createID: () => string,
 ): Promise<Credential | null> {
   const signal = options.signal;
+  const prfError = signal?.aborted ? undefined : findPRFInputSafely(kind, options, scope);
+  if (prfError) throw prfError;
   const request = signal?.aborted ? undefined : serializeRequest(kind, createID(), options);
   if (!request) return original.call(container, options);
   const timeoutMilliseconds = computeTimeoutMilliseconds(request.options.timeout, request.mediation === "conditional");
@@ -250,6 +278,8 @@ export function installPasskeyWrapper(scope: PasskeyGlobalScope, transport: Pass
       },
     });
   }
+  installPasskeySignals(publicKeyCredential, scope, transport, createID);
+  installClientCapabilities(publicKeyCredential, () => askHisar().catch(() => false));
 }
 
 export function createEventTransport(document: Document, scope: PasskeyGlobalScope): PasskeyTransport {
@@ -273,13 +303,17 @@ export function createEventTransport(document: Document, scope: PasskeyGlobalSco
     send(request) {
       return new Promise((resolve) => {
         const notAccepted: Settled =
-          request.kind === "availability" ? { requestID: request.requestID, outcome: "availability", isAvailable: false } : { requestID: request.requestID, outcome: "fallback" };
+          request.kind === "availability"
+            ? { requestID: request.requestID, outcome: "availability", isAvailable: false }
+            : request.kind === "signal"
+              ? { requestID: request.requestID, outcome: "signal" }
+              : { requestID: request.requestID, outcome: "fallback" };
         const pending = {
           resolve,
           acceptTimer: scope.setTimeout(() => {
             allResolver.delete(request.requestID);
             resolve(notAccepted);
-          }, request.kind === "availability" ? availabilityTimeoutMilliseconds : acceptTimeoutMilliseconds),
+          }, request.kind === "availability" || request.kind === "signal" ? availabilityTimeoutMilliseconds : acceptTimeoutMilliseconds),
         };
         allResolver.set(request.requestID, pending);
         document.dispatchEvent(new CustomEvent(passkeyRequestEventName, { detail: JSON.stringify(request) }));
