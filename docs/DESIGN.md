@@ -345,6 +345,7 @@ audit_events   (id, account_id, device_id, type, ip, created_at)
 | Attachments | `PUT/GET /vaults/{id}/attachments/{attID}/chunks/{n}` |
 | Recovery (Phase 2) | `GET /recovery/keyset` (any member; the encrypted keyset only for its creator), `POST /recovery/keyset` (admin, once); `POST /auth/recovery/account`, `POST /auth/recovery/start`, `POST /auth/recovery/finish` (recovery token, rate-limited); `GET /admin/recovery`, `POST /admin/recovery/{accountID}`, `POST /admin/recovery/{accountID}/complete` (admin) |
 | Admin | `GET /admin/audit`, `GET /admin/accounts` |
+| Desktop updates | `GET /desktop/updates/appcast.xml` (Sparkle appcast), `GET /desktop/updates/{version}/{file}` (streams a release file); any signed-in session, 404 when the server has no update source (§9.1.1) |
 
 All under `/api/v1`. JSON bodies, base64url for binary fields.
 
@@ -362,6 +363,7 @@ All under `/api/v1`. JSON bodies, base64url for binary fields.
 - HTTP framework: Fiber v3 (fasthttp). It serves plain HTTP behind the reverse proxy; HTTP/2 and TLS are handled by the reverse proxy (nginx in the reference deployment).
 - Served publicly over https behind nginx, which terminates TLS. The GitLab pipeline publishes the image for amd64 and arm64 to the container registry on every `v*` tag.
 - Attachments on local disk (later: S3-compatible storage).
+- Optional desktop update source (§9.1.1): `HISAR_UPDATE_GITLAB_URL`, `HISAR_UPDATE_GITLAB_PROJECT_ID` and `HISAR_UPDATE_GITLAB_TOKEN` (a project access token with the Reporter role and the `read_api` scope). Without them the update endpoints answer 404.
 - Nightly `pg_dump` + attachments encrypted with `age` and copied off-server. Restore tested quarterly.
 
 ## 9. Clients
@@ -379,6 +381,17 @@ All clients use `core/` for crypto, the local store and sync.
 - Auto-lock after idle time and on screen lock/sleep. Clipboard cleared after 90 s.
 - Ships the native-messaging host for the browser extension.
 - Runs the SSH agent (§9.6) and handles Touch ID (§5.4).
+
+#### 9.1.1 Automatic updates (macOS)
+
+The app updates itself with [Sparkle 2](https://sparkle-project.org) through the user's own Hisar server, so the app never talks to a third party and a server's members only get builds its admin allows.
+
+- **Framework.** Sparkle (pinned version and SHA-256 in `scripts/download-sparkle.sh`) is downloaded from its GitHub release at build time, never committed, and embedded in `Hisar.app/Contents/Frameworks`; the app links it with the rpath `@executable_path/../Frameworks` (Go build tag `sparkle`, set for every packaged macOS build; `wails3 dev` and other platforms build without it and report updates as unavailable). `scripts/sign-desktop-app.sh` signs Sparkle's helpers, the framework and then the app, inside out; ad-hoc today, a Developer ID identity (with the hardened runtime) later through `HISAR_SIGNING_IDENTITY`.
+- **Trust.** Every update archive is signed with an EdDSA (Ed25519) key; `SUPublicEDKey` in `Info.plist` holds the public key, and with `SUVerifyUpdateBeforeExtraction` Sparkle checks the signature before it even unpacks the archive and refuses it if it does not verify; the unpacked app must also be code signed (Sparkle allows moving from ad-hoc to a Developer ID, not dropping the signature). The private key never enters the repository: the release pipeline reads it from the protected File CI variable `SPARKLE_PRIVATE_KEY`. The server only relays, so a compromised server can withhold updates or offer an older signed build (Sparkle never installs a lower `CFBundleVersion`) but cannot ship code.
+- **Feed.** `Info.plist` has no `SUFeedURL`; the feed is `<server>/api/v1/desktop/updates/appcast.xml` of the signed-in server, and Sparkle sends the session's `Authorization: Bearer <token>` header with the appcast request and the download. While signed out, update checks are skipped (a manual check says to sign in). `SUEnableAutomaticChecks` is on with a daily `SUScheduledCheckInterval`; Settings → Updates shows the version, has **Check for updates** and an **Automatically check for updates** switch, stored in `desktop.json` (it survives signing out).
+- **Versions.** Releases are `MAJOR.MINOR.PATCH`, each part at most 999. `CFBundleShortVersionString` is the version and `CFBundleVersion`, which Sparkle compares, is the build number `MAJOR × 1 000 000 + MINOR × 1 000 + PATCH` (0.2.1 → 2001, 1.0.0 → 1000000), so it grows with every release.
+- **Pipeline.** A `mac-v<version>` tag builds the DMG and also `Hisar-<version>.zip` (`ditto -c -k --sequesterRsrc --keepParent`), signs the zip with Sparkle's `sign_update`, and writes `update.json`: `{version, buildNumber, archive, edSignature, length, minimumSystemVersion, releaseNotes, releaseNotesFormat ("markdown" or "plain-text"), publishedAt}`. The release notes are the tag's annotation message. Zip, `update.json` and DMG go to the generic package `hisar-desktop/<version>` of the GitLab project.
+- **Server.** With the update source configured, the server lists the `hisar-desktop` versions through the GitLab Packages API, reads each version's `update.json`, and builds an appcast of the newest 5 valid releases (newest first, `sparkle:format` for the notes), cached for 10 minutes. Enclosure URLs point back to the server (`HISAR_PUBLIC_URL`), so the download also needs a session. `GET /desktop/updates/{version}/{file}` accepts only a `MAJOR.MINOR.PATCH` version and a file listed in that version's package, streams it from GitLab with its `Content-Length` without buffering it, and never forwards the GitLab token to another host on redirects. Both endpoints have their own per-IP rate limit.
 
 ### 9.2 Browser extension — TypeScript, MV3
 
@@ -624,7 +637,7 @@ The desktop checks the RP ID against the origin on each request, applies `allowC
 core/       Go module: crypto, item model, local store, sync client   (github.com/tryhisar/hisar/core)
 server/     Go module: hisar-server                                   (github.com/tryhisar/hisar/server)
 cli/        Go module: hisar CLI                                      (github.com/tryhisar/hisar/cli)
-desktop/    Wails v3 app (Go + Vue): vault/ backend, agent/ SSH agent, passkey/ WebAuthn authenticator, frontend/ UI (Phase 2)
+desktop/    Wails v3 app (Go + Vue): vault/ backend, agent/ SSH agent, passkey/ WebAuthn authenticator, updater/ Sparkle, frontend/ UI (Phase 2)
 extension/  Browser extension (TypeScript)                            (Phase 3)
 mobile/     iOS + Android apps on top of gomobile-bound core          (Phase 4)
 docs/       Design and decisions

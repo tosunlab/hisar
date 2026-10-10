@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import type { ApprovalEvent, BrowserStatus, Device, FamilyMember, ImportPreview, ImportProgress, ItemDetail, PendingRecovery, RecoveryStatus, SSHAgentStatus, Status, VaultMember, VaultSummary } from "./api";
+import type { ApprovalEvent, BrowserStatus, Device, FamilyMember, ImportPreview, ImportProgress, ItemDetail, PendingRecovery, RecoveryStatus, SSHAgentStatus, Status, UpdateStatus, VaultMember, VaultSummary } from "./api";
 
 export function createStatus(state: string): Status {
   return { state, server: "https://hisar.test", email: "alice@example.com", name: "Alice", biometricAvailable: false, biometricEnabled: false, biometricReady: false, isOffline: false };
@@ -196,6 +196,9 @@ export function createApiMock() {
     removePairedBrowser: vi.fn(),
     setExactHostMatch: vi.fn(),
     cancelBrowserPairing: vi.fn().mockResolvedValue(undefined),
+    getUpdateStatus: vi.fn().mockResolvedValue(createUpdateStatus()),
+    checkForUpdates: vi.fn(),
+    setAutomaticUpdateCheck: vi.fn(),
     listAllImportFormat: vi.fn().mockResolvedValue([]),
     chooseImportFile: vi.fn(),
     previewImport: vi.fn(),
@@ -204,6 +207,10 @@ export function createApiMock() {
     cancelImport: vi.fn().mockResolvedValue(undefined),
     deleteImportFile: vi.fn(),
   };
+}
+
+export function createUpdateStatus(overrides: Partial<UpdateStatus> = {}): UpdateStatus {
+  return { version: "0.2.1", buildNumber: "2001", isAvailable: true, isSignedIn: true, isAutomaticCheckEnabled: true, ...overrides };
 }
 
 export function createBrowserStatus(overrides: Partial<BrowserStatus> = {}): BrowserStatus {

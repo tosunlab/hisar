@@ -111,6 +111,11 @@ expect "login with the new Secret Key" "$(printf 'http://127.0.0.1:%s\nbob@examp
 RB() { HISAR_STATE=$T/bob.json HISAR_SECRET_KEY=$BOB_NEW_SK hisar "$@"; }
 expect "recovered bob reads item" "$(printf '%s\n' "$NEW_PW" | RB get wifi -v Household -f password 2>/dev/null)" "wifi-password-1"
 
+ALICE_TOKEN=$(sed -n 's/.*"token": *"\([^"]*\)".*/\1/p' "$T/alice.json")
+APPCAST_URL=http://127.0.0.1:$PORT/api/v1/desktop/updates/appcast.xml
+expect "desktop updates need a session" "$(curl -s "$APPCAST_URL")" "unauthorized"
+expect "desktop updates not configured" "$(curl -s -H "Authorization: Bearer $ALICE_TOKEN" "$APPCAST_URL")" "updates are not configured on this server"
+
 expect "logout" "$(A logout && A whoami 2>&1 || true)" "not logged in"
 
 DESKTOP_INVITE=$("$BIN/hisar-server" invite --email desktop@example.com --role admin </dev/null | tail -1)

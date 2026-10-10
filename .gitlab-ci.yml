@@ -66,7 +66,7 @@ go:
     - apt-get update -qq && apt-get install -y -qq postgresql-client >/dev/null
   script:
     - |
-      allUnformatted=$(gofmt -l core server cli mobile desktop/vault desktop/biometric desktop/agent desktop/appinfo desktop/browser desktop/passkey desktop/cmd desktop/main.go desktop/touchid.go)
+      allUnformatted=$(gofmt -l core server cli mobile desktop/vault desktop/biometric desktop/agent desktop/appinfo desktop/browser desktop/passkey desktop/updater desktop/cmd desktop/main.go desktop/touchid.go)
       if [ -n "$allUnformatted" ]; then echo "$allUnformatted"; exit 1; fi
     - make vet
     # TestIntegrationDesktopFlow and TestIntegrationMobileFlow need a running server and run in the end-to-end step.
@@ -160,10 +160,14 @@ desktop-macos:
   script:
     - make install-wails
     - go -C desktop test -count=1 -v ./biometric/
+    - bash scripts/download-sparkle.sh
+    - CGO_LDFLAGS="-Wl,-rpath,$CI_PROJECT_DIR/desktop/build/sparkle" go -C desktop test -count=1 -v -tags sparkle ./updater/
     - make package-desktop
     - test -x desktop/bin/Hisar.app/Contents/MacOS/Hisar
     - plutil -extract CFBundleIdentifier raw desktop/bin/Hisar.app/Contents/Info.plist | grep -qx com.tryhisar.hisar
-    - codesign --verify --deep desktop/bin/Hisar.app
+    - test -f desktop/bin/Hisar.app/Contents/Frameworks/Sparkle.framework/Versions/Current/Sparkle
+    - otool -L desktop/bin/Hisar.app/Contents/MacOS/Hisar | grep -q "@rpath/Sparkle.framework/"
+    - codesign --verify --deep --strict desktop/bin/Hisar.app
     - git diff --exit-code -- desktop/frontend/bindings
     - cd desktop/bin && ditto -c -k --keepParent Hisar.app Hisar-macos.zip
   artifacts:
@@ -230,7 +234,8 @@ server-image:
     - crane manifest "$SERVER_IMAGE:sha-$CI_COMMIT_SHORT_SHA" | tee manifest.json
     - grep -q '"architecture":"amd64"' manifest.json && grep -q '"architecture":"arm64"' manifest.json
 
-# mac-v<version> tags: a universal Hisar.app in a DMG, uploaded to the generic package registry.
+# mac-v<version> tags: a universal Hisar.app in a DMG plus the signed Sparkle update (zip and update.json),
+# uploaded to the generic package registry. SPARKLE_PRIVATE_KEY is a protected File variable holding Sparkle's EdDSA private key.
 desktop-dmg:
   stage: build
   extends: .macos
@@ -239,12 +244,21 @@ desktop-dmg:
   interruptible: false
   script:
     - version=${CI_COMMIT_TAG#mac-v}
+    - bash scripts/get-build-number.sh "$version"
+    - test -s "${SPARKLE_PRIVATE_KEY:-}" || { echo "set the protected File variable SPARKLE_PRIVATE_KEY (Sparkle's EdDSA private key) in Settings → CI/CD → Variables"; exit 1; }
     - python3 -m venv .dmgbuild && .dmgbuild/bin/pip install -q dmgbuild==1.6.5 && export PATH=$CI_PROJECT_DIR/.dmgbuild/bin:$PATH
     - make install-wails
     - bash scripts/package-desktop-dmg.sh "$version"
-    - packageUrl="$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/hisar-desktop/$version/Hisar-$version.dmg"
-    - 'curl -fsS --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file "desktop/bin/Hisar-$version.dmg" "$packageUrl"'
-    - printf 'DESKTOP_VERSION=%s\nDESKTOP_PACKAGE_URL=%s\n' "$version" "$packageUrl" > desktop-release.env
+    # The tag's annotation is the release notes; a lightweight tag gets "Hisar <version>".
+    - printf '%s\n' "${CI_COMMIT_TAG_MESSAGE:-}" > release-notes.md
+    - bash scripts/package-desktop-update.sh "$version" "$SPARKLE_PRIVATE_KEY" release-notes.md
+    - packageBaseUrl="$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/hisar-desktop/$version"
+    # update.json goes last: servers only offer a version once its update.json exists.
+    - |
+      for fileName in "Hisar-$version.dmg" "Hisar-$version.zip" update.json; do
+        curl -fsS --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file "desktop/bin/$fileName" "$packageBaseUrl/$fileName"
+      done
+    - printf 'DESKTOP_VERSION=%s\nDESKTOP_PACKAGE_URL=%s\n' "$version" "$packageBaseUrl/Hisar-$version.dmg" > desktop-release.env
   artifacts:
     reports:
       dotenv: desktop-release.env

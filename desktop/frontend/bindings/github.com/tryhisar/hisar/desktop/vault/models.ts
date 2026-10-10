@@ -204,6 +204,14 @@ export interface Status {
     "isOffline": boolean;
 }
 
+export interface UpdateStatus {
+    "version": string;
+    "buildNumber": string;
+    "isAvailable": boolean;
+    "isSignedIn": boolean;
+    "isAutomaticCheckEnabled": boolean;
+}
+
 export interface VaultMember {
     "accountId": string;
     "name": string;

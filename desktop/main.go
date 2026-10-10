@@ -19,6 +19,7 @@ import (
 	"github.com/tryhisar/hisar/desktop/appinfo"
 	"github.com/tryhisar/hisar/desktop/biometric"
 	"github.com/tryhisar/hisar/desktop/browser"
+	"github.com/tryhisar/hisar/desktop/updater"
 	"github.com/tryhisar/hisar/desktop/vault"
 )
 
@@ -115,6 +116,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	updateService := vault.CreateUpdateService(vaultService, updater.Updater{})
 
 	var app *application.App
 	var window *application.WebviewWindow
@@ -194,6 +196,7 @@ func main() {
 			application.NewService(&ApprovalTouchIDService{prompt: approvalTouchID}),
 			application.NewService(agentService),
 			application.NewService(browserBridge),
+			application.NewService(updateService),
 		},
 		OnShutdown: func() {
 			stopAgent()
@@ -243,6 +246,7 @@ func main() {
 			PromptForSingleSelection()
 	}
 	touchID.SetWindowProvider(window.NativeWindow)
+	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) { updater.Start() })
 
 	approvalWindow = app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:                "ssh-approval",

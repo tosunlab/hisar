@@ -365,6 +365,8 @@ func TestIntegrationDesktopFlow(t *testing.T) {
 	statePath := filepath.Join(t.TempDir(), "desktop.json")
 	secretKeyStore := createMemorySecretKeyStore()
 	service, clipboard, _ := createTestService(t, statePath, secretKeyStore)
+	updater := &fakeUpdater{isAvailable: true}
+	CreateUpdateService(service, updater)
 
 	signUpResult, err := service.SignUp(inviteLink, email, "Desktop User", password)
 	if err != nil {
@@ -372,6 +374,9 @@ func TestIntegrationDesktopFlow(t *testing.T) {
 	}
 	if signUpResult.Status.State != StateUnlocked || !strings.HasPrefix(signUpResult.SecretKey, "H1-") {
 		t.Fatalf("sign up: %+v", signUpResult)
+	}
+	if feedURL, authorization := updater.getSession(); feedURL != serverURL+updateFeedPath || authorization != "Bearer "+service.state.Token {
+		t.Errorf("updater session after sign-up: %q %q", feedURL, authorization)
 	}
 
 	fileSaver := service.config.FileSaver.(*fakeFileSaver)

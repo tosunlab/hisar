@@ -22,3 +22,4 @@ xcuserdata/
 *.xcresult
 deploy/.env
 /.dmgbuild/
+/desktop/build/sparkle/

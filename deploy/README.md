@@ -70,6 +70,29 @@ docker compose exec hisar hisar-server invite
 It asks for the email address; the first invite defaults to the admin role. Open the printed link in the desktop app,
 the iPhone app, or the CLI (`hisar signup https://<domain>/invite/<token>`).
 
+## Desktop app updates (optional)
+
+The macOS app checks the server it is signed in to for updates (`docs/DESIGN.md` §9.1.1). The server reads the
+`hisar-desktop` generic package that the `mac-v*` release pipeline publishes in GitLab, so it needs a read-only token:
+
+1. In GitLab, open the project (`hisar/core`) → **Settings → Access tokens** → **Add new token**.
+2. Name it e.g. `hisar-server updates`, set an expiry date, choose the role **Reporter** and only the scope **read_api**,
+   then create it and copy the token.
+3. In `.env` on the server, uncomment and fill in:
+
+   ```sh
+   HISAR_UPDATE_GITLAB_URL=https://git.tryhisar.com
+   HISAR_UPDATE_GITLAB_PROJECT_ID=2          # Settings → General, "Project ID"
+   HISAR_UPDATE_GITLAB_TOKEN=glpat-…
+   ```
+
+4. `chmod 600 .env && docker compose up -d`. The log says `desktop updates from https://git.tryhisar.com project 2`.
+
+Check it with a session token from a signed-in device (`desktop.json` in the app's state folder):
+`curl -H "Authorization: Bearer <token>" https://<domain>/api/v1/desktop/updates/appcast.xml`. Without the variables the
+endpoints answer 404 "updates are not configured on this server". Renew the token before it expires; until then, update
+checks fail with "the update source is unreachable".
+
 ## Upgrades
 
 ```sh

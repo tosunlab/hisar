@@ -3,9 +3,11 @@
 
 import * as BrowserBridge from "./browserbridge.js";
 import * as Service from "./service.js";
+import * as UpdateService from "./updateservice.js";
 export {
     BrowserBridge,
-    Service
+    Service,
+    UpdateService
 };
 
 export type {
@@ -29,6 +31,7 @@ export type {
     RecoveryStatus,
     SignUpResult,
     Status,
+    UpdateStatus,
     VaultMember,
     VaultSummary
 } from "./models.js";

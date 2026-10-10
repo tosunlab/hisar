@@ -45,6 +45,7 @@ type Service struct {
 	localCache                   *cache.Cache
 	pendingImport                *pendingImport
 	stopEvents                   context.CancelFunc
+	onSessionChange              func(server, token string, isSignedIn bool)
 }
 
 // getCache opens the offline cache on first use; if it cannot be opened, even after starting it over, Hisar stays online-only.
@@ -102,6 +103,12 @@ func CreateService(config Config) (*Service, error) {
 		return nil, err
 	}
 	return &Service{config: config, state: state}, nil
+}
+
+func (s *Service) notifySessionChange() {
+	if s.onSessionChange != nil {
+		s.onSessionChange(s.state.Server, s.state.Token, s.state.IsLoggedIn())
+	}
 }
 
 func (s *Service) getDeviceInfo() proto.DeviceInfo {
@@ -239,6 +246,7 @@ func (s *Service) SignIn(server, email, secretKeyText, password string) (Status,
 		loggedIn.Lock()
 		return Status{}, fmt.Errorf("could not save the Secret Key to the keychain: %w", err)
 	}
+	s.notifySessionChange()
 	s.attachCache(ctx, loggedIn)
 	s.openSession(loggedIn)
 	s.recordPasswordUnlock()
@@ -295,6 +303,7 @@ func (s *Service) SignUp(inviteLink, email, name, password string) (SignUpResult
 		return SignUpResult{}, err
 	}
 	keychainErr := s.config.SecretKeyStore.StoreSecretKey(secretKey)
+	s.notifySessionChange()
 	s.attachCache(ctx, signedUp)
 	s.openSession(signedUp)
 	s.newAccountSecretKey = &secretKey
@@ -362,6 +371,7 @@ func (s *Service) SignOut() (Status, error) {
 	s.recoveredAccountSecretKey = nil
 	s.removeCache()
 	s.state.Reset()
+	s.notifySessionChange()
 	return s.buildStatus(), s.state.Save()
 }
 
