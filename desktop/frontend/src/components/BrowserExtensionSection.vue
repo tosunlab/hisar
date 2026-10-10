@@ -30,12 +30,14 @@ onMounted(loadBrowserStatus);
       <span class="setting-icon"><AppIcon name="globe" /></span>
       <div class="setting-text">
         <strong>Hisar for Chrome, Brave, Edge, Arc and Vivaldi</strong>
-        <p v-if="allRegisteredBrowser.length > 0" class="muted" data-testid="registered-browsers">
-          Ready in
-          <span v-for="installation in allRegisteredBrowser" :key="installation.name" class="tag" :class="installation.isInstalled ? 'success' : 'warning'" :title="installation.errorMessage">
-            {{ installation.name }}
-          </span>
-        </p>
+        <div v-if="allRegisteredBrowser.length > 0" class="registered-browsers" data-testid="registered-browsers">
+          <span class="muted">Ready in</span>
+          <ul class="browser-list">
+            <li v-for="installation in allRegisteredBrowser" :key="installation.name" class="tag" :class="installation.isInstalled ? 'success' : 'warning'" :title="installation.errorMessage">
+              {{ installation.name }}
+            </li>
+          </ul>
+        </div>
         <p v-else class="muted" data-testid="registered-browsers">No supported browser found. Install one, then restart Hisar.</p>
       </div>
     </div>
@@ -76,8 +78,24 @@ onMounted(loadBrowserStatus);
 </template>
 
 <style scoped>
-.tag {
-  margin-left: 4px;
+.registered-browsers {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.registered-browsers > .muted {
+  flex: none;
+}
+
+.browser-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .exact-host {
