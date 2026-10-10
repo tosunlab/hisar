@@ -287,8 +287,8 @@ export function SignOut(): $CancellablePromise<$models.Status> {
     return $Call.ByID(1073463814);
 }
 
-export function SignUp(inviteLink: string, email: string, name: string, password: string): $CancellablePromise<$models.SignUpResult> {
-    return $Call.ByID(392821103, inviteLink, email, name, password);
+export function SignUp(invite: string, email: string, name: string, password: string): $CancellablePromise<$models.SignUpResult> {
+    return $Call.ByID(392821103, invite, email, name, password);
 }
 
 /**

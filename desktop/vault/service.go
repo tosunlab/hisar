@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -217,10 +218,26 @@ func (s *Service) openSession(unlockedSession *session.Session) {
 	}
 }
 
+const defaultServer = "https://api.tryhisar.com"
+
+func resolveServer(server string) (string, error) {
+	server = strings.TrimSpace(server)
+	hasScheme := strings.Contains(server, "://")
+	server = strings.TrimRight(server, "/")
+	if server != "" && !hasScheme {
+		server = "https://" + server
+	}
+	parsedURL, err := url.ParseRequestURI(server)
+	if err != nil || (parsedURL.Scheme != "https" && parsedURL.Scheme != "http") || parsedURL.Host == "" {
+		return "", errors.New("enter the server address, e.g. api.tryhisar.com")
+	}
+	return server, nil
+}
+
 func (s *Service) SignIn(server, email, secretKeyText, password string) (Status, error) {
-	server = strings.TrimRight(strings.TrimSpace(server), "/")
-	if _, err := url.ParseRequestURI(server); err != nil || !strings.HasPrefix(server, "http") {
-		return Status{}, errors.New("enter the server address, e.g. https://tryhisar.com")
+	server, err := resolveServer(server)
+	if err != nil {
+		return Status{}, err
 	}
 	secretKey, err := crypt.ParseSecretKey(secretKeyText)
 	if err != nil {
@@ -275,8 +292,22 @@ func parseInviteLink(link string) (server, token string, err error) {
 	return parseLinkToken(link, "/invite/", errors.New("paste the full invite link you received"))
 }
 
-func (s *Service) SignUp(inviteLink, email, name, password string) (SignUpResult, error) {
-	server, token, err := parseInviteLink(inviteLink)
+var inviteCodePattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+
+// A bare invite code belongs to the default server; a pasted link keeps its own.
+func parseInvite(invite string) (server, token string, err error) {
+	invite = strings.TrimSpace(invite)
+	if strings.Contains(invite, "/invite/") {
+		return parseInviteLink(invite)
+	}
+	if !inviteCodePattern.MatchString(invite) {
+		return "", "", errors.New("enter the invite code you received, or paste the invite link")
+	}
+	return defaultServer, invite, nil
+}
+
+func (s *Service) SignUp(invite, email, name, password string) (SignUpResult, error) {
+	server, token, err := parseInvite(invite)
 	if err != nil {
 		return SignUpResult{}, err
 	}
