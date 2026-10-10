@@ -115,3 +115,32 @@ describe("readFrameOrigin", () => {
     expect(readFrameOrigin({ url: "https://shop.example.com/", tab }, [])).toBeUndefined();
   });
 });
+
+describe("validatePasskeyRequest with the PRF extension", () => {
+  const salt = encodeBase64URL(new Uint8Array(32).fill(3));
+
+  it("passes valid PRF inputs on", () => {
+    expect(validatePasskeyRequest(createCreation({ prf: {} }))).toMatchObject({ isValid: true, request: { prf: {} } });
+    expect(validatePasskeyRequest(createCreation({ prf: { eval: { first: salt, second: "" } } }))).toMatchObject({ isValid: true, request: { prf: { eval: { first: salt, second: "" } } } });
+    const assertion = validatePasskeyRequest(createAssertion({ allowCredentials: [{ type: "public-key", id: "AQID" }], prf: { eval: { first: "" }, evalByCredential: { AQID: { first: salt } } } }));
+    expect(assertion).toMatchObject({ isValid: true, request: { prf: { eval: { first: "" }, evalByCredential: { AQID: { first: salt } } } } });
+    const withoutPRF = validatePasskeyRequest(createAssertion());
+    expect(withoutPRF.isValid && withoutPRF.request).not.toHaveProperty("prf");
+  });
+
+  it("leaves invalid PRF inputs to the browser", () => {
+    const tooLong = encodeBase64URL(new Uint8Array(1025));
+    for (const [name, request] of [
+      ["prf is not an object", createAssertion({ prf: "salt" })],
+      ["first missing", createAssertion({ prf: { eval: {} } })],
+      ["first not base64url", createAssertion({ prf: { eval: { first: "*" } } })],
+      ["first too long", createAssertion({ prf: { eval: { first: tooLong } } })],
+      ["second too long", createAssertion({ prf: { eval: { first: salt, second: tooLong } } })],
+      ["evalByCredential on create", createCreation({ prf: { evalByCredential: {} } })],
+      ["evalByCredential without allowCredentials", createAssertion({ prf: { evalByCredential: { AQID: { first: salt } } } })],
+      ["key outside allowCredentials", createAssertion({ allowCredentials: [{ type: "public-key", id: "AQID" }], prf: { evalByCredential: { BAUG: { first: salt } } } })],
+    ] as const) {
+      expect(validatePasskeyRequest(request), name).toEqual({ isValid: false, reason: "invalid prf extension" });
+    }
+  });
+});

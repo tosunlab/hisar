@@ -14,8 +14,8 @@ src/background/           service worker: native port (native-client.ts), popup/
 src/content/              content script (all frames): form detection, fill, submit capture, save bar (closed shadow root)
 src/content/inline-menu/  inline icon and menu frame placement, eligibility, keyboard, clickjacking checks
 src/inline-menu/          the menu page shown in the iframe under a login field (inline-menu.html)
-src/content/passkey/      passkeys (DESIGN §9.8): the MAIN-world navigator.credentials wrapper (passkey-main.js), the
-                          isolated-world bridge and prompt frame (passkey-content.js)
+src/content/passkey/      passkeys (DESIGN §9.8): the MAIN-world navigator.credentials wrapper with PRF, the signal methods
+                          and getClientCapabilities (passkey-main.js), the isolated-world bridge and prompt frame (passkey-content.js)
 src/background/passkey*.ts  passkey requests: sender origin, option checks, prompt sessions over ports
 src/passkey-prompt/       the passkey prompt page shown in the iframe (passkey-prompt.html)
 src/popup/                Vue popup: pairing, desktop unavailable, signed out, locked, logins, generator, settings
@@ -61,6 +61,12 @@ npm run test:end-to-end     # builds, then runs the Playwright tests with the fa
 - conditional mediation (passkey autofill) from a `webauthn` field;
 - "Use another device or browser" and an unpaired browser fall back to the browser (a CDP virtual authenticator);
 - unlocking from the prompt, and closing it while locked.
+
+`end-to-end/passkey-extensions.spec.ts` uses the same site and fake host:
+
+- creates a passkey with `prf.eval` and signs in twice with the same salt (same output) and once with another (a different one);
+- `signalUnknownCredential` with an `rpId` of another site rejects with `SecurityError`; with the site's `rpId` it removes the passkey (the login stays), and signing in no longer offers it;
+- `getClientCapabilities()` answers without starting the native host, and reports Hisar's capabilities once it is connected.
 
 To watch it run, use `HISAR_HEADED=1 npm run test:end-to-end`.
 

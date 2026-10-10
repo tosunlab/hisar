@@ -214,3 +214,29 @@ describe("prompt placement and fields", () => {
     expect(frame.isShown()).toBe(false);
   });
 });
+
+describe("PasskeyContentBridge signals", () => {
+  const signalRequest: PasskeyPageRequest = { requestID: "s1", kind: "signal", signal: { method: "signalUnknownCredential", rpId: "example.com", credentialId: "AQ" } };
+
+  it("relays a signal without accepting it as a session or ending the active request", () => {
+    sendRequest(getRequest);
+    allPort[0].deliver({ type: "prompt", promptUrl, isConditional: false });
+    sendRequest(signalRequest);
+    expect(allPort[1].allSent[0]).toMatchObject({ type: "start", request: signalRequest });
+    expect(allResponse).toEqual([{ requestID: "r1", outcome: "accepted" }]);
+    allPort[1].deliver({ type: "signal" });
+    expect(allResponse.at(-1)).toEqual({ requestID: "s1", outcome: "signal" });
+    expect(allPort[1].isDisconnected).toBe(true);
+    expect(allPort[0].isDisconnected).toBe(false);
+    expect(findHost()).not.toBeNull();
+  });
+
+  it("passes the service worker's error on, and resolves when the port goes away", () => {
+    sendRequest(signalRequest);
+    allPort[0].deliver({ type: "signal", errorName: "SecurityError", message: "wrong rpId" });
+    expect(allResponse.at(-1)).toEqual({ requestID: "s1", outcome: "signal", errorName: "SecurityError", message: "wrong rpId" });
+    sendRequest({ ...signalRequest, requestID: "s2" });
+    allPort[1].simulateDisconnect();
+    expect(allResponse.at(-1)).toEqual({ requestID: "s2", outcome: "signal" });
+  });
+});

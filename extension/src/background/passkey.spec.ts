@@ -325,3 +325,95 @@ describe("passkey requests from content scripts", () => {
     expect(availability.allReceived).toEqual([{ type: "availability", isAvailable: true }]);
   });
 });
+
+describe("passkey PRF and signals", () => {
+  const prfResults = { first: "AQ", second: "Ag" };
+
+  function returnPRF(): void {
+    const requestDesktop = harness.dependencies.requestDesktop;
+    harness.dependencies.requestDesktop = vi.fn(async (type: string, passkey: DesktopPasskeyParameters) => {
+      const result = (await requestDesktop(type as never, passkey)) as Record<string, unknown>;
+      if (type === "passkeys.create" && passkey.prf) return { ...result, prf: { enabled: true, ...(passkey.prf.eval ? { results: prfResults } : {}) } };
+      if (type === "passkeys.get" && passkey.prf) return { ...result, prf: { results: prfResults } };
+      return result;
+    }) as never;
+  }
+
+  it("passes PRF inputs to the desktop and its outputs to the page", async () => {
+    returnPRF();
+    const withPRF = { ...creationRequest, options: { ...creationRequest.options, prf: { eval: { first: "c2FsdA" } } } } as PasskeyPageRequest;
+    const createPort = await startRequest(withPRF);
+    await connectPrompt().call({ method: "savePasskey" }, readSessionID(createPort));
+    expect(harness.allDesktopRequest.at(-1)).toMatchObject({ type: "passkeys.create", passkey: { prf: { eval: { first: "c2FsdA" } } } });
+    expect(createPort.allReceived.at(-1)).toMatchObject({ type: "credential", credential: { kind: "create", prf: { enabled: true, results: prfResults } } });
+
+    const assertionWithPRF = {
+      ...assertionRequest,
+      options: { ...assertionRequest.options, allowCredentials: [{ type: "public-key", id: "Y3JlZA" }], prf: { eval: { first: "" }, evalByCredential: { Y3JlZA: { first: "AQ", second: "" } } } },
+    } as PasskeyPageRequest;
+    const getPort = await startRequest(assertionWithPRF);
+    await connectPrompt({ ...promptSender, frameId: 50 }).call({ method: "choosePasskey", credentialId: "Y3JlZA" }, readSessionID(getPort));
+    expect(harness.allDesktopRequest.at(-1)).toMatchObject({
+      type: "passkeys.get",
+      passkey: { credentialId: "Y3JlZA", prf: { eval: { first: "" }, evalByCredential: { Y3JlZA: { first: "AQ", second: "" } } } },
+    });
+    expect(getPort.allReceived.at(-1)).toMatchObject({ type: "credential", credential: { kind: "get", prf: { results: prfResults } } });
+  });
+
+  it("reports PRF as not enabled when the desktop does not answer it, and leaves it out when not asked", async () => {
+    const withPRF = { ...creationRequest, options: { ...creationRequest.options, prf: {} } } as PasskeyPageRequest;
+    const createPort = await startRequest(withPRF);
+    await connectPrompt().call({ method: "savePasskey" }, readSessionID(createPort));
+    expect((createPort.allReceived.at(-1) as { credential: { prf: unknown } }).credential.prf).toEqual({ enabled: false });
+
+    const getPort = await startRequest({ ...assertionRequest, options: { ...assertionRequest.options, prf: {} } } as PasskeyPageRequest);
+    await connectPrompt({ ...promptSender, frameId: 51 }).call({ method: "choosePasskey", credentialId: "Y3JlZA" }, readSessionID(getPort));
+    expect((getPort.allReceived.at(-1) as { credential: { prf: unknown } }).credential.prf).toEqual({});
+
+    const plainPort = await startRequest(assertionRequest);
+    await connectPrompt({ ...promptSender, frameId: 52 }).call({ method: "choosePasskey", credentialId: "Y3JlZA" }, readSessionID(plainPort));
+    expect(harness.allDesktopRequest.at(-1)?.passkey).not.toHaveProperty("prf");
+    expect((plainPort.allReceived.at(-1) as { credential: object }).credential).not.toHaveProperty("prf");
+  });
+
+  it("forwards a valid signal over an existing connection with the sender origin", async () => {
+    const signalRequest: PasskeyPageRequest = { requestID: "s1", kind: "signal", signal: { method: "signalUnknownCredential", rpId: "example.com", credentialId: "Y3JlZA" } };
+    const port = await startRequest(signalRequest);
+    expect(port.allReceived).toEqual([{ type: "signal" }]);
+    await vi.waitFor(() =>
+      expect(harness.allDesktopRequest).toEqual([{ type: "passkeys.signalUnknownCredential", passkey: { origin: "https://login.example.com", relyingPartyId: "example.com", credentialId: "Y3JlZA" } }]),
+    );
+    expect(harness.dependencies.getDesktopView).not.toHaveBeenCalled();
+    expect(harness.service.getSessionCount()).toBe(0);
+  });
+
+  it("never forwards a signal without a connection, and rejects an rpId of another site", async () => {
+    harness.isConnected = false;
+    const signalRequest: PasskeyPageRequest = {
+      requestID: "s2",
+      kind: "signal",
+      signal: { method: "signalCurrentUserDetails", rpId: "example.com", userId: "dXNlcg", name: "alex", displayName: "Alex" },
+    };
+    expect((await startRequest(signalRequest)).allReceived).toEqual([{ type: "signal" }]);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(harness.dependencies.isDesktopAvailable).toHaveBeenCalled();
+    expect(harness.dependencies.requestDesktop).not.toHaveBeenCalled();
+
+    harness.isConnected = true;
+    const foreign = await startRequest({ ...signalRequest, signal: { ...signalRequest.signal, rpId: "evil.example" } } as PasskeyPageRequest);
+    expect(foreign.allReceived).toEqual([{ type: "signal", errorName: "SecurityError", message: expect.any(String) }]);
+    const fromHTTP = await startRequest(signalRequest, { ...frameSender, url: "http://login.example.com/" });
+    expect(fromHTTP.allReceived).toEqual([{ type: "signal" }]);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(harness.dependencies.requestDesktop).not.toHaveBeenCalled();
+  });
+
+  it("answers the page before the desktop and ignores desktop errors", async () => {
+    let finishDesktop: () => void = () => undefined;
+    harness.dependencies.requestDesktop = vi.fn(() => new Promise((_, reject) => (finishDesktop = () => reject(new HisarError("locked", "locked"))))) as never;
+    const port = await startRequest({ requestID: "s3", kind: "signal", signal: { method: "signalAllAcceptedCredentials", rpId: "example.com", userId: "dXNlcg", allAcceptedCredentialIds: [] } });
+    expect(port.allReceived).toEqual([{ type: "signal" }]);
+    await vi.waitFor(() => expect(harness.dependencies.requestDesktop).toHaveBeenCalledWith("passkeys.signalAllAcceptedCredentials", expect.objectContaining({ allAcceptedCredentialIds: [] })));
+    finishDesktop();
+  });
+});

@@ -13,6 +13,26 @@ export interface SerializedCredentialDescriptor {
   id: string;
 }
 
+export interface SerializedPRFValues {
+  first: string;
+  second?: string;
+}
+
+export interface SerializedPRFInput {
+  eval?: SerializedPRFValues;
+  evalByCredential?: Record<string, SerializedPRFValues>;
+}
+
+export interface PasskeyPRFOutputJSON {
+  enabled?: boolean;
+  results?: SerializedPRFValues;
+}
+
+export type SerializedSignal =
+  | { method: "signalUnknownCredential"; rpId: string; credentialId: string }
+  | { method: "signalAllAcceptedCredentials"; rpId: string; userId: string; allAcceptedCredentialIds: string[] }
+  | { method: "signalCurrentUserDetails"; rpId: string; userId: string; name: string; displayName: string };
+
 export interface SerializedCreationOptions {
   rp: { id?: string; name: string };
   user: { id: string; name: string; displayName: string };
@@ -22,6 +42,7 @@ export interface SerializedCreationOptions {
   excludeCredentials: SerializedCredentialDescriptor[];
   authenticatorAttachment?: string;
   hasCredPropsExtension: boolean;
+  prf?: SerializedPRFInput;
 }
 
 export interface SerializedRequestOptions {
@@ -29,12 +50,14 @@ export interface SerializedRequestOptions {
   timeout?: number;
   rpId?: string;
   allowCredentials: SerializedCredentialDescriptor[];
+  prf?: SerializedPRFInput;
 }
 
 export type PasskeyPageRequest =
   | { requestID: string; kind: "create"; mediation?: string; options: SerializedCreationOptions }
   | { requestID: string; kind: "get"; mediation?: string; options: SerializedRequestOptions }
-  | { requestID: string; kind: "availability" };
+  | { requestID: string; kind: "availability" }
+  | { requestID: string; kind: "signal"; signal: SerializedSignal };
 
 export interface CreatedCredentialJSON {
   kind: "create";
@@ -46,6 +69,7 @@ export interface CreatedCredentialJSON {
   publicKeyAlgorithm: number;
   transports: string[];
   hasCredPropsExtension: boolean;
+  prf?: PasskeyPRFOutputJSON;
 }
 
 export interface AssertedCredentialJSON {
@@ -55,6 +79,7 @@ export interface AssertedCredentialJSON {
   authenticatorData: string;
   signature: string;
   userHandle: string;
+  prf?: PasskeyPRFOutputJSON;
 }
 
 export type PasskeyCredentialJSON = CreatedCredentialJSON | AssertedCredentialJSON;
@@ -64,7 +89,8 @@ export type PasskeyPageResponse =
   | { requestID: string; outcome: "fallback" }
   | { requestID: string; outcome: "credential"; credential: PasskeyCredentialJSON }
   | { requestID: string; outcome: "error"; name: string; message: string }
-  | { requestID: string; outcome: "availability"; isAvailable: boolean };
+  | { requestID: string; outcome: "availability"; isAvailable: boolean }
+  | { requestID: string; outcome: "signal"; errorName?: string; message?: string };
 
 export type ContentToBackgroundPasskeyMessage =
   | { type: "start"; request: PasskeyPageRequest; allAncestorOrigin: string[]; isPermissionPolicyAllowed: boolean }
@@ -78,6 +104,7 @@ export type BackgroundToContentPasskeyMessage =
   | { type: "credential"; credential: PasskeyCredentialJSON }
   | { type: "error"; name: string; message: string }
   | { type: "availability"; isAvailable: boolean }
+  | { type: "signal"; errorName?: string; message?: string }
   | { type: "checkVisibility"; checkID: string }
   | { type: "resize"; height: number };
 

@@ -286,3 +286,64 @@ describe("base64url helpers", () => {
     expect(() => decodeBase64URL("A")).toThrow();
   });
 });
+
+describe("installPasskeyWrapper with PRF, signals and capabilities", () => {
+  function createIsolatedScope(): ReturnType<typeof createScope> {
+    const scope = createScope();
+    class IsolatedPublicKeyCredential {
+      static isUserVerifyingPlatformAuthenticatorAvailable = vi.fn(async () => false);
+      static isConditionalMediationAvailable = vi.fn(async () => false);
+      static getClientCapabilities = vi.fn(async () => ({ hybridTransport: true }));
+    }
+    return { ...scope, PublicKeyCredential: IsolatedPublicKeyCredential };
+  }
+
+  it("serializes PRF inputs and rejects invalid ones with the spec's errors before asking Hisar", async () => {
+    const scope = createIsolatedScope();
+    const container = new (scope.CredentialsContainer as unknown as new () => CredentialsContainer)();
+    const transport = createTransport(async (request) => ({ requestID: request.requestID, outcome: "credential", credential: { ...createdJSON, prf: { enabled: true, results: { first: "AQI" } } } }));
+    installPasskeyWrapper(scope, transport, () => "request-1");
+    const credential = (await container.create({ publicKey: { ...creationOptions, extensions: { prf: { eval: { first: new Uint8Array([7]) } } } as AuthenticationExtensionsClientInputs } })) as PublicKeyCredential & {
+      toJSON(): { clientExtensionResults: unknown };
+    };
+    expect(transport.allRequest[0]).toMatchObject({ kind: "create", options: { prf: { eval: { first: "Bw" } } } });
+    const results = credential.getClientExtensionResults() as { prf: { enabled: boolean; results: { first: ArrayBuffer } } };
+    expect(results.prf.enabled).toBe(true);
+    expect([...new Uint8Array(results.prf.results.first)]).toEqual([1, 2]);
+    expect(credential.toJSON().clientExtensionResults).toEqual({ credProps: { rk: true }, prf: { enabled: true, results: { first: "AQI" } } });
+
+    const evalByCredential = { AQID: { first: new Uint8Array([1]) } };
+    await expect(container.create({ publicKey: { ...creationOptions, extensions: { prf: { evalByCredential } } as AuthenticationExtensionsClientInputs } })).rejects.toMatchObject({ name: "NotSupportedError" });
+    await expect(container.get({ publicKey: { challenge: new Uint8Array([1]), extensions: { prf: { evalByCredential } } as AuthenticationExtensionsClientInputs } })).rejects.toMatchObject({
+      name: "NotSupportedError",
+    });
+    await expect(
+      container.get({ publicKey: { challenge: new Uint8Array([1]), allowCredentials: [{ type: "public-key", id: new Uint8Array([9]) }], extensions: { prf: { evalByCredential } } as AuthenticationExtensionsClientInputs } }),
+    ).rejects.toMatchObject({ name: "SyntaxError" });
+    expect(transport.allRequest).toHaveLength(1);
+    expect(scope.allNativeCall).toEqual([]);
+  });
+
+  it("installs the signal methods and getClientCapabilities on PublicKeyCredential", async () => {
+    const scope = createIsolatedScope();
+    const browserCapabilities = scope.PublicKeyCredential!.getClientCapabilities;
+    const transport = createTransport(async (request) =>
+      request.kind === "availability" ? { requestID: request.requestID, outcome: "availability", isAvailable: true } : { requestID: request.requestID, outcome: "signal" },
+    );
+    installPasskeyWrapper(scope, transport, () => `request-${transport.allRequest.length + 1}`);
+    const publicKeyCredential = scope.PublicKeyCredential!;
+    await expect(publicKeyCredential.signalUnknownCredential!({ rpId: "example.com", credentialId: "AQ" })).resolves.toBeUndefined();
+    expect(transport.allRequest[0]).toMatchObject({ kind: "signal", signal: { method: "signalUnknownCredential" } });
+    expect(await publicKeyCredential.getClientCapabilities!()).toMatchObject({ hybridTransport: true, passkeyPlatformAuthenticator: true, "extension:prf": true, signalAllAcceptedCredentials: true });
+    expect(browserCapabilities).toHaveBeenCalledOnce();
+    expect(transport.allRequest.map((request) => request.kind)).toEqual(["signal", "availability"]);
+  });
+
+  it("resolves signals when no content script answers", async () => {
+    vi.useFakeTimers();
+    const transport = createEventTransport(document, createScope());
+    const settled = transport.send({ requestID: "s1", kind: "signal", signal: { method: "signalUnknownCredential", rpId: "example.com", credentialId: "AQ" } });
+    await vi.advanceTimersByTimeAsync(acceptTimeoutMilliseconds);
+    expect(await settled).toEqual({ requestID: "s1", outcome: "signal" });
+  });
+});

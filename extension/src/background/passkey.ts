@@ -11,8 +11,9 @@ import {
   type PasskeyPromptResponse,
   type PasskeyPromptState,
 } from "../shared/passkey";
-import type { DesktopPasskeyParameters } from "../shared/passkey-protocol";
+import type { DesktopPasskeyParameters, PasskeySignalType } from "../shared/passkey-protocol";
 import { HisarError, toHisarError, type LoginSummary, type RequestMap } from "../shared/protocol";
+import { checkPasskeySignal } from "./passkey-signal";
 import { readFrameOrigin, validatePasskeyRequest, type FrameOrigin, type PasskeySender, type ValidatedAssertion, type ValidatedCreation } from "./passkey-request";
 
 export const visibilityCheckTimeoutMilliseconds = 1000;
@@ -27,7 +28,7 @@ export interface PasskeyPort {
   onDisconnect: { addListener(listener: () => void): void };
 }
 
-type PasskeyRequestType = "passkeys.list" | "passkeys.prepare" | "passkeys.create" | "passkeys.get";
+type PasskeyRequestType = "passkeys.list" | "passkeys.prepare" | "passkeys.create" | "passkeys.get" | PasskeySignalType;
 
 export interface PasskeyDependencies {
   getDesktopView(): Promise<PopupView>;
@@ -119,6 +120,10 @@ export class PasskeyService {
       this.post(port, { type: "availability", isAvailable: await this.dependencies.isDesktopAvailable().catch(() => false) });
       return undefined;
     }
+    if (message.request?.kind === "signal") {
+      await this.handleSignal(port, message);
+      return undefined;
+    }
     const tabId = port.sender?.tab?.id;
     const frame = port.sender ? readFrameOrigin(port.sender, message.allAncestorOrigin) : undefined;
     const validation = validatePasskeyRequest(message.request);
@@ -159,6 +164,21 @@ export class PasskeyService {
     this.allSession.set(session.sessionID, session);
     this.post(port, { type: "prompt", promptUrl: `${this.dependencies.getPromptUrl()}#${session.sessionID}`, isConditional });
     return session;
+  }
+
+  // Signals never start Hisar: they are forwarded only over an existing connection.
+  private async handleSignal(port: PasskeyPort, message: Extract<ContentToBackgroundPasskeyMessage, { type: "start" }>): Promise<void> {
+    const request = message.request;
+    if (request.kind !== "signal") return;
+    const frame = port.sender ? readFrameOrigin(port.sender, message.allAncestorOrigin) : undefined;
+    const check = checkPasskeySignal(request.signal, frame);
+    if (check.outcome === "reject") {
+      this.post(port, { type: "signal", errorName: check.errorName, message: check.message });
+      return;
+    }
+    this.post(port, { type: "signal" });
+    if (check.outcome !== "forward" || !(await this.dependencies.isDesktopAvailable().catch(() => false))) return;
+    await this.dependencies.requestDesktop(check.type, check.parameters).catch(() => undefined);
   }
 
   private buildDesktopParameters(session: PasskeySession): DesktopPasskeyParameters {
@@ -308,6 +328,7 @@ export class PasskeyService {
         challenge: request.challenge,
         allowCredentials: request.allAllowedCredentialID,
         credentialId,
+        ...(request.prf ? { prf: request.prf } : {}),
       }),
     );
     const credential: PasskeyCredentialJSON = {
@@ -317,6 +338,7 @@ export class PasskeyService {
       authenticatorData: assertion.authenticatorData,
       signature: assertion.signature,
       userHandle: assertion.userHandle,
+      ...(request.prf ? { prf: { ...(assertion.prf?.results ? { results: assertion.prf.results } : {}) } } : {}),
     };
     this.finishSession(session, { type: "credential", credential });
     return null;
@@ -339,6 +361,7 @@ export class PasskeyService {
         userDisplayName: request.userDisplayName,
         excludeCredentials: request.allExcludedCredentialID,
         ...(isExistingLogin ? { vaultID, itemID } : {}),
+        ...(request.prf ? { prf: request.prf } : {}),
       }),
     );
     const credential: PasskeyCredentialJSON = {
@@ -351,6 +374,7 @@ export class PasskeyService {
       publicKeyAlgorithm: creation.publicKeyAlgorithm,
       transports: allPasskeyTransport,
       hasCredPropsExtension: request.hasCredPropsExtension,
+      ...(request.prf ? { prf: { enabled: creation.prf?.enabled === true, ...(creation.prf?.results ? { results: creation.prf.results } : {}) } } : {}),
     };
     this.finishSession(session, { type: "credential", credential });
     return null;

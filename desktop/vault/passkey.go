@@ -128,6 +128,8 @@ func (bridge *BrowserBridge) handlePasskeyRequest(ctx context.Context, request *
 		result, err = bridge.service.createPasskey(ctx, &passkeyRequest)
 	case "passkeys.get":
 		result, err = bridge.service.signPasskeyAssertion(ctx, &passkeyRequest)
+	case PasskeySignalUnknownCredential, PasskeySignalAllAcceptedCredentials, PasskeySignalCurrentUserDetails:
+		result, err = bridge.service.applyPasskeySignal(ctx, request.Type, &passkeyRequest)
 	default:
 		return nil, browser.CreateError(browser.ErrorInvalidRequest, fmt.Sprintf("unknown request type %q", request.Type))
 	}
@@ -425,10 +427,17 @@ func (s *Service) createPasskey(ctx context.Context, request *browser.PasskeyReq
 	if err != nil {
 		return browser.PasskeyCreationResult{}, err
 	}
+	var prfResult *browser.PasskeyPRFResult
 	saved, err := s.savePasskey(ctx, passkeySave{target: target, user: user, allExcludedID: allExcludedID, vaultID: request.VaultID, itemID: request.ItemID}, func() (passkey.Creation, error) {
-		return passkey.CreateCredential(passkey.CreationRequest{
+		creation, err := passkey.CreateCredential(passkey.CreationRequest{
 			Origin: request.Origin, TopOrigin: request.TopOrigin, IsCrossOrigin: request.IsCrossOrigin, RelyingPartyID: target.relyingPartyID, Challenge: challenge,
 		})
+		if err != nil {
+			return passkey.Creation{}, err
+		}
+		// Before the save, so an invalid PRF input saves nothing.
+		prfResult, err = evaluatePasskeyCreationPRF(request.PRF, creation.PrivateKey)
+		return creation, err
 	})
 	if err != nil {
 		return browser.PasskeyCreationResult{}, err
@@ -442,6 +451,7 @@ func (s *Service) createPasskey(ctx context.Context, request *browser.PasskeyReq
 		PublicKeyAlgorithm: passkey.AlgorithmES256,
 		VaultID:            saved.vaultID,
 		ItemID:             saved.itemID,
+		PRF:                prfResult,
 	}, nil
 }
 
@@ -462,7 +472,12 @@ func (s *Service) signPasskeyAssertion(ctx context.Context, request *browser.Pas
 	if err != nil {
 		return browser.PasskeyAssertionResult{}, err
 	}
+	var prfResult *browser.PasskeyPRFResult
 	storedPasskey, assertion, err := s.signWithPasskey(ctx, target.relyingPartyID, credentialID, allAllowedID, func(storedPasskey item.Passkey) (passkey.Assertion, error) {
+		var err error
+		if prfResult, err = evaluatePasskeyAssertionPRF(request.PRF, allAllowedID, storedPasskey); err != nil {
+			return passkey.Assertion{}, err
+		}
 		return passkey.SignAssertion(passkey.AssertionRequest{
 			Origin: request.Origin, TopOrigin: request.TopOrigin, IsCrossOrigin: request.IsCrossOrigin, RelyingPartyID: target.relyingPartyID, Challenge: challenge,
 		}, storedPasskey.RelyingPartyID, storedPasskey.PrivateKey)
@@ -476,5 +491,6 @@ func (s *Service) signPasskeyAssertion(ctx context.Context, request *browser.Pas
 		AuthenticatorData: encodeBase64URL(assertion.AuthenticatorData),
 		Signature:         encodeBase64URL(assertion.Signature),
 		UserHandle:        encodeBase64URL(storedPasskey.UserHandle),
+		PRF:               prfResult,
 	}, nil
 }

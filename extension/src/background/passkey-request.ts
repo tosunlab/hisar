@@ -1,4 +1,4 @@
-import { algorithmES256, decodeBase64URL, type PasskeyPageRequest } from "../shared/passkey";
+import { algorithmES256, decodeBase64URL, type PasskeyPageRequest, type SerializedPRFInput, type SerializedPRFValues } from "../shared/passkey";
 
 export const maximumChallengeBytes = 1024;
 export const maximumUserHandleBytes = 64;
@@ -6,6 +6,7 @@ export const maximumCredentialIDBytes = 1023;
 export const maximumCredentialCount = 64;
 export const maximumNameLength = 256;
 export const maximumRelyingPartyIDLength = 253;
+export const maximumPRFInputBytes = 1024;
 
 export interface ValidatedCreation {
   kind: "create";
@@ -17,6 +18,7 @@ export interface ValidatedCreation {
   challenge: string;
   allExcludedCredentialID: string[];
   hasCredPropsExtension: boolean;
+  prf?: SerializedPRFInput;
 }
 
 export interface ValidatedAssertion {
@@ -25,6 +27,7 @@ export interface ValidatedAssertion {
   challenge: string;
   allAllowedCredentialID: string[];
   isConditional: boolean;
+  prf?: SerializedPRFInput;
 }
 
 export type PasskeyValidation = { isValid: true; request: ValidatedCreation | ValidatedAssertion } | { isValid: false; reason: string };
@@ -74,6 +77,41 @@ function readAllCredentialID(value: unknown): string[] | undefined {
   return allCredentialID;
 }
 
+function readPRFValues(value: unknown): SerializedPRFValues | undefined {
+  if (!isObject(value)) return undefined;
+  const first = readBinary(value.first, 0, maximumPRFInputBytes);
+  if (first === undefined) return undefined;
+  if (value.second === undefined) return { first };
+  const second = readBinary(value.second, 0, maximumPRFInputBytes);
+  return second === undefined ? undefined : { first, second };
+}
+
+// undefined: no prf extension; false: invalid, which leaves the request to the browser.
+function readPRF(value: unknown, kind: "create" | "get", allAllowedCredentialID: string[]): SerializedPRFInput | undefined | false {
+  if (value === undefined) return undefined;
+  if (!isObject(value)) return false;
+  const prf: SerializedPRFInput = {};
+  if (value.eval !== undefined) {
+    const evaluated = readPRFValues(value.eval);
+    if (!evaluated) return false;
+    prf.eval = evaluated;
+  }
+  if (value.evalByCredential !== undefined) {
+    if (kind === "create" || !isObject(value.evalByCredential)) return false;
+    const allEntry = Object.entries(value.evalByCredential);
+    if (allEntry.length > 0 && allAllowedCredentialID.length === 0) return false;
+    if (allEntry.length > maximumCredentialCount) return false;
+    const evalByCredential: Record<string, SerializedPRFValues> = {};
+    for (const [credentialID, values] of allEntry) {
+      const evaluated = readPRFValues(values);
+      if (!allAllowedCredentialID.includes(credentialID) || !evaluated) return false;
+      evalByCredential[credentialID] = evaluated;
+    }
+    prf.evalByCredential = evalByCredential;
+  }
+  return prf;
+}
+
 function rejectRequest(reason: string): PasskeyValidation {
   return { isValid: false, reason };
 }
@@ -88,9 +126,11 @@ export function validatePasskeyRequest(request: PasskeyPageRequest | unknown): P
     const relyingPartyID = readRelyingPartyID(options.rpId);
     const allAllowedCredentialID = readAllCredentialID(options.allowCredentials);
     if (relyingPartyID === false || !allAllowedCredentialID) return rejectRequest("invalid request options");
+    const prf = readPRF(options.prf, "get", allAllowedCredentialID);
+    if (prf === false) return rejectRequest("invalid prf extension");
     return {
       isValid: true,
-      request: { kind: "get", relyingPartyID, challenge, allAllowedCredentialID, isConditional: request.mediation === "conditional" },
+      request: { kind: "get", relyingPartyID, challenge, allAllowedCredentialID, isConditional: request.mediation === "conditional", ...(prf ? { prf } : {}) },
     };
   }
   if (request.kind !== "create") return rejectRequest("unknown kind");
@@ -111,6 +151,8 @@ export function validatePasskeyRequest(request: PasskeyPageRequest | unknown): P
     options.pubKeyCredParams.some((parameter) => isObject(parameter) && parameter.type === "public-key" && parameter.alg === algorithmES256);
   if (!isES256Allowed) return rejectRequest("ES256 is not allowed");
   if (options.authenticatorAttachment === "cross-platform") return rejectRequest("a cross-platform authenticator was asked for");
+  const prf = readPRF(options.prf, "create", []);
+  if (prf === false) return rejectRequest("invalid prf extension");
   return {
     isValid: true,
     request: {
@@ -123,6 +165,7 @@ export function validatePasskeyRequest(request: PasskeyPageRequest | unknown): P
       challenge,
       allExcludedCredentialID,
       hasCredPropsExtension: options.hasCredPropsExtension === true,
+      ...(prf ? { prf } : {}),
     },
   };
 }

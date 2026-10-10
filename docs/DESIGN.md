@@ -149,7 +149,8 @@ ct_part  = XChaCha20-Poly1305(key=K_vault, nonce=random24, aad, plaintext=JSON(p
 **Passkeys.** `details.passkeys` holds the item's WebAuthn credentials (§9.8): `[{credentialId, relyingPartyId, userHandle, userName, userDisplayName, privateKey, createdAt}]`. Binary values are base64 in the JSON; `privateKey` is the PKCS#8 DER of an ES256 (P-256) key.
 
 - The overview carries only `passkeyRelyingPartyIds`, the sites of the item's passkeys, so lists can mark an item as having a passkey without its details.
-- Editing an item never changes its passkeys: the backend copies them (and the overview marker) from the cached item, so editors that show passkeys read-only (desktop, iOS) or not at all keep them. Only "Delete passkey" removes one.
+- The PRF secret of a passkey is not stored; it is derived from `privateKey` (§9.8), so the stored fields are the same with or without PRF.
+- Editing an item never changes its passkeys: the backend copies them (and the overview marker) from the cached item, so editors that show passkeys read-only (desktop, iOS) or not at all keep them. Only "Delete passkey" and the WebAuthn signals (§9.8) remove one; the signals also update user names.
 
 Binding vault ID, item ID and revision in the AAD stops a malicious server from moving an item into another vault, swapping overview/details between items, or mixing parts of different revisions.
 
@@ -562,7 +563,7 @@ Hisar is a passkey provider for Chromium browsers: the extension takes over `nav
 | Sign count | always 0, as for other synced passkeys; relying parties then skip the counter check |
 | Flags | UP, UV, BE and BS; AT on create |
 | Attestation | `none` (`fmt: "none"`, empty `attStmt`), whatever the relying party asks |
-| Extensions | none processed; `credProps` reports `{rk: true}` when asked on create |
+| Extensions | `prf` (below); `credProps` reports `{rk: true}` when asked on create; others are ignored |
 | Transports | `["hybrid", "internal"]`, attachment `platform` |
 
 - **User presence and verification:** every create and get needs a click in Hisar's prompt in the page (presence), and Hisar must be unlocked, which took the master password or Touch ID (verification). So UV is set whatever `userVerification` asks. There is no extra Touch ID check per use: the SSH approval window (§9.6) would be the model, but it is built around per-process SSH approvals; "Ask for Touch ID before using a passkey" is a later option.
@@ -597,7 +598,39 @@ Hisar is a passkey provider for Chromium browsers: the extension takes over `nav
 - **Locked:** the prompt shows "Unlock Hisar" (as the inline menu: `unlock`, then polling) and continues once Hisar is unlocked. Closing it while locked falls back to the browser.
 - **Prompt:** an extension page (`passkey-prompt.html`, `web_accessible_resources` with `use_dynamic_url`) in an iframe in a closed shadow root at the top right of the calling frame. It uses the inline menu's style and its clickjacking defences (§9.2): before every action that reaches the desktop, the service worker asks the content script whether the prompt was visible and uncovered for 300 ms; the page ignores untrusted clicks, and uses IntersectionObserver v2 where available. It always offers "Use another device or browser", which calls the browser's original implementation with the same options. Closing it (×, Escape) rejects with `NotAllowedError`.
 - **Timeouts and aborts:** the content script rejects with `NotAllowedError` after the request's `timeout` (clamped to 30 s–10 min, 5 min by default). An aborted `signal` closes the prompt and rejects with the signal's reason.
-- **Result:** the MAIN-world script builds the credential with `PublicKeyCredential.prototype` (and `AuthenticatorAttestationResponse.prototype` or `AuthenticatorAssertionResponse.prototype`) as prototypes and own properties, so `instanceof` checks pass: `id`, `rawId`, `type`, `authenticatorAttachment`, `response` (`clientDataJSON`; `attestationObject`, `getAuthenticatorData()`, `getPublicKey()` as SPKI DER, `getPublicKeyAlgorithm()` and `getTransports()` for create; `authenticatorData`, `signature` and `userHandle` for get), `getClientExtensionResults()` and `toJSON()`.
+- **Signals and capabilities:** the same script defines or wraps `PublicKeyCredential.signalUnknownCredential`, `signalAllAcceptedCredentials`, `signalCurrentUserDetails` and `getClientCapabilities` (below).
+- **Result:** the MAIN-world script builds the credential with `PublicKeyCredential.prototype` (and `AuthenticatorAttestationResponse.prototype` or `AuthenticatorAssertionResponse.prototype`) as prototypes and own properties, so `instanceof` checks pass: `id`, `rawId`, `type`, `authenticatorAttachment`, `response` (`clientDataJSON`; `attestationObject`, `getAuthenticatorData()`, `getPublicKey()` as SPKI DER, `getPublicKeyAlgorithm()` and `getTransports()` for create; `authenticatorData`, `signature` and `userHandle` for get), `getClientExtensionResults()` and `toJSON()`. PRF results are ArrayBuffers in `getClientExtensionResults()` and base64url in `toJSON()`.
+
+**PRF extension** ([WebAuthn PRF extension](https://w3c.github.io/webauthn/#prf-extension))
+
+Each passkey has a PRF secret that is derived from its private key, not stored, so passkeys created before PRF support have it too and every Hisar client (iOS later) derives the same value:
+
+```
+d          = the P-256 private scalar of item.Passkey.privateKey, 32 bytes big-endian
+prfSecret  = HKDF-SHA256(IKM = d, salt = "" (empty), info = "hisar passkey prf v1", L = 32)
+prf(input) = HMAC-SHA256(key = prfSecret, SHA-256("WebAuthn PRF" || 0x00 || input))
+```
+
+`prf(input)` applies the salt transformation the spec defines for hmac-secret to the page's input; these concatenations are the spec's plain byte concatenations, not length-prefixed (§4.5). `desktop/passkey` holds the derivation; the secret and the key never leave the desktop's Go backend.
+
+- **Create:** when the request has `extensions.prf`, the result reports `prf: {enabled: true}`; when it has `prf.eval`, also `results` (`first`, and `second` when given) for the new credential. `prf.evalByCredential` on create rejects with `NotSupportedError`.
+- **Get:** `prf.eval` and `prf.evalByCredential` (a record of base64url credential IDs). The MAIN-world script checks them as the spec's client does: a non-empty `evalByCredential` with an empty `allowCredentials` rejects with `NotSupportedError`; a key that is empty, not base64url, or not the ID of an `allowCredentials` entry rejects with `SyntaxError`. The desktop checks this again and evaluates only for the credential that signs: `evalByCredential[credentialId]` when present, else `eval`. The result has `prf: {results: {first[, second]}}`, or `prf: {}` when no input applies.
+- Inputs are 0–1024 bytes; a larger one leaves the request to the browser.
+- When the desktop is older and answers without `prf`, the page gets `prf: {enabled: false}` on create and `prf: {}` on get.
+
+**Signals** ([WebAuthn signal methods](https://w3c.github.io/webauthn/#sctn-signal-methods))
+
+- `signalUnknownCredential({rpId, credentialId})`, `signalAllAcceptedCredentials({rpId, userId, allAcceptedCredentialIds})` and `signalCurrentUserDetails({rpId, userId, name, displayName})` reject with `TypeError` when a required member is missing or an ID is not base64url. The service worker then checks `rpId` against the calling frame's origin from the message sender (as for create and get): it must equal the host or be a suffix of it at a label boundary with at least two labels (IP addresses: equal). Otherwise the promise rejects with `SecurityError`. The browser's own method, which the script also calls when it exists, applies the public suffix list, and the desktop checks again with `ResolveRelyingPartyID`. Valid signals resolve with `undefined` without waiting for Hisar.
+- The service worker forwards a valid signal only when it already has a connection to Hisar and is paired: a signal never starts the native host or Hisar. Signals are best effort, so nothing reports back to the page.
+- The desktop acts only when unlocked (without counting as activity for auto-lock); locked or signed out, it ignores the signal. It touches only passkeys whose RP ID equals the checked one, in login items of vaults the user can write:
+  - unknown credential: removes that passkey from its item;
+  - all accepted credentials: removes the passkeys with that RP ID and user handle whose credential ID is not in the list (an empty list removes all of them, as the spec says);
+  - current user details: sets `userName` and `userDisplayName` (trimmed, at most 256 characters) of the passkeys with that RP ID and user handle.
+- Changes go through the normal item save (new revision, synced, kept in the item history like any edit), without a prompt, and only when something changed, so sites that signal on every sign-in cause no writes. Nothing else in the item changes: an item whose only content was the passkey stays, without it.
+
+**Client capabilities**
+
+`PublicKeyCredential.getClientCapabilities()` returns the browser's capabilities (when the browser has the method) merged with Hisar's: `signalUnknownCredential`, `signalAllAcceptedCredentials` and `signalCurrentUserDetails` are always true (the script implements them); `passkeyPlatformAuthenticator`, `userVerifyingPlatformAuthenticator`, `conditionalGet` and `extension:prf` are true when the browser's are, or when Hisar is available (the same check as `isUserVerifyingPlatformAuthenticatorAvailable`: paired, connected, signed in, never starting the native host). `conditionalCreate` and every other capability stay as the browser reports them, since Hisar leaves conditional create to the browser.
 
 **Messages** (extension ⇄ desktop, §9.2 framing, all need the token). Parameters are in a nested `passkey` object; binary values are base64url without padding.
 
@@ -605,10 +638,13 @@ Hisar is a passkey provider for Chromium browsers: the extension takes over `nav
 |---|---|---|
 | `passkeys.list` | `origin`, `relyingPartyId`, `allowCredentials` | `passkeys`: `[{credentialId, vaultID, itemID, title, userName, userDisplayName}]` |
 | `passkeys.prepare` | `origin`, `relyingPartyId`, `excludeCredentials` | `isExcluded`, `logins` (writable logins matching the origin) |
-| `passkeys.create` | `origin`, `topOrigin`, `isCrossOrigin`, `relyingPartyId`, `userHandle`, `userName`, `userDisplayName`, `challenge`, `excludeCredentials`, optional `vaultID` + `itemID` | `credentialId`, `clientDataJSON`, `attestationObject`, `authenticatorData`, `publicKey`, `publicKeyAlgorithm`, `vaultID`, `itemID` |
-| `passkeys.get` | `origin`, `topOrigin`, `isCrossOrigin`, `relyingPartyId`, `challenge`, `allowCredentials`, `credentialId` | `credentialId`, `clientDataJSON`, `authenticatorData`, `signature`, `userHandle` |
+| `passkeys.create` | `origin`, `topOrigin`, `isCrossOrigin`, `relyingPartyId`, `userHandle`, `userName`, `userDisplayName`, `challenge`, `excludeCredentials`, optional `vaultID` + `itemID`, optional `prf` (`{eval?: {first, second?}}`) | `credentialId`, `clientDataJSON`, `attestationObject`, `authenticatorData`, `publicKey`, `publicKeyAlgorithm`, `vaultID`, `itemID`, and `prf` (`{enabled: true, results?: {first, second?}}`) when asked |
+| `passkeys.get` | `origin`, `topOrigin`, `isCrossOrigin`, `relyingPartyId`, `challenge`, `allowCredentials`, `credentialId`, optional `prf` (`{eval?, evalByCredential?}`) | `credentialId`, `clientDataJSON`, `authenticatorData`, `signature`, `userHandle`, and `prf` (`{results?: {first, second?}}`) when asked |
+| `passkeys.signalUnknownCredential` | `origin`, `relyingPartyId`, `credentialId` | `changedPasskeyCount` |
+| `passkeys.signalAllAcceptedCredentials` | `origin`, `relyingPartyId`, `userHandle`, `allAcceptedCredentialIds` | `changedPasskeyCount` |
+| `passkeys.signalCurrentUserDetails` | `origin`, `relyingPartyId`, `userHandle`, `userName`, `userDisplayName` | `changedPasskeyCount` |
 
-The desktop checks the RP ID against the origin on each request, applies `allowCredentials` and `excludeCredentials` again, and signs only with a credential whose RP ID equals the request's.
+The desktop checks the RP ID against the origin on each request, applies `allowCredentials` and `excludeCredentials` again, and signs only with a credential whose RP ID equals the request's. The signal requests answer `changedPasskeyCount: 0` when Hisar is locked or signed out.
 
 **Desktop app and CLI**
 
@@ -628,7 +664,7 @@ The desktop checks the RP ID against the origin on each request, applies `allowC
 - **App:** the item view lists the passkeys (site, user name, created) with Delete after a confirmation, as on the desktop. The editor does not show them and the backend keeps them (§4.5).
 - **Testing:** Go tests run both ceremonies from a `clientDataJSON` that go-webauthn builds and the test hashes, and verify them with go-webauthn. The simulator does not offer a build without a team as a provider, so the UI tests drive registration and sign-in through the debug-only AutoFill preview (§9.3) and check the attestation and the ES256 signature over `authenticatorData || clientDataHash` with CryptoKit. The real Safari flow needs the paid team (§12 #7) and is not verified yet.
 
-**Not supported yet:** WebAuthn extensions (PRF, large blob, …), `getClientCapabilities`, the signal API, Firefox and Safari on the Mac, and on iOS the WebAuthn extension inputs of iOS 18 (`extensionInput`: PRF, large blob).
+**Not supported yet:** WebAuthn extensions other than `prf` and `credProps` (large blob, …), Firefox and Safari on the Mac, and on iOS the WebAuthn extension inputs of iOS 18 (`extensionInput`: PRF, large blob).
 
 ## 10. Repository layout
 
