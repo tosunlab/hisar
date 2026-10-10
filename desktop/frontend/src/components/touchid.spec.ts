@@ -49,7 +49,8 @@ describe("UnlockView with Touch ID", () => {
     expect(wrapper.find('[data-testid="touch-id-slot"]').exists()).toBe(true);
     expect(api.setTouchIDPromptFrame).toHaveBeenCalled();
     expect(api.unlockWithBiometric).toHaveBeenCalledTimes(1);
-    expect(wrapper.find('input[name="password"]').exists()).toBe(false);
+    expect(wrapper.find('input[name="password"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="unlock-status"]').text()).toContain("Touch ID is waiting");
 
     api.getStatus.mockResolvedValue(createStatus("unlocked"));
     api.listAllVault.mockResolvedValue([]);
@@ -60,16 +61,17 @@ describe("UnlockView with Touch ID", () => {
     wrapper.unmount();
   });
 
-  it("cancels the prompt and shows the password field on 'Use master password'", async () => {
+  it("cancels Touch ID when the master password is submitted", async () => {
     store.status = createLockedStatus(true);
     const pending = createPendingPromise<ReturnType<typeof createStatus>>();
     api.unlockWithBiometric.mockReturnValue(pending.promise);
     api.getStatus.mockResolvedValue(createLockedStatus(true));
     const wrapper = mount(UnlockView, { attachTo: document.body });
     await flushPromises();
-    await wrapper.find('[data-testid="use-master-password"]').trigger("click");
+    await wrapper.find('input[name="password"]').setValue("master password");
+    await wrapper.find("form").trigger("submit");
     expect(api.cancelTouchIDPrompt).toHaveBeenCalled();
-    expect(wrapper.find('input[name="password"]').exists()).toBe(true);
+    expect(api.unlock).toHaveBeenCalledWith("master password");
 
     pending.rejectPromise(new Error("Touch ID was cancelled"));
     await flushPromises();
