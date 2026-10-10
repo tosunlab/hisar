@@ -135,6 +135,27 @@ func TestNewAndSignedOutStatus(t *testing.T) {
 	if _, err := hisar.ListAllVault(); err == nil {
 		t.Error("vaults listed while signed out")
 	}
+	if _, err := hisar.CreateVault("Family"); err == nil {
+		t.Error("a vault created while signed out")
+	}
+	if _, err := hisar.ListAllMember(); err == nil {
+		t.Error("members listed while signed out")
+	}
+	if _, err := hisar.InviteMember("bob@example.com", "member"); err == nil {
+		t.Error("an invite while signed out")
+	}
+	if _, err := hisar.ListAllVaultMember("vault"); err == nil {
+		t.Error("vault members listed while signed out")
+	}
+	if err := hisar.ShareVault("vault", "bob@example.com", "editor"); err == nil {
+		t.Error("a vault shared while signed out")
+	}
+	if err := hisar.ChangeVaultMemberRole("vault", "account", "reader"); err == nil {
+		t.Error("a role changed while signed out")
+	}
+	if err := hisar.RemoveVaultMember("vault", "account"); err == nil {
+		t.Error("a member removed while signed out")
+	}
 	if _, err := hisar.GetOneTimeCode("vault", "item"); err == nil {
 		t.Error("a one-time code while signed out")
 	}
@@ -283,6 +304,7 @@ func TestIntegrationMobileFlow(t *testing.T) {
 	}
 
 	checkPasskeyFlow(t, hisar, personalID, saved.ID)
+	checkSharingFlow(t, hisar)
 
 	if current := decodeJSON[status](t)(hisar.EnableBiometricUnlock(password)); !current.BiometricEnabled {
 		t.Fatalf("biometric unlock not enabled: %+v", current)
@@ -311,5 +333,73 @@ func TestIntegrationMobileFlow(t *testing.T) {
 	}
 	if len(secretKeyStore.allByAccountID) != 0 {
 		t.Error("Secret Key kept after sign out")
+	}
+}
+
+// checkSharingFlow creates a shared vault and checks the member list and invite exports; the user's role decides whether inviting is allowed.
+func checkSharingFlow(t *testing.T, hisar *Hisar) {
+	t.Helper()
+	type vaultSummary struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+		Type string `json:"type"`
+		Role string `json:"role"`
+	}
+	if _, err := hisar.CreateVault("  "); err == nil {
+		t.Error("a vault without a name was created")
+	}
+	created := decodeJSON[vaultSummary](t)(hisar.CreateVault("Shared from iPhone"))
+	if created.ID == "" || created.Name != "Shared from iPhone" || created.Type != "shared" || created.Role != "owner" {
+		t.Fatalf("created vault = %+v", created)
+	}
+	allVault := decodeJSON[[]vaultSummary](t)(hisar.ListAllVault())
+	isListed := false
+	for _, vault := range allVault {
+		isListed = isListed || vault.ID == created.ID
+	}
+	if !isListed {
+		t.Errorf("the new vault is missing from %+v", allVault)
+	}
+
+	type member struct {
+		AccountID     string `json:"accountId"`
+		Email         string `json:"email"`
+		Role          string `json:"role"`
+		SecurityCode  string `json:"securityCode"`
+		IsCurrentUser bool   `json:"isCurrentUser"`
+	}
+	allMember := decodeJSON[[]member](t)(hisar.ListAllMember())
+	var currentUser *member
+	for index := range allMember {
+		if allMember[index].IsCurrentUser {
+			currentUser = &allMember[index]
+		}
+	}
+	if currentUser == nil || currentUser.Email != "mobile@example.com" || currentUser.SecurityCode == "" {
+		t.Fatalf("members = %+v", allMember)
+	}
+	allVaultMember := decodeJSON[[]member](t)(hisar.ListAllVaultMember(created.ID))
+	if len(allVaultMember) != 1 || !allVaultMember[0].IsCurrentUser || allVaultMember[0].Role != "owner" {
+		t.Errorf("members of the new vault = %+v", allVaultMember)
+	}
+	if err := hisar.ShareVault(created.ID, "nobody@example.com", "editor"); err == nil || !strings.Contains(err.Error(), "invite them first") {
+		t.Errorf("share with a stranger: %v", err)
+	}
+	if err := hisar.ShareVault(created.ID, currentUser.Email, "reader"); err == nil {
+		t.Error("shared a vault with yourself")
+	}
+	if err := hisar.RemoveVaultMember(created.ID, currentUser.AccountID); err == nil {
+		t.Error("removed yourself from your own vault")
+	}
+	if _, err := hisar.InviteMember("not an email", "member"); err == nil {
+		t.Error("an invite without an email address")
+	}
+	inviteLink, err := hisar.InviteMember("invited-from-iphone@example.com", "member")
+	if currentUser.Role == "admin" {
+		if err != nil || !strings.Contains(inviteLink, "/invite/") {
+			t.Errorf("invite = %q %v", inviteLink, err)
+		}
+	} else if err == nil || !strings.Contains(err.Error(), "admin") {
+		t.Errorf("a member invited someone: %q %v", inviteLink, err)
 	}
 }

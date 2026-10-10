@@ -181,6 +181,40 @@ func (hisar *Hisar) ListAllVault() (string, error) {
 	return encodeJSON(hisar.service.ListAllVault())
 }
 
+// CreateVault creates a shared vault owned by the current user and returns its vault.VaultSummary as JSON.
+func (hisar *Hisar) CreateVault(name string) (string, error) {
+	return encodeJSON(hisar.service.CreateVault(name))
+}
+
+// ListAllMember returns everyone in the family ([]vault.FamilyMember) as JSON; isCurrentUser marks the signed-in account.
+func (hisar *Hisar) ListAllMember() (string, error) {
+	return encodeJSON(hisar.service.ListAllMember())
+}
+
+// InviteMember returns a sign-up link for a new family member; role is "admin" or "member", and only admins can invite.
+func (hisar *Hisar) InviteMember(email, role string) (string, error) {
+	return hisar.service.InviteMember(email, role)
+}
+
+// ListAllVaultMember returns who has access to a shared vault ([]vault.VaultMember) as JSON, owners first.
+func (hisar *Hisar) ListAllVaultMember(vaultID string) (string, error) {
+	return encodeJSON(hisar.service.ListAllVaultMember(vaultID))
+}
+
+// ShareVault gives a family member access to a shared vault the current user owns; role is "owner", "editor" or "reader".
+func (hisar *Hisar) ShareVault(vaultID, email, role string) error {
+	return hisar.service.ShareVault(vaultID, email, role)
+}
+
+func (hisar *Hisar) ChangeVaultMemberRole(vaultID, accountID, role string) error {
+	return hisar.service.ChangeVaultMemberRole(vaultID, accountID, role)
+}
+
+// RemoveVaultMember removes a member and re-encrypts the vault with a new key for the remaining members.
+func (hisar *Hisar) RemoveVaultMember(vaultID, accountID string) error {
+	return hisar.service.RemoveVaultMember(vaultID, accountID)
+}
+
 // ListAllItem returns []vault.ItemDetail without passwords, notes, fields and one-time password secrets (hasOneTimePassword says whether there is one), as JSON.
 func (hisar *Hisar) ListAllItem(vaultID string) (string, error) {
 	return encodeJSON(hisar.service.ListAllItem(vaultID))

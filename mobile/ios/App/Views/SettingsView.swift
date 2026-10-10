@@ -50,6 +50,19 @@ struct SettingsView: View {
                     }
                 }
                 Section {
+                    NavigationLink {
+                        FamilyView()
+                            .environmentObject(model)
+                    } label: {
+                        Label("Family", systemImage: "person.2")
+                            .foregroundStyle(Theme.text)
+                    }
+                    .listRowBackground(Theme.surface)
+                    .accessibilityIdentifier("open-family")
+                } footer: {
+                    Text("Who uses this Hisar server, and invites for new people.")
+                }
+                Section {
                     Button {
                         isGeneratorShown = true
                     } label: {

@@ -22,6 +22,9 @@ class FakeBackend: VaultBackend {
     var allCallName: [String] = []
     var nextItemNumber = 1
     var allPasskey: [StoredPasskey] = []
+    var allMember: [Member] = []
+    var allVaultMemberByVaultID: [String: [Member]] = [:]
+    var allInvitedEmail: [String] = []
 
     private func record(_ name: String) {
         callLock.lock()
@@ -45,6 +48,95 @@ class FakeBackend: VaultBackend {
             ],
         ]
         allPasskey = [Self.gitHubPasskey]
+        allMember = [
+            Member(accountID: "alice-id", name: "Alice", email: "alice@example.com", role: Member.roleAdmin, securityCode: "1111 2222", isCurrentUser: true),
+            Member(accountID: "bob-id", name: "Bob", email: "bob@example.com", role: Member.roleMember, securityCode: "3333 4444"),
+            Member(accountID: "carol-id", name: "Carol", email: "carol@example.com", role: Member.roleMember, securityCode: "5555 6666"),
+        ]
+        allVaultMemberByVaultID = [
+            "family": [
+                Member(accountID: "bob-id", name: "Bob", email: "bob@example.com", role: Member.vaultRoleOwner, securityCode: "3333 4444"),
+                Member(accountID: "alice-id", name: "Alice", email: "alice@example.com", role: Member.vaultRoleEditor, securityCode: "1111 2222", isCurrentUser: true),
+            ],
+        ]
+    }
+
+    private var currentMember: Member? { allMember.first { $0.isCurrentUser } }
+
+    func createVault(name: String) throws -> VaultSummary {
+        record("createVault")
+        try requireUnlocked()
+        let name = name.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { throw BackendError(message: "Enter a vault name") }
+        let vault = VaultSummary(id: "vault-\(allVault.count + 1)", name: name, type: "shared", role: Member.vaultRoleOwner, itemCount: 0)
+        allVault.append(vault)
+        allItemByVaultID[vault.id] = []
+        if let currentMember {
+            allVaultMemberByVaultID[vault.id] = [Member(accountID: currentMember.accountID, name: currentMember.name, email: currentMember.email, role: Member.vaultRoleOwner, securityCode: currentMember.securityCode, isCurrentUser: true)]
+        }
+        return vault
+    }
+
+    func listAllMember() throws -> [Member] {
+        record("listAllMember")
+        try requireUnlocked()
+        return allMember
+    }
+
+    func inviteMember(email: String, role: String) throws -> String {
+        record("inviteMember")
+        try requireUnlocked()
+        guard email.contains("@") else { throw BackendError(message: "Enter the email address of the person you are inviting") }
+        guard role == Member.roleAdmin || role == Member.roleMember else { throw BackendError(message: "Choose admin or member") }
+        guard currentMember?.role == Member.roleAdmin else { throw BackendError(message: "Only family admins can invite people") }
+        allInvitedEmail.append(email)
+        return "\(status.server)/invite/token-\(allInvitedEmail.count)"
+    }
+
+    func listAllVaultMember(vaultID: String) throws -> [Member] {
+        record("listAllVaultMember")
+        try requireUnlocked()
+        guard allVault.contains(where: { $0.id == vaultID }) else { throw BackendError(message: "Vault not found") }
+        return allVaultMemberByVaultID[vaultID] ?? []
+    }
+
+    private func findSharableVault(vaultID: String) throws -> VaultSummary {
+        guard let vault = allVault.first(where: { $0.id == vaultID }) else { throw BackendError(message: "Vault not found") }
+        guard vault.type == "shared" else { throw BackendError(message: "Personal vaults are private and cannot be shared; create a shared vault instead") }
+        guard vault.role == Member.vaultRoleOwner else { throw BackendError(message: "Only owners of this vault can share it, change roles or remove members") }
+        return vault
+    }
+
+    func shareVault(vaultID: String, email: String, role: String) throws {
+        record("shareVault")
+        try requireUnlocked()
+        guard Member.allVaultRole.contains(role) else { throw BackendError(message: "Choose owner, editor or reader") }
+        let vault = try findSharableVault(vaultID: vaultID)
+        guard let member = allMember.first(where: { $0.email == email }) else { throw BackendError(message: "Nobody in your family uses that email; invite them first in Settings") }
+        guard !member.isCurrentUser else { throw BackendError(message: "You cannot change your own access to a vault") }
+        var allVaultMember = allVaultMemberByVaultID[vault.id] ?? []
+        allVaultMember.removeAll { $0.accountID == member.accountID }
+        allVaultMember.append(Member(accountID: member.accountID, name: member.name, email: member.email, role: role, securityCode: member.securityCode))
+        allVaultMemberByVaultID[vault.id] = allVaultMember
+    }
+
+    func changeVaultMemberRole(vaultID: String, accountID: String, role: String) throws {
+        record("changeVaultMemberRole")
+        try requireUnlocked()
+        guard Member.allVaultRole.contains(role) else { throw BackendError(message: "Choose owner, editor or reader") }
+        let vault = try findSharableVault(vaultID: vaultID)
+        guard let index = allVaultMemberByVaultID[vault.id]?.firstIndex(where: { $0.accountID == accountID }) else {
+            throw BackendError(message: "This person no longer has access to the vault; share it with them again")
+        }
+        allVaultMemberByVaultID[vault.id]?[index].role = role
+    }
+
+    func removeVaultMember(vaultID: String, accountID: String) throws {
+        record("removeVaultMember")
+        try requireUnlocked()
+        guard accountID != currentMember?.accountID else { throw BackendError(message: "You cannot remove yourself from a vault you own") }
+        let vault = try findSharableVault(vaultID: vaultID)
+        allVaultMemberByVaultID[vault.id]?.removeAll { $0.accountID == accountID }
     }
 
     private func requireUnlocked() throws {

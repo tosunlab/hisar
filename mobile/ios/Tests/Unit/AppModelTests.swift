@@ -242,6 +242,78 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(password, "111111111111")
     }
 
+    func testCreateVaultAddsASharedVaultOwnedByTheUser() async {
+        let model = await createUnlockedModel()
+        let vault = await model.createVault(name: "  Streaming ")
+        XCTAssertEqual(vault?.name, "Streaming")
+        XCTAssertEqual(vault?.type, "shared")
+        XCTAssertEqual(vault?.role, "owner")
+        XCTAssertEqual(model.allVault.map(\.name), ["Personal", "Family", "Streaming"], "personal first, then shared vaults by name")
+        XCTAssertEqual(model.countItem(vaultID: vault?.id ?? ""), 0)
+        let allMember = await model.loadAllVaultMember(vaultID: vault?.id ?? "")
+        XCTAssertEqual(allMember?.map(\.email), ["alice@example.com"])
+        XCTAssertEqual(allMember?.first?.role, "owner")
+    }
+
+    func testCreateVaultWithoutNameShowsError() async {
+        let model = await createUnlockedModel()
+        let vault = await model.createVault(name: "   ")
+        XCTAssertNil(vault)
+        XCTAssertEqual(model.errorMessage, "Enter a vault name")
+        XCTAssertEqual(model.allVault.count, 2)
+    }
+
+    func testAdminInvitesWithTrimmedEmail() async {
+        let model = await createUnlockedModel()
+        let inviteLink = await model.inviteMember(email: " dave@example.com ", role: Member.roleMember)
+        XCTAssertEqual(inviteLink, "http://127.0.0.1:18080/invite/token-1")
+        XCTAssertEqual(backend.allInvitedEmail, ["dave@example.com"])
+        XCTAssertNil(model.errorMessage)
+    }
+
+    func testMemberCannotInvite() async {
+        backend.seedSignedIn()
+        backend.allMember[0].role = Member.roleMember
+        let model = createModel()
+        let inviteLink = await model.inviteMember(email: "dave@example.com", role: Member.roleMember)
+        XCTAssertNil(inviteLink)
+        XCTAssertEqual(model.errorMessage, "Only family admins can invite people")
+        let allMember = await model.loadAllMember()
+        XCTAssertEqual(allMember?.first { $0.isCurrentUser }?.role, Member.roleMember)
+    }
+
+    func testOwnerSharesChangesRoleAndRemovesMember() async {
+        let model = await createUnlockedModel()
+        guard let vault = await model.createVault(name: "Streaming") else { return XCTFail("vault missing") }
+        let isShared = await model.shareVault(vaultID: vault.id, email: "bob@example.com", role: Member.vaultRoleReader)
+        XCTAssertTrue(isShared)
+        var allMember = await model.loadAllVaultMember(vaultID: vault.id)
+        XCTAssertEqual(allMember?.map(\.email), ["alice@example.com", "bob@example.com"])
+        XCTAssertEqual(allMember?.last?.role, Member.vaultRoleReader)
+
+        let isRoleChanged = await model.changeVaultMemberRole(vaultID: vault.id, accountID: "bob-id", role: Member.vaultRoleEditor)
+        XCTAssertTrue(isRoleChanged)
+        allMember = await model.loadAllVaultMember(vaultID: vault.id)
+        XCTAssertEqual(allMember?.last?.role, Member.vaultRoleEditor)
+
+        let isRemoved = await model.removeVaultMember(vaultID: vault.id, accountID: "bob-id")
+        XCTAssertTrue(isRemoved)
+        allMember = await model.loadAllVaultMember(vaultID: vault.id)
+        XCTAssertEqual(allMember?.map(\.email), ["alice@example.com"])
+        guard let removeIndex = backend.allCallName.firstIndex(of: "removeVaultMember") else { return XCTFail("remove not called") }
+        XCTAssertEqual(backend.allCallName[removeIndex + 1], "listAllItem", "items are loaded again after the vault key changed")
+    }
+
+    func testSharingWithAStrangerOrAnEditedVaultFails() async {
+        let model = await createUnlockedModel()
+        let isSharedWithStranger = await model.shareVault(vaultID: "family", email: "nobody@example.com", role: Member.vaultRoleEditor)
+        XCTAssertFalse(isSharedWithStranger)
+        XCTAssertEqual(model.errorMessage, "Only owners of this vault can share it, change roles or remove members")
+        let isPersonalShared = await model.shareVault(vaultID: "personal", email: "bob@example.com", role: Member.vaultRoleEditor)
+        XCTAssertFalse(isPersonalShared)
+        XCTAssertEqual(model.errorMessage, "Personal vaults are private and cannot be shared; create a shared vault instead")
+    }
+
     func testOperationsRunOffTheMainThread() async {
         final class ThreadRecordingBackend: FakeBackend {
             var isListCalledOnMainThread: Bool?

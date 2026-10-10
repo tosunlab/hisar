@@ -259,6 +259,46 @@ final class AppModel: ObservableObject {
         await perform(isBusyShown: false) { try $0.getItem(vaultID: vaultID, itemID: itemID) }
     }
 
+    func createVault(name: String) async -> VaultSummary? {
+        guard let vault = await perform({ try $0.createVault(name: name) }) else { return nil }
+        allVault.removeAll { $0.id == vault.id }
+        allVault.append(vault)
+        allVault.sort { Self.sortVault($0, $1) }
+        allItemByVaultID[vault.id] = []
+        return vault
+    }
+
+    func loadAllMember() async -> [Member]? {
+        await perform(isBusyShown: false) { try $0.listAllMember() }
+    }
+
+    func inviteMember(email: String, role: String) async -> String? {
+        let email = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        return await perform { try $0.inviteMember(email: email, role: role) }
+    }
+
+    func loadAllVaultMember(vaultID: String) async -> [Member]? {
+        await perform(isBusyShown: false) { try $0.listAllVaultMember(vaultID: vaultID) }
+    }
+
+    @discardableResult
+    func shareVault(vaultID: String, email: String, role: String) async -> Bool {
+        await perform({ try $0.shareVault(vaultID: vaultID, email: email, role: role) }) != nil
+    }
+
+    @discardableResult
+    func changeVaultMemberRole(vaultID: String, accountID: String, role: String) async -> Bool {
+        await perform({ try $0.changeVaultMemberRole(vaultID: vaultID, accountID: accountID, role: role) }) != nil
+    }
+
+    // Removing a member re-encrypts the vault with a new key, so the items are loaded again afterwards.
+    @discardableResult
+    func removeVaultMember(vaultID: String, accountID: String) async -> Bool {
+        guard await perform({ try $0.removeVaultMember(vaultID: vaultID, accountID: accountID) }) != nil else { return false }
+        await refreshVault(vaultID: vaultID)
+        return true
+    }
+
     func saveItem(vaultID: String, item: ItemDetail) async -> ItemDetail? {
         guard let savedItem = await perform({ try $0.saveItem(vaultID: vaultID, item: item) }) else { return nil }
         var allItem = allItemByVaultID[vaultID] ?? []
