@@ -50,8 +50,11 @@ async function submitUnlock(): Promise<void> {
   password.value = "";
 }
 
+const layoutObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(sendPromptFrame);
+
 onMounted(() => {
   window.addEventListener("resize", sendPromptFrame);
+  layoutObserver?.observe(document.body);
   if (mode.value === "touch-id") {
     startTouchID();
   }
@@ -59,6 +62,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   window.removeEventListener("resize", sendPromptFrame);
+  layoutObserver?.disconnect();
   if (isWaitingForTouchID.value) {
     api.cancelTouchIDPrompt().catch(() => undefined);
   }
@@ -184,8 +188,8 @@ h1 {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 72px;
-  height: 72px;
+  width: 128px;
+  height: 128px;
   margin-bottom: 14px;
   color: var(--color-text-secondary);
 }

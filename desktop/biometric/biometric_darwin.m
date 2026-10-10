@@ -30,6 +30,17 @@ static NSRect convertToContentRect(NSView *contentView, double x, double y, doub
     return NSMakeRect(x, contentView.bounds.size.height - y - height, width, height);
 }
 
+// The view keeps its own size for each control size, so it is centred on the slot instead of stretched into it.
+static void placeAuthenticationView(NSView *view, NSView *contentView, double x, double y, double width, double height) {
+    NSRect slot = convertToContentRect(contentView, x, y, width, height);
+    NSSize size = view.fittingSize;
+    if (size.width <= 0 || size.height <= 0) {
+        view.frame = slot;
+        return;
+    }
+    view.frame = NSMakeRect(round(NSMidX(slot) - size.width / 2), round(NSMidY(slot) - size.height / 2), size.width, size.height);
+}
+
 static void runOnMainThread(dispatch_block_t block) {
     if ([NSThread isMainThread]) {
         block();
@@ -52,8 +63,8 @@ int hisarBiometricAuthenticate(const char *reason, void *window, int embed, int 
             NSWindow *nativeWindow = (__bridge NSWindow *)window;
             NSView *contentView = nativeWindow.contentView;
             LAAuthenticationView *authenticationView = [[LAAuthenticationView alloc] initWithContext:context controlSize:(NSControlSize)controlSize];
-            authenticationView.frame = convertToContentRect(contentView, x, y, width, height);
             [contentView addSubview:authenticationView positioned:NSWindowAbove relativeTo:nil];
+            placeAuthenticationView(authenticationView, contentView, x, y, width, height);
             activeView = authenticationView;
         });
     }
@@ -102,7 +113,7 @@ int hisarBiometricAuthenticate(const char *reason, void *window, int embed, int 
 void hisarBiometricMovePrompt(double x, double y, double width, double height) {
     dispatch_async(dispatch_get_main_queue(), ^{
         if (activeView != nil && activeView.superview != nil) {
-            activeView.frame = convertToContentRect(activeView.superview, x, y, width, height);
+            placeAuthenticationView(activeView, activeView.superview, x, y, width, height);
         }
     });
 }
