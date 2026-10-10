@@ -24,6 +24,10 @@ services:
     environment:
       HISAR_PUBLIC_URL: https://${HISAR_DOMAIN:?set HISAR_DOMAIN in .env}
       HISAR_TRUST_PROXY: "true"
+      # Optional desktop app updates; empty disables them.
+      HISAR_UPDATE_GITLAB_URL: ${HISAR_UPDATE_GITLAB_URL:-}
+      HISAR_UPDATE_GITLAB_PROJECT_ID: ${HISAR_UPDATE_GITLAB_PROJECT_ID:-}
+      HISAR_UPDATE_GITLAB_TOKEN: ${HISAR_UPDATE_GITLAB_TOKEN:-}
     volumes:
       - hisar-data:/data
     ports:

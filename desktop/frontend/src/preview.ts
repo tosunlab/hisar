@@ -15,6 +15,7 @@ import type {
   SSHAgentStatus,
   SSHKeyType,
   Status,
+  UpdateStatus,
   VaultMember,
   VaultRole,
   VaultSummary,
@@ -256,6 +257,16 @@ const previewBrowserStatus: BrowserStatus = {
   isExactHostMatch: false,
   pendingPairing:
     previewParameter.get("browserPairing") === "1" ? { browser: "Arc", code: "482913", expiresAt: new Date(Date.now() + 110_000).toISOString() } : null,
+};
+
+// updates=development: a build without Sparkle; updates=signed-out: no session to check with.
+const previewUpdateMode = previewParameter.get("updates") ?? "";
+const previewUpdateStatus: UpdateStatus = {
+  version: previewUpdateMode === "development" ? "development" : "0.2.1",
+  buildNumber: previewUpdateMode === "development" ? "" : "2001",
+  isAvailable: previewUpdateMode !== "development",
+  isSignedIn: previewUpdateMode !== "signed-out",
+  isAutomaticCheckEnabled: true,
 };
 
 const previewImportFilePath = "/Users/alper/Downloads/1PasswordExport-AQ7X2LMK-20261009-101512.1pux";
@@ -579,6 +590,17 @@ export const previewApi = {
   setExactHostMatch: (isExactHostMatch: boolean) => {
     previewBrowserStatus.isExactHostMatch = isExactHostMatch;
     return resolveAfterDelay({ ...previewBrowserStatus });
+  },
+  getUpdateStatus: () => resolveAfterDelay({ ...previewUpdateStatus }),
+  checkForUpdates: () => {
+    if (!previewUpdateStatus.isSignedIn) {
+      return Promise.reject(new Error("sign in to check for updates"));
+    }
+    return resolveAfterDelay({ ...previewUpdateStatus });
+  },
+  setAutomaticUpdateCheck: (isEnabled: boolean) => {
+    previewUpdateStatus.isAutomaticCheckEnabled = isEnabled;
+    return resolveAfterDelay({ ...previewUpdateStatus });
   },
   cancelBrowserPairing: () => {
     previewBrowserStatus.pendingPairing = null;

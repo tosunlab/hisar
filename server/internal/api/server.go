@@ -17,6 +17,7 @@ import (
 
 	"github.com/tryhisar/hisar/core/pake"
 	"github.com/tryhisar/hisar/core/proto"
+	"github.com/tryhisar/hisar/server/internal/desktopupdate"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
@@ -38,6 +39,8 @@ type Config struct {
 	EventHeartbeatInterval time.Duration
 	// WriteTimeout limits writing one response; event streams extend it with every write.
 	WriteTimeout time.Duration
+	// DesktopUpdates is nil when the server has no update source.
+	DesktopUpdates *desktopupdate.Source
 }
 
 type Server struct {
@@ -48,6 +51,7 @@ type Server struct {
 	opaque              *opaque.Server
 	loginCache          *loginCache
 	limiter             *ipLimiter
+	updateLimiter       *ipLimiter
 	events              *eventBroker
 }
 
@@ -90,6 +94,7 @@ func CreateServer(database *store.Store, secrets *Secrets, config Config) (*Serv
 		opaque:              opaqueServer,
 		loginCache:          createLoginCache(time.Minute),
 		limiter:             createIPLimiter(rate.Every(6*time.Second), config.AuthBurst),
+		updateLimiter:       createIPLimiter(rate.Every(10*time.Second), 20),
 		events:              createEventBroker(),
 	}, nil
 }
@@ -144,6 +149,9 @@ func (s *Server) CreateApp() *fiber.App {
 	apiGroup.Get("/admin/recovery", s.requireSession, s.requireAdmin, s.handleListAllPendingRecovery)
 	apiGroup.Post("/admin/recovery/:account", s.requireSession, s.requireAdmin, s.handleCreateRecoveryLink)
 	apiGroup.Post("/admin/recovery/:account/complete", s.requireSession, s.requireAdmin, s.handleCompleteRecovery)
+
+	apiGroup.Get("/desktop/updates/appcast.xml", s.limitUpdateRate, s.requireSession, s.handleGetDesktopAppcast)
+	apiGroup.Get("/desktop/updates/:version/:file", s.limitUpdateRate, s.requireSession, s.handleDownloadDesktopUpdate)
 
 	return app
 }

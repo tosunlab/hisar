@@ -35,6 +35,8 @@ type State struct {
 	AllPairedBrowser []PairedBrowser `json:"pairedBrowsers,omitempty"`
 	// IsExactHostMatch limits browser autofill to the item's exact host instead of its registrable domain.
 	IsExactHostMatch bool `json:"exactHostMatch,omitempty"`
+	// IsAutomaticUpdateCheckDisabled is a device preference of the desktop app, so Reset keeps it.
+	IsAutomaticUpdateCheckDisabled bool `json:"automaticUpdateCheckDisabled,omitempty"`
 
 	path string
 }
@@ -97,9 +99,9 @@ func (s *State) Save() error {
 	return os.Rename(temporaryPath, s.path)
 }
 
-// Reset forgets the account, session, pins and seqs but keeps the file location.
+// Reset forgets the account, session, pins and seqs but keeps the file location and the update preference.
 func (s *State) Reset() {
-	*s = State{path: s.path, AllPin: map[string][]byte{}, AllSeq: map[string]int64{}}
+	*s = State{path: s.path, AllPin: map[string][]byte{}, AllSeq: map[string]int64{}, IsAutomaticUpdateCheckDisabled: s.IsAutomaticUpdateCheckDisabled}
 }
 
 // IsMemberKeyChanged reports whether a signing key differs from the one pinned for the account.

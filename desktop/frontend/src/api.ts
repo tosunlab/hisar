@@ -2,7 +2,7 @@ import { Browser } from "@wailsio/runtime";
 import { ApprovalTouchIDService, TouchIDPromptService } from "../bindings/github.com/tryhisar/hisar/desktop";
 import { Service as AgentService } from "../bindings/github.com/tryhisar/hisar/desktop/agent";
 import type { ApprovalEvent, Status as SSHAgentStatus } from "../bindings/github.com/tryhisar/hisar/desktop/agent";
-import { BrowserBridge, Service } from "../bindings/github.com/tryhisar/hisar/desktop/vault";
+import { BrowserBridge, Service, UpdateService } from "../bindings/github.com/tryhisar/hisar/desktop/vault";
 import type { BrowserInstallation } from "../bindings/github.com/tryhisar/hisar/desktop/browser";
 import type {
   BrowserPairingRequest,
@@ -25,6 +25,7 @@ import type {
   RecoveryStatus,
   SignUpResult,
   Status,
+  UpdateStatus,
   VaultMember,
   VaultSummary,
 } from "../bindings/github.com/tryhisar/hisar/desktop/vault";
@@ -46,6 +47,7 @@ export type {
   SignUpResult,
   SSHAgentStatus,
   Status,
+  UpdateStatus,
   VaultMember,
   VaultSummary,
 };
@@ -160,6 +162,9 @@ const wailsApi = {
   setExactHostMatch: async (isExactHostMatch: boolean): Promise<BrowserStatus> =>
     normalizeBrowserStatus(await BrowserBridge.SetExactHostMatch(isExactHostMatch)),
   cancelBrowserPairing: (): Promise<void> => BrowserBridge.CancelBrowserPairing(),
+  getUpdateStatus: (): Promise<UpdateStatus> => UpdateService.GetUpdateStatus(),
+  checkForUpdates: (): Promise<UpdateStatus> => UpdateService.CheckForUpdates(),
+  setAutomaticUpdateCheck: (isEnabled: boolean): Promise<UpdateStatus> => UpdateService.SetAutomaticUpdateCheck(isEnabled),
   getRecoveryStatus: (): Promise<RecoveryStatus> => Service.GetRecoveryStatus(),
   setUpRecovery: async (): Promise<string[]> => (await Service.SetUpRecovery()) ?? [],
   enableRecoveryForAllVault: async (): Promise<string[]> => (await Service.EnableRecoveryForAllVault()) ?? [],

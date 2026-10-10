@@ -22,6 +22,7 @@ import {
 import { formatLastSeen, formatPlatform, formatRole, getPlatformIcon, isMacPlatform } from "../util";
 import AccountRecoverySection from "./AccountRecoverySection.vue";
 import BrowserExtensionSection from "./BrowserExtensionSection.vue";
+import UpdatesSection from "./UpdatesSection.vue";
 import AppIcon from "./AppIcon.vue";
 import MemberAvatar from "./MemberAvatar.vue";
 
@@ -372,6 +373,8 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
         </div>
       </section>
 
+      <UpdatesSection />
+
       <section>
         <p class="section-label">Account</p>
         <div class="setting">
@@ -388,7 +391,6 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
         </div>
       </section>
 
-      <p class="version muted">Hisar 0.1.0</p>
     </div>
   </div>
 </template>
@@ -560,10 +562,5 @@ section {
 .setting-text .revoke-note {
   margin-top: 6px;
   color: #f2a7a9;
-}
-
-.version {
-  margin: 0;
-  font-size: 11px;
 }
 </style>

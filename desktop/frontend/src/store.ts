@@ -16,6 +16,7 @@ import {
   type SSHAgentStatus,
   type SSHKeyType,
   type Status,
+  type UpdateStatus,
   type VaultMember,
   type VaultRole,
   type VaultSummary,
@@ -55,6 +56,7 @@ export const store = reactive({
   allDevice: [] as Device[],
   browserPairing: null as BrowserPairingRequest | null,
   browserStatus: null as BrowserStatus | null,
+  updateStatus: null as UpdateStatus | null,
   recoveryStatus: null as RecoveryStatus | null,
   allPendingRecovery: [] as PendingRecovery[],
   isVaultRecoveryOpen: false,
@@ -646,6 +648,29 @@ export async function setExactHostMatch(isExactHostMatch: boolean): Promise<void
   const browserStatus = await runAction(() => api.setExactHostMatch(isExactHostMatch));
   if (browserStatus) {
     store.browserStatus = browserStatus;
+  }
+}
+
+export async function loadUpdateStatus(): Promise<void> {
+  try {
+    store.updateStatus = await api.getUpdateStatus();
+  } catch {
+    store.updateStatus = null;
+  }
+}
+
+export async function checkForUpdates(): Promise<void> {
+  const updateStatus = await runAction(() => api.checkForUpdates());
+  if (updateStatus) {
+    store.updateStatus = updateStatus;
+    showNotice("Checking for updates…");
+  }
+}
+
+export async function setAutomaticUpdateCheck(isEnabled: boolean): Promise<void> {
+  const updateStatus = await runAction(() => api.setAutomaticUpdateCheck(isEnabled));
+  if (updateStatus) {
+    store.updateStatus = updateStatus;
   }
 }
 

@@ -18,6 +18,7 @@ import (
 
 	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/server/internal/api"
+	"github.com/tryhisar/hisar/server/internal/desktopupdate"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
@@ -39,6 +40,11 @@ environment:
   HISAR_TRUST_PROXY    trust X-Forwarded-For from the reverse proxy (default false)
   HISAR_AUTO_MIGRATE   apply pending migrations on start (default true)
   HISAR_AUTH_BURST     auth requests per IP before limiting to one per 6 seconds (default 10)
+
+desktop updates (optional; all three or none):
+  HISAR_UPDATE_GITLAB_URL         GitLab holding the hisar-desktop generic package, e.g. https://git.tryhisar.com
+  HISAR_UPDATE_GITLAB_PROJECT_ID  numeric ID of that GitLab project
+  HISAR_UPDATE_GITLAB_TOKEN       project access token, Reporter role, read_api scope
 `)
 }
 
@@ -105,16 +111,39 @@ func setup(ctx context.Context) (*store.Store, *api.Server, error) {
 		database.Close()
 		return nil, nil, fmt.Errorf("HISAR_AUTH_BURST must be a positive number")
 	}
+	publicURL := getEnv("HISAR_PUBLIC_URL", "https://tryhisar.com")
+	desktopUpdates, err := createDesktopUpdateSource(publicURL)
+	if err != nil {
+		database.Close()
+		return nil, nil, err
+	}
 	server, err := api.CreateServer(database, secrets, api.Config{
-		PublicURL:  getEnv("HISAR_PUBLIC_URL", "https://tryhisar.com"),
-		TrustProxy: getEnv("HISAR_TRUST_PROXY", "false") == "true",
-		AuthBurst:  authBurst,
+		PublicURL:      publicURL,
+		TrustProxy:     getEnv("HISAR_TRUST_PROXY", "false") == "true",
+		AuthBurst:      authBurst,
+		DesktopUpdates: desktopUpdates,
 	})
 	if err != nil {
 		database.Close()
 		return nil, nil, err
 	}
 	return database, server, nil
+}
+
+func createDesktopUpdateSource(publicURL string) (*desktopupdate.Source, error) {
+	gitLabURL, projectID, token := os.Getenv("HISAR_UPDATE_GITLAB_URL"), os.Getenv("HISAR_UPDATE_GITLAB_PROJECT_ID"), os.Getenv("HISAR_UPDATE_GITLAB_TOKEN")
+	if gitLabURL == "" && projectID == "" && token == "" {
+		return nil, nil
+	}
+	if gitLabURL == "" || projectID == "" || token == "" {
+		return nil, errors.New("desktop updates need HISAR_UPDATE_GITLAB_URL, HISAR_UPDATE_GITLAB_PROJECT_ID and HISAR_UPDATE_GITLAB_TOKEN together")
+	}
+	gitLab, err := desktopupdate.CreateGitLab(desktopupdate.GitLabConfig{BaseURL: gitLabURL, ProjectID: projectID, Token: token})
+	if err != nil {
+		return nil, fmt.Errorf("desktop updates: %w", err)
+	}
+	log.Printf("desktop updates from %s project %s", gitLabURL, projectID)
+	return desktopupdate.CreateSource(gitLab, desktopupdate.SourceConfig{PublicURL: publicURL}), nil
 }
 
 func serve(ctx context.Context, allArg []string) error {
