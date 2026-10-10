@@ -1,4 +1,4 @@
-// Package passkey is Hisar's WebAuthn authenticator (docs/DESIGN.md §9.8).
+// Package passkey is Hisar's WebAuthn authenticator.
 package passkey
 
 import (
@@ -86,7 +86,7 @@ func ParseOrigin(origin string) (*url.URL, error) {
 	return parsed, nil
 }
 
-// ResolveRelyingPartyID: the host, or a suffix of it that is not a public suffix (DESIGN §9.8).
+// ResolveRelyingPartyID: the host, or a suffix of it that is not a public suffix.
 func ResolveRelyingPartyID(origin, requestedRelyingPartyID string) (string, error) {
 	parsed, err := ParseOrigin(origin)
 	if err != nil {
@@ -153,7 +153,7 @@ func BuildClientDataJSON(clientData ClientData) ([]byte, error) {
 	return bytes.TrimSuffix(buffer.Bytes(), []byte("\n")), nil
 }
 
-// The sign count is always 0 (DESIGN §9.8).
+// The sign count is always 0.
 func BuildAuthenticatorData(relyingPartyID string, flags byte, attestedCredentialData []byte) []byte {
 	relyingPartyIDHash := sha256.Sum256([]byte(relyingPartyID))
 	authenticatorData := make([]byte, 0, 37+len(attestedCredentialData))

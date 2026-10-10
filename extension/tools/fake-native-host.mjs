@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Development stand-in for hisar-browser-host + the desktop app: speaks the §9.2 protocol over stdio with data from a JSON state file.
+// Development stand-in for hisar-browser-host + the desktop app: speaks the native messaging protocol over stdio with data from a JSON state file.
 import { createHash, createHmac, randomBytes, randomInt } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";

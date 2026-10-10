@@ -177,7 +177,7 @@ type PutItemResponse struct {
 	Seq int64 `json:"seq"`
 }
 
-// Server-sent events on GET /api/v1/events (DESIGN §7.2).
+// Server-sent events on GET /api/v1/events.
 const (
 	EventVaultChanged  = "vault-changed"
 	EventVaultsChanged = "vaults-changed"

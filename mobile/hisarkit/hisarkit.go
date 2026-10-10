@@ -1,5 +1,5 @@
 // Package hisarkit is the iOS app's backend, compiled with gomobile into HisarKit.xcframework.
-// gomobile passes only simple types, so lists and items cross the boundary as JSON strings (DESIGN §9.3).
+// gomobile passes only simple types, so lists and items cross the boundary as JSON strings.
 package hisarkit
 
 import (

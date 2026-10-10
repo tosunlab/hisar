@@ -32,7 +32,7 @@ type eventSubscriber struct {
 	isOverflowed bool
 }
 
-// eventBroker fans vault changes out to the event streams of one server process (DESIGN §7.2).
+// eventBroker fans vault changes out to the event streams of one server process.
 type eventBroker struct {
 	mutex                  sync.Mutex
 	allSubscriberByAccount map[string]map[*eventSubscriber]struct{}

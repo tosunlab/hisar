@@ -1,4 +1,4 @@
-// Development stand-in for the desktop's passkey authenticator (docs/DESIGN.md §9.8), used by the fake host.
+// Development stand-in for the desktop's passkey authenticator, used by the fake host.
 import { createHash, createPrivateKey, generateKeyPairSync, randomBytes, sign } from "node:crypto";
 
 export const hisarAAGUID = "fb041679-042a-49ae-b616-8779e2ac14ce";
