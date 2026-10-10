@@ -184,7 +184,7 @@ label {
   margin-bottom: 14px;
 }
 
-label > span:first-child {
+label > span:first-child:not(.setting-icon) {
   display: block;
   margin-bottom: 6px;
   font-size: 12px;

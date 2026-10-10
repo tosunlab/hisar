@@ -249,7 +249,13 @@ const previewBrowserStatus: BrowserStatus = {
     ? []
     : [
         { name: "Google Chrome", manifestPath: "", isInstalled: true, errorMessage: "" },
+        { name: "Google Chrome Beta", manifestPath: "", isInstalled: true, errorMessage: "" },
+        { name: "Google Chrome Canary", manifestPath: "", isInstalled: true, errorMessage: "" },
+        { name: "Chromium", manifestPath: "", isInstalled: true, errorMessage: "" },
+        { name: "Brave", manifestPath: "", isInstalled: true, errorMessage: "" },
+        { name: "Microsoft Edge", manifestPath: "", isInstalled: true, errorMessage: "" },
         { name: "Arc", manifestPath: "", isInstalled: true, errorMessage: "" },
+        { name: "Vivaldi", manifestPath: "", isInstalled: false, errorMessage: "permission denied" },
       ],
   allPairedBrowser: hasNoPreviewBrowser
     ? []
