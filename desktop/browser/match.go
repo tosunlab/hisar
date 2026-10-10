@@ -8,7 +8,7 @@ import (
 	"golang.org/x/net/publicsuffix"
 )
 
-// IsURLMatch reports whether an item URL may be filled into a page; see docs/DESIGN.md §9.2.
+// IsURLMatch reports whether an item URL may be filled into a page.
 func IsURLMatch(itemURL, pageURL string, isExactHost bool) bool {
 	page, err := url.Parse(strings.TrimSpace(pageURL))
 	if err != nil || (page.Scheme != "https" && page.Scheme != "http") || page.Hostname() == "" {

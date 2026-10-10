@@ -190,12 +190,12 @@ type Config struct {
 	// BiometricPasswordInterval is how long Touch ID may unlock before the master password is required again.
 	BiometricPasswordInterval time.Duration
 	// IsBiometricAllowedAfterLaunch lets biometrics unlock before the first password unlock, for platforms whose
-	// keychain enforces the biometric check itself (iOS); the desktop keeps the launch rule of DESIGN §5.4.
+	// keychain enforces the biometric check itself (iOS); the desktop keeps its launch rule.
 	IsBiometricAllowedAfterLaunch bool
 	Now                           func() time.Time
 	// OnLock runs under the service mutex whenever an unlocked session ends; it must not call the service.
 	OnLock func()
-	// OnRemoteChange runs after the backend synced a change another device made (DESIGN §7.2); the UI refreshes.
+	// OnRemoteChange runs after the backend synced a change another device made; the UI refreshes.
 	OnRemoteChange func()
 	// IsEventStreamDisabled skips the server's event stream, e.g. in tests whose fake server has none.
 	IsEventStreamDisabled bool

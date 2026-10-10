@@ -1,6 +1,6 @@
 package browser
 
-// PasskeyRequest is the nested "passkey" parameter of the passkeys.* requests; binary values are base64url (DESIGN §9.8).
+// PasskeyRequest is the nested "passkey" parameter of the passkeys.* requests; binary values are base64url.
 type PasskeyRequest struct {
 	Origin                  string   `json:"origin"`
 	TopOrigin               string   `json:"topOrigin,omitempty"`

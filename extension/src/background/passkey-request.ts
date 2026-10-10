@@ -146,7 +146,7 @@ function readWebOrigin(url: string | undefined): string | undefined {
   }
 }
 
-// The origin comes from the browser's sender information, never from the page (DESIGN §9.8).
+// The origin comes from the browser's sender information, never from the page.
 export function readFrameOrigin(sender: PasskeySender, allAncestorOrigin: unknown): FrameOrigin | undefined {
   const origin = readWebOrigin(sender.url);
   const topOrigin = readWebOrigin(sender.tab?.url);
