@@ -3,9 +3,11 @@
 
 /**
  * ApprovalEvent is what the approval window shows; AppName and AppIconURL describe the app the program runs in.
+ * Command-line requests have Kind ApprovalKindCommandLine, no key, and ask to unlock Hisar when IsUnlockRequired.
  */
 export interface ApprovalEvent {
     "requestID": string;
+    "kind": string;
     "appName": string;
     "appIconURL": string;
     "clientName": string;
@@ -17,6 +19,9 @@ export interface ApprovalEvent {
     "isForwarded": boolean;
     "isTouchIDApproval": boolean;
     "timeoutAt": string;
+    "terminalName": string;
+    "isUnlockRequired": boolean;
+    "isPasswordUnlock": boolean;
 }
 
 export interface Status {

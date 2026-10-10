@@ -1,8 +1,8 @@
 MODULES := core server cli mobile
-CLI_TARGETS := linux/amd64 linux/arm64 darwin/arm64 darwin/amd64 windows/amd64
+CLI_TARGETS := linux/amd64 linux/arm64 darwin/arm64 darwin/amd64 windows/amd64 windows/arm64
 WAILS_VERSION := v3.0.0-beta.23
 
-.PHONY: build build-cli-all test vet test-end-to-end docker install-wails test-desktop-frontend build-desktop package-desktop package-desktop-dmg package-desktop-update test-extension test-extension-end-to-end build-extension build-ios-framework generate-ios-project build-ios test-ios test-ios-ui
+.PHONY: build build-cli-all package-cli-release test vet test-end-to-end docker install-wails test-desktop-frontend build-desktop package-desktop package-desktop-dmg package-desktop-update test-extension test-extension-end-to-end build-extension build-ios-framework generate-ios-project build-ios test-ios test-ios-ui
 
 build:
 	go build -o bin/hisar-server ./server/cmd/hisar-server
@@ -16,13 +16,17 @@ build-cli-all:
 
 # -p 1: database tests in different packages share one schema.
 # desktop: the vault, biometric and agent packages; the Wails main package needs cgo and the built frontend.
+# Release archives and SHA256SUMS of the standalone CLI in bin/cli-release, as the v* tag pipeline builds them.
+package-cli-release:
+	./scripts/package-cli-release.sh $(VERSION) bin/cli-release
+
 test:
 	@for m in $(MODULES); do (cd $$m && go test -p 1 -count=1 $(TESTFLAGS) ./...) || exit 1; done
-	cd desktop && go test -count=1 $(TESTFLAGS) ./vault/ ./biometric/ ./agent/ ./appinfo/ ./browser/ ./passkey/ ./updater/ ./cmd/...
+	cd desktop && go test -count=1 $(TESTFLAGS) ./vault/ ./biometric/ ./agent/ ./appinfo/ ./browser/ ./commandline/ ./passkey/ ./updater/ ./cmd/...
 
 vet:
 	@for m in $(MODULES); do (cd $$m && go vet ./...) || exit 1; done
-	cd desktop && go vet ./vault/ ./biometric/ ./agent/ ./appinfo/ ./browser/ ./passkey/ ./updater/ ./cmd/...
+	cd desktop && go vet ./vault/ ./biometric/ ./agent/ ./appinfo/ ./browser/ ./commandline/ ./passkey/ ./updater/ ./cmd/...
 
 test-end-to-end: build
 	./scripts/test-end-to-end.sh

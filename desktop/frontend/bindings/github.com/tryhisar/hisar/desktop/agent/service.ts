@@ -34,6 +34,13 @@ export function RemoveSSHConfig(): $CancellablePromise<$models.Status> {
 }
 
 /**
+ * RespondApprovalWithPassword unlocks Hisar with the master password for a command-line request and approves it.
+ */
+export function RespondApprovalWithPassword(requestID: string, password: string): $CancellablePromise<void> {
+    return $Call.ByID(2274870207, requestID, password);
+}
+
+/**
  * RespondSSHApproval answers the approval window: Authorize (then Touch ID when available) or Deny.
  */
 export function RespondSSHApproval(requestID: string, isAuthorized: boolean, isForAllApplication: boolean): $CancellablePromise<void> {

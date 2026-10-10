@@ -380,7 +380,7 @@ All clients use `core/` for crypto, the local store and sync.
   - The server counts as unreachable on a connection error or a 502/503/504 from the reverse proxy (`client.IsUnreachable`). Then reads, unlock with the master password, Touch ID unlock and the master password check come from the cache, and the session reports `IsOffline`. Any other error, such as 401 for a revoked device, is never hidden by the cache.
   - Offline, the app shows an "Offline" notice and refuses changes with a clear message. Edits are not queued; that would need the merge of §7.4. Background sync runs every 60 s and when the window gets focus, and stays quiet while an item is being edited.
 - Auto-lock after idle time and on screen lock/sleep. Clipboard cleared after 90 s.
-- Ships the native-messaging host for the browser extension.
+- Ships the native-messaging host for the browser extension and the `hisar` CLI, which can use the app's session (§9.4).
 - Runs the SSH agent (§9.6) and handles Touch ID (§5.4).
 
 #### 9.1.1 Automatic updates (macOS)
@@ -486,7 +486,54 @@ The desktop keeps paired browsers (`instanceID`, browser name, SHA-256 of the to
 
 ### 9.4 CLI
 
-`hisar` CLI for development and scripting: login, unlock, list, get, generate, import (§9.7), and later `hisar run` to inject secrets into processes.
+`hisar` is the command-line client for the terminal and for scripts: vaults, items (`ls`, `get`, `add`, `edit`, `rm`), the generator, import (§9.7), sharing, invites, devices and recovery, and later `hisar run` to inject secrets into processes. It works in one of two modes:
+
+- **Through the desktop app**, like 1Password's CLI integration: `hisar` asks the running Hisar app for what each command needs over `~/.hisar/cli.sock`. It has no session, state file or keys of its own, and nothing is unlocked in the `hisar` process.
+- **Standalone**: its own sign-in, with the session in `state.json` (`HISAR_STATE`) and the Secret Key in the OS keychain (`HISAR_SECRET_KEY` overrides it); every command that decrypts asks for the master password. This is the mode on Linux and Windows, on servers, and whenever the app is not running.
+
+**Choosing the mode.** `--standalone` (before the command) or `HISAR_STANDALONE=1` forces standalone. Otherwise `hisar` connects to the socket (`HISAR_CLI_SOCKET` overrides the path, for the app and the CLI) and sends `hello`. It uses the app when the app answers, and falls back to standalone when the socket is missing, the connection is refused, or the app answers `integration-disabled`. An error after the app answered (denied, signed out, offline) is reported; `hisar` never retries it standalone. `hisar status` prints the mode, why that mode was chosen, and the account (`email` on `server`, and whether the app is locked). `signup`, `login`, `logout` and `recover` manage the standalone sign-in, and `emergency-kit` and the `recovery-*` commands need the Secret Key or recovery keys, which the app never hands out; in app mode they stop with a message that points to the app or to `--standalone`. `hisar --version` prints the version stamped at build time (`-X main.version`).
+
+**Bundled in the macOS app.** `Hisar.app/Contents/Helpers/hisar` is a universal (arm64 + x86_64) build of the CLI. It cannot be `Contents/MacOS/hisar`: the default macOS file system ignores case, so that is the app's own executable `Hisar`. It is built with `CGO_ENABLED=0`, stamped with the app version and signed by `scripts/sign-desktop-app.sh` before the app, and it updates with the app through Sparkle (§9.1.1). Settings → Command-line tool:
+
+- Shows whether `hisar` is installed (a symlink to the bundled binary) and where, and whether the first `hisar` on the user's `PATH` is this app's. Apps started from Finder get a minimal `PATH`, so the app reads the user's from their login shell (`$SHELL -l -i -c`, 3 s timeout, cached for the session) and falls back to `/etc/paths`, `/etc/paths.d` and its own `PATH`.
+- **Install command-line tool** creates the symlink `hisar` → the bundled binary in `/opt/homebrew/bin` when that directory exists and is writable, else `/usr/local/bin` when it exists and is writable, else `~/.local/bin` (created, 0755), and then shows a one-line hint when that directory is not on the `PATH`. It never asks for an administrator password. An existing `hisar` there that is a symlink into a `Hisar.app` (an older or moved copy) is replaced; anything else, a file or a symlink to somewhere else, is never touched, and Settings shows what is there.
+- **Uninstall** removes only `hisar` symlinks in those three directories that point into a `Hisar.app`.
+- **Let the command-line tool use Hisar** (on by default; stored in `desktop.json` and kept on sign-out). Off closes and removes the socket, so `hisar` falls back to standalone; a request that still arrives is answered `integration-disabled`.
+- Development builds have no bundled binary; the section says so and offers no install.
+
+**Socket.** `~/.hisar/cli.sock`, socket 0600 in the same 0700 directory as the SSH agent and browser sockets, served while the app runs and the switch is on. The app accepts only peers with its own user ID (`LOCAL_PEERCRED` on macOS, `SO_PEERCRED` on Linux) and closes any other connection without an answer. Frames are a 32-bit big-endian length followed by UTF-8 JSON, at most 16 MiB. Requests are `{"id", "type", …parameters}`; responses `{"id", "ok": true, "result"}` or `{"id", "ok": false, "error": {"code", "message"}}`. Error codes: `invalid-request`, `integration-disabled`, `signed-out`, `locked`, `denied`, `offline`, `not-found`, `internal`. Shared types live in `core/cliprotocol`.
+
+| Type | Parameters | Result |
+|---|---|---|
+| `hello` | — | `protocolVersion` (1), `state` (`signed-out`, `locked`, `unlocked`), `email`, `server`, `isApproved` (for this terminal session); never needs an approval |
+| `account` | — | `accountID`, `name`, `email`, `role`, `server` |
+| `vaults.list` | — | `vaults`: `[{id, name, type, role, itemCount}]` |
+| `vaults.create` | `name` | `vault` |
+| `items.list` | `vaultID` | `items`: summaries `{id, revision, category, title, username, urls, hasOneTimePassword}` |
+| `items.get` | `vaultID`, `itemID` | `item`: the summary plus `password`, `notes`, `fields`, `passkeys` (`relyingPartyID`, `userName`), `publicKey`, `fingerprint` |
+| `items.code` | `vaultID`, `itemID` | `code`, `expiresAt` (RFC 3339), `period` |
+| `items.save` | `vaultID`, `item` (`id` and `revision` for an update; `title`, `username`, `urls`, `password`, `notes`) | `item`. An update keeps everything else of the item: fields, one-time password, passkeys, SSH key |
+| `items.delete` | `vaultID`, `itemID` | `{}` |
+| `items.import` | `vaultID`, `importedItems` (at most 10 parsed items) | `savedCount`, `failures` `[{title, message}]` |
+| `members.list` | — | `members`: `[{accountID, name, email, role, securityCode, isCurrentUser, isKeyChanged}]` |
+| `vaults.share` | `vaultID`, `email`, `role` | `{}` (key pinning as in the app, §5.6) |
+| `vaults.unshare` | `vaultID`, `accountID` | `{}` (rotates the vault key, §4.4) |
+| `invite` | `email`, `role` | `url` |
+| `devices.list` | — | `devices` |
+| `devices.revoke` | `deviceID` | `{}` |
+
+The app answers with the bound `vault.Service` methods, so the CLI gets the same checks, offline behaviour and errors as the UI. It never sends the master password, the Secret Key, account or vault keys, SSH or passkey private keys, or one-time password secrets: items carry what `hisar get` prints, and `items.code` returns only the current code. `hisar` parses import files itself and sends the parsed items in batches of 10.
+
+**Approval.**
+
+- Approvals are per terminal session. From the peer PID (`LOCAL_PEERPID`, `SO_PEERCRED`) the app reads the session ID (`getsid`), the controlling terminal device and the start time of the session leader, so a session ID that is reused after the terminal closed does not inherit an approval. The terminal app and its icon come from `desktop/appinfo`, starting from the parent of `hisar`, because the bundled `hisar` itself lives inside `Hisar.app`.
+- Every request except `hello` needs an approval for its session. The first one opens the approval window of the SSH agent (§9.6) with "hisar in Terminal wants to use Hisar", Terminal's icon linked to Hisar's, and the terminal device and program path when expanded; there is no "Approve for all applications". On a Mac with Touch ID, Touch ID starts at once in the window; without it, Authorize approves.
+- If Hisar is locked, the same window unlocks it: with Touch ID when Touch ID unlock is ready (§5.4; the one Touch ID check approves and unlocks), otherwise with the master password typed into the window. A wrong password keeps the request open with a message. Signed out, requests fail with `signed-out` and no window.
+- Deny, Escape, closing the window, or 60 s without an answer fail the request with `denied`, and `hisar` prints "Hisar denied the request (it was declined, or not answered within a minute)". Requests from one session that arrive while its approval is open wait for that one window.
+- An approval lasts until 10 minutes after the session's last request, or until Hisar locks, signs out or quits.
+- Same-user code that runs inside an approved terminal session can use Hisar through `hisar` until the approval ends, as with 1Password; code outside that session needs its own approval.
+
+**Standalone releases.** A `v*` tag (the tag that also publishes the server image) runs `cli-release-build` on a Linux runner. It builds `hisar` for linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64 and windows/arm64 (`CGO_ENABLED=0`, version from the tag), packs `hisar-<version>-<os>-<arch>.tar.gz` (`.zip` with `hisar.exe` for Windows) and `SHA256SUMS`, and uploads them to the generic package `hisar-cli/<version>` with the job token (`scripts/package-cli-release.sh`). `cli-release` then creates the GitLab release for the tag, or updates it when it already exists, with a link to every file.
 
 ### 9.5 Go memory handling
 
@@ -529,7 +576,7 @@ Like 1Password, the desktop app is an SSH agent for keys stored in vaults, so pr
 
 - If Hisar is locked, the agent lists no keys and signing fails; the user unlocks Hisar and retries.
 - The first use of a key by a client process asks for approval. The prompt names the requesting application, found from the socket peer PID (`LOCAL_PEERPID` on macOS, `SO_PEERCRED` on Linux) → executable path, and the destination host: OpenSSH sends the server host key with `session-bind@openssh.com`, and the agent looks it up in `~/.ssh/known_hosts` and `/etc/ssh/ssh_known_hosts` (the host key fingerprint is shown if it is not there).
-- Every request opens the **approval window**, like 1Password's: a small always-on-top window ("Hisar Access Requested", `?window=ssh-approval`, created hidden at launch and reused). It shows the app's icon linked to Hisar's, "Allow <app> to use SSH key", the key (expanding to the destination, program path and key fingerprint), "Approve for all applications", Deny and Authorize. `<app>` is the app bundle the program runs in, found by walking up the parent processes (`ssh` started in Terminal shows Terminal and its icon; `desktop/appinfo`), or the program name when there is none.
+- Every request opens the **approval window**, like 1Password's: a small always-on-top window ("Hisar Access Requested", `?window=ssh-approval`, created hidden at launch and reused). It shows the app's icon linked to Hisar's, "Allow <app> to use SSH key", the key (expanding to the destination, program path and key fingerprint), "Approve for all applications", Deny and Authorize. `<app>` is the app bundle the program runs in, found by walking up the parent processes (`ssh` started in Terminal shows Terminal and its icon; `desktop/appinfo`), or the program name when there is none. The same window handles the command-line tool's requests (§9.4).
 - On a Mac with Touch ID, the window starts Touch ID as soon as it shows a request: Apple's `LAAuthenticationView` is embedded in the window (`biometric.WindowPrompt`, placed over a slot the page measures), so touching the sensor approves without a click, as in 1Password. The reason is `allow "<app>" to use the SSH key "<title>" for <host>` (one Touch ID prompt at a time). If Touch ID fails, the window stays open with a message and Authorize starts it again. "Approve for all applications" can be changed while Touch ID waits; its value when Touch ID succeeds counts. Without Touch ID, Authorize approves. Deny, Escape and closing the window deny, and cancel a Touch ID check in progress.
 - The backend emits `ssh-approval` (with a random request ID), `ssh-approval-failed` and `ssh-approval-closed`, and waits for `RespondSSHApproval(requestID, isAuthorized, isForAllApplication)`. After 60 seconds, or if the client disconnects, it denies; the window hides when no request is left. `ListAllPendingSSHApproval` lets the window show requests that arrived before it loaded.
 - Approvals are remembered per (key fingerprint, program path), or per key for every program with "Approve for all applications", for one hour (`DefaultApprovalLifetime`) or until Hisar locks, whichever comes first; the vault backend calls the agent's `ClearAllApproval` from its lock hook. Requests through a forwarded agent always ask, and programs without a known path are only covered by an approval for all applications. "Ask every time" can be set per key (`SetAllAlwaysAskKeyID`; no UI yet).
@@ -684,8 +731,8 @@ The desktop checks the RP ID against the origin on each request, applies `allowC
 ```
 core/       Go module: crypto, item model, local store, sync client   (github.com/tryhisar/hisar/core)
 server/     Go module: hisar-server                                   (github.com/tryhisar/hisar/server)
-cli/        Go module: hisar CLI                                      (github.com/tryhisar/hisar/cli)
-desktop/    Wails v3 app (Go + Vue): vault/ backend, agent/ SSH agent, passkey/ WebAuthn authenticator, updater/ Sparkle, frontend/ UI (Phase 2)
+cli/        Go module: hisar CLI, standalone or through the desktop app (github.com/tryhisar/hisar/cli)
+desktop/    Wails v3 app (Go + Vue): vault/ backend, agent/ SSH agent and approvals, commandline/ CLI socket and install, passkey/ WebAuthn authenticator, updater/ Sparkle, frontend/ UI (Phase 2)
 extension/  Browser extension (TypeScript)                            (Phase 3)
 mobile/     iOS + Android apps on top of gomobile-bound core          (Phase 4)
 docs/       Design and decisions

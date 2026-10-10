@@ -2,11 +2,13 @@ import { Browser } from "@wailsio/runtime";
 import { ApprovalTouchIDService, TouchIDPromptService } from "../bindings/github.com/tryhisar/hisar/desktop";
 import { Service as AgentService } from "../bindings/github.com/tryhisar/hisar/desktop/agent";
 import type { ApprovalEvent, Status as SSHAgentStatus } from "../bindings/github.com/tryhisar/hisar/desktop/agent";
-import { BrowserBridge, Service, UpdateService } from "../bindings/github.com/tryhisar/hisar/desktop/vault";
+import { BrowserBridge, CommandLineService, Service, UpdateService } from "../bindings/github.com/tryhisar/hisar/desktop/vault";
 import type { BrowserInstallation } from "../bindings/github.com/tryhisar/hisar/desktop/browser";
+import type { Installation as CommandLineInstallation } from "../bindings/github.com/tryhisar/hisar/desktop/commandline";
 import type {
   BrowserPairingRequest,
   BrowserStatus as BoundBrowserStatus,
+  CommandLineStatus as BoundCommandLineStatus,
   Device,
   PairedBrowser,
   FamilyMember,
@@ -67,7 +69,15 @@ function normalizeItem(boundItem: BoundItemDetail): ItemDetail {
   return { ...boundItem, urls: boundItem.urls ?? [], fields: boundItem.fields ?? [], passkeys: boundItem.passkeys ?? [] };
 }
 
-export type { BrowserInstallation, BrowserPairingRequest, PairedBrowser };
+export type { BrowserInstallation, BrowserPairingRequest, CommandLineInstallation, PairedBrowser };
+
+export interface CommandLineStatus extends Omit<BoundCommandLineStatus, "allInstallation"> {
+  allInstallation: CommandLineInstallation[];
+}
+
+function normalizeCommandLineStatus(boundStatus: BoundCommandLineStatus): CommandLineStatus {
+  return { ...boundStatus, allInstallation: boundStatus.allInstallation ?? [] };
+}
 
 export interface BrowserStatus extends Omit<BoundBrowserStatus, "allInstallation" | "allPairedBrowser"> {
   allInstallation: BrowserInstallation[];
@@ -134,6 +144,7 @@ const wailsApi = {
   respondSSHApproval: (requestID: string, isAuthorized: boolean, isForAllApplication: boolean): Promise<void> =>
     AgentService.RespondSSHApproval(requestID, isAuthorized, isForAllApplication),
   listAllPendingSSHApproval: async (): Promise<ApprovalEvent[]> => (await AgentService.ListAllPendingSSHApproval()) ?? [],
+  respondApprovalWithPassword: (requestID: string, password: string): Promise<void> => AgentService.RespondApprovalWithPassword(requestID, password),
   setSSHApprovalForAllApplication: (requestID: string, isForAllApplication: boolean): Promise<void> =>
     AgentService.SetSSHApprovalForAllApplication(requestID, isForAllApplication),
   setApprovalTouchIDFrame: (x: number, y: number, width: number, height: number): Promise<void> =>
@@ -165,6 +176,11 @@ const wailsApi = {
   getUpdateStatus: (): Promise<UpdateStatus> => UpdateService.GetUpdateStatus(),
   checkForUpdates: (): Promise<UpdateStatus> => UpdateService.CheckForUpdates(),
   setAutomaticUpdateCheck: (isEnabled: boolean): Promise<UpdateStatus> => UpdateService.SetAutomaticUpdateCheck(isEnabled),
+  getCommandLineStatus: async (): Promise<CommandLineStatus> => normalizeCommandLineStatus(await CommandLineService.GetCommandLineStatus()),
+  installCommandLineTool: async (): Promise<CommandLineStatus> => normalizeCommandLineStatus(await CommandLineService.InstallCommandLineTool()),
+  uninstallCommandLineTool: async (): Promise<CommandLineStatus> => normalizeCommandLineStatus(await CommandLineService.UninstallCommandLineTool()),
+  setCommandLineIntegration: async (isEnabled: boolean): Promise<CommandLineStatus> =>
+    normalizeCommandLineStatus(await CommandLineService.SetCommandLineIntegration(isEnabled)),
   getRecoveryStatus: (): Promise<RecoveryStatus> => Service.GetRecoveryStatus(),
   setUpRecovery: async (): Promise<string[]> => (await Service.SetUpRecovery()) ?? [],
   enableRecoveryForAllVault: async (): Promise<string[]> => (await Service.EnableRecoveryForAllVault()) ?? [],

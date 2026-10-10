@@ -93,6 +93,11 @@ func (s *Service) DisableBiometricUnlock() (Status, error) {
 }
 
 func (s *Service) UnlockWithBiometric() (Status, error) {
+	return s.unlockWithBiometric(func() error { return s.config.Biometric.Authenticate("unlock Hisar") })
+}
+
+// unlockWithBiometric runs authenticate as the Touch ID check, so the approval window can show it in its own window.
+func (s *Service) unlockWithBiometric(authenticate func() error) (Status, error) {
 	s.mutex.Lock()
 	if !s.state.IsLoggedIn() {
 		s.mutex.Unlock()
@@ -106,7 +111,7 @@ func (s *Service) UnlockWithBiometric() (Status, error) {
 	accountCache := s.getCache()
 	s.mutex.Unlock()
 
-	if err := s.config.Biometric.Authenticate("unlock Hisar"); err != nil {
+	if err := authenticate(); err != nil {
 		return Status{}, err
 	}
 	wrappingKey, err := s.config.Biometric.LoadKey(accountID)

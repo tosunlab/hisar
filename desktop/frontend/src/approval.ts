@@ -61,6 +61,17 @@ export async function denyApproval(requestID: string): Promise<void> {
   await api.respondSSHApproval(requestID, false, false).catch(() => undefined);
 }
 
+// authorizeWithPassword unlocks Hisar for a command-line request; a wrong password comes back as a failure event.
+export async function authorizeWithPassword(requestID: string, password: string): Promise<void> {
+  approvalStore.isAuthorizing = true;
+  approvalStore.failureMessage = "";
+  try {
+    await api.respondApprovalWithPassword(requestID, password);
+  } catch {
+    failApproval(requestID, "Hisar could not answer the request.");
+  }
+}
+
 export async function setForAllApplication(requestID: string, isForAllApplication: boolean): Promise<void> {
   approvalStore.isForAllApplication = isForAllApplication;
   await api.setSSHApprovalForAllApplication(requestID, isForAllApplication).catch(() => undefined);

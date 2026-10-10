@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Signs Hisar.app inside out: Sparkle's helpers, Sparkle.framework, the browser host, then the app.
+# Signs Hisar.app inside out: Sparkle's helpers, Sparkle.framework, the browser host, the hisar CLI, then the app.
 # Usage: sign-desktop-app.sh <path to Hisar.app>
 # HISAR_SIGNING_IDENTITY: a Developer ID identity (signs with the hardened runtime and a timestamp); default ad-hoc (-).
 set -euo pipefail
@@ -23,6 +23,9 @@ if [ -d "$framework" ]; then
 fi
 if [ -f "$application/Contents/MacOS/hisar-browser-host" ]; then
   codesign "${allOption[@]}" "$application/Contents/MacOS/hisar-browser-host"
+fi
+if [ -f "$application/Contents/Helpers/hisar" ]; then
+  codesign "${allOption[@]}" --identifier com.tryhisar.hisar.cli "$application/Contents/Helpers/hisar"
 fi
 codesign "${allOption[@]}" "$application"
 codesign --verify --deep --strict "$application"

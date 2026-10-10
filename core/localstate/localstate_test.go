@@ -52,8 +52,9 @@ func TestStateRoundtrip(t *testing.T) {
 	}
 
 	reloadedState.IsAutomaticUpdateCheckDisabled = true
+	reloadedState.IsCommandLineIntegrationDisabled = true
 	reloadedState.Reset()
-	if reloadedState.IsLoggedIn() || reloadedState.GetSeq("v1") != 0 || len(reloadedState.AllPin) != 0 || !reloadedState.IsAutomaticUpdateCheckDisabled {
+	if reloadedState.IsLoggedIn() || reloadedState.GetSeq("v1") != 0 || len(reloadedState.AllPin) != 0 || !reloadedState.IsAutomaticUpdateCheckDisabled || !reloadedState.IsCommandLineIntegrationDisabled {
 		t.Errorf("reset state: %+v", reloadedState)
 	}
 	if err := reloadedState.Save(); err != nil {

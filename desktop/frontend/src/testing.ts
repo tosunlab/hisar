@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import type { ApprovalEvent, BrowserStatus, Device, FamilyMember, ImportPreview, ImportProgress, ItemDetail, PendingRecovery, RecoveryStatus, SSHAgentStatus, Status, UpdateStatus, VaultMember, VaultSummary } from "./api";
+import type { ApprovalEvent, BrowserStatus, CommandLineStatus, Device, FamilyMember, ImportPreview, ImportProgress, ItemDetail, PendingRecovery, RecoveryStatus, SSHAgentStatus, Status, UpdateStatus, VaultMember, VaultSummary } from "./api";
 
 export function createStatus(state: string): Status {
   return { state, server: "https://hisar.test", email: "alice@example.com", name: "Alice", biometricAvailable: false, biometricEnabled: false, biometricReady: false, isOffline: false };
@@ -57,6 +57,10 @@ export function createSSHAgentStatus(overrides: Partial<SSHAgentStatus> = {}): S
 export function createApprovalEvent(overrides: Partial<ApprovalEvent> = {}): ApprovalEvent {
   return {
     requestID: "request-1",
+    kind: "ssh-key",
+    terminalName: "",
+    isUnlockRequired: false,
+    isPasswordUnlock: false,
     appName: "Terminal",
     appIconURL: "",
     clientName: "ssh",
@@ -68,6 +72,39 @@ export function createApprovalEvent(overrides: Partial<ApprovalEvent> = {}): App
     isForwarded: false,
     isTouchIDApproval: true,
     timeoutAt: "2026-10-09T12:01:00Z",
+    ...overrides,
+  };
+}
+
+export function createCommandLineApprovalEvent(overrides: Partial<ApprovalEvent> = {}): ApprovalEvent {
+  return createApprovalEvent({
+    requestID: "command-line-1",
+    kind: "command-line",
+    clientName: "hisar",
+    clientPath: "/Applications/Hisar.app/Contents/Helpers/hisar",
+    keyTitle: "",
+    fingerprint: "",
+    destinationHost: "",
+    destinationFingerprint: "",
+    terminalName: "ttys003",
+    ...overrides,
+  });
+}
+
+export function createCommandLineStatus(overrides: Partial<CommandLineStatus> = {}): CommandLineStatus {
+  return {
+    isAvailable: true,
+    bundledPath: "/Applications/Hisar.app/Contents/Helpers/hisar",
+    installedPath: "",
+    allInstallation: [],
+    pathCommandPath: "",
+    pathCommandTarget: "",
+    isPathCommandFromThisApp: false,
+    pathHint: "",
+    isIntegrationEnabled: true,
+    socketPath: "/Users/alice/.hisar/cli.sock",
+    isServing: true,
+    errorMessage: "",
     ...overrides,
   };
 }
@@ -166,6 +203,11 @@ export function createApiMock() {
     removeSSHConfig: vi.fn(),
     respondSSHApproval: vi.fn().mockResolvedValue(undefined),
     listAllPendingSSHApproval: vi.fn().mockResolvedValue([]),
+    respondApprovalWithPassword: vi.fn().mockResolvedValue(undefined),
+    getCommandLineStatus: vi.fn().mockResolvedValue(createCommandLineStatus()),
+    installCommandLineTool: vi.fn(),
+    uninstallCommandLineTool: vi.fn(),
+    setCommandLineIntegration: vi.fn(),
     copyField: vi.fn(),
     getOneTimeCode: vi.fn(),
     copyText: vi.fn(),

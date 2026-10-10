@@ -15,6 +15,7 @@ declare module "@wailsio/runtime" {
             "locked": string;
             "ssh-approval": agent$0.ApprovalEvent;
             "ssh-approval-closed": string;
+            "unlocked": string;
         }
     }
 }

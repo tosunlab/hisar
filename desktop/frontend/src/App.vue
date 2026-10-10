@@ -2,7 +2,7 @@
 import { onBeforeUnmount, onMounted } from "vue";
 import { Events } from "@wailsio/runtime";
 import { api } from "./api";
-import { handleLocked, loadStatus, restoreBrowserPairing, showBrowserPairing, store, syncInBackground } from "./store";
+import { handleLocked, handleUnlockedElsewhere, loadStatus, restoreBrowserPairing, showBrowserPairing, store, syncInBackground } from "./store";
 import SignInView from "./components/SignInView.vue";
 import SecretKeyView from "./components/SecretKeyView.vue";
 import UnlockView from "./components/UnlockView.vue";
@@ -27,6 +27,7 @@ onMounted(() => {
   loadStatus();
   allRemoveListener = [
     Events.On("locked", () => handleLocked()),
+    Events.On("unlocked", () => handleUnlockedElsewhere()),
     Events.On("remote-change", () => syncInBackground()),
     Events.On("browser-pairing", (event) => showBrowserPairing(event.data ?? null)),
   ];

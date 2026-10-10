@@ -46,6 +46,7 @@ type Service struct {
 	pendingImport                *pendingImport
 	stopEvents                   context.CancelFunc
 	onSessionChange              func(server, token string, isSignedIn bool)
+	allLockListener              []func()
 }
 
 // getCache opens the offline cache on first use; if it cannot be opened, even after starting it over, Hisar stays online-only.
@@ -186,6 +187,11 @@ func (s *Service) lockSession() {
 	s.pendingImport = nil
 	if wasUnlocked && s.config.OnLock != nil {
 		s.config.OnLock()
+	}
+	if wasUnlocked {
+		for _, lockListener := range s.allLockListener {
+			lockListener()
+		}
 	}
 }
 

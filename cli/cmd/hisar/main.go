@@ -5,83 +5,160 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 )
 
+var version = "development"
+
+type runFunction func(ctx context.Context, flags *flag.FlagSet, allArg []string) error
+
+type appRunFunction func(ctx context.Context, client *appClient, flags *flag.FlagSet, allArg []string) error
+
+// command: runThroughApp is the app-mode variant; isLocal commands need no vault, and appAlternative explains
+// where to do a standalone-only command when the app is in use.
 type command struct {
-	name          string
-	argumentUsage string
-	summary       string
-	run           func(ctx context.Context, flags *flag.FlagSet, allArg []string) error
+	name           string
+	argumentUsage  string
+	summary        string
+	run            runFunction
+	runThroughApp  appRunFunction
+	isLocal        bool
+	appAlternative string
 }
 
 var allCommand = []command{
-	{"signup", "<invite-link>", "create your account from an invite", runSignup},
-	{"login", "", "sign in on this device", runLogin},
-	{"logout", "", "sign out on this device", runLogout},
-	{"whoami", "", "show the signed-in account", runWhoami},
-	{"vaults", "", "list vaults", runListAllVault},
-	{"vault-create", "<name>", "create a shared vault", runCreateVault},
-	{"ls", "[-v vault]", "list items", runListAllItem},
-	{"get", "<item> [-f field] [-v vault]", "show an item, or one field of it (e.g. -f password, -f code)", runGet},
-	{"add", "[-v vault]", "add a login", runAdd},
-	{"edit", "<item> [-v vault]", "edit an item", runEdit},
-	{"rm", "<item> [-v vault]", "delete an item", runRemove},
-	{"import", "<file> [-v vault] [-format f] [-y]", "import a 1Password, Bitwarden or browser CSV export", runImport},
-	{"generate", "[-n length] [-no-symbols]", "generate a password", runGenerate},
-	{"members", "", "list family members", runListAllMember},
-	{"share", "<vault> <email> [-r role]", "share a vault (role: owner, editor, reader)", runShare},
-	{"unshare", "<vault> <email>", "remove someone from a vault and rotate its key", runUnshare},
-	{"invite", "<email> [-r role]", "invite someone (admin only)", runInvite},
-	{"emergency-kit", "[-o file]", "save your Emergency Kit PDF (sign-in address, email, Secret Key)", runEmergencyKit},
-	{"devices", "", "list your signed-in devices", runListAllDevice},
-	{"revoke-device", "<id>", "sign out a device", runRevokeDevice},
-	{"recovery-setup", "", "create the recovery key and wrap your vaults to it (admin only)", runRecoverySetup},
-	{"recovery-enable", "", "make your vaults recoverable by the admin", runRecoveryEnable},
-	{"recovery-start", "<email>", "create a recovery link for someone (admin only)", runRecoveryStart},
-	{"recover", "<recovery-link>", "choose a new master password and Secret Key", runRecover},
-	{"recovery-list", "", "list pending recoveries (admin only)", runListAllPendingRecovery},
-	{"recovery-complete", "<email>", "give someone their vaults back after recovery (admin only)", runRecoveryComplete},
+	{name: "status", summary: "show whether hisar uses the Hisar app or its own sign-in, and the account", run: runStatus, runThroughApp: runStatusThroughApp},
+	{name: "signup", argumentUsage: "<invite-link>", summary: "create your account from an invite", run: runSignup, appAlternative: "create the account in the Hisar app"},
+	{name: "login", summary: "sign in on this device", run: runLogin, appAlternative: "sign in to the Hisar app"},
+	{name: "logout", summary: "sign out on this device", run: runLogout, appAlternative: "sign out in the Hisar app"},
+	{name: "whoami", summary: "show the signed-in account", run: runWhoami, runThroughApp: runWhoamiThroughApp},
+	{name: "vaults", summary: "list vaults", run: runListAllVault, runThroughApp: runListAllVaultThroughApp},
+	{name: "vault-create", argumentUsage: "<name>", summary: "create a shared vault", run: runCreateVault, runThroughApp: runCreateVaultThroughApp},
+	{name: "ls", argumentUsage: "[-v vault]", summary: "list items", run: runListAllItem, runThroughApp: runListAllItemThroughApp},
+	{name: "get", argumentUsage: "<item> [-f field] [-v vault]", summary: "show an item, or one field of it (e.g. -f password, -f code)", run: runGet, runThroughApp: runGetThroughApp},
+	{name: "add", argumentUsage: "[-v vault]", summary: "add a login", run: runAdd, runThroughApp: runAddThroughApp},
+	{name: "edit", argumentUsage: "<item> [-v vault]", summary: "edit an item", run: runEdit, runThroughApp: runEditThroughApp},
+	{name: "rm", argumentUsage: "<item> [-v vault]", summary: "delete an item", run: runRemove, runThroughApp: runRemoveThroughApp},
+	{name: "import", argumentUsage: "<file> [-v vault] [-format f] [-y]", summary: "import a 1Password, Bitwarden or browser CSV export", run: runImport, runThroughApp: runImportThroughApp},
+	{name: "generate", argumentUsage: "[-n length] [-no-symbols]", summary: "generate a password", run: runGenerate, isLocal: true},
+	{name: "members", summary: "list family members", run: runListAllMember, runThroughApp: runListAllMemberThroughApp},
+	{name: "share", argumentUsage: "<vault> <email> [-r role]", summary: "share a vault (role: owner, editor, reader)", run: runShare, runThroughApp: runShareThroughApp},
+	{name: "unshare", argumentUsage: "<vault> <email>", summary: "remove someone from a vault and rotate its key", run: runUnshare, runThroughApp: runUnshareThroughApp},
+	{name: "invite", argumentUsage: "<email> [-r role]", summary: "invite someone (admin only)", run: runInvite, runThroughApp: runInviteThroughApp},
+	{name: "emergency-kit", argumentUsage: "[-o file]", summary: "save your Emergency Kit PDF (sign-in address, email, Secret Key)", run: runEmergencyKit, appAlternative: "save it in the Hisar app under Settings → Emergency Kit"},
+	{name: "devices", summary: "list your signed-in devices", run: runListAllDevice, runThroughApp: runListAllDeviceThroughApp},
+	{name: "revoke-device", argumentUsage: "<id>", summary: "sign out a device", run: runRevokeDevice, runThroughApp: runRevokeDeviceThroughApp},
+	{name: "recovery-setup", summary: "create the recovery key and wrap your vaults to it (admin only)", run: runRecoverySetup, appAlternative: "use Settings → Account recovery in the Hisar app"},
+	{name: "recovery-enable", summary: "make your vaults recoverable by the admin", run: runRecoveryEnable, appAlternative: "use Settings → Account recovery in the Hisar app"},
+	{name: "recovery-start", argumentUsage: "<email>", summary: "create a recovery link for someone (admin only)", run: runRecoveryStart, appAlternative: "use Settings → Family in the Hisar app"},
+	{name: "recover", argumentUsage: "<recovery-link>", summary: "choose a new master password and Secret Key", run: runRecover, appAlternative: "use Recover account on the Hisar app's sign-in screen"},
+	{name: "recovery-list", summary: "list pending recoveries (admin only)", run: runListAllPendingRecovery, appAlternative: "use Settings → Account recovery in the Hisar app"},
+	{name: "recovery-complete", argumentUsage: "<email>", summary: "give someone their vaults back after recovery (admin only)", run: runRecoveryComplete, appAlternative: "use Settings → Account recovery in the Hisar app"},
 }
 
-func printUsage() {
-	fmt.Fprintln(os.Stderr, "usage: hisar <command> [arguments]\n\ncommands:")
+func printUsage(output io.Writer) {
+	fmt.Fprintln(output, "usage: hisar [--standalone] <command> [arguments]\n\ncommands:")
 	for _, command := range allCommand {
-		fmt.Fprintf(os.Stderr, "  %-18s %-35s %s\n", command.name, command.argumentUsage, command.summary)
+		fmt.Fprintf(output, "  %-18s %-35s %s\n", command.name, command.argumentUsage, command.summary)
 	}
+	fmt.Fprintln(output, `
+hisar uses the Hisar app when it is running and lets the command-line tool use it;
+otherwise it signs in on its own. --standalone or HISAR_STANDALONE=1 always signs in on its own.
+hisar --version prints the version.`)
+}
+
+type globalOption struct {
+	isStandalone bool
+	isVersion    bool
+	isHelp       bool
+}
+
+// parseGlobalOption reads the options before the command name.
+func parseGlobalOption(allArg []string) (globalOption, []string, error) {
+	var option globalOption
+	for len(allArg) > 0 {
+		switch allArg[0] {
+		case "--standalone", "-standalone":
+			option.isStandalone = true
+		case "--version", "-version":
+			option.isVersion = true
+		case "--help", "-help", "-h", "help":
+			option.isHelp = true
+		default:
+			if len(allArg[0]) > 0 && allArg[0][0] == '-' {
+				return option, nil, fmt.Errorf("unknown option %s", allArg[0])
+			}
+			return option, allArg, nil
+		}
+		allArg = allArg[1:]
+	}
+	return option, allArg, nil
+}
+
+func findCommand(name string) (command, bool) {
+	for _, candidate := range allCommand {
+		if candidate.name == name {
+			return candidate, true
+		}
+	}
+	return command{}, false
+}
+
+func runCommand(ctx context.Context, selected command, isStandaloneForced bool, flags *flag.FlagSet, allArg []string) error {
+	if selected.isLocal {
+		return selected.run(ctx, flags, allArg)
+	}
+	selectedMode = chooseMode(isStandaloneForced)
+	if selectedMode.client == nil {
+		return selected.run(ctx, flags, allArg)
+	}
+	defer selectedMode.client.Close()
+	if selected.runThroughApp == nil {
+		return describeStandaloneOnly(selected.name, selected.appAlternative)
+	}
+	return selected.runThroughApp(ctx, selectedMode.client, flags, allArg)
 }
 
 func main() {
-	if len(os.Args) < 2 {
-		printUsage()
+	option, allArg, err := parseGlobalOption(os.Args[1:])
+	switch {
+	case err != nil:
+		fmt.Fprintln(os.Stderr, "hisar:", err)
+		printUsage(os.Stderr)
+		os.Exit(2)
+	case option.isVersion:
+		fmt.Println("hisar", version)
+		return
+	case option.isHelp:
+		printUsage(os.Stdout)
+		return
+	case len(allArg) == 0:
+		printUsage(os.Stderr)
+		os.Exit(2)
+	}
+	selected, isFound := findCommand(allArg[0])
+	if !isFound {
+		printUsage(os.Stderr)
 		os.Exit(2)
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
-
-	for _, command := range allCommand {
-		if command.name != os.Args[1] {
-			continue
-		}
-		flags := flag.NewFlagSet(command.name, flag.ContinueOnError)
-		flags.Usage = func() {
-			fmt.Fprintf(os.Stderr, "usage: hisar %s %s\n", command.name, command.argumentUsage)
-			flags.PrintDefaults()
-		}
-		err := command.run(ctx, flags, os.Args[2:])
-		switch {
-		case errors.Is(err, errUsage):
-			flags.Usage()
-			os.Exit(2)
-		case errors.Is(err, flag.ErrHelp):
-			os.Exit(2)
-		case err != nil:
-			fmt.Fprintln(os.Stderr, "hisar:", err)
-			os.Exit(1)
-		}
-		return
+	flags := flag.NewFlagSet(selected.name, flag.ContinueOnError)
+	flags.Usage = func() {
+		fmt.Fprintf(os.Stderr, "usage: hisar %s %s\n", selected.name, selected.argumentUsage)
+		flags.PrintDefaults()
 	}
-	printUsage()
-	os.Exit(2)
+	err = runCommand(ctx, selected, option.isStandalone, flags, allArg[1:])
+	switch {
+	case errors.Is(err, errUsage):
+		flags.Usage()
+		os.Exit(2)
+	case errors.Is(err, flag.ErrHelp):
+		os.Exit(2)
+	case err != nil:
+		fmt.Fprintln(os.Stderr, "hisar:", err)
+		os.Exit(1)
+	}
 }

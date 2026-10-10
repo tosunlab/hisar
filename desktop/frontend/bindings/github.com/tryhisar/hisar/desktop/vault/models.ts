@@ -4,6 +4,9 @@
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as browser$0 from "../browser/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as commandline$0 from "../commandline/models.js";
 
 export interface BrowserPairingRequest {
     "browser": string;
@@ -16,6 +19,24 @@ export interface BrowserStatus {
     "allPairedBrowser": PairedBrowser[] | null;
     "isExactHostMatch": boolean;
     "pendingPairing": BrowserPairingRequest | null;
+}
+
+/**
+ * CommandLineStatus is Settings → Command-line tool: the installed hisar, the PATH, and the app integration.
+ */
+export interface CommandLineStatus {
+    "isAvailable": boolean;
+    "bundledPath": string;
+    "installedPath": string;
+    "allInstallation": commandline$0.Installation[] | null;
+    "pathCommandPath": string;
+    "pathCommandTarget": string;
+    "isPathCommandFromThisApp": boolean;
+    "pathHint": string;
+    "isIntegrationEnabled": boolean;
+    "socketPath": string;
+    "isServing": boolean;
+    "errorMessage": string;
 }
 
 /**

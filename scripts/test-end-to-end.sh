@@ -11,6 +11,8 @@ export HISAR_PUBLIC_URL=http://127.0.0.1:$PORT
 export HISAR_SECRETS_FILE=$T/secrets.json
 # Many sign-ins come from one IP during this test.
 export HISAR_AUTH_BURST=1000
+# The standalone CLI is tested here; a Hisar app running on this machine must not answer it.
+export HISAR_STANDALONE=1
 : "${HISAR_DATABASE_URL:?set HISAR_DATABASE_URL to an empty database}"
 
 "$BIN/hisar-server" serve -addr "127.0.0.1:$PORT" >"$T/server.log" 2>&1 &
@@ -123,6 +125,11 @@ DESKTOP_RESULT=$(HISAR_TEST_SERVER_URL="http://127.0.0.1:$PORT" HISAR_TEST_INVIT
   HISAR_TEST_RECOVERY_ADMIN_EMAIL=alice@example.com HISAR_TEST_RECOVERY_ADMIN_SECRET_KEY="$ALICE_SK" HISAR_TEST_RECOVERY_ADMIN_PASSWORD="$PW" \
   go -C "$ROOT/desktop" test -count=1 -v -run TestIntegrationDesktopFlow ./vault/ 2>&1 || true)
 expect "desktop app backend against the server" "$DESKTOP_RESULT" "--- PASS: TestIntegrationDesktopFlow"
+
+COMMAND_LINE_INVITE=$("$BIN/hisar-server" invite --email cli@example.com </dev/null | tail -1)
+COMMAND_LINE_RESULT=$(HISAR_STANDALONE= HISAR_TEST_SERVER_URL="http://127.0.0.1:$PORT" HISAR_TEST_CLI_INVITE_LINK="$COMMAND_LINE_INVITE" HISAR_TEST_CLI_BINARY="$BIN/hisar" \
+  go -C "$ROOT/desktop" test -count=1 -v -run TestIntegrationCommandLineThroughApp ./vault/ 2>&1 || true)
+expect "hisar through the desktop app backend" "$COMMAND_LINE_RESULT" "--- PASS: TestIntegrationCommandLineThroughApp"
 
 MOBILE_INVITE=$("$BIN/hisar-server" invite --email mobile@example.com </dev/null | tail -1)
 MOBILE_RESULT=$(HISAR_TEST_MOBILE_INVITE_LINK="$MOBILE_INVITE" go -C "$ROOT/mobile" test -count=1 -v -run TestIntegrationMobileFlow ./hisarkit/ 2>&1 || true)
