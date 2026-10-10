@@ -1,0 +1,225 @@
+# Merge requests, v* tags and manual runs only: a merge to main was already tested as its merge request.
+workflow:
+  auto_cancel:
+    on_new_commit: interruptible
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_COMMIT_TAG =~ /^v/
+    - if: $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api"
+
+stages: [test, build, release]
+
+default:
+  interruptible: true
+
+variables:
+  GO_VERSION: "1.26.0"
+  GOPATH: $CI_PROJECT_DIR/.go
+  GOFLAGS: -buildvcs=false
+  npm_config_cache: $CI_PROJECT_DIR/.npm
+  POSTGRES_PASSWORD: hisar
+  POSTGRES_DB: hisar
+  PG_URL: postgres://postgres:hisar@postgres:5432/hisar?sslmode=disable
+  CRANE_VERSION: v0.20.6
+  REGISTRY: reg.tryhisar.com
+  SERVER_IMAGE: reg.tryhisar.com/hisar/core/hisar-server
+
+.merge-request-or-manual:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+    - if: $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api"
+
+.go-cache:
+  cache:
+    key:
+      files: [go.work.sum]
+      prefix: go
+    paths: [.go/pkg/mod]
+
+.npm-cache:
+  cache:
+    key:
+      files: [desktop/frontend/package-lock.json, extension/package-lock.json]
+      prefix: npm
+    paths: [.npm]
+
+# The runners are unprivileged, so images are assembled with crane (scripts/build-server-image.sh) instead of Docker.
+.crane:
+  image: golang:1.26
+  extends: .go-cache
+  before_script:
+    - go install github.com/google/go-containerregistry/cmd/crane@$CRANE_VERSION
+    - export PATH=$GOPATH/bin:$PATH
+
+# The only large runner: the longest job and the pipeline's critical path.
+go:
+  stage: test
+  extends: [.merge-request-or-manual, .go-cache]
+  tags: [large]
+  image: golang:1.26
+  services:
+    - postgres:18
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq postgresql-client >/dev/null
+  script:
+    - |
+      allUnformatted=$(gofmt -l core server cli mobile desktop/vault desktop/biometric desktop/agent desktop/appinfo desktop/browser desktop/passkey desktop/cmd desktop/main.go desktop/touchid.go)
+      if [ -n "$allUnformatted" ]; then echo "$allUnformatted"; exit 1; fi
+    - make vet
+    # TestIntegrationDesktopFlow and TestIntegrationMobileFlow need a running server and run in the end-to-end step.
+    - set -o pipefail; HISAR_TEST_DATABASE_URL=$PG_URL make test TESTFLAGS=-v 2>&1 | tee test.log
+    - if grep -- "--- SKIP" test.log | grep -v -E "TestIntegrationDesktopFlow|TestIntegrationMobileFlow"; then exit 1; fi
+    - make build
+    - make build-cli-all
+    - PGPASSWORD=hisar psql -h postgres -U postgres -c "CREATE DATABASE hisar_end_to_end"
+    - HISAR_DATABASE_URL="postgres://postgres:hisar@postgres:5432/hisar_end_to_end?sslmode=disable" make test-end-to-end
+
+server-image-check:
+  stage: test
+  extends: [.merge-request-or-manual, .crane]
+  services:
+    - postgres:18
+    - name: registry:2
+      alias: registry
+  script:
+    - CRANE_INSECURE=1 bash scripts/build-server-image.sh registry:5000/hisar-server check
+    - crane manifest --insecure registry:5000/hisar-server:check | tee manifest.json
+    - grep -q '"architecture":"amd64"' manifest.json && grep -q '"architecture":"arm64"' manifest.json
+    - crane config --insecure registry:5000/hisar-server:check | tee config.json
+    - grep -q '"Entrypoint":\["hisar-server"\]' config.json && grep -q '"User":"65532"' config.json
+    - mkdir rootfs && crane export --insecure --platform linux/amd64 registry:5000/hisar-server:check - | tar -x -C rootfs
+    - export HISAR_DATABASE_URL=$PG_URL HISAR_ADDR=127.0.0.1:8080 HISAR_SECRETS_FILE=$CI_PROJECT_DIR/hisar-secrets.json
+    - rootfs/usr/local/bin/hisar-server serve > server.log 2>&1 &
+    - curl -sf --retry 20 --retry-all-errors --retry-delay 1 http://127.0.0.1:8080/healthz
+    - rootfs/usr/local/bin/hisar-server migrate status | tee status.log
+    - "! grep -q pending status.log"
+    - rootfs/usr/local/bin/hisar-server invite --email ci@example.com --role admin | grep -q "/invite/"
+  after_script:
+    - cat server.log || true
+
+desktop-frontend:
+  stage: test
+  extends: [.merge-request-or-manual, .npm-cache]
+  image: node:24
+  script:
+    - make test-desktop-frontend
+
+desktop-linux:
+  stage: build
+  extends: [.merge-request-or-manual, .go-cache, .npm-cache]
+  needs: []
+  image: node:24-trixie
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq libgtk-4-dev libwebkitgtk-6.0-dev >/dev/null
+    - curl -fsSL "https://go.dev/dl/go$GO_VERSION.linux-amd64.tar.gz" | tar -C /usr/local -xz
+    - export PATH=/usr/local/go/bin:$GOPATH/bin:$PATH
+  script:
+    - make install-wails
+    - make build-desktop
+    - test -x desktop/bin/Hisar
+    - git diff --exit-code -- desktop/frontend/bindings
+
+extension:
+  stage: test
+  extends: [.merge-request-or-manual, .npm-cache]
+  image: mcr.microsoft.com/playwright:v1.63.0-noble
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq make zip >/dev/null
+  script:
+    - make test-extension
+    - make test-extension-end-to-end
+    - make build-extension
+  artifacts:
+    name: hisar-extension
+    paths: [extension/hisar-extension-*.zip]
+    expire_in: 14 days
+
+# macOS jobs need a runner tagged macos (shell executor with Xcode, Go and Node); set MACOS_RUNNER=true once one exists.
+.macos:
+  tags: [macos]
+  extends: [.go-cache, .npm-cache]
+  variables:
+    GOPATH: $CI_PROJECT_DIR/.go
+  before_script:
+    - export PATH=$GOPATH/bin:$PATH
+
+desktop-macos:
+  stage: build
+  extends: .macos
+  needs: []
+  rules:
+    - if: $MACOS_RUNNER != "true"
+      when: never
+    - !reference [.merge-request-or-manual, rules]
+  script:
+    - make install-wails
+    - go -C desktop test -count=1 -v ./biometric/
+    - make package-desktop
+    - test -x desktop/bin/Hisar.app/Contents/MacOS/Hisar
+    - plutil -extract CFBundleIdentifier raw desktop/bin/Hisar.app/Contents/Info.plist | grep -qx com.tryhisar.hisar
+    - codesign --verify --deep desktop/bin/Hisar.app
+    - git diff --exit-code -- desktop/frontend/bindings
+    - cd desktop/bin && ditto -c -k --keepParent Hisar.app Hisar-macos.zip
+  artifacts:
+    name: Hisar-macos
+    paths: [desktop/bin/Hisar-macos.zip]
+    expire_in: 14 days
+
+# iOS is the slowest job, so merge requests only run it when mobile/ changes.
+ios:
+  stage: build
+  extends: .macos
+  needs: []
+  rules:
+    - if: $MACOS_RUNNER != "true"
+      when: never
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        paths: [mobile/**/*]
+        compare_to: refs/heads/main
+    - if: $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api"
+  script:
+    - curl -fsSL -o xcodegen.zip https://github.com/yonaskolb/XcodeGen/releases/download/2.46.0/xcodegen.zip
+    - unzip -q -o xcodegen.zip -d .tools && export PATH=$CI_PROJECT_DIR/.tools/xcodegen/bin:$PATH
+    - make generate-ios-project
+    - git diff --exit-code -- mobile/ios
+    - make build-ios-framework
+    - test -d mobile/build/HisarKit.xcframework/ios-arm64/HisarKit.framework
+    - test -d mobile/build/HisarKit.xcframework/ios-arm64_x86_64-simulator/HisarKit.framework
+    - make build-ios
+    - make test-ios
+    - make build
+    - brew list postgresql@17 >/dev/null 2>&1 || brew install postgresql@17
+    - brew services start postgresql@17
+    - for attempt in $(seq 30); do "$(brew --prefix postgresql@17)/bin/pg_isready" -h localhost && break; sleep 1; done
+    - databaseName="hisar_ios_$CI_JOB_ID"
+    - '"$(brew --prefix postgresql@17)/bin/createdb" -h localhost "$databaseName"'
+    - HISAR_DATABASE_URL="postgres://$(whoami)@localhost:5432/$databaseName?sslmode=disable" IOS_RESULT_BUNDLE=$CI_PROJECT_DIR/HisarUITests.xcresult make test-ios-ui
+  after_script:
+    - '"$(brew --prefix postgresql@17)/bin/dropdb" -h localhost --if-exists "hisar_ios_$CI_JOB_ID" || true'
+  artifacts:
+    when: on_failure
+    paths: [HisarUITests.xcresult]
+    expire_in: 7 days
+
+# Pushes to reg.tryhisar.com with the REGISTRY_USERNAME and REGISTRY_PASSWORD CI/CD variables.
+server-image:
+  stage: release
+  extends: .crane
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v/
+    - if: $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api"
+      when: manual
+  interruptible: false
+  script:
+    - test -n "$REGISTRY_USERNAME" && test -n "$REGISTRY_PASSWORD" || { echo "set REGISTRY_USERNAME and REGISTRY_PASSWORD in Settings → CI/CD → Variables"; exit 1; }
+    - echo "$REGISTRY_PASSWORD" | crane auth login "$REGISTRY" -u "$REGISTRY_USERNAME" --password-stdin
+    - |
+      allTag=("sha-$CI_COMMIT_SHORT_SHA")
+      if [ -n "$CI_COMMIT_TAG" ]; then
+        version=${CI_COMMIT_TAG#v}
+        allTag+=("$version" "${version%.*}" latest)
+      fi
+      bash scripts/build-server-image.sh "$SERVER_IMAGE" "${allTag[@]}"
+    - crane manifest "$SERVER_IMAGE:sha-$CI_COMMIT_SHORT_SHA" | tee manifest.json
+    - grep -q '"architecture":"amd64"' manifest.json && grep -q '"architecture":"arm64"' manifest.json

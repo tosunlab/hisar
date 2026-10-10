@@ -15,28 +15,19 @@ services:
       retries: 10
 
   hisar:
-    build:
-      context: ..
-      dockerfile: deploy/Dockerfile
+    image: ${HISAR_IMAGE:?set HISAR_IMAGE in .env}:${HISAR_VERSION:-latest}
     restart: unless-stopped
     depends_on:
       postgres:
         condition: service_healthy
     env_file: hisar.env
+    environment:
+      HISAR_PUBLIC_URL: https://${HISAR_DOMAIN:?set HISAR_DOMAIN in .env}
+      HISAR_TRUST_PROXY: "true"
     volumes:
       - hisar-data:/data
     ports:
-      - 127.0.0.1:8080:8080
-
-  caddy:
-    image: caddy:2
-    restart: unless-stopped
-    ports:
-      - 80:80
-      - 443:443
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
+      - 127.0.0.1:${HISAR_PORT:-8080}:8080
 
 secrets:
   db_password:
@@ -45,4 +36,3 @@ secrets:
 volumes:
   pgdata:
   hisar-data:
-  caddy-data:

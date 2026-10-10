@@ -20,3 +20,4 @@ deploy/hisar.env
 /mobile/ios/Configuration/Local.xcconfig
 xcuserdata/
 *.xcresult
+deploy/.env
