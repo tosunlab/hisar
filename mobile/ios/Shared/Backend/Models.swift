@@ -412,3 +412,49 @@ struct PasskeyRegistrationCredential: Equatable {
         self.attestationObject = attestationObject
     }
 }
+
+// Member is a family member (role admin or member) or someone with access to a vault (role owner, editor or reader).
+struct Member: Codable, Identifiable, Hashable {
+    static let roleAdmin = "admin"
+    static let roleMember = "member"
+    static let vaultRoleOwner = "owner"
+    static let vaultRoleEditor = "editor"
+    static let vaultRoleReader = "reader"
+    static let allVaultRole = [vaultRoleOwner, vaultRoleEditor, vaultRoleReader]
+
+    var accountID: String
+    var name: String
+    var email: String
+    var role: String
+    var securityCode: String
+    var isCurrentUser: Bool
+    var isKeyChanged: Bool
+
+    var id: String { accountID }
+
+    enum CodingKeys: String, CodingKey {
+        case accountID = "accountId"
+        case name, email, role, securityCode, isCurrentUser, isKeyChanged
+    }
+
+    init(accountID: String, name: String, email: String, role: String, securityCode: String = "", isCurrentUser: Bool = false, isKeyChanged: Bool = false) {
+        self.accountID = accountID
+        self.name = name
+        self.email = email
+        self.role = role
+        self.securityCode = securityCode
+        self.isCurrentUser = isCurrentUser
+        self.isKeyChanged = isKeyChanged
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        accountID = try container.decodeIfPresent(String.self, forKey: .accountID) ?? ""
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        email = try container.decodeIfPresent(String.self, forKey: .email) ?? ""
+        role = try container.decodeIfPresent(String.self, forKey: .role) ?? ""
+        securityCode = try container.decodeIfPresent(String.self, forKey: .securityCode) ?? ""
+        isCurrentUser = try container.decodeIfPresent(Bool.self, forKey: .isCurrentUser) ?? false
+        isKeyChanged = try container.decodeIfPresent(Bool.self, forKey: .isKeyChanged) ?? false
+    }
+}

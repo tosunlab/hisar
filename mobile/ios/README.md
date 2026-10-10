@@ -37,7 +37,8 @@ the project; CI fails if the committed project differs.
 
 What the UI tests cover: create an account from an invite and read the new Secret Key, add a login, item detail
 (reveal, copy), editing with the password generator, search, lock and unlock with the master password, sign out and
-sign in with the Secret Key, the privacy cover, Face ID (the test enrolls a face in the simulator and posts the
+sign in with the Secret Key, creating a shared vault and seeing its members, inviting someone from Settings → Family
+and reading the invite link, the privacy cover, Face ID (the test enrolls a face in the simulator and posts the
 simulator's "matching face" notification), the AutoFill screens, and passkeys: register a passkey into a login, sign in
 with it, check the attestation and the ES256 signature with CryptoKit, then see and delete it in the item.
 

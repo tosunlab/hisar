@@ -101,6 +101,34 @@ final class HisarKitBackend: VaultBackend {
         try decode([VaultSummary]?.self, from: callReturningText { hisar.listAllVault($0) }) ?? []
     }
 
+    func createVault(name: String) throws -> VaultSummary {
+        try decode(VaultSummary.self, from: callReturningText { hisar.createVault(name, error: $0) })
+    }
+
+    func listAllMember() throws -> [Member] {
+        try decode([Member]?.self, from: callReturningText { hisar.listAllMember($0) }) ?? []
+    }
+
+    func inviteMember(email: String, role: String) throws -> String {
+        try callReturningText { hisar.inviteMember(email, role: role, error: $0) }
+    }
+
+    func listAllVaultMember(vaultID: String) throws -> [Member] {
+        try decode([Member]?.self, from: callReturningText { hisar.listAllVaultMember(vaultID, error: $0) }) ?? []
+    }
+
+    func shareVault(vaultID: String, email: String, role: String) throws {
+        try callReturningNothing { try hisar.shareVault(vaultID, email: email, role: role) }
+    }
+
+    func changeVaultMemberRole(vaultID: String, accountID: String, role: String) throws {
+        try callReturningNothing { try hisar.changeVaultMemberRole(vaultID, accountID: accountID, role: role) }
+    }
+
+    func removeVaultMember(vaultID: String, accountID: String) throws {
+        try callReturningNothing { try hisar.removeVaultMember(vaultID, accountID: accountID) }
+    }
+
     func listAllItem(vaultID: String) throws -> [ItemDetail] {
         try decode([ItemDetail]?.self, from: callReturningText { hisar.listAllItem(vaultID, error: $0) }) ?? []
     }

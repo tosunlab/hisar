@@ -6,6 +6,9 @@ struct ItemListView: View {
     @EnvironmentObject private var model: AppModel
     @State private var searchText = ""
     @State private var isEditorShown = false
+    @State private var isMembersShown = false
+
+    private var isShared: Bool { model.findVault(vaultID: vaultID)?.type == "shared" }
 
     private var isWritable: Bool {
         guard let vault = model.findVault(vaultID: vaultID) else { return false }
@@ -40,6 +43,17 @@ struct ItemListView: View {
         .applyNavigationBarTheme()
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search")
         .toolbar {
+            if isShared {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        isMembersShown = true
+                    } label: {
+                        Image(systemName: "person.2")
+                    }
+                    .accessibilityLabel("Members")
+                    .accessibilityIdentifier("vault-members")
+                }
+            }
             if isWritable {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -54,6 +68,10 @@ struct ItemListView: View {
         }
         .sheet(isPresented: $isEditorShown) {
             ItemEditorView(vaultID: vaultID, originalItem: nil) { _ in }
+                .environmentObject(model)
+        }
+        .sheet(isPresented: $isMembersShown) {
+            VaultMembersView(vaultID: vaultID)
                 .environmentObject(model)
         }
         .onAppear { model.reportActivity() }

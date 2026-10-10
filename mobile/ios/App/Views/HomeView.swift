@@ -14,6 +14,7 @@ struct HomeView: View {
     @State private var navigationPath = NavigationPath()
     @State private var searchText = ""
     @State private var isSettingsShown = false
+    @State private var isNewVaultShown = false
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
@@ -55,6 +56,15 @@ struct HomeView: View {
                     .accessibilityLabel("Lock")
                     .accessibilityIdentifier("lock-now")
                 }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        isNewVaultShown = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .accessibilityLabel("New vault")
+                    .accessibilityIdentifier("new-vault")
+                }
             }
             .navigationDestination(for: VaultDestination.self) { destination in
                 ItemListView(vaultID: destination.vaultID)
@@ -68,6 +78,12 @@ struct HomeView: View {
         .sheet(isPresented: $isSettingsShown) {
             SettingsView()
                 .environmentObject(model)
+        }
+        .sheet(isPresented: $isNewVaultShown) {
+            NewVaultView { vault in
+                navigationPath.append(VaultDestination(vaultID: vault.id))
+            }
+            .environmentObject(model)
         }
     }
 
