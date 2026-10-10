@@ -36,6 +36,7 @@ export const store = reactive({
     biometricEnabled: false,
     biometricReady: false,
     isOffline: false,
+    autoLockSeconds: 600,
   } as Status,
   allVault: [] as VaultSummary[],
   selectedVaultID: "",
@@ -645,6 +646,13 @@ export async function removePairedBrowser(instanceID: string): Promise<boolean> 
   store.browserStatus = browserStatus;
   showNotice("Browser removed; it must be paired again to use Hisar");
   return true;
+}
+
+export async function setAutoLock(seconds: number): Promise<void> {
+  const status = await runAction(() => api.setAutoLock(seconds));
+  if (status) {
+    store.status = status;
+  }
 }
 
 export async function setExactHostMatch(isExactHostMatch: boolean): Promise<void> {

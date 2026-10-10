@@ -115,6 +115,19 @@ describe("SettingsPanel", () => {
     expect(wrapper.find('[data-testid="disable-touch-id"]').exists()).toBe(true);
   });
 
+  it("changes the auto-lock delay", async () => {
+    store.status = createStatus("unlocked");
+    api.setAutoLock.mockResolvedValue({ ...store.status, autoLockSeconds: 30 });
+    const wrapper = mount(SettingsPanel);
+    const select = wrapper.find('[data-testid="auto-lock"]');
+    expect((select.element as HTMLSelectElement).value).toBe("600");
+    expect(select.findAll("option").map((option) => option.text())).toEqual(["30 seconds", "1 minute", "5 minutes", "10 minutes", "1 hour"]);
+    await select.setValue("30");
+    await flushPromises();
+    expect(api.setAutoLock).toHaveBeenCalledWith(30);
+    expect(store.status.autoLockSeconds).toBe(30);
+  });
+
   it("turns Touch ID off", async () => {
     store.status = { ...createStatus("unlocked"), biometricAvailable: true, biometricEnabled: true, biometricReady: false };
     api.disableBiometricUnlock.mockResolvedValue({ ...store.status, biometricEnabled: false });

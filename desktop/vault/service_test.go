@@ -327,6 +327,32 @@ func TestResolveServer(t *testing.T) {
 	}
 }
 
+func TestSetAutoLock(t *testing.T) {
+	statePath := filepath.Join(t.TempDir(), "desktop.json")
+	service, _, _ := createTestService(t, statePath, createMemorySecretKeyStore())
+	if service.GetStatus().AutoLockSeconds != 600 {
+		t.Errorf("default = %d", service.GetStatus().AutoLockSeconds)
+	}
+	for _, badSeconds := range []int{0, 1, 45, 7200} {
+		if _, err := service.SetAutoLock(badSeconds); err == nil {
+			t.Errorf("accepted %d", badSeconds)
+		}
+	}
+	status, err := service.SetAutoLock(30)
+	if err != nil || status.AutoLockSeconds != 30 || service.getAutoLockAfter() != 30*time.Second {
+		t.Fatalf("set: %+v %v", status, err)
+	}
+
+	restarted, _, _ := createTestService(t, statePath, createMemorySecretKeyStore())
+	if restarted.GetStatus().AutoLockSeconds != 30 {
+		t.Errorf("after restart = %d", restarted.GetStatus().AutoLockSeconds)
+	}
+	restarted.state.Reset()
+	if restarted.getAutoLockAfter() != 30*time.Second {
+		t.Errorf("sign out forgot the auto-lock choice")
+	}
+}
+
 func TestSortAllVaultSummary(t *testing.T) {
 	allSummary := []VaultSummary{
 		{Name: "zeta", Type: proto.VaultShared},

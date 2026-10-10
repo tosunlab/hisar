@@ -39,6 +39,8 @@ type State struct {
 	IsAutomaticUpdateCheckDisabled bool `json:"automaticUpdateCheckDisabled,omitempty"`
 	// IsCommandLineIntegrationDisabled turns off the desktop app's CLI socket; a device preference that Reset keeps.
 	IsCommandLineIntegrationDisabled bool `json:"commandLineIntegrationDisabled,omitempty"`
+	// AutoLockSeconds is the desktop app's chosen auto-lock delay (0: the default); a device preference that Reset keeps.
+	AutoLockSeconds int `json:"autoLockSeconds,omitempty"`
 
 	path string
 }
@@ -106,6 +108,7 @@ func (s *State) Reset() {
 	*s = State{
 		path: s.path, AllPin: map[string][]byte{}, AllSeq: map[string]int64{},
 		IsAutomaticUpdateCheckDisabled: s.IsAutomaticUpdateCheckDisabled, IsCommandLineIntegrationDisabled: s.IsCommandLineIntegrationDisabled,
+		AutoLockSeconds: s.AutoLockSeconds,
 	}
 }
 

@@ -265,6 +265,13 @@ export function SaveNewAccountEmergencyKit(): $CancellablePromise<string> {
 }
 
 /**
+ * SetAutoLock stores how long Hisar stays unlocked without activity and restarts the countdown.
+ */
+export function SetAutoLock(seconds: number): $CancellablePromise<$models.Status> {
+    return $Call.ByID(2733357673, seconds);
+}
+
+/**
  * SetUpRecovery creates the recovery keyset unless an admin already did, then turns recovery on for the vaults this
  * account owns. It returns the names of vaults that could not be turned on.
  */

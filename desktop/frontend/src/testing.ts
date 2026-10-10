@@ -2,7 +2,7 @@ import { vi } from "vitest";
 import type { ApprovalEvent, BrowserStatus, CommandLineStatus, Device, FamilyMember, ImportPreview, ImportProgress, ItemDetail, PendingRecovery, RecoveryStatus, SSHAgentStatus, Status, UpdateStatus, VaultMember, VaultSummary } from "./api";
 
 export function createStatus(state: string): Status {
-  return { state, server: "https://hisar.test", email: "alice@example.com", name: "Alice", biometricAvailable: false, biometricEnabled: false, biometricReady: false, isOffline: false };
+  return { state, server: "https://hisar.test", email: "alice@example.com", name: "Alice", biometricAvailable: false, biometricEnabled: false, biometricReady: false, isOffline: false, autoLockSeconds: 600 };
 }
 
 export function createItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
@@ -174,6 +174,7 @@ export const allTestVault: VaultSummary[] = [
 export function createApiMock() {
   return {
     getStatus: vi.fn(),
+    setAutoLock: vi.fn(),
     signIn: vi.fn(),
     signUp: vi.fn(),
     unlock: vi.fn(),
