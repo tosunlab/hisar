@@ -51,14 +51,11 @@ func convertRecoveryError(err error) error {
 	return convertError(err)
 }
 
-func (s *Service) requireRecoveryAdmin() error {
-	if err := s.requireUnlocked(); err != nil {
-		return err
+// The role from unlocking can be stale (promoted since, or unlocked offline), so the server decides; this only refreshes it.
+func (s *Service) refreshRole(ctx context.Context) {
+	if account, err := s.unlockedSession.Client.GetAccount(ctx); err == nil && account.AccountID == s.unlockedSession.AccountID {
+		s.unlockedSession.Role = account.Role
 	}
-	if s.unlockedSession.Role != proto.RoleAdmin {
-		return errRecoveryAdminOnly
-	}
-	return nil
 }
 
 // GetRecoveryStatus reports whether an admin set up account recovery and whether this account can complete recoveries.
@@ -74,6 +71,7 @@ func (s *Service) GetRecoveryStatus() (RecoveryStatus, error) {
 }
 
 func (s *Service) getRecoveryStatus(ctx context.Context) (RecoveryStatus, error) {
+	s.refreshRole(ctx)
 	status := RecoveryStatus{IsAdmin: s.unlockedSession.Role == proto.RoleAdmin}
 	recoveryKeyset, err := s.unlockedSession.Client.GetRecoveryKeyset(ctx)
 	if client.IsStatus(err, http.StatusNotFound) {
@@ -104,7 +102,7 @@ func (s *Service) getRecoveryStatus(ctx context.Context) (RecoveryStatus, error)
 func (s *Service) SetUpRecovery() ([]string, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	if err := s.requireRecoveryAdmin(); err != nil {
+	if err := s.requireUnlocked(); err != nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
@@ -219,7 +217,7 @@ func (s *Service) DisableVaultRecovery(vaultID string) (VaultSummary, error) {
 func (s *Service) StartAccountRecovery(accountID string) (string, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	if err := s.requireRecoveryAdmin(); err != nil {
+	if err := s.requireUnlocked(); err != nil {
 		return "", err
 	}
 	if accountID == s.unlockedSession.AccountID {
@@ -241,7 +239,7 @@ func (s *Service) StartAccountRecovery(accountID string) (string, error) {
 func (s *Service) ListAllPendingRecovery() ([]PendingRecovery, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	if err := s.requireRecoveryAdmin(); err != nil {
+	if err := s.requireUnlocked(); err != nil {
 		return nil, err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -278,7 +276,7 @@ func (s *Service) ListAllPendingRecovery() ([]PendingRecovery, error) {
 func (s *Service) CompleteAccountRecovery(accountID string) ([]string, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	if err := s.requireRecoveryAdmin(); err != nil {
+	if err := s.requireUnlocked(); err != nil {
 		return nil, err
 	}
 	if accountID == s.unlockedSession.AccountID {

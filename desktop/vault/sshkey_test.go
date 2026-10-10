@@ -60,6 +60,11 @@ func writeJSON(writer http.ResponseWriter, status int, value any) {
 
 func (server *fakeAPIServer) createHandler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/v1/account", func(writer http.ResponseWriter, request *http.Request) {
+		server.mutex.Lock()
+		defer server.mutex.Unlock()
+		writeJSON(writer, http.StatusOK, proto.Account{AccountID: server.accountID, Role: server.role})
+	})
 	mux.HandleFunc("GET /api/v1/vaults", func(writer http.ResponseWriter, request *http.Request) {
 		server.mutex.Lock()
 		defer server.mutex.Unlock()

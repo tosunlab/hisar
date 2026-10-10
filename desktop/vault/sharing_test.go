@@ -502,11 +502,15 @@ func TestInviteMember(t *testing.T) {
 	if _, err := service.InviteMember("new@example.com", proto.RoleMember); !errors.Is(err, errAdminOnly) {
 		t.Errorf("server refused the invite: %v", err)
 	}
+
+	test.apiServer.mutex.Lock()
+	test.apiServer.role = proto.RoleAdmin
+	test.apiServer.mutex.Unlock()
 	service.mutex.Lock()
 	service.unlockedSession.Role = proto.RoleMember
 	service.mutex.Unlock()
-	if _, err := service.InviteMember("new@example.com", proto.RoleMember); !errors.Is(err, errAdminOnly) {
-		t.Errorf("invite as member: %v", err)
+	if _, err := service.InviteMember("new@example.com", proto.RoleMember); err != nil {
+		t.Errorf("promoted to admin after unlocking, invite refused: %v", err)
 	}
 }
 
