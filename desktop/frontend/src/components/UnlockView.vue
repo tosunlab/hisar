@@ -2,13 +2,9 @@
 import { nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { api } from "../api";
 import { signOut, store, unlock, unlockWithBiometric } from "../store";
-import { getInitials } from "../util";
 import AppIcon from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
 
-type Mode = "touch-id" | "password";
-
-const mode = ref<Mode>(store.status.biometricReady ? "touch-id" : "password");
 const password = ref("");
 const isConfirmingSignOut = ref(false);
 const isWaitingForTouchID = ref(false);
@@ -17,7 +13,7 @@ const passwordInput = ref<HTMLInputElement | null>(null);
 
 function sendPromptFrame(): void {
   const slot = promptSlot.value;
-  if (!slot) {
+  if (!slot || !isWaitingForTouchID.value) {
     return;
   }
   const rectangle = slot.getBoundingClientRect();
@@ -25,27 +21,26 @@ function sendPromptFrame(): void {
 }
 
 async function startTouchID(): Promise<void> {
-  mode.value = "touch-id";
+  if (isWaitingForTouchID.value) {
+    return;
+  }
+  isWaitingForTouchID.value = true;
   await nextTick();
   sendPromptFrame();
-  isWaitingForTouchID.value = true;
-  const isUnlocked = await unlockWithBiometric();
+  await unlockWithBiometric();
   isWaitingForTouchID.value = false;
   api.clearTouchIDPromptFrame().catch(() => undefined);
-  if (!isUnlocked && mode.value === "touch-id") {
-    switchToPassword();
-  }
-}
-
-function switchToPassword(): void {
-  if (isWaitingForTouchID.value) {
-    api.cancelTouchIDPrompt().catch(() => undefined);
-  }
-  mode.value = "password";
   nextTick(() => passwordInput.value?.focus());
 }
 
+function cancelTouchID(): void {
+  if (isWaitingForTouchID.value) {
+    api.cancelTouchIDPrompt().catch(() => undefined);
+  }
+}
+
 async function submitUnlock(): Promise<void> {
+  cancelTouchID();
   await unlock(password.value);
   password.value = "";
 }
@@ -55,17 +50,17 @@ const layoutObserver = typeof ResizeObserver === "undefined" ? null : new Resize
 onMounted(() => {
   window.addEventListener("resize", sendPromptFrame);
   layoutObserver?.observe(document.body);
-  if (mode.value === "touch-id") {
+  if (store.status.biometricReady) {
     startTouchID();
+  } else {
+    passwordInput.value?.focus();
   }
 });
 
 onBeforeUnmount(() => {
   window.removeEventListener("resize", sendPromptFrame);
   layoutObserver?.disconnect();
-  if (isWaitingForTouchID.value) {
-    api.cancelTouchIDPrompt().catch(() => undefined);
-  }
+  cancelTouchID();
   api.clearTouchIDPromptFrame().catch(() => undefined);
 });
 </script>
@@ -75,48 +70,45 @@ onBeforeUnmount(() => {
     <div class="title-bar"></div>
     <div class="page-body">
       <div class="unlock">
-        <HisarLogo :size="44" />
-        <h1>Hisar is locked</h1>
-        <div class="account">
-          <span class="avatar">{{ getInitials(store.status.name || store.status.email) }}</span>
-          <div>
-            <strong>{{ store.status.name || store.status.email }}</strong>
-            <p class="muted">{{ store.status.email }} · {{ store.status.server.replace(/^https?:\/\//, "") }}</p>
-          </div>
+        <HisarLogo :size="32" />
+        <div class="heading">
+          <h1>Hisar is locked</h1>
+          <p class="muted" data-testid="locked-account">{{ store.status.email }} · {{ store.status.server.replace(/^https?:\/\//, "") }}</p>
         </div>
         <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
 
-        <section v-if="mode === 'touch-id'" class="card touch-id" aria-live="polite">
-          <div ref="promptSlot" class="prompt-slot" data-testid="touch-id-slot">
-            <AppIcon v-if="!api.hasNativeTouchIDView" name="fingerprint" :size="56" />
-          </div>
-          <strong>Touch ID to unlock</strong>
-          <p class="muted">Place your finger on Touch ID.</p>
-          <button class="link" data-testid="use-master-password" @click="switchToPassword">Use master password</button>
-        </section>
-
-        <template v-else>
-          <form class="unlock-form" @submit.prevent="submitUnlock">
-            <span class="password-field">
-              <AppIcon name="lock" />
-              <input
-                ref="passwordInput"
-                v-model="password"
-                name="password"
-                type="password"
-                aria-label="Master password"
-                placeholder="Master password"
-                autocomplete="current-password"
-                autofocus
-                required
-              />
-            </span>
-            <button class="primary" type="submit" :disabled="store.isBusy">{{ store.isBusy ? "Unlocking…" : "Unlock" }}</button>
-          </form>
-          <button v-if="store.status.biometricReady" class="ghost touch-id-switch" data-testid="use-touch-id" @click="startTouchID">
-            <AppIcon name="fingerprint" /> Use Touch ID
-          </button>
-        </template>
+        <form class="unlock-form" @submit.prevent="submitUnlock">
+          <label class="password-field">
+            <AppIcon name="lock" />
+            <input
+              ref="passwordInput"
+              v-model="password"
+              name="password"
+              type="password"
+              aria-label="Master password"
+              placeholder="Master password"
+              autocomplete="current-password"
+              required
+            />
+            <button
+              v-if="store.status.biometricReady"
+              type="button"
+              class="touch-id-button"
+              :class="{ waiting: isWaitingForTouchID }"
+              aria-label="Use Touch ID"
+              data-testid="use-touch-id"
+              @click="startTouchID"
+            >
+              <span ref="promptSlot" class="prompt-slot" data-testid="touch-id-slot">
+                <AppIcon v-if="!isWaitingForTouchID || !api.hasNativeTouchIDView" name="fingerprint" />
+              </span>
+            </button>
+          </label>
+          <button class="primary" type="submit" :disabled="store.isBusy">{{ store.isBusy ? "Unlocking…" : "Unlock" }}</button>
+        </form>
+        <p class="muted status" aria-live="polite" data-testid="unlock-status">
+          {{ isWaitingForTouchID ? "Touch ID is waiting. Or type your master password." : "Enter your master password." }}
+        </p>
 
         <div class="sign-out">
           <button v-if="!isConfirmingSignOut" class="link" @click="isConfirmingSignOut = true">Sign out of this device</button>
@@ -138,68 +130,26 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: min(380px, 100%);
+  gap: 18px;
+  width: min(360px, 100%);
 }
 
-h1 {
-  margin: 18px 0 0;
-  font-size: 20px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
-}
-
-.account {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin: 20px 0 22px;
-  padding: 10px 14px 10px 10px;
-  border: 1px solid var(--color-border);
-  border-radius: 28px;
-  background: var(--color-surface);
-}
-
-.account p {
-  margin: 2px 0 0;
-  font-size: 12px;
-}
-
-.avatar {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: var(--color-selected);
-  font-weight: 600;
-}
-
-.touch-id {
+.heading {
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: 100%;
-  padding: 26px 20px 20px;
-  text-align: center;
+  gap: 4px;
 }
 
-.prompt-slot {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 128px;
-  height: 128px;
-  margin-bottom: 14px;
-  color: var(--color-text-secondary);
+h1 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
 }
 
-.touch-id strong {
-  font-size: 15px;
-}
-
-.touch-id p {
-  margin: 4px 0 16px;
+.heading p {
+  margin: 0;
+  font-size: 12px;
 }
 
 .unlock-form {
@@ -209,34 +159,77 @@ h1 {
 }
 
 .password-field {
-  position: relative;
+  display: flex;
   flex: 1;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  margin: 0;
+  padding: 0 5px 0 11px;
+  box-sizing: border-box;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius);
+  background: var(--color-surface);
   color: var(--color-text-muted);
 }
 
-.password-field :deep(.icon) {
-  position: absolute;
-  top: 50%;
-  left: 11px;
-  transform: translateY(-50%);
+.password-field:focus-within {
+  border-color: var(--color-focus);
+  box-shadow: 0 0 0 3px rgb(138 149 165 / 18%);
 }
 
-.password-field input {
-  padding: 9px 10px 9px 34px;
+.password-field input,
+.password-field input:hover,
+.password-field input:focus {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
   color: var(--color-text);
+  outline: none;
 }
 
-.touch-id-switch {
-  margin-top: 12px;
+.touch-id-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: var(--color-selected);
+  color: #ff6b7a;
+}
+
+.touch-id-button.waiting {
+  background: transparent;
+}
+
+.prompt-slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+}
+
+.status {
+  margin: -6px 0 0;
+  font-size: 12px;
 }
 
 .error {
   width: 100%;
+  margin: 0;
 }
 
 .sign-out {
-  margin-top: 28px;
+  margin-top: 6px;
   text-align: center;
+  font-size: 12px;
 }
 
 .confirm {
