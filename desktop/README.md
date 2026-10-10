@@ -24,6 +24,17 @@ open desktop/bin/Hisar.app
 
 For development with hot reload: `cd desktop && wails3 dev`.
 
+### DMG and releases
+
+`make package-desktop-dmg VERSION=0.1.0` builds a universal (Apple silicon and Intel) `Hisar.app`, sets its version, and
+writes `desktop/bin/Hisar-0.1.0.dmg` with the usual drag-to-Applications window (`build/darwin/dmg-settings.py`, background
+rendered from `build/darwin/dmg-background.html`). It needs `pip install dmgbuild==1.6.5`.
+
+Pushing a tag `mac-v<version>` (e.g. `mac-v0.1.0`) runs `desktop-dmg` on the macOS runner, which uploads the DMG to the
+generic package registry (`hisar-desktop/<version>`), and `desktop-release`, which creates a GitLab release with the DMG as a
+download. The app is ad-hoc signed and not notarized until the Apple Developer membership is active, so the first launch
+needs right-click → Open (or `xattr -dr com.apple.quarantine /Applications/Hisar.app`).
+
 To work on the design without a server, run the UI in a browser with sample data:
 
 ```sh

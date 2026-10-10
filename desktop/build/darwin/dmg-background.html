@@ -1,0 +1,29 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; width: 540px; height: 380px; overflow: hidden; }
+  body {
+    background: linear-gradient(180deg, #f7f8fa 0%, #eceef2 100%);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", sans-serif;
+    position: relative;
+  }
+  .wordmark { position: absolute; top: 34px; left: 0; right: 0; display: flex; justify-content: center; align-items: center; gap: 10px; }
+  .wordmark svg { width: 30px; height: 30px; }
+  .wordmark span { font-size: 24px; font-weight: 600; letter-spacing: -0.3px; color: #0b0c0e; }
+  .hint { position: absolute; top: 80px; left: 0; right: 0; text-align: center; font-size: 13px; color: #6b7079; }
+  .arrow { position: absolute; top: 172px; left: 214px; width: 112px; height: 36px; }
+</style>
+</head>
+<body>
+  <div class="wordmark">
+    <svg viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#0b0c0e"/><path d="M8 26V12h3V9h2.5v3h5V9H21v3h3v14h-6v-5a2 2 0 0 0-4 0v5z" fill="#f2f3f5"/></svg>
+    <span>Hisar</span>
+  </div>
+  <div class="hint">Drag Hisar into Applications to install it</div>
+  <svg class="arrow" viewBox="0 0 112 36" fill="none" stroke="#9aa0a9" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M6 18h96"/><path d="M90 6l12 12-12 12"/>
+  </svg>
+</body>
+</html>

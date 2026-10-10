@@ -21,3 +21,4 @@ deploy/hisar.env
 xcuserdata/
 *.xcresult
 deploy/.env
+/.dmgbuild/

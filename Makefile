@@ -2,7 +2,7 @@ MODULES := core server cli mobile
 CLI_TARGETS := linux/amd64 linux/arm64 darwin/arm64 darwin/amd64 windows/amd64
 WAILS_VERSION := v3.0.0-beta.23
 
-.PHONY: build build-cli-all test vet test-end-to-end docker install-wails test-desktop-frontend build-desktop package-desktop test-extension test-extension-end-to-end build-extension build-ios-framework generate-ios-project build-ios test-ios test-ios-ui
+.PHONY: build build-cli-all test vet test-end-to-end docker install-wails test-desktop-frontend build-desktop package-desktop package-desktop-dmg test-extension test-extension-end-to-end build-extension build-ios-framework generate-ios-project build-ios test-ios test-ios-ui
 
 build:
 	go build -o bin/hisar-server ./server/cmd/hisar-server
@@ -41,6 +41,10 @@ build-desktop:
 
 package-desktop:
 	cd desktop && wails3 task package
+
+# Universal Hisar.app in desktop/bin/Hisar-<version>.dmg; needs dmgbuild (pip install dmgbuild==1.6.5).
+package-desktop-dmg:
+	./scripts/package-desktop-dmg.sh $(VERSION)
 
 # The gomobile version follows golang.org/x/mobile in mobile/go.mod.
 build-ios-framework:

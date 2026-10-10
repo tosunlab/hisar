@@ -1,10 +1,12 @@
-# Merge requests, v* tags and manual runs only: a merge to main was already tested as its merge request.
+# Merge requests, release tags and manual runs only: a merge to main was already tested as its merge request.
+# v* tags publish the server image; mac-v* tags publish the macOS app as a GitLab release.
 workflow:
   auto_cancel:
     on_new_commit: interruptible
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
     - if: $CI_COMMIT_TAG =~ /^v/
+    - if: $CI_COMMIT_TAG =~ /^mac-v/
     - if: $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api"
 
 stages: [test, build, release]
@@ -223,3 +225,42 @@ server-image:
       bash scripts/build-server-image.sh "$SERVER_IMAGE" "${allTag[@]}"
     - crane manifest "$SERVER_IMAGE:sha-$CI_COMMIT_SHORT_SHA" | tee manifest.json
     - grep -q '"architecture":"amd64"' manifest.json && grep -q '"architecture":"arm64"' manifest.json
+
+# mac-v<version> tags: a universal Hisar.app in a DMG, uploaded to the generic package registry.
+desktop-dmg:
+  stage: build
+  extends: .macos
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^mac-v/
+  interruptible: false
+  script:
+    - version=${CI_COMMIT_TAG#mac-v}
+    - python3 -m venv .dmgbuild && .dmgbuild/bin/pip install -q dmgbuild==1.6.5 && export PATH=$CI_PROJECT_DIR/.dmgbuild/bin:$PATH
+    - make install-wails
+    - bash scripts/package-desktop-dmg.sh "$version"
+    - packageUrl="$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/hisar-desktop/$version/Hisar-$version.dmg"
+    - 'curl -fsS --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file "desktop/bin/Hisar-$version.dmg" "$packageUrl"'
+    - printf 'DESKTOP_VERSION=%s\nDESKTOP_PACKAGE_URL=%s\n' "$version" "$packageUrl" > desktop-release.env
+  artifacts:
+    reports:
+      dotenv: desktop-release.env
+
+desktop-release:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/cli:latest
+  needs: [desktop-dmg]
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^mac-v/
+  interruptible: false
+  script:
+    - echo "Releasing Hisar for macOS $DESKTOP_VERSION"
+  release:
+    tag_name: $CI_COMMIT_TAG
+    name: Hisar for macOS $DESKTOP_VERSION
+    description: "Universal (Apple silicon and Intel) build of Hisar $DESKTOP_VERSION. Open the DMG and drag Hisar into Applications. The app is not notarized yet: on first launch, right-click Hisar → Open."
+    assets:
+      links:
+        - name: Hisar-$DESKTOP_VERSION.dmg
+          url: $DESKTOP_PACKAGE_URL
+          link_type: package
+          filepath: /Hisar.dmg
