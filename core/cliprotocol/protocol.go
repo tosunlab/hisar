@@ -1,0 +1,277 @@
+// Package cliprotocol is the protocol between the hisar CLI and the desktop app on ~/.hisar/cli.sock.
+package cliprotocol
+
+import (
+	"encoding/binary"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+
+	"github.com/tryhisar/hisar/core/item"
+)
+
+const (
+	ProtocolVersion   = 1
+	MaxMessageSize    = 16 << 20
+	MaxImportBatch    = 10
+	SocketEnvironment = "HISAR_CLI_SOCKET"
+)
+
+const (
+	StateSignedOut = "signed-out"
+	StateLocked    = "locked"
+	StateUnlocked  = "unlocked"
+)
+
+const (
+	TypeHello        = "hello"
+	TypeAccount      = "account"
+	TypeListVault    = "vaults.list"
+	TypeCreateVault  = "vaults.create"
+	TypeListItem     = "items.list"
+	TypeGetItem      = "items.get"
+	TypeGetCode      = "items.code"
+	TypeSaveItem     = "items.save"
+	TypeDeleteItem   = "items.delete"
+	TypeImportItem   = "items.import"
+	TypeListMember   = "members.list"
+	TypeShareVault   = "vaults.share"
+	TypeUnshareVault = "vaults.unshare"
+	TypeInvite       = "invite"
+	TypeListDevice   = "devices.list"
+	TypeRevokeDevice = "devices.revoke"
+)
+
+const (
+	ErrorInvalidRequest      = "invalid-request"
+	ErrorIntegrationDisabled = "integration-disabled"
+	ErrorSignedOut           = "signed-out"
+	ErrorLocked              = "locked"
+	ErrorDenied              = "denied"
+	ErrorOffline             = "offline"
+	ErrorNotFound            = "not-found"
+	ErrorInternal            = "internal"
+)
+
+var ErrMessageTooLarge = errors.New("cliprotocol: message larger than 16 MiB")
+
+type Request struct {
+	ID            string      `json:"id"`
+	Type          string      `json:"type"`
+	VaultID       string      `json:"vaultID,omitempty"`
+	ItemID        string      `json:"itemID,omitempty"`
+	Name          string      `json:"name,omitempty"`
+	Email         string      `json:"email,omitempty"`
+	Role          string      `json:"role,omitempty"`
+	AccountID     string      `json:"accountID,omitempty"`
+	DeviceID      string      `json:"deviceID,omitempty"`
+	Item          *ItemChange `json:"item,omitempty"`
+	ImportedItems []item.Item `json:"importedItems,omitempty"`
+}
+
+type Response struct {
+	ID     string          `json:"id"`
+	OK     bool            `json:"ok"`
+	Result json.RawMessage `json:"result,omitempty"`
+	Error  *ResponseError  `json:"error,omitempty"`
+}
+
+type ResponseError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+func (e *ResponseError) Error() string { return e.Message }
+
+func CreateError(code, message string) *ResponseError {
+	return &ResponseError{Code: code, Message: message}
+}
+
+type HelloResult struct {
+	ProtocolVersion int    `json:"protocolVersion"`
+	State           string `json:"state"`
+	Email           string `json:"email"`
+	Server          string `json:"server"`
+	IsApproved      bool   `json:"isApproved"`
+}
+
+type AccountResult struct {
+	AccountID string `json:"accountID"`
+	Name      string `json:"name"`
+	Email     string `json:"email"`
+	Role      string `json:"role"`
+	Server    string `json:"server"`
+}
+
+type Vault struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Type      string `json:"type"`
+	Role      string `json:"role"`
+	ItemCount int    `json:"itemCount"`
+}
+
+type VaultListResult struct {
+	Vaults []Vault `json:"vaults"`
+}
+
+type VaultResult struct {
+	Vault Vault `json:"vault"`
+}
+
+type Field struct {
+	Name      string `json:"name"`
+	Value     string `json:"value"`
+	Concealed bool   `json:"concealed"`
+}
+
+type Passkey struct {
+	RelyingPartyID string `json:"relyingPartyID"`
+	UserName       string `json:"userName"`
+}
+
+// Item is what the CLI may see of an item; summaries leave the secret parts empty.
+type Item struct {
+	ID                 string    `json:"id"`
+	Revision           string    `json:"revision"`
+	Category           string    `json:"category"`
+	Title              string    `json:"title"`
+	Username           string    `json:"username"`
+	URLs               []string  `json:"urls"`
+	HasOneTimePassword bool      `json:"hasOneTimePassword"`
+	Password           string    `json:"password,omitempty"`
+	Notes              string    `json:"notes,omitempty"`
+	Fields             []Field   `json:"fields,omitempty"`
+	Passkeys           []Passkey `json:"passkeys,omitempty"`
+	PublicKey          string    `json:"publicKey,omitempty"`
+	Fingerprint        string    `json:"fingerprint,omitempty"`
+}
+
+type ItemListResult struct {
+	Items []Item `json:"items"`
+}
+
+type ItemResult struct {
+	Item Item `json:"item"`
+}
+
+// ItemChange holds what the CLI edits; the app keeps every other part of an existing item.
+type ItemChange struct {
+	ID       string   `json:"id,omitempty"`
+	Revision string   `json:"revision,omitempty"`
+	Title    string   `json:"title"`
+	Username string   `json:"username"`
+	URLs     []string `json:"urls"`
+	Password string   `json:"password"`
+	Notes    string   `json:"notes"`
+}
+
+type CodeResult struct {
+	Code      string `json:"code"`
+	ExpiresAt string `json:"expiresAt"`
+	Period    int    `json:"period"`
+}
+
+type ImportFailure struct {
+	Title   string `json:"title"`
+	Message string `json:"message"`
+}
+
+type ImportResult struct {
+	SavedCount int             `json:"savedCount"`
+	Failures   []ImportFailure `json:"failures"`
+}
+
+type Member struct {
+	AccountID     string `json:"accountID"`
+	Name          string `json:"name"`
+	Email         string `json:"email"`
+	Role          string `json:"role"`
+	SecurityCode  string `json:"securityCode"`
+	IsCurrentUser bool   `json:"isCurrentUser"`
+	IsKeyChanged  bool   `json:"isKeyChanged"`
+}
+
+type MemberListResult struct {
+	Members []Member `json:"members"`
+}
+
+type InviteResult struct {
+	URL string `json:"url"`
+}
+
+type Device struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Platform   string `json:"platform"`
+	LastSeenAt string `json:"lastSeenAt"`
+	IsCurrent  bool   `json:"isCurrent"`
+}
+
+type DeviceListResult struct {
+	Devices []Device `json:"devices"`
+}
+
+func GetDefaultSocketPath(homeDirectory string) string {
+	return filepath.Join(homeDirectory, ".hisar", "cli.sock")
+}
+
+// GetSocketPath returns HISAR_CLI_SOCKET when set, otherwise ~/.hisar/cli.sock.
+func GetSocketPath() (string, error) {
+	if path := os.Getenv(SocketEnvironment); path != "" {
+		return path, nil
+	}
+	homeDirectory, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return GetDefaultSocketPath(homeDirectory), nil
+}
+
+func ReadMessage(reader io.Reader) ([]byte, error) {
+	var length uint32
+	if err := binary.Read(reader, binary.BigEndian, &length); err != nil {
+		return nil, err
+	}
+	if length > MaxMessageSize {
+		return nil, ErrMessageTooLarge
+	}
+	message := make([]byte, length)
+	if _, err := io.ReadFull(reader, message); err != nil {
+		return nil, err
+	}
+	return message, nil
+}
+
+func WriteMessage(writer io.Writer, message []byte) error {
+	if len(message) > MaxMessageSize {
+		return ErrMessageTooLarge
+	}
+	frame := make([]byte, 4+len(message))
+	binary.BigEndian.PutUint32(frame, uint32(len(message)))
+	copy(frame[4:], message)
+	_, err := writer.Write(frame)
+	return err
+}
+
+func WriteJSON(writer io.Writer, value any) error {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	return WriteMessage(writer, encoded)
+}
+
+func ReadJSON(reader io.Reader, value any) error {
+	message, err := ReadMessage(reader)
+	if err != nil {
+		return err
+	}
+	if err := json.Unmarshal(message, value); err != nil {
+		return fmt.Errorf("cliprotocol: %w", err)
+	}
+	return nil
+}

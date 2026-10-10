@@ -98,6 +98,13 @@ func (s *Service) RespondSSHApproval(requestID string, isAuthorized, isForAllApp
 	}
 }
 
+// RespondApprovalWithPassword unlocks Hisar with the master password for a command-line request and approves it.
+func (s *Service) RespondApprovalWithPassword(requestID, password string) {
+	if s.config.Approver != nil {
+		s.config.Approver.RespondWithPassword(requestID, password)
+	}
+}
+
 func (s *Service) SetSSHApprovalForAllApplication(requestID string, isForAllApplication bool) {
 	if s.config.Approver != nil {
 		s.config.Approver.SetForAllApplication(requestID, isForAllApplication)

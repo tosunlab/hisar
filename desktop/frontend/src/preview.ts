@@ -2,6 +2,7 @@
 import type {
   ApprovalEvent,
   BrowserStatus,
+  CommandLineStatus,
   Device,
   FamilyMember,
   ImportPreview,
@@ -219,11 +220,41 @@ function addPreviewItem(vaultID: string, detail: ItemDetail): ItemDetail {
 
 const resolveAfterDelay = <Value>(value: Value): Promise<Value> => new Promise((resolve) => setTimeout(() => resolve(value), 80));
 
-// listAllPreviewApproval: ?window=ssh-approval&approval=1 (one request), =2 (two waiting), &forwarded=1, &noTouchID=1.
+// createPreviewCommandLineApproval: &approval=cli, plus &cliLocked=1 (Touch ID unlocks) or &cliPassword=1 (master password unlocks).
+function createPreviewCommandLineApproval(): ApprovalEvent {
+  const isLocked = previewParameter.get("cliLocked") === "1" || previewParameter.get("cliPassword") === "1";
+  return {
+    requestID: "preview-command-line",
+    kind: "command-line",
+    appName: "Terminal",
+    appIconURL: "",
+    clientName: "hisar",
+    clientPath: "/Applications/Hisar.app/Contents/Helpers/hisar",
+    keyTitle: "",
+    fingerprint: "",
+    destinationHost: "",
+    destinationFingerprint: "",
+    isForwarded: false,
+    isTouchIDApproval: previewParameter.get("noTouchID") !== "1",
+    timeoutAt: new Date(Date.now() + 60_000).toISOString(),
+    terminalName: "ttys003",
+    isUnlockRequired: isLocked,
+    isPasswordUnlock: previewParameter.get("cliPassword") === "1",
+  };
+}
+
+// listAllPreviewApproval: ?window=ssh-approval&approval=1 (one request), =2 (two waiting), =cli (command-line tool), &forwarded=1, &noTouchID=1.
 function listAllPreviewApproval(): ApprovalEvent[] {
+  if (previewParameter.get("approval") === "cli") {
+    return [createPreviewCommandLineApproval()];
+  }
   const approvalCount = Number(previewParameter.get("approval") ?? "0");
   const firstApproval: ApprovalEvent = {
     requestID: "preview-request",
+    kind: "ssh-key",
+    terminalName: "",
+    isUnlockRequired: false,
+    isPasswordUnlock: false,
     appName: "Terminal",
     appIconURL: "",
     clientName: "ssh",
@@ -274,6 +305,50 @@ const previewUpdateStatus: UpdateStatus = {
   isSignedIn: previewUpdateMode !== "signed-out",
   isAutomaticCheckEnabled: true,
 };
+
+// commandLine=not-installed | conflict (a foreign hisar in /opt/homebrew/bin) | path-hint (~/.local/bin, not on the PATH) | development | off
+const previewCommandLineMode = previewParameter.get("commandLine") ?? "installed";
+const previewBundledPath = "/Applications/Hisar.app/Contents/Helpers/hisar";
+
+function buildPreviewCommandLineStatus(isInstalled: boolean): CommandLineStatus {
+  const status: CommandLineStatus = {
+    isAvailable: previewCommandLineMode !== "development",
+    bundledPath: previewBundledPath,
+    installedPath: "",
+    allInstallation: [],
+    pathCommandPath: "",
+    pathCommandTarget: "",
+    isPathCommandFromThisApp: false,
+    pathHint: "",
+    isIntegrationEnabled: previewCommandLineMode !== "off",
+    socketPath: "/Users/alper/.hisar/cli.sock",
+    isServing: previewCommandLineMode !== "off",
+    errorMessage: "",
+  };
+  if (previewCommandLineMode === "conflict") {
+    status.allInstallation = [{ path: "/opt/homebrew/bin/hisar", kind: "other", target: "", isSymlink: false, description: "a file that is not from Hisar" }];
+    status.pathCommandPath = "/opt/homebrew/bin/hisar";
+    status.pathCommandTarget = "/opt/homebrew/bin/hisar";
+    return status;
+  }
+  if (!isInstalled || !status.isAvailable) {
+    return status;
+  }
+  const installedPath = previewCommandLineMode === "path-hint" ? "/Users/alper/.local/bin/hisar" : "/opt/homebrew/bin/hisar";
+  status.installedPath = installedPath;
+  status.allInstallation = [{ path: installedPath, kind: "this-app", target: previewBundledPath, isSymlink: true, description: "this app's command-line tool" }];
+  if (previewCommandLineMode === "path-hint") {
+    status.pathHint = `echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc`;
+    return status;
+  }
+  status.pathCommandPath = installedPath;
+  status.pathCommandTarget = previewBundledPath;
+  status.isPathCommandFromThisApp = true;
+  return status;
+}
+
+let isPreviewCommandLineInstalled = previewCommandLineMode !== "not-installed";
+let previewCommandLineStatus = buildPreviewCommandLineStatus(isPreviewCommandLineInstalled);
 
 const previewImportFilePath = "/Users/alper/Downloads/1PasswordExport-AQ7X2LMK-20261009-101512.1pux";
 
@@ -512,6 +587,32 @@ export const previewApi = {
     return resolveAfterDelay(undefined);
   },
   listAllPendingSSHApproval: () => resolveAfterDelay(listAllPreviewApproval()),
+  respondApprovalWithPassword: (requestID: string, password: string) => {
+    if (password !== "correct horse battery") {
+      setTimeout(() => import("./approval").then(({ failApproval }) => failApproval(requestID, "Incorrect master password.")), 400);
+    } else {
+      setTimeout(() => import("./approval").then(({ removeApproval }) => removeApproval(requestID)), 600);
+    }
+    return resolveAfterDelay(undefined);
+  },
+  getCommandLineStatus: () => resolveAfterDelay({ ...previewCommandLineStatus }),
+  installCommandLineTool: () => {
+    if (previewCommandLineMode === "conflict") {
+      return Promise.reject(new Error("/opt/homebrew/bin/hisar is already a file that is not from Hisar; Hisar leaves it alone. Remove it yourself to install Hisar's"));
+    }
+    isPreviewCommandLineInstalled = true;
+    previewCommandLineStatus = buildPreviewCommandLineStatus(true);
+    return resolveAfterDelay({ ...previewCommandLineStatus });
+  },
+  uninstallCommandLineTool: () => {
+    isPreviewCommandLineInstalled = false;
+    previewCommandLineStatus = buildPreviewCommandLineStatus(false);
+    return resolveAfterDelay({ ...previewCommandLineStatus });
+  },
+  setCommandLineIntegration: (isEnabled: boolean) => {
+    previewCommandLineStatus = { ...buildPreviewCommandLineStatus(isPreviewCommandLineInstalled), isIntegrationEnabled: isEnabled, isServing: isEnabled };
+    return resolveAfterDelay({ ...previewCommandLineStatus });
+  },
   copyField: () => resolveAfterDelay(undefined),
   getOneTimeCode: () => {
     const period = 30;

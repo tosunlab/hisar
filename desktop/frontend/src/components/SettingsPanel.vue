@@ -22,6 +22,7 @@ import {
 import { formatLastSeen, formatPlatform, formatRole, getPlatformIcon, isMacPlatform } from "../util";
 import AccountRecoverySection from "./AccountRecoverySection.vue";
 import BrowserExtensionSection from "./BrowserExtensionSection.vue";
+import CommandLineSection from "./CommandLineSection.vue";
 import UpdatesSection from "./UpdatesSection.vue";
 import AppIcon from "./AppIcon.vue";
 import MemberAvatar from "./MemberAvatar.vue";
@@ -372,6 +373,8 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
           </p>
         </div>
       </section>
+
+      <CommandLineSection />
 
       <UpdatesSection />
 

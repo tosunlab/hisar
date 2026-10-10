@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
-import { createApiMock, createApprovalEvent } from "../testing";
+import { createApiMock, createApprovalEvent, createCommandLineApprovalEvent } from "../testing";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
 const eventListener = vi.hoisted(() => ({ allByName: {} as Record<string, (event: { data: unknown }) => void> }));
@@ -123,4 +123,57 @@ describe("SSHApprovalWindow", () => {
     wrapper.unmount();
   });
 
+
+  it("asks for the command-line tool in a terminal and starts Touch ID", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createCommandLineApprovalEvent());
+    await flushPromises();
+    expect(wrapper.find("#approval-title").text()).toBe("hisar in Terminal wants to use Hisar");
+    expect(wrapper.find('[data-testid="approval-key"]').text()).toContain("Terminal session ttys003");
+    expect(wrapper.find('input[name="isForAllApplication"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain("10 minutes after this terminal's last command");
+    expect(api.respondSSHApproval).toHaveBeenCalledWith("command-line-1", true, false);
+    expect(wrapper.find('[data-testid="approval-touch-id"]').text()).toContain("Touch ID to approve");
+    await wrapper.find('[data-testid="approval-key"]').trigger("click");
+    expect(wrapper.find('[data-testid="approval-details"]').text()).toContain("/Applications/Hisar.app/Contents/Helpers/hisar");
+    expect(wrapper.find('[data-testid="approval-details"]').text()).toContain("/dev/ttys003");
+    wrapper.unmount();
+  });
+
+  it("unlocks a locked Hisar with Touch ID from the approval", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createCommandLineApprovalEvent({ isUnlockRequired: true }));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="approval-unlock-note"]').text()).toContain("unlocking it also approves this terminal");
+    expect(wrapper.find('[data-testid="approval-touch-id"]').text()).toContain("Touch ID to unlock");
+    expect(wrapper.find('[data-testid="approval-password"]').exists()).toBe(false);
+    expect(api.respondSSHApproval).toHaveBeenCalledWith("command-line-1", true, false);
+    wrapper.unmount();
+  });
+
+  it("unlocks a locked Hisar with the master password", async () => {
+    const wrapper = mount(SSHApprovalWindow, { attachTo: document.body });
+    sendEvent("ssh-approval", createCommandLineApprovalEvent({ isUnlockRequired: true, isPasswordUnlock: true }));
+    await flushPromises();
+    expect(api.respondSSHApproval).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="approval-password"]').attributes("placeholder")).toBe("Master password");
+    expect(wrapper.find('[data-testid="authorize-approval"]').text()).toBe("Unlock");
+    expect(wrapper.find('[data-testid="authorize-approval"]').attributes("disabled")).toBeDefined();
+
+    await wrapper.find('[data-testid="approval-password"]').setValue("wrong password");
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+    await flushPromises();
+    expect(api.respondApprovalWithPassword).toHaveBeenCalledWith("command-line-1", "wrong password");
+    expect((wrapper.find('[data-testid="approval-password"]').element as HTMLInputElement).value).toBe("");
+
+    sendEvent("ssh-approval-failed", { requestID: "command-line-1", message: "Incorrect master password." });
+    await flushPromises();
+    expect(wrapper.find('[role="alert"]').text()).toBe("Incorrect master password.");
+    await wrapper.find('[data-testid="approval-password"]').setValue("correct horse battery");
+    await wrapper.find('[data-testid="authorize-approval"]').trigger("click");
+    await flushPromises();
+    expect(api.respondApprovalWithPassword).toHaveBeenLastCalledWith("command-line-1", "correct horse battery");
+    expect(api.respondSSHApproval).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
 });

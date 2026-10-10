@@ -5,7 +5,8 @@ Wails v3 (pinned beta, see `WAILS_VERSION` in the root `Makefile`) with a Vue 3 
 | Path | What |
 |---|---|
 | `vault/` | Go backend bound to the UI: session, lock/auto-lock, clipboard clearing, SSH Key items, sharing, invites, devices, account recovery and import. No Wails import, so it is tested on any OS |
-| `agent/` | SSH agent in the app: approval (Touch ID or in-app prompt), `~/.ssh/config` setup, agent status. No Wails import |
+| `agent/` | SSH agent in the app: approval window (Touch ID or in-app prompt, also for the command-line tool), `~/.ssh/config` setup, agent status. No Wails import |
+| `commandline/` | The `hisar` CLI socket (`~/.hisar/cli.sock`): peer check, per-terminal-session approvals, and installing the bundled `hisar` on the PATH. No Wails import |
 | `biometric/` | Touch ID and the macOS Keychain (cgo) |
 | `updater/` | Sparkle bridge for automatic updates (cgo, build tag `sparkle`; packaged macOS builds only) |
 | `main.go` | Wails app: window, clipboard, lock-event and approval-event adapters; starts the SSH agent |
@@ -134,6 +135,23 @@ Hisar is an SSH agent for the SSH keys in your vaults (design: `docs/DESIGN.md` 
    **Remove from SSH config** takes the section out again. To try it without changing the config: `SSH_AUTH_SOCK=~/.hisar/agent.sock ssh-add -l`.
 
 The agent listens on `~/.hisar/agent.sock` while the app runs (`HISAR_SSH_AGENT_SOCKET` overrides the path) and offers keys from all your vaults only while Hisar is unlocked. The first time a program (`ssh`, `git`, …) uses a key, Hisar opens its approval window ("Hisar Access Requested", with the app the program runs in); Authorize then asks for Touch ID on Macs that have it. Unanswered requests are denied after 60 seconds. Preview: `?window=ssh-approval&approval=1` (or `=2` for two waiting, `&forwarded=1`, `&noTouchID=1`). Approvals last for an hour, or until Hisar locks.
+
+## Command-line tool
+
+Design: `docs/DESIGN.md` §9.4. The packaged app bundles the CLI as `Hisar.app/Contents/Helpers/hisar` (universal, signed with the
+app, updated with it by Sparkle). Not `Contents/MacOS/hisar`: on the default case-insensitive file system that is the app's own `Hisar`.
+
+- Settings → Command-line tool → **Install command-line tool** links `hisar` into `/opt/homebrew/bin` or `/usr/local/bin` (whichever
+  exists and is writable first), else `~/.local/bin`, without an administrator password; Settings then shows a one-line PATH hint
+  if that directory is not on your `PATH`. It never replaces a `hisar` that is not a link into a `Hisar.app`. **Uninstall** removes only such links.
+- **Let the command-line tool use Hisar** (on by default) serves `~/.hisar/cli.sock` (`HISAR_CLI_SOCKET` overrides it for the app and
+  `hisar`). `hisar` then runs its commands through the app: the first command in a terminal opens the approval window ("hisar in Terminal
+  wants to use Hisar") with Touch ID, which also unlocks a locked Hisar (or asks for the master password). The approval lasts until 10
+  minutes after that terminal's last command, or until Hisar locks or quits. `hisar status` shows which mode it uses.
+- Without the app (not running, switch off), or with `hisar --standalone` / `HISAR_STANDALONE=1`, `hisar` signs in on its own as before.
+- Preview: `&settings=1&scroll=command-line` plus `&commandLine=not-installed | conflict | path-hint | development | off`;
+  the approval window with `?window=ssh-approval&approval=cli` (add `&cliLocked=1` for Touch ID unlock, `&cliPassword=1` for the
+  master password, which is `correct horse battery` in the preview).
 
 ## Tests
 

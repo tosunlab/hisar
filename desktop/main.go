@@ -13,12 +13,14 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 
+	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/localstate"
 	"github.com/tryhisar/hisar/core/sshagent"
 	"github.com/tryhisar/hisar/desktop/agent"
 	"github.com/tryhisar/hisar/desktop/appinfo"
 	"github.com/tryhisar/hisar/desktop/biometric"
 	"github.com/tryhisar/hisar/desktop/browser"
+	"github.com/tryhisar/hisar/desktop/commandline"
 	"github.com/tryhisar/hisar/desktop/updater"
 	"github.com/tryhisar/hisar/desktop/vault"
 )
@@ -28,6 +30,7 @@ var allAsset embed.FS
 
 func init() {
 	application.RegisterEvent[string]("locked")
+	application.RegisterEvent[string]("unlocked")
 	application.RegisterEvent[agent.ApprovalEvent](agent.ApprovalEventName)
 	application.RegisterEvent[string](agent.ApprovalClosedEventName)
 }
@@ -76,6 +79,13 @@ func getDeviceName() string {
 	return hostname
 }
 
+func getLoginShell() string {
+	if shell := os.Getenv("SHELL"); shell != "" {
+		return shell
+	}
+	return "/bin/zsh"
+}
+
 func main() {
 	statePath, err := localstate.GetPath("HISAR_DESKTOP_STATE", "desktop.json")
 	if err != nil {
@@ -117,6 +127,11 @@ func main() {
 		log.Fatal(err)
 	}
 	updateService := vault.CreateUpdateService(vaultService, updater.Updater{})
+	executablePath, err := os.Executable()
+	if err != nil {
+		log.Fatal(err)
+	}
+	executableDirectory := filepath.Dir(executablePath)
 
 	var app *application.App
 	var window *application.WebviewWindow
@@ -151,6 +166,7 @@ func main() {
 		FindApp: func(pid int) (appinfo.App, bool) {
 			return appinfo.FindApp(pid, sshagent.GetProcessPath, sshagent.GetParentPID)
 		},
+		Unlocker: vault.CreateApprovalUnlocker(vaultService, func() { app.Event.Emit("unlocked", "approval") }),
 	})
 	agentServer = sshagent.CreateServer(vault.CreateSSHKeySource(vaultService), approver, sshagent.SystemPeerResolver{})
 	agentServer.SetAllKnownHostsPath([]string{filepath.Join(homeDirectory, ".ssh", "known_hosts"), "/etc/ssh/ssh_known_hosts"})
@@ -167,10 +183,7 @@ func main() {
 	agentContext, stopAgent := context.WithCancel(context.Background())
 	agentStopped := make(chan struct{})
 
-	browserHostPath := ""
-	if executablePath, err := os.Executable(); err == nil {
-		browserHostPath = filepath.Join(filepath.Dir(executablePath), "hisar-browser-host")
-	}
+	browserHostPath := filepath.Join(executableDirectory, "hisar-browser-host")
 	browserBridge := vault.CreateBrowserBridge(vaultService, vault.BrowserBridgeConfig{
 		ShowPairing: func(request *vault.BrowserPairingRequest) { app.Event.Emit("browser-pairing", request) },
 		ShowWindow:  showWindow,
@@ -187,6 +200,27 @@ func main() {
 	}
 	browserServer := browser.CreateServer(vault.CreateBrowserRequestHandler(browserBridge), sshagent.SystemPeerResolver{}, browserHostPath)
 
+	commandLineApprovals := commandline.CreateSessionApprovals(commandline.DefaultApprovalLifetime, nil)
+	var commandLineService *vault.CommandLineService
+	commandLineServer := commandline.CreateServer(commandline.ServerConfig{
+		Handler:   vault.CreateCommandLineBridge(vaultService, commandLineApprovals),
+		Approver:  approver,
+		Approvals: commandLineApprovals,
+		IsEnabled: func() bool { return commandLineService.IsIntegrationEnabled() },
+	})
+	commandLineSocketPath := os.Getenv(cliprotocol.SocketEnvironment)
+	if commandLineSocketPath == "" {
+		commandLineSocketPath = cliprotocol.GetDefaultSocketPath(homeDirectory)
+	}
+	commandLineRunner := commandline.CreateRunner(commandLineServer, commandLineSocketPath)
+	userPathReader := &commandline.UserPathReader{Shell: getLoginShell()}
+	commandLineService = vault.CreateCommandLineService(vaultService, commandline.CreateInstaller(commandline.InstallerConfig{
+		BundledPath:   filepath.Join(filepath.Dir(executableDirectory), "Helpers", "hisar"),
+		HomeDirectory: homeDirectory,
+		GetUserPath:   userPathReader.Read,
+		Shell:         getLoginShell(),
+	}), commandLineRunner)
+
 	app = application.New(application.Options{
 		Name:        "Hisar",
 		Description: "Self-hosted, end-to-end encrypted password manager",
@@ -197,8 +231,10 @@ func main() {
 			application.NewService(agentService),
 			application.NewService(browserBridge),
 			application.NewService(updateService),
+			application.NewService(commandLineService),
 		},
 		OnShutdown: func() {
+			commandLineRunner.Stop()
 			stopAgent()
 			// A pending Touch ID approval can keep a connection open; do not hold up quitting for it.
 			select {
@@ -280,6 +316,7 @@ func main() {
 			log.Printf("SSH agent on %s: %v", socketPath, err)
 		}
 	}()
+	vault.StartCommandLineIntegration(commandLineService)
 	go func() {
 		vault.InstallBrowserHostManifest(browserBridge)
 		if err := browserServer.Serve(agentContext, browserSocketPath); err != nil {

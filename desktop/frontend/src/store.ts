@@ -4,6 +4,7 @@ import {
   getErrorMessage,
   type BrowserPairingRequest,
   type BrowserStatus,
+  type CommandLineStatus,
   type Device,
   type FamilyMember,
   type FamilyRole,
@@ -57,6 +58,8 @@ export const store = reactive({
   browserPairing: null as BrowserPairingRequest | null,
   browserStatus: null as BrowserStatus | null,
   updateStatus: null as UpdateStatus | null,
+  commandLineStatus: null as CommandLineStatus | null,
+  commandLineErrorMessage: "",
   recoveryStatus: null as RecoveryStatus | null,
   allPendingRecovery: [] as PendingRecovery[],
   isVaultRecoveryOpen: false,
@@ -648,6 +651,53 @@ export async function setExactHostMatch(isExactHostMatch: boolean): Promise<void
   const browserStatus = await runAction(() => api.setExactHostMatch(isExactHostMatch));
   if (browserStatus) {
     store.browserStatus = browserStatus;
+  }
+}
+
+// Command-line tool actions report errors inside the settings section, like the SSH agent's.
+export async function loadCommandLineStatus(): Promise<void> {
+  try {
+    store.commandLineStatus = await api.getCommandLineStatus();
+    store.commandLineErrorMessage = "";
+  } catch (error) {
+    store.commandLineErrorMessage = getErrorMessage(error);
+  }
+}
+
+async function changeCommandLine(change: () => Promise<CommandLineStatus>, notice: string): Promise<void> {
+  store.isBusy = true;
+  try {
+    store.commandLineStatus = await change();
+    store.commandLineErrorMessage = "";
+    showNotice(notice);
+  } catch (error) {
+    const message = getErrorMessage(error);
+    await loadCommandLineStatus();
+    store.commandLineErrorMessage = message;
+  } finally {
+    store.isBusy = false;
+  }
+}
+
+export async function installCommandLineTool(): Promise<void> {
+  await changeCommandLine(() => api.installCommandLineTool(), "Installed the hisar command");
+}
+
+export async function uninstallCommandLineTool(): Promise<void> {
+  await changeCommandLine(() => api.uninstallCommandLineTool(), "Removed the hisar command");
+}
+
+export async function setCommandLineIntegration(isEnabled: boolean): Promise<void> {
+  await changeCommandLine(
+    () => api.setCommandLineIntegration(isEnabled),
+    isEnabled ? "hisar can use Hisar after you approve each terminal" : "hisar signs in on its own now",
+  );
+}
+
+// handleUnlockedElsewhere follows an unlock from the approval window.
+export async function handleUnlockedElsewhere(): Promise<void> {
+  if (store.status.state !== "unlocked") {
+    await loadStatus();
   }
 }
 

@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"slices"
 	"sync"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/tryhisar/hisar/core/sshagent"
 	"github.com/tryhisar/hisar/desktop/appinfo"
+	"github.com/tryhisar/hisar/desktop/commandline"
 )
 
 const (
@@ -19,16 +21,31 @@ const (
 	ApprovalClosedEventName = "ssh-approval-closed"
 	ApprovalFailedEventName = "ssh-approval-failed"
 	defaultApprovalTimeout  = 60 * time.Second
+	ApprovalKindSSHKey      = "ssh-key"
+	ApprovalKindCommandLine = "command-line"
+	commandLineClientName   = "hisar"
 )
+
+var errTouchIDFailed = errors.New("Touch ID did not confirm it's you. Try again, or deny.")
 
 type Biometric interface {
 	IsAvailable() bool
 	Authenticate(reason string) error
 }
 
+// Unlocker lets the approval window unlock a locked Hisar for a command-line request.
+type Unlocker interface {
+	IsLocked() bool
+	IsTouchIDUnlockReady() bool
+	UnlockWithTouchID(authenticate func(reason string) error) error
+	UnlockWithPassword(password string) error
+}
+
 // ApprovalEvent is what the approval window shows; AppName and AppIconURL describe the app the program runs in.
+// Command-line requests have Kind ApprovalKindCommandLine, no key, and ask to unlock Hisar when IsUnlockRequired.
 type ApprovalEvent struct {
 	RequestID              string `json:"requestID"`
+	Kind                   string `json:"kind"`
 	AppName                string `json:"appName"`
 	AppIconURL             string `json:"appIconURL"`
 	ClientName             string `json:"clientName"`
@@ -40,6 +57,9 @@ type ApprovalEvent struct {
 	IsForwarded            bool   `json:"isForwarded"`
 	IsTouchIDApproval      bool   `json:"isTouchIDApproval"`
 	TimeoutAt              string `json:"timeoutAt"`
+	TerminalName           string `json:"terminalName"`
+	IsUnlockRequired       bool   `json:"isUnlockRequired"`
+	IsPasswordUnlock       bool   `json:"isPasswordUnlock"`
 }
 
 type ApprovalFailedEvent struct {
@@ -57,14 +77,16 @@ type ApproverConfig struct {
 	// CancelBiometric ends a Touch ID check in progress, so Deny does not wait for the sensor.
 	CancelBiometric func()
 	// FindApp names the app a process belongs to; nil shows only the program.
-	FindApp func(pid int) (appinfo.App, bool)
-	Timeout time.Duration
-	Now     func() time.Time
+	FindApp  func(pid int) (appinfo.App, bool)
+	Unlocker Unlocker
+	Timeout  time.Duration
+	Now      func() time.Time
 }
 
 type approvalResponse struct {
 	isAuthorized        bool
 	isForAllApplication bool
+	password            string
 }
 
 type pendingApproval struct {
@@ -121,6 +143,7 @@ func generateRequestID() string {
 func (approver *Approver) buildApprovalEvent(requestID string, request sshagent.ApprovalRequest) ApprovalEvent {
 	event := ApprovalEvent{
 		RequestID:              requestID,
+		Kind:                   ApprovalKindSSHKey,
 		AppName:                request.ClientName,
 		ClientName:             request.ClientName,
 		ClientPath:             request.ClientPath,
@@ -146,6 +169,90 @@ func (approver *Approver) Approve(ctx context.Context, request sshagent.Approval
 		return sshagent.ApprovalResult{}, nil
 	}
 	pending := &pendingApproval{event: approver.buildApprovalEvent(generateRequestID(), request), responseChannel: make(chan approvalResponse, 1)}
+	reason := buildApprovalReason(pending.event.AppName, request)
+	isAuthorized := approver.waitForApproval(ctx, pending, func(approvalResponse) error {
+		if !approver.IsTouchIDApproval() || approver.authenticatePending(pending, reason) {
+			return nil
+		}
+		return errTouchIDFailed
+	})
+	if !isAuthorized {
+		return sshagent.ApprovalResult{}, nil
+	}
+	return sshagent.ApprovalResult{IsAllowed: true, IsForAllClient: approver.isPendingForAllApplication(pending)}, nil
+}
+
+func (approver *Approver) buildCommandLineEvent(requestID string, request commandline.ApprovalRequest) ApprovalEvent {
+	event := ApprovalEvent{
+		RequestID:         requestID,
+		Kind:              ApprovalKindCommandLine,
+		AppName:           commandLineClientName,
+		ClientName:        commandLineClientName,
+		ClientPath:        request.ClientPath,
+		TerminalName:      request.TerminalName,
+		IsTouchIDApproval: approver.IsTouchIDApproval(),
+		TimeoutAt:         approver.config.Now().Add(approver.config.Timeout).UTC().Format(time.RFC3339),
+	}
+	// The bundled hisar lives inside Hisar.app, so the terminal app is found from its parent.
+	if approver.config.FindApp != nil && request.ParentPID > 1 {
+		if app, isFound := approver.config.FindApp(request.ParentPID); isFound {
+			event.AppName, event.AppIconURL = app.Name, app.IconURL
+		}
+	}
+	if unlocker := approver.config.Unlocker; unlocker != nil && unlocker.IsLocked() {
+		event.IsUnlockRequired = true
+		event.IsPasswordUnlock = !event.IsTouchIDApproval || !unlocker.IsTouchIDUnlockReady()
+	}
+	return event
+}
+
+func describeCommandLineClient(event ApprovalEvent) string {
+	if event.AppName == event.ClientName {
+		return fmt.Sprintf("%q", event.ClientName)
+	}
+	return fmt.Sprintf("%q in %s", event.ClientName, event.AppName)
+}
+
+// ApproveCommandLine asks to let a terminal session use Hisar; when Hisar is locked, approving also unlocks it.
+func (approver *Approver) ApproveCommandLine(ctx context.Context, request commandline.ApprovalRequest) error {
+	if approver.config.Emit == nil {
+		return commandline.ErrDenied
+	}
+	pending := &pendingApproval{event: approver.buildCommandLineEvent(generateRequestID(), request), responseChannel: make(chan approvalResponse, 1)}
+	isAuthorized := approver.waitForApproval(ctx, pending, func(response approvalResponse) error {
+		return approver.authorizeCommandLine(pending, response)
+	})
+	if !isAuthorized {
+		return commandline.ErrDenied
+	}
+	return nil
+}
+
+func (approver *Approver) authorizeCommandLine(pending *pendingApproval, response approvalResponse) error {
+	client := describeCommandLineClient(pending.event)
+	unlocker := approver.config.Unlocker
+	if unlocker != nil && unlocker.IsLocked() {
+		if response.password != "" {
+			return unlocker.UnlockWithPassword(response.password)
+		}
+		if !approver.IsTouchIDApproval() || !unlocker.IsTouchIDUnlockReady() {
+			return errors.New("Enter your master password to unlock Hisar.")
+		}
+		return unlocker.UnlockWithTouchID(func(string) error {
+			if approver.authenticatePending(pending, fmt.Sprintf("unlock Hisar for %s", client)) {
+				return nil
+			}
+			return errTouchIDFailed
+		})
+	}
+	if !approver.IsTouchIDApproval() || approver.authenticatePending(pending, fmt.Sprintf("allow %s to use Hisar", client)) {
+		return nil
+	}
+	return errTouchIDFailed
+}
+
+// waitForApproval shows the request until authorize succeeds, Deny, the timeout or ctx ends it; a failed authorize keeps it open.
+func (approver *Approver) waitForApproval(ctx context.Context, pending *pendingApproval, authorize func(approvalResponse) error) bool {
 	approver.mutex.Lock()
 	approver.allPending = append(approver.allPending, pending)
 	approver.mutex.Unlock()
@@ -161,26 +268,35 @@ func (approver *Approver) Approve(ctx context.Context, request sshagent.Approval
 		select {
 		case response := <-pending.responseChannel:
 			if !response.isAuthorized {
-				return sshagent.ApprovalResult{}, nil
+				return false
 			}
-			if !approver.IsTouchIDApproval() || approver.authenticatePending(pending, buildApprovalReason(pending.event.AppName, request)) {
-				return sshagent.ApprovalResult{IsAllowed: true, IsForAllClient: approver.isPendingForAllApplication(pending)}, nil
+			authorizeError := authorize(response)
+			if authorizeError == nil {
+				return true
 			}
 			select {
 			case deniedResponse := <-pending.responseChannel:
 				if !deniedResponse.isAuthorized {
-					return sshagent.ApprovalResult{}, nil
+					return false
 				}
 				pending.responseChannel <- deniedResponse
 			default:
 			}
-			approver.config.Emit(ApprovalFailedEventName, ApprovalFailedEvent{RequestID: pending.event.RequestID, Message: "Touch ID did not confirm it's you. Try again, or deny."})
+			approver.config.Emit(ApprovalFailedEventName, ApprovalFailedEvent{RequestID: pending.event.RequestID, Message: describeAuthorizeError(authorizeError)})
 		case <-timer.C:
-			return sshagent.ApprovalResult{}, nil
+			return false
 		case <-ctx.Done():
-			return sshagent.ApprovalResult{}, nil
+			return false
 		}
 	}
+}
+
+func describeAuthorizeError(err error) string {
+	message := err.Error()
+	if message == "" {
+		return errTouchIDFailed.Error()
+	}
+	return message
 }
 
 // authenticatePending shows one Touch ID prompt at a time and marks the request so Deny can cancel it.
@@ -262,6 +378,20 @@ func (approver *Approver) Respond(requestID string, isAuthorized, isForAllApplic
 		approver.config.CancelBiometric()
 	}
 	return isSent
+}
+
+// RespondWithPassword authorizes a command-line request that has to unlock Hisar with the master password.
+func (approver *Approver) RespondWithPassword(requestID, password string) bool {
+	if password == "" {
+		return false
+	}
+	approver.mutex.Lock()
+	defer approver.mutex.Unlock()
+	pending := approver.findPending(requestID)
+	if pending == nil || pending.event.Kind != ApprovalKindCommandLine {
+		return false
+	}
+	return approver.sendResponse(pending, approvalResponse{isAuthorized: true, password: password})
 }
 
 func (approver *Approver) sendResponse(pending *pendingApproval, response approvalResponse) bool {

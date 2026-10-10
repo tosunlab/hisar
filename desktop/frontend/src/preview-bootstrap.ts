@@ -181,6 +181,9 @@ export async function applyPreviewParameter(): Promise<void> {
   if (parameter.get("newItemMenu") === "1") {
     waitForUnlocked().then(() => clickElement('button[aria-label="New item"]'));
   }
+  if (parameter.get("approvalDetails") === "1") {
+    clickElement('[data-testid="approval-key"]');
+  }
   if (parameter.get("error")) {
     store.errorMessage = parameter.get("error") ?? "";
   }

@@ -101,6 +101,19 @@ describe("store", () => {
     expect(store.selectedItem).toBeNull();
   });
 
+  it("follows an unlock from the approval window", async () => {
+    store.status = createStatus("locked");
+    api.getStatus.mockResolvedValue(createStatus("unlocked"));
+    api.listAllVault.mockResolvedValue(allTestVault);
+    api.listAllItem.mockResolvedValue([]);
+    await storeModule.handleUnlockedElsewhere();
+    expect(store.status.state).toBe("unlocked");
+    expect(store.allVault).toHaveLength(2);
+
+    await storeModule.handleUnlockedElsewhere();
+    expect(api.getStatus).toHaveBeenCalledTimes(1);
+  });
+
   it("filters items by title, username and URL", () => {
     const allItem = [
       createItem({ id: "1", title: "GitHub", username: "alice", urls: ["https://github.com"] }),

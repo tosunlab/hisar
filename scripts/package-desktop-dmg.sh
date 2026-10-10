@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds a universal (Apple silicon + Intel) Hisar.app with Sparkle and wraps it in desktop/bin/Hisar-<version>.dmg.
+# Builds a universal (Apple silicon + Intel) Hisar.app with Sparkle and the hisar CLI, and wraps it in desktop/bin/Hisar-<version>.dmg.
 # Usage: package-desktop-dmg.sh [version]     (default: the version in desktop/build/darwin/Info.plist)
 # Needs macOS with Xcode command line tools, Go, Node, wails3 (make install-wails) and dmgbuild (pip install dmgbuild).
 # HISAR_SIGNING_IDENTITY signs with a Developer ID instead of ad-hoc (scripts/sign-desktop-app.sh).
@@ -21,12 +21,20 @@ done
 lipo -create -output "$application/Contents/MacOS/hisar-browser-host" bin/hisar-browser-host-amd64 bin/hisar-browser-host-arm64
 rm bin/hisar-browser-host-amd64 bin/hisar-browser-host-arm64
 
+for architecture in amd64 arm64; do
+  CGO_ENABLED=0 GOOS=darwin GOARCH=$architecture go build -trimpath -ldflags="-s -w -X main.version=$version" -o "bin/hisar-$architecture" ../cli/cmd/hisar
+done
+mkdir -p "$application/Contents/Helpers"
+lipo -create -output "$application/Contents/Helpers/hisar" bin/hisar-amd64 bin/hisar-arm64
+rm bin/hisar-amd64 bin/hisar-arm64
+test "$("$application/Contents/Helpers/hisar" --version)" = "hisar $version"
+
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $version" -c "Set :CFBundleVersion $buildNumber" "$application/Contents/Info.plist"
 test -f "$application/Contents/Frameworks/Sparkle.framework/Versions/Current/Sparkle"
-otool -L "$application/Contents/MacOS/Hisar" | grep -q "@rpath/Sparkle.framework/"
-otool -l "$application/Contents/MacOS/Hisar" | grep -q "path @executable_path/../Frameworks "
+otool -L "$application/Contents/MacOS/Hisar" | grep "@rpath/Sparkle.framework/" >/dev/null
+otool -l "$application/Contents/MacOS/Hisar" | grep "path @executable_path/../Frameworks " >/dev/null
 "$scriptDirectory/sign-desktop-app.sh" "$application"
-for binary in MacOS/Hisar MacOS/hisar-browser-host Frameworks/Sparkle.framework/Versions/Current/Sparkle; do
+for binary in MacOS/Hisar MacOS/hisar-browser-host Helpers/hisar Frameworks/Sparkle.framework/Versions/Current/Sparkle; do
   test "$(lipo -archs "$application/Contents/$binary")" = "x86_64 arm64"
 done
 

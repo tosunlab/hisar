@@ -37,6 +37,8 @@ type State struct {
 	IsExactHostMatch bool `json:"exactHostMatch,omitempty"`
 	// IsAutomaticUpdateCheckDisabled is a device preference of the desktop app, so Reset keeps it.
 	IsAutomaticUpdateCheckDisabled bool `json:"automaticUpdateCheckDisabled,omitempty"`
+	// IsCommandLineIntegrationDisabled turns off the desktop app's CLI socket; a device preference that Reset keeps.
+	IsCommandLineIntegrationDisabled bool `json:"commandLineIntegrationDisabled,omitempty"`
 
 	path string
 }
@@ -101,7 +103,10 @@ func (s *State) Save() error {
 
 // Reset forgets the account, session, pins and seqs but keeps the file location and the update preference.
 func (s *State) Reset() {
-	*s = State{path: s.path, AllPin: map[string][]byte{}, AllSeq: map[string]int64{}, IsAutomaticUpdateCheckDisabled: s.IsAutomaticUpdateCheckDisabled}
+	*s = State{
+		path: s.path, AllPin: map[string][]byte{}, AllSeq: map[string]int64{},
+		IsAutomaticUpdateCheckDisabled: s.IsAutomaticUpdateCheckDisabled, IsCommandLineIntegrationDisabled: s.IsCommandLineIntegrationDisabled,
+	}
 }
 
 // IsMemberKeyChanged reports whether a signing key differs from the one pinned for the account.

@@ -179,6 +179,9 @@ tasks:
         fi
       - cp "{{.BIN_DIR}}/{{.APP_NAME}}" "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/MacOS"
       - go build -trimpath -ldflags="-s -w" -o "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/MacOS/hisar-browser-host" ./cmd/hisar-browser-host
+      # The CLI goes into Helpers: on a case-insensitive file system Contents/MacOS/hisar would be the app's own Hisar.
+      - mkdir -p "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Helpers"
+      - CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version={{.CLI_VERSION}}" -o "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Helpers/hisar" ../cli/cmd/hisar
       - cp build/darwin/Info.plist "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents"
       - |
         if [ -d build/sparkle/Sparkle.framework ]; then
@@ -187,6 +190,9 @@ tasks:
           ditto build/sparkle/Sparkle.framework "{{.BIN_DIR}}/{{.APP_NAME}}.app/Contents/Frameworks/Sparkle.framework"
         fi
       - task: '{{if eq OS "darwin"}}codesign:adhoc{{else}}codesign:skip{{end}}'
+    vars:
+      CLI_VERSION:
+        sh: sed -n '/CFBundleShortVersionString/{n;s/.*<string>\(.*\)<\/string>.*/\1/p;}' build/darwin/Info.plist
 
   codesign:adhoc:
     summary: Signs the app bundle and Sparkle inside out (ad-hoc unless HISAR_SIGNING_IDENTITY is set)

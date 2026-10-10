@@ -1,5 +1,5 @@
 # Merge requests, release tags and manual runs only: a merge to main was already tested as its merge request.
-# v* tags publish the server image; mac-v* tags publish the macOS app as a GitLab release.
+# v* tags publish the server image and the standalone CLI (a GitLab release); mac-v* tags publish the macOS app as a GitLab release.
 workflow:
   auto_cancel:
     on_new_commit: interruptible
@@ -66,12 +66,12 @@ go:
     - apt-get update -qq && apt-get install -y -qq postgresql-client >/dev/null
   script:
     - |
-      allUnformatted=$(gofmt -l core server cli mobile desktop/vault desktop/biometric desktop/agent desktop/appinfo desktop/browser desktop/passkey desktop/updater desktop/cmd desktop/main.go desktop/touchid.go)
+      allUnformatted=$(gofmt -l core server cli mobile desktop/vault desktop/biometric desktop/agent desktop/appinfo desktop/browser desktop/commandline desktop/passkey desktop/updater desktop/cmd desktop/main.go desktop/touchid.go)
       if [ -n "$allUnformatted" ]; then echo "$allUnformatted"; exit 1; fi
     - make vet
-    # TestIntegrationDesktopFlow and TestIntegrationMobileFlow need a running server and run in the end-to-end step.
+    # TestIntegrationDesktopFlow, TestIntegrationCommandLineThroughApp and TestIntegrationMobileFlow need a running server and run in the end-to-end step.
     - set -o pipefail; HISAR_TEST_DATABASE_URL=$PG_URL make test TESTFLAGS=-v 2>&1 | tee test.log
-    - if grep -- "--- SKIP" test.log | grep -v -E "TestIntegrationDesktopFlow|TestIntegrationMobileFlow"; then exit 1; fi
+    - if grep -- "--- SKIP" test.log | grep -v -E "TestIntegrationDesktopFlow|TestIntegrationCommandLineThroughApp|TestIntegrationMobileFlow"; then exit 1; fi
     - make build
     - make build-cli-all
     - PGPASSWORD=hisar psql -h postgres -U postgres -c "CREATE DATABASE hisar_end_to_end"
@@ -167,6 +167,8 @@ desktop-macos:
     - plutil -extract CFBundleIdentifier raw desktop/bin/Hisar.app/Contents/Info.plist | grep -qx com.tryhisar.hisar
     - test -f desktop/bin/Hisar.app/Contents/Frameworks/Sparkle.framework/Versions/Current/Sparkle
     - otool -L desktop/bin/Hisar.app/Contents/MacOS/Hisar | grep -q "@rpath/Sparkle.framework/"
+    - desktop/bin/Hisar.app/Contents/Helpers/hisar --version | grep -q "^hisar "
+    - codesign --verify --strict desktop/bin/Hisar.app/Contents/Helpers/hisar
     - codesign --verify --deep --strict desktop/bin/Hisar.app
     - git diff --exit-code -- desktop/frontend/bindings
     - cd desktop/bin && ditto -c -k --keepParent Hisar.app Hisar-macos.zip
@@ -282,3 +284,69 @@ desktop-release:
           url: $DESKTOP_PACKAGE_URL
           link_type: package
           filepath: /Hisar.dmg
+
+# v* tags: the standalone hisar for Linux, macOS and Windows (scripts/package-cli-release.sh) in the generic package
+# hisar-cli/<version>; SHA256SUMS goes on to cli-release, which reads the file names from it.
+cli-release-build:
+  stage: build
+  extends: .go-cache
+  image: golang:1.26
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v/
+  interruptible: false
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq zip >/dev/null
+  script:
+    - version=${CI_COMMIT_TAG#v}
+    - bash scripts/package-cli-release.sh "$version" cli-release
+    - tar -xzf "cli-release/hisar-$version-linux-amd64.tar.gz" -C /tmp hisar && test "$(/tmp/hisar --version)" = "hisar $version"
+    - packageBaseUrl="$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/hisar-cli/$version"
+    # SHA256SUMS goes last, so a complete package is one that has it.
+    - |
+      for fileName in $(cd cli-release && ls hisar-"$version"-*) SHA256SUMS; do
+        curl -fsS --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file "cli-release/$fileName" "$packageBaseUrl/$fileName"
+      done
+    - printf 'CLI_VERSION=%s\nCLI_PACKAGE_URL=%s\n' "$version" "$packageBaseUrl" > cli-release.env
+  artifacts:
+    paths: [cli-release/SHA256SUMS]
+    reports:
+      dotenv: cli-release.env
+
+# Creates the GitLab release of the v* tag with a link to every archive, or updates it when it already exists (a retried job).
+cli-release:
+  stage: release
+  image: alpine:3.22
+  needs: [cli-release-build]
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v/
+  interruptible: false
+  script:
+    - apk add --no-cache curl >/dev/null
+    - releaseUrl="$CI_API_V4_URL/projects/$CI_PROJECT_ID/releases"
+    - name="Hisar $CLI_VERSION"
+    - description="Server image reg.tryhisar.com/hisar/core/hisar-server:$CLI_VERSION and the standalone hisar command-line tool for Linux, macOS and Windows. Download the archive for your platform and SHA256SUMS, check it with sha256sum -c --ignore-missing SHA256SUMS (shasum -a 256 -c on macOS), and put hisar on your PATH. With the Hisar app on a Mac, install hisar from Settings → Command-line tool instead."
+    - |
+      allLink=""
+      for fileName in $(awk '{print $2}' cli-release/SHA256SUMS) SHA256SUMS; do
+        link="{\"name\":\"$fileName\",\"url\":\"$CLI_PACKAGE_URL/$fileName\",\"link_type\":\"package\",\"direct_asset_path\":\"/$fileName\"}"
+        allLink="${allLink:+$allLink,}$link"
+      done
+      status=$(curl -sS -o /dev/null -w '%{http_code}' --header "JOB-TOKEN: $CI_JOB_TOKEN" "$releaseUrl/$CI_COMMIT_TAG")
+      if [ "$status" = 200 ]; then
+        curl -fsS -X PUT --header "JOB-TOKEN: $CI_JOB_TOKEN" --header "Content-Type: application/json" \
+          --data "{\"name\":\"$name\",\"description\":\"$description\"}" "$releaseUrl/$CI_COMMIT_TAG" >/dev/null
+        for fileName in $(awk '{print $2}' cli-release/SHA256SUMS) SHA256SUMS; do
+          linkStatus=$(curl -sS -o link.json -w '%{http_code}' -X POST --header "JOB-TOKEN: $CI_JOB_TOKEN" --header "Content-Type: application/json" \
+            --data "{\"name\":\"$fileName\",\"url\":\"$CLI_PACKAGE_URL/$fileName\",\"link_type\":\"package\",\"direct_asset_path\":\"/$fileName\"}" "$releaseUrl/$CI_COMMIT_TAG/assets/links")
+          case "$linkStatus" in
+            201) echo "linked $fileName" ;;
+            400|409) echo "$fileName is already linked" ;;
+            *) cat link.json; exit 1 ;;
+          esac
+        done
+        echo "Updated the release $CI_COMMIT_TAG"
+      else
+        curl -fsS -X POST --header "JOB-TOKEN: $CI_JOB_TOKEN" --header "Content-Type: application/json" \
+          --data "{\"tag_name\":\"$CI_COMMIT_TAG\",\"name\":\"$name\",\"description\":\"$description\",\"assets\":{\"links\":[$allLink]}}" "$releaseUrl" >/dev/null
+        echo "Created the release $CI_COMMIT_TAG"
+      fi
