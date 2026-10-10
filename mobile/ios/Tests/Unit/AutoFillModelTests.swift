@@ -8,6 +8,9 @@ final class AutoFillModelTests: XCTestCase {
     private var allCompletedCode: [String] = []
     private var allCopiedCode: [String] = []
     private var cancelCount = 0
+    private var allAssertion: [PasskeyAssertionCredential] = []
+    private var allRegistration: [PasskeyRegistrationCredential] = []
+    private var rejectedRegistrationCount = 0
 
     override func setUp() async throws {
         backend = FakeBackend()
@@ -15,6 +18,9 @@ final class AutoFillModelTests: XCTestCase {
         allCompletedCode = []
         allCopiedCode = []
         cancelCount = 0
+        allAssertion = []
+        allRegistration = []
+        rejectedRegistrationCount = 0
     }
 
     private func createModel() -> AutoFillModel {
@@ -23,7 +29,12 @@ final class AutoFillModelTests: XCTestCase {
             completeRequest: { [unowned self] in allCompletedCredential.append($0) },
             completeOneTimeCodeRequest: { [unowned self] in allCompletedCode.append($0) },
             copyOneTimeCode: { [unowned self] in allCopiedCode.append($0) },
-            cancelRequest: { [unowned self] in cancelCount += 1 }
+            cancelRequest: { [unowned self] in cancelCount += 1 },
+            passkeyCompletion: AutoFillModel.PasskeyCompletion(
+                completeAssertion: { [unowned self] in allAssertion.append($0) },
+                completeRegistration: { [unowned self] in allRegistration.append($0) },
+                rejectExcludedRegistration: { [unowned self] in rejectedRegistrationCount += 1 }
+            )
         )
     }
 
@@ -185,5 +196,147 @@ final class AutoFillModelTests: XCTestCase {
         await model.unlockWithBiometric()
         XCTAssertEqual(model.screen, .list)
         XCTAssertEqual(model.allMatchingLogin.count, 1)
+    }
+
+    private let clientDataHash = Data((0..<32).map { UInt8($0) })
+
+    func testPasskeyListShowsPasskeysForTheRelyingPartyAndSigns() async {
+        backend.seedSignedIn()
+        let model = createModel()
+        let request = PasskeyAssertionRequest(relyingPartyID: "github.com", clientDataHash: clientDataHash)
+        await model.prepareCredentialList(allServiceIdentifier: ["https://github.com"], passkeyRequest: request)
+        XCTAssertEqual(model.allVisibleMatchingPasskey.map(\.title), ["GitHub"])
+        XCTAssertEqual(model.allMatchingLogin.map(\.title), ["GitHub"], "passwords are still offered")
+        await model.selectPasskey(model.allVisibleMatchingPasskey[0])
+        XCTAssertEqual(allAssertion.count, 1)
+        XCTAssertEqual(allAssertion.first?.relyingPartyID, "github.com")
+        XCTAssertEqual(allAssertion.first?.clientDataHash, clientDataHash)
+        XCTAssertEqual(allAssertion.first?.credentialID, Data([1, 1, 1]))
+        XCTAssertEqual(allAssertion.first?.userHandle, Data("alice-handle".utf8))
+        XCTAssertEqual(allAssertion.first?.signature, Data("signature over ".utf8) + clientDataHash)
+        XCTAssertTrue(allCompletedCredential.isEmpty)
+    }
+
+    func testPasskeyListAppliesAllowedCredentialsAndOtherRelyingParties() async {
+        backend.seedSignedIn()
+        let model = createModel()
+        await model.prepareCredentialList(allServiceIdentifier: ["https://github.com"], passkeyRequest: PasskeyAssertionRequest(relyingPartyID: "github.com", clientDataHash: clientDataHash, allAllowedCredentialID: [Data([9])]))
+        XCTAssertTrue(model.allVisibleMatchingPasskey.isEmpty)
+        await model.prepareCredentialList(allServiceIdentifier: ["https://gist.github.com"], passkeyRequest: PasskeyAssertionRequest(relyingPartyID: "gist.github.com", clientDataHash: clientDataHash))
+        XCTAssertTrue(model.allVisibleMatchingPasskey.isEmpty, "only passkeys whose RP ID equals the request's")
+        await model.prepareCredentialList(allServiceIdentifier: ["github.com"])
+        XCTAssertNil(model.passkeyAssertionRequest)
+        XCTAssertTrue(model.allMatchingPasskey.isEmpty, "a password-only request lists no passkeys")
+    }
+
+    func testLockedPasskeyListUnlocksThenLists() async {
+        backend.seedSignedIn(state: VaultStatus.stateLocked)
+        let model = createModel()
+        await model.prepareCredentialList(allServiceIdentifier: [], passkeyRequest: PasskeyAssertionRequest(relyingPartyID: "github.com", clientDataHash: clientDataHash))
+        XCTAssertEqual(model.screen, .locked)
+        XCTAssertEqual(model.serviceName, "github.com")
+        await model.unlock(password: FakeBackend.password)
+        XCTAssertEqual(model.screen, .list)
+        XCTAssertEqual(model.allVisibleMatchingPasskey.count, 1)
+        model.searchText = "nobody"
+        XCTAssertTrue(model.allVisibleMatchingPasskey.isEmpty)
+    }
+
+    func testChosenPasskeyUnlocksThenSigns() async {
+        backend.seedSignedIn(state: VaultStatus.stateLocked)
+        let model = createModel()
+        let request = PasskeyAssertionRequest(relyingPartyID: "github.com", clientDataHash: clientDataHash)
+        await model.prepareInterfaceToProvidePasskey(request: request, credentialID: Data([1, 1, 1]))
+        XCTAssertEqual(model.screen, .locked)
+        XCTAssertTrue(allAssertion.isEmpty)
+        await model.unlock(password: FakeBackend.password)
+        XCTAssertEqual(allAssertion.map(\.credentialID), [Data([1, 1, 1])])
+    }
+
+    func testChosenPasskeyOfAnotherSiteFallsBackToTheList() async {
+        backend.seedSignedIn()
+        let model = createModel()
+        await model.prepareInterfaceToProvidePasskey(request: PasskeyAssertionRequest(relyingPartyID: "evil.example", clientDataHash: clientDataHash), credentialID: Data([1, 1, 1]))
+        XCTAssertTrue(allAssertion.isEmpty)
+        XCTAssertEqual(model.screen, .list)
+        XCTAssertTrue(model.allMatchingPasskey.isEmpty)
+    }
+
+    func testPasskeyWithoutInteractionNeedsAnUnlockedProcess() async {
+        backend.seedSignedIn()
+        let model = createModel()
+        let request = PasskeyAssertionRequest(relyingPartyID: "github.com", clientDataHash: clientDataHash)
+        let beforeStart = await model.providePasskeyWithoutUserInteraction(request: request, credentialID: Data([1, 1, 1]))
+        XCTAssertNil(beforeStart, "no backend exists yet in a fresh extension process")
+        await model.prepareCredentialList(allServiceIdentifier: ["github.com"])
+        let credential = await model.providePasskeyWithoutUserInteraction(request: request, credentialID: Data([1, 1, 1]))
+        XCTAssertEqual(credential?.userHandle, Data("alice-handle".utf8))
+        _ = backend.lock()
+        let whileLocked = await model.providePasskeyWithoutUserInteraction(request: request, credentialID: Data([1, 1, 1]))
+        XCTAssertNil(whileLocked)
+    }
+
+    func testPasskeyRegistrationPreselectsTheMatchingLoginAndSaves() async {
+        backend.seedSignedIn()
+        backend.allItemByVaultID["personal"]?.append(ItemDetail(id: "github-bob", category: "login", title: "GitHub Bob", username: "bob", allURL: ["github.com"]))
+        let model = createModel()
+        let request = PasskeyRegistrationRequest(relyingPartyID: "github.com", userName: "Alice", userHandle: Data("alice-handle".utf8), clientDataHash: clientDataHash, allSupportedAlgorithm: [-8, -7])
+        await model.prepareInterfaceForPasskeyRegistration(request)
+        XCTAssertEqual(model.screen, .passkeyRegistration)
+        XCTAssertEqual(model.passkeyRegistrationOptions?.allLogin.map(\.title), ["GitHub", "GitHub Bob"])
+        XCTAssertEqual(model.selectedRegistrationLoginID, "personal/github", "the login whose username equals the user name")
+        await model.savePasskey()
+        XCTAssertEqual(allRegistration.count, 1)
+        XCTAssertEqual(allRegistration.first?.relyingPartyID, "github.com")
+        XCTAssertEqual(allRegistration.first?.clientDataHash, clientDataHash)
+        XCTAssertEqual(allRegistration.first?.attestationObject, Data("attestation for github.com".utf8))
+        let savedItem = try? backend.getItem(vaultID: "personal", itemID: "github")
+        XCTAssertEqual(savedItem?.allPasskey.count, 1, "the passkey with the same user handle is replaced")
+        XCTAssertEqual(savedItem?.allPasskey.first.flatMap { Base64URL.decode($0.credentialID) }, allRegistration.first?.credentialID)
+    }
+
+    func testPasskeyRegistrationToANewLogin() async {
+        backend.seedSignedIn(state: VaultStatus.stateLocked)
+        let model = createModel()
+        await model.prepareInterfaceForPasskeyRegistration(PasskeyRegistrationRequest(relyingPartyID: "shop.example", userName: "buyer", userHandle: Data([5]), clientDataHash: clientDataHash))
+        XCTAssertEqual(model.screen, .locked)
+        XCTAssertEqual(model.serviceName, "shop.example")
+        await model.unlock(password: FakeBackend.password)
+        XCTAssertEqual(model.screen, .passkeyRegistration)
+        XCTAssertEqual(model.passkeyRegistrationOptions?.allLogin, [])
+        XCTAssertNil(model.selectedRegistrationLoginID, "New login is the only choice")
+        await model.savePasskey()
+        XCTAssertEqual(allRegistration.count, 1)
+        XCTAssertTrue(backend.allItemByVaultID["personal"]?.contains { $0.title == "shop.example" && $0.allPasskey.count == 1 } ?? false)
+    }
+
+    func testExcludedPasskeyRegistrationIsRejected() async {
+        backend.seedSignedIn()
+        let model = createModel()
+        await model.prepareInterfaceForPasskeyRegistration(PasskeyRegistrationRequest(relyingPartyID: "github.com", userName: "alice", userHandle: Data([5]), clientDataHash: clientDataHash, allExcludedCredentialID: [Data([1, 1, 1])]))
+        XCTAssertEqual(model.passkeyRegistrationOptions?.isExcluded, true)
+        await model.savePasskey()
+        XCTAssertTrue(allRegistration.isEmpty)
+        XCTAssertFalse(backend.allCallName.contains("createPasskey"))
+        model.rejectExcludedPasskeyRegistration()
+        XCTAssertEqual(rejectedRegistrationCount, 1)
+    }
+
+    func testPasskeyRegistrationWithoutES256IsCancelled() async {
+        backend.seedSignedIn()
+        let model = createModel()
+        await model.prepareInterfaceForPasskeyRegistration(PasskeyRegistrationRequest(relyingPartyID: "github.com", userName: "alice", userHandle: Data([5]), clientDataHash: clientDataHash, allSupportedAlgorithm: [-8, -257]))
+        XCTAssertEqual(cancelCount, 1)
+        XCTAssertFalse(backend.allCallName.contains("preparePasskeyRegistration"))
+    }
+
+    func testPasskeyRegistrationErrorIsShown() async {
+        backend.seedSignedIn()
+        let model = createModel()
+        await model.prepareInterfaceForPasskeyRegistration(PasskeyRegistrationRequest(relyingPartyID: "github.com", userName: "alice", userHandle: Data([5]), clientDataHash: Data([1])))
+        await model.savePasskey()
+        XCTAssertTrue(allRegistration.isEmpty)
+        XCTAssertEqual(model.errorMessage, "the request is not valid")
+        XCTAssertEqual(model.screen, .passkeyRegistration)
     }
 }

@@ -22,12 +22,13 @@ import (
 )
 
 const (
-	AAGUID              = "fb041679-042a-49ae-b616-8779e2ac14ce"
-	AlgorithmES256      = -7
-	CredentialIDLength  = 32
-	TypeCreate          = "webauthn.create"
-	TypeGet             = "webauthn.get"
-	MaxUserHandleLength = 64
+	AAGUID               = "fb041679-042a-49ae-b616-8779e2ac14ce"
+	AlgorithmES256       = -7
+	CredentialIDLength   = 32
+	TypeCreate           = "webauthn.create"
+	TypeGet              = "webauthn.get"
+	MaxUserHandleLength  = 64
+	ClientDataHashLength = sha256.Size
 )
 
 const (
@@ -104,6 +105,22 @@ func ResolveRelyingPartyID(origin, requestedRelyingPartyID string) (string, erro
 		return relyingPartyID, nil
 	}
 	if net.ParseIP(host) != nil || net.ParseIP(relyingPartyID) != nil || !strings.HasSuffix(host, "."+relyingPartyID) {
+		return "", ErrInvalidRelyingPartyID
+	}
+	if isPublicSuffix(relyingPartyID) {
+		return "", ErrInvalidRelyingPartyID
+	}
+	return relyingPartyID, nil
+}
+
+// ValidateRelyingPartyID is for RP IDs the platform already bound to the site (iOS), so there is no origin to compare.
+func ValidateRelyingPartyID(requestedRelyingPartyID string) (string, error) {
+	relyingPartyID := strings.ToLower(strings.TrimSpace(requestedRelyingPartyID))
+	if relyingPartyID == "" || len(relyingPartyID) > maxRelyingPartyIDLength || strings.HasPrefix(relyingPartyID, ".") || strings.HasSuffix(relyingPartyID, ".") || net.ParseIP(relyingPartyID) != nil {
+		return "", ErrInvalidRelyingPartyID
+	}
+	parsed, err := url.Parse("https://" + relyingPartyID)
+	if err != nil || parsed.Host != relyingPartyID || parsed.Port() != "" || parsed.Hostname() != relyingPartyID || strings.ContainsAny(relyingPartyID, "*_ ") {
 		return "", ErrInvalidRelyingPartyID
 	}
 	if isPublicSuffix(relyingPartyID) {
@@ -233,6 +250,27 @@ func CreateCredential(request CreationRequest) (Creation, error) {
 	if err != nil {
 		return Creation{}, err
 	}
+	creation, err := createCredentialForRelyingParty(relyingPartyID)
+	if err != nil {
+		return Creation{}, err
+	}
+	creation.ClientDataJSON = clientData
+	return creation, nil
+}
+
+// CreateCredentialWithClientDataHash serves platforms that hash clientDataJSON themselves (iOS); "none" attestation does not sign the hash.
+func CreateCredentialWithClientDataHash(requestedRelyingPartyID string, clientDataHash []byte) (Creation, error) {
+	relyingPartyID, err := ValidateRelyingPartyID(requestedRelyingPartyID)
+	if err != nil {
+		return Creation{}, err
+	}
+	if len(clientDataHash) != ClientDataHashLength {
+		return Creation{}, ErrInvalidRequest
+	}
+	return createCredentialForRelyingParty(relyingPartyID)
+}
+
+func createCredentialForRelyingParty(relyingPartyID string) (Creation, error) {
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return Creation{}, err
@@ -257,7 +295,6 @@ func CreateCredential(request CreationRequest) (Creation, error) {
 	return Creation{
 		CredentialID:      credentialID,
 		PrivateKey:        privateKeyDER,
-		ClientDataJSON:    clientData,
 		AuthenticatorData: authenticatorData,
 		AttestationObject: BuildAttestationObject(authenticatorData),
 		PublicKey:         publicKeyDER,
@@ -290,6 +327,31 @@ func SignAssertion(request AssertionRequest, credentialRelyingPartyID string, pr
 	if err != nil {
 		return Assertion{}, err
 	}
+	clientDataHash := sha256.Sum256(clientData)
+	assertion, err := signAuthenticatorData(relyingPartyID, clientDataHash[:], privateKeyDER)
+	if err != nil {
+		return Assertion{}, err
+	}
+	assertion.ClientDataJSON = clientData
+	return assertion, nil
+}
+
+// SignAssertionWithClientDataHash serves platforms that hash clientDataJSON themselves (iOS); the result has no ClientDataJSON.
+func SignAssertionWithClientDataHash(requestedRelyingPartyID, credentialRelyingPartyID string, clientDataHash, privateKeyDER []byte) (Assertion, error) {
+	relyingPartyID, err := ValidateRelyingPartyID(requestedRelyingPartyID)
+	if err != nil {
+		return Assertion{}, err
+	}
+	if relyingPartyID != credentialRelyingPartyID {
+		return Assertion{}, ErrInvalidRelyingPartyID
+	}
+	if len(clientDataHash) != ClientDataHashLength {
+		return Assertion{}, ErrInvalidRequest
+	}
+	return signAuthenticatorData(relyingPartyID, clientDataHash, privateKeyDER)
+}
+
+func signAuthenticatorData(relyingPartyID string, clientDataHash, privateKeyDER []byte) (Assertion, error) {
 	parsedKey, err := x509.ParsePKCS8PrivateKey(privateKeyDER)
 	if err != nil {
 		return Assertion{}, fmt.Errorf("passkey: stored key: %w", err)
@@ -299,13 +361,12 @@ func SignAssertion(request AssertionRequest, credentialRelyingPartyID string, pr
 		return Assertion{}, errors.New("passkey: the stored key is not an ES256 key")
 	}
 	authenticatorData := BuildAuthenticatorData(relyingPartyID, flagAssertion, nil)
-	clientDataHash := sha256.Sum256(clientData)
-	signedData := sha256.Sum256(append(bytes.Clone(authenticatorData), clientDataHash[:]...))
+	signedData := sha256.Sum256(append(bytes.Clone(authenticatorData), clientDataHash...))
 	signature, err := ecdsa.SignASN1(rand.Reader, privateKey, signedData[:])
 	if err != nil {
 		return Assertion{}, err
 	}
-	return Assertion{ClientDataJSON: clientData, AuthenticatorData: authenticatorData, Signature: signature}, nil
+	return Assertion{AuthenticatorData: authenticatorData, Signature: signature}, nil
 }
 
 func isPublicSuffix(domain string) bool {

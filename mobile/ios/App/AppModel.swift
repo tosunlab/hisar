@@ -26,6 +26,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var lockCount = 0
 
     private var backend: VaultBackend?
+    private var allPasskey: [StoredPasskey] = []
     private let credentialIdentityStore: CredentialIdentityUpdating
     private let getCurrentDate: () -> Date
     private var enteredBackgroundAt: Date?
@@ -60,6 +61,7 @@ final class AppModel: ObservableObject {
         if wasUnlocked && !newStatus.isUnlocked {
             allVault = []
             allItemByVaultID = [:]
+            allPasskey = []
             lockCount += 1
         }
     }
@@ -199,21 +201,26 @@ final class AppModel: ObservableObject {
         guard status.isUnlocked else { return }
         isRefreshing = true
         defer { isRefreshing = false }
-        guard let result = await perform(isBusyShown: false, { backend -> ([VaultSummary], [String: [ItemDetail]]) in
+        guard let result = await perform(isBusyShown: false, { backend -> ([VaultSummary], [String: [ItemDetail]], [StoredPasskey]) in
             let allVault = try backend.listAllVault()
             var allItemByVaultID: [String: [ItemDetail]] = [:]
             for vault in allVault {
                 allItemByVaultID[vault.id] = try backend.listAllItem(vaultID: vault.id)
             }
-            return (allVault, allItemByVaultID)
+            return (allVault, allItemByVaultID, (try? backend.listAllPasskey()) ?? [])
         }) else {
             refreshStatus()
             return
         }
         allVault = result.0.sorted { Self.sortVault($0, $1) }
         allItemByVaultID = result.1
+        allPasskey = result.2
         refreshStatus()
-        await credentialIdentityStore.replaceAllIdentity(VaultLogic.buildAllCredentialIdentity(listAllItemReference()))
+        await publishAllCredentialIdentity()
+    }
+
+    private func publishAllCredentialIdentity() async {
+        await credentialIdentityStore.replaceAllIdentity(VaultLogic.buildAllCredentialIdentity(listAllItemReference(), allPasskey: allPasskey))
     }
 
     private static func sortVault(_ first: VaultSummary, _ second: VaultSummary) -> Bool {
@@ -266,7 +273,7 @@ final class AppModel: ObservableObject {
             allItem.append(summary)
         }
         allItemByVaultID[vaultID] = allItem
-        await credentialIdentityStore.replaceAllIdentity(VaultLogic.buildAllCredentialIdentity(listAllItemReference()))
+        await publishAllCredentialIdentity()
         return savedItem
     }
 
@@ -274,8 +281,20 @@ final class AppModel: ObservableObject {
     func deleteItem(vaultID: String, itemID: String) async -> Bool {
         guard await perform({ try $0.deleteItem(vaultID: vaultID, itemID: itemID) }) != nil else { return false }
         allItemByVaultID[vaultID]?.removeAll { $0.id == itemID }
-        await credentialIdentityStore.replaceAllIdentity(VaultLogic.buildAllCredentialIdentity(listAllItemReference()))
+        allPasskey.removeAll { $0.vaultID == vaultID && $0.itemID == itemID }
+        await publishAllCredentialIdentity()
         return true
+    }
+
+    func deletePasskey(vaultID: String, itemID: String, credentialID: String) async -> ItemDetail? {
+        guard let updatedItem = await perform({ try $0.deletePasskey(vaultID: vaultID, itemID: itemID, credentialID: credentialID) }) else { return nil }
+        if let index = allItemByVaultID[vaultID]?.firstIndex(where: { $0.id == itemID }) {
+            allItemByVaultID[vaultID]?[index].allPasskey = updatedItem.allPasskey
+        }
+        allPasskey.removeAll { $0.credentialID == credentialID }
+        await publishAllCredentialIdentity()
+        showNotice("Passkey deleted.")
+        return updatedItem
     }
 
     func loadOneTimeCode(vaultID: String, itemID: String) async -> OneTimeCode? {

@@ -50,6 +50,7 @@
 		6B7BC9DF0F93E81A2CF47B21 /* LockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56632F6C54EBD5227BCBED2E /* LockView.swift */; };
 		6DB05471C2C91B766AE077F9 /* VaultLogicTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E76E121835129E45189D709A /* VaultLogicTests.swift */; };
 		6E067186CA8E3B3F7B57CE1A /* AutoFillModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7ACF599EDF05A1F19E55537F /* AutoFillModel.swift */; };
+		7350A151F361786C37515ED8 /* PasskeyUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 647E01C2B3F64259DBAF90B5 /* PasskeyUITests.swift */; };
 		739E3C3C505950494AF65FE2 /* OneTimeCodeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7689BDDB94FD64917944388 /* OneTimeCodeUITests.swift */; };
 		739F4863584CE3912731463A /* SystemCredentialIdentityStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FAD214270656E02E761B8B2 /* SystemCredentialIdentityStore.swift */; };
 		770689DFEAFC62A0A76A43DD /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3766EC2BF71158CD0225F090 /* Models.swift */; };
@@ -57,6 +58,7 @@
 		7B2A4476D3BEE2DAE66AE1BC /* ItemEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58725D5CFD94EED72E93193F /* ItemEditorView.swift */; };
 		7B4CEB8AB79D4D1174B91481 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 14136704A8F8FCE442B63B00 /* Assets.xcassets */; };
 		7BCAAE3017841B92A88856AA /* HisarKit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 15377A521C283EA5723954C2 /* HisarKit.xcframework */; };
+		7C37DDDE1C919F61B2B5D932 /* PasskeyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 26730576FD34B49781786827 /* PasskeyTests.swift */; };
 		8338CFA14AF89A9E862993F6 /* HisarApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31B75B59E329DF165CDA0667 /* HisarApp.swift */; };
 		848341F8DAA3EB113A0F4436 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDEDF97D4D5D844AB4DA42AD /* RootView.swift */; };
 		857A6EA56057245495E79843 /* LockView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56632F6C54EBD5227BCBED2E /* LockView.swift */; };
@@ -157,6 +159,7 @@
 		15377A521C283EA5723954C2 /* HisarKit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = HisarKit.xcframework; path = ../build/HisarKit.xcframework; sourceTree = "<group>"; };
 		1F31820CE1E2F645F505502A /* CredentialProviderViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialProviderViewController.swift; sourceTree = "<group>"; };
 		22698CECCF02525330145455 /* AutoFillPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoFillPreviewView.swift; sourceTree = "<group>"; };
+		26730576FD34B49781786827 /* PasskeyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasskeyTests.swift; sourceTree = "<group>"; };
 		27EDFCA29649DDE3B235B5A9 /* HisarPersonal.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HisarPersonal.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		30A647C9592D0839BD485353 /* HisarTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HisarTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		31B75B59E329DF165CDA0667 /* HisarApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HisarApp.swift; sourceTree = "<group>"; };
@@ -174,6 +177,7 @@
 		58725D5CFD94EED72E93193F /* ItemEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemEditorView.swift; sourceTree = "<group>"; };
 		5C081C11B996ABE21B047D8D /* HisarUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HisarUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		5DC7E3215A9069C2945F866D /* AutoFillModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoFillModelTests.swift; sourceTree = "<group>"; };
+		647E01C2B3F64259DBAF90B5 /* PasskeyUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasskeyUITests.swift; sourceTree = "<group>"; };
 		6A0557C083DC71D33D7D838B /* PrivacyShield.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyShield.swift; sourceTree = "<group>"; };
 		749D535C9C6B489F37C5F4C6 /* AuthenticationServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AuthenticationServices.framework; path = System/Library/Frameworks/AuthenticationServices.framework; sourceTree = SDKROOT; };
 		7ACF599EDF05A1F19E55537F /* AutoFillModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoFillModel.swift; sourceTree = "<group>"; };
@@ -239,6 +243,7 @@
 				36F2BE095F513A43A814C85D /* HisarUITestCase.swift */,
 				13B49F20D7B3678555E885AD /* HisarUITests.swift */,
 				B7689BDDB94FD64917944388 /* OneTimeCodeUITests.swift */,
+				647E01C2B3F64259DBAF90B5 /* PasskeyUITests.swift */,
 			);
 			path = UI;
 			sourceTree = "<group>";
@@ -364,6 +369,7 @@
 				0D54C09BE6FCF29F969C4E18 /* AppModelTests.swift */,
 				5DC7E3215A9069C2945F866D /* AutoFillModelTests.swift */,
 				7B2774C869B2E88A54905C78 /* FakeBackend.swift */,
+				26730576FD34B49781786827 /* PasskeyTests.swift */,
 				F87494AA5EEAF759118A7882 /* PlatformAdapterTests.swift */,
 				E76E121835129E45189D709A /* VaultLogicTests.swift */,
 			);
@@ -584,6 +590,7 @@
 				0B2C04782778BD9D153F4512 /* HisarUITestCase.swift in Sources */,
 				385610A06FAE72AFC83F4F07 /* HisarUITests.swift in Sources */,
 				739E3C3C505950494AF65FE2 /* OneTimeCodeUITests.swift in Sources */,
+				7350A151F361786C37515ED8 /* PasskeyUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -618,6 +625,7 @@
 				641117B1BC86ED26F0DAF500 /* AppModelTests.swift in Sources */,
 				343CD1DE10EC8C27BD57EFD5 /* AutoFillModelTests.swift in Sources */,
 				BDD67F160CD76BD42407E230 /* FakeBackend.swift in Sources */,
+				7C37DDDE1C919F61B2B5D932 /* PasskeyTests.swift in Sources */,
 				F356AB3E0A6D6C3696AF12BF /* PlatformAdapterTests.swift in Sources */,
 				6DB05471C2C91B766AE077F9 /* VaultLogicTests.swift in Sources */,
 			);

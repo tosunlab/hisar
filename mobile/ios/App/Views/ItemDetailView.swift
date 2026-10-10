@@ -11,6 +11,7 @@ struct ItemDetailView: View {
     @State private var isPasswordRevealed = false
     @State private var allRevealedFieldName = Set<String>()
     @State private var isEditorShown = false
+    @State private var passkeyToDelete: ItemPasskey?
 
     private var isWritable: Bool {
         guard let vault = model.findVault(vaultID: vaultID) else { return false }
@@ -51,6 +52,19 @@ struct ItemDetailView: View {
                 }
                 .environmentObject(model)
             }
+        }
+        .confirmationDialog(
+            "Delete this passkey?",
+            isPresented: Binding(get: { passkeyToDelete != nil }, set: { if !$0 { passkeyToDelete = nil } }),
+            titleVisibility: .visible,
+            presenting: passkeyToDelete
+        ) { passkey in
+            Button("Delete Passkey", role: .destructive) {
+                Task { await deletePasskey(passkey) }
+            }
+            .accessibilityIdentifier("confirm-delete-passkey")
+        } message: { passkey in
+            Text("You can no longer sign in to \(passkey.relyingPartyID) as \(passkey.userName) with it.")
         }
         .task { await loadItem() }
         .onDisappear {
@@ -104,6 +118,13 @@ struct ItemDetailView: View {
                         }
                         .listRowBackground(Theme.surface)
                         .accessibilityIdentifier("open-website")
+                    }
+                }
+            }
+            if !item.allPasskey.isEmpty {
+                Section("Passkeys") {
+                    ForEach(item.allPasskey) { passkey in
+                        buildPasskeyRow(passkey)
                     }
                 }
             }
@@ -192,6 +213,48 @@ struct ItemDetailView: View {
         }
         .padding(.vertical, 2)
         .listRowBackground(Theme.surface)
+    }
+
+    private func buildPasskeyRow(_ passkey: ItemPasskey) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: "person.badge.key")
+                .foregroundStyle(Theme.textSecondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(passkey.relyingPartyID)
+                    .foregroundStyle(Theme.text)
+                Text(passkey.userName.isEmpty ? passkey.userDisplayName : passkey.userName)
+                    .font(.caption)
+                    .foregroundStyle(Theme.textMuted)
+                if let createdDate = passkey.createdDate {
+                    Text("Created \(createdDate.formatted(date: .abbreviated, time: .omitted))")
+                        .font(.caption)
+                        .foregroundStyle(Theme.textMuted)
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("passkey-\(passkey.relyingPartyID)")
+            Spacer()
+            if isWritable {
+                Button {
+                    passkeyToDelete = passkey
+                } label: {
+                    Image(systemName: "trash")
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(Theme.danger)
+                .accessibilityLabel("Delete passkey for \(passkey.relyingPartyID)")
+                .accessibilityIdentifier("delete-passkey-\(passkey.relyingPartyID)")
+            }
+        }
+        .padding(.vertical, 2)
+        .listRowBackground(Theme.surface)
+    }
+
+    private func deletePasskey(_ passkey: ItemPasskey) async {
+        passkeyToDelete = nil
+        if let updatedItem = await model.deletePasskey(vaultID: vaultID, itemID: itemID, credentialID: passkey.credentialID) {
+            item = updatedItem
+        }
     }
 
     private func copy(fieldName: String, label: String) {

@@ -282,6 +282,8 @@ func TestIntegrationMobileFlow(t *testing.T) {
 		t.Error("login handed out for another site")
 	}
 
+	checkPasskeyFlow(t, hisar, personalID, saved.ID)
+
 	if current := decodeJSON[status](t)(hisar.EnableBiometricUnlock(password)); !current.BiometricEnabled {
 		t.Fatalf("biometric unlock not enabled: %+v", current)
 	}

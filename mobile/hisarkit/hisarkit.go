@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/tryhisar/hisar/core/crypt"
+	"github.com/tryhisar/hisar/desktop/browser"
 	"github.com/tryhisar/hisar/desktop/vault"
 )
 
@@ -238,4 +239,66 @@ func convertServiceIdentifierToURL(serviceIdentifier string) string {
 		return serviceIdentifier
 	}
 	return "https://" + serviceIdentifier
+}
+
+// ListAllPasskey returns every passkey in a login ([]vault.StoredPasskey, binary values base64url) as JSON, for the credential identity store.
+func (hisar *Hisar) ListAllPasskey() (string, error) {
+	return encodePasskeyJSON(vault.ListAllPasskey(hisar.service))
+}
+
+// ListAllPasskeyForRelyingParty takes the allowed credential IDs as a JSON array of base64url strings; an empty array allows all.
+func (hisar *Hisar) ListAllPasskeyForRelyingParty(relyingPartyID, allowedCredentialIDsJSON string) (string, error) {
+	allAllowedCredentialID, err := decodeStringArray(allowedCredentialIDsJSON)
+	if err != nil {
+		return "", err
+	}
+	return encodePasskeyJSON(vault.ListAllPasskeyForRelyingParty(hisar.service, relyingPartyID, allAllowedCredentialID))
+}
+
+// PreparePasskeyRegistration returns {"isExcluded", "logins"} as JSON: the writable logins matching the relying party.
+func (hisar *Hisar) PreparePasskeyRegistration(relyingPartyID, excludedCredentialIDsJSON string) (string, error) {
+	allExcludedCredentialID, err := decodeStringArray(excludedCredentialIDsJSON)
+	if err != nil {
+		return "", err
+	}
+	return encodePasskeyJSON(vault.PreparePasskeyRegistration(hisar.service, relyingPartyID, allExcludedCredentialID))
+}
+
+// CreatePasskey takes a vault.PasskeyRegistration and returns a vault.PasskeyRegistrationResult, as JSON; the private key stays in Go.
+func (hisar *Hisar) CreatePasskey(registrationJSON string) (string, error) {
+	var registration vault.PasskeyRegistration
+	if err := json.Unmarshal([]byte(registrationJSON), &registration); err != nil {
+		return "", errors.New("hisarkit: the passkey registration is not valid JSON")
+	}
+	return encodePasskeyJSON(vault.CreatePasskeyForRelyingParty(hisar.service, registration))
+}
+
+// AssertPasskey signs authenticatorData || clientDataHash and returns a vault.PasskeyAssertion as JSON; IDs and the hash are base64url.
+func (hisar *Hisar) AssertPasskey(relyingPartyID, credentialID, clientDataHash string) (string, error) {
+	return encodePasskeyJSON(vault.SignPasskeyForRelyingParty(hisar.service, relyingPartyID, credentialID, clientDataHash))
+}
+
+// DeletePasskey returns the item without the passkey as vault.ItemDetail JSON.
+func (hisar *Hisar) DeletePasskey(vaultID, itemID, credentialID string) (string, error) {
+	return encodeJSON(hisar.service.DeletePasskey(vaultID, itemID, credentialID))
+}
+
+func decodeStringArray(text string) ([]string, error) {
+	if strings.TrimSpace(text) == "" {
+		return nil, nil
+	}
+	var allValue []string
+	if err := json.Unmarshal([]byte(text), &allValue); err != nil {
+		return nil, errors.New("hisarkit: the credential IDs are not a JSON array of strings")
+	}
+	return allValue, nil
+}
+
+// encodePasskeyJSON drops the browser protocol's error code, so the app shows only the message.
+func encodePasskeyJSON(value any, err error) (string, error) {
+	var responseError *browser.ResponseError
+	if errors.As(err, &responseError) {
+		err = errors.New(strings.TrimPrefix(responseError.Message, "passkey: "))
+	}
+	return encodeJSON(value, err)
 }

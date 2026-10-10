@@ -8,6 +8,7 @@ final class AutoFillModel: ObservableObject {
         case signedOut
         case locked
         case list
+        case passkeyRegistration
         case configuration
     }
 
@@ -20,6 +21,12 @@ final class AutoFillModel: ObservableObject {
         var recordIdentifier: String
         var serviceIdentifier: String
         var kind: RequestKind
+    }
+
+    struct PasskeyCompletion {
+        var completeAssertion: (PasskeyAssertionCredential) -> Void
+        var completeRegistration: (PasskeyRegistrationCredential) -> Void
+        var rejectExcludedRegistration: () -> Void
     }
 
     @Published private(set) var screen: Screen = .starting
@@ -36,9 +43,15 @@ final class AutoFillModel: ObservableObject {
     }
     @Published private(set) var lockCount = 0
     @Published private(set) var requestKind = RequestKind.password
+    @Published private(set) var allMatchingPasskey: [StoredPasskey] = []
+    @Published private(set) var passkeyAssertionRequest: PasskeyAssertionRequest?
+    @Published private(set) var passkeyRegistrationRequest: PasskeyRegistrationRequest?
+    @Published private(set) var passkeyRegistrationOptions: PasskeyRegistrationOptions?
+    @Published var selectedRegistrationLoginID: String?
 
     private(set) var allServiceIdentifier: [String] = []
     private var pendingRequest: PendingCredentialRequest?
+    private var pendingPasskeyCredentialID: Data?
     private var serviceIdentifierByLoginID: [String: String] = [:]
     private var backend: VaultBackend?
     private let createBackend: () throws -> VaultBackend
@@ -46,23 +59,35 @@ final class AutoFillModel: ObservableObject {
     private let completeOneTimeCodeRequest: (String) -> Void
     private let copyOneTimeCode: (String) -> Void
     private let cancelRequest: () -> Void
+    private let passkeyCompletion: PasskeyCompletion
 
     init(
         createBackend: @escaping () throws -> VaultBackend,
         completeRequest: @escaping (LoginCredential) -> Void,
         completeOneTimeCodeRequest: @escaping (String) -> Void,
         copyOneTimeCode: @escaping (String) -> Void,
-        cancelRequest: @escaping () -> Void
+        cancelRequest: @escaping () -> Void,
+        passkeyCompletion: PasskeyCompletion
     ) {
         self.createBackend = createBackend
         self.completeRequest = completeRequest
         self.completeOneTimeCodeRequest = completeOneTimeCodeRequest
         self.copyOneTimeCode = copyOneTimeCode
         self.cancelRequest = cancelRequest
+        self.passkeyCompletion = passkeyCompletion
     }
 
     var serviceName: String {
-        allServiceIdentifier.lazy.compactMap { VaultLogic.extractHost($0) }.first ?? allServiceIdentifier.first ?? ""
+        allServiceIdentifier.lazy.compactMap { VaultLogic.extractHost($0) }.first ?? allServiceIdentifier.first
+            ?? passkeyAssertionRequest?.relyingPartyID ?? passkeyRegistrationRequest?.relyingPartyID ?? ""
+    }
+
+    var allVisibleMatchingPasskey: [StoredPasskey] {
+        let allWord = searchText.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
+        return allMatchingPasskey.filter { passkey in
+            let searchable = "\(passkey.title) \(passkey.userName) \(passkey.userDisplayName)".lowercased()
+            return allWord.allSatisfy { searchable.contains($0) }
+        }
     }
 
     var allVisibleMatchingLogin: [LoginMatch] {
@@ -118,24 +143,36 @@ final class AutoFillModel: ObservableObject {
         if status.isUnlocked && !newStatus.isUnlocked { lockCount += 1 }
         status = newStatus
         switch newStatus.state {
-        case VaultStatus.stateUnlocked: screen = .list
+        case VaultStatus.stateUnlocked: screen = passkeyRegistrationRequest == nil ? .list : .passkeyRegistration
         case VaultStatus.stateLocked: screen = .locked
         default: screen = .signedOut
         }
     }
 
-    func prepareCredentialList(allServiceIdentifier: [String], kind: RequestKind = .password) async {
+    private func resetRequest() {
+        pendingRequest = nil
+        pendingPasskeyCredentialID = nil
+        passkeyAssertionRequest = nil
+        passkeyRegistrationRequest = nil
+        passkeyRegistrationOptions = nil
+        selectedRegistrationLoginID = nil
+        allMatchingPasskey = []
+    }
+
+    func prepareCredentialList(allServiceIdentifier: [String], kind: RequestKind = .password, passkeyRequest: PasskeyAssertionRequest? = nil) async {
+        resetRequest()
         self.allServiceIdentifier = allServiceIdentifier
         requestKind = kind
-        pendingRequest = nil
+        passkeyAssertionRequest = passkeyRequest
         guard let backend = prepareBackend() else { return }
         applyStatus(backend.getStatus())
         if status.isUnlocked {
-            await loadAllMatchingLogin()
+            await loadAllMatchingCredential()
         }
     }
 
     func prepareInterfaceToProvideCredential(recordIdentifier: String, serviceIdentifier: String, kind: RequestKind = .password) async {
+        resetRequest()
         allServiceIdentifier = [serviceIdentifier]
         requestKind = kind
         pendingRequest = PendingCredentialRequest(recordIdentifier: recordIdentifier, serviceIdentifier: serviceIdentifier, kind: kind)
@@ -181,6 +218,82 @@ final class AutoFillModel: ObservableObject {
         }
     }
 
+    func prepareInterfaceToProvidePasskey(request: PasskeyAssertionRequest, credentialID: Data) async {
+        resetRequest()
+        allServiceIdentifier = []
+        requestKind = .password
+        passkeyAssertionRequest = request
+        pendingPasskeyCredentialID = credentialID
+        guard let backend = prepareBackend() else { return }
+        applyStatus(backend.getStatus())
+        if status.isUnlocked {
+            await finishPendingRequest()
+        }
+    }
+
+    // Like passwords, only an extension process that is still unlocked signs without user interaction.
+    func providePasskeyWithoutUserInteraction(request: PasskeyAssertionRequest, credentialID: Data) async -> PasskeyAssertionCredential? {
+        guard let backend, backend.getStatus().isUnlocked,
+              let result = try? await runInBackground({
+                  try backend.assertPasskey(relyingPartyID: request.relyingPartyID, credentialID: credentialID, clientDataHash: request.clientDataHash)
+              }) else { return nil }
+        return PasskeyAssertionCredential(relyingPartyID: request.relyingPartyID, clientDataHash: request.clientDataHash, result: result)
+    }
+
+    func prepareInterfaceForPasskeyRegistration(_ request: PasskeyRegistrationRequest) async {
+        resetRequest()
+        guard request.isAlgorithmSupported else {
+            cancel()
+            return
+        }
+        allServiceIdentifier = []
+        requestKind = .password
+        passkeyRegistrationRequest = request
+        guard let backend = prepareBackend() else { return }
+        applyStatus(backend.getStatus())
+        if status.isUnlocked {
+            await loadPasskeyRegistrationOptions()
+        }
+    }
+
+    func loadPasskeyRegistrationOptions() async {
+        guard let request = passkeyRegistrationRequest,
+              let options = await perform({ try $0.preparePasskeyRegistration(relyingPartyID: request.relyingPartyID, allExcludedCredentialID: request.allExcludedCredentialID) }) else { return }
+        passkeyRegistrationOptions = options
+        let userName = request.userName.trimmingCharacters(in: .whitespaces)
+        selectedRegistrationLoginID = options.allLogin.first { !userName.isEmpty && $0.username.caseInsensitiveCompare(userName) == .orderedSame }?.id
+    }
+
+    func savePasskey() async {
+        guard let request = passkeyRegistrationRequest, let options = passkeyRegistrationOptions, !options.isExcluded else { return }
+        let login = options.allLogin.first { $0.id == selectedRegistrationLoginID }
+        guard let result = await perform({ try $0.createPasskey(request, vaultID: login?.vaultID ?? "", itemID: login?.itemID ?? "") }) else { return }
+        guard let credential = PasskeyRegistrationCredential(relyingPartyID: request.relyingPartyID, clientDataHash: request.clientDataHash, result: result) else {
+            errorMessage = "Hisar could not read the new passkey."
+            return
+        }
+        passkeyCompletion.completeRegistration(credential)
+    }
+
+    func rejectExcludedPasskeyRegistration() {
+        passkeyCompletion.rejectExcludedRegistration()
+    }
+
+    func selectPasskey(_ passkey: StoredPasskey) async {
+        guard let request = passkeyAssertionRequest, let credentialID = Base64URL.decode(passkey.credentialID) else { return }
+        _ = await assertPasskey(request: request, credentialID: credentialID)
+    }
+
+    private func assertPasskey(request: PasskeyAssertionRequest, credentialID: Data) async -> Bool {
+        guard let result = await perform({ try $0.assertPasskey(relyingPartyID: request.relyingPartyID, credentialID: credentialID, clientDataHash: request.clientDataHash) }) else { return false }
+        guard let credential = PasskeyAssertionCredential(relyingPartyID: request.relyingPartyID, clientDataHash: request.clientDataHash, result: result) else {
+            errorMessage = "Hisar could not read the passkey signature."
+            return false
+        }
+        passkeyCompletion.completeAssertion(credential)
+        return true
+    }
+
     func showConfiguration() {
         screen = .configuration
     }
@@ -203,14 +316,24 @@ final class AutoFillModel: ObservableObject {
     private func handleUnlocked(_ newStatus: VaultStatus) async {
         applyStatus(newStatus)
         guard newStatus.isUnlocked else { return }
-        if pendingRequest != nil {
+        if passkeyRegistrationRequest != nil {
+            await loadPasskeyRegistrationOptions()
+        } else if pendingRequest != nil || pendingPasskeyCredentialID != nil {
             await finishPendingRequest()
         } else {
-            await loadAllMatchingLogin()
+            await loadAllMatchingCredential()
         }
     }
 
     private func finishPendingRequest() async {
+        if let credentialID = pendingPasskeyCredentialID, let request = passkeyAssertionRequest {
+            if await assertPasskey(request: request, credentialID: credentialID) {
+                return
+            }
+            pendingPasskeyCredentialID = nil
+            await loadAllMatchingCredential()
+            return
+        }
         guard let pendingRequest, let reference = LoginMatch.parseRecordIdentifier(pendingRequest.recordIdentifier) else {
             cancel()
             return
@@ -230,6 +353,19 @@ final class AutoFillModel: ObservableObject {
         }
         self.pendingRequest = nil
         await loadAllMatchingLogin()
+    }
+
+    func loadAllMatchingCredential() async {
+        await loadAllMatchingPasskey()
+        await loadAllMatchingLogin()
+    }
+
+    func loadAllMatchingPasskey() async {
+        guard let request = passkeyAssertionRequest else {
+            allMatchingPasskey = []
+            return
+        }
+        allMatchingPasskey = await perform({ try $0.listAllPasskeyForRelyingParty(relyingPartyID: request.relyingPartyID, allAllowedCredentialID: request.allAllowedCredentialID) }) ?? []
     }
 
     func loadAllMatchingLogin() async {

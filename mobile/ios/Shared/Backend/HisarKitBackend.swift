@@ -141,4 +141,53 @@ final class HisarKitBackend: VaultBackend {
     func getLoginForService(vaultID: String, itemID: String, serviceIdentifier: String) throws -> LoginCredential {
         try decode(LoginCredential.self, from: callReturningText { hisar.getLoginForService(vaultID, itemID: itemID, serviceIdentifier: serviceIdentifier, error: $0) })
     }
+
+    private struct PasskeyRegistrationPayload: Encodable {
+        var relyingPartyId: String
+        var userName: String
+        var userHandle: String
+        var clientDataHash: String
+        var excludeCredentials: [String]
+        var vaultID: String
+        var itemID: String
+    }
+
+    private static func encodeAllCredentialID(_ allCredentialID: [Data]) -> String {
+        let data = (try? JSONEncoder().encode(allCredentialID.map(Base64URL.encode))) ?? Data("[]".utf8)
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    func listAllPasskey() throws -> [StoredPasskey] {
+        try decode([StoredPasskey]?.self, from: callReturningText { hisar.listAllPasskey($0) }) ?? []
+    }
+
+    func listAllPasskeyForRelyingParty(relyingPartyID: String, allAllowedCredentialID: [Data]) throws -> [StoredPasskey] {
+        let allowedJSON = Self.encodeAllCredentialID(allAllowedCredentialID)
+        return try decode([StoredPasskey]?.self, from: callReturningText { hisar.listAllPasskey(forRelyingParty: relyingPartyID, allowedCredentialIDsJSON: allowedJSON, error: $0) }) ?? []
+    }
+
+    func preparePasskeyRegistration(relyingPartyID: String, allExcludedCredentialID: [Data]) throws -> PasskeyRegistrationOptions {
+        let excludedJSON = Self.encodeAllCredentialID(allExcludedCredentialID)
+        return try decode(PasskeyRegistrationOptions.self, from: callReturningText { hisar.preparePasskeyRegistration(relyingPartyID, excludedCredentialIDsJSON: excludedJSON, error: $0) })
+    }
+
+    func createPasskey(_ request: PasskeyRegistrationRequest, vaultID: String, itemID: String) throws -> PasskeyRegistrationResult {
+        let payload = PasskeyRegistrationPayload(
+            relyingPartyId: request.relyingPartyID, userName: request.userName, userHandle: Base64URL.encode(request.userHandle),
+            clientDataHash: Base64URL.encode(request.clientDataHash), excludeCredentials: request.allExcludedCredentialID.map(Base64URL.encode),
+            vaultID: vaultID, itemID: itemID
+        )
+        let registrationJSON = String(decoding: try JSONEncoder().encode(payload), as: UTF8.self)
+        return try decode(PasskeyRegistrationResult.self, from: callReturningText { hisar.createPasskey(registrationJSON, error: $0) })
+    }
+
+    func assertPasskey(relyingPartyID: String, credentialID: Data, clientDataHash: Data) throws -> PasskeyAssertionResult {
+        try decode(PasskeyAssertionResult.self, from: callReturningText {
+            hisar.assertPasskey(relyingPartyID, credentialID: Base64URL.encode(credentialID), clientDataHash: Base64URL.encode(clientDataHash), error: $0)
+        })
+    }
+
+    func deletePasskey(vaultID: String, itemID: String, credentialID: String) throws -> ItemDetail {
+        try decode(ItemDetail.self, from: callReturningText { hisar.deletePasskey(vaultID, itemID: itemID, credentialID: credentialID, error: $0) })
+    }
 }
