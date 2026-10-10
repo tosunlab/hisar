@@ -1,18 +1,23 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { clearError, recoverAccount, signIn, signUp, store } from "../store";
-import AppIcon from "./AppIcon.vue";
+import AppIcon, { type IconName } from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
 import StrengthMeter from "./StrengthMeter.vue";
 
 type Mode = "sign-in" | "create-account" | "recover-account";
 
+function getDisplayServer(serverURL: string): string {
+  return (serverURL || "api.tryhisar.com").replace(/^https:\/\//, "");
+}
+
 const mode = ref<Mode>("sign-in");
-const server = ref(store.status.server || "https://tryhisar.com");
+const server = ref(getDisplayServer(store.status.server));
 const email = ref(store.status.email);
 const secretKey = ref("");
 const password = ref("");
-const inviteLink = ref("");
+const inviteCode = ref("");
+const pastedInviteLink = ref("");
 const name = ref("");
 const repeatedPassword = ref("");
 const recoveryLink = ref("");
@@ -21,13 +26,58 @@ const passwordMismatch = computed(
   () => mode.value !== "sign-in" && repeatedPassword.value !== "" && password.value !== repeatedPassword.value,
 );
 const allHeading: Record<Mode, { title: string; subtitle: string }> = {
-  "sign-in": { title: "Welcome back", subtitle: "Sign in to use Hisar on this device." },
-  "create-account": { title: "Join your family's Hisar", subtitle: "Use the invite link your Hisar admin sent you." },
+  "sign-in": { title: "Welcome back", subtitle: "Sign in to Hisar on this Mac." },
+  "create-account": { title: "Create your account", subtitle: "Enter the invite code you received. Pasting the whole invite link works too." },
   "recover-account": {
     title: "Recover your account",
     subtitle: "Forgot your master password or lost your Secret Key? Use the recovery link your Hisar admin sent you.",
   },
 };
+
+type Feature = { icon: IconName; title: string; text: string };
+const allSignInFeature: Feature[] = [
+  {
+    icon: "key",
+    title: "SSH agent with Touch ID",
+    text: "Never store secrets and keys on your disk, Hisar handles it all for you. Signing and committing are safer than ever now!",
+  },
+  {
+    icon: "terminal",
+    title: "Made for the terminal",
+    text: "The hisar CLI reads passwords, one-time codes and keys through the app, so scripts never store them.",
+  },
+  { icon: "shield", title: "End-to-end encrypted", text: "Items are encrypted on your devices and never reach Hisar's servers unencrypted." },
+];
+const allCreateAccountFeature: Feature[] = [
+  {
+    icon: "shield",
+    title: "Safe even if the server is breached",
+    text: "Everything is encrypted before it leaves your devices. A stolen database is unreadable without your two secrets.",
+  },
+  {
+    icon: "key",
+    title: "Two secrets, only yours",
+    text: "Your master password and a Secret Key you get next. Neither is ever sent to the server, so nobody can reset them, not even an admin.",
+  },
+  { icon: "note", title: "An Emergency Kit to keep", text: "Print it or store it offline. With it, you can sign in again on any new device." },
+];
+const brand = computed(() =>
+  mode.value === "create-account"
+    ? { title: "Your everything, locked in your own fortress.", allFeature: allCreateAccountFeature }
+    : { title: "Your password companion for development", allFeature: allSignInFeature },
+);
+
+function readInviteCode(): void {
+  const match = inviteCode.value.trim().match(/\/invite\/([A-Za-z0-9_-]+)\/?$/);
+  if (match) {
+    pastedInviteLink.value = inviteCode.value.trim();
+    inviteCode.value = match[1];
+  }
+}
+
+function getInvite(): string {
+  return pastedInviteLink.value.endsWith(`/invite/${inviteCode.value}`) ? pastedInviteLink.value : inviteCode.value;
+}
 
 function switchMode(nextMode: Mode): void {
   mode.value = nextMode;
@@ -53,7 +103,7 @@ async function submitRecoverAccount(): Promise<void> {
     password.value = "";
     repeatedPassword.value = "";
     recoveryLink.value = "";
-    server.value = store.status.server || server.value;
+    server.value = store.status.server ? getDisplayServer(store.status.server) : server.value;
     email.value = store.status.email || email.value;
     mode.value = "sign-in";
   }
@@ -63,7 +113,7 @@ async function submitCreateAccount(): Promise<void> {
   if (password.value !== repeatedPassword.value) {
     return;
   }
-  const succeeded = await signUp(inviteLink.value, email.value, name.value, password.value);
+  const succeeded = await signUp(getInvite(), email.value, name.value, password.value);
   if (succeeded) {
     password.value = "";
     repeatedPassword.value = "";
@@ -77,32 +127,17 @@ async function submitCreateAccount(): Promise<void> {
       <div class="title-bar"></div>
       <div class="brand-content">
         <HisarLogo :size="36" show-wordmark />
-        <h2>Your family's passwords,<br />locked in your own fortress.</h2>
+        <h2 data-testid="brand-title">{{ brand.title }}</h2>
         <ul class="feature-list">
-          <li>
-            <span class="feature-icon"><AppIcon name="shield" /></span>
+          <li v-for="feature in brand.allFeature" :key="feature.title">
+            <span class="feature-icon"><AppIcon :name="feature.icon" /></span>
             <div>
-              <strong>End-to-end encrypted</strong>
-              <p>Items are encrypted on your devices. The server only ever stores ciphertext.</p>
-            </div>
-          </li>
-          <li>
-            <span class="feature-icon"><AppIcon name="key" /></span>
-            <div>
-              <strong>Two secrets</strong>
-              <p>Your master password and Secret Key are both needed. Neither ever leaves your devices.</p>
-            </div>
-          </li>
-          <li>
-            <span class="feature-icon"><AppIcon name="users" /></span>
-            <div>
-              <strong>Shared vaults</strong>
-              <p>Share a Family vault with the people you trust, on your own server.</p>
+              <strong>{{ feature.title }}</strong>
+              <p>{{ feature.text }}</p>
             </div>
           </li>
         </ul>
       </div>
-      <p class="brand-footer muted">Self-hosted · Zero-knowledge · Post-quantum</p>
     </aside>
 
     <main class="form-side">
@@ -152,9 +187,9 @@ async function submitCreateAccount(): Promise<void> {
             <span class="input-with-icon"><AppIcon name="lock" /><input v-model="password" name="password" type="password" autocomplete="current-password" required /></span>
           </label>
           <button class="primary full-width submit" type="submit" :disabled="store.isBusy">{{ store.isBusy ? "Signing in…" : "Sign in" }}</button>
-          <p class="hint muted">Your Secret Key is on your Emergency Kit, or on a device where you already use Hisar.</p>
+          <p class="hint muted">Your Secret Key is in your Emergency Kit, or on any device already signed in.</p>
           <p class="hint muted">
-            Forgot your master password or lost your Secret Key?
+            Lost your master password or Secret Key?
             <button type="button" class="link" data-testid="open-recover-account" @click="switchMode('recover-account')">Recover account</button>
           </p>
         </form>
@@ -189,12 +224,23 @@ async function submitCreateAccount(): Promise<void> {
 
         <form v-else @submit.prevent="submitCreateAccount">
           <label>
-            <span>Invite link</span>
-            <span class="input-with-icon"><AppIcon name="external" /><input v-model="inviteLink" name="inviteLink" placeholder="https://tryhisar.com/invite/…" autocomplete="off" required /></span>
+            <span>Invite code</span>
+            <span class="input-with-icon">
+              <AppIcon name="external" />
+              <input
+                v-model="inviteCode"
+                name="inviteCode"
+                placeholder="Invite code or link"
+                autocomplete="off"
+                spellcheck="false"
+                required
+                @input="readInviteCode"
+              />
+            </span>
           </label>
           <div class="two-columns">
             <label>
-              <span>Your name</span>
+              <span>Name</span>
               <input v-model="name" name="name" autocomplete="name" required />
             </label>
             <label>
@@ -214,7 +260,7 @@ async function submitCreateAccount(): Promise<void> {
           <button class="primary full-width submit" type="submit" :disabled="store.isBusy || passwordMismatch">
             {{ store.isBusy ? "Creating account…" : "Create account" }}
           </button>
-          <p class="hint muted">Nobody can reset your master password for you. Pick one you will remember.</p>
+          <p class="hint muted">Your master password never leaves this Mac, so nobody can reset it for you, not even Hisar.</p>
         </form>
       </div>
     </main>
@@ -287,11 +333,6 @@ async function submitCreateAccount(): Promise<void> {
 .feature-list p {
   margin: 2px 0 0;
   color: var(--color-text-muted);
-}
-
-.brand-footer {
-  margin: 0;
-  font-size: 12px;
 }
 
 .form-side {

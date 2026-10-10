@@ -141,8 +141,8 @@ export async function signIn(server: string, email: string, secretKey: string, p
   return status !== undefined;
 }
 
-export async function signUp(inviteLink: string, email: string, name: string, password: string): Promise<boolean> {
-  const result = await runAction(() => api.signUp(inviteLink, email, name, password));
+export async function signUp(invite: string, email: string, name: string, password: string): Promise<boolean> {
+  const result = await runAction(() => api.signUp(invite, email, name, password));
   if (result) {
     store.pendingSecretKey = result.secretKey;
     store.isRecoverySubmitted = false;

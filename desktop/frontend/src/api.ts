@@ -109,8 +109,8 @@ const wailsApi = {
   getStatus: (): Promise<Status> => Service.GetStatus(),
   signIn: (server: string, email: string, secretKey: string, password: string): Promise<Status> =>
     Service.SignIn(server, email, secretKey, password),
-  signUp: (inviteLink: string, email: string, name: string, password: string): Promise<SignUpResult> =>
-    Service.SignUp(inviteLink, email, name, password),
+  signUp: (invite: string, email: string, name: string, password: string): Promise<SignUpResult> =>
+    Service.SignUp(invite, email, name, password),
   unlock: (password: string): Promise<Status> => Service.Unlock(password),
   lock: (): Promise<Status> => Service.Lock(),
   signOut: (): Promise<Status> => Service.SignOut(),

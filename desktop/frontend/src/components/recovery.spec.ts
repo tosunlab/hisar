@@ -320,7 +320,7 @@ describe("Recovering an account from the sign-in screen", () => {
     const signInView = mount(SignInView);
     expect(signInView.find('[data-testid="recovery-submitted"]').text()).toContain("Once your admin completes it");
     expect((signInView.find('input[name="email"]').element as HTMLInputElement).value).toBe("bob@example.com");
-    expect((signInView.find('input[name="server"]').element as HTMLInputElement).value).toBe("https://hisar.test");
+    expect((signInView.find('input[name="server"]').element as HTMLInputElement).value).toBe("hisar.test");
     signInView.unmount();
   });
 });

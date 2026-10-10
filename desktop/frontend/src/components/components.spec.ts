@@ -60,7 +60,7 @@ describe("App", () => {
     api.getStatus.mockResolvedValue(createStatus("signed-out"));
     const wrapper = mount(App);
     await flushPromises();
-    expect(wrapper.text()).toContain("Sign in to use Hisar on this device");
+    expect(wrapper.text()).toContain("Sign in to Hisar on this Mac.");
 
     api.getStatus.mockResolvedValue(createStatus("locked"));
     store.status = createStatus("locked");
@@ -97,7 +97,7 @@ describe("SignInView", () => {
     await wrapper.find('input[name="password"]').setValue("master password");
     await wrapper.find("form").trigger("submit");
     await flushPromises();
-    expect(api.signIn).toHaveBeenCalledWith("https://hisar.test", "alice@example.com", "H1-KEY", "master password");
+    expect(api.signIn).toHaveBeenCalledWith("hisar.test", "alice@example.com", "H1-KEY", "master password");
   });
 
   it("blocks account creation when the passwords differ", async () => {
@@ -115,6 +115,51 @@ describe("SignInView", () => {
     store.errorMessage = "cannot reach the Hisar server; check your connection";
     const wrapper = mount(SignInView);
     expect(wrapper.find('[role="alert"]').text()).toContain("cannot reach the Hisar server");
+  });
+
+  it("shows the developer panel for sign in and the safety panel for account creation", async () => {
+    const wrapper = mount(SignInView);
+    expect(wrapper.find('[data-testid="brand-title"]').text()).toBe("Your password companion for development");
+    expect(wrapper.text()).toContain("Made for the terminal");
+    await wrapper.findAll('[role="tab"]')[1].trigger("click");
+    expect(wrapper.find('[data-testid="brand-title"]').text()).toBe("Your everything, locked in your own fortress.");
+    expect(wrapper.text()).toContain("Safe even if the server is breached");
+  });
+
+  it("prefills the hosted server without the scheme", () => {
+    store.status = { ...store.status, server: "" };
+    const wrapper = mount(SignInView);
+    expect((wrapper.find('input[name="server"]').element as HTMLInputElement).value).toBe("api.tryhisar.com");
+  });
+
+  it("turns a pasted invite link into its code and signs up with the link", async () => {
+    api.signUp.mockResolvedValue({ secretKey: "H1-NEW", status: createStatus("unlocked") });
+    const wrapper = mount(SignInView);
+    await wrapper.findAll('[role="tab"]')[1].trigger("click");
+    const inviteInput = wrapper.find('input[name="inviteCode"]');
+    await inviteInput.setValue("https://hisar.example.com/invite/abc_DEF-123");
+    expect((inviteInput.element as HTMLInputElement).value).toBe("abc_DEF-123");
+    await wrapper.find('input[name="name"]').setValue("Alice");
+    await wrapper.find('input[name="email"]').setValue("alice@example.com");
+    await wrapper.find('input[name="password"]').setValue("long master password");
+    await wrapper.find('input[name="repeatedPassword"]').setValue("long master password");
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(api.signUp).toHaveBeenCalledWith("https://hisar.example.com/invite/abc_DEF-123", "alice@example.com", "Alice", "long master password");
+  });
+
+  it("signs up with a typed invite code", async () => {
+    api.signUp.mockResolvedValue({ secretKey: "H1-NEW", status: createStatus("unlocked") });
+    const wrapper = mount(SignInView);
+    await wrapper.findAll('[role="tab"]')[1].trigger("click");
+    await wrapper.find('input[name="inviteCode"]').setValue("abc123");
+    await wrapper.find('input[name="name"]').setValue("Alice");
+    await wrapper.find('input[name="email"]').setValue("alice@example.com");
+    await wrapper.find('input[name="password"]').setValue("long master password");
+    await wrapper.find('input[name="repeatedPassword"]').setValue("long master password");
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(api.signUp).toHaveBeenCalledWith("abc123", "alice@example.com", "Alice", "long master password");
   });
 });
 
