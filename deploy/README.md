@@ -1,20 +1,65 @@
 # Deploying hisar-server
 
-Docker Compose runs Postgres, `hisar-server` and Caddy (automatic HTTPS for `tryhisar.com`).
+Docker Compose runs Postgres and `hisar-server` from the container registry (linux/amd64 and linux/arm64). The server
+listens on `127.0.0.1:8080` only; your nginx terminates TLS and proxies to it.
+
+## Images
+
+Pushing a tag `v*` runs the `server-image` job of the GitLab pipeline, which publishes
+`reg.tryhisar.com/hisar/core/hisar-server` as `:<version>`, `:<major>.<minor>`, `:latest` and `:sha-<commit>`, for
+linux/amd64 and linux/arm64. Running the pipeline by hand from a branch offers the job as a manual action that publishes
+`:sha-<commit>` only.
+
+The runners are unprivileged, so the job does not use Docker: `scripts/build-server-image.sh` cross-compiles the server
+and appends it to the distroless base with [crane](https://github.com/google/go-containerregistry), giving the same image
+as `deploy/Dockerfile`. Merge requests run the same script against a throwaway registry and boot the result.
+
+reg.tryhisar.com is behind basic auth. The job logs in with two CI/CD variables (Settings → CI/CD → Variables, on the
+project or the `hisar` group):
+
+| Variable | Value | Flags |
+|---|---|---|
+| `REGISTRY_USERNAME` | a basic-auth user that may push | protected if only protected tags may publish |
+| `REGISTRY_PASSWORD` | its password | masked, protected as above |
+
+On the server, log in once with a basic-auth user that only needs to pull, and keep `HISAR_IMAGE` in `.env` as in the
+example:
+
+```sh
+docker login reg.tryhisar.com
+```
 
 ## First start
 
+Copy `compose.yaml`, `.env.example` and `hisar.env.example` to the server (for example `/opt/hisar`), then:
+
 ```sh
-cd deploy
-openssl rand -base64 32 | tr -d '\n' > db_password.txt
-cp hisar.env.example hisar.env      # put the same password into HISAR_DATABASE_URL
+cp .env.example .env                # set HISAR_DOMAIN and HISAR_IMAGE, pin HISAR_VERSION
+openssl rand -hex 32 | tr -d '\n' > db_password.txt
+sed "s/CHANGE_ME/$(cat db_password.txt)/" hisar.env.example > hisar.env
 chmod 600 db_password.txt hisar.env
-docker compose up -d --build
+docker compose up -d
+curl http://127.0.0.1:8080/healthz  # ok
 ```
 
-Point the `tryhisar.com` DNS A/AAAA records at the server before starting, so Caddy can get a certificate.
+On first start `hisar-server` creates `/data/hisar-secrets.json` in the `hisar-data` volume (OPAQUE server key and HMAC
+key). **Back it up**: if it is lost, nobody can log in and every account must be re-created.
 
-On first start `hisar-server` creates `/data/hisar-secrets.json` in the `hisar-data` volume (OPAQUE server key and HMAC key). **Back it up**: if it is lost, nobody can log in and every account must be re-created.
+## nginx
+
+`nginx.conf` is a site for `/etc/nginx/sites-available/`: replace `hisar.example.com` and the certificate paths
+(e.g. from `certbot certonly --nginx -d <domain>`), and keep the port in line with `HISAR_PORT`. What the server needs from
+the proxy:
+
+- `client_max_body_size 32m`: vault key rotation uploads a whole vault.
+- `/api/v1/events` (instant sync) unbuffered with a long `proxy_read_timeout`; the server sends a heartbeat every 25 s.
+- `X-Forwarded-For` from `$proxy_add_x_forwarded_for`: with `HISAR_TRUST_PROXY=true` the server rate-limits by its last
+  entry, the address nginx saw.
+
+```sh
+sudo nginx -t && sudo systemctl reload nginx
+curl https://<domain>/healthz       # ok
+```
 
 ## Invite yourself (admin)
 
@@ -22,15 +67,18 @@ On first start `hisar-server` creates `/data/hisar-secrets.json` in the `hisar-d
 docker compose exec hisar hisar-server invite
 ```
 
-It asks for the email address; the first invite defaults to the admin role. Open the printed link with the CLI:
+It asks for the email address; the first invite defaults to the admin role. Open the printed link in the desktop app,
+the iPhone app, or the CLI (`hisar signup https://<domain>/invite/<token>`).
+
+## Upgrades
 
 ```sh
-hisar signup https://tryhisar.com/invite/<token>
+# set HISAR_VERSION in .env to the new release
+docker compose pull && docker compose up -d
 ```
 
-## Database migrations
-
-Migrations live in `server/internal/store/migrations` and run with [goose](https://github.com/pressly/goose). `hisar-server serve` applies pending migrations on start, guarded by a Postgres advisory lock. For production upgrades you can run them explicitly first:
+`hisar-server serve` applies pending migrations on start, guarded by a Postgres advisory lock. To run them explicitly
+first:
 
 ```sh
 docker compose run --rm hisar migrate status
@@ -47,8 +95,8 @@ Back up nightly and copy off the server:
 - `docker compose exec postgres pg_dump -U hisar hisar` (ciphertext only, but still keep it encrypted, e.g. with `age`)
 - the `hisar-data` volume (`hisar-secrets.json`)
 
-## Building for another architecture
+## Building from source
 
 ```sh
-docker buildx build --platform linux/amd64 -f deploy/Dockerfile -t hisar-server .
+docker compose -f compose.yaml -f compose.build.yaml up -d --build
 ```

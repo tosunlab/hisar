@@ -1,8 +1,10 @@
-FROM golang:1.26 AS build
+FROM --platform=$BUILDPLATFORM golang:1.26 AS build
+ARG TARGETOS
+ARG TARGETARCH
 WORKDIR /src
 COPY core core
 COPY server server
-RUN cd server && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /hisar-server ./cmd/hisar-server
+RUN cd server && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /hisar-server ./cmd/hisar-server
 RUN mkdir /data
 
 FROM gcr.io/distroless/static-debian12:nonroot

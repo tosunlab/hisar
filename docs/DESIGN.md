@@ -359,8 +359,8 @@ All under `/api/v1`. JSON bodies, base64url for binary fields.
 
 - Single static binary `hisar-server` in a Docker image, with Postgres 17 alongside it in Docker Compose.
 - Schema migrations: goose (`pressly/goose`), SQL files embedded in the binary, up and down sections, applied on start under a Postgres advisory lock or explicitly with `hisar-server migrate up|down|status`.
-- HTTP framework: Fiber v3 (fasthttp). It serves plain HTTP behind the reverse proxy; HTTP/2 and TLS are handled by Caddy.
-- Served publicly at `https://tryhisar.com`, TLS terminated by Caddy (automatic certificates) in front.
+- HTTP framework: Fiber v3 (fasthttp). It serves plain HTTP behind the reverse proxy; HTTP/2 and TLS are handled by the reverse proxy (nginx in the reference deployment).
+- Served publicly over https behind nginx, which terminates TLS. The GitLab pipeline publishes the image for amd64 and arm64 to the container registry on every `v*` tag.
 - Attachments on local disk (later: S3-compatible storage).
 - Nightly `pg_dump` + attachments encrypted with `age` and copied off-server. Restore tested quarterly.
 
@@ -628,7 +628,7 @@ desktop/    Wails v3 app (Go + Vue): vault/ backend, agent/ SSH agent, passkey/ 
 extension/  Browser extension (TypeScript)                            (Phase 3)
 mobile/     iOS + Android apps on top of gomobile-bound core          (Phase 4)
 docs/       Design and decisions
-deploy/     Dockerfile, Docker Compose (Postgres + server + Caddy), deployment notes
+deploy/     Dockerfile, Docker Compose (Postgres + server), nginx site, deployment notes
 scripts/    test-end-to-end.sh: end-to-end test of the built server and CLI (run in CI)
 go.work     Ties the Go modules together for local development
 ```

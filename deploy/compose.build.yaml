@@ -1,0 +1,6 @@
+services:
+  hisar:
+    image: hisar-server:local
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
