@@ -24,6 +24,8 @@ type Status struct {
 	BiometricReady     bool `json:"biometricReady"`
 	// IsOffline: the server could not be reached, so vaults and items come from this device's encrypted cache.
 	IsOffline bool `json:"isOffline"`
+	// AutoLockSeconds is how long Hisar stays unlocked without activity.
+	AutoLockSeconds int `json:"autoLockSeconds"`
 }
 
 // Biometric is the platform's user-presence check and keychain storage for the biometric unlock key.

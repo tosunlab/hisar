@@ -107,6 +107,7 @@ function normalizeImportProgress(boundProgress: BoundImportProgress): ImportProg
 
 const wailsApi = {
   getStatus: (): Promise<Status> => Service.GetStatus(),
+  setAutoLock: (seconds: number): Promise<Status> => Service.SetAutoLock(seconds),
   signIn: (server: string, email: string, secretKey: string, password: string): Promise<Status> =>
     Service.SignIn(server, email, secretKey, password),
   signUp: (invite: string, email: string, name: string, password: string): Promise<SignUpResult> =>

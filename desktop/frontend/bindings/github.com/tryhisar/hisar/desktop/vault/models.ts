@@ -223,6 +223,11 @@ export interface Status {
      * IsOffline: the server could not be reached, so vaults and items come from this device's encrypted cache.
      */
     "isOffline": boolean;
+
+    /**
+     * AutoLockSeconds is how long Hisar stays unlocked without activity.
+     */
+    "autoLockSeconds": number;
 }
 
 export interface UpdateStatus {

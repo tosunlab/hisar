@@ -15,6 +15,7 @@ import {
   removeSSHConfig,
   revokeDevice,
   saveEmergencyKit,
+  setAutoLock,
   signOut,
   startAccountRecovery,
   store,
@@ -27,6 +28,13 @@ import UpdatesSection from "./UpdatesSection.vue";
 import AppIcon from "./AppIcon.vue";
 import MemberAvatar from "./MemberAvatar.vue";
 
+const allAutoLockOption = [
+  { seconds: 30, label: "30 seconds" },
+  { seconds: 60, label: "1 minute" },
+  { seconds: 300, label: "5 minutes" },
+  { seconds: 600, label: "10 minutes" },
+  { seconds: 3600, label: "1 hour" },
+];
 const isEnablingTouchID = ref(false);
 const touchIDPassword = ref("");
 const isConfirmingSignOut = ref(false);
@@ -185,8 +193,18 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
           <span class="setting-icon"><AppIcon name="lock" /></span>
           <div class="setting-text">
             <strong>Auto-lock</strong>
-            <p class="muted">Hisar locks after 10 minutes without activity. Copied values are cleared after 90 seconds.</p>
+            <p class="muted">Hisar locks after this long without activity. Copied values are cleared after 90 seconds.</p>
           </div>
+          <select
+            class="auto-lock"
+            aria-label="Auto-lock after"
+            data-testid="auto-lock"
+            :value="store.status.autoLockSeconds"
+            :disabled="store.isBusy"
+            @change="setAutoLock(Number(($event.target as HTMLSelectElement).value))"
+          >
+            <option v-for="option in allAutoLockOption" :key="option.seconds" :value="option.seconds">{{ option.label }}</option>
+          </select>
         </div>
         <div class="setting">
           <span class="setting-icon"><AppIcon name="note" /></span>
@@ -399,6 +417,11 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
 </template>
 
 <style scoped>
+.auto-lock {
+  flex: none;
+  width: auto;
+}
+
 .overlay {
   position: fixed;
   inset: 0;

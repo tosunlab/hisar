@@ -129,7 +129,32 @@ func (s *Service) buildStatus() Status {
 	status.BiometricAvailable = s.config.Biometric != nil && s.config.Biometric.IsAvailable()
 	status.BiometricEnabled = len(s.state.BiometricUnlock) > 0
 	status.BiometricReady = status.State == StateLocked && s.isBiometricReady()
+	status.AutoLockSeconds = int(s.getAutoLockAfter() / time.Second)
 	return status
+}
+
+var allAutoLockSeconds = []int{30, 60, 300, 600, 3600}
+
+func (s *Service) getAutoLockAfter() time.Duration {
+	if slices.Contains(allAutoLockSeconds, s.state.AutoLockSeconds) {
+		return time.Duration(s.state.AutoLockSeconds) * time.Second
+	}
+	return s.config.AutoLockAfter
+}
+
+// SetAutoLock stores how long Hisar stays unlocked without activity and restarts the countdown.
+func (s *Service) SetAutoLock(seconds int) (Status, error) {
+	if !slices.Contains(allAutoLockSeconds, seconds) {
+		return Status{}, errors.New("choose 30 seconds, 1 minute, 5 minutes, 10 minutes or 1 hour")
+	}
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.state.AutoLockSeconds = seconds
+	if err := s.state.Save(); err != nil {
+		return Status{}, err
+	}
+	s.resetLockTimer()
+	return s.buildStatus(), nil
 }
 
 func (s *Service) GetStatus() Status {
@@ -152,7 +177,7 @@ func (s *Service) resetLockTimer() {
 	if s.lockTimer != nil {
 		s.lockTimer.Stop()
 	}
-	s.lockTimer = time.AfterFunc(s.config.AutoLockAfter, s.lockFromTimer)
+	s.lockTimer = time.AfterFunc(s.getAutoLockAfter(), s.lockFromTimer)
 }
 
 func (s *Service) lockFromTimer() {

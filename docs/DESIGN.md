@@ -379,7 +379,7 @@ All clients use `core/` for crypto, the local store and sync.
   - `session.Session.Cache`: listing vaults replaces the cached list and forgets vaults that disappeared (removed access). Listing items asks for changes since the cached `seq`, applies them page by page in one transaction each (tombstones delete the row), and decrypts from the cache. A `nextSeq` below the cached `seq` is a rollback (§7.5). A cached item that no longer decrypts makes the vault download from `seq` 0 once.
   - The server counts as unreachable on a connection error or a 502/503/504 from the reverse proxy (`client.IsUnreachable`). Then reads, unlock with the master password, Touch ID unlock and the master password check come from the cache, and the session reports `IsOffline`. Any other error, such as 401 for a revoked device, is never hidden by the cache.
   - Offline, the app shows an "Offline" notice and refuses changes with a clear message. Edits are not queued; that would need the merge of §7.4. Background sync runs every 60 s and when the window gets focus, and stays quiet while an item is being edited.
-- Auto-lock after idle time and on screen lock/sleep. Clipboard cleared after 90 s.
+- Auto-lock after idle time (chosen in Settings: 30 seconds, 1 minute, 5 minutes, 10 minutes by default, or 1 hour; a device preference kept across sign-out) and on screen lock/sleep. Clipboard cleared after 90 s.
 - Ships the native-messaging host for the browser extension and the `hisar` CLI, which can use the app's session (§9.4).
 - Runs the SSH agent (§9.6) and handles Touch ID (§5.4).
 

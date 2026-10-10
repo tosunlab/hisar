@@ -114,6 +114,7 @@ function getInitialState(): string {
 let previewState = getInitialState();
 let previewSignedOutEmail = "alper@tryhisar.com";
 let isPreviewBiometricEnabled = new URLSearchParams(window.location.search).get("touchId") === "1";
+let previewAutoLockSeconds = 600;
 const previewStatus = (): Status => ({
   state: previewState,
   server: "https://tryhisar.com",
@@ -123,6 +124,7 @@ const previewStatus = (): Status => ({
   biometricEnabled: isPreviewBiometricEnabled,
   biometricReady: isPreviewBiometricEnabled && previewState === "locked",
   isOffline: new URLSearchParams(window.location.search).get("offline") === "1",
+  autoLockSeconds: previewAutoLockSeconds,
 });
 let isPreviewSSHConfigured = new URLSearchParams(window.location.search).get("sshConfigured") === "1";
 const previewAgentStatus = (backupPath = ""): SSHAgentStatus => {
@@ -460,6 +462,10 @@ export const previewApi = {
   cancelImport: () => Promise.resolve(),
   deleteImportFile: () => resolveAfterDelay(undefined),
   getStatus: () => resolveAfterDelay(previewStatus()),
+  setAutoLock: (seconds: number) => {
+    previewAutoLockSeconds = seconds;
+    return resolveAfterDelay(previewStatus());
+  },
   signIn: () => {
     previewState = "unlocked";
     return resolveAfterDelay(previewStatus());
