@@ -195,9 +195,12 @@ func TestSetUpRecoveryWrapsOwnedVaults(t *testing.T) {
 	test := createUnlockedTestService(t)
 	service := test.service
 
+	service.mutex.Lock()
+	service.unlockedSession.Role = proto.RoleMember
+	service.mutex.Unlock()
 	status, err := service.GetRecoveryStatus()
 	if err != nil || status.IsSetUp || !status.IsAdmin {
-		t.Fatalf("status before setup: %+v %v", status, err)
+		t.Fatalf("status before setup, promoted to admin after unlocking: %+v %v", status, err)
 	}
 	if _, err := service.EnableRecoveryForAllVault(); !errors.Is(err, errRecoveryNotSetUp) {
 		t.Errorf("enable before setup: %v", err)

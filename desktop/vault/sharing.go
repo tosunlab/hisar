@@ -275,9 +275,6 @@ func (s *Service) InviteMember(email, role string) (string, error) {
 	if role != proto.RoleAdmin && role != proto.RoleMember {
 		return "", errors.New("choose admin or member")
 	}
-	if s.unlockedSession.Role != proto.RoleAdmin {
-		return "", errAdminOnly
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	response, err := s.unlockedSession.Client.Invite(ctx, &proto.InviteRequest{Email: email, Role: role})
