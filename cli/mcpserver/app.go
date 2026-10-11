@@ -92,7 +92,7 @@ func (session *appSession) call(ctx context.Context, identity cliprotocol.Reques
 	if session.connection == nil {
 		connection, err := session.dial(ctx)
 		if err != nil {
-			return fmt.Errorf("Hisar is not available: %v. Ask the user to open the Hisar app and to keep Settings → Command-line tool → “Let the command-line tool use Hisar” on.", err)
+			return fmt.Errorf("Hisar is not available: %v. Ask the user to open the Hisar app and to keep Settings → Developer tools → “Let the command-line tool use Hisar” on.", err)
 		}
 		identity.Type = cliprotocol.TypeAgentHello
 		if err := connection.Call(ctx, identity, nil); err != nil {
@@ -134,7 +134,7 @@ func describeAppError(err error) error {
 	case cliprotocol.ErrorSignedOut:
 		return errors.New("Hisar is not signed in. Ask the user to sign in to the Hisar app.")
 	case cliprotocol.ErrorIntegrationDisabled:
-		return errors.New("The Hisar app does not let the command-line tool use it. Ask the user to turn on Settings → Command-line tool → “Let the command-line tool use Hisar”.")
+		return errors.New("The Hisar app does not let the command-line tool use it. Ask the user to turn on Settings → Developer tools → “Let the command-line tool use Hisar”.")
 	case cliprotocol.ErrorLocked:
 		return errors.New("Hisar is locked. Ask the user to unlock the Hisar app.")
 	}

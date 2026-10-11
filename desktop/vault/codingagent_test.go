@@ -167,7 +167,7 @@ func TestAgentSeesOnlyTheVaultsAvailableToAgents(t *testing.T) {
 	test := createCodingAgentTest(t)
 	var vaultOutput mcpserver.ListVaultsOutput
 	test.mustCall(t, "list_vaults", map[string]any{}, &vaultOutput)
-	if len(vaultOutput.Vaults) != 0 || !strings.Contains(vaultOutput.Message, "Settings → Coding agents") {
+	if len(vaultOutput.Vaults) != 0 || !strings.Contains(vaultOutput.Message, "Settings → Developer tools → Coding agents") {
 		t.Fatalf("vaults are visible by default: %+v", vaultOutput)
 	}
 	if text, isError := test.call(t, "get_secret", map[string]any{"reference": "hisar://Personal/GitHub/password"}); !isError || !strings.Contains(text, "no vault is available to coding agents") {

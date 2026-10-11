@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { api, getErrorMessage, type LoginItemStatus } from "../api";
-import AppIcon from "./AppIcon.vue";
+import { useSettingsRowVisibility } from "../settingsSections";
+
+const isRowVisible = useSettingsRowVisibility();
 
 const loginItemStatus = ref<LoginItemStatus | null>(null);
 const isChanging = ref(false);
@@ -53,72 +55,39 @@ onMounted(() => applyChange(() => api.getLoginItemStatus()));
 </script>
 
 <template>
-  <section data-testid="open-at-login-section">
-    <p class="section-label">App</p>
-    <label class="setting open-at-login">
-      <span class="setting-icon"><AppIcon name="laptop" /></span>
-      <div class="setting-text">
-        <strong>Open Hisar at login</strong>
-        <p class="muted">Keeps the SSH agent and the command-line tool available. ssh, git and commit signing cannot start Hisar themselves.</p>
-        <p class="muted" data-testid="login-item-state">
-          <span v-if="stateDescription.tone" class="state-dot" :class="stateDescription.tone"></span>{{ stateDescription.text }}
-        </p>
+  <section v-show="isRowVisible('open-at-login')" class="settings-block" data-testid="open-at-login-section">
+    <p class="section-label">Startup</p>
+    <div class="settings-group">
+      <label class="setting">
+        <div class="setting-text">
+          <strong>Open Hisar at login</strong>
+          <p class="muted">Keeps the SSH agent and the command-line tool available. ssh, git and commit signing cannot start Hisar themselves.</p>
+          <p class="muted" data-testid="login-item-state">
+            <span v-if="stateDescription.tone" class="state-dot" :class="stateDescription.tone"></span>{{ stateDescription.text }}
+          </p>
+        </div>
+        <input
+          class="switch"
+          type="checkbox"
+          name="openAtLogin"
+          :checked="loginItemStatus?.isOpenAtLogin ?? false"
+          :disabled="!loginItemStatus?.isAvailable || isChanging"
+          @change="applyChange(() => api.setOpenAtLogin(($event.target as HTMLInputElement).checked))"
+        />
+      </label>
+      <div v-if="loginItemStatus?.isOpenAtLogin && loginItemStatus.systemState !== 'enabled'" class="settings-group-detail">
+        <button
+          v-if="loginItemStatus.systemState === 'requires-approval' && loginItemStatus.canOpenSystemSettings"
+          data-testid="open-login-items"
+          @click="openLoginItemSettings"
+        >
+          Open Login Items
+        </button>
+        <button v-if="loginItemStatus.systemState === 'not-registered'" data-testid="add-login-item" :disabled="isChanging" @click="applyChange(() => api.setOpenAtLogin(true))">
+          Add again
+        </button>
       </div>
-      <input
-        type="checkbox"
-        name="openAtLogin"
-        :checked="loginItemStatus?.isOpenAtLogin ?? false"
-        :disabled="!loginItemStatus?.isAvailable || isChanging"
-        @change="applyChange(() => api.setOpenAtLogin(($event.target as HTMLInputElement).checked))"
-      />
-    </label>
-    <div v-if="loginItemStatus?.isOpenAtLogin && loginItemStatus.systemState !== 'enabled'" class="login-item-actions">
-      <button
-        v-if="loginItemStatus.systemState === 'requires-approval' && loginItemStatus.canOpenSystemSettings"
-        data-testid="open-login-items"
-        @click="openLoginItemSettings"
-      >
-        Open Login Items
-      </button>
-      <button v-if="loginItemStatus.systemState === 'not-registered'" data-testid="add-login-item" :disabled="isChanging" @click="applyChange(() => api.setOpenAtLogin(true))">
-        Add again
-      </button>
     </div>
-    <p v-if="errorMessage" class="error" role="alert" data-testid="login-item-error">{{ errorMessage }}</p>
+    <p v-if="errorMessage" class="error settings-note" role="alert" data-testid="login-item-error">{{ errorMessage }}</p>
   </section>
 </template>
-
-<style scoped>
-.open-at-login {
-  cursor: pointer;
-}
-
-.open-at-login input {
-  width: auto;
-}
-
-.login-item-actions {
-  padding: 0 0 8px 44px;
-}
-
-.state-dot {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  margin-right: 6px;
-  border-radius: 50%;
-  vertical-align: 1px;
-}
-
-.state-dot.running {
-  background: var(--color-success);
-}
-
-.state-dot.warning {
-  background: var(--color-warning);
-}
-
-.state-dot.stopped {
-  background: var(--color-text-muted);
-}
-</style>

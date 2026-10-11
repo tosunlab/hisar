@@ -8,7 +8,7 @@ type CommandLineRunner interface {
 	GetStatus() commandline.RunnerStatus
 }
 
-// CommandLineStatus is Settings → Command-line tool: the installed hisar, the PATH, and the app integration.
+// CommandLineStatus is Settings → Developer tools → Command-line tool: the installed hisar, the PATH, and the app integration.
 type CommandLineStatus struct {
 	IsAvailable              bool                       `json:"isAvailable"`
 	BundledPath              string                     `json:"bundledPath"`
@@ -24,7 +24,7 @@ type CommandLineStatus struct {
 	ErrorMessage             string                     `json:"errorMessage"`
 }
 
-// CommandLineService is bound to the UI for Settings → Command-line tool.
+// CommandLineService is bound to the UI for Settings → Developer tools → Command-line tool.
 type CommandLineService struct {
 	service   *Service
 	installer *commandline.Installer

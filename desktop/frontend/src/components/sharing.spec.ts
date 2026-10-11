@@ -278,7 +278,8 @@ describe("Settings people and devices", () => {
     const wrapper = mount(SettingsPanel);
     await flushPromises();
     const people = wrapper.find('[data-testid="people-section"]');
-    expect(people.find('.section-label').text()).toBe("People");
+    await wrapper.find('[data-testid="settings-section-people"]').trigger("click");
+    expect(wrapper.find("#settings-title").text()).toBe("People");
     expect(people.text()).not.toMatch(/admin/i);
     const bob = people.find('[data-testid="person-BOB222"]');
     expect(bob.text()).toContain("bob@example.com");
@@ -304,6 +305,7 @@ describe("Settings people and devices", () => {
     api.invitePerson.mockResolvedValue(undefined);
     const wrapper = mount(SettingsPanel);
     await flushPromises();
+    await wrapper.find('[data-testid="settings-section-people"]').trigger("click");
     await wrapper.find('[data-testid="start-invite"]').trigger("click");
     expect(wrapper.find('[data-testid="invite-role"]').exists()).toBe(false);
     await wrapper.find('input[name="inviteEmail"]').setValue("dan@example.com");

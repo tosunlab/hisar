@@ -52,6 +52,9 @@ function handleShortcut(event: KeyboardEvent): void {
     return;
   }
   const key = event.key.toLowerCase();
+  if (key === "f" && store.isSettingsOpen) {
+    return;
+  }
   if (key === "f") {
     event.preventDefault();
     searchInput.value?.focus();

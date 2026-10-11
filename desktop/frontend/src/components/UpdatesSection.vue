@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted } from "vue";
 import { checkForUpdates, loadUpdateStatus, setAutomaticUpdateCheck, store } from "../store";
-import AppIcon from "./AppIcon.vue";
+import { useSettingsRowVisibility } from "../settingsSections";
+
+const isRowVisible = useSettingsRowVisibility();
 
 const updateStatus = computed(() => store.updateStatus);
 const canCheck = computed(() => updateStatus.value?.isAvailable === true && updateStatus.value.isSignedIn && !store.isBusy);
@@ -35,39 +37,30 @@ onMounted(loadUpdateStatus);
 </script>
 
 <template>
-  <section data-testid="updates-section">
+  <section v-show="isRowVisible('version') || isRowVisible('automatic-updates')" class="settings-block" data-testid="updates-section">
     <p class="section-label">Updates</p>
-    <div class="setting">
-      <span class="setting-icon"><AppIcon name="refresh" /></span>
-      <div class="setting-text">
-        <strong data-testid="installed-version">{{ versionLabel }}</strong>
-        <p class="muted" data-testid="update-explanation">{{ explanation }}</p>
+    <div class="settings-group">
+      <div v-show="isRowVisible('version')" class="setting">
+        <div class="setting-text">
+          <strong data-testid="installed-version">{{ versionLabel }}</strong>
+          <p class="muted" data-testid="update-explanation">{{ explanation }}</p>
+        </div>
+        <button data-testid="check-for-updates" :disabled="!canCheck" @click="checkForUpdates">Check for updates</button>
       </div>
-      <button data-testid="check-for-updates" :disabled="!canCheck" @click="checkForUpdates">Check for updates</button>
+      <label v-show="isRowVisible('automatic-updates')" class="setting">
+        <div class="setting-text">
+          <strong>Automatically check for updates</strong>
+          <p class="muted">Once a day while you are signed in to your Hisar server.</p>
+        </div>
+        <input
+          class="switch"
+          type="checkbox"
+          name="automaticUpdateCheck"
+          :checked="updateStatus?.isAutomaticCheckEnabled ?? false"
+          :disabled="!updateStatus?.isAvailable || store.isBusy"
+          @change="setAutomaticUpdateCheck(($event.target as HTMLInputElement).checked)"
+        />
+      </label>
     </div>
-    <label class="setting automatic-check">
-      <span class="setting-icon"><AppIcon name="settings" /></span>
-      <div class="setting-text">
-        <strong>Automatically check for updates</strong>
-        <p class="muted">Once a day while you are signed in to your Hisar server.</p>
-      </div>
-      <input
-        type="checkbox"
-        name="automaticUpdateCheck"
-        :checked="updateStatus?.isAutomaticCheckEnabled ?? false"
-        :disabled="!updateStatus?.isAvailable || store.isBusy"
-        @change="setAutomaticUpdateCheck(($event.target as HTMLInputElement).checked)"
-      />
-    </label>
   </section>
 </template>
-
-<style scoped>
-.automatic-check {
-  cursor: pointer;
-}
-
-.automatic-check input {
-  width: auto;
-}
-</style>

@@ -10,6 +10,7 @@ import {
   startEditingItem,
   store,
 } from "./store";
+import { isSettingsSectionID, saveSelectedSectionID } from "./settingsSections";
 
 function waitForUnlocked(): Promise<void> {
   return new Promise((resolve) => {
@@ -40,6 +41,13 @@ async function clickElement(selector: string): Promise<void> {
 }
 
 async function applySettingsParameter(parameter: URLSearchParams): Promise<void> {
+  const searchText = parameter.get("settingsSearch");
+  if (searchText) {
+    const searchInput = await waitForElement('[data-testid="settings-search"]');
+    (searchInput as HTMLInputElement).value = searchText;
+    searchInput.dispatchEvent(new Event("input"));
+    await nextTick();
+  }
   if (parameter.get("invite") === "1") {
     await clickElement('[data-testid="start-invite"]');
     const emailInput = await waitForElement('input[name="inviteEmail"]');
@@ -55,10 +63,6 @@ async function applySettingsParameter(parameter: URLSearchParams): Promise<void>
     await clickElement(`[data-testid="revoke-device-${deviceID}"]`);
   }
   await waitForElement('[data-testid="people-section"]');
-  const scrollTarget = parameter.get("scroll");
-  if (scrollTarget) {
-    (await waitForElement(`[data-testid="${scrollTarget}-section"]`)).scrollIntoView();
-  }
 }
 
 // applySharingParameter opens the sharing panel; &code=<account> expands a security code, &remove=<account> asks to remove.
@@ -113,6 +117,10 @@ export async function applyPreviewParameter(): Promise<void> {
     store.pendingSecretKey = "H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M";
   }
   if (parameter.get("settings") === "1") {
+    const sectionID = parameter.get("invite") ? "people" : parameter.get("revoke") ? "devices" : parameter.get("settingsSection");
+    if (isSettingsSectionID(sectionID)) {
+      saveSelectedSectionID(sectionID);
+    }
     store.isSettingsOpen = true;
     applySettingsParameter(parameter);
   }
