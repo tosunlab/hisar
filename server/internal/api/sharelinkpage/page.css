@@ -238,10 +238,6 @@ footer {
   font-size: 13px;
 }
 
-footer a {
-  color: inherit;
-}
-
 .visually-hidden {
   position: absolute;
   width: 1px;

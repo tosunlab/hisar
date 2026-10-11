@@ -66,12 +66,13 @@ func (s *Session) Lock() {
 
 // accountCredential is what signup generates: a new Secret Key, salt, keyset and OPAQUE record.
 type accountCredential struct {
-	secretKey       crypt.SecretKey
-	salt            []byte
-	argon2Params    crypt.Argon2Params
-	keyset          *crypt.Keyset
-	encryptedKeyset []byte
-	record          []byte
+	secretKey        crypt.SecretKey
+	salt             []byte
+	argon2Params     crypt.Argon2Params
+	keyset           *crypt.Keyset
+	encryptedKeyset  []byte
+	record           []byte
+	accountUnlockKey []byte
 }
 
 // createAccountCredential runs OPAQUE registration through register, which sends the request and returns the server's response.
@@ -94,6 +95,7 @@ func createAccountCredential(accountID string, password []byte, register func(re
 		credential.keyset.Wipe()
 		return nil, err
 	}
+	credential.accountUnlockKey = append([]byte(nil), derivedKeys.AccountUnlockKey...)
 	return credential, nil
 }
 
@@ -128,6 +130,13 @@ func (credential *accountCredential) registerOpaque(derivedKeys *crypt.DerivedKe
 }
 
 func SignUp(ctx context.Context, apiClient *client.Client, invite, email, name string, password []byte, device proto.DeviceInfo) (*Session, crypt.SecretKey, error) {
+	newSession, secretKey, accountUnlockKey, err := SignUpKeepingAccountUnlockKey(ctx, apiClient, invite, email, name, password, device)
+	clear(accountUnlockKey)
+	return newSession, secretKey, err
+}
+
+// SignUpKeepingAccountUnlockKey also returns a copy of the account unlock key; the caller wipes it.
+func SignUpKeepingAccountUnlockKey(ctx context.Context, apiClient *client.Client, invite, email, name string, password []byte, device proto.DeviceInfo) (*Session, crypt.SecretKey, []byte, error) {
 	accountID := crypt.GenerateAccountID()
 	credential, err := createAccountCredential(accountID, password, func(registrationRequest []byte) ([]byte, error) {
 		startResponse, err := apiClient.StartRegistration(ctx, &proto.RegisterStartRequest{Invite: invite, Email: email, AccountID: accountID, Request: registrationRequest})
@@ -137,7 +146,7 @@ func SignUp(ctx context.Context, apiClient *client.Client, invite, email, name s
 		return startResponse.Response, nil
 	})
 	if err != nil {
-		return nil, crypt.SecretKey{}, err
+		return nil, crypt.SecretKey{}, nil, err
 	}
 	secretKey := credential.secretKey
 
@@ -155,15 +164,17 @@ func SignUp(ctx context.Context, apiClient *client.Client, invite, email, name s
 	})
 	if err != nil {
 		credential.keyset.Wipe()
-		return nil, secretKey, err
+		clear(credential.accountUnlockKey)
+		return nil, secretKey, nil, err
 	}
 	apiClient.Token = sessionResponse.Token
 
 	newSession := &Session{Client: apiClient, AccountID: accountID, Email: email, Name: name, Keyset: credential.keyset}
 	if _, err := newSession.CreateVault(ctx, "Personal", proto.VaultPersonal); err != nil {
-		return nil, secretKey, fmt.Errorf("create personal vault: %w", err)
+		clear(credential.accountUnlockKey)
+		return nil, secretKey, nil, fmt.Errorf("create personal vault: %w", err)
 	}
-	return newSession, secretKey, nil
+	return newSession, secretKey, credential.accountUnlockKey, nil
 }
 
 func LogIn(ctx context.Context, apiClient *client.Client, email string, password []byte, secretKey crypt.SecretKey, device proto.DeviceInfo) (*Session, error) {

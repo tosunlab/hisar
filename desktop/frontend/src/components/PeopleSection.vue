@@ -38,9 +38,11 @@ function describeInviter(name: string, email: string): string {
 <template>
   <section data-testid="people-section">
     <div v-if="isInviting" class="settings-block">
-      <p class="section-label">Invite someone to Hisar</p>
+      <p class="section-label">Invite to Hisar</p>
       <div class="settings-group">
-        <p class="muted invite-explanation">The server emails them a link to create an account. Share a vault with them from the vault's Share panel.</p>
+        <p class="muted invite-explanation" data-testid="invite-explanation">
+          Creates a Hisar account: the server emails them a sign-up link. To give them a vault, share it from the vault's Share panel.
+        </p>
         <form class="settings-group-form" data-testid="invite-form" @submit.prevent="submitInvite">
           <input v-model="inviteEmail" name="inviteEmail" type="email" aria-label="Email" placeholder="Email address" autocomplete="off" autofocus required />
           <button type="button" class="ghost" @click="isInviting = false">Cancel</button>

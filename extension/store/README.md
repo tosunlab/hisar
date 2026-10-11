@@ -18,26 +18,26 @@ The store rejects a manifest with a `key` field, so `package:store` removes it. 
 1. Create the developer account at https://chrome.google.com/webstore/devconsole (one-time registration fee) and verify the contact email.
 2. **Add new item** and upload `hisar-extension-<version>-store-first-upload.zip`.
 3. **Store listing:** the text below, the icon `dist/icons/icon-128.png` and the screenshots in `store/screenshots/` (1280×800).
-4. **Privacy:** the single purpose, the permission justifications and the data usage answers below. Privacy policy URL: `https://tryhisar.com/privacy`, served by `hisar-server`.
+4. **Privacy:** the single purpose, the permission justifications and the data usage answers below. Privacy policy URL: `https://api.tryhisar.com/privacy`, served by `hisar-server`.
 5. **Distribution:** Visibility **Unlisted**, all regions.
-6. Submit for review. After it is published, check that the item's ID is `mmipiffoogblblocokimpemdopmdjghf`, then share the store link with the family.
+6. Submit for review. After it is published, check that the item's ID is `mmipiffoogblblocokimpemdopmdjghf`, then share the store link with the people you invited.
 
 ## Store listing
 
 - **Name:** Hisar
-- **Summary** (132 characters at most): Fill and save logins from Hisar, the self-hosted, end-to-end encrypted family password manager.
+- **Summary** (132 characters at most): Fill and save logins from Hisar, the end-to-end encrypted password, SSH key and secrets manager for developers.
 - **Category:** Tools
 - **Language:** English
 - **Description:**
 
-  > Hisar is a self-hosted, end-to-end encrypted password manager for a family and their friends. This extension connects your browser to the Hisar app on your computer.
+  > Hisar is an end-to-end encrypted password, SSH key and secrets manager for developers. This extension connects your browser to the Hisar app on your computer.
   >
   > • Fill logins from the Hisar icon in login fields, from the toolbar or with Cmd/Ctrl+Shift+L
   > • Hisar fills a login only on the site it was saved for, never into frames from other sites
   > • Save new logins and update changed passwords as you sign in
   > • Generate strong passwords
   >
-  > The extension holds no passwords and no keys. It talks only to the Hisar desktop app on the same computer, which must be installed and signed in to your family's Hisar server. Nothing is sent to the internet by the extension.
+  > The extension holds no passwords and no keys. It talks only to the Hisar desktop app on the same computer, which must be installed and signed in to your Hisar account. Nothing is sent to the internet by the extension.
 
 ## Privacy practices
 

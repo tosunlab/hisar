@@ -369,6 +369,7 @@ export function createApiMock() {
     openURL: vi.fn().mockResolvedValue(undefined),
     unlockWithBiometric: vi.fn(),
     enableBiometricUnlock: vi.fn(),
+    enableNewAccountBiometricUnlock: vi.fn(),
     disableBiometricUnlock: vi.fn(),
     setTouchIDPromptFrame: vi.fn().mockResolvedValue(undefined),
     clearTouchIDPromptFrame: vi.fn().mockResolvedValue(undefined),
@@ -408,7 +409,7 @@ export function createApiMock() {
 }
 
 export function createUpdateStatus(overrides: Partial<UpdateStatus> = {}): UpdateStatus {
-  return { version: "0.2.1", buildNumber: "2001", isAvailable: true, isSignedIn: true, isAutomaticCheckEnabled: true, ...overrides };
+  return { version: "0.2.1", buildNumber: "2001", operatingSystem: "macOS 26.0.1", isAvailable: true, isSignedIn: true, isAutomaticCheckEnabled: true, ...overrides };
 }
 
 export function createLoginItemStatus(overrides: Partial<LoginItemStatus> = {}): LoginItemStatus {

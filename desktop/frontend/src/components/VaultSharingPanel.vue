@@ -214,10 +214,11 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
             <select v-model="newMemberRole" class="role-select" aria-label="Role for the new member" data-testid="new-member-role">
               <option v-for="role in allVaultRole" :key="role" :value="role">{{ formatRole(role) }}</option>
             </select>
-            <button class="primary" type="submit" data-testid="send-share-invitation" :disabled="!newMemberEmail.trim() || store.isBusy">Invite</button>
+            <button class="primary" type="submit" data-testid="send-share-invitation" :disabled="!newMemberEmail.trim() || store.isBusy">Share</button>
           </div>
           <p class="muted hint">
-            They get an email and accept in Hisar; without an account, the email lets them create one. Your Hisar then shares the vault key with them.
+            Shares this vault. They get an email and accept in Hisar; without an account, the email lets them create one first. Your Hisar then
+            shares the vault key with them.
           </p>
           <p class="muted hint">Editors can add and change items, readers can only view them, and owners also manage who has access.</p>
         </form>

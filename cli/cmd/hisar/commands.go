@@ -22,7 +22,7 @@ import (
 	"github.com/tryhisar/hisar/core/totp"
 )
 
-const defaultServer = "https://tryhisar.com"
+const defaultServer = "https://api.tryhisar.com"
 
 func getDeviceInfo() proto.DeviceInfo {
 	host, err := os.Hostname()

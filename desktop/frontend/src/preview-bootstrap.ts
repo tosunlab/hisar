@@ -72,7 +72,7 @@ async function applySettingsParameter(parameter: URLSearchParams): Promise<void>
 async function applySharingParameter(parameter: URLSearchParams): Promise<void> {
   await waitForUnlocked();
   if (!parameter.get("vault")) {
-    await selectVault("family");
+    await selectVault("team");
   }
   await openSharing();
   const codeAccountID = parameter.get("code");
@@ -139,6 +139,9 @@ export async function applyPreviewParameter(): Promise<void> {
   const parameter = new URLSearchParams(window.location.search);
   if (parameter.get("secretKey") === "1") {
     store.pendingSecretKey = "H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M";
+  }
+  if (parameter.get("touchIdOffer") === "1") {
+    store.isTouchIDOfferShown = true;
   }
   if (parameter.get("settings") === "1") {
     const sectionID = parameter.get("invite") ? "people" : parameter.get("revoke") ? "devices" : parameter.get("settingsSection");

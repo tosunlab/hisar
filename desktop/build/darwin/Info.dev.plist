@@ -12,7 +12,7 @@
         <key>CFBundleVersion</key>
             <string>0.1.0</string>
         <key>CFBundleGetInfoString</key>
-            <string>Self-hosted, end-to-end encrypted password manager</string>
+            <string>End-to-end encrypted password, SSH key and secrets manager for developers</string>
         <key>CFBundleShortVersionString</key>
             <string>0.1.0</string>
         <key>CFBundleIconFile</key>

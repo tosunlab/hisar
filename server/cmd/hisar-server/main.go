@@ -41,7 +41,7 @@ commands:
 environment:
   HISAR_DATABASE_URL   Postgres connection string (required)
   HISAR_ADDR           listen address (default :8080)
-  HISAR_PUBLIC_URL     public base URL (default https://tryhisar.com)
+  HISAR_PUBLIC_URL     public base URL (default https://api.tryhisar.com)
   HISAR_SECRETS_FILE   server secrets file, created on first start (default hisar-secrets.json)
   HISAR_TRUST_PROXY    trust X-Forwarded-For from the reverse proxy (default false)
   HISAR_AUTO_MIGRATE   apply pending migrations on start (default true)
@@ -124,7 +124,7 @@ func setup(ctx context.Context) (*store.Store, *api.Server, error) {
 		database.Close()
 		return nil, nil, fmt.Errorf("HISAR_AUTH_BURST must be a positive number")
 	}
-	publicURL := getEnv("HISAR_PUBLIC_URL", "https://tryhisar.com")
+	publicURL := getEnv("HISAR_PUBLIC_URL", "https://api.tryhisar.com")
 	desktopUpdates, err := createDesktopUpdateSource(publicURL)
 	if err != nil {
 		database.Close()

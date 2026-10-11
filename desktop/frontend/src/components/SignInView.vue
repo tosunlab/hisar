@@ -1,17 +1,26 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { clearError, signIn, signUp, store } from "../store";
+import { computePasswordStrength } from "../util";
 import AppIcon, { type IconName } from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
+import StrengthMeter from "./StrengthMeter.vue";
 
 type Mode = "sign-in" | "create-account";
 
+const defaultServer = "api.tryhisar.com";
+const minimumPasswordLength = 10;
+// Below this only clearly guessable passwords are refused; the meter still says Weak up to 40 bits.
+const minimumPasswordBits = 28;
+const tagline = "Passwords, SSH keys and secrets for developers, end-to-end encrypted.";
+
 function getDisplayServer(serverURL: string): string {
-  return (serverURL || "api.tryhisar.com").replace(/^https:\/\//, "");
+  return (serverURL || defaultServer).replace(/^https:\/\//, "").replace(/\/$/, "");
 }
 
 const mode = ref<Mode>("sign-in");
 const server = ref(getDisplayServer(store.status.server));
+const isServerShown = ref(server.value !== defaultServer);
 const email = ref(store.status.email);
 const secretKey = ref("");
 const password = ref("");
@@ -23,6 +32,22 @@ const repeatedPassword = ref("");
 const passwordMismatch = computed(
   () => mode.value !== "sign-in" && repeatedPassword.value !== "" && password.value !== repeatedPassword.value,
 );
+const passwordFeedback = computed((): { message: string; isBlocking: boolean } => {
+  if (mode.value === "sign-in" || password.value === "") {
+    return { message: "A few random words you can remember make a strong master password.", isBlocking: false };
+  }
+  if (password.value.length < minimumPasswordLength) {
+    return { message: `Use at least ${minimumPasswordLength} characters.`, isBlocking: true };
+  }
+  const strength = computePasswordStrength(password.value);
+  if (strength.bits < minimumPasswordBits) {
+    return { message: "This password is too easy to guess. Add a few more words or characters.", isBlocking: true };
+  }
+  if (strength.level === "weak") {
+    return { message: "You can use it, but another word or a few more characters make it much harder to guess.", isBlocking: false };
+  }
+  return { message: "A few random words you can remember make a strong master password.", isBlocking: false };
+});
 const allHeading: Record<Mode, { title: string; subtitle: string }> = {
   "sign-in": { title: "Welcome back", subtitle: "Sign in to Hisar on this Mac." },
   "create-account": { title: "Create your account", subtitle: "Enter the invite code you received. Pasting the whole invite link works too." },
@@ -33,12 +58,12 @@ const allSignInFeature: Feature[] = [
   {
     icon: "key",
     title: "SSH agent with Touch ID",
-    text: "Never store secrets and keys on your disk, Hisar handles it all for you. Signing and committing are safer than ever now!",
+    text: "SSH and commit signing use keys kept in Hisar, with your approval. Private keys never leave Hisar.",
   },
   {
     icon: "terminal",
     title: "Made for the terminal",
-    text: "The hisar CLI reads passwords, one-time codes and keys through the app, so scripts never store them.",
+    text: "The hisar command-line tool reads passwords and one-time codes, and uses SSH keys through the agent, so scripts never store them.",
   },
   { icon: "shield", title: "End-to-end encrypted", text: "Items are encrypted on your devices and never reach Hisar's servers unencrypted." },
 ];
@@ -51,15 +76,11 @@ const allCreateAccountFeature: Feature[] = [
   {
     icon: "key",
     title: "Two secrets, only yours",
-    text: "Your master password and a Secret Key you get next. Neither is ever sent to the server, so nobody can reset them, not even Hisar.",
+    text: "Your master password and a Secret Key you get next. Neither is ever sent to the server. Nobody can reset them for you, not even Hisar.",
   },
   { icon: "note", title: "An Emergency Kit to keep", text: "Print it or store it offline. With it, you can sign in again on any new device." },
 ];
-const brand = computed(() =>
-  mode.value === "create-account"
-    ? { title: "Your everything, locked in your own fortress.", allFeature: allCreateAccountFeature }
-    : { title: "Your password companion for development", allFeature: allSignInFeature },
-);
+const allBrandFeature = computed(() => (mode.value === "create-account" ? allCreateAccountFeature : allSignInFeature));
 
 function readInviteCode(): void {
   const match = inviteCode.value.trim().match(/\/invite\/([A-Za-z0-9_-]+)\/?$/);
@@ -89,7 +110,7 @@ async function submitSignIn(): Promise<void> {
 }
 
 async function submitCreateAccount(): Promise<void> {
-  if (password.value !== repeatedPassword.value) {
+  if (password.value !== repeatedPassword.value || passwordFeedback.value.isBlocking) {
     return;
   }
   const succeeded = await signUp(getInvite(), email.value, name.value, password.value);
@@ -106,9 +127,9 @@ async function submitCreateAccount(): Promise<void> {
       <div class="title-bar"></div>
       <div class="brand-content">
         <HisarLogo :size="36" show-wordmark />
-        <h2 data-testid="brand-title">{{ brand.title }}</h2>
+        <h2 data-testid="brand-title">{{ tagline }}</h2>
         <ul class="feature-list">
-          <li v-for="feature in brand.allFeature" :key="feature.title">
+          <li v-for="feature in allBrandFeature" :key="feature.title">
             <span class="feature-icon"><AppIcon :name="feature.icon" /></span>
             <div>
               <strong>{{ feature.title }}</strong>
@@ -142,7 +163,7 @@ async function submitCreateAccount(): Promise<void> {
         <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
 
         <form v-if="mode === 'sign-in'" @submit.prevent="submitSignIn">
-          <label>
+          <label v-if="isServerShown">
             <span>Server</span>
             <span class="input-with-icon"><AppIcon name="globe" /><input v-model="server" name="server" autocomplete="url" required /></span>
           </label>
@@ -163,6 +184,9 @@ async function submitCreateAccount(): Promise<void> {
           </label>
           <button class="primary full-width submit" type="submit" :disabled="store.isBusy">{{ store.isBusy ? "Signing in…" : "Sign in" }}</button>
           <p class="hint muted" data-testid="secret-key-note">Lost your Secret Key? It's on your Emergency Kit.</p>
+          <p v-if="!isServerShown" class="hint">
+            <button type="button" class="link-button" data-testid="use-different-server" @click="isServerShown = true">Use a different server…</button>
+          </p>
         </form>
 
         <form v-else @submit.prevent="submitCreateAccount">
@@ -194,13 +218,15 @@ async function submitCreateAccount(): Promise<void> {
           <label>
             <span>Master password</span>
             <input v-model="password" name="password" type="password" autocomplete="new-password" minlength="10" placeholder="At least 10 characters" required />
+            <StrengthMeter :password="password" />
+            <span class="password-feedback" :class="passwordFeedback.isBlocking ? 'blocking' : 'muted'" data-testid="password-feedback">{{ passwordFeedback.message }}</span>
           </label>
           <label>
             <span>Repeat master password</span>
             <input v-model="repeatedPassword" name="repeatedPassword" type="password" autocomplete="new-password" required />
           </label>
           <p v-if="passwordMismatch" class="error">The passwords do not match.</p>
-          <button class="primary full-width submit" type="submit" :disabled="store.isBusy || passwordMismatch">
+          <button class="primary full-width submit" type="submit" :disabled="store.isBusy || passwordMismatch || passwordFeedback.isBlocking">
             {{ store.isBusy ? "Creating account…" : "Create account" }}
           </button>
           <p class="hint muted" data-testid="create-account-note">
@@ -360,6 +386,31 @@ h1 {
   margin: 14px 0 0;
   font-size: 12px;
   text-align: center;
+}
+
+.link-button {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.link-button:hover {
+  color: var(--color-text);
+}
+
+.password-feedback {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.password-feedback.blocking {
+  color: var(--color-danger);
 }
 
 @media (max-width: 860px) {

@@ -68,3 +68,61 @@ struct NewSecretKeyView: View {
         }
     }
 }
+
+struct BiometricOfferView: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    VStack(spacing: 14) {
+                        Image(systemName: SettingsView.biometrySystemImage)
+                            .font(.system(size: 56))
+                            .foregroundStyle(.tint)
+                        Text("Unlock Hisar with \(SettingsView.biometryName) instead of typing your master password. Hisar still asks for the master password at least every 14 days.")
+                            .multilineTextAlignment(.center)
+                            .accessibilityIdentifier("biometric-offer-text")
+                    }
+                    .frame(maxWidth: .infinity)
+                    .listRowBackground(Color.clear)
+                }
+                if let errorMessage = model.errorMessage {
+                    Section {
+                        ErrorBanner(message: errorMessage)
+                    }
+                }
+            }
+            .applyThemedListStyle()
+            .navigationTitle("Unlock with \(SettingsView.biometryName)?")
+            .safeAreaInset(edge: .bottom) {
+                VStack(spacing: 8) {
+                    Button {
+                        Task { await model.turnOnBiometricUnlockFromOffer() }
+                    } label: {
+                        Group {
+                            if model.isBusy {
+                                ProgressView()
+                            } else {
+                                Text("Turn on \(SettingsView.biometryName)")
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .applyProminentGlassStyle()
+                    .controlSize(.large)
+                    .disabled(model.isBusy)
+                    .accessibilityIdentifier("biometric-offer-turn-on")
+                    Button("Not now") {
+                        model.dismissNewSecretKey()
+                    }
+                    .controlSize(.large)
+                    .disabled(model.isBusy)
+                    .accessibilityIdentifier("biometric-offer-not-now")
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 8)
+            }
+        }
+    }
+}

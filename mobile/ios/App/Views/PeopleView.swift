@@ -84,11 +84,11 @@ struct PeopleView: View {
                     Button {
                         isInviteShown = true
                     } label: {
-                        Label("Invite someone to Hisar", systemImage: "envelope.badge.person.crop")
+                        Label("Invite to Hisar", systemImage: "envelope.badge.person.crop")
                     }
                     .accessibilityIdentifier("invite-person")
                 } footer: {
-                    Text("The server emails them a link to create an account. Then share a vault with them from Share in the vault's toolbar.")
+                    Text("Creates a Hisar account: the server emails them a sign-up link. To give them a vault, share it from Share in the vault's toolbar.")
                 }
             }
         }
@@ -271,7 +271,7 @@ struct InvitePersonView: View {
                     Text("The server emails them a sign-up link that works once and expires after 7 days. They sign up with this email address.")
                 }
             }
-            .navigationTitle("Invite someone")
+            .navigationTitle("Invite to Hisar")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

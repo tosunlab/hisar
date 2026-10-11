@@ -10,6 +10,7 @@ enum SettingsDestination: Hashable {
     case devices
     case autoFill
     case passwordGenerator
+    case help
     case about
 }
 
@@ -91,7 +92,7 @@ struct SettingsView: View {
                 }
                 Section {
                     NavigationLink(value: SettingsDestination.people) {
-                        Label("People and sharing", systemImage: "person.2")
+                        Label("People", systemImage: "person.2")
                             .badge(model.receivedInvitationCount)
                     }
                     .accessibilityIdentifier("open-people")
@@ -115,6 +116,10 @@ struct SettingsView: View {
                     .accessibilityIdentifier("open-password-generator")
                 }
                 Section {
+                    NavigationLink(value: SettingsDestination.help) {
+                        Label("Help", systemImage: "questionmark.circle")
+                    }
+                    .accessibilityIdentifier("open-help")
                     NavigationLink(value: SettingsDestination.about) {
                         LabeledContent {
                             Text(AboutView.versionText)
@@ -143,6 +148,7 @@ struct SettingsView: View {
                 case .devices: DevicesView()
                 case .autoFill: AutoFillSettingsView(isEnabled: $isAutoFillEnabled)
                 case .passwordGenerator: StandalonePasswordGeneratorView()
+                case .help: HelpView()
                 case .about: AboutView()
                 }
             }
@@ -178,7 +184,7 @@ struct AccountView: View {
                     Label("Secret Key and Emergency Kit", systemImage: "doc.text")
                 }
             } footer: {
-                Text("To sign in on a new device you need your master password and your Secret Key. The Emergency Kit has both places to keep them.")
+                Text("To sign in on a new device you need your master password and your Secret Key. The Emergency Kit holds your Secret Key and has a space to write your master password.")
             }
         }
         .applyThemedListStyle()
@@ -528,7 +534,7 @@ struct MacApprovalsView: View {
                 Toggle(isOn: Binding(get: { model.isMacApprovalAllowed }, set: { isAllowed in
                     Task { await model.setMacApprovalAllowed(isAllowed) }
                 })) {
-                    Label("Allow approving Mac requests", systemImage: "laptopcomputer.and.iphone")
+                    Label("Approve requests from my Mac", systemImage: "laptopcomputer.and.iphone")
                 }
                 .accessibilityIdentifier("mac-approval-toggle")
             } footer: {
@@ -541,7 +547,7 @@ struct MacApprovalsView: View {
             } header: {
                 Text("How requests appear")
             } footer: {
-                Text("Approving answers one request and never unlocks Hisar on your Mac. The Mac sends requests only while “Allow approvals from my iPhone” is on in its SSH agent settings.")
+                Text("Approving answers one request and never unlocks Hisar on your Mac. The Mac sends requests only while “Approve requests on my iPhone” is on in its SSH agent settings.")
             }
         }
         .applyThemedListStyle()
@@ -621,13 +627,77 @@ struct AboutView: View {
             }
             Section {
                 LabeledContent("Version", value: Self.versionText)
-                Link(destination: URL(string: "https://github.com/tryhisar/hisar")!) {
-                    Label("Source code", systemImage: "chevron.left.forwardslash.chevron.right")
-                }
             }
         }
         .applyThemedListStyle()
         .navigationTitle("About Hisar")
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct HelpView: View {
+    static let supportEmail = "support@tryhisar.com"
+
+    @EnvironmentObject private var model: AppModel
+    @State private var currentDeviceID: String?
+
+    static func buildDiagnostics(appVersion: String, systemVersion: String, deviceModel: String, server: String, deviceID: String?) -> String {
+        var allLine = [
+            "Hisar \(appVersion)",
+            "iOS \(systemVersion) on \(deviceModel)",
+            "Server \(server.isEmpty ? "not signed in" : server)",
+        ]
+        if let deviceID, !deviceID.isEmpty {
+            allLine.append("Device ID \(deviceID)")
+        }
+        return allLine.joined(separator: "\n")
+    }
+
+    private var diagnostics: String {
+        Self.buildDiagnostics(
+            appVersion: AboutView.versionText, systemVersion: UIDevice.current.systemVersion, deviceModel: UIDevice.current.model,
+            server: model.status.server, deviceID: currentDeviceID
+        )
+    }
+
+    var body: some View {
+        List {
+            Section {
+                Text(verbatim: Self.supportEmail)
+                    .textSelection(.enabled)
+                    .accessibilityIdentifier("support-email")
+                Button {
+                    model.copyPlainText(Self.supportEmail, label: "Support address")
+                } label: {
+                    Label("Copy address", systemImage: "doc.on.doc")
+                }
+                .accessibilityIdentifier("copy-support-email")
+            } header: {
+                Text("Contact support")
+            } footer: {
+                Text("Write to us about a problem or an idea. Adding the diagnostics below helps us help you.")
+            }
+            Section {
+                Button {
+                    model.copyPlainText(diagnostics, label: "Diagnostics")
+                } label: {
+                    Label("Copy diagnostics", systemImage: "stethoscope")
+                }
+                .accessibilityIdentifier("copy-diagnostics")
+            } footer: {
+                Text("The app and iOS versions, the server and this device's ID. Never your items, keys or master password.")
+            }
+            Section {
+                LabeledContent("App version", value: AboutView.versionText)
+                    .accessibilityIdentifier("help-app-version")
+                LabeledContent("Server", value: VaultLogic.describeServer(model.status.server))
+                    .textSelection(.enabled)
+            }
+        }
+        .applyThemedListStyle()
+        .navigationTitle("Help")
+        .task {
+            currentDeviceID = await model.loadAllDevice()?.first(where: \.isCurrent)?.id
+        }
     }
 }

@@ -315,7 +315,7 @@ func main() {
 
 	app = application.New(application.Options{
 		Name:        "Hisar",
-		Description: "Self-hosted, end-to-end encrypted password manager",
+		Description: "End-to-end encrypted password, SSH key and secrets manager for developers",
 		SingleInstance: &application.SingleInstanceOptions{
 			UniqueID: getSingleInstanceID(statePath),
 			OnSecondInstanceLaunch: func(data application.SecondInstanceData) {

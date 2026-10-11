@@ -37,11 +37,17 @@ func (s *Service) buildNewAccountEmergencyKit() (emergencykit.Kit, error) {
 	return s.buildEmergencyKit(*s.newAccountSecretKey), nil
 }
 
-// ForgetNewAccountSecretKey drops the sign-up Secret Key once the user confirmed saving it.
+// ForgetNewAccountSecretKey drops the sign-up Secret Key and account unlock key once onboarding is done.
 func (s *Service) ForgetNewAccountSecretKey() {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
+	s.forgetNewAccountSecrets()
+}
+
+func (s *Service) forgetNewAccountSecrets() {
 	s.newAccountSecretKey = nil
+	clear(s.newAccountUnlockKey)
+	s.newAccountUnlockKey = nil
 }
 
 // SaveEmergencyKit checks the master password before exporting the Secret Key.

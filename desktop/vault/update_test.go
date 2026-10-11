@@ -62,7 +62,7 @@ func TestUpdateServiceFollowsSession(t *testing.T) {
 		t.Errorf("session at launch: %q %q", feedURL, authorization)
 	}
 	status := updateService.GetUpdateStatus()
-	if status != (UpdateStatus{Version: "0.2.1", BuildNumber: "2001", IsAvailable: true, IsSignedIn: true, IsAutomaticCheckEnabled: true}) || !updater.isAutomaticCheckEnabled {
+	if status != (UpdateStatus{Version: "0.2.1", BuildNumber: "2001", OperatingSystem: getOperatingSystem(), IsAvailable: true, IsSignedIn: true, IsAutomaticCheckEnabled: true}) || status.OperatingSystem == "" || !updater.isAutomaticCheckEnabled {
 		t.Errorf("status while locked: %+v", status)
 	}
 	if _, err := updateService.CheckForUpdates(); err != nil || updater.checkCount != 1 {

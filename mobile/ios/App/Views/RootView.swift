@@ -41,8 +41,12 @@ struct RootView: View {
             )
         }
         .fullScreenCover(isPresented: Binding(get: { model.newSecretKey != nil }, set: { if !$0 { model.dismissNewSecretKey() } })) {
-            NewSecretKeyView(secretKey: model.newSecretKey ?? "", email: model.status.email, server: model.status.server) {
-                model.dismissNewSecretKey()
+            if model.isBiometricOfferShown {
+                BiometricOfferView()
+            } else {
+                NewSecretKeyView(secretKey: model.newSecretKey ?? "", email: model.status.email, server: model.status.server) {
+                    model.finishNewSecretKey()
+                }
             }
         }
         .applyTheme(model.theme)

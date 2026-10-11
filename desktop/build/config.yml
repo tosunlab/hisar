@@ -8,9 +8,9 @@ info:
   companyName: "Hisar" # The name of the company
   productName: "Hisar" # The name of the application
   productIdentifier: "com.tryhisar.hisar" # The unique product identifier
-  description: "Self-hosted, end-to-end encrypted password manager" # The application description
+  description: "End-to-end encrypted password, SSH key and secrets manager for developers" # The application description
   copyright: "(c) 2026, Hisar" # Copyright text
-  comments: "Self-hosted, end-to-end encrypted password manager" # Comments
+  comments: "End-to-end encrypted password, SSH key and secrets manager for developers" # Comments
   version: "0.1.0" # The application version
   # cfBundleIconName: "appicon" # The macOS icon name in Assets.car icon bundles (optional)
   #                               # Should match the name of your .icon file without the extension
@@ -28,7 +28,7 @@ info:
 #   # The company/organisation name for templates and project settings
 #   company: "Hisar"
 #   # Additional comments to embed in Info.plist metadata
-#   comments: "Self-hosted, end-to-end encrypted password manager"
+#   comments: "End-to-end encrypted password, SSH key and secrets manager for developers"
 
 # Dev mode configuration
 dev_mode:

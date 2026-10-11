@@ -50,13 +50,29 @@ final class FaceIDUITests: HisarUITestCase {
         let inviteLink = try readEnvironment("HISAR_UI_TEST_BIOMETRIC_INVITE_LINK")
         setFaceIDEnrolled(true)
         app.launch()
-        _ = signUp(inviteLink: inviteLink, email: "ios-face-id@example.com", name: "iOS Face ID")
+        signUp(inviteLink: inviteLink, email: "ios-face-id@example.com", name: "iOS Face ID", isBiometricOfferExpected: true)
+
+        waitFor(app.staticTexts["biometric-offer-text"])
+        XCTAssertTrue(app.navigationBars["Unlock with Face ID?"].exists)
+        saveScreenshot("face-id-offer")
+        app.buttons["biometric-offer-turn-on"].tap()
+        allowFaceIDIfAsked()
+        sleep(1)
+        matchFace()
+        waitFor(app.buttons["vault-Personal"], timeout: 20)
 
         openSettings("open-security")
         let toggle = app.switches["biometric-toggle"]
         waitFor(toggle)
         XCTAssertTrue(toggle.isEnabled, "Face ID is enrolled in the simulator")
+        let enabledPredicate = NSPredicate(format: "value == '1'")
+        expectation(for: enabledPredicate, evaluatedWith: toggle)
+        waitForExpectations(timeout: 10)
         let knob = toggle.switches.firstMatch
+        (knob.exists ? knob : toggle).tap()
+        expectation(for: NSPredicate(format: "value == '0'"), evaluatedWith: toggle)
+        waitForExpectations(timeout: 10)
+        sleep(1)
         (knob.exists ? knob : toggle).tap()
         let passwordField = app.alerts.secureTextFields.firstMatch
         waitFor(passwordField)
@@ -65,7 +81,6 @@ final class FaceIDUITests: HisarUITestCase {
         allowFaceIDIfAsked()
         sleep(1)
         matchFace()
-        let enabledPredicate = NSPredicate(format: "value == '1'")
         expectation(for: enabledPredicate, evaluatedWith: toggle)
         waitForExpectations(timeout: 20)
         sleep(2)

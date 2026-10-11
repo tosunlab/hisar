@@ -103,7 +103,7 @@ struct ItemDetailView: View {
                 buildLoginSection(item: item)
             }
             if !item.allField.isEmpty {
-                Section("Fields") {
+                Section("Other fields") {
                     ForEach(Array(item.allField.enumerated()), id: \.offset) { _, field in
                         SecretFieldRow(
                             label: field.name, value: field.value, isConcealed: field.concealed,

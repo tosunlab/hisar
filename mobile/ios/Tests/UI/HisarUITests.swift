@@ -100,17 +100,33 @@ final class HisarUITests: HisarUITestCase {
         saveScreenshot("secret-key")
         goBack()
 
+        for _ in 0..<5 where !app.buttons["open-help"].isHittable {
+            app.swipeUp()
+        }
+        app.buttons["open-help"].tap()
+        waitFor(app.staticTexts["support-email"])
+        XCTAssertEqual(app.staticTexts["support-email"].label, "support@tryhisar.com")
+        app.buttons["copy-diagnostics"].tap()
+        waitFor(app.staticTexts["Diagnostics copied"], timeout: 5)
+        saveScreenshot("settings-help")
+        goBack()
+
         for _ in 0..<5 where !app.buttons["sign-out"].isHittable {
             app.swipeUp()
         }
         saveScreenshot("settings")
         app.buttons["sign-out"].tap()
         confirm("Sign out", excludingIdentifier: "sign-out")
-        waitFor(app.textFields["sign-in-server"])
+        waitFor(app.textFields["sign-in-email"])
 
+        let useDifferentServerButton = app.descendants(matching: .any)["sign-in-use-different-server"].firstMatch
+        if useDifferentServerButton.exists {
+            useDifferentServerButton.tap()
+        }
         let serverField = app.textFields["sign-in-server"]
+        waitFor(serverField)
         serverField.tap()
-        serverField.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 20) + server)
+        serverField.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 40) + server)
         type(email, into: app.textFields["sign-in-email"])
         type(secretKey, into: app.textFields["sign-in-secret-key"])
         type(Self.masterPassword, into: app.secureTextFields["sign-in-password"])
@@ -123,6 +139,20 @@ final class HisarUITests: HisarUITestCase {
         openTab("Vaults")
         app.buttons["vault-Personal"].tap()
         waitFor(app.buttons["item-GitHub"])
+    }
+
+    func testSignInHidesTheServerUntilAskedFor() throws {
+        app.launch()
+        waitFor(app.segmentedControls["sign-in-mode"])
+        let useDifferentServerButton = app.descendants(matching: .any)["sign-in-use-different-server"].firstMatch
+        waitFor(useDifferentServerButton)
+        XCTAssertFalse(app.textFields["sign-in-server"].exists)
+        XCTAssertTrue(app.staticTexts["Signs in to api.tryhisar.com."].exists)
+        useDifferentServerButton.tap()
+        let serverField = app.textFields["sign-in-server"]
+        waitFor(serverField)
+        XCTAssertEqual(serverField.value as? String, "https://api.tryhisar.com")
+        XCTAssertFalse(useDifferentServerButton.exists)
     }
 
     func testPrivacyCoverHidesContentInTheBackground() throws {

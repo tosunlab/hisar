@@ -17,6 +17,7 @@ import BrowserExtensionSection from "./BrowserExtensionSection.vue";
 import CodingAgentsSection from "./CodingAgentsSection.vue";
 import CommandLineSection from "./CommandLineSection.vue";
 import DevicesSection from "./DevicesSection.vue";
+import HelpSection from "./HelpSection.vue";
 import ImportSection from "./ImportSection.vue";
 import OpenAtLoginSection from "./OpenAtLoginSection.vue";
 import PeopleSection from "./PeopleSection.vue";
@@ -178,7 +179,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleKeydown));
         <header class="settings-header">
           <h2 id="settings-title">{{ displayedSection?.label ?? "Settings" }}</h2>
           <button v-if="displayedSection?.id === 'people' && !isInvitingPerson" v-show="isRowVisible('invite')" data-testid="start-invite" @click="startInvitingPerson">
-            <AppIcon name="plus" :size="14" />Invite
+            <AppIcon name="plus" :size="14" />Invite to Hisar
           </button>
           <button class="ghost icon-button" aria-label="Close settings" @click="closeSettings"><AppIcon name="close" /></button>
         </header>
@@ -218,6 +219,9 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleKeydown));
           </div>
           <div v-show="displayedSection?.id === 'account'" data-testid="settings-page-account">
             <AccountSection />
+          </div>
+          <div v-show="displayedSection?.id === 'help'" data-testid="settings-page-help">
+            <HelpSection />
           </div>
         </div>
       </div>

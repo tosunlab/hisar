@@ -422,7 +422,7 @@ func TestShareLinkPage(t *testing.T) {
 	if policy != wantPolicy {
 		t.Errorf("content security policy = %q, want %q", policy, wantPolicy)
 	}
-	for _, forbidden := range []string{"<script src", "http://", "{{", "unsafe-inline", "innerHTML"} {
+	for _, forbidden := range []string{"<script src", "http://", "https://tryhisar.com", "{{", "unsafe-inline", "innerHTML"} {
 		if strings.Contains(body, forbidden) || strings.Contains(policy, forbidden) {
 			t.Errorf("the page contains %q", forbidden)
 		}

@@ -112,6 +112,9 @@ describe("Vault sharing panel", () => {
     expect(api.listAllPerson).not.toHaveBeenCalled();
     const sendButton = wrapper.find('[data-testid="send-share-invitation"]');
     expect(sendButton.attributes("disabled")).toBeDefined();
+    expect(sendButton.text()).toBe("Share");
+    expect(wrapper.find('[data-testid="add-member"]').text()).toContain("Invite by email");
+    expect(wrapper.find('[data-testid="add-member"]').text()).toContain("Shares this vault.");
 
     await wrapper.find('[data-testid="new-member-email"]').setValue("carol@example.com");
     await wrapper.find('[data-testid="new-member-role"]').setValue("reader");

@@ -245,6 +245,16 @@ func TestIntegrationMobileFlow(t *testing.T) {
 	if signUp.Status.State != "unlocked" || !strings.HasPrefix(signUp.SecretKey, "H1-") {
 		t.Fatalf("sign up: %+v", signUp)
 	}
+	if current := decodeJSON[status](t)(hisar.EnableNewAccountBiometricUnlock()); !current.BiometricEnabled {
+		t.Fatalf("Face ID offer after sign-up: %+v", current)
+	}
+	hisar.ForgetNewAccountSecretKey()
+	if _, err := hisar.EnableNewAccountBiometricUnlock(); err == nil {
+		t.Error("Face ID offer accepted after onboarding finished")
+	}
+	if current := decodeJSON[status](t)(hisar.DisableBiometricUnlock()); current.BiometricEnabled {
+		t.Fatalf("biometric unlock still on: %+v", current)
+	}
 
 	allVault := decodeJSON[[]struct {
 		ID   string `json:"id"`

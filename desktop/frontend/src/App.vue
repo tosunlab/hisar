@@ -15,6 +15,7 @@ import {
 } from "./store";
 import SignInView from "./components/SignInView.vue";
 import SecretKeyView from "./components/SecretKeyView.vue";
+import TouchIDOfferView from "./components/TouchIDOfferView.vue";
 import UnlockView from "./components/UnlockView.vue";
 import MainView from "./components/MainView.vue";
 import AppIcon from "./components/AppIcon.vue";
@@ -57,6 +58,7 @@ onBeforeUnmount(() => {
 
 <template>
   <SecretKeyView v-if="store.pendingSecretKey" />
+  <TouchIDOfferView v-else-if="store.isTouchIDOfferShown" />
   <SignInView v-else-if="store.status.state === 'signed-out'" />
   <UnlockView v-else-if="store.status.state === 'locked'" />
   <MainView v-else />

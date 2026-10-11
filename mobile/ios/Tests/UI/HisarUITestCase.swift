@@ -92,9 +92,13 @@ class HisarUITestCase: XCTestCase {
         element.typeText(text)
     }
 
-    func signUp(inviteLink: String, email: String, name: String) -> String {
+    // With isBiometricOfferExpected, it stops at the Face ID offer after the Secret Key; otherwise it declines any offer.
+    @discardableResult
+    func signUp(inviteLink: String, email: String, name: String, isBiometricOfferExpected: Bool = false) -> String {
         waitFor(app.segmentedControls["sign-in-mode"])
         XCTAssertEqual(app.staticTexts["secret-key-note"].label, "Lost your Secret Key? It's on your Emergency Kit.")
+        XCTAssertTrue(app.descendants(matching: .any)["sign-in-use-different-server"].firstMatch.waitForExistence(timeout: 10), "the server is hidden behind a disclosure")
+        XCTAssertFalse(app.textFields["sign-in-server"].exists)
         saveScreenshot("sign-in")
         app.segmentedControls["sign-in-mode"].buttons["Create account"].tap()
         waitFor(app.staticTexts["create-account-note"])
@@ -118,6 +122,14 @@ class HisarUITestCase: XCTestCase {
         XCTAssertTrue(masterPasswordWarning.label.contains("A forgotten master password can't be recovered by anyone, including Hisar."), masterPasswordWarning.label)
         saveScreenshot("new-secret-key")
         app.buttons["new-secret-key-done"].tap()
+        let notNowButton = app.buttons["biometric-offer-not-now"]
+        if isBiometricOfferExpected {
+            waitFor(notNowButton, timeout: 10)
+            return secretKey
+        }
+        if notNowButton.waitForExistence(timeout: 2) {
+            notNowButton.tap()
+        }
         waitFor(app.buttons["vault-Personal"])
         return secretKey
     }

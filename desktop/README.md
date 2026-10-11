@@ -65,12 +65,12 @@ To work on the design without a server, run the UI in a browser with sample data
 ```sh
 cd desktop/frontend && npm run preview:ui
 # http://127.0.0.1:5180/?state=signed-out | locked | unlocked
-# extra parameters: &vault=family &item=netflix &editor=create|edit|ssh-key &secretKey=1 &search=git
+# extra parameters: &vault=team &item=sentry &editor=create|edit|ssh-key &secretKey=1 &touchIdOffer=1 &search=git
 # SSH: &item=raspberry (SSH key) &settings=1 &noTouchID=1 (in-app approval note) &compact=1 (compact approvals on) &agent=error &sshConfigured=1
 # sharing: &sharing=1 (sharing panel; add &vault=work for the read-only view) &code=elif (security code) &remove=deniz
-# settings: &settings=1 &invite=form|1 (invite form, or a sent invite) &revoke=mac-mini &settingsSection=general|security|ssh|developer|browser|people|devices|account &settingsSearch=<text>
+# settings: &settings=1 &invite=form|1 (invite form, or a sent invite) &revoke=mac-mini &settingsSection=general|security|ssh|developer|browser|people|devices|account|help &settingsSearch=<text>
 # offline: &offline=1 (offline notice)
-# import: &import=choose | preview | saving (stops halfway) | done | deleted, &importVault=family (target vault), &newItemMenu=1 (open the + menu)
+# import: &import=choose | preview | saving (stops halfway) | done | deleted, &importVault=team (target vault), &newItemMenu=1 (open the + menu)
 ```
 
 The preview backend (`src/preview.ts`) is loaded with a dynamic import behind a build-time flag; `npm run check:bundle` (run in CI) fails if it ever ends up in the production bundle.
