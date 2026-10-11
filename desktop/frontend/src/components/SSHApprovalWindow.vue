@@ -63,7 +63,7 @@ const purposeText = computed(() => {
     return "";
   }
   if (current.kind === "command-line") {
-    return "use Hisar";
+    return current.action || "use Hisar";
   }
   return [current.action || "use your SSH key", current.target].filter(Boolean).join(" ");
 });
@@ -85,7 +85,8 @@ const allDetailLine = computed(() => {
     return [];
   }
   if (current.kind === "command-line") {
-    return [current.clientPath || current.clientName, current.terminalName ? `/dev/${current.terminalName}` : ""].filter(Boolean);
+    const program = current.action ? current.commandLine : current.clientPath || current.clientName;
+    return [program, current.terminalName ? `/dev/${current.terminalName}` : ""].filter(Boolean);
   }
   if (isSigning.value) {
     const firstLine = current.commitSubject ? `“${current.commitSubject}”` : current.commandLine || "a commit";
@@ -94,6 +95,8 @@ const allDetailLine = computed(() => {
   const location = [current.repositoryPath, current.hostAndPort].filter(Boolean).join(" · ");
   return [current.commandLine || current.clientPath || current.clientName, location].filter(Boolean);
 });
+
+const allSecretName = computed(() => approval.value?.allSecretName ?? []);
 
 const compactSubtitle = computed(() => {
   const current = approval.value;
@@ -315,6 +318,14 @@ onBeforeUnmount(() => {
 
           <div v-if="allDetailLine.length > 0" class="detail-box" data-testid="approval-details">
             <code v-for="(line, index) in allDetailLine" :key="index" class="detail-line" :class="{ secondary: index > 0 }" :title="line">{{ line }}</code>
+          </div>
+
+          <div v-if="isCommandLine && allSecretName.length > 0" class="secret-list" data-testid="approval-secrets">
+            <p class="secret-heading">{{ allSecretName.length + approval.moreSecretCount === 1 ? "Secret" : "Secrets" }}</p>
+            <ul>
+              <li v-for="(name, index) in allSecretName" :key="index" :title="name"><AppIcon name="key" :size="12" /> {{ name }}</li>
+              <li v-if="approval.moreSecretCount > 0" class="muted">and {{ approval.moreSecretCount }} more</li>
+            </ul>
           </div>
 
           <label v-if="approval.isRememberable" class="remember">
@@ -566,6 +577,38 @@ h1 {
 
 .detail-line.secondary {
   color: var(--color-text-muted);
+}
+
+.secret-list {
+  margin-top: 14px;
+}
+
+.secret-heading {
+  margin: 0 0 6px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.secret-list ul {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.secret-list li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  overflow: hidden;
+  font-size: 13px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .remember {

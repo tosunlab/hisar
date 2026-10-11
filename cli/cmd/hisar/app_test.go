@@ -411,7 +411,7 @@ func TestDeniedRequestIsReportedNotRetriedStandalone(t *testing.T) {
 	app := startFakeApp(t)
 	app.mutex.Lock()
 	app.answer = func(cliprotocol.Request) (any, *cliprotocol.ResponseError) {
-		return nil, cliprotocol.CreateError(cliprotocol.ErrorDenied, "Hisar denied the request (it was declined, or not answered within a minute)")
+		return nil, cliprotocol.CreateError(cliprotocol.ErrorDenied, "Hisar denied the request (it was not answered within 2 minutes)")
 	}
 	app.mutex.Unlock()
 	_, _, err := runCapturingOutput(t, false, "", "vaults")

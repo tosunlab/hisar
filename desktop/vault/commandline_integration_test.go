@@ -146,6 +146,8 @@ func TestIntegrationCommandLineThroughApp(t *testing.T) {
 		t.Errorf("after the lock: %d approvals, %d unlocks", count, unlockCount)
 	}
 
+	checkSecretReferenceThroughApp(t, service, approver, binaryPath, socketPath, statePath)
+
 	runner.Stop()
 	if output := run("", "status"); !strings.Contains(output, "mode:    standalone") || !strings.Contains(output, "not signed in") {
 		t.Errorf("status with the switch off:\n%s", output)

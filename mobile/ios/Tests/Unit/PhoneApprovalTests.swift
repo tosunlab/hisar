@@ -56,6 +56,19 @@ final class PhoneApprovalTests: XCTestCase {
         XCTAssertTrue(approval.isExpired(at: PhoneApproval.parseDate("2027-01-15T08:01:01Z")!))
     }
 
+    func testDescribesARunRequestWithItsSecrets() throws {
+        let json = """
+        [{"requestId":"0123456789abcdef0123456789abcdef","requesterDeviceName":"MacBook Pro","expiresAt":"2027-01-15T08:01:00.123Z",
+          "kind":"cli","appName":"hisar in Terminal","purpose":"run a command with 5 secrets","commandLine":"npm test","terminalName":"ttys003",
+          "secrets":["Personal › GitHub › password","Work › AWS › access key","and 3 more"]}]
+        """
+        let approval = try XCTUnwrap(try JSONDecoder().decode([PhoneApproval].self, from: Data(json.utf8)).first)
+        XCTAssertEqual(approval.summary, "hisar in Terminal wants to run a command with 5 secrets")
+        XCTAssertEqual(approval.bannerTitle, "MacBook Pro is asking to use Hisar from the command line")
+        XCTAssertEqual(approval.allDetailRow.map(\.label), ["App", "Command", "Secrets", "Terminal"])
+        XCTAssertEqual(approval.allDetailRow[2].value, "Personal › GitHub › password\nWork › AWS › access key\nand 3 more")
+    }
+
     func testDescribesRequestsForTheBanner() {
         let approval = createApproval(secondsLeft: 115, isForwarded: true)
         XCTAssertEqual(approval.summary, "build.example.com wants to push to git.tryhisar.com")

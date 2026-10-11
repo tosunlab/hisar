@@ -65,3 +65,15 @@ func TestResponseErrorMessage(t *testing.T) {
 		t.Errorf("error: %v", err)
 	}
 }
+
+func TestResolveSecretRequestEncoding(t *testing.T) {
+	var buffer bytes.Buffer
+	request := Request{ID: "2", Type: TypeResolveSecret, References: []string{"hisar://Personal/Example/password"}, CommandLine: []string{"npm", "test"}}
+	if err := WriteJSON(&buffer, request); err != nil {
+		t.Fatal(err)
+	}
+	encoded := string(buffer.Bytes()[4:])
+	if encoded != `{"id":"2","type":"secrets.resolve","references":["hisar://Personal/Example/password"],"commandLine":["npm","test"]}` {
+		t.Errorf("encoded %s", encoded)
+	}
+}

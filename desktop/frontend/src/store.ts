@@ -455,6 +455,17 @@ export async function copyField(fieldName: string, label: string): Promise<void>
   }
 }
 
+export async function copySecretReference(fieldName: string): Promise<void> {
+  if (!store.selectedItem) {
+    return;
+  }
+  const itemID = store.selectedItem.id;
+  const reference = await runAction(() => api.copySecretReference(store.selectedVaultID, itemID, fieldName));
+  if (reference) {
+    showNotice(`Copied ${reference} — use it with hisar run or hisar read`);
+  }
+}
+
 // openWebsite only opens http(s) links, so stored items cannot launch other URL schemes.
 export async function openWebsite(link: string): Promise<void> {
   const normalizedLink = link.includes("://") ? link : `https://${link}`;

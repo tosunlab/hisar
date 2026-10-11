@@ -171,6 +171,8 @@ const wailsApi = {
   copyField: (vaultID: string, itemID: string, fieldName: string): Promise<void> =>
     Service.CopyField(vaultID, itemID, fieldName),
   copyText: (text: string): Promise<void> => Service.CopyText(text),
+  copySecretReference: (vaultID: string, itemID: string, fieldName: string): Promise<string> =>
+    Service.CopySecretReference(vaultID, itemID, fieldName),
   openURL: (link: string): Promise<void> => Browser.OpenURL(link),
   unlockWithBiometric: (): Promise<Status> => Service.UnlockWithBiometric(),
   enableBiometricUnlock: (password: string): Promise<Status> => Service.EnableBiometricUnlock(password),

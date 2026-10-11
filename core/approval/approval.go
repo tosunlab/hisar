@@ -56,6 +56,8 @@ type Description struct {
 	IsForwarded       bool   `json:"isForwarded"`
 	ForwardedFromHost string `json:"forwardedFromHost"`
 	TerminalName      string `json:"terminalName"`
+	// Secrets are the secrets a command-line request reads, as the dialog lists them.
+	Secrets []string `json:"secrets,omitempty"`
 }
 
 type Request struct {

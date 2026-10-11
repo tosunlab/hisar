@@ -3,20 +3,40 @@ package commandline
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 )
 
 const DefaultApprovalLifetime = 10 * time.Minute
 
-var ErrDenied = errors.New("Hisar denied the request (it was declined, or not answered within a minute)")
+var ErrDenied = errors.New("Hisar denied the request (it was declined)")
 
-// ApprovalRequest is what the approval window shows about a terminal session.
+// TimeoutError is a request nobody answered before the dialog's deadline, 1 minute or 2 when the iPhone can answer.
+type TimeoutError struct {
+	Timeout time.Duration
+}
+
+func (err TimeoutError) Error() string {
+	minuteCount := int((err.Timeout + 30*time.Second) / time.Minute)
+	if minuteCount <= 1 {
+		return "Hisar denied the request (it was not answered within a minute)"
+	}
+	return fmt.Sprintf("Hisar denied the request (it was not answered within %d minutes)", minuteCount)
+}
+
+func (TimeoutError) Is(target error) bool { return target == ErrDenied }
+
+// ApprovalRequest is what the approval window shows about a terminal session; a secrets.resolve request also
+// names its secrets and, for hisar run, the command it starts.
 type ApprovalRequest struct {
-	ClientPID    int
-	ClientPath   string
-	ParentPID    int
-	TerminalName string
+	ClientPID       int
+	ClientPath      string
+	ParentPID       int
+	TerminalName    string
+	IsSecretRequest bool
+	AllSecretName   []string
+	CommandLine     []string
 }
 
 // Approver asks the user; it returns nil when approved and ErrDenied otherwise.

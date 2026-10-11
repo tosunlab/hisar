@@ -16,8 +16,8 @@ type runFunction func(ctx context.Context, flags *flag.FlagSet, allArg []string)
 
 type appRunFunction func(ctx context.Context, client *appClient, flags *flag.FlagSet, allArg []string) error
 
-// command: runThroughApp is the app-mode variant; isLocal commands need no vault, appAlternative explains
-// where to do a standalone-only command when the app is in use, and isHidden keeps it out of the usage.
+// command: runThroughApp is the app-mode variant; isLocal commands choose the mode themselves, if they need a vault,
+// appAlternative explains where to do a standalone-only command when the app is in use, and isHidden keeps it out of the usage.
 type command struct {
 	name           string
 	argumentUsage  string
@@ -39,6 +39,8 @@ var allCommand = []command{
 	{name: "vault-create", argumentUsage: "<name>", summary: "create a shared vault", run: runCreateVault, runThroughApp: runCreateVaultThroughApp},
 	{name: "ls", argumentUsage: "[-v vault]", summary: "list items", run: runListAllItem, runThroughApp: runListAllItemThroughApp},
 	{name: "get", argumentUsage: "<item> [-f field] [-v vault]", summary: "show an item, or one field of it (e.g. -f password, -f code)", run: runGet, runThroughApp: runGetThroughApp},
+	{name: "read", argumentUsage: "<hisar://vault/item/field> [--no-newline]", summary: "print one secret, for scripts", run: runRead, isLocal: true},
+	{name: "run", argumentUsage: "[--env-file f]... [--no-masking] -- <cmd>", summary: "run a command with the secrets its hisar:// references name, masked in its output", run: runRun, isLocal: true},
 	{name: "add", argumentUsage: "[-v vault]", summary: "add a login", run: runAdd, runThroughApp: runAddThroughApp},
 	{name: "edit", argumentUsage: "<item> [-v vault]", summary: "edit an item", run: runEdit, runThroughApp: runEditThroughApp},
 	{name: "rm", argumentUsage: "<item> [-v vault]", summary: "delete an item", run: runRemove, runThroughApp: runRemoveThroughApp},
@@ -120,6 +122,7 @@ func findCommand(name string) (command, bool) {
 }
 
 func runCommand(ctx context.Context, selected command, isStandaloneForced bool, flags *flag.FlagSet, allArg []string) error {
+	isStandaloneForcedByOption = isStandaloneForced
 	if selected.isLocal {
 		return selected.run(ctx, flags, allArg)
 	}
@@ -164,7 +167,10 @@ func main() {
 		flags.PrintDefaults()
 	}
 	err = runCommand(ctx, selected, option.isStandalone, flags, allArg[1:])
+	var exitCode exitCodeError
 	switch {
+	case errors.As(err, &exitCode):
+		os.Exit(int(exitCode))
 	case errors.Is(err, errUsage):
 		flags.Usage()
 		os.Exit(2)

@@ -52,6 +52,14 @@ export function CopyField(vaultID: string, itemID: string, fieldName: string): $
     return $Call.ByID(1953722850, vaultID, itemID, fieldName);
 }
 
+/**
+ * CopySecretReference copies hisar://<vault>/<item>/<field> for one of the item's fields and returns it.
+ * A reference is not a secret, so the clipboard is not cleared later.
+ */
+export function CopySecretReference(vaultID: string, itemID: string, fieldName: string): $CancellablePromise<string> {
+    return $Call.ByID(701891915, vaultID, itemID, fieldName);
+}
+
 export function CopyText(text: string): $CancellablePromise<void> {
     return $Call.ByID(3582945589, text);
 }
