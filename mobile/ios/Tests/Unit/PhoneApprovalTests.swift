@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 @testable import Hisar
 
@@ -67,6 +68,20 @@ final class PhoneApprovalTests: XCTestCase {
         XCTAssertEqual(approval.bannerTitle, "MacBook Pro is asking to use Hisar from the command line")
         XCTAssertEqual(approval.allDetailRow.map(\.label), ["App", "Command", "Secrets", "Terminal"])
         XCTAssertEqual(approval.allDetailRow[2].value, "Personal › GitHub › password\nWork › AWS › access key\nand 3 more")
+    }
+
+    func testDecodesTheAppIconAndSignatureWarning() throws {
+        let json = """
+        [{"requestId":"0123456789abcdef0123456789abcdef","requesterDeviceName":"MacBook Pro","expiresAt":"2027-01-15T08:01:00.123Z",
+          "kind":"ssh","appName":"iTerm2","purpose":"sign a commit","commandLine":"“Fix the login redirect”",
+          "appIcon":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+          "appWarning":"iTerm2 is not signed, so macOS cannot confirm who made it."}]
+        """
+        let approval = try XCTUnwrap(try JSONDecoder().decode([PhoneApproval].self, from: Data(json.utf8)).first)
+        XCTAssertEqual(approval.summary, "iTerm2 wants to sign a commit")
+        XCTAssertNotNil(approval.appIcon.flatMap(UIImage.init(data:)))
+        XCTAssertEqual(approval.allDetailRow.map(\.label), ["App", "Warning", "Command"])
+        XCTAssertNil(createApproval().appIcon)
     }
 
     func testDescribesRequestsForTheBanner() {

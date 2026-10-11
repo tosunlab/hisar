@@ -8,5 +8,6 @@ export {
 
 export type {
     ApprovalEvent,
+    ChainProcess,
     Status
 } from "./models.js";

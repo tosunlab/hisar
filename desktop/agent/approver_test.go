@@ -122,13 +122,20 @@ func createTestRequest() sshagent.ApprovalRequest {
 func createTestApprover(biometric Biometric, emitter *fakeEmitter) *Approver {
 	return CreateApprover(ApproverConfig{
 		Biometric: biometric, Emit: emitter.emit, ShowApprovalWindow: emitter.showWindow, HideApprovalWindow: emitter.hideWindow,
-		FindApp: func(pid int) (appinfo.App, bool) {
+		ResolveRequester: func(pid int) appinfo.Requester {
 			if pid != 42 {
-				return appinfo.App{}, false
+				return appinfo.Requester{Kind: appinfo.RequesterKindProcess, Name: "A process without an app"}
 			}
-			return appinfo.App{Name: "Terminal", Path: "/System/Applications/Utilities/Terminal.app", IconURL: "data:image/png;base64,AA=="}, true
+			return createTerminalRequester(nil)
 		},
 	})
+}
+
+const terminalBundlePath = "/System/Applications/Utilities/Terminal.app"
+
+func createTerminalRequester(allProcess []appinfo.Process) appinfo.Requester {
+	app := appinfo.App{Name: "Terminal", Path: terminalBundlePath, IconURL: "data:image/png;base64,AA==", Signature: appinfo.Signature{Status: appinfo.SignatureStatusApple}}
+	return appinfo.Requester{Kind: appinfo.RequesterKindApp, Name: "Terminal", App: app, AllProcess: allProcess, AllChainProcess: allProcess}
 }
 
 type approveResult struct {
@@ -263,7 +270,7 @@ func TestApproveTimeoutCancelAndDenyAll(t *testing.T) {
 	resultChannel := startApproval(approver, context.Background(), createTestRequest())
 	approvalEvent := waitForApprovalEvent(t, emitter)
 	if approvalEvent.AppName != "ssh" {
-		t.Errorf("app name without FindApp = %q", approvalEvent.AppName)
+		t.Errorf("app name without ResolveRequester = %q", approvalEvent.AppName)
 	}
 	if result := waitForResult(t, resultChannel); result.result.IsAllowed {
 		t.Error("timed out request allowed")

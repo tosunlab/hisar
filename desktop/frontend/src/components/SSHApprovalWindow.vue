@@ -44,6 +44,17 @@ const isTouchIDUsed = computed(() => approval.value?.isTouchIDApproval === true 
 const isWaitingForTouchID = computed(() => approvalStore.isAuthorizing && isTouchIDUsed.value);
 const canChoosePassword = computed(() => approval.value?.isTouchIDApproval === true && !isPasswordShown.value);
 
+const isAppRequester = computed(() => !approval.value?.requesterKind || approval.value.requesterKind === "app");
+
+// inlineAppName is the app inside a sentence: "iTerm2", or "a background process".
+const inlineAppName = computed(() => {
+  const appName = approval.value?.appName ?? "";
+  if (isAppRequester.value || /^[A-Z]{2}/.test(appName)) {
+    return appName;
+  }
+  return appName.charAt(0).toLowerCase() + appName.slice(1);
+});
+
 const requesterName = computed(() => {
   const current = approval.value;
   if (!current) {
@@ -56,10 +67,16 @@ const requesterName = computed(() => {
     return current.agentName;
   }
   if (current.kind === "command-line" && current.appName !== current.clientName) {
-    return `hisar in ${current.appName}`;
+    return `hisar in ${inlineAppName.value}`;
   }
   return current.appName;
 });
+
+const allChainProcess = computed(() => (approval.value?.isForwarded ? [] : (approval.value?.allChainProcess ?? [])));
+const chainText = computed(() => allChainProcess.value.map((process) => process.name).join(" ← "));
+const chainTitle = computed(() => allChainProcess.value.map((process) => process.commandLine || process.name).join("\n"));
+const appSigner = computed(() => (approval.value?.isForwarded || !isAppRequester.value ? "" : (approval.value?.appSigner ?? "")));
+const appWarning = computed(() => (approval.value?.isForwarded ? "" : (approval.value?.appWarning ?? "")));
 
 const purposeText = computed(() => {
   const current = approval.value;
@@ -81,7 +98,7 @@ const subtitle = computed(() => {
     return current.terminalName ? `from the terminal session ${current.terminalName}` : "from the command line";
   }
   if (current.kind === "agent") {
-    return current.appName ? `via ${current.clientName} in ${current.appName}` : `via ${current.clientName}`;
+    return current.appName ? `via ${current.clientName} in ${inlineAppName.value}` : `via ${current.clientName}`;
   }
   return current.keyTitle ? `with your SSH key “${current.keyTitle}”` : "Unlock Hisar to use your SSH keys";
 });
@@ -110,7 +127,9 @@ const allDetailLine = computed(() => {
 });
 
 const allSecretName = computed(() => approval.value?.allSecretName ?? []);
-const rememberLabel = computed(() => approval.value?.rememberLabel || `Don’t ask again for ${approval.value?.appName} for 1 hour`);
+const rememberLabel = computed(
+  () => approval.value?.rememberLabel || `Don’t ask again for ${isAppRequester.value ? approval.value?.appName : approval.value?.clientName} for 1 hour`,
+);
 
 const unlockNote = computed(() => {
   if (isAgent.value) {
@@ -292,7 +311,7 @@ onBeforeUnmount(() => {
           class="compact-card"
           role="alertdialog"
           aria-labelledby="approval-title"
-          title="Show details"
+          :title="chainText ? `Show details\n${chainText}` : 'Show details'"
           data-testid="ssh-approval"
           @click="expandCompact"
         >
@@ -306,6 +325,9 @@ onBeforeUnmount(() => {
               <strong data-testid="approval-app">{{ approval.appName }}</strong> · {{ allCompactAction[approval.purpose] ?? "Use SSH key" }}
             </p>
             <p class="compact-subtitle">{{ compactSubtitle }}</p>
+            <p v-if="appWarning" class="compact-subtitle app-warning-line" data-testid="approval-app-warning">
+              <AppIcon name="warning" :size="12" /> {{ approval.appSigner }} — check this is the app you expect
+            </p>
             <p v-if="approval.isPhoneApproval" class="compact-subtitle phone-note" data-testid="approval-phone">or approve on your iPhone</p>
             <p v-if="approvalStore.failureMessage" class="failure" role="alert">{{ approvalStore.failureMessage }}</p>
             <div class="compact-actions">
@@ -345,8 +367,19 @@ onBeforeUnmount(() => {
                 <span data-testid="approval-app">{{ requesterName }}</span> wants to {{ purposeText }}
               </h1>
               <p id="approval-subtitle" class="subtitle" :title="approval.fingerprint">{{ subtitle }}</p>
+              <p v-if="chainText || appSigner" class="requester-line" data-testid="approval-requester">
+                <span v-if="chainText" class="chain" :title="chainTitle" data-testid="approval-chain">{{ chainText }}</span>
+                <span v-if="appSigner" class="signer" :class="{ 'is-unverified': appWarning }" :title="approval.appPath" data-testid="approval-signer">
+                  <AppIcon :name="appWarning ? 'warning' : 'shield'" :size="11" /> {{ appSigner }}
+                </span>
+              </p>
             </div>
           </header>
+
+          <div v-if="appWarning" class="app-warning" role="note" data-testid="approval-app-warning">
+            <AppIcon name="warning" :size="15" />
+            <p>{{ appWarning }}</p>
+          </div>
 
           <div v-if="allDetailLine.length > 0" class="detail-box" data-testid="approval-details">
             <code v-for="(line, index) in allDetailLine" :key="index" class="detail-line" :class="{ secondary: index > 0 }" :title="line">{{ line }}</code>
@@ -588,6 +621,58 @@ h1 {
   color: var(--color-text-secondary);
   font-size: 13px;
   overflow-wrap: anywhere;
+}
+
+.requester-line {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.chain {
+  font-family: "SF Mono", ui-monospace, Menlo, monospace;
+  overflow-wrap: anywhere;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.signer {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.signer.is-unverified,
+.compact-subtitle.app-warning-line {
+  color: var(--color-danger);
+}
+
+.app-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 16px;
+  padding: 10px 12px;
+  border: 1px solid #6b2328;
+  border-radius: var(--radius);
+  background: var(--color-danger-background);
+  color: #f2b8bb;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.app-warning .icon {
+  flex: none;
+  margin-top: 1px;
+  color: var(--color-danger);
+}
+
+.app-warning p {
+  margin: 0;
 }
 
 .detail-box {

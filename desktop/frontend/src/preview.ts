@@ -233,6 +233,77 @@ let allPreviewAgentVaultID: string[] = ["work"];
 
 const resolveAfterDelay = <Value>(value: Value): Promise<Value> => new Promise((resolve) => setTimeout(() => resolve(value), 80));
 
+function createPreviewTerminalRequester(): Pick<
+  ApprovalEvent,
+  "requesterKind" | "appName" | "appIconURL" | "appPath" | "appSignature" | "appSigner" | "appWarning" | "allChainProcess"
+> {
+  return {
+    requesterKind: "app",
+    appName: "Terminal",
+    appIconURL: "",
+    appPath: "/System/Applications/Utilities/Terminal.app",
+    appSignature: "apple",
+    appSigner: "Signed by Apple",
+    appWarning: "",
+    allChainProcess: [
+      { name: "ssh", commandLine: "ssh git@git.tryhisar.com 'git-receive-pack '\\''hisar/core.git'\\''" },
+      { name: "git", commandLine: "git push origin main" },
+      { name: "zsh", commandLine: "-zsh" },
+    ],
+  };
+}
+
+const allPreviewSigningChainProcess = [
+  { name: "ssh-keygen", commandLine: "/usr/bin/ssh-keygen -Y sign -n git -f /Users/developer/.ssh/signing.pub /var/folders/x/.git_signing_buffer_tmpA1b2" },
+  { name: "git", commandLine: "git commit -S -m 'Name the app behind every approval'" },
+];
+
+// applyPreviewApp: &app=iterm (a commit signed in iTerm2), =vscode (Visual Studio Code's git), =unsigned (an "iTerm2" without a signature),
+// =background or =ssh (no app), with &appIcon=<url> for the icon.
+function applyPreviewApp(event: ApprovalEvent): ApprovalEvent {
+  const appIconURL = previewParameter.get("appIcon") ?? "";
+  const allPreviewSigningChain =
+    event.kind === "ssh-key" ? allPreviewSigningChainProcess : [{ name: "hisar", commandLine: `hisar run -- ${event.commandLine || "hisar status"}` }];
+  switch (previewParameter.get("app")) {
+    case "iterm":
+      return {
+        ...event,
+        appName: "iTerm2",
+        appIconURL,
+        appPath: "/Applications/iTerm.app",
+        appSignature: "developer",
+        appSigner: "Signed by George Nachman (H7V7XYVQ7D)",
+        allChainProcess: [...allPreviewSigningChain, { name: "zsh", commandLine: "-zsh" }],
+      };
+    case "vscode":
+      return {
+        ...event,
+        appName: "Visual Studio Code",
+        appIconURL,
+        appPath: "/Applications/Visual Studio Code.app",
+        appSignature: "developer",
+        appSigner: "Signed by Microsoft Corporation (UBF8T346G9)",
+        allChainProcess: allPreviewSigningChain,
+      };
+    case "unsigned":
+      return {
+        ...event,
+        appName: "iTerm2",
+        appIconURL,
+        appPath: "/Users/developer/Downloads/iTerm.app",
+        appSignature: "unsigned",
+        appSigner: "Not signed",
+        appWarning: "iTerm2 is not signed, so macOS cannot confirm who made it. Approve only if you started this yourself.",
+        allChainProcess: [...allPreviewSigningChain, { name: "zsh", commandLine: "-zsh" }],
+      };
+    case "background":
+      return { ...event, requesterKind: "background", appName: "A background process", appIconURL: "", appPath: "", appSignature: "", appSigner: "", allChainProcess: [...allPreviewSigningChain, { name: "nightly-release", commandLine: "/Users/developer/bin/nightly-release" }] };
+    case "ssh":
+      return { ...event, requesterKind: "ssh-session", appName: "An SSH session from 192.0.2.10", appIconURL: "", appPath: "", appSignature: "", appSigner: "", allChainProcess: [...allPreviewSigningChain, { name: "zsh", commandLine: "-zsh" }] };
+  }
+  return event;
+}
+
 const dayInMilliseconds = 24 * hourInMilliseconds;
 
 function createPreviewShareLink(overrides: Partial<ShareLink>): ShareLink {
@@ -317,8 +388,7 @@ function createPreviewCommandLineApproval(): ApprovalEvent {
   return {
     requestID: "preview-command-line",
     kind: "command-line",
-    appName: "Terminal",
-    appIconURL: "",
+    ...createPreviewTerminalRequester(),
     clientName: "hisar",
     clientPath: "/Applications/Hisar.app/Contents/Helpers/hisar",
     keyTitle: "",
@@ -365,8 +435,7 @@ function createPreviewSSHApproval(): ApprovalEvent {
     terminalName: "",
     isUnlockRequired: isLocked,
     isPasswordUnlock: previewParameter.get("approvalPassword") === "1",
-    appName: "Terminal",
-    appIconURL: "",
+    ...createPreviewTerminalRequester(),
     clientName: "ssh",
     clientPath: "/usr/bin/ssh",
     keyTitle: isLocked && previewParameter.get("approvalKey") !== "1" ? "" : "GitHub SSH key",
@@ -462,6 +531,10 @@ function createPreviewAgentApproval(kind: string): ApprovalEvent {
 // plus &approvalLocked=1 (Touch ID unlocks), &approvalPassword=1 (master password unlocks), &compact=1, &forwarded=1, &noTouchID=1,
 // &phone=1 (the account's iPhone can approve too).
 function listAllPreviewApproval(): ApprovalEvent[] {
+  return listAllPreviewApprovalWithoutApp().map(applyPreviewApp);
+}
+
+function listAllPreviewApprovalWithoutApp(): ApprovalEvent[] {
   if (previewParameter.get("approval") === "cli") {
     return [createPreviewCommandLineApproval()];
   }

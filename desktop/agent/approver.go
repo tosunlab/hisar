@@ -59,37 +59,44 @@ type PhoneApprover interface {
 	StartPhoneApproval(description approval.Description, expiresAt time.Time, decide func(isApproved bool)) (finish func())
 }
 
-// ApprovalEvent is what the approval window shows; AppName and AppIconURL describe the app the program runs in.
+// ApprovalEvent is what the approval window shows; AppName and AppIconURL describe the app responsible for the request,
+// or for another RequesterKind what stands in for one ("A background process"), with the programs in between in AllChainProcess.
 // Command-line requests have Kind ApprovalKindCommandLine and no key; either kind unlocks Hisar when IsUnlockRequired.
 type ApprovalEvent struct {
-	RequestID              string `json:"requestID"`
-	Kind                   string `json:"kind"`
-	AppName                string `json:"appName"`
-	AppIconURL             string `json:"appIconURL"`
-	ClientName             string `json:"clientName"`
-	ClientPath             string `json:"clientPath"`
-	KeyTitle               string `json:"keyTitle"`
-	Fingerprint            string `json:"fingerprint"`
-	DestinationHost        string `json:"destinationHost"`
-	DestinationFingerprint string `json:"destinationFingerprint"`
-	IsForwarded            bool   `json:"isForwarded"`
-	ForwardedFromHost      string `json:"forwardedFromHost"`
-	Purpose                string `json:"purpose"`
-	Action                 string `json:"action"`
-	Target                 string `json:"target"`
-	CommandLine            string `json:"commandLine"`
-	RepositoryPath         string `json:"repositoryPath"`
-	HostAndPort            string `json:"hostAndPort"`
-	Branch                 string `json:"branch"`
-	CommitSubject          string `json:"commitSubject"`
-	IsRememberable         bool   `json:"isRememberable"`
-	IsCompact              bool   `json:"isCompact"`
-	IsTouchIDApproval      bool   `json:"isTouchIDApproval"`
-	TimeoutAt              string `json:"timeoutAt"`
-	TerminalName           string `json:"terminalName"`
-	IsUnlockRequired       bool   `json:"isUnlockRequired"`
-	IsPasswordUnlock       bool   `json:"isPasswordUnlock"`
-	IsPhoneApproval        bool   `json:"isPhoneApproval"`
+	RequestID              string         `json:"requestID"`
+	Kind                   string         `json:"kind"`
+	RequesterKind          string         `json:"requesterKind"`
+	AppName                string         `json:"appName"`
+	AppIconURL             string         `json:"appIconURL"`
+	AppPath                string         `json:"appPath"`
+	AppSignature           string         `json:"appSignature"`
+	AppSigner              string         `json:"appSigner"`
+	AppWarning             string         `json:"appWarning"`
+	AllChainProcess        []ChainProcess `json:"allChainProcess"`
+	ClientName             string         `json:"clientName"`
+	ClientPath             string         `json:"clientPath"`
+	KeyTitle               string         `json:"keyTitle"`
+	Fingerprint            string         `json:"fingerprint"`
+	DestinationHost        string         `json:"destinationHost"`
+	DestinationFingerprint string         `json:"destinationFingerprint"`
+	IsForwarded            bool           `json:"isForwarded"`
+	ForwardedFromHost      string         `json:"forwardedFromHost"`
+	Purpose                string         `json:"purpose"`
+	Action                 string         `json:"action"`
+	Target                 string         `json:"target"`
+	CommandLine            string         `json:"commandLine"`
+	RepositoryPath         string         `json:"repositoryPath"`
+	HostAndPort            string         `json:"hostAndPort"`
+	Branch                 string         `json:"branch"`
+	CommitSubject          string         `json:"commitSubject"`
+	IsRememberable         bool           `json:"isRememberable"`
+	IsCompact              bool           `json:"isCompact"`
+	IsTouchIDApproval      bool           `json:"isTouchIDApproval"`
+	TimeoutAt              string         `json:"timeoutAt"`
+	TerminalName           string         `json:"terminalName"`
+	IsUnlockRequired       bool           `json:"isUnlockRequired"`
+	IsPasswordUnlock       bool           `json:"isPasswordUnlock"`
+	IsPhoneApproval        bool           `json:"isPhoneApproval"`
 	// AllSecretName lists the first secrets of a secrets.resolve request; MoreSecretCount counts the rest.
 	AllSecretName   []string `json:"allSecretName"`
 	MoreSecretCount int      `json:"moreSecretCount"`
@@ -117,12 +124,12 @@ type ApproverConfig struct {
 	HideApprovalWindow func()
 	// CancelBiometric ends a Touch ID check in progress, so Deny does not wait for the sensor.
 	CancelBiometric func()
-	// FindApp names the app a process belongs to; nil shows only the program.
-	FindApp func(pid int) (appinfo.App, bool)
-	// ListAllProcess reads the requesting process and its parents for the purpose; nil leaves it generic.
-	ListAllProcess func(pid int) []appinfo.Process
-	ReadFile       FileReader
-	HomeDirectory  string
+	// ResolveRequester finds the app responsible for a process and reads its process chain; nil shows only the program.
+	ResolveRequester func(pid int) appinfo.Requester
+	// GetAppIconPNG renders an app's icon for the phone; nil sends the app's name only.
+	GetAppIconPNG func(bundlePath string, size int) ([]byte, error)
+	ReadFile      FileReader
+	HomeDirectory string
 	// IsCompactApproval is the Settings switch for the compact layout.
 	IsCompactApproval func() bool
 	Unlocker          Unlocker
@@ -261,6 +268,7 @@ func (approver *Approver) buildApprovalEvent(requestID string, request sshagent.
 		Fingerprint:            request.Fingerprint,
 		DestinationHost:        request.DestinationHost,
 		DestinationFingerprint: request.DestinationFingerprint,
+		AllChainProcess:        []ChainProcess{},
 		IsForwarded:            request.IsForwarded,
 		IsRememberable:         request.IsRememberable,
 		IsTouchIDApproval:      approver.IsTouchIDApproval(),
@@ -269,14 +277,10 @@ func (approver *Approver) buildApprovalEvent(requestID string, request sshagent.
 	if request.DestinationPort != 0 && request.DestinationHost != "" {
 		event.DestinationHost = net.JoinHostPort(request.DestinationHost, fmt.Sprint(request.DestinationPort))
 	}
-	if approver.config.FindApp != nil && request.ClientPID > 0 {
-		if app, isFound := approver.config.FindApp(request.ClientPID); isFound {
-			event.AppName, event.AppIconURL = app.Name, app.IconURL
-		}
-	}
 	allProcess := []appinfo.Process{}
-	if approver.config.ListAllProcess != nil && request.ClientPID > 0 {
-		allProcess = approver.config.ListAllProcess(request.ClientPID)
+	if requester, isResolved := approver.resolveRequester(request.ClientPID); isResolved {
+		applyRequester(&event, requester)
+		allProcess = requester.AllProcess
 	}
 	description := DescribeRequest(allProcess, request, approver.config.HomeDirectory, approver.config.ReadFile)
 	event.Purpose, event.Action, event.Target = description.Purpose, description.Action, description.Target
@@ -300,7 +304,7 @@ func (approver *Approver) Approve(ctx context.Context, request sshagent.Approval
 	receivedAt := approver.config.Now()
 	event := approver.buildApprovalEvent(generateRequestID(), request)
 	description := RequestDescription{Purpose: event.Purpose, Action: event.Action, Target: event.Target, HostAndPort: event.HostAndPort, ForwardedFromHost: event.ForwardedFromHost}
-	approveReason := formatApprovalReason(event.AppName, description)
+	approveReason := formatApprovalReason(describeReasonRequester(event), description)
 	pending := &pendingApproval{
 		receivedAt:      receivedAt,
 		event:           event,
@@ -308,7 +312,7 @@ func (approver *Approver) Approve(ctx context.Context, request sshagent.Approval
 		approveReason:   approveReason,
 		unlockReason:    "unlock Hisar and " + approveReason,
 		isRemembered:    event.IsRememberable,
-		phoneRequest:    buildSSHPhoneDescription(event),
+		phoneRequest:    approver.buildSSHPhoneDescription(event),
 	}
 	if !approver.waitForApproval(ctx, pending) {
 		return sshagent.ApprovalResult{}, nil
@@ -329,6 +333,7 @@ func (approver *Approver) buildCommandLineEvent(requestID string, request comman
 		IsTouchIDApproval: approver.IsTouchIDApproval(),
 		TimeoutAt:         approver.config.Now().Add(approver.config.Timeout).UTC().Format(time.RFC3339),
 		AllSecretName:     []string{},
+		AllChainProcess:   []ChainProcess{},
 	}
 	if request.IsSecretRequest {
 		event.Action = describeSecretAction(len(request.AllSecretName), len(request.CommandLine) > 0)
@@ -341,21 +346,20 @@ func (approver *Approver) buildCommandLineEvent(requestID string, request comman
 		event.AllSecretName, event.MoreSecretCount = limitSecretName(request.ShareLink.AllFieldLabel)
 		event.Warning = shareLinkWarning
 	}
-	// The bundled hisar lives inside Hisar.app, so the terminal app is found from its parent.
-	if approver.config.FindApp != nil && request.ParentPID > 1 {
-		if app, isFound := approver.config.FindApp(request.ParentPID); isFound {
-			event.AppName, event.AppIconURL = app.Name, app.IconURL
-		}
+	if requester, isResolved := approver.resolveRequester(request.ClientPID); isResolved {
+		applyRequester(&event, requester)
 	}
 	approver.setUnlockState(&event)
 	return event
 }
 
 // buildSSHPhoneDescription carries the dialog's lines to the phone.
-func buildSSHPhoneDescription(event ApprovalEvent) approval.Description {
+func (approver *Approver) buildSSHPhoneDescription(event ApprovalEvent) approval.Description {
 	description := approval.Description{
 		Kind:              approval.KindSSH,
 		AppName:           event.AppName,
+		AppIcon:           approver.getPhoneAppIcon(event),
+		AppWarning:        event.AppWarning,
 		Purpose:           strings.TrimSpace(event.Action + " " + event.Target),
 		Host:              event.HostAndPort,
 		CommandLine:       event.CommandLine,
@@ -366,6 +370,9 @@ func buildSSHPhoneDescription(event ApprovalEvent) approval.Description {
 	}
 	if description.Purpose == "" {
 		description.Purpose = "use your SSH key"
+	}
+	if event.IsForwarded {
+		description.AppWarning = ""
 	}
 	if description.Host == "" {
 		description.Host = event.DestinationHost
@@ -381,14 +388,16 @@ func buildSSHPhoneDescription(event ApprovalEvent) approval.Description {
 	return description
 }
 
-func buildCommandLinePhoneDescription(event ApprovalEvent) approval.Description {
+func (approver *Approver) buildCommandLinePhoneDescription(event ApprovalEvent) approval.Description {
 	appName := event.ClientName
 	if event.AppName != event.ClientName {
-		appName = event.ClientName + " in " + event.AppName
+		appName = event.ClientName + " in " + describeInlineAppName(event)
 	}
 	description := approval.Description{
 		Kind:         approval.KindCommandLine,
 		AppName:      appName,
+		AppIcon:      approver.getPhoneAppIcon(event),
+		AppWarning:   event.AppWarning,
 		Purpose:      "use Hisar",
 		CommandLine:  event.ClientPath,
 		TerminalName: event.TerminalName,
@@ -408,7 +417,7 @@ func describeCommandLineClient(event ApprovalEvent) string {
 	if event.AppName == event.ClientName {
 		return fmt.Sprintf("%q", event.ClientName)
 	}
-	return fmt.Sprintf("%q in %s", event.ClientName, event.AppName)
+	return fmt.Sprintf("%q in %s", event.ClientName, describeInlineAppName(event))
 }
 
 // ApproveCommandLine asks to let a terminal session use Hisar; when Hisar is locked, approving also unlocks it.
@@ -429,7 +438,7 @@ func (approver *Approver) ApproveCommandLine(ctx context.Context, request comman
 		receivedAt:      receivedAt,
 		approveReason:   fmt.Sprintf("allow %s to %s", client, action),
 		unlockReason:    fmt.Sprintf("unlock Hisar for %s", client),
-		phoneRequest:    buildCommandLinePhoneDescription(event),
+		phoneRequest:    approver.buildCommandLinePhoneDescription(event),
 	}
 	if !approver.waitForApproval(ctx, pending) {
 		if pending.timedOutAfter > 0 {

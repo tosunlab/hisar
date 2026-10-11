@@ -1,16 +1,15 @@
-// Package appinfo finds the app a process belongs to, with its name and icon, and the process chain behind a request.
+// Package appinfo finds the app responsible for a process, with its name, icon and code signature, and the process chain behind a request.
 package appinfo
 
 import (
-	"encoding/base64"
-	"path/filepath"
 	"strings"
 )
 
 type App struct {
-	Name    string
-	Path    string
-	IconURL string
+	Name      string
+	Path      string
+	IconURL   string
+	Signature Signature
 }
 
 // Process is one process of a chain; AllArgument and WorkingDirectory are empty when they cannot be read.
@@ -79,28 +78,6 @@ func ListAllProcess(pid int, reader ProcessReader) []Process {
 	return allProcess
 }
 
-// FindAppPath returns the outermost bundle of the nearest process that runs inside an app and is not a developer tool.
-func FindAppPath(allProcess []Process) (string, bool) {
-	for _, process := range allProcess {
-		if process.Path == "" || IsDeveloperToolPath(process.Path) {
-			continue
-		}
-		if bundlePath := getOutermostBundlePath(process.Path); bundlePath != "" {
-			return bundlePath, true
-		}
-	}
-	return "", false
-}
-
-// FindApp walks from a process up its parents to the nearest app; it returns false for none.
-func FindApp(pid int, getProcessPath func(int) (string, error), getParentPID func(int) (int, error)) (App, bool) {
-	bundlePath, isFound := FindAppPath(ListAllProcess(pid, ProcessReader{GetPath: getProcessPath, GetParentPID: getParentPID}))
-	if !isFound {
-		return App{}, false
-	}
-	return DescribeBundle(bundlePath), true
-}
-
 // getOutermostBundlePath returns the first ".app" directory in a path, so helper apps resolve to the app that ships them.
 func getOutermostBundlePath(path string) string {
 	index := strings.Index(path, ".app/")
@@ -108,15 +85,4 @@ func getOutermostBundlePath(path string) string {
 		return ""
 	}
 	return path[:index+len(".app")]
-}
-
-func DescribeBundle(bundlePath string) App {
-	app := App{Path: bundlePath, Name: getBundleDisplayName(bundlePath)}
-	if app.Name == "" {
-		app.Name = strings.TrimSuffix(filepath.Base(bundlePath), ".app")
-	}
-	if icon, err := getBundleIconPNG(bundlePath, 128); err == nil {
-		app.IconURL = "data:image/png;base64," + base64.StdEncoding.EncodeToString(icon)
-	}
-	return app
 }

@@ -93,9 +93,9 @@ func TestPhoneSeesTheSecretsOfARunRequest(t *testing.T) {
 	phone := createFakePhone()
 	approver := CreateApprover(ApproverConfig{
 		Biometric: &fakeBiometric{isAvailable: true}, Emit: emitter.emit, ShowApprovalWindow: emitter.showWindow, HideApprovalWindow: emitter.hideWindow,
-		FindApp:       func(pid int) (appinfo.App, bool) { return appinfo.App{Name: "Terminal"}, true },
-		PhoneApprover: phone,
-		Timeout:       5 * time.Second,
+		ResolveRequester: func(int) appinfo.Requester { return createTerminalRequester(nil) },
+		PhoneApprover:    phone,
+		Timeout:          5 * time.Second,
 	})
 	allSecretName := []string{"A › a › password", "B › b › password", "C › c › password", "D › d › password", "E › e › password"}
 	resultChannel := make(chan error, 1)

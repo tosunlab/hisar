@@ -183,7 +183,7 @@ func TestAgentDialogLeavesOutTheAppWhenItIsTheAgent(t *testing.T) {
 	emitter := createFakeEmitter()
 	approver := createCommandLineApprover(&fakeBiometric{isAvailable: true}, emitter, &fakeUnlocker{}, 0)
 	request := createAgentRequest(commandline.AgentRequestConnect)
-	request.Agent, request.ParentPID = commandline.AgentIdentity{Name: "hisar"}, 7
+	request.Agent, request.ClientPID = commandline.AgentIdentity{Name: "hisar"}, 7
 	resultChannel := startAgentApproval(approver, request)
 	event := waitForApprovalEvent(t, emitter)
 	if event.AgentName != "hisar" || event.AppName != "" || describeAgentRequester(event) != "hisar (via hisar mcp)" {

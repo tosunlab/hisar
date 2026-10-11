@@ -30,15 +30,17 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
     var forwardedFromHost: String
     var terminalName: String
     var secrets: [String]
+    var appIcon: Data?
+    var appWarning: String
 
     var id: String { requestID }
 
     enum CodingKeys: String, CodingKey {
         case requestID = "requestId"
-        case requesterDeviceName, createdAt, expiresAt, kind, appName, purpose, host, commandLine, repositoryPath, keyName, isForwarded, forwardedFromHost, terminalName, secrets
+        case requesterDeviceName, createdAt, expiresAt, kind, appName, purpose, host, commandLine, repositoryPath, keyName, isForwarded, forwardedFromHost, terminalName, secrets, appIcon, appWarning
     }
 
-    init(requestID: String, requesterDeviceName: String, createdAt: String = "", expiresAt: String, kind: String, appName: String, purpose: String, host: String = "", commandLine: String = "", repositoryPath: String = "", keyName: String = "", isForwarded: Bool = false, forwardedFromHost: String = "", terminalName: String = "", secrets: [String] = []) {
+    init(requestID: String, requesterDeviceName: String, createdAt: String = "", expiresAt: String, kind: String, appName: String, purpose: String, host: String = "", commandLine: String = "", repositoryPath: String = "", keyName: String = "", isForwarded: Bool = false, forwardedFromHost: String = "", terminalName: String = "", secrets: [String] = [], appIcon: Data? = nil, appWarning: String = "") {
         self.requestID = requestID
         self.requesterDeviceName = requesterDeviceName
         self.createdAt = createdAt
@@ -54,6 +56,8 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
         self.forwardedFromHost = forwardedFromHost
         self.terminalName = terminalName
         self.secrets = secrets
+        self.appIcon = appIcon
+        self.appWarning = appWarning
     }
 
     init(from decoder: Decoder) throws {
@@ -73,6 +77,8 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
         forwardedFromHost = try container.decodeIfPresent(String.self, forKey: .forwardedFromHost) ?? ""
         terminalName = try container.decodeIfPresent(String.self, forKey: .terminalName) ?? ""
         secrets = try container.decodeIfPresent([String].self, forKey: .secrets) ?? []
+        appIcon = try? container.decodeIfPresent(Data.self, forKey: .appIcon)
+        appWarning = try container.decodeIfPresent(String.self, forKey: .appWarning) ?? ""
     }
 
     var expiryDate: Date? { Self.parseDate(expiresAt) }
@@ -116,6 +122,7 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
     var allDetailRow: [DetailRow] {
         let allCandidate = [
             DetailRow(label: "App", value: appName, isMonospaced: false),
+            DetailRow(label: "Warning", value: appWarning, isMonospaced: false),
             DetailRow(label: kind == Self.kindCommandLine && secrets.isEmpty ? "Program" : "Command", value: commandLine, isMonospaced: true),
             DetailRow(label: "Repository", value: repositoryPath, isMonospaced: true),
             DetailRow(label: "Server", value: host, isMonospaced: true),

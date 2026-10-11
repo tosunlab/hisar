@@ -23,10 +23,7 @@ func createSSHApprover(emitter *fakeEmitter, option sshApproverOption) *Approver
 	}
 	config := ApproverConfig{
 		Biometric: option.biometric, Emit: emitter.emit, ShowApprovalWindow: emitter.showWindow, HideApprovalWindow: emitter.hideWindow,
-		FindApp: func(pid int) (appinfo.App, bool) {
-			return appinfo.App{Name: "Terminal", Path: "/System/Applications/Utilities/Terminal.app", IconURL: "data:image/png;base64,AA=="}, true
-		},
-		ListAllProcess:    func(int) []appinfo.Process { return option.allProcess },
+		ResolveRequester:  func(int) appinfo.Requester { return createTerminalRequester(option.allProcess) },
 		ReadFile:          option.fileSystem.readFile,
 		HomeDirectory:     testHomeDirectory,
 		IsCompactApproval: func() bool { return option.isCompact },
