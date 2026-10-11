@@ -98,12 +98,22 @@ struct PhoneApprovalSheet: View {
 
     private var header: some View {
         VStack(spacing: 10) {
-            Image(systemName: approval.isForwarded ? "globe" : approval.systemImage)
-                .font(.largeTitle)
-                .foregroundStyle(approval.isForwarded ? .red : .orange)
-                .frame(width: 72, height: 72)
-                .background(.fill.tertiary, in: .rect(cornerRadius: 18, style: .continuous))
-                .accessibilityHidden(true)
+            if !approval.isForwarded, let appIcon = approval.appIcon.flatMap(UIImage.init(data:)) {
+                Image(uiImage: appIcon)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: 64, height: 64)
+                    .frame(width: 72, height: 72)
+                    .accessibilityIdentifier("phone-approval-app-icon")
+                    .accessibilityHidden(true)
+            } else {
+                Image(systemName: approval.isForwarded ? "globe" : approval.systemImage)
+                    .font(.largeTitle)
+                    .foregroundStyle(approval.isForwarded ? .red : .orange)
+                    .frame(width: 72, height: 72)
+                    .background(.fill.tertiary, in: .rect(cornerRadius: 18, style: .continuous))
+                    .accessibilityHidden(true)
+            }
             Text(approval.title)
                 .font(.title2.weight(.bold))
                 .multilineTextAlignment(.center)

@@ -63,11 +63,11 @@ func (unlocker *fakeUnlocker) VerifyPassword(password string) error {
 func createCommandLineApprover(biometric Biometric, emitter *fakeEmitter, unlocker Unlocker, timeout time.Duration) *Approver {
 	return CreateApprover(ApproverConfig{
 		Biometric: biometric, Emit: emitter.emit, ShowApprovalWindow: emitter.showWindow, HideApprovalWindow: emitter.hideWindow,
-		FindApp: func(pid int) (appinfo.App, bool) {
-			if pid != 42 {
-				return appinfo.App{Name: "Hisar"}, true
+		ResolveRequester: func(pid int) appinfo.Requester {
+			if pid != 77 {
+				return appinfo.Requester{Kind: appinfo.RequesterKindApp, Name: "Hisar", App: appinfo.App{Name: "Hisar"}}
 			}
-			return appinfo.App{Name: "Terminal", IconURL: "data:image/png;base64,AA=="}, true
+			return createTerminalRequester(nil)
 		},
 		Unlocker: unlocker,
 		Timeout:  timeout,

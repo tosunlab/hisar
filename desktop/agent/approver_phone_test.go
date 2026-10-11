@@ -75,13 +75,10 @@ func (phone *fakePhone) getStartAndFinishCount() (int, int) {
 func createPhoneApprover(emitter *fakeEmitter, phone *fakePhone, biometric Biometric, unlocker Unlocker, allProcess []appinfo.Process) *Approver {
 	config := ApproverConfig{
 		Biometric: biometric, Emit: emitter.emit, ShowApprovalWindow: emitter.showWindow, HideApprovalWindow: emitter.hideWindow,
-		FindApp: func(pid int) (appinfo.App, bool) {
-			return appinfo.App{Name: "Terminal", Path: "/System/Applications/Utilities/Terminal.app"}, true
-		},
-		ListAllProcess: func(int) []appinfo.Process { return allProcess },
-		HomeDirectory:  testHomeDirectory,
-		PhoneApprover:  phone,
-		Timeout:        5 * time.Second,
+		ResolveRequester: func(int) appinfo.Requester { return createTerminalRequester(allProcess) },
+		HomeDirectory:    testHomeDirectory,
+		PhoneApprover:    phone,
+		Timeout:          5 * time.Second,
 	}
 	if unlocker != nil {
 		config.Unlocker = unlocker
@@ -240,9 +237,9 @@ func TestPhoneApprovesCommandLine(t *testing.T) {
 	phone := createFakePhone()
 	approver := CreateApprover(ApproverConfig{
 		Biometric: &fakeBiometric{isAvailable: true}, Emit: emitter.emit, ShowApprovalWindow: emitter.showWindow, HideApprovalWindow: emitter.hideWindow,
-		FindApp:       func(pid int) (appinfo.App, bool) { return appinfo.App{Name: "Terminal"}, true },
-		PhoneApprover: phone,
-		Timeout:       5 * time.Second,
+		ResolveRequester: func(int) appinfo.Requester { return createTerminalRequester(nil) },
+		PhoneApprover:    phone,
+		Timeout:          5 * time.Second,
 	})
 	resultChannel := startCommandLineApproval(approver, context.Background())
 	waitForApprovalEvent(t, emitter)

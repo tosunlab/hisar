@@ -397,3 +397,116 @@ describe("SSHApprovalWindow", () => {
     wrapper.unmount();
   });
 });
+
+describe("SSHApprovalWindow app attribution", () => {
+  const allSigningChain = [
+    { name: "ssh-keygen", commandLine: "/usr/bin/ssh-keygen -Y sign -n git -f /Users/developer/.ssh/signing.pub /tmp/.git_signing_buffer_tmpX" },
+    { name: "git", commandLine: "git commit -S -m 'Fix the login redirect'" },
+    { name: "zsh", commandLine: "-zsh" },
+  ];
+
+  function createITermSigningEvent(overrides = {}) {
+    return createSigningApprovalEvent({
+      appName: "iTerm2",
+      appIconURL: "data:image/png;base64,iTerm",
+      appPath: "/Applications/iTerm.app",
+      appSignature: "developer",
+      appSigner: "Signed by George Nachman (H7V7XYVQ7D)",
+      allChainProcess: allSigningChain,
+      ...overrides,
+    });
+  }
+
+  it("names the app behind a commit signature, with its icon, chain and signature", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createITermSigningEvent());
+    await flushPromises();
+    expect(wrapper.find("h1").text()).toBe("iTerm2 wants to sign a commit");
+    expect(wrapper.find('[data-testid="app-icon"]').attributes("src")).toBe("data:image/png;base64,iTerm");
+    const chain = wrapper.find('[data-testid="approval-chain"]');
+    expect(chain.text()).toBe("ssh-keygen ← git ← zsh");
+    expect(chain.attributes("title")).toBe(allSigningChain.map((process) => process.commandLine).join("\n"));
+    expect(wrapper.find('[data-testid="approval-signer"]').text()).toBe("Signed by George Nachman (H7V7XYVQ7D)");
+    expect(wrapper.find('[data-testid="approval-signer"]').classes()).not.toContain("is-unverified");
+    expect(wrapper.find('[data-testid="approval-app-warning"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("names Visual Studio Code for its git extension", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent(
+      "ssh-approval",
+      createITermSigningEvent({ appName: "Visual Studio Code", appSigner: "Signed by Microsoft Corporation (UBF8T346G9)", allChainProcess: allSigningChain.slice(0, 2) }),
+    );
+    await flushPromises();
+    expect(wrapper.find("h1").text()).toBe("Visual Studio Code wants to sign a commit");
+    expect(wrapper.find('[data-testid="approval-chain"]').text()).toBe("ssh-keygen ← git");
+    expect(wrapper.find('[data-testid="approval-signer"]').text()).toBe("Signed by Microsoft Corporation (UBF8T346G9)");
+    wrapper.unmount();
+  });
+
+  it("warns about an app that is not signed, in the dialog and the compact card", async () => {
+    const appWarning = "iTerm2 is not signed, so macOS cannot confirm who made it. Approve only if you started this yourself.";
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createITermSigningEvent({ appSignature: "unsigned", appSigner: "Not signed", appWarning }));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="approval-signer"]').text()).toBe("Not signed");
+    expect(wrapper.find('[data-testid="approval-signer"]').classes()).toContain("is-unverified");
+    expect(wrapper.find('[data-testid="approval-app-warning"]').text()).toBe(appWarning);
+    sendEvent("ssh-approval-closed", "signing-1");
+    sendEvent("ssh-approval", createITermSigningEvent({ requestID: "compact-1", isCompact: true, appSignature: "invalid", appSigner: "Signature not valid", appWarning }));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="approval-compact-title"]').text()).toBe("iTerm2 · Sign a commit");
+    expect(wrapper.find('[data-testid="approval-app-warning"]').text()).toBe("Signature not valid — check this is the app you expect");
+    expect(wrapper.find('[data-testid="ssh-approval"]').attributes("title")).toBe("Show details\nssh-keygen ← git ← zsh");
+    wrapper.unmount();
+  });
+
+  it("says what stands in for an app when there is none", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createApprovalEvent({ requesterKind: "background", appName: "A background process", appSignature: "", appSigner: "", appPath: "" }));
+    await flushPromises();
+    expect(wrapper.find("h1").text()).toBe("A background process wants to push to git.tryhisar.com");
+    expect(wrapper.find('[data-testid="app-icon"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="approval-signer"]').exists()).toBe(false);
+    expect(wrapper.find(".remember").text()).toBe("Don’t ask again for ssh for 1 hour");
+    sendEvent("ssh-approval-closed", "request-1");
+    sendEvent("ssh-approval", createCommandLineApprovalEvent({ requesterKind: "ssh-session", appName: "An SSH session from 192.0.2.10", appSigner: "" }));
+    await flushPromises();
+    expect(wrapper.find("#approval-title").text()).toBe("hisar in an SSH session from 192.0.2.10 wants to use Hisar");
+    wrapper.unmount();
+  });
+
+  it("names the app that creates a share link", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent(
+      "ssh-approval",
+      createCommandLineApprovalEvent({
+        action: "create a share link for “GitHub”",
+        commandLine: "Expires in 7 days · 1 view",
+        allSecretName: ["username", "password"],
+        appName: "iTerm2",
+        appIconURL: "data:image/png;base64,iTerm",
+        appSigner: "Signed by George Nachman (H7V7XYVQ7D)",
+        allChainProcess: [
+          { name: "hisar", commandLine: "hisar share-link GitHub" },
+          { name: "zsh", commandLine: "-zsh" },
+        ],
+      }),
+    );
+    await flushPromises();
+    expect(wrapper.find("#approval-title").text()).toBe("hisar in iTerm2 wants to create a share link for “GitHub”");
+    expect(wrapper.find('[data-testid="app-icon"]').attributes("src")).toBe("data:image/png;base64,iTerm");
+    expect(wrapper.find('[data-testid="approval-chain"]').text()).toBe("hisar ← zsh");
+    expect(wrapper.find('[data-testid="approval-signer"]').text()).toBe("Signed by George Nachman (H7V7XYVQ7D)");
+    wrapper.unmount();
+  });
+
+  it("leaves the local chain out of a forwarded request", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createForwardedApprovalEvent());
+    await flushPromises();
+    expect(wrapper.find('[data-testid="approval-requester"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+});

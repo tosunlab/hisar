@@ -1,4 +1,4 @@
-//go:build darwin && cgo
+//go:build darwin && !ios && cgo
 
 package appinfo
 
@@ -30,4 +30,16 @@ func GetProcessWorkingDirectory(pid int) (string, error) {
 		return "", errors.New("appinfo: working directory not available")
 	}
 	return C.GoString(buffer), nil
+}
+
+func listAllProcessID() ([]int, error) {
+	allKernelProcess, err := unix.SysctlKinfoProcSlice("kern.proc.all")
+	if err != nil {
+		return nil, err
+	}
+	allProcessID := make([]int, 0, len(allKernelProcess))
+	for _, kernelProcess := range allKernelProcess {
+		allProcessID = append(allProcessID, int(kernelProcess.Proc.P_pid))
+	}
+	return allProcessID, nil
 }

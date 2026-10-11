@@ -1,4 +1,4 @@
-//go:build !linux && !(darwin && cgo)
+//go:build !linux && !(darwin && !ios && cgo)
 
 package appinfo
 
@@ -13,3 +13,5 @@ func ListAllProcessArgument(pid int) ([]string, error) {
 func GetProcessWorkingDirectory(pid int) (string, error) {
 	return "", errProcessUnavailable
 }
+
+func setPlatformProcessFunction(system *System) {}

@@ -58,6 +58,9 @@ type Description struct {
 	TerminalName      string `json:"terminalName"`
 	// Secrets are the secrets a command-line request reads, as the dialog lists them.
 	Secrets []string `json:"secrets,omitempty"`
+	// AppIcon is the app's small PNG icon; AppWarning is the dialog's warning about the app's code signature.
+	AppIcon    []byte `json:"appIcon,omitempty"`
+	AppWarning string `json:"appWarning,omitempty"`
 }
 
 type Request struct {
@@ -137,15 +140,26 @@ func SealRequest(keyset *crypt.Keyset, accountID string, request Request) ([]byt
 		return nil, err
 	}
 	if len(sealedRequest) > MaximumSealedSize {
+		if len(request.AppIcon) > 0 {
+			request.AppIcon = nil
+			return SealRequest(keyset, accountID, request)
+		}
 		return nil, ErrSealedTooLarge
 	}
 	return sealedRequest, nil
 }
 
-func decodeStrictly(plaintext []byte, target any) error {
+// decodeMessage ignores unknown fields, so a newer device's optional fields do not break an older one; the answer's
+// signature binds the hash of the exact sealed request, and only the fields decoded here are acted on.
+func decodeMessage(plaintext []byte, target any) error {
 	decoder := json.NewDecoder(bytes.NewReader(plaintext))
-	decoder.DisallowUnknownFields()
-	return decoder.Decode(target)
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	if decoder.More() {
+		return errors.New("approval: data after the message")
+	}
+	return nil
 }
 
 // OpenRequest opens a request the server listed under requestID and refuses expired requests and this device's own.
@@ -161,7 +175,7 @@ func OpenRequest(keyset *crypt.Keyset, accountID, requestID string, sealedReques
 		return Request{}, err
 	}
 	var request Request
-	if err := decodeStrictly(plaintext, &request); err != nil {
+	if err := decodeMessage(plaintext, &request); err != nil {
 		return Request{}, ErrInvalidRequest
 	}
 	if request.RequestID != requestID {
@@ -277,7 +291,7 @@ func (tracker *Tracker) Accept(keyset *crypt.Keyset, accountID, requestID string
 		return "", err
 	}
 	var answer Answer
-	if err := decodeStrictly(plaintext, &answer); err != nil {
+	if err := decodeMessage(plaintext, &answer); err != nil {
 		return "", ErrInvalidAnswer
 	}
 	if answer.RequestID != requestID || subtle.ConstantTimeCompare(answer.RequestHash, pending.requestHash) != 1 {

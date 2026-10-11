@@ -123,6 +123,32 @@ func TestSecretsSurviveSealing(t *testing.T) {
 	}
 }
 
+func TestAppIconSurvivesSealingUnlessTooLarge(t *testing.T) {
+	keyset := createTestKeyset(t)
+	description := createTestDescription()
+	description.AppIcon = []byte{0x89, 'P', 'N', 'G'}
+	description.AppWarning = "iTerm2 is not signed"
+	request := CreateRequest(macDeviceID, "Alper's MacBook Pro", description, testNow, MaximumLifetime)
+	sealedRequest, err := SealRequest(keyset, testAccountID, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opened, err := OpenRequest(keyset, testAccountID, request.RequestID, sealedRequest, phoneDeviceID, testNow); err != nil || !reflect.DeepEqual(opened.Description, description) {
+		t.Errorf("opened %+v, %v", opened.Description, err)
+	}
+	request.AppIcon = make([]byte, MaximumSealedSize)
+	sealedRequest, err = SealRequest(keyset, testAccountID, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opened, err := OpenRequest(keyset, testAccountID, request.RequestID, sealedRequest, phoneDeviceID, testNow); err != nil || opened.AppIcon != nil || opened.AppWarning != description.AppWarning || opened.AppName != "Terminal" {
+		t.Errorf("an icon too large: %+v, %v", opened.Description, err)
+	}
+	if encoded, _ := json.Marshal(createTestDescription()); strings.Contains(string(encoded), "appIcon") || strings.Contains(string(encoded), "appWarning") {
+		t.Errorf("a request without an icon carries its field: %s", encoded)
+	}
+}
+
 func TestApproveAndDeny(t *testing.T) {
 	for _, decision := range []string{DecisionApprove, DecisionDeny} {
 		flow := startTestFlow(t)
@@ -286,6 +312,17 @@ func TestOpenRequestChecks(t *testing.T) {
 		t.Errorf("a request whose inner ID differs: %v", err)
 	}
 
+	wrongType := strings.Replace(string(createRequestPlaintext(t, flow.request)), `"isForwarded":false`, `"isForwarded":"no"`, 1)
+	sealedWrongType, _ := crypt.SealApprovalRequest(flow.keyset.GetKEMPublicKey(), testAccountID, flow.request.RequestID, []byte(wrongType))
+	if _, err := OpenRequest(flow.keyset, testAccountID, flow.request.RequestID, sealedWrongType, phoneDeviceID, testNow); !errors.Is(err, ErrInvalidRequest) {
+		t.Errorf("a field of the wrong type: %v", err)
+	}
+	trailing := append(createRequestPlaintext(t, flow.request), []byte(`{"kind":"cli"}`)...)
+	sealedTrailing, _ := crypt.SealApprovalRequest(flow.keyset.GetKEMPublicKey(), testAccountID, flow.request.RequestID, trailing)
+	if _, err := OpenRequest(flow.keyset, testAccountID, flow.request.RequestID, sealedTrailing, phoneDeviceID, testNow); !errors.Is(err, ErrInvalidRequest) {
+		t.Errorf("a second message after the request: %v", err)
+	}
+
 	unknownKind := flow.request
 	unknownKind.Kind = "unlock"
 	if _, err := SealRequest(flow.keyset, testAccountID, unknownKind); !errors.Is(err, ErrInvalidRequest) {
@@ -293,6 +330,42 @@ func TestOpenRequestChecks(t *testing.T) {
 	}
 	if _, err := CreateAnswer(flow.keyset, testAccountID, flow.sealedRequest, flow.request, "unlock", phoneDeviceID, "Hisar on iPhone", testNow); !errors.Is(err, ErrUnknownDecision) {
 		t.Errorf("answered with an unknown decision: %v", err)
+	}
+}
+
+func createRequestPlaintext(t *testing.T, request Request) []byte {
+	t.Helper()
+	plaintext, err := json.Marshal(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return plaintext
+}
+
+func TestUnknownFieldsAreIgnored(t *testing.T) {
+	flow := startTestFlow(t)
+	plaintext := createRequestPlaintext(t, flow.request)
+	plaintext = append(plaintext[:len(plaintext)-1], []byte(`,"appBadge":{"shape":"round"},"futureNumber":7}`)...)
+	sealedRequest, err := crypt.SealApprovalRequest(flow.keyset.GetKEMPublicKey(), testAccountID, flow.request.RequestID, plaintext)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, err := OpenRequest(flow.keyset, testAccountID, flow.request.RequestID, sealedRequest, phoneDeviceID, testNow)
+	if err != nil || !reflect.DeepEqual(opened.Description, createTestDescription()) {
+		t.Fatalf("a request with unknown fields: %+v, %v", opened.Description, err)
+	}
+	flow.sealedRequest = sealedRequest
+	flow.tracker = CreateTracker()
+	flow.tracker.Add(flow.request.RequestID, sealedRequest, flow.request.ExpiresAt)
+	sealedAnswer := flow.forgeAnswer(t, flow.keyset, nil)
+	answerPlaintext, err := flow.keyset.OpenApprovalAnswer(testAccountID, flow.request.RequestID, sealedAnswer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	answerPlaintext = append(answerPlaintext[:len(answerPlaintext)-1], []byte(`,"answeringDeviceModel":"iPhone"}`)...)
+	sealedAnswer, _ = crypt.SealApprovalAnswer(flow.keyset.GetKEMPublicKey(), testAccountID, flow.request.RequestID, answerPlaintext)
+	if decision, err := flow.accept(sealedAnswer, testNow); err != nil || decision != DecisionApprove {
+		t.Errorf("an answer with an unknown field: %q, %v", decision, err)
 	}
 }
 

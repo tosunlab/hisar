@@ -95,6 +95,7 @@ func (approver *Approver) buildAgentEvent(requestID string, request commandline.
 		IsTouchIDApproval:    approver.IsTouchIDApproval(),
 		TimeoutAt:            approver.config.Now().Add(approver.config.Timeout).UTC().Format(time.RFC3339),
 		AllSecretName:        []string{},
+		AllChainProcess:      []ChainProcess{},
 	}
 	if request.Kind == commandline.AgentRequestRun {
 		event.CommandLine = formatCommandLine(request.CommandLine)
@@ -106,9 +107,10 @@ func (approver *Approver) buildAgentEvent(requestID string, request commandline.
 	if len(request.AllSecretName) > 0 {
 		event.AllSecretName, event.MoreSecretCount = limitSecretName(request.AllSecretName)
 	}
-	if approver.config.FindApp != nil && request.ParentPID > 1 {
-		if app, isFound := approver.config.FindApp(request.ParentPID); isFound && !strings.EqualFold(app.Name, agentName) {
-			event.AppName, event.AppIconURL = app.Name, app.IconURL
+	if requester, isResolved := approver.resolveRequester(request.ClientPID); isResolved {
+		applyRequester(&event, requester)
+		if strings.EqualFold(event.AppName, agentName) {
+			event.AppName = ""
 		}
 	}
 	approver.setUnlockState(&event)
@@ -119,15 +121,17 @@ func (approver *Approver) buildAgentEvent(requestID string, request commandline.
 func describeAgentRequester(event ApprovalEvent) string {
 	requester := event.AgentName + " (via " + agentClientName + ")"
 	if event.AppName != "" {
-		requester += " in " + event.AppName
+		requester += " in " + describeInlineAppName(event)
 	}
 	return requester
 }
 
-func buildAgentPhoneDescription(event ApprovalEvent) approval.Description {
+func (approver *Approver) buildAgentPhoneDescription(event ApprovalEvent) approval.Description {
 	description := approval.Description{
 		Kind:         approval.KindCommandLine,
 		AppName:      describeAgentRequester(event),
+		AppIcon:      approver.getPhoneAppIcon(event),
+		AppWarning:   event.AppWarning,
 		Purpose:      event.Action,
 		CommandLine:  event.CommandLine,
 		TerminalName: event.TerminalName,
@@ -161,7 +165,7 @@ func (approver *Approver) ApproveAgent(ctx context.Context, request commandline.
 		responseChannel: make(chan approvalResponse, 1),
 		approveReason:   fmt.Sprintf("allow %s to %s", requester, event.Action),
 		unlockReason:    fmt.Sprintf("unlock Hisar for %s", requester),
-		phoneRequest:    buildAgentPhoneDescription(event),
+		phoneRequest:    approver.buildAgentPhoneDescription(event),
 	}
 	if !approver.waitForApproval(ctx, pending) {
 		if pending.timedOutAfter > 0 {

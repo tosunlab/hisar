@@ -46,8 +46,7 @@ func (tree fakeProcessTree) createReader() ProcessReader {
 }
 
 func (tree fakeProcessTree) findAppPath(pid int) string {
-	path, _ := FindAppPath(ListAllProcess(pid, tree.createReader()))
-	return path
+	return CreateResolver(System{ProcessReader: tree.createReader()}).Resolve(pid).App.Path
 }
 
 const (
@@ -204,16 +203,16 @@ func TestFindApp(t *testing.T) {
 		300: {path: terminalPath, parentPID: 1},
 		600: {path: "/usr/bin/cron", parentPID: 1},
 	}
-	reader := tree.createReader()
-	app, isFound := FindApp(500, reader.GetPath, reader.GetParentPID)
-	if !isFound || app.Path != "/System/Applications/Utilities/Terminal.app" || app.Name == "" {
-		t.Errorf("ssh in Terminal: %+v %v", app, isFound)
+	resolver := CreateResolver(System{ProcessReader: tree.createReader()})
+	requester := resolver.Resolve(500)
+	if requester.Kind != RequesterKindApp || requester.App.Path != "/System/Applications/Utilities/Terminal.app" || requester.Name != "Terminal" {
+		t.Errorf("ssh in Terminal: %+v", requester)
 	}
-	if _, isFound := FindApp(600, reader.GetPath, reader.GetParentPID); isFound {
-		t.Error("a process without an app found one")
+	if requester := resolver.Resolve(600); requester.Kind != RequesterKindBackground || requester.Name != "A background process" || requester.App.Path != "" {
+		t.Errorf("cron: %+v", requester)
 	}
-	if _, isFound := FindApp(999, reader.GetPath, reader.GetParentPID); isFound {
-		t.Error("an unknown process found an app")
+	if requester := resolver.Resolve(999); requester.Kind != RequesterKindProcess || requester.Name != "A process without an app" {
+		t.Errorf("an unknown process: %+v", requester)
 	}
 }
 

@@ -210,12 +210,7 @@ func main() {
 		return approvalWindow.NativeWindow()
 	}, biometric.PromptSizeSmall)
 	approvalPreference := vault.CreateApprovalPreference(vaultService)
-	processReader := appinfo.ProcessReader{
-		GetPath:             sshagent.GetProcessPath,
-		GetParentPID:        sshagent.GetParentPID,
-		ListAllArgument:     appinfo.ListAllProcessArgument,
-		GetWorkingDirectory: appinfo.GetProcessWorkingDirectory,
-	}
+	requesterResolver := appinfo.CreateSystemResolver()
 	approver := agent.CreateApprover(agent.ApproverConfig{
 		Biometric:       approvalTouchID,
 		CancelBiometric: approvalTouchID.CancelPrompt,
@@ -228,19 +223,18 @@ func main() {
 			})
 		},
 		HideApprovalWindow: func() { application.InvokeAsync(func() { approvalWindow.Hide() }) },
-		FindApp: func(pid int) (appinfo.App, bool) {
-			return appinfo.FindApp(pid, sshagent.GetProcessPath, sshagent.GetParentPID)
-		},
-		ListAllProcess:    func(pid int) []appinfo.Process { return appinfo.ListAllProcess(pid, processReader) },
-		HomeDirectory:     homeDirectory,
-		IsCompactApproval: approvalPreference.IsCompactSSHApproval,
-		Unlocker:          vault.CreateApprovalUnlocker(vaultService, func() { app.Event.Emit("unlocked", "approval") }),
-		PhoneApprover:     vault.CreatePhoneApprover(vaultService),
+		ResolveRequester:   requesterResolver.Resolve,
+		GetAppIconPNG:      requesterResolver.GetIconPNG,
+		HomeDirectory:      homeDirectory,
+		IsCompactApproval:  approvalPreference.IsCompactSSHApproval,
+		Unlocker:           vault.CreateApprovalUnlocker(vaultService, func() { app.Event.Emit("unlocked", "approval") }),
+		PhoneApprover:      vault.CreatePhoneApprover(vaultService),
 	})
 	peerResolver := agent.ApplicationPeerResolver{
 		Base: sshagent.SystemPeerResolver{},
 		FindApplicationPath: func(pid int) (string, bool) {
-			return appinfo.FindAppPath(appinfo.ListAllProcess(pid, appinfo.ProcessReader{GetPath: sshagent.GetProcessPath, GetParentPID: sshagent.GetParentPID}))
+			requester := requesterResolver.Resolve(pid)
+			return requester.App.Path, requester.App.Path != ""
 		},
 	}
 	agentServer = sshagent.CreateServer(vault.CreateSSHKeySource(vaultService), approver, peerResolver)
