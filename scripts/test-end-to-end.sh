@@ -209,6 +209,41 @@ expect "Emergency Kit saved" "$(printf '%s\n' "$PW" | B emergency-kit -o "$T/bob
 expect "sign in on a new device with the Emergency Kit" "$(printf 'http://127.0.0.1:%s\nbob@example.com\n%s\n%s\n' "$PORT" "$BOB_SK" "$PW" | HISAR_STATE=$T/bob-new-device.json HISAR_SECRET_KEY=- hisar login 2>&1)" "Signed in as Bob"
 expect "wrong master password with the Emergency Kit" "$(printf 'http://127.0.0.1:%s\nbob@example.com\n%s\n%s\n' "$PORT" "$BOB_SK" "forgotten password" | HISAR_STATE=$T/bob-forgotten.json HISAR_SECRET_KEY=- hisar login 2>&1 || true)" "incorrect email, password or Secret Key"
 
+printf '%s\nDeploy\nci\nhttps://ci.example.com\ndeploy-pass-1\n\n' "$PW" | A add -v Work 2>/dev/null
+NEW_PW='a brand new master password'
+ALICE_MAIL_COUNT=$(count_mail alice@example.com)
+expect "change master password" "$(printf '%s\nshort\n%s\n%s\ny\n' "$PW" "$NEW_PW" "$NEW_PW" | A account change-password 2>&1)" "Changed your master password. 1 other device was signed out."
+expect "the other device is signed out after the change" "$(printf '%s\n' "$NEW_PW" | HISAR_STATE=$T/alice2.json HISAR_SECRET_KEY=$ALICE_SK hisar ls 2>&1 || true)" "this device was signed out"
+expect "the old master password no longer unlocks" "$(printf '%s\n' "$PW" | A ls 2>&1 || true)" "incorrect email, password or Secret Key"
+expect "the new master password unlocks" "$(printf '%s\n' "$NEW_PW" | A get github -f password 2>/dev/null)" "$GEN"
+expect "password change email" "$(wait_for_mail alice@example.com "$ALICE_MAIL_COUNT")" "Your other device was signed out."
+expect "the other device signs in with the new master password" "$(printf 'http://127.0.0.1:%s\nalice@example.com\n%s\n%s\n' "$PORT" "$ALICE_SK" "$NEW_PW" | HISAR_STATE=$T/alice3.json HISAR_SECRET_KEY=- hisar login 2>&1)" "Signed in as Alice"
+
+expect "replace Secret Key" "$(printf '%s\ny\n' "$NEW_PW" | A account replace-secret-key -o "$T/new-kit.pdf" 2>"$T/replace.txt"; cat "$T/replace.txt")" "Saved your new Emergency Kit to $T/new-kit.pdf"
+NEW_SK=$(grep -oE 'H1-[0-9A-Z-]+' "$T/replace.txt" | head -1)
+[[ -n "$NEW_SK" && "$NEW_SK" != "$ALICE_SK" ]] || fail "no new Secret Key: $(cat "$T/replace.txt")"
+expect "the new Emergency Kit is a private PDF" "$(head -c 5 "$T/new-kit.pdf") $(stat -c %a "$T/new-kit.pdf" 2>/dev/null || stat -f %Lp "$T/new-kit.pdf")" "%PDF- 600"
+expect "the old Emergency Kit no longer signs in" "$(printf 'http://127.0.0.1:%s\nalice@example.com\n%s\n%s\n' "$PORT" "$ALICE_SK" "$NEW_PW" | HISAR_STATE=$T/alice-old-kit.json HISAR_SECRET_KEY=- hisar login 2>&1 || true)" "incorrect email, password or Secret Key"
+ALICE_SK=$NEW_SK
+expect "the new Secret Key unlocks" "$(printf '%s\n' "$NEW_PW" | A get github -f password 2>/dev/null)" "$GEN"
+expect "the shared vault still decrypts for the owner" "$(printf '%s\n' "$NEW_PW" | A get deploy -v Work -f password 2>/dev/null)" "deploy-pass-1"
+expect "and for the other member" "$(printf '%s\n' "$PW" | C get deploy -v Work -f password 2>/dev/null)" "deploy-pass-1"
+expect "the new Emergency Kit signs in on a new device" "$(printf 'http://127.0.0.1:%s\nalice@example.com\n%s\n%s\n' "$PORT" "$NEW_SK" "$NEW_PW" | HISAR_STATE=$T/alice-new-kit.json HISAR_SECRET_KEY=- hisar login 2>&1)" "Signed in as Alice"
+PW=$NEW_PW
+
+DORA_INV=$("$BIN/hisar-server" invite --email dora@example.com </dev/null | tail -1)
+printf 'dora@example.com\nDora\n%s\n%s\n' "$PW" "$PW" | HISAR_STATE=$T/dora.json HISAR_SECRET_KEY=- hisar signup "$DORA_INV" 2>"$T/dora-signup.txt"
+DORA_SK=$(grep -oE 'H1-[0-9A-Z-]+' "$T/dora-signup.txt")
+D() { HISAR_STATE=$T/dora.json HISAR_SECRET_KEY=$DORA_SK hisar "$@"; }
+printf '%s\n' "$PW" | D vault-create Garden 2>/dev/null
+expect "account deletion shows what is deleted" "$(printf '%s\nwrong@example.com\n' "$PW" | D account delete 2>&1 || true)" 'Deleted with its items: "Garden"'
+expect "a wrong email deletes nothing" "$(printf '%s\nwrong@example.com\n' "$PW" | D account delete 2>&1 || true)" "nothing was deleted"
+expect "a wrong master password deletes nothing" "$(printf 'wrong password\n' | D account delete --email dora@example.com 2>&1 || true)" "the master password is not correct"
+expect "delete account" "$(printf '%s\ndora@example.com\n' "$PW" | D account delete 2>&1)" "Deleted your Hisar account."
+expect "account deletion email" "$(wait_for_mail dora@example.com 0)" "Your Hisar account dora@example.com was deleted"
+expect "the deleted account no longer signs in" "$(printf 'http://127.0.0.1:%s\ndora@example.com\n%s\n%s\n' "$PORT" "$DORA_SK" "$PW" | HISAR_STATE=$T/dora-again.json HISAR_SECRET_KEY=- hisar login 2>&1 || true)" "incorrect email, password or Secret Key"
+expect "the deleted account's device is signed out" "$(D whoami 2>&1 || true)" "not logged in"
+
 APPCAST_URL=http://127.0.0.1:$PORT/api/v1/desktop/updates/appcast.xml
 expect "desktop updates need a session" "$(curl -s "$APPCAST_URL")" "unauthorized"
 expect "desktop updates not configured" "$(curl -s -H "Authorization: Bearer $ALICE_TOKEN" "$APPCAST_URL")" "updates are not configured on this server"
@@ -221,6 +256,11 @@ DESKTOP_RESULT=$(HISAR_TEST_SERVER_URL="http://127.0.0.1:$PORT" HISAR_TEST_INVIT
   HISAR_TEST_MEMBER_INVITE_LINK="$DESKTOP_MEMBER_INVITE" \
   go -C "$ROOT/desktop" test -count=1 -v -run TestIntegrationDesktopFlow ./vault/ 2>&1 || true)
 expect "desktop app backend against the server" "$DESKTOP_RESULT" "--- PASS: TestIntegrationDesktopFlow"
+
+LIFECYCLE_INVITE=$("$BIN/hisar-server" invite --email lifecycle@example.com </dev/null | tail -1)
+LIFECYCLE_RESULT=$(HISAR_TEST_SERVER_URL="http://127.0.0.1:$PORT" HISAR_TEST_LIFECYCLE_INVITE_LINK="$LIFECYCLE_INVITE" \
+  go -C "$ROOT/desktop" test -count=1 -v -run TestIntegrationAccountLifecycle ./vault/ 2>&1 || true)
+expect "the Mac changes the master password and replaces the Secret Key, signing out its other device, then deletes the account" "$LIFECYCLE_RESULT" "--- PASS: TestIntegrationAccountLifecycle"
 
 COMMAND_LINE_INVITE=$("$BIN/hisar-server" invite --email cli@example.com </dev/null | tail -1)
 COMMAND_LINE_RESULT=$(HISAR_STANDALONE= HISAR_TEST_SERVER_URL="http://127.0.0.1:$PORT" HISAR_TEST_CLI_INVITE_LINK="$COMMAND_LINE_INVITE" HISAR_TEST_CLI_BINARY="$BIN/hisar" \
@@ -245,4 +285,7 @@ expect "the iPhone shares a vault, completes the accepted share on its own, and 
 PHONE_APPROVAL_INVITE=$("$BIN/hisar-server" invite --email phone-approval@example.com </dev/null | tail -1)
 PHONE_APPROVAL_RESULT=$(HISAR_TEST_PHONE_APPROVAL_INVITE_LINK="$PHONE_APPROVAL_INVITE" go -C "$ROOT/mobile" test -count=1 -v -run TestIntegrationPhoneApproval ./hisarkit/ 2>&1 || true)
 expect "the iPhone approves and denies the Mac's SSH requests, refuses a forged answer, and approves after opening late" "$PHONE_APPROVAL_RESULT" "--- PASS: TestIntegrationPhoneApproval"
+MOBILE_LIFECYCLE_INVITE=$("$BIN/hisar-server" invite --email mobile-lifecycle@example.com </dev/null | tail -1)
+MOBILE_LIFECYCLE_RESULT=$(HISAR_TEST_MOBILE_LIFECYCLE_INVITE_LINK="$MOBILE_LIFECYCLE_INVITE" go -C "$ROOT/mobile" test -count=1 -v -run TestIntegrationMobileAccountLifecycle ./hisarkit/ 2>&1 || true)
+expect "the iPhone changes the master password, replaces the Secret Key with a new Emergency Kit and deletes the account" "$MOBILE_LIFECYCLE_RESULT" "--- PASS: TestIntegrationMobileAccountLifecycle"
 echo "end-to-end test passed"

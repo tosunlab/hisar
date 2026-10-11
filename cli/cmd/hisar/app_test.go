@@ -425,7 +425,7 @@ func TestDeniedRequestIsReportedNotRetriedStandalone(t *testing.T) {
 
 func TestStandaloneOnlyCommandsPointToTheApp(t *testing.T) {
 	startFakeApp(t)
-	for _, commandName := range []string{"login", "logout", "emergency-kit"} {
+	for _, commandName := range []string{"login", "logout", "emergency-kit", "account"} {
 		_, _, err := runCapturingOutput(t, false, "", commandName)
 		if err == nil || !strings.Contains(err.Error(), "hisar --standalone "+commandName) || !strings.Contains(err.Error(), "Hisar app") {
 			t.Errorf("%s: %v", commandName, err)
