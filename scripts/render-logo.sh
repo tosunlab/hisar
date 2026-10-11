@@ -20,6 +20,12 @@ render_svg() {
 <!doctype html><html><head><style>html,body{margin:0;padding:0;background:transparent;overflow:hidden}img{display:block;width:${width}px;height:${height}px}</style></head>
 <body><img src="source.svg"></body></html>
 EOF
+  render_page "$page" "$output" "$width" "$height"
+}
+
+# render_page <html file> <output png> <width> <height>
+render_page() {
+  local page=$1 output=$2 width=$3 height=$4
   rm -f "$output"
   # Headless Chrome can keep running after writing the screenshot, so stop it once the file exists.
   "$CHROME" --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor=1 \
@@ -50,3 +56,9 @@ done
 render_svg "$LOGO_DIR/hisar-app-icon.svg" "$ROOT/desktop/build/appicon.png" 1024 1024
 render_svg "$LOGO_DIR/hisar-menu-bar.svg" "$ROOT/desktop/build/menu-bar-icon.png" 44 44
 render_svg "$LOGO_DIR/hisar-mark.svg" "$ROOT/desktop/build/tray-icon-linux.png" 64 64
+render_svg "$LOGO_DIR/hisar-ios-icon.svg" "$WORK_DIR/ios-icon.png" 1024 1024
+swift "$ROOT/scripts/flatten-png.swift" "$WORK_DIR/ios-icon.png" "$ROOT/mobile/ios/App/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png"
+cp "$ROOT/desktop/build/darwin/dmg-background.html" "$WORK_DIR/dmg-background.html"
+render_page "$WORK_DIR/dmg-background.html" "$WORK_DIR/dmg-background.png" 540 380
+swift "$ROOT/scripts/flatten-png.swift" "$WORK_DIR/dmg-background.png" "$ROOT/desktop/build/darwin/dmg-background.png"
+echo "AppIcon-1024.png and dmg-background.png 1024x1024, 540x380"

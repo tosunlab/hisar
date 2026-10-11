@@ -7,7 +7,7 @@ defineProps<{ size?: number; showWordmark?: boolean }>();
     <svg :width="size ?? 28" :height="size ?? 28" viewBox="0 0 32 32" aria-hidden="true">
       <rect width="32" height="32" rx="8" fill="#f2f3f5" />
       <path
-        d="M8 26V12h3V9h2.5v3h5V9H21v3h3v14h-6v-5a2 2 0 0 0-4 0v5z"
+        d="M8 24.5V10.5h3V7.5h2.5v3h5V7.5H21v3h3v14h-6v-5a2 2 0 0 0-4 0v5z"
         fill="#0b0c0e"
       />
     </svg>

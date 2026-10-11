@@ -42,7 +42,7 @@ button.close { padding: 4px; }
 .message.error { color: #f2a7a9; }
 `;
 
-const logoSvg = `<svg width="24" height="24" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#f2f3f5"/><path d="M8 26V12h3V9h2.5v3h5V9H21v3h3v14h-6v-5a2 2 0 0 0-4 0v5z" fill="#0b0c0e"/></svg>`;
+const logoSvg = `<svg width="24" height="24" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="8" fill="#f2f3f5"/><path d="M8 24.5V10.5h3V7.5h2.5v3h5V7.5H21v3h3v14h-6v-5a2 2 0 0 0-4 0v5z" fill="#0b0c0e"/></svg>`;
 const closeSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>`;
 
 function createElement<Tag extends keyof HTMLElementTagNameMap>(
