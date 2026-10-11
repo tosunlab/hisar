@@ -244,6 +244,25 @@ func (c *Client) OpenPublicShareLink(ctx context.Context, shareLinkID string) (*
 	return &response, c.sendRequest(ctx, "GET", "/api/v1/public/share-links/"+url.PathEscape(shareLinkID), nil, nil, &response, nil)
 }
 
+func (c *Client) Reauthenticate(ctx context.Context, request *proto.ReauthenticateRequest) (*proto.ReauthenticateResponse, error) {
+	var response proto.ReauthenticateResponse
+	return &response, c.sendRequest(ctx, "POST", "/api/v1/account/reauthenticate", nil, request, &response, nil)
+}
+
+func (c *Client) ChangeCredentials(ctx context.Context, request *proto.ChangeCredentialsRequest) (*proto.ChangeCredentialsResponse, error) {
+	var response proto.ChangeCredentialsResponse
+	return &response, c.sendRequest(ctx, "PUT", "/api/v1/account/credentials", nil, request, &response, nil)
+}
+
+func (c *Client) GetAccountDeletionPreview(ctx context.Context) (*proto.AccountDeletionPreview, error) {
+	var response proto.AccountDeletionPreview
+	return &response, c.sendRequest(ctx, "GET", "/api/v1/account/deletion-preview", nil, nil, &response, nil)
+}
+
+func (c *Client) DeleteAccount(ctx context.Context, request *proto.DeleteAccountRequest) error {
+	return c.sendRequest(ctx, "POST", "/api/v1/account/delete", nil, request, nil, nil)
+}
+
 func (c *Client) GetItemHistory(ctx context.Context, vaultID, itemID string) ([]proto.Item, error) {
 	var allItem []proto.Item
 	return allItem, c.sendRequest(ctx, "GET", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/items/"+url.PathEscape(itemID)+"/history", nil, nil, &allItem, nil)

@@ -26,6 +26,8 @@ type Status struct {
 	IsOffline bool `json:"isOffline"`
 	// AutoLockSeconds is how long Hisar stays unlocked without activity.
 	AutoLockSeconds int `json:"autoLockSeconds"`
+	// SignedOutReason says why the server signed this device out; empty after a sign-out on this device.
+	SignedOutReason string `json:"signedOutReason"`
 }
 
 // Biometric is the platform's user-presence check and keychain storage for the biometric unlock key.

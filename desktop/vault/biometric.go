@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/tryhisar/hisar/core/client"
@@ -157,8 +158,9 @@ func (s *Service) unlockWithBiometric(authenticate func() error) (Status, error)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	unlocked, err := session.UnlockWithAccountUnlockKey(ctx, apiClient, accountCache, accountUnlockKey, accountID)
-	if client.IsStatus(err, 401) {
-		return Status{}, errors.New("this device was signed out; sign in again")
+	if client.IsStatus(err, http.StatusUnauthorized) {
+		s.endSignedOutSession(token)
+		return s.GetStatus(), nil
 	}
 	if errors.Is(err, session.ErrBadCredentials) {
 		return Status{}, s.resetBiometricAfterFailure(errors.New("your master password changed"))

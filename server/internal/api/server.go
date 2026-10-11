@@ -66,6 +66,7 @@ type Server struct {
 	shareAcceptedEmailLimiter     *dailyLimiter
 	shareLinkAccountLimiter       *dailyLimiter
 	shareLinkReadLimiter          *ipLimiter
+	reauthenticationLimiter       *ipLimiter
 	backgroundWork                sync.WaitGroup
 }
 
@@ -119,6 +120,7 @@ func CreateServer(database *store.Store, secrets *Secrets, config Config) (*Serv
 		shareAcceptedEmailLimiter:     createDailyLimiter(shareAcceptedEmailPerInviterPerDay),
 		shareLinkAccountLimiter:       createDailyLimiter(shareLinkPerAccountPerDay),
 		shareLinkReadLimiter:          createShareLinkReadLimiter(),
+		reauthenticationLimiter:       createReauthenticationLimiter(),
 	}, nil
 }
 
@@ -149,6 +151,10 @@ func (s *Server) CreateApp() *fiber.App {
 	apiGroup.Post("/auth/logout", s.requireSession, s.handleLogout)
 	apiGroup.Get("/events", s.requireSession, s.handleStreamEvents)
 	apiGroup.Get("/account", s.requireSession, s.handleGetAccount)
+	apiGroup.Post("/account/reauthenticate", s.requireSession, s.limitRate, s.handleReauthenticate)
+	apiGroup.Put("/account/credentials", s.requireSession, s.handleChangeCredentials)
+	apiGroup.Get("/account/deletion-preview", s.requireSession, s.handleGetAccountDeletionPreview)
+	apiGroup.Post("/account/delete", s.requireSession, s.handleDeleteAccount)
 	apiGroup.Get("/members", s.requireSession, s.handleListAllMember)
 	apiGroup.Post("/invites", s.requireSession, s.handleCreateInvite)
 	apiGroup.Get("/devices", s.requireSession, s.handleListAllDevice)

@@ -89,6 +89,14 @@ func (relay *approvalRelay) allow(accountID string) bool {
 	return limiter.Allow()
 }
 
+func (relay *approvalRelay) removeAllForAccount(accountID string) {
+	relay.mutex.Lock()
+	defer relay.mutex.Unlock()
+	delete(relay.allApprovalByAccount, accountID)
+	delete(relay.allLimiterByAccount, accountID)
+	delete(relay.allLimiterLastUsedTime, accountID)
+}
+
 // find returns an approval of the account that is still within its retention; the caller holds the mutex.
 func (relay *approvalRelay) find(accountID, requestID string, now time.Time) *storedApproval {
 	approval, isFound := relay.allApprovalByAccount[accountID][requestID]
