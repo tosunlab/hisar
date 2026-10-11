@@ -5,9 +5,10 @@ listens on `127.0.0.1:8080` only; your nginx terminates TLS and proxies to it.
 
 ## Images
 
-Pushing a tag `v*` runs the `server-image` job of the GitLab pipeline, which publishes
-`reg.tryhisar.com/hisar/core/hisar-server` as `:<version>`, `:<major>.<minor>`, `:latest` and `:sha-<commit>`, for
-linux/amd64 and linux/arm64. Running the pipeline by hand from a branch offers the job as a manual action that publishes
+Pushing a tag `server-<version>` (e.g. `server-0.1.7`) runs the `server-image` job of the GitLab pipeline, which publishes
+`reg.tryhisar.com/hisar/core/hisar-server` as `:<version>` and `:sha-<commit>`, for linux/amd64 and linux/arm64. Running the
+manual `server-publish` job in the tag's pipeline then points `:<major>.<minor>` and `:latest` at it; a custom build
+(`server-1.0.0-alpha-test`) can't be published. Running the pipeline by hand from a branch offers the job as a manual action that publishes
 `:sha-<commit>` only.
 
 The runners are unprivileged, so the job does not use Docker: `scripts/build-server-image.sh` cross-compiles the server
@@ -96,7 +97,7 @@ The server never sends credentials without TLS. The emails are plain text withou
 ## Desktop app updates (optional)
 
 The macOS app checks the server it is signed in to for updates (`docs/DESIGN.md` §9.1.1). The server reads the
-`hisar-desktop` generic package that the `mac-v*` release pipeline publishes in GitLab, so it needs a read-only token:
+`hisar-desktop` generic package that the `desktop-<version>` release pipeline publishes in GitLab, so it needs a read-only token:
 
 1. In GitLab, open the project (`hisar/core`) → **Settings → Access tokens** → **Add new token**.
 2. Name it e.g. `hisar-server updates`, set an expiry date, choose the role **Reporter** and only the scope **read_api**,
