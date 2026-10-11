@@ -43,7 +43,7 @@ struct OneTimeCodeRow: View {
         }
         .contextMenu {
             Button(action: copy) {
-                Label("Copy One-Time Code", systemImage: "doc.on.doc")
+                Label("Copy one-time code", systemImage: "doc.on.doc")
             }
             Button(action: copyReference) {
                 Label("Copy Secret Reference", systemImage: "terminal")

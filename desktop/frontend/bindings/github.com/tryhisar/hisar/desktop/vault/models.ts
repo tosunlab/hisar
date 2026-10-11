@@ -309,6 +309,7 @@ export interface Theme {
 export interface UpdateStatus {
     "version": string;
     "buildNumber": string;
+    "operatingSystem": string;
     "isAvailable": boolean;
     "isSignedIn": boolean;
     "isAutomaticCheckEnabled": boolean;

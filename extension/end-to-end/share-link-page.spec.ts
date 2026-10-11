@@ -50,6 +50,10 @@ test("decrypts a link created by the Go client, and counts a view only on Reveal
 
   await page.goto(fixture.links.item);
   await expect(page.getByRole("heading", { name: "Someone shared a secret with you" })).toBeVisible();
+  await expect(page.locator("footer")).toHaveText(
+    "Shared with Hisar, the end-to-end encrypted password, SSH key and secrets manager for developers. Nothing you see here is stored by this page.",
+  );
+  await expect(page.locator("footer a")).toHaveCount(0);
   await page.reload();
   await page.waitForLoadState("networkidle");
   await page.waitForTimeout(500);

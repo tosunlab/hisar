@@ -27,6 +27,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var allVault: [VaultSummary] = []
     @Published private(set) var allItemByVaultID: [String: [ItemDetail]] = [:]
     @Published var newSecretKey: String?
+    @Published private(set) var isBiometricOfferShown = false
     @Published var pendingSignInLink: SignInLink?
     @Published private(set) var lockCount = 0
     @Published private(set) var allPendingApproval: [PhoneApproval] = []
@@ -172,8 +173,29 @@ final class AppModel: ObservableObject {
         return true
     }
 
+    func finishNewSecretKey() {
+        if status.biometricAvailable && !status.biometricEnabled {
+            clearError()
+            isBiometricOfferShown = true
+        } else {
+            dismissNewSecretKey()
+        }
+    }
+
     func dismissNewSecretKey() {
         newSecretKey = nil
+        isBiometricOfferShown = false
+        guard let backend else { return }
+        Task { try? await runInBackground { backend.forgetNewAccountSecretKey() } }
+    }
+
+    @discardableResult
+    func turnOnBiometricUnlockFromOffer() async -> Bool {
+        guard let newStatus = await perform({ try $0.enableNewAccountBiometricUnlock() }) else { return false }
+        applyStatus(newStatus)
+        dismissNewSecretKey()
+        showNotice("\(BiometricKeychain(accessGroup: nil).getBiometryName()) unlock is on")
+        return true
     }
 
     @discardableResult
@@ -469,6 +491,13 @@ final class AppModel: ObservableObject {
         guard await perform(isBusyShown: false, { try $0.copySecretReference(vaultID: vaultID, itemID: itemID, fieldName: fieldName) }) != nil else { return }
         copyCount += 1
         showNotice("Secret reference copied.")
+    }
+
+    // Not secret, so it stays on the pasteboard and may reach other devices: support details and diagnostics.
+    func copyPlainText(_ text: String, label: String) {
+        UIPasteboard.general.string = text
+        copyCount += 1
+        showNotice("\(label) copied")
     }
 
     func copyText(_ text: String, label: String) {

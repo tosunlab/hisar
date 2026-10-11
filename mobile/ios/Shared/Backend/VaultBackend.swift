@@ -7,6 +7,8 @@ protocol VaultBackend: AnyObject {
     func unlock(password: String) throws -> VaultStatus
     func unlockWithBiometric() throws -> VaultStatus
     func enableBiometricUnlock(password: String) throws -> VaultStatus
+    func enableNewAccountBiometricUnlock() throws -> VaultStatus
+    func forgetNewAccountSecretKey()
     func disableBiometricUnlock() throws -> VaultStatus
     func lock() -> VaultStatus
     func signOut() throws -> VaultStatus

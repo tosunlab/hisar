@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
-import { createApiMock, createPerson, createReceivedShareInvitation, createSSHAgentStatus, createStatus } from "../testing";
+import { createApiMock, createDevice, createPerson, createReceivedShareInvitation, createSSHAgentStatus, createStatus, createUpdateStatus } from "../testing";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
 
@@ -69,7 +69,7 @@ afterEach(() => {
 describe("Settings sidebar", () => {
   it("lists the sections in order and opens on General", async () => {
     const settings = await mountSettings();
-    expect(readAllSectionLabel(settings)).toEqual(["General", "Security", "SSH & Git", "Developer tools", "Browser", "People", "Devices", "Account"]);
+    expect(readAllSectionLabel(settings)).toEqual(["General", "Security", "SSH & Git", "Developer tools", "Browser", "People", "Devices", "Account", "Help"]);
     expect(settings.find("#settings-title").text()).toBe("General");
     expect(findPage(settings, "general").isVisible()).toBe(true);
     expect(findPage(settings, "security").isVisible()).toBe(false);
@@ -139,13 +139,18 @@ describe("Settings sidebar", () => {
     expect(settings.find('[data-testid="people-invitation-badge"]').exists()).toBe(false);
   });
 
-  it("puts Invite in the People header and opens the form there", async () => {
+  it("puts Invite to Hisar in the People header and opens the form there", async () => {
     api.listAllPerson.mockResolvedValue([createPerson()]);
     const settings = await mountSettings();
     expect(settings.find('[data-testid="start-invite"]').exists()).toBe(false);
     await settings.find('[data-testid="settings-section-people"]').trigger("click");
+    expect(settings.find('[data-testid="start-invite"]').text()).toBe("Invite to Hisar");
     await settings.find('[data-testid="start-invite"]').trigger("click");
     expect(settings.find('[data-testid="invite-form"]').exists()).toBe(true);
+    expect(findPage(settings, "people").text()).toContain("Invite to Hisar");
+    expect(settings.find('[data-testid="invite-explanation"]').text()).toBe(
+      "Creates a Hisar account: the server emails them a sign-up link. To give them a vault, share it from the vault's Share panel.",
+    );
     expect(settings.find('[data-testid="start-invite"]').exists()).toBe(false);
     await settings.find('[data-testid="settings-section-devices"]').trigger("click");
     await settings.find('[data-testid="settings-section-people"]').trigger("click");
@@ -174,7 +179,7 @@ describe("Settings search", () => {
 
     await search(settings, "ssh");
     expect(readAllSectionLabel(settings)).toEqual(["SSH & Git"]);
-    expect(findPage(settings, "ssh").text()).toContain("Allow approvals from my iPhone");
+    expect(findPage(settings, "ssh").text()).toContain("Approve requests on my iPhone");
   });
 
   it("finds rows in several sections and moves the selection to the first one", async () => {
@@ -206,7 +211,7 @@ describe("Settings search", () => {
     expect(findPage(settings, "general").isVisible()).toBe(false);
 
     await search(settings, "");
-    expect(readAllSectionLabel(settings)).toHaveLength(8);
+    expect(readAllSectionLabel(settings)).toHaveLength(9);
     expect(settings.find('[data-testid="settings-no-results"]').exists()).toBe(false);
     expect(findPage(settings, "general").isVisible()).toBe(true);
     expect(findPage(settings, "general").find('[data-testid="import-section"]').isVisible()).toBe(true);
@@ -234,5 +239,50 @@ describe("Settings search", () => {
     await settings.find('[data-testid="settings-search"]').trigger("keydown", { key: "ArrowDown" });
     await flushPromises();
     expect(document.activeElement?.getAttribute("data-testid")).toBe("settings-section-browser");
+  });
+});
+
+describe("Settings help", () => {
+  beforeEach(() => {
+    store.status = { ...createStatus("unlocked"), server: "https://api.tryhisar.com" };
+    store.updateStatus = null;
+    store.allDevice = [];
+    api.getUpdateStatus.mockResolvedValue(createUpdateStatus());
+    api.listAllDevice.mockResolvedValue([createDevice({ id: "device-mac", isCurrent: true }), createDevice({ id: "device-phone", name: "iPhone", isCurrent: false })]);
+    api.copyText.mockResolvedValue(undefined);
+  });
+
+  it("shows the support address as text with a Copy button", async () => {
+    const settings = await mountSettings();
+    await settings.find('[data-testid="settings-section-help"]').trigger("click");
+    const help = findPage(settings, "help");
+    expect(help.isVisible()).toBe(true);
+    expect(help.find('[data-testid="support-email"]').text()).toBe("support@tryhisar.com");
+    expect(help.text()).not.toContain("Documentation");
+    await help.find('[data-testid="copy-support-email"]').trigger("click");
+    await flushPromises();
+    expect(api.copyText).toHaveBeenCalledWith("support@tryhisar.com");
+  });
+
+  it("shows the versions and copies diagnostics without secrets or other people's details", async () => {
+    store.allPerson = [createPerson({ email: "bob@example.com" })];
+    const settings = await mountSettings();
+    await settings.find('[data-testid="settings-section-help"]').trigger("click");
+    const help = findPage(settings, "help");
+    expect(help.find('[data-testid="help-app-version"]').text()).toBe("0.2.1 (2001)");
+    expect(help.find('[data-testid="help-operating-system"]').text()).toBe("macOS 26.0.1");
+    expect(help.find('[data-testid="help-server"]').text()).toBe("https://api.tryhisar.com");
+    expect(help.find('[data-testid="help-device-id"]').text()).toBe("device-mac");
+    await help.find('[data-testid="copy-diagnostics"]').trigger("click");
+    await flushPromises();
+    const diagnostics = api.copyText.mock.calls[0][0] as string;
+    expect(diagnostics).toBe(["Hisar for Mac 0.2.1 (2001)", "System: macOS 26.0.1", "Server: https://api.tryhisar.com", "Device ID: device-mac"].join("\n"));
+    expect(diagnostics).not.toMatch(/alice@example.com|bob@example.com|device-phone/);
+  });
+
+  it("is found by searching for support", async () => {
+    const settings = await mountSettings();
+    await search(settings, "support");
+    expect(readAllSectionLabel(settings)).toEqual(["Help"]);
   });
 });

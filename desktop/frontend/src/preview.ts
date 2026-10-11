@@ -29,7 +29,7 @@ const previewParameter = new URLSearchParams(window.location.search);
 
 const allPreviewVault: VaultSummary[] = [
   { id: "personal", name: "Personal", type: "personal", role: "owner", itemCount: 0 },
-  { id: "family", name: "Family", type: "shared", role: "owner", itemCount: 0 },
+  { id: "team", name: "Team", type: "shared", role: "owner", itemCount: 0 },
   { id: "work", name: "Work", type: "shared", role: "reader", itemCount: 0 },
 ];
 
@@ -89,11 +89,11 @@ const allPreviewItemByVaultID: Record<string, ItemDetail[]> = {
     createPreviewSSHKey("github-ssh", "GitHub SSH key", "ssh-ed25519", "Also used for commit signing."),
     createPreviewSSHKey("raspberry", "Raspberry Pi", "ssh-rsa"),
   ],
-  family: [
-    createPreviewItem("netflix", "Netflix", "family@example.com", "https://netflix.com", "netflix-family-pass", { notes: "Shared family account" }),
-    createPreviewItem("wifi", "Home Wi-Fi", "", "", "wifi-password-123", { fields: [{ name: "Network", value: "Hisar-Home", concealed: false }] }),
-    createPreviewItem("spotify", "Spotify Family", "family@example.com", "https://spotify.com", "Tg5!kP9#vL2@"),
-    createPreviewSSHKey("home-server", "Home server", "ssh-ed25519"),
+  team: [
+    createPreviewItem("sentry", "Sentry", "team@example.com", "https://sentry.io", "sentry-team-pass", { notes: "Shared team account" }),
+    createPreviewItem("wifi", "Office Wi-Fi", "", "", "wifi-password-123", { fields: [{ name: "Network", value: "Hisar-Office", concealed: false }] }),
+    createPreviewItem("staging-database", "Staging database", "deploy", "https://db.staging.example.com", "Tg5!kP9#vL2@"),
+    createPreviewSSHKey("deploy-server", "Deploy server", "ssh-ed25519"),
   ],
   work: [createPreviewItem("vpn", "Office VPN", "alper", "https://vpn.example.com", "Vq8@Lm3!Zr6#")],
 };
@@ -110,7 +110,7 @@ let previewAutoLockSeconds = 600;
 let previewTheme: Theme = { appearance: previewParameter.get("appearance") ?? "system", color: previewParameter.get("color") ?? "neutral" };
 const previewStatus = (): Status => ({
   state: previewState,
-  server: "https://tryhisar.com",
+  server: "https://api.tryhisar.com",
   email: previewState === "signed-out" ? previewSignedOutEmail : "alper@tryhisar.com",
   name: "Alper",
   biometricAvailable: true,
@@ -149,7 +149,7 @@ const allPreviewPerson: Person[] = [
 ];
 
 const allPreviewAccessByVaultID: Record<string, { accountId: string; role: string }[]> = {
-  family: [
+  team: [
     { accountId: "alper", role: "owner" },
     { accountId: "elif", role: "editor" },
     { accountId: "deniz", role: "reader" },
@@ -180,8 +180,8 @@ const previewShareInvitations: ShareInvitations =
         sent: [
           {
             id: "to-zeynep",
-            vaultId: "family",
-            vaultName: "Family",
+            vaultId: "team",
+            vaultName: "Team",
             email: "zeynep@tryhisar.com",
             recipientName: "",
             role: "reader",
@@ -191,8 +191,8 @@ const previewShareInvitations: ShareInvitations =
           },
           {
             id: "to-ops",
-            vaultId: "family",
-            vaultName: "Family",
+            vaultId: "team",
+            vaultName: "Team",
             email: "ops@kaya.dev",
             recipientName: "Ada Kaya",
             role: "editor",
@@ -631,6 +631,7 @@ const previewUpdateMode = previewParameter.get("updates") ?? "";
 const previewUpdateStatus: UpdateStatus = {
   version: previewUpdateMode === "development" ? "development" : "0.2.1",
   buildNumber: previewUpdateMode === "development" ? "" : "2001",
+  operatingSystem: "macOS 26.0.1",
   isAvailable: previewUpdateMode !== "development",
   isSignedIn: previewUpdateMode !== "signed-out",
   isAutomaticCheckEnabled: true,
@@ -703,7 +704,7 @@ const allPreviewImportItem: ItemDetail[] = [
   createPreviewItem("import-github", "GitHub", "alper", "https://github.com", "imported-1"),
   createPreviewItem("import-google", "Google", "alper@gmail.com", "https://accounts.google.com", "imported-2"),
   createPreviewItem("import-figma", "Figma", "alper@tryhisar.com", "https://figma.com", "imported-3"),
-  createPreviewItem("import-netflix", "Netflix", "family@example.com", "https://netflix.com", "imported-4"),
+  createPreviewItem("import-vercel", "Vercel", "alper@tryhisar.com", "https://vercel.com", "imported-4"),
   createPreviewItem("import-dropbox", "Dropbox", "alper@tryhisar.com", "https://dropbox.com", "imported-5"),
   createPreviewItem("import-notion", "Notion", "alper@tryhisar.com", "https://notion.so", "imported-6"),
   createPreviewItem("import-slack", "Slack", "alper@tryhisar.com", "https://tryhisar.slack.com", "imported-7"),
@@ -1064,6 +1065,10 @@ export const previewApi = {
     if (password.length < 4) {
       return Promise.reject(new Error("incorrect email, master password or Secret Key"));
     }
+    isPreviewBiometricEnabled = true;
+    return resolveAfterDelay(previewStatus());
+  },
+  enableNewAccountBiometricUnlock: () => {
     isPreviewBiometricEnabled = true;
     return resolveAfterDelay(previewStatus());
   },

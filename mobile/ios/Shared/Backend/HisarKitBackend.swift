@@ -81,6 +81,14 @@ final class HisarKitBackend: VaultBackend {
         try decode(VaultStatus.self, from: callReturningText { hisar.enableBiometricUnlock(password, error: $0) })
     }
 
+    func enableNewAccountBiometricUnlock() throws -> VaultStatus {
+        try decode(VaultStatus.self, from: callReturningText { hisar.enableNewAccountBiometricUnlock($0) })
+    }
+
+    func forgetNewAccountSecretKey() {
+        hisar.forgetNewAccountSecretKey()
+    }
+
     func disableBiometricUnlock() throws -> VaultStatus {
         try decode(VaultStatus.self, from: callReturningText { hisar.disableBiometricUnlock($0) })
     }

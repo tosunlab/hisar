@@ -12,8 +12,9 @@ import (
 )
 
 var (
-	ErrBiometricUnavailable = errors.New("Touch ID is not available on this Mac")
-	ErrBiometricNotReady    = errors.New("unlock with your master password first")
+	ErrBiometricUnavailable  = errors.New("Touch ID is not available on this Mac")
+	ErrBiometricNotReady     = errors.New("unlock with your master password first")
+	ErrNoNewAccountUnlockKey = errors.New("turn it on in Settings with your master password")
 )
 
 func buildBiometricContext(accountID string) []byte {
@@ -48,13 +49,7 @@ func (s *Service) forgetBiometricUnlock() {
 func (s *Service) EnableBiometricUnlock(password string) (Status, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	if err := s.requireUnlocked(); err != nil {
-		return Status{}, err
-	}
-	if s.config.Biometric == nil || !s.config.Biometric.IsAvailable() {
-		return Status{}, ErrBiometricUnavailable
-	}
-	if err := s.config.Biometric.Authenticate("turn on Touch ID unlock for Hisar"); err != nil {
+	if err := s.requireBiometricSetup(); err != nil {
 		return Status{}, err
 	}
 	secretKey, err := s.config.SecretKeyStore.LoadSecretKey(s.state.AccountID)
@@ -70,7 +65,39 @@ func (s *Service) EnableBiometricUnlock(password string) (Status, error) {
 		return Status{}, convertError(err)
 	}
 	defer clear(accountUnlockKey)
+	return s.sealBiometricUnlock(accountUnlockKey)
+}
 
+// EnableNewAccountBiometricUnlock is the one-click offer after sign up; it uses the account unlock key kept from sign up.
+func (s *Service) EnableNewAccountBiometricUnlock() (Status, error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if len(s.newAccountUnlockKey) == 0 {
+		return Status{}, ErrNoNewAccountUnlockKey
+	}
+	if err := s.requireBiometricSetup(); err != nil {
+		return Status{}, err
+	}
+	status, err := s.sealBiometricUnlock(s.newAccountUnlockKey)
+	if err == nil {
+		clear(s.newAccountUnlockKey)
+		s.newAccountUnlockKey = nil
+	}
+	return status, err
+}
+
+// requireBiometricSetup runs with the mutex held and shows the Touch ID prompt.
+func (s *Service) requireBiometricSetup() error {
+	if err := s.requireUnlocked(); err != nil {
+		return err
+	}
+	if s.config.Biometric == nil || !s.config.Biometric.IsAvailable() {
+		return ErrBiometricUnavailable
+	}
+	return s.config.Biometric.Authenticate("turn on Touch ID unlock for Hisar")
+}
+
+func (s *Service) sealBiometricUnlock(accountUnlockKey []byte) (Status, error) {
 	wrappingKey := crypt.GenerateKey()
 	defer clear(wrappingKey)
 	sealedUnlockKey, err := crypt.Seal(wrappingKey, accountUnlockKey, buildBiometricContext(s.state.AccountID))

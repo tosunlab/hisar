@@ -262,6 +262,19 @@ class FakeBackend: VaultBackend {
         return status
     }
 
+    func enableNewAccountBiometricUnlock() throws -> VaultStatus {
+        record("enableNewAccountBiometricUnlock")
+        try requireUnlocked()
+        guard isBiometricSucceeding else { throw BackendError(message: "Face ID was cancelled.") }
+        status.biometricEnabled = true
+        status.biometricReady = true
+        return status
+    }
+
+    func forgetNewAccountSecretKey() {
+        record("forgetNewAccountSecretKey")
+    }
+
     func disableBiometricUnlock() throws -> VaultStatus {
         record("disableBiometricUnlock")
         status.biometricEnabled = false

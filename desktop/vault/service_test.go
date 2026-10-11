@@ -470,9 +470,30 @@ func TestIntegrationDesktopFlow(t *testing.T) {
 	if export, err := ExportEmergencyKit(service, password); err != nil || export.SecretKey != signUpResult.SecretKey || !strings.HasPrefix(string(export.Document), "%PDF-") {
 		t.Errorf("export kit: %q %d bytes %v", export.SecretKey, len(export.Document), err)
 	}
+	newAccountBiometric := service.config.Biometric.(*fakeBiometric)
+	newAccountBiometric.setAuthenticateError(errors.New("Touch ID was cancelled"))
+	if _, err := service.EnableNewAccountBiometricUnlock(); err == nil || service.GetStatus().BiometricEnabled {
+		t.Errorf("cancelled Touch ID offer after sign-up: %v", err)
+	}
+	newAccountBiometric.setAuthenticateError(nil)
+	if status, err := service.EnableNewAccountBiometricUnlock(); err != nil || !status.BiometricEnabled {
+		t.Fatalf("Touch ID offer after sign-up: %+v %v", status, err)
+	}
+	if _, err := service.EnableNewAccountBiometricUnlock(); !errors.Is(err, ErrNoNewAccountUnlockKey) {
+		t.Errorf("second Touch ID offer: %v", err)
+	}
 	service.ForgetNewAccountSecretKey()
 	if _, err := service.SaveNewAccountEmergencyKit(); !errors.Is(err, ErrNoNewAccountSecretKey) {
 		t.Errorf("new account kit after confirming: %v", err)
+	}
+	if status := service.Lock(); !status.BiometricReady {
+		t.Fatalf("Touch ID from the sign-up offer not ready after lock: %+v", status)
+	}
+	if status, err := service.UnlockWithBiometric(); err != nil || status.State != StateUnlocked {
+		t.Fatalf("unlock with Touch ID from the sign-up offer: %+v %v", status, err)
+	}
+	if status, err := service.DisableBiometricUnlock(); err != nil || status.BiometricEnabled {
+		t.Fatalf("turn off Touch ID: %+v %v", status, err)
 	}
 
 	allVault, err := service.ListAllVault()

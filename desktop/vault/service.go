@@ -42,6 +42,7 @@ type Service struct {
 	name                         string
 	hasPasswordUnlockSinceLaunch bool
 	newAccountSecretKey          *crypt.SecretKey
+	newAccountUnlockKey          []byte
 	localCache                   *cache.Cache
 	pendingImport                *pendingImport
 	stopEvents                   context.CancelFunc
@@ -226,7 +227,7 @@ func (s *Service) lockFromTimer() {
 }
 
 func (s *Service) lockSession() {
-	s.newAccountSecretKey = nil
+	s.forgetNewAccountSecrets()
 	if s.stopEvents != nil {
 		s.stopEvents()
 		s.stopEvents = nil
@@ -391,7 +392,7 @@ func (s *Service) SignUp(invite, email, name, password string) (SignUpResult, er
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	signedUp, secretKey, err := session.SignUp(ctx, client.Create(server), token, strings.TrimSpace(email), strings.TrimSpace(name), passwordBytes, s.getDeviceInfo())
+	signedUp, secretKey, accountUnlockKey, err := session.SignUpKeepingAccountUnlockKey(ctx, client.Create(server), token, strings.TrimSpace(email), strings.TrimSpace(name), passwordBytes, s.getDeviceInfo())
 	if err != nil {
 		return SignUpResult{}, convertError(err)
 	}
@@ -405,6 +406,7 @@ func (s *Service) SignUp(invite, email, name, password string) (SignUpResult, er
 	s.state.Server, s.state.Email, s.state.AccountID, s.state.Token = server, strings.ToLower(strings.TrimSpace(email)), signedUp.AccountID, signedUp.Client.Token
 	if err := s.state.Save(); err != nil {
 		signedUp.Lock()
+		clear(accountUnlockKey)
 		return SignUpResult{}, err
 	}
 	keychainErr := s.config.SecretKeyStore.StoreSecretKey(secretKey)
@@ -412,6 +414,7 @@ func (s *Service) SignUp(invite, email, name, password string) (SignUpResult, er
 	s.attachCache(ctx, signedUp)
 	s.openSession(signedUp)
 	s.newAccountSecretKey = &secretKey
+	s.newAccountUnlockKey = accountUnlockKey
 	s.recordPasswordUnlock()
 	result := SignUpResult{Status: s.buildStatus(), SecretKey: secretKey.Encode()}
 	if keychainErr != nil {

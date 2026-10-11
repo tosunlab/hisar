@@ -1,7 +1,7 @@
 [Desktop Entry]
 Version=1.0
 Name=Hisar
-Comment=Self-hosted, end-to-end encrypted password manager
+Comment=End-to-end encrypted password, SSH key and secrets manager for developers
 # The Exec line includes %u to pass the URL to the application
 Exec=/usr/local/bin/Hisar %u
 Terminal=false

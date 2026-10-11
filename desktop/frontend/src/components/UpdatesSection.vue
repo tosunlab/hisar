@@ -28,9 +28,9 @@ const explanation = computed(() => {
     return "This build cannot update itself. Install Hisar from a release to get updates.";
   }
   if (!status.isSignedIn) {
-    return "Sign in to check for updates; they come from your Hisar server.";
+    return "Sign in to check for updates; they come from the Hisar server.";
   }
-  return `Updates come from ${store.status.server || "your Hisar server"} and are verified before they install.`;
+  return `Updates come from ${store.status.server || "the Hisar server"} and are verified before they install.`;
 });
 
 onMounted(loadUpdateStatus);
@@ -50,7 +50,7 @@ onMounted(loadUpdateStatus);
       <label v-show="isRowVisible('automatic-updates')" class="setting">
         <div class="setting-text">
           <strong>Automatically check for updates</strong>
-          <p class="muted">Once a day while you are signed in to your Hisar server.</p>
+          <p class="muted">Once a day while you are signed in.</p>
         </div>
         <input
           class="switch"

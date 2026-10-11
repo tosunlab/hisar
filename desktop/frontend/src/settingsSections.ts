@@ -1,7 +1,7 @@
 import { inject, type InjectionKey } from "vue";
 import type { IconName } from "./components/AppIcon.vue";
 
-export type SettingsSectionID = "general" | "security" | "ssh" | "developer" | "browser" | "people" | "devices" | "account";
+export type SettingsSectionID = "general" | "security" | "ssh" | "developer" | "browser" | "people" | "devices" | "account" | "help";
 
 export interface SettingsRow {
   id: string;
@@ -47,7 +47,7 @@ export const allSettingsSection: SettingsSection[] = [
     allRow: [
       { id: "ssh-agent", title: "Hisar SSH agent", keywords: "ssh config use hisar for ssh identityagent socket keys" },
       { id: "compact-ssh-approvals", title: "Compact SSH approvals", keywords: "approval card notification dialog" },
-      { id: "phone-approval", title: "Allow approvals from my iPhone", keywords: "phone iphone approve requests" },
+      { id: "phone-approval", title: "Approve requests on my iPhone", keywords: "phone iphone allow approvals approve requests" },
       { id: "commit-signing", title: "Remember commit signing", keywords: "git signature sign gpg always asks rebase remember commit tag" },
     ],
   },
@@ -79,7 +79,7 @@ export const allSettingsSection: SettingsSection[] = [
       { id: "received-invitations", title: "Invitations for you", keywords: "accept decline share vault" },
       { id: "people", title: "People you share with", keywords: "security code fingerprint share" },
       { id: "sent-invitations", title: "Invitations you sent", keywords: "cancel pending share" },
-      { id: "invite", title: "Invite someone to Hisar", keywords: "email invitation account" },
+      { id: "invite", title: "Invite to Hisar", keywords: "invite someone email invitation new account sign up" },
     ],
   },
   {
@@ -93,6 +93,15 @@ export const allSettingsSection: SettingsSection[] = [
     label: "Account",
     icon: "user",
     allRow: [{ id: "account", title: "Account", keywords: "name email server sign out" }],
+  },
+  {
+    id: "help",
+    label: "Help",
+    icon: "help",
+    allRow: [
+      { id: "support", title: "Contact support", keywords: "help email feedback bug problem question" },
+      { id: "diagnostics", title: "Copy diagnostics", keywords: "help version system server device id debug report" },
+    ],
   },
 ];
 

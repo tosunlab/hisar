@@ -310,7 +310,7 @@ describe("Settings SSH agent section", () => {
     await flushPromises();
     const phoneSwitch = wrapper.find('[data-testid="phone-approval-switch"]');
     expect((phoneSwitch.element as HTMLInputElement).checked).toBe(true);
-    expect(wrapper.find('[data-testid="ssh-agent-section"]').text()).toContain("Allow approvals from my iPhone");
+    expect(wrapper.find('[data-testid="ssh-agent-section"]').text()).toContain("Approve requests on my iPhone");
     expect(wrapper.find('[data-testid="ssh-agent-section"]').text()).toContain("never unlocks this Mac");
     await phoneSwitch.setValue(false);
     await flushPromises();

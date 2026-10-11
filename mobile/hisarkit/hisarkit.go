@@ -164,6 +164,14 @@ func (hisar *Hisar) EnableBiometricUnlock(password string) (string, error) {
 	return encodeJSON(hisar.service.EnableBiometricUnlock(password))
 }
 
+func (hisar *Hisar) EnableNewAccountBiometricUnlock() (string, error) {
+	return encodeJSON(hisar.service.EnableNewAccountBiometricUnlock())
+}
+
+func (hisar *Hisar) ForgetNewAccountSecretKey() {
+	hisar.service.ForgetNewAccountSecretKey()
+}
+
 func (hisar *Hisar) DisableBiometricUnlock() (string, error) {
 	return encodeJSON(hisar.service.DisableBiometricUnlock())
 }

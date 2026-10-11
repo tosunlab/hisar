@@ -22,6 +22,7 @@ type Updater interface {
 type UpdateStatus struct {
 	Version                 string `json:"version"`
 	BuildNumber             string `json:"buildNumber"`
+	OperatingSystem         string `json:"operatingSystem"`
 	IsAvailable             bool   `json:"isAvailable"`
 	IsSignedIn              bool   `json:"isSignedIn"`
 	IsAutomaticCheckEnabled bool   `json:"isAutomaticCheckEnabled"`
@@ -61,6 +62,7 @@ func (updateService *UpdateService) GetUpdateStatus() UpdateStatus {
 	return UpdateStatus{
 		Version:                 version,
 		BuildNumber:             buildNumber,
+		OperatingSystem:         getOperatingSystem(),
 		IsAvailable:             updateService.updater.IsAvailable(),
 		IsSignedIn:              s.state.IsLoggedIn(),
 		IsAutomaticCheckEnabled: !s.state.IsAutomaticUpdateCheckDisabled,

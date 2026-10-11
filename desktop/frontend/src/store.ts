@@ -57,6 +57,7 @@ export const store = reactive({
   editorMode: "view" as EditorMode,
   searchQuery: "",
   pendingSecretKey: "",
+  isTouchIDOfferShown: false,
   errorMessage: "",
   noticeMessage: "",
   isBusy: false,
@@ -119,6 +120,7 @@ async function runAction<Result>(action: () => Promise<Result>): Promise<Result 
 
 function clearAllVaultData(): void {
   resetImport();
+  store.isTouchIDOfferShown = false;
   store.isSettingsOpen = false;
   store.isSharingOpen = false;
   store.allVaultMember = [];
@@ -169,7 +171,38 @@ export async function signUp(invite: string, email: string, name: string, passwo
 
 export function confirmSecretKeySaved(): void {
   store.pendingSecretKey = "";
+  if (store.status.biometricAvailable && !store.status.biometricEnabled) {
+    store.isTouchIDOfferShown = true;
+    return;
+  }
   api.forgetNewAccountSecretKey().catch(() => undefined);
+}
+
+function finishTouchIDOffer(): void {
+  store.isTouchIDOfferShown = false;
+  store.errorMessage = "";
+  api.forgetNewAccountSecretKey().catch(() => undefined);
+}
+
+// acceptTouchIDOffer does not use runAction: cancelling the Touch ID prompt keeps the offer open without an error.
+export async function acceptTouchIDOffer(): Promise<boolean> {
+  store.isBusy = true;
+  try {
+    store.status = await api.enableNewAccountBiometricUnlock();
+    finishTouchIDOffer();
+    showNotice("Touch ID unlock is on");
+    return true;
+  } catch (error) {
+    const message = getErrorMessage(error);
+    store.errorMessage = isCancelledTouchID(message) ? "" : message;
+    return false;
+  } finally {
+    store.isBusy = false;
+  }
+}
+
+export function declineTouchIDOffer(): void {
+  finishTouchIDOffer();
 }
 
 function showSavedNotice(savedPath: string | undefined): boolean {

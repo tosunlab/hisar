@@ -7,9 +7,12 @@ struct SignInView: View {
         var id: String { rawValue }
     }
 
+    static let defaultServer = "https://api.tryhisar.com"
+
     @EnvironmentObject private var model: AppModel
     @State private var mode: Mode = .signIn
-    @State private var server = "https://"
+    @State private var server = SignInView.defaultServer
+    @State private var isServerShown = false
     @State private var email = ""
     @State private var secretKey = ""
     @State private var password = ""
@@ -94,7 +97,10 @@ struct SignInView: View {
             repeatedPassword = ""
             model.clearError()
         }
-        .onAppear(perform: applyPendingSignInLink)
+        .onAppear {
+            if !model.status.server.isEmpty { applyServer(model.status.server) }
+            applyPendingSignInLink()
+        }
         .onChange(of: model.pendingSignInLink) { _, _ in applyPendingSignInLink() }
         .sheet(isPresented: $isScannerShown) {
             EmergencyKitScannerSheet { scannedText in
@@ -125,19 +131,32 @@ struct SignInView: View {
         } footer: {
             Text("The QR code fills in your server, email and Secret Key.")
         }
-        Section("Account") {
-            TextField("Server", text: $server, prompt: Text(verbatim: "https://hisar.example.com"))
-                .textContentType(.URL)
-                .keyboardType(.URL)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .accessibilityIdentifier("sign-in-server")
+        Section {
             TextField("Email", text: $email, prompt: Text(verbatim: "you@example.com"))
                 .textContentType(.username)
                 .keyboardType(.emailAddress)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("sign-in-email")
+            if isServerShown {
+                TextField("Server", text: $server, prompt: Text(verbatim: SignInView.defaultServer))
+                    .textContentType(.URL)
+                    .keyboardType(.URL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .accessibilityIdentifier("sign-in-server")
+            } else {
+                Button("Use a different server…") {
+                    isServerShown = true
+                }
+                .accessibilityIdentifier("sign-in-use-different-server")
+            }
+        } header: {
+            Text("Account")
+        } footer: {
+            if !isServerShown {
+                Text(verbatim: "Signs in to \(SignInView.describeServer(SignInView.defaultServer)).")
+            }
         }
         Section("Secret Key and master password") {
             TextField("Secret Key", text: $secretKey, prompt: Text(verbatim: "H1-XXXXXX-XXXXX-…"))
@@ -156,7 +175,7 @@ struct SignInView: View {
     @ViewBuilder
     private var createAccountSections: some View {
         Section("Invite") {
-            TextField("Invite link", text: $inviteLink, prompt: Text(verbatim: "https://hisar.example.com/invite/…"))
+            TextField("Invite link", text: $inviteLink, prompt: Text(verbatim: "https://api.tryhisar.com/invite/…"))
                 .keyboardType(.URL)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
@@ -192,11 +211,27 @@ struct SignInView: View {
         }
     }
 
+    static func describeServer(_ server: String) -> String {
+        server.replacingOccurrences(of: "https://", with: "")
+    }
+
+    static func isDefaultServer(_ server: String) -> Bool {
+        let trimmedServer = server.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmedServer.isEmpty || trimmedServer.trimmingCharacters(in: CharacterSet(charactersIn: "/")) == defaultServer
+    }
+
+    private func applyServer(_ newServer: String) {
+        server = newServer
+        if !Self.isDefaultServer(newServer) {
+            isServerShown = true
+        }
+    }
+
     private func applyPendingSignInLink() {
         guard let link = model.pendingSignInLink else { return }
         model.pendingSignInLink = nil
         mode = .signIn
-        if !link.server.isEmpty { server = link.server }
+        if !link.server.isEmpty { applyServer(link.server) }
         if !link.email.isEmpty { email = link.email }
         if !link.secretKey.isEmpty { secretKey = link.secretKey }
     }

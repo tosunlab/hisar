@@ -67,6 +67,67 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.newSecretKey)
     }
 
+    private func waitForCall(_ name: String) async {
+        for _ in 0..<100 where !backend.allCallName.contains(name) {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertTrue(backend.allCallName.contains(name), "\(name) was not called")
+    }
+
+    func testSecretKeyScreenOffersFaceIDAndTurnsItOnInOneTap() async {
+        let model = createModel()
+        await model.signUp(inviteLink: "http://127.0.0.1:18080/invite/abc", email: "bob@example.com", name: "Bob", password: FakeBackend.password)
+        model.finishNewSecretKey()
+        XCTAssertTrue(model.isBiometricOfferShown)
+        XCTAssertNotNil(model.newSecretKey, "the cover stays up for the offer")
+        let isTurnedOn = await model.turnOnBiometricUnlockFromOffer()
+        XCTAssertTrue(isTurnedOn)
+        XCTAssertTrue(model.status.biometricEnabled)
+        XCTAssertFalse(model.isBiometricOfferShown)
+        XCTAssertNil(model.newSecretKey)
+        XCTAssertFalse(backend.allCallName.contains("enableBiometricUnlock"), "no master password asked again")
+        await waitForCall("forgetNewAccountSecretKey")
+    }
+
+    func testFaceIDOfferFailureStaysOnTheOffer() async {
+        let model = createModel()
+        await model.signUp(inviteLink: "http://127.0.0.1:18080/invite/abc", email: "bob@example.com", name: "Bob", password: FakeBackend.password)
+        model.finishNewSecretKey()
+        backend.isBiometricSucceeding = false
+        let isTurnedOn = await model.turnOnBiometricUnlockFromOffer()
+        XCTAssertFalse(isTurnedOn)
+        XCTAssertTrue(model.isBiometricOfferShown)
+        XCTAssertEqual(model.errorMessage, "Face ID was cancelled.")
+        model.dismissNewSecretKey()
+        XCTAssertFalse(model.isBiometricOfferShown)
+        XCTAssertFalse(model.status.biometricEnabled)
+        await waitForCall("forgetNewAccountSecretKey")
+    }
+
+    func testSecretKeyScreenSkipsTheOfferWithoutFaceID() async {
+        backend.isBiometricAvailable = false
+        let model = createModel()
+        await model.signUp(inviteLink: "http://127.0.0.1:18080/invite/abc", email: "bob@example.com", name: "Bob", password: FakeBackend.password)
+        model.finishNewSecretKey()
+        XCTAssertFalse(model.isBiometricOfferShown)
+        XCTAssertNil(model.newSecretKey)
+        await waitForCall("forgetNewAccountSecretKey")
+    }
+
+    func testSignInServerDefaultsToTheHostedService() {
+        XCTAssertTrue(SignInView.isDefaultServer(""))
+        XCTAssertTrue(SignInView.isDefaultServer("https://api.tryhisar.com/"))
+        XCTAssertFalse(SignInView.isDefaultServer("http://127.0.0.1:18080"))
+        XCTAssertEqual(SignInView.describeServer(SignInView.defaultServer), "api.tryhisar.com")
+    }
+
+    func testDiagnosticsHoldVersionsServerAndDeviceOnly() {
+        let diagnostics = HelpView.buildDiagnostics(appVersion: "1.2 (34)", systemVersion: "26.0", deviceModel: "iPhone", server: "https://api.tryhisar.com", deviceID: "device-1")
+        XCTAssertEqual(diagnostics, "Hisar 1.2 (34)\niOS 26.0 on iPhone\nServer https://api.tryhisar.com\nDevice ID device-1")
+        XCTAssertEqual(HelpView.buildDiagnostics(appVersion: "1.2 (34)", systemVersion: "26.0", deviceModel: "iPhone", server: "", deviceID: nil), "Hisar 1.2 (34)\niOS 26.0 on iPhone\nServer not signed in")
+        XCTAssertEqual(HelpView.supportEmail, "support@tryhisar.com")
+    }
+
     func testLockAndUnlockWithPassword() async {
         let model = await createUnlockedModel()
         model.lock()

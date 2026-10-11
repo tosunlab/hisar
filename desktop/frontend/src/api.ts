@@ -213,6 +213,7 @@ const wailsApi = {
   openURL: (link: string): Promise<void> => Browser.OpenURL(link),
   unlockWithBiometric: (): Promise<Status> => Service.UnlockWithBiometric(),
   enableBiometricUnlock: (password: string): Promise<Status> => Service.EnableBiometricUnlock(password),
+  enableNewAccountBiometricUnlock: (): Promise<Status> => Service.EnableNewAccountBiometricUnlock(),
   disableBiometricUnlock: (): Promise<Status> => Service.DisableBiometricUnlock(),
   setTouchIDPromptFrame: (x: number, y: number, width: number, height: number): Promise<void> =>
     TouchIDPromptService.SetPromptFrame(x, y, width, height),

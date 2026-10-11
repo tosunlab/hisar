@@ -91,7 +91,7 @@ struct ItemEditorView: View {
                             Label("Add website", systemImage: "plus")
                         }
                     }
-                    Section("Fields") {
+                    Section("Other fields") {
                         ForEach(draft.allField.indices, id: \.self) { index in
                             VStack(alignment: .leading, spacing: 8) {
                                 TextField("Name", text: $draft.allField[index].name)
@@ -101,7 +101,7 @@ struct ItemEditorView: View {
                                 } else {
                                     TextField("Value", text: $draft.allField[index].value)
                                 }
-                                Toggle("Concealed", isOn: $draft.allField[index].concealed)
+                                Toggle("Secret", isOn: $draft.allField[index].concealed)
                                     .font(.caption)
                                     .foregroundStyle(.themeSecondary)
                             }

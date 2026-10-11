@@ -113,7 +113,14 @@ export function EnableBiometricUnlock(password: string): $CancellablePromise<$mo
 }
 
 /**
- * ForgetNewAccountSecretKey drops the sign-up Secret Key once the user confirmed saving it.
+ * EnableNewAccountBiometricUnlock is the one-click offer after sign up; it uses the account unlock key kept from sign up.
+ */
+export function EnableNewAccountBiometricUnlock(): $CancellablePromise<$models.Status> {
+    return $Call.ByID(4131908905);
+}
+
+/**
+ * ForgetNewAccountSecretKey drops the sign-up Secret Key and account unlock key once onboarding is done.
  */
 export function ForgetNewAccountSecretKey(): $CancellablePromise<void> {
     return $Call.ByID(4014028838);
