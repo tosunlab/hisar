@@ -19,6 +19,11 @@ struct HomeView: View {
     var body: some View {
         NavigationStack(path: $navigationPath) {
             List {
+                if !model.allPendingApproval.isEmpty {
+                    PendingApprovalSection(allApproval: model.allPendingApproval) { approval in
+                        model.reviewApproval(approval)
+                    }
+                }
                 if searchText.isEmpty {
                     vaultSection
                 } else {

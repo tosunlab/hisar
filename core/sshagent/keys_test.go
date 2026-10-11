@@ -19,6 +19,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"hash"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -359,6 +360,21 @@ func TestImportPrivateKey(t *testing.T) {
 				t.Errorf("wrong passphrase: err = %v, want ErrWrongPassphrase", err)
 			}
 		})
+	}
+}
+
+func TestImportLegacyEncryptedKeyRejectsEveryWrongPassphrase(t *testing.T) {
+	ecdsaKey := generateTestECDSAKey(t, elliptic.P256())
+	ecDER, err := x509.MarshalECPrivateKey(ecdsaKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pemBytes := encodeLegacyEncryptedKey(t, "EC PRIVATE KEY", ecDER, []byte("correct horse battery staple"))
+	for attempt := range 2000 {
+		wrongPassphrase := []byte("wrong passphrase " + strconv.Itoa(attempt))
+		if _, err := ImportPrivateKey(pemBytes, wrongPassphrase, ""); !errors.Is(err, ErrWrongPassphrase) {
+			t.Fatalf("attempt %d: err = %v, want ErrWrongPassphrase", attempt, err)
+		}
 	}
 }
 

@@ -50,6 +50,7 @@ type fakeAPIServer struct {
 	allInvitedEmail                []string
 	isEmailUnavailable             bool
 	approvalEventChannel           chan client.Event
+	eventStreamCount               int
 	allApprovalByRequestID         map[string]*fakeApproval
 }
 
@@ -140,6 +141,7 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 		}
 		server.mutex.Lock()
 		approvalEventChannel := server.approvalEventChannel
+		server.eventStreamCount++
 		server.mutex.Unlock()
 		writer.Header().Set("Content-Type", "text/event-stream")
 		fmt.Fprint(writer, ": connected\n\n")

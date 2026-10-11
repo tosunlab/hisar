@@ -111,3 +111,41 @@ func TestRemoteChangeSyncsAndNotifies(t *testing.T) {
 	case <-time.After(300 * time.Millisecond):
 	}
 }
+
+func TestReconnectEventStreamOpensANewStreamNow(t *testing.T) {
+	testService := createUnlockedTestService(t)
+	apiServer := testService.apiServer
+	countStream := func() int {
+		apiServer.mutex.Lock()
+		defer apiServer.mutex.Unlock()
+		return apiServer.eventStreamCount
+	}
+	waitForStreamCount := func(want int) {
+		t.Helper()
+		deadline := time.Now().Add(5 * time.Second)
+		for countStream() < want {
+			if time.Now().After(deadline) {
+				t.Fatalf("%d event streams, want %d", countStream(), want)
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
+	apiServer.mutex.Lock()
+	apiServer.eventChannel = make(chan string)
+	apiServer.mutex.Unlock()
+	ReconnectEventStream(testService.service)
+	waitForStreamCount(1)
+	connectedCount := countStream()
+	ReconnectEventStream(testService.service)
+	waitForStreamCount(connectedCount + 1)
+	ReconnectEventStream(testService.service)
+	waitForStreamCount(connectedCount + 2)
+
+	testService.service.Lock()
+	ReconnectEventStream(testService.service)
+	lockedCount := countStream()
+	time.Sleep(300 * time.Millisecond)
+	if countStream() != lockedCount {
+		t.Error("a locked service opened an event stream")
+	}
+}

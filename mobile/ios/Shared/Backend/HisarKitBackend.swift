@@ -250,4 +250,8 @@ final class HisarKitBackend: VaultBackend {
     func denyApproval(requestID: String) throws {
         try callReturningNothing { try hisar.denyApproval(requestID) }
     }
+
+    func reconnectEvents() {
+        hisar.reconnectEvents()
+    }
 }

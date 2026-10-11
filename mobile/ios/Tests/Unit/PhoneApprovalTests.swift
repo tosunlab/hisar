@@ -4,27 +4,35 @@ import XCTest
 @MainActor
 final class PhoneApprovalTests: XCTestCase {
     private var backend: FakeBackend!
-    private let currentDate = Date(timeIntervalSince1970: 1_800_000_000)
+    private var currentDate = Date(timeIntervalSince1970: 1_800_000_000)
 
     override func setUp() async throws {
         backend = FakeBackend()
     }
 
-    private func createApproval(requestID: String = "0123456789abcdef0123456789abcdef", secondsLeft: TimeInterval = 45, isForwarded: Bool = false) -> PhoneApproval {
+    private func createApproval(requestID: String = "0123456789abcdef0123456789abcdef", secondsLeft: TimeInterval = 45, kind: String = PhoneApproval.kindSSH, isForwarded: Bool = false) -> PhoneApproval {
         PhoneApproval(
             requestID: requestID, requesterDeviceName: "Alper's MacBook Pro", expiresAt: ISO8601DateFormatter().string(from: currentDate.addingTimeInterval(secondsLeft)),
-            kind: PhoneApproval.kindSSH, appName: "Terminal", purpose: "push to git.tryhisar.com", host: "git.tryhisar.com:22", commandLine: "git push origin main",
+            kind: kind, appName: "Terminal", purpose: "push to git.tryhisar.com", host: "git.tryhisar.com:22", commandLine: "git push origin main",
             repositoryPath: "~/src/core", keyName: "hisar gitlab", isForwarded: isForwarded, forwardedFromHost: isForwarded ? "build.example.com" : ""
         )
     }
 
+    // createUnlockedModel is a launch with the app in the foreground: unlocking lists the open requests at once.
     private func createUnlockedModel(allApproval: [PhoneApproval]) async -> AppModel {
         backend.seedSignedIn()
         backend.allPendingApproval = allApproval
-        let model = AppModel(credentialIdentityStore: FakeCredentialIdentityStore(), getCurrentDate: { [currentDate] in currentDate })
+        let model = AppModel(credentialIdentityStore: FakeCredentialIdentityStore(), getCurrentDate: { [unowned self] in currentDate })
         model.start { self.backend }
-        await model.refreshAll()
-        try? await Task.sleep(nanoseconds: 200_000_000)
+        await model.refreshPendingApproval()
+        return model
+    }
+
+    private func createReviewingModel(allApproval: [PhoneApproval]) async -> AppModel {
+        let model = await createUnlockedModel(allApproval: allApproval)
+        if let first = model.allPendingApproval.first {
+            model.reviewApproval(first)
+        }
         return model
     }
 
@@ -39,6 +47,7 @@ final class PhoneApprovalTests: XCTestCase {
         let approval = allApproval[0]
         XCTAssertEqual(approval.title, "Approve on MacBook Pro?")
         XCTAssertEqual(approval.summary, "hisar in Terminal wants to use Hisar")
+        XCTAssertEqual(approval.bannerTitle, "MacBook Pro is asking to use Hisar from the command line")
         XCTAssertEqual(approval.systemImage, "apple.terminal")
         XCTAssertEqual(approval.allDetailRow.map(\.label), ["App", "Program", "Terminal"])
         XCTAssertEqual(approval.allDetailRow.last?.value, "/dev/ttys003")
@@ -47,96 +56,129 @@ final class PhoneApprovalTests: XCTestCase {
         XCTAssertTrue(approval.isExpired(at: PhoneApproval.parseDate("2027-01-15T08:01:01Z")!))
     }
 
-    func testDescribesForwardedRequests() {
-        let approval = createApproval(isForwarded: true)
+    func testDescribesRequestsForTheBanner() {
+        let approval = createApproval(secondsLeft: 115, isForwarded: true)
         XCTAssertEqual(approval.summary, "build.example.com wants to push to git.tryhisar.com")
+        XCTAssertEqual(approval.bannerTitle, "Alper's MacBook Pro is asking to use “hisar gitlab”")
+        XCTAssertEqual(approval.formatTimeLeft(at: currentDate), "Expires in 1:55")
+        XCTAssertEqual(approval.formatTimeLeft(at: currentDate.addingTimeInterval(114)), "Expires in 1 second")
+        XCTAssertEqual(approval.formatTimeLeft(at: currentDate.addingTimeInterval(80)), "Expires in 35 seconds")
         XCTAssertEqual(approval.allDetailRow.map(\.label), ["App", "Command", "Repository", "Server", "Key", "Forwarded from"])
         XCTAssertEqual(createApproval().allDetailRow.map(\.label), ["App", "Command", "Repository", "Server", "Key"])
     }
 
-    func testShowsOnlyOpenRequests() async {
-        let model = await createUnlockedModel(allApproval: [createApproval(requestID: "expired", secondsLeft: -1), createApproval(requestID: "open")])
-        XCTAssertEqual(model.pendingApproval?.requestID, "open")
+    func testUnlockListsWaitingRequestsWithoutOpeningTheSheet() async {
+        let model = await createUnlockedModel(allApproval: [createApproval(requestID: "expired", secondsLeft: -1), createApproval(requestID: "first"), createApproval(requestID: "second")])
+        XCTAssertEqual(model.allPendingApproval.map(\.requestID), ["first", "second"])
+        XCTAssertNil(model.presentedApproval)
+        model.reviewApproval(model.allPendingApproval[1])
+        XCTAssertEqual(model.presentedApproval?.requestID, "second")
+        model.closeApprovalSheet()
+        XCTAssertNil(model.presentedApproval)
+        XCTAssertEqual(model.allPendingApproval.count, 2, "closing the sheet keeps the request in the list")
+    }
+
+    func testARequestArrivingInTheForegroundOpensTheSheet() async {
+        let model = await createUnlockedModel(allApproval: [createApproval(requestID: "listed-at-unlock")])
+        backend.allPendingApproval.append(createApproval(requestID: "new"))
+        await model.refreshPendingApproval(isOpeningNewRequest: true)
+        XCTAssertEqual(model.presentedApproval?.requestID, "new")
+        XCTAssertEqual(model.allPendingApproval.count, 2)
     }
 
     func testApproveWithFaceID() async {
-        let model = await createUnlockedModel(allApproval: [createApproval()])
+        let model = await createReviewingModel(allApproval: [createApproval()])
         await model.approvePendingApproval()
         XCTAssertEqual(backend.allApprovalAnswer, ["approve 0123456789abcdef0123456789abcdef"])
-        XCTAssertNil(model.pendingApproval)
+        XCTAssertNil(model.presentedApproval)
+        XCTAssertTrue(model.allPendingApproval.isEmpty)
         XCTAssertEqual(model.noticeMessage, "Approved on your Mac")
         XCTAssertNil(model.approvalErrorMessage)
     }
 
     func testDenyNeedsNoFaceID() async {
         backend.isBiometricSucceeding = false
-        let model = await createUnlockedModel(allApproval: [createApproval()])
+        let model = await createReviewingModel(allApproval: [createApproval()])
         await model.denyPendingApproval()
         XCTAssertEqual(backend.allApprovalAnswer, ["deny 0123456789abcdef0123456789abcdef"])
-        XCTAssertNil(model.pendingApproval)
+        XCTAssertNil(model.presentedApproval)
         XCTAssertEqual(model.noticeMessage, "Denied on your Mac")
     }
 
     func testCancelledFaceIDKeepsTheRequest() async {
         backend.isBiometricSucceeding = false
-        let model = await createUnlockedModel(allApproval: [createApproval()])
+        let model = await createReviewingModel(allApproval: [createApproval()])
         await model.approvePendingApproval()
         XCTAssertEqual(backend.allApprovalAnswer, [])
-        XCTAssertNotNil(model.pendingApproval)
+        XCTAssertNotNil(model.presentedApproval)
         XCTAssertNil(model.approvalErrorMessage)
         XCTAssertFalse(model.isApprovalPasswordRequired)
     }
 
     func testFallsBackToTheMasterPassword() async {
         backend.isBiometricAvailable = false
-        let model = await createUnlockedModel(allApproval: [createApproval()])
+        let model = await createReviewingModel(allApproval: [createApproval()])
         await model.approvePendingApproval()
         XCTAssertTrue(model.isApprovalPasswordRequired)
         XCTAssertNil(model.approvalErrorMessage)
         await model.approvePendingApproval(password: "wrong")
         XCTAssertEqual(model.approvalErrorMessage, "Incorrect master password.")
-        XCTAssertNotNil(model.pendingApproval)
+        XCTAssertNotNil(model.presentedApproval)
         await model.approvePendingApproval(password: FakeBackend.password)
         XCTAssertEqual(backend.allApprovalAnswer, ["approve 0123456789abcdef0123456789abcdef"])
-        XCTAssertNil(model.pendingApproval)
+        XCTAssertNil(model.presentedApproval)
         XCTAssertFalse(model.isApprovalPasswordRequired)
     }
 
     func testRequestThatIsGoneCloses() async {
-        let model = await createUnlockedModel(allApproval: [createApproval()])
+        let model = await createReviewingModel(allApproval: [createApproval()])
         backend.allPendingApproval = []
         await model.approvePendingApproval()
-        XCTAssertNil(model.pendingApproval)
+        XCTAssertNil(model.presentedApproval)
+        XCTAssertTrue(model.allPendingApproval.isEmpty)
         XCTAssertEqual(model.noticeMessage, "The request is no longer waiting")
     }
 
-    func testEventsShowAndCloseRequests() async {
-        let model = await createUnlockedModel(allApproval: [])
-        XCTAssertNil(model.pendingApproval)
-        backend.allPendingApproval = [createApproval(requestID: "first"), createApproval(requestID: "second")]
-        await model.refreshPendingApproval()
-        XCTAssertEqual(model.pendingApproval?.requestID, "first")
+    func testAnsweredWithdrawnAndExpiredRequestsLeaveTheList() async {
+        let model = await createReviewingModel(allApproval: [createApproval(requestID: "first"), createApproval(requestID: "second", secondsLeft: 90), createApproval(requestID: "third", secondsLeft: 20)])
+        XCTAssertEqual(model.presentedApproval?.requestID, "first")
         model.handleApprovalEvent(name: PhoneApproval.eventResolved, requestID: "first")
-        XCTAssertEqual(model.pendingApproval?.requestID, "second")
+        XCTAssertNil(model.presentedApproval, "the Mac withdrew the request under review")
+        XCTAssertEqual(model.allPendingApproval.map(\.requestID), ["second", "third"])
         model.handleApprovalEvent(name: PhoneApproval.eventAnswered, requestID: "second")
-        XCTAssertNil(model.pendingApproval)
+        XCTAssertEqual(model.allPendingApproval.map(\.requestID), ["third"])
+        currentDate = currentDate.addingTimeInterval(21)
+        model.removeAllExpiredApproval()
+        XCTAssertTrue(model.allPendingApproval.isEmpty)
         await model.refreshPendingApproval()
-        XCTAssertNil(model.pendingApproval, "a request answered elsewhere is not shown again")
+        XCTAssertTrue(model.allPendingApproval.isEmpty, "finished requests are not shown again")
     }
 
-    func testNothingWhileLockedOrInTheBackground() async {
-        let model = await createUnlockedModel(allApproval: [createApproval()])
-        XCTAssertNotNil(model.pendingApproval)
-        model.lock()
-        XCTAssertNil(model.pendingApproval)
+    func testReturningToTheForegroundReconnectsAndLists() async {
+        let model = await createUnlockedModel(allApproval: [])
+        model.handleDidEnterBackground()
+        backend.allPendingApproval = [createApproval(requestID: "posted-while-away")]
         await model.refreshPendingApproval()
-        XCTAssertNil(model.pendingApproval)
+        XCTAssertTrue(model.allPendingApproval.isEmpty, "nothing is listed in the background")
+        model.handleApprovalEvent(name: PhoneApproval.eventRequested, requestID: "posted-while-away")
+        model.handleWillEnterForeground()
+        XCTAssertTrue(backend.allCallName.contains("reconnectEvents"))
+        let deadline = Date().addingTimeInterval(5)
+        while model.allPendingApproval.isEmpty && Date() < deadline {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTAssertEqual(model.allPendingApproval.map(\.requestID), ["posted-while-away"])
+        XCTAssertNil(model.presentedApproval, "a request found on returning is listed, not pushed into a sheet")
+    }
 
-        let backgroundModel = await createUnlockedModel(allApproval: [])
-        backgroundModel.handleDidEnterBackground()
-        backend.allPendingApproval = [createApproval(requestID: "while-away")]
-        await backgroundModel.refreshPendingApproval()
-        XCTAssertNil(backgroundModel.pendingApproval)
+    func testNothingWhileLocked() async {
+        let model = await createReviewingModel(allApproval: [createApproval()])
+        XCTAssertNotNil(model.presentedApproval)
+        model.lock()
+        XCTAssertNil(model.presentedApproval)
+        XCTAssertTrue(model.allPendingApproval.isEmpty)
+        await model.refreshPendingApproval()
+        XCTAssertTrue(model.allPendingApproval.isEmpty)
     }
 
     func testClassifiesApprovalErrors() {

@@ -83,6 +83,21 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
         return "\(requester) wants to \(purpose)"
     }
 
+    var bannerTitle: String {
+        if kind == Self.kindCommandLine {
+            return "\(macName) is asking to use Hisar from the command line"
+        }
+        return "\(macName) is asking to use \(keyName.isEmpty ? "your SSH key" : "“\(keyName)”")"
+    }
+
+    func formatTimeLeft(at date: Date) -> String {
+        let secondCount = max(0, Int((expiryDate ?? date).timeIntervalSince(date).rounded(.up)))
+        if secondCount < 60 {
+            return secondCount == 1 ? "Expires in 1 second" : "Expires in \(secondCount) seconds"
+        }
+        return String(format: "Expires in %d:%02d", secondCount / 60, secondCount % 60)
+    }
+
     var systemImage: String { kind == Self.kindCommandLine ? "apple.terminal" : "key.horizontal" }
 
     var allDetailRow: [DetailRow] {

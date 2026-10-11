@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	approvalMaximumLifetime    = 60 * time.Second
+	approvalMaximumLifetime    = 3 * time.Minute
 	approvalClockSkew          = 5 * time.Second
 	approvalRetention          = 60 * time.Second
 	approvalMaximumSealedSize  = 16 << 10
@@ -127,7 +127,7 @@ func (s *Server) handleCreateApproval(c fiber.Ctx) error {
 	now := relay.now()
 	if !request.ExpiresAt.After(now) || request.ExpiresAt.After(now.Add(approvalMaximumLifetime+approvalClockSkew)) {
 		relay.mutex.Unlock()
-		return createAPIError(fiber.StatusBadRequest, "the approval must expire within 60 seconds")
+		return createAPIError(fiber.StatusBadRequest, "the approval must expire within 3 minutes")
 	}
 	relay.removeAllExpired(now)
 	allApproval := relay.allApprovalByAccount[currentSession.AccountID]

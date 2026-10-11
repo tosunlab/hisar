@@ -62,6 +62,39 @@ final class PhoneApprovalUITests: HisarUITestCase {
         checkResult("Approved preview-signing with the master password")
     }
 
+    func testWaitingRequestsAreListedAboveTheVaults() {
+        app.launchArguments = ["-HisarUITest", "-HisarApprovalBannerPreview"]
+        app.launch()
+        let header = app.staticTexts["pending-approval-header"]
+        waitFor(header)
+        XCTAssertEqual(header.label.uppercased(), "2 REQUESTS WAITING FOR YOUR APPROVAL")
+        let sshRow = app.buttons["pending-approval-preview-ssh"]
+        let commandLineRow = app.buttons["pending-approval-preview-cli"]
+        XCTAssertTrue(sshRow.exists)
+        XCTAssertTrue(commandLineRow.exists)
+        XCTAssertTrue(sshRow.label.contains("Alper's MacBook Pro is asking to use “hisar gitlab”"), sshRow.label)
+        XCTAssertTrue(sshRow.label.contains("Expires in 1:"), sshRow.label)
+        XCTAssertTrue(commandLineRow.label.contains("is asking to use Hisar from the command line"), commandLineRow.label)
+        XCTAssertLessThan(sshRow.frame.minY, app.staticTexts["Personal"].frame.minY, "requests are above the vaults")
+        saveScreenshot("phone-approval-banner")
+
+        commandLineRow.tap()
+        waitFor(app.staticTexts["phone-approval-title"])
+        XCTAssertEqual(app.staticTexts["phone-approval-summary"].label, "hisar in Terminal wants to use Hisar")
+        app.buttons["phone-approval-deny"].tap()
+        waitFor(app.staticTexts["phone-approval-result"])
+        XCTAssertEqual(app.staticTexts["phone-approval-result"].label, "Denied preview-cli")
+        XCTAssertFalse(app.buttons["pending-approval-preview-cli"].exists, "the answered request left the list")
+        XCTAssertEqual(app.staticTexts["pending-approval-header"].label.uppercased(), "WAITING FOR YOUR APPROVAL")
+
+        app.buttons["pending-approval-preview-ssh"].tap()
+        waitFor(app.buttons["phone-approval-approve"])
+        app.buttons["phone-approval-approve"].tap()
+        waitFor(app.staticTexts["phone-approval-result"])
+        XCTAssertEqual(app.staticTexts["phone-approval-result"].label, "Approved preview-ssh with Face ID")
+        XCTAssertFalse(app.staticTexts["pending-approval-header"].exists, "no requests, no banner")
+    }
+
     private func launchPreview(_ kind: String) {
         app.launchArguments = ["-HisarUITest", "-HisarApprovalPreview", kind]
         app.launch()

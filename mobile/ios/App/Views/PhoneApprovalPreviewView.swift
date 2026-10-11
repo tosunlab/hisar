@@ -10,8 +10,12 @@ struct PhoneApprovalPreviewView: View {
     static func readApproval() -> PhoneApproval? {
         let allArgument = ProcessInfo.processInfo.arguments
         guard let index = allArgument.firstIndex(of: argument), index + 1 < allArgument.count else { return nil }
-        let expiresAt = ISO8601DateFormatter().string(from: Date().addingTimeInterval(60))
-        switch allArgument[index + 1] {
+        return createApproval(kind: allArgument[index + 1], secondsLeft: 60)
+    }
+
+    static func createApproval(kind: String, secondsLeft: TimeInterval) -> PhoneApproval {
+        let expiresAt = ISO8601DateFormatter().string(from: Date().addingTimeInterval(secondsLeft))
+        switch kind {
         case "cli":
             return PhoneApproval(
                 requestID: "preview-cli", requesterDeviceName: "Alper's MacBook Pro", expiresAt: expiresAt, kind: PhoneApproval.kindCommandLine,
@@ -92,6 +96,70 @@ struct PhoneApprovalPreviewView: View {
     private func finish(_ message: String) {
         resultMessage = message
         isSheetShown = false
+    }
+}
+
+// The vault list's banner of waiting requests, with a made-up SSH and command-line request from a Mac.
+struct PendingApprovalPreviewView: View {
+    static let argument = "-HisarApprovalBannerPreview"
+
+    static func isRequested() -> Bool {
+        ProcessInfo.processInfo.arguments.contains(argument)
+    }
+
+    @State private var allApproval = [
+        PhoneApprovalPreviewView.createApproval(kind: "ssh", secondsLeft: 115),
+        PhoneApprovalPreviewView.createApproval(kind: "cli", secondsLeft: 70),
+    ]
+    @State private var presentedApproval: PhoneApproval?
+    @State private var resultMessage: String?
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if !allApproval.isEmpty {
+                    PendingApprovalSection(allApproval: allApproval) { presentedApproval = $0 }
+                }
+                Section {
+                    ForEach(["Personal", "Work"], id: \.self) { name in
+                        Label(name, systemImage: name == "Personal" ? "person.crop.square" : "person.2.square.stack")
+                            .foregroundStyle(Theme.text)
+                            .listRowBackground(Theme.surface)
+                    }
+                } header: {
+                    Text("Vaults")
+                }
+                if let resultMessage {
+                    Text(resultMessage)
+                        .foregroundStyle(Theme.textSecondary)
+                        .listRowBackground(Color.clear)
+                        .accessibilityIdentifier("phone-approval-result")
+                }
+            }
+            .listStyle(.insetGrouped)
+            .applyListTheme()
+            .navigationTitle("Vaults")
+            .navigationBarTitleDisplayMode(.inline)
+            .applyNavigationBarTheme()
+        }
+        .sheet(item: $presentedApproval) { approval in
+            PhoneApprovalSheet(
+                approval: approval,
+                isBusy: false,
+                isPasswordRequired: false,
+                errorMessage: nil,
+                approve: { finish(approval, message: "Approved \(approval.requestID) with Face ID") },
+                approveWithPassword: { _ in },
+                deny: { finish(approval, message: "Denied \(approval.requestID)") }
+            )
+            .preferredColorScheme(.dark)
+        }
+    }
+
+    private func finish(_ approval: PhoneApproval, message: String) {
+        allApproval.removeAll { $0.requestID == approval.requestID }
+        resultMessage = message
+        presentedApproval = nil
     }
 }
 #endif

@@ -171,8 +171,13 @@ func createPhoneApprovalTest(t *testing.T) *phoneApprovalTest {
 
 func (test *phoneApprovalTest) start(t *testing.T) (fakeApproval, func()) {
 	t.Helper()
+	return test.startUntil(t, time.Now().Add(2*time.Minute))
+}
+
+func (test *phoneApprovalTest) startUntil(t *testing.T, dialogTimeoutAt time.Time) (fakeApproval, func()) {
+	t.Helper()
 	description := approval.Description{Kind: approval.KindSSH, AppName: "Terminal", Purpose: "push to git.tryhisar.com", Host: "git.tryhisar.com:22", KeyName: "hisar gitlab"}
-	finish := test.phoneApprover.StartPhoneApproval(description, func(isApproved bool) { test.decisionChannel <- isApproved })
+	finish := test.phoneApprover.StartPhoneApproval(description, dialogTimeoutAt, func(isApproved bool) { test.decisionChannel <- isApproved })
 	return test.apiServer.waitForApproval(t), finish
 }
 
@@ -320,7 +325,7 @@ func TestPhoneApprovalAvailability(t *testing.T) {
 	if test.phoneApprover.IsPhoneApprovalAvailable() {
 		t.Error("available with the switch off")
 	}
-	if finish := test.phoneApprover.StartPhoneApproval(approval.Description{Kind: approval.KindSSH}, func(bool) { t.Error("decided with the switch off") }); finish == nil {
+	if finish := test.phoneApprover.StartPhoneApproval(approval.Description{Kind: approval.KindSSH}, time.Now().Add(time.Minute), func(bool) { t.Error("decided with the switch off") }); finish == nil {
 		t.Error("no finish function")
 	} else {
 		finish()
@@ -371,7 +376,7 @@ func TestPhoneListsAndAnswersRequests(t *testing.T) {
 		return request, sealedRequest
 	}
 	open, sealedRequest := postRequest(testMacDeviceID, time.Now())
-	postRequest(testMacDeviceID, time.Now().Add(-2*time.Minute))
+	postRequest(testMacDeviceID, time.Now().Add(-approval.MaximumLifetime-time.Second))
 	postRequest(testPhoneDeviceID, time.Now())
 	test.apiServer.mutex.Lock()
 	test.apiServer.allApprovalByRequestID[approval.GenerateRequestID()] = &fakeApproval{request: proto.CreateApprovalRequest{RequestID: "not-a-request", SealedRequest: []byte("garbage")}}
@@ -412,5 +417,32 @@ func TestPhoneListsAndAnswersRequests(t *testing.T) {
 	}
 	if err := AnswerPhoneApproval(test.service, open.RequestID, true); !errors.Is(err, ErrLocked) {
 		t.Errorf("answering while locked: %v", err)
+	}
+}
+
+func TestPhoneApprovalLastsAsLongAsTheDialog(t *testing.T) {
+	test := createPhoneApprovalTest(t)
+	allCase := []struct {
+		dialogTimeout time.Duration
+		want          time.Duration
+	}{
+		{2 * time.Minute, 2 * time.Minute},
+		{30 * time.Second, 30 * time.Second},
+		{10 * time.Minute, approval.MaximumLifetime},
+	}
+	for _, testCase := range allCase {
+		stored, finish := test.startUntil(t, time.Now().Add(testCase.dialogTimeout))
+		request, err := approval.OpenRequest(test.keyset, test.accountID, stored.request.RequestID, stored.request.SealedRequest, testPhoneDeviceID, time.Now())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if lifetime := request.ExpiresAt.Sub(request.CreatedAt); lifetime < testCase.want-time.Second || lifetime > testCase.want {
+			t.Errorf("dialog waits %v: the request lasts %v", testCase.dialogTimeout, lifetime)
+		}
+		if !stored.request.ExpiresAt.Equal(request.ExpiresAt) {
+			t.Errorf("the server was told %v, the sealed request says %v", stored.request.ExpiresAt, request.ExpiresAt)
+		}
+		finish()
+		waitForResolved(t, test.apiServer, stored.request.RequestID)
 	}
 }

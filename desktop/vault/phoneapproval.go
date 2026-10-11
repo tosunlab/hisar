@@ -166,8 +166,9 @@ func (phoneApprover *PhoneApprover) IsPhoneApprovalAvailable() bool {
 	return isAvailable
 }
 
-// StartPhoneApproval seals the dialog's request to the account and posts it; decide runs at most once, with a verified answer.
-func (phoneApprover *PhoneApprover) StartPhoneApproval(description approval.Description, decide func(isApproved bool)) func() {
+// StartPhoneApproval seals the dialog's request to the account and posts it; it stays answerable until the dialog's
+// deadline (at most approval.MaximumLifetime), and decide runs at most once, with a verified answer.
+func (phoneApprover *PhoneApprover) StartPhoneApproval(description approval.Description, expiresAt time.Time, decide func(isApproved bool)) func() {
 	s := phoneApprover.service
 	s.mutex.Lock()
 	relay := s.phoneApprovals
@@ -178,7 +179,12 @@ func (phoneApprover *PhoneApprover) StartPhoneApproval(description approval.Desc
 		s.mutex.Unlock()
 		return func() {}
 	}
-	request := approval.CreateRequest(ownDeviceID, s.getPhoneApprovalDeviceName(), description, s.config.Now(), approval.MaximumLifetime)
+	now := s.config.Now()
+	lifetime := expiresAt.Sub(now)
+	if lifetime <= 0 || lifetime > approval.MaximumLifetime {
+		lifetime = approval.MaximumLifetime
+	}
+	request := approval.CreateRequest(ownDeviceID, s.getPhoneApprovalDeviceName(), description, now, lifetime)
 	sealedRequest, err := approval.SealRequest(s.unlockedSession.Keyset, s.unlockedSession.AccountID, request)
 	apiClient := s.unlockedSession.Client
 	if err != nil {

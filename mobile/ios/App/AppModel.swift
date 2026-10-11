@@ -24,7 +24,8 @@ final class AppModel: ObservableObject {
     @Published var newSecretKey: String?
     @Published var pendingSignInLink: SignInLink?
     @Published private(set) var lockCount = 0
-    @Published private(set) var pendingApproval: PhoneApproval?
+    @Published private(set) var allPendingApproval: [PhoneApproval] = []
+    @Published private(set) var presentedApproval: PhoneApproval?
     @Published private(set) var isAnsweringApproval = false
     @Published private(set) var isApprovalPasswordRequired = false
     @Published var approvalErrorMessage: String?
@@ -35,10 +36,12 @@ final class AppModel: ObservableObject {
     private let getCurrentDate: () -> Date
     private var enteredBackgroundAt: Date?
     private var noticeTask: Task<Void, Never>?
-    private var allPendingApproval: [PhoneApproval] = []
-    private var allSkippedApprovalID: Set<String> = []
+    private var allFinishedApprovalID: Set<String> = []
+    private var allSeenApprovalID: Set<String> = []
     private var isInForeground = true
     private var approvalExpiryTask: Task<Void, Never>?
+    private var approvalPollTask: Task<Void, Never>?
+    static let approvalPollInterval: TimeInterval = 15
 
     init(credentialIdentityStore: CredentialIdentityUpdating, getCurrentDate: @escaping () -> Date = Date.init) {
         self.credentialIdentityStore = credentialIdentityStore
@@ -72,6 +75,9 @@ final class AppModel: ObservableObject {
             allPasskey = []
             lockCount += 1
             clearAllApproval()
+        }
+        if !wasUnlocked && newStatus.isUnlocked && isInForeground {
+            startApprovalPolling()
         }
     }
 
@@ -192,13 +198,17 @@ final class AppModel: ObservableObject {
     func handleDidEnterBackground() {
         enteredBackgroundAt = getCurrentDate()
         isInForeground = false
+        stopApprovalPolling()
     }
 
     func handleWillEnterForeground() {
         isInForeground = true
         defer {
             enteredBackgroundAt = nil
-            Task { await refreshPendingApproval() }
+            if status.isUnlocked, let backend {
+                backend.reconnectEvents()
+                startApprovalPolling()
+            }
         }
         guard let enteredBackgroundAt else {
             refreshStatus()
@@ -231,7 +241,6 @@ final class AppModel: ObservableObject {
         allPasskey = result.2
         refreshStatus()
         await publishAllCredentialIdentity()
-        await refreshPendingApproval()
     }
 
     private func publishAllCredentialIdentity() async {
@@ -387,12 +396,12 @@ final class AppModel: ObservableObject {
         await perform(isBusyShown: false) { try $0.generatePassword(length: length, isDigitIncluded: isDigitIncluded, isSymbolIncluded: isSymbolIncluded) }
     }
 
-    // Phone approvals: only the Mac's open requests, only while unlocked and in the foreground.
+    // Phone approvals: the Mac's open requests, listed while unlocked and in the foreground.
     func handleApprovalEvent(name: String, requestID: String) {
         switch name {
         case PhoneApproval.eventRequested:
             guard isInForeground else { return }
-            Task { await refreshPendingApproval() }
+            Task { await refreshPendingApproval(isOpeningNewRequest: true) }
         case PhoneApproval.eventAnswered, PhoneApproval.eventResolved:
             removeApproval(requestID: requestID)
         default:
@@ -400,76 +409,124 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func refreshPendingApproval() async {
+    // refreshPendingApproval lists the open requests; with isOpeningNewRequest, a request seen for the first time opens the sheet.
+    func refreshPendingApproval(isOpeningNewRequest: Bool = false) async {
         guard status.isUnlocked, isInForeground, let backend else { return }
         guard let allApproval = try? await runInBackground({ try backend.listAllPendingApproval() }) else { return }
         guard status.isUnlocked else { return }
         let now = getCurrentDate()
-        allPendingApproval = allApproval.filter { !allSkippedApprovalID.contains($0.requestID) && !$0.isExpired(at: now) }
-        showNextApproval()
+        let allOpenApproval = allApproval.filter { !allFinishedApprovalID.contains($0.requestID) && !$0.isExpired(at: now) }
+        let firstNewApproval = allOpenApproval.first { !allSeenApprovalID.contains($0.requestID) }
+        allSeenApprovalID.formUnion(allOpenApproval.map(\.requestID))
+        allPendingApproval = allOpenApproval
+        if isOpeningNewRequest, presentedApproval == nil, let firstNewApproval {
+            presentApproval(firstNewApproval)
+        }
+        closeSheetOfFinishedApproval()
+        startApprovalExpiryCheck()
     }
 
-    private func showNextApproval() {
-        let nextApproval = allPendingApproval.first
-        if nextApproval?.requestID != pendingApproval?.requestID {
+    func reviewApproval(_ approval: PhoneApproval) {
+        guard allPendingApproval.contains(where: { $0.requestID == approval.requestID }) else { return }
+        presentApproval(approval)
+    }
+
+    func closeApprovalSheet() {
+        guard !isAnsweringApproval else { return }
+        presentedApproval = nil
+    }
+
+    private func presentApproval(_ approval: PhoneApproval) {
+        if presentedApproval?.requestID != approval.requestID {
             isApprovalPasswordRequired = false
             approvalErrorMessage = nil
         }
-        pendingApproval = nextApproval
-        approvalExpiryTask?.cancel()
-        guard let nextApproval, let expiryDate = nextApproval.expiryDate else { return }
-        let delay = max(0, expiryDate.timeIntervalSince(getCurrentDate()))
-        approvalExpiryTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
-            guard !Task.isCancelled else { return }
-            self?.removeApproval(requestID: nextApproval.requestID)
-        }
+        presentedApproval = approval
     }
 
-    private func removeApproval(requestID: String) {
-        allSkippedApprovalID.insert(requestID)
-        allPendingApproval.removeAll { $0.requestID == requestID }
-        if pendingApproval?.requestID == requestID {
-            isAnsweringApproval = false
-        }
-        showNextApproval()
-    }
-
-    private func clearAllApproval() {
-        approvalExpiryTask?.cancel()
-        allPendingApproval = []
-        pendingApproval = nil
+    private func closeSheetOfFinishedApproval() {
+        guard let presentedApproval, !allPendingApproval.contains(where: { $0.requestID == presentedApproval.requestID }) else { return }
+        self.presentedApproval = nil
         isAnsweringApproval = false
         isApprovalPasswordRequired = false
         approvalErrorMessage = nil
     }
 
-    // skipPendingApproval hides the request on this iPhone; the Mac keeps asking until it is answered there or expires.
-    func skipPendingApproval() {
-        guard let approval = pendingApproval else { return }
-        removeApproval(requestID: approval.requestID)
+    private func removeApproval(requestID: String) {
+        allFinishedApprovalID.insert(requestID)
+        allPendingApproval.removeAll { $0.requestID == requestID }
+        closeSheetOfFinishedApproval()
+    }
+
+    func removeAllExpiredApproval() {
+        let now = getCurrentDate()
+        for approval in allPendingApproval where approval.isExpired(at: now) {
+            removeApproval(requestID: approval.requestID)
+        }
+    }
+
+    private func startApprovalExpiryCheck() {
+        guard !allPendingApproval.isEmpty, approvalExpiryTask == nil else { return }
+        approvalExpiryTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                guard let self, !Task.isCancelled else { return }
+                self.removeAllExpiredApproval()
+                if self.allPendingApproval.isEmpty {
+                    self.approvalExpiryTask = nil
+                    return
+                }
+            }
+        }
+    }
+
+    // The event stream can miss requests on a phone (suspension, a dead connection), so the open requests are also polled.
+    private func startApprovalPolling() {
+        guard approvalPollTask == nil else { return }
+        approvalPollTask = Task { [weak self] in
+            while !Task.isCancelled, self != nil {
+                await self?.refreshPendingApproval()
+                try? await Task.sleep(nanoseconds: UInt64(Self.approvalPollInterval * 1_000_000_000))
+            }
+        }
+    }
+
+    private func stopApprovalPolling() {
+        approvalPollTask?.cancel()
+        approvalPollTask = nil
+    }
+
+    private func clearAllApproval() {
+        stopApprovalPolling()
+        approvalExpiryTask?.cancel()
+        approvalExpiryTask = nil
+        allPendingApproval = []
+        presentedApproval = nil
+        isAnsweringApproval = false
+        isApprovalPasswordRequired = false
+        approvalErrorMessage = nil
     }
 
     func approvePendingApproval() async {
-        await answerPendingApproval(successMessage: "Approved on your Mac") { backend, requestID in
+        await answerPresentedApproval(successMessage: "Approved on your Mac") { backend, requestID in
             try backend.approveApproval(requestID: requestID)
         }
     }
 
     func approvePendingApproval(password: String) async {
-        await answerPendingApproval(successMessage: "Approved on your Mac") { backend, requestID in
+        await answerPresentedApproval(successMessage: "Approved on your Mac") { backend, requestID in
             try backend.approveApprovalWithPassword(requestID: requestID, password: password)
         }
     }
 
     func denyPendingApproval() async {
-        await answerPendingApproval(successMessage: "Denied on your Mac") { backend, requestID in
+        await answerPresentedApproval(successMessage: "Denied on your Mac") { backend, requestID in
             try backend.denyApproval(requestID: requestID)
         }
     }
 
-    private func answerPendingApproval(successMessage: String, _ operation: @escaping (VaultBackend, String) throws -> Void) async {
-        guard let backend, let approval = pendingApproval, !isAnsweringApproval else { return }
+    private func answerPresentedApproval(successMessage: String, _ operation: @escaping (VaultBackend, String) throws -> Void) async {
+        guard let backend, let approval = presentedApproval, !isAnsweringApproval else { return }
         isAnsweringApproval = true
         approvalErrorMessage = nil
         defer { isAnsweringApproval = false }

@@ -583,7 +583,7 @@ func TestShareInvitationEventCompletesShare(t *testing.T) {
 	service.mutex.Unlock()
 	ctx, stop := context.WithCancel(context.Background())
 	defer stop()
-	go service.watchEvents(ctx, service.unlockedSession.Client)
+	go service.watchEvents(ctx, service.unlockedSession.Client, make(chan struct{}))
 
 	test.apiServer.acceptShareInvitation(t, bob)
 	test.apiServer.eventChannel <- proto.EventShareInvitationsChanged

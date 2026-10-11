@@ -474,6 +474,10 @@ extension FakeBackend {
         try answerApproval(requestID: requestID, decision: "approve")
     }
 
+    func reconnectEvents() {
+        record("reconnectEvents")
+    }
+
     func denyApproval(requestID: String) throws {
         record("denyApproval")
         try requireUnlocked()
