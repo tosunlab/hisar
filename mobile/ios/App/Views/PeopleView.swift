@@ -32,7 +32,6 @@ struct PeopleView: View {
                                 }
                             }
                         }
-                        .accessibilityIdentifier("received-invitation-\(invitation.invitedByEmail)")
                     }
                 }
             }
@@ -89,7 +88,7 @@ struct PeopleView: View {
                     }
                     .accessibilityIdentifier("invite-person")
                 } footer: {
-                    Text("The server emails them a link to create an account. Share a vault with them from the vault's members.")
+                    Text("The server emails them a link to create an account. Then share a vault with them from Share in the vault's toolbar.")
                 }
             }
         }
@@ -180,28 +179,36 @@ struct PersonView: View {
 
 struct ReceivedInvitationRow: View {
     var invitation: ReceivedShareInvitation
+    var identifierPrefix = ""
     var accept: () -> Void
     var decline: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(invitation.inviterName) shared a vault with you as \(describeVaultRole(invitation.role).lowercased())")
-                Text(invitation.invitedByEmail)
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
+            Label {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(invitation.inviterName) shared a vault with you as \(describeVaultRole(invitation.role).lowercased())")
+                    Text(invitation.invitedByEmail)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            } icon: {
+                Image(systemName: "person.2.fill")
+                    .foregroundStyle(.tint)
             }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("\(identifierPrefix)invitation-text")
             HStack(spacing: 10) {
                 Button(action: decline) {
                     Text("Decline").frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.bordered)
-                .accessibilityIdentifier("decline-invitation")
+                .applyGlassButtonStyle(isProminent: false)
+                .accessibilityIdentifier("\(identifierPrefix)decline-invitation")
                 Button(action: accept) {
                     Text("Accept").frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
-                .accessibilityIdentifier("accept-invitation")
+                .applyGlassButtonStyle(isProminent: true)
+                .accessibilityIdentifier("\(identifierPrefix)accept-invitation")
             }
         }
         .padding(.vertical, 4)
@@ -210,17 +217,22 @@ struct ReceivedInvitationRow: View {
 
 struct SentInvitationRow: View {
     var invitation: SentShareInvitation
+    var isVaultNameShown = true
+
+    private var stateText: String {
+        invitation.state == SentShareInvitation.stateAccepted ? "Accepted, finishing on your next sync" : "Waiting for them to accept"
+    }
 
     var body: some View {
         Label {
             VStack(alignment: .leading, spacing: 2) {
                 Text(invitation.email)
-                Text("\(invitation.vaultName.isEmpty ? "A vault you own" : invitation.vaultName) · \(invitation.state == SentShareInvitation.stateAccepted ? "Accepted, finishing on your next sync" : "Waiting for them to accept")")
+                Text(isVaultNameShown ? "\(invitation.vaultName.isEmpty ? "A vault you own" : invitation.vaultName) · \(stateText)" : stateText)
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
         } icon: {
-            Image(systemName: "envelope")
+            Image(systemName: invitation.state == SentShareInvitation.stateAccepted ? "envelope.open" : "envelope")
         }
         .badge(Text(describeVaultRole(invitation.role)))
         .accessibilityElement(children: .combine)

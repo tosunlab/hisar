@@ -67,6 +67,7 @@ struct HisarApp: App {
         guard model.screen == .starting else { return }
         lockEventRelay.setHandler { [weak model] in model?.handleLockedEvent() }
         lockEventRelay.setApprovalHandler { [weak model] eventName, requestID in model?.handleApprovalEvent(name: eventName, requestID: requestID) }
+        lockEventRelay.setRemoteChangeHandler { [weak model] in model?.handleRemoteChange() }
         let relay = lockEventRelay
         model.start {
             try BackendFactory.createBackend(configuration: .current, isClipboardIncluded: true, eventListener: relay)

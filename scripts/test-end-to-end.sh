@@ -236,6 +236,12 @@ MOBILE_INVITE=$("$BIN/hisar-server" invite --email mobile@example.com </dev/null
 MOBILE_RESULT=$(HISAR_TEST_MOBILE_INVITE_LINK="$MOBILE_INVITE" go -C "$ROOT/mobile" test -count=1 -v -run TestIntegrationMobileFlow ./hisarkit/ 2>&1 || true)
 expect "iOS app backend against the server" "$MOBILE_RESULT" "--- PASS: TestIntegrationMobileFlow"
 
+MOBILE_SHARING_OWNER_INVITE=$("$BIN/hisar-server" invite --email mobile-sharing-owner@example.com </dev/null | tail -1)
+MOBILE_SHARING_RECIPIENT_INVITE=$("$BIN/hisar-server" invite --email mobile-sharing-recipient@example.com </dev/null | tail -1)
+MOBILE_SHARING_RESULT=$(HISAR_TEST_MOBILE_SHARING_OWNER_INVITE_LINK="$MOBILE_SHARING_OWNER_INVITE" HISAR_TEST_MOBILE_SHARING_RECIPIENT_INVITE_LINK="$MOBILE_SHARING_RECIPIENT_INVITE" \
+  go -C "$ROOT/mobile" test -count=1 -v -run TestIntegrationMobileSharing ./hisarkit/ 2>&1 || true)
+expect "the iPhone shares a vault, completes the accepted share on its own, and the recipient reads the item" "$MOBILE_SHARING_RESULT" "--- PASS: TestIntegrationMobileSharing"
+
 PHONE_APPROVAL_INVITE=$("$BIN/hisar-server" invite --email phone-approval@example.com </dev/null | tail -1)
 PHONE_APPROVAL_RESULT=$(HISAR_TEST_PHONE_APPROVAL_INVITE_LINK="$PHONE_APPROVAL_INVITE" go -C "$ROOT/mobile" test -count=1 -v -run TestIntegrationPhoneApproval ./hisarkit/ 2>&1 || true)
 expect "the iPhone approves and denies the Mac's SSH requests, refuses a forged answer, and approves after opening late" "$PHONE_APPROVAL_RESULT" "--- PASS: TestIntegrationPhoneApproval"

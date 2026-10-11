@@ -20,6 +20,7 @@ protocol VaultBackend: AnyObject {
     func declineShareInvitation(invitationID: String) throws
     func cancelShareInvitation(invitationID: String) throws
     func listAllVaultMember(vaultID: String) throws -> [Member]
+    func getVaultSharing(vaultID: String) throws -> VaultSharing
     func shareVault(vaultID: String, email: String, role: String) throws
     func changeVaultMemberRole(vaultID: String, accountID: String, role: String) throws
     func removeVaultMember(vaultID: String, accountID: String) throws

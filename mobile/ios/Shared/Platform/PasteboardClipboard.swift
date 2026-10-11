@@ -52,6 +52,7 @@ final class LockEventRelay: NSObject, HisarkitEventListenerProtocol {
     private let handlerLock = NSLock()
     private var handleLocked: (() -> Void)?
     private var handleApprovalEvent: ((String, String) -> Void)?
+    private var handleRemoteChange: (() -> Void)?
 
     func setHandler(_ handler: @escaping () -> Void) {
         handlerLock.lock()
@@ -62,6 +63,12 @@ final class LockEventRelay: NSObject, HisarkitEventListenerProtocol {
     func setApprovalHandler(_ handler: @escaping (String, String) -> Void) {
         handlerLock.lock()
         handleApprovalEvent = handler
+        handlerLock.unlock()
+    }
+
+    func setRemoteChangeHandler(_ handler: @escaping () -> Void) {
+        handlerLock.lock()
+        handleRemoteChange = handler
         handlerLock.unlock()
     }
 
@@ -79,5 +86,12 @@ final class LockEventRelay: NSObject, HisarkitEventListenerProtocol {
         let eventName = eventName ?? ""
         let requestID = requestID ?? ""
         DispatchQueue.main.async { handler?(eventName, requestID) }
+    }
+
+    func onRemoteChange() {
+        handlerLock.lock()
+        let handler = handleRemoteChange
+        handlerLock.unlock()
+        DispatchQueue.main.async { handler?() }
     }
 }

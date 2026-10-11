@@ -75,7 +75,7 @@ build-ios:
 test-ios:
 	xcodebuild test -project $(IOS_PROJECT) -scheme HisarUnitTests -destination "id=$(IOS_SIMULATOR_ID)"
 
-# Needs bin/hisar-server (make build) and HISAR_DATABASE_URL pointing at an empty database.
+# Needs bin/hisar-server and bin/hisar (make build) and HISAR_DATABASE_URL pointing at an empty database.
 test-ios-ui:
 	IOS_SIMULATOR_ID=$(IOS_SIMULATOR_ID) ./scripts/test-ios-ui.sh
 
