@@ -224,6 +224,26 @@ func (c *Client) PutItem(ctx context.Context, vaultID, itemID, baseRevision stri
 	return response.Seq, nil, err
 }
 
+func (c *Client) CreateShareLink(ctx context.Context, request *proto.CreateShareLinkRequest) (*proto.ShareLink, error) {
+	var response proto.ShareLink
+	return &response, c.sendRequest(ctx, "POST", "/api/v1/share-links", nil, request, &response, nil)
+}
+
+func (c *Client) ListAllShareLink(ctx context.Context) ([]proto.ShareLink, error) {
+	var allShareLink []proto.ShareLink
+	return allShareLink, c.sendRequest(ctx, "GET", "/api/v1/share-links", nil, nil, &allShareLink, nil)
+}
+
+func (c *Client) RevokeShareLink(ctx context.Context, shareLinkID string) error {
+	return c.sendRequest(ctx, "DELETE", "/api/v1/share-links/"+url.PathEscape(shareLinkID), nil, nil, nil, nil)
+}
+
+// OpenPublicShareLink needs no session and counts one view.
+func (c *Client) OpenPublicShareLink(ctx context.Context, shareLinkID string) (*proto.PublicShareLink, error) {
+	var response proto.PublicShareLink
+	return &response, c.sendRequest(ctx, "GET", "/api/v1/public/share-links/"+url.PathEscape(shareLinkID), nil, nil, &response, nil)
+}
+
 func (c *Client) GetItemHistory(ctx context.Context, vaultID, itemID string) ([]proto.Item, error) {
 	var allItem []proto.Item
 	return allItem, c.sendRequest(ctx, "GET", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/items/"+url.PathEscape(itemID)+"/history", nil, nil, &allItem, nil)

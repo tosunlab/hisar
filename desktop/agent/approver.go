@@ -316,6 +316,8 @@ func (approver *Approver) Approve(ctx context.Context, request sshagent.Approval
 	return sshagent.ApprovalResult{IsAllowed: true, IsRemembered: event.IsRememberable && approver.isPendingRemembered(pending)}, nil
 }
 
+const shareLinkWarning = "Anyone with the link can read these until it expires or its views run out."
+
 func (approver *Approver) buildCommandLineEvent(requestID string, request commandline.ApprovalRequest) ApprovalEvent {
 	event := ApprovalEvent{
 		RequestID:         requestID,
@@ -332,6 +334,12 @@ func (approver *Approver) buildCommandLineEvent(requestID string, request comman
 		event.Action = describeSecretAction(len(request.AllSecretName), len(request.CommandLine) > 0)
 		event.CommandLine = formatCommandLine(request.CommandLine)
 		event.AllSecretName, event.MoreSecretCount = limitSecretName(request.AllSecretName)
+	}
+	if request.ShareLink != nil {
+		event.Action = fmt.Sprintf("create a share link for “%s”", truncateText(request.ShareLink.Title, maximumSecretNameCount))
+		event.CommandLine = request.ShareLink.Detail
+		event.AllSecretName, event.MoreSecretCount = limitSecretName(request.ShareLink.AllFieldLabel)
+		event.Warning = shareLinkWarning
 	}
 	// The bundled hisar lives inside Hisar.app, so the terminal app is found from its parent.
 	if approver.config.FindApp != nil && request.ParentPID > 1 {

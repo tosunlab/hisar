@@ -10,6 +10,8 @@
     "package": "node tools/package-extension.mjs",
     "package:store": "node tools/package-store-extension.mjs",
     "test:end-to-end": "npm run build && playwright test extension.spec inline-menu.spec one-time-code.spec passkey.spec passkey-extensions.spec",
+    "test:share-link-page": "playwright test share-link-page.spec",
+    "screenshots:share-link-page": "playwright test share-link-page-screenshots.spec",
     "register-fake-host": "node tools/register-fake-host.mjs",
     "screenshots": "npm run build && playwright test screenshots.spec inline-screenshots.spec passkey-screenshots.spec"
   },

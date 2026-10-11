@@ -41,7 +41,7 @@ Item contents (passwords, notes, TOTP seeds, passkeys, attachments), item metada
 
 ### 2.3 Accepted metadata leakage
 
-The server sees: account emails, the emails people invite or share with, which users can access which vaults, number of items per vault, ciphertext sizes, timestamps, device list, IPs. Item titles, URLs and vault names are encrypted.
+The server sees: account emails, the emails people invite or share with, which users can access which vaults, number of items per vault, ciphertext sizes, timestamps, device list, IPs. Item titles, URLs and vault names are encrypted. For share links (§5.9) it sees who created a link, its size, expiry, view limit and views, whether it needs a passphrase, and the IP addresses that open it; never what was shared or the key.
 
 ## 3. Cryptographic primitives
 
@@ -56,6 +56,7 @@ All from the Go standard library or `golang.org/x/crypto`. No custom primitives.
 | Signatures (key fingerprints, invites) | Ed25519 | `crypto/ed25519` |
 | Authentication | OPAQUE (RFC 9807), ristretto255 suite | `github.com/bytemare/opaque` |
 | Randomness | OS CSPRNG | `crypto/rand` |
+| Share links only (§5.9), which a browser decrypts with WebCrypto | AES-256-GCM (12-byte random nonce), PBKDF2-HMAC-SHA256 for the optional passphrase | `crypto/aes`, `crypto/cipher`, `crypto/pbkdf2` |
 
 Every ciphertext is versioned (`v1`) so primitives can be rotated later.
 
@@ -241,6 +242,63 @@ Sharing is person to person: the owner of a shared vault types an email address 
 
 **People.** `GET /members` returns the caller and every account that shares at least one vault with them, with signed public keys; it is the member source for sharing, role changes, removal and rotation. There is no list of every account anywhere (API, desktop, iOS, CLI, extension); only the operator's `hisar-server` reads the database directly. The desktop's Settings → People shows those people with their security codes, the invitations the user sent (Cancel) and received (Accept, Decline), and the invite form; a banner above the vault list shows received invitations.
 
+### 5.9 Share links
+
+A share link hands one item, or a piece of text, to anyone, including people without a Hisar account: `https://<server>/s/<id>#<key>`. Browsers never send the fragment, so the server stores only ciphertext it cannot read. Links expire and can be limited to a number of views.
+
+**What can be shared.** The item's title and the fields the user picks: username, password, websites, notes and custom fields; by default the username and the password (those the item has). Never an SSH private key, a passkey or a one-time password secret: `core/sharelink` has no name for them and never copies them into a payload. A text share has a title and one text field. Attachments are not supported.
+
+**Crypto** (`core/crypt/sharelink.go`, `core/sharelink`). The recipient's browser decrypts with WebCrypto, which has neither XChaCha20-Poly1305 nor Argon2id, so share links use AES-256-GCM and PBKDF2 instead of the primitives of §3. Each content key encrypts exactly one message, so a random 96-bit nonce is safe.
+
+```
+linkKey       = 32 random bytes                       (the URL fragment, base64url without padding)
+contentKey    = HKDF-SHA256(ikm = linkKey, salt = "", info = "hisar/v1/share-link/content", len = 32)
+with a passphrase:
+passphraseKey = PBKDF2-HMAC-SHA256(NFKD(passphrase), salt = random 16 bytes, iterations = 600 000, len = 32)
+contentKey    = HKDF-SHA256(ikm = linkKey || passphraseKey, salt = "", info = "hisar/v1/share-link/content-with-passphrase", len = 32)
+ciphertext    = 0x01 || nonce(12) || AES-256-GCM(contentKey, nonce, aad = "hisar/v1/share-link", JSON(payload))
+payload       = {version: 1, title, fields: [{kind, label, value, isConcealed}]}
+                kind ∈ {username, password, url, notes, custom, text}
+```
+
+- Without a passphrase the link alone opens it. With one, both are needed: a leaked link alone is not enough, and the server, which stores the salt but never sees the link key, cannot guess the passphrase offline. Someone holding the link and a copy of the server's row can guess the passphrase at the PBKDF2 cost, so the apps ask for at least 8 characters and say to send the passphrase another way.
+- PBKDF2 rather than Argon2id: WebCrypto has PBKDF2 built in, while Argon2id would mean shipping a WebAssembly build inside the page. 600 000 iterations is OWASP's current advice for PBKDF2-HMAC-SHA256. The server hands out the salt and the iteration count, so the page and `core/sharelink` refuse fewer than 600 000 or more than 10 000 000 iterations, and a salt that is not 16 bytes.
+- The JSON payload is at most 48 KiB, so the ciphertext stays below the server's 64 KiB.
+- The creator's lists show what each link shares without the server learning it: the creating client also uploads a label, `XChaCha20-Poly1305(K_user, aad = "hisar/v1/share-link-label" || accountID, JSON{title, vaultID, itemID, fieldLabels, isText, linkKey})` (§4.3), which only the creator's devices open. It holds the link key, so **Copy link** works later on any of the creator's devices; the passphrase is never stored.
+
+**Server.**
+
+| Endpoint | Body → result |
+|---|---|
+| `POST /share-links` (session) | `{ciphertext, encryptedLabel, expiresInSeconds, maxViews, passphrase: {salt, iterations} or null}` → 201 `{id, createdAt, expiresAt, maxViews, viewCount, hasPassphrase}`. `expiresInSeconds` is 3600, 86400, 604800 or 2592000 (1 hour, 1 day, 7 days, 30 days); `maxViews` is 1–100, or 0 for unlimited; the ciphertext is 1 byte to 64 KiB and the label at most 4 KiB; 400 otherwise |
+| `GET /share-links` (session) | the caller's live links, newest first: `[{id, encryptedLabel, createdAt, expiresAt, maxViews, viewCount, hasPassphrase}]` |
+| `DELETE /share-links/{id}` (session) | revokes: 204 for the caller's own link, 404 for anything else |
+| `GET /public/share-links/{id}` (no session) | counts one view → `{ciphertext, passphrase, expiresAt, maxViews, viewCount}`; the last allowed view also deletes the link. 404 `{"error": "not found"}` for an ID that never existed or is malformed, and for an expired, used-up or revoked link: the same status and body, so they cannot be told apart |
+
+- IDs are 128 random bits chosen by the server, as 22 base64url characters.
+- A view is counted by one `UPDATE share_links SET view_count = view_count + 1 WHERE id = $1 AND expires_at > now() AND (max_views = 0 OR view_count < max_views) RETURNING …`. Postgres re-checks the condition after taking the row lock, so concurrent opens never get more views than allowed. When that view was the last one, the same transaction deletes the row.
+- An expired link is gone for readers at once; `hisar-server` deletes expired rows every 10 minutes. Revoking deletes the row.
+- Table `share_links` (migration `00005_share_links`); deleting an account deletes its links.
+- Rate limits: 100 new links per account per day and at most 500 live links per account (429); public reads 30 per IP address, refilled at one every 2 seconds (429). IDs cannot be guessed, so the read limit protects the server, not the links.
+- The creator's event streams get `share-links-changed` (`{}`) when one of their links is created, viewed, used up or revoked, so lists refresh (§7.2).
+- The audit log records creating and revoking a link, with its ID only.
+
+**Recipient page.** `GET /s/{id}` serves one static page embedded in `hisar-server`, the same bytes for every ID: serving it looks nothing up, counts nothing and reveals nothing.
+
+- No third-party code. Its script and style are inlined and allowed by their SHA-256 hashes: `Content-Security-Policy: default-src 'none'; script-src 'sha256-…'; style-src 'sha256-…'; connect-src 'self'; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`, with `Referrer-Policy: no-referrer`, `Cache-Control: no-store`, `X-Robots-Tag: noindex, nofollow` and `X-Frame-Options: DENY`.
+- **Reveal first.** The page reads the key from the fragment but fetches nothing until the recipient clicks **Reveal**, so link previews in chat apps, mail scanners and crawlers, which load the URL without clicking, never use up a view. Reveal fetches the ciphertext (one view), asks for the passphrase when the link has one, and decrypts in the browser with WebCrypto.
+- A wrong passphrase keeps the ciphertext in the page, so another try costs no view ("That passphrase doesn't open this link."). A missing or malformed key says the link is incomplete; a 404 says "This link has expired or was already viewed", without saying which.
+- It shows the title and each field with **Copy** (concealed fields hidden until **Show**), websites as text, notes as preformatted text, and when the link expires and how many views are left, or "That was the last view: this link no longer works". Light and dark follow the system; it works on phones, with the keyboard and with screen readers (labelled controls, live status messages).
+- **Trust.** The page comes from the server that stores the ciphertext, so a compromised server could serve a page that sends the key elsewhere. That is the limit of every web-based share link; recipients with `hisar` can open links without the page (`hisar share-link open`, below), and opening them in the desktop and iPhone apps is a follow-up.
+
+**Desktop app.**
+
+- The item view has **Share link…** next to Edit (not for SSH keys without notes or fields). Its dialog offers the fields to share as checkboxes (username and password checked by default), **Expires** (1 hour, 1 day, 7 days, 30 days; 7 days by default), **Views** (1–100, 1 by default, or Unlimited) and an optional passphrase. **Create link** shows the link with **Copy** (through the backend, cleared after 90 s) and what it shares.
+- The item view lists that item's live links. **Shared links** in the sidebar, under the vaults, lists all of them; the new item menu has **Share text…**. Each link shows its title, what it shares, views used, expiry and whether it needs a passphrase, with **Copy link** and **Revoke**.
+- Lists refresh on `share-links-changed`. Offline, creating and revoking are refused like other changes.
+
+**CLI.** `hisar share-link <item> [-v vault] [--field name]... [--expires 1h|1d|7d|30d] [--views 1-100|unlimited] [--passphrase]` prints the link on stdout (by default username and password, 7 days, 1 view); `--field` is `username`, `password`, `url`, `notes` or a custom field's label, and `--passphrase` asks for it twice. `hisar share-link --text [--title t]` shares text read from stdin. `hisar share-links` lists the live links and `hisar share-link revoke <id>` revokes one. `hisar share-link open <url>` opens any share link in the terminal, without an account and without the web page: it counts a view, asks for the passphrase when the link has one, decrypts with `core/sharelink` and prints the title and fields. Through the app, creating a link always opens the approval dialog, even in an approved terminal session, because it hands secrets to people outside Hisar: "hisar in Terminal wants to create a share link for “GitHub”", with the expiry, the views and the fields; approving it also approves the terminal session. Standalone, the commands ask for the master password like the others.
+
 ## 6. Account recovery
 
 Recovery is only through the Emergency Kit (§4.1). With the email, server and Secret Key printed on it, plus their master password, a user signs in on any device (§5.3). There is no other path: no admin recovery, no recovery links, no trusted contacts.
@@ -273,6 +331,7 @@ The client applies changes to its local SQLite cache and stores `nextSeq`. Chang
 - `event: vault-changed` with `{"vaultID", "seq"}` goes to every member of a vault after an item is written (with the new `seq`) or the key is rotated (`seq` 0).
 - `event: vaults-changed` with `{}` tells an account that its list of vaults changed: it was given or lost access, created a vault, or was part of a vault before a rotation.
 - `event: share-invitations-changed` with `{}` tells an account that its received or sent share invitations changed (§5.8): one was sent to it or withdrawn, or one it can complete was accepted or declined. The desktop backend then completes accepted shares and refreshes the UI.
+- `event: share-links-changed` with `{}` tells an account that one of its share links was created, viewed, used up or revoked (§5.9).
 - `event: approval-requested`, `approval-answered` and `approval-resolved` with `{"requestId"}` go to every stream of the account for phone approvals (§9.9). They carry no request or answer, only the ID.
 - The server sends a `: heartbeat` comment every 25 s and re-checks the stream's session each time, so logging out or revoking the device ends the stream.
 - Each write pushes the connection's write deadline forward, so the server's 30 s response write timeout does not cut the stream.
@@ -316,6 +375,8 @@ accounts       (id, email, name, role[admin|member], state, argon2_params, salt,
 devices        (id, account_id, name, platform, created_at, last_seen_at, revoked_at)
 sessions       (token_hash, account_id, device_id, expires_at)
 invites        (token_hash, email, role, created_by, created_at, expires_at, used_at)
+share_links    (id, account_id, ciphertext, encrypted_label, passphrase_salt, passphrase_iterations,
+                max_views, view_count, created_at, expires_at)
 share_invitations (id, vault_id, email, role, invited_by, state[pending|accepted], accepted_by,
                 created_at, expires_at, accepted_at)   -- unique (vault_id, email)
 vaults         (id, type[personal|shared], enc_name, seq, created_at)
@@ -342,6 +403,7 @@ Phone approvals (§9.9) are not in Postgres: they live in the server process's m
 | Vaults | `GET /vaults`, `POST /vaults`, `GET /vaults/{id}/members`, `PUT /vaults/{id}/access/{accountID}`, `DELETE /vaults/{id}/access/{accountID}`, `POST /vaults/{id}/rotate` (Phase 2) |
 | Items | `GET /vaults/{id}/changes`, `PUT /vaults/{id}/items/{itemID}`, `GET /vaults/{id}/items/{itemID}/history` |
 | Attachments | `PUT/GET /vaults/{id}/attachments/{attID}/chunks/{n}` |
+| Share links (§5.9) | `POST /share-links`, `GET /share-links`, `DELETE /share-links/{id}`; without a session `GET /public/share-links/{id}` (counts a view). The recipient page is `GET /s/{id}`, outside `/api/v1` |
 | Approvals (§9.9) | `POST /approvals`, `GET /approvals` (pending), `GET /approvals/{id}`, `POST /approvals/{id}/answer`, `DELETE /approvals/{id}` (resolve; the requesting device only) |
 | Desktop updates | `GET /desktop/updates/appcast.xml` (Sparkle appcast), `GET /desktop/updates/{version}/{file}` (streams a release file); any signed-in session, 404 when the server has no update source (§9.1.1) |
 
@@ -352,7 +414,7 @@ All under `/api/v1`. JSON bodies, base64url for binary fields. There is no recov
 - Rate limiting per IP and per email on `prelogin` and `login` endpoints. `prelogin` returns a deterministic fake salt for unknown emails so it doesn't reveal which accounts exist.
 - No account enumeration: `POST /invites` and `POST /vaults/{id}/share-invitations` answer the same whether or not the email has an account, and do the account-dependent work (events, invites, email) after answering. Both are rate-limited per account and per IP (§5.1, §5.8).
 - Request size limits. Strict JSON decoding (unknown fields rejected).
-- Security headers on the invite web pages (CSP, HSTS, no framing).
+- Security headers on the invite web pages and the share link page (CSP, HSTS, no framing, §5.9).
 - Audit log for logins, device changes, invites, share invitations and sharing changes.
 
 ### 8.4 Deployment
@@ -529,7 +591,7 @@ The desktop keeps paired browsers (`instanceID`, browser name, SHA-256 of the to
 
 ### 9.4 CLI
 
-`hisar` is the command-line client for the terminal and for scripts: vaults, items (`ls`, `get`, `add`, `edit`, `rm`), the generator, import (§9.7), sharing (`share <vault> <email> [-r role]`, `unshare`, `people`, `invitations [accept|decline|cancel <id>]`, §5.8), invites (`invite <email>`), devices, `read` and `run`, which hand secrets to scripts and commands through secret references (§9.4.1), and `mcp`, the server that lets coding agents use Hisar (§9.4.2). It works in one of two modes:
+`hisar` is the command-line client for the terminal and for scripts: vaults, items (`ls`, `get`, `add`, `edit`, `rm`), the generator, import (§9.7), sharing (`share <vault> <email> [-r role]`, `unshare`, `people`, `invitations [accept|decline|cancel <id>]`, §5.8), invites (`invite <email>`), share links (`share-link`, `share-links`, §5.9), devices, `read` and `run`, which hand secrets to scripts and commands through secret references (§9.4.1), and `mcp`, the server that lets coding agents use Hisar (§9.4.2). It works in one of two modes:
 
 - **Through the desktop app**, like 1Password's CLI integration: `hisar` asks the running Hisar app for what each command needs over `~/.hisar/cli.sock`. It has no session, state file or keys of its own, and nothing is unlocked in the `hisar` process.
 - **Standalone**: its own sign-in, with the session in `state.json` (`HISAR_STATE`) and the Secret Key in the OS keychain (`HISAR_SECRET_KEY` overrides it); every command that decrypts asks for the master password. This is the mode on servers, where no app is installed, and whenever the app does not answer (see "Starting the app").
@@ -571,6 +633,9 @@ It then dials the socket and sends `hello` every 200 ms for up to 10 s. Once the
 | `invite` | `email` | `{}`; the server emails the invite (§5.1) |
 | `invitations.list` | — | `received`, `sent` as in the app; listing first completes accepted shares |
 | `invitations.accept`, `invitations.decline`, `invitations.cancel` | `invitationID` | `{}` |
+| `shareLinks.create` | `vault` (name or ID), `query` (item title or ID, matched as by `hisar get`), `shareLink` (`fields`, `expiresInSeconds`, `maxViews`, `passphrase`; or `text` and `title`) | `shareLink` `{id, url, title, fieldLabels, expiresAt, maxViews}`; always asks first (§5.9) |
+| `shareLinks.list` | — | `shareLinks`: `[{id, title, fieldLabels, isText, createdAt, expiresAt, maxViews, viewCount, hasPassphrase}]` |
+| `shareLinks.revoke` | `shareLinkID` | `{}` |
 | `devices.list` | — | `devices` |
 | `devices.revoke` | `deviceID` | `{}` |
 | `secrets.resolve` | `references` (at most 500 `hisar://` references), `commandLine` (the command `hisar run` starts, as its arguments; empty for `hisar read`) | `values`, in the order of `references`; fails as a whole with `not-found` or `invalid-request` and a message that names every reference that failed and why (§9.4.1) |
@@ -985,7 +1050,7 @@ go.work     Ties the Go modules together for local development
 | 4 | Mobile apps with system autofill | Logins on phones |
 | 5 | TOTP, passkeys, attachments, Watchtower (reused/weak/breached via HIBP k-anonymity), import from 1Password/Bitwarden/CSV, SSE push sync | — |
 | 6 | Person-to-person sharing by email (§5.8), emailed invites (§5.1, §8.5), Settings → People | No list of all accounts anywhere |
-| 7 | Secret references, `hisar read` and `hisar run` (§9.4.1), "Copy secret reference" in the desktop app, `hisar mcp` for coding agents with per-vault agent visibility (§9.4.2) | Developers and coding agents run commands with secrets they never see |
+| 7 | Secret references, `hisar read` and `hisar run` (§9.4.1), "Copy secret reference" in the desktop app, `hisar mcp` for coding agents with per-vault agent visibility (§9.4.2), end-to-end encrypted share links for people without a Hisar account (§5.9; iPhone later) | Developers and coding agents run commands with secrets they never see |
 
 ## 12. Decisions
 

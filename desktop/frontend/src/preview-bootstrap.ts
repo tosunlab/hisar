@@ -1,6 +1,9 @@
 // Development-only: puts the preview UI into a given screen from URL parameters, for screenshots and design review.
 import { nextTick } from "vue";
 import {
+  openItemShareLinkDialog,
+  openShareLinks,
+  openTextShareLinkDialog,
   openImport,
   openSharing,
   selectItem,
@@ -111,6 +114,27 @@ async function applyImportParameter(parameter: URLSearchParams): Promise<void> {
   }
 }
 
+// applyShareLinkParameter: &shareLink=dialog | passphrase | created | text (with &item=), or &sharedLinks=1 for the overview.
+async function applyShareLinkParameter(parameter: URLSearchParams): Promise<void> {
+  const step = parameter.get("shareLink");
+  if (step === "text") {
+    openTextShareLinkDialog();
+    return;
+  }
+  await openItemShareLinkDialog();
+  if (step === "passphrase" || step === "created") {
+    await clickElement('[data-testid="share-passphrase-required"]');
+    const passphraseInput = await waitForElement('[data-testid="share-passphrase"]');
+    (passphraseInput as HTMLInputElement).value = "orange-cactus-harbor";
+    passphraseInput.dispatchEvent(new Event("input"));
+    await nextTick();
+  }
+  if (step === "created") {
+    await clickElement('[data-testid="create-share-link"]');
+    await waitForElement('[data-testid="share-link-created"]');
+  }
+}
+
 export async function applyPreviewParameter(): Promise<void> {
   const parameter = new URLSearchParams(window.location.search);
   if (parameter.get("secretKey") === "1") {
@@ -136,7 +160,7 @@ export async function applyPreviewParameter(): Promise<void> {
   if (parameter.get("error")) {
     store.errorMessage = parameter.get("error") ?? "";
   }
-  if (!parameter.get("vault") && !parameter.get("item") && !parameter.get("editor") && parameter.get("sharing") !== "1") {
+  if (!parameter.get("vault") && !parameter.get("item") && !parameter.get("editor") && parameter.get("sharing") !== "1" && !parameter.get("shareLink") && parameter.get("sharedLinks") !== "1") {
     return;
   }
   await waitForUnlocked();
@@ -161,5 +185,11 @@ export async function applyPreviewParameter(): Promise<void> {
   }
   if (parameter.get("sharing") === "1") {
     await applySharingParameter(parameter);
+  }
+  if (parameter.get("shareLink")) {
+    await applyShareLinkParameter(parameter);
+  }
+  if (parameter.get("sharedLinks") === "1") {
+    await openShareLinks();
   }
 }

@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import type { ApprovalEvent, BrowserStatus, CommandLineStatus, Device, ImportPreview, ImportProgress, ItemDetail, LoginItemStatus, Person, ReceivedShareInvitation, SentShareInvitation, SSHAgentStatus, Status, UpdateStatus, VaultMember, VaultSummary } from "./api";
+import type { ApprovalEvent, ShareLink, ShareLinkField, BrowserStatus, CommandLineStatus, Device, ImportPreview, ImportProgress, ItemDetail, LoginItemStatus, Person, ReceivedShareInvitation, SentShareInvitation, SSHAgentStatus, Status, UpdateStatus, VaultMember, VaultSummary } from "./api";
 
 export function createStatus(state: string): Status {
   return { state, server: "https://hisar.test", email: "alice@example.com", name: "Alice", biometricAvailable: false, biometricEnabled: false, biometricReady: false, isOffline: false, autoLockSeconds: 600 };
@@ -331,6 +331,11 @@ export function createApiMock() {
     cancelShareInvitation: vi.fn(),
     listAllDevice: vi.fn().mockResolvedValue([]),
     revokeDevice: vi.fn(),
+    listAllShareLinkField: vi.fn().mockResolvedValue([]),
+    createShareLink: vi.fn(),
+    listAllShareLink: vi.fn().mockResolvedValue([]),
+    revokeShareLink: vi.fn().mockResolvedValue(undefined),
+    copyShareLink: vi.fn().mockResolvedValue(undefined),
     getSSHAgentStatus: vi.fn().mockResolvedValue(createSSHAgentStatus()),
     configureSSHConfig: vi.fn(),
     removeSSHConfig: vi.fn(),
@@ -427,4 +432,26 @@ export function createImportProgress(overrides: Partial<ImportProgress> = {}): I
     allFailed: [],
     ...overrides,
   };
+}
+
+export function createShareLink(overrides: Partial<ShareLink> = {}): ShareLink {
+  return {
+    id: "link-1",
+    url: "",
+    title: "GitHub",
+    vaultID: "personal",
+    itemID: "item-1",
+    fieldLabels: ["username", "password"],
+    isText: false,
+    createdAt: "2026-10-10T09:00:00Z",
+    expiresAt: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
+    maxViews: 1,
+    viewCount: 0,
+    hasPassphrase: false,
+    ...overrides,
+  };
+}
+
+export function createShareLinkField(overrides: Partial<ShareLinkField> = {}): ShareLinkField {
+  return { key: "username", label: "username", isDefault: true, isConcealed: false, ...overrides };
 }

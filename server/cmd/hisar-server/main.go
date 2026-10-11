@@ -23,7 +23,10 @@ import (
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
-const historyRetention = 90 * 24 * time.Hour
+const (
+	historyRetention       = 90 * 24 * time.Hour
+	shareLinkSweepInterval = 10 * time.Minute
+)
 
 func printUsage() {
 	fmt.Fprint(os.Stderr, `usage: hisar-server <command>
@@ -200,6 +203,7 @@ func serve(ctx context.Context, allArg []string) error {
 	defer database.Close()
 
 	go pruneHistory(ctx, database)
+	go deleteAllExpiredShareLink(ctx, database, shareLinkSweepInterval)
 
 	app := server.CreateApp()
 	log.Printf("hisar-server listening on %s", *address)
@@ -218,6 +222,23 @@ func pruneHistory(ctx context.Context, database *store.Store) {
 			log.Printf("prune history: %v", err)
 		} else if pruned > 0 {
 			log.Printf("pruned %d history entries", pruned)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func deleteAllExpiredShareLink(ctx context.Context, database *store.Store, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		if deletedCount, err := database.DeleteAllExpiredShareLink(ctx); err != nil && ctx.Err() == nil {
+			log.Printf("delete expired share links: %v", err)
+		} else if deletedCount > 0 {
+			log.Printf("deleted %d expired share links", deletedCount)
 		}
 		select {
 		case <-ctx.Done():

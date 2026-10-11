@@ -26,6 +26,9 @@ import type {
   ReceivedShareInvitation,
   SentShareInvitation,
   ShareInvitations as BoundShareInvitations,
+  ShareLink as BoundShareLink,
+  ShareLinkField,
+  ShareLinkRequest,
   SignUpResult,
   Status,
   UpdateStatus,
@@ -47,6 +50,8 @@ export type {
   PasswordConfig,
   ReceivedShareInvitation,
   SentShareInvitation,
+  ShareLinkField,
+  ShareLinkRequest,
   SignUpResult,
   SSHAgentStatus,
   Status,
@@ -66,6 +71,14 @@ export interface ShareInvitations {
 
 function normalizeShareInvitations(invitations: BoundShareInvitations): ShareInvitations {
   return { received: invitations.received ?? [], sent: invitations.sent ?? [], completionError: invitations.completionError };
+}
+
+export interface ShareLink extends Omit<BoundShareLink, "fieldLabels"> {
+  fieldLabels: string[];
+}
+
+function normalizeShareLink(boundShareLink: BoundShareLink): ShareLink {
+  return { ...boundShareLink, fieldLabels: boundShareLink.fieldLabels ?? [] };
 }
 
 // ItemDetail mirrors the Go type with nil slices normalized to empty arrays.
@@ -151,6 +164,11 @@ const wailsApi = {
   acceptShareInvitation: (invitationID: string): Promise<void> => Service.AcceptShareInvitation(invitationID),
   declineShareInvitation: (invitationID: string): Promise<void> => Service.DeclineShareInvitation(invitationID),
   cancelShareInvitation: (invitationID: string): Promise<void> => Service.CancelShareInvitation(invitationID),
+  listAllShareLinkField: async (vaultID: string, itemID: string): Promise<ShareLinkField[]> => (await Service.ListAllShareLinkField(vaultID, itemID)) ?? [],
+  createShareLink: async (request: ShareLinkRequest): Promise<ShareLink> => normalizeShareLink(await Service.CreateShareLink(request)),
+  listAllShareLink: async (): Promise<ShareLink[]> => ((await Service.ListAllShareLink()) ?? []).map(normalizeShareLink),
+  revokeShareLink: (shareLinkID: string): Promise<void> => Service.RevokeShareLink(shareLinkID),
+  copyShareLink: (shareLinkID: string): Promise<void> => Service.CopyShareLink(shareLinkID),
   listAllDevice: async (): Promise<Device[]> => (await Service.ListAllDevice()) ?? [],
   revokeDevice: (deviceID: string): Promise<void> => Service.RevokeDevice(deviceID),
   getSSHAgentStatus: (): Promise<SSHAgentStatus> => AgentService.GetStatus(),

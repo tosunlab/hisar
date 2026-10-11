@@ -163,6 +163,12 @@ func (bridge *CommandLineBridge) answer(request *cliprotocol.Request) (any, erro
 		return nil, s.RevokeDevice(request.DeviceID)
 	case cliprotocol.TypeResolveSecret:
 		return s.resolveAllSecret(request.References)
+	case cliprotocol.TypeCreateShareLink:
+		return bridge.createShareLink(request)
+	case cliprotocol.TypeListShareLink:
+		return bridge.listAllShareLink()
+	case cliprotocol.TypeRevokeShareLink:
+		return nil, s.RevokeShareLink(request.ShareLinkID)
 	}
 	return nil, cliprotocol.CreateError(cliprotocol.ErrorInvalidRequest, fmt.Sprintf("unknown request type %q", request.Type))
 }

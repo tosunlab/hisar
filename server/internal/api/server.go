@@ -61,6 +61,8 @@ type Server struct {
 	inviteIPLimiter               *dailyLimiter
 	shareInvitationAccountLimiter *dailyLimiter
 	shareInvitationIPLimiter      *dailyLimiter
+	shareLinkAccountLimiter       *dailyLimiter
+	shareLinkReadLimiter          *ipLimiter
 	backgroundWork                sync.WaitGroup
 }
 
@@ -108,6 +110,8 @@ func CreateServer(database *store.Store, secrets *Secrets, config Config) (*Serv
 		inviteIPLimiter:               createDailyLimiter(invitePerIPPerDay),
 		shareInvitationAccountLimiter: createDailyLimiter(shareInvitationPerAccountPerDay),
 		shareInvitationIPLimiter:      createDailyLimiter(shareInvitationPerIPPerDay),
+		shareLinkAccountLimiter:       createDailyLimiter(shareLinkPerAccountPerDay),
+		shareLinkReadLimiter:          createShareLinkReadLimiter(),
 	}, nil
 }
 
@@ -125,6 +129,7 @@ func (s *Server) CreateApp() *fiber.App {
 	app.Use(setAllSecurityHeader)
 	app.Get("/healthz", func(c fiber.Ctx) error { return c.SendString("ok\n") })
 	app.Get("/privacy", sendPrivacyPolicy)
+	app.Get("/s/:id", sendShareLinkPage)
 
 	apiGroup := app.Group("/api/v1")
 	apiGroup.Get("/auth/prelogin", s.limitRate, s.handlePrelogin)
@@ -155,6 +160,11 @@ func (s *Server) CreateApp() *fiber.App {
 	apiGroup.Get("/vaults/:vault/changes", s.requireSession, s.handleListAllChange)
 	apiGroup.Put("/vaults/:vault/items/:item", s.requireSession, s.handlePutItem)
 	apiGroup.Get("/vaults/:vault/items/:item/history", s.requireSession, s.handleGetItemHistory)
+
+	apiGroup.Post("/share-links", s.requireSession, s.handleCreateShareLink)
+	apiGroup.Get("/share-links", s.requireSession, s.handleListAllShareLink)
+	apiGroup.Delete("/share-links/:id", s.requireSession, s.handleRevokeShareLink)
+	apiGroup.Get("/public/share-links/:id", s.handleViewShareLink)
 
 	apiGroup.Post("/approvals", s.requireSession, s.limitApprovalRate, s.handleCreateApproval)
 	apiGroup.Get("/approvals", s.requireSession, s.limitApprovalRate, s.handleListAllPendingApproval)

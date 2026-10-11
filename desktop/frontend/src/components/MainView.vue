@@ -1,6 +1,21 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { createVault, filterAllItem, lock, openImport, openSharing, selectItem, selectVault, startCreatingItem, startCreatingSSHKey, store, syncInBackground, syncInterval } from "../store";
+import {
+  createVault,
+  filterAllItem,
+  lock,
+  openImport,
+  openShareLinks,
+  openSharing,
+  openTextShareLinkDialog,
+  selectItem,
+  selectVault,
+  startCreatingItem,
+  startCreatingSSHKey,
+  store,
+  syncInBackground,
+  syncInterval,
+} from "../store";
 import { formatKeyType, getDomain, getInitials, isMacPlatform, sshKeyCategory } from "../util";
 import AppIcon from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
@@ -10,6 +25,8 @@ import ImportPanel from "./ImportPanel.vue";
 import ItemTile from "./ItemTile.vue";
 import SettingsPanel from "./SettingsPanel.vue";
 import ShareInvitationBanner from "./ShareInvitationBanner.vue";
+import SharedLinksPanel from "./SharedLinksPanel.vue";
+import ShareLinkDialog from "./ShareLinkDialog.vue";
 import SSHKeyForm from "./SSHKeyForm.vue";
 import VaultSharingPanel from "./VaultSharingPanel.vue";
 
@@ -118,6 +135,14 @@ onBeforeUnmount(() => {
         <button v-else class="ghost new-vault-button" @click="isCreatingVault = true"><AppIcon name="plus" /> New vault</button>
       </nav>
 
+      <nav aria-label="Sharing" class="sharing-nav">
+        <button class="vault" :class="{ selected: store.isShareLinksOpen }" data-testid="open-shared-links" @click="openShareLinks">
+          <AppIcon name="link" />
+          <span class="vault-name">Shared links</span>
+          <span v-if="store.allShareLink.length > 0" class="vault-count">{{ store.allShareLink.length }}</span>
+        </button>
+      </nav>
+
       <div class="spacer"></div>
       <div v-if="store.status.isOffline" class="offline" role="status" data-testid="offline-notice">
         <AppIcon name="offline" />
@@ -177,6 +202,9 @@ onBeforeUnmount(() => {
             <button class="ghost" role="menuitem" data-testid="new-import" @click="chooseNewItem(openImport)">
               <AppIcon name="import" /> Import…
             </button>
+            <button class="ghost" role="menuitem" data-testid="new-share-text" @click="chooseNewItem(openTextShareLinkDialog)">
+              <AppIcon name="link" /> Share text…
+            </button>
           </div>
         </div>
       </div>
@@ -227,6 +255,8 @@ onBeforeUnmount(() => {
     <SettingsPanel v-if="store.isSettingsOpen" />
     <VaultSharingPanel v-if="store.isSharingOpen" />
     <ImportPanel v-if="store.isImportOpen" />
+    <SharedLinksPanel v-if="store.isShareLinksOpen" />
+    <ShareLinkDialog v-if="store.shareLinkDialog" :key="`${store.shareLinkDialog.mode}-${store.shareLinkDialog.itemID}`" />
   </div>
 </template>
 
@@ -304,6 +334,10 @@ onBeforeUnmount(() => {
 
 .new-vault {
   margin: 6px 0;
+}
+
+.sharing-nav {
+  margin-top: 14px;
 }
 
 .new-vault input {

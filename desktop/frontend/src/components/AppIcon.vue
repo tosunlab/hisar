@@ -34,6 +34,7 @@ const allPath = {
   offline: "M3 3l18 18M8.5 8.6A5 5 0 0 0 7 18h10M14 6.3A5.5 5.5 0 0 1 18 11a3.5 3.5 0 0 1 2.4 5.9",
   import: "M12 4v11M7.5 10.5L12 15l4.5-4.5M5 20h14",
   file: "M6 3h8l4 4v14H6zM14 3v4h4",
+  link: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1",
 } as const;
 
 export type IconName = keyof typeof allPath;

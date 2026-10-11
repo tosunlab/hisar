@@ -216,6 +216,45 @@ export interface ShareInvitations {
     "completionError": string;
 }
 
+export interface ShareLink {
+    "id": string;
+    "url": string;
+    "title": string;
+    "vaultID": string;
+    "itemID": string;
+    "fieldLabels": string[] | null;
+    "isText": boolean;
+    "createdAt": string;
+    "expiresAt": string;
+    "maxViews": number;
+    "viewCount": number;
+    "hasPassphrase": boolean;
+}
+
+/**
+ * ShareLinkField is a field the share dialog offers; Key goes back in ShareLinkRequest.FieldKeys.
+ */
+export interface ShareLinkField {
+    "key": string;
+    "label": string;
+    "isDefault": boolean;
+    "isConcealed": boolean;
+}
+
+/**
+ * ShareLinkRequest shares FieldKeys of an item, or Text with Title when ItemID is empty; MaxViews 0 is unlimited.
+ */
+export interface ShareLinkRequest {
+    "vaultID": string;
+    "itemID": string;
+    "fieldKeys": string[] | null;
+    "title": string;
+    "text": string;
+    "expiresInSeconds": number;
+    "maxViews": number;
+    "passphrase": string;
+}
+
 export interface SignUpResult {
     "status": Status;
     "secretKey": string;
