@@ -26,6 +26,7 @@ import (
 	"github.com/tryhisar/hisar/desktop/commandline"
 	"github.com/tryhisar/hisar/desktop/updater"
 	"github.com/tryhisar/hisar/desktop/vault"
+	"github.com/tryhisar/hisar/desktop/windowplacement"
 )
 
 //go:embed all:frontend/dist
@@ -109,12 +110,11 @@ const (
 	compactApprovalWidth  = 380
 	defaultApprovalHeight = 400
 	compactApprovalHeight = 120
-	compactApprovalMargin = 12
-	menuBarAllowance      = 32
 )
 
 // placeApprovalWindow centers the full dialog, or puts the compact card at the top right like a notification; height 0 keeps a default.
-func placeApprovalWindow(approvalWindow *application.WebviewWindow, isCompact bool, height int) {
+// Showing picks the display under the pointer; a resize keeps the window on its display, the compact card's top-right corner fixed.
+func placeApprovalWindow(approvalWindow *application.WebviewWindow, isCompact bool, height int, isShowing bool) {
 	width := fullApprovalWidth
 	if isCompact {
 		width = compactApprovalWidth
@@ -125,17 +125,12 @@ func placeApprovalWindow(approvalWindow *application.WebviewWindow, isCompact bo
 			height = compactApprovalHeight
 		}
 	}
-	screen, err := approvalWindow.GetScreen()
-	if err == nil && screen != nil && screen.WorkArea.Height > 0 {
-		height = min(height, screen.WorkArea.Height-2*compactApprovalMargin)
-	}
-	approvalWindow.SetSize(width, height)
-	if !isCompact || err != nil || screen == nil {
-		approvalWindow.Center()
+	request := windowplacement.Request{Width: float64(width), Height: float64(height), IsCompact: isCompact, IsShowing: isShowing}
+	if windowplacement.PlaceWindow(approvalWindow.NativeWindow(), request) {
 		return
 	}
-	topInset := max(screen.WorkArea.Y-screen.Bounds.Y, menuBarAllowance)
-	approvalWindow.SetRelativePosition(screen.Bounds.Width-width-compactApprovalMargin, topInset+compactApprovalMargin)
+	approvalWindow.SetSize(width, height)
+	approvalWindow.Center()
 }
 
 func main() {
@@ -217,7 +212,7 @@ func main() {
 		Emit:            func(eventName string, data any) { app.Event.Emit(eventName, data) },
 		ShowApprovalWindow: func(isCompact bool) {
 			application.InvokeAsync(func() {
-				placeApprovalWindow(approvalWindow, isCompact, 0)
+				placeApprovalWindow(approvalWindow, isCompact, 0, true)
 				approvalWindow.Show()
 				approvalWindow.Focus()
 			})
@@ -250,7 +245,7 @@ func main() {
 		Approver:           approver,
 		ApprovalPreference: approvalPreference,
 		FitApprovalWindow: func(isCompact bool, height int) {
-			application.InvokeAsync(func() { placeApprovalWindow(approvalWindow, isCompact, height) })
+			application.InvokeAsync(func() { placeApprovalWindow(approvalWindow, isCompact, height, false) })
 		},
 	})
 	agentContext, stopAgent := context.WithCancel(context.Background())
