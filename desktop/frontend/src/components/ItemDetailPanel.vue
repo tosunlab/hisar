@@ -6,6 +6,7 @@ import AppIcon from "./AppIcon.vue";
 import ItemTile from "./ItemTile.vue";
 import OneTimeCodeField from "./OneTimeCodeField.vue";
 import PasskeyList from "./PasskeyList.vue";
+import SecretReferenceButton from "./SecretReferenceButton.vue";
 import StrengthMeter from "./StrengthMeter.vue";
 
 defineProps<{ canEdit: boolean; vaultName: string; isShared: boolean }>();
@@ -76,13 +77,20 @@ function maskSecret(secret: string): string {
           <span class="field-value monospace" data-testid="fingerprint">{{ store.selectedItem.fingerprint }}</span>
           <span class="field-actions">
             <button class="ghost icon-button" aria-label="Copy fingerprint" title="Copy" @click="copyField('fingerprint', 'Fingerprint')"><AppIcon name="copy" /></button>
+            <SecretReferenceButton field-name="fingerprint" label="fingerprint" />
           </span>
+        </div>
+        <div class="field">
+          <span class="field-label">Private key</span>
+          <span class="field-value muted">Never leaves Hisar; the SSH agent uses it</span>
+          <span class="field-actions"></span>
         </div>
         <div class="public-key-field">
           <div class="row">
             <span class="field-label">Public key</span>
             <div class="spacer"></div>
             <button data-testid="copy-public-key" @click="copyField('public key', 'Public key')"><AppIcon name="copy" /> Copy public key</button>
+            <SecretReferenceButton field-name="public key" label="public key" />
           </div>
           <p class="public-key monospace" data-testid="public-key">{{ store.selectedItem.publicKey }}</p>
         </div>
@@ -96,6 +104,7 @@ function maskSecret(secret: string): string {
         <span class="field-value">{{ store.selectedItem.username }}</span>
         <span class="field-actions">
           <button class="ghost icon-button" aria-label="Copy username" title="Copy" @click="copyField('username', 'Username')"><AppIcon name="copy" /></button>
+          <SecretReferenceButton field-name="username" label="username" />
         </span>
       </div>
 
@@ -117,6 +126,7 @@ function maskSecret(secret: string): string {
             <AppIcon :name="isPasswordRevealed ? 'eyeOff' : 'eye'" />
           </button>
           <button class="ghost icon-button" aria-label="Copy password" title="Copy" @click="copyField('password', 'Password')"><AppIcon name="copy" /></button>
+          <SecretReferenceButton field-name="password" label="password" />
         </span>
       </div>
 
@@ -145,6 +155,7 @@ function maskSecret(secret: string): string {
             <AppIcon :name="allRevealedFieldName.includes(field.name) ? 'eyeOff' : 'eye'" />
           </button>
           <button class="ghost icon-button" :aria-label="`Copy ${field.name}`" title="Copy" @click="copyField(field.name, field.name)"><AppIcon name="copy" /></button>
+          <SecretReferenceButton :field-name="field.name" :label="field.name" />
         </span>
       </div>
 

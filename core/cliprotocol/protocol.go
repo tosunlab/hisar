@@ -17,6 +17,7 @@ const (
 	ProtocolVersion   = 1
 	MaxMessageSize    = 16 << 20
 	MaxImportBatch    = 10
+	MaxReferenceCount = 500
 	SocketEnvironment = "HISAR_CLI_SOCKET"
 )
 
@@ -27,22 +28,23 @@ const (
 )
 
 const (
-	TypeHello        = "hello"
-	TypeAccount      = "account"
-	TypeListVault    = "vaults.list"
-	TypeCreateVault  = "vaults.create"
-	TypeListItem     = "items.list"
-	TypeGetItem      = "items.get"
-	TypeGetCode      = "items.code"
-	TypeSaveItem     = "items.save"
-	TypeDeleteItem   = "items.delete"
-	TypeImportItem   = "items.import"
-	TypeListPeople   = "people.list"
-	TypeShareVault   = "vaults.share"
-	TypeUnshareVault = "vaults.unshare"
-	TypeInvite       = "invite"
-	TypeListDevice   = "devices.list"
-	TypeRevokeDevice = "devices.revoke"
+	TypeHello         = "hello"
+	TypeAccount       = "account"
+	TypeListVault     = "vaults.list"
+	TypeCreateVault   = "vaults.create"
+	TypeListItem      = "items.list"
+	TypeGetItem       = "items.get"
+	TypeGetCode       = "items.code"
+	TypeSaveItem      = "items.save"
+	TypeDeleteItem    = "items.delete"
+	TypeImportItem    = "items.import"
+	TypeListPeople    = "people.list"
+	TypeShareVault    = "vaults.share"
+	TypeUnshareVault  = "vaults.unshare"
+	TypeInvite        = "invite"
+	TypeListDevice    = "devices.list"
+	TypeRevokeDevice  = "devices.revoke"
+	TypeResolveSecret = "secrets.resolve"
 
 	TypeListInvitation    = "invitations.list"
 	TypeAcceptInvitation  = "invitations.accept"
@@ -76,6 +78,8 @@ type Request struct {
 	InvitationID  string      `json:"invitationID,omitempty"`
 	Item          *ItemChange `json:"item,omitempty"`
 	ImportedItems []item.Item `json:"importedItems,omitempty"`
+	References    []string    `json:"references,omitempty"`
+	CommandLine   []string    `json:"commandLine,omitempty"`
 }
 
 type Response struct {
@@ -236,6 +240,10 @@ type Device struct {
 	Platform   string `json:"platform"`
 	LastSeenAt string `json:"lastSeenAt"`
 	IsCurrent  bool   `json:"isCurrent"`
+}
+
+type ResolveSecretResult struct {
+	Values []string `json:"values"`
 }
 
 type DeviceListResult struct {

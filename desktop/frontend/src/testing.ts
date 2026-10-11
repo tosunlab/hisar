@@ -86,6 +86,8 @@ export function createApprovalEvent(overrides: Partial<ApprovalEvent> = {}): App
     isTouchIDApproval: true,
     isPhoneApproval: false,
     timeoutAt: "2026-10-09T12:01:00Z",
+    allSecretName: [],
+    moreSecretCount: 0,
     ...overrides,
   };
 }
@@ -282,6 +284,7 @@ export function createApiMock() {
     copyField: vi.fn(),
     getOneTimeCode: vi.fn(),
     copyText: vi.fn(),
+    copySecretReference: vi.fn(),
     openURL: vi.fn().mockResolvedValue(undefined),
     unlockWithBiometric: vi.fn(),
     enableBiometricUnlock: vi.fn(),

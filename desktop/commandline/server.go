@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"net"
@@ -11,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/tryhisar/hisar/core/cliprotocol"
+	"github.com/tryhisar/hisar/core/secretreference"
 	"github.com/tryhisar/hisar/core/sshagent"
 )
 
@@ -18,6 +20,11 @@ import (
 type Handler interface {
 	GetHello() cliprotocol.HelloResult
 	HandleRequest(ctx context.Context, request *cliprotocol.Request) (any, error)
+}
+
+// SecretDescriber names the secrets of a secrets.resolve request for the approval window.
+type SecretDescriber interface {
+	DescribeAllSecret(allReference []string) []string
 }
 
 type ServerConfig struct {
@@ -164,21 +171,44 @@ func (s *Server) answerRequest(ctx context.Context, client connectionPeer, reque
 	if hello.State == cliprotocol.StateSignedOut {
 		return nil, cliprotocol.CreateError(cliprotocol.ErrorSignedOut, "the Hisar app is not signed in; sign in there, or run hisar --standalone")
 	}
-	if err := s.config.Approvals.Require(client.session, func() error { return s.askApproval(ctx, client) }); err != nil {
+	if request.Type == cliprotocol.TypeResolveSecret && (len(request.References) == 0 || len(request.References) > cliprotocol.MaxReferenceCount) {
+		return nil, cliprotocol.CreateError(cliprotocol.ErrorInvalidRequest, fmt.Sprintf("send between 1 and %d secret references", cliprotocol.MaxReferenceCount))
+	}
+	if err := s.config.Approvals.Require(client.session, func() error { return s.askApproval(ctx, client, request) }); err != nil {
 		if errors.Is(err, ErrDenied) {
-			return nil, cliprotocol.CreateError(cliprotocol.ErrorDenied, ErrDenied.Error())
+			return nil, cliprotocol.CreateError(cliprotocol.ErrorDenied, err.Error())
 		}
 		return nil, err
 	}
 	return s.config.Handler.HandleRequest(ctx, request)
 }
 
-func (s *Server) askApproval(ctx context.Context, client connectionPeer) error {
+func (s *Server) askApproval(ctx context.Context, client connectionPeer, request *cliprotocol.Request) error {
 	if s.config.Approver == nil {
 		return ErrDenied
 	}
-	request := ApprovalRequest{ClientPID: client.peer.PID, TerminalName: client.session.TerminalName}
-	request.ClientPath, _ = s.config.PeerResolver.GetProcessPath(client.peer.PID)
-	request.ParentPID, _ = s.config.PeerResolver.GetParentPID(client.peer.PID)
-	return s.config.Approver.ApproveCommandLine(ctx, request)
+	approvalRequest := ApprovalRequest{ClientPID: client.peer.PID, TerminalName: client.session.TerminalName}
+	approvalRequest.ClientPath, _ = s.config.PeerResolver.GetProcessPath(client.peer.PID)
+	approvalRequest.ParentPID, _ = s.config.PeerResolver.GetParentPID(client.peer.PID)
+	if request.Type == cliprotocol.TypeResolveSecret {
+		approvalRequest.IsSecretRequest = true
+		approvalRequest.CommandLine = request.CommandLine
+		approvalRequest.AllSecretName = s.describeAllSecret(request.References)
+	}
+	return s.config.Approver.ApproveCommandLine(ctx, approvalRequest)
+}
+
+func (s *Server) describeAllSecret(allReference []string) []string {
+	if describer, isDescriber := s.config.Handler.(SecretDescriber); isDescriber {
+		return describer.DescribeAllSecret(allReference)
+	}
+	allName := make([]string, 0, len(allReference))
+	for _, text := range allReference {
+		if reference, err := secretreference.Parse(text); err == nil {
+			allName = append(allName, reference.Describe())
+		} else {
+			allName = append(allName, text)
+		}
+	}
+	return allName
 }

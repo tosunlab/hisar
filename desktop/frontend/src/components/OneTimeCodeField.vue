@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { api, type OneTimeCode } from "../api";
 import { copyField } from "../store";
 import AppIcon from "./AppIcon.vue";
+import SecretReferenceButton from "./SecretReferenceButton.vue";
 
 const properties = defineProps<{ vaultID: string; itemID: string }>();
 
@@ -76,6 +77,7 @@ onBeforeUnmount(() => clearInterval(clockTimer));
       <button class="ghost icon-button" aria-label="Copy one-time code" title="Copy" :disabled="!oneTimeCode" @click="copyField('one-time code', 'One-time code')">
         <AppIcon name="copy" />
       </button>
+      <SecretReferenceButton field-name="one-time code" label="one-time code" />
     </span>
   </div>
 </template>

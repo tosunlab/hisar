@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -103,7 +104,7 @@ func TestPhoneApprovesTheDialog(t *testing.T) {
 		Kind: approval.KindSSH, AppName: "Terminal", Purpose: "push to git.tryhisar.com", Host: "git.tryhisar.com:22",
 		CommandLine: "git push origin main", RepositoryPath: "~/src/core", KeyName: "Laptop",
 	}
-	if description != want {
+	if !reflect.DeepEqual(description, want) {
 		t.Errorf("phone request = %+v", description)
 	}
 	phone.answer(true)
@@ -246,7 +247,7 @@ func TestPhoneApprovesCommandLine(t *testing.T) {
 	waitForApprovalEvent(t, emitter)
 	description := phone.waitForStart(t)
 	want := approval.Description{Kind: approval.KindCommandLine, AppName: "hisar in Terminal", Purpose: "use Hisar", CommandLine: "/Applications/Hisar.app/Contents/Helpers/hisar", TerminalName: "ttys003"}
-	if description != want {
+	if !reflect.DeepEqual(description, want) {
 		t.Errorf("command-line request on the phone = %+v", description)
 	}
 	phone.answer(true)

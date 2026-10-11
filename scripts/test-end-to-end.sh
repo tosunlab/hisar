@@ -61,6 +61,13 @@ GEN=$(printf '%s\n' "$PW" | A get github -f password 2>/dev/null)
 [[ ${#GEN} -eq 24 ]] || fail "generated password length ${#GEN}"
 echo "ok   generated password"
 
+expect "standalone read of a secret reference" "[$(printf '%s\n' "$PW" | A read hisar://Personal/GitHub/password 2>/dev/null)]" "[$GEN]"
+RUN_EXIT=0
+RUN_OUTPUT=$(printf '%s\n' "$PW" | GITHUB_PASSWORD=hisar://Personal/GitHub/password A run -- sh -c 'echo "password is $GITHUB_PASSWORD"; exit 3' 2>&1) || RUN_EXIT=$?
+expect "standalone run masks the secret" "$RUN_OUTPUT" "password is <concealed by hisar>"
+[[ $RUN_EXIT -eq 3 && "$RUN_OUTPUT" != *"$GEN"* ]] || fail "standalone run: exit code $RUN_EXIT"
+expect "standalone run names an unknown reference" "$(printf '%s\n' "$PW" | GITHUB_PASSWORD=hisar://Personal/Nothing/password A run -- sh -c 'echo ran' 2>&1 || true)" 'hisar://Personal/Nothing/password: no item in vault "Personal" is titled "Nothing"'
+
 printf '%s\n' "$PW" | A vault-create Family 2>/dev/null
 printf '%s\nNetflix\nfamily@example.com\nhttps://netflix.com\nhunter2hunter2\nshared login\n' "$PW" | A add -v Family 2>/dev/null
 

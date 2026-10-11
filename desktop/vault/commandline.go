@@ -158,6 +158,8 @@ func (bridge *CommandLineBridge) answer(request *cliprotocol.Request) (any, erro
 		return result, nil
 	case cliprotocol.TypeRevokeDevice:
 		return nil, s.RevokeDevice(request.DeviceID)
+	case cliprotocol.TypeResolveSecret:
+		return s.resolveAllSecret(request.References)
 	}
 	return nil, cliprotocol.CreateError(cliprotocol.ErrorInvalidRequest, fmt.Sprintf("unknown request type %q", request.Type))
 }

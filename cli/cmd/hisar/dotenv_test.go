@@ -1,0 +1,130 @@
+package main
+
+import (
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+)
+
+func TestParseEnvironmentFile(t *testing.T) {
+	content := "\uFEFF# database settings\r\n" +
+		"DATABASE_URL=postgres://localhost/app\r\n" +
+		"\n" +
+		"   # indented comment\n" +
+		"export GITHUB_TOKEN=hisar://Personal/GitHub/token\n" +
+		"export\tTABBED=1\n" +
+		"exported_name=keeps the word export\n" +
+		"SPACED = value with spaces   # trailing comment\n" +
+		"HASH_INSIDE=abc#def\n" +
+		"ONLY_COMMENT= # nothing\n" +
+		"EMPTY=\n" +
+		"SINGLE='$HOME \\n # not a comment'\n" +
+		"DOUBLE=\"line\\none\\ttab \\\"quoted\\\" \\\\ \\$HOME \\x\" # comment\n" +
+		"MULTILINE=\"-----BEGIN KEY-----\n" +
+		"abc\n" +
+		"-----END KEY-----\"\n" +
+		"SINGLE_MULTILINE='first\n" +
+		"second'\n" +
+		"REFERENCE=\"hisar://Work/AWS prod/secret key\"\n" +
+		"DUPLICATE=first\n" +
+		"DUPLICATE=second\n"
+	allVariable, err := parseEnvironmentFile(".env", content)
+	if err != nil {
+		t.Fatal(err)
+	}
+	allExpected := []environmentVariable{
+		{"DATABASE_URL", "postgres://localhost/app"},
+		{"GITHUB_TOKEN", "hisar://Personal/GitHub/token"},
+		{"TABBED", "1"},
+		{"exported_name", "keeps the word export"},
+		{"SPACED", "value with spaces"},
+		{"HASH_INSIDE", "abc#def"},
+		{"ONLY_COMMENT", ""},
+		{"EMPTY", ""},
+		{"SINGLE", "$HOME \\n # not a comment"},
+		{"DOUBLE", "line\none\ttab \"quoted\" \\ $HOME \\x"},
+		{"MULTILINE", "-----BEGIN KEY-----\nabc\n-----END KEY-----"},
+		{"SINGLE_MULTILINE", "first\nsecond"},
+		{"REFERENCE", "hisar://Work/AWS prod/secret key"},
+		{"DUPLICATE", "first"},
+		{"DUPLICATE", "second"},
+	}
+	if !slices.Equal(allVariable, allExpected) {
+		t.Errorf("parsed:\n%q\nwant:\n%q", allVariable, allExpected)
+	}
+}
+
+func TestParseEnvironmentFileSingleQuotesAreLiteral(t *testing.T) {
+	allVariable, err := parseEnvironmentFile(".env", `LITERAL='a\nb $HOME "x" # y'`)
+	if err != nil || len(allVariable) != 1 || allVariable[0].value != `a\nb $HOME "x" # y` {
+		t.Errorf("parsed %q, %v", allVariable, err)
+	}
+}
+
+func TestParseEnvironmentFileErrors(t *testing.T) {
+	allCase := []struct {
+		content string
+		message string
+	}{
+		{"JUST_A_NAME\n", ".env:1: expected NAME=value"},
+		{"OK=1\n1BAD=secret-value\n", `.env:2: "1BAD" is not a valid variable name`},
+		{"BAD-NAME=secret-value", `.env:1: "BAD-NAME" is not a valid variable name`},
+		{"=secret-value", `.env:1: "" is not a valid variable name`},
+		{"A=1\nOPEN=\"secret-value\nstill open\n", ".env:2: OPEN has a quote that is never closed"},
+		{"AFTER='secret-value' trailing", ".env:1: AFTER has text after its closing quote"},
+	}
+	for _, testCase := range allCase {
+		_, err := parseEnvironmentFile(".env", testCase.content)
+		if err == nil || err.Error() != testCase.message {
+			t.Errorf("%q: %v; want %q", testCase.content, err, testCase.message)
+		}
+		if err != nil && strings.Contains(err.Error(), "secret-value") {
+			t.Errorf("the error shows the value: %v", err)
+		}
+	}
+}
+
+func TestReadEnvironmentFile(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "test.env")
+	os.WriteFile(path, []byte("A=1\n"), 0o600)
+	if allVariable, err := readEnvironmentFile(path); err != nil || len(allVariable) != 1 {
+		t.Errorf("read %q, %v", allVariable, err)
+	}
+	if _, err := readEnvironmentFile(filepath.Join(t.TempDir(), "missing.env")); err == nil {
+		t.Error("a missing file was read")
+	}
+}
+
+func TestBuildRunEnvironment(t *testing.T) {
+	allEnviron := []string{
+		"PATH=/usr/bin",
+		"PLAIN_IN_BOTH=from the environment",
+		"REFERENCE_IN_BOTH=hisar://Personal/Environment/password",
+		"REFERENCE_ONLY_HERE=hisar://Personal/Only/password",
+		"BROKEN_ENTRY",
+	}
+	allFileVariable := []environmentVariable{
+		{"PLAIN_IN_BOTH", "from the first file"},
+		{"REFERENCE_IN_BOTH", "hisar://Personal/First/password"},
+		{"FILE_ONLY", "first"},
+		{"REFERENCE_IN_BOTH", "hisar://Personal/Second/password"},
+		{"FILE_ONLY", "second"},
+	}
+	allVariable := buildRunEnvironment(allEnviron, allFileVariable)
+	allExpected := []environmentVariable{
+		{"PATH", "/usr/bin"},
+		{"PLAIN_IN_BOTH", "from the environment"},
+		{"REFERENCE_IN_BOTH", "hisar://Personal/Second/password"},
+		{"REFERENCE_ONLY_HERE", "hisar://Personal/Only/password"},
+		{"FILE_ONLY", "second"},
+	}
+	if !slices.Equal(allVariable, allExpected) {
+		t.Errorf("environment:\n%q\nwant:\n%q", allVariable, allExpected)
+	}
+	allReference := listAllUniqueReference(append(allVariable, environmentVariable{"AGAIN", "hisar://Personal/Only/password"}))
+	if !slices.Equal(allReference, []string{"hisar://Personal/Second/password", "hisar://Personal/Only/password"}) {
+		t.Errorf("references %q", allReference)
+	}
+}

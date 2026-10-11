@@ -39,6 +39,43 @@ On Windows, `Get-FileHash hisar-0.2.1-windows-amd64.zip -Algorithm SHA256` must 
 `hisar` keeps its session in `state.json` and asks for the master password for each command; `hisar --standalone` (or
 `HISAR_STANDALONE=1`) uses this mode even when the Mac app is running.
 
+### Secrets for commands: `hisar run` and `hisar read`
+
+Name a secret with a reference instead of copying it: `hisar://<vault>/<item>/<field>`. Vault and item are names (case does not
+matter) or IDs; the field is `password`, `username`, `notes`, `url`, `otp` (the current one-time code), `public key`,
+`fingerprint` or a custom field's label. SSH private keys never leave Hisar (use its SSH agent), so `private key` references are refused. Characters such as `/`, `%` and spaces are percent-encoded (`AWS%20prod`). In the
+Hisar app, the terminal button next to a field's copy button copies its reference.
+
+Keep references, not values, in your `.env`:
+
+```sh
+# .env — safe to commit; it holds no secrets
+DATABASE_URL=postgres://localhost:5432/app
+DATABASE_PASSWORD=hisar://Work/Postgres%20staging/password
+GITHUB_TOKEN=hisar://Personal/GitHub/API%20token
+AWS_SECRET_ACCESS_KEY="hisar://Work/AWS prod/secret access key"
+```
+
+```sh
+hisar run --env-file .env -- npm test
+hisar run --env-file .env -- docker compose up
+GITHUB_TOKEN=hisar://Personal/GitHub/API%20token hisar run -- gh release list
+hisar read hisar://Personal/GitHub/otp            # one value on stdout, for scripts
+```
+
+`hisar run` resolves every reference in one request, so the app asks once (with Touch ID, or on your iPhone) and shows the command
+and the secrets it reads. The command gets the real values in its environment; nothing is written to disk. Every value it prints is
+replaced with `<concealed by hisar>`. That needs pipes, so use `--no-masking` for commands that need the terminal itself (colours,
+prompts, full-screen tools). Several `--env-file` options are applied in order; variables already in your environment win unless they
+are references themselves. Signals are passed on, and `hisar run` exits with the command's exit code. Approving covers the terminal
+session: other `hisar` commands in it don't ask again until 10 minutes after the last one, or until Hisar locks.
+
+**With coding agents.** Give the agent the `.env` with references and let it run `hisar run --env-file .env -- <command>`. It can
+run your tests, migrations and deploys, but what it sees (and what ends up in its transcript and logs) has the secrets masked, and the
+`.env` it reads holds only references. Masking is a guard against showing secrets, not a sandbox: the command itself has the values,
+and an agent that can run `hisar read` in an approved terminal can read them. An approval covers every vault, so approve an agent's
+terminal only when it may use them. Details: [docs/DESIGN.md](docs/DESIGN.md) §9.4.1.
+
 ## Development
 
 Requires Go 1.26+ and Docker (for Postgres).

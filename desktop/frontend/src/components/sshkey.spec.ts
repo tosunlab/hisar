@@ -190,7 +190,7 @@ describe("SSH key detail", () => {
     expect(wrapper.text()).toContain("Used for GitHub");
     expect(wrapper.text()).toContain("Hisar's SSH agent offers this key while Hisar is unlocked");
     expect(wrapper.text()).not.toContain("PRIVATE KEY");
-    expect(wrapper.text()).not.toContain("Private key");
+    expect(wrapper.text()).toContain("Private keyNever leaves Hisar; the SSH agent uses it");
     expect(wrapper.find('button[aria-label="Reveal password"]').exists()).toBe(false);
   });
 

@@ -88,6 +88,9 @@ type ApprovalEvent struct {
 	IsUnlockRequired       bool   `json:"isUnlockRequired"`
 	IsPasswordUnlock       bool   `json:"isPasswordUnlock"`
 	IsPhoneApproval        bool   `json:"isPhoneApproval"`
+	// AllSecretName lists the first secrets of a secrets.resolve request; MoreSecretCount counts the rest.
+	AllSecretName   []string `json:"allSecretName"`
+	MoreSecretCount int      `json:"moreSecretCount"`
 }
 
 type ApprovalFailedEvent struct {
@@ -132,6 +135,7 @@ type pendingApproval struct {
 	responseChannel chan approvalResponse
 	phoneChannel    chan bool
 	phoneRequest    approval.Description
+	timedOutAfter   time.Duration
 	approveReason   string
 	unlockReason    string
 	// isRemembered and isAuthenticating are guarded by Approver.mutex.
@@ -258,6 +262,12 @@ func (approver *Approver) buildCommandLineEvent(requestID string, request comman
 		TerminalName:      request.TerminalName,
 		IsTouchIDApproval: approver.IsTouchIDApproval(),
 		TimeoutAt:         approver.config.Now().Add(approver.config.Timeout).UTC().Format(time.RFC3339),
+		AllSecretName:     []string{},
+	}
+	if request.IsSecretRequest {
+		event.Action = describeSecretAction(len(request.AllSecretName), len(request.CommandLine) > 0)
+		event.CommandLine = formatCommandLine(request.CommandLine)
+		event.AllSecretName, event.MoreSecretCount = limitSecretName(request.AllSecretName)
 	}
 	// The bundled hisar lives inside Hisar.app, so the terminal app is found from its parent.
 	if approver.config.FindApp != nil && request.ParentPID > 1 {
@@ -304,13 +314,22 @@ func buildCommandLinePhoneDescription(event ApprovalEvent) approval.Description 
 	if event.AppName != event.ClientName {
 		appName = event.ClientName + " in " + event.AppName
 	}
-	return approval.Description{
+	description := approval.Description{
 		Kind:         approval.KindCommandLine,
 		AppName:      appName,
 		Purpose:      "use Hisar",
 		CommandLine:  event.ClientPath,
 		TerminalName: event.TerminalName,
 	}
+	if event.Action != "" {
+		description.Purpose = event.Action
+		description.CommandLine = event.CommandLine
+		description.Secrets = append([]string{}, event.AllSecretName...)
+		if event.MoreSecretCount > 0 {
+			description.Secrets = append(description.Secrets, fmt.Sprintf("and %d more", event.MoreSecretCount))
+		}
+	}
+	return description
 }
 
 func describeCommandLineClient(event ApprovalEvent) string {
@@ -327,14 +346,21 @@ func (approver *Approver) ApproveCommandLine(ctx context.Context, request comman
 	}
 	event := approver.buildCommandLineEvent(generateRequestID(), request)
 	client := describeCommandLineClient(event)
+	action := "use Hisar"
+	if event.Action != "" {
+		action = event.Action
+	}
 	pending := &pendingApproval{
 		event:           event,
 		responseChannel: make(chan approvalResponse, 1),
-		approveReason:   fmt.Sprintf("allow %s to use Hisar", client),
+		approveReason:   fmt.Sprintf("allow %s to %s", client, action),
 		unlockReason:    fmt.Sprintf("unlock Hisar for %s", client),
 		phoneRequest:    buildCommandLinePhoneDescription(event),
 	}
 	if !approver.waitForApproval(ctx, pending) {
+		if pending.timedOutAfter > 0 {
+			return commandline.TimeoutError{Timeout: pending.timedOutAfter}
+		}
 		return commandline.ErrDenied
 	}
 	return nil
@@ -425,6 +451,7 @@ func (approver *Approver) waitForApproval(ctx context.Context, pending *pendingA
 			}
 			approver.config.Emit(ApprovalFailedEventName, ApprovalFailedEvent{RequestID: pending.event.RequestID, Message: describeAuthorizeError(authorizeError)})
 		case <-timer.C:
+			pending.timedOutAfter = timeout
 			return false
 		case <-ctx.Done():
 			return false

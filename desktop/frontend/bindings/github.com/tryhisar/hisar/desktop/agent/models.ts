@@ -34,6 +34,12 @@ export interface ApprovalEvent {
     "isUnlockRequired": boolean;
     "isPasswordUnlock": boolean;
     "isPhoneApproval": boolean;
+
+    /**
+     * AllSecretName lists the first secrets of a secrets.resolve request; MoreSecretCount counts the rest.
+     */
+    "allSecretName": string[] | null;
+    "moreSecretCount": number;
 }
 
 export interface Status {

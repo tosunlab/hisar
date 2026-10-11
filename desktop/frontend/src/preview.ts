@@ -259,6 +259,8 @@ function createPreviewCommandLineApproval(): ApprovalEvent {
     isUnlockRequired: isLocked,
     isPasswordUnlock: previewParameter.get("cliPassword") === "1",
     isPhoneApproval: previewParameter.get("phone") === "1" && !isLocked,
+    allSecretName: [],
+    moreSecretCount: 0,
   };
 }
 
@@ -296,15 +298,29 @@ function createPreviewSSHApproval(): ApprovalEvent {
     isTouchIDApproval,
     isPhoneApproval: previewParameter.get("phone") === "1" && !isLocked,
     timeoutAt: new Date(Date.now() + 60_000).toISOString(),
+    allSecretName: [],
+    moreSecretCount: 0,
   };
 }
 
 // listAllPreviewApproval: ?window=ssh-approval&approval=1 (one request), =2 (two waiting), =signing (a commit signature), =cli (command-line tool),
+// =run (hisar run with secrets),
 // plus &approvalLocked=1 (Touch ID unlocks), &approvalPassword=1 (master password unlocks), &compact=1, &forwarded=1, &noTouchID=1,
 // &phone=1 (the account's iPhone can approve too).
 function listAllPreviewApproval(): ApprovalEvent[] {
   if (previewParameter.get("approval") === "cli") {
     return [createPreviewCommandLineApproval()];
+  }
+  if (previewParameter.get("approval") === "run") {
+    return [
+      {
+        ...createPreviewCommandLineApproval(),
+        action: "run a command with 6 secrets",
+        commandLine: "docker compose up --build",
+        allSecretName: ["Personal › GitHub › API token", "Work › AWS prod › access key ID", "Work › AWS prod › secret access key", "Work › Postgres staging › password"],
+        moreSecretCount: 2,
+      },
+    ];
   }
   const firstApproval = createPreviewSSHApproval();
   if (previewParameter.get("approval") === "signing") {
@@ -704,6 +720,13 @@ export const previewApi = {
     return resolveAfterDelay({ code, expiresAt: new Date((counter + 1) * period * 1000).toISOString(), period });
   },
   copyText: () => resolveAfterDelay(undefined),
+  copySecretReference: (vaultID: string, itemID: string, fieldName: string) => {
+    const encodeSegment = (segment: string) => segment.replace(/[^A-Za-z0-9\-._~\u0080-\uffff]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`);
+    const vaultName = allPreviewVault.find((vault) => vault.id === vaultID)?.name ?? vaultID;
+    const itemTitle = allPreviewItemByVaultID[vaultID]?.find((detail) => detail.id === itemID)?.title ?? itemID;
+    const field = fieldName === "one-time code" ? "otp" : fieldName;
+    return resolveAfterDelay(`hisar://${encodeSegment(vaultName)}/${encodeSegment(itemTitle)}/${encodeSegment(field)}`);
+  },
   unlockWithBiometric: () =>
     new Promise<Status>((resolve, reject) => {
       if (new URLSearchParams(window.location.search).get("touchIdWait") === "1") {

@@ -141,7 +141,7 @@ ct_part  = XChaCha20-Poly1305(key=K_vault, nonce=random24, aad, plaintext=JSON(p
 - **Saving:** a pasted setup key or link is normalized into the URI (`core/totp`): base32 secret, SHA-1/256/512, 6–8 digits, a period of 1–300 s. Anything else is refused.
 - **Codes:** `core/totp` generates them per RFC 6238 and is tested against its Appendix B vectors.
 - **Desktop:** `GetOneTimeCode` returns the code with its expiry, and the item shows it with a countdown and asks for the next one when it expires. `CopyField("one-time code")` copies it. Item lists only carry `hasOneTimePassword`, never the secret.
-- **CLI:** `hisar get <item> -f code`.
+- **CLI:** `hisar get <item> -f code`, or the secret reference `hisar://<vault>/<item>/otp` with `hisar read` and `hisar run` (§9.4.1).
 - **Browser extension:** `logins.code` returns only the code and its expiry, for a login that matches the page (§9.2). The extension fills two-factor fields and split code boxes from the inline menu, shows codes in the popup, and copies the code after filling a login that has one.
 - **iOS:** the item shows the code with a countdown ring and copies it like other fields; the editor takes a setup key or link. The AutoFill extension offers one-time codes on iOS 18 and copies the code when it fills a password (§9.3).
 - **Import:** one-time passwords from 1Password, Bitwarden and CSV exports become `details.oneTimePassword` (§9.7).
@@ -497,7 +497,7 @@ The desktop keeps paired browsers (`instanceID`, browser name, SHA-256 of the to
 
 ### 9.4 CLI
 
-`hisar` is the command-line client for the terminal and for scripts: vaults, items (`ls`, `get`, `add`, `edit`, `rm`), the generator, import (§9.7), sharing (`share <vault> <email> [-r role]`, `unshare`, `people`, `invitations [accept|decline|cancel <id>]`, §5.8), invites (`invite <email>`) and devices, and later `hisar run` to inject secrets into processes. It works in one of two modes:
+`hisar` is the command-line client for the terminal and for scripts: vaults, items (`ls`, `get`, `add`, `edit`, `rm`), the generator, import (§9.7), sharing (`share <vault> <email> [-r role]`, `unshare`, `people`, `invitations [accept|decline|cancel <id>]`, §5.8), invites (`invite <email>`), devices, and `read` and `run`, which hand secrets to scripts and commands through secret references (§9.4.1). It works in one of two modes:
 
 - **Through the desktop app**, like 1Password's CLI integration: `hisar` asks the running Hisar app for what each command needs over `~/.hisar/cli.sock`. It has no session, state file or keys of its own, and nothing is unlocked in the `hisar` process.
 - **Standalone**: its own sign-in, with the session in `state.json` (`HISAR_STATE`) and the Secret Key in the OS keychain (`HISAR_SECRET_KEY` overrides it); every command that decrypts asks for the master password. This is the mode on Linux and Windows, on servers, and whenever the app is not running.
@@ -534,19 +534,59 @@ The desktop keeps paired browsers (`instanceID`, browser name, SHA-256 of the to
 | `invitations.accept`, `invitations.decline`, `invitations.cancel` | `invitationID` | `{}` |
 | `devices.list` | — | `devices` |
 | `devices.revoke` | `deviceID` | `{}` |
+| `secrets.resolve` | `references` (at most 500 `hisar://` references), `commandLine` (the command `hisar run` starts, as its arguments; empty for `hisar read`) | `values`, in the order of `references`; fails as a whole with `not-found` or `invalid-request` and a message that names every reference that failed and why (§9.4.1) |
 
-The app answers with the bound `vault.Service` methods, so the CLI gets the same checks, offline behaviour and errors as the UI. It never sends the master password, the Secret Key, account or vault keys, SSH or passkey private keys, or one-time password secrets: items carry what `hisar get` prints, and `items.code` returns only the current code. `hisar` parses import files itself and sends the parsed items in batches of 10.
+The app answers with the bound `vault.Service` methods, so the CLI gets the same checks, offline behaviour and errors as the UI. It never sends the master password, the Secret Key, account or vault keys, SSH or passkey private keys, or one-time password secrets: items carry what `hisar get` prints, and `items.code` and `otp` references return only the current code. A `private key` reference is refused (§9.4.1); SSH keys are used through the SSH agent (§9.6). `hisar` parses import files itself and sends the parsed items in batches of 10.
 
 **Approval.**
 
 - Approvals are per terminal session. From the peer PID (`LOCAL_PEERPID`, `SO_PEERCRED`) the app reads the session ID (`getsid`), the controlling terminal device and the start time of the session leader, so a session ID that is reused after the terminal closed does not inherit an approval. The terminal app and its icon come from `desktop/appinfo`, starting from the parent of `hisar`, because the bundled `hisar` itself lives inside `Hisar.app`.
 - Every request except `hello` needs an approval for its session. The first one opens the approval dialog of the SSH agent (§9.6) in its full layout with "hisar in Terminal wants to use Hisar", Terminal's icon with the Hisar badge, and the program path and terminal device in the detail box; there is no "Don't ask again" checkbox and never the compact layout. On a Mac with Touch ID, Touch ID starts at once in the dialog; without it, Approve approves.
 - If Hisar is locked, the same window unlocks it: with Touch ID when Touch ID unlock is ready (§5.4; the one Touch ID check approves and unlocks), otherwise with the master password typed into the window. A wrong password keeps the request open with a message. Signed out, requests fail with `signed-out` and no window.
-- Deny, Escape, closing the window, or 60 s without an answer fail the request with `denied`, and `hisar` prints "Hisar denied the request (it was declined, or not answered within a minute)". Requests from one session that arrive while its approval is open wait for that one window.
+- Deny, Escape or closing the window fail the request with `denied`, and `hisar` prints "Hisar denied the request (it was declined)". No answer before the dialog's deadline, 60 s or 2 minutes when the iPhone can answer (§9.9), fails it the same way with "Hisar denied the request (it was not answered within a minute)" or "… within 2 minutes)". Requests from one session that arrive while its approval is open wait for that one window.
 - An approval lasts until 10 minutes after the session's last request, or until Hisar locks, signs out or quits.
 - Same-user code that runs inside an approved terminal session can use Hisar through `hisar` until the approval ends, as with 1Password; code outside that session needs its own approval.
+- When the request that opens the dialog is `secrets.resolve`, the dialog says what it is for: "hisar in Terminal wants to run a command with 3 secrets" (`hisar run`) or "wants to read 1 secret" (`hisar read`). The detail box shows the command `hisar run` starts (shell-quoted and shortened like the SSH dialog's command lines, §9.6), the secrets as "vault › item › field" (names when Hisar is unlocked, the reference as written while it is locked; the first 4, then "and N more"), and the terminal device. The approval still covers the whole terminal session: references that are read later in an approved session, by `hisar run`, `hisar read` or any other `hisar` command, do not ask again.
 
 **Standalone releases.** A `v*` tag (the tag that also publishes the server image) runs `cli-release-build` on a Linux runner. It builds `hisar` for linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64 and windows/arm64 (`CGO_ENABLED=0`, version from the tag), packs `hisar-<version>-<os>-<arch>.tar.gz` (`.zip` with `hisar.exe` for Windows) and `SHA256SUMS`, and uploads them to the generic package `hisar-cli/<version>` with the job token (`scripts/package-cli-release.sh`). `cli-release` then creates the GitLab release for the tag, or updates it when it already exists, with a link to every file.
+
+#### 9.4.1 Secret references, `hisar read` and `hisar run`
+
+Developers, scripts and coding agents name secrets instead of copying them: `.env` files, CI-like scripts and agent instructions hold references, and `hisar run` hands the values to one command without writing them to disk or showing them. `core/secretreference` parses, encodes and resolves references for the app and for standalone `hisar`.
+
+**Syntax.** `hisar://<vault>/<item>/<field>`, for example `hisar://Personal/GitHub/password` or `hisar://Work/AWS%20prod/secret%20access%20key`.
+
+- Exactly three segments, none empty. The scheme is case-insensitive; nothing follows the field (`?` and `#` are part of a name unless encoded).
+- Segments are percent-decoded (`%2F` for `/`, `%25` for `%`); a malformed escape or a result that is not UTF-8 is an error. Spaces may also be written as they are, so `hisar://Work/AWS prod/secret key` works in quotes.
+- Encoding (the desktop app's "Copy secret reference") keeps ASCII letters, digits, `-`, `.`, `_`, `~` and every non-ASCII character as they are, and percent-encodes every other byte, so a reference is one shell word and one unquoted dotenv value.
+
+**Resolution.**
+
+- Vault: the vault whose ID equals the segment, else the vault whose name equals it ignoring case (Unicode case folding). Item: the same with the item's ID or title, within that vault. No substring matches, unlike `hisar get`.
+- Two vaults with that name, or two items with that title in the vault, are an error that says so and lists the IDs to use instead.
+- Field, ignoring case: `password`, `username`, `notes`, `url` (the first website), `otp` (also `one-time code` and `code`: the current one-time code, generated when the request is answered), `public key`, `fingerprint`; anything else is the custom field with that label. A built-in label always means the built-in field; two custom fields with the same label are an error.
+- `private key` is refused for every item: SSH private keys never leave Hisar, so the reference fails with "SSH private keys never leave Hisar; use the Hisar SSH agent instead". The label stays reserved, so a custom field labelled `private key` cannot be read through a reference either.
+- A missing vault, item or field, and an empty value, are errors. Every error names the reference and says why (`hisar://Personal/GitHub/passwrd: item "GitHub" has no field "passwrd"`); a value is never part of a message. All references of a request are checked, and the error lists every one that failed.
+
+**`hisar read <reference> [--no-newline]`** prints one value to stdout, for scripts. It adds a newline only when stdout is a terminal, and never with `--no-newline`. Nothing is masked: the caller asked for the value.
+
+**`hisar run [--env-file path]... [--no-masking] -- <command> [arguments...]`**
+
+- *Collecting.* Every variable of `hisar`'s environment whose whole value is a reference (it starts with `hisar://`), and every variable of the `--env-file` files, given in order. A later file overrides an earlier one; the real environment overrides the files, except a real variable whose value is itself a reference, which a file overrides. Values that are not references pass through as they are.
+- *Env files* use dotenv syntax: `KEY=value` lines, `#` comments on their own line or after whitespace in an unquoted value, blank lines, an optional `export ` prefix, keys `[A-Za-z_][A-Za-z0-9_]*`. Values are unquoted (trimmed), single-quoted (literal) or double-quoted (`\n`, `\r`, `\t`, `\"`, `\\` and `\$` escapes); quoted values may span lines. There is no variable expansion. A syntax error names the file and line, never the value.
+- *Resolving.* All references go to the app in one `secrets.resolve` request, which asks for at most one approval, with the command line, and resolve all or nothing. With no references, `hisar run` prints `hisar: no secret references found` on stderr, contacts neither the app nor the server, and runs the command.
+- *Starting.* The command gets `hisar`'s environment with the env files applied and every reference replaced by its value. It is looked up on `hisar`'s `PATH` before anything is resolved: a missing command exits 127 and one that is not executable 126, without asking for an approval. stdin is passed through as it is, so the command can read the terminal or a pipe.
+- *Masking* (the default). stdout and stderr go through pipes, and every occurrence of a resolved value is replaced with `<concealed by hisar>`. Matching works on bytes, so binary output is fine. Overlapping and adjacent occurrences of different values are replaced as one run when they overlap. A value that spans two writes is still found: `hisar` writes everything at once except a tail that could still be the start of a value, and writes that tail as it is when nothing completes it within 100 ms or the stream ends. Values shorter than 4 bytes are not masked, because they would garble ordinary output; `hisar run` names those variables on stderr. Because the command writes into a pipe, it sees no terminal: colours, progress bars and interactive prompts may change, and `isatty` checks fail.
+- *`--no-masking`* gives the command `hisar`'s own stdout and stderr, so it keeps the terminal and its behaviour, and its output is not changed.
+- *Signals.* SIGINT, SIGTERM, SIGHUP and SIGQUIT are forwarded to the command. The command shares `hisar`'s process group, so when `hisar` is the terminal's foreground job, the terminal already sends SIGINT and SIGQUIT (Ctrl-C, Ctrl-\) to both, and `hisar` does not forward those a second time; tools such as `docker compose` treat a second Ctrl-C as "stop now". SIGTERM and SIGHUP are always forwarded.
+- *Exit code.* The command's exit code, or 128 + the signal number when a signal ended it. Errors of `hisar` itself (a bad reference, a denied approval, a syntax error in an env file) exit 1 and run nothing.
+- *After the command exits*, `hisar` writes what is left of its output and exits. A background process that the command started and that keeps the pipes open gets 1 s more; output after that is lost.
+
+**Limits.** The command gets the real values and can do anything with them: write them to a file, send them over the network, or print them encoded, reversed or in pieces, none of which masking catches. Output written straight to `/dev/tty` is not masked. Masking is a guard against accidental display in terminals, logs and coding agents' transcripts, not a sandbox. Values sit in the command's environment, which other processes of the same user may be able to read (`/proc/<pid>/environ` on Linux). An approved terminal session can read any secret through `hisar` until the approval ends (§9.4).
+
+**Standalone**, `hisar read` and `hisar run` ask for the master password like other commands and resolve the references in the `hisar` process with the same rules; the password is read from stdin when it is not a terminal, before the command starts.
+
+**Desktop.** Every field of an item that a reference can name (username, password, one-time code, custom fields; for SSH keys the fingerprint and public key) has a secondary "Copy secret reference" button (a terminal icon, tooltip "Copy secret reference — use it in a terminal with hisar run or hisar read") next to its copy button. It copies `hisar://<vault>/<item>/<field>`, encoded as above, with the vault's name and the item's title, or their IDs when the name is shared by another vault, or the title by another item in the vault. A custom field whose label is a built-in label or is used twice in the item cannot be referenced, and the button says why. A reference is not a secret, so the clipboard is not cleared after 90 s. The SSH key view shows a "Private key" row that says it never leaves Hisar, without the key and without a reference button.
 
 ### 9.5 Go memory handling
 
@@ -768,12 +808,12 @@ The Mac's approval dialog (SSH agent, §9.6, and command-line tool, §9.4) can a
 ```
 request       = JSON {requestId, requesterDeviceId, requesterDeviceName, createdAt, expiresAt,
                       kind ("ssh" | "cli"), appName, purpose, host, commandLine, repositoryPath,
-                      keyName, isForwarded, forwardedFromHost, terminalName}
+                      keyName, isForwarded, forwardedFromHost, terminalName, secrets}
 sealedRequest = 0x01 || HPKE.Seal(accountKEMPub, info = "hisar/v1/approval-request" || accountID || requestId, request)
 ```
 
 - `requestId` is 128 random bits as 32 lower-case hex digits. `expiresAt` is the dialog's own deadline, so the request stays answerable exactly as long as the Mac waits; `expiresAt - createdAt` is at most 3 minutes. Times are RFC 3339 UTC with milliseconds.
-- `purpose` is the dialog's sentence ("push to git.tryhisar.com", "sign a commit", "use Hisar"); the other fields are the dialog's detail lines, empty when the dialog has none.
+- `purpose` is the dialog's sentence ("push to git.tryhisar.com", "sign a commit", "use Hisar", "run a command with 3 secrets"); the other fields are the dialog's detail lines, empty when the dialog has none. For `secrets.resolve` (§9.4.1), `commandLine` is the command `hisar run` starts and `secrets` lists the secrets as the dialog does, at most 4 and then "and N more"; it is left out of other requests.
 - Sealing to the account's own KEM public key (§4.3; the same HPKE as vault keys, §4.4) lets any unlocked device of the account open it, and the server cannot. The info binds the account and the request ID, so the server cannot move a request to another ID or account.
 
 **Answer** (signed and sealed by the phone)
@@ -825,7 +865,7 @@ The concatenations are length-prefixed (§4.5). Before it shows a request, the p
 - The phone does not need to be open when the Mac asks: the Mac posts the request whenever the account has an iOS device, and the request waits on the server until the dialog's deadline.
 - While unlocked and in the foreground, the app lists the open requests right at unlock (before the vault sync), on returning to the foreground, on `approval-requested`, and every 15 s as a fallback for a missed event. They appear at the top of the vault list, one row each: "<Mac name> is asking to use <key>" (or "Hisar from the command line"), the request's sentence, a live "Expires in …", and **Review**.
 - A request that arrives while the app is in the foreground also opens the sheet at once; requests found at unlock or on returning to the foreground are only listed. Closing the sheet keeps the request in the list.
-- The sheet shows an icon for the kind, "Approve on <Mac name>?", the description rows (app, action, command, repository, server, key, forwarded from, terminal), the note "End-to-end encrypted. Only your devices can read this request. Approving lets this one request continue; it does not unlock Hisar on your Mac.", **Approve with Face ID** and **Deny**.
+- The sheet shows an icon for the kind, "Approve on <Mac name>?", the description rows (app, action, command, repository, server, key, secrets, forwarded from, terminal), the note "End-to-end encrypted. Only your devices can read this request. Approving lets this one request continue; it does not unlock Hisar on your Mac.", **Approve with Face ID** and **Deny**.
 - Approve needs Face ID (or Touch ID) first; when biometrics are unavailable or the user picks the fallback, the sheet asks for the master password, which is checked like an unlock. Deny needs neither.
 - A request leaves the list, and its sheet closes, on `approval-answered` or `approval-resolved`, at `expiresAt`, and when the app locks. Expired, answered or withdrawn requests are never shown.
 - UI tests drive the sheet and the list through debug-only previews (`-HisarApprovalPreview`, `-HisarApprovalBannerPreview`), like the AutoFill preview (§9.3). The cross-device flow is tested end to end in Go: a desktop backend and a HisarKit backend signed in to the same account, where the phone approves an SSH signature, a denied one fails, a forged answer is refused, and a phone app that starts only after the Mac asked still finds and approves the request.
@@ -856,6 +896,7 @@ go.work     Ties the Go modules together for local development
 | 4 | Mobile apps with system autofill | Logins on phones |
 | 5 | TOTP, passkeys, attachments, Watchtower (reused/weak/breached via HIBP k-anonymity), import from 1Password/Bitwarden/CSV, SSE push sync | — |
 | 6 | Person-to-person sharing by email (§5.8), emailed invites (§5.1, §8.5), Settings → People | No list of all accounts anywhere |
+| 7 | Secret references, `hisar read` and `hisar run` (§9.4.1), "Copy secret reference" in the desktop app | Developers and coding agents run commands with secrets they never see |
 
 ## 12. Decisions
 

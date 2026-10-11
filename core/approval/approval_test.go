@@ -3,6 +3,8 @@ package approval
 import (
 	"encoding/json"
 	"errors"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -104,6 +106,23 @@ func (flow *testFlow) forgeAnswer(t *testing.T, signingKeyset *crypt.Keyset, cha
 	return sealedAnswer
 }
 
+func TestSecretsSurviveSealing(t *testing.T) {
+	keyset := createTestKeyset(t)
+	description := Description{Kind: KindCommandLine, AppName: "hisar in Terminal", Purpose: "run a command with 5 secrets", CommandLine: "npm test", Secrets: []string{"Personal › GitHub › password", "and 4 more"}}
+	request := CreateRequest(macDeviceID, "Alper's MacBook Pro", description, testNow, MaximumLifetime)
+	sealedRequest, err := SealRequest(keyset, testAccountID, request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, err := OpenRequest(keyset, testAccountID, request.RequestID, sealedRequest, phoneDeviceID, testNow)
+	if err != nil || !reflect.DeepEqual(opened.Description, description) {
+		t.Errorf("opened %+v, %v", opened.Description, err)
+	}
+	if encoded, _ := json.Marshal(createTestDescription()); strings.Contains(string(encoded), "secrets") {
+		t.Errorf("an SSH request carries secrets: %s", encoded)
+	}
+}
+
 func TestApproveAndDeny(t *testing.T) {
 	for _, decision := range []string{DecisionApprove, DecisionDeny} {
 		flow := startTestFlow(t)
@@ -111,7 +130,7 @@ func TestApproveAndDeny(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if opened.Description != createTestDescription() || opened.RequesterDeviceName != "Alper's MacBook Pro" || !opened.ExpiresAt.Equal(testNow.Add(MaximumLifetime)) {
+		if !reflect.DeepEqual(opened.Description, createTestDescription()) || opened.RequesterDeviceName != "Alper's MacBook Pro" || !opened.ExpiresAt.Equal(testNow.Add(MaximumLifetime)) {
 			t.Errorf("opened request = %+v", opened)
 		}
 		got, err := flow.accept(flow.answerFromPhone(t, decision, testNow.Add(2*time.Second)), testNow.Add(3*time.Second))
