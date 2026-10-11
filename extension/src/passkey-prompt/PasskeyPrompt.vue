@@ -174,7 +174,7 @@ onBeforeUnmount(() => {
       <svg class="logo" width="22" height="22" viewBox="0 0 32 32" aria-hidden="true">
         <rect width="32" height="32" rx="8" fill="#16181b" />
         <rect x="1" y="1" width="30" height="30" rx="7" fill="none" stroke="#30343a" stroke-width="2" />
-        <path d="M8 26V12h3V9h2.5v3h5V9H21v3h3v14h-6v-5a2 2 0 0 0-4 0v5z" fill="#eceef1" />
+        <path d="M8 24.5V10.5h3V7.5h2.5v3h5V7.5H21v3h3v14h-6v-5a2 2 0 0 0-4 0v5z" fill="#eceef1" />
       </svg>
       <div class="heading">
         <p class="title" data-testid="passkey-heading">{{ heading }}</p>
