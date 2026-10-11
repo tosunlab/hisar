@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -33,6 +34,11 @@ func (server *fakeAPIServer) addAllApprovalRoute(mux *http.ServeMux) {
 		}
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
+		if server.failingApprovalPostCount > 0 {
+			server.failingApprovalPostCount--
+			writeJSON(writer, http.StatusServiceUnavailable, proto.Error{Error: "unavailable"})
+			return
+		}
 		if server.allApprovalByRequestID == nil {
 			server.allApprovalByRequestID = map[string]*fakeApproval{}
 		}
@@ -444,5 +450,106 @@ func TestPhoneApprovalLastsAsLongAsTheDialog(t *testing.T) {
 		}
 		finish()
 		waitForResolved(t, test.apiServer, stored.request.RequestID)
+	}
+}
+
+func (test *phoneApprovalTest) forgetDeviceList() {
+	test.service.mutex.Lock()
+	defer test.service.mutex.Unlock()
+	relay := test.service.phoneApprovals
+	relay.mutex.Lock()
+	defer relay.mutex.Unlock()
+	relay.ownDeviceID, relay.hasIOSDevice, relay.deviceRefreshedAt = "", false, time.Time{}
+}
+
+func TestPhoneApprovalChecksAStaleDeviceListBeforeAnswering(t *testing.T) {
+	test := createPhoneApprovalTest(t)
+	test.forgetDeviceList()
+	if !test.phoneApprover.IsPhoneApprovalAvailable() {
+		t.Fatal("the first request after the device list was lost skipped the phone")
+	}
+	stored, finish := test.start(t)
+	defer finish()
+	test.apiServer.setAnswer(stored.request.RequestID, test.answerAsPhone(t, stored, approval.DecisionApprove, testPhoneDeviceID))
+	sendApprovalEvent(t, test.apiServer, proto.EventApprovalAnswered, stored.request.RequestID)
+	test.expectDecision(t, true)
+}
+
+func TestPhoneApprovalKeepsTheLastDeviceListWhenTheRefreshFails(t *testing.T) {
+	test := createPhoneApprovalTest(t)
+	test.service.mutex.Lock()
+	test.service.phoneApprovals.deviceRefreshedAt = time.Time{}
+	test.service.mutex.Unlock()
+	test.apiServer.setUnreachable(true)
+	isAvailable := test.phoneApprover.IsPhoneApprovalAvailable()
+	test.apiServer.setUnreachable(false)
+	if !isAvailable {
+		t.Error("a failed refresh hid the phone")
+	}
+}
+
+func TestPhoneApprovalDoesNotDependOnTheLastSyncBeingOnline(t *testing.T) {
+	test := createPhoneApprovalTest(t)
+	test.service.mutex.Lock()
+	test.service.config.CachePath = filepath.Join(t.TempDir(), "desktop-cache.db")
+	test.service.unlockedSession.Cache = test.service.getCache()
+	test.service.mutex.Unlock()
+	if _, err := test.service.ListAllVault(); err != nil {
+		t.Fatal(err)
+	}
+	test.apiServer.setUnreachable(true)
+	test.service.ListAllVault()
+	test.apiServer.setUnreachable(false)
+	if !test.service.GetStatus().IsOffline {
+		t.Fatal("the test did not leave the session offline")
+	}
+	if !test.phoneApprover.IsPhoneApprovalAvailable() {
+		t.Error("an offline flag from an earlier sync hid the phone")
+	}
+}
+
+func TestPhoneApprovalPostIsRetried(t *testing.T) {
+	test := createPhoneApprovalTest(t)
+	test.apiServer.mutex.Lock()
+	test.apiServer.failingApprovalPostCount = 1
+	test.apiServer.mutex.Unlock()
+	stored, finish := test.start(t)
+	defer finish()
+	test.apiServer.setAnswer(stored.request.RequestID, test.answerAsPhone(t, stored, approval.DecisionDeny, testPhoneDeviceID))
+	sendApprovalEvent(t, test.apiServer, proto.EventApprovalAnswered, stored.request.RequestID)
+	test.expectDecision(t, false)
+}
+
+func TestPhoneApprovalOutlivesAHangingDeviceRefresh(t *testing.T) {
+	test := createPhoneApprovalTest(t)
+	stored, finish := test.start(t)
+	test.apiServer.setAnswer(stored.request.RequestID, test.answerAsPhone(t, stored, approval.DecisionApprove, testPhoneDeviceID))
+	sendApprovalEvent(t, test.apiServer, proto.EventApprovalAnswered, stored.request.RequestID)
+	test.expectDecision(t, true)
+	finish()
+
+	hangingChannel := make(chan struct{})
+	test.apiServer.mutex.Lock()
+	test.apiServer.deviceListHangingChannel = hangingChannel
+	test.apiServer.mutex.Unlock()
+	defer close(hangingChannel)
+	test.service.mutex.Lock()
+	test.service.config.Now = func() time.Time { return time.Now().Add(time.Hour) }
+	test.service.mutex.Unlock()
+	for range 3 {
+		startedAt := time.Now()
+		if !test.phoneApprover.IsPhoneApprovalAvailable() {
+			t.Fatal("a hanging device refresh hid the phone")
+		}
+		if elapsed := time.Since(startedAt); elapsed > time.Second {
+			t.Errorf("the availability check waited %v for the hanging refresh", elapsed)
+		}
+	}
+	description := approval.Description{Kind: approval.KindSSH, AppName: "Terminal", Purpose: "sign a commit"}
+	later := test.phoneApprover.StartPhoneApproval(description, time.Now().Add(time.Hour+time.Minute), func(isApproved bool) { test.decisionChannel <- isApproved })
+	defer later()
+	laterStored := test.apiServer.waitForApproval(t)
+	if laterStored.request.RequestID == stored.request.RequestID {
+		t.Fatal("the later request never reached the server")
 	}
 }

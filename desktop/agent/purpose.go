@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"unicode/utf8"
 
 	"github.com/tryhisar/hisar/core/sshagent"
@@ -56,7 +57,8 @@ type RequestDescription struct {
 type FileReader func(path string, maximumSize int64) ([]byte, error)
 
 func ReadSmallRegularFile(path string, maximumSize int64) ([]byte, error) {
-	file, err := os.Open(path)
+	// Non-blocking, so a named pipe in the arguments cannot hold up the request.
+	file, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
 		return nil, err
 	}

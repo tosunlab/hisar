@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"net"
 	"os"
@@ -65,7 +66,22 @@ func (s *Server) serveConnection(ctx context.Context, connection net.Conn) {
 	if peer.Name == "" {
 		peer.Name = UnknownPeerName
 	}
-	agent.ServeAgent(s.CreateAgent(connectionContext, peer), connection)
+	reader := WatchConnectionClose(connection, cancel)
+	agent.ServeAgent(s.CreateAgent(connectionContext, peer), struct {
+		io.Reader
+		io.Writer
+	}{reader, connection})
+}
+
+// WatchConnectionClose reads the connection ahead of its user, so a peer that hangs up cancels the request it is waiting for.
+func WatchConnectionClose(connection net.Conn, cancel context.CancelFunc) io.Reader {
+	pipeReader, pipeWriter := io.Pipe()
+	go func() {
+		_, err := io.Copy(pipeWriter, connection)
+		cancel()
+		pipeWriter.CloseWithError(err)
+	}()
+	return pipeReader
 }
 
 func ListenUnixSocket(path string) (net.Listener, error) {

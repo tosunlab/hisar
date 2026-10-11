@@ -196,6 +196,7 @@ func TestApproveShowsAppAndAuthorizesWithTouchID(t *testing.T) {
 	if allReason := biometric.listAllReason(); len(allReason) != 1 || allReason[0] != `allow "Terminal" to sign in to github.com` {
 		t.Errorf("Touch ID reasons = %q", allReason)
 	}
+	approver.presenter.waitUntilIdle()
 	if showCount, hideCount := emitter.getWindowCount(); showCount != 1 || hideCount != 1 {
 		t.Errorf("window shown %d, hidden %d times", showCount, hideCount)
 	}
@@ -281,11 +282,13 @@ func TestApproveTimeoutCancelAndDenyAll(t *testing.T) {
 	waitForApprovalEvent(t, emitter)
 	secondChannel := startApproval(approver, context.Background(), createTestRequest())
 	waitForApprovalEvent(t, emitter)
+	approver.presenter.waitUntilIdle()
 	_, hideCountBefore := emitter.getWindowCount()
 	approver.DenyAll()
 	if waitForResult(t, firstChannel).result.IsAllowed || waitForResult(t, secondChannel).result.IsAllowed {
 		t.Error("DenyAll allowed a request")
 	}
+	approver.presenter.waitUntilIdle()
 	if _, hideCountAfter := emitter.getWindowCount(); hideCountAfter != hideCountBefore+1 {
 		t.Errorf("window hidden %d times for two requests, want once", hideCountAfter-hideCountBefore)
 	}
@@ -350,6 +353,7 @@ func TestDenyCancelsTouchIDInProgress(t *testing.T) {
 	if cancelCount != 1 {
 		t.Errorf("Touch ID cancelled %d times", cancelCount)
 	}
+	approver.presenter.waitUntilIdle()
 	for _, eventName := range emitter.listAllEventName() {
 		if eventName == ApprovalFailedEventName {
 			t.Error("a denied request reported a failed Touch ID")

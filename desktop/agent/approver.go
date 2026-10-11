@@ -25,6 +25,8 @@ const (
 	ApprovalFailedEventName     = "ssh-approval-failed"
 	defaultApprovalTimeout      = 60 * time.Second
 	defaultPhoneApprovalTimeout = 2 * time.Minute
+	touchIDCancelAttemptCount   = 20
+	touchIDCancelInterval       = 250 * time.Millisecond
 	ApprovalKindSSHKey          = "ssh-key"
 	ApprovalKindCommandLine     = "command-line"
 	commandLineClientName       = "hisar"
@@ -131,6 +133,7 @@ type approvalResponse struct {
 }
 
 type pendingApproval struct {
+	receivedAt      time.Time
 	event           ApprovalEvent
 	responseChannel chan approvalResponse
 	phoneChannel    chan bool
@@ -138,9 +141,11 @@ type pendingApproval struct {
 	timedOutAfter   time.Duration
 	approveReason   string
 	unlockReason    string
-	// isRemembered and isAuthenticating are guarded by Approver.mutex.
-	isRemembered     bool
-	isAuthenticating bool
+	// isRemembered, isAuthenticating, isTouchIDCancelled and isFinished are guarded by Approver.mutex.
+	isRemembered       bool
+	isAuthenticating   bool
+	isTouchIDCancelled bool
+	isFinished         bool
 }
 
 // Approver shows the approval window for each request; approving then asks for Touch ID when the Mac has it.
@@ -149,6 +154,49 @@ type Approver struct {
 	biometricMutex sync.Mutex
 	mutex          sync.Mutex
 	allPending     []*pendingApproval
+	presenter      presenter
+}
+
+// presenter runs window and event calls in order on its own goroutine, so a window that cannot be shown never holds up a request.
+type presenter struct {
+	mutex     sync.Mutex
+	allAction []func()
+	isRunning bool
+	idle      sync.Cond
+}
+
+func (presenter *presenter) present(action func()) {
+	presenter.mutex.Lock()
+	defer presenter.mutex.Unlock()
+	presenter.allAction = append(presenter.allAction, action)
+	if !presenter.isRunning {
+		presenter.isRunning = true
+		go presenter.runAllAction()
+	}
+}
+
+func (presenter *presenter) runAllAction() {
+	for {
+		presenter.mutex.Lock()
+		if len(presenter.allAction) == 0 {
+			presenter.isRunning = false
+			presenter.idle.Broadcast()
+			presenter.mutex.Unlock()
+			return
+		}
+		action := presenter.allAction[0]
+		presenter.allAction = presenter.allAction[1:]
+		presenter.mutex.Unlock()
+		action()
+	}
+}
+
+func (presenter *presenter) waitUntilIdle() {
+	presenter.mutex.Lock()
+	defer presenter.mutex.Unlock()
+	for presenter.isRunning {
+		presenter.idle.Wait()
+	}
 }
 
 func CreateApprover(config ApproverConfig) *Approver {
@@ -164,7 +212,13 @@ func CreateApprover(config ApproverConfig) *Approver {
 	if config.ReadFile == nil {
 		config.ReadFile = ReadSmallRegularFile
 	}
-	return &Approver{config: config}
+	approver := &Approver{config: config}
+	approver.presenter.idle.L = &approver.presenter.mutex
+	return approver
+}
+
+func (approver *Approver) emit(eventName string, data any) {
+	approver.presenter.present(func() { approver.config.Emit(eventName, data) })
 }
 
 func (approver *Approver) IsTouchIDApproval() bool {
@@ -235,10 +289,12 @@ func (approver *Approver) Approve(ctx context.Context, request sshagent.Approval
 	if approver.config.Emit == nil {
 		return sshagent.ApprovalResult{}, nil
 	}
+	receivedAt := approver.config.Now()
 	event := approver.buildApprovalEvent(generateRequestID(), request)
 	description := RequestDescription{Purpose: event.Purpose, Action: event.Action, Target: event.Target, HostAndPort: event.HostAndPort, ForwardedFromHost: event.ForwardedFromHost}
 	approveReason := formatApprovalReason(event.AppName, description)
 	pending := &pendingApproval{
+		receivedAt:      receivedAt,
 		event:           event,
 		responseChannel: make(chan approvalResponse, 1),
 		approveReason:   approveReason,
@@ -344,6 +400,7 @@ func (approver *Approver) ApproveCommandLine(ctx context.Context, request comman
 	if approver.config.Emit == nil {
 		return commandline.ErrDenied
 	}
+	receivedAt := approver.config.Now()
 	event := approver.buildCommandLineEvent(generateRequestID(), request)
 	client := describeCommandLineClient(event)
 	action := "use Hisar"
@@ -353,6 +410,7 @@ func (approver *Approver) ApproveCommandLine(ctx context.Context, request comman
 	pending := &pendingApproval{
 		event:           event,
 		responseChannel: make(chan approvalResponse, 1),
+		receivedAt:      receivedAt,
 		approveReason:   fmt.Sprintf("allow %s to %s", client, action),
 		unlockReason:    fmt.Sprintf("unlock Hisar for %s", client),
 		phoneRequest:    buildCommandLinePhoneDescription(event),
@@ -396,7 +454,8 @@ func (approver *Approver) authorize(pending *pendingApproval, response approvalR
 	return errTouchIDFailed
 }
 
-// waitForApproval shows the request until authorize succeeds, Deny, the timeout or ctx ends it; a failed authorize keeps it open.
+// waitForApproval shows the request until authorize succeeds, Deny, the phone, the deadline or ctx ends it; a failed authorize keeps it open.
+// The deadline starts when the request arrives and holds while Touch ID waits or the window cannot be shown.
 func (approver *Approver) waitForApproval(ctx context.Context, pending *pendingApproval) bool {
 	phoneApprover := approver.config.PhoneApprover
 	pending.phoneChannel = make(chan bool, 1)
@@ -405,33 +464,42 @@ func (approver *Approver) waitForApproval(ctx context.Context, pending *pendingA
 	if pending.event.IsPhoneApproval {
 		timeout = max(timeout, approver.config.PhoneApprovalTimeout)
 	}
-	timeoutAt := approver.config.Now().Add(timeout)
+	timeoutAt := pending.receivedAt.Add(timeout)
 	pending.event.TimeoutAt = timeoutAt.UTC().Format(time.RFC3339)
+	timer := time.NewTimer(max(timeoutAt.Sub(approver.config.Now()), 0))
+	defer timer.Stop()
 	approver.mutex.Lock()
 	approver.allPending = append(approver.allPending, pending)
 	isFirstCompact := approver.allPending[0].event.IsCompact
 	approver.mutex.Unlock()
-	defer approver.finishApproval(pending)
-
-	approver.config.Emit(ApprovalEventName, pending.event)
-	if approver.config.ShowApprovalWindow != nil {
-		approver.config.ShowApprovalWindow(isFirstCompact)
-	}
 	if pending.event.IsPhoneApproval {
 		finishPhoneApproval := phoneApprover.StartPhoneApproval(pending.phoneRequest, timeoutAt, func(isApproved bool) { approver.respondFromPhone(pending, isApproved) })
 		defer finishPhoneApproval()
 	}
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
+	defer approver.finishApproval(pending)
+
+	approver.emit(ApprovalEventName, pending.event)
+	if approver.config.ShowApprovalWindow != nil {
+		approver.presenter.present(func() { approver.config.ShowApprovalWindow(isFirstCompact) })
+	}
+	authorizeResultChannel := make(chan error, 1)
+	isAuthorizing := false
 	for {
+		responseChannel := pending.responseChannel
+		if isAuthorizing {
+			responseChannel = nil
+		}
 		select {
 		case isApproved := <-pending.phoneChannel:
 			return isApproved
-		case response := <-pending.responseChannel:
+		case response := <-responseChannel:
 			if !response.isAuthorized {
 				return false
 			}
-			authorizeError := approver.authorize(pending, response)
+			isAuthorizing = true
+			go func() { authorizeResultChannel <- approver.authorize(pending, response) }()
+		case authorizeError := <-authorizeResultChannel:
+			isAuthorizing = false
 			if authorizeError == nil {
 				return true
 			}
@@ -449,7 +517,7 @@ func (approver *Approver) waitForApproval(ctx context.Context, pending *pendingA
 				pending.responseChannel <- deniedResponse
 			default:
 			}
-			approver.config.Emit(ApprovalFailedEventName, ApprovalFailedEvent{RequestID: pending.event.RequestID, Message: describeAuthorizeError(authorizeError)})
+			approver.emit(ApprovalFailedEventName, ApprovalFailedEvent{RequestID: pending.event.RequestID, Message: describeAuthorizeError(authorizeError)})
 		case <-timer.C:
 			pending.timedOutAfter = timeout
 			return false
@@ -472,7 +540,12 @@ func (approver *Approver) authenticatePending(pending *pendingApproval, reason s
 	approver.biometricMutex.Lock()
 	defer approver.biometricMutex.Unlock()
 	approver.mutex.Lock()
+	if pending.isFinished {
+		approver.mutex.Unlock()
+		return false
+	}
 	pending.isAuthenticating = true
+	pending.isTouchIDCancelled = false
 	approver.mutex.Unlock()
 	defer func() {
 		approver.mutex.Lock()
@@ -510,10 +583,41 @@ func (approver *Approver) finishApproval(pending *pendingApproval) {
 	approver.mutex.Lock()
 	approver.allPending = slices.DeleteFunc(approver.allPending, func(candidate *pendingApproval) bool { return candidate == pending })
 	isLastPending := len(approver.allPending) == 0
+	pending.isFinished = true
+	isTouchIDWaiting := pending.isAuthenticating && approver.config.CancelBiometric != nil
+	isCancellingFirst := approver.markTouchIDCancelled(pending)
 	approver.mutex.Unlock()
-	approver.config.Emit(ApprovalClosedEventName, pending.event.RequestID)
+	if isTouchIDWaiting {
+		go approver.cancelTouchIDUntilEnded(pending, isCancellingFirst)
+	}
+	approver.emit(ApprovalClosedEventName, pending.event.RequestID)
 	if isLastPending && approver.config.HideApprovalWindow != nil {
-		approver.config.HideApprovalWindow()
+		approver.presenter.present(approver.config.HideApprovalWindow)
+	}
+}
+
+// markTouchIDCancelled reports whether the request's Touch ID check still needs cancelling; the caller holds approver.mutex.
+func (approver *Approver) markTouchIDCancelled(pending *pendingApproval) bool {
+	if !pending.isAuthenticating || pending.isTouchIDCancelled || approver.config.CancelBiometric == nil {
+		return false
+	}
+	pending.isTouchIDCancelled = true
+	return true
+}
+
+// cancelTouchIDUntilEnded repeats the cancel, because one sent just before macOS starts the check is lost.
+func (approver *Approver) cancelTouchIDUntilEnded(pending *pendingApproval, isCancellingFirst bool) {
+	for attempt := range touchIDCancelAttemptCount {
+		if attempt > 0 || isCancellingFirst {
+			approver.config.CancelBiometric()
+		}
+		time.Sleep(touchIDCancelInterval)
+		approver.mutex.Lock()
+		isAuthenticating := pending.isAuthenticating
+		approver.mutex.Unlock()
+		if !isAuthenticating {
+			return
+		}
 	}
 }
 
@@ -540,9 +644,9 @@ func (approver *Approver) Respond(requestID string, isAuthorized, isRemembered b
 		pending.isRemembered = isRemembered
 	}
 	isSent := approver.sendResponse(pending, approvalResponse{isAuthorized: isAuthorized})
-	isCancellingTouchID := !isAuthorized && pending.isAuthenticating
+	isCancellingTouchID := !isAuthorized && approver.markTouchIDCancelled(pending)
 	approver.mutex.Unlock()
-	if isCancellingTouchID && approver.config.CancelBiometric != nil {
+	if isCancellingTouchID {
 		approver.config.CancelBiometric()
 	}
 	return isSent
@@ -583,9 +687,9 @@ func (approver *Approver) respondFromPhone(pending *pendingApproval, isApproved 
 		default:
 		}
 	}
-	isCancellingTouchID := isSent && pending.isAuthenticating
+	isCancellingTouchID := isSent && approver.markTouchIDCancelled(pending)
 	approver.mutex.Unlock()
-	if isCancellingTouchID && approver.config.CancelBiometric != nil {
+	if isCancellingTouchID {
 		approver.config.CancelBiometric()
 	}
 }
@@ -596,10 +700,10 @@ func (approver *Approver) DenyAll() {
 	isCancellingTouchID := false
 	for _, pending := range approver.allPending {
 		approver.sendResponse(pending, approvalResponse{})
-		isCancellingTouchID = isCancellingTouchID || pending.isAuthenticating
+		isCancellingTouchID = approver.markTouchIDCancelled(pending) || isCancellingTouchID
 	}
 	approver.mutex.Unlock()
-	if isCancellingTouchID && approver.config.CancelBiometric != nil {
+	if isCancellingTouchID {
 		approver.config.CancelBiometric()
 	}
 }

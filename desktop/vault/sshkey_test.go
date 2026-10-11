@@ -47,6 +47,8 @@ type fakeAPIServer struct {
 	approvalEventChannel       chan client.Event
 	eventStreamCount           int
 	allApprovalByRequestID     map[string]*fakeApproval
+	failingApprovalPostCount   int
+	deviceListHangingChannel   chan struct{}
 }
 
 func (server *fakeAPIServer) setUnreachable(isUnreachable bool) {

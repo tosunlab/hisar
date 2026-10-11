@@ -207,6 +207,16 @@ func (server *fakeAPIServer) addAllSharingRoute(mux *http.ServeMux) {
 	})
 	mux.HandleFunc("GET /api/v1/devices", func(writer http.ResponseWriter, request *http.Request) {
 		server.mutex.Lock()
+		hangingChannel := server.deviceListHangingChannel
+		server.mutex.Unlock()
+		if hangingChannel != nil {
+			select {
+			case <-hangingChannel:
+			case <-request.Context().Done():
+				return
+			}
+		}
+		server.mutex.Lock()
 		defer server.mutex.Unlock()
 		writeJSON(writer, http.StatusOK, server.allDevice)
 	})

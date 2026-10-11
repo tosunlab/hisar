@@ -169,6 +169,7 @@ func TestPhoneAnswerCancelsTouchIDInProgress(t *testing.T) {
 		if cancelCount != 1 {
 			t.Errorf("Touch ID was cancelled %d times", cancelCount)
 		}
+		approver.presenter.waitUntilIdle()
 		for _, eventName := range emitter.listAllEventName() {
 			if eventName == ApprovalFailedEventName {
 				t.Error("the cancelled Touch ID check was shown as a failure")
