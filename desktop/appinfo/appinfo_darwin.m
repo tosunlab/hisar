@@ -1,7 +1,20 @@
 #import <AppKit/AppKit.h>
+#include <libproc.h>
 #include <stdlib.h>
 #include <string.h>
 #include "appinfo_darwin.h"
+
+int copyProcessWorkingDirectory(int pid, char *buffer, int size) {
+    struct proc_vnodepathinfo information;
+    if (proc_pidinfo(pid, PROC_PIDVNODEPATHINFO, 0, &information, sizeof(information)) != sizeof(information)) {
+        return -1;
+    }
+    if (information.pvi_cdir.vip_path[0] == '\0') {
+        return -1;
+    }
+    strlcpy(buffer, information.pvi_cdir.vip_path, size);
+    return 0;
+}
 
 char *copyAppDisplayName(const char *bundlePath) {
     @autoreleasepool {

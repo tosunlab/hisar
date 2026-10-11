@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"net"
 	"path/filepath"
 	"sync"
 	"time"
@@ -18,15 +19,42 @@ type Status struct {
 	ConfigPath        string `json:"configPath"`
 	ConfigSection     string `json:"configSection"`
 	IsTouchIDApproval bool   `json:"isTouchIDApproval"`
+	IsCompactApproval bool   `json:"isCompactApproval"`
 	BackupPath        string `json:"backupPath"`
 }
 
+// ApprovalPreference stores the "Compact SSH approvals" switch.
+type ApprovalPreference interface {
+	IsCompactSSHApproval() bool
+	SetCompactSSHApproval(isCompact bool) error
+}
+
 type Config struct {
-	HomeDirectory string
-	SocketPath    string
-	Server        *sshagent.Server
-	Approver      *Approver
-	Now           func() time.Time
+	HomeDirectory      string
+	SocketPath         string
+	Server             *sshagent.Server
+	Approver           *Approver
+	ApprovalPreference ApprovalPreference
+	// FitApprovalWindow sizes the approval window to the page's content and places it, centered or at the top right.
+	FitApprovalWindow func(isCompact bool, height int)
+	Now               func() time.Time
+}
+
+// ApplicationPeerResolver adds the app a peer runs in, so approvals are remembered per app.
+type ApplicationPeerResolver struct {
+	Base                sshagent.PeerResolver
+	FindApplicationPath func(pid int) (string, bool)
+}
+
+func (resolver ApplicationPeerResolver) ResolvePeer(connection net.Conn) (sshagent.PeerInfo, error) {
+	peer, err := resolver.Base.ResolvePeer(connection)
+	if err != nil || peer.PID <= 0 || resolver.FindApplicationPath == nil {
+		return peer, err
+	}
+	if applicationPath, isFound := resolver.FindApplicationPath(peer.PID); isFound {
+		peer.ApplicationPath = applicationPath
+	}
+	return peer, nil
 }
 
 // Service is bound to the UI; Serve runs the agent itself.
@@ -69,7 +97,23 @@ func (s *Service) buildStatus() Status {
 		status.ErrorMessage = "could not read " + status.ConfigPath + ": " + err.Error()
 	}
 	status.IsTouchIDApproval = s.config.Approver != nil && s.config.Approver.IsTouchIDApproval()
+	status.IsCompactApproval = s.config.ApprovalPreference != nil && s.config.ApprovalPreference.IsCompactSSHApproval()
 	return status
+}
+
+func (s *Service) SetCompactSSHApproval(isCompact bool) (Status, error) {
+	if s.config.ApprovalPreference == nil {
+		return s.buildStatus(), errors.New("the approval layout cannot be changed here")
+	}
+	err := s.config.ApprovalPreference.SetCompactSSHApproval(isCompact)
+	return s.buildStatus(), err
+}
+
+// FitSSHApprovalWindow lets the page size the window to what it shows; the height is limited to the screen by the caller.
+func (s *Service) FitSSHApprovalWindow(isCompact bool, height int) {
+	if s.config.FitApprovalWindow != nil && height > 0 {
+		s.config.FitApprovalWindow(isCompact, height)
+	}
 }
 
 func (s *Service) GetStatus() Status {
@@ -91,23 +135,23 @@ func (s *Service) RemoveSSHConfig() (Status, error) {
 	return status, err
 }
 
-// RespondSSHApproval answers the approval window: Authorize (then Touch ID when available) or Deny.
-func (s *Service) RespondSSHApproval(requestID string, isAuthorized, isForAllApplication bool) {
+// RespondSSHApproval answers the approval window: approve (then Touch ID when available) or Deny.
+func (s *Service) RespondSSHApproval(requestID string, isAuthorized, isRemembered bool) {
 	if s.config.Approver != nil {
-		s.config.Approver.Respond(requestID, isAuthorized, isForAllApplication)
+		s.config.Approver.Respond(requestID, isAuthorized, isRemembered)
 	}
 }
 
-// RespondApprovalWithPassword unlocks Hisar with the master password for a command-line request and approves it.
-func (s *Service) RespondApprovalWithPassword(requestID, password string) {
+// RespondApprovalWithPassword approves with the master password, which also unlocks a locked Hisar.
+func (s *Service) RespondApprovalWithPassword(requestID, password string, isRemembered bool) {
 	if s.config.Approver != nil {
-		s.config.Approver.RespondWithPassword(requestID, password)
+		s.config.Approver.RespondWithPassword(requestID, password, isRemembered)
 	}
 }
 
-func (s *Service) SetSSHApprovalForAllApplication(requestID string, isForAllApplication bool) {
+func (s *Service) SetSSHApprovalRemembered(requestID string, isRemembered bool) {
 	if s.config.Approver != nil {
-		s.config.Approver.SetForAllApplication(requestID, isForAllApplication)
+		s.config.Approver.SetRemembered(requestID, isRemembered)
 	}
 }
 

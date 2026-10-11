@@ -31,3 +31,8 @@ func (service *ApprovalTouchIDService) SetApprovalPromptFrame(x, y, width, heigh
 func (service *ApprovalTouchIDService) ClearApprovalPromptFrame() {
 	service.prompt.ClearPromptFrame()
 }
+
+// CancelApprovalPrompt stops Touch ID when the user picks the master password instead; the request stays open.
+func (service *ApprovalTouchIDService) CancelApprovalPrompt() {
+	service.prompt.CancelPrompt()
+}

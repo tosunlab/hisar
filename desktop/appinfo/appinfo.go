@@ -1,4 +1,4 @@
-// Package appinfo finds the app a process belongs to, with its name and icon, for approval prompts.
+// Package appinfo finds the app a process belongs to, with its name and icon, and the process chain behind a request.
 package appinfo
 
 import (
@@ -13,26 +13,92 @@ type App struct {
 	IconURL string
 }
 
+// Process is one process of a chain; AllArgument and WorkingDirectory are empty when they cannot be read.
+type Process struct {
+	PID              int
+	Path             string
+	AllArgument      []string
+	WorkingDirectory string
+}
+
+// ProcessReader reads processes; nil ListAllArgument or GetWorkingDirectory leave those fields empty.
+type ProcessReader struct {
+	GetPath             func(pid int) (string, error)
+	GetParentPID        func(pid int) (int, error)
+	ListAllArgument     func(pid int) ([]string, error)
+	GetWorkingDirectory func(pid int) (string, error)
+}
+
 const maximumAncestorCount = 16
 
-// FindApp walks from a process up its parents to the first one inside an app bundle; it returns false for none.
-func FindApp(pid int, getProcessPath func(int) (string, error), getParentPID func(int) (int, error)) (App, bool) {
+var allDeveloperToolMarker = []string{
+	"/Library/Developer/",
+	".app/Contents/Developer/",
+	"/Hisar.app/Contents/Helpers/",
+	"/Hisar.app/Contents/MacOS/hisar-",
+}
+
+// IsDeveloperToolPath reports tools that run on behalf of an app, like Xcode's git behind the /usr/bin/git shim.
+func IsDeveloperToolPath(path string) bool {
+	for _, marker := range allDeveloperToolMarker {
+		if strings.Contains(path, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// ListAllProcess returns the process and its ancestors, nearest first, stopping before launchd.
+func ListAllProcess(pid int, reader ProcessReader) []Process {
+	allProcess := []Process{}
 	for range maximumAncestorCount {
 		if pid <= 1 {
-			return App{}, false
+			break
 		}
-		if path, err := getProcessPath(pid); err == nil {
-			if bundlePath := getOutermostBundlePath(path); bundlePath != "" {
-				return describeBundle(bundlePath), true
+		process := Process{PID: pid}
+		if path, err := reader.GetPath(pid); err == nil {
+			process.Path = path
+		}
+		if reader.ListAllArgument != nil {
+			if allArgument, err := reader.ListAllArgument(pid); err == nil {
+				process.AllArgument = allArgument
 			}
 		}
-		parentPID, err := getParentPID(pid)
+		if reader.GetWorkingDirectory != nil {
+			if workingDirectory, err := reader.GetWorkingDirectory(pid); err == nil {
+				process.WorkingDirectory = workingDirectory
+			}
+		}
+		allProcess = append(allProcess, process)
+		parentPID, err := reader.GetParentPID(pid)
 		if err != nil || parentPID == pid {
-			return App{}, false
+			break
 		}
 		pid = parentPID
 	}
-	return App{}, false
+	return allProcess
+}
+
+// FindAppPath returns the outermost bundle of the nearest process that runs inside an app and is not a developer tool.
+func FindAppPath(allProcess []Process) (string, bool) {
+	for _, process := range allProcess {
+		if process.Path == "" || IsDeveloperToolPath(process.Path) {
+			continue
+		}
+		if bundlePath := getOutermostBundlePath(process.Path); bundlePath != "" {
+			return bundlePath, true
+		}
+	}
+	return "", false
+}
+
+// FindApp walks from a process up its parents to the nearest app; it returns false for none.
+func FindApp(pid int, getProcessPath func(int) (string, error), getParentPID func(int) (int, error)) (App, bool) {
+	bundlePath, isFound := FindAppPath(ListAllProcess(pid, ProcessReader{GetPath: getProcessPath, GetParentPID: getParentPID}))
+	if !isFound {
+		return App{}, false
+	}
+	return DescribeBundle(bundlePath), true
 }
 
 // getOutermostBundlePath returns the first ".app" directory in a path, so helper apps resolve to the app that ships them.
@@ -44,7 +110,7 @@ func getOutermostBundlePath(path string) string {
 	return path[:index+len(".app")]
 }
 
-func describeBundle(bundlePath string) App {
+func DescribeBundle(bundlePath string) App {
 	app := App{Path: bundlePath, Name: getBundleDisplayName(bundlePath)}
 	if app.Name == "" {
 		app.Name = strings.TrimSuffix(filepath.Base(bundlePath), ".app")

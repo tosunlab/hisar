@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -20,10 +21,12 @@ import (
 
 const UnknownPeerName = "unknown"
 
+// PeerInfo is the program on the other end of a connection; ApplicationPath is the app it runs in, when the resolver knows it.
 type PeerInfo struct {
-	PID  int
-	Path string
-	Name string
+	PID             int
+	Path            string
+	Name            string
+	ApplicationPath string
 }
 
 type PeerResolver interface {
@@ -113,6 +116,23 @@ func findKnownHostName(allPath []string, hostKey ssh.PublicKey) string {
 		}
 	}
 	return ""
+}
+
+// splitKnownHostName turns a known_hosts name like "[git.example.com]:2222" into its host and port; 0 is the default port.
+func splitKnownHostName(name string) (string, int) {
+	bracketed, isBracketed := strings.CutPrefix(name, "[")
+	if !isBracketed {
+		return name, 0
+	}
+	host, portText, isFound := strings.Cut(bracketed, "]:")
+	port, err := strconv.Atoi(portText)
+	if !isFound || err != nil || port <= 0 || port > 65535 {
+		return name, 0
+	}
+	if port == 22 {
+		port = 0
+	}
+	return host, port
 }
 
 func findKnownHostNameInFile(path string, hostKeyBlob []byte) string {

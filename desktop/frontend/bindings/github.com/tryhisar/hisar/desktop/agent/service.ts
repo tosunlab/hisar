@@ -21,6 +21,13 @@ export function ConfigureSSHConfig(): $CancellablePromise<$models.Status> {
     return $Call.ByID(2232386584);
 }
 
+/**
+ * FitSSHApprovalWindow lets the page size the window to what it shows; the height is limited to the screen by the caller.
+ */
+export function FitSSHApprovalWindow(isCompact: boolean, height: number): $CancellablePromise<void> {
+    return $Call.ByID(1610720552, isCompact, height);
+}
+
 export function GetStatus(): $CancellablePromise<$models.Status> {
     return $Call.ByID(1154302022);
 }
@@ -34,19 +41,23 @@ export function RemoveSSHConfig(): $CancellablePromise<$models.Status> {
 }
 
 /**
- * RespondApprovalWithPassword unlocks Hisar with the master password for a command-line request and approves it.
+ * RespondApprovalWithPassword approves with the master password, which also unlocks a locked Hisar.
  */
-export function RespondApprovalWithPassword(requestID: string, password: string): $CancellablePromise<void> {
-    return $Call.ByID(2274870207, requestID, password);
+export function RespondApprovalWithPassword(requestID: string, password: string, isRemembered: boolean): $CancellablePromise<void> {
+    return $Call.ByID(2274870207, requestID, password, isRemembered);
 }
 
 /**
- * RespondSSHApproval answers the approval window: Authorize (then Touch ID when available) or Deny.
+ * RespondSSHApproval answers the approval window: approve (then Touch ID when available) or Deny.
  */
-export function RespondSSHApproval(requestID: string, isAuthorized: boolean, isForAllApplication: boolean): $CancellablePromise<void> {
-    return $Call.ByID(1303786858, requestID, isAuthorized, isForAllApplication);
+export function RespondSSHApproval(requestID: string, isAuthorized: boolean, isRemembered: boolean): $CancellablePromise<void> {
+    return $Call.ByID(1303786858, requestID, isAuthorized, isRemembered);
 }
 
-export function SetSSHApprovalForAllApplication(requestID: string, isForAllApplication: boolean): $CancellablePromise<void> {
-    return $Call.ByID(1985530551, requestID, isForAllApplication);
+export function SetCompactSSHApproval(isCompact: boolean): $CancellablePromise<$models.Status> {
+    return $Call.ByID(1965907370, isCompact);
+}
+
+export function SetSSHApprovalRemembered(requestID: string, isRemembered: boolean): $CancellablePromise<void> {
+    return $Call.ByID(2176224535, requestID, isRemembered);
 }

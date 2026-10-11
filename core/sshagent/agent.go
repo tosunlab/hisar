@@ -26,7 +26,12 @@ var (
 	ErrDenied          = errors.New("sshagent: request denied")
 	ErrSessionMismatch = errors.New("sshagent: signature request does not match bound session")
 	ErrInvalidBinding  = errors.New("sshagent: invalid session binding")
+	// ErrLocked from a KeySource makes the agent ask the approver to unlock instead of failing.
+	ErrLocked = errors.New("sshagent: Hisar is locked")
 )
+
+// GitSignatureNamespace is the SSHSIG namespace git uses for commit and tag signatures.
+const GitSignatureNamespace = "git"
 
 type Key struct {
 	ID            string
@@ -39,36 +44,51 @@ type KeySource interface {
 	ListAllKey(ctx context.Context) ([]Key, error)
 }
 
+// ApprovalRequest describes one request; with IsUnlockRequired the key fields are empty until a signature names a key.
 type ApprovalRequest struct {
-	KeyID                  string
-	KeyTitle               string
-	Fingerprint            string
-	ClientName             string
-	ClientPath             string
-	ClientPID              int
-	DestinationHost        string
-	DestinationFingerprint string
-	IsForwarded            bool
+	KeyID                    string
+	KeyTitle                 string
+	Fingerprint              string
+	ClientName               string
+	ClientPath               string
+	ClientPID                int
+	ApplicationPath          string
+	DestinationHost          string
+	DestinationPort          int
+	DestinationFingerprint   string
+	IsForwarded              bool
+	ForwardedFromHost        string
+	ForwardedFromPort        int
+	ForwardedFromFingerprint string
+	SignatureNamespace       string
+	IsUnlockRequired         bool
+	IsRememberable           bool
 }
 
 type ApprovalResult struct {
 	IsAllowed bool
-	// IsForAllClient remembers the approval for every program instead of only the requesting one.
-	IsForAllClient bool
+	// IsRemembered keeps the approval for the key and app; it is ignored for requests that are not IsRememberable.
+	IsRemembered bool
 }
 
 type Approver interface {
 	Approve(ctx context.Context, request ApprovalRequest) (ApprovalResult, error)
 }
 
-const anyClientPath = "*"
-
-// DefaultApprovalLifetime is how long an approved key and program pair is used without asking again; locking clears it sooner.
+// DefaultApprovalLifetime is how long an approved key and app pair is used without asking again; locking clears it sooner.
 const DefaultApprovalLifetime = time.Hour
 
 type approvalCacheKey struct {
 	fingerprint string
-	clientPath  string
+	scope       string
+}
+
+// getApprovalScope is the app bundle the client runs in, or the program when there is none.
+func getApprovalScope(request ApprovalRequest) string {
+	if request.ApplicationPath != "" {
+		return request.ApplicationPath
+	}
+	return request.ClientPath
 }
 
 type Server struct {
@@ -122,35 +142,66 @@ func (s *Server) CreateAgent(ctx context.Context, peer PeerInfo) agent.ExtendedA
 	return &connectionAgent{server: s, ctx: ctx, peer: peer}
 }
 
-func (s *Server) requestApproval(ctx context.Context, request ApprovalRequest) error {
-	clientCacheKey := approvalCacheKey{fingerprint: request.Fingerprint, clientPath: request.ClientPath}
-	anyClientCacheKey := approvalCacheKey{fingerprint: request.Fingerprint, clientPath: anyClientPath}
+func (s *Server) isAlwaysAsk(keyID string) bool {
 	s.mutex.Lock()
-	isKeyCacheable := !s.allAlwaysAskKeyID[request.KeyID] && !request.IsForwarded
-	isClientCacheable := isKeyCacheable && request.ClientPath != ""
-	isApproved := (isClientCacheable && s.isApprovalCurrent(clientCacheKey)) || (isKeyCacheable && s.isApprovalCurrent(anyClientCacheKey))
+	defer s.mutex.Unlock()
+	return s.allAlwaysAskKeyID[keyID]
+}
+
+func (s *Server) setRememberable(request *ApprovalRequest) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	request.IsRememberable = getApprovalScope(*request) != "" && !request.IsForwarded &&
+		request.SignatureNamespace != GitSignatureNamespace && !s.allAlwaysAskKeyID[request.KeyID]
+}
+
+// askApprover returns the approver's answer and the approval epoch it was asked in.
+func (s *Server) askApprover(ctx context.Context, request ApprovalRequest) (ApprovalResult, uint64, error) {
+	s.mutex.Lock()
 	epoch := s.approvalEpoch
+	s.mutex.Unlock()
+	result, err := s.approver.Approve(ctx, request)
+	if err != nil {
+		return ApprovalResult{}, epoch, fmt.Errorf("sshagent: approval: %w", err)
+	}
+	if !result.IsAllowed {
+		return ApprovalResult{}, epoch, ErrDenied
+	}
+	return result, epoch, nil
+}
+
+// remember keeps an approval unless Hisar locked since it was asked for.
+func (s *Server) remember(request ApprovalRequest, epoch uint64) {
+	if !request.IsRememberable || request.Fingerprint == "" {
+		return
+	}
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if s.approvalEpoch == epoch {
+		s.allApprovedAt[approvalCacheKey{fingerprint: request.Fingerprint, scope: getApprovalScope(request)}] = s.getNow()
+	}
+}
+
+func (s *Server) getApprovalEpoch() uint64 {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	return s.approvalEpoch
+}
+
+func (s *Server) requestApproval(ctx context.Context, request ApprovalRequest) error {
+	s.setRememberable(&request)
+	s.mutex.Lock()
+	isApproved := request.IsRememberable && s.isApprovalCurrent(approvalCacheKey{fingerprint: request.Fingerprint, scope: getApprovalScope(request)})
 	s.mutex.Unlock()
 	if isApproved {
 		return nil
 	}
-	result, err := s.approver.Approve(ctx, request)
+	result, epoch, err := s.askApprover(ctx, request)
 	if err != nil {
-		return fmt.Errorf("sshagent: approval: %w", err)
+		return err
 	}
-	if !result.IsAllowed {
-		return ErrDenied
-	}
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	if s.approvalEpoch != epoch {
-		return nil
-	}
-	switch {
-	case result.IsForAllClient && isKeyCacheable:
-		s.allApprovedAt[anyClientCacheKey] = s.getNow()
-	case isClientCacheable:
-		s.allApprovedAt[clientCacheKey] = s.getNow()
+	if result.IsRemembered {
+		s.remember(request, epoch)
 	}
 	return nil
 }
@@ -172,6 +223,13 @@ type connectionAgent struct {
 	peer       PeerInfo
 	mutex      sync.Mutex
 	allBinding []sessionBinding
+	// unlockApproval is set when the approval window unlocked Hisar for this connection; its signatures then do not ask again.
+	unlockApproval *grantedUnlock
+}
+
+type grantedUnlock struct {
+	isRemembered bool
+	epoch        uint64
 }
 
 type resolvedKey struct {
@@ -195,8 +253,43 @@ func (connection *connectionAgent) listAllResolvedKey() ([]resolvedKey, error) {
 	return allResolvedKey, nil
 }
 
-func (connection *connectionAgent) List() ([]*agent.Key, error) {
+// listAllResolvedKeyUnlocking asks the approver to unlock Hisar when the key source is locked, then lists again.
+func (connection *connectionAgent) listAllResolvedKeyUnlocking(request ApprovalRequest) ([]resolvedKey, error) {
 	allResolvedKey, err := connection.listAllResolvedKey()
+	if !errors.Is(err, ErrLocked) {
+		return allResolvedKey, err
+	}
+	request.IsUnlockRequired = true
+	connection.server.setRememberable(&request)
+	result, epoch, err := connection.server.askApprover(connection.ctx, request)
+	if err != nil {
+		return nil, err
+	}
+	connection.mutex.Lock()
+	connection.unlockApproval = &grantedUnlock{isRemembered: result.IsRemembered, epoch: epoch}
+	connection.mutex.Unlock()
+	return connection.listAllResolvedKey()
+}
+
+func (connection *connectionAgent) getUnlockApproval() *grantedUnlock {
+	connection.mutex.Lock()
+	defer connection.mutex.Unlock()
+	return connection.unlockApproval
+}
+
+func (connection *connectionAgent) buildRequest() ApprovalRequest {
+	request := ApprovalRequest{
+		ClientName:      connection.peer.Name,
+		ClientPath:      connection.peer.Path,
+		ClientPID:       connection.peer.PID,
+		ApplicationPath: connection.peer.ApplicationPath,
+	}
+	connection.describeSessionBinding(&request)
+	return request
+}
+
+func (connection *connectionAgent) List() ([]*agent.Key, error) {
+	allResolvedKey, err := connection.listAllResolvedKeyUnlocking(connection.buildRequest())
 	if err != nil {
 		return nil, err
 	}
@@ -217,7 +310,13 @@ func (connection *connectionAgent) Sign(publicKey ssh.PublicKey, data []byte) (*
 }
 
 func (connection *connectionAgent) SignWithFlags(publicKey ssh.PublicKey, data []byte, flags agent.SignatureFlags) (*ssh.Signature, error) {
-	allResolvedKey, err := connection.listAllResolvedKey()
+	request := connection.buildRequest()
+	request.Fingerprint = ssh.FingerprintSHA256(publicKey)
+	request.SignatureNamespace, _ = parseSignatureNamespace(data)
+	if err := connection.checkSessionBinding(data); err != nil {
+		return nil, err
+	}
+	allResolvedKey, err := connection.listAllResolvedKeyUnlocking(request)
 	if err != nil {
 		return nil, err
 	}
@@ -232,21 +331,34 @@ func (connection *connectionAgent) SignWithFlags(publicKey ssh.PublicKey, data [
 	if match == nil {
 		return nil, ErrKeyNotFound
 	}
-	request := ApprovalRequest{
-		KeyID:       match.key.ID,
-		KeyTitle:    match.key.Title,
-		Fingerprint: ssh.FingerprintSHA256(publicKey),
-		ClientName:  connection.peer.Name,
-		ClientPath:  connection.peer.Path,
-		ClientPID:   connection.peer.PID,
-	}
-	if err := connection.checkSessionBinding(data, &request); err != nil {
-		return nil, err
-	}
-	if err := connection.server.requestApproval(connection.ctx, request); err != nil {
+	request.KeyID, request.KeyTitle = match.key.ID, match.key.Title
+	if unlockApproval := connection.getUnlockApproval(); unlockApproval != nil && !connection.server.isAlwaysAsk(request.KeyID) {
+		if unlockApproval.isRemembered {
+			connection.server.setRememberable(&request)
+			connection.server.remember(request, unlockApproval.epoch)
+		}
+	} else if err := connection.server.requestApproval(connection.ctx, request); err != nil {
 		return nil, err
 	}
 	return signWithFlags(match.signer, data, flags)
+}
+
+// parseSignatureNamespace reads the namespace of SSHSIG data, which ssh-keygen -Y sign asks the agent to sign.
+func parseSignatureNamespace(data []byte) (string, bool) {
+	signatureData, isSignature := bytes.CutPrefix(data, []byte("SSHSIG"))
+	if !isSignature {
+		return "", false
+	}
+	var message struct {
+		Namespace     string
+		Reserved      []byte
+		HashAlgorithm string
+		Hash          []byte
+	}
+	if err := ssh.Unmarshal(signatureData, &message); err != nil {
+		return "", false
+	}
+	return message.Namespace, true
 }
 
 func signWithFlags(signer ssh.Signer, data []byte, flags agent.SignatureFlags) (*ssh.Signature, error) {
@@ -267,24 +379,43 @@ func signWithFlags(signer ssh.Signer, data []byte, flags agent.SignatureFlags) (
 	return algorithmSigner.SignWithAlgorithm(rand.Reader, data, algorithm)
 }
 
-func (connection *connectionAgent) checkSessionBinding(data []byte, request *ApprovalRequest) error {
+func (connection *connectionAgent) listAllBinding() []sessionBinding {
 	connection.mutex.Lock()
-	allBinding := append([]sessionBinding(nil), connection.allBinding...)
-	connection.mutex.Unlock()
+	defer connection.mutex.Unlock()
+	return append([]sessionBinding(nil), connection.allBinding...)
+}
+
+// describeSessionBinding names the host a forwarded connection comes from (its first forwarding binding) and the destination (the last binding for authentication).
+func (connection *connectionAgent) describeSessionBinding(request *ApprovalRequest) {
+	allBinding := connection.listAllBinding()
 	if len(allBinding) == 0 {
-		return nil
+		return
 	}
-	for _, binding := range allBinding {
-		if binding.isForwarding {
-			request.IsForwarded = true
-		}
-	}
-	lastBinding := allBinding[len(allBinding)-1]
-	request.DestinationFingerprint = ssh.FingerprintSHA256(lastBinding.hostKey)
 	connection.server.mutex.Lock()
 	allKnownHostsPath := connection.server.allKnownHostsPath
 	connection.server.mutex.Unlock()
-	request.DestinationHost = findKnownHostName(allKnownHostsPath, lastBinding.hostKey)
+	for _, binding := range allBinding {
+		if binding.isForwarding {
+			request.IsForwarded = true
+			request.ForwardedFromFingerprint = ssh.FingerprintSHA256(binding.hostKey)
+			request.ForwardedFromHost, request.ForwardedFromPort = splitKnownHostName(findKnownHostName(allKnownHostsPath, binding.hostKey))
+			break
+		}
+	}
+	lastBinding := allBinding[len(allBinding)-1]
+	if lastBinding.isForwarding {
+		return
+	}
+	request.DestinationFingerprint = ssh.FingerprintSHA256(lastBinding.hostKey)
+	request.DestinationHost, request.DestinationPort = splitKnownHostName(findKnownHostName(allKnownHostsPath, lastBinding.hostKey))
+}
+
+func (connection *connectionAgent) checkSessionBinding(data []byte) error {
+	allBinding := connection.listAllBinding()
+	if len(allBinding) == 0 {
+		return nil
+	}
+	lastBinding := allBinding[len(allBinding)-1]
 	sessionID, hostKeyBlob, isUserAuth := parseUserAuthRequest(data)
 	if !isUserAuth || lastBinding.isForwarding {
 		return nil

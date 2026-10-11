@@ -254,7 +254,7 @@ func convertToCommandLineItem(detail ItemDetail) cliprotocol.Item {
 	return commandLineItem
 }
 
-// ApprovalUnlocker lets the approval window unlock Hisar for a command-line request (agent.Unlocker).
+// ApprovalUnlocker lets the approval window unlock Hisar, or check the master password, for an SSH or command-line request (agent.Unlocker).
 type ApprovalUnlocker struct {
 	service  *Service
 	onUnlock func()
@@ -290,10 +290,41 @@ func (unlocker *ApprovalUnlocker) UnlockWithTouchID(authenticate func(reason str
 	return nil
 }
 
+var errIncorrectMasterPassword = errors.New("Incorrect master password.")
+
+// VerifyPassword checks the master password while Hisar is unlocked, without locking or unlocking it.
+func (unlocker *ApprovalUnlocker) VerifyPassword(password string) error {
+	s := unlocker.service
+	s.mutex.Lock()
+	if err := s.requireUnlocked(); err != nil {
+		s.mutex.Unlock()
+		return err
+	}
+	apiClient, accountCache, accountID := s.unlockedSession.Client, s.unlockedSession.Cache, s.state.AccountID
+	s.mutex.Unlock()
+	secretKey, err := s.config.SecretKeyStore.LoadSecretKey(accountID)
+	if err != nil {
+		return fmt.Errorf("the Secret Key is missing from the keychain: %w", err)
+	}
+	passwordBytes := []byte(password)
+	defer clear(passwordBytes)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	accountUnlockKey, err := session.DeriveAccountUnlockKey(ctx, apiClient, accountCache, passwordBytes, secretKey)
+	if errors.Is(err, session.ErrBadCredentials) {
+		return errIncorrectMasterPassword
+	}
+	if err != nil {
+		return convertError(err)
+	}
+	clear(accountUnlockKey)
+	return nil
+}
+
 func (unlocker *ApprovalUnlocker) UnlockWithPassword(password string) error {
 	_, err := unlocker.service.Unlock(password)
 	if err != nil && err.Error() == convertError(session.ErrBadCredentials).Error() {
-		return errors.New("Incorrect master password.")
+		return errIncorrectMasterPassword
 	}
 	if err != nil {
 		return err

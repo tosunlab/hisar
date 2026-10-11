@@ -22,14 +22,18 @@ import (
 var errTestLocked = errors.New("hisar is locked")
 
 type fakeKeySource struct {
-	mutex    sync.Mutex
-	allKey   []Key
-	isLocked bool
+	mutex       sync.Mutex
+	allKey      []Key
+	isLocked    bool
+	lockedError error
 }
 
 func (source *fakeKeySource) ListAllKey(ctx context.Context) ([]Key, error) {
 	source.mutex.Lock()
 	defer source.mutex.Unlock()
+	if source.isLocked && source.lockedError != nil {
+		return nil, source.lockedError
+	}
 	if source.isLocked {
 		return nil, errTestLocked
 	}
@@ -43,17 +47,17 @@ func (source *fakeKeySource) setLocked(isLocked bool) {
 }
 
 type fakeApprover struct {
-	mutex          sync.Mutex
-	isApproving    bool
-	isForAllClient bool
-	allRequest     []ApprovalRequest
-	onApprove      func()
+	mutex        sync.Mutex
+	isApproving  bool
+	isRemembered bool
+	allRequest   []ApprovalRequest
+	onApprove    func()
 }
 
 func (approver *fakeApprover) Approve(ctx context.Context, request ApprovalRequest) (ApprovalResult, error) {
 	approver.mutex.Lock()
 	approver.allRequest = append(approver.allRequest, request)
-	result := ApprovalResult{IsAllowed: approver.isApproving, IsForAllClient: approver.isForAllClient}
+	result := ApprovalResult{IsAllowed: approver.isApproving, IsRemembered: approver.isRemembered}
 	onApprove := approver.onApprove
 	approver.mutex.Unlock()
 	if onApprove != nil {
@@ -130,7 +134,7 @@ func startAgent(t *testing.T, allKey []Key) *agentFixture {
 	t.Helper()
 	fixture := &agentFixture{
 		source:   &fakeKeySource{allKey: allKey},
-		approver: &fakeApprover{isApproving: true},
+		approver: &fakeApprover{isApproving: true, isRemembered: true},
 		resolver: &fakePeerResolver{},
 		allKey:   allKey,
 	}
@@ -294,12 +298,13 @@ func TestEndToEndApproved(t *testing.T) {
 			}
 			request := fixture.approver.getLastRequest(t)
 			want := ApprovalRequest{
-				KeyID:       key.ID,
-				KeyTitle:    key.Title,
-				Fingerprint: material.Fingerprint,
-				ClientName:  "ssh",
-				ClientPath:  "/usr/bin/ssh",
-				ClientPID:   4242,
+				KeyID:          key.ID,
+				KeyTitle:       key.Title,
+				Fingerprint:    material.Fingerprint,
+				ClientName:     "ssh",
+				ClientPath:     "/usr/bin/ssh",
+				ClientPID:      4242,
+				IsRememberable: true,
 			}
 			if request != want {
 				t.Errorf("request = %+v, want %+v", request, want)
@@ -367,14 +372,26 @@ func TestApprovalCachedPerClientPath(t *testing.T) {
 	connect(3)
 }
 
-func TestApprovalForAllClient(t *testing.T) {
-	key := createTestKey(t, "id", "Work", getAllTestMaterial()["ed25519"])
-	fixture := startAgent(t, []Key{key})
+func (resolver *fakePeerResolver) setApplication(path, applicationPath string) {
+	resolver.mutex.Lock()
+	defer resolver.mutex.Unlock()
+	resolver.peer = PeerInfo{PID: 4242, Path: path, Name: filepath.Base(path), ApplicationPath: applicationPath}
+}
+
+func (approver *fakeApprover) setRemembered(isRemembered bool) {
+	approver.mutex.Lock()
+	defer approver.mutex.Unlock()
+	approver.isRemembered = isRemembered
+}
+
+func TestApprovalRememberedPerApplication(t *testing.T) {
+	allMaterial := getAllTestMaterial()
+	key := createTestKey(t, "id", "Work", allMaterial["ed25519"])
+	otherKey := createTestKey(t, "other", "Deploy", allMaterial["rsa"])
+	fixture := startAgent(t, []Key{key, otherKey})
 	address := startSSHServer(t, getPublicKey(t, key))
-	fixture.approver.mutex.Lock()
-	fixture.approver.isForAllClient = true
-	fixture.approver.mutex.Unlock()
-	connect := func(wantCount int) {
+	otherAddress := startSSHServer(t, getPublicKey(t, otherKey))
+	connect := func(address string, wantCount int) {
 		t.Helper()
 		if err := fixture.connectSSH(t, address); err != nil {
 			t.Fatalf("ssh auth failed: %v", err)
@@ -383,13 +400,24 @@ func TestApprovalForAllClient(t *testing.T) {
 			t.Fatalf("approval count = %d, want %d", count, wantCount)
 		}
 	}
-	connect(1)
-	fixture.resolver.setPath("/usr/bin/git")
-	connect(1)
-	fixture.resolver.setPath("")
-	connect(1)
+	const terminalPath = "/System/Applications/Utilities/Terminal.app"
+	fixture.resolver.setApplication("/usr/bin/ssh", terminalPath)
+	connect(address, 1)
+	if request := fixture.approver.getLastRequest(t); request.ApplicationPath != terminalPath || !request.IsRememberable {
+		t.Errorf("request = %+v", request)
+	}
+	fixture.resolver.setApplication("/opt/homebrew/bin/ssh", terminalPath)
+	connect(address, 1)
+	connect(otherAddress, 2)
+	fixture.resolver.setApplication("/usr/bin/ssh", "/Applications/iTerm.app")
+	connect(address, 3)
+	fixture.approver.setRemembered(false)
+	fixture.resolver.setApplication("/usr/bin/ssh", "/Applications/Ghostty.app")
+	connect(address, 4)
+	connect(address, 5)
 	fixture.server.ClearAllApproval()
-	connect(2)
+	fixture.resolver.setApplication("/usr/bin/ssh", terminalPath)
+	connect(address, 6)
 }
 
 func TestApprovalExpiresAfterLifetime(t *testing.T) {
@@ -593,6 +621,175 @@ func TestLockedSourceFailsGracefully(t *testing.T) {
 	fixture.source.setLocked(false)
 	if err := connectSSHWithAgent(address, agentClient); err != nil {
 		t.Errorf("same agent connection after unlock: %v", err)
+	}
+}
+
+func (source *fakeKeySource) setLockedWith(isLocked bool) {
+	source.mutex.Lock()
+	defer source.mutex.Unlock()
+	source.isLocked = isLocked
+	source.lockedError = ErrLocked
+}
+
+func TestLockedSourceAsksToUnlock(t *testing.T) {
+	key := createTestKey(t, "id", "Work", getAllTestMaterial()["ed25519"])
+	fixture := startAgent(t, []Key{key})
+	address := startSSHServer(t, getPublicKey(t, key))
+	fixture.resolver.setApplication("/usr/bin/ssh", "/Applications/Ghostty.app")
+	fixture.source.setLockedWith(true)
+	fixture.approver.onApprove = func() { fixture.source.setLockedWith(false) }
+	if err := fixture.connectSSH(t, address); err != nil {
+		t.Fatalf("ssh auth after unlocking: %v", err)
+	}
+	if count := fixture.approver.countRequest(); count != 1 {
+		t.Fatalf("approval count = %d, want 1 (the unlock covers the signature)", count)
+	}
+	request := fixture.approver.getLastRequest(t)
+	if !request.IsUnlockRequired || request.KeyID != "" || request.ApplicationPath != "/Applications/Ghostty.app" || !request.IsRememberable {
+		t.Errorf("unlock request = %+v", request)
+	}
+	fixture.approver.onApprove = nil
+	if err := fixture.connectSSH(t, address); err != nil {
+		t.Fatal(err)
+	}
+	if count := fixture.approver.countRequest(); count != 1 {
+		t.Errorf("the unlock approval was not remembered for the key: %d", count)
+	}
+}
+
+func TestLockedSourceUnlockForgottenWithoutRemember(t *testing.T) {
+	key := createTestKey(t, "id", "Work", getAllTestMaterial()["ed25519"])
+	fixture := startAgent(t, []Key{key})
+	address := startSSHServer(t, getPublicKey(t, key))
+	fixture.approver.setRemembered(false)
+	fixture.source.setLockedWith(true)
+	fixture.approver.onApprove = func() { fixture.source.setLockedWith(false) }
+	if err := fixture.connectSSH(t, address); err != nil {
+		t.Fatal(err)
+	}
+	fixture.approver.onApprove = nil
+	if err := fixture.connectSSH(t, address); err != nil {
+		t.Fatal(err)
+	}
+	if count := fixture.approver.countRequest(); count != 2 {
+		t.Errorf("approval count = %d, want 2", count)
+	}
+	if fixture.approver.getLastRequest(t).IsUnlockRequired {
+		t.Error("an unlocked agent asked to unlock")
+	}
+}
+
+func TestLockedSourceUnlockDenied(t *testing.T) {
+	key := createTestKey(t, "id", "Work", getAllTestMaterial()["ed25519"])
+	fixture := startAgent(t, []Key{key})
+	fixture.source.setLockedWith(true)
+	fixture.approver.setApproving(false)
+	agentClient := fixture.dialAgent(t)
+	if _, err := agentClient.List(); err == nil {
+		t.Error("List succeeded after a denied unlock")
+	}
+	if _, err := agentClient.Sign(getPublicKey(t, key), []byte("data")); err == nil {
+		t.Error("Sign succeeded after a denied unlock")
+	}
+	if count := fixture.approver.countRequest(); count != 2 {
+		t.Errorf("approval count = %d, want 2", count)
+	}
+	if request := fixture.approver.getLastRequest(t); !request.IsUnlockRequired || request.Fingerprint != ssh.FingerprintSHA256(getPublicKey(t, key)) {
+		t.Errorf("sign unlock request = %+v", request)
+	}
+}
+
+func TestUnlockApprovalStillAsksForAlwaysAskKey(t *testing.T) {
+	key := createTestKey(t, "always", "Production", getAllTestMaterial()["ed25519"])
+	fixture := startAgent(t, []Key{key})
+	fixture.server.SetAllAlwaysAskKeyID([]string{"always"})
+	fixture.source.setLockedWith(true)
+	fixture.approver.onApprove = func() { fixture.source.setLockedWith(false) }
+	agentClient := fixture.dialAgent(t)
+	if _, err := agentClient.List(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := agentClient.Sign(getPublicKey(t, key), []byte("data")); err != nil {
+		t.Fatal(err)
+	}
+	if count := fixture.approver.countRequest(); count != 2 {
+		t.Errorf("approval count = %d, want 2", count)
+	}
+}
+
+func buildSignatureData(namespace string) []byte {
+	return append([]byte("SSHSIG"), ssh.Marshal(struct {
+		Namespace     string
+		Reserved      []byte
+		HashAlgorithm string
+		Hash          []byte
+	}{namespace, nil, "sha512", bytes.Repeat([]byte{7}, 64)})...)
+}
+
+func TestCommitSigningAsksEveryTime(t *testing.T) {
+	key := createTestKey(t, "id", "Signing", getAllTestMaterial()["ed25519"])
+	fixture := startAgent(t, []Key{key})
+	fixture.resolver.setApplication("/usr/bin/ssh-keygen", "/System/Applications/Utilities/Terminal.app")
+	agentClient := fixture.dialAgent(t)
+	for attempt := 1; attempt <= 2; attempt++ {
+		if _, err := agentClient.Sign(getPublicKey(t, key), buildSignatureData(GitSignatureNamespace)); err != nil {
+			t.Fatal(err)
+		}
+		if count := fixture.approver.countRequest(); count != attempt {
+			t.Fatalf("commit %d: approval count = %d", attempt, count)
+		}
+	}
+	if request := fixture.approver.getLastRequest(t); request.SignatureNamespace != "git" || request.IsRememberable {
+		t.Errorf("signing request = %+v", request)
+	}
+	if _, err := agentClient.Sign(getPublicKey(t, key), buildSignatureData("file")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := agentClient.Sign(getPublicKey(t, key), buildSignatureData("file")); err != nil {
+		t.Fatal(err)
+	}
+	if count := fixture.approver.countRequest(); count != 3 {
+		t.Errorf("file signatures: approval count = %d, want 3", count)
+	}
+	if _, err := agentClient.Sign(getPublicKey(t, key), buildSignatureData(GitSignatureNamespace)); err != nil {
+		t.Fatal(err)
+	}
+	if count := fixture.approver.countRequest(); count != 4 {
+		t.Errorf("a remembered approval covered a commit signature: %d", count)
+	}
+}
+
+func TestParseSignatureNamespace(t *testing.T) {
+	if namespace, isSignature := parseSignatureNamespace(buildSignatureData("git")); !isSignature || namespace != "git" {
+		t.Errorf("namespace %q %v", namespace, isSignature)
+	}
+	for _, data := range [][]byte{nil, []byte("SSHSIG"), []byte("SSHSIG\x00\x00\x00\x09git"), buildUserAuthData([]byte("session"), getPublicKey(t, createTestKey(t, "id", "x", getAllTestMaterial()["ed25519"])), nil)} {
+		if namespace, isSignature := parseSignatureNamespace(data); isSignature {
+			t.Errorf("%q parsed as a signature for %q", data, namespace)
+		}
+	}
+}
+
+func TestSplitKnownHostName(t *testing.T) {
+	for name, want := range map[string]struct {
+		host string
+		port int
+	}{
+		"github.com":              {"github.com", 0},
+		"[git.tryhisar.com]:2222": {"git.tryhisar.com", 2222},
+		"[127.0.0.1]:22":          {"127.0.0.1", 0},
+		"[broken":                 {"[broken", 0},
+		"[host]:port":             {"[host]:port", 0},
+		"[host]:70000":            {"[host]:70000", 0},
+		"":                        {"", 0},
+		"[2001:db8::1]:2200":      {"2001:db8::1", 2200},
+		"2001:db8::1":             {"2001:db8::1", 0},
+		"[git.example.com]:0":     {"[git.example.com]:0", 0},
+		"[git.example.com]:22:22": {"[git.example.com]:22:22", 0},
+	} {
+		if host, port := splitKnownHostName(name); host != want.host || port != want.port {
+			t.Errorf("%q: %q %d, want %q %d", name, host, port, want.host, want.port)
+		}
 	}
 }
 

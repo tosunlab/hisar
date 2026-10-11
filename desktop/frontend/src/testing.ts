@@ -49,6 +49,7 @@ export function createSSHAgentStatus(overrides: Partial<SSHAgentStatus> = {}): S
     configPath: "/Users/alice/.ssh/config",
     configSection: '# Added by Hisar: use the Hisar SSH agent\nHost *\n  IdentityAgent "~/.hisar/agent.sock"\n# End of Hisar section\n',
     isTouchIDApproval: true,
+    isCompactApproval: false,
     backupPath: "",
     ...overrides,
   };
@@ -67,13 +68,60 @@ export function createApprovalEvent(overrides: Partial<ApprovalEvent> = {}): App
     clientPath: "/usr/bin/ssh",
     keyTitle: "Laptop key",
     fingerprint: "SHA256:hisarTestFingerprint",
-    destinationHost: "github.com",
+    destinationHost: "git.tryhisar.com",
     destinationFingerprint: "SHA256:hostFingerprint",
     isForwarded: false,
+    forwardedFromHost: "",
+    purpose: "push",
+    action: "push to",
+    target: "git.tryhisar.com",
+    commandLine: "git push origin main",
+    repositoryPath: "~/src/core",
+    hostAndPort: "git.tryhisar.com:22",
+    branch: "",
+    commitSubject: "",
+    isRememberable: true,
+    isCompact: false,
     isTouchIDApproval: true,
     timeoutAt: "2026-10-09T12:01:00Z",
     ...overrides,
   };
+}
+
+export function createSigningApprovalEvent(overrides: Partial<ApprovalEvent> = {}): ApprovalEvent {
+  return createApprovalEvent({
+    requestID: "signing-1",
+    clientName: "ssh-keygen",
+    clientPath: "/usr/bin/ssh-keygen",
+    keyTitle: "Signing key",
+    destinationHost: "",
+    destinationFingerprint: "",
+    purpose: "sign-commit",
+    action: "sign a commit",
+    target: "",
+    commandLine: "git commit -S -m 'Fix the login redirect'",
+    hostAndPort: "",
+    branch: "feature/login",
+    commitSubject: "Fix the login redirect",
+    isRememberable: false,
+    ...overrides,
+  });
+}
+
+export function createForwardedApprovalEvent(overrides: Partial<ApprovalEvent> = {}): ApprovalEvent {
+  return createApprovalEvent({
+    requestID: "forwarded-1",
+    isForwarded: true,
+    forwardedFromHost: "build.example.com",
+    purpose: "sign-in",
+    action: "sign in to",
+    target: "github.com",
+    commandLine: "ssh -A build.example.com",
+    repositoryPath: "",
+    hostAndPort: "github.com:22",
+    isRememberable: false,
+    ...overrides,
+  });
 }
 
 export function createCommandLineApprovalEvent(overrides: Partial<ApprovalEvent> = {}): ApprovalEvent {
@@ -86,6 +134,13 @@ export function createCommandLineApprovalEvent(overrides: Partial<ApprovalEvent>
     fingerprint: "",
     destinationHost: "",
     destinationFingerprint: "",
+    purpose: "",
+    action: "",
+    target: "",
+    commandLine: "",
+    repositoryPath: "",
+    hostAndPort: "",
+    isRememberable: false,
     terminalName: "ttys003",
     ...overrides,
   });
@@ -218,7 +273,10 @@ export function createApiMock() {
     disableBiometricUnlock: vi.fn(),
     setTouchIDPromptFrame: vi.fn().mockResolvedValue(undefined),
     clearTouchIDPromptFrame: vi.fn().mockResolvedValue(undefined),
-    setSSHApprovalForAllApplication: vi.fn().mockResolvedValue(undefined),
+    setSSHApprovalRemembered: vi.fn().mockResolvedValue(undefined),
+    setCompactSSHApproval: vi.fn().mockResolvedValue(createSSHAgentStatus({ isCompactApproval: true })),
+    fitSSHApprovalWindow: vi.fn().mockResolvedValue(undefined),
+    cancelApprovalTouchID: vi.fn().mockResolvedValue(undefined),
     setApprovalTouchIDFrame: vi.fn().mockResolvedValue(undefined),
     clearApprovalTouchIDFrame: vi.fn().mockResolvedValue(undefined),
     cancelTouchIDPrompt: vi.fn().mockResolvedValue(undefined),

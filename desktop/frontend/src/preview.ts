@@ -127,6 +127,7 @@ const previewStatus = (): Status => ({
   autoLockSeconds: previewAutoLockSeconds,
 });
 let isPreviewSSHConfigured = new URLSearchParams(window.location.search).get("sshConfigured") === "1";
+let isPreviewCompactApproval = new URLSearchParams(window.location.search).get("compact") === "1";
 const previewAgentStatus = (backupPath = ""): SSHAgentStatus => {
   const hasError = new URLSearchParams(window.location.search).get("agent") === "error";
   return {
@@ -136,7 +137,8 @@ const previewAgentStatus = (backupPath = ""): SSHAgentStatus => {
     isSSHConfigured: isPreviewSSHConfigured,
     configPath: "/Users/alper/.ssh/config",
     configSection: '# Added by Hisar: use the Hisar SSH agent\nHost *\n  IdentityAgent "~/.hisar/agent.sock"\n# End of Hisar section\n',
-    isTouchIDApproval: new URLSearchParams(window.location.search).get("approval") !== "1",
+    isTouchIDApproval: new URLSearchParams(window.location.search).get("noTouchID") !== "1",
+    isCompactApproval: isPreviewCompactApproval,
     backupPath,
   };
 };
@@ -237,6 +239,17 @@ function createPreviewCommandLineApproval(): ApprovalEvent {
     destinationHost: "",
     destinationFingerprint: "",
     isForwarded: false,
+    forwardedFromHost: "",
+    purpose: "",
+    action: "",
+    target: "",
+    commandLine: "",
+    repositoryPath: "",
+    hostAndPort: "",
+    branch: "",
+    commitSubject: "",
+    isRememberable: false,
+    isCompact: false,
     isTouchIDApproval: previewParameter.get("noTouchID") !== "1",
     timeoutAt: new Date(Date.now() + 60_000).toISOString(),
     terminalName: "ttys003",
@@ -245,30 +258,68 @@ function createPreviewCommandLineApproval(): ApprovalEvent {
   };
 }
 
-// listAllPreviewApproval: ?window=ssh-approval&approval=1 (one request), =2 (two waiting), =cli (command-line tool), &forwarded=1, &noTouchID=1.
-function listAllPreviewApproval(): ApprovalEvent[] {
-  if (previewParameter.get("approval") === "cli") {
-    return [createPreviewCommandLineApproval()];
-  }
-  const approvalCount = Number(previewParameter.get("approval") ?? "0");
-  const firstApproval: ApprovalEvent = {
+// createPreviewSSHApproval is "Terminal wants to push to git.tryhisar.com"; the parameters below change it.
+function createPreviewSSHApproval(): ApprovalEvent {
+  const isLocked = previewParameter.get("approvalLocked") === "1" || previewParameter.get("approvalPassword") === "1";
+  const isTouchIDApproval = previewParameter.get("noTouchID") !== "1";
+  const isForwarded = previewParameter.get("forwarded") === "1";
+  return {
     requestID: "preview-request",
     kind: "ssh-key",
     terminalName: "",
-    isUnlockRequired: false,
-    isPasswordUnlock: false,
+    isUnlockRequired: isLocked,
+    isPasswordUnlock: previewParameter.get("approvalPassword") === "1",
     appName: "Terminal",
     appIconURL: "",
     clientName: "ssh",
     clientPath: "/usr/bin/ssh",
-    keyTitle: "GitHub SSH key",
+    keyTitle: isLocked && previewParameter.get("approvalKey") !== "1" ? "" : "GitHub SSH key",
     fingerprint: "SHA256:Jx3o1VZ0kq7vZr6S8m2E3yQ2Lw7bQb4pN5uD9cF1aKs",
-    destinationHost: "github.com",
+    destinationHost: "git.tryhisar.com",
     destinationFingerprint: "SHA256:+DiY3wvvV6TuJJhbpZisF/zLDA0zPMSvHdkr4UvCOqU",
-    isForwarded: previewParameter.get("forwarded") === "1",
-    isTouchIDApproval: previewParameter.get("noTouchID") !== "1",
+    isForwarded,
+    forwardedFromHost: isForwarded ? "build.tryhisar.dev" : "",
+    purpose: isForwarded ? "sign-in" : "push",
+    action: isForwarded ? "sign in to" : "push to",
+    target: isForwarded ? "github.com" : "git.tryhisar.com",
+    commandLine: isForwarded ? "ssh -A deniz@build.tryhisar.dev" : "git push origin main",
+    repositoryPath: isForwarded ? "" : "~/src/hisar/core",
+    hostAndPort: isForwarded ? "github.com:22" : "git.tryhisar.com:22",
+    branch: "",
+    commitSubject: "",
+    isRememberable: !isForwarded,
+    isCompact: previewParameter.get("compact") === "1" && isTouchIDApproval && !isLocked && !isForwarded,
+    isTouchIDApproval,
     timeoutAt: new Date(Date.now() + 60_000).toISOString(),
   };
+}
+
+// listAllPreviewApproval: ?window=ssh-approval&approval=1 (one request), =2 (two waiting), =signing (a commit signature), =cli (command-line tool),
+// plus &approvalLocked=1 (Touch ID unlocks), &approvalPassword=1 (master password unlocks), &compact=1, &forwarded=1, &noTouchID=1.
+function listAllPreviewApproval(): ApprovalEvent[] {
+  if (previewParameter.get("approval") === "cli") {
+    return [createPreviewCommandLineApproval()];
+  }
+  const firstApproval = createPreviewSSHApproval();
+  if (previewParameter.get("approval") === "signing") {
+    return [
+      {
+        ...firstApproval,
+        clientName: "ssh-keygen",
+        clientPath: "/usr/bin/ssh-keygen",
+        keyTitle: "Commit signing key",
+        purpose: "sign-commit",
+        action: "sign a commit",
+        target: "",
+        commandLine: "git commit -S -m 'Ask before every SSH signature'",
+        hostAndPort: "",
+        branch: "desktop/ssh-approval-redesign",
+        commitSubject: "Ask before every SSH signature",
+        isRememberable: false,
+      },
+    ];
+  }
+  const approvalCount = Number(previewParameter.get("approval") ?? "0");
   const allApproval = approvalCount >= 1 ? [firstApproval] : [];
   if (approvalCount >= 2) {
     allApproval.push({ ...firstApproval, requestID: "preview-request-2", appName: "Visual Studio Code", clientName: "git", clientPath: "/usr/bin/git", keyTitle: "Deploy key" });
@@ -654,9 +705,15 @@ export const previewApi = {
   },
   setTouchIDPromptFrame: () => Promise.resolve(),
   clearTouchIDPromptFrame: () => Promise.resolve(),
-  setSSHApprovalForAllApplication: () => Promise.resolve(),
+  setSSHApprovalRemembered: () => Promise.resolve(),
+  setCompactSSHApproval: (isCompact: boolean) => {
+    isPreviewCompactApproval = isCompact;
+    return resolveAfterDelay(previewAgentStatus());
+  },
+  fitSSHApprovalWindow: () => Promise.resolve(),
   setApprovalTouchIDFrame: () => Promise.resolve(),
   clearApprovalTouchIDFrame: () => Promise.resolve(),
+  cancelApprovalTouchID: () => Promise.resolve(),
   cancelTouchIDPrompt: () => Promise.resolve(),
   hasNativeTouchIDView: false,
   saveNewAccountEmergencyKit: () => resolveAfterDelay("/Users/you/Documents/Hisar Emergency Kit.pdf"),

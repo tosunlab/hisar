@@ -18,9 +18,11 @@ import (
 	"github.com/tryhisar/hisar/core/sshagent"
 )
 
+// recordingApprover stands in for the approval window; with unlock set, it unlocks Hisar for requests that need it.
 type recordingApprover struct {
 	mutex      sync.Mutex
 	isAllowed  bool
+	unlock     func() error
 	allRequest []sshagent.ApprovalRequest
 }
 
@@ -28,7 +30,24 @@ func (approver *recordingApprover) Approve(ctx context.Context, request sshagent
 	approver.mutex.Lock()
 	defer approver.mutex.Unlock()
 	approver.allRequest = append(approver.allRequest, request)
+	if request.IsUnlockRequired && approver.unlock != nil && approver.isAllowed {
+		if err := approver.unlock(); err != nil {
+			return sshagent.ApprovalResult{}, err
+		}
+	}
 	return sshagent.ApprovalResult{IsAllowed: approver.isAllowed}, nil
+}
+
+func (approver *recordingApprover) getLastRequest() sshagent.ApprovalRequest {
+	approver.mutex.Lock()
+	defer approver.mutex.Unlock()
+	return approver.allRequest[len(approver.allRequest)-1]
+}
+
+func (approver *recordingApprover) setUnlock(unlock func() error) {
+	approver.mutex.Lock()
+	defer approver.mutex.Unlock()
+	approver.unlock = unlock
 }
 
 func (approver *recordingApprover) setAllowed(isAllowed bool) {
@@ -173,6 +192,32 @@ func checkSSHAgentFlow(t *testing.T, service *Service, personalID, password stri
 	}
 	if allKey, _ := listAllAgentKey(t, socketPath); len(allKey) != 0 {
 		t.Errorf("agent lists %d keys while locked", len(allKey))
+	}
+	if request := approver.getLastRequest(); !request.IsUnlockRequired || request.KeyID != "" {
+		t.Errorf("a locked agent did not ask to unlock: %+v", request)
+	}
+
+	unlocker := CreateApprovalUnlocker(service, nil)
+	approver.setAllowed(true)
+	approver.setUnlock(func() error { return unlocker.UnlockWithPassword(password) })
+	requestCount := approver.countRequest()
+	if err := dialWithAgent(socketPath, address, hostKey); err != nil {
+		t.Fatalf("ssh login that unlocks Hisar from the approval: %v", err)
+	}
+	if service.GetStatus().State != StateUnlocked || approver.countRequest() != requestCount+1 {
+		t.Errorf("the approval did not unlock once for the login: %s, %d requests", service.GetStatus().State, approver.countRequest()-requestCount)
+	}
+	approver.setUnlock(nil)
+	if err := unlocker.VerifyPassword("not the master password"); err == nil || err.Error() != "Incorrect master password." {
+		t.Errorf("wrong password: %v", err)
+	}
+	if err := unlocker.VerifyPassword(password); err != nil || service.GetStatus().State != StateUnlocked {
+		t.Errorf("verify the master password: %v, %s", err, service.GetStatus().State)
+	}
+	approver.setAllowed(false)
+	service.Lock()
+	if err := unlocker.VerifyPassword(password); !errors.Is(err, ErrLocked) {
+		t.Errorf("verify while locked: %v", err)
 	}
 
 	if _, err := service.Unlock(password); err != nil {

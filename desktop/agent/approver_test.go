@@ -51,6 +51,7 @@ type fakeEmitter struct {
 	failedEventChannel   chan ApprovalFailedEvent
 	showCount            int
 	hideCount            int
+	allShownCompact      []bool
 }
 
 func createFakeEmitter() *fakeEmitter {
@@ -69,10 +70,17 @@ func (emitter *fakeEmitter) emit(eventName string, data any) {
 	}
 }
 
-func (emitter *fakeEmitter) showWindow() {
+func (emitter *fakeEmitter) showWindow(isCompact bool) {
 	emitter.mutex.Lock()
 	defer emitter.mutex.Unlock()
 	emitter.showCount++
+	emitter.allShownCompact = append(emitter.allShownCompact, isCompact)
+}
+
+func (emitter *fakeEmitter) listAllShownCompact() []bool {
+	emitter.mutex.Lock()
+	defer emitter.mutex.Unlock()
+	return append([]bool{}, emitter.allShownCompact...)
 }
 
 func (emitter *fakeEmitter) hideWindow() {
@@ -107,6 +115,7 @@ func createTestRequest() sshagent.ApprovalRequest {
 		ClientPID:              42,
 		DestinationHost:        "github.com",
 		DestinationFingerprint: "SHA256:host",
+		IsRememberable:         true,
 	}
 }
 
@@ -181,10 +190,10 @@ func TestApproveShowsAppAndAuthorizesWithTouchID(t *testing.T) {
 		t.Fatal("Authorize not accepted")
 	}
 	result := waitForResult(t, resultChannel)
-	if result.err != nil || !result.result.IsAllowed || result.result.IsForAllClient {
+	if result.err != nil || !result.result.IsAllowed || result.result.IsRemembered {
 		t.Errorf("result = %+v", result)
 	}
-	if allReason := biometric.listAllReason(); len(allReason) != 1 || allReason[0] != `allow "Terminal" to use the SSH key "Laptop" for github.com` {
+	if allReason := biometric.listAllReason(); len(allReason) != 1 || allReason[0] != `allow "Terminal" to sign in to github.com` {
 		t.Errorf("Touch ID reasons = %q", allReason)
 	}
 	if showCount, hideCount := emitter.getWindowCount(); showCount != 1 || hideCount != 1 {
@@ -221,7 +230,7 @@ func TestApproveRetriesAfterFailedTouchID(t *testing.T) {
 	if !approver.Respond(approvalEvent.RequestID, true, true) {
 		t.Fatal("second Authorize not accepted")
 	}
-	if result := waitForResult(t, resultChannel); !result.result.IsAllowed || !result.result.IsForAllClient {
+	if result := waitForResult(t, resultChannel); !result.result.IsAllowed || !result.result.IsRemembered {
 		t.Errorf("result after retry = %+v", result)
 	}
 }
@@ -292,16 +301,6 @@ func TestApproveWithoutWindowDenies(t *testing.T) {
 	}
 }
 
-func TestBuildApprovalReason(t *testing.T) {
-	request := createTestRequest()
-	request.DestinationHost, request.DestinationFingerprint = "", ""
-	request.IsForwarded = true
-	reason := buildApprovalReason("Terminal", request)
-	if !strings.Contains(reason, "for SHA256:key") || !strings.HasSuffix(reason, "through a forwarded agent") {
-		t.Errorf("reason = %q", reason)
-	}
-}
-
 type waitingBiometric struct {
 	startedChannel chan struct{}
 	resultChannel  chan error
@@ -358,7 +357,7 @@ func TestDenyCancelsTouchIDInProgress(t *testing.T) {
 	}
 }
 
-func TestForAllApplicationChangedWhileTouchIDWaits(t *testing.T) {
+func TestRememberedChangedWhileTouchIDWaits(t *testing.T) {
 	biometric := createWaitingBiometric()
 	emitter := createFakeEmitter()
 	approver := CreateApprover(ApproverConfig{Biometric: biometric, Emit: emitter.emit})
@@ -366,10 +365,10 @@ func TestForAllApplicationChangedWhileTouchIDWaits(t *testing.T) {
 	approvalEvent := waitForApprovalEvent(t, emitter)
 	approver.Respond(approvalEvent.RequestID, true, false)
 	biometric.waitForStart(t)
-	approver.SetForAllApplication(approvalEvent.RequestID, true)
-	approver.SetForAllApplication("unknown", false)
+	approver.SetRemembered(approvalEvent.RequestID, true)
+	approver.SetRemembered("unknown", false)
 	biometric.resultChannel <- nil
-	if result := waitForResult(t, resultChannel); !result.result.IsAllowed || !result.result.IsForAllClient {
+	if result := waitForResult(t, resultChannel); !result.result.IsAllowed || !result.result.IsRemembered {
 		t.Errorf("result = %+v", result)
 	}
 }

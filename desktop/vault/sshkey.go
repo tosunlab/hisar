@@ -130,6 +130,15 @@ func CreateSSHKeySource(service *Service) *SSHKeySource {
 	return &SSHKeySource{service: service}
 }
 
+// lockedKeySourceError is ErrLocked for the vault and sshagent.ErrLocked for the agent, which then asks to unlock.
+type lockedKeySourceError struct{}
+
+func (lockedKeySourceError) Error() string { return ErrLocked.Error() }
+
+func (lockedKeySourceError) Is(target error) bool {
+	return target == ErrLocked || target == sshagent.ErrLocked
+}
+
 // ListAllKey returns ErrLocked or ErrSignedOut unless Hisar is unlocked; it does not postpone auto-lock.
 func (source *SSHKeySource) ListAllKey(ctx context.Context) ([]sshagent.Key, error) {
 	s := source.service
@@ -137,7 +146,7 @@ func (source *SSHKeySource) ListAllKey(ctx context.Context) ([]sshagent.Key, err
 	defer s.mutex.Unlock()
 	if s.unlockedSession == nil {
 		if s.state.IsLoggedIn() {
-			return nil, ErrLocked
+			return nil, lockedKeySourceError{}
 		}
 		return nil, ErrSignedOut
 	}

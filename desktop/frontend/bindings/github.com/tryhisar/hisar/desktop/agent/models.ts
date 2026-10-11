@@ -3,7 +3,7 @@
 
 /**
  * ApprovalEvent is what the approval window shows; AppName and AppIconURL describe the app the program runs in.
- * Command-line requests have Kind ApprovalKindCommandLine, no key, and ask to unlock Hisar when IsUnlockRequired.
+ * Command-line requests have Kind ApprovalKindCommandLine and no key; either kind unlocks Hisar when IsUnlockRequired.
  */
 export interface ApprovalEvent {
     "requestID": string;
@@ -17,6 +17,17 @@ export interface ApprovalEvent {
     "destinationHost": string;
     "destinationFingerprint": string;
     "isForwarded": boolean;
+    "forwardedFromHost": string;
+    "purpose": string;
+    "action": string;
+    "target": string;
+    "commandLine": string;
+    "repositoryPath": string;
+    "hostAndPort": string;
+    "branch": string;
+    "commitSubject": string;
+    "isRememberable": boolean;
+    "isCompact": boolean;
     "isTouchIDApproval": boolean;
     "timeoutAt": string;
     "terminalName": string;
@@ -32,5 +43,6 @@ export interface Status {
     "configPath": string;
     "configSection": string;
     "isTouchIDApproval": boolean;
+    "isCompactApproval": boolean;
     "backupPath": string;
 }

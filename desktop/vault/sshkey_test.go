@@ -500,7 +500,7 @@ func TestListAllKey(t *testing.T) {
 	if *test.lockedCount != 1 {
 		t.Errorf("OnLock called %d times after lock", *test.lockedCount)
 	}
-	if allKey, err := keySource.ListAllKey(context.Background()); !errors.Is(err, ErrLocked) || len(allKey) != 0 {
+	if allKey, err := keySource.ListAllKey(context.Background()); !errors.Is(err, ErrLocked) || !errors.Is(err, sshagent.ErrLocked) || err.Error() != ErrLocked.Error() || len(allKey) != 0 {
 		t.Errorf("locked: %d keys, %v", len(allKey), err)
 	}
 	service.Lock()

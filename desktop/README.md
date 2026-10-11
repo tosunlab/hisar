@@ -63,7 +63,7 @@ To work on the design without a server, run the UI in a browser with sample data
 cd desktop/frontend && npm run preview:ui
 # http://127.0.0.1:5180/?state=signed-out | locked | unlocked
 # extra parameters: &vault=family &item=netflix &editor=create|edit|ssh-key &secretKey=1 &search=git
-# SSH: &item=raspberry (SSH key) &settings=1 &approval=1 (in-app approval prompt) &agent=error &sshConfigured=1
+# SSH: &item=raspberry (SSH key) &settings=1 &noTouchID=1 (in-app approval note) &compact=1 (compact approvals on) &agent=error &sshConfigured=1
 # sharing: &sharing=1 (sharing panel; add &vault=work for the read-only view) &code=elif (security code) &remove=deniz
 # settings: &settings=1 &invite=form|1 (invite form, or a created link) &revoke=mac-mini &scroll=family|recovery|devices
 # recovery (admin): &settings=1&scroll=recovery, plus &recovery=off&setUpRecovery=1 (setup confirmation), &recovery=other (set up by
@@ -134,7 +134,7 @@ Hisar is an SSH agent for the SSH keys in your vaults (design: `docs/DESIGN.md` 
 
    **Remove from SSH config** takes the section out again. To try it without changing the config: `SSH_AUTH_SOCK=~/.hisar/agent.sock ssh-add -l`.
 
-The agent listens on `~/.hisar/agent.sock` while the app runs (`HISAR_SSH_AGENT_SOCKET` overrides the path) and offers keys from all your vaults only while Hisar is unlocked. The first time a program (`ssh`, `git`, …) uses a key, Hisar opens its approval window ("Hisar Access Requested", with the app the program runs in); Authorize then asks for Touch ID on Macs that have it. Unanswered requests are denied after 60 seconds. Preview: `?window=ssh-approval&approval=1` (or `=2` for two waiting, `&forwarded=1`, `&noTouchID=1`). Approvals last for an hour, or until Hisar locks.
+The agent listens on `~/.hisar/agent.sock` while the app runs (`HISAR_SSH_AGENT_SOCKET` overrides the path) and offers keys from all your vaults only while Hisar is unlocked. Each use of a key opens the approval dialog, which says who asks for what, like "Terminal wants to push to git.tryhisar.com", with the command and repository, and starts Touch ID at once ("or use your master password" instead). "Don't ask again for Terminal for 1 hour" is checked by default; commit signatures always ask, and requests forwarded from another computer (`ssh -A`) show a red warning and can only be allowed once. While Hisar is locked, the dialog unlocks it. Settings → SSH agent → **Compact SSH approvals** shows a small card at the top right instead. Unanswered requests are denied after 60 seconds. Preview: `?window=ssh-approval&approval=1` (or `=2` for two waiting, `=signing` for a commit signature), plus `&approvalLocked=1` (Touch ID unlocks), `&approvalPassword=1` (master password unlocks), `&compact=1`, `&forwarded=1`, `&noTouchID=1`.
 
 ## Command-line tool
 

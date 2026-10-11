@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
-import { createApiMock, createApprovalEvent, createCommandLineApprovalEvent } from "../testing";
+import { createApiMock, createApprovalEvent, createCommandLineApprovalEvent, createForwardedApprovalEvent, createSigningApprovalEvent } from "../testing";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
 const eventListener = vi.hoisted(() => ({ allByName: {} as Record<string, (event: { data: unknown }) => void> }));
@@ -28,52 +28,53 @@ function sendEvent(name: string, data: unknown): void {
   eventListener.allByName[name]({ data });
 }
 
+function pressKey(key: string): void {
+  window.dispatchEvent(new KeyboardEvent("keydown", { key }));
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
-  Object.assign(approvalStore, { allApproval: [], failureMessage: "", isAuthorizing: false, isForAllApplication: false });
+  Object.assign(approvalStore, { allApproval: [], failureMessage: "", isAuthorizing: false, isRemembered: true, isPasswordChosen: false, isExpanded: false });
   api.listAllPendingSSHApproval.mockResolvedValue([]);
 });
 
 describe("SSHApprovalWindow", () => {
-  it("shows the requesting app, the key and its details", async () => {
+  it("says who wants to do what where, and starts Touch ID", async () => {
     api.listAllPendingSSHApproval.mockResolvedValue([createApprovalEvent({ appIconURL: "data:image/png;base64,AA==" })]);
     const wrapper = mount(SSHApprovalWindow);
     await flushPromises();
-    expect(wrapper.find("h1").text()).toBe("Hisar Access Requested");
-    expect(wrapper.find('[data-testid="approval-app"]').text()).toBe("Terminal");
+    expect(wrapper.find("h1").text()).toBe("Terminal wants to push to git.tryhisar.com");
+    expect(wrapper.find(".subtitle").text()).toBe("with your SSH key “Laptop key”");
     expect(wrapper.find('[data-testid="app-icon"]').attributes("src")).toBe("data:image/png;base64,AA==");
-    expect(wrapper.find('[data-testid="approval-key"]').text()).toContain("Laptop key");
-    expect(wrapper.find('[data-testid="approval-details"]').exists()).toBe(false);
-    await wrapper.find('[data-testid="approval-key"]').trigger("click");
-    const details = wrapper.find('[data-testid="approval-details"]').text();
-    expect(details).toContain("github.com");
-    expect(details).toContain("/usr/bin/ssh");
-    expect(details).toContain("SHA256:hisarTestFingerprint");
+    expect(wrapper.findAll(".detail-line").map((line) => line.text())).toEqual(["git push origin main", "~/src/core · git.tryhisar.com:22"]);
+    expect(wrapper.find(".remember").text()).toBe("Don’t ask again for Terminal for 1 hour");
+    expect((wrapper.find('input[name="isRemembered"]').element as HTMLInputElement).checked).toBe(true);
+    expect(wrapper.find('[data-testid="approval-touch-id"]').text()).toContain("Touch ID to approve");
+    expect(wrapper.find('[data-testid="use-password"]').text()).toBe("or use your master password");
+    expect(wrapper.find('[data-testid="approval-forwarded"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="approval-signing-badge"]').exists()).toBe(false);
+    expect(api.respondSSHApproval).toHaveBeenCalledWith("request-1", true, true);
+    expect(api.setApprovalTouchIDFrame).toHaveBeenCalled();
+    expect(api.fitSSHApprovalWindow).toHaveBeenCalledWith(false, expect.any(Number));
     wrapper.unmount();
   });
 
-  it("starts Touch ID in the window as soon as a request arrives", async () => {
+  it("follows the checkbox and resets it for the next request", async () => {
     const wrapper = mount(SSHApprovalWindow);
     sendEvent("ssh-approval", createApprovalEvent());
     await flushPromises();
-    expect(api.setApprovalTouchIDFrame).toHaveBeenCalled();
-    expect(api.respondSSHApproval).toHaveBeenCalledWith("request-1", true, false);
-    expect(wrapper.find('[data-testid="approval-touch-id"]').text()).toContain("Touch ID to approve");
-    expect(wrapper.find('[data-testid="authorize-approval"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="deny-approval"]').attributes("disabled")).toBeUndefined();
-
-    await wrapper.find('input[name="isForAllApplication"]').setValue(true);
-    expect(api.setSSHApprovalForAllApplication).toHaveBeenCalledWith("request-1", true);
-
+    await wrapper.find('input[name="isRemembered"]').setValue(false);
+    expect(api.setSSHApprovalRemembered).toHaveBeenCalledWith("request-1", false);
+    expect(approvalStore.isRemembered).toBe(false);
     sendEvent("ssh-approval-closed", "request-1");
     await flushPromises();
     expect(wrapper.find('[data-testid="ssh-approval"]').exists()).toBe(false);
     expect(api.clearApprovalTouchIDFrame).toHaveBeenCalled();
-    expect(approvalStore.isForAllApplication).toBe(false);
+    expect(approvalStore.isRemembered).toBe(true);
     wrapper.unmount();
   });
 
-  it("offers Authorize again after Touch ID fails", async () => {
+  it("offers Try again after Touch ID fails", async () => {
     const wrapper = mount(SSHApprovalWindow);
     sendEvent("ssh-approval", createApprovalEvent());
     await flushPromises();
@@ -81,6 +82,7 @@ describe("SSHApprovalWindow", () => {
     await flushPromises();
     expect(wrapper.find('[role="alert"]').text()).toContain("Touch ID did not confirm");
     expect(wrapper.find('[data-testid="approval-touch-id"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="authorize-approval"]').text()).toBe("Try again");
     await wrapper.find('[data-testid="authorize-approval"]').trigger("click");
     await flushPromises();
     expect(api.respondSSHApproval).toHaveBeenCalledTimes(2);
@@ -88,92 +90,211 @@ describe("SSHApprovalWindow", () => {
     wrapper.unmount();
   });
 
-  it("denies while Touch ID waits, with the button or Escape", async () => {
+  it("denies with the button or Escape and moves to the next request", async () => {
     const wrapper = mount(SSHApprovalWindow);
     sendEvent("ssh-approval", createApprovalEvent());
-    sendEvent("ssh-approval", createApprovalEvent({ requestID: "request-2", appName: "Visual Studio Code", isForwarded: true }));
+    sendEvent("ssh-approval", createApprovalEvent({ requestID: "request-2", appName: "Visual Studio Code", target: "github.com" }));
     await flushPromises();
+    expect(wrapper.text()).toContain("1 more waiting");
     await wrapper.find('[data-testid="deny-approval"]').trigger("click");
     await flushPromises();
     expect(api.respondSSHApproval).toHaveBeenCalledWith("request-1", false, false);
-    expect(wrapper.find('[data-testid="approval-app"]').text()).toBe("Visual Studio Code");
-    expect(wrapper.find('[data-testid="approval-forwarded"]').exists()).toBe(true);
-    expect(api.respondSSHApproval).toHaveBeenCalledWith("request-2", true, false);
-
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    expect(wrapper.find("h1").text()).toBe("Visual Studio Code wants to push to github.com");
+    expect(api.respondSSHApproval).toHaveBeenCalledWith("request-2", true, true);
+    pressKey("Escape");
     await flushPromises();
     expect(api.respondSSHApproval).toHaveBeenCalledWith("request-2", false, false);
     expect(wrapper.find('[data-testid="ssh-approval"]').exists()).toBe(false);
     wrapper.unmount();
   });
 
-  it("waits for a click on Macs without Touch ID", async () => {
+  it("waits for Approve on Macs without Touch ID", async () => {
     const wrapper = mount(SSHApprovalWindow);
     sendEvent("ssh-approval", createApprovalEvent({ isTouchIDApproval: false }));
-    sendEvent("ssh-approval", createApprovalEvent({ requestID: "request-2", isTouchIDApproval: false }));
     await flushPromises();
     expect(api.respondSSHApproval).not.toHaveBeenCalled();
-    expect(wrapper.text()).toContain("1 more waiting");
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+    expect(wrapper.find('[data-testid="authorize-approval"]').text()).toBe("Approve");
+    expect(wrapper.find('[data-testid="use-password"]').exists()).toBe(false);
+    pressKey("Enter");
     await flushPromises();
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+    pressKey("Enter");
     await flushPromises();
     expect(api.respondSSHApproval).toHaveBeenCalledTimes(1);
-    expect(api.respondSSHApproval).toHaveBeenCalledWith("request-1", true, false);
+    expect(api.respondSSHApproval).toHaveBeenCalledWith("request-1", true, true);
     wrapper.unmount();
   });
 
+  it("switches from Touch ID to the master password", async () => {
+    const wrapper = mount(SSHApprovalWindow, { attachTo: document.body });
+    sendEvent("ssh-approval", createApprovalEvent());
+    await flushPromises();
+    await wrapper.find('[data-testid="use-password"]').trigger("click");
+    await flushPromises();
+    expect(api.cancelApprovalTouchID).toHaveBeenCalled();
+    expect(document.activeElement).toBe(wrapper.find('[data-testid="approval-password"]').element);
+    sendEvent("ssh-approval-failed", { requestID: "request-1", message: "Touch ID did not confirm it's you. Try again, or deny." });
+    await flushPromises();
+    expect(wrapper.find('[role="alert"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="submit-password"]').text()).toBe("Approve");
+    await wrapper.find('[data-testid="approval-password"]').setValue("correct horse battery");
+    pressKey("Enter");
+    await flushPromises();
+    expect(api.respondApprovalWithPassword).toHaveBeenCalledWith("request-1", "correct horse battery", true);
+    sendEvent("ssh-approval-failed", { requestID: "request-1", message: "Incorrect master password." });
+    await flushPromises();
+    expect(wrapper.find('[role="alert"]').text()).toBe("Incorrect master password.");
+    wrapper.unmount();
+  });
+
+  it("unlocks a locked Hisar with Touch ID", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createApprovalEvent({ isUnlockRequired: true, keyTitle: "" }));
+    await flushPromises();
+    expect(wrapper.find(".subtitle").text()).toBe("Unlock Hisar to use your SSH keys");
+    expect(wrapper.find('[data-testid="approval-unlock-note"]').text()).toContain("approving also unlocks it");
+    expect(wrapper.find('[data-testid="approval-touch-id"]').text()).toContain("Touch ID to unlock and approve");
+    expect(api.respondSSHApproval).toHaveBeenCalledWith("request-1", true, true);
+    wrapper.unmount();
+  });
+
+  it("unlocks a locked Hisar with the master password", async () => {
+    const wrapper = mount(SSHApprovalWindow, { attachTo: document.body });
+    sendEvent("ssh-approval", createApprovalEvent({ isUnlockRequired: true, isPasswordUnlock: true }));
+    await flushPromises();
+    expect(api.respondSSHApproval).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(wrapper.find('[data-testid="approval-password"]').element);
+    expect(wrapper.find('[data-testid="submit-password"]').text()).toBe("Unlock");
+    expect(wrapper.find('[data-testid="submit-password"]').attributes("disabled")).toBeDefined();
+    await wrapper.find('[data-testid="approval-password"]').setValue("correct horse battery");
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(api.respondApprovalWithPassword).toHaveBeenCalledWith("request-1", "correct horse battery", true);
+    expect((wrapper.find('[data-testid="approval-password"]').element as HTMLInputElement).value).toBe("");
+    wrapper.unmount();
+  });
+
+  it("asks for every commit signature with the signing badge", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createSigningApprovalEvent());
+    await flushPromises();
+    expect(wrapper.find('[data-testid="approval-signing-badge"]').text()).toBe("Sign a commit");
+    expect(wrapper.find("h1").text()).toBe("Terminal wants to sign a commit");
+    expect(wrapper.find(".subtitle").text()).toBe("with your SSH key “Signing key”");
+    expect(wrapper.findAll(".detail-line").map((line) => line.text())).toEqual(["“Fix the login redirect”", "~/src/core · feature/login"]);
+    expect(wrapper.find('input[name="isRemembered"]').exists()).toBe(false);
+    expect(api.respondSSHApproval).toHaveBeenCalledWith("signing-1", true, false);
+    wrapper.unmount();
+  });
+
+  it("shows a signed tag, or the command when the commit is unknown", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createSigningApprovalEvent({ purpose: "sign-tag", action: "sign the tag", target: "v1.4.0", commitSubject: "Release 1.4.0" }));
+    sendEvent("ssh-approval", createSigningApprovalEvent({ requestID: "signing-2", commitSubject: "", branch: "" }));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="approval-signing-badge"]').text()).toBe("Sign a tag");
+    expect(wrapper.find("h1").text()).toBe("Terminal wants to sign the tag v1.4.0");
+    await wrapper.find('[data-testid="deny-approval"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.findAll(".detail-line").map((line) => line.text())).toEqual(["git commit -S -m 'Fix the login redirect'", "~/src/core"]);
+    wrapper.unmount();
+  });
+
+  it("warns about forwarded requests, allows them once and denies on Return", async () => {
+    const wrapper = mount(SSHApprovalWindow, { attachTo: document.body });
+    sendEvent("ssh-approval", createForwardedApprovalEvent());
+    await flushPromises();
+    expect(wrapper.find('[data-testid="approval-forwarded"]').text()).toBe(
+      "Forwarded from another computer — this request comes from build.example.com through agent forwarding, not from this Mac",
+    );
+    expect(wrapper.find("h1").text()).toBe("build.example.com wants to sign in to github.com");
+    expect(wrapper.find('input[name="isRemembered"]').exists()).toBe(false);
+    expect(api.respondSSHApproval).not.toHaveBeenCalled();
+    const denyButton = wrapper.find('[data-testid="deny-approval"]');
+    expect(denyButton.classes()).toContain("primary");
+    expect(document.activeElement).toBe(denyButton.element);
+    expect(wrapper.find('[data-testid="authorize-approval"]').text()).toBe("Allow once");
+    await wrapper.find('[data-testid="authorize-approval"]').trigger("click");
+    await flushPromises();
+    expect(api.respondSSHApproval).toHaveBeenCalledWith("forwarded-1", true, false);
+
+    sendEvent("ssh-approval", createForwardedApprovalEvent({ requestID: "forwarded-2" }));
+    sendEvent("ssh-approval-closed", "forwarded-1");
+    await flushPromises();
+    pressKey("Enter");
+    await flushPromises();
+    expect(api.respondSSHApproval).toHaveBeenCalledWith("forwarded-2", false, false);
+    wrapper.unmount();
+  });
+
+  it("shows the compact card and expands it to the full dialog", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createApprovalEvent({ isCompact: true }));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="approval-compact-title"]').text()).toBe("Terminal · Push");
+    expect(wrapper.find(".compact-subtitle").text()).toBe("git.tryhisar.com with “Laptop key”");
+    expect(wrapper.find('[data-testid="approval-touch-id"]').text()).toBe("Touch ID to allow for 1 hour");
+    expect(wrapper.find("h1").exists()).toBe(false);
+    expect(api.respondSSHApproval).toHaveBeenCalledWith("request-1", true, true);
+    expect(api.fitSSHApprovalWindow).toHaveBeenLastCalledWith(true, expect.any(Number));
+    await wrapper.find('[data-testid="ssh-approval"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find("h1").text()).toBe("Terminal wants to push to git.tryhisar.com");
+    expect(api.fitSSHApprovalWindow).toHaveBeenLastCalledWith(false, expect.any(Number));
+    expect(api.respondSSHApproval).toHaveBeenCalledTimes(1);
+    wrapper.unmount();
+  });
+
+  it("denies from the compact card without expanding it", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createSigningApprovalEvent({ isCompact: true }));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="approval-compact-title"]').text()).toBe("Terminal · Sign a commit");
+    expect(wrapper.find(".compact-subtitle").text()).toBe("~/src/core with “Signing key”");
+    expect(wrapper.find('[data-testid="approval-touch-id"]').text()).toBe("Touch ID to sign");
+    await wrapper.find('[data-testid="deny-approval"]').trigger("click");
+    await flushPromises();
+    expect(api.respondSSHApproval).toHaveBeenCalledWith("signing-1", false, false);
+    expect(approvalStore.isExpanded).toBe(false);
+    wrapper.unmount();
+  });
 
   it("asks for the command-line tool in a terminal and starts Touch ID", async () => {
     const wrapper = mount(SSHApprovalWindow);
     sendEvent("ssh-approval", createCommandLineApprovalEvent());
     await flushPromises();
     expect(wrapper.find("#approval-title").text()).toBe("hisar in Terminal wants to use Hisar");
-    expect(wrapper.find('[data-testid="approval-key"]').text()).toContain("Terminal session ttys003");
-    expect(wrapper.find('input[name="isForAllApplication"]').exists()).toBe(false);
-    expect(wrapper.text()).toContain("10 minutes after this terminal's last command");
+    expect(wrapper.find(".subtitle").text()).toBe("from the terminal session ttys003");
+    expect(wrapper.findAll(".detail-line").map((line) => line.text())).toEqual(["/Applications/Hisar.app/Contents/Helpers/hisar", "/dev/ttys003"]);
+    expect(wrapper.find('input[name="isRemembered"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain("10 minutes after this terminal’s last command");
     expect(api.respondSSHApproval).toHaveBeenCalledWith("command-line-1", true, false);
     expect(wrapper.find('[data-testid="approval-touch-id"]').text()).toContain("Touch ID to approve");
-    await wrapper.find('[data-testid="approval-key"]').trigger("click");
-    expect(wrapper.find('[data-testid="approval-details"]').text()).toContain("/Applications/Hisar.app/Contents/Helpers/hisar");
-    expect(wrapper.find('[data-testid="approval-details"]').text()).toContain("/dev/ttys003");
     wrapper.unmount();
   });
 
-  it("unlocks a locked Hisar with Touch ID from the approval", async () => {
+  it("unlocks a locked Hisar for the command-line tool", async () => {
     const wrapper = mount(SSHApprovalWindow);
     sendEvent("ssh-approval", createCommandLineApprovalEvent({ isUnlockRequired: true }));
     await flushPromises();
     expect(wrapper.find('[data-testid="approval-unlock-note"]').text()).toContain("unlocking it also approves this terminal");
-    expect(wrapper.find('[data-testid="approval-touch-id"]').text()).toContain("Touch ID to unlock");
+    expect(wrapper.find('[data-testid="approval-touch-id"]').text()).toContain("Touch ID to unlock and approve");
     expect(wrapper.find('[data-testid="approval-password"]').exists()).toBe(false);
-    expect(api.respondSSHApproval).toHaveBeenCalledWith("command-line-1", true, false);
     wrapper.unmount();
   });
 
-  it("unlocks a locked Hisar with the master password", async () => {
+  it("unlocks a locked Hisar for the command-line tool with the master password", async () => {
     const wrapper = mount(SSHApprovalWindow, { attachTo: document.body });
     sendEvent("ssh-approval", createCommandLineApprovalEvent({ isUnlockRequired: true, isPasswordUnlock: true }));
     await flushPromises();
     expect(api.respondSSHApproval).not.toHaveBeenCalled();
     expect(wrapper.find('[data-testid="approval-password"]').attributes("placeholder")).toBe("Master password");
-    expect(wrapper.find('[data-testid="authorize-approval"]').text()).toBe("Unlock");
-    expect(wrapper.find('[data-testid="authorize-approval"]').attributes("disabled")).toBeDefined();
-
     await wrapper.find('[data-testid="approval-password"]').setValue("wrong password");
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+    pressKey("Enter");
     await flushPromises();
-    expect(api.respondApprovalWithPassword).toHaveBeenCalledWith("command-line-1", "wrong password");
-    expect((wrapper.find('[data-testid="approval-password"]').element as HTMLInputElement).value).toBe("");
-
+    expect(api.respondApprovalWithPassword).toHaveBeenCalledWith("command-line-1", "wrong password", false);
     sendEvent("ssh-approval-failed", { requestID: "command-line-1", message: "Incorrect master password." });
     await flushPromises();
     expect(wrapper.find('[role="alert"]').text()).toBe("Incorrect master password.");
-    await wrapper.find('[data-testid="approval-password"]').setValue("correct horse battery");
-    await wrapper.find('[data-testid="authorize-approval"]').trigger("click");
-    await flushPromises();
-    expect(api.respondApprovalWithPassword).toHaveBeenLastCalledWith("command-line-1", "correct horse battery");
-    expect(api.respondSSHApproval).not.toHaveBeenCalled();
     wrapper.unmount();
   });
 });
