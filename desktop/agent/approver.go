@@ -343,7 +343,10 @@ func (approver *Approver) Approve(ctx context.Context, request sshagent.Approval
 	return sshagent.ApprovalResult{IsAllowed: true, IsRemembered: isRemembered}, nil
 }
 
-const shareLinkWarning = "Anyone with the link can read these until it expires or its views run out."
+const (
+	shareLinkWarning   = "Anyone with the link can read these until it expires or its views run out."
+	plainExportWarning = "The file will hold every password, one-time code secret and SSH private key in plain text."
+)
 
 func (approver *Approver) buildCommandLineEvent(requestID string, request commandline.ApprovalRequest) ApprovalEvent {
 	event := ApprovalEvent{
@@ -368,6 +371,14 @@ func (approver *Approver) buildCommandLineEvent(requestID string, request comman
 		event.CommandLine = request.ShareLink.Detail
 		event.AllSecretName, event.MoreSecretCount = limitSecretName(request.ShareLink.AllFieldLabel)
 		event.Warning = shareLinkWarning
+	}
+	if request.Export != nil {
+		event.Action = "export all your vaults"
+		event.CommandLine = "Encrypted with an export passphrase · " + request.Export.Path
+		if request.Export.IsPlain {
+			event.CommandLine = "Plain JSON, not encrypted · " + request.Export.Path
+			event.Warning = plainExportWarning
+		}
 	}
 	if requester, isResolved := approver.resolveRequester(request.ClientPID); isResolved {
 		applyRequester(&event, requester)

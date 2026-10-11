@@ -4,6 +4,13 @@ import type {
   BrowserStatus,
   CommandLineStatus,
   Device,
+  ExportOptions,
+  ExportRequest,
+  ExportResult,
+  RemovedVaultNotice,
+  VaultActions,
+  VaultDeletionRequest,
+  VaultDeletionResult,
   Person,
   ImportPreview,
   ImportProgress,
@@ -249,6 +256,72 @@ function addPreviewItem(vaultID: string, detail: ItemDetail): ItemDetail {
 }
 
 let allPreviewAgentVaultID: string[] = ["work"];
+
+function buildPreviewVaultSummary(vault: VaultSummary): VaultSummary {
+  return { ...vault, itemCount: allPreviewItemByVaultID[vault.id]?.length ?? 0 };
+}
+
+function buildPreviewVaultActions(vaultID: string): VaultActions {
+  const vault = allPreviewVault.find((candidate) => candidate.id === vaultID)!;
+  const allMember = listAllPreviewVaultMember(vaultID);
+  const isOwner = vault.role === "owner";
+  const ownerCount = allMember.filter((member) => member.role === "owner").length;
+  let deleteBlockedReason = "";
+  if (vault.type === "personal") {
+    deleteBlockedReason = "Your Personal vault can't be deleted. It is the vault Hisar keeps for you alone, and logins saved from the browser and the iPhone go there.";
+  } else if (!isOwner) {
+    deleteBlockedReason = "Only an owner of this vault can delete it. You can leave it instead.";
+  }
+  let leaveBlockedReason = "";
+  if (vault.type === "personal") {
+    leaveBlockedReason = "You can't leave your Personal vault.";
+  } else if (isOwner && ownerCount <= 1) {
+    leaveBlockedReason = "You are its only owner. Delete the vault, or make someone else an owner first.";
+  }
+  return {
+    vault: buildPreviewVaultSummary(vault),
+    canRename: isOwner,
+    canDelete: deleteBlockedReason === "",
+    deleteBlockedReason,
+    canLeave: leaveBlockedReason === "",
+    leaveBlockedReason,
+    membersLosingAccess: allMember.filter((member) => !member.isCurrentUser),
+    targetVaults:
+      deleteBlockedReason === ""
+        ? allPreviewVault.filter((candidate) => candidate.id !== vaultID && candidate.role !== "reader").map(buildPreviewVaultSummary)
+        : [],
+  };
+}
+
+function removePreviewVault(vaultID: string): void {
+  allPreviewVault.splice(
+    allPreviewVault.findIndex((vault) => vault.id === vaultID),
+    1,
+  );
+  delete allPreviewItemByVaultID[vaultID];
+  delete allPreviewAccessByVaultID[vaultID];
+}
+
+// &removedVault=1 shows the notice for a vault someone else deleted, once.
+let allPendingPreviewRemovedVault: RemovedVaultNotice[] =
+  previewParameter.get("removedVault") === "1"
+    ? [{ id: "infra", name: "Infra", message: "“Infra” is no longer available: it was deleted, or you no longer have access to it." }]
+    : [];
+
+function takeAllPreviewRemovedVault(): RemovedVaultNotice[] {
+  const allNotice = allPendingPreviewRemovedVault;
+  allPendingPreviewRemovedVault = [];
+  return allNotice;
+}
+
+function exportPreviewData(request: ExportRequest): Promise<ExportResult> {
+  if (request.password && request.password.length < 4) {
+    return Promise.reject(new Error("incorrect email, master password or Secret Key"));
+  }
+  const itemCount = Object.values(allPreviewItemByVaultID).reduce((count, allItem) => count + allItem.length, 0);
+  const fileName = request.format === "plain" ? "Hisar export 2026-10-11 (not encrypted).json" : "Hisar export 2026-10-11.hisar";
+  return resolveAfterDelay({ path: `/Users/alper/Documents/${fileName}`, vaultCount: allPreviewVault.length, itemCount });
+}
 
 const resolveAfterDelay = <Value>(value: Value): Promise<Value> => new Promise((resolve) => setTimeout(() => resolve(value), 80));
 
@@ -847,6 +920,33 @@ export const previewApi = {
     allPreviewAccessByVaultID[vault.id] = [{ accountId: "alper", role: "owner" }];
     return resolveAfterDelay(vault);
   },
+  getVaultActions: (vaultID: string) => resolveAfterDelay(buildPreviewVaultActions(vaultID)),
+  renameVault: (vaultID: string, name: string) => {
+    const vault = allPreviewVault.find((candidate) => candidate.id === vaultID)!;
+    vault.name = name.trim();
+    return resolveAfterDelay(buildPreviewVaultSummary(vault));
+  },
+  deleteVault: (vaultID: string, request: VaultDeletionRequest): Promise<VaultDeletionResult> => {
+    const vault = allPreviewVault.find((candidate) => candidate.id === vaultID)!;
+    if (request.isDeletingItems && request.confirmedName !== vault.name) {
+      return Promise.reject(new Error("type the vault's name to delete it together with its items"));
+    }
+    const allMovedItem = request.moveToVaultId ? (allPreviewItemByVaultID[vaultID] ?? []) : [];
+    const target = allPreviewVault.find((candidate) => candidate.id === request.moveToVaultId);
+    if (target) {
+      allPreviewItemByVaultID[target.id].push(...allMovedItem);
+    }
+    removePreviewVault(vaultID);
+    return resolveAfterDelay({ movedCount: allMovedItem.length, targetVaultName: target?.name ?? "" });
+  },
+  leaveVault: (vaultID: string) => {
+    removePreviewVault(vaultID);
+    return resolveAfterDelay(undefined);
+  },
+  listAllRemovedVault: () => resolveAfterDelay(takeAllPreviewRemovedVault()),
+  getExportOptions: (): Promise<ExportOptions> =>
+    resolveAfterDelay({ isBiometricAvailable: previewParameter.get("noTouchID") !== "1", minPassphraseLength: 10 }),
+  exportAllData: exportPreviewData,
   listAllItem: (vaultID: string) =>
     resolveAfterDelay((allPreviewItemByVaultID[vaultID] ?? []).map((vaultItem) => ({ ...vaultItem, password: "", notes: "", fields: [] }))),
   getItem: (vaultID: string, itemID: string) =>

@@ -159,13 +159,13 @@ func (s *Server) handleRemoveAccess(c fiber.Ctx) error {
 		return err
 	}
 	target := c.Params("account")
-	switch {
-	case target == currentSession.AccountID && role == proto.VaultOwner:
-		return createAPIError(fiber.StatusBadRequest, "owner cannot leave vault")
-	case target != currentSession.AccountID && role != proto.VaultOwner:
+	vaultID := c.Params("vault")
+	if target == currentSession.AccountID {
+		return s.leaveVault(c, vaultID)
+	}
+	if role != proto.VaultOwner {
 		return createAPIError(fiber.StatusForbidden, "owner only")
 	}
-	vaultID := c.Params("vault")
 	switch err := s.store.RemoveAccess(c.Context(), vaultID, target); {
 	case errors.Is(err, store.ErrNotFound):
 		return errNotFound
@@ -273,4 +273,126 @@ func (s *Server) handleGetItemHistory(c fiber.Ctx) error {
 		allProtoItem = append(allProtoItem, convertToProtoItem(&allItem[index]))
 	}
 	return c.JSON(allProtoItem)
+}
+
+// leaveVault removes the caller's access and wrapped key; the vault key is not rotated, since only owners can rotate.
+func (s *Server) leaveVault(c fiber.Ctx, vaultID string) error {
+	currentSession := getSession(c)
+	switch err := s.store.LeaveVault(c.Context(), vaultID, currentSession.AccountID); {
+	case errors.Is(err, store.ErrOnlyOwner):
+		return createAPIError(fiber.StatusBadRequest, "the only owner can't leave a vault; delete it, or make someone else an owner first")
+	case errors.Is(err, store.ErrNotFound):
+		return errNotFound
+	case err != nil:
+		return err
+	}
+	s.recordAudit(c, currentSession.AccountID, currentSession.DeviceID, "vault_left", map[string]string{"vault": vaultID})
+	s.publishVaultsChanged(currentSession.AccountID)
+	s.publishVaultsChangedToAllMember(c, vaultID)
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (s *Server) handleRenameVault(c fiber.Ctx) error {
+	currentSession := getSession(c)
+	if err := s.requireVaultOwner(c); err != nil {
+		return err
+	}
+	var request proto.RenameVaultRequest
+	if err := decodeBody(c, &request); err != nil {
+		return err
+	}
+	if len(request.EncName) == 0 || len(request.EncName) > maxEncName {
+		return createAPIError(fiber.StatusBadRequest, "invalid vault name")
+	}
+	vaultID := c.Params("vault")
+	switch err := s.store.RenameVault(c.Context(), vaultID, request.EncName); {
+	case errors.Is(err, store.ErrNotFound):
+		return errNotFound
+	case err != nil:
+		return err
+	}
+	s.recordAudit(c, currentSession.AccountID, currentSession.DeviceID, "vault_renamed", map[string]string{"vault": vaultID})
+	s.publishVaultsChangedToAllMember(c, vaultID)
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (s *Server) publishVaultsChangedToAllMember(c fiber.Ctx, vaultID string) {
+	allMember, err := s.store.ListAllMember(c.Context(), vaultID)
+	if err != nil {
+		return
+	}
+	allAccountID := make([]string, 0, len(allMember))
+	for _, member := range allMember {
+		allAccountID = append(allAccountID, member.AccountID)
+	}
+	s.publishVaultsChanged(allAccountID...)
+}
+
+func (s *Server) handleDeleteVault(c fiber.Ctx) error {
+	currentSession := getSession(c)
+	if err := s.requireVaultOwner(c); err != nil {
+		return err
+	}
+	var request proto.DeleteVaultRequest
+	if err := decodeBodyWithLimit(c, &request, maxRotationBody); err != nil {
+		return err
+	}
+	errInvalidDeletion := createAPIError(fiber.StatusBadRequest, "invalid vault deletion")
+	vaultID := c.Params("vault")
+	if request.MoveToVaultID == "" && len(request.AllMovedItem) > 0 ||
+		request.MoveToVaultID != "" && (!isValidUUID(request.MoveToVaultID) || request.MoveToVaultID == vaultID || request.IsDeletingItems) ||
+		len(request.AllMovedItem) > maxRotatedItemCount {
+		return errInvalidDeletion
+	}
+	allSeenItemID := map[string]bool{}
+	allMovedItem := make([]store.MovedItem, 0, len(request.AllMovedItem))
+	for _, movedItem := range request.AllMovedItem {
+		if !isValidUUID(movedItem.ID) || !isValidUUID(movedItem.BaseRevision) || !isValidUUID(movedItem.Revision) ||
+			allSeenItemID[movedItem.ID] ||
+			len(movedItem.Overview) == 0 || len(movedItem.Overview) > maxOverview ||
+			len(movedItem.Details) == 0 || len(movedItem.Details) > maxDetails {
+			return errInvalidDeletion
+		}
+		allSeenItemID[movedItem.ID] = true
+		allMovedItem = append(allMovedItem, store.MovedItem{
+			ID: movedItem.ID, BaseRevision: movedItem.BaseRevision, Revision: movedItem.Revision, Overview: movedItem.Overview, Details: movedItem.Details,
+		})
+	}
+
+	allFormerMemberID, err := s.store.DeleteVault(c.Context(), store.VaultDeletion{
+		VaultID: vaultID, AccountID: currentSession.AccountID, MoveToVaultID: request.MoveToVaultID,
+		AllMovedItem: allMovedItem, IsDeletingItems: request.IsDeletingItems,
+	})
+	switch {
+	case errors.Is(err, store.ErrNotOwner):
+		return createAPIError(fiber.StatusForbidden, "owner only")
+	case errors.Is(err, store.ErrPersonalVault):
+		return createAPIError(fiber.StatusBadRequest, "personal vaults can't be deleted")
+	case errors.Is(err, store.ErrOnlyVault):
+		return createAPIError(fiber.StatusBadRequest, "your only vault can't be deleted")
+	case errors.Is(err, store.ErrVaultNotEmpty):
+		return createAPIError(fiber.StatusConflict, "the vault has items; move them or delete them with the vault")
+	case errors.Is(err, store.ErrConflict):
+		return createAPIError(fiber.StatusConflict, "the vault changed while its items were moved; try again")
+	case errors.Is(err, store.ErrExists):
+		return createAPIError(fiber.StatusConflict, "the target vault already has one of these items")
+	case errors.Is(err, store.ErrTargetNotWritable):
+		return createAPIError(fiber.StatusForbidden, "you can't add items to the target vault")
+	case errors.Is(err, store.ErrNotFound):
+		return errNotFound
+	case err != nil:
+		return err
+	}
+	detail := map[string]string{"vault": vaultID, "members": strconv.Itoa(len(allFormerMemberID))}
+	if request.MoveToVaultID != "" {
+		detail["movedTo"], detail["items"] = request.MoveToVaultID, strconv.Itoa(len(allMovedItem))
+	} else if request.IsDeletingItems {
+		detail["itemsDeleted"] = "true"
+	}
+	s.recordAudit(c, currentSession.AccountID, currentSession.DeviceID, "vault_deleted", detail)
+	s.publishVaultsChanged(allFormerMemberID...)
+	if request.MoveToVaultID != "" {
+		s.publishVaultChanged(c.Context(), request.MoveToVaultID, 0)
+	}
+	return c.SendStatus(fiber.StatusNoContent)
 }

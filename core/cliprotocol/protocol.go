@@ -60,6 +60,12 @@ const (
 	TypeAgentGetCode       = "agent.items.code"
 	TypeAgentRevealSecret  = "agent.secrets.reveal"
 
+	TypeGetVaultActions = "vaults.actions"
+	TypeRenameVault     = "vaults.rename"
+	TypeDeleteVault     = "vaults.delete"
+	TypeLeaveVault      = "vaults.leave"
+	TypeExport          = "export"
+
 	TypeListInvitation    = "invitations.list"
 	TypeAcceptInvitation  = "invitations.accept"
 	TypeDeclineInvitation = "invitations.decline"
@@ -96,6 +102,8 @@ type Request struct {
 	CommandLine   []string         `json:"commandLine,omitempty"`
 	ShareLink     *ShareLinkChange `json:"shareLink,omitempty"`
 	ShareLinkID   string           `json:"shareLinkID,omitempty"`
+	VaultDeletion *VaultDeletion   `json:"vaultDeletion,omitempty"`
+	Export        *ExportChange    `json:"export,omitempty"`
 
 	AgentName        string `json:"agentName,omitempty"`
 	AgentTitle       string `json:"agentTitle,omitempty"`
@@ -191,7 +199,7 @@ type ItemResult struct {
 	Item Item `json:"item"`
 }
 
-// ItemChange holds what the CLI edits; the app keeps every other part of an existing item.
+// ItemChange holds what the CLI edits; the app keeps every other part of an existing item, and the fields when Fields is nil.
 type ItemChange struct {
 	ID       string   `json:"id,omitempty"`
 	Revision string   `json:"revision,omitempty"`
@@ -200,6 +208,53 @@ type ItemChange struct {
 	URLs     []string `json:"urls"`
 	Password string   `json:"password"`
 	Notes    string   `json:"notes"`
+	Fields   *[]Field `json:"fields,omitempty"`
+}
+
+// VaultDeletion: MoveToVaultID moves the items; IsDeletingItems deletes them and needs ConfirmedName, the vault's name.
+type VaultDeletion struct {
+	MoveToVaultID   string `json:"moveToVaultID,omitempty"`
+	IsDeletingItems bool   `json:"isDeletingItems,omitempty"`
+	ConfirmedName   string `json:"confirmedName,omitempty"`
+}
+
+type VaultDeletionResult struct {
+	MovedCount int `json:"movedCount"`
+}
+
+type VaultMember struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
+	Role  string `json:"role"`
+}
+
+type VaultActionsResult struct {
+	Vault                 Vault         `json:"vault"`
+	CanRename             bool          `json:"canRename"`
+	CanDelete             bool          `json:"canDelete"`
+	DeleteBlockedReason   string        `json:"deleteBlockedReason,omitempty"`
+	CanLeave              bool          `json:"canLeave"`
+	LeaveBlockedReason    string        `json:"leaveBlockedReason,omitempty"`
+	AllMemberLosingAccess []VaultMember `json:"membersLosingAccess"`
+	AllTargetVault        []Vault       `json:"targetVaults"`
+}
+
+const (
+	ExportFormatEncrypted = "encrypted"
+	ExportFormatPlain     = "plain"
+)
+
+// ExportChange: the app writes the file at Path itself, so private keys never cross the socket; it never replaces a file.
+type ExportChange struct {
+	Format     string `json:"format"`
+	Passphrase string `json:"passphrase,omitempty"`
+	Path       string `json:"path"`
+}
+
+type ExportResult struct {
+	Path       string `json:"path"`
+	VaultCount int    `json:"vaultCount"`
+	ItemCount  int    `json:"itemCount"`
 }
 
 type CodeResult struct {

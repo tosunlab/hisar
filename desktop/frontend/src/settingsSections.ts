@@ -1,7 +1,7 @@
 import { inject, type InjectionKey } from "vue";
 import type { IconName } from "./components/AppIcon.vue";
 
-export type SettingsSectionID = "general" | "security" | "ssh" | "developer" | "browser" | "people" | "devices" | "account" | "help";
+export type SettingsSectionID = "general" | "security" | "ssh" | "developer" | "browser" | "people" | "devices" | "export" | "account" | "help";
 
 export interface SettingsRow {
   id: string;
@@ -87,6 +87,12 @@ export const allSettingsSection: SettingsSection[] = [
     label: "Devices",
     icon: "laptop",
     allRow: [{ id: "devices", title: "Signed-in devices", keywords: "revoke sign out mac iphone last seen" }],
+  },
+  {
+    id: "export",
+    label: "Export",
+    icon: "export",
+    allRow: [{ id: "export", title: "Export your data", keywords: "export backup json download data encrypted passphrase plain file" }],
   },
   {
     id: "account",

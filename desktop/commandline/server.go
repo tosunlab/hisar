@@ -209,9 +209,13 @@ func (s *Server) answerRequest(ctx context.Context, client *connectionPeer, requ
 	if request.Type == cliprotocol.TypeCreateShareLink && request.ShareLink == nil {
 		return nil, cliprotocol.CreateError(cliprotocol.ErrorInvalidRequest, "the share link is missing")
 	}
+	if request.Type == cliprotocol.TypeExport && request.Export == nil {
+		return nil, cliprotocol.CreateError(cliprotocol.ErrorInvalidRequest, "the export is missing")
+	}
 	require := s.config.Approvals.Require
-	if request.Type == cliprotocol.TypeCreateShareLink {
-		// A share link hands secrets to people outside Hisar, so it asks even in an approved session.
+	if request.Type == cliprotocol.TypeCreateShareLink || request.Type == cliprotocol.TypeExport {
+		// A share link hands secrets to people outside Hisar and an export writes every secret to a file, so both ask
+		// even in an approved session.
 		require = s.config.Approvals.RequireAlways
 	}
 	if err := require(client.session, func() error { return s.askApproval(ctx, client, request) }); err != nil {
@@ -237,6 +241,9 @@ func (s *Server) askApproval(ctx context.Context, client *connectionPeer, reques
 	}
 	if request.Type == cliprotocol.TypeCreateShareLink {
 		approvalRequest.ShareLink = s.describeShareLink(request)
+	}
+	if request.Type == cliprotocol.TypeExport {
+		approvalRequest.Export = &ExportDescription{IsPlain: request.Export.Format == cliprotocol.ExportFormatPlain, Path: request.Export.Path}
 	}
 	return s.config.Approver.ApproveCommandLine(ctx, approvalRequest)
 }

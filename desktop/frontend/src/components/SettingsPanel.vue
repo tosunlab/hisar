@@ -17,6 +17,7 @@ import BrowserExtensionSection from "./BrowserExtensionSection.vue";
 import CodingAgentsSection from "./CodingAgentsSection.vue";
 import CommandLineSection from "./CommandLineSection.vue";
 import DevicesSection from "./DevicesSection.vue";
+import ExportSection from "./ExportSection.vue";
 import HelpSection from "./HelpSection.vue";
 import ImportSection from "./ImportSection.vue";
 import OpenAtLoginSection from "./OpenAtLoginSection.vue";
@@ -216,6 +217,9 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleKeydown));
           </div>
           <div v-show="displayedSection?.id === 'devices'" data-testid="settings-page-devices">
             <DevicesSection />
+          </div>
+          <div v-show="displayedSection?.id === 'export'" data-testid="settings-page-export">
+            <ExportSection />
           </div>
           <div v-show="displayedSection?.id === 'account'" data-testid="settings-page-account">
             <AccountSection />

@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/tryhisar/hisar/core/client"
+	"github.com/tryhisar/hisar/core/export"
 	"github.com/tryhisar/hisar/core/importer"
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/proto"
@@ -123,11 +124,84 @@ func saveAllImportedItem(ctx context.Context, unlockedSession *session.Session, 
 	return savedCount, nil
 }
 
+type importOption struct {
+	vaultName            string
+	isVaultChosen        bool
+	format               string
+	isConfirmed          bool
+	isIncludingDuplicate bool
+	itemTitle            string
+	keyList              string
+	isKeyListChosen      bool
+	isDryRun             bool
+}
+
+func addImportFlag(flags *flag.FlagSet) *importOption {
+	option := &importOption{}
+	flags.StringVar(&option.vaultName, "v", "Personal", "vault name or ID; for a Hisar export, put every item into this vault")
+	flags.StringVar(&option.vaultName, "vault", "Personal", "the same as -v")
+	flags.StringVar(&option.format, "format", "", describeAllImportFormat()+"; Hisar exports and .env files are recognised by themselves")
+	flags.BoolVar(&option.isConfirmed, "y", false, "import without asking; items already in the vault are skipped")
+	flags.BoolVar(&option.isIncludingDuplicate, "include-duplicates", false, "also import items the vault already has")
+	flags.StringVar(&option.itemTitle, "item", "", ".env: the item to store the chosen values in (created when missing)")
+	flags.StringVar(&option.keyList, "keys", "", ".env: comma-separated variables to store; by default the ones that look secret")
+	flags.BoolVar(&option.isDryRun, "dry-run", false, ".env: print what would be stored and how the file would change, and write nothing")
+	return option
+}
+
+func (option *importOption) readChosenFlag(flags *flag.FlagSet) {
+	flags.Visit(func(chosen *flag.Flag) {
+		switch chosen.Name {
+		case "v", "vault":
+			option.isVaultChosen = true
+		case "keys":
+			option.isKeyListChosen = true
+		}
+	})
+}
+
+// importOwnFormat handles .env files and Hisar's own exports; other files go to the password manager importers.
+func importOwnFormat(ctx context.Context, access vaultAccess, path string, option *importOption) (bool, error) {
+	if isDotenvFile(path, option.format) {
+		dotenvOption := dotenvImportOption{
+			vaultName: option.vaultName, isVaultChosen: option.isVaultChosen, itemTitle: option.itemTitle,
+			isDryRun: option.isDryRun, isConfirmed: option.isConfirmed,
+		}
+		if option.isKeyListChosen {
+			dotenvOption.allChosenKey = []string{}
+			for _, key := range strings.Split(option.keyList, ",") {
+				if key = strings.TrimSpace(key); key != "" {
+					dotenvOption.allChosenKey = append(dotenvOption.allChosenKey, key)
+				}
+			}
+		}
+		return true, importDotenv(ctx, access, path, dotenvOption)
+	}
+	if option.itemTitle != "" || option.isKeyListChosen || option.isDryRun {
+		return true, errors.New("--item, --keys and --dry-run are for .env files")
+	}
+	if option.format != "" {
+		return false, nil
+	}
+	content, err := readImportFile(path)
+	if err != nil {
+		return true, err
+	}
+	defer clear(content)
+	format, err := export.DetectFormat(content)
+	if errors.Is(err, export.ErrNotExport) {
+		return false, nil
+	}
+	if err != nil {
+		return true, err
+	}
+	return true, importHisarExport(ctx, access, path, format, content, hisarImportOption{
+		vaultName: option.vaultName, isVaultChosen: option.isVaultChosen, isConfirmed: option.isConfirmed, isIncludingDuplicate: option.isIncludingDuplicate,
+	})
+}
+
 func runImport(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
-	vaultName := addVaultFlag(flags)
-	format := flags.String("format", "", describeAllImportFormat())
-	isConfirmed := flags.Bool("y", false, "import without asking; items already in the vault are skipped")
-	isIncludingDuplicate := flags.Bool("include-duplicates", false, "also import items the vault already has")
+	option := addImportFlag(flags)
 	allPositional, err := parse(flags, allArg)
 	if err != nil {
 		return err
@@ -135,15 +209,20 @@ func runImport(ctx context.Context, flags *flag.FlagSet, allArg []string) error 
 	if len(allPositional) != 1 {
 		return errUsage
 	}
-	if !importer.IsKnownFormat(*format) {
-		return fmt.Errorf("unknown format %q; %s", *format, describeAllImportFormat())
+	option.readChosenFlag(flags)
+	access := &sessionVaultAccess{}
+	if isHandled, err := importOwnFormat(ctx, access, allPositional[0], option); isHandled {
+		return access.finish(err)
+	}
+	if !importer.IsKnownFormat(option.format) {
+		return fmt.Errorf("unknown format %q; %s", option.format, describeAllImportFormat())
 	}
 	path := allPositional[0]
 	content, err := readImportFile(path)
 	if err != nil {
 		return err
 	}
-	result, err := importer.Parse(filepath.Base(path), content, *format)
+	result, err := importer.Parse(filepath.Base(path), content, option.format)
 	clear(content)
 	if err != nil {
 		return err
@@ -154,7 +233,7 @@ func runImport(ctx context.Context, flags *flag.FlagSet, allArg []string) error 
 		return err
 	}
 	err = func() error {
-		vault, err := unlockedSession.FindVault(ctx, *vaultName)
+		vault, err := unlockedSession.FindVault(ctx, option.vaultName)
 		if err != nil {
 			return err
 		}
@@ -167,8 +246,8 @@ func runImport(ctx context.Context, flags *flag.FlagSet, allArg []string) error 
 		}
 		allDuplicateIndex := importer.FindAllDuplicateIndex(result.AllItem, allExisting)
 		printImportPreview(os.Stderr, filepath.Base(path), result, vault.Name, allDuplicateIndex)
-		isSkippingDuplicate := !*isIncludingDuplicate
-		if !*isConfirmed && isSkippingDuplicate && len(allDuplicateIndex) > 0 {
+		isSkippingDuplicate := !option.isIncludingDuplicate
+		if !option.isConfirmed && isSkippingDuplicate && len(allDuplicateIndex) > 0 {
 			isIncluding, err := confirm(fmt.Sprintf("Also import the %s already in %s?", formatItemCount(len(allDuplicateIndex)), vault.Name))
 			if err != nil {
 				return err
@@ -180,7 +259,7 @@ func runImport(ctx context.Context, flags *flag.FlagSet, allArg []string) error 
 			fmt.Fprintln(os.Stderr, "Nothing to import.")
 			return nil
 		}
-		if !*isConfirmed {
+		if !option.isConfirmed {
 			isImporting, err := confirm(fmt.Sprintf("Import %s into %s?", formatItemCount(len(allQueuedItem)), vault.Name))
 			if err != nil || !isImporting {
 				return err
@@ -191,7 +270,7 @@ func runImport(ctx context.Context, flags *flag.FlagSet, allArg []string) error 
 			return err
 		}
 		fmt.Fprintf(os.Stderr, "Imported %s into %s.\n", formatItemCount(savedCount), vault.Name)
-		return offerToDeleteImportFile(path, *isConfirmed)
+		return offerToDeleteImportFile(path, option.isConfirmed)
 	}()
 	return finishSession(currentState, unlockedSession, err)
 }

@@ -6,6 +6,7 @@ import {
   openTextShareLinkDialog,
   openImport,
   openSharing,
+  openVaultDialog,
   selectItem,
   selectVault,
   startCreatingItem,
@@ -60,6 +61,16 @@ async function applySettingsParameter(parameter: URLSearchParams): Promise<void>
     (await waitForElement('[data-testid="invite-form"]')).dispatchEvent(new Event("submit"));
   } else if (parameter.get("invite") === "form") {
     await clickElement('[data-testid="start-invite"]');
+  }
+  if (parameter.get("exportFormat") === "plain") {
+    await clickElement('[data-testid="export-format-plain"]');
+  } else if (parameter.get("exportPassphrase") === "1") {
+    for (const selector of ['[data-testid="export-passphrase"]', '[data-testid="export-passphrase-repeat"]']) {
+      const passphraseInput = (await waitForElement(selector)) as HTMLInputElement;
+      passphraseInput.value = "orange cactus harbor";
+      passphraseInput.dispatchEvent(new Event("input"));
+    }
+    await nextTick();
   }
   const deviceID = parameter.get("revoke");
   if (deviceID) {
@@ -153,6 +164,18 @@ export async function applyPreviewParameter(): Promise<void> {
   }
   if (parameter.get("import")) {
     applyImportParameter(parameter);
+  }
+  const vaultDialogMode = parameter.get("vaultDialog");
+  if (vaultDialogMode === "rename" || vaultDialogMode === "delete" || vaultDialogMode === "leave") {
+    waitForUnlocked().then(async () => {
+      await openVaultDialog(parameter.get("dialogVault") ?? "team", vaultDialogMode);
+      if (parameter.get("deleteItems") === "1") {
+        await clickElement('[data-testid="vault-delete-items"]');
+      }
+    });
+  }
+  if (parameter.get("vaultMenu") === "1") {
+    waitForUnlocked().then(() => clickElement('[data-testid="vault-actions"]'));
   }
   if (parameter.get("newItemMenu") === "1") {
     waitForUnlocked().then(() => clickElement('button[aria-label="New item"]'));

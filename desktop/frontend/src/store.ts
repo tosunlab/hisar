@@ -25,6 +25,11 @@ import {
   type VaultMember,
   type VaultRole,
   type VaultSummary,
+  type VaultActions,
+  type RemovedVaultNotice,
+  type VaultDeletionRequest,
+  type ExportRequest,
+  type ExportResult,
 } from "./api";
 
 export type EditorMode = "view" | "edit" | "create" | "create-ssh-key";
@@ -36,6 +41,15 @@ export interface ShareLinkDialog {
   itemID: string;
   title: string;
   allField: ShareLinkField[];
+}
+
+export type VaultDialogMode = "rename" | "delete" | "leave" | "blocked";
+
+// VaultDialog: blockedReason explains why the chosen action is not possible, in the "blocked" mode.
+export interface VaultDialog {
+  mode: VaultDialogMode;
+  actions: VaultActions;
+  blockedReason: string;
 }
 
 export const store = reactive({
@@ -86,6 +100,8 @@ export const store = reactive({
   allShareLink: [] as ShareLink[],
   isShareLinksOpen: false,
   shareLinkDialog: null as ShareLinkDialog | null,
+  vaultDialog: null as VaultDialog | null,
+  allRemovedVaultNotice: [] as RemovedVaultNotice[],
 });
 
 let noticeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -131,6 +147,8 @@ function clearAllVaultData(): void {
   store.allShareLink = [];
   store.isShareLinksOpen = false;
   store.shareLinkDialog = null;
+  store.vaultDialog = null;
+  store.allRemovedVaultNotice = [];
   store.allVault = [];
   store.selectedVaultID = "";
   store.allItem = [];
@@ -297,12 +315,112 @@ export async function loadAllVault(): Promise<void> {
     return;
   }
   store.allVault = allVault;
+  await loadRemovedVaultNoticeQuietly();
   const stillExists = allVault.some((vault) => vault.id === store.selectedVaultID);
   if (!stillExists && allVault.length > 0) {
-    await selectVault(allVault[0].id);
+    await selectVault(findPersonalVaultID(allVault));
   }
   await loadShareInvitationsQuietly();
   await loadAllShareLinkQuietly();
+}
+
+function findPersonalVaultID(allVault: VaultSummary[]): string {
+  return (allVault.find((vault) => vault.type === "personal") ?? allVault[0]).id;
+}
+
+// loadRemovedVaultNoticeQuietly shows vaults another person deleted or removed this user from; each notice comes once.
+export async function loadRemovedVaultNoticeQuietly(): Promise<void> {
+  try {
+    const allNotice = await api.listAllRemovedVault();
+    if (allNotice.length > 0 && store.status.state === "unlocked") {
+      store.allRemovedVaultNotice = [...store.allRemovedVaultNotice, ...allNotice];
+    }
+  } catch {
+    return;
+  }
+}
+
+export function dismissRemovedVaultNotice(vaultID: string): void {
+  store.allRemovedVaultNotice = store.allRemovedVaultNotice.filter((notice) => notice.id !== vaultID);
+}
+
+export async function openVaultDialog(vaultID: string, mode: Exclude<VaultDialogMode, "blocked">): Promise<void> {
+  const actions = await runAction(() => api.getVaultActions(vaultID));
+  if (!actions) {
+    return;
+  }
+  let blockedReason = "";
+  if (mode === "delete" && !actions.canDelete) {
+    blockedReason = actions.deleteBlockedReason;
+  } else if (mode === "leave" && !actions.canLeave) {
+    blockedReason = actions.leaveBlockedReason;
+  } else if (mode === "rename" && !actions.canRename) {
+    blockedReason = "Only an owner of this vault can rename it.";
+  }
+  store.vaultDialog = { mode: blockedReason ? "blocked" : mode, actions, blockedReason };
+}
+
+export function closeVaultDialog(): void {
+  store.vaultDialog = null;
+  store.errorMessage = "";
+}
+
+export async function renameVault(name: string): Promise<boolean> {
+  const vaultID = store.vaultDialog?.actions.vault.id ?? "";
+  const renamed = await runAction(() => api.renameVault(vaultID, name));
+  if (!renamed) {
+    return false;
+  }
+  store.vaultDialog = null;
+  store.allVault = store.allVault.map((vault) => (vault.id === vaultID ? { ...vault, name: renamed.name } : vault));
+  showNotice(`Renamed the vault to ${renamed.name}`);
+  return true;
+}
+
+export async function deleteVault(request: VaultDeletionRequest): Promise<boolean> {
+  const vault = store.vaultDialog?.actions.vault;
+  if (!vault) {
+    return false;
+  }
+  const result = await runAction(() => api.deleteVault(vault.id, request));
+  if (!result) {
+    return false;
+  }
+  store.vaultDialog = null;
+  await loadAllVault();
+  await selectVault(request.moveToVaultId || findPersonalVaultID(store.allVault));
+  if (request.moveToVaultId) {
+    const movedText = result.movedCount === 1 ? "1 item" : `${result.movedCount} items`;
+    showNotice(`Moved ${movedText} to ${result.targetVaultName} and deleted ${vault.name}.`);
+  } else {
+    showNotice(`Deleted ${vault.name}.`);
+  }
+  return true;
+}
+
+export async function leaveVault(): Promise<boolean> {
+  const vault = store.vaultDialog?.actions.vault;
+  if (!vault) {
+    return false;
+  }
+  const left = await runAction(async () => {
+    await api.leaveVault(vault.id);
+    return true;
+  });
+  if (!left) {
+    return false;
+  }
+  store.vaultDialog = null;
+  await loadAllVault();
+  await selectVault(findPersonalVaultID(store.allVault));
+  showNotice(`You left ${vault.name}.`);
+  return true;
+}
+
+// exportAllData returns undefined when the export failed or the save dialog was cancelled.
+export async function exportAllData(request: ExportRequest): Promise<ExportResult | undefined> {
+  const result = await runAction(() => api.exportAllData(request));
+  return result && result.path ? result : undefined;
 }
 
 // loadShareInvitationsQuietly also lets the backend complete shares people accepted; failures stay silent like a background sync.
@@ -347,11 +465,12 @@ export async function syncInBackground(): Promise<void> {
     }
     store.allVault = allVault;
     store.status = status;
+    await loadRemovedVaultNoticeQuietly();
     await loadShareInvitationsQuietly();
     await loadAllShareLinkQuietly();
     if (!allVault.some((vault) => vault.id === store.selectedVaultID)) {
       if (allVault.length > 0) {
-        await selectVault(allVault[0].id);
+        await selectVault(findPersonalVaultID(allVault));
       }
       return;
     }

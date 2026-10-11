@@ -93,7 +93,7 @@ TEXT_ID=${TEXT_ID%%#*}
 expect "wrong passphrase is refused" "$(printf 'wrong passphrase\n' | hisar share-link open "$TEXT_URL" 2>&1 || true)" "doesn't open this link"
 expect "passphrase opens the text" "$(printf 'link passphrase\n' | hisar share-link open "$TEXT_URL" 2>&1)" "deploy token: abc123"
 expect "text link listed with its views" "$(printf '%s\n' "$PW" | A share-links 2>/dev/null)" "2/3"
-expect "revoke" "$(printf '%s\n' "$PW" | A share-link revoke "$TEXT_ID" 2>&1)" "Revoked the share link"
+expect "revoke" "$(printf '%s\n' "$PW" | A share-link revoke -- "$TEXT_ID" 2>&1)" "Revoked the share link"
 expect "revoked link no longer opens" "$(printf 'link passphrase\n' | hisar share-link open "$TEXT_URL" 2>&1 || true)" "this link has expired or was already viewed"
 [[ "$(printf '%s\n' "$PW" | A share-links 2>&1)" != *"$TEXT_ID"* ]] || fail "the revoked link is still listed"
 echo "ok   the revoked link is gone from the list"
@@ -196,6 +196,40 @@ echo "ok   delete propagates"
 
 expect "unshare rotates the vault key" "$(printf '%s\n' "$PW" | A unshare Family bob@example.com 2>&1)" "rotated the vault key"
 expect "removed member cannot read the vault" "$(printf '%s\n' "$PW" | B ls -v Family 2>&1 || true)" "not found"
+
+expect "a reader cannot delete a vault" "$(printf '%s\n' "$PW" | C vault delete Work --delete-items --confirm Work 2>&1 || true)" "Only an owner of this vault can delete it"
+expect "a reader leaves a vault" "$(printf '%s\n' "$PW" | C vault leave Work -y 2>&1)" "You left Work."
+[[ "$(printf '%s\n' "$PW" | C vaults 2>/dev/null)" != *Work* ]] || fail "carol still lists the vault she left"
+echo "ok   the vault is gone for the member who left"
+expect "the personal vault can't be deleted" "$(printf '%s\n' "$PW" | A vault delete Personal -y 2>&1 || true)" "Personal vault can't be deleted"
+expect "an owner renames a vault" "$(printf '%s\n' "$PW" | A vault rename Imports "Old imports" 2>&1)" 'Renamed "Imports" to "Old imports"'
+expect "a vault with items needs a choice in a script" "$(printf '%s\n' "$PW" | A vault delete "Old imports" -y 2>&1 || true)" "pass --move-to <vault>"
+expect "deleting a vault moves its items" "$(printf '%s\n' "$PW" | A vault delete "Old imports" --move-to Personal -y 2>&1)" "Moved 3 items to Personal and deleted Old imports."
+MOVED_COUNT=$(printf '%s\n' "$PW" | A ls 2>/dev/null | grep -c '^Imported Bank ' || true)
+[[ "$MOVED_COUNT" == 2 ]] || fail "Personal has $MOVED_COUNT copies of Imported Bank after the move"
+expect "moved items decrypt in the target vault" "$(printf '%s\n' "$PW" | A get "Imported Mail" -f notes 2>/dev/null)" $'First line\nSecond line'
+printf '%s\n' "$PW" | A vault create Scratch 2>/dev/null
+expect "an empty vault is deleted" "$(printf '%s\n' "$PW" | A vault delete Scratch -y 2>&1)" "Deleted Scratch."
+
+expect "encrypted export" "$(printf 'export passphrase one\n%s\n' "$PW" | A export -o "$T/alice-export.hisar" 2>&1)" "Exported "
+expect "the encrypted export is private and hides the passwords" "$(stat -c %a "$T/alice-export.hisar" 2>/dev/null || stat -f %Lp "$T/alice-export.hisar") $(grep -c 'Imported Bank' "$T/alice-export.hisar" || true)" "600 0"
+expect "export never overwrites" "$(printf 'export passphrase one\n%s\n' "$PW" | A export -o "$T/alice-export.hisar" 2>&1 || true)" "already exists"
+expect "plain export" "$(printf '%s\n' "$PW" | A export --format plain -o "$T/alice-export.json" -y 2>&1)" "It is not encrypted"
+grep -q '"format": "hisar-export"' "$T/alice-export.json" && grep -qF mail-pass-1 "$T/alice-export.json" || fail "the plain export lacks its header or the Imported Mail password"
+echo "ok   plain export holds the items"
+expect "a wrong export passphrase fails cleanly" "$(printf 'not the passphrase\n' | C import "$T/alice-export.hisar" -y 2>&1 || true)" "that passphrase doesn't open this export"
+expect "importing alice's encrypted export into carol's account" "$(printf 'export passphrase one\n%s\n' "$PW" | C import "$T/alice-export.hisar" -y 2>&1)" "Family → Family (new vault)"
+expect "the imported password round trips" "$(printf '%s\n' "$PW" | C get "Imported Bank" -f password 2>/dev/null)" 'bank,pass"word'
+expect "the imported shared vault round trips" "$(printf '%s\n' "$PW" | C vaults 2>/dev/null)" "Family"
+expect "importing the plain export again skips what is already there" "$(printf '%s\n' "$PW" | C import "$T/alice-export.json" -y 2>&1)" "Nothing to import."
+
+mkdir -p "$T/shop"
+printf '# shop\nexport STRIPE_KEY="sk_live_123" # live key\nPORT=8080\nDATABASE_URL=postgres://shop:dbpass@db/shop\n' >"$T/shop/.env"
+expect ".env dry run" "$(A import "$T/shop/.env" --vault Personal --item shop --dry-run 2>&1)" "STRIPE_KEY=hisar://Personal/shop/STRIPE_KEY"
+grep -q 'sk_live_123' "$T/shop/.env" || fail "the dry run changed .env"
+expect ".env import" "$(printf '%s\n' "$PW" | A import "$T/shop/.env" --vault Personal --item shop -y 2>&1)" "hisar run --env-file $T/shop/.env -- <command>"
+expect ".env keeps comments, quotes and plain values" "$(cat "$T/shop/.env")" $'# shop\nexport STRIPE_KEY="hisar://Personal/shop/STRIPE_KEY" # live key\nPORT=8080\nDATABASE_URL=hisar://Personal/shop/DATABASE_URL'
+expect "hisar run reads the rewritten .env" "$(printf '%s\n' "$PW" | A run --env-file "$T/shop/.env" --no-masking -- sh -c 'echo "$STRIPE_KEY $PORT $DATABASE_URL"' 2>/dev/null)" "sk_live_123 8080 postgres://shop:dbpass@db/shop"
 
 for REMOVED_COMMAND in recover recovery-setup recovery-enable recovery-start recovery-list recovery-complete; do
   expect "hisar $REMOVED_COMMAND was removed" "$(A "$REMOVED_COMMAND" bob@example.com 2>&1 || true)" "account recovery was removed; sign in with your Emergency Kit"

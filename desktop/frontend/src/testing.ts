@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import type { ApprovalEvent, ShareLink, ShareLinkField, BrowserStatus, CommandLineStatus, Device, ImportPreview, ImportProgress, ItemDetail, LoginItemStatus, Person, ReceivedShareInvitation, SentShareInvitation, SSHAgentStatus, Status, UpdateStatus, VaultMember, VaultSummary } from "./api";
+import type { ApprovalEvent, ShareLink, ShareLinkField, BrowserStatus, CommandLineStatus, Device, ImportPreview, ImportProgress, ItemDetail, LoginItemStatus, Person, ReceivedShareInvitation, SentShareInvitation, SSHAgentStatus, Status, UpdateStatus, VaultActions, VaultMember, VaultSummary } from "./api";
 
 export function createStatus(state: string): Status {
   return { state, server: "https://hisar.test", email: "alice@example.com", name: "Alice", biometricAvailable: false, biometricEnabled: false, biometricReady: false, isOffline: false, autoLockSeconds: 600 };
@@ -312,6 +312,20 @@ export const allTestVault: VaultSummary[] = [
   { id: "family", name: "Family", type: "shared", role: "reader", itemCount: 0 },
 ];
 
+export function createVaultActions(overrides: Partial<VaultActions> = {}): VaultActions {
+  return {
+    vault: { id: "work", name: "Work", type: "shared", role: "owner", itemCount: 12 },
+    canRename: true,
+    canDelete: true,
+    deleteBlockedReason: "",
+    canLeave: false,
+    leaveBlockedReason: "You are its only owner. Delete the vault, or make someone else an owner first.",
+    membersLosingAccess: [],
+    targetVaults: [{ id: "personal", name: "Personal", type: "personal", role: "owner", itemCount: 2 }],
+    ...overrides,
+  };
+}
+
 export function createApiMock() {
   return {
     getStatus: vi.fn(),
@@ -326,6 +340,13 @@ export function createApiMock() {
     reportActivity: vi.fn().mockResolvedValue(undefined),
     listAllVault: vi.fn(),
     createVault: vi.fn(),
+    getVaultActions: vi.fn().mockResolvedValue(createVaultActions()),
+    renameVault: vi.fn(),
+    deleteVault: vi.fn(),
+    leaveVault: vi.fn().mockResolvedValue(undefined),
+    listAllRemovedVault: vi.fn().mockResolvedValue([]),
+    getExportOptions: vi.fn().mockResolvedValue({ isBiometricAvailable: true, minPassphraseLength: 10 }),
+    exportAllData: vi.fn(),
     listAllItem: vi.fn(),
     getItem: vi.fn(),
     saveItem: vi.fn(),

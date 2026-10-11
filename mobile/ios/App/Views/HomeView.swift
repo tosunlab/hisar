@@ -45,6 +45,7 @@ struct VaultsView: View {
                     deny: { approval in Task { await model.deny(approval) } },
                     showAll: { model.selectedTab = .approvals }
                 )
+                RemovedVaultNoticeSection(allNotice: model.allRemovedVaultNotice) { model.dismissRemovedVaultNotice($0) }
                 receivedInvitationSection
                 vaultSection
                 if !model.allVault.isEmpty {
@@ -107,6 +108,11 @@ struct VaultsView: View {
             }
         }
         .onChange(of: navigationPath) { _, _ in model.reportActivity() }
+        .onChange(of: model.allVault.map(\.id)) { allPreviousID, allCurrentID in
+            if !Set(allPreviousID).isSubset(of: Set(allCurrentID)) && !navigationPath.isEmpty {
+                navigationPath = NavigationPath()
+            }
+        }
         .sheet(isPresented: $isNewVaultShown) {
             NewVaultView { vault in
                 navigationPath.append(VaultDestination(vaultID: vault.id))

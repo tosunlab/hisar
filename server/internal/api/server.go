@@ -165,6 +165,8 @@ func (s *Server) CreateApp() *fiber.App {
 	apiGroup.Put("/vaults/:vault/access/:account", s.requireSession, s.handleSetAccess)
 	apiGroup.Delete("/vaults/:vault/access/:account", s.requireSession, s.handleRemoveAccess)
 	apiGroup.Post("/vaults/:vault/rotate", s.requireSession, s.handleRotateVault)
+	apiGroup.Put("/vaults/:vault/name", s.requireSession, s.handleRenameVault)
+	apiGroup.Post("/vaults/:vault/delete", s.requireSession, s.handleDeleteVault)
 	apiGroup.Get("/vaults/:vault/changes", s.requireSession, s.handleListAllChange)
 	apiGroup.Put("/vaults/:vault/items/:item", s.requireSession, s.handlePutItem)
 	apiGroup.Get("/vaults/:vault/items/:item/history", s.requireSession, s.handleGetItemHistory)

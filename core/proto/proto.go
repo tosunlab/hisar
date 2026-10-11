@@ -275,6 +275,27 @@ type RotateVaultRequest struct {
 	AllItem   []RotatedItem   `json:"items"`
 }
 
+type RenameVaultRequest struct {
+	EncName []byte `json:"encName"`
+}
+
+// MovedItem is a live item re-encrypted under the target vault's key; BaseRevision is its revision in the deleted vault.
+type MovedItem struct {
+	ID           string `json:"id"`
+	BaseRevision string `json:"baseRevision"`
+	Revision     string `json:"revision"`
+	Overview     []byte `json:"overview"`
+	Details      []byte `json:"details"`
+}
+
+// DeleteVaultRequest: a vault with live items needs either MoveToVaultID with every live item in AllMovedItem,
+// or IsDeletingItems.
+type DeleteVaultRequest struct {
+	MoveToVaultID   string      `json:"moveToVaultId,omitempty"`
+	AllMovedItem    []MovedItem `json:"movedItems,omitempty"`
+	IsDeletingItems bool        `json:"deleteItems,omitempty"`
+}
+
 // Phone approvals: the server relays sealed requests and answers between the devices of one account.
 const (
 	EventApprovalRequested = "approval-requested"

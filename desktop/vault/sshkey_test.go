@@ -156,6 +156,7 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 	})
 	server.addAllSharingRoute(mux)
 	server.addAllApprovalRoute(mux)
+	server.addAllVaultManagementRoute(mux)
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		server.mutex.Lock()
 		isUnreachable := server.isUnreachable

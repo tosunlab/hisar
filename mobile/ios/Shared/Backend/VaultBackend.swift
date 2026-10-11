@@ -27,6 +27,13 @@ protocol VaultBackend: AnyObject {
     func shareVault(vaultID: String, email: String, role: String) throws
     func changeVaultMemberRole(vaultID: String, accountID: String, role: String) throws
     func removeVaultMember(vaultID: String, accountID: String) throws
+    func getVaultActions(vaultID: String) throws -> VaultActions
+    func renameVault(vaultID: String, name: String) throws -> VaultSummary
+    func deleteVault(vaultID: String, request: VaultDeletionRequest) throws -> VaultDeletionResult
+    func leaveVault(vaultID: String) throws
+    func listAllRemovedVault() throws -> [RemovedVaultNotice]
+    func getExportOptions() throws -> ExportOptions
+    func exportAllData(format: ExportFormat, passphrase: String, password: String, directory: URL) throws -> ExportResult
     func listAllItem(vaultID: String) throws -> [ItemDetail]
     func getItem(vaultID: String, itemID: String) throws -> ItemDetail
     func saveItem(vaultID: String, item: ItemDetail) throws -> ItemDetail

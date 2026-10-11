@@ -50,6 +50,8 @@ struct HisarApp: App {
             AutoFillPreviewView(mode: mode)
         } else if let approval = PhoneApprovalPreviewView.readApproval() {
             PhoneApprovalPreviewView(approval: approval)
+        } else if let vaultManagementMode = VaultManagementPreviewView.readMode() {
+            VaultManagementPreviewView(mode: vaultManagementMode)
         } else if PendingApprovalPreviewView.isRequested() {
             PendingApprovalPreviewView()
         } else {
@@ -62,7 +64,7 @@ struct HisarApp: App {
 
     private func startModel() {
         #if DEBUG
-        guard AutoFillPreviewView.readMode() == nil, PhoneApprovalPreviewView.readApproval() == nil, !PendingApprovalPreviewView.isRequested() else { return }
+        guard AutoFillPreviewView.readMode() == nil, PhoneApprovalPreviewView.readApproval() == nil, VaultManagementPreviewView.readMode() == nil, !PendingApprovalPreviewView.isRequested() else { return }
         #endif
         guard model.screen == .starting else { return }
         lockEventRelay.setHandler { [weak model] in model?.handleLockedEvent() }

@@ -218,10 +218,7 @@ func importAllThroughApp(ctx context.Context, client *appClient, vaultID string,
 }
 
 func runImportThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, allArg []string) error {
-	vaultName := addVaultFlag(flags)
-	format := flags.String("format", "", describeAllImportFormat())
-	isConfirmed := flags.Bool("y", false, "import without asking; items already in the vault are skipped")
-	isIncludingDuplicate := flags.Bool("include-duplicates", false, "also import items the vault already has")
+	option := addImportFlag(flags)
 	allPositional, err := parse(flags, allArg)
 	if err != nil {
 		return err
@@ -229,20 +226,24 @@ func runImportThroughApp(ctx context.Context, client *appClient, flags *flag.Fla
 	if len(allPositional) != 1 {
 		return errUsage
 	}
-	if !importer.IsKnownFormat(*format) {
-		return fmt.Errorf("unknown format %q; %s", *format, describeAllImportFormat())
+	option.readChosenFlag(flags)
+	if isHandled, err := importOwnFormat(ctx, appVaultAccess{client: client}, allPositional[0], option); isHandled {
+		return err
+	}
+	if !importer.IsKnownFormat(option.format) {
+		return fmt.Errorf("unknown format %q; %s", option.format, describeAllImportFormat())
 	}
 	path := allPositional[0]
 	content, err := readImportFile(path)
 	if err != nil {
 		return err
 	}
-	result, err := importer.Parse(filepath.Base(path), content, *format)
+	result, err := importer.Parse(filepath.Base(path), content, option.format)
 	clear(content)
 	if err != nil {
 		return err
 	}
-	vault, err := findAppVault(ctx, client, *vaultName)
+	vault, err := findAppVault(ctx, client, option.vaultName)
 	if err != nil {
 		return err
 	}
@@ -255,8 +256,8 @@ func runImportThroughApp(ctx context.Context, client *appClient, flags *flag.Fla
 	}
 	allDuplicateIndex := importer.FindAllDuplicateIndex(result.AllItem, allExisting)
 	printImportPreview(os.Stderr, filepath.Base(path), result, vault.Name, allDuplicateIndex)
-	isSkippingDuplicate := !*isIncludingDuplicate
-	if !*isConfirmed && isSkippingDuplicate && len(allDuplicateIndex) > 0 {
+	isSkippingDuplicate := !option.isIncludingDuplicate
+	if !option.isConfirmed && isSkippingDuplicate && len(allDuplicateIndex) > 0 {
 		isIncluding, err := confirm(fmt.Sprintf("Also import the %s already in %s?", formatItemCount(len(allDuplicateIndex)), vault.Name))
 		if err != nil {
 			return err
@@ -268,7 +269,7 @@ func runImportThroughApp(ctx context.Context, client *appClient, flags *flag.Fla
 		fmt.Fprintln(os.Stderr, "Nothing to import.")
 		return nil
 	}
-	if !*isConfirmed {
+	if !option.isConfirmed {
 		isImporting, err := confirm(fmt.Sprintf("Import %s into %s?", formatItemCount(len(allQueuedItem)), vault.Name))
 		if err != nil || !isImporting {
 			return err
@@ -279,7 +280,7 @@ func runImportThroughApp(ctx context.Context, client *appClient, flags *flag.Fla
 		return err
 	}
 	fmt.Fprintf(os.Stderr, "Imported %s into %s.\n", formatItemCount(savedCount), vault.Name)
-	return offerToDeleteImportFile(path, *isConfirmed)
+	return offerToDeleteImportFile(path, option.isConfirmed)
 }
 
 func runUnshareThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, allArg []string) error {
