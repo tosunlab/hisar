@@ -487,19 +487,19 @@ extension FakeBackend {
         return withApprovalLock { allPendingApproval }
     }
 
-    func approveApproval(requestID: String) throws {
+    func approveApproval(requestID: String, isRemembered: Bool) throws {
         record("approveApproval")
         try requireUnlocked()
         guard isBiometricAvailable else { throw BackendError(message: "Face ID is not available; approve with your master password") }
         guard isBiometricSucceeding else { throw BackendError(message: "Face ID was cancelled.") }
-        try answerApproval(requestID: requestID, decision: "approve")
+        try answerApproval(requestID: requestID, decision: isRemembered ? "approve remembered" : "approve")
     }
 
-    func approveApprovalWithPassword(requestID: String, password: String) throws {
+    func approveApprovalWithPassword(requestID: String, password: String, isRemembered: Bool) throws {
         record("approveApprovalWithPassword")
         try requireUnlocked()
         guard password == Self.password else { throw BackendError(message: "Incorrect master password.") }
-        try answerApproval(requestID: requestID, decision: "approve")
+        try answerApproval(requestID: requestID, decision: isRemembered ? "approve remembered" : "approve")
     }
 
     func reconnectEvents() {

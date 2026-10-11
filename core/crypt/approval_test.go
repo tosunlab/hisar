@@ -63,6 +63,26 @@ func TestApprovalAnswerVector(t *testing.T) {
 	}
 }
 
+func TestApprovalAnswerRememberChoiceIsSigned(t *testing.T) {
+	keyset := createVectorKeyset(t)
+	fields := createVectorAnswerFields()
+	fields.RememberChoice = ApprovalRememberChoice
+	if got, want := hex.EncodeToString(encodeApprovalAnswer(fields)), vectorApprovalAnswerMessage+"0000000872656d656d626572"; got != want {
+		t.Errorf("signed message = %s", got)
+	}
+	signature := keyset.SignApprovalAnswer(fields)
+	if err := VerifyApprovalAnswer(keyset.GetSigningPublicKey(), fields, signature); err != nil {
+		t.Fatal(err)
+	}
+	for _, changedChoice := range []string{"", ApprovalOnceChoice} {
+		changed := fields
+		changed.RememberChoice = changedChoice
+		if err := VerifyApprovalAnswer(keyset.GetSigningPublicKey(), changed, signature); !errors.Is(err, ErrBadSignature) {
+			t.Errorf("choice %q: %v", changedChoice, err)
+		}
+	}
+}
+
 func TestApprovalRequestSealOpen(t *testing.T) {
 	keyset, _ := GenerateKeyset()
 	otherKeyset, _ := GenerateKeyset()
@@ -141,6 +161,9 @@ func TestApprovalAnswerSignatureBindsEveryField(t *testing.T) {
 		"device":      func(changed *ApprovalAnswerFields) { changed.AnsweringDeviceID = "phone-2" },
 		"device name": func(changed *ApprovalAnswerFields) { changed.AnsweringDeviceName = "Other iPhone" },
 		"answered at": func(changed *ApprovalAnswerFields) { changed.AnsweredAt = "2026-10-11T12:00:01.000Z" },
+		"remember choice added": func(changed *ApprovalAnswerFields) {
+			changed.RememberChoice = ApprovalRememberChoice
+		},
 	}
 	for name, change := range allChange {
 		changed := fields

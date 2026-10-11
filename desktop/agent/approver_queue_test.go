@@ -85,7 +85,7 @@ func (phone *fakePhone) answerRequest(index int, isApproved bool) {
 	phone.mutex.Lock()
 	decide := phone.allDecide[index]
 	phone.mutex.Unlock()
-	decide(isApproved)
+	decide(createPhoneAnswer(isApproved, false))
 }
 
 func TestDeadlineEndsATouchIDCheckNobodyAnswers(t *testing.T) {
@@ -229,19 +229,40 @@ func TestClientDisconnectEndsTouchIDAndWithdrawsThePhoneRequest(t *testing.T) {
 func TestTouchIDOfAFinishedRequestNeverStarts(t *testing.T) {
 	biometric := createStuckBiometric()
 	emitter := createFakeEmitter()
-	approver := CreateApprover(ApproverConfig{Biometric: biometric, CancelBiometric: biometric.cancel, Emit: emitter.emit, Timeout: 300 * time.Millisecond})
+	approver := CreateApprover(ApproverConfig{Biometric: biometric, CancelBiometric: biometric.cancel, Emit: emitter.emit})
 	firstChannel := startApproval(approver, context.Background(), createTestRequest())
 	firstEvent := waitForApprovalEvent(t, emitter)
 	approver.Respond(firstEvent.RequestID, true, false)
 	biometric.waitForStart(t)
-	secondChannel := startApproval(approver, context.Background(), createTestRequest())
+	secondContext, endSecond := context.WithCancel(context.Background())
+	secondChannel := startApproval(approver, secondContext, createTestRequest())
 	secondEvent := waitForApprovalEvent(t, emitter)
 	approver.Respond(secondEvent.RequestID, true, false)
+	// Once the request took its answer, its authorize goroutine waits behind the first check's biometricMutex.
+	waitUntil(t, func() bool {
+		approver.mutex.Lock()
+		defer approver.mutex.Unlock()
+		return len(approver.findPending(secondEvent.RequestID).responseChannel) == 0
+	}, "the second request never took its answer")
+	endSecond()
+	if result := waitForResultWithin(t, secondChannel, 3*time.Second, "the second request"); result.result.IsAllowed {
+		t.Fatalf("the ended request was allowed: %+v", result)
+	}
+	approver.Respond(firstEvent.RequestID, false, false)
 	waitForResultWithin(t, firstChannel, 3*time.Second, "the first request")
-	waitForResultWithin(t, secondChannel, 3*time.Second, "the second request")
+	allAuthorizeEnded := make(chan struct{})
+	go func() {
+		approver.allAuthorizing.Wait()
+		close(allAuthorizeEnded)
+	}()
 	select {
+	case <-allAuthorizeEnded:
 	case <-biometric.startedChannel:
 		t.Error("Touch ID started for a request that had already ended")
-	case <-time.After(200 * time.Millisecond):
+		biometric.cancel()
+		<-allAuthorizeEnded
+	}
+	if biometric.isWaiting() {
+		t.Error("a Touch ID check is still waiting")
 	}
 }

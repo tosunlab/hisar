@@ -5,12 +5,13 @@ struct PhoneApprovalSheet: View {
     var isBusy: Bool
     var isPasswordRequired: Bool
     var errorMessage: String?
-    var approve: () async -> Void
-    var approveWithPassword: (String) async -> Void
+    var approve: (_ isRemembered: Bool) async -> Void
+    var approveWithPassword: (_ password: String, _ isRemembered: Bool) async -> Void
     var deny: () async -> Void
 
     @Environment(\.dismiss) private var dismiss
     @State private var password = ""
+    @State private var chosenRemember: Bool?
     @FocusState private var isPasswordFocused: Bool
 
     var body: some View {
@@ -19,6 +20,15 @@ struct PhoneApprovalSheet: View {
                 Section {
                     header
                         .listRowBackground(Color.clear)
+                }
+                if approval.isRememberable {
+                    Section {
+                        Toggle(approval.rememberLabel, isOn: Binding(get: { approval.resolveRememberChoice(chosenRemember) }, set: { chosenRemember = $0 }))
+                            .disabled(isBusy)
+                            .accessibilityIdentifier("phone-approval-remember")
+                    } footer: {
+                        Text("Off allows only this request.")
+                    }
                 }
                 if approval.isForwarded {
                     Section {
@@ -91,6 +101,9 @@ struct PhoneApprovalSheet: View {
         .presentationDragIndicator(.visible)
         .interactiveDismissDisabled(isBusy)
         .accessibilityIdentifier("phone-approval")
+        .onChange(of: approval.requestID) {
+            chosenRemember = nil
+        }
         .onChange(of: isPasswordRequired) { _, isRequired in
             isPasswordFocused = isRequired
         }
@@ -161,7 +174,7 @@ struct PhoneApprovalSheet: View {
                     .accessibilityIdentifier("phone-approval-approve-password")
                 } else {
                     Button {
-                        Task { await approve() }
+                        Task { await approve(approval.resolveRememberChoice(chosenRemember)) }
                     } label: {
                         Group {
                             if isBusy {
@@ -187,6 +200,6 @@ struct PhoneApprovalSheet: View {
         guard !password.isEmpty, !isBusy else { return }
         let enteredPassword = password
         password = ""
-        Task { await approveWithPassword(enteredPassword) }
+        Task { await approveWithPassword(enteredPassword, approval.resolveRememberChoice(chosenRemember)) }
     }
 }

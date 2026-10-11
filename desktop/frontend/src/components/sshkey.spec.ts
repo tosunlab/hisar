@@ -203,6 +203,44 @@ describe("SSH key detail", () => {
     expect(store.noticeMessage).toContain("Public key copied");
   });
 
+  it("shows the commands for commit signing with copy buttons, without running them", async () => {
+    api.copyText.mockResolvedValue(undefined);
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false } });
+    expect(wrapper.find('[data-testid="commit-signing-steps"]').exists()).toBe(false);
+    await wrapper.find('[data-testid="set-up-commit-signing"]').trigger("click");
+    const allCommand = wrapper.findAll('[data-testid="commit-signing-command"] code').map((code) => code.text());
+    const key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHisarTestKey";
+    expect(allCommand).toEqual([
+      "git config --global gpg.format ssh",
+      `git config --global user.signingkey "key::${key}"`,
+      "git config --global commit.gpgsign true",
+      `mkdir -p ~/.ssh && echo "$(git config --get user.email) namespaces=\\"git\\" ${key}" >> ~/.ssh/allowed_signers`,
+      "git config --global gpg.ssh.allowedSignersFile ~/.ssh/allowed_signers",
+    ]);
+    await wrapper.findAll('[data-testid="commit-signing-command"] button')[1].trigger("click");
+    await flushPromises();
+    expect(api.copyText).toHaveBeenLastCalledWith(`git config --global user.signingkey "key::${key}"`);
+    await wrapper.find('[data-testid="copy-all-commit-signing"]').trigger("click");
+    await flushPromises();
+    expect(api.copyText).toHaveBeenLastCalledWith(allCommand.join("\n"));
+    expect(store.noticeMessage).toBe("Commands copied, clears in 90 seconds");
+    expect(api.copyField).not.toHaveBeenCalled();
+  });
+
+  it("copies the public key and opens GitHub or GitLab", async () => {
+    api.copyField.mockResolvedValue(undefined);
+    api.openURL.mockResolvedValue(undefined);
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false } });
+    expect(wrapper.find('[data-testid="commit-signing-panel"]').text()).toContain("Signing Key");
+    await wrapper.find('[data-testid="add-to-github"]').trigger("click");
+    await flushPromises();
+    expect(api.copyField).toHaveBeenCalledWith("personal", "ssh-1", "public key");
+    expect(api.openURL).toHaveBeenCalledWith("https://github.com/settings/ssh/new");
+    await wrapper.find('[data-testid="add-to-gitlab"]').trigger("click");
+    await flushPromises();
+    expect(api.openURL).toHaveBeenLastCalledWith("https://gitlab.com/-/user_settings/ssh_keys");
+  });
+
   it("edits only the title and notes", async () => {
     api.saveItem.mockResolvedValue({ ...store.selectedItem!, title: "Work key" });
     api.listAllItem.mockResolvedValue([]);
@@ -284,6 +322,25 @@ describe("Settings SSH agent section", () => {
     await flushPromises();
     expect(api.setPhoneApproval).toHaveBeenLastCalledWith(true);
     expect(store.noticeMessage).toBe("Your iPhone can now approve requests");
+  });
+
+  it("lets commit signing be remembered only after choosing a duration", async () => {
+    const wrapper = mount(SettingsPanel);
+    await flushPromises();
+    const signingRemember = wrapper.find('[data-testid="signing-remember"]');
+    expect((signingRemember.element as HTMLSelectElement).value).toBe("0");
+    expect(signingRemember.findAll("option").map((option) => option.text())).toEqual(["Always ask", "Up to 10 minutes", "Up to 1 hour"]);
+    expect(wrapper.find('[data-testid="commit-signing"]').text()).toContain("Tags always ask");
+    await signingRemember.setValue("600");
+    await flushPromises();
+    expect(api.setSigningRemember).toHaveBeenCalledWith(600);
+    expect((wrapper.find('[data-testid="signing-remember"]').element as HTMLSelectElement).value).toBe("600");
+    expect(store.noticeMessage).toBe("Commit signing dialogs can now remember an app and repository");
+    api.setSigningRemember.mockResolvedValueOnce(createSSHAgentStatus({ signingRememberSeconds: 0 }));
+    await wrapper.find('[data-testid="signing-remember"]').setValue("0");
+    await flushPromises();
+    expect(api.setSigningRemember).toHaveBeenLastCalledWith(0);
+    expect(store.noticeMessage).toBe("Every commit signature asks again");
   });
 
   it("shows why the agent is not running and the in-app approval note", async () => {

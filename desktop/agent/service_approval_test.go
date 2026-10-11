@@ -11,9 +11,10 @@ import (
 )
 
 type fakeApprovalPreference struct {
-	isCompact          bool
-	isPhoneApprovalOff bool
-	saveError          error
+	isCompact              bool
+	isPhoneApprovalOff     bool
+	signingRememberSeconds int
+	saveError              error
 }
 
 func (preference *fakeApprovalPreference) IsCompactSSHApproval() bool { return preference.isCompact }
@@ -36,6 +37,34 @@ func (preference *fakeApprovalPreference) SetPhoneApproval(isEnabled bool) error
 	}
 	preference.isPhoneApprovalOff = !isEnabled
 	return nil
+}
+
+func (preference *fakeApprovalPreference) GetSigningRememberSeconds() int {
+	return preference.signingRememberSeconds
+}
+
+func (preference *fakeApprovalPreference) SetSigningRememberSeconds(seconds int) error {
+	if preference.saveError != nil {
+		return preference.saveError
+	}
+	preference.signingRememberSeconds = seconds
+	return nil
+}
+
+func TestServiceSigningRememberClearsRememberedSigning(t *testing.T) {
+	preference := &fakeApprovalPreference{}
+	test := createSigningTest(t, 600, nil)
+	service := CreateService(Config{HomeDirectory: t.TempDir(), ApprovalPreference: preference, Approver: test.approver})
+	if service.GetStatus().SigningRememberSeconds != 0 {
+		t.Error("commit signing is remembered by default")
+	}
+	test.approveInDialog(t, createSigningRequest(), true)
+	if status, err := service.SetSigningRemember(3600); err != nil || status.SigningRememberSeconds != 3600 {
+		t.Errorf("set: %+v %v", status, err)
+	}
+	if test.isSignedWithoutAsking(t, createSigningRequest()) {
+		t.Error("a signature remembered before the setting changed is still used")
+	}
 }
 
 func TestServicePhoneApprovalSwitch(t *testing.T) {

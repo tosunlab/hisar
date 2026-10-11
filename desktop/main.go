@@ -24,6 +24,7 @@ import (
 	"github.com/tryhisar/hisar/desktop/biometric"
 	"github.com/tryhisar/hisar/desktop/browser"
 	"github.com/tryhisar/hisar/desktop/commandline"
+	"github.com/tryhisar/hisar/desktop/systemidle"
 	"github.com/tryhisar/hisar/desktop/updater"
 	"github.com/tryhisar/hisar/desktop/vault"
 	"github.com/tryhisar/hisar/desktop/windowplacement"
@@ -161,19 +162,24 @@ func main() {
 	fileSaver := &wailsFileSaver{}
 	fileOpener := &wailsFileOpener{}
 	var agentServer *sshagent.Server
+	var approver *agent.Approver
 	vaultConfig := vault.Config{
-		StatePath:    statePath,
-		CachePath:    cachePath,
-		DeviceName:   getDeviceName(),
-		Platform:     runtime.GOOS + "/desktop",
-		Clipboard:    clipboard,
-		LockNotifier: lockNotifier,
-		Biometric:    touchID,
-		FileSaver:    fileSaver,
-		FileOpener:   fileOpener,
+		StatePath:             statePath,
+		CachePath:             cachePath,
+		DeviceName:            getDeviceName(),
+		Platform:              runtime.GOOS + "/desktop",
+		Clipboard:             clipboard,
+		LockNotifier:          lockNotifier,
+		GetSystemIdleDuration: systemidle.GetIdleDuration,
+		Biometric:             touchID,
+		FileSaver:             fileSaver,
+		FileOpener:            fileOpener,
 		OnLock: func() {
 			if agentServer != nil {
 				agentServer.ClearAllApproval()
+			}
+			if approver != nil {
+				approver.ClearAllRememberedSigning()
 			}
 		},
 		OnRemoteChange:     lockNotifier.NotifyRemoteChange,
@@ -216,7 +222,7 @@ func main() {
 	}, biometric.PromptSizeSmall)
 	approvalPreference := vault.CreateApprovalPreference(vaultService)
 	requesterResolver := appinfo.CreateSystemResolver()
-	approver := agent.CreateApprover(agent.ApproverConfig{
+	approver = agent.CreateApprover(agent.ApproverConfig{
 		Biometric:       approvalTouchID,
 		CancelBiometric: approvalTouchID.CancelPrompt,
 		Emit:            func(eventName string, data any) { app.Event.Emit(eventName, data) },
@@ -234,6 +240,9 @@ func main() {
 		IsCompactApproval:  approvalPreference.IsCompactSSHApproval,
 		Unlocker:           vault.CreateApprovalUnlocker(vaultService, func() { app.Event.Emit("unlocked", "approval") }),
 		PhoneApprover:      vault.CreatePhoneApprover(vaultService),
+		GetSigningRememberDuration: func() time.Duration {
+			return time.Duration(approvalPreference.GetSigningRememberSeconds()) * time.Second
+		},
 	})
 	peerResolver := agent.ApplicationPeerResolver{
 		Base: sshagent.SystemPeerResolver{},

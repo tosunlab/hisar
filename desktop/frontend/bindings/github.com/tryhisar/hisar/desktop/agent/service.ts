@@ -68,3 +68,10 @@ export function SetPhoneApproval(isEnabled: boolean): $CancellablePromise<$model
 export function SetSSHApprovalRemembered(requestID: string, isRemembered: boolean): $CancellablePromise<void> {
     return $Call.ByID(2176224535, requestID, isRemembered);
 }
+
+/**
+ * SetSigningRemember stores "Remember commit signing" (0, 600 or 3600 seconds) and forgets every remembered signature.
+ */
+export function SetSigningRemember(seconds: number): $CancellablePromise<$models.Status> {
+    return $Call.ByID(1290415552, seconds);
+}

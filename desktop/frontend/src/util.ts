@@ -111,6 +111,34 @@ export function formatKeyType(keyType: string): string {
   return allKeyTypeLabel[keyType] ?? keyType;
 }
 
+export const gitHubSSHKeyURL = "https://github.com/settings/ssh/new";
+export const gitLabSSHKeyURL = "https://gitlab.com/-/user_settings/ssh_keys";
+
+export interface CommitSigningCommand {
+  description: string;
+  command: string;
+}
+
+// buildCommitSigningCommandList sets up git to sign with this key through the agent; the key loses its comment,
+// so only base64 and the key type end up inside the quotes.
+export function buildCommitSigningCommandList(publicKey: string): CommitSigningCommand[] {
+  const [keyType = "", keyData = ""] = publicKey.trim().split(/\s+/);
+  if (!/^[a-z0-9@.-]+$/.test(keyType) || !/^[A-Za-z0-9+/=]+$/.test(keyData)) {
+    return [];
+  }
+  const key = `${keyType} ${keyData}`;
+  return [
+    { description: "Sign with SSH keys", command: "git config --global gpg.format ssh" },
+    { description: "Use this key", command: `git config --global user.signingkey "key::${key}"` },
+    { description: "Sign every commit", command: "git config --global commit.gpgsign true" },
+    {
+      description: "Trust your own signatures",
+      command: `mkdir -p ~/.ssh && echo "$(git config --get user.email) namespaces=\\"git\\" ${key}" >> ~/.ssh/allowed_signers`,
+    },
+    { description: "Check signatures with that file", command: "git config --global gpg.ssh.allowedSignersFile ~/.ssh/allowed_signers" },
+  ];
+}
+
 export function formatRole(role: string): string {
   return role ? role[0].toUpperCase() + role.slice(1) : "";
 }

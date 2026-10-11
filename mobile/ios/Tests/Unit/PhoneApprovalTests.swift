@@ -114,9 +114,61 @@ final class PhoneApprovalTests: XCTestCase {
         XCTAssertEqual(model.allPendingApproval.count, 2)
     }
 
+    private func createRememberingApproval(requestID: String = "0123456789abcdef0123456789abcdef", isRememberedByDefault: Bool = true) -> PhoneApproval {
+        var approval = createApproval(requestID: requestID)
+        approval.rememberLabel = "Also allows Terminal for 1 hour"
+        approval.isRememberedByDefault = isRememberedByDefault
+        return approval
+    }
+
+    func testDecodesTheRememberSwitch() throws {
+        let json = """
+        [{"requestId":"0123456789abcdef0123456789abcdef","requesterDeviceName":"MacBook Pro","expiresAt":"2027-01-15T08:01:00.123Z",
+          "kind":"ssh","appName":"iTerm2","purpose":"sign a commit","repositoryPath":"~/src/core",
+          "rememberLabel":"Also allows iTerm2 to sign commits in ~/src/core for 10 minutes"},
+         {"requestId":"fedcba9876543210fedcba9876543210","requesterDeviceName":"MacBook Pro","expiresAt":"2027-01-15T08:01:00.123Z",
+          "kind":"ssh","appName":"Terminal","purpose":"push to git.tryhisar.com","rememberLabel":"Also allows Terminal for 1 hour","isRememberedByDefault":true},
+         {"requestId":"00112233445566778899aabbccddeeff","requesterDeviceName":"MacBook Pro","expiresAt":"2027-01-15T08:01:00.123Z",
+          "kind":"ssh","appName":"Terminal","purpose":"push to git.tryhisar.com"}]
+        """
+        let allApproval = try JSONDecoder().decode([PhoneApproval].self, from: Data(json.utf8))
+        XCTAssertEqual(allApproval.map(\.isRememberable), [true, true, false])
+        XCTAssertEqual(allApproval[0].rememberLabel, "Also allows iTerm2 to sign commits in ~/src/core for 10 minutes")
+        XCTAssertFalse(allApproval[0].resolveRememberChoice(nil), "commit signing starts off")
+        XCTAssertTrue(allApproval[0].resolveRememberChoice(true))
+        XCTAssertTrue(allApproval[1].resolveRememberChoice(nil), "the switch starts as the Mac's checkbox does")
+        XCTAssertFalse(allApproval[1].resolveRememberChoice(false))
+        XCTAssertFalse(allApproval[2].resolveRememberChoice(true), "a request without the switch is never remembered")
+    }
+
+    func testSheetSwitchIsSentWithTheApproval() async {
+        let model = await createReviewingModel(allApproval: [createRememberingApproval(requestID: "remembered"), createRememberingApproval(requestID: "once")])
+        await model.approvePendingApproval(isRemembered: true)
+        model.reviewApproval(model.allPendingApproval[0])
+        await model.approvePendingApproval(isRemembered: false)
+        XCTAssertEqual(backend.allApprovalAnswer, ["approve remembered remembered", "approve once"])
+    }
+
+    func testSheetSwitchIsSentWithThePasswordApproval() async {
+        backend.isBiometricAvailable = false
+        let model = await createReviewingModel(allApproval: [createRememberingApproval()])
+        await model.approvePendingApproval(isRemembered: true)
+        XCTAssertTrue(model.isApprovalPasswordRequired)
+        await model.approvePendingApproval(password: FakeBackend.password, isRemembered: true)
+        XCTAssertEqual(backend.allApprovalAnswer, ["approve remembered 0123456789abcdef0123456789abcdef"])
+    }
+
+    func testCardAndOldRequestsApproveOnce() async {
+        let model = await createUnlockedModel(allApproval: [createRememberingApproval(requestID: "card"), createApproval(requestID: "old")])
+        await model.approve(model.allPendingApproval[0])
+        model.reviewApproval(model.allPendingApproval[0])
+        await model.approvePendingApproval(isRemembered: true)
+        XCTAssertEqual(backend.allApprovalAnswer, ["approve card", "approve old"])
+    }
+
     func testApproveWithFaceID() async {
         let model = await createReviewingModel(allApproval: [createApproval()])
-        await model.approvePendingApproval()
+        await model.approvePendingApproval(isRemembered: false)
         XCTAssertEqual(backend.allApprovalAnswer, ["approve 0123456789abcdef0123456789abcdef"])
         XCTAssertNil(model.presentedApproval)
         XCTAssertTrue(model.allPendingApproval.isEmpty)
@@ -136,7 +188,7 @@ final class PhoneApprovalTests: XCTestCase {
     func testCancelledFaceIDKeepsTheRequest() async {
         backend.isBiometricSucceeding = false
         let model = await createReviewingModel(allApproval: [createApproval()])
-        await model.approvePendingApproval()
+        await model.approvePendingApproval(isRemembered: false)
         XCTAssertEqual(backend.allApprovalAnswer, [])
         XCTAssertNotNil(model.presentedApproval)
         XCTAssertNil(model.approvalErrorMessage)
@@ -146,13 +198,13 @@ final class PhoneApprovalTests: XCTestCase {
     func testFallsBackToTheMasterPassword() async {
         backend.isBiometricAvailable = false
         let model = await createReviewingModel(allApproval: [createApproval()])
-        await model.approvePendingApproval()
+        await model.approvePendingApproval(isRemembered: false)
         XCTAssertTrue(model.isApprovalPasswordRequired)
         XCTAssertNil(model.approvalErrorMessage)
-        await model.approvePendingApproval(password: "wrong")
+        await model.approvePendingApproval(password: "wrong", isRemembered: false)
         XCTAssertEqual(model.approvalErrorMessage, "Incorrect master password.")
         XCTAssertNotNil(model.presentedApproval)
-        await model.approvePendingApproval(password: FakeBackend.password)
+        await model.approvePendingApproval(password: FakeBackend.password, isRemembered: false)
         XCTAssertEqual(backend.allApprovalAnswer, ["approve 0123456789abcdef0123456789abcdef"])
         XCTAssertNil(model.presentedApproval)
         XCTAssertFalse(model.isApprovalPasswordRequired)
@@ -161,7 +213,7 @@ final class PhoneApprovalTests: XCTestCase {
     func testRequestThatIsGoneCloses() async {
         let model = await createReviewingModel(allApproval: [createApproval()])
         backend.allPendingApproval = []
-        await model.approvePendingApproval()
+        await model.approvePendingApproval(isRemembered: false)
         XCTAssertNil(model.presentedApproval)
         XCTAssertTrue(model.allPendingApproval.isEmpty)
         XCTAssertEqual(model.noticeMessage, "The request is no longer waiting")

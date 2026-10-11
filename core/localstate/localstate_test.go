@@ -103,6 +103,26 @@ func TestResetKeepsOpenAtLoginPreference(t *testing.T) {
 	}
 }
 
+func TestSigningRememberIsSavedAndKeptOnReset(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "desktop.json")
+	state, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.Token, state.SigningRememberSeconds = "tok", 600
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+	reloadedState, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloadedState.Reset()
+	if reloadedState.Token != "" || reloadedState.SigningRememberSeconds != 600 {
+		t.Errorf("reset state: %+v", reloadedState)
+	}
+}
+
 func TestThemeIsSavedAndKeptOnReset(t *testing.T) {
 	statePath := filepath.Join(t.TempDir(), "desktop.json")
 	state, err := Load(statePath)

@@ -171,6 +171,9 @@ export async function applyPreviewParameter(): Promise<void> {
   const itemID = parameter.get("item");
   if (itemID) {
     await selectItem(itemID);
+    if (parameter.get("commitSigning") === "1") {
+      await clickElement('[data-testid="set-up-commit-signing"]');
+    }
   }
   if (parameter.get("editor") === "create") {
     startCreatingItem();

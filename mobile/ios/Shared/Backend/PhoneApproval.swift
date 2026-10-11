@@ -32,15 +32,25 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
     var secrets: [String]
     var appIcon: Data?
     var appWarning: String
+    // rememberLabel is set when approving can also be remembered on the Mac; the sheet shows it as a switch.
+    var rememberLabel: String
+    var isRememberedByDefault: Bool
 
     var id: String { requestID }
 
-    enum CodingKeys: String, CodingKey {
-        case requestID = "requestId"
-        case requesterDeviceName, createdAt, expiresAt, kind, appName, purpose, host, commandLine, repositoryPath, keyName, isForwarded, forwardedFromHost, terminalName, secrets, appIcon, appWarning
+    var isRememberable: Bool { !rememberLabel.isEmpty }
+
+    // resolveRememberChoice is the switch as the user left it, or its default; a request without the switch is never remembered.
+    func resolveRememberChoice(_ chosenValue: Bool?) -> Bool {
+        isRememberable && (chosenValue ?? isRememberedByDefault)
     }
 
-    init(requestID: String, requesterDeviceName: String, createdAt: String = "", expiresAt: String, kind: String, appName: String, purpose: String, host: String = "", commandLine: String = "", repositoryPath: String = "", keyName: String = "", isForwarded: Bool = false, forwardedFromHost: String = "", terminalName: String = "", secrets: [String] = [], appIcon: Data? = nil, appWarning: String = "") {
+    enum CodingKeys: String, CodingKey {
+        case requestID = "requestId"
+        case requesterDeviceName, createdAt, expiresAt, kind, appName, purpose, host, commandLine, repositoryPath, keyName, isForwarded, forwardedFromHost, terminalName, secrets, appIcon, appWarning, rememberLabel, isRememberedByDefault
+    }
+
+    init(requestID: String, requesterDeviceName: String, createdAt: String = "", expiresAt: String, kind: String, appName: String, purpose: String, host: String = "", commandLine: String = "", repositoryPath: String = "", keyName: String = "", isForwarded: Bool = false, forwardedFromHost: String = "", terminalName: String = "", secrets: [String] = [], appIcon: Data? = nil, appWarning: String = "", rememberLabel: String = "", isRememberedByDefault: Bool = false) {
         self.requestID = requestID
         self.requesterDeviceName = requesterDeviceName
         self.createdAt = createdAt
@@ -58,6 +68,8 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
         self.secrets = secrets
         self.appIcon = appIcon
         self.appWarning = appWarning
+        self.rememberLabel = rememberLabel
+        self.isRememberedByDefault = isRememberedByDefault
     }
 
     init(from decoder: Decoder) throws {
@@ -79,6 +91,8 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
         secrets = try container.decodeIfPresent([String].self, forKey: .secrets) ?? []
         appIcon = try? container.decodeIfPresent(Data.self, forKey: .appIcon)
         appWarning = try container.decodeIfPresent(String.self, forKey: .appWarning) ?? ""
+        rememberLabel = try container.decodeIfPresent(String.self, forKey: .rememberLabel) ?? ""
+        isRememberedByDefault = try container.decodeIfPresent(Bool.self, forKey: .isRememberedByDefault) ?? false
     }
 
     var expiryDate: Date? { Self.parseDate(expiresAt) }

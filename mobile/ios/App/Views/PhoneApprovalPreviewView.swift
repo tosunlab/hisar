@@ -31,13 +31,13 @@ struct PhoneApprovalPreviewView: View {
             return PhoneApproval(
                 requestID: "preview-signing", requesterDeviceName: "Alper's MacBook Pro", expiresAt: expiresAt, kind: PhoneApproval.kindSSH,
                 appName: "Claude", purpose: "sign a commit", commandLine: "“Add phone approvals”", repositoryPath: "~/Documents/hisar/core · phase-6/phone-approvals",
-                keyName: "Signing key"
+                keyName: "Signing key", rememberLabel: "Also allows Claude to sign commits in ~/Documents/hisar/core for 10 minutes"
             )
         default:
             return PhoneApproval(
                 requestID: "preview-ssh", requesterDeviceName: "Alper's MacBook Pro", expiresAt: expiresAt, kind: PhoneApproval.kindSSH,
                 appName: "Terminal", purpose: "push to git.tryhisar.com", host: "git.tryhisar.com:22", commandLine: "git push origin main",
-                repositoryPath: "~/Documents/hisar/core", keyName: "hisar gitlab"
+                repositoryPath: "~/Documents/hisar/core", keyName: "hisar gitlab", rememberLabel: "Also allows Terminal for 1 hour", isRememberedByDefault: true
             )
         }
     }
@@ -65,27 +65,27 @@ struct PhoneApprovalPreviewView: View {
                 isBusy: isBusy,
                 isPasswordRequired: isPasswordRequired,
                 errorMessage: errorMessage,
-                approve: approve,
-                approveWithPassword: approveWithPassword,
+                approve: { await approve(isRemembered: $0) },
+                approveWithPassword: { await approveWithPassword($0, isRemembered: $1) },
                 deny: { finish("Denied \(approval.requestID)") }
             )
         }
     }
 
-    private func approve() async {
+    private func approve(isRemembered: Bool) async {
         if ProcessInfo.processInfo.arguments.contains(Self.passwordArgument) {
             isPasswordRequired = true
             return
         }
-        finish("Approved \(approval.requestID) with Face ID")
+        finish("Approved \(approval.requestID) with Face ID\(isRemembered ? ", remembered" : "")")
     }
 
-    private func approveWithPassword(_ password: String) async {
+    private func approveWithPassword(_ password: String, isRemembered: Bool) async {
         guard password == Self.previewPassword else {
             errorMessage = "Incorrect master password."
             return
         }
-        finish("Approved \(approval.requestID) with the master password")
+        finish("Approved \(approval.requestID) with the master password\(isRemembered ? ", remembered" : "")")
     }
 
     private func finish(_ message: String) {
@@ -183,8 +183,8 @@ struct PendingApprovalPreviewView: View {
                 isBusy: false,
                 isPasswordRequired: false,
                 errorMessage: nil,
-                approve: { finish(approval, message: "Approved \(approval.requestID) with Face ID") },
-                approveWithPassword: { _ in },
+                approve: { finish(approval, message: "Approved \(approval.requestID) with Face ID\($0 ? ", remembered" : "")") },
+                approveWithPassword: { _, _ in },
                 deny: { finish(approval, message: "Denied \(approval.requestID)") }
             )
         }

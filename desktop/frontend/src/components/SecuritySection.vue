@@ -81,7 +81,7 @@ async function submitSaveEmergencyKit(): Promise<void> {
         <div v-show="isRowVisible('auto-lock')" class="setting">
           <div class="setting-text">
             <strong>Auto-lock</strong>
-            <p class="muted">Hisar locks after this long without activity. Copied values are cleared after 90 seconds.</p>
+            <p class="muted">Hisar locks once your Mac has had no keyboard, mouse or trackpad input for this long, and when the screen locks or the Mac sleeps. Typing in a terminal or editor keeps it unlocked; SSH, command-line and agent requests alone do not. Copied values are cleared after 90 seconds.</p>
           </div>
           <select
             class="auto-lock"

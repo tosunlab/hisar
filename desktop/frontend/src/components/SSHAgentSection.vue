@@ -1,8 +1,13 @@
 <script setup lang="ts">
-import { configureSSHConfig, removeSSHConfig, setCompactSSHApproval, setPhoneApproval, store } from "../store";
+import { configureSSHConfig, removeSSHConfig, setCompactSSHApproval, setPhoneApproval, setSigningRemember, store } from "../store";
 import { useSettingsRowVisibility } from "../settingsSections";
 
 const isRowVisible = useSettingsRowVisibility();
+const allSigningRememberOption = [
+  { seconds: 0, label: "Always ask" },
+  { seconds: 600, label: "Up to 10 minutes" },
+  { seconds: 3600, label: "Up to 1 hour" },
+];
 </script>
 
 <template>
@@ -91,13 +96,25 @@ const isRowVisible = useSettingsRowVisibility();
       <div class="settings-group">
         <div class="setting" data-testid="commit-signing">
           <div class="setting-text">
-            <strong>Commit and tag signing</strong>
+            <strong>Remember commit signing</strong>
             <p class="muted">
-              Git signs with an SSH key from your vaults through the agent (<span class="monospace">gpg.format ssh</span>). Every signature asks, also
-              within the hour you let the app skip asking.
+              Git signs with an SSH key from your vaults through the agent (<span class="monospace">gpg.format ssh</span>). By default every signature
+              asks. Allow remembering to get a “Don’t ask again” option in the signing dialog, for one app in one repository with one key, so a
+              <span class="monospace">git rebase</span> asks once. Tags always ask; locking Hisar forgets it.
             </p>
           </div>
-          <span class="tag">Always asks</span>
+          <select
+            v-if="store.sshAgentStatus"
+            class="signing-remember"
+            aria-label="Remember commit signing"
+            data-testid="signing-remember"
+            :value="store.sshAgentStatus.signingRememberSeconds"
+            :disabled="store.isBusy"
+            @change="setSigningRemember(Number(($event.target as HTMLSelectElement).value))"
+          >
+            <option v-for="option in allSigningRememberOption" :key="option.seconds" :value="option.seconds">{{ option.label }}</option>
+          </select>
+          <span v-else class="tag">Always asks</span>
         </div>
       </div>
     </div>
@@ -117,6 +134,11 @@ const isRowVisible = useSettingsRowVisibility();
 
 .config-details > p {
   margin: 6px 0;
+}
+
+.signing-remember {
+  flex: none;
+  width: auto;
 }
 
 .state-dot.stopped {

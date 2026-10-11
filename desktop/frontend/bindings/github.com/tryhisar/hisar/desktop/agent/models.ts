@@ -77,5 +77,6 @@ export interface Status {
     "isTouchIDApproval": boolean;
     "isCompactApproval": boolean;
     "isPhoneApproval": boolean;
+    "signingRememberSeconds": number;
     "backupPath": string;
 }

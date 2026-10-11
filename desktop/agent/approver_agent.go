@@ -148,6 +148,10 @@ func (approver *Approver) buildAgentPhoneDescription(event ApprovalEvent) approv
 			description.Secrets = append(description.Secrets, fmt.Sprintf("and %d more", event.MoreSecretCount))
 		}
 	}
+	if event.IsRememberable && event.RememberLabel != "" {
+		description.RememberLabel = "Also allows " + strings.TrimPrefix(event.RememberLabel, "Allow ")
+		description.IsRememberedByDefault = event.IsRememberedByDefault
+	}
 	return description
 }
 

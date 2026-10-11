@@ -209,6 +209,27 @@ describe("SSHApprovalWindow", () => {
     wrapper.unmount();
   });
 
+  it("offers to remember a commit signature, unchecked, when Settings allows it", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent(
+      "ssh-approval",
+      createSigningApprovalEvent({ isRememberable: true, isRememberedByDefault: false, rememberLabel: "Don’t ask again for Terminal in ~/src/core for 10 minutes" }),
+    );
+    await flushPromises();
+    expect(wrapper.find('[data-testid="approval-signing-badge"]').text()).toBe("Sign a commit");
+    expect(wrapper.find(".remember").text()).toBe("Don’t ask again for Terminal in ~/src/core for 10 minutes");
+    expect((wrapper.find('input[name="isRemembered"]').element as HTMLInputElement).checked).toBe(false);
+    expect(api.respondSSHApproval).toHaveBeenCalledWith("signing-1", true, false);
+    await wrapper.find('input[name="isRemembered"]').setValue(true);
+    expect(api.setSSHApprovalRemembered).toHaveBeenCalledWith("signing-1", true);
+    sendEvent("ssh-approval-closed", "signing-1");
+    sendEvent("ssh-approval", createSigningApprovalEvent({ requestID: "signing-2", isRememberable: true, isRememberedByDefault: false, rememberLabel: "Don’t ask again" }));
+    await flushPromises();
+    expect((wrapper.find('input[name="isRemembered"]').element as HTMLInputElement).checked).toBe(false);
+    expect(api.respondSSHApproval).toHaveBeenLastCalledWith("signing-2", true, false);
+    wrapper.unmount();
+  });
+
   it("shows a signed tag, or the command when the commit is unknown", async () => {
     const wrapper = mount(SSHApprovalWindow);
     sendEvent("ssh-approval", createSigningApprovalEvent({ purpose: "sign-tag", action: "sign the tag", target: "v1.4.0", commitSubject: "Release 1.4.0" }));
