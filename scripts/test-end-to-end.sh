@@ -108,10 +108,16 @@ echo "ok   the invite response has no link or code"
 BOB_MAIL=$(wait_for_mail bob@example.com 0)
 expect "invite email" "$BOB_MAIL" "Alice (alice@example.com) invited you to Hisar"
 BOB_CODE=$(printf '%s' "$BOB_MAIL" | get_invite_code)
-expect "invite email carries the link and the code" "$BOB_MAIL" "$HISAR_PUBLIC_URL/invite/$BOB_CODE"$'\n\nOr enter this invite code in the Hisar app:\n'"$BOB_CODE"
+expect "invite email carries the link and the code" "$BOB_MAIL" "$HISAR_PUBLIC_URL/invite/$BOB_CODE"$'\n\nOr paste this invite code under Create account in Hisar:\n'"$BOB_CODE"
+BOB_INVITE_PAGE=$(curl -s "$HISAR_PUBLIC_URL/invite/$BOB_CODE")
+expect "the emailed invite link opens a page naming the inviter" "$BOB_INVITE_PAGE" "Alice (alice@example.com)</span> invited you to Hisar"
+expect "the invite page shows the code to paste" "$BOB_INVITE_PAGE" "data-testid=\"invite-code\">$BOB_CODE</code>"
+expect "the invite page opens the app with the invite" "$BOB_INVITE_PAGE" "href=\"hisar://invite/$BOB_CODE?server=http%3A%2F%2F127.0.0.1%3A$PORT\""
 printf 'bob@example.com\nBob\n%s\n%s\n' "$PW" "$PW" | HISAR_STATE=$T/bob.json HISAR_SECRET_KEY=- hisar signup "$HISAR_PUBLIC_URL/invite/$BOB_CODE" 2>"$T/bob-signup.txt"
 BOB_SK=$(grep -oE 'H1-[0-9A-Z-]+' "$T/bob-signup.txt")
 expect "bob signs up from the emailed code" "$BOB_SK" "H1-"
+expect "a used invite's page says it isn't valid" "$(curl -s -w ' %{http_code}' "$HISAR_PUBLIC_URL/invite/$BOB_CODE")" "This invite isn't valid</h1>"
+expect "a used invite's page answers like an unknown one" "$(curl -s -o /dev/null -w '%{http_code}' "$HISAR_PUBLIC_URL/invite/$BOB_CODE") $(curl -s -o /dev/null -w '%{http_code}' "$HISAR_PUBLIC_URL/invite/never-issued")" "404 404"
 B() { HISAR_STATE=$T/bob.json HISAR_SECRET_KEY=$BOB_SK hisar "$@"; }
 
 BOB_MAIL_COUNT=$(count_mail bob@example.com)
@@ -245,4 +251,25 @@ expect "the iPhone shares a vault, completes the accepted share on its own, and 
 PHONE_APPROVAL_INVITE=$("$BIN/hisar-server" invite --email phone-approval@example.com </dev/null | tail -1)
 PHONE_APPROVAL_RESULT=$(HISAR_TEST_PHONE_APPROVAL_INVITE_LINK="$PHONE_APPROVAL_INVITE" go -C "$ROOT/mobile" test -count=1 -v -run TestIntegrationPhoneApproval ./hisarkit/ 2>&1 || true)
 expect "the iPhone approves and denies the Mac's SSH requests, refuses a forged answer, and approves after opening late" "$PHONE_APPROVAL_RESULT" "--- PASS: TestIntegrationPhoneApproval"
+
+# Raise the minimum versions: older apps are refused with 426, current ones and unversioned callers pass.
+kill "$SERVER"
+wait "$SERVER" 2>/dev/null || true
+HISAR_MINIMUM_VERSION_CLI=1.0.0 HISAR_MINIMUM_VERSION_DESKTOP_MACOS=0.2.0 "$BIN/hisar-server" serve -addr "127.0.0.1:$PORT" >>"$T/server.log" 2>&1 &
+SERVER=$!
+curl -sf --retry 20 --retry-all-errors --retry-delay 1 "http://127.0.0.1:$PORT/healthz" >/dev/null
+go -C "$ROOT/cli" build -ldflags "-X main.version=0.9.0" -o "$T/hisar-0.9.0" ./cmd/hisar
+go -C "$ROOT/cli" build -ldflags "-X main.version=1.0.0" -o "$T/hisar-1.0.0" ./cmd/hisar
+OLD_EXIT=0
+OLD_OUTPUT=$(printf '%s\n' "$PW" | HISAR_STATE=$T/bob.json HISAR_SECRET_KEY=$BOB_SK "$T/hisar-0.9.0" vaults 2>&1) || OLD_EXIT=$?
+expect "an old hisar is refused and told how to update" "$OLD_OUTPUT" "update required: the Hisar server needs hisar 1.0.0 or later, and this is 0.9.0."
+[[ $OLD_EXIT -ne 0 ]] || fail "an old hisar exited with 0"
+echo "ok   an old hisar exits with $OLD_EXIT"
+expect "a current hisar passes" "$(printf '%s\n' "$PW" | HISAR_STATE=$T/bob.json HISAR_SECRET_KEY=$BOB_SK "$T/hisar-1.0.0" vaults 2>&1)" "Personal"
+expect "a development hisar sends no version and passes" "$(printf '%s\n' "$PW" | B vaults 2>&1)" "Personal"
+VERSION_CHECK_URL=http://127.0.0.1:$PORT/api/v1/version-check
+expect "an old Mac app is refused before sign-in" "$(curl -s -w ' %{http_code}' -H 'Hisar-Platform: darwin/desktop' -H 'Hisar-Version: 0.1.9' "http://127.0.0.1:$PORT/api/v1/auth/prelogin?email=bob@example.com")" '{"error":"update required","minimumVersion":"0.2.0","updateURL":"https://tryhisar.com/download"} 426'
+expect "a current Mac app passes the version check" "$(curl -s -o /dev/null -w '%{http_code}' -H 'Hisar-Platform: darwin/desktop' -H 'Hisar-Version: 0.2.0' "$VERSION_CHECK_URL")" "204"
+expect "a pre-release of the minimum is older than the release" "$(curl -s -o /dev/null -w '%{http_code}' -H 'Hisar-Platform: linux/cli' -H 'Hisar-Version: 1.0.0-alpha-test' "$VERSION_CHECK_URL")" "426"
+expect "the update feed stays open to an old Mac app" "$(curl -s -H 'Hisar-Platform: darwin/desktop' -H 'Hisar-Version: 0.1.9' "$APPCAST_URL")" "unauthorized"
 echo "end-to-end test passed"

@@ -52,6 +52,7 @@ type Service struct {
 	allLockListener              []func()
 	allStatusListener            []func()
 	phoneApprovals               *phoneApprovalRelay
+	updateRequirement            updateRequirementState
 }
 
 // getCache opens the offline cache on first use; if it cannot be opened, even after starting it over, Hisar stays online-only.
@@ -134,6 +135,7 @@ func (s *Service) buildStatus() Status {
 	status.BiometricEnabled = len(s.state.BiometricUnlock) > 0
 	status.BiometricReady = status.State == StateLocked && s.isBiometricReady()
 	status.AutoLockSeconds = int(s.getAutoLockAfter() / time.Second)
+	status.UpdateRequired = s.getUpdateRequirement()
 	return status
 }
 
@@ -319,7 +321,7 @@ func (s *Service) SignIn(server, email, secretKeyText, password string) (Status,
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	loggedIn, err := session.LogIn(ctx, client.Create(server), strings.TrimSpace(email), passwordBytes, secretKey, s.getDeviceInfo())
+	loggedIn, err := session.LogIn(ctx, s.createClient(server), strings.TrimSpace(email), passwordBytes, secretKey, s.getDeviceInfo())
 	if err != nil {
 		return Status{}, convertError(err)
 	}
@@ -392,7 +394,7 @@ func (s *Service) SignUp(invite, email, name, password string) (SignUpResult, er
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	signedUp, secretKey, accountUnlockKey, err := session.SignUpKeepingAccountUnlockKey(ctx, client.Create(server), token, strings.TrimSpace(email), strings.TrimSpace(name), passwordBytes, s.getDeviceInfo())
+	signedUp, secretKey, accountUnlockKey, err := session.SignUpKeepingAccountUnlockKey(ctx, s.createClient(server), token, strings.TrimSpace(email), strings.TrimSpace(name), passwordBytes, s.getDeviceInfo())
 	if err != nil {
 		return SignUpResult{}, convertError(err)
 	}
@@ -439,7 +441,7 @@ func (s *Service) Unlock(password string) (Status, error) {
 	}
 	passwordBytes := []byte(password)
 	defer clear(passwordBytes)
-	apiClient := client.Create(server)
+	apiClient := s.createClient(server)
 	apiClient.Token = token
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -464,7 +466,7 @@ func (s *Service) SignOut() (Status, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if s.state.IsLoggedIn() {
-		apiClient := client.Create(s.state.Server)
+		apiClient := s.createClient(s.state.Server)
 		apiClient.Token = s.state.Token
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		apiClient.Logout(ctx)

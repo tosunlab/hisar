@@ -8,11 +8,15 @@ import {
   handleUnlockedElsewhere,
   loadAllShareLinkQuietly,
   loadStatus,
+  openInviteLink,
   restoreBrowserPairing,
   showBrowserPairing,
+  showUpdateRequired,
   store,
   syncInBackground,
+  takePendingInviteQuietly,
 } from "./store";
+import UpdateRequiredView from "./components/UpdateRequiredView.vue";
 import SignInView from "./components/SignInView.vue";
 import SecretKeyView from "./components/SecretKeyView.vue";
 import TouchIDOfferView from "./components/TouchIDOfferView.vue";
@@ -35,8 +39,10 @@ function reportActivity(): void {
 }
 
 onMounted(() => {
-  loadStatus();
+  loadStatus().then(takePendingInviteQuietly);
   allRemoveListener = [
+    Events.On("update-required", (event) => event.data && showUpdateRequired(event.data)),
+    Events.On("invite-link", (event) => openInviteLink(event.data ?? "")),
     startThemeSync(),
     Events.On("locked", () => handleLocked()),
     Events.On("unlocked", () => handleUnlockedElsewhere()),
@@ -57,7 +63,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <SecretKeyView v-if="store.pendingSecretKey" />
+  <UpdateRequiredView v-if="store.status.updateRequired" />
+  <SecretKeyView v-else-if="store.pendingSecretKey" />
   <TouchIDOfferView v-else-if="store.isTouchIDOfferShown" />
   <SignInView v-else-if="store.status.state === 'signed-out'" />
   <UnlockView v-else-if="store.status.state === 'locked'" />

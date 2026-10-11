@@ -54,6 +54,17 @@ One name for each thing, the same on the Mac, the iPhone, the browser extension,
 | Approve, Deny | Allow, Reject |
 | Coding agents, Available to agents | AI, MCP (except in the `hisar mcp` command) |
 
+## Invites and updates
+
+| Use | Not | Where |
+|---|---|---|
+| "Ada invited you to Hisar"; Download for Mac; Open in Hisar; invite code | sign-up token, registration link | Invite page and invite email |
+| This invite isn't valid | expired, already used, not found (never say which) | Invite page for any code that does not work |
+| Update required (screen title); This server needs Hisar 0.2.0 or later. This Mac has 0.1.0. | Your app is outdated, unsupported version | Mac and iPhone blocking screen |
+| Update now (Mac, Sparkle); Install the latest Hisar (iPhone, until TestFlight or the App Store); Check again | Upgrade | Blocking screen buttons |
+| Hisar needs an update | update required error, 426 | What the SSH agent, the command-line tool, coding agents and the extension are told |
+| Update the Hisar extension | | Extension popup when the extension itself is too old |
+
 ## Help
 
 | Use | Not |

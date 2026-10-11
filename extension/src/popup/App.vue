@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from "vue";
 import type { PopupState } from "../shared/messages";
-import { describeError, getTargetTabId, sendToBackground } from "./api";
+import { describeError, getTargetTabId, openUpdatePage, sendToBackground } from "./api";
 import HisarLogo from "./components/HisarLogo.vue";
 import LoginList from "./components/LoginList.vue";
 import PairingView from "./components/PairingView.vue";
@@ -147,10 +147,12 @@ onBeforeUnmount(() => {
       v-else
       :view="popupState.view"
       :detail="popupState.errorMessage"
+      :update-required="popupState.updateRequired"
       :is-waiting="isWaiting"
       @unlock="unlock"
       @open-hisar="openHisar"
       @refresh="retry"
+      @open-update-page="openUpdatePage"
     />
     <p v-if="noticeMessage" class="notice" role="status" data-testid="notice">{{ noticeMessage }}</p>
   </div>

@@ -74,6 +74,11 @@ fileAssociations:
 #    role: Editor
 #    mimeType: image/jpeg  # (optional)
 
+# URL schemes the app opens: hisar://invite/<code> (build/darwin/Info.plist lists it too)
+protocols:
+  - scheme: hisar
+    description: Hisar invite links
+
 # Other data
 other:
   - name: My Other Data

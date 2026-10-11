@@ -142,6 +142,13 @@ func (lockedKeySourceError) Is(target error) bool {
 // ListAllKey returns ErrLocked or ErrSignedOut unless Hisar is unlocked; it does not postpone auto-lock.
 func (source *SSHKeySource) ListAllKey(ctx context.Context) ([]sshagent.Key, error) {
 	s := source.service
+	if err := s.requireCurrentVersion(); err != nil {
+		var updateRequired *UpdateRequiredError
+		if errors.As(err, &updateRequired) && s.config.OnUpdateRequired != nil {
+			go s.config.OnUpdateRequired(updateRequired.Requirement)
+		}
+		return nil, err
+	}
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if s.unlockedSession == nil {

@@ -15,6 +15,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 
+	"github.com/tryhisar/hisar/core/appversion"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/localstate"
 	"github.com/tryhisar/hisar/core/sshagent"
@@ -39,6 +40,8 @@ func init() {
 	application.RegisterEvent[agent.ApprovalEvent](agent.ApprovalEventName)
 	application.RegisterEvent[string](agent.ApprovalClosedEventName)
 	application.RegisterEvent[vault.Theme]("theme-changed")
+	application.RegisterEvent[vault.UpdateRequirement]("update-required")
+	application.RegisterEvent[string]("invite-link")
 }
 
 type wailsClipboard struct{ app *application.App }
@@ -108,6 +111,15 @@ func getSingleInstanceID(statePath string) string {
 	return background.BundleID + "." + hex.EncodeToString(statePathHash[:8])
 }
 
+// getAppVersion is the bundle's version; development builds send none, so no minimum refuses them.
+func getAppVersion() string {
+	version, _ := updater.Updater{}.GetVersion()
+	if _, err := appversion.Parse(version); err != nil {
+		return ""
+	}
+	return version
+}
+
 func getLoginShell() string {
 	if shell := os.Getenv("SHELL"); shell != "" {
 		return shell
@@ -163,11 +175,13 @@ func main() {
 	fileOpener := &wailsFileOpener{}
 	var agentServer *sshagent.Server
 	var approver *agent.Approver
+	var showUpdateRequired func(requirement vault.UpdateRequirement)
 	vaultConfig := vault.Config{
 		StatePath:             statePath,
 		CachePath:             cachePath,
 		DeviceName:            getDeviceName(),
 		Platform:              runtime.GOOS + "/desktop",
+		AppVersion:            getAppVersion(),
 		Clipboard:             clipboard,
 		LockNotifier:          lockNotifier,
 		GetSystemIdleDuration: systemidle.GetIdleDuration,
@@ -185,6 +199,11 @@ func main() {
 		OnRemoteChange:     lockNotifier.NotifyRemoteChange,
 		OnShareLinksChange: lockNotifier.NotifyShareLinksChange,
 		OnThemeChange:      lockNotifier.NotifyThemeChange,
+		OnUpdateRequired: func(requirement vault.UpdateRequirement) {
+			if showUpdateRequired != nil {
+				showUpdateRequired(requirement)
+			}
+		},
 	}
 	vaultService, err := vault.CreateService(vaultConfig)
 	if err != nil {
@@ -288,13 +307,15 @@ func main() {
 	browserServer := browser.CreateServer(vault.CreateBrowserRequestHandler(browserBridge), sshagent.SystemPeerResolver{}, browserHostPath)
 
 	commandLineApprovals := commandline.CreateSessionApprovals(commandline.DefaultApprovalLifetime, nil)
+	commandLineBridge := vault.CreateCommandLineBridge(vaultService, commandLineApprovals)
 	var commandLineService *vault.CommandLineService
 	commandLineServer := commandline.CreateServer(commandline.ServerConfig{
-		Handler:       vault.CreateCommandLineBridge(vaultService, commandLineApprovals),
-		Approver:      approver,
-		AgentApprover: approver,
-		Approvals:     commandLineApprovals,
-		IsEnabled:     func() bool { return commandLineService.IsIntegrationEnabled() },
+		Handler:             commandLineBridge,
+		CheckUpdateRequired: commandLineBridge.CheckUpdateRequired,
+		Approver:            approver,
+		AgentApprover:       approver,
+		Approvals:           commandLineApprovals,
+		IsEnabled:           func() bool { return commandLineService.IsIntegrationEnabled() },
 	})
 	commandLineSocketPath := os.Getenv(cliprotocol.SocketEnvironment)
 	if commandLineSocketPath == "" {
@@ -310,6 +331,7 @@ func main() {
 	}), commandLineRunner)
 
 	loginItemService := vault.CreateLoginItemService(vaultService, background.CreateLoginItem(homeDirectory))
+	inviteLinkService := vault.CreateInviteLinkService()
 	isHiddenLaunchRequested := background.IsHiddenLaunchRequested(os.Args[1:])
 	background.StartLaunchObserver()
 
@@ -333,6 +355,7 @@ func main() {
 			application.NewService(updateService),
 			application.NewService(commandLineService),
 			application.NewService(loginItemService),
+			application.NewService(inviteLinkService),
 		},
 		OnShutdown: func() {
 			commandLineRunner.Stop()
@@ -397,9 +420,22 @@ func main() {
 		event.Cancel()
 		showWindow()
 	})
+	showUpdateRequired = func(requirement vault.UpdateRequirement) {
+		app.Event.Emit("update-required", requirement)
+		showWindow()
+	}
+	app.Event.OnApplicationEvent(events.Common.ApplicationLaunchedWithUrl, func(event *application.ApplicationEvent) {
+		invite, err := vault.OpenInviteLink(inviteLinkService, event.Context().URL())
+		if err != nil {
+			return
+		}
+		app.Event.Emit("invite-link", invite)
+		showWindow()
+	})
 	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
 		background.SetAppAppearance(vaultService.GetTheme().Appearance)
 		updater.Start()
+		go vaultService.CheckMinimumVersion()
 		// Runs after AppKit has delivered the launch event, which tells whether this is a launch at login.
 		application.InvokeAsync(func() {
 			if !isHiddenLaunchRequested && !background.WasLaunchedAsLoginItem() {

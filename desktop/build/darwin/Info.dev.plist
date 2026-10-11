@@ -21,6 +21,17 @@
             <string>appicon</string>
         <key>LSMinimumSystemVersion</key>
             <string>12.0.0</string>
+        <key>CFBundleURLTypes</key>
+            <array>
+                <dict>
+                    <key>CFBundleURLName</key>
+                    <string>com.tryhisar.hisar</string>
+                    <key>CFBundleURLSchemes</key>
+                    <array>
+                        <string>hisar</string>
+                    </array>
+                </dict>
+            </array>
         <key>NSHighResolutionCapable</key>
             <string>true</string>
         <key>NSHumanReadableCopyright</key>

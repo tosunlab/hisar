@@ -112,6 +112,9 @@ func (bridge *BrowserBridge) handleRequest(ctx context.Context, request *browser
 	if !bridge.isTokenValid(request.Token) {
 		return nil, browser.CreateError(browser.ErrorNotPaired, "pair this browser with Hisar first")
 	}
+	if err := bridge.service.requireCurrentVersion(); err != nil {
+		return nil, browser.CreateError(browser.ErrorUpdateRequired, err.Error())
+	}
 	switch request.Type {
 	case "status":
 		status := bridge.service.GetStatus()
@@ -161,12 +164,23 @@ func (bridge *BrowserBridge) handleRequest(ctx context.Context, request *browser
 
 func (bridge *BrowserBridge) answerHello(request *browser.Request) browser.HelloResult {
 	s := bridge.service
+	updateRequired := bridge.findUpdateRequired(request.ExtensionVersion)
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	isPaired := slices.ContainsFunc(s.state.AllPairedBrowser, func(paired localstate.PairedBrowser) bool {
 		return request.InstanceID != "" && paired.InstanceID == request.InstanceID
 	})
-	return browser.HelloResult{ProtocolVersion: browser.ProtocolVersion, IsPaired: isPaired, State: s.buildStatus().State}
+	return browser.HelloResult{ProtocolVersion: browser.ProtocolVersion, IsPaired: isPaired, State: s.buildStatus().State, UpdateRequired: updateRequired}
+}
+
+func (bridge *BrowserBridge) findUpdateRequired(extensionVersion string) *browser.UpdateRequirement {
+	if requirement := bridge.service.getUpdateRequirement(); requirement != nil {
+		return &browser.UpdateRequirement{Target: browser.UpdateTargetApp, CurrentVersion: describeVersion(requirement.CurrentVersion), MinimumVersion: requirement.MinimumVersion, UpdateURL: requirement.UpdateURL}
+	}
+	if requirement := bridge.service.checkClientVersion(proto.PlatformExtension, extensionVersion); requirement != nil {
+		return &browser.UpdateRequirement{Target: browser.UpdateTargetExtension, CurrentVersion: requirement.CurrentVersion, MinimumVersion: requirement.MinimumVersion, UpdateURL: requirement.UpdateURL}
+	}
+	return nil
 }
 
 func generatePairingCode() (string, error) {

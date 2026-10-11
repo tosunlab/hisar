@@ -262,6 +262,30 @@ func TestInvites(t *testing.T) {
 	}
 }
 
+func TestGetInviteWithInviter(t *testing.T) {
+	database := createTestStore(t)
+	ctx := context.Background()
+	createTestAccount(t, database, "AAAAAA", "a@example.com")
+	inviterID := "AAAAAA"
+	database.CreateInvite(ctx, []byte("from-user"), "b@example.com", "member", &inviterID, time.Hour)
+	database.CreateInvite(ctx, []byte("from-operator"), "c@example.com", "admin", nil, time.Hour)
+	database.CreateInvite(ctx, []byte("expired"), "d@example.com", "member", &inviterID, -time.Minute)
+
+	invite, err := database.GetInviteWithInviter(ctx, []byte("from-user"))
+	if err != nil || invite.Email != "b@example.com" || invite.InviterName != "AAAAAA" || invite.InviterEmail != "a@example.com" || time.Until(invite.ExpiresAt) < 59*time.Minute {
+		t.Errorf("invite from a user: %+v %v", invite, err)
+	}
+	invite, err = database.GetInviteWithInviter(ctx, []byte("from-operator"))
+	if err != nil || invite.Email != "c@example.com" || invite.InviterName != "" || invite.InviterEmail != "" {
+		t.Errorf("invite from the operator: %+v %v", invite, err)
+	}
+	for _, tokenHash := range []string{"expired", "invite-AAAAAA", "unknown"} {
+		if invite, err := database.GetInviteWithInviter(ctx, []byte(tokenHash)); !errors.Is(err, ErrNotFound) {
+			t.Errorf("%s: %+v %v", tokenHash, invite, err)
+		}
+	}
+}
+
 func TestSessions(t *testing.T) {
 	database := createTestStore(t)
 	ctx := context.Background()

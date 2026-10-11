@@ -21,6 +21,7 @@ import {
   type SSHAgentStatus,
   type SSHKeyType,
   type Status,
+  type UpdateRequirement,
   type UpdateStatus,
   type VaultMember,
   type VaultRole,
@@ -49,6 +50,7 @@ export const store = reactive({
     biometricReady: false,
     isOffline: false,
     autoLockSeconds: 600,
+    updateRequired: null,
   } as Status,
   allVault: [] as VaultSummary[],
   selectedVaultID: "",
@@ -58,6 +60,7 @@ export const store = reactive({
   searchQuery: "",
   pendingSecretKey: "",
   isTouchIDOfferShown: false,
+  pendingInvite: "",
   errorMessage: "",
   noticeMessage: "",
   isBusy: false,
@@ -141,7 +144,7 @@ function clearAllVaultData(): void {
 
 async function applyStatus(status: Status): Promise<void> {
   store.status = status;
-  if (status.state === "unlocked") {
+  if (status.state === "unlocked" && !status.updateRequired) {
     await loadAllVault();
   } else {
     clearAllVaultData();
@@ -150,6 +153,51 @@ async function applyStatus(status: Status): Promise<void> {
 
 export async function loadStatus(): Promise<void> {
   await runAction(async () => applyStatus(await api.getStatus()));
+}
+
+export function showUpdateRequired(requirement: UpdateRequirement): void {
+  clearAllVaultData();
+  store.status = { ...store.status, updateRequired: requirement };
+}
+
+export async function checkMinimumVersion(): Promise<boolean> {
+  const status = await runAction(() => api.checkMinimumVersion());
+  if (status) {
+    await applyStatus(status);
+  }
+  return !store.status.updateRequired;
+}
+
+// updateNow installs through Sparkle when it can; development builds and signed-out apps get the download page.
+export async function updateNow(): Promise<void> {
+  const updateURL = store.status.updateRequired?.updateURL ?? "";
+  const updateStatus = await api.getUpdateStatus().catch(() => null);
+  if (updateStatus?.isAvailable && updateStatus.isSignedIn) {
+    await runAction(() => api.checkForUpdates());
+    return;
+  }
+  if (/^https:\/\//.test(updateURL)) {
+    await runAction(() => api.openURL(updateURL));
+  }
+}
+
+export function openInviteLink(invite: string): void {
+  if (!invite) {
+    return;
+  }
+  if (store.status.state !== "signed-out") {
+    showNotice(`You're signed in as ${store.status.email}. Sign out to create an account with this invite.`);
+    return;
+  }
+  store.pendingInvite = invite;
+}
+
+export async function takePendingInviteQuietly(): Promise<void> {
+  try {
+    openInviteLink(await api.takePendingInvite());
+  } catch {
+    return;
+  }
 }
 
 export async function signIn(server: string, email: string, secretKey: string, password: string): Promise<boolean> {

@@ -30,7 +30,7 @@ function installChrome(): void {
         }
       }),
     },
-    tabs: { query: vi.fn(async () => [{ id: 42 }]) },
+    tabs: { query: vi.fn(async () => [{ id: 42 }]), create: vi.fn(async () => ({})) },
     storage: {
       local: {
         get: vi.fn(async (allKey: string[]) => Object.fromEntries(allKey.filter((key) => key in storedSettings).map((key) => [key, storedSettings[key]]))),
@@ -318,5 +318,57 @@ describe("settings", () => {
     expect(wrapper.find<HTMLInputElement>('[data-testid="setting-open-on-focus"]').element.disabled).toBe(true);
     await wrapper.find('[data-testid="settings-done"]').trigger("click");
     expect(wrapper.find('[data-testid="status-locked"]').exists()).toBe(true);
+  });
+});
+
+describe("update required", () => {
+  it("says the Mac app needs an update and offers to open Hisar", async () => {
+    respondWithState({
+      view: "update-required",
+      updateRequired: { target: "app", currentVersion: "0.1.5", minimumVersion: "0.1.6", updateURL: "https://tryhisar.com/download" },
+    });
+    const wrapper = await mountApp();
+    const panel = wrapper.get('[data-testid="status-update-required"]');
+    expect(panel.get("h1").text()).toBe("Hisar needs an update");
+    expect(panel.text()).toContain("This server needs Hisar 0.1.6 or later. This Mac has 0.1.5. Open Hisar to update it.");
+    expect(wrapper.find('[data-testid="update-extension"]').exists()).toBe(false);
+    await wrapper.get('[data-testid="open-hisar"]').trigger("click");
+    await flushPromises();
+    expect(allMessage).toContainEqual({ type: "popup.getState", shouldReconnect: true });
+  });
+
+  it("says the extension needs an update and opens its store page", async () => {
+    const storeURL = "https://chromewebstore.google.com/detail/mmipiffoogblblocokimpemdopmdjghf";
+    respondWithState({
+      view: "update-required",
+      updateRequired: { target: "extension", currentVersion: "0.2.0", minimumVersion: "0.3.0", updateURL: storeURL },
+    });
+    const wrapper = await mountApp();
+    const panel = wrapper.get('[data-testid="status-update-required"]');
+    expect(panel.get("h1").text()).toBe("Update the Hisar extension");
+    expect(panel.text()).toContain("This server needs version 0.3.0 or later of the extension; this is 0.2.0.");
+    expect(wrapper.find('[data-testid="open-hisar"]').exists()).toBe(false);
+    await wrapper.get('[data-testid="update-extension"]').trigger("click");
+    await flushPromises();
+    expect(chrome.tabs.create).toHaveBeenCalledWith({ url: storeURL });
+  });
+
+  it("opens only known update pages", async () => {
+    respondWithState({
+      view: "update-required",
+      updateRequired: { target: "extension", currentVersion: "0.2.0", minimumVersion: "0.3.0", updateURL: "https://evil.example/extension" },
+    });
+    const wrapper = await mountApp();
+    await wrapper.get('[data-testid="update-extension"]').trigger("click");
+    await flushPromises();
+    expect(chrome.tabs.create).toHaveBeenCalledWith({ url: "https://chromewebstore.google.com/detail/mmipiffoogblblocokimpemdopmdjghf" });
+  });
+
+  it("shows the desktop's message when only the status request says so", async () => {
+    respondWithState({ view: "update-required", errorMessage: "Hisar needs an update: the server requires version 0.1.6 or later. Open Hisar to update." });
+    const wrapper = await mountApp();
+    const panel = wrapper.get('[data-testid="status-update-required"]');
+    expect(panel.get("h1").text()).toBe("Hisar needs an update");
+    expect(panel.text()).toContain("the server requires version 0.1.6 or later");
   });
 });

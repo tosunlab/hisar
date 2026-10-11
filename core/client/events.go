@@ -35,6 +35,7 @@ func (c *Client) StreamEvents(ctx context.Context, handleEvent func(Event)) erro
 	if c.Token != "" {
 		request.Header.Set("Authorization", "Bearer "+c.Token)
 	}
+	c.setClientHeader(request.Header)
 	// The regular client's overall timeout would cut a long-lived stream; idleness is checked instead.
 	streamClient := &http.Client{Transport: c.HTTP.Transport}
 	response, err := streamClient.Do(request)
@@ -44,6 +45,9 @@ func (c *Client) StreamEvents(ctx context.Context, handleEvent func(Event)) erro
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
 		data, _ := io.ReadAll(io.LimitReader(response.Body, 4096))
+		if response.StatusCode == http.StatusUpgradeRequired {
+			return c.readUpgradeRequired(data)
+		}
 		return &APIError{Status: response.StatusCode, Message: strings.TrimSpace(string(data))}
 	}
 

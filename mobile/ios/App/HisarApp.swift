@@ -22,6 +22,8 @@ struct HisarApp: App {
                 .onOpenURL { url in
                     if let link = SignInLink.parse(url.absoluteString) {
                         model.pendingSignInLink = link
+                    } else if let link = InviteLink.parse(url.absoluteString) {
+                        model.openInviteLink(link)
                     }
                 }
         }
@@ -52,6 +54,8 @@ struct HisarApp: App {
             PhoneApprovalPreviewView(approval: approval)
         } else if PendingApprovalPreviewView.isRequested() {
             PendingApprovalPreviewView()
+        } else if UpdateRequiredPreview.isRequested() {
+            UpdateRequiredView(requirement: UpdateRequiredPreview.requirement, isChecking: false) {}
         } else {
             RootView()
         }
@@ -62,12 +66,13 @@ struct HisarApp: App {
 
     private func startModel() {
         #if DEBUG
-        guard AutoFillPreviewView.readMode() == nil, PhoneApprovalPreviewView.readApproval() == nil, !PendingApprovalPreviewView.isRequested() else { return }
+        guard AutoFillPreviewView.readMode() == nil, PhoneApprovalPreviewView.readApproval() == nil, !PendingApprovalPreviewView.isRequested(), !UpdateRequiredPreview.isRequested() else { return }
         #endif
         guard model.screen == .starting else { return }
         lockEventRelay.setHandler { [weak model] in model?.handleLockedEvent() }
         lockEventRelay.setApprovalHandler { [weak model] eventName, requestID in model?.handleApprovalEvent(name: eventName, requestID: requestID) }
         lockEventRelay.setRemoteChangeHandler { [weak model] in model?.handleRemoteChange() }
+        lockEventRelay.setUpdateRequiredHandler { [weak model] in model?.handleUpdateRequired() }
         let relay = lockEventRelay
         model.start {
             try BackendFactory.createBackend(configuration: .current, isClipboardIncluded: true, eventListener: relay)

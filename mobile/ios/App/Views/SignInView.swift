@@ -41,7 +41,7 @@ struct SignInView: View {
                 Section {
                     VStack(alignment: .leading, spacing: 14) {
                         LogoMark(size: 56)
-                        Text(mode == .signIn ? "Sign in to use Hisar on this iPhone." : "Use the invite link you received.")
+                        Text(mode == .signIn ? "Sign in to use Hisar on this iPhone." : "Enter the invite code you received, or paste the invite link.")
                             .font(.subheadline)
                             .foregroundStyle(.themeSecondary)
                         Picker("Mode", selection: $mode) {
@@ -100,8 +100,10 @@ struct SignInView: View {
         .onAppear {
             if !model.status.server.isEmpty { applyServer(model.status.server) }
             applyPendingSignInLink()
+            applyPendingInviteLink()
         }
         .onChange(of: model.pendingSignInLink) { _, _ in applyPendingSignInLink() }
+        .onChange(of: model.pendingInviteLink) { _, _ in applyPendingInviteLink() }
         .sheet(isPresented: $isScannerShown) {
             EmergencyKitScannerSheet { scannedText in
                 isScannerShown = false
@@ -175,7 +177,7 @@ struct SignInView: View {
     @ViewBuilder
     private var createAccountSections: some View {
         Section("Invite") {
-            TextField("Invite link", text: $inviteLink, prompt: Text(verbatim: "https://api.tryhisar.com/invite/…"))
+            TextField("Invite code or link", text: $inviteLink, prompt: Text("Invite code or link"))
                 .keyboardType(.URL)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
@@ -234,6 +236,13 @@ struct SignInView: View {
         if !link.server.isEmpty { applyServer(link.server) }
         if !link.email.isEmpty { email = link.email }
         if !link.secretKey.isEmpty { secretKey = link.secretKey }
+    }
+
+    private func applyPendingInviteLink() {
+        guard let link = model.pendingInviteLink else { return }
+        model.pendingInviteLink = nil
+        mode = .createAccount
+        inviteLink = link.invite
     }
 
     private func submit() {

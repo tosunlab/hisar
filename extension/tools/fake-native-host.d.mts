@@ -23,6 +23,7 @@ export interface FakeHostState {
   allLogin: FakeLogin[];
   allCodeRequest?: { itemID: string; url: string }[];
   allPasskey?: FakePasskey[];
+  updateRequired?: { target: "app" | "extension"; currentVersion: string; minimumVersion: string; updateURL: string } | null;
 }
 
 export interface FakePasskey {

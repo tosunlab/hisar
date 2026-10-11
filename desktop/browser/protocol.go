@@ -28,6 +28,7 @@ const (
 	ErrorNoMatch            = "no-match"
 	ErrorDesktopUnavailable = "desktop-unavailable"
 	ErrorInternal           = "internal"
+	ErrorUpdateRequired     = "update-required"
 )
 
 var ErrMessageTooLarge = errors.New("browser: message larger than 1 MiB")
@@ -76,9 +77,23 @@ type connectMessage struct {
 }
 
 type HelloResult struct {
-	ProtocolVersion int    `json:"protocolVersion"`
-	IsPaired        bool   `json:"isPaired"`
-	State           string `json:"state"`
+	ProtocolVersion int                `json:"protocolVersion"`
+	IsPaired        bool               `json:"isPaired"`
+	State           string             `json:"state"`
+	UpdateRequired  *UpdateRequirement `json:"updateRequired,omitempty"`
+}
+
+const (
+	UpdateTargetApp       = "app"
+	UpdateTargetExtension = "extension"
+)
+
+// UpdateRequirement names what is below the server's minimum version: the Hisar app or this extension.
+type UpdateRequirement struct {
+	Target         string `json:"target"`
+	CurrentVersion string `json:"currentVersion"`
+	MinimumVersion string `json:"minimumVersion"`
+	UpdateURL      string `json:"updateURL"`
 }
 
 type TokenResult struct {

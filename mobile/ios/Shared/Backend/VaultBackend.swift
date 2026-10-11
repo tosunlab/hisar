@@ -2,6 +2,7 @@ import Foundation
 
 protocol VaultBackend: AnyObject {
     func getStatus() -> VaultStatus
+    func checkMinimumVersion() -> VaultStatus
     func signIn(server: String, email: String, secretKey: String, password: String) throws -> VaultStatus
     func signUp(inviteLink: String, email: String, name: String, password: String) throws -> SignUpResult
     func unlock(password: String) throws -> VaultStatus

@@ -13,6 +13,7 @@ final class HisarKitBackend: VaultBackend {
         guard let hisar = HisarkitNew(stateDirectory.path, deviceName, secretKeyStore, biometric, clipboard, eventListener, &error) else {
             throw HisarKitBackend.convertError(error ?? NSError(domain: "hisar", code: 1), biometryName: "Face ID")
         }
+        hisar.setAppVersion(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
         self.hisar = hisar
         self.biometryName = biometric?.getBiometryName() ?? "Face ID"
         allRetainedAdapter = [secretKeyStore, biometric as AnyObject?, clipboard as AnyObject?, eventListener as AnyObject?].compactMap { $0 }
@@ -59,6 +60,10 @@ final class HisarKitBackend: VaultBackend {
 
     func getStatus() -> VaultStatus {
         (try? decode(VaultStatus.self, from: hisar.status())) ?? .signedOut
+    }
+
+    func checkMinimumVersion() -> VaultStatus {
+        (try? decode(VaultStatus.self, from: hisar.checkMinimumVersion())) ?? getStatus()
     }
 
     func signIn(server: String, email: String, secretKey: String, password: String) throws -> VaultStatus {

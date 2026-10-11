@@ -44,7 +44,9 @@ export class InlineMenuService {
     const session = this.requireSession(menuSender, sessionID);
     const base = { purpose: session.purpose, host: getHost(session.frameUrl), allLogin: [], hasMoreLogin: false };
     const popupState = await this.controller.getPopupState();
-    if (popupState.view !== "unlocked") return { ...base, view: popupState.view, errorMessage: popupState.errorMessage };
+    if (popupState.view !== "unlocked") {
+      return { ...base, view: popupState.view, errorMessage: popupState.errorMessage, updateRequired: popupState.updateRequired };
+    }
     try {
       if (session.purpose === "new-password") {
         session.suggestedPassword = await this.controller.generatePassword({});
@@ -55,7 +57,7 @@ export class InlineMenuService {
       return { ...base, view: "logins", allLogin: allLogin.slice(0, maximumInlineLoginCount), hasMoreLogin: allLogin.length > maximumInlineLoginCount };
     } catch (error) {
       const hisarError = toHisarError(error);
-      if (hisarError.code === "locked" || hisarError.code === "signed-out" || hisarError.code === "desktop-unavailable") {
+      if (hisarError.code === "locked" || hisarError.code === "signed-out" || hisarError.code === "desktop-unavailable" || hisarError.code === "update-required") {
         return { ...base, view: hisarError.code };
       }
       if (hisarError.code === "not-paired") return { ...base, view: "not-paired" };
