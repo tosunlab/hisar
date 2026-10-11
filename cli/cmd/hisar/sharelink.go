@@ -48,8 +48,8 @@ func parseShareLinkOption(flags *flag.FlagSet, allArg []string) (*shareLinkOptio
 	option := &shareLinkOption{}
 	flags.StringVar(&option.vaultName, "v", "Personal", "vault name or ID")
 	flags.Var(&option.allFieldName, "field", "a field to share: username, password, url, notes or a custom field's label (repeat for more; default username and password)")
-	flags.StringVar(&option.expiry, "expires", "7d", "1h, 1d, 7d or 30d")
-	flags.StringVar(&option.views, "views", "1", "how many times the link can be opened: 1-100 or unlimited")
+	flags.StringVar(&option.expiry, "expires", "7d", "1h, 1d, 7d or 30d (30d needs Pro)")
+	flags.StringVar(&option.views, "views", "1", "how many times the link can be opened: 1-100")
 	flags.BoolVar(&option.isPassphrase, "passphrase", false, "also require a passphrase (asked for; send it to the recipient another way)")
 	flags.BoolVar(&option.isText, "text", false, "share text read from stdin instead of an item")
 	flags.StringVar(&option.title, "title", "", "title of a --text share")

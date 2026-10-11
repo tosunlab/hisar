@@ -279,6 +279,10 @@ final class HisarKitBackend: VaultBackend {
         try decode([Device]?.self, from: callReturningText { hisar.listAllDevice($0) }) ?? []
     }
 
+    func getPlan() throws -> AccountPlan {
+        try decode(AccountPlan.self, from: callReturningText { hisar.getPlan($0) })
+    }
+
     func revokeDevice(deviceID: String) throws {
         try callReturningNothing { try hisar.revokeDevice(deviceID) }
     }

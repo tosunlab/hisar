@@ -50,6 +50,7 @@ protocol VaultBackend: AnyObject {
     func reconnectEvents()
     func setAutoLock(seconds: Int) throws -> VaultStatus
     func listAllDevice() throws -> [Device]
+    func getPlan() throws -> AccountPlan
     func revokeDevice(deviceID: String) throws
     func exportEmergencyKit(password: String, directory: URL) throws -> EmergencyKitExport
     func copySecretReference(vaultID: String, itemID: String, fieldName: String) throws -> String

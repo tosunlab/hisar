@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
-import { allTestVault, createApiMock, createItem, createShareLink, createShareLinkField, createStatus } from "../testing";
+import { allTestVault, createApiMock, createItem, createPlan, createShareLink, createShareLinkField, createStatus, proLimits } from "../testing";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
 
@@ -47,6 +47,8 @@ function resetStore(): void {
     allShareLink: [],
     isShareLinksOpen: false,
     shareLinkDialog: null,
+    plan: null,
+    planLimit: null,
   });
 }
 
@@ -102,7 +104,7 @@ describe("share link dialog", () => {
     await wrapper.find('[data-testid="share-passphrase"]').setValue("orange-cactus");
     await wrapper.find('[data-testid="share-views"]').setValue(101);
     await wrapper.find("form").trigger("submit");
-    expect(wrapper.find('[data-testid="share-link-validation"]').text()).toBe("Choose 1 to 100 views, or unlimited.");
+    expect(wrapper.find('[data-testid="share-link-validation"]').text()).toBe("Choose 1 to 100 views.");
     expect(api.createShareLink).not.toHaveBeenCalled();
     wrapper.unmount();
   });
@@ -146,15 +148,56 @@ describe("share link dialog", () => {
     wrapper.unmount();
   });
 
-  it("sends 0 views for unlimited and no passphrase when it is not required", async () => {
-    api.createShareLink.mockResolvedValue(createShareLink({ url: createdURL, maxViews: 0 }));
+  it("sends one view by default and offers only the expiries the plan allows", async () => {
+    api.getPlan.mockResolvedValue(createPlan());
+    api.createShareLink.mockResolvedValue(createShareLink({ url: createdURL, maxViews: 1 }));
     const wrapper = await openItemDialog();
-    await wrapper.find('[data-testid="share-unlimited-views"]').setValue(true);
-    expect((wrapper.find('[data-testid="share-views"]').element as HTMLInputElement).disabled).toBe(true);
+    expect(wrapper.find('[data-testid="share-unlimited-views"]').exists()).toBe(false);
+    const allExpiryLabel = wrapper.findAll('[data-testid="share-expiry"] option').map((option) => option.text());
+    expect(allExpiryLabel).toEqual(["1 hour", "1 day", "7 days"]);
     await wrapper.find("form").trigger("submit");
     await flushPromises();
-    expect(api.createShareLink).toHaveBeenCalledWith(expect.objectContaining({ fieldKeys: ["username", "password"], maxViews: 0, passphrase: "", expiresInSeconds: 604800 }));
-    expect(wrapper.find('[data-testid="share-link-created"]').text()).toContain("unlimited views");
+    expect(api.createShareLink).toHaveBeenCalledWith(expect.objectContaining({ fieldKeys: ["username", "password"], maxViews: 1, passphrase: "", expiresInSeconds: 604800 }));
+    wrapper.unmount();
+  });
+
+  it("offers 30 days on Pro", async () => {
+    api.getPlan.mockResolvedValue(createPlan({ plan: "pro", title: "Pro", limits: proLimits }));
+    const wrapper = await openItemDialog();
+    expect(wrapper.findAll('[data-testid="share-expiry"] option').map((option) => option.text())).toContain("30 days");
+    wrapper.unmount();
+  });
+
+  it("offers every expiry when the plan is unknown", async () => {
+    api.getPlan.mockRejectedValue(new Error("offline"));
+    const wrapper = await openItemDialog();
+    expect(wrapper.findAll('[data-testid="share-expiry"] option')).toHaveLength(4);
+    wrapper.unmount();
+  });
+
+  it("shows the limit with one upgrade link on Free", async () => {
+    const message = "Free includes 10 live share links. Revoke one to create another.";
+    api.createShareLink.mockRejectedValue(Object.assign(new Error(message), { cause: { message, code: "plan_limit", kind: "live-share-links", limit: 10, current: 10, plan: "free" } }));
+    const wrapper = await openItemDialog();
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="share-link-dialog"] .error').text()).toBe(message);
+    expect(wrapper.findAll('[data-testid="plan-limit-upgrade"]')).toHaveLength(1);
+    await wrapper.find('[data-testid="plan-limit-upgrade"]').trigger("click");
+    await flushPromises();
+    expect(api.createCheckoutURL).toHaveBeenCalledWith("yearly");
+    expect(api.openURL).toHaveBeenCalledWith("https://hisar.lemonsqueezy.com/checkout/custom/1");
+    wrapper.unmount();
+  });
+
+  it("shows a limit on Pro without an upgrade link", async () => {
+    const message = "Pro includes 200 live share links. Revoke one to create another.";
+    api.createShareLink.mockRejectedValue(Object.assign(new Error(message), { cause: JSON.stringify({ message, code: "plan_limit", kind: "live-share-links", limit: 200, current: 200, plan: "pro" }) }));
+    const wrapper = await openItemDialog();
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="share-link-dialog"] .error').text()).toBe(message);
+    expect(wrapper.find('[data-testid="plan-limit-notice"]').exists()).toBe(false);
     wrapper.unmount();
   });
 

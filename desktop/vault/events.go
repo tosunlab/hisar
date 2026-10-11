@@ -49,6 +49,10 @@ func (s *Service) watchEvents(ctx context.Context, apiClient *client.Client, rec
 				if s.config.OnShareLinksChange != nil {
 					s.config.OnShareLinksChange()
 				}
+			case proto.EventPlanChanged:
+				if s.config.OnPlanChange != nil {
+					s.config.OnPlanChange()
+				}
 			}
 		})
 		close(streamFinished)

@@ -74,6 +74,7 @@ func New(stateDirectory, deviceName string, secretKeyStore SecretKeyStore, biome
 		config.LockNotifier = lockNotifierAdapter{listener: listener}
 		config.OnApprovalEvent = listener.OnApprovalEvent
 		config.OnRemoteChange = listener.OnRemoteChange
+		config.OnPlanChange = listener.OnRemoteChange
 	}
 	service, err := vault.CreateService(config)
 	if err != nil {

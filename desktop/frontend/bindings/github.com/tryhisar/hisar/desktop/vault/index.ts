@@ -32,6 +32,8 @@ export type {
     PairedBrowser,
     PasswordConfig,
     Person,
+    Plan,
+    PlanLimits,
     ReceivedShareInvitation,
     SentShareInvitation,
     ShareAwaitingUnlock,

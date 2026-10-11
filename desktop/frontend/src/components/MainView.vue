@@ -18,6 +18,7 @@ import {
 } from "../store";
 import { formatKeyType, getDomain, getInitials, isMacPlatform, sshKeyCategory } from "../util";
 import AppIcon from "./AppIcon.vue";
+import PlanLimitNotice from "./PlanLimitNotice.vue";
 import HisarLogo from "./HisarLogo.vue";
 import ItemDetailPanel from "./ItemDetailPanel.vue";
 import ItemEditor from "./ItemEditor.vue";
@@ -237,6 +238,7 @@ onBeforeUnmount(() => {
       <div class="title-bar"></div>
       <div class="detail-content">
         <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
+        <PlanLimitNotice v-if="!store.shareLinkDialog && !store.isSharingOpen" />
         <SSHKeyForm v-if="store.editorMode === 'create-ssh-key'" />
         <ItemEditor v-else-if="store.editorMode !== 'view'" :key="store.editorMode + (store.selectedItem?.id ?? '')" />
         <ItemDetailPanel v-else-if="store.selectedItem" :can-edit="canEdit" :vault-name="selectedVault?.name ?? ''" :is-shared="selectedVault?.type === 'shared'" />

@@ -35,6 +35,7 @@ var allCommand = []command{
 	{name: "login", summary: "sign in on this device", run: runLogin, appAlternative: "sign in to the Hisar app"},
 	{name: "logout", summary: "sign out on this device", run: runLogout, appAlternative: "sign out in the Hisar app"},
 	{name: "whoami", summary: "show the signed-in account", run: runWhoami, runThroughApp: runWhoamiThroughApp},
+	{name: "plan", argumentUsage: planUsage, summary: "show your plan and limits; upgrade prints a checkout link, manage the subscription's page", run: runPlan, runThroughApp: runPlanThroughApp},
 	{name: "vaults", summary: "list vaults", run: runListAllVault, runThroughApp: runListAllVaultThroughApp},
 	{name: "vault-create", argumentUsage: "<name>", summary: "create a shared vault", run: runCreateVault, runThroughApp: runCreateVaultThroughApp},
 	{name: "ls", argumentUsage: "[-v vault]", summary: "list items", run: runListAllItem, runThroughApp: runListAllItemThroughApp},
@@ -180,7 +181,7 @@ func main() {
 	case errors.Is(err, flag.ErrHelp):
 		os.Exit(2)
 	case err != nil:
-		fmt.Fprintln(os.Stderr, "hisar:", err)
+		fmt.Fprintln(os.Stderr, "hisar:", describePlanLimitError(err))
 		os.Exit(1)
 	}
 }

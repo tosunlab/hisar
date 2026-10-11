@@ -10,6 +10,7 @@ import type {
   ItemDetail,
   LoginItemStatus,
   PasswordConfig,
+  Plan,
   ShareInvitations,
   ShareLink,
   ShareLinkField,
@@ -788,7 +789,32 @@ function continuePreviewImport(): Promise<ImportProgress> {
   );
 }
 
+// &plan=free | pro | cancelled | founding | offline picks the plan Settings → Account shows.
+function buildPreviewPlan(): Plan {
+  const planMode = previewParameter.get("plan") ?? "free";
+  const freeLimits = { maxSharedVaultCount: 2, maxVaultPersonCount: 3, maxLiveShareLinkCount: 10, maxShareLinkExpirySeconds: 604800, maxShareLinkViewCount: 100 };
+  const proLimits = { maxSharedVaultCount: 0, maxVaultPersonCount: 10, maxLiveShareLinkCount: 200, maxShareLinkExpirySeconds: 2592000, maxShareLinkViewCount: 100 };
+  const sharedVaultCount = allPreviewVault.filter((vault) => vault.type === "shared" && vault.role === "owner").length;
+  const plan: Plan = {
+    plan: "free", title: "Free", source: "free", isFoundingMember: false, subscriptionStatus: "", subscriptionInterval: "", renewsAt: "", endsAt: "", trialEndsAt: "",
+    limits: freeLimits, sharedVaultCount, liveShareLinkCount: 3, isCheckoutAvailable: true, isManageAvailable: false,
+  };
+  if (planMode === "pro" || planMode === "cancelled") {
+    Object.assign(plan, { plan: "pro", title: "Pro", source: "subscription", subscriptionStatus: "active", subscriptionInterval: "yearly", renewsAt: "2027-10-11T09:30:00Z", limits: proLimits, isCheckoutAvailable: false, isManageAvailable: true });
+  }
+  if (planMode === "cancelled") {
+    Object.assign(plan, { subscriptionStatus: "cancelled", renewsAt: "", endsAt: "2027-01-11T09:30:00Z" });
+  }
+  if (planMode === "founding") {
+    Object.assign(plan, { plan: "pro", title: "Pro", source: "founding", isFoundingMember: true, limits: proLimits, isCheckoutAvailable: false });
+  }
+  return plan;
+}
+
 export const previewApi = {
+  getPlan: () => (previewParameter.get("plan") === "offline" ? Promise.reject(new Error("offline")) : resolveAfterDelay(buildPreviewPlan())),
+  createCheckoutURL: (interval: string) => resolveAfterDelay(`https://hisar.lemonsqueezy.com/checkout/preview?interval=${interval}`),
+  createManageSubscriptionURL: () => resolveAfterDelay("https://hisar.lemonsqueezy.com/billing"),
   listAllImportFormat: () =>
     resolveAfterDelay([
       { id: "1pux", name: "1Password export (.1pux)" },

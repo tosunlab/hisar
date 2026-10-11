@@ -163,6 +163,15 @@ export async function applyPreviewParameter(): Promise<void> {
   if (parameter.get("error")) {
     store.errorMessage = parameter.get("error") ?? "";
   }
+  if (parameter.get("planLimit") === "1") {
+    const message = "Free includes 2 shared vaults. Remove one to create another.";
+    waitForUnlocked().then(() =>
+      setTimeout(() => {
+        store.errorMessage = message;
+        store.planLimit = { message, kind: "shared-vaults", limit: 2, current: 2, plan: "free" };
+      }, 1500),
+    );
+  }
   if (!parameter.get("vault") && !parameter.get("item") && !parameter.get("editor") && parameter.get("sharing") !== "1" && !parameter.get("shareLink") && parameter.get("sharedLinks") !== "1") {
     return;
   }

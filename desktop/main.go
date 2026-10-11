@@ -64,6 +64,12 @@ func (notifier *wailsLockNotifier) NotifyShareLinksChange() {
 	}
 }
 
+func (notifier *wailsLockNotifier) NotifyPlanChange() {
+	if notifier.app != nil {
+		notifier.app.Event.Emit("plan-changed", nil)
+	}
+}
+
 // NotifyThemeChange tells every window, the approval window too, and switches the native parts to light or dark.
 func (notifier *wailsLockNotifier) NotifyThemeChange(theme vault.Theme) {
 	background.SetAppAppearance(theme.Appearance)
@@ -184,6 +190,7 @@ func main() {
 		},
 		OnRemoteChange:     lockNotifier.NotifyRemoteChange,
 		OnShareLinksChange: lockNotifier.NotifyShareLinksChange,
+		OnPlanChange:       lockNotifier.NotifyPlanChange,
 		OnThemeChange:      lockNotifier.NotifyThemeChange,
 	}
 	vaultService, err := vault.CreateService(vaultConfig)

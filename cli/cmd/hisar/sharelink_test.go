@@ -64,12 +64,12 @@ func TestShareLinkThroughTheApp(t *testing.T) {
 func TestShareTextThroughTheAppReadsStdin(t *testing.T) {
 	app := startFakeApp(t)
 	app.answer = answerFakeShareLinkRequest
-	stdout, _, err := runCapturingOutput(t, false, "line one\nline two\n", "share-link", "--text", "--title", "Deploy", "--views", "unlimited")
+	stdout, _, err := runCapturingOutput(t, false, "line one\nline two\n", "share-link", "--text", "--title", "Deploy", "--views", "100")
 	if err != nil || stdout != testShareLinkURL+"\n" {
 		t.Fatalf("%q %v", stdout, err)
 	}
 	change := app.findRequest(cliprotocol.TypeCreateShareLink)[0].ShareLink
-	if change.Text != "line one\nline two" || change.Title != "Deploy" || change.MaxViews != 0 || change.ExpiresInSeconds != 604800 || len(change.Fields) != 0 {
+	if change.Text != "line one\nline two" || change.Title != "Deploy" || change.MaxViews != 100 || change.ExpiresInSeconds != 604800 || len(change.Fields) != 0 {
 		t.Errorf("change %+v", change)
 	}
 }
@@ -84,6 +84,7 @@ func TestShareLinkRefusesBadOptions(t *testing.T) {
 	}{
 		{[]string{"share-link", "GitHub", "--expires", "2d"}, "", "use 1h, 1d, 7d or 30d"},
 		{[]string{"share-link", "GitHub", "--views", "101"}, "", "1 to 100"},
+		{[]string{"share-link", "GitHub", "--views", "unlimited"}, "", "1 to 100"},
 		{[]string{"share-link", "GitHub", "--passphrase"}, "short\n", "at least 8 characters"},
 		{[]string{"share-link", "GitHub", "--passphrase"}, "correct horse\nother horse\n", "do not match"},
 		{[]string{"share-link", "--text", "--field", "password"}, "x", "--field is for items"},

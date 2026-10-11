@@ -92,7 +92,7 @@ export const allSettingsSection: SettingsSection[] = [
     id: "account",
     label: "Account",
     icon: "user",
-    allRow: [{ id: "account", title: "Account", keywords: "name email server sign out" }],
+    allRow: [{ id: "account", title: "Account", keywords: "name email server sign out plan pro free upgrade subscription billing founding member" }],
   },
   {
     id: "help",

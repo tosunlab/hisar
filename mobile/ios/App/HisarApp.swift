@@ -52,6 +52,8 @@ struct HisarApp: App {
             PhoneApprovalPreviewView(approval: approval)
         } else if PendingApprovalPreviewView.isRequested() {
             PendingApprovalPreviewView()
+        } else if let planMode = PlanPreviewView.readMode() {
+            PlanPreviewView(mode: planMode)
         } else {
             RootView()
         }
@@ -62,7 +64,7 @@ struct HisarApp: App {
 
     private func startModel() {
         #if DEBUG
-        guard AutoFillPreviewView.readMode() == nil, PhoneApprovalPreviewView.readApproval() == nil, !PendingApprovalPreviewView.isRequested() else { return }
+        guard AutoFillPreviewView.readMode() == nil, PhoneApprovalPreviewView.readApproval() == nil, !PendingApprovalPreviewView.isRequested(), PlanPreviewView.readMode() == nil else { return }
         #endif
         guard model.screen == .starting else { return }
         lockEventRelay.setHandler { [weak model] in model?.handleLockedEvent() }

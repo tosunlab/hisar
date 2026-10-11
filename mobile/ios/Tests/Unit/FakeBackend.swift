@@ -32,6 +32,8 @@ class FakeBackend: VaultBackend {
     var allPendingApproval: [PhoneApproval] = []
     var allApprovalAnswer: [String] = []
     var allDevice: [Device] = []
+    var plan = AccountPlan()
+    var planLimitMessage: String?
     var isMacApprovalAllowedValue = true
     var theme = VaultTheme.standard
     var isThemeSaveFailing = false
@@ -86,6 +88,7 @@ class FakeBackend: VaultBackend {
         try requireUnlocked()
         let name = name.trimmingCharacters(in: .whitespaces)
         guard !name.isEmpty else { throw BackendError(message: "Enter a vault name") }
+        if let planLimitMessage { throw BackendError(message: planLimitMessage) }
         let vault = VaultSummary(id: "vault-\(allVault.count + 1)", name: name, type: "shared", role: Member.vaultRoleOwner, itemCount: 0)
         allVault.append(vault)
         allItemByVaultID[vault.id] = []
@@ -178,6 +181,7 @@ class FakeBackend: VaultBackend {
         record("shareVault")
         try requireUnlocked()
         guard Member.allVaultRole.contains(role) else { throw BackendError(message: "Choose owner, editor or reader") }
+        if let planLimitMessage { throw BackendError(message: planLimitMessage) }
         let vault = try findSharableVault(vaultID: vaultID)
         guard email.contains("@") else { throw BackendError(message: "Enter the email address of the person") }
         guard email != currentMember?.email else { throw BackendError(message: "That is your own email; you already have access") }
@@ -551,6 +555,13 @@ extension FakeBackend {
         record("listAllDevice")
         try requireUnlocked()
         return allDevice
+    }
+
+    func getPlan() throws -> AccountPlan {
+        record("getPlan")
+        try requireUnlocked()
+        if isOffline { throw BackendError(message: "cannot reach the Hisar server; changes can be saved once you are back online") }
+        return plan
     }
 
     func revokeDevice(deviceID: String) throws {

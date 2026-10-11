@@ -898,6 +898,9 @@ func getFieldValue(vaultItem *item.Item, fieldName string) (string, bool) {
 }
 
 func convertError(err error) error {
+	if limitError, ok := convertPlanLimitError(err); ok {
+		return limitError
+	}
 	switch {
 	case errors.Is(err, session.ErrBadCredentials):
 		return errors.New("incorrect email, master password or Secret Key")

@@ -513,6 +513,12 @@ final class AppModel: ObservableObject {
         return true
     }
 
+    // loadPlan stays quiet when it fails: Settings says the plan needs a connection instead of showing an error.
+    func loadPlan() async -> AccountPlan? {
+        guard let backend else { return nil }
+        return try? await runInBackground { try backend.getPlan() }
+    }
+
     func loadAllDevice() async -> [Device]? {
         await perform(isBusyShown: false) { try $0.listAllDevice() }
     }

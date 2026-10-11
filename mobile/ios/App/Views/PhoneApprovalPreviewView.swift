@@ -208,4 +208,59 @@ struct PendingApprovalPreviewView: View {
         selectedTab = .vaults
     }
 }
+
+// Settings → Account with a made-up plan, for screenshots: -HisarPlanPreview free|pro|founding|offline.
+struct PlanPreviewView: View {
+    static let argument = "-HisarPlanPreview"
+
+    static func readMode() -> String? {
+        let allArgument = ProcessInfo.processInfo.arguments
+        guard let index = allArgument.firstIndex(of: argument), index + 1 < allArgument.count else { return nil }
+        return allArgument[index + 1]
+    }
+
+    var mode: String
+
+    private var state: PlanLoadState {
+        var plan = AccountPlan()
+        plan.sharedVaultCount = 2
+        plan.limits = PlanLimits(maxSharedVaultCount: 2, maxVaultPersonCount: 3, maxLiveShareLinkCount: 10, maxShareLinkExpirySeconds: 604_800, maxShareLinkViewCount: 100)
+        switch mode {
+        case "offline":
+            return .unavailable
+        case "pro", "founding":
+            plan.plan = AccountPlan.planPro
+            plan.title = "Pro"
+            plan.sharedVaultCount = 4
+            plan.limits = PlanLimits(maxSharedVaultCount: 0, maxVaultPersonCount: 10, maxLiveShareLinkCount: 200, maxShareLinkExpirySeconds: 2_592_000, maxShareLinkViewCount: 100)
+            if mode == "founding" {
+                plan.source = "founding"
+                plan.isFoundingMember = true
+            } else {
+                plan.source = "subscription"
+                plan.subscriptionStatus = "active"
+                plan.subscriptionInterval = "yearly"
+                plan.renewsAt = "2027-10-11T09:30:00Z"
+            }
+        default:
+            break
+        }
+        return .loaded(plan)
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    LabeledContent("Name", value: "Ada Lovelace")
+                    LabeledContent("Email", value: "ada@example.com")
+                    LabeledContent("Server", value: "https://api.tryhisar.com")
+                }
+                AccountPlanSection(state: state)
+            }
+            .applyThemedListStyle()
+            .navigationTitle("Account")
+        }
+    }
+}
 #endif

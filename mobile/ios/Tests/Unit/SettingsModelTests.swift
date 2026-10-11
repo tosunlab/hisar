@@ -194,6 +194,114 @@ final class SettingsModelTests: XCTestCase {
         XCTAssertEqual(commandLine.detailLine, "hisar read")
     }
 
+    private func summarizePlan(_ plan: AccountPlan) -> PlanSummary {
+        PlanSummary.create(plan: plan, now: currentDate, locale: Locale(identifier: "en_US"), timeZone: TimeZone(identifier: "UTC")!)
+    }
+
+    private func createProPlan(status: String) -> AccountPlan {
+        var plan = AccountPlan()
+        plan.plan = AccountPlan.planPro
+        plan.title = "Pro"
+        plan.source = "subscription"
+        plan.subscriptionStatus = status
+        plan.subscriptionInterval = "yearly"
+        plan.limits = PlanLimits(maxSharedVaultCount: 0, maxVaultPersonCount: 10, maxLiveShareLinkCount: 200, maxShareLinkExpirySeconds: 2_592_000, maxShareLinkViewCount: 100)
+        plan.sharedVaultCount = 4
+        return plan
+    }
+
+    func testPlanDecodesFromTheBackend() throws {
+        let json = #"{"plan":"pro","title":"Pro","source":"subscription","isFoundingMember":false,"subscriptionStatus":"active","subscriptionInterval":"yearly","renewsAt":"2027-10-11T09:30:00Z","endsAt":"","trialEndsAt":"","limits":{"maxSharedVaultCount":0,"maxVaultPersonCount":10,"maxLiveShareLinkCount":200,"maxShareLinkExpirySeconds":2592000,"maxShareLinkViewCount":100},"sharedVaultCount":4,"liveShareLinkCount":12,"isCheckoutAvailable":false,"isManageAvailable":true}"#
+        let plan = try JSONDecoder().decode(AccountPlan.self, from: Data(json.utf8))
+        XCTAssertEqual(plan.title, "Pro")
+        XCTAssertEqual(plan.subscriptionStatus, "active")
+        XCTAssertEqual(plan.renewsAt, "2027-10-11T09:30:00Z")
+        XCTAssertEqual(plan.limits.maxVaultPersonCount, 10)
+        XCTAssertEqual(plan.liveShareLinkCount, 12)
+        let minimal = try JSONDecoder().decode(AccountPlan.self, from: Data(#"{"plan":"free"}"#.utf8))
+        XCTAssertEqual(minimal, AccountPlan())
+    }
+
+    func testPlanSummaryForFree() {
+        var plan = AccountPlan()
+        plan.sharedVaultCount = 2
+        plan.limits = PlanLimits(maxSharedVaultCount: 2, maxVaultPersonCount: 3, maxLiveShareLinkCount: 10, maxShareLinkExpirySeconds: 604_800, maxShareLinkViewCount: 100)
+        let summary = summarizePlan(plan)
+        XCTAssertEqual(summary, PlanSummary(title: "Free", isFoundingMember: false, statusLine: nil, sharedVaultLine: "2 of 2", vaultPersonLine: "Up to 3"))
+    }
+
+    func testPlanSummaryForFoundingMember() {
+        var plan = createProPlan(status: "")
+        plan.source = "founding"
+        plan.isFoundingMember = true
+        let summary = summarizePlan(plan)
+        XCTAssertEqual(summary.title, "Pro")
+        XCTAssertTrue(summary.isFoundingMember)
+        XCTAssertEqual(summary.statusLine, "Pro, free for life")
+        XCTAssertEqual(summary.sharedVaultLine, "4 · unlimited")
+        XCTAssertEqual(summary.vaultPersonLine, "Up to 10")
+    }
+
+    func testPlanSummaryForSubscriptionStatuses() {
+        var active = createProPlan(status: "active")
+        active.renewsAt = "2027-10-11T09:30:00Z"
+        XCTAssertEqual(summarizePlan(active).statusLine, "Renews on October 11, 2027")
+
+        var trial = createProPlan(status: "on_trial")
+        trial.trialEndsAt = "2027-02-01T00:00:00.000Z"
+        XCTAssertEqual(summarizePlan(trial).statusLine, "Trial ends on February 1, 2027")
+
+        var cancelled = createProPlan(status: "cancelled")
+        cancelled.endsAt = "2027-03-15T12:00:00Z"
+        XCTAssertEqual(summarizePlan(cancelled).statusLine, "Pro until March 15, 2027")
+
+        XCTAssertEqual(summarizePlan(createProPlan(status: "past_due")).statusLine, "Pro stays on while the payment is retried")
+
+        var expired = AccountPlan()
+        expired.subscriptionStatus = "expired"
+        expired.endsAt = "2026-01-15T12:00:00Z"
+        XCTAssertEqual(summarizePlan(expired).statusLine, "Pro ended on January 15, 2026")
+    }
+
+    func testPlanSummaryNeverMentionsBuying() {
+        let allPlan = [AccountPlan(), createProPlan(status: "active"), createProPlan(status: "cancelled"), createProPlan(status: "past_due")]
+        for plan in allPlan {
+            let summary = summarizePlan(plan)
+            let allText = [summary.title, summary.statusLine ?? "", summary.sharedVaultLine, summary.vaultPersonLine].joined(separator: " ")
+            for forbidden in ["Upgrade", "upgrade", "tryhisar.com", "€", "Buy", "Manage subscription"] {
+                XCTAssertFalse(allText.contains(forbidden), "\(allText) contains \(forbidden)")
+            }
+        }
+    }
+
+    func testLoadPlanFromTheBackendAndQuietlyWhenOffline() async {
+        let model = await createUnlockedModel()
+        backend.plan = createProPlan(status: "active")
+        let plan = await model.loadPlan()
+        XCTAssertEqual(plan?.title, "Pro")
+        XCTAssertTrue(backend.allCallName.contains("getPlan"))
+        backend.isOffline = true
+        let offlinePlan = await model.loadPlan()
+        XCTAssertNil(offlinePlan)
+        XCTAssertNil(model.errorMessage, "a plan that cannot load is not an error")
+    }
+
+    func testPlanLimitsShowTheMessageWithoutUpgrading() async {
+        let model = await createUnlockedModel()
+        backend.planLimitMessage = "Free includes 2 shared vaults. Remove one to create another."
+        let vault = await model.createVault(name: "Streaming")
+        XCTAssertNil(vault)
+        XCTAssertEqual(model.errorMessage, "Free includes 2 shared vaults. Remove one to create another.")
+
+        backend.planLimitMessage = "A shared vault on Free has up to 3 people, including you."
+        let isShared = await model.shareVault(vaultID: "family", email: "dave@example.com", role: Member.vaultRoleReader)
+        XCTAssertFalse(isShared)
+        let message = model.errorMessage ?? ""
+        XCTAssertTrue(message.contains("A shared vault on Free has up to 3 people, including you."))
+        XCTAssertFalse(message.contains("Upgrade"))
+        XCTAssertFalse(message.contains("tryhisar.com"))
+    }
+
     func testDescribeServerShowsTheHost() {
         XCTAssertEqual(VaultLogic.describeServer("https://api.tryhisar.com"), "api.tryhisar.com")
         XCTAssertEqual(VaultLogic.describeServer("http://127.0.0.1:18080"), "127.0.0.1:18080")

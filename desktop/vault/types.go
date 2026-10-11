@@ -226,6 +226,8 @@ type Config struct {
 	OnRemoteChange func()
 	// OnShareLinksChange runs when one of the account's share links was created, viewed, used up or revoked.
 	OnShareLinksChange func()
+	// OnPlanChange runs when the account's plan or subscription changed.
+	OnPlanChange func()
 	// OnApprovalEvent hears approval-requested, approval-answered and approval-resolved; the iOS app lists phone approvals on them.
 	OnApprovalEvent func(eventName, requestID string)
 	// IsEventStreamDisabled skips the server's event stream, e.g. in tests whose fake server has none.

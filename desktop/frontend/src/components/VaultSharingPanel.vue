@@ -14,6 +14,7 @@ import {
 } from "../store";
 import { formatRole } from "../util";
 import AppIcon from "./AppIcon.vue";
+import PlanLimitNotice from "./PlanLimitNotice.vue";
 import MemberAvatar from "./MemberAvatar.vue";
 
 const allVaultRole: VaultRole[] = ["owner", "editor", "reader"];
@@ -90,6 +91,8 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
       </header>
 
       <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
+
+      <PlanLimitNotice />
 
       <p class="section-label">Members</p>
       <p v-if="store.allVaultMember.length === 0" class="muted loading">{{ store.isBusy ? "Loading members…" : "No members to show." }}</p>

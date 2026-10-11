@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import type { ShareLink } from "../api";
-import { closeShareLinkDialog, copyText, createShareLink, store } from "../store";
+import { closeShareLinkDialog, copyText, createShareLink, loadPlan, store } from "../store";
 import { allShareLinkExpiry, describeShareLinkContent, formatDateTime, formatViewLimit } from "../util";
 import AppIcon from "./AppIcon.vue";
+import PlanLimitNotice from "./PlanLimitNotice.vue";
 
 const minimumPassphraseLength = 8;
 const maximumViewCount = 100;
@@ -15,11 +16,15 @@ const textTitle = ref("");
 const text = ref("");
 const expiresInSeconds = ref(604800);
 const viewCount = ref(1);
-const isUnlimitedViews = ref(false);
 const isPassphraseRequired = ref(false);
 const passphrase = ref("");
 const validationMessage = ref("");
 const createdShareLink = ref<ShareLink | null>(null);
+
+const allAllowedExpiry = computed(() => {
+  const maximumExpirySeconds = store.plan?.limits.maxShareLinkExpirySeconds ?? 0;
+  return maximumExpirySeconds > 0 ? allShareLinkExpiry.filter((expiry) => expiry.seconds <= maximumExpirySeconds) : allShareLinkExpiry;
+});
 
 const heading = computed(() => (isTextMode.value ? "Share text" : `Share “${dialog.value?.title ?? ""}”`));
 
@@ -30,8 +35,8 @@ function validate(): string {
   if (!isTextMode.value && allChosenFieldKey.value.length === 0) {
     return "Choose at least one field to share.";
   }
-  if (!isUnlimitedViews.value && (!Number.isInteger(viewCount.value) || viewCount.value < 1 || viewCount.value > maximumViewCount)) {
-    return `Choose 1 to ${maximumViewCount} views, or unlimited.`;
+  if (!Number.isInteger(viewCount.value) || viewCount.value < 1 || viewCount.value > maximumViewCount) {
+    return `Choose 1 to ${maximumViewCount} views.`;
   }
   if (isPassphraseRequired.value && [...passphrase.value].length < minimumPassphraseLength) {
     return `Use a passphrase of at least ${minimumPassphraseLength} characters.`;
@@ -52,7 +57,7 @@ async function submitShareLink(): Promise<void> {
     title: isTextMode.value ? textTitle.value.trim() : "",
     text: isTextMode.value ? text.value : "",
     expiresInSeconds: expiresInSeconds.value,
-    maxViews: isUnlimitedViews.value ? 0 : viewCount.value,
+    maxViews: viewCount.value,
     passphrase: isPassphraseRequired.value ? passphrase.value : "",
   });
   if (created) {
@@ -82,7 +87,10 @@ function closeOnEscape(event: KeyboardEvent): void {
   }
 }
 
-onMounted(() => window.addEventListener("keydown", closeOnEscape));
+onMounted(() => {
+  window.addEventListener("keydown", closeOnEscape);
+  loadPlan();
+});
 onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
 </script>
 
@@ -99,6 +107,8 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
       </header>
 
       <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
+
+      <PlanLimitNotice />
 
       <div v-if="createdShareLink" data-testid="share-link-created">
         <label>
@@ -144,7 +154,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
           <label>
             <span>Expires after</span>
             <select v-model.number="expiresInSeconds" name="shareExpiry" data-testid="share-expiry">
-              <option v-for="expiry in allShareLinkExpiry" :key="expiry.seconds" :value="expiry.seconds">{{ expiry.label }}</option>
+              <option v-for="expiry in allAllowedExpiry" :key="expiry.seconds" :value="expiry.seconds">{{ expiry.label }}</option>
             </select>
           </label>
           <label>
@@ -155,15 +165,10 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
               name="shareViews"
               min="1"
               :max="maximumViewCount"
-              :disabled="isUnlimitedViews"
               data-testid="share-views"
             />
           </label>
         </div>
-        <label class="check-row">
-          <input v-model="isUnlimitedViews" type="checkbox" name="shareUnlimitedViews" data-testid="share-unlimited-views" />
-          <span class="check-label">Unlimited views until it expires</span>
-        </label>
 
         <label class="check-row">
           <input v-model="isPassphraseRequired" type="checkbox" name="sharePassphraseRequired" data-testid="share-passphrase-required" />

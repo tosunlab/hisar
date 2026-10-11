@@ -185,6 +185,34 @@ export interface Person {
     "isKeyChanged": boolean;
 }
 
+/**
+ * Plan is the account's plan for Settings; dates are RFC 3339, empty when unset, and a zero maximum means unlimited.
+ */
+export interface Plan {
+    "plan": string;
+    "title": string;
+    "source": string;
+    "isFoundingMember": boolean;
+    "subscriptionStatus": string;
+    "subscriptionInterval": string;
+    "renewsAt": string;
+    "endsAt": string;
+    "trialEndsAt": string;
+    "limits": PlanLimits;
+    "sharedVaultCount": number;
+    "liveShareLinkCount": number;
+    "isCheckoutAvailable": boolean;
+    "isManageAvailable": boolean;
+}
+
+export interface PlanLimits {
+    "maxSharedVaultCount": number;
+    "maxVaultPersonCount": number;
+    "maxLiveShareLinkCount": number;
+    "maxShareLinkExpirySeconds": number;
+    "maxShareLinkViewCount": number;
+}
+
 export interface ReceivedShareInvitation {
     "id": string;
     "vaultId": string;

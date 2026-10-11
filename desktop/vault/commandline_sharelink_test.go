@@ -147,7 +147,7 @@ func TestCommandLineShareLinksThroughTheApp(t *testing.T) {
 	}
 
 	var text cliprotocol.ShareLinkResult
-	test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeCreateShareLink, ShareLink: &cliprotocol.ShareLinkChange{Text: "deploy token: abc", Title: "Deploy", ExpiresInSeconds: 3600, Passphrase: "correct horse"}}, &text)
+	test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeCreateShareLink, ShareLink: &cliprotocol.ShareLinkChange{Text: "deploy token: abc", Title: "Deploy", ExpiresInSeconds: 3600, MaxViews: 5, Passphrase: "correct horse"}}, &text)
 	if text.ShareLink.Title != "Deploy" || !text.ShareLink.IsText || !text.ShareLink.HasPassphrase {
 		t.Errorf("text link %+v", text.ShareLink)
 	}

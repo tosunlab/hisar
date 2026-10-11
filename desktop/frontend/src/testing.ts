@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import type { ApprovalEvent, ShareLink, ShareLinkField, BrowserStatus, CommandLineStatus, Device, ImportPreview, ImportProgress, ItemDetail, LoginItemStatus, Person, ReceivedShareInvitation, SentShareInvitation, SSHAgentStatus, Status, UpdateStatus, VaultMember, VaultSummary } from "./api";
+import type { ApprovalEvent, Plan, ShareLink, ShareLinkField, BrowserStatus, CommandLineStatus, Device, ImportPreview, ImportProgress, ItemDetail, LoginItemStatus, Person, ReceivedShareInvitation, SentShareInvitation, SSHAgentStatus, Status, UpdateStatus, VaultMember, VaultSummary } from "./api";
 
 export function createStatus(state: string): Status {
   return { state, server: "https://hisar.test", email: "alice@example.com", name: "Alice", biometricAvailable: false, biometricEnabled: false, biometricReady: false, isOffline: false, autoLockSeconds: 600 };
@@ -405,8 +405,33 @@ export function createApiMock() {
     continueImport: vi.fn(),
     cancelImport: vi.fn().mockResolvedValue(undefined),
     deleteImportFile: vi.fn(),
+    getPlan: vi.fn().mockResolvedValue(createPlan()),
+    createCheckoutURL: vi.fn().mockResolvedValue("https://hisar.lemonsqueezy.com/checkout/custom/1"),
+    createManageSubscriptionURL: vi.fn().mockResolvedValue("https://hisar.lemonsqueezy.com/billing"),
   };
 }
+
+export function createPlan(overrides: Partial<Plan> = {}): Plan {
+  return {
+    plan: "free",
+    title: "Free",
+    source: "free",
+    isFoundingMember: false,
+    subscriptionStatus: "",
+    subscriptionInterval: "",
+    renewsAt: "",
+    endsAt: "",
+    trialEndsAt: "",
+    limits: { maxSharedVaultCount: 2, maxVaultPersonCount: 3, maxLiveShareLinkCount: 10, maxShareLinkExpirySeconds: 604800, maxShareLinkViewCount: 100 },
+    sharedVaultCount: 1,
+    liveShareLinkCount: 3,
+    isCheckoutAvailable: true,
+    isManageAvailable: false,
+    ...overrides,
+  };
+}
+
+export const proLimits = { maxSharedVaultCount: 0, maxVaultPersonCount: 10, maxLiveShareLinkCount: 200, maxShareLinkExpirySeconds: 2592000, maxShareLinkViewCount: 100 };
 
 export function createUpdateStatus(overrides: Partial<UpdateStatus> = {}): UpdateStatus {
   return { version: "0.2.1", buildNumber: "2001", operatingSystem: "macOS 26.0.1", isAvailable: true, isSignedIn: true, isAutomaticCheckEnabled: true, ...overrides };

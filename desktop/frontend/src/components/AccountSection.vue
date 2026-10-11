@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { signOut, store } from "../store";
+import PlanSection from "./PlanSection.vue";
 
 const isConfirmingSignOut = ref(false);
 </script>
@@ -22,4 +23,5 @@ const isConfirmingSignOut = ref(false);
       </div>
     </div>
   </section>
+  <PlanSection />
 </template>

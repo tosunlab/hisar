@@ -23,6 +23,8 @@ import type {
   LoginItemStatus,
   OneTimeCode,
   PasswordConfig,
+  Plan,
+  PlanLimits,
   ReceivedShareInvitation,
   SentShareInvitation,
   ShareAwaitingUnlock,
@@ -51,6 +53,8 @@ export type {
   LoginItemStatus,
   OneTimeCode,
   PasswordConfig,
+  Plan,
+  PlanLimits,
   ReceivedShareInvitation,
   SentShareInvitation,
   ShareAwaitingUnlock,
@@ -67,6 +71,8 @@ export type {
 };
 
 export type SSHKeyType = "ed25519" | "rsa";
+export type BillingInterval = "monthly" | "yearly";
+export { getPlanLimit, type PlanLimit } from "./plan";
 export type VaultRole = "owner" | "editor" | "reader";
 
 // ShareInvitations: waiting lists the shares this user accepted that the owner's app has not finished yet.
@@ -187,6 +193,9 @@ const wailsApi = {
   copyShareLink: (shareLinkID: string): Promise<void> => Service.CopyShareLink(shareLinkID),
   listAllDevice: async (): Promise<Device[]> => (await Service.ListAllDevice()) ?? [],
   revokeDevice: (deviceID: string): Promise<void> => Service.RevokeDevice(deviceID),
+  getPlan: (): Promise<Plan> => Service.GetPlan(),
+  createCheckoutURL: (interval: BillingInterval): Promise<string> => Service.CreateCheckoutURL(interval),
+  createManageSubscriptionURL: (): Promise<string> => Service.CreateManageSubscriptionURL(),
   getSSHAgentStatus: (): Promise<SSHAgentStatus> => AgentService.GetStatus(),
   configureSSHConfig: (): Promise<SSHAgentStatus> => AgentService.ConfigureSSHConfig(),
   removeSSHConfig: (): Promise<SSHAgentStatus> => AgentService.RemoveSSHConfig(),

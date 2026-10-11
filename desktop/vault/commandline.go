@@ -47,6 +47,10 @@ func convertCommandLineError(err error) error {
 	case errors.Is(err, ErrNotFound):
 		return cliprotocol.CreateError(cliprotocol.ErrorNotFound, err.Error())
 	}
+	var limitError *PlanLimitError
+	if errors.As(err, &limitError) {
+		return cliprotocol.CreateError(cliprotocol.ErrorPlanLimit, cliprotocol.FormatPlanLimitMessage(limitError.Message, limitError.Plan))
+	}
 	return cliprotocol.CreateError(cliprotocol.ErrorInternal, err.Error())
 }
 
@@ -169,6 +173,15 @@ func (bridge *CommandLineBridge) answer(request *cliprotocol.Request) (any, erro
 		return bridge.listAllShareLink()
 	case cliprotocol.TypeRevokeShareLink:
 		return nil, s.RevokeShareLink(request.ShareLinkID)
+	case cliprotocol.TypeGetPlan:
+		plan, err := s.GetPlan()
+		return convertToCommandLinePlan(plan), err
+	case cliprotocol.TypeCreateCheckout:
+		checkoutURL, err := s.CreateCheckoutURL(request.Interval)
+		return cliprotocol.LinkResult{URL: checkoutURL}, err
+	case cliprotocol.TypeManagePlan:
+		manageURL, err := s.CreateManageSubscriptionURL()
+		return cliprotocol.LinkResult{URL: manageURL}, err
 	}
 	return nil, cliprotocol.CreateError(cliprotocol.ErrorInvalidRequest, fmt.Sprintf("unknown request type %q", request.Type))
 }

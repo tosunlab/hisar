@@ -720,3 +720,105 @@ struct EmergencyKitExport: Codable, Equatable {
     var secretKey: String
     var emergencyKitPath: String
 }
+
+struct PlanLimits: Codable, Equatable {
+    var maxSharedVaultCount = 0
+    var maxVaultPersonCount = 0
+    var maxLiveShareLinkCount = 0
+    var maxShareLinkExpirySeconds = 0
+    var maxShareLinkViewCount = 0
+}
+
+// AccountPlan is read-only on the iPhone: the app shows the plan and never sells one or links to buying it.
+struct AccountPlan: Codable, Equatable {
+    static let planPro = "pro"
+
+    var plan = "free"
+    var title = "Free"
+    var source = "free"
+    var isFoundingMember = false
+    var subscriptionStatus = ""
+    var subscriptionInterval = ""
+    var renewsAt = ""
+    var endsAt = ""
+    var trialEndsAt = ""
+    var limits = PlanLimits()
+    var sharedVaultCount = 0
+    var liveShareLinkCount = 0
+
+    enum CodingKeys: String, CodingKey {
+        case plan, title, source, isFoundingMember, subscriptionStatus, subscriptionInterval, renewsAt, endsAt, trialEndsAt, limits, sharedVaultCount, liveShareLinkCount
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        plan = try container.decodeIfPresent(String.self, forKey: .plan) ?? "free"
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? (plan == Self.planPro ? "Pro" : "Free")
+        source = try container.decodeIfPresent(String.self, forKey: .source) ?? "free"
+        isFoundingMember = try container.decodeIfPresent(Bool.self, forKey: .isFoundingMember) ?? false
+        subscriptionStatus = try container.decodeIfPresent(String.self, forKey: .subscriptionStatus) ?? ""
+        subscriptionInterval = try container.decodeIfPresent(String.self, forKey: .subscriptionInterval) ?? ""
+        renewsAt = try container.decodeIfPresent(String.self, forKey: .renewsAt) ?? ""
+        endsAt = try container.decodeIfPresent(String.self, forKey: .endsAt) ?? ""
+        trialEndsAt = try container.decodeIfPresent(String.self, forKey: .trialEndsAt) ?? ""
+        limits = try container.decodeIfPresent(PlanLimits.self, forKey: .limits) ?? PlanLimits()
+        sharedVaultCount = try container.decodeIfPresent(Int.self, forKey: .sharedVaultCount) ?? 0
+        liveShareLinkCount = try container.decodeIfPresent(Int.self, forKey: .liveShareLinkCount) ?? 0
+    }
+}
+
+struct PlanSummary: Equatable {
+    var title: String
+    var isFoundingMember: Bool
+    var statusLine: String?
+    var sharedVaultLine: String
+    var vaultPersonLine: String
+
+    static func create(plan: AccountPlan, now: Date = Date(), locale: Locale = .current, timeZone: TimeZone = .current) -> PlanSummary {
+        PlanSummary(
+            title: plan.title,
+            isFoundingMember: plan.isFoundingMember,
+            statusLine: describeStatus(plan: plan, now: now, locale: locale, timeZone: timeZone),
+            sharedVaultLine: plan.limits.maxSharedVaultCount == 0 ? "\(plan.sharedVaultCount) · unlimited" : "\(plan.sharedVaultCount) of \(plan.limits.maxSharedVaultCount)",
+            vaultPersonLine: "Up to \(plan.limits.maxVaultPersonCount)"
+        )
+    }
+
+    private static func describeStatus(plan: AccountPlan, now: Date, locale: Locale, timeZone: TimeZone) -> String? {
+        if plan.isFoundingMember {
+            return "Pro, free for life"
+        }
+        let formatDate = { (text: String) -> String? in
+            guard let date = parseDate(text) else { return nil }
+            var style = Date.FormatStyle(date: .long, time: .omitted)
+            style.locale = locale
+            style.timeZone = timeZone
+            return date.formatted(style)
+        }
+        switch plan.subscriptionStatus {
+        case "active":
+            return formatDate(plan.renewsAt).map { "Renews on \($0)" }
+        case "on_trial":
+            return formatDate(plan.trialEndsAt).map { "Trial ends on \($0)" }
+        case "past_due":
+            return "Pro stays on while the payment is retried"
+        case "cancelled", "expired", "paused", "unpaid":
+            guard let endDate = parseDate(plan.endsAt), let endText = formatDate(plan.endsAt) else {
+                return plan.subscriptionStatus == "cancelled" ? nil : "Pro ended"
+            }
+            return endDate > now && plan.plan == AccountPlan.planPro ? "Pro until \(endText)" : "Pro ended on \(endText)"
+        default:
+            return nil
+        }
+    }
+
+    static func parseDate(_ text: String) -> Date? {
+        guard !text.isEmpty else { return nil }
+        let formatter = ISO8601DateFormatter()
+        if let date = formatter.date(from: text) { return date }
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: text)
+    }
+}

@@ -26,6 +26,8 @@ import {
   type VaultRole,
   type VaultSummary,
 } from "./api";
+import { getPlanLimit, pricingURL, type PlanLimit } from "./plan";
+import type { Plan } from "../bindings/github.com/tryhisar/hisar/desktop/vault";
 
 export type EditorMode = "view" | "edit" | "create" | "create-ssh-key";
 export type ImportStep = "choose" | "preview" | "saving" | "done";
@@ -86,6 +88,9 @@ export const store = reactive({
   allShareLink: [] as ShareLink[],
   isShareLinksOpen: false,
   shareLinkDialog: null as ShareLinkDialog | null,
+  plan: null as Plan | null,
+  isPlanUnavailable: false,
+  planLimit: null as PlanLimit | null,
 });
 
 let noticeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -108,6 +113,7 @@ async function runAction<Result>(action: () => Promise<Result>): Promise<Result 
     return await action();
   } catch (error) {
     store.errorMessage = getErrorMessage(error);
+    store.planLimit = getPlanLimit(error);
     if (store.errorMessage === "Hisar is locked") {
       clearAllVaultData();
       store.status = { ...store.status, state: "locked" };
@@ -119,6 +125,8 @@ async function runAction<Result>(action: () => Promise<Result>): Promise<Result 
 }
 
 function clearAllVaultData(): void {
+  store.plan = null;
+  store.planLimit = null;
   resetImport();
   store.isTouchIDOfferShown = false;
   store.isSettingsOpen = false;
@@ -1101,4 +1109,46 @@ export async function revokeShareLink(shareLink: ShareLink): Promise<boolean> {
     showNotice(`Link to ${shareLink.title} revoked`);
   }
   return revoked === true;
+}
+
+// getShownPlanLimit is the limit behind the error on screen, so the notice disappears with the error.
+export function getShownPlanLimit(): PlanLimit | null {
+  return store.planLimit && store.errorMessage && store.errorMessage === store.planLimit.message ? store.planLimit : null;
+}
+
+export async function loadPlan(): Promise<Plan | null> {
+  try {
+    store.plan = await api.getPlan();
+    store.isPlanUnavailable = false;
+  } catch {
+    store.isPlanUnavailable = true;
+  }
+  return store.plan;
+}
+
+// openCheckout opens the checkout in the browser and returns an error message, empty when it worked.
+export async function openCheckout(interval: "monthly" | "yearly"): Promise<string> {
+  try {
+    let checkoutURL = pricingURL;
+    try {
+      checkoutURL = await api.createCheckoutURL(interval);
+    } catch (error) {
+      if (getErrorMessage(error) !== "plans are not sold on this server") {
+        throw error;
+      }
+    }
+    await api.openURL(checkoutURL);
+    return "";
+  } catch (error) {
+    return getErrorMessage(error);
+  }
+}
+
+export async function openManageSubscription(): Promise<string> {
+  try {
+    await api.openURL(await api.createManageSubscriptionURL());
+    return "";
+  } catch (error) {
+    return getErrorMessage(error);
+  }
 }

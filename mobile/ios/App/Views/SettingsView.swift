@@ -167,8 +167,63 @@ struct SettingsView: View {
     }
 }
 
+enum PlanLoadState: Equatable {
+    case loading
+    case loaded(AccountPlan)
+    case unavailable
+}
+
+// AccountPlanSection only shows the plan: no prices, no purchase and no links to buying one.
+struct AccountPlanSection: View {
+    var state: PlanLoadState
+    var now = Date()
+
+    var body: some View {
+        Section("Plan") {
+            switch state {
+            case .loading:
+                LabeledContent("Plan") { ProgressView() }
+            case .unavailable:
+                LabeledContent("Plan") {
+                    Text("Plan details need a connection.")
+                        .foregroundStyle(.themeSecondary)
+                }
+                .accessibilityIdentifier("plan-unavailable")
+            case .loaded(let plan):
+                let summary = PlanSummary.create(plan: plan, now: now)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text(summary.title)
+                            .font(.headline)
+                            .accessibilityIdentifier("plan-title")
+                        Spacer()
+                        if summary.isFoundingMember {
+                            Label("Founding member", systemImage: "star.circle.fill")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(.tint)
+                                .accessibilityLabel("Founding member")
+                                .accessibilityIdentifier("plan-founding-member")
+                        }
+                    }
+                    if let statusLine = summary.statusLine {
+                        Text(statusLine)
+                            .font(.footnote)
+                            .foregroundStyle(.themeSecondary)
+                            .accessibilityIdentifier("plan-status")
+                    }
+                }
+                .padding(.vertical, 2)
+                .accessibilityElement(children: .combine)
+                LabeledContent("Shared vaults", value: summary.sharedVaultLine)
+                LabeledContent("People per shared vault", value: summary.vaultPersonLine)
+            }
+        }
+    }
+}
+
 struct AccountView: View {
     @EnvironmentObject private var model: AppModel
+    @State private var planState = PlanLoadState.loading
 
     var body: some View {
         List {
@@ -179,6 +234,7 @@ struct AccountView: View {
                 LabeledContent("Server", value: model.status.server)
                     .textSelection(.enabled)
             }
+            AccountPlanSection(state: planState)
             Section {
                 NavigationLink(value: SettingsDestination.secretKey) {
                     Label("Secret Key and Emergency Kit", systemImage: "doc.text")
@@ -189,6 +245,20 @@ struct AccountView: View {
         }
         .applyThemedListStyle()
         .navigationTitle("Account")
+        .task { await reloadPlan() }
+        .onChange(of: model.remoteChangeCount) { _, _ in
+            Task { await reloadPlan() }
+        }
+    }
+
+    private func reloadPlan() async {
+        if let plan = await model.loadPlan() {
+            planState = .loaded(plan)
+        } else if case .loaded = planState {
+            return
+        } else {
+            planState = .unavailable
+        }
     }
 }
 

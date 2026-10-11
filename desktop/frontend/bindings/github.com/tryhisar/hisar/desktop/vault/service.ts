@@ -71,6 +71,20 @@ export function CopyText(text: string): $CancellablePromise<void> {
     return $Call.ByID(3582945589, text);
 }
 
+/**
+ * CreateCheckoutURL returns the checkout page to open in the browser; interval is monthly or yearly.
+ */
+export function CreateCheckoutURL(interval: string): $CancellablePromise<string> {
+    return $Call.ByID(2404621500, interval);
+}
+
+/**
+ * CreateManageSubscriptionURL returns the payment provider's page for the subscription: payment method, invoices, cancelling.
+ */
+export function CreateManageSubscriptionURL(): $CancellablePromise<string> {
+    return $Call.ByID(2021113050);
+}
+
 export function CreateShareLink(request: $models.ShareLinkRequest): $CancellablePromise<$models.ShareLink> {
     return $Call.ByID(2978770830, request);
 }
@@ -146,6 +160,13 @@ export function GetItem(vaultID: string, itemID: string): $CancellablePromise<$m
  */
 export function GetOneTimeCode(vaultID: string, itemID: string): $CancellablePromise<$models.OneTimeCode> {
     return $Call.ByID(1202742415, vaultID, itemID);
+}
+
+/**
+ * GetPlan asks the server; offline it fails rather than showing a plan that may be out of date.
+ */
+export function GetPlan(): $CancellablePromise<$models.Plan> {
+    return $Call.ByID(2921336430);
 }
 
 export function GetStatus(): $CancellablePromise<$models.Status> {
