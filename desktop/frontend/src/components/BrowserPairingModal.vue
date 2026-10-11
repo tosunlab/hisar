@@ -54,14 +54,14 @@ onBeforeUnmount(() => clearInterval(clockTimer));
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgb(0 0 0 / 55%);
+  background: var(--color-backdrop);
 }
 
 .pairing {
   width: min(400px, 100%);
   padding: 22px;
   background: var(--color-panel);
-  box-shadow: 0 24px 64px rgb(0 0 0 / 50%);
+  box-shadow: 0 24px 64px var(--color-shadow);
 }
 
 .pairing-icon {

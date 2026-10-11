@@ -50,7 +50,7 @@ struct ApprovalList: View {
                 }
             }
         }
-        .listStyle(.insetGrouped)
+        .applyThemedListStyle()
         .overlay {
             if !isMacApprovalAllowed {
                 ContentUnavailableView {

@@ -19,7 +19,7 @@ struct NewVaultView: View {
                     }
                 }
                 Section {
-                    TextField("Vault name", text: $name, prompt: Text(verbatim: "Production, Staging, Team…").foregroundStyle(.secondary))
+                    TextField("Vault name", text: $name, prompt: Text(verbatim: "Production, Staging, Team…").foregroundStyle(.themeSecondary))
                         .focused($isNameFocused)
                         .submitLabel(.done)
                         .onSubmit(create)

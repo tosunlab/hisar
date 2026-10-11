@@ -91,7 +91,7 @@ struct ItemDetailView: View {
                             .font(.title2.weight(.bold))
                         Text("\(vault?.name ?? "") · \(item.isSSHKey ? "SSH key" : "Login")")
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.themeSecondary)
                     }
                 }
                 .listRowBackground(Color.clear)
@@ -177,7 +177,7 @@ struct ItemDetailView: View {
                 }
             }
         }
-        .listStyle(.insetGrouped)
+        .applyThemedListStyle()
         .refreshable { await loadItem() }
     }
 
@@ -234,11 +234,11 @@ struct ItemDetailView: View {
                 Text(passkey.relyingPartyID)
                 Text(passkey.userName.isEmpty ? passkey.userDisplayName : passkey.userName)
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.themeSecondary)
                 if let createdDate = passkey.createdDate {
                     Text("Created \(createdDate.formatted(date: .abbreviated, time: .omitted))")
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             .accessibilityElement(children: .combine)
@@ -306,7 +306,7 @@ struct SecretFieldRow: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(label)
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.themeSecondary)
                 Text(isHidden ? String(repeating: "•", count: 12) : value)
                     .font(isConcealed ? .body.monospaced() : .body)
                     .lineLimit(isConcealed ? 3 : 5)

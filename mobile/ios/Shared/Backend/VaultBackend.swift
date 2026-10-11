@@ -52,6 +52,8 @@ protocol VaultBackend: AnyObject {
     func copySecretReference(vaultID: String, itemID: String, fieldName: String) throws -> String
     func isMacApprovalAllowed() -> Bool
     func setMacApprovalAllowed(_ isAllowed: Bool) throws
+    func getTheme() -> VaultTheme
+    func setTheme(_ theme: VaultTheme) throws -> VaultTheme
 }
 
 struct BackendError: LocalizedError, Equatable {

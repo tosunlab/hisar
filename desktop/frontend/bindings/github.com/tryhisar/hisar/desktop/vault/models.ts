@@ -284,6 +284,14 @@ export interface Status {
     "autoLockSeconds": number;
 }
 
+/**
+ * Theme is this device's look: Appearance follows the system or picks light or dark, Color tints the chrome and accent.
+ */
+export interface Theme {
+    "appearance": string;
+    "color": string;
+}
+
 export interface UpdateStatus {
     "version": string;
     "buildNumber": string;

@@ -306,6 +306,10 @@ onBeforeUnmount(() => {
   color: var(--color-text);
 }
 
+.vault.selected > :deep(svg) {
+  color: var(--color-accent-text);
+}
+
 .vault-name {
   flex: 1;
   overflow: hidden;
@@ -468,7 +472,7 @@ onBeforeUnmount(() => {
   min-width: 168px;
   padding: 4px;
   background: var(--color-surface-raised);
-  box-shadow: 0 12px 32px rgb(0 0 0 / 45%);
+  box-shadow: 0 12px 32px var(--color-shadow);
 }
 
 .new-item-menu button {
@@ -532,6 +536,10 @@ onBeforeUnmount(() => {
 
 .item.selected {
   background: var(--color-selected);
+}
+
+.item.selected .item-subtitle {
+  color: var(--color-text-secondary);
 }
 
 .item-text {

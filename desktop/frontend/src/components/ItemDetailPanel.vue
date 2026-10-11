@@ -247,7 +247,7 @@ h2 {
   gap: 12px;
   margin-bottom: 14px;
   padding: 12px 14px;
-  border-color: #4a1f22;
+  border-color: var(--color-danger-border);
   background: var(--color-danger-background);
 }
 

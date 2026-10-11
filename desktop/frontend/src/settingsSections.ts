@@ -22,6 +22,8 @@ export const allSettingsSection: SettingsSection[] = [
     label: "General",
     icon: "settings",
     allRow: [
+      { id: "appearance", title: "Appearance", keywords: "theme light dark system mode" },
+      { id: "theme-color", title: "Color", keywords: "theme colour accent tint neutral blue purple green" },
       { id: "open-at-login", title: "Open Hisar at login", keywords: "startup login items menu bar launch" },
       { id: "version", title: "Check for updates", keywords: "version update release" },
       { id: "automatic-updates", title: "Automatically check for updates", keywords: "update daily" },

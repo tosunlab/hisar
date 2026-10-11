@@ -51,6 +51,10 @@ type State struct {
 	IsOpenAtLoginConfigured bool `json:"openAtLoginConfigured,omitempty"`
 	// IsOpenAtLoginDisabled is set when the user turned "Open Hisar at login" off; a device preference that Reset keeps.
 	IsOpenAtLoginDisabled bool `json:"openAtLoginDisabled,omitempty"`
+	// Appearance ("system", "light", "dark") and Color ("neutral", "blue", "purple", "green") are this device's theme;
+	// empty means the defaults, and Reset keeps both.
+	Appearance string `json:"appearance,omitempty"`
+	Color      string `json:"color,omitempty"`
 
 	path string
 }
@@ -113,13 +117,14 @@ func (s *State) Save() error {
 	return os.Rename(temporaryPath, s.path)
 }
 
-// Reset forgets the account, session, pins and seqs but keeps the file location and the update preference.
+// Reset forgets the account, session, pins and seqs but keeps the file location and the device preferences.
 func (s *State) Reset() {
 	*s = State{
 		path: s.path, AllPin: map[string][]byte{}, AllSeq: map[string]int64{},
 		IsAutomaticUpdateCheckDisabled: s.IsAutomaticUpdateCheckDisabled, IsCommandLineIntegrationDisabled: s.IsCommandLineIntegrationDisabled,
 		IsCompactSSHApproval: s.IsCompactSSHApproval, AutoLockSeconds: s.AutoLockSeconds, IsPhoneApprovalDisabled: s.IsPhoneApprovalDisabled,
 		IsOpenAtLoginConfigured: s.IsOpenAtLoginConfigured, IsOpenAtLoginDisabled: s.IsOpenAtLoginDisabled,
+		Appearance: s.Appearance, Color: s.Color,
 	}
 }
 

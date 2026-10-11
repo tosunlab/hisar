@@ -48,7 +48,7 @@ struct VaultsView: View {
                 receivedInvitationSection
                 vaultSection
                 if !model.allVault.isEmpty {
-                    Section("By type") {
+                    Section {
                         ForEach(ItemCategoryDestination.allCases, id: \.self) { category in
                             NavigationLink(value: category) {
                                 Label(category.title, systemImage: category.systemImage)
@@ -56,10 +56,13 @@ struct VaultsView: View {
                             }
                             .accessibilityIdentifier("category-\(category.rawValue)")
                         }
+                    } header: {
+                        Text("By type")
+                            .foregroundStyle(.themeSecondary)
                     }
                 }
             }
-            .listStyle(.insetGrouped)
+            .applyThemedListStyle()
             .refreshable { await model.refreshAll() }
             .navigationTitle("Vaults")
             .toolbar {
@@ -143,6 +146,7 @@ struct VaultsView: View {
                 }
             } header: {
                 Text("Shared with you")
+                    .foregroundStyle(.themeSecondary)
             }
         }
     }
@@ -157,10 +161,10 @@ struct VaultsView: View {
                     } icon: {
                         ProgressView()
                     }
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.themeSecondary)
                 } else {
                     Text("No vaults")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             ForEach(model.allVault) { vault in
@@ -171,6 +175,7 @@ struct VaultsView: View {
             }
         } header: {
             Text("Vaults")
+                .foregroundStyle(.themeSecondary)
         }
     }
 }
@@ -185,7 +190,7 @@ struct VaultRow: View {
                 Text(vault.name)
                 Text(vault.type == "personal" ? "Only you" : "Shared · \(describeVaultRole(vault.role))")
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.themeSecondary)
             }
         } icon: {
             Image(systemName: vault.type == "personal" ? "person.crop.square" : "person.2.square.stack")
@@ -208,7 +213,7 @@ struct ItemRow: View {
                 if !subtitle.isEmpty {
                     Text(subtitle)
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.themeSecondary)
                         .lineLimit(1)
                 }
             }

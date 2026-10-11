@@ -313,6 +313,8 @@ export function createApiMock() {
   return {
     getStatus: vi.fn(),
     setAutoLock: vi.fn(),
+    getTheme: vi.fn().mockResolvedValue({ appearance: "system", color: "neutral" }),
+    setTheme: vi.fn((appearance: string, color: string) => Promise.resolve({ appearance, color })),
     signIn: vi.fn(),
     signUp: vi.fn(),
     unlock: vi.fn(),

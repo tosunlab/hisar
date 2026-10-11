@@ -25,12 +25,12 @@ struct UnlockPanel: View {
                         .font(.title2.weight(.bold))
                     Text(email)
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.themeSecondary)
                         .accessibilityIdentifier("lock-email")
                     if !requestDescription.isEmpty {
                         Text(requestDescription)
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.themeSecondary)
                             .multilineTextAlignment(.center)
                     }
                 }
@@ -84,7 +84,7 @@ struct UnlockPanel: View {
                     if let signOut {
                         Button("Sign out", action: signOut)
                             .font(.footnote)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.themeSecondary)
                             .padding(.top, 8)
                             .accessibilityIdentifier("lock-sign-out")
                     }
@@ -95,6 +95,7 @@ struct UnlockPanel: View {
             }
         }
         .scrollDismissesKeyboard(.interactively)
+        .applyThemedListBackground()
     }
 
     private func submit() {

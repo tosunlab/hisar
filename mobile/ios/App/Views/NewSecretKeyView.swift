@@ -22,7 +22,7 @@ struct NewSecretKeyView: View {
                             .font(.subheadline.weight(.medium))
                     } icon: {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(.themeWarning)
                     }
                     .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("master-password-warning")
@@ -52,7 +52,7 @@ struct NewSecretKeyView: View {
                     Text("The Emergency Kit is a page with your server, email and Secret Key, and a space to write your master password. Save or print it from Settings, Secret Key and Emergency Kit, or write these down now and keep them somewhere safe, away from your devices.")
                 }
             }
-            .listStyle(.insetGrouped)
+            .applyThemedListStyle()
             .navigationTitle("Save your Secret Key")
             .safeAreaInset(edge: .bottom) {
                 Button(action: finish) {

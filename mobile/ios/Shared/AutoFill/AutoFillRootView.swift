@@ -6,7 +6,7 @@ struct AutoFillRootView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Color(.systemGroupedBackground).ignoresSafeArea()
+                model.theme.palette.groupedBackground.color.ignoresSafeArea()
                 content
             }
             .navigationTitle(model.screen == .list || model.screen == .passkeyRegistration ? "Hisar" : "")
@@ -18,6 +18,7 @@ struct AutoFillRootView: View {
                 }
             }
         }
+        .applyTheme(model.theme)
     }
 
     @ViewBuilder
@@ -109,7 +110,7 @@ private struct AutoFillListView: View {
             Section {
                 if model.allVisibleMatchingLogin.isEmpty {
                     Text(emptyMessage)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.themeSecondary)
                         
                 }
                 ForEach(model.allVisibleMatchingLogin) { login in
@@ -125,7 +126,7 @@ private struct AutoFillListView: View {
                         ProgressView()
                     } else if model.allVisibleOtherLogin.isEmpty {
                         Text("No other logins match.")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.themeSecondary)
                             
                     }
                     ForEach(model.allVisibleOtherLogin) { login in
@@ -134,7 +135,7 @@ private struct AutoFillListView: View {
                 }
             }
         }
-        .listStyle(.insetGrouped)
+        .applyThemedListStyle()
         .searchable(text: $model.searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search all logins")
         .disabled(model.isBusy)
     }
@@ -164,11 +165,11 @@ private struct AutoFillListView: View {
                         .foregroundStyle(.primary)
                     Text(passkey.userName.isEmpty ? passkey.userDisplayName : passkey.userName)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.themeSecondary)
                 }
                 Spacer()
                 Image(systemName: "person.badge.key")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.themeSecondary)
                     .accessibilityLabel("Passkey")
             }
             .contentShape(Rectangle())
@@ -188,12 +189,12 @@ private struct AutoFillListView: View {
                         .foregroundStyle(.primary)
                     Text(login.username.isEmpty ? login.vaultName : "\(login.username) · \(login.vaultName)")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.themeSecondary)
                 }
                 Spacer()
                 if login.hasOneTimePassword {
                     Image(systemName: "timer")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.themeSecondary)
                         .accessibilityLabel("Has a one-time code")
                 }
             }
@@ -213,14 +214,14 @@ private struct AutoFillPasskeyRegistrationView: View {
                 VStack(spacing: 10) {
                     Image(systemName: "person.badge.key")
                         .font(.largeTitle)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.themeSecondary)
                     Text("Save passkey")
                         .font(.title3.weight(.semibold))
                         .foregroundStyle(.primary)
                     if let request = model.passkeyRegistrationRequest {
                         Text(request.userName.isEmpty ? request.relyingPartyID : "\(request.userName) on \(request.relyingPartyID)")
                             .multilineTextAlignment(.center)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.themeSecondary)
                             .accessibilityIdentifier("autofill-passkey-account")
                     }
                 }
@@ -258,7 +259,7 @@ private struct AutoFillPasskeyRegistrationView: View {
                 ProgressView().frame(maxWidth: .infinity).listRowBackground(Color.clear)
             }
         }
-        .listStyle(.insetGrouped)
+        .applyThemedListStyle()
         .disabled(model.isBusy)
     }
 
@@ -299,7 +300,7 @@ private struct AutoFillPasskeyRegistrationView: View {
                         .foregroundStyle(.primary)
                     Text(subtitle)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.themeSecondary)
                 }
                 Spacer()
                 if model.selectedRegistrationLoginID == loginID {

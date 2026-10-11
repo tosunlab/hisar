@@ -225,7 +225,7 @@ async function submitCreateAccount(): Promise<void> {
   padding: 0 40px 28px;
   border-right: 1px solid var(--color-border);
   background:
-    radial-gradient(600px 400px at 0% 0%, #1b1e23 0%, transparent 70%),
+    radial-gradient(600px 400px at 0% 0%, var(--color-page-glow) 0%, transparent 70%),
     var(--color-sidebar);
 }
 
@@ -322,7 +322,7 @@ h1 {
 .segmented button.active {
   background: var(--color-selected);
   color: var(--color-text);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 40%);
+  box-shadow: 0 1px 2px var(--color-shadow);
 }
 
 .input-with-icon {

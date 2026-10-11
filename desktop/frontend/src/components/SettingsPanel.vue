@@ -12,6 +12,7 @@ import {
 } from "../settingsSections";
 import AccountSection from "./AccountSection.vue";
 import AppIcon from "./AppIcon.vue";
+import AppearanceSection from "./AppearanceSection.vue";
 import BrowserExtensionSection from "./BrowserExtensionSection.vue";
 import CodingAgentsSection from "./CodingAgentsSection.vue";
 import CommandLineSection from "./CommandLineSection.vue";
@@ -191,6 +192,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleKeydown));
           </div>
 
           <div v-show="displayedSection?.id === 'general'" data-testid="settings-page-general">
+            <AppearanceSection />
             <OpenAtLoginSection />
             <UpdatesSection />
             <ImportSection />
@@ -232,7 +234,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleKeydown));
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgb(0 0 0 / 55%);
+  background: var(--color-backdrop);
 }
 
 .settings {
@@ -241,7 +243,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleKeydown));
   height: min(620px, 100%);
   overflow: hidden;
   background: var(--color-panel);
-  box-shadow: 0 24px 64px rgb(0 0 0 / 50%);
+  box-shadow: 0 24px 64px var(--color-shadow);
 }
 
 .settings-sidebar {
@@ -253,7 +255,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleKeydown));
   padding: 16px 12px;
   overflow-y: auto;
   border-right: 1px solid var(--color-border);
-  background: var(--color-background);
+  background: var(--color-sidebar);
 }
 
 .settings-search {
@@ -315,6 +317,10 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleKeydown));
 .section-button[aria-current="page"] {
   background: var(--color-selected);
   color: var(--color-text);
+}
+
+.section-button[aria-current="page"] :deep(svg) {
+  color: var(--color-accent-text);
 }
 
 .section-name {

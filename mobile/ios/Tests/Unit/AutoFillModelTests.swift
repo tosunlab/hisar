@@ -44,6 +44,14 @@ final class AutoFillModelTests: XCTestCase {
         XCTAssertEqual(model.screen, .signedOut)
     }
 
+    func testFollowsTheAppTheme() async {
+        backend.theme = VaultTheme(appearance: .light, color: .green)
+        let model = createModel()
+        XCTAssertEqual(model.theme, .standard)
+        await model.prepareCredentialList(allServiceIdentifier: ["github.com"])
+        XCTAssertEqual(model.theme, VaultTheme(appearance: .light, color: .green))
+    }
+
     func testLockedThenUnlockListsMatchingLogins() async {
         backend.seedSignedIn(state: VaultStatus.stateLocked)
         let model = createModel()

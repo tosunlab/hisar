@@ -103,6 +103,32 @@ func TestResetKeepsOpenAtLoginPreference(t *testing.T) {
 	}
 }
 
+func TestThemeIsSavedAndKeptOnReset(t *testing.T) {
+	statePath := filepath.Join(t.TempDir(), "desktop.json")
+	state, err := Load(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.Appearance != "" || state.Color != "" {
+		t.Errorf("a new state has a theme: %q %q", state.Appearance, state.Color)
+	}
+	state.Token, state.AccountID, state.Appearance, state.Color = "tok", "account", "dark", "purple"
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+	reloadedState, err := Load(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloadedState.Appearance != "dark" || reloadedState.Color != "purple" {
+		t.Errorf("reloaded theme: %q %q", reloadedState.Appearance, reloadedState.Color)
+	}
+	reloadedState.Reset()
+	if reloadedState.IsLoggedIn() || reloadedState.Appearance != "dark" || reloadedState.Color != "purple" {
+		t.Errorf("reset state: %+v", reloadedState)
+	}
+}
+
 func TestLoadRejectsCorruptFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
 	os.WriteFile(path, []byte("{not json"), 0o600)

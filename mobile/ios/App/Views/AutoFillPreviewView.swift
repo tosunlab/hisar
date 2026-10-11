@@ -63,7 +63,7 @@ struct AutoFillPreviewView: View {
                         ForEach(session.allResultValue, id: \.name) { value in
                             Text(value.text)
                                 .font(.system(size: 6, design: .monospaced))
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.themeSecondary)
                                 .lineLimit(1)
                                 .accessibilityIdentifier("autofill-result-\(value.name)")
                         }

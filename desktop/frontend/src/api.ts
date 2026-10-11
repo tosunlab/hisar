@@ -31,6 +31,7 @@ import type {
   ShareLinkRequest,
   SignUpResult,
   Status,
+  Theme,
   UpdateStatus,
   VaultMember,
   VaultSummary,
@@ -55,6 +56,7 @@ export type {
   SignUpResult,
   SSHAgentStatus,
   Status,
+  Theme,
   UpdateStatus,
   VaultMember,
   VaultSummary,
@@ -131,6 +133,8 @@ function normalizeImportProgress(boundProgress: BoundImportProgress): ImportProg
 const wailsApi = {
   getStatus: (): Promise<Status> => Service.GetStatus(),
   setAutoLock: (seconds: number): Promise<Status> => Service.SetAutoLock(seconds),
+  getTheme: (): Promise<Theme> => Service.GetTheme(),
+  setTheme: (appearance: string, color: string): Promise<Theme> => Service.SetTheme(appearance, color),
   signIn: (server: string, email: string, secretKey: string, password: string): Promise<Status> =>
     Service.SignIn(server, email, secretKey, password),
   signUp: (invite: string, email: string, name: string, password: string): Promise<SignUpResult> =>

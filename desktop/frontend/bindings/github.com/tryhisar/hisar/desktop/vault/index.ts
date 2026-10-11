@@ -40,6 +40,7 @@ export type {
     ShareLinkRequest,
     SignUpResult,
     Status,
+    Theme,
     UpdateStatus,
     VaultMember,
     VaultSummary

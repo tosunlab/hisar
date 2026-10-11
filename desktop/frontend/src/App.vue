@@ -2,6 +2,7 @@
 import { onBeforeUnmount, onMounted } from "vue";
 import { Events } from "@wailsio/runtime";
 import { api } from "./api";
+import { startThemeSync } from "./theme";
 import {
   handleLocked,
   handleUnlockedElsewhere,
@@ -35,6 +36,7 @@ function reportActivity(): void {
 onMounted(() => {
   loadStatus();
   allRemoveListener = [
+    startThemeSync(),
     Events.On("locked", () => handleLocked()),
     Events.On("unlocked", () => handleUnlockedElsewhere()),
     Events.On("remote-change", () => syncInBackground()),

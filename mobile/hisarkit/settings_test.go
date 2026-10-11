@@ -78,6 +78,41 @@ func TestSettingsWhileSignedOut(t *testing.T) {
 	}
 }
 
+func TestThemeIsKeptAcrossLaunchesAndSignOut(t *testing.T) {
+	stateDirectory := t.TempDir()
+	hisar, err := New(stateDirectory, "iPhone", createMemorySecretKeyStore(), nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type theme struct {
+		Appearance string `json:"appearance"`
+		Color      string `json:"color"`
+	}
+	if current := decodeJSON[theme](t)(hisar.GetTheme(), nil); current != (theme{Appearance: "system", Color: "neutral"}) {
+		t.Errorf("default theme = %+v", current)
+	}
+	if current := decodeJSON[theme](t)(hisar.SetTheme("light", "blue")); current != (theme{Appearance: "light", Color: "blue"}) {
+		t.Errorf("theme after setting Light Blue = %+v", current)
+	}
+	if _, err := hisar.SetTheme("dim", "blue"); err == nil {
+		t.Error("an unknown appearance was accepted")
+	}
+	if _, err := hisar.SetTheme("dark", "teal"); err == nil {
+		t.Error("an unknown colour was accepted")
+	}
+	if _, err := hisar.SignOut(); err != nil {
+		t.Fatal(err)
+	}
+
+	autoFill, err := New(stateDirectory, "iPhone", createMemorySecretKeyStore(), nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current := decodeJSON[theme](t)(autoFill.GetTheme(), nil); current != (theme{Appearance: "light", Color: "blue"}) {
+		t.Errorf("theme read by a second instance on the same state = %+v", current)
+	}
+}
+
 // checkSettingsFlow runs inside TestIntegrationMobileFlow, signed in as mobile@example.com with one login.
 func checkSettingsFlow(t *testing.T, hisar *Hisar, password, secretKey, personalID, itemID string) {
 	t.Helper()

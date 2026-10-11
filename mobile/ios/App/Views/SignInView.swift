@@ -40,7 +40,7 @@ struct SignInView: View {
                         LogoMark(size: 56)
                         Text(mode == .signIn ? "Sign in to use Hisar on this iPhone." : "Use the invite link you received.")
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.themeSecondary)
                         Picker("Mode", selection: $mode) {
                             ForEach(Mode.allCases) { mode in
                                 Text(mode.rawValue).tag(mode)
@@ -86,6 +86,7 @@ struct SignInView: View {
                 }
             }
             .scrollDismissesKeyboard(.interactively)
+            .applyThemedListBackground()
             .navigationTitle(mode == .signIn ? "Welcome back" : "Create account")
         }
         .onChange(of: mode) { _, _ in

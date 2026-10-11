@@ -14,6 +14,7 @@ import {
   removeApproval,
   setRemembered,
 } from "../approval";
+import { startThemeSync } from "../theme";
 import AppIcon from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
 
@@ -285,6 +286,7 @@ function handleKey(event: KeyboardEvent): void {
 
 onMounted(() => {
   allRemoveListener = [
+    startThemeSync(),
     Events.On("ssh-approval", (event) => addApproval(event.data)),
     Events.On("ssh-approval-closed", (event) => removeApproval(event.data)),
     Events.On("ssh-approval-failed", (event) => failApproval(event.data.requestID, event.data.message)),
@@ -501,10 +503,10 @@ onBeforeUnmount(() => {
   gap: 10px;
   margin: 0 0 16px;
   padding: 10px 12px;
-  border: 1px solid #6b2328;
+  border: 1px solid var(--color-danger-border);
   border-radius: var(--radius);
   background: var(--color-danger-background);
-  color: #f2b8bb;
+  color: var(--color-danger-text);
   font-size: 12px;
   line-height: 1.45;
 }
@@ -519,7 +521,7 @@ onBeforeUnmount(() => {
 }
 
 .forwarded-banner strong {
-  color: #ffd9db;
+  color: inherit;
 }
 
 .request-header {
@@ -599,9 +601,9 @@ onBeforeUnmount(() => {
   gap: 5px;
   margin-bottom: 6px;
   padding: 2px 8px 2px 7px;
-  border: 1px solid #5a4520;
+  border: 1px solid var(--color-warning-border);
   border-radius: 999px;
-  background: #2a2112;
+  background: var(--color-warning-background);
   color: var(--color-warning);
   font-size: 11px;
   font-weight: 600;
@@ -657,10 +659,10 @@ h1 {
   gap: 9px;
   margin-top: 16px;
   padding: 10px 12px;
-  border: 1px solid #6b2328;
+  border: 1px solid var(--color-danger-border);
   border-radius: var(--radius);
   background: var(--color-danger-background);
-  color: #f2b8bb;
+  color: var(--color-danger-text);
   font-size: 12px;
   line-height: 1.45;
 }
@@ -740,9 +742,9 @@ h1 {
   gap: 9px;
   margin-top: 14px;
   padding: 10px 12px;
-  border: 1px solid #5a4520;
+  border: 1px solid var(--color-warning-border);
   border-radius: var(--radius);
-  background: #2a2112;
+  background: var(--color-warning-background);
   color: var(--color-warning);
   font-size: 12px;
   line-height: 1.45;

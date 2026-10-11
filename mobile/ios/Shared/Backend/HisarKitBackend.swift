@@ -286,4 +286,12 @@ final class HisarKitBackend: VaultBackend {
     func setMacApprovalAllowed(_ isAllowed: Bool) throws {
         try callReturningNothing { try hisar.setMacApprovalAllowed(isAllowed) }
     }
+
+    func getTheme() -> VaultTheme {
+        (try? decode(VaultTheme.self, from: hisar.getTheme())) ?? .standard
+    }
+
+    func setTheme(_ theme: VaultTheme) throws -> VaultTheme {
+        try decode(VaultTheme.self, from: callReturningText { hisar.setTheme(theme.appearance.rawValue, color: theme.color.rawValue, error: $0) })
+    }
 }

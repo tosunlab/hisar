@@ -34,7 +34,7 @@ struct ItemListView: View {
                 }
             }
         }
-        .listStyle(.insetGrouped)
+        .applyThemedListStyle()
         .overlay {
             if allMatch.isEmpty {
                 if searchText.isEmpty {
@@ -117,7 +117,7 @@ struct ItemCategoryListView: View {
                 }
             }
         }
-        .listStyle(.insetGrouped)
+        .applyThemedListStyle()
         .overlay {
             if allReference.isEmpty {
                 ContentUnavailableView(category == .logins ? "No logins" : "No SSH keys", systemImage: category.systemImage)
@@ -142,7 +142,7 @@ struct SearchView: View {
                     }
                 }
             }
-            .listStyle(.insetGrouped)
+            .applyThemedListStyle()
             .overlay {
                 if searchText.isEmpty {
                     ContentUnavailableView("Search Hisar", systemImage: "magnifyingglass", description: Text("Find logins, SSH keys and notes in every vault."))

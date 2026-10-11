@@ -454,7 +454,7 @@ All clients use `core/` for crypto, the local store and sync.
 - Auto-lock after idle time (chosen in Settings: 30 seconds, 1 minute, 5 minutes, 10 minutes by default, or 1 hour; a device preference kept across sign-out) and on screen lock/sleep. Clipboard cleared after 90 s.
 - Ships the native-messaging host for the browser extension and the `hisar` CLI, which can use the app's session (§9.4).
 - **Settings** (⌘, or the gear) is a window-like dialog, about 880 × 620 points: a source list on the left with a **Search settings** field, the selected section on the right with its rows in rounded groups. Sections, in this order:
-  - **General**: Open Hisar at login (§9.1.2); the version with **Check for updates** and **Automatically check for updates** (§9.1.1); Import from another password manager (§9.7).
+  - **General**: Appearance and Color (§9.10); Open Hisar at login (§9.1.2); the version with **Check for updates** and **Automatically check for updates** (§9.1.1); Import from another password manager (§9.7).
   - **Security**: Unlock with Touch ID, Auto-lock, the Emergency Kit with the Secret Key.
   - **SSH & Git**: the SSH agent's status with **Use Hisar for SSH** and the `~/.ssh/config` section folded under a disclosure, Compact SSH approvals, Allow approvals from my iPhone, and the note that commit and tag signing always asks (§9.6).
   - **Developer tools**: the `hisar` command-line tool (install, PATH, Let the command-line tool use Hisar, §9.4) and Coding agents (`hisar mcp` and the per-vault "Available to agents" switch, §9.4.2).
@@ -1034,6 +1034,17 @@ The concatenations are length-prefixed (§4.5). Before it shows a request, the p
 - A request leaves the list, and its sheet closes, on `approval-answered` or `approval-resolved`, at `expiresAt`, and when the app locks. Expired, answered or withdrawn requests are never shown.
 - UI tests drive the sheet and the list through debug-only previews (`-HisarApprovalPreview`, `-HisarApprovalBannerPreview`), like the AutoFill preview (§9.3). The cross-device flow is tested end to end in Go: a desktop backend and a HisarKit backend signed in to the same account, where the phone approves an SSH signature, a denied one fails, a forged answer is refused, and a phone app that starts only after the Mac asked still finds and approves the request.
 
+### 9.10 Themes
+
+Each device picks its own look from two settings; nothing is synced.
+
+- **Appearance:** System (the default, follows macOS or iOS light and dark), Light or Dark.
+- **Color:** Neutral (the default; Dark Neutral is the original Mac look), Blue (`#2356c4`), Purple (`#6a3dcc`) or Green (`#1b7348`). In light, a colour tints the chrome by 3–6 % (sidebar, item list, raised surfaces, borders) and the selection by 12–15 %, and becomes the accent of buttons, switches, focus rings and the selected icons; content stays on white. In dark, surfaces stay near-black with the same small tint, and the accent is a lighter shade of the hue (Blue `#7ea6f8`, Purple `#ad8ff5`, Green `#5cc48f`) with near-black text on it. Green keeps the separate success green, so a "running" dot never reads as the accent.
+- **Single source:** `assets/themes/themes.json` holds the tokens: a full set per appearance (`base.light`, `base.dark`, which are Neutral) and per colour only the tokens it changes. `make generate-themes` (`node scripts/themes/generate.ts`, no dependencies) writes `desktop/frontend/src/themes.css` and `mobile/ios/Shared/Views/ThemePalettes.swift`; both are committed, and the frontend tests fail when they differ from what the JSON generates.
+- **Contrast:** the same frontend tests compute the WCAG 2 contrast ratio for every colour × appearance and fail below the minimum: 4.5:1 for primary and secondary text on the background, sidebar, item list, surfaces, hover and selection, for muted text on the background, sidebar and surfaces (a selected row shows its subtitle in secondary text), for accent text, status text (danger, warning, success), text on the accent, on solid danger and in error and warning boxes, initials on every tile colour, and, on the iPhone, for the tint, the secondary label and the warning amber on the grouped background and the cells and for text on the tint; 3:1 for focus rings, the accent as a control colour and accent icons on the selection.
+- **Mac:** `themes.css` defines the variables for `[data-color=…][data-appearance=light|dark]`, and for `data-appearance=system` inside `prefers-color-scheme` media queries. Every window (main, Settings, lock and sign-in screens, the SSH, CLI and agent approval dialogs, full and compact) sets both attributes on `<html>` from `GetTheme`, and follows the `theme-changed` event that `SetTheme` emits after saving, so a choice applies everywhere at once. Components use only these variables; the logo keeps its own colours. The choice is saved in `desktop.json` (`appearance`, `color`, kept on sign-out); a copy in the web view's local storage only spares a new window a flash of the default theme. The app also sets `NSApp.appearance` (Aqua, Dark Aqua or none for System), so the title bar, Touch ID sheets and file dialogs match. Settings → General → Appearance has a System · Light · Dark segmented control and four colour swatches drawn with each colour's own tokens; a click previews at once and a failed save goes back.
+- **iPhone:** Settings → Appearance is a native list: Appearance with checkmarks (System, Light, Dark; `preferredColorScheme`) and Color with a swatch and a checkmark per colour. The colour sets the tint and, for Blue, Purple and Green, a lightly tinted grouped background (dark: near-black with a trace of the hue); cells, bars and Liquid Glass stay the system's. Tints are the darker, accessible shades above, not `systemBlue` and friends, and secondary labels are a solid `#6c6c70` (dark `#98989f`) instead of the translucent system grey, which falls below 4.5:1 on the tinted backgrounds. Warnings (a request's countdown, key changes) use an amber (`#8f5b00`, dark `#d9a33c`) instead of the system orange, which is about 2:1 on white. `GetTheme` and `SetTheme` in `mobile/hisarkit` store the choice in `hisar.json` in the app group, so the AutoFill extension reads the same theme when it opens.
+
 ## 10. Repository layout
 
 ```
@@ -1044,6 +1055,7 @@ desktop/    Wails v3 app (Go + Vue): vault/ backend, agent/ SSH agent and approv
 extension/  Browser extension (TypeScript)                            (Phase 3)
 mobile/     iOS + Android apps on top of gomobile-bound core          (Phase 4)
 docs/       Design and decisions
+assets/     Logo sources and themes/themes.json, the colour tokens of every theme (§9.10)
 deploy/     Dockerfile, Docker Compose (Postgres + server), nginx site, deployment notes
 scripts/    test-end-to-end.sh: end-to-end test of the built server and CLI (run in CI)
 go.work     Ties the Go modules together for local development

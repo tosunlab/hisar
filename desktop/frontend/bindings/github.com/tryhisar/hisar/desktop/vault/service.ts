@@ -145,6 +145,10 @@ export function GetStatus(): $CancellablePromise<$models.Status> {
     return $Call.ByID(1179137283);
 }
 
+export function GetTheme(): $CancellablePromise<$models.Theme> {
+    return $Call.ByID(3918327958);
+}
+
 /**
  * ImportSSHKey stores an existing OpenSSH or PEM private key, decrypted with the passphrase if it has one.
  */
@@ -279,6 +283,13 @@ export function SaveNewAccountEmergencyKit(): $CancellablePromise<string> {
  */
 export function SetAutoLock(seconds: number): $CancellablePromise<$models.Status> {
     return $Call.ByID(2733357673, seconds);
+}
+
+/**
+ * SetTheme saves the theme for this device; it is kept when signing out.
+ */
+export function SetTheme(appearance: string, color: string): $CancellablePromise<$models.Theme> {
+    return $Call.ByID(1426035338, appearance, color);
 }
 
 /**

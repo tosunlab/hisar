@@ -8,6 +8,9 @@ import type { Events } from "@wailsio/runtime";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import type * as agent$0 from "../../../../tryhisar/hisar/desktop/agent/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as vault$0 from "../../../../tryhisar/hisar/desktop/vault/models.js";
 
 declare module "@wailsio/runtime" {
     namespace Events {
@@ -15,6 +18,7 @@ declare module "@wailsio/runtime" {
             "locked": string;
             "ssh-approval": agent$0.ApprovalEvent;
             "ssh-approval-closed": string;
+            "theme-changed": vault$0.Theme;
             "unlocked": string;
         }
     }

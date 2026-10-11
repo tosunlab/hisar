@@ -97,9 +97,21 @@ struct PhoneApprovalPreviewView: View {
 // The Vaults card and the Approvals tab with a made-up SSH and command-line request from a Mac.
 struct PendingApprovalPreviewView: View {
     static let argument = "-HisarApprovalBannerPreview"
+    // -HisarThemePreview <appearance> <color> <vaults|settings> themes the preview and picks its tab, for screenshots.
+    static let themeArgument = "-HisarThemePreview"
 
     static func isRequested() -> Bool {
         ProcessInfo.processInfo.arguments.contains(argument)
+    }
+
+    static func readThemeArgument() -> (theme: VaultTheme, tab: AppModel.Tab) {
+        let allArgument = ProcessInfo.processInfo.arguments
+        guard let index = allArgument.firstIndex(of: themeArgument), index + 3 < allArgument.count else { return (.standard, .vaults) }
+        let theme = VaultTheme(
+            appearance: ThemeAppearanceName(rawValue: allArgument[index + 1]) ?? .system,
+            color: ThemeColorName(rawValue: allArgument[index + 2]) ?? .neutral
+        )
+        return (theme, allArgument[index + 3] == "settings" ? .settings : .vaults)
     }
 
     @State private var allApproval = [
@@ -108,7 +120,8 @@ struct PendingApprovalPreviewView: View {
     ]
     @State private var presentedApproval: PhoneApproval?
     @State private var resultMessage: String?
-    @State private var selectedTab = AppModel.Tab.vaults
+    @State private var selectedTab = Self.readThemeArgument().tab
+    @State private var theme = Self.readThemeArgument().theme
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -123,13 +136,16 @@ struct PendingApprovalPreviewView: View {
                             deny: { finish($0, message: "Denied \($0.requestID)") },
                             showAll: { selectedTab = .approvals }
                         )
-                        Section("Vaults") {
+                        Section {
                             VaultRow(vault: VaultSummary(id: "personal", name: "Personal", type: "personal", role: "owner", itemCount: 24), itemCount: 24)
                             VaultRow(vault: VaultSummary(id: "work", name: "Work", type: "shared", role: "editor", itemCount: 41), itemCount: 41)
+                        } header: {
+                            Text("Vaults")
+                                .foregroundStyle(.themeSecondary)
                         }
                         resultSection
                     }
-                    .listStyle(.insetGrouped)
+                    .applyThemedListStyle()
                     .navigationTitle("Vaults")
                     .toolbar {
                         ToolbarItem(placement: .topBarTrailing) {
@@ -152,12 +168,15 @@ struct PendingApprovalPreviewView: View {
             }
             .badge(allApproval.count)
             Tab("Settings", systemImage: "gearshape", value: AppModel.Tab.settings) {
-                Text("Settings")
+                NavigationStack {
+                    ThemePickerList(theme: theme) { theme = $0 }
+                }
             }
             Tab(value: AppModel.Tab.search, role: .search) {
                 Text("Search")
             }
         }
+        .applyTheme(theme)
         .sheet(item: $presentedApproval) { approval in
             PhoneApprovalSheet(
                 approval: approval,
@@ -176,7 +195,7 @@ struct PendingApprovalPreviewView: View {
         if let resultMessage {
             Section {
                 Text(resultMessage)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.themeSecondary)
                     .accessibilityIdentifier("phone-approval-result")
             }
         }

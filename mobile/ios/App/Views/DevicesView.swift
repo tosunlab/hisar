@@ -49,10 +49,10 @@ struct DevicesView: View {
                 } icon: {
                     ProgressView()
                 }
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.themeSecondary)
             }
         }
-        .listStyle(.insetGrouped)
+        .applyThemedListStyle()
         .refreshable { await load() }
         .navigationTitle("Devices")
         .confirmationDialog(
@@ -90,7 +90,7 @@ struct DeviceRow: View {
                 Text(device.name.isEmpty ? device.platformDescription : device.name)
                 Text(subtitle)
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.themeSecondary)
             }
         } icon: {
             Image(systemName: device.systemImage)
@@ -135,7 +135,7 @@ struct DeviceView: View {
                 Text("Signing out ends the device's session on the server, so it can no longer sync your vaults or answer for your account.")
             }
         }
-        .listStyle(.insetGrouped)
+        .applyThemedListStyle()
         .navigationTitle(device.name)
         .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog("Sign out \(device.name)?", isPresented: $isRevokeConfirmationShown, titleVisibility: .visible) {

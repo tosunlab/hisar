@@ -82,3 +82,15 @@ func SetDockIconVisible(isVisible bool) {
 	}
 	C.hisarSetDockIconVisible(value)
 }
+
+// SetAppAppearance makes the windows, Touch ID sheets and file dialogs light or dark; "system" follows macOS.
+func SetAppAppearance(appearance string) {
+	switch appearance {
+	case "light":
+		C.hisarSetAppAppearance(1)
+	case "dark":
+		C.hisarSetAppAppearance(2)
+	default:
+		C.hisarSetAppAppearance(0)
+	}
+}

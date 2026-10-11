@@ -206,6 +206,8 @@ type Config struct {
 	OnApprovalEvent func(eventName, requestID string)
 	// IsEventStreamDisabled skips the server's event stream, e.g. in tests whose fake server has none.
 	IsEventStreamDisabled bool
+	// OnThemeChange runs after SetTheme saved a new theme, outside the service mutex; every window applies it.
+	OnThemeChange func(theme Theme)
 	// FileSaver asks where to save a file; it returns "" when the user cancels.
 	FileSaver FileSaver
 	// FileOpener asks which file to open; it returns "" when the user cancels.

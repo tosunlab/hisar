@@ -21,7 +21,7 @@ struct ItemIcon: View {
                     .font(size > 40 ? .title.weight(.semibold) : .subheadline.weight(.semibold))
             }
         }
-        .foregroundStyle(.secondary)
+        .foregroundStyle(.themeSecondary)
         .frame(width: scaledSize, height: scaledSize)
         .accessibilityHidden(true)
     }

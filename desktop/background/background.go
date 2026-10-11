@@ -1,4 +1,5 @@
-// Package background keeps the app available without a window: the login item, hidden launches and the Dock icon.
+// Package background keeps the app available without a window: the login item, hidden launches and the Dock icon,
+// and sets the app-wide light or dark appearance.
 package background
 
 import (

@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 @testable import Hisar
 
@@ -35,6 +36,40 @@ final class SettingsModelTests: XCTestCase {
         currentDate += 31
         model.handleWillEnterForeground()
         XCTAssertEqual(model.screen, .locked)
+    }
+
+    func testThemeStartsFromTheBackendAndIsSaved() async {
+        backend.theme = VaultTheme(appearance: .dark, color: .purple)
+        let model = await createUnlockedModel()
+        XCTAssertEqual(model.theme, VaultTheme(appearance: .dark, color: .purple))
+        await model.setTheme(VaultTheme(appearance: .light, color: .green))
+        XCTAssertEqual(model.theme, VaultTheme(appearance: .light, color: .green))
+        XCTAssertEqual(backend.theme, VaultTheme(appearance: .light, color: .green))
+        XCTAssertTrue(backend.allCallName.contains("setTheme"))
+    }
+
+    func testThemeGoesBackWhenSavingFails() async {
+        let model = await createUnlockedModel()
+        backend.isThemeSaveFailing = true
+        await model.setTheme(VaultTheme(appearance: .dark, color: .blue))
+        XCTAssertEqual(model.theme, .standard)
+        XCTAssertEqual(model.errorMessage, "Could not save hisar.json")
+    }
+
+    func testThemeDecodesAndFallsBackToTheDefaults() throws {
+        let theme = try JSONDecoder().decode(VaultTheme.self, from: Data(#"{"appearance":"light","color":"blue"}"#.utf8))
+        XCTAssertEqual(theme, VaultTheme(appearance: .light, color: .blue))
+        let unknownTheme = try JSONDecoder().decode(VaultTheme.self, from: Data(#"{"appearance":"sepia"}"#.utf8))
+        XCTAssertEqual(unknownTheme, .standard)
+        XCTAssertNil(VaultTheme.standard.colorScheme)
+        XCTAssertEqual(VaultTheme(appearance: .dark, color: .neutral).userInterfaceStyle, .dark)
+    }
+
+    func testEveryColourHasAPalette() {
+        let allTint = ThemeColorName.allCases.map { ThemePalette.find(color: $0).tint.light }
+        XCTAssertEqual(allTint, [0x1D2025, 0x2356C4, 0x6A3DCC, 0x1B7348])
+        let darkTint = ThemePalette.blue.tint.uiColor.resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark))
+        XCTAssertEqual(darkTint, UIColor(hexadecimal: 0x7EA6F8))
     }
 
     func testAutoLockRefusesOtherDelays() async {

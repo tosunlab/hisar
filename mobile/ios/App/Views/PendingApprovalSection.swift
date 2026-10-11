@@ -23,9 +23,11 @@ struct PendingApprovalCardSection: View {
                 }
             } header: {
                 Text(allApproval.count == 1 ? "Waiting for your approval" : "\(allApproval.count) requests waiting for your approval")
+                    .foregroundStyle(.themeSecondary)
                     .accessibilityIdentifier("pending-approval-header")
             } footer: {
                 Text("Approving answers this one request. It never unlocks Hisar on your Mac.")
+                    .foregroundStyle(.themeSecondary)
             }
         }
     }
@@ -81,7 +83,7 @@ struct PendingApprovalSummary: View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: approval.isForwarded ? "exclamationmark.triangle.fill" : approval.systemImage)
                 .font(.title3)
-                .foregroundStyle(approval.isForwarded ? .red : .orange)
+                .foregroundStyle(approval.isForwarded ? AnyShapeStyle(.red) : AnyShapeStyle(.themeWarning))
                 .frame(width: 36, height: 36)
                 .background(.fill.tertiary, in: .rect(cornerRadius: 10, style: .continuous))
                 .accessibilityHidden(true)
@@ -89,7 +91,7 @@ struct PendingApprovalSummary: View {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     Text("\(approval.macName) · \(approval.formatTimeLeft(at: context.date).replacingOccurrences(of: "Expires", with: "expires"))")
                         .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(.themeWarning)
                         .monospacedDigit()
                 }
                 Text(approval.summary)
@@ -97,7 +99,7 @@ struct PendingApprovalSummary: View {
                     .fixedSize(horizontal: false, vertical: true)
                 Text(approval.detailLine)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.themeSecondary)
                     .lineLimit(2)
             }
             Spacer(minLength: 0)

@@ -136,3 +136,20 @@ void hisarSetDockIconVisible(int isVisible) {
         dispatch_async(dispatch_get_main_queue(), apply);
     }
 }
+
+void hisarSetAppAppearance(int appearance) {
+    dispatch_block_t apply = ^{
+        if (appearance == 1) {
+            NSApp.appearance = [NSAppearance appearanceNamed:NSAppearanceNameAqua];
+        } else if (appearance == 2) {
+            NSApp.appearance = [NSAppearance appearanceNamed:NSAppearanceNameDarkAqua];
+        } else {
+            NSApp.appearance = nil;
+        }
+    };
+    if ([NSThread isMainThread]) {
+        apply();
+    } else {
+        dispatch_async(dispatch_get_main_queue(), apply);
+    }
+}

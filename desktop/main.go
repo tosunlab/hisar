@@ -37,6 +37,7 @@ func init() {
 	application.RegisterEvent[string]("unlocked")
 	application.RegisterEvent[agent.ApprovalEvent](agent.ApprovalEventName)
 	application.RegisterEvent[string](agent.ApprovalClosedEventName)
+	application.RegisterEvent[vault.Theme]("theme-changed")
 }
 
 type wailsClipboard struct{ app *application.App }
@@ -59,6 +60,14 @@ func (notifier *wailsLockNotifier) NotifyRemoteChange() {
 func (notifier *wailsLockNotifier) NotifyShareLinksChange() {
 	if notifier.app != nil {
 		notifier.app.Event.Emit("share-links-changed", nil)
+	}
+}
+
+// NotifyThemeChange tells every window, the approval window too, and switches the native parts to light or dark.
+func (notifier *wailsLockNotifier) NotifyThemeChange(theme vault.Theme) {
+	background.SetAppAppearance(theme.Appearance)
+	if notifier.app != nil {
+		notifier.app.Event.Emit("theme-changed", theme)
 	}
 }
 
@@ -169,6 +178,7 @@ func main() {
 		},
 		OnRemoteChange:     lockNotifier.NotifyRemoteChange,
 		OnShareLinksChange: lockNotifier.NotifyShareLinksChange,
+		OnThemeChange:      lockNotifier.NotifyThemeChange,
 	}
 	vaultService, err := vault.CreateService(vaultConfig)
 	if err != nil {
@@ -379,6 +389,7 @@ func main() {
 		showWindow()
 	})
 	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
+		background.SetAppAppearance(vaultService.GetTheme().Appearance)
 		updater.Start()
 		// Runs after AppKit has delivered the launch event, which tells whether this is a launch at login.
 		application.InvokeAsync(func() {

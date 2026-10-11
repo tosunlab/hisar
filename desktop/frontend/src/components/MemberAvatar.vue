@@ -7,7 +7,7 @@ defineProps<{ name: string; size?: number }>();
 <template>
   <span
     class="member-avatar"
-    :style="{ width: `${size ?? 32}px`, height: `${size ?? 32}px`, fontSize: `${Math.round((size ?? 32) * 0.36)}px`, background: getTileColor(name) }"
+    :style="{ width: `${size ?? 32}px`, height: `${size ?? 32}px`, fontSize: `${Math.round((size ?? 32) * 0.36)}px`, ...getTileColor(name) }"
     aria-hidden="true"
     >{{ getInitials(name) }}</span
   >
@@ -20,9 +20,8 @@ defineProps<{ name: string; size?: number }>();
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  color: #e9ebee;
   font-weight: 650;
   letter-spacing: 0.02em;
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 6%);
+  box-shadow: inset 0 0 0 1px var(--color-tile-edge);
 }
 </style>

@@ -1,4 +1,10 @@
-const allTileColor = ["#2c3e50", "#3b3f46", "#1f4e4a", "#4a3b2a", "#4b2d34", "#2d3a52", "#3a4a2c", "#463355", "#2b4657", "#52402b"];
+// themes.json defines tile0 to tile9 with their text colours for every theme.
+const tileColorCount = 10;
+
+export interface TileColor {
+  background: string;
+  color: string;
+}
 
 export function getDomain(link: string): string {
   try {
@@ -8,12 +14,13 @@ export function getDomain(link: string): string {
   }
 }
 
-export function getTileColor(text: string): string {
+export function getTileColor(text: string): TileColor {
   let hash = 0;
   for (const character of text.toLowerCase()) {
     hash = (hash * 31 + character.charCodeAt(0)) >>> 0;
   }
-  return allTileColor[hash % allTileColor.length];
+  const tileIndex = hash % tileColorCount;
+  return { background: `var(--color-tile${tileIndex})`, color: `var(--color-tile${tileIndex}-text)` };
 }
 
 export function getInitials(text: string): string {
