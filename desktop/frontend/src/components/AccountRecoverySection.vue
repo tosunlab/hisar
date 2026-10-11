@@ -33,7 +33,7 @@ const description = computed(() => {
       : "If you forget your master password or lose your Secret Key, your vaults cannot be recovered. Ask your admin to set up recovery.";
   }
   if (status.isCreatedByCurrentUser) {
-    return "You can help family members who forgot their master password or lost their Secret Key. Only you can complete recoveries, so keep your own master password and Secret Key safe.";
+    return "You can help people who forgot their master password or lost their Secret Key. Only you can complete recoveries, so keep your own master password and Secret Key safe.";
   }
   if (status.isAdmin) {
     return `Set up by ${creatorName.value}. You can start recoveries, but only ${creatorName.value} can complete them.`;
@@ -111,7 +111,7 @@ async function confirmComplete(pending: PendingRecovery): Promise<void> {
         <AppIcon name="shield" class="note-icon" />
         <div class="note-body">
           <p>
-            Your devices get a recovery key that can open every recoverable vault, so your family trusts you with their data. Only you can complete
+            Your devices get a recovery key that can open every recoverable vault, so everyone whose vaults are recoverable trusts you with their data. Only you can complete
             recoveries: keep your own master password and Secret Key safe.
           </p>
           <p class="muted">Vaults are recoverable by default. Members can turn recovery off for their personal vault, which is then lost if they lose access.</p>
@@ -143,7 +143,7 @@ async function confirmComplete(pending: PendingRecovery): Promise<void> {
       <template v-if="recoveryStatus.isAdmin && recoveryStatus.isSetUp">
         <p class="list-label pending-label">Pending recoveries</p>
         <p v-if="store.allPendingRecovery.length === 0 && !completedRecovery" class="muted empty-note" data-testid="no-pending-recovery">
-          No pending recoveries. Start one from a family member above; it shows up here once they open their link.
+          No pending recoveries. Start one from a person under People above; it shows up here once they open their link.
         </p>
         <div v-if="completedRecovery" class="recovery-result" data-testid="recovery-result">
           <p>

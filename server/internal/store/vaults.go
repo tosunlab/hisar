@@ -100,6 +100,35 @@ func (s *Store) SetAccess(ctx context.Context, vaultID string, member Member) er
 	return err
 }
 
+// GrantAccess changes an existing member's access, or adds an account that accepted a share invitation to the vault,
+// consuming the invitation. It returns ErrNoInvitation otherwise.
+func (s *Store) GrantAccess(ctx context.Context, vaultID string, member Member) (isNewMember bool, err error) {
+	err = s.runInTransaction(ctx, func(transaction pgx.Tx) error {
+		var isMember bool
+		if err := transaction.QueryRow(ctx,
+			`SELECT EXISTS (SELECT 1 FROM vault_access WHERE vault_id = $1 AND account_id = $2)`, vaultID, member.AccountID).Scan(&isMember); err != nil {
+			return err
+		}
+		if !isMember {
+			commandTag, err := transaction.Exec(ctx,
+				`DELETE FROM share_invitations WHERE vault_id = $1 AND accepted_by = $2 AND state = 'accepted'`, vaultID, member.AccountID)
+			if err != nil {
+				return err
+			}
+			if commandTag.RowsAffected() == 0 {
+				return ErrNoInvitation
+			}
+			isNewMember = true
+		}
+		_, err := transaction.Exec(ctx, `
+			INSERT INTO vault_access (vault_id, account_id, wrapped_key, role, granted_by) VALUES ($1, $2, $3, $4, $5)
+			ON CONFLICT (vault_id, account_id) DO UPDATE SET wrapped_key = $3, role = $4, granted_by = $5, granted_at = now()`,
+			vaultID, member.AccountID, member.WrappedKey, member.Role, member.GrantedBy)
+		return err
+	})
+	return isNewMember, err
+}
+
 func (s *Store) RemoveAccess(ctx context.Context, vaultID, accountID string) error {
 	commandTag, err := s.pool.Exec(ctx, `DELETE FROM vault_access WHERE vault_id = $1 AND account_id = $2`, vaultID, accountID)
 	if err != nil {

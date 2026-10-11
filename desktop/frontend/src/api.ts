@@ -11,7 +11,7 @@ import type {
   CommandLineStatus as BoundCommandLineStatus,
   Device,
   PairedBrowser,
-  FamilyMember,
+  Person,
   ImportDuplicate,
   ImportFormat,
   ImportPreview as BoundImportPreview,
@@ -23,8 +23,11 @@ import type {
   OneTimeCode,
   PasswordConfig,
   PendingRecovery,
+  ReceivedShareInvitation,
   RecoverAccountResult,
   RecoveryStatus,
+  SentShareInvitation,
+  ShareInvitations as BoundShareInvitations,
   SignUpResult,
   Status,
   UpdateStatus,
@@ -35,7 +38,7 @@ import type {
 export type {
   ApprovalEvent,
   Device,
-  FamilyMember,
+  Person,
   ImportDuplicate,
   ImportFormat,
   ImportSkippedEntry,
@@ -44,8 +47,10 @@ export type {
   OneTimeCode,
   PasswordConfig,
   PendingRecovery,
+  ReceivedShareInvitation,
   RecoverAccountResult,
   RecoveryStatus,
+  SentShareInvitation,
   SignUpResult,
   SSHAgentStatus,
   Status,
@@ -56,7 +61,16 @@ export type {
 
 export type SSHKeyType = "ed25519" | "rsa";
 export type VaultRole = "owner" | "editor" | "reader";
-export type FamilyRole = "admin" | "member";
+
+export interface ShareInvitations {
+  received: ReceivedShareInvitation[];
+  sent: SentShareInvitation[];
+  completionError: string;
+}
+
+function normalizeShareInvitations(invitations: BoundShareInvitations): ShareInvitations {
+  return { received: invitations.received ?? [], sent: invitations.sent ?? [], completionError: invitations.completionError };
+}
 
 // ItemDetail mirrors the Go type with nil slices normalized to empty arrays.
 export interface ItemDetail extends Omit<BoundItemDetail, "urls" | "fields" | "passkeys"> {
@@ -130,13 +144,17 @@ const wailsApi = {
     normalizeItem(await Service.GenerateSSHKey(vaultID, title, keyType)),
   importSSHKey: async (vaultID: string, title: string, privateKeyText: string, passphrase: string): Promise<ItemDetail> =>
     normalizeItem(await Service.ImportSSHKey(vaultID, title, privateKeyText, passphrase)),
-  listAllMember: async (): Promise<FamilyMember[]> => (await Service.ListAllMember()) ?? [],
+  listAllPerson: async (): Promise<Person[]> => (await Service.ListAllPerson()) ?? [],
   listAllVaultMember: async (vaultID: string): Promise<VaultMember[]> => (await Service.ListAllVaultMember(vaultID)) ?? [],
   shareVault: (vaultID: string, email: string, role: VaultRole): Promise<void> => Service.ShareVault(vaultID, email, role),
   changeVaultMemberRole: (vaultID: string, accountID: string, role: VaultRole): Promise<void> =>
     Service.ChangeVaultMemberRole(vaultID, accountID, role),
   removeVaultMember: (vaultID: string, accountID: string): Promise<void> => Service.RemoveVaultMember(vaultID, accountID),
-  inviteMember: (email: string, role: FamilyRole): Promise<string> => Service.InviteMember(email, role),
+  invitePerson: (email: string): Promise<void> => Service.InvitePerson(email),
+  listAllShareInvitation: async (): Promise<ShareInvitations> => normalizeShareInvitations(await Service.ListAllShareInvitation()),
+  acceptShareInvitation: (invitationID: string): Promise<void> => Service.AcceptShareInvitation(invitationID),
+  declineShareInvitation: (invitationID: string): Promise<void> => Service.DeclineShareInvitation(invitationID),
+  cancelShareInvitation: (invitationID: string): Promise<void> => Service.CancelShareInvitation(invitationID),
   listAllDevice: async (): Promise<Device[]> => (await Service.ListAllDevice()) ?? [],
   revokeDevice: (deviceID: string): Promise<void> => Service.RevokeDevice(deviceID),
   getSSHAgentStatus: (): Promise<SSHAgentStatus> => AgentService.GetStatus(),

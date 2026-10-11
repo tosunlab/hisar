@@ -68,7 +68,30 @@ docker compose exec hisar hisar-server invite
 ```
 
 It asks for the email address; the first invite defaults to the admin role. Open the printed link in the desktop app,
-the iPhone app, or the CLI (`hisar signup https://<domain>/invite/<token>`).
+the iPhone app, or the CLI (`hisar signup https://<domain>/invite/<token>`). The operator command needs no email setup.
+
+## Email (invites and sharing)
+
+Signed-in users invite people and share vaults by email, and the server sends those emails itself
+(`docs/DESIGN.md` §5.1, §5.8). Without email, `POST /invites` answers "email is not configured on this server"; sharing
+with someone who already has an account still works, and they see the invitation in the app.
+
+1. Get SMTP credentials from your mail provider for a sending address such as `noreply@<domain>`, and set up SPF and
+   DKIM for that domain so the emails are delivered.
+2. In `.env` on the server, uncomment and fill in all five (the server refuses to start with only some of them):
+
+   ```sh
+   HISAR_SMTP_HOST=smtp.example.com
+   HISAR_SMTP_PORT=587                       # 465 for implicit TLS; any other port must offer STARTTLS
+   HISAR_SMTP_USERNAME=…
+   HISAR_SMTP_PASSWORD=…
+   HISAR_SMTP_FROM=Hisar <noreply@example.com>
+   ```
+
+3. `chmod 600 .env && docker compose up -d`. The log says `email through smtp.example.com port 587`.
+
+The server never sends credentials without TLS. The emails are plain text without tracking; failures are logged as
+`email not sent: …`, without the recipient's address.
 
 ## Desktop app updates (optional)
 

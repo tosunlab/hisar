@@ -1,13 +1,10 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import type { Device, FamilyMember, FamilyRole } from "../api";
+import { onBeforeUnmount, onMounted, ref } from "vue";
+import type { Device } from "../api";
 import {
   configureSSHConfig,
-  copyText,
   disableBiometricUnlock,
   enableBiometricUnlock,
-  getFirstName,
-  inviteMember,
   loadRecoveryData,
   loadSettingsData,
   loadSSHAgentStatus,
@@ -19,16 +16,15 @@ import {
   saveEmergencyKit,
   setAutoLock,
   signOut,
-  startAccountRecovery,
   store,
 } from "../store";
-import { formatLastSeen, formatPlatform, formatRole, getPlatformIcon, isMacPlatform } from "../util";
+import { formatLastSeen, formatPlatform, getPlatformIcon, isMacPlatform } from "../util";
 import AccountRecoverySection from "./AccountRecoverySection.vue";
 import BrowserExtensionSection from "./BrowserExtensionSection.vue";
 import CommandLineSection from "./CommandLineSection.vue";
 import UpdatesSection from "./UpdatesSection.vue";
 import AppIcon from "./AppIcon.vue";
-import MemberAvatar from "./MemberAvatar.vue";
+import PeopleSection from "./PeopleSection.vue";
 
 const allAutoLockOption = [
   { seconds: 30, label: "30 seconds" },
@@ -40,49 +36,8 @@ const allAutoLockOption = [
 const isEnablingTouchID = ref(false);
 const touchIDPassword = ref("");
 const isConfirmingSignOut = ref(false);
-const isInviting = ref(false);
-const inviteEmail = ref("");
-const inviteRole = ref<FamilyRole>("member");
-const invitedEmail = ref("");
-const inviteLink = ref("");
 const revokingDeviceID = ref("");
-const recoveringAccountID = ref("");
-const recoveryLink = ref("");
-
-const isAdmin = computed(() => store.allFamilyMember.some((familyMember) => familyMember.isCurrentUser && familyMember.role === "admin"));
 const currentDeviceLabel = isMacPlatform() ? "This Mac" : "This device";
-
-function canStartRecovery(familyMember: FamilyMember): boolean {
-  return isAdmin.value && !familyMember.isCurrentUser && store.recoveryStatus?.isSetUp === true;
-}
-
-function startRecoveryConfirmation(familyMember: FamilyMember): void {
-  recoveringAccountID.value = familyMember.accountId;
-  recoveryLink.value = "";
-}
-
-async function submitStartRecovery(familyMember: FamilyMember): Promise<void> {
-  const link = await startAccountRecovery(familyMember);
-  if (link) {
-    recoveryLink.value = link;
-  }
-}
-
-async function submitInvite(): Promise<void> {
-  const link = await inviteMember(inviteEmail.value.trim(), inviteRole.value);
-  if (link) {
-    invitedEmail.value = inviteEmail.value.trim();
-    inviteLink.value = link;
-    inviteEmail.value = "";
-    inviteRole.value = "member";
-    isInviting.value = false;
-  }
-}
-
-function startInviting(): void {
-  inviteLink.value = "";
-  isInviting.value = true;
-}
 
 function describeActivity(device: Device): string {
   const lastSeen = formatLastSeen(device.lastSeenAt);
@@ -244,83 +199,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
         </div>
       </section>
 
-      <section data-testid="family-section">
-        <p class="section-label">Family</p>
-        <p v-if="store.allFamilyMember.length === 0" class="muted empty-note">{{ store.isBusy ? "Loading family members…" : "No family members to show." }}</p>
-        <template v-for="familyMember in store.allFamilyMember" :key="familyMember.accountId">
-          <div class="setting" :data-testid="`family-member-${familyMember.accountId}`">
-            <MemberAvatar :name="familyMember.name || familyMember.email" />
-            <div class="setting-text">
-              <strong class="title-line">
-                <span class="title-text">{{ familyMember.name || familyMember.email }}</span>
-                <span v-if="familyMember.isCurrentUser" class="tag accent">you</span>
-                <span class="tag" :data-testid="`family-role-${familyMember.accountId}`">{{ formatRole(familyMember.role) }}</span>
-              </strong>
-              <p class="muted">{{ familyMember.email }}</p>
-              <p v-if="familyMember.isKeyChanged" class="warning-text">Their key changed since you last shared with them. Compare security codes in person.</p>
-            </div>
-            <div class="security-code" :title="familyMember.isCurrentUser ? 'Your security code' : 'Compare this code in person'">
-              <span class="code-label">Security code</span>
-              <span class="monospace" data-testid="family-security-code">{{ familyMember.securityCode }}</span>
-            </div>
-            <button
-              v-if="canStartRecovery(familyMember)"
-              class="ghost recovery-button"
-              :title="`Start account recovery for ${getFirstName(familyMember)}`"
-              :data-testid="`start-recovery-${familyMember.accountId}`"
-              @click="startRecoveryConfirmation(familyMember)"
-            >
-              Start recovery
-            </button>
-          </div>
-          <div v-if="recoveringAccountID === familyMember.accountId && !recoveryLink" class="inline-confirmation" data-testid="start-recovery-confirmation">
-            <p>
-              Create a recovery link for {{ getFirstName(familyMember) }}? They use it to choose a new master password and get a new Secret Key. Their
-              account keeps working until you complete the recovery.
-            </p>
-            <div class="row">
-              <button class="ghost" :disabled="store.isBusy" @click="recoveringAccountID = ''">Cancel</button>
-              <button class="primary" data-testid="confirm-start-recovery" :disabled="store.isBusy" @click="submitStartRecovery(familyMember)">Create link</button>
-            </div>
-          </div>
-          <div v-if="recoveringAccountID === familyMember.accountId && recoveryLink" class="invite-result" data-testid="recovery-link-result">
-            <div class="invite-link">
-              <span class="monospace" data-testid="recovery-link">{{ recoveryLink }}</span>
-              <button data-testid="copy-recovery-link" @click="copyText(recoveryLink, 'Recovery link')"><AppIcon name="copy" :size="14" /> Copy</button>
-            </div>
-            <p class="muted">
-              Send this link to {{ getFirstName(familyMember) }}. It is valid for 7 days and works once. Their recovery appears under Account recovery
-              once they use it.
-            </p>
-          </div>
-        </template>
-        <template v-if="isAdmin">
-          <div class="setting">
-            <span class="setting-icon"><AppIcon name="mail" /></span>
-            <div class="setting-text">
-              <strong>Invite someone</strong>
-              <p class="muted">Create a link they use to set up their account on this server.</p>
-            </div>
-            <button v-if="!isInviting" data-testid="start-invite" @click="startInviting">Invite</button>
-          </div>
-          <form v-if="isInviting" class="inline-form" data-testid="invite-form" @submit.prevent="submitInvite">
-            <input v-model="inviteEmail" name="inviteEmail" type="email" aria-label="Email" placeholder="Email address" autocomplete="off" autofocus required />
-            <select v-model="inviteRole" class="invite-role" aria-label="Family role" data-testid="invite-role">
-              <option value="member">Member</option>
-              <option value="admin">Admin</option>
-            </select>
-            <button type="button" class="ghost" @click="isInviting = false">Cancel</button>
-            <button class="primary" type="submit" :disabled="store.isBusy || !inviteEmail.trim()">Create link</button>
-          </form>
-          <div v-if="inviteLink" class="invite-result" data-testid="invite-result">
-            <div class="invite-link">
-              <span class="monospace" data-testid="invite-link">{{ inviteLink }}</span>
-              <button data-testid="copy-invite-link" @click="copyText(inviteLink, 'Invite link')"><AppIcon name="copy" :size="14" /> Copy</button>
-            </div>
-            <p class="muted">Send this link to {{ invitedEmail }}. It is valid for 7 days and works once.</p>
-          </div>
-        </template>
-      </section>
+      <PeopleSection />
 
       <AccountRecoverySection />
 
@@ -535,94 +414,10 @@ section {
   background: var(--color-danger);
 }
 
-.enable-form,
-.inline-form {
+.enable-form {
   display: flex;
   gap: 8px;
   padding: 0 0 12px 44px;
-}
-
-.invite-role {
-  flex: none;
-  width: 110px;
-}
-
-.inline-form button {
-  flex: none;
-  white-space: nowrap;
-}
-
-.security-code {
-  display: flex;
-  flex: none;
-  flex-direction: column;
-  align-items: flex-end;
-  font-size: 12px;
-  color: var(--color-text-secondary);
-  user-select: text;
-  -webkit-user-select: text;
-}
-
-.code-label {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--color-text-muted);
-}
-
-.invite-result {
-  padding: 0 0 12px 44px;
-}
-
-.invite-link {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 6px 6px 12px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  background: var(--color-surface);
-}
-
-.invite-link .monospace {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  user-select: text;
-  -webkit-user-select: text;
-}
-
-.invite-result p {
-  margin: 6px 0 0;
-  font-size: 12px;
-}
-
-.recovery-button {
-  flex: none;
-  padding: 5px 8px;
-  font-size: 12px;
-  color: var(--color-text-secondary);
-}
-
-.inline-confirmation {
-  margin: 0 0 12px 44px;
-  padding: 10px 12px;
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius);
-  background: var(--color-surface);
-  font-size: 12px;
-}
-
-.inline-confirmation p {
-  margin: 0 0 8px;
-}
-
-.inline-confirmation .row {
-  justify-content: flex-end;
 }
 
 .setting-text .revoke-note {

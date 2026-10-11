@@ -29,6 +29,7 @@ vet:
 	cd desktop && go vet ./vault/ ./biometric/ ./agent/ ./appinfo/ ./browser/ ./commandline/ ./passkey/ ./updater/ ./cmd/...
 
 test-end-to-end: build
+	go build -o bin/hisar-smtp-sink ./server/cmd/hisar-smtp-sink
 	./scripts/test-end-to-end.sh
 
 docker:

@@ -48,9 +48,9 @@ type VaultSummary struct {
 	RecoveryOptOut bool   `json:"recoveryOptOut"`
 }
 
-// FamilyMember is an account on the server. SecurityCode is derived from their signing key; IsKeyChanged
+// Person is the user or someone they share a vault with. SecurityCode is derived from their signing key; IsKeyChanged
 // means it differs from the key pinned when this device first shared with them.
-type FamilyMember struct {
+type Person struct {
 	AccountID     string `json:"accountId"`
 	Name          string `json:"name"`
 	Email         string `json:"email"`
@@ -58,6 +58,33 @@ type FamilyMember struct {
 	SecurityCode  string `json:"securityCode"`
 	IsCurrentUser bool   `json:"isCurrentUser"`
 	IsKeyChanged  bool   `json:"isKeyChanged"`
+}
+
+type ReceivedShareInvitation struct {
+	ID             string `json:"id"`
+	VaultID        string `json:"vaultId"`
+	Role           string `json:"role"`
+	InvitedByName  string `json:"invitedByName"`
+	InvitedByEmail string `json:"invitedByEmail"`
+	ExpiresAt      string `json:"expiresAt"`
+}
+
+// SentShareInvitation: State is "pending" until the person accepts, then "accepted" until this app completes the share.
+type SentShareInvitation struct {
+	ID        string `json:"id"`
+	VaultID   string `json:"vaultId"`
+	VaultName string `json:"vaultName"`
+	Email     string `json:"email"`
+	Role      string `json:"role"`
+	State     string `json:"state"`
+	ExpiresAt string `json:"expiresAt"`
+}
+
+// ShareInvitations: CompletionError says why an accepted share could not be completed, e.g. a changed signing key.
+type ShareInvitations struct {
+	AllReceived     []ReceivedShareInvitation `json:"received"`
+	AllSent         []SentShareInvitation     `json:"sent"`
+	CompletionError string                    `json:"completionError"`
 }
 
 type VaultMember struct {

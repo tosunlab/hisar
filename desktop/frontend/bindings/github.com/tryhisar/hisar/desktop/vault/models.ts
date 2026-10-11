@@ -51,20 +51,6 @@ export interface Device {
     "isCurrent": boolean;
 }
 
-/**
- * FamilyMember is an account on the server. SecurityCode is derived from their signing key; IsKeyChanged
- * means it differs from the key pinned when this device first shared with them.
- */
-export interface FamilyMember {
-    "accountId": string;
-    "name": string;
-    "email": string;
-    "role": string;
-    "securityCode": string;
-    "isCurrentUser": boolean;
-    "isKeyChanged": boolean;
-}
-
 export interface ImportDuplicate {
     "title": string;
     "username": string;
@@ -186,6 +172,29 @@ export interface PendingRecovery {
     "unrecoverableVaultCount": number;
 }
 
+/**
+ * Person is the user or someone they share a vault with. SecurityCode is derived from their signing key; IsKeyChanged
+ * means it differs from the key pinned when this device first shared with them.
+ */
+export interface Person {
+    "accountId": string;
+    "name": string;
+    "email": string;
+    "role": string;
+    "securityCode": string;
+    "isCurrentUser": boolean;
+    "isKeyChanged": boolean;
+}
+
+export interface ReceivedShareInvitation {
+    "id": string;
+    "vaultId": string;
+    "role": string;
+    "invitedByName": string;
+    "invitedByEmail": string;
+    "expiresAt": string;
+}
+
 export interface RecoverAccountResult {
     "status": Status;
     "secretKey": string;
@@ -199,6 +208,28 @@ export interface RecoveryStatus {
     "isAdmin": boolean;
     "isCreatedByCurrentUser": boolean;
     "createdByName": string;
+}
+
+/**
+ * SentShareInvitation: State is "pending" until the person accepts, then "accepted" until this app completes the share.
+ */
+export interface SentShareInvitation {
+    "id": string;
+    "vaultId": string;
+    "vaultName": string;
+    "email": string;
+    "role": string;
+    "state": string;
+    "expiresAt": string;
+}
+
+/**
+ * ShareInvitations: CompletionError says why an accepted share could not be completed, e.g. a changed signing key.
+ */
+export interface ShareInvitations {
+    "received": ReceivedShareInvitation[] | null;
+    "sent": SentShareInvitation[] | null;
+    "completionError": string;
 }
 
 export interface SignUpResult {

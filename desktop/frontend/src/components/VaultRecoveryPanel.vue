@@ -84,7 +84,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
         <span class="panel-icon"><AppIcon name="lock" :size="18" /></span>
         <div class="panel-heading">
           <h2 id="vault-recovery-title">“{{ vault?.name }}” is private</h2>
-          <p class="muted">Only you can open the items in this vault. Create a shared vault to share with your family.</p>
+          <p class="muted">Only you can open the items in this vault. Create a shared vault to share items with other people.</p>
         </div>
         <button class="ghost icon-button" aria-label="Close" @click="closeVaultRecovery"><AppIcon name="close" /></button>
       </header>

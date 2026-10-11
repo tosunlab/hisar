@@ -28,7 +28,7 @@ type VaultRotation struct {
 
 // RotateVault replaces the vault name, all access grants and all items in one transaction.
 // It returns ErrConflict unless rotation.AllItem matches the stored items and revisions exactly,
-// or when the vault has a recovery wrapping and the rotation carries none.
+// or when the vault has a recovery wrapping and the rotation carries none, and ErrNotMember when it would add an account.
 // Item history is dropped because it is encrypted with the previous key.
 func (s *Store) RotateVault(ctx context.Context, rotation VaultRotation) error {
 	return s.runInTransaction(ctx, func(transaction pgx.Tx) error {
@@ -61,6 +61,19 @@ func (s *Store) RotateVault(ctx context.Context, rotation VaultRotation) error {
 			if currentRevision, found := allCurrentRevisionByID[rotatedItem.ID]; !found || currentRevision != rotatedItem.BaseRevision {
 				return ErrConflict
 			}
+		}
+
+		var currentMemberCount int
+		allRotatedAccountID := make([]string, 0, len(rotation.AllAccess))
+		for _, access := range rotation.AllAccess {
+			allRotatedAccountID = append(allRotatedAccountID, access.AccountID)
+		}
+		if err := transaction.QueryRow(ctx, `SELECT count(*) FROM vault_access WHERE vault_id = $1 AND account_id = ANY($2)`,
+			rotation.VaultID, allRotatedAccountID).Scan(&currentMemberCount); err != nil {
+			return err
+		}
+		if currentMemberCount != len(rotation.AllAccess) {
+			return ErrNotMember
 		}
 
 		if rotation.RecoveryWrappedKey == nil {

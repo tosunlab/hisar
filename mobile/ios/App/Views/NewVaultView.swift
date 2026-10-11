@@ -28,7 +28,7 @@ struct NewVaultView: View {
                         .accessibilityIdentifier("new-vault-name")
                         .listRowBackground(Theme.surface)
                 } footer: {
-                    Text("A shared vault starts with only you. Share it with family members from the vault's Members screen; your Personal vault stays private.")
+                    Text("A shared vault starts with only you. Invite people by email from the vault's Members screen; your Personal vault stays private.")
                 }
             }
             .applyListTheme()

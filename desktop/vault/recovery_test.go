@@ -42,6 +42,7 @@ func (server *fakeAPIServer) addAllRecoveryRoute(mux *http.ServeMux) {
 		if response.CreatedBy != server.accountID {
 			response.EncKeyset = nil
 		}
+		response.Creator = server.findMember(response.CreatedBy)
 		writeJSON(writer, http.StatusOK, response)
 	})
 	mux.HandleFunc("POST /api/v1/recovery/keyset", func(writer http.ResponseWriter, request *http.Request) {
@@ -300,9 +301,7 @@ func TestCompleteAccountRecovery(t *testing.T) {
 	if _, err := service.SetUpRecovery(); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.ShareVault(test.familyID, "b@example.com", proto.VaultEditor); err != nil {
-		t.Fatal(err)
-	}
+	shareThroughInvitation(t, test, test.familyID, bob, proto.VaultEditor)
 
 	link, err := service.StartAccountRecovery(bob.AccountID)
 	if err != nil || link != "https://hisar.test/recover/token-"+bob.AccountID {
@@ -346,11 +345,11 @@ func TestCompleteAccountRecovery(t *testing.T) {
 	if err != nil || !bytes.Equal(reloadedState.AllPin[bob.AccountID], bobNewKeyset.GetAllPublicKey(bob.AccountID).Sign) {
 		t.Fatalf("new signing key not pinned: %v", err)
 	}
-	if allMember, _ := service.ListAllMember(); allMember[1].IsKeyChanged {
-		t.Errorf("recovered member shows a key change: %+v", allMember[1])
+	if allPerson, _ := service.ListAllPerson(); allPerson[1].IsKeyChanged {
+		t.Errorf("recovered member shows a key change: %+v", allPerson[1])
 	}
-	if err := service.ShareVault(test.familyID, "b@example.com", proto.VaultReader); err != nil {
-		t.Errorf("share after recovery: %v", err)
+	if err := service.ChangeVaultMemberRole(test.familyID, bob.AccountID, proto.VaultReader); err != nil {
+		t.Errorf("role change after recovery: %v", err)
 	}
 	if _, err := service.CompleteAccountRecovery(bob.AccountID); err == nil || !strings.Contains(err.Error(), "no longer pending") {
 		t.Errorf("complete twice: %v", err)
@@ -506,9 +505,10 @@ func checkRecoveryFlow(t *testing.T, service *Service, serverURL, personalID, fa
 	}
 
 	const memberEmail, memberPassword, newMemberPassword = "desktop-recovered@example.com", "member master password", "recovered master password"
-	inviteLink, err := service.InviteMember(memberEmail, proto.RoleMember)
-	if err != nil {
-		t.Fatal(err)
+	inviteLink := os.Getenv("HISAR_TEST_RECOVERED_MEMBER_INVITE_LINK")
+	if inviteLink == "" {
+		t.Log("HISAR_TEST_RECOVERED_MEMBER_INVITE_LINK not set; skipping the recovery round trip")
+		return
 	}
 	member, _, _ := createTestService(t, filepath.Join(t.TempDir(), "recovered.json"), createMemorySecretKeyStore())
 	t.Cleanup(func() { member.Lock() })
@@ -531,6 +531,16 @@ func checkRecoveryFlow(t *testing.T, service *Service, serverURL, personalID, fa
 	}
 	if err := service.ShareVault(familyID, memberEmail, proto.VaultReader); err != nil {
 		t.Fatal(err)
+	}
+	received, err := member.ListAllShareInvitation()
+	if err != nil || len(received.AllReceived) != 1 {
+		t.Fatalf("member's invitations: %+v %v", received, err)
+	}
+	if err := member.AcceptShareInvitation(received.AllReceived[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	if sent, err := service.ListAllShareInvitation(); err != nil || sent.CompletionError != "" {
+		t.Fatalf("complete the share: %+v %v", sent, err)
 	}
 
 	recoveryAdmin, _, _ := createTestService(t, filepath.Join(t.TempDir(), "recovery-admin.json"), createMemorySecretKeyStore())

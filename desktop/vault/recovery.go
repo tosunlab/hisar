@@ -18,7 +18,7 @@ import (
 const recoveryPinKey = "recovery"
 
 var (
-	errRecoveryAdminOnly   = errors.New("only family admins can manage account recovery")
+	errRecoveryAdminOnly   = errors.New("only admins can manage account recovery")
 	errRecoverSelf         = errors.New("you cannot recover your own account; ask another admin")
 	errRecoveryNotSetUp    = errors.New("account recovery is not set up; ask your admin to set it up in Settings")
 	errRecoveryKeyChanged  = errors.New("the recovery key changed since this device last used it; contact your Hisar admin")
@@ -82,16 +82,10 @@ func (s *Service) getRecoveryStatus(ctx context.Context) (RecoveryStatus, error)
 	}
 	status.IsSetUp = true
 	status.IsCreatedByCurrentUser = recoveryKeyset.CreatedBy == s.unlockedSession.AccountID
-	allMember, err := s.unlockedSession.Client.ListAllMember(ctx)
-	if err != nil {
-		return RecoveryStatus{}, convertError(err)
-	}
-	for _, member := range allMember {
-		if member.AccountID == recoveryKeyset.CreatedBy {
-			status.CreatedByName = member.Name
-			if status.CreatedByName == "" {
-				status.CreatedByName = member.Email
-			}
+	if creator := recoveryKeyset.Creator; creator != nil && creator.AccountID == recoveryKeyset.CreatedBy {
+		status.CreatedByName = creator.Name
+		if status.CreatedByName == "" {
+			status.CreatedByName = creator.Email
 		}
 	}
 	return status, nil
@@ -213,7 +207,7 @@ func (s *Service) DisableVaultRecovery(vaultID string) (VaultSummary, error) {
 	return convertToVaultSummary(vault, s.countCachedItem(vaultID)), nil
 }
 
-// StartAccountRecovery creates a one-time recovery link for a family member, valid for 7 days.
+// StartAccountRecovery creates a one-time recovery link for someone, valid for 7 days.
 func (s *Service) StartAccountRecovery(accountID string) (string, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -235,7 +229,7 @@ func (s *Service) StartAccountRecovery(accountID string) (string, error) {
 	return response.URL, nil
 }
 
-// ListAllPendingRecovery returns the recoveries that family members submitted, oldest first.
+// ListAllPendingRecovery returns the submitted recoveries, oldest first.
 func (s *Service) ListAllPendingRecovery() ([]PendingRecovery, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -306,7 +300,7 @@ func (s *Service) CompleteAccountRecovery(accountID string) ([]string, error) {
 		return nil, convertError(err)
 	}
 	memberIndex := slices.IndexFunc(allMember, func(member proto.Member) bool { return member.AccountID == accountID })
-	if memberIndex < 0 || !bytes.Equal(allMember[memberIndex].PublicKeys.Sign, pending.PublicKeys.Sign) {
+	if memberIndex >= 0 && !bytes.Equal(allMember[memberIndex].PublicKeys.Sign, pending.PublicKeys.Sign) {
 		return nil, fmt.Errorf("the server returned different keys for %s than the ones they submitted; contact your Hisar admin", pending.Email)
 	}
 	s.state.AllPin[accountID] = append([]byte(nil), pending.PublicKeys.Sign...)

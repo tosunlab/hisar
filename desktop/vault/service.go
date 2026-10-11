@@ -47,6 +47,7 @@ type Service struct {
 	pendingImport                *pendingImport
 	stopEvents                   context.CancelFunc
 	onSessionChange              func(server, token string, isSignedIn bool)
+	shareCompletionError         string
 	allLockListener              []func()
 	phoneApprovals               *phoneApprovalRelay
 }

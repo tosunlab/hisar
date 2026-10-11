@@ -26,7 +26,7 @@ func (s *Service) watchEvents(ctx context.Context, apiClient *client.Client) {
 		connectedAt := time.Now()
 		err := apiClient.StreamEvents(ctx, func(event client.Event) {
 			switch event.Name {
-			case proto.EventVaultChanged, proto.EventVaultsChanged:
+			case proto.EventVaultChanged, proto.EventVaultsChanged, proto.EventShareInvitationsChanged:
 				select {
 				case allPendingSync <- struct{}{}:
 				default:
@@ -70,6 +70,7 @@ func (s *Service) syncAllVault(ctx context.Context) bool {
 	if s.unlockedSession == nil || ctx.Err() != nil {
 		return false
 	}
+	s.completeAllAcceptedShare(ctx)
 	if err := s.loadAllVault(ctx); err != nil {
 		return false
 	}

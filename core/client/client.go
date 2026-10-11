@@ -138,9 +138,31 @@ func (c *Client) ListAllMember(ctx context.Context) ([]proto.Member, error) {
 	return allMember, c.sendRequest(ctx, "GET", "/api/v1/members", nil, nil, &allMember, nil)
 }
 
-func (c *Client) Invite(ctx context.Context, request *proto.InviteRequest) (*proto.InviteResponse, error) {
-	var response proto.InviteResponse
+func (c *Client) Invite(ctx context.Context, request *proto.InviteRequest) (*proto.InvitationSentResponse, error) {
+	var response proto.InvitationSentResponse
 	return &response, c.sendRequest(ctx, "POST", "/api/v1/invites", nil, request, &response, nil)
+}
+
+func (c *Client) CreateShareInvitation(ctx context.Context, vaultID string, request *proto.ShareInvitationRequest) (*proto.InvitationSentResponse, error) {
+	var response proto.InvitationSentResponse
+	return &response, c.sendRequest(ctx, "POST", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/share-invitations", nil, request, &response, nil)
+}
+
+func (c *Client) ListAllShareInvitation(ctx context.Context) (*proto.ShareInvitationList, error) {
+	var response proto.ShareInvitationList
+	return &response, c.sendRequest(ctx, "GET", "/api/v1/share-invitations", nil, nil, &response, nil)
+}
+
+func (c *Client) AcceptShareInvitation(ctx context.Context, invitationID string) error {
+	return c.sendRequest(ctx, "POST", "/api/v1/share-invitations/"+url.PathEscape(invitationID)+"/accept", nil, nil, nil, nil)
+}
+
+func (c *Client) DeclineShareInvitation(ctx context.Context, invitationID string) error {
+	return c.sendRequest(ctx, "POST", "/api/v1/share-invitations/"+url.PathEscape(invitationID)+"/decline", nil, nil, nil, nil)
+}
+
+func (c *Client) CancelShareInvitation(ctx context.Context, invitationID string) error {
+	return c.sendRequest(ctx, "DELETE", "/api/v1/share-invitations/"+url.PathEscape(invitationID), nil, nil, nil, nil)
 }
 
 func (c *Client) ListAllDevice(ctx context.Context) ([]proto.Device, error) {

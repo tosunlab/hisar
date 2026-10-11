@@ -1,10 +1,8 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
-	"strings"
 
 	"github.com/gofiber/fiber/v3"
 
@@ -39,45 +37,15 @@ func getAllPublicKey(account *store.Account) crypt.PublicKeys {
 }
 
 func (s *Server) handleListAllMember(c fiber.Ctx) error {
-	allAccount, err := s.store.ListAllAccount(c.Context())
+	allAccount, err := s.store.ListAllPerson(c.Context(), getSession(c).AccountID)
 	if err != nil {
 		return err
 	}
 	allMember := make([]proto.Member, 0, len(allAccount))
 	for index := range allAccount {
-		account := &allAccount[index]
-		allMember = append(allMember, proto.Member{AccountID: account.ID, Email: account.Email, Name: account.Name, Role: account.Role, PublicKeys: getAllPublicKey(account)})
+		allMember = append(allMember, convertToProtoMember(&allAccount[index]))
 	}
 	return c.JSON(allMember)
-}
-
-func (s *Server) handleCreateInvite(c fiber.Ctx) error {
-	currentSession := getSession(c)
-	if currentSession.Role != proto.RoleAdmin {
-		return createAPIError(fiber.StatusForbidden, "admin only")
-	}
-	var request proto.InviteRequest
-	if err := decodeBody(c, &request); err != nil {
-		return err
-	}
-	email := normalizeEmail(request.Email)
-	if !strings.Contains(email, "@") || (request.Role != proto.RoleAdmin && request.Role != proto.RoleMember) {
-		return createAPIError(fiber.StatusBadRequest, "invalid invite")
-	}
-	response, err := s.CreateInvite(c.Context(), email, request.Role, &currentSession.AccountID)
-	if err != nil {
-		return err
-	}
-	s.recordAudit(c, currentSession.AccountID, currentSession.DeviceID, "invite", map[string]string{"email": email, "role": request.Role})
-	return c.JSON(response)
-}
-
-func (s *Server) CreateInvite(ctx context.Context, email, role string, createdBy *string) (*proto.InviteResponse, error) {
-	token := generateToken()
-	if err := s.store.CreateInvite(ctx, hashToken(token), email, role, createdBy, s.config.InviteTTL); err != nil {
-		return nil, err
-	}
-	return &proto.InviteResponse{Token: token, URL: strings.TrimRight(s.config.PublicURL, "/") + "/invite/" + token}, nil
 }
 
 func (s *Server) handleListAllDevice(c fiber.Ctx) error {

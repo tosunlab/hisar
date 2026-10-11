@@ -19,6 +19,7 @@ import (
 	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/server/internal/api"
 	"github.com/tryhisar/hisar/server/internal/desktopupdate"
+	"github.com/tryhisar/hisar/server/internal/mail"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
@@ -29,7 +30,7 @@ func printUsage() {
 
 commands:
   serve    run the API server (default)
-  invite   create an invite link
+  invite   create an invite link (printed, not emailed)
   migrate  up | down | status: manage database migrations
 
 environment:
@@ -40,6 +41,13 @@ environment:
   HISAR_TRUST_PROXY    trust X-Forwarded-For from the reverse proxy (default false)
   HISAR_AUTO_MIGRATE   apply pending migrations on start (default true)
   HISAR_AUTH_BURST     auth requests per IP before limiting to one per 6 seconds (default 10)
+
+email for invites and share invitations (optional; all five or none):
+  HISAR_SMTP_HOST      SMTP server, e.g. smtp.example.com
+  HISAR_SMTP_PORT      465 for implicit TLS; any other port must offer STARTTLS
+  HISAR_SMTP_USERNAME  SMTP user name
+  HISAR_SMTP_PASSWORD  SMTP password
+  HISAR_SMTP_FROM      sender, e.g. "Hisar <noreply@tryhisar.com>"
 
 desktop updates (optional; all three or none):
   HISAR_UPDATE_GITLAB_URL         GitLab holding the hisar-desktop generic package, e.g. https://git.tryhisar.com
@@ -117,11 +125,17 @@ func setup(ctx context.Context) (*store.Store, *api.Server, error) {
 		database.Close()
 		return nil, nil, err
 	}
+	mailer, err := createMailer()
+	if err != nil {
+		database.Close()
+		return nil, nil, err
+	}
 	server, err := api.CreateServer(database, secrets, api.Config{
 		PublicURL:      publicURL,
 		TrustProxy:     getEnv("HISAR_TRUST_PROXY", "false") == "true",
 		AuthBurst:      authBurst,
 		DesktopUpdates: desktopUpdates,
+		Mailer:         mailer,
 	})
 	if err != nil {
 		database.Close()
@@ -144,6 +158,34 @@ func createDesktopUpdateSource(publicURL string) (*desktopupdate.Source, error) 
 	}
 	log.Printf("desktop updates from %s project %s", gitLabURL, projectID)
 	return desktopupdate.CreateSource(gitLab, desktopupdate.SourceConfig{PublicURL: publicURL}), nil
+}
+
+func createMailer() (mail.Mailer, error) {
+	allName := []string{"HISAR_SMTP_HOST", "HISAR_SMTP_PORT", "HISAR_SMTP_USERNAME", "HISAR_SMTP_PASSWORD", "HISAR_SMTP_FROM"}
+	setCount := 0
+	for _, name := range allName {
+		if os.Getenv(name) != "" {
+			setCount++
+		}
+	}
+	if setCount == 0 {
+		return nil, nil
+	}
+	if setCount != len(allName) {
+		return nil, errors.New("email needs HISAR_SMTP_HOST, HISAR_SMTP_PORT, HISAR_SMTP_USERNAME, HISAR_SMTP_PASSWORD and HISAR_SMTP_FROM together")
+	}
+	port, err := strconv.Atoi(os.Getenv("HISAR_SMTP_PORT"))
+	if err != nil {
+		return nil, fmt.Errorf("HISAR_SMTP_PORT must be a port number")
+	}
+	mailer, err := mail.CreateSMTPMailer(mail.SMTPConfig{
+		Host: os.Getenv("HISAR_SMTP_HOST"), Port: port, Username: os.Getenv("HISAR_SMTP_USERNAME"), Password: os.Getenv("HISAR_SMTP_PASSWORD"), From: os.Getenv("HISAR_SMTP_FROM"),
+	})
+	if err != nil {
+		return nil, err
+	}
+	log.Printf("email through %s port %d", os.Getenv("HISAR_SMTP_HOST"), port)
+	return mailer, nil
 }
 
 func serve(ctx context.Context, allArg []string) error {

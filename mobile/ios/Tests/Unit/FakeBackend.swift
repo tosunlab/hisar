@@ -25,6 +25,8 @@ class FakeBackend: VaultBackend {
     var allMember: [Member] = []
     var allVaultMemberByVaultID: [String: [Member]] = [:]
     var allInvitedEmail: [String] = []
+    var shareInvitations = ShareInvitations()
+    var allAnsweredInvitation: [String] = []
     var allPendingApproval: [PhoneApproval] = []
     var allApprovalAnswer: [String] = []
     private let approvalLock = NSLock()
@@ -86,20 +88,48 @@ class FakeBackend: VaultBackend {
         return vault
     }
 
-    func listAllMember() throws -> [Member] {
-        record("listAllMember")
+    func listAllPerson() throws -> [Member] {
+        record("listAllPerson")
         try requireUnlocked()
-        return allMember
+        let allSharedAccountID = Set(allVaultMemberByVaultID.values.filter { $0.contains { $0.isCurrentUser } }.flatMap { $0.map(\.accountID) })
+        return allMember.filter { $0.isCurrentUser || allSharedAccountID.contains($0.accountID) }
     }
 
-    func inviteMember(email: String, role: String) throws -> String {
-        record("inviteMember")
+    func invitePerson(email: String) throws {
+        record("invitePerson")
         try requireUnlocked()
-        guard email.contains("@") else { throw BackendError(message: "Enter the email address of the person you are inviting") }
-        guard role == Member.roleAdmin || role == Member.roleMember else { throw BackendError(message: "Choose admin or member") }
-        guard currentMember?.role == Member.roleAdmin else { throw BackendError(message: "Only family admins can invite people") }
+        guard email.contains("@") else { throw BackendError(message: "Enter the email address of the person") }
         allInvitedEmail.append(email)
-        return "\(status.server)/invite/token-\(allInvitedEmail.count)"
+    }
+
+    func listAllShareInvitation() throws -> ShareInvitations {
+        record("listAllShareInvitation")
+        try requireUnlocked()
+        return shareInvitations
+    }
+
+    func acceptShareInvitation(invitationID: String) throws {
+        record("acceptShareInvitation")
+        try answerReceivedInvitation(invitationID: invitationID, answer: "accept")
+    }
+
+    func declineShareInvitation(invitationID: String) throws {
+        record("declineShareInvitation")
+        try answerReceivedInvitation(invitationID: invitationID, answer: "decline")
+    }
+
+    private func answerReceivedInvitation(invitationID: String, answer: String) throws {
+        try requireUnlocked()
+        guard shareInvitations.allReceived.contains(where: { $0.id == invitationID }) else { throw BackendError(message: "This invitation no longer exists") }
+        shareInvitations.allReceived.removeAll { $0.id == invitationID }
+        allAnsweredInvitation.append("\(invitationID) \(answer)")
+    }
+
+    func cancelShareInvitation(invitationID: String) throws {
+        record("cancelShareInvitation")
+        try requireUnlocked()
+        guard shareInvitations.allSent.contains(where: { $0.id == invitationID }) else { throw BackendError(message: "This invitation no longer exists") }
+        shareInvitations.allSent.removeAll { $0.id == invitationID }
     }
 
     func listAllVaultMember(vaultID: String) throws -> [Member] {
@@ -121,12 +151,11 @@ class FakeBackend: VaultBackend {
         try requireUnlocked()
         guard Member.allVaultRole.contains(role) else { throw BackendError(message: "Choose owner, editor or reader") }
         let vault = try findSharableVault(vaultID: vaultID)
-        guard let member = allMember.first(where: { $0.email == email }) else { throw BackendError(message: "Nobody in your family uses that email; invite them first in Settings") }
-        guard !member.isCurrentUser else { throw BackendError(message: "You cannot change your own access to a vault") }
-        var allVaultMember = allVaultMemberByVaultID[vault.id] ?? []
-        allVaultMember.removeAll { $0.accountID == member.accountID }
-        allVaultMember.append(Member(accountID: member.accountID, name: member.name, email: member.email, role: role, securityCode: member.securityCode))
-        allVaultMemberByVaultID[vault.id] = allVaultMember
+        guard email.contains("@") else { throw BackendError(message: "Enter the email address of the person") }
+        guard email != currentMember?.email else { throw BackendError(message: "That is your own email; you already have access") }
+        guard !(allVaultMemberByVaultID[vault.id] ?? []).contains(where: { $0.email == email }) else { throw BackendError(message: "This person already has access to the vault") }
+        shareInvitations.allSent.removeAll { $0.vaultID == vault.id && $0.email == email }
+        shareInvitations.allSent.append(SentShareInvitation(id: "invitation-\(shareInvitations.allSent.count + 1)", vaultID: vault.id, vaultName: vault.name, email: email, role: role, state: "pending", expiresAt: "2027-01-22T08:00:00Z"))
     }
 
     func changeVaultMemberRole(vaultID: String, accountID: String, role: String) throws {

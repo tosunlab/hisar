@@ -1,9 +1,8 @@
 import XCTest
 
 final class SharingUITests: HisarUITestCase {
-    func testCreateVaultSeeMembersAndInvite() throws {
+    func testCreateVaultShareByEmailAndInvite() throws {
         let inviteLink = try readEnvironment("HISAR_UI_TEST_SHARING_INVITE_LINK")
-        let server = try readEnvironment("HISAR_UI_TEST_SERVER")
         app.launch()
         _ = signUp(inviteLink: inviteLink, email: "ios-sharing@example.com", name: "iOS Sharing")
 
@@ -19,8 +18,10 @@ final class SharingUITests: HisarUITestCase {
         XCTAssertTrue(app.staticTexts["Owner"].exists)
         saveScreenshot("vault-members")
         app.buttons["share-vault"].tap()
-        waitFor(app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Everyone in your family already has access'")).firstMatch, timeout: 30)
-        app.buttons["Cancel"].tap()
+        type("partner@example.com", into: app.textFields["share-email"])
+        app.buttons["share-vault-submit"].tap()
+        waitFor(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'partner@example.com'")).firstMatch, timeout: 30)
+        saveScreenshot("vault-invitation")
         app.buttons["vault-members-done"].tap()
 
         app.navigationBars.buttons.element(boundBy: 0).tap()
@@ -28,21 +29,15 @@ final class SharingUITests: HisarUITestCase {
         XCTAssertTrue(app.buttons["vault-Personal"].exists)
 
         app.buttons["open-settings"].tap()
-        waitFor(app.buttons["open-family"])
-        app.buttons["open-family"].tap()
-        waitFor(app.buttons["invite-member"], timeout: 30)
-        saveScreenshot("family")
-        app.buttons["invite-member"].tap()
+        waitFor(app.buttons["open-people"])
+        app.buttons["open-people"].tap()
+        waitFor(app.buttons["invite-person"], timeout: 30)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'partner@example.com'")).firstMatch.exists, "the pending invitation is listed")
+        saveScreenshot("people")
+        app.buttons["invite-person"].tap()
         type("partner@example.com", into: app.textFields["invite-email"])
-        app.segmentedControls["invite-role"].buttons["Admin"].tap()
         app.buttons["invite-submit"].tap()
-        let inviteLinkText = app.staticTexts["invite-link"]
-        waitFor(inviteLinkText, timeout: 30)
-        XCTAssertTrue(inviteLinkText.label.hasPrefix("\(server)/invite/"), inviteLinkText.label)
-        saveScreenshot("invite-link")
-        app.buttons["invite-copy"].tap()
-        waitFor(app.buttons["Copied"], timeout: 5)
-        app.buttons["invite-done"].tap()
-        waitFor(app.buttons["invite-member"])
+        let sentOrNotConfigured = NSPredicate(format: "label CONTAINS 'Invitation sent' OR label CONTAINS 'cannot send email'")
+        waitFor(app.staticTexts.matching(sentOrNotConfigured).firstMatch, timeout: 30)
     }
 }

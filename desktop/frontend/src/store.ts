@@ -6,8 +6,10 @@ import {
   type BrowserStatus,
   type CommandLineStatus,
   type Device,
-  type FamilyMember,
-  type FamilyRole,
+  type Person,
+  type ReceivedShareInvitation,
+  type SentShareInvitation,
+  type ShareInvitations,
   type ImportFormat,
   type ImportPreview,
   type ImportProgress,
@@ -54,7 +56,8 @@ export const store = reactive({
   sshAgentErrorMessage: "",
   isSharingOpen: false,
   allVaultMember: [] as VaultMember[],
-  allFamilyMember: [] as FamilyMember[],
+  allPerson: [] as Person[],
+  shareInvitations: { received: [], sent: [], completionError: "" } as ShareInvitations,
   allDevice: [] as Device[],
   browserPairing: null as BrowserPairingRequest | null,
   browserStatus: null as BrowserStatus | null,
@@ -107,7 +110,8 @@ function clearAllVaultData(): void {
   store.isSettingsOpen = false;
   store.isSharingOpen = false;
   store.allVaultMember = [];
-  store.allFamilyMember = [];
+  store.allPerson = [];
+  store.shareInvitations = { received: [], sent: [], completionError: "" };
   store.allDevice = [];
   store.recoveryStatus = null;
   store.allPendingRecovery = [];
@@ -264,6 +268,19 @@ export async function loadAllVault(): Promise<void> {
   if (!stillExists && allVault.length > 0) {
     await selectVault(allVault[0].id);
   }
+  await loadShareInvitationsQuietly();
+}
+
+// loadShareInvitationsQuietly also lets the backend complete shares people accepted; failures stay silent like a background sync.
+export async function loadShareInvitationsQuietly(): Promise<void> {
+  try {
+    const shareInvitations = await api.listAllShareInvitation();
+    if (store.status.state === "unlocked") {
+      store.shareInvitations = shareInvitations;
+    }
+  } catch {
+    return;
+  }
 }
 
 export const syncInterval = 60_000;
@@ -281,6 +298,7 @@ export async function syncInBackground(): Promise<void> {
     }
     store.allVault = allVault;
     store.status = status;
+    await loadShareInvitationsQuietly();
     if (!allVault.some((vault) => vault.id === store.selectedVaultID)) {
       if (allVault.length > 0) {
         await selectVault(allVault[0].id);
@@ -485,9 +503,9 @@ export function getFirstName(member: { name: string; email: string }): string {
 
 export async function loadSharing(): Promise<void> {
   const vaultID = store.selectedVaultID;
-  const result = await runAction(() => Promise.all([api.listAllVaultMember(vaultID), api.listAllMember()]));
+  const result = await runAction(() => Promise.all([api.listAllVaultMember(vaultID), api.listAllShareInvitation()]));
   if (result && vaultID === store.selectedVaultID) {
-    [store.allVaultMember, store.allFamilyMember] = result;
+    [store.allVaultMember, store.shareInvitations] = result;
   }
 }
 
@@ -502,17 +520,58 @@ export function closeSharing(): void {
   store.errorMessage = "";
 }
 
-export async function shareVault(member: FamilyMember, role: VaultRole): Promise<boolean> {
+// shareVault sends a share invitation; the server answers the same whether or not the email has an account.
+export async function shareVault(email: string, role: VaultRole): Promise<boolean> {
   const vaultID = store.selectedVaultID;
   const shared = await runAction(async () => {
-    await api.shareVault(vaultID, member.email, role);
+    await api.shareVault(vaultID, email, role);
     return true;
   });
   if (shared) {
     await loadSharing();
-    showNotice(`Shared with ${getFirstName(member)}`);
+    showNotice(`Invitation sent to ${email.trim().toLowerCase()}`);
   }
   return shared === true;
+}
+
+export function getAllSentShareInvitation(vaultID: string): SentShareInvitation[] {
+  return store.shareInvitations.sent.filter((invitation) => invitation.vaultId === vaultID);
+}
+
+export async function acceptShareInvitation(invitation: ReceivedShareInvitation): Promise<boolean> {
+  const accepted = await runAction(async () => {
+    await api.acceptShareInvitation(invitation.id);
+    return true;
+  });
+  await loadShareInvitationsQuietly();
+  if (accepted) {
+    showNotice(`Accepted. The vault appears once ${getFirstName({ name: invitation.invitedByName, email: invitation.invitedByEmail })}'s Hisar finishes sharing`);
+  }
+  return accepted === true;
+}
+
+export async function declineShareInvitation(invitation: ReceivedShareInvitation): Promise<boolean> {
+  const declined = await runAction(async () => {
+    await api.declineShareInvitation(invitation.id);
+    return true;
+  });
+  await loadShareInvitationsQuietly();
+  if (declined) {
+    showNotice("Invitation declined");
+  }
+  return declined === true;
+}
+
+export async function cancelShareInvitation(invitation: SentShareInvitation): Promise<boolean> {
+  const cancelled = await runAction(async () => {
+    await api.cancelShareInvitation(invitation.id);
+    return true;
+  });
+  await loadShareInvitationsQuietly();
+  if (cancelled) {
+    showNotice(`Invitation to ${invitation.email} cancelled`);
+  }
+  return cancelled === true;
 }
 
 export async function changeVaultMemberRole(member: VaultMember, role: VaultRole): Promise<boolean> {
@@ -550,18 +609,22 @@ export async function removeVaultMember(member: VaultMember): Promise<boolean> {
 }
 
 export async function loadSettingsData(): Promise<void> {
-  const result = await runAction(() => Promise.all([api.listAllMember(), api.listAllDevice()]));
+  const result = await runAction(() => Promise.all([api.listAllPerson(), api.listAllDevice(), api.listAllShareInvitation()]));
   if (result) {
-    [store.allFamilyMember, store.allDevice] = result;
+    [store.allPerson, store.allDevice, store.shareInvitations] = result;
   }
 }
 
-export async function inviteMember(email: string, role: FamilyRole): Promise<string | undefined> {
-  const link = await runAction(() => api.inviteMember(email, role));
-  if (link) {
-    showNotice("Invite link created");
+// invitePerson asks the server to email a sign-up invite; the answer does not say whether the person has an account.
+export async function invitePerson(email: string): Promise<boolean> {
+  const invited = await runAction(async () => {
+    await api.invitePerson(email);
+    return true;
+  });
+  if (invited) {
+    showNotice(`Invitation sent to ${email.trim().toLowerCase()}`);
   }
-  return link;
+  return invited === true;
 }
 
 export async function revokeDevice(device: Device): Promise<boolean> {
@@ -807,7 +870,7 @@ export async function setVaultRecovery(vaultID: string, isEnabled: boolean): Pro
   return true;
 }
 
-export async function startAccountRecovery(member: FamilyMember): Promise<string | undefined> {
+export async function startAccountRecovery(member: Person): Promise<string | undefined> {
   const link = await runAction(() => api.startAccountRecovery(member.accountId));
   if (link) {
     showNotice("Recovery link created");
@@ -822,9 +885,9 @@ export async function completeAccountRecovery(pending: PendingRecovery): Promise
     return undefined;
   }
   await loadRecoveryData();
-  const allFamilyMember = await runAction(() => api.listAllMember());
-  if (allFamilyMember) {
-    store.allFamilyMember = allFamilyMember;
+  const allPerson = await runAction(() => api.listAllPerson());
+  if (allPerson) {
+    store.allPerson = allPerson;
   }
   showNotice(`Recovered ${getFirstName(pending)}`);
   return allUnrecoverableVaultName;

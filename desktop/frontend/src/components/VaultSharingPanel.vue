@@ -1,7 +1,17 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import type { VaultMember, VaultRole } from "../api";
-import { changeVaultMemberRole, closeSharing, getFirstName, getSelectedVault, removeVaultMember, shareVault, store } from "../store";
+import type { SentShareInvitation, VaultMember, VaultRole } from "../api";
+import {
+  cancelShareInvitation,
+  changeVaultMemberRole,
+  closeSharing,
+  getAllSentShareInvitation,
+  getFirstName,
+  getSelectedVault,
+  removeVaultMember,
+  shareVault,
+  store,
+} from "../store";
 import { formatRole } from "../util";
 import AppIcon from "./AppIcon.vue";
 import MemberAvatar from "./MemberAvatar.vue";
@@ -10,14 +20,13 @@ const allVaultRole: VaultRole[] = ["owner", "editor", "reader"];
 
 const expandedAccountID = ref("");
 const removingAccountID = ref("");
-const newMemberAccountID = ref("");
+const newMemberEmail = ref("");
 const newMemberRole = ref<VaultRole>("editor");
+const cancellingInvitationID = ref("");
 
 const vault = computed(() => getSelectedVault());
 const isOwner = computed(() => vault.value?.role === "owner");
-const allAvailableMember = computed(() =>
-  store.allFamilyMember.filter((familyMember) => !store.allVaultMember.some((vaultMember) => vaultMember.accountId === familyMember.accountId)),
-);
+const allSentInvitation = computed(() => (vault.value ? getAllSentShareInvitation(vault.value.id) : []));
 const memberCountText = computed(() => {
   const count = store.allVaultMember.length;
   return count === 1 ? "1 member" : `${count} members`;
@@ -33,10 +42,15 @@ function toggleSecurityCode(accountID: string): void {
 }
 
 async function submitShare(): Promise<void> {
-  const familyMember = store.allFamilyMember.find((candidate) => candidate.accountId === newMemberAccountID.value);
-  if (familyMember && (await shareVault(familyMember, newMemberRole.value))) {
-    newMemberAccountID.value = "";
+  if (await shareVault(newMemberEmail.value.trim(), newMemberRole.value)) {
+    newMemberEmail.value = "";
     newMemberRole.value = "editor";
+  }
+}
+
+async function confirmCancel(invitation: SentShareInvitation): Promise<void> {
+  if (await cancelShareInvitation(invitation)) {
+    cancellingInvitationID.value = "";
   }
 }
 
@@ -141,33 +155,73 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
             <AppIcon name="shield" class="detail-icon" />
             <div>
               <span class="security-code monospace" data-testid="security-code">{{ member.securityCode }}</span>
-              <p v-if="member.isCurrentUser" class="muted">This is your security code. Family members can compare it with the code they see for you.</p>
-              <p v-else class="muted">Compare this code with {{ getFirstName(member) }} in person to be sure the server isn't intercepting.</p>
+              <p v-if="member.isCurrentUser" class="muted">This is your security code. People you share with can compare it with the code they see for you.</p>
+              <p v-else class="muted">Compare this code with {{ getFirstName(member) }} in person or over a channel you trust, to be sure the server isn't intercepting.</p>
               <p v-if="member.isKeyChanged" class="warning-text">
-                {{ getFirstName(member) }}'s key changed since you last shared with them. Hisar refuses to share until you sort this out with your admin.
+                {{ getFirstName(member) }}'s key changed since you last shared with them. Hisar refuses to share until you compare security codes again.
               </p>
             </div>
           </div>
         </li>
       </ul>
 
-      <form v-if="isOwner" class="add-member" data-testid="add-member" @submit.prevent="submitShare">
-        <p class="section-label">Add member</p>
-        <div v-if="allAvailableMember.length > 0" class="add-row">
-          <select v-model="newMemberAccountID" class="member-select" aria-label="Family member" data-testid="new-member-select">
-            <option value="" disabled>Choose a family member</option>
-            <option v-for="familyMember in allAvailableMember" :key="familyMember.accountId" :value="familyMember.accountId">
-              {{ familyMember.name || familyMember.email }} · {{ familyMember.email }}
-            </option>
-          </select>
-          <select v-model="newMemberRole" class="role-select" aria-label="Role for the new member" data-testid="new-member-role">
-            <option v-for="role in allVaultRole" :key="role" :value="role">{{ formatRole(role) }}</option>
-          </select>
-          <button class="primary" type="submit" :disabled="!newMemberAccountID || store.isBusy">Share</button>
-        </div>
-        <p v-else-if="store.allFamilyMember.length > 0" class="muted hint">Everyone in your family already has access. Invite someone new in Settings.</p>
-        <p class="muted hint">Editors can add and change items, readers can only view them, and owners also manage who has access.</p>
-      </form>
+      <template v-if="isOwner">
+        <template v-if="allSentInvitation.length > 0">
+          <p class="section-label">Invited</p>
+          <ul class="member-list" aria-label="Pending invitations" data-testid="vault-invitations">
+            <li v-for="invitation in allSentInvitation" :key="invitation.id" class="member" :data-testid="`vault-invitation-${invitation.id}`">
+              <div class="member-row">
+                <span class="invitation-icon"><AppIcon name="mail" :size="15" /></span>
+                <div class="member-text">
+                  <span class="member-name"><span class="name-text">{{ invitation.email }}</span></span>
+                  <span class="member-email">{{ invitation.state === "accepted" ? "Accepted · finishing on your next sync" : "Waiting for them to accept" }}</span>
+                </div>
+                <template v-if="cancellingInvitationID !== invitation.id">
+                  <span class="role-label">{{ formatRole(invitation.role) }}</span>
+                  <button
+                    class="ghost icon-button remove-button"
+                    :aria-label="`Cancel the invitation to ${invitation.email}`"
+                    title="Cancel invitation"
+                    :data-testid="`cancel-vault-invitation-${invitation.id}`"
+                    @click="cancellingInvitationID = invitation.id"
+                  >
+                    <AppIcon name="close" />
+                  </button>
+                </template>
+                <template v-else>
+                  <button class="ghost" @click="cancellingInvitationID = ''">Keep</button>
+                  <button class="danger-solid" data-testid="confirm-cancel-vault-invitation" :disabled="store.isBusy" @click="confirmCancel(invitation)">
+                    Cancel invitation
+                  </button>
+                </template>
+              </div>
+            </li>
+          </ul>
+        </template>
+        <form class="add-member" data-testid="add-member" @submit.prevent="submitShare">
+          <p class="section-label">Invite by email</p>
+          <div class="add-row">
+            <input
+              v-model="newMemberEmail"
+              class="member-email-input"
+              name="shareEmail"
+              type="email"
+              aria-label="Email"
+              placeholder="name@example.com"
+              autocomplete="off"
+              data-testid="new-member-email"
+            />
+            <select v-model="newMemberRole" class="role-select" aria-label="Role for the new member" data-testid="new-member-role">
+              <option v-for="role in allVaultRole" :key="role" :value="role">{{ formatRole(role) }}</option>
+            </select>
+            <button class="primary" type="submit" data-testid="send-share-invitation" :disabled="!newMemberEmail.trim() || store.isBusy">Invite</button>
+          </div>
+          <p class="muted hint">
+            They get an email and accept in Hisar; without an account, the email lets them create one. Your Hisar then shares the vault key with them.
+          </p>
+          <p class="muted hint">Editors can add and change items, readers can only view them, and owners also manage who has access.</p>
+        </form>
+      </template>
       <p v-else class="read-only-note" data-testid="sharing-read-only">
         <AppIcon name="lock" :size="14" />
         <span>You are {{ ownRole === "editor" ? "an editor" : `a ${ownRole || "member"}` }} in this vault. Only its owners can change who has access.</span>
@@ -396,9 +450,21 @@ h2 {
   margin-bottom: 8px;
 }
 
-.member-select {
+.member-email-input {
   flex: 1;
   min-width: 0;
+}
+
+.invitation-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  flex: none;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: 50%;
+  color: var(--color-text-muted);
 }
 
 .hint {

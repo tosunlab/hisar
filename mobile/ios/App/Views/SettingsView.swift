@@ -51,16 +51,16 @@ struct SettingsView: View {
                 }
                 Section {
                     NavigationLink {
-                        FamilyView()
+                        PeopleView()
                             .environmentObject(model)
                     } label: {
-                        Label("Family", systemImage: "person.2")
+                        Label("People", systemImage: "person.2")
                             .foregroundStyle(Theme.text)
                     }
                     .listRowBackground(Theme.surface)
-                    .accessibilityIdentifier("open-family")
+                    .accessibilityIdentifier("open-people")
                 } footer: {
-                    Text("Who uses this Hisar server, and invites for new people.")
+                    Text("People you share vaults with, share invitations, and invites to Hisar.")
                 }
                 Section {
                     Button {

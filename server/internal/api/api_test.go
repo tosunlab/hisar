@@ -7,6 +7,8 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"regexp"
+	"slices"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -18,6 +20,7 @@ import (
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/core/session"
+	"github.com/tryhisar/hisar/server/internal/mail/mailtest"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
@@ -62,6 +65,54 @@ func setupServer(t *testing.T) (baseURL string, server *Server, databaseURL stri
 	go app.Listener(listener, fiber.ListenConfig{DisableStartupMessage: true})
 	t.Cleanup(func() { app.Shutdown() })
 	return "http://" + listener.Addr().String(), server, databaseURL
+}
+
+func attachMailRecorder(server *Server) *mailtest.Recorder {
+	recorder := mailtest.CreateRecorder()
+	server.config.Mailer = recorder
+	return recorder
+}
+
+var inviteTokenPattern = regexp.MustCompile(`/invite/([A-Za-z0-9_-]+)`)
+
+// findInviteToken returns the invite code of the latest email to recipient.
+func findInviteToken(t *testing.T, server *Server, recorder *mailtest.Recorder, recipient string) string {
+	t.Helper()
+	server.WaitForBackgroundWork()
+	allMessage := recorder.ListAllMessage()
+	for index := len(allMessage) - 1; index >= 0; index-- {
+		if allMessage[index].To != recipient {
+			continue
+		}
+		if match := inviteTokenPattern.FindStringSubmatch(allMessage[index].Body); match != nil {
+			return match[1]
+		}
+	}
+	t.Fatalf("no invite emailed to %s: %+v", recipient, allMessage)
+	return ""
+}
+
+// shareThroughInvitation runs the whole share flow: the owner invites, the recipient accepts, the owner completes.
+func shareThroughInvitation(t *testing.T, owner, recipient *session.Session, vault *session.Vault, role string) {
+	t.Helper()
+	ctx := context.Background()
+	if err := owner.InviteToVault(ctx, vault, recipient.Email, role); err != nil {
+		t.Fatal(err)
+	}
+	invitationList := requireValue[*proto.ShareInvitationList](t)(recipient.Client.ListAllShareInvitation(ctx))
+	invitationIndex := slices.IndexFunc(invitationList.AllReceived, func(invitation proto.ReceivedShareInvitation) bool { return invitation.VaultID == vault.ID })
+	if invitationIndex < 0 {
+		t.Fatalf("%s received no invitation to %s: %+v", recipient.Email, vault.Name, invitationList)
+	}
+	if err := recipient.Client.AcceptShareInvitation(ctx, invitationList.AllReceived[invitationIndex].ID); err != nil {
+		t.Fatal(err)
+	}
+	allCompleted, err := owner.CompleteAllAcceptedShare(ctx)
+	if err != nil || !slices.ContainsFunc(allCompleted, func(completed session.CompletedShare) bool {
+		return completed.VaultID == vault.ID && completed.Recipient.AccountID == recipient.AccountID && completed.Role == role
+	}) {
+		t.Fatalf("completed shares: %+v %v", allCompleted, err)
+	}
 }
 
 type seqStore map[string]int64
@@ -135,13 +186,17 @@ func TestEndToEnd(t *testing.T) {
 		}
 	})
 
-	bobInvite := requireValue[*proto.InviteResponse](t)(alice.Client.Invite(ctx, &proto.InviteRequest{Email: "bob@example.com", Role: proto.RoleMember}))
-	bob, _, err := session.SignUp(ctx, client.Create(baseURL), bobInvite.Token, "bob@example.com", "Bob", []byte("bob password"), testDevice)
+	recorder := attachMailRecorder(server)
+	requireValue[*proto.InvitationSentResponse](t)(alice.Client.Invite(ctx, &proto.InviteRequest{Email: "bob@example.com"}))
+	bob, _, err := session.SignUp(ctx, client.Create(baseURL), findInviteToken(t, server, recorder, "bob@example.com"), "bob@example.com", "Bob", []byte("bob password"), testDevice)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := bob.Client.Invite(ctx, &proto.InviteRequest{Email: "eve@example.com", Role: proto.RoleMember}); !client.IsStatus(err, http.StatusForbidden) {
+	if _, err := bob.Client.Invite(ctx, &proto.InviteRequest{Email: "eve@example.com"}); err != nil {
 		t.Errorf("member invite: %v", err)
+	}
+	if _, err := bob.Client.Invite(ctx, &proto.InviteRequest{Email: "eve@example.com", Role: proto.RoleAdmin}); !client.IsStatus(err, http.StatusBadRequest) {
+		t.Errorf("admin invite from the app: %v", err)
 	}
 
 	family := requireValue[*session.Vault](t)(alice.CreateVault(ctx, "Family", proto.VaultShared))
@@ -151,10 +206,11 @@ func TestEndToEnd(t *testing.T) {
 	}
 	requireValue[*item.Item](t)(alice.SaveItem(ctx, family, netflix))
 
-	bobMember := requireValue[*proto.Member](t)(alice.GetVerifiedMember(ctx, "bob@example.com"))
-	if err := alice.ShareVault(ctx, family, bobMember, proto.VaultEditor); err != nil {
-		t.Fatal(err)
+	if _, err := alice.GetVerifiedMember(ctx, "bob@example.com"); !errors.Is(err, session.ErrNotFound) {
+		t.Errorf("Bob is listed before sharing a vault: %v", err)
 	}
+	shareThroughInvitation(t, alice, bob, family, proto.VaultEditor)
+	bobMember := requireValue[*proto.Member](t)(alice.GetVerifiedMember(ctx, "bob@example.com"))
 
 	bobFamily := requireValue[*session.Vault](t)(bob.FindVault(ctx, "family"))
 	allBobItem := requireValue[[]item.Item](t)(bob.ListAllItem(ctx, bobFamily))
@@ -255,9 +311,7 @@ func TestEndToEnd(t *testing.T) {
 		deletedItem := &item.Item{Overview: item.Overview{Title: "Old"}, Details: item.Details{Password: "old"}}
 		requireValue[*item.Item](t)(alice.SaveItem(ctx, trip, deletedItem))
 		requireValue[*item.Item](t)(alice.DeleteItem(ctx, trip, deletedItem))
-		if err := alice.ShareVault(ctx, trip, bobMember, proto.VaultEditor); err != nil {
-			t.Fatal(err)
-		}
+		shareThroughInvitation(t, alice, bob, trip, proto.VaultEditor)
 		bobTrip := requireValue[*session.Vault](t)(bob.FindVault(ctx, "Trip"))
 		if allItem := requireValue[[]item.Item](t)(bob.ListAllItem(ctx, bobTrip)); len(allItem) != 1 {
 			t.Fatalf("bob items before removal: %d", len(allItem))

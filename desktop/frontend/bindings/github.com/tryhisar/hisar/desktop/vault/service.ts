@@ -9,8 +9,22 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 // @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
+/**
+ * AcceptShareInvitation tells the owner's app it may share the vault; nothing secret is sent.
+ */
+export function AcceptShareInvitation(invitationID: string): $CancellablePromise<void> {
+    return $Call.ByID(2046015649, invitationID);
+}
+
 export function CancelImport(): $CancellablePromise<void> {
     return $Call.ByID(113979528);
+}
+
+/**
+ * CancelShareInvitation withdraws an invitation to a vault this user owns.
+ */
+export function CancelShareInvitation(invitationID: string): $CancellablePromise<void> {
+    return $Call.ByID(1323386091, invitationID);
 }
 
 /**
@@ -52,6 +66,10 @@ export function CopyText(text: string): $CancellablePromise<void> {
 
 export function CreateVault(name: string): $CancellablePromise<$models.VaultSummary> {
     return $Call.ByID(3598661641, name);
+}
+
+export function DeclineShareInvitation(invitationID: string): $CancellablePromise<void> {
+    return $Call.ByID(853594541, invitationID);
 }
 
 /**
@@ -153,10 +171,10 @@ export function ImportSSHKey(vaultID: string, title: string, privateKeyText: str
 }
 
 /**
- * InviteMember creates a sign-up link for a new family member; only admins can invite.
+ * InvitePerson asks the server to email a sign-up invite; the answer is the same whether or not the person has an account.
  */
-export function InviteMember(email: string, role: string): $CancellablePromise<string> {
-    return $Call.ByID(4027974812, email, role);
+export function InvitePerson(email: string): $CancellablePromise<void> {
+    return $Call.ByID(3011347471, email);
 }
 
 /**
@@ -178,17 +196,24 @@ export function ListAllItem(vaultID: string): $CancellablePromise<$models.ItemDe
 }
 
 /**
- * ListAllMember returns everyone in the family with the security code of their signing key.
- */
-export function ListAllMember(): $CancellablePromise<$models.FamilyMember[] | null> {
-    return $Call.ByID(2917355364);
-}
-
-/**
- * ListAllPendingRecovery returns the recoveries that family members submitted, oldest first.
+ * ListAllPendingRecovery returns the submitted recoveries, oldest first.
  */
 export function ListAllPendingRecovery(): $CancellablePromise<$models.PendingRecovery[] | null> {
     return $Call.ByID(1603422670);
+}
+
+/**
+ * ListAllPerson returns the user and the people they share a vault with, with the security code of their signing key.
+ */
+export function ListAllPerson(): $CancellablePromise<$models.Person[] | null> {
+    return $Call.ByID(1826275351);
+}
+
+/**
+ * ListAllShareInvitation completes accepted shares first, then returns the invitations this user received and sent.
+ */
+export function ListAllShareInvitation(): $CancellablePromise<$models.ShareInvitations> {
+    return $Call.ByID(2268152746);
 }
 
 export function ListAllVault(): $CancellablePromise<$models.VaultSummary[] | null> {
@@ -280,7 +305,7 @@ export function SetUpRecovery(): $CancellablePromise<string[] | null> {
 }
 
 /**
- * ShareVault gives a family member access to a shared vault the current user owns.
+ * ShareVault emails a share invitation; the person gets access once they accept and this app completes the share.
  */
 export function ShareVault(vaultID: string, email: string, role: string): $CancellablePromise<void> {
     return $Call.ByID(3088566786, vaultID, email, role);
@@ -299,7 +324,7 @@ export function SignUp(invite: string, email: string, name: string, password: st
 }
 
 /**
- * StartAccountRecovery creates a one-time recovery link for a family member, valid for 7 days.
+ * StartAccountRecovery creates a one-time recovery link for someone, valid for 7 days.
  */
 export function StartAccountRecovery(accountID: string): $CancellablePromise<string> {
     return $Call.ByID(3868711419, accountID);

@@ -15,6 +15,7 @@ import (
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/localstate"
+	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/desktop/commandline"
 )
 
@@ -249,10 +250,32 @@ func TestCommandLineImportOnlyCreatesItems(t *testing.T) {
 
 func TestCommandLineSharingAndDevices(t *testing.T) {
 	test := createCommandLineTest(t)
-	var memberList cliprotocol.MemberListResult
-	test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeListMember}, &memberList)
-	if len(memberList.Members) == 0 || !memberList.Members[0].IsCurrentUser || memberList.Members[0].SecurityCode == "" {
-		t.Errorf("members %+v", memberList)
+	var peopleList cliprotocol.PeopleListResult
+	test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeListPeople}, &peopleList)
+	if len(peopleList.People) != 1 || !peopleList.People[0].IsCurrentUser || peopleList.People[0].SecurityCode == "" {
+		t.Errorf("people %+v", peopleList)
+	}
+	test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeInvite, Email: "new@example.com"}, nil)
+	if invited := test.testService.apiServer.allInvitedEmail; len(invited) != 1 || invited[0] != "new@example.com" {
+		t.Errorf("invited %v", invited)
+	}
+	test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeShareVault, VaultID: test.testService.familyID, Email: "bob@example.com", Role: "reader"}, nil)
+	test.testService.apiServer.mutex.Lock()
+	test.testService.apiServer.allReceivedShareInvitation = []proto.ReceivedShareInvitation{{ID: "from-carol", VaultID: "vault-2", Role: "editor", InvitedByName: "Carol", InvitedByEmail: "c@example.com"}}
+	test.testService.apiServer.mutex.Unlock()
+	var invitationList cliprotocol.InvitationListResult
+	test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeListInvitation}, &invitationList)
+	if len(invitationList.Sent) != 1 || invitationList.Sent[0].Email != "bob@example.com" || invitationList.Sent[0].VaultName != "Family" || invitationList.Sent[0].State != "pending" ||
+		len(invitationList.Received) != 1 || invitationList.Received[0].InvitedByName != "Carol" {
+		t.Fatalf("invitations %+v", invitationList)
+	}
+	test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeAcceptInvitation, InvitationID: "from-carol"}, nil)
+	if failure := test.send(t, cliprotocol.Request{Type: cliprotocol.TypeDeclineInvitation, InvitationID: "from-carol"}, nil); !strings.Contains(failure, "no longer exists") {
+		t.Errorf("decline an answered invitation: %q", failure)
+	}
+	test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeCancelInvitation, InvitationID: invitationList.Sent[0].ID}, nil)
+	if count := test.testService.apiServer.countShareInvitation(); count != 0 {
+		t.Errorf("%d invitations after cancelling", count)
 	}
 	var deviceList cliprotocol.DeviceListResult
 	if failure := test.send(t, cliprotocol.Request{Type: cliprotocol.TypeListDevice}, &deviceList); failure != "" {

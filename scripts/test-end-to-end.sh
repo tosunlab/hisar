@@ -7,17 +7,23 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 BIN=$ROOT/bin
 T=$(mktemp -d)
 PORT=${END_TO_END_PORT:-18081}
+SMTP_PORT=${END_TO_END_SMTP_PORT:-18091}
+MAIL=$T/mail
 export HISAR_PUBLIC_URL=http://127.0.0.1:$PORT
 export HISAR_SECRETS_FILE=$T/secrets.json
 # Many sign-ins come from one IP during this test.
 export HISAR_AUTH_BURST=1000
 # The standalone CLI is tested here; a Hisar app running on this machine must not answer it.
 export HISAR_STANDALONE=1
+# Invites and share invitations go to a local SMTP sink that writes each email to $MAIL.
+export HISAR_SMTP_HOST=127.0.0.1 HISAR_SMTP_PORT=$SMTP_PORT HISAR_SMTP_USERNAME=hisar HISAR_SMTP_PASSWORD=end-to-end HISAR_SMTP_FROM='Hisar <noreply@hisar.test>'
 : "${HISAR_DATABASE_URL:?set HISAR_DATABASE_URL to an empty database}"
 
+"$BIN/hisar-smtp-sink" -addr "127.0.0.1:$SMTP_PORT" -dir "$MAIL" >"$T/smtp.log" 2>&1 &
+SINK=$!
 "$BIN/hisar-server" serve -addr "127.0.0.1:$PORT" >"$T/server.log" 2>&1 &
 SERVER=$!
-trap 'kill $SERVER 2>/dev/null || true; rm -rf "$T"' EXIT
+trap 'kill $SERVER $SINK 2>/dev/null || true; rm -rf "$T"' EXIT
 curl -sf --retry 20 --retry-all-errors --retry-delay 1 "http://127.0.0.1:$PORT/healthz" >/dev/null
 
 fail() { echo "FAIL: $*" >&2; cat "$T/server.log" >&2; exit 1; }
@@ -25,6 +31,20 @@ expect() { [[ "$2" == *"$3"* ]] || fail "$1: expected '$3', got '$2'"; echo "ok 
 
 PW='correct horse battery'
 hisar() { "$BIN/hisar" "$@"; }
+
+count_mail() { find "$MAIL" -name "*-$1.txt" 2>/dev/null | wc -l | tr -d ' '; }
+# wait_for_mail prints the newest email to $1 once there are more than $2.
+wait_for_mail() {
+  for _ in $(seq 1 100); do
+    if (( $(count_mail "$1") > $2 )); then
+      cat "$(find "$MAIL" -name "*-$1.txt" | sort | tail -1)"
+      return
+    fi
+    sleep 0.1
+  done
+  fail "no email to $1"
+}
+get_invite_code() { grep -oE '/invite/[A-Za-z0-9_-]+' | head -1 | cut -d/ -f3; }
 
 ALICE_INV=$("$BIN/hisar-server" invite --email alice@example.com </dev/null | tail -1)
 expect "admin invite" "$ALICE_INV" "$HISAR_PUBLIC_URL/invite/"
@@ -44,17 +64,66 @@ echo "ok   generated password"
 printf '%s\n' "$PW" | A vault-create Family 2>/dev/null
 printf '%s\nNetflix\nfamily@example.com\nhttps://netflix.com\nhunter2hunter2\nshared login\n' "$PW" | A add -v Family 2>/dev/null
 
-BOB_INV=$(A invite bob@example.com 2>/dev/null)
-printf 'bob@example.com\nBob\n%s\n%s\n' "$PW" "$PW" | HISAR_STATE=$T/bob.json HISAR_SECRET_KEY=- hisar signup "$BOB_INV" 2>"$T/bob-signup.txt"
+INVITE_OUTPUT=$(A invite bob@example.com 2>&1)
+expect "invite by email" "$INVITE_OUTPUT" "Invitation sent to bob@example.com."
+[[ "$INVITE_OUTPUT" != *"/invite/"* ]] || fail "the invite response shows the link: $INVITE_OUTPUT"
+echo "ok   the invite response has no link or code"
+BOB_MAIL=$(wait_for_mail bob@example.com 0)
+expect "invite email" "$BOB_MAIL" "Alice (alice@example.com) invited you to Hisar"
+BOB_CODE=$(printf '%s' "$BOB_MAIL" | get_invite_code)
+expect "invite email carries the link and the code" "$BOB_MAIL" "$HISAR_PUBLIC_URL/invite/$BOB_CODE"$'\n\nOr enter this invite code in the Hisar app:\n'"$BOB_CODE"
+printf 'bob@example.com\nBob\n%s\n%s\n' "$PW" "$PW" | HISAR_STATE=$T/bob.json HISAR_SECRET_KEY=- hisar signup "$HISAR_PUBLIC_URL/invite/$BOB_CODE" 2>"$T/bob-signup.txt"
 BOB_SK=$(grep -oE 'H1-[0-9A-Z-]+' "$T/bob-signup.txt")
+expect "bob signs up from the emailed code" "$BOB_SK" "H1-"
 B() { HISAR_STATE=$T/bob.json HISAR_SECRET_KEY=$BOB_SK hisar "$@"; }
 
-expect "share" "$(printf '%s\n' "$PW" | A share Family bob@example.com 2>&1)" "as editor"
+BOB_MAIL_COUNT=$(count_mail bob@example.com)
+SHARE_OUTPUT=$(printf '%s\n' "$PW" | A share Family bob@example.com 2>&1)
+expect "share sends an invitation" "$SHARE_OUTPUT" 'Invitation sent to bob@example.com for "Family" as editor.'
+UNKNOWN_SHARE_OUTPUT=$(printf '%s\n' "$PW" | A share Family nobody@example.com 2>&1)
+[[ "${UNKNOWN_SHARE_OUTPUT//nobody@example.com/someone}" == "${SHARE_OUTPUT//bob@example.com/someone}" ]] || fail "share to an unknown email answered differently: $UNKNOWN_SHARE_OUTPUT"
+echo "ok   a share to an email without an account gives the same response"
+expect "share email to bob" "$(wait_for_mail bob@example.com "$BOB_MAIL_COUNT")" "Alice (alice@example.com) shared a vault with you in Hisar as an editor."
+expect "share email to an unknown address carries a sign-up invite" "$(wait_for_mail nobody@example.com 0)" "$HISAR_PUBLIC_URL/invite/"
+expect "bob does not see Family before accepting" "$(printf '%s\n' "$PW" | B vaults 2>/dev/null)" "Personal"
+[[ "$(printf '%s\n' "$PW" | B vaults 2>/dev/null)" != *Family* ]] || fail "bob sees Family before accepting"
+expect "bob's invitations" "$(B invitations 2>&1)" "Alice <alice@example.com>  editor"
+expect "bob accepts" "$(printf '\n' | B invitations accept 2>&1)" "Accepted."
+[[ "$(printf '%s\n' "$PW" | B vaults 2>/dev/null)" != *Family* ]] || fail "bob sees Family before alice completed the share"
+echo "ok   accepting alone gives no access"
+expect "alice's app completes the share" "$(printf '%s\n' "$PW" | A invitations 2>&1)" 'Shared "Family" with bob@example.com as editor. Their security code:'
 expect "bob sees Family" "$(printf '%s\n' "$PW" | B vaults 2>/dev/null)" "Family    shared    editor"
 expect "bob reads item" "$(printf '%s\n' "$PW" | B get netflix -v Family -f password 2>/dev/null)" "hunter2hunter2"
 expect "bob edits item" "$(printf '%s\nNetflix\n\n\n\nedited by bob\n' "$PW" | B edit netflix -v Family 2>&1)" "Saved"
 expect "alice sees edit" "$(printf '%s\n' "$PW" | A get netflix -v Family -f notes 2>/dev/null)" "edited by bob"
-expect "bob cannot invite" "$(B invite eve@example.com 2>&1 || true)" "admin only"
+expect "bob invites by email too" "$(B invite eve@example.com 2>&1)" "Invitation sent to eve@example.com."
+
+CAROL_INV=$("$BIN/hisar-server" invite --email carol@example.com </dev/null | tail -1)
+printf 'carol@example.com\nCarol\n%s\n%s\n' "$PW" "$PW" | HISAR_STATE=$T/carol.json HISAR_SECRET_KEY=- hisar signup "$CAROL_INV" 2>"$T/carol-signup.txt"
+CAROL_SK=$(grep -oE 'H1-[0-9A-Z-]+' "$T/carol-signup.txt")
+C() { HISAR_STATE=$T/carol.json HISAR_SECRET_KEY=$CAROL_SK hisar "$@"; }
+printf '%s\n' "$PW" | A vault-create Work 2>/dev/null
+ALICE_TOKEN=$(sed -n 's/.*"token": *"\([^"]*\)".*/\1/p' "$T/alice.json")
+WORK_ID=$(printf '%s\n' "$PW" | A vaults 2>/dev/null | awk '/^Work/{print $4}')
+share_raw() {
+  curl -s -w ' %{http_code}' -H "Authorization: Bearer $ALICE_TOKEN" -H 'Content-Type: application/json' \
+    -d "{\"email\":\"$1\",\"role\":\"reader\"}" "http://127.0.0.1:$PORT/api/v1/vaults/$WORK_ID/share-invitations"
+}
+EXISTING_RESPONSE=$(share_raw carol@example.com)
+UNKNOWN_RESPONSE=$(share_raw ghost@example.com)
+expect "share API response" "$EXISTING_RESPONSE" '{"message":"Invitation sent"} 202'
+[[ "$EXISTING_RESPONSE" == "$UNKNOWN_RESPONSE" ]] || fail "the share API answers differently for an unknown email: $UNKNOWN_RESPONSE"
+echo "ok   the share API answers the same for an existing and an unknown email"
+expect "carol accepts" "$(C invitations accept "$(C invitations 2>/dev/null | awk '/alice@example.com/{print $1}')" 2>&1)" "Accepted."
+expect "alice completes carol's share" "$(printf '%s\n' "$PW" | A invitations 2>&1)" 'Shared "Work" with carol@example.com as reader.'
+expect "alice sees carol" "$(A people)" "carol@example.com"
+BOB_PEOPLE=$(B people)
+expect "bob sees alice" "$BOB_PEOPLE" "alice@example.com"
+[[ "$BOB_PEOPLE" != *carol@example.com* ]] || fail "bob can list alice's other contacts: $BOB_PEOPLE"
+echo "ok   bob cannot list alice's other contacts"
+BOB_TOKEN=$(sed -n 's/.*"token": *"\([^"]*\)".*/\1/p' "$T/bob.json")
+[[ "$(curl -s -H "Authorization: Bearer $BOB_TOKEN" "http://127.0.0.1:$PORT/api/v1/members")" != *carol@example.com* ]] || fail "GET /members shows carol to bob"
+echo "ok   GET /members only lists people who share a vault"
 expect "bob cannot read alice personal" "$(printf '%s\n' "$PW" | B ls -v "$(printf '%s\n' "$PW" | A vaults 2>/dev/null | awk '/Personal/{print $4}')" 2>&1 || true)" "not found"
 
 expect "second device login" "$(printf 'http://127.0.0.1:%s\nalice@example.com\n%s\n%s\n' "$PORT" "$ALICE_SK" "$PW" | HISAR_STATE=$T/alice2.json HISAR_SECRET_KEY=- hisar login 2>&1)" "Signed in as Alice"
@@ -95,7 +164,9 @@ expect "recovery setup" "$(printf '%s\n' "$PW" | A recovery-setup 2>&1)" "Recove
 expect "bob enables recovery" "$(printf '%s\n' "$PW" | B recovery-enable 2>&1)" 'Enabled recovery for "Personal"'
 printf '%s\n' "$PW" | A vault-create Household 2>/dev/null
 printf '%s\nWifi\n\n\nwifi-password-1\n\n' "$PW" | A add -v Household 2>/dev/null
-expect "share recoverable vault" "$(printf '%s\n' "$PW" | A share Household bob@example.com 2>&1)" "as editor"
+expect "share recoverable vault" "$(printf '%s\n' "$PW" | A share Household bob@example.com 2>&1)" "as editor."
+expect "bob accepts the household invitation" "$(B invitations accept "$(B invitations 2>/dev/null | awk '/alice@example.com/{print $1}')" 2>&1)" "Accepted."
+expect "alice completes the household share" "$(printf '%s\n' "$PW" | A invitations 2>&1)" 'Shared "Household" with bob@example.com as editor.'
 expect "member cannot start a recovery" "$(B recovery-start alice@example.com 2>&1 || true)" "admin only"
 
 RECOVERY_LINK=$(A recovery-start bob@example.com 2>/dev/null)
@@ -113,7 +184,6 @@ expect "login with the new Secret Key" "$(printf 'http://127.0.0.1:%s\nbob@examp
 RB() { HISAR_STATE=$T/bob.json HISAR_SECRET_KEY=$BOB_NEW_SK hisar "$@"; }
 expect "recovered bob reads item" "$(printf '%s\n' "$NEW_PW" | RB get wifi -v Household -f password 2>/dev/null)" "wifi-password-1"
 
-ALICE_TOKEN=$(sed -n 's/.*"token": *"\([^"]*\)".*/\1/p' "$T/alice.json")
 APPCAST_URL=http://127.0.0.1:$PORT/api/v1/desktop/updates/appcast.xml
 expect "desktop updates need a session" "$(curl -s "$APPCAST_URL")" "unauthorized"
 expect "desktop updates not configured" "$(curl -s -H "Authorization: Bearer $ALICE_TOKEN" "$APPCAST_URL")" "updates are not configured on this server"
@@ -121,7 +191,10 @@ expect "desktop updates not configured" "$(curl -s -H "Authorization: Bearer $AL
 expect "logout" "$(A logout && A whoami 2>&1 || true)" "not logged in"
 
 DESKTOP_INVITE=$("$BIN/hisar-server" invite --email desktop@example.com --role admin </dev/null | tail -1)
+DESKTOP_MEMBER_INVITE=$("$BIN/hisar-server" invite --email desktop-member@example.com </dev/null | tail -1)
+DESKTOP_RECOVERED_INVITE=$("$BIN/hisar-server" invite --email desktop-recovered@example.com </dev/null | tail -1)
 DESKTOP_RESULT=$(HISAR_TEST_SERVER_URL="http://127.0.0.1:$PORT" HISAR_TEST_INVITE_LINK="$DESKTOP_INVITE" \
+  HISAR_TEST_MEMBER_INVITE_LINK="$DESKTOP_MEMBER_INVITE" HISAR_TEST_RECOVERED_MEMBER_INVITE_LINK="$DESKTOP_RECOVERED_INVITE" \
   HISAR_TEST_RECOVERY_ADMIN_EMAIL=alice@example.com HISAR_TEST_RECOVERY_ADMIN_SECRET_KEY="$ALICE_SK" HISAR_TEST_RECOVERY_ADMIN_PASSWORD="$PW" \
   go -C "$ROOT/desktop" test -count=1 -v -run TestIntegrationDesktopFlow ./vault/ 2>&1 || true)
 expect "desktop app backend against the server" "$DESKTOP_RESULT" "--- PASS: TestIntegrationDesktopFlow"

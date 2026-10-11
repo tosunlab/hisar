@@ -4,7 +4,7 @@ import type {
   BrowserStatus,
   CommandLineStatus,
   Device,
-  FamilyMember,
+  Person,
   ImportPreview,
   ImportProgress,
   ItemDetail,
@@ -12,6 +12,7 @@ import type {
   PendingRecovery,
   RecoverAccountResult,
   RecoveryStatus,
+  ShareInvitations,
   SignUpResult,
   SSHAgentStatus,
   SSHKeyType,
@@ -145,7 +146,7 @@ const previewAgentStatus = (backupPath = ""): SSHAgentStatus => {
   };
 };
 
-const allPreviewFamilyMember: FamilyMember[] = [
+const allPreviewPerson: Person[] = [
   { accountId: "alper", name: "Alper", email: "alper@tryhisar.com", role: isPreviewAdmin ? "admin" : "member", securityCode: "3F2A 91C0 7B44 E1D8", isCurrentUser: true, isKeyChanged: false },
   { accountId: "elif", name: "Elif Yılmaz", email: "elif@tryhisar.com", role: "admin", securityCode: "A7C2 5E19 04BD 6F3A", isCurrentUser: false, isKeyChanged: false },
   { accountId: "deniz", name: "Deniz Aydın", email: "deniz@tryhisar.com", role: "member", securityCode: "1D88 C4F0 9A27 B35E", isCurrentUser: false, isKeyChanged: false },
@@ -166,6 +167,53 @@ const allPreviewAccessByVaultID: Record<string, { accountId: string; role: strin
 };
 
 const hourInMilliseconds = 3600_000;
+
+// shareInvitations=none hides the preview invitations.
+const previewShareInvitations: ShareInvitations =
+  previewParameter.get("shareInvitations") === "none"
+    ? { received: [], sent: [], completionError: "" }
+    : {
+        received: [
+          {
+            id: "from-can",
+            vaultId: "infra",
+            role: "editor",
+            invitedByName: "Can Öztürk",
+            invitedByEmail: "can@ozturk.dev",
+            expiresAt: new Date(Date.now() + 6 * 24 * hourInMilliseconds).toISOString(),
+          },
+        ],
+        sent: [
+          {
+            id: "to-zeynep",
+            vaultId: "family",
+            vaultName: "Family",
+            email: "zeynep@tryhisar.com",
+            role: "reader",
+            state: "pending",
+            expiresAt: new Date(Date.now() + 5 * 24 * hourInMilliseconds).toISOString(),
+          },
+          {
+            id: "to-ops",
+            vaultId: "family",
+            vaultName: "Family",
+            email: "ops@kaya.dev",
+            role: "editor",
+            state: "accepted",
+            expiresAt: new Date(Date.now() + 2 * 24 * hourInMilliseconds).toISOString(),
+          },
+        ],
+        completionError: "",
+      };
+
+function listAllPreviewPerson(): Person[] {
+  const allSharedAccountID = new Set(
+    Object.values(allPreviewAccessByVaultID)
+      .filter((allAccess) => allAccess.some((access) => access.accountId === "alper"))
+      .flatMap((allAccess) => allAccess.map((access) => access.accountId)),
+  );
+  return allPreviewPerson.filter((person) => person.isCurrentUser || allSharedAccountID.has(person.accountId));
+}
 
 const previewRecoveryStatus: RecoveryStatus = {
   isSetUp: previewRecoveryMode !== "off",
@@ -209,7 +257,7 @@ function listAllPreviewVaultMember(vaultID: string): VaultMember[] {
   const roleOrder = ["owner", "editor", "reader"];
   return (allPreviewAccessByVaultID[vaultID] ?? [])
     .map((access) => {
-      const member = allPreviewFamilyMember.find((candidate) => candidate.accountId === access.accountId)!;
+      const member = allPreviewPerson.find((candidate) => candidate.accountId === access.accountId)!;
       return { ...member, role: access.role };
     })
     .sort((first, second) => roleOrder.indexOf(first.role) - roleOrder.indexOf(second.role));
@@ -598,17 +646,37 @@ export const previewApi = {
     const detail = createPreviewSSHKey(`ssh-${Date.now()}`, title.trim(), "ssh-ed25519");
     return resolveAfterDelay(structuredClone(addPreviewItem(vaultID, detail)));
   },
-  listAllMember: () => resolveAfterDelay(structuredClone(allPreviewFamilyMember)),
+  listAllPerson: () => resolveAfterDelay(structuredClone(listAllPreviewPerson())),
   listAllVaultMember: (vaultID: string) => resolveAfterDelay(listAllPreviewVaultMember(vaultID)),
   shareVault: (vaultID: string, email: string, role: VaultRole) => {
-    const member = allPreviewFamilyMember.find((candidate) => candidate.email === email);
-    if (!member) {
-      return Promise.reject(new Error("nobody in your family uses that email; invite them first in Settings"));
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+$/.test(normalizedEmail)) {
+      return Promise.reject(new Error("enter the email address of the person"));
     }
     if (vaultID === "personal") {
       return Promise.reject(new Error("personal vaults are private and cannot be shared; create a shared vault instead"));
     }
-    allPreviewAccessByVaultID[vaultID] = [...(allPreviewAccessByVaultID[vaultID] ?? [{ accountId: "alper", role: "owner" }]), { accountId: member.accountId, role }];
+    if (listAllPreviewVaultMember(vaultID).some((member) => member.email === normalizedEmail)) {
+      return Promise.reject(new Error("this person already has access to the vault"));
+    }
+    const vaultName = allPreviewVault.find((vault) => vault.id === vaultID)?.name ?? "";
+    previewShareInvitations.sent = [
+      ...previewShareInvitations.sent.filter((invitation) => !(invitation.vaultId === vaultID && invitation.email === normalizedEmail)),
+      { id: `to-${Date.now()}`, vaultId: vaultID, vaultName, email: normalizedEmail, role, state: "pending", expiresAt: new Date(Date.now() + 7 * 24 * hourInMilliseconds).toISOString() },
+    ];
+    return resolveAfterDelay(undefined);
+  },
+  listAllShareInvitation: () => resolveAfterDelay(structuredClone(previewShareInvitations)),
+  acceptShareInvitation: (invitationID: string) => {
+    previewShareInvitations.received = previewShareInvitations.received.filter((invitation) => invitation.id !== invitationID);
+    return resolveAfterDelay(undefined);
+  },
+  declineShareInvitation: (invitationID: string) => {
+    previewShareInvitations.received = previewShareInvitations.received.filter((invitation) => invitation.id !== invitationID);
+    return resolveAfterDelay(undefined);
+  },
+  cancelShareInvitation: (invitationID: string) => {
+    previewShareInvitations.sent = previewShareInvitations.sent.filter((invitation) => invitation.id !== invitationID);
     return resolveAfterDelay(undefined);
   },
   changeVaultMemberRole: (vaultID: string, accountID: string, role: VaultRole) => {
@@ -622,11 +690,11 @@ export const previewApi = {
     allPreviewAccessByVaultID[vaultID] = (allPreviewAccessByVaultID[vaultID] ?? []).filter((access) => access.accountId !== accountID);
     return new Promise<void>((resolve) => setTimeout(resolve, 600));
   },
-  inviteMember: (email: string) => {
+  invitePerson: (email: string) => {
     if (!email.includes("@")) {
-      return Promise.reject(new Error("enter the email address of the person you are inviting"));
+      return Promise.reject(new Error("enter the email address of the person"));
     }
-    return resolveAfterDelay("https://tryhisar.com/invite/kq3Vx9TzR2mW8pLc4NbY7hJd");
+    return resolveAfterDelay(undefined);
   },
   listAllDevice: () => resolveAfterDelay(structuredClone(allPreviewDevice)),
   revokeDevice: (deviceID: string) => {
