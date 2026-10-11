@@ -345,17 +345,13 @@ func IsAllowedExpiry(expiry time.Duration) bool {
 	return false
 }
 
-// ParseViews returns 0 for unlimited.
 func ParseViews(text string) (int, error) {
-	text = strings.ToLower(strings.TrimSpace(text))
-	if text == "unlimited" || text == "0" {
-		return 0, nil
-	}
+	text = strings.TrimSpace(text)
 	views, err := strconv.Atoi(text)
-	if err != nil || views < 1 || views > MaxViews {
-		return 0, fmt.Errorf("views %q: use a number from 1 to %d, or unlimited", text, MaxViews)
+	if err != nil || !IsAllowedViews(views) {
+		return 0, fmt.Errorf("views %q: use a number from 1 to %d", text, MaxViews)
 	}
 	return views, nil
 }
 
-func IsAllowedViews(views int) bool { return views >= 0 && views <= MaxViews }
+func IsAllowedViews(views int) bool { return views >= 1 && views <= MaxViews }

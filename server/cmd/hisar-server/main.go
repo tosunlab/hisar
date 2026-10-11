@@ -28,6 +28,7 @@ const (
 	auditRetention         = 365 * 24 * time.Hour
 	expiredInvitationAge   = 30 * 24 * time.Hour
 	shareLinkSweepInterval = 10 * time.Minute
+	webhookEventRetention  = 30 * 24 * time.Hour
 )
 
 func printUsage() {
@@ -37,6 +38,7 @@ commands:
   serve    run the API server (default)
   invite   create an invite link (printed, not emailed)
   migrate  up | down | status: manage database migrations
+  operator show-plan | grant-founding | revoke-founding: one account's plan (see hisar-server operator)
 
 environment:
   HISAR_DATABASE_URL   Postgres connection string (required)
@@ -58,6 +60,15 @@ desktop updates (optional; all three or none):
   HISAR_UPDATE_GITLAB_URL         GitLab holding the hisar-desktop generic package, e.g. https://git.tryhisar.com
   HISAR_UPDATE_GITLAB_PROJECT_ID  numeric ID of that GitLab project
   HISAR_UPDATE_GITLAB_TOKEN       project access token, Reporter role, read_api scope
+
+plans sold through Lemon Squeezy (optional; the first five together, or none):
+  HISAR_LEMON_SQUEEZY_API_KEY            API key (test mode or live)
+  HISAR_LEMON_SQUEEZY_STORE_ID           numeric store ID
+  HISAR_LEMON_SQUEEZY_WEBHOOK_SECRET     signing secret of the webhook
+  HISAR_LEMON_SQUEEZY_MONTHLY_VARIANT_ID variant ID of Pro, monthly
+  HISAR_LEMON_SQUEEZY_YEARLY_VARIANT_ID  variant ID of Pro, yearly
+  HISAR_LEMON_SQUEEZY_REDIRECT_URL       where the checkout sends the buyer afterwards (optional)
+  HISAR_LEMON_SQUEEZY_API_URL            API base URL (default https://api.lemonsqueezy.com)
 `)
 }
 
@@ -86,6 +97,8 @@ func main() {
 		err = invite(ctx, allArg)
 	case "migrate":
 		err = migrate(ctx, allArg)
+	case "operator":
+		err = runOperatorCommand(ctx, allArg)
 	default:
 		printUsage()
 		os.Exit(2)
@@ -135,12 +148,18 @@ func setup(ctx context.Context) (*store.Store, *api.Server, error) {
 		database.Close()
 		return nil, nil, err
 	}
+	lemonSqueezy, err := createLemonSqueezy()
+	if err != nil {
+		database.Close()
+		return nil, nil, err
+	}
 	server, err := api.CreateServer(database, secrets, api.Config{
 		PublicURL:      publicURL,
 		TrustProxy:     getEnv("HISAR_TRUST_PROXY", "false") == "true",
 		AuthBurst:      authBurst,
 		DesktopUpdates: desktopUpdates,
 		Mailer:         mailer,
+		Billing:        lemonSqueezy,
 	})
 	if err != nil {
 		database.Close()
@@ -229,6 +248,9 @@ func pruneAllOldRecord(ctx context.Context, database *store.Store) {
 			log.Printf("prune audit log: %v", err)
 		} else if pruned > 0 {
 			log.Printf("pruned %d audit events", pruned)
+		}
+		if _, err := database.PruneWebhookEvent(ctx, webhookEventRetention); err != nil {
+			log.Printf("prune billing webhook events: %v", err)
 		}
 		if pruned, err := database.PruneExpiredInvitation(ctx, expiredInvitationAge); err != nil {
 			log.Printf("prune expired invitations: %v", err)

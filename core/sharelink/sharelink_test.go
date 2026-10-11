@@ -183,12 +183,12 @@ func TestParseExpiryAndViews(t *testing.T) {
 			t.Errorf("expiry %q accepted", text)
 		}
 	}
-	for text, want := range map[string]int{"1": 1, "100": 100, "unlimited": 0, "0": 0} {
+	for text, want := range map[string]int{"1": 1, "100": 100, " 7 ": 7} {
 		if got, err := ParseViews(text); err != nil || got != want {
 			t.Errorf("views %s: %v %v", text, got, err)
 		}
 	}
-	for _, text := range []string{"101", "-1", "many"} {
+	for _, text := range []string{"101", "-1", "0", "unlimited", "many"} {
 		if _, err := ParseViews(text); err == nil {
 			t.Errorf("views %q accepted", text)
 		}

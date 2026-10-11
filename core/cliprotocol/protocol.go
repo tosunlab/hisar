@@ -64,6 +64,10 @@ const (
 	TypeAcceptInvitation  = "invitations.accept"
 	TypeDeclineInvitation = "invitations.decline"
 	TypeCancelInvitation  = "invitations.cancel"
+
+	TypeGetPlan        = "plan.get"
+	TypeCreateCheckout = "plan.checkout"
+	TypeManagePlan     = "plan.manage"
 )
 
 const (
@@ -74,6 +78,7 @@ const (
 	ErrorDenied              = "denied"
 	ErrorOffline             = "offline"
 	ErrorNotFound            = "not-found"
+	ErrorPlanLimit           = "plan-limit"
 	ErrorInternal            = "internal"
 )
 
@@ -96,6 +101,7 @@ type Request struct {
 	CommandLine   []string         `json:"commandLine,omitempty"`
 	ShareLink     *ShareLinkChange `json:"shareLink,omitempty"`
 	ShareLinkID   string           `json:"shareLinkID,omitempty"`
+	Interval      string           `json:"interval,omitempty"`
 
 	AgentName        string `json:"agentName,omitempty"`
 	AgentTitle       string `json:"agentTitle,omitempty"`

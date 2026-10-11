@@ -37,7 +37,7 @@ func (options ShareLinkOptions) validate() error {
 		return errors.New("choose an expiry of 1 hour, 1 day, 7 days or 30 days")
 	}
 	if !sharelink.IsAllowedViews(options.MaxViews) {
-		return errors.New("choose 1 to 100 views, or unlimited")
+		return errors.New("choose 1 to 100 views")
 	}
 	return nil
 }

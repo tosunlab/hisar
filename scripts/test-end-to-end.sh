@@ -184,6 +184,13 @@ echo "ok   import did not duplicate GitHub"
 [[ -f "$T/import.csv" ]] || fail "import -y deleted the export file"
 echo "ok   import -y keeps the export file"
 expect "interactive import declines the items already in the vault" "$(printf '%s\nn\n' "$PW" | A import "$T/import.csv" 2>&1)" "Nothing to import."
+expect "the plan on Free" "$(A plan 2>&1)" "Plan:           Free"
+expect "upgrading needs plans for sale on the server" "$(A plan upgrade --yearly 2>&1 || true)" "plans are not sold on this server"
+expect "the webhook is off without Lemon Squeezy" "$(curl -s -o /dev/null -w '%{http_code}' -X POST -d '{}' "http://127.0.0.1:$PORT/api/v1/billing/lemon-squeezy/webhook")" "404"
+expect "a third shared vault on Free is refused" "$(printf '%s\n' "$PW" | A vault-create Imports 2>&1 || true)" $'Free includes 2 shared vaults. Remove one to create another.\nUpgrade to Pro on tryhisar.com: hisar plan upgrade'
+expect "operator shows the plan" "$("$BIN/hisar-server" operator show-plan --email alice@example.com </dev/null)" "Shared vaults:    2 of 2"
+expect "operator grants founding membership" "$("$BIN/hisar-server" operator grant-founding --email alice@example.com --yes </dev/null)" "alice@example.com is now a founding member."
+expect "the founding member's plan" "$(A plan 2>&1)" "Pro · Founding member, free for life"
 printf '%s\n' "$PW" | A vault-create Imports 2>/dev/null
 expect "interactive import deletes the export file when asked" "$(printf '%s\ny\ny\n' "$PW" | A import "$T/import.csv" -v Imports 2>&1)" "Deleted $T/import.csv"
 [[ ! -e "$T/import.csv" ]] || fail "export file still exists after the import deleted it"
@@ -204,6 +211,10 @@ expect "the recovery API is gone" "$(curl -s -o /dev/null -w '%{http_code}' -H "
 expect "the admin recovery API is gone" "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $ALICE_TOKEN" "http://127.0.0.1:$PORT/api/v1/admin/recovery/$(sed -n 's/.*"accountId": *"\([^"]*\)".*/\1/p' "$T/bob.json")")" "404"
 printf '%s\n' "$PW" | A vault-create Household 2>/dev/null
 expect "shared vault without a recovery key" "$(printf '%s\n' "$PW" | A vaults 2>&1)" "Household"
+expect "operator revokes founding membership" "$(printf 'alice@example.com\ny\n' | "$BIN/hisar-server" operator revoke-founding)" "alice@example.com is no longer a founding member."
+expect "after the plan ends every vault stays" "$(printf '%s\n' "$PW" | A vaults 2>&1)" "Household"
+expect "after the plan ends items still read" "$(printf '%s\n' "$PW" | A get "Imported Bank" -f password 2>/dev/null)" 'bank,pass"word'
+expect "after the plan ends a new shared vault is refused" "$(printf '%s\n' "$PW" | A vault-create Extra 2>&1 || true)" "Free includes 2 shared vaults."
 expect "Emergency Kit saved" "$(printf '%s\n' "$PW" | B emergency-kit -o "$T/bob-kit.pdf" 2>&1)" "Saved your Emergency Kit"
 [[ "$(head -c 5 "$T/bob-kit.pdf")" == "%PDF-" ]] || fail "the Emergency Kit is not a PDF"
 expect "sign in on a new device with the Emergency Kit" "$(printf 'http://127.0.0.1:%s\nbob@example.com\n%s\n%s\n' "$PORT" "$BOB_SK" "$PW" | HISAR_STATE=$T/bob-new-device.json HISAR_SECRET_KEY=- hisar login 2>&1)" "Signed in as Bob"
@@ -241,6 +252,10 @@ MOBILE_SHARING_RECIPIENT_INVITE=$("$BIN/hisar-server" invite --email mobile-shar
 MOBILE_SHARING_RESULT=$(HISAR_TEST_MOBILE_SHARING_OWNER_INVITE_LINK="$MOBILE_SHARING_OWNER_INVITE" HISAR_TEST_MOBILE_SHARING_RECIPIENT_INVITE_LINK="$MOBILE_SHARING_RECIPIENT_INVITE" \
   go -C "$ROOT/mobile" test -count=1 -v -run TestIntegrationMobileSharing ./hisarkit/ 2>&1 || true)
 expect "the iPhone shares a vault, completes the accepted share on its own, and the recipient reads the item" "$MOBILE_SHARING_RESULT" "--- PASS: TestIntegrationMobileSharing"
+
+MOBILE_PLAN_INVITE=$("$BIN/hisar-server" invite --email mobile-plan@example.com </dev/null | tail -1)
+MOBILE_PLAN_RESULT=$(HISAR_TEST_MOBILE_PLAN_INVITE_LINK="$MOBILE_PLAN_INVITE" go -C "$ROOT/mobile" test -count=1 -v -run TestIntegrationMobilePlan ./hisarkit/ 2>&1 || true)
+expect "the iPhone reads the plan and states a limit without an upgrade" "$MOBILE_PLAN_RESULT" "--- PASS: TestIntegrationMobilePlan"
 
 PHONE_APPROVAL_INVITE=$("$BIN/hisar-server" invite --email phone-approval@example.com </dev/null | tail -1)
 PHONE_APPROVAL_RESULT=$(HISAR_TEST_PHONE_APPROVAL_INVITE_LINK="$PHONE_APPROVAL_INVITE" go -C "$ROOT/mobile" test -count=1 -v -run TestIntegrationPhoneApproval ./hisarkit/ 2>&1 || true)

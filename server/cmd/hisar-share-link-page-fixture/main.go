@@ -128,7 +128,7 @@ func createAllShareLink(ctx context.Context, server *api.Server, baseURL string)
 			return owner.ShareItem(ctx, vault, vaultItem, []string{sharelink.FieldPassword}, session.ShareLinkOptions{Expiry: sharelink.ExpiryHour, MaxViews: 1})
 		},
 		"text": func() (*session.ShareLink, error) {
-			return owner.ShareText(ctx, "Staging database URL", "postgres://deploy:s3cr3t@db.internal:5432/app", session.ShareLinkOptions{Expiry: sharelink.ExpiryMonth})
+			return owner.ShareText(ctx, "Staging database URL", "postgres://deploy:s3cr3t@db.internal:5432/app", session.ShareLinkOptions{Expiry: sharelink.ExpiryWeek, MaxViews: 100})
 		},
 		"screenshot": func() (*session.ShareLink, error) {
 			return owner.ShareItem(ctx, vault, vaultItem, allFieldKey, session.ShareLinkOptions{Expiry: sharelink.ExpiryWeek, MaxViews: 5})

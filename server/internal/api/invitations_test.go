@@ -121,6 +121,7 @@ func TestShareInvitationWithoutEnumeration(t *testing.T) {
 	ctx := context.Background()
 	recorder := attachMailRecorder(server)
 	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", proto.RoleAdmin)
+	grantFoundingMember(t, server, alice.AccountID)
 	bob := signUpTestAccount(t, ctx, server, baseURL, "bob@example.com", proto.RoleMember)
 	carol := signUpTestAccount(t, ctx, server, baseURL, "carol@example.com", proto.RoleMember)
 	family := requireValue[*session.Vault](t)(alice.CreateVault(ctx, "Family", proto.VaultShared))
@@ -362,6 +363,7 @@ func TestAcceptedShareTellsInviterAndRecipient(t *testing.T) {
 	recorder := attachMailRecorder(server)
 	server.config.ShareAcceptedEmailDelay = 200 * time.Millisecond
 	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", proto.RoleAdmin)
+	grantFoundingMember(t, server, alice.AccountID)
 	bob := signUpTestAccount(t, ctx, server, baseURL, "bob@example.com", proto.RoleMember)
 	carol := signUpTestAccount(t, ctx, server, baseURL, "carol@example.com", proto.RoleMember)
 	work := requireValue[*session.Vault](t)(alice.CreateVault(ctx, "Work", proto.VaultShared))

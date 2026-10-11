@@ -90,10 +90,7 @@ func TestShareLinkStore(t *testing.T) {
 func TestShareLinkMigrationRollsBack(t *testing.T) {
 	database := createTestStore(t)
 	ctx := context.Background()
-	result, err := database.RollbackMigration(ctx)
-	if err != nil || result.Source.Version != 5 {
-		t.Fatalf("rollback: %+v %v", result, err)
-	}
+	rollbackThroughVersion(t, database, 5)
 	var tableCount int
 	if err := database.pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.tables WHERE table_name = 'share_links'`).Scan(&tableCount); err != nil || tableCount != 0 {
 		t.Fatalf("share_links after rollback: %d %v", tableCount, err)

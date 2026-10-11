@@ -147,6 +147,9 @@ func (s *Server) handleCreateShareInvitation(c fiber.Ctx) error {
 	if isMember {
 		return errAlreadyHasVaultShare
 	}
+	if err := s.checkVaultPersonLimit(c.Context(), inviter.ID, vaultID, email); err != nil {
+		return err
+	}
 	if !s.allowInvitation(c, s.shareInvitationAccountLimiter, s.shareInvitationIPLimiter) {
 		return errTooManyInvitation
 	}

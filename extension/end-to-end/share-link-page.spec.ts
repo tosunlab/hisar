@@ -139,5 +139,5 @@ test("shows shared text", async ({ page }) => {
   await page.getByRole("button", { name: "Reveal" }).click();
   await expect(page.getByRole("heading", { name: "Staging database URL" })).toBeVisible();
   await expect(page.locator(".field-value")).toHaveText("postgres://deploy:s3cr3t@db.internal:5432/app");
-  await expect(page.locator("#link-status")).toContainText("Anyone with the link can open it until");
+  await expect(page.locator("#link-status")).toContainText("more views allowed. The link expires on");
 });

@@ -117,6 +117,48 @@ Check it with a session token from a signed-in device (`desktop.json` in the app
 endpoints answer 404 "updates are not configured on this server". Renew the token before it expires; until then, update
 checks fail with "the update source is unreachable".
 
+## Plans and Lemon Squeezy (optional)
+
+Pro is sold through Lemon Squeezy, the merchant of record (`docs/DESIGN.md` §8.7). Without the variables below nothing is
+sold: everyone is on Free unless the operator made them a founding member, and the apps show no Upgrade button.
+
+1. In Lemon Squeezy (test mode first), create the product **Hisar Pro** with two subscription variants: monthly at
+   €2.49 and yearly at €19.99. Note the store ID (**Settings → Stores**) and both variant IDs (the product's variants,
+   or `GET https://api.lemonsqueezy.com/v1/variants`).
+2. **Settings → API**: create an API key. A test-mode key creates test checkouts; switch to a live key when the store is
+   approved.
+3. **Settings → Webhooks**: add `https://<domain>/api/v1/billing/lemon-squeezy/webhook` with a signing secret of your
+   choice (at least 32 random characters) and these events: `subscription_created`, `subscription_updated`,
+   `subscription_cancelled`, `subscription_resumed`, `subscription_expired`, `subscription_paused`,
+   `subscription_unpaused`, `subscription_payment_success`, `subscription_payment_failed`,
+   `subscription_payment_recovered` and `subscription_plan_changed`.
+4. In `.env` on the server, uncomment and fill in:
+
+   ```sh
+   HISAR_LEMON_SQUEEZY_API_KEY=…
+   HISAR_LEMON_SQUEEZY_STORE_ID=12345
+   HISAR_LEMON_SQUEEZY_WEBHOOK_SECRET=…            # the webhook's signing secret
+   HISAR_LEMON_SQUEEZY_MONTHLY_VARIANT_ID=111111
+   HISAR_LEMON_SQUEEZY_YEARLY_VARIANT_ID=222222
+   HISAR_LEMON_SQUEEZY_REDIRECT_URL=https://tryhisar.com/pricing   # optional
+   ```
+
+5. `chmod 600 .env && docker compose up -d`. The log says `plans sold through Lemon Squeezy store 12345`.
+
+Buy Pro in test mode with Lemon Squeezy's test card from the Mac (Settings → Account → Upgrade) or with
+`hisar plan upgrade`; the webhook's delivery log in Lemon Squeezy should show `204` answers, and `hisar plan` then says Pro.
+
+**Founding members** have Pro for life without paying. Only the operator grants it, on the server:
+
+```sh
+docker compose exec hisar hisar-server operator grant-founding --email ada@example.com
+docker compose exec hisar hisar-server operator show-plan --email ada@example.com
+docker compose exec hisar hisar-server operator revoke-founding --email ada@example.com
+```
+
+Each command asks for the email when `--email` is missing and confirms before changing anything (`--yes` skips the
+question, for scripts). There is no command that lists accounts.
+
 ## Upgrades
 
 ```sh

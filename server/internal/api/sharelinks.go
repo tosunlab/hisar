@@ -19,7 +19,6 @@ import (
 
 const (
 	shareLinkPerAccountPerDay = 100
-	maxLiveShareLinkCount     = 500
 	shareLinkReadBurst        = 30
 	shareLinkReadInterval     = 2 * time.Second
 	shareLinkIDSize           = 16
@@ -29,9 +28,8 @@ var (
 	allShareLinkExpirySeconds = []int64{3600, 86400, 7 * 86400, 30 * 86400}
 	shareLinkIDPattern        = regexp.MustCompile(`^[A-Za-z0-9_-]{22}$`)
 
-	errTooManyShareLink     = createAPIError(fiber.StatusTooManyRequests, "too many share links today; try again tomorrow")
-	errTooManyLiveShareLink = createAPIError(fiber.StatusTooManyRequests, "you have too many live share links; revoke some first")
-	errShareLinkNotFound    = createAPIError(fiber.StatusNotFound, "not found")
+	errTooManyShareLink  = createAPIError(fiber.StatusTooManyRequests, "too many share links today; try again tomorrow")
+	errShareLinkNotFound = createAPIError(fiber.StatusNotFound, "not found")
 )
 
 func createShareLinkReadLimiter() *ipLimiter {
@@ -52,8 +50,8 @@ func validateShareLinkRequest(request *proto.CreateShareLinkRequest) error {
 		return createAPIError(fiber.StatusBadRequest, "the share link label must be between 1 byte and 4 KiB")
 	case !slices.Contains(allShareLinkExpirySeconds, request.ExpiresInSeconds):
 		return createAPIError(fiber.StatusBadRequest, "a share link expires after 1 hour, 1 day, 7 days or 30 days")
-	case request.MaxViews < 0 || request.MaxViews > sharelink.MaxViews:
-		return createAPIError(fiber.StatusBadRequest, "a share link allows 1 to 100 views, or 0 for unlimited")
+	case request.MaxViews < 1 || request.MaxViews > sharelink.MaxViews:
+		return createAPIError(fiber.StatusBadRequest, "a share link allows 1 to 100 views")
 	}
 	if request.Passphrase != nil {
 		params := crypt.ShareLinkPassphraseParams{Salt: request.Passphrase.Salt, Iterations: request.Passphrase.Iterations}
@@ -84,6 +82,10 @@ func (s *Server) handleCreateShareLink(c fiber.Ctx) error {
 	if err := validateShareLinkRequest(&request); err != nil {
 		return err
 	}
+	maxLiveCount, planName, err := s.checkShareLinkLimit(c.Context(), currentSession.AccountID, &request)
+	if err != nil {
+		return err
+	}
 	if !s.shareLinkAccountLimiter.allow(currentSession.AccountID) {
 		return errTooManyShareLink
 	}
@@ -94,15 +96,18 @@ func (s *Server) handleCreateShareLink(c fiber.Ctx) error {
 		link.PassphraseSalt, link.PassphraseIterations = request.Passphrase.Salt, request.Passphrase.Iterations
 	}
 	ttl := time.Duration(request.ExpiresInSeconds) * time.Second
-	var err error
 	for range 3 {
 		link.ID = generateShareLinkID()
-		if err = s.store.CreateShareLink(c.Context(), link, ttl, maxLiveShareLinkCount); !errors.Is(err, store.ErrExists) {
+		if err = s.store.CreateShareLink(c.Context(), link, ttl, maxLiveCount); !errors.Is(err, store.ErrExists) {
 			break
 		}
 	}
 	if errors.Is(err, store.ErrConflict) {
-		return errTooManyLiveShareLink
+		liveCount, countErr := s.store.CountLiveShareLink(c.Context(), currentSession.AccountID)
+		if countErr != nil {
+			return countErr
+		}
+		return createPlanLimitError(proto.PlanLimitLiveShareLinks, int64(maxLiveCount), int64(liveCount), planName)
 	}
 	if err != nil {
 		return err

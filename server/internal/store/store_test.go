@@ -82,9 +82,22 @@ func TestMigrations(t *testing.T) {
 	}
 
 	allRecoveryTable := []string{"recovery_keyset", "vault_recovery", "recovery_tokens", "account_recovery"}
+	allPlanTable := []string{"founding_members", "billing_references", "subscriptions", "billing_webhook_events"}
 
 	rolledBack, err := database.RollbackMigration(ctx)
 	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tableName := range allPlanTable {
+		if countTable(t, database, tableName) != 0 {
+			t.Errorf("%s still exists after rolling back %s", tableName, rolledBack.Source.Path)
+		}
+	}
+	if countTable(t, database, "share_links") != 1 {
+		t.Errorf("rolling back %s left the wrong schema", rolledBack.Source.Path)
+	}
+
+	if rolledBack, err = database.RollbackMigration(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if countTable(t, database, "share_links") != 0 || countTable(t, database, "share_invitations") != 1 {
@@ -129,7 +142,7 @@ func TestMigrations(t *testing.T) {
 		t.Errorf("accounts table still exists after rolling back %s", rolledBack.Source.Path)
 	}
 
-	if allResult, err = database.Migrate(ctx); err != nil || len(allResult) != 5 {
+	if allResult, err = database.Migrate(ctx); err != nil || len(allResult) != 6 {
 		t.Fatalf("re-apply: %d %v", len(allResult), err)
 	}
 	for _, tableName := range allRecoveryTable {
@@ -137,8 +150,22 @@ func TestMigrations(t *testing.T) {
 			t.Errorf("%s exists after re-applying", tableName)
 		}
 	}
-	if countColumn(t, database, "vaults", "recovery_opt_out") != 0 || countTable(t, database, "share_invitations") != 1 || countTable(t, database, "share_links") != 1 {
+	if countColumn(t, database, "vaults", "recovery_opt_out") != 0 || countTable(t, database, "share_invitations") != 1 || countTable(t, database, "share_links") != 1 || countTable(t, database, "subscriptions") != 1 {
 		t.Error("re-applying left the wrong schema")
+	}
+}
+
+// rollbackThroughVersion rolls back every migration from the newest down to and including version.
+func rollbackThroughVersion(t *testing.T, database *Store, version int64) int {
+	t.Helper()
+	for rolledBackCount := 1; ; rolledBackCount++ {
+		result, err := database.RollbackMigration(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if result.Source.Version == version {
+			return rolledBackCount
+		}
 	}
 }
 
@@ -175,11 +202,7 @@ func TestRemoveRecoveryMigrationDeletesRecoveryData(t *testing.T) {
 	createTestAccount(t, database, "AAAAAA", "a@example.com")
 	createTestAccount(t, database, "BBBBBB", "b@example.com")
 	vaultID := createTestVault(t, database, "AAAAAA")
-	for range 2 {
-		if _, err := database.RollbackMigration(ctx); err != nil {
-			t.Fatal(err)
-		}
-	}
+	rolledBackCount := rollbackThroughVersion(t, database, 4)
 
 	for _, statement := range []string{
 		`INSERT INTO recovery_keyset (kem_pub, sign_pub, kem_sig, enc_keyset, created_by) VALUES ('\x01', '\x02', '\x03', '\x04', 'AAAAAA')`,
@@ -194,7 +217,7 @@ func TestRemoveRecoveryMigrationDeletesRecoveryData(t *testing.T) {
 		}
 	}
 
-	if allResult, err := database.Migrate(ctx); err != nil || len(allResult) != 2 {
+	if allResult, err := database.Migrate(ctx); err != nil || len(allResult) != rolledBackCount {
 		t.Fatalf("applied %d: %v", len(allResult), err)
 	}
 	for _, tableName := range []string{"recovery_keyset", "vault_recovery", "recovery_tokens", "account_recovery"} {
@@ -213,11 +236,7 @@ func TestRemoveRecoveryMigrationDeletesRecoveryData(t *testing.T) {
 		t.Fatalf("vault after the migration: %+v %v", allVault, err)
 	}
 
-	for range 2 {
-		if _, err := database.RollbackMigration(ctx); err != nil {
-			t.Fatal(err)
-		}
-	}
+	rollbackThroughVersion(t, database, 4)
 	for _, tableName := range []string{"recovery_keyset", "vault_recovery", "recovery_tokens", "account_recovery"} {
 		if countRow(t, database, tableName) != 0 {
 			t.Errorf("%s has rows after rolling back", tableName)

@@ -26,9 +26,11 @@ func Create(baseURL string) *Client {
 	return &Client{BaseURL: strings.TrimRight(baseURL, "/"), HTTP: &http.Client{Timeout: 30 * time.Second}}
 }
 
+// APIError: PlanLimit is set when the server refused a create because of the account's plan.
 type APIError struct {
-	Status  int
-	Message string
+	Status    int
+	Message   string
+	PlanLimit *proto.PlanLimit
 }
 
 func (e *APIError) Error() string { return fmt.Sprintf("server: %s (%d)", e.Message, e.Status) }
@@ -87,11 +89,15 @@ func (c *Client) sendRequest(ctx context.Context, method, path string, header ht
 		return &APIError{Status: response.StatusCode, Message: "conflict"}
 	}
 	if response.StatusCode >= 300 {
-		var errorBody proto.Error
+		var errorBody proto.PlanLimitError
 		if json.Unmarshal(data, &errorBody) != nil || errorBody.Error == "" {
 			errorBody.Error = http.StatusText(response.StatusCode)
 		}
-		return &APIError{Status: response.StatusCode, Message: errorBody.Error}
+		apiError := &APIError{Status: response.StatusCode, Message: errorBody.Error}
+		if errorBody.Code == proto.ErrorCodePlanLimit {
+			apiError.PlanLimit = &errorBody.PlanLimit
+		}
+		return apiError
 	}
 	if output != nil && len(data) > 0 {
 		return json.Unmarshal(data, output)

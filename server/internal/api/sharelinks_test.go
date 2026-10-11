@@ -134,7 +134,7 @@ func TestShareLinkLifecycle(t *testing.T) {
 		t.Fatalf("a used-up link is still listed: %+v", listed)
 	}
 
-	withPassphrase, err := alice.ShareItem(ctx, vault, vaultItem, []string{sharelink.FieldPassword}, session.ShareLinkOptions{Expiry: sharelink.ExpiryHour, MaxViews: 0, Passphrase: []byte("correct horse battery")})
+	withPassphrase, err := alice.ShareItem(ctx, vault, vaultItem, []string{sharelink.FieldPassword}, session.ShareLinkOptions{Expiry: sharelink.ExpiryHour, MaxViews: 3, Passphrase: []byte("correct horse battery")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -316,7 +316,7 @@ func TestShareLinkRateLimits(t *testing.T) {
 	server.shareLinkAccountLimiter = createDailyLimiter(2)
 	var links []*session.ShareLink
 	for range 2 {
-		created, err := alice.ShareItem(ctx, vault, vaultItem, []string{sharelink.FieldPassword}, session.ShareLinkOptions{Expiry: sharelink.ExpiryHour})
+		created, err := alice.ShareItem(ctx, vault, vaultItem, []string{sharelink.FieldPassword}, session.ShareLinkOptions{Expiry: sharelink.ExpiryHour, MaxViews: 10})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -335,22 +335,6 @@ func TestShareLinkRateLimits(t *testing.T) {
 	}
 	if response := fetchRaw(t, baseURL, "/api/v1/public/share-links/"+generateShareLinkID()); response.status != http.StatusTooManyRequests {
 		t.Fatalf("unknown links count against the limit too: %+v", response)
-	}
-}
-
-func TestLiveShareLinkCap(t *testing.T) {
-	baseURL, server, _ := setupServer(t)
-	ctx := context.Background()
-	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", proto.RoleAdmin)
-	server.shareLinkAccountLimiter = createDailyLimiter(maxLiveShareLinkCount + 10)
-	request := &proto.CreateShareLinkRequest{Ciphertext: []byte{1}, EncryptedLabel: []byte{1}, ExpiresInSeconds: 3600, MaxViews: 1}
-	for index := range maxLiveShareLinkCount {
-		if _, err := alice.Client.CreateShareLink(ctx, request); err != nil {
-			t.Fatalf("link %d: %v", index, err)
-		}
-	}
-	if _, err := alice.Client.CreateShareLink(ctx, request); !client.IsStatus(err, http.StatusTooManyRequests) {
-		t.Fatalf("link over the cap: %v", err)
 	}
 }
 

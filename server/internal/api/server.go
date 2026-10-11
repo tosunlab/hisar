@@ -17,6 +17,7 @@ import (
 
 	"github.com/tryhisar/hisar/core/pake"
 	"github.com/tryhisar/hisar/core/proto"
+	"github.com/tryhisar/hisar/server/internal/billing"
 	"github.com/tryhisar/hisar/server/internal/desktopupdate"
 	"github.com/tryhisar/hisar/server/internal/mail"
 	"github.com/tryhisar/hisar/server/internal/store"
@@ -45,6 +46,10 @@ type Config struct {
 	Mailer mail.Mailer
 	// ShareAcceptedEmailDelay is how long an accepted share may wait for the owner's app before the inviter gets an email.
 	ShareAcceptedEmailDelay time.Duration
+	// Billing is nil when the server sells no plans.
+	Billing *billing.LemonSqueezy
+	// Now is time.Now unless a test sets it.
+	Now func() time.Time
 }
 
 type Server struct {
@@ -66,6 +71,7 @@ type Server struct {
 	shareAcceptedEmailLimiter     *dailyLimiter
 	shareLinkAccountLimiter       *dailyLimiter
 	shareLinkReadLimiter          *ipLimiter
+	webhookLimiter                *ipLimiter
 	backgroundWork                sync.WaitGroup
 }
 
@@ -119,6 +125,7 @@ func CreateServer(database *store.Store, secrets *Secrets, config Config) (*Serv
 		shareAcceptedEmailLimiter:     createDailyLimiter(shareAcceptedEmailPerInviterPerDay),
 		shareLinkAccountLimiter:       createDailyLimiter(shareLinkPerAccountPerDay),
 		shareLinkReadLimiter:          createShareLinkReadLimiter(),
+		webhookLimiter:                createWebhookLimiter(),
 	}, nil
 }
 
@@ -149,6 +156,10 @@ func (s *Server) CreateApp() *fiber.App {
 	apiGroup.Post("/auth/logout", s.requireSession, s.handleLogout)
 	apiGroup.Get("/events", s.requireSession, s.handleStreamEvents)
 	apiGroup.Get("/account", s.requireSession, s.handleGetAccount)
+	apiGroup.Get("/account/plan", s.requireSession, s.handleGetPlan)
+	apiGroup.Post("/account/plan/checkout", s.requireSession, s.handleCreateCheckout)
+	apiGroup.Post("/account/plan/manage", s.requireSession, s.handleCreateManageLink)
+	apiGroup.Post("/billing/lemon-squeezy/webhook", s.handleLemonSqueezyWebhook)
 	apiGroup.Get("/members", s.requireSession, s.handleListAllMember)
 	apiGroup.Post("/invites", s.requireSession, s.handleCreateInvite)
 	apiGroup.Get("/devices", s.requireSession, s.handleListAllDevice)
@@ -216,6 +227,10 @@ func setAllSecurityHeader(c fiber.Ctx) error {
 
 // handleError renders *fiber.Error as JSON and hides all other errors behind a 500.
 func handleError(c fiber.Ctx, err error) error {
+	var limitError *planLimitError
+	if errors.As(err, &limitError) {
+		return sendPlanLimitError(c, limitError)
+	}
 	var fiberError *fiber.Error
 	if !errors.As(err, &fiberError) {
 		log.Printf("internal error: %s %s: %v", c.Method(), c.Path(), err)

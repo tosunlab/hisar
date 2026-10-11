@@ -81,7 +81,11 @@ func (s *Server) handleCreateVault(c fiber.Ctx) error {
 		return createAPIError(fiber.StatusBadRequest, "invalid vault")
 	}
 	vault := &store.Vault{ID: request.ID, Type: request.Type, EncName: request.EncName, CreatedBy: currentSession.AccountID}
-	switch err := s.store.CreateVault(c.Context(), vault, request.WrappedKey); {
+	createVault := s.store.CreateVault
+	if vault.Type == proto.VaultShared {
+		createVault = s.createSharedVault
+	}
+	switch err := createVault(c.Context(), vault, request.WrappedKey); {
 	case errors.Is(err, store.ErrExists):
 		return createAPIError(fiber.StatusConflict, "vault exists")
 	case err != nil:
