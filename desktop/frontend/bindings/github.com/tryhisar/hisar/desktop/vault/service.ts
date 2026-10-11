@@ -28,6 +28,13 @@ export function CancelShareInvitation(invitationID: string): $CancellablePromise
 }
 
 /**
+ * ChangeMasterPassword keeps the Secret Key; every other device is signed out and must sign in with the new password.
+ */
+export function ChangeMasterPassword(currentPassword: string, newPassword: string): $CancellablePromise<$models.CredentialChangeResult> {
+    return $Call.ByID(1264746316, currentPassword, newPassword);
+}
+
+/**
  * ChangeVaultMemberRole shares the vault again with the member under the new role.
  */
 export function ChangeVaultMemberRole(vaultID: string, accountID: string, role: string): $CancellablePromise<void> {
@@ -84,6 +91,13 @@ export function DeclineShareInvitation(invitationID: string): $CancellablePromis
 }
 
 /**
+ * DeleteAccount needs the master password and the account's email; afterwards this device is signed out and wiped.
+ */
+export function DeleteAccount(password: string, email: string): $CancellablePromise<$models.Status> {
+    return $Call.ByID(1029725227, password, email);
+}
+
+/**
  * DeleteImportFile removes the export file after a finished import, since it holds every password in plain text.
  */
 export function DeleteImportFile(): $CancellablePromise<void> {
@@ -103,6 +117,13 @@ export function DeletePasskey(vaultID: string, itemID: string, credentialID: str
 
 export function DisableBiometricUnlock(): $CancellablePromise<$models.Status> {
     return $Call.ByID(3456338865);
+}
+
+/**
+ * DismissSignedOutReason clears the notice on the sign-in screen.
+ */
+export function DismissSignedOutReason(): $CancellablePromise<$models.Status> {
+    return $Call.ByID(3831058571);
 }
 
 /**
@@ -240,6 +261,10 @@ export function Lock(): $CancellablePromise<$models.Status> {
     return $Call.ByID(3111200640);
 }
 
+export function PreviewAccountDeletion(): $CancellablePromise<$models.AccountDeletionPreview> {
+    return $Call.ByID(4116082986);
+}
+
 /**
  * PreviewImport shows the chosen file again for another vault, with that vault's duplicates.
  */
@@ -252,6 +277,13 @@ export function PreviewImport(vaultID: string): $CancellablePromise<$models.Impo
  */
 export function RemoveVaultMember(vaultID: string, accountID: string): $CancellablePromise<void> {
     return $Call.ByID(1680404315, vaultID, accountID);
+}
+
+/**
+ * ReplaceSecretKey makes a new Secret Key; the old one and its Emergency Kit stop working, and other devices are signed out.
+ */
+export function ReplaceSecretKey(password: string): $CancellablePromise<$models.CredentialChangeResult> {
+    return $Call.ByID(240549340, password);
 }
 
 /**
@@ -287,7 +319,7 @@ export function SaveItem(vaultID: string, detail: $models.ItemDetail): $Cancella
 }
 
 /**
- * SaveNewAccountEmergencyKit saves the kit right after sign up; it returns the saved path, or "" when cancelled.
+ * SaveNewAccountEmergencyKit saves the kit right after sign up or replacing the Secret Key; it returns the saved path, or "" when cancelled.
  */
 export function SaveNewAccountEmergencyKit(): $CancellablePromise<string> {
     return $Call.ByID(1236938624);

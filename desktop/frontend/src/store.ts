@@ -1,5 +1,7 @@
 import { reactive } from "vue";
 import {
+  type AccountDeletionPreview,
+  type CredentialChangeResult,
   api,
   getErrorMessage,
   type BrowserPairingRequest,
@@ -288,6 +290,48 @@ export async function signOut(): Promise<void> {
   if (status) {
     store.pendingSecretKey = "";
     await applyStatus(status);
+  }
+}
+
+export async function changeMasterPassword(currentPassword: string, newPassword: string): Promise<CredentialChangeResult | undefined> {
+  const result = await runAction(() => api.changeMasterPassword(currentPassword, newPassword));
+  if (result) {
+    store.status = result.status;
+  }
+  return result;
+}
+
+export async function replaceSecretKey(password: string): Promise<CredentialChangeResult | undefined> {
+  const result = await runAction(() => api.replaceSecretKey(password));
+  if (result) {
+    store.status = result.status;
+  }
+  return result;
+}
+
+export async function finishSecretKeyReplacement(): Promise<void> {
+  await api.forgetNewAccountSecretKey().catch(() => undefined);
+}
+
+export async function loadAccountDeletionPreview(): Promise<AccountDeletionPreview | undefined> {
+  return runAction(() => api.previewAccountDeletion());
+}
+
+export async function deleteAccount(password: string, email: string): Promise<boolean> {
+  const status = await runAction(() => api.deleteAccount(password, email));
+  if (status) {
+    store.pendingSecretKey = "";
+    await applyStatus(status);
+    showNotice("Your account was deleted");
+  }
+  return status !== undefined;
+}
+
+export async function dismissSignedOutReason(): Promise<void> {
+  try {
+    store.status = await api.dismissSignedOutReason();
+  } catch {
+    store.status = { ...store.status, signedOutReason: "" };
   }
 }
 

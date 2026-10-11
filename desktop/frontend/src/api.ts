@@ -6,7 +6,10 @@ import { BrowserBridge, CommandLineService, LoginItemService, Service, UpdateSer
 import type { BrowserInstallation } from "../bindings/github.com/tryhisar/hisar/desktop/browser";
 import type { Installation as CommandLineInstallation } from "../bindings/github.com/tryhisar/hisar/desktop/commandline";
 import type {
+  AccountDeletionPreview as BoundAccountDeletionPreview,
   BrowserPairingRequest,
+  CredentialChangeResult,
+  DeletionVault,
   BrowserStatus as BoundBrowserStatus,
   CommandLineStatus as BoundCommandLineStatus,
   Device,
@@ -41,6 +44,8 @@ import type {
 
 export type {
   ApprovalEvent,
+  CredentialChangeResult,
+  DeletionVault,
   Device,
   Person,
   ImportDuplicate,
@@ -141,6 +146,15 @@ function normalizeImportProgress(boundProgress: BoundImportProgress): ImportProg
   return { ...boundProgress, allFailed: boundProgress.allFailed ?? [] };
 }
 
+export interface AccountDeletionPreview extends Omit<BoundAccountDeletionPreview, "ownedVaults" | "memberVaults"> {
+  ownedVaults: DeletionVault[];
+  memberVaults: DeletionVault[];
+}
+
+function normalizeAccountDeletionPreview(boundPreview: BoundAccountDeletionPreview): AccountDeletionPreview {
+  return { ...boundPreview, ownedVaults: boundPreview.ownedVaults ?? [], memberVaults: boundPreview.memberVaults ?? [] };
+}
+
 const wailsApi = {
   getStatus: (): Promise<Status> => Service.GetStatus(),
   setAutoLock: (seconds: number): Promise<Status> => Service.SetAutoLock(seconds),
@@ -224,6 +238,12 @@ const wailsApi = {
   saveNewAccountEmergencyKit: (): Promise<string> => Service.SaveNewAccountEmergencyKit(),
   saveEmergencyKit: (password: string): Promise<string> => Service.SaveEmergencyKit(password),
   forgetNewAccountSecretKey: (): Promise<void> => Service.ForgetNewAccountSecretKey(),
+  changeMasterPassword: (currentPassword: string, newPassword: string): Promise<CredentialChangeResult> =>
+    Service.ChangeMasterPassword(currentPassword, newPassword),
+  replaceSecretKey: (password: string): Promise<CredentialChangeResult> => Service.ReplaceSecretKey(password),
+  previewAccountDeletion: async (): Promise<AccountDeletionPreview> => normalizeAccountDeletionPreview(await Service.PreviewAccountDeletion()),
+  deleteAccount: (password: string, email: string): Promise<Status> => Service.DeleteAccount(password, email),
+  dismissSignedOutReason: (): Promise<Status> => Service.DismissSignedOutReason(),
   getBrowserStatus: async (): Promise<BrowserStatus> => normalizeBrowserStatus(await BrowserBridge.GetBrowserStatus()),
   removePairedBrowser: async (instanceID: string): Promise<BrowserStatus> =>
     normalizeBrowserStatus(await BrowserBridge.RemovePairedBrowser(instanceID)),

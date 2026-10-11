@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { clearError, signIn, signUp, store } from "../store";
-import { computePasswordStrength } from "../util";
+import { clearError, dismissSignedOutReason, signIn, signUp, store } from "../store";
+import { getMasterPasswordFeedback } from "../util";
 import AppIcon, { type IconName } from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
 import StrengthMeter from "./StrengthMeter.vue";
@@ -9,9 +9,6 @@ import StrengthMeter from "./StrengthMeter.vue";
 type Mode = "sign-in" | "create-account";
 
 const defaultServer = "api.tryhisar.com";
-const minimumPasswordLength = 10;
-// Below this only clearly guessable passwords are refused; the meter still says Weak up to 40 bits.
-const minimumPasswordBits = 28;
 const tagline = "Passwords, SSH keys and secrets for developers, end-to-end encrypted.";
 
 function getDisplayServer(serverURL: string): string {
@@ -32,22 +29,7 @@ const repeatedPassword = ref("");
 const passwordMismatch = computed(
   () => mode.value !== "sign-in" && repeatedPassword.value !== "" && password.value !== repeatedPassword.value,
 );
-const passwordFeedback = computed((): { message: string; isBlocking: boolean } => {
-  if (mode.value === "sign-in" || password.value === "") {
-    return { message: "A few random words you can remember make a strong master password.", isBlocking: false };
-  }
-  if (password.value.length < minimumPasswordLength) {
-    return { message: `Use at least ${minimumPasswordLength} characters.`, isBlocking: true };
-  }
-  const strength = computePasswordStrength(password.value);
-  if (strength.bits < minimumPasswordBits) {
-    return { message: "This password is too easy to guess. Add a few more words or characters.", isBlocking: true };
-  }
-  if (strength.level === "weak") {
-    return { message: "You can use it, but another word or a few more characters make it much harder to guess.", isBlocking: false };
-  }
-  return { message: "A few random words you can remember make a strong master password.", isBlocking: false };
-});
+const passwordFeedback = computed(() => getMasterPasswordFeedback(mode.value === "sign-in" ? "" : password.value));
 const allHeading: Record<Mode, { title: string; subtitle: string }> = {
   "sign-in": { title: "Welcome back", subtitle: "Sign in to Hisar on this Mac." },
   "create-account": { title: "Create your account", subtitle: "Enter the invite code you received. Pasting the whole invite link works too." },
@@ -160,6 +142,11 @@ async function submitCreateAccount(): Promise<void> {
         <h1>{{ allHeading[mode].title }}</h1>
         <p class="subtitle">{{ allHeading[mode].subtitle }}</p>
 
+        <div v-if="store.status.signedOutReason" class="signed-out-notice" role="status" data-testid="signed-out-reason">
+          <AppIcon name="shield" />
+          <p>{{ store.status.signedOutReason }}</p>
+          <button type="button" class="ghost" aria-label="Dismiss" data-testid="dismiss-signed-out-reason" @click="dismissSignedOutReason">OK</button>
+        </div>
         <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
 
         <form v-if="mode === 'sign-in'" @submit.prevent="submitSignIn">
@@ -240,6 +227,28 @@ async function submitCreateAccount(): Promise<void> {
 </template>
 
 <style scoped>
+.signed-out-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-warning-border);
+  border-radius: var(--radius);
+  background: var(--color-warning-background);
+  color: var(--color-warning-text);
+}
+.signed-out-notice p {
+  flex: 1;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.signed-out-notice button {
+  flex: none;
+  padding: 2px 10px;
+  color: inherit;
+}
 .sign-in {
   display: grid;
   grid-template-columns: minmax(300px, 42%) 1fr;
