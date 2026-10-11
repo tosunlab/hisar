@@ -16,7 +16,7 @@ Status: **Draft, Phase 0**. This document is the source of truth for the securit
 
 **Non-goals (for now)**
 
-- Teams and organizations, billing, SSO/SCIM, enterprise policy.
+- Teams and organizations, SSO/SCIM, enterprise policy. (Individual plans, Free and Pro, are sold through Lemon Squeezy: §8.7.)
 - Open registration: sign-up stays invite-only (§5.1).
 - Protecting an unlocked device from local malware (out of scope for every password manager).
 - Hiding metadata from the server completely (see §2.3).
@@ -172,7 +172,7 @@ Sign-up is invite-only: there is no open registration. An invite is an email add
 - Rate limits: 10 invites per account and 20 per IP address per day.
 - **The operator** creates invites with `hisar-server invite --email … [--role admin|member]`, which prints the link and needs no email; the first account is usually created this way, as an admin.
 
-**Roles.** `accounts.role` (`admin` or `member`) stays in the data model, but no app feature depends on it: any user invites, shares and manages their own devices, and the apps neither show the role nor offer admin screens. The operator's `hisar-server` command (`invite`, `migrate`) on the server is the only admin surface.
+**Roles.** `accounts.role` (`admin` or `member`) stays in the data model, but no app feature depends on it: any user invites, shares and manages their own devices, and the apps neither show the role nor offer admin screens. The operator's `hisar-server` command (`invite`, `migrate`, `operator`, §8.7) on the server is the only admin surface.
 
 ### 5.2 Signup (new user, first device)
 
@@ -276,7 +276,7 @@ payload       = {version: 1, title, fields: [{kind, label, value, isConcealed}]}
 
 | Endpoint | Body → result |
 |---|---|
-| `POST /share-links` (session) | `{ciphertext, encryptedLabel, expiresInSeconds, maxViews, passphrase: {salt, iterations} or null}` → 201 `{id, createdAt, expiresAt, maxViews, viewCount, hasPassphrase}`. `expiresInSeconds` is 3600, 86400, 604800 or 2592000 (1 hour, 1 day, 7 days, 30 days); `maxViews` is 1–100, or 0 for unlimited; the ciphertext is 1 byte to 64 KiB and the label at most 4 KiB; 400 otherwise |
+| `POST /share-links` (session) | `{ciphertext, encryptedLabel, expiresInSeconds, maxViews, passphrase: {salt, iterations} or null}` → 201 `{id, createdAt, expiresAt, maxViews, viewCount, hasPassphrase}`. `expiresInSeconds` is 3600, 86400, 604800 or 2592000 (1 hour, 1 day, 7 days, 30 days); `maxViews` is 1–100 (0, unlimited, is refused for new links; older links with it keep working); the plan limits the expiry and the number of live links (§8.7, 402 `plan_limit`); the ciphertext is 1 byte to 64 KiB and the label at most 4 KiB; 400 otherwise |
 | `GET /share-links` (session) | the caller's live links, newest first: `[{id, encryptedLabel, createdAt, expiresAt, maxViews, viewCount, hasPassphrase}]` |
 | `DELETE /share-links/{id}` (session) | revokes: 204 for the caller's own link, 404 for anything else |
 | `GET /public/share-links/{id}` (no session) | counts one view → `{ciphertext, passphrase, expiresAt, maxViews, viewCount}`; the last allowed view also deletes the link. 404 `{"error": "not found"}` for an ID that never existed or is malformed, and for an expired, used-up or revoked link: the same status and body, so they cannot be told apart |
@@ -285,7 +285,7 @@ payload       = {version: 1, title, fields: [{kind, label, value, isConcealed}]}
 - A view is counted by one `UPDATE share_links SET view_count = view_count + 1 WHERE id = $1 AND expires_at > now() AND (max_views = 0 OR view_count < max_views) RETURNING …`. Postgres re-checks the condition after taking the row lock, so concurrent opens never get more views than allowed. When that view was the last one, the same transaction deletes the row.
 - An expired link is gone for readers at once; `hisar-server` deletes expired rows every 10 minutes. Revoking deletes the row.
 - Table `share_links` (migration `00005_share_links`); deleting an account deletes its links.
-- Rate limits: 100 new links per account per day and at most 500 live links per account (429); public reads 30 per IP address, refilled at one every 2 seconds (429). IDs cannot be guessed, so the read limit protects the server, not the links.
+- Rate limits: 100 new links per account per day (429) and the plan's live links (10 on Free, 200 on Pro; §8.7); public reads 30 per IP address, refilled at one every 2 seconds (429). IDs cannot be guessed, so the read limit protects the server, not the links.
 - The creator's event streams get `share-links-changed` (`{}`) when one of their links is created, viewed, used up or revoked, so lists refresh (§7.2).
 - The audit log records creating and revoking a link, with its ID only.
 
@@ -300,11 +300,11 @@ payload       = {version: 1, title, fields: [{kind, label, value, isConcealed}]}
 
 **Desktop app.**
 
-- The item view has **Share link…** next to Edit (not for SSH keys without notes or fields). Its dialog offers the fields to share as checkboxes (username and password checked by default), **Expires** (1 hour, 1 day, 7 days, 30 days; 7 days by default), **Views** (1–100, 1 by default, or Unlimited) and an optional passphrase. **Create link** shows the link with **Copy** (through the backend, cleared after 90 s) and what it shares.
+- The item view has **Share link…** next to Edit (not for SSH keys without notes or fields). Its dialog offers the fields to share as checkboxes (username and password checked by default), **Expires** (1 hour, 1 day, 7 days, 30 days; 7 days by default), **Views** (1–100, 1 by default) and an optional passphrase; 30 days is offered only when the plan allows it (§8.7). **Create link** shows the link with **Copy** (through the backend, cleared after 90 s) and what it shares.
 - The item view lists that item's live links. **Shared links** in the sidebar, under the vaults, lists all of them; the new item menu has **Share text…**. Each link shows its title, what it shares, views used, expiry and whether it needs a passphrase, with **Copy link** and **Revoke**.
 - Lists refresh on `share-links-changed`. Offline, creating and revoking are refused like other changes.
 
-**CLI.** `hisar share-link <item> [-v vault] [--field name]... [--expires 1h|1d|7d|30d] [--views 1-100|unlimited] [--passphrase]` prints the link on stdout (by default username and password, 7 days, 1 view); `--field` is `username`, `password`, `url`, `notes` or a custom field's label, and `--passphrase` asks for it twice. `hisar share-link --text [--title t]` shares text read from stdin. `hisar share-links` lists the live links and `hisar share-link revoke <id>` revokes one. `hisar share-link open <url>` opens any share link in the terminal, without an account and without the web page: it counts a view, asks for the passphrase when the link has one, decrypts with `core/sharelink` and prints the title and fields. Through the app, creating a link always opens the approval dialog, even in an approved terminal session, because it hands secrets to people outside Hisar: "hisar in Terminal wants to create a share link for “GitHub”", with the expiry, the views and the fields; approving it also approves the terminal session. Standalone, the commands ask for the master password like the others.
+**CLI.** `hisar share-link <item> [-v vault] [--field name]... [--expires 1h|1d|7d|30d] [--views 1-100] [--passphrase]` prints the link on stdout (by default username and password, 7 days, 1 view); `--field` is `username`, `password`, `url`, `notes` or a custom field's label, and `--passphrase` asks for it twice. `hisar share-link --text [--title t]` shares text read from stdin. `hisar share-links` lists the live links and `hisar share-link revoke <id>` revokes one. `hisar share-link open <url>` opens any share link in the terminal, without an account and without the web page: it counts a view, asks for the passphrase when the link has one, decrypts with `core/sharelink` and prints the title and fields. Through the app, creating a link always opens the approval dialog, even in an approved terminal session, because it hands secrets to people outside Hisar: "hisar in Terminal wants to create a share link for “GitHub”", with the expiry, the views and the fields; approving it also approves the terminal session. Standalone, the commands ask for the master password like the others.
 
 ## 6. Account recovery
 
@@ -339,6 +339,7 @@ The client applies changes to its local SQLite cache and stores `nextSeq`. Chang
 - `event: vaults-changed` with `{}` tells an account that its list of vaults changed: it was given or lost access, created a vault, or was part of a vault before a rotation.
 - `event: share-invitations-changed` with `{}` tells an account that its received or sent share invitations changed (§5.8): one was sent to it or withdrawn, or one it can complete was accepted or declined. The desktop backend then completes accepted shares and refreshes the UI.
 - `event: share-links-changed` with `{}` tells an account that one of its share links was created, viewed, used up or revoked (§5.9).
+- `event: plan-changed` with `{}` tells an account that its subscription changed (§8.7).
 - `event: approval-requested`, `approval-answered` and `approval-resolved` with `{"requestId"}` go to every stream of the account for phone approvals (§9.9). They carry no request or answer, only the ID.
 - The server sends a `: heartbeat` comment every 25 s and re-checks the stream's session each time, so logging out or revoking the device ends the stream.
 - Each write pushes the connection's write deadline forward, so the server's 30 s response write timeout does not cut the stream.
@@ -392,6 +393,11 @@ items          (vault_id, id, revision, seq, deleted, overview_ct, details_ct, u
 item_history   (vault_id, id, revision, overview_ct, details_ct, updated_at, updated_by)
 attachments    (id, vault_id, item_id, size, chunk_count, storage_path)
 audit_events   (id, account_id, device_id, type, detail, ip, created_at)   -- kept 1 year (§8.6)
+founding_members (account_id, granted_at)                                  -- §8.7
+billing_references (account_id, reference, created_at)                     -- unique reference
+subscriptions  (id, account_id, customer_id, variant_id, billing_interval, status, renews_at, ends_at,
+                trial_ends_at, provider_updated_at, created_at, updated_at)
+billing_webhook_events (body_hash, event_name, received_at)                -- kept 30 days
 ```
 
 `enc_name` is the vault name encrypted with `K_vault`.
@@ -404,6 +410,7 @@ Phone approvals (§9.9) are not in Postgres: they live in the server process's m
 |---|---|
 | Auth | `POST /auth/register/{start,finish}`, `POST /auth/login/{start,finish}`, `POST /auth/logout`, `GET /auth/prelogin?email=` (salt, params) |
 | Account | `GET/PUT /account`, `GET /account/keyset`, `PUT /account/password` |
+| Plans (§8.7) | `GET /account/plan`, `POST /account/plan/checkout`, `POST /account/plan/manage`; without a session, signed: `POST /billing/lemon-squeezy/webhook` |
 | Devices | `GET /devices`, `DELETE /devices/{id}` |
 | People | `GET /members` (the caller and the people they share a vault with; public keys, signatures), `POST /invites` (any user; emailed) |
 | Share invitations | `POST /vaults/{id}/share-invitations` (owner), `GET /share-invitations` (`received`, `sent`, `waiting`), `POST /share-invitations/{id}/accept`, `POST /share-invitations/{id}/decline` (recipient), `DELETE /share-invitations/{id}` (owner) |
@@ -432,6 +439,7 @@ All under `/api/v1`. JSON bodies, base64url for binary fields. There is no recov
 - Served publicly over https behind nginx, which terminates TLS. The GitLab pipeline publishes the image for amd64 and arm64 to the container registry as `:<version>` on every `server-<version>` tag; the manual `server-publish` job then points `:latest` and `:<major>.<minor>` at it. A custom build (`server-1.2.3-label`) can't be published.
 - Attachments on local disk (later: S3-compatible storage).
 - Optional email (§8.5): `HISAR_SMTP_HOST`, `HISAR_SMTP_PORT`, `HISAR_SMTP_USERNAME`, `HISAR_SMTP_PASSWORD` and `HISAR_SMTP_FROM`, all or none; the server refuses to start with only some of them.
+- Optional plans sold through Lemon Squeezy (§8.7): `HISAR_LEMON_SQUEEZY_API_KEY`, `HISAR_LEMON_SQUEEZY_STORE_ID`, `HISAR_LEMON_SQUEEZY_WEBHOOK_SECRET`, `HISAR_LEMON_SQUEEZY_MONTHLY_VARIANT_ID` and `HISAR_LEMON_SQUEEZY_YEARLY_VARIANT_ID`, all or none; optional `HISAR_LEMON_SQUEEZY_REDIRECT_URL` (where the checkout sends the buyer) and `HISAR_LEMON_SQUEEZY_API_URL`.
 - Optional desktop update source (§9.1.1): `HISAR_UPDATE_GITLAB_URL`, `HISAR_UPDATE_GITLAB_PROJECT_ID` and `HISAR_UPDATE_GITLAB_TOKEN` (a project access token with the Reporter role and the `read_api` scope). Without them the update endpoints answer 404.
 - Nightly `pg_dump` + attachments encrypted with `age` and copied off-server. Restore tested quarterly.
 
@@ -458,6 +466,80 @@ All under `/api/v1`. JSON bodies, base64url for binary fields. There is no recov
 - Rate-limit counters, the event broker and phone approvals: server memory only, never written to disk, gone on restart (approvals after at most 4 minutes).
 - The reverse proxy's access logs: 14 days. The encrypted backups (§8.4): 30 days.
 
+### 8.7 Plans, entitlements and billing
+
+Hisar has two plans. The public pricing page (tryhisar.com/pricing) is the contract; the server enforces it.
+
+| | Free | Pro (€2.49 a month or €19.99 a year) |
+|---|---|---|
+| Items, devices, SSH agent, approvals, commit signing, `hisar run`/`read`/`mcp`, iPhone approvals | unlimited | unlimited |
+| Shared vaults the account created | 2 | unlimited |
+| People per shared vault, the owner included | 3 | 10 |
+| Live share links | 10 | 200 |
+| Share link expiry | up to 7 days | up to 30 days |
+| Share link views | 1–100 | 1–100 |
+
+- **Never gated, on any plan:** encryption, Touch ID and Face ID, the Emergency Kit, every approval dialog, export (also after a plan ends), deleting the account, new-device alerts. Reads, unlock, sync, SSH, `hisar run`, agents, revoking, removing members and deleting are never checked against a plan.
+- **Coming later on Pro** (not built): 3 CI service accounts, 5 GB of attachments, 1 year of item history and account activity (Free: 7 days of activity).
+
+**Entitlements.** `server/internal/plan` answers which plan an account is on, from what the database stores (`ResolvePlan`; the API calls it through `Server.ResolveAccountPlan`, the operator commands directly):
+
+1. a **founding membership** (`founding_members`): Pro for life, independent of any payment, granted and revoked only by the operator (below);
+2. otherwise a **subscription that grants Pro**: `on_trial`, `active`, `past_due` (Lemon Squeezy retries the payment; Pro stays on meanwhile), or `cancelled` until its `ends_at`. `paused`, `unpaid` and `expired` do not, and nothing grants Pro once `ends_at` has passed, whatever the status. With several subscriptions, a granting one is shown before others, then the one the provider updated last;
+3. otherwise **Free**.
+
+`plan.GetLimits` holds the table above in one place; a zero maximum means unlimited.
+
+**Limits apply to creating only.** The checks run where something new is made, so a plan that ends never locks anything:
+
+- `POST /vaults` with `type: shared` counts the shared vaults the caller created and still owns, in a transaction that locks the account row (`store.CreateSharedVaultWithinLimit`). Vaults others shared with the caller do not count.
+- `POST /vaults/{id}/share-invitations` counts the vault's members plus its live invitations (pending and unexpired, or accepted) to other emails, against the inviting owner's plan. Renewing an invitation to the same email is not another person, and cancelling one frees its place. Completing a share (`PUT /vaults/{id}/access/…`) is not checked again, so a share invited while on Pro still completes after the plan ends.
+- `POST /share-links` checks the expiry and the views against the plan, then the live links in the same transaction as the insert (the earlier fixed cap of 500 is gone; the plan's maximum is lower). A link can no longer be created with unlimited views (`maxViews` 0 is a 400); links that already have it keep working.
+
+A refused create answers **402** with the code `plan_limit`:
+
+```
+{"error": "Free includes 2 shared vaults; remove one to create another", "code": "plan_limit",
+ "planLimit": {"kind": "shared-vaults", "limit": 2, "current": 2, "plan": "free"}}
+```
+
+`kind` is `shared-vaults`, `vault-people`, `live-share-links`, `share-link-expiry` or `share-link-views`; for the last two `limit` and `current` are seconds or views and `current` is what was asked for. `core/client` keeps it on `APIError.PlanLimit` (`client.GetPlanLimit`), and `proto.DescribePlanLimit` writes the apps' sentence, e.g. "Free includes 2 shared vaults. Remove one to create another." Each app adds at most one quiet upgrade mention where the limit is hit: the Mac's "Upgrade to Pro on tryhisar.com" button and the command-line tool's "Upgrade to Pro on tryhisar.com: hisar plan upgrade", both only on Free. The iPhone states the limit and nothing else.
+
+**When a plan ends** (cancelled and past its end, expired, a founding membership revoked) nothing is deleted or locked: every vault, member, invitation and share link stays and works until it expires or is removed. Creating more than Free allows is refused until the user removes some or renews.
+
+**Lemon Squeezy** is the merchant of record: it takes the payment, handles VAT, sends invoices and owns the card data. `server/internal/billing` talks to its API (`https://api.lemonsqueezy.com/v1`, JSON:API) and is off unless `HISAR_LEMON_SQUEEZY_API_KEY`, `…_STORE_ID`, `…_WEBHOOK_SECRET`, `…_MONTHLY_VARIANT_ID` and `…_YEARLY_VARIANT_ID` are all set (the server refuses to start with only some); `…_REDIRECT_URL` and `…_API_URL` are optional. Without it the plan endpoints still answer, nobody is offered a checkout, and the webhook endpoint answers 404.
+
+- **Checkout.** `POST /account/plan/checkout {interval: "yearly" | "monthly"}` (yearly when empty) creates a checkout for the variant of that interval with both variants enabled, so the buyer can still switch, the account's email prefilled, and `checkout_data.custom.account_reference` set. It answers `{url}`; the apps open it in the browser. 409 when the account already has Pro, 501 without billing, 424 when Lemon Squeezy fails.
+- **Account reference.** Each account gets one random reference (`billing_references`, `acct_` and 128 random bits); Lemon Squeezy never sees the account ID, and an email address alone is never used to find an account.
+- **Customer portal.** `POST /account/plan/manage` fetches the account's subscription from the API and answers its signed `urls.customer_portal` (valid for a day): payment method, invoices, cancelling and resuming. 404 when the account never had a subscription.
+- **Webhook.** `POST /api/v1/billing/lemon-squeezy/webhook`, no session, at most 1 MiB, 120 requests per second per IP:
+  1. `X-Signature` must be the hex HMAC-SHA256 of the raw body with the webhook's signing secret, compared in constant time; otherwise 401 and nothing is read.
+  2. The SHA-256 of the body is recorded in `billing_webhook_events`; a body seen before is answered 204 without doing anything, so a replay or a retried delivery changes nothing. The rows are deleted after 30 days.
+  3. Subscription events (`data.type` `subscriptions`: `subscription_created`, `…_updated`, `…_cancelled`, `…_resumed`, `…_expired`, `…_paused`, `…_unpaused`, `…_plan_changed`) are mapped to an account through `meta.custom_data.account_reference`, or, without custom data, through a subscription Hisar already stores. Events for another store or another product's variant, or that map to no account, are acknowledged and ignored. Invoice events (`subscription_payment_success`, `…_failed`, `…_recovered`, `…_refunded`) are acknowledged; the subscription events that accompany them carry the status.
+  4. The subscription row is replaced only when the event's `updated_at` is not older than the stored one, so events that arrive out of order never move a subscription back; a row also never moves to another account.
+  5. Every change is audited (`subscription_changed`, with the event name, subscription ID and status) and sends the account `plan-changed` (§7.2), so the apps refresh the plan at once.
+  A failure to store answers 500 and the event is forgotten again, so Lemon Squeezy's retry is processed.
+- **What is stored** (`subscriptions`): the subscription ID, customer ID, variant ID and its interval, the status, `renews_at`, `ends_at`, `trial_ends_at` and the provider's `updated_at`. Never card data, the buyer's name or address, or the email Lemon Squeezy has.
+
+| Endpoint | Result |
+|---|---|
+| `GET /account/plan` (session) | `{plan, source (free, founding, subscription), isFoundingMember, subscription: {status, interval, renewsAt, endsAt, trialEndsAt} or null, limits, usage: {sharedVaultCount, liveShareLinkCount}, isCheckoutAvailable, isManageAvailable}` |
+| `POST /account/plan/checkout` (session) | `{url}` |
+| `POST /account/plan/manage` (session) | `{url}` |
+| `POST /billing/lemon-squeezy/webhook` (signature) | 204 |
+
+**Operator commands.** Run on the server; they read and write the database directly, and there is no HTTP endpoint for any of them. Each asks for the email when `--email` is missing and asks before changing anything (`--yes` skips the question, for scripts); there is no command that lists accounts.
+
+- `hisar-server operator show-plan [--email …]`: the plan and its source, the subscription (status, interval, Lemon Squeezy subscription and customer IDs, renewal or end date), shared vaults and live links against the limits.
+- `hisar-server operator grant-founding [--email …] [--yes]`: makes the account a founding member (audited as `founding_member_granted`).
+- `hisar-server operator revoke-founding [--email …] [--yes]`: ends it (`founding_member_revoked`); the account falls back to its subscription or Free, and nothing is deleted.
+
+**Apps.**
+
+- **Mac** (Settings → Account → Plan): Free or Pro, the **Founding member** badge ("Pro, free for life"), the subscription's state ("Renews on …", "Trial ends on …", "Pro until …. It won't renew.", a failed payment that is being retried, or the date Pro ended and that everything created stays), shared vaults and share links against the limits. **Upgrade to Pro…** (when a checkout is available) offers yearly, selected, and monthly with their prices, and opens the checkout in the browser; **Manage subscription…** opens the customer portal. It reloads on `plan-changed`. Offline it says that plan details need a connection. A limit hit elsewhere shows the sentence and, on Free, one **Upgrade to Pro on tryhisar.com** button. The share link dialog offers only the expiries the plan allows.
+- **Command line:** `hisar plan` shows the same (with "Upgrade to Pro on tryhisar.com: hisar plan upgrade" on Free when a checkout is available), `hisar plan upgrade [--yearly|--monthly]` asks yearly or monthly (yearly when nothing is said) and prints the checkout link, `hisar plan manage` prints the portal link. Through the app these are `plan.get`, `plan.checkout` and `plan.manage`, and a refused create is the error code `plan-limit` with the sentence and the hint.
+- **iPhone** (Settings → Account): the plan, the Founding member badge and the subscription's state, read-only. App Store rules: the app sells nothing, shows no prices, and has no Upgrade or Manage subscription and no link to a purchase page.
+
 ## 9. Clients
 
 All clients use `core/` for crypto, the local store and sync.
@@ -483,7 +565,7 @@ All clients use `core/` for crypto, the local store and sync.
   - **Browser**: browsers the extension is ready in, paired browsers with Remove, Only fill on the exact host (§9.2).
   - **People**: invitations for you (the source list shows their number as a badge), people with their security codes, invitations you sent, and **Invite to Hisar** in the header (§5.1), which explains that it creates a Hisar account and that vaults are shared from the vault's Share panel. Sharing a vault is **Invite by email** with **Share** in that panel (§5.8).
   - **Devices**: signed-in devices with last activity, Revoke.
-  - **Account**: name, email, server and Sign out.
+  - **Account**: name, email, server and Sign out, and the plan (§8.7): Free or Pro, the Founding member badge, the subscription's renewal or end date, usage against the limits, **Upgrade to Pro…** and **Manage subscription…**.
   - **Help**: **Contact support** with the address `support@tryhisar.com` as selectable text and **Copy** (one constant, `desktop/frontend/src/support.ts`), and **Diagnostics**: the Hisar version and build, the macOS version, the server URL and this Mac's device ID, with **Copy diagnostics**. Diagnostics never include secrets, names or other people's emails. The server does not report its version, and there is no public documentation URL yet, so neither is shown.
   - Search matches row titles, descriptions and keywords: the source list keeps only sections with a match, the selected section shows only its matching rows, and no match says so. ↑/↓ move between sections, ⌘F focuses the search, Esc closes. The last selected section is per-device UI state (the web view's local storage) and opens again next time.
 - Runs the SSH agent (§9.6) and handles Touch ID (§5.4).
@@ -612,13 +694,13 @@ The desktop keeps paired browsers (`instanceID`, browser name, SHA-256 of the to
   - **Sharing sheet** (`GetVaultSharing`, medium and large detents): for owners, **Invite by email** (email field, a role `Picker` with the Mac's roles Owner, Editor and Reader, and **Send invitation**; every address gets the same "Invitation sent", whether or not it has an account); a warning row when an accepted invitation could not be completed (e.g. "the signing key of … changed since you last shared with them; stopping"); **Members**, owners first, each with role and security code, and a key-changed warning; **Invited**, this vault's sent invitations ("Waiting for them to accept" or "Accepted, finishing on your next sync"), each with **Cancel** behind a `confirmationDialog`. Tapping a member opens their detail: the security code to compare (with `ShareLink` for the user's own code), and for owners a role `Picker` and **Remove from vault** behind a `confirmationDialog` that says the vault is re-encrypted with a new key. Editors and readers see the members and codes only. The sheet reloads on `OnRemoteChange`, so a person who accepts appears without a refresh.
   - **Completing shares:** the iPhone runs the same Go code as the Mac (`session.CompleteAllAcceptedShare` through `desktop/vault`): on every sync, every `share-invitations-changed` event, pull to refresh, the People screen and the sharing sheet, it verifies each accepted recipient's signed keys, pins their signing key, refuses on a changed key and wraps the vault key. Only an unlocked app does this; a locked iPhone leaves the share to the owner's next unlocked device.
   - **Item detail:** grouped rows for username, password (reveal, copy), one-time code (with a progress ring), custom fields, websites, passkeys and notes. Copying plays a success haptic and shows the 90-second note; each copyable row's context menu also has **Copy secret reference**, and a quiet last row copies the password's reference.
-  - **Settings** (what of the Mac's settings makes sense on a phone): **Account** (name, email, server; **Secret Key and Emergency Kit**, which asks for the master password, then shows the Secret Key and offers the Emergency Kit PDF through `ShareLink`; the file is written to the app's temporary folder and deleted when the screen closes), **Security** (Face ID, Auto-lock picker 30 s · 1 min · 5 min · 10 min · 1 h, Lock now, and the note that copied values clear after 90 seconds), **Mac approvals** (the switch "Approve requests from my Mac", on by default, and the note that approving answers one request and never unlocks the Mac), **People** (invitations for you with a badge, invitations you sent, **Invite to Hisar**, which creates an account, and each person with their security code and a "key changed" warning), **Devices** (each signed-in device with platform and last activity, "This iPhone" first; another device can be signed out after a confirmation), **AutoFill**, **Password generator**, **Help** (Contact support with the address and Copy, Copy diagnostics with the app and iOS versions, the server URL and this iPhone's device ID), **About**, and **Sign out**. The SSH agent, command-line tool, browser extension, agent vault access, open at login, updates and import stay on the Mac.
+  - **Settings** (what of the Mac's settings makes sense on a phone): **Account** (name, email, server; the plan read-only, with the Founding member badge and the subscription's state, and no purchase links (§8.7); **Secret Key and Emergency Kit**, which asks for the master password, then shows the Secret Key and offers the Emergency Kit PDF through `ShareLink`; the file is written to the app's temporary folder and deleted when the screen closes), **Security** (Face ID, Auto-lock picker 30 s · 1 min · 5 min · 10 min · 1 h, Lock now, and the note that copied values clear after 90 seconds), **Mac approvals** (the switch "Approve requests from my Mac", on by default, and the note that approving answers one request and never unlocks the Mac), **People** (invitations for you with a badge, invitations you sent, **Invite to Hisar**, which creates an account, and each person with their security code and a "key changed" warning), **Devices** (each signed-in device with platform and last activity, "This iPhone" first; another device can be signed out after a confirmation), **AutoFill**, **Password generator**, **Help** (Contact support with the address and Copy, Copy diagnostics with the app and iOS versions, the server URL and this iPhone's device ID), **About**, and **Sign out**. The SSH agent, command-line tool, browser extension, agent vault access, open at login, updates and import stay on the Mac.
   - **Sign in, create account and unlock:** `Form`s with the same copy as before (the Emergency Kit wording included), the Server field behind **Use a different server…** (§5.3), and after the new Secret Key the "Unlock with Face ID?" offer (§5.2); the lock screen shows the mark, the account's email, **Unlock with Face ID** and the master password field, and above them the accepted shares waiting for this unlock (§5.8).
 - **Simulator limits:** a build without a team is registered as a provider but iOS does not offer it, so UI tests drive the extension's screens through a debug-only preview in the app. Face ID is tested in the simulator by posting the biometric daemon's enrollment and match notifications.
 
 ### 9.4 CLI
 
-`hisar` is the command-line client for the terminal and for scripts: vaults, items (`ls`, `get`, `add`, `edit`, `rm`), the generator, import (§9.7), sharing (`share <vault> <email> [-r role]`, `unshare`, `people`, `invitations [accept|decline|cancel <id>]`, §5.8), invites (`invite <email>`), share links (`share-link`, `share-links`, §5.9), devices, `read` and `run`, which hand secrets to scripts and commands through secret references (§9.4.1), and `mcp`, the server that lets coding agents use Hisar (§9.4.2). It works in one of two modes:
+`hisar` is the command-line client for the terminal and for scripts: vaults, items (`ls`, `get`, `add`, `edit`, `rm`), the generator, import (§9.7), sharing (`share <vault> <email> [-r role]`, `unshare`, `people`, `invitations [accept|decline|cancel <id>]`, §5.8), invites (`invite <email>`), share links (`share-link`, `share-links`, §5.9), the plan (`plan`, `plan upgrade`, `plan manage`, §8.7), devices, `read` and `run`, which hand secrets to scripts and commands through secret references (§9.4.1), and `mcp`, the server that lets coding agents use Hisar (§9.4.2). It works in one of two modes:
 
 - **Through the desktop app**, like 1Password's CLI integration: `hisar` asks the running Hisar app for what each command needs over `~/.hisar/cli.sock`. It has no session, state file or keys of its own, and nothing is unlocked in the `hisar` process.
 - **Standalone**: its own sign-in, with the session in `state.json` (`HISAR_STATE`) and the Secret Key in the OS keychain (`HISAR_SECRET_KEY` overrides it); every command that decrypts asks for the master password. This is the mode on servers, where no app is installed, and whenever the app does not answer (see "Starting the app").
@@ -640,7 +722,7 @@ It then dials the socket and sends `hello` every 200 ms for up to 10 s. Once the
 - **Let the command-line tool use Hisar** (on by default; stored in `desktop.json` and kept on sign-out). Off closes and removes the socket, so `hisar` falls back to standalone (it sees the app running on the SSH agent socket and does not start it again); a request that still arrives is answered `integration-disabled`.
 - Development builds have no bundled binary; the section says so and offers no install.
 
-**Socket.** `~/.hisar/cli.sock`, socket 0600 in the same 0700 directory as the SSH agent and browser sockets, served while the app runs and the switch is on. The app accepts only peers with its own user ID (`LOCAL_PEERCRED` on macOS, `SO_PEERCRED` on Linux) and closes any other connection without an answer. Frames are a 32-bit big-endian length followed by UTF-8 JSON, at most 16 MiB. Requests are `{"id", "type", …parameters}`; responses `{"id", "ok": true, "result"}` or `{"id", "ok": false, "error": {"code", "message"}}`. Error codes: `invalid-request`, `integration-disabled`, `signed-out`, `locked`, `denied`, `offline`, `not-found`, `internal`. Shared types live in `core/cliprotocol`.
+**Socket.** `~/.hisar/cli.sock`, socket 0600 in the same 0700 directory as the SSH agent and browser sockets, served while the app runs and the switch is on. The app accepts only peers with its own user ID (`LOCAL_PEERCRED` on macOS, `SO_PEERCRED` on Linux) and closes any other connection without an answer. Frames are a 32-bit big-endian length followed by UTF-8 JSON, at most 16 MiB. Requests are `{"id", "type", …parameters}`; responses `{"id", "ok": true, "result"}` or `{"id", "ok": false, "error": {"code", "message"}}`. Error codes: `invalid-request`, `integration-disabled`, `signed-out`, `locked`, `denied`, `offline`, `not-found`, `plan-limit` (§8.7), `internal`. Shared types live in `core/cliprotocol`.
 
 | Type | Parameters | Result |
 |---|---|---|
@@ -663,6 +745,9 @@ It then dials the socket and sends `hello` every 200 ms for up to 10 s. Once the
 | `shareLinks.create` | `vault` (name or ID), `query` (item title or ID, matched as by `hisar get`), `shareLink` (`fields`, `expiresInSeconds`, `maxViews`, `passphrase`; or `text` and `title`) | `shareLink` `{id, url, title, fieldLabels, expiresAt, maxViews}`; always asks first (§5.9) |
 | `shareLinks.list` | — | `shareLinks`: `[{id, title, fieldLabels, isText, createdAt, expiresAt, maxViews, viewCount, hasPassphrase}]` |
 | `shareLinks.revoke` | `shareLinkID` | `{}` |
+| `plan.get` | — | the plan (§8.7): `plan`, `source`, `isFoundingMember`, the subscription's `subscriptionStatus`, `subscriptionInterval`, `renewsAt`, `endsAt`, `trialEndsAt`, the limits, the usage, `isCheckoutAvailable`, `isManageAvailable` |
+| `plan.checkout` | `interval` (`yearly` or `monthly`) | `url`: the checkout to open |
+| `plan.manage` | — | `url`: the customer portal |
 | `devices.list` | — | `devices` |
 | `devices.revoke` | `deviceID` | `{}` |
 | `secrets.resolve` | `references` (at most 500 `hisar://` references), `commandLine` (the command `hisar run` starts, as its arguments; empty for `hisar read`) | `values`, in the order of `references`; fails as a whole with `not-found` or `invalid-request` and a message that names every reference that failed and why (§9.4.1) |
@@ -1133,3 +1218,4 @@ go.work     Ties the Go modules together for local development
 | 6 | Fingerprint check (§5.6) | Optional: a 16-hex-digit security code per person, shown in the desktop app's sharing panel and Settings → People. Key pinning and key-change refusals are always on |
 | 7 | Apple Developer Program membership (code signing and notarization; required for biometric Keychain items and Gatekeeper) | **Open**: needed before Touch ID can ship. During development, local signing with a free Apple ID team works on your own Mac |
 | 8 | Product model | A hosted service, not one family per server: person-to-person sharing by email that the recipient accepts, no account enumeration, invites emailed by the server over SMTP, sign-up stays invite-only, no teams or organizations yet. Account recovery is only through the Emergency Kit (§6) |
+| 9 | Plans and payments | Free and Pro (§8.7), enforced by the server on creating only; a lapsed plan never locks or deletes anything. Lemon Squeezy is the merchant of record. Founding members have Pro for life, granted only by the operator on the server. The iPhone app sells nothing |

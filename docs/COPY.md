@@ -54,6 +54,22 @@ One name for each thing, the same on the Mac, the iPhone, the browser extension,
 | Approve, Deny | Allow, Reject |
 | Coding agents, Available to agents | AI, MCP (except in the `hisar mcp` command) |
 
+## Plans
+
+| Use | Not | Where |
+|---|---|---|
+| Free, Pro | Basic, Premium, Hisar Plus, "the free tier" | Plan names, always capitalized |
+| Founding member: "Pro, free for life" | Lifetime deal, VIP, beta tester | The badge on the Mac and the iPhone, `hisar plan` |
+| Upgrade to Pro…; Yearly · €19.99 a year (selected), Monthly · €2.49 a month | Buy now, Go Pro, Unlock, prices without the period | Mac Settings → Account only; never on the iPhone |
+| Upgrade to Pro on tryhisar.com | Upgrade now, Get more, a second reminder | The one mention where a limit is hit, Mac and `hisar`, only on Free |
+| Manage subscription… | Billing, Cancel subscription | Mac Settings → Account; never on the iPhone |
+| Renews on 11 October 2027 · Trial ends on … · Pro until …. It won't renew. · The last payment didn't go through. Pro stays on while Lemon Squeezy retries. · Your Pro plan ended on …. Everything you created stays; new shares follow Free's limits. | Expires, Your access will be removed | Subscription state |
+| Free includes 2 shared vaults. Remove one to create another. · A shared vault on Free has up to 3 people, including you. · Free includes 10 live share links. Revoke one to create another. · Share links on Free expire after at most 7 days. | You've hit your limit, Upgrade required, Payment required | Limit messages (`proto.DescribePlanLimit`), the same on every app |
+| Plan details need a connection to the Hisar server. | Error loading plan | Offline |
+| Lemon Squeezy (the merchant of record, named where payment is) | our payment partner, Stripe | Checkout, invoices, failed payments |
+
+Never gated, never called a Pro feature: encryption, Touch ID and Face ID, the Emergency Kit, approval dialogs, export, deleting the account. No countdowns, no banners, no badges that nag: the upgrade appears in Settings and once where a limit is hit.
+
 ## Help
 
 | Use | Not |
