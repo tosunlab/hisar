@@ -1,5 +1,5 @@
 # Merge requests, release tags and manual runs only: a merge to main was already tested as its merge request.
-# server-<version> tags publish the server image, cli-<version> the standalone CLI and desktop-<version> the macOS app (GitLab releases).
+# server-<version> tags publish the server image, cli-<version> the standalone CLI, desktop-<version> the macOS app and extension-<version> the browser extension (GitLab releases).
 workflow:
   auto_cancel:
     on_new_commit: interruptible
@@ -8,6 +8,7 @@ workflow:
     - if: $CI_COMMIT_TAG =~ /^server-\d+\.\d+\.\d+/
     - if: $CI_COMMIT_TAG =~ /^cli-\d+\.\d+\.\d+/
     - if: $CI_COMMIT_TAG =~ /^desktop-\d+\.\d+\.\d+/
+    - if: $CI_COMMIT_TAG =~ /^extension-\d+\.\d+\.\d+/
     - if: $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api"
 
 stages: [test, build, release, publish]
@@ -137,6 +138,48 @@ extension:
     name: hisar-extension
     paths: [extension/hisar-extension-*.zip]
     expire_in: 14 days
+
+# extension-<version> tags: the extension zip in the generic package hisar-extension/<version> and a GitLab release for
+# loading it unpacked. Chrome only takes numeric versions, so a custom build (extension-1.2.3-label) must match 1.2.3 in manifest.json.
+extension-release-build:
+  stage: build
+  extends: .npm-cache
+  image: mcr.microsoft.com/playwright:v1.63.0-noble
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^extension-\d+\.\d+\.\d+/
+  interruptible: false
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq make zip curl >/dev/null
+  script:
+    - version=${CI_COMMIT_TAG#extension-}
+    - manifestVersion=$(node -p 'require("./extension/public/manifest.json").version')
+    - test "${version%%-*}" = "$manifestVersion" || { echo "tag $CI_COMMIT_TAG does not match manifest.json version $manifestVersion"; exit 1; }
+    - make build-extension
+    - packageBaseUrl="$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/hisar-extension/$version"
+    - 'curl -fsS --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file "extension/hisar-extension-$manifestVersion.zip" "$packageBaseUrl/hisar-extension-$version.zip"'
+    - printf 'EXTENSION_VERSION=%s\nEXTENSION_PACKAGE_URL=%s\n' "$version" "$packageBaseUrl/hisar-extension-$version.zip" > extension-release.env
+  artifacts:
+    reports:
+      dotenv: extension-release.env
+
+extension-release:
+  stage: release
+  image: registry.gitlab.com/gitlab-org/cli:latest
+  needs: [extension-release-build]
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^extension-\d+\.\d+\.\d+/
+  interruptible: false
+  script:
+    - echo "Releasing the Hisar extension $EXTENSION_VERSION"
+  release:
+    tag_name: $CI_COMMIT_TAG
+    name: Hisar extension $EXTENSION_VERSION
+    description: "Hisar browser extension $EXTENSION_VERSION for Chrome and other Chromium browsers. Unzip it, open chrome://extensions, turn on Developer mode, remove the old Hisar extension and choose Load unpacked. Pairing with the Mac app is kept, because the extension ID is fixed."
+    assets:
+      links:
+        - name: hisar-extension-$EXTENSION_VERSION.zip
+          url: $EXTENSION_PACKAGE_URL
+          link_type: package
 
 # The share link recipient page in Chromium against the real server and links made by the Go client.
 share-link-page:

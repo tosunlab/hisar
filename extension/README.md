@@ -80,6 +80,10 @@ To watch it run, use `HISAR_HEADED=1 npm run test:end-to-end`.
 
 With Hisar.app installed and launched once, the extension talks to the real app: Hisar registers its native host in every installed Chromium browser at launch.
 
+## Releases
+
+Pushing a tag `extension-<version>` (e.g. `extension-0.2.0`, matching `version` in `public/manifest.json`) builds the zip, uploads it to the generic package `hisar-extension/<version>` and creates a GitLab release with it. To update an unpacked install, unzip it, remove the old Hisar extension in `chrome://extensions` and load the new folder: the `key` in the manifest keeps the ID, so pairing with the Mac app is kept. A custom build (`extension-0.2.0-test`) builds the same manifest version, because Chrome only accepts numeric versions.
+
 ## Fake native host
 
 `tools/fake-native-host.mjs` implements the protocol with data from a JSON state file. Edit the file while the host runs to change its state:
