@@ -38,6 +38,8 @@ struct AutoFillRootView: View {
             AutoFillListView(model: model)
         case .passkeyRegistration:
             AutoFillPasskeyRegistrationView(model: model)
+        case .updateRequired:
+            MessageView(systemImage: "arrow.down.app", title: "Update required", message: "Hisar needs an update. Open Hisar to update it.")
         }
     }
 }

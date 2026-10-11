@@ -26,6 +26,43 @@ struct SignInLink: Equatable {
     }
 }
 
+struct InviteLink: Equatable {
+    static let defaultServer = "https://api.tryhisar.com"
+
+    // What Create account accepts: the bare code for the default server, otherwise the invite link on its server.
+    var invite: String
+
+    // hisar://invite/<code>?server=<origin> from the invite page's Open in Hisar button.
+    static func parse(_ text: String) -> InviteLink? {
+        guard let components = URLComponents(string: text.trimmingCharacters(in: .whitespacesAndNewlines)),
+              components.scheme?.lowercased() == "hisar",
+              components.host?.lowercased() == "invite" else { return nil }
+        let code = String(components.path.dropFirst())
+        guard !code.isEmpty, code.range(of: "^[A-Za-z0-9_-]+$", options: .regularExpression) != nil else { return nil }
+        let serverText = components.queryItems?.first { $0.name == "server" }?.value ?? ""
+        if serverText.isEmpty {
+            return InviteLink(invite: code)
+        }
+        guard let server = resolveServer(serverText) else { return nil }
+        return InviteLink(invite: server == defaultServer ? code : "\(server)/invite/\(code)")
+    }
+
+    private static func resolveServer(_ text: String) -> String? {
+        var server = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let hasScheme = server.contains("://")
+        while server.hasSuffix("/") {
+            server.removeLast()
+        }
+        if !server.isEmpty && !hasScheme {
+            server = "https://" + server
+        }
+        guard let components = URLComponents(string: server),
+              let scheme = components.scheme?.lowercased(), scheme == "https" || scheme == "http",
+              let host = components.host, !host.isEmpty else { return nil }
+        return server
+    }
+}
+
 struct CredentialIdentityRecord: Hashable {
     enum Kind: Hashable {
         case password

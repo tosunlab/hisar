@@ -351,6 +351,34 @@ func TestSwitchOffRefusesRequests(t *testing.T) {
 	}
 }
 
+func TestUpdateRequiredRefusesEverythingButHello(t *testing.T) {
+	fixture := createServerFixture(t)
+	var allCheckedVersion []string
+	fixture.server.config.CheckUpdateRequired = func(request *cliprotocol.Request) error {
+		allCheckedVersion = append(allCheckedVersion, request.ClientVersion)
+		return cliprotocol.CreateError(cliprotocol.ErrorUpdateRequired, "Hisar needs an update")
+	}
+	client := fixture.connect(t)
+	if response := client.send(t, cliprotocol.Request{Type: cliprotocol.TypeHello, ClientVersion: "0.1.0"}); response.Error != nil {
+		t.Fatalf("hello: %+v", response)
+	}
+	for _, request := range []cliprotocol.Request{{Type: cliprotocol.TypeListVault, ClientVersion: "0.1.0"}, {Type: cliprotocol.TypeResolveSecret, References: []string{"hisar://a/b/c"}}} {
+		if response := client.send(t, request); getErrorCode(response) != cliprotocol.ErrorUpdateRequired || response.Error.Message != "Hisar needs an update" {
+			t.Errorf("%s: %+v", request.Type, response)
+		}
+	}
+	agentClient := fixture.connect(t)
+	if response := agentClient.send(t, cliprotocol.Request{Type: cliprotocol.TypeAgentHello, AgentName: "claude-code"}); getErrorCode(response) != cliprotocol.ErrorUpdateRequired {
+		t.Errorf("agent.hello: %+v", response)
+	}
+	if fixture.approver.requestCount.Load() != 0 || len(fixture.handler.allType) != 0 {
+		t.Error("a request went through while an update is required")
+	}
+	if len(allCheckedVersion) != 3 || allCheckedVersion[0] != "0.1.0" {
+		t.Errorf("checked %q", allCheckedVersion)
+	}
+}
+
 func TestSignedOutFailsWithoutPrompt(t *testing.T) {
 	fixture := createServerFixture(t)
 	fixture.handler.setState(cliprotocol.StateSignedOut)

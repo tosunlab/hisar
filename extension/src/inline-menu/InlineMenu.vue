@@ -60,6 +60,8 @@ const allAction = computed<MenuAction[]>(() => {
       return [{ kind: "unlock" }];
     case "desktop-unavailable":
       return [{ kind: "open-hisar" }];
+    case "update-required":
+      return [{ kind: "more" }];
     default:
       return [];
   }
@@ -264,7 +266,11 @@ defineExpose({ pressKey });
       <div class="message">
         <p class="title" data-testid="inline-status">
           {{
-            menuState.view === "not-paired"
+            menuState.view === "update-required"
+              ? menuState.updateRequired?.target === "extension"
+                ? "Update the Hisar extension"
+                : "Hisar needs an update"
+              : menuState.view === "not-paired"
               ? "This browser is not paired with Hisar"
               : menuState.view === "locked"
                 ? "Hisar is locked"
@@ -284,7 +290,9 @@ defineExpose({ pressKey });
         @click="chooseAction(allAction[0], $event)"
       >
         {{
-          menuState.view === "not-paired"
+          menuState.view === "update-required"
+            ? "Show details…"
+            : menuState.view === "not-paired"
             ? "Pair with Hisar"
             : menuState.view === "locked"
               ? isWaiting

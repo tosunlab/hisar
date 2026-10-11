@@ -2,7 +2,7 @@ import { vi } from "vitest";
 import type { ApprovalEvent, ShareLink, ShareLinkField, BrowserStatus, CommandLineStatus, Device, ImportPreview, ImportProgress, ItemDetail, LoginItemStatus, Person, ReceivedShareInvitation, SentShareInvitation, SSHAgentStatus, Status, UpdateStatus, VaultMember, VaultSummary } from "./api";
 
 export function createStatus(state: string): Status {
-  return { state, server: "https://hisar.test", email: "alice@example.com", name: "Alice", biometricAvailable: false, biometricEnabled: false, biometricReady: false, isOffline: false, autoLockSeconds: 600 };
+  return { state, server: "https://hisar.test", email: "alice@example.com", name: "Alice", biometricAvailable: false, biometricEnabled: false, biometricReady: false, isOffline: false, autoLockSeconds: 600, updateRequired: null };
 }
 
 export function createItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
@@ -390,6 +390,8 @@ export function createApiMock() {
     removePairedBrowser: vi.fn(),
     setExactHostMatch: vi.fn(),
     cancelBrowserPairing: vi.fn().mockResolvedValue(undefined),
+    checkMinimumVersion: vi.fn(),
+    takePendingInvite: vi.fn().mockResolvedValue(""),
     getUpdateStatus: vi.fn().mockResolvedValue(createUpdateStatus()),
     checkForUpdates: vi.fn(),
     setAutomaticUpdateCheck: vi.fn(),

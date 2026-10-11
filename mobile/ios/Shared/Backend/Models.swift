@@ -27,6 +27,16 @@ struct VaultTheme: Codable, Equatable {
     }
 }
 
+struct UpdateRequirement: Codable, Equatable {
+    var currentVersion: String
+    var minimumVersion: String
+    var updateURL: String
+
+    var currentVersionDescription: String {
+        currentVersion.isEmpty ? "a development build" : currentVersion
+    }
+}
+
 struct VaultStatus: Codable, Equatable {
     static let stateSignedOut = "signed-out"
     static let stateLocked = "locked"
@@ -41,6 +51,7 @@ struct VaultStatus: Codable, Equatable {
     var biometricReady: Bool
     var isOffline: Bool
     var autoLockSeconds: Int
+    var updateRequired: UpdateRequirement?
 
     static let defaultAutoLockSeconds = 300
     static let allAutoLockSeconds = [30, 60, 300, 600, 3600]
@@ -49,7 +60,7 @@ struct VaultStatus: Codable, Equatable {
     var isSignedIn: Bool { state != Self.stateSignedOut }
     var isUnlocked: Bool { state == Self.stateUnlocked }
 
-    init(state: String, server: String, email: String, name: String, biometricAvailable: Bool, biometricEnabled: Bool, biometricReady: Bool, isOffline: Bool, autoLockSeconds: Int = VaultStatus.defaultAutoLockSeconds) {
+    init(state: String, server: String, email: String, name: String, biometricAvailable: Bool, biometricEnabled: Bool, biometricReady: Bool, isOffline: Bool, autoLockSeconds: Int = VaultStatus.defaultAutoLockSeconds, updateRequired: UpdateRequirement? = nil) {
         self.state = state
         self.server = server
         self.email = email
@@ -59,6 +70,7 @@ struct VaultStatus: Codable, Equatable {
         self.biometricReady = biometricReady
         self.isOffline = isOffline
         self.autoLockSeconds = autoLockSeconds
+        self.updateRequired = updateRequired
     }
 
     init(from decoder: Decoder) throws {
@@ -73,6 +85,7 @@ struct VaultStatus: Codable, Equatable {
         isOffline = try container.decodeIfPresent(Bool.self, forKey: .isOffline) ?? false
         let decodedAutoLockSeconds = try container.decodeIfPresent(Int.self, forKey: .autoLockSeconds) ?? 0
         autoLockSeconds = decodedAutoLockSeconds > 0 ? decodedAutoLockSeconds : Self.defaultAutoLockSeconds
+        updateRequired = try container.decodeIfPresent(UpdateRequirement.self, forKey: .updateRequired)
     }
 
     static func describeAutoLock(seconds: Int) -> String {

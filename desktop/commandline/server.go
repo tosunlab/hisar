@@ -43,7 +43,9 @@ type ServerConfig struct {
 	Approvals     *SessionApprovals
 	// IsEnabled follows the "Let the command-line tool use Hisar" switch.
 	IsEnabled func() bool
-	UID       int
+	// CheckUpdateRequired refuses every request but hello while Hisar or this hisar is below the server's minimum version.
+	CheckUpdateRequired func(request *cliprotocol.Request) error
+	UID                 int
 }
 
 type Server struct {
@@ -187,6 +189,11 @@ func (s *Server) answerRequest(ctx context.Context, client *connectionPeer, requ
 			hello.IsApproved = hello.State == cliprotocol.StateUnlocked && s.config.Approvals.IsApproved(client.session)
 		}
 		return hello, nil
+	}
+	if s.config.CheckUpdateRequired != nil {
+		if err := s.config.CheckUpdateRequired(request); err != nil {
+			return nil, err
+		}
 	}
 	if request.Type == cliprotocol.TypeAgentHello {
 		return s.startAgentConnection(client, request)

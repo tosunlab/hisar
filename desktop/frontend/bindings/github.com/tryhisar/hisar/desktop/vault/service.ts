@@ -35,6 +35,14 @@ export function ChangeVaultMemberRole(vaultID: string, accountID: string, role: 
 }
 
 /**
+ * CheckMinimumVersion asks the server whether it still accepts this version. Offline, Hisar keeps what it knew,
+ * and any answer other than 426 (including a server too old to know the check) clears an earlier requirement.
+ */
+export function CheckMinimumVersion(): $CancellablePromise<$models.Status> {
+    return $Call.ByID(731302245);
+}
+
+/**
  * ChooseImportFile asks for an export file and reads it; format "" detects it from the file.
  */
 export function ChooseImportFile(vaultID: string, format: string): $CancellablePromise<$models.ImportPreview> {

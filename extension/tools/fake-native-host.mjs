@@ -165,6 +165,9 @@ export function handleRequest(state, request, now = Date.now(), log = () => unde
     if (!token || !state.allPairing.some((pairing) => pairing.tokenHash === hashToken(token))) {
       throw new ProtocolError("not-paired", "This browser is not paired with Hisar");
     }
+    if (state.updateRequired?.target === "app") {
+      throw new ProtocolError("update-required", `Hisar needs an update: the server requires version ${state.updateRequired.minimumVersion} or later. Open Hisar to update.`);
+    }
   }
   switch (type) {
     case "hello": {
@@ -173,6 +176,7 @@ export function handleRequest(state, request, now = Date.now(), log = () => unde
         protocolVersion,
         isPaired: state.allPairing.some((pairing) => pairing.instanceID === instanceID),
         state: state.state,
+        ...(state.updateRequired ? { updateRequired: state.updateRequired } : {}),
       };
     }
     case "pair.start": {

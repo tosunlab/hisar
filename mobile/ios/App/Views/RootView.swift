@@ -17,7 +17,16 @@ struct RootView: View {
                 LockView()
             case .unlocked:
                 MainTabView()
+            case .updateRequired(let requirement):
+                UpdateRequiredView(requirement: requirement, isChecking: model.isCheckingMinimumVersion) {
+                    await model.checkMinimumVersion()
+                }
             }
+        }
+        .alert("Already signed in", isPresented: Binding(get: { model.inviteLinkMessage != nil }, set: { if !$0 { model.inviteLinkMessage = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(model.inviteLinkMessage ?? "")
         }
         .overlay(alignment: .bottom) {
             if let noticeMessage = model.noticeMessage {

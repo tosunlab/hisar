@@ -10,6 +10,7 @@ final class AutoFillModel: ObservableObject {
         case list
         case passkeyRegistration
         case configuration
+        case updateRequired
     }
 
     enum RequestKind: Equatable {
@@ -150,6 +151,9 @@ final class AutoFillModel: ObservableObject {
         case VaultStatus.stateLocked: screen = .locked
         default: screen = .signedOut
         }
+        if newStatus.updateRequired != nil {
+            screen = .updateRequired
+        }
     }
 
     private func resetRequest() {
@@ -188,7 +192,7 @@ final class AutoFillModel: ObservableObject {
 
     // Without user interaction only an extension process that is still unlocked can answer.
     func provideCredentialWithoutUserInteraction(recordIdentifier: String, serviceIdentifier: String) async -> LoginCredential? {
-        guard let backend, backend.getStatus().isUnlocked,
+        guard let backend, backend.getStatus().isUnlocked, backend.getStatus().updateRequired == nil,
               let reference = LoginMatch.parseRecordIdentifier(recordIdentifier),
               let credential = try? await runInBackground({
                   try backend.getLoginForService(vaultID: reference.vaultID, itemID: reference.itemID, serviceIdentifier: serviceIdentifier)
@@ -200,7 +204,7 @@ final class AutoFillModel: ObservableObject {
     }
 
     func provideOneTimeCodeWithoutUserInteraction(recordIdentifier: String, serviceIdentifier: String) async -> String? {
-        guard let backend, backend.getStatus().isUnlocked,
+        guard let backend, backend.getStatus().isUnlocked, backend.getStatus().updateRequired == nil,
               let reference = LoginMatch.parseRecordIdentifier(recordIdentifier) else { return nil }
         return try? await runInBackground {
             try backend.getOneTimeCodeForService(vaultID: reference.vaultID, itemID: reference.itemID, serviceIdentifier: serviceIdentifier).code
@@ -236,7 +240,7 @@ final class AutoFillModel: ObservableObject {
 
     // Like passwords, only an extension process that is still unlocked signs without user interaction.
     func providePasskeyWithoutUserInteraction(request: PasskeyAssertionRequest, credentialID: Data) async -> PasskeyAssertionCredential? {
-        guard let backend, backend.getStatus().isUnlocked,
+        guard let backend, backend.getStatus().isUnlocked, backend.getStatus().updateRequired == nil,
               let result = try? await runInBackground({
                   try backend.assertPasskey(relyingPartyID: request.relyingPartyID, credentialID: credentialID, clientDataHash: request.clientDataHash)
               }) else { return nil }

@@ -7,15 +7,15 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
+
+	"github.com/tryhisar/hisar/core/appversion"
 )
 
 const metadataFileName = "update.json"
 
 var (
-	versionPattern  = regexp.MustCompile(`^(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})\.(0|[1-9][0-9]{0,2})$`)
 	fileNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
 	systemPattern   = regexp.MustCompile(`^[0-9]{1,2}(\.[0-9]{1,2}){0,2}$`)
 )
@@ -36,20 +36,16 @@ type Release struct {
 
 // GetBuildNumber maps MAJOR.MINOR.PATCH to MAJOR*1000000 + MINOR*1000 + PATCH, the app's CFBundleVersion.
 func GetBuildNumber(version string) (int64, error) {
-	allPart := versionPattern.FindStringSubmatch(version)
-	if allPart == nil {
+	parsed, err := appversion.Parse(version)
+	if err != nil || parsed.IsPreRelease() || parsed.String() != version || max(parsed.Major, parsed.Minor, parsed.Patch) > 999 {
 		return 0, fmt.Errorf("version %q is not MAJOR.MINOR.PATCH with parts up to 999", version)
 	}
-	var buildNumber int64
-	for _, part := range allPart[1:] {
-		number, _ := strconv.ParseInt(part, 10, 64)
-		buildNumber = buildNumber*1000 + number
-	}
-	return buildNumber, nil
+	return int64(parsed.Major*1_000_000 + parsed.Minor*1_000 + parsed.Patch), nil
 }
 
 func IsValidVersion(version string) bool {
-	return versionPattern.MatchString(version)
+	_, err := GetBuildNumber(version)
+	return err == nil
 }
 
 func IsValidFileName(fileName string) bool {

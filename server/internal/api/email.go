@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"net/url"
 	"strings"
 	"time"
 
@@ -16,17 +15,8 @@ const emailTimeout = time.Minute
 
 func (s *Server) isEmailConfigured() bool { return s.config.Mailer != nil }
 
-// buildInviteLink uses https with the public host; plain http stays only for a loopback host in development.
 func (s *Server) buildInviteLink(token string) string {
-	parsedURL, err := url.Parse(s.config.PublicURL)
-	if err != nil || parsedURL.Host == "" {
-		return strings.TrimRight(s.config.PublicURL, "/") + "/invite/" + token
-	}
-	scheme := "https"
-	if parsedURL.Scheme == "http" && mail.IsLoopbackHost(parsedURL.Hostname()) {
-		scheme = "http"
-	}
-	return scheme + "://" + parsedURL.Host + "/invite/" + token
+	return s.buildPublicOrigin() + "/invite/" + token
 }
 
 func describeInviter(inviter *store.Account) string {
@@ -60,12 +50,12 @@ func composeInviteEmail(inviter *store.Account, recipient, link, code string, ex
 	return mail.Message{
 		To:      recipient,
 		Subject: getInviterName(inviter) + " invited you to Hisar",
-		Body: fmt.Sprintf(`%s invited you to Hisar, an end-to-end encrypted password manager for developers.
+		Body: fmt.Sprintf(`%s invited you to Hisar, the end-to-end encrypted password, SSH key and secrets manager for developers.
 
-Create your account:
+Get Hisar and create your account:
 %s
 
-Or enter this invite code in the Hisar app:
+Or paste this invite code under Create account in Hisar:
 %s
 
 The invite works once and expires on %s.
@@ -94,12 +84,12 @@ func composeShareSignUpEmail(inviter *store.Account, recipient, role, link, code
 		To:      recipient,
 		Subject: getInviterName(inviter) + " shared a vault with you in Hisar",
 		Body: fmt.Sprintf(`%s shared a vault with you in Hisar as %s.
-Hisar is an end-to-end encrypted password manager for developers; vault names are encrypted, so this email cannot say which vault.
+Hisar is the end-to-end encrypted password, SSH key and secrets manager for developers. Vault names are encrypted, so this email cannot say which vault.
 
-Create your account to accept it:
+Get Hisar and create your account to accept it:
 %s
 
-Or enter this invite code in the Hisar app:
+Or paste this invite code under Create account in Hisar:
 %s
 
 Then accept the invitation under Settings → People. The invite expires on %s.

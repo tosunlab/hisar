@@ -9,6 +9,7 @@ final class AppModel: ObservableObject {
         case signedOut
         case locked
         case unlocked
+        case updateRequired(UpdateRequirement)
     }
 
     enum Tab: Hashable {
@@ -29,6 +30,9 @@ final class AppModel: ObservableObject {
     @Published var newSecretKey: String?
     @Published private(set) var isBiometricOfferShown = false
     @Published var pendingSignInLink: SignInLink?
+    @Published var pendingInviteLink: InviteLink?
+    @Published var inviteLinkMessage: String?
+    @Published private(set) var isCheckingMinimumVersion = false
     @Published private(set) var lockCount = 0
     @Published private(set) var allPendingApproval: [PhoneApproval] = []
     @Published private(set) var presentedApproval: PhoneApproval?
@@ -77,9 +81,34 @@ final class AppModel: ObservableObject {
             if status.isUnlocked {
                 Task { await refreshAll() }
             }
+            Task { await checkMinimumVersion() }
         } catch {
             screen = .failed(describeError(error))
         }
+    }
+
+    // Offline the backend keeps what it knew, so a failed check never blocks the app.
+    func checkMinimumVersion() async {
+        guard let backend else { return }
+        isCheckingMinimumVersion = true
+        defer { isCheckingMinimumVersion = false }
+        guard let newStatus = try? await runInBackground({ backend.checkMinimumVersion() }) else { return }
+        applyStatus(newStatus)
+        if newStatus.isUnlocked && newStatus.updateRequired == nil && isInForeground {
+            startApprovalPolling()
+        }
+    }
+
+    func handleUpdateRequired() {
+        refreshStatus()
+    }
+
+    func openInviteLink(_ link: InviteLink) {
+        if status.isSignedIn {
+            inviteLinkMessage = "You're signed in as \(status.email). Sign out to create an account with this invite."
+            return
+        }
+        pendingInviteLink = link
     }
 
     private func applyStatus(_ newStatus: VaultStatus) {
@@ -89,6 +118,10 @@ final class AppModel: ObservableObject {
         case VaultStatus.stateUnlocked: screen = .unlocked
         case VaultStatus.stateLocked: screen = .locked
         default: screen = .signedOut
+        }
+        if let requirement = newStatus.updateRequired {
+            screen = .updateRequired(requirement)
+            clearAllApproval()
         }
         if wasUnlocked && !newStatus.isUnlocked {
             allVault = []
@@ -103,7 +136,7 @@ final class AppModel: ObservableObject {
         if newStatus.state != VaultStatus.stateLocked {
             allShareAwaitingUnlock = []
         }
-        if !wasUnlocked && newStatus.isUnlocked && isInForeground {
+        if !wasUnlocked && newStatus.isUnlocked && isInForeground && newStatus.updateRequired == nil {
             startApprovalPolling()
         }
     }
@@ -264,10 +297,11 @@ final class AppModel: ObservableObject {
     }
 
     func handleWillEnterForeground() {
+        Task { await checkMinimumVersion() }
         isInForeground = true
         defer {
             enteredBackgroundAt = nil
-            if status.isUnlocked, let backend {
+            if status.isUnlocked, status.updateRequired == nil, let backend {
                 backend.reconnectEvents()
                 startApprovalPolling()
                 handleRemoteChange()

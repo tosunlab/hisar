@@ -110,6 +110,7 @@ func (client *appClient) call(ctx context.Context, request cliprotocol.Request, 
 func (client *appClient) callWithTimeout(ctx context.Context, request cliprotocol.Request, result any, timeout time.Duration) error {
 	client.nextID++
 	request.ID = strconv.Itoa(client.nextID)
+	request.ClientPlatform, request.ClientVersion = getPlatform(), getClientVersion()
 	client.connection.SetDeadline(time.Now().Add(timeout))
 	stopClosing := context.AfterFunc(ctx, func() { client.connection.SetDeadline(time.Now()) })
 	defer stopClosing()
