@@ -68,7 +68,6 @@ func unlock(ctx context.Context) (*localstate.State, *session.Session, error) {
 	}
 	unlockedSession.SeqStore = currentState
 	unlockedSession.MemberVerifier = currentState.CheckMemberPin
-	unlockedSession.RecoveryKeyVerifier = func(recoveryKEMPublicKey []byte) error { return checkRecoveryPin(currentState, recoveryKEMPublicKey) }
 	return currentState, unlockedSession, nil
 }
 
@@ -134,8 +133,10 @@ Account created. This is your Secret Key:
 
     %s
 
-Write it down and keep it with your master password somewhere safe.
-You need both to sign in on a new device; nobody can recover it for you.
+Write it down and keep it with your master password somewhere safe, or save
+your Emergency Kit with "hisar emergency-kit". You need both to sign in on a
+new device. A forgotten master password cannot be recovered by anyone,
+including Hisar.
 `, secretKey.Encode())
 	return nil
 }

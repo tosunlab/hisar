@@ -34,8 +34,8 @@ const api = apiMock.current;
 
 function createVaultList(familyRole: string): VaultSummary[] {
   return [
-    { id: "personal", name: "Personal", type: "personal", role: "owner", itemCount: 0, recoverable: true, recoveryOptOut: false },
-    { id: "family", name: "Family", type: "shared", role: familyRole, itemCount: 1, recoverable: true, recoveryOptOut: false },
+    { id: "personal", name: "Personal", type: "personal", role: "owner", itemCount: 0 },
+    { id: "family", name: "Family", type: "shared", role: familyRole, itemCount: 1 },
   ];
 }
 
@@ -218,11 +218,10 @@ describe("Vault sharing panel", () => {
     store.selectedVaultID = "personal";
     const wrapper = mount(MainView, { attachTo: document.body });
     expect(wrapper.find('[data-testid="share-vault"]').exists()).toBe(false);
-    const privateButton = wrapper.find('[data-testid="personal-vault-private"]');
-    expect(privateButton.attributes("title")).toContain("Personal vaults are private");
-    await privateButton.trigger("click");
-    await flushPromises();
-    expect(wrapper.find('[data-testid="vault-recovery-panel"]').text()).toContain("“Personal” is private");
+    const privateBadge = wrapper.find('[data-testid="personal-vault-private"]');
+    expect(privateBadge.element.tagName).toBe("SPAN");
+    expect(privateBadge.attributes("title")).toBe("Personal vaults are private. Create a shared vault to share items with other people.");
+    expect(wrapper.text()).not.toMatch(/recover/i);
     expect(store.isSharingOpen).toBe(false);
     wrapper.unmount();
   });
@@ -280,8 +279,7 @@ describe("Settings people and devices", () => {
     await flushPromises();
     const people = wrapper.find('[data-testid="people-section"]');
     expect(people.find('.section-label').text()).toBe("People");
-    expect(people.find('[data-testid="person-role-ALICE1"]').text()).toBe("Admin");
-    expect(people.find('[data-testid="person-role-BOB222"]').exists()).toBe(false);
+    expect(people.text()).not.toMatch(/admin/i);
     const bob = people.find('[data-testid="person-BOB222"]');
     expect(bob.text()).toContain("bob@example.com");
     expect(bob.find('[data-testid="person-security-code"]').text()).toBe("C0FF EE12 3456 789A");

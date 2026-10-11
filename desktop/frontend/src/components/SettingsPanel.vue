@@ -5,7 +5,6 @@ import {
   configureSSHConfig,
   disableBiometricUnlock,
   enableBiometricUnlock,
-  loadRecoveryData,
   loadSettingsData,
   loadSSHAgentStatus,
   openImport,
@@ -19,7 +18,6 @@ import {
   store,
 } from "../store";
 import { formatLastSeen, formatPlatform, getPlatformIcon, isMacPlatform } from "../util";
-import AccountRecoverySection from "./AccountRecoverySection.vue";
 import BrowserExtensionSection from "./BrowserExtensionSection.vue";
 import CommandLineSection from "./CommandLineSection.vue";
 import UpdatesSection from "./UpdatesSection.vue";
@@ -85,7 +83,6 @@ onMounted(() => {
   window.addEventListener("keydown", closeOnEscape);
   loadSSHAgentStatus();
   loadSettingsData();
-  loadRecoveryData();
 });
 onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
 </script>
@@ -167,7 +164,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
           <span class="setting-icon"><AppIcon name="note" /></span>
           <div class="setting-text">
             <strong>Emergency Kit</strong>
-            <p class="muted">A printable PDF with your sign-in address, email and Secret Key, for signing in on a new device.</p>
+            <p class="muted">A printable PDF with your sign-in address, email and Secret Key, for signing in on a new device. It is the only way back in if you lose your devices.</p>
           </div>
           <button v-if="!isSavingEmergencyKit" data-testid="save-emergency-kit" @click="isSavingEmergencyKit = true">Save PDF</button>
         </div>
@@ -200,8 +197,6 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
       </section>
 
       <PeopleSection />
-
-      <AccountRecoverySection />
 
       <section data-testid="devices-section">
         <p class="section-label">Devices</p>

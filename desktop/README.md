@@ -4,7 +4,7 @@ Wails v3 (pinned beta, see `WAILS_VERSION` in the root `Makefile`) with a Vue 3 
 
 | Path | What |
 |---|---|
-| `vault/` | Go backend bound to the UI: session, lock/auto-lock, clipboard clearing, SSH Key items, sharing, invites, devices, account recovery and import. No Wails import, so it is tested on any OS |
+| `vault/` | Go backend bound to the UI: session, lock/auto-lock, clipboard clearing, SSH Key items, sharing, invites, devices, Emergency Kit and import. No Wails import, so it is tested on any OS |
 | `agent/` | SSH agent in the app: approval window (Touch ID or in-app prompt, also for the command-line tool), `~/.ssh/config` setup, agent status. No Wails import |
 | `commandline/` | The `hisar` CLI socket (`~/.hisar/cli.sock`): peer check, per-terminal-session approvals, and installing the bundled `hisar` on the PATH. No Wails import |
 | `biometric/` | Touch ID and the macOS Keychain (cgo) |
@@ -65,12 +65,7 @@ cd desktop/frontend && npm run preview:ui
 # extra parameters: &vault=family &item=netflix &editor=create|edit|ssh-key &secretKey=1 &search=git
 # SSH: &item=raspberry (SSH key) &settings=1 &noTouchID=1 (in-app approval note) &compact=1 (compact approvals on) &agent=error &sshConfigured=1
 # sharing: &sharing=1 (sharing panel; add &vault=work for the read-only view) &code=elif (security code) &remove=deniz
-# settings: &settings=1 &invite=form|1 (invite form, or a created link) &revoke=mac-mini &scroll=family|recovery|devices
-# recovery (admin): &settings=1&scroll=recovery, plus &recovery=off&setUpRecovery=1 (setup confirmation), &recovery=other (set up by
-#   another admin), &startRecovery=deniz (created link; use &scroll=family), &completeRecovery=deniz | &completedRecovery=deniz
-# recovery (member): &settings=1&scroll=recovery&role=member &optOut=1 (personal vault opted out)
-# personal vault: &vaultRecovery=1 (recovery panel) &disableRecovery=1 (opt-out warning) &optOut=1
-# recovering an account: &state=signed-out&recover=form|filled &secretKey=recovery (new Secret Key) &recoverySubmitted=1
+# settings: &settings=1 &invite=form|1 (invite form, or a sent invite) &revoke=mac-mini &scroll=people|devices
 # offline: &offline=1 (offline notice)
 # import: &import=choose | preview | saving (stops halfway) | done | deleted, &importVault=family (target vault), &newItemMenu=1 (open the + menu)
 ```
@@ -79,25 +74,22 @@ The preview backend (`src/preview.ts`) is loaded with a dynamic import behind a 
 
 The app keeps its session in `~/Library/Application Support/hisar/desktop.json` (override with `HISAR_DESKTOP_STATE`), the encrypted offline cache in `desktop-cache.db` next to it (override with `HISAR_DESKTOP_CACHE`), and the Secret Key in the macOS Keychain under the service `hisar`.
 
-## Sharing, family and devices
+## Sharing, people and devices
 
 Design: `docs/DESIGN.md` §4.4 (vault keys and rotation), §5.1 (invites) and §5.6 (public key pinning).
 
-- **Share a vault**: select a shared vault and press **Share** in the item list header. Everyone with access is listed with their role; owners can add a family member (owner, editor or reader), change roles and remove people. Editors and readers see the list read-only. Personal vaults show **Private** instead and cannot be shared.
+- **Share a vault**: select a shared vault and press **Share** in the item list header. Everyone with access is listed with their role; owners can invite someone by email (owner, editor or reader), change roles and remove people. Editors and readers see the list read-only. Personal vaults show **Private** instead and cannot be shared.
 - **Removing someone** re-encrypts the vault: the owner's device generates a new vault key, re-encrypts every item and wraps the new key only for the remaining members (`session.RemoveVaultMember`). Copies the removed person already downloaded stay readable to them.
-- **Key pinning**: the first time this device shares with someone, it pins their signing key in `desktop.json` (`pins`), like the CLI (`localstate.State.CheckMemberPin`). Sharing, changing a role or re-encrypting the vault stops if a pinned key changes. Each person has a security code (`crypt.FormatKeyFingerprint`: the first 8 bytes of SHA-256 of their Ed25519 signing key, as 4 groups of 4 hex digits); expand a member in the sharing panel or open Settings → Family to see it, and compare it in person.
-- **Settings → Family** lists everyone on the server with their role and security code. Admins can **Invite someone**: the link is valid for 7 days and works once.
+- **Key pinning**: the first time this device shares with someone, it pins their signing key in `desktop.json` (`pins`), like the CLI (`localstate.State.CheckMemberPin`). Sharing, changing a role or re-encrypting the vault stops if a pinned key changes. Each person has a security code (`crypt.FormatKeyFingerprint`: the first 8 bytes of SHA-256 of their Ed25519 signing key, as 4 groups of 4 hex digits); expand a member in the sharing panel or open Settings → People to see it, and compare it over a channel you trust.
+- **Settings → People** lists the people you share a vault with and their security codes, and the share invitations you sent and received. Anyone can **Invite** someone to Hisar by email. The app shows no account roles; the admin role only matters to the operator's `hisar-server` command.
 - **Settings → Devices** lists the devices signed in to your account. **Revoke** signs another device out; to sign out this Mac, use **Sign out** under Account.
 
-## Account recovery
+## Signing in again: the Emergency Kit
 
-Design: `docs/DESIGN.md` §6. Recovery lets an admin help someone who forgot their master password or lost their Secret Key; the trade-off is that the admin's devices can open every recoverable vault.
+Design: `docs/DESIGN.md` §6. The Emergency Kit (email, server and Secret Key) plus the master password is the only way to sign in again; there is no account recovery.
 
-- **Set up (admin)**: Settings → Account recovery → **Set up** creates the recovery key and makes the vaults you own recoverable. Only the admin who set it up can complete recoveries. Settings also lists your own vaults with their state, and **Make recoverable** fixes vaults created before recovery was set up.
-- **Start (admin)**: Settings → Family → **Start recovery** on someone's row creates a one-time link, valid for 7 days. Send it to them; their account keeps working until you complete the recovery.
-- **Recover (the person who lost access)**: on the sign-in screen, **Recover account**, then paste the link, enter the email and a new master password. Hisar shows the new Secret Key (and can save it as an Emergency Kit); it works once the admin completes the recovery.
-- **Complete (the admin who set up recovery)**: Settings → Account recovery lists pending recoveries with how many of their vaults can be recovered. **Complete** signs out their devices, gives them their recoverable vaults under the new keys, re-pins their new signing key on this device and lists the vaults they lost.
-- **Opt out**: the owner of a personal vault can press **Private** in its header and turn recovery off, after a warning that the vault is lost if they lose access, and turn it back on later. Shared vaults always stay recoverable.
+- **Lost Secret Key**: it is on the Emergency Kit. Settings → Emergency Kit saves a new kit after the master password, and the sign-in screen says where to find it.
+- **Forgotten master password**: nobody can recover it, including Hisar. The Create account form and the Secret Key screen after sign up say so.
 
 ## Import from other password managers
 

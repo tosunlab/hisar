@@ -57,7 +57,7 @@ func createTestAccount(t *testing.T, database *Store, accountID, email string) (
 func createTestVault(t *testing.T, database *Store, owner string) string {
 	t.Helper()
 	vaultID := uuid.NewString()
-	if err := database.CreateVault(context.Background(), &Vault{ID: vaultID, Type: "shared", EncName: []byte{1}, CreatedBy: owner}, []byte{1}, nil); err != nil {
+	if err := database.CreateVault(context.Background(), &Vault{ID: vaultID, Type: "shared", EncName: []byte{1}, CreatedBy: owner}, []byte{1}); err != nil {
 		t.Fatal(err)
 	}
 	return vaultID
@@ -81,23 +81,25 @@ func TestMigrations(t *testing.T) {
 		}
 	}
 
-	countTable := func(tableName string) int {
-		var tableCount int
-		database.pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.tables WHERE table_name = $1`, tableName).Scan(&tableCount)
-		return tableCount
-	}
-	countColumn := func(tableName, columnName string) int {
-		var columnCount int
-		database.pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.columns WHERE table_name = $1 AND column_name = $2`, tableName, columnName).Scan(&columnCount)
-		return columnCount
-	}
 	allRecoveryTable := []string{"recovery_keyset", "vault_recovery", "recovery_tokens", "account_recovery"}
 
 	rolledBack, err := database.RollbackMigration(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if countTable("share_invitations") != 0 || countTable("recovery_keyset") != 1 {
+	for _, tableName := range allRecoveryTable {
+		if countTable(t, database, tableName) != 1 {
+			t.Errorf("%s missing after rolling back %s", tableName, rolledBack.Source.Path)
+		}
+	}
+	if countColumn(t, database, "vaults", "recovery_opt_out") != 1 || countTable(t, database, "share_invitations") != 1 {
+		t.Errorf("rolling back %s left the wrong schema", rolledBack.Source.Path)
+	}
+
+	if rolledBack, err = database.RollbackMigration(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if countTable(t, database, "share_invitations") != 0 || countTable(t, database, "recovery_keyset") != 1 {
 		t.Errorf("rolling back %s left the wrong schema", rolledBack.Source.Path)
 	}
 
@@ -105,28 +107,114 @@ func TestMigrations(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, tableName := range allRecoveryTable {
-		if countTable(tableName) != 0 {
+		if countTable(t, database, tableName) != 0 {
 			t.Errorf("%s still exists after rolling back %s", tableName, rolledBack.Source.Path)
 		}
 	}
-	if countColumn("vaults", "recovery_opt_out") != 0 || countTable("accounts") != 1 {
+	if countColumn(t, database, "vaults", "recovery_opt_out") != 0 || countTable(t, database, "accounts") != 1 {
 		t.Errorf("rolling back %s left the wrong schema", rolledBack.Source.Path)
 	}
 
 	if rolledBack, err = database.RollbackMigration(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if countTable("accounts") != 0 {
+	if countTable(t, database, "accounts") != 0 {
 		t.Errorf("accounts table still exists after rolling back %s", rolledBack.Source.Path)
 	}
 
-	if allResult, err = database.Migrate(ctx); err != nil || len(allResult) != 3 {
+	if allResult, err = database.Migrate(ctx); err != nil || len(allResult) != 4 {
 		t.Fatalf("re-apply: %d %v", len(allResult), err)
 	}
-	for _, tableName := range append(allRecoveryTable, "share_invitations") {
-		if countTable(tableName) != 1 {
-			t.Errorf("%s missing after re-applying", tableName)
+	for _, tableName := range allRecoveryTable {
+		if countTable(t, database, tableName) != 0 {
+			t.Errorf("%s exists after re-applying", tableName)
 		}
+	}
+	if countColumn(t, database, "vaults", "recovery_opt_out") != 0 || countTable(t, database, "share_invitations") != 1 {
+		t.Error("re-applying left the wrong schema")
+	}
+}
+
+func countTable(t *testing.T, database *Store, tableName string) int {
+	t.Helper()
+	var tableCount int
+	if err := database.pool.QueryRow(context.Background(), `SELECT count(*) FROM information_schema.tables WHERE table_name = $1`, tableName).Scan(&tableCount); err != nil {
+		t.Fatal(err)
+	}
+	return tableCount
+}
+
+func countColumn(t *testing.T, database *Store, tableName, columnName string) int {
+	t.Helper()
+	var columnCount int
+	if err := database.pool.QueryRow(context.Background(), `SELECT count(*) FROM information_schema.columns WHERE table_name = $1 AND column_name = $2`, tableName, columnName).Scan(&columnCount); err != nil {
+		t.Fatal(err)
+	}
+	return columnCount
+}
+
+func countRow(t *testing.T, database *Store, tableName string) int {
+	t.Helper()
+	var rowCount int
+	if err := database.pool.QueryRow(context.Background(), `SELECT count(*) FROM `+tableName).Scan(&rowCount); err != nil {
+		t.Fatal(err)
+	}
+	return rowCount
+}
+
+func TestRemoveRecoveryMigrationDeletesRecoveryData(t *testing.T) {
+	database := createTestStore(t)
+	ctx := context.Background()
+	createTestAccount(t, database, "AAAAAA", "a@example.com")
+	createTestAccount(t, database, "BBBBBB", "b@example.com")
+	vaultID := createTestVault(t, database, "AAAAAA")
+	if _, err := database.RollbackMigration(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, statement := range []string{
+		`INSERT INTO recovery_keyset (kem_pub, sign_pub, kem_sig, enc_keyset, created_by) VALUES ('\x01', '\x02', '\x03', '\x04', 'AAAAAA')`,
+		`INSERT INTO vault_recovery (vault_id, wrapped_key) VALUES ('` + vaultID + `', '\x05')`,
+		`UPDATE vaults SET recovery_opt_out = true`,
+		`INSERT INTO recovery_tokens (account_id, token_hash, created_by, expires_at) VALUES ('BBBBBB', '\x06', 'AAAAAA', now() + interval '1 day')`,
+		`INSERT INTO account_recovery (account_id, argon2_params, salt, opaque_record, enc_keyset, kem_pub, sign_pub, kem_sig)
+			VALUES ('BBBBBB', '{}', '\x07', '\x08', '\x09', '\x0a', '\x0b', '\x0c')`,
+	} {
+		if _, err := database.pool.Exec(ctx, statement); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if allResult, err := database.Migrate(ctx); err != nil || len(allResult) != 1 {
+		t.Fatalf("applied %d: %v", len(allResult), err)
+	}
+	for _, tableName := range []string{"recovery_keyset", "vault_recovery", "recovery_tokens", "account_recovery"} {
+		if countTable(t, database, tableName) != 0 {
+			t.Errorf("%s still exists", tableName)
+		}
+	}
+	if countColumn(t, database, "vaults", "recovery_opt_out") != 0 {
+		t.Error("vaults.recovery_opt_out still exists")
+	}
+	if countRow(t, database, "accounts") != 2 || countRow(t, database, "sessions") != 2 {
+		t.Error("the migration changed accounts or sessions")
+	}
+	allVault, err := database.ListAllVault(ctx, "AAAAAA")
+	if err != nil || len(allVault) != 1 || allVault[0].ID != vaultID || allVault[0].Role != "owner" || len(allVault[0].WrappedKey) != 1 {
+		t.Fatalf("vault after the migration: %+v %v", allVault, err)
+	}
+
+	if _, err := database.RollbackMigration(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for _, tableName := range []string{"recovery_keyset", "vault_recovery", "recovery_tokens", "account_recovery"} {
+		if countRow(t, database, tableName) != 0 {
+			t.Errorf("%s has rows after rolling back", tableName)
+		}
+	}
+	var isOptedOut bool
+	if err := database.pool.QueryRow(ctx, `SELECT recovery_opt_out FROM vaults WHERE id = $1`, vaultID).Scan(&isOptedOut); err != nil || isOptedOut {
+		t.Errorf("recovery_opt_out after rolling back: %v %v", isOptedOut, err)
 	}
 }
 
@@ -328,7 +416,7 @@ func TestVaultAccess(t *testing.T) {
 	if err := database.RemoveAccess(ctx, vaultID, "BBBBBB"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("double remove: %v", err)
 	}
-	if err := database.CreateVault(ctx, &Vault{ID: vaultID, Type: "shared", EncName: []byte{1}, CreatedBy: "AAAAAA"}, []byte{1}, nil); !errors.Is(err, ErrExists) {
+	if err := database.CreateVault(ctx, &Vault{ID: vaultID, Type: "shared", EncName: []byte{1}, CreatedBy: "AAAAAA"}, []byte{1}); !errors.Is(err, ErrExists) {
 		t.Errorf("duplicate vault: %v", err)
 	}
 }

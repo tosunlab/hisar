@@ -74,20 +74,6 @@ func (s *Session) RotateVaultKey(ctx context.Context, vault *Vault, allAccessGra
 		request.AllAccess = append(request.AllAccess, proto.RotatedAccess{AccountID: member.AccountID, Role: grant.Role, WrappedKey: wrappedKey})
 	}
 
-	isRecoverable, err := s.checkVaultRecoverable(ctx, vault.ID)
-	if err != nil {
-		return err
-	}
-	if isRecoverable {
-		recoveryPublicKeys, err := s.GetRecoveryPublicKey(ctx)
-		if err != nil {
-			return err
-		}
-		if request.RecoveryWrappedKey, err = crypt.WrapVaultKey(recoveryPublicKeys.KEM, vault.ID, crypt.RecoveryRecipientID, newVaultKey); err != nil {
-			return err
-		}
-	}
-
 	allProtoItem, err := s.listAllProtoItem(ctx, vault)
 	if err != nil {
 		return err
@@ -105,22 +91,7 @@ func (s *Session) RotateVaultKey(ctx context.Context, vault *Vault, allAccessGra
 	}
 	clear(vault.Key)
 	vault.Key = newVaultKey
-	vault.Recoverable = isRecoverable
 	return nil
-}
-
-// checkVaultRecoverable reads the current recovery state, so a rotation keeps a wrapping added since the vault was listed.
-func (s *Session) checkVaultRecoverable(ctx context.Context, vaultID string) (bool, error) {
-	allProtoVault, err := s.Client.ListAllVault(ctx)
-	if err != nil {
-		return false, err
-	}
-	for _, protoVault := range allProtoVault {
-		if protoVault.ID == vaultID {
-			return protoVault.Recoverable, nil
-		}
-	}
-	return false, fmt.Errorf("vault %s: %w", vaultID, ErrNotFound)
 }
 
 func reencryptItem(vault *Vault, newVaultKey []byte, protoItem *proto.Item) (*proto.RotatedItem, error) {

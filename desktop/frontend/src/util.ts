@@ -147,15 +147,3 @@ export function formatLastSeen(timestamp: string, now = new Date()): string {
   }
   return seenAt.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
-
-export function formatSubmittedTime(timestamp: string, now = new Date()): string {
-  const lastSeen = formatLastSeen(timestamp, now);
-  if (lastSeen === "Active now") {
-    return "just now";
-  }
-  return lastSeen === "Yesterday" ? "yesterday" : lastSeen;
-}
-
-export function formatVaultCount(count: number): string {
-  return count === 1 ? "1 vault" : `${count} vaults`;
-}

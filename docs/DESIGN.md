@@ -10,7 +10,7 @@ Status: **Draft, Phase 0**. This document is the source of truth for the securit
 - Person-to-person sharing by email: anyone can share a vault they own with anyone else, and nobody can list the accounts on the server.
 - Zero-knowledge server: the server never sees the master password, the Secret Key, any decryption key or any plaintext item data.
 - Offline-first clients: every client keeps a full encrypted copy and works with no network.
-- Shared vaults between people, plus an admin-assisted recovery path (§6; to be redesigned for many unrelated users).
+- Shared vaults between people. Account recovery only through the Emergency Kit (§6): a forgotten master password cannot be recovered by anyone.
 - Clients: desktop (first), browser extension, mobile, CLI.
 - One implementation of the crypto, written in Go, shared by all clients.
 
@@ -118,7 +118,6 @@ The server stores `encKeyset`, the KEM public key, the Ed25519 public key and th
 
 - Each vault has a random 32-byte `K_vault`.
 - For every member, the server stores `0x01 || HPKE.Seal(memberKEMPub, info="hisar/v1/vault-key" || vaultID || memberAccountID, K_vault)`.
-- The recovery keyset (§6.1) gets the same wrapping, with recipient ID `"recovery"`, for every vault that opts into recovery.
 - Removing a member rotates `K_vault` (`session.RemoveVaultMember`, `POST /vaults/{id}/rotate`, owner only):
   - The owner's client generates a new key, re-encrypts the vault name and every item, including tombstones, under a new revision, and wraps the new key for each remaining member. Each member's signed KEM key is verified, and the client's `MemberVerifier` hook (key pinning in the CLI and the desktop app) must accept it.
   - The server applies it in one transaction. It returns 409 unless the submitted items match the stored items and revisions exactly, so concurrent edits are never lost; the client then retries, up to 3 times. It replaces all access grants, gives every item a new seq so all devices resync, and drops the vault's item history, because that history is encrypted with the old key.
@@ -171,6 +170,8 @@ Sign-up is invite-only: there is no open registration. An invite is an email add
 - Without email configured on the server (§8.4), `POST /invites` answers `501 email is not configured on this server`.
 - Rate limits: 10 invites per account and 20 per IP address per day.
 - **The operator** creates invites with `hisar-server invite --email … [--role admin|member]`, which prints the link and needs no email; the first account is usually created this way, as an admin.
+
+**Roles.** `accounts.role` (`admin` or `member`) stays in the data model, but no app feature depends on it: any user invites, shares and manages their own devices, and the apps neither show the role nor offer admin screens. The operator's `hisar-server` command (`invite`, `migrate`) on the server is the only admin surface.
 
 ### 5.2 Signup (new user, first device)
 
@@ -240,46 +241,15 @@ Sharing is person to person: the owner of a shared vault types an email address 
 
 **People.** `GET /members` returns the caller and every account that shares at least one vault with them, with signed public keys; it is the member source for sharing, role changes, removal and rotation. There is no list of every account anywhere (API, desktop, iOS, CLI, extension); only the operator's `hisar-server` reads the database directly. The desktop's Settings → People shows those people with their security codes, the invitations the user sent (Cancel) and received (Accept, Decline), and the invite form; a banner above the vault list shows received invitations.
 
-## 6. Recovery
+## 6. Account recovery
 
-Zero-knowledge means a forgotten master password or lost Secret Key loses data, unless recovery is set up ahead of time.
+Recovery is only through the Emergency Kit (§4.1). With the email, server and Secret Key printed on it, plus their master password, a user signs in on any device (§5.3). There is no other path: no admin recovery, no recovery links, no trusted contacts.
 
-**Open: recovery must be redesigned for the multi-user model.** Recovery still works as below: one admin's recovery keyset covers every recoverable vault on the server, which suits one household but not a hosted service of unrelated users. Until a separate product decision the logic is unchanged, except that it never lists all users: an admin starts a recovery for a person they share a vault with (Settings → People, `hisar recovery-start <email>`), and clients verify the recovery key against the creator that `GET /recovery/keyset` returns instead of a member list.
+- **Lost Secret Key:** it is on the Emergency Kit, and on every device still signed in, where the desktop app saves a new Emergency Kit after the master password (Settings → Emergency Kit) and the CLI has `hisar emergency-kit`.
+- **Forgotten master password:** it cannot be recovered by anyone, including Hisar. The server never sees it, and nothing the server or a device stores opens the keyset without it, so the data only that account can open is lost; shared vaults stay with their other members. The apps say so plainly when the account is created and on the Secret Key / Emergency Kit screen.
+- Losing the Emergency Kit and every signed-in device loses the account as well.
 
-### 6.1 Recovery keyset
-
-- Only the admin holds the **recovery keyset**, a regular `crypt` keyset created once with `session.CreateRecoveryKeyset` (`hisar recovery-setup`):
-  - Its private part is encrypted with the admin's `K_user`: `XChaCha20-Poly1305(key=K_user, aad="hisar/v1/recovery-keyset"||adminAccountID)`.
-  - Its KEM public key is signed with the admin's Ed25519 key, bound to the literal recipient ID `"recovery"`: `Ed25519.Sign("hisar/v1/kem-key" || "recovery" || kemPub)`, the same format as account keys (§4.3), so `PublicKeys.Verify("recovery")` checks it.
-  - The server stores the KEM public key, the admin's signing public key, the signature, the encrypted keyset and `created_by`. It accepts the keyset only from an admin, only once, and only signed by that admin's current signing key. `GET /recovery/keyset` returns the encrypted keyset to its creator only.
-- Before wrapping anything to the recovery key, clients verify it (`session.GetRecoveryPublicKey`): `GET /recovery/keyset` returns its creator (account ID, name, email, role, public keys), who must be an admin whose own signed keys verify and whose signing key is the one that signed the recovery key. The CLI then pins the recovery KEM key trust-on-first-use (`AllPin["recovery"]`), like member keys (§5.6).
-- Vault keys are wrapped to the recovery key with recipient ID `"recovery"` (§4.4) and stored in `vault_recovery`:
-  - `session.CreateVault` wraps every new vault when a recovery keyset exists. Shared vaults must be wrapped: the server rejects a shared vault without the wrapping. Personal vaults are wrapped by default.
-  - `PUT /vaults/{id}/recovery` (owner) sets the wrapping. `DELETE /vaults/{id}/recovery` (owner, personal vaults only) removes it and records the opt-out (`vaults.recovery_opt_out`), so later bulk enabling skips the vault. The UI must warn that an opted-out vault is lost if the user loses access.
-  - `GET /vaults` returns `recoverable` and `recoveryOptOut` per vault. `session.ListAllVaultWithoutRecovery` lists owned vaults without a wrapping, and `session.EnableRecoveryForAllVault` (`hisar recovery-enable`, and `hisar recovery-setup` for the admin) wraps the ones that are not opted out. Vaults created before the keyset existed need this.
-  - Key rotation (§4.4) carries the new key wrapped to the recovery key when the vault had a wrapping. The server replaces it in the rotation transaction, and returns 409 if the vault has a wrapping and the rotation does not carry one.
-- If the admin loses access, recoverable vaults can still be opened by their members, but nobody can perform further recoveries until a new recovery keyset is created. When another admin recovers the creating admin, the recovery keyset and all recovery wrappings are deleted in the same transaction (they were sealed with the old `K_user`), and recovery must be set up again.
-
-### 6.2 Recovery flow
-
-1. **Start (admin).** `POST /admin/recovery/{accountID}` (`hisar recovery-start <email>`) creates a one-time token (the server stores its SHA-256 hash; it expires after 7 days) and returns `<PublicURL>/recover/<token>`. Starting again replaces the token and any pending submission. The account keeps working until completion. Admins cannot recover themselves; another admin must do it.
-2. **Submit (user).** `session.StartRecovery` (`hisar recover <link>`) asks for the email and a new master password:
-   - `POST /auth/recovery/account {token, email}` returns the account ID, because the Secret Key and the derived keys (§4.2) depend on it.
-   - The client then does what signup does for the existing account ID: new Secret Key, salt, Argon2 params and keyset, and OPAQUE registration with credential identifier = account ID (`POST /auth/recovery/start {token, email, request}`).
-   - `POST /auth/recovery/finish {token, email, record, salt, argon2, encKeyset, publicKeys, device}` is validated like signup (signature, params, sizes), consumes the token and stores the submission as pending (`account_recovery`, one row per account).
-   - The user gets the new Secret Key but cannot sign in with it until the admin completes the recovery; until then the old credentials still work. An expired, used or unknown token, or a different email, returns 403 `invalid recovery link`. These endpoints are rate-limited like the other auth endpoints.
-3. **Review (admin).** `GET /admin/recovery` (`hisar recovery-list`) lists pending recoveries: account ID, email, name, the new public keys and signature, submission time, and every vault the account can access with its recovery wrapped key (`null` when it has none).
-4. **Complete (admin).** `session.CompleteRecovery` (`hisar recovery-complete <email>`), run by the admin who created the recovery keyset:
-   - The client verifies the new public keys (`PublicKeys.Verify(accountID)`), decrypts the recovery keyset with its `K_user`, unwraps each vault key (recipient `"recovery"`) and wraps it to the user's new KEM key (recipient = account ID).
-   - `POST /admin/recovery/{accountID}/complete {vaultKeys: [{vaultId, wrappedKey}]}` applies it in one transaction: it replaces the account's OPAQUE record, salt, Argon2 params, encrypted keyset and public keys with the pending ones, updates the account's wrapped key for each provided vault, removes its access to every other vault, deletes all of its sessions and devices, and deletes the pending row and the token.
-   - The response lists the vaults that could not be recovered (opted out, or without a wrapping), and the UI tells the admin. The admin's app and CLI re-pin the user's new signing key (the app first compares it with `/members` when the admin shares a vault with them); other members see a key-change warning (§5.6).
-5. **Sign in (user).** The user signs in normally with the email, the new Secret Key and the new master password.
-
-Every step is audit-logged (`recovery_keyset_created`, `vault_recovery_set`, `vault_recovery_opt_out`, `recovery_started`, `recovery_submitted`, `recovery_completed`).
-
-The desktop app (`desktop/vault/recovery.go`) offers the same steps: Settings → Account recovery lets an admin set up recovery, lists pending recoveries and completes them (showing the vaults that could not be recovered), and the row of a person in Settings → People starts a recovery and shows the link. Members see whether their vaults are recoverable, and the owner of a personal vault can turn recovery off there (with the warning above) and back on. The sign-in screen's **Recover account** submits a recovery link while signed out, shows the new Secret Key and can save it as an Emergency Kit. Like the CLI, the desktop app pins the recovery KEM key on first use and re-pins a member's signing key after completing their recovery.
-
-The server never sees a vault key. The admin's client can technically decrypt recoverable vaults; this is the trust trade-off of recovery, and it is shown to users at signup.
+**Admin recovery was removed.** Earlier versions let one admin hold a recovery keyset that every recoverable vault key was wrapped to, and recover other users' accounts with one-time links. Migration `00004_remove_recovery` deletes all of it: the tables `recovery_keyset`, `vault_recovery`, `recovery_tokens` and `account_recovery` and the column `vaults.recovery_opt_out`. Its down migration recreates only the empty structure; the deleted keyset, wrappings and pending recoveries cannot come back. The recovery endpoints are gone and answer 404. Older clients keep working: a 404 for the recovery keyset means "recovery is not set up" to them, so they stop wrapping vault keys to it.
 
 ## 7. Sync protocol
 
@@ -301,7 +271,7 @@ The client applies changes to its local SQLite cache and stores `nextSeq`. Chang
 **Push (server-sent events).** `GET /api/v1/events` (session required) is a `text/event-stream` that tells clients when to sync. It carries no vault data, only IDs and sequence numbers.
 
 - `event: vault-changed` with `{"vaultID", "seq"}` goes to every member of a vault after an item is written (with the new `seq`) or the key is rotated (`seq` 0).
-- `event: vaults-changed` with `{}` tells an account that its list of vaults changed: it was given or lost access, created a vault, was part of a vault before a rotation, or was recovered.
+- `event: vaults-changed` with `{}` tells an account that its list of vaults changed: it was given or lost access, created a vault, or was part of a vault before a rotation.
 - `event: share-invitations-changed` with `{}` tells an account that its received or sent share invitations changed (§5.8): one was sent to it or withdrawn, or one it can complete was accepted or declined. The desktop backend then completes accepted shares and refreshes the UI.
 - `event: approval-requested`, `approval-answered` and `approval-resolved` with `{"requestId"}` go to every stream of the account for phone approvals (§9.9). They carry no request or answer, only the ID.
 - The server sends a `: heartbeat` comment every 25 s and re-checks the stream's session each time, so logging out or revoking the device ends the stream.
@@ -348,12 +318,8 @@ sessions       (token_hash, account_id, device_id, expires_at)
 invites        (token_hash, email, role, created_by, created_at, expires_at, used_at)
 share_invitations (id, vault_id, email, role, invited_by, state[pending|accepted], accepted_by,
                 created_at, expires_at, accepted_at)   -- unique (vault_id, email)
-vaults         (id, type[personal|shared], enc_name, seq, recovery_opt_out, created_at)
+vaults         (id, type[personal|shared], enc_name, seq, created_at)
 vault_access   (vault_id, account_id, wrapped_key, role[owner|editor|reader], granted_by)
-vault_recovery (vault_id, wrapped_key, updated_at)
-recovery_keyset  (kem_pub, sign_pub, kem_sig, enc_keyset, created_by, created_at)   -- at most one row
-recovery_tokens  (account_id, token_hash, created_by, created_at, expires_at, used_at)
-account_recovery (account_id, argon2_params, salt, opaque_record, enc_keyset, kem_pub, sign_pub, kem_sig, submitted_at)
 items          (vault_id, id, revision, seq, deleted, overview_ct, details_ct, updated_at, updated_by)
 item_history   (vault_id, id, revision, overview_ct, details_ct, updated_at, updated_by)
 attachments    (id, vault_id, item_id, size, chunk_count, storage_path)
@@ -373,22 +339,21 @@ Phone approvals (§9.9) are not in Postgres: they live in the server process's m
 | Devices | `GET /devices`, `DELETE /devices/{id}` |
 | People | `GET /members` (the caller and the people they share a vault with; public keys, signatures), `POST /invites` (any user; emailed) |
 | Share invitations | `POST /vaults/{id}/share-invitations` (owner), `GET /share-invitations` (`received`, `sent`), `POST /share-invitations/{id}/accept`, `POST /share-invitations/{id}/decline` (recipient), `DELETE /share-invitations/{id}` (owner) |
-| Vaults | `GET /vaults`, `POST /vaults` (optional `recoveryWrappedKey`), `GET /vaults/{id}/members`, `PUT /vaults/{id}/access/{accountID}`, `DELETE /vaults/{id}/access/{accountID}`, `POST /vaults/{id}/rotate` (Phase 2, optional `recoveryWrappedKey`), `PUT /vaults/{id}/recovery`, `DELETE /vaults/{id}/recovery` (owner; delete is personal vaults only) |
+| Vaults | `GET /vaults`, `POST /vaults`, `GET /vaults/{id}/members`, `PUT /vaults/{id}/access/{accountID}`, `DELETE /vaults/{id}/access/{accountID}`, `POST /vaults/{id}/rotate` (Phase 2) |
 | Items | `GET /vaults/{id}/changes`, `PUT /vaults/{id}/items/{itemID}`, `GET /vaults/{id}/items/{itemID}/history` |
 | Attachments | `PUT/GET /vaults/{id}/attachments/{attID}/chunks/{n}` |
-| Recovery (Phase 2) | `GET /recovery/keyset` (any member; with its creator; the encrypted keyset only for the creator), `POST /recovery/keyset` (admin, once); `POST /auth/recovery/account`, `POST /auth/recovery/start`, `POST /auth/recovery/finish` (recovery token, rate-limited); `GET /admin/recovery`, `POST /admin/recovery/{accountID}`, `POST /admin/recovery/{accountID}/complete` (admin) |
 | Approvals (§9.9) | `POST /approvals`, `GET /approvals` (pending), `GET /approvals/{id}`, `POST /approvals/{id}/answer`, `DELETE /approvals/{id}` (resolve; the requesting device only) |
 | Desktop updates | `GET /desktop/updates/appcast.xml` (Sparkle appcast), `GET /desktop/updates/{version}/{file}` (streams a release file); any signed-in session, 404 when the server has no update source (§9.1.1) |
 
-All under `/api/v1`. JSON bodies, base64url for binary fields.
+All under `/api/v1`. JSON bodies, base64url for binary fields. There is no recovery API (§6) and no admin API.
 
 ### 8.3 Hardening
 
 - Rate limiting per IP and per email on `prelogin` and `login` endpoints. `prelogin` returns a deterministic fake salt for unknown emails so it doesn't reveal which accounts exist.
 - No account enumeration: `POST /invites` and `POST /vaults/{id}/share-invitations` answer the same whether or not the email has an account, and do the account-dependent work (events, invites, email) after answering. Both are rate-limited per account and per IP (§5.1, §5.8).
 - Request size limits. Strict JSON decoding (unknown fields rejected).
-- Security headers on the invite/recovery web pages (CSP, HSTS, no framing).
-- Audit log for logins, device changes, invites, share invitations, sharing changes and recovery.
+- Security headers on the invite web pages (CSP, HSTS, no framing).
+- Audit log for logins, device changes, invites, share invitations and sharing changes.
 
 ### 8.4 Deployment
 
@@ -430,7 +395,7 @@ All clients use `core/` for crypto, the local store and sync.
 
 #### 9.1.1 Automatic updates (macOS)
 
-The app updates itself with [Sparkle 2](https://sparkle-project.org) through the user's own Hisar server, so the app never talks to a third party and a server's members only get builds its admin allows.
+The app updates itself with [Sparkle 2](https://sparkle-project.org) through the user's own Hisar server, so the app never talks to a third party and a server's users only get builds its operator allows.
 
 - **Framework.** Sparkle (pinned version and SHA-256 in `scripts/download-sparkle.sh`) is downloaded from its GitHub release at build time, never committed, and embedded in `Hisar.app/Contents/Frameworks`; the app links it with the rpath `@executable_path/../Frameworks` (Go build tag `sparkle`, set for every packaged macOS build; `wails3 dev` and other platforms build without it and report updates as unavailable). `scripts/sign-desktop-app.sh` signs Sparkle's helpers, the framework and then the app, inside out; ad-hoc today, a Developer ID identity (with the hardened runtime) later through `HISAR_SIGNING_IDENTITY`.
 - **Trust.** Every update archive is signed with an EdDSA (Ed25519) key; `SUPublicEDKey` in `Info.plist` holds the public key, and with `SUVerifyUpdateBeforeExtraction` Sparkle checks the signature before it even unpacks the archive and refuses it if it does not verify; the unpacked app must also be code signed (Sparkle allows moving from ad-hoc to a Developer ID, not dropping the signature). The private key never enters the repository: the release pipeline reads it from the protected File CI variable `SPARKLE_PRIVATE_KEY`. The server only relays, so a compromised server can withhold updates or offer an older signed build (Sparkle never installs a lower `CFBundleVersion`) but cannot ship code.
@@ -503,7 +468,7 @@ The desktop keeps paired browsers (`instanceID`, browser name, SHA-256 of the to
 - System autofill: iOS AutoFill Credential Provider extension, Android AutofillService. Both share the app's encrypted store through an app group / shared storage.
 - Memory constraint: the iOS AutoFill extension must stay well below the system limit (Argon2 64 MiB).
 
-**iOS (Phase 4, first).** `mobile/hisarkit` wraps the desktop backend (`desktop/vault`, which has no Wails import and compiles for `ios/arm64`), so the phone gets the same sign-in, offline cache, matching, sharing and recovery logic. `make build-ios-framework` runs `gomobile bind -target=ios,iossimulator -iosversion=17.0` and writes `mobile/build/HisarKit.xcframework` (Swift module `HisarKit`, classes prefixed `Hisarkit`).
+**iOS (Phase 4, first).** `mobile/hisarkit` wraps the desktop backend (`desktop/vault`, which has no Wails import and compiles for `ios/arm64`), so the phone gets the same sign-in, offline cache, matching and sharing logic. `make build-ios-framework` runs `gomobile bind -target=ios,iossimulator -iosversion=17.0` and writes `mobile/build/HisarKit.xcframework` (Swift module `HisarKit`, classes prefixed `Hisarkit`).
 
 - gomobile passes only strings, numbers, `[]byte` and interfaces, so lists and items cross as JSON strings with the desktop's types (`vault.Status`, `VaultSummary`, `ItemDetail`, `browser.Login`).
 - `HisarkitNew(stateDirectory, deviceName, secretKeyStore, biometric, clipboard, listener)` keeps `hisar.json` and `hisar-cache.db` in `stateDirectory`, the app group container, so the app and the AutoFill extension share the state and the encrypted cache.
@@ -532,12 +497,12 @@ The desktop keeps paired browsers (`instanceID`, browser name, SHA-256 of the to
 
 ### 9.4 CLI
 
-`hisar` is the command-line client for the terminal and for scripts: vaults, items (`ls`, `get`, `add`, `edit`, `rm`), the generator, import (§9.7), sharing (`share <vault> <email> [-r role]`, `unshare`, `people`, `invitations [accept|decline|cancel <id>]`, §5.8), invites (`invite <email>`), devices and recovery, and later `hisar run` to inject secrets into processes. It works in one of two modes:
+`hisar` is the command-line client for the terminal and for scripts: vaults, items (`ls`, `get`, `add`, `edit`, `rm`), the generator, import (§9.7), sharing (`share <vault> <email> [-r role]`, `unshare`, `people`, `invitations [accept|decline|cancel <id>]`, §5.8), invites (`invite <email>`) and devices, and later `hisar run` to inject secrets into processes. It works in one of two modes:
 
 - **Through the desktop app**, like 1Password's CLI integration: `hisar` asks the running Hisar app for what each command needs over `~/.hisar/cli.sock`. It has no session, state file or keys of its own, and nothing is unlocked in the `hisar` process.
 - **Standalone**: its own sign-in, with the session in `state.json` (`HISAR_STATE`) and the Secret Key in the OS keychain (`HISAR_SECRET_KEY` overrides it); every command that decrypts asks for the master password. This is the mode on Linux and Windows, on servers, and whenever the app is not running.
 
-**Choosing the mode.** `--standalone` (before the command) or `HISAR_STANDALONE=1` forces standalone. Otherwise `hisar` connects to the socket (`HISAR_CLI_SOCKET` overrides the path, for the app and the CLI) and sends `hello`. It uses the app when the app answers, and falls back to standalone when the socket is missing, the connection is refused, or the app answers `integration-disabled`. An error after the app answered (denied, signed out, offline) is reported; `hisar` never retries it standalone. `hisar status` prints the mode, why that mode was chosen, and the account (`email` on `server`, and whether the app is locked). Missing arguments are asked for interactively; flags are for scripts. Standalone, `hisar invitations` completes accepted shares after asking for the master password, as the app does on every sync. `signup`, `login`, `logout` and `recover` manage the standalone sign-in, and `emergency-kit` and the `recovery-*` commands need the Secret Key or recovery keys, which the app never hands out; in app mode they stop with a message that points to the app or to `--standalone`. `hisar --version` prints the version stamped at build time (`-X main.version`).
+**Choosing the mode.** `--standalone` (before the command) or `HISAR_STANDALONE=1` forces standalone. Otherwise `hisar` connects to the socket (`HISAR_CLI_SOCKET` overrides the path, for the app and the CLI) and sends `hello`. It uses the app when the app answers, and falls back to standalone when the socket is missing, the connection is refused, or the app answers `integration-disabled`. An error after the app answered (denied, signed out, offline) is reported; `hisar` never retries it standalone. `hisar status` prints the mode, why that mode was chosen, and the account (`email` on `server`, and whether the app is locked). Missing arguments are asked for interactively; flags are for scripts. Standalone, `hisar invitations` completes accepted shares after asking for the master password, as the app does on every sync. `signup`, `login` and `logout` manage the standalone sign-in, and `emergency-kit` needs the Secret Key, which the app never hands out; in app mode it stops with a message that points to the app or to `--standalone`. The removed `recover` and `recovery-*` commands only print `account recovery was removed; sign in with your Emergency Kit` and exit with an error. `hisar --version` prints the version stamped at build time (`-X main.version`).
 
 **Bundled in the macOS app.** `Hisar.app/Contents/Helpers/hisar` is a universal (arm64 + x86_64) build of the CLI. It cannot be `Contents/MacOS/hisar`: the default macOS file system ignores case, so that is the app's own executable `Hisar`. It is built with `CGO_ENABLED=0`, stamped with the app version and signed by `scripts/sign-desktop-app.sh` before the app, and it updates with the app through Sparkle (§9.1.1). Settings → Command-line tool:
 
@@ -886,7 +851,7 @@ go.work     Ties the Go modules together for local development
 |---|---|---|
 | 0 | This document, repo skeleton, CI | Design reviewed and agreed |
 | 1 | `core/crypt` with test vectors, OPAQUE auth, server (accounts, vaults, items, sync), CLI, Docker deployment, CI (unit and database tests, end-to-end test of the built binaries, image build) | Two CLI clients on two machines sync a shared vault through a self-hosted server |
-| 2 (MVP) | Desktop app (macOS first): signup + Emergency Kit, unlock, **Touch ID unlock** (§5.4), items, generator, search, personal and shared vaults, invites, recovery, vault key rotation, auto-lock, **SSH agent with SSH Key items and Touch ID approval** (§9.6), local encrypted cache. CI builds the desktop app | Family uses it daily on macOS; `ssh` and `git` use keys from Hisar |
+| 2 (MVP) | Desktop app (macOS first): signup + Emergency Kit, unlock, **Touch ID unlock** (§5.4), items, generator, search, personal and shared vaults, invites, vault key rotation, auto-lock, **SSH agent with SSH Key items and Touch ID approval** (§9.6), local encrypted cache. CI builds the desktop app | Family uses it daily on macOS; `ssh` and `git` use keys from Hisar |
 | 3 | Browser extension via native messaging: fill, save, generate | Daily logins without copy-paste |
 | 4 | Mobile apps with system autofill | Logins on phones |
 | 5 | TOTP, passkeys, attachments, Watchtower (reused/weak/breached via HIBP k-anonymity), import from 1Password/Bitwarden/CSV, SSE push sync | — |
@@ -899,8 +864,8 @@ go.work     Ties the Go modules together for local development
 | 1 | Argon2id parameters | t=24, m=64 MiB, p=4 (≈ 270 ms on M2 Pro); re-check on phones in Phase 4. Target ≈ 0.5–1 s on the slowest device |
 | 2 | Wails version | v3, pinned beta (`v3.0.0-beta.23`; no stable v3 exists yet). Upgrade deliberately, one beta at a time, with the macOS and Linux CI builds as the gate |
 | 3 | Server domain | `tryhisar.com`, public |
-| 4 | Recovery group members | Admin only |
+| 4 | Account recovery | Emergency Kit only (§6). Admin recovery was removed; a forgotten master password is unrecoverable |
 | 5 | Item history retention | 90 days |
 | 6 | Fingerprint check (§5.6) | Optional: a 16-hex-digit security code per person, shown in the desktop app's sharing panel and Settings → People. Key pinning and key-change refusals are always on |
 | 7 | Apple Developer Program membership (code signing and notarization; required for biometric Keychain items and Gatekeeper) | **Open**: needed before Touch ID can ship. During development, local signing with a free Apple ID team works on your own Mac |
-| 8 | Product model | A hosted service, not one family per server: person-to-person sharing by email that the recipient accepts, no account enumeration, invites emailed by the server over SMTP, sign-up stays invite-only, no teams or organizations yet. Account recovery is unchanged and needs its own redesign (§6) |
+| 8 | Product model | A hosted service, not one family per server: person-to-person sharing by email that the recipient accepts, no account enumeration, invites emailed by the server over SMTP, sign-up stays invite-only, no teams or organizations yet. Account recovery is only through the Emergency Kit (§6) |

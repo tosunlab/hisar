@@ -44,7 +44,7 @@ struct PeopleView: View {
             Section {
                 if let allPerson {
                     ForEach(allPerson) { person in
-                        MemberRow(member: person, roleText: person.role == Member.roleAdmin ? "Admin" : "")
+                        MemberRow(member: person, roleText: "")
                             .listRowBackground(Theme.surface)
                             .accessibilityIdentifier("person-\(person.email)")
                     }

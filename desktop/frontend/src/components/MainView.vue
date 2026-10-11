@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { createVault, filterAllItem, lock, openImport, openSharing, openVaultRecovery, selectItem, selectVault, startCreatingItem, startCreatingSSHKey, store, syncInBackground, syncInterval } from "../store";
+import { createVault, filterAllItem, lock, openImport, openSharing, selectItem, selectVault, startCreatingItem, startCreatingSSHKey, store, syncInBackground, syncInterval } from "../store";
 import { formatKeyType, getDomain, getInitials, isMacPlatform, sshKeyCategory } from "../util";
 import AppIcon from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
@@ -11,10 +11,9 @@ import ItemTile from "./ItemTile.vue";
 import SettingsPanel from "./SettingsPanel.vue";
 import ShareInvitationBanner from "./ShareInvitationBanner.vue";
 import SSHKeyForm from "./SSHKeyForm.vue";
-import VaultRecoveryPanel from "./VaultRecoveryPanel.vue";
 import VaultSharingPanel from "./VaultSharingPanel.vue";
 
-const personalVaultNotice = "Personal vaults are private. Create a shared vault to share items with other people. Click to see who can recover this vault.";
+const personalVaultNotice = "Personal vaults are private. Create a shared vault to share items with other people.";
 
 const isCreatingVault = ref(false);
 const newVaultName = ref("");
@@ -151,16 +150,9 @@ onBeforeUnmount(() => {
           >
             <AppIcon name="users" :size="14" /> Share
           </button>
-          <button
-            v-else-if="selectedVault"
-            class="ghost private-button"
-            :title="personalVaultNotice"
-            data-testid="personal-vault-private"
-            @click="openVaultRecovery"
-          >
+          <span v-else-if="selectedVault" class="private-badge" :title="personalVaultNotice" data-testid="personal-vault-private">
             <AppIcon name="lock" :size="13" /> Private
-            <AppIcon v-if="selectedVault.recoveryOptOut" name="warning" :size="13" class="warning-text" data-testid="vault-recovery-off" />
-          </button>
+          </span>
           <button
             class="primary icon-button"
             :disabled="!canEdit"
@@ -231,7 +223,6 @@ onBeforeUnmount(() => {
     </main>
     <SettingsPanel v-if="store.isSettingsOpen" />
     <VaultSharingPanel v-if="store.isSharingOpen" />
-    <VaultRecoveryPanel v-if="store.isVaultRecoveryOpen" />
     <ImportPanel v-if="store.isImportOpen" />
   </div>
 </template>
@@ -417,14 +408,17 @@ onBeforeUnmount(() => {
 }
 
 .share-button,
-.private-button {
+.private-badge {
   gap: 5px;
   padding: 5px 9px;
   font-size: 12px;
 }
 
-.private-button {
+.private-badge {
+  display: inline-flex;
+  align-items: center;
   color: var(--color-text-muted);
+  cursor: default;
 }
 
 .new-item-menu {

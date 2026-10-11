@@ -23,7 +23,7 @@ const api = apiMock.current;
 
 const allImportTestVault: VaultSummary[] = [
   ...allTestVault,
-  { id: "work", name: "Work", type: "shared", role: "editor", itemCount: 0, recoverable: true, recoveryOptOut: false },
+  { id: "work", name: "Work", type: "shared", role: "editor", itemCount: 0 },
 ];
 const allTestFormat = [
   { id: "1pux", name: "1Password export (.1pux)" },

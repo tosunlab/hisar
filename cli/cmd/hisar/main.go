@@ -16,8 +16,8 @@ type runFunction func(ctx context.Context, flags *flag.FlagSet, allArg []string)
 
 type appRunFunction func(ctx context.Context, client *appClient, flags *flag.FlagSet, allArg []string) error
 
-// command: runThroughApp is the app-mode variant; isLocal commands need no vault, and appAlternative explains
-// where to do a standalone-only command when the app is in use.
+// command: runThroughApp is the app-mode variant; isLocal commands need no vault, appAlternative explains
+// where to do a standalone-only command when the app is in use, and isHidden keeps it out of the usage.
 type command struct {
 	name           string
 	argumentUsage  string
@@ -26,6 +26,7 @@ type command struct {
 	runThroughApp  appRunFunction
 	isLocal        bool
 	appAlternative string
+	isHidden       bool
 }
 
 var allCommand = []command{
@@ -51,17 +52,28 @@ var allCommand = []command{
 	{name: "emergency-kit", argumentUsage: "[-o file]", summary: "save your Emergency Kit PDF (sign-in address, email, Secret Key)", run: runEmergencyKit, appAlternative: "save it in the Hisar app under Settings → Emergency Kit"},
 	{name: "devices", summary: "list your signed-in devices", run: runListAllDevice, runThroughApp: runListAllDeviceThroughApp},
 	{name: "revoke-device", argumentUsage: "<id>", summary: "sign out a device", run: runRevokeDevice, runThroughApp: runRevokeDeviceThroughApp},
-	{name: "recovery-setup", summary: "create the recovery key and wrap your vaults to it (admin only)", run: runRecoverySetup, appAlternative: "use Settings → Account recovery in the Hisar app"},
-	{name: "recovery-enable", summary: "make your vaults recoverable by the admin", run: runRecoveryEnable, appAlternative: "use Settings → Account recovery in the Hisar app"},
-	{name: "recovery-start", argumentUsage: "<email>", summary: "create a recovery link for someone (admin only)", run: runRecoveryStart, appAlternative: "use Settings → People in the Hisar app"},
-	{name: "recover", argumentUsage: "<recovery-link>", summary: "choose a new master password and Secret Key", run: runRecover, appAlternative: "use Recover account on the Hisar app's sign-in screen"},
-	{name: "recovery-list", summary: "list pending recoveries (admin only)", run: runListAllPendingRecovery, appAlternative: "use Settings → Account recovery in the Hisar app"},
-	{name: "recovery-complete", argumentUsage: "<email>", summary: "give someone their vaults back after recovery (admin only)", run: runRecoveryComplete, appAlternative: "use Settings → Account recovery in the Hisar app"},
+}
+
+var allRemovedRecoveryCommandName = []string{"recover", "recovery-setup", "recovery-enable", "recovery-start", "recovery-list", "recovery-complete"}
+
+var errRecoveryRemoved = errors.New("account recovery was removed; sign in with your Emergency Kit")
+
+func init() {
+	for _, name := range allRemovedRecoveryCommandName {
+		allCommand = append(allCommand, command{name: name, run: runRemovedRecoveryCommand, isLocal: true, isHidden: true})
+	}
+}
+
+func runRemovedRecoveryCommand(context.Context, *flag.FlagSet, []string) error {
+	return errRecoveryRemoved
 }
 
 func printUsage(output io.Writer) {
 	fmt.Fprintln(output, "usage: hisar [--standalone] <command> [arguments]\n\ncommands:")
 	for _, command := range allCommand {
+		if command.isHidden {
+			continue
+		}
 		fmt.Fprintf(output, "  %-18s %-35s %s\n", command.name, command.argumentUsage, command.summary)
 	}
 	fmt.Fprintln(output, `

@@ -1,16 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import type { Person, SentShareInvitation } from "../api";
-import {
-  acceptShareInvitation,
-  cancelShareInvitation,
-  copyText,
-  declineShareInvitation,
-  getFirstName,
-  invitePerson,
-  startAccountRecovery,
-  store,
-} from "../store";
+import type { SentShareInvitation } from "../api";
+import { acceptShareInvitation, cancelShareInvitation, declineShareInvitation, invitePerson, store } from "../store";
 import { formatRole } from "../util";
 import AppIcon from "./AppIcon.vue";
 import MemberAvatar from "./MemberAvatar.vue";
@@ -18,27 +9,7 @@ import MemberAvatar from "./MemberAvatar.vue";
 const isInviting = ref(false);
 const inviteEmail = ref("");
 const cancellingInvitationID = ref("");
-const recoveringAccountID = ref("");
-const recoveryLink = ref("");
-
-const isAdmin = computed(() => store.allPerson.some((person) => person.isCurrentUser && person.role === "admin"));
 const isAlone = computed(() => store.allPerson.length > 0 && store.allPerson.every((person) => person.isCurrentUser));
-
-function canStartRecovery(person: Person): boolean {
-  return isAdmin.value && !person.isCurrentUser && store.recoveryStatus?.isSetUp === true;
-}
-
-function startRecoveryConfirmation(person: Person): void {
-  recoveringAccountID.value = person.accountId;
-  recoveryLink.value = "";
-}
-
-async function submitStartRecovery(person: Person): Promise<void> {
-  const link = await startAccountRecovery(person);
-  if (link) {
-    recoveryLink.value = link;
-  }
-}
 
 async function submitInvite(): Promise<void> {
   if (await invitePerson(inviteEmail.value.trim())) {
@@ -90,7 +61,6 @@ function describeInviter(name: string, email: string): string {
           <strong class="title-line">
             <span class="title-text">{{ person.name || person.email }}</span>
             <span v-if="person.isCurrentUser" class="tag accent">you</span>
-            <span v-if="person.role === 'admin'" class="tag" :data-testid="`person-role-${person.accountId}`">Admin</span>
           </strong>
           <p class="muted">{{ person.email }}</p>
           <p v-if="person.isKeyChanged" class="warning-text">Their key changed since you last shared with them. Compare security codes before you share more.</p>
@@ -99,34 +69,6 @@ function describeInviter(name: string, email: string): string {
           <span class="code-label">Security code</span>
           <span class="monospace" data-testid="person-security-code">{{ person.securityCode }}</span>
         </div>
-        <button
-          v-if="canStartRecovery(person)"
-          class="ghost recovery-button"
-          :title="`Start account recovery for ${getFirstName(person)}`"
-          :data-testid="`start-recovery-${person.accountId}`"
-          @click="startRecoveryConfirmation(person)"
-        >
-          Start recovery
-        </button>
-      </div>
-      <div v-if="recoveringAccountID === person.accountId && !recoveryLink" class="inline-confirmation" data-testid="start-recovery-confirmation">
-        <p>
-          Create a recovery link for {{ getFirstName(person) }}? They use it to choose a new master password and get a new Secret Key. Their account keeps
-          working until you complete the recovery.
-        </p>
-        <div class="row">
-          <button class="ghost" :disabled="store.isBusy" @click="recoveringAccountID = ''">Cancel</button>
-          <button class="primary" data-testid="confirm-start-recovery" :disabled="store.isBusy" @click="submitStartRecovery(person)">Create link</button>
-        </div>
-      </div>
-      <div v-if="recoveringAccountID === person.accountId && recoveryLink" class="link-result" data-testid="recovery-link-result">
-        <div class="link-box">
-          <span class="monospace" data-testid="recovery-link">{{ recoveryLink }}</span>
-          <button data-testid="copy-recovery-link" @click="copyText(recoveryLink, 'Recovery link')"><AppIcon name="copy" :size="14" /> Copy</button>
-        </div>
-        <p class="muted">
-          Send this link to {{ getFirstName(person) }}. It is valid for 7 days and works once. Their recovery appears under Account recovery once they use it.
-        </p>
       </div>
     </template>
     <p v-if="isAlone" class="muted hint" data-testid="people-empty-hint">
@@ -228,59 +170,5 @@ section {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--color-text-muted);
-}
-
-.link-result {
-  padding: 0 0 12px 44px;
-}
-
-.link-box {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 6px 6px 12px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  background: var(--color-surface);
-}
-
-.link-box .monospace {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  font-size: 12px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  user-select: text;
-  -webkit-user-select: text;
-}
-
-.link-result p {
-  margin: 6px 0 0;
-  font-size: 12px;
-}
-
-.recovery-button {
-  flex: none;
-  padding: 5px 8px;
-  font-size: 12px;
-  color: var(--color-text-secondary);
-}
-
-.inline-confirmation {
-  margin: 0 0 12px 44px;
-  padding: 10px 12px;
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius);
-  background: var(--color-surface);
-  font-size: 12px;
-}
-
-.inline-confirmation p {
-  margin: 0 0 8px;
-}
-
-.inline-confirmation .row {
-  justify-content: flex-end;
 }
 </style>

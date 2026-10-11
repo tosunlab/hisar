@@ -126,6 +126,22 @@ describe("SignInView", () => {
     expect(wrapper.text()).toContain("Safe even if the server is breached");
   });
 
+  it("points to the Emergency Kit for a lost Secret Key and offers no account recovery", () => {
+    const wrapper = mount(SignInView);
+    expect(wrapper.find('[data-testid="secret-key-note"]').text()).toBe("Lost your Secret Key? It's on your Emergency Kit.");
+    expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toEqual(["Sign in", "Create account"]);
+    expect(wrapper.text()).not.toMatch(/recover|admin/i);
+  });
+
+  it("says at account creation that a forgotten master password can't be recovered", async () => {
+    const wrapper = mount(SignInView);
+    await wrapper.findAll('[role="tab"]')[1].trigger("click");
+    expect(wrapper.find('[data-testid="create-account-note"]').text()).toBe(
+      "Your master password never leaves this Mac. A forgotten master password can't be recovered by anyone, including Hisar.",
+    );
+    expect(wrapper.text()).not.toMatch(/admin/i);
+  });
+
   it("prefills the hosted server without the scheme", () => {
     store.status = { ...store.status, server: "" };
     const wrapper = mount(SignInView);
@@ -165,6 +181,14 @@ describe("SignInView", () => {
 
 describe("SecretKeyView", () => {
   beforeEach(resetStore);
+
+  it("says that a forgotten master password can't be recovered", () => {
+    store.pendingSecretKey = "H1-ABC123-SECRET";
+    const wrapper = mount(SecretKeyView);
+    expect(wrapper.find("h1").text()).toBe("Save your Secret Key");
+    expect(wrapper.find('[data-testid="master-password-warning"]').text()).toBe("A forgotten master password can't be recovered by anyone, including Hisar.");
+    expect(wrapper.text()).not.toMatch(/admin/i);
+  });
 
   it("only continues after the user confirms saving the Secret Key", async () => {
     store.pendingSecretKey = "H1-ABC123-SECRET";

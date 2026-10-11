@@ -42,7 +42,6 @@ type Service struct {
 	name                         string
 	hasPasswordUnlockSinceLaunch bool
 	newAccountSecretKey          *crypt.SecretKey
-	recoveredAccountSecretKey    *crypt.SecretKey
 	localCache                   *cache.Cache
 	pendingImport                *pendingImport
 	stopEvents                   context.CancelFunc
@@ -236,7 +235,6 @@ func (s *Service) Lock() Status {
 func (s *Service) openSession(unlockedSession *session.Session) {
 	unlockedSession.SeqStore = s.state
 	unlockedSession.MemberVerifier = s.state.CheckMemberPin
-	unlockedSession.RecoveryKeyVerifier = s.checkRecoveryPin
 	s.unlockedSession = unlockedSession
 	s.name = unlockedSession.Name
 	s.allItemByVaultID = map[string][]item.Item{}
@@ -294,7 +292,6 @@ func (s *Service) SignIn(server, email, secretKeyText, password string) (Status,
 	defer s.mutex.Unlock()
 	s.lockSession()
 	s.forgetBiometricUnlock()
-	s.recoveredAccountSecretKey = nil
 	s.removeCache()
 	s.state.Reset()
 	s.state.Server, s.state.Email, s.state.AccountID, s.state.Token = server, loggedIn.Email, loggedIn.AccountID, loggedIn.Client.Token
@@ -368,7 +365,6 @@ func (s *Service) SignUp(invite, email, name, password string) (SignUpResult, er
 	defer s.mutex.Unlock()
 	s.lockSession()
 	s.forgetBiometricUnlock()
-	s.recoveredAccountSecretKey = nil
 	s.removeCache()
 	s.state.Reset()
 	s.state.Server, s.state.Email, s.state.AccountID, s.state.Token = server, strings.ToLower(strings.TrimSpace(email)), signedUp.AccountID, signedUp.Client.Token
@@ -442,7 +438,6 @@ func (s *Service) SignOut() (Status, error) {
 	s.lockSession()
 	s.name = ""
 	s.forgetBiometricUnlock()
-	s.recoveredAccountSecretKey = nil
 	s.removeCache()
 	s.state.Reset()
 	s.notifySessionChange()
@@ -501,13 +496,11 @@ func (s *Service) ListAllVault() ([]VaultSummary, error) {
 
 func convertToVaultSummary(vault *session.Vault, itemCount int) VaultSummary {
 	return VaultSummary{
-		ID:             vault.ID,
-		Name:           vault.Name,
-		Type:           vault.Type,
-		Role:           vault.Role,
-		ItemCount:      itemCount,
-		Recoverable:    vault.Recoverable,
-		RecoveryOptOut: vault.RecoveryOptOut,
+		ID:        vault.ID,
+		Name:      vault.Name,
+		Type:      vault.Type,
+		Role:      vault.Role,
+		ItemCount: itemCount,
 	}
 }
 
@@ -873,9 +866,9 @@ func convertError(err error) error {
 	case errors.Is(err, session.ErrConflict):
 		return errors.New("this item was changed on another device; reload it and try again")
 	case errors.Is(err, session.ErrRollback):
-		return errors.New("the server returned older data than this device has seen; contact your Hisar admin")
+		return errors.New("the server returned older data than this device has seen; contact Hisar support")
 	case errors.Is(err, session.ErrKeyMismatch):
-		return errors.New("the server returned keys that do not match your account; contact your Hisar admin")
+		return errors.New("the server returned keys that do not match your account; contact Hisar support")
 	case client.IsStatus(err, http.StatusForbidden):
 		return errors.New("you do not have permission to do that")
 	case client.IsStatus(err, http.StatusTooManyRequests):

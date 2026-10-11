@@ -1,40 +1,11 @@
-import { expect, test, type Frame, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { hisarAAGUID } from "../tools/fake-passkey-authenticator.mjs";
 import { launchHarness, type Harness } from "./harness";
+import { clickInPrompt, findPromptFrame, readStatus, resetStatus, waitForPrompt } from "./passkey-prompt";
 import { startPasskeySite, type PasskeySite } from "./passkey-site";
 
 let harness: Harness;
 let site: PasskeySite;
-
-function findPromptFrame(page: Page): Frame | undefined {
-  return page.frames().find((frame) => frame.url().includes("/passkey-prompt.html"));
-}
-
-async function waitForPrompt(page: Page): Promise<Frame> {
-  await expect.poll(() => findPromptFrame(page) !== undefined).toBe(true);
-  return findPromptFrame(page)!;
-}
-
-async function resetStatus(page: Page): Promise<void> {
-  await page.locator("#status").evaluate((element) => (element.textContent = "ready"));
-}
-
-async function readStatus(page: Page): Promise<Record<string, unknown>> {
-  await expect(page.locator("#status")).not.toHaveText(/^(ready|waiting for autofill)$/);
-  return JSON.parse((await page.locator("#status").textContent()) ?? "{}") as Record<string, unknown>;
-}
-
-// The prompt frame goes away on these clicks, and Playwright's click never settles when its target frame is removed.
-async function clickInPrompt(page: Page, prompt: Frame, testID: string): Promise<void> {
-  const box = await prompt.getByTestId(testID).first().boundingBox();
-  if (!box) throw new Error(`${testID} is not visible`);
-  void page.mouse.click(box.x + box.width / 2, box.y + box.height / 2).catch(() => undefined);
-}
-
-// The prompt ignores clicks until it has been visible and unobscured for 300 ms.
-async function waitForClickGuard(page: Page): Promise<void> {
-  await page.waitForTimeout(500);
-}
 
 async function addVirtualAuthenticator(page: Page): Promise<void> {
   const session = await harness.context.newCDPSession(page);
@@ -75,7 +46,6 @@ test("registers a passkey in Hisar and signs in with it, verified by the relying
   await expect(savePrompt.getByTestId("passkey-login-option")).toHaveCount(2);
   expect(await page.evaluate(() => document.body.innerHTML.includes("Passkey test site</span>"))).toBe(false);
   await savePrompt.getByTestId("passkey-login-option").nth(1).click();
-  await waitForClickGuard(page);
   await clickInPrompt(page, savePrompt, "save-passkey");
   const registration = await readStatus(page);
   expect(registration).toMatchObject({ verified: true, aaguid: hisarAAGUID, fmt: "none", userVerified: true, backedUp: true, isPublicKeyCredential: true, isAttestationResponse: true, toJSONMatches: true });
@@ -90,7 +60,6 @@ test("registers a passkey in Hisar and signs in with it, verified by the relying
   await expect(signInPrompt.getByTestId("passkey-heading")).toHaveText("Sign in with a passkey");
   await expect(signInPrompt.getByTestId("passkey-choice")).toHaveCount(1);
   await expect(signInPrompt.getByTestId("passkey-choice")).toContainText("alex@example.com");
-  await waitForClickGuard(page);
   await clickInPrompt(page, signInPrompt, "passkey-choice");
   expect(await readStatus(page)).toMatchObject({ verified: true, credentialID: registration.credentialID, aaguid: hisarAAGUID, isAssertionResponse: true });
 
@@ -109,7 +78,6 @@ test("offers the passkey in the field for conditional mediation", async () => {
   await page.locator("#register").click();
   const savePrompt = await waitForPrompt(page);
   await savePrompt.getByTestId("passkey-login-option").nth(0).click();
-  await waitForClickGuard(page);
   await clickInPrompt(page, savePrompt, "save-passkey");
   expect(await readStatus(page)).toMatchObject({ verified: true });
   const stored = harness.readState();
@@ -123,7 +91,6 @@ test("offers the passkey in the field for conditional mediation", async () => {
   await page.locator("#username").focus();
   const prompt = await waitForPrompt(page);
   await expect(prompt.getByTestId("passkey-choice")).toHaveCount(1);
-  await waitForClickGuard(page);
   await clickInPrompt(page, prompt, "passkey-choice");
   expect(await readStatus(page)).toMatchObject({ verified: true, mediation: "conditional", aaguid: hisarAAGUID });
   await page.close();

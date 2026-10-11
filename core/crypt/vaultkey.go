@@ -2,8 +2,7 @@ package crypt
 
 import "crypto/hpke"
 
-// WrapVaultKey encrypts a vault key to a recipient's KEM public key.
-// recipientID is the recipient's account ID, or "recovery" for the recovery keyset.
+// WrapVaultKey encrypts a vault key to a recipient's KEM public key; recipientID is the recipient's account ID.
 func WrapVaultKey(recipientKEMPublicKey []byte, vaultID, recipientID string, vaultKey []byte) ([]byte, error) {
 	if len(vaultKey) != KeySize {
 		return nil, ErrBadKeySize

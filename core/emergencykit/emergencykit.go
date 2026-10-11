@@ -263,7 +263,7 @@ func (writer *pageWriter) drawSecretKey(secretKey string) {
 	writer.document.SetTextColor(100, 106, 115)
 	writer.setFont("regular", 9.5)
 	writer.cursorY = writer.writeParagraph(pageMargin, boxTop+66, contentWide,
-		"Your Secret Key never leaves your devices. Nobody, including your Hisar admin, can recover it for you.", 13)
+		"Your Secret Key never leaves your devices. Nobody, including Hisar, can recover it for you.", 13)
 	writer.cursorY += 18
 }
 
@@ -308,6 +308,6 @@ func (writer *pageWriter) drawFooter() {
 	writer.document.Line(pageMargin, footerY, pageMargin+contentWide, footerY)
 	writer.document.SetTextColor(100, 106, 115)
 	writer.setFont("regular", 9)
-	writer.writeText(pageMargin, footerY+10, "Hisar · self-hosted, end-to-end encrypted password manager")
-	writer.writeText(pageMargin, footerY+23, "If this kit is lost or stolen, ask your Hisar admin to start account recovery.")
+	writer.writeText(pageMargin, footerY+10, "Hisar · end-to-end encrypted password manager for developers")
+	writer.writeText(pageMargin, footerY+23, "A forgotten master password cannot be recovered by anyone, including Hisar. Keep this kit somewhere safe.")
 }
