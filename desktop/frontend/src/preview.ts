@@ -163,7 +163,7 @@ const hourInMilliseconds = 3600_000;
 // shareInvitations=none hides the preview invitations.
 const previewShareInvitations: ShareInvitations =
   previewParameter.get("shareInvitations") === "none"
-    ? { received: [], sent: [], completionError: "" }
+    ? { received: [], sent: [], waiting: [], completionError: "" }
     : {
         received: [
           {
@@ -181,18 +181,32 @@ const previewShareInvitations: ShareInvitations =
             vaultId: "family",
             vaultName: "Family",
             email: "zeynep@tryhisar.com",
+            recipientName: "",
             role: "reader",
             state: "pending",
             expiresAt: new Date(Date.now() + 5 * 24 * hourInMilliseconds).toISOString(),
+            acceptedAt: "",
           },
           {
             id: "to-ops",
             vaultId: "family",
             vaultName: "Family",
             email: "ops@kaya.dev",
+            recipientName: "Ada Kaya",
             role: "editor",
             state: "accepted",
             expiresAt: new Date(Date.now() + 2 * 24 * hourInMilliseconds).toISOString(),
+            acceptedAt: new Date(Date.now() - 2 * hourInMilliseconds).toISOString(),
+          },
+        ],
+        waiting: [
+          {
+            id: "from-murat",
+            vaultId: "deploy",
+            role: "reader",
+            invitedByName: "Murat Demir",
+            invitedByEmail: "murat@demir.dev",
+            acceptedAt: new Date(Date.now() - 2 * hourInMilliseconds - 5 * 60_000).toISOString(),
           },
         ],
         completionError: "",
@@ -887,15 +901,36 @@ export const previewApi = {
     const vaultName = allPreviewVault.find((vault) => vault.id === vaultID)?.name ?? "";
     previewShareInvitations.sent = [
       ...previewShareInvitations.sent.filter((invitation) => !(invitation.vaultId === vaultID && invitation.email === normalizedEmail)),
-      { id: `to-${Date.now()}`, vaultId: vaultID, vaultName, email: normalizedEmail, role, state: "pending", expiresAt: new Date(Date.now() + 7 * 24 * hourInMilliseconds).toISOString() },
+      {
+        id: `to-${Date.now()}`,
+        vaultId: vaultID,
+        vaultName,
+        email: normalizedEmail,
+        recipientName: "",
+        role,
+        state: "pending",
+        expiresAt: new Date(Date.now() + 7 * 24 * hourInMilliseconds).toISOString(),
+        acceptedAt: "",
+      },
     ];
     return resolveAfterDelay(undefined);
   },
   listAllShareInvitation: () => resolveAfterDelay(structuredClone(previewShareInvitations)),
   acceptShareInvitation: (invitationID: string) => {
+    const accepted = previewShareInvitations.received.find((invitation) => invitation.id === invitationID);
     previewShareInvitations.received = previewShareInvitations.received.filter((invitation) => invitation.id !== invitationID);
+    if (accepted) {
+      const { id, vaultId, role, invitedByName, invitedByEmail } = accepted;
+      previewShareInvitations.waiting = [...(previewShareInvitations.waiting ?? []), { id, vaultId, role, invitedByName, invitedByEmail, acceptedAt: new Date().toISOString() }];
+    }
     return resolveAfterDelay(undefined);
   },
+  listAllShareAwaitingUnlock: () =>
+    resolveAfterDelay(
+      previewState === "locked" && previewParameter.get("shareInvitations") !== "none"
+        ? [{ invitationId: "to-ops", recipientName: "Ada Kaya", recipientEmail: "ops@kaya.dev", acceptedAt: new Date(Date.now() - 2 * hourInMilliseconds).toISOString() }]
+        : [],
+    ),
   declineShareInvitation: (invitationID: string) => {
     previewShareInvitations.received = previewShareInvitations.received.filter((invitation) => invitation.id !== invitationID);
     return resolveAfterDelay(undefined);

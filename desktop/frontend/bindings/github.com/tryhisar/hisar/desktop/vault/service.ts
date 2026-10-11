@@ -196,6 +196,14 @@ export function ListAllPerson(): $CancellablePromise<$models.Person[] | null> {
 }
 
 /**
+ * ListAllShareAwaitingUnlock lists, while locked, the shares people accepted that this app finishes once unlocked.
+ * It needs only the saved session; unlocked, signed out or offline, the list is empty.
+ */
+export function ListAllShareAwaitingUnlock(): $CancellablePromise<$models.ShareAwaitingUnlock[] | null> {
+    return $Call.ByID(297971799);
+}
+
+/**
  * ListAllShareInvitation completes accepted shares first, then returns the invitations this user received and sent.
  */
 export function ListAllShareInvitation(): $CancellablePromise<$models.ShareInvitations> {

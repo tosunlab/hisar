@@ -129,6 +129,10 @@ final class HisarKitBackend: VaultBackend {
         try callReturningNothing { try hisar.cancelShareInvitation(invitationID) }
     }
 
+    func listAllShareAwaitingUnlock() throws -> [ShareAwaitingUnlock] {
+        try decode([ShareAwaitingUnlock]?.self, from: callReturningText { hisar.listAllShareAwaitingUnlock($0) }) ?? []
+    }
+
     func listAllVaultMember(vaultID: String) throws -> [Member] {
         try decode([Member]?.self, from: callReturningText { hisar.listAllVaultMember(vaultID, error: $0) }) ?? []
     }

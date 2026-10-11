@@ -41,6 +41,7 @@ type fakeAPIServer struct {
 	eventChannel               chan string
 	allShareInvitation         []proto.SentShareInvitation
 	allReceivedShareInvitation []proto.ReceivedShareInvitation
+	allWaitingShareInvitation  []proto.WaitingShareInvitation
 	allAnsweredShareInvitation []string
 	allInvitedEmail            []string
 	isEmailUnavailable         bool

@@ -66,22 +66,44 @@ type ReceivedShareInvitation struct {
 	ExpiresAt      string `json:"expiresAt"`
 }
 
-// SentShareInvitation: State is "pending" until the person accepts, then "accepted" until this app completes the share.
+// SentShareInvitation: State is "pending" until the person accepts, then "accepted" until this app completes the share;
+// RecipientName and AcceptedAt (RFC 3339) are empty while pending.
 type SentShareInvitation struct {
-	ID        string `json:"id"`
-	VaultID   string `json:"vaultId"`
-	VaultName string `json:"vaultName"`
-	Email     string `json:"email"`
-	Role      string `json:"role"`
-	State     string `json:"state"`
-	ExpiresAt string `json:"expiresAt"`
+	ID            string `json:"id"`
+	VaultID       string `json:"vaultId"`
+	VaultName     string `json:"vaultName"`
+	Email         string `json:"email"`
+	RecipientName string `json:"recipientName"`
+	Role          string `json:"role"`
+	State         string `json:"state"`
+	ExpiresAt     string `json:"expiresAt"`
+	AcceptedAt    string `json:"acceptedAt"`
+}
+
+// WaitingShareInvitation is an invitation this user accepted that the owner's app has not completed yet; AcceptedAt is RFC 3339.
+type WaitingShareInvitation struct {
+	ID             string `json:"id"`
+	VaultID        string `json:"vaultId"`
+	Role           string `json:"role"`
+	InvitedByName  string `json:"invitedByName"`
+	InvitedByEmail string `json:"invitedByEmail"`
+	AcceptedAt     string `json:"acceptedAt"`
 }
 
 // ShareInvitations: CompletionError says why an accepted share could not be completed, e.g. a changed signing key.
 type ShareInvitations struct {
 	AllReceived     []ReceivedShareInvitation `json:"received"`
 	AllSent         []SentShareInvitation     `json:"sent"`
+	AllWaiting      []WaitingShareInvitation  `json:"waiting"`
 	CompletionError string                    `json:"completionError"`
+}
+
+// ShareAwaitingUnlock is a share someone accepted that this locked app finishes once unlocked; the vault name is encrypted until then.
+type ShareAwaitingUnlock struct {
+	InvitationID   string `json:"invitationId"`
+	RecipientName  string `json:"recipientName"`
+	RecipientEmail string `json:"recipientEmail"`
+	AcceptedAt     string `json:"acceptedAt"`
 }
 
 type VaultMember struct {

@@ -34,6 +34,7 @@ export type {
     Person,
     ReceivedShareInvitation,
     SentShareInvitation,
+    ShareAwaitingUnlock,
     ShareInvitations,
     ShareLink,
     ShareLinkField,
@@ -43,5 +44,6 @@ export type {
     Theme,
     UpdateStatus,
     VaultMember,
-    VaultSummary
+    VaultSummary,
+    WaitingShareInvitation
 } from "./models.js";

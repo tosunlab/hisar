@@ -13,6 +13,7 @@ import {
   getPlatformIcon,
   getTileColor,
 } from "./util";
+import { describePerson, formatTimeAgo } from "./util";
 
 describe("computePasswordStrength", () => {
   it("rates random passwords by length and character classes", () => {
@@ -105,5 +106,23 @@ describe("share link formatting", () => {
     expect(formatExpiresIn("2026-10-11T13:00:00Z", now)).toBe("Expires in 1 hour");
     expect(formatExpiresIn("2026-10-18T12:00:00Z", now)).toBe("Expires in 7 days");
     expect(formatExpiresIn("2026-10-11T11:00:00Z", now)).toBe("Expired");
+  });
+});
+
+describe("banner formatting", () => {
+  it("says how long ago something happened in short units", () => {
+    const now = new Date("2026-10-11T12:00:00Z");
+    expect(formatTimeAgo("2026-10-11T11:59:40Z", now)).toBe("just now");
+    expect(formatTimeAgo("2026-10-11T11:55:00Z", now)).toBe("5 min ago");
+    expect(formatTimeAgo("2026-10-11T10:00:00Z", now)).toBe("2 h ago");
+    expect(formatTimeAgo("2026-10-10T09:00:00Z", now)).toBe("yesterday");
+    expect(formatTimeAgo("2026-10-08T12:00:00Z", now)).toBe("3 days ago");
+    expect(formatTimeAgo("", now)).toBe("");
+  });
+
+  it("names a person by name, or by email when the name is missing", () => {
+    expect(describePerson("Ada", "ada@example.com")).toBe("Ada");
+    expect(describePerson("", "ada@example.com")).toBe("ada@example.com");
+    expect(describePerson("ada@example.com", "ada@example.com")).toBe("ada@example.com");
   });
 });

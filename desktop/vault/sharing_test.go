@@ -71,7 +71,8 @@ func (server *fakeAPIServer) addAllSharingRoute(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/share-invitations", func(writer http.ResponseWriter, request *http.Request) {
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
-		response := proto.ShareInvitationList{AllReceived: append([]proto.ReceivedShareInvitation{}, server.allReceivedShareInvitation...), AllSent: []proto.SentShareInvitation{}}
+		response := proto.ShareInvitationList{AllReceived: append([]proto.ReceivedShareInvitation{}, server.allReceivedShareInvitation...), AllSent: []proto.SentShareInvitation{},
+			AllWaiting: server.allWaitingShareInvitation}
 		for _, invitation := range server.allShareInvitation {
 			if server.getVaultRole(invitation.VaultID) == proto.VaultOwner {
 				response.AllSent = append(response.AllSent, invitation)
@@ -257,8 +258,10 @@ func (server *fakeAPIServer) acceptShareInvitation(t *testing.T, recipient proto
 	for index := range server.allShareInvitation {
 		invitation := &server.allShareInvitation[index]
 		if invitation.Email == recipient.Email && invitation.State == proto.ShareInvitationPending {
+			acceptedAt := time.Date(2026, 10, 11, 8, 30, 0, 0, time.UTC)
 			invitation.State = proto.ShareInvitationAccepted
 			invitation.Recipient = &recipient
+			invitation.AcceptedAt = &acceptedAt
 			return
 		}
 	}
@@ -441,7 +444,8 @@ func TestCompletingAShareRefusesAChangedKey(t *testing.T) {
 	test.apiServer.acceptShareInvitation(t, substituted)
 	invitations, err := service.ListAllShareInvitation()
 	if err != nil || !strings.Contains(invitations.CompletionError, "signing key of b@example.com changed") ||
-		len(invitations.AllSent) != 1 || invitations.AllSent[0].State != proto.ShareInvitationAccepted {
+		len(invitations.AllSent) != 1 || invitations.AllSent[0].State != proto.ShareInvitationAccepted ||
+		invitations.AllSent[0].RecipientName != "Bob" || invitations.AllSent[0].AcceptedAt != "2026-10-11T08:30:00Z" || invitations.AllSent[0].VaultName != "Travel" {
 		t.Fatalf("completing with a substituted key: %+v %v", invitations, err)
 	}
 	if _, found := test.apiServer.getAccess(travelID, bob.AccountID); found {
@@ -576,6 +580,66 @@ func TestReceivedShareInvitationsCanBeAnswered(t *testing.T) {
 	}
 	if err := service.CancelShareInvitation(invitations.AllSent[0].ID); !errors.Is(err, errInvitationNotFound) {
 		t.Errorf("cancel twice: %v", err)
+	}
+}
+
+func TestRecipientSeesWhoTheShareIsWaitingFor(t *testing.T) {
+	test := createUnlockedTestService(t)
+	acceptedAt := time.Date(2026, 10, 11, 7, 0, 0, 0, time.UTC)
+	test.apiServer.allWaitingShareInvitation = []proto.WaitingShareInvitation{
+		{ID: "from-carol", VaultID: "vault-1", Role: proto.VaultEditor, InvitedByName: "Carol", InvitedByEmail: "c@example.com", AcceptedAt: acceptedAt},
+	}
+	invitations, err := test.service.ListAllShareInvitation()
+	if err != nil || len(invitations.AllWaiting) != 1 || len(invitations.AllReceived) != 0 {
+		t.Fatalf("waiting: %+v %v", invitations, err)
+	}
+	if waiting := invitations.AllWaiting[0]; waiting.ID != "from-carol" || waiting.InvitedByName != "Carol" || waiting.InvitedByEmail != "c@example.com" ||
+		waiting.Role != proto.VaultEditor || waiting.AcceptedAt != "2026-10-11T07:00:00Z" {
+		t.Errorf("waiting = %+v", waiting)
+	}
+	test.apiServer.allWaitingShareInvitation = nil
+	if invitations, _ := test.service.ListAllShareInvitation(); invitations.AllWaiting == nil || len(invitations.AllWaiting) != 0 {
+		t.Errorf("an old server's missing list: %#v", invitations.AllWaiting)
+	}
+}
+
+func TestLockedAppListsSharesAwaitingUnlock(t *testing.T) {
+	test := createUnlockedTestService(t)
+	service := test.service
+	bob, _ := test.apiServer.addMember(t, "Bob", "b@example.com")
+	if err := service.ShareVault(test.familyID, "b@example.com", proto.VaultEditor); err != nil {
+		t.Fatal(err)
+	}
+	test.apiServer.acceptShareInvitation(t, bob)
+	if allAwaiting, err := service.ListAllShareAwaitingUnlock(); err != nil || len(allAwaiting) != 0 {
+		t.Errorf("unlocked, the app completes shares itself: %+v %v", allAwaiting, err)
+	}
+
+	service.Lock()
+	allAwaiting, err := service.ListAllShareAwaitingUnlock()
+	if err != nil || len(allAwaiting) != 1 {
+		t.Fatalf("awaiting unlock: %+v %v", allAwaiting, err)
+	}
+	if awaiting := allAwaiting[0]; awaiting.RecipientName != "Bob" || awaiting.RecipientEmail != "b@example.com" || awaiting.AcceptedAt != "2026-10-11T08:30:00Z" || awaiting.InvitationID == "" {
+		t.Errorf("awaiting = %+v", awaiting)
+	}
+	if _, found := test.apiServer.getAccess(test.familyID, bob.AccountID); found {
+		t.Error("a locked app completed the share")
+	}
+	if _, err := service.ListAllShareInvitation(); !errors.Is(err, ErrLocked) {
+		t.Errorf("full invitation list while locked: %v", err)
+	}
+
+	test.apiServer.setUnreachable(true)
+	if allAwaiting, err := service.ListAllShareAwaitingUnlock(); err != nil || len(allAwaiting) != 0 {
+		t.Errorf("offline: %+v %v", allAwaiting, err)
+	}
+	test.apiServer.setUnreachable(false)
+	if _, err := service.SignOut(); err != nil {
+		t.Fatal(err)
+	}
+	if allAwaiting, err := service.ListAllShareAwaitingUnlock(); err != nil || len(allAwaiting) != 0 {
+		t.Errorf("signed out: %+v %v", allAwaiting, err)
 	}
 }
 

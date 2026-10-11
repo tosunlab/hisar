@@ -30,6 +30,7 @@ const allPath = {
   laptop: "M5 6h14v10H5zM2 19h20",
   phone: "M8 3h8v18H8zM11 18h2",
   mail: "M3 6h18v12H3zM3 7l9 6 9-6",
+  clock: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 7v5l3 2",
   warning: "M12 4l9 16H3zM12 10v4M12 17h.01",
   offline: "M3 3l18 18M8.5 8.6A5 5 0 0 0 7 18h10M14 6.3A5.5 5.5 0 0 1 18 11a3.5 3.5 0 0 1 2.4 5.9",
   import: "M12 4v11M7.5 10.5L12 15l4.5-4.5M5 20h14",

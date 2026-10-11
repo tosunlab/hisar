@@ -127,7 +127,7 @@ struct VaultsView: View {
 
     @ViewBuilder
     private var receivedInvitationSection: some View {
-        if !model.allReceivedInvitation.isEmpty {
+        if !model.allReceivedInvitation.isEmpty || !model.allWaitingInvitation.isEmpty {
             Section {
                 ForEach(model.allReceivedInvitation) { invitation in
                     ReceivedInvitationRow(invitation: invitation, identifierPrefix: "banner-") {
@@ -143,6 +143,12 @@ struct VaultsView: View {
                             }
                         }
                     }
+                }
+                ForEach(model.allWaitingInvitation) { invitation in
+                    Label(invitation.describe(now: Date()), systemImage: "clock")
+                        .font(.subheadline)
+                        .foregroundStyle(.themeSecondary)
+                        .accessibilityIdentifier("waiting-\(invitation.id)")
                 }
             } header: {
                 Text("Shared with you")

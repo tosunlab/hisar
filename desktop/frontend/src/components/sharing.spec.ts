@@ -29,6 +29,7 @@ vi.mock("@wailsio/runtime", () => ({ Events: { On: () => () => undefined } }));
 
 const { store } = await import("../store");
 const MainView = (await import("./MainView.vue")).default;
+const UnlockView = (await import("./UnlockView.vue")).default;
 const SettingsPanel = (await import("./SettingsPanel.vue")).default;
 const api = apiMock.current;
 
@@ -264,6 +265,95 @@ describe("Share invitation banner", () => {
     expect(wrapper.find('[data-testid="share-invitation-banner"]').exists()).toBe(false);
     wrapper.unmount();
   });
+
+  it("tells the recipient whose Hisar the share is waiting for and since when", () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-11T10:00:00Z"));
+    store.shareInvitations = {
+      received: [],
+      sent: [],
+      waiting: [
+        { id: "from-carol", vaultId: "carol-vault", role: "editor", invitedByName: "Carol", invitedByEmail: "carol@example.com", acceptedAt: "2026-10-11T08:00:00Z" },
+        { id: "from-dave", vaultId: "dave-vault", role: "reader", invitedByName: "", invitedByEmail: "dave@example.com", acceptedAt: "2026-10-11T09:55:00Z" },
+      ],
+      completionError: "",
+    };
+    const wrapper = mount(MainView, { attachTo: document.body });
+    expect(wrapper.find('[data-testid="banner-waiting-from-carol"]').text()).toBe("Waiting for Carol's Hisar to finish sharing · accepted 2 h ago");
+    expect(wrapper.find('[data-testid="banner-waiting-from-dave"]').text()).toContain("Waiting for dave@example.com's Hisar to finish sharing · accepted 5 min ago");
+    expect(wrapper.find('[data-testid="share-invitation-banner"] button').exists()).toBe(false);
+    wrapper.unmount();
+    vi.useRealTimers();
+  });
+
+  it("tells the owner when an accepted share could not be finished", () => {
+    store.shareInvitations = {
+      received: [],
+      sent: [
+        createSentShareInvitation({ id: "to-erin", email: "erin@example.com", recipientName: "Erin", state: "accepted", vaultName: "Work", acceptedAt: "2026-10-11T08:00:00Z" }),
+        createSentShareInvitation({ id: "to-frank", email: "frank@example.com", recipientName: "Frank", state: "accepted", vaultName: "Family", acceptedAt: "2026-10-11T08:00:00Z" }),
+        createSentShareInvitation(),
+      ],
+      completionError: "the signing key of erin@example.com changed since you last shared with them",
+    };
+    const wrapper = mount(MainView, { attachTo: document.body });
+    expect(wrapper.find('[data-testid="banner-accepted-to-erin"]').text()).toBe(
+      "Erin accepted your invitation to Work. Hisar couldn't finish sharing: the signing key of erin@example.com changed since you last shared with them",
+    );
+    expect(wrapper.find('[data-testid="banner-accepted-to-frank"]').text()).toBe("Frank accepted your invitation to Family. Finishing sharing…");
+    expect(wrapper.find('[data-testid="banner-accepted-invitation-to-dave"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+});
+
+describe("Lock screen", () => {
+  it("asks the owner to unlock to finish shares people accepted", async () => {
+    store.status = createStatus("locked");
+    api.listAllShareAwaitingUnlock.mockResolvedValue([
+      { invitationId: "to-ada", recipientName: "Ada", recipientEmail: "ada@example.com", acceptedAt: "2026-10-11T08:00:00Z" },
+      { invitationId: "to-bo", recipientName: "", recipientEmail: "bo@example.com", acceptedAt: "2026-10-11T08:00:00Z" },
+    ]);
+    const wrapper = mount(UnlockView, { attachTo: document.body });
+    await flushPromises();
+    const banner = wrapper.find('[data-testid="share-awaiting-unlock"]');
+    expect(banner.findAll("li").map((row) => row.text())).toEqual([
+      "Ada accepted your invitation to a vault — unlock to finish sharing",
+      "bo@example.com accepted your invitation to a vault — unlock to finish sharing",
+    ]);
+
+    api.listAllShareAwaitingUnlock.mockResolvedValue([]);
+    window.dispatchEvent(new Event("focus"));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="share-awaiting-unlock"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("shows nothing when the server cannot be reached", async () => {
+    store.status = createStatus("locked");
+    store.allShareAwaitingUnlock = [];
+    api.listAllShareAwaitingUnlock.mockRejectedValue(new Error("offline"));
+    const wrapper = mount(UnlockView, { attachTo: document.body });
+    await flushPromises();
+    expect(wrapper.find('[data-testid="share-awaiting-unlock"]').exists()).toBe(false);
+    expect(store.errorMessage).toBe("");
+    wrapper.unmount();
+  });
+
+  it("forgets the banner when the lock screen goes away", async () => {
+    store.status = createStatus("locked");
+    api.listAllShareAwaitingUnlock.mockResolvedValue([{ invitationId: "to-ada", recipientName: "Ada", recipientEmail: "ada@example.com", acceptedAt: "" }]);
+    const wrapper = mount(UnlockView, { attachTo: document.body });
+    await flushPromises();
+    expect(store.allShareAwaitingUnlock).toHaveLength(1);
+    api.unlock.mockResolvedValue(createStatus("unlocked"));
+    api.listAllVault.mockResolvedValue([]);
+    await wrapper.find('input[name="password"]').setValue("master password");
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(store.status.state).toBe("unlocked");
+    wrapper.unmount();
+    expect(store.allShareAwaitingUnlock).toHaveLength(0);
+  });
 });
 
 describe("Settings people and devices", () => {
@@ -333,7 +423,7 @@ describe("Settings people and devices", () => {
     expect(receivedRow.text()).toContain("Editor");
     const sent = wrapper.find('[data-testid="sent-invitations"]');
     expect(sent.find('[data-testid="sent-invitation-invitation-to-dave"]').text()).toContain("Family · Waiting for them to accept");
-    expect(sent.find('[data-testid="sent-invitation-invitation-to-erin"]').text()).toContain("Accepted · finishing on your next sync");
+    expect(sent.find('[data-testid="sent-invitation-invitation-to-erin"]').text()).toContain("Accepted · Hisar is finishing sharing");
     expect(wrapper.find('[data-testid="share-completion-error"]').text()).toContain("signing key of erin@example.com changed");
 
     await receivedRow.find('[data-testid="accept-invitation-invitation-from-carol"]').trigger("click");

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/tryhisar/hisar/core/client"
+	"github.com/tryhisar/hisar/core/proto"
 )
 
 // completeAllAcceptedShare wraps vault keys for people who accepted this user's share invitations, pinning their
@@ -44,7 +45,14 @@ func (s *Service) ListAllShareInvitation() (ShareInvitations, error) {
 	result := ShareInvitations{
 		AllReceived:     make([]ReceivedShareInvitation, 0, len(invitationList.AllReceived)),
 		AllSent:         make([]SentShareInvitation, 0, len(invitationList.AllSent)),
+		AllWaiting:      make([]WaitingShareInvitation, 0, len(invitationList.AllWaiting)),
 		CompletionError: s.shareCompletionError,
+	}
+	for _, waiting := range invitationList.AllWaiting {
+		result.AllWaiting = append(result.AllWaiting, WaitingShareInvitation{
+			ID: waiting.ID, VaultID: waiting.VaultID, Role: waiting.Role, InvitedByName: waiting.InvitedByName, InvitedByEmail: waiting.InvitedByEmail,
+			AcceptedAt: formatTime(waiting.AcceptedAt),
+		})
 	}
 	for _, received := range invitationList.AllReceived {
 		result.AllReceived = append(result.AllReceived, ReceivedShareInvitation{
@@ -57,12 +65,60 @@ func (s *Service) ListAllShareInvitation() (ShareInvitations, error) {
 		if vault, found := s.allVaultByID[sent.VaultID]; found {
 			vaultName = vault.Name
 		}
-		result.AllSent = append(result.AllSent, SentShareInvitation{
-			ID: sent.ID, VaultID: sent.VaultID, VaultName: vaultName, Email: sent.Email, Role: sent.Role, State: sent.State,
-			ExpiresAt: sent.ExpiresAt.UTC().Format(time.RFC3339),
-		})
+		result.AllSent = append(result.AllSent, convertToSentShareInvitation(sent, vaultName))
 	}
 	return result, nil
+}
+
+func formatTime(value time.Time) string { return value.UTC().Format(time.RFC3339) }
+
+func convertToSentShareInvitation(sent proto.SentShareInvitation, vaultName string) SentShareInvitation {
+	invitation := SentShareInvitation{
+		ID: sent.ID, VaultID: sent.VaultID, VaultName: vaultName, Email: sent.Email, Role: sent.Role, State: sent.State,
+		ExpiresAt: formatTime(sent.ExpiresAt),
+	}
+	if sent.Recipient != nil {
+		invitation.RecipientName = sent.Recipient.Name
+	}
+	if sent.AcceptedAt != nil {
+		invitation.AcceptedAt = formatTime(*sent.AcceptedAt)
+	}
+	return invitation
+}
+
+// ListAllShareAwaitingUnlock lists, while locked, the shares people accepted that this app finishes once unlocked.
+// It needs only the saved session; unlocked, signed out or offline, the list is empty.
+func (s *Service) ListAllShareAwaitingUnlock() ([]ShareAwaitingUnlock, error) {
+	s.mutex.Lock()
+	isLocked := s.unlockedSession == nil && s.state.IsLoggedIn()
+	server, token := s.state.Server, s.state.Token
+	s.mutex.Unlock()
+	allAwaiting := []ShareAwaitingUnlock{}
+	if !isLocked {
+		return allAwaiting, nil
+	}
+	apiClient := client.Create(server)
+	apiClient.Token = token
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	invitationList, err := apiClient.ListAllShareInvitation(ctx)
+	if client.IsUnreachable(err) {
+		return allAwaiting, nil
+	}
+	if err != nil {
+		return allAwaiting, convertError(err)
+	}
+	for _, sent := range invitationList.AllSent {
+		if sent.State != proto.ShareInvitationAccepted || sent.Recipient == nil {
+			continue
+		}
+		awaiting := ShareAwaitingUnlock{InvitationID: sent.ID, RecipientName: sent.Recipient.Name, RecipientEmail: sent.Recipient.Email}
+		if sent.AcceptedAt != nil {
+			awaiting.AcceptedAt = formatTime(*sent.AcceptedAt)
+		}
+		allAwaiting = append(allAwaiting, awaiting)
+	}
+	return allAwaiting, nil
 }
 
 func (s *Service) answerShareInvitation(invitationID string, send func(context.Context, string) error) error {

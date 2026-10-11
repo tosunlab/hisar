@@ -39,6 +39,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var isMacApprovalAllowed = true
     @Published private(set) var theme = VaultTheme.standard
     @Published private(set) var allReceivedInvitation: [ReceivedShareInvitation] = []
+    @Published private(set) var allWaitingInvitation: [WaitingShareInvitation] = []
+    @Published private(set) var allShareAwaitingUnlock: [ShareAwaitingUnlock] = []
     @Published private(set) var remoteChangeCount = 0
 
     var receivedInvitationCount: Int { allReceivedInvitation.count }
@@ -93,11 +95,29 @@ final class AppModel: ObservableObject {
             allPasskey = []
             lockCount += 1
             allReceivedInvitation = []
+            allWaitingInvitation = []
             selectedTab = .vaults
             clearAllApproval()
         }
+        if newStatus.state != VaultStatus.stateLocked {
+            allShareAwaitingUnlock = []
+        }
         if !wasUnlocked && newStatus.isUnlocked && isInForeground {
             startApprovalPolling()
+        }
+    }
+
+    private func applyShareInvitations(_ shareInvitations: ShareInvitations) {
+        allReceivedInvitation = shareInvitations.allReceived
+        allWaitingInvitation = shareInvitations.allWaiting
+    }
+
+    // The lock screen's banner: shares people accepted that only this unlocked app can finish. Failures stay silent.
+    func refreshShareAwaitingUnlock() async {
+        guard let backend, screen == .locked else { return }
+        guard let allAwaiting = try? await runInBackground({ try backend.listAllShareAwaitingUnlock() }) else { return }
+        if screen == .locked {
+            allShareAwaitingUnlock = allAwaiting
         }
     }
 
@@ -263,7 +283,7 @@ final class AppModel: ObservableObject {
         allItemByVaultID = result.1
         allPasskey = result.2
         if let shareInvitations = result.3 {
-            allReceivedInvitation = shareInvitations.allReceived
+            applyShareInvitations(shareInvitations)
         }
         refreshStatus()
         await publishAllCredentialIdentity()
@@ -345,7 +365,7 @@ final class AppModel: ObservableObject {
 
     func loadShareInvitations() async -> ShareInvitations? {
         guard let shareInvitations = await perform(isBusyShown: false, { try $0.listAllShareInvitation() }) else { return nil }
-        allReceivedInvitation = shareInvitations.allReceived
+        applyShareInvitations(shareInvitations)
         return shareInvitations
     }
 
@@ -353,6 +373,7 @@ final class AppModel: ObservableObject {
     func acceptShareInvitation(invitationID: String) async -> Bool {
         guard await perform({ try $0.acceptShareInvitation(invitationID: invitationID) }) != nil else { return false }
         allReceivedInvitation.removeAll { $0.id == invitationID }
+        await refreshReceivedInvitationCount()
         return true
     }
 
@@ -512,7 +533,7 @@ final class AppModel: ObservableObject {
 
     func refreshReceivedInvitationCount() async {
         guard let invitations = await perform(isBusyShown: false, { try $0.listAllShareInvitation() }) else { return }
-        allReceivedInvitation = invitations.allReceived
+        applyShareInvitations(invitations)
     }
 
     func generatePassword(length: Int, isDigitIncluded: Bool, isSymbolIncluded: Bool) async -> String? {

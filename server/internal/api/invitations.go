@@ -15,10 +15,12 @@ import (
 )
 
 const (
-	invitePerAccountPerDay          = 10
-	invitePerIPPerDay               = 20
-	shareInvitationPerAccountPerDay = 50
-	shareInvitationPerIPPerDay      = 100
+	invitePerAccountPerDay             = 10
+	invitePerIPPerDay                  = 20
+	shareInvitationPerAccountPerDay    = 50
+	shareInvitationPerIPPerDay         = 100
+	shareAcceptedEmailPerInviterPerDay = 50
+	defaultShareAcceptedEmailDelay     = 2 * time.Minute
 )
 
 var (
@@ -198,9 +200,20 @@ func (s *Server) handleListAllShareInvitation(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+	allStoredWaiting, err := s.store.ListAllWaitingShareInvitation(c.Context(), account.ID)
+	if err != nil {
+		return err
+	}
 	response := proto.ShareInvitationList{
 		AllReceived: make([]proto.ReceivedShareInvitation, 0, len(allStoredReceived)),
 		AllSent:     make([]proto.SentShareInvitation, 0, len(allStoredSent)),
+		AllWaiting:  make([]proto.WaitingShareInvitation, 0, len(allStoredWaiting)),
+	}
+	for _, waiting := range allStoredWaiting {
+		response.AllWaiting = append(response.AllWaiting, proto.WaitingShareInvitation{
+			ID: waiting.ID, VaultID: waiting.VaultID, Role: waiting.Role, InvitedByName: waiting.InvitedByName, InvitedByEmail: waiting.InvitedByEmail,
+			AcceptedAt: *waiting.AcceptedAt,
+		})
 	}
 	for _, received := range allStoredReceived {
 		response.AllReceived = append(response.AllReceived, proto.ReceivedShareInvitation{
@@ -211,7 +224,7 @@ func (s *Server) handleListAllShareInvitation(c fiber.Ctx) error {
 	for _, sent := range allStoredSent {
 		protoSent := proto.SentShareInvitation{
 			ID: sent.ID, VaultID: sent.VaultID, Email: sent.Email, Role: sent.Role, State: sent.State, InvitedBy: sent.InvitedBy,
-			CreatedAt: sent.CreatedAt, ExpiresAt: sent.ExpiresAt,
+			CreatedAt: sent.CreatedAt, ExpiresAt: sent.ExpiresAt, AcceptedAt: sent.AcceptedAt,
 		}
 		if sent.Recipient != nil {
 			recipient := convertToProtoMember(sent.Recipient)
@@ -249,10 +262,11 @@ func (s *Server) answerShareInvitation(c fiber.Ctx, isAccepted bool) error {
 		return err
 	}
 	var vaultID string
+	var acceptedAt time.Time
 	eventType := "share_invitation_declined"
 	if isAccepted {
 		eventType = "share_invitation_accepted"
-		vaultID, err = s.store.AcceptShareInvitation(c.Context(), invitationID, account.ID, account.Email)
+		vaultID, acceptedAt, err = s.store.AcceptShareInvitation(c.Context(), invitationID, account.ID, account.Email)
 	} else {
 		vaultID, err = s.store.DeclineShareInvitation(c.Context(), invitationID, account.Email)
 	}
@@ -264,7 +278,36 @@ func (s *Server) answerShareInvitation(c fiber.Ctx, isAccepted bool) error {
 	}
 	s.recordAudit(c, currentSession.AccountID, currentSession.DeviceID, eventType, map[string]string{"vault": vaultID, "invitation": invitationID})
 	s.publishShareInvitationsChangedToOwner(c.Context(), vaultID, account.ID)
+	if isAccepted {
+		s.scheduleShareAcceptedEmail(invitationID, acceptedAt)
+	}
 	return c.SendStatus(fiber.StatusNoContent)
+}
+
+// scheduleShareAcceptedEmail tells the inviter by email when their app has not completed the share after the delay,
+// which an unlocked app does within seconds. The timer is in memory only; a restart drops it.
+func (s *Server) scheduleShareAcceptedEmail(invitationID string, acceptedAt time.Time) {
+	if !s.isEmailConfigured() {
+		return
+	}
+	time.AfterFunc(s.config.ShareAcceptedEmailDelay, func() {
+		s.runInBackground(func(ctx context.Context) { s.sendShareAcceptedEmail(ctx, invitationID, acceptedAt) })
+	})
+}
+
+func (s *Server) sendShareAcceptedEmail(ctx context.Context, invitationID string, acceptedAt time.Time) {
+	acceptance, err := s.store.GetShareAcceptance(ctx, invitationID, acceptedAt)
+	if errors.Is(err, store.ErrNotFound) {
+		return
+	}
+	if err != nil {
+		log.Printf("share accepted email: %v", err)
+		return
+	}
+	if !s.shareAcceptedEmailLimiter.allow(acceptance.Inviter.ID) {
+		return
+	}
+	s.sendEmail(ctx, composeShareAcceptedEmail(&acceptance.Inviter, &acceptance.Recipient))
 }
 
 func (s *Server) handleCancelShareInvitation(c fiber.Ctx) error {

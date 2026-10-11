@@ -25,6 +25,7 @@ import type {
   PasswordConfig,
   ReceivedShareInvitation,
   SentShareInvitation,
+  ShareAwaitingUnlock,
   ShareInvitations as BoundShareInvitations,
   ShareLink as BoundShareLink,
   ShareLinkField,
@@ -35,6 +36,7 @@ import type {
   UpdateStatus,
   VaultMember,
   VaultSummary,
+  WaitingShareInvitation,
 } from "../bindings/github.com/tryhisar/hisar/desktop/vault";
 
 export type {
@@ -51,6 +53,7 @@ export type {
   PasswordConfig,
   ReceivedShareInvitation,
   SentShareInvitation,
+  ShareAwaitingUnlock,
   ShareLinkField,
   ShareLinkRequest,
   SignUpResult,
@@ -60,19 +63,27 @@ export type {
   UpdateStatus,
   VaultMember,
   VaultSummary,
+  WaitingShareInvitation,
 };
 
 export type SSHKeyType = "ed25519" | "rsa";
 export type VaultRole = "owner" | "editor" | "reader";
 
+// ShareInvitations: waiting lists the shares this user accepted that the owner's app has not finished yet.
 export interface ShareInvitations {
   received: ReceivedShareInvitation[];
   sent: SentShareInvitation[];
+  waiting?: WaitingShareInvitation[];
   completionError: string;
 }
 
 function normalizeShareInvitations(invitations: BoundShareInvitations): ShareInvitations {
-  return { received: invitations.received ?? [], sent: invitations.sent ?? [], completionError: invitations.completionError };
+  return {
+    received: invitations.received ?? [],
+    sent: invitations.sent ?? [],
+    waiting: invitations.waiting ?? [],
+    completionError: invitations.completionError,
+  };
 }
 
 export interface ShareLink extends Omit<BoundShareLink, "fieldLabels"> {
@@ -168,6 +179,7 @@ const wailsApi = {
   acceptShareInvitation: (invitationID: string): Promise<void> => Service.AcceptShareInvitation(invitationID),
   declineShareInvitation: (invitationID: string): Promise<void> => Service.DeclineShareInvitation(invitationID),
   cancelShareInvitation: (invitationID: string): Promise<void> => Service.CancelShareInvitation(invitationID),
+  listAllShareAwaitingUnlock: async (): Promise<ShareAwaitingUnlock[]> => (await Service.ListAllShareAwaitingUnlock()) ?? [],
   listAllShareLinkField: async (vaultID: string, itemID: string): Promise<ShareLinkField[]> => (await Service.ListAllShareLinkField(vaultID, itemID)) ?? [],
   createShareLink: async (request: ShareLinkRequest): Promise<ShareLink> => normalizeShareLink(await Service.CreateShareLink(request)),
   listAllShareLink: async (): Promise<ShareLink[]> => ((await Service.ListAllShareLink()) ?? []).map(normalizeShareLink),

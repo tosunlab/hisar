@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -164,25 +165,62 @@ func TestErrorHandler(t *testing.T) {
 	}
 }
 
-func TestPrivacyPolicy(t *testing.T) {
+func TestPrivacyPolicyAndTerms(t *testing.T) {
 	server, err := CreateServer(nil, generateAllSecret(), Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	response, err := server.CreateApp().Test(httptest.NewRequest("GET", "/privacy", nil))
-	if err != nil {
-		t.Fatal(err)
+	app := server.CreateApp()
+	for path, title := range map[string]string{"/privacy": "Hisar privacy policy", "/terms": "Hisar terms of service"} {
+		response, err := app.Test(httptest.NewRequest("GET", path, nil))
+		if err != nil {
+			t.Fatal(err)
+		}
+		bodyBytes, _ := io.ReadAll(response.Body)
+		body := string(bodyBytes)
+		if response.StatusCode != fiber.StatusOK || response.Header.Get("Content-Type") != fiber.MIMETextHTMLCharsetUTF8 || !strings.Contains(body, "<title>"+title+"</title>") {
+			t.Fatalf("%s: %d %q", path, response.StatusCode, response.Header.Get("Content-Type"))
+		}
+		if policy := response.Header.Get("Content-Security-Policy"); policy != "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'" {
+			t.Errorf("%s: content security policy = %q", path, policy)
+		}
+		if response.Header.Get("X-Frame-Options") != "DENY" || response.Header.Get("X-Content-Type-Options") != "nosniff" ||
+			!strings.HasPrefix(response.Header.Get("Strict-Transport-Security"), "max-age=") || response.Header.Get("Cache-Control") != "public, max-age=3600" {
+			t.Errorf("%s lost the other security headers: %v", path, response.Header)
+		}
+		lowerBody := strings.ToLower(body)
+		for _, outdated := range []string{"family", "families", "self-hosted", "self hosted", "administrator"} {
+			if strings.Contains(lowerBody, outdated) {
+				t.Errorf("%s still says %q", path, outdated)
+			}
+		}
+		if strings.Contains(lowerBody, "<script") || strings.Contains(lowerBody, "http://") {
+			t.Errorf("%s loads scripts or insecure links", path)
+		}
+		for _, fact := range []string{"Alper Berber", `<a href="mailto:support@tryhisar.com">support@tryhisar.com</a>`, "11 October 2026"} {
+			if !strings.Contains(body, fact) {
+				t.Errorf("%s lost %s", path, fact)
+			}
+		}
+		if placeholder := regexp.MustCompile(`\[[A-Z][^\]]*\]`).FindString(body); placeholder != "" || strings.Contains(body, "privacy@tryhisar.com") {
+			t.Errorf("%s still has a placeholder: %q", path, placeholder)
+		}
 	}
-	body, _ := io.ReadAll(response.Body)
-	if response.StatusCode != fiber.StatusOK || !strings.HasPrefix(response.Header.Get("Content-Type"), "text/html") ||
-		!strings.Contains(string(body), "Hisar privacy policy") {
-		t.Fatalf("privacy policy: %d %q", response.StatusCode, response.Header.Get("Content-Type"))
+}
+
+func TestLegalPagesLinkToEachOther(t *testing.T) {
+	if !strings.Contains(string(privacyPolicy), `href="/terms"`) || !strings.Contains(string(termsOfService), `href="/privacy"`) {
+		t.Error("the privacy policy and the terms do not link to each other")
 	}
-	if policy := response.Header.Get("Content-Security-Policy"); policy != "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'" {
-		t.Errorf("content security policy = %q", policy)
+	for _, statement := range []string{"cannot read", "OPAQUE", "1 year", "90 days", "14 days", "30 days", "Google", "Data Privacy Framework", "Hetzner Online GmbH", "Helsinki, Finland", "IP address", "Autoriteit Persoonsgegevens", "https://autoriteitpersoonsgegevens.nl", "Art. 6(1)(b)", "Art. 6(1)(f)", "portable"} {
+		if !strings.Contains(string(privacyPolicy), statement) {
+			t.Errorf("the privacy policy no longer mentions %q", statement)
+		}
 	}
-	if response.Header.Get("X-Frame-Options") != "DENY" {
-		t.Error("the privacy page lost the other security headers")
+	for _, statement := range []string{"Dutch law", "courts of the Netherlands", "mandatory law", "EUR 100", "60 days", "We cannot recover your account"} {
+		if !strings.Contains(string(termsOfService), statement) {
+			t.Errorf("the terms no longer mention %q", statement)
+		}
 	}
 }
 

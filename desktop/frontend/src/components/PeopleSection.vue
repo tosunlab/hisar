@@ -27,7 +27,7 @@ async function confirmCancel(invitation: SentShareInvitation): Promise<void> {
 }
 
 function describeSentState(invitation: SentShareInvitation): string {
-  return invitation.state === "accepted" ? "Accepted · finishing on your next sync" : "Waiting for them to accept";
+  return invitation.state === "accepted" ? "Accepted · Hisar is finishing sharing" : "Waiting for them to accept";
 }
 
 function describeInviter(name: string, email: string): string {
