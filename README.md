@@ -30,7 +30,7 @@ opens at login (Settings → App → **Open Hisar at login**, on by default) and
 ⌘Q or **Quit Hisar** in the menu bar quits it. `hisar` itself starts the app when it is installed but not running, waits up to 10 seconds
 for it, and otherwise says "Hisar isn't running. Open the Hisar app and try again."; `HISAR_NO_LAUNCH=1` turns that off for scripts and CI.
 
-**Anywhere else** (Linux, Windows, servers, or without the app), download the standalone `hisar` from the release of a `v*` tag on
+**Anywhere else** (Linux, Windows, servers, or without the app), download the standalone `hisar` from the published release of a `cli-<version>` tag on
 GitLab (Deploy → Releases, or the generic package `hisar-cli/<version>`): `hisar-<version>-<os>-<arch>.tar.gz` for Linux and macOS,
 `.zip` for Windows, and `SHA256SUMS`. Check the download before you run it, then put `hisar` on your `PATH`:
 

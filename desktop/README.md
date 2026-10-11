@@ -39,10 +39,12 @@ sets its version, and writes `desktop/bin/Hisar-0.1.0.dmg` with the usual drag-t
 Sparkle update: `Hisar-0.1.0.zip`, signed with the EdDSA private key, and `update.json` (signature, length, minimum macOS,
 release notes). The script refuses a key that does not belong to `SUPublicEDKey` in `build/darwin/Info.plist`.
 
-Pushing an annotated tag `mac-v<version>` (e.g. `git tag -a mac-v0.1.0 -m "release notes in markdown"`) runs `desktop-dmg` on
-the macOS runner, which builds both and uploads the DMG, the zip and `update.json` to the generic package registry
-(`hisar-desktop/<version>`), and `desktop-release`, which creates a GitLab release with the DMG as a download. The tag
-message becomes the release notes Sparkle shows. The job needs the protected File variable `SPARKLE_PRIVATE_KEY`. The app is
+Pushing an annotated tag `desktop-<version>` (e.g. `git tag -a desktop-0.1.7 -m "release notes in markdown"`) runs `desktop-dmg` on
+the macOS runner, which builds both and uploads the DMG and the zip to the generic package registry (`hisar-desktop/<version>`), and
+`desktop-release`, which creates a GitLab release with the DMG as a download for the team. Nobody gets it as an automatic
+update until you run the manual `desktop-publish` job in the tag's pipeline, which uploads `update.json`. The tag message
+becomes the release notes Sparkle shows. A custom build such as `desktop-1.0.0-alpha-test` is only the DMG and can't be
+published. The job needs the protected File variable `SPARKLE_PRIVATE_KEY`. The app is
 ad-hoc signed and not notarized until the Apple Developer membership is active, so the first launch needs right-click → Open
 (or `xattr -dr com.apple.quarantine /Applications/Hisar.app`).
 

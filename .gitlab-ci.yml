@@ -1,15 +1,16 @@
 # Merge requests, release tags and manual runs only: a merge to main was already tested as its merge request.
-# v* tags publish the server image and the standalone CLI (a GitLab release); mac-v* tags publish the macOS app as a GitLab release.
+# server-<version> tags publish the server image, cli-<version> the standalone CLI and desktop-<version> the macOS app (GitLab releases).
 workflow:
   auto_cancel:
     on_new_commit: interruptible
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-    - if: $CI_COMMIT_TAG =~ /^v/
-    - if: $CI_COMMIT_TAG =~ /^mac-v/
+    - if: $CI_COMMIT_TAG =~ /^server-\d+\.\d+\.\d+/
+    - if: $CI_COMMIT_TAG =~ /^cli-\d+\.\d+\.\d+/
+    - if: $CI_COMMIT_TAG =~ /^desktop-\d+\.\d+\.\d+/
     - if: $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api"
 
-stages: [test, build, release]
+stages: [test, build, release, publish]
 
 default:
   interruptible: true
@@ -219,7 +220,7 @@ server-image:
   stage: release
   extends: .crane
   rules:
-    - if: $CI_COMMIT_TAG =~ /^v/
+    - if: $CI_COMMIT_TAG =~ /^server-\d+\.\d+\.\d+/
     - if: $CI_PIPELINE_SOURCE == "web" || $CI_PIPELINE_SOURCE == "api"
       when: manual
   interruptible: false
@@ -229,39 +230,67 @@ server-image:
     - |
       allTag=("sha-$CI_COMMIT_SHORT_SHA")
       if [ -n "$CI_COMMIT_TAG" ]; then
-        version=${CI_COMMIT_TAG#v}
-        allTag+=("$version" "${version%.*}" latest)
+        allTag+=("${CI_COMMIT_TAG#server-}")
       fi
       bash scripts/build-server-image.sh "$SERVER_IMAGE" "${allTag[@]}"
     - crane manifest "$SERVER_IMAGE:sha-$CI_COMMIT_SHORT_SHA" | tee manifest.json
     - grep -q '"architecture":"amd64"' manifest.json && grep -q '"architecture":"arm64"' manifest.json
 
-# mac-v<version> tags: a universal Hisar.app in a DMG plus the signed Sparkle update (zip and update.json),
-# uploaded to the generic package registry. SPARKLE_PRIVATE_KEY is a protected File variable holding Sparkle's EdDSA private key.
+# Publishing a server version points the latest and <major>.<minor> image tags at it.
+server-publish:
+  stage: publish
+  extends: .crane
+  needs: [server-image]
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^server-\d+\.\d+\.\d+$/
+      when: manual
+  interruptible: false
+  script:
+    - echo "$REGISTRY_PASSWORD" | crane auth login "$REGISTRY" -u "$REGISTRY_USERNAME" --password-stdin
+    - version=${CI_COMMIT_TAG#server-}
+    - crane tag "$SERVER_IMAGE:$version" "${version%.*}"
+    - crane tag "$SERVER_IMAGE:$version" latest
+    - echo "Published $SERVER_IMAGE:$version as latest and ${version%.*}"
+
+# desktop-<version> tags: a universal Hisar.app in a DMG, uploaded to the generic package hisar-desktop/<version>, and a GitLab
+# release with the DMG for the team. For release versions the job also signs the Sparkle update (zip and update.json) with the
+# protected File variable SPARKLE_PRIVATE_KEY; update.json waits for desktop-publish, because servers only offer versions that have it.
+# A custom build (desktop-1.2.3-label) is only the DMG and can't be published.
 desktop-dmg:
   stage: build
   extends: .macos
   rules:
-    - if: $CI_COMMIT_TAG =~ /^mac-v/
+    - if: $CI_COMMIT_TAG =~ /^desktop-\d+\.\d+\.\d+/
   interruptible: false
   script:
-    - version=${CI_COMMIT_TAG#mac-v}
+    - version=${CI_COMMIT_TAG#desktop-}
     - bash scripts/get-build-number.sh "$version"
-    - test -s "${SPARKLE_PRIVATE_KEY:-}" || { echo "set the protected File variable SPARKLE_PRIVATE_KEY (Sparkle's EdDSA private key) in Settings → CI/CD → Variables"; exit 1; }
+    - case "$version" in *-*) isCustomBuild=true ;; *) isCustomBuild=false ;; esac
+    - $isCustomBuild || test -s "${SPARKLE_PRIVATE_KEY:-}" || { echo "set the protected File variable SPARKLE_PRIVATE_KEY (Sparkle's EdDSA private key) in Settings → CI/CD → Variables"; exit 1; }
     - python3 -m venv .dmgbuild && .dmgbuild/bin/pip install -q dmgbuild==1.6.5 && export PATH=$CI_PROJECT_DIR/.dmgbuild/bin:$PATH
     - make install-wails
     - bash scripts/package-desktop-dmg.sh "$version"
-    # The tag's annotation is the release notes; a lightweight tag gets "Hisar <version>".
-    - printf '%s\n' "${CI_COMMIT_TAG_MESSAGE:-}" > release-notes.md
-    - bash scripts/package-desktop-update.sh "$version" "$SPARKLE_PRIVATE_KEY" release-notes.md
     - packageBaseUrl="$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/hisar-desktop/$version"
-    # update.json goes last: servers only offer a version once its update.json exists.
+    - allFileName=("Hisar-$version.dmg")
     - |
-      for fileName in "Hisar-$version.dmg" "Hisar-$version.zip" update.json; do
+      if $isCustomBuild; then
+        releaseName="Hisar for macOS $version (custom build)"
+        releaseDescription="Custom build $version for testing. It is never offered as an automatic update; the next release updates it."
+      else
+        # The tag's annotation is the release notes; a lightweight tag gets "Hisar <version>".
+        printf '%s\n' "${CI_COMMIT_TAG_MESSAGE:-}" > release-notes.md
+        bash scripts/package-desktop-update.sh "$version" "$SPARKLE_PRIVATE_KEY" release-notes.md
+        allFileName+=("Hisar-$version.zip")
+        releaseName="Hisar for macOS $version"
+        releaseDescription="Universal (Apple silicon and Intel) build of Hisar $version. Run desktop-publish in the tag's pipeline to offer it as an automatic update."
+      fi
+      for fileName in "${allFileName[@]}"; do
         curl -fsS --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file "desktop/bin/$fileName" "$packageBaseUrl/$fileName"
       done
-    - printf 'DESKTOP_VERSION=%s\nDESKTOP_PACKAGE_URL=%s\n' "$version" "$packageBaseUrl/Hisar-$version.dmg" > desktop-release.env
+      printf 'DESKTOP_VERSION=%s\nDESKTOP_PACKAGE_URL=%s\nDESKTOP_RELEASE_NAME=%s\nDESKTOP_RELEASE_DESCRIPTION=%s\n' \
+        "$version" "$packageBaseUrl/Hisar-$version.dmg" "$releaseName" "$releaseDescription Open the DMG and drag Hisar into Applications. The app is not notarized yet: on first launch, right-click Hisar → Open." > desktop-release.env
   artifacts:
+    paths: [desktop/bin/update.json]
     reports:
       dotenv: desktop-release.env
 
@@ -270,14 +299,14 @@ desktop-release:
   image: registry.gitlab.com/gitlab-org/cli:latest
   needs: [desktop-dmg]
   rules:
-    - if: $CI_COMMIT_TAG =~ /^mac-v/
+    - if: $CI_COMMIT_TAG =~ /^desktop-\d+\.\d+\.\d+/
   interruptible: false
   script:
     - echo "Releasing Hisar for macOS $DESKTOP_VERSION"
   release:
     tag_name: $CI_COMMIT_TAG
-    name: Hisar for macOS $DESKTOP_VERSION
-    description: "Universal (Apple silicon and Intel) build of Hisar $DESKTOP_VERSION. Open the DMG and drag Hisar into Applications. The app is not notarized yet: on first launch, right-click Hisar → Open."
+    name: $DESKTOP_RELEASE_NAME
+    description: $DESKTOP_RELEASE_DESCRIPTION
     assets:
       links:
         - name: Hisar-$DESKTOP_VERSION.dmg
@@ -285,19 +314,34 @@ desktop-release:
           link_type: package
           filepath: /Hisar.dmg
 
-# v* tags: the standalone hisar for Linux, macOS and Windows (scripts/package-cli-release.sh) in the generic package
-# hisar-cli/<version>; SHA256SUMS goes on to cli-release, which reads the file names from it.
+# Publishing a desktop version uploads its update.json, after which servers offer it to every app as an automatic update.
+desktop-publish:
+  stage: publish
+  image: alpine:3.22
+  needs: [desktop-dmg, desktop-release]
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^desktop-\d+\.\d+\.\d+$/
+      when: manual
+  interruptible: false
+  script:
+    - apk add --no-cache curl >/dev/null
+    - test -s desktop/bin/update.json
+    - 'curl -fsS --header "JOB-TOKEN: $CI_JOB_TOKEN" --upload-file desktop/bin/update.json "$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/hisar-desktop/$DESKTOP_VERSION/update.json"'
+    - echo "Published Hisar for macOS $DESKTOP_VERSION as an automatic update"
+
+# cli-<version> tags: the standalone hisar for Linux, macOS and Windows (scripts/package-cli-release.sh) in the generic package
+# hisar-cli/<version>; SHA256SUMS goes on to cli-publish, which reads the file names from it.
 cli-release-build:
   stage: build
   extends: .go-cache
   image: golang:1.26
   rules:
-    - if: $CI_COMMIT_TAG =~ /^v/
+    - if: $CI_COMMIT_TAG =~ /^cli-\d+\.\d+\.\d+/
   interruptible: false
   before_script:
     - apt-get update -qq && apt-get install -y -qq zip >/dev/null
   script:
-    - version=${CI_COMMIT_TAG#v}
+    - version=${CI_COMMIT_TAG#cli-}
     - bash scripts/package-cli-release.sh "$version" cli-release
     - tar -xzf "cli-release/hisar-$version-linux-amd64.tar.gz" -C /tmp hisar && test "$(/tmp/hisar --version)" = "hisar $version"
     - packageBaseUrl="$CI_API_V4_URL/projects/$CI_PROJECT_ID/packages/generic/hisar-cli/$version"
@@ -312,19 +356,21 @@ cli-release-build:
     reports:
       dotenv: cli-release.env
 
-# Creates the GitLab release of the v* tag with a link to every archive, or updates it when it already exists (a retried job).
-cli-release:
-  stage: release
+# Publishing a CLI version creates the GitLab release of its cli-<version> tag with a link to every archive, or updates it
+# when it already exists (a retried job). A custom build (cli-1.2.3-label) can't be published.
+cli-publish:
+  stage: publish
   image: alpine:3.22
   needs: [cli-release-build]
   rules:
-    - if: $CI_COMMIT_TAG =~ /^v/
+    - if: $CI_COMMIT_TAG =~ /^cli-\d+\.\d+\.\d+$/
+      when: manual
   interruptible: false
   script:
     - apk add --no-cache curl >/dev/null
     - releaseUrl="$CI_API_V4_URL/projects/$CI_PROJECT_ID/releases"
-    - name="Hisar $CLI_VERSION"
-    - description="Server image reg.tryhisar.com/hisar/core/hisar-server:$CLI_VERSION and the standalone hisar command-line tool for Linux, macOS and Windows. Download the archive for your platform and SHA256SUMS, check it with sha256sum -c --ignore-missing SHA256SUMS (shasum -a 256 -c on macOS), and put hisar on your PATH. With the Hisar app on a Mac, install hisar from Settings → Command-line tool instead."
+    - name="Hisar command-line tool $CLI_VERSION"
+    - description="The standalone hisar command-line tool for Linux, macOS and Windows. Download the archive for your platform and SHA256SUMS, check it with sha256sum -c --ignore-missing SHA256SUMS (shasum -a 256 -c on macOS), and put hisar on your PATH. With the Hisar app on a Mac, install hisar from Settings → Command-line tool instead."
     - |
       allLink=""
       for fileName in $(awk '{print $2}' cli-release/SHA256SUMS) SHA256SUMS; do
