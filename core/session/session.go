@@ -44,8 +44,6 @@ type Session struct {
 	SeqStore  SeqStore
 	// MemberVerifier, when set, is asked to accept each member a vault key is wrapped for (e.g. key pinning).
 	MemberVerifier func(member *proto.Member) error
-	// RecoveryKeyVerifier, when set, is asked to accept the recovery KEM public key before anything is wrapped to it.
-	RecoveryKeyVerifier func(recoveryKEMPublicKey []byte) error
 	// Cache, when set, stores the server's encrypted records; reads fall back to it while the server is unreachable.
 	Cache     Cache
 	isOffline atomic.Bool
@@ -57,9 +55,6 @@ type Vault struct {
 	Name string
 	Role string
 	Key  []byte
-	// Recoverable: the vault key is wrapped to the recovery keyset. RecoveryOptOut: its owner opted out.
-	Recoverable    bool
-	RecoveryOptOut bool
 }
 
 func (s *Session) Lock() {
@@ -69,7 +64,7 @@ func (s *Session) Lock() {
 	}
 }
 
-// accountCredential is what signup and recovery generate: a new Secret Key, salt, keyset and OPAQUE record.
+// accountCredential is what signup generates: a new Secret Key, salt, keyset and OPAQUE record.
 type accountCredential struct {
 	secretKey       crypt.SecretKey
 	salt            []byte
@@ -295,20 +290,10 @@ func (s *Session) CreateVault(ctx context.Context, name, vaultType string) (*Vau
 		return nil, err
 	}
 	request := &proto.CreateVaultRequest{ID: vaultID, Type: vaultType, EncName: encryptedName, WrappedKey: wrappedKey}
-	recoveryPublicKeys, err := s.GetRecoveryPublicKey(ctx)
-	switch {
-	case errors.Is(err, ErrNoRecoveryKeyset):
-	case err != nil:
-		return nil, err
-	default:
-		if request.RecoveryWrappedKey, err = crypt.WrapVaultKey(recoveryPublicKeys.KEM, vaultID, crypt.RecoveryRecipientID, vaultKey); err != nil {
-			return nil, err
-		}
-	}
 	if err := s.Client.CreateVault(ctx, request); err != nil {
 		return nil, err
 	}
-	return &Vault{ID: vaultID, Type: vaultType, Name: name, Role: proto.VaultOwner, Key: vaultKey, Recoverable: request.RecoveryWrappedKey != nil}, nil
+	return &Vault{ID: vaultID, Type: vaultType, Name: name, Role: proto.VaultOwner, Key: vaultKey}, nil
 }
 
 func (s *Session) ListAllVault(ctx context.Context) ([]Vault, error) {
@@ -328,7 +313,6 @@ func (s *Session) ListAllVault(ctx context.Context) ([]Vault, error) {
 		}
 		allVault = append(allVault, Vault{
 			ID: protoVault.ID, Type: protoVault.Type, Name: string(name), Role: protoVault.Role, Key: vaultKey,
-			Recoverable: protoVault.Recoverable, RecoveryOptOut: protoVault.RecoveryOptOut,
 		})
 	}
 	return allVault, nil

@@ -28,30 +28,25 @@ import (
 
 // fakeAPIServer stores encrypted vaults and items in memory, like the Hisar server API.
 type fakeAPIServer struct {
-	mutex              sync.Mutex
-	allVault           []proto.Vault
-	allItemByVaultID   map[string]map[string]proto.Item
-	seq                int64
-	accountID          string
-	role               string
-	allMember          []proto.Member
-	allAccessByVaultID map[string][]proto.RotatedAccess
-	allDevice          []proto.Device
-	recoveryKeyset     *proto.RecoveryKeyset
-	// allRecoveryWrappedKeyByVaultID holds each vault key wrapped to the recovery keyset.
-	allRecoveryWrappedKeyByVaultID map[string][]byte
-	allPendingRecovery             []proto.PendingRecovery
-	allCompletedVaultKeyByAccount  map[string][]proto.VaultKey
-	isUnreachable                  bool
-	eventChannel                   chan string
-	allShareInvitation             []proto.SentShareInvitation
-	allReceivedShareInvitation     []proto.ReceivedShareInvitation
-	allAnsweredShareInvitation     []string
-	allInvitedEmail                []string
-	isEmailUnavailable             bool
-	approvalEventChannel           chan client.Event
-	eventStreamCount               int
-	allApprovalByRequestID         map[string]*fakeApproval
+	mutex                      sync.Mutex
+	allVault                   []proto.Vault
+	allItemByVaultID           map[string]map[string]proto.Item
+	seq                        int64
+	accountID                  string
+	role                       string
+	allMember                  []proto.Member
+	allAccessByVaultID         map[string][]proto.RotatedAccess
+	allDevice                  []proto.Device
+	isUnreachable              bool
+	eventChannel               chan string
+	allShareInvitation         []proto.SentShareInvitation
+	allReceivedShareInvitation []proto.ReceivedShareInvitation
+	allAnsweredShareInvitation []string
+	allInvitedEmail            []string
+	isEmailUnavailable         bool
+	approvalEventChannel       chan client.Event
+	eventStreamCount           int
+	allApprovalByRequestID     map[string]*fakeApproval
 }
 
 func (server *fakeAPIServer) setUnreachable(isUnreachable bool) {
@@ -86,10 +81,7 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 		}
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
-		server.allVault = append(server.allVault, proto.Vault{ID: createRequest.ID, Type: createRequest.Type, EncName: createRequest.EncName, Role: proto.VaultOwner, WrappedKey: createRequest.WrappedKey, Recoverable: createRequest.RecoveryWrappedKey != nil})
-		if createRequest.RecoveryWrappedKey != nil {
-			server.setRecoveryWrappedKey(createRequest.ID, createRequest.RecoveryWrappedKey)
-		}
+		server.allVault = append(server.allVault, proto.Vault{ID: createRequest.ID, Type: createRequest.Type, EncName: createRequest.EncName, Role: proto.VaultOwner, WrappedKey: createRequest.WrappedKey})
 		server.allItemByVaultID[createRequest.ID] = map[string]proto.Item{}
 		server.allAccessByVaultID[createRequest.ID] = []proto.RotatedAccess{{AccountID: server.accountID, Role: proto.VaultOwner, WrappedKey: createRequest.WrappedKey}}
 		writer.WriteHeader(http.StatusCreated)
@@ -160,7 +152,6 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 		}
 	})
 	server.addAllSharingRoute(mux)
-	server.addAllRecoveryRoute(mux)
 	server.addAllApprovalRoute(mux)
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		server.mutex.Lock()

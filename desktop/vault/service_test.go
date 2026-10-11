@@ -417,8 +417,7 @@ func TestConvertError(t *testing.T) {
 }
 
 // Requires HISAR_TEST_SERVER_URL and HISAR_TEST_INVITE_LINK (an unused admin invite for desktop@example.com);
-// HISAR_TEST_MEMBER_INVITE_LINK and HISAR_TEST_RECOVERED_MEMBER_INVITE_LINK are operator invites for the people it shares
-// with; checkRecoveryFlow also needs HISAR_TEST_RECOVERY_ADMIN_*.
+// HISAR_TEST_MEMBER_INVITE_LINK is an operator invite for the person it shares with.
 func TestIntegrationDesktopFlow(t *testing.T) {
 	serverURL, inviteLink := os.Getenv("HISAR_TEST_SERVER_URL"), os.Getenv("HISAR_TEST_INVITE_LINK")
 	if serverURL == "" || inviteLink == "" {
@@ -538,7 +537,6 @@ func TestIntegrationDesktopFlow(t *testing.T) {
 	} else {
 		t.Log("HISAR_TEST_MEMBER_INVITE_LINK not set; skipping the sharing flow")
 	}
-	checkRecoveryFlow(t, service, serverURL, personalID, family.ID)
 
 	if err := service.DeleteItem(personalID, saved.ID); err != nil {
 		t.Fatal(err)

@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { clearError, recoverAccount, signIn, signUp, store } from "../store";
+import { clearError, signIn, signUp, store } from "../store";
 import AppIcon, { type IconName } from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
-import StrengthMeter from "./StrengthMeter.vue";
 
-type Mode = "sign-in" | "create-account" | "recover-account";
+type Mode = "sign-in" | "create-account";
 
 function getDisplayServer(serverURL: string): string {
   return (serverURL || "api.tryhisar.com").replace(/^https:\/\//, "");
@@ -20,7 +19,6 @@ const inviteCode = ref("");
 const pastedInviteLink = ref("");
 const name = ref("");
 const repeatedPassword = ref("");
-const recoveryLink = ref("");
 
 const passwordMismatch = computed(
   () => mode.value !== "sign-in" && repeatedPassword.value !== "" && password.value !== repeatedPassword.value,
@@ -28,10 +26,6 @@ const passwordMismatch = computed(
 const allHeading: Record<Mode, { title: string; subtitle: string }> = {
   "sign-in": { title: "Welcome back", subtitle: "Sign in to Hisar on this Mac." },
   "create-account": { title: "Create your account", subtitle: "Enter the invite code you received. Pasting the whole invite link works too." },
-  "recover-account": {
-    title: "Recover your account",
-    subtitle: "Forgot your master password or lost your Secret Key? Use the recovery link your Hisar admin sent you.",
-  },
 };
 
 type Feature = { icon: IconName; title: string; text: string };
@@ -57,7 +51,7 @@ const allCreateAccountFeature: Feature[] = [
   {
     icon: "key",
     title: "Two secrets, only yours",
-    text: "Your master password and a Secret Key you get next. Neither is ever sent to the server, so nobody can reset them, not even an admin.",
+    text: "Your master password and a Secret Key you get next. Neither is ever sent to the server, so nobody can reset them, not even Hisar.",
   },
   { icon: "note", title: "An Emergency Kit to keep", text: "Print it or store it offline. With it, you can sign in again on any new device." },
 ];
@@ -91,21 +85,6 @@ async function submitSignIn(): Promise<void> {
   if (succeeded) {
     password.value = "";
     secretKey.value = "";
-  }
-}
-
-async function submitRecoverAccount(): Promise<void> {
-  if (password.value !== repeatedPassword.value) {
-    return;
-  }
-  const succeeded = await recoverAccount(recoveryLink.value, email.value, password.value);
-  if (succeeded) {
-    password.value = "";
-    repeatedPassword.value = "";
-    recoveryLink.value = "";
-    server.value = store.status.server ? getDisplayServer(store.status.server) : server.value;
-    email.value = store.status.email || email.value;
-    mode.value = "sign-in";
   }
 }
 
@@ -161,10 +140,6 @@ async function submitCreateAccount(): Promise<void> {
         <p class="subtitle">{{ allHeading[mode].subtitle }}</p>
 
         <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
-        <p v-if="mode === 'sign-in' && store.isRecoverySubmitted" class="recovery-submitted" role="status" data-testid="recovery-submitted">
-          <AppIcon name="check" />
-          <span>Recovery requested. Once your admin completes it, sign in here with your new Secret Key and new master password.</span>
-        </p>
 
         <form v-if="mode === 'sign-in'" @submit.prevent="submitSignIn">
           <label>
@@ -187,39 +162,7 @@ async function submitCreateAccount(): Promise<void> {
             <span class="input-with-icon"><AppIcon name="lock" /><input v-model="password" name="password" type="password" autocomplete="current-password" required /></span>
           </label>
           <button class="primary full-width submit" type="submit" :disabled="store.isBusy">{{ store.isBusy ? "Signing in…" : "Sign in" }}</button>
-          <p class="hint muted">Your Secret Key is in your Emergency Kit, or on any device already signed in.</p>
-          <p class="hint muted">
-            Lost your master password or Secret Key?
-            <button type="button" class="link" data-testid="open-recover-account" @click="switchMode('recover-account')">Recover account</button>
-          </p>
-        </form>
-
-        <form v-else-if="mode === 'recover-account'" data-testid="recover-account-form" @submit.prevent="submitRecoverAccount">
-          <label>
-            <span>Recovery link</span>
-            <span class="input-with-icon"><AppIcon name="external" /><input v-model="recoveryLink" name="recoveryLink" placeholder="https://tryhisar.com/recover/…" autocomplete="off" required /></span>
-          </label>
-          <label>
-            <span>Email</span>
-            <span class="input-with-icon"><AppIcon name="user" /><input v-model="email" name="email" type="email" autocomplete="username" placeholder="you@example.com" required /></span>
-          </label>
-          <label>
-            <span>New master password</span>
-            <input v-model="password" name="password" type="password" autocomplete="new-password" minlength="10" placeholder="At least 10 characters" required />
-            <StrengthMeter :password="password" />
-          </label>
-          <label>
-            <span>Repeat new master password</span>
-            <input v-model="repeatedPassword" name="repeatedPassword" type="password" autocomplete="new-password" required />
-          </label>
-          <p v-if="passwordMismatch" class="error">The passwords do not match.</p>
-          <button class="primary full-width submit" type="submit" :disabled="store.isBusy || passwordMismatch">
-            {{ store.isBusy ? "Creating new keys…" : "Request recovery" }}
-          </button>
-          <p class="hint muted">
-            You get a new Secret Key. Your admin then completes the recovery; until then your old master password and Secret Key keep working.
-          </p>
-          <p class="hint muted"><button type="button" class="link" data-testid="back-to-sign-in" @click="switchMode('sign-in')">Back to sign in</button></p>
+          <p class="hint muted" data-testid="secret-key-note">Lost your Secret Key? It's on your Emergency Kit.</p>
         </form>
 
         <form v-else @submit.prevent="submitCreateAccount">
@@ -260,7 +203,9 @@ async function submitCreateAccount(): Promise<void> {
           <button class="primary full-width submit" type="submit" :disabled="store.isBusy || passwordMismatch">
             {{ store.isBusy ? "Creating account…" : "Create account" }}
           </button>
-          <p class="hint muted">Your master password never leaves this Mac, so nobody can reset it for you, not even Hisar.</p>
+          <p class="hint muted" data-testid="create-account-note">
+            Your master password never leaves this Mac. A forgotten master password can't be recovered by anyone, including Hisar.
+          </p>
         </form>
       </div>
     </main>
@@ -414,32 +359,6 @@ h1 {
   margin: 14px 0 0;
   font-size: 12px;
   text-align: center;
-}
-
-.hint + .hint {
-  margin-top: 6px;
-}
-
-.hint .link {
-  font-size: 12px;
-}
-
-.recovery-submitted {
-  display: flex;
-  gap: 8px;
-  margin: 0 0 14px;
-  padding: 9px 12px;
-  border: 1px solid #1f4a32;
-  border-radius: var(--radius);
-  background: #0f1d16;
-  color: #b5e3c7;
-  font-size: 12px;
-}
-
-.recovery-submitted :deep(.icon) {
-  flex: none;
-  margin-top: 1px;
-  color: var(--color-success);
 }
 
 @media (max-width: 860px) {

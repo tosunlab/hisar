@@ -48,7 +48,7 @@ struct SignInView: View {
                     Text(mode == .signIn ? "Welcome back" : "Create your Hisar account")
                         .font(.largeTitle.weight(.bold))
                         .foregroundStyle(Theme.text)
-                    Text(mode == .signIn ? "Sign in to use Hisar on this iPhone." : "Use the invite link your Hisar admin sent you.")
+                    Text(mode == .signIn ? "Sign in to use Hisar on this iPhone." : "Use the invite link you received.")
                         .font(.subheadline)
                         .foregroundStyle(Theme.textMuted)
                 }
@@ -70,11 +70,10 @@ struct SignInView: View {
                 .buttonStyle(PrimaryButtonStyle())
                 .disabled(!canSubmit || model.isBusy)
                 .accessibilityIdentifier("sign-in-submit")
-                if mode == .signIn {
-                    Text("Your Secret Key is on your Emergency Kit, or in Settings of a device where you already use Hisar.")
-                        .font(.footnote)
-                        .foregroundStyle(Theme.textMuted)
-                }
+                Text(mode == .signIn ? "Lost your Secret Key? It's on your Emergency Kit." : "Your master password never leaves this iPhone. A forgotten master password can't be recovered by anyone, including Hisar.")
+                    .font(.footnote)
+                    .foregroundStyle(Theme.textMuted)
+                    .accessibilityIdentifier(mode == .signIn ? "secret-key-note" : "create-account-note")
             }
             .padding(.horizontal, 20)
             .padding(.bottom, 32)

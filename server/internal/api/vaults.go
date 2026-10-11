@@ -44,6 +44,17 @@ func (s *Server) getVaultRole(c fiber.Ctx) (string, error) {
 	return role, err
 }
 
+func (s *Server) requireVaultOwner(c fiber.Ctx) error {
+	role, err := s.getVaultRole(c)
+	if err != nil {
+		return err
+	}
+	if role != proto.VaultOwner {
+		return createAPIError(fiber.StatusForbidden, "owner only")
+	}
+	return nil
+}
+
 func (s *Server) handleListAllVault(c fiber.Ctx) error {
 	allStoredVault, err := s.store.ListAllVault(c.Context(), getSession(c).AccountID)
 	if err != nil {
@@ -53,7 +64,6 @@ func (s *Server) handleListAllVault(c fiber.Ctx) error {
 	for _, vault := range allStoredVault {
 		allVault = append(allVault, proto.Vault{
 			ID: vault.ID, Type: vault.Type, EncName: vault.EncName, Seq: vault.Seq, Role: vault.Role, WrappedKey: vault.WrappedKey,
-			Recoverable: vault.Recoverable, RecoveryOptOut: vault.RecoveryOptOut,
 		})
 	}
 	return c.JSON(allVault)
@@ -70,21 +80,8 @@ func (s *Server) handleCreateVault(c fiber.Ctx) error {
 		len(request.WrappedKey) == 0 || len(request.WrappedKey) > maxWrappedKey {
 		return createAPIError(fiber.StatusBadRequest, "invalid vault")
 	}
-	if len(request.RecoveryWrappedKey) > maxWrappedKey {
-		return createAPIError(fiber.StatusBadRequest, "invalid vault")
-	}
-	isRecoverySetUp, err := s.checkRecoverySetUp(c)
-	if err != nil {
-		return err
-	}
-	switch {
-	case !isRecoverySetUp && request.RecoveryWrappedKey != nil:
-		return errRecoveryNotSetUp
-	case isRecoverySetUp && request.Type == proto.VaultShared && len(request.RecoveryWrappedKey) == 0:
-		return createAPIError(fiber.StatusBadRequest, "shared vaults must be wrapped to the recovery key")
-	}
 	vault := &store.Vault{ID: request.ID, Type: request.Type, EncName: request.EncName, CreatedBy: currentSession.AccountID}
-	switch err := s.store.CreateVault(c.Context(), vault, request.WrappedKey, request.RecoveryWrappedKey); {
+	switch err := s.store.CreateVault(c.Context(), vault, request.WrappedKey); {
 	case errors.Is(err, store.ErrExists):
 		return createAPIError(fiber.StatusConflict, "vault exists")
 	case err != nil:

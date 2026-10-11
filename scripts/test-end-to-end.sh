@@ -160,29 +160,17 @@ echo "ok   delete propagates"
 expect "unshare rotates the vault key" "$(printf '%s\n' "$PW" | A unshare Family bob@example.com 2>&1)" "rotated the vault key"
 expect "removed member cannot read the vault" "$(printf '%s\n' "$PW" | B ls -v Family 2>&1 || true)" "not found"
 
-expect "recovery setup" "$(printf '%s\n' "$PW" | A recovery-setup 2>&1)" "Recovery is set up"
-expect "bob enables recovery" "$(printf '%s\n' "$PW" | B recovery-enable 2>&1)" 'Enabled recovery for "Personal"'
+for REMOVED_COMMAND in recover recovery-setup recovery-enable recovery-start recovery-list recovery-complete; do
+  expect "hisar $REMOVED_COMMAND was removed" "$(A "$REMOVED_COMMAND" bob@example.com 2>&1 || true)" "account recovery was removed; sign in with your Emergency Kit"
+done
+expect "the recovery API is gone" "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $ALICE_TOKEN" "http://127.0.0.1:$PORT/api/v1/recovery/keyset")" "404"
+expect "the admin recovery API is gone" "$(curl -s -o /dev/null -w '%{http_code}' -X POST -H "Authorization: Bearer $ALICE_TOKEN" "http://127.0.0.1:$PORT/api/v1/admin/recovery/$(sed -n 's/.*"accountId": *"\([^"]*\)".*/\1/p' "$T/bob.json")")" "404"
 printf '%s\n' "$PW" | A vault-create Household 2>/dev/null
-printf '%s\nWifi\n\n\nwifi-password-1\n\n' "$PW" | A add -v Household 2>/dev/null
-expect "share recoverable vault" "$(printf '%s\n' "$PW" | A share Household bob@example.com 2>&1)" "as editor."
-expect "bob accepts the household invitation" "$(B invitations accept "$(B invitations 2>/dev/null | awk '/alice@example.com/{print $1}')" 2>&1)" "Accepted."
-expect "alice completes the household share" "$(printf '%s\n' "$PW" | A invitations 2>&1)" 'Shared "Household" with bob@example.com as editor.'
-expect "member cannot start a recovery" "$(B recovery-start alice@example.com 2>&1 || true)" "admin only"
-
-RECOVERY_LINK=$(A recovery-start bob@example.com 2>/dev/null)
-expect "recovery link" "$RECOVERY_LINK" "$HISAR_PUBLIC_URL/recover/"
-NEW_PW='new correct horse battery'
-printf 'bob@example.com\n%s\n%s\n' "$NEW_PW" "$NEW_PW" | HISAR_STATE=$T/bob.json HISAR_SECRET_KEY=- hisar recover "$RECOVERY_LINK" 2>"$T/bob-recover.txt"
-BOB_NEW_SK=$(grep -oE 'H1-[0-9A-Z-]+' "$T/bob-recover.txt" || true)
-[[ "$BOB_NEW_SK" == H1-* && "$BOB_NEW_SK" != "$BOB_SK" ]] || fail "recover did not print a new Secret Key: $(cat "$T/bob-recover.txt")"
-echo "ok   recover prints a new Secret Key"
-expect "recovery link is single use" "$(printf 'bob@example.com\n%s\n%s\n' "$NEW_PW" "$NEW_PW" | HISAR_STATE=$T/bob-again.json HISAR_SECRET_KEY=- hisar recover "$RECOVERY_LINK" 2>&1 || true)" "invalid recovery link"
-expect "recovery pending" "$(A recovery-list 2>&1)" "bob@example.com"
-expect "recovery complete" "$(printf 'y\n%s\n' "$PW" | A recovery-complete bob@example.com 2>&1)" "Recovered bob@example.com"
-expect "old Secret Key stops working" "$(printf 'http://127.0.0.1:%s\nbob@example.com\n%s\n%s\n' "$PORT" "$BOB_SK" "$PW" | HISAR_STATE=$T/bob-old.json HISAR_SECRET_KEY=- hisar login 2>&1 || true)" "incorrect email, password or Secret Key"
-expect "login with the new Secret Key" "$(printf 'http://127.0.0.1:%s\nbob@example.com\n%s\n%s\n' "$PORT" "$BOB_NEW_SK" "$NEW_PW" | HISAR_STATE=$T/bob.json HISAR_SECRET_KEY=- hisar login 2>&1)" "Signed in as Bob"
-RB() { HISAR_STATE=$T/bob.json HISAR_SECRET_KEY=$BOB_NEW_SK hisar "$@"; }
-expect "recovered bob reads item" "$(printf '%s\n' "$NEW_PW" | RB get wifi -v Household -f password 2>/dev/null)" "wifi-password-1"
+expect "shared vault without a recovery key" "$(printf '%s\n' "$PW" | A vaults 2>&1)" "Household"
+expect "Emergency Kit saved" "$(printf '%s\n' "$PW" | B emergency-kit -o "$T/bob-kit.pdf" 2>&1)" "Saved your Emergency Kit"
+[[ "$(head -c 5 "$T/bob-kit.pdf")" == "%PDF-" ]] || fail "the Emergency Kit is not a PDF"
+expect "sign in on a new device with the Emergency Kit" "$(printf 'http://127.0.0.1:%s\nbob@example.com\n%s\n%s\n' "$PORT" "$BOB_SK" "$PW" | HISAR_STATE=$T/bob-new-device.json HISAR_SECRET_KEY=- hisar login 2>&1)" "Signed in as Bob"
+expect "wrong master password with the Emergency Kit" "$(printf 'http://127.0.0.1:%s\nbob@example.com\n%s\n%s\n' "$PORT" "$BOB_SK" "forgotten password" | HISAR_STATE=$T/bob-forgotten.json HISAR_SECRET_KEY=- hisar login 2>&1 || true)" "incorrect email, password or Secret Key"
 
 APPCAST_URL=http://127.0.0.1:$PORT/api/v1/desktop/updates/appcast.xml
 expect "desktop updates need a session" "$(curl -s "$APPCAST_URL")" "unauthorized"
@@ -192,10 +180,8 @@ expect "logout" "$(A logout && A whoami 2>&1 || true)" "not logged in"
 
 DESKTOP_INVITE=$("$BIN/hisar-server" invite --email desktop@example.com --role admin </dev/null | tail -1)
 DESKTOP_MEMBER_INVITE=$("$BIN/hisar-server" invite --email desktop-member@example.com </dev/null | tail -1)
-DESKTOP_RECOVERED_INVITE=$("$BIN/hisar-server" invite --email desktop-recovered@example.com </dev/null | tail -1)
 DESKTOP_RESULT=$(HISAR_TEST_SERVER_URL="http://127.0.0.1:$PORT" HISAR_TEST_INVITE_LINK="$DESKTOP_INVITE" \
-  HISAR_TEST_MEMBER_INVITE_LINK="$DESKTOP_MEMBER_INVITE" HISAR_TEST_RECOVERED_MEMBER_INVITE_LINK="$DESKTOP_RECOVERED_INVITE" \
-  HISAR_TEST_RECOVERY_ADMIN_EMAIL=alice@example.com HISAR_TEST_RECOVERY_ADMIN_SECRET_KEY="$ALICE_SK" HISAR_TEST_RECOVERY_ADMIN_PASSWORD="$PW" \
+  HISAR_TEST_MEMBER_INVITE_LINK="$DESKTOP_MEMBER_INVITE" \
   go -C "$ROOT/desktop" test -count=1 -v -run TestIntegrationDesktopFlow ./vault/ 2>&1 || true)
 expect "desktop app backend against the server" "$DESKTOP_RESULT" "--- PASS: TestIntegrationDesktopFlow"
 

@@ -425,11 +425,28 @@ func TestDeniedRequestIsReportedNotRetriedStandalone(t *testing.T) {
 
 func TestStandaloneOnlyCommandsPointToTheApp(t *testing.T) {
 	startFakeApp(t)
-	for _, commandName := range []string{"login", "logout", "emergency-kit", "recovery-setup"} {
+	for _, commandName := range []string{"login", "logout", "emergency-kit"} {
 		_, _, err := runCapturingOutput(t, false, "", commandName)
 		if err == nil || !strings.Contains(err.Error(), "hisar --standalone "+commandName) || !strings.Contains(err.Error(), "Hisar app") {
 			t.Errorf("%s: %v", commandName, err)
 		}
+	}
+}
+
+func TestRemovedRecoveryCommandsPointToTheEmergencyKit(t *testing.T) {
+	startFakeApp(t)
+	for _, commandName := range []string{"recover", "recovery-setup", "recovery-enable", "recovery-start", "recovery-list", "recovery-complete"} {
+		for _, isStandaloneForced := range []bool{false, true} {
+			_, _, err := runCapturingOutput(t, isStandaloneForced, "", commandName, "anything")
+			if err == nil || err.Error() != "account recovery was removed; sign in with your Emergency Kit" {
+				t.Errorf("%s (standalone %v): %v", commandName, isStandaloneForced, err)
+			}
+		}
+	}
+	var usage strings.Builder
+	printUsage(&usage)
+	if strings.Contains(usage.String(), "recover") {
+		t.Errorf("usage lists recovery commands:\n%s", usage.String())
 	}
 }
 

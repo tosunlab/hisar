@@ -5,8 +5,6 @@ import {
   formatLastSeen,
   formatPlatform,
   formatRole,
-  formatSubmittedTime,
-  formatVaultCount,
   getDomain,
   getInitials,
   getPlatformIcon,
@@ -85,14 +83,5 @@ describe("device and role formatting", () => {
     expect(formatLastSeen("2026-10-08T09:00:00Z", now)).toBe("Yesterday");
     expect(formatLastSeen("2026-10-01T12:00:00Z", now)).toBe("8 days ago");
     expect(formatLastSeen("not a date", now)).toBe("");
-  });
-
-  it("describes when a recovery was submitted", () => {
-    const now = new Date("2026-10-09T12:00:00Z");
-    expect(formatSubmittedTime("2026-10-09T11:59:30Z", now)).toBe("just now");
-    expect(formatSubmittedTime("2026-10-08T09:00:00Z", now)).toBe("yesterday");
-    expect(formatSubmittedTime("2026-10-09T09:00:00Z", now)).toBe("3 hours ago");
-    expect(formatVaultCount(1)).toBe("1 vault");
-    expect(formatVaultCount(3)).toBe("3 vaults");
   });
 });

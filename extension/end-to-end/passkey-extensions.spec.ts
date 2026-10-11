@@ -1,37 +1,12 @@
 import { statSync } from "node:fs";
-import { expect, test, type Frame, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { hisarAAGUID } from "../tools/fake-passkey-authenticator.mjs";
 import { launchHarness, type Harness } from "./harness";
+import { clickInPrompt, findPromptFrame, readStatus, resetStatus, waitForPrompt } from "./passkey-prompt";
 import { startPasskeySite, type PasskeySite } from "./passkey-site";
 
 let harness: Harness;
 let site: PasskeySite;
-
-function findPromptFrame(page: Page): Frame | undefined {
-  return page.frames().find((frame) => frame.url().includes("/passkey-prompt.html"));
-}
-
-async function waitForPrompt(page: Page): Promise<Frame> {
-  await expect.poll(() => findPromptFrame(page) !== undefined).toBe(true);
-  return findPromptFrame(page)!;
-}
-
-async function resetStatus(page: Page): Promise<void> {
-  await page.locator("#status").evaluate((element) => (element.textContent = "ready"));
-}
-
-async function readStatus(page: Page): Promise<Record<string, unknown>> {
-  await expect(page.locator("#status")).not.toHaveText("ready");
-  return JSON.parse((await page.locator("#status").textContent()) ?? "{}") as Record<string, unknown>;
-}
-
-// The prompt frame goes away on these clicks, and Playwright's click never settles when its target frame is removed.
-async function clickInPrompt(page: Page, prompt: Frame, testID: string): Promise<void> {
-  await page.waitForTimeout(500);
-  const box = await prompt.getByTestId(testID).first().boundingBox();
-  if (!box) throw new Error(`${testID} is not visible`);
-  void page.mouse.click(box.x + box.width / 2, box.y + box.height / 2).catch(() => undefined);
-}
 
 async function openSite(): Promise<Page> {
   const page = await harness.context.newPage();

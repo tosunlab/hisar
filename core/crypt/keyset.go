@@ -104,6 +104,10 @@ func (publicKeys PublicKeys) Verify(accountID string) error {
 	return nil
 }
 
+func (keyset *Keyset) GetKEMPublicKey() []byte {
+	return keyset.kemPrivateKey.PublicKey().Bytes()
+}
+
 func (keyset *Keyset) Sign(message []byte) []byte {
 	return ed25519.Sign(keyset.signingPrivateKey, message)
 }

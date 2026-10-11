@@ -67,8 +67,14 @@ class HisarUITestCase: XCTestCase {
 
     func signUp(inviteLink: String, email: String, name: String) -> String {
         waitFor(app.segmentedControls["sign-in-mode"])
+        XCTAssertEqual(app.staticTexts["secret-key-note"].label, "Lost your Secret Key? It's on your Emergency Kit.")
         saveScreenshot("sign-in")
         app.segmentedControls["sign-in-mode"].buttons["Create account"].tap()
+        waitFor(app.staticTexts["create-account-note"])
+        XCTAssertEqual(
+            app.staticTexts["create-account-note"].label,
+            "Your master password never leaves this iPhone. A forgotten master password can't be recovered by anyone, including Hisar."
+        )
         type(inviteLink, into: app.textFields["sign-up-invite-link"])
         type(email, into: app.textFields["sign-up-email"])
         type(name, into: app.textFields["sign-up-name"])
@@ -80,6 +86,9 @@ class HisarUITestCase: XCTestCase {
         waitFor(secretKeyText, timeout: 60)
         let secretKey = secretKeyText.label
         XCTAssertTrue(secretKey.hasPrefix("H1-"), secretKey)
+        let masterPasswordWarning = app.descendants(matching: .any)["master-password-warning"]
+        XCTAssertTrue(masterPasswordWarning.exists)
+        XCTAssertTrue(masterPasswordWarning.label.contains("A forgotten master password can't be recovered by anyone, including Hisar."), masterPasswordWarning.label)
         saveScreenshot("new-secret-key")
         app.buttons["new-secret-key-done"].tap()
         waitFor(app.buttons["vault-Personal"])

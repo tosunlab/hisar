@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import type { ApprovalEvent, BrowserStatus, CommandLineStatus, Device, ImportPreview, ImportProgress, ItemDetail, PendingRecovery, Person, ReceivedShareInvitation, SentShareInvitation, RecoveryStatus, SSHAgentStatus, Status, UpdateStatus, VaultMember, VaultSummary } from "./api";
+import type { ApprovalEvent, BrowserStatus, CommandLineStatus, Device, ImportPreview, ImportProgress, ItemDetail, Person, ReceivedShareInvitation, SentShareInvitation, SSHAgentStatus, Status, UpdateStatus, VaultMember, VaultSummary } from "./api";
 
 export function createStatus(state: string): Status {
   return { state, server: "https://hisar.test", email: "alice@example.com", name: "Alice", biometricAvailable: false, biometricEnabled: false, biometricReady: false, isOffline: false, autoLockSeconds: 600 };
@@ -232,25 +232,9 @@ export function createDevice(overrides: Partial<Device> = {}): Device {
   };
 }
 
-export function createRecoveryStatus(overrides: Partial<RecoveryStatus> = {}): RecoveryStatus {
-  return { isSetUp: true, isAdmin: true, isCreatedByCurrentUser: true, createdByName: "Alice", ...overrides };
-}
-
-export function createPendingRecovery(overrides: Partial<PendingRecovery> = {}): PendingRecovery {
-  return {
-    accountId: "BOB222",
-    name: "Bob Stone",
-    email: "bob@example.com",
-    submittedAt: new Date(Date.now() - 3 * 3600_000).toISOString(),
-    recoverableVaultCount: 2,
-    unrecoverableVaultCount: 1,
-    ...overrides,
-  };
-}
-
 export const allTestVault: VaultSummary[] = [
-  { id: "personal", name: "Personal", type: "personal", role: "owner", itemCount: 2, recoverable: true, recoveryOptOut: false },
-  { id: "family", name: "Family", type: "shared", role: "reader", itemCount: 0, recoverable: true, recoveryOptOut: false },
+  { id: "personal", name: "Personal", type: "personal", role: "owner", itemCount: 2 },
+  { id: "family", name: "Family", type: "shared", role: "reader", itemCount: 0 },
 ];
 
 export function createApiMock() {
@@ -316,15 +300,6 @@ export function createApiMock() {
     saveNewAccountEmergencyKit: vi.fn(),
     saveEmergencyKit: vi.fn(),
     forgetNewAccountSecretKey: vi.fn().mockResolvedValue(undefined),
-    getRecoveryStatus: vi.fn().mockResolvedValue(createRecoveryStatus({ isSetUp: false })),
-    setUpRecovery: vi.fn(),
-    enableRecoveryForAllVault: vi.fn(),
-    enableVaultRecovery: vi.fn(),
-    disableVaultRecovery: vi.fn(),
-    startAccountRecovery: vi.fn(),
-    listAllPendingRecovery: vi.fn().mockResolvedValue([]),
-    completeAccountRecovery: vi.fn(),
-    recoverAccount: vi.fn(),
     getBrowserStatus: vi.fn().mockResolvedValue(createBrowserStatus()),
     removePairedBrowser: vi.fn(),
     setExactHostMatch: vi.fn(),

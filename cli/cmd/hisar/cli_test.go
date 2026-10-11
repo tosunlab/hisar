@@ -106,11 +106,11 @@ func TestLoadStateUsesEnvironmentPath(t *testing.T) {
 	}
 }
 
-func TestLoadSecretKeyExplainsRecovery(t *testing.T) {
+func TestLoadSecretKeyExplainsTheMismatch(t *testing.T) {
 	secretKey, _ := crypt.GenerateSecretKey("ABC123")
 	t.Setenv("HISAR_SECRET_KEY", secretKey.Encode())
 	if _, err := loadSecretKey("XYZ789"); err == nil || !strings.Contains(err.Error(), "HISAR_SECRET_KEY") {
-		t.Errorf("error should explain how to recover: %v", err)
+		t.Errorf("error should explain how to fix it: %v", err)
 	}
 }
 

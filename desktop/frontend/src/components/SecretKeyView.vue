@@ -14,20 +14,15 @@ const allKeyPart = computed(() => store.pendingSecretKey.split("-"));
     <div class="page-body">
       <div class="card page-card secret-key-card">
         <HisarLogo :size="32" />
-        <template v-if="store.isRecoverySubmitted">
-          <h1>Save your new Secret Key</h1>
-          <p class="subtitle" data-testid="recovery-secret-key-note">
-            Your admin now completes the recovery. Then you sign in with this Secret Key and your new master password; until then, your old
-            ones keep working.
-          </p>
-        </template>
-        <template v-else>
-          <h1>Save your Secret Key</h1>
-          <p class="subtitle">
-            You need it, together with your master password, to sign in on a new device. It never leaves your devices, so
-            nobody, including your Hisar admin, can recover it for you.
-          </p>
-        </template>
+        <h1>Save your Secret Key</h1>
+        <p class="subtitle">
+          You need it, together with your master password, to sign in on a new device. Save your Emergency Kit: it holds this Secret Key, and
+          nobody else has a copy.
+        </p>
+        <p class="master-password-warning" data-testid="master-password-warning">
+          <AppIcon name="warning" />
+          <span>A forgotten master password can't be recovered by anyone, including Hisar.</span>
+        </p>
         <div class="key" data-testid="secret-key" :aria-label="store.pendingSecretKey">
           <span v-for="(part, index) in allKeyPart" :key="index" class="key-part monospace">{{ part }}</span>
         </div>
@@ -40,7 +35,7 @@ const allKeyPart = computed(() => store.pendingSecretKey.split("-"));
           <span class="confirmation-text">I have written down or stored my Secret Key somewhere safe</span>
         </label>
         <button class="primary full-width" :disabled="!hasSaved" @click="confirmSecretKeySaved">
-          {{ store.isRecoverySubmitted ? "Continue to sign in" : "Continue to Hisar" }}
+          Continue to Hisar
         </button>
       </div>
     </div>
@@ -75,6 +70,24 @@ const allKeyPart = computed(() => store.pendingSecretKey.split("-"));
 .actions {
   justify-content: center;
   margin: 14px 0 20px;
+}
+
+.master-password-warning {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 9px 12px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 13px;
+}
+
+.master-password-warning :deep(.icon) {
+  flex: none;
+  margin-top: 1px;
+  color: var(--color-warning);
 }
 
 .confirmation {
