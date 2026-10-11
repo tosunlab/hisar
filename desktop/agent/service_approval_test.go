@@ -11,8 +11,9 @@ import (
 )
 
 type fakeApprovalPreference struct {
-	isCompact bool
-	saveError error
+	isCompact          bool
+	isPhoneApprovalOff bool
+	saveError          error
 }
 
 func (preference *fakeApprovalPreference) IsCompactSSHApproval() bool { return preference.isCompact }
@@ -23,6 +24,37 @@ func (preference *fakeApprovalPreference) SetCompactSSHApproval(isCompact bool) 
 	}
 	preference.isCompact = isCompact
 	return nil
+}
+
+func (preference *fakeApprovalPreference) IsPhoneApproval() bool {
+	return !preference.isPhoneApprovalOff
+}
+
+func (preference *fakeApprovalPreference) SetPhoneApproval(isEnabled bool) error {
+	if preference.saveError != nil {
+		return preference.saveError
+	}
+	preference.isPhoneApprovalOff = !isEnabled
+	return nil
+}
+
+func TestServicePhoneApprovalSwitch(t *testing.T) {
+	preference := &fakeApprovalPreference{}
+	service := CreateService(Config{HomeDirectory: t.TempDir(), ApprovalPreference: preference})
+	if !service.GetStatus().IsPhoneApproval {
+		t.Error("phone approvals are off by default")
+	}
+	if status, err := service.SetPhoneApproval(false); err != nil || status.IsPhoneApproval {
+		t.Errorf("turn off: %+v %v", status, err)
+	}
+	preference.saveError = errors.New("disk full")
+	if status, err := service.SetPhoneApproval(true); err == nil || status.IsPhoneApproval {
+		t.Errorf("failed save: %+v %v", status, err)
+	}
+	withoutPreference := CreateService(Config{HomeDirectory: t.TempDir()})
+	if status, err := withoutPreference.SetPhoneApproval(true); err == nil || status.IsPhoneApproval {
+		t.Errorf("the switch changed without a preference store: %+v", status)
+	}
 }
 
 func TestServiceCompactApprovalSwitchAndWindowFit(t *testing.T) {

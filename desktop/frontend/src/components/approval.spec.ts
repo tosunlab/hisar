@@ -244,6 +244,36 @@ describe("SSHApprovalWindow", () => {
     wrapper.unmount();
   });
 
+  it("says the iPhone can approve too, and closes when the phone answered", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createApprovalEvent({ isPhoneApproval: true }));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="approval-touch-id"]').text()).toContain("Touch ID to approve");
+    expect(wrapper.find('[data-testid="approval-phone"]').text()).toBe("or approve on your iPhone");
+    sendEvent("ssh-approval-closed", "request-1");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="ssh-approval"]').exists()).toBe(false);
+    expect(approvalStore.isAuthorizing).toBe(false);
+
+    sendEvent("ssh-approval", createApprovalEvent({ requestID: "request-2", isPhoneApproval: true, isTouchIDApproval: false }));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="authorize-approval"]').text()).toBe("Approve");
+    expect(wrapper.find('[data-testid="approval-phone"]').text()).toBe("or approve on your iPhone");
+    sendEvent("ssh-approval-closed", "request-2");
+    await flushPromises();
+
+    sendEvent("ssh-approval", createApprovalEvent({ requestID: "request-3", isPhoneApproval: true, isCompact: true }));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="approval-phone"]').text()).toBe("or approve on your iPhone");
+    sendEvent("ssh-approval-closed", "request-3");
+    await flushPromises();
+
+    sendEvent("ssh-approval", createApprovalEvent({ requestID: "request-4" }));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="approval-phone"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   it("denies from the compact card without expanding it", async () => {
     const wrapper = mount(SSHApprovalWindow);
     sendEvent("ssh-approval", createSigningApprovalEvent({ isCompact: true }));

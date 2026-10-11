@@ -25,12 +25,14 @@ func (s *Service) watchEvents(ctx context.Context, apiClient *client.Client) {
 	for ctx.Err() == nil {
 		connectedAt := time.Now()
 		err := apiClient.StreamEvents(ctx, func(event client.Event) {
-			if event.Name != proto.EventVaultChanged && event.Name != proto.EventVaultsChanged {
-				return
-			}
-			select {
-			case allPendingSync <- struct{}{}:
-			default:
+			switch event.Name {
+			case proto.EventVaultChanged, proto.EventVaultsChanged:
+				select {
+				case allPendingSync <- struct{}{}:
+				default:
+				}
+			case proto.EventApprovalRequested, proto.EventApprovalAnswered, proto.EventApprovalResolved:
+				s.handleApprovalEvent(apiClient, event)
 			}
 		})
 		if ctx.Err() != nil || client.IsStatus(err, http.StatusUnauthorized) {

@@ -48,6 +48,7 @@ type Service struct {
 	stopEvents                   context.CancelFunc
 	onSessionChange              func(server, token string, isSignedIn bool)
 	allLockListener              []func()
+	phoneApprovals               *phoneApprovalRelay
 }
 
 // getCache opens the offline cache on first use; if it cannot be opened, even after starting it over, Hisar stays online-only.
@@ -104,7 +105,7 @@ func CreateService(config Config) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Service{config: config, state: state}, nil
+	return &Service{config: config, state: state, phoneApprovals: createPhoneApprovalRelay()}, nil
 }
 
 func (s *Service) notifySessionChange() {
@@ -201,6 +202,7 @@ func (s *Service) lockSession() {
 		s.lockTimer = nil
 	}
 	wasUnlocked := s.unlockedSession != nil
+	s.forgetPhoneApprovalSession()
 	if wasUnlocked {
 		s.unlockedSession.Lock()
 		s.unlockedSession = nil
@@ -240,6 +242,12 @@ func (s *Service) openSession(unlockedSession *session.Session) {
 		eventContext, stopEvents := context.WithCancel(context.Background())
 		s.stopEvents = stopEvents
 		go s.watchEvents(eventContext, unlockedSession.Client)
+	}
+	s.phoneApprovals.mutex.Lock()
+	isPhoneApprovalRequester := s.phoneApprovals.isRequester
+	s.phoneApprovals.mutex.Unlock()
+	if isPhoneApprovalRequester {
+		s.startPhoneApprovalDeviceRefresh(unlockedSession.Client)
 	}
 }
 

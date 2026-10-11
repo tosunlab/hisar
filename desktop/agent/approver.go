@@ -9,9 +9,11 @@ import (
 	"fmt"
 	"net"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/tryhisar/hisar/core/approval"
 	"github.com/tryhisar/hisar/core/sshagent"
 	"github.com/tryhisar/hisar/desktop/appinfo"
 	"github.com/tryhisar/hisar/desktop/commandline"
@@ -47,6 +49,13 @@ type Unlocker interface {
 	VerifyPassword(password string) error
 }
 
+// PhoneApprover sends an open dialog to the account's iPhones; decide gets a verified answer at most once,
+// and finish withdraws the request when the dialog closes.
+type PhoneApprover interface {
+	IsPhoneApprovalAvailable() bool
+	StartPhoneApproval(description approval.Description, decide func(isApproved bool)) (finish func())
+}
+
 // ApprovalEvent is what the approval window shows; AppName and AppIconURL describe the app the program runs in.
 // Command-line requests have Kind ApprovalKindCommandLine and no key; either kind unlocks Hisar when IsUnlockRequired.
 type ApprovalEvent struct {
@@ -77,6 +86,7 @@ type ApprovalEvent struct {
 	TerminalName           string `json:"terminalName"`
 	IsUnlockRequired       bool   `json:"isUnlockRequired"`
 	IsPasswordUnlock       bool   `json:"isPasswordUnlock"`
+	IsPhoneApproval        bool   `json:"isPhoneApproval"`
 }
 
 type ApprovalFailedEvent struct {
@@ -103,8 +113,10 @@ type ApproverConfig struct {
 	// IsCompactApproval is the Settings switch for the compact layout.
 	IsCompactApproval func() bool
 	Unlocker          Unlocker
-	Timeout           time.Duration
-	Now               func() time.Time
+	// PhoneApprover lets the account's iPhones answer while Hisar is unlocked; nil keeps approvals on this Mac.
+	PhoneApprover PhoneApprover
+	Timeout       time.Duration
+	Now           func() time.Time
 }
 
 type approvalResponse struct {
@@ -115,6 +127,8 @@ type approvalResponse struct {
 type pendingApproval struct {
 	event           ApprovalEvent
 	responseChannel chan approvalResponse
+	phoneChannel    chan bool
+	phoneRequest    approval.Description
 	approveReason   string
 	unlockReason    string
 	// isRemembered and isAuthenticating are guarded by Approver.mutex.
@@ -197,7 +211,7 @@ func (approver *Approver) buildApprovalEvent(requestID string, request sshagent.
 	event.Purpose, event.Action, event.Target = description.Purpose, description.Action, description.Target
 	event.CommandLine, event.RepositoryPath, event.HostAndPort = description.CommandLine, description.RepositoryPath, description.HostAndPort
 	event.Branch, event.CommitSubject, event.ForwardedFromHost = description.Branch, description.CommitSubject, description.ForwardedFromHost
-	if event.Purpose == PurposeSignCommit || event.Purpose == PurposeSignTag {
+	if event.Purpose == PurposeSignCommit || event.Purpose == PurposeSignTag || event.IsForwarded {
 		event.IsRememberable = false
 	}
 	approver.setUnlockState(&event)
@@ -220,6 +234,7 @@ func (approver *Approver) Approve(ctx context.Context, request sshagent.Approval
 		approveReason:   approveReason,
 		unlockReason:    "unlock Hisar and " + approveReason,
 		isRemembered:    event.IsRememberable,
+		phoneRequest:    buildSSHPhoneDescription(event),
 	}
 	if !approver.waitForApproval(ctx, pending) {
 		return sshagent.ApprovalResult{}, nil
@@ -248,6 +263,50 @@ func (approver *Approver) buildCommandLineEvent(requestID string, request comman
 	return event
 }
 
+// buildSSHPhoneDescription carries the dialog's lines to the phone.
+func buildSSHPhoneDescription(event ApprovalEvent) approval.Description {
+	description := approval.Description{
+		Kind:              approval.KindSSH,
+		AppName:           event.AppName,
+		Purpose:           strings.TrimSpace(event.Action + " " + event.Target),
+		Host:              event.HostAndPort,
+		CommandLine:       event.CommandLine,
+		RepositoryPath:    event.RepositoryPath,
+		KeyName:           event.KeyTitle,
+		IsForwarded:       event.IsForwarded,
+		ForwardedFromHost: event.ForwardedFromHost,
+	}
+	if description.Purpose == "" {
+		description.Purpose = "use your SSH key"
+	}
+	if description.Host == "" {
+		description.Host = event.DestinationHost
+	}
+	if event.Purpose == PurposeSignCommit || event.Purpose == PurposeSignTag {
+		if event.CommitSubject != "" {
+			description.CommandLine = fmt.Sprintf("“%s”", event.CommitSubject)
+		}
+		if event.Branch != "" {
+			description.RepositoryPath = strings.TrimPrefix(event.RepositoryPath+" · "+event.Branch, " · ")
+		}
+	}
+	return description
+}
+
+func buildCommandLinePhoneDescription(event ApprovalEvent) approval.Description {
+	appName := event.ClientName
+	if event.AppName != event.ClientName {
+		appName = event.ClientName + " in " + event.AppName
+	}
+	return approval.Description{
+		Kind:         approval.KindCommandLine,
+		AppName:      appName,
+		Purpose:      "use Hisar",
+		CommandLine:  event.ClientPath,
+		TerminalName: event.TerminalName,
+	}
+}
+
 func describeCommandLineClient(event ApprovalEvent) string {
 	if event.AppName == event.ClientName {
 		return fmt.Sprintf("%q", event.ClientName)
@@ -267,6 +326,7 @@ func (approver *Approver) ApproveCommandLine(ctx context.Context, request comman
 		responseChannel: make(chan approvalResponse, 1),
 		approveReason:   fmt.Sprintf("allow %s to use Hisar", client),
 		unlockReason:    fmt.Sprintf("unlock Hisar for %s", client),
+		phoneRequest:    buildCommandLinePhoneDescription(event),
 	}
 	if !approver.waitForApproval(ctx, pending) {
 		return commandline.ErrDenied
@@ -306,6 +366,9 @@ func (approver *Approver) authorize(pending *pendingApproval, response approvalR
 
 // waitForApproval shows the request until authorize succeeds, Deny, the timeout or ctx ends it; a failed authorize keeps it open.
 func (approver *Approver) waitForApproval(ctx context.Context, pending *pendingApproval) bool {
+	phoneApprover := approver.config.PhoneApprover
+	pending.phoneChannel = make(chan bool, 1)
+	pending.event.IsPhoneApproval = phoneApprover != nil && !pending.event.IsUnlockRequired && phoneApprover.IsPhoneApprovalAvailable()
 	approver.mutex.Lock()
 	approver.allPending = append(approver.allPending, pending)
 	isFirstCompact := approver.allPending[0].event.IsCompact
@@ -316,10 +379,16 @@ func (approver *Approver) waitForApproval(ctx context.Context, pending *pendingA
 	if approver.config.ShowApprovalWindow != nil {
 		approver.config.ShowApprovalWindow(isFirstCompact)
 	}
+	if pending.event.IsPhoneApproval {
+		finishPhoneApproval := phoneApprover.StartPhoneApproval(pending.phoneRequest, func(isApproved bool) { approver.respondFromPhone(pending, isApproved) })
+		defer finishPhoneApproval()
+	}
 	timer := time.NewTimer(approver.config.Timeout)
 	defer timer.Stop()
 	for {
 		select {
+		case isApproved := <-pending.phoneChannel:
+			return isApproved
 		case response := <-pending.responseChannel:
 			if !response.isAuthorized {
 				return false
@@ -327,6 +396,12 @@ func (approver *Approver) waitForApproval(ctx context.Context, pending *pendingA
 			authorizeError := approver.authorize(pending, response)
 			if authorizeError == nil {
 				return true
+			}
+			// The phone's answer cancels a Touch ID check in progress, so it arrives as a failed check.
+			select {
+			case isApproved := <-pending.phoneChannel:
+				return isApproved
+			default:
 			}
 			select {
 			case deniedResponse := <-pending.responseChannel:
@@ -455,6 +530,24 @@ func (approver *Approver) sendResponse(pending *pendingApproval, response approv
 		return true
 	default:
 		return false
+	}
+}
+
+// respondFromPhone answers with a decision the vault backend verified; it ends a Touch ID check that is waiting.
+func (approver *Approver) respondFromPhone(pending *pendingApproval, isApproved bool) {
+	approver.mutex.Lock()
+	isSent := false
+	if approver.findPending(pending.event.RequestID) == pending {
+		select {
+		case pending.phoneChannel <- isApproved:
+			isSent = true
+		default:
+		}
+	}
+	isCancellingTouchID := isSent && pending.isAuthenticating
+	approver.mutex.Unlock()
+	if isCancellingTouchID && approver.config.CancelBiometric != nil {
+		approver.config.CancelBiometric()
 	}
 }
 

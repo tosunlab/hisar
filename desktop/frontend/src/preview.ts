@@ -128,6 +128,7 @@ const previewStatus = (): Status => ({
 });
 let isPreviewSSHConfigured = new URLSearchParams(window.location.search).get("sshConfigured") === "1";
 let isPreviewCompactApproval = new URLSearchParams(window.location.search).get("compact") === "1";
+let isPreviewPhoneApproval = new URLSearchParams(window.location.search).get("phoneApprovalOff") !== "1";
 const previewAgentStatus = (backupPath = ""): SSHAgentStatus => {
   const hasError = new URLSearchParams(window.location.search).get("agent") === "error";
   return {
@@ -139,6 +140,7 @@ const previewAgentStatus = (backupPath = ""): SSHAgentStatus => {
     configSection: '# Added by Hisar: use the Hisar SSH agent\nHost *\n  IdentityAgent "~/.hisar/agent.sock"\n# End of Hisar section\n',
     isTouchIDApproval: new URLSearchParams(window.location.search).get("noTouchID") !== "1",
     isCompactApproval: isPreviewCompactApproval,
+    isPhoneApproval: isPreviewPhoneApproval,
     backupPath,
   };
 };
@@ -255,6 +257,7 @@ function createPreviewCommandLineApproval(): ApprovalEvent {
     terminalName: "ttys003",
     isUnlockRequired: isLocked,
     isPasswordUnlock: previewParameter.get("cliPassword") === "1",
+    isPhoneApproval: previewParameter.get("phone") === "1" && !isLocked,
   };
 }
 
@@ -290,12 +293,14 @@ function createPreviewSSHApproval(): ApprovalEvent {
     isRememberable: !isForwarded,
     isCompact: previewParameter.get("compact") === "1" && isTouchIDApproval && !isLocked && !isForwarded,
     isTouchIDApproval,
+    isPhoneApproval: previewParameter.get("phone") === "1" && !isLocked,
     timeoutAt: new Date(Date.now() + 60_000).toISOString(),
   };
 }
 
 // listAllPreviewApproval: ?window=ssh-approval&approval=1 (one request), =2 (two waiting), =signing (a commit signature), =cli (command-line tool),
-// plus &approvalLocked=1 (Touch ID unlocks), &approvalPassword=1 (master password unlocks), &compact=1, &forwarded=1, &noTouchID=1.
+// plus &approvalLocked=1 (Touch ID unlocks), &approvalPassword=1 (master password unlocks), &compact=1, &forwarded=1, &noTouchID=1,
+// &phone=1 (the account's iPhone can approve too).
 function listAllPreviewApproval(): ApprovalEvent[] {
   if (previewParameter.get("approval") === "cli") {
     return [createPreviewCommandLineApproval()];
@@ -708,6 +713,10 @@ export const previewApi = {
   setSSHApprovalRemembered: () => Promise.resolve(),
   setCompactSSHApproval: (isCompact: boolean) => {
     isPreviewCompactApproval = isCompact;
+    return resolveAfterDelay(previewAgentStatus());
+  },
+  setPhoneApproval: (isEnabled: boolean) => {
+    isPreviewPhoneApproval = isEnabled;
     return resolveAfterDelay(previewAgentStatus());
   },
   fitSSHApprovalWindow: () => Promise.resolve(),

@@ -278,6 +278,7 @@ The client applies changes to its local SQLite cache and stores `nextSeq`. Chang
 
 - `event: vault-changed` with `{"vaultID", "seq"}` goes to every member of a vault after an item is written (with the new `seq`) or the key is rotated (`seq` 0).
 - `event: vaults-changed` with `{}` tells an account that its list of vaults changed: it was given or lost access, created a vault, was part of a vault before a rotation, or was recovered.
+- `event: approval-requested`, `approval-answered` and `approval-resolved` with `{"requestId"}` go to every stream of the account for phone approvals (§9.9). They carry no request or answer, only the ID.
 - The server sends a `: heartbeat` comment every 25 s and re-checks the stream's session each time, so logging out or revoking the device ends the stream.
 - Each write pushes the connection's write deadline forward, so the server's 30 s response write timeout does not cut the stream.
 - An account may hold 8 streams. A subscriber whose 32-event buffer fills is closed, so the client reconnects and resyncs.
@@ -333,6 +334,8 @@ audit_events   (id, account_id, device_id, type, ip, created_at)
 
 `enc_name` is the vault name encrypted with `K_vault`.
 
+Phone approvals (§9.9) are not in Postgres: they live in the server process's memory for at most 2 minutes, like the event broker.
+
 ### 8.2 API surface (v1)
 
 | Area | Endpoints |
@@ -346,6 +349,7 @@ audit_events   (id, account_id, device_id, type, ip, created_at)
 | Attachments | `PUT/GET /vaults/{id}/attachments/{attID}/chunks/{n}` |
 | Recovery (Phase 2) | `GET /recovery/keyset` (any member; the encrypted keyset only for its creator), `POST /recovery/keyset` (admin, once); `POST /auth/recovery/account`, `POST /auth/recovery/start`, `POST /auth/recovery/finish` (recovery token, rate-limited); `GET /admin/recovery`, `POST /admin/recovery/{accountID}`, `POST /admin/recovery/{accountID}/complete` (admin) |
 | Admin | `GET /admin/audit`, `GET /admin/accounts` |
+| Approvals (§9.9) | `POST /approvals`, `GET /approvals` (pending), `GET /approvals/{id}`, `POST /approvals/{id}/answer`, `DELETE /approvals/{id}` (resolve; the requesting device only) |
 | Desktop updates | `GET /desktop/updates/appcast.xml` (Sparkle appcast), `GET /desktop/updates/{version}/{file}` (streams a release file); any signed-in session, 404 when the server has no update source (§9.1.1) |
 
 All under `/api/v1`. JSON bodies, base64url for binary fields.
@@ -463,11 +467,12 @@ The desktop keeps paired browsers (`instanceID`, browser name, SHA-256 of the to
 - gomobile passes only strings, numbers, `[]byte` and interfaces, so lists and items cross as JSON strings with the desktop's types (`vault.Status`, `VaultSummary`, `ItemDetail`, `browser.Login`).
 - `HisarkitNew(stateDirectory, deviceName, secretKeyStore, biometric, clipboard, listener)` keeps `hisar.json` and `hisar-cache.db` in `stateDirectory`, the app group container, so the app and the AutoFill extension share the state and the encrypted cache.
 - **Methods:** `Status`, `SignIn`, `SignUp` (returns the status and the new Secret Key), `Unlock`, `UnlockWithBiometric`, `EnableBiometricUnlock`, `DisableBiometricUnlock`, `Lock`, `SignOut`, `ReportActivity`, `ListAllVault`, `ListAllItem` (no secrets), `GetItem`, `SaveItem` (item JSON in, item JSON out), `DeleteItem`, `CopyField`, `GetOneTimeCode`, `GeneratePassword`, `ListAllLoginForService`, `GetLoginForService`, `GetOneTimeCodeForService`, for sharing (§5) `CreateVault` (always a shared vault), `ListAllMember`, `InviteMember` (returns the sign-up link; admins only), `ListAllVaultMember`, `ShareVault`, `ChangeVaultMemberRole`, `RemoveVaultMember`, and for passkeys (§9.8) `ListAllPasskeyForRelyingParty`, `PreparePasskeyRegistration`, `CreatePasskey`, `AssertPasskey` and `DeletePasskey`. Item summaries and logins carry `hasOneTimePassword`, never the secret.
+- **Phone approvals (§9.9):** `ListAllPendingApproval` (the open, unexpired requests of other devices, opened and checked, as JSON), `ApproveApproval` (asks `Biometric.Authenticate` first), `ApproveApprovalWithPassword` (checks the master password instead) and `DenyApproval`.
 - **Interfaces implemented in Swift:**
   - `SecretKeyStore`: the Secret Key in the Keychain, in a keychain access group shared with the extension.
   - `Biometric`: Face ID or Touch ID. `StoreKey` writes the biometric unlock key to a Keychain item with `SecAccessControl` `.biometryCurrentSet` and `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`. `Authenticate` evaluates an `LAContext` that `LoadKey` passes as `kSecUseAuthenticationContext`, so the user sees one Face ID prompt.
   - `Clipboard`: `UIPasteboard`.
-  - `EventListener`: auto-lock notification.
+  - `EventListener`: auto-lock notification, and `OnApprovalEvent(name, requestID)` for the approval events of the event stream (§9.9).
 - **Biometrics after launch:** because iOS enforces the biometric check in the Keychain itself, `IsBiometricAllowedAfterLaunch` is on and Face ID can unlock after a launch without the master password first. The 14-day password interval still applies. Auto-lock is 5 minutes.
 - **One-time codes:** `GetOneTimeCodeForService` checks the match as `GetLoginForService` does and returns only the code, expiry and period. When a password fill (list, QuickType or without user interaction) is for a login with `hasOneTimePassword`, the extension copies the current code to the pasteboard (`localOnly`, 90 s expiry) before completing the request.
 - **AutoFill:** the extension receives `ASCredentialServiceIdentifier`s (a domain or a URL; bare domains are read as `https://`). `ListAllLoginForService` uses the same matching as the browser extension (§9.2), and `GetLoginForService` checks the match again before returning the password. Passkey requests carry a relying party ID instead, and only passkeys with exactly that RP ID are offered (§9.8).
@@ -589,6 +594,7 @@ Every use of a key asks, unless an approval for the same key and app is remember
 - **Locked.** When Hisar is locked and the user is signed in, a request for keys or a signature opens the dialog with "Unlock Hisar to use your SSH keys" instead of failing, and the dialog unlocks Hisar the way it does for the command-line tool (§9.4): with Touch ID when Touch ID unlock is ready (§5.4; one Touch ID check unlocks and approves), otherwise with the master password typed into the dialog (Return submits; a wrong password keeps the request open with a message). The unlock approves that agent connection, so the signature that follows on it does not ask again, and the checkbox is remembered for the key that then signs. Deny or the timeout leave that connection without keys, as before. Signed out, the agent offers no keys and shows nothing.
 - **Forwarded requests.** A connection with a binding whose `is_forwarding` is true is a request from a remote host through agent forwarding (`ssh -A`): the local `ssh` binds the forwarded connection to the host it connected to. The dialog then shows a red banner "Forwarded from another computer — this request comes from <host> through agent forwarding, not from this Mac" (the host of the first forwarding binding from `known_hosts`, else the local `ssh`'s destination, else the host key fingerprint), offers only "Allow once" (no checkbox, never remembered), and Deny is the default button: Return denies, and Touch ID starts only after "Allow once". It never uses the compact layout. The docs recommend `ProxyJump` over agent forwarding.
 - **Remembering.** "Don't ask again" remembers the approval per (key fingerprint, app): the app bundle's path, or the program's path when there is no app; a program without a known path is never remembered. It lasts one hour (`DefaultApprovalLifetime`) or until Hisar locks, whichever comes first; the vault backend calls the agent's `ClearAllApproval` from its lock hook. Forwarded requests, commit and tag signatures, and keys set to "ask every time" (`SetAllAlwaysAskKeyID`; no UI yet) are never remembered.
+- **Approving on the iPhone.** While Hisar is unlocked, the dialog is also sent to the account's iPhones and its footer adds "or approve on your iPhone" (§9.9). A phone's approval counts as a Touch ID approval, a phone's Deny as Deny.
 - **Events.** The backend emits `ssh-approval` (with a random request ID and the request as shown), `ssh-approval-failed` and `ssh-approval-closed`, and waits for `RespondSSHApproval(requestID, isAuthorized, isRemembered)` or `RespondApprovalWithPassword(requestID, password)`; `SetSSHApprovalRemembered` follows the checkbox and `FitSSHApprovalWindow(isCompact, height)` sizes and places the window (centered, or at the top right). After 60 seconds, or if the client disconnects, it denies; the window hides when no request is left. `ListAllPendingSSHApproval` lets the window show requests that arrived before it loaded. The same dialog handles the command-line tool's requests (§9.4).
 
 **Implementation**
@@ -735,6 +741,83 @@ The desktop checks the RP ID against the origin on each request, applies `allowC
 - **Testing:** Go tests run both ceremonies from a `clientDataJSON` that go-webauthn builds and the test hashes, and verify them with go-webauthn. The simulator does not offer a build without a team as a provider, so the UI tests drive registration and sign-in through the debug-only AutoFill preview (§9.3) and check the attestation and the ES256 signature over `authenticatorData || clientDataHash` with CryptoKit. The real Safari flow needs the paid team (§12 #7) and is not verified yet.
 
 **Not supported yet:** WebAuthn extensions other than `prf` and `credProps` (large blob, …), Firefox and Safari on the Mac, and on iOS the WebAuthn extension inputs of iOS 18 (`extensionInput`: PRF, large blob).
+
+### 9.9 Approving on the iPhone
+
+The Mac's approval dialog (SSH agent, §9.6, and command-line tool, §9.4) can also be answered on the user's iPhone, for example while coding agents run on the Mac and the user is away from its keyboard.
+
+**Rules**
+
+- The phone answers approve or deny for one specific request, nothing else. It never unlocks the Mac's Hisar, and no unlock key, password or vault key leaves a device: the answer is a signed decision.
+- Only while Hisar on the Mac is unlocked. A locked Mac still needs Touch ID or the master password at the Mac, and its dialog is not sent to the phone. When the Mac locks, it withdraws its open phone requests and ignores their answers.
+- Only while Hisar is open and unlocked on the phone, in the foreground. There are no push notifications yet: they need the Apple Developer Program (§12 #7) and come later.
+- The Mac sends a request when the dialog opens, if Settings → SSH agent → **Allow approvals from my iPhone** is on (default on; stored in `desktop.json`, a device preference kept on sign-out) and the account has at least one iOS device (`GET /devices`, platform `ios/…`, read when Hisar unlocks; the same list gives the Mac its own device ID).
+- Whichever answers first wins: Touch ID or the master password on the Mac, Deny on the Mac, the phone, or the 60-second timeout. The Mac then withdraws the request (`DELETE /approvals/{id}`), which sends `approval-resolved`, and the phone closes its sheet.
+- A phone approval counts as a Touch ID approval: the "Don't ask again" checkbox counts as it is at that moment, commit and tag signing still ask once per signature, and a forwarded request (§9.6) is allowed once. A phone's Deny is Deny.
+
+**Request** (`core/approval`, sealed by the Mac)
+
+```
+request       = JSON {requestId, requesterDeviceId, requesterDeviceName, createdAt, expiresAt,
+                      kind ("ssh" | "cli"), appName, purpose, host, commandLine, repositoryPath,
+                      keyName, isForwarded, forwardedFromHost, terminalName}
+sealedRequest = 0x01 || HPKE.Seal(accountKEMPub, info = "hisar/v1/approval-request" || accountID || requestId, request)
+```
+
+- `requestId` is 128 random bits as 32 lower-case hex digits. `expiresAt - createdAt` is at most 60 s, the dialog's timeout. Times are RFC 3339 UTC with milliseconds.
+- `purpose` is the dialog's sentence ("push to git.tryhisar.com", "sign a commit", "use Hisar"); the other fields are the dialog's detail lines, empty when the dialog has none.
+- Sealing to the account's own KEM public key (§4.3; the same HPKE as vault keys, §4.4) lets any unlocked device of the account open it, and the server cannot. The info binds the account and the request ID, so the server cannot move a request to another ID or account.
+
+**Answer** (signed and sealed by the phone)
+
+```
+requestHash  = SHA-256(sealedRequest)                      the exact bytes the server relayed
+signed       = "hisar/v1/approval-answer" || accountID || requestId || requestHash || decision ("approve" | "deny")
+               || answeringDeviceId || answeringDeviceName || answeredAt
+signature    = Ed25519.Sign(account signing key, signed)
+answer       = JSON {requestId, decision, answeringDeviceId, answeringDeviceName, answeredAt, requestHash, signature}
+sealedAnswer = 0x01 || HPKE.Seal(accountKEMPub, info = "hisar/v1/approval-answer-envelope" || accountID || requestId, answer)
+```
+
+The concatenations are length-prefixed (§4.5). Before it shows a request, the phone opens it and checks that its ID is the one the server named, that it lasts at most 60 s, that it has not expired by the phone's clock, and that it did not come from the phone itself. It signs only what it showed, because the hash covers the sealed request byte for byte. Sealing the answer as well keeps the decision and the device names from the server.
+
+**The Mac accepts an answer only if**
+
+1. it opens with the account's KEM key, and its `requestId` is a request the Mac is waiting for;
+2. the signature verifies with the account's own signing public key, taken from the unlocked keyset, which was checked against the account record at unlock (§5.4); a key the server hands out later is never used;
+3. `requestHash` equals the hash of the sealed request the Mac itself posted;
+4. it arrives before `expiresAt` by the Mac's clock;
+5. it is the first valid answer for that request: single use, so a replayed answer, or one for a finished request, is refused;
+6. `answeringDeviceId` is not the Mac's own device ID.
+
+`core/approval` implements these checks (`SealRequest`, `OpenRequest`, `CreateAnswer`, `Tracker`) on top of `core/crypt` (`SealApprovalRequest`, `SignApprovalAnswer`, `VerifyApprovalAnswer`, …), which has test vectors for the sealed request and the signature.
+
+**What the server can and cannot do.** It relays sealed blobs. It sees the account, the requesting session's device, the request ID, sizes and times; never the description, the decision or the answering device. It cannot forge or change an approval, because it has no account signing key. It cannot reuse an answer for another request (the request ID and hash are signed) or later (expiry, single use). It can withhold, delay or drop requests and answers, and it can fill a request's single answer slot with garbage; all of that only means the Mac's own dialog decides, like any denial of service.
+
+**Server relay** (`server/internal/api/approvals.go`, in memory)
+
+| Endpoint | Body → result |
+|---|---|
+| `POST /approvals` | `{requestId, sealedRequest, expiresAt}` → 201. 400 for a bad ID, an empty sealed request or one over 16 KiB, or an expiry that is not within the next 60 s; 409 for a duplicate ID; 429 when the account has 16 open requests. Sends `approval-requested` |
+| `GET /approvals` | `[{requestId, sealedRequest, requesterDeviceId, createdAt, expiresAt}]`: the account's requests that are not answered, resolved or expired |
+| `GET /approvals/{id}` | `{requestId, sealedRequest, sealedAnswer, isResolved, expiresAt}`; 404 for an unknown request or another account's |
+| `POST /approvals/{id}/answer` | `{sealedAnswer}` (at most 16 KiB) → 204. 404 unknown, 410 expired or resolved, 409 already answered, 403 from a session of the requesting device. Sends `approval-answered` |
+| `DELETE /approvals/{id}` | → 204, only from a session of the requesting device (403 otherwise); marks it resolved and sends `approval-resolved` |
+
+- Every endpoint needs a session and sees only the session's account. Each account has a token bucket of 2 requests per second with a burst of 60 across these endpoints (429).
+- A request is kept until 60 s after its expiry, so at most 2 minutes after it was posted, and is never served after that; every write drops the expired ones.
+
+**Mac** (`desktop/vault/phoneapproval.go`, `desktop/agent`)
+
+- When a dialog opens for a request that needs no unlock, the approver asks `PhoneApprover.IsPhoneApprovalAvailable`; when it is, the dialog's event has `isPhoneApproval`, the footer adds "or approve on your iPhone", and the vault backend posts the sealed request in the background.
+- On `approval-answered` for one of its requests, the backend fetches the answer, checks it (above) while holding the session, and hands the decision to the waiting dialog. An approval or a denial also cancels a Touch ID check in progress. An invalid answer is ignored and the dialog stays open.
+
+**iPhone** (`mobile/hisarkit`, `mobile/ios`)
+
+- While unlocked and in the foreground, the app lists pending requests at unlock, on returning to the foreground and on `approval-requested`, and shows the first one in a sheet: an icon for the kind, "Approve on <Mac name>?", the description rows (app, action, command, repository, server, key, forwarded from, terminal), the note "End-to-end encrypted. Only your devices can read this request. Approving lets this one request continue; it does not unlock Hisar on your Mac.", **Approve with Face ID** and **Deny**.
+- Approve needs Face ID (or Touch ID) first; when biometrics are unavailable or the user picks the fallback, the sheet asks for the master password, which is checked like an unlock. Deny needs neither.
+- The sheet closes on `approval-answered` or `approval-resolved`, at `expiresAt`, and when the app locks. Expired, answered or withdrawn requests are never shown.
+- UI tests drive the sheet through a debug-only preview (`-HisarApprovalPreview`), like the AutoFill preview (§9.3). The cross-device flow is tested end to end in Go: a desktop backend and a HisarKit backend signed in to the same account, where the phone approves an SSH signature, a denied one fails, and a forged answer is refused.
 
 ## 10. Repository layout
 

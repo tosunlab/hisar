@@ -58,6 +58,13 @@ export function SetCompactSSHApproval(isCompact: boolean): $CancellablePromise<$
     return $Call.ByID(1965907370, isCompact);
 }
 
+/**
+ * SetPhoneApproval turns "Allow approvals from my iPhone" on or off for dialogs that open from now on.
+ */
+export function SetPhoneApproval(isEnabled: boolean): $CancellablePromise<$models.Status> {
+    return $Call.ByID(4010617927, isEnabled);
+}
+
 export function SetSSHApprovalRemembered(requestID: string, isRemembered: boolean): $CancellablePromise<void> {
     return $Call.ByID(2176224535, requestID, isRemembered);
 }

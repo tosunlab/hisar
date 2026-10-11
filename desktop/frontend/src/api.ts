@@ -149,6 +149,7 @@ const wailsApi = {
     AgentService.RespondApprovalWithPassword(requestID, password, isRemembered),
   setSSHApprovalRemembered: (requestID: string, isRemembered: boolean): Promise<void> => AgentService.SetSSHApprovalRemembered(requestID, isRemembered),
   setCompactSSHApproval: (isCompact: boolean): Promise<SSHAgentStatus> => AgentService.SetCompactSSHApproval(isCompact),
+  setPhoneApproval: (isEnabled: boolean): Promise<SSHAgentStatus> => AgentService.SetPhoneApproval(isEnabled),
   fitSSHApprovalWindow: (isCompact: boolean, height: number): Promise<void> => AgentService.FitSSHApprovalWindow(isCompact, height),
   setApprovalTouchIDFrame: (x: number, y: number, width: number, height: number): Promise<void> =>
     ApprovalTouchIDService.SetApprovalPromptFrame(x, y, width, height),
