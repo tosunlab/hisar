@@ -6,10 +6,12 @@ struct ItemListView: View {
     @EnvironmentObject private var model: AppModel
     @State private var searchText = ""
     @State private var isEditorShown = false
-    @State private var isMembersShown = false
+    @State private var isSharingShown = false
+    @State private var isPersonalVaultNoteShown = false
 
     private var vault: VaultSummary? { model.findVault(vaultID: vaultID) }
     private var isShared: Bool { vault?.type == "shared" }
+    private var isOwner: Bool { vault?.role == Member.vaultRoleOwner }
 
     private var isWritable: Bool {
         guard let vault else { return false }
@@ -50,14 +52,27 @@ struct ItemListView: View {
         .navigationTitle(vault?.name ?? "Items")
         .searchable(text: $searchText, prompt: "Search \(vault?.name ?? "items")")
         .toolbar {
-            if isShared {
+            if isShared && !isOwner {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        isMembersShown = true
+                        isSharingShown = true
                     } label: {
                         Label("Members", systemImage: "person.2")
                     }
                     .accessibilityIdentifier("vault-members")
+                }
+            } else if vault != nil {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        if isShared {
+                            isSharingShown = true
+                        } else {
+                            isPersonalVaultNoteShown = true
+                        }
+                    } label: {
+                        Label("Share", systemImage: "person.crop.circle.badge.plus")
+                    }
+                    .accessibilityIdentifier("share-vault")
                 }
             }
             if isWritable {
@@ -75,9 +90,14 @@ struct ItemListView: View {
             ItemEditorView(vaultID: vaultID, originalItem: nil) { _ in }
                 .environmentObject(model)
         }
-        .sheet(isPresented: $isMembersShown) {
-            VaultMembersView(vaultID: vaultID)
+        .sheet(isPresented: $isSharingShown) {
+            VaultSharingView(vaultID: vaultID)
                 .environmentObject(model)
+        }
+        .alert("Personal vaults are private", isPresented: $isPersonalVaultNoteShown) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Only you can open the items in your Personal vault. To share items with other people, create a shared vault with + on the Vaults screen and share that.")
         }
         .onAppear { model.reportActivity() }
     }

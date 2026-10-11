@@ -19,13 +19,13 @@ struct NewVaultView: View {
                     }
                 }
                 Section {
-                    TextField("Vault name", text: $name, prompt: Text(verbatim: "Streaming, Kids, Travel…").foregroundStyle(.secondary))
+                    TextField("Vault name", text: $name, prompt: Text(verbatim: "Production, Staging, Team…").foregroundStyle(.secondary))
                         .focused($isNameFocused)
                         .submitLabel(.done)
                         .onSubmit(create)
                         .accessibilityIdentifier("new-vault-name")
                 } footer: {
-                    Text("A shared vault starts with only you. Invite people by email from the vault's Members screen; your Personal vault stays private.")
+                    Text("A shared vault starts with only you. Share it by email with Share in the vault's toolbar; your Personal vault stays private.")
                 }
             }
             .navigationTitle("New vault")

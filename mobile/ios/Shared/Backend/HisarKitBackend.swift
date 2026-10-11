@@ -133,6 +133,10 @@ final class HisarKitBackend: VaultBackend {
         try decode([Member]?.self, from: callReturningText { hisar.listAllVaultMember(vaultID, error: $0) }) ?? []
     }
 
+    func getVaultSharing(vaultID: String) throws -> VaultSharing {
+        try decode(VaultSharing.self, from: callReturningText { hisar.getVaultSharing(vaultID, error: $0) })
+    }
+
     func shareVault(vaultID: String, email: String, role: String) throws {
         try callReturningNothing { try hisar.shareVault(vaultID, email: email, role: role) }
     }

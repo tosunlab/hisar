@@ -142,6 +142,21 @@ class FakeBackend: VaultBackend {
         return allVaultMemberByVaultID[vaultID] ?? []
     }
 
+    func getVaultSharing(vaultID: String) throws -> VaultSharing {
+        record("getVaultSharing")
+        try requireUnlocked()
+        guard let vault = allVault.first(where: { $0.id == vaultID }) else { throw BackendError(message: "Vault not found") }
+        guard vault.type == "shared" else { throw BackendError(message: "Personal vaults are private and cannot be shared; create a shared vault instead") }
+        let isOwner = vault.role == Member.vaultRoleOwner
+        return VaultSharing(
+            vault: vault,
+            isOwner: isOwner,
+            allMember: allVaultMemberByVaultID[vaultID] ?? [],
+            allInvitation: isOwner ? shareInvitations.allSent.filter { $0.vaultID == vaultID } : [],
+            completionError: isOwner ? shareInvitations.completionError : ""
+        )
+    }
+
     private func findSharableVault(vaultID: String) throws -> VaultSummary {
         guard let vault = allVault.first(where: { $0.id == vaultID }) else { throw BackendError(message: "Vault not found") }
         guard vault.type == "shared" else { throw BackendError(message: "Personal vaults are private and cannot be shared; create a shared vault instead") }

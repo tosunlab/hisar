@@ -155,6 +155,9 @@ func TestNewAndSignedOutStatus(t *testing.T) {
 	if _, err := hisar.ListAllVaultMember("vault"); err == nil {
 		t.Error("vault members listed while signed out")
 	}
+	if _, err := hisar.GetVaultSharing("vault"); err == nil {
+		t.Error("a vault's sharing read while signed out")
+	}
 	if err := hisar.ShareVault("vault", "bob@example.com", "editor"); err == nil {
 		t.Error("a vault shared while signed out")
 	}

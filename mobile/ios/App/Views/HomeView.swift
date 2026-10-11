@@ -45,6 +45,7 @@ struct VaultsView: View {
                     deny: { approval in Task { await model.deny(approval) } },
                     showAll: { model.selectedTab = .approvals }
                 )
+                receivedInvitationSection
                 vaultSection
                 if !model.allVault.isEmpty {
                     Section("By type") {
@@ -117,6 +118,31 @@ struct VaultsView: View {
                     }
                 }
                 .environmentObject(model)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var receivedInvitationSection: some View {
+        if !model.allReceivedInvitation.isEmpty {
+            Section {
+                ForEach(model.allReceivedInvitation) { invitation in
+                    ReceivedInvitationRow(invitation: invitation, identifierPrefix: "banner-") {
+                        Task {
+                            if await model.acceptShareInvitation(invitationID: invitation.id) {
+                                model.showNotice("Accepted. The vault appears once \(invitation.inviterName)'s Hisar finishes sharing.")
+                            }
+                        }
+                    } decline: {
+                        Task {
+                            if await model.declineShareInvitation(invitationID: invitation.id) {
+                                model.showNotice("Invitation declined.")
+                            }
+                        }
+                    }
+                }
+            } header: {
+                Text("Shared with you")
             }
         }
     }

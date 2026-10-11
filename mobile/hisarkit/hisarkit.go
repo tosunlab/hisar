@@ -37,11 +37,12 @@ type Clipboard interface {
 	GetText() string
 }
 
-// EventListener hears about locks the app did not ask for, e.g. auto-lock, and about phone approvals:
-// eventName is approval-requested, approval-answered or approval-resolved.
+// EventListener hears about locks the app did not ask for, e.g. auto-lock, about phone approvals
+// (eventName is approval-requested, approval-answered or approval-resolved) and about syncs of changes made elsewhere.
 type EventListener interface {
 	OnLocked()
 	OnApprovalEvent(eventName, requestID string)
+	OnRemoteChange()
 }
 
 type Hisar struct {
@@ -72,6 +73,7 @@ func New(stateDirectory, deviceName string, secretKeyStore SecretKeyStore, biome
 	if listener != nil {
 		config.LockNotifier = lockNotifierAdapter{listener: listener}
 		config.OnApprovalEvent = listener.OnApprovalEvent
+		config.OnRemoteChange = listener.OnRemoteChange
 	}
 	service, err := vault.CreateService(config)
 	if err != nil {

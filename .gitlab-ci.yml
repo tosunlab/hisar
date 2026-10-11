@@ -72,7 +72,7 @@ go:
     - make vet
     # The integration tests need a running server and run in the end-to-end step; TestRecordOpenSSHFixture only runs when asked to.
     - set -o pipefail; HISAR_TEST_DATABASE_URL=$PG_URL make test TESTFLAGS=-v 2>&1 | tee test.log
-    - if grep -- "--- SKIP" test.log | grep -v -E "TestIntegrationDesktopFlow|TestIntegrationCommandLineThroughApp|TestIntegrationAgentThroughApp|TestIntegrationMobileFlow|TestIntegrationPhoneApproval|TestRecordOpenSSHFixture"; then exit 1; fi
+    - if grep -- "--- SKIP" test.log | grep -v -E "TestIntegrationDesktopFlow|TestIntegrationCommandLineThroughApp|TestIntegrationAgentThroughApp|TestIntegrationMobileFlow|TestIntegrationMobileSharing|TestIntegrationPhoneApproval|TestRecordOpenSSHFixture"; then exit 1; fi
     - make build
     - make build-cli-all
     - PGPASSWORD=hisar psql -h postgres -U postgres -c "CREATE DATABASE hisar_end_to_end"

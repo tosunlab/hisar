@@ -540,6 +540,37 @@ struct ShareInvitations: Codable, Hashable {
     }
 }
 
+struct VaultSharing: Codable, Hashable {
+    var vault: VaultSummary
+    var isOwner: Bool
+    var allMember: [Member]
+    var allInvitation: [SentShareInvitation]
+    var completionError: String
+
+    enum CodingKeys: String, CodingKey {
+        case vault, isOwner, completionError
+        case allMember = "members"
+        case allInvitation = "invitations"
+    }
+
+    init(vault: VaultSummary, isOwner: Bool, allMember: [Member] = [], allInvitation: [SentShareInvitation] = [], completionError: String = "") {
+        self.vault = vault
+        self.isOwner = isOwner
+        self.allMember = allMember
+        self.allInvitation = allInvitation
+        self.completionError = completionError
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        vault = try container.decode(VaultSummary.self, forKey: .vault)
+        isOwner = try container.decodeIfPresent(Bool.self, forKey: .isOwner) ?? false
+        allMember = try container.decodeIfPresent([Member].self, forKey: .allMember) ?? []
+        allInvitation = try container.decodeIfPresent([SentShareInvitation].self, forKey: .allInvitation) ?? []
+        completionError = try container.decodeIfPresent(String.self, forKey: .completionError) ?? ""
+    }
+}
+
 // Device is a signed-in device of the account; lastSeenAt is RFC 3339.
 struct Device: Codable, Identifiable, Hashable {
     var id: String

@@ -32,6 +32,8 @@ type approvalEventRecorder struct {
 
 func (recorder *approvalEventRecorder) OnLocked() {}
 
+func (recorder *approvalEventRecorder) OnRemoteChange() {}
+
 func (recorder *approvalEventRecorder) OnApprovalEvent(eventName, requestID string) {
 	recorder.allEvent <- [2]string{eventName, requestID}
 }

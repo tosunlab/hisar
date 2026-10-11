@@ -331,6 +331,81 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.errorMessage, "This invitation no longer exists")
     }
 
+    func testRefreshLoadsReceivedInvitationsForTheBannerAndAnsweringRemovesThem() async {
+        backend.seedSignedIn()
+        backend.shareInvitations = ShareInvitations(allReceived: [
+            ReceivedShareInvitation(id: "from-carol", vaultID: "carol-vault", role: Member.vaultRoleEditor, invitedByName: "Carol", invitedByEmail: "carol@example.com", expiresAt: "2027-01-22T08:00:00Z"),
+            ReceivedShareInvitation(id: "from-dave", vaultID: "dave-vault", role: Member.vaultRoleReader, invitedByName: "", invitedByEmail: "dave@example.com", expiresAt: "2027-01-22T08:00:00Z"),
+        ])
+        let model = createModel()
+        await model.refreshAll()
+        XCTAssertEqual(model.allReceivedInvitation.map(\.id), ["from-carol", "from-dave"])
+        XCTAssertEqual(model.receivedInvitationCount, 2)
+        XCTAssertLessThan(backend.allCallName.firstIndex(of: "listAllShareInvitation") ?? .max, backend.allCallName.firstIndex(of: "listAllVault") ?? 0, "accepted shares complete before the vaults load")
+
+        let isAccepted = await model.acceptShareInvitation(invitationID: "from-carol")
+        XCTAssertTrue(isAccepted)
+        XCTAssertEqual(model.allReceivedInvitation.map(\.id), ["from-dave"])
+        let isDeclined = await model.declineShareInvitation(invitationID: "from-dave")
+        XCTAssertTrue(isDeclined)
+        XCTAssertTrue(model.allReceivedInvitation.isEmpty)
+
+        model.lock()
+        XCTAssertTrue(model.allReceivedInvitation.isEmpty)
+    }
+
+    func testRemoteChangeReloadsVaultsAndInvitations() async {
+        let model = await createUnlockedModel()
+        backend.allVault.append(VaultSummary(id: "shared-with-me", name: "Deploy keys", type: "shared", role: Member.vaultRoleReader, itemCount: 0))
+        backend.shareInvitations.allReceived = [
+            ReceivedShareInvitation(id: "from-carol", vaultID: "carol-vault", role: Member.vaultRoleEditor, invitedByName: "Carol", invitedByEmail: "carol@example.com", expiresAt: "2027-01-22T08:00:00Z"),
+        ]
+        let remoteChangeCount = model.remoteChangeCount
+        model.handleRemoteChange()
+        XCTAssertEqual(model.remoteChangeCount, remoteChangeCount + 1, "an open sharing sheet reloads on this count")
+        let deadline = Date().addingTimeInterval(5)
+        while model.findVault(vaultID: "shared-with-me") == nil && Date() < deadline {
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        XCTAssertNotNil(model.findVault(vaultID: "shared-with-me"))
+        XCTAssertEqual(model.allReceivedInvitation.map(\.id), ["from-carol"])
+
+        model.lock()
+        model.handleRemoteChange()
+        XCTAssertEqual(model.remoteChangeCount, remoteChangeCount + 1, "a locked app ignores remote changes")
+    }
+
+    func testVaultSharingShowsMembersAndOnlyThisVaultsInvitations() async {
+        let model = await createUnlockedModel()
+        guard let streaming = await model.createVault(name: "Streaming"), let deploy = await model.createVault(name: "Deploy keys") else { return XCTFail("vaults missing") }
+        _ = await model.shareVault(vaultID: streaming.id, email: "bob@example.com", role: Member.vaultRoleReader)
+        _ = await model.shareVault(vaultID: deploy.id, email: "carol@example.com", role: Member.vaultRoleEditor)
+        let sharing = await model.loadVaultSharing(vaultID: streaming.id)
+        XCTAssertEqual(sharing?.vault.name, "Streaming")
+        XCTAssertEqual(sharing?.isOwner, true)
+        XCTAssertEqual(sharing?.allMember.map(\.email), ["alice@example.com"])
+        XCTAssertEqual(sharing?.allInvitation.map(\.email), ["bob@example.com"])
+
+        let editorSharing = await model.loadVaultSharing(vaultID: "family")
+        XCTAssertEqual(editorSharing?.isOwner, false, "an editor sees the members only")
+        XCTAssertEqual(editorSharing?.allInvitation.count, 0)
+
+        guard let personal = model.allVault.first(where: { $0.type == "personal" }) else { return XCTFail("no personal vault") }
+        let personalSharing = await model.loadVaultSharing(vaultID: personal.id)
+        XCTAssertNil(personalSharing)
+        XCTAssertEqual(model.errorMessage, "Personal vaults are private and cannot be shared; create a shared vault instead")
+    }
+
+    func testVaultSharingDecodesFromHisarKit() throws {
+        let json = #"{"vault":{"id":"v","name":"Deploy keys","type":"shared","role":"owner","itemCount":2},"isOwner":true,"members":[{"accountId":"a","name":"Ada","email":"ada@example.com","role":"owner","securityCode":"3F2A 91C0 7B44 E1D8","isCurrentUser":true,"isKeyChanged":false}],"invitations":null,"completionError":"bob@example.com: the signing key of bob@example.com changed since you last shared with them; stopping"}"#
+        let decoded = try JSONDecoder().decode(VaultSharing.self, from: Data(json.utf8))
+        XCTAssertEqual(decoded.vault.name, "Deploy keys")
+        XCTAssertTrue(decoded.isOwner)
+        XCTAssertEqual(decoded.allMember.first?.securityCode, "3F2A 91C0 7B44 E1D8")
+        XCTAssertEqual(decoded.allInvitation.count, 0)
+        XCTAssertTrue(decoded.completionError.contains("changed since you last shared"))
+    }
+
     func testShareInvitationsDecodeFromHisarKit() throws {
         let json = #"{"received":[{"id":"a","vaultId":"v","role":"editor","invitedByName":"Carol","invitedByEmail":"carol@example.com","expiresAt":"2027-01-22T08:00:00Z"}],"sent":null,"completionError":""}"#
         let decoded = try JSONDecoder().decode(ShareInvitations.self, from: Data(json.utf8))
