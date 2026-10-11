@@ -287,6 +287,26 @@ final class HisarKitBackend: VaultBackend {
         try decode(EmergencyKitExport.self, from: callReturningText { hisar.exportEmergencyKit(password, directory: directory.path, error: $0) })
     }
 
+    func changeMasterPassword(currentPassword: String, newPassword: String) throws -> CredentialChangeResult {
+        try decode(CredentialChangeResult.self, from: callReturningText { hisar.changeMasterPassword(currentPassword, newPassword: newPassword, error: $0) })
+    }
+
+    func replaceSecretKey(password: String, directory: URL) throws -> CredentialChangeResult {
+        try decode(CredentialChangeResult.self, from: callReturningText { hisar.replaceSecretKey(password, directory: directory.path, error: $0) })
+    }
+
+    func previewAccountDeletion() throws -> AccountDeletionPreview {
+        try decode(AccountDeletionPreview.self, from: callReturningText { hisar.previewAccountDeletion($0) })
+    }
+
+    func deleteAccount(password: String, email: String) throws -> VaultStatus {
+        try decode(VaultStatus.self, from: callReturningText { hisar.deleteAccount(password, email: email, error: $0) })
+    }
+
+    func dismissSignedOutReason() -> VaultStatus {
+        (try? decode(VaultStatus.self, from: hisar.dismissSignedOutReason())) ?? getStatus()
+    }
+
     func copySecretReference(vaultID: String, itemID: String, fieldName: String) throws -> String {
         try callReturningText { hisar.copySecretReference(vaultID, itemID: itemID, fieldName: fieldName, error: $0) }
     }

@@ -35,6 +35,8 @@ SHARING_EMAIL="ios-sharing-$(date +%s)-$RANDOM@example.com"
 SHARING_INVITE_LINK=$(create_invite "$SHARING_EMAIL")
 BANNER_EMAIL="ios-banner-$(date +%s)-$RANDOM@example.com"
 BANNER_INVITE_LINK=$(create_invite "$BANNER_EMAIL")
+LIFECYCLE_EMAIL="ios-lifecycle-$(date +%s)-$RANDOM@example.com"
+LIFECYCLE_INVITE_LINK=$(create_invite "$LIFECYCLE_EMAIL")
 
 # A partner on the command line owns "Infrastructure", shared with the banner account before it exists, and
 # accepts every share invitation it gets and completes every share it sent, as their own Hisar would.
@@ -71,6 +73,8 @@ if ! TEST_RUNNER_HISAR_UI_TEST_SERVER="$HISAR_PUBLIC_URL" \
   TEST_RUNNER_HISAR_UI_TEST_SHARING_PARTNER_EMAIL="$PARTNER_EMAIL" \
   TEST_RUNNER_HISAR_UI_TEST_BANNER_INVITE_LINK="$BANNER_INVITE_LINK" \
   TEST_RUNNER_HISAR_UI_TEST_BANNER_EMAIL="$BANNER_EMAIL" \
+  TEST_RUNNER_HISAR_UI_TEST_LIFECYCLE_INVITE_LINK="$LIFECYCLE_INVITE_LINK" \
+  TEST_RUNNER_HISAR_UI_TEST_LIFECYCLE_EMAIL="$LIFECYCLE_EMAIL" \
   TEST_RUNNER_HISAR_UI_TEST_SCREENSHOT_DIRECTORY="${HISAR_UI_TEST_SCREENSHOT_DIRECTORY:-}" \
   xcodebuild test -project "$ROOT/mobile/ios/Hisar.xcodeproj" -scheme Hisar -only-testing:"${IOS_UI_TESTS:-HisarUITests}" \
   -destination "id=$SIMULATOR_ID" ${IOS_DERIVED_DATA:+-derivedDataPath "$IOS_DERIVED_DATA"} ${IOS_RESULT_BUNDLE:+-resultBundlePath "$IOS_RESULT_BUNDLE"}; then

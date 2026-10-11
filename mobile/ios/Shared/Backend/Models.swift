@@ -41,6 +41,7 @@ struct VaultStatus: Codable, Equatable {
     var biometricReady: Bool
     var isOffline: Bool
     var autoLockSeconds: Int
+    var signedOutReason = ""
 
     static let defaultAutoLockSeconds = 300
     static let allAutoLockSeconds = [30, 60, 300, 600, 3600]
@@ -73,6 +74,7 @@ struct VaultStatus: Codable, Equatable {
         isOffline = try container.decodeIfPresent(Bool.self, forKey: .isOffline) ?? false
         let decodedAutoLockSeconds = try container.decodeIfPresent(Int.self, forKey: .autoLockSeconds) ?? 0
         autoLockSeconds = decodedAutoLockSeconds > 0 ? decodedAutoLockSeconds : Self.defaultAutoLockSeconds
+        signedOutReason = try container.decodeIfPresent(String.self, forKey: .signedOutReason) ?? ""
     }
 
     static func describeAutoLock(seconds: Int) -> String {
@@ -719,4 +721,77 @@ struct Device: Codable, Identifiable, Hashable {
 struct EmergencyKitExport: Codable, Equatable {
     var secretKey: String
     var emergencyKitPath: String
+}
+
+struct CredentialChangeResult: Codable, Equatable {
+    var status: VaultStatus
+    var secretKey: String
+    var signedOutDeviceCount: Int
+    var keychainError: String
+    var emergencyKitPath: String
+
+    init(status: VaultStatus, secretKey: String = "", signedOutDeviceCount: Int = 0, keychainError: String = "", emergencyKitPath: String = "") {
+        self.status = status
+        self.secretKey = secretKey
+        self.signedOutDeviceCount = signedOutDeviceCount
+        self.keychainError = keychainError
+        self.emergencyKitPath = emergencyKitPath
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        status = try container.decode(VaultStatus.self, forKey: .status)
+        secretKey = try container.decodeIfPresent(String.self, forKey: .secretKey) ?? ""
+        signedOutDeviceCount = try container.decodeIfPresent(Int.self, forKey: .signedOutDeviceCount) ?? 0
+        keychainError = try container.decodeIfPresent(String.self, forKey: .keychainError) ?? ""
+        emergencyKitPath = try container.decodeIfPresent(String.self, forKey: .emergencyKitPath) ?? ""
+    }
+}
+
+struct DeletionVault: Codable, Equatable, Identifiable {
+    var id: String
+    var name: String
+    var type: String
+    var role: String
+    var otherMemberCount: Int
+}
+
+struct AccountDeletionPreview: Codable, Equatable {
+    var email: String
+    var allOwnedVault: [DeletionVault]
+    var allMemberVault: [DeletionVault]
+    var shareLinkCount: Int
+    var sentInvitationCount: Int
+    var receivedInvitationCount: Int
+    var deviceCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case email
+        case allOwnedVault = "ownedVaults"
+        case allMemberVault = "memberVaults"
+        case shareLinkCount, sentInvitationCount, receivedInvitationCount, deviceCount
+    }
+
+    init(email: String, allOwnedVault: [DeletionVault] = [], allMemberVault: [DeletionVault] = [], shareLinkCount: Int = 0, sentInvitationCount: Int = 0, receivedInvitationCount: Int = 0, deviceCount: Int = 1) {
+        self.email = email
+        self.allOwnedVault = allOwnedVault
+        self.allMemberVault = allMemberVault
+        self.shareLinkCount = shareLinkCount
+        self.sentInvitationCount = sentInvitationCount
+        self.receivedInvitationCount = receivedInvitationCount
+        self.deviceCount = deviceCount
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        email = try container.decodeIfPresent(String.self, forKey: .email) ?? ""
+        allOwnedVault = try container.decodeIfPresent([DeletionVault].self, forKey: .allOwnedVault) ?? []
+        allMemberVault = try container.decodeIfPresent([DeletionVault].self, forKey: .allMemberVault) ?? []
+        shareLinkCount = try container.decodeIfPresent(Int.self, forKey: .shareLinkCount) ?? 0
+        sentInvitationCount = try container.decodeIfPresent(Int.self, forKey: .sentInvitationCount) ?? 0
+        receivedInvitationCount = try container.decodeIfPresent(Int.self, forKey: .receivedInvitationCount) ?? 0
+        deviceCount = try container.decodeIfPresent(Int.self, forKey: .deviceCount) ?? 0
+    }
+
+    var peopleLosingAccessCount: Int { allOwnedVault.reduce(0) { $0 + $1.otherMemberCount } }
 }

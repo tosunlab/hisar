@@ -52,6 +52,11 @@ protocol VaultBackend: AnyObject {
     func listAllDevice() throws -> [Device]
     func revokeDevice(deviceID: String) throws
     func exportEmergencyKit(password: String, directory: URL) throws -> EmergencyKitExport
+    func changeMasterPassword(currentPassword: String, newPassword: String) throws -> CredentialChangeResult
+    func replaceSecretKey(password: String, directory: URL) throws -> CredentialChangeResult
+    func previewAccountDeletion() throws -> AccountDeletionPreview
+    func deleteAccount(password: String, email: String) throws -> VaultStatus
+    func dismissSignedOutReason() -> VaultStatus
     func copySecretReference(vaultID: String, itemID: String, fieldName: String) throws -> String
     func isMacApprovalAllowed() -> Bool
     func setMacApprovalAllowed(_ isAllowed: Bool) throws
