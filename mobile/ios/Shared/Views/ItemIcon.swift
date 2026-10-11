@@ -2,23 +2,27 @@ import SwiftUI
 
 struct ItemIcon: View {
     var item: ItemDetail
+    var size: CGFloat = 32
+
+    @ScaledMetric(relativeTo: .body) private var scale: CGFloat = 1
 
     var body: some View {
         let initial = item.title.first.map { String($0).uppercased() } ?? "?"
+        let scaledSize = size * scale
         ZStack {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Theme.surfaceRaised)
-                .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(Theme.borderStrong, lineWidth: 1))
+            RoundedRectangle(cornerRadius: scaledSize * 0.25, style: .continuous)
+                .fill(.fill.tertiary)
             if item.isSSHKey {
-                Image(systemName: "terminal")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(Theme.textSecondary)
+                Image(systemName: "key.horizontal")
+                    .font(size > 40 ? .title2 : .footnote)
+                    .fontWeight(.semibold)
             } else {
                 Text(initial)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Theme.textSecondary)
+                    .font(size > 40 ? .title.weight(.semibold) : .subheadline.weight(.semibold))
             }
         }
-        .frame(width: 34, height: 34)
+        .foregroundStyle(.secondary)
+        .frame(width: scaledSize, height: scaledSize)
+        .accessibilityHidden(true)
     }
 }

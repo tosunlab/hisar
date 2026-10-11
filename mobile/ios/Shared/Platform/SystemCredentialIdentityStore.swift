@@ -21,7 +21,6 @@ final class SystemCredentialIdentityStore: CredentialIdentityUpdating {
             case .password:
                 return ASPasswordCredentialIdentity(serviceIdentifier: serviceIdentifier, user: identity.username, recordIdentifier: identity.recordIdentifier)
             case .oneTimeCode:
-                guard #available(iOS 18.0, *) else { return nil }
                 return ASOneTimeCodeCredentialIdentity(serviceIdentifier: serviceIdentifier, label: identity.username, recordIdentifier: identity.recordIdentifier)
             case .passkey:
                 return ASPasskeyCredentialIdentity(relyingPartyIdentifier: identity.host, userName: identity.username, credentialID: identity.credentialID, userHandle: identity.userHandle, recordIdentifier: identity.recordIdentifier)
@@ -41,13 +40,13 @@ enum AutoFillSettings {
         await ASCredentialIdentityStore.shared.state().isEnabled
     }
 
-    // iOS 18 asks in place; iOS 17 can only open the Settings page.
     @MainActor
     static func requestToTurnOn() async -> Bool {
-        if #available(iOS 18.0, *) {
-            return await ASSettingsHelper.requestToTurnOnCredentialProviderExtension()
-        }
+        await ASSettingsHelper.requestToTurnOnCredentialProviderExtension()
+    }
+
+    @MainActor
+    static func openSettings() async {
         try? await ASSettingsHelper.openCredentialProviderAppSettings()
-        return await checkIsEnabled()
     }
 }

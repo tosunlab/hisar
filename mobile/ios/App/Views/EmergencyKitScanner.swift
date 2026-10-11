@@ -10,7 +10,7 @@ struct EmergencyKitScannerSheet: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                Theme.background.ignoresSafeArea()
+                Color(.systemGroupedBackground).ignoresSafeArea()
                 if isCameraAvailable {
                     QRCodeCameraView(handleScannedText: handleScannedText)
                         .ignoresSafeArea(edges: .bottom)
@@ -18,34 +18,31 @@ struct EmergencyKitScannerSheet: View {
                         Spacer()
                         Text("Point the camera at the QR code on your Emergency Kit.")
                             .font(.subheadline)
-                            .foregroundStyle(Theme.text)
-                            .padding(12)
-                            .background(Theme.surfaceRaised.opacity(0.9))
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .foregroundStyle(.primary)
+                            .padding(14)
+                            .glassEffect(.regular, in: .rect(cornerRadius: 16))
                             .padding(24)
                     }
                 } else {
                     VStack(spacing: 12) {
                         Image(systemName: "camera.fill")
                             .font(.largeTitle)
-                            .foregroundStyle(Theme.textMuted)
+                            .foregroundStyle(.secondary)
                         Text("No camera is available. Type the details from your Emergency Kit instead.")
                             .multilineTextAlignment(.center)
-                            .foregroundStyle(Theme.textSecondary)
+                            .foregroundStyle(.secondary)
                     }
                     .padding(32)
                 }
             }
             .navigationTitle("Scan Emergency Kit")
             .navigationBarTitleDisplayMode(.inline)
-            .applyNavigationBarTheme()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
             }
         }
-        .preferredColorScheme(.dark)
     }
 }
 

@@ -254,4 +254,32 @@ final class HisarKitBackend: VaultBackend {
     func reconnectEvents() {
         hisar.reconnectEvents()
     }
+
+    func setAutoLock(seconds: Int) throws -> VaultStatus {
+        try decode(VaultStatus.self, from: callReturningText { hisar.setAutoLock(seconds, error: $0) })
+    }
+
+    func listAllDevice() throws -> [Device] {
+        try decode([Device]?.self, from: callReturningText { hisar.listAllDevice($0) }) ?? []
+    }
+
+    func revokeDevice(deviceID: String) throws {
+        try callReturningNothing { try hisar.revokeDevice(deviceID) }
+    }
+
+    func exportEmergencyKit(password: String, directory: URL) throws -> EmergencyKitExport {
+        try decode(EmergencyKitExport.self, from: callReturningText { hisar.exportEmergencyKit(password, directory: directory.path, error: $0) })
+    }
+
+    func copySecretReference(vaultID: String, itemID: String, fieldName: String) throws -> String {
+        try callReturningText { hisar.copySecretReference(vaultID, itemID: itemID, fieldName: fieldName, error: $0) }
+    }
+
+    func isMacApprovalAllowed() -> Bool {
+        hisar.isMacApprovalAllowed()
+    }
+
+    func setMacApprovalAllowed(_ isAllowed: Bool) throws {
+        try callReturningNothing { try hisar.setMacApprovalAllowed(isAllowed) }
+    }
 }

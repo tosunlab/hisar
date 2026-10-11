@@ -70,6 +70,11 @@ enum VaultLogic {
         convertToOpenableURL(text)?.host?.lowercased()
     }
 
+    static func describeServer(_ server: String) -> String {
+        guard let url = convertToOpenableURL(server), let host = url.host else { return server }
+        return url.port.map { "\(host):\($0)" } ?? host
+    }
+
     static func buildAllCredentialIdentity(_ allItem: [VaultItemReference], allPasskey: [StoredPasskey] = []) -> [CredentialIdentityRecord] {
         var allIdentity: [CredentialIdentityRecord] = []
         var allSeen = Set<CredentialIdentityRecord>()

@@ -95,7 +95,7 @@ final class AppModelTests: XCTestCase {
     func testBackgroundLongerThanAutoLockLocks() async {
         let model = await createUnlockedModel()
         model.handleDidEnterBackground()
-        currentDate += AppModel.autoLockInterval + 1
+        currentDate += model.autoLockInterval + 1
         model.handleWillEnterForeground()
         XCTAssertEqual(model.screen, .locked)
     }

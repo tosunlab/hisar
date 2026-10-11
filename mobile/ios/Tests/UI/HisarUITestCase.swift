@@ -59,6 +59,33 @@ class HisarUITestCase: XCTestCase {
         XCTFail("the Save Password sheet did not go away", file: file, line: line)
     }
 
+    func goBack(file: StaticString = #filePath, line: UInt = #line) {
+        let backButton = app.navigationBars.buttons["BackButton"].exists ? app.navigationBars.buttons["BackButton"] : app.navigationBars.buttons.element(boundBy: 0)
+        waitFor(backButton, file: file, line: line)
+        backButton.tap()
+    }
+
+    func openTab(_ name: String, file: StaticString = #filePath, line: UInt = #line) {
+        let tabButton = app.tabBars.buttons[name].exists ? app.tabBars.buttons[name] : app.buttons[name].firstMatch
+        waitFor(tabButton, file: file, line: line)
+        tabButton.tap()
+    }
+
+    func openSettings(_ identifier: String, file: StaticString = #filePath, line: UInt = #line) {
+        openTab("Settings", file: file, line: line)
+        let row = app.buttons[identifier]
+        waitFor(row, file: file, line: line)
+        row.tap()
+    }
+
+    // A confirmation dialog is a sheet or, on iOS 26, a popover next to its button.
+    func confirm(_ label: String, excludingIdentifier: String = "", file: StaticString = #filePath, line: UInt = #line) {
+        let predicate = NSPredicate(format: "label == %@ AND identifier != %@", label, excludingIdentifier)
+        let button = app.sheets.buttons[label].exists ? app.sheets.buttons[label] : app.buttons.matching(predicate).firstMatch
+        waitFor(button, file: file, line: line)
+        button.tap()
+    }
+
     func type(_ text: String, into element: XCUIElement) {
         waitFor(element)
         element.tap()

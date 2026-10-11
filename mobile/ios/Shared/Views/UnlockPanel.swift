@@ -2,60 +2,99 @@ import SwiftUI
 
 struct UnlockPanel: View {
     var email: String
+    var requestDescription: String = ""
     var isBiometricReady: Bool
     var biometryName: String
     var isBusy: Bool
     var errorMessage: String?
+    var isOffline: Bool = false
     var submitPassword: (String) async -> Bool
     var submitBiometric: () async -> Void
+    var signOut: (() -> Void)?
 
     @State private var password = ""
     @FocusState private var isPasswordFocused: Bool
 
     var body: some View {
-        VStack(spacing: 20) {
-            LogoMark(size: 72)
-                .padding(.bottom, 4)
-            VStack(spacing: 6) {
-                Text("Hisar is locked")
-                    .font(.title2.weight(.semibold))
-                    .foregroundStyle(Theme.text)
-                Text(email)
-                    .font(.subheadline)
-                    .foregroundStyle(Theme.textMuted)
-                    .accessibilityIdentifier("lock-email")
+        Form {
+            Section {
+                VStack(spacing: 10) {
+                    LogoMark(size: 72)
+                        .padding(.bottom, 6)
+                    Text("Hisar is locked")
+                        .font(.title2.weight(.bold))
+                    Text(email)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .accessibilityIdentifier("lock-email")
+                    if !requestDescription.isEmpty {
+                        Text(requestDescription)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.top, 24)
+                .listRowBackground(Color.clear)
             }
             if let errorMessage {
-                ErrorBanner(message: errorMessage)
-            }
-            if isBiometricReady {
-                Button {
-                    Task { await submitBiometric() }
-                } label: {
-                    Label("Unlock with \(biometryName)", systemImage: biometryName == "Touch ID" ? "touchid" : "faceid")
+                Section {
+                    ErrorBanner(message: errorMessage)
                 }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(isBusy)
-                .accessibilityIdentifier("unlock-biometric")
             }
-            LabeledInput(label: "Master password", systemImage: "lock") {
+            Section {
                 SecureField("Master password", text: $password)
+                    .textContentType(.password)
                     .submitLabel(.go)
                     .focused($isPasswordFocused)
                     .onSubmit(submit)
                     .accessibilityIdentifier("unlock-password")
-            }
-            Button(action: submit) {
-                if isBusy {
-                    ProgressView().tint(isBiometricReady ? Theme.text : Theme.primaryText)
-                } else {
-                    Text("Unlock")
+            } footer: {
+                if isOffline {
+                    Label("Offline. You can still unlock with the copy on this iPhone.", systemImage: "wifi.slash")
                 }
             }
-            .modifier(UnlockButtonStyle(isSecondary: isBiometricReady))
-            .disabled(isBusy || password.isEmpty)
-            .accessibilityIdentifier("unlock-submit")
+            Section {
+                VStack(spacing: 12) {
+                    if isBiometricReady {
+                        Button {
+                            Task { await submitBiometric() }
+                        } label: {
+                            Label("Unlock with \(biometryName)", systemImage: biometryName == "Touch ID" ? "touchid" : "faceid")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .applyProminentGlassStyle()
+                        .disabled(isBusy)
+                        .accessibilityIdentifier("unlock-biometric")
+                    }
+                    Button(action: submit) {
+                        Group {
+                            if isBusy {
+                                ProgressView()
+                            } else {
+                                Text("Unlock")
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .applyGlassButtonStyle(isProminent: !isBiometricReady)
+                    .disabled(isBusy || password.isEmpty)
+                    .accessibilityIdentifier("unlock-submit")
+                    if let signOut {
+                        Button("Sign out", action: signOut)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .padding(.top, 8)
+                            .accessibilityIdentifier("lock-sign-out")
+                    }
+                }
+                .controlSize(.large)
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets())
+            }
         }
+        .scrollDismissesKeyboard(.interactively)
     }
 
     private func submit() {
@@ -65,18 +104,6 @@ struct UnlockPanel: View {
             _ = await submitPassword(enteredPassword)
             password = ""
             isPasswordFocused = true
-        }
-    }
-}
-
-private struct UnlockButtonStyle: ViewModifier {
-    var isSecondary: Bool
-
-    func body(content: Content) -> some View {
-        if isSecondary {
-            content.buttonStyle(SecondaryButtonStyle())
-        } else {
-            content.buttonStyle(PrimaryButtonStyle())
         }
     }
 }

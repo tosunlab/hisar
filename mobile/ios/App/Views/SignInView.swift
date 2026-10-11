@@ -33,54 +33,61 @@ struct SignInView: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                Wordmark(size: 36)
-                    .padding(.top, 24)
-                Picker("Mode", selection: $mode) {
-                    ForEach(Mode.allCases) { mode in
-                        Text(mode.rawValue).tag(mode)
+        NavigationStack {
+            Form {
+                Section {
+                    VStack(alignment: .leading, spacing: 14) {
+                        LogoMark(size: 56)
+                        Text(mode == .signIn ? "Sign in to use Hisar on this iPhone." : "Use the invite link you received.")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        Picker("Mode", selection: $mode) {
+                            ForEach(Mode.allCases) { mode in
+                                Text(mode.rawValue).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .accessibilityIdentifier("sign-in-mode")
                     }
-                }
-                .pickerStyle(.segmented)
-                .accessibilityIdentifier("sign-in-mode")
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(mode == .signIn ? "Welcome back" : "Create your Hisar account")
-                        .font(.largeTitle.weight(.bold))
-                        .foregroundStyle(Theme.text)
-                    Text(mode == .signIn ? "Sign in to use Hisar on this iPhone." : "Use the invite link you received.")
-                        .font(.subheadline)
-                        .foregroundStyle(Theme.textMuted)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets())
                 }
                 if let errorMessage = model.errorMessage {
-                    ErrorBanner(message: errorMessage)
-                }
-                if mode == .signIn {
-                    signInFields
-                } else {
-                    createAccountFields
-                }
-                Button(action: submit) {
-                    if model.isBusy {
-                        ProgressView().tint(Theme.primaryText)
-                    } else {
-                        Text(mode == .signIn ? "Sign in" : "Create account")
+                    Section {
+                        ErrorBanner(message: errorMessage)
                     }
                 }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(!canSubmit || model.isBusy)
-                .accessibilityIdentifier("sign-in-submit")
-                Text(mode == .signIn ? "Lost your Secret Key? It's on your Emergency Kit." : "Your master password never leaves this iPhone. A forgotten master password can't be recovered by anyone, including Hisar.")
-                    .font(.footnote)
-                    .foregroundStyle(Theme.textMuted)
-                    .accessibilityIdentifier(mode == .signIn ? "secret-key-note" : "create-account-note")
+                if mode == .signIn {
+                    signInSections
+                } else {
+                    createAccountSections
+                }
+                Section {
+                    Button(action: submit) {
+                        Group {
+                            if model.isBusy {
+                                ProgressView()
+                            } else {
+                                Text(mode == .signIn ? "Sign in" : "Create account")
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .applyProminentGlassStyle()
+                    .controlSize(.large)
+                    .disabled(!canSubmit || model.isBusy)
+                    .accessibilityIdentifier("sign-in-submit")
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets())
+                } footer: {
+                    Text(mode == .signIn ? "Lost your Secret Key? It's on your Emergency Kit." : "Your master password never leaves this iPhone. A forgotten master password can't be recovered by anyone, including Hisar.")
+                        .padding(.top, 8)
+                        .accessibilityIdentifier(mode == .signIn ? "secret-key-note" : "create-account-note")
+                }
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 32)
+            .scrollDismissesKeyboard(.interactively)
+            .navigationTitle(mode == .signIn ? "Welcome back" : "Create account")
         }
-        .scrollDismissesKeyboard(.interactively)
-        .background(Theme.background)
-        .coverStatusBar()
         .onChange(of: mode) { _, _ in
             password = ""
             repeatedPassword = ""
@@ -105,85 +112,82 @@ struct SignInView: View {
         }
     }
 
-    private var signInFields: some View {
-        VStack(alignment: .leading, spacing: 16) {
+    @ViewBuilder
+    private var signInSections: some View {
+        Section {
             Button {
                 isScannerShown = true
             } label: {
                 Label("Scan Emergency Kit QR code", systemImage: "qrcode.viewfinder")
             }
-            .buttonStyle(SecondaryButtonStyle())
             .accessibilityIdentifier("scan-emergency-kit")
-            LabeledInput(label: "Server", systemImage: "globe") {
-                TextField("Server", text: $server, prompt: Text(verbatim: "https://hisar.example.com"))
-                    .textContentType(.URL)
-                    .keyboardType(.URL)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .accessibilityIdentifier("sign-in-server")
-            }
-            LabeledInput(label: "Email", systemImage: "person") {
-                TextField("Email", text: $email, prompt: Text(verbatim: "you@example.com").foregroundStyle(Theme.textMuted))
-                    .keyboardType(.emailAddress)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .accessibilityIdentifier("sign-in-email")
-            }
-            LabeledInput(label: "Secret Key", systemImage: "key") {
-                TextField("H1-XXXXXX-XXXXX-…", text: $secretKey)
-                    .font(.system(.body, design: .monospaced))
-                    .textInputAutocapitalization(.characters)
-                    .autocorrectionDisabled()
-                    .accessibilityIdentifier("sign-in-secret-key")
-            }
-            LabeledInput(label: "Master password", systemImage: "lock") {
-                SecureField("Master password", text: $password)
-                    .submitLabel(.go)
-                    .onSubmit(submit)
-                    .accessibilityIdentifier("sign-in-password")
-            }
+        } footer: {
+            Text("The QR code fills in your server, email and Secret Key.")
+        }
+        Section("Account") {
+            TextField("Server", text: $server, prompt: Text(verbatim: "https://hisar.example.com"))
+                .textContentType(.URL)
+                .keyboardType(.URL)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .accessibilityIdentifier("sign-in-server")
+            TextField("Email", text: $email, prompt: Text(verbatim: "you@example.com"))
+                .textContentType(.username)
+                .keyboardType(.emailAddress)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .accessibilityIdentifier("sign-in-email")
+        }
+        Section("Secret Key and master password") {
+            TextField("Secret Key", text: $secretKey, prompt: Text(verbatim: "H1-XXXXXX-XXXXX-…"))
+                .font(.body.monospaced())
+                .textInputAutocapitalization(.characters)
+                .autocorrectionDisabled()
+                .accessibilityIdentifier("sign-in-secret-key")
+            SecureField("Master password", text: $password)
+                .textContentType(.password)
+                .submitLabel(.go)
+                .onSubmit(submit)
+                .accessibilityIdentifier("sign-in-password")
         }
     }
 
-    private var createAccountFields: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            LabeledInput(label: "Invite link", systemImage: "link") {
-                TextField("Invite link", text: $inviteLink, prompt: Text(verbatim: "https://hisar.example.com/invite/…"))
-                    .keyboardType(.URL)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .accessibilityIdentifier("sign-up-invite-link")
+    @ViewBuilder
+    private var createAccountSections: some View {
+        Section("Invite") {
+            TextField("Invite link", text: $inviteLink, prompt: Text(verbatim: "https://hisar.example.com/invite/…"))
+                .keyboardType(.URL)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .accessibilityIdentifier("sign-up-invite-link")
+        }
+        Section("You") {
+            TextField("Email", text: $email, prompt: Text(verbatim: "you@example.com"))
+                .keyboardType(.emailAddress)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .accessibilityIdentifier("sign-up-email")
+            TextField("Your name", text: $name)
+                .textContentType(.name)
+                .accessibilityIdentifier("sign-up-name")
+        }
+        Section {
+            SecureField("Master password", text: $password, prompt: Text("At least 10 characters"))
+                .textContentType(.newPassword)
+                .accessibilityIdentifier("sign-up-password")
+            SecureField("Repeat master password", text: $repeatedPassword)
+                .textContentType(.newPassword)
+                .accessibilityIdentifier("sign-up-repeated-password")
+        } header: {
+            Text("Master password")
+        } footer: {
+            VStack(alignment: .leading, spacing: 6) {
+                if isPasswordMismatch {
+                    Text("The passwords do not match.")
+                        .foregroundStyle(.red)
+                }
+                Text("Choose a master password you can remember. Hisar never sends it to the server, so nobody can reset it for you.")
             }
-            LabeledInput(label: "Email", systemImage: "person") {
-                TextField("Email", text: $email, prompt: Text(verbatim: "you@example.com").foregroundStyle(Theme.textMuted))
-                    .keyboardType(.emailAddress)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .accessibilityIdentifier("sign-up-email")
-            }
-            LabeledInput(label: "Your name", systemImage: "person.text.rectangle") {
-                TextField("Name", text: $name)
-                    .textContentType(.name)
-                    .accessibilityIdentifier("sign-up-name")
-            }
-            LabeledInput(label: "Master password", systemImage: "lock") {
-                SecureField("At least 10 characters", text: $password)
-                    .textContentType(.newPassword)
-                    .accessibilityIdentifier("sign-up-password")
-            }
-            LabeledInput(label: "Repeat master password", systemImage: "lock") {
-                SecureField("Repeat master password", text: $repeatedPassword)
-                    .textContentType(.newPassword)
-                    .accessibilityIdentifier("sign-up-repeated-password")
-            }
-            if isPasswordMismatch {
-                Text("The passwords do not match.")
-                    .font(.footnote)
-                    .foregroundStyle(Theme.danger)
-            }
-            Text("Choose a master password you can remember. Hisar never sends it to the server, so nobody can reset it for you.")
-                .font(.footnote)
-                .foregroundStyle(Theme.textMuted)
         }
     }
 

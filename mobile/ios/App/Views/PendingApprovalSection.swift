@@ -1,64 +1,107 @@
 import SwiftUI
 
-// The Mac's open requests at the top of the vault list, so they stay reachable when the sheet is closed or was never shown.
-struct PendingApprovalSection: View {
+// The first waiting request from a Mac, at the top of Vaults; the rest are one tap away in the Approvals tab.
+struct PendingApprovalCardSection: View {
     var allApproval: [PhoneApproval]
+    var isBusy: Bool
     var review: (PhoneApproval) -> Void
+    var approve: (PhoneApproval) -> Void
+    var deny: (PhoneApproval) -> Void
+    var showAll: () -> Void
 
     var body: some View {
-        Section {
-            ForEach(allApproval) { approval in
-                Button {
-                    review(approval)
-                } label: {
-                    PendingApprovalRow(approval: approval)
+        if let approval = allApproval.first {
+            Section {
+                PendingApprovalCard(approval: approval, isBusy: isBusy, review: review, approve: approve, deny: deny)
+                    .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
+                if allApproval.count > 1 {
+                    Button(action: showAll) {
+                        Text(allApproval.count == 2 ? "1 more request" : "\(allApproval.count - 1) more requests")
+                            .frame(maxWidth: .infinity)
+                    }
+                    .accessibilityIdentifier("pending-approval-more")
                 }
-                .buttonStyle(.plain)
-                .listRowBackground(Theme.surfaceRaised)
-                .accessibilityIdentifier("pending-approval-\(approval.requestID)")
+            } header: {
+                Text(allApproval.count == 1 ? "Waiting for your approval" : "\(allApproval.count) requests waiting for your approval")
+                    .accessibilityIdentifier("pending-approval-header")
+            } footer: {
+                Text("Approving answers this one request. It never unlocks Hisar on your Mac.")
             }
-        } header: {
-            Text(allApproval.count == 1 ? "Waiting for your approval" : "\(allApproval.count) requests waiting for your approval")
-                .accessibilityIdentifier("pending-approval-header")
         }
     }
 }
 
-private struct PendingApprovalRow: View {
+struct PendingApprovalCard: View {
+    var approval: PhoneApproval
+    var isBusy: Bool
+    var review: (PhoneApproval) -> Void
+    var approve: (PhoneApproval) -> Void
+    var deny: (PhoneApproval) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Button {
+                review(approval)
+            } label: {
+                PendingApprovalSummary(approval: approval)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Shows the request's details")
+            .accessibilityIdentifier("pending-approval-\(approval.requestID)")
+            HStack(spacing: 10) {
+                Button {
+                    deny(approval)
+                } label: {
+                    Text("Deny")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.glass)
+                .accessibilityIdentifier("pending-approval-deny-\(approval.requestID)")
+                Button {
+                    approve(approval)
+                } label: {
+                    Label("Approve", systemImage: "faceid")
+                        .frame(maxWidth: .infinity)
+                }
+                .applyProminentGlassStyle()
+                .accessibilityIdentifier("pending-approval-approve-\(approval.requestID)")
+            }
+            .controlSize(.large)
+            .disabled(isBusy)
+        }
+        .padding(.vertical, 6)
+    }
+}
+
+struct PendingApprovalSummary: View {
     var approval: PhoneApproval
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Image(systemName: approval.isForwarded ? "globe" : approval.systemImage)
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: approval.isForwarded ? "exclamationmark.triangle.fill" : approval.systemImage)
                 .font(.title3)
-                .foregroundStyle(approval.isForwarded ? Theme.danger : Theme.warning)
-                .frame(width: 32)
+                .foregroundStyle(approval.isForwarded ? .red : .orange)
+                .frame(width: 36, height: 36)
+                .background(.fill.tertiary, in: .rect(cornerRadius: 10, style: .continuous))
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
-                Text(approval.bannerTitle)
-                    .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(Theme.text)
-                    .fixedSize(horizontal: false, vertical: true)
-                Text(approval.summary)
-                    .font(.footnote)
-                    .foregroundStyle(Theme.textSecondary)
-                    .lineLimit(2)
                 TimelineView(.periodic(from: .now, by: 1)) { context in
-                    Text(approval.formatTimeLeft(at: context.date))
-                        .font(.caption)
-                        .foregroundStyle(Theme.textMuted)
+                    Text("\(approval.macName) · \(approval.formatTimeLeft(at: context.date).replacingOccurrences(of: "Expires", with: "expires"))")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.orange)
                         .monospacedDigit()
                 }
+                Text(approval.summary)
+                    .font(.headline)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(approval.detailLine)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
             }
-            Spacer(minLength: 8)
-            Text("Review")
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(Theme.primaryText)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
-                .background(Theme.primary)
-                .clipShape(Capsule())
+            Spacer(minLength: 0)
         }
-        .padding(.vertical, 4)
-        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
     }
 }

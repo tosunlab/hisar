@@ -5,7 +5,6 @@ struct ItemDetailView: View {
     var itemID: String
 
     @EnvironmentObject private var model: AppModel
-    @Environment(\.openURL) private var openURL
     @Environment(\.dismiss) private var dismiss
     @State private var item: ItemDetail?
     @State private var isPasswordRevealed = false
@@ -13,8 +12,10 @@ struct ItemDetailView: View {
     @State private var isEditorShown = false
     @State private var passkeyToDelete: ItemPasskey?
 
+    private var vault: VaultSummary? { model.findVault(vaultID: vaultID) }
+
     private var isWritable: Bool {
-        guard let vault = model.findVault(vaultID: vaultID) else { return false }
+        guard let vault else { return false }
         return vault.type == "personal" || vault.role != "reader"
     }
 
@@ -23,16 +24,18 @@ struct ItemDetailView: View {
             if let item {
                 buildContent(item: item)
             } else if let errorMessage = model.errorMessage {
-                ErrorBanner(message: errorMessage).padding(20)
+                ContentUnavailableView {
+                    Label("Could not open the item", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(errorMessage)
+                        .accessibilityIdentifier("error-message")
+                }
             } else {
-                ProgressView().tint(Theme.textMuted)
+                ProgressView()
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Theme.background)
         .navigationTitle(item?.title ?? "")
         .navigationBarTitleDisplayMode(.inline)
-        .applyNavigationBarTheme()
         .toolbar {
             if isWritable, item != nil {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -82,42 +85,56 @@ struct ItemDetailView: View {
         List {
             Section {
                 HStack(spacing: 14) {
-                    ItemIcon(item: item)
+                    ItemIcon(item: item, size: 56)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(item.title)
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(Theme.text)
-                        Text(model.findVault(vaultID: vaultID)?.name ?? "")
-                            .font(.caption)
-                            .foregroundStyle(Theme.textMuted)
+                            .font(.title2.weight(.bold))
+                        Text("\(vault?.name ?? "") · \(item.isSSHKey ? "SSH key" : "Login")")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
                     }
                 }
                 .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
             }
             if item.isSSHKey {
                 buildSSHKeySection(item: item)
             } else {
                 buildLoginSection(item: item)
             }
+            if !item.allField.isEmpty {
+                Section("Fields") {
+                    ForEach(Array(item.allField.enumerated()), id: \.offset) { _, field in
+                        SecretFieldRow(
+                            label: field.name, value: field.value, isConcealed: field.concealed,
+                            isRevealed: allRevealedFieldName.contains(field.name),
+                            toggleReveal: { toggleReveal(fieldName: field.name) },
+                            copy: { copy(fieldName: field.name, label: field.name) },
+                            copyReference: { copyReference(fieldName: field.name) }
+                        )
+                    }
+                }
+            }
             if !item.allURL.isEmpty {
-                Section("Websites") {
+                Section(item.allURL.count == 1 ? "Website" : "Websites") {
                     ForEach(Array(item.allURL.enumerated()), id: \.offset) { _, url in
-                        Button {
-                            if let openableURL = VaultLogic.convertToOpenableURL(url) {
-                                openURL(openableURL)
-                            }
-                        } label: {
-                            HStack {
-                                Text(url)
-                                    .foregroundStyle(Theme.text)
+                        if let openableURL = VaultLogic.convertToOpenableURL(url) {
+                            Link(destination: openableURL) {
+                                Label(url, systemImage: "safari")
                                     .lineLimit(1)
-                                Spacer()
-                                Image(systemName: "arrow.up.right.square")
-                                    .foregroundStyle(Theme.textMuted)
                             }
+                            .contextMenu {
+                                Button {
+                                    model.copyText(url, label: "Website")
+                                } label: {
+                                    Label("Copy", systemImage: "doc.on.doc")
+                                }
+                                ShareLink(item: openableURL)
+                            }
+                            .accessibilityIdentifier("open-website")
+                        } else {
+                            Text(url)
                         }
-                        .listRowBackground(Theme.surface)
-                        .accessibilityIdentifier("open-website")
                     }
                 }
             }
@@ -128,44 +145,68 @@ struct ItemDetailView: View {
                     }
                 }
             }
-            if !item.allField.isEmpty {
-                Section("Fields") {
-                    ForEach(Array(item.allField.enumerated()), id: \.offset) { _, field in
-                        buildFieldRow(label: field.name, value: field.value, isConcealed: field.concealed, isRevealed: allRevealedFieldName.contains(field.name), toggleReveal: {
-                            if allRevealedFieldName.contains(field.name) {
-                                allRevealedFieldName.remove(field.name)
-                            } else {
-                                allRevealedFieldName.insert(field.name)
-                            }
-                        }, copy: { copy(fieldName: field.name, label: field.name) })
-                    }
-                }
-            }
             if !item.notes.isEmpty {
                 Section("Notes") {
                     Text(item.notes)
-                        .foregroundStyle(Theme.text)
                         .textSelection(.enabled)
-                        .listRowBackground(Theme.surface)
+                        .contextMenu {
+                            Button {
+                                copy(fieldName: "notes", label: "Notes")
+                            } label: {
+                                Label("Copy", systemImage: "doc.on.doc")
+                            }
+                            Button {
+                                copyReference(fieldName: "notes")
+                            } label: {
+                                Label("Copy Secret Reference", systemImage: "terminal")
+                            }
+                        }
+                }
+            }
+            if let referenceField = item.isSSHKey ? "public key" : (item.password.isEmpty ? nil : "password") {
+                Section {
+                    Button {
+                        copyReference(fieldName: referenceField)
+                    } label: {
+                        Label("Copy secret reference", systemImage: "terminal")
+                    }
+                    .foregroundStyle(.primary)
+                    .accessibilityIdentifier("copy-secret-reference")
+                } footer: {
+                    Text("A hisar:// reference to the \(referenceField), for hisar run and hisar read. Touch and hold a field for its own reference.")
                 }
             }
         }
         .listStyle(.insetGrouped)
-        .applyListTheme()
         .refreshable { await loadItem() }
     }
 
     @ViewBuilder
     private func buildLoginSection(item: ItemDetail) -> some View {
-        Section {
-            if !item.username.isEmpty {
-                buildFieldRow(label: "Username", value: item.username, isConcealed: false, isRevealed: true, toggleReveal: nil, copy: { copy(fieldName: "username", label: "Username") })
-            }
-            if !item.password.isEmpty {
-                buildFieldRow(label: "Password", value: item.password, isConcealed: true, isRevealed: isPasswordRevealed, toggleReveal: { isPasswordRevealed.toggle() }, copy: { copy(fieldName: "password", label: "Password") })
-            }
-            if item.hasOneTimePassword {
-                OneTimeCodeRow(vaultID: vaultID, itemID: item.id) { copy(fieldName: "one-time code", label: "One-time code") }
+        if !item.username.isEmpty || !item.password.isEmpty || item.hasOneTimePassword {
+            Section {
+                if !item.username.isEmpty {
+                    SecretFieldRow(
+                        label: "Username", value: item.username, isConcealed: false, isRevealed: true, toggleReveal: nil,
+                        copy: { copy(fieldName: "username", label: "Username") },
+                        copyReference: { copyReference(fieldName: "username") }
+                    )
+                }
+                if !item.password.isEmpty {
+                    SecretFieldRow(
+                        label: "Password", value: item.password, isConcealed: true, isRevealed: isPasswordRevealed,
+                        toggleReveal: { isPasswordRevealed.toggle() },
+                        copy: { copy(fieldName: "password", label: "Password") },
+                        copyReference: { copyReference(fieldName: "password") }
+                    )
+                }
+                if item.hasOneTimePassword {
+                    OneTimeCodeRow(vaultID: vaultID, itemID: item.id) {
+                        copy(fieldName: "one-time code", label: "One-time code")
+                    } copyReference: {
+                        copyReference(fieldName: "one-time code")
+                    }
+                }
             }
         }
     }
@@ -173,67 +214,44 @@ struct ItemDetailView: View {
     @ViewBuilder
     private func buildSSHKeySection(item: ItemDetail) -> some View {
         Section("SSH key") {
-            buildFieldRow(label: "Key type", value: item.keyType, isConcealed: false, isRevealed: true, toggleReveal: nil, copy: nil)
-            buildFieldRow(label: "Fingerprint", value: item.fingerprint, isConcealed: false, isRevealed: true, toggleReveal: nil, copy: { copy(fieldName: "fingerprint", label: "Fingerprint") })
-            buildFieldRow(label: "Public key", value: item.publicKey, isConcealed: false, isRevealed: true, toggleReveal: nil, copy: { copy(fieldName: "public key", label: "Public key") })
+            LabeledContent("Key type", value: item.keyType)
+            SecretFieldRow(
+                label: "Fingerprint", value: item.fingerprint, isConcealed: false, isRevealed: true, toggleReveal: nil,
+                copy: { copy(fieldName: "fingerprint", label: "Fingerprint") },
+                copyReference: { copyReference(fieldName: "fingerprint") }
+            )
+            SecretFieldRow(
+                label: "Public key", value: item.publicKey, isConcealed: false, isRevealed: true, toggleReveal: nil,
+                copy: { copy(fieldName: "public key", label: "Public key") },
+                copyReference: { copyReference(fieldName: "public key") }
+            )
         }
-    }
-
-    private func buildFieldRow(label: String, value: String, isConcealed: Bool, isRevealed: Bool, toggleReveal: (() -> Void)?, copy: (() -> Void)?) -> some View {
-        HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(label)
-                    .font(.caption)
-                    .foregroundStyle(Theme.textMuted)
-                Text(isConcealed && !isRevealed ? String(repeating: "•", count: 12) : value)
-                    .font(isConcealed ? .system(.body, design: .monospaced) : .body)
-                    .foregroundStyle(Theme.text)
-                    .lineLimit(isConcealed ? 3 : 5)
-                    .accessibilityIdentifier("\(label.lowercased())-value")
-            }
-            Spacer()
-            if let toggleReveal {
-                Button(action: toggleReveal) {
-                    Image(systemName: isRevealed ? "eye.slash" : "eye")
-                }
-                .buttonStyle(.borderless)
-                .foregroundStyle(Theme.textSecondary)
-                .accessibilityLabel(isRevealed ? "Hide \(label)" : "Reveal \(label)")
-                .accessibilityIdentifier("reveal-\(label.lowercased())")
-            }
-            if let copy {
-                Button(action: copy) {
-                    Image(systemName: "doc.on.doc")
-                }
-                .buttonStyle(.borderless)
-                .foregroundStyle(Theme.textSecondary)
-                .accessibilityLabel("Copy \(label)")
-                .accessibilityIdentifier("copy-\(label.lowercased())")
-            }
-        }
-        .padding(.vertical, 2)
-        .listRowBackground(Theme.surface)
     }
 
     private func buildPasskeyRow(_ passkey: ItemPasskey) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: "person.badge.key")
-                .foregroundStyle(Theme.textSecondary)
+        Label {
             VStack(alignment: .leading, spacing: 2) {
                 Text(passkey.relyingPartyID)
-                    .foregroundStyle(Theme.text)
                 Text(passkey.userName.isEmpty ? passkey.userDisplayName : passkey.userName)
-                    .font(.caption)
-                    .foregroundStyle(Theme.textMuted)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
                 if let createdDate = passkey.createdDate {
                     Text("Created \(createdDate.formatted(date: .abbreviated, time: .omitted))")
-                        .font(.caption)
-                        .foregroundStyle(Theme.textMuted)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
             }
             .accessibilityElement(children: .combine)
             .accessibilityIdentifier("passkey-\(passkey.relyingPartyID)")
-            Spacer()
+        } icon: {
+            Image(systemName: "person.badge.key")
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            if isWritable {
+                Button("Delete", role: .destructive) { passkeyToDelete = passkey }
+            }
+        }
+        .overlay(alignment: .trailing) {
             if isWritable {
                 Button {
                     passkeyToDelete = passkey
@@ -241,13 +259,19 @@ struct ItemDetailView: View {
                     Image(systemName: "trash")
                 }
                 .buttonStyle(.borderless)
-                .foregroundStyle(Theme.danger)
+                .foregroundStyle(.red)
                 .accessibilityLabel("Delete passkey for \(passkey.relyingPartyID)")
                 .accessibilityIdentifier("delete-passkey-\(passkey.relyingPartyID)")
             }
         }
-        .padding(.vertical, 2)
-        .listRowBackground(Theme.surface)
+    }
+
+    private func toggleReveal(fieldName: String) {
+        if allRevealedFieldName.contains(fieldName) {
+            allRevealedFieldName.remove(fieldName)
+        } else {
+            allRevealedFieldName.insert(fieldName)
+        }
     }
 
     private func deletePasskey(_ passkey: ItemPasskey) async {
@@ -259,5 +283,67 @@ struct ItemDetailView: View {
 
     private func copy(fieldName: String, label: String) {
         Task { await model.copyField(vaultID: vaultID, itemID: itemID, fieldName: fieldName, label: label) }
+    }
+
+    private func copyReference(fieldName: String) {
+        Task { await model.copySecretReference(vaultID: vaultID, itemID: itemID, fieldName: fieldName) }
+    }
+}
+
+struct SecretFieldRow: View {
+    var label: String
+    var value: String
+    var isConcealed: Bool
+    var isRevealed: Bool
+    var toggleReveal: (() -> Void)?
+    var copy: () -> Void
+    var copyReference: () -> Void
+
+    private var isHidden: Bool { isConcealed && !isRevealed }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(label)
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                Text(isHidden ? String(repeating: "•", count: 12) : value)
+                    .font(isConcealed ? .body.monospaced() : .body)
+                    .lineLimit(isConcealed ? 3 : 5)
+                    .textSelection(.enabled)
+                    .accessibilityLabel(isHidden ? "Hidden" : value)
+                    .accessibilityIdentifier("\(label.lowercased())-value")
+            }
+            Spacer(minLength: 0)
+            if let toggleReveal {
+                Button(action: toggleReveal) {
+                    Image(systemName: isRevealed ? "eye.slash" : "eye")
+                        .contentTransition(.symbolEffect(.replace))
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(isRevealed ? "Hide \(label)" : "Reveal \(label)")
+                .accessibilityIdentifier("reveal-\(label.lowercased())")
+            }
+            Button(action: copy) {
+                Image(systemName: "doc.on.doc")
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("Copy \(label)")
+            .accessibilityIdentifier("copy-\(label.lowercased())")
+        }
+        .foregroundStyle(.primary)
+        .contextMenu {
+            Button(action: copy) {
+                Label("Copy \(label)", systemImage: "doc.on.doc")
+            }
+            Button(action: copyReference) {
+                Label("Copy Secret Reference", systemImage: "terminal")
+            }
+            if let toggleReveal {
+                Button(action: toggleReveal) {
+                    Label(isRevealed ? "Hide" : "Reveal", systemImage: isRevealed ? "eye.slash" : "eye")
+                }
+            }
+        }
     }
 }

@@ -19,8 +19,6 @@ struct VaultMembersView: View {
                 if let errorMessage = model.errorMessage {
                     Section {
                         ErrorBanner(message: errorMessage)
-                            .listRowInsets(EdgeInsets())
-                            .listRowBackground(Color.clear)
                     }
                 }
                 Section {
@@ -33,21 +31,19 @@ struct VaultMembersView: View {
                                         Button("Remove", role: .destructive) { memberToRemove = member }
                                     }
                                 }
-                                .listRowBackground(Theme.surface)
                                 .accessibilityIdentifier("vault-member-\(member.email)")
                         }
                     } else {
                         HStack {
-                            ProgressView().tint(Theme.textMuted)
+                            ProgressView()
                             Text("Loading members…")
                         }
-                        .foregroundStyle(Theme.textMuted)
-                        .listRowBackground(Theme.surface)
+                        .foregroundStyle(.secondary)
                     }
                 } header: {
                     Text(vault?.name ?? "Vault")
                         .textCase(nil)
-                        .foregroundStyle(Theme.textMuted)
+                        .foregroundStyle(.secondary)
                 } footer: {
                     Text(isOwner
                          ? "Owners can share the vault, change roles and remove people. Editors change items; readers only see them. Touch and hold a person to change their role."
@@ -67,7 +63,6 @@ struct VaultMembersView: View {
                                         }
                                     }
                                 }
-                                .listRowBackground(Theme.surface)
                                 .accessibilityIdentifier("vault-invitation-\(invitation.email)")
                         }
                     } header: {
@@ -80,19 +75,16 @@ struct VaultMembersView: View {
                             isShareShown = true
                         } label: {
                             Label("Invite by email", systemImage: "person.badge.plus")
-                                .foregroundStyle(Theme.text)
+                                .foregroundStyle(.primary)
                         }
-                        .listRowBackground(Theme.surface)
                         .accessibilityIdentifier("share-vault")
                     }
                 }
             }
             .listStyle(.insetGrouped)
-            .applyListTheme()
             .refreshable { await load() }
             .navigationTitle("Members")
             .navigationBarTitleDisplayMode(.inline)
-            .applyNavigationBarTheme()
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
@@ -120,7 +112,6 @@ struct VaultMembersView: View {
             }
             .task { await load() }
         }
-        .preferredColorScheme(.dark)
         .interactiveDismissDisabled(model.isBusy)
     }
 
@@ -175,29 +166,29 @@ struct MemberRow: View {
         HStack(spacing: 14) {
             Image(systemName: member.isCurrentUser ? "person.crop.circle.fill" : "person.crop.circle")
                 .font(.title3)
-                .foregroundStyle(Theme.textSecondary)
+                .foregroundStyle(.secondary)
                 .frame(width: 32)
             VStack(alignment: .leading, spacing: 2) {
                 Text(member.isCurrentUser ? "\(member.name) (you)" : member.name)
-                    .foregroundStyle(Theme.text)
+                    .foregroundStyle(.primary)
                 Text(member.email)
                     .font(.caption)
-                    .foregroundStyle(Theme.textMuted)
+                    .foregroundStyle(.secondary)
                 if !member.securityCode.isEmpty {
                     Text("Security code \(member.securityCode)")
                         .font(.caption2.monospaced())
-                        .foregroundStyle(Theme.textMuted)
+                        .foregroundStyle(.secondary)
                 }
                 if member.isKeyChanged {
                     Label("Their key changed since you last shared with them. Check the security code with them before sharing again.", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
-                        .foregroundStyle(Theme.warning)
+                        .foregroundStyle(.orange)
                 }
             }
             Spacer()
             Text(roleText)
                 .font(.subheadline)
-                .foregroundStyle(Theme.textMuted)
+                .foregroundStyle(.secondary)
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
@@ -222,12 +213,10 @@ struct ShareVaultView: View {
                 if let errorMessage = model.errorMessage {
                     Section {
                         ErrorBanner(message: errorMessage)
-                            .listRowInsets(EdgeInsets())
-                            .listRowBackground(Color.clear)
                     }
                 }
                 Section {
-                    TextField("Email", text: $email, prompt: Text(verbatim: "them@example.com").foregroundStyle(Theme.textMuted))
+                    TextField("Email", text: $email, prompt: Text(verbatim: "them@example.com"))
                         .keyboardType(.emailAddress)
                         .textContentType(.emailAddress)
                         .textInputAutocapitalization(.never)
@@ -236,7 +225,6 @@ struct ShareVaultView: View {
                         .submitLabel(.send)
                         .onSubmit(share)
                         .accessibilityIdentifier("share-email")
-                        .listRowBackground(Theme.surface)
                 } header: {
                     Text("Who")
                 } footer: {
@@ -258,10 +246,8 @@ struct ShareVaultView: View {
                     Text("Owners can share the vault and remove people, editors can change items, readers can only see them.")
                 }
             }
-            .applyListTheme()
             .navigationTitle("Share vault")
             .navigationBarTitleDisplayMode(.inline)
-            .applyNavigationBarTheme()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
@@ -284,7 +270,6 @@ struct ShareVaultView: View {
                 isEmailFocused = true
             }
         }
-        .preferredColorScheme(.dark)
         .interactiveDismissDisabled(model.isBusy)
     }
 

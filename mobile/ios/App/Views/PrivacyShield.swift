@@ -23,7 +23,7 @@ final class PrivacyShield {
         let window = UIWindow(windowScene: scene)
         window.windowLevel = .alert + 1
         let controller = UIHostingController(rootView: PrivacyCover())
-        controller.view.backgroundColor = UIColor(Theme.background)
+        controller.view.backgroundColor = .systemBackground
         window.rootViewController = controller
         window.isHidden = false
         self.window = window

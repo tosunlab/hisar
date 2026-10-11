@@ -11,6 +11,8 @@ final class SharingUITests: HisarUITestCase {
         app.launch()
         _ = signUp(inviteLink: inviteLink, email: email, name: "iOS Sharing")
 
+        app.buttons["new-menu"].tap()
+        waitFor(app.buttons["new-vault"])
         app.buttons["new-vault"].tap()
         type("Streaming", into: app.textFields["new-vault-name"])
         saveScreenshot("new-vault")
@@ -29,13 +31,11 @@ final class SharingUITests: HisarUITestCase {
         saveScreenshot("vault-invitation")
         app.buttons["vault-members-done"].tap()
 
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        goBack()
         waitFor(app.buttons["vault-Streaming"])
         XCTAssertTrue(app.buttons["vault-Personal"].exists)
 
-        app.buttons["open-settings"].tap()
-        waitFor(app.buttons["open-people"])
-        app.buttons["open-people"].tap()
+        openSettings("open-people")
         waitFor(app.buttons["invite-person"], timeout: 30)
         waitFor(app.staticTexts.matching(mentionsPartner).firstMatch, timeout: 30)
         XCTAssertFalse(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Admin'")).firstMatch.exists, "People shows no account roles")

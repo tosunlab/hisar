@@ -18,8 +18,6 @@ struct HisarApp: App {
         WindowGroup {
             mainView
                 .environmentObject(model)
-                .preferredColorScheme(.dark)
-                .tint(Theme.primary)
                 .onAppear(perform: startModel)
                 .onOpenURL { url in
                     if let link = SignInLink.parse(url.absoluteString) {

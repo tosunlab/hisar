@@ -52,7 +52,7 @@ final class FaceIDUITests: HisarUITestCase {
         app.launch()
         _ = signUp(inviteLink: inviteLink, email: "ios-face-id@example.com", name: "iOS Face ID")
 
-        app.buttons["open-settings"].tap()
+        openSettings("open-security")
         let toggle = app.switches["biometric-toggle"]
         waitFor(toggle)
         XCTAssertTrue(toggle.isEnabled, "Face ID is enrolled in the simulator")
@@ -70,9 +70,7 @@ final class FaceIDUITests: HisarUITestCase {
         waitForExpectations(timeout: 20)
         sleep(2)
         saveScreenshot("settings-face-id")
-        app.buttons["settings-done"].tap()
-
-        app.buttons["lock-now"].tap()
+        app.buttons["settings-lock-now"].tap()
         waitFor(app.buttons["unlock-biometric"])
         saveScreenshot("lock-face-id")
         sleep(1)

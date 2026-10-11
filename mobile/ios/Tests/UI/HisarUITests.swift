@@ -32,14 +32,21 @@ final class HisarUITests: HisarUITestCase {
         waitFor(app.staticTexts["password-value"])
         XCTAssertNotEqual(app.staticTexts["password-value"].label, "ui-test-password-1", "the generated password replaced the old one")
 
-        app.navigationBars.buttons.element(boundBy: 0).tap()
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        app.buttons["copy-secret-reference"].tap()
+        waitFor(app.staticTexts["Secret reference copied."], timeout: 5)
+
+        goBack()
+        goBack()
+        waitFor(app.buttons["vault-Personal"])
+        openTab("Search")
         let searchField = app.searchFields.firstMatch
         type("git", into: searchField)
         waitFor(app.buttons["item-GitHub"])
         saveScreenshot("search")
         let closeSearchButton = app.buttons["Close"].exists ? app.buttons["Close"] : app.buttons["Cancel"]
         closeSearchButton.firstMatch.tap()
+        openTab("Vaults")
+        waitFor(app.buttons["vault-Personal"])
 
         app.buttons["lock-now"].tap()
         waitFor(app.secureTextFields["unlock-password"])
@@ -52,14 +59,40 @@ final class HisarUITests: HisarUITestCase {
         app.buttons["unlock-submit"].tap()
         waitFor(app.buttons["vault-Personal"])
 
-        app.buttons["open-settings"].tap()
+        openTab("Approvals")
+        waitFor(app.descendants(matching: .any)["approvals-empty"])
+        saveScreenshot("approvals-empty")
+
+        openSettings("open-security")
         waitFor(app.switches["biometric-toggle"])
-        saveScreenshot("settings")
+        app.buttons["5 minutes"].firstMatch.tap()
+        app.buttons["1 hour"].firstMatch.tap()
+        saveScreenshot("security")
+        goBack()
+        waitFor(app.staticTexts["1 h"])
+
+        app.buttons["open-devices"].tap()
+        waitFor(app.staticTexts["This iPhone"].exists ? app.staticTexts["This iPhone"] : app.staticTexts["THIS IPHONE"])
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Active now'")).firstMatch.exists)
+        saveScreenshot("devices")
+        goBack()
+
+        app.buttons["open-secret-key"].tap()
+        type(Self.masterPassword, into: app.secureTextFields["secret-key-password"])
+        app.buttons["secret-key-reveal"].tap()
+        let shownSecretKey = app.staticTexts["secret-key-value"]
+        waitFor(shownSecretKey, timeout: 60)
+        XCTAssertEqual(shownSecretKey.label, secretKey)
+        XCTAssertTrue(app.descendants(matching: .any)["share-emergency-kit"].exists)
+        saveScreenshot("secret-key")
+        goBack()
+
         for _ in 0..<5 where !app.buttons["sign-out"].isHittable {
             app.swipeUp()
         }
+        saveScreenshot("settings")
         app.buttons["sign-out"].tap()
-        app.sheets.buttons["Sign out"].firstMatch.tap()
+        confirm("Sign out", excludingIdentifier: "sign-out")
         waitFor(app.textFields["sign-in-server"])
 
         let serverField = app.textFields["sign-in-server"]
