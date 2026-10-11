@@ -8,6 +8,7 @@ import type {
   ImportPreview,
   ImportProgress,
   ItemDetail,
+  LoginItemStatus,
   PasswordConfig,
   ShareInvitations,
   SignUpResult,
@@ -379,6 +380,23 @@ const previewUpdateStatus: UpdateStatus = {
   isAvailable: previewUpdateMode !== "development",
   isSignedIn: previewUpdateMode !== "signed-out",
   isAutomaticCheckEnabled: true,
+};
+
+// loginItem=requires-approval | not-registered | off | development
+const previewLoginItemMode = previewParameter.get("loginItem") ?? "";
+const previewLoginItemStatus: LoginItemStatus = {
+  isAvailable: previewLoginItemMode !== "development",
+  isOpenAtLogin: previewLoginItemMode !== "off" && previewLoginItemMode !== "development",
+  systemState:
+    previewLoginItemMode === "development"
+      ? "unavailable"
+      : previewLoginItemMode === "requires-approval"
+        ? "requires-approval"
+        : previewLoginItemMode === "not-registered" || previewLoginItemMode === "off"
+          ? "not-registered"
+          : "enabled",
+  canOpenSystemSettings: previewLoginItemMode !== "development",
+  errorMessage: "",
 };
 
 // commandLine=not-installed | conflict (a foreign hisar in /opt/homebrew/bin) | path-hint (~/.local/bin, not on the PATH) | development | off
@@ -793,6 +811,13 @@ export const previewApi = {
     previewUpdateStatus.isAutomaticCheckEnabled = isEnabled;
     return resolveAfterDelay({ ...previewUpdateStatus });
   },
+  getLoginItemStatus: () => resolveAfterDelay({ ...previewLoginItemStatus }),
+  setOpenAtLogin: (isEnabled: boolean) => {
+    previewLoginItemStatus.isOpenAtLogin = isEnabled;
+    previewLoginItemStatus.systemState = isEnabled ? "enabled" : "not-registered";
+    return resolveAfterDelay({ ...previewLoginItemStatus });
+  },
+  openLoginItemSettings: () => Promise.resolve(),
   cancelBrowserPairing: () => {
     previewBrowserStatus.pendingPairing = null;
     return Promise.resolve();

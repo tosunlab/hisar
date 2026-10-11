@@ -3,11 +3,13 @@
 
 import * as BrowserBridge from "./browserbridge.js";
 import * as CommandLineService from "./commandlineservice.js";
+import * as LoginItemService from "./loginitemservice.js";
 import * as Service from "./service.js";
 import * as UpdateService from "./updateservice.js";
 export {
     BrowserBridge,
     CommandLineService,
+    LoginItemService,
     Service,
     UpdateService
 };
@@ -25,6 +27,7 @@ export type {
     ItemDetail,
     ItemField,
     ItemPasskey,
+    LoginItemStatus,
     OneTimeCode,
     PairedBrowser,
     PasswordConfig,

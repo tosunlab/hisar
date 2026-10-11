@@ -33,9 +33,10 @@ type appClient struct {
 
 // commandMode is how this run reaches the vaults: through the app (client set) or standalone, and why.
 type commandMode struct {
-	client     *appClient
-	reason     string
-	socketPath string
+	client          *appClient
+	reason          string
+	socketPath      string
+	isAppNotRunning bool
 }
 
 var selectedMode commandMode
@@ -45,8 +46,12 @@ func isStandaloneRequested() bool {
 	return value == "1" || value == "true" || value == "yes"
 }
 
-// chooseMode uses the app when it answers hello; a missing socket, a refused connection or the switch being off fall back.
+// chooseMode uses the app when it answers hello, starting it when nothing listens; the switch being off falls back.
 func chooseMode(isStandaloneForced bool) commandMode {
+	return chooseModeWithLaunch(isStandaloneForced, true)
+}
+
+func chooseModeWithLaunch(isStandaloneForced, isLaunchAllowed bool) commandMode {
 	if isStandaloneForced {
 		return commandMode{reason: "--standalone was given"}
 	}
@@ -57,17 +62,13 @@ func chooseMode(isStandaloneForced bool) commandMode {
 	if err != nil {
 		return commandMode{reason: "the Hisar app's socket could not be found: " + err.Error()}
 	}
-	client, err := dialApp(socketPath)
-	if err != nil {
-		return commandMode{socketPath: socketPath, reason: err.Error()}
-	}
-	return commandMode{client: client, socketPath: socketPath, reason: "the Hisar app answered on " + socketPath}
+	return connectToApp(socketPath, isLaunchAllowed)
 }
 
 func dialApp(socketPath string) (*appClient, error) {
 	connection, err := net.DialTimeout("unix", socketPath, appDialTimeout)
 	if err != nil {
-		return nil, errors.New("the Hisar app is not running, or does not offer " + socketPath)
+		return nil, &appUnreachableError{socketPath: socketPath}
 	}
 	client := &appClient{connection: connection, socketPath: socketPath}
 	if err := client.callWithTimeout(context.Background(), cliprotocol.Request{Type: cliprotocol.TypeHello}, &client.hello, appHelloTimeout); err != nil {

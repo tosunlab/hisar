@@ -47,7 +47,7 @@ func (approver *unlockingApprover) getRequestCount() int {
 func runCommandLineBinary(t *testing.T, binaryPath, socketPath, statePath, input string, allArg ...string) (string, error) {
 	t.Helper()
 	command := exec.Command(binaryPath, allArg...)
-	command.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + os.Getenv("HOME"), cliprotocol.SocketEnvironment + "=" + socketPath, "HISAR_STATE=" + statePath, "HISAR_SECRET_KEY=-"}
+	command.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + os.Getenv("HOME"), cliprotocol.SocketEnvironment + "=" + socketPath, "HISAR_STATE=" + statePath, "HISAR_SECRET_KEY=-", "HISAR_NO_LAUNCH=1"}
 	command.Stdin = strings.NewReader(input)
 	output, err := command.CombinedOutput()
 	return string(output), err

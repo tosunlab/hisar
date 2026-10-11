@@ -48,3 +48,5 @@ for width in 1008 504; do
   render_svg "$LOGO_DIR/hisar-wordmark-on-light.svg" "$PNG_DIR/hisar-wordmark-on-light-$width.png" "$width" "$height"
 done
 render_svg "$LOGO_DIR/hisar-app-icon.svg" "$ROOT/desktop/build/appicon.png" 1024 1024
+render_svg "$LOGO_DIR/hisar-menu-bar.svg" "$ROOT/desktop/build/menu-bar-icon.png" 44 44
+render_svg "$LOGO_DIR/hisar-mark.svg" "$ROOT/desktop/build/tray-icon-linux.png" 64 64

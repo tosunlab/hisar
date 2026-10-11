@@ -79,8 +79,8 @@ func printUsage(output io.Writer) {
 		fmt.Fprintf(output, "  %-18s %-35s %s\n", command.name, command.argumentUsage, command.summary)
 	}
 	fmt.Fprintln(output, `
-hisar uses the Hisar app when it is running and lets the command-line tool use it;
-otherwise it signs in on its own. --standalone or HISAR_STANDALONE=1 always signs in on its own.
+hisar uses the Hisar app when it lets the command-line tool use it, and starts the app when it is
+installed but not running (HISAR_NO_LAUNCH=1 never starts it); otherwise it signs in on its own. --standalone or HISAR_STANDALONE=1 always signs in on its own.
 hisar --version prints the version.`)
 }
 
@@ -126,7 +126,7 @@ func runCommand(ctx context.Context, selected command, isStandaloneForced bool, 
 	if selected.isLocal {
 		return selected.run(ctx, flags, allArg)
 	}
-	selectedMode = chooseMode(isStandaloneForced)
+	selectedMode = chooseModeWithLaunch(isStandaloneForced, selected.runThroughApp != nil)
 	if selectedMode.client == nil {
 		return selected.run(ctx, flags, allArg)
 	}

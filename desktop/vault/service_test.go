@@ -498,9 +498,12 @@ func TestIntegrationDesktopFlow(t *testing.T) {
 	checkBrowserFlow(t, service, personalID)
 	checkRemoteChangeFlow(t, service, serverURL, email, signUpResult.SecretKey, password, personalID)
 
+	allStatusChange := make(chan string, 2)
+	AddStatusListener(service, func() { allStatusChange <- service.GetStatus().State })
 	if status := service.Lock(); status.State != StateLocked {
 		t.Fatalf("lock: %+v", status)
 	}
+	expectStatusChange(t, allStatusChange, StateLocked)
 	if _, err := service.GetItem(personalID, saved.ID); !errors.Is(err, ErrLocked) {
 		t.Errorf("get while locked: %v", err)
 	}
@@ -510,6 +513,7 @@ func TestIntegrationDesktopFlow(t *testing.T) {
 	if status, err := service.Unlock(password); err != nil || status.State != StateUnlocked || status.Name != "Desktop User" {
 		t.Fatalf("unlock: %+v %v", status, err)
 	}
+	expectStatusChange(t, allStatusChange, StateUnlocked)
 
 	if _, err := service.ListAllItem(personalID); err != nil {
 		t.Fatal(err)

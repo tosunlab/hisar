@@ -24,6 +24,12 @@ The server stores only ciphertext. Keys are derived on your devices from your ma
 through the running app, which asks you to approve each terminal with Touch ID; `hisar status` shows whether it uses the app.
 Details: [desktop/README.md](desktop/README.md#command-line-tool).
 
+**Keep the app running.** SSH clients, `git` and commit signing reach Hisar through `~/.hisar/agent.sock`, and they cannot start the
+app themselves: while Hisar is not running they fail at once with "Connection refused" or "Permission denied (publickey)". So the app
+opens at login (Settings → App → **Open Hisar at login**, on by default) and keeps running in the menu bar when you close its window;
+⌘Q or **Quit Hisar** in the menu bar quits it. `hisar` itself starts the app when it is installed but not running, waits up to 10 seconds
+for it, and otherwise says "Hisar isn't running. Open the Hisar app and try again."; `HISAR_NO_LAUNCH=1` turns that off for scripts and CI.
+
 **Anywhere else** (Linux, Windows, servers, or without the app), download the standalone `hisar` from the release of a `v*` tag on
 GitLab (Deploy → Releases, or the generic package `hisar-cli/<version>`): `hisar-<version>-<os>-<arch>.tar.gz` for Linux and macOS,
 `.zip` for Windows, and `SHA256SUMS`. Check the download before you run it, then put `hisar` on your `PATH`:
