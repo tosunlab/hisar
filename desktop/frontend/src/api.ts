@@ -142,15 +142,18 @@ const wailsApi = {
   getSSHAgentStatus: (): Promise<SSHAgentStatus> => AgentService.GetStatus(),
   configureSSHConfig: (): Promise<SSHAgentStatus> => AgentService.ConfigureSSHConfig(),
   removeSSHConfig: (): Promise<SSHAgentStatus> => AgentService.RemoveSSHConfig(),
-  respondSSHApproval: (requestID: string, isAuthorized: boolean, isForAllApplication: boolean): Promise<void> =>
-    AgentService.RespondSSHApproval(requestID, isAuthorized, isForAllApplication),
+  respondSSHApproval: (requestID: string, isAuthorized: boolean, isRemembered: boolean): Promise<void> =>
+    AgentService.RespondSSHApproval(requestID, isAuthorized, isRemembered),
   listAllPendingSSHApproval: async (): Promise<ApprovalEvent[]> => (await AgentService.ListAllPendingSSHApproval()) ?? [],
-  respondApprovalWithPassword: (requestID: string, password: string): Promise<void> => AgentService.RespondApprovalWithPassword(requestID, password),
-  setSSHApprovalForAllApplication: (requestID: string, isForAllApplication: boolean): Promise<void> =>
-    AgentService.SetSSHApprovalForAllApplication(requestID, isForAllApplication),
+  respondApprovalWithPassword: (requestID: string, password: string, isRemembered: boolean): Promise<void> =>
+    AgentService.RespondApprovalWithPassword(requestID, password, isRemembered),
+  setSSHApprovalRemembered: (requestID: string, isRemembered: boolean): Promise<void> => AgentService.SetSSHApprovalRemembered(requestID, isRemembered),
+  setCompactSSHApproval: (isCompact: boolean): Promise<SSHAgentStatus> => AgentService.SetCompactSSHApproval(isCompact),
+  fitSSHApprovalWindow: (isCompact: boolean, height: number): Promise<void> => AgentService.FitSSHApprovalWindow(isCompact, height),
   setApprovalTouchIDFrame: (x: number, y: number, width: number, height: number): Promise<void> =>
     ApprovalTouchIDService.SetApprovalPromptFrame(x, y, width, height),
   clearApprovalTouchIDFrame: (): Promise<void> => ApprovalTouchIDService.ClearApprovalPromptFrame(),
+  cancelApprovalTouchID: (): Promise<void> => ApprovalTouchIDService.CancelApprovalPrompt(),
   getOneTimeCode: (vaultID: string, itemID: string): Promise<OneTimeCode> => Service.GetOneTimeCode(vaultID, itemID),
   copyField: (vaultID: string, itemID: string, fieldName: string): Promise<void> =>
     Service.CopyField(vaultID, itemID, fieldName),

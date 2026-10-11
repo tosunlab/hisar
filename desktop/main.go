@@ -86,6 +86,40 @@ func getLoginShell() string {
 	return "/bin/zsh"
 }
 
+const (
+	fullApprovalWidth     = 480
+	compactApprovalWidth  = 380
+	defaultApprovalHeight = 400
+	compactApprovalHeight = 120
+	compactApprovalMargin = 12
+	menuBarAllowance      = 32
+)
+
+// placeApprovalWindow centers the full dialog, or puts the compact card at the top right like a notification; height 0 keeps a default.
+func placeApprovalWindow(approvalWindow *application.WebviewWindow, isCompact bool, height int) {
+	width := fullApprovalWidth
+	if isCompact {
+		width = compactApprovalWidth
+	}
+	if height <= 0 {
+		height = defaultApprovalHeight
+		if isCompact {
+			height = compactApprovalHeight
+		}
+	}
+	screen, err := approvalWindow.GetScreen()
+	if err == nil && screen != nil && screen.WorkArea.Height > 0 {
+		height = min(height, screen.WorkArea.Height-2*compactApprovalMargin)
+	}
+	approvalWindow.SetSize(width, height)
+	if !isCompact || err != nil || screen == nil {
+		approvalWindow.Center()
+		return
+	}
+	topInset := max(screen.WorkArea.Y-screen.Bounds.Y, menuBarAllowance)
+	approvalWindow.SetRelativePosition(screen.Bounds.Width-width-compactApprovalMargin, topInset+compactApprovalMargin)
+}
+
 func main() {
 	statePath, err := localstate.GetPath("HISAR_DESKTOP_STATE", "desktop.json")
 	if err != nil {
@@ -151,13 +185,20 @@ func main() {
 		}
 		return approvalWindow.NativeWindow()
 	}, biometric.PromptSizeSmall)
+	approvalPreference := vault.CreateApprovalPreference(vaultService)
+	processReader := appinfo.ProcessReader{
+		GetPath:             sshagent.GetProcessPath,
+		GetParentPID:        sshagent.GetParentPID,
+		ListAllArgument:     appinfo.ListAllProcessArgument,
+		GetWorkingDirectory: appinfo.GetProcessWorkingDirectory,
+	}
 	approver := agent.CreateApprover(agent.ApproverConfig{
 		Biometric:       approvalTouchID,
 		CancelBiometric: approvalTouchID.CancelPrompt,
 		Emit:            func(eventName string, data any) { app.Event.Emit(eventName, data) },
-		ShowApprovalWindow: func() {
+		ShowApprovalWindow: func(isCompact bool) {
 			application.InvokeAsync(func() {
-				approvalWindow.Center()
+				placeApprovalWindow(approvalWindow, isCompact, 0)
 				approvalWindow.Show()
 				approvalWindow.Focus()
 			})
@@ -166,19 +207,32 @@ func main() {
 		FindApp: func(pid int) (appinfo.App, bool) {
 			return appinfo.FindApp(pid, sshagent.GetProcessPath, sshagent.GetParentPID)
 		},
-		Unlocker: vault.CreateApprovalUnlocker(vaultService, func() { app.Event.Emit("unlocked", "approval") }),
+		ListAllProcess:    func(pid int) []appinfo.Process { return appinfo.ListAllProcess(pid, processReader) },
+		HomeDirectory:     homeDirectory,
+		IsCompactApproval: approvalPreference.IsCompactSSHApproval,
+		Unlocker:          vault.CreateApprovalUnlocker(vaultService, func() { app.Event.Emit("unlocked", "approval") }),
 	})
-	agentServer = sshagent.CreateServer(vault.CreateSSHKeySource(vaultService), approver, sshagent.SystemPeerResolver{})
+	peerResolver := agent.ApplicationPeerResolver{
+		Base: sshagent.SystemPeerResolver{},
+		FindApplicationPath: func(pid int) (string, bool) {
+			return appinfo.FindAppPath(appinfo.ListAllProcess(pid, appinfo.ProcessReader{GetPath: sshagent.GetProcessPath, GetParentPID: sshagent.GetParentPID}))
+		},
+	}
+	agentServer = sshagent.CreateServer(vault.CreateSSHKeySource(vaultService), approver, peerResolver)
 	agentServer.SetAllKnownHostsPath([]string{filepath.Join(homeDirectory, ".ssh", "known_hosts"), "/etc/ssh/ssh_known_hosts"})
 	socketPath := os.Getenv("HISAR_SSH_AGENT_SOCKET")
 	if socketPath == "" {
 		socketPath = agent.GetDefaultSocketPath(homeDirectory)
 	}
 	agentService := agent.CreateService(agent.Config{
-		HomeDirectory: homeDirectory,
-		SocketPath:    socketPath,
-		Server:        agentServer,
-		Approver:      approver,
+		HomeDirectory:      homeDirectory,
+		SocketPath:         socketPath,
+		Server:             agentServer,
+		Approver:           approver,
+		ApprovalPreference: approvalPreference,
+		FitApprovalWindow: func(isCompact bool, height int) {
+			application.InvokeAsync(func() { placeApprovalWindow(approvalWindow, isCompact, height) })
+		},
 	})
 	agentContext, stopAgent := context.WithCancel(context.Background())
 	agentStopped := make(chan struct{})
@@ -287,14 +341,15 @@ func main() {
 	approvalWindow = app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:                "ssh-approval",
 		Title:               "Hisar Access Requested",
-		Width:               460,
-		Height:              430,
+		Width:               fullApprovalWidth,
+		Height:              defaultApprovalHeight,
 		Hidden:              true,
 		AlwaysOnTop:         true,
 		DisableResize:       true,
 		InitialPosition:     application.WindowCentered,
 		MinimiseButtonState: application.ButtonHidden,
 		MaximiseButtonState: application.ButtonHidden,
+		CloseButtonState:    application.ButtonHidden,
 		Mac: application.MacWindow{
 			InvisibleTitleBarHeight: 36,
 			Backdrop:                application.MacBackdropTranslucent,

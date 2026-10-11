@@ -143,7 +143,7 @@ func TestServiceRespondsToApproval(t *testing.T) {
 	}
 	service.RespondSSHApproval("unknown", false, false)
 	service.RespondSSHApproval(approvalEvent.RequestID, true, true)
-	if result := waitForResult(t, resultChannel); !result.result.IsAllowed || !result.result.IsForAllClient {
+	if result := waitForResult(t, resultChannel); !result.result.IsAllowed || !result.result.IsRemembered {
 		t.Errorf("result = %+v", result)
 	}
 	withoutApprover := CreateService(Config{HomeDirectory: t.TempDir()})

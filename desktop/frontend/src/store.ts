@@ -614,6 +614,10 @@ export async function removeSSHConfig(): Promise<void> {
   await changeSSHConfig(() => api.removeSSHConfig(), "Removed Hisar from the SSH config");
 }
 
+export async function setCompactSSHApproval(isCompact: boolean): Promise<void> {
+  await changeSSHConfig(() => api.setCompactSSHApproval(isCompact), isCompact ? "SSH approvals now show as a compact card" : "SSH approvals now show the full dialog");
+}
+
 export function showBrowserPairing(request: BrowserPairingRequest | null): void {
   store.browserPairing = request;
   loadBrowserStatus();

@@ -250,6 +250,23 @@ describe("Settings SSH agent section", () => {
     expect(wrapper.find('[data-testid="configure-ssh-config"]').exists()).toBe(true);
   });
 
+  it("turns compact SSH approvals on and off", async () => {
+    const wrapper = mount(SettingsPanel);
+    await flushPromises();
+    const compactSwitch = wrapper.find('input[name="compactSSHApproval"]');
+    expect((compactSwitch.element as HTMLInputElement).checked).toBe(false);
+    expect(wrapper.find('[data-testid="ssh-agent-section"]').text()).toContain("Compact SSH approvals");
+    await compactSwitch.setValue(true);
+    await flushPromises();
+    expect(api.setCompactSSHApproval).toHaveBeenCalledWith(true);
+    expect((wrapper.find('input[name="compactSSHApproval"]').element as HTMLInputElement).checked).toBe(true);
+    expect(store.noticeMessage).toBe("SSH approvals now show as a compact card");
+    api.setCompactSSHApproval.mockRejectedValueOnce(new Error("could not save desktop.json"));
+    await wrapper.find('input[name="compactSSHApproval"]').setValue(false);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="ssh-agent-section"] [role="alert"]').text()).toBe("could not save desktop.json");
+  });
+
   it("shows why the agent is not running and the in-app approval note", async () => {
     api.getSSHAgentStatus.mockResolvedValueOnce(
       createSSHAgentStatus({ isRunning: false, errorMessage: "another agent is listening", isTouchIDApproval: false }),

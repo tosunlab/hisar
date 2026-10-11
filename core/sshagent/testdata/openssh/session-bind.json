@@ -1,0 +1,76 @@
+{
+  "openSSHVersion": "OpenSSH_10.3p1, OpenSSL 3.6.2 7 Apr 2026",
+  "hostPublicKey": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIA0F+tjRCySRbdNDFMN0z7b+uMVjZhb4XkKvHf06P4q7 fixture host",
+  "clientPrivateKey": "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAAAMwAAAAtzc2gtZW\nQyNTUxOQAAACAJbuULWc0Izu38jGsVgcnDshx8Tls2XZzjq4B5RAknvAAAAJg6w/Q1OsP0\nNQAAAAtzc2gtZWQyNTUxOQAAACAJbuULWc0Izu38jGsVgcnDshx8Tls2XZzjq4B5RAknvA\nAAAEDr7XCg7Dj5q14+JrDvx4ZmlvB6kyT++1d5Gu19roip/wlu5QtZzQjO7fyMaxWBycOy\nHHxOWzZdnOOrgHlECSe8AAAADmZpeHR1cmUgY2xpZW50AQIDBAUGBw==\n-----END OPENSSH PRIVATE KEY-----\n",
+  "knownHostsName": "[127.0.0.1]:18511",
+  "connections": [
+    {
+      "name": "direct",
+      "messages": [
+        {
+          "kind": "extension",
+          "extensionType": "session-bind@openssh.com",
+          "contents": "AAAAMwAAAAtzc2gtZWQyNTUxOQAAACANBfrY0QskkW3TQxTDdM+2/rjFY2YW+F5Crx39Oj+KuwAAACD++j9OpeMLDwX3k5LyRhhpcqmCZbL2tS8uT6kfTXF7XgAAAFMAAAALc3NoLWVkMjU1MTkAAABAd8vP5m736uo63VVUoUluqzzecxY6pZspsZGQk8E0fDnhWqytSVjncCSccHcDkDkf6js44EVCan+g5VzctjLACAA="
+        },
+        {
+          "kind": "list"
+        },
+        {
+          "kind": "sign",
+          "contents": "AAAAIP76P06l4wsPBfeTkvJGGGlyqYJlsva1Ly5PqR9NcXteMgAAAAVhbHBlcgAAAA5zc2gtY29ubmVjdGlvbgAAACNwdWJsaWNrZXktaG9zdGJvdW5kLXYwMEBvcGVuc3NoLmNvbQEAAAALc3NoLWVkMjU1MTkAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIAlu5QtZzQjO7fyMaxWBycOyHHxOWzZdnOOrgHlECSe8AAAAMwAAAAtzc2gtZWQyNTUxOQAAACANBfrY0QskkW3TQxTDdM+2/rjFY2YW+F5Crx39Oj+Kuw=="
+        }
+      ]
+    },
+    {
+      "name": "forwarded",
+      "messages": [
+        {
+          "kind": "extension",
+          "extensionType": "session-bind@openssh.com",
+          "contents": "AAAAMwAAAAtzc2gtZWQyNTUxOQAAACANBfrY0QskkW3TQxTDdM+2/rjFY2YW+F5Crx39Oj+KuwAAACCsaATXrQbIaLZhp1V7wkT5Z1ceJfMZzqFVTBnl4D1EnQAAAFMAAAALc3NoLWVkMjU1MTkAAABAGV/19he3u6lngmE+cJyFzJGe3dmdPdlC2faPNJafmRiu2XN9a2NtIqMglNb8jCCDcKdDxb48+tSBbvOeDx95DQA="
+        },
+        {
+          "kind": "list"
+        },
+        {
+          "kind": "sign",
+          "contents": "AAAAIKxoBNetBshotmGnVXvCRPlnVx4l8xnOoVVMGeXgPUSdMgAAAAVhbHBlcgAAAA5zc2gtY29ubmVjdGlvbgAAACNwdWJsaWNrZXktaG9zdGJvdW5kLXYwMEBvcGVuc3NoLmNvbQEAAAALc3NoLWVkMjU1MTkAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIAlu5QtZzQjO7fyMaxWBycOyHHxOWzZdnOOrgHlECSe8AAAAMwAAAAtzc2gtZWQyNTUxOQAAACANBfrY0QskkW3TQxTDdM+2/rjFY2YW+F5Crx39Oj+Kuw=="
+        }
+      ]
+    },
+    {
+      "name": "forwarded",
+      "messages": [
+        {
+          "kind": "extension",
+          "extensionType": "session-bind@openssh.com",
+          "contents": "AAAAMwAAAAtzc2gtZWQyNTUxOQAAACANBfrY0QskkW3TQxTDdM+2/rjFY2YW+F5Crx39Oj+KuwAAACCsaATXrQbIaLZhp1V7wkT5Z1ceJfMZzqFVTBnl4D1EnQAAAFMAAAALc3NoLWVkMjU1MTkAAABAGV/19he3u6lngmE+cJyFzJGe3dmdPdlC2faPNJafmRiu2XN9a2NtIqMglNb8jCCDcKdDxb48+tSBbvOeDx95DQE="
+        },
+        {
+          "kind": "extension",
+          "extensionType": "session-bind@openssh.com",
+          "contents": "AAAAMwAAAAtzc2gtZWQyNTUxOQAAACANBfrY0QskkW3TQxTDdM+2/rjFY2YW+F5Crx39Oj+KuwAAACB2IpohIaVkuTtV+/GZ8dFLz9uGMcqcZS5qPFfiScKX4QAAAFMAAAALc3NoLWVkMjU1MTkAAABAnkB9bMGOxfZMQGI55OcG94su//tBq3gvETInulBtAQDu84QLMHzFxhBH+YDpiYnhN+G34/NwAPTaAKWcuLu6AwA="
+        },
+        {
+          "kind": "list"
+        },
+        {
+          "kind": "sign",
+          "contents": "AAAAIHYimiEhpWS5O1X78Znx0UvP24YxypxlLmo8V+JJwpfhMgAAAAVhbHBlcgAAAA5zc2gtY29ubmVjdGlvbgAAACNwdWJsaWNrZXktaG9zdGJvdW5kLXYwMEBvcGVuc3NoLmNvbQEAAAALc3NoLWVkMjU1MTkAAAAzAAAAC3NzaC1lZDI1NTE5AAAAIAlu5QtZzQjO7fyMaxWBycOyHHxOWzZdnOOrgHlECSe8AAAAMwAAAAtzc2gtZWQyNTUxOQAAACANBfrY0QskkW3TQxTDdM+2/rjFY2YW+F5Crx39Oj+Kuw=="
+        }
+      ]
+    },
+    {
+      "name": "commit-signature",
+      "messages": [
+        {
+          "kind": "list"
+        },
+        {
+          "kind": "sign",
+          "contents": "U1NIU0lHAAAAA2dpdAAAAAAAAAAGc2hhNTEyAAAAQAHOvZqilQhRwJKLfBlgkR+CGUHJ+0lDpZtMOFZtFoxdYf/sYmRitrpWGw5EYeMuu8BojWZ1vZgh8/b1ikdWT9s="
+        }
+      ]
+    }
+  ]
+}

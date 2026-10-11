@@ -13,6 +13,7 @@ import {
   loadSSHAgentStatus,
   openImport,
   removeSSHConfig,
+  setCompactSSHApproval,
   revokeDevice,
   saveEmergencyKit,
   setAutoLock,
@@ -385,11 +386,25 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
           <p class="muted">
             {{
               store.sshAgentStatus.isTouchIDApproval
-                ? "Each new program that uses a key asks for Touch ID. Approvals last for an hour, or until Hisar locks."
-                : "Each new program that uses a key asks for your approval in Hisar. Approvals last for an hour, or until Hisar locks."
+                ? "Each use of a key asks for Touch ID, unless you let the app skip asking for an hour. Commit signatures always ask."
+                : "Each use of a key asks for your approval in Hisar, unless you let the app skip asking for an hour. Commit signatures always ask."
             }}
           </p>
         </div>
+        <label v-if="store.sshAgentStatus" class="setting compact-approval">
+          <span class="setting-icon"><AppIcon name="fingerprint" /></span>
+          <div class="setting-text">
+            <strong>Compact SSH approvals</strong>
+            <p class="muted">Ask in a small card at the top right instead of a dialog; click the card for the details. Locked and forwarded requests still use the dialog.</p>
+          </div>
+          <input
+            type="checkbox"
+            name="compactSSHApproval"
+            :checked="store.sshAgentStatus.isCompactApproval"
+            :disabled="store.isBusy"
+            @change="setCompactSSHApproval(($event.target as HTMLInputElement).checked)"
+          />
+        </label>
       </section>
 
       <CommandLineSection />
@@ -417,6 +432,15 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
 </template>
 
 <style scoped>
+.compact-approval {
+  margin-top: 8px;
+  cursor: pointer;
+}
+
+.compact-approval input {
+  width: auto;
+}
+
 .auto-lock {
   flex: none;
   width: auto;

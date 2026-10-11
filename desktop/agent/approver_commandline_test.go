@@ -50,6 +50,16 @@ func (unlocker *fakeUnlocker) UnlockWithPassword(password string) error {
 	return nil
 }
 
+func (unlocker *fakeUnlocker) VerifyPassword(password string) error {
+	unlocker.mutex.Lock()
+	defer unlocker.mutex.Unlock()
+	unlocker.allPassword = append(unlocker.allPassword, password)
+	if password != unlocker.correctPassword {
+		return errors.New("Incorrect master password.")
+	}
+	return nil
+}
+
 func createCommandLineApprover(biometric Biometric, emitter *fakeEmitter, unlocker Unlocker, timeout time.Duration) *Approver {
 	return CreateApprover(ApproverConfig{
 		Biometric: biometric, Emit: emitter.emit, ShowApprovalWindow: emitter.showWindow, HideApprovalWindow: emitter.hideWindow,
@@ -196,14 +206,14 @@ func TestCommandLineApprovalUnlocksWithPassword(t *testing.T) {
 	if failedEvent := waitForFailedEvent(t, emitter); failedEvent.Message != "Enter your master password to unlock Hisar." {
 		t.Errorf("failure without password %q", failedEvent.Message)
 	}
-	if approver.RespondWithPassword(event.RequestID, "") {
+	if approver.RespondWithPassword(event.RequestID, "", false) {
 		t.Error("empty password accepted")
 	}
-	approver.RespondWithPassword(event.RequestID, "wrong password")
+	approver.RespondWithPassword(event.RequestID, "wrong password", false)
 	if failedEvent := waitForFailedEvent(t, emitter); failedEvent.Message != "Incorrect master password." {
 		t.Errorf("failure with a wrong password %q", failedEvent.Message)
 	}
-	approver.RespondWithPassword(event.RequestID, "correct horse battery")
+	approver.RespondWithPassword(event.RequestID, "correct horse battery", false)
 	if err := waitForCommandLineResult(t, resultChannel); err != nil {
 		t.Fatalf("approval: %v", err)
 	}
@@ -212,17 +222,21 @@ func TestCommandLineApprovalUnlocksWithPassword(t *testing.T) {
 	}
 }
 
-func TestRespondWithPasswordIgnoresSSHRequests(t *testing.T) {
+func TestCommandLineApprovalWithPasswordWhileUnlocked(t *testing.T) {
+	biometric := &fakeBiometric{isAvailable: true}
 	emitter := createFakeEmitter()
-	approver := createTestApprover(&fakeBiometric{isAvailable: true}, emitter)
-	resultChannel := startApproval(approver, context.Background(), createTestRequest())
+	unlocker := &fakeUnlocker{correctPassword: "correct horse battery"}
+	approver := createCommandLineApprover(biometric, emitter, unlocker, 0)
+	resultChannel := startCommandLineApproval(approver, context.Background())
 	event := waitForApprovalEvent(t, emitter)
-	if event.Kind != ApprovalKindSSHKey {
-		t.Errorf("SSH event kind %q", event.Kind)
+	approver.RespondWithPassword(event.RequestID, "correct horse battery", true)
+	if err := waitForCommandLineResult(t, resultChannel); err != nil {
+		t.Fatalf("approval: %v", err)
 	}
-	if approver.RespondWithPassword(event.RequestID, "password") {
-		t.Error("a password answered an SSH request")
+	if len(unlocker.allPassword) != 1 || len(biometric.listAllReason()) != 0 {
+		t.Errorf("passwords %v, Touch ID %v", unlocker.allPassword, biometric.listAllReason())
 	}
-	approver.Respond(event.RequestID, false, false)
-	waitForResult(t, resultChannel)
+	if approver.RespondWithPassword("unknown", "correct horse battery", false) {
+		t.Error("a password answered an unknown request")
+	}
 }

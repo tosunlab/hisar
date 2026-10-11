@@ -10,6 +10,13 @@
 // @ts-ignore: Unused imports
 import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wailsio/runtime";
 
+/**
+ * CancelApprovalPrompt stops Touch ID when the user picks the master password instead; the request stays open.
+ */
+export function CancelApprovalPrompt(): $CancellablePromise<void> {
+    return $Call.ByID(2131316177);
+}
+
 export function ClearApprovalPromptFrame(): $CancellablePromise<void> {
     return $Call.ByID(1939886087);
 }

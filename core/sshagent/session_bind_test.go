@@ -137,7 +137,7 @@ func TestSessionBindForwarded(t *testing.T) {
 		}
 	}
 	request := fixture.approver.getLastRequest(t)
-	if !request.IsForwarded || request.DestinationHost != "jump.example" {
+	if !request.IsForwarded || request.ForwardedFromHost != "jump.example" || request.ForwardedFromFingerprint != ssh.FingerprintSHA256(jumpHostSigner.PublicKey()) || request.DestinationFingerprint != "" || request.IsRememberable {
 		t.Errorf("request = %+v", request)
 	}
 	targetSessionID := generateRandomBytes(t, 32)
