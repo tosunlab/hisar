@@ -50,6 +50,8 @@ struct HisarApp: App {
         #if DEBUG
         if let mode = AutoFillPreviewView.readMode() {
             AutoFillPreviewView(mode: mode)
+        } else if let approval = PhoneApprovalPreviewView.readApproval() {
+            PhoneApprovalPreviewView(approval: approval)
         } else {
             RootView()
         }
@@ -60,10 +62,11 @@ struct HisarApp: App {
 
     private func startModel() {
         #if DEBUG
-        guard AutoFillPreviewView.readMode() == nil else { return }
+        guard AutoFillPreviewView.readMode() == nil, PhoneApprovalPreviewView.readApproval() == nil else { return }
         #endif
         guard model.screen == .starting else { return }
         lockEventRelay.setHandler { [weak model] in model?.handleLockedEvent() }
+        lockEventRelay.setApprovalHandler { [weak model] eventName, requestID in model?.handleApprovalEvent(name: eventName, requestID: requestID) }
         let relay = lockEventRelay
         model.start {
             try BackendFactory.createBackend(configuration: .current, isClipboardIncluded: true, eventListener: relay)

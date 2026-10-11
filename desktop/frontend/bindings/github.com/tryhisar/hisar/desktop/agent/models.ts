@@ -33,6 +33,7 @@ export interface ApprovalEvent {
     "terminalName": string;
     "isUnlockRequired": boolean;
     "isPasswordUnlock": boolean;
+    "isPhoneApproval": boolean;
 }
 
 export interface Status {
@@ -44,5 +45,6 @@ export interface Status {
     "configSection": string;
     "isTouchIDApproval": boolean;
     "isCompactApproval": boolean;
+    "isPhoneApproval": boolean;
     "backupPath": string;
 }

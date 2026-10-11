@@ -20,13 +20,16 @@ type Status struct {
 	ConfigSection     string `json:"configSection"`
 	IsTouchIDApproval bool   `json:"isTouchIDApproval"`
 	IsCompactApproval bool   `json:"isCompactApproval"`
+	IsPhoneApproval   bool   `json:"isPhoneApproval"`
 	BackupPath        string `json:"backupPath"`
 }
 
-// ApprovalPreference stores the "Compact SSH approvals" switch.
+// ApprovalPreference stores the "Compact SSH approvals" and "Allow approvals from my iPhone" switches.
 type ApprovalPreference interface {
 	IsCompactSSHApproval() bool
 	SetCompactSSHApproval(isCompact bool) error
+	IsPhoneApproval() bool
+	SetPhoneApproval(isEnabled bool) error
 }
 
 type Config struct {
@@ -98,6 +101,7 @@ func (s *Service) buildStatus() Status {
 	}
 	status.IsTouchIDApproval = s.config.Approver != nil && s.config.Approver.IsTouchIDApproval()
 	status.IsCompactApproval = s.config.ApprovalPreference != nil && s.config.ApprovalPreference.IsCompactSSHApproval()
+	status.IsPhoneApproval = s.config.ApprovalPreference != nil && s.config.ApprovalPreference.IsPhoneApproval()
 	return status
 }
 
@@ -106,6 +110,15 @@ func (s *Service) SetCompactSSHApproval(isCompact bool) (Status, error) {
 		return s.buildStatus(), errors.New("the approval layout cannot be changed here")
 	}
 	err := s.config.ApprovalPreference.SetCompactSSHApproval(isCompact)
+	return s.buildStatus(), err
+}
+
+// SetPhoneApproval turns "Allow approvals from my iPhone" on or off for dialogs that open from now on.
+func (s *Service) SetPhoneApproval(isEnabled bool) (Status, error) {
+	if s.config.ApprovalPreference == nil {
+		return s.buildStatus(), errors.New("phone approvals cannot be changed here")
+	}
+	err := s.config.ApprovalPreference.SetPhoneApproval(isEnabled)
 	return s.buildStatus(), err
 }
 

@@ -14,6 +14,7 @@ import {
   openImport,
   removeSSHConfig,
   setCompactSSHApproval,
+  setPhoneApproval,
   revokeDevice,
   saveEmergencyKit,
   setAutoLock,
@@ -403,6 +404,21 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
             :checked="store.sshAgentStatus.isCompactApproval"
             :disabled="store.isBusy"
             @change="setCompactSSHApproval(($event.target as HTMLInputElement).checked)"
+          />
+        </label>
+        <label v-if="store.sshAgentStatus" class="setting compact-approval">
+          <span class="setting-icon"><AppIcon name="phone" /></span>
+          <div class="setting-text">
+            <strong>Allow approvals from my iPhone</strong>
+            <p class="muted">While Hisar is unlocked here, SSH and command-line requests also appear in Hisar on your iPhone when it is open and unlocked. Approving there never unlocks this Mac.</p>
+          </div>
+          <input
+            type="checkbox"
+            name="phoneApproval"
+            data-testid="phone-approval-switch"
+            :checked="store.sshAgentStatus.isPhoneApproval"
+            :disabled="store.isBusy"
+            @change="setPhoneApproval(($event.target as HTMLInputElement).checked)"
           />
         </label>
       </section>

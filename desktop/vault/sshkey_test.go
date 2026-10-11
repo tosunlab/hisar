@@ -44,6 +44,8 @@ type fakeAPIServer struct {
 	allCompletedVaultKeyByAccount  map[string][]proto.VaultKey
 	isUnreachable                  bool
 	eventChannel                   chan string
+	approvalEventChannel           chan client.Event
+	allApprovalByRequestID         map[string]*fakeApproval
 }
 
 func (server *fakeAPIServer) setUnreachable(isUnreachable bool) {
@@ -131,6 +133,9 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 			http.NotFound(writer, request)
 			return
 		}
+		server.mutex.Lock()
+		approvalEventChannel := server.approvalEventChannel
+		server.mutex.Unlock()
 		writer.Header().Set("Content-Type", "text/event-stream")
 		fmt.Fprint(writer, ": connected\n\n")
 		writer.(http.Flusher).Flush()
@@ -141,11 +146,15 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 			case eventName := <-eventChannel:
 				fmt.Fprintf(writer, "event: %s\ndata: {}\n\n", eventName)
 				writer.(http.Flusher).Flush()
+			case approvalEvent := <-approvalEventChannel:
+				fmt.Fprintf(writer, "event: %s\ndata: %s\n\n", approvalEvent.Name, approvalEvent.Data)
+				writer.(http.Flusher).Flush()
 			}
 		}
 	})
 	server.addAllSharingRoute(mux)
 	server.addAllRecoveryRoute(mux)
+	server.addAllApprovalRoute(mux)
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		server.mutex.Lock()
 		isUnreachable := server.isUnreachable

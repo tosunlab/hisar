@@ -267,6 +267,25 @@ describe("Settings SSH agent section", () => {
     expect(wrapper.find('[data-testid="ssh-agent-section"] [role="alert"]').text()).toBe("could not save desktop.json");
   });
 
+  it("turns approvals from the iPhone off and on", async () => {
+    const wrapper = mount(SettingsPanel);
+    await flushPromises();
+    const phoneSwitch = wrapper.find('[data-testid="phone-approval-switch"]');
+    expect((phoneSwitch.element as HTMLInputElement).checked).toBe(true);
+    expect(wrapper.find('[data-testid="ssh-agent-section"]').text()).toContain("Allow approvals from my iPhone");
+    expect(wrapper.find('[data-testid="ssh-agent-section"]').text()).toContain("never unlocks this Mac");
+    await phoneSwitch.setValue(false);
+    await flushPromises();
+    expect(api.setPhoneApproval).toHaveBeenCalledWith(false);
+    expect((wrapper.find('[data-testid="phone-approval-switch"]').element as HTMLInputElement).checked).toBe(false);
+    expect(store.noticeMessage).toBe("Requests are approved only on this Mac");
+    api.setPhoneApproval.mockResolvedValueOnce(createSSHAgentStatus({ isPhoneApproval: true }));
+    await wrapper.find('[data-testid="phone-approval-switch"]').setValue(true);
+    await flushPromises();
+    expect(api.setPhoneApproval).toHaveBeenLastCalledWith(true);
+    expect(store.noticeMessage).toBe("Your iPhone can now approve requests");
+  });
+
   it("shows why the agent is not running and the in-app approval note", async () => {
     api.getSSHAgentStatus.mockResolvedValueOnce(
       createSSHAgentStatus({ isRunning: false, errorMessage: "another agent is listening", isTouchIDApproval: false }),

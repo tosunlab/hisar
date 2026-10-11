@@ -25,8 +25,17 @@ class FakeBackend: VaultBackend {
     var allMember: [Member] = []
     var allVaultMemberByVaultID: [String: [Member]] = [:]
     var allInvitedEmail: [String] = []
+    var allPendingApproval: [PhoneApproval] = []
+    var allApprovalAnswer: [String] = []
+    private let approvalLock = NSLock()
 
-    private func record(_ name: String) {
+    func withApprovalLock<Value>(_ operation: () throws -> Value) rethrows -> Value {
+        approvalLock.lock()
+        defer { approvalLock.unlock() }
+        return try operation()
+    }
+
+    fileprivate func record(_ name: String) {
         callLock.lock()
         allCallName.append(name)
         callLock.unlock()
@@ -139,7 +148,7 @@ class FakeBackend: VaultBackend {
         allVaultMemberByVaultID[vault.id]?.removeAll { $0.accountID == accountID }
     }
 
-    private func requireUnlocked() throws {
+    fileprivate func requireUnlocked() throws {
         guard status.isUnlocked else {
             throw BackendError(message: status.isSignedIn ? "Hisar is locked" : "Sign in first")
         }
@@ -411,6 +420,45 @@ extension FakeBackend {
         allPasskey.removeAll { $0.credentialID == credentialID }
         replaceItem(vaultID: vaultID, item: item)
         return item
+    }
+}
+
+// Phone approvals: the Mac's requests are seeded; answers are recorded. Listing is not recorded, it runs in the background.
+extension FakeBackend {
+    func listAllPendingApproval() throws -> [PhoneApproval] {
+        try requireUnlocked()
+        return withApprovalLock { allPendingApproval }
+    }
+
+    func approveApproval(requestID: String) throws {
+        record("approveApproval")
+        try requireUnlocked()
+        guard isBiometricAvailable else { throw BackendError(message: "Face ID is not available; approve with your master password") }
+        guard isBiometricSucceeding else { throw BackendError(message: "Face ID was cancelled.") }
+        try answerApproval(requestID: requestID, decision: "approve")
+    }
+
+    func approveApprovalWithPassword(requestID: String, password: String) throws {
+        record("approveApprovalWithPassword")
+        try requireUnlocked()
+        guard password == Self.password else { throw BackendError(message: "Incorrect master password.") }
+        try answerApproval(requestID: requestID, decision: "approve")
+    }
+
+    func denyApproval(requestID: String) throws {
+        record("denyApproval")
+        try requireUnlocked()
+        try answerApproval(requestID: requestID, decision: "deny")
+    }
+
+    private func answerApproval(requestID: String, decision: String) throws {
+        try withApprovalLock {
+            guard allPendingApproval.contains(where: { $0.requestID == requestID }) else {
+                throw BackendError(message: "This request is no longer waiting for an answer")
+            }
+            allPendingApproval.removeAll { $0.requestID == requestID }
+            allApprovalAnswer.append("\(decision) \(requestID)")
+        }
     }
 }
 

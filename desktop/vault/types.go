@@ -199,6 +199,8 @@ type Config struct {
 	OnLock func()
 	// OnRemoteChange runs after the backend synced a change another device made; the UI refreshes.
 	OnRemoteChange func()
+	// OnApprovalEvent hears approval-requested, approval-answered and approval-resolved; the iOS app lists phone approvals on them.
+	OnApprovalEvent func(eventName, requestID string)
 	// IsEventStreamDisabled skips the server's event stream, e.g. in tests whose fake server has none.
 	IsEventStreamDisabled bool
 	// FileSaver asks where to save a file; it returns "" when the user cancels.

@@ -218,4 +218,20 @@ final class HisarKitBackend: VaultBackend {
     func deletePasskey(vaultID: String, itemID: String, credentialID: String) throws -> ItemDetail {
         try decode(ItemDetail.self, from: callReturningText { hisar.deletePasskey(vaultID, itemID: itemID, credentialID: credentialID, error: $0) })
     }
+
+    func listAllPendingApproval() throws -> [PhoneApproval] {
+        try decode([PhoneApproval]?.self, from: callReturningText { hisar.listAllPendingApproval($0) }) ?? []
+    }
+
+    func approveApproval(requestID: String) throws {
+        try callReturningNothing { try hisar.approveApproval(requestID) }
+    }
+
+    func approveApprovalWithPassword(requestID: String, password: String) throws {
+        try callReturningNothing { try hisar.approveApproval(withPassword: requestID, password: password) }
+    }
+
+    func denyApproval(requestID: String) throws {
+        try callReturningNothing { try hisar.denyApproval(requestID) }
+    }
 }

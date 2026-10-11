@@ -42,6 +42,12 @@ and reading the invite link, the privacy cover, Face ID (the test enrolls a face
 simulator's "matching face" notification), the AutoFill screens, and passkeys: register a passkey into a login, sign in
 with it, check the attestation and the ES256 signature with CryptoKit, then see and delete it in the item.
 
+**Approving the Mac's requests.** The approval sheet (a Mac's SSH or command-line request, approved with Face ID or
+the master password, or denied) is driven through a debug-only preview with a made-up request: launch with
+`-HisarApprovalPreview ssh` (or `cli`, `forwarded`, `signing`), plus `-HisarApprovalPreviewPassword` to act as if Face ID
+were unavailable. The simulator cannot run the Mac side; `TestIntegrationPhoneApproval` in `mobile/hisarkit` runs the
+whole flow between a desktop backend and a HisarKit backend in `make test-end-to-end`.
+
 **AutoFill in the simulator.** A simulator build without a development team ("Sign to Run Locally") is registered
 (`pluginkit` lists the extension), but iOS 26.4 does not list it in Settings → General → AutoFill & Passwords, and
 `ASSettingsHelper.requestToTurnOnCredentialProviderExtension()` fails without showing its prompt. Turning it on with

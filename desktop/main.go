@@ -211,6 +211,7 @@ func main() {
 		HomeDirectory:     homeDirectory,
 		IsCompactApproval: approvalPreference.IsCompactSSHApproval,
 		Unlocker:          vault.CreateApprovalUnlocker(vaultService, func() { app.Event.Emit("unlocked", "approval") }),
+		PhoneApprover:     vault.CreatePhoneApprover(vaultService),
 	})
 	peerResolver := agent.ApplicationPeerResolver{
 		Base: sshagent.SystemPeerResolver{},

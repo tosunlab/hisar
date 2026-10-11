@@ -134,4 +134,8 @@ expect "hisar through the desktop app backend" "$COMMAND_LINE_RESULT" "--- PASS:
 MOBILE_INVITE=$("$BIN/hisar-server" invite --email mobile@example.com </dev/null | tail -1)
 MOBILE_RESULT=$(HISAR_TEST_MOBILE_INVITE_LINK="$MOBILE_INVITE" go -C "$ROOT/mobile" test -count=1 -v -run TestIntegrationMobileFlow ./hisarkit/ 2>&1 || true)
 expect "iOS app backend against the server" "$MOBILE_RESULT" "--- PASS: TestIntegrationMobileFlow"
+
+PHONE_APPROVAL_INVITE=$("$BIN/hisar-server" invite --email phone-approval@example.com </dev/null | tail -1)
+PHONE_APPROVAL_RESULT=$(HISAR_TEST_PHONE_APPROVAL_INVITE_LINK="$PHONE_APPROVAL_INVITE" go -C "$ROOT/mobile" test -count=1 -v -run TestIntegrationPhoneApproval ./hisarkit/ 2>&1 || true)
+expect "the iPhone approves and denies the Mac's SSH requests, and a forged answer is refused" "$PHONE_APPROVAL_RESULT" "--- PASS: TestIntegrationPhoneApproval"
 echo "end-to-end test passed"

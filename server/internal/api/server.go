@@ -53,6 +53,7 @@ type Server struct {
 	limiter             *ipLimiter
 	updateLimiter       *ipLimiter
 	events              *eventBroker
+	approvals           *approvalRelay
 }
 
 func CreateServer(database *store.Store, secrets *Secrets, config Config) (*Server, error) {
@@ -96,6 +97,7 @@ func CreateServer(database *store.Store, secrets *Secrets, config Config) (*Serv
 		limiter:             createIPLimiter(rate.Every(6*time.Second), config.AuthBurst),
 		updateLimiter:       createIPLimiter(rate.Every(10*time.Second), 20),
 		events:              createEventBroker(),
+		approvals:           createApprovalRelay(),
 	}, nil
 }
 
@@ -143,6 +145,12 @@ func (s *Server) CreateApp() *fiber.App {
 	apiGroup.Get("/vaults/:vault/items/:item/history", s.requireSession, s.handleGetItemHistory)
 	apiGroup.Put("/vaults/:vault/recovery", s.requireSession, s.handleSetVaultRecovery)
 	apiGroup.Delete("/vaults/:vault/recovery", s.requireSession, s.handleRemoveVaultRecovery)
+
+	apiGroup.Post("/approvals", s.requireSession, s.limitApprovalRate, s.handleCreateApproval)
+	apiGroup.Get("/approvals", s.requireSession, s.limitApprovalRate, s.handleListAllPendingApproval)
+	apiGroup.Get("/approvals/:id", s.requireSession, s.limitApprovalRate, s.handleGetApproval)
+	apiGroup.Post("/approvals/:id/answer", s.requireSession, s.limitApprovalRate, s.handleAnswerApproval)
+	apiGroup.Delete("/approvals/:id", s.requireSession, s.limitApprovalRate, s.handleResolveApproval)
 
 	apiGroup.Get("/recovery/keyset", s.requireSession, s.handleGetRecoveryKeyset)
 	apiGroup.Post("/recovery/keyset", s.requireSession, s.requireAdmin, s.handleCreateRecoveryKeyset)

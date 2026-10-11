@@ -35,6 +35,10 @@ protocol VaultBackend: AnyObject {
     func createPasskey(_ request: PasskeyRegistrationRequest, vaultID: String, itemID: String) throws -> PasskeyRegistrationResult
     func assertPasskey(relyingPartyID: String, credentialID: Data, clientDataHash: Data) throws -> PasskeyAssertionResult
     func deletePasskey(vaultID: String, itemID: String, credentialID: String) throws -> ItemDetail
+    func listAllPendingApproval() throws -> [PhoneApproval]
+    func approveApproval(requestID: String) throws
+    func approveApprovalWithPassword(requestID: String, password: String) throws
+    func denyApproval(requestID: String) throws
 }
 
 struct BackendError: LocalizedError, Equatable {

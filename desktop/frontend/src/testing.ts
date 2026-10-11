@@ -50,6 +50,7 @@ export function createSSHAgentStatus(overrides: Partial<SSHAgentStatus> = {}): S
     configSection: '# Added by Hisar: use the Hisar SSH agent\nHost *\n  IdentityAgent "~/.hisar/agent.sock"\n# End of Hisar section\n',
     isTouchIDApproval: true,
     isCompactApproval: false,
+    isPhoneApproval: true,
     backupPath: "",
     ...overrides,
   };
@@ -83,6 +84,7 @@ export function createApprovalEvent(overrides: Partial<ApprovalEvent> = {}): App
     isRememberable: true,
     isCompact: false,
     isTouchIDApproval: true,
+    isPhoneApproval: false,
     timeoutAt: "2026-10-09T12:01:00Z",
     ...overrides,
   };
@@ -275,6 +277,7 @@ export function createApiMock() {
     clearTouchIDPromptFrame: vi.fn().mockResolvedValue(undefined),
     setSSHApprovalRemembered: vi.fn().mockResolvedValue(undefined),
     setCompactSSHApproval: vi.fn().mockResolvedValue(createSSHAgentStatus({ isCompactApproval: true })),
+    setPhoneApproval: vi.fn().mockResolvedValue(createSSHAgentStatus({ isPhoneApproval: false })),
     fitSSHApprovalWindow: vi.fn().mockResolvedValue(undefined),
     cancelApprovalTouchID: vi.fn().mockResolvedValue(undefined),
     setApprovalTouchIDFrame: vi.fn().mockResolvedValue(undefined),

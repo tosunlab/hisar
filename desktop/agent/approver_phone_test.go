@@ -1,0 +1,271 @@
+package agent
+
+import (
+	"context"
+	"errors"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/tryhisar/hisar/core/approval"
+	"github.com/tryhisar/hisar/desktop/appinfo"
+)
+
+// fakePhone stands in for the vault backend and the iPhone: the test decides when the phone answers.
+type fakePhone struct {
+	mutex          sync.Mutex
+	isAvailable    bool
+	allDescription []approval.Description
+	allDecide      []func(isApproved bool)
+	finishCount    int
+	startedChannel chan struct{}
+}
+
+func createFakePhone() *fakePhone {
+	return &fakePhone{isAvailable: true, startedChannel: make(chan struct{}, 10)}
+}
+
+func (phone *fakePhone) IsPhoneApprovalAvailable() bool {
+	phone.mutex.Lock()
+	defer phone.mutex.Unlock()
+	return phone.isAvailable
+}
+
+func (phone *fakePhone) StartPhoneApproval(description approval.Description, decide func(isApproved bool)) func() {
+	phone.mutex.Lock()
+	phone.allDescription = append(phone.allDescription, description)
+	phone.allDecide = append(phone.allDecide, decide)
+	phone.mutex.Unlock()
+	phone.startedChannel <- struct{}{}
+	return func() {
+		phone.mutex.Lock()
+		defer phone.mutex.Unlock()
+		phone.finishCount++
+	}
+}
+
+func (phone *fakePhone) waitForStart(t *testing.T) approval.Description {
+	t.Helper()
+	select {
+	case <-phone.startedChannel:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the request never reached the phone")
+	}
+	phone.mutex.Lock()
+	defer phone.mutex.Unlock()
+	return phone.allDescription[len(phone.allDescription)-1]
+}
+
+func (phone *fakePhone) answer(isApproved bool) {
+	phone.mutex.Lock()
+	decide := phone.allDecide[len(phone.allDecide)-1]
+	phone.mutex.Unlock()
+	decide(isApproved)
+}
+
+func (phone *fakePhone) getStartAndFinishCount() (int, int) {
+	phone.mutex.Lock()
+	defer phone.mutex.Unlock()
+	return len(phone.allDecide), phone.finishCount
+}
+
+func createPhoneApprover(emitter *fakeEmitter, phone *fakePhone, biometric Biometric, unlocker Unlocker, allProcess []appinfo.Process) *Approver {
+	config := ApproverConfig{
+		Biometric: biometric, Emit: emitter.emit, ShowApprovalWindow: emitter.showWindow, HideApprovalWindow: emitter.hideWindow,
+		FindApp: func(pid int) (appinfo.App, bool) {
+			return appinfo.App{Name: "Terminal", Path: "/System/Applications/Utilities/Terminal.app"}, true
+		},
+		ListAllProcess: func(int) []appinfo.Process { return allProcess },
+		HomeDirectory:  testHomeDirectory,
+		PhoneApprover:  phone,
+		Timeout:        5 * time.Second,
+	}
+	if unlocker != nil {
+		config.Unlocker = unlocker
+	}
+	return CreateApprover(config)
+}
+
+func TestPhoneApprovesTheDialog(t *testing.T) {
+	emitter := createFakeEmitter()
+	phone := createFakePhone()
+	biometric := &fakeBiometric{isAvailable: true}
+	approver := createPhoneApprover(emitter, phone, biometric, nil, createPushChain())
+	resultChannel := startApproval(approver, context.Background(), createTestRequest())
+	event := waitForApprovalEvent(t, emitter)
+	if !event.IsPhoneApproval {
+		t.Errorf("the dialog does not offer the phone: %+v", event)
+	}
+	description := phone.waitForStart(t)
+	want := approval.Description{
+		Kind: approval.KindSSH, AppName: "Terminal", Purpose: "push to git.tryhisar.com", Host: "git.tryhisar.com:22",
+		CommandLine: "git push origin main", RepositoryPath: "~/src/core", KeyName: "Laptop",
+	}
+	if description != want {
+		t.Errorf("phone request = %+v", description)
+	}
+	phone.answer(true)
+	result := waitForResult(t, resultChannel)
+	if !result.result.IsAllowed || !result.result.IsRemembered {
+		t.Errorf("result = %+v", result)
+	}
+	if allReason := biometric.listAllReason(); len(allReason) != 0 {
+		t.Errorf("Touch ID asked after the phone approved: %q", allReason)
+	}
+	if startCount, finishCount := phone.getStartAndFinishCount(); startCount != 1 || finishCount != 1 {
+		t.Errorf("phone requests started %d, finished %d", startCount, finishCount)
+	}
+	phone.answer(true)
+
+	resultChannel = startApproval(approver, context.Background(), createTestRequest())
+	event = waitForApprovalEvent(t, emitter)
+	phone.waitForStart(t)
+	approver.SetRemembered(event.RequestID, false)
+	phone.answer(true)
+	if result := waitForResult(t, resultChannel); !result.result.IsAllowed || result.result.IsRemembered {
+		t.Errorf("the unchecked box was ignored: %+v", result)
+	}
+}
+
+func TestPhoneDeniesTheDialog(t *testing.T) {
+	emitter := createFakeEmitter()
+	phone := createFakePhone()
+	approver := createPhoneApprover(emitter, phone, &fakeBiometric{isAvailable: true}, nil, createPushChain())
+	resultChannel := startApproval(approver, context.Background(), createTestRequest())
+	waitForApprovalEvent(t, emitter)
+	phone.waitForStart(t)
+	phone.answer(false)
+	if result := waitForResult(t, resultChannel); result.result.IsAllowed {
+		t.Errorf("a phone's Deny allowed the request: %+v", result)
+	}
+	if _, finishCount := phone.getStartAndFinishCount(); finishCount != 1 {
+		t.Errorf("the phone request was not withdrawn")
+	}
+}
+
+func TestPhoneAnswerCancelsTouchIDInProgress(t *testing.T) {
+	for _, isApproved := range []bool{true, false} {
+		emitter := createFakeEmitter()
+		phone := createFakePhone()
+		biometric := createWaitingBiometric()
+		approver := createPhoneApprover(emitter, phone, biometric, nil, createPushChain())
+		cancelCount := 0
+		approver.config.CancelBiometric = func() {
+			cancelCount++
+			biometric.resultChannel <- errors.New("Touch ID was cancelled")
+		}
+		resultChannel := startApproval(approver, context.Background(), createTestRequest())
+		event := waitForApprovalEvent(t, emitter)
+		phone.waitForStart(t)
+		approver.Respond(event.RequestID, true, true)
+		biometric.waitForStart(t)
+		phone.answer(isApproved)
+		if result := waitForResult(t, resultChannel); result.result.IsAllowed != isApproved {
+			t.Errorf("phone answered %v while Touch ID waited: %+v", isApproved, result)
+		}
+		if cancelCount != 1 {
+			t.Errorf("Touch ID was cancelled %d times", cancelCount)
+		}
+		for _, eventName := range emitter.listAllEventName() {
+			if eventName == ApprovalFailedEventName {
+				t.Error("the cancelled Touch ID check was shown as a failure")
+			}
+		}
+	}
+}
+
+func TestPhoneIsNotAskedWhenLockedOrUnavailable(t *testing.T) {
+	emitter := createFakeEmitter()
+	phone := createFakePhone()
+	unlocker := &fakeUnlocker{isLocked: true, correctPassword: "master password"}
+	approver := createPhoneApprover(emitter, phone, &fakeBiometric{isAvailable: false}, unlocker, createPushChain())
+	resultChannel := startApproval(approver, context.Background(), createTestRequest())
+	event := waitForApprovalEvent(t, emitter)
+	if event.IsPhoneApproval || !event.IsUnlockRequired {
+		t.Errorf("a locked Mac offered the phone: %+v", event)
+	}
+	approver.Respond(event.RequestID, false, false)
+	waitForResult(t, resultChannel)
+
+	unlocker.isLocked = false
+	phone.isAvailable = false
+	resultChannel = startApproval(approver, context.Background(), createTestRequest())
+	event = waitForApprovalEvent(t, emitter)
+	if event.IsPhoneApproval {
+		t.Errorf("the dialog offers an unavailable phone: %+v", event)
+	}
+	approver.Respond(event.RequestID, false, false)
+	waitForResult(t, resultChannel)
+	if startCount, _ := phone.getStartAndFinishCount(); startCount != 0 {
+		t.Errorf("the phone was asked %d times", startCount)
+	}
+}
+
+func TestPhoneApprovalOfForwardedAndSigningRequestsIsOnce(t *testing.T) {
+	emitter := createFakeEmitter()
+	phone := createFakePhone()
+	approver := createPhoneApprover(emitter, phone, &fakeBiometric{isAvailable: true}, nil, createSigningChain())
+	request := createTestRequest()
+	request.SignatureNamespace, request.DestinationHost, request.DestinationFingerprint = "git", "", ""
+	resultChannel := startApproval(approver, context.Background(), request)
+	waitForApprovalEvent(t, emitter)
+	if description := phone.waitForStart(t); description.Purpose != "sign a commit" {
+		t.Errorf("signing request on the phone = %+v", description)
+	}
+	phone.answer(true)
+	if result := waitForResult(t, resultChannel); !result.result.IsAllowed || result.result.IsRemembered {
+		t.Errorf("a commit signature approved on the phone was remembered: %+v", result)
+	}
+
+	forwardedApprover := createPhoneApprover(emitter, phone, &fakeBiometric{isAvailable: true}, nil, append([]appinfo.Process{createSSHProcess("-A", "build.example.com")}, createShellAndTerminal()...))
+	forwarded := createTestRequest()
+	forwarded.IsForwarded, forwarded.ForwardedFromHost = true, "build.example.com"
+	resultChannel = startApproval(forwardedApprover, context.Background(), forwarded)
+	waitForApprovalEvent(t, emitter)
+	if description := phone.waitForStart(t); !description.IsForwarded || description.ForwardedFromHost != "build.example.com" {
+		t.Errorf("forwarded request on the phone = %+v", description)
+	}
+	phone.answer(true)
+	if result := waitForResult(t, resultChannel); !result.result.IsAllowed || result.result.IsRemembered {
+		t.Errorf("a forwarded request approved on the phone was remembered: %+v", result)
+	}
+}
+
+func TestPhoneApprovesCommandLine(t *testing.T) {
+	emitter := createFakeEmitter()
+	phone := createFakePhone()
+	approver := CreateApprover(ApproverConfig{
+		Biometric: &fakeBiometric{isAvailable: true}, Emit: emitter.emit, ShowApprovalWindow: emitter.showWindow, HideApprovalWindow: emitter.hideWindow,
+		FindApp:       func(pid int) (appinfo.App, bool) { return appinfo.App{Name: "Terminal"}, true },
+		PhoneApprover: phone,
+		Timeout:       5 * time.Second,
+	})
+	resultChannel := startCommandLineApproval(approver, context.Background())
+	waitForApprovalEvent(t, emitter)
+	description := phone.waitForStart(t)
+	want := approval.Description{Kind: approval.KindCommandLine, AppName: "hisar in Terminal", Purpose: "use Hisar", CommandLine: "/Applications/Hisar.app/Contents/Helpers/hisar", TerminalName: "ttys003"}
+	if description != want {
+		t.Errorf("command-line request on the phone = %+v", description)
+	}
+	phone.answer(true)
+	if err := waitForCommandLineResult(t, resultChannel); err != nil {
+		t.Errorf("approved on the phone: %v", err)
+	}
+}
+
+func TestLatePhoneAnswerIsIgnored(t *testing.T) {
+	emitter := createFakeEmitter()
+	phone := createFakePhone()
+	approver := createPhoneApprover(emitter, phone, &fakeBiometric{isAvailable: true}, nil, createPushChain())
+	resultChannel := startApproval(approver, context.Background(), createTestRequest())
+	event := waitForApprovalEvent(t, emitter)
+	phone.waitForStart(t)
+	approver.Respond(event.RequestID, false, false)
+	if result := waitForResult(t, resultChannel); result.result.IsAllowed {
+		t.Fatal("Deny on the Mac was overruled")
+	}
+	phone.answer(true)
+	if allPending := approver.ListAllPendingApproval(); len(allPending) != 0 {
+		t.Errorf("pending after a late answer: %+v", allPending)
+	}
+}

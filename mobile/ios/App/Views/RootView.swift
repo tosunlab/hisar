@@ -27,6 +27,18 @@ struct RootView: View {
             }
         }
         .animation(.easeOut(duration: 0.2), value: model.noticeMessage)
+        .sheet(item: Binding(get: { model.screen == .unlocked && model.newSecretKey == nil ? model.pendingApproval : nil }, set: { _ in })) { approval in
+            PhoneApprovalSheet(
+                approval: approval,
+                isBusy: model.isAnsweringApproval,
+                isPasswordRequired: model.isApprovalPasswordRequired,
+                errorMessage: model.approvalErrorMessage,
+                approve: { await model.approvePendingApproval() },
+                approveWithPassword: { await model.approvePendingApproval(password: $0) },
+                deny: { await model.denyPendingApproval() }
+            )
+            .preferredColorScheme(.dark)
+        }
         .fullScreenCover(isPresented: Binding(get: { model.newSecretKey != nil }, set: { if !$0 { model.dismissNewSecretKey() } })) {
             NewSecretKeyView(secretKey: model.newSecretKey ?? "", email: model.status.email, server: model.status.server) {
                 model.dismissNewSecretKey()

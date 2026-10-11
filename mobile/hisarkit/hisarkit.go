@@ -37,13 +37,16 @@ type Clipboard interface {
 	GetText() string
 }
 
-// EventListener hears about locks the app did not ask for, e.g. auto-lock.
+// EventListener hears about locks the app did not ask for, e.g. auto-lock, and about phone approvals:
+// eventName is approval-requested, approval-answered or approval-resolved.
 type EventListener interface {
 	OnLocked()
+	OnApprovalEvent(eventName, requestID string)
 }
 
 type Hisar struct {
-	service *vault.Service
+	service   *vault.Service
+	biometric Biometric
 }
 
 // New opens the state and offline cache in stateDirectory (the app group container, so the AutoFill extension shares it).
@@ -68,12 +71,13 @@ func New(stateDirectory, deviceName string, secretKeyStore SecretKeyStore, biome
 	}
 	if listener != nil {
 		config.LockNotifier = lockNotifierAdapter{listener: listener}
+		config.OnApprovalEvent = listener.OnApprovalEvent
 	}
 	service, err := vault.CreateService(config)
 	if err != nil {
 		return nil, err
 	}
-	return &Hisar{service: service}, nil
+	return &Hisar{service: service, biometric: biometric}, nil
 }
 
 type secretKeyStoreAdapter struct {

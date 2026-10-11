@@ -618,6 +618,10 @@ export async function setCompactSSHApproval(isCompact: boolean): Promise<void> {
   await changeSSHConfig(() => api.setCompactSSHApproval(isCompact), isCompact ? "SSH approvals now show as a compact card" : "SSH approvals now show the full dialog");
 }
 
+export async function setPhoneApproval(isEnabled: boolean): Promise<void> {
+  await changeSSHConfig(() => api.setPhoneApproval(isEnabled), isEnabled ? "Your iPhone can now approve requests" : "Requests are approved only on this Mac");
+}
+
 export function showBrowserPairing(request: BrowserPairingRequest | null): void {
   store.browserPairing = request;
   loadBrowserStatus();
