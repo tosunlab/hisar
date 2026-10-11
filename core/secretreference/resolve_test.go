@@ -151,6 +151,13 @@ func TestLocateLeavesOutTheValue(t *testing.T) {
 	}
 }
 
+func TestResolvedNamesTheVaultAndItemIDs(t *testing.T) {
+	resolved, err := Locate(createTestSource(), "hisar://Personal/GitHub/api%20token")
+	if err != nil || resolved.VaultID != "vault-personal" || resolved.ItemID != "item-github" || resolved.FieldLabel != "API token" {
+		t.Errorf("located %+v %v", resolved, err)
+	}
+}
+
 func TestBuiltInFieldWinsOverCustomField(t *testing.T) {
 	vaultItem := createTestSource().allItemByVault["vault-personal"][0]
 	value, label, err := ReadField(&vaultItem, "Password", time.Now())

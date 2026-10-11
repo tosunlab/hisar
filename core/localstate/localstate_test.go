@@ -64,6 +64,33 @@ func TestStateRoundtrip(t *testing.T) {
 	}
 }
 
+func TestAgentVaultsAreOffByDefaultAndClearedAtSignOut(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "desktop.json")
+	state, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(state.AllAgentVaultID) != 0 {
+		t.Fatalf("a new state makes vaults available to agents: %q", state.AllAgentVaultID)
+	}
+	state.AllAgentVaultID = []string{"vault-personal"}
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+	encodedState, _ := os.ReadFile(path)
+	if !strings.Contains(string(encodedState), `"agentVaults": [`) {
+		t.Errorf("saved state: %s", encodedState)
+	}
+	reloadedState, err := Load(path)
+	if err != nil || len(reloadedState.AllAgentVaultID) != 1 || reloadedState.AllAgentVaultID[0] != "vault-personal" {
+		t.Fatalf("reloaded: %q %v", reloadedState.AllAgentVaultID, err)
+	}
+	reloadedState.Reset()
+	if len(reloadedState.AllAgentVaultID) != 0 {
+		t.Errorf("sign-out keeps the agent vaults: %q", reloadedState.AllAgentVaultID)
+	}
+}
+
 func TestResetKeepsOpenAtLoginPreference(t *testing.T) {
 	state, err := Load(filepath.Join(t.TempDir(), "desktop.json"))
 	if err != nil {

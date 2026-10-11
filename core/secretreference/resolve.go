@@ -60,6 +60,8 @@ func (resolveError *Error) Error() string {
 
 type Resolved struct {
 	Reference  Reference
+	VaultID    string
+	ItemID     string
 	VaultName  string
 	ItemTitle  string
 	FieldLabel string
@@ -145,7 +147,7 @@ func (state *resolver) resolve(text string, now time.Time) (Resolved, error) {
 	if err != nil {
 		return Resolved{}, &Error{Reference: text, Reason: err.Error()}
 	}
-	return Resolved{Reference: reference, VaultName: vault.Name, ItemTitle: vaultItem.Overview.Title, FieldLabel: label, Value: value}, nil
+	return Resolved{Reference: reference, VaultID: vault.ID, ItemID: vaultItem.ID, VaultName: vault.Name, ItemTitle: vaultItem.Overview.Title, FieldLabel: label, Value: value}, nil
 }
 
 func findVault(allVault []Vault, query string) (Vault, error) {

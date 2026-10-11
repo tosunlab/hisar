@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"sync/atomic"
 
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/secretreference"
@@ -28,22 +29,28 @@ type SecretDescriber interface {
 }
 
 type ServerConfig struct {
-	Handler      Handler
-	Approver     Approver
-	PeerResolver PeerResolver
-	Approvals    *SessionApprovals
+	Handler  Handler
+	Approver Approver
+	// AgentApprover asks about the requests of hisar mcp; nil denies them.
+	AgentApprover AgentApprover
+	PeerResolver  PeerResolver
+	Approvals     *SessionApprovals
 	// IsEnabled follows the "Let the command-line tool use Hisar" switch.
 	IsEnabled func() bool
 	UID       int
 }
 
 type Server struct {
-	config ServerConfig
+	config           ServerConfig
+	lastConnectionID atomic.Uint64
 }
 
+// connectionPeer is one connection; agent is set once it sent agent.hello.
 type connectionPeer struct {
-	peer    Peer
-	session TerminalSession
+	peer         Peer
+	session      TerminalSession
+	connectionID uint64
+	agent        *AgentIdentity
 }
 
 func CreateServer(config ServerConfig) *Server {
@@ -116,6 +123,8 @@ func (s *Server) ServeConnection(ctx context.Context, connection net.Conn) {
 	if !isAllowed {
 		return
 	}
+	client.connectionID = s.lastConnectionID.Add(1)
+	defer s.config.Approvals.ForgetAgentConnection(client.connectionID)
 	reader := sshagent.WatchConnectionClose(connection, cancel)
 	for {
 		message, err := cliprotocol.ReadMessage(reader)
@@ -125,14 +134,14 @@ func (s *Server) ServeConnection(ctx context.Context, connection net.Conn) {
 			}
 			return
 		}
-		response := s.answerMessage(connectionContext, client, message)
+		response := s.answerMessage(connectionContext, &client, message)
 		if err := cliprotocol.WriteJSON(connection, response); err != nil {
 			return
 		}
 	}
 }
 
-func (s *Server) answerMessage(ctx context.Context, client connectionPeer, message []byte) cliprotocol.Response {
+func (s *Server) answerMessage(ctx context.Context, client *connectionPeer, message []byte) cliprotocol.Response {
 	var request cliprotocol.Request
 	if err := json.Unmarshal(message, &request); err != nil || request.ID == "" || request.Type == "" {
 		return buildErrorResponse(request.ID, cliprotocol.CreateError(cliprotocol.ErrorInvalidRequest, "the request is not valid"))
@@ -159,18 +168,34 @@ func buildErrorResponse(requestID string, err error) cliprotocol.Response {
 	return cliprotocol.Response{ID: requestID, Error: responseError}
 }
 
-func (s *Server) answerRequest(ctx context.Context, client connectionPeer, request *cliprotocol.Request) (any, error) {
+func (s *Server) answerRequest(ctx context.Context, client *connectionPeer, request *cliprotocol.Request) (any, error) {
 	if !s.config.IsEnabled() {
 		return nil, cliprotocol.CreateError(cliprotocol.ErrorIntegrationDisabled, "the Hisar app does not let the command-line tool use it")
 	}
 	hello := s.config.Handler.GetHello()
 	if request.Type == cliprotocol.TypeHello {
 		hello.ProtocolVersion = cliprotocol.ProtocolVersion
-		hello.IsApproved = hello.State == cliprotocol.StateUnlocked && s.config.Approvals.IsApproved(client.session)
+		if client.agent != nil {
+			hello.IsApproved = hello.State == cliprotocol.StateUnlocked && s.config.Approvals.IsAgentConnectionApproved(client.connectionID)
+		} else {
+			hello.IsApproved = hello.State == cliprotocol.StateUnlocked && s.config.Approvals.IsApproved(client.session)
+		}
 		return hello, nil
 	}
+	if request.Type == cliprotocol.TypeAgentHello {
+		return s.startAgentConnection(client, request)
+	}
+	if (client.agent != nil) != cliprotocol.IsAgentRequest(request.Type) {
+		return nil, cliprotocol.CreateError(cliprotocol.ErrorInvalidRequest, "agent requests and other requests cannot share a connection")
+	}
 	if hello.State == cliprotocol.StateSignedOut {
+		if client.agent != nil {
+			return nil, cliprotocol.CreateError(cliprotocol.ErrorSignedOut, "the Hisar app is not signed in; sign in there")
+		}
 		return nil, cliprotocol.CreateError(cliprotocol.ErrorSignedOut, "the Hisar app is not signed in; sign in there, or run hisar --standalone")
+	}
+	if client.agent != nil {
+		return s.answerAgentRequest(ctx, client, request)
 	}
 	if request.Type == cliprotocol.TypeResolveSecret && (len(request.References) == 0 || len(request.References) > cliprotocol.MaxReferenceCount) {
 		return nil, cliprotocol.CreateError(cliprotocol.ErrorInvalidRequest, fmt.Sprintf("send between 1 and %d secret references", cliprotocol.MaxReferenceCount))
@@ -184,7 +209,7 @@ func (s *Server) answerRequest(ctx context.Context, client connectionPeer, reque
 	return s.config.Handler.HandleRequest(ctx, request)
 }
 
-func (s *Server) askApproval(ctx context.Context, client connectionPeer, request *cliprotocol.Request) error {
+func (s *Server) askApproval(ctx context.Context, client *connectionPeer, request *cliprotocol.Request) error {
 	if s.config.Approver == nil {
 		return ErrDenied
 	}

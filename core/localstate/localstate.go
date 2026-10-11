@@ -45,6 +45,8 @@ type State struct {
 	AutoLockSeconds int `json:"autoLockSeconds,omitempty"`
 	// IsPhoneApprovalDisabled stops sending approval dialogs to the account's iPhones; a device preference that Reset keeps.
 	IsPhoneApprovalDisabled bool `json:"phoneApprovalDisabled,omitempty"`
+	// AllAgentVaultID lists the vaults coding agents may see through hisar mcp; every other vault is invisible to them.
+	AllAgentVaultID []string `json:"agentVaults,omitempty"`
 	// IsOpenAtLoginConfigured records that the desktop app registered its login item once; a device preference that Reset keeps.
 	IsOpenAtLoginConfigured bool `json:"openAtLoginConfigured,omitempty"`
 	// IsOpenAtLoginDisabled is set when the user turned "Open Hisar at login" off; a device preference that Reset keeps.

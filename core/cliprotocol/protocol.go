@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/tryhisar/hisar/core/item"
 )
@@ -18,7 +19,9 @@ const (
 	MaxMessageSize    = 16 << 20
 	MaxImportBatch    = 10
 	MaxReferenceCount = 500
-	SocketEnvironment = "HISAR_CLI_SOCKET"
+	// MaxAgentReferenceCount limits run_with_secrets, whose approval dialog lists every secret.
+	MaxAgentReferenceCount = 100
+	SocketEnvironment      = "HISAR_CLI_SOCKET"
 )
 
 const (
@@ -45,6 +48,13 @@ const (
 	TypeListDevice    = "devices.list"
 	TypeRevokeDevice  = "devices.revoke"
 	TypeResolveSecret = "secrets.resolve"
+
+	TypeAgentHello         = "agent.hello"
+	TypeAgentListVault     = "agent.vaults.list"
+	TypeAgentSearchItem    = "agent.items.search"
+	TypeAgentResolveSecret = "agent.secrets.resolve"
+	TypeAgentGetCode       = "agent.items.code"
+	TypeAgentRevealSecret  = "agent.secrets.reveal"
 
 	TypeListInvitation    = "invitations.list"
 	TypeAcceptInvitation  = "invitations.accept"
@@ -80,6 +90,13 @@ type Request struct {
 	ImportedItems []item.Item `json:"importedItems,omitempty"`
 	References    []string    `json:"references,omitempty"`
 	CommandLine   []string    `json:"commandLine,omitempty"`
+
+	AgentName        string `json:"agentName,omitempty"`
+	AgentTitle       string `json:"agentTitle,omitempty"`
+	AgentVersion     string `json:"agentVersion,omitempty"`
+	Query            string `json:"query,omitempty"`
+	Vault            string `json:"vault,omitempty"`
+	WorkingDirectory string `json:"workingDirectory,omitempty"`
 }
 
 type Response struct {
@@ -244,6 +261,46 @@ type Device struct {
 
 type ResolveSecretResult struct {
 	Values []string `json:"values"`
+}
+
+// IsAgentRequest tells the requests of hisar mcp apart; agent.hello starts an agent connection.
+func IsAgentRequest(requestType string) bool {
+	return strings.HasPrefix(requestType, "agent.")
+}
+
+type AgentVault struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	ItemCount int    `json:"itemCount"`
+}
+
+type AgentVaultListResult struct {
+	Vaults []AgentVault `json:"vaults"`
+}
+
+// AgentField is a field an agent may use by its reference; the value never leaves the app this way.
+type AgentField struct {
+	Label     string `json:"label"`
+	Reference string `json:"reference"`
+}
+
+// AgentItem is the metadata of an item for agents: no value and no notes.
+type AgentItem struct {
+	ID                 string       `json:"id"`
+	VaultID            string       `json:"vaultId"`
+	VaultName          string       `json:"vaultName"`
+	Title              string       `json:"title"`
+	Type               string       `json:"type"`
+	Username           string       `json:"username"`
+	URLs               []string     `json:"urls"`
+	HasNotes           bool         `json:"hasNotes"`
+	HasOneTimePassword bool         `json:"hasOneTimeCode"`
+	Fields             []AgentField `json:"fields"`
+}
+
+type AgentItemSearchResult struct {
+	Items      []AgentItem `json:"items"`
+	TotalCount int         `json:"totalCount"`
 }
 
 type DeviceListResult struct {

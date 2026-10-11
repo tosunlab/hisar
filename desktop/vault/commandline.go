@@ -56,6 +56,9 @@ func (bridge *CommandLineBridge) HandleRequest(_ context.Context, request *clipr
 }
 
 func (bridge *CommandLineBridge) answer(request *cliprotocol.Request) (any, error) {
+	if cliprotocol.IsAgentRequest(request.Type) {
+		return bridge.answerAgentRequest(request)
+	}
 	s := bridge.service
 	switch request.Type {
 	case cliprotocol.TypeAccount:

@@ -226,6 +226,8 @@ function addPreviewItem(vaultID: string, detail: ItemDetail): ItemDetail {
   return detail;
 }
 
+let allPreviewAgentVaultID: string[] = ["work"];
+
 const resolveAfterDelay = <Value>(value: Value): Promise<Value> => new Promise((resolve) => setTimeout(() => resolve(value), 80));
 
 // createPreviewCommandLineApproval: &approval=cli, plus &cliLocked=1 (Touch ID unlocks) or &cliPassword=1 (master password unlocks).
@@ -262,6 +264,12 @@ function createPreviewCommandLineApproval(): ApprovalEvent {
     isPhoneApproval: previewParameter.get("phone") === "1" && !isLocked,
     allSecretName: [],
     moreSecretCount: 0,
+    agentName: "",
+    workingDirectory: "",
+    rememberLabel: "",
+    isRememberedByDefault: true,
+    isConnectionApproval: false,
+    warning: "",
   };
 }
 
@@ -301,7 +309,71 @@ function createPreviewSSHApproval(): ApprovalEvent {
     timeoutAt: new Date(Date.now() + 60_000).toISOString(),
     allSecretName: [],
     moreSecretCount: 0,
+    agentName: "",
+    workingDirectory: "",
+    rememberLabel: "",
+    isRememberedByDefault: true,
+    isConnectionApproval: false,
+    warning: "",
   };
+}
+
+// createPreviewAgentApproval: &approval=agent (hisar mcp connects), =agent-run (run_with_secrets), =agent-reveal (get_secret),
+// =agent-code (get_one_time_code), plus &agentLocked=1 (master password unlocks first).
+function createPreviewAgentApproval(kind: string): ApprovalEvent {
+  const isLocked = previewParameter.get("agentLocked") === "1";
+  const event: ApprovalEvent = {
+    ...createPreviewCommandLineApproval(),
+    requestID: `preview-agent-${kind}`,
+    kind: "agent",
+    agentName: "Claude Code",
+    clientName: "hisar mcp",
+    clientPath: "/opt/homebrew/bin/hisar",
+    purpose: "connect",
+    action: "use Hisar",
+    isConnectionApproval: true,
+    isRememberedByDefault: false,
+    isUnlockRequired: isLocked,
+    isPasswordUnlock: isLocked,
+    isPhoneApproval: previewParameter.get("phone") === "1" && !isLocked,
+  };
+  if (kind === "run") {
+    return {
+      ...event,
+      purpose: "run",
+      action: "run a command with 2 secrets",
+      commandLine: "npm run db:migrate -- --env staging",
+      workingDirectory: "~/src/billing-api",
+      allSecretName: ["Work › Postgres staging › password", "Work › Stripe › api key"],
+      isRememberable: true,
+      rememberLabel: "Allow these secrets for this agent for 1 hour",
+      isConnectionApproval: false,
+    };
+  }
+  if (kind === "reveal") {
+    return {
+      ...event,
+      purpose: "reveal",
+      action: "read “Stripe › api key”",
+      allSecretName: ["Work › Stripe › api key"],
+      isRememberable: true,
+      rememberLabel: "Allow this item for 1 hour",
+      isConnectionApproval: false,
+      warning: "The value will be visible to Claude Code and can end up in its transcript and logs.",
+    };
+  }
+  if (kind === "code") {
+    return {
+      ...event,
+      purpose: "code",
+      action: "get the one-time code of “GitHub”",
+      allSecretName: ["Personal › GitHub › one-time code"],
+      isRememberable: true,
+      rememberLabel: "Allow this one-time code for this agent for 1 hour",
+      isConnectionApproval: false,
+    };
+  }
+  return event;
 }
 
 // listAllPreviewApproval: ?window=ssh-approval&approval=1 (one request), =2 (two waiting), =signing (a commit signature), =cli (command-line tool),
@@ -311,6 +383,10 @@ function createPreviewSSHApproval(): ApprovalEvent {
 function listAllPreviewApproval(): ApprovalEvent[] {
   if (previewParameter.get("approval") === "cli") {
     return [createPreviewCommandLineApproval()];
+  }
+  const approvalParameter = previewParameter.get("approval") ?? "";
+  if (approvalParameter === "agent" || approvalParameter.startsWith("agent-")) {
+    return [createPreviewAgentApproval(approvalParameter.replace(/^agent-?/, ""))];
   }
   if (previewParameter.get("approval") === "run") {
     return [
@@ -713,6 +789,14 @@ export const previewApi = {
     return resolveAfterDelay(undefined);
   },
   getCommandLineStatus: () => resolveAfterDelay({ ...previewCommandLineStatus }),
+  listAllAgentVaultID: () => resolveAfterDelay([...allPreviewAgentVaultID]),
+  setVaultAvailableToAgents: (vaultID: string, isAvailable: boolean) => {
+    allPreviewAgentVaultID = allPreviewAgentVaultID.filter((candidate) => candidate !== vaultID);
+    if (isAvailable) {
+      allPreviewAgentVaultID.push(vaultID);
+    }
+    return resolveAfterDelay([...allPreviewAgentVaultID]);
+  },
   installCommandLineTool: () => {
     if (previewCommandLineMode === "conflict") {
       return Promise.reject(new Error("/opt/homebrew/bin/hisar is already a file that is not from Hisar; Hisar leaves it alone. Remove it yourself to install Hisar's"));

@@ -149,6 +149,13 @@ export function InvitePerson(email: string): $CancellablePromise<void> {
 }
 
 /**
+ * ListAllAgentVaultID returns the vaults that coding agents may see through hisar mcp on this device.
+ */
+export function ListAllAgentVaultID(): $CancellablePromise<string[] | null> {
+    return $Call.ByID(1247434700);
+}
+
+/**
  * ListAllDevice returns the devices signed in to this account, this device first, then the most recently seen.
  */
 export function ListAllDevice(): $CancellablePromise<$models.Device[] | null> {
@@ -249,6 +256,13 @@ export function SaveNewAccountEmergencyKit(): $CancellablePromise<string> {
  */
 export function SetAutoLock(seconds: number): $CancellablePromise<$models.Status> {
     return $Call.ByID(2733357673, seconds);
+}
+
+/**
+ * SetVaultAvailableToAgents saves the vault's "Available to agents" switch; every vault starts off.
+ */
+export function SetVaultAvailableToAgents(vaultID: string, isAvailable: boolean): $CancellablePromise<string[] | null> {
+    return $Call.ByID(2512318785, vaultID, isAvailable);
 }
 
 /**

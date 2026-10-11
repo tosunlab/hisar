@@ -61,6 +61,8 @@ export const store = reactive({
   updateStatus: null as UpdateStatus | null,
   commandLineStatus: null as CommandLineStatus | null,
   commandLineErrorMessage: "",
+  allAgentVaultID: [] as string[],
+  agentErrorMessage: "",
   isImportOpen: false,
   importStep: "choose" as ImportStep,
   allImportFormat: [] as ImportFormat[],
@@ -760,6 +762,31 @@ export async function setCommandLineIntegration(isEnabled: boolean): Promise<voi
     () => api.setCommandLineIntegration(isEnabled),
     isEnabled ? "hisar can use Hisar after you approve each terminal" : "hisar signs in on its own now",
   );
+}
+
+// Coding agent settings report errors inside their section, like the command-line tool's.
+export async function loadAgentVaults(): Promise<void> {
+  try {
+    store.allAgentVaultID = await api.listAllAgentVaultID();
+    store.agentErrorMessage = "";
+  } catch (error) {
+    store.agentErrorMessage = getErrorMessage(error);
+  }
+}
+
+export async function setVaultAvailableToAgents(vault: VaultSummary, isAvailable: boolean): Promise<void> {
+  store.isBusy = true;
+  try {
+    store.allAgentVaultID = await api.setVaultAvailableToAgents(vault.id, isAvailable);
+    store.agentErrorMessage = "";
+    showNotice(isAvailable ? `Coding agents can use ${vault.name} after you approve` : `${vault.name} is invisible to coding agents now`);
+  } catch (error) {
+    const message = getErrorMessage(error);
+    await loadAgentVaults();
+    store.agentErrorMessage = message;
+  } finally {
+    store.isBusy = false;
+  }
 }
 
 // handleUnlockedElsewhere follows an unlock from the approval window.

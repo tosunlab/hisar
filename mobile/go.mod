@@ -45,6 +45,7 @@ require (
 )
 
 replace (
+	github.com/tryhisar/hisar/cli => ../cli
 	github.com/tryhisar/hisar/core => ../core
 	github.com/tryhisar/hisar/desktop => ../desktop
 )

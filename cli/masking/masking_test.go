@@ -1,4 +1,4 @@
-package main
+package masking
 
 import (
 	"bytes"
@@ -12,7 +12,7 @@ import (
 func maskAll(t *testing.T, allSecret []string, allChunk ...string) string {
 	t.Helper()
 	var output bytes.Buffer
-	masker := createSecretMasker(&output, allSecret)
+	masker := CreateSecretMasker(&output, allSecret)
 	for _, chunk := range allChunk {
 		masker.Write([]byte(chunk))
 	}
@@ -71,7 +71,7 @@ func TestMaskFindsSecretsAcrossEveryWriteBoundary(t *testing.T) {
 
 func TestMaskHoldsBackOnlyAPossibleSecret(t *testing.T) {
 	var output bytes.Buffer
-	masker := createSecretMasker(&output, []string{"hunter22"})
+	masker := CreateSecretMasker(&output, []string{"hunter22"})
 	masker.Write([]byte("Enter the code: hun"))
 	if output.String() != "Enter the code: " || !masker.hasHeld() {
 		t.Errorf("written %q while a secret may follow", output.String())
@@ -87,7 +87,7 @@ func TestMaskHoldsBackOnlyAPossibleSecret(t *testing.T) {
 }
 
 func TestMaskSkipsShortAndDuplicateValues(t *testing.T) {
-	masker := createSecretMasker(io.Discard, []string{"abc", "", "abcd", "abcd"})
+	masker := CreateSecretMasker(io.Discard, []string{"abc", "", "abcd", "abcd"})
 	if len(masker.allSecret) != 1 || string(masker.allSecret[0]) != "abcd" {
 		t.Errorf("secrets %q", masker.allSecret)
 	}
@@ -126,7 +126,7 @@ func TestCopyMaskedFlushesAHeldTailAfterTheDelay(t *testing.T) {
 	var output lockedBuffer
 	done := make(chan error, 1)
 	go func() {
-		done <- copyMasked(createSecretMasker(&output, []string{"hunter22"}), reader, 50*time.Millisecond, nil)
+		done <- CopyMasked(CreateSecretMasker(&output, []string{"hunter22"}), reader, 50*time.Millisecond, nil)
 	}()
 	writer.Write([]byte("Password: hunt"))
 	waitForText(t, &output, "Password: ", time.Second)
@@ -150,7 +150,7 @@ func TestCopyMaskedJoinsAValueSplitAcrossQuickWrites(t *testing.T) {
 	var output lockedBuffer
 	done := make(chan error, 1)
 	go func() {
-		done <- copyMasked(createSecretMasker(&output, []string{"hunter22"}), reader, time.Second, nil)
+		done <- CopyMasked(CreateSecretMasker(&output, []string{"hunter22"}), reader, time.Second, nil)
 	}()
 	for _, chunk := range []string{"token=hu", "nte", "r22\n"} {
 		writer.Write([]byte(chunk))
@@ -169,14 +169,14 @@ func TestCopyMaskedStopsWhenAsked(t *testing.T) {
 	var output lockedBuffer
 	stop := make(chan struct{})
 	done := make(chan error, 1)
-	go func() { done <- copyMasked(createSecretMasker(&output, []string{"hunter22"}), reader, time.Hour, stop) }()
+	go func() { done <- CopyMasked(CreateSecretMasker(&output, []string{"hunter22"}), reader, time.Hour, stop) }()
 	writer.Write([]byte("left open by a background process: hunt"))
 	waitForText(t, &output, "left open by a background process: ", time.Second)
 	close(stop)
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		t.Fatal("copyMasked did not stop")
+		t.Fatal("CopyMasked did not stop")
 	}
 	if !strings.HasSuffix(output.String(), "hunt") {
 		t.Errorf("the held tail was lost: %q", output.String())

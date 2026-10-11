@@ -77,3 +77,16 @@ func TestResolveSecretRequestEncoding(t *testing.T) {
 		t.Errorf("encoded %s", encoded)
 	}
 }
+
+func TestIsAgentRequest(t *testing.T) {
+	for _, requestType := range []string{TypeAgentHello, TypeAgentListVault, TypeAgentSearchItem, TypeAgentResolveSecret, TypeAgentGetCode, TypeAgentRevealSecret} {
+		if !IsAgentRequest(requestType) {
+			t.Errorf("%s is not an agent request", requestType)
+		}
+	}
+	for _, requestType := range []string{TypeHello, TypeResolveSecret, TypeGetItem, "agents"} {
+		if IsAgentRequest(requestType) {
+			t.Errorf("%s is an agent request", requestType)
+		}
+	}
+}

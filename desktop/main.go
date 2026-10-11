@@ -275,10 +275,11 @@ func main() {
 	commandLineApprovals := commandline.CreateSessionApprovals(commandline.DefaultApprovalLifetime, nil)
 	var commandLineService *vault.CommandLineService
 	commandLineServer := commandline.CreateServer(commandline.ServerConfig{
-		Handler:   vault.CreateCommandLineBridge(vaultService, commandLineApprovals),
-		Approver:  approver,
-		Approvals: commandLineApprovals,
-		IsEnabled: func() bool { return commandLineService.IsIntegrationEnabled() },
+		Handler:       vault.CreateCommandLineBridge(vaultService, commandLineApprovals),
+		Approver:      approver,
+		AgentApprover: approver,
+		Approvals:     commandLineApprovals,
+		IsEnabled:     func() bool { return commandLineService.IsIntegrationEnabled() },
 	})
 	commandLineSocketPath := os.Getenv(cliprotocol.SocketEnvironment)
 	if commandLineSocketPath == "" {

@@ -35,6 +35,7 @@ const denyButton = ref<HTMLButtonElement | null>(null);
 const contentElement = ref<HTMLElement | null>(null);
 const approval = computed(() => approvalStore.allApproval[0]);
 const isCommandLine = computed(() => approval.value?.kind === "command-line");
+const isAgent = computed(() => approval.value?.kind === "agent");
 const isForwarded = computed(() => approval.value?.isForwarded === true);
 const isSigning = computed(() => approval.value?.purpose === "sign-commit" || approval.value?.purpose === "sign-tag");
 const isCompactShown = computed(() => approval.value?.isCompact === true && !approvalStore.isExpanded);
@@ -51,6 +52,9 @@ const requesterName = computed(() => {
   if (current.isForwarded) {
     return current.forwardedFromHost || "Another computer";
   }
+  if (current.kind === "agent") {
+    return current.agentName;
+  }
   if (current.kind === "command-line" && current.appName !== current.clientName) {
     return `hisar in ${current.appName}`;
   }
@@ -62,7 +66,7 @@ const purposeText = computed(() => {
   if (!current) {
     return "";
   }
-  if (current.kind === "command-line") {
+  if (current.kind === "command-line" || current.kind === "agent") {
     return current.action || "use Hisar";
   }
   return [current.action || "use your SSH key", current.target].filter(Boolean).join(" ");
@@ -76,6 +80,9 @@ const subtitle = computed(() => {
   if (current.kind === "command-line") {
     return current.terminalName ? `from the terminal session ${current.terminalName}` : "from the command line";
   }
+  if (current.kind === "agent") {
+    return current.appName ? `via ${current.clientName} in ${current.appName}` : `via ${current.clientName}`;
+  }
   return current.keyTitle ? `with your SSH key “${current.keyTitle}”` : "Unlock Hisar to use your SSH keys";
 });
 
@@ -88,6 +95,12 @@ const allDetailLine = computed(() => {
     const program = current.action ? current.commandLine : current.clientPath || current.clientName;
     return [program, current.terminalName ? `/dev/${current.terminalName}` : ""].filter(Boolean);
   }
+  if (current.kind === "agent") {
+    if (current.purpose === "connect") {
+      return [current.clientPath || current.clientName, current.terminalName ? `/dev/${current.terminalName}` : ""].filter(Boolean);
+    }
+    return [current.commandLine, current.workingDirectory].filter(Boolean);
+  }
   if (isSigning.value) {
     const firstLine = current.commitSubject ? `“${current.commitSubject}”` : current.commandLine || "a commit";
     return [firstLine, [current.repositoryPath, current.branch].filter(Boolean).join(" · ")].filter(Boolean);
@@ -97,6 +110,25 @@ const allDetailLine = computed(() => {
 });
 
 const allSecretName = computed(() => approval.value?.allSecretName ?? []);
+const rememberLabel = computed(() => approval.value?.rememberLabel || `Don’t ask again for ${approval.value?.appName} for 1 hour`);
+
+const unlockNote = computed(() => {
+  if (isAgent.value) {
+    return "Hisar is locked; unlocking it also approves this request.";
+  }
+  return isCommandLine.value ? "Hisar is locked; unlocking it also approves this terminal." : "Hisar is locked; approving also unlocks it.";
+});
+
+const agentNote = computed(() => {
+  const current = approval.value;
+  if (!current || current.kind !== "agent") {
+    return "";
+  }
+  if (current.purpose === "connect") {
+    return `Lets ${current.agentName} list and search the vaults available to agents until 10 minutes after its last request, or until Hisar locks. Using a secret always asks.`;
+  }
+  return current.isConnectionApproval ? `Approving also lets ${current.agentName} list and search the vaults available to agents.` : "";
+});
 
 const compactSubtitle = computed(() => {
   const current = approval.value;
@@ -320,12 +352,17 @@ onBeforeUnmount(() => {
             <code v-for="(line, index) in allDetailLine" :key="index" class="detail-line" :class="{ secondary: index > 0 }" :title="line">{{ line }}</code>
           </div>
 
-          <div v-if="isCommandLine && allSecretName.length > 0" class="secret-list" data-testid="approval-secrets">
+          <div v-if="(isCommandLine || isAgent) && allSecretName.length > 0" class="secret-list" data-testid="approval-secrets">
             <p class="secret-heading">{{ allSecretName.length + approval.moreSecretCount === 1 ? "Secret" : "Secrets" }}</p>
             <ul>
               <li v-for="(name, index) in allSecretName" :key="index" :title="name"><AppIcon name="key" :size="12" /> {{ name }}</li>
               <li v-if="approval.moreSecretCount > 0" class="muted">and {{ approval.moreSecretCount }} more</li>
             </ul>
+          </div>
+
+          <div v-if="approval.warning" class="reveal-warning" role="note" data-testid="approval-warning">
+            <AppIcon name="eye" :size="15" />
+            <p>{{ approval.warning }}</p>
           </div>
 
           <label v-if="approval.isRememberable" class="remember">
@@ -335,12 +372,12 @@ onBeforeUnmount(() => {
               :checked="approvalStore.isRemembered"
               @change="setRemembered(approval.requestID, ($event.target as HTMLInputElement).checked)"
             />
-            Don’t ask again for {{ approval.appName }} for 1 hour
+            {{ rememberLabel }}
           </label>
 
           <p v-if="approval.isUnlockRequired" class="unlock-note" data-testid="approval-unlock-note">
             <AppIcon name="lock" :size="13" />
-            {{ isCommandLine ? "Hisar is locked; unlocking it also approves this terminal." : "Hisar is locked; approving also unlocks it." }}
+            {{ unlockNote }}
           </p>
           <p v-if="approvalStore.failureMessage" class="failure" role="alert">{{ approvalStore.failureMessage }}</p>
 
@@ -359,6 +396,7 @@ onBeforeUnmount(() => {
           </form>
 
           <p v-if="isCommandLine" class="muted note">Lasts until 10 minutes after this terminal’s last command, or until Hisar locks.</p>
+          <p v-if="agentNote" class="muted note" data-testid="approval-agent-note">{{ agentNote }}</p>
 
           <footer class="footer-bar">
             <div v-if="isWaitingForTouchID" class="touch-id" data-testid="approval-touch-id">
@@ -609,6 +647,29 @@ h1 {
   font-size: 13px;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.reveal-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px solid #5a4520;
+  border-radius: var(--radius);
+  background: #2a2112;
+  color: var(--color-warning);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.reveal-warning .icon {
+  flex: none;
+  margin-top: 1px;
+}
+
+.reveal-warning p {
+  margin: 0;
 }
 
 .remember {
