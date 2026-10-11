@@ -16,7 +16,7 @@ struct OneTimeCodeRow: View {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("One-time code")
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.themeSecondary)
                     if let oneTimeCode {
                         Text(oneTimeCode.formattedCode)
                             .font(.title2.weight(.semibold).monospacedDigit())
@@ -24,7 +24,7 @@ struct OneTimeCodeRow: View {
                             .accessibilityIdentifier("one-time-code-value")
                     } else if isUnavailable {
                         Text("The one-time password could not be read.")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.themeSecondary)
                     } else {
                         ProgressView()
                     }
@@ -83,12 +83,12 @@ private struct CountdownRing: View {
                 .stroke(.fill.secondary, lineWidth: 3)
             Circle()
                 .trim(from: 0, to: remainingFraction)
-                .stroke(secondsLeft <= 5 ? AnyShapeStyle(.orange) : AnyShapeStyle(.tint), style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                .stroke(secondsLeft <= 5 ? AnyShapeStyle(.themeWarning) : AnyShapeStyle(.tint), style: StrokeStyle(lineWidth: 3, lineCap: .round))
                 .rotationEffect(.degrees(-90))
                 .animation(.linear(duration: 0.9), value: secondsLeft)
             Text("\(secondsLeft)")
                 .font(.caption2.weight(.semibold).monospacedDigit())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.themeSecondary)
         }
         .frame(width: diameter, height: diameter)
         .accessibilityElement(children: .ignore)

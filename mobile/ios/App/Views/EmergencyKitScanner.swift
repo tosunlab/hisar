@@ -27,10 +27,10 @@ struct EmergencyKitScannerSheet: View {
                     VStack(spacing: 12) {
                         Image(systemName: "camera.fill")
                             .font(.largeTitle)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.themeSecondary)
                         Text("No camera is available. Type the details from your Emergency Kit instead.")
                             .multilineTextAlignment(.center)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.themeSecondary)
                     }
                     .padding(32)
                 }

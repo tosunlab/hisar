@@ -4,6 +4,7 @@ enum SettingsDestination: Hashable {
     case account
     case secretKey
     case security
+    case appearance
     case macApprovals
     case people
     case devices
@@ -39,7 +40,7 @@ struct SettingsView: View {
                         HStack(spacing: 14) {
                             Text(initials)
                                 .font(.headline)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(.themeSecondary)
                                 .frame(width: 48, height: 48)
                                 .background(.fill.tertiary, in: .circle)
                                 .accessibilityHidden(true)
@@ -48,7 +49,7 @@ struct SettingsView: View {
                                     .font(.headline)
                                 Text("\(model.status.email) · \(VaultLogic.describeServer(model.status.server))")
                                     .font(.footnote)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(.themeSecondary)
                                     .lineLimit(1)
                             }
                         }
@@ -77,6 +78,16 @@ struct SettingsView: View {
                         Label("Secret Key and Emergency Kit", systemImage: "doc.text")
                     }
                     .accessibilityIdentifier("open-secret-key")
+                }
+                Section {
+                    NavigationLink(value: SettingsDestination.appearance) {
+                        LabeledContent {
+                            Text("\(model.theme.appearance.label) · \(model.theme.color.label)")
+                        } label: {
+                            Label("Appearance", systemImage: "paintpalette")
+                        }
+                    }
+                    .accessibilityIdentifier("open-appearance")
                 }
                 Section {
                     NavigationLink(value: SettingsDestination.people) {
@@ -119,13 +130,14 @@ struct SettingsView: View {
                     .accessibilityIdentifier("sign-out")
                 }
             }
-            .listStyle(.insetGrouped)
+            .applyThemedListStyle()
             .navigationTitle("Settings")
             .navigationDestination(for: SettingsDestination.self) { destination in
                 switch destination {
                 case .account: AccountView()
                 case .secretKey: SecretKeyView()
                 case .security: SecurityView()
+                case .appearance: AppearanceView()
                 case .macApprovals: MacApprovalsView()
                 case .people: PeopleView()
                 case .devices: DevicesView()
@@ -169,7 +181,7 @@ struct AccountView: View {
                 Text("To sign in on a new device you need your master password and your Secret Key. The Emergency Kit has both places to keep them.")
             }
         }
-        .listStyle(.insetGrouped)
+        .applyThemedListStyle()
         .navigationTitle("Account")
     }
 }
@@ -245,7 +257,7 @@ struct SecretKeyView: View {
                 }
             }
         }
-        .listStyle(.insetGrouped)
+        .applyThemedListStyle()
         .navigationTitle("Secret Key")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
@@ -323,7 +335,7 @@ struct SecurityView: View {
                 .accessibilityIdentifier("settings-lock-now")
             }
         }
-        .listStyle(.insetGrouped)
+        .applyThemedListStyle()
         .navigationTitle("Security")
         .onAppear { model.clearError() }
         .alert("Turn on \(SettingsView.biometryName)", isPresented: $isBiometricPasswordPromptShown) {
@@ -345,6 +357,164 @@ struct SecurityView: View {
             isBiometricPasswordPromptShown = true
         } else {
             Task { await model.setBiometricUnlock(isEnabled: false, password: "") }
+        }
+    }
+}
+
+extension ThemeAppearanceName {
+    var label: String {
+        switch self {
+        case .system: "System"
+        case .light: "Light"
+        case .dark: "Dark"
+        }
+    }
+}
+
+extension ThemeColorName {
+    var label: String {
+        switch self {
+        case .neutral: "Neutral"
+        case .blue: "Blue"
+        case .purple: "Purple"
+        case .green: "Green"
+        }
+    }
+}
+
+struct AppearanceView: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        ThemePickerList(theme: model.theme, errorMessage: model.errorMessage) { theme in
+            Task { await model.setTheme(theme) }
+        }
+        .onAppear { model.clearError() }
+    }
+}
+
+struct ThemePickerList: View {
+    var theme: VaultTheme
+    var errorMessage: String?
+    var choose: (VaultTheme) -> Void
+
+    var body: some View {
+        List {
+            Section {
+                ForEach(ThemeAppearanceName.allCases, id: \.self) { appearance in
+                    ThemeChoiceRow(title: appearance.label, subtitle: appearance == .system ? "Light or Dark, as set on this iPhone" : nil, isChosen: theme.appearance == appearance) {
+                        AppearanceSwatch(appearance: appearance)
+                    } choose: {
+                        choose(VaultTheme(appearance: appearance, color: theme.color))
+                    }
+                    .accessibilityIdentifier("appearance-\(appearance.rawValue)")
+                }
+            } header: {
+                Text("Appearance")
+                    .foregroundStyle(.themeSecondary)
+            }
+            Section {
+                ForEach(ThemeColorName.allCases, id: \.self) { color in
+                    ThemeChoiceRow(title: color.label, subtitle: nil, isChosen: theme.color == color) {
+                        ColorSwatch(palette: ThemePalette.find(color: color))
+                    } choose: {
+                        choose(VaultTheme(appearance: theme.appearance, color: color))
+                    }
+                    .accessibilityIdentifier("theme-color-\(color.rawValue)")
+                }
+            } header: {
+                Text("Color")
+                    .foregroundStyle(.themeSecondary)
+            } footer: {
+                Text("Blue, Purple and Green tint the background and the controls. Hisar on your Mac has its own theme setting.")
+                    .foregroundStyle(.themeSecondary)
+            }
+            if let errorMessage {
+                Section {
+                    ErrorBanner(message: errorMessage)
+                }
+            }
+        }
+        .applyThemedListStyle()
+        .navigationTitle("Appearance")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+struct ThemeChoiceRow<Swatch: View>: View {
+    var title: String
+    var subtitle: String?
+    var isChosen: Bool
+    @ViewBuilder var swatch: () -> Swatch
+    var choose: () -> Void
+
+    var body: some View {
+        Button(action: choose) {
+            HStack(spacing: 14) {
+                swatch()
+                    .frame(width: 30, height: 30)
+                    .clipShape(.rect(cornerRadius: 8))
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(.separator))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .foregroundStyle(.primary)
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(.footnote)
+                            .foregroundStyle(.themeSecondary)
+                    }
+                }
+                Spacer()
+                if isChosen {
+                    Image(systemName: "checkmark")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.tint)
+                }
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(isChosen ? .isSelected : [])
+    }
+}
+
+struct AppearanceSwatch: View {
+    var appearance: ThemeAppearanceName
+    private let neutral = ThemePalette.neutral
+
+    var body: some View {
+        HStack(spacing: 0) {
+            if appearance != .dark {
+                half(background: neutral.groupedBackground.light, dot: neutral.tint.light)
+            }
+            if appearance != .light {
+                half(background: neutral.groupedBackground.dark, dot: neutral.tint.dark)
+            }
+        }
+    }
+
+    private func half(background: UInt32, dot: UInt32) -> some View {
+        ZStack(alignment: .bottom) {
+            Color(hexadecimal: background)
+            Circle()
+                .fill(Color(hexadecimal: dot))
+                .frame(width: 7, height: 7)
+                .padding(.bottom, 5)
+        }
+    }
+}
+
+struct ColorSwatch: View {
+    var palette: ThemePalette
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            palette.groupedBackground.color
+            Capsule()
+                .fill(palette.tint.color)
+                .frame(width: 14, height: 7)
+                .padding(.bottom, 5)
         }
     }
 }
@@ -374,7 +544,7 @@ struct MacApprovalsView: View {
                 Text("Approving answers one request and never unlocks Hisar on your Mac. The Mac sends requests only while “Allow approvals from my iPhone” is on in its SSH agent settings.")
             }
         }
-        .listStyle(.insetGrouped)
+        .applyThemedListStyle()
         .navigationTitle("Mac approvals")
     }
 }
@@ -390,7 +560,7 @@ struct AutoFillSettingsView: View {
             Section {
                 if !Self.isAutoFillIncluded {
                     Label("Not available in this build", systemImage: "key.viewfinder")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.themeSecondary)
                 } else if isEnabled {
                     Label("Hisar fills passwords, passkeys and one-time codes in apps and Safari", systemImage: "checkmark.circle")
                 } else {
@@ -421,7 +591,7 @@ struct AutoFillSettingsView: View {
                 }
             }
         }
-        .listStyle(.insetGrouped)
+        .applyThemedListStyle()
         .navigationTitle("AutoFill")
         .task { isEnabled = await AutoFillSettings.checkIsEnabled() }
     }
@@ -443,7 +613,7 @@ struct AboutView: View {
                         .font(.title2.weight(.bold))
                     Text("Passwords, SSH keys and secrets for developers, end-to-end encrypted.")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.themeSecondary)
                         .multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity)
@@ -456,7 +626,7 @@ struct AboutView: View {
                 }
             }
         }
-        .listStyle(.insetGrouped)
+        .applyThemedListStyle()
         .navigationTitle("About Hisar")
         .navigationBarTitleDisplayMode(.inline)
     }

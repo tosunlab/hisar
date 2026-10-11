@@ -53,8 +53,9 @@ describe("getDomain", () => {
 
 describe("getTileColor", () => {
   it("is stable per title and case-insensitive", () => {
-    expect(getTileColor("GitHub")).toBe(getTileColor("github"));
-    expect(getTileColor("GitHub")).toMatch(/^#[0-9a-f]{6}$/);
+    expect(getTileColor("GitHub")).toEqual(getTileColor("github"));
+    expect(getTileColor("GitHub").background).toMatch(/^var\(--color-tile\d\)$/);
+    expect(getTileColor("GitHub").color).toBe(getTileColor("GitHub").background.replace(")", "-text)"));
   });
 });
 

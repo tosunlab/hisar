@@ -1,5 +1,32 @@
 import Foundation
 
+enum ThemeAppearanceName: String, Codable, CaseIterable {
+    case system, light, dark
+}
+
+enum ThemeColorName: String, Codable, CaseIterable {
+    case neutral, blue, purple, green
+}
+
+// VaultTheme mirrors vault.Theme; unknown values fall back to the defaults.
+struct VaultTheme: Codable, Equatable {
+    var appearance: ThemeAppearanceName
+    var color: ThemeColorName
+
+    static let standard = VaultTheme(appearance: .system, color: .neutral)
+
+    init(appearance: ThemeAppearanceName, color: ThemeColorName) {
+        self.appearance = appearance
+        self.color = color
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        appearance = ThemeAppearanceName(rawValue: (try? container.decode(String.self, forKey: .appearance)) ?? "") ?? .system
+        color = ThemeColorName(rawValue: (try? container.decode(String.self, forKey: .color)) ?? "") ?? .neutral
+    }
+}
+
 struct VaultStatus: Codable, Equatable {
     static let stateSignedOut = "signed-out"
     static let stateLocked = "locked"

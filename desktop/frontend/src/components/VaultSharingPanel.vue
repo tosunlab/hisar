@@ -239,7 +239,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgb(0 0 0 / 55%);
+  background: var(--color-backdrop);
 }
 
 .sharing {
@@ -248,7 +248,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
   padding: 20px 22px;
   overflow-y: auto;
   background: var(--color-panel);
-  box-shadow: 0 24px 64px rgb(0 0 0 / 50%);
+  box-shadow: 0 24px 64px var(--color-shadow);
 }
 
 .sharing-header {
@@ -412,17 +412,17 @@ h2 {
 
 .confirm {
   align-items: center;
-  border-color: #4a1f22;
+  border-color: var(--color-danger-border);
   background: var(--color-danger-background);
 }
 
 .confirm p {
   flex: 1;
-  color: #f2c4c5;
+  color: var(--color-danger-text);
 }
 
 .confirm .detail-icon {
-  color: #f2a7a9;
+  color: var(--color-danger-text);
 }
 
 .code-detail > div {

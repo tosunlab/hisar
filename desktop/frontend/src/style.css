@@ -1,28 +1,9 @@
+/* Colours come from themes.css, generated from assets/themes/themes.json. */
 :root {
-  --color-background: #0d0e10;
-  --color-sidebar: #08090a;
-  --color-panel: #111214;
-  --color-surface: #16181b;
-  --color-surface-raised: #1c1f23;
-  --color-hover: #1f2226;
-  --color-selected: #262a30;
-  --color-border: #23262b;
-  --color-border-strong: #30343a;
-  --color-text: #e8eaed;
-  --color-text-secondary: #b4b9c0;
-  --color-text-muted: #7c838d;
-  --color-primary: #eceef1;
-  --color-primary-text: #0b0c0e;
-  --color-focus: #8a95a5;
-  --color-danger: #e5484d;
-  --color-danger-background: #2a1416;
-  --color-warning: #d9a33c;
-  --color-success: #3fa66b;
   --radius-small: 6px;
   --radius: 8px;
   --radius-large: 12px;
   --title-bar-height: 44px;
-  color-scheme: dark;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   font-size: 13px;
   line-height: 1.45;
@@ -50,7 +31,7 @@ body {
 }
 
 ::selection {
-  background: #3a4250;
+  background: var(--color-text-selection);
 }
 
 .title-bar {
@@ -93,7 +74,7 @@ input:focus,
 textarea:focus {
   outline: none;
   border-color: var(--color-focus);
-  box-shadow: 0 0 0 3px rgb(138 149 165 / 18%);
+  box-shadow: 0 0 0 3px var(--color-focus-ring);
 }
 
 select {
@@ -101,7 +82,7 @@ select {
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   background:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%237c838d' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23878e98' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")
       no-repeat right 9px center,
     var(--color-surface);
   appearance: none;
@@ -117,7 +98,7 @@ select:hover:not(:disabled) {
 select:focus {
   outline: none;
   border-color: var(--color-focus);
-  box-shadow: 0 0 0 3px rgb(138 149 165 / 18%);
+  box-shadow: 0 0 0 3px var(--color-focus-ring);
 }
 
 select:disabled {
@@ -146,12 +127,12 @@ select:disabled {
 }
 
 .tag.success {
-  border-color: #1f4a32;
-  color: #7fd3a2;
+  border-color: var(--color-success-border);
+  color: var(--color-success-text);
 }
 
 .tag.warning {
-  border-color: #5a4316;
+  border-color: var(--color-warning-border);
   color: var(--color-warning);
 }
 
@@ -208,7 +189,7 @@ button {
 
 button:hover:not(:disabled) {
   background: var(--color-hover);
-  border-color: #3b4047;
+  border-color: var(--color-border-hover);
 }
 
 button:focus-visible {
@@ -229,8 +210,8 @@ button.primary {
 }
 
 button.primary:hover:not(:disabled) {
-  background: #ffffff;
-  border-color: #ffffff;
+  background: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
 }
 
 button.danger {
@@ -238,9 +219,9 @@ button.danger {
 }
 
 button.danger-solid {
-  border-color: var(--color-danger);
-  background: var(--color-danger);
-  color: #ffffff;
+  border-color: var(--color-danger-solid);
+  background: var(--color-danger-solid);
+  color: var(--color-on-danger);
 }
 
 button.ghost {
@@ -287,10 +268,10 @@ kbd {
   gap: 8px;
   margin: 0 0 14px;
   padding: 9px 12px;
-  border: 1px solid #4a1f22;
+  border: 1px solid var(--color-danger-border);
   border-radius: var(--radius);
   background: var(--color-danger-background);
-  color: #f2a7a9;
+  color: var(--color-danger-text);
   user-select: text;
   -webkit-user-select: text;
 }
@@ -316,7 +297,7 @@ kbd {
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius);
   background: var(--color-surface-raised);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
+  box-shadow: 0 8px 24px var(--color-shadow);
   font-size: 12px;
 }
 
@@ -566,7 +547,7 @@ input[type="checkbox"].switch:focus-visible {
   height: 100%;
   overflow-y: auto;
   background:
-    radial-gradient(1200px 500px at 50% -20%, #1a1d22 0%, transparent 60%),
+    radial-gradient(1200px 500px at 50% -20%, var(--color-page-glow) 0%, transparent 60%),
     var(--color-background);
 }
 

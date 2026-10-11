@@ -109,7 +109,7 @@ struct PhoneApprovalSheet: View {
             } else {
                 Image(systemName: approval.isForwarded ? "globe" : approval.systemImage)
                     .font(.largeTitle)
-                    .foregroundStyle(approval.isForwarded ? .red : .orange)
+                    .foregroundStyle(approval.isForwarded ? AnyShapeStyle(.red) : AnyShapeStyle(.themeWarning))
                     .frame(width: 72, height: 72)
                     .background(.fill.tertiary, in: .rect(cornerRadius: 18, style: .continuous))
                     .accessibilityHidden(true)
@@ -120,13 +120,13 @@ struct PhoneApprovalSheet: View {
                 .accessibilityIdentifier("phone-approval-title")
             Text(approval.summary)
                 .font(.body)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.themeSecondary)
                 .multilineTextAlignment(.center)
                 .accessibilityIdentifier("phone-approval-summary")
             TimelineView(.periodic(from: .now, by: 1)) { context in
                 Text(approval.formatTimeLeft(at: context.date))
                     .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(.themeWarning)
                     .monospacedDigit()
                     .accessibilityIdentifier("phone-approval-expiry")
             }

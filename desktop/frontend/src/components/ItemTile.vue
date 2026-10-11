@@ -16,7 +16,7 @@ const tileSize = computed(() => props.size ?? 32);
       width: `${tileSize}px`,
       height: `${tileSize}px`,
       fontSize: `${Math.round(tileSize * 0.38)}px`,
-      background: icon ? undefined : getTileColor(title),
+      ...(icon ? {} : getTileColor(title)),
     }"
     :data-icon="icon"
     aria-hidden="true"
@@ -31,10 +31,9 @@ const tileSize = computed(() => props.size ?? 32);
   align-items: center;
   justify-content: center;
   border-radius: 25%;
-  color: #e9ebee;
   font-weight: 700;
   letter-spacing: 0.02em;
-  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 6%);
+  box-shadow: inset 0 0 0 1px var(--color-tile-edge);
 }
 
 .icon-tile {

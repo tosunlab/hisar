@@ -175,7 +175,7 @@ h1 {
 
 .password-field:focus-within {
   border-color: var(--color-focus);
-  box-shadow: 0 0 0 3px rgb(138 149 165 / 18%);
+  box-shadow: 0 0 0 3px var(--color-focus-ring);
 }
 
 .password-field input,
@@ -201,7 +201,7 @@ h1 {
   border: 0;
   border-radius: 6px;
   background: var(--color-selected);
-  color: #ff6b7a;
+  color: var(--color-danger);
 }
 
 .touch-id-button.waiting {

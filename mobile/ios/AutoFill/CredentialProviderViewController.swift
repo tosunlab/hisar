@@ -1,7 +1,9 @@
 import AuthenticationServices
+import Combine
 import SwiftUI
 
 final class CredentialProviderViewController: ASCredentialProviderViewController {
+    private var themeSubscription: AnyCancellable?
     private lazy var model = AutoFillModel(
         createBackend: {
             try BackendFactory.createBackend(configuration: .current, isClipboardIncluded: false, eventListener: nil)
@@ -49,6 +51,11 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
             hostingController.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
         hostingController.didMove(toParent: self)
+        themeSubscription = model.$theme.sink { [weak self] theme in
+            self?.overrideUserInterfaceStyle = theme.userInterfaceStyle
+            self?.view.tintColor = theme.palette.tint.uiColor
+            self?.view.backgroundColor = theme.palette.groupedBackground.uiColor
+        }
     }
 
     override func prepareCredentialList(for allRequestedServiceIdentifier: [ASCredentialServiceIdentifier]) {

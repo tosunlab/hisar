@@ -195,7 +195,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: rgb(0 0 0 / 55%);
+  background: var(--color-backdrop);
 }
 
 .panel {
@@ -204,7 +204,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
   padding: 20px 22px;
   overflow-y: auto;
   background: var(--color-panel);
-  box-shadow: 0 24px 64px rgb(0 0 0 / 50%);
+  box-shadow: 0 24px 64px var(--color-shadow);
 }
 
 .panel-header {

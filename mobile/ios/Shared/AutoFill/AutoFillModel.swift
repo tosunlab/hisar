@@ -48,6 +48,8 @@ final class AutoFillModel: ObservableObject {
     @Published private(set) var passkeyRegistrationRequest: PasskeyRegistrationRequest?
     @Published private(set) var passkeyRegistrationOptions: PasskeyRegistrationOptions?
     @Published var selectedRegistrationLoginID: String?
+    // The app's theme, read from the shared state in the app group.
+    @Published private(set) var theme = VaultTheme.standard
 
     private(set) var allServiceIdentifier: [String] = []
     private var pendingRequest: PendingCredentialRequest?
@@ -118,6 +120,7 @@ final class AutoFillModel: ObservableObject {
         do {
             let backend = try createBackend()
             self.backend = backend
+            theme = backend.getTheme()
             return backend
         } catch {
             screen = .failed(describeError(error))

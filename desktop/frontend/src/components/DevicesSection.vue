@@ -55,6 +55,6 @@ async function confirmRevoke(device: Device): Promise<void> {
 <style scoped>
 .setting-text .revoke-note {
   margin-top: 6px;
-  color: #f2a7a9;
+  color: var(--color-danger-text);
 }
 </style>

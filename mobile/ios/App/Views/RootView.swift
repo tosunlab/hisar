@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct RootView: View {
     @EnvironmentObject private var model: AppModel
@@ -43,6 +44,17 @@ struct RootView: View {
             NewSecretKeyView(secretKey: model.newSecretKey ?? "", email: model.status.email, server: model.status.server) {
                 model.dismissNewSecretKey()
             }
+        }
+        .applyTheme(model.theme)
+        .onChange(of: model.theme, initial: true) { _, theme in applyThemeToAllWindow(theme) }
+    }
+
+    // Alerts, the privacy cover and other UIKit windows follow the theme too.
+    private func applyThemeToAllWindow(_ theme: VaultTheme) {
+        let allWindow = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap(\.windows)
+        for window in allWindow {
+            window.overrideUserInterfaceStyle = theme.userInterfaceStyle
+            window.tintColor = theme.palette.tint.uiColor
         }
     }
 }
@@ -116,7 +128,7 @@ struct OfflineNote: View {
     var body: some View {
         Label("Offline. Showing items saved on this iPhone; changes need a connection.", systemImage: "wifi.slash")
             .font(.footnote)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(.themeSecondary)
             .accessibilityIdentifier("offline-banner")
     }
 }

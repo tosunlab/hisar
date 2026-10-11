@@ -37,6 +37,7 @@ final class AppModel: ObservableObject {
     @Published var selectedTab: Tab = .vaults
     @Published private(set) var copyCount = 0
     @Published private(set) var isMacApprovalAllowed = true
+    @Published private(set) var theme = VaultTheme.standard
     @Published private(set) var allReceivedInvitation: [ReceivedShareInvitation] = []
     @Published private(set) var remoteChangeCount = 0
 
@@ -68,6 +69,7 @@ final class AppModel: ObservableObject {
             let backend = try createBackend()
             self.backend = backend
             isMacApprovalAllowed = backend.isMacApprovalAllowed()
+            theme = backend.getTheme()
             applyStatus(backend.getStatus())
             if status.isUnlocked {
                 Task { await refreshAll() }
@@ -479,6 +481,17 @@ final class AppModel: ObservableObject {
 
     func removeEmergencyKit(_ export: EmergencyKitExport) {
         try? FileManager.default.removeItem(at: URL(fileURLWithPath: export.emergencyKitPath).deletingLastPathComponent())
+    }
+
+    // setTheme shows the theme at once and goes back to the one in use when it cannot be saved.
+    func setTheme(_ newTheme: VaultTheme) async {
+        let previousTheme = theme
+        theme = newTheme
+        guard let savedTheme = await perform(isBusyShown: false, { try $0.setTheme(newTheme) }) else {
+            theme = previousTheme
+            return
+        }
+        theme = savedTheme
     }
 
     @discardableResult

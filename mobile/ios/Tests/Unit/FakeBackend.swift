@@ -31,6 +31,8 @@ class FakeBackend: VaultBackend {
     var allApprovalAnswer: [String] = []
     var allDevice: [Device] = []
     var isMacApprovalAllowedValue = true
+    var theme = VaultTheme.standard
+    var isThemeSaveFailing = false
     var allCopiedReference: [String] = []
     private let approvalLock = NSLock()
 
@@ -564,6 +566,17 @@ extension FakeBackend {
     func setMacApprovalAllowed(_ isAllowed: Bool) throws {
         record("setMacApprovalAllowed")
         isMacApprovalAllowedValue = isAllowed
+    }
+
+    func getTheme() -> VaultTheme {
+        theme
+    }
+
+    func setTheme(_ theme: VaultTheme) throws -> VaultTheme {
+        record("setTheme")
+        guard !isThemeSaveFailing else { throw BackendError(message: "Could not save hisar.json") }
+        self.theme = theme
+        return theme
     }
 }
 

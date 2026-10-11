@@ -48,6 +48,20 @@ beforeEach(() => {
 });
 
 describe("SSHApprovalWindow", () => {
+  it("takes the saved theme and follows a theme chosen in Settings", async () => {
+    api.getTheme.mockResolvedValue({ appearance: "light", color: "purple" });
+    const wrapper = mount(SSHApprovalWindow);
+    await flushPromises();
+    expect(api.getTheme).toHaveBeenCalled();
+    expect(document.documentElement.dataset.appearance).toBe("light");
+    expect(document.documentElement.dataset.color).toBe("purple");
+    sendEvent("theme-changed", { appearance: "dark", color: "green" });
+    expect(document.documentElement.dataset.appearance).toBe("dark");
+    expect(document.documentElement.dataset.color).toBe("green");
+    wrapper.unmount();
+    expect(eventListener.allByName["theme-changed"]).toBeUndefined();
+  });
+
   it("says who wants to do what where, and starts Touch ID", async () => {
     api.listAllPendingSSHApproval.mockResolvedValue([createApprovalEvent({ appIconURL: "data:image/png;base64,AA==" })]);
     const wrapper = mount(SSHApprovalWindow);

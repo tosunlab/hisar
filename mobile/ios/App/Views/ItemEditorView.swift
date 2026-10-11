@@ -40,7 +40,7 @@ struct ItemEditorView: View {
                                     TextField("Password", text: $draft.password)
                                         .font(.system(.body, design: .monospaced))
                                 } else {
-                                    SecureField("Password", text: $draft.password, prompt: Text("Password").foregroundStyle(.secondary))
+                                    SecureField("Password", text: $draft.password, prompt: Text("Password").foregroundStyle(.themeSecondary))
                                 }
                             }
                             .textInputAutocapitalization(.never)
@@ -52,7 +52,7 @@ struct ItemEditorView: View {
                                 Image(systemName: isPasswordRevealed ? "eye.slash" : "eye")
                             }
                             .buttonStyle(.borderless)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.themeSecondary)
                             .accessibilityLabel(isPasswordRevealed ? "Hide password" : "Reveal password")
                             Button {
                                 isGeneratorShown = true
@@ -60,7 +60,7 @@ struct ItemEditorView: View {
                                 Image(systemName: "wand.and.stars")
                             }
                             .buttonStyle(.borderless)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(.themeSecondary)
                             .accessibilityLabel("Generate password")
                             .accessibilityIdentifier("editor-generate-password")
                         }
@@ -103,7 +103,7 @@ struct ItemEditorView: View {
                                 }
                                 Toggle("Concealed", isOn: $draft.allField[index].concealed)
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(.themeSecondary)
                             }
                         }
                         .onDelete { draft.allField.remove(atOffsets: $0) }

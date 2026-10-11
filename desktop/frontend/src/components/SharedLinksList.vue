@@ -146,7 +146,7 @@ async function confirmRevoke(shareLink: ShareLink): Promise<void> {
   gap: 12px;
   margin-top: 10px;
   padding: 8px 10px;
-  border: 1px solid #4a1f22;
+  border: 1px solid var(--color-danger-border);
   border-radius: var(--radius);
   background: var(--color-danger-background);
   font-size: 12px;

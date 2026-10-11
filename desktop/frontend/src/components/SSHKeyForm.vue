@@ -130,7 +130,7 @@ header {
 .segmented button.active {
   background: var(--color-selected);
   color: var(--color-text);
-  box-shadow: 0 1px 2px rgb(0 0 0 / 40%);
+  box-shadow: 0 1px 2px var(--color-shadow);
 }
 
 .editor-card {

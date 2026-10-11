@@ -18,6 +18,7 @@ import type {
   SSHAgentStatus,
   SSHKeyType,
   Status,
+  Theme,
   UpdateStatus,
   VaultMember,
   VaultRole,
@@ -105,6 +106,8 @@ let previewState = getInitialState();
 let previewSignedOutEmail = "alper@tryhisar.com";
 let isPreviewBiometricEnabled = new URLSearchParams(window.location.search).get("touchId") === "1";
 let previewAutoLockSeconds = 600;
+// &appearance=light|dark|system and &color=neutral|blue|purple|green pick the theme the preview starts with.
+let previewTheme: Theme = { appearance: previewParameter.get("appearance") ?? "system", color: previewParameter.get("color") ?? "neutral" };
 const previewStatus = (): Status => ({
   state: previewState,
   server: "https://tryhisar.com",
@@ -786,6 +789,11 @@ export const previewApi = {
   setAutoLock: (seconds: number) => {
     previewAutoLockSeconds = seconds;
     return resolveAfterDelay(previewStatus());
+  },
+  getTheme: () => Promise.resolve(previewTheme),
+  setTheme: (appearance: string, color: string) => {
+    previewTheme = { appearance, color };
+    return Promise.resolve(previewTheme);
   },
   signIn: () => {
     previewState = "unlocked";

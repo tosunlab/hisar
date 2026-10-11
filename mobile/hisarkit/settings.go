@@ -63,3 +63,14 @@ func (hisar *Hisar) IsMacApprovalAllowed() bool {
 func (hisar *Hisar) SetMacApprovalAllowed(isAllowed bool) error {
 	return vault.CreateApprovalPreference(hisar.service).SetPhoneApproval(isAllowed)
 }
+
+// GetTheme returns this iPhone's vault.Theme as JSON; the AutoFill extension reads the same state file.
+func (hisar *Hisar) GetTheme() string {
+	theme, _ := encodeJSON(hisar.service.GetTheme(), nil)
+	return theme
+}
+
+// SetTheme takes "system", "light" or "dark" and "neutral", "blue", "purple" or "green" and returns vault.Theme as JSON.
+func (hisar *Hisar) SetTheme(appearance, color string) (string, error) {
+	return encodeJSON(hisar.service.SetTheme(appearance, color))
+}

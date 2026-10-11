@@ -38,12 +38,14 @@
 		3A0A7510FED0E3EC64017E68 /* AuthenticationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 749D535C9C6B489F37C5F4C6 /* AuthenticationServices.framework */; };
 		3E6F84E78D992221EBE8A95A /* ApprovalsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D229776194136FF1A6650A2D /* ApprovalsView.swift */; };
 		3EBAE6DB6C2C6ADBAED50A08 /* ItemDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 104F8941A233F623CBF1EB40 /* ItemDetailView.swift */; };
+		3EC79E5E6E77169906986CDC /* ThemePalettes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B69EA63E2A0AF80C7AEF3D7 /* ThemePalettes.swift */; };
 		3FD4F052BD07559E2BE860C0 /* HisarApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31B75B59E329DF165CDA0667 /* HisarApp.swift */; };
 		3FF22DE6C9994E474007BA0E /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51192750875FAC5488F2567C /* HomeView.swift */; };
 		4023A7B395E9788AB14768F7 /* PasteboardClipboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = E496D0D5FF4AB3425759E1B7 /* PasteboardClipboard.swift */; };
 		4113E21A404A66886093F774 /* BiometricKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC328A5FA6A28DF1ACC5DC64 /* BiometricKeychain.swift */; };
 		42C127E62FE50AF707B5E685 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3766EC2BF71158CD0225F090 /* Models.swift */; };
 		4524704887E10E781B02A8BC /* PhoneApprovalPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 932FFDDB9DA6FFA0375B3041 /* PhoneApprovalPreviewView.swift */; };
+		472BD60EDDFB29C272E4F9DC /* ThemePalettes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B69EA63E2A0AF80C7AEF3D7 /* ThemePalettes.swift */; };
 		481FE0BCCD0D2166F4469760 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = F067661397CABF889DA6CF7C /* Theme.swift */; };
 		4AA5D5C3D6DAB5608269335B /* AutoFillUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED00276374ABADC314F5DF91 /* AutoFillUITests.swift */; };
 		51EDF0E5D9F05E3726D3D785 /* KeychainSecretKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA05D6AEDA2B1F45CB3B9F26 /* KeychainSecretKeyStore.swift */; };
@@ -95,6 +97,7 @@
 		ACE02F265676FD23578DF04F /* SystemCredentialIdentityStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FAD214270656E02E761B8B2 /* SystemCredentialIdentityStore.swift */; };
 		AF33590B3B67B6BA9B2F0ABC /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA215E0ABDBB6E239127F971 /* SettingsView.swift */; };
 		AF38C0AB53760494B4C84899 /* ItemIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47989259B86D2ABA32773725 /* ItemIcon.swift */; };
+		AFF4D93F2040323C6363C68A /* ThemePalettes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B69EA63E2A0AF80C7AEF3D7 /* ThemePalettes.swift */; };
 		B0D783794A26B0594D271359 /* KeychainSecretKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA05D6AEDA2B1F45CB3B9F26 /* KeychainSecretKeyStore.swift */; };
 		B157232134C3DDBFE2774982 /* VaultSharingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F012F76F1EDB1B44FF1082E /* VaultSharingView.swift */; };
 		B2393CCCFBDE641E9D29319E /* BackendFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1346D0E3E68C5BDA1B3344E9 /* BackendFactory.swift */; };
@@ -206,6 +209,7 @@
 		5F012F76F1EDB1B44FF1082E /* VaultSharingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultSharingView.swift; sourceTree = "<group>"; };
 		647E01C2B3F64259DBAF90B5 /* PasskeyUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasskeyUITests.swift; sourceTree = "<group>"; };
 		6A0557C083DC71D33D7D838B /* PrivacyShield.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyShield.swift; sourceTree = "<group>"; };
+		6B69EA63E2A0AF80C7AEF3D7 /* ThemePalettes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemePalettes.swift; sourceTree = "<group>"; };
 		749D535C9C6B489F37C5F4C6 /* AuthenticationServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AuthenticationServices.framework; path = System/Library/Frameworks/AuthenticationServices.framework; sourceTree = SDKROOT; };
 		7ACF599EDF05A1F19E55537F /* AutoFillModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoFillModel.swift; sourceTree = "<group>"; };
 		7B2774C869B2E88A54905C78 /* FakeBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeBackend.swift; sourceTree = "<group>"; };
@@ -376,6 +380,7 @@
 				47989259B86D2ABA32773725 /* ItemIcon.swift */,
 				A238D14B92DA27E1CCAE99DA /* LogoMark.swift */,
 				F067661397CABF889DA6CF7C /* Theme.swift */,
+				6B69EA63E2A0AF80C7AEF3D7 /* ThemePalettes.swift */,
 				8F56BEC5782A64AB5EE308FF /* UnlockPanel.swift */,
 			);
 			path = Views;
@@ -664,6 +669,7 @@
 				A53ECFFE1EB70418DBB8B0DA /* PhoneApproval.swift in Sources */,
 				ACE02F265676FD23578DF04F /* SystemCredentialIdentityStore.swift in Sources */,
 				0738F234B5FC729D53DFCB1F /* Theme.swift in Sources */,
+				3EC79E5E6E77169906986CDC /* ThemePalettes.swift in Sources */,
 				90EB584A6FAAE235E13B0C90 /* UnlockPanel.swift in Sources */,
 				A4D79E48A346ADB339EDAF08 /* VaultBackend.swift in Sources */,
 				D91E3C9808D23679AB7812A0 /* VaultLogic.swift in Sources */,
@@ -726,6 +732,7 @@
 				0A578F219707B0B5B090842E /* SignInView.swift in Sources */,
 				739F4863584CE3912731463A /* SystemCredentialIdentityStore.swift in Sources */,
 				481FE0BCCD0D2166F4469760 /* Theme.swift in Sources */,
+				AFF4D93F2040323C6363C68A /* ThemePalettes.swift in Sources */,
 				1E6F174F2382C5574842C6E0 /* UnlockPanel.swift in Sources */,
 				E888ABF479A27FE128F20BD2 /* VaultBackend.swift in Sources */,
 				BF07224F98A23FD5B69A160E /* VaultLogic.swift in Sources */,
@@ -774,6 +781,7 @@
 				21CB8A2B084894417B395E0D /* SignInView.swift in Sources */,
 				F26CDD2A7EAD0D8AFEEBD93F /* SystemCredentialIdentityStore.swift in Sources */,
 				9F882321D31A78F3C1903304 /* Theme.swift in Sources */,
+				472BD60EDDFB29C272E4F9DC /* ThemePalettes.swift in Sources */,
 				5807CCBF70BA02987A3B8671 /* UnlockPanel.swift in Sources */,
 				BF1A86ECA4563E56069C5DB0 /* VaultBackend.swift in Sources */,
 				CBEB741DFF41754709623CEC /* VaultLogic.swift in Sources */,

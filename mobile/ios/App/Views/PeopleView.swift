@@ -51,7 +51,7 @@ struct PeopleView: View {
                     } icon: {
                         ProgressView()
                     }
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.themeSecondary)
                 }
             } header: {
                 Text("People you share vaults with")
@@ -75,7 +75,7 @@ struct PeopleView: View {
                 } footer: {
                     if !shareInvitations.completionError.isEmpty {
                         Text("Could not finish sharing: \(shareInvitations.completionError)")
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(.themeWarning)
                     }
                 }
             }
@@ -92,7 +92,7 @@ struct PeopleView: View {
                 }
             }
         }
-        .listStyle(.insetGrouped)
+        .applyThemedListStyle()
         .refreshable { await load() }
         .navigationTitle("People")
         .confirmationDialog("Cancel the invitation to \(invitationToCancel?.email ?? "")?", isPresented: Binding(get: { invitationToCancel != nil }, set: { if !$0 { invitationToCancel = nil } }), titleVisibility: .visible) {
@@ -133,12 +133,12 @@ struct PersonView: View {
                     Image(systemName: "person.crop.circle.fill")
                         .font(.system(.largeTitle))
                         .imageScale(.large)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.themeSecondary)
                         .accessibilityHidden(true)
                     Text(person.isCurrentUser ? "\(person.name) (you)" : person.name)
                         .font(.title2.weight(.bold))
                     Text(person.email)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.themeSecondary)
                         .textSelection(.enabled)
                 }
                 .frame(maxWidth: .infinity)
@@ -150,7 +150,7 @@ struct PersonView: View {
                         Text("Their key changed since you last shared with them. Check the security code with them before sharing again.")
                     } icon: {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(.themeWarning)
                     }
                     .accessibilityIdentifier("person-key-changed")
                 }
@@ -171,7 +171,7 @@ struct PersonView: View {
                 }
             }
         }
-        .listStyle(.insetGrouped)
+        .applyThemedListStyle()
         .navigationTitle(person.name)
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -190,7 +190,7 @@ struct ReceivedInvitationRow: View {
                     Text("\(invitation.inviterName) shared a vault with you as \(describeVaultRole(invitation.role).lowercased())")
                     Text(invitation.invitedByEmail)
                         .font(.footnote)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.themeSecondary)
                 }
             } icon: {
                 Image(systemName: "person.2.fill")
@@ -229,7 +229,7 @@ struct SentInvitationRow: View {
                 Text(invitation.email)
                 Text(isVaultNameShown ? "\(invitation.vaultName.isEmpty ? "A vault you own" : invitation.vaultName) · \(stateText)" : stateText)
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.themeSecondary)
             }
         } icon: {
             Image(systemName: invitation.state == SentShareInvitation.stateAccepted ? "envelope.open" : "envelope")

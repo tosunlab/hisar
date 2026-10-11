@@ -37,7 +37,7 @@ struct VaultSharingView: View {
                             Text("Could not finish sharing: \(completionError)")
                         } icon: {
                             Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundStyle(.orange)
+                                .foregroundStyle(.themeWarning)
                         }
                         .font(.subheadline)
                         .accessibilityElement(children: .combine)
@@ -182,7 +182,7 @@ struct VaultSharingView: View {
                 } icon: {
                     ProgressView()
                 }
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.themeSecondary)
             }
         } header: {
             if let sharing {
@@ -281,13 +281,13 @@ struct VaultMemberView: View {
                     Image(systemName: "person.crop.circle.fill")
                         .font(.largeTitle)
                         .imageScale(.large)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.themeSecondary)
                         .accessibilityHidden(true)
                     Text(member.isCurrentUser ? "\(member.name) (you)" : member.name)
                         .font(.title2.weight(.bold))
                         .multilineTextAlignment(.center)
                     Text(member.email)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.themeSecondary)
                         .multilineTextAlignment(.center)
                         .textSelection(.enabled)
                 }
@@ -300,7 +300,7 @@ struct VaultMemberView: View {
                         Text("\(member.name)'s key changed since you last shared with them. Hisar refuses to share with them until you compare security codes again.")
                     } icon: {
                         Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(.themeWarning)
                     }
                     .accessibilityIdentifier("member-key-changed")
                 }
@@ -406,29 +406,29 @@ struct MemberRow: View {
         HStack(spacing: 14) {
             Image(systemName: member.isCurrentUser ? "person.crop.circle.fill" : "person.crop.circle")
                 .font(.title3)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.themeSecondary)
                 .frame(width: 32)
             VStack(alignment: .leading, spacing: 2) {
                 Text(member.isCurrentUser ? "\(member.name) (you)" : member.name)
                     .foregroundStyle(.primary)
                 Text(member.email)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.themeSecondary)
                 if !member.securityCode.isEmpty {
                     Text("Security code \(member.securityCode)")
                         .font(.caption2.monospaced())
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.themeSecondary)
                 }
                 if member.isKeyChanged {
                     Label("Their key changed since you last shared with them. Check the security code with them before sharing again.", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
-                        .foregroundStyle(.orange)
+                        .foregroundStyle(.themeWarning)
                 }
             }
             Spacer()
             Text(roleText)
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.themeSecondary)
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
