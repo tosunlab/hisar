@@ -19,6 +19,9 @@ import (
 const (
 	phoneApprovalDeviceRefreshInterval = 5 * time.Minute
 	phoneApprovalRequestTimeout        = 15 * time.Second
+	phoneApprovalDeviceCheckTimeout    = 3 * time.Second
+	phoneApprovalPostAttemptCount      = 3
+	phoneApprovalPostRetryDelay        = 2 * time.Second
 	iosPlatformPrefix                  = "ios/"
 )
 
@@ -101,7 +104,11 @@ func (s *Service) startPhoneApprovalDeviceRefresh(apiClient *client.Client) {
 
 // refreshPhoneApprovalDevice learns this device's ID and whether the account has an iPhone.
 func (s *Service) refreshPhoneApprovalDevice(apiClient *client.Client) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), phoneApprovalRequestTimeout)
+	return s.refreshPhoneApprovalDeviceWithin(apiClient, phoneApprovalRequestTimeout)
+}
+
+func (s *Service) refreshPhoneApprovalDeviceWithin(apiClient *client.Client, timeout time.Duration) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	allDevice, err := apiClient.ListAllDevice(ctx)
 	s.mutex.Lock()
@@ -147,23 +154,35 @@ func (s *Service) getPhoneApprovalDeviceName() string {
 	return strings.TrimSuffix(s.config.DeviceName, ".local")
 }
 
-// IsPhoneApprovalAvailable is true while Hisar is unlocked and online, the switch is on and the account has an iPhone.
+// IsPhoneApprovalAvailable is true while Hisar is unlocked, the switch is on and the account has an iPhone; a stale
+// "no iPhone" is checked again before answering, for at most phoneApprovalDeviceCheckTimeout.
 func (phoneApprover *PhoneApprover) IsPhoneApprovalAvailable() bool {
 	s := phoneApprover.service
 	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	if s.unlockedSession == nil || s.state.IsPhoneApprovalDisabled || s.unlockedSession.IsOffline() {
+	if s.unlockedSession == nil || s.state.IsPhoneApprovalDisabled {
+		s.mutex.Unlock()
 		return false
 	}
+	apiClient := s.unlockedSession.Client
+	s.mutex.Unlock()
 	relay := s.phoneApprovals
-	relay.mutex.Lock()
-	isStale := s.config.Now().Sub(relay.deviceRefreshedAt) > phoneApprovalDeviceRefreshInterval
-	isAvailable := relay.hasIOSDevice && relay.ownDeviceID != ""
-	relay.mutex.Unlock()
-	if isStale {
-		s.startPhoneApprovalDeviceRefresh(s.unlockedSession.Client)
+	isAvailable, isStale := relay.getDeviceAvailability(s.config.Now())
+	switch {
+	case isAvailable && isStale:
+		s.startPhoneApprovalDeviceRefresh(apiClient)
+		return true
+	case isAvailable || !isStale:
+		return isAvailable
 	}
+	s.refreshPhoneApprovalDeviceWithin(apiClient, phoneApprovalDeviceCheckTimeout)
+	isAvailable, _ = relay.getDeviceAvailability(s.config.Now())
 	return isAvailable
+}
+
+func (relay *phoneApprovalRelay) getDeviceAvailability(now time.Time) (isAvailable, isStale bool) {
+	relay.mutex.Lock()
+	defer relay.mutex.Unlock()
+	return relay.hasIOSDevice && relay.ownDeviceID != "", now.Sub(relay.deviceRefreshedAt) > phoneApprovalDeviceRefreshInterval
 }
 
 // StartPhoneApproval seals the dialog's request to the account and posts it; it stays answerable until the dialog's
@@ -199,19 +218,18 @@ func (phoneApprover *PhoneApprover) StartPhoneApproval(description approval.Desc
 	s.mutex.Unlock()
 
 	postedChannel := make(chan bool, 1)
+	finishedChannel := make(chan struct{})
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), phoneApprovalRequestTimeout)
-		defer cancel()
-		err := apiClient.CreateApproval(ctx, &proto.CreateApprovalRequest{RequestID: request.RequestID, SealedRequest: sealedRequest, ExpiresAt: request.ExpiresAt})
-		if err != nil {
-			log.Printf("phone approval: %v", err)
+		isPosted := postPhoneApproval(apiClient, &proto.CreateApprovalRequest{RequestID: request.RequestID, SealedRequest: sealedRequest, ExpiresAt: request.ExpiresAt}, finishedChannel)
+		if !isPosted {
 			s.forgetPhoneApproval(request.RequestID)
 		}
-		postedChannel <- err == nil
+		postedChannel <- isPosted
 	}()
 	var finishOnce sync.Once
 	return func() {
 		finishOnce.Do(func() {
+			close(finishedChannel)
 			s.forgetPhoneApproval(request.RequestID)
 			go func() {
 				if !<-postedChannel {
@@ -223,6 +241,30 @@ func (phoneApprover *PhoneApprover) StartPhoneApproval(description approval.Desc
 			}()
 		})
 	}
+}
+
+// postPhoneApproval tries again after a failure, e.g. right after the Mac wakes; a duplicate ID means an earlier try arrived.
+func postPhoneApproval(apiClient *client.Client, createRequest *proto.CreateApprovalRequest, finishedChannel chan struct{}) bool {
+	for attempt := range phoneApprovalPostAttemptCount {
+		if attempt > 0 {
+			select {
+			case <-finishedChannel:
+				return false
+			case <-time.After(phoneApprovalPostRetryDelay):
+			}
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), phoneApprovalRequestTimeout)
+		err := apiClient.CreateApproval(ctx, createRequest)
+		cancel()
+		if err == nil || client.IsStatus(err, http.StatusConflict) {
+			return true
+		}
+		log.Printf("phone approval: post attempt %d: %v", attempt+1, err)
+		if client.IsStatus(err, http.StatusBadRequest) {
+			return false
+		}
+	}
+	return false
 }
 
 func (s *Service) forgetPhoneApproval(requestID string) {

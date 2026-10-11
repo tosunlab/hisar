@@ -108,6 +108,7 @@ func TestCompactApprovalOnlyWhenNothingElseIsNeeded(t *testing.T) {
 		request.IsForwarded = testCase.isForwarded
 		resultChannel := startApproval(approver, context.Background(), request)
 		event := waitForApprovalEvent(t, emitter)
+		approver.presenter.waitUntilIdle()
 		if event.IsCompact != testCase.want || !slices.Equal(emitter.listAllShownCompact(), []bool{testCase.want}) {
 			t.Errorf("%s: compact %v, shown %v", testCase.name, event.IsCompact, emitter.listAllShownCompact())
 		}
@@ -125,6 +126,7 @@ func TestWindowFollowsTheFirstRequest(t *testing.T) {
 	firstEvent := waitForApprovalEvent(t, emitter)
 	secondChannel := startApproval(approver, context.Background(), createTestRequest())
 	secondEvent := waitForApprovalEvent(t, emitter)
+	approver.presenter.waitUntilIdle()
 	if !secondEvent.IsCompact || !slices.Equal(emitter.listAllShownCompact(), []bool{false, false}) {
 		t.Errorf("a compact request resized the full dialog: %v", emitter.listAllShownCompact())
 	}

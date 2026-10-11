@@ -46,11 +46,12 @@ func (resolver *fakePeerResolver) setSession(session TerminalSession) {
 }
 
 type fakeApprover struct {
-	mutex        sync.Mutex
-	allRequest   []ApprovalRequest
-	result       error
-	release      chan struct{}
-	requestCount atomic.Int32
+	mutex          sync.Mutex
+	allRequest     []ApprovalRequest
+	result         error
+	release        chan struct{}
+	requestCount   atomic.Int32
+	cancelledCount atomic.Int32
 }
 
 func (approver *fakeApprover) ApproveCommandLine(ctx context.Context, request ApprovalRequest) error {
@@ -64,6 +65,7 @@ func (approver *fakeApprover) ApproveCommandLine(ctx context.Context, request Ap
 		select {
 		case <-release:
 		case <-ctx.Done():
+			approver.cancelledCount.Add(1)
 			return ErrDenied
 		}
 	}
@@ -489,5 +491,29 @@ func TestRunnerReportsServeError(t *testing.T) {
 	}
 	if status := runner.GetStatus(); status.IsRunning || status.ErrorMessage == "" {
 		t.Errorf("status %+v", status)
+	}
+}
+
+func TestClientDisconnectCancelsTheWaitingApproval(t *testing.T) {
+	fixture := createServerFixture(t)
+	fixture.approver.release = make(chan struct{})
+	client := fixture.connect(t)
+	if err := cliprotocol.WriteJSON(client.connection, cliprotocol.Request{ID: "1", Type: cliprotocol.TypeListVault}); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	for fixture.approver.requestCount.Load() == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("the server never asked for approval")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	client.connection.Close()
+	deadline = time.Now().Add(3 * time.Second)
+	for fixture.approver.cancelledCount.Load() == 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("the approval kept waiting after the client disconnected")
+		}
+		time.Sleep(time.Millisecond)
 	}
 }

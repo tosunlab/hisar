@@ -116,8 +116,9 @@ func (s *Server) ServeConnection(ctx context.Context, connection net.Conn) {
 	if !isAllowed {
 		return
 	}
+	reader := sshagent.WatchConnectionClose(connection, cancel)
 	for {
-		message, err := cliprotocol.ReadMessage(connection)
+		message, err := cliprotocol.ReadMessage(reader)
 		if err != nil {
 			if !errors.Is(err, io.EOF) && connectionContext.Err() == nil {
 				log.Printf("commandline: %v", err)
