@@ -288,7 +288,7 @@ func TestListAndSearchWithoutAgentVaultsExplainHowToEnableOne(t *testing.T) {
 		t.Errorf("list: %+v", vaultOutput)
 	}
 	searchOutput := decodeOutput[SearchItemsOutput](t, server.callTool(t, "search_items", map[string]any{"query": "", "vault": "Work"}))
-	if searchOutput.Items == nil || !strings.Contains(searchOutput.Message, "Settings → Coding agents") {
+	if searchOutput.Items == nil || !strings.Contains(searchOutput.Message, "Settings → Developer tools → Coding agents") {
 		t.Errorf("search: %+v", searchOutput)
 	}
 	search := app.allRequest[len(app.allRequest)-2]

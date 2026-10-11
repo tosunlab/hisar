@@ -1,66 +1,105 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from "vue";
-import type { Device } from "../api";
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from "vue";
+import { loadSettingsData, loadSSHAgentStatus, store } from "../store";
 import {
-  configureSSHConfig,
-  disableBiometricUnlock,
-  enableBiometricUnlock,
-  loadSettingsData,
-  loadSSHAgentStatus,
-  openImport,
-  removeSSHConfig,
-  setCompactSSHApproval,
-  setPhoneApproval,
-  revokeDevice,
-  saveEmergencyKit,
-  setAutoLock,
-  signOut,
-  store,
-} from "../store";
-import { formatLastSeen, formatPlatform, getPlatformIcon, isMacPlatform } from "../util";
+  allSettingsSection,
+  findAllMatchingRowID,
+  loadSelectedSectionID,
+  saveSelectedSectionID,
+  settingsRowVisibilityKey,
+  type SettingsSection,
+  type SettingsSectionID,
+} from "../settingsSections";
+import AccountSection from "./AccountSection.vue";
+import AppIcon from "./AppIcon.vue";
 import BrowserExtensionSection from "./BrowserExtensionSection.vue";
 import CodingAgentsSection from "./CodingAgentsSection.vue";
 import CommandLineSection from "./CommandLineSection.vue";
+import DevicesSection from "./DevicesSection.vue";
+import ImportSection from "./ImportSection.vue";
 import OpenAtLoginSection from "./OpenAtLoginSection.vue";
-import UpdatesSection from "./UpdatesSection.vue";
-import AppIcon from "./AppIcon.vue";
 import PeopleSection from "./PeopleSection.vue";
+import SecuritySection from "./SecuritySection.vue";
+import SSHAgentSection from "./SSHAgentSection.vue";
+import UpdatesSection from "./UpdatesSection.vue";
 
-const allAutoLockOption = [
-  { seconds: 30, label: "30 seconds" },
-  { seconds: 60, label: "1 minute" },
-  { seconds: 300, label: "5 minutes" },
-  { seconds: 600, label: "10 minutes" },
-  { seconds: 3600, label: "1 hour" },
-];
-const isEnablingTouchID = ref(false);
-const touchIDPassword = ref("");
-const isConfirmingSignOut = ref(false);
-const revokingDeviceID = ref("");
-const currentDeviceLabel = isMacPlatform() ? "This Mac" : "This device";
+const searchQuery = ref("");
+const selectedSectionID = ref<SettingsSectionID>(loadSelectedSectionID());
+const isInvitingPerson = ref(false);
+const searchInput = ref<HTMLInputElement | null>(null);
+const sectionList = ref<HTMLElement | null>(null);
+const sectionContent = ref<HTMLElement | null>(null);
 
-function describeActivity(device: Device): string {
-  const lastSeen = formatLastSeen(device.lastSeenAt);
-  if (device.isCurrent || lastSeen === "Active now") {
-    return "Active now";
+const isSearching = computed(() => searchQuery.value.trim() !== "");
+const allMatchingRowID = computed(() => findAllMatchingRowID(searchQuery.value));
+const pendingInvitationCount = computed(() => store.shareInvitations.received.length);
+
+function isRowAvailable(rowID: string): boolean {
+  if (rowID === "received-invitations") {
+    return store.shareInvitations.received.length > 0;
   }
-  return lastSeen ? `Last seen ${lastSeen === "Yesterday" ? "yesterday" : lastSeen}` : "";
+  if (rowID === "sent-invitations") {
+    return store.shareInvitations.sent.length > 0;
+  }
+  return true;
 }
 
-async function confirmRevoke(device: Device): Promise<void> {
-  if (await revokeDevice(device)) {
-    revokingDeviceID.value = "";
+function isRowVisible(rowID: string): boolean {
+  return !isSearching.value || allMatchingRowID.value.has(rowID);
+}
+
+provide(settingsRowVisibilityKey, isRowVisible);
+
+const allVisibleSection = computed<SettingsSection[]>(() =>
+  isSearching.value
+    ? allSettingsSection.filter((section) => section.allRow.some((row) => allMatchingRowID.value.has(row.id) && isRowAvailable(row.id)))
+    : allSettingsSection,
+);
+const displayedSection = computed(() => allVisibleSection.value.find((section) => section.id === selectedSectionID.value) ?? null);
+
+function selectSection(sectionID: SettingsSectionID): void {
+  if (sectionID !== selectedSectionID.value) {
+    isInvitingPerson.value = false;
+    if (sectionContent.value) {
+      sectionContent.value.scrollTop = 0;
+    }
+  }
+  selectedSectionID.value = sectionID;
+  saveSelectedSectionID(sectionID);
+}
+
+watch(allVisibleSection, (allSection) => {
+  if (allSection.length > 0 && !allSection.some((section) => section.id === selectedSectionID.value)) {
+    selectSection(allSection[0].id);
+  }
+});
+
+async function focusSelectedSection(): Promise<void> {
+  await nextTick();
+  sectionList.value?.querySelector<HTMLButtonElement>('[aria-current="page"]')?.focus();
+}
+
+function moveSelection(event: KeyboardEvent): void {
+  const allSection = allVisibleSection.value;
+  if ((event.key !== "ArrowDown" && event.key !== "ArrowUp") || allSection.length === 0) {
+    return;
+  }
+  event.preventDefault();
+  const currentIndex = allSection.findIndex((section) => section.id === selectedSectionID.value);
+  const nextIndex = Math.min(allSection.length - 1, Math.max(0, currentIndex + (event.key === "ArrowDown" ? 1 : -1)));
+  selectSection(allSection[nextIndex].id);
+  focusSelectedSection();
+}
+
+function moveFromSearch(event: KeyboardEvent): void {
+  if (event.key === "ArrowDown" && displayedSection.value) {
+    event.preventDefault();
+    focusSelectedSection();
   }
 }
 
-const isSavingEmergencyKit = ref(false);
-const emergencyKitPassword = ref("");
-
-async function submitSaveEmergencyKit(): Promise<void> {
-  if (await saveEmergencyKit(emergencyKitPassword.value)) {
-    isSavingEmergencyKit.value = false;
-  }
-  emergencyKitPassword.value = "";
+function startInvitingPerson(): void {
+  isInvitingPerson.value = true;
 }
 
 function closeSettings(): void {
@@ -68,280 +107,123 @@ function closeSettings(): void {
   store.errorMessage = "";
 }
 
-async function submitEnableTouchID(): Promise<void> {
-  if (await enableBiometricUnlock(touchIDPassword.value)) {
-    isEnablingTouchID.value = false;
-  }
-  touchIDPassword.value = "";
-}
-
-function closeOnEscape(event: KeyboardEvent): void {
+function handleKeydown(event: KeyboardEvent): void {
   if (event.key === "Escape") {
+    if (event.target === searchInput.value && searchQuery.value !== "") {
+      searchQuery.value = "";
+      return;
+    }
     closeSettings();
+  } else if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "f") {
+    event.preventDefault();
+    searchInput.value?.focus();
+    searchInput.value?.select();
   }
 }
 
 onMounted(() => {
-  window.addEventListener("keydown", closeOnEscape);
+  window.addEventListener("keydown", handleKeydown);
   loadSSHAgentStatus();
   loadSettingsData();
 });
-onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
+onBeforeUnmount(() => window.removeEventListener("keydown", handleKeydown));
 </script>
 
 <template>
   <div class="overlay" @click.self="closeSettings">
     <div class="card settings" role="dialog" aria-modal="true" aria-labelledby="settings-title">
-      <header class="row">
-        <h2 id="settings-title">Settings</h2>
-        <div class="spacer"></div>
-        <button class="ghost icon-button" aria-label="Close settings" @click="closeSettings"><AppIcon name="close" /></button>
-      </header>
-
-      <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
-
-      <section>
-        <p class="section-label">Security</p>
-        <div class="setting">
-          <span class="setting-icon"><AppIcon name="fingerprint" /></span>
-          <div class="setting-text">
-            <strong>Unlock with Touch ID</strong>
-            <p class="muted">
-              {{
-                store.status.biometricAvailable
-                  ? "Touch ID unlocks Hisar after it locks. Your master password is still needed when Hisar starts and at least every 14 days."
-                  : "Touch ID is not available on this Mac."
-              }}
-            </p>
-          </div>
+      <nav class="settings-sidebar" aria-label="Settings sections">
+        <div class="settings-search">
+          <AppIcon name="search" :size="14" />
+          <input
+            ref="searchInput"
+            v-model="searchQuery"
+            type="search"
+            name="settingsSearch"
+            aria-label="Search settings"
+            placeholder="Search settings"
+            autocomplete="off"
+            spellcheck="false"
+            data-testid="settings-search"
+            @keydown="moveFromSearch"
+          />
+        </div>
+        <div ref="sectionList" class="section-list" @keydown="moveSelection">
           <button
-            v-if="store.status.biometricEnabled"
-            data-testid="disable-touch-id"
-            :disabled="store.isBusy"
-            @click="disableBiometricUnlock"
+            v-for="section in allVisibleSection"
+            :key="section.id"
+            type="button"
+            class="section-button"
+            :aria-current="section.id === displayedSection?.id ? 'page' : undefined"
+            :tabindex="section.id === displayedSection?.id ? 0 : -1"
+            :data-testid="`settings-section-${section.id}`"
+            @click="selectSection(section.id)"
           >
-            Turn off
+            <AppIcon :name="section.icon" :size="16" />
+            <span class="section-name">{{ section.label }}</span>
+            <span
+              v-if="section.id === 'people' && pendingInvitationCount > 0"
+              class="badge"
+              data-testid="people-invitation-badge"
+              :aria-label="pendingInvitationCount === 1 ? '1 invitation' : `${pendingInvitationCount} invitations`"
+              >{{ pendingInvitationCount }}</span
+            >
           </button>
-          <button
-            v-else-if="!isEnablingTouchID"
-            data-testid="enable-touch-id"
-            :disabled="!store.status.biometricAvailable"
-            @click="isEnablingTouchID = true"
-          >
-            Turn on
+          <p v-if="allVisibleSection.length === 0" class="muted no-section">No results</p>
+        </div>
+      </nav>
+
+      <div class="settings-main">
+        <header class="settings-header">
+          <h2 id="settings-title">{{ displayedSection?.label ?? "Settings" }}</h2>
+          <button v-if="displayedSection?.id === 'people' && !isInvitingPerson" v-show="isRowVisible('invite')" data-testid="start-invite" @click="startInvitingPerson">
+            <AppIcon name="plus" :size="14" />Invite
           </button>
-        </div>
-        <form v-if="isEnablingTouchID" class="enable-form" @submit.prevent="submitEnableTouchID">
-          <input
-            v-model="touchIDPassword"
-            name="touchIDPassword"
-            type="password"
-            aria-label="Master password"
-            placeholder="Enter your master password to turn on Touch ID"
-            autocomplete="current-password"
-            autofocus
-            required
-          />
-          <button type="button" class="ghost" @click="isEnablingTouchID = false">Cancel</button>
-          <button class="primary" type="submit" :disabled="store.isBusy">Turn on</button>
-        </form>
-        <div class="setting">
-          <span class="setting-icon"><AppIcon name="lock" /></span>
-          <div class="setting-text">
-            <strong>Auto-lock</strong>
-            <p class="muted">Hisar locks after this long without activity. Copied values are cleared after 90 seconds.</p>
+          <button class="ghost icon-button" aria-label="Close settings" @click="closeSettings"><AppIcon name="close" /></button>
+        </header>
+
+        <div ref="sectionContent" class="settings-content">
+          <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
+
+          <div v-if="!displayedSection" class="no-results" data-testid="settings-no-results">
+            <AppIcon name="search" :size="20" />
+            <p>No settings match “{{ searchQuery.trim() }}”.</p>
           </div>
-          <select
-            class="auto-lock"
-            aria-label="Auto-lock after"
-            data-testid="auto-lock"
-            :value="store.status.autoLockSeconds"
-            :disabled="store.isBusy"
-            @change="setAutoLock(Number(($event.target as HTMLSelectElement).value))"
-          >
-            <option v-for="option in allAutoLockOption" :key="option.seconds" :value="option.seconds">{{ option.label }}</option>
-          </select>
-        </div>
-        <div class="setting">
-          <span class="setting-icon"><AppIcon name="note" /></span>
-          <div class="setting-text">
-            <strong>Emergency Kit</strong>
-            <p class="muted">A printable PDF with your sign-in address, email and Secret Key, for signing in on a new device. It is the only way back in if you lose your devices.</p>
+
+          <div v-show="displayedSection?.id === 'general'" data-testid="settings-page-general">
+            <OpenAtLoginSection />
+            <UpdatesSection />
+            <ImportSection />
           </div>
-          <button v-if="!isSavingEmergencyKit" data-testid="save-emergency-kit" @click="isSavingEmergencyKit = true">Save PDF</button>
-        </div>
-        <form v-if="isSavingEmergencyKit" class="enable-form" @submit.prevent="submitSaveEmergencyKit">
-          <input
-            v-model="emergencyKitPassword"
-            name="emergencyKitPassword"
-            type="password"
-            aria-label="Master password"
-            placeholder="Enter your master password to save the Emergency Kit"
-            autocomplete="current-password"
-            autofocus
-            required
-          />
-          <button type="button" class="ghost" @click="isSavingEmergencyKit = false">Cancel</button>
-          <button class="primary" type="submit" :disabled="store.isBusy">Save</button>
-        </form>
-      </section>
-
-      <section data-testid="import-section">
-        <p class="section-label">Import</p>
-        <div class="setting">
-          <span class="setting-icon"><AppIcon name="import" /></span>
-          <div class="setting-text">
-            <strong>Import from another password manager</strong>
-            <p class="muted">1Password (.1pux or CSV), Bitwarden (JSON or CSV), or a CSV export from Chrome, Firefox, Safari or Edge.</p>
+          <div v-show="displayedSection?.id === 'security'" data-testid="settings-page-security">
+            <SecuritySection />
           </div>
-          <button data-testid="open-import" @click="openImport">Import…</button>
-        </div>
-      </section>
-
-      <PeopleSection />
-
-      <section data-testid="devices-section">
-        <p class="section-label">Devices</p>
-        <p v-if="store.allDevice.length === 0" class="muted empty-note">{{ store.isBusy ? "Loading devices…" : "No devices to show." }}</p>
-        <div v-for="device in store.allDevice" :key="device.id" class="setting" :data-testid="`device-${device.id}`">
-          <span class="setting-icon"><AppIcon :name="getPlatformIcon(device.platform)" /></span>
-          <div class="setting-text">
-            <strong class="title-line">
-              <span class="title-text">{{ device.name }}</span>
-              <span v-if="device.isCurrent" class="tag accent">{{ currentDeviceLabel }}</span>
-            </strong>
-            <p class="muted">{{ formatPlatform(device.platform) }} · {{ describeActivity(device) }}</p>
-            <p v-if="revokingDeviceID === device.id" class="revoke-note">
-              {{ device.name }} will be signed out and needs the master password and Secret Key to sign in again.
-            </p>
+          <div v-show="displayedSection?.id === 'ssh'" data-testid="settings-page-ssh">
+            <SSHAgentSection />
           </div>
-          <template v-if="!device.isCurrent">
-            <button v-if="revokingDeviceID !== device.id" class="danger" :data-testid="`revoke-device-${device.id}`" @click="revokingDeviceID = device.id">Revoke</button>
-            <template v-else>
-              <button class="ghost" @click="revokingDeviceID = ''">Cancel</button>
-              <button class="danger-solid" data-testid="confirm-revoke-device" :disabled="store.isBusy" @click="confirmRevoke(device)">Sign out device</button>
-            </template>
-          </template>
-        </div>
-      </section>
-
-      <BrowserExtensionSection />
-
-      <section data-testid="ssh-agent-section">
-        <p class="section-label">SSH agent</p>
-        <div class="setting">
-          <span class="setting-icon"><AppIcon name="terminal" /></span>
-          <div class="setting-text">
-            <strong>Hisar SSH agent</strong>
-            <p v-if="!store.sshAgentStatus" class="muted">Checking the SSH agent…</p>
-            <p v-else-if="store.sshAgentStatus.isRunning" class="muted" data-testid="ssh-agent-state">
-              <span class="state-dot running"></span>Running at <span class="monospace">{{ store.sshAgentStatus.socketPath }}</span>
-            </p>
-            <p v-else class="muted" data-testid="ssh-agent-state">
-              <span class="state-dot stopped"></span>Not running<template v-if="store.sshAgentStatus.errorMessage">: {{ store.sshAgentStatus.errorMessage }}</template>
-            </p>
+          <div v-show="displayedSection?.id === 'developer'" data-testid="settings-page-developer">
+            <CommandLineSection />
+            <CodingAgentsSection />
           </div>
-          <template v-if="store.sshAgentStatus">
-            <button v-if="store.sshAgentStatus.isSSHConfigured" data-testid="remove-ssh-config" :disabled="store.isBusy" @click="removeSSHConfig">
-              Remove from SSH config
-            </button>
-            <button v-else class="primary" data-testid="configure-ssh-config" :disabled="store.isBusy" @click="configureSSHConfig">Use Hisar for SSH</button>
-          </template>
-        </div>
-        <p v-if="store.sshAgentErrorMessage" class="error" role="alert">{{ store.sshAgentErrorMessage }}</p>
-        <div v-if="store.sshAgentStatus" class="ssh-explanation">
-          <p class="muted">
-            <template v-if="store.sshAgentStatus.isSSHConfigured">
-              <span class="monospace">ssh</span> and <span class="monospace">git</span> use the SSH keys in your vaults while Hisar is unlocked.
-            </template>
-            <template v-else>
-              “Use Hisar for SSH” adds this section to the top of <span class="monospace">{{ store.sshAgentStatus.configPath }}</span>, after saving a backup, so
-              <span class="monospace">ssh</span> and <span class="monospace">git</span> use the SSH keys in your vaults:
-            </template>
-          </p>
-          <pre v-if="!store.sshAgentStatus.isSSHConfigured" class="config-snippet monospace" data-testid="ssh-config-snippet">{{ store.sshAgentStatus.configSection }}</pre>
-          <p class="muted">
-            {{
-              store.sshAgentStatus.isTouchIDApproval
-                ? "Each use of a key asks for Touch ID, unless you let the app skip asking for an hour. Commit signatures always ask."
-                : "Each use of a key asks for your approval in Hisar, unless you let the app skip asking for an hour. Commit signatures always ask."
-            }}
-          </p>
-        </div>
-        <label v-if="store.sshAgentStatus" class="setting compact-approval">
-          <span class="setting-icon"><AppIcon name="fingerprint" /></span>
-          <div class="setting-text">
-            <strong>Compact SSH approvals</strong>
-            <p class="muted">Ask in a small card at the top right instead of a dialog; click the card for the details. Locked and forwarded requests still use the dialog.</p>
+          <div v-show="displayedSection?.id === 'browser'" data-testid="settings-page-browser">
+            <BrowserExtensionSection />
           </div>
-          <input
-            type="checkbox"
-            name="compactSSHApproval"
-            :checked="store.sshAgentStatus.isCompactApproval"
-            :disabled="store.isBusy"
-            @change="setCompactSSHApproval(($event.target as HTMLInputElement).checked)"
-          />
-        </label>
-        <label v-if="store.sshAgentStatus" class="setting compact-approval">
-          <span class="setting-icon"><AppIcon name="phone" /></span>
-          <div class="setting-text">
-            <strong>Allow approvals from my iPhone</strong>
-            <p class="muted">While Hisar is unlocked here, SSH and command-line requests also appear in Hisar on your iPhone when it is open and unlocked. Approving there never unlocks this Mac.</p>
+          <div v-show="displayedSection?.id === 'people'" data-testid="settings-page-people">
+            <PeopleSection v-model:is-inviting="isInvitingPerson" />
           </div>
-          <input
-            type="checkbox"
-            name="phoneApproval"
-            data-testid="phone-approval-switch"
-            :checked="store.sshAgentStatus.isPhoneApproval"
-            :disabled="store.isBusy"
-            @change="setPhoneApproval(($event.target as HTMLInputElement).checked)"
-          />
-        </label>
-      </section>
-
-      <CommandLineSection />
-
-      <CodingAgentsSection />
-
-      <OpenAtLoginSection />
-
-      <UpdatesSection />
-
-      <section>
-        <p class="section-label">Account</p>
-        <div class="setting">
-          <span class="setting-icon"><AppIcon name="user" /></span>
-          <div class="setting-text">
-            <strong>{{ store.status.name || store.status.email }}</strong>
-            <p class="muted">{{ store.status.email }} · {{ store.status.server }}</p>
+          <div v-show="displayedSection?.id === 'devices'" data-testid="settings-page-devices">
+            <DevicesSection />
           </div>
-          <button v-if="!isConfirmingSignOut" class="danger" @click="isConfirmingSignOut = true">Sign out</button>
-          <template v-else>
-            <button class="ghost" @click="isConfirmingSignOut = false">Cancel</button>
-            <button class="danger-solid" data-testid="settings-confirm-sign-out" @click="signOut">Sign out</button>
-          </template>
+          <div v-show="displayedSection?.id === 'account'" data-testid="settings-page-account">
+            <AccountSection />
+          </div>
         </div>
-      </section>
-
+      </div>
     </div>
   </div>
 </template>
 
 <style scoped>
-.compact-approval {
-  margin-top: 8px;
-  cursor: pointer;
-}
-
-.compact-approval input {
-  width: auto;
-}
-
-.auto-lock {
-  flex: none;
-  width: auto;
-}
-
 .overlay {
   position: fixed;
   inset: 0;
@@ -354,75 +236,161 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
 }
 
 .settings {
-  width: min(560px, 100%);
-  max-height: 100%;
-  padding: 20px 22px;
-  overflow-y: auto;
+  display: flex;
+  width: min(880px, 100%);
+  height: min(620px, 100%);
+  overflow: hidden;
   background: var(--color-panel);
   box-shadow: 0 24px 64px rgb(0 0 0 / 50%);
 }
 
-h2 {
+.settings-sidebar {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 14px;
+  width: 208px;
+  padding: 16px 12px;
+  overflow-y: auto;
+  border-right: 1px solid var(--color-border);
+  background: var(--color-background);
+}
+
+.settings-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  flex: none;
+  padding: 0 9px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+}
+
+.settings-search:focus-within {
+  border-color: var(--color-focus);
+}
+
+.settings-search input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  color: var(--color-text);
+}
+
+.settings-search input::-webkit-search-cancel-button {
+  filter: grayscale(1);
+}
+
+.section-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.section-button {
+  flex: none;
+  justify-content: flex-start;
+  gap: 9px;
+  width: 100%;
+  padding: 6px 9px;
+  border: none;
+  border-radius: var(--radius-small);
+  background: transparent;
+  color: var(--color-text-secondary);
+  font-weight: 500;
+  text-align: left;
+}
+
+.section-button:hover {
+  background: var(--color-hover);
+  color: var(--color-text);
+}
+
+.section-button[aria-current="page"] {
+  background: var(--color-selected);
+  color: var(--color-text);
+}
+
+.section-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.badge {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 18px;
+  text-align: center;
+}
+
+.no-section {
+  margin: 4px 9px;
+  font-size: 12px;
+}
+
+.settings-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  min-height: 58px;
+  padding: 14px 16px 10px 24px;
+}
+
+.settings-header h2 {
+  flex: 1;
+  min-width: 0;
   margin: 0;
   font-size: 17px;
   font-weight: 650;
 }
 
-header {
-  margin-bottom: 16px;
+.settings-header button {
+  flex: none;
 }
 
-section {
-  margin-bottom: 18px;
+.settings-content {
+  flex: 1;
+  min-height: 0;
+  padding: 6px 24px 24px;
+  overflow-y: auto;
 }
 
-.ssh-explanation {
-  padding: 0 0 4px 44px;
+.settings-content > .error {
+  margin: 0 0 12px;
 }
 
-.ssh-explanation p {
-  margin: 0 0 8px;
-  font-size: 12px;
-}
-
-.config-snippet {
-  margin: 0 0 10px;
-  padding: 10px 12px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  background: var(--color-surface);
-  font-size: 12px;
-  color: var(--color-text-secondary);
-  white-space: pre-wrap;
-  user-select: text;
-  -webkit-user-select: text;
-}
-
-.state-dot {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  margin-right: 6px;
-  border-radius: 50%;
-  vertical-align: 1px;
-}
-
-.state-dot.running {
-  background: var(--color-success);
-}
-
-.state-dot.stopped {
-  background: var(--color-danger);
-}
-
-.enable-form {
+.no-results {
   display: flex;
+  flex-direction: column;
+  align-items: center;
   gap: 8px;
-  padding: 0 0 12px 44px;
+  padding: 80px 0;
+  color: var(--color-text-muted);
 }
 
-.setting-text .revoke-note {
-  margin-top: 6px;
-  color: #f2a7a9;
+.no-results p {
+  margin: 0;
 }
 </style>

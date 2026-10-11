@@ -20,7 +20,7 @@ import (
 
 const instructions = `Hisar is the user's password and secrets manager. Use secrets without seeing them: find items with search_items, then pass their hisar:// references to run_with_secrets, which runs a command with the secrets in its environment and masks them in the output. Never ask the user to paste a secret into the chat. Only the vaults the user made available to agents are visible. The user approves each use of a secret in Hisar; if they deny it, tell them and do not retry the same request. get_secret reveals a value and is only for when the value itself is needed.`
 
-const noAgentVaultMessage = "No vault is available to coding agents. Ask the user to open Hisar → Settings → Coding agents and turn on “Available to agents” for the vaults you may use."
+const noAgentVaultMessage = "No vault is available to coding agents. Ask the user to open Hisar → Settings → Developer tools → Coding agents and turn on “Available to agents” for the vaults you may use."
 
 type Config struct {
 	Version string

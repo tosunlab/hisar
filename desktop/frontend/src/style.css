@@ -184,7 +184,7 @@ label {
   margin-bottom: 14px;
 }
 
-label > span:first-child:not(.setting-icon) {
+label > span:first-child:not(.setting-icon, .settings-row-icon) {
   display: block;
   margin-bottom: 6px;
   font-size: 12px;
@@ -397,6 +397,166 @@ kbd {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Settings groups */
+.settings-block {
+  margin-bottom: 18px;
+}
+
+.settings-block:last-child {
+  margin-bottom: 0;
+}
+
+.settings-block > .section-label {
+  margin: 0 0 6px 2px;
+}
+
+.settings-group {
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-surface);
+}
+
+.settings-group > .setting {
+  margin: 0 0 -1px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.settings-group > .setting.nested {
+  padding-top: 0;
+  border-bottom: none;
+}
+
+.settings-group-detail {
+  padding: 0 14px 10px;
+  margin-bottom: -1px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.settings-group-detail p {
+  margin: 0 0 6px;
+  font-size: 12px;
+}
+
+.settings-group-detail p:last-child {
+  margin-bottom: 0;
+}
+
+.settings-group-form {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 -1px;
+  border-bottom: 1px solid var(--color-border);
+  padding: 0 14px 10px;
+}
+
+.settings-group-form button {
+  flex: none;
+  white-space: nowrap;
+}
+
+.settings-row-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border-radius: var(--radius-small);
+  background: var(--color-surface-raised);
+  color: var(--color-text-secondary);
+}
+
+.settings-note {
+  margin: 6px 2px 0;
+  font-size: 12px;
+}
+
+.settings-group label.setting {
+  cursor: pointer;
+}
+
+.code-block {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-panel);
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.state-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  vertical-align: 1px;
+  background: var(--color-text-muted);
+}
+
+.state-dot.running {
+  background: var(--color-success);
+}
+
+.state-dot.warning {
+  background: var(--color-warning);
+}
+
+input[type="checkbox"].switch {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  width: 30px;
+  height: 18px;
+  flex: none;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 9px;
+  background: var(--color-border-strong);
+  box-shadow: none;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+input[type="checkbox"].switch::before {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--color-text-secondary);
+  transition: left 0.15s;
+}
+
+input[type="checkbox"].switch:checked {
+  background: var(--color-primary);
+}
+
+input[type="checkbox"].switch:checked::before {
+  left: 14px;
+  background: var(--color-primary-text);
+}
+
+input[type="checkbox"].switch:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+input[type="checkbox"].switch:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
 }
 
 /* Full-window pages (sign in, unlock, Secret Key) */

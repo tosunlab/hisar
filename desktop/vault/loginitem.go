@@ -6,7 +6,7 @@ import (
 	"github.com/tryhisar/hisar/desktop/background"
 )
 
-// LoginItemStatus is Settings → App → "Open Hisar at login": the switch and what the system reports.
+// LoginItemStatus is Settings → General → "Open Hisar at login": the switch and what the system reports.
 type LoginItemStatus struct {
 	IsAvailable           bool   `json:"isAvailable"`
 	IsOpenAtLogin         bool   `json:"isOpenAtLogin"`

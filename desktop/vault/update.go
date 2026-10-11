@@ -27,7 +27,7 @@ type UpdateStatus struct {
 	IsAutomaticCheckEnabled bool   `json:"isAutomaticCheckEnabled"`
 }
 
-// UpdateService is bound to the UI for Settings → Updates.
+// UpdateService is bound to the UI for Settings → General → Updates.
 type UpdateService struct {
 	service *Service
 	updater Updater

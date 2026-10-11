@@ -30,7 +30,7 @@ describe("OpenAtLoginSection", () => {
     const wrapper = mount(OpenAtLoginSection);
     await flushPromises();
     expect(api.getLoginItemStatus).toHaveBeenCalled();
-    expect(wrapper.find(".section-label").text()).toBe("App");
+    expect(wrapper.find(".section-label").text()).toBe("Startup");
     expect(wrapper.text()).toContain("Open Hisar at login");
     expect(getSwitch(wrapper).checked).toBe(true);
     expect(getSwitch(wrapper).disabled).toBe(false);

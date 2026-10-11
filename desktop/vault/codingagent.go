@@ -17,7 +17,7 @@ import (
 
 const (
 	maximumAgentSearchResultCount = 50
-	noAgentVaultMessage           = "no vault is available to coding agents; in Hisar, open Settings → Coding agents and turn on “Available to agents” for the vaults an agent may use"
+	noAgentVaultMessage           = "no vault is available to coding agents; in Hisar, open Settings → Developer tools → Coding agents and turn on “Available to agents” for the vaults an agent may use"
 )
 
 // ListAllAgentVaultID returns the vaults that coding agents may see through hisar mcp on this device.

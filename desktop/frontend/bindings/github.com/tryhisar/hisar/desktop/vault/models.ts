@@ -22,7 +22,7 @@ export interface BrowserStatus {
 }
 
 /**
- * CommandLineStatus is Settings → Command-line tool: the installed hisar, the PATH, and the app integration.
+ * CommandLineStatus is Settings → Developer tools → Command-line tool: the installed hisar, the PATH, and the app integration.
  */
 export interface CommandLineStatus {
     "isAvailable": boolean;
@@ -139,7 +139,7 @@ export interface ItemPasskey {
 }
 
 /**
- * LoginItemStatus is Settings → App → "Open Hisar at login": the switch and what the system reports.
+ * LoginItemStatus is Settings → General → "Open Hisar at login": the switch and what the system reports.
  */
 export interface LoginItemStatus {
     "isAvailable": boolean;

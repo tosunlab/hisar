@@ -53,11 +53,11 @@ ad-hoc signed and not notarized until the Apple Developer membership is active, 
 Design: `docs/DESIGN.md` §9.1.1. Sparkle (version and SHA-256 pinned in `scripts/download-sparkle.sh`, downloaded into
 `build/sparkle/` by packaged builds) checks `<server>/api/v1/desktop/updates/appcast.xml` on the server you are signed in
 to, with your session, once a day, and downloads the update from the same server. The server needs the update source
-configured (`deploy/README.md`); otherwise checks report that updates are not configured. Settings → Updates shows the
+configured (`deploy/README.md`); otherwise checks report that updates are not configured. Settings → General → Updates shows the
 version, **Check for updates**, and **Automatically check for updates**. `wails3 dev` builds have no Sparkle and say so.
 
 The EdDSA private key lives outside the repository (kept by the maintainer and in the `SPARKLE_PRIVATE_KEY` CI variable);
-losing it means existing installs can no longer verify updates, so keep a backup. Preview: `&settings=1&scroll=updates`,
+losing it means existing installs can no longer verify updates, so keep a backup. Preview: `&settings=1&settingsSection=general`,
 `&updates=development` (build without Sparkle) or `&updates=signed-out`.
 
 To work on the design without a server, run the UI in a browser with sample data:
@@ -68,7 +68,7 @@ cd desktop/frontend && npm run preview:ui
 # extra parameters: &vault=family &item=netflix &editor=create|edit|ssh-key &secretKey=1 &search=git
 # SSH: &item=raspberry (SSH key) &settings=1 &noTouchID=1 (in-app approval note) &compact=1 (compact approvals on) &agent=error &sshConfigured=1
 # sharing: &sharing=1 (sharing panel; add &vault=work for the read-only view) &code=elif (security code) &remove=deniz
-# settings: &settings=1 &invite=form|1 (invite form, or a sent invite) &revoke=mac-mini &scroll=people|devices
+# settings: &settings=1 &invite=form|1 (invite form, or a sent invite) &revoke=mac-mini &settingsSection=general|security|ssh|developer|browser|people|devices|account &settingsSearch=<text>
 # offline: &offline=1 (offline notice)
 # import: &import=choose | preview | saving (stops halfway) | done | deleted, &importVault=family (target vault), &newItemMenu=1 (open the + menu)
 ```
@@ -85,18 +85,18 @@ Design: `docs/DESIGN.md` §4.4 (vault keys and rotation), §5.1 (invites) and §
 - **Removing someone** re-encrypts the vault: the owner's device generates a new vault key, re-encrypts every item and wraps the new key only for the remaining members (`session.RemoveVaultMember`). Copies the removed person already downloaded stay readable to them.
 - **Key pinning**: the first time this device shares with someone, it pins their signing key in `desktop.json` (`pins`), like the CLI (`localstate.State.CheckMemberPin`). Sharing, changing a role or re-encrypting the vault stops if a pinned key changes. Each person has a security code (`crypt.FormatKeyFingerprint`: the first 8 bytes of SHA-256 of their Ed25519 signing key, as 4 groups of 4 hex digits); expand a member in the sharing panel or open Settings → People to see it, and compare it over a channel you trust.
 - **Settings → People** lists the people you share a vault with and their security codes, and the share invitations you sent and received. Anyone can **Invite** someone to Hisar by email. The app shows no account roles; the admin role only matters to the operator's `hisar-server` command.
-- **Settings → Devices** lists the devices signed in to your account. **Revoke** signs another device out; to sign out this Mac, use **Sign out** under Account.
+- **Settings → Devices** lists the devices signed in to your account. **Revoke** signs another device out; to sign out this Mac, use **Sign out** in Settings → Account.
 
 ## Signing in again: the Emergency Kit
 
 Design: `docs/DESIGN.md` §6. The Emergency Kit (email, server and Secret Key) plus the master password is the only way to sign in again; there is no account recovery.
 
-- **Lost Secret Key**: it is on the Emergency Kit. Settings → Emergency Kit saves a new kit after the master password, and the sign-in screen says where to find it.
+- **Lost Secret Key**: it is on the Emergency Kit. Settings → Security → Emergency Kit saves a new kit after the master password, and the sign-in screen says where to find it.
 - **Forgotten master password**: nobody can recover it, including Hisar. The Create account form and the Secret Key screen after sign up say so.
 
 ## Import from other password managers
 
-Settings → Import → **Import…**, or **+** → **Import…** in a vault. The parsing is `core/importer` (design: `docs/DESIGN.md` §9.7).
+Settings → General → **Import…**, or **+** → **Import…** in a vault. The parsing is `core/importer` (design: `docs/DESIGN.md` §9.7).
 
 1. Choose the vault (only vaults you can edit) and the format, or let Hisar detect it, then pick the file in the open dialog: a 1Password `.1pux` or CSV export, an unencrypted Bitwarden `.json` or CSV export, or a CSV export from Chrome, Edge, Firefox, Safari or another manager (header row with columns such as title, username, password, url, notes).
 2. The preview counts logins, secure notes and SSH keys, lists what is not imported and why (cards, identities, documents, archived items, passphrase-protected SSH keys), and lists items already in the vault with the same title, username and website, which are skipped unless you untick the box. Nothing is saved before **Import**.
@@ -107,10 +107,10 @@ Settings → Import → **Import…**, or **+** → **Import…** in a vault. Th
 
 The Hisar extension (`extension/`) fills and saves logins through the desktop app (design: `docs/DESIGN.md` §9.2).
 
-- `Hisar.app/Contents/MacOS/hisar-browser-host` is the native messaging host. At launch the app writes `com.tryhisar.hisar.json` into `NativeMessagingHosts` of every installed Chromium browser (Chrome, Chrome Beta/Canary, Chromium, Brave, Edge, Arc, Vivaldi), allowing only the extension `mmipiffoogblblocokimpemdopmdjghf`. Settings → Browser extension shows where it is registered. A development build (`wails3 dev`) has no host next to its binary and registers nothing.
+- `Hisar.app/Contents/MacOS/hisar-browser-host` is the native messaging host. At launch the app writes `com.tryhisar.hisar.json` into `NativeMessagingHosts` of every installed Chromium browser (Chrome, Chrome Beta/Canary, Chromium, Brave, Edge, Arc, Vivaldi), allowing only the extension `mmipiffoogblblocokimpemdopmdjghf`. Settings → Browser shows where it is registered. A development build (`wails3 dev`) has no host next to its binary and registers nothing.
 - The host relays to the app on `~/.hisar/browser.sock` (`HISAR_BROWSER_SOCKET` overrides it for both). In the packaged app only that host binary may connect. If the app is not running, the host opens it in the background.
-- Pairing: clicking the extension's icon the first time makes Hisar show a 6-digit code (2 minutes, 5 attempts) to type into the extension. Settings → Browser extension lists paired browsers with Remove and has "Only fill on the exact host".
-- Preview: `&settings=1&scroll=browser-extension` (registered and paired browsers), `&browsers=none` (nothing found), `&browserPairing=1` (pairing code).
+- Pairing: clicking the extension's icon the first time makes Hisar show a 6-digit code (2 minutes, 5 attempts) to type into the extension. Settings → Browser lists paired browsers with Remove and has "Only fill on the exact host".
+- Preview: `&settings=1&settingsSection=browser` (registered and paired browsers), `&browsers=none` (nothing found), `&browserPairing=1` (pairing code).
 
 ## SSH agent
 
@@ -118,7 +118,7 @@ Hisar is an SSH agent for the SSH keys in your vaults (design: `docs/DESIGN.md` 
 
 1. Add a key: **+** → **SSH key**, then **Generate** (Ed25519, or RSA 4096 for old servers) or **Import** (paste an OpenSSH or PEM private key; a passphrase is only needed to import, the key is stored without it).
 2. Copy the public key from the key's page (**Copy public key**) into GitHub or the server's `~/.ssh/authorized_keys`.
-3. Settings → SSH agent → **Use Hisar for SSH**. This backs up `~/.ssh/config` to `~/.ssh/config.hisar-backup-<timestamp>` and adds at the top:
+3. Settings → SSH & Git → **Use Hisar for SSH**. This backs up `~/.ssh/config` to `~/.ssh/config.hisar-backup-<timestamp>` and adds at the top:
 
    ```
    # Added by Hisar: use the Hisar SSH agent
@@ -129,14 +129,14 @@ Hisar is an SSH agent for the SSH keys in your vaults (design: `docs/DESIGN.md` 
 
    **Remove from SSH config** takes the section out again. To try it without changing the config: `SSH_AUTH_SOCK=~/.hisar/agent.sock ssh-add -l`.
 
-The agent listens on `~/.hisar/agent.sock` while the app runs (`HISAR_SSH_AGENT_SOCKET` overrides the path) and offers keys from all your vaults only while Hisar is unlocked. Each use of a key opens the approval dialog, which says who asks for what, like "Terminal wants to push to git.tryhisar.com", with the command and repository, and starts Touch ID at once ("or use your master password" instead). "Don't ask again for Terminal for 1 hour" is checked by default; commit signatures always ask, and requests forwarded from another computer (`ssh -A`) show a red warning and can only be allowed once. While Hisar is locked, the dialog unlocks it. Settings → SSH agent → **Compact SSH approvals** shows a small card at the top right instead. Unanswered requests are denied after 60 seconds. Preview: `?window=ssh-approval&approval=1` (or `=2` for two waiting, `=signing` for a commit signature), plus `&approvalLocked=1` (Touch ID unlocks), `&approvalPassword=1` (master password unlocks), `&compact=1`, `&forwarded=1`, `&noTouchID=1`.
+The agent listens on `~/.hisar/agent.sock` while the app runs (`HISAR_SSH_AGENT_SOCKET` overrides the path) and offers keys from all your vaults only while Hisar is unlocked. Each use of a key opens the approval dialog, which says who asks for what, like "Terminal wants to push to git.tryhisar.com", with the command and repository, and starts Touch ID at once ("or use your master password" instead). "Don't ask again for Terminal for 1 hour" is checked by default; commit signatures always ask, and requests forwarded from another computer (`ssh -A`) show a red warning and can only be allowed once. While Hisar is locked, the dialog unlocks it. Settings → SSH & Git → **Compact SSH approvals** shows a small card at the top right instead. Unanswered requests are denied after 60 seconds. Preview: `?window=ssh-approval&approval=1` (or `=2` for two waiting, `=signing` for a commit signature), plus `&approvalLocked=1` (Touch ID unlocks), `&approvalPassword=1` (master password unlocks), `&compact=1`, `&forwarded=1`, `&noTouchID=1`.
 
 ## Keeping Hisar running
 
 `ssh`, `git` and commit signing cannot start Hisar: while the app is not running, `~/.hisar/agent.sock` refuses connections and they
 fail at once. So the app keeps itself available (design: `docs/DESIGN.md` §9.1.2):
 
-- Settings → App → **Open Hisar at login** (on by default; registered once on the first launch, never again after you turn it off).
+- Settings → General → **Open Hisar at login** (on by default; registered once on the first launch, never again after you turn it off).
   macOS uses `SMAppService` and Settings shows what System Settings → General → Login Items says, with **Open Login Items** when macOS
   wants your approval; Linux writes `~/.config/autostart/com.tryhisar.hisar.desktop`. At login Hisar opens locked and without a window.
 - Closing the window keeps Hisar running in the menu bar (Open Hisar, Lock or Unlock…, Quit Hisar); the Dock icon shows only while the
@@ -148,7 +148,7 @@ fail at once. So the app keeps itself available (design: `docs/DESIGN.md` §9.1.
 Design: `docs/DESIGN.md` §9.4. The packaged app bundles the CLI as `Hisar.app/Contents/Helpers/hisar` (universal, signed with the
 app, updated with it by Sparkle). Not `Contents/MacOS/hisar`: on the default case-insensitive file system that is the app's own `Hisar`.
 
-- Settings → Command-line tool → **Install command-line tool** links `hisar` into `/opt/homebrew/bin` or `/usr/local/bin` (whichever
+- Settings → Developer tools → **Install command-line tool** links `hisar` into `/opt/homebrew/bin` or `/usr/local/bin` (whichever
   exists and is writable first), else `~/.local/bin`, without an administrator password; Settings then shows a one-line PATH hint
   if that directory is not on your `PATH`. It never replaces a `hisar` that is not a link into a `Hisar.app`. **Uninstall** removes only such links.
 - **Let the command-line tool use Hisar** (on by default) serves `~/.hisar/cli.sock` (`HISAR_CLI_SOCKET` overrides it for the app and
@@ -160,7 +160,7 @@ app, updated with it by Sparkle). Not `Contents/MacOS/hisar`: on the default cas
   its own sign-in when it has one, and otherwise stops with "Hisar isn't running. Open the Hisar app and try again."
   `HISAR_NO_LAUNCH=1` never starts the app, for scripts and CI.
 - Without an installed app, with the switch off, or with `hisar --standalone` / `HISAR_STANDALONE=1`, `hisar` signs in on its own as before.
-- Preview: `&settings=1&scroll=command-line` plus `&commandLine=not-installed | conflict | path-hint | development | off`;
+- Preview: `&settings=1&settingsSection=developer` plus `&commandLine=not-installed | conflict | path-hint | development | off`;
   the approval window with `?window=ssh-approval&approval=cli` (add `&cliLocked=1` for Touch ID unlock, `&cliPassword=1` for the
   master password, which is `correct horse battery` in the preview).
 

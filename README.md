@@ -20,13 +20,13 @@ The server stores only ciphertext. Keys are derived on your devices from your ma
 
 `hisar` lists, reads and edits your items from a terminal or a script (`hisar --help`).
 
-**On a Mac with the Hisar app**, the app includes it: Settings → Command-line tool → **Install command-line tool**. `hisar` then works
+**On a Mac with the Hisar app**, the app includes it: Settings → Developer tools → **Install command-line tool**. `hisar` then works
 through the running app, which asks you to approve each terminal with Touch ID; `hisar status` shows whether it uses the app.
 Details: [desktop/README.md](desktop/README.md#command-line-tool).
 
 **Keep the app running.** SSH clients, `git` and commit signing reach Hisar through `~/.hisar/agent.sock`, and they cannot start the
 app themselves: while Hisar is not running they fail at once with "Connection refused" or "Permission denied (publickey)". So the app
-opens at login (Settings → App → **Open Hisar at login**, on by default) and keeps running in the menu bar when you close its window;
+opens at login (Settings → General → **Open Hisar at login**, on by default) and keeps running in the menu bar when you close its window;
 ⌘Q or **Quit Hisar** in the menu bar quits it. `hisar` itself starts the app when it is installed but not running, waits up to 10 seconds
 for it, and otherwise says "Hisar isn't running. Open the Hisar app and try again."; `HISAR_NO_LAUNCH=1` turns that off for scripts and CI.
 
@@ -86,10 +86,10 @@ terminal only when it may use them. Details: [docs/DESIGN.md](docs/DESIGN.md) §
 ### Use Hisar with coding agents
 
 `hisar mcp` is an [MCP](https://modelcontextprotocol.io) server on stdio that lets coding agents use your secrets without seeing
-them. It always works through the Hisar app, which must be running with Settings → Command-line tool → "Let the command-line tool
+them. It always works through the Hisar app, which must be running with Settings → Developer tools → "Let the command-line tool
 use Hisar" on.
 
-1. In Hisar, open Settings → Coding agents and turn on "Available to agents" for the vaults an agent may use. Every vault starts
+1. In Hisar, open Settings → Developer tools → Coding agents and turn on "Available to agents" for the vaults an agent may use. Every vault starts
    off, and the setting is per device. Agents cannot see the other vaults at all.
 2. Add the server to your agent:
 
