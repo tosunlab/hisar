@@ -5,6 +5,7 @@
 | `hisar-mark.svg` | The mark: light rounded square with the fortress tower. Source of truth |
 | `hisar-tower.svg` | The tower glyph alone (used as the macOS Icon Composer layer) |
 | `hisar-app-icon.svg` | The mark on Apple's icon grid (824 px square on a 1024 px canvas), source of `desktop/build/appicon.png` |
+| `hisar-menu-bar.svg` | The tower in black on a square canvas, source of the macOS menu bar template image `desktop/build/menu-bar-icon.png` (44 px, shown at 22 points); Linux trays use `desktop/build/tray-icon-linux.png`, the mark at 64 px |
 | `hisar-wordmark-on-dark.svg` / `-on-light.svg` | Mark and "Hisar" side by side, for dark and light backgrounds |
 | `png/` | Rendered PNGs: the mark at 1024–16 px, the wordmarks at 1008 and 504 px wide (transparent background) |
 

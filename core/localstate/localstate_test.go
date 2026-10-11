@@ -64,6 +64,18 @@ func TestStateRoundtrip(t *testing.T) {
 	}
 }
 
+func TestResetKeepsOpenAtLoginPreference(t *testing.T) {
+	state, err := Load(filepath.Join(t.TempDir(), "desktop.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.Token, state.IsOpenAtLoginConfigured, state.IsOpenAtLoginDisabled = "tok", true, true
+	state.Reset()
+	if state.Token != "" || !state.IsOpenAtLoginConfigured || !state.IsOpenAtLoginDisabled {
+		t.Errorf("reset state: %+v", state)
+	}
+}
+
 func TestLoadRejectsCorruptFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
 	os.WriteFile(path, []byte("{not json"), 0o600)

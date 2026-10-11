@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import type { ApprovalEvent, BrowserStatus, CommandLineStatus, Device, ImportPreview, ImportProgress, ItemDetail, Person, ReceivedShareInvitation, SentShareInvitation, SSHAgentStatus, Status, UpdateStatus, VaultMember, VaultSummary } from "./api";
+import type { ApprovalEvent, BrowserStatus, CommandLineStatus, Device, ImportPreview, ImportProgress, ItemDetail, LoginItemStatus, Person, ReceivedShareInvitation, SentShareInvitation, SSHAgentStatus, Status, UpdateStatus, VaultMember, VaultSummary } from "./api";
 
 export function createStatus(state: string): Status {
   return { state, server: "https://hisar.test", email: "alice@example.com", name: "Alice", biometricAvailable: false, biometricEnabled: false, biometricReady: false, isOffline: false, autoLockSeconds: 600 };
@@ -310,6 +310,9 @@ export function createApiMock() {
     getUpdateStatus: vi.fn().mockResolvedValue(createUpdateStatus()),
     checkForUpdates: vi.fn(),
     setAutomaticUpdateCheck: vi.fn(),
+    getLoginItemStatus: vi.fn().mockResolvedValue(createLoginItemStatus()),
+    setOpenAtLogin: vi.fn(),
+    openLoginItemSettings: vi.fn().mockResolvedValue(undefined),
     listAllImportFormat: vi.fn().mockResolvedValue([]),
     chooseImportFile: vi.fn(),
     previewImport: vi.fn(),
@@ -322,6 +325,10 @@ export function createApiMock() {
 
 export function createUpdateStatus(overrides: Partial<UpdateStatus> = {}): UpdateStatus {
   return { version: "0.2.1", buildNumber: "2001", isAvailable: true, isSignedIn: true, isAutomaticCheckEnabled: true, ...overrides };
+}
+
+export function createLoginItemStatus(overrides: Partial<LoginItemStatus> = {}): LoginItemStatus {
+  return { isAvailable: true, isOpenAtLogin: true, systemState: "enabled", canOpenSystemSettings: true, errorMessage: "", ...overrides };
 }
 
 export function createBrowserStatus(overrides: Partial<BrowserStatus> = {}): BrowserStatus {

@@ -66,7 +66,7 @@ go:
     - apt-get update -qq && apt-get install -y -qq postgresql-client >/dev/null
   script:
     - |
-      allUnformatted=$(gofmt -l core server cli mobile desktop/vault desktop/biometric desktop/agent desktop/appinfo desktop/browser desktop/commandline desktop/passkey desktop/updater desktop/cmd desktop/main.go desktop/touchid.go)
+      allUnformatted=$(gofmt -l core server cli mobile desktop/vault desktop/biometric desktop/background desktop/agent desktop/appinfo desktop/browser desktop/commandline desktop/passkey desktop/updater desktop/cmd desktop/main.go desktop/touchid.go desktop/tray.go)
       if [ -n "$allUnformatted" ]; then echo "$allUnformatted"; exit 1; fi
     - make vet
     # The integration tests need a running server and run in the end-to-end step; TestRecordOpenSSHFixture only runs when asked to.

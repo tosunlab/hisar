@@ -139,6 +139,17 @@ export interface ItemPasskey {
 }
 
 /**
+ * LoginItemStatus is Settings → App → "Open Hisar at login": the switch and what the system reports.
+ */
+export interface LoginItemStatus {
+    "isAvailable": boolean;
+    "isOpenAtLogin": boolean;
+    "systemState": string;
+    "canOpenSystemSettings": boolean;
+    "errorMessage": string;
+}
+
+/**
  * OneTimeCode is the current code of an item's one-time password; ExpiresAt is RFC 3339.
  */
 export interface OneTimeCode {

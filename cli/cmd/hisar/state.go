@@ -17,6 +17,9 @@ func loadState() (*localstate.State, error) {
 }
 
 func requireLogin(currentState *localstate.State) error {
+	if !currentState.IsLoggedIn() && selectedMode.isAppNotRunning {
+		return errAppNotRunning
+	}
 	if !currentState.IsLoggedIn() {
 		return errors.New("not logged in; run `hisar login` or `hisar signup <invite-link>`")
 	}

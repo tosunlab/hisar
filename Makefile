@@ -22,11 +22,11 @@ package-cli-release:
 
 test:
 	@for m in $(MODULES); do (cd $$m && go test -p 1 -count=1 $(TESTFLAGS) ./...) || exit 1; done
-	cd desktop && go test -count=1 $(TESTFLAGS) ./vault/ ./biometric/ ./agent/ ./appinfo/ ./browser/ ./commandline/ ./passkey/ ./updater/ ./cmd/...
+	cd desktop && go test -count=1 $(TESTFLAGS) ./vault/ ./biometric/ ./background/ ./agent/ ./appinfo/ ./browser/ ./commandline/ ./passkey/ ./updater/ ./cmd/...
 
 vet:
 	@for m in $(MODULES); do (cd $$m && go vet ./...) || exit 1; done
-	cd desktop && go vet ./vault/ ./biometric/ ./agent/ ./appinfo/ ./browser/ ./commandline/ ./passkey/ ./updater/ ./cmd/...
+	cd desktop && go vet ./vault/ ./biometric/ ./background/ ./agent/ ./appinfo/ ./browser/ ./commandline/ ./passkey/ ./updater/ ./cmd/...
 
 test-end-to-end: build
 	go build -o bin/hisar-smtp-sink ./server/cmd/hisar-smtp-sink

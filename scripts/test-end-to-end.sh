@@ -15,6 +15,8 @@ export HISAR_SECRETS_FILE=$T/secrets.json
 export HISAR_AUTH_BURST=1000
 # The standalone CLI is tested here; a Hisar app running on this machine must not answer it.
 export HISAR_STANDALONE=1
+# Steps that clear HISAR_STANDALONE must never start the Hisar app installed on this machine.
+export HISAR_NO_LAUNCH=1
 # Invites and share invitations go to a local SMTP sink that writes each email to $MAIL.
 export HISAR_SMTP_HOST=127.0.0.1 HISAR_SMTP_PORT=$SMTP_PORT HISAR_SMTP_USERNAME=hisar HISAR_SMTP_PASSWORD=end-to-end HISAR_SMTP_FROM='Hisar <noreply@hisar.test>'
 : "${HISAR_DATABASE_URL:?set HISAR_DATABASE_URL to an empty database}"

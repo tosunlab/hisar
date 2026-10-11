@@ -2,7 +2,7 @@ import { Browser } from "@wailsio/runtime";
 import { ApprovalTouchIDService, TouchIDPromptService } from "../bindings/github.com/tryhisar/hisar/desktop";
 import { Service as AgentService } from "../bindings/github.com/tryhisar/hisar/desktop/agent";
 import type { ApprovalEvent, Status as SSHAgentStatus } from "../bindings/github.com/tryhisar/hisar/desktop/agent";
-import { BrowserBridge, CommandLineService, Service, UpdateService } from "../bindings/github.com/tryhisar/hisar/desktop/vault";
+import { BrowserBridge, CommandLineService, LoginItemService, Service, UpdateService } from "../bindings/github.com/tryhisar/hisar/desktop/vault";
 import type { BrowserInstallation } from "../bindings/github.com/tryhisar/hisar/desktop/browser";
 import type { Installation as CommandLineInstallation } from "../bindings/github.com/tryhisar/hisar/desktop/commandline";
 import type {
@@ -20,6 +20,7 @@ import type {
   ItemDetail as BoundItemDetail,
   ItemField,
   ItemPasskey,
+  LoginItemStatus,
   OneTimeCode,
   PasswordConfig,
   ReceivedShareInvitation,
@@ -41,6 +42,7 @@ export type {
   ImportSkippedEntry,
   ItemField,
   ItemPasskey,
+  LoginItemStatus,
   OneTimeCode,
   PasswordConfig,
   ReceivedShareInvitation,
@@ -195,6 +197,9 @@ const wailsApi = {
   getUpdateStatus: (): Promise<UpdateStatus> => UpdateService.GetUpdateStatus(),
   checkForUpdates: (): Promise<UpdateStatus> => UpdateService.CheckForUpdates(),
   setAutomaticUpdateCheck: (isEnabled: boolean): Promise<UpdateStatus> => UpdateService.SetAutomaticUpdateCheck(isEnabled),
+  getLoginItemStatus: (): Promise<LoginItemStatus> => LoginItemService.GetLoginItemStatus(),
+  setOpenAtLogin: (isEnabled: boolean): Promise<LoginItemStatus> => LoginItemService.SetOpenAtLogin(isEnabled),
+  openLoginItemSettings: (): Promise<void> => LoginItemService.OpenLoginItemSettings(),
   getCommandLineStatus: async (): Promise<CommandLineStatus> => normalizeCommandLineStatus(await CommandLineService.GetCommandLineStatus()),
   installCommandLineTool: async (): Promise<CommandLineStatus> => normalizeCommandLineStatus(await CommandLineService.InstallCommandLineTool()),
   uninstallCommandLineTool: async (): Promise<CommandLineStatus> => normalizeCommandLineStatus(await CommandLineService.UninstallCommandLineTool()),

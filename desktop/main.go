@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"embed"
+	"encoding/hex"
 	"log"
 	"os"
 	"path/filepath"
@@ -18,6 +20,7 @@ import (
 	"github.com/tryhisar/hisar/core/sshagent"
 	"github.com/tryhisar/hisar/desktop/agent"
 	"github.com/tryhisar/hisar/desktop/appinfo"
+	"github.com/tryhisar/hisar/desktop/background"
 	"github.com/tryhisar/hisar/desktop/biometric"
 	"github.com/tryhisar/hisar/desktop/browser"
 	"github.com/tryhisar/hisar/desktop/commandline"
@@ -77,6 +80,15 @@ func getDeviceName() string {
 		return hostname[:100]
 	}
 	return hostname
+}
+
+// getSingleInstanceID lets a copy with its own HISAR_DESKTOP_STATE run next to the installed app.
+func getSingleInstanceID(statePath string) string {
+	if os.Getenv("HISAR_DESKTOP_STATE") == "" {
+		return background.BundleID
+	}
+	statePathHash := sha256.Sum256([]byte(statePath))
+	return background.BundleID + "." + hex.EncodeToString(statePathHash[:8])
 }
 
 func getLoginShell() string {
@@ -172,11 +184,16 @@ func main() {
 	// The browser bridge calls this from its own goroutines; AppKit aborts unless window calls run on the main thread.
 	showWindow := func() {
 		application.InvokeAsync(func() {
+			background.SetDockIconVisible(true)
 			app.Show()
 			window.UnMinimise()
 			window.Show()
 			window.Focus()
 		})
+	}
+	hideWindow := func() {
+		window.Hide()
+		background.SetDockIconVisible(false)
 	}
 	var approvalWindow *application.WebviewWindow
 	approvalTouchID := touchID.CreateWindowPrompt(func() unsafe.Pointer {
@@ -276,9 +293,21 @@ func main() {
 		Shell:         getLoginShell(),
 	}), commandLineRunner)
 
+	loginItemService := vault.CreateLoginItemService(vaultService, background.CreateLoginItem(homeDirectory))
+	isHiddenLaunchRequested := background.IsHiddenLaunchRequested(os.Args[1:])
+	background.StartLaunchObserver()
+
 	app = application.New(application.Options{
 		Name:        "Hisar",
 		Description: "Self-hosted, end-to-end encrypted password manager",
+		SingleInstance: &application.SingleInstanceOptions{
+			UniqueID: getSingleInstanceID(statePath),
+			OnSecondInstanceLaunch: func(data application.SecondInstanceData) {
+				if !background.IsHiddenLaunchRequested(data.Args) {
+					showWindow()
+				}
+			},
+		},
 		Services: []application.Service{
 			application.NewService(vaultService),
 			application.NewService(&TouchIDPromptService{biometric: touchID}),
@@ -287,6 +316,7 @@ func main() {
 			application.NewService(browserBridge),
 			application.NewService(updateService),
 			application.NewService(commandLineService),
+			application.NewService(loginItemService),
 		},
 		OnShutdown: func() {
 			commandLineRunner.Stop()
@@ -300,8 +330,12 @@ func main() {
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(allAsset),
 		},
+		// Accessory until the main window shows, so a hidden launch never shows a Dock icon or takes the focus.
 		Mac: application.MacOptions{
-			ApplicationShouldTerminateAfterLastWindowClosed: true,
+			ActivationPolicy: application.ActivationPolicyAccessory,
+		},
+		Linux: application.LinuxOptions{
+			DisableQuitOnLastWindowClosed: true,
 		},
 	})
 	clipboard.app, lockNotifier.app = app, app
@@ -312,6 +346,7 @@ func main() {
 		Height:    700,
 		MinWidth:  760,
 		MinHeight: 480,
+		Hidden:    true,
 		Mac: application.MacWindow{
 			InvisibleTitleBarHeight: 44,
 			Backdrop:                application.MacBackdropTranslucent,
@@ -337,7 +372,30 @@ func main() {
 			PromptForSingleSelection()
 	}
 	touchID.SetWindowProvider(window.NativeWindow)
-	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) { updater.Start() })
+	// Closing the main window keeps the SSH agent and the CLI socket running; quitting is explicit.
+	window.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
+		event.Cancel()
+		hideWindow()
+	})
+	app.Event.RegisterApplicationEventHook(events.Mac.ApplicationShouldHandleReopen, func(event *application.ApplicationEvent) {
+		event.Cancel()
+		showWindow()
+	})
+	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
+		updater.Start()
+		// Runs after AppKit has delivered the launch event, which tells whether this is a launch at login.
+		application.InvokeAsync(func() {
+			if !isHiddenLaunchRequested && !background.WasLaunchedAsLoginItem() {
+				showWindow()
+			}
+		})
+		go func() {
+			if err := vault.ApplyOpenAtLoginOnLaunch(loginItemService); err != nil {
+				log.Printf("open at login: %v", err)
+			}
+		}()
+	})
+	createMenuBarItem(app, vaultService, showWindow)
 
 	approvalWindow = app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:                "ssh-approval",

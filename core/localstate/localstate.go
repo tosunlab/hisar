@@ -45,6 +45,10 @@ type State struct {
 	AutoLockSeconds int `json:"autoLockSeconds,omitempty"`
 	// IsPhoneApprovalDisabled stops sending approval dialogs to the account's iPhones; a device preference that Reset keeps.
 	IsPhoneApprovalDisabled bool `json:"phoneApprovalDisabled,omitempty"`
+	// IsOpenAtLoginConfigured records that the desktop app registered its login item once; a device preference that Reset keeps.
+	IsOpenAtLoginConfigured bool `json:"openAtLoginConfigured,omitempty"`
+	// IsOpenAtLoginDisabled is set when the user turned "Open Hisar at login" off; a device preference that Reset keeps.
+	IsOpenAtLoginDisabled bool `json:"openAtLoginDisabled,omitempty"`
 
 	path string
 }
@@ -113,6 +117,7 @@ func (s *State) Reset() {
 		path: s.path, AllPin: map[string][]byte{}, AllSeq: map[string]int64{},
 		IsAutomaticUpdateCheckDisabled: s.IsAutomaticUpdateCheckDisabled, IsCommandLineIntegrationDisabled: s.IsCommandLineIntegrationDisabled,
 		IsCompactSSHApproval: s.IsCompactSSHApproval, AutoLockSeconds: s.AutoLockSeconds, IsPhoneApprovalDisabled: s.IsPhoneApprovalDisabled,
+		IsOpenAtLoginConfigured: s.IsOpenAtLoginConfigured, IsOpenAtLoginDisabled: s.IsOpenAtLoginDisabled,
 	}
 }
 

@@ -49,6 +49,7 @@ type Service struct {
 	onSessionChange              func(server, token string, isSignedIn bool)
 	shareCompletionError         string
 	allLockListener              []func()
+	allStatusListener            []func()
 	phoneApprovals               *phoneApprovalRelay
 }
 
@@ -222,6 +223,7 @@ func (s *Service) lockSession() {
 		for _, lockListener := range s.allLockListener {
 			lockListener()
 		}
+		s.notifyStatusListener()
 	}
 }
 
@@ -237,6 +239,7 @@ func (s *Service) openSession(unlockedSession *session.Session) {
 	unlockedSession.MemberVerifier = s.state.CheckMemberPin
 	s.unlockedSession = unlockedSession
 	s.name = unlockedSession.Name
+	s.notifyStatusListener()
 	s.allItemByVaultID = map[string][]item.Item{}
 	s.resetLockTimer()
 	if !s.config.IsEventStreamDisabled {
