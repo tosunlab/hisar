@@ -40,6 +40,16 @@ export interface ApprovalEvent {
      */
     "allSecretName": string[] | null;
     "moreSecretCount": number;
+
+    /**
+     * Agent requests (Kind ApprovalKindAgent) name the agent; Purpose is connect, run, code or reveal.
+     */
+    "agentName": string;
+    "workingDirectory": string;
+    "rememberLabel": string;
+    "isRememberedByDefault": boolean;
+    "isConnectionApproval": boolean;
+    "warning": string;
 }
 
 export interface Status {

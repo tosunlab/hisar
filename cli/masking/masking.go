@@ -1,4 +1,5 @@
-package main
+// Package masking replaces secret values in a command's output with a fixed text.
+package masking
 
 import (
 	"bytes"
@@ -8,9 +9,9 @@ import (
 )
 
 const (
-	concealedText       = "<concealed by hisar>"
-	minimumMaskedLength = 4
-	maskingFlushDelay   = 100 * time.Millisecond
+	ConcealedText = "<concealed by hisar>"
+	MinimumLength = 4
+	FlushDelay    = 100 * time.Millisecond
 )
 
 type byteRange struct {
@@ -18,19 +19,19 @@ type byteRange struct {
 	end   int
 }
 
-// secretMasker replaces every occurrence of a secret with concealedText. It holds back only a tail that could
+// SecretMasker replaces every occurrence of a secret with ConcealedText. It holds back only a tail that could
 // still become a secret, so a value split across writes is still found.
-type secretMasker struct {
+type SecretMasker struct {
 	allSecret     [][]byte
 	maximumLength int
 	held          []byte
 	output        io.Writer
 }
 
-func createSecretMasker(output io.Writer, allValue []string) *secretMasker {
-	masker := &secretMasker{output: output}
+func CreateSecretMasker(output io.Writer, allValue []string) *SecretMasker {
+	masker := &SecretMasker{output: output}
 	for _, value := range allValue {
-		if len(value) < minimumMaskedLength || slices.ContainsFunc(masker.allSecret, func(secret []byte) bool { return string(secret) == value }) {
+		if len(value) < MinimumLength || slices.ContainsFunc(masker.allSecret, func(secret []byte) bool { return string(secret) == value }) {
 			continue
 		}
 		masker.allSecret = append(masker.allSecret, []byte(value))
@@ -39,20 +40,20 @@ func createSecretMasker(output io.Writer, allValue []string) *secretMasker {
 	return masker
 }
 
-func (masker *secretMasker) Write(chunk []byte) (int, error) {
+func (masker *SecretMasker) Write(chunk []byte) (int, error) {
 	masker.held = append(masker.held, chunk...)
 	return len(chunk), masker.emit(false)
 }
 
-func (masker *secretMasker) Flush() error {
+func (masker *SecretMasker) Flush() error {
 	return masker.emit(true)
 }
 
-func (masker *secretMasker) hasHeld() bool {
+func (masker *SecretMasker) hasHeld() bool {
 	return len(masker.held) > 0
 }
 
-func (masker *secretMasker) emit(isFinal bool) error {
+func (masker *SecretMasker) emit(isFinal bool) error {
 	data := masker.held
 	holdFrom := len(data)
 	if !isFinal {
@@ -71,7 +72,7 @@ func (masker *secretMasker) emit(isFinal bool) error {
 			break
 		}
 		output = append(output, data[position:run.start]...)
-		output = append(output, concealedText...)
+		output = append(output, ConcealedText...)
 		position = run.end
 	}
 	output = append(output, data[position:holdFrom]...)
@@ -84,7 +85,7 @@ func (masker *secretMasker) emit(isFinal bool) error {
 }
 
 // findPartialStart returns where the earliest tail of data starts that is a proper prefix of a secret.
-func (masker *secretMasker) findPartialStart(data []byte) int {
+func (masker *SecretMasker) findPartialStart(data []byte) int {
 	for start := max(0, len(data)-masker.maximumLength+1); start < len(data); start++ {
 		tail := data[start:]
 		for _, secret := range masker.allSecret {
@@ -97,7 +98,7 @@ func (masker *secretMasker) findPartialStart(data []byte) int {
 }
 
 // findAllRun finds every occurrence of every secret and merges the ones that overlap into one run.
-func (masker *secretMasker) findAllRun(data []byte) []byteRange {
+func (masker *SecretMasker) findAllRun(data []byte) []byteRange {
 	var allMatch []byteRange
 	for _, secret := range masker.allSecret {
 		for start := 0; start <= len(data)-len(secret); {
@@ -121,9 +122,9 @@ func (masker *secretMasker) findAllRun(data []byte) []byteRange {
 	return allRun
 }
 
-// copyMasked copies source to the masker until source ends or stop closes; a held tail is written as it is
+// CopyMasked copies source to the masker until source ends or stop closes; a held tail is written as it is
 // once nothing completes it within flushDelay.
-func copyMasked(masker *secretMasker, source io.Reader, flushDelay time.Duration, stop <-chan struct{}) error {
+func CopyMasked(masker *SecretMasker, source io.Reader, flushDelay time.Duration, stop <-chan struct{}) error {
 	type readResult struct {
 		chunk []byte
 		err   error

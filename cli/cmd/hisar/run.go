@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/tryhisar/hisar/cli/masking"
 	"github.com/tryhisar/hisar/core/secretreference"
 )
 
@@ -178,8 +179,8 @@ func runWithSecret(ctx context.Context, option runOption, allEnviron []string, r
 			}
 			allVariable[index].value = value
 			allSecretValue = append(allSecretValue, value)
-			if !option.isMaskingDisabled && len(value) < minimumMaskedLength {
-				fmt.Fprintf(stdio.stderr, "hisar: %s is shorter than %d bytes and is not masked\n", variable.name, minimumMaskedLength)
+			if !option.isMaskingDisabled && len(value) < masking.MinimumLength {
+				fmt.Fprintf(stdio.stderr, "hisar: %s is shorter than %d bytes and is not masked\n", variable.name, masking.MinimumLength)
 			}
 		}
 	}
@@ -220,7 +221,7 @@ func runMasked(command *exec.Cmd, stdio runStdio, allSecretValue []string) (int,
 		output *os.File
 	}{{stdoutReader, stdio.stdout}, {stderrReader, stdio.stderr}} {
 		waitGroup.Go(func() {
-			copyMasked(createSecretMasker(stream.output, allSecretValue), stream.reader, maskingFlushDelay, stop)
+			masking.CopyMasked(masking.CreateSecretMasker(stream.output, allSecretValue), stream.reader, masking.FlushDelay, stop)
 		})
 	}
 	afterStart := func() {

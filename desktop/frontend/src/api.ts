@@ -205,6 +205,9 @@ const wailsApi = {
   uninstallCommandLineTool: async (): Promise<CommandLineStatus> => normalizeCommandLineStatus(await CommandLineService.UninstallCommandLineTool()),
   setCommandLineIntegration: async (isEnabled: boolean): Promise<CommandLineStatus> =>
     normalizeCommandLineStatus(await CommandLineService.SetCommandLineIntegration(isEnabled)),
+  listAllAgentVaultID: async (): Promise<string[]> => (await Service.ListAllAgentVaultID()) ?? [],
+  setVaultAvailableToAgents: async (vaultID: string, isAvailable: boolean): Promise<string[]> =>
+    (await Service.SetVaultAvailableToAgents(vaultID, isAvailable)) ?? [],
   listAllImportFormat: async (): Promise<ImportFormat[]> => (await Service.ListAllImportFormat()) ?? [],
   chooseImportFile: async (vaultID: string, format: string): Promise<ImportPreview> =>
     normalizeImportPreview(await Service.ChooseImportFile(vaultID, format)),

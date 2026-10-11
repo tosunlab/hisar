@@ -93,6 +93,13 @@ type ApprovalEvent struct {
 	// AllSecretName lists the first secrets of a secrets.resolve request; MoreSecretCount counts the rest.
 	AllSecretName   []string `json:"allSecretName"`
 	MoreSecretCount int      `json:"moreSecretCount"`
+	// Agent requests (Kind ApprovalKindAgent) name the agent; Purpose is connect, run, code or reveal.
+	AgentName             string `json:"agentName"`
+	WorkingDirectory      string `json:"workingDirectory"`
+	RememberLabel         string `json:"rememberLabel"`
+	IsRememberedByDefault bool   `json:"isRememberedByDefault"`
+	IsConnectionApproval  bool   `json:"isConnectionApproval"`
+	Warning               string `json:"warning"`
 }
 
 type ApprovalFailedEvent struct {
@@ -278,6 +285,7 @@ func (approver *Approver) buildApprovalEvent(requestID string, request sshagent.
 	if event.Purpose == PurposeSignCommit || event.Purpose == PurposeSignTag || event.IsForwarded {
 		event.IsRememberable = false
 	}
+	event.IsRememberedByDefault = event.IsRememberable
 	approver.setUnlockState(&event)
 	event.IsCompact = approver.config.IsCompactApproval != nil && approver.config.IsCompactApproval() &&
 		event.IsTouchIDApproval && !event.IsUnlockRequired && !event.IsForwarded

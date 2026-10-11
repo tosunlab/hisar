@@ -1,6 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
-import { createApiMock, createApprovalEvent, createCommandLineApprovalEvent, createForwardedApprovalEvent, createSigningApprovalEvent } from "../testing";
+import {
+  createAgentApprovalEvent,
+  createAgentRevealApprovalEvent,
+  createAgentRunApprovalEvent,
+  createApiMock,
+  createApprovalEvent,
+  createCommandLineApprovalEvent,
+  createForwardedApprovalEvent,
+  createSigningApprovalEvent,
+} from "../testing";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
 const eventListener = vi.hoisted(() => ({ allByName: {} as Record<string, (event: { data: unknown }) => void> }));
@@ -325,6 +334,66 @@ describe("SSHApprovalWindow", () => {
     sendEvent("ssh-approval-failed", { requestID: "command-line-1", message: "Incorrect master password." });
     await flushPromises();
     expect(wrapper.find('[role="alert"]').text()).toBe("Incorrect master password.");
+    wrapper.unmount();
+  });
+
+  it("names the coding agent and where it runs when it connects", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createAgentApprovalEvent());
+    await flushPromises();
+    expect(wrapper.find("#approval-title").text()).toBe("Claude Code wants to use Hisar");
+    expect(wrapper.find(".subtitle").text()).toBe("via hisar mcp in Terminal");
+    expect(wrapper.findAll(".detail-line").map((line) => line.text())).toEqual(["/opt/homebrew/bin/hisar", "/dev/ttys003"]);
+    expect(wrapper.find('input[name="isRemembered"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="approval-agent-note"]').text()).toBe(
+      "Lets Claude Code list and search the vaults available to agents until 10 minutes after its last request, or until Hisar locks. Using a secret always asks.",
+    );
+    expect(api.respondSSHApproval).toHaveBeenCalledWith("agent-1", true, false);
+    wrapper.unmount();
+  });
+
+  it("shows the command, the directory and the secrets of a run, with remembering off by default", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createAgentRunApprovalEvent({ appName: "" }));
+    await flushPromises();
+    expect(wrapper.find("#approval-title").text()).toBe("Claude Code wants to run a command with 2 secrets");
+    expect(wrapper.find(".subtitle").text()).toBe("via hisar mcp");
+    expect(wrapper.findAll(".detail-line").map((line) => line.text())).toEqual(["npm run deploy -- --env staging", "~/src/billing"]);
+    expect(wrapper.findAll('[data-testid="approval-secrets"] li').map((line) => line.text())).toEqual(["Work › Stripe › api key", "Work › Postgres staging › password"]);
+    expect(wrapper.find(".remember").text()).toBe("Allow these secrets for this agent for 1 hour");
+    expect((wrapper.find('input[name="isRemembered"]').element as HTMLInputElement).checked).toBe(false);
+    expect(api.respondSSHApproval).toHaveBeenCalledWith("agent-run-1", true, false);
+    await wrapper.find('input[name="isRemembered"]').setValue(true);
+    expect(api.setSSHApprovalRemembered).toHaveBeenCalledWith("agent-run-1", true);
+    expect(wrapper.find('[data-testid="approval-agent-note"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("warns that a revealed secret becomes visible to the agent", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createApprovalEvent());
+    sendEvent("ssh-approval", createAgentRevealApprovalEvent({ isConnectionApproval: true }));
+    await flushPromises();
+    sendEvent("ssh-approval-closed", "request-1");
+    await flushPromises();
+    expect(wrapper.find("#approval-title").text()).toBe("Claude Code wants to read “Stripe › api key”");
+    expect(wrapper.find('[data-testid="approval-warning"]').text()).toBe("The value will be visible to Claude Code and can end up in its transcript and logs.");
+    expect(wrapper.find(".remember").text()).toBe("Allow this item for 1 hour");
+    expect((wrapper.find('input[name="isRemembered"]').element as HTMLInputElement).checked).toBe(false);
+    expect(approvalStore.isRemembered).toBe(false);
+    expect(wrapper.find('[data-testid="approval-agent-note"]').text()).toBe("Approving also lets Claude Code list and search the vaults available to agents.");
+    wrapper.unmount();
+  });
+
+  it("unlocks a locked Hisar for a coding agent", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createAgentRevealApprovalEvent({ isUnlockRequired: true, isPasswordUnlock: true }));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="approval-unlock-note"]').text()).toBe("Hisar is locked; unlocking it also approves this request.");
+    await wrapper.find('[data-testid="approval-password"]').setValue("correct horse");
+    await wrapper.find(".password-row").trigger("submit");
+    await flushPromises();
+    expect(api.respondApprovalWithPassword).toHaveBeenCalledWith("agent-reveal-1", "correct horse", false);
     wrapper.unmount();
   });
 });

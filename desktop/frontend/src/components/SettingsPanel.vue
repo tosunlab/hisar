@@ -19,6 +19,7 @@ import {
 } from "../store";
 import { formatLastSeen, formatPlatform, getPlatformIcon, isMacPlatform } from "../util";
 import BrowserExtensionSection from "./BrowserExtensionSection.vue";
+import CodingAgentsSection from "./CodingAgentsSection.vue";
 import CommandLineSection from "./CommandLineSection.vue";
 import OpenAtLoginSection from "./OpenAtLoginSection.vue";
 import UpdatesSection from "./UpdatesSection.vue";
@@ -299,6 +300,8 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
       </section>
 
       <CommandLineSection />
+
+      <CodingAgentsSection />
 
       <OpenAtLoginSection />
 

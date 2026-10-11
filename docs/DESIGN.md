@@ -519,7 +519,7 @@ The desktop keeps paired browsers (`instanceID`, browser name, SHA-256 of the to
 
 ### 9.4 CLI
 
-`hisar` is the command-line client for the terminal and for scripts: vaults, items (`ls`, `get`, `add`, `edit`, `rm`), the generator, import (§9.7), sharing (`share <vault> <email> [-r role]`, `unshare`, `people`, `invitations [accept|decline|cancel <id>]`, §5.8), invites (`invite <email>`), devices, and `read` and `run`, which hand secrets to scripts and commands through secret references (§9.4.1). It works in one of two modes:
+`hisar` is the command-line client for the terminal and for scripts: vaults, items (`ls`, `get`, `add`, `edit`, `rm`), the generator, import (§9.7), sharing (`share <vault> <email> [-r role]`, `unshare`, `people`, `invitations [accept|decline|cancel <id>]`, §5.8), invites (`invite <email>`), devices, `read` and `run`, which hand secrets to scripts and commands through secret references (§9.4.1), and `mcp`, the server that lets coding agents use Hisar (§9.4.2). It works in one of two modes:
 
 - **Through the desktop app**, like 1Password's CLI integration: `hisar` asks the running Hisar app for what each command needs over `~/.hisar/cli.sock`. It has no session, state file or keys of its own, and nothing is unlocked in the `hisar` process.
 - **Standalone**: its own sign-in, with the session in `state.json` (`HISAR_STATE`) and the Secret Key in the OS keychain (`HISAR_SECRET_KEY` overrides it); every command that decrypts asks for the master password. This is the mode on servers, where no app is installed, and whenever the app does not answer (see "Starting the app").
@@ -564,6 +564,7 @@ It then dials the socket and sends `hello` every 200 ms for up to 10 s. Once the
 | `devices.list` | — | `devices` |
 | `devices.revoke` | `deviceID` | `{}` |
 | `secrets.resolve` | `references` (at most 500 `hisar://` references), `commandLine` (the command `hisar run` starts, as its arguments; empty for `hisar read`) | `values`, in the order of `references`; fails as a whole with `not-found` or `invalid-request` and a message that names every reference that failed and why (§9.4.1) |
+| `agent.hello`, `agent.*` | — | requests of `hisar mcp`, only on an agent connection (§9.4.2) |
 
 The app answers with the bound `vault.Service` methods, so the CLI gets the same checks, offline behaviour and errors as the UI. It never sends the master password, the Secret Key, account or vault keys, SSH or passkey private keys, or one-time password secrets: items carry what `hisar get` prints, and `items.code` and `otp` references return only the current code. A `private key` reference is refused (§9.4.1); SSH keys are used through the SSH agent (§9.6). `hisar` parses import files itself and sends the parsed items in batches of 10.
 
@@ -616,6 +617,54 @@ Developers, scripts and coding agents name secrets instead of copying them: `.en
 **Standalone**, `hisar read` and `hisar run` ask for the master password like other commands and resolve the references in the `hisar` process with the same rules; the password is read from stdin when it is not a terminal, before the command starts.
 
 **Desktop.** Every field of an item that a reference can name (username, password, one-time code, custom fields; for SSH keys the fingerprint and public key) has a secondary "Copy secret reference" button (a terminal icon, tooltip "Copy secret reference — use it in a terminal with hisar run or hisar read") next to its copy button. It copies `hisar://<vault>/<item>/<field>`, encoded as above, with the vault's name and the item's title, or their IDs when the name is shared by another vault, or the title by another item in the vault. A custom field whose label is a built-in label or is used twice in the item cannot be referenced, and the button says why. A reference is not a secret, so the clipboard is not cleared after 90 s. The SSH key view shows a "Private key" row that says it never leaves Hisar, without the key and without a reference button.
+
+#### 9.4.2 Coding agents: `hisar mcp`
+
+`hisar mcp` is a [Model Context Protocol](https://modelcontextprotocol.io) server on stdio, so coding agents (Claude Code, Cursor, Codex, VS Code and other MCP clients) can use Hisar. The principle: **agents use secrets without seeing them**. They find items by their metadata and run commands with secrets that are masked in the output, as `hisar run` does (§9.4.1); a value reaches the agent only through `get_secret`, which the user approves for that one item in Hisar's approval dialog.
+
+**Server.** `hisar mcp` uses the official Go SDK (`github.com/modelcontextprotocol/go-sdk`, `cli/mcpserver`) and always works through the desktop app: there is no standalone mode, because the app owns the approvals. It connects to `~/.hisar/cli.sock` on its first tool call (not at start, so an agent that never uses Hisar never opens a dialog), keeps that one connection, and sends its requests one at a time; after a lost connection the next call connects again, which needs a new approval. Server name `hisar`, title "Hisar", the CLI's version, and instructions for the model: prefer `run_with_secrets`; never ask the user to paste a secret; `get_secret` is for when the value itself must be shown. If the app is not running, does not let the command-line tool use it, or is signed out, a tool fails with a message the model can relay.
+
+**Agent visibility.** Each vault has an "Available to agents" switch, per device, kept in `desktop.json` (`agentVaults`: the vault IDs; Reset at sign-out clears it). It is off for every vault until the user turns it on, in Settings → Coding agents, which lists the vaults with the switch and the line "Agents can find items in these vaults and use their secrets after you approve; other vaults stay invisible to them." Agent requests only ever see vaults with the switch on; every other vault is absent, never "forbidden": `list_vaults` leaves it out, `search_items` never finds its items, and a reference into it fails exactly like a vault that does not exist. With no vault available, the tools say how to turn one on.
+
+**Tools.** Inputs and outputs are JSON with schemas; results are also returned as text.
+
+| Tool | Input | Output |
+|---|---|---|
+| `list_vaults` | — | `vaults`: `[{id, name, itemCount}]` of the agent-visible vaults; `message` when there are none |
+| `search_items` | `query` (matches title, username, URLs and vault name, ignoring case; empty lists everything), optional `vault` (name or ID) | `items`: `[{id, vaultId, vaultName, title, type (login, ssh-key, …), username, urls, hasNotes, hasOneTimeCode, fields: [{label, reference}]}]`, at most 50 with `totalCount`. Never a value and never the notes, which may hold secrets; `fields` lists the referenceable fields (username, password, one-time code, custom fields, public key, fingerprint) with their `hisar://` reference, built as "Copy secret reference" does (§9.4.1) |
+| `run_with_secrets` | `command` (argv array; no shell), `env` (map of variable name → `hisar://` reference), optional `workingDirectory`, optional `timeoutSeconds` (default 120, at most 600) | `exitCode`, `stdout`, `stderr`, `isStdoutTruncated`, `isStderrTruncated`, `durationSeconds`, `isTimedOut` |
+| `get_one_time_code` | `item`: a `hisar://` reference to any field of the item, or the item's ID | `code`, `secondsRemaining`, `period` |
+| `get_secret` | `reference` | `value` |
+
+- `run_with_secrets` runs like `hisar run` with masking always on, in the `hisar mcp` process: the command is looked up on `PATH` (a missing command fails before anything is asked), gets `hisar mcp`'s environment plus the resolved variables, no stdin, and its own process group. Every value is replaced with `<concealed by hisar>` before the output is kept; stdout and stderr are each kept up to 64 KiB (the first and last 32 KiB with "[… N bytes not shown …]" between them). At the timeout the group gets SIGTERM, then SIGKILL after 5 s, and `isTimedOut` is set. Variable names are `[A-Za-z_][A-Za-z0-9_]*`, at most 100; every value must be a reference.
+- `get_secret` refuses `private key` like every reference (§9.4.1). A reference outside the agent-visible vaults fails as not found.
+
+**App protocol.** The agent requests are on the CLI socket (§9.4). A connection becomes an agent connection with `agent.hello` (`agentName`, `agentTitle`, `agentVersion`: the MCP client's `clientInfo` from `initialize`); after that it may send only `hello` and `agent.*` requests, and other connections may not send `agent.*` requests (`invalid-request`).
+
+| Type | Parameters | Result |
+|---|---|---|
+| `agent.hello` | `agentName`, `agentTitle`, `agentVersion` | `{}`; never needs an approval |
+| `agent.vaults.list` | — | `vaults`: `[{id, name, itemCount}]` |
+| `agent.items.search` | `query`, optional `vault` | `items`, `totalCount` |
+| `agent.secrets.resolve` | `references` (at most 100), `commandLine`, `workingDirectory` | `values` |
+| `agent.items.code` | `references` (one) or `itemID` | `code`, `expiresAt`, `period` |
+| `agent.secrets.reveal` | `references` (one) | `values` |
+
+**Approval model.** The app checks every request; `hisar mcp` only relays.
+
+- *The agent connection* needs a first approval, like a terminal session (§9.4), but the dialog names the agent: "Claude Code wants to use Hisar", subtitle "via hisar mcp in Terminal". The agent's name is its `clientInfo` title, else a known display name for its `clientInfo` name (`claude-code` → Claude Code, `cursor-vscode` → Cursor, `codex-mcp-client` → Codex, …), else the name itself (printable characters, at most 60), else "A coding agent". The app around it (`in Terminal`) comes from `desktop/appinfo`, starting from the parent of `hisar mcp`, and is left out when it has the agent's name. The detail box shows the `hisar` path and terminal device. The agent's name is what it says about itself; the app and path come from the system. The approval lasts until 10 minutes after the connection's last request, until the connection closes, or until Hisar locks, signs out or quits. It is keyed by the connection, so it never covers a terminal session, and a terminal approval never covers an agent.
+- *After that*, `list_vaults` and `search_items` need nothing more.
+- *`run_with_secrets` and `get_one_time_code`* ask per call: "Claude Code wants to run a command with 2 secrets" with the command (shell-quoted and shortened like §9.4.1's), the working directory and the secrets as "vault › item › field", or "wants the one-time code of “GitHub”". The checkbox "Allow these secrets for this agent for 1 hour" (off by default) lets later calls of this connection that use only those secrets (vault, item and field) run without asking for an hour.
+- *`get_secret`* always asks, per item: "Claude Code wants to read “Stripe › api key”" with the warning "The value will be visible to Claude Code and can end up in its transcript and logs." The checkbox "Allow this item for 1 hour" (off by default) lets this connection read any field of that item for an hour without asking. Reading is never covered by a "use" approval, and the reverse.
+- Remembered secrets and items skip the dialog only while the connection's own approval is current.
+- When the first request of a connection is one of these, its dialog also approves the connection ("Approving also lets Claude Code list and search the vaults available to agents"), so the user sees one dialog, not two.
+- References are checked before anything is asked: a reference that does not resolve among the agent-visible vaults, or `private key`, fails without a dialog. While Hisar is locked the dialog unlocks it first, as for the CLI (§9.4), with the references as written; they are checked after the unlock.
+- Touch ID, the master password and the iPhone (§9.9) answer these dialogs like the other approvals; the phone request is a `cli` request whose app is "Claude Code (via hisar mcp) in Terminal". Remembered secrets and items end when Hisar locks, signs out or quits, or when the connection closes.
+- A denial, Deny, Escape or the timeout fails the tool with "The user denied access in Hisar." (or "… did not answer Hisar's approval dialog in time."), which the model can relay.
+
+**Activity log.** Hisar has no local activity or audit view yet, and the server's audit log (§8.3) must not learn which items an agent used, so agent requests are not recorded; an on-device activity log is a follow-up.
+
+**Limits.** "Use without seeing" holds only as far as the command allows: a command run with secrets has the real values and can write them to a file, send them over the network, or print them encoded, none of which masking catches. That is why every `run_with_secrets` dialog shows the command and its working directory: approve only commands you would run yourself. An agent with a shell can also run `hisar` itself in an approved terminal session (§9.4.1). Remembering secrets for an hour lets the agent run any command with them during that hour.
 
 ### 9.5 Go memory handling
 
@@ -905,7 +954,7 @@ The concatenations are length-prefixed (§4.5). Before it shows a request, the p
 ```
 core/       Go module: crypto, item model, local store, sync client   (github.com/tryhisar/hisar/core)
 server/     Go module: hisar-server                                   (github.com/tryhisar/hisar/server)
-cli/        Go module: hisar CLI, standalone or through the desktop app (github.com/tryhisar/hisar/cli)
+cli/        Go module: hisar CLI, standalone or through the desktop app; mcpserver/ hisar mcp, masking/ output masking (github.com/tryhisar/hisar/cli)
 desktop/    Wails v3 app (Go + Vue): vault/ backend, agent/ SSH agent and approvals, commandline/ CLI socket and install, passkey/ WebAuthn authenticator, updater/ Sparkle, background/ open at login and Dock icon, frontend/ UI (Phase 2)
 extension/  Browser extension (TypeScript)                            (Phase 3)
 mobile/     iOS + Android apps on top of gomobile-bound core          (Phase 4)
@@ -926,7 +975,7 @@ go.work     Ties the Go modules together for local development
 | 4 | Mobile apps with system autofill | Logins on phones |
 | 5 | TOTP, passkeys, attachments, Watchtower (reused/weak/breached via HIBP k-anonymity), import from 1Password/Bitwarden/CSV, SSE push sync | — |
 | 6 | Person-to-person sharing by email (§5.8), emailed invites (§5.1, §8.5), Settings → People | No list of all accounts anywhere |
-| 7 | Secret references, `hisar read` and `hisar run` (§9.4.1), "Copy secret reference" in the desktop app | Developers and coding agents run commands with secrets they never see |
+| 7 | Secret references, `hisar read` and `hisar run` (§9.4.1), "Copy secret reference" in the desktop app, `hisar mcp` for coding agents with per-vault agent visibility (§9.4.2) | Developers and coding agents run commands with secrets they never see |
 
 ## 12. Decisions
 

@@ -11,10 +11,11 @@ export const approvalStore = reactive({
   isExpanded: false,
 });
 
+// resetCurrentApproval prepares the next request; agent requests start with the checkbox off.
 function resetCurrentApproval(): void {
   approvalStore.failureMessage = "";
   approvalStore.isAuthorizing = false;
-  approvalStore.isRemembered = true;
+  approvalStore.isRemembered = approvalStore.allApproval[0]?.isRememberedByDefault ?? true;
   approvalStore.isPasswordChosen = false;
   approvalStore.isExpanded = false;
 }
@@ -31,6 +32,9 @@ function getRememberedAnswer(requestID: string): boolean {
 export function addApproval(approval: ApprovalEvent): void {
   if (!approvalStore.allApproval.some((pending) => pending.requestID === approval.requestID)) {
     approvalStore.allApproval.push(approval);
+    if (approvalStore.allApproval.length === 1) {
+      approvalStore.isRemembered = approval.isRememberedByDefault ?? true;
+    }
   }
 }
 

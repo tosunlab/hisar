@@ -56,6 +56,7 @@ type SessionApprovals struct {
 	now                     func() time.Time
 	allLastRequestBySession map[sessionKey]time.Time
 	allPendingBySession     map[sessionKey]*pendingSessionApproval
+	allAgentConnectionByID  map[uint64]*agentConnectionState
 	generation              int
 }
 
@@ -71,6 +72,7 @@ func CreateSessionApprovals(lifetime time.Duration, now func() time.Time) *Sessi
 		now:                     now,
 		allLastRequestBySession: map[sessionKey]time.Time{},
 		allPendingBySession:     map[sessionKey]*pendingSessionApproval{},
+		allAgentConnectionByID:  map[uint64]*agentConnectionState{},
 	}
 }
 
@@ -126,10 +128,11 @@ func (approvals *SessionApprovals) Require(session TerminalSession, ask func() e
 	return pending.err
 }
 
-// ClearAll ends every approval, e.g. when Hisar locks; an approval in progress is not remembered either.
+// ClearAll ends every approval and every agent's remembered secrets, e.g. when Hisar locks; an approval in progress is not remembered either.
 func (approvals *SessionApprovals) ClearAll() {
 	approvals.mutex.Lock()
 	defer approvals.mutex.Unlock()
 	clear(approvals.allLastRequestBySession)
+	clear(approvals.allAgentConnectionByID)
 	approvals.generation++
 }

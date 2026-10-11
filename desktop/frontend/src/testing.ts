@@ -88,8 +88,68 @@ export function createApprovalEvent(overrides: Partial<ApprovalEvent> = {}): App
     timeoutAt: "2026-10-09T12:01:00Z",
     allSecretName: [],
     moreSecretCount: 0,
+    agentName: "",
+    workingDirectory: "",
+    rememberLabel: "",
+    isRememberedByDefault: true,
+    isConnectionApproval: false,
+    warning: "",
     ...overrides,
   };
+}
+
+export function createAgentApprovalEvent(overrides: Partial<ApprovalEvent> = {}): ApprovalEvent {
+  return createApprovalEvent({
+    requestID: "agent-1",
+    kind: "agent",
+    agentName: "Claude Code",
+    clientName: "hisar mcp",
+    clientPath: "/opt/homebrew/bin/hisar",
+    keyTitle: "",
+    fingerprint: "",
+    destinationHost: "",
+    destinationFingerprint: "",
+    purpose: "connect",
+    action: "use Hisar",
+    target: "",
+    commandLine: "",
+    repositoryPath: "",
+    hostAndPort: "",
+    isRememberable: false,
+    isRememberedByDefault: false,
+    isConnectionApproval: true,
+    terminalName: "ttys003",
+    ...overrides,
+  });
+}
+
+export function createAgentRunApprovalEvent(overrides: Partial<ApprovalEvent> = {}): ApprovalEvent {
+  return createAgentApprovalEvent({
+    requestID: "agent-run-1",
+    purpose: "run",
+    action: "run a command with 2 secrets",
+    commandLine: "npm run deploy -- --env staging",
+    workingDirectory: "~/src/billing",
+    allSecretName: ["Work › Stripe › api key", "Work › Postgres staging › password"],
+    isRememberable: true,
+    rememberLabel: "Allow these secrets for this agent for 1 hour",
+    isConnectionApproval: false,
+    ...overrides,
+  });
+}
+
+export function createAgentRevealApprovalEvent(overrides: Partial<ApprovalEvent> = {}): ApprovalEvent {
+  return createAgentApprovalEvent({
+    requestID: "agent-reveal-1",
+    purpose: "reveal",
+    action: "read “Stripe › api key”",
+    allSecretName: ["Work › Stripe › api key"],
+    isRememberable: true,
+    rememberLabel: "Allow this item for 1 hour",
+    isConnectionApproval: false,
+    warning: "The value will be visible to Claude Code and can end up in its transcript and logs.",
+    ...overrides,
+  });
 }
 
 export function createSigningApprovalEvent(overrides: Partial<ApprovalEvent> = {}): ApprovalEvent {
@@ -310,6 +370,8 @@ export function createApiMock() {
     getUpdateStatus: vi.fn().mockResolvedValue(createUpdateStatus()),
     checkForUpdates: vi.fn(),
     setAutomaticUpdateCheck: vi.fn(),
+    listAllAgentVaultID: vi.fn().mockResolvedValue([]),
+    setVaultAvailableToAgents: vi.fn(),
     getLoginItemStatus: vi.fn().mockResolvedValue(createLoginItemStatus()),
     setOpenAtLogin: vi.fn(),
     openLoginItemSettings: vi.fn().mockResolvedValue(undefined),

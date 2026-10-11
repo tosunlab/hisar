@@ -199,6 +199,11 @@ COMMAND_LINE_RESULT=$(HISAR_STANDALONE= HISAR_TEST_SERVER_URL="http://127.0.0.1:
   go -C "$ROOT/desktop" test -count=1 -v -run TestIntegrationCommandLineThroughApp ./vault/ 2>&1 || true)
 expect "hisar through the desktop app backend" "$COMMAND_LINE_RESULT" "--- PASS: TestIntegrationCommandLineThroughApp"
 
+AGENT_INVITE=$("$BIN/hisar-server" invite --email agent@example.com </dev/null | tail -1)
+AGENT_RESULT=$(HISAR_STANDALONE= HISAR_TEST_SERVER_URL="http://127.0.0.1:$PORT" HISAR_TEST_AGENT_INVITE_LINK="$AGENT_INVITE" HISAR_TEST_CLI_BINARY="$BIN/hisar" \
+  go -C "$ROOT/desktop" test -count=1 -v -run TestIntegrationAgentThroughApp ./vault/ 2>&1 || true)
+expect "hisar mcp speaks MCP over stdio through the desktop app backend and shows agents only their vaults" "$AGENT_RESULT" "--- PASS: TestIntegrationAgentThroughApp"
+
 MOBILE_INVITE=$("$BIN/hisar-server" invite --email mobile@example.com </dev/null | tail -1)
 MOBILE_RESULT=$(HISAR_TEST_MOBILE_INVITE_LINK="$MOBILE_INVITE" go -C "$ROOT/mobile" test -count=1 -v -run TestIntegrationMobileFlow ./hisarkit/ 2>&1 || true)
 expect "iOS app backend against the server" "$MOBILE_RESULT" "--- PASS: TestIntegrationMobileFlow"

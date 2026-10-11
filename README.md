@@ -1,6 +1,6 @@
 # Hisar
 
-Self-hosted, end-to-end encrypted password manager for family and friends.
+End-to-end encrypted password, SSH-key and secrets manager for developers, hosted at api.tryhisar.com.
 
 The server stores only ciphertext. Keys are derived on your devices from your master password and a Secret Key that never leaves them. See [docs/DESIGN.md](docs/DESIGN.md).
 
@@ -80,7 +80,48 @@ session: other `hisar` commands in it don't ask again until 10 minutes after the
 run your tests, migrations and deploys, but what it sees (and what ends up in its transcript and logs) has the secrets masked, and the
 `.env` it reads holds only references. Masking is a guard against showing secrets, not a sandbox: the command itself has the values,
 and an agent that can run `hisar read` in an approved terminal can read them. An approval covers every vault, so approve an agent's
-terminal only when it may use them. Details: [docs/DESIGN.md](docs/DESIGN.md) §9.4.1.
+terminal only when it may use them. Details: [docs/DESIGN.md](docs/DESIGN.md) §9.4.1. For agents that speak MCP, `hisar mcp`
+(below) is narrower: it sees only the vaults you choose and asks per command.
+
+### Use Hisar with coding agents
+
+`hisar mcp` is an [MCP](https://modelcontextprotocol.io) server on stdio that lets coding agents use your secrets without seeing
+them. It always works through the Hisar app, which must be running with Settings → Command-line tool → "Let the command-line tool
+use Hisar" on.
+
+1. In Hisar, open Settings → Coding agents and turn on "Available to agents" for the vaults an agent may use. Every vault starts
+   off, and the setting is per device. Agents cannot see the other vaults at all.
+2. Add the server to your agent:
+
+   ```sh
+   claude mcp add hisar -- hisar mcp        # Claude Code
+   ```
+
+   Cursor, in `~/.cursor/mcp.json` or a project's `.cursor/mcp.json`:
+
+   ```json
+   { "mcpServers": { "hisar": { "command": "hisar", "args": ["mcp"] } } }
+   ```
+
+   Any other MCP client: a stdio server with the command `hisar` and the argument `mcp`.
+
+The agent gets these tools:
+
+| Tool | What it does | Asks you |
+|---|---|---|
+| `list_vaults` | the vaults available to agents | once per agent connection |
+| `search_items` | items by title, username, URL or vault: metadata, field labels and `hisar://` references, never values or notes | once per agent connection |
+| `run_with_secrets` | runs a command (an argument list, no shell) with references in its environment; output masked, at most 64 KiB per stream, timeout up to 600 s | every call, showing the command, directory and secrets; "Allow these secrets for this agent for 1 hour" |
+| `get_one_time_code` | the current one-time code of an item | every call; can be allowed for 1 hour |
+| `get_secret` | reveals one value to the agent | every call, for that item; "Allow this item for 1 hour". `private key` is always refused |
+
+The first dialog names the agent (from its MCP client name) and the app it runs in. Denying fails the tool with "The user denied
+access in Hisar.", which the agent can relay to you. Approvals and allowed secrets end when the agent disconnects or Hisar locks.
+
+Limits: a command run with secrets has the real values and can write them to a file, send them elsewhere or print them encoded,
+which masking does not catch, so approve only commands you would run yourself; allowing secrets for an hour lets the agent run any
+command with them for that hour. A value from `get_secret` is in the agent's transcript and logs. Details:
+[docs/DESIGN.md](docs/DESIGN.md) §9.4.2.
 
 ## Development
 
