@@ -9,6 +9,7 @@ import {
   type Person,
   type ReceivedShareInvitation,
   type SentShareInvitation,
+  type ShareAwaitingUnlock,
   type ShareInvitations,
   type ShareLink,
   type ShareLinkField,
@@ -66,6 +67,7 @@ export const store = reactive({
   allVaultMember: [] as VaultMember[],
   allPerson: [] as Person[],
   shareInvitations: { received: [], sent: [], completionError: "" } as ShareInvitations,
+  allShareAwaitingUnlock: [] as ShareAwaitingUnlock[],
   allDevice: [] as Device[],
   browserPairing: null as BrowserPairingRequest | null,
   browserStatus: null as BrowserStatus | null,
@@ -122,6 +124,7 @@ function clearAllVaultData(): void {
   store.allVaultMember = [];
   store.allPerson = [];
   store.shareInvitations = { received: [], sent: [], completionError: "" };
+  store.allShareAwaitingUnlock = [];
   store.allDevice = [];
   store.allShareLink = [];
   store.isShareLinksOpen = false;
@@ -275,6 +278,21 @@ export async function loadShareInvitationsQuietly(): Promise<void> {
     const shareInvitations = await api.listAllShareInvitation();
     if (store.status.state === "unlocked") {
       store.shareInvitations = shareInvitations;
+    }
+  } catch {
+    return;
+  }
+}
+
+// loadShareAwaitingUnlockQuietly fills the lock screen's banner; the locked backend reads it with the saved session only.
+export async function loadShareAwaitingUnlockQuietly(): Promise<void> {
+  if (store.status.state !== "locked") {
+    return;
+  }
+  try {
+    const allShareAwaitingUnlock = await api.listAllShareAwaitingUnlock();
+    if (store.status.state === "locked") {
+      store.allShareAwaitingUnlock = allShareAwaitingUnlock;
     }
   } catch {
     return;

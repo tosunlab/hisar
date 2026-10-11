@@ -47,7 +47,13 @@ func TestComposeEmails(t *testing.T) {
 		!strings.Contains(signUp.Body, "https://api.tryhisar.com/invite/xyz") || !strings.Contains(signUp.Body, "\nxyz\n") {
 		t.Errorf("share sign-up: %+v", signUp)
 	}
-	for _, body := range []string{invite.Body, shared.Body, signUp.Body} {
+	accepted := composeShareAcceptedEmail(&store.Account{Name: "Alice", Email: "alice@example.com"}, &store.Account{Name: "Ada\nBcc: eve@example.com", Email: "ada@example.com"})
+	if accepted.To != "alice@example.com" || accepted.Subject != "AdaBcc: eve@example.com accepted your invitation in Hisar" ||
+		!strings.Contains(accepted.Body, "(ada@example.com) accepted your invitation") || !strings.Contains(accepted.Body, "unlock it") ||
+		!strings.Contains(accepted.Body, "cannot say which vault") || strings.Contains(accepted.Body, "http") {
+		t.Errorf("share accepted: %+v", accepted)
+	}
+	for _, body := range []string{invite.Body, shared.Body, signUp.Body, accepted.Body} {
 		if strings.Contains(body, "<") || strings.Contains(body, "family") || strings.Contains(body, "Family") {
 			t.Errorf("unexpected content: %s", body)
 		}

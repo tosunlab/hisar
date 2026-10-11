@@ -8,6 +8,7 @@ struct UnlockPanel: View {
     var isBusy: Bool
     var errorMessage: String?
     var isOffline: Bool = false
+    var allNotice: [String] = []
     var submitPassword: (String) async -> Bool
     var submitBiometric: () async -> Void
     var signOut: (() -> Void)?
@@ -37,6 +38,15 @@ struct UnlockPanel: View {
                 .frame(maxWidth: .infinity)
                 .padding(.top, 24)
                 .listRowBackground(Color.clear)
+            }
+            if !allNotice.isEmpty {
+                Section {
+                    ForEach(allNotice, id: \.self) { notice in
+                        Label(notice, systemImage: "person.2")
+                            .font(.subheadline)
+                            .accessibilityIdentifier("lock-notice")
+                    }
+                }
             }
             if let errorMessage {
                 Section {

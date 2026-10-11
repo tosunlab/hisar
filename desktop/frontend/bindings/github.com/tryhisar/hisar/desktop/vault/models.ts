@@ -195,16 +195,29 @@ export interface ReceivedShareInvitation {
 }
 
 /**
- * SentShareInvitation: State is "pending" until the person accepts, then "accepted" until this app completes the share.
+ * SentShareInvitation: State is "pending" until the person accepts, then "accepted" until this app completes the share;
+ * RecipientName and AcceptedAt (RFC 3339) are empty while pending.
  */
 export interface SentShareInvitation {
     "id": string;
     "vaultId": string;
     "vaultName": string;
     "email": string;
+    "recipientName": string;
     "role": string;
     "state": string;
     "expiresAt": string;
+    "acceptedAt": string;
+}
+
+/**
+ * ShareAwaitingUnlock is a share someone accepted that this locked app finishes once unlocked; the vault name is encrypted until then.
+ */
+export interface ShareAwaitingUnlock {
+    "invitationId": string;
+    "recipientName": string;
+    "recipientEmail": string;
+    "acceptedAt": string;
 }
 
 /**
@@ -213,6 +226,7 @@ export interface SentShareInvitation {
 export interface ShareInvitations {
     "received": ReceivedShareInvitation[] | null;
     "sent": SentShareInvitation[] | null;
+    "waiting": WaitingShareInvitation[] | null;
     "completionError": string;
 }
 
@@ -316,4 +330,16 @@ export interface VaultSummary {
     "type": string;
     "role": string;
     "itemCount": number;
+}
+
+/**
+ * WaitingShareInvitation is an invitation this user accepted that the owner's app has not completed yet; AcceptedAt is RFC 3339.
+ */
+export interface WaitingShareInvitation {
+    "id": string;
+    "vaultId": string;
+    "role": string;
+    "invitedByName": string;
+    "invitedByEmail": string;
+    "acceptedAt": string;
 }

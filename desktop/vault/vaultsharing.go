@@ -48,10 +48,7 @@ func GetVaultSharing(s *Service, vaultID string) (VaultSharing, error) {
 			if sent.VaultID != vaultID {
 				continue
 			}
-			sharing.AllInvitation = append(sharing.AllInvitation, SentShareInvitation{
-				ID: sent.ID, VaultID: sent.VaultID, VaultName: vault.Name, Email: sent.Email, Role: sent.Role, State: sent.State,
-				ExpiresAt: sent.ExpiresAt.UTC().Format(time.RFC3339),
-			})
+			sharing.AllInvitation = append(sharing.AllInvitation, convertToSentShareInvitation(sent, vault.Name))
 			if sent.State == proto.ShareInvitationAccepted {
 				allAcceptedEmail = append(allAcceptedEmail, sent.Email)
 			}

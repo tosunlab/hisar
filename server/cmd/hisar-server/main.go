@@ -25,6 +25,8 @@ import (
 
 const (
 	historyRetention       = 90 * 24 * time.Hour
+	auditRetention         = 365 * 24 * time.Hour
+	expiredInvitationAge   = 30 * 24 * time.Hour
 	shareLinkSweepInterval = 10 * time.Minute
 )
 
@@ -202,7 +204,7 @@ func serve(ctx context.Context, allArg []string) error {
 	}
 	defer database.Close()
 
-	go pruneHistory(ctx, database)
+	go pruneAllOldRecord(ctx, database)
 	go deleteAllExpiredShareLink(ctx, database, shareLinkSweepInterval)
 
 	app := server.CreateApp()
@@ -214,7 +216,7 @@ func serve(ctx context.Context, allArg []string) error {
 	})
 }
 
-func pruneHistory(ctx context.Context, database *store.Store) {
+func pruneAllOldRecord(ctx context.Context, database *store.Store) {
 	ticker := time.NewTicker(24 * time.Hour)
 	defer ticker.Stop()
 	for {
@@ -222,6 +224,16 @@ func pruneHistory(ctx context.Context, database *store.Store) {
 			log.Printf("prune history: %v", err)
 		} else if pruned > 0 {
 			log.Printf("pruned %d history entries", pruned)
+		}
+		if pruned, err := database.PruneAudit(ctx, auditRetention); err != nil {
+			log.Printf("prune audit log: %v", err)
+		} else if pruned > 0 {
+			log.Printf("pruned %d audit events", pruned)
+		}
+		if pruned, err := database.PruneExpiredInvitation(ctx, expiredInvitationAge); err != nil {
+			log.Printf("prune expired invitations: %v", err)
+		} else if pruned > 0 {
+			log.Printf("pruned %d expired invitations", pruned)
 		}
 		select {
 		case <-ctx.Done():

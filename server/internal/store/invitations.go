@@ -28,12 +28,23 @@ type ShareInvitation struct {
 	State     string
 	CreatedAt time.Time
 	ExpiresAt time.Time
+	// AcceptedAt is nil while pending.
+	AcceptedAt *time.Time
 }
 
 type ReceivedShareInvitation struct {
 	ShareInvitation
 	InvitedByName  string
 	InvitedByEmail string
+}
+
+// ShareAcceptance is an accepted invitation that no owner's app has completed yet, as its inviter sees it.
+type ShareAcceptance struct {
+	InvitationID string
+	VaultID      string
+	Inviter      Account
+	Recipient    Account
+	AcceptedAt   time.Time
 }
 
 // SentShareInvitation: Recipient is the accepting account, nil while pending.
@@ -74,7 +85,7 @@ func (s *Store) ListAllReceivedShareInvitation(ctx context.Context, email string
 // ListAllSentShareInvitation returns the live invitations of every vault the account owns; accepted ones never expire.
 func (s *Store) ListAllSentShareInvitation(ctx context.Context, accountID string) ([]SentShareInvitation, error) {
 	allRow, err := s.pool.Query(ctx, `
-		SELECT i.id, i.vault_id, i.email, i.role, i.invited_by, i.state, i.created_at, i.expires_at,
+		SELECT i.id, i.vault_id, i.email, i.role, i.invited_by, i.state, i.created_at, i.expires_at, i.accepted_at,
 			r.id, r.email, r.name, r.role, r.kem_pub, r.sign_pub, r.kem_sig
 		FROM share_invitations i
 		JOIN vault_access owner ON owner.vault_id = i.vault_id AND owner.account_id = $1 AND owner.role = 'owner'
@@ -89,7 +100,7 @@ func (s *Store) ListAllSentShareInvitation(ctx context.Context, accountID string
 		var recipientID, recipientEmail, recipientName, recipientRole *string
 		var recipientKEMPub, recipientSignPub, recipientKEMSig []byte
 		err := row.Scan(&invitation.ID, &invitation.VaultID, &invitation.Email, &invitation.Role, &invitation.InvitedBy, &invitation.State,
-			&invitation.CreatedAt, &invitation.ExpiresAt,
+			&invitation.CreatedAt, &invitation.ExpiresAt, &invitation.AcceptedAt,
 			&recipientID, &recipientEmail, &recipientName, &recipientRole, &recipientKEMPub, &recipientSignPub, &recipientKEMSig)
 		if err == nil && recipientID != nil {
 			invitation.Recipient = &Account{ID: *recipientID, Email: *recipientEmail, Name: *recipientName, Role: *recipientRole,
@@ -99,14 +110,49 @@ func (s *Store) ListAllSentShareInvitation(ctx context.Context, accountID string
 	})
 }
 
-// AcceptShareInvitation marks a pending invitation to email as accepted by accountID and returns its vault.
-func (s *Store) AcceptShareInvitation(ctx context.Context, invitationID, accountID, email string) (string, error) {
-	var vaultID string
-	err := s.pool.QueryRow(ctx, `
+// AcceptShareInvitation marks a pending invitation to email as accepted by accountID and returns its vault and acceptance time.
+func (s *Store) AcceptShareInvitation(ctx context.Context, invitationID, accountID, email string) (vaultID string, acceptedAt time.Time, err error) {
+	err = s.pool.QueryRow(ctx, `
 		UPDATE share_invitations SET state = 'accepted', accepted_by = $2, accepted_at = now()
 		WHERE id = $1 AND email = $3 AND state = 'pending' AND expires_at > now()
-		RETURNING vault_id`, invitationID, accountID, email).Scan(&vaultID)
-	return vaultID, convertNoRowsToNotFound(err)
+		RETURNING vault_id, accepted_at`, invitationID, accountID, email).Scan(&vaultID, &acceptedAt)
+	return vaultID, acceptedAt, convertNoRowsToNotFound(err)
+}
+
+// ListAllWaitingShareInvitation returns the invitations the account accepted that no owner's app has completed yet.
+func (s *Store) ListAllWaitingShareInvitation(ctx context.Context, accountID string) ([]ReceivedShareInvitation, error) {
+	allRow, err := s.pool.Query(ctx, `
+		SELECT i.id, i.vault_id, i.email, i.role, i.invited_by, i.state, i.created_at, i.expires_at, i.accepted_at, a.name, a.email
+		FROM share_invitations i JOIN accounts a ON a.id = i.invited_by
+		WHERE i.accepted_by = $1 AND i.state = 'accepted'
+		ORDER BY i.accepted_at`, accountID)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(allRow, func(row pgx.CollectableRow) (ReceivedShareInvitation, error) {
+		var invitation ReceivedShareInvitation
+		err := row.Scan(&invitation.ID, &invitation.VaultID, &invitation.Email, &invitation.Role, &invitation.InvitedBy, &invitation.State,
+			&invitation.CreatedAt, &invitation.ExpiresAt, &invitation.AcceptedAt, &invitation.InvitedByName, &invitation.InvitedByEmail)
+		return invitation, err
+	})
+}
+
+// GetShareAcceptance returns the invitation if it is still the acceptance of acceptedAt and its inviter still owns the vault.
+func (s *Store) GetShareAcceptance(ctx context.Context, invitationID string, acceptedAt time.Time) (*ShareAcceptance, error) {
+	acceptance := ShareAcceptance{InvitationID: invitationID}
+	err := s.pool.QueryRow(ctx, `
+		SELECT i.vault_id, i.accepted_at, inviter.id, inviter.email, inviter.name, recipient.id, recipient.email, recipient.name
+		FROM share_invitations i
+		JOIN accounts inviter ON inviter.id = i.invited_by
+		JOIN accounts recipient ON recipient.id = i.accepted_by
+		JOIN vault_access owner ON owner.vault_id = i.vault_id AND owner.account_id = i.invited_by AND owner.role = 'owner'
+		WHERE i.id = $1 AND i.state = 'accepted' AND i.accepted_at = $2`, invitationID, acceptedAt).Scan(
+		&acceptance.VaultID, &acceptance.AcceptedAt, &acceptance.Inviter.ID, &acceptance.Inviter.Email, &acceptance.Inviter.Name,
+		&acceptance.Recipient.ID, &acceptance.Recipient.Email, &acceptance.Recipient.Name)
+	if err != nil {
+		return nil, convertNoRowsToNotFound(err)
+	}
+	return &acceptance, nil
 }
 
 func (s *Store) DeclineShareInvitation(ctx context.Context, invitationID, email string) (string, error) {

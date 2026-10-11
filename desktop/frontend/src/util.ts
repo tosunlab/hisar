@@ -155,6 +155,30 @@ export function formatLastSeen(timestamp: string, now = new Date()): string {
   return seenAt.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
+// formatTimeAgo is a short "since" for banners: "just now", "5 min ago", "2 h ago", "yesterday", "3 days ago".
+export function formatTimeAgo(timestamp: string, now = new Date()): string {
+  const minuteCount = Math.floor((now.getTime() - new Date(timestamp).getTime()) / 60000);
+  if (Number.isNaN(minuteCount)) {
+    return "";
+  }
+  if (minuteCount < 1) {
+    return "just now";
+  }
+  if (minuteCount < 60) {
+    return `${minuteCount} min ago`;
+  }
+  const hourCount = Math.floor(minuteCount / 60);
+  if (hourCount < 24) {
+    return `${hourCount} h ago`;
+  }
+  const dayCount = Math.floor(hourCount / 24);
+  return dayCount === 1 ? "yesterday" : `${dayCount} days ago`;
+}
+
+export function describePerson(name: string, email: string): string {
+  return name && name !== email ? name : email;
+}
+
 export const allShareLinkExpiry = [
   { seconds: 3600, label: "1 hour" },
   { seconds: 86400, label: "1 day" },

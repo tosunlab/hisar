@@ -26,6 +26,8 @@ class FakeBackend: VaultBackend {
     var allVaultMemberByVaultID: [String: [Member]] = [:]
     var allInvitedEmail: [String] = []
     var shareInvitations = ShareInvitations()
+    var allShareAwaitingUnlock: [ShareAwaitingUnlock] = []
+    var isShareAwaitingUnlockFailing = false
     var allAnsweredInvitation: [String] = []
     var allPendingApproval: [PhoneApproval] = []
     var allApprovalAnswer: [String] = []
@@ -111,6 +113,12 @@ class FakeBackend: VaultBackend {
         record("listAllShareInvitation")
         try requireUnlocked()
         return shareInvitations
+    }
+
+    func listAllShareAwaitingUnlock() throws -> [ShareAwaitingUnlock] {
+        record("listAllShareAwaitingUnlock")
+        if isShareAwaitingUnlockFailing { throw BackendError(message: "cannot reach the Hisar server") }
+        return status.state == VaultStatus.stateLocked ? allShareAwaitingUnlock : []
     }
 
     func acceptShareInvitation(invitationID: String) throws {

@@ -5,46 +5,126 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Hisar privacy policy</title>
 <style>
-  :root { color-scheme: light dark; }
-  body { margin: 0; padding: 32px 16px; font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #0d0e10; color: #e8eaed; }
+  :root { color-scheme: light dark; --background: #ffffff; --text: #16181b; --body: #3d434a; --muted: #6b727b; --rule: #e3e5e8; --code: #f2f3f5; }
+  @media (prefers-color-scheme: dark) { :root { --background: #0d0e10; --text: #e8eaed; --body: #b4b9c0; --muted: #7c838d; --rule: #26292e; --code: #1a1c20; } }
+  body { margin: 0; padding: 32px 16px 48px; font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--background); color: var(--text); }
   main { max-width: 680px; margin: 0 auto; }
   h1 { font-size: 28px; margin: 0 0 4px; }
-  h2 { font-size: 18px; margin: 28px 0 8px; }
-  p, li { color: #b4b9c0; }
-  .muted { color: #7c838d; font-size: 14px; }
+  h2 { font-size: 18px; margin: 32px 0 8px; }
+  h3 { font-size: 16px; margin: 20px 0 4px; }
+  p, li, td { color: var(--body); }
+  a { color: var(--text); }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th, td { text-align: left; vertical-align: top; padding: 8px 8px 8px 0; border-bottom: 1px solid var(--rule); }
+  th { color: var(--text); font-weight: 600; }
+  code { background: var(--code); padding: 1px 4px; border-radius: 4px; font-size: 14px; }
+  .muted { color: var(--muted); font-size: 14px; }
+  nav { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--rule); font-size: 14px; }
 </style>
 </head>
 <body>
 <main>
 <h1>Hisar privacy policy</h1>
-<p class="muted">Applies to the Hisar desktop app, the Hisar browser extension and the Hisar mobile apps. Last updated 9 October 2026.</p>
+<p class="muted">Effective 11 October 2026. Applies to the hosted Hisar service at <code>api.tryhisar.com</code> and to the Hisar apps for macOS and iPhone, the <code>hisar</code> command-line tool and the Hisar browser extension.</p>
 
 <h2>Summary</h2>
-<p>Hisar is a self-hosted password manager for one family and their friends. It does not collect, sell or share personal data. There is no analytics, advertising or tracking.</p>
-
-<h2>Where your data goes</h2>
 <ul>
-  <li>Your vaults are encrypted on your own devices before they leave them (end-to-end encryption). The Hisar server, run by your family's administrator, stores only encrypted data and cannot read your passwords, notes or other items.</li>
-  <li>Your master password and Secret Key never leave your devices.</li>
-  <li>The server stores what it needs to run your account: your email address and name, your devices' names and when they were last seen, and the encrypted vault data.</li>
+  <li>Hisar is an end-to-end encrypted password, SSH key and secrets manager for developers. Your passwords, notes, keys and other items are encrypted on your devices before they are sent to our server. We cannot read them.</li>
+  <li>To run the service, the server does store some things it can read: your email address and name, your devices' names, who you share vaults with, timestamps, sizes, and IP addresses in a security log kept for one year. This page lists all of it.</li>
+  <li>There is no analytics, advertising, tracking or selling of data. Our pages and emails contain no trackers and the service sets no cookies.</li>
 </ul>
 
-<h2>The browser extension</h2>
+<h2>Who runs Hisar</h2>
+<p>The hosted service is operated by Alper Berber ("we", "us"). We are the controller of the personal data described here. Questions and requests: <a href="mailto:support@tryhisar.com">support@tryhisar.com</a>.</p>
+
+<h2>What we cannot see</h2>
+<p>Your apps encrypt everything below with keys that never leave your devices. The server stores only the encrypted result, so neither we nor anyone who obtains a copy of our database can read it:</p>
 <ul>
-  <li>The extension talks only to the Hisar desktop app on the same computer, through the browser's native messaging. It sends no data to the internet.</li>
-  <li>It reads the address of the page you are on and the login forms on it, to offer matching logins and to offer saving a login after you sign in. Page contents are not stored or sent anywhere except to the Hisar app on your computer.</li>
-  <li>It stores only a random installation ID, the pairing token for your Hisar app, its settings, and the sites you chose "Never for this site" for, in the browser's local extension storage.</li>
-  <li>Logins are filled only on the site they were saved for.</li>
+  <li>your master password and your Secret Key (signing in uses a protocol, OPAQUE, in which the server never receives the password);</li>
+  <li>the contents of your items: titles, usernames, passwords, websites, notes, custom fields, one-time-password secrets, passkeys and SSH private keys;</li>
+  <li>vault names;</li>
+  <li>what a share link contains, and the key or passphrase that opens it;</li>
+  <li>what an approval request from your Mac to your iPhone describes, and your answer.</li>
+</ul>
+<p>Because we never have your master password or Secret Key, we cannot reset your password or recover your data. If you lose both your master password and every signed-in device and your Emergency Kit, your data is lost.</p>
+
+<h2>What the server stores</h2>
+<table>
+  <thead><tr><th>Data</th><th>Why</th><th>How long</th></tr></thead>
+  <tbody>
+    <tr><td>Your account: email address, name, the date you signed up, and cryptographic material that does not reveal your password (password-check record, key-derivation salt and settings, your encrypted keyset, your public keys and their signatures)</td><td>To sign you in, to let people share with you, and to show your name to the people you share with</td><td>While your account exists</td></tr>
+    <tr><td>Your devices: the name you or your computer gave it (for example "Ada's MacBook Pro"), the platform (for example "macOS app"), when it signed in and when it was last seen; a hash of each session token</td><td>To list your devices so you can sign one out, and to keep you signed in (sessions expire after 30 days without use)</td><td>While your account exists; sessions until they expire or you sign out</td></tr>
+    <tr><td>Your vaults and items, encrypted: the ciphertext, its size, when it changed and which account changed it; how many items each vault has; who has access to each vault and with which role</td><td>To sync your data between your devices and the people you share with</td><td>While the vault exists; earlier versions of an item for 90 days</td></tr>
+    <tr><td>Invitations: the email address you invite, who invited them, when, and whether it was used; for sharing a vault, also the vault, the role and whether they accepted</td><td>To send the invitation and let the other person accept it</td><td>A vault invitation until the share is finished, declined or cancelled; any invitation at most 30 days after it expires (invitations expire 7 days after they are sent)</td></tr>
+    <tr><td>Share links: which account created the link, the encrypted contents and an encrypted label only your devices can read, its size, expiry, view limit and number of views, and whether it needs a passphrase</td><td>To serve the link to the person you send it to</td><td>Deleted when the link expires, is revoked, or reaches its view limit</td></tr>
+    <tr><td>Security log: sign-ins and failed sign-ins, sign-ups, devices signed out, invitations, sharing changes, and share links created or revoked, each with the account, the device, the time and the IP address it came from; for sign-ins also the device's name and platform, and for invitations the invited email address</td><td>To detect and investigate abuse and attacks on accounts</td><td>1 year, then deleted automatically</td></tr>
+  </tbody>
+</table>
+
+<h3>Kept only in memory</h3>
+<ul>
+  <li><strong>Rate limits.</strong> To slow down password guessing and spam, the server counts requests per IP address and per account in memory. These counters are never written to disk and are lost when the server restarts.</li>
+  <li><strong>Approvals from your iPhone.</strong> When your Mac asks your iPhone to approve an SSH or command-line request, the server relays an encrypted request and an encrypted answer. It sees your account, which device asked, an ID, the sizes and the times, for at most a few minutes, in memory only.</li>
+  <li><strong>Live updates.</strong> While your apps are open, the server keeps a connection to tell them that something changed, without content.</li>
 </ul>
 
-<h2>Third parties</h2>
-<p>Hisar uses no third-party services. Data is not transferred to anyone other than your own Hisar server.</p>
+<h3>Logs and backups</h3>
+<ul>
+  <li>Like most web services, our web server records each request (IP address, time, address requested, response status and browser or app version) in access logs, kept for 14 days. Opening a share link is recorded there the same way; the part of the link that holds the key is never sent to the server.</li>
+  <li>We back up the database every night. Backups are encrypted and kept for 30 days, so deleted data disappears from backups after that time.</li>
+</ul>
 
-<h2>Deleting your data</h2>
-<p>Signing out removes your data from a device. To delete your account and its data from the server, ask your Hisar administrator.</p>
+<h2>Email</h2>
+<p>The server sends a few plain-text emails, with no images or tracking: an invitation when someone invites you to Hisar or shares a vault with you, and a note to you when someone accepted your invitation to a vault but your Hisar has not finished sharing it yet. Emails contain the names and email addresses of the people involved and, for invitations, a sign-up link; they never contain vault names or items. Email is not end-to-end encrypted. We send these transactional emails through Google (Google Workspace SMTP), which processes the recipient's address and the message to deliver it. Google is a US company; transfers of this data to the US are covered by the EU–US Data Privacy Framework and Google's standard contractual clauses.</p>
 
-<h2>Contact</h2>
-<p>Questions about this policy: <a href="mailto:privacy@tryhisar.com" style="color:#e8eaed">privacy@tryhisar.com</a>.</p>
+<h2>Who else receives data</h2>
+<ul>
+  <li><strong>The people you share with</strong> see your name, your email address and your security code, and the vaults you share with them. Nobody else can look up whether an email address has a Hisar account; the service never lists its users.</li>
+  <li><strong>Service providers</strong> that process data on our behalf: Hetzner Online GmbH runs the server and stores the database and backups, on servers in Helsinki, Finland (EU); Google delivers email (below).</li>
+  <li><strong>Authorities</strong>, only when the law requires it. What we could hand over is what this page lists; we cannot decrypt your vaults.</li>
+</ul>
+<p>We do not sell or rent personal data, and we do not use it for advertising or profiling.</p>
+
+<h2>The apps</h2>
+<ul>
+  <li>The macOS and iPhone apps keep an encrypted copy of your vaults on the device so they work offline. Touch ID and Face ID are handled by Apple's operating system; Hisar never receives your fingerprint or face data.</li>
+  <li>The apps contact only the Hisar server you sign in to. The macOS app checks that server for updates while you are signed in.</li>
+  <li>The Hisar browser extension talks only to the Hisar app on the same computer, through the browser's native messaging, and sends nothing to the internet. It reads the address of the page you are on and the login forms on it, to offer matching logins and to offer saving a login after you sign in. Page contents are not stored or sent anywhere except to the Hisar app on your computer. It stores a random installation ID, the pairing token for your Hisar app, its settings, and the sites you chose "Never for this site" for, in the browser's local extension storage. Logins are filled only on the site they were saved for.</li>
+</ul>
+
+<h2>Security, and its limits</h2>
+<p>Traffic is encrypted with TLS. Items are encrypted with keys derived from your master password and your 128-bit Secret Key, so a copy of our database is not enough to guess your password offline. We work to keep the service secure, but please know the limits of any server-based design:</p>
+<ul>
+  <li>The server sees the metadata listed above: who you share with, how many items you have, how big they are and when they change.</li>
+  <li>A compromised server could try to hand you someone else's public key when you share a vault. Comparing security codes with the other person once (Settings → People) detects that.</li>
+  <li>The web page that opens a share link is served by our server, so a compromised server could change it. People who use the <code>hisar</code> command-line tool can open share links without the page.</li>
+</ul>
+<p>If we learn of a breach that affects your personal data, we will tell you and the relevant authorities as the law requires.</p>
+
+<h2>Legal bases</h2>
+<p>Under the GDPR we rely on:</p>
+<ul>
+  <li><strong>Contract</strong> (Art. 6(1)(b)): account, device, vault, sharing and share-link data, and the emails about your own account, to provide the service you signed up for.</li>
+  <li><strong>Legitimate interests</strong> (Art. 6(1)(f)): the security log, rate limits and web server logs, to keep the service secure and prevent abuse; and invitation emails to people who do not have an account yet, sent because a user asked us to.</li>
+</ul>
+
+<h2>Your choices and rights</h2>
+<ul>
+  <li>You can see and change your vaults, devices and sharing in the apps at any time, and sign out any device.</li>
+  <li>To delete your account, email <a href="mailto:support@tryhisar.com">support@tryhisar.com</a> from the address on the account. We delete the account and everything tied to it: devices, sessions, your access to vaults, the vaults only you could open, your share links and your invitations. Security log entries and backups are deleted on the schedules above. Vaults you shared stay with the other people who have access.</li>
+  <li>Under the GDPR you have the right to access your personal data, to have it corrected (rectification) or erased, to restrict its processing, to receive it in a portable format, and to object to processing based on legitimate interests. Write to <a href="mailto:support@tryhisar.com">support@tryhisar.com</a> and we will answer within one month.</li>
+  <li>You may also lodge a complaint with a data protection supervisory authority. We are based in the Netherlands, so the lead authority is the Dutch Autoriteit Persoonsgegevens (<a href="https://autoriteitpersoonsgegevens.nl">autoriteitpersoonsgegevens.nl</a>); you can also complain to the authority in the EU country where you live or work.</li>
+</ul>
+
+<h2>Children</h2>
+<p>Hisar is not meant for children under 16, and we do not knowingly hold their data.</p>
+
+<h2>Changes</h2>
+<p>When we change this policy we update the date at the top, and for significant changes we tell you in the apps or by email before they take effect.</p>
+
+<nav>
+  <a href="/terms">Terms of Service</a> · Questions: <a href="mailto:support@tryhisar.com">support@tryhisar.com</a>
+</nav>
 </main>
 </body>
 </html>

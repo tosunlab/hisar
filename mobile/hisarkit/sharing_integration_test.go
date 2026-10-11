@@ -235,4 +235,68 @@ func TestIntegrationMobileSharing(t *testing.T) {
 	}](t)(owner.GetItem(deployKeys.ID, saved.ID)); item.Password != "staging-database-password" {
 		t.Errorf("the owner reads %q after the key rotation", item.Password)
 	}
+
+	checkShareWaitingForLockedOwner(t, owner, recipient, ownerEmail, recipientEmail)
+}
+
+// checkShareWaitingForLockedOwner: a locked owner cannot complete a share, so both sides are told who it waits for.
+func checkShareWaitingForLockedOwner(t *testing.T, owner, recipient *Hisar, ownerEmail, recipientEmail string) {
+	t.Helper()
+	releaseKeys := decodeJSON[sharingVaultSummary](t)(owner.CreateVault("Release keys"))
+	if err := owner.ShareVault(releaseKeys.ID, recipientEmail, "editor"); err != nil {
+		t.Fatal(err)
+	}
+	owner.Lock()
+	type receivedInvitation struct {
+		ID      string `json:"id"`
+		VaultID string `json:"vaultId"`
+	}
+	type waitingList struct {
+		Received []receivedInvitation `json:"received"`
+		Waiting  []struct {
+			VaultID        string `json:"vaultId"`
+			InvitedByName  string `json:"invitedByName"`
+			InvitedByEmail string `json:"invitedByEmail"`
+			AcceptedAt     string `json:"acceptedAt"`
+		} `json:"waiting"`
+	}
+	received := decodeJSON[waitingList](t)(recipient.ListAllShareInvitation()).Received
+	index := slices.IndexFunc(received, func(invitation receivedInvitation) bool { return invitation.VaultID == releaseKeys.ID })
+	if index < 0 {
+		t.Fatalf("no invitation to Release keys: %+v", received)
+	}
+	if err := recipient.AcceptShareInvitation(received[index].ID); err != nil {
+		t.Fatal(err)
+	}
+	allWaiting := decodeJSON[waitingList](t)(recipient.ListAllShareInvitation()).Waiting
+	if len(allWaiting) != 1 || allWaiting[0].VaultID != releaseKeys.ID || allWaiting[0].InvitedByName != "Mobile Owner" || allWaiting[0].InvitedByEmail != ownerEmail {
+		t.Fatalf("the recipient's waiting share: %+v", allWaiting)
+	}
+	if acceptedAt, err := time.Parse(time.RFC3339, allWaiting[0].AcceptedAt); err != nil || time.Since(acceptedAt) > time.Minute {
+		t.Errorf("accepted at %q: %v", allWaiting[0].AcceptedAt, err)
+	}
+
+	type awaitingUnlock struct {
+		RecipientName  string `json:"recipientName"`
+		RecipientEmail string `json:"recipientEmail"`
+		AcceptedAt     string `json:"acceptedAt"`
+	}
+	allAwaiting := decodeJSON[[]awaitingUnlock](t)(owner.ListAllShareAwaitingUnlock())
+	if len(allAwaiting) != 1 || allAwaiting[0].RecipientName != "Mobile Recipient" || allAwaiting[0].RecipientEmail != recipientEmail || allAwaiting[0].AcceptedAt != allWaiting[0].AcceptedAt {
+		t.Fatalf("the locked owner's banner: %+v", allAwaiting)
+	}
+
+	if _, err := owner.Unlock("mobile sharing master password"); err != nil {
+		t.Fatal(err)
+	}
+	if allAwaiting := decodeJSON[[]awaitingUnlock](t)(owner.ListAllShareAwaitingUnlock()); len(allAwaiting) != 0 {
+		t.Errorf("unlocked owner still has a lock screen banner: %+v", allAwaiting)
+	}
+	decodeJSON[waitingList](t)(owner.ListAllShareInvitation())
+	if allWaiting := decodeJSON[waitingList](t)(recipient.ListAllShareInvitation()).Waiting; len(allWaiting) != 0 {
+		t.Errorf("the recipient still waits after the owner unlocked: %+v", allWaiting)
+	}
+	if findVaultByName(t, recipient, "Release keys") == nil {
+		t.Error("the recipient has no access after the owner unlocked")
+	}
 }

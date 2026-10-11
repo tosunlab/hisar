@@ -579,3 +579,8 @@ input[type="checkbox"].switch:focus-visible {
 .full-width {
   width: 100%;
 }
+
+a[target="_blank"] {
+  color: inherit;
+  text-underline-offset: 2px;
+}

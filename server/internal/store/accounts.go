@@ -204,3 +204,28 @@ func (s *Store) RecordAudit(ctx context.Context, accountID, deviceID *string, ev
 		`INSERT INTO audit_events (account_id, device_id, type, detail, ip) VALUES ($1, $2, $3, $4, $5)`,
 		accountID, deviceID, eventType, detail, ip)
 }
+
+// PruneAudit deletes audit events older than maxAge.
+func (s *Store) PruneAudit(ctx context.Context, maxAge time.Duration) (int64, error) {
+	commandTag, err := s.pool.Exec(ctx, `DELETE FROM audit_events WHERE created_at < now() - $1::interval`, maxAge)
+	return commandTag.RowsAffected(), err
+}
+
+// PruneExpiredInvitation deletes sign-up invites and pending share invitations that expired more than maxAge ago.
+// Accepted share invitations never expire: they wait for the owner's app.
+func (s *Store) PruneExpiredInvitation(ctx context.Context, maxAge time.Duration) (int64, error) {
+	var prunedCount int64
+	err := pgx.BeginFunc(ctx, s.pool, func(transaction pgx.Tx) error {
+		inviteTag, err := transaction.Exec(ctx, `DELETE FROM invites WHERE expires_at < now() - $1::interval`, maxAge)
+		if err != nil {
+			return err
+		}
+		shareInvitationTag, err := transaction.Exec(ctx, `DELETE FROM share_invitations WHERE state = 'pending' AND expires_at < now() - $1::interval`, maxAge)
+		if err != nil {
+			return err
+		}
+		prunedCount = inviteTag.RowsAffected() + shareInvitationTag.RowsAffected()
+		return nil
+	})
+	return prunedCount, err
+}

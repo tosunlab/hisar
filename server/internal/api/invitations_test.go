@@ -355,3 +355,89 @@ func TestCompleteAcceptedShareRefusesChangedKey(t *testing.T) {
 	}
 	server.WaitForBackgroundWork()
 }
+
+func TestAcceptedShareTellsInviterAndRecipient(t *testing.T) {
+	baseURL, server, _ := setupServer(t)
+	ctx := context.Background()
+	recorder := attachMailRecorder(server)
+	server.config.ShareAcceptedEmailDelay = 200 * time.Millisecond
+	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", proto.RoleAdmin)
+	bob := signUpTestAccount(t, ctx, server, baseURL, "bob@example.com", proto.RoleMember)
+	carol := signUpTestAccount(t, ctx, server, baseURL, "carol@example.com", proto.RoleMember)
+	work := requireValue[*session.Vault](t)(alice.CreateVault(ctx, "Work", proto.VaultShared))
+	server.WaitForBackgroundWork()
+
+	acceptInvitation := func(recipient *session.Session) (emailCountBefore int) {
+		t.Helper()
+		if err := alice.InviteToVault(ctx, work, recipient.Email, proto.VaultEditor); err != nil {
+			t.Fatal(err)
+		}
+		server.WaitForBackgroundWork()
+		invitationList := requireValue[*proto.ShareInvitationList](t)(recipient.Client.ListAllShareInvitation(ctx))
+		if len(invitationList.AllReceived) != 1 || len(invitationList.AllWaiting) != 0 {
+			t.Fatalf("%s before accepting: %+v", recipient.Email, invitationList)
+		}
+		emailCountBefore = len(recorder.ListAllMessage())
+		if err := recipient.Client.AcceptShareInvitation(ctx, invitationList.AllReceived[0].ID); err != nil {
+			t.Fatal(err)
+		}
+		return emailCountBefore
+	}
+
+	emailCountBefore := acceptInvitation(bob)
+	bobList := requireValue[*proto.ShareInvitationList](t)(bob.Client.ListAllShareInvitation(ctx))
+	if len(bobList.AllReceived) != 0 || len(bobList.AllWaiting) != 1 {
+		t.Fatalf("Bob after accepting: %+v", bobList)
+	}
+	waiting := bobList.AllWaiting[0]
+	if waiting.VaultID != work.ID || waiting.InvitedByEmail != "alice@example.com" || waiting.InvitedByName == "" || waiting.Role != proto.VaultEditor ||
+		time.Since(waiting.AcceptedAt) > time.Minute {
+		t.Errorf("Bob's waiting invitation: %+v", waiting)
+	}
+	aliceList := requireValue[*proto.ShareInvitationList](t)(alice.Client.ListAllShareInvitation(ctx))
+	if len(aliceList.AllSent) != 1 || aliceList.AllSent[0].AcceptedAt == nil || !aliceList.AllSent[0].AcceptedAt.Equal(waiting.AcceptedAt) || len(aliceList.AllWaiting) != 0 {
+		t.Errorf("Alice's sent invitations: %+v", aliceList)
+	}
+	if carolList := requireValue[*proto.ShareInvitationList](t)(carol.Client.ListAllShareInvitation(ctx)); len(carolList.AllWaiting) != 0 || len(carolList.AllSent) != 0 {
+		t.Errorf("Carol sees someone else's share: %+v", carolList)
+	}
+
+	allMessage := recorder.WaitForMessageCount(emailCountBefore+1, 5*time.Second)[emailCountBefore:]
+	if len(allMessage) != 1 || allMessage[0].To != "alice@example.com" || !strings.HasSuffix(allMessage[0].Subject, "accepted your invitation in Hisar") ||
+		!strings.Contains(allMessage[0].Body, "bob@example.com") || !strings.Contains(allMessage[0].Body, "unlock it") || strings.Contains(allMessage[0].Body, "Work") {
+		t.Fatalf("accepted email: %+v", allMessage)
+	}
+
+	if allCompleted := requireValue[[]session.CompletedShare](t)(alice.CompleteAllAcceptedShare(ctx)); len(allCompleted) != 1 {
+		t.Fatalf("completed: %+v", allCompleted)
+	}
+	if bobList := requireValue[*proto.ShareInvitationList](t)(bob.Client.ListAllShareInvitation(ctx)); len(bobList.AllWaiting) != 0 {
+		t.Errorf("Bob still waits after completion: %+v", bobList.AllWaiting)
+	}
+
+	t.Run("no email when the owner's app completes in time", func(t *testing.T) {
+		server.config.ShareAcceptedEmailDelay = time.Second
+		emailCountBefore := acceptInvitation(carol)
+		if allCompleted := requireValue[[]session.CompletedShare](t)(alice.CompleteAllAcceptedShare(ctx)); len(allCompleted) != 1 {
+			t.Fatalf("completed: %+v", allCompleted)
+		}
+		time.Sleep(1500 * time.Millisecond)
+		server.WaitForBackgroundWork()
+		if allMessage := recorder.ListAllMessage()[emailCountBefore:]; len(allMessage) != 0 {
+			t.Errorf("emailed after completion: %+v", allMessage)
+		}
+	})
+
+	t.Run("accepted emails are rate limited per inviter", func(t *testing.T) {
+		server.config.ShareAcceptedEmailDelay = 50 * time.Millisecond
+		server.shareAcceptedEmailLimiter = createDailyLimiter(1)
+		server.shareAcceptedEmailLimiter.allow(alice.AccountID)
+		dave := signUpTestAccount(t, ctx, server, baseURL, "dave@example.com", proto.RoleMember)
+		emailCountBefore := acceptInvitation(dave)
+		time.Sleep(500 * time.Millisecond)
+		server.WaitForBackgroundWork()
+		if allMessage := recorder.ListAllMessage()[emailCountBefore:]; len(allMessage) != 0 {
+			t.Errorf("emailed over the limit: %+v", allMessage)
+		}
+	})
+}

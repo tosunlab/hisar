@@ -220,7 +220,7 @@ struct SentInvitationRow: View {
     var isVaultNameShown = true
 
     private var stateText: String {
-        invitation.state == SentShareInvitation.stateAccepted ? "Accepted, finishing on your next sync" : "Waiting for them to accept"
+        invitation.state == SentShareInvitation.stateAccepted ? "Accepted, Hisar is finishing sharing" : "Waiting for them to accept"
     }
 
     var body: some View {

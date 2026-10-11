@@ -207,6 +207,12 @@ func (hisar *Hisar) ListAllShareInvitation() (string, error) {
 	return encodeJSON(hisar.service.ListAllShareInvitation())
 }
 
+// ListAllShareAwaitingUnlock returns []vault.ShareAwaitingUnlock as JSON for the lock screen: shares people accepted that this
+// app finishes once unlocked. It is empty while unlocked, offline or signed out.
+func (hisar *Hisar) ListAllShareAwaitingUnlock() (string, error) {
+	return encodeJSON(hisar.service.ListAllShareAwaitingUnlock())
+}
+
 func (hisar *Hisar) AcceptShareInvitation(invitationID string) error {
 	return hisar.service.AcceptShareInvitation(invitationID)
 }

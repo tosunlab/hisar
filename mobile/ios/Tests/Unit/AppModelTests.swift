@@ -354,6 +354,66 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(model.allReceivedInvitation.isEmpty)
     }
 
+    func testLockScreenAsksTheOwnerToUnlockToFinishAcceptedShares() async {
+        backend.seedSignedIn(state: VaultStatus.stateLocked)
+        backend.allShareAwaitingUnlock = [
+            ShareAwaitingUnlock(invitationID: "to-ada", recipientName: "Ada", recipientEmail: "ada@example.com", acceptedAt: "2027-01-15T06:00:00Z"),
+            ShareAwaitingUnlock(invitationID: "to-bo", recipientName: "", recipientEmail: "bo@example.com", acceptedAt: "2027-01-15T07:00:00Z"),
+        ]
+        let model = createModel()
+        XCTAssertEqual(model.screen, .locked)
+        await model.refreshShareAwaitingUnlock()
+        XCTAssertEqual(model.allShareAwaitingUnlock.map(\.message), [
+            "Ada accepted your invitation to a vault — unlock to finish sharing",
+            "bo@example.com accepted your invitation to a vault — unlock to finish sharing",
+        ])
+        XCTAssertNil(model.errorMessage)
+
+        backend.isShareAwaitingUnlockFailing = true
+        await model.refreshShareAwaitingUnlock()
+        XCTAssertEqual(model.allShareAwaitingUnlock.count, 2, "a failed refresh keeps the last banner")
+        XCTAssertNil(model.errorMessage, "the lock screen stays quiet offline")
+
+        let isUnlocked = await model.unlock(password: FakeBackend.password)
+        XCTAssertTrue(isUnlocked)
+        XCTAssertTrue(model.allShareAwaitingUnlock.isEmpty, "unlocking finishes the shares, so the banner goes")
+        let callCount = backend.allCallName.filter { $0 == "listAllShareAwaitingUnlock" }.count
+        await model.refreshShareAwaitingUnlock()
+        XCTAssertEqual(backend.allCallName.filter { $0 == "listAllShareAwaitingUnlock" }.count, callCount, "an unlocked app does not ask")
+    }
+
+    func testRecipientSeesWhoTheAcceptedShareIsWaitingFor() async {
+        backend.seedSignedIn()
+        backend.shareInvitations = ShareInvitations(allWaiting: [
+            WaitingShareInvitation(id: "from-carol", vaultID: "carol-vault", role: Member.vaultRoleEditor, invitedByName: "Carol", invitedByEmail: "carol@example.com", acceptedAt: "2027-01-15T06:00:00Z"),
+        ])
+        let model = createModel()
+        await model.refreshAll()
+        XCTAssertEqual(model.allWaitingInvitation.map(\.id), ["from-carol"])
+        let now = ISO8601DateFormatter().date(from: "2027-01-15T08:05:00Z")!
+        XCTAssertEqual(model.allWaitingInvitation.first?.describe(now: now), "Waiting for Carol's Hisar to finish sharing · accepted 2 h ago")
+        model.lock()
+        XCTAssertTrue(model.allWaitingInvitation.isEmpty)
+    }
+
+    func testFormatTimeAgo() {
+        let now = ISO8601DateFormatter().date(from: "2027-01-15T12:00:00Z")!
+        XCTAssertEqual(formatTimeAgo("2027-01-15T11:59:40Z", now: now), "just now")
+        XCTAssertEqual(formatTimeAgo("2027-01-15T11:55:00Z", now: now), "5 min ago")
+        XCTAssertEqual(formatTimeAgo("2027-01-14T09:00:00Z", now: now), "yesterday")
+        XCTAssertEqual(formatTimeAgo("2027-01-12T12:00:00Z", now: now), "3 days ago")
+        XCTAssertEqual(formatTimeAgo("", now: now), "")
+    }
+
+    func testShareAwaitingUnlockDecodesFromHisarKit() throws {
+        let json = #"[{"invitationId":"i","recipientName":"Ada","recipientEmail":"ada@example.com","acceptedAt":"2027-01-15T06:00:00Z"}]"#
+        let decoded = try JSONDecoder().decode([ShareAwaitingUnlock].self, from: Data(json.utf8))
+        XCTAssertEqual(decoded.first?.id, "i")
+        XCTAssertEqual(decoded.first?.recipientDisplayName, "Ada")
+        let invitations = try JSONDecoder().decode(ShareInvitations.self, from: Data(#"{"received":null,"sent":null,"waiting":[{"id":"w","vaultId":"v","role":"reader","invitedByName":"","invitedByEmail":"carol@example.com","acceptedAt":"2027-01-15T06:00:00Z"}],"completionError":""}"#.utf8))
+        XCTAssertEqual(invitations.allWaiting.first?.inviterName, "carol@example.com")
+    }
+
     func testRemoteChangeReloadsVaultsAndInvitations() async {
         let model = await createUnlockedModel()
         backend.allVault.append(VaultSummary(id: "shared-with-me", name: "Deploy keys", type: "shared", role: Member.vaultRoleReader, itemCount: 0))

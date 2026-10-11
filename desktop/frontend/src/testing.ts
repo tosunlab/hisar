@@ -269,9 +269,11 @@ export function createSentShareInvitation(overrides: Partial<SentShareInvitation
     vaultId: "family",
     vaultName: "Family",
     email: "dave@example.com",
+    recipientName: "",
     role: "reader",
     state: "pending",
     expiresAt: "2026-10-18T09:00:00Z",
+    acceptedAt: "",
     ...overrides,
   };
 }
@@ -341,6 +343,7 @@ export function createApiMock() {
     acceptShareInvitation: vi.fn(),
     declineShareInvitation: vi.fn(),
     cancelShareInvitation: vi.fn(),
+    listAllShareAwaitingUnlock: vi.fn().mockResolvedValue([]),
     listAllDevice: vi.fn().mockResolvedValue([]),
     revokeDevice: vi.fn(),
     listAllShareLinkField: vi.fn().mockResolvedValue([]),

@@ -395,6 +395,71 @@ func TestPruneHistory(t *testing.T) {
 	}
 }
 
+func TestPruneAudit(t *testing.T) {
+	database := createTestStore(t)
+	ctx := context.Background()
+	accountID := "AAAAAA"
+	database.RecordAudit(ctx, &accountID, nil, "login", nil, "192.0.2.1")
+	database.RecordAudit(ctx, &accountID, nil, "login", nil, "192.0.2.2")
+	if _, err := database.pool.Exec(ctx, `UPDATE audit_events SET created_at = now() - interval '400 days' WHERE ip = '192.0.2.1'`); err != nil {
+		t.Fatal(err)
+	}
+	prunedCount, err := database.PruneAudit(ctx, 365*24*time.Hour)
+	if err != nil || prunedCount != 1 {
+		t.Fatalf("pruned %d, %v", prunedCount, err)
+	}
+	var allRemainingIP []string
+	allRow, _ := database.pool.Query(ctx, `SELECT ip FROM audit_events`)
+	for allRow.Next() {
+		var ip string
+		allRow.Scan(&ip)
+		allRemainingIP = append(allRemainingIP, ip)
+	}
+	if len(allRemainingIP) != 1 || allRemainingIP[0] != "192.0.2.2" {
+		t.Errorf("remaining audit events: %v", allRemainingIP)
+	}
+}
+
+func TestPruneExpiredInvitation(t *testing.T) {
+	database := createTestStore(t)
+	ctx := context.Background()
+	createTestAccount(t, database, "AAAAAA", "a@example.com")
+	createTestAccount(t, database, "BBBBBB", "b@example.com")
+	vaultID := createTestVault(t, database, "AAAAAA")
+	createdBy := "AAAAAA"
+	for _, invite := range []struct {
+		hash string
+		ttl  time.Duration
+	}{{"old", -40 * 24 * time.Hour}, {"recently-expired", -time.Hour}, {"live", time.Hour}} {
+		if err := database.CreateInvite(ctx, []byte(invite.hash), invite.hash+"@example.com", "member", &createdBy, invite.ttl); err != nil {
+			t.Fatal(err)
+		}
+	}
+	database.UpsertShareInvitation(ctx, &ShareInvitation{VaultID: vaultID, Email: "old@example.com", Role: "reader", InvitedBy: "AAAAAA"}, -40*24*time.Hour)
+	database.UpsertShareInvitation(ctx, &ShareInvitation{VaultID: vaultID, Email: "live@example.com", Role: "reader", InvitedBy: "AAAAAA"}, time.Hour)
+	acceptedID, _ := database.UpsertShareInvitation(ctx, &ShareInvitation{VaultID: vaultID, Email: "b@example.com", Role: "reader", InvitedBy: "AAAAAA"}, time.Hour)
+	if _, _, err := database.AcceptShareInvitation(ctx, acceptedID, "BBBBBB", "b@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.pool.Exec(ctx, `UPDATE share_invitations SET expires_at = now() - interval '40 days' WHERE id = $1`, acceptedID); err != nil {
+		t.Fatal(err)
+	}
+
+	prunedCount, err := database.PruneExpiredInvitation(ctx, 30*24*time.Hour)
+	if err != nil || prunedCount != 2 {
+		t.Fatalf("pruned %d, %v", prunedCount, err)
+	}
+	var inviteCount, shareInvitationCount int
+	database.pool.QueryRow(ctx, `SELECT count(*) FROM invites WHERE email IN ('old@example.com', 'recently-expired@example.com', 'live@example.com')`).Scan(&inviteCount)
+	database.pool.QueryRow(ctx, `SELECT count(*) FROM share_invitations`).Scan(&shareInvitationCount)
+	if inviteCount != 2 || shareInvitationCount != 2 {
+		t.Errorf("left %d invites and %d share invitations", inviteCount, shareInvitationCount)
+	}
+	if allWaiting, _ := database.ListAllWaitingShareInvitation(ctx, "BBBBBB"); len(allWaiting) != 1 {
+		t.Error("an accepted invitation was pruned")
+	}
+}
+
 func TestVaultAccess(t *testing.T) {
 	database := createTestStore(t)
 	ctx := context.Background()

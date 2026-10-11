@@ -108,6 +108,21 @@ If you were not expecting it, ignore this email.
 	}
 }
 
+func composeShareAcceptedEmail(inviter, recipient *store.Account) mail.Message {
+	return mail.Message{
+		To:      inviter.Email,
+		Subject: getInviterName(recipient) + " accepted your invitation in Hisar",
+		Body: fmt.Sprintf(`%s accepted your invitation to share a vault in Hisar.
+Vault names are end-to-end encrypted, so this email cannot say which vault.
+
+Open Hisar and unlock it on any of your devices to finish sharing: your app checks their keys
+and gives them access. Until then they are waiting and cannot see anything in the vault.
+
+If you no longer want to share it, cancel the invitation under Settings → People.
+`, describeInviter(recipient)),
+	}
+}
+
 func (s *Server) sendEmail(ctx context.Context, message mail.Message) {
 	if err := s.config.Mailer.Send(ctx, message); err != nil {
 		log.Printf("email not sent: %v", err)

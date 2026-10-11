@@ -147,12 +147,26 @@ type SentShareInvitation struct {
 	InvitedBy string    `json:"invitedBy"`
 	CreatedAt time.Time `json:"createdAt"`
 	ExpiresAt time.Time `json:"expiresAt"`
-	Recipient *Member   `json:"recipient,omitempty"`
+	// AcceptedAt is set only once it was accepted.
+	AcceptedAt *time.Time `json:"acceptedAt,omitempty"`
+	Recipient  *Member    `json:"recipient,omitempty"`
 }
 
+// WaitingShareInvitation is an invitation the caller accepted that no owner's app has completed yet.
+type WaitingShareInvitation struct {
+	ID             string    `json:"id"`
+	VaultID        string    `json:"vaultId"`
+	Role           string    `json:"role"`
+	InvitedByName  string    `json:"invitedByName"`
+	InvitedByEmail string    `json:"invitedByEmail"`
+	AcceptedAt     time.Time `json:"acceptedAt"`
+}
+
+// ShareInvitationList: AllWaiting is missing from servers older than the field.
 type ShareInvitationList struct {
 	AllReceived []ReceivedShareInvitation `json:"received"`
 	AllSent     []SentShareInvitation     `json:"sent"`
+	AllWaiting  []WaitingShareInvitation  `json:"waiting"`
 }
 
 type Device struct {

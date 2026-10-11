@@ -43,6 +43,8 @@ type Config struct {
 	DesktopUpdates *desktopupdate.Source
 	// Mailer is nil when email is not configured.
 	Mailer mail.Mailer
+	// ShareAcceptedEmailDelay is how long an accepted share may wait for the owner's app before the inviter gets an email.
+	ShareAcceptedEmailDelay time.Duration
 }
 
 type Server struct {
@@ -61,6 +63,7 @@ type Server struct {
 	inviteIPLimiter               *dailyLimiter
 	shareInvitationAccountLimiter *dailyLimiter
 	shareInvitationIPLimiter      *dailyLimiter
+	shareAcceptedEmailLimiter     *dailyLimiter
 	shareLinkAccountLimiter       *dailyLimiter
 	shareLinkReadLimiter          *ipLimiter
 	backgroundWork                sync.WaitGroup
@@ -81,6 +84,9 @@ func CreateServer(database *store.Store, secrets *Secrets, config Config) (*Serv
 	}
 	if config.WriteTimeout == 0 {
 		config.WriteTimeout = 30 * time.Second
+	}
+	if config.ShareAcceptedEmailDelay == 0 {
+		config.ShareAcceptedEmailDelay = defaultShareAcceptedEmailDelay
 	}
 	opaqueConfiguration := pake.CreateConfig()
 	serverKeyMaterial, err := opaqueConfiguration.DecodeServerKeyMaterial(secrets.OpaqueKeyMaterial)
@@ -110,6 +116,7 @@ func CreateServer(database *store.Store, secrets *Secrets, config Config) (*Serv
 		inviteIPLimiter:               createDailyLimiter(invitePerIPPerDay),
 		shareInvitationAccountLimiter: createDailyLimiter(shareInvitationPerAccountPerDay),
 		shareInvitationIPLimiter:      createDailyLimiter(shareInvitationPerIPPerDay),
+		shareAcceptedEmailLimiter:     createDailyLimiter(shareAcceptedEmailPerInviterPerDay),
 		shareLinkAccountLimiter:       createDailyLimiter(shareLinkPerAccountPerDay),
 		shareLinkReadLimiter:          createShareLinkReadLimiter(),
 	}, nil
@@ -129,6 +136,7 @@ func (s *Server) CreateApp() *fiber.App {
 	app.Use(setAllSecurityHeader)
 	app.Get("/healthz", func(c fiber.Ctx) error { return c.SendString("ok\n") })
 	app.Get("/privacy", sendPrivacyPolicy)
+	app.Get("/terms", sendTermsOfService)
 	app.Get("/s/:id", sendShareLinkPage)
 
 	apiGroup := app.Group("/api/v1")
@@ -183,11 +191,18 @@ func (s *Server) CreateApp() *fiber.App {
 //go:embed privacy.html
 var privacyPolicy []byte
 
-func sendPrivacyPolicy(c fiber.Ctx) error {
+//go:embed terms.html
+var termsOfService []byte
+
+func sendPrivacyPolicy(c fiber.Ctx) error { return sendLegalPage(c, privacyPolicy) }
+
+func sendTermsOfService(c fiber.Ctx) error { return sendLegalPage(c, termsOfService) }
+
+func sendLegalPage(c fiber.Ctx, page []byte) error {
 	c.Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'")
 	c.Set("Cache-Control", "public, max-age=3600")
 	c.Set(fiber.HeaderContentType, fiber.MIMETextHTMLCharsetUTF8)
-	return c.Send(privacyPolicy)
+	return c.Send(page)
 }
 
 func setAllSecurityHeader(c fiber.Ctx) error {

@@ -542,20 +542,74 @@ struct SentShareInvitation: Codable, Identifiable, Hashable {
     }
 }
 
+// WaitingShareInvitation is a share this user accepted that the owner's app has not finished yet.
+struct WaitingShareInvitation: Codable, Identifiable, Hashable {
+    var id: String
+    var vaultID: String
+    var role: String
+    var invitedByName: String
+    var invitedByEmail: String
+    var acceptedAt: String
+
+    var inviterName: String { invitedByName.isEmpty || invitedByName == invitedByEmail ? invitedByEmail : invitedByName }
+
+    enum CodingKeys: String, CodingKey {
+        case id, role, invitedByName, invitedByEmail, acceptedAt
+        case vaultID = "vaultId"
+    }
+
+    func describe(now: Date) -> String {
+        let since = formatTimeAgo(acceptedAt, now: now)
+        return "Waiting for \(inviterName)'s Hisar to finish sharing" + (since.isEmpty ? "" : " · accepted \(since)")
+    }
+}
+
+// ShareAwaitingUnlock is a share someone accepted that this locked app finishes once unlocked; the vault name is encrypted until then.
+struct ShareAwaitingUnlock: Codable, Identifiable, Hashable {
+    var invitationID: String
+    var recipientName: String
+    var recipientEmail: String
+    var acceptedAt: String
+
+    var id: String { invitationID }
+    var recipientDisplayName: String { recipientName.isEmpty || recipientName == recipientEmail ? recipientEmail : recipientName }
+    var message: String { "\(recipientDisplayName) accepted your invitation to a vault — unlock to finish sharing" }
+
+    enum CodingKeys: String, CodingKey {
+        case recipientName, recipientEmail, acceptedAt
+        case invitationID = "invitationId"
+    }
+}
+
+// formatTimeAgo is a short "since" for banners: "just now", "5 min ago", "2 h ago", "yesterday", "3 days ago".
+func formatTimeAgo(_ timestamp: String, now: Date) -> String {
+    guard let date = ISO8601DateFormatter().date(from: timestamp) else { return "" }
+    let minuteCount = Int(now.timeIntervalSince(date) / 60)
+    if minuteCount < 1 { return "just now" }
+    if minuteCount < 60 { return "\(minuteCount) min ago" }
+    let hourCount = minuteCount / 60
+    if hourCount < 24 { return "\(hourCount) h ago" }
+    let dayCount = hourCount / 24
+    return dayCount == 1 ? "yesterday" : "\(dayCount) days ago"
+}
+
 struct ShareInvitations: Codable, Hashable {
     var allReceived: [ReceivedShareInvitation]
     var allSent: [SentShareInvitation]
+    var allWaiting: [WaitingShareInvitation]
     var completionError: String
 
     enum CodingKeys: String, CodingKey {
         case allReceived = "received"
         case allSent = "sent"
+        case allWaiting = "waiting"
         case completionError
     }
 
-    init(allReceived: [ReceivedShareInvitation] = [], allSent: [SentShareInvitation] = [], completionError: String = "") {
+    init(allReceived: [ReceivedShareInvitation] = [], allSent: [SentShareInvitation] = [], allWaiting: [WaitingShareInvitation] = [], completionError: String = "") {
         self.allReceived = allReceived
         self.allSent = allSent
+        self.allWaiting = allWaiting
         self.completionError = completionError
     }
 
@@ -563,6 +617,7 @@ struct ShareInvitations: Codable, Hashable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         allReceived = try container.decodeIfPresent([ReceivedShareInvitation].self, forKey: .allReceived) ?? []
         allSent = try container.decodeIfPresent([SentShareInvitation].self, forKey: .allSent) ?? []
+        allWaiting = try container.decodeIfPresent([WaitingShareInvitation].self, forKey: .allWaiting) ?? []
         completionError = try container.decodeIfPresent(String.self, forKey: .completionError) ?? ""
     }
 }

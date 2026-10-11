@@ -234,8 +234,11 @@ Sharing is person to person: the owner of a shared vault types an email address 
    - when the email has an account, the server sends that account `share-invitations-changed` (§7.2) and an email saying who shared a vault with them (vault names are encrypted, so it says "a vault");
    - otherwise it creates a sign-up invite for the email (§5.1) and emails it, saying a vault is waiting. Without email configured nothing is sent; the invitation still waits for an account with that email.
    - Only errors that depend on the owner's own data are reported: the email is the owner's own (`400`), or belongs to someone who already has access to the vault (`409`; the owner sees the vault's members anyway). Rate limits: 50 share invitations per account and 100 per IP address per day.
-2. **Accept or decline (recipient).** `GET /share-invitations` returns `received`: the pending, unexpired invitations to the caller's email, with the inviter's name and email, the role and the vault ID. `POST /share-invitations/{id}/accept` marks the invitation accepted by the caller's account; nothing secret is published. `POST /share-invitations/{id}/decline` deletes it. Both notify the vault's owners with `share-invitations-changed`. Until the share is completed the recipient has no access.
+2. **Accept or decline (recipient).** `GET /share-invitations` returns `received`: the pending, unexpired invitations to the caller's email, with the inviter's name and email, the role and the vault ID. `POST /share-invitations/{id}/accept` marks the invitation accepted by the caller's account; nothing secret is published. `POST /share-invitations/{id}/decline` deletes it. Both notify the vault's owners with `share-invitations-changed`. Until the share is completed the recipient has no access. `GET /share-invitations` also returns `waiting`: the invitations the caller accepted that no owner's app has completed yet, with the inviter's name and email, the role, the vault ID and `acceptedAt`, so the recipient's app can say who it is waiting for and since when.
+   - **Telling the owner.** An owner whose app is unlocked and online completes the share within seconds (step 3). Otherwise, with email configured, the server emails the inviter 2 minutes after the accept (`Config.ShareAcceptedEmailDelay`) if the invitation is still accepted with the same `accepted_at` and the inviter is still an owner of the vault: "<Name> accepted your invitation in Hisar", saying to open and unlock Hisar to finish sharing. The server cannot read vault names, so the email says "a vault". It goes only to the inviter, who already knows the recipient's address, and at most 50 such emails per inviter per day; the timer lives in memory, so a restart drops it (the apps still show the banner below).
 3. **Complete (owner's app).** `GET /share-invitations` also returns `sent`: the invitations of every vault the caller owns, with `state` (`pending` or `accepted`), and for accepted ones the recipient's account ID, name, email and signed public keys (only there: never for pending invitations or for vaults the caller does not own). On every sync, and at once on `share-invitations-changed`, the owner's app (`session.CompleteAllAcceptedShare`) verifies each accepted recipient's signed KEM key, pins their signing key (§5.6), wraps the vault key exactly as for any other member (§4.4) and calls `PUT /vaults/{id}/access/{accountID}`. The server accepts a new member there only with an accepted invitation for that vault and account, deletes the invitation in the same transaction and sends the recipient `vaults-changed`. The app then lists the person with their security code to compare.
+   - `sent` entries carry `acceptedAt` once accepted. While the owner's app is **locked** it cannot complete anything (the vault key needs the keyset), but the session token is in the local state, so the lock screens on the Mac and the iPhone read `GET /share-invitations` (`ListAllShareAwaitingUnlock`; quietly nothing when offline or signed out) and show "Ada accepted your invitation to a vault — unlock to finish sharing" for each accepted invitation. The vault name is encrypted and unknown while locked, so it is not shown there. Unlocking completes the shares at once; if one still fails (a changed key, §5.6), the vault list's banner says "Ada accepted your invitation to Work. Hisar couldn't finish sharing" with the reason.
+   - The recipient's vault list shows one banner per `waiting` entry: "Waiting for Ada's Hisar to finish sharing · accepted 2 h ago"; it disappears when `vaults-changed` brings the vault.
 4. **Cancel (owner).** `DELETE /share-invitations/{id}` (an owner of the vault) withdraws a pending or accepted invitation.
 
 `PUT /vaults/{id}/access/{accountID}` otherwise only changes the role of an existing member, and a key rotation (§4.4) can only keep existing members, so no vault is ever shared without the recipient accepting.
@@ -384,7 +387,7 @@ vault_access   (vault_id, account_id, wrapped_key, role[owner|editor|reader], gr
 items          (vault_id, id, revision, seq, deleted, overview_ct, details_ct, updated_at, updated_by)
 item_history   (vault_id, id, revision, overview_ct, details_ct, updated_at, updated_by)
 attachments    (id, vault_id, item_id, size, chunk_count, storage_path)
-audit_events   (id, account_id, device_id, type, ip, created_at)
+audit_events   (id, account_id, device_id, type, detail, ip, created_at)   -- kept 1 year (§8.6)
 ```
 
 `enc_name` is the vault name encrypted with `K_vault`.
@@ -399,7 +402,7 @@ Phone approvals (§9.9) are not in Postgres: they live in the server process's m
 | Account | `GET/PUT /account`, `GET /account/keyset`, `PUT /account/password` |
 | Devices | `GET /devices`, `DELETE /devices/{id}` |
 | People | `GET /members` (the caller and the people they share a vault with; public keys, signatures), `POST /invites` (any user; emailed) |
-| Share invitations | `POST /vaults/{id}/share-invitations` (owner), `GET /share-invitations` (`received`, `sent`), `POST /share-invitations/{id}/accept`, `POST /share-invitations/{id}/decline` (recipient), `DELETE /share-invitations/{id}` (owner) |
+| Share invitations | `POST /vaults/{id}/share-invitations` (owner), `GET /share-invitations` (`received`, `sent`, `waiting`), `POST /share-invitations/{id}/accept`, `POST /share-invitations/{id}/decline` (recipient), `DELETE /share-invitations/{id}` (owner) |
 | Vaults | `GET /vaults`, `POST /vaults`, `GET /vaults/{id}/members`, `PUT /vaults/{id}/access/{accountID}`, `DELETE /vaults/{id}/access/{accountID}`, `POST /vaults/{id}/rotate` (Phase 2) |
 | Items | `GET /vaults/{id}/changes`, `PUT /vaults/{id}/items/{itemID}`, `GET /vaults/{id}/items/{itemID}/history` |
 | Attachments | `PUT/GET /vaults/{id}/attachments/{attID}/chunks/{n}` |
@@ -415,7 +418,7 @@ All under `/api/v1`. JSON bodies, base64url for binary fields. There is no recov
 - No account enumeration: `POST /invites` and `POST /vaults/{id}/share-invitations` answer the same whether or not the email has an account, and do the account-dependent work (events, invites, email) after answering. Both are rate-limited per account and per IP (§5.1, §5.8).
 - Request size limits. Strict JSON decoding (unknown fields rejected).
 - Security headers on the invite web pages and the share link page (CSP, HSTS, no framing, §5.9).
-- Audit log for logins, device changes, invites, share invitations and sharing changes.
+- Audit log for logins, device changes, invites, share invitations and sharing changes, kept 1 year (§8.6).
 
 ### 8.4 Deployment
 
@@ -437,7 +440,19 @@ All under `/api/v1`. JSON bodies, base64url for binary fields. There is no recov
   - Invite: who invited them, the sign-up link and the invite code, the expiry, and that the email can be ignored.
   - Share invitation to an account: "<Name> shared a vault with you in Hisar", the role, and where to accept (Settings → People, `hisar invitations`).
   - Share invitation without an account: the same, plus the sign-up link and code.
+  - Share accepted, to the inviter (§5.8, sent only if their app has not completed it after 2 minutes): "<Name> accepted your invitation in Hisar", that the server cannot say which vault, and to open and unlock Hisar on a device to finish sharing.
 - Sending happens in the background after the API answered; failures are logged without the recipient's address.
+
+### 8.6 Privacy policy and Terms
+
+`GET /privacy` and `GET /terms` serve two static pages embedded in `hisar-server` (`privacy.html`, `terms.html`), linked from each other, from the store listings and from the desktop app's create-account screen. They describe the hosted service at `api.tryhisar.com` exactly as this document does: what the server stores (§2.3, §8.1), what it cannot read, the sub-processors (Hetzner Online GmbH in Helsinki, Finland, for hosting; Google for email) and the retention below. The operator is Alper Berber, the contact is support@tryhisar.com, and the terms are under Dutch law. Both pages get the share link page's headers minus scripts: `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'`, cacheable for an hour.
+
+**Retention**, as the pages state it:
+
+- Account data, devices, vaults, items and invitations: while the account exists. Item history: 90 days. Share links: deleted at expiry, after the last view or when revoked (§5.9). A share invitation: until the share is completed, declined or cancelled. Sign-up invites and pending share invitations that were not used: `hisar-server` deletes them once a day when they expired more than 30 days ago (accepted share invitations do not expire; they wait for the owner's app).
+- Audit log (`audit_events`: account, device, event type, IP address and details: the device's name and platform for a login, the email for a sign-up, an invite or a share invitation, otherwise IDs only): 1 year; `hisar-server` deletes older rows once a day.
+- Rate-limit counters, the event broker and phone approvals: server memory only, never written to disk, gone on restart (approvals after at most 4 minutes).
+- The reverse proxy's access logs: 14 days. The encrypted backups (§8.4): 30 days.
 
 ## 9. Clients
 
@@ -589,7 +604,7 @@ The desktop keeps paired browsers (`instanceID`, browser name, SHA-256 of the to
   - **Completing shares:** the iPhone runs the same Go code as the Mac (`session.CompleteAllAcceptedShare` through `desktop/vault`): on every sync, every `share-invitations-changed` event, pull to refresh, the People screen and the sharing sheet, it verifies each accepted recipient's signed keys, pins their signing key, refuses on a changed key and wraps the vault key. Only an unlocked app does this; a locked iPhone leaves the share to the owner's next unlocked device.
   - **Item detail:** grouped rows for username, password (reveal, copy), one-time code (with a progress ring), custom fields, websites, passkeys and notes. Copying plays a success haptic and shows the 90-second note; each copyable row's context menu also has **Copy secret reference**, and a quiet last row copies the password's reference.
   - **Settings** (what of the Mac's settings makes sense on a phone): **Account** (name, email, server; **Secret Key and Emergency Kit**, which asks for the master password, then shows the Secret Key and offers the Emergency Kit PDF through `ShareLink`; the file is written to the app's temporary folder and deleted when the screen closes), **Security** (Face ID, Auto-lock picker 30 s · 1 min · 5 min · 10 min · 1 h, Lock now, and the note that copied values clear after 90 seconds), **Mac approvals** (the switch "Allow approving Mac requests", on by default, and the note that approving answers one request and never unlocks the Mac), **People** (invitations for you with a badge, invitations you sent, invite by email, and each person with their security code and a "key changed" warning), **Devices** (each signed-in device with platform and last activity, "This iPhone" first; another device can be signed out after a confirmation), **AutoFill**, **Password generator**, **About**, and **Sign out**. The SSH agent, command-line tool, browser extension, agent vault access, open at login, updates and import stay on the Mac.
-  - **Sign in, create account and unlock:** `Form`s with the same copy as before (the Emergency Kit wording included); the lock screen shows the mark, the account's email, **Unlock with Face ID** and the master password field.
+  - **Sign in, create account and unlock:** `Form`s with the same copy as before (the Emergency Kit wording included); the lock screen shows the mark, the account's email, **Unlock with Face ID** and the master password field, and above them the accepted shares waiting for this unlock (§5.8).
 - **Simulator limits:** a build without a team is registered as a provider but iOS does not offer it, so UI tests drive the extension's screens through a debug-only preview in the app. Face ID is tested in the simulator by posting the biometric daemon's enrollment and match notifications.
 
 ### 9.4 CLI
