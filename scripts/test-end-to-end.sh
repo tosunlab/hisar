@@ -210,5 +210,5 @@ expect "iOS app backend against the server" "$MOBILE_RESULT" "--- PASS: TestInte
 
 PHONE_APPROVAL_INVITE=$("$BIN/hisar-server" invite --email phone-approval@example.com </dev/null | tail -1)
 PHONE_APPROVAL_RESULT=$(HISAR_TEST_PHONE_APPROVAL_INVITE_LINK="$PHONE_APPROVAL_INVITE" go -C "$ROOT/mobile" test -count=1 -v -run TestIntegrationPhoneApproval ./hisarkit/ 2>&1 || true)
-expect "the iPhone approves and denies the Mac's SSH requests, and a forged answer is refused" "$PHONE_APPROVAL_RESULT" "--- PASS: TestIntegrationPhoneApproval"
+expect "the iPhone approves and denies the Mac's SSH requests, refuses a forged answer, and approves after opening late" "$PHONE_APPROVAL_RESULT" "--- PASS: TestIntegrationPhoneApproval"
 echo "end-to-end test passed"

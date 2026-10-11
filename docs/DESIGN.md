@@ -309,6 +309,7 @@ The client applies changes to its local SQLite cache and stores `nextSeq`. Chang
 - An account may hold 8 streams. A subscriber whose 32-event buffer fills is closed, so the client reconnects and resyncs.
 - The broker lives in one server process, which is what the deployment runs; several processes would need Postgres `LISTEN/NOTIFY`.
 - The desktop backend keeps one stream open while unlocked. Its client has no overall request timeout, but closes a stream that sends nothing, not even a heartbeat, for 90 s. It reconnects with backoff from 1 s to 60 s, and stops on 401.
+- The iOS app runs the same backend. iOS suspends it in the background, after which the old stream can be dead without the client noticing for up to 90 s, and the backoff may have grown to 60 s. So on returning to the foreground the app calls `ReconnectEvents`, which drops the stream and opens a new one at once with the backoff reset.
 - On an event the backend syncs every vault incrementally (bursts collapse into one sync), so the SSH agent and the browser bridge see the change even when the window is hidden. It then emits `remote-change`, and the UI runs its background refresh.
 
 ### 7.3 Push
@@ -361,7 +362,7 @@ audit_events   (id, account_id, device_id, type, ip, created_at)
 
 `enc_name` is the vault name encrypted with `K_vault`.
 
-Phone approvals (§9.9) are not in Postgres: they live in the server process's memory for at most 2 minutes, like the event broker.
+Phone approvals (§9.9) are not in Postgres: they live in the server process's memory for at most 4 minutes, like the event broker.
 
 ### 8.2 API surface (v1)
 
@@ -794,7 +795,7 @@ The Mac's approval dialog (SSH agent, §9.6, and command-line tool, §9.4) can a
 - Only while Hisar on the Mac is unlocked. A locked Mac still needs Touch ID or the master password at the Mac, and its dialog is not sent to the phone. When the Mac locks, it withdraws its open phone requests and ignores their answers.
 - Only while Hisar is open and unlocked on the phone, in the foreground. There are no push notifications yet: they need the Apple Developer Program (§12 #7) and come later.
 - The Mac sends a request when the dialog opens, if Settings → SSH agent → **Allow approvals from my iPhone** is on (default on; stored in `desktop.json`, a device preference kept on sign-out) and the account has at least one iOS device (`GET /devices`, platform `ios/…`, read when Hisar unlocks; the same list gives the Mac its own device ID).
-- Whichever answers first wins: Touch ID or the master password on the Mac, Deny on the Mac, the phone, or the 60-second timeout. The Mac then withdraws the request (`DELETE /approvals/{id}`), which sends `approval-resolved`, and the phone closes its sheet.
+- Whichever answers first wins: Touch ID or the master password on the Mac, Deny on the Mac, the phone, or the dialog's timeout. A dialog that the phone can answer waits 2 minutes instead of 60 seconds (`PhoneApprovalTimeout`), to leave time to reach for the phone and open Hisar. The Mac then withdraws the request (`DELETE /approvals/{id}`), which sends `approval-resolved`, and the phone closes its sheet.
 - A phone approval counts as a Touch ID approval: the "Don't ask again" checkbox counts as it is at that moment, commit and tag signing still ask once per signature, and a forwarded request (§9.6) is allowed once. A phone's Deny is Deny.
 
 **Request** (`core/approval`, sealed by the Mac)
@@ -806,7 +807,7 @@ request       = JSON {requestId, requesterDeviceId, requesterDeviceName, created
 sealedRequest = 0x01 || HPKE.Seal(accountKEMPub, info = "hisar/v1/approval-request" || accountID || requestId, request)
 ```
 
-- `requestId` is 128 random bits as 32 lower-case hex digits. `expiresAt - createdAt` is at most 60 s, the dialog's timeout. Times are RFC 3339 UTC with milliseconds.
+- `requestId` is 128 random bits as 32 lower-case hex digits. `expiresAt` is the dialog's own deadline, so the request stays answerable exactly as long as the Mac waits; `expiresAt - createdAt` is at most 3 minutes. Times are RFC 3339 UTC with milliseconds.
 - `purpose` is the dialog's sentence ("push to git.tryhisar.com", "sign a commit", "use Hisar"); the other fields are the dialog's detail lines, empty when the dialog has none.
 - Sealing to the account's own KEM public key (§4.3; the same HPKE as vault keys, §4.4) lets any unlocked device of the account open it, and the server cannot. The info binds the account and the request ID, so the server cannot move a request to another ID or account.
 
@@ -821,7 +822,7 @@ answer       = JSON {requestId, decision, answeringDeviceId, answeringDeviceName
 sealedAnswer = 0x01 || HPKE.Seal(accountKEMPub, info = "hisar/v1/approval-answer-envelope" || accountID || requestId, answer)
 ```
 
-The concatenations are length-prefixed (§4.5). Before it shows a request, the phone opens it and checks that its ID is the one the server named, that it lasts at most 60 s, that it has not expired by the phone's clock, and that it did not come from the phone itself. It signs only what it showed, because the hash covers the sealed request byte for byte. Sealing the answer as well keeps the decision and the device names from the server.
+The concatenations are length-prefixed (§4.5). Before it shows a request, the phone opens it and checks that its ID is the one the server named, that it lasts at most 3 minutes, that it has not expired by the phone's clock, and that it did not come from the phone itself. It signs only what it showed, because the hash covers the sealed request byte for byte. Sealing the answer as well keeps the decision and the device names from the server.
 
 **The Mac accepts an answer only if**
 
@@ -840,14 +841,14 @@ The concatenations are length-prefixed (§4.5). Before it shows a request, the p
 
 | Endpoint | Body → result |
 |---|---|
-| `POST /approvals` | `{requestId, sealedRequest, expiresAt}` → 201. 400 for a bad ID, an empty sealed request or one over 16 KiB, or an expiry that is not within the next 60 s; 409 for a duplicate ID; 429 when the account has 16 open requests. Sends `approval-requested` |
+| `POST /approvals` | `{requestId, sealedRequest, expiresAt}` → 201. 400 for a bad ID, an empty sealed request or one over 16 KiB, or an expiry that is not within the next 3 minutes; 409 for a duplicate ID; 429 when the account has 16 open requests. Sends `approval-requested` |
 | `GET /approvals` | `[{requestId, sealedRequest, requesterDeviceId, createdAt, expiresAt}]`: the account's requests that are not answered, resolved or expired |
 | `GET /approvals/{id}` | `{requestId, sealedRequest, sealedAnswer, isResolved, expiresAt}`; 404 for an unknown request or another account's |
 | `POST /approvals/{id}/answer` | `{sealedAnswer}` (at most 16 KiB) → 204. 404 unknown, 410 expired or resolved, 409 already answered, 403 from a session of the requesting device. Sends `approval-answered` |
 | `DELETE /approvals/{id}` | → 204, only from a session of the requesting device (403 otherwise); marks it resolved and sends `approval-resolved` |
 
 - Every endpoint needs a session and sees only the session's account. Each account has a token bucket of 2 requests per second with a burst of 60 across these endpoints (429).
-- A request is kept until 60 s after its expiry, so at most 2 minutes after it was posted, and is never served after that; every write drops the expired ones.
+- A request is kept until 60 s after its expiry, so at most 4 minutes after it was posted, and is never served after that; every write drops the expired ones.
 
 **Mac** (`desktop/vault/phoneapproval.go`, `desktop/agent`)
 
@@ -856,10 +857,13 @@ The concatenations are length-prefixed (§4.5). Before it shows a request, the p
 
 **iPhone** (`mobile/hisarkit`, `mobile/ios`)
 
-- While unlocked and in the foreground, the app lists pending requests at unlock, on returning to the foreground and on `approval-requested`, and shows the first one in a sheet: an icon for the kind, "Approve on <Mac name>?", the description rows (app, action, command, repository, server, key, forwarded from, terminal), the note "End-to-end encrypted. Only your devices can read this request. Approving lets this one request continue; it does not unlock Hisar on your Mac.", **Approve with Face ID** and **Deny**.
+- The phone does not need to be open when the Mac asks: the Mac posts the request whenever the account has an iOS device, and the request waits on the server until the dialog's deadline.
+- While unlocked and in the foreground, the app lists the open requests right at unlock (before the vault sync), on returning to the foreground, on `approval-requested`, and every 15 s as a fallback for a missed event. They appear at the top of the vault list, one row each: "<Mac name> is asking to use <key>" (or "Hisar from the command line"), the request's sentence, a live "Expires in …", and **Review**.
+- A request that arrives while the app is in the foreground also opens the sheet at once; requests found at unlock or on returning to the foreground are only listed. Closing the sheet keeps the request in the list.
+- The sheet shows an icon for the kind, "Approve on <Mac name>?", the description rows (app, action, command, repository, server, key, forwarded from, terminal), the note "End-to-end encrypted. Only your devices can read this request. Approving lets this one request continue; it does not unlock Hisar on your Mac.", **Approve with Face ID** and **Deny**.
 - Approve needs Face ID (or Touch ID) first; when biometrics are unavailable or the user picks the fallback, the sheet asks for the master password, which is checked like an unlock. Deny needs neither.
-- The sheet closes on `approval-answered` or `approval-resolved`, at `expiresAt`, and when the app locks. Expired, answered or withdrawn requests are never shown.
-- UI tests drive the sheet through a debug-only preview (`-HisarApprovalPreview`), like the AutoFill preview (§9.3). The cross-device flow is tested end to end in Go: a desktop backend and a HisarKit backend signed in to the same account, where the phone approves an SSH signature, a denied one fails, and a forged answer is refused.
+- A request leaves the list, and its sheet closes, on `approval-answered` or `approval-resolved`, at `expiresAt`, and when the app locks. Expired, answered or withdrawn requests are never shown.
+- UI tests drive the sheet and the list through debug-only previews (`-HisarApprovalPreview`, `-HisarApprovalBannerPreview`), like the AutoFill preview (§9.3). The cross-device flow is tested end to end in Go: a desktop backend and a HisarKit backend signed in to the same account, where the phone approves an SSH signature, a denied one fails, a forged answer is refused, and a phone app that starts only after the Mac asked still finds and approves the request.
 
 ## 10. Repository layout
 

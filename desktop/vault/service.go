@@ -46,6 +46,7 @@ type Service struct {
 	localCache                   *cache.Cache
 	pendingImport                *pendingImport
 	stopEvents                   context.CancelFunc
+	reconnectEvents              chan struct{}
 	onSessionChange              func(server, token string, isSignedIn bool)
 	shareCompletionError         string
 	allLockListener              []func()
@@ -197,6 +198,7 @@ func (s *Service) lockSession() {
 	if s.stopEvents != nil {
 		s.stopEvents()
 		s.stopEvents = nil
+		s.reconnectEvents = nil
 	}
 	if s.lockTimer != nil {
 		s.lockTimer.Stop()
@@ -242,7 +244,8 @@ func (s *Service) openSession(unlockedSession *session.Session) {
 	if !s.config.IsEventStreamDisabled {
 		eventContext, stopEvents := context.WithCancel(context.Background())
 		s.stopEvents = stopEvents
-		go s.watchEvents(eventContext, unlockedSession.Client)
+		s.reconnectEvents = make(chan struct{}, 1)
+		go s.watchEvents(eventContext, unlockedSession.Client, s.reconnectEvents)
 	}
 	s.phoneApprovals.mutex.Lock()
 	isPhoneApprovalRequester := s.phoneApprovals.isRequester

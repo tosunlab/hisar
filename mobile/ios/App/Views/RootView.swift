@@ -27,7 +27,7 @@ struct RootView: View {
             }
         }
         .animation(.easeOut(duration: 0.2), value: model.noticeMessage)
-        .sheet(item: Binding(get: { model.screen == .unlocked && model.newSecretKey == nil ? model.pendingApproval : nil }, set: { _ in })) { approval in
+        .sheet(item: Binding(get: { model.screen == .unlocked && model.newSecretKey == nil ? model.presentedApproval : nil }, set: { if $0 == nil { model.closeApprovalSheet() } })) { approval in
             PhoneApprovalSheet(
                 approval: approval,
                 isBusy: model.isAnsweringApproval,

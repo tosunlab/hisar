@@ -21,7 +21,7 @@ const (
 	DecisionApprove = "approve"
 	DecisionDeny    = "deny"
 
-	MaximumLifetime   = 60 * time.Second
+	MaximumLifetime   = 3 * time.Minute
 	MaximumSealedSize = 16 << 10
 
 	requestIDByteCount = 16

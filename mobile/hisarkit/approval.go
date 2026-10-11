@@ -37,3 +37,9 @@ func (hisar *Hisar) ApproveApprovalWithPassword(requestID, password string) erro
 func (hisar *Hisar) DenyApproval(requestID string) error {
 	return vault.AnswerPhoneApproval(hisar.service, requestID, false)
 }
+
+// ReconnectEvents opens a new event stream at once; the app calls it on returning to the foreground, because a stream
+// from before iOS suspended the app can be dead without either side knowing.
+func (hisar *Hisar) ReconnectEvents() {
+	vault.ReconnectEventStream(hisar.service)
+}

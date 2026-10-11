@@ -172,7 +172,7 @@ func TestApprovalRelayValidation(t *testing.T) {
 		"upper-case ID":        {RequestID: "00112233445566778899AABBCCDDEEFF", SealedRequest: []byte("sealed"), ExpiresAt: now.Add(time.Minute)},
 		"empty":                {RequestID: validID, ExpiresAt: now.Add(time.Minute)},
 		"too large":            {RequestID: validID, SealedRequest: make([]byte, approvalMaximumSealedSize+1), ExpiresAt: now.Add(time.Minute)},
-		"expires in 2 minutes": {RequestID: validID, SealedRequest: []byte("sealed"), ExpiresAt: now.Add(2 * time.Minute)},
+		"expires in 4 minutes": {RequestID: validID, SealedRequest: []byte("sealed"), ExpiresAt: now.Add(4 * time.Minute)},
 		"already expired":      {RequestID: validID, SealedRequest: []byte("sealed"), ExpiresAt: now.Add(-time.Second)},
 	}
 	for name, request := range allCase {
@@ -257,4 +257,26 @@ func TestApprovalRelayNeedsSession(t *testing.T) {
 	_, err := anonymous.ListAllPendingApproval(context.Background())
 	expectStatus(t, "without a session", err, http.StatusUnauthorized)
 	expectStatus(t, "posting without a session", anonymous.CreateApproval(context.Background(), &proto.CreateApprovalRequest{RequestID: approval.GenerateRequestID(), SealedRequest: []byte("x"), ExpiresAt: time.Now().Add(time.Minute)}), http.StatusUnauthorized)
+}
+
+func TestApprovalRelayKeepsALongerDialogsRequest(t *testing.T) {
+	server, accounts := setupApprovalAccounts(t)
+	ctx := context.Background()
+	clock := &testClock{}
+	server.approvals.mutex.Lock()
+	server.approvals.now = clock.now
+	server.approvals.mutex.Unlock()
+
+	requestID := approval.GenerateRequestID()
+	if err := accounts.mac.Client.CreateApproval(ctx, &proto.CreateApprovalRequest{RequestID: requestID, SealedRequest: []byte("sealed"), ExpiresAt: time.Now().Add(2 * time.Minute)}); err != nil {
+		t.Fatal(err)
+	}
+	clock.advance(90 * time.Second)
+	allPending := requireValue[[]proto.PendingApproval](t)(accounts.phone.Client.ListAllPendingApproval(ctx))
+	if len(allPending) != 1 || allPending[0].RequestID != requestID {
+		t.Fatalf("a phone that connects 90 s later sees %+v", allPending)
+	}
+	if err := accounts.phone.Client.AnswerApproval(ctx, requestID, []byte("answer")); err != nil {
+		t.Errorf("answering 90 s later: %v", err)
+	}
 }

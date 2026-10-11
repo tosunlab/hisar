@@ -35,7 +35,7 @@ struct PhoneApprovalSheet: View {
         .background(Theme.panel.ignoresSafeArea())
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
-        .interactiveDismissDisabled()
+        .interactiveDismissDisabled(isBusy)
         .accessibilityIdentifier("phone-approval")
         .onChange(of: isPasswordRequired) { _, isRequired in
             isPasswordFocused = isRequired

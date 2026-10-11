@@ -7,7 +7,6 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
-	"encoding/asn1"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -82,7 +81,7 @@ func ImportPrivateKey(pemBytes []byte, passphrase []byte, comment string) (*KeyM
 			return nil, ErrPassphraseRequired
 		}
 		privateKey, err = ssh.ParseRawPrivateKeyWithPassphrase(pemBytes, passphrase)
-		if isWrongPassphraseError(err) {
+		if isWrongPassphraseError(block, err) {
 			return nil, ErrWrongPassphrase
 		}
 	}
@@ -92,11 +91,12 @@ func ImportPrivateKey(pemBytes []byte, passphrase []byte, comment string) (*KeyM
 	return buildKeyMaterial(privateKey, comment)
 }
 
-// Legacy PEM encryption has no integrity check, so a wrong passphrase can surface as a DER parse error.
-func isWrongPassphraseError(err error) bool {
-	var syntaxError asn1.SyntaxError
-	var structuralError asn1.StructuralError
-	return errors.Is(err, x509.IncorrectPasswordError) || errors.As(err, &syntaxError) || errors.As(err, &structuralError)
+// Legacy PEM encryption has no integrity check, so a wrong passphrase surfaces as any parse error of the decrypted bytes.
+func isWrongPassphraseError(block *pem.Block, err error) bool {
+	if err == nil {
+		return false
+	}
+	return errors.Is(err, x509.IncorrectPasswordError) || strings.Contains(block.Headers["Proc-Type"], "ENCRYPTED")
 }
 
 func ParseKeyMaterial(privateKeyPEM []byte) (ssh.Signer, error) {

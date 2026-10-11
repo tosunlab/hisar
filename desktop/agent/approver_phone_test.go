@@ -17,6 +17,7 @@ type fakePhone struct {
 	isAvailable    bool
 	allDescription []approval.Description
 	allDecide      []func(isApproved bool)
+	allExpiresAt   []time.Time
 	finishCount    int
 	startedChannel chan struct{}
 }
@@ -31,10 +32,11 @@ func (phone *fakePhone) IsPhoneApprovalAvailable() bool {
 	return phone.isAvailable
 }
 
-func (phone *fakePhone) StartPhoneApproval(description approval.Description, decide func(isApproved bool)) func() {
+func (phone *fakePhone) StartPhoneApproval(description approval.Description, expiresAt time.Time, decide func(isApproved bool)) func() {
 	phone.mutex.Lock()
 	phone.allDescription = append(phone.allDescription, description)
 	phone.allDecide = append(phone.allDecide, decide)
+	phone.allExpiresAt = append(phone.allExpiresAt, expiresAt)
 	phone.mutex.Unlock()
 	phone.startedChannel <- struct{}{}
 	return func() {
@@ -267,5 +269,47 @@ func TestLatePhoneAnswerIsIgnored(t *testing.T) {
 	phone.answer(true)
 	if allPending := approver.ListAllPendingApproval(); len(allPending) != 0 {
 		t.Errorf("pending after a late answer: %+v", allPending)
+	}
+}
+
+func TestDialogTheIPhoneCanAnswerWaitsLonger(t *testing.T) {
+	emitter := createFakeEmitter()
+	phone := createFakePhone()
+	approver := CreateApprover(ApproverConfig{
+		Emit: emitter.emit, ShowApprovalWindow: emitter.showWindow, HideApprovalWindow: emitter.hideWindow,
+		PhoneApprover: phone, Timeout: 100 * time.Millisecond, PhoneApprovalTimeout: 3 * time.Second,
+	})
+	startedAt := time.Now()
+	resultChannel := startApproval(approver, context.Background(), createTestRequest())
+	event := waitForApprovalEvent(t, emitter)
+	phone.waitForStart(t)
+	timeoutAt, err := time.Parse(time.RFC3339, event.TimeoutAt)
+	if err != nil || timeoutAt.Before(startedAt.Add(2*time.Second)) {
+		t.Errorf("the dialog times out at %q", event.TimeoutAt)
+	}
+	phone.mutex.Lock()
+	expiresAt := phone.allExpiresAt[0]
+	phone.mutex.Unlock()
+	if expiresAt.Sub(startedAt) < 2900*time.Millisecond || expiresAt.Sub(startedAt) > 3100*time.Millisecond {
+		t.Errorf("the phone's request expires after %v, not with the dialog", expiresAt.Sub(startedAt))
+	}
+	time.Sleep(500 * time.Millisecond)
+	phone.answer(true)
+	if result := waitForResult(t, resultChannel); !result.result.IsAllowed {
+		t.Errorf("the phone's approval after the Mac-only timeout was lost: %+v", result)
+	}
+
+	phone.mutex.Lock()
+	phone.isAvailable = false
+	phone.mutex.Unlock()
+	resultChannel = startApproval(approver, context.Background(), createTestRequest())
+	waitForApprovalEvent(t, emitter)
+	select {
+	case result := <-resultChannel:
+		if result.result.IsAllowed {
+			t.Error("timed out into an approval")
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("a dialog without the phone kept the longer timeout")
 	}
 }

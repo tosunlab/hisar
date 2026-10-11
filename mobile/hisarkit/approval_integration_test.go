@@ -195,7 +195,8 @@ func TestIntegrationPhoneApproval(t *testing.T) {
 	phoneDirectory := t.TempDir()
 	recorder := &approvalEventRecorder{allEvent: make(chan [2]string, 64)}
 	biometric := &fakeBiometric{allKeyByAccountID: map[string][]byte{}}
-	phone, err := New(phoneDirectory, "Test iPhone", createMemorySecretKeyStore(), biometric, &fakeClipboard{}, recorder)
+	phoneSecretKeyStore := createMemorySecretKeyStore()
+	phone, err := New(phoneDirectory, "Test iPhone", phoneSecretKeyStore, biometric, &fakeClipboard{}, recorder)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -376,11 +377,40 @@ func TestIntegrationPhoneApproval(t *testing.T) {
 		t.Error("the SSH sign-in succeeded with a forged answer")
 	}
 
+	// The app is not running when the Mac asks: it starts later, unlocks, and finds the request still waiting.
+	phone.Lock()
+	resultChannel = startSSHSignIn()
+	lateDialog := dialog.waitForEvent(t)
+	if !lateDialog.IsPhoneApproval {
+		t.Fatalf("the Mac did not send the request while the phone app was closed: %+v", lateDialog)
+	}
+	time.Sleep(2 * time.Second)
+	relaunchedPhone, err := New(phoneDirectory, "Test iPhone", phoneSecretKeyStore, biometric, &fakeClipboard{}, &approvalEventRecorder{allEvent: make(chan [2]string, 64)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if current := decodeJSON[status](t)(relaunchedPhone.Unlock(password)); current.State != "unlocked" {
+		t.Fatalf("relaunched phone: %+v", current)
+	}
+	lateRequests := decodeJSON[[]phoneApprovalRequest](t)(relaunchedPhone.ListAllPendingApproval())
+	if len(lateRequests) != 1 {
+		t.Fatalf("the phone that opened later sees %+v", lateRequests)
+	}
+	if expiresAt, err := time.Parse(time.RFC3339Nano, lateRequests[0].ExpiresAt); err != nil || time.Until(expiresAt) < time.Minute {
+		t.Errorf("the request expires at %q, before the Mac's dialog gives up", lateRequests[0].ExpiresAt)
+	}
+	if err := relaunchedPhone.ApproveApproval(lateRequests[0].RequestID); err != nil {
+		t.Fatal(err)
+	}
+	if err := waitForSSHSignIn(resultChannel); err != nil {
+		t.Fatalf("the SSH sign-in approved by the phone that opened later failed: %v", err)
+	}
+
 	mac.Lock()
 	if phoneApprover.IsPhoneApprovalAvailable() {
 		t.Error("a locked Mac offers phone approvals")
 	}
-	if allRequest := decodeJSON[[]phoneApprovalRequest](t)(phone.ListAllPendingApproval()); len(allRequest) != 0 {
+	if allRequest := decodeJSON[[]phoneApprovalRequest](t)(relaunchedPhone.ListAllPendingApproval()); len(allRequest) != 0 {
 		t.Errorf("requests left on the phone: %+v", allRequest)
 	}
 }

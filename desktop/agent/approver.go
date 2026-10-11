@@ -20,13 +20,14 @@ import (
 )
 
 const (
-	ApprovalEventName       = "ssh-approval"
-	ApprovalClosedEventName = "ssh-approval-closed"
-	ApprovalFailedEventName = "ssh-approval-failed"
-	defaultApprovalTimeout  = 60 * time.Second
-	ApprovalKindSSHKey      = "ssh-key"
-	ApprovalKindCommandLine = "command-line"
-	commandLineClientName   = "hisar"
+	ApprovalEventName           = "ssh-approval"
+	ApprovalClosedEventName     = "ssh-approval-closed"
+	ApprovalFailedEventName     = "ssh-approval-failed"
+	defaultApprovalTimeout      = 60 * time.Second
+	defaultPhoneApprovalTimeout = 2 * time.Minute
+	ApprovalKindSSHKey          = "ssh-key"
+	ApprovalKindCommandLine     = "command-line"
+	commandLineClientName       = "hisar"
 )
 
 var (
@@ -53,7 +54,7 @@ type Unlocker interface {
 // and finish withdraws the request when the dialog closes.
 type PhoneApprover interface {
 	IsPhoneApprovalAvailable() bool
-	StartPhoneApproval(description approval.Description, decide func(isApproved bool)) (finish func())
+	StartPhoneApproval(description approval.Description, expiresAt time.Time, decide func(isApproved bool)) (finish func())
 }
 
 // ApprovalEvent is what the approval window shows; AppName and AppIconURL describe the app the program runs in.
@@ -116,7 +117,9 @@ type ApproverConfig struct {
 	// PhoneApprover lets the account's iPhones answer while Hisar is unlocked; nil keeps approvals on this Mac.
 	PhoneApprover PhoneApprover
 	Timeout       time.Duration
-	Now           func() time.Time
+	// PhoneApprovalTimeout is how long a dialog that the phone can answer waits, so there is time to reach for the phone.
+	PhoneApprovalTimeout time.Duration
+	Now                  func() time.Time
 }
 
 type approvalResponse struct {
@@ -147,6 +150,9 @@ type Approver struct {
 func CreateApprover(config ApproverConfig) *Approver {
 	if config.Timeout == 0 {
 		config.Timeout = defaultApprovalTimeout
+	}
+	if config.PhoneApprovalTimeout == 0 {
+		config.PhoneApprovalTimeout = defaultPhoneApprovalTimeout
 	}
 	if config.Now == nil {
 		config.Now = time.Now
@@ -369,6 +375,12 @@ func (approver *Approver) waitForApproval(ctx context.Context, pending *pendingA
 	phoneApprover := approver.config.PhoneApprover
 	pending.phoneChannel = make(chan bool, 1)
 	pending.event.IsPhoneApproval = phoneApprover != nil && !pending.event.IsUnlockRequired && phoneApprover.IsPhoneApprovalAvailable()
+	timeout := approver.config.Timeout
+	if pending.event.IsPhoneApproval {
+		timeout = max(timeout, approver.config.PhoneApprovalTimeout)
+	}
+	timeoutAt := approver.config.Now().Add(timeout)
+	pending.event.TimeoutAt = timeoutAt.UTC().Format(time.RFC3339)
 	approver.mutex.Lock()
 	approver.allPending = append(approver.allPending, pending)
 	isFirstCompact := approver.allPending[0].event.IsCompact
@@ -380,10 +392,10 @@ func (approver *Approver) waitForApproval(ctx context.Context, pending *pendingA
 		approver.config.ShowApprovalWindow(isFirstCompact)
 	}
 	if pending.event.IsPhoneApproval {
-		finishPhoneApproval := phoneApprover.StartPhoneApproval(pending.phoneRequest, func(isApproved bool) { approver.respondFromPhone(pending, isApproved) })
+		finishPhoneApproval := phoneApprover.StartPhoneApproval(pending.phoneRequest, timeoutAt, func(isApproved bool) { approver.respondFromPhone(pending, isApproved) })
 		defer finishPhoneApproval()
 	}
-	timer := time.NewTimer(approver.config.Timeout)
+	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 	for {
 		select {

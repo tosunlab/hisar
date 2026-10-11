@@ -43,6 +43,7 @@ protocol VaultBackend: AnyObject {
     func approveApproval(requestID: String) throws
     func approveApprovalWithPassword(requestID: String, password: String) throws
     func denyApproval(requestID: String) throws
+    func reconnectEvents()
 }
 
 struct BackendError: LocalizedError, Equatable {
