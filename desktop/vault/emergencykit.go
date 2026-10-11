@@ -46,10 +46,44 @@ func (s *Service) ForgetNewAccountSecretKey() {
 
 // SaveEmergencyKit checks the master password before exporting the Secret Key.
 func (s *Service) SaveEmergencyKit(password string) (string, error) {
+	secretKey, err := s.loadVerifiedSecretKey(password)
+	if err != nil {
+		return "", err
+	}
+	s.mutex.Lock()
+	kit := s.buildEmergencyKit(secretKey)
+	s.mutex.Unlock()
+	return s.writeEmergencyKit(kit)
+}
+
+// EmergencyKitExport is for platforms that share the PDF themselves instead of choosing a save path.
+type EmergencyKitExport struct {
+	SecretKey string
+	Document  []byte
+}
+
+// ExportEmergencyKit checks the master password, then returns the Secret Key and the Emergency Kit PDF.
+// A function rather than a method so the desktop UI, which saves the kit through SaveEmergencyKit, can't call it.
+func ExportEmergencyKit(s *Service, password string) (EmergencyKitExport, error) {
+	secretKey, err := s.loadVerifiedSecretKey(password)
+	if err != nil {
+		return EmergencyKitExport{}, err
+	}
+	s.mutex.Lock()
+	kit := s.buildEmergencyKit(secretKey)
+	s.mutex.Unlock()
+	document, err := emergencykit.Generate(kit)
+	if err != nil {
+		return EmergencyKitExport{}, err
+	}
+	return EmergencyKitExport{SecretKey: kit.SecretKey, Document: document}, nil
+}
+
+func (s *Service) loadVerifiedSecretKey(password string) (crypt.SecretKey, error) {
 	s.mutex.Lock()
 	if err := s.requireUnlocked(); err != nil {
 		s.mutex.Unlock()
-		return "", err
+		return crypt.SecretKey{}, err
 	}
 	apiClient, accountCache := s.unlockedSession.Client, s.unlockedSession.Cache
 	accountID := s.state.AccountID
@@ -57,7 +91,7 @@ func (s *Service) SaveEmergencyKit(password string) (string, error) {
 
 	secretKey, err := s.config.SecretKeyStore.LoadSecretKey(accountID)
 	if err != nil {
-		return "", fmt.Errorf("the Secret Key is missing from the keychain: %w", err)
+		return crypt.SecretKey{}, fmt.Errorf("the Secret Key is missing from the keychain: %w", err)
 	}
 	passwordBytes := []byte(password)
 	defer clear(passwordBytes)
@@ -65,14 +99,10 @@ func (s *Service) SaveEmergencyKit(password string) (string, error) {
 	defer cancel()
 	accountUnlockKey, err := session.DeriveAccountUnlockKey(ctx, apiClient, accountCache, passwordBytes, secretKey)
 	if err != nil {
-		return "", convertError(err)
+		return crypt.SecretKey{}, convertError(err)
 	}
 	clear(accountUnlockKey)
-
-	s.mutex.Lock()
-	kit := s.buildEmergencyKit(secretKey)
-	s.mutex.Unlock()
-	return s.writeEmergencyKit(kit)
+	return secretKey, nil
 }
 
 func (s *Service) buildEmergencyKit(secretKey crypt.SecretKey) emergencykit.Kit {

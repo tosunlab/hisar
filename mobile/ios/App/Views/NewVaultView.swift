@@ -16,25 +16,20 @@ struct NewVaultView: View {
                 if let errorMessage = model.errorMessage {
                     Section {
                         ErrorBanner(message: errorMessage)
-                            .listRowInsets(EdgeInsets())
-                            .listRowBackground(Color.clear)
                     }
                 }
                 Section {
-                    TextField("Vault name", text: $name, prompt: Text(verbatim: "Streaming, Kids, Travel…").foregroundStyle(Theme.textMuted))
+                    TextField("Vault name", text: $name, prompt: Text(verbatim: "Streaming, Kids, Travel…").foregroundStyle(.secondary))
                         .focused($isNameFocused)
                         .submitLabel(.done)
                         .onSubmit(create)
                         .accessibilityIdentifier("new-vault-name")
-                        .listRowBackground(Theme.surface)
                 } footer: {
                     Text("A shared vault starts with only you. Invite people by email from the vault's Members screen; your Personal vault stays private.")
                 }
             }
-            .applyListTheme()
             .navigationTitle("New vault")
             .navigationBarTitleDisplayMode(.inline)
-            .applyNavigationBarTheme()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
@@ -53,7 +48,6 @@ struct NewVaultView: View {
                 }
             }
         }
-        .preferredColorScheme(.dark)
         .interactiveDismissDisabled(model.isBusy)
         .onAppear {
             model.clearError()

@@ -9,30 +9,84 @@ struct PhoneApprovalSheet: View {
     var approveWithPassword: (String) async -> Void
     var deny: () async -> Void
 
+    @Environment(\.dismiss) private var dismiss
     @State private var password = ""
     @FocusState private var isPasswordFocused: Bool
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 18) {
-                header
+        NavigationStack {
+            List {
+                Section {
+                    header
+                        .listRowBackground(Color.clear)
+                }
                 if approval.isForwarded {
-                    forwardedBanner
+                    Section {
+                        Label {
+                            Text("Forwarded from another computer: this request comes from \(approval.forwardedFromHost.isEmpty ? "a remote host" : approval.forwardedFromHost) through agent forwarding, not from your Mac. Approving allows it once.")
+                        } icon: {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .foregroundStyle(.red)
+                        }
+                        .font(.subheadline)
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier("phone-approval-forwarded")
+                    }
                 }
-                detailBox
-                encryptionNote
+                Section {
+                    ForEach(approval.allDetailRow) { row in
+                        LabeledContent(row.label) {
+                            Text(row.value)
+                                .font(row.isMonospaced ? .system(.subheadline, design: .monospaced) : .subheadline)
+                                .foregroundStyle(.primary)
+                                .multilineTextAlignment(.trailing)
+                                .textSelection(.enabled)
+                                .accessibilityIdentifier("phone-approval-row-\(row.label)")
+                        }
+                    }
+                } footer: {
+                    Label("End-to-end encrypted. Only your devices can read this request. Approving lets this one request continue; it does not unlock Hisar on your Mac.", systemImage: "lock.shield")
+                        .accessibilityElement(children: .combine)
+                        .accessibilityIdentifier("phone-approval-encryption-note")
+                }
                 if let errorMessage {
-                    ErrorBanner(message: errorMessage)
+                    Section {
+                        ErrorBanner(message: errorMessage)
+                    }
                 }
-                actions
-                ExpiryText(approval: approval)
+                if isPasswordRequired {
+                    Section {
+                        SecureField("Master password", text: $password)
+                            .textContentType(.password)
+                            .submitLabel(.go)
+                            .focused($isPasswordFocused)
+                            .onSubmit(submitPassword)
+                            .accessibilityIdentifier("phone-approval-password")
+                    } header: {
+                        Text("Approve with your master password")
+                    } footer: {
+                        Text("Face ID is not available, so Hisar checks your master password instead.")
+                    }
+                }
             }
-            .padding(.horizontal, 22)
-            .padding(.top, 28)
-            .padding(.bottom, 20)
+            .listStyle(.insetGrouped)
+            .navigationTitle("Mac request")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Label("Close", systemImage: "xmark")
+                    }
+                    .disabled(isBusy)
+                    .accessibilityIdentifier("phone-approval-close")
+                }
+            }
+            .safeAreaInset(edge: .bottom) {
+                actions
+            }
         }
-        .scrollBounceBehavior(.basedOnSize)
-        .background(Theme.panel.ignoresSafeArea())
         .presentationDetents([.large])
         .presentationDragIndicator(.visible)
         .interactiveDismissDisabled(isBusy)
@@ -43,137 +97,79 @@ struct PhoneApprovalSheet: View {
     }
 
     private var header: some View {
-        VStack(spacing: 12) {
-            ZStack(alignment: .bottomTrailing) {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(Theme.surfaceRaised)
-                    .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(Theme.borderStrong, lineWidth: 1))
-                    .frame(width: 64, height: 64)
-                    .overlay(
-                        Image(systemName: approval.isForwarded ? "globe" : approval.systemImage)
-                            .font(.system(size: 26, weight: .medium))
-                            .foregroundStyle(Theme.textSecondary)
-                    )
-                LogoMark(size: 24)
-                    .padding(2)
-                    .background(Theme.panel)
-                    .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
-                    .offset(x: 6, y: 6)
-            }
-            .accessibilityHidden(true)
+        VStack(spacing: 10) {
+            Image(systemName: approval.isForwarded ? "globe" : approval.systemImage)
+                .font(.largeTitle)
+                .foregroundStyle(approval.isForwarded ? .red : .orange)
+                .frame(width: 72, height: 72)
+                .background(.fill.tertiary, in: .rect(cornerRadius: 18, style: .continuous))
+                .accessibilityHidden(true)
             Text(approval.title)
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(Theme.text)
+                .font(.title2.weight(.bold))
                 .multilineTextAlignment(.center)
                 .accessibilityIdentifier("phone-approval-title")
             Text(approval.summary)
-                .font(.subheadline)
-                .foregroundStyle(Theme.textSecondary)
+                .font(.body)
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .accessibilityIdentifier("phone-approval-summary")
-        }
-    }
-
-    private var forwardedBanner: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(Theme.danger)
-            Text("Forwarded from another computer: this request comes from \(approval.forwardedFromHost.isEmpty ? "a remote host" : approval.forwardedFromHost) through agent forwarding, not from your Mac. Approving allows it once.")
-                .font(.footnote)
-                .foregroundStyle(Theme.text)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .padding(12)
-        .background(Theme.dangerBackground)
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Theme.danger.opacity(0.5), lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("phone-approval-forwarded")
-    }
-
-    private var detailBox: some View {
-        VStack(spacing: 0) {
-            ForEach(Array(approval.allDetailRow.enumerated()), id: \.element.id) { index, row in
-                HStack(alignment: .firstTextBaseline, spacing: 12) {
-                    Text(row.label)
-                        .font(.footnote)
-                        .foregroundStyle(Theme.textSecondary)
-                        .frame(width: 96, alignment: .leading)
-                    Text(row.value)
-                        .font(row.isMonospaced ? .system(.footnote, design: .monospaced) : .footnote)
-                        .foregroundStyle(Theme.text)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .textSelection(.enabled)
-                        .accessibilityIdentifier("phone-approval-row-\(row.label)")
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 11)
-                if index < approval.allDetailRow.count - 1 {
-                    Divider().overlay(Theme.border)
-                }
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                Text(approval.formatTimeLeft(at: context.date))
+                    .font(.footnote.weight(.semibold))
+                    .foregroundStyle(.orange)
+                    .monospacedDigit()
+                    .accessibilityIdentifier("phone-approval-expiry")
             }
         }
-        .background(Theme.surface)
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Theme.border, lineWidth: 1))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .frame(maxWidth: .infinity)
     }
 
-    private var encryptionNote: some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "lock.shield")
-                .foregroundStyle(Theme.success)
-            Text("End-to-end encrypted. Only your devices can read this request. Approving lets this one request continue; it does not unlock Hisar on your Mac.")
-                .font(.footnote)
-                .foregroundStyle(Theme.textSecondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("phone-approval-encryption-note")
-    }
-
-    @ViewBuilder
     private var actions: some View {
-        VStack(spacing: 10) {
-            if isPasswordRequired {
-                LabeledInput(label: "Master password", systemImage: "lock") {
-                    SecureField("Master password", text: $password)
-                        .submitLabel(.go)
-                        .focused($isPasswordFocused)
-                        .onSubmit(submitPassword)
-                        .accessibilityIdentifier("phone-approval-password")
-                }
-                Button(action: submitPassword) {
-                    if isBusy {
-                        ProgressView().tint(Theme.primaryText)
-                    } else {
-                        Text("Approve")
-                    }
-                }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(isBusy || password.isEmpty)
-                .accessibilityIdentifier("phone-approval-approve-password")
-            } else {
+        GlassEffectContainer {
+            HStack(spacing: 12) {
                 Button {
-                    Task { await approve() }
+                    Task { await deny() }
                 } label: {
-                    if isBusy {
-                        ProgressView().tint(Theme.primaryText)
-                    } else {
-                        Label("Approve with Face ID", systemImage: "faceid")
-                    }
+                    Text("Deny")
+                        .frame(minWidth: 72)
                 }
-                .buttonStyle(PrimaryButtonStyle())
-                .disabled(isBusy)
-                .accessibilityIdentifier("phone-approval-approve")
+                .buttonStyle(.glass)
+                .accessibilityIdentifier("phone-approval-deny")
+                if isPasswordRequired {
+                    Button(action: submitPassword) {
+                        Group {
+                            if isBusy {
+                                ProgressView()
+                            } else {
+                                Text("Approve")
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .applyProminentGlassStyle()
+                    .disabled(password.isEmpty)
+                    .accessibilityIdentifier("phone-approval-approve-password")
+                } else {
+                    Button {
+                        Task { await approve() }
+                    } label: {
+                        Group {
+                            if isBusy {
+                                ProgressView()
+                            } else {
+                                Label("Approve with Face ID", systemImage: "faceid")
+                            }
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .applyProminentGlassStyle()
+                    .accessibilityIdentifier("phone-approval-approve")
+                }
             }
-            Button {
-                Task { await deny() }
-            } label: {
-                Text("Deny")
-            }
-            .buttonStyle(SecondaryButtonStyle())
+            .controlSize(.large)
             .disabled(isBusy)
-            .accessibilityIdentifier("phone-approval-deny")
+            .padding(.horizontal, 20)
+            .padding(.bottom, 8)
         }
     }
 
@@ -182,19 +178,5 @@ struct PhoneApprovalSheet: View {
         let enteredPassword = password
         password = ""
         Task { await approveWithPassword(enteredPassword) }
-    }
-}
-
-private struct ExpiryText: View {
-    var approval: PhoneApproval
-
-    var body: some View {
-        TimelineView(.periodic(from: .now, by: 1)) { context in
-            let secondCount = max(0, Int((approval.expiryDate ?? context.date).timeIntervalSince(context.date).rounded(.up)))
-            Text(secondCount == 1 ? "Expires in 1 second" : "Expires in \(secondCount) seconds")
-                .font(.caption)
-                .foregroundStyle(Theme.textMuted)
-                .monospacedDigit()
-        }
     }
 }

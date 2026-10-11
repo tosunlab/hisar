@@ -313,6 +313,7 @@ func TestIntegrationMobileFlow(t *testing.T) {
 
 	checkPasskeyFlow(t, hisar, personalID, saved.ID)
 	checkSharingFlow(t, hisar)
+	checkSettingsFlow(t, hisar, password, signUp.SecretKey, personalID, saved.ID)
 
 	if current := decodeJSON[status](t)(hisar.EnableBiometricUnlock(password)); !current.BiometricEnabled {
 		t.Fatalf("biometric unlock not enabled: %+v", current)

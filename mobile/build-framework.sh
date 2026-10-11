@@ -5,5 +5,5 @@ cd "$(dirname "$0")"
 export PATH="$(go env GOPATH)/bin:$PATH"
 export GOWORK=off
 mkdir -p build
-gomobile bind -target=ios,iossimulator -iosversion=17.0 -trimpath -ldflags="-s -w" -o build/HisarKit.xcframework ./hisarkit
+gomobile bind -target=ios,iossimulator -iosversion=26.0 -trimpath -ldflags="-s -w" -o build/HisarKit.xcframework ./hisarkit
 echo "built $(pwd)/build/HisarKit.xcframework"

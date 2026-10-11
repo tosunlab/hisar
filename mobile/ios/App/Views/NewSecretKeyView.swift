@@ -9,33 +9,27 @@ struct NewSecretKeyView: View {
     @State private var isCopied = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                LogoMark(size: 56)
-                    .padding(.top, 32)
-                Text("Save your Secret Key")
-                    .font(.largeTitle.weight(.bold))
-                    .foregroundStyle(Theme.text)
-                Text("Your account is ready. To sign in on another device you need two secrets: your master password and this Secret Key. Hisar keeps the Secret Key on this iPhone; nobody else has a copy.")
-                    .font(.body)
-                    .foregroundStyle(Theme.textSecondary)
-                Label("A forgotten master password can't be recovered by anyone, including Hisar.", systemImage: "exclamationmark.triangle.fill")
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(Theme.text)
-                    .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(Theme.surface)
-                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.warning.opacity(0.5), lineWidth: 1))
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        NavigationStack {
+            List {
+                Section {
+                    Text("Your account is ready. To sign in on another device you need two secrets: your master password and this Secret Key. Hisar keeps the Secret Key on this iPhone; nobody else has a copy.")
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
+                }
+                Section {
+                    Label {
+                        Text("A forgotten master password can't be recovered by anyone, including Hisar.")
+                            .font(.subheadline.weight(.medium))
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                    }
                     .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("master-password-warning")
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Secret Key")
-                        .font(.footnote.weight(.medium))
-                        .foregroundStyle(Theme.textMuted)
+                }
+                Section {
                     Text(secretKey)
-                        .font(.system(.title3, design: .monospaced).weight(.medium))
-                        .foregroundStyle(Theme.text)
+                        .font(.title3.monospaced().weight(.medium))
                         .textSelection(.enabled)
                         .accessibilityIdentifier("new-secret-key")
                     Button {
@@ -43,43 +37,34 @@ struct NewSecretKeyView: View {
                         isCopied = true
                     } label: {
                         Label(isCopied ? "Copied" : "Copy Secret Key", systemImage: isCopied ? "checkmark" : "doc.on.doc")
+                            .contentTransition(.symbolEffect(.replace))
                     }
-                    .buttonStyle(SecondaryButtonStyle())
+                    .sensoryFeedback(.success, trigger: isCopied)
+                } header: {
+                    Text("Secret Key")
                 }
-                .padding(16)
-                .background(Theme.surface)
-                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(Theme.border, lineWidth: 1))
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                VStack(alignment: .leading, spacing: 12) {
-                    Label("Make an Emergency Kit", systemImage: "doc.text")
-                        .font(.headline)
-                        .foregroundStyle(Theme.text)
-                    Text("The Emergency Kit is a page with your server, email and Secret Key, and a space to write your master password. Print it from the Hisar desktop app (Settings, Emergency Kit), or write these down now and keep them somewhere safe, away from your devices:")
-                        .font(.subheadline)
-                        .foregroundStyle(Theme.textSecondary)
-                    buildDetailRow(label: "Server", value: server)
-                    buildDetailRow(label: "Email", value: email)
+                Section {
+                    LabeledContent("Server", value: server)
+                    LabeledContent("Email", value: email)
+                } header: {
+                    Text("Make an Emergency Kit")
+                } footer: {
+                    Text("The Emergency Kit is a page with your server, email and Secret Key, and a space to write your master password. Save or print it from Settings, Secret Key and Emergency Kit, or write these down now and keep them somewhere safe, away from your devices.")
                 }
-                Button("I saved my Secret Key", action: finish)
-                    .buttonStyle(PrimaryButtonStyle())
-                    .accessibilityIdentifier("new-secret-key-done")
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 32)
+            .listStyle(.insetGrouped)
+            .navigationTitle("Save your Secret Key")
+            .safeAreaInset(edge: .bottom) {
+                Button(action: finish) {
+                    Text("I saved my Secret Key")
+                        .frame(maxWidth: .infinity)
+                }
+                .applyProminentGlassStyle()
+                .controlSize(.large)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 8)
+                .accessibilityIdentifier("new-secret-key-done")
+            }
         }
-        .background(Theme.background.ignoresSafeArea())
-        .coverStatusBar()
-    }
-
-    private func buildDetailRow(label: String, value: String) -> some View {
-        HStack {
-            Text(label)
-                .foregroundStyle(Theme.textMuted)
-            Spacer()
-            Text(value)
-                .foregroundStyle(Theme.text)
-                .textSelection(.enabled)
-        }
-        .font(.subheadline)
     }
 }

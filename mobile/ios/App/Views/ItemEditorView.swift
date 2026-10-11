@@ -22,14 +22,11 @@ struct ItemEditorView: View {
                 if let errorMessage = model.errorMessage {
                     Section {
                         ErrorBanner(message: errorMessage)
-                            .listRowInsets(EdgeInsets())
-                            .listRowBackground(Color.clear)
                     }
                 }
                 Section {
                     TextField("Title", text: $draft.title)
                         .accessibilityIdentifier("editor-title")
-                        .listRowBackground(Theme.surface)
                 }
                 if !draft.isSSHKey {
                     Section("Login") {
@@ -37,14 +34,13 @@ struct ItemEditorView: View {
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .accessibilityIdentifier("editor-username")
-                            .listRowBackground(Theme.surface)
                         HStack {
                             Group {
                                 if isPasswordRevealed {
                                     TextField("Password", text: $draft.password)
                                         .font(.system(.body, design: .monospaced))
                                 } else {
-                                    SecureField("Password", text: $draft.password, prompt: Text("Password").foregroundStyle(Theme.textMuted))
+                                    SecureField("Password", text: $draft.password, prompt: Text("Password").foregroundStyle(.secondary))
                                 }
                             }
                             .textInputAutocapitalization(.never)
@@ -56,7 +52,7 @@ struct ItemEditorView: View {
                                 Image(systemName: isPasswordRevealed ? "eye.slash" : "eye")
                             }
                             .buttonStyle(.borderless)
-                            .foregroundStyle(Theme.textSecondary)
+                            .foregroundStyle(.secondary)
                             .accessibilityLabel(isPasswordRevealed ? "Hide password" : "Reveal password")
                             Button {
                                 isGeneratorShown = true
@@ -64,11 +60,10 @@ struct ItemEditorView: View {
                                 Image(systemName: "wand.and.stars")
                             }
                             .buttonStyle(.borderless)
-                            .foregroundStyle(Theme.textSecondary)
+                            .foregroundStyle(.secondary)
                             .accessibilityLabel("Generate password")
                             .accessibilityIdentifier("editor-generate-password")
                         }
-                        .listRowBackground(Theme.surface)
                     }
                     Section {
                         TextField("Setup key or otpauth:// link", text: $draft.oneTimePassword)
@@ -76,7 +71,6 @@ struct ItemEditorView: View {
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .accessibilityIdentifier("editor-one-time-password")
-                            .listRowBackground(Theme.surface)
                     } header: {
                         Text("One-time password")
                     } footer: {
@@ -89,7 +83,6 @@ struct ItemEditorView: View {
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
                                 .accessibilityIdentifier("editor-website-\(index)")
-                                .listRowBackground(Theme.surface)
                         }
                         .onDelete { allURLText.remove(atOffsets: $0) }
                         Button {
@@ -97,7 +90,6 @@ struct ItemEditorView: View {
                         } label: {
                             Label("Add website", systemImage: "plus")
                         }
-                        .listRowBackground(Theme.surface)
                     }
                     Section("Fields") {
                         ForEach(draft.allField.indices, id: \.self) { index in
@@ -110,11 +102,9 @@ struct ItemEditorView: View {
                                     TextField("Value", text: $draft.allField[index].value)
                                 }
                                 Toggle("Concealed", isOn: $draft.allField[index].concealed)
-                                    .tint(Theme.success)
                                     .font(.caption)
-                                    .foregroundStyle(Theme.textMuted)
+                                    .foregroundStyle(.secondary)
                             }
-                            .listRowBackground(Theme.surface)
                         }
                         .onDelete { draft.allField.remove(atOffsets: $0) }
                         Button {
@@ -122,14 +112,12 @@ struct ItemEditorView: View {
                         } label: {
                             Label("Add field", systemImage: "plus")
                         }
-                        .listRowBackground(Theme.surface)
                     }
                 }
                 Section("Notes") {
                     TextField("Notes", text: $draft.notes, axis: .vertical)
                         .lineLimit(3...10)
                         .accessibilityIdentifier("editor-notes")
-                        .listRowBackground(Theme.surface)
                 }
                 if !isNew {
                     Section {
@@ -137,15 +125,12 @@ struct ItemEditorView: View {
                             isDeleteConfirmationShown = true
                         }
                         .frame(maxWidth: .infinity)
-                        .listRowBackground(Theme.surface)
                         .accessibilityIdentifier("editor-delete")
                     }
                 }
             }
-            .applyListTheme()
             .navigationTitle(isNew ? "New login" : "Edit item")
             .navigationBarTitleDisplayMode(.inline)
-            .applyNavigationBarTheme()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
@@ -169,14 +154,13 @@ struct ItemEditorView: View {
                 Text("It is deleted on every device that can see this vault.")
             }
             .sheet(isPresented: $isGeneratorShown) {
-                PasswordGeneratorView(isUseShown: true) { password in
+                PasswordGeneratorSheet { password in
                     draft.password = password
                     isPasswordRevealed = true
                 }
                 .environmentObject(model)
             }
         }
-        .preferredColorScheme(.dark)
         .interactiveDismissDisabled(model.isBusy)
         .onAppear(perform: loadDraft)
     }

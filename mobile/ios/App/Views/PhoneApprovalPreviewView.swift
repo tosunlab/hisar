@@ -51,16 +51,12 @@ struct PhoneApprovalPreviewView: View {
     @State private var resultMessage: String?
 
     var body: some View {
-        ZStack {
-            Theme.background.ignoresSafeArea()
-            VStack(spacing: 16) {
-                LogoMark(size: 64)
-                if let resultMessage {
-                    Text(resultMessage)
-                        .font(.headline)
-                        .foregroundStyle(Theme.text)
-                        .accessibilityIdentifier("phone-approval-result")
-                }
+        VStack(spacing: 16) {
+            LogoMark(size: 64)
+            if let resultMessage {
+                Text(resultMessage)
+                    .font(.headline)
+                    .accessibilityIdentifier("phone-approval-result")
             }
         }
         .sheet(isPresented: $isSheetShown) {
@@ -73,7 +69,6 @@ struct PhoneApprovalPreviewView: View {
                 approveWithPassword: approveWithPassword,
                 deny: { finish("Denied \(approval.requestID)") }
             )
-            .preferredColorScheme(.dark)
         }
     }
 
@@ -99,7 +94,7 @@ struct PhoneApprovalPreviewView: View {
     }
 }
 
-// The vault list's banner of waiting requests, with a made-up SSH and command-line request from a Mac.
+// The Vaults card and the Approvals tab with a made-up SSH and command-line request from a Mac.
 struct PendingApprovalPreviewView: View {
     static let argument = "-HisarApprovalBannerPreview"
 
@@ -113,34 +108,55 @@ struct PendingApprovalPreviewView: View {
     ]
     @State private var presentedApproval: PhoneApproval?
     @State private var resultMessage: String?
+    @State private var selectedTab = AppModel.Tab.vaults
 
     var body: some View {
-        NavigationStack {
-            List {
-                if !allApproval.isEmpty {
-                    PendingApprovalSection(allApproval: allApproval) { presentedApproval = $0 }
-                }
-                Section {
-                    ForEach(["Personal", "Work"], id: \.self) { name in
-                        Label(name, systemImage: name == "Personal" ? "person.crop.square" : "person.2.square.stack")
-                            .foregroundStyle(Theme.text)
-                            .listRowBackground(Theme.surface)
+        TabView(selection: $selectedTab) {
+            Tab("Vaults", systemImage: "lock.rectangle.stack", value: AppModel.Tab.vaults) {
+                NavigationStack {
+                    List {
+                        PendingApprovalCardSection(
+                            allApproval: allApproval,
+                            isBusy: false,
+                            review: { presentedApproval = $0 },
+                            approve: { finish($0, message: "Approved \($0.requestID) with Face ID") },
+                            deny: { finish($0, message: "Denied \($0.requestID)") },
+                            showAll: { selectedTab = .approvals }
+                        )
+                        Section("Vaults") {
+                            VaultRow(vault: VaultSummary(id: "personal", name: "Personal", type: "personal", role: "owner", itemCount: 24), itemCount: 24)
+                            VaultRow(vault: VaultSummary(id: "work", name: "Work", type: "shared", role: "editor", itemCount: 41), itemCount: 41)
+                        }
+                        resultSection
                     }
-                } header: {
-                    Text("Vaults")
-                }
-                if let resultMessage {
-                    Text(resultMessage)
-                        .foregroundStyle(Theme.textSecondary)
-                        .listRowBackground(Color.clear)
-                        .accessibilityIdentifier("phone-approval-result")
+                    .listStyle(.insetGrouped)
+                    .navigationTitle("Vaults")
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button {} label: { Label("Lock", systemImage: "lock") }
+                        }
+                    }
                 }
             }
-            .listStyle(.insetGrouped)
-            .applyListTheme()
-            .navigationTitle("Vaults")
-            .navigationBarTitleDisplayMode(.inline)
-            .applyNavigationBarTheme()
+            Tab("Approvals", systemImage: "laptopcomputer.and.iphone", value: AppModel.Tab.approvals) {
+                NavigationStack {
+                    ApprovalList(
+                        allApproval: allApproval,
+                        isMacApprovalAllowed: true,
+                        review: { presentedApproval = $0 },
+                        deny: { finish($0, message: "Denied \($0.requestID)") },
+                        allowMacApproval: {}
+                    )
+                    .navigationTitle("Approvals")
+                }
+            }
+            .badge(allApproval.count)
+            Tab("Settings", systemImage: "gearshape", value: AppModel.Tab.settings) {
+                Text("Settings")
+            }
+            Tab(value: AppModel.Tab.search, role: .search) {
+                Text("Search")
+            }
         }
         .sheet(item: $presentedApproval) { approval in
             PhoneApprovalSheet(
@@ -152,7 +168,17 @@ struct PendingApprovalPreviewView: View {
                 approveWithPassword: { _ in },
                 deny: { finish(approval, message: "Denied \(approval.requestID)") }
             )
-            .preferredColorScheme(.dark)
+        }
+    }
+
+    @ViewBuilder
+    private var resultSection: some View {
+        if let resultMessage {
+            Section {
+                Text(resultMessage)
+                    .foregroundStyle(.secondary)
+                    .accessibilityIdentifier("phone-approval-result")
+            }
         }
     }
 
@@ -160,6 +186,7 @@ struct PendingApprovalPreviewView: View {
         allApproval.removeAll { $0.requestID == approval.requestID }
         resultMessage = message
         presentedApproval = nil
+        selectedTab = .vaults
     }
 }
 #endif

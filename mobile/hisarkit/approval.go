@@ -10,11 +10,17 @@ var errBiometricUnavailable = errors.New("Face ID is not available; approve with
 
 // ListAllPendingApproval returns the requests other devices of the account are waiting on ([]vault.PhoneApprovalRequest) as JSON.
 func (hisar *Hisar) ListAllPendingApproval() (string, error) {
+	if !hisar.IsMacApprovalAllowed() {
+		return "[]", nil
+	}
 	return encodeJSON(vault.ListAllPendingPhoneApproval(hisar.service))
 }
 
 // ApproveApproval asks for Face ID, then signs and sends the approval.
 func (hisar *Hisar) ApproveApproval(requestID string) error {
+	if !hisar.IsMacApprovalAllowed() {
+		return errMacApprovalDisabled
+	}
 	if hisar.biometric == nil || !hisar.biometric.IsAvailable() {
 		return errBiometricUnavailable
 	}
@@ -27,6 +33,9 @@ func (hisar *Hisar) ApproveApproval(requestID string) error {
 // ApproveApprovalWithPassword checks the master password instead of Face ID, then signs and sends the approval.
 func (hisar *Hisar) ApproveApprovalWithPassword(requestID, password string) error {
 	defer releaseMemory()
+	if !hisar.IsMacApprovalAllowed() {
+		return errMacApprovalDisabled
+	}
 	if err := vault.CreateApprovalUnlocker(hisar.service, nil).VerifyPassword(password); err != nil {
 		return err
 	}

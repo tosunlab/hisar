@@ -93,6 +93,16 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
         return "\(macName) is asking to use \(keyName.isEmpty ? "your SSH key" : "“\(keyName)”")"
     }
 
+    var detailLine: String {
+        if !keyName.isEmpty {
+            return "with “\(keyName)”"
+        }
+        if !secrets.isEmpty {
+            return secrets.joined(separator: ", ")
+        }
+        return commandLine
+    }
+
     func formatTimeLeft(at date: Date) -> String {
         let secondCount = max(0, Int((expiryDate ?? date).timeIntervalSince(date).rounded(.up)))
         if secondCount < 60 {

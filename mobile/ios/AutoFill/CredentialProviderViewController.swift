@@ -29,18 +29,14 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
                 ))
             },
             rejectExcludedRegistration: { [weak self] in
-                if #available(iOS 18.0, *) {
-                    self?.cancelRequest(code: .matchedExcludedCredential)
-                } else {
-                    self?.cancelRequest(code: .userCanceled)
-                }
+                self?.cancelRequest(code: .matchedExcludedCredential)
             }
         )
     )
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = UIColor(Theme.background)
+        view.backgroundColor = .systemGroupedBackground
         let hostingController = UIHostingController(rootView: AutoFillRootView(model: model))
         hostingController.view.backgroundColor = .clear
         addChild(hostingController)
@@ -68,7 +64,6 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         Task { await model.prepareCredentialList(allServiceIdentifier: allServiceIdentifier, passkeyRequest: passkeyRequest) }
     }
 
-    @available(iOS 18.0, *)
     override func prepareOneTimeCodeCredentialList(for allRequestedServiceIdentifier: [ASCredentialServiceIdentifier]) {
         let allServiceIdentifier = allRequestedServiceIdentifier.map(\.identifier)
         Task { await model.prepareCredentialList(allServiceIdentifier: allServiceIdentifier, kind: .oneTimeCode) }
@@ -140,10 +135,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
             cancelRequest(code: .failed)
             return
         }
-        var allExcludedCredentialID: [Data] = []
-        if #available(iOS 18.0, *) {
-            allExcludedCredentialID = passkeyRequest.excludedCredentials?.map(\.credentialID) ?? []
-        }
+        let allExcludedCredentialID = passkeyRequest.excludedCredentials?.map(\.credentialID) ?? []
         let request = PasskeyRegistrationRequest(
             relyingPartyID: identity.relyingPartyIdentifier, userName: identity.userName, userHandle: identity.userHandle,
             clientDataHash: passkeyRequest.clientDataHash, allSupportedAlgorithm: passkeyRequest.supportedAlgorithms.map(\.rawValue),
@@ -175,14 +167,13 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     }
 
     private func readOneTimeCodeRequest(_ credentialRequest: ASCredentialRequest) -> (recordIdentifier: String, serviceIdentifier: String)? {
-        guard #available(iOS 18.0, *), credentialRequest.type == .oneTimeCode,
+        guard credentialRequest.type == .oneTimeCode,
               let identity = credentialRequest.credentialIdentity as? ASOneTimeCodeCredentialIdentity,
               let recordIdentifier = identity.recordIdentifier else { return nil }
         return (recordIdentifier, identity.serviceIdentifier.identifier)
     }
 
     private func completeOneTimeCodeRequest(code: String) {
-        guard #available(iOS 18.0, *) else { return }
         extensionContext.completeOneTimeCodeRequest(using: ASOneTimeCodeCredential(code: code))
     }
 

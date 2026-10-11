@@ -9,7 +9,7 @@ final class AutoFillUITests: HisarUITestCase {
         app.launch()
         _ = signUp(inviteLink: inviteLink, email: "ios-autofill@example.com", name: "iOS AutoFill")
         addLogin(title: "Example", username: "autofill-user", password: "autofill-password-1", website: "accounts.example.com")
-        app.navigationBars.buttons.element(boundBy: 0).tap()
+        goBack()
         waitFor(app.buttons["vault-Personal"])
         addLogin(title: "Other site", username: "other-user", password: "other-password-1", website: "other.example.org")
 

@@ -29,6 +29,9 @@ class FakeBackend: VaultBackend {
     var allAnsweredInvitation: [String] = []
     var allPendingApproval: [PhoneApproval] = []
     var allApprovalAnswer: [String] = []
+    var allDevice: [Device] = []
+    var isMacApprovalAllowedValue = true
+    var allCopiedReference: [String] = []
     private let approvalLock = NSLock()
 
     func withApprovalLock<Value>(_ operation: () throws -> Value) rethrows -> Value {
@@ -492,6 +495,60 @@ extension FakeBackend {
             allPendingApproval.removeAll { $0.requestID == requestID }
             allApprovalAnswer.append("\(decision) \(requestID)")
         }
+    }
+}
+
+// Settings: auto-lock, devices, the Emergency Kit, secret references and the Mac approval switch.
+extension FakeBackend {
+    func setAutoLock(seconds: Int) throws -> VaultStatus {
+        record("setAutoLock")
+        guard VaultStatus.allAutoLockSeconds.contains(seconds) else {
+            throw BackendError(message: "choose 30 seconds, 1 minute, 5 minutes, 10 minutes or 1 hour")
+        }
+        status.autoLockSeconds = seconds
+        return status
+    }
+
+    func listAllDevice() throws -> [Device] {
+        record("listAllDevice")
+        try requireUnlocked()
+        return allDevice
+    }
+
+    func revokeDevice(deviceID: String) throws {
+        record("revokeDevice")
+        try requireUnlocked()
+        guard let device = allDevice.first(where: { $0.id == deviceID }) else { throw BackendError(message: "this device is already signed out") }
+        guard !device.isCurrent else { throw BackendError(message: "sign out this device instead") }
+        allDevice.removeAll { $0.id == deviceID }
+    }
+
+    func exportEmergencyKit(password: String, directory: URL) throws -> EmergencyKitExport {
+        record("exportEmergencyKit")
+        try requireUnlocked()
+        guard password == Self.password else { throw BackendError(message: "Incorrect master password.") }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let path = directory.appendingPathComponent("Hisar Emergency Kit.pdf")
+        try Data("%PDF-1.7".utf8).write(to: path)
+        return EmergencyKitExport(secretKey: Self.secretKey, emergencyKitPath: path.path)
+    }
+
+    func copySecretReference(vaultID: String, itemID: String, fieldName: String) throws -> String {
+        record("copySecretReference")
+        let item = try getItem(vaultID: vaultID, itemID: itemID)
+        let vaultName = allVault.first { $0.id == vaultID }?.name ?? vaultID
+        let reference = "hisar://\(vaultName)/\(item.title)/\(fieldName)"
+        allCopiedReference.append(reference)
+        return reference
+    }
+
+    func isMacApprovalAllowed() -> Bool {
+        isMacApprovalAllowedValue
+    }
+
+    func setMacApprovalAllowed(_ isAllowed: Bool) throws {
+        record("setMacApprovalAllowed")
+        isMacApprovalAllowedValue = isAllowed
     }
 }
 

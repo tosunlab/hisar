@@ -11,7 +11,12 @@ final class AppModel: ObservableObject {
         case unlocked
     }
 
-    static let autoLockInterval: TimeInterval = 5 * 60
+    enum Tab: Hashable {
+        case vaults
+        case approvals
+        case settings
+        case search
+    }
 
     @Published private(set) var screen: Screen = .starting
     @Published private(set) var status: VaultStatus = .signedOut
@@ -29,6 +34,12 @@ final class AppModel: ObservableObject {
     @Published private(set) var isAnsweringApproval = false
     @Published private(set) var isApprovalPasswordRequired = false
     @Published var approvalErrorMessage: String?
+    @Published var selectedTab: Tab = .vaults
+    @Published private(set) var copyCount = 0
+    @Published private(set) var isMacApprovalAllowed = true
+    @Published private(set) var receivedInvitationCount = 0
+
+    var autoLockInterval: TimeInterval { TimeInterval(status.autoLockSeconds) }
 
     private var backend: VaultBackend?
     private var allPasskey: [StoredPasskey] = []
@@ -52,6 +63,7 @@ final class AppModel: ObservableObject {
         do {
             let backend = try createBackend()
             self.backend = backend
+            isMacApprovalAllowed = backend.isMacApprovalAllowed()
             applyStatus(backend.getStatus())
             if status.isUnlocked {
                 Task { await refreshAll() }
@@ -74,6 +86,8 @@ final class AppModel: ObservableObject {
             allItemByVaultID = [:]
             allPasskey = []
             lockCount += 1
+            receivedInvitationCount = 0
+            selectedTab = .vaults
             clearAllApproval()
         }
         if !wasUnlocked && newStatus.isUnlocked && isInForeground {
@@ -214,7 +228,7 @@ final class AppModel: ObservableObject {
             refreshStatus()
             return
         }
-        if status.isUnlocked && getCurrentDate().timeIntervalSince(enteredBackgroundAt) >= Self.autoLockInterval {
+        if status.isUnlocked && getCurrentDate().timeIntervalSince(enteredBackgroundAt) >= autoLockInterval {
             lock()
         } else {
             refreshStatus()
@@ -389,7 +403,68 @@ final class AppModel: ObservableObject {
 
     func copyField(vaultID: String, itemID: String, fieldName: String, label: String) async {
         guard await perform(isBusyShown: false, { try $0.copyField(vaultID: vaultID, itemID: itemID, fieldName: fieldName) }) != nil else { return }
+        copyCount += 1
         showNotice("\(label) copied. It clears in 90 seconds.")
+    }
+
+    func copySecretReference(vaultID: String, itemID: String, fieldName: String) async {
+        guard await perform(isBusyShown: false, { try $0.copySecretReference(vaultID: vaultID, itemID: itemID, fieldName: fieldName) }) != nil else { return }
+        copyCount += 1
+        showNotice("Secret reference copied.")
+    }
+
+    func copyText(_ text: String, label: String) {
+        guard PasteboardClipboard().setText(text) else { return }
+        copyCount += 1
+        showNotice("\(label) copied. It clears in 90 seconds.")
+    }
+
+    @discardableResult
+    func setAutoLock(seconds: Int) async -> Bool {
+        guard let newStatus = await perform(isBusyShown: false, { try $0.setAutoLock(seconds: seconds) }) else { return false }
+        applyStatus(newStatus)
+        return true
+    }
+
+    func loadAllDevice() async -> [Device]? {
+        await perform(isBusyShown: false) { try $0.listAllDevice() }
+    }
+
+    @discardableResult
+    func revokeDevice(_ device: Device) async -> Bool {
+        guard await perform({ try $0.revokeDevice(deviceID: device.id) }) != nil else { return false }
+        showNotice("\(device.name) is signed out.")
+        return true
+    }
+
+    func exportEmergencyKit(password: String) async -> EmergencyKitExport? {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("EmergencyKit-\(UUID().uuidString)", isDirectory: true)
+        return await perform { try $0.exportEmergencyKit(password: password, directory: directory) }
+    }
+
+    func removeEmergencyKit(_ export: EmergencyKitExport) {
+        try? FileManager.default.removeItem(at: URL(fileURLWithPath: export.emergencyKitPath).deletingLastPathComponent())
+    }
+
+    @discardableResult
+    func setMacApprovalAllowed(_ isAllowed: Bool) async -> Bool {
+        guard await perform(isBusyShown: false, { try $0.setMacApprovalAllowed(isAllowed) }) != nil else { return false }
+        isMacApprovalAllowed = isAllowed
+        if isAllowed {
+            await refreshPendingApproval()
+        } else {
+            for approval in allPendingApproval {
+                allFinishedApprovalID.insert(approval.requestID)
+            }
+            allPendingApproval = []
+            presentedApproval = nil
+        }
+        return true
+    }
+
+    func refreshReceivedInvitationCount() async {
+        guard let invitations = await perform(isBusyShown: false, { try $0.listAllShareInvitation() }) else { return }
+        receivedInvitationCount = invitations.allReceived.count
     }
 
     func generatePassword(length: Int, isDigitIncluded: Bool, isSymbolIncluded: Bool) async -> String? {
@@ -411,7 +486,7 @@ final class AppModel: ObservableObject {
 
     // refreshPendingApproval lists the open requests; with isOpeningNewRequest, a request seen for the first time opens the sheet.
     func refreshPendingApproval(isOpeningNewRequest: Bool = false) async {
-        guard status.isUnlocked, isInForeground, let backend else { return }
+        guard status.isUnlocked, isInForeground, isMacApprovalAllowed, let backend else { return }
         guard let allApproval = try? await runInBackground({ try backend.listAllPendingApproval() }) else { return }
         guard status.isUnlocked else { return }
         let now = getCurrentDate()
@@ -508,27 +583,41 @@ final class AppModel: ObservableObject {
     }
 
     func approvePendingApproval() async {
-        await answerPresentedApproval(successMessage: "Approved on your Mac") { backend, requestID in
-            try backend.approveApproval(requestID: requestID)
-        }
+        guard let approval = presentedApproval else { return }
+        await approve(approval)
     }
 
     func approvePendingApproval(password: String) async {
-        await answerPresentedApproval(successMessage: "Approved on your Mac") { backend, requestID in
+        guard let approval = presentedApproval else { return }
+        await answerApproval(approval, successMessage: "Approved on your Mac") { backend, requestID in
             try backend.approveApprovalWithPassword(requestID: requestID, password: password)
         }
     }
 
     func denyPendingApproval() async {
-        await answerPresentedApproval(successMessage: "Denied on your Mac") { backend, requestID in
+        guard let approval = presentedApproval else { return }
+        await deny(approval)
+    }
+
+    // Approve asks for Face ID; when the master password is needed instead, the request's sheet opens and asks for it.
+    func approve(_ approval: PhoneApproval) async {
+        await answerApproval(approval, successMessage: "Approved on your Mac") { backend, requestID in
+            try backend.approveApproval(requestID: requestID)
+        }
+    }
+
+    func deny(_ approval: PhoneApproval) async {
+        await answerApproval(approval, successMessage: "Denied on your Mac") { backend, requestID in
             try backend.denyApproval(requestID: requestID)
         }
     }
 
-    private func answerPresentedApproval(successMessage: String, _ operation: @escaping (VaultBackend, String) throws -> Void) async {
-        guard let backend, let approval = presentedApproval, !isAnsweringApproval else { return }
+    private func answerApproval(_ approval: PhoneApproval, successMessage: String, _ operation: @escaping (VaultBackend, String) throws -> Void) async {
+        guard let backend, !isAnsweringApproval else { return }
         isAnsweringApproval = true
-        approvalErrorMessage = nil
+        if presentedApproval?.requestID == approval.requestID {
+            approvalErrorMessage = nil
+        }
         defer { isAnsweringApproval = false }
         do {
             try await runInBackground { try operation(backend, approval.requestID) }
@@ -541,10 +630,12 @@ final class AppModel: ObservableObject {
                 removeApproval(requestID: approval.requestID)
                 showNotice("The request is no longer waiting")
             case .needsPassword:
+                presentApproval(approval)
                 isApprovalPasswordRequired = true
             case .cancelled:
                 break
             case .other:
+                presentApproval(approval)
                 approvalErrorMessage = message
             }
         }

@@ -4,6 +4,7 @@ struct OneTimeCodeRow: View {
     var vaultID: String
     var itemID: String
     var copy: () -> Void
+    var copyReference: () -> Void
 
     @EnvironmentObject private var model: AppModel
     @State private var oneTimeCode: OneTimeCode?
@@ -11,38 +12,43 @@ struct OneTimeCodeRow: View {
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text("One-time code")
-                        .font(.caption)
-                        .foregroundStyle(Theme.textMuted)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                     if let oneTimeCode {
                         Text(oneTimeCode.formattedCode)
-                            .font(.system(.title3, design: .monospaced).weight(.medium))
-                            .foregroundStyle(Theme.text)
+                            .font(.title2.weight(.semibold).monospacedDigit())
+                            .contentTransition(.numericText())
                             .accessibilityIdentifier("one-time-code-value")
                     } else if isUnavailable {
                         Text("The one-time password could not be read.")
-                            .foregroundStyle(Theme.textMuted)
+                            .foregroundStyle(.secondary)
                     } else {
-                        ProgressView().tint(Theme.textMuted)
+                        ProgressView()
                     }
                 }
-                Spacer()
+                Spacer(minLength: 0)
                 if let oneTimeCode {
                     CountdownRing(secondsLeft: oneTimeCode.countSecondsLeft(at: context.date), period: oneTimeCode.period)
                     Button(action: copy) {
                         Image(systemName: "doc.on.doc")
                     }
                     .buttonStyle(.borderless)
-                    .foregroundStyle(Theme.textSecondary)
                     .accessibilityLabel("Copy one-time code")
                     .accessibilityIdentifier("copy-one-time-code")
                 }
             }
         }
-        .padding(.vertical, 2)
-        .listRowBackground(Theme.surface)
+        .contextMenu {
+            Button(action: copy) {
+                Label("Copy One-Time Code", systemImage: "doc.on.doc")
+            }
+            Button(action: copyReference) {
+                Label("Copy Secret Reference", systemImage: "terminal")
+            }
+        }
         .task(id: itemID) { await refreshCode() }
     }
 
@@ -53,7 +59,7 @@ struct OneTimeCodeRow: View {
                 isUnavailable = true
                 return
             }
-            oneTimeCode = code
+            withAnimation { oneTimeCode = code }
             isUnavailable = false
             let secondsUntilExpiry = max(1, code.expiryDate?.timeIntervalSinceNow ?? 1)
             try? await Task.sleep(nanoseconds: UInt64(secondsUntilExpiry * 1_000_000_000))
@@ -65,6 +71,8 @@ private struct CountdownRing: View {
     var secondsLeft: Int
     var period: Int
 
+    @ScaledMetric(relativeTo: .body) private var diameter: CGFloat = 30
+
     private var remainingFraction: Double {
         period > 0 ? Double(secondsLeft) / Double(period) : 0
     }
@@ -72,17 +80,17 @@ private struct CountdownRing: View {
     var body: some View {
         ZStack {
             Circle()
-                .stroke(Theme.borderStrong, lineWidth: 2.5)
+                .stroke(.fill.secondary, lineWidth: 3)
             Circle()
                 .trim(from: 0, to: remainingFraction)
-                .stroke(secondsLeft <= 5 ? Theme.warning : Theme.textSecondary, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                .stroke(secondsLeft <= 5 ? AnyShapeStyle(.orange) : AnyShapeStyle(.tint), style: StrokeStyle(lineWidth: 3, lineCap: .round))
                 .rotationEffect(.degrees(-90))
                 .animation(.linear(duration: 0.9), value: secondsLeft)
             Text("\(secondsLeft)")
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(Theme.textSecondary)
+                .font(.caption2.weight(.semibold).monospacedDigit())
+                .foregroundStyle(.secondary)
         }
-        .frame(width: 28, height: 28)
+        .frame(width: diameter, height: diameter)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(secondsLeft) seconds left")
         .accessibilityIdentifier("one-time-code-seconds")

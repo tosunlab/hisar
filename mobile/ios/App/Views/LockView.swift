@@ -9,33 +9,17 @@ struct LockView: View {
     private static let biometryName = BiometricKeychain(accessGroup: nil).getBiometryName()
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                Spacer(minLength: 60)
-                UnlockPanel(
-                    email: model.status.email,
-                    isBiometricReady: model.status.biometricReady,
-                    biometryName: Self.biometryName,
-                    isBusy: model.isBusy,
-                    errorMessage: model.errorMessage,
-                    submitPassword: { await model.unlock(password: $0) },
-                    submitBiometric: { await model.unlockWithBiometric() }
-                )
-                if model.status.isOffline {
-                    Label("Offline. You can still unlock with the copy on this iPhone.", systemImage: "wifi.slash")
-                        .font(.footnote)
-                        .foregroundStyle(Theme.warning)
-                }
-                Button("Sign out") { isSignOutConfirmationShown = true }
-                    .font(.footnote)
-                    .foregroundStyle(Theme.textMuted)
-                    .padding(.top, 8)
-            }
-            .padding(.horizontal, 24)
-        }
-        .scrollDismissesKeyboard(.interactively)
-        .background(Theme.background)
-        .coverStatusBar()
+        UnlockPanel(
+            email: model.status.email,
+            isBiometricReady: model.status.biometricReady,
+            biometryName: Self.biometryName,
+            isBusy: model.isBusy,
+            errorMessage: model.errorMessage,
+            isOffline: model.status.isOffline,
+            submitPassword: { await model.unlock(password: $0) },
+            submitBiometric: { await model.unlockWithBiometric() },
+            signOut: { isSignOutConfirmationShown = true }
+        )
         .onAppear(perform: promptBiometricIfReady)
         .onChange(of: scenePhase) { _, _ in promptBiometricIfReady() }
         .confirmationDialog("Sign out of Hisar on this iPhone?", isPresented: $isSignOutConfirmationShown, titleVisibility: .visible) {

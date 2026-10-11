@@ -58,14 +58,12 @@ struct AutoFillPreviewView: View {
                     VStack(spacing: 6) {
                         Text(resultMessage)
                             .padding()
-                            .background(Theme.surfaceRaised)
-                            .foregroundStyle(Theme.text)
-                            .clipShape(Capsule())
+                            .background(.regularMaterial, in: .capsule)
                             .accessibilityIdentifier("autofill-result")
                         ForEach(session.allResultValue, id: \.name) { value in
                             Text(value.text)
                                 .font(.system(size: 6, design: .monospaced))
-                                .foregroundStyle(Theme.textMuted)
+                                .foregroundStyle(.secondary)
                                 .lineLimit(1)
                                 .accessibilityIdentifier("autofill-result-\(value.name)")
                         }

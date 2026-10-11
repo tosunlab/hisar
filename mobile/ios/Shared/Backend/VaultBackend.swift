@@ -44,6 +44,13 @@ protocol VaultBackend: AnyObject {
     func approveApprovalWithPassword(requestID: String, password: String) throws
     func denyApproval(requestID: String) throws
     func reconnectEvents()
+    func setAutoLock(seconds: Int) throws -> VaultStatus
+    func listAllDevice() throws -> [Device]
+    func revokeDevice(deviceID: String) throws
+    func exportEmergencyKit(password: String, directory: URL) throws -> EmergencyKitExport
+    func copySecretReference(vaultID: String, itemID: String, fieldName: String) throws -> String
+    func isMacApprovalAllowed() -> Bool
+    func setMacApprovalAllowed(_ isAllowed: Bool) throws
 }
 
 struct BackendError: LocalizedError, Equatable {

@@ -36,23 +36,11 @@ struct LogoMark: View {
         ZStack {
             RoundedRectangle(cornerRadius: size / 4, style: .continuous)
                 .fill(Theme.markBackground)
+                .strokeBorder(.separator, lineWidth: 1)
             TowerShape()
-                .fill(Theme.primaryText)
+                .fill(Theme.markForeground)
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)
-    }
-}
-
-struct Wordmark: View {
-    var size: CGFloat = 40
-
-    var body: some View {
-        HStack(spacing: size * 0.3) {
-            LogoMark(size: size)
-            Text("Hisar")
-                .font(.system(size: size * 0.7, weight: .semibold))
-                .foregroundStyle(Theme.text)
-        }
     }
 }

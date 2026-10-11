@@ -13,13 +13,16 @@ struct VaultStatus: Codable, Equatable {
     var biometricEnabled: Bool
     var biometricReady: Bool
     var isOffline: Bool
+    var autoLockSeconds: Int
 
+    static let defaultAutoLockSeconds = 300
+    static let allAutoLockSeconds = [30, 60, 300, 600, 3600]
     static let signedOut = VaultStatus(state: stateSignedOut, server: "", email: "", name: "", biometricAvailable: false, biometricEnabled: false, biometricReady: false, isOffline: false)
 
     var isSignedIn: Bool { state != Self.stateSignedOut }
     var isUnlocked: Bool { state == Self.stateUnlocked }
 
-    init(state: String, server: String, email: String, name: String, biometricAvailable: Bool, biometricEnabled: Bool, biometricReady: Bool, isOffline: Bool) {
+    init(state: String, server: String, email: String, name: String, biometricAvailable: Bool, biometricEnabled: Bool, biometricReady: Bool, isOffline: Bool, autoLockSeconds: Int = VaultStatus.defaultAutoLockSeconds) {
         self.state = state
         self.server = server
         self.email = email
@@ -28,6 +31,7 @@ struct VaultStatus: Codable, Equatable {
         self.biometricEnabled = biometricEnabled
         self.biometricReady = biometricReady
         self.isOffline = isOffline
+        self.autoLockSeconds = autoLockSeconds
     }
 
     init(from decoder: Decoder) throws {
@@ -40,6 +44,25 @@ struct VaultStatus: Codable, Equatable {
         biometricEnabled = try container.decodeIfPresent(Bool.self, forKey: .biometricEnabled) ?? false
         biometricReady = try container.decodeIfPresent(Bool.self, forKey: .biometricReady) ?? false
         isOffline = try container.decodeIfPresent(Bool.self, forKey: .isOffline) ?? false
+        let decodedAutoLockSeconds = try container.decodeIfPresent(Int.self, forKey: .autoLockSeconds) ?? 0
+        autoLockSeconds = decodedAutoLockSeconds > 0 ? decodedAutoLockSeconds : Self.defaultAutoLockSeconds
+    }
+
+    static func describeAutoLock(seconds: Int) -> String {
+        switch seconds {
+        case ..<60: return "\(seconds) seconds"
+        case 60: return "1 minute"
+        case 3600: return "1 hour"
+        default: return seconds % 3600 == 0 ? "\(seconds / 3600) hours" : "\(seconds / 60) minutes"
+        }
+    }
+
+    static func describeShortAutoLock(seconds: Int) -> String {
+        switch seconds {
+        case ..<60: return "\(seconds) s"
+        case 3600: return "1 h"
+        default: return "\(seconds / 60) min"
+        }
     }
 }
 
@@ -515,4 +538,72 @@ struct ShareInvitations: Codable, Hashable {
         allSent = try container.decodeIfPresent([SentShareInvitation].self, forKey: .allSent) ?? []
         completionError = try container.decodeIfPresent(String.self, forKey: .completionError) ?? ""
     }
+}
+
+// Device is a signed-in device of the account; lastSeenAt is RFC 3339.
+struct Device: Codable, Identifiable, Hashable {
+    var id: String
+    var name: String
+    var platform: String
+    var createdAt: String
+    var lastSeenAt: String
+    var isCurrent: Bool
+
+    init(id: String, name: String, platform: String, createdAt: String = "", lastSeenAt: String = "", isCurrent: Bool = false) {
+        self.id = id
+        self.name = name
+        self.platform = platform
+        self.createdAt = createdAt
+        self.lastSeenAt = lastSeenAt
+        self.isCurrent = isCurrent
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        platform = try container.decodeIfPresent(String.self, forKey: .platform) ?? ""
+        createdAt = try container.decodeIfPresent(String.self, forKey: .createdAt) ?? ""
+        lastSeenAt = try container.decodeIfPresent(String.self, forKey: .lastSeenAt) ?? ""
+        isCurrent = try container.decodeIfPresent(Bool.self, forKey: .isCurrent) ?? false
+    }
+
+    var lastSeenDate: Date? { PhoneApproval.parseDate(lastSeenAt) }
+    var createdDate: Date? { PhoneApproval.parseDate(createdAt) }
+
+    private var operatingSystem: String { platform.split(separator: "/").first.map(String.init) ?? "" }
+    private var client: String { platform.split(separator: "/").dropFirst().first.map(String.init) ?? "" }
+
+    var platformDescription: String {
+        let system: String
+        switch operatingSystem {
+        case "ios": system = "iOS"
+        case "darwin", "macos": system = "macOS"
+        case "linux": system = "Linux"
+        case "windows": system = "Windows"
+        default: system = operatingSystem.isEmpty ? "Unknown" : operatingSystem
+        }
+        switch client {
+        case "mobile": return "\(system) app"
+        case "desktop": return "\(system) app"
+        case "cli": return "Command line on \(system)"
+        case "extension", "browser": return "Browser extension on \(system)"
+        default: return client.isEmpty ? system : "\(system), \(client)"
+        }
+    }
+
+    var systemImage: String {
+        if client == "cli" { return "apple.terminal" }
+        if client == "extension" || client == "browser" { return "puzzlepiece.extension" }
+        switch operatingSystem {
+        case "ios": return "iphone"
+        case "darwin", "macos": return "laptopcomputer"
+        default: return "desktopcomputer"
+        }
+    }
+}
+
+struct EmergencyKitExport: Codable, Equatable {
+    var secretKey: String
+    var emergencyKitPath: String
 }

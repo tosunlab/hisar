@@ -464,6 +464,12 @@ func TestIntegrationDesktopFlow(t *testing.T) {
 	if _, err := service.SaveEmergencyKit(password); err != nil {
 		t.Errorf("save kit from settings: %v", err)
 	}
+	if _, err := ExportEmergencyKit(service, "wrong password"); err == nil {
+		t.Error("kit exported with a wrong master password")
+	}
+	if export, err := ExportEmergencyKit(service, password); err != nil || export.SecretKey != signUpResult.SecretKey || !strings.HasPrefix(string(export.Document), "%PDF-") {
+		t.Errorf("export kit: %q %d bytes %v", export.SecretKey, len(export.Document), err)
+	}
 	service.ForgetNewAccountSecretKey()
 	if _, err := service.SaveNewAccountEmergencyKit(); !errors.Is(err, ErrNoNewAccountSecretKey) {
 		t.Errorf("new account kit after confirming: %v", err)

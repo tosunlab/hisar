@@ -5,10 +5,9 @@ struct RootView: View {
 
     var body: some View {
         ZStack {
-            Theme.background.ignoresSafeArea()
             switch model.screen {
             case .starting:
-                ProgressView().tint(Theme.textMuted)
+                ProgressView()
             case .failed(let message):
                 StartupFailureView(message: message)
             case .signedOut:
@@ -16,17 +15,19 @@ struct RootView: View {
             case .locked:
                 LockView()
             case .unlocked:
-                HomeView()
+                MainTabView()
             }
         }
         .overlay(alignment: .bottom) {
             if let noticeMessage = model.noticeMessage {
                 NoticeToast(message: noticeMessage)
-                    .padding(.bottom, 24)
+                    .padding(.bottom, model.screen == .unlocked ? 84 : 24)
+                    .allowsHitTesting(false)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
         .animation(.easeOut(duration: 0.2), value: model.noticeMessage)
+        .sensoryFeedback(.success, trigger: model.copyCount)
         .sheet(item: Binding(get: { model.screen == .unlocked && model.newSecretKey == nil ? model.presentedApproval : nil }, set: { if $0 == nil { model.closeApprovalSheet() } })) { approval in
             PhoneApprovalSheet(
                 approval: approval,
@@ -37,45 +38,64 @@ struct RootView: View {
                 approveWithPassword: { await model.approvePendingApproval(password: $0) },
                 deny: { await model.denyPendingApproval() }
             )
-            .preferredColorScheme(.dark)
         }
         .fullScreenCover(isPresented: Binding(get: { model.newSecretKey != nil }, set: { if !$0 { model.dismissNewSecretKey() } })) {
             NewSecretKeyView(secretKey: model.newSecretKey ?? "", email: model.status.email, server: model.status.server) {
                 model.dismissNewSecretKey()
             }
-            .preferredColorScheme(.dark)
         }
+    }
+}
+
+struct MainTabView: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        TabView(selection: $model.selectedTab) {
+            Tab("Vaults", systemImage: "lock.rectangle.stack", value: AppModel.Tab.vaults) {
+                VaultsView()
+            }
+            .accessibilityIdentifier("tab-vaults")
+            Tab("Approvals", systemImage: "laptopcomputer.and.iphone", value: AppModel.Tab.approvals) {
+                ApprovalsView()
+            }
+            .badge(model.allPendingApproval.count)
+            .accessibilityIdentifier("tab-approvals")
+            Tab("Settings", systemImage: "gearshape", value: AppModel.Tab.settings) {
+                SettingsView()
+            }
+            .accessibilityIdentifier("tab-settings")
+            Tab(value: AppModel.Tab.search, role: .search) {
+                SearchView()
+            }
+        }
+        .onChange(of: model.selectedTab) { _, _ in model.reportActivity() }
     }
 }
 
 struct PrivacyCover: View {
     var body: some View {
         ZStack {
-            Theme.background.ignoresSafeArea()
+            Color(.systemBackground).ignoresSafeArea()
             LogoMark(size: 88)
         }
         .accessibilityIdentifier("privacy-cover")
     }
 }
 
+// A floating confirmation; SwiftUI has no system toast, so it sits on Liquid Glass like other floating controls.
 struct NoticeToast: View {
     var message: String
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(Theme.success)
-            Text(message)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(Theme.text)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(Theme.surfaceRaised)
-        .overlay(Capsule().stroke(Theme.borderStrong, lineWidth: 1))
-        .clipShape(Capsule())
-        .shadow(color: .black.opacity(0.4), radius: 12, y: 4)
-        .accessibilityIdentifier("notice")
+        Label(message, systemImage: "checkmark.circle.fill")
+            .font(.subheadline.weight(.medium))
+            .symbolRenderingMode(.multicolor)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .glassEffect(.regular, in: .capsule)
+            .padding(.horizontal, 16)
+            .accessibilityIdentifier("notice")
     }
 }
 
@@ -83,29 +103,20 @@ struct StartupFailureView: View {
     var message: String
 
     var body: some View {
-        VStack(spacing: 16) {
-            LogoMark(size: 64)
-            Text("Hisar could not start")
-                .font(.title3.weight(.semibold))
-                .foregroundStyle(Theme.text)
-            ErrorBanner(message: message)
+        ContentUnavailableView {
+            Label("Hisar could not start", systemImage: "exclamationmark.triangle")
+        } description: {
+            Text(message)
+                .accessibilityIdentifier("error-message")
         }
-        .padding(24)
     }
 }
 
-struct OfflineBanner: View {
+struct OfflineNote: View {
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "wifi.slash")
-            Text("Offline. Showing items saved on this iPhone; changes need a connection.")
-                .font(.footnote)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .foregroundStyle(Theme.warning)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(Theme.warning.opacity(0.12))
-        .accessibilityIdentifier("offline-banner")
+        Label("Offline. Showing items saved on this iPhone; changes need a connection.", systemImage: "wifi.slash")
+            .font(.footnote)
+            .foregroundStyle(.secondary)
+            .accessibilityIdentifier("offline-banner")
     }
 }
