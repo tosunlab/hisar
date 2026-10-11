@@ -21,7 +21,14 @@ type ApprovalAnswerFields struct {
 	AnsweringDeviceID   string
 	AnsweringDeviceName string
 	AnsweredAt          string
+	// RememberChoice is empty for an answer without the phone's remember switch, else ApprovalRememberChoice or ApprovalOnceChoice.
+	RememberChoice string
 }
+
+const (
+	ApprovalRememberChoice = "remember"
+	ApprovalOnceChoice     = "once"
+)
 
 func sealToAccount(accountKEMPublicKey []byte, info, plaintext []byte) ([]byte, error) {
 	recipientPublicKey, err := hybridKeyEncapsulation.NewPublicKey(accountKEMPublicKey)
@@ -72,9 +79,14 @@ func HashApprovalRequest(sealedRequest []byte) []byte {
 	return hash[:]
 }
 
+// encodeApprovalAnswer appends the remember choice only when there is one, so answers without it verify as before.
 func encodeApprovalAnswer(fields ApprovalAnswerFields) []byte {
-	return encodeContext(approvalAnswerLabel, fields.AccountID, fields.RequestID, string(fields.RequestHash), fields.Decision,
-		fields.AnsweringDeviceID, fields.AnsweringDeviceName, fields.AnsweredAt)
+	allField := []string{fields.AccountID, fields.RequestID, string(fields.RequestHash), fields.Decision,
+		fields.AnsweringDeviceID, fields.AnsweringDeviceName, fields.AnsweredAt}
+	if fields.RememberChoice != "" {
+		allField = append(allField, fields.RememberChoice)
+	}
+	return encodeContext(approvalAnswerLabel, allField...)
 }
 
 func (keyset *Keyset) SignApprovalAnswer(fields ApprovalAnswerFields) []byte {

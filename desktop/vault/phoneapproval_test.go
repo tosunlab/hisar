@@ -183,7 +183,9 @@ func (test *phoneApprovalTest) start(t *testing.T) (fakeApproval, func()) {
 func (test *phoneApprovalTest) startUntil(t *testing.T, dialogTimeoutAt time.Time) (fakeApproval, func()) {
 	t.Helper()
 	description := approval.Description{Kind: approval.KindSSH, AppName: "Terminal", Purpose: "push to git.tryhisar.com", Host: "git.tryhisar.com:22", KeyName: "hisar gitlab"}
-	finish := test.phoneApprover.StartPhoneApproval(description, dialogTimeoutAt, func(isApproved bool) { test.decisionChannel <- isApproved })
+	finish := test.phoneApprover.StartPhoneApproval(description, dialogTimeoutAt, func(answer approval.AcceptedAnswer) {
+		test.decisionChannel <- answer.Decision == approval.DecisionApprove
+	})
 	return test.apiServer.waitForApproval(t), finish
 }
 
@@ -275,6 +277,51 @@ func TestPhoneApprovalApprovedAndDenied(t *testing.T) {
 	}
 }
 
+func TestPhoneApprovalCarriesTheRememberChoice(t *testing.T) {
+	test := createPhoneApprovalTest(t)
+	description := approval.Description{Kind: approval.KindSSH, AppName: "Terminal", Purpose: "push to git.tryhisar.com", KeyName: "hisar gitlab", RememberLabel: "Also allows Terminal for 1 hour", IsRememberedByDefault: true}
+	allCase := []struct {
+		name             string
+		answer           func(stored fakeApproval, request approval.Request) []byte
+		wantIsRemembered bool
+	}{
+		{"remembered on the phone", func(stored fakeApproval, request approval.Request) []byte {
+			sealedAnswer, _ := approval.CreateRememberingAnswer(test.keyset, test.accountID, stored.request.SealedRequest, request, approval.DecisionApprove, true, testPhoneDeviceID, "Hisar on iPhone", time.Now())
+			return sealedAnswer
+		}, true},
+		{"once on the phone", func(stored fakeApproval, request approval.Request) []byte {
+			sealedAnswer, _ := approval.CreateRememberingAnswer(test.keyset, test.accountID, stored.request.SealedRequest, request, approval.DecisionApprove, false, testPhoneDeviceID, "Hisar on iPhone", time.Now())
+			return sealedAnswer
+		}, false},
+		{"an older phone without the switch", func(stored fakeApproval, request approval.Request) []byte {
+			request.RememberLabel = ""
+			sealedAnswer, _ := approval.CreateRememberingAnswer(test.keyset, test.accountID, stored.request.SealedRequest, request, approval.DecisionApprove, true, testPhoneDeviceID, "Hisar on iPhone", time.Now())
+			return sealedAnswer
+		}, false},
+	}
+	for _, testCase := range allCase {
+		answerChannel := make(chan approval.AcceptedAnswer, 1)
+		finish := test.phoneApprover.StartPhoneApproval(description, time.Now().Add(2*time.Minute), func(answer approval.AcceptedAnswer) { answerChannel <- answer })
+		stored := test.apiServer.waitForApproval(t)
+		request, err := approval.OpenRequest(test.keyset, test.accountID, stored.request.RequestID, stored.request.SealedRequest, testPhoneDeviceID, time.Now())
+		if err != nil || request.RememberLabel != description.RememberLabel || !request.IsRememberedByDefault {
+			t.Fatalf("%s: the phone sees %+v, %v", testCase.name, request.Description, err)
+		}
+		test.apiServer.setAnswer(stored.request.RequestID, testCase.answer(stored, request))
+		sendApprovalEvent(t, test.apiServer, proto.EventApprovalAnswered, stored.request.RequestID)
+		select {
+		case answer := <-answerChannel:
+			if answer.Decision != approval.DecisionApprove || answer.IsRemembered != testCase.wantIsRemembered {
+				t.Errorf("%s: answer = %+v", testCase.name, answer)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("%s: the dialog never got the phone's answer", testCase.name)
+		}
+		finish()
+		waitForResolved(t, test.apiServer, stored.request.RequestID)
+	}
+}
+
 func TestPhoneApprovalRefusesForgedAndSelfAnswers(t *testing.T) {
 	test := createPhoneApprovalTest(t)
 	stored, finish := test.start(t)
@@ -331,7 +378,7 @@ func TestPhoneApprovalAvailability(t *testing.T) {
 	if test.phoneApprover.IsPhoneApprovalAvailable() {
 		t.Error("available with the switch off")
 	}
-	if finish := test.phoneApprover.StartPhoneApproval(approval.Description{Kind: approval.KindSSH}, time.Now().Add(time.Minute), func(bool) { t.Error("decided with the switch off") }); finish == nil {
+	if finish := test.phoneApprover.StartPhoneApproval(approval.Description{Kind: approval.KindSSH}, time.Now().Add(time.Minute), func(approval.AcceptedAnswer) { t.Error("decided with the switch off") }); finish == nil {
 		t.Error("no finish function")
 	} else {
 		finish()
@@ -395,7 +442,7 @@ func TestPhoneListsAndAnswersRequests(t *testing.T) {
 	if len(allRequest) != 1 || allRequest[0].RequestID != open.RequestID || allRequest[0].RequesterDeviceName != "MacBook Pro" || allRequest[0].TerminalName != "ttys003" || allRequest[0].Kind != approval.KindCommandLine {
 		t.Fatalf("listed = %+v", allRequest)
 	}
-	if err := AnswerPhoneApproval(test.service, open.RequestID, true); err != nil {
+	if err := AnswerPhoneApproval(test.service, open.RequestID, true, false); err != nil {
 		t.Fatal(err)
 	}
 	stored, _ := test.apiServer.findApproval(open.RequestID)
@@ -407,10 +454,10 @@ func TestPhoneListsAndAnswersRequests(t *testing.T) {
 	if err != nil || decision != approval.DecisionApprove {
 		t.Errorf("the Mac checks the phone's answer: %q %v", decision, err)
 	}
-	if err := AnswerPhoneApproval(test.service, open.RequestID, false); !errors.Is(err, errPhoneApprovalGone) {
+	if err := AnswerPhoneApproval(test.service, open.RequestID, false, false); !errors.Is(err, errPhoneApprovalGone) {
 		t.Errorf("answering twice: %v", err)
 	}
-	if err := AnswerPhoneApproval(test.service, approval.GenerateRequestID(), true); !errors.Is(err, errPhoneApprovalGone) {
+	if err := AnswerPhoneApproval(test.service, approval.GenerateRequestID(), true, false); !errors.Is(err, errPhoneApprovalGone) {
 		t.Errorf("answering an unknown request: %v", err)
 	}
 	if allRequest, _ := ListAllPendingPhoneApproval(test.service); len(allRequest) != 0 {
@@ -421,7 +468,7 @@ func TestPhoneListsAndAnswersRequests(t *testing.T) {
 	if _, err := ListAllPendingPhoneApproval(test.service); !errors.Is(err, ErrLocked) {
 		t.Errorf("listing while locked: %v", err)
 	}
-	if err := AnswerPhoneApproval(test.service, open.RequestID, true); !errors.Is(err, ErrLocked) {
+	if err := AnswerPhoneApproval(test.service, open.RequestID, true, false); !errors.Is(err, ErrLocked) {
 		t.Errorf("answering while locked: %v", err)
 	}
 }
@@ -546,7 +593,9 @@ func TestPhoneApprovalOutlivesAHangingDeviceRefresh(t *testing.T) {
 		}
 	}
 	description := approval.Description{Kind: approval.KindSSH, AppName: "Terminal", Purpose: "sign a commit"}
-	later := test.phoneApprover.StartPhoneApproval(description, time.Now().Add(time.Hour+time.Minute), func(isApproved bool) { test.decisionChannel <- isApproved })
+	later := test.phoneApprover.StartPhoneApproval(description, time.Now().Add(time.Hour+time.Minute), func(answer approval.AcceptedAnswer) {
+		test.decisionChannel <- answer.Decision == approval.DecisionApprove
+	})
 	defer later()
 	laterStored := test.apiServer.waitForApproval(t)
 	if laterStored.request.RequestID == stored.request.RequestID {

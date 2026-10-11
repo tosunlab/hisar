@@ -122,6 +122,7 @@ const previewStatus = (): Status => ({
 let isPreviewSSHConfigured = new URLSearchParams(window.location.search).get("sshConfigured") === "1";
 let isPreviewCompactApproval = new URLSearchParams(window.location.search).get("compact") === "1";
 let isPreviewPhoneApproval = new URLSearchParams(window.location.search).get("phoneApprovalOff") !== "1";
+let previewSigningRememberSeconds = Number(new URLSearchParams(window.location.search).get("signingRemember") ?? 0);
 const previewAgentStatus = (backupPath = ""): SSHAgentStatus => {
   const hasError = new URLSearchParams(window.location.search).get("agent") === "error";
   return {
@@ -134,6 +135,7 @@ const previewAgentStatus = (backupPath = ""): SSHAgentStatus => {
     isTouchIDApproval: new URLSearchParams(window.location.search).get("noTouchID") !== "1",
     isCompactApproval: isPreviewCompactApproval,
     isPhoneApproval: isPreviewPhoneApproval,
+    signingRememberSeconds: previewSigningRememberSeconds,
     backupPath,
   };
 };
@@ -585,7 +587,12 @@ function listAllPreviewApprovalWithoutApp(): ApprovalEvent[] {
         hostAndPort: "",
         branch: "desktop/ssh-approval-redesign",
         commitSubject: "Ask before every SSH signature",
-        isRememberable: false,
+        isRememberable: previewSigningRememberSeconds > 0,
+        isRememberedByDefault: false,
+        rememberLabel:
+          previewSigningRememberSeconds > 0
+            ? `Don’t ask again for ${firstApproval.appName} in ${firstApproval.repositoryPath} for ${previewSigningRememberSeconds >= 3600 ? "1 hour" : "10 minutes"}`
+            : "",
       },
     ];
   }
@@ -1073,6 +1080,10 @@ export const previewApi = {
   },
   setPhoneApproval: (isEnabled: boolean) => {
     isPreviewPhoneApproval = isEnabled;
+    return resolveAfterDelay(previewAgentStatus());
+  },
+  setSigningRemember: (seconds: number) => {
+    previewSigningRememberSeconds = seconds;
     return resolveAfterDelay(previewAgentStatus());
   },
   fitSSHApprovalWindow: () => Promise.resolve(),

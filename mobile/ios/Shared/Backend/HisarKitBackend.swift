@@ -247,12 +247,12 @@ final class HisarKitBackend: VaultBackend {
         try decode([PhoneApproval]?.self, from: callReturningText { hisar.listAllPendingApproval($0) }) ?? []
     }
 
-    func approveApproval(requestID: String) throws {
-        try callReturningNothing { try hisar.approveApproval(requestID) }
+    func approveApproval(requestID: String, isRemembered: Bool) throws {
+        try callReturningNothing { try hisar.approveApproval(requestID, isRemembered: isRemembered) }
     }
 
-    func approveApprovalWithPassword(requestID: String, password: String) throws {
-        try callReturningNothing { try hisar.approveApproval(withPassword: requestID, password: password) }
+    func approveApprovalWithPassword(requestID: String, password: String, isRemembered: Bool) throws {
+        try callReturningNothing { try hisar.approveApproval(withPassword: requestID, password: password, isRemembered: isRemembered) }
     }
 
     func denyApproval(requestID: String) throws {

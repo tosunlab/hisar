@@ -61,6 +61,9 @@ type Description struct {
 	// AppIcon is the app's small PNG icon; AppWarning is the dialog's warning about the app's code signature.
 	AppIcon    []byte `json:"appIcon,omitempty"`
 	AppWarning string `json:"appWarning,omitempty"`
+	// RememberLabel is set when approving can also be remembered: the sentence for the phone's switch.
+	RememberLabel         string `json:"rememberLabel,omitempty"`
+	IsRememberedByDefault bool   `json:"isRememberedByDefault,omitempty"`
 }
 
 type Request struct {
@@ -80,6 +83,24 @@ type Answer struct {
 	AnsweredAt          string `json:"answeredAt"`
 	RequestHash         []byte `json:"requestHash"`
 	Signature           []byte `json:"signature"`
+	// IsRemembered is the phone's remember switch; nil for an answer to a request without one, or from an older phone.
+	IsRemembered *bool `json:"isRemembered,omitempty"`
+}
+
+// AcceptedAnswer is a verified answer; IsRemembered is true only when the phone chose to remember and signed that choice.
+type AcceptedAnswer struct {
+	Decision     string
+	IsRemembered bool
+}
+
+func getRememberChoice(isRemembered *bool) string {
+	switch {
+	case isRemembered == nil:
+		return ""
+	case *isRemembered:
+		return crypt.ApprovalRememberChoice
+	}
+	return crypt.ApprovalOnceChoice
 }
 
 func GenerateRequestID() string {
@@ -198,6 +219,12 @@ func OpenRequest(keyset *crypt.Keyset, accountID, requestID string, sealedReques
 
 // CreateAnswer signs the decision over the exact sealed request and seals the signed answer to the account.
 func CreateAnswer(keyset *crypt.Keyset, accountID string, sealedRequest []byte, request Request, decision, answeringDeviceID, answeringDeviceName string, now time.Time) ([]byte, error) {
+	return CreateRememberingAnswer(keyset, accountID, sealedRequest, request, decision, false, answeringDeviceID, answeringDeviceName, now)
+}
+
+// CreateRememberingAnswer also signs the phone's remember switch, but only for a request that offers one,
+// so a Mac that never offers it verifies the answer as before.
+func CreateRememberingAnswer(keyset *crypt.Keyset, accountID string, sealedRequest []byte, request Request, decision string, isRemembered bool, answeringDeviceID, answeringDeviceName string, now time.Time) ([]byte, error) {
 	if decision != DecisionApprove && decision != DecisionDeny {
 		return nil, ErrUnknownDecision
 	}
@@ -210,6 +237,11 @@ func CreateAnswer(keyset *crypt.Keyset, accountID string, sealedRequest []byte, 
 	if !now.Before(request.ExpiresAt) {
 		return nil, ErrExpired
 	}
+	var rememberedAnswer *bool
+	if request.RememberLabel != "" {
+		isApprovedAndRemembered := isRemembered && decision == DecisionApprove
+		rememberedAnswer = &isApprovedAndRemembered
+	}
 	fields := crypt.ApprovalAnswerFields{
 		AccountID:           accountID,
 		RequestID:           request.RequestID,
@@ -218,6 +250,7 @@ func CreateAnswer(keyset *crypt.Keyset, accountID string, sealedRequest []byte, 
 		AnsweringDeviceID:   answeringDeviceID,
 		AnsweringDeviceName: answeringDeviceName,
 		AnsweredAt:          FormatTime(now),
+		RememberChoice:      getRememberChoice(rememberedAnswer),
 	}
 	plaintext, err := json.Marshal(Answer{
 		RequestID:           fields.RequestID,
@@ -227,6 +260,7 @@ func CreateAnswer(keyset *crypt.Keyset, accountID string, sealedRequest []byte, 
 		AnsweredAt:          fields.AnsweredAt,
 		RequestHash:         fields.RequestHash,
 		Signature:           keyset.SignApprovalAnswer(fields),
+		IsRemembered:        rememberedAnswer,
 	})
 	if err != nil {
 		return nil, err
@@ -268,43 +302,49 @@ func (tracker *Tracker) RemoveAll() {
 	clear(tracker.allPending)
 }
 
-// Accept returns the decision of a valid answer: the account's own signature over this exact request,
-// before it expires, from another device, and only once.
+// Accept returns the decision of a valid answer, see AcceptAnswer.
 func (tracker *Tracker) Accept(keyset *crypt.Keyset, accountID, requestID string, sealedAnswer []byte, ownDeviceID string, now time.Time) (string, error) {
+	accepted, err := tracker.AcceptAnswer(keyset, accountID, requestID, sealedAnswer, ownDeviceID, now)
+	return accepted.Decision, err
+}
+
+// AcceptAnswer returns a valid answer: the account's own signature over this exact request, and over the remember
+// choice when the answer has one, before it expires, from another device, and only once.
+func (tracker *Tracker) AcceptAnswer(keyset *crypt.Keyset, accountID, requestID string, sealedAnswer []byte, ownDeviceID string, now time.Time) (AcceptedAnswer, error) {
 	tracker.mutex.Lock()
 	defer tracker.mutex.Unlock()
 	pending, isFound := tracker.allPending[requestID]
 	if !isFound {
-		return "", ErrUnknownRequest
+		return AcceptedAnswer{}, ErrUnknownRequest
 	}
 	if pending.isAnswered {
-		return "", ErrAlreadyAnswered
+		return AcceptedAnswer{}, ErrAlreadyAnswered
 	}
 	if !now.Before(pending.expiresAt) {
-		return "", ErrExpired
+		return AcceptedAnswer{}, ErrExpired
 	}
 	if len(sealedAnswer) > MaximumSealedSize {
-		return "", ErrSealedTooLarge
+		return AcceptedAnswer{}, ErrSealedTooLarge
 	}
 	plaintext, err := keyset.OpenApprovalAnswer(accountID, requestID, sealedAnswer)
 	if err != nil {
-		return "", err
+		return AcceptedAnswer{}, err
 	}
 	var answer Answer
 	if err := decodeMessage(plaintext, &answer); err != nil {
-		return "", ErrInvalidAnswer
+		return AcceptedAnswer{}, ErrInvalidAnswer
 	}
 	if answer.RequestID != requestID || subtle.ConstantTimeCompare(answer.RequestHash, pending.requestHash) != 1 {
-		return "", ErrRequestMismatch
+		return AcceptedAnswer{}, ErrRequestMismatch
 	}
 	if answer.Decision != DecisionApprove && answer.Decision != DecisionDeny {
-		return "", ErrUnknownDecision
+		return AcceptedAnswer{}, ErrUnknownDecision
 	}
 	if ownDeviceID == "" {
-		return "", ErrMissingDeviceID
+		return AcceptedAnswer{}, ErrMissingDeviceID
 	}
 	if answer.AnsweringDeviceID == "" || answer.AnsweringDeviceID == ownDeviceID {
-		return "", ErrSelfAnswer
+		return AcceptedAnswer{}, ErrSelfAnswer
 	}
 	fields := crypt.ApprovalAnswerFields{
 		AccountID:           accountID,
@@ -314,10 +354,12 @@ func (tracker *Tracker) Accept(keyset *crypt.Keyset, accountID, requestID string
 		AnsweringDeviceID:   answer.AnsweringDeviceID,
 		AnsweringDeviceName: answer.AnsweringDeviceName,
 		AnsweredAt:          answer.AnsweredAt,
+		RememberChoice:      getRememberChoice(answer.IsRemembered),
 	}
 	if err := crypt.VerifyApprovalAnswer(keyset.GetSigningPublicKey(), fields, answer.Signature); err != nil {
-		return "", err
+		return AcceptedAnswer{}, err
 	}
 	pending.isAnswered = true
-	return answer.Decision, nil
+	isRemembered := answer.Decision == DecisionApprove && answer.IsRemembered != nil && *answer.IsRemembered
+	return AcceptedAnswer{Decision: answer.Decision, IsRemembered: isRemembered}, nil
 }

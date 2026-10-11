@@ -16,8 +16,8 @@ func (hisar *Hisar) ListAllPendingApproval() (string, error) {
 	return encodeJSON(vault.ListAllPendingPhoneApproval(hisar.service))
 }
 
-// ApproveApproval asks for Face ID, then signs and sends the approval.
-func (hisar *Hisar) ApproveApproval(requestID string) error {
+// ApproveApproval asks for Face ID, then signs and sends the approval with the sheet's remember switch.
+func (hisar *Hisar) ApproveApproval(requestID string, isRemembered bool) error {
 	if !hisar.IsMacApprovalAllowed() {
 		return errMacApprovalDisabled
 	}
@@ -27,11 +27,11 @@ func (hisar *Hisar) ApproveApproval(requestID string) error {
 	if err := hisar.biometric.Authenticate("approve this request from your Mac"); err != nil {
 		return err
 	}
-	return vault.AnswerPhoneApproval(hisar.service, requestID, true)
+	return vault.AnswerPhoneApproval(hisar.service, requestID, true, isRemembered)
 }
 
 // ApproveApprovalWithPassword checks the master password instead of Face ID, then signs and sends the approval.
-func (hisar *Hisar) ApproveApprovalWithPassword(requestID, password string) error {
+func (hisar *Hisar) ApproveApprovalWithPassword(requestID, password string, isRemembered bool) error {
 	defer releaseMemory()
 	if !hisar.IsMacApprovalAllowed() {
 		return errMacApprovalDisabled
@@ -39,12 +39,12 @@ func (hisar *Hisar) ApproveApprovalWithPassword(requestID, password string) erro
 	if err := vault.CreateApprovalUnlocker(hisar.service, nil).VerifyPassword(password); err != nil {
 		return err
 	}
-	return vault.AnswerPhoneApproval(hisar.service, requestID, true)
+	return vault.AnswerPhoneApproval(hisar.service, requestID, true, isRemembered)
 }
 
 // DenyApproval needs no Face ID: denying never lets anything happen.
 func (hisar *Hisar) DenyApproval(requestID string) error {
-	return vault.AnswerPhoneApproval(hisar.service, requestID, false)
+	return vault.AnswerPhoneApproval(hisar.service, requestID, false, false)
 }
 
 // ReconnectEvents opens a new event stream at once; the app calls it on returning to the foreground, because a stream

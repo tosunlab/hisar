@@ -17,7 +17,7 @@ type fakePhone struct {
 	mutex          sync.Mutex
 	isAvailable    bool
 	allDescription []approval.Description
-	allDecide      []func(isApproved bool)
+	allDecide      []func(answer approval.AcceptedAnswer)
 	allExpiresAt   []time.Time
 	finishCount    int
 	startedChannel chan struct{}
@@ -33,7 +33,7 @@ func (phone *fakePhone) IsPhoneApprovalAvailable() bool {
 	return phone.isAvailable
 }
 
-func (phone *fakePhone) StartPhoneApproval(description approval.Description, expiresAt time.Time, decide func(isApproved bool)) func() {
+func (phone *fakePhone) StartPhoneApproval(description approval.Description, expiresAt time.Time, decide func(answer approval.AcceptedAnswer)) func() {
 	phone.mutex.Lock()
 	phone.allDescription = append(phone.allDescription, description)
 	phone.allDecide = append(phone.allDecide, decide)
@@ -59,11 +59,23 @@ func (phone *fakePhone) waitForStart(t *testing.T) approval.Description {
 	return phone.allDescription[len(phone.allDescription)-1]
 }
 
+// answer is an answer without the remember choice, as an older phone sends it.
 func (phone *fakePhone) answer(isApproved bool) {
+	phone.answerRemembering(isApproved, false)
+}
+
+func (phone *fakePhone) answerRemembering(isApproved, isRemembered bool) {
 	phone.mutex.Lock()
 	decide := phone.allDecide[len(phone.allDecide)-1]
 	phone.mutex.Unlock()
-	decide(isApproved)
+	decide(createPhoneAnswer(isApproved, isRemembered))
+}
+
+func createPhoneAnswer(isApproved, isRemembered bool) approval.AcceptedAnswer {
+	if isApproved {
+		return approval.AcceptedAnswer{Decision: approval.DecisionApprove, IsRemembered: isRemembered}
+	}
+	return approval.AcceptedAnswer{Decision: approval.DecisionDeny}
 }
 
 func (phone *fakePhone) getStartAndFinishCount() (int, int) {
@@ -100,11 +112,12 @@ func TestPhoneApprovesTheDialog(t *testing.T) {
 	want := approval.Description{
 		Kind: approval.KindSSH, AppName: "Terminal", Purpose: "push to git.tryhisar.com", Host: "git.tryhisar.com:22",
 		CommandLine: "git push origin main", RepositoryPath: "~/src/core", KeyName: "Laptop",
+		RememberLabel: "Also allows Terminal for 1 hour", IsRememberedByDefault: true,
 	}
 	if !reflect.DeepEqual(description, want) {
 		t.Errorf("phone request = %+v", description)
 	}
-	phone.answer(true)
+	phone.answerRemembering(true, true)
 	result := waitForResult(t, resultChannel)
 	if !result.result.IsAllowed || !result.result.IsRemembered {
 		t.Errorf("result = %+v", result)
@@ -121,9 +134,35 @@ func TestPhoneApprovesTheDialog(t *testing.T) {
 	event = waitForApprovalEvent(t, emitter)
 	phone.waitForStart(t)
 	approver.SetRemembered(event.RequestID, false)
-	phone.answer(true)
-	if result := waitForResult(t, resultChannel); !result.result.IsAllowed || result.result.IsRemembered {
-		t.Errorf("the unchecked box was ignored: %+v", result)
+	phone.answerRemembering(true, true)
+	if result := waitForResult(t, resultChannel); !result.result.IsAllowed || !result.result.IsRemembered {
+		t.Errorf("the phone's choice to remember was ignored: %+v", result)
+	}
+}
+
+func TestPhoneAnswerNeverTakesTheMacCheckbox(t *testing.T) {
+	emitter := createFakeEmitter()
+	phone := createFakePhone()
+	approver := createPhoneApprover(emitter, phone, &fakeBiometric{isAvailable: true}, nil, createPushChain())
+	for _, testCase := range []struct {
+		name                 string
+		isMacCheckboxChecked bool
+		answer               func()
+		wantIsRemembered     bool
+	}{
+		{"an older phone, Mac box checked", true, func() { phone.answer(true) }, false},
+		{"once on the phone, Mac box checked", true, func() { phone.answerRemembering(true, false) }, false},
+		{"remembered on the phone, Mac box unchecked", false, func() { phone.answerRemembering(true, true) }, true},
+		{"denied on the phone with remember", true, func() { phone.answerRemembering(false, true) }, false},
+	} {
+		resultChannel := startApproval(approver, context.Background(), createTestRequest())
+		event := waitForApprovalEvent(t, emitter)
+		phone.waitForStart(t)
+		approver.SetRemembered(event.RequestID, testCase.isMacCheckboxChecked)
+		testCase.answer()
+		if result := waitForResult(t, resultChannel); result.result.IsRemembered != testCase.wantIsRemembered {
+			t.Errorf("%s: result = %+v", testCase.name, result)
+		}
 	}
 }
 

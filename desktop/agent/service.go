@@ -12,24 +12,27 @@ import (
 )
 
 type Status struct {
-	SocketPath        string `json:"socketPath"`
-	IsRunning         bool   `json:"isRunning"`
-	ErrorMessage      string `json:"errorMessage"`
-	IsSSHConfigured   bool   `json:"isSSHConfigured"`
-	ConfigPath        string `json:"configPath"`
-	ConfigSection     string `json:"configSection"`
-	IsTouchIDApproval bool   `json:"isTouchIDApproval"`
-	IsCompactApproval bool   `json:"isCompactApproval"`
-	IsPhoneApproval   bool   `json:"isPhoneApproval"`
-	BackupPath        string `json:"backupPath"`
+	SocketPath             string `json:"socketPath"`
+	IsRunning              bool   `json:"isRunning"`
+	ErrorMessage           string `json:"errorMessage"`
+	IsSSHConfigured        bool   `json:"isSSHConfigured"`
+	ConfigPath             string `json:"configPath"`
+	ConfigSection          string `json:"configSection"`
+	IsTouchIDApproval      bool   `json:"isTouchIDApproval"`
+	IsCompactApproval      bool   `json:"isCompactApproval"`
+	IsPhoneApproval        bool   `json:"isPhoneApproval"`
+	SigningRememberSeconds int    `json:"signingRememberSeconds"`
+	BackupPath             string `json:"backupPath"`
 }
 
-// ApprovalPreference stores the "Compact SSH approvals" and "Allow approvals from my iPhone" switches.
+// ApprovalPreference stores the "Compact SSH approvals", "Allow approvals from my iPhone" and "Remember commit signing" settings.
 type ApprovalPreference interface {
 	IsCompactSSHApproval() bool
 	SetCompactSSHApproval(isCompact bool) error
 	IsPhoneApproval() bool
 	SetPhoneApproval(isEnabled bool) error
+	GetSigningRememberSeconds() int
+	SetSigningRememberSeconds(seconds int) error
 }
 
 type Config struct {
@@ -102,7 +105,22 @@ func (s *Service) buildStatus() Status {
 	status.IsTouchIDApproval = s.config.Approver != nil && s.config.Approver.IsTouchIDApproval()
 	status.IsCompactApproval = s.config.ApprovalPreference != nil && s.config.ApprovalPreference.IsCompactSSHApproval()
 	status.IsPhoneApproval = s.config.ApprovalPreference != nil && s.config.ApprovalPreference.IsPhoneApproval()
+	if s.config.ApprovalPreference != nil {
+		status.SigningRememberSeconds = s.config.ApprovalPreference.GetSigningRememberSeconds()
+	}
 	return status
+}
+
+// SetSigningRemember stores "Remember commit signing" (0, 600 or 3600 seconds) and forgets every remembered signature.
+func (s *Service) SetSigningRemember(seconds int) (Status, error) {
+	if s.config.ApprovalPreference == nil {
+		return s.buildStatus(), errors.New("commit signing cannot be changed here")
+	}
+	err := s.config.ApprovalPreference.SetSigningRememberSeconds(seconds)
+	if s.config.Approver != nil {
+		s.config.Approver.ClearAllRememberedSigning()
+	}
+	return s.buildStatus(), err
 }
 
 func (s *Service) SetCompactSSHApproval(isCompact bool) (Status, error) {

@@ -3,6 +3,7 @@ import { computed, ref, watch } from "vue";
 import { copyField, deleteItem, getAllShareLinkForItem, hasShareableField, openItemShareLinkDialog, openWebsite, startEditingItem, store } from "../store";
 import { formatKeyType, getDomain, sshKeyCategory } from "../util";
 import AppIcon from "./AppIcon.vue";
+import CommitSigningPanel from "./CommitSigningPanel.vue";
 import ItemTile from "./ItemTile.vue";
 import OneTimeCodeField from "./OneTimeCodeField.vue";
 import PasskeyList from "./PasskeyList.vue";
@@ -104,6 +105,7 @@ function maskSecret(secret: string): string {
         </div>
       </section>
       <p class="agent-hint muted"><AppIcon name="terminal" :size="14" /> Hisar's SSH agent offers this key while Hisar is unlocked.</p>
+      <CommitSigningPanel v-if="store.selectedItem.publicKey" :public-key="store.selectedItem.publicKey" />
     </template>
 
     <section v-else class="card field-card">

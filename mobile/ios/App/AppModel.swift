@@ -651,15 +651,17 @@ final class AppModel: ObservableObject {
         approvalErrorMessage = nil
     }
 
-    func approvePendingApproval() async {
+    // isRemembered is the sheet's switch; it counts only for a request that offers remembering.
+    func approvePendingApproval(isRemembered: Bool) async {
         guard let approval = presentedApproval else { return }
-        await approve(approval)
+        await approve(approval, isRemembered: isRemembered)
     }
 
-    func approvePendingApproval(password: String) async {
+    func approvePendingApproval(password: String, isRemembered: Bool) async {
         guard let approval = presentedApproval else { return }
+        let isApprovalRemembered = approval.isRememberable && isRemembered
         await answerApproval(approval, successMessage: "Approved on your Mac") { backend, requestID in
-            try backend.approveApprovalWithPassword(requestID: requestID, password: password)
+            try backend.approveApprovalWithPassword(requestID: requestID, password: password, isRemembered: isApprovalRemembered)
         }
     }
 
@@ -669,9 +671,11 @@ final class AppModel: ObservableObject {
     }
 
     // Approve asks for Face ID; when the master password is needed instead, the request's sheet opens and asks for it.
-    func approve(_ approval: PhoneApproval) async {
+    // The Vaults card has no remember switch, so it approves once.
+    func approve(_ approval: PhoneApproval, isRemembered: Bool = false) async {
+        let isApprovalRemembered = approval.isRememberable && isRemembered
         await answerApproval(approval, successMessage: "Approved on your Mac") { backend, requestID in
-            try backend.approveApproval(requestID: requestID)
+            try backend.approveApproval(requestID: requestID, isRemembered: isApprovalRemembered)
         }
     }
 

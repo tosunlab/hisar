@@ -53,10 +53,10 @@ func TestSettingsWhileSignedOut(t *testing.T) {
 	if allApproval, err := hisar.ListAllPendingApproval(); err != nil || allApproval != "[]" {
 		t.Errorf("requests listed with approving turned off: %q %v", allApproval, err)
 	}
-	if err := hisar.ApproveApproval("request"); !errors.Is(err, errMacApprovalDisabled) {
+	if err := hisar.ApproveApproval("request", false); !errors.Is(err, errMacApprovalDisabled) {
 		t.Errorf("approve with approving turned off: %v", err)
 	}
-	if err := hisar.ApproveApprovalWithPassword("request", "password"); !errors.Is(err, errMacApprovalDisabled) {
+	if err := hisar.ApproveApprovalWithPassword("request", "password", false); !errors.Is(err, errMacApprovalDisabled) {
 		t.Errorf("approve with the password with approving turned off: %v", err)
 	}
 

@@ -176,7 +176,7 @@ final class SettingsModelTests: XCTestCase {
         await model.approve(model.allPendingApproval[0])
         XCTAssertEqual(model.presentedApproval?.requestID, "first")
         XCTAssertTrue(model.isApprovalPasswordRequired)
-        await model.approvePendingApproval(password: FakeBackend.password)
+        await model.approvePendingApproval(password: FakeBackend.password, isRemembered: false)
         XCTAssertEqual(backend.allApprovalAnswer, ["approve first"])
         XCTAssertNil(model.presentedApproval)
     }

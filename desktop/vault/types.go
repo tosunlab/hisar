@@ -203,15 +203,17 @@ func (KeychainSecretKeyStore) DeleteSecretKey(accountID string) error {
 type Config struct {
 	StatePath string
 	// CachePath is the encrypted offline cache; empty keeps Hisar online-only.
-	CachePath           string
-	DeviceName          string
-	Platform            string
-	Clipboard           Clipboard
-	LockNotifier        LockNotifier
-	SecretKeyStore      SecretKeyStore
-	AutoLockAfter       time.Duration
-	ClipboardClearAfter time.Duration
-	Biometric           Biometric
+	CachePath      string
+	DeviceName     string
+	Platform       string
+	Clipboard      Clipboard
+	LockNotifier   LockNotifier
+	SecretKeyStore SecretKeyStore
+	AutoLockAfter  time.Duration
+	// GetSystemIdleDuration is how long the whole Mac has had no input; when set, it alone decides auto-lock.
+	GetSystemIdleDuration func() (time.Duration, bool)
+	ClipboardClearAfter   time.Duration
+	Biometric             Biometric
 	// BiometricPasswordInterval is how long Touch ID may unlock before the master password is required again.
 	BiometricPasswordInterval time.Duration
 	// IsBiometricAllowedAfterLaunch lets biometrics unlock before the first password unlock, for platforms whose

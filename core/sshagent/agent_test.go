@@ -470,6 +470,9 @@ func TestAlwaysAskKeyPromptsEveryTime(t *testing.T) {
 		if count := fixture.approver.countRequest(); count != attempt {
 			t.Fatalf("attempt %d: approval count = %d", attempt, count)
 		}
+		if request := fixture.approver.getLastRequest(t); !request.IsAlwaysAskKey || request.IsRememberable {
+			t.Fatalf("attempt %d: the approver is not told the key always asks: %+v", attempt, request)
+		}
 	}
 	normalAddress := startSSHServer(t, getPublicKey(t, normalKey))
 	for range 2 {

@@ -35,8 +35,8 @@ struct RootView: View {
                 isBusy: model.isAnsweringApproval,
                 isPasswordRequired: model.isApprovalPasswordRequired,
                 errorMessage: model.approvalErrorMessage,
-                approve: { await model.approvePendingApproval() },
-                approveWithPassword: { await model.approvePendingApproval(password: $0) },
+                approve: { await model.approvePendingApproval(isRemembered: $0) },
+                approveWithPassword: { await model.approvePendingApproval(password: $0, isRemembered: $1) },
                 deny: { await model.denyPendingApproval() }
             )
         }

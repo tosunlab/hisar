@@ -713,6 +713,11 @@ export async function setPhoneApproval(isEnabled: boolean): Promise<void> {
   await changeSSHConfig(() => api.setPhoneApproval(isEnabled), isEnabled ? "Your iPhone can now approve requests" : "Requests are approved only on this Mac");
 }
 
+export async function setSigningRemember(seconds: number): Promise<void> {
+  const notice = seconds > 0 ? "Commit signing dialogs can now remember an app and repository" : "Every commit signature asks again";
+  await changeSSHConfig(() => api.setSigningRemember(seconds), notice);
+}
+
 export function showBrowserPairing(request: BrowserPairingRequest | null): void {
   store.browserPairing = request;
   loadBrowserStatus();

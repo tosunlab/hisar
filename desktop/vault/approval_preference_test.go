@@ -50,3 +50,29 @@ func TestPhoneApprovalSwitchIsSavedAndKeptOnSignOut(t *testing.T) {
 		t.Errorf("turning phone approvals on: %v", err)
 	}
 }
+
+func TestSigningRememberIsOffByDefaultAndKeptOnSignOut(t *testing.T) {
+	statePath := filepath.Join(t.TempDir(), "desktop.json")
+	service, _, _ := createTestService(t, statePath, createMemorySecretKeyStore())
+	preference := CreateApprovalPreference(service)
+	if seconds := preference.GetSigningRememberSeconds(); seconds != 0 {
+		t.Errorf("commit signing is remembered for %d seconds by default", seconds)
+	}
+	if err := preference.SetSigningRememberSeconds(300); err == nil {
+		t.Error("an unlisted duration was accepted")
+	}
+	if err := preference.SetSigningRememberSeconds(600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.SignOut(); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, _, _ := createTestService(t, statePath, createMemorySecretKeyStore())
+	reloadedPreference := CreateApprovalPreference(reloaded)
+	if seconds := reloadedPreference.GetSigningRememberSeconds(); seconds != 600 {
+		t.Errorf("kept %d seconds", seconds)
+	}
+	if err := reloadedPreference.SetSigningRememberSeconds(0); err != nil || reloadedPreference.GetSigningRememberSeconds() != 0 {
+		t.Errorf("back to always ask: %v", err)
+	}
+}

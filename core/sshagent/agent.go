@@ -63,6 +63,8 @@ type ApprovalRequest struct {
 	SignatureNamespace       string
 	IsUnlockRequired         bool
 	IsRememberable           bool
+	// IsAlwaysAskKey marks a key set to ask every time, which the approver must not remember either.
+	IsAlwaysAskKey bool
 }
 
 type ApprovalResult struct {
@@ -151,8 +153,9 @@ func (s *Server) isAlwaysAsk(keyID string) bool {
 func (s *Server) setRememberable(request *ApprovalRequest) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
+	request.IsAlwaysAskKey = s.allAlwaysAskKeyID[request.KeyID]
 	request.IsRememberable = getApprovalScope(*request) != "" && !request.IsForwarded &&
-		request.SignatureNamespace != GitSignatureNamespace && !s.allAlwaysAskKeyID[request.KeyID]
+		request.SignatureNamespace != GitSignatureNamespace && !request.IsAlwaysAskKey
 }
 
 // askApprover returns the approver's answer and the approval epoch it was asked in.

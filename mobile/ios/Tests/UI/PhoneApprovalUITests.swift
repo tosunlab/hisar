@@ -16,9 +16,21 @@ final class PhoneApprovalUITests: HisarUITestCase {
         XCTAssertTrue(app.descendants(matching: .any)["phone-approval-encryption-note"].label.contains("End-to-end encrypted"))
         XCTAssertFalse(app.descendants(matching: .any)["phone-approval-forwarded"].exists)
         XCTAssertTrue(app.buttons["phone-approval-approve"].label.contains("Approve with Face ID"))
+        let rememberSwitch = app.switches["phone-approval-remember"]
+        XCTAssertEqual(rememberSwitch.label, "Also allows Terminal for 1 hour")
+        XCTAssertEqual(rememberSwitch.value as? String, "1", "the switch starts as the Mac's checkbox does")
         saveScreenshot("phone-approval-ssh")
+        rememberSwitch.switches.firstMatch.tap()
+        XCTAssertEqual(rememberSwitch.value as? String, "0")
         app.buttons["phone-approval-approve"].tap()
         checkResult("Approved preview-ssh with Face ID")
+    }
+
+    func testRememberedSSHApproval() {
+        launchPreview("ssh")
+        waitFor(app.switches["phone-approval-remember"])
+        app.buttons["phone-approval-approve"].tap()
+        checkResult("Approved preview-ssh with Face ID, remembered")
     }
 
     func testDenyCommandLineRequest() {
@@ -49,6 +61,7 @@ final class PhoneApprovalUITests: HisarUITestCase {
         app.launch()
         waitFor(app.buttons["phone-approval-approve"])
         XCTAssertEqual(app.staticTexts["phone-approval-summary"].label, "Claude wants to sign a commit")
+        XCTAssertEqual(app.switches["phone-approval-remember"].value as? String, "0", "commit signing is never remembered by default")
         saveScreenshot("phone-approval-signing")
         app.buttons["phone-approval-approve"].tap()
         let passwordField = app.secureTextFields["phone-approval-password"]

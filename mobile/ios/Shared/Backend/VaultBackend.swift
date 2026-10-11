@@ -42,8 +42,8 @@ protocol VaultBackend: AnyObject {
     func assertPasskey(relyingPartyID: String, credentialID: Data, clientDataHash: Data) throws -> PasskeyAssertionResult
     func deletePasskey(vaultID: String, itemID: String, credentialID: String) throws -> ItemDetail
     func listAllPendingApproval() throws -> [PhoneApproval]
-    func approveApproval(requestID: String) throws
-    func approveApprovalWithPassword(requestID: String, password: String) throws
+    func approveApproval(requestID: String, isRemembered: Bool) throws
+    func approveApprovalWithPassword(requestID: String, password: String, isRemembered: Bool) throws
     func denyApproval(requestID: String) throws
     func reconnectEvents()
     func setAutoLock(seconds: Int) throws -> VaultStatus

@@ -45,6 +45,8 @@ type State struct {
 	AutoLockSeconds int `json:"autoLockSeconds,omitempty"`
 	// IsPhoneApprovalDisabled stops sending approval dialogs to the account's iPhones; a device preference that Reset keeps.
 	IsPhoneApprovalDisabled bool `json:"phoneApprovalDisabled,omitempty"`
+	// SigningRememberSeconds is how long an approved commit signature may be remembered (0: always ask); a device preference that Reset keeps.
+	SigningRememberSeconds int `json:"signingRememberSeconds,omitempty"`
 	// AllAgentVaultID lists the vaults coding agents may see through hisar mcp; every other vault is invisible to them.
 	AllAgentVaultID []string `json:"agentVaults,omitempty"`
 	// IsOpenAtLoginConfigured records that the desktop app registered its login item once; a device preference that Reset keeps.
@@ -124,7 +126,7 @@ func (s *State) Reset() {
 		IsAutomaticUpdateCheckDisabled: s.IsAutomaticUpdateCheckDisabled, IsCommandLineIntegrationDisabled: s.IsCommandLineIntegrationDisabled,
 		IsCompactSSHApproval: s.IsCompactSSHApproval, AutoLockSeconds: s.AutoLockSeconds, IsPhoneApprovalDisabled: s.IsPhoneApprovalDisabled,
 		IsOpenAtLoginConfigured: s.IsOpenAtLoginConfigured, IsOpenAtLoginDisabled: s.IsOpenAtLoginDisabled,
-		Appearance: s.Appearance, Color: s.Color,
+		Appearance: s.Appearance, Color: s.Color, SigningRememberSeconds: s.SigningRememberSeconds,
 	}
 }
 

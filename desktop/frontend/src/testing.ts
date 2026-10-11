@@ -51,6 +51,7 @@ export function createSSHAgentStatus(overrides: Partial<SSHAgentStatus> = {}): S
     isTouchIDApproval: true,
     isCompactApproval: false,
     isPhoneApproval: true,
+    signingRememberSeconds: 0,
     backupPath: "",
     ...overrides,
   };
@@ -374,6 +375,7 @@ export function createApiMock() {
     setSSHApprovalRemembered: vi.fn().mockResolvedValue(undefined),
     setCompactSSHApproval: vi.fn().mockResolvedValue(createSSHAgentStatus({ isCompactApproval: true })),
     setPhoneApproval: vi.fn().mockResolvedValue(createSSHAgentStatus({ isPhoneApproval: false })),
+    setSigningRemember: vi.fn().mockResolvedValue(createSSHAgentStatus({ signingRememberSeconds: 600 })),
     fitSSHApprovalWindow: vi.fn().mockResolvedValue(undefined),
     cancelApprovalTouchID: vi.fn().mockResolvedValue(undefined),
     setApprovalTouchIDFrame: vi.fn().mockResolvedValue(undefined),

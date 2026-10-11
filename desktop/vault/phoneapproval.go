@@ -36,11 +36,11 @@ type phoneApprovalRelay struct {
 	deviceRefreshedAt    time.Time
 	isRefreshing         bool
 	tracker              *approval.Tracker
-	allDecideByRequestID map[string]func(isApproved bool)
+	allDecideByRequestID map[string]func(answer approval.AcceptedAnswer)
 }
 
 func createPhoneApprovalRelay() *phoneApprovalRelay {
-	return &phoneApprovalRelay{tracker: approval.CreateTracker(), allDecideByRequestID: map[string]func(isApproved bool){}}
+	return &phoneApprovalRelay{tracker: approval.CreateTracker(), allDecideByRequestID: map[string]func(answer approval.AcceptedAnswer){}}
 }
 
 // PhoneApprovalRequest is a Mac's request as the phone shows it; times are RFC 3339.
@@ -187,7 +187,7 @@ func (relay *phoneApprovalRelay) getDeviceAvailability(now time.Time) (isAvailab
 
 // StartPhoneApproval seals the dialog's request to the account and posts it; it stays answerable until the dialog's
 // deadline (at most approval.MaximumLifetime), and decide runs at most once, with a verified answer.
-func (phoneApprover *PhoneApprover) StartPhoneApproval(description approval.Description, expiresAt time.Time, decide func(isApproved bool)) func() {
+func (phoneApprover *PhoneApprover) StartPhoneApproval(description approval.Description, expiresAt time.Time, decide func(answer approval.AcceptedAnswer)) func() {
 	s := phoneApprover.service
 	s.mutex.Lock()
 	relay := s.phoneApprovals
@@ -310,7 +310,7 @@ func (s *Service) acceptPhoneApprovalAnswer(apiClient *client.Client, requestID 
 		return
 	}
 	relay.mutex.Lock()
-	decision, err := relay.tracker.Accept(s.unlockedSession.Keyset, s.unlockedSession.AccountID, requestID, stored.SealedAnswer, relay.ownDeviceID, s.config.Now())
+	accepted, err := relay.tracker.AcceptAnswer(s.unlockedSession.Keyset, s.unlockedSession.AccountID, requestID, stored.SealedAnswer, relay.ownDeviceID, s.config.Now())
 	decide := relay.allDecideByRequestID[requestID]
 	if err == nil {
 		delete(relay.allDecideByRequestID, requestID)
@@ -322,7 +322,7 @@ func (s *Service) acceptPhoneApprovalAnswer(apiClient *client.Client, requestID 
 		return
 	}
 	if decide != nil {
-		decide(decision == approval.DecisionApprove)
+		decide(accepted)
 	}
 }
 
@@ -377,8 +377,9 @@ func ListAllPendingPhoneApproval(s *Service) ([]PhoneApprovalRequest, error) {
 	return allRequest, nil
 }
 
-// AnswerPhoneApproval signs this device's decision; the caller checked Face ID or the master password for an approval. Not a method, so the desktop UI cannot call it.
-func AnswerPhoneApproval(s *Service, requestID string, isApproved bool) error {
+// AnswerPhoneApproval signs this device's decision and, for a request that offers it, the remember switch; the caller checked Face ID
+// or the master password for an approval. Not a method, so the desktop UI cannot call it.
+func AnswerPhoneApproval(s *Service, requestID string, isApproved, isRemembered bool) error {
 	if !approval.IsValidRequestID(requestID) {
 		return errPhoneApprovalGone
 	}
@@ -411,12 +412,12 @@ func AnswerPhoneApproval(s *Service, requestID string, isApproved bool) error {
 		s.mutex.Unlock()
 		return ErrLocked
 	}
-	s.resetLockTimer()
+	s.noteActivity()
 	now := s.config.Now()
 	var sealedAnswer []byte
 	request, err := approval.OpenRequest(s.unlockedSession.Keyset, s.unlockedSession.AccountID, requestID, stored.SealedRequest, ownDeviceID, now)
 	if err == nil {
-		sealedAnswer, err = approval.CreateAnswer(s.unlockedSession.Keyset, s.unlockedSession.AccountID, stored.SealedRequest, request, decision, ownDeviceID, s.config.DeviceName, now)
+		sealedAnswer, err = approval.CreateRememberingAnswer(s.unlockedSession.Keyset, s.unlockedSession.AccountID, stored.SealedRequest, request, decision, isRemembered, ownDeviceID, s.config.DeviceName, now)
 	}
 	s.mutex.Unlock()
 	if errors.Is(err, approval.ErrExpired) {

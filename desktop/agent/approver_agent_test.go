@@ -169,6 +169,7 @@ func TestAgentDialogGoesToThePhoneWithTheAgentName(t *testing.T) {
 	want := approval.Description{
 		Kind: approval.KindCommandLine, AppName: "Claude Code (via hisar mcp) in Terminal", Purpose: "run a command with 1 secret",
 		CommandLine: "npm test", RepositoryPath: "~/src/app", TerminalName: "ttys003", Secrets: []string{"Work › Stripe › api key"},
+		RememberLabel: "Also allows this secret for this agent for 1 hour",
 	}
 	if !reflect.DeepEqual(description, want) {
 		t.Errorf("phone request = %+v", description)

@@ -112,6 +112,7 @@ type phoneApprovalRequest struct {
 	Purpose             string `json:"purpose"`
 	KeyName             string `json:"keyName"`
 	IsForwarded         bool   `json:"isForwarded"`
+	RememberLabel       string `json:"rememberLabel"`
 }
 
 func signInWithSSHAgent(socketPath, address string, hostKey ssh.PublicKey) error {
@@ -303,7 +304,7 @@ func TestIntegrationPhoneApproval(t *testing.T) {
 		t.Fatalf("the phone shows %+v", allRequest)
 	}
 	requestID := allRequest[0].RequestID
-	if err := phone.ApproveApproval(requestID); err != nil {
+	if err := phone.ApproveApproval(requestID, false); err != nil {
 		t.Fatal(err)
 	}
 	if err := waitForSSHSignIn(resultChannel); err != nil {
@@ -317,6 +318,29 @@ func TestIntegrationPhoneApproval(t *testing.T) {
 		t.Error("answered a request twice")
 	}
 
+	startSSHSignInKeepingApproval := func() chan error {
+		resultChannel := make(chan error, 1)
+		go func() { resultChannel <- signInWithSSHAgent(socketPath, address, hostKey) }()
+		return resultChannel
+	}
+	resultChannel = startSSHSignInKeepingApproval()
+	dialog.waitForEvent(t)
+	recorder.waitFor(t, "approval-requested", "")
+	rememberedRequest := decodeJSON[[]phoneApprovalRequest](t)(phone.ListAllPendingApproval())[0]
+	if rememberedRequest.RememberLabel == "" {
+		t.Fatalf("the phone is not told that approving also allows the app for an hour: %+v", rememberedRequest)
+	}
+	if err := phone.ApproveApproval(rememberedRequest.RequestID, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := waitForSSHSignIn(resultChannel); err != nil {
+		t.Fatalf("the SSH sign-in the phone approved for an hour failed: %v", err)
+	}
+	recorder.waitFor(t, "approval-resolved", rememberedRequest.RequestID)
+	if err := waitForSSHSignIn(startSSHSignInKeepingApproval()); err != nil {
+		t.Errorf("the phone's choice to allow the app for an hour was not remembered: %v", err)
+	}
+
 	resultChannel = startSSHSignIn()
 	dialog.waitForEvent(t)
 	recorder.waitFor(t, "approval-requested", "")
@@ -327,7 +351,7 @@ func TestIntegrationPhoneApproval(t *testing.T) {
 	if err := waitForSSHSignIn(resultChannel); err == nil {
 		t.Error("the SSH sign-in the phone denied succeeded")
 	}
-	if biometric.authenticateCount != 1 {
+	if biometric.authenticateCount != 2 {
 		t.Errorf("Deny asked for Face ID")
 	}
 
@@ -401,7 +425,7 @@ func TestIntegrationPhoneApproval(t *testing.T) {
 	if expiresAt, err := time.Parse(time.RFC3339Nano, lateRequests[0].ExpiresAt); err != nil || time.Until(expiresAt) < time.Minute {
 		t.Errorf("the request expires at %q, before the Mac's dialog gives up", lateRequests[0].ExpiresAt)
 	}
-	if err := relaunchedPhone.ApproveApproval(lateRequests[0].RequestID); err != nil {
+	if err := relaunchedPhone.ApproveApproval(lateRequests[0].RequestID, false); err != nil {
 		t.Fatal(err)
 	}
 	if err := waitForSSHSignIn(resultChannel); err != nil {

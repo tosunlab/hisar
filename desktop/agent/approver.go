@@ -56,7 +56,7 @@ type Unlocker interface {
 // and finish withdraws the request when the dialog closes.
 type PhoneApprover interface {
 	IsPhoneApprovalAvailable() bool
-	StartPhoneApproval(description approval.Description, expiresAt time.Time, decide func(isApproved bool)) (finish func())
+	StartPhoneApproval(description approval.Description, expiresAt time.Time, decide func(answer approval.AcceptedAnswer)) (finish func())
 }
 
 // ApprovalEvent is what the approval window shows; AppName and AppIconURL describe the app responsible for the request,
@@ -138,7 +138,9 @@ type ApproverConfig struct {
 	Timeout       time.Duration
 	// PhoneApprovalTimeout is how long a dialog that the phone can answer waits, so there is time to reach for the phone.
 	PhoneApprovalTimeout time.Duration
-	Now                  func() time.Time
+	// GetSigningRememberDuration is the Settings choice for remembering commit signatures; 0 always asks.
+	GetSigningRememberDuration func() time.Duration
+	Now                        func() time.Time
 }
 
 type approvalResponse struct {
@@ -150,7 +152,7 @@ type pendingApproval struct {
 	receivedAt      time.Time
 	event           ApprovalEvent
 	responseChannel chan approvalResponse
-	phoneChannel    chan bool
+	phoneChannel    chan approval.AcceptedAnswer
 	phoneRequest    approval.Description
 	timedOutAfter   time.Duration
 	approveReason   string
@@ -166,9 +168,13 @@ type pendingApproval struct {
 type Approver struct {
 	config         ApproverConfig
 	biometricMutex sync.Mutex
+	// allAuthorizing counts authorize goroutines, which may outlive their request while another Touch ID check holds biometricMutex.
+	allAuthorizing sync.WaitGroup
 	mutex          sync.Mutex
 	allPending     []*pendingApproval
 	presenter      presenter
+	// signing is guarded by mutex.
+	signing rememberedSigning
 }
 
 // presenter runs window and event calls in order on its own goroutine, so a window that cannot be shown never holds up a request.
@@ -303,6 +309,16 @@ func (approver *Approver) Approve(ctx context.Context, request sshagent.Approval
 	}
 	receivedAt := approver.config.Now()
 	event := approver.buildApprovalEvent(generateRequestID(), request)
+	scope, hasSigningScope := findSigningScope(event, request)
+	if hasSigningScope && approver.isSigningRemembered(scope) {
+		return sshagent.ApprovalResult{IsAllowed: true}, nil
+	}
+	signingEpoch := approver.getSigningEpoch()
+	signingRememberDuration := approver.getSigningRememberDuration()
+	isSigningRememberable := hasSigningScope && signingRememberDuration > 0
+	if isSigningRememberable {
+		offerSigningMemory(&event, signingRememberDuration)
+	}
 	description := RequestDescription{Purpose: event.Purpose, Action: event.Action, Target: event.Target, HostAndPort: event.HostAndPort, ForwardedFromHost: event.ForwardedFromHost}
 	approveReason := formatApprovalReason(describeReasonRequester(event), description)
 	pending := &pendingApproval{
@@ -311,13 +327,20 @@ func (approver *Approver) Approve(ctx context.Context, request sshagent.Approval
 		responseChannel: make(chan approvalResponse, 1),
 		approveReason:   approveReason,
 		unlockReason:    "unlock Hisar and " + approveReason,
-		isRemembered:    event.IsRememberable,
-		phoneRequest:    approver.buildSSHPhoneDescription(event),
+		isRemembered:    event.IsRememberedByDefault,
+		phoneRequest:    approver.buildSSHPhoneDescription(event, signingRememberDuration),
 	}
 	if !approver.waitForApproval(ctx, pending) {
 		return sshagent.ApprovalResult{}, nil
 	}
-	return sshagent.ApprovalResult{IsAllowed: true, IsRemembered: event.IsRememberable && approver.isPendingRemembered(pending)}, nil
+	isRemembered := event.IsRememberable && approver.isPendingRemembered(pending)
+	if isSigningRememberable {
+		if isRemembered {
+			approver.rememberSigning(scope, signingRememberDuration, signingEpoch)
+		}
+		return sshagent.ApprovalResult{IsAllowed: true}, nil
+	}
+	return sshagent.ApprovalResult{IsAllowed: true, IsRemembered: isRemembered}, nil
 }
 
 const shareLinkWarning = "Anyone with the link can read these until it expires or its views run out."
@@ -353,8 +376,8 @@ func (approver *Approver) buildCommandLineEvent(requestID string, request comman
 	return event
 }
 
-// buildSSHPhoneDescription carries the dialog's lines to the phone.
-func (approver *Approver) buildSSHPhoneDescription(event ApprovalEvent) approval.Description {
+// buildSSHPhoneDescription carries the dialog's lines, and what approving would also allow, to the phone.
+func (approver *Approver) buildSSHPhoneDescription(event ApprovalEvent, signingRememberDuration time.Duration) approval.Description {
 	description := approval.Description{
 		Kind:              approval.KindSSH,
 		AppName:           event.AppName,
@@ -385,7 +408,22 @@ func (approver *Approver) buildSSHPhoneDescription(event ApprovalEvent) approval
 			description.RepositoryPath = strings.TrimPrefix(event.RepositoryPath+" · "+event.Branch, " · ")
 		}
 	}
+	if event.IsRememberable {
+		description.IsRememberedByDefault = event.IsRememberedByDefault
+		description.RememberLabel = fmt.Sprintf("Also allows %s for 1 hour", describeRememberedRequester(event))
+		if event.Purpose == PurposeSignCommit {
+			description.RememberLabel = fmt.Sprintf("Also allows %s to sign commits in %s for %s", event.AppName, event.RepositoryPath, formatRememberDuration(signingRememberDuration))
+		}
+	}
 	return description
+}
+
+// describeRememberedRequester is who a remembered approval covers, as the dialog's checkbox names it.
+func describeRememberedRequester(event ApprovalEvent) string {
+	if isAppRequester(event) {
+		return event.AppName
+	}
+	return event.ClientName
 }
 
 func (approver *Approver) buildCommandLinePhoneDescription(event ApprovalEvent) approval.Description {
@@ -483,7 +521,7 @@ func (approver *Approver) authorize(pending *pendingApproval, response approvalR
 // The deadline starts when the request arrives and holds while Touch ID waits or the window cannot be shown.
 func (approver *Approver) waitForApproval(ctx context.Context, pending *pendingApproval) bool {
 	phoneApprover := approver.config.PhoneApprover
-	pending.phoneChannel = make(chan bool, 1)
+	pending.phoneChannel = make(chan approval.AcceptedAnswer, 1)
 	pending.event.IsPhoneApproval = phoneApprover != nil && !pending.event.IsUnlockRequired && phoneApprover.IsPhoneApprovalAvailable()
 	timeout := approver.config.Timeout
 	if pending.event.IsPhoneApproval {
@@ -498,7 +536,7 @@ func (approver *Approver) waitForApproval(ctx context.Context, pending *pendingA
 	isFirstCompact := approver.allPending[0].event.IsCompact
 	approver.mutex.Unlock()
 	if pending.event.IsPhoneApproval {
-		finishPhoneApproval := phoneApprover.StartPhoneApproval(pending.phoneRequest, timeoutAt, func(isApproved bool) { approver.respondFromPhone(pending, isApproved) })
+		finishPhoneApproval := phoneApprover.StartPhoneApproval(pending.phoneRequest, timeoutAt, func(answer approval.AcceptedAnswer) { approver.respondFromPhone(pending, answer) })
 		defer finishPhoneApproval()
 	}
 	defer approver.finishApproval(pending)
@@ -515,14 +553,18 @@ func (approver *Approver) waitForApproval(ctx context.Context, pending *pendingA
 			responseChannel = nil
 		}
 		select {
-		case isApproved := <-pending.phoneChannel:
-			return isApproved
+		case phoneAnswer := <-pending.phoneChannel:
+			return approver.acceptPhoneAnswer(pending, phoneAnswer)
 		case response := <-responseChannel:
 			if !response.isAuthorized {
 				return false
 			}
 			isAuthorizing = true
-			go func() { authorizeResultChannel <- approver.authorize(pending, response) }()
+			approver.allAuthorizing.Add(1)
+			go func() {
+				defer approver.allAuthorizing.Done()
+				authorizeResultChannel <- approver.authorize(pending, response)
+			}()
 		case authorizeError := <-authorizeResultChannel:
 			isAuthorizing = false
 			if authorizeError == nil {
@@ -530,8 +572,8 @@ func (approver *Approver) waitForApproval(ctx context.Context, pending *pendingA
 			}
 			// The phone's answer cancels a Touch ID check in progress, so it arrives as a failed check.
 			select {
-			case isApproved := <-pending.phoneChannel:
-				return isApproved
+			case phoneAnswer := <-pending.phoneChannel:
+				return approver.acceptPhoneAnswer(pending, phoneAnswer)
 			default:
 			}
 			select {
@@ -701,13 +743,22 @@ func (approver *Approver) sendResponse(pending *pendingApproval, response approv
 	}
 }
 
+// acceptPhoneAnswer applies the phone's own remember choice, never the Mac's checkbox, and returns its decision.
+func (approver *Approver) acceptPhoneAnswer(pending *pendingApproval, answer approval.AcceptedAnswer) bool {
+	isApproved := answer.Decision == approval.DecisionApprove
+	approver.mutex.Lock()
+	pending.isRemembered = isApproved && answer.IsRemembered
+	approver.mutex.Unlock()
+	return isApproved
+}
+
 // respondFromPhone answers with a decision the vault backend verified; it ends a Touch ID check that is waiting.
-func (approver *Approver) respondFromPhone(pending *pendingApproval, isApproved bool) {
+func (approver *Approver) respondFromPhone(pending *pendingApproval, answer approval.AcceptedAnswer) {
 	approver.mutex.Lock()
 	isSent := false
 	if approver.findPending(pending.event.RequestID) == pending {
 		select {
-		case pending.phoneChannel <- isApproved:
+		case pending.phoneChannel <- answer:
 			isSent = true
 		default:
 		}

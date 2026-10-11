@@ -84,7 +84,8 @@ describe("Settings sidebar", () => {
     expect(findPage(settings, "ssh").isVisible()).toBe(true);
     expect(findPage(settings, "general").isVisible()).toBe(false);
     expect(findPage(settings, "ssh").text()).toContain("Compact SSH approvals");
-    expect(findPage(settings, "ssh").find('[data-testid="commit-signing"]').text()).toContain("Always asks");
+    expect(findPage(settings, "ssh").find('[data-testid="commit-signing"]').text()).toContain("Remember commit signing");
+    expect((findPage(settings, "ssh").find('[data-testid="signing-remember"]').element as HTMLSelectElement).value).toBe("0");
     expect(findPage(settings, "developer").find('[data-testid="command-line-section"]').exists()).toBe(true);
     expect(findPage(settings, "developer").find('[data-testid="coding-agents-section"]').exists()).toBe(true);
     expect(findPage(settings, "security").find('[data-testid="enable-touch-id"]').exists()).toBe(true);

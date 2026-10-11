@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildCommitSigningCommandList,
   computePasswordStrength,
   formatExpiresIn,
   formatShareLinkViews,
@@ -57,6 +58,17 @@ describe("getTileColor", () => {
     expect(getTileColor("GitHub")).toEqual(getTileColor("github"));
     expect(getTileColor("GitHub").background).toMatch(/^var\(--color-tile\d\)$/);
     expect(getTileColor("GitHub").color).toBe(getTileColor("GitHub").background.replace(")", "-text)"));
+  });
+});
+
+describe("buildCommitSigningCommandList", () => {
+  it("drops the key comment and refuses anything that is not a public key", () => {
+    const allCommand = buildCommitSigningCommandList('ssh-rsa AAAAB3NzaC1yc2E= deniz "quoted" $(whoami)').map((entry) => entry.command);
+    expect(allCommand[1]).toBe('git config --global user.signingkey "key::ssh-rsa AAAAB3NzaC1yc2E="');
+    expect(allCommand.join("\n")).not.toContain("whoami");
+    expect(buildCommitSigningCommandList("")).toEqual([]);
+    expect(buildCommitSigningCommandList("ssh-ed25519 $(rm -rf ~)")).toEqual([]);
+    expect(buildCommitSigningCommandList('ssh"ed AAAA')).toEqual([]);
   });
 });
 
