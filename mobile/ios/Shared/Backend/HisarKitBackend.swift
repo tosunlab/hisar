@@ -105,12 +105,28 @@ final class HisarKitBackend: VaultBackend {
         try decode(VaultSummary.self, from: callReturningText { hisar.createVault(name, error: $0) })
     }
 
-    func listAllMember() throws -> [Member] {
-        try decode([Member]?.self, from: callReturningText { hisar.listAllMember($0) }) ?? []
+    func listAllPerson() throws -> [Member] {
+        try decode([Member]?.self, from: callReturningText { hisar.listAllPerson($0) }) ?? []
     }
 
-    func inviteMember(email: String, role: String) throws -> String {
-        try callReturningText { hisar.inviteMember(email, role: role, error: $0) }
+    func invitePerson(email: String) throws {
+        try callReturningNothing { try hisar.invitePerson(email) }
+    }
+
+    func listAllShareInvitation() throws -> ShareInvitations {
+        try decode(ShareInvitations.self, from: callReturningText { hisar.listAllShareInvitation($0) })
+    }
+
+    func acceptShareInvitation(invitationID: String) throws {
+        try callReturningNothing { try hisar.acceptShareInvitation(invitationID) }
+    }
+
+    func declineShareInvitation(invitationID: String) throws {
+        try callReturningNothing { try hisar.declineShareInvitation(invitationID) }
+    }
+
+    func cancelShareInvitation(invitationID: String) throws {
+        try callReturningNothing { try hisar.cancelShareInvitation(invitationID) }
     }
 
     func listAllVaultMember(vaultID: String) throws -> [Member] {

@@ -9,11 +9,12 @@ import ItemEditor from "./ItemEditor.vue";
 import ImportPanel from "./ImportPanel.vue";
 import ItemTile from "./ItemTile.vue";
 import SettingsPanel from "./SettingsPanel.vue";
+import ShareInvitationBanner from "./ShareInvitationBanner.vue";
 import SSHKeyForm from "./SSHKeyForm.vue";
 import VaultRecoveryPanel from "./VaultRecoveryPanel.vue";
 import VaultSharingPanel from "./VaultSharingPanel.vue";
 
-const personalVaultNotice = "Personal vaults are private. Create a shared vault to share with your family. Click to see who can recover this vault.";
+const personalVaultNotice = "Personal vaults are private. Create a shared vault to share items with other people. Click to see who can recover this vault.";
 
 const isCreatingVault = ref(false);
 const newVaultName = ref("");
@@ -90,6 +91,7 @@ onBeforeUnmount(() => {
     <aside class="sidebar">
       <div class="title-bar"></div>
       <div class="sidebar-brand"><HisarLogo :size="24" show-wordmark /></div>
+      <ShareInvitationBanner />
 
       <nav aria-label="Vaults">
         <p class="section-label">Vaults</p>

@@ -64,9 +64,10 @@ func TestRecovery(t *testing.T) {
 		t.Fatalf("recovery key before setup: %v", err)
 	}
 
-	bobInvite := requireValue[*proto.InviteResponse](t)(alice.Client.Invite(ctx, &proto.InviteRequest{Email: "bob@example.com", Role: proto.RoleMember}))
+	recorder := attachMailRecorder(server)
+	requireValue[*proto.InvitationSentResponse](t)(alice.Client.Invite(ctx, &proto.InviteRequest{Email: "bob@example.com"}))
 	bobPassword := []byte("bob password")
-	bob, bobSecretKey, err := session.SignUp(ctx, client.Create(baseURL), bobInvite.Token, "bob@example.com", "Bob", bobPassword, testDevice)
+	bob, bobSecretKey, err := session.SignUp(ctx, client.Create(baseURL), findInviteToken(t, server, recorder, "bob@example.com"), "bob@example.com", "Bob", bobPassword, testDevice)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,6 +87,11 @@ func TestRecovery(t *testing.T) {
 	}
 	if bobKeyset := requireValue[*proto.RecoveryKeyset](t)(bob.Client.GetRecoveryKeyset(ctx)); bobKeyset.EncKeyset != nil {
 		t.Error("the encrypted recovery keyset was sent to a member")
+	} else if bobKeyset.Creator == nil || bobKeyset.Creator.AccountID != alice.AccountID || bobKeyset.Creator.Role != proto.RoleAdmin {
+		t.Errorf("recovery keyset creator: %+v", bobKeyset.Creator)
+	}
+	if _, err := bob.GetVerifiedMember(ctx, "alice@example.com"); !errors.Is(err, session.ErrNotFound) {
+		t.Errorf("the recovery admin is listed to a member who shares no vault with them: %v", err)
 	}
 
 	t.Run("existing vaults are enabled after setup", func(t *testing.T) {
@@ -109,10 +115,7 @@ func TestRecovery(t *testing.T) {
 		t.Error("new shared vault is not wrapped to recovery")
 	}
 	requireValue[*item.Item](t)(alice.SaveItem(ctx, family, &item.Item{Overview: item.Overview{Title: "Netflix"}, Details: item.Details{Password: "family-pass"}}))
-	bobMember := requireValue[*proto.Member](t)(alice.GetVerifiedMember(ctx, "bob@example.com"))
-	if err := alice.ShareVault(ctx, family, bobMember, proto.VaultEditor); err != nil {
-		t.Fatal(err)
-	}
+	shareThroughInvitation(t, alice, bob, family, proto.VaultEditor)
 	bobPersonal := requireValue[*session.Vault](t)(bob.FindVault(ctx, "Personal"))
 	requireValue[*item.Item](t)(bob.SaveItem(ctx, bobPersonal, &item.Item{Overview: item.Overview{Title: "Diary"}, Details: item.Details{Password: "diary-pass"}}))
 	bobSecret := requireValue[*session.Vault](t)(bob.CreateVault(ctx, "Secret", proto.VaultPersonal))

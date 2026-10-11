@@ -53,17 +53,8 @@ func (s *Session) getVerifiedRecoveryKeyset(ctx context.Context) (*proto.Recover
 	if err != nil {
 		return nil, err
 	}
-	allMember, err := s.Client.ListAllMember(ctx)
-	if err != nil {
-		return nil, err
-	}
-	var creator *proto.Member
-	for index := range allMember {
-		if allMember[index].AccountID == recoveryKeyset.CreatedBy {
-			creator = &allMember[index]
-		}
-	}
-	if creator == nil || creator.Role != proto.RoleAdmin || creator.PublicKeys.Verify(creator.AccountID) != nil ||
+	creator := recoveryKeyset.Creator
+	if creator == nil || creator.AccountID != recoveryKeyset.CreatedBy || creator.Role != proto.RoleAdmin || creator.PublicKeys.Verify(creator.AccountID) != nil ||
 		!bytes.Equal(creator.PublicKeys.Sign, recoveryKeyset.PublicKeys.Sign) ||
 		recoveryKeyset.PublicKeys.Verify(crypt.RecoveryRecipientID) != nil {
 		return nil, ErrBadRecoveryKey

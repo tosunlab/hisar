@@ -97,6 +97,13 @@ func TestMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if countTable("share_invitations") != 0 || countTable("recovery_keyset") != 1 {
+		t.Errorf("rolling back %s left the wrong schema", rolledBack.Source.Path)
+	}
+
+	if rolledBack, err = database.RollbackMigration(ctx); err != nil {
+		t.Fatal(err)
+	}
 	for _, tableName := range allRecoveryTable {
 		if countTable(tableName) != 0 {
 			t.Errorf("%s still exists after rolling back %s", tableName, rolledBack.Source.Path)
@@ -113,10 +120,10 @@ func TestMigrations(t *testing.T) {
 		t.Errorf("accounts table still exists after rolling back %s", rolledBack.Source.Path)
 	}
 
-	if allResult, err = database.Migrate(ctx); err != nil || len(allResult) != 2 {
+	if allResult, err = database.Migrate(ctx); err != nil || len(allResult) != 3 {
 		t.Fatalf("re-apply: %d %v", len(allResult), err)
 	}
-	for _, tableName := range allRecoveryTable {
+	for _, tableName := range append(allRecoveryTable, "share_invitations") {
 		if countTable(tableName) != 1 {
 			t.Errorf("%s missing after re-applying", tableName)
 		}

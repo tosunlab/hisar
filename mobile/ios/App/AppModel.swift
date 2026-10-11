@@ -283,13 +283,33 @@ final class AppModel: ObservableObject {
         return vault
     }
 
-    func loadAllMember() async -> [Member]? {
-        await perform(isBusyShown: false) { try $0.listAllMember() }
+    func loadAllPerson() async -> [Member]? {
+        await perform(isBusyShown: false) { try $0.listAllPerson() }
     }
 
-    func inviteMember(email: String, role: String) async -> String? {
+    @discardableResult
+    func invitePerson(email: String) async -> Bool {
         let email = email.trimmingCharacters(in: .whitespacesAndNewlines)
-        return await perform { try $0.inviteMember(email: email, role: role) }
+        return await perform({ try $0.invitePerson(email: email) }) != nil
+    }
+
+    func loadShareInvitations() async -> ShareInvitations? {
+        await perform(isBusyShown: false) { try $0.listAllShareInvitation() }
+    }
+
+    @discardableResult
+    func acceptShareInvitation(invitationID: String) async -> Bool {
+        await perform({ try $0.acceptShareInvitation(invitationID: invitationID) }) != nil
+    }
+
+    @discardableResult
+    func declineShareInvitation(invitationID: String) async -> Bool {
+        await perform({ try $0.declineShareInvitation(invitationID: invitationID) }) != nil
+    }
+
+    @discardableResult
+    func cancelShareInvitation(invitationID: String) async -> Bool {
+        await perform({ try $0.cancelShareInvitation(invitationID: invitationID) }) != nil
     }
 
     func loadAllVaultMember(vaultID: String) async -> [Member]? {
@@ -298,7 +318,8 @@ final class AppModel: ObservableObject {
 
     @discardableResult
     func shareVault(vaultID: String, email: String, role: String) async -> Bool {
-        await perform({ try $0.shareVault(vaultID: vaultID, email: email, role: role) }) != nil
+        let email = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        return await perform({ try $0.shareVault(vaultID: vaultID, email: email, role: role) }) != nil
     }
 
     @discardableResult

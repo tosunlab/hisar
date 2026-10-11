@@ -44,6 +44,11 @@ type fakeAPIServer struct {
 	allCompletedVaultKeyByAccount  map[string][]proto.VaultKey
 	isUnreachable                  bool
 	eventChannel                   chan string
+	allShareInvitation             []proto.SentShareInvitation
+	allReceivedShareInvitation     []proto.ReceivedShareInvitation
+	allAnsweredShareInvitation     []string
+	allInvitedEmail                []string
+	isEmailUnavailable             bool
 	approvalEventChannel           chan client.Event
 	allApprovalByRequestID         map[string]*fakeApproval
 }

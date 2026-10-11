@@ -13,8 +13,12 @@ protocol VaultBackend: AnyObject {
     func reportActivity()
     func listAllVault() throws -> [VaultSummary]
     func createVault(name: String) throws -> VaultSummary
-    func listAllMember() throws -> [Member]
-    func inviteMember(email: String, role: String) throws -> String
+    func listAllPerson() throws -> [Member]
+    func invitePerson(email: String) throws
+    func listAllShareInvitation() throws -> ShareInvitations
+    func acceptShareInvitation(invitationID: String) throws
+    func declineShareInvitation(invitationID: String) throws
+    func cancelShareInvitation(invitationID: String) throws
     func listAllVaultMember(vaultID: String) throws -> [Member]
     func shareVault(vaultID: String, email: String, role: String) throws
     func changeVaultMemberRole(vaultID: String, accountID: String, role: String) throws

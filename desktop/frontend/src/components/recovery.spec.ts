@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import type { VaultSummary } from "../api";
-import { createApiMock, createFamilyMember, createItem, createPendingRecovery, createRecoveryStatus, createStatus, testBob } from "../testing";
+import { createApiMock, createPerson, createItem, createPendingRecovery, createRecoveryStatus, createStatus, testBob } from "../testing";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
 
@@ -48,7 +48,7 @@ function resetStore(): void {
     isSettingsOpen: false,
     isSharingOpen: false,
     isVaultRecoveryOpen: false,
-    allFamilyMember: [],
+    allPerson: [],
     allDevice: [],
     recoveryStatus: null,
     allPendingRecovery: [],
@@ -56,9 +56,9 @@ function resetStore(): void {
 }
 
 function mockFamily(isAdmin = true): void {
-  api.listAllMember.mockResolvedValue([
-    createFamilyMember({ role: isAdmin ? "admin" : "member" }),
-    createFamilyMember({ ...testBob, role: "member" }),
+  api.listAllPerson.mockResolvedValue([
+    createPerson({ role: isAdmin ? "admin" : "member" }),
+    createPerson({ ...testBob, role: "member" }),
   ]);
 }
 
@@ -148,7 +148,7 @@ describe("Account recovery in Settings", () => {
     expect(result.text()).toContain("Bob can now sign in");
     expect(result.find('[data-testid="unrecoverable-vaults"]').text()).toBe("Bob's personal vault");
     expect(wrapper.find('[data-testid="pending-recovery-BOB222"]').exists()).toBe(false);
-    expect(api.listAllMember).toHaveBeenCalledTimes(2);
+    expect(api.listAllPerson).toHaveBeenCalledTimes(2);
     wrapper.unmount();
   });
 

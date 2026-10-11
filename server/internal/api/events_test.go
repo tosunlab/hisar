@@ -93,9 +93,22 @@ func TestEventStream(t *testing.T) {
 	waitForSubscriber(t, server, carol.AccountID, 1)
 
 	family := requireValue[*session.Vault](t)(alice.CreateVault(ctx, "Family", proto.VaultShared))
-	member := requireValue[*proto.Member](t)(alice.GetVerifiedMember(ctx, "bob@example.com"))
-	if err := alice.ShareVault(ctx, family, member, proto.VaultEditor); err != nil {
+	aliceStream := openEventStream(t, alice.Client)
+	waitForSubscriber(t, server, alice.AccountID, 1)
+	if err := alice.InviteToVault(ctx, family, "bob@example.com", proto.VaultEditor); err != nil {
 		t.Fatal(err)
+	}
+	bobStream.waitForEvent(t, proto.EventShareInvitationsChanged)
+	invitationList := requireValue[*proto.ShareInvitationList](t)(bob.Client.ListAllShareInvitation(ctx))
+	if len(invitationList.AllReceived) != 1 {
+		t.Fatalf("Bob's invitations: %+v", invitationList)
+	}
+	if err := bob.Client.AcceptShareInvitation(ctx, invitationList.AllReceived[0].ID); err != nil {
+		t.Fatal(err)
+	}
+	aliceStream.waitForEvent(t, proto.EventShareInvitationsChanged)
+	if allCompleted, err := alice.CompleteAllAcceptedShare(ctx); err != nil || len(allCompleted) != 1 {
+		t.Fatalf("completed: %+v %v", allCompleted, err)
 	}
 	bobStream.waitForEvent(t, proto.EventVaultsChanged)
 

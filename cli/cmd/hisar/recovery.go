@@ -158,7 +158,7 @@ func runRecoveryStart(ctx context.Context, flags *flag.FlagSet, allArg []string)
 		}
 	}
 	if member == nil {
-		return fmt.Errorf("no member with email %s", email)
+		return fmt.Errorf("nobody with email %s shares a vault with you", email)
 	}
 	response, err := authedClient.CreateRecoveryLink(ctx, member.AccountID)
 	if err != nil {

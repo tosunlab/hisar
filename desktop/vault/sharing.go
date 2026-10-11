@@ -15,12 +15,17 @@ import (
 )
 
 var (
-	errPersonalVault  = errors.New("personal vaults are private and cannot be shared; create a shared vault instead")
-	errOwnerOnly      = errors.New("only owners of this vault can share it, change roles or remove members")
-	errAdminOnly      = errors.New("only family admins can invite people")
-	errCurrentDevice  = errors.New("this is the device you are using; sign out instead")
-	errOwnAccess      = errors.New("you cannot change your own access to a vault")
-	errMemberNotFound = errors.New("nobody in your family uses that email; invite them first in Settings")
+	errPersonalVault       = errors.New("personal vaults are private and cannot be shared; create a shared vault instead")
+	errOwnerOnly           = errors.New("only owners of this vault can share it, change roles or remove members")
+	errCurrentDevice       = errors.New("this is the device you are using; sign out instead")
+	errOwnAccess           = errors.New("you cannot change your own access to a vault")
+	errMemberNotFound      = errors.New("this person no longer shares a vault with you")
+	errInvalidEmail        = errors.New("enter the email address of the person")
+	errEmailNotConfigured  = errors.New("this server cannot send email yet, so invitations cannot be sent")
+	errTooManyInvitation   = errors.New("you sent too many invitations today; try again tomorrow")
+	errInvitationNotFound  = errors.New("this invitation no longer exists")
+	errAlreadyHasAccess    = errors.New("this person already has access to the vault")
+	errShareWithOwnAccount = errors.New("that is your own email; you already have access")
 )
 
 func isValidVaultRole(role string) bool {
@@ -34,8 +39,35 @@ func convertSharingError(err error) error {
 	return convertError(err)
 }
 
-// ListAllMember returns everyone in the family with the security code of their signing key.
-func (s *Service) ListAllMember() ([]FamilyMember, error) {
+func convertInvitationError(err error) error {
+	switch {
+	case client.IsStatus(err, http.StatusNotImplemented):
+		return errEmailNotConfigured
+	case client.IsStatus(err, http.StatusTooManyRequests):
+		return errTooManyInvitation
+	case client.IsStatus(err, http.StatusNotFound):
+		return errInvitationNotFound
+	case client.IsStatus(err, http.StatusConflict):
+		return errAlreadyHasAccess
+	case client.IsStatus(err, http.StatusBadRequest):
+		var apiError *client.APIError
+		if errors.As(err, &apiError) {
+			return errors.New(apiError.Message)
+		}
+	}
+	return convertSharingError(err)
+}
+
+func normalizeEmail(email string) (string, error) {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if at := strings.Index(email, "@"); at < 1 || at == len(email)-1 || strings.ContainsAny(email, " <>,") {
+		return "", errInvalidEmail
+	}
+	return email, nil
+}
+
+// ListAllPerson returns the user and the people they share a vault with, with the security code of their signing key.
+func (s *Service) ListAllPerson() ([]Person, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if err := s.requireUnlocked(); err != nil {
@@ -47,9 +79,9 @@ func (s *Service) ListAllMember() ([]FamilyMember, error) {
 	if err != nil {
 		return nil, convertError(err)
 	}
-	allMember := make([]FamilyMember, 0, len(allProtoMember))
+	allPerson := make([]Person, 0, len(allProtoMember))
 	for _, protoMember := range allProtoMember {
-		allMember = append(allMember, FamilyMember{
+		allPerson = append(allPerson, Person{
 			AccountID:     protoMember.AccountID,
 			Name:          protoMember.Name,
 			Email:         protoMember.Email,
@@ -59,10 +91,10 @@ func (s *Service) ListAllMember() ([]FamilyMember, error) {
 			IsKeyChanged:  s.state.IsMemberKeyChanged(protoMember.AccountID, protoMember.PublicKeys.Sign),
 		})
 	}
-	slices.SortFunc(allMember, func(first, second FamilyMember) int {
+	slices.SortFunc(allPerson, func(first, second Person) int {
 		return strings.Compare(strings.ToLower(first.Name+first.Email), strings.ToLower(second.Name+second.Email))
 	})
-	return allMember, nil
+	return allPerson, nil
 }
 
 // ListAllVaultMember returns who has access to a vault, owners first.
@@ -154,19 +186,22 @@ func (s *Service) getVerifiedMember(ctx context.Context, emailOrID string) (*pro
 	return member, nil
 }
 
-// ShareVault gives a family member access to a shared vault the current user owns.
+// ShareVault emails a share invitation; the person gets access once they accept and this app completes the share.
 func (s *Service) ShareVault(vaultID, email, role string) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if err := s.requireUnlocked(); err != nil {
 		return err
 	}
-	email = strings.TrimSpace(email)
-	if email == "" {
-		return errors.New("choose who to share with")
+	email, err := normalizeEmail(email)
+	if err != nil {
+		return err
 	}
 	if !isValidVaultRole(role) {
 		return errors.New("choose owner, editor or reader")
+	}
+	if email == strings.ToLower(s.unlockedSession.Email) {
+		return errShareWithOwnAccount
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -174,14 +209,7 @@ func (s *Service) ShareVault(vaultID, email, role string) error {
 	if err != nil {
 		return err
 	}
-	member, err := s.getVerifiedMember(ctx, email)
-	if err != nil {
-		return err
-	}
-	if member.AccountID == s.unlockedSession.AccountID {
-		return errOwnAccess
-	}
-	return s.shareWithMember(ctx, vault, member, role)
+	return convertInvitationError(s.unlockedSession.InviteToVault(ctx, vault, email, role))
 }
 
 // ChangeVaultMemberRole shares the vault again with the member under the new role.
@@ -261,30 +289,21 @@ func (s *Service) RemoveVaultMember(vaultID, accountID string) error {
 	return nil
 }
 
-// InviteMember creates a sign-up link for a new family member; only admins can invite.
-func (s *Service) InviteMember(email, role string) (string, error) {
+// InvitePerson asks the server to email a sign-up invite; the answer is the same whether or not the person has an account.
+func (s *Service) InvitePerson(email string) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if err := s.requireUnlocked(); err != nil {
-		return "", err
+		return err
 	}
-	email = strings.TrimSpace(email)
-	if !strings.Contains(email, "@") {
-		return "", errors.New("enter the email address of the person you are inviting")
-	}
-	if role != proto.RoleAdmin && role != proto.RoleMember {
-		return "", errors.New("choose admin or member")
+	email, err := normalizeEmail(email)
+	if err != nil {
+		return err
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	response, err := s.unlockedSession.Client.Invite(ctx, &proto.InviteRequest{Email: email, Role: role})
-	if client.IsStatus(err, http.StatusForbidden) {
-		return "", errAdminOnly
-	}
-	if err != nil {
-		return "", convertError(err)
-	}
-	return response.URL, nil
+	_, err = s.unlockedSession.Client.Invite(ctx, &proto.InviteRequest{Email: email})
+	return convertInvitationError(err)
 }
 
 // ListAllDevice returns the devices signed in to this account, this device first, then the most recently seen.

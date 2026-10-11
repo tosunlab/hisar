@@ -190,14 +190,31 @@ func (hisar *Hisar) CreateVault(name string) (string, error) {
 	return encodeJSON(hisar.service.CreateVault(name))
 }
 
-// ListAllMember returns everyone in the family ([]vault.FamilyMember) as JSON; isCurrentUser marks the signed-in account.
-func (hisar *Hisar) ListAllMember() (string, error) {
-	return encodeJSON(hisar.service.ListAllMember())
+// ListAllPerson returns the user and the people they share a vault with ([]vault.Person) as JSON; isCurrentUser marks the user.
+func (hisar *Hisar) ListAllPerson() (string, error) {
+	return encodeJSON(hisar.service.ListAllPerson())
 }
 
-// InviteMember returns a sign-up link for a new family member; role is "admin" or "member", and only admins can invite.
-func (hisar *Hisar) InviteMember(email, role string) (string, error) {
-	return hisar.service.InviteMember(email, role)
+// InvitePerson asks the server to email a sign-up invite.
+func (hisar *Hisar) InvitePerson(email string) error {
+	return hisar.service.InvitePerson(email)
+}
+
+// ListAllShareInvitation returns vault.ShareInvitations as JSON, after completing shares that people accepted.
+func (hisar *Hisar) ListAllShareInvitation() (string, error) {
+	return encodeJSON(hisar.service.ListAllShareInvitation())
+}
+
+func (hisar *Hisar) AcceptShareInvitation(invitationID string) error {
+	return hisar.service.AcceptShareInvitation(invitationID)
+}
+
+func (hisar *Hisar) DeclineShareInvitation(invitationID string) error {
+	return hisar.service.DeclineShareInvitation(invitationID)
+}
+
+func (hisar *Hisar) CancelShareInvitation(invitationID string) error {
+	return hisar.service.CancelShareInvitation(invitationID)
 }
 
 // ListAllVaultMember returns who has access to a shared vault ([]vault.VaultMember) as JSON, owners first.
@@ -205,7 +222,7 @@ func (hisar *Hisar) ListAllVaultMember(vaultID string) (string, error) {
 	return encodeJSON(hisar.service.ListAllVaultMember(vaultID))
 }
 
-// ShareVault gives a family member access to a shared vault the current user owns; role is "owner", "editor" or "reader".
+// ShareVault emails a share invitation for a shared vault the user owns; role is "owner", "editor" or "reader".
 func (hisar *Hisar) ShareVault(vaultID, email, role string) error {
 	return hisar.service.ShareVault(vaultID, email, role)
 }

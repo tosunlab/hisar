@@ -104,16 +104,16 @@ func (bridge *CommandLineBridge) answer(request *cliprotocol.Request) (any, erro
 		return nil, s.DeleteItem(request.VaultID, request.ItemID)
 	case cliprotocol.TypeImportItem:
 		return s.saveAllCommandLineImport(request.VaultID, request.ImportedItems)
-	case cliprotocol.TypeListMember:
-		allFamilyMember, err := s.ListAllMember()
+	case cliprotocol.TypeListPeople:
+		allPerson, err := s.ListAllPerson()
 		if err != nil {
 			return nil, err
 		}
-		result := cliprotocol.MemberListResult{Members: []cliprotocol.Member{}}
-		for _, familyMember := range allFamilyMember {
-			result.Members = append(result.Members, cliprotocol.Member{
-				AccountID: familyMember.AccountID, Name: familyMember.Name, Email: familyMember.Email, Role: familyMember.Role,
-				SecurityCode: familyMember.SecurityCode, IsCurrentUser: familyMember.IsCurrentUser, IsKeyChanged: familyMember.IsKeyChanged,
+		result := cliprotocol.PeopleListResult{People: []cliprotocol.Person{}}
+		for _, person := range allPerson {
+			result.People = append(result.People, cliprotocol.Person{
+				AccountID: person.AccountID, Name: person.Name, Email: person.Email, Role: person.Role,
+				SecurityCode: person.SecurityCode, IsCurrentUser: person.IsCurrentUser, IsKeyChanged: person.IsKeyChanged,
 			})
 		}
 		return result, nil
@@ -122,8 +122,30 @@ func (bridge *CommandLineBridge) answer(request *cliprotocol.Request) (any, erro
 	case cliprotocol.TypeUnshareVault:
 		return nil, s.RemoveVaultMember(request.VaultID, request.AccountID)
 	case cliprotocol.TypeInvite:
-		link, err := s.InviteMember(request.Email, request.Role)
-		return cliprotocol.InviteResult{URL: link}, err
+		return nil, s.InvitePerson(request.Email)
+	case cliprotocol.TypeListInvitation:
+		invitations, err := s.ListAllShareInvitation()
+		if err != nil {
+			return nil, err
+		}
+		result := cliprotocol.InvitationListResult{Received: []cliprotocol.ReceivedInvitation{}, Sent: []cliprotocol.SentInvitation{}, CompletionError: invitations.CompletionError}
+		for _, received := range invitations.AllReceived {
+			result.Received = append(result.Received, cliprotocol.ReceivedInvitation{
+				ID: received.ID, VaultID: received.VaultID, Role: received.Role, InvitedByName: received.InvitedByName, InvitedByEmail: received.InvitedByEmail, ExpiresAt: received.ExpiresAt,
+			})
+		}
+		for _, sent := range invitations.AllSent {
+			result.Sent = append(result.Sent, cliprotocol.SentInvitation{
+				ID: sent.ID, VaultID: sent.VaultID, VaultName: sent.VaultName, Email: sent.Email, Role: sent.Role, State: sent.State, ExpiresAt: sent.ExpiresAt,
+			})
+		}
+		return result, nil
+	case cliprotocol.TypeAcceptInvitation:
+		return nil, s.AcceptShareInvitation(request.InvitationID)
+	case cliprotocol.TypeDeclineInvitation:
+		return nil, s.DeclineShareInvitation(request.InvitationID)
+	case cliprotocol.TypeCancelInvitation:
+		return nil, s.CancelShareInvitation(request.InvitationID)
 	case cliprotocol.TypeListDevice:
 		allDevice, err := s.ListAllDevice()
 		if err != nil {

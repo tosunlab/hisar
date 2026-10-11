@@ -6,17 +6,18 @@ Status: **Draft, Phase 0**. This document is the source of truth for the securit
 
 **Goals**
 
-- End-to-end encrypted password manager for one household and close friends (≈ 2–20 users).
-- Self-hosted: one server binary + Postgres on our own server.
+- End-to-end encrypted password manager for developers, run as a hosted service (`api.tryhisar.com`): one server binary + Postgres.
+- Person-to-person sharing by email: anyone can share a vault they own with anyone else, and nobody can list the accounts on the server.
 - Zero-knowledge server: the server never sees the master password, the Secret Key, any decryption key or any plaintext item data.
 - Offline-first clients: every client keeps a full encrypted copy and works with no network.
-- Shared vaults between family members, plus an admin-assisted recovery path.
+- Shared vaults between people, plus an admin-assisted recovery path (§6; to be redesigned for many unrelated users).
 - Clients: desktop (first), browser extension, mobile, CLI.
 - One implementation of the crypto, written in Go, shared by all clients.
 
 **Non-goals (for now)**
 
-- Multi-tenant SaaS, billing, SSO/SCIM, enterprise policy.
+- Teams and organizations, billing, SSO/SCIM, enterprise policy.
+- Open registration: sign-up stays invite-only (§5.1).
 - Protecting an unlocked device from local malware (out of scope for every password manager).
 - Hiding metadata from the server completely (see §2.3).
 
@@ -36,11 +37,11 @@ Item contents (passwords, notes, TOTP seeds, passkeys, attachments), item metada
 | Stolen locked device | Disk image | Needs master password; Secret Key on disk alone is not enough |
 | Stolen unlocked device / local malware | Memory, keystrokes | Out of scope. Minimised by auto-lock and short key lifetime |
 | Phishing site | Lures user to wrong origin | Extension autofills only on exact origin match (§9.2) |
-| Other family member | Legit account | Sees only vaults shared with them |
+| Another user | Legit account | Sees only vaults shared with them, and only the people they share a vault with or who invited them (§5.8). Cannot learn whether an email has an account |
 
 ### 2.3 Accepted metadata leakage
 
-The server sees: account emails, which users can access which vaults, number of items per vault, ciphertext sizes, timestamps, device list, IPs. Item titles, URLs and vault names are encrypted.
+The server sees: account emails, the emails people invite or share with, which users can access which vaults, number of items per vault, ciphertext sizes, timestamps, device list, IPs. Item titles, URLs and vault names are encrypted.
 
 ## 3. Cryptographic primitives
 
@@ -162,16 +163,21 @@ Each file gets a random `K_file`. The file is chunked (64 KiB chunks) and each c
 
 ## 5. Accounts and devices
 
-### 5.1 Invite (admin)
+### 5.1 Invites
 
-The admin creates an invite: email + one-time token, signed with the admin's Ed25519 key. The link is `https://<server>/invite/<token>`. Signup is invite-only: there is no open registration.
+Sign-up is invite-only: there is no open registration. An invite is an email address plus a one-time token (the server stores its SHA-256 hash in `invites`), valid for 7 days. The sign-up link is `https://<HISAR_PUBLIC_URL host>/invite/<token>` (`http` only for a loopback host, in development); the token alone is the invite code the apps accept.
+
+- **Any signed-in user** invites a person by email with `POST /invites {email}`. The server emails the invite itself (§8.5); the response is always `202 {"message": "Invitation sent"}` and never contains the link or the code. When the email already has an account, nothing is created or sent and the answer is the same, so invites do not reveal who has an account. Invites from users always create `member` accounts.
+- Without email configured on the server (§8.4), `POST /invites` answers `501 email is not configured on this server`.
+- Rate limits: 10 invites per account and 20 per IP address per day.
+- **The operator** creates invites with `hisar-server invite --email … [--role admin|member]`, which prints the link and needs no email; the first account is usually created this way, as an admin.
 
 ### 5.2 Signup (new user, first device)
 
 1. Client generates the Secret Key, salt and keyset, then derives AUK and `authKey`.
 2. OPAQUE registration with `authKey`.
 3. Client uploads salt, Argon2 params, `encKeyset`, public keys, signature.
-4. Client creates a **Personal** vault, and joins the shared **Family** vault once the admin wraps its key (§5.6).
+4. Client creates a **Personal** vault. Share invitations sent to the email before the account existed (§5.8) show up in the app to accept.
 5. Client generates the Emergency Kit PDF and requires the user to confirm it was saved.
 
 ### 5.3 Login on a new device
@@ -204,23 +210,41 @@ Common to both:
 
 - After OPAQUE, the server issues an opaque random session token (256 bits). The server stores only its SHA-256 hash, together with the device ID and expiry (30 days, sliding).
 - All API calls use `Authorization: Bearer <token>` over TLS.
-- Devices can be listed and revoked by their owner or the admin.
+- Devices can be listed and revoked by their owner.
 
 ### 5.6 Public key authenticity
 
 Sharing a vault means wrapping `K_vault` to the recipient's KEM public key, which the server delivers. A malicious server could substitute its own key. Mitigations:
 
 - Each user's KEM public key is signed with their Ed25519 key, bound to their account ID.
-- Clients pin (trust on first use) every other member's Ed25519 key in their local state when they first share with them (`localstate.State.CheckMemberPin`, used by the CLI and the desktop app). Sharing, changing a member's role and key rotation stop if a pinned key changes; the desktop app also marks that member in its member lists.
-- The UI shows a short security code per member that family members can optionally compare in person once: the first 8 bytes of SHA-256 of their Ed25519 public key as 4 groups of 4 uppercase hex digits, e.g. `3F2A 91C0 7B44 E1D8` (`crypt.FormatKeyFingerprint`).
+- Clients pin (trust on first use) every other member's Ed25519 key in their local state when they first share with them, which is when the owner's app completes an accepted share invitation (§5.8; `localstate.State.CheckMemberPin`, used by the CLI and the desktop app). Completing a share, changing a member's role and key rotation stop if a pinned key changes; the desktop app also marks that person in its lists.
+- The UI shows a short security code per person (Settings → People and the vault's sharing panel) that the two people can optionally compare once, in person or over another channel: the first 8 bytes of SHA-256 of their Ed25519 public key as 4 groups of 4 uppercase hex digits, e.g. `3F2A 91C0 7B44 E1D8` (`crypt.FormatKeyFingerprint`).
 
 ### 5.7 Changing the master password
 
 The client derives a new AUK and `authKey` (new salt), re-encrypts the keyset and re-registers OPAQUE. Vault keys don't change. The Secret Key can be rotated the same way.
 
+### 5.8 Sharing a vault by email
+
+Sharing is person to person: the owner of a shared vault types an email address and a role. Nobody can list the accounts on the server, and the server answers every share the same way, so sharing cannot be used to find out who has an account.
+
+1. **Invite (owner).** `POST /vaults/{id}/share-invitations {email, role}` (an owner of a shared vault; personal vaults cannot be shared) stores a share invitation (`share_invitations`: vault, inviter, email, role, state, expiry after 7 days; one per vault and email, and a repeat replaces the role and expiry and sets it back to pending) and answers `202 {"message": "Invitation sent"}`. After answering, in the background:
+   - when the email has an account, the server sends that account `share-invitations-changed` (§7.2) and an email saying who shared a vault with them (vault names are encrypted, so it says "a vault");
+   - otherwise it creates a sign-up invite for the email (§5.1) and emails it, saying a vault is waiting. Without email configured nothing is sent; the invitation still waits for an account with that email.
+   - Only errors that depend on the owner's own data are reported: the email is the owner's own (`400`), or belongs to someone who already has access to the vault (`409`; the owner sees the vault's members anyway). Rate limits: 50 share invitations per account and 100 per IP address per day.
+2. **Accept or decline (recipient).** `GET /share-invitations` returns `received`: the pending, unexpired invitations to the caller's email, with the inviter's name and email, the role and the vault ID. `POST /share-invitations/{id}/accept` marks the invitation accepted by the caller's account; nothing secret is published. `POST /share-invitations/{id}/decline` deletes it. Both notify the vault's owners with `share-invitations-changed`. Until the share is completed the recipient has no access.
+3. **Complete (owner's app).** `GET /share-invitations` also returns `sent`: the invitations of every vault the caller owns, with `state` (`pending` or `accepted`), and for accepted ones the recipient's account ID, name, email and signed public keys (only there: never for pending invitations or for vaults the caller does not own). On every sync, and at once on `share-invitations-changed`, the owner's app (`session.CompleteAllAcceptedShare`) verifies each accepted recipient's signed KEM key, pins their signing key (§5.6), wraps the vault key exactly as for any other member (§4.4) and calls `PUT /vaults/{id}/access/{accountID}`. The server accepts a new member there only with an accepted invitation for that vault and account, deletes the invitation in the same transaction and sends the recipient `vaults-changed`. The app then lists the person with their security code to compare.
+4. **Cancel (owner).** `DELETE /share-invitations/{id}` (an owner of the vault) withdraws a pending or accepted invitation.
+
+`PUT /vaults/{id}/access/{accountID}` otherwise only changes the role of an existing member, and a key rotation (§4.4) can only keep existing members, so no vault is ever shared without the recipient accepting.
+
+**People.** `GET /members` returns the caller and every account that shares at least one vault with them, with signed public keys; it is the member source for sharing, role changes, removal and rotation. There is no list of every account anywhere (API, desktop, iOS, CLI, extension); only the operator's `hisar-server` reads the database directly. The desktop's Settings → People shows those people with their security codes, the invitations the user sent (Cancel) and received (Accept, Decline), and the invite form; a banner above the vault list shows received invitations.
+
 ## 6. Recovery
 
 Zero-knowledge means a forgotten master password or lost Secret Key loses data, unless recovery is set up ahead of time.
+
+**Open: recovery must be redesigned for the multi-user model.** Recovery still works as below: one admin's recovery keyset covers every recoverable vault on the server, which suits one household but not a hosted service of unrelated users. Until a separate product decision the logic is unchanged, except that it never lists all users: an admin starts a recovery for a person they share a vault with (Settings → People, `hisar recovery-start <email>`), and clients verify the recovery key against the creator that `GET /recovery/keyset` returns instead of a member list.
 
 ### 6.1 Recovery keyset
 
@@ -228,7 +252,7 @@ Zero-knowledge means a forgotten master password or lost Secret Key loses data, 
   - Its private part is encrypted with the admin's `K_user`: `XChaCha20-Poly1305(key=K_user, aad="hisar/v1/recovery-keyset"||adminAccountID)`.
   - Its KEM public key is signed with the admin's Ed25519 key, bound to the literal recipient ID `"recovery"`: `Ed25519.Sign("hisar/v1/kem-key" || "recovery" || kemPub)`, the same format as account keys (§4.3), so `PublicKeys.Verify("recovery")` checks it.
   - The server stores the KEM public key, the admin's signing public key, the signature, the encrypted keyset and `created_by`. It accepts the keyset only from an admin, only once, and only signed by that admin's current signing key. `GET /recovery/keyset` returns the encrypted keyset to its creator only.
-- Before wrapping anything to the recovery key, clients verify it (`session.GetRecoveryPublicKey`): `created_by` must be an admin in `/members`, whose own signed keys verify and whose signing key is the one that signed the recovery key. The CLI then pins the recovery KEM key trust-on-first-use (`AllPin["recovery"]`), like member keys (§5.6).
+- Before wrapping anything to the recovery key, clients verify it (`session.GetRecoveryPublicKey`): `GET /recovery/keyset` returns its creator (account ID, name, email, role, public keys), who must be an admin whose own signed keys verify and whose signing key is the one that signed the recovery key. The CLI then pins the recovery KEM key trust-on-first-use (`AllPin["recovery"]`), like member keys (§5.6).
 - Vault keys are wrapped to the recovery key with recipient ID `"recovery"` (§4.4) and stored in `vault_recovery`:
   - `session.CreateVault` wraps every new vault when a recovery keyset exists. Shared vaults must be wrapped: the server rejects a shared vault without the wrapping. Personal vaults are wrapped by default.
   - `PUT /vaults/{id}/recovery` (owner) sets the wrapping. `DELETE /vaults/{id}/recovery` (owner, personal vaults only) removes it and records the opt-out (`vaults.recovery_opt_out`), so later bulk enabling skips the vault. The UI must warn that an opted-out vault is lost if the user loses access.
@@ -248,12 +272,12 @@ Zero-knowledge means a forgotten master password or lost Secret Key loses data, 
 4. **Complete (admin).** `session.CompleteRecovery` (`hisar recovery-complete <email>`), run by the admin who created the recovery keyset:
    - The client verifies the new public keys (`PublicKeys.Verify(accountID)`), decrypts the recovery keyset with its `K_user`, unwraps each vault key (recipient `"recovery"`) and wraps it to the user's new KEM key (recipient = account ID).
    - `POST /admin/recovery/{accountID}/complete {vaultKeys: [{vaultId, wrappedKey}]}` applies it in one transaction: it replaces the account's OPAQUE record, salt, Argon2 params, encrypted keyset and public keys with the pending ones, updates the account's wrapped key for each provided vault, removes its access to every other vault, deletes all of its sessions and devices, and deletes the pending row and the token.
-   - The response lists the vaults that could not be recovered (opted out, or without a wrapping), and the UI tells the admin. The admin's CLI re-pins the user's new signing key; other members see a key-change warning (§5.6).
+   - The response lists the vaults that could not be recovered (opted out, or without a wrapping), and the UI tells the admin. The admin's app and CLI re-pin the user's new signing key (the app first compares it with `/members` when the admin shares a vault with them); other members see a key-change warning (§5.6).
 5. **Sign in (user).** The user signs in normally with the email, the new Secret Key and the new master password.
 
 Every step is audit-logged (`recovery_keyset_created`, `vault_recovery_set`, `vault_recovery_opt_out`, `recovery_started`, `recovery_submitted`, `recovery_completed`).
 
-The desktop app (`desktop/vault/recovery.go`) offers the same steps: Settings → Account recovery lets an admin set up recovery, lists pending recoveries and completes them (showing the vaults that could not be recovered), and a family member's row starts a recovery and shows the link. Members see whether their vaults are recoverable, and the owner of a personal vault can turn recovery off there (with the warning above) and back on. The sign-in screen's **Recover account** submits a recovery link while signed out, shows the new Secret Key and can save it as an Emergency Kit. Like the CLI, the desktop app pins the recovery KEM key on first use and re-pins a member's signing key after completing their recovery.
+The desktop app (`desktop/vault/recovery.go`) offers the same steps: Settings → Account recovery lets an admin set up recovery, lists pending recoveries and completes them (showing the vaults that could not be recovered), and the row of a person in Settings → People starts a recovery and shows the link. Members see whether their vaults are recoverable, and the owner of a personal vault can turn recovery off there (with the warning above) and back on. The sign-in screen's **Recover account** submits a recovery link while signed out, shows the new Secret Key and can save it as an Emergency Kit. Like the CLI, the desktop app pins the recovery KEM key on first use and re-pins a member's signing key after completing their recovery.
 
 The server never sees a vault key. The admin's client can technically decrypt recoverable vaults; this is the trust trade-off of recovery, and it is shown to users at signup.
 
@@ -278,11 +302,12 @@ The client applies changes to its local SQLite cache and stores `nextSeq`. Chang
 
 - `event: vault-changed` with `{"vaultID", "seq"}` goes to every member of a vault after an item is written (with the new `seq`) or the key is rotated (`seq` 0).
 - `event: vaults-changed` with `{}` tells an account that its list of vaults changed: it was given or lost access, created a vault, was part of a vault before a rotation, or was recovered.
+- `event: share-invitations-changed` with `{}` tells an account that its received or sent share invitations changed (§5.8): one was sent to it or withdrawn, or one it can complete was accepted or declined. The desktop backend then completes accepted shares and refreshes the UI.
 - `event: approval-requested`, `approval-answered` and `approval-resolved` with `{"requestId"}` go to every stream of the account for phone approvals (§9.9). They carry no request or answer, only the ID.
 - The server sends a `: heartbeat` comment every 25 s and re-checks the stream's session each time, so logging out or revoking the device ends the stream.
 - Each write pushes the connection's write deadline forward, so the server's 30 s response write timeout does not cut the stream.
 - An account may hold 8 streams. A subscriber whose 32-event buffer fills is closed, so the client reconnects and resyncs.
-- The broker lives in one server process, which is what a self-hosted deployment runs; several processes would need Postgres `LISTEN/NOTIFY`.
+- The broker lives in one server process, which is what the deployment runs; several processes would need Postgres `LISTEN/NOTIFY`.
 - The desktop backend keeps one stream open while unlocked. Its client has no overall request timeout, but closes a stream that sends nothing, not even a heartbeat, for 90 s. It reconnects with backoff from 1 s to 60 s, and stops on 401.
 - On an event the backend syncs every vault incrementally (bursts collapse into one sync), so the SSH agent and the browser bridge see the change even when the window is hidden. It then emits `remote-change`, and the UI runs its background refresh.
 
@@ -308,7 +333,7 @@ The server cannot read items, so merging happens on the client:
 ### 7.5 Rollback and withholding detection
 
 - Clients remember the highest `seq` seen per vault. A response with a lower `seq` is rejected as a rollback.
-- A server can still hide recent writes from other devices. This is accepted for a self-hosted server, because the server is ours.
+- A server can still hide recent writes from other devices. This is accepted because we run the server.
 
 ## 8. Server
 
@@ -319,7 +344,9 @@ accounts       (id, email, name, role[admin|member], state, argon2_params, salt,
                 enc_keyset, x25519_pub, ed25519_pub, x25519_sig, created_at)
 devices        (id, account_id, name, platform, created_at, last_seen_at, revoked_at)
 sessions       (token_hash, account_id, device_id, expires_at)
-invites        (token_hash, email, created_by, signature, expires_at, used_at)
+invites        (token_hash, email, role, created_by, created_at, expires_at, used_at)
+share_invitations (id, vault_id, email, role, invited_by, state[pending|accepted], accepted_by,
+                created_at, expires_at, accepted_at)   -- unique (vault_id, email)
 vaults         (id, type[personal|shared], enc_name, seq, recovery_opt_out, created_at)
 vault_access   (vault_id, account_id, wrapped_key, role[owner|editor|reader], granted_by)
 vault_recovery (vault_id, wrapped_key, updated_at)
@@ -343,12 +370,12 @@ Phone approvals (§9.9) are not in Postgres: they live in the server process's m
 | Auth | `POST /auth/register/{start,finish}`, `POST /auth/login/{start,finish}`, `POST /auth/logout`, `GET /auth/prelogin?email=` (salt, params) |
 | Account | `GET/PUT /account`, `GET /account/keyset`, `PUT /account/password` |
 | Devices | `GET /devices`, `DELETE /devices/{id}` |
-| Members | `GET /members` (public keys, signatures), `POST /invites`, `GET /invites/{token}` |
+| People | `GET /members` (the caller and the people they share a vault with; public keys, signatures), `POST /invites` (any user; emailed) |
+| Share invitations | `POST /vaults/{id}/share-invitations` (owner), `GET /share-invitations` (`received`, `sent`), `POST /share-invitations/{id}/accept`, `POST /share-invitations/{id}/decline` (recipient), `DELETE /share-invitations/{id}` (owner) |
 | Vaults | `GET /vaults`, `POST /vaults` (optional `recoveryWrappedKey`), `GET /vaults/{id}/members`, `PUT /vaults/{id}/access/{accountID}`, `DELETE /vaults/{id}/access/{accountID}`, `POST /vaults/{id}/rotate` (Phase 2, optional `recoveryWrappedKey`), `PUT /vaults/{id}/recovery`, `DELETE /vaults/{id}/recovery` (owner; delete is personal vaults only) |
 | Items | `GET /vaults/{id}/changes`, `PUT /vaults/{id}/items/{itemID}`, `GET /vaults/{id}/items/{itemID}/history` |
 | Attachments | `PUT/GET /vaults/{id}/attachments/{attID}/chunks/{n}` |
-| Recovery (Phase 2) | `GET /recovery/keyset` (any member; the encrypted keyset only for its creator), `POST /recovery/keyset` (admin, once); `POST /auth/recovery/account`, `POST /auth/recovery/start`, `POST /auth/recovery/finish` (recovery token, rate-limited); `GET /admin/recovery`, `POST /admin/recovery/{accountID}`, `POST /admin/recovery/{accountID}/complete` (admin) |
-| Admin | `GET /admin/audit`, `GET /admin/accounts` |
+| Recovery (Phase 2) | `GET /recovery/keyset` (any member; with its creator; the encrypted keyset only for the creator), `POST /recovery/keyset` (admin, once); `POST /auth/recovery/account`, `POST /auth/recovery/start`, `POST /auth/recovery/finish` (recovery token, rate-limited); `GET /admin/recovery`, `POST /admin/recovery/{accountID}`, `POST /admin/recovery/{accountID}/complete` (admin) |
 | Approvals (§9.9) | `POST /approvals`, `GET /approvals` (pending), `GET /approvals/{id}`, `POST /approvals/{id}/answer`, `DELETE /approvals/{id}` (resolve; the requesting device only) |
 | Desktop updates | `GET /desktop/updates/appcast.xml` (Sparkle appcast), `GET /desktop/updates/{version}/{file}` (streams a release file); any signed-in session, 404 when the server has no update source (§9.1.1) |
 
@@ -357,9 +384,10 @@ All under `/api/v1`. JSON bodies, base64url for binary fields.
 ### 8.3 Hardening
 
 - Rate limiting per IP and per email on `prelogin` and `login` endpoints. `prelogin` returns a deterministic fake salt for unknown emails so it doesn't reveal which accounts exist.
+- No account enumeration: `POST /invites` and `POST /vaults/{id}/share-invitations` answer the same whether or not the email has an account, and do the account-dependent work (events, invites, email) after answering. Both are rate-limited per account and per IP (§5.1, §5.8).
 - Request size limits. Strict JSON decoding (unknown fields rejected).
 - Security headers on the invite/recovery web pages (CSP, HSTS, no framing).
-- Audit log for logins, device changes, invites, sharing changes and recovery.
+- Audit log for logins, device changes, invites, share invitations, sharing changes and recovery.
 
 ### 8.4 Deployment
 
@@ -368,8 +396,20 @@ All under `/api/v1`. JSON bodies, base64url for binary fields.
 - HTTP framework: Fiber v3 (fasthttp). It serves plain HTTP behind the reverse proxy; HTTP/2 and TLS are handled by the reverse proxy (nginx in the reference deployment).
 - Served publicly over https behind nginx, which terminates TLS. The GitLab pipeline publishes the image for amd64 and arm64 to the container registry on every `v*` tag.
 - Attachments on local disk (later: S3-compatible storage).
+- Optional email (§8.5): `HISAR_SMTP_HOST`, `HISAR_SMTP_PORT`, `HISAR_SMTP_USERNAME`, `HISAR_SMTP_PASSWORD` and `HISAR_SMTP_FROM`, all or none; the server refuses to start with only some of them.
 - Optional desktop update source (§9.1.1): `HISAR_UPDATE_GITLAB_URL`, `HISAR_UPDATE_GITLAB_PROJECT_ID` and `HISAR_UPDATE_GITLAB_TOKEN` (a project access token with the Reporter role and the `read_api` scope). Without them the update endpoints answer 404.
 - Nightly `pg_dump` + attachments encrypted with `age` and copied off-server. Restore tested quarterly.
+
+### 8.5 Email
+
+`server/internal/mail` has a small `Mailer` interface with an SMTP implementation and a recording fake for tests.
+
+- **Transport.** Port 465 uses implicit TLS; any other port must offer STARTTLS, which is used before authenticating. Plaintext is refused, so credentials never cross the network unencrypted; the only exception is a loopback host, which the end-to-end test's SMTP sink uses (`server/cmd/hisar-smtp-sink`). Authentication is PLAIN over TLS. Each message has a 30 s deadline.
+- **Messages.** Plain text in UTF-8, no HTML, no images and no tracking; short and written for developers. Names from users are stripped of control characters before they go into a header.
+  - Invite: who invited them, the sign-up link and the invite code, the expiry, and that the email can be ignored.
+  - Share invitation to an account: "<Name> shared a vault with you in Hisar", the role, and where to accept (Settings → People, `hisar invitations`).
+  - Share invitation without an account: the same, plus the sign-up link and code.
+- Sending happens in the background after the API answered; failures are logged without the recipient's address.
 
 ## 9. Clients
 
@@ -466,7 +506,7 @@ The desktop keeps paired browsers (`instanceID`, browser name, SHA-256 of the to
 
 - gomobile passes only strings, numbers, `[]byte` and interfaces, so lists and items cross as JSON strings with the desktop's types (`vault.Status`, `VaultSummary`, `ItemDetail`, `browser.Login`).
 - `HisarkitNew(stateDirectory, deviceName, secretKeyStore, biometric, clipboard, listener)` keeps `hisar.json` and `hisar-cache.db` in `stateDirectory`, the app group container, so the app and the AutoFill extension share the state and the encrypted cache.
-- **Methods:** `Status`, `SignIn`, `SignUp` (returns the status and the new Secret Key), `Unlock`, `UnlockWithBiometric`, `EnableBiometricUnlock`, `DisableBiometricUnlock`, `Lock`, `SignOut`, `ReportActivity`, `ListAllVault`, `ListAllItem` (no secrets), `GetItem`, `SaveItem` (item JSON in, item JSON out), `DeleteItem`, `CopyField`, `GetOneTimeCode`, `GeneratePassword`, `ListAllLoginForService`, `GetLoginForService`, `GetOneTimeCodeForService`, for sharing (§5) `CreateVault` (always a shared vault), `ListAllMember`, `InviteMember` (returns the sign-up link; admins only), `ListAllVaultMember`, `ShareVault`, `ChangeVaultMemberRole`, `RemoveVaultMember`, and for passkeys (§9.8) `ListAllPasskeyForRelyingParty`, `PreparePasskeyRegistration`, `CreatePasskey`, `AssertPasskey` and `DeletePasskey`. Item summaries and logins carry `hasOneTimePassword`, never the secret.
+- **Methods:** `Status`, `SignIn`, `SignUp` (returns the status and the new Secret Key), `Unlock`, `UnlockWithBiometric`, `EnableBiometricUnlock`, `DisableBiometricUnlock`, `Lock`, `SignOut`, `ReportActivity`, `ListAllVault`, `ListAllItem` (no secrets), `GetItem`, `SaveItem` (item JSON in, item JSON out), `DeleteItem`, `CopyField`, `GetOneTimeCode`, `GeneratePassword`, `ListAllLoginForService`, `GetLoginForService`, `GetOneTimeCodeForService`, for sharing (§5.8) `CreateVault` (always a shared vault), `ListAllPerson` (the people the user shares a vault with), `InvitePerson` (the server emails a sign-up invite), `ListAllVaultMember`, `ShareVault` (sends a share invitation), `ListAllShareInvitation`, `AcceptShareInvitation`, `DeclineShareInvitation`, `CancelShareInvitation`, `ChangeVaultMemberRole`, `RemoveVaultMember`, and for passkeys (§9.8) `ListAllPasskeyForRelyingParty`, `PreparePasskeyRegistration`, `CreatePasskey`, `AssertPasskey` and `DeletePasskey`. Item summaries and logins carry `hasOneTimePassword`, never the secret.
 - **Phone approvals (§9.9):** `ListAllPendingApproval` (the open, unexpired requests of other devices, opened and checked, as JSON), `ApproveApproval` (asks `Biometric.Authenticate` first), `ApproveApprovalWithPassword` (checks the master password instead) and `DenyApproval`.
 - **Interfaces implemented in Swift:**
   - `SecretKeyStore`: the Secret Key in the Keychain, in a keychain access group shared with the extension.
@@ -491,12 +531,12 @@ The desktop keeps paired browsers (`instanceID`, browser name, SHA-256 of the to
 
 ### 9.4 CLI
 
-`hisar` is the command-line client for the terminal and for scripts: vaults, items (`ls`, `get`, `add`, `edit`, `rm`), the generator, import (§9.7), sharing, invites, devices and recovery, and later `hisar run` to inject secrets into processes. It works in one of two modes:
+`hisar` is the command-line client for the terminal and for scripts: vaults, items (`ls`, `get`, `add`, `edit`, `rm`), the generator, import (§9.7), sharing (`share <vault> <email> [-r role]`, `unshare`, `people`, `invitations [accept|decline|cancel <id>]`, §5.8), invites (`invite <email>`), devices and recovery, and later `hisar run` to inject secrets into processes. It works in one of two modes:
 
 - **Through the desktop app**, like 1Password's CLI integration: `hisar` asks the running Hisar app for what each command needs over `~/.hisar/cli.sock`. It has no session, state file or keys of its own, and nothing is unlocked in the `hisar` process.
 - **Standalone**: its own sign-in, with the session in `state.json` (`HISAR_STATE`) and the Secret Key in the OS keychain (`HISAR_SECRET_KEY` overrides it); every command that decrypts asks for the master password. This is the mode on Linux and Windows, on servers, and whenever the app is not running.
 
-**Choosing the mode.** `--standalone` (before the command) or `HISAR_STANDALONE=1` forces standalone. Otherwise `hisar` connects to the socket (`HISAR_CLI_SOCKET` overrides the path, for the app and the CLI) and sends `hello`. It uses the app when the app answers, and falls back to standalone when the socket is missing, the connection is refused, or the app answers `integration-disabled`. An error after the app answered (denied, signed out, offline) is reported; `hisar` never retries it standalone. `hisar status` prints the mode, why that mode was chosen, and the account (`email` on `server`, and whether the app is locked). `signup`, `login`, `logout` and `recover` manage the standalone sign-in, and `emergency-kit` and the `recovery-*` commands need the Secret Key or recovery keys, which the app never hands out; in app mode they stop with a message that points to the app or to `--standalone`. `hisar --version` prints the version stamped at build time (`-X main.version`).
+**Choosing the mode.** `--standalone` (before the command) or `HISAR_STANDALONE=1` forces standalone. Otherwise `hisar` connects to the socket (`HISAR_CLI_SOCKET` overrides the path, for the app and the CLI) and sends `hello`. It uses the app when the app answers, and falls back to standalone when the socket is missing, the connection is refused, or the app answers `integration-disabled`. An error after the app answered (denied, signed out, offline) is reported; `hisar` never retries it standalone. `hisar status` prints the mode, why that mode was chosen, and the account (`email` on `server`, and whether the app is locked). Missing arguments are asked for interactively; flags are for scripts. Standalone, `hisar invitations` completes accepted shares after asking for the master password, as the app does on every sync. `signup`, `login`, `logout` and `recover` manage the standalone sign-in, and `emergency-kit` and the `recovery-*` commands need the Secret Key or recovery keys, which the app never hands out; in app mode they stop with a message that points to the app or to `--standalone`. `hisar --version` prints the version stamped at build time (`-X main.version`).
 
 **Bundled in the macOS app.** `Hisar.app/Contents/Helpers/hisar` is a universal (arm64 + x86_64) build of the CLI. It cannot be `Contents/MacOS/hisar`: the default macOS file system ignores case, so that is the app's own executable `Hisar`. It is built with `CGO_ENABLED=0`, stamped with the app version and signed by `scripts/sign-desktop-app.sh` before the app, and it updates with the app through Sparkle (§9.1.1). Settings → Command-line tool:
 
@@ -520,10 +560,12 @@ The desktop keeps paired browsers (`instanceID`, browser name, SHA-256 of the to
 | `items.save` | `vaultID`, `item` (`id` and `revision` for an update; `title`, `username`, `urls`, `password`, `notes`) | `item`. An update keeps everything else of the item: fields, one-time password, passkeys, SSH key |
 | `items.delete` | `vaultID`, `itemID` | `{}` |
 | `items.import` | `vaultID`, `importedItems` (at most 10 parsed items) | `savedCount`, `failures` `[{title, message}]` |
-| `members.list` | — | `members`: `[{accountID, name, email, role, securityCode, isCurrentUser, isKeyChanged}]` |
-| `vaults.share` | `vaultID`, `email`, `role` | `{}` (key pinning as in the app, §5.6) |
+| `people.list` | — | `people`: `[{accountID, name, email, role, securityCode, isCurrentUser, isKeyChanged}]`, the people the user shares a vault with (§5.8) |
+| `vaults.share` | `vaultID`, `email`, `role` | `{}`; sends a share invitation (§5.8) |
 | `vaults.unshare` | `vaultID`, `accountID` | `{}` (rotates the vault key, §4.4) |
-| `invite` | `email`, `role` | `url` |
+| `invite` | `email` | `{}`; the server emails the invite (§5.1) |
+| `invitations.list` | — | `received`, `sent` as in the app; listing first completes accepted shares |
+| `invitations.accept`, `invitations.decline`, `invitations.cancel` | `invitationID` | `{}` |
 | `devices.list` | — | `devices` |
 | `devices.revoke` | `deviceID` | `{}` |
 
@@ -840,10 +882,11 @@ go.work     Ties the Go modules together for local development
 |---|---|---|
 | 0 | This document, repo skeleton, CI | Design reviewed and agreed |
 | 1 | `core/crypt` with test vectors, OPAQUE auth, server (accounts, vaults, items, sync), CLI, Docker deployment, CI (unit and database tests, end-to-end test of the built binaries, image build) | Two CLI clients on two machines sync a shared vault through a self-hosted server |
-| 2 (MVP) | Desktop app (macOS first): signup + Emergency Kit, unlock, **Touch ID unlock** (§5.4), items, generator, search, Personal + Family vaults, invites, recovery, vault key rotation, auto-lock, **SSH agent with SSH Key items and Touch ID approval** (§9.6), local encrypted cache. CI builds the desktop app | Family uses it daily on macOS; `ssh` and `git` use keys from Hisar |
+| 2 (MVP) | Desktop app (macOS first): signup + Emergency Kit, unlock, **Touch ID unlock** (§5.4), items, generator, search, personal and shared vaults, invites, recovery, vault key rotation, auto-lock, **SSH agent with SSH Key items and Touch ID approval** (§9.6), local encrypted cache. CI builds the desktop app | Family uses it daily on macOS; `ssh` and `git` use keys from Hisar |
 | 3 | Browser extension via native messaging: fill, save, generate | Daily logins without copy-paste |
 | 4 | Mobile apps with system autofill | Logins on phones |
 | 5 | TOTP, passkeys, attachments, Watchtower (reused/weak/breached via HIBP k-anonymity), import from 1Password/Bitwarden/CSV, SSE push sync | — |
+| 6 | Person-to-person sharing by email (§5.8), emailed invites (§5.1, §8.5), Settings → People | No list of all accounts anywhere |
 
 ## 12. Decisions
 
@@ -854,5 +897,6 @@ go.work     Ties the Go modules together for local development
 | 3 | Server domain | `tryhisar.com`, public |
 | 4 | Recovery group members | Admin only |
 | 5 | Item history retention | 90 days |
-| 6 | Fingerprint check (§5.6) | Optional: a 16-hex-digit security code per member, shown in the desktop app's sharing panel and Settings → Family. Key pinning and key-change refusals are always on |
+| 6 | Fingerprint check (§5.6) | Optional: a 16-hex-digit security code per person, shown in the desktop app's sharing panel and Settings → People. Key pinning and key-change refusals are always on |
 | 7 | Apple Developer Program membership (code signing and notarization; required for biometric Keychain items and Gatekeeper) | **Open**: needed before Touch ID can ship. During development, local signing with a free Apple ID team works on your own Mac |
+| 8 | Product model | A hosted service, not one family per server: person-to-person sharing by email that the recipient accepts, no account enumeration, invites emailed by the server over SMTP, sign-up stays invite-only, no teams or organizations yet. Account recovery is unchanged and needs its own redesign (§6) |

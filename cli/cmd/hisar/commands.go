@@ -576,29 +576,6 @@ func runGenerate(_ context.Context, flags *flag.FlagSet, allArg []string) error 
 	return nil
 }
 
-func runListAllMember(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
-	if _, err := parse(flags, allArg); err != nil {
-		return err
-	}
-	currentState, err := loadState()
-	if err != nil {
-		return err
-	}
-	if err := requireLogin(currentState); err != nil {
-		return err
-	}
-	allMember, err := createAuthedClient(currentState).ListAllMember(ctx)
-	if err != nil {
-		return err
-	}
-	writer := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(writer, "NAME\tEMAIL\tROLE\tACCOUNT")
-	for _, member := range allMember {
-		fmt.Fprintf(writer, "%s\t%s\t%s\t%s\n", member.Name, member.Email, member.Role, member.AccountID)
-	}
-	return writer.Flush()
-}
-
 func runUnshare(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
 	allPositional, err := parse(flags, allArg)
 	if err != nil {
@@ -627,71 +604,6 @@ func runUnshare(ctx context.Context, flags *flag.FlagSet, allArg []string) error
 		return nil
 	}()
 	return finishSession(currentState, unlockedSession, err)
-}
-
-func runShare(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
-	role := flags.String("r", proto.VaultEditor, "owner, editor or reader")
-	allPositional, err := parse(flags, allArg)
-	if err != nil {
-		return err
-	}
-	if len(allPositional) != 2 {
-		return errUsage
-	}
-	currentState, unlockedSession, err := unlock(ctx)
-	if err != nil {
-		return err
-	}
-	err = func() error {
-		vault, err := unlockedSession.FindVault(ctx, allPositional[0])
-		if err != nil {
-			return err
-		}
-		if vault.Type == proto.VaultPersonal {
-			return errors.New("personal vaults cannot be shared; create one with `hisar vault-create`")
-		}
-		member, err := unlockedSession.GetVerifiedMember(ctx, allPositional[1])
-		if err != nil {
-			return err
-		}
-		if err := currentState.CheckMemberPin(member); err != nil {
-			return err
-		}
-		if err := unlockedSession.ShareVault(ctx, vault, member, *role); err != nil {
-			return err
-		}
-		fmt.Fprintf(os.Stderr, "Shared %q with %s as %s.\n", vault.Name, member.Email, *role)
-		return nil
-	}()
-	return finishSession(currentState, unlockedSession, err)
-}
-
-func runInvite(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
-	role := flags.String("r", proto.RoleMember, "admin or member")
-	allPositional, err := parse(flags, allArg)
-	if err != nil {
-		return err
-	}
-	currentState, err := loadState()
-	if err != nil {
-		return err
-	}
-	if err := requireLogin(currentState); err != nil {
-		return err
-	}
-	var email string
-	if len(allPositional) == 1 {
-		email = allPositional[0]
-	} else if email, err = promptRequired("Email", ""); err != nil {
-		return err
-	}
-	response, err := createAuthedClient(currentState).Invite(ctx, &proto.InviteRequest{Email: email, Role: *role})
-	if err != nil {
-		return err
-	}
-	fmt.Fprintf(os.Stderr, "Send this link to %s; it is valid for 7 days:\n", email)
-	fmt.Println(response.URL)
-	return nil
 }
 
 func runListAllDevice(ctx context.Context, flags *flag.FlagSet, allArg []string) error {

@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import type { ApprovalEvent, BrowserStatus, CommandLineStatus, Device, FamilyMember, ImportPreview, ImportProgress, ItemDetail, PendingRecovery, RecoveryStatus, SSHAgentStatus, Status, UpdateStatus, VaultMember, VaultSummary } from "./api";
+import type { ApprovalEvent, BrowserStatus, CommandLineStatus, Device, ImportPreview, ImportProgress, ItemDetail, PendingRecovery, Person, ReceivedShareInvitation, SentShareInvitation, RecoveryStatus, SSHAgentStatus, Status, UpdateStatus, VaultMember, VaultSummary } from "./api";
 
 export function createStatus(state: string): Status {
   return { state, server: "https://hisar.test", email: "alice@example.com", name: "Alice", biometricAvailable: false, biometricEnabled: false, biometricReady: false, isOffline: false, autoLockSeconds: 600 };
@@ -166,7 +166,7 @@ export function createCommandLineStatus(overrides: Partial<CommandLineStatus> = 
   };
 }
 
-export function createFamilyMember(overrides: Partial<FamilyMember> = {}): FamilyMember {
+export function createPerson(overrides: Partial<Person> = {}): Person {
   return {
     accountId: "ALICE1",
     name: "Alice",
@@ -175,6 +175,31 @@ export function createFamilyMember(overrides: Partial<FamilyMember> = {}): Famil
     securityCode: "3F2A 91C0 7B44 E1D8",
     isCurrentUser: true,
     isKeyChanged: false,
+    ...overrides,
+  };
+}
+
+export function createReceivedShareInvitation(overrides: Partial<ReceivedShareInvitation> = {}): ReceivedShareInvitation {
+  return {
+    id: "invitation-from-carol",
+    vaultId: "carol-vault",
+    role: "editor",
+    invitedByName: "Carol",
+    invitedByEmail: "carol@example.com",
+    expiresAt: "2026-10-18T09:00:00Z",
+    ...overrides,
+  };
+}
+
+export function createSentShareInvitation(overrides: Partial<SentShareInvitation> = {}): SentShareInvitation {
+  return {
+    id: "invitation-to-dave",
+    vaultId: "family",
+    vaultName: "Family",
+    email: "dave@example.com",
+    role: "reader",
+    state: "pending",
+    expiresAt: "2026-10-18T09:00:00Z",
     ...overrides,
   };
 }
@@ -248,12 +273,16 @@ export function createApiMock() {
     generatePassword: vi.fn(),
     generateSSHKey: vi.fn(),
     importSSHKey: vi.fn(),
-    listAllMember: vi.fn().mockResolvedValue([]),
+    listAllPerson: vi.fn().mockResolvedValue([]),
     listAllVaultMember: vi.fn().mockResolvedValue([]),
     shareVault: vi.fn(),
     changeVaultMemberRole: vi.fn(),
     removeVaultMember: vi.fn(),
-    inviteMember: vi.fn(),
+    invitePerson: vi.fn(),
+    listAllShareInvitation: vi.fn().mockResolvedValue({ received: [], sent: [], completionError: "" }),
+    acceptShareInvitation: vi.fn(),
+    declineShareInvitation: vi.fn(),
+    cancelShareInvitation: vi.fn(),
     listAllDevice: vi.fn().mockResolvedValue([]),
     revokeDevice: vi.fn(),
     getSSHAgentStatus: vi.fn().mockResolvedValue(createSSHAgentStatus()),

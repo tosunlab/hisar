@@ -3,14 +3,15 @@ import {
   allTestVault,
   createApiMock,
   createDevice,
-  createFamilyMember,
   createItem,
   createPendingRecovery,
+  createPerson,
+  createReceivedShareInvitation,
   createRecoveryStatus,
+  createSentShareInvitation,
   createStatus,
   createVaultMember,
   testBob,
-  testCarol,
 } from "./testing";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
@@ -201,23 +202,28 @@ describe("vault item counts", () => {
   });
 });
 
-describe("sharing, family and devices", () => {
+describe("sharing, people and devices", () => {
   const bob = createVaultMember({ ...testBob, role: "editor" });
+  const sentToDave = createSentShareInvitation();
+  const fromCarol = createReceivedShareInvitation();
 
   beforeEach(() => {
     vi.clearAllMocks();
     resetStore();
-    Object.assign(store, { selectedVaultID: "family", isSharingOpen: false, allVaultMember: [], allFamilyMember: [], allDevice: [] });
+    Object.assign(store, { status: createStatus("unlocked"), selectedVaultID: "family", isSharingOpen: false, allVaultMember: [], allPerson: [], allDevice: [] });
     api.listAllVaultMember.mockResolvedValue([createVaultMember(), bob]);
-    api.listAllMember.mockResolvedValue([createFamilyMember(), createFamilyMember({ ...testBob, role: "member" })]);
+    api.listAllPerson.mockResolvedValue([createPerson(), createPerson({ ...testBob, role: "member", isCurrentUser: false })]);
+    api.listAllShareInvitation.mockResolvedValue({ received: [fromCarol], sent: [sentToDave], completionError: "" });
   });
 
-  it("opens sharing and loads the vault and family members", async () => {
+  it("opens sharing and loads the vault members and the invitations", async () => {
     await storeModule.openSharing();
     expect(store.isSharingOpen).toBe(true);
     expect(api.listAllVaultMember).toHaveBeenCalledWith("family");
     expect(store.allVaultMember.map((member) => member.accountId)).toEqual(["ALICE1", "BOB222"]);
-    expect(store.allFamilyMember).toHaveLength(2);
+    expect(storeModule.getAllSentShareInvitation("family")).toEqual([sentToDave]);
+    expect(storeModule.getAllSentShareInvitation("work")).toEqual([]);
+    expect(api.listAllPerson).not.toHaveBeenCalled();
 
     store.errorMessage = "old error";
     storeModule.closeSharing();
@@ -225,21 +231,55 @@ describe("sharing, family and devices", () => {
     expect(store.errorMessage).toBe("");
   });
 
-  it("shares, changes roles and reloads the members", async () => {
+  it("sends a share invitation by email, changes roles and reloads the members", async () => {
     api.shareVault.mockResolvedValue(undefined);
-    expect(await storeModule.shareVault(createFamilyMember({ ...testCarol, role: "member" }), "reader")).toBe(true);
-    expect(api.shareVault).toHaveBeenCalledWith("family", "carol@example.com", "reader");
+    expect(await storeModule.shareVault(" Carol@Example.com ", "reader")).toBe(true);
+    expect(api.shareVault).toHaveBeenCalledWith("family", " Carol@Example.com ", "reader");
     expect(api.listAllVaultMember).toHaveBeenCalledTimes(1);
-    expect(store.noticeMessage).toBe("Shared with Carol");
+    expect(store.noticeMessage).toBe("Invitation sent to carol@example.com");
 
     api.changeVaultMemberRole.mockResolvedValue(undefined);
     expect(await storeModule.changeVaultMemberRole(bob, "owner")).toBe(true);
     expect(api.changeVaultMemberRole).toHaveBeenCalledWith("family", "BOB222", "owner");
     expect(store.noticeMessage).toBe("Bob is now an owner");
 
-    api.shareVault.mockRejectedValue(new Error("the signing key of carol@example.com changed since you last shared with them; stopping"));
-    expect(await storeModule.shareVault(createFamilyMember({ ...testCarol }), "reader")).toBe(false);
-    expect(store.errorMessage).toContain("signing key of carol@example.com changed");
+    api.shareVault.mockRejectedValue(new Error("this person already has access to the vault"));
+    expect(await storeModule.shareVault("bob@example.com", "reader")).toBe(false);
+    expect(store.errorMessage).toBe("this person already has access to the vault");
+  });
+
+  it("accepts, declines and cancels share invitations", async () => {
+    api.acceptShareInvitation.mockResolvedValue(undefined);
+    expect(await storeModule.acceptShareInvitation(fromCarol)).toBe(true);
+    expect(api.acceptShareInvitation).toHaveBeenCalledWith("invitation-from-carol");
+    expect(store.noticeMessage).toBe("Accepted. The vault appears once Carol's Hisar finishes sharing");
+    expect(store.shareInvitations.received).toEqual([fromCarol]);
+
+    api.declineShareInvitation.mockResolvedValue(undefined);
+    expect(await storeModule.declineShareInvitation(fromCarol)).toBe(true);
+    expect(store.noticeMessage).toBe("Invitation declined");
+
+    api.cancelShareInvitation.mockResolvedValue(undefined);
+    expect(await storeModule.cancelShareInvitation(sentToDave)).toBe(true);
+    expect(api.cancelShareInvitation).toHaveBeenCalledWith("invitation-to-dave");
+    expect(store.noticeMessage).toBe("Invitation to dave@example.com cancelled");
+
+    api.acceptShareInvitation.mockRejectedValue(new Error("this invitation no longer exists"));
+    expect(await storeModule.acceptShareInvitation(fromCarol)).toBe(false);
+    expect(store.errorMessage).toBe("this invitation no longer exists");
+  });
+
+  it("loads invitations with the vaults, quietly, so accepted shares complete", async () => {
+    api.listAllVault.mockResolvedValue(structuredClone(allTestVault));
+    api.listAllItem.mockResolvedValue([]);
+    await storeModule.loadAllVault();
+    expect(api.listAllShareInvitation).toHaveBeenCalled();
+    expect(store.shareInvitations.received).toEqual([fromCarol]);
+
+    api.listAllShareInvitation.mockRejectedValue(new Error("cannot reach the Hisar server"));
+    await storeModule.loadShareInvitationsQuietly();
+    expect(store.errorMessage).toBe("");
+    expect(store.shareInvitations.received).toEqual([fromCarol]);
   });
 
   it("reloads the items after removing a member because the vault was re-encrypted", async () => {
@@ -257,17 +297,20 @@ describe("sharing, family and devices", () => {
     expect(store.errorMessage).toContain("only owners");
   });
 
-  it("loads settings data, invites and revokes devices", async () => {
+  it("loads settings data, invites by email and revokes devices", async () => {
     api.listAllDevice.mockResolvedValue([createDevice(), createDevice({ id: "old", name: "Old laptop", isCurrent: false })]);
     await storeModule.loadSettingsData();
-    expect(store.allFamilyMember).toHaveLength(2);
+    expect(store.allPerson).toHaveLength(2);
     expect(store.allDevice).toHaveLength(2);
+    expect(store.shareInvitations.sent).toEqual([sentToDave]);
 
-    api.inviteMember.mockResolvedValue("https://hisar.test/invite/abc");
-    expect(await storeModule.inviteMember("dan@example.com", "member")).toBe("https://hisar.test/invite/abc");
-    api.inviteMember.mockRejectedValue(new Error("only family admins can invite people"));
-    expect(await storeModule.inviteMember("dan@example.com", "member")).toBeUndefined();
-    expect(store.errorMessage).toBe("only family admins can invite people");
+    api.invitePerson.mockResolvedValue(undefined);
+    expect(await storeModule.invitePerson(" Dan@Example.com ")).toBe(true);
+    expect(api.invitePerson).toHaveBeenCalledWith(" Dan@Example.com ");
+    expect(store.noticeMessage).toBe("Invitation sent to dan@example.com");
+    api.invitePerson.mockRejectedValue(new Error("this server cannot send email yet, so invitations cannot be sent"));
+    expect(await storeModule.invitePerson("dan@example.com")).toBe(false);
+    expect(store.errorMessage).toBe("this server cannot send email yet, so invitations cannot be sent");
 
     api.revokeDevice.mockResolvedValue(undefined);
     api.listAllDevice.mockResolvedValue([createDevice()]);
@@ -279,11 +322,13 @@ describe("sharing, family and devices", () => {
 
   it("forgets sharing data when Hisar locks", async () => {
     await storeModule.openSharing();
+    await storeModule.loadSettingsData();
     store.allDevice = [createDevice()];
     storeModule.handleLocked();
     expect(store.isSharingOpen).toBe(false);
     expect(store.allVaultMember).toEqual([]);
-    expect(store.allFamilyMember).toEqual([]);
+    expect(store.allPerson).toEqual([]);
+    expect(store.shareInvitations).toEqual({ received: [], sent: [], completionError: "" });
     expect(store.allDevice).toEqual([]);
   });
 });
@@ -327,9 +372,9 @@ describe("account recovery", () => {
     expect(store.allVault).toHaveLength(1);
     expect(store.noticeMessage).toBe("Account recovery is set up");
 
-    api.setUpRecovery.mockRejectedValue(new Error("only family admins can manage account recovery"));
+    api.setUpRecovery.mockRejectedValue(new Error("only admins can manage account recovery"));
     expect(await storeModule.setUpRecovery()).toBeUndefined();
-    expect(store.errorMessage).toContain("only family admins");
+    expect(store.errorMessage).toContain("only admins");
   });
 
   it("turns recovery off and on for a vault and keeps its item count", async () => {
@@ -346,9 +391,9 @@ describe("account recovery", () => {
     expect(store.noticeMessage).toBe("Personal can be recovered again");
   });
 
-  it("starts and completes a recovery and reloads the family", async () => {
+  it("starts and completes a recovery and reloads the people", async () => {
     api.startAccountRecovery.mockResolvedValue("https://hisar.test/recover/abc");
-    expect(await storeModule.startAccountRecovery(createFamilyMember({ ...testBob, role: "member" }))).toBe("https://hisar.test/recover/abc");
+    expect(await storeModule.startAccountRecovery(createPerson({ ...testBob, role: "member" }))).toBe("https://hisar.test/recover/abc");
     expect(api.startAccountRecovery).toHaveBeenCalledWith("BOB222");
 
     const pending = createPendingRecovery();
@@ -356,11 +401,11 @@ describe("account recovery", () => {
     api.completeAccountRecovery.mockResolvedValue(["Bob's personal vault"]);
     api.getRecoveryStatus.mockResolvedValue(createRecoveryStatus());
     api.listAllPendingRecovery.mockResolvedValue([]);
-    api.listAllMember.mockResolvedValue([createFamilyMember(), createFamilyMember({ ...testBob, role: "member" })]);
+    api.listAllPerson.mockResolvedValue([createPerson(), createPerson({ ...testBob, role: "member" })]);
     expect(await storeModule.completeAccountRecovery(pending)).toEqual(["Bob's personal vault"]);
     expect(api.completeAccountRecovery).toHaveBeenCalledWith("BOB222");
     expect(store.allPendingRecovery).toEqual([]);
-    expect(store.allFamilyMember).toHaveLength(2);
+    expect(store.allPerson).toHaveLength(2);
     expect(store.noticeMessage).toBe("Recovered Bob");
 
     api.completeAccountRecovery.mockRejectedValue(new Error("only the admin who set up recovery can complete it"));

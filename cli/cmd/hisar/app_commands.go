@@ -282,52 +282,6 @@ func runImportThroughApp(ctx context.Context, client *appClient, flags *flag.Fla
 	return offerToDeleteImportFile(path, *isConfirmed)
 }
 
-func listAllAppMember(ctx context.Context, client *appClient) ([]cliprotocol.Member, error) {
-	var memberList cliprotocol.MemberListResult
-	err := client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeListMember}, &memberList)
-	return memberList.Members, err
-}
-
-func runListAllMemberThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, allArg []string) error {
-	if _, err := parse(flags, allArg); err != nil {
-		return err
-	}
-	allMember, err := listAllAppMember(ctx, client)
-	if err != nil {
-		return err
-	}
-	writer := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(writer, "NAME\tEMAIL\tROLE\tACCOUNT")
-	for _, member := range allMember {
-		fmt.Fprintf(writer, "%s\t%s\t%s\t%s\n", member.Name, member.Email, member.Role, member.AccountID)
-	}
-	return writer.Flush()
-}
-
-func runShareThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, allArg []string) error {
-	role := flags.String("r", proto.VaultEditor, "owner, editor or reader")
-	allPositional, err := parse(flags, allArg)
-	if err != nil {
-		return err
-	}
-	if len(allPositional) != 2 {
-		return errUsage
-	}
-	vault, err := findAppVault(ctx, client, allPositional[0])
-	if err != nil {
-		return err
-	}
-	if vault.Type == proto.VaultPersonal {
-		return errors.New("personal vaults cannot be shared; create one with `hisar vault-create`")
-	}
-	email := strings.TrimSpace(allPositional[1])
-	if err := client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeShareVault, VaultID: vault.ID, Email: email, Role: *role}, nil); err != nil {
-		return err
-	}
-	fmt.Fprintf(os.Stderr, "Shared %q with %s as %s.\n", vault.Name, email, *role)
-	return nil
-}
-
 func runUnshareThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, allArg []string) error {
 	allPositional, err := parse(flags, allArg)
 	if err != nil {
@@ -340,11 +294,11 @@ func runUnshareThroughApp(ctx context.Context, client *appClient, flags *flag.Fl
 	if err != nil {
 		return err
 	}
-	allMember, err := listAllAppMember(ctx, client)
+	allPerson, err := listAllAppPerson(ctx, client)
 	if err != nil {
 		return err
 	}
-	for _, member := range allMember {
+	for _, member := range allPerson {
 		if !strings.EqualFold(member.Email, strings.TrimSpace(allPositional[1])) && member.AccountID != allPositional[1] {
 			continue
 		}
@@ -355,27 +309,6 @@ func runUnshareThroughApp(ctx context.Context, client *appClient, flags *flag.Fl
 		return nil
 	}
 	return fmt.Errorf("member %q: not found", allPositional[1])
-}
-
-func runInviteThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, allArg []string) error {
-	role := flags.String("r", proto.RoleMember, "admin or member")
-	allPositional, err := parse(flags, allArg)
-	if err != nil {
-		return err
-	}
-	var email string
-	if len(allPositional) == 1 {
-		email = allPositional[0]
-	} else if email, err = promptRequired("Email", ""); err != nil {
-		return err
-	}
-	var inviteResult cliprotocol.InviteResult
-	if err := client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeInvite, Email: email, Role: *role}, &inviteResult); err != nil {
-		return err
-	}
-	fmt.Fprintf(os.Stderr, "Send this link to %s; it is valid for 7 days:\n", email)
-	fmt.Println(inviteResult.URL)
-	return nil
 }
 
 func runListAllDeviceThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, allArg []string) error {

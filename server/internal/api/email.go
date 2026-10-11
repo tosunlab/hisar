@@ -1,0 +1,129 @@
+package api
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"net/url"
+	"strings"
+	"time"
+
+	"github.com/tryhisar/hisar/server/internal/mail"
+	"github.com/tryhisar/hisar/server/internal/store"
+)
+
+const emailTimeout = time.Minute
+
+func (s *Server) isEmailConfigured() bool { return s.config.Mailer != nil }
+
+// buildInviteLink uses https with the public host; plain http stays only for a loopback host in development.
+func (s *Server) buildInviteLink(token string) string {
+	parsedURL, err := url.Parse(s.config.PublicURL)
+	if err != nil || parsedURL.Host == "" {
+		return strings.TrimRight(s.config.PublicURL, "/") + "/invite/" + token
+	}
+	scheme := "https"
+	if parsedURL.Scheme == "http" && mail.IsLoopbackHost(parsedURL.Hostname()) {
+		scheme = "http"
+	}
+	return scheme + "://" + parsedURL.Host + "/invite/" + token
+}
+
+func describeInviter(inviter *store.Account) string {
+	name := strings.TrimSpace(mail.RemoveControlCharacter(inviter.Name))
+	if name == "" || strings.EqualFold(name, inviter.Email) {
+		return inviter.Email
+	}
+	return fmt.Sprintf("%s (%s)", name, inviter.Email)
+}
+
+func getInviterName(inviter *store.Account) string {
+	if name := strings.TrimSpace(mail.RemoveControlCharacter(inviter.Name)); name != "" {
+		return name
+	}
+	return inviter.Email
+}
+
+func describeRole(role string) string {
+	switch role {
+	case "owner":
+		return "an owner"
+	case "editor":
+		return "an editor"
+	}
+	return "a reader"
+}
+
+func formatExpiry(expiresAt time.Time) string { return expiresAt.UTC().Format("2 January 2006") }
+
+func composeInviteEmail(inviter *store.Account, recipient, link, code string, expiresAt time.Time) mail.Message {
+	return mail.Message{
+		To:      recipient,
+		Subject: getInviterName(inviter) + " invited you to Hisar",
+		Body: fmt.Sprintf(`%s invited you to Hisar, an end-to-end encrypted password manager for developers.
+
+Create your account:
+%s
+
+Or enter this invite code in the Hisar app:
+%s
+
+The invite works once and expires on %s.
+If you were not expecting it, ignore this email.
+`, describeInviter(inviter), link, code, formatExpiry(expiresAt)),
+	}
+}
+
+func composeShareInvitationEmail(inviter *store.Account, recipient, role string) mail.Message {
+	return mail.Message{
+		To:      recipient,
+		Subject: getInviterName(inviter) + " shared a vault with you in Hisar",
+		Body: fmt.Sprintf(`%s shared a vault with you in Hisar as %s.
+Vault names are end-to-end encrypted, so this email cannot say which vault.
+
+Accept or decline it in Hisar under Settings → People, or with `+"`hisar invitations`"+`.
+You get access once you accept and %s's app finishes sharing.
+
+If you were not expecting it, decline it or ignore this email.
+`, describeInviter(inviter), describeRole(role), getInviterName(inviter)),
+	}
+}
+
+func composeShareSignUpEmail(inviter *store.Account, recipient, role, link, code string, expiresAt time.Time) mail.Message {
+	return mail.Message{
+		To:      recipient,
+		Subject: getInviterName(inviter) + " shared a vault with you in Hisar",
+		Body: fmt.Sprintf(`%s shared a vault with you in Hisar as %s.
+Hisar is an end-to-end encrypted password manager for developers; vault names are encrypted, so this email cannot say which vault.
+
+Create your account to accept it:
+%s
+
+Or enter this invite code in the Hisar app:
+%s
+
+Then accept the invitation under Settings → People. The invite expires on %s.
+If you were not expecting it, ignore this email.
+`, describeInviter(inviter), describeRole(role), link, code, formatExpiry(expiresAt)),
+	}
+}
+
+func (s *Server) sendEmail(ctx context.Context, message mail.Message) {
+	if err := s.config.Mailer.Send(ctx, message); err != nil {
+		log.Printf("email not sent: %v", err)
+	}
+}
+
+// runInBackground does account-dependent work after the response, so the response cannot reveal whether an account exists.
+func (s *Server) runInBackground(work func(ctx context.Context)) {
+	s.backgroundWork.Add(1)
+	go func() {
+		defer s.backgroundWork.Done()
+		ctx, cancel := context.WithTimeout(context.Background(), emailTimeout)
+		defer cancel()
+		work(ctx)
+	}()
+}
+
+// WaitForBackgroundWork waits for invites and share notifications that were started before it was called.
+func (s *Server) WaitForBackgroundWork() { s.backgroundWork.Wait() }

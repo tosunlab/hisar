@@ -43,6 +43,12 @@ func (s *Server) handleGetRecoveryKeyset(c fiber.Ctx) error {
 	if recoveryKeyset.CreatedBy == getSession(c).AccountID {
 		response.EncKeyset = recoveryKeyset.EncKeyset
 	}
+	if creator, err := s.store.GetAccountByID(c.Context(), recoveryKeyset.CreatedBy); err == nil {
+		creatorMember := convertToProtoMember(creator)
+		response.Creator = &creatorMember
+	} else if !errors.Is(err, store.ErrNotFound) {
+		return err
+	}
 	return c.JSON(response)
 }
 

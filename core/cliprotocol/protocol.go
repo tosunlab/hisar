@@ -37,12 +37,17 @@ const (
 	TypeSaveItem     = "items.save"
 	TypeDeleteItem   = "items.delete"
 	TypeImportItem   = "items.import"
-	TypeListMember   = "members.list"
+	TypeListPeople   = "people.list"
 	TypeShareVault   = "vaults.share"
 	TypeUnshareVault = "vaults.unshare"
 	TypeInvite       = "invite"
 	TypeListDevice   = "devices.list"
 	TypeRevokeDevice = "devices.revoke"
+
+	TypeListInvitation    = "invitations.list"
+	TypeAcceptInvitation  = "invitations.accept"
+	TypeDeclineInvitation = "invitations.decline"
+	TypeCancelInvitation  = "invitations.cancel"
 )
 
 const (
@@ -68,6 +73,7 @@ type Request struct {
 	Role          string      `json:"role,omitempty"`
 	AccountID     string      `json:"accountID,omitempty"`
 	DeviceID      string      `json:"deviceID,omitempty"`
+	InvitationID  string      `json:"invitationID,omitempty"`
 	Item          *ItemChange `json:"item,omitempty"`
 	ImportedItems []item.Item `json:"importedItems,omitempty"`
 }
@@ -185,7 +191,7 @@ type ImportResult struct {
 	Failures   []ImportFailure `json:"failures"`
 }
 
-type Member struct {
+type Person struct {
 	AccountID     string `json:"accountID"`
 	Name          string `json:"name"`
 	Email         string `json:"email"`
@@ -195,12 +201,33 @@ type Member struct {
 	IsKeyChanged  bool   `json:"isKeyChanged"`
 }
 
-type MemberListResult struct {
-	Members []Member `json:"members"`
+type PeopleListResult struct {
+	People []Person `json:"people"`
 }
 
-type InviteResult struct {
-	URL string `json:"url"`
+type ReceivedInvitation struct {
+	ID             string `json:"id"`
+	VaultID        string `json:"vaultID"`
+	Role           string `json:"role"`
+	InvitedByName  string `json:"invitedByName"`
+	InvitedByEmail string `json:"invitedByEmail"`
+	ExpiresAt      string `json:"expiresAt"`
+}
+
+type SentInvitation struct {
+	ID        string `json:"id"`
+	VaultID   string `json:"vaultID"`
+	VaultName string `json:"vaultName"`
+	Email     string `json:"email"`
+	Role      string `json:"role"`
+	State     string `json:"state"`
+	ExpiresAt string `json:"expiresAt"`
+}
+
+type InvitationListResult struct {
+	Received        []ReceivedInvitation `json:"received"`
+	Sent            []SentInvitation     `json:"sent"`
+	CompletionError string               `json:"completionError,omitempty"`
 }
 
 type Device struct {

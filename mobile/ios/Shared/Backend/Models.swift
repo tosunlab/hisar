@@ -413,7 +413,7 @@ struct PasskeyRegistrationCredential: Equatable {
     }
 }
 
-// Member is a family member (role admin or member) or someone with access to a vault (role owner, editor or reader).
+// Member is a person you share a vault with (role admin or member on the server) or someone with access to a vault (role owner, editor or reader).
 struct Member: Codable, Identifiable, Hashable {
     static let roleAdmin = "admin"
     static let roleMember = "member"
@@ -456,5 +456,63 @@ struct Member: Codable, Identifiable, Hashable {
         securityCode = try container.decodeIfPresent(String.self, forKey: .securityCode) ?? ""
         isCurrentUser = try container.decodeIfPresent(Bool.self, forKey: .isCurrentUser) ?? false
         isKeyChanged = try container.decodeIfPresent(Bool.self, forKey: .isKeyChanged) ?? false
+    }
+}
+
+struct ReceivedShareInvitation: Codable, Identifiable, Hashable {
+    var id: String
+    var vaultID: String
+    var role: String
+    var invitedByName: String
+    var invitedByEmail: String
+    var expiresAt: String
+
+    var inviterName: String { invitedByName.isEmpty ? invitedByEmail : invitedByName }
+
+    enum CodingKeys: String, CodingKey {
+        case id, role, invitedByName, invitedByEmail, expiresAt
+        case vaultID = "vaultId"
+    }
+}
+
+struct SentShareInvitation: Codable, Identifiable, Hashable {
+    static let stateAccepted = "accepted"
+
+    var id: String
+    var vaultID: String
+    var vaultName: String
+    var email: String
+    var role: String
+    var state: String
+    var expiresAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case id, vaultName, email, role, state, expiresAt
+        case vaultID = "vaultId"
+    }
+}
+
+struct ShareInvitations: Codable, Hashable {
+    var allReceived: [ReceivedShareInvitation]
+    var allSent: [SentShareInvitation]
+    var completionError: String
+
+    enum CodingKeys: String, CodingKey {
+        case allReceived = "received"
+        case allSent = "sent"
+        case completionError
+    }
+
+    init(allReceived: [ReceivedShareInvitation] = [], allSent: [SentShareInvitation] = [], completionError: String = "") {
+        self.allReceived = allReceived
+        self.allSent = allSent
+        self.completionError = completionError
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        allReceived = try container.decodeIfPresent([ReceivedShareInvitation].self, forKey: .allReceived) ?? []
+        allSent = try container.decodeIfPresent([SentShareInvitation].self, forKey: .allSent) ?? []
+        completionError = try container.decodeIfPresent(String.self, forKey: .completionError) ?? ""
     }
 }

@@ -263,34 +263,37 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.allVault.count, 2)
     }
 
-    func testAdminInvitesWithTrimmedEmail() async {
-        let model = await createUnlockedModel()
-        let inviteLink = await model.inviteMember(email: " dave@example.com ", role: Member.roleMember)
-        XCTAssertEqual(inviteLink, "http://127.0.0.1:18080/invite/token-1")
-        XCTAssertEqual(backend.allInvitedEmail, ["dave@example.com"])
-        XCTAssertNil(model.errorMessage)
-    }
-
-    func testMemberCannotInvite() async {
+    func testAnyoneInvitesByEmailWithTrimmedAddress() async {
         backend.seedSignedIn()
         backend.allMember[0].role = Member.roleMember
         let model = createModel()
-        let inviteLink = await model.inviteMember(email: "dave@example.com", role: Member.roleMember)
-        XCTAssertNil(inviteLink)
-        XCTAssertEqual(model.errorMessage, "Only family admins can invite people")
-        let allMember = await model.loadAllMember()
-        XCTAssertEqual(allMember?.first { $0.isCurrentUser }?.role, Member.roleMember)
+        let isInvited = await model.invitePerson(email: " dave@example.com ")
+        XCTAssertTrue(isInvited)
+        XCTAssertEqual(backend.allInvitedEmail, ["dave@example.com"])
+        XCTAssertNil(model.errorMessage)
+        let isInvalidInvited = await model.invitePerson(email: "dave")
+        XCTAssertFalse(isInvalidInvited)
+        XCTAssertEqual(model.errorMessage, "Enter the email address of the person")
     }
 
-    func testOwnerSharesChangesRoleAndRemovesMember() async {
+    func testPeopleAreOnlyThoseWhoShareAVault() async {
+        let model = await createUnlockedModel()
+        let allPerson = await model.loadAllPerson()
+        XCTAssertEqual(allPerson?.map(\.email), ["alice@example.com", "bob@example.com"])
+    }
+
+    func testOwnerSendsShareInvitationThenChangesRoleAndRemovesMember() async {
         let model = await createUnlockedModel()
         guard let vault = await model.createVault(name: "Streaming") else { return XCTFail("vault missing") }
-        let isShared = await model.shareVault(vaultID: vault.id, email: "bob@example.com", role: Member.vaultRoleReader)
+        let isShared = await model.shareVault(vaultID: vault.id, email: " bob@example.com ", role: Member.vaultRoleReader)
         XCTAssertTrue(isShared)
+        let shareInvitations = await model.loadShareInvitations()
+        XCTAssertEqual(shareInvitations?.allSent.map(\.email), ["bob@example.com"])
+        XCTAssertEqual(shareInvitations?.allSent.first?.vaultName, "Streaming")
         var allMember = await model.loadAllVaultMember(vaultID: vault.id)
-        XCTAssertEqual(allMember?.map(\.email), ["alice@example.com", "bob@example.com"])
-        XCTAssertEqual(allMember?.last?.role, Member.vaultRoleReader)
+        XCTAssertEqual(allMember?.map(\.email), ["alice@example.com"], "nobody gets access before accepting")
 
+        backend.allVaultMemberByVaultID[vault.id]?.append(Member(accountID: "bob-id", name: "Bob", email: "bob@example.com", role: Member.vaultRoleReader, securityCode: "3333 4444"))
         let isRoleChanged = await model.changeVaultMemberRole(vaultID: vault.id, accountID: "bob-id", role: Member.vaultRoleEditor)
         XCTAssertTrue(isRoleChanged)
         allMember = await model.loadAllVaultMember(vaultID: vault.id)
@@ -302,6 +305,37 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(allMember?.map(\.email), ["alice@example.com"])
         guard let removeIndex = backend.allCallName.firstIndex(of: "removeVaultMember") else { return XCTFail("remove not called") }
         XCTAssertEqual(backend.allCallName[removeIndex + 1], "listAllItem", "items are loaded again after the vault key changed")
+
+        let isCancelled = await model.cancelShareInvitation(invitationID: shareInvitations?.allSent.first?.id ?? "")
+        XCTAssertTrue(isCancelled)
+        let remaining = await model.loadShareInvitations()
+        XCTAssertEqual(remaining?.allSent.count, 0)
+    }
+
+    func testReceivedShareInvitationsAreAcceptedOrDeclined() async {
+        backend.seedSignedIn()
+        backend.shareInvitations = ShareInvitations(allReceived: [
+            ReceivedShareInvitation(id: "from-carol", vaultID: "carol-vault", role: Member.vaultRoleEditor, invitedByName: "Carol", invitedByEmail: "carol@example.com", expiresAt: "2027-01-22T08:00:00Z"),
+            ReceivedShareInvitation(id: "from-dave", vaultID: "dave-vault", role: Member.vaultRoleReader, invitedByName: "", invitedByEmail: "dave@example.com", expiresAt: "2027-01-22T08:00:00Z"),
+        ])
+        let model = createModel()
+        let shareInvitations = await model.loadShareInvitations()
+        XCTAssertEqual(shareInvitations?.allReceived.map(\.inviterName), ["Carol", "dave@example.com"])
+        let isAccepted = await model.acceptShareInvitation(invitationID: "from-carol")
+        XCTAssertTrue(isAccepted)
+        let isDeclined = await model.declineShareInvitation(invitationID: "from-dave")
+        XCTAssertTrue(isDeclined)
+        XCTAssertEqual(backend.allAnsweredInvitation, ["from-carol accept", "from-dave decline"])
+        let isAcceptedTwice = await model.acceptShareInvitation(invitationID: "from-carol")
+        XCTAssertFalse(isAcceptedTwice)
+        XCTAssertEqual(model.errorMessage, "This invitation no longer exists")
+    }
+
+    func testShareInvitationsDecodeFromHisarKit() throws {
+        let json = #"{"received":[{"id":"a","vaultId":"v","role":"editor","invitedByName":"Carol","invitedByEmail":"carol@example.com","expiresAt":"2027-01-22T08:00:00Z"}],"sent":null,"completionError":""}"#
+        let decoded = try JSONDecoder().decode(ShareInvitations.self, from: Data(json.utf8))
+        XCTAssertEqual(decoded.allReceived.first?.vaultID, "v")
+        XCTAssertEqual(decoded.allSent.count, 0)
     }
 
     func testSharingWithAStrangerOrAnEditedVaultFails() async {

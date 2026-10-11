@@ -45,7 +45,7 @@ struct SignInView: View {
                 .pickerStyle(.segmented)
                 .accessibilityIdentifier("sign-in-mode")
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(mode == .signIn ? "Welcome back" : "Join your family's Hisar")
+                    Text(mode == .signIn ? "Welcome back" : "Create your Hisar account")
                         .font(.largeTitle.weight(.bold))
                         .foregroundStyle(Theme.text)
                     Text(mode == .signIn ? "Sign in to use Hisar on this iPhone." : "Use the invite link your Hisar admin sent you.")

@@ -112,6 +112,25 @@ func (s *Server) publishVaultsChanged(allAccountID ...string) {
 	s.events.publish(allAccountID, serverEvent{name: proto.EventVaultsChanged, data: struct{}{}})
 }
 
+func (s *Server) publishShareInvitationsChanged(allAccountID ...string) {
+	s.events.publish(allAccountID, serverEvent{name: proto.EventShareInvitationsChanged, data: struct{}{}})
+}
+
+// publishShareInvitationsChangedToOwner tells the vault's owners, who complete accepted shares, and allOtherAccountID.
+func (s *Server) publishShareInvitationsChangedToOwner(ctx context.Context, vaultID string, allOtherAccountID ...string) {
+	allMember, err := s.store.ListAllMember(ctx, vaultID)
+	if err != nil {
+		log.Printf("events: members of %s: %v", vaultID, err)
+	}
+	allAccountID := allOtherAccountID
+	for _, member := range allMember {
+		if member.Role == proto.VaultOwner {
+			allAccountID = append(allAccountID, member.AccountID)
+		}
+	}
+	s.publishShareInvitationsChanged(allAccountID...)
+}
+
 func writeEvent(writer *bufio.Writer, event serverEvent) error {
 	data, err := json.Marshal(event.data)
 	if err != nil {

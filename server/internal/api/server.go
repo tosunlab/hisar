@@ -18,6 +18,7 @@ import (
 	"github.com/tryhisar/hisar/core/pake"
 	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/server/internal/desktopupdate"
+	"github.com/tryhisar/hisar/server/internal/mail"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
@@ -41,6 +42,8 @@ type Config struct {
 	WriteTimeout time.Duration
 	// DesktopUpdates is nil when the server has no update source.
 	DesktopUpdates *desktopupdate.Source
+	// Mailer is nil when email is not configured.
+	Mailer mail.Mailer
 }
 
 type Server struct {
@@ -54,6 +57,12 @@ type Server struct {
 	updateLimiter       *ipLimiter
 	events              *eventBroker
 	approvals           *approvalRelay
+
+	inviteAccountLimiter          *dailyLimiter
+	inviteIPLimiter               *dailyLimiter
+	shareInvitationAccountLimiter *dailyLimiter
+	shareInvitationIPLimiter      *dailyLimiter
+	backgroundWork                sync.WaitGroup
 }
 
 func CreateServer(database *store.Store, secrets *Secrets, config Config) (*Server, error) {
@@ -98,6 +107,11 @@ func CreateServer(database *store.Store, secrets *Secrets, config Config) (*Serv
 		updateLimiter:       createIPLimiter(rate.Every(10*time.Second), 20),
 		events:              createEventBroker(),
 		approvals:           createApprovalRelay(),
+
+		inviteAccountLimiter:          createDailyLimiter(invitePerAccountPerDay),
+		inviteIPLimiter:               createDailyLimiter(invitePerIPPerDay),
+		shareInvitationAccountLimiter: createDailyLimiter(shareInvitationPerAccountPerDay),
+		shareInvitationIPLimiter:      createDailyLimiter(shareInvitationPerIPPerDay),
 	}, nil
 }
 
@@ -137,6 +151,11 @@ func (s *Server) CreateApp() *fiber.App {
 	apiGroup.Get("/vaults", s.requireSession, s.handleListAllVault)
 	apiGroup.Post("/vaults", s.requireSession, s.handleCreateVault)
 	apiGroup.Get("/vaults/:vault/members", s.requireSession, s.handleListAllVaultMember)
+	apiGroup.Post("/vaults/:vault/share-invitations", s.requireSession, s.handleCreateShareInvitation)
+	apiGroup.Get("/share-invitations", s.requireSession, s.handleListAllShareInvitation)
+	apiGroup.Post("/share-invitations/:invitation/accept", s.requireSession, s.handleAcceptShareInvitation)
+	apiGroup.Post("/share-invitations/:invitation/decline", s.requireSession, s.handleDeclineShareInvitation)
+	apiGroup.Delete("/share-invitations/:invitation", s.requireSession, s.handleCancelShareInvitation)
 	apiGroup.Put("/vaults/:vault/access/:account", s.requireSession, s.handleSetAccess)
 	apiGroup.Delete("/vaults/:vault/access/:account", s.requireSession, s.handleRemoveAccess)
 	apiGroup.Post("/vaults/:vault/rotate", s.requireSession, s.handleRotateVault)

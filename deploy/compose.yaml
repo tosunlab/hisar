@@ -28,6 +28,12 @@ services:
       HISAR_UPDATE_GITLAB_URL: ${HISAR_UPDATE_GITLAB_URL:-}
       HISAR_UPDATE_GITLAB_PROJECT_ID: ${HISAR_UPDATE_GITLAB_PROJECT_ID:-}
       HISAR_UPDATE_GITLAB_TOKEN: ${HISAR_UPDATE_GITLAB_TOKEN:-}
+      # Optional email for invites and share invitations; empty disables it.
+      HISAR_SMTP_HOST: ${HISAR_SMTP_HOST:-}
+      HISAR_SMTP_PORT: ${HISAR_SMTP_PORT:-}
+      HISAR_SMTP_USERNAME: ${HISAR_SMTP_USERNAME:-}
+      HISAR_SMTP_PASSWORD: ${HISAR_SMTP_PASSWORD:-}
+      HISAR_SMTP_FROM: ${HISAR_SMTP_FROM:-}
     volumes:
       - hisar-data:/data
     ports:

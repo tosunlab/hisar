@@ -87,6 +87,9 @@ func (s *Server) handleRotateVault(c fiber.Ctx) error {
 	if errors.Is(err, store.ErrConflict) {
 		return createAPIError(fiber.StatusConflict, "the vault changed during the key rotation; try again")
 	}
+	if errors.Is(err, store.ErrNotMember) {
+		return createAPIError(fiber.StatusBadRequest, "a key rotation can only keep existing members")
+	}
 	if err != nil {
 		return err
 	}

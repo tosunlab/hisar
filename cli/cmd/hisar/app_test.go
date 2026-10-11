@@ -149,10 +149,18 @@ func answerFakeVaultRequest(request cliprotocol.Request) (any, *cliprotocol.Resp
 		return struct{}{}, nil
 	case cliprotocol.TypeImportItem:
 		return cliprotocol.ImportResult{SavedCount: len(request.ImportedItems), Failures: []cliprotocol.ImportFailure{}}, nil
-	case cliprotocol.TypeListMember:
-		return cliprotocol.MemberListResult{Members: []cliprotocol.Member{{AccountID: "ABC123", Name: "Alice", Email: "alice@example.com", Role: "admin"}, {AccountID: "BOB111", Name: "Bob", Email: "bob@example.com", Role: "member"}}}, nil
-	case cliprotocol.TypeInvite:
-		return cliprotocol.InviteResult{URL: "https://hisar.example.com/invite/token"}, nil
+	case cliprotocol.TypeListPeople:
+		return cliprotocol.PeopleListResult{People: []cliprotocol.Person{
+			{AccountID: "ABC123", Name: "Alice", Email: "alice@example.com", Role: "admin", SecurityCode: "3F2A 91C0 7B44 E1D8", IsCurrentUser: true},
+			{AccountID: "BOB111", Name: "Bob", Email: "bob@example.com", Role: "member", SecurityCode: "0000 1111 2222 3333", IsKeyChanged: true},
+		}}, nil
+	case cliprotocol.TypeInvite, cliprotocol.TypeAcceptInvitation, cliprotocol.TypeDeclineInvitation, cliprotocol.TypeCancelInvitation:
+		return struct{}{}, nil
+	case cliprotocol.TypeListInvitation:
+		return cliprotocol.InvitationListResult{
+			Received: []cliprotocol.ReceivedInvitation{{ID: "a1b2c3d4-0000-4000-8000-000000000001", VaultID: "vault-9", Role: "editor", InvitedByName: "Carol", InvitedByEmail: "carol@example.com", ExpiresAt: "2026-10-18T09:00:00Z"}},
+			Sent:     []cliprotocol.SentInvitation{{ID: "e5f6a7b8-0000-4000-8000-000000000002", VaultID: "family-id", VaultName: "Family", Email: "dave@example.com", Role: "reader", State: "pending", ExpiresAt: "2026-10-18T09:00:00Z"}},
+		}, nil
 	case cliprotocol.TypeListDevice:
 		return cliprotocol.DeviceListResult{Devices: []cliprotocol.Device{{ID: "device-1", Name: "Mac", Platform: "darwin/desktop", LastSeenAt: "2026-10-11T09:00:00Z", IsCurrent: true}}}, nil
 	}
@@ -324,8 +332,43 @@ func TestWriteCommandsRunThroughTheApp(t *testing.T) {
 	if unshared := app.findRequest(cliprotocol.TypeUnshareVault); len(unshared) != 1 || unshared[0].AccountID != "BOB111" {
 		t.Errorf("unshare requests %+v", unshared)
 	}
-	if stdout, _, err := runCapturingOutput(t, false, "", "invite", "carol@example.com"); err != nil || stdout != "https://hisar.example.com/invite/token\n" {
-		t.Errorf("invite: %q %v", stdout, err)
+	if stdout, stderr, err := runCapturingOutput(t, false, "", "invite", "carol@example.com"); err != nil || stdout != "" || !strings.HasSuffix(stderr, "Invitation sent to carol@example.com.\n") {
+		t.Errorf("invite: %q %q %v", stdout, stderr, err)
+	}
+	if invited := app.findRequest(cliprotocol.TypeInvite); len(invited) != 1 || invited[0].Email != "carol@example.com" || invited[0].Role != "" {
+		t.Errorf("invite requests %+v", invited)
+	}
+	if _, stderr, err := runCapturingOutput(t, false, "Family\nerin@example.com\n", "share"); err != nil || !strings.Contains(stderr, `Invitation sent to erin@example.com for "Family" as editor.`) {
+		t.Errorf("share with prompts: %q %v", stderr, err)
+	}
+	if _, _, err := runCapturingOutput(t, false, "", "share", "Family", "erin@example.com", "-r", "admin"); err == nil || !strings.Contains(err.Error(), "owner, editor or reader") {
+		t.Errorf("share with an invalid role: %v", err)
+	}
+	stdout, _, err := runCapturingOutput(t, false, "", "people")
+	if err != nil || !strings.Contains(stdout, "Alice (you)") || !strings.Contains(stdout, "0000 1111 2222 3333 (key changed)") {
+		t.Errorf("people: %q %v", stdout, err)
+	}
+	stdout, _, err = runCapturingOutput(t, false, "", "invitations")
+	if err != nil || !strings.Contains(stdout, "a1b2c3d4") || !strings.Contains(stdout, "Carol <carol@example.com>") || !strings.Contains(stdout, "dave@example.com") || !strings.Contains(stdout, "Family") {
+		t.Errorf("invitations: %q %v", stdout, err)
+	}
+	if _, stderr, err := runCapturingOutput(t, false, "\n", "invitations", "accept"); err != nil || !strings.Contains(stderr, "Accepted.") {
+		t.Errorf("accept the only invitation: %q %v", stderr, err)
+	}
+	if accepted := app.findRequest(cliprotocol.TypeAcceptInvitation); len(accepted) != 1 || accepted[0].InvitationID != "a1b2c3d4-0000-4000-8000-000000000001" {
+		t.Errorf("accept requests %+v", accepted)
+	}
+	if _, _, err := runCapturingOutput(t, false, "", "invitations", "decline", "a1b2"); err != nil || app.findRequest(cliprotocol.TypeDeclineInvitation)[0].InvitationID != "a1b2c3d4-0000-4000-8000-000000000001" {
+		t.Errorf("decline by prefix: %v", err)
+	}
+	if _, _, err := runCapturingOutput(t, false, "", "invitations", "cancel", "e5f6"); err != nil || app.findRequest(cliprotocol.TypeCancelInvitation)[0].InvitationID != "e5f6a7b8-0000-4000-8000-000000000002" {
+		t.Errorf("cancel by prefix: %v", err)
+	}
+	if _, _, err := runCapturingOutput(t, false, "", "invitations", "cancel", "a1b2"); err == nil || !strings.Contains(err.Error(), "no invitation") {
+		t.Errorf("cancel a received invitation: %v", err)
+	}
+	if _, _, err := runCapturingOutput(t, false, "", "invitations", "forward", "a1b2"); err == nil || !strings.Contains(err.Error(), "unknown action") {
+		t.Errorf("unknown action: %v", err)
 	}
 	if stdout, _, err := runCapturingOutput(t, false, "", "devices"); err != nil || !strings.Contains(stdout, "Mac (this device)") {
 		t.Errorf("devices: %q %v", stdout, err)

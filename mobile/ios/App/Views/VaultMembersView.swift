@@ -8,6 +8,7 @@ struct VaultMembersView: View {
     @State private var allVaultMember: [Member]?
     @State private var isShareShown = false
     @State private var memberToRemove: Member?
+    @State private var allSentInvitation: [SentShareInvitation] = []
 
     private var vault: VaultSummary? { model.findVault(vaultID: vaultID) }
     private var isOwner: Bool { vault?.role == Member.vaultRoleOwner }
@@ -52,12 +53,33 @@ struct VaultMembersView: View {
                          ? "Owners can share the vault, change roles and remove people. Editors change items; readers only see them. Touch and hold a person to change their role."
                          : "Only owners of this vault can share it or change who has access.")
                 }
+                if isOwner && !allSentInvitation.isEmpty {
+                    Section {
+                        ForEach(allSentInvitation) { invitation in
+                            SentInvitationRow(invitation: invitation)
+                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                    Button("Cancel", role: .destructive) {
+                                        Task {
+                                            if await model.cancelShareInvitation(invitationID: invitation.id) {
+                                                model.showNotice("Invitation to \(invitation.email) cancelled.")
+                                                await load()
+                                            }
+                                        }
+                                    }
+                                }
+                                .listRowBackground(Theme.surface)
+                                .accessibilityIdentifier("vault-invitation-\(invitation.email)")
+                        }
+                    } header: {
+                        Text("Invited")
+                    }
+                }
                 if isOwner {
                     Section {
                         Button {
                             isShareShown = true
                         } label: {
-                            Label("Share with a family member", systemImage: "person.badge.plus")
+                            Label("Invite by email", systemImage: "person.badge.plus")
                                 .foregroundStyle(Theme.text)
                         }
                         .listRowBackground(Theme.surface)
@@ -91,7 +113,7 @@ struct VaultMembersView: View {
                 Text("The vault is encrypted again with a new key that only the remaining members get.")
             }
             .sheet(isPresented: $isShareShown) {
-                ShareVaultView(vaultID: vaultID, allExistingMember: allVaultMember ?? []) {
+                ShareVaultView(vaultID: vaultID) {
                     Task { await load() }
                 }
                 .environmentObject(model)
@@ -130,6 +152,9 @@ struct VaultMembersView: View {
     private func load() async {
         model.clearError()
         allVaultMember = await model.loadAllVaultMember(vaultID: vaultID) ?? allVaultMember ?? []
+        if isOwner, let shareInvitations = await model.loadShareInvitations() {
+            allSentInvitation = shareInvitations.allSent.filter { $0.vaultID == vaultID }
+        }
     }
 }
 
@@ -181,19 +206,15 @@ struct MemberRow: View {
 
 struct ShareVaultView: View {
     var vaultID: String
-    var allExistingMember: [Member]
     var finish: () -> Void
 
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
-    @State private var allFamilyMember: [Member]?
-    @State private var selectedEmail = ""
+    @State private var email = ""
     @State private var role = Member.vaultRoleEditor
+    @FocusState private var isEmailFocused: Bool
 
-    private var allCandidate: [Member] {
-        let allExistingID = Set(allExistingMember.map(\.accountID))
-        return (allFamilyMember ?? []).filter { !$0.isCurrentUser && !allExistingID.contains($0.accountID) }
-    }
+    private var canShare: Bool { email.contains("@") }
 
     var body: some View {
         NavigationStack {
@@ -206,39 +227,20 @@ struct ShareVaultView: View {
                     }
                 }
                 Section {
-                    if allFamilyMember == nil {
-                        HStack {
-                            ProgressView().tint(Theme.textMuted)
-                            Text("Loading your family…")
-                        }
-                        .foregroundStyle(Theme.textMuted)
+                    TextField("Email", text: $email, prompt: Text(verbatim: "them@example.com").foregroundStyle(Theme.textMuted))
+                        .keyboardType(.emailAddress)
+                        .textContentType(.emailAddress)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .focused($isEmailFocused)
+                        .submitLabel(.send)
+                        .onSubmit(share)
+                        .accessibilityIdentifier("share-email")
                         .listRowBackground(Theme.surface)
-                    } else if allCandidate.isEmpty {
-                        Text("Everyone in your family already has access. To share with someone new, invite them first in Settings, Family.")
-                            .foregroundStyle(Theme.textMuted)
-                            .listRowBackground(Theme.surface)
-                    } else {
-                        ForEach(allCandidate) { member in
-                            Button {
-                                selectedEmail = member.email
-                            } label: {
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(member.name).foregroundStyle(Theme.text)
-                                        Text(member.email).font(.caption).foregroundStyle(Theme.textMuted)
-                                    }
-                                    Spacer()
-                                    if selectedEmail == member.email {
-                                        Image(systemName: "checkmark").foregroundStyle(Theme.success)
-                                    }
-                                }
-                            }
-                            .listRowBackground(Theme.surface)
-                            .accessibilityIdentifier("share-with-\(member.email)")
-                        }
-                    }
                 } header: {
                     Text("Who")
+                } footer: {
+                    Text("They get an email and accept in Hisar; without an account, the email lets them create one. Your Hisar then shares the vault key with them.")
                 }
                 Section {
                     Picker("Role", selection: $role) {
@@ -271,15 +273,15 @@ struct ShareVaultView: View {
                     if model.isBusy {
                         ProgressView()
                     } else {
-                        Button("Share", action: share)
-                            .disabled(selectedEmail.isEmpty)
+                        Button("Invite", action: share)
+                            .disabled(!canShare)
                             .accessibilityIdentifier("share-vault-submit")
                     }
                 }
             }
-            .task {
+            .onAppear {
                 model.clearError()
-                allFamilyMember = await model.loadAllMember() ?? []
+                isEmailFocused = true
             }
         }
         .preferredColorScheme(.dark)
@@ -287,10 +289,11 @@ struct ShareVaultView: View {
     }
 
     private func share() {
-        guard !selectedEmail.isEmpty, !model.isBusy else { return }
+        guard canShare, !model.isBusy else { return }
+        let trimmedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         Task {
-            if await model.shareVault(vaultID: vaultID, email: selectedEmail, role: role) {
-                model.showNotice("Vault shared.")
+            if await model.shareVault(vaultID: vaultID, email: trimmedEmail, role: role) {
+                model.showNotice("Invitation sent to \(trimmedEmail).")
                 dismiss()
                 finish()
             }

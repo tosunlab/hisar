@@ -1,7 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import type { VaultSummary } from "../api";
-import { createApiMock, createDevice, createFamilyMember, createItem, createStatus, createVaultMember, testBob, testCarol } from "../testing";
+import {
+  createApiMock,
+  createDevice,
+  createItem,
+  createPerson,
+  createReceivedShareInvitation,
+  createSentShareInvitation,
+  createStatus,
+  createVaultMember,
+  testBob,
+} from "../testing";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
 
@@ -44,7 +54,8 @@ function resetStore(familyRole = "owner"): void {
     isSettingsOpen: false,
     isSharingOpen: false,
     allVaultMember: [],
-    allFamilyMember: [],
+    allPerson: [],
+    shareInvitations: { received: [], sent: [], completionError: "" },
     allDevice: [],
   });
 }
@@ -54,11 +65,8 @@ function mockMembers(familyRole = "owner"): void {
     createVaultMember({ role: familyRole }),
     createVaultMember({ ...testBob, role: "editor" }),
   ]);
-  api.listAllMember.mockResolvedValue([
-    createFamilyMember(),
-    createFamilyMember({ ...testBob, role: "member" }),
-    createFamilyMember({ ...testCarol, role: "member" }),
-  ]);
+  api.listAllPerson.mockResolvedValue([createPerson(), createPerson({ ...testBob, role: "member", isCurrentUser: false })]);
+  api.listAllShareInvitation.mockResolvedValue({ received: [], sent: [createSentShareInvitation()], completionError: "" });
 }
 
 async function openSharingPanel() {
@@ -96,21 +104,41 @@ describe("Vault sharing panel", () => {
     wrapper.unmount();
   });
 
-  it("shares with a family member who is not in the vault yet", async () => {
+  it("invites someone to the vault by email without listing other accounts", async () => {
     api.shareVault.mockResolvedValue(undefined);
     const wrapper = await openSharingPanel();
-    const allOption = wrapper.findAll('[data-testid="new-member-select"] option').map((option) => option.text());
-    expect(allOption.some((text) => text.includes("Carol"))).toBe(true);
-    expect(allOption.some((text) => text.includes("Bob"))).toBe(false);
+    expect(wrapper.find('[data-testid="new-member-select"]').exists()).toBe(false);
+    expect(api.listAllPerson).not.toHaveBeenCalled();
+    const sendButton = wrapper.find('[data-testid="send-share-invitation"]');
+    expect(sendButton.attributes("disabled")).toBeDefined();
 
-    await wrapper.find('[data-testid="new-member-select"]').setValue("CAROL3");
+    await wrapper.find('[data-testid="new-member-email"]').setValue("carol@example.com");
     await wrapper.find('[data-testid="new-member-role"]').setValue("reader");
     await wrapper.find('[data-testid="add-member"]').trigger("submit");
     await flushPromises();
 
     expect(api.shareVault).toHaveBeenCalledWith("family", "carol@example.com", "reader");
     expect(api.listAllVaultMember).toHaveBeenCalledTimes(2);
-    expect(store.noticeMessage).toBe("Shared with Carol");
+    expect(store.noticeMessage).toBe("Invitation sent to carol@example.com");
+    expect((wrapper.find('[data-testid="new-member-email"]').element as HTMLInputElement).value).toBe("");
+    wrapper.unmount();
+  });
+
+  it("lists the vault's pending invitations and cancels one after confirmation", async () => {
+    api.cancelShareInvitation.mockResolvedValue(undefined);
+    const wrapper = await openSharingPanel();
+    const invitation = wrapper.find('[data-testid="vault-invitation-invitation-to-dave"]');
+    expect(invitation.text()).toContain("dave@example.com");
+    expect(invitation.text()).toContain("Waiting for them to accept");
+    expect(invitation.text()).toContain("Reader");
+
+    await invitation.find('[data-testid="cancel-vault-invitation-invitation-to-dave"]').trigger("click");
+    expect(api.cancelShareInvitation).not.toHaveBeenCalled();
+    api.listAllShareInvitation.mockResolvedValue({ received: [], sent: [], completionError: "" });
+    await wrapper.find('[data-testid="confirm-cancel-vault-invitation"]').trigger("click");
+    await flushPromises();
+    expect(api.cancelShareInvitation).toHaveBeenCalledWith("invitation-to-dave");
+    expect(wrapper.find('[data-testid="vault-invitations"]').exists()).toBe(false);
     wrapper.unmount();
   });
 
@@ -164,7 +192,7 @@ describe("Vault sharing panel", () => {
     await toggle.trigger("click");
     const detail = wrapper.find('[data-testid="security-code-detail"]');
     expect(detail.find('[data-testid="security-code"]').text()).toBe("C0FF EE12 3456 789A");
-    expect(detail.text()).toContain("Compare this code with Bob in person to be sure the server isn't intercepting");
+    expect(detail.text()).toContain("Compare this code with Bob in person or over a channel you trust");
     expect(toggle.attributes("aria-expanded")).toBe("true");
     await toggle.trigger("click");
     expect(wrapper.find('[data-testid="security-code-detail"]').exists()).toBe(false);
@@ -179,6 +207,7 @@ describe("Vault sharing panel", () => {
     expect(wrapper.find('[data-testid="vault-sharing-panel"] select').exists()).toBe(false);
     expect(wrapper.find('[data-testid="remove-member-BOB222"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="add-member"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="vault-invitations"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="sharing-read-only"]').text()).toContain("You are a reader in this vault. Only its owners can change who has access.");
     await wrapper.find('[data-testid="security-code-toggle-BOB222"]').trigger("click");
     expect(wrapper.find('[data-testid="security-code"]').text()).toBe("C0FF EE12 3456 789A");
@@ -208,7 +237,37 @@ describe("Vault sharing panel", () => {
   });
 });
 
-describe("Settings family and devices", () => {
+describe("Share invitation banner", () => {
+  it("shows received invitations above the vaults and accepts or declines them", async () => {
+    store.shareInvitations = { received: [createReceivedShareInvitation(), createReceivedShareInvitation({ id: "from-dave", invitedByName: "", invitedByEmail: "dave@example.com", role: "reader" })], sent: [], completionError: "" };
+    api.acceptShareInvitation.mockResolvedValue(undefined);
+    api.declineShareInvitation.mockResolvedValue(undefined);
+    api.listAllShareInvitation.mockResolvedValue({ received: [], sent: [], completionError: "" });
+    const wrapper = mount(MainView, { attachTo: document.body });
+    const banner = wrapper.find('[data-testid="share-invitation-banner"]');
+    expect(banner.text()).toContain("Carol shared a vault with you as editor");
+    expect(banner.text()).toContain("dave@example.com shared a vault with you as reader");
+
+    await wrapper.find('[data-testid="banner-decline-from-dave"]').trigger("click");
+    await flushPromises();
+    expect(api.declineShareInvitation).toHaveBeenCalledWith("from-dave");
+    store.shareInvitations = { received: [createReceivedShareInvitation()], sent: [], completionError: "" };
+    await flushPromises();
+    await wrapper.find('[data-testid="banner-accept-invitation-from-carol"]').trigger("click");
+    await flushPromises();
+    expect(api.acceptShareInvitation).toHaveBeenCalledWith("invitation-from-carol");
+    expect(wrapper.find('[data-testid="share-invitation-banner"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("is hidden without invitations", () => {
+    const wrapper = mount(MainView, { attachTo: document.body });
+    expect(wrapper.find('[data-testid="share-invitation-banner"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+});
+
+describe("Settings people and devices", () => {
   beforeEach(() => {
     api.listAllDevice.mockResolvedValue([
       createDevice(),
@@ -216,49 +275,75 @@ describe("Settings family and devices", () => {
     ]);
   });
 
-  it("lists family members with role badges and security codes", async () => {
+  it("lists the people you share with and their security codes", async () => {
     const wrapper = mount(SettingsPanel);
     await flushPromises();
-    const family = wrapper.find('[data-testid="family-section"]');
-    expect(family.find('[data-testid="family-role-ALICE1"]').text()).toBe("Admin");
-    expect(family.find('[data-testid="family-role-BOB222"]').text()).toBe("Member");
-    const bob = family.find('[data-testid="family-member-BOB222"]');
+    const people = wrapper.find('[data-testid="people-section"]');
+    expect(people.find('.section-label').text()).toBe("People");
+    expect(people.find('[data-testid="person-role-ALICE1"]').text()).toBe("Admin");
+    expect(people.find('[data-testid="person-role-BOB222"]').exists()).toBe(false);
+    const bob = people.find('[data-testid="person-BOB222"]');
     expect(bob.text()).toContain("bob@example.com");
-    expect(bob.find('[data-testid="family-security-code"]').text()).toBe("C0FF EE12 3456 789A");
-    expect(family.find('[data-testid="family-member-ALICE1"]').text()).toContain("you");
+    expect(bob.find('[data-testid="person-security-code"]').text()).toBe("C0FF EE12 3456 789A");
+    expect(people.find('[data-testid="person-ALICE1"]').text()).toContain("you");
+    expect(people.find('[data-testid="people-empty-hint"]').exists()).toBe(false);
+    expect(wrapper.text()).not.toMatch(/family member|in your family/i);
     wrapper.unmount();
   });
 
-  it("lets admins create an invite link and copy it", async () => {
-    api.inviteMember.mockResolvedValue("https://hisar.test/invite/abc123");
-    api.copyText.mockResolvedValue(undefined);
+  it("explains how people appear when you share with nobody yet", async () => {
+    api.listAllPerson.mockResolvedValue([createPerson()]);
+    api.listAllShareInvitation.mockResolvedValue({ received: [], sent: [], completionError: "" });
+    const wrapper = mount(SettingsPanel);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="people-empty-hint"]').text()).toContain("People appear here once you share a vault with them");
+    expect(wrapper.find('[data-testid="sent-invitations"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("emails an invite for anyone, without showing a link", async () => {
+    api.listAllPerson.mockResolvedValue([createPerson({ role: "member" })]);
+    api.invitePerson.mockResolvedValue(undefined);
     const wrapper = mount(SettingsPanel);
     await flushPromises();
     await wrapper.find('[data-testid="start-invite"]').trigger("click");
+    expect(wrapper.find('[data-testid="invite-role"]').exists()).toBe(false);
     await wrapper.find('input[name="inviteEmail"]').setValue("dan@example.com");
-    await wrapper.find('[data-testid="invite-role"]').setValue("admin");
     await wrapper.find('[data-testid="invite-form"]').trigger("submit");
     await flushPromises();
 
-    expect(api.inviteMember).toHaveBeenCalledWith("dan@example.com", "admin");
-    const result = wrapper.find('[data-testid="invite-result"]');
-    expect(result.find('[data-testid="invite-link"]').text()).toBe("https://hisar.test/invite/abc123");
-    expect(result.text()).toContain("valid for 7 days");
-    expect(result.text()).toContain("dan@example.com");
+    expect(api.invitePerson).toHaveBeenCalledWith("dan@example.com");
+    expect(store.noticeMessage).toBe("Invitation sent to dan@example.com");
     expect(wrapper.find('[data-testid="invite-form"]').exists()).toBe(false);
-
-    await result.find('[data-testid="copy-invite-link"]').trigger("click");
-    await flushPromises();
-    expect(api.copyText).toHaveBeenCalledWith("https://hisar.test/invite/abc123");
+    expect(wrapper.text()).not.toContain("/invite/");
     wrapper.unmount();
   });
 
-  it("hides inviting from members who are not admins", async () => {
-    api.listAllMember.mockResolvedValue([createFamilyMember({ role: "member" }), createFamilyMember({ ...testBob, role: "admin" })]);
+  it("shows invitations you received and sent, and answers them", async () => {
+    const received = createReceivedShareInvitation();
+    const accepted = createSentShareInvitation({ id: "invitation-to-erin", email: "erin@example.com", state: "accepted", role: "editor" });
+    api.listAllShareInvitation.mockResolvedValue({ received: [received], sent: [createSentShareInvitation(), accepted], completionError: "the signing key of erin@example.com changed" });
+    api.acceptShareInvitation.mockResolvedValue(undefined);
+    api.cancelShareInvitation.mockResolvedValue(undefined);
     const wrapper = mount(SettingsPanel);
     await flushPromises();
-    expect(wrapper.find('[data-testid="family-member-BOB222"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="start-invite"]').exists()).toBe(false);
+
+    const receivedRow = wrapper.find('[data-testid="received-invitation-invitation-from-carol"]');
+    expect(receivedRow.text()).toContain("Carol shared a vault with you");
+    expect(receivedRow.text()).toContain("Editor");
+    const sent = wrapper.find('[data-testid="sent-invitations"]');
+    expect(sent.find('[data-testid="sent-invitation-invitation-to-dave"]').text()).toContain("Family · Waiting for them to accept");
+    expect(sent.find('[data-testid="sent-invitation-invitation-to-erin"]').text()).toContain("Accepted · finishing on your next sync");
+    expect(wrapper.find('[data-testid="share-completion-error"]').text()).toContain("signing key of erin@example.com changed");
+
+    await receivedRow.find('[data-testid="accept-invitation-invitation-from-carol"]').trigger("click");
+    await flushPromises();
+    expect(api.acceptShareInvitation).toHaveBeenCalledWith("invitation-from-carol");
+
+    await wrapper.find('[data-testid="cancel-invitation-invitation-to-dave"]').trigger("click");
+    await wrapper.find('[data-testid="confirm-cancel-invitation"]').trigger("click");
+    await flushPromises();
+    expect(api.cancelShareInvitation).toHaveBeenCalledWith("invitation-to-dave");
     wrapper.unmount();
   });
 

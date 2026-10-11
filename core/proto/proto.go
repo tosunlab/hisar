@@ -98,14 +98,61 @@ type Member struct {
 	PublicKeys crypt.PublicKeys `json:"publicKeys"`
 }
 
+// InviteRequest asks the server to email a sign-up invite; Role may only be empty or "member".
 type InviteRequest struct {
+	Email string `json:"email"`
+	Role  string `json:"role,omitempty"`
+}
+
+// InviteResponse is what the operator's hisar-server invite prints; the API never returns it.
+type InviteResponse struct {
+	Token string `json:"token"`
+	URL   string `json:"url"`
+}
+
+// InvitationSentResponse is the same for every invite and share invitation, whether or not the email has an account.
+type InvitationSentResponse struct {
+	Message string `json:"message"`
+}
+
+const InvitationSentMessage = "Invitation sent"
+
+const (
+	ShareInvitationPending  = "pending"
+	ShareInvitationAccepted = "accepted"
+)
+
+type ShareInvitationRequest struct {
 	Email string `json:"email"`
 	Role  string `json:"role"`
 }
 
-type InviteResponse struct {
-	Token string `json:"token"`
-	URL   string `json:"url"`
+type ReceivedShareInvitation struct {
+	ID             string    `json:"id"`
+	VaultID        string    `json:"vaultId"`
+	Role           string    `json:"role"`
+	InvitedByName  string    `json:"invitedByName"`
+	InvitedByEmail string    `json:"invitedByEmail"`
+	CreatedAt      time.Time `json:"createdAt"`
+	ExpiresAt      time.Time `json:"expiresAt"`
+}
+
+// SentShareInvitation is an invitation to a vault the caller owns; Recipient is set only once it was accepted.
+type SentShareInvitation struct {
+	ID        string    `json:"id"`
+	VaultID   string    `json:"vaultId"`
+	Email     string    `json:"email"`
+	Role      string    `json:"role"`
+	State     string    `json:"state"`
+	InvitedBy string    `json:"invitedBy"`
+	CreatedAt time.Time `json:"createdAt"`
+	ExpiresAt time.Time `json:"expiresAt"`
+	Recipient *Member   `json:"recipient,omitempty"`
+}
+
+type ShareInvitationList struct {
+	AllReceived []ReceivedShareInvitation `json:"received"`
+	AllSent     []SentShareInvitation     `json:"sent"`
 }
 
 type Device struct {
@@ -181,7 +228,9 @@ type PutItemResponse struct {
 const (
 	EventVaultChanged  = "vault-changed"
 	EventVaultsChanged = "vaults-changed"
-	MaxEventSize       = 64 << 10
+	// EventShareInvitationsChanged carries {}: the account's received or sent share invitations changed.
+	EventShareInvitationsChanged = "share-invitations-changed"
+	MaxEventSize                 = 64 << 10
 )
 
 // VaultChangedEvent says a vault reached Seq; Seq is 0 when the server does not know it, and clients sync either way.
@@ -224,6 +273,7 @@ type RecoveryKeyset struct {
 	PublicKeys crypt.PublicKeys `json:"publicKeys"`
 	EncKeyset  []byte           `json:"encKeyset,omitempty"`
 	CreatedBy  string           `json:"createdBy"`
+	Creator    *Member          `json:"creator,omitempty"`
 }
 
 type CreateRecoveryKeysetRequest struct {

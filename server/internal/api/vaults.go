@@ -140,11 +140,18 @@ func (s *Server) handleSetAccess(c fiber.Ctx) error {
 		return err
 	}
 	vaultID := c.Params("vault")
-	if err := s.store.SetAccess(c.Context(), vaultID, store.Member{AccountID: target, Role: request.Role, WrappedKey: request.WrappedKey, GrantedBy: currentSession.AccountID}); err != nil {
+	isNewMember, err := s.store.GrantAccess(c.Context(), vaultID, store.Member{AccountID: target, Role: request.Role, WrappedKey: request.WrappedKey, GrantedBy: currentSession.AccountID})
+	if errors.Is(err, store.ErrNoInvitation) {
+		return createAPIError(fiber.StatusConflict, "this person has not accepted an invitation to this vault")
+	}
+	if err != nil {
 		return err
 	}
 	s.recordAudit(c, currentSession.AccountID, currentSession.DeviceID, "vault_access_set", map[string]string{"vault": vaultID, "account": target, "role": request.Role})
 	s.publishVaultsChanged(target)
+	if isNewMember {
+		s.publishShareInvitationsChangedToOwner(c.Context(), vaultID)
+	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
