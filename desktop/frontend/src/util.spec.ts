@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   computePasswordStrength,
+  formatExpiresIn,
+  formatShareLinkViews,
+  formatViewLimit,
   formatKeyType,
   formatLastSeen,
   formatPlatform,
@@ -83,5 +86,23 @@ describe("device and role formatting", () => {
     expect(formatLastSeen("2026-10-08T09:00:00Z", now)).toBe("Yesterday");
     expect(formatLastSeen("2026-10-01T12:00:00Z", now)).toBe("8 days ago");
     expect(formatLastSeen("not a date", now)).toBe("");
+  });
+});
+
+describe("share link formatting", () => {
+  it("describes views used against the limit", () => {
+    expect(formatShareLinkViews(1, 0)).toBe("0 of 1 view");
+    expect(formatShareLinkViews(5, 2)).toBe("2 of 5 views");
+    expect(formatShareLinkViews(0, 1)).toBe("1 view · unlimited");
+    expect(formatViewLimit(0)).toBe("unlimited views");
+    expect(formatViewLimit(1)).toBe("1 view");
+  });
+
+  it("describes the time until expiry", () => {
+    const now = new Date("2026-10-11T12:00:00Z");
+    expect(formatExpiresIn("2026-10-11T12:30:00Z", now)).toBe("Expires in 30 minutes");
+    expect(formatExpiresIn("2026-10-11T13:00:00Z", now)).toBe("Expires in 1 hour");
+    expect(formatExpiresIn("2026-10-18T12:00:00Z", now)).toBe("Expires in 7 days");
+    expect(formatExpiresIn("2026-10-11T11:00:00Z", now)).toBe("Expired");
   });
 });

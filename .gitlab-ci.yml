@@ -138,6 +138,20 @@ extension:
     paths: [extension/hisar-extension-*.zip]
     expire_in: 14 days
 
+# The share link recipient page in Chromium against the real server and links made by the Go client.
+share-link-page:
+  stage: test
+  extends: [.merge-request-or-manual, .go-cache, .npm-cache]
+  image: mcr.microsoft.com/playwright:v1.63.0-noble
+  services:
+    - postgres:18
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq make curl >/dev/null
+    - curl -fsSL "https://go.dev/dl/go$GO_VERSION.linux-amd64.tar.gz" | tar -C /usr/local -xz
+    - export PATH=/usr/local/go/bin:$GOPATH/bin:$PATH
+  script:
+    - HISAR_DATABASE_URL=$PG_URL make test-share-link-page
+
 # macOS jobs need a runner tagged macos (shell executor with Xcode, Go and Node); set MACOS_RUNNER=true once one exists.
 .macos:
   tags: [macos]

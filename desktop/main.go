@@ -55,6 +55,12 @@ func (notifier *wailsLockNotifier) NotifyRemoteChange() {
 	}
 }
 
+func (notifier *wailsLockNotifier) NotifyShareLinksChange() {
+	if notifier.app != nil {
+		notifier.app.Event.Emit("share-links-changed", nil)
+	}
+}
+
 type wailsFileSaver struct {
 	chooseSavePath func(defaultFileName string) (string, error)
 }
@@ -166,7 +172,8 @@ func main() {
 				agentServer.ClearAllApproval()
 			}
 		},
-		OnRemoteChange: lockNotifier.NotifyRemoteChange,
+		OnRemoteChange:     lockNotifier.NotifyRemoteChange,
+		OnShareLinksChange: lockNotifier.NotifyShareLinksChange,
 	}
 	vaultService, err := vault.CreateService(vaultConfig)
 	if err != nil {

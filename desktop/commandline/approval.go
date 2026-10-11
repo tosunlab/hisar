@@ -28,7 +28,7 @@ func (err TimeoutError) Error() string {
 func (TimeoutError) Is(target error) bool { return target == ErrDenied }
 
 // ApprovalRequest is what the approval window shows about a terminal session; a secrets.resolve request also
-// names its secrets and, for hisar run, the command it starts.
+// names its secrets and, for hisar run, the command it starts. A share link request names its item and fields.
 type ApprovalRequest struct {
 	ClientPID       int
 	ClientPath      string
@@ -37,6 +37,13 @@ type ApprovalRequest struct {
 	IsSecretRequest bool
 	AllSecretName   []string
 	CommandLine     []string
+	ShareLink       *ShareLinkDescription
+}
+
+type ShareLinkDescription struct {
+	Title         string
+	AllFieldLabel []string
+	Detail        string
 }
 
 // Approver asks the user; it returns nil when approved and ErrDenied otherwise.
@@ -126,6 +133,23 @@ func (approvals *SessionApprovals) Require(session TerminalSession, ask func() e
 	approvals.mutex.Unlock()
 	close(pending.done)
 	return pending.err
+}
+
+// RequireAlways asks even in an approved session; an approval then also approves the session.
+func (approvals *SessionApprovals) RequireAlways(session TerminalSession, ask func() error) error {
+	key := session.getKey()
+	approvals.mutex.Lock()
+	generation := approvals.generation
+	approvals.mutex.Unlock()
+	if err := ask(); err != nil {
+		return err
+	}
+	approvals.mutex.Lock()
+	if generation == approvals.generation {
+		approvals.allLastRequestBySession[key] = approvals.now()
+	}
+	approvals.mutex.Unlock()
+	return nil
 }
 
 // ClearAll ends every approval and every agent's remembered secrets, e.g. when Hisar locks; an approval in progress is not remembered either.

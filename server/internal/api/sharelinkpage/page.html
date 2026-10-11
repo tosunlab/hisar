@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light dark">
+<title>Shared with you · Hisar</title>
+<style>{{style}}</style>
+</head>
+<body>
+<main class="card" aria-labelledby="page-title">
+  <header class="brand">
+    <svg class="logo" width="28" height="28" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+      <rect class="logo-tile" width="32" height="32" rx="8"/>
+      <path class="logo-tower" d="M8 24.5V10.5h3V7.5h2.5v3h5V7.5H21v3h3v14h-6v-5a2 2 0 0 0-4 0v5z"/>
+    </svg>
+    <span class="wordmark">Hisar</span>
+  </header>
+
+  <section id="step-reveal" data-step="reveal">
+    <h1 id="page-title">Someone shared a secret with you</h1>
+    <p>It is end-to-end encrypted. The key is the part of this link after <code>#</code>, which your browser never sends to the server; the secret is decrypted here, in this page.</p>
+    <p class="note">Share links allow a limited number of views, often just one. Reveal it when you are ready to copy what you need.</p>
+    <button type="button" id="reveal-button" class="primary">Reveal</button>
+    <noscript><p class="error">Turn on JavaScript to open this link: it is decrypted in your browser.</p></noscript>
+  </section>
+
+  <section id="step-passphrase" data-step="passphrase" hidden>
+    <h1 tabindex="-1">Enter the passphrase</h1>
+    <p>The sender protected this link with a passphrase. They should have sent it to you separately.</p>
+    <form id="passphrase-form" novalidate>
+      <label for="passphrase-input">Passphrase</label>
+      <input type="password" id="passphrase-input" name="passphrase" autocomplete="off" autocapitalize="off" spellcheck="false" required aria-describedby="passphrase-error">
+      <p id="passphrase-error" class="error" role="alert" hidden></p>
+      <button type="submit" id="passphrase-button" class="primary">Unlock</button>
+    </form>
+  </section>
+
+  <section id="step-secret" data-step="secret" hidden>
+    <h1 id="secret-title" tabindex="-1"></h1>
+    <dl id="field-list" class="field-list"></dl>
+    <p id="link-status" class="note"></p>
+  </section>
+
+  <section id="step-error" data-step="error" hidden>
+    <h1 id="error-title" tabindex="-1"></h1>
+    <p id="error-detail"></p>
+    <button type="button" id="retry-button" class="secondary" hidden>Try again</button>
+  </section>
+
+  <p id="announcement" class="visually-hidden" role="status" aria-live="polite"></p>
+  <footer>Shared with <a href="https://tryhisar.com" rel="noopener noreferrer">Hisar</a>, the password and secrets manager for developers. Nothing you see here is stored by this page.</footer>
+</main>
+<script>{{script}}</script>
+</body>
+</html>

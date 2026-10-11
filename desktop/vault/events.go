@@ -45,6 +45,10 @@ func (s *Service) watchEvents(ctx context.Context, apiClient *client.Client, rec
 				}
 			case proto.EventApprovalRequested, proto.EventApprovalAnswered, proto.EventApprovalResolved:
 				s.handleApprovalEvent(apiClient, event)
+			case proto.EventShareLinksChanged:
+				if s.config.OnShareLinksChange != nil {
+					s.config.OnShareLinksChange()
+				}
 			}
 		})
 		close(streamFinished)

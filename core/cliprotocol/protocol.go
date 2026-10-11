@@ -49,6 +49,10 @@ const (
 	TypeRevokeDevice  = "devices.revoke"
 	TypeResolveSecret = "secrets.resolve"
 
+	TypeCreateShareLink = "shareLinks.create"
+	TypeListShareLink   = "shareLinks.list"
+	TypeRevokeShareLink = "shareLinks.revoke"
+
 	TypeAgentHello         = "agent.hello"
 	TypeAgentListVault     = "agent.vaults.list"
 	TypeAgentSearchItem    = "agent.items.search"
@@ -76,20 +80,22 @@ const (
 var ErrMessageTooLarge = errors.New("cliprotocol: message larger than 16 MiB")
 
 type Request struct {
-	ID            string      `json:"id"`
-	Type          string      `json:"type"`
-	VaultID       string      `json:"vaultID,omitempty"`
-	ItemID        string      `json:"itemID,omitempty"`
-	Name          string      `json:"name,omitempty"`
-	Email         string      `json:"email,omitempty"`
-	Role          string      `json:"role,omitempty"`
-	AccountID     string      `json:"accountID,omitempty"`
-	DeviceID      string      `json:"deviceID,omitempty"`
-	InvitationID  string      `json:"invitationID,omitempty"`
-	Item          *ItemChange `json:"item,omitempty"`
-	ImportedItems []item.Item `json:"importedItems,omitempty"`
-	References    []string    `json:"references,omitempty"`
-	CommandLine   []string    `json:"commandLine,omitempty"`
+	ID            string           `json:"id"`
+	Type          string           `json:"type"`
+	VaultID       string           `json:"vaultID,omitempty"`
+	ItemID        string           `json:"itemID,omitempty"`
+	Name          string           `json:"name,omitempty"`
+	Email         string           `json:"email,omitempty"`
+	Role          string           `json:"role,omitempty"`
+	AccountID     string           `json:"accountID,omitempty"`
+	DeviceID      string           `json:"deviceID,omitempty"`
+	InvitationID  string           `json:"invitationID,omitempty"`
+	Item          *ItemChange      `json:"item,omitempty"`
+	ImportedItems []item.Item      `json:"importedItems,omitempty"`
+	References    []string         `json:"references,omitempty"`
+	CommandLine   []string         `json:"commandLine,omitempty"`
+	ShareLink     *ShareLinkChange `json:"shareLink,omitempty"`
+	ShareLinkID   string           `json:"shareLinkID,omitempty"`
 
 	AgentName        string `json:"agentName,omitempty"`
 	AgentTitle       string `json:"agentTitle,omitempty"`
@@ -257,6 +263,38 @@ type Device struct {
 	Platform   string `json:"platform"`
 	LastSeenAt string `json:"lastSeenAt"`
 	IsCurrent  bool   `json:"isCurrent"`
+}
+
+// ShareLinkChange describes a new link: Fields of the item named by Vault and Query, or Text with Title.
+type ShareLinkChange struct {
+	Fields           []string `json:"fields,omitempty"`
+	ExpiresInSeconds int64    `json:"expiresInSeconds"`
+	MaxViews         int      `json:"maxViews"`
+	Passphrase       string   `json:"passphrase,omitempty"`
+	Text             string   `json:"text,omitempty"`
+	Title            string   `json:"title,omitempty"`
+}
+
+// ShareLink has a URL only in the result of shareLinks.create.
+type ShareLink struct {
+	ID            string   `json:"id"`
+	URL           string   `json:"url,omitempty"`
+	Title         string   `json:"title"`
+	FieldLabels   []string `json:"fieldLabels"`
+	IsText        bool     `json:"isText"`
+	CreatedAt     string   `json:"createdAt"`
+	ExpiresAt     string   `json:"expiresAt"`
+	MaxViews      int      `json:"maxViews"`
+	ViewCount     int      `json:"viewCount"`
+	HasPassphrase bool     `json:"hasPassphrase"`
+}
+
+type ShareLinkResult struct {
+	ShareLink ShareLink `json:"shareLink"`
+}
+
+type ShareLinkListResult struct {
+	ShareLinks []ShareLink `json:"shareLinks"`
 }
 
 type ResolveSecretResult struct {

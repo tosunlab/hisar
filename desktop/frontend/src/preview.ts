@@ -11,6 +11,9 @@ import type {
   LoginItemStatus,
   PasswordConfig,
   ShareInvitations,
+  ShareLink,
+  ShareLinkField,
+  ShareLinkRequest,
   SignUpResult,
   SSHAgentStatus,
   SSHKeyType,
@@ -229,6 +232,84 @@ function addPreviewItem(vaultID: string, detail: ItemDetail): ItemDetail {
 let allPreviewAgentVaultID: string[] = ["work"];
 
 const resolveAfterDelay = <Value>(value: Value): Promise<Value> => new Promise((resolve) => setTimeout(() => resolve(value), 80));
+
+const dayInMilliseconds = 24 * hourInMilliseconds;
+
+function createPreviewShareLink(overrides: Partial<ShareLink>): ShareLink {
+  return {
+    id: `link-${Math.random().toString(36).slice(2, 10)}`,
+    url: "",
+    title: "",
+    vaultID: "",
+    itemID: "",
+    fieldLabels: [],
+    isText: false,
+    createdAt: new Date(Date.now() - hourInMilliseconds).toISOString(),
+    expiresAt: new Date(Date.now() + 7 * dayInMilliseconds).toISOString(),
+    maxViews: 1,
+    viewCount: 0,
+    hasPassphrase: false,
+    ...overrides,
+  };
+}
+
+let allPreviewShareLink: ShareLink[] = [
+  createPreviewShareLink({ id: "link-github", title: "GitHub", vaultID: "personal", itemID: "github", fieldLabels: ["username", "password"] }),
+  createPreviewShareLink({
+    id: "link-aws",
+    title: "AWS Console",
+    vaultID: "personal",
+    itemID: "aws",
+    fieldLabels: ["username", "password", "website"],
+    maxViews: 5,
+    viewCount: 2,
+    hasPassphrase: true,
+    expiresAt: new Date(Date.now() + 20 * hourInMilliseconds).toISOString(),
+  }),
+  createPreviewShareLink({ id: "link-text", title: "Staging database URL", fieldLabels: ["text"], isText: true, maxViews: 0, viewCount: 3, expiresAt: new Date(Date.now() + 50 * 60_000).toISOString() }),
+];
+
+function listAllPreviewShareLinkField(detail: ItemDetail): ShareLinkField[] {
+  const allField: ShareLinkField[] = [];
+  if (detail.username) {
+    allField.push({ key: "username", label: "username", isDefault: true, isConcealed: false });
+  }
+  if (detail.password) {
+    allField.push({ key: "password", label: "password", isDefault: true, isConcealed: true });
+  }
+  if (detail.urls.length > 0) {
+    allField.push({ key: "urls", label: detail.urls.length === 1 ? "website" : "websites", isDefault: false, isConcealed: false });
+  }
+  detail.fields.forEach((field, index) => {
+    if (field.value) {
+      allField.push({ key: `field:${index}`, label: field.name, isDefault: false, isConcealed: field.concealed });
+    }
+  });
+  if (detail.notes) {
+    allField.push({ key: "notes", label: "notes", isDefault: false, isConcealed: false });
+  }
+  return allField;
+}
+
+function createPreviewShareLinkFromRequest(request: ShareLinkRequest): ShareLink {
+  const linkKey = createRandomText(43).replaceAll("+", "-").replaceAll("/", "_");
+  const shareLinkID = createRandomText(22).replaceAll("+", "-").replaceAll("/", "_");
+  const common = {
+    id: shareLinkID,
+    url: `https://api.tryhisar.com/s/${shareLinkID}#${linkKey}`,
+    createdAt: new Date().toISOString(),
+    expiresAt: new Date(Date.now() + request.expiresInSeconds * 1000).toISOString(),
+    maxViews: request.maxViews,
+    hasPassphrase: request.passphrase !== "",
+  };
+  if (!request.itemID) {
+    return createPreviewShareLink({ ...common, title: request.title || "Shared text", fieldLabels: ["text"], isText: true });
+  }
+  const detail = allPreviewItemByVaultID[request.vaultID].find((vaultItem) => vaultItem.id === request.itemID)!;
+  const allField = listAllPreviewShareLinkField(detail);
+  const fieldLabels = (request.fieldKeys ?? []).map((key) => allField.find((field) => field.key === key)?.label ?? key);
+  return createPreviewShareLink({ ...common, title: detail.title, vaultID: request.vaultID, itemID: request.itemID, fieldLabels });
+}
 
 // createPreviewCommandLineApproval: &approval=cli, plus &cliLocked=1 (Touch ID unlocks) or &cliPassword=1 (master password unlocks).
 function createPreviewCommandLineApproval(): ApprovalEvent {
@@ -822,6 +903,19 @@ export const previewApi = {
     return resolveAfterDelay({ code, expiresAt: new Date((counter + 1) * period * 1000).toISOString(), period });
   },
   copyText: () => resolveAfterDelay(undefined),
+  listAllShareLinkField: (vaultID: string, itemID: string) =>
+    resolveAfterDelay(listAllPreviewShareLinkField(allPreviewItemByVaultID[vaultID].find((vaultItem) => vaultItem.id === itemID)!)),
+  createShareLink: (request: ShareLinkRequest) => {
+    const created = createPreviewShareLinkFromRequest(request);
+    allPreviewShareLink = [created, ...allPreviewShareLink];
+    return resolveAfterDelay(structuredClone(created));
+  },
+  listAllShareLink: () => resolveAfterDelay(allPreviewShareLink.map((shareLink) => ({ ...shareLink, url: "" }))),
+  revokeShareLink: (shareLinkID: string) => {
+    allPreviewShareLink = allPreviewShareLink.filter((shareLink) => shareLink.id !== shareLinkID);
+    return resolveAfterDelay(undefined);
+  },
+  copyShareLink: () => resolveAfterDelay(undefined),
   copySecretReference: (vaultID: string, itemID: string, fieldName: string) => {
     const encodeSegment = (segment: string) => segment.replace(/[^A-Za-z0-9\-._~\u0080-\uffff]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase().padStart(2, "0")}`);
     const vaultName = allPreviewVault.find((vault) => vault.id === vaultID)?.name ?? vaultID;

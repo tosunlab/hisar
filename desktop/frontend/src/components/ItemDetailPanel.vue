@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { copyField, deleteItem, openWebsite, startEditingItem, store } from "../store";
+import { copyField, deleteItem, getAllShareLinkForItem, hasShareableField, openItemShareLinkDialog, openWebsite, startEditingItem, store } from "../store";
 import { formatKeyType, getDomain, sshKeyCategory } from "../util";
 import AppIcon from "./AppIcon.vue";
 import ItemTile from "./ItemTile.vue";
 import OneTimeCodeField from "./OneTimeCodeField.vue";
 import PasskeyList from "./PasskeyList.vue";
 import SecretReferenceButton from "./SecretReferenceButton.vue";
+import SharedLinksList from "./SharedLinksList.vue";
 import StrengthMeter from "./StrengthMeter.vue";
 
 defineProps<{ canEdit: boolean; vaultName: string; isShared: boolean }>();
@@ -15,6 +16,8 @@ const isPasswordRevealed = ref(false);
 const allRevealedFieldName = ref<string[]>([]);
 const isConfirmingDelete = ref(false);
 const isSSHKey = computed(() => store.selectedItem?.category === sshKeyCategory);
+const isShareable = computed(() => store.selectedItem !== null && hasShareableField(store.selectedItem));
+const allItemShareLink = computed(() => (store.selectedItem ? getAllShareLinkForItem(store.selectedVaultID, store.selectedItem.id) : []));
 
 watch(
   () => store.selectedItem?.id,
@@ -49,11 +52,16 @@ function maskSecret(secret: string): string {
           <span v-else-if="store.selectedItem.urls[0]" class="muted">{{ getDomain(store.selectedItem.urls[0]) }}</span>
         </div>
       </div>
-      <div v-if="canEdit" class="header-actions">
-        <button @click="startEditingItem"><AppIcon name="edit" /> Edit</button>
-        <button v-if="!isConfirmingDelete" class="ghost icon-button" aria-label="Delete item" title="Delete" @click="isConfirmingDelete = true">
-          <AppIcon name="trash" />
+      <div v-if="canEdit || isShareable" class="header-actions">
+        <button v-if="isShareable" title="Share with anyone through an end-to-end encrypted link" data-testid="share-link" @click="openItemShareLinkDialog">
+          <AppIcon name="link" /> Share link…
         </button>
+        <template v-if="canEdit">
+          <button @click="startEditingItem"><AppIcon name="edit" /> Edit</button>
+          <button v-if="!isConfirmingDelete" class="ghost icon-button" aria-label="Delete item" title="Delete" @click="isConfirmingDelete = true">
+            <AppIcon name="trash" />
+          </button>
+        </template>
       </div>
     </header>
 
@@ -172,6 +180,11 @@ function maskSecret(secret: string): string {
     <section v-if="store.selectedItem.notes" class="card notes-card">
       <p class="section-label">Notes</p>
       <p class="notes">{{ store.selectedItem.notes }}</p>
+    </section>
+
+    <section v-if="allItemShareLink.length > 0" class="card share-links-card" data-testid="item-share-links">
+      <p class="section-label">Shared links</p>
+      <SharedLinksList :all-share-link="allItemShareLink" :is-title-shown="false" />
     </section>
 
     <p class="footer muted"><AppIcon name="shield" :size="12" /> End-to-end encrypted with the {{ vaultName }} vault key</p>
@@ -324,6 +337,15 @@ h2 {
   white-space: pre-wrap;
   user-select: text;
   -webkit-user-select: text;
+}
+
+.share-links-card {
+  margin-top: 14px;
+  padding-top: 14px;
+}
+
+.share-links-card .section-label {
+  padding: 0 16px;
 }
 
 .footer {

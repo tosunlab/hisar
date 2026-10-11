@@ -70,6 +70,34 @@ expect "standalone run masks the secret" "$RUN_OUTPUT" "password is <concealed b
 [[ $RUN_EXIT -eq 3 && "$RUN_OUTPUT" != *"$GEN"* ]] || fail "standalone run: exit code $RUN_EXIT"
 expect "standalone run names an unknown reference" "$(printf '%s\n' "$PW" | GITHUB_PASSWORD=hisar://Personal/Nothing/password A run -- sh -c 'echo ran' 2>&1 || true)" 'hisar://Personal/Nothing/password: no item in vault "Personal" is titled "Nothing"'
 
+SHARE_URL=$(printf '%s\n' "$PW" | A share-link github --field password --views 2 --expires 1d 2>"$T/share-link.txt")
+expect "share link is printed with its key in the fragment" "$SHARE_URL" "$HISAR_PUBLIC_URL/s/"
+[[ "$SHARE_URL" == *"#"* ]] || fail "share link without a key: $SHARE_URL"
+expect "share link summary" "$(cat "$T/share-link.txt")" 'Share link for "GitHub" (password)'
+SHARE_ID=${SHARE_URL##*/s/}
+SHARE_ID=${SHARE_ID%%#*}
+expect "share link listed" "$(printf '%s\n' "$PW" | A share-links 2>/dev/null)" "$SHARE_ID"
+expect "first open decrypts the password from the public endpoint" "$(hisar share-link open "$SHARE_URL" 2>&1)" "password:  $GEN"
+expect "second open is the last view" "$(hisar share-link open "$SHARE_URL" 2>&1)" "That was the last view"
+expect "third open is refused" "$(hisar share-link open "$SHARE_URL" 2>&1 || true)" "this link has expired or was already viewed"
+USED_UP=$(curl -s -w ' %{http_code}' "http://127.0.0.1:$PORT/api/v1/public/share-links/$SHARE_ID")
+NEVER_EXISTED=$(curl -s -w ' %{http_code}' "http://127.0.0.1:$PORT/api/v1/public/share-links/AAAAAAAAAAAAAAAAAAAAAA")
+expect "used-up link is not found" "$USED_UP" '{"error":"not found"} 404'
+[[ "$USED_UP" == "$NEVER_EXISTED" ]] || fail "a used-up link answers differently from one that never existed: $NEVER_EXISTED"
+echo "ok   a used-up link and an unknown ID answer the same"
+
+TEXT_URL=$(printf '%s\nlink passphrase\nlink passphrase\ndeploy token: abc123\n' "$PW" | A share-link --text --title Deploy --passphrase --views 3 --expires 1h 2>/dev/null)
+expect "text share link" "$TEXT_URL" "$HISAR_PUBLIC_URL/s/"
+TEXT_ID=${TEXT_URL##*/s/}
+TEXT_ID=${TEXT_ID%%#*}
+expect "wrong passphrase is refused" "$(printf 'wrong passphrase\n' | hisar share-link open "$TEXT_URL" 2>&1 || true)" "doesn't open this link"
+expect "passphrase opens the text" "$(printf 'link passphrase\n' | hisar share-link open "$TEXT_URL" 2>&1)" "deploy token: abc123"
+expect "text link listed with its views" "$(printf '%s\n' "$PW" | A share-links 2>/dev/null)" "2/3"
+expect "revoke" "$(printf '%s\n' "$PW" | A share-link revoke "$TEXT_ID" 2>&1)" "Revoked the share link"
+expect "revoked link no longer opens" "$(printf 'link passphrase\n' | hisar share-link open "$TEXT_URL" 2>&1 || true)" "this link has expired or was already viewed"
+[[ "$(printf '%s\n' "$PW" | A share-links 2>&1)" != *"$TEXT_ID"* ]] || fail "the revoked link is still listed"
+echo "ok   the revoked link is gone from the list"
+
 printf '%s\n' "$PW" | A vault-create Family 2>/dev/null
 printf '%s\nNetflix\nfamily@example.com\nhttps://netflix.com\nhunter2hunter2\nshared login\n' "$PW" | A add -v Family 2>/dev/null
 

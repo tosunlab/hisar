@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -26,6 +27,11 @@ type Handler interface {
 // SecretDescriber names the secrets of a secrets.resolve request for the approval window.
 type SecretDescriber interface {
 	DescribeAllSecret(allReference []string) []string
+}
+
+// ShareLinkDescriber names the item and fields of a shareLinks.create request for the approval window.
+type ShareLinkDescriber interface {
+	DescribeShareLink(request *cliprotocol.Request) (title string, allFieldLabel []string)
 }
 
 type ServerConfig struct {
@@ -200,7 +206,15 @@ func (s *Server) answerRequest(ctx context.Context, client *connectionPeer, requ
 	if request.Type == cliprotocol.TypeResolveSecret && (len(request.References) == 0 || len(request.References) > cliprotocol.MaxReferenceCount) {
 		return nil, cliprotocol.CreateError(cliprotocol.ErrorInvalidRequest, fmt.Sprintf("send between 1 and %d secret references", cliprotocol.MaxReferenceCount))
 	}
-	if err := s.config.Approvals.Require(client.session, func() error { return s.askApproval(ctx, client, request) }); err != nil {
+	if request.Type == cliprotocol.TypeCreateShareLink && request.ShareLink == nil {
+		return nil, cliprotocol.CreateError(cliprotocol.ErrorInvalidRequest, "the share link is missing")
+	}
+	require := s.config.Approvals.Require
+	if request.Type == cliprotocol.TypeCreateShareLink {
+		// A share link hands secrets to people outside Hisar, so it asks even in an approved session.
+		require = s.config.Approvals.RequireAlways
+	}
+	if err := require(client.session, func() error { return s.askApproval(ctx, client, request) }); err != nil {
 		if errors.Is(err, ErrDenied) {
 			return nil, cliprotocol.CreateError(cliprotocol.ErrorDenied, err.Error())
 		}
@@ -221,6 +235,9 @@ func (s *Server) askApproval(ctx context.Context, client *connectionPeer, reques
 		approvalRequest.CommandLine = request.CommandLine
 		approvalRequest.AllSecretName = s.describeAllSecret(request.References)
 	}
+	if request.Type == cliprotocol.TypeCreateShareLink {
+		approvalRequest.ShareLink = s.describeShareLink(request)
+	}
 	return s.config.Approver.ApproveCommandLine(ctx, approvalRequest)
 }
 
@@ -237,4 +254,46 @@ func (s *Server) describeAllSecret(allReference []string) []string {
 		}
 	}
 	return allName
+}
+
+func (s *Server) describeShareLink(request *cliprotocol.Request) *ShareLinkDescription {
+	description := &ShareLinkDescription{Title: request.Query, AllFieldLabel: append([]string{}, request.ShareLink.Fields...), Detail: describeShareLinkLimit(request.ShareLink)}
+	if request.ShareLink.Text != "" || request.Query == "" {
+		description.Title, description.AllFieldLabel = request.ShareLink.Title, []string{"text"}
+		if description.Title == "" {
+			description.Title = "Shared text"
+		}
+	} else if describer, isDescriber := s.config.Handler.(ShareLinkDescriber); isDescriber {
+		description.Title, description.AllFieldLabel = describer.DescribeShareLink(request)
+	}
+	if len(description.AllFieldLabel) == 0 {
+		description.AllFieldLabel = []string{"username", "password"}
+	}
+	return description
+}
+
+func describeShareLinkLimit(change *cliprotocol.ShareLinkChange) string {
+	expiry := fmt.Sprintf("%d seconds", change.ExpiresInSeconds)
+	switch change.ExpiresInSeconds {
+	case 3600:
+		expiry = "1 hour"
+	case 86400:
+		expiry = "1 day"
+	case 604800:
+		expiry = "7 days"
+	case 2592000:
+		expiry = "30 days"
+	}
+	views := fmt.Sprintf("%d views", change.MaxViews)
+	switch change.MaxViews {
+	case 0:
+		views = "unlimited views"
+	case 1:
+		views = "1 view"
+	}
+	allPart := []string{"Expires in " + expiry, views}
+	if change.Passphrase != "" {
+		allPart = append(allPart, "passphrase")
+	}
+	return strings.Join(allPart, " · ")
 }

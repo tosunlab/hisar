@@ -2,7 +2,7 @@ MODULES := core server cli mobile
 CLI_TARGETS := linux/amd64 linux/arm64 darwin/arm64 darwin/amd64 windows/amd64 windows/arm64
 WAILS_VERSION := v3.0.0-beta.23
 
-.PHONY: build build-cli-all package-cli-release test vet test-end-to-end docker install-wails test-desktop-frontend build-desktop package-desktop package-desktop-dmg package-desktop-update test-extension test-extension-end-to-end build-extension build-ios-framework generate-ios-project build-ios test-ios test-ios-ui
+.PHONY: build build-cli-all package-cli-release test vet test-end-to-end docker install-wails test-desktop-frontend build-desktop package-desktop package-desktop-dmg package-desktop-update test-extension test-extension-end-to-end build-extension test-share-link-page build-ios-framework generate-ios-project build-ios test-ios test-ios-ui
 
 build:
 	go build -o bin/hisar-server ./server/cmd/hisar-server
@@ -85,6 +85,11 @@ test-extension:
 # Needs Playwright's Chromium: cd extension && npx playwright install chromium
 test-extension-end-to-end:
 	cd extension && npm ci --no-audit --no-fund && npm run test:end-to-end
+
+# The share link recipient page in Chromium against the real server; needs HISAR_DATABASE_URL and Playwright's Chromium.
+test-share-link-page:
+	go build -o bin/hisar-share-link-page-fixture ./server/cmd/hisar-share-link-page-fixture
+	cd extension && npm ci --no-audit --no-fund && npm run test:share-link-page
 
 build-extension:
 	cd extension && npm ci --no-audit --no-fund && npm run build && npm run package

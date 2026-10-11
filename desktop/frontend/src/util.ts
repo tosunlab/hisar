@@ -147,3 +147,55 @@ export function formatLastSeen(timestamp: string, now = new Date()): string {
   }
   return seenAt.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
+
+export const allShareLinkExpiry = [
+  { seconds: 3600, label: "1 hour" },
+  { seconds: 86400, label: "1 day" },
+  { seconds: 604800, label: "7 days" },
+  { seconds: 2592000, label: "30 days" },
+];
+
+export function formatShareLinkViews(maxViews: number, viewCount: number): string {
+  if (maxViews === 0) {
+    return viewCount === 1 ? "1 view · unlimited" : `${viewCount} views · unlimited`;
+  }
+  return `${viewCount} of ${maxViews} ${maxViews === 1 ? "view" : "views"}`;
+}
+
+export function formatViewLimit(maxViews: number): string {
+  if (maxViews === 0) {
+    return "unlimited views";
+  }
+  return maxViews === 1 ? "1 view" : `${maxViews} views`;
+}
+
+export function formatExpiresIn(timestamp: string, now = new Date()): string {
+  const minuteCount = Math.ceil((new Date(timestamp).getTime() - now.getTime()) / 60000);
+  if (Number.isNaN(minuteCount)) {
+    return "";
+  }
+  if (minuteCount <= 0) {
+    return "Expired";
+  }
+  if (minuteCount < 60) {
+    return minuteCount === 1 ? "Expires in 1 minute" : `Expires in ${minuteCount} minutes`;
+  }
+  const hourCount = Math.round(minuteCount / 60);
+  if (hourCount < 24) {
+    return hourCount === 1 ? "Expires in 1 hour" : `Expires in ${hourCount} hours`;
+  }
+  const dayCount = Math.round(hourCount / 24);
+  return dayCount === 1 ? "Expires in 1 day" : `Expires in ${dayCount} days`;
+}
+
+export function formatDateTime(timestamp: string): string {
+  return new Date(timestamp).toLocaleString(undefined, { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+export function describeShareLinkContent(shareLink: { isText: boolean; fieldLabels: string[] }): string {
+  if (shareLink.isText) {
+    return "Text";
+  }
+  const description = shareLink.fieldLabels.join(", ");
+  return description.charAt(0).toUpperCase() + description.slice(1);
+}

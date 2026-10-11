@@ -60,8 +60,19 @@ export function CopySecretReference(vaultID: string, itemID: string, fieldName: 
     return $Call.ByID(701891915, vaultID, itemID, fieldName);
 }
 
+/**
+ * CopyShareLink copies a live link again; the clipboard is cleared like any copied secret.
+ */
+export function CopyShareLink(shareLinkID: string): $CancellablePromise<void> {
+    return $Call.ByID(3265661809, shareLinkID);
+}
+
 export function CopyText(text: string): $CancellablePromise<void> {
     return $Call.ByID(3582945589, text);
+}
+
+export function CreateShareLink(request: $models.ShareLinkRequest): $CancellablePromise<$models.ShareLink> {
+    return $Call.ByID(2978770830, request);
 }
 
 export function CreateVault(name: string): $CancellablePromise<$models.VaultSummary> {
@@ -187,6 +198,14 @@ export function ListAllShareInvitation(): $CancellablePromise<$models.ShareInvit
     return $Call.ByID(2268152746);
 }
 
+export function ListAllShareLink(): $CancellablePromise<$models.ShareLink[] | null> {
+    return $Call.ByID(2852212245);
+}
+
+export function ListAllShareLinkField(vaultID: string, itemID: string): $CancellablePromise<$models.ShareLinkField[] | null> {
+    return $Call.ByID(1404254391, vaultID, itemID);
+}
+
 export function ListAllVault(): $CancellablePromise<$models.VaultSummary[] | null> {
     return $Call.ByID(1115915958);
 }
@@ -228,6 +247,10 @@ export function ReportActivity(): $CancellablePromise<void> {
  */
 export function RevokeDevice(deviceID: string): $CancellablePromise<void> {
     return $Call.ByID(1335595451, deviceID);
+}
+
+export function RevokeShareLink(shareLinkID: string): $CancellablePromise<void> {
+    return $Call.ByID(516416832, shareLinkID);
 }
 
 /**

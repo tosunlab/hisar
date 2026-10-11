@@ -10,6 +10,9 @@ import {
   type ReceivedShareInvitation,
   type SentShareInvitation,
   type ShareInvitations,
+  type ShareLink,
+  type ShareLinkField,
+  type ShareLinkRequest,
   type ImportFormat,
   type ImportPreview,
   type ImportProgress,
@@ -25,6 +28,14 @@ import {
 
 export type EditorMode = "view" | "edit" | "create" | "create-ssh-key";
 export type ImportStep = "choose" | "preview" | "saving" | "done";
+
+export interface ShareLinkDialog {
+  mode: "item" | "text";
+  vaultID: string;
+  itemID: string;
+  title: string;
+  allField: ShareLinkField[];
+}
 
 export const store = reactive({
   status: {
@@ -69,6 +80,9 @@ export const store = reactive({
   importPreview: null as ImportPreview | null,
   importProgress: null as ImportProgress | null,
   isImportFileDeleted: false,
+  allShareLink: [] as ShareLink[],
+  isShareLinksOpen: false,
+  shareLinkDialog: null as ShareLinkDialog | null,
 });
 
 let noticeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -109,6 +123,9 @@ function clearAllVaultData(): void {
   store.allPerson = [];
   store.shareInvitations = { received: [], sent: [], completionError: "" };
   store.allDevice = [];
+  store.allShareLink = [];
+  store.isShareLinksOpen = false;
+  store.shareLinkDialog = null;
   store.allVault = [];
   store.selectedVaultID = "";
   store.allItem = [];
@@ -249,6 +266,7 @@ export async function loadAllVault(): Promise<void> {
     await selectVault(allVault[0].id);
   }
   await loadShareInvitationsQuietly();
+  await loadAllShareLinkQuietly();
 }
 
 // loadShareInvitationsQuietly also lets the backend complete shares people accepted; failures stay silent like a background sync.
@@ -279,6 +297,7 @@ export async function syncInBackground(): Promise<void> {
     store.allVault = allVault;
     store.status = status;
     await loadShareInvitationsQuietly();
+    await loadAllShareLinkQuietly();
     if (!allVault.some((vault) => vault.id === store.selectedVaultID)) {
       if (allVault.length > 0) {
         await selectVault(allVault[0].id);
@@ -936,4 +955,94 @@ export async function deleteImportFile(): Promise<boolean> {
     showNotice(`Deleted ${fileName}`);
   }
   return deleted === true;
+}
+
+export async function loadAllShareLinkQuietly(): Promise<void> {
+  try {
+    const allShareLink = await api.listAllShareLink();
+    if (store.status.state === "unlocked") {
+      store.allShareLink = allShareLink;
+    }
+  } catch {
+    return;
+  }
+}
+
+export function getAllShareLinkForItem(vaultID: string, itemID: string): ShareLink[] {
+  return store.allShareLink.filter((shareLink) => shareLink.vaultID === vaultID && shareLink.itemID === itemID);
+}
+
+export function hasShareableField(detail: ItemDetail): boolean {
+  return Boolean(detail.username || detail.password || detail.notes || detail.urls.length > 0 || detail.fields.some((field) => field.value));
+}
+
+export async function openShareLinks(): Promise<void> {
+  store.errorMessage = "";
+  store.isShareLinksOpen = true;
+  const allShareLink = await runAction(() => api.listAllShareLink());
+  if (allShareLink) {
+    store.allShareLink = allShareLink;
+  }
+}
+
+export function closeShareLinks(): void {
+  store.isShareLinksOpen = false;
+  store.errorMessage = "";
+}
+
+export async function openItemShareLinkDialog(): Promise<void> {
+  const selectedItem = store.selectedItem;
+  if (!selectedItem) {
+    return;
+  }
+  const vaultID = store.selectedVaultID;
+  const allField = await runAction(() => api.listAllShareLinkField(vaultID, selectedItem.id));
+  if (!allField) {
+    return;
+  }
+  if (allField.length === 0) {
+    store.errorMessage = "This item has nothing to share";
+    return;
+  }
+  store.shareLinkDialog = { mode: "item", vaultID, itemID: selectedItem.id, title: selectedItem.title, allField };
+}
+
+export function openTextShareLinkDialog(): void {
+  store.errorMessage = "";
+  store.shareLinkDialog = { mode: "text", vaultID: "", itemID: "", title: "", allField: [] };
+}
+
+export function closeShareLinkDialog(): void {
+  store.shareLinkDialog = null;
+  store.errorMessage = "";
+}
+
+export async function createShareLink(request: ShareLinkRequest): Promise<ShareLink | undefined> {
+  const created = await runAction(() => api.createShareLink(request));
+  if (created) {
+    await loadAllShareLinkQuietly();
+  }
+  return created;
+}
+
+export async function copyShareLink(shareLink: ShareLink): Promise<void> {
+  const copied = await runAction(async () => {
+    await api.copyShareLink(shareLink.id);
+    return true;
+  });
+  if (copied) {
+    showNotice("Link copied, clears in 90 seconds");
+  }
+}
+
+export async function revokeShareLink(shareLink: ShareLink): Promise<boolean> {
+  const revoked = await runAction(async () => {
+    await api.revokeShareLink(shareLink.id);
+    return true;
+  });
+  await loadAllShareLinkQuietly();
+  if (revoked) {
+    showNotice(`Link to ${shareLink.title} revoked`);
+  }
+  return revoked === true;
 }

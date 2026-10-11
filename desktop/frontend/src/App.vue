@@ -2,7 +2,16 @@
 import { onBeforeUnmount, onMounted } from "vue";
 import { Events } from "@wailsio/runtime";
 import { api } from "./api";
-import { handleLocked, handleUnlockedElsewhere, loadStatus, restoreBrowserPairing, showBrowserPairing, store, syncInBackground } from "./store";
+import {
+  handleLocked,
+  handleUnlockedElsewhere,
+  loadAllShareLinkQuietly,
+  loadStatus,
+  restoreBrowserPairing,
+  showBrowserPairing,
+  store,
+  syncInBackground,
+} from "./store";
 import SignInView from "./components/SignInView.vue";
 import SecretKeyView from "./components/SecretKeyView.vue";
 import UnlockView from "./components/UnlockView.vue";
@@ -29,6 +38,7 @@ onMounted(() => {
     Events.On("locked", () => handleLocked()),
     Events.On("unlocked", () => handleUnlockedElsewhere()),
     Events.On("remote-change", () => syncInBackground()),
+    Events.On("share-links-changed", () => loadAllShareLinkQuietly()),
     Events.On("browser-pairing", (event) => showBrowserPairing(event.data ?? null)),
   ];
   restoreBrowserPairing();
