@@ -1,0 +1,82 @@
+name: Release extension
+
+on:
+  push:
+    tags: ["extension-[0-9]+.[0-9]+.[0-9]+*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing extension-<version> tag to build into a GitHub Release
+        required: true
+
+concurrency:
+  group: release-extension-${{ inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  extension-release-build:
+    name: Build the extension zip into a prerelease
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      EXTENSION_ID: mmipiffoogblblocokimpemdopmdjghf
+    steps:
+      - name: Check the tag
+        run: |
+          [[ "$TAG" =~ ^extension-[0-9]+\.[0-9]+\.[0-9]+ ]] || { echo "$TAG is not an extension-<version> tag"; exit 1; }
+          if [ "$(gh release view "$TAG" --json isPrerelease --jq .isPrerelease 2>/dev/null)" = false ]; then
+            echo "the release $TAG is already published; refusing to replace its files"; exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ env.TAG }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+      # Chrome only takes numeric versions, so a custom build (extension-1.2.3-label) must match 1.2.3 in manifest.json.
+      - name: Build the zip
+        run: |
+          version=${TAG#extension-}
+          manifestVersion=$(node -p 'require("./extension/public/manifest.json").version')
+          test "${version%%-*}" = "$manifestVersion" || { echo "tag $TAG does not match manifest.json version $manifestVersion"; exit 1; }
+          make build-extension
+          mkdir extension-release
+          cp "extension/hisar-extension-$manifestVersion.zip" "extension-release/hisar-extension-$version.zip"
+      # The manifest key fixes the extension ID that the Mac app's native host allows.
+      - name: Check the zip keeps the manifest key
+        run: |
+          version=${TAG#extension-}
+          unzip -p "extension-release/hisar-extension-$version.zip" manifest.json > "$RUNNER_TEMP/manifest.json"
+          # shellcheck disable=SC2016
+          node -e '
+            const { readFileSync } = require("node:fs");
+            const { createHash } = require("node:crypto");
+            const key = JSON.parse(readFileSync(process.argv[1], "utf8")).key;
+            if (!key) { console.error("manifest.json in the zip has no key"); process.exit(1); }
+            const id = [...createHash("sha256").update(Buffer.from(key, "base64")).digest("hex").slice(0, 32)]
+              .map((digit) => String.fromCharCode(97 + parseInt(digit, 16))).join("");
+            if (id !== process.env.EXTENSION_ID) { console.error(`extension ID ${id} is not ${process.env.EXTENSION_ID}`); process.exit(1); }
+            console.log(`extension ID ${id}`);
+          ' "$RUNNER_TEMP/manifest.json"
+      - name: Create or update the GitHub prerelease
+        run: |
+          version=${TAG#extension-}
+          case "$version" in
+            *-*) name="Hisar extension $version (custom build)" ;;
+            *) name="Hisar extension $version" ;;
+          esac
+          notes="Hisar browser extension $version for Chrome and other Chromium browsers. Unzip it, open chrome://extensions, turn on Developer mode, remove the old Hisar extension and choose Load unpacked. Pairing with the Mac app is kept, because the extension ID is fixed."
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "$name" --notes "$notes" --prerelease
+          else
+            gh release create "$TAG" --verify-tag --prerelease --latest=false --title "$name" --notes "$notes"
+          fi
+          gh release upload "$TAG" --clobber "extension-release/hisar-extension-$version.zip"
