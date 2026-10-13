@@ -5,28 +5,32 @@ import (
 	"testing"
 )
 
-func setUpdateEnvironment(t *testing.T, gitLabURL, projectID, token string) {
-	t.Setenv("HISAR_UPDATE_GITLAB_URL", gitLabURL)
-	t.Setenv("HISAR_UPDATE_GITLAB_PROJECT_ID", projectID)
-	t.Setenv("HISAR_UPDATE_GITLAB_TOKEN", token)
+func setUpdateEnvironment(t *testing.T, repository, token, apiURL string) {
+	t.Setenv("HISAR_DESKTOP_UPDATE_GITHUB_REPOSITORY", repository)
+	t.Setenv("HISAR_DESKTOP_UPDATE_GITHUB_TOKEN", token)
+	t.Setenv("HISAR_DESKTOP_UPDATE_GITHUB_API_URL", apiURL)
 }
 
 func TestCreateDesktopUpdateSource(t *testing.T) {
 	setUpdateEnvironment(t, "", "", "")
-	if source, err := createDesktopUpdateSource("https://hisar.test"); source != nil || err != nil {
-		t.Errorf("unset: %v %v", source, err)
+	if source, err := createDesktopUpdateSource("https://hisar.test"); source == nil || err != nil {
+		t.Errorf("default repository: %v %v", source, err)
 	}
-	setUpdateEnvironment(t, "https://git.example.com", "2", "glpat-token")
+	setUpdateEnvironment(t, "off", "", "")
+	if source, err := createDesktopUpdateSource("https://hisar.test"); source != nil || err != nil {
+		t.Errorf("off: %v %v", source, err)
+	}
+	setUpdateEnvironment(t, "example/fork", "github_pat_token", "https://github.example.com/api/v3")
 	if source, err := createDesktopUpdateSource("https://hisar.test"); source == nil || err != nil {
 		t.Errorf("configured: %v %v", source, err)
 	}
-	setUpdateEnvironment(t, "https://git.example.com", "2", "")
-	if _, err := createDesktopUpdateSource("https://hisar.test"); err == nil {
-		t.Error("partial configuration accepted")
+	setUpdateEnvironment(t, "https://github.com/hisarapp/core", "", "")
+	if _, err := createDesktopUpdateSource("https://hisar.test"); err == nil || !strings.Contains(err.Error(), "owner/name") {
+		t.Errorf("repository URL accepted: %v", err)
 	}
-	setUpdateEnvironment(t, "git.example.com", "2", "glpat-token")
+	setUpdateEnvironment(t, "hisarapp/core", "", "api.github.com")
 	if _, err := createDesktopUpdateSource("https://hisar.test"); err == nil {
-		t.Error("URL without a scheme accepted")
+		t.Error("API URL without a scheme accepted")
 	}
 }
 

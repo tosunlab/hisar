@@ -16,16 +16,16 @@ import (
 	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/core/session"
 	"github.com/tryhisar/hisar/server/internal/desktopupdate"
-	"github.com/tryhisar/hisar/server/internal/desktopupdate/fakegitlab"
+	"github.com/tryhisar/hisar/server/internal/desktopupdate/fakegithub"
 )
 
-const updateGitLabToken = "glpat-update"
+const updateGitHubToken = "github_pat_update"
 
 type updateTestServer struct {
 	baseURL string
 	server  *Server
 	token   string
-	fake    *fakegitlab.Server
+	fake    *fakegithub.Server
 	archive []byte
 }
 
@@ -38,16 +38,16 @@ func setupUpdateServer(t *testing.T) *updateTestServer {
 	if err != nil {
 		t.Fatal(err)
 	}
-	fake := fakegitlab.Start(t, updateGitLabToken)
+	fake := fakegithub.Start(t, fakegithub.DefaultRepository, updateGitHubToken)
 	archive := bytes.Repeat([]byte("hisar update archive "), 200<<10)
-	fake.AddPackage(desktopupdate.PackageName, "0.2.0", fakegitlab.CreateAllReleaseFile(fakegitlab.ReleaseConfig{
+	fake.AddRelease(fakegithub.CreateDesktopRelease(fakegithub.ReleaseConfig{
 		Version: "0.2.0", BuildNumber: 2000, Archive: archive, ReleaseNotes: "New & <improved>", PublishedAt: time.Now(),
-	})...)
-	gitLab, err := desktopupdate.CreateGitLab(desktopupdate.GitLabConfig{BaseURL: fake.URL, ProjectID: fakegitlab.ProjectID, Token: updateGitLabToken})
+	}))
+	gitHub, err := desktopupdate.CreateGitHub(desktopupdate.GitHubConfig{APIURL: fake.URL, Repository: fakegithub.DefaultRepository, Token: updateGitHubToken})
 	if err != nil {
 		t.Fatal(err)
 	}
-	server.config.DesktopUpdates = desktopupdate.CreateSource(gitLab, desktopupdate.SourceConfig{PublicURL: server.config.PublicURL})
+	server.config.DesktopUpdates = desktopupdate.CreateSource(gitHub, desktopupdate.SourceConfig{PublicURL: server.config.PublicURL})
 	server.updateLimiter = createIPLimiter(rate.Inf, 1)
 	return &updateTestServer{baseURL: baseURL, server: server, token: signedUp.Client.Token, fake: fake, archive: archive}
 }
@@ -82,8 +82,8 @@ func TestDesktopUpdatesRequireSession(t *testing.T) {
 			}
 		}
 	}
-	if allPath := updateServer.fake.GetAllRequestPath(); len(allPath) != 0 {
-		t.Errorf("GitLab asked without a session: %v", allPath)
+	if allRequest := updateServer.fake.GetAllRequest(); len(allRequest) != 0 {
+		t.Errorf("GitHub asked without a session: %+v", allRequest)
 	}
 }
 
@@ -121,9 +121,14 @@ func TestDesktopAppcastAndDownload(t *testing.T) {
 	if response.Header.Get("Content-Type") != "application/octet-stream" {
 		t.Errorf("content type %q", response.Header.Get("Content-Type"))
 	}
-	for _, token := range updateServer.fake.GetAllToken() {
-		if token != updateGitLabToken {
-			t.Errorf("GitLab got token %q", token)
+	for _, request := range updateServer.fake.GetAllRequest() {
+		if request.Authorization != "Bearer "+updateGitHubToken {
+			t.Errorf("GitHub got %q for %s", request.Authorization, request.Path)
+		}
+	}
+	for _, authorization := range updateServer.fake.GetAllStorageAuthorization() {
+		if authorization != "" {
+			t.Errorf("token forwarded to storage: %q", authorization)
 		}
 	}
 }
@@ -144,10 +149,15 @@ func TestDesktopUpdateDownloadRefusesBadNames(t *testing.T) {
 			t.Errorf("%s: %d %s", path, response.StatusCode, body)
 		}
 	}
-	for _, path := range updateServer.fake.GetAllRequestPath() {
-		if strings.Contains(path, "0.3.0") || strings.Contains(path, "..") || strings.Contains(path, "%2") {
-			t.Errorf("bad name reached GitLab: %s", path)
+	// Only update.json of 0.2.0 is read; no bad name reaches GitHub.
+	assetCount := 0
+	for _, request := range updateServer.fake.GetAllRequest() {
+		if strings.Contains(request.Path, "/releases/assets/") {
+			assetCount++
 		}
+	}
+	if assetCount != 1 {
+		t.Errorf("asked GitHub for %d assets: %+v", assetCount, updateServer.fake.GetAllRequest())
 	}
 }
 
@@ -155,7 +165,7 @@ func TestDesktopUpdatesUnreachableSource(t *testing.T) {
 	updateServer := setupUpdateServer(t)
 	updateServer.fake.Close()
 	if response, body := updateServer.get(t, "appcast.xml", updateServer.token); response.StatusCode != http.StatusBadGateway {
-		t.Errorf("appcast without GitLab: %d %s", response.StatusCode, body)
+		t.Errorf("appcast without GitHub: %d %s", response.StatusCode, body)
 	}
 }
 

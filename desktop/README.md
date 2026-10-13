@@ -53,8 +53,8 @@ ad-hoc signed and not notarized until the Apple Developer membership is active, 
 
 Design: `docs/DESIGN.md` §9.1.1. Sparkle (version and SHA-256 pinned in `scripts/download-sparkle.sh`, downloaded into
 `build/sparkle/` by packaged builds) checks `<server>/api/v1/desktop/updates/appcast.xml` on the server you are signed in
-to, with your session, once a day, and downloads the update from the same server. The server needs the update source
-configured (`deploy/README.md`); otherwise checks report that updates are not configured. Settings → General → Updates shows the
+to, with your session, once a day, and downloads the update from the same server, which relays the published releases from
+GitHub (`deploy/README.md`); if the server has updates off, checks report that updates are not configured. Settings → General → Updates shows the
 version, **Check for updates**, and **Automatically check for updates**. `wails3 dev` builds have no Sparkle and say so.
 
 The EdDSA private key lives outside the repository (kept by the maintainer and in the `SPARKLE_PRIVATE_KEY` repository secret);
