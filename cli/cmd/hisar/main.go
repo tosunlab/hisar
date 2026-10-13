@@ -56,6 +56,7 @@ var allCommand = []command{
 	{name: "invite", argumentUsage: "<email>", summary: "email someone an invite to create a Hisar account", run: runInvite, runThroughApp: runInviteThroughApp},
 	{name: "share-link", argumentUsage: "<item>|--text|open <url>|revoke <id>", summary: "share an item or text with anyone through an end-to-end encrypted link (--field, --expires 1h|1d|7d|30d, --views, --passphrase)", run: runShareLink, isLocal: true},
 	{name: "share-links", summary: "list your live share links", run: runListAllShareLink, runThroughApp: runListAllShareLinkThroughApp},
+	{name: "account", argumentUsage: "change-password|replace-secret-key [-o file]|delete", summary: "change your master password, replace your Secret Key (with a new Emergency Kit) or delete your account", run: runAccount, appAlternative: "use the Hisar app under Settings → Security (master password, Secret Key) or Settings → Account (delete)"},
 	{name: "emergency-kit", argumentUsage: "[-o file]", summary: "save your Emergency Kit PDF (sign-in address, email, Secret Key)", run: runEmergencyKit, appAlternative: "save it in the Hisar app under Settings → Security → Emergency Kit"},
 	{name: "devices", summary: "list your signed-in devices", run: runListAllDevice, runThroughApp: runListAllDeviceThroughApp},
 	{name: "revoke-device", argumentUsage: "<id>", summary: "sign out a device", run: runRevokeDevice, runThroughApp: runRevokeDeviceThroughApp},
@@ -173,7 +174,11 @@ func main() {
 	}
 	err = runCommand(ctx, selected, option.isStandalone, flags, allArg[1:])
 	var exitCode exitCodeError
+	updateMessage, isUpdateRequired := describeUpdateRequired(err)
 	switch {
+	case isUpdateRequired:
+		fmt.Fprintln(os.Stderr, "hisar:", updateMessage)
+		os.Exit(1)
 	case errors.As(err, &exitCode):
 		os.Exit(int(exitCode))
 	case errors.Is(err, errUsage):

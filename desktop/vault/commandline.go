@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/tryhisar/hisar/core/cliprotocol"
@@ -29,6 +30,32 @@ func CreateCommandLineBridge(service *Service, approvals *commandline.SessionApp
 func (bridge *CommandLineBridge) GetHello() cliprotocol.HelloResult {
 	status := bridge.service.GetStatus()
 	return cliprotocol.HelloResult{State: status.State, Email: status.Email, Server: status.Server}
+}
+
+// CheckUpdateRequired refuses requests while Hisar needs an update, or while the hisar that sent them is below the server's minimum.
+func (bridge *CommandLineBridge) CheckUpdateRequired(request *cliprotocol.Request) error {
+	s := bridge.service
+	if requirement := s.getUpdateRequirement(); requirement != nil {
+		return cliprotocol.CreateError(cliprotocol.ErrorUpdateRequired, fmt.Sprintf(
+			"Hisar needs an update: the server requires version %s or later and this Mac has %s. Open Hisar and choose Update now.",
+			requirement.MinimumVersion, describeVersion(requirement.CurrentVersion)))
+	}
+	if !strings.HasSuffix(request.ClientPlatform, "/cli") {
+		return nil
+	}
+	if requirement := s.checkClientVersion(request.ClientPlatform, request.ClientVersion); requirement != nil {
+		return cliprotocol.CreateError(cliprotocol.ErrorUpdateRequired, fmt.Sprintf(
+			"hisar needs an update: the server requires version %s or later and this is %s. Install the latest hisar from %s, or use the one that comes with the Hisar app.",
+			requirement.MinimumVersion, requirement.CurrentVersion, requirement.UpdateURL))
+	}
+	return nil
+}
+
+func describeVersion(version string) string {
+	if version == "" {
+		return "a development build"
+	}
+	return version
 }
 
 func convertCommandLineError(err error) error {

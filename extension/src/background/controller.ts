@@ -16,6 +16,7 @@ import {
   type HelloResult,
   type LoginSummary,
   type OneTimeCode,
+  type UpdateRequirement,
 } from "../shared/protocol";
 import { getHost, getOrigin, isWebUrl } from "../shared/url";
 import { chooseFocusedFrame, chooseLoginFrame, chooseOneTimeCodeFrame, selectAllFillableFrame, type FrameInfo, type ProbedFrame } from "./frames";
@@ -41,6 +42,7 @@ export interface BrowserBridge {
 export class BackgroundController {
   readonly allSaveOffer: SaveOfferStore;
   readonly allRememberedUsername: RememberedUsernameStore;
+  private updateRequirement: UpdateRequirement | undefined;
 
   constructor(
     private readonly client: NativeClient,
@@ -52,6 +54,7 @@ export class BackgroundController {
   }
 
   async handleHello(result: HelloResult): Promise<void> {
+    this.updateRequirement = result.updateRequired;
     if (!result.isPaired) await this.storage.removeToken();
   }
 
@@ -63,6 +66,7 @@ export class BackgroundController {
     } catch (error) {
       return { view: "desktop-unavailable", errorMessage: toHisarError(error).message };
     }
+    if (hello.updateRequired) return { view: "update-required", updateRequired: hello.updateRequired };
     if (!(await this.storage.getToken())) return { view: hello.state === "signed-out" ? "signed-out" : "not-paired" };
     try {
       const status = await this.client.request("status", {});
@@ -75,6 +79,7 @@ export class BackgroundController {
       }
       if (hisarError.code === "signed-out" || hisarError.code === "locked") return { view: hisarError.code };
       if (hisarError.code === "desktop-unavailable") return { view: "desktop-unavailable", errorMessage: hisarError.message };
+      if (hisarError.code === "update-required") return { view: "update-required", errorMessage: hisarError.message };
       throw hisarError;
     }
   }
@@ -280,6 +285,9 @@ export class BackgroundController {
   }
 
   private async request<Result>(send: () => Promise<Result>): Promise<Result> {
+    if (this.updateRequirement?.target === "extension") {
+      throw new HisarError("update-required", `Update the Hisar extension: this server requires version ${this.updateRequirement.minimumVersion} or later.`);
+    }
     try {
       return await send();
     } catch (error) {

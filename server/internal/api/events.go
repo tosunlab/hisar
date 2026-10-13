@@ -2,6 +2,7 @@ package api
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -30,6 +31,7 @@ type eventSubscriber struct {
 	channel   chan serverEvent
 	// isOverflowed is set when an event could not be queued; the stream then ends so the client resyncs.
 	isOverflowed bool
+	isEnded      bool
 }
 
 // eventBroker fans vault changes out to the event streams of one server process.
@@ -79,6 +81,28 @@ func (broker *eventBroker) publish(allAccountID []string, event serverEvent) {
 			}
 		}
 	}
+}
+
+// endAllStream closes the account's streams except the one of keptTokenHash, without waiting for the next heartbeat.
+func (broker *eventBroker) endAllStream(accountID string, keptTokenHash []byte) {
+	broker.mutex.Lock()
+	defer broker.mutex.Unlock()
+	for subscriber := range broker.allSubscriberByAccount[accountID] {
+		if keptTokenHash != nil && bytes.Equal(subscriber.tokenHash, keptTokenHash) {
+			continue
+		}
+		subscriber.isEnded = true
+		select {
+		case subscriber.channel <- serverEvent{}:
+		default:
+		}
+	}
+}
+
+func (broker *eventBroker) isEnded(subscriber *eventSubscriber) bool {
+	broker.mutex.Lock()
+	defer broker.mutex.Unlock()
+	return subscriber.isEnded
 }
 
 func (broker *eventBroker) isOverflowed(subscriber *eventSubscriber) bool {
@@ -176,12 +200,15 @@ func (s *Server) handleStreamEvents(c fiber.Ctx) error {
 		for {
 			select {
 			case event := <-subscriber.channel:
+				if s.events.isEnded(subscriber) {
+					return
+				}
 				extendWriteDeadline()
 				if writeEvent(writer, event) != nil {
 					return
 				}
 			case <-ticker.C:
-				if s.events.isOverflowed(subscriber) || !s.isSessionValid(subscriber.tokenHash) {
+				if s.events.isOverflowed(subscriber) || s.events.isEnded(subscriber) || !s.isSessionValid(subscriber.tokenHash) {
 					return
 				}
 				extendWriteDeadline()

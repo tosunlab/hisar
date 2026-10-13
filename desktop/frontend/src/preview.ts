@@ -113,8 +113,15 @@ let previewState = getInitialState();
 let previewSignedOutEmail = "alper@tryhisar.com";
 let isPreviewBiometricEnabled = new URLSearchParams(window.location.search).get("touchId") === "1";
 let previewAutoLockSeconds = 600;
+let previewSignedOutReason =
+  previewParameter.get("signedOutReason") === "1"
+    ? "This device was signed out. If your master password or Secret Key was changed on another device, sign in with the new one."
+    : "";
 // &appearance=light|dark|system and &color=neutral|blue|purple|green pick the theme the preview starts with.
 let previewTheme: Theme = { appearance: previewParameter.get("appearance") ?? "system", color: previewParameter.get("color") ?? "neutral" };
+// &updateRequired=0.2.0 shows the blocking update screen for that minimum version.
+const previewMinimumVersion = previewParameter.get("updateRequired");
+const previewUpdateRequired = previewMinimumVersion ? { currentVersion: "0.1.0", minimumVersion: previewMinimumVersion, updateURL: "https://tryhisar.com/download" } : null;
 const previewStatus = (): Status => ({
   state: previewState,
   server: "https://api.tryhisar.com",
@@ -125,6 +132,8 @@ const previewStatus = (): Status => ({
   biometricReady: isPreviewBiometricEnabled && previewState === "locked",
   isOffline: new URLSearchParams(window.location.search).get("offline") === "1",
   autoLockSeconds: previewAutoLockSeconds,
+  signedOutReason: previewState === "signed-out" ? previewSignedOutReason : "",
+  updateRequired: previewUpdateRequired,
 });
 let isPreviewSSHConfigured = new URLSearchParams(window.location.search).get("sshConfigured") === "1";
 let isPreviewCompactApproval = new URLSearchParams(window.location.search).get("compact") === "1";
@@ -1201,6 +1210,41 @@ export const previewApi = {
   saveEmergencyKit: (password: string) =>
     password.length < 4 ? Promise.reject(new Error("incorrect email, master password or Secret Key")) : resolveAfterDelay("/Users/you/Documents/Hisar Emergency Kit.pdf"),
   forgetNewAccountSecretKey: () => Promise.resolve(),
+  changeMasterPassword: (currentPassword: string) =>
+    currentPassword.length < 4
+      ? Promise.reject(new Error("the master password is not correct"))
+      : resolveAfterDelay({ status: previewStatus(), secretKey: "", signedOutDeviceCount: 2, keychainError: "" }),
+  replaceSecretKey: (password: string) =>
+    password.length < 4
+      ? Promise.reject(new Error("the master password is not correct"))
+      : resolveAfterDelay({ status: previewStatus(), secretKey: "H1-GVC2KA-8RW2N-QHT4M-0ZKXD-71BJE-P3SV6A", signedOutDeviceCount: 2, keychainError: "" }),
+  previewAccountDeletion: () =>
+    resolveAfterDelay({
+      email: "alper@tryhisar.com",
+      ownedVaults: [
+        { id: "personal", name: "Personal", type: "personal", role: "owner", otherMemberCount: 0 },
+        { id: "family", name: "Family", type: "shared", role: "owner", otherMemberCount: 2 },
+      ],
+      memberVaults: [
+        { id: "infra", name: "Infrastructure", type: "shared", role: "owner", otherMemberCount: 0 },
+        { id: "design", name: "Design team", type: "shared", role: "editor", otherMemberCount: 0 },
+      ],
+      shareLinkCount: 3,
+      sentInvitationCount: 1,
+      receivedInvitationCount: 0,
+      deviceCount: 3,
+    }),
+  deleteAccount: (password: string) => {
+    if (password.length < 4) {
+      return Promise.reject(new Error("the master password is not correct"));
+    }
+    previewState = "signed-out";
+    return resolveAfterDelay(previewStatus());
+  },
+  dismissSignedOutReason: () => {
+    previewSignedOutReason = "";
+    return resolveAfterDelay(previewStatus());
+  },
   getBrowserStatus: () => resolveAfterDelay({ ...previewBrowserStatus, allPairedBrowser: [...previewBrowserStatus.allPairedBrowser] }),
   removePairedBrowser: (instanceID: string) => {
     previewBrowserStatus.allPairedBrowser = previewBrowserStatus.allPairedBrowser.filter((pairedBrowser) => pairedBrowser.instanceID !== instanceID);
@@ -1210,6 +1254,8 @@ export const previewApi = {
     previewBrowserStatus.isExactHostMatch = isExactHostMatch;
     return resolveAfterDelay({ ...previewBrowserStatus });
   },
+  checkMinimumVersion: () => resolveAfterDelay(previewStatus()),
+  takePendingInvite: () => Promise.resolve(previewParameter.get("invite") ?? ""),
   getUpdateStatus: () => resolveAfterDelay({ ...previewUpdateStatus }),
   checkForUpdates: () => {
     if (!previewUpdateStatus.isSignedIn) {

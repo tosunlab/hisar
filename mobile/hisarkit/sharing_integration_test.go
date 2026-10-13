@@ -20,6 +20,8 @@ func (recorder *remoteChangeRecorder) OnLocked() {}
 
 func (recorder *remoteChangeRecorder) OnApprovalEvent(eventName, requestID string) {}
 
+func (recorder *remoteChangeRecorder) OnUpdateRequired() {}
+
 func (recorder *remoteChangeRecorder) OnRemoteChange() {
 	select {
 	case recorder.allRemoteChange <- struct{}{}:

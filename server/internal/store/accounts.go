@@ -100,6 +100,27 @@ func (s *Store) GetInviteByHash(ctx context.Context, tokenHash []byte) (*Invite,
 	return &invite, nil
 }
 
+type InviteWithInviter struct {
+	Email        string
+	ExpiresAt    time.Time
+	InviterName  string
+	InviterEmail string
+}
+
+// GetInviteWithInviter returns a usable invite; unknown, used and expired invites are all ErrNotFound.
+func (s *Store) GetInviteWithInviter(ctx context.Context, tokenHash []byte) (*InviteWithInviter, error) {
+	var invite InviteWithInviter
+	err := s.pool.QueryRow(ctx, `
+		SELECT i.email, i.expires_at, coalesce(a.name, ''), coalesce(a.email, '')
+		FROM invites i LEFT JOIN accounts a ON a.id = i.created_by
+		WHERE i.token_hash = $1 AND i.used_at IS NULL AND i.expires_at > now()`,
+		tokenHash).Scan(&invite.Email, &invite.ExpiresAt, &invite.InviterName, &invite.InviterEmail)
+	if err != nil {
+		return nil, convertNoRowsToNotFound(err)
+	}
+	return &invite, nil
+}
+
 // RedeemInvite atomically consumes the invite and creates the account, its first device and a session.
 func (s *Store) RedeemInvite(ctx context.Context, tokenHash []byte, account *Account, device *Device, session *Session) error {
 	return s.runInTransaction(ctx, func(transaction pgx.Tx) error {

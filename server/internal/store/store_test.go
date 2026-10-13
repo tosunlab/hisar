@@ -83,8 +83,18 @@ func TestMigrations(t *testing.T) {
 
 	allRecoveryTable := []string{"recovery_keyset", "vault_recovery", "recovery_tokens", "account_recovery"}
 
+	if countConstraint(t, database, "items_updated_by_fkey") != 0 || countConstraint(t, database, "vaults_created_by_fkey") != 0 {
+		t.Error("account deletion migration left the account foreign keys")
+	}
 	rolledBack, err := database.RollbackMigration(ctx)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if countConstraint(t, database, "items_updated_by_fkey") != 1 || countConstraint(t, database, "vault_access_granted_by_fkey") != 1 {
+		t.Errorf("rolling back %s left the wrong schema", rolledBack.Source.Path)
+	}
+
+	if rolledBack, err = database.RollbackMigration(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if countTable(t, database, "share_links") != 0 || countTable(t, database, "share_invitations") != 1 {
@@ -129,7 +139,7 @@ func TestMigrations(t *testing.T) {
 		t.Errorf("accounts table still exists after rolling back %s", rolledBack.Source.Path)
 	}
 
-	if allResult, err = database.Migrate(ctx); err != nil || len(allResult) != 5 {
+	if allResult, err = database.Migrate(ctx); err != nil || len(allResult) != 6 {
 		t.Fatalf("re-apply: %d %v", len(allResult), err)
 	}
 	for _, tableName := range allRecoveryTable {
@@ -140,6 +150,15 @@ func TestMigrations(t *testing.T) {
 	if countColumn(t, database, "vaults", "recovery_opt_out") != 0 || countTable(t, database, "share_invitations") != 1 || countTable(t, database, "share_links") != 1 {
 		t.Error("re-applying left the wrong schema")
 	}
+}
+
+func countConstraint(t *testing.T, database *Store, constraintName string) int {
+	t.Helper()
+	var constraintCount int
+	if err := database.pool.QueryRow(context.Background(), `SELECT count(*) FROM information_schema.table_constraints WHERE constraint_name = $1`, constraintName).Scan(&constraintCount); err != nil {
+		t.Fatal(err)
+	}
+	return constraintCount
 }
 
 func countTable(t *testing.T, database *Store, tableName string) int {
@@ -175,7 +194,7 @@ func TestRemoveRecoveryMigrationDeletesRecoveryData(t *testing.T) {
 	createTestAccount(t, database, "AAAAAA", "a@example.com")
 	createTestAccount(t, database, "BBBBBB", "b@example.com")
 	vaultID := createTestVault(t, database, "AAAAAA")
-	for range 2 {
+	for range 3 {
 		if _, err := database.RollbackMigration(ctx); err != nil {
 			t.Fatal(err)
 		}
@@ -194,7 +213,7 @@ func TestRemoveRecoveryMigrationDeletesRecoveryData(t *testing.T) {
 		}
 	}
 
-	if allResult, err := database.Migrate(ctx); err != nil || len(allResult) != 2 {
+	if allResult, err := database.Migrate(ctx); err != nil || len(allResult) != 3 {
 		t.Fatalf("applied %d: %v", len(allResult), err)
 	}
 	for _, tableName := range []string{"recovery_keyset", "vault_recovery", "recovery_tokens", "account_recovery"} {
@@ -213,7 +232,7 @@ func TestRemoveRecoveryMigrationDeletesRecoveryData(t *testing.T) {
 		t.Fatalf("vault after the migration: %+v %v", allVault, err)
 	}
 
-	for range 2 {
+	for range 3 {
 		if _, err := database.RollbackMigration(ctx); err != nil {
 			t.Fatal(err)
 		}
@@ -259,6 +278,30 @@ func TestInvites(t *testing.T) {
 	}
 	if _, err := database.GetInviteByHash(ctx, []byte("dup")); err != nil {
 		t.Errorf("failed redeem consumed invite: %v", err)
+	}
+}
+
+func TestGetInviteWithInviter(t *testing.T) {
+	database := createTestStore(t)
+	ctx := context.Background()
+	createTestAccount(t, database, "AAAAAA", "a@example.com")
+	inviterID := "AAAAAA"
+	database.CreateInvite(ctx, []byte("from-user"), "b@example.com", "member", &inviterID, time.Hour)
+	database.CreateInvite(ctx, []byte("from-operator"), "c@example.com", "admin", nil, time.Hour)
+	database.CreateInvite(ctx, []byte("expired"), "d@example.com", "member", &inviterID, -time.Minute)
+
+	invite, err := database.GetInviteWithInviter(ctx, []byte("from-user"))
+	if err != nil || invite.Email != "b@example.com" || invite.InviterName != "AAAAAA" || invite.InviterEmail != "a@example.com" || time.Until(invite.ExpiresAt) < 59*time.Minute {
+		t.Errorf("invite from a user: %+v %v", invite, err)
+	}
+	invite, err = database.GetInviteWithInviter(ctx, []byte("from-operator"))
+	if err != nil || invite.Email != "c@example.com" || invite.InviterName != "" || invite.InviterEmail != "" {
+		t.Errorf("invite from the operator: %+v %v", invite, err)
+	}
+	for _, tokenHash := range []string{"expired", "invite-AAAAAA", "unknown"} {
+		if invite, err := database.GetInviteWithInviter(ctx, []byte(tokenHash)); !errors.Is(err, ErrNotFound) {
+			t.Errorf("%s: %+v %v", tokenHash, invite, err)
+		}
 	}
 }
 

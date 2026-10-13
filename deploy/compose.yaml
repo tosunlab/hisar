@@ -15,7 +15,7 @@ services:
       retries: 10
 
   hisar:
-    image: ${HISAR_IMAGE:?set HISAR_IMAGE in .env}:${HISAR_VERSION:-latest}
+    image: ${HISAR_IMAGE:-ghcr.io/hisarapp/server}:${HISAR_VERSION:-latest}
     restart: unless-stopped
     depends_on:
       postgres:

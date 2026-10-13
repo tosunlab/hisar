@@ -44,6 +44,37 @@ async function clickElement(selector: string): Promise<void> {
   await nextTick();
 }
 
+async function typeIntoInput(selector: string, text: string): Promise<void> {
+  const input = (await waitForElement(selector)) as HTMLInputElement;
+  input.value = text;
+  input.dispatchEvent(new Event("input"));
+  await nextTick();
+}
+
+// applyAccountDialogParameter: &accountDialog=change-master-password | replace-secret-key | replace-secret-key-done | delete-account | delete-account-filled.
+async function applyAccountDialogParameter(dialog: string | null): Promise<void> {
+  if (dialog === "change-master-password") {
+    await clickElement('[data-testid="change-master-password"]');
+    await typeIntoInput('input[name="currentPassword"]', "current master password");
+    await typeIntoInput('input[name="newPassword"]', "orange cactus harbor lantern");
+    await typeIntoInput('input[name="repeatedPassword"]', "orange cactus harbor lantern");
+  } else if (dialog === "replace-secret-key" || dialog === "replace-secret-key-done") {
+    await clickElement('[data-testid="replace-secret-key"]');
+    if (dialog === "replace-secret-key-done") {
+      await typeIntoInput('input[name="replaceSecretKeyPassword"]', "current master password");
+      await clickElement('[data-testid="confirm-replace-secret-key"]');
+      await waitForElement('[data-testid="new-secret-key"]');
+    }
+  } else if (dialog === "delete-account" || dialog === "delete-account-filled") {
+    await clickElement('[data-testid="delete-account"]');
+    await waitForElement('[data-testid="delete-account-consequences"]');
+    if (dialog === "delete-account-filled") {
+      await typeIntoInput('input[name="deleteAccountPassword"]', "current master password");
+      await typeIntoInput('input[name="deleteAccountEmail"]', "alper@tryhisar.com");
+    }
+  }
+}
+
 async function applySettingsParameter(parameter: URLSearchParams): Promise<void> {
   const searchText = parameter.get("settingsSearch");
   if (searchText) {
@@ -52,6 +83,7 @@ async function applySettingsParameter(parameter: URLSearchParams): Promise<void>
     searchInput.dispatchEvent(new Event("input"));
     await nextTick();
   }
+  await applyAccountDialogParameter(parameter.get("accountDialog"));
   if (parameter.get("invite") === "1") {
     await clickElement('[data-testid="start-invite"]');
     const emailInput = await waitForElement('input[name="inviteEmail"]');

@@ -2,11 +2,14 @@ import { Browser } from "@wailsio/runtime";
 import { ApprovalTouchIDService, TouchIDPromptService } from "../bindings/github.com/tryhisar/hisar/desktop";
 import { Service as AgentService } from "../bindings/github.com/tryhisar/hisar/desktop/agent";
 import type { ApprovalEvent, Status as SSHAgentStatus } from "../bindings/github.com/tryhisar/hisar/desktop/agent";
-import { BrowserBridge, CommandLineService, LoginItemService, Service, UpdateService } from "../bindings/github.com/tryhisar/hisar/desktop/vault";
+import { BrowserBridge, CommandLineService, InviteLinkService, LoginItemService, Service, UpdateService } from "../bindings/github.com/tryhisar/hisar/desktop/vault";
 import type { BrowserInstallation } from "../bindings/github.com/tryhisar/hisar/desktop/browser";
 import type { Installation as CommandLineInstallation } from "../bindings/github.com/tryhisar/hisar/desktop/commandline";
 import type {
+  AccountDeletionPreview as BoundAccountDeletionPreview,
   BrowserPairingRequest,
+  CredentialChangeResult,
+  DeletionVault,
   BrowserStatus as BoundBrowserStatus,
   CommandLineStatus as BoundCommandLineStatus,
   Device,
@@ -40,6 +43,7 @@ import type {
   SignUpResult,
   Status,
   Theme,
+  UpdateRequirement,
   UpdateStatus,
   VaultMember,
   VaultSummary,
@@ -48,6 +52,8 @@ import type {
 
 export type {
   ApprovalEvent,
+  CredentialChangeResult,
+  DeletionVault,
   Device,
   ExportOptions,
   ExportRequest,
@@ -73,6 +79,7 @@ export type {
   SSHAgentStatus,
   Status,
   Theme,
+  UpdateRequirement,
   UpdateStatus,
   VaultMember,
   VaultSummary,
@@ -161,6 +168,15 @@ export interface ImportProgress extends Omit<BoundImportProgress, "allFailed"> {
 
 function normalizeImportProgress(boundProgress: BoundImportProgress): ImportProgress {
   return { ...boundProgress, allFailed: boundProgress.allFailed ?? [] };
+}
+
+export interface AccountDeletionPreview extends Omit<BoundAccountDeletionPreview, "ownedVaults" | "memberVaults"> {
+  ownedVaults: DeletionVault[];
+  memberVaults: DeletionVault[];
+}
+
+function normalizeAccountDeletionPreview(boundPreview: BoundAccountDeletionPreview): AccountDeletionPreview {
+  return { ...boundPreview, ownedVaults: boundPreview.ownedVaults ?? [], memberVaults: boundPreview.memberVaults ?? [] };
 }
 
 const wailsApi = {
@@ -253,12 +269,20 @@ const wailsApi = {
   saveNewAccountEmergencyKit: (): Promise<string> => Service.SaveNewAccountEmergencyKit(),
   saveEmergencyKit: (password: string): Promise<string> => Service.SaveEmergencyKit(password),
   forgetNewAccountSecretKey: (): Promise<void> => Service.ForgetNewAccountSecretKey(),
+  changeMasterPassword: (currentPassword: string, newPassword: string): Promise<CredentialChangeResult> =>
+    Service.ChangeMasterPassword(currentPassword, newPassword),
+  replaceSecretKey: (password: string): Promise<CredentialChangeResult> => Service.ReplaceSecretKey(password),
+  previewAccountDeletion: async (): Promise<AccountDeletionPreview> => normalizeAccountDeletionPreview(await Service.PreviewAccountDeletion()),
+  deleteAccount: (password: string, email: string): Promise<Status> => Service.DeleteAccount(password, email),
+  dismissSignedOutReason: (): Promise<Status> => Service.DismissSignedOutReason(),
   getBrowserStatus: async (): Promise<BrowserStatus> => normalizeBrowserStatus(await BrowserBridge.GetBrowserStatus()),
   removePairedBrowser: async (instanceID: string): Promise<BrowserStatus> =>
     normalizeBrowserStatus(await BrowserBridge.RemovePairedBrowser(instanceID)),
   setExactHostMatch: async (isExactHostMatch: boolean): Promise<BrowserStatus> =>
     normalizeBrowserStatus(await BrowserBridge.SetExactHostMatch(isExactHostMatch)),
   cancelBrowserPairing: (): Promise<void> => BrowserBridge.CancelBrowserPairing(),
+  checkMinimumVersion: (): Promise<Status> => Service.CheckMinimumVersion(),
+  takePendingInvite: (): Promise<string> => InviteLinkService.TakePendingInvite(),
   getUpdateStatus: (): Promise<UpdateStatus> => UpdateService.GetUpdateStatus(),
   checkForUpdates: (): Promise<UpdateStatus> => UpdateService.CheckForUpdates(),
   setAutomaticUpdateCheck: (isEnabled: boolean): Promise<UpdateStatus> => UpdateService.SetAutomaticUpdateCheck(isEnabled),

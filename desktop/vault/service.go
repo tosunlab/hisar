@@ -52,6 +52,8 @@ type Service struct {
 	allLockListener              []func()
 	allStatusListener            []func()
 	phoneApprovals               *phoneApprovalRelay
+	signedOutReason              string
+	updateRequirement            updateRequirementState
 }
 
 // getCache opens the offline cache on first use; if it cannot be opened, even after starting it over, Hisar stays online-only.
@@ -123,6 +125,9 @@ func (s *Service) getDeviceInfo() proto.DeviceInfo {
 
 func (s *Service) buildStatus() Status {
 	status := Status{State: StateSignedOut, Server: s.state.Server, Email: s.state.Email, Name: s.name}
+	if !s.state.IsLoggedIn() {
+		status.SignedOutReason = s.signedOutReason
+	}
 	switch {
 	case s.unlockedSession != nil:
 		status.State = StateUnlocked
@@ -134,6 +139,7 @@ func (s *Service) buildStatus() Status {
 	status.BiometricEnabled = len(s.state.BiometricUnlock) > 0
 	status.BiometricReady = status.State == StateLocked && s.isBiometricReady()
 	status.AutoLockSeconds = int(s.getAutoLockAfter() / time.Second)
+	status.UpdateRequired = s.getUpdateRequirement()
 	return status
 }
 
@@ -319,7 +325,7 @@ func (s *Service) SignIn(server, email, secretKeyText, password string) (Status,
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	loggedIn, err := session.LogIn(ctx, client.Create(server), strings.TrimSpace(email), passwordBytes, secretKey, s.getDeviceInfo())
+	loggedIn, err := session.LogIn(ctx, s.createClient(server), strings.TrimSpace(email), passwordBytes, secretKey, s.getDeviceInfo())
 	if err != nil {
 		return Status{}, convertError(err)
 	}
@@ -330,6 +336,7 @@ func (s *Service) SignIn(server, email, secretKeyText, password string) (Status,
 	s.forgetBiometricUnlock()
 	s.removeCache()
 	s.state.Reset()
+	s.signedOutReason = ""
 	s.state.Server, s.state.Email, s.state.AccountID, s.state.Token = server, loggedIn.Email, loggedIn.AccountID, loggedIn.Client.Token
 	if err := s.state.Save(); err != nil {
 		loggedIn.Lock()
@@ -392,7 +399,7 @@ func (s *Service) SignUp(invite, email, name, password string) (SignUpResult, er
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	signedUp, secretKey, accountUnlockKey, err := session.SignUpKeepingAccountUnlockKey(ctx, client.Create(server), token, strings.TrimSpace(email), strings.TrimSpace(name), passwordBytes, s.getDeviceInfo())
+	signedUp, secretKey, accountUnlockKey, err := session.SignUpKeepingAccountUnlockKey(ctx, s.createClient(server), token, strings.TrimSpace(email), strings.TrimSpace(name), passwordBytes, s.getDeviceInfo())
 	if err != nil {
 		return SignUpResult{}, convertError(err)
 	}
@@ -403,6 +410,7 @@ func (s *Service) SignUp(invite, email, name, password string) (SignUpResult, er
 	s.forgetBiometricUnlock()
 	s.removeCache()
 	s.state.Reset()
+	s.signedOutReason = ""
 	s.state.Server, s.state.Email, s.state.AccountID, s.state.Token = server, strings.ToLower(strings.TrimSpace(email)), signedUp.AccountID, signedUp.Client.Token
 	if err := s.state.Save(); err != nil {
 		signedUp.Lock()
@@ -439,14 +447,15 @@ func (s *Service) Unlock(password string) (Status, error) {
 	}
 	passwordBytes := []byte(password)
 	defer clear(passwordBytes)
-	apiClient := client.Create(server)
+	apiClient := s.createClient(server)
 	apiClient.Token = token
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	unlocked, err := session.Unlock(ctx, apiClient, accountCache, passwordBytes, secretKey)
 	if client.IsStatus(err, http.StatusUnauthorized) {
-		return Status{}, errors.New("this device was signed out; sign in again")
+		s.endSignedOutSession(token)
+		return s.GetStatus(), nil
 	}
 	if err != nil {
 		return Status{}, convertError(err)
@@ -464,7 +473,7 @@ func (s *Service) SignOut() (Status, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if s.state.IsLoggedIn() {
-		apiClient := client.Create(s.state.Server)
+		apiClient := s.createClient(s.state.Server)
 		apiClient.Token = s.state.Token
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		apiClient.Logout(ctx)
@@ -475,6 +484,7 @@ func (s *Service) SignOut() (Status, error) {
 	}
 	s.lockSession()
 	s.name = ""
+	s.signedOutReason = ""
 	s.forgetBiometricUnlock()
 	s.removeCache()
 	s.state.Reset()

@@ -104,9 +104,11 @@ func findImportTarget(allVault []cliprotocol.Vault, exported export.Vault) (clip
 			return vault, false
 		}
 	}
-	for _, vault := range allVault {
-		if exported.Type != proto.VaultPersonal && strings.EqualFold(vault.Name, exported.Name) && isWritable(vault) {
-			return vault, false
+	for _, candidateName := range []string{exported.Name, exported.Name + " (imported)"} {
+		for _, vault := range allVault {
+			if exported.Type != proto.VaultPersonal && strings.EqualFold(vault.Name, candidateName) && isWritable(vault) {
+				return vault, false
+			}
 		}
 	}
 	newName := exported.Name

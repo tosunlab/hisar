@@ -8,6 +8,16 @@ import * as browser$0 from "../browser/models.js";
 // @ts-ignore: Unused imports
 import * as commandline$0 from "../commandline/models.js";
 
+export interface AccountDeletionPreview {
+    "email": string;
+    "ownedVaults": DeletionVault[] | null;
+    "memberVaults": DeletionVault[] | null;
+    "shareLinkCount": number;
+    "sentInvitationCount": number;
+    "receivedInvitationCount": number;
+    "deviceCount": number;
+}
+
 export interface BrowserPairingRequest {
     "browser": string;
     "code": string;
@@ -37,6 +47,29 @@ export interface CommandLineStatus {
     "socketPath": string;
     "isServing": boolean;
     "errorMessage": string;
+}
+
+export interface CredentialChangeResult {
+    "status": Status;
+
+    /**
+     * SecretKey is set only after replacing the Secret Key; the new Emergency Kit is saved with SaveNewAccountEmergencyKit.
+     */
+    "secretKey": string;
+    "signedOutDeviceCount": number;
+
+    /**
+     * KeychainError is set when the new Secret Key could not be saved to the keychain; the user must write it down.
+     */
+    "keychainError": string;
+}
+
+export interface DeletionVault {
+    "id": string;
+    "name": string;
+    "type": string;
+    "role": string;
+    "otherMemberCount": number;
 }
 
 /**
@@ -328,6 +361,16 @@ export interface Status {
      * AutoLockSeconds is how long Hisar stays unlocked without activity.
      */
     "autoLockSeconds": number;
+
+    /**
+     * SignedOutReason says why the server signed this device out; empty after a sign-out on this device.
+     */
+    "signedOutReason": string;
+
+    /**
+     * UpdateRequired is set once the server refused this version; nothing works until Hisar updates.
+     */
+    "updateRequired": UpdateRequirement | null;
 }
 
 /**
@@ -336,6 +379,15 @@ export interface Status {
 export interface Theme {
     "appearance": string;
     "color": string;
+}
+
+/**
+ * UpdateRequirement is the server's minimum version for an app that is older; nil while the version is accepted.
+ */
+export interface UpdateRequirement {
+    "currentVersion": string;
+    "minimumVersion": string;
+    "updateURL": string;
 }
 
 export interface UpdateStatus {

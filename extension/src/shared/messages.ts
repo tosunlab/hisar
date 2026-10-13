@@ -1,12 +1,13 @@
-import type { ErrorCode, GenerateOptions, LoginSummary } from "./protocol";
+import type { ErrorCode, GenerateOptions, LoginSummary, UpdateRequirement } from "./protocol";
 
-export type PopupView = "not-paired" | "desktop-unavailable" | "signed-out" | "locked" | "unlocked";
+export type PopupView = "not-paired" | "desktop-unavailable" | "signed-out" | "locked" | "unlocked" | "update-required";
 
 export interface PopupState {
   view: PopupView;
   email?: string;
   isOffline?: boolean;
   errorMessage?: string;
+  updateRequired?: UpdateRequirement;
 }
 
 export interface MatchResult {
@@ -51,6 +52,7 @@ export interface InlineMenuState {
   hasMoreLogin: boolean;
   suggestedPassword?: string;
   errorMessage?: string;
+  updateRequired?: UpdateRequirement;
 }
 
 export type PopupMessage =

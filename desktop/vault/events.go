@@ -53,7 +53,11 @@ func (s *Service) watchEvents(ctx context.Context, apiClient *client.Client, rec
 		})
 		close(streamFinished)
 		cancelStream()
-		if ctx.Err() != nil || client.IsStatus(err, http.StatusUnauthorized) {
+		if _, isUpgradeRequired := client.AsUpgradeRequired(err); isUpgradeRequired || ctx.Err() != nil {
+			return
+		}
+		if client.IsStatus(err, http.StatusUnauthorized) {
+			go s.endSignedOutSession(apiClient.Token)
 			return
 		}
 		if isReconnectRequested.Load() {

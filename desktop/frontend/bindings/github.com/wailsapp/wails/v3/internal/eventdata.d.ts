@@ -15,11 +15,13 @@ import type * as vault$0 from "../../../../tryhisar/hisar/desktop/vault/models.j
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
+            "invite-link": string;
             "locked": string;
             "ssh-approval": agent$0.ApprovalEvent;
             "ssh-approval-closed": string;
             "theme-changed": vault$0.Theme;
             "unlocked": string;
+            "update-required": vault$0.UpdateRequirement;
         }
     }
 }

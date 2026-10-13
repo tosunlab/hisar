@@ -1,13 +1,32 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import type { PopupView } from "../../shared/messages";
+import type { UpdateRequirement } from "../../shared/protocol";
 import AppIcon from "./AppIcon.vue";
 
-const props = defineProps<{ view: PopupView; detail?: string; isWaiting?: boolean }>();
-const emit = defineEmits<{ openHisar: []; unlock: []; refresh: [] }>();
+const props = defineProps<{ view: PopupView; detail?: string; isWaiting?: boolean; updateRequired?: UpdateRequirement }>();
+const emit = defineEmits<{ openHisar: []; unlock: []; refresh: []; openUpdatePage: [url: string] }>();
+
+const isExtensionUpdate = computed(() => props.view === "update-required" && props.updateRequired?.target === "extension");
 
 const content = computed(() => {
   switch (props.view) {
+    case "update-required": {
+      const requirement = props.updateRequired;
+      if (requirement?.target === "extension") {
+        return {
+          title: "Update the Hisar extension",
+          subtitle: `This server needs version ${requirement.minimumVersion} or later of the extension; this is ${requirement.currentVersion}.`,
+        };
+      }
+      if (requirement) {
+        return {
+          title: "Hisar needs an update",
+          subtitle: `This server needs Hisar ${requirement.minimumVersion} or later. This Mac has ${requirement.currentVersion}. Open Hisar to update it.`,
+        };
+      }
+      return { title: "Hisar needs an update", subtitle: "This server needs a newer Hisar. Open Hisar to update it." };
+    }
     case "desktop-unavailable":
       return {
         title: "Hisar is not running",
@@ -23,7 +42,7 @@ const content = computed(() => {
 
 <template>
   <section class="panel" :data-testid="`status-${view}`">
-    <div class="icon"><AppIcon :name="view === 'locked' ? 'lock' : 'laptop'" :size="20" /></div>
+    <div class="icon"><AppIcon :name="view === 'locked' ? 'lock' : view === 'update-required' ? 'refresh' : 'laptop'" :size="20" /></div>
     <h1>{{ content.title }}</h1>
     <p class="subtitle">{{ content.subtitle }}</p>
     <p v-if="detail && detail !== content.title" class="detail muted">{{ detail }}</p>
@@ -38,7 +57,16 @@ const content = computed(() => {
       <AppIcon name="lock" /> {{ isWaiting ? "Waiting for Hisar…" : "Unlock in Hisar" }}
     </button>
     <button
-      v-else-if="view === 'desktop-unavailable'"
+      v-else-if="isExtensionUpdate"
+      type="button"
+      class="primary full-width"
+      data-testid="update-extension"
+      @click="emit('openUpdatePage', updateRequired?.updateURL ?? '')"
+    >
+      <AppIcon name="external" /> Update extension
+    </button>
+    <button
+      v-else-if="view === 'desktop-unavailable' || view === 'update-required'"
       type="button"
       class="primary full-width"
       :disabled="isWaiting"

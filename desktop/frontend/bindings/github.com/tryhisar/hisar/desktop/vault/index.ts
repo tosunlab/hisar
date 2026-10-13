@@ -3,21 +3,26 @@
 
 import * as BrowserBridge from "./browserbridge.js";
 import * as CommandLineService from "./commandlineservice.js";
+import * as InviteLinkService from "./invitelinkservice.js";
 import * as LoginItemService from "./loginitemservice.js";
 import * as Service from "./service.js";
 import * as UpdateService from "./updateservice.js";
 export {
     BrowserBridge,
     CommandLineService,
+    InviteLinkService,
     LoginItemService,
     Service,
     UpdateService
 };
 
 export type {
+    AccountDeletionPreview,
     BrowserPairingRequest,
     BrowserStatus,
     CommandLineStatus,
+    CredentialChangeResult,
+    DeletionVault,
     Device,
     ExportOptions,
     ExportRequest,
@@ -46,6 +51,7 @@ export type {
     SignUpResult,
     Status,
     Theme,
+    UpdateRequirement,
     UpdateStatus,
     VaultActions,
     VaultDeletionRequest,

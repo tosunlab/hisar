@@ -13,6 +13,7 @@ final class HisarKitBackend: VaultBackend {
         guard let hisar = HisarkitNew(stateDirectory.path, deviceName, secretKeyStore, biometric, clipboard, eventListener, &error) else {
             throw HisarKitBackend.convertError(error ?? NSError(domain: "hisar", code: 1), biometryName: "Face ID")
         }
+        hisar.setAppVersion(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
         self.hisar = hisar
         self.biometryName = biometric?.getBiometryName() ?? "Face ID"
         allRetainedAdapter = [secretKeyStore, biometric as AnyObject?, clipboard as AnyObject?, eventListener as AnyObject?].compactMap { $0 }
@@ -59,6 +60,10 @@ final class HisarKitBackend: VaultBackend {
 
     func getStatus() -> VaultStatus {
         (try? decode(VaultStatus.self, from: hisar.status())) ?? .signedOut
+    }
+
+    func checkMinimumVersion() -> VaultStatus {
+        (try? decode(VaultStatus.self, from: hisar.checkMinimumVersion())) ?? getStatus()
     }
 
     func signIn(server: String, email: String, secretKey: String, password: String) throws -> VaultStatus {
@@ -317,6 +322,26 @@ final class HisarKitBackend: VaultBackend {
 
     func exportEmergencyKit(password: String, directory: URL) throws -> EmergencyKitExport {
         try decode(EmergencyKitExport.self, from: callReturningText { hisar.exportEmergencyKit(password, directory: directory.path, error: $0) })
+    }
+
+    func changeMasterPassword(currentPassword: String, newPassword: String) throws -> CredentialChangeResult {
+        try decode(CredentialChangeResult.self, from: callReturningText { hisar.changeMasterPassword(currentPassword, newPassword: newPassword, error: $0) })
+    }
+
+    func replaceSecretKey(password: String, directory: URL) throws -> CredentialChangeResult {
+        try decode(CredentialChangeResult.self, from: callReturningText { hisar.replaceSecretKey(password, directory: directory.path, error: $0) })
+    }
+
+    func previewAccountDeletion() throws -> AccountDeletionPreview {
+        try decode(AccountDeletionPreview.self, from: callReturningText { hisar.previewAccountDeletion($0) })
+    }
+
+    func deleteAccount(password: String, email: String) throws -> VaultStatus {
+        try decode(VaultStatus.self, from: callReturningText { hisar.deleteAccount(password, email: email, error: $0) })
+    }
+
+    func dismissSignedOutReason() -> VaultStatus {
+        (try? decode(VaultStatus.self, from: hisar.dismissSignedOutReason())) ?? getStatus()
     }
 
     func copySecretReference(vaultID: String, itemID: String, fieldName: String) throws -> String {

@@ -1,5 +1,7 @@
 import { reactive } from "vue";
 import {
+  type AccountDeletionPreview,
+  type CredentialChangeResult,
   api,
   getErrorMessage,
   type BrowserPairingRequest,
@@ -21,6 +23,7 @@ import {
   type SSHAgentStatus,
   type SSHKeyType,
   type Status,
+  type UpdateRequirement,
   type UpdateStatus,
   type VaultMember,
   type VaultRole,
@@ -63,6 +66,7 @@ export const store = reactive({
     biometricReady: false,
     isOffline: false,
     autoLockSeconds: 600,
+    updateRequired: null,
   } as Status,
   allVault: [] as VaultSummary[],
   selectedVaultID: "",
@@ -72,6 +76,7 @@ export const store = reactive({
   searchQuery: "",
   pendingSecretKey: "",
   isTouchIDOfferShown: false,
+  pendingInvite: "",
   errorMessage: "",
   noticeMessage: "",
   isBusy: false,
@@ -159,7 +164,7 @@ function clearAllVaultData(): void {
 
 async function applyStatus(status: Status): Promise<void> {
   store.status = status;
-  if (status.state === "unlocked") {
+  if (status.state === "unlocked" && !status.updateRequired) {
     await loadAllVault();
   } else {
     clearAllVaultData();
@@ -168,6 +173,51 @@ async function applyStatus(status: Status): Promise<void> {
 
 export async function loadStatus(): Promise<void> {
   await runAction(async () => applyStatus(await api.getStatus()));
+}
+
+export function showUpdateRequired(requirement: UpdateRequirement): void {
+  clearAllVaultData();
+  store.status = { ...store.status, updateRequired: requirement };
+}
+
+export async function checkMinimumVersion(): Promise<boolean> {
+  const status = await runAction(() => api.checkMinimumVersion());
+  if (status) {
+    await applyStatus(status);
+  }
+  return !store.status.updateRequired;
+}
+
+// updateNow installs through Sparkle when it can; development builds and signed-out apps get the download page.
+export async function updateNow(): Promise<void> {
+  const updateURL = store.status.updateRequired?.updateURL ?? "";
+  const updateStatus = await api.getUpdateStatus().catch(() => null);
+  if (updateStatus?.isAvailable && updateStatus.isSignedIn) {
+    await runAction(() => api.checkForUpdates());
+    return;
+  }
+  if (/^https:\/\//.test(updateURL)) {
+    await runAction(() => api.openURL(updateURL));
+  }
+}
+
+export function openInviteLink(invite: string): void {
+  if (!invite) {
+    return;
+  }
+  if (store.status.state !== "signed-out") {
+    showNotice(`You're signed in as ${store.status.email}. Sign out to create an account with this invite.`);
+    return;
+  }
+  store.pendingInvite = invite;
+}
+
+export async function takePendingInviteQuietly(): Promise<void> {
+  try {
+    openInviteLink(await api.takePendingInvite());
+  } catch {
+    return;
+  }
 }
 
 export async function signIn(server: string, email: string, secretKey: string, password: string): Promise<boolean> {
@@ -306,6 +356,48 @@ export async function signOut(): Promise<void> {
   if (status) {
     store.pendingSecretKey = "";
     await applyStatus(status);
+  }
+}
+
+export async function changeMasterPassword(currentPassword: string, newPassword: string): Promise<CredentialChangeResult | undefined> {
+  const result = await runAction(() => api.changeMasterPassword(currentPassword, newPassword));
+  if (result) {
+    store.status = result.status;
+  }
+  return result;
+}
+
+export async function replaceSecretKey(password: string): Promise<CredentialChangeResult | undefined> {
+  const result = await runAction(() => api.replaceSecretKey(password));
+  if (result) {
+    store.status = result.status;
+  }
+  return result;
+}
+
+export async function finishSecretKeyReplacement(): Promise<void> {
+  await api.forgetNewAccountSecretKey().catch(() => undefined);
+}
+
+export async function loadAccountDeletionPreview(): Promise<AccountDeletionPreview | undefined> {
+  return runAction(() => api.previewAccountDeletion());
+}
+
+export async function deleteAccount(password: string, email: string): Promise<boolean> {
+  const status = await runAction(() => api.deleteAccount(password, email));
+  if (status) {
+    store.pendingSecretKey = "";
+    await applyStatus(status);
+    showNotice("Your account was deleted");
+  }
+  return status !== undefined;
+}
+
+export async function dismissSignedOutReason(): Promise<void> {
+  try {
+    store.status = await api.dismissSignedOutReason();
+  } catch {
+    store.status = { ...store.status, signedOutReason: "" };
   }
 }
 

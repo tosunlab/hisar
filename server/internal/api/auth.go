@@ -208,7 +208,7 @@ func (s *Server) handleLoginFinish(c fiber.Ctx) error {
 		return createAPIError(fiber.StatusBadRequest, "invalid device")
 	}
 	pending := s.loginCache.take(request.LoginID)
-	if pending == nil || pending.accountID == "" {
+	if pending == nil || pending.accountID == "" || pending.sessionTokenHash != nil {
 		return errLoginFailed
 	}
 	keyExchange3, err := s.opaque.Deserialize.KE3(request.KE3)
@@ -235,6 +235,9 @@ type pendingLogin struct {
 	accountID string
 	clientMAC []byte
 	expires   time.Time
+	// sessionTokenHash is set for a re-authentication, which never creates a session.
+	sessionTokenHash []byte
+	recordHash       []byte
 }
 
 type loginCache struct {

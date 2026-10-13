@@ -81,6 +81,7 @@ const (
 	ErrorOffline             = "offline"
 	ErrorNotFound            = "not-found"
 	ErrorInternal            = "internal"
+	ErrorUpdateRequired      = "update-required"
 )
 
 var ErrMessageTooLarge = errors.New("cliprotocol: message larger than 16 MiB")
@@ -111,6 +112,9 @@ type Request struct {
 	Query            string `json:"query,omitempty"`
 	Vault            string `json:"vault,omitempty"`
 	WorkingDirectory string `json:"workingDirectory,omitempty"`
+
+	ClientPlatform string `json:"clientPlatform,omitempty"`
+	ClientVersion  string `json:"clientVersion,omitempty"`
 }
 
 type Response struct {

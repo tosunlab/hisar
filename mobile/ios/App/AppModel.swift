@@ -9,6 +9,7 @@ final class AppModel: ObservableObject {
         case signedOut
         case locked
         case unlocked
+        case updateRequired(UpdateRequirement)
     }
 
     enum Tab: Hashable {
@@ -29,6 +30,9 @@ final class AppModel: ObservableObject {
     @Published var newSecretKey: String?
     @Published private(set) var isBiometricOfferShown = false
     @Published var pendingSignInLink: SignInLink?
+    @Published var pendingInviteLink: InviteLink?
+    @Published var inviteLinkMessage: String?
+    @Published private(set) var isCheckingMinimumVersion = false
     @Published private(set) var lockCount = 0
     @Published private(set) var allPendingApproval: [PhoneApproval] = []
     @Published private(set) var presentedApproval: PhoneApproval?
@@ -78,18 +82,51 @@ final class AppModel: ObservableObject {
             if status.isUnlocked {
                 Task { await refreshAll() }
             }
+            Task { await checkMinimumVersion() }
         } catch {
             screen = .failed(describeError(error))
         }
     }
 
+    // Offline the backend keeps what it knew, so a failed check never blocks the app.
+    func checkMinimumVersion() async {
+        guard let backend else { return }
+        isCheckingMinimumVersion = true
+        defer { isCheckingMinimumVersion = false }
+        guard let newStatus = try? await runInBackground({ backend.checkMinimumVersion() }) else { return }
+        applyStatus(newStatus)
+        if newStatus.isUnlocked && newStatus.updateRequired == nil && isInForeground {
+            startApprovalPolling()
+        }
+    }
+
+    func handleUpdateRequired() {
+        refreshStatus()
+    }
+
+    func openInviteLink(_ link: InviteLink) {
+        if status.isSignedIn {
+            inviteLinkMessage = "You're signed in as \(status.email). Sign out to create an account with this invite."
+            return
+        }
+        pendingInviteLink = link
+    }
+
     private func applyStatus(_ newStatus: VaultStatus) {
         let wasUnlocked = status.isUnlocked
+        let wasSignedIn = status.isSignedIn
         status = newStatus
+        if wasSignedIn && !newStatus.isSignedIn {
+            Task { await credentialIdentityStore.removeAllIdentity() }
+        }
         switch newStatus.state {
         case VaultStatus.stateUnlocked: screen = .unlocked
         case VaultStatus.stateLocked: screen = .locked
         default: screen = .signedOut
+        }
+        if let requirement = newStatus.updateRequired {
+            screen = .updateRequired(requirement)
+            clearAllApproval()
         }
         if wasUnlocked && !newStatus.isUnlocked {
             allVault = []
@@ -105,7 +142,7 @@ final class AppModel: ObservableObject {
         if newStatus.state != VaultStatus.stateLocked {
             allShareAwaitingUnlock = []
         }
-        if !wasUnlocked && newStatus.isUnlocked && isInForeground {
+        if !wasUnlocked && newStatus.isUnlocked && isInForeground && newStatus.updateRequired == nil {
             startApprovalPolling()
         }
     }
@@ -266,10 +303,11 @@ final class AppModel: ObservableObject {
     }
 
     func handleWillEnterForeground() {
+        Task { await checkMinimumVersion() }
         isInForeground = true
         defer {
             enteredBackgroundAt = nil
-            if status.isUnlocked, let backend {
+            if status.isUnlocked, status.updateRequired == nil, let backend {
                 backend.reconnectEvents()
                 startApprovalPolling()
                 handleRemoteChange()
@@ -611,7 +649,52 @@ final class AppModel: ObservableObject {
     }
 
     func removeEmergencyKit(_ export: EmergencyKitExport) {
-        try? FileManager.default.removeItem(at: URL(fileURLWithPath: export.emergencyKitPath).deletingLastPathComponent())
+        removeEmergencyKitFile(path: export.emergencyKitPath)
+    }
+
+    func removeEmergencyKitFile(path: String) {
+        guard !path.isEmpty else { return }
+        try? FileManager.default.removeItem(at: URL(fileURLWithPath: path).deletingLastPathComponent())
+    }
+
+    func changeMasterPassword(currentPassword: String, newPassword: String) async -> CredentialChangeResult? {
+        guard let result = await perform({ try $0.changeMasterPassword(currentPassword: currentPassword, newPassword: newPassword) }) else { return nil }
+        applyStatus(result.status)
+        showNotice("Master password changed. \(AccountLifecycleLogic.describeSignedOutDevices(result.signedOutDeviceCount))")
+        return result
+    }
+
+    func replaceSecretKey(password: String) async -> CredentialChangeResult? {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("EmergencyKit-\(UUID().uuidString)", isDirectory: true)
+        guard let result = await perform({ try $0.replaceSecretKey(password: password, directory: directory) }) else { return nil }
+        applyStatus(result.status)
+        return result
+    }
+
+    func finishSecretKeyReplacement(_ result: CredentialChangeResult) {
+        removeEmergencyKitFile(path: result.emergencyKitPath)
+        guard let backend else { return }
+        Task { try? await runInBackground { backend.forgetNewAccountSecretKey() } }
+    }
+
+    func loadAccountDeletionPreview() async -> AccountDeletionPreview? {
+        await perform(isBusyShown: false) { try $0.previewAccountDeletion() }
+    }
+
+    @discardableResult
+    func deleteAccount(password: String, email: String) async -> Bool {
+        guard let newStatus = await perform({ try $0.deleteAccount(password: password, email: email) }) else { return false }
+        applyStatus(newStatus)
+        await credentialIdentityStore.removeAllIdentity()
+        newSecretKey = nil
+        pendingSignInLink = nil
+        showNotice("Your Hisar account was deleted.")
+        return true
+    }
+
+    func dismissSignedOutReason() {
+        guard let backend else { return }
+        applyStatus(backend.dismissSignedOutReason())
     }
 
     // setTheme shows the theme at once and goes back to the one in use when it cannot be saved.

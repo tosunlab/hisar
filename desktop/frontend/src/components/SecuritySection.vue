@@ -2,6 +2,8 @@
 import { ref } from "vue";
 import { disableBiometricUnlock, enableBiometricUnlock, saveEmergencyKit, setAutoLock, store } from "../store";
 import { useSettingsRowVisibility } from "../settingsSections";
+import ChangeMasterPasswordDialog from "./ChangeMasterPasswordDialog.vue";
+import ReplaceSecretKeyDialog from "./ReplaceSecretKeyDialog.vue";
 
 const allAutoLockOption = [
   { seconds: 30, label: "30 seconds" },
@@ -15,6 +17,8 @@ const isEnablingTouchID = ref(false);
 const touchIDPassword = ref("");
 const isSavingEmergencyKit = ref(false);
 const emergencyKitPassword = ref("");
+const isChangingMasterPassword = ref(false);
+const isReplacingSecretKey = ref(false);
 
 async function submitEnableTouchID(): Promise<void> {
   if (await enableBiometricUnlock(touchIDPassword.value)) {
@@ -97,6 +101,26 @@ async function submitSaveEmergencyKit(): Promise<void> {
       </div>
     </div>
 
+    <div v-show="isRowVisible('change-master-password') || isRowVisible('replace-secret-key')" class="settings-block">
+      <p class="section-label">Master password and Secret Key</p>
+      <div class="settings-group">
+        <div v-show="isRowVisible('change-master-password')" class="setting">
+          <div class="setting-text">
+            <strong>Master password</strong>
+            <p class="muted">Changing it signs out your other devices. Your Secret Key and Emergency Kit stay the same.</p>
+          </div>
+          <button data-testid="change-master-password" @click="isChangingMasterPassword = true">Change master password…</button>
+        </div>
+        <div v-show="isRowVisible('replace-secret-key')" class="setting">
+          <div class="setting-text">
+            <strong>Secret Key</strong>
+            <p class="muted">Replace it if your Secret Key or Emergency Kit may have been seen by someone else. You get a new Emergency Kit, and your other devices are signed out.</p>
+          </div>
+          <button data-testid="replace-secret-key" @click="isReplacingSecretKey = true">Replace Secret Key…</button>
+        </div>
+      </div>
+    </div>
+
     <div v-show="isRowVisible('emergency-kit')" class="settings-block">
       <p class="section-label">Recovery</p>
       <div class="settings-group">
@@ -123,6 +147,8 @@ async function submitSaveEmergencyKit(): Promise<void> {
         </form>
       </div>
     </div>
+    <ChangeMasterPasswordDialog v-if="isChangingMasterPassword" @close="isChangingMasterPassword = false" />
+    <ReplaceSecretKeyDialog v-if="isReplacingSecretKey" @close="isReplacingSecretKey = false" />
   </section>
 </template>
 
