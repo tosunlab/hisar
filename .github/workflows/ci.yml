@@ -138,8 +138,8 @@ jobs:
     timeout-minutes: 30
     container: node:24-trixie
     steps:
-      - name: Install GTK 4 and WebKitGTK
-        run: apt-get update -qq && apt-get install -y -qq libgtk-4-dev libwebkitgtk-6.0-dev >/dev/null
+      - name: Install git, GTK 4 and WebKitGTK
+        run: apt-get update -qq && apt-get install -y -qq git libgtk-4-dev libwebkitgtk-6.0-dev >/dev/null
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
@@ -149,7 +149,7 @@ jobs:
         with:
           cache: npm
           cache-dependency-path: desktop/frontend/package-lock.json
-      - run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH" && git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - run: make install-wails
       - run: make build-desktop
       - run: test -x desktop/bin/Hisar
