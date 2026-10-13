@@ -1,0 +1,66 @@
+name: Release CLI
+
+on:
+  push:
+    tags: ["cli-[0-9]+.[0-9]+.[0-9]+*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing cli-<version> tag to build into a GitHub Release
+        required: true
+
+concurrency:
+  group: release-cli-${{ inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  GOFLAGS: -buildvcs=false
+
+jobs:
+  cli-release-build:
+    name: Build hisar for Linux, macOS and Windows into a prerelease
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Check the tag
+        run: |
+          [[ "$TAG" =~ ^cli-[0-9]+\.[0-9]+\.[0-9]+ ]] || { echo "$TAG is not a cli-<version> tag"; exit 1; }
+          if [ "$(gh release view "$TAG" --json isPrerelease --jq .isPrerelease 2>/dev/null)" = false ]; then
+            echo "the release $TAG is already published; refusing to replace its files"; exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ env.TAG }}
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.work
+          cache-dependency-path: "**/go.sum"
+      - name: Build the release archives and SHA256SUMS
+        run: |
+          version=${TAG#cli-}
+          bash scripts/package-cli-release.sh "$version" cli-release
+          tar -xzf "cli-release/hisar-$version-linux-amd64.tar.gz" -C "$RUNNER_TEMP" hisar
+          test "$("$RUNNER_TEMP/hisar" --version)" = "hisar $version"
+      # SHA256SUMS goes last, so a complete release is one that has it.
+      - name: Create or update the GitHub prerelease
+        run: |
+          version=${TAG#cli-}
+          case "$version" in
+            *-*) name="Hisar command-line tool $version (custom build)" ;;
+            *) name="Hisar command-line tool $version" ;;
+          esac
+          notes="The standalone hisar command-line tool for Linux, macOS and Windows. Download the archive for your platform and SHA256SUMS, check it with sha256sum -c --ignore-missing SHA256SUMS (shasum -a 256 -c on macOS), and put hisar on your PATH. With the Hisar app on a Mac, install hisar from Settings → Command-line tool instead."
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "$name" --notes "$notes" --prerelease
+          else
+            gh release create "$TAG" --verify-tag --prerelease --latest=false --title "$name" --notes "$notes"
+          fi
+          gh release upload "$TAG" --clobber cli-release/hisar-"$version"-*
+          gh release upload "$TAG" --clobber cli-release/SHA256SUMS

@@ -1,0 +1,110 @@
+name: Release desktop
+
+# Builds the DMG and, for release versions, the Sparkle-signed update into a GitHub prerelease.
+# update.json is uploaded as update-unpublished.json; the Publish workflow renames it, which offers the version to apps.
+on:
+  push:
+    tags: ["desktop-[0-9]+.[0-9]+.[0-9]+*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing desktop-<version> tag to build into a GitHub Release
+        required: true
+
+concurrency:
+  group: release-desktop-${{ inputs.tag || github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  GOFLAGS: -buildvcs=false
+  XCODE_PATH: /Applications/Xcode_26.6.app
+
+jobs:
+  desktop-dmg:
+    name: Build the universal Hisar.app DMG and Sparkle update
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Check the tag
+        run: |
+          [[ "$TAG" =~ ^desktop-[0-9]+\.[0-9]+\.[0-9]+ ]] || { echo "$TAG is not a desktop-<version> tag"; exit 1; }
+          if [ "$(gh release view "$TAG" --json isPrerelease --jq .isPrerelease 2>/dev/null)" = false ]; then
+            echo "the release $TAG is already published; refusing to replace its files"; exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ env.TAG }}
+      # Checking out a tag can drop its annotation, which holds the release notes.
+      - name: Fetch the annotated tag
+        run: git fetch --force origin "+refs/tags/$TAG:refs/tags/$TAG"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.work
+          cache-dependency-path: "**/go.sum"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/frontend/package-lock.json
+      - name: Select Xcode
+        run: sudo xcode-select -s "$XCODE_PATH" && xcodebuild -version
+      - name: Check the version and the Sparkle key
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        run: |
+          version=${TAG#desktop-}
+          bash scripts/get-build-number.sh "$version"
+          case "$version" in *-*) isCustomBuild=true ;; *) isCustomBuild=false ;; esac
+          if ! $isCustomBuild; then
+            test -n "$SPARKLE_PRIVATE_KEY" || { echo "set the repository secret SPARKLE_PRIVATE_KEY (Sparkle's EdDSA private key)"; exit 1; }
+            umask 077
+            printf '%s' "$SPARKLE_PRIVATE_KEY" > "$RUNNER_TEMP/sparkle-private-key"
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "IS_CUSTOM_BUILD=$isCustomBuild" >> "$GITHUB_ENV"
+      - name: Install dmgbuild and Wails
+        run: |
+          python3 -m venv "$RUNNER_TEMP/dmgbuild" && "$RUNNER_TEMP/dmgbuild/bin/pip" install -q dmgbuild==1.6.5
+          echo "$RUNNER_TEMP/dmgbuild/bin" >> "$GITHUB_PATH"
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          make install-wails
+      - name: Build the DMG
+        run: bash scripts/package-desktop-dmg.sh "$VERSION"
+      # The tag's annotation is the release notes; a lightweight tag gets "Hisar <version>".
+      - name: Sign the Sparkle update
+        if: env.IS_CUSTOM_BUILD == 'false'
+        run: |
+          : > "$RUNNER_TEMP/release-notes.md"
+          if [ "$(git cat-file -t "refs/tags/$TAG")" = tag ]; then
+            git tag -l --format='%(contents:subject)%0a%0a%(contents:body)' "$TAG" > "$RUNNER_TEMP/release-notes.md"
+          fi
+          bash scripts/package-desktop-update.sh "$VERSION" "$RUNNER_TEMP/sparkle-private-key" "$RUNNER_TEMP/release-notes.md"
+          cp desktop/bin/update.json desktop/bin/update-unpublished.json
+      - name: Create or update the GitHub prerelease
+        run: |
+          allFile=("desktop/bin/Hisar-$VERSION.dmg")
+          if $IS_CUSTOM_BUILD; then
+            name="Hisar for macOS $VERSION (custom build)"
+            notes="Custom build $VERSION for testing. It is never offered as an automatic update; the next release updates it."
+          else
+            allFile+=("desktop/bin/Hisar-$VERSION.zip" desktop/bin/update-unpublished.json)
+            name="Hisar for macOS $VERSION"
+            notes="Universal (Apple silicon and Intel) build of Hisar $VERSION. Run the Publish workflow for $TAG to offer it as an automatic update."
+          fi
+          notes="$notes Open the DMG and drag Hisar into Applications. The app is not notarized yet: on first launch, right-click Hisar → Open."
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release edit "$TAG" --title "$name" --notes "$notes" --prerelease
+          else
+            gh release create "$TAG" --verify-tag --prerelease --latest=false --title "$name" --notes "$notes"
+          fi
+          gh release upload "$TAG" --clobber "${allFile[@]}"
+      - name: Remove the Sparkle key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/sparkle-private-key"

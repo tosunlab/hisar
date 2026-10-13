@@ -1,0 +1,91 @@
+name: Publish
+
+# The deliberate step after a release build: only plain <app>-MAJOR.MINOR.PATCH tags, never custom builds.
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: What to publish
+        type: choice
+        options: [server, cli, desktop, extension]
+      tag:
+        description: Release tag, e.g. desktop-1.2.3
+        required: true
+
+concurrency:
+  group: publish-${{ inputs.tag }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  APP: ${{ inputs.app }}
+  TAG: ${{ inputs.tag }}
+  GH_TOKEN: ${{ github.token }}
+  GH_REPO: ${{ github.repository }}
+  SERVER_IMAGE: ghcr.io/hisarapp/server
+
+jobs:
+  publish:
+    name: Publish ${{ inputs.tag }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check the tag
+        run: |
+          [[ "$TAG" =~ ^$APP-[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "$TAG is not a plain $APP-MAJOR.MINOR.PATCH tag; custom builds can't be published"; exit 1; }
+          gh api "repos/$GH_REPO/git/ref/tags/$TAG" >/dev/null || { echo "the tag $TAG does not exist"; exit 1; }
+          echo "VERSION=${TAG#"$APP"-}" >> "$GITHUB_ENV"
+
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        if: inputs.app == 'server'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        if: inputs.app == 'server'
+      - name: Point the latest and MAJOR.MINOR server image tags at the version
+        if: inputs.app == 'server'
+        run: |
+          docker buildx imagetools inspect "$SERVER_IMAGE:$VERSION" >/dev/null || { echo "$SERVER_IMAGE:$VERSION does not exist; run Release server image for $TAG first"; exit 1; }
+          docker buildx imagetools create -t "$SERVER_IMAGE:${VERSION%.*}" -t "$SERVER_IMAGE:latest" "$SERVER_IMAGE:$VERSION"
+          echo "Published $SERVER_IMAGE:$VERSION as latest and ${VERSION%.*}"
+
+      # Apps are offered a desktop version only once its release has an asset named update.json.
+      - name: Offer the desktop version as an automatic update
+        if: inputs.app == 'desktop'
+        run: |
+          allAssetName=$(gh release view "$TAG" --json assets --jq '.assets[].name')
+          for fileName in "Hisar-$VERSION.dmg" "Hisar-$VERSION.zip"; do
+            grep -qx "$fileName" <<< "$allAssetName" || { echo "the release $TAG has no $fileName; run Release desktop for $TAG first"; exit 1; }
+          done
+          if ! grep -qx update.json <<< "$allAssetName"; then
+            assetID=$(gh api "repos/$GH_REPO/releases/tags/$TAG" --jq '.assets[] | select(.name == "update-unpublished.json") | .id')
+            test -n "$assetID" || { echo "the release $TAG has no update-unpublished.json; run Release desktop for $TAG first"; exit 1; }
+            gh api -X PATCH "repos/$GH_REPO/releases/assets/$assetID" -f name=update.json >/dev/null
+          fi
+          gh release edit "$TAG" --notes "Universal (Apple silicon and Intel) build of Hisar $VERSION, offered to apps as an automatic update. Open the DMG and drag Hisar into Applications. The app is not notarized yet: on first launch, right-click Hisar → Open."
+
+      - name: Check the CLI release is complete
+        if: inputs.app == 'cli'
+        run: |
+          allAssetName=$(gh release view "$TAG" --json assets --jq '.assets[].name')
+          grep -qx SHA256SUMS <<< "$allAssetName" || { echo "the release $TAG has no SHA256SUMS; run Release CLI for $TAG first"; exit 1; }
+          gh release download "$TAG" --pattern SHA256SUMS --dir "$RUNNER_TEMP"
+          while read -r _ fileName; do
+            grep -qx "$fileName" <<< "$allAssetName" || { echo "the release $TAG has no $fileName"; exit 1; }
+          done < "$RUNNER_TEMP/SHA256SUMS"
+
+      - name: Check the extension release is complete
+        if: inputs.app == 'extension'
+        run: |
+          gh release view "$TAG" --json assets --jq '.assets[].name' | grep -qx "hisar-extension-$VERSION.zip" || { echo "the release $TAG has no hisar-extension-$VERSION.zip; run Release extension for $TAG first"; exit 1; }
+
+      - name: Mark the release as published and latest
+        if: inputs.app != 'server'
+        run: |
+          gh release edit "$TAG" --prerelease=false --latest
+          echo "Published $TAG"

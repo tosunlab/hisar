@@ -1,0 +1,205 @@
+name: CI
+
+# A merge to main was already tested as its pull request, so pushes to main do not run CI.
+on:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  GOFLAGS: -buildvcs=false
+  CRANE_VERSION: v0.20.6
+
+jobs:
+  go:
+    name: Go gofmt, vet, tests and end-to-end test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: hisar
+          POSTGRES_DB: hisar
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 2s --health-timeout 5s --health-retries 30
+    env:
+      PG_URL: postgres://postgres:hisar@127.0.0.1:5432/hisar?sslmode=disable
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.work
+          cache-dependency-path: "**/go.sum"
+      - name: Check gofmt
+        run: |
+          allUnformatted=$(gofmt -l core server cli mobile desktop/vault desktop/biometric desktop/background desktop/agent desktop/appinfo desktop/browser desktop/commandline desktop/passkey desktop/updater desktop/cmd desktop/main.go desktop/touchid.go desktop/tray.go)
+          if [ -n "$allUnformatted" ]; then echo "$allUnformatted"; exit 1; fi
+      - name: go vet
+        run: make vet
+      - name: go test with Postgres
+        run: |
+          set -o pipefail
+          HISAR_TEST_DATABASE_URL=$PG_URL make test TESTFLAGS=-v 2>&1 | tee test.log
+      # The integration tests need a running server and run in the end-to-end step; TestRecordOpenSSHFixture only runs when asked to.
+      - name: Fail on skipped tests outside the allowlist
+        run: |
+          if grep -- "--- SKIP" test.log | grep -v -E "TestIntegration[A-Za-z]+|TestRecordOpenSSHFixture"; then exit 1; fi
+      - name: Build server and CLI
+        run: make build
+      - name: Build CLI for every release platform
+        run: make build-cli-all
+      - name: End-to-end test of the built server and CLI
+        run: |
+          PGPASSWORD=hisar psql -h 127.0.0.1 -U postgres -c "CREATE DATABASE hisar_end_to_end"
+          HISAR_DATABASE_URL="postgres://postgres:hisar@127.0.0.1:5432/hisar_end_to_end?sslmode=disable" make test-end-to-end
+
+  server-image-check:
+    name: Server Docker image build and boot
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: hisar
+          POSTGRES_DB: hisar
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 2s --health-timeout 5s --health-retries 30
+      registry:
+        image: registry:2
+        ports: ["5000:5000"]
+    env:
+      CHECK_IMAGE: localhost:5000/hisar-server:check
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.work
+          cache-dependency-path: "**/go.sum"
+      - name: Install crane
+        run: go install "github.com/google/go-containerregistry/cmd/crane@$CRANE_VERSION"
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        with:
+          driver-opts: network=host
+      - name: Build the linux/amd64 and linux/arm64 image into a throwaway registry
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          provenance: false
+          push: true
+          tags: ${{ env.CHECK_IMAGE }}
+      - name: Check manifest and config
+        run: |
+          crane manifest --insecure "$CHECK_IMAGE" | tee manifest.json
+          grep -q '"architecture":"amd64"' manifest.json && grep -q '"architecture":"arm64"' manifest.json
+          crane config --insecure "$CHECK_IMAGE" | tee config.json
+          grep -q '"Entrypoint":\["hisar-server"\]' config.json && grep -q '"User":"65532"' config.json
+      - name: Boot the image's hisar-server against Postgres
+        env:
+          HISAR_DATABASE_URL: postgres://postgres:hisar@127.0.0.1:5432/hisar?sslmode=disable
+          HISAR_ADDR: 127.0.0.1:8080
+        run: |
+          export HISAR_SECRETS_FILE=$RUNNER_TEMP/hisar-secrets.json
+          mkdir rootfs && crane export --insecure --platform linux/amd64 "$CHECK_IMAGE" - | tar -x -C rootfs
+          rootfs/usr/local/bin/hisar-server serve > server.log 2>&1 &
+          curl -sf --retry 20 --retry-all-errors --retry-delay 1 http://127.0.0.1:8080/healthz
+          rootfs/usr/local/bin/hisar-server migrate status | tee status.log
+          if grep -q pending status.log; then exit 1; fi
+          rootfs/usr/local/bin/hisar-server invite --email ci@example.com --role admin | grep -q "/invite/"
+      - name: Show server log
+        if: always()
+        run: cat server.log || true
+
+  desktop-frontend:
+    name: Desktop frontend typecheck, tests and bundle check
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/frontend/package-lock.json
+      - run: make test-desktop-frontend
+
+  desktop-linux:
+    name: Desktop app Linux build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container: node:24-trixie
+    steps:
+      - name: Install git, GTK 4 and WebKitGTK
+        run: apt-get update -qq && apt-get install -y -qq git libgtk-4-dev libwebkitgtk-6.0-dev >/dev/null
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.work
+          cache-dependency-path: "**/go.sum"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          cache: npm
+          cache-dependency-path: desktop/frontend/package-lock.json
+      - run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH" && git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - run: make install-wails
+      - run: make build-desktop
+      - run: test -x desktop/bin/Hisar
+      - name: Check that the generated bindings are committed
+        run: git diff --exit-code -- desktop/frontend/bindings
+
+  extension:
+    name: Extension tests, Chromium end-to-end tests and zip
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container: mcr.microsoft.com/playwright:v1.63.0-noble
+    steps:
+      - name: Install git, make and zip
+        run: apt-get update -qq && apt-get install -y -qq git make zip >/dev/null
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+      - run: make test-extension
+      - run: make test-extension-end-to-end
+      - run: make build-extension
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: hisar-extension
+          path: extension/hisar-extension-*.zip
+          retention-days: 14
+
+  share-link-page:
+    name: Share link page in Chromium against the server
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container: mcr.microsoft.com/playwright:v1.63.0-noble
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: hisar
+          POSTGRES_DB: hisar
+        options: --health-cmd pg_isready --health-interval 2s --health-timeout 5s --health-retries 30
+    steps:
+      - name: Install git, make and curl
+        run: apt-get update -qq && apt-get install -y -qq git make curl >/dev/null
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.work
+          cache-dependency-path: "**/go.sum"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+      - run: HISAR_DATABASE_URL="postgres://postgres:hisar@postgres:5432/hisar?sslmode=disable" make test-share-link-page
