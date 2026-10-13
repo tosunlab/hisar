@@ -60,3 +60,21 @@ func TestCreateMailer(t *testing.T) {
 		t.Error("invalid sender accepted")
 	}
 }
+
+func TestReadMinimumVersions(t *testing.T) {
+	t.Setenv("HISAR_MINIMUM_VERSION_DESKTOP_MACOS", " 0.1.6 ")
+	t.Setenv("HISAR_MINIMUM_VERSION_IOS", "")
+	t.Setenv("HISAR_MINIMUM_VERSION_CLI", "1.0.0-alpha-test")
+	t.Setenv("HISAR_MINIMUM_VERSION_EXTENSION", "0.2.0")
+	minimumVersions := readMinimumVersions()
+	if minimumVersions.DesktopMacOS != "0.1.6" || minimumVersions.IOS != "" || minimumVersions.CLI != "1.0.0-alpha-test" || minimumVersions.Extension != "0.2.0" {
+		t.Errorf("read %+v", minimumVersions)
+	}
+	if err := minimumVersions.Validate(); err != nil {
+		t.Error(err)
+	}
+	t.Setenv("HISAR_MINIMUM_VERSION_IOS", "1.2")
+	if err := readMinimumVersions().Validate(); err == nil || !strings.Contains(err.Error(), "ios") {
+		t.Errorf("invalid minimum: %v", err)
+	}
+}

@@ -53,7 +53,7 @@ func (s *Service) watchEvents(ctx context.Context, apiClient *client.Client, rec
 		})
 		close(streamFinished)
 		cancelStream()
-		if ctx.Err() != nil {
+		if _, isUpgradeRequired := client.AsUpgradeRequired(err); isUpgradeRequired || ctx.Err() != nil {
 			return
 		}
 		if client.IsStatus(err, http.StatusUnauthorized) {

@@ -20,6 +20,11 @@ type Client struct {
 	BaseURL string
 	Token   string
 	HTTP    *http.Client
+	// Platform and Version are sent with every request; an empty Version sends neither.
+	Platform string
+	Version  string
+	// OnUpgradeRequired runs when the server answers 426 because Version is below its minimum.
+	OnUpgradeRequired func(*UpgradeRequiredError)
 }
 
 func Create(baseURL string) *Client {
@@ -32,6 +37,39 @@ type APIError struct {
 }
 
 func (e *APIError) Error() string { return fmt.Sprintf("server: %s (%d)", e.Message, e.Status) }
+
+// UpgradeRequiredError is the server's 426: this app's version is below the minimum the server accepts.
+type UpgradeRequiredError struct {
+	MinimumVersion string
+	UpdateURL      string
+}
+
+func (e *UpgradeRequiredError) Error() string {
+	return fmt.Sprintf("update required: the server needs version %s or later", e.MinimumVersion)
+}
+
+func AsUpgradeRequired(err error) (*UpgradeRequiredError, bool) {
+	var upgradeRequired *UpgradeRequiredError
+	return upgradeRequired, errors.As(err, &upgradeRequired)
+}
+
+func (c *Client) setClientHeader(header http.Header) {
+	if c.Version == "" {
+		return
+	}
+	header.Set(proto.PlatformHeader, c.Platform)
+	header.Set(proto.VersionHeader, c.Version)
+}
+
+func (c *Client) readUpgradeRequired(data []byte) error {
+	var body proto.UpgradeRequired
+	json.Unmarshal(data, &body)
+	upgradeRequired := &UpgradeRequiredError{MinimumVersion: body.MinimumVersion, UpdateURL: body.UpdateURL}
+	if c.OnUpgradeRequired != nil {
+		c.OnUpgradeRequired(upgradeRequired)
+	}
+	return upgradeRequired
+}
 
 func IsStatus(err error, status int) bool {
 	apiError, ok := err.(*APIError)
@@ -70,6 +108,7 @@ func (c *Client) sendRequest(ctx context.Context, method, path string, header ht
 	if c.Token != "" {
 		request.Header.Set("Authorization", "Bearer "+c.Token)
 	}
+	c.setClientHeader(request.Header)
 	response, err := c.HTTP.Do(request)
 	if err != nil {
 		return err
@@ -80,6 +119,9 @@ func (c *Client) sendRequest(ctx context.Context, method, path string, header ht
 		return err
 	}
 
+	if response.StatusCode == http.StatusUpgradeRequired {
+		return c.readUpgradeRequired(data)
+	}
 	if response.StatusCode == http.StatusConflict && conflict != nil {
 		if err := json.Unmarshal(data, conflict); err != nil {
 			return err
@@ -97,6 +139,11 @@ func (c *Client) sendRequest(ctx context.Context, method, path string, header ht
 		return json.Unmarshal(data, output)
 	}
 	return nil
+}
+
+// CheckVersion fails with *UpgradeRequiredError when the server no longer accepts this app's version.
+func (c *Client) CheckVersion(ctx context.Context) error {
+	return c.sendRequest(ctx, "GET", "/api/v1/version-check", nil, nil, nil, nil)
 }
 
 func (c *Client) FetchPrelogin(ctx context.Context, email string) (*proto.PreloginResponse, error) {

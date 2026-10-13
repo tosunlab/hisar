@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { clearError, dismissSignedOutReason, signIn, signUp, store } from "../store";
 import { getMasterPasswordFeedback } from "../util";
 import AppIcon, { type IconName } from "./AppIcon.vue";
@@ -72,9 +72,33 @@ function readInviteCode(): void {
   }
 }
 
+const inviteServer = computed(() => {
+  const invite = getInvite();
+  if (!invite.includes("/invite/")) {
+    return "";
+  }
+  const host = invite.replace(/^https?:\/\//, "").split("/")[0];
+  return host === defaultServer ? "" : host;
+});
+
 function getInvite(): string {
   return pastedInviteLink.value.endsWith(`/invite/${inviteCode.value}`) ? pastedInviteLink.value : inviteCode.value;
 }
+
+// An invite opened through hisar://invite/… arrives as the bare code, or as the invite link on another server.
+watch(
+  () => store.pendingInvite,
+  (invite) => {
+    if (!invite) {
+      return;
+    }
+    switchMode("create-account");
+    inviteCode.value = invite;
+    readInviteCode();
+    store.pendingInvite = "";
+  },
+  { immediate: true },
+);
 
 function switchMode(nextMode: Mode): void {
   mode.value = nextMode;
@@ -191,6 +215,7 @@ async function submitCreateAccount(): Promise<void> {
                 @input="readInviteCode"
               />
             </span>
+            <span v-if="inviteServer" class="muted invite-server" data-testid="invite-server">Server: {{ inviteServer }}</span>
           </label>
           <div class="two-columns">
             <label>
@@ -412,6 +437,13 @@ h1 {
 }
 
 .password-feedback {
+  display: block;
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.invite-server {
   display: block;
   margin-top: 6px;
   font-size: 12px;

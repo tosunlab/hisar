@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/url"
 	"os"
-	"runtime"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -32,11 +31,11 @@ func getDeviceInfo() proto.DeviceInfo {
 	if len(host) > 100 {
 		host = host[:100]
 	}
-	return proto.DeviceInfo{Name: host, Platform: runtime.GOOS + "/cli"}
+	return proto.DeviceInfo{Name: host, Platform: getPlatform()}
 }
 
 func createAuthedClient(currentState *localstate.State) *client.Client {
-	authedClient := client.Create(currentState.Server)
+	authedClient := createClient(currentState.Server)
 	authedClient.Token = currentState.Token
 	return authedClient
 }
@@ -109,7 +108,7 @@ func runSignup(ctx context.Context, flags *flag.FlagSet, allArg []string) error 
 	defer clear(password)
 
 	fmt.Fprintln(os.Stderr, "Creating account...")
-	currentSession, secretKey, err := session.SignUp(ctx, client.Create(server), token, email, name, password, getDeviceInfo())
+	currentSession, secretKey, err := session.SignUp(ctx, createClient(server), token, email, name, password, getDeviceInfo())
 	if err != nil {
 		return err
 	}
@@ -192,7 +191,7 @@ func runLogin(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
 	}
 	defer clear(password)
 
-	currentSession, err := session.LogIn(ctx, client.Create(server), email, password, secretKey, getDeviceInfo())
+	currentSession, err := session.LogIn(ctx, createClient(server), email, password, secretKey, getDeviceInfo())
 	if err != nil {
 		return err
 	}

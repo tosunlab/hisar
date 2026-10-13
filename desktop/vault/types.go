@@ -28,6 +28,8 @@ type Status struct {
 	AutoLockSeconds int `json:"autoLockSeconds"`
 	// SignedOutReason says why the server signed this device out; empty after a sign-out on this device.
 	SignedOutReason string `json:"signedOutReason"`
+	// UpdateRequired is set once the server refused this version; nothing works until Hisar updates.
+	UpdateRequired *UpdateRequirement `json:"updateRequired"`
 }
 
 // Biometric is the platform's user-presence check and keychain storage for the biometric unlock key.
@@ -205,9 +207,11 @@ func (KeychainSecretKeyStore) DeleteSecretKey(accountID string) error {
 type Config struct {
 	StatePath string
 	// CachePath is the encrypted offline cache; empty keeps Hisar online-only.
-	CachePath      string
-	DeviceName     string
-	Platform       string
+	CachePath  string
+	DeviceName string
+	Platform   string
+	// AppVersion goes to the server with every request; empty for development builds, which no minimum refuses.
+	AppVersion     string
 	Clipboard      Clipboard
 	LockNotifier   LockNotifier
 	SecretKeyStore SecretKeyStore
@@ -238,6 +242,8 @@ type Config struct {
 	FileSaver FileSaver
 	// FileOpener asks which file to open; it returns "" when the user cancels.
 	FileOpener FileOpener
+	// OnUpdateRequired runs on its own goroutine when the server starts refusing this version.
+	OnUpdateRequired func(requirement UpdateRequirement)
 }
 
 type FileSaver interface {

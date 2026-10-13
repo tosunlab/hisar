@@ -45,6 +45,8 @@ type Config struct {
 	Mailer mail.Mailer
 	// ShareAcceptedEmailDelay is how long an accepted share may wait for the owner's app before the inviter gets an email.
 	ShareAcceptedEmailDelay time.Duration
+	// MinimumVersions refuses older apps with 426; independent of the latest version offered for updates.
+	MinimumVersions MinimumVersions
 }
 
 type Server struct {
@@ -67,6 +69,8 @@ type Server struct {
 	shareLinkAccountLimiter       *dailyLimiter
 	shareLinkReadLimiter          *ipLimiter
 	reauthenticationLimiter       *ipLimiter
+	invitePageLimiter             *ipLimiter
+	versionCheckLimiter           *ipLimiter
 	backgroundWork                sync.WaitGroup
 }
 
@@ -121,6 +125,8 @@ func CreateServer(database *store.Store, secrets *Secrets, config Config) (*Serv
 		shareLinkAccountLimiter:       createDailyLimiter(shareLinkPerAccountPerDay),
 		shareLinkReadLimiter:          createShareLinkReadLimiter(),
 		reauthenticationLimiter:       createReauthenticationLimiter(),
+		invitePageLimiter:             createInvitePageLimiter(),
+		versionCheckLimiter:           createVersionCheckLimiter(),
 	}, nil
 }
 
@@ -140,8 +146,11 @@ func (s *Server) CreateApp() *fiber.App {
 	app.Get("/privacy", sendPrivacyPolicy)
 	app.Get("/terms", sendTermsOfService)
 	app.Get("/s/:id", sendShareLinkPage)
+	app.Get("/invite/:token", s.limitInvitePageRate, s.sendInvitePage)
 
 	apiGroup := app.Group("/api/v1")
+	apiGroup.Use(s.requireMinimumVersion)
+	apiGroup.Get("/version-check", s.limitVersionCheckRate, handleCheckVersion)
 	apiGroup.Get("/auth/prelogin", s.limitRate, s.handlePrelogin)
 	apiGroup.Post("/auth/register/start", s.limitRate, s.handleRegisterStart)
 	apiGroup.Post("/auth/register/finish", s.limitRate, s.handleRegisterFinish)

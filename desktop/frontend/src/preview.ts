@@ -112,6 +112,9 @@ let previewSignedOutReason =
     : "";
 // &appearance=light|dark|system and &color=neutral|blue|purple|green pick the theme the preview starts with.
 let previewTheme: Theme = { appearance: previewParameter.get("appearance") ?? "system", color: previewParameter.get("color") ?? "neutral" };
+// &updateRequired=0.2.0 shows the blocking update screen for that minimum version.
+const previewMinimumVersion = previewParameter.get("updateRequired");
+const previewUpdateRequired = previewMinimumVersion ? { currentVersion: "0.1.0", minimumVersion: previewMinimumVersion, updateURL: "https://tryhisar.com/download" } : null;
 const previewStatus = (): Status => ({
   state: previewState,
   server: "https://api.tryhisar.com",
@@ -123,6 +126,7 @@ const previewStatus = (): Status => ({
   isOffline: new URLSearchParams(window.location.search).get("offline") === "1",
   autoLockSeconds: previewAutoLockSeconds,
   signedOutReason: previewState === "signed-out" ? previewSignedOutReason : "",
+  updateRequired: previewUpdateRequired,
 });
 let isPreviewSSHConfigured = new URLSearchParams(window.location.search).get("sshConfigured") === "1";
 let isPreviewCompactApproval = new URLSearchParams(window.location.search).get("compact") === "1";
@@ -1150,6 +1154,8 @@ export const previewApi = {
     previewBrowserStatus.isExactHostMatch = isExactHostMatch;
     return resolveAfterDelay({ ...previewBrowserStatus });
   },
+  checkMinimumVersion: () => resolveAfterDelay(previewStatus()),
+  takePendingInvite: () => Promise.resolve(previewParameter.get("invite") ?? ""),
   getUpdateStatus: () => resolveAfterDelay({ ...previewUpdateStatus }),
   checkForUpdates: () => {
     if (!previewUpdateStatus.isSignedIn) {

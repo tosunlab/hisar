@@ -220,6 +220,15 @@ class FakeBackend: VaultBackend {
         return status
     }
 
+    // The server's answer to the next version check; nil means it accepts this version.
+    var serverUpdateRequirement: UpdateRequirement?
+
+    func checkMinimumVersion() -> VaultStatus {
+        record("checkMinimumVersion")
+        status.updateRequired = serverUpdateRequirement
+        return status
+    }
+
     func signIn(server: String, email: String, secretKey: String, password: String) throws -> VaultStatus {
         record("signIn")
         guard password == Self.password, secretKey == Self.secretKey else {

@@ -559,4 +559,44 @@ final class AppModelTests: XCTestCase {
         await model.refreshAll()
         XCTAssertEqual(recordingBackend.isListCalledOnMainThread, false)
     }
+
+    func testUpdateRequiredBlocksTheAppUntilTheServerAcceptsIt() async {
+        let model = await createUnlockedModel()
+        let requirement = UpdateRequirement(currentVersion: "0.1.0", minimumVersion: "0.2.0", updateURL: "https://tryhisar.com/download")
+        backend.serverUpdateRequirement = requirement
+        await model.checkMinimumVersion()
+        XCTAssertEqual(model.screen, .updateRequired(requirement))
+        XCTAssertTrue(model.allPendingApproval.isEmpty)
+
+        backend.serverUpdateRequirement = nil
+        await model.checkMinimumVersion()
+        XCTAssertEqual(model.screen, .unlocked)
+        XCTAssertFalse(model.isCheckingMinimumVersion)
+    }
+
+    func testUpdateRequiredEventShowsTheBlockingScreen() {
+        backend.seedSignedIn(state: VaultStatus.stateLocked)
+        let model = createModel()
+        XCTAssertEqual(model.screen, .locked)
+        let requirement = UpdateRequirement(currentVersion: "", minimumVersion: "0.2.0", updateURL: "https://tryhisar.com/download")
+        backend.status.updateRequired = requirement
+        model.handleUpdateRequired()
+        XCTAssertEqual(model.screen, .updateRequired(requirement))
+    }
+
+    func testInviteLinkPrefillsCreateAccountWhenSignedOut() {
+        let model = createModel()
+        let link = InviteLink(invite: "https://hisar.example.com/invite/abc")
+        model.openInviteLink(link)
+        XCTAssertEqual(model.pendingInviteLink, link)
+        XCTAssertNil(model.inviteLinkMessage)
+    }
+
+    func testInviteLinkWhileSignedInExplainsInstead() async {
+        let model = await createUnlockedModel()
+        model.openInviteLink(InviteLink(invite: "abc"))
+        XCTAssertNil(model.pendingInviteLink)
+        XCTAssertEqual(model.inviteLinkMessage, "You're signed in as alice@example.com. Sign out to create an account with this invite.")
+        XCTAssertEqual(model.screen, .unlocked)
+    }
 }

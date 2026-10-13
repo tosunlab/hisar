@@ -172,7 +172,11 @@ func main() {
 	}
 	err = runCommand(ctx, selected, option.isStandalone, flags, allArg[1:])
 	var exitCode exitCodeError
+	updateMessage, isUpdateRequired := describeUpdateRequired(err)
 	switch {
+	case isUpdateRequired:
+		fmt.Fprintln(os.Stderr, "hisar:", updateMessage)
+		os.Exit(1)
 	case errors.As(err, &exitCode):
 		os.Exit(int(exitCode))
 	case errors.Is(err, errUsage):

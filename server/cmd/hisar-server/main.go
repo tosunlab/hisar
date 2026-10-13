@@ -58,6 +58,12 @@ desktop updates (optional; all three or none):
   HISAR_UPDATE_GITLAB_URL         GitLab holding the hisar-desktop generic package, e.g. https://git.tryhisar.com
   HISAR_UPDATE_GITLAB_PROJECT_ID  numeric ID of that GitLab project
   HISAR_UPDATE_GITLAB_TOKEN       project access token, Reporter role, read_api scope
+
+minimum app versions (optional; empty means no minimum, older apps get 426 Upgrade Required):
+  HISAR_MINIMUM_VERSION_DESKTOP_MACOS  e.g. 0.1.6
+  HISAR_MINIMUM_VERSION_IOS
+  HISAR_MINIMUM_VERSION_CLI
+  HISAR_MINIMUM_VERSION_EXTENSION
 `)
 }
 
@@ -135,18 +141,37 @@ func setup(ctx context.Context) (*store.Store, *api.Server, error) {
 		database.Close()
 		return nil, nil, err
 	}
+	minimumVersions := readMinimumVersions()
+	if err := minimumVersions.Validate(); err != nil {
+		database.Close()
+		return nil, nil, err
+	}
 	server, err := api.CreateServer(database, secrets, api.Config{
-		PublicURL:      publicURL,
-		TrustProxy:     getEnv("HISAR_TRUST_PROXY", "false") == "true",
-		AuthBurst:      authBurst,
-		DesktopUpdates: desktopUpdates,
-		Mailer:         mailer,
+		PublicURL:       publicURL,
+		TrustProxy:      getEnv("HISAR_TRUST_PROXY", "false") == "true",
+		AuthBurst:       authBurst,
+		DesktopUpdates:  desktopUpdates,
+		Mailer:          mailer,
+		MinimumVersions: minimumVersions,
 	})
 	if err != nil {
 		database.Close()
 		return nil, nil, err
 	}
 	return database, server, nil
+}
+
+func readMinimumVersions() api.MinimumVersions {
+	minimumVersions := api.MinimumVersions{
+		DesktopMacOS: strings.TrimSpace(os.Getenv("HISAR_MINIMUM_VERSION_DESKTOP_MACOS")),
+		IOS:          strings.TrimSpace(os.Getenv("HISAR_MINIMUM_VERSION_IOS")),
+		CLI:          strings.TrimSpace(os.Getenv("HISAR_MINIMUM_VERSION_CLI")),
+		Extension:    strings.TrimSpace(os.Getenv("HISAR_MINIMUM_VERSION_EXTENSION")),
+	}
+	if minimumVersions != (api.MinimumVersions{}) {
+		log.Printf("minimum app versions: macOS %q, iOS %q, CLI %q, extension %q", minimumVersions.DesktopMacOS, minimumVersions.IOS, minimumVersions.CLI, minimumVersions.Extension)
+	}
+	return minimumVersions
 }
 
 func createDesktopUpdateSource(publicURL string) (*desktopupdate.Source, error) {

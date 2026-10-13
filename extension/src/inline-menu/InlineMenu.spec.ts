@@ -209,6 +209,23 @@ describe("inline menu page", () => {
     expect(wrapper.findAll('[data-testid="inline-login"]')).toHaveLength(2);
   });
 
+  it("says Hisar or the extension needs an update and opens the popup for details", async () => {
+    const requirement = { currentVersion: "0.1.5", minimumVersion: "0.1.6", updateURL: "https://tryhisar.com/download" };
+    respondWith(createState({ view: "update-required", allLogin: [], updateRequired: { target: "app", ...requirement } }));
+    const wrapper = await mountMenu();
+    expect(wrapper.find('[data-testid="inline-status"]').text()).toBe("Hisar needs an update");
+    expect(wrapper.find('[data-testid="inline-action"]').text()).toBe("Show details…");
+    await wrapper.find('[data-testid="inline-action"]').trigger("click");
+    await flushPromises();
+    expect(allMessage).toContainEqual({ type: "inlineMenu.openPopup", sessionID: "session-1" });
+    wrapper.unmount();
+
+    respondWith(createState({ view: "update-required", allLogin: [], updateRequired: { target: "extension", ...requirement } }));
+    const extensionWrapper = await mountMenu();
+    expect(extensionWrapper.find('[data-testid="inline-status"]').text()).toBe("Update the Hisar extension");
+    expect(extensionWrapper.findAll('[data-testid="inline-login"]')).toHaveLength(0);
+  });
+
   it("says to sign in when Hisar is signed out, with nothing to click", async () => {
     respondWith(createState({ view: "signed-out", allLogin: [] }));
     const wrapper = await mountMenu();

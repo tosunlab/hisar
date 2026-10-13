@@ -5,29 +5,17 @@ listens on `127.0.0.1:8080` only; your nginx terminates TLS and proxies to it.
 
 ## Images
 
-Pushing a tag `server-<version>` (e.g. `server-0.1.7`) runs the `server-image` job of the GitLab pipeline, which publishes
-`reg.tryhisar.com/hisar/core/hisar-server` as `:<version>` and `:sha-<commit>`, for linux/amd64 and linux/arm64. Running the
-manual `server-publish` job in the tag's pipeline then points `:<major>.<minor>` and `:latest` at it; a custom build
-(`server-1.0.0-alpha-test`) can't be published. Running the pipeline by hand from a branch offers the job as a manual action that publishes
-`:sha-<commit>` only.
+Pushing a tag `server-<version>` (e.g. `server-0.1.7`) runs the GitHub Actions workflow "Release server image", which publishes
+`ghcr.io/hisarapp/server` as `:<version>` and `:sha-<commit>`, for linux/amd64 and linux/arm64, built from `deploy/Dockerfile`.
+Running the Publish workflow (app `server`, the tag) then points `:<major>.<minor>` and `:latest` at it; a custom build
+(`server-1.0.0-alpha-test`) can't be published. Running "Release server image" by hand on a branch without a tag pushes
+`:sha-<commit>` only. Pull requests build the same image into a throwaway registry and boot it, without pushing.
 
-The runners are unprivileged, so the job does not use Docker: `scripts/build-server-image.sh` cross-compiles the server
-and appends it to the distroless base with [crane](https://github.com/google/go-containerregistry), giving the same image
-as `deploy/Dockerfile`. Merge requests run the same script against a throwaway registry and boot the result.
-
-reg.tryhisar.com is behind basic auth. The job logs in with two CI/CD variables (Settings → CI/CD → Variables, on the
-project or the `hisar` group):
-
-| Variable | Value | Flags |
-|---|---|---|
-| `REGISTRY_USERNAME` | a basic-auth user that may push | protected if only protected tags may publish |
-| `REGISTRY_PASSWORD` | its password | masked, protected as above |
-
-On the server, log in once with a basic-auth user that only needs to pull, and keep `HISAR_IMAGE` in `.env` as in the
-example:
+The workflows push with their own `GITHUB_TOKEN`, so the registry needs no secrets. While the package is private, the server
+must log in once with a GitHub personal access token (classic) that has only the `read:packages` scope:
 
 ```sh
-docker login reg.tryhisar.com
+docker login ghcr.io -u <GitHub user>     # paste the token as the password
 ```
 
 ## First start
@@ -35,7 +23,7 @@ docker login reg.tryhisar.com
 Copy `compose.yaml`, `.env.example` and `hisar.env.example` to the server (for example `/opt/hisar`), then:
 
 ```sh
-cp .env.example .env                # set HISAR_DOMAIN and HISAR_IMAGE, pin HISAR_VERSION
+cp .env.example .env                # set HISAR_DOMAIN, pin HISAR_VERSION
 openssl rand -hex 32 | tr -d '\n' > db_password.txt
 sed "s/CHANGE_ME/$(cat db_password.txt)/" hisar.env.example > hisar.env
 chmod 600 db_password.txt hisar.env
@@ -97,20 +85,20 @@ The server never sends credentials without TLS. The emails are plain text withou
 ## Desktop app updates (optional)
 
 The macOS app checks the server it is signed in to for updates (`docs/DESIGN.md` §9.1.1). The server reads the
-`hisar-desktop` generic package that the `desktop-<version>` release pipeline publishes in GitLab, so it needs a read-only token:
+`hisar-desktop` generic package of a GitLab project that holds the signed desktop releases, so it needs a read-only token:
 
-1. In GitLab, open the project (`hisar/core`) → **Settings → Access tokens** → **Add new token**.
+1. In GitLab, open that project → **Settings → Access tokens** → **Add new token**.
 2. Name it e.g. `hisar-server updates`, set an expiry date, choose the role **Reporter** and only the scope **read_api**,
    then create it and copy the token.
 3. In `.env` on the server, uncomment and fill in:
 
    ```sh
-   HISAR_UPDATE_GITLAB_URL=https://git.tryhisar.com
-   HISAR_UPDATE_GITLAB_PROJECT_ID=2          # Settings → General, "Project ID"
+   HISAR_UPDATE_GITLAB_URL=https://gitlab.example.com
+   HISAR_UPDATE_GITLAB_PROJECT_ID=123        # Settings → General, "Project ID"
    HISAR_UPDATE_GITLAB_TOKEN=glpat-…
    ```
 
-4. `chmod 600 .env && docker compose up -d`. The log says `desktop updates from https://git.tryhisar.com project 2`.
+4. `chmod 600 .env && docker compose up -d`. The log says `desktop updates from https://gitlab.example.com project 123`.
 
 Check it with a session token from a signed-in device (`desktop.json` in the app's state folder):
 `curl -H "Authorization: Bearer <token>" https://<domain>/api/v1/desktop/updates/appcast.xml`. Without the variables the

@@ -23,6 +23,7 @@ const allFriendlyMessage: Partial<Record<string, string>> = {
   locked: "Hisar is locked.",
   offline: "Hisar is offline and cannot make changes.",
   "desktop-unavailable": "Hisar is not running.",
+  "update-required": "Hisar needs an update.",
 };
 
 export function describeError(error: unknown): string {
@@ -31,6 +32,15 @@ export function describeError(error: unknown): string {
     return allFriendlyMessage[error.code] ?? "Something went wrong.";
   }
   return error instanceof Error ? error.message : String(error);
+}
+
+const allUpdateOrigin = ["https://chromewebstore.google.com", "https://tryhisar.com"];
+
+// The URL comes from the server through the desktop, so only known update pages open.
+export async function openUpdatePage(url: string): Promise<void> {
+  const isKnownPage = URL.canParse(url) && allUpdateOrigin.includes(new URL(url).origin);
+  await chrome.tabs.create({ url: isKnownPage ? url : allUpdateOrigin[0] + "/detail/mmipiffoogblblocokimpemdopmdjghf" });
+  closePopup();
 }
 
 export function closePopup(): void {

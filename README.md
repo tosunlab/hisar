@@ -30,8 +30,8 @@ opens at login (Settings → General → **Open Hisar at login**, on by default)
 ⌘Q or **Quit Hisar** in the menu bar quits it. `hisar` itself starts the app when it is installed but not running, waits up to 10 seconds
 for it, and otherwise says "Hisar isn't running. Open the Hisar app and try again."; `HISAR_NO_LAUNCH=1` turns that off for scripts and CI.
 
-**Anywhere else** (Linux, Windows, servers, or without the app), download the standalone `hisar` from the published release of a `cli-<version>` tag on
-GitLab (Deploy → Releases, or the generic package `hisar-cli/<version>`): `hisar-<version>-<os>-<arch>.tar.gz` for Linux and macOS,
+**Anywhere else** (Linux, Windows, servers, or without the app), download the standalone `hisar` from the published GitHub Release of a `cli-<version>` tag
+(github.com/hisarapp/core → Releases): `hisar-<version>-<os>-<arch>.tar.gz` for Linux and macOS,
 `.zip` for Windows, and `SHA256SUMS`. Check the download before you run it, then put `hisar` on your `PATH`:
 
 ```sh
@@ -144,6 +144,40 @@ docker exec hisar-pg createdb -U postgres hisar_end_to_end
 HISAR_DATABASE_URL="postgres://postgres:hisar@127.0.0.1:55432/hisar_end_to_end?sslmode=disable" make test-end-to-end
 ```
 
-CI (`.github/workflows/ci.yml`) runs gofmt, vet, all tests against Postgres (failing if any are skipped), CLI cross-compiles, the end-to-end test of the built binaries, and builds and boots the server Docker image.
+### CI and releases
+
+GitHub Actions runs CI on pull requests and on manual runs (Actions → CI → Run workflow), never on pushes to `main`: a merge was already
+tested as its pull request. A new push to a pull request cancels its running CI.
+
+`.github/workflows/ci.yml` (Linux runners): gofmt, vet, all Go tests against Postgres (failing on any skipped test except the
+`TestIntegration…` tests and `TestRecordOpenSSHFixture`), the CLI for every release platform, the end-to-end test of the built
+binaries, the server Docker image for amd64 and arm64 (built into a throwaway registry and booted, never pushed), the desktop frontend
+(typecheck, tests, bundle check), the desktop app's Linux build, the extension (tests, Chromium end-to-end tests, zip) and the
+share link page in Chromium against the server.
+
+`.github/workflows/macos.yml` builds the Mac app (Touch ID and Sparkle tests, bundle and signature checks) and, when `mobile/` differs
+from `main`, the iPhone app (HisarKit, Xcode project check, unit tests, UI tests against a local server) on GitHub's `macos-26` runners
+with Xcode 26.6. macOS minutes count ten times against the plan's included minutes, so these jobs never run on their own:
+
+- on a pull request, add the label `run-macos`; every later push to that pull request runs them again until the label is removed;
+- or run it by hand: Actions → macOS and iOS → Run workflow, on a branch (tick "Build and test the iPhone app" to force the iPhone job).
+
+A run takes roughly 15–25 minutes for the Mac app and 40–60 minutes for the iPhone app, so about 150–250 included minutes for the Mac
+app alone and up to 850 with the iPhone app. A desktop release build costs about the same as the Mac app job.
+
+Releases are tags without a `v`: `server-X.Y.Z`, `cli-X.Y.Z`, `desktop-X.Y.Z` and `extension-X.Y.Z`. Pushing one runs its release
+workflow, which builds it into a GitHub prerelease (or, for the server, pushes the image) that nobody gets yet. A custom build such as
+`desktop-1.0.0-alpha-test` is built the same way and marked "(custom build)", and can never be published. Publishing is a separate,
+deliberate step: Actions → Publish → Run workflow with the app and the tag. It refuses anything but a plain `<app>-X.Y.Z` tag, then
+
+- server: points `ghcr.io/hisarapp/server:latest` and `:X.Y` at `:X.Y.Z`;
+- desktop: renames the release's `update-unpublished.json` to `update.json`, which offers the version to every app as an automatic update;
+- cli, extension (and desktop): turns the prerelease into a release and marks it latest.
+
+A tag pushed without the workflows in its tree (one from before the move to GitHub) is built by running its release workflow by hand
+with the tag as input: the workflow comes from `main`, the code from the tag.
+
+Repository secrets: `SPARKLE_PRIVATE_KEY`, the Sparkle EdDSA private key file's content (`gh secret set SPARKLE_PRIVATE_KEY --repo
+hisarapp/core < <key file>`). Images go to the GitHub Container Registry with the workflow's own `GITHUB_TOKEN`.
 
 Deployment: see [deploy/README.md](deploy/README.md).

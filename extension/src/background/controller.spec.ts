@@ -352,3 +352,55 @@ describe("save offers", () => {
     await expectHisarError(harness.controller.actOnSaveOffer(2, offer.offerID, "save"), "not-found");
   });
 });
+
+describe("update required", () => {
+  const appRequirement = { target: "app" as const, currentVersion: "0.1.5", minimumVersion: "0.1.6", updateURL: "https://tryhisar.com/download" };
+  const extensionRequirement = {
+    target: "extension" as const,
+    currentVersion: "0.1.0",
+    minimumVersion: "0.3.0",
+    updateURL: "https://chromewebstore.google.com/detail/mmipiffoogblblocokimpemdopmdjghf",
+  };
+
+  it("shows the update view when the Mac app is too old and the desktop refuses fills", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    harness.state.updateRequired = appRequirement;
+    expect(await harness.controller.getPopupState(true)).toEqual({ view: "update-required", updateRequired: appRequirement });
+    await expectHisarError(harness.controller.fillLogin(1, "vault-personal", "item-example"), "update-required");
+    expect(harness.allFrameMessage.some((entry) => entry.message.type === "content.fillLogin")).toBe(false);
+  });
+
+  it("maps an update-required answer to the status request to the update view", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    harness.state.updateRequired = appRequirement;
+    const popupState = await harness.controller.getPopupState();
+    expect(popupState.view).toBe("update-required");
+    expect(popupState.errorMessage).toBe("Hisar needs an update: the server requires version 0.1.6 or later. Open Hisar to update.");
+  });
+
+  it("refuses matches and fills without asking the desktop while the extension is too old", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    harness.state.updateRequired = extensionRequirement;
+    expect(await harness.controller.getPopupState(true)).toEqual({ view: "update-required", updateRequired: extensionRequirement });
+    const requestCount = harness.allRequest.length;
+    await expectHisarError(harness.controller.matchLogins(1), "update-required");
+    await expectHisarError(harness.controller.fillFirstLogin(1), "update-required");
+    await expectHisarError(harness.controller.getPasswordForTab(1, "vault-personal", "item-example"), "update-required");
+    expect(harness.allRequest.length).toBe(requestCount);
+    const error = await harness.controller.matchLogins(1).catch((caught: Error) => caught);
+    expect((error as Error).message).toBe("Update the Hisar extension: this server requires version 0.3.0 or later.");
+  });
+
+  it("fills again once a newer hello no longer asks for an update", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    harness.state.updateRequired = extensionRequirement;
+    await harness.controller.getPopupState(true);
+    harness.state.updateRequired = null;
+    expect((await harness.controller.getPopupState(true)).view).toBe("unlocked");
+    expect((await harness.controller.matchLogins(1)).allLogin).toHaveLength(1);
+  });
+});

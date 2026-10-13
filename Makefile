@@ -16,7 +16,7 @@ build-cli-all:
 
 # -p 1: database tests in different packages share one schema.
 # desktop: the vault, biometric and agent packages; the Wails main package needs cgo and the built frontend.
-# Release archives and SHA256SUMS of the standalone CLI in bin/cli-release, as the v* tag pipeline builds them.
+# Release archives and SHA256SUMS of the standalone CLI in bin/cli-release, as the cli-<version> release workflow builds them.
 package-cli-release:
 	./scripts/package-cli-release.sh $(VERSION) bin/cli-release
 

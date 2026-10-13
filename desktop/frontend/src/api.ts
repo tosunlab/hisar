@@ -2,7 +2,7 @@ import { Browser } from "@wailsio/runtime";
 import { ApprovalTouchIDService, TouchIDPromptService } from "../bindings/github.com/tryhisar/hisar/desktop";
 import { Service as AgentService } from "../bindings/github.com/tryhisar/hisar/desktop/agent";
 import type { ApprovalEvent, Status as SSHAgentStatus } from "../bindings/github.com/tryhisar/hisar/desktop/agent";
-import { BrowserBridge, CommandLineService, LoginItemService, Service, UpdateService } from "../bindings/github.com/tryhisar/hisar/desktop/vault";
+import { BrowserBridge, CommandLineService, InviteLinkService, LoginItemService, Service, UpdateService } from "../bindings/github.com/tryhisar/hisar/desktop/vault";
 import type { BrowserInstallation } from "../bindings/github.com/tryhisar/hisar/desktop/browser";
 import type { Installation as CommandLineInstallation } from "../bindings/github.com/tryhisar/hisar/desktop/commandline";
 import type {
@@ -36,6 +36,7 @@ import type {
   SignUpResult,
   Status,
   Theme,
+  UpdateRequirement,
   UpdateStatus,
   VaultMember,
   VaultSummary,
@@ -65,6 +66,7 @@ export type {
   SSHAgentStatus,
   Status,
   Theme,
+  UpdateRequirement,
   UpdateStatus,
   VaultMember,
   VaultSummary,
@@ -250,6 +252,8 @@ const wailsApi = {
   setExactHostMatch: async (isExactHostMatch: boolean): Promise<BrowserStatus> =>
     normalizeBrowserStatus(await BrowserBridge.SetExactHostMatch(isExactHostMatch)),
   cancelBrowserPairing: (): Promise<void> => BrowserBridge.CancelBrowserPairing(),
+  checkMinimumVersion: (): Promise<Status> => Service.CheckMinimumVersion(),
+  takePendingInvite: (): Promise<string> => InviteLinkService.TakePendingInvite(),
   getUpdateStatus: (): Promise<UpdateStatus> => UpdateService.GetUpdateStatus(),
   checkForUpdates: (): Promise<UpdateStatus> => UpdateService.CheckForUpdates(),
   setAutomaticUpdateCheck: (isEnabled: boolean): Promise<UpdateStatus> => UpdateService.SetAutomaticUpdateCheck(isEnabled),

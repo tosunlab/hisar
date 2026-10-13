@@ -61,6 +61,16 @@ describe("InlineMenuService", () => {
     expect((await unavailable.service.getState(menuFrame, third.sessionID)).view).toBe("desktop-unavailable");
   });
 
+  it("reports update-required with the requirement, and lists no logins", async () => {
+    const updateRequired = { target: "extension" as const, currentVersion: "0.1.0", minimumVersion: "0.3.0", updateURL: "https://chromewebstore.google.com/detail/x" };
+    const outdated = createService();
+    await outdated.pair();
+    outdated.state.updateRequired = updateRequired;
+    await outdated.controller.getPopupState(true);
+    const opened = outdated.service.openSession(pageFrame, pageUrl, pageUrl, "login");
+    expect(await outdated.service.getState(menuFrame, opened.sessionID)).toMatchObject({ view: "update-required", updateRequired, allLogin: [] });
+  });
+
   it("lists at most six matching logins for the frame and says when there are more", async () => {
     const harness = createService();
     for (let index = 0; index < 7; index += 1) {

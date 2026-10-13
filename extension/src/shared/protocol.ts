@@ -11,6 +11,7 @@ export const allErrorCode = [
   "not-found",
   "no-match",
   "desktop-unavailable",
+  "update-required",
   "internal",
 ] as const;
 
@@ -27,10 +28,18 @@ export interface LoginSummary {
   hasOneTimePassword?: boolean;
 }
 
+export interface UpdateRequirement {
+  target: "app" | "extension";
+  currentVersion: string;
+  minimumVersion: string;
+  updateURL: string;
+}
+
 export interface HelloResult {
   protocolVersion: number;
   isPaired: boolean;
   state: DesktopState;
+  updateRequired?: UpdateRequirement;
 }
 
 export interface StatusResult {

@@ -38,11 +38,13 @@ type Clipboard interface {
 }
 
 // EventListener hears about locks the app did not ask for, e.g. auto-lock, about phone approvals
-// (eventName is approval-requested, approval-answered or approval-resolved) and about syncs of changes made elsewhere.
+// (eventName is approval-requested, approval-answered or approval-resolved), about syncs of changes made elsewhere,
+// and about the server refusing this version (Status then has updateRequired).
 type EventListener interface {
 	OnLocked()
 	OnApprovalEvent(eventName, requestID string)
 	OnRemoteChange()
+	OnUpdateRequired()
 }
 
 type Hisar struct {
@@ -74,6 +76,7 @@ func New(stateDirectory, deviceName string, secretKeyStore SecretKeyStore, biome
 		config.LockNotifier = lockNotifierAdapter{listener: listener}
 		config.OnApprovalEvent = listener.OnApprovalEvent
 		config.OnRemoteChange = listener.OnRemoteChange
+		config.OnUpdateRequired = func(vault.UpdateRequirement) { listener.OnUpdateRequired() }
 	}
 	service, err := vault.CreateService(config)
 	if err != nil {
@@ -135,6 +138,17 @@ func releaseMemory() {
 // Status returns vault.Status as JSON.
 func (hisar *Hisar) Status() string {
 	encoded, _ := encodeJSON(hisar.service.GetStatus(), nil)
+	return encoded
+}
+
+// SetAppVersion must run right after New, before any request: the server compares it with its minimum for iOS.
+func (hisar *Hisar) SetAppVersion(version string) {
+	vault.SetAppVersion(hisar.service, version)
+}
+
+// CheckMinimumVersion asks the server whether it still accepts this version and returns vault.Status as JSON.
+func (hisar *Hisar) CheckMinimumVersion() string {
+	encoded, _ := encodeJSON(hisar.service.CheckMinimumVersion(), nil)
 	return encoded
 }
 

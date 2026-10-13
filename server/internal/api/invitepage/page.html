@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="light dark">
+<title>{{if .IsValid}}You're invited · Hisar{{else}}Invite not valid · Hisar{{end}}</title>
+<style>@@style@@</style>
+</head>
+<body>
+<main class="card" aria-labelledby="page-title">
+  <header class="brand">
+    <svg class="logo" width="28" height="28" viewBox="0 0 32 32" aria-hidden="true" focusable="false">
+      <rect class="logo-tile" width="32" height="32" rx="8"/>
+      <path class="logo-tower" d="M8 24.5V10.5h3V7.5h2.5v3h5V7.5H21v3h3v14h-6v-5a2 2 0 0 0-4 0v5z"/>
+    </svg>
+    <span class="wordmark">Hisar</span>
+  </header>
+{{if .IsValid}}
+  <h1 id="page-title">{{if .InviterName}}{{.InviterName}} invited you to Hisar{{else}}You're invited to Hisar{{end}}</h1>
+  <p>{{if .InviterDescription}}<span class="inviter" data-testid="inviter">{{.InviterDescription}}</span> invited you to Hisar{{else}}You're invited to Hisar{{end}}, the end-to-end encrypted password, SSH key and secrets manager for developers.</p>
+  <p class="note">Create your account with <strong data-testid="invitee-email">{{.Email}}</strong>. The invite works once and expires on {{.ExpiresOn}}.</p>
+
+  <section class="step" aria-labelledby="install-title">
+    <h2 id="install-title">1. Get Hisar</h2>
+    <a class="button primary" href="{{.DownloadURL}}" rel="noopener noreferrer" data-testid="download">Download for Mac</a>
+    <a class="button secondary" href="{{.DeepLink}}" data-testid="open-in-hisar">Open in Hisar</a>
+    <p class="note">Already installed? Open in Hisar fills in the invite for you, on a Mac or an iPhone.</p>
+  </section>
+
+  <section class="step" aria-labelledby="code-title">
+    <h2 id="code-title">2. Create your account</h2>
+    <p>In Hisar, choose Create account and paste this invite code.</p>
+    <div class="copy-row">
+      <code id="invite-code" class="copy-value" data-testid="invite-code">{{.Token}}</code>
+      <button type="button" class="copy-button" data-copy="invite-code" aria-label="Copy invite code" hidden>Copy</button>
+    </div>
+  </section>
+
+  <section class="step" aria-labelledby="terminal-title">
+    <h2 id="terminal-title">Prefer the terminal?</h2>
+    <p>On a Mac, the <code>hisar</code> command-line tool comes with the app: Settings → Developer tools → Install command-line tool. On Linux or a server, download <code>hisar</code> from <a href="{{.DownloadURL}}" rel="noopener noreferrer">tryhisar.com/download</a>. Then create your account:</p>
+    <div class="copy-row">
+      <code id="signup-command" class="copy-value" data-testid="signup-command">hisar signup {{.InviteLink}}</code>
+      <button type="button" class="copy-button" data-copy="signup-command" aria-label="Copy command" hidden>Copy</button>
+    </div>
+  </section>
+
+  <p id="announcement" class="visually-hidden" role="status" aria-live="polite"></p>
+  <footer>If you weren't expecting this invite, you can ignore it. <a href="/privacy" rel="noopener noreferrer">Privacy Policy</a></footer>
+{{else}}
+  <h1 id="page-title">This invite isn't valid</h1>
+  <p>Invites work once and expire after 7 days. Ask the person who invited you to send a new one.</p>
+  <p class="note">Already have an account? Open Hisar and sign in.</p>
+  <footer>Hisar is the end-to-end encrypted password, SSH key and secrets manager for developers.</footer>
+{{end}}
+</main>
+<script>@@script@@</script>
+</body>
+</html>

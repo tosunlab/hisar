@@ -334,6 +334,11 @@ export interface Status {
      * SignedOutReason says why the server signed this device out; empty after a sign-out on this device.
      */
     "signedOutReason": string;
+
+    /**
+     * UpdateRequired is set once the server refused this version; nothing works until Hisar updates.
+     */
+    "updateRequired": UpdateRequirement | null;
 }
 
 /**
@@ -342,6 +347,15 @@ export interface Status {
 export interface Theme {
     "appearance": string;
     "color": string;
+}
+
+/**
+ * UpdateRequirement is the server's minimum version for an app that is older; nil while the version is accepted.
+ */
+export interface UpdateRequirement {
+    "currentVersion": string;
+    "minimumVersion": string;
+    "updateURL": string;
 }
 
 export interface UpdateStatus {
