@@ -12,13 +12,6 @@ import (
 	"github.com/tryhisar/hisar/core/browserprotocol"
 )
 
-type BrowserInstallation struct {
-	Name         string `json:"name"`
-	ManifestPath string `json:"manifestPath"`
-	IsInstalled  bool   `json:"isInstalled"`
-	ErrorMessage string `json:"errorMessage"`
-}
-
 type knownBrowser struct {
 	name             string
 	profileDirectory string
@@ -60,18 +53,18 @@ func buildHostManifest(hostPath string) ([]byte, error) {
 }
 
 // InstallAllHostManifest registers the native host with every installed Chromium browser; it only writes changed files.
-func InstallAllHostManifest(homeDirectory, hostPath string) []BrowserInstallation {
+func InstallAllHostManifest(homeDirectory, hostPath string) []browserprotocol.BrowserInstallation {
 	return installAllHostManifest(homeDirectory, hostPath, runtime.GOOS)
 }
 
-func installAllHostManifest(homeDirectory, hostPath, operatingSystem string) []BrowserInstallation {
+func installAllHostManifest(homeDirectory, hostPath, operatingSystem string) []browserprotocol.BrowserInstallation {
 	manifest, manifestErr := buildHostManifest(hostPath)
-	allInstallation := []BrowserInstallation{}
+	allInstallation := []browserprotocol.BrowserInstallation{}
 	for _, browser := range getAllKnownBrowser(homeDirectory, operatingSystem) {
 		if _, err := os.Stat(browser.profileDirectory); err != nil {
 			continue
 		}
-		installation := BrowserInstallation{Name: browser.name, ManifestPath: filepath.Join(browser.profileDirectory, "NativeMessagingHosts", browserprotocol.HostName+".json")}
+		installation := browserprotocol.BrowserInstallation{Name: browser.name, ManifestPath: filepath.Join(browser.profileDirectory, "NativeMessagingHosts", browserprotocol.HostName+".json")}
 		err := manifestErr
 		if err == nil {
 			err = writeFileIfChanged(installation.ManifestPath, manifest)

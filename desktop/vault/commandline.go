@@ -9,18 +9,18 @@ import (
 
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/cliprotocol"
+	"github.com/tryhisar/hisar/core/clisocket"
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/session"
-	"github.com/tryhisar/hisar/desktop/commandline"
 )
 
-// CommandLineBridge answers the hisar CLI on the app's socket (commandline.Handler); it is not bound to the UI.
+// CommandLineBridge answers the hisar CLI on the app's socket (clisocket.Handler); it is not bound to the UI.
 type CommandLineBridge struct {
 	service *Service
 }
 
 // CreateCommandLineBridge also ends the CLI approvals whenever Hisar locks or signs out.
-func CreateCommandLineBridge(service *Service, approvals *commandline.SessionApprovals) *CommandLineBridge {
+func CreateCommandLineBridge(service *Service, approvals *clisocket.SessionApprovals) *CommandLineBridge {
 	service.mutex.Lock()
 	service.allLockListener = append(service.allLockListener, approvals.ClearAll)
 	service.mutex.Unlock()

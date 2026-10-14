@@ -1,4 +1,4 @@
-package commandline
+package clisocket
 
 import (
 	"context"

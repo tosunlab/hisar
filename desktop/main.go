@@ -16,7 +16,9 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/events"
 
 	"github.com/tryhisar/hisar/core/appversion"
+	"github.com/tryhisar/hisar/core/browserprotocol"
 	"github.com/tryhisar/hisar/core/cliprotocol"
+	"github.com/tryhisar/hisar/core/clisocket"
 	"github.com/tryhisar/hisar/core/localsocket"
 	"github.com/tryhisar/hisar/core/localstate"
 	"github.com/tryhisar/hisar/core/sshagent"
@@ -294,9 +296,9 @@ func main() {
 	browserBridge := vault.CreateBrowserBridge(vaultService, vault.BrowserBridgeConfig{
 		ShowPairing: func(request *vault.BrowserPairingRequest) { app.Event.Emit("browser-pairing", request) },
 		ShowWindow:  showWindow,
-		InstallAllHostManifest: func() []browser.BrowserInstallation {
+		InstallAllHostManifest: func() []browserprotocol.BrowserInstallation {
 			if _, err := os.Stat(browserHostPath); err != nil {
-				return []browser.BrowserInstallation{}
+				return []browserprotocol.BrowserInstallation{}
 			}
 			return browser.InstallAllHostManifest(homeDirectory, browserHostPath)
 		},
@@ -307,10 +309,10 @@ func main() {
 	}
 	browserServer := browser.CreateServer(vault.CreateBrowserRequestHandler(browserBridge), localsocket.SystemPeerResolver{}, browserHostPath)
 
-	commandLineApprovals := commandline.CreateSessionApprovals(commandline.DefaultApprovalLifetime, nil)
+	commandLineApprovals := clisocket.CreateSessionApprovals(clisocket.DefaultApprovalLifetime, nil)
 	commandLineBridge := vault.CreateCommandLineBridge(vaultService, commandLineApprovals)
 	var commandLineService *vault.CommandLineService
-	commandLineServer := commandline.CreateServer(commandline.ServerConfig{
+	commandLineServer := clisocket.CreateServer(clisocket.ServerConfig{
 		Handler:             commandLineBridge,
 		CheckUpdateRequired: commandLineBridge.CheckUpdateRequired,
 		Approver:            approver,
@@ -322,7 +324,7 @@ func main() {
 	if commandLineSocketPath == "" {
 		commandLineSocketPath = cliprotocol.GetDefaultSocketPath(homeDirectory)
 	}
-	commandLineRunner := commandline.CreateRunner(commandLineServer, commandLineSocketPath)
+	commandLineRunner := clisocket.CreateRunner(commandLineServer, commandLineSocketPath)
 	userPathReader := &commandline.UserPathReader{Shell: getLoginShell()}
 	commandLineService = vault.CreateCommandLineService(vaultService, commandline.CreateInstaller(commandline.InstallerConfig{
 		BundledPath:   filepath.Join(filepath.Dir(executableDirectory), "Helpers", "hisar"),

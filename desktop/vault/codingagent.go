@@ -9,10 +9,10 @@ import (
 	"time"
 
 	"github.com/tryhisar/hisar/core/cliprotocol"
+	"github.com/tryhisar/hisar/core/clisocket"
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/secretreference"
 	"github.com/tryhisar/hisar/core/session"
-	"github.com/tryhisar/hisar/desktop/commandline"
 )
 
 const (
@@ -265,7 +265,7 @@ func (s *Service) resolveAllAgentSecret(request *cliprotocol.Request) ([]secretr
 }
 
 // LocateAllAgentSecret names the secrets of an agent request for the approval window without handing out values.
-func (bridge *CommandLineBridge) LocateAllAgentSecret(request *cliprotocol.Request) ([]commandline.AgentSecret, error) {
+func (bridge *CommandLineBridge) LocateAllAgentSecret(request *cliprotocol.Request) ([]clisocket.AgentSecret, error) {
 	s := bridge.service
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -273,9 +273,9 @@ func (bridge *CommandLineBridge) LocateAllAgentSecret(request *cliprotocol.Reque
 	if err != nil {
 		return nil, convertCommandLineError(err)
 	}
-	allSecret := make([]commandline.AgentSecret, 0, len(allResolved))
+	allSecret := make([]clisocket.AgentSecret, 0, len(allResolved))
 	for _, resolved := range allResolved {
-		allSecret = append(allSecret, commandline.AgentSecret{
+		allSecret = append(allSecret, clisocket.AgentSecret{
 			VaultID: resolved.VaultID, ItemID: resolved.ItemID, VaultName: resolved.VaultName, ItemTitle: resolved.ItemTitle, FieldLabel: resolved.FieldLabel,
 		})
 	}

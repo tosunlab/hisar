@@ -14,8 +14,8 @@ import (
 
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/cliprotocol"
+	"github.com/tryhisar/hisar/core/clisocket"
 	"github.com/tryhisar/hisar/core/sharelink"
-	"github.com/tryhisar/hisar/desktop/commandline"
 )
 
 type fakeShareLinkAPI struct {
@@ -176,7 +176,7 @@ func TestCommandLineShareLinksThroughTheApp(t *testing.T) {
 
 func TestCommandLineShareLinkDescription(t *testing.T) {
 	testService := createUnlockedTestService(t)
-	bridge := CreateCommandLineBridge(testService.service, commandline.CreateSessionApprovals(0, nil))
+	bridge := CreateCommandLineBridge(testService.service, clisocket.CreateSessionApprovals(0, nil))
 	if _, err := testService.service.SaveItem(testService.personalID, ItemDetail{Title: "GitHub", Username: "alice", Password: "pw", URLs: []string{"https://github.com"}}); err != nil {
 		t.Fatal(err)
 	}

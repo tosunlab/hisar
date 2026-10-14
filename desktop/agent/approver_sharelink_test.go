@@ -5,8 +5,8 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/tryhisar/hisar/core/clisocket"
 	"github.com/tryhisar/hisar/desktop/appinfo"
-	"github.com/tryhisar/hisar/desktop/commandline"
 )
 
 func TestShareLinkApprovalNamesTheItemAndFields(t *testing.T) {
@@ -14,7 +14,7 @@ func TestShareLinkApprovalNamesTheItemAndFields(t *testing.T) {
 	emitter := createFakeEmitter()
 	approver := createCommandLineApprover(biometric, emitter, &fakeUnlocker{}, 0)
 	request := createCommandLineRequest()
-	request.ShareLink = &commandline.ShareLinkDescription{Title: "GitHub", AllFieldLabel: []string{"username", "password"}, Detail: "Expires in 7 days · 1 view · passphrase"}
+	request.ShareLink = &clisocket.ShareLinkDescription{Title: "GitHub", AllFieldLabel: []string{"username", "password"}, Detail: "Expires in 7 days · 1 view · passphrase"}
 	resultChannel := make(chan error, 1)
 	go func() { resultChannel <- approver.ApproveCommandLine(context.Background(), request) }()
 	event := waitForApprovalEvent(t, emitter)
@@ -45,7 +45,7 @@ func TestShareLinkApprovalNamesTheApp(t *testing.T) {
 		getAppIconPNG: func(string, int) ([]byte, error) { return []byte("png"), nil },
 	})
 	request := createCommandLineRequest()
-	request.ShareLink = &commandline.ShareLinkDescription{Title: "GitHub", AllFieldLabel: []string{"password"}, Detail: "Expires in 1 day · 1 view"}
+	request.ShareLink = &clisocket.ShareLinkDescription{Title: "GitHub", AllFieldLabel: []string{"password"}, Detail: "Expires in 1 day · 1 view"}
 	resultChannel := make(chan error, 1)
 	go func() { resultChannel <- approver.ApproveCommandLine(context.Background(), request) }()
 	event := waitForApprovalEvent(t, emitter)

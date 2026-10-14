@@ -1,5 +1,5 @@
 // Package commandline serves the hisar CLI on ~/.hisar/cli.sock and installs the bundled hisar on the PATH.
-package commandline
+package clisocket
 
 import (
 	"errors"

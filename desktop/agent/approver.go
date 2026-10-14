@@ -14,9 +14,9 @@ import (
 	"time"
 
 	"github.com/tryhisar/hisar/core/approval"
+	"github.com/tryhisar/hisar/core/clisocket"
 	"github.com/tryhisar/hisar/core/sshagent"
 	"github.com/tryhisar/hisar/desktop/appinfo"
-	"github.com/tryhisar/hisar/desktop/commandline"
 )
 
 const (
@@ -348,7 +348,7 @@ const (
 	plainExportWarning = "The file will hold every password, one-time code secret and SSH private key in plain text."
 )
 
-func (approver *Approver) buildCommandLineEvent(requestID string, request commandline.ApprovalRequest) ApprovalEvent {
+func (approver *Approver) buildCommandLineEvent(requestID string, request clisocket.ApprovalRequest) ApprovalEvent {
 	event := ApprovalEvent{
 		RequestID:         requestID,
 		Kind:              ApprovalKindCommandLine,
@@ -470,9 +470,9 @@ func describeCommandLineClient(event ApprovalEvent) string {
 }
 
 // ApproveCommandLine asks to let a terminal session use Hisar; when Hisar is locked, approving also unlocks it.
-func (approver *Approver) ApproveCommandLine(ctx context.Context, request commandline.ApprovalRequest) error {
+func (approver *Approver) ApproveCommandLine(ctx context.Context, request clisocket.ApprovalRequest) error {
 	if approver.config.Emit == nil {
-		return commandline.ErrDenied
+		return clisocket.ErrDenied
 	}
 	receivedAt := approver.config.Now()
 	event := approver.buildCommandLineEvent(generateRequestID(), request)
@@ -491,9 +491,9 @@ func (approver *Approver) ApproveCommandLine(ctx context.Context, request comman
 	}
 	if !approver.waitForApproval(ctx, pending) {
 		if pending.timedOutAfter > 0 {
-			return commandline.TimeoutError{Timeout: pending.timedOutAfter}
+			return clisocket.TimeoutError{Timeout: pending.timedOutAfter}
 		}
-		return commandline.ErrDenied
+		return clisocket.ErrDenied
 	}
 	return nil
 }

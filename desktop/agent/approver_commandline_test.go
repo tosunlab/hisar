@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tryhisar/hisar/core/clisocket"
 	"github.com/tryhisar/hisar/desktop/appinfo"
-	"github.com/tryhisar/hisar/desktop/commandline"
 )
 
 type fakeUnlocker struct {
@@ -74,8 +74,8 @@ func createCommandLineApprover(biometric Biometric, emitter *fakeEmitter, unlock
 	})
 }
 
-func createCommandLineRequest() commandline.ApprovalRequest {
-	return commandline.ApprovalRequest{ClientPID: 77, ParentPID: 42, ClientPath: "/Applications/Hisar.app/Contents/Helpers/hisar", TerminalName: "ttys003"}
+func createCommandLineRequest() clisocket.ApprovalRequest {
+	return clisocket.ApprovalRequest{ClientPID: 77, ParentPID: 42, ClientPath: "/Applications/Hisar.app/Contents/Helpers/hisar", TerminalName: "ttys003"}
 }
 
 func startCommandLineApproval(approver *Approver, ctx context.Context) chan error {
@@ -131,12 +131,12 @@ func TestCommandLineApprovalDenyAndTimeout(t *testing.T) {
 	resultChannel := startCommandLineApproval(approver, context.Background())
 	event := waitForApprovalEvent(t, emitter)
 	approver.Respond(event.RequestID, false, false)
-	if err := waitForCommandLineResult(t, resultChannel); !errors.Is(err, commandline.ErrDenied) {
+	if err := waitForCommandLineResult(t, resultChannel); !errors.Is(err, clisocket.ErrDenied) {
 		t.Errorf("deny: %v", err)
 	}
 
 	timeoutApprover := createCommandLineApprover(&fakeBiometric{isAvailable: true}, createFakeEmitter(), &fakeUnlocker{}, 20*time.Millisecond)
-	if err := timeoutApprover.ApproveCommandLine(context.Background(), createCommandLineRequest()); !errors.Is(err, commandline.ErrDenied) {
+	if err := timeoutApprover.ApproveCommandLine(context.Background(), createCommandLineRequest()); !errors.Is(err, clisocket.ErrDenied) {
 		t.Errorf("timeout: %v", err)
 	}
 
@@ -146,7 +146,7 @@ func TestCommandLineApprovalDenyAndTimeout(t *testing.T) {
 	resultChannel = startCommandLineApproval(disconnectApprover, ctx)
 	waitForApprovalEvent(t, disconnectEmitter)
 	cancel()
-	if err := waitForCommandLineResult(t, resultChannel); !errors.Is(err, commandline.ErrDenied) {
+	if err := waitForCommandLineResult(t, resultChannel); !errors.Is(err, clisocket.ErrDenied) {
 		t.Errorf("client gone: %v", err)
 	}
 }

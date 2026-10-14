@@ -16,22 +16,22 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/tryhisar/hisar/cli/mcpserver"
+	"github.com/tryhisar/hisar/core/clisocket"
 	"github.com/tryhisar/hisar/core/localstate"
-	"github.com/tryhisar/hisar/desktop/commandline"
 )
 
 type recordingAgentApprover struct {
 	mutex        sync.Mutex
-	allRequest   []commandline.AgentApprovalRequest
+	allRequest   []clisocket.AgentApprovalRequest
 	result       error
 	isRemembered bool
 }
 
-func (approver *recordingAgentApprover) ApproveAgent(_ context.Context, request commandline.AgentApprovalRequest) (commandline.AgentApprovalResult, error) {
+func (approver *recordingAgentApprover) ApproveAgent(_ context.Context, request clisocket.AgentApprovalRequest) (clisocket.AgentApprovalResult, error) {
 	approver.mutex.Lock()
 	defer approver.mutex.Unlock()
 	approver.allRequest = append(approver.allRequest, request)
-	return commandline.AgentApprovalResult{IsRemembered: approver.isRemembered}, approver.result
+	return clisocket.AgentApprovalResult{IsRemembered: approver.isRemembered}, approver.result
 }
 
 func (approver *recordingAgentApprover) answer(result error, isRemembered bool) {
@@ -46,7 +46,7 @@ func (approver *recordingAgentApprover) getRequestCount() int {
 	return len(approver.allRequest)
 }
 
-func (approver *recordingAgentApprover) getLastRequest() commandline.AgentApprovalRequest {
+func (approver *recordingAgentApprover) getLastRequest() clisocket.AgentApprovalRequest {
 	approver.mutex.Lock()
 	defer approver.mutex.Unlock()
 	return approver.allRequest[len(approver.allRequest)-1]
@@ -103,8 +103,8 @@ func createCodingAgentTest(t *testing.T) *codingAgentTest {
 		t.Fatal(err)
 	}
 
-	approvals := commandline.CreateSessionApprovals(0, test.getNow)
-	server := commandline.CreateServer(commandline.ServerConfig{
+	approvals := clisocket.CreateSessionApprovals(0, test.getNow)
+	server := clisocket.CreateServer(clisocket.ServerConfig{
 		Handler: CreateCommandLineBridge(service, approvals), Approver: &countingApprover{}, AgentApprover: test.approver,
 		PeerResolver: staticPeerResolver{}, Approvals: approvals,
 	})
@@ -242,7 +242,7 @@ func TestAgentSearchReturnsMetadataAndReferencesButNeverValues(t *testing.T) {
 	if test.approver.getRequestCount() != 1 {
 		t.Errorf("search asked %d times; want once for the connection", test.approver.getRequestCount())
 	}
-	if request := test.approver.getLastRequest(); request.Kind != commandline.AgentRequestConnect || request.Agent.Name != "claude-code" || request.Agent.Version != "2.1.0" {
+	if request := test.approver.getLastRequest(); request.Kind != clisocket.AgentRequestConnect || request.Agent.Name != "claude-code" || request.Agent.Version != "2.1.0" {
 		t.Errorf("connection approval = %+v", request)
 	}
 }
@@ -252,16 +252,16 @@ func TestAgentGetSecretNeedsApprovalForTheItem(t *testing.T) {
 	test.makePersonalAvailable(t)
 	reference := map[string]any{"reference": "hisar://Personal/GitHub/password"}
 
-	test.approver.answer(commandline.ErrDenied, false)
+	test.approver.answer(clisocket.ErrDenied, false)
 	if text, isError := test.call(t, "get_secret", reference); !isError || text != "The user denied access in Hisar." {
 		t.Errorf("denied: %s", text)
 	}
 	request := test.approver.getLastRequest()
-	if request.Kind != commandline.AgentRequestReveal || request.RevealedName != "GitHub › password" || !slices.Equal(request.AllSecretName, []string{"Personal › GitHub › password"}) ||
+	if request.Kind != clisocket.AgentRequestReveal || request.RevealedName != "GitHub › password" || !slices.Equal(request.AllSecretName, []string{"Personal › GitHub › password"}) ||
 		request.Agent.Name != "claude-code" || !request.IsConnectionApproval {
 		t.Errorf("reveal approval = %+v", request)
 	}
-	test.approver.answer(commandline.TimeoutError{Timeout: 2 * time.Minute}, false)
+	test.approver.answer(clisocket.TimeoutError{Timeout: 2 * time.Minute}, false)
 	if text, _ := test.call(t, "get_secret", reference); text != "The user did not answer Hisar's approval dialog in time." {
 		t.Errorf("timeout: %s", text)
 	}
@@ -276,7 +276,7 @@ func TestAgentGetSecretNeedsApprovalForTheItem(t *testing.T) {
 
 	test.approver.answer(nil, true)
 	test.mustCall(t, "get_secret", reference, &secretOutput)
-	test.approver.answer(commandline.ErrDenied, false)
+	test.approver.answer(clisocket.ErrDenied, false)
 	test.mustCall(t, "get_secret", map[string]any{"reference": "hisar://Personal/GitHub/API%20token"}, &secretOutput)
 	if secretOutput.Value != githubToken || test.approver.getRequestCount() != 5 {
 		t.Errorf("the item allowed for an hour asked again: %d approvals", test.approver.getRequestCount())
@@ -314,7 +314,7 @@ func TestAgentRunsCommandsWithMaskedSecrets(t *testing.T) {
 		t.Errorf("run = %s", allText)
 	}
 	request := test.approver.getLastRequest()
-	if request.Kind != commandline.AgentRequestRun || request.Agent.Name != "claude-code" || request.WorkingDirectory != directory ||
+	if request.Kind != clisocket.AgentRequestRun || request.Agent.Name != "claude-code" || request.WorkingDirectory != directory ||
 		!slices.Equal(request.CommandLine, []string{"sh", "-c", `echo "password=$GITHUB_PASSWORD"; echo "token=$GITHUB_TOKEN" >&2; exit 4`}) ||
 		!slices.Equal(request.AllSecretName, []string{"Personal › GitHub › password", "Personal › GitHub › API token"}) || request.ClientPath != "/usr/local/bin/hisar" {
 		t.Errorf("run approval = %+v", request)
@@ -329,7 +329,7 @@ func TestAgentGetsOneTimeCodesAfterApproval(t *testing.T) {
 	if len(codeOutput.Code) != 6 || codeOutput.Period != 30 || codeOutput.SecondsRemaining < 0 || codeOutput.SecondsRemaining > 30 {
 		t.Errorf("code = %+v", codeOutput)
 	}
-	if request := test.approver.getLastRequest(); request.Kind != commandline.AgentRequestCode || request.RevealedName != "GitHub" ||
+	if request := test.approver.getLastRequest(); request.Kind != clisocket.AgentRequestCode || request.RevealedName != "GitHub" ||
 		!slices.Equal(request.AllSecretName, []string{"Personal › GitHub › one-time code"}) {
 		t.Errorf("code approval = %+v", request)
 	}

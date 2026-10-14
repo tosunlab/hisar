@@ -6,9 +6,9 @@ import (
 	"testing"
 
 	"github.com/tryhisar/hisar/core/cliprotocol"
+	"github.com/tryhisar/hisar/core/clisocket"
 	"github.com/tryhisar/hisar/core/secretreference"
 	"github.com/tryhisar/hisar/core/totp"
-	"github.com/tryhisar/hisar/desktop/commandline"
 )
 
 func TestResolveSecretsThroughTheApp(t *testing.T) {
@@ -72,7 +72,7 @@ func TestDescribeSecretsForTheApprovalWindow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	bridge := CreateCommandLineBridge(service, commandline.CreateSessionApprovals(0, nil))
+	bridge := CreateCommandLineBridge(service, clisocket.CreateSessionApprovals(0, nil))
 	allReference := []string{"hisar://" + testService.personalID + "/" + github.ID + "/PASSWORD", "hisar://Personal/Nothing/password", "hisar://Work/AWS%20prod/secret%20key", "not a reference"}
 	allExpected := []string{"Personal › GitHub › password", "Personal › Nothing › password", "Work › AWS prod › secret key", "not a reference"}
 	if allName := bridge.DescribeAllSecret(allReference); !slices.Equal(allName, allExpected) {

@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/tryhisar/hisar/core/cliprotocol"
-	"github.com/tryhisar/hisar/desktop/commandline"
+	"github.com/tryhisar/hisar/core/clisocket"
 )
 
 // unlockingApprover stands in for the approval window: it types a wrong and then the right password when Hisar is locked.
@@ -21,11 +21,11 @@ type unlockingApprover struct {
 	mutex                   sync.Mutex
 	unlocker                *ApprovalUnlocker
 	password                string
-	allRequest              []commandline.ApprovalRequest
+	allRequest              []clisocket.ApprovalRequest
 	allWrongPasswordMessage []string
 }
 
-func (approver *unlockingApprover) ApproveCommandLine(_ context.Context, request commandline.ApprovalRequest) error {
+func (approver *unlockingApprover) ApproveCommandLine(_ context.Context, request clisocket.ApprovalRequest) error {
 	approver.mutex.Lock()
 	defer approver.mutex.Unlock()
 	approver.allRequest = append(approver.allRequest, request)
@@ -75,8 +75,8 @@ func TestIntegrationCommandLineThroughApp(t *testing.T) {
 	statePath := filepath.Join(socketDirectory, "standalone", "state.json")
 	unlockCount := 0
 	approver := &unlockingApprover{unlocker: CreateApprovalUnlocker(service, func() { unlockCount++ }), password: password}
-	approvals := commandline.CreateSessionApprovals(0, nil)
-	runner := commandline.CreateRunner(commandline.CreateServer(commandline.ServerConfig{
+	approvals := clisocket.CreateSessionApprovals(0, nil)
+	runner := clisocket.CreateRunner(clisocket.CreateServer(clisocket.ServerConfig{
 		Handler: CreateCommandLineBridge(service, approvals), Approver: approver, Approvals: approvals,
 	}), socketPath)
 	runner.Start()

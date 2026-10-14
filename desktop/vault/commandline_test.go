@@ -14,6 +14,7 @@ import (
 
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/cliprotocol"
+	"github.com/tryhisar/hisar/core/clisocket"
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/localstate"
 	"github.com/tryhisar/hisar/desktop/commandline"
@@ -23,12 +24,12 @@ const testOneTimePassword = "otpauth://totp/Example:alice?secret=JBSWY3DPEHPK3PX
 
 type staticPeerResolver struct{}
 
-func (staticPeerResolver) ResolvePeer(net.Conn) (commandline.Peer, error) {
-	return commandline.Peer{UID: os.Getuid(), PID: 4242}, nil
+func (staticPeerResolver) ResolvePeer(net.Conn) (clisocket.Peer, error) {
+	return clisocket.Peer{UID: os.Getuid(), PID: 4242}, nil
 }
 
-func (staticPeerResolver) GetTerminalSession(int) (commandline.TerminalSession, error) {
-	return commandline.TerminalSession{SessionID: 4200, TerminalDevice: 7, LeaderStartTime: 1}, nil
+func (staticPeerResolver) GetTerminalSession(int) (clisocket.TerminalSession, error) {
+	return clisocket.TerminalSession{SessionID: 4200, TerminalDevice: 7, LeaderStartTime: 1}, nil
 }
 
 func (staticPeerResolver) GetProcessPath(int) (string, error) { return "/usr/local/bin/hisar", nil }
@@ -40,7 +41,7 @@ type countingApprover struct {
 	count int
 }
 
-func (approver *countingApprover) ApproveCommandLine(context.Context, commandline.ApprovalRequest) error {
+func (approver *countingApprover) ApproveCommandLine(context.Context, clisocket.ApprovalRequest) error {
 	approver.mutex.Lock()
 	defer approver.mutex.Unlock()
 	approver.count++
@@ -55,7 +56,7 @@ func (approver *countingApprover) getCount() int {
 
 type commandLineTest struct {
 	testService unlockedTestService
-	approvals   *commandline.SessionApprovals
+	approvals   *clisocket.SessionApprovals
 	approver    *countingApprover
 	connection  net.Conn
 	nextID      int
@@ -63,9 +64,9 @@ type commandLineTest struct {
 
 func createCommandLineTest(t *testing.T) *commandLineTest {
 	t.Helper()
-	test := &commandLineTest{testService: createUnlockedTestService(t), approvals: commandline.CreateSessionApprovals(0, nil), approver: &countingApprover{}}
+	test := &commandLineTest{testService: createUnlockedTestService(t), approvals: clisocket.CreateSessionApprovals(0, nil), approver: &countingApprover{}}
 	bridge := CreateCommandLineBridge(test.testService.service, test.approvals)
-	server := commandline.CreateServer(commandline.ServerConfig{Handler: bridge, Approver: test.approver, PeerResolver: staticPeerResolver{}, Approvals: test.approvals})
+	server := clisocket.CreateServer(clisocket.ServerConfig{Handler: bridge, Approver: test.approver, PeerResolver: staticPeerResolver{}, Approvals: test.approvals})
 	serverSide, clientSide := net.Pipe()
 	go server.ServeConnection(context.Background(), serverSide)
 	t.Cleanup(func() { clientSide.Close() })
@@ -293,7 +294,7 @@ func TestLockEndsCommandLineApprovals(t *testing.T) {
 	if count := test.approver.getCount(); count != 1 {
 		t.Fatalf("approved %d times", count)
 	}
-	session := commandline.TerminalSession{SessionID: 4200, TerminalDevice: 7, LeaderStartTime: 1}
+	session := clisocket.TerminalSession{SessionID: 4200, TerminalDevice: 7, LeaderStartTime: 1}
 	if !test.approvals.IsApproved(session) {
 		t.Fatal("session not approved")
 	}
@@ -341,8 +342,8 @@ func (runner *fakeCommandLineRunner) Start() {
 func (runner *fakeCommandLineRunner) Stop() {
 	runner.isRunning, runner.stopCount = false, runner.stopCount+1
 }
-func (runner *fakeCommandLineRunner) GetStatus() commandline.RunnerStatus {
-	return commandline.RunnerStatus{SocketPath: "/tmp/cli.sock", IsRunning: runner.isRunning}
+func (runner *fakeCommandLineRunner) GetStatus() clisocket.RunnerStatus {
+	return clisocket.RunnerStatus{SocketPath: "/tmp/cli.sock", IsRunning: runner.isRunning}
 }
 
 func TestCommandLineSwitchIsSavedAndKeptOnSignOut(t *testing.T) {

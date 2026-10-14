@@ -14,13 +14,8 @@ import (
 	"github.com/tryhisar/hisar/core/localsocket"
 )
 
-// Handler answers one request; returning a *ResponseError sends its code to the extension.
-type Handler interface {
-	HandleRequest(ctx context.Context, request *browserprotocol.Request) (any, error)
-}
-
 type Server struct {
-	handler         Handler
+	handler         browserprotocol.Handler
 	peerResolver    localsocket.PeerResolver
 	allowedPeerPath string
 	mutex           sync.Mutex
@@ -28,7 +23,7 @@ type Server struct {
 }
 
 // CreateServer accepts only peers running allowedPeerPath when that file exists, i.e. in the packaged app.
-func CreateServer(handler Handler, peerResolver localsocket.PeerResolver, allowedPeerPath string) *Server {
+func CreateServer(handler browserprotocol.Handler, peerResolver localsocket.PeerResolver, allowedPeerPath string) *Server {
 	return &Server{handler: handler, peerResolver: peerResolver, allowedPeerPath: allowedPeerPath}
 }
 

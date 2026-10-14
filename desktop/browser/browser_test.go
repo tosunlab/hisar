@@ -84,7 +84,7 @@ func (resolver fakePeerResolver) ResolvePeer(net.Conn) (localsocket.PeerInfo, er
 	return localsocket.PeerInfo{Path: resolver.path}, nil
 }
 
-func startTestServer(t *testing.T, handler Handler, peerResolver localsocket.PeerResolver, allowedPeerPath string) string {
+func startTestServer(t *testing.T, handler browserprotocol.Handler, peerResolver localsocket.PeerResolver, allowedPeerPath string) string {
 	t.Helper()
 	socketDirectory, err := os.MkdirTemp("/tmp", "hisar-browser-")
 	if err != nil {

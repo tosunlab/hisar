@@ -18,7 +18,6 @@ import (
 	"github.com/tryhisar/hisar/core/browserprotocol"
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/localstate"
-	"github.com/tryhisar/hisar/desktop/browser"
 )
 
 const (
@@ -41,10 +40,10 @@ type PairedBrowser struct {
 }
 
 type BrowserStatus struct {
-	AllInstallation  []browser.BrowserInstallation `json:"allInstallation"`
-	AllPairedBrowser []PairedBrowser               `json:"allPairedBrowser"`
-	IsExactHostMatch bool                          `json:"isExactHostMatch"`
-	PendingPairing   *BrowserPairingRequest        `json:"pendingPairing"`
+	AllInstallation  []browserprotocol.BrowserInstallation `json:"allInstallation"`
+	AllPairedBrowser []PairedBrowser                       `json:"allPairedBrowser"`
+	IsExactHostMatch bool                                  `json:"isExactHostMatch"`
+	PendingPairing   *BrowserPairingRequest                `json:"pendingPairing"`
 }
 
 type BrowserBridgeConfig struct {
@@ -52,7 +51,7 @@ type BrowserBridgeConfig struct {
 	ShowPairing func(request *BrowserPairingRequest)
 	ShowWindow  func()
 	// InstallAllHostManifest registers the native host with the installed browsers.
-	InstallAllHostManifest func() []browser.BrowserInstallation
+	InstallAllHostManifest func() []browserprotocol.BrowserInstallation
 }
 
 type pendingBrowserPairing struct {
@@ -63,13 +62,13 @@ type pendingBrowserPairing struct {
 	attempts   int
 }
 
-// BrowserBridge answers the browser extension (browser.Handler) and is bound to the UI for Settings.
+// BrowserBridge answers the browser extension (browserprotocol.Handler) and is bound to the UI for Settings.
 type BrowserBridge struct {
 	service         *Service
 	config          BrowserBridgeConfig
 	mutex           sync.Mutex
 	pendingPairing  *pendingBrowserPairing
-	allInstallation []browser.BrowserInstallation
+	allInstallation []browserprotocol.BrowserInstallation
 }
 
 func CreateBrowserBridge(service *Service, config BrowserBridgeConfig) *BrowserBridge {
@@ -77,9 +76,9 @@ func CreateBrowserBridge(service *Service, config BrowserBridgeConfig) *BrowserB
 }
 
 // InstallBrowserHostManifest registers the native host; main calls it at launch. It is not a method so the UI cannot call it.
-func InstallBrowserHostManifest(bridge *BrowserBridge) []browser.BrowserInstallation {
+func InstallBrowserHostManifest(bridge *BrowserBridge) []browserprotocol.BrowserInstallation {
 	if bridge.config.InstallAllHostManifest == nil {
-		return []browser.BrowserInstallation{}
+		return []browserprotocol.BrowserInstallation{}
 	}
 	allInstallation := bridge.config.InstallAllHostManifest()
 	bridge.mutex.Lock()
@@ -93,7 +92,7 @@ type browserRequestHandler struct {
 	bridge *BrowserBridge
 }
 
-func CreateBrowserRequestHandler(bridge *BrowserBridge) browser.Handler {
+func CreateBrowserRequestHandler(bridge *BrowserBridge) browserprotocol.Handler {
 	return browserRequestHandler{bridge: bridge}
 }
 
@@ -295,7 +294,7 @@ func (bridge *BrowserBridge) isTokenValid(token string) bool {
 // GetBrowserStatus is for Settings: browsers with the native host, paired browsers and the matching option.
 func (bridge *BrowserBridge) GetBrowserStatus() BrowserStatus {
 	bridge.mutex.Lock()
-	status := BrowserStatus{AllInstallation: append([]browser.BrowserInstallation{}, bridge.allInstallation...), AllPairedBrowser: []PairedBrowser{}}
+	status := BrowserStatus{AllInstallation: append([]browserprotocol.BrowserInstallation{}, bridge.allInstallation...), AllPairedBrowser: []PairedBrowser{}}
 	if pending := bridge.pendingPairing; pending != nil && bridge.service.config.Now().Before(pending.expiresAt) {
 		status.PendingPairing = &BrowserPairingRequest{Browser: pending.browser, Code: pending.code, ExpiresAt: pending.expiresAt.UTC().Format(time.RFC3339)}
 	}

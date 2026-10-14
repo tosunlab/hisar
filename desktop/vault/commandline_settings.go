@@ -1,11 +1,14 @@
 package vault
 
-import "github.com/tryhisar/hisar/desktop/commandline"
+import (
+	"github.com/tryhisar/hisar/core/clisocket"
+	"github.com/tryhisar/hisar/desktop/commandline"
+)
 
 type CommandLineRunner interface {
 	Start()
 	Stop()
-	GetStatus() commandline.RunnerStatus
+	GetStatus() clisocket.RunnerStatus
 }
 
 // CommandLineStatus is Settings → Developer tools → Command-line tool: the installed hisar, the PATH, and the app integration.

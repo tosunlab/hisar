@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/tryhisar/hisar/core/approval"
+	"github.com/tryhisar/hisar/core/clisocket"
 	"github.com/tryhisar/hisar/desktop/appinfo"
-	"github.com/tryhisar/hisar/desktop/commandline"
 )
 
 func TestCommandLineTimeoutReportsTheDialogsDeadline(t *testing.T) {
@@ -22,18 +22,18 @@ func TestCommandLineTimeoutReportsTheDialogsDeadline(t *testing.T) {
 			PhoneApprover: phone, Timeout: 20 * time.Millisecond, PhoneApprovalTimeout: 60 * time.Millisecond,
 		})
 		err := approver.ApproveCommandLine(context.Background(), createCommandLineRequest())
-		var timeoutError commandline.TimeoutError
+		var timeoutError clisocket.TimeoutError
 		expected := 20 * time.Millisecond
 		if isPhoneAvailable {
 			expected = 60 * time.Millisecond
 		}
-		if !errors.As(err, &timeoutError) || timeoutError.Timeout != expected || !errors.Is(err, commandline.ErrDenied) {
+		if !errors.As(err, &timeoutError) || timeoutError.Timeout != expected || !errors.Is(err, clisocket.ErrDenied) {
 			t.Errorf("phone %v: %v", isPhoneAvailable, err)
 		}
 	}
 }
 
-func createSecretRequest(allSecretName []string, commandLine []string) commandline.ApprovalRequest {
+func createSecretRequest(allSecretName []string, commandLine []string) clisocket.ApprovalRequest {
 	request := createCommandLineRequest()
 	request.IsSecretRequest, request.AllSecretName, request.CommandLine = true, allSecretName, commandLine
 	return request

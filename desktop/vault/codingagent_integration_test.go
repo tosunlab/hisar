@@ -16,7 +16,7 @@ import (
 
 	"github.com/tryhisar/hisar/cli/mcpserver"
 	"github.com/tryhisar/hisar/core/cliprotocol"
-	"github.com/tryhisar/hisar/desktop/commandline"
+	"github.com/tryhisar/hisar/core/clisocket"
 )
 
 // TestIntegrationAgentThroughApp runs the built hisar mcp as an MCP server on stdio against the app backend signed in to
@@ -56,8 +56,8 @@ func TestIntegrationAgentThroughApp(t *testing.T) {
 	t.Cleanup(func() { os.RemoveAll(socketDirectory) })
 	socketPath := filepath.Join(socketDirectory, "hisar", "cli.sock")
 	approver := &recordingAgentApprover{}
-	approvals := commandline.CreateSessionApprovals(0, nil)
-	runner := commandline.CreateRunner(commandline.CreateServer(commandline.ServerConfig{
+	approvals := clisocket.CreateSessionApprovals(0, nil)
+	runner := clisocket.CreateRunner(clisocket.CreateServer(clisocket.ServerConfig{
 		Handler: CreateCommandLineBridge(service, approvals), Approver: &countingApprover{}, AgentApprover: approver, Approvals: approvals,
 	}), socketPath)
 	runner.Start()
@@ -141,7 +141,7 @@ func TestIntegrationAgentThroughApp(t *testing.T) {
 			t.Errorf("approval request = %+v", request)
 		}
 	}
-	if !slices.Equal(allKind, []string{commandline.AgentRequestConnect, commandline.AgentRequestRun, commandline.AgentRequestReveal}) {
+	if !slices.Equal(allKind, []string{clisocket.AgentRequestConnect, clisocket.AgentRequestRun, clisocket.AgentRequestReveal}) {
 		t.Errorf("approvals = %q", allKind)
 	}
 	expectedDirectory, _ := filepath.EvalSymlinks(command.Dir)

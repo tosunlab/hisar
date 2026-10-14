@@ -1,6 +1,6 @@
 //go:build !darwin && !linux
 
-package commandline
+package clisocket
 
 import "errors"
 

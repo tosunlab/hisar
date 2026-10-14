@@ -9,15 +9,15 @@ import (
 	"time"
 
 	"github.com/tryhisar/hisar/core/approval"
-	"github.com/tryhisar/hisar/desktop/commandline"
+	"github.com/tryhisar/hisar/core/clisocket"
 )
 
 type agentApproveResult struct {
-	result commandline.AgentApprovalResult
+	result clisocket.AgentApprovalResult
 	err    error
 }
 
-func startAgentApproval(approver *Approver, request commandline.AgentApprovalRequest) chan agentApproveResult {
+func startAgentApproval(approver *Approver, request clisocket.AgentApprovalRequest) chan agentApproveResult {
 	resultChannel := make(chan agentApproveResult, 1)
 	go func() {
 		result, err := approver.ApproveAgent(context.Background(), request)
@@ -37,25 +37,25 @@ func waitForAgentResult(t *testing.T, resultChannel chan agentApproveResult) age
 	}
 }
 
-func createAgentRequest(kind string) commandline.AgentApprovalRequest {
-	return commandline.AgentApprovalRequest{
+func createAgentRequest(kind string) clisocket.AgentApprovalRequest {
+	return clisocket.AgentApprovalRequest{
 		ClientPID: 77, ParentPID: 42, ClientPath: "/opt/homebrew/bin/hisar", TerminalName: "ttys003",
-		Agent: commandline.AgentIdentity{Name: "claude-code", Version: "2.1.0"}, Kind: kind, IsConnectionApproval: true,
+		Agent: clisocket.AgentIdentity{Name: "claude-code", Version: "2.1.0"}, Kind: kind, IsConnectionApproval: true,
 	}
 }
 
 func TestDescribeAgentName(t *testing.T) {
 	allCase := []struct {
-		identity commandline.AgentIdentity
+		identity clisocket.AgentIdentity
 		expected string
 	}{
-		{commandline.AgentIdentity{Name: "claude-code"}, "Claude Code"},
-		{commandline.AgentIdentity{Name: "cursor-vscode"}, "Cursor"},
-		{commandline.AgentIdentity{Name: "Codex-MCP-Client"}, "Codex"},
-		{commandline.AgentIdentity{Name: "my-agent", Title: "My Agent"}, "My Agent"},
-		{commandline.AgentIdentity{Name: "evil‮\nagent\x00 "}, "evil agent"},
-		{commandline.AgentIdentity{Name: "   "}, "A coding agent"},
-		{commandline.AgentIdentity{Name: "an agent with a very long name that goes on and on and on and on forever"}, "an agent with a very long name that goes on and on and on a…"},
+		{clisocket.AgentIdentity{Name: "claude-code"}, "Claude Code"},
+		{clisocket.AgentIdentity{Name: "cursor-vscode"}, "Cursor"},
+		{clisocket.AgentIdentity{Name: "Codex-MCP-Client"}, "Codex"},
+		{clisocket.AgentIdentity{Name: "my-agent", Title: "My Agent"}, "My Agent"},
+		{clisocket.AgentIdentity{Name: "evil‮\nagent\x00 "}, "evil agent"},
+		{clisocket.AgentIdentity{Name: "   "}, "A coding agent"},
+		{clisocket.AgentIdentity{Name: "an agent with a very long name that goes on and on and on and on forever"}, "an agent with a very long name that goes on and on and on a…"},
 	}
 	for _, testCase := range allCase {
 		if name := DescribeAgentName(testCase.identity); name != testCase.expected {
@@ -68,7 +68,7 @@ func TestAgentConnectionDialogNamesTheAgentAndItsApp(t *testing.T) {
 	biometric := &fakeBiometric{isAvailable: true}
 	emitter := createFakeEmitter()
 	approver := createCommandLineApprover(biometric, emitter, &fakeUnlocker{}, 0)
-	resultChannel := startAgentApproval(approver, createAgentRequest(commandline.AgentRequestConnect))
+	resultChannel := startAgentApproval(approver, createAgentRequest(clisocket.AgentRequestConnect))
 	event := waitForApprovalEvent(t, emitter)
 	if event.Kind != ApprovalKindAgent || event.AgentName != "Claude Code" || event.AppName != "Terminal" || event.ClientName != "hisar mcp" ||
 		event.Purpose != "connect" || event.Action != "use Hisar" || event.IsRememberable || !event.IsConnectionApproval || event.TerminalName != "ttys003" ||
@@ -88,7 +88,7 @@ func TestAgentRunDialogShowsTheCommandAndSecrets(t *testing.T) {
 	emitter := createFakeEmitter()
 	approver := createCommandLineApprover(&fakeBiometric{isAvailable: true}, emitter, &fakeUnlocker{}, 0)
 	approver.config.HomeDirectory = "/Users/alice"
-	request := createAgentRequest(commandline.AgentRequestRun)
+	request := createAgentRequest(clisocket.AgentRequestRun)
 	request.CommandLine = []string{"/usr/local/bin/npm", "run", "deploy", "--", "--message", "it's live"}
 	request.WorkingDirectory = "/Users/alice/src/app"
 	request.AllSecretName = []string{"Work › Stripe › api key", "Work › AWS › access key", "Work › AWS › secret key", "Work › GitHub › token", "Personal › npm › token"}
@@ -108,7 +108,7 @@ func TestAgentRunDialogShowsTheCommandAndSecrets(t *testing.T) {
 func TestAgentRevealDialogWarnsAndIsNotRememberedByDefault(t *testing.T) {
 	emitter := createFakeEmitter()
 	approver := createCommandLineApprover(&fakeBiometric{isAvailable: false}, emitter, &fakeUnlocker{}, 0)
-	request := createAgentRequest(commandline.AgentRequestReveal)
+	request := createAgentRequest(clisocket.AgentRequestReveal)
 	request.AllSecretName, request.RevealedName = []string{"Work › Stripe › api key"}, "Stripe › api key"
 	resultChannel := startAgentApproval(approver, request)
 	event := waitForApprovalEvent(t, emitter)
@@ -124,14 +124,14 @@ func TestAgentRevealDialogWarnsAndIsNotRememberedByDefault(t *testing.T) {
 	resultChannel = startAgentApproval(approver, request)
 	event = waitForApprovalEvent(t, emitter)
 	approver.Respond(event.RequestID, false, false)
-	if result := waitForAgentResult(t, resultChannel); !errors.Is(result.err, commandline.ErrDenied) {
+	if result := waitForAgentResult(t, resultChannel); !errors.Is(result.err, clisocket.ErrDenied) {
 		t.Errorf("deny = %+v", result)
 	}
 
 	timeoutApprover := createCommandLineApprover(&fakeBiometric{isAvailable: true}, createFakeEmitter(), &fakeUnlocker{}, 20*time.Millisecond)
 	_, err := timeoutApprover.ApproveAgent(context.Background(), request)
-	var timeoutError commandline.TimeoutError
-	if !errors.As(err, &timeoutError) || !errors.Is(err, commandline.ErrDenied) {
+	var timeoutError clisocket.TimeoutError
+	if !errors.As(err, &timeoutError) || !errors.Is(err, clisocket.ErrDenied) {
 		t.Errorf("timeout = %v", err)
 	}
 }
@@ -140,7 +140,7 @@ func TestAgentDialogUnlocksALockedHisar(t *testing.T) {
 	emitter := createFakeEmitter()
 	unlocker := &fakeUnlocker{isLocked: true, correctPassword: "right"}
 	approver := createCommandLineApprover(&fakeBiometric{isAvailable: true}, emitter, unlocker, 0)
-	request := createAgentRequest(commandline.AgentRequestCode)
+	request := createAgentRequest(clisocket.AgentRequestCode)
 	request.AllSecretName, request.RevealedName = []string{"Personal › GitHub › one-time code"}, "GitHub"
 	resultChannel := startAgentApproval(approver, request)
 	event := waitForApprovalEvent(t, emitter)
@@ -157,7 +157,7 @@ func TestAgentDialogGoesToThePhoneWithTheAgentName(t *testing.T) {
 	emitter := createFakeEmitter()
 	phone := createFakePhone()
 	approver := createPhoneApprover(emitter, phone, &fakeBiometric{isAvailable: true}, nil, nil)
-	request := createAgentRequest(commandline.AgentRequestRun)
+	request := createAgentRequest(clisocket.AgentRequestRun)
 	request.CommandLine, request.WorkingDirectory = []string{"npm", "test"}, testHomeDirectory+"/src/app"
 	request.AllSecretName = []string{"Work › Stripe › api key"}
 	resultChannel := startAgentApproval(approver, request)
@@ -183,8 +183,8 @@ func TestAgentDialogGoesToThePhoneWithTheAgentName(t *testing.T) {
 func TestAgentDialogLeavesOutTheAppWhenItIsTheAgent(t *testing.T) {
 	emitter := createFakeEmitter()
 	approver := createCommandLineApprover(&fakeBiometric{isAvailable: true}, emitter, &fakeUnlocker{}, 0)
-	request := createAgentRequest(commandline.AgentRequestConnect)
-	request.Agent, request.ClientPID = commandline.AgentIdentity{Name: "hisar"}, 7
+	request := createAgentRequest(clisocket.AgentRequestConnect)
+	request.Agent, request.ClientPID = clisocket.AgentIdentity{Name: "hisar"}, 7
 	resultChannel := startAgentApproval(approver, request)
 	event := waitForApprovalEvent(t, emitter)
 	if event.AgentName != "hisar" || event.AppName != "" || describeAgentRequester(event) != "hisar (via hisar mcp)" {
