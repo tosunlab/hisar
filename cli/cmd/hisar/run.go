@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/tryhisar/hisar/cli/internal/dotenv"
 	"github.com/tryhisar/hisar/cli/masking"
 	"github.com/tryhisar/hisar/core/secretreference"
 )
@@ -87,8 +88,8 @@ func runRun(ctx context.Context, flags *flag.FlagSet, args []string) error {
 }
 
 // buildRunEnvironment applies the env files in order; a real variable wins over the files unless its value is a reference.
-func buildRunEnvironment(environ []string, fileVariables []environmentVariable) []environmentVariable {
-	var variables []environmentVariable
+func buildRunEnvironment(environ []string, fileVariables []dotenv.Variable) []dotenv.Variable {
+	var variables []dotenv.Variable
 	indexByName := map[string]int{}
 	for _, entry := range environ {
 		name, value, hasEquals := strings.Cut(entry, "=")
@@ -96,36 +97,36 @@ func buildRunEnvironment(environ []string, fileVariables []environmentVariable) 
 			continue
 		}
 		if index, isKnown := indexByName[name]; isKnown {
-			variables[index].value = value
+			variables[index].Value = value
 			continue
 		}
 		indexByName[name] = len(variables)
-		variables = append(variables, environmentVariable{name: name, value: value})
+		variables = append(variables, dotenv.Variable{Name: name, Value: value})
 	}
 	isFromFile := map[string]bool{}
 	for _, fileVariable := range fileVariables {
-		index, isKnown := indexByName[fileVariable.name]
+		index, isKnown := indexByName[fileVariable.Name]
 		if !isKnown {
-			indexByName[fileVariable.name] = len(variables)
+			indexByName[fileVariable.Name] = len(variables)
 			variables = append(variables, fileVariable)
-			isFromFile[fileVariable.name] = true
+			isFromFile[fileVariable.Name] = true
 			continue
 		}
-		if isFromFile[fileVariable.name] || secretreference.IsReference(variables[index].value) {
-			variables[index].value = fileVariable.value
-			isFromFile[fileVariable.name] = true
+		if isFromFile[fileVariable.Name] || secretreference.IsReference(variables[index].Value) {
+			variables[index].Value = fileVariable.Value
+			isFromFile[fileVariable.Name] = true
 		}
 	}
 	return variables
 }
 
-func listUniqueReferences(variables []environmentVariable) []string {
+func listUniqueReferences(variables []dotenv.Variable) []string {
 	var references []string
 	isListed := map[string]bool{}
 	for _, variable := range variables {
-		if secretreference.IsReference(variable.value) && !isListed[variable.value] {
-			isListed[variable.value] = true
-			references = append(references, variable.value)
+		if secretreference.IsReference(variable.Value) && !isListed[variable.Value] {
+			isListed[variable.Value] = true
+			references = append(references, variable.Value)
 		}
 	}
 	return references
@@ -144,9 +145,9 @@ func findCommandPath(name string) (string, int, error) {
 
 // runWithSecret resolves the references, starts the command with the values in its environment and returns its exit code.
 func runWithSecret(ctx context.Context, option runOption, environ []string, resolve referenceResolver, stdio runStdio) (int, error) {
-	var fileVariables []environmentVariable
+	var fileVariables []dotenv.Variable
 	for _, path := range option.environmentFiles {
-		variablesInFile, err := readEnvironmentFile(path)
+		variablesInFile, err := dotenv.ReadFile(path)
 		if err != nil {
 			return 0, err
 		}
@@ -173,21 +174,21 @@ func runWithSecret(ctx context.Context, option runOption, environ []string, reso
 			valueByReference[reference] = values[index]
 		}
 		for index, variable := range variables {
-			value, isReference := valueByReference[variable.value]
+			value, isReference := valueByReference[variable.Value]
 			if !isReference {
 				continue
 			}
-			variables[index].value = value
+			variables[index].Value = value
 			secretValues = append(secretValues, value)
 			if !option.isMaskingDisabled && len(value) < masking.MinimumLength {
-				fmt.Fprintf(stdio.stderr, "hisar: %s is shorter than %d bytes and is not masked\n", variable.name, masking.MinimumLength)
+				fmt.Fprintf(stdio.stderr, "hisar: %s is shorter than %d bytes and is not masked\n", variable.Name, masking.MinimumLength)
 			}
 		}
 	}
 
 	environmentEntries := make([]string, 0, len(variables))
 	for _, variable := range variables {
-		environmentEntries = append(environmentEntries, variable.name+"="+variable.value)
+		environmentEntries = append(environmentEntries, variable.Name+"="+variable.Value)
 	}
 	command := exec.Command(commandPath, option.commandArgs[1:]...)
 	command.Args[0] = option.commandArgs[0]

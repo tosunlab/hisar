@@ -111,3 +111,23 @@ func TestOfferToDeleteImportFileWhenConfirmed(t *testing.T) {
 		t.Errorf("-y deleted the export without asking: %v", err)
 	}
 }
+
+func TestDotenvFileNames(t *testing.T) {
+	for path, want := range map[string]bool{
+		".env": true, "app/.env": true, ".env.production": true, "staging.env": true,
+		"export.csv": false, "environment.json": false, ".envrc": false,
+	} {
+		if isDotenvFile(path, "") != want {
+			t.Errorf("%s: %v", path, !want)
+		}
+	}
+	if !isDotenvFile("settings.txt", dotenvFormat) || isDotenvFile(".env", "csv") {
+		t.Error("an explicit format did not win")
+	}
+	if title := buildDefaultItemTitle("/work/shop/.env.production"); title != "shop production" {
+		t.Errorf("default item name %q", title)
+	}
+	if title := buildDefaultItemTitle("/work/shop/.env"); title != "shop" {
+		t.Errorf("default item name %q", title)
+	}
+}

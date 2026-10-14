@@ -1,4 +1,4 @@
-package main
+package dotenv
 
 import (
 	"os"
@@ -30,11 +30,11 @@ func TestParseEnvironmentFile(t *testing.T) {
 		"REFERENCE=\"hisar://Work/AWS prod/secret key\"\n" +
 		"DUPLICATE=first\n" +
 		"DUPLICATE=second\n"
-	variables, err := parseEnvironmentFile(".env", content)
+	variables, err := Parse(".env", content)
 	if err != nil {
 		t.Fatal(err)
 	}
-	expectedValues := []environmentVariable{
+	expectedValues := []Variable{
 		{"DATABASE_URL", "postgres://localhost/app"},
 		{"GITHUB_TOKEN", "hisar://Personal/GitHub/token"},
 		{"TABBED", "1"},
@@ -57,8 +57,8 @@ func TestParseEnvironmentFile(t *testing.T) {
 }
 
 func TestParseEnvironmentFileSingleQuotesAreLiteral(t *testing.T) {
-	variables, err := parseEnvironmentFile(".env", `LITERAL='a\nb $HOME "x" # y'`)
-	if err != nil || len(variables) != 1 || variables[0].value != `a\nb $HOME "x" # y` {
+	variables, err := Parse(".env", `LITERAL='a\nb $HOME "x" # y'`)
+	if err != nil || len(variables) != 1 || variables[0].Value != `a\nb $HOME "x" # y` {
 		t.Errorf("parsed %q, %v", variables, err)
 	}
 }
@@ -76,7 +76,7 @@ func TestParseEnvironmentFileErrors(t *testing.T) {
 		{"AFTER='secret-value' trailing", ".env:1: AFTER has text after its closing quote"},
 	}
 	for _, testCase := range cases {
-		_, err := parseEnvironmentFile(".env", testCase.content)
+		_, err := Parse(".env", testCase.content)
 		if err == nil || err.Error() != testCase.message {
 			t.Errorf("%q: %v; want %q", testCase.content, err, testCase.message)
 		}
@@ -89,42 +89,11 @@ func TestParseEnvironmentFileErrors(t *testing.T) {
 func TestReadEnvironmentFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "test.env")
 	os.WriteFile(path, []byte("A=1\n"), 0o600)
-	if variables, err := readEnvironmentFile(path); err != nil || len(variables) != 1 {
+	if variables, err := ReadFile(path); err != nil || len(variables) != 1 {
 		t.Errorf("read %q, %v", variables, err)
 	}
-	if _, err := readEnvironmentFile(filepath.Join(t.TempDir(), "missing.env")); err == nil {
+	if _, err := ReadFile(filepath.Join(t.TempDir(), "missing.env")); err == nil {
 		t.Error("a missing file was read")
 	}
 }
 
-func TestBuildRunEnvironment(t *testing.T) {
-	environ := []string{
-		"PATH=/usr/bin",
-		"PLAIN_IN_BOTH=from the environment",
-		"REFERENCE_IN_BOTH=hisar://Personal/Environment/password",
-		"REFERENCE_ONLY_HERE=hisar://Personal/Only/password",
-		"BROKEN_ENTRY",
-	}
-	fileVariables := []environmentVariable{
-		{"PLAIN_IN_BOTH", "from the first file"},
-		{"REFERENCE_IN_BOTH", "hisar://Personal/First/password"},
-		{"FILE_ONLY", "first"},
-		{"REFERENCE_IN_BOTH", "hisar://Personal/Second/password"},
-		{"FILE_ONLY", "second"},
-	}
-	variables := buildRunEnvironment(environ, fileVariables)
-	expectedValues := []environmentVariable{
-		{"PATH", "/usr/bin"},
-		{"PLAIN_IN_BOTH", "from the environment"},
-		{"REFERENCE_IN_BOTH", "hisar://Personal/Second/password"},
-		{"REFERENCE_ONLY_HERE", "hisar://Personal/Only/password"},
-		{"FILE_ONLY", "second"},
-	}
-	if !slices.Equal(variables, expectedValues) {
-		t.Errorf("environment:\n%q\nwant:\n%q", variables, expectedValues)
-	}
-	references := listUniqueReferences(append(variables, environmentVariable{"AGAIN", "hisar://Personal/Only/password"}))
-	if !slices.Equal(references, []string{"hisar://Personal/Second/password", "hisar://Personal/Only/password"}) {
-		t.Errorf("references %q", references)
-	}
-}

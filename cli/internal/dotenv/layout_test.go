@@ -1,4 +1,4 @@
-package main
+package dotenv
 
 import (
 	"reflect"
@@ -20,11 +20,11 @@ func TestDotenvLayoutRewritesOnlyChosenValues(t *testing.T) {
 		"EMPTY=\n" +
 		"ALREADY=hisar://Personal/App/token\n" +
 		"NODE_ENV=production"
-	layout, err := parseDotenvLayout(".env", content)
+	layout, err := ParseLayout(".env", content)
 	if err != nil {
 		t.Fatal(err)
 	}
-	parsedValues, err := parseEnvironmentFile(".env", content)
+	parsedValues, err := Parse(".env", content)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,15 +32,15 @@ func TestDotenvLayoutRewritesOnlyChosenValues(t *testing.T) {
 		t.Fatalf("hisar run reads %d variables, the layout %d", len(parsedValues), len(layout.entries))
 	}
 	for index, parsed := range parsedValues {
-		if entry := layout.entries[index]; entry.name != parsed.name || entry.value != parsed.value {
-			t.Errorf("entry %d: layout %q=%q, hisar run %q=%q", index, entry.name, entry.value, parsed.name, parsed.value)
+		if entry := layout.entries[index]; entry.name != parsed.Name || entry.value != parsed.Value {
+			t.Errorf("entry %d: layout %q=%q, hisar run %q=%q", index, entry.name, entry.value, parsed.Name, parsed.Value)
 		}
 	}
-	if layout.render(nil) != content {
-		t.Errorf("rendering without changes altered the file:\n%s", layout.render(nil))
+	if layout.Render(nil) != content {
+		t.Errorf("rendering without changes altered the file:\n%s", layout.Render(nil))
 	}
 
-	rendered := layout.render(map[string]string{
+	rendered := layout.Render(map[string]string{
 		"DATABASE_PASSWORD": "hisar://Personal/app/DATABASE_PASSWORD",
 		"API_TOKEN":         "hisar://Personal/app/API_TOKEN",
 		"PRIVATE_KEY":       "hisar://Personal/app/PRIVATE_KEY",
@@ -60,28 +60,28 @@ func TestDotenvLayoutRewritesOnlyChosenValues(t *testing.T) {
 	if rendered != want {
 		t.Errorf("rendered:\n%s\nwant:\n%s", rendered, want)
 	}
-	rewritten, err := parseEnvironmentFile(".env", rendered)
+	rewritten, err := Parse(".env", rendered)
 	if err != nil {
 		t.Fatalf("hisar run can't read the rewritten file: %v", err)
 	}
 	for _, variable := range rewritten {
-		if variable.name == "DATABASE_PASSWORD" && variable.value != "hisar://Personal/app/DATABASE_PASSWORD" {
-			t.Errorf("hisar run reads %q", variable.value)
+		if variable.Name == "DATABASE_PASSWORD" && variable.Value != "hisar://Personal/app/DATABASE_PASSWORD" {
+			t.Errorf("hisar run reads %q", variable.Value)
 		}
 	}
 
-	variables := layout.listVariables()
-	byName := map[string]dotenvVariable{}
+	variables := layout.ListVariables()
+	byName := map[string]LayoutVariable{}
 	for _, variable := range variables {
-		byName[variable.name] = variable
+		byName[variable.Name] = variable
 	}
-	if stripe := byName["STRIPE_KEY"]; stripe.value != "sk_live_2" || stripe.occurrenceCount != 2 || !stripe.hasOtherValue {
+	if stripe := byName["STRIPE_KEY"]; stripe.Value != "sk_live_2" || stripe.OccurrenceCount != 2 || !stripe.HasOtherValue {
 		t.Errorf("duplicate key: %+v", stripe)
 	}
-	if privateKey := byName["PRIVATE_KEY"]; privateKey.value != "-----BEGIN KEY-----\nline two\n-----END KEY-----" {
-		t.Errorf("multiline value: %q", privateKey.value)
+	if privateKey := byName["PRIVATE_KEY"]; privateKey.Value != "-----BEGIN KEY-----\nline two\n-----END KEY-----" {
+		t.Errorf("multiline value: %q", privateKey.Value)
 	}
-	storable, skipped := listStorableVariables(variables)
+	storable, skipped := StorableVariables(variables)
 	if len(storable) != 6 || !reflect.DeepEqual(skipped, []string{"EMPTY (empty)", "ALREADY (already a secret reference)"}) {
 		t.Errorf("storable %d, skipped %v", len(storable), skipped)
 	}
@@ -89,15 +89,15 @@ func TestDotenvLayoutRewritesOnlyChosenValues(t *testing.T) {
 
 func TestDotenvLayoutKeepsLineEndingsAndByteOrderMark(t *testing.T) {
 	content := dotenvByteOrderMark + "TOKEN=abc\r\nPORT=1\r\n"
-	layout, err := parseDotenvLayout(".env", content)
+	layout, err := ParseLayout(".env", content)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rendered := layout.render(map[string]string{"TOKEN": "hisar://V/I/TOKEN"}); rendered != dotenvByteOrderMark+"TOKEN=hisar://V/I/TOKEN\r\nPORT=1\r\n" {
+	if rendered := layout.Render(map[string]string{"TOKEN": "hisar://V/I/TOKEN"}); rendered != dotenvByteOrderMark+"TOKEN=hisar://V/I/TOKEN\r\nPORT=1\r\n" {
 		t.Errorf("rendered %q", rendered)
 	}
-	empty, err := parseDotenvLayout(".env", "")
-	if err != nil || empty.render(nil) != "" {
+	empty, err := ParseLayout(".env", "")
+	if err != nil || empty.Render(nil) != "" {
 		t.Errorf("empty file: %v", err)
 	}
 }
@@ -109,7 +109,7 @@ func TestDotenvLayoutErrorsNameTheLineNotTheValue(t *testing.T) {
 		"1BAD=x":                     `.env:1: "1BAD" is not a valid variable name`,
 		"A='x' trailing":             ".env:1: has text after its closing quote",
 	} {
-		_, err := parseDotenvLayout(".env", content)
+		_, err := ParseLayout(".env", content)
 		if err == nil || err.Error() != want {
 			t.Errorf("%q: %v, want %s", content, err, want)
 		}
@@ -145,25 +145,5 @@ func TestClassifyDotenvVariable(t *testing.T) {
 		if isSecret, reason := classifyDotenvVariable(testCase.name, testCase.value); isSecret != testCase.isSecret || reason == "" {
 			t.Errorf("%s=%s: secret %v (%s), want %v", testCase.name, testCase.value, isSecret, reason, testCase.isSecret)
 		}
-	}
-}
-
-func TestDotenvFileNames(t *testing.T) {
-	for path, want := range map[string]bool{
-		".env": true, "app/.env": true, ".env.production": true, "staging.env": true,
-		"export.csv": false, "environment.json": false, ".envrc": false,
-	} {
-		if isDotenvFile(path, "") != want {
-			t.Errorf("%s: %v", path, !want)
-		}
-	}
-	if !isDotenvFile("settings.txt", dotenvFormat) || isDotenvFile(".env", "csv") {
-		t.Error("an explicit format did not win")
-	}
-	if title := buildDefaultItemTitle("/work/shop/.env.production"); title != "shop production" {
-		t.Errorf("default item name %q", title)
-	}
-	if title := buildDefaultItemTitle("/work/shop/.env"); title != "shop" {
-		t.Errorf("default item name %q", title)
 	}
 }

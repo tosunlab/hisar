@@ -1,4 +1,4 @@
-package main
+package dotenv
 
 import (
 	"fmt"
@@ -9,25 +9,25 @@ import (
 
 var environmentNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
-type environmentVariable struct {
-	name  string
-	value string
+type Variable struct {
+	Name  string
+	Value string
 }
 
-func readEnvironmentFile(path string) ([]environmentVariable, error) {
+func ReadFile(path string) ([]Variable, error) {
 	content, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	return parseEnvironmentFile(path, string(content))
+	return Parse(path, string(content))
 }
 
-// parseEnvironmentFile reads dotenv syntax; errors name the file and line but never a value.
-func parseEnvironmentFile(path, content string) ([]environmentVariable, error) {
+// Parse reads dotenv syntax; errors name the file and line but never a value.
+func Parse(path, content string) ([]Variable, error) {
 	content = strings.TrimPrefix(content, "\uFEFF")
 	content = strings.ReplaceAll(content, "\r\n", "\n")
 	lines := strings.Split(content, "\n")
-	var variables []environmentVariable
+	var variables []Variable
 	for index := 0; index < len(lines); index++ {
 		lineNumber := index + 1
 		line := strings.TrimSpace(lines[index])
@@ -47,7 +47,7 @@ func parseEnvironmentFile(path, content string) ([]environmentVariable, error) {
 		}
 		rawValue = strings.TrimLeft(rawValue, " \t")
 		if rawValue == "" || (rawValue[0] != '"' && rawValue[0] != '\'') {
-			variables = append(variables, environmentVariable{name: name, value: parseUnquotedValue(rawValue)})
+			variables = append(variables, Variable{Name: name, Value: parseUnquotedValue(rawValue)})
 			continue
 		}
 		value, consumedLineCount, err := parseQuotedValue(rawValue, lines[index+1:])
@@ -55,7 +55,7 @@ func parseEnvironmentFile(path, content string) ([]environmentVariable, error) {
 			return nil, fmt.Errorf("%s:%d: %s %s", path, lineNumber, name, err)
 		}
 		index += consumedLineCount
-		variables = append(variables, environmentVariable{name: name, value: value})
+		variables = append(variables, Variable{Name: name, Value: value})
 	}
 	return variables, nil
 }

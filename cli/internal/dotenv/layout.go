@@ -1,16 +1,18 @@
-package main
+package dotenv
 
 import (
 	"fmt"
 	"net/url"
 	"regexp"
 	"strings"
+
+	"github.com/tryhisar/hisar/core/secretreference"
 )
 
 var dotenvByteOrderMark = string(rune(0xfeff))
 
-// dotenvLayout keeps a .env file's exact text so that chosen values can be replaced and everything else stays as it was.
-type dotenvLayout struct {
+// Layout keeps a .env file's exact text so that chosen values can be replaced and everything else stays as it was.
+type Layout struct {
 	lines           []string
 	lineEnding      string
 	hasByteOrder    bool
@@ -29,8 +31,8 @@ type dotenvEntry struct {
 	suffix    string
 }
 
-func parseDotenvLayout(path, content string) (*dotenvLayout, error) {
-	layout := &dotenvLayout{lineEnding: "\n"}
+func ParseLayout(path, content string) (*Layout, error) {
+	layout := &Layout{lineEnding: "\n"}
 	if rest, hasByteOrder := strings.CutPrefix(content, dotenvByteOrderMark); hasByteOrder {
 		content, layout.hasByteOrder = rest, true
 	}
@@ -134,8 +136,8 @@ func parseDotenvEntry(lines []string, startLine int) (dotenvEntry, error) {
 	}
 }
 
-// render writes the file back, replacing the value of every entry named in referencesByName.
-func (layout *dotenvLayout) render(referencesByName map[string]string) string {
+// Render writes the file back, replacing the value of every entry named in referencesByName.
+func (layout *Layout) Render(referencesByName map[string]string) string {
 	lines := []string{}
 	nextEntry := 0
 	for index := 0; index < len(layout.lines); index++ {
@@ -164,33 +166,33 @@ func (layout *dotenvLayout) render(referencesByName map[string]string) string {
 	return content
 }
 
-// dotenvVariable is one name of the file: its effective (last) value and how many lines set it.
-type dotenvVariable struct {
-	name            string
-	value           string
-	occurrenceCount int
-	hasOtherValue   bool
-	isSecretLooking bool
-	reason          string
+// LayoutVariable is one name of the file: its effective (last) value and how many lines set it.
+type LayoutVariable struct {
+	Name            string
+	Value           string
+	OccurrenceCount int
+	HasOtherValue   bool
+	IsSecretLooking bool
+	Reason          string
 }
 
-func (layout *dotenvLayout) listVariables() []dotenvVariable {
-	variables := []dotenvVariable{}
+func (layout *Layout) ListVariables() []LayoutVariable {
+	variables := []LayoutVariable{}
 	indexByName := map[string]int{}
 	for _, entry := range layout.entries {
 		index, isSeen := indexByName[entry.name]
 		if !isSeen {
 			indexByName[entry.name] = len(variables)
-			variables = append(variables, dotenvVariable{name: entry.name, value: entry.value, occurrenceCount: 1})
+			variables = append(variables, LayoutVariable{Name: entry.name, Value: entry.value, OccurrenceCount: 1})
 			continue
 		}
 		variable := &variables[index]
-		variable.occurrenceCount++
-		variable.hasOtherValue = variable.hasOtherValue || variable.value != entry.value
-		variable.value = entry.value
+		variable.OccurrenceCount++
+		variable.HasOtherValue = variable.HasOtherValue || variable.Value != entry.value
+		variable.Value = entry.value
 	}
 	for index := range variables {
-		variables[index].isSecretLooking, variables[index].reason = classifyDotenvVariable(variables[index].name, variables[index].value)
+		variables[index].IsSecretLooking, variables[index].Reason = classifyDotenvVariable(variables[index].Name, variables[index].Value)
 	}
 	return variables
 }
@@ -247,4 +249,19 @@ func classifyDotenvVariable(name, value string) (bool, string) {
 		return false, "a number or switch"
 	}
 	return true, "may be secret"
+}
+
+// StorableVariables leaves out empty values and values that are hisar:// references already, and says why.
+func StorableVariables(variables []LayoutVariable) (storable []LayoutVariable, skippedDescriptions []string) {
+	for _, variable := range variables {
+		switch {
+		case variable.Value == "":
+			skippedDescriptions = append(skippedDescriptions, variable.Name+" (empty)")
+		case secretreference.IsReference(variable.Value):
+			skippedDescriptions = append(skippedDescriptions, variable.Name+" (already a secret reference)")
+		default:
+			storable = append(storable, variable)
+		}
+	}
+	return storable, skippedDescriptions
 }
