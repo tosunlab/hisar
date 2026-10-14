@@ -2,9 +2,7 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
 	"embed"
-	"encoding/hex"
 	"log"
 	"os"
 	"path/filepath"
@@ -16,7 +14,6 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/events"
 
 	"github.com/tryhisar/hisar/core/app"
-	"github.com/tryhisar/hisar/core/appversion"
 	"github.com/tryhisar/hisar/core/browserprotocol"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/clisocket"
@@ -32,132 +29,10 @@ import (
 	"github.com/tryhisar/hisar/desktop/loginitem"
 	"github.com/tryhisar/hisar/desktop/systemidle"
 	"github.com/tryhisar/hisar/desktop/updater"
-	"github.com/tryhisar/hisar/desktop/windowplacement"
 )
 
 //go:embed all:frontend/dist
 var allAsset embed.FS
-
-func init() {
-	application.RegisterEvent[string]("locked")
-	application.RegisterEvent[string]("unlocked")
-	application.RegisterEvent[agent.ApprovalEvent](agent.ApprovalEventName)
-	application.RegisterEvent[string](agent.ApprovalClosedEventName)
-	application.RegisterEvent[app.Theme]("theme-changed")
-	application.RegisterEvent[app.UpdateRequirement]("update-required")
-	application.RegisterEvent[string]("invite-link")
-}
-
-type wailsClipboard struct{ app *application.App }
-
-func (clipboard *wailsClipboard) SetText(text string) bool {
-	return clipboard.app.Clipboard.SetText(text)
-}
-func (clipboard *wailsClipboard) GetText() (string, bool) { return clipboard.app.Clipboard.Text() }
-
-type wailsLockNotifier struct{ app *application.App }
-
-func (notifier *wailsLockNotifier) NotifyLocked() { notifier.app.Event.Emit("locked", "auto-lock") }
-
-func (notifier *wailsLockNotifier) NotifyRemoteChange() {
-	if notifier.app != nil {
-		notifier.app.Event.Emit("remote-change", nil)
-	}
-}
-
-func (notifier *wailsLockNotifier) NotifyShareLinksChange() {
-	if notifier.app != nil {
-		notifier.app.Event.Emit("share-links-changed", nil)
-	}
-}
-
-// NotifyThemeChange tells every window, the approval window too, and switches the native parts to light or dark.
-func (notifier *wailsLockNotifier) NotifyThemeChange(theme app.Theme) {
-	background.SetAppAppearance(theme.Appearance)
-	if notifier.app != nil {
-		notifier.app.Event.Emit("theme-changed", theme)
-	}
-}
-
-type wailsFileSaver struct {
-	chooseSavePath func(defaultFileName string) (string, error)
-}
-
-func (fileSaver *wailsFileSaver) ChooseSavePath(defaultFileName string) (string, error) {
-	return fileSaver.chooseSavePath(defaultFileName)
-}
-
-type wailsFileOpener struct {
-	chooseOpenPath func() (string, error)
-}
-
-func (fileOpener *wailsFileOpener) ChooseOpenPath() (string, error) {
-	return fileOpener.chooseOpenPath()
-}
-
-func getDeviceName() string {
-	hostname, err := os.Hostname()
-	if err != nil || hostname == "" {
-		return "desktop"
-	}
-	if len(hostname) > 100 {
-		return hostname[:100]
-	}
-	return hostname
-}
-
-// getSingleInstanceID lets a copy with its own HISAR_DESKTOP_STATE run next to the installed app.
-func getSingleInstanceID(statePath string) string {
-	if os.Getenv("HISAR_DESKTOP_STATE") == "" {
-		return background.BundleID
-	}
-	statePathHash := sha256.Sum256([]byte(statePath))
-	return background.BundleID + "." + hex.EncodeToString(statePathHash[:8])
-}
-
-// getAppVersion is the bundle's version; development builds send none, so no minimum refuses them.
-func getAppVersion() string {
-	version, _ := updater.Updater{}.GetVersion()
-	if _, err := appversion.Parse(version); err != nil {
-		return ""
-	}
-	return version
-}
-
-func getLoginShell() string {
-	if shell := os.Getenv("SHELL"); shell != "" {
-		return shell
-	}
-	return "/bin/zsh"
-}
-
-const (
-	fullApprovalWidth     = 480
-	compactApprovalWidth  = 380
-	defaultApprovalHeight = 400
-	compactApprovalHeight = 120
-)
-
-// placeApprovalWindow centers the full dialog, or puts the compact card at the top right like a notification; height 0 keeps a default.
-// Showing picks the display under the pointer; a resize keeps the window on its display, the compact card's top-right corner fixed.
-func placeApprovalWindow(approvalWindow *application.WebviewWindow, isCompact bool, height int, isShowing bool) {
-	width := fullApprovalWidth
-	if isCompact {
-		width = compactApprovalWidth
-	}
-	if height <= 0 {
-		height = defaultApprovalHeight
-		if isCompact {
-			height = compactApprovalHeight
-		}
-	}
-	request := windowplacement.Request{Width: float64(width), Height: float64(height), IsCompact: isCompact, IsShowing: isShowing}
-	if windowplacement.PlaceWindow(approvalWindow.NativeWindow(), request) {
-		return
-	}
-	approvalWindow.SetSize(width, height)
-	approvalWindow.Center()
-}
 
 func main() {
 	statePath, err := localstate.GetPath("HISAR_DESKTOP_STATE", "desktop.json")
@@ -174,7 +49,7 @@ func main() {
 	}
 	clipboard := &wailsClipboard{}
 	touchID := biometric.Create("Hisar Touch ID")
-	lockNotifier := &wailsLockNotifier{}
+	notifier := &appNotifier{}
 	fileSaver := &wailsFileSaver{}
 	fileOpener := &wailsFileOpener{}
 	var agentServer *sshagent.Server
@@ -187,7 +62,7 @@ func main() {
 		Platform:              runtime.GOOS + "/desktop",
 		AppVersion:            getAppVersion(),
 		Clipboard:             clipboard,
-		LockNotifier:          lockNotifier,
+		LockNotifier:          notifier,
 		GetSystemIdleDuration: systemidle.GetIdleDuration,
 		Biometric:             touchID,
 		FileSaver:             fileSaver,
@@ -200,9 +75,9 @@ func main() {
 				approver.ClearAllRememberedSigning()
 			}
 		},
-		OnRemoteChange:     lockNotifier.NotifyRemoteChange,
-		OnShareLinksChange: lockNotifier.NotifyShareLinksChange,
-		OnThemeChange:      lockNotifier.NotifyThemeChange,
+		OnRemoteChange:     notifier.NotifyRemoteChange,
+		OnShareLinksChange: notifier.NotifyShareLinksChange,
+		OnThemeChange:      notifier.NotifyThemeChange,
 		OnUpdateRequired: func(requirement app.UpdateRequirement) {
 			if showUpdateRequired != nil {
 				showUpdateRequired(requirement)
@@ -261,7 +136,7 @@ func main() {
 		GetAppIconPNG:      requesterResolver.GetIconPNG,
 		HomeDirectory:      homeDirectory,
 		IsCompactApproval:  approvalPreference.IsCompactSSHApproval,
-		Unlocker:           app.CreateApprovalUnlocker(vaultService, func() { wailsApp.Event.Emit("unlocked", "approval") }),
+		Unlocker:           app.CreateApprovalUnlocker(vaultService, func() { wailsApp.Event.Emit(eventUnlocked, "approval") }),
 		PhoneApprover:      app.CreatePhoneApprover(vaultService),
 		GetSigningRememberDuration: func() time.Duration {
 			return time.Duration(approvalPreference.GetSigningRememberSeconds()) * time.Second
@@ -295,7 +170,7 @@ func main() {
 
 	browserHostPath := filepath.Join(executableDirectory, "hisar-browser-host")
 	browserBridge := app.CreateBrowserBridge(vaultService, app.BrowserBridgeConfig{
-		ShowPairing: func(request *app.BrowserPairingRequest) { wailsApp.Event.Emit("browser-pairing", request) },
+		ShowPairing: func(request *app.BrowserPairingRequest) { wailsApp.Event.Emit(eventBrowserPairing, request) },
 		ShowWindow:  showWindow,
 		InstallAllHostManifest: func() []browserprotocol.BrowserInstallation {
 			if _, err := os.Stat(browserHostPath); err != nil {
@@ -381,23 +256,9 @@ func main() {
 			DisableQuitOnLastWindowClosed: true,
 		},
 	})
-	clipboard.app, lockNotifier.app = wailsApp, wailsApp
+	clipboard.app, notifier.app = wailsApp, wailsApp
 
-	window = wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:     "Hisar",
-		Width:     1100,
-		Height:    700,
-		MinWidth:  760,
-		MinHeight: 480,
-		Hidden:    true,
-		Mac: application.MacWindow{
-			InvisibleTitleBarHeight: 44,
-			Backdrop:                application.MacBackdropTranslucent,
-			TitleBar:                application.MacTitleBarHiddenInset,
-		},
-		BackgroundColour: application.NewRGB(13, 14, 16),
-		URL:              "/",
-	})
+	window = wailsApp.Window.NewWithOptions(mainWindowOptions())
 	fileSaver.chooseSavePath = func(defaultFileName string) (string, error) {
 		return wailsApp.Dialog.SaveFile().
 			SetFilename(defaultFileName).
@@ -425,7 +286,7 @@ func main() {
 		showWindow()
 	})
 	showUpdateRequired = func(requirement app.UpdateRequirement) {
-		wailsApp.Event.Emit("update-required", requirement)
+		wailsApp.Event.Emit(eventUpdateRequired, requirement)
 		showWindow()
 	}
 	wailsApp.Event.OnApplicationEvent(events.Common.ApplicationLaunchedWithUrl, func(event *application.ApplicationEvent) {
@@ -433,7 +294,7 @@ func main() {
 		if err != nil {
 			return
 		}
-		wailsApp.Event.Emit("invite-link", invite)
+		wailsApp.Event.Emit(eventInviteLink, invite)
 		showWindow()
 	})
 	wailsApp.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
@@ -454,26 +315,7 @@ func main() {
 	})
 	createMenuBarItem(wailsApp, vaultService, showWindow)
 
-	approvalWindow = wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{
-		Name:                "ssh-approval",
-		Title:               "Hisar Access Requested",
-		Width:               fullApprovalWidth,
-		Height:              defaultApprovalHeight,
-		Hidden:              true,
-		AlwaysOnTop:         true,
-		DisableResize:       true,
-		InitialPosition:     application.WindowCentered,
-		MinimiseButtonState: application.ButtonHidden,
-		MaximiseButtonState: application.ButtonHidden,
-		CloseButtonState:    application.ButtonHidden,
-		Mac: application.MacWindow{
-			InvisibleTitleBarHeight: 36,
-			Backdrop:                application.MacBackdropTranslucent,
-			TitleBar:                application.MacTitleBarHiddenInset,
-		},
-		BackgroundColour: application.NewRGB(13, 14, 16),
-		URL:              "/?window=ssh-approval",
-	})
+	approvalWindow = wailsApp.Window.NewWithOptions(approvalWindowOptions())
 	// Closing the approval window denies what it shows; the window is reused for the next request.
 	approvalWindow.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
 		event.Cancel()

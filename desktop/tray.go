@@ -43,7 +43,7 @@ func createMenuBarItem(wailsApp *application.App, vaultService *app.Service, sho
 			return
 		}
 		vaultService.Lock()
-		wailsApp.Event.Emit("locked", "menu-bar")
+		wailsApp.Event.Emit(eventLocked, "menu-bar")
 	})
 	menu.AddSeparator()
 	menu.Add("Quit Hisar").OnClick(func(*application.Context) { wailsApp.Quit() })
