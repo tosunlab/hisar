@@ -8,6 +8,7 @@ import (
 
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
+	"github.com/tryhisar/hisar/server/internal/service"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
@@ -64,7 +65,7 @@ func (s *Server) handleListDevices(c fiber.Ctx) error {
 func (s *Server) handleRevokeDevice(c fiber.Ctx) error {
 	currentSession := getSession(c)
 	deviceID := c.Params("id")
-	if !isValidUUID(deviceID) {
+	if !service.IsValidUUID(deviceID) {
 		return errNotFound
 	}
 	switch err := s.store.RevokeDevice(c.Context(), currentSession.AccountID, deviceID); {

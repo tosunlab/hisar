@@ -191,8 +191,8 @@ func (s *Server) handleDeleteAccount(c fiber.Ctx) error {
 	}
 	s.events.EndStreams(currentSession.AccountID, nil)
 	s.approvals.removeForAccount(currentSession.AccountID)
-	s.publishVaultsChanged(deleted.VaultMemberAccountIDs...)
-	s.publishShareInvitationsChanged(deleted.InvitationAccountIDs...)
+	s.service.PublishVaultsChanged(deleted.VaultMemberAccountIDs...)
+	s.service.PublishShareInvitationsChanged(deleted.InvitationAccountIDs...)
 	s.recordAudit(c, currentSession.AccountID, "", "account_deleted", map[string]int{"deletedVaults": deleted.DeletedVaultCount})
 	if s.isEmailConfigured() {
 		message := composeAccountDeletedEmail(deleted.Email, time.Now())

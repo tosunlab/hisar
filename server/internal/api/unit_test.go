@@ -20,6 +20,7 @@ import (
 
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/server/internal/ratelimit"
+	"github.com/tryhisar/hisar/server/internal/service"
 )
 
 func TestSecretsCreatedOnceWithPrivateMode(t *testing.T) {
@@ -245,7 +246,7 @@ func TestNormalEndpointsKeepSmallBodyLimit(t *testing.T) {
 }
 
 func TestValidators(t *testing.T) {
-	if !isValidUUID("0f8fad5b-d9cb-469f-a165-70867728950e") || isValidUUID("0f8fad5bd9cb469fa16570867728950e") || isValidUUID("../x") {
+	if !service.IsValidUUID("0f8fad5b-d9cb-469f-a165-70867728950e") || service.IsValidUUID("0f8fad5bd9cb469fa16570867728950e") || service.IsValidUUID("../x") {
 		t.Error("isValidUUID")
 	}
 	if apitypes.NormalizeEmail("  Alice@Example.COM ") != "alice@example.com" {

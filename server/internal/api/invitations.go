@@ -11,6 +11,7 @@ import (
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/server/internal/mail"
 	"github.com/tryhisar/hisar/server/internal/ratelimit"
+	"github.com/tryhisar/hisar/server/internal/service"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
@@ -155,7 +156,7 @@ func (s *Server) notifyShareInvitation(ctx context.Context, inviter *store.Accou
 	recipient, err := s.store.GetAccountByEmail(ctx, email)
 	switch {
 	case err == nil:
-		s.publishShareInvitationsChanged(recipient.ID)
+		s.service.PublishShareInvitationsChanged(recipient.ID)
 		if s.isEmailConfigured() {
 			s.sendEmail(ctx, composeShareInvitationEmail(inviter, email, role))
 		}
@@ -229,7 +230,7 @@ func (s *Server) handleListShareInvitations(c fiber.Ctx) error {
 
 func (s *Server) getShareInvitationID(c fiber.Ctx) (string, error) {
 	invitationID := c.Params("invitation")
-	if !isValidUUID(invitationID) {
+	if !service.IsValidUUID(invitationID) {
 		return "", errShareInvitationGone
 	}
 	return invitationID, nil
@@ -269,7 +270,7 @@ func (s *Server) answerShareInvitation(c fiber.Ctx, isAccepted bool) error {
 		return err
 	}
 	s.recordAudit(c, currentSession.AccountID, currentSession.DeviceID, eventType, map[string]string{"vault": vaultID, "invitation": invitationID})
-	s.publishShareInvitationsChangedToOwner(c.Context(), vaultID, account.ID)
+	s.service.PublishShareInvitationsChangedToOwner(c.Context(), vaultID, account.ID)
 	if isAccepted {
 		s.scheduleShareAcceptedEmail(invitationID, acceptedAt)
 	}
@@ -320,6 +321,6 @@ func (s *Server) handleCancelShareInvitation(c fiber.Ctx) error {
 	if recipient, err := s.store.GetAccountByEmail(c.Context(), email); err == nil {
 		accountIDs = append(accountIDs, recipient.ID)
 	}
-	s.publishShareInvitationsChangedToOwner(c.Context(), vaultID, accountIDs...)
+	s.service.PublishShareInvitationsChangedToOwner(c.Context(), vaultID, accountIDs...)
 	return c.SendStatus(fiber.StatusNoContent)
 }

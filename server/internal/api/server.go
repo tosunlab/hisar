@@ -21,6 +21,7 @@ import (
 	"github.com/tryhisar/hisar/server/internal/mail"
 	"github.com/tryhisar/hisar/server/internal/ratelimit"
 	"github.com/tryhisar/hisar/server/internal/realtime"
+	"github.com/tryhisar/hisar/server/internal/service"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
@@ -61,6 +62,7 @@ type Server struct {
 	limiter             *ratelimit.Limiter
 	updateLimiter       *ratelimit.Limiter
 	events              *realtime.Broker
+	service             *service.Service
 	approvals           *approvalRelay
 
 	inviteAccountLimiter          *ratelimit.Limiter
@@ -107,6 +109,7 @@ func NewServer(database *store.Store, secrets *Secrets, config Config) (*Server,
 	if err := opaqueServer.SetKeyMaterial(serverKeyMaterial); err != nil {
 		return nil, err
 	}
+	events := realtime.NewBroker()
 	return &Server{
 		config:              config,
 		store:               database,
@@ -116,7 +119,8 @@ func NewServer(database *store.Store, secrets *Secrets, config Config) (*Server,
 		loginCache:          createLoginCache(time.Minute),
 		limiter:             ratelimit.New(rate.Every(6*time.Second), config.AuthBurst),
 		updateLimiter:       ratelimit.New(rate.Every(10*time.Second), 20),
-		events:              realtime.NewBroker(),
+		events:              events,
+		service:             service.New(database, events),
 		approvals:           createApprovalRelay(),
 
 		inviteAccountLimiter:          ratelimit.NewDaily(invitePerAccountPerDay),
@@ -233,8 +237,23 @@ func setSecurityHeaders(c fiber.Ctx) error {
 	return c.Next()
 }
 
-// handleError renders *fiber.Error as JSON and hides all other errors behind a 500.
+// statusByKind is the HTTP status of each kind of refusal from the service.
+var statusByKind = map[service.Kind]int{
+	service.KindInvalid:         fiber.StatusBadRequest,
+	service.KindUnauthorized:    fiber.StatusUnauthorized,
+	service.KindForbidden:       fiber.StatusForbidden,
+	service.KindNotFound:        fiber.StatusNotFound,
+	service.KindConflict:        fiber.StatusConflict,
+	service.KindTooManyRequests: fiber.StatusTooManyRequests,
+	service.KindUnavailable:     fiber.StatusServiceUnavailable,
+}
+
+// handleError renders refusals (*service.Error, *fiber.Error) as JSON and hides all other errors behind a 500.
 func handleError(c fiber.Ctx, err error) error {
+	var serviceError *service.Error
+	if errors.As(err, &serviceError) {
+		err = fiber.NewError(statusByKind[serviceError.Kind], serviceError.Message)
+	}
 	var fiberError *fiber.Error
 	if !errors.As(err, &fiberError) {
 		log.Printf("internal error: %s %s: %v", c.Method(), c.Path(), err)
@@ -255,6 +274,15 @@ type ctxKey struct{}
 
 func getSession(c fiber.Ctx) *store.Session {
 	return c.Locals(ctxKey{}).(*store.Session)
+}
+
+// getActor is who makes the request, for the service.
+func (s *Server) getActor(c fiber.Ctx) service.Actor {
+	actor := service.Actor{IP: s.getClientIP(c)}
+	if currentSession, isSignedIn := c.Locals(ctxKey{}).(*store.Session); isSignedIn {
+		actor.AccountID, actor.DeviceID = currentSession.AccountID, currentSession.DeviceID
+	}
+	return actor
 }
 
 func (s *Server) requireSession(c fiber.Ctx) error {
