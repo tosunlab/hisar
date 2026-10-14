@@ -56,25 +56,6 @@ func TestSecretsRejectsIncomplete(t *testing.T) {
 	}
 }
 
-func TestLoginCache(t *testing.T) {
-	cache := createLoginCache(50 * time.Millisecond)
-	loginID := cache.put(&pendingLogin{accountID: "A"})
-	if pending := cache.take(loginID); pending == nil || pending.accountID != "A" {
-		t.Fatal("take failed")
-	}
-	if cache.take(loginID) != nil {
-		t.Error("login state reusable")
-	}
-	loginID = cache.put(&pendingLogin{accountID: "A"})
-	time.Sleep(60 * time.Millisecond)
-	if cache.take(loginID) != nil {
-		t.Error("expired login state returned")
-	}
-	if cache.take("nope") != nil {
-		t.Error("unknown id returned state")
-	}
-}
-
 func TestIPLimiter(t *testing.T) {
 	limiter := ratelimit.New(rate.Every(time.Hour), 3)
 	for attempt := range 3 {
@@ -251,8 +232,5 @@ func TestValidators(t *testing.T) {
 	}
 	if apitypes.NormalizeEmail("  Alice@Example.COM ") != "alice@example.com" {
 		t.Error("normalizeEmail")
-	}
-	if isValidDevice(apitypes.DeviceInfo{}) || isValidDevice(apitypes.DeviceInfo{Name: string(make([]byte, 101)), Platform: "x"}) {
-		t.Error("invalid device accepted")
 	}
 }

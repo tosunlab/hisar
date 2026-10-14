@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"errors"
@@ -26,6 +27,7 @@ import (
 	"github.com/tryhisar/hisar/core/session"
 	"github.com/tryhisar/hisar/core/sharelink"
 	"github.com/tryhisar/hisar/server/internal/ratelimit"
+	"github.com/tryhisar/hisar/server/internal/service"
 )
 
 var defaultShareLinkOptions = session.ShareLinkOptions{Expiry: sharelink.ExpiryWeek, MaxViews: 1}
@@ -314,7 +316,7 @@ func TestShareLinkRateLimits(t *testing.T) {
 	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", apitypes.RoleAdmin)
 	vault, vaultItem := createSharedItem(t, alice)
 
-	server.shareLinkAccountLimiter = ratelimit.NewDaily(2)
+	server.service.Limiters.ShareLinkAccount = ratelimit.NewDaily(2)
 	var links []*session.ShareLink
 	for range 2 {
 		created, err := alice.ShareItem(ctx, vault, vaultItem, []string{sharelink.FieldPassword}, session.ShareLinkOptions{Expiry: sharelink.ExpiryHour})
@@ -343,9 +345,9 @@ func TestLiveShareLinkCap(t *testing.T) {
 	baseURL, server, _ := setupServer(t)
 	ctx := context.Background()
 	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", apitypes.RoleAdmin)
-	server.shareLinkAccountLimiter = ratelimit.NewDaily(maxLiveShareLinkCount + 10)
+	server.service.Limiters.ShareLinkAccount = ratelimit.NewDaily(service.MaxLiveShareLinkCount + 10)
 	request := &apitypes.CreateShareLinkRequest{Ciphertext: []byte{1}, EncryptedLabel: []byte{1}, ExpiresInSeconds: 3600, MaxViews: 1}
-	for index := range maxLiveShareLinkCount {
+	for index := range service.MaxLiveShareLinkCount {
 		if _, err := alice.Client.CreateShareLink(ctx, request); err != nil {
 			t.Fatalf("link %d: %v", index, err)
 		}
@@ -435,4 +437,11 @@ func TestShareLinkPage(t *testing.T) {
 	if otherBody != body {
 		t.Error("the page differs between IDs")
 	}
+}
+
+// generateShareLinkID makes an ID in the format of real share links, for links that do not exist.
+func generateShareLinkID() string {
+	randomBytes := make([]byte, 16)
+	rand.Read(randomBytes)
+	return base64.RawURLEncoding.EncodeToString(randomBytes)
 }

@@ -22,6 +22,7 @@ import (
 	"github.com/tryhisar/hisar/core/session"
 	"github.com/tryhisar/hisar/core/sharelink"
 	"github.com/tryhisar/hisar/server/internal/api"
+	"github.com/tryhisar/hisar/server/internal/service"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
@@ -69,7 +70,7 @@ func main() {
 		log.Fatal(err)
 	}
 	baseURL := "http://" + listener.Addr().String()
-	server, err := api.NewServer(database, secrets, api.Config{PublicURL: baseURL, AuthBurst: 1000})
+	server, err := api.NewServer(database, secrets, api.Config{Config: service.Config{PublicURL: baseURL}, AuthBurst: 1000})
 	if err != nil {
 		log.Fatal(err)
 	}

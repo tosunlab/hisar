@@ -22,6 +22,7 @@ import (
 	"github.com/tryhisar/hisar/core/session"
 	"github.com/tryhisar/hisar/server/internal/mail/mailtest"
 	"github.com/tryhisar/hisar/server/internal/ratelimit"
+	"github.com/tryhisar/hisar/server/internal/service"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
@@ -52,7 +53,7 @@ func setupServer(t *testing.T) (baseURL string, server *Server, databaseURL stri
 	if _, err := database.Migrate(ctx); err != nil {
 		t.Fatal(err)
 	}
-	server, err = NewServer(database, generateSecrets(), Config{PublicURL: "https://hisar.test"})
+	server, err = NewServer(database, generateSecrets(), Config{Config: service.Config{PublicURL: "https://hisar.test"}})
 	if err != nil {
 		t.Fatal(err)
 	}

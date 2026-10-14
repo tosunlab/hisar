@@ -2,23 +2,20 @@ package api
 
 import (
 	"bytes"
-	"crypto/sha256"
+	"context"
 	_ "embed"
 	"encoding/json"
 	"errors"
 	"log"
 	"strings"
-	"sync"
 	"time"
 
-	"github.com/bytemare/opaque"
 	"github.com/gofiber/fiber/v3"
 	"golang.org/x/time/rate"
 
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/pake"
 	"github.com/tryhisar/hisar/server/internal/desktopupdate"
-	"github.com/tryhisar/hisar/server/internal/mail"
 	"github.com/tryhisar/hisar/server/internal/ratelimit"
 	"github.com/tryhisar/hisar/server/internal/realtime"
 	"github.com/tryhisar/hisar/server/internal/service"
@@ -32,9 +29,8 @@ const (
 )
 
 type Config struct {
-	PublicURL  string
-	SessionTTL time.Duration
-	InviteTTL  time.Duration
+	// Config holds what the service reads: the public URL, session and invite lifetimes, the mailer.
+	service.Config
 	TrustProxy bool
 	// AuthBurst is how many auth requests one IP may make before being limited to one per 6 seconds.
 	AuthBurst int
@@ -44,38 +40,21 @@ type Config struct {
 	WriteTimeout time.Duration
 	// DesktopUpdates is nil when the server has no update source.
 	DesktopUpdates *desktopupdate.Source
-	// Mailer is nil when email is not configured.
-	Mailer mail.Mailer
-	// ShareAcceptedEmailDelay is how long an accepted share may wait for the owner's app before the inviter gets an email.
-	ShareAcceptedEmailDelay time.Duration
 	// MinimumVersions refuses older apps with 426; independent of the latest version offered for updates.
 	MinimumVersions MinimumVersions
 }
 
+// Server answers HTTP: it parses requests, limits them per IP and hands them to the service.
 type Server struct {
-	config              Config
-	store               *store.Store
-	secrets             *Secrets
-	opaqueConfiguration *opaque.Configuration
-	opaque              *opaque.Server
-	loginCache          *loginCache
-	limiter             *ratelimit.Limiter
-	updateLimiter       *ratelimit.Limiter
-	events              *realtime.Broker
-	service             *service.Service
-	approvals           *approvalRelay
+	config  Config
+	events  *realtime.Broker
+	service *service.Service
 
-	inviteAccountLimiter          *ratelimit.Limiter
-	inviteIPLimiter               *ratelimit.Limiter
-	shareInvitationAccountLimiter *ratelimit.Limiter
-	shareInvitationIPLimiter      *ratelimit.Limiter
-	shareAcceptedEmailLimiter     *ratelimit.Limiter
-	shareLinkAccountLimiter       *ratelimit.Limiter
-	shareLinkReadLimiter          *ratelimit.Limiter
-	reauthenticationLimiter       *ratelimit.Limiter
-	invitePageLimiter             *ratelimit.Limiter
-	versionCheckLimiter           *ratelimit.Limiter
-	backgroundWork                sync.WaitGroup
+	limiter              *ratelimit.Limiter
+	updateLimiter        *ratelimit.Limiter
+	shareLinkReadLimiter *ratelimit.Limiter
+	invitePageLimiter    *ratelimit.Limiter
+	versionCheckLimiter  *ratelimit.Limiter
 }
 
 func NewServer(database *store.Store, secrets *Secrets, config Config) (*Server, error) {
@@ -95,7 +74,7 @@ func NewServer(database *store.Store, secrets *Secrets, config Config) (*Server,
 		config.WriteTimeout = 30 * time.Second
 	}
 	if config.ShareAcceptedEmailDelay == 0 {
-		config.ShareAcceptedEmailDelay = defaultShareAcceptedEmailDelay
+		config.ShareAcceptedEmailDelay = service.DefaultShareAcceptedEmailDelay
 	}
 	opaqueConfiguration := pake.NewConfig()
 	serverKeyMaterial, err := opaqueConfiguration.DecodeServerKeyMaterial(secrets.OpaqueKeyMaterial)
@@ -109,32 +88,28 @@ func NewServer(database *store.Store, secrets *Secrets, config Config) (*Server,
 	if err := opaqueServer.SetKeyMaterial(serverKeyMaterial); err != nil {
 		return nil, err
 	}
-	events := realtime.NewBroker()
-	return &Server{
-		config:              config,
-		store:               database,
-		secrets:             secrets,
-		opaqueConfiguration: opaqueConfiguration,
-		opaque:              opaqueServer,
-		loginCache:          createLoginCache(time.Minute),
-		limiter:             ratelimit.New(rate.Every(6*time.Second), config.AuthBurst),
-		updateLimiter:       ratelimit.New(rate.Every(10*time.Second), 20),
-		events:              events,
-		service:             service.New(database, events),
-		approvals:           createApprovalRelay(),
-
-		inviteAccountLimiter:          ratelimit.NewDaily(invitePerAccountPerDay),
-		inviteIPLimiter:               ratelimit.NewDaily(invitePerIPPerDay),
-		shareInvitationAccountLimiter: ratelimit.NewDaily(shareInvitationPerAccountPerDay),
-		shareInvitationIPLimiter:      ratelimit.NewDaily(shareInvitationPerIPPerDay),
-		shareAcceptedEmailLimiter:     ratelimit.NewDaily(shareAcceptedEmailPerInviterPerDay),
-		shareLinkAccountLimiter:       ratelimit.NewDaily(shareLinkPerAccountPerDay),
-		shareLinkReadLimiter:          createShareLinkReadLimiter(),
-		reauthenticationLimiter:       createReauthenticationLimiter(),
-		invitePageLimiter:             createInvitePageLimiter(),
-		versionCheckLimiter:           createVersionCheckLimiter(),
-	}, nil
+	server := &Server{
+		config:               config,
+		events:               realtime.NewBroker(),
+		limiter:              ratelimit.New(rate.Every(6*time.Second), config.AuthBurst),
+		updateLimiter:        ratelimit.New(rate.Every(10*time.Second), 20),
+		shareLinkReadLimiter: newShareLinkReadLimiter(),
+		invitePageLimiter:    newInvitePageLimiter(),
+		versionCheckLimiter:  newVersionCheckLimiter(),
+	}
+	keys := service.Keys{OpaqueConfiguration: opaqueConfiguration, OpaqueServer: opaqueServer, HMACKey: secrets.HMACKey}
+	// The service reads the server's config, so a change before serving reaches it.
+	server.service = service.New(database, server.events, keys, &server.config.Config)
+	return server, nil
 }
+
+// CreateInvite is the operator's invite: it returns the link instead of emailing it.
+func (s *Server) CreateInvite(ctx context.Context, email, role string, createdBy *string) (*apitypes.InviteResponse, error) {
+	return s.service.CreateOperatorInvite(ctx, email, role, createdBy)
+}
+
+// WaitForBackgroundWork waits for invites and share notifications that were started before it was called.
+func (s *Server) WaitForBackgroundWork() { s.service.WaitForBackgroundWork() }
 
 func (s *Server) CreateApp() *fiber.App {
 	app := fiber.New(fiber.Config{
@@ -246,6 +221,8 @@ var statusByKind = map[service.Kind]int{
 	service.KindConflict:        fiber.StatusConflict,
 	service.KindTooManyRequests: fiber.StatusTooManyRequests,
 	service.KindUnavailable:     fiber.StatusServiceUnavailable,
+	service.KindNotImplemented:  fiber.StatusNotImplemented,
+	service.KindGone:            fiber.StatusGone,
 }
 
 // handleError renders refusals (*service.Error, *fiber.Error) as JSON and hides all other errors behind a 500.
@@ -272,15 +249,15 @@ var errNotFound = createAPIError(fiber.StatusNotFound, "not found")
 
 type ctxKey struct{}
 
-func getSession(c fiber.Ctx) *store.Session {
-	return c.Locals(ctxKey{}).(*store.Session)
+func getSession(c fiber.Ctx) *service.Session {
+	return c.Locals(ctxKey{}).(*service.Session)
 }
 
 // getActor is who makes the request, for the service.
 func (s *Server) getActor(c fiber.Ctx) service.Actor {
 	actor := service.Actor{IP: s.getClientIP(c)}
-	if currentSession, isSignedIn := c.Locals(ctxKey{}).(*store.Session); isSignedIn {
-		actor.AccountID, actor.DeviceID = currentSession.AccountID, currentSession.DeviceID
+	if currentSession, isSignedIn := c.Locals(ctxKey{}).(*service.Session); isSignedIn {
+		actor.AccountID, actor.DeviceID, actor.TokenHash = currentSession.AccountID, currentSession.DeviceID, currentSession.TokenHash
 	}
 	return actor
 }
@@ -290,7 +267,7 @@ func (s *Server) requireSession(c fiber.Ctx) error {
 	if !ok || token == "" {
 		return createAPIError(fiber.StatusUnauthorized, "unauthorized")
 	}
-	currentSession, err := s.store.GetSessionByHash(c.Context(), hashToken(token), s.config.SessionTTL)
+	currentSession, err := s.service.Authenticate(c.Context(), token)
 	if err != nil {
 		if !errors.Is(err, store.ErrNotFound) {
 			log.Printf("session lookup: %v", err)
@@ -317,22 +294,6 @@ func (s *Server) getClientIP(c fiber.Ctx) string {
 		}
 	}
 	return c.RequestCtx().RemoteIP().String()
-}
-
-func (s *Server) recordAudit(c fiber.Ctx, accountID, deviceID string, eventType string, detail any) {
-	var optionalAccountID, optionalDeviceID *string
-	if accountID != "" {
-		optionalAccountID = &accountID
-	}
-	if deviceID != "" {
-		optionalDeviceID = &deviceID
-	}
-	s.store.RecordAudit(c.Context(), optionalAccountID, optionalDeviceID, eventType, detail, s.getClientIP(c))
-}
-
-func hashToken(token string) []byte {
-	hash := sha256.Sum256([]byte(token))
-	return hash[:]
 }
 
 func decodeBody(c fiber.Ctx, target any) error {

@@ -21,6 +21,7 @@ import (
 	"github.com/tryhisar/hisar/core/session"
 	"github.com/tryhisar/hisar/server/internal/mail/mailtest"
 	"github.com/tryhisar/hisar/server/internal/ratelimit"
+	"github.com/tryhisar/hisar/server/internal/service"
 )
 
 type lifecycleAccount struct {
@@ -42,7 +43,7 @@ func signUpLifecycleAccount(t *testing.T, server *Server, baseURL, email string)
 
 func setupLifecycleServer(t *testing.T) (string, *Server, string, *mailtest.Recorder) {
 	baseURL, server, databaseURL := setupServer(t)
-	server.reauthenticationLimiter = ratelimit.New(rate.Inf, 1)
+	server.service.Limiters.Reauthentication = ratelimit.New(rate.Inf, 1)
 	return baseURL, server, databaseURL, attachMailRecorder(server)
 }
 
@@ -251,7 +252,7 @@ func TestReauthenticationIsBoundToItsSession(t *testing.T) {
 		t.Errorf("audited failures: %d %v", failureCount, err)
 	}
 
-	server.reauthenticationLimiter = createReauthenticationLimiter()
+	server.service.Limiters.Reauthentication = service.NewReauthenticationLimiter()
 	var lastErr error
 	for range 6 {
 		_, lastErr = alice.session.Client.Reauthenticate(ctx, &apitypes.ReauthenticateRequest{KE1: []byte{1}})

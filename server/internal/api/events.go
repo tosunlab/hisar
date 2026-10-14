@@ -84,6 +84,5 @@ func (s *Server) handleStreamEvents(c fiber.Ctx) error {
 func (s *Server) isSessionValid(tokenHash []byte) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	_, err := s.store.GetSessionByHash(ctx, tokenHash, s.config.SessionTTL)
-	return err == nil
+	return s.service.IsSessionValid(ctx, tokenHash)
 }

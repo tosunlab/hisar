@@ -12,6 +12,7 @@ import (
 	"github.com/tryhisar/hisar/server/internal/api"
 	"github.com/tryhisar/hisar/server/internal/desktopupdate"
 	"github.com/tryhisar/hisar/server/internal/mail"
+	"github.com/tryhisar/hisar/server/internal/service"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
@@ -61,11 +62,10 @@ func setup(ctx context.Context) (*store.Store, *api.Server, error) {
 		return nil, nil, err
 	}
 	server, err := api.NewServer(database, secrets, api.Config{
-		PublicURL:       publicURL,
+		Config:          service.Config{PublicURL: publicURL, Mailer: mailer},
 		TrustProxy:      getEnv("HISAR_TRUST_PROXY", "false") == "true",
 		AuthBurst:       authBurst,
 		DesktopUpdates:  desktopUpdates,
-		Mailer:          mailer,
 		MinimumVersions: minimumVersions,
 	})
 	if err != nil {

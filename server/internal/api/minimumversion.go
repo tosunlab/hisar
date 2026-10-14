@@ -77,7 +77,7 @@ func (s *Server) requireMinimumVersion(c fiber.Ctx) error {
 	})
 }
 
-func createVersionCheckLimiter() *ratelimit.Limiter {
+func newVersionCheckLimiter() *ratelimit.Limiter {
 	return ratelimit.New(rate.Every(2*time.Second), 30)
 }
 

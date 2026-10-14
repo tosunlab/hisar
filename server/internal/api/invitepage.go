@@ -13,9 +13,8 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"golang.org/x/time/rate"
 
-	"github.com/tryhisar/hisar/server/internal/mail"
 	"github.com/tryhisar/hisar/server/internal/ratelimit"
-	"github.com/tryhisar/hisar/server/internal/store"
+	"github.com/tryhisar/hisar/server/internal/service"
 )
 
 const (
@@ -82,7 +81,7 @@ func (page invitePageTemplate) render(data invitePageData) ([]byte, error) {
 	return []byte(body[:scriptIndex] + page.script + body[scriptIndex+len("@@script@@"):]), nil
 }
 
-func createInvitePageLimiter() *ratelimit.Limiter {
+func newInvitePageLimiter() *ratelimit.Limiter {
 	return ratelimit.New(rate.Every(2*time.Second), 30)
 }
 
@@ -95,17 +94,7 @@ func (s *Server) limitInvitePageRate(c fiber.Ctx) error {
 }
 
 // buildPublicOrigin uses https with the public host; plain http stays only for a loopback host in development.
-func (s *Server) buildPublicOrigin() string {
-	parsedURL, err := url.Parse(s.config.PublicURL)
-	if err != nil || parsedURL.Host == "" {
-		return strings.TrimRight(s.config.PublicURL, "/")
-	}
-	scheme := "https"
-	if parsedURL.Scheme == "http" && mail.IsLoopbackHost(parsedURL.Hostname()) {
-		scheme = "http"
-	}
-	return scheme + "://" + parsedURL.Host
-}
+func (s *Server) buildPublicOrigin() string { return service.BuildPublicOrigin(s.config.PublicURL) }
 
 func (s *Server) buildInviteDeepLink(token string) string {
 	return inviteDeepLinkURL + url.PathEscape(token) + "?" + url.Values{"server": {s.buildPublicOrigin()}}.Encode()
@@ -117,24 +106,22 @@ func (s *Server) sendInvitePage(c fiber.Ctx) error {
 	data := invitePageData{}
 	status := fiber.StatusNotFound
 	if inviteCodePattern.MatchString(token) {
-		invite, err := s.store.GetInviteWithInviter(c.Context(), hashToken(token))
+		invite, err := s.service.GetPendingInvite(c.Context(), token)
 		switch {
 		case err == nil:
 			status = fiber.StatusOK
 			data = invitePageData{
-				IsValid:     true,
-				Email:       invite.Email,
-				ExpiresOn:   formatExpiry(invite.ExpiresAt),
-				Token:       token,
-				InviteLink:  s.buildInviteLink(token),
-				DeepLink:    template.URL(s.buildInviteDeepLink(token)),
-				DownloadURL: downloadURL,
+				IsValid:            true,
+				Email:              invite.Email,
+				ExpiresOn:          invite.ExpiresOn,
+				Token:              token,
+				InviteLink:         invite.Link,
+				DeepLink:           template.URL(s.buildInviteDeepLink(token)),
+				DownloadURL:        downloadURL,
+				InviterName:        invite.InviterName,
+				InviterDescription: invite.InviterDescription,
 			}
-			if invite.InviterEmail != "" {
-				inviter := &store.Account{Name: invite.InviterName, Email: invite.InviterEmail}
-				data.InviterName, data.InviterDescription = getInviterName(inviter), describeInviter(inviter)
-			}
-		case !errors.Is(err, store.ErrNotFound):
+		case !errors.Is(err, service.ErrNotFound):
 			return err
 		}
 	}

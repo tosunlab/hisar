@@ -1,4 +1,4 @@
-package api
+package service
 
 import (
 	"strings"
@@ -17,7 +17,7 @@ func TestBuildInviteLink(t *testing.T) {
 		"http://127.0.0.1:18550":        "http://127.0.0.1:18550/invite/code",
 		"http://localhost:8080":         "http://localhost:8080/invite/code",
 	} {
-		server := &Server{config: Config{PublicURL: publicURL}}
+		server := &Service{config: &Config{PublicURL: publicURL}}
 		if link := server.buildInviteLink("code"); link != expectedLink {
 			t.Errorf("%s: %s", publicURL, link)
 		}

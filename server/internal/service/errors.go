@@ -11,6 +11,8 @@ const (
 	KindConflict
 	KindTooManyRequests
 	KindUnavailable
+	KindNotImplemented
+	KindGone
 )
 
 // Error is a refusal the caller may read; any other error is internal.

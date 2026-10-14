@@ -8,12 +8,11 @@ import (
 	"testing"
 	"time"
 
-	"golang.org/x/time/rate"
-
 	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/approval"
 	"github.com/tryhisar/hisar/core/session"
+	"github.com/tryhisar/hisar/server/internal/service"
 )
 
 type testClock struct {
@@ -171,7 +170,7 @@ func TestApprovalRelayValidation(t *testing.T) {
 		"malformed ID":         {RequestID: "not-an-id", SealedRequest: []byte("sealed"), ExpiresAt: now.Add(time.Minute)},
 		"upper-case ID":        {RequestID: "00112233445566778899AABBCCDDEEFF", SealedRequest: []byte("sealed"), ExpiresAt: now.Add(time.Minute)},
 		"empty":                {RequestID: validID, ExpiresAt: now.Add(time.Minute)},
-		"too large":            {RequestID: validID, SealedRequest: make([]byte, approvalMaximumSealedSize+1), ExpiresAt: now.Add(time.Minute)},
+		"too large":            {RequestID: validID, SealedRequest: make([]byte, service.ApprovalMaximumSealedSize+1), ExpiresAt: now.Add(time.Minute)},
 		"expires in 4 minutes": {RequestID: validID, SealedRequest: []byte("sealed"), ExpiresAt: now.Add(4 * time.Minute)},
 		"already expired":      {RequestID: validID, SealedRequest: []byte("sealed"), ExpiresAt: now.Add(-time.Second)},
 	}
@@ -182,9 +181,9 @@ func TestApprovalRelayValidation(t *testing.T) {
 		t.Fatal(err)
 	}
 	expectStatus(t, "an empty answer", accounts.phone.Client.AnswerApproval(ctx, validID, nil), http.StatusBadRequest)
-	expectStatus(t, "an answer over 16 KiB", accounts.phone.Client.AnswerApproval(ctx, validID, make([]byte, approvalMaximumSealedSize+1)), http.StatusBadRequest)
+	expectStatus(t, "an answer over 16 KiB", accounts.phone.Client.AnswerApproval(ctx, validID, make([]byte, service.ApprovalMaximumSealedSize+1)), http.StatusBadRequest)
 
-	for range maxOpenApprovalPerAccount - 1 {
+	for range service.MaxOpenApprovalPerAccount - 1 {
 		if err := accounts.mac.Client.CreateApproval(ctx, &apitypes.CreateApprovalRequest{RequestID: approval.GenerateRequestID(), SealedRequest: []byte("sealed"), ExpiresAt: now.Add(time.Minute)}); err != nil {
 			t.Fatal(err)
 		}
@@ -194,11 +193,9 @@ func TestApprovalRelayValidation(t *testing.T) {
 		t.Errorf("another account is limited by this one's approvals: %v", err)
 	}
 
-	server.approvals.mutex.Lock()
-	server.approvals.limitersByAccount = map[string]*rate.Limiter{}
-	server.approvals.mutex.Unlock()
+	server.service.Approvals.ResetRateLimits()
 	limitedCount := 0
-	for range approvalRateBurst + 10 {
+	for range service.ApprovalRateBurst + 10 {
 		if _, err := accounts.phone.Client.ListPendingApprovals(ctx); apiclient.IsStatus(err, http.StatusTooManyRequests) {
 			limitedCount++
 		}
@@ -215,20 +212,18 @@ func TestApprovalRelayExpiry(t *testing.T) {
 	server, accounts := setupApprovalAccounts(t)
 	ctx := context.Background()
 	clock := &testClock{}
-	server.approvals.mutex.Lock()
-	server.approvals.now = clock.now
-	server.approvals.mutex.Unlock()
+	server.service.Approvals.SetClock(clock.now)
 
 	requestID := approval.GenerateRequestID()
-	if err := accounts.mac.Client.CreateApproval(ctx, &apitypes.CreateApprovalRequest{RequestID: requestID, SealedRequest: []byte("sealed"), ExpiresAt: time.Now().Add(approvalMaximumLifetime + 3*time.Second)}); err != nil {
+	if err := accounts.mac.Client.CreateApproval(ctx, &apitypes.CreateApprovalRequest{RequestID: requestID, SealedRequest: []byte("sealed"), ExpiresAt: time.Now().Add(service.ApprovalMaximumLifetime + 3*time.Second)}); err != nil {
 		t.Fatal(err)
 	}
 	stored := requireValue[*apitypes.Approval](t)(accounts.phone.Client.GetApproval(ctx, requestID))
-	if lifetime := time.Until(stored.ExpiresAt); lifetime > approvalMaximumLifetime {
+	if lifetime := time.Until(stored.ExpiresAt); lifetime > service.ApprovalMaximumLifetime {
 		t.Errorf("the server keeps a request for %v", lifetime)
 	}
 
-	clock.advance(approvalMaximumLifetime + time.Second)
+	clock.advance(service.ApprovalMaximumLifetime + time.Second)
 	if pendingRequests := requireValue[[]apitypes.PendingApproval](t)(accounts.phone.Client.ListPendingApprovals(ctx)); len(pendingRequests) != 0 {
 		t.Errorf("an expired approval is pending: %+v", pendingRequests)
 	}
@@ -237,15 +232,13 @@ func TestApprovalRelayExpiry(t *testing.T) {
 		t.Errorf("the Mac cannot read its expired request during the retention: %v", err)
 	}
 
-	clock.advance(approvalRetention)
+	clock.advance(service.ApprovalRetention)
 	_, err := accounts.mac.Client.GetApproval(ctx, requestID)
 	expectStatus(t, "a request after 2 minutes", err, http.StatusNotFound)
 	if err := accounts.mac.Client.CreateApproval(ctx, &apitypes.CreateApprovalRequest{RequestID: approval.GenerateRequestID(), SealedRequest: []byte("sealed"), ExpiresAt: clock.now().Add(time.Minute)}); err != nil {
 		t.Fatal(err)
 	}
-	server.approvals.mutex.Lock()
-	_, isKept := server.approvals.approvalsByAccount[accounts.mac.AccountID][requestID]
-	server.approvals.mutex.Unlock()
+	isKept := server.service.Approvals.IsKept(accounts.mac.AccountID, requestID)
 	if isKept {
 		t.Error("the expired approval is still in memory after a write")
 	}
@@ -263,9 +256,7 @@ func TestApprovalRelayKeepsALongerDialogsRequest(t *testing.T) {
 	server, accounts := setupApprovalAccounts(t)
 	ctx := context.Background()
 	clock := &testClock{}
-	server.approvals.mutex.Lock()
-	server.approvals.now = clock.now
-	server.approvals.mutex.Unlock()
+	server.service.Approvals.SetClock(clock.now)
 
 	requestID := approval.GenerateRequestID()
 	if err := accounts.mac.Client.CreateApproval(ctx, &apitypes.CreateApprovalRequest{RequestID: requestID, SealedRequest: []byte("sealed"), ExpiresAt: time.Now().Add(2 * time.Minute)}); err != nil {

@@ -1,9 +1,10 @@
-package api
+package service
 
 import (
 	"context"
 	"fmt"
 	"log"
+	"net/url"
 	"strings"
 	"time"
 
@@ -13,10 +14,10 @@ import (
 
 const emailTimeout = time.Minute
 
-func (s *Server) isEmailConfigured() bool { return s.config.Mailer != nil }
+func (s *Service) isEmailConfigured() bool { return s.config.Mailer != nil }
 
-func (s *Server) buildInviteLink(token string) string {
-	return s.buildPublicOrigin() + "/invite/" + token
+func (s *Service) buildInviteLink(token string) string {
+	return BuildPublicOrigin(s.config.PublicURL) + "/invite/" + token
 }
 
 func describeInviter(inviter *store.Account) string {
@@ -44,7 +45,8 @@ func describeRole(role string) string {
 	return "a reader"
 }
 
-func formatExpiry(expiresAt time.Time) string { return expiresAt.UTC().Format("2 January 2006") }
+// FormatExpiry is how an invite's expiry reads in emails and on the invite page.
+func FormatExpiry(expiresAt time.Time) string { return expiresAt.UTC().Format("2 January 2006") }
 
 func composeInviteEmail(inviter *store.Account, recipient, link, code string, expiresAt time.Time) mail.Message {
 	return mail.Message{
@@ -60,7 +62,7 @@ Or paste this invite code under Create account in Hisar:
 
 The invite works once and expires on %s.
 If you were not expecting it, ignore this email.
-`, describeInviter(inviter), link, code, formatExpiry(expiresAt)),
+`, describeInviter(inviter), link, code, FormatExpiry(expiresAt)),
 	}
 }
 
@@ -94,7 +96,7 @@ Or paste this invite code under Create account in Hisar:
 
 Then accept the invitation under Settings → People. The invite expires on %s.
 If you were not expecting it, ignore this email.
-`, describeInviter(inviter), describeRole(role), link, code, formatExpiry(expiresAt)),
+`, describeInviter(inviter), describeRole(role), link, code, FormatExpiry(expiresAt)),
 	}
 }
 
@@ -113,14 +115,14 @@ If you no longer want to share it, cancel the invitation under Settings → Peop
 	}
 }
 
-func (s *Server) sendEmail(ctx context.Context, message mail.Message) {
+func (s *Service) sendEmail(ctx context.Context, message mail.Message) {
 	if err := s.config.Mailer.Send(ctx, message); err != nil {
 		log.Printf("email not sent: %v", err)
 	}
 }
 
 // runInBackground does account-dependent work after the response, so the response cannot reveal whether an account exists.
-func (s *Server) runInBackground(work func(ctx context.Context)) {
+func (s *Service) runInBackground(work func(ctx context.Context)) {
 	s.backgroundWork.Add(1)
 	go func() {
 		defer s.backgroundWork.Done()
@@ -131,4 +133,17 @@ func (s *Server) runInBackground(work func(ctx context.Context)) {
 }
 
 // WaitForBackgroundWork waits for invites and share notifications that were started before it was called.
-func (s *Server) WaitForBackgroundWork() { s.backgroundWork.Wait() }
+func (s *Service) WaitForBackgroundWork() { s.backgroundWork.Wait() }
+
+// BuildPublicOrigin is the origin of links to this server: https, except http to a loopback host for development.
+func BuildPublicOrigin(publicURL string) string {
+	parsedURL, err := url.Parse(publicURL)
+	if err != nil || parsedURL.Host == "" {
+		return strings.TrimRight(publicURL, "/")
+	}
+	scheme := "https"
+	if parsedURL.Scheme == "http" && mail.IsLoopbackHost(parsedURL.Hostname()) {
+		scheme = "http"
+	}
+	return scheme + "://" + parsedURL.Host
+}

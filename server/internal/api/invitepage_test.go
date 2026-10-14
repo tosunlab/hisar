@@ -17,6 +17,7 @@ import (
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/session"
 	"github.com/tryhisar/hisar/server/internal/ratelimit"
+	"github.com/tryhisar/hisar/server/internal/service"
 )
 
 func fetchInvitePage(t *testing.T, baseURL, token string) (*http.Response, string) {
@@ -87,7 +88,7 @@ func TestInvitePage(t *testing.T) {
 		`href="https://tryhisar.com/download" rel="noopener noreferrer" data-testid="download">Download for Mac</a>`,
 		`data-copy="invite-code" aria-label="Copy invite code" hidden>Copy</button>`,
 		"Install command-line tool",
-		formatExpiry(time.Now().Add(server.config.InviteTTL)),
+		service.FormatExpiry(time.Now().Add(server.config.InviteTTL)),
 	} {
 		if !strings.Contains(body, expected) {
 			t.Errorf("valid page lacks %q", expected)
@@ -167,7 +168,7 @@ func TestInviteDeepLink(t *testing.T) {
 		"http://api.tryhisar.com":    "hisar://invite/abc_DEF-1?server=https%3A%2F%2Fapi.tryhisar.com",
 		"http://127.0.0.1:19400/sub": "hisar://invite/abc_DEF-1?server=http%3A%2F%2F127.0.0.1%3A19400",
 	} {
-		server := &Server{config: Config{PublicURL: publicURL}}
+		server := &Server{config: Config{Config: service.Config{PublicURL: publicURL}}}
 		if deepLink := server.buildInviteDeepLink("abc_DEF-1"); deepLink != expected {
 			t.Errorf("%s: %s, want %s", publicURL, deepLink, expected)
 		}
