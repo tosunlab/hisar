@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/tryhisar/hisar/desktop/browser"
-	"github.com/tryhisar/hisar/desktop/passkey"
+	"github.com/tryhisar/hisar/core/passkey"
 )
 
 func requestPasskeyAssertionWithPRF(t *testing.T, testBridge *browserTestBridge, token, credentialID string, allAllowedID []string, prfRequest *browser.PasskeyPRFRequest) (browser.PasskeyAssertionResult, string) {

@@ -1,4 +1,4 @@
-// Package passkey is Hisar's WebAuthn authenticator.
+// Package passkey is Hisar's WebAuthn authenticator: attestation, assertion, CBOR encoding and the PRF extension.
 package passkey
 
 import (

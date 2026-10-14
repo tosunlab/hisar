@@ -16,7 +16,7 @@ import (
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/desktop/browser"
-	"github.com/tryhisar/hisar/desktop/passkey"
+	"github.com/tryhisar/hisar/core/passkey"
 )
 
 const (

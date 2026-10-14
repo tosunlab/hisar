@@ -5,7 +5,7 @@ import (
 
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/desktop/browser"
-	"github.com/tryhisar/hisar/desktop/passkey"
+	"github.com/tryhisar/hisar/core/passkey"
 )
 
 // Platform passkey functions serve the iOS credential provider, which passes an RP ID and a clientDataHash; Wails does not bind functions.
