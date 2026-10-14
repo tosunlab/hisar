@@ -59,6 +59,43 @@ const bitsPerDictionaryWord = 11;
 
 // computePasswordStrength estimates entropy: dictionary-style phrases count per word, common
 // patterns are penalized, otherwise character classes times length, discounting repeats and sequences.
+export const minimumMasterPasswordLength = 10;
+// Below this only clearly guessable passwords are refused; the meter still says Weak up to 40 bits.
+const minimumMasterPasswordBits = 28;
+const masterPasswordAdvice = "A few random words you can remember make a strong master password.";
+
+export interface MasterPasswordFeedback {
+  message: string;
+  isBlocking: boolean;
+}
+
+export function getMasterPasswordFeedback(password: string): MasterPasswordFeedback {
+  if (password === "") {
+    return { message: masterPasswordAdvice, isBlocking: false };
+  }
+  if (password.length < minimumMasterPasswordLength) {
+    return { message: `Use at least ${minimumMasterPasswordLength} characters.`, isBlocking: true };
+  }
+  const strength = computePasswordStrength(password);
+  if (strength.bits < minimumMasterPasswordBits) {
+    return { message: "This password is too easy to guess. Add a few more words or characters.", isBlocking: true };
+  }
+  if (strength.level === "weak") {
+    return { message: "You can use it, but another word or a few more characters make it much harder to guess.", isBlocking: false };
+  }
+  return { message: masterPasswordAdvice, isBlocking: false };
+}
+
+export function describeSignedOutDevices(signedOutDeviceCount: number): string {
+  if (signedOutDeviceCount === 0) {
+    return "No other devices were signed in.";
+  }
+  if (signedOutDeviceCount === 1) {
+    return "1 other device was signed out.";
+  }
+  return `${signedOutDeviceCount} other devices were signed out.`;
+}
+
 export function computePasswordStrength(password: string): PasswordStrength {
   if (password === "") {
     return { level: "empty", label: "", bits: 0 };

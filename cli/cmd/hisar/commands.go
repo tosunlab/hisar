@@ -60,7 +60,7 @@ func unlock(ctx context.Context) (*localstate.State, *session.Session, error) {
 	defer clear(password)
 	unlockedSession, err := session.Unlock(ctx, createAuthedClient(currentState), nil, password, secretKey)
 	if client.IsStatus(err, 401) {
-		return nil, nil, errors.New("session expired or device revoked; run `hisar login`")
+		return nil, nil, errSignedOutByServer
 	}
 	if err != nil {
 		return nil, nil, err

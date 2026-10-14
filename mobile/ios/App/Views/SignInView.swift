@@ -55,6 +55,17 @@ struct SignInView: View {
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets())
                 }
+                if !model.status.signedOutReason.isEmpty {
+                    Section {
+                        Label(model.status.signedOutReason, systemImage: "info.circle")
+                            .font(.subheadline)
+                            .accessibilityIdentifier("signed-out-reason")
+                        Button("OK") {
+                            model.dismissSignedOutReason()
+                        }
+                        .accessibilityIdentifier("dismiss-signed-out-reason")
+                    }
+                }
                 if let errorMessage = model.errorMessage {
                     Section {
                         ErrorBanner(message: errorMessage)

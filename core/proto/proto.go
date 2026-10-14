@@ -347,3 +347,64 @@ type PublicShareLink struct {
 	MaxViews   int                  `json:"maxViews"`
 	ViewCount  int                  `json:"viewCount"`
 }
+
+const (
+	CredentialChangeMasterPassword = "master-password"
+	CredentialChangeSecretKey      = "secret-key"
+)
+
+// ReauthenticateRequest carries RegistrationRequest only when the credentials are about to change.
+type ReauthenticateRequest struct {
+	KE1                 []byte `json:"ke1"`
+	RegistrationRequest []byte `json:"registrationRequest,omitempty"`
+}
+
+type ReauthenticateResponse struct {
+	ReauthenticationID   string `json:"reauthenticationId"`
+	KE2                  []byte `json:"ke2"`
+	RegistrationResponse []byte `json:"registrationResponse,omitempty"`
+}
+
+type ChangeCredentialsRequest struct {
+	ReauthenticationID string             `json:"reauthenticationId"`
+	KE3                []byte             `json:"ke3"`
+	Change             string             `json:"change"`
+	Record             []byte             `json:"record"`
+	Salt               []byte             `json:"salt"`
+	Argon2             crypt.Argon2Params `json:"argon2"`
+	EncKeyset          []byte             `json:"encKeyset"`
+}
+
+type ChangeCredentialsResponse struct {
+	SignedOutDeviceCount int `json:"signedOutDeviceCount"`
+}
+
+type DeleteAccountRequest struct {
+	ReauthenticationID string `json:"reauthenticationId"`
+	KE3                []byte `json:"ke3"`
+	Email              string `json:"email"`
+}
+
+// AccountDeletionPreview names vaults by ID only: their names are encrypted.
+type AccountDeletionPreview struct {
+	AllOwnedVault           []DeletionOwnedVault  `json:"ownedVaults"`
+	AllMemberVault          []DeletionMemberVault `json:"memberVaults"`
+	ShareLinkCount          int                   `json:"shareLinkCount"`
+	SentInvitationCount     int                   `json:"sentInvitationCount"`
+	ReceivedInvitationCount int                   `json:"receivedInvitationCount"`
+	DeviceCount             int                   `json:"deviceCount"`
+}
+
+// DeletionOwnedVault has no other owner, so it is deleted with the account.
+type DeletionOwnedVault struct {
+	VaultID          string `json:"vaultId"`
+	Type             string `json:"type"`
+	OtherMemberCount int    `json:"otherMemberCount"`
+}
+
+// DeletionMemberVault has another owner, so only the account's access is removed.
+type DeletionMemberVault struct {
+	VaultID string `json:"vaultId"`
+	Type    string `json:"type"`
+	Role    string `json:"role"`
+}

@@ -21,6 +21,11 @@ One name for each thing, the same on the Mac, the iPhone, the browser extension,
 | Emergency Kit: "The Emergency Kit holds your Secret Key and has a space to write your master password." | "has both places to keep them" |
 | Unlock with Touch ID / Unlock with Face ID; Turn on Touch ID, Not now | Biometrics, fingerprint unlock |
 | Sign in, Sign out, Create account | Log in, Register |
+| Change master password…, Replace Secret Key… | Reset password, Rotate key, Regenerate Secret Key |
+| "Your other devices will be signed out. Sign in on them with the new master password." / "…with your master password and the new Secret Key from the new Emergency Kit." | Logged out, session invalidated |
+| "This device was signed out. If your master password or Secret Key was changed on another device, sign in with the new one." | Session expired, unauthorized |
+| Delete account…, Delete account (the confirm button, after typing the email) | Close account, Remove account, Deactivate |
+| "Export your items first." (or a link to Settings → Export) | Back up your data |
 
 ## People and sharing
 

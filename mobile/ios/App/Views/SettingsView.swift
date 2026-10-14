@@ -12,6 +12,9 @@ enum SettingsDestination: Hashable {
     case passwordGenerator
     case help
     case about
+    case changeMasterPassword
+    case replaceSecretKey
+    case deleteAccount
 }
 
 struct SettingsView: View {
@@ -150,6 +153,9 @@ struct SettingsView: View {
                 case .passwordGenerator: StandalonePasswordGeneratorView()
                 case .help: HelpView()
                 case .about: AboutView()
+                case .changeMasterPassword: ChangeMasterPasswordView()
+                case .replaceSecretKey: ReplaceSecretKeyView()
+                case .deleteAccount: DeleteAccountView()
                 }
             }
             .confirmationDialog("Sign out of Hisar on this iPhone?", isPresented: $isSignOutConfirmationShown, titleVisibility: .visible) {
@@ -185,6 +191,16 @@ struct AccountView: View {
                 }
             } footer: {
                 Text("To sign in on a new device you need your master password and your Secret Key. The Emergency Kit holds your Secret Key and has a space to write your master password.")
+            }
+            Section {
+                NavigationLink(value: SettingsDestination.deleteAccount) {
+                    Label("Delete account", systemImage: "person.crop.circle.badge.xmark")
+                        .foregroundStyle(.red)
+                }
+                .disabled(model.status.isOffline)
+                .accessibilityIdentifier("open-delete-account")
+            } footer: {
+                Text("Deletes your account and the vaults only you own from the Hisar server. \(AccountLifecycleLogic.exportAdvice)")
             }
         }
         .applyThemedListStyle()
@@ -331,6 +347,18 @@ struct SecurityView: View {
                 Text("Auto-lock after")
             } footer: {
                 Text("Hisar locks after this long without activity. Copied values are cleared after 90 seconds.")
+            }
+            Section {
+                NavigationLink(value: SettingsDestination.changeMasterPassword) {
+                    Label("Change master password", systemImage: "key")
+                }
+                .accessibilityIdentifier("open-change-master-password")
+                NavigationLink(value: SettingsDestination.replaceSecretKey) {
+                    Label("Replace Secret Key", systemImage: "doc.badge.arrow.up")
+                }
+                .accessibilityIdentifier("open-replace-secret-key")
+            } footer: {
+                Text("Both sign out your other devices. They need a connection to the Hisar server.")
             }
             Section {
                 Button {

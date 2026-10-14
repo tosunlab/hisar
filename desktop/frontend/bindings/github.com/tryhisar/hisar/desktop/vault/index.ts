@@ -17,9 +17,12 @@ export {
 };
 
 export type {
+    AccountDeletionPreview,
     BrowserPairingRequest,
     BrowserStatus,
     CommandLineStatus,
+    CredentialChangeResult,
+    DeletionVault,
     Device,
     ImportDuplicate,
     ImportFormat,

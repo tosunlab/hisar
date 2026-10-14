@@ -37,6 +37,8 @@ export const allSettingsSection: SettingsSection[] = [
     allRow: [
       { id: "touch-id", title: "Unlock with Touch ID", keywords: "biometric fingerprint unlock" },
       { id: "auto-lock", title: "Auto-lock", keywords: "lock idle timeout clipboard minutes" },
+      { id: "change-master-password", title: "Change master password", keywords: "password change new rotate" },
+      { id: "replace-secret-key", title: "Replace Secret Key", keywords: "secret key rotate new emergency kit leaked compromised" },
       { id: "emergency-kit", title: "Emergency Kit", keywords: "secret key pdf recovery backup new device" },
     ],
   },
@@ -92,7 +94,10 @@ export const allSettingsSection: SettingsSection[] = [
     id: "account",
     label: "Account",
     icon: "user",
-    allRow: [{ id: "account", title: "Account", keywords: "name email server sign out" }],
+    allRow: [
+      { id: "account", title: "Account", keywords: "name email server sign out" },
+      { id: "delete-account", title: "Delete account", keywords: "remove close erase gdpr data privacy" },
+    ],
   },
   {
     id: "help",

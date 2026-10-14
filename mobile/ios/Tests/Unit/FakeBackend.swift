@@ -36,6 +36,10 @@ class FakeBackend: VaultBackend {
     var theme = VaultTheme.standard
     var isThemeSaveFailing = false
     var allCopiedReference: [String] = []
+    var currentPassword = FakeBackend.password
+    var currentSecretKey = FakeBackend.secretKey
+    var deletionPreview = AccountDeletionPreview(email: "alice@example.com")
+    var isAccountDeleted = false
     private let approvalLock = NSLock()
 
     func withApprovalLock<Value>(_ operation: () throws -> Value) rethrows -> Value {
@@ -578,6 +582,48 @@ extension FakeBackend {
         let path = directory.appendingPathComponent("Hisar Emergency Kit.pdf")
         try Data("%PDF-1.7".utf8).write(to: path)
         return EmergencyKitExport(secretKey: Self.secretKey, emergencyKitPath: path.path)
+    }
+
+    func changeMasterPassword(currentPassword: String, newPassword: String) throws -> CredentialChangeResult {
+        record("changeMasterPassword")
+        try requireUnlocked()
+        guard currentPassword == self.currentPassword else { throw BackendError(message: "The master password is not correct") }
+        guard newPassword.count >= 10 else { throw BackendError(message: "Use a master password with at least 10 characters") }
+        self.currentPassword = newPassword
+        return CredentialChangeResult(status: status, signedOutDeviceCount: 1)
+    }
+
+    func replaceSecretKey(password: String, directory: URL) throws -> CredentialChangeResult {
+        record("replaceSecretKey")
+        try requireUnlocked()
+        guard password == currentPassword else { throw BackendError(message: "The master password is not correct") }
+        currentSecretKey = "H1-ABC123-ZZZZZ-YYYYY-XXXXX-WWWWW-VVVVVV"
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let path = directory.appendingPathComponent("Hisar Emergency Kit.pdf")
+        try Data("%PDF-1.7".utf8).write(to: path)
+        return CredentialChangeResult(status: status, secretKey: currentSecretKey, signedOutDeviceCount: 2, emergencyKitPath: path.path)
+    }
+
+    func previewAccountDeletion() throws -> AccountDeletionPreview {
+        record("previewAccountDeletion")
+        try requireUnlocked()
+        return deletionPreview
+    }
+
+    func deleteAccount(password: String, email: String) throws -> VaultStatus {
+        record("deleteAccount")
+        try requireUnlocked()
+        guard email.trimmingCharacters(in: .whitespaces).lowercased() == status.email.lowercased() else { throw BackendError(message: "Type the email of this account to confirm") }
+        guard password == currentPassword else { throw BackendError(message: "The master password is not correct") }
+        isAccountDeleted = true
+        status = .signedOut
+        return status
+    }
+
+    func dismissSignedOutReason() -> VaultStatus {
+        record("dismissSignedOutReason")
+        status.signedOutReason = ""
+        return status
     }
 
     func copySecretReference(vaultID: String, itemID: String, fieldName: String) throws -> String {

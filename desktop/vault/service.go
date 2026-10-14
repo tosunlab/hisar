@@ -52,6 +52,7 @@ type Service struct {
 	allLockListener              []func()
 	allStatusListener            []func()
 	phoneApprovals               *phoneApprovalRelay
+	signedOutReason              string
 	updateRequirement            updateRequirementState
 }
 
@@ -124,6 +125,9 @@ func (s *Service) getDeviceInfo() proto.DeviceInfo {
 
 func (s *Service) buildStatus() Status {
 	status := Status{State: StateSignedOut, Server: s.state.Server, Email: s.state.Email, Name: s.name}
+	if !s.state.IsLoggedIn() {
+		status.SignedOutReason = s.signedOutReason
+	}
 	switch {
 	case s.unlockedSession != nil:
 		status.State = StateUnlocked
@@ -332,6 +336,7 @@ func (s *Service) SignIn(server, email, secretKeyText, password string) (Status,
 	s.forgetBiometricUnlock()
 	s.removeCache()
 	s.state.Reset()
+	s.signedOutReason = ""
 	s.state.Server, s.state.Email, s.state.AccountID, s.state.Token = server, loggedIn.Email, loggedIn.AccountID, loggedIn.Client.Token
 	if err := s.state.Save(); err != nil {
 		loggedIn.Lock()
@@ -405,6 +410,7 @@ func (s *Service) SignUp(invite, email, name, password string) (SignUpResult, er
 	s.forgetBiometricUnlock()
 	s.removeCache()
 	s.state.Reset()
+	s.signedOutReason = ""
 	s.state.Server, s.state.Email, s.state.AccountID, s.state.Token = server, strings.ToLower(strings.TrimSpace(email)), signedUp.AccountID, signedUp.Client.Token
 	if err := s.state.Save(); err != nil {
 		signedUp.Lock()
@@ -448,7 +454,8 @@ func (s *Service) Unlock(password string) (Status, error) {
 	defer cancel()
 	unlocked, err := session.Unlock(ctx, apiClient, accountCache, passwordBytes, secretKey)
 	if client.IsStatus(err, http.StatusUnauthorized) {
-		return Status{}, errors.New("this device was signed out; sign in again")
+		s.endSignedOutSession(token)
+		return s.GetStatus(), nil
 	}
 	if err != nil {
 		return Status{}, convertError(err)
@@ -477,6 +484,7 @@ func (s *Service) SignOut() (Status, error) {
 	}
 	s.lockSession()
 	s.name = ""
+	s.signedOutReason = ""
 	s.forgetBiometricUnlock()
 	s.removeCache()
 	s.state.Reset()

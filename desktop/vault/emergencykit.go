@@ -16,7 +16,7 @@ const emergencyKitFileName = "Hisar Emergency Kit.pdf"
 
 var ErrNoNewAccountSecretKey = errors.New("the new account's Secret Key is no longer in memory; save the Emergency Kit from Settings")
 
-// SaveNewAccountEmergencyKit saves the kit right after sign up; it returns the saved path, or "" when cancelled.
+// SaveNewAccountEmergencyKit saves the kit right after sign up or replacing the Secret Key; it returns the saved path, or "" when cancelled.
 func (s *Service) SaveNewAccountEmergencyKit() (string, error) {
 	s.mutex.Lock()
 	kit, err := s.buildNewAccountEmergencyKit()
@@ -78,6 +78,22 @@ func ExportEmergencyKit(s *Service, password string) (EmergencyKitExport, error)
 	s.mutex.Lock()
 	kit := s.buildEmergencyKit(secretKey)
 	s.mutex.Unlock()
+	document, err := emergencykit.Generate(kit)
+	if err != nil {
+		return EmergencyKitExport{}, err
+	}
+	return EmergencyKitExport{SecretKey: kit.SecretKey, Document: document}, nil
+}
+
+// ExportNewSecretKeyEmergencyKit returns the kit of a Secret Key made moments ago, while it is still in memory.
+// A function rather than a method so the desktop UI can't call it.
+func ExportNewSecretKeyEmergencyKit(s *Service) (EmergencyKitExport, error) {
+	s.mutex.Lock()
+	kit, err := s.buildNewAccountEmergencyKit()
+	s.mutex.Unlock()
+	if err != nil {
+		return EmergencyKitExport{}, err
+	}
 	document, err := emergencykit.Generate(kit)
 	if err != nil {
 		return EmergencyKitExport{}, err

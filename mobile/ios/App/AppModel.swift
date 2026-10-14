@@ -113,7 +113,11 @@ final class AppModel: ObservableObject {
 
     private func applyStatus(_ newStatus: VaultStatus) {
         let wasUnlocked = status.isUnlocked
+        let wasSignedIn = status.isSignedIn
         status = newStatus
+        if wasSignedIn && !newStatus.isSignedIn {
+            Task { await credentialIdentityStore.removeAllIdentity() }
+        }
         switch newStatus.state {
         case VaultStatus.stateUnlocked: screen = .unlocked
         case VaultStatus.stateLocked: screen = .locked
@@ -564,7 +568,52 @@ final class AppModel: ObservableObject {
     }
 
     func removeEmergencyKit(_ export: EmergencyKitExport) {
-        try? FileManager.default.removeItem(at: URL(fileURLWithPath: export.emergencyKitPath).deletingLastPathComponent())
+        removeEmergencyKitFile(path: export.emergencyKitPath)
+    }
+
+    func removeEmergencyKitFile(path: String) {
+        guard !path.isEmpty else { return }
+        try? FileManager.default.removeItem(at: URL(fileURLWithPath: path).deletingLastPathComponent())
+    }
+
+    func changeMasterPassword(currentPassword: String, newPassword: String) async -> CredentialChangeResult? {
+        guard let result = await perform({ try $0.changeMasterPassword(currentPassword: currentPassword, newPassword: newPassword) }) else { return nil }
+        applyStatus(result.status)
+        showNotice("Master password changed. \(AccountLifecycleLogic.describeSignedOutDevices(result.signedOutDeviceCount))")
+        return result
+    }
+
+    func replaceSecretKey(password: String) async -> CredentialChangeResult? {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("EmergencyKit-\(UUID().uuidString)", isDirectory: true)
+        guard let result = await perform({ try $0.replaceSecretKey(password: password, directory: directory) }) else { return nil }
+        applyStatus(result.status)
+        return result
+    }
+
+    func finishSecretKeyReplacement(_ result: CredentialChangeResult) {
+        removeEmergencyKitFile(path: result.emergencyKitPath)
+        guard let backend else { return }
+        Task { try? await runInBackground { backend.forgetNewAccountSecretKey() } }
+    }
+
+    func loadAccountDeletionPreview() async -> AccountDeletionPreview? {
+        await perform(isBusyShown: false) { try $0.previewAccountDeletion() }
+    }
+
+    @discardableResult
+    func deleteAccount(password: String, email: String) async -> Bool {
+        guard let newStatus = await perform({ try $0.deleteAccount(password: password, email: email) }) else { return false }
+        applyStatus(newStatus)
+        await credentialIdentityStore.removeAllIdentity()
+        newSecretKey = nil
+        pendingSignInLink = nil
+        showNotice("Your Hisar account was deleted.")
+        return true
+    }
+
+    func dismissSignedOutReason() {
+        guard let backend else { return }
+        applyStatus(backend.dismissSignedOutReason())
     }
 
     // setTheme shows the theme at once and goes back to the one in use when it cannot be saved.
