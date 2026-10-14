@@ -14,7 +14,7 @@ type installFixture struct {
 	homeDirectory   string
 	homebrewBin     string
 	usrLocalBin     string
-	allUserPath     []string
+	userPaths       []string
 	installer       *Installer
 	userDirectory   string
 	otherAppBinary  string
@@ -53,12 +53,12 @@ func createInstallFixture(t *testing.T) *installFixture {
 	writeExecutable(t, fixture.otherAppBinary)
 	writeExecutable(t, fixture.foreignBinary)
 	os.MkdirAll(fixture.homeDirectory, 0o755)
-	fixture.allUserPath = []string{fixture.homebrewBin, fixture.usrLocalBin, "/usr/bin", "/bin"}
-	fixture.installer = CreateInstaller(InstallerConfig{
+	fixture.userPaths = []string{fixture.homebrewBin, fixture.usrLocalBin, "/usr/bin", "/bin"}
+	fixture.installer = NewInstaller(InstallerConfig{
 		BundledPath:       fixture.bundledPath,
 		HomeDirectory:     fixture.homeDirectory,
 		SystemDirectories: []string{fixture.homebrewBin, fixture.usrLocalBin},
-		GetUserPath:       func() []string { return fixture.allUserPath },
+		GetUserPath:       func() []string { return fixture.userPaths },
 		Shell:             "/bin/zsh",
 	})
 	return fixture
@@ -143,7 +143,7 @@ func TestInstallSkipsReadOnlySystemDirectories(t *testing.T) {
 	if status.IsPathCommandFromThisApp {
 		t.Error("PATH command reported as this app's although ~/.local/bin is not on the PATH")
 	}
-	fixture.allUserPath = append([]string{fixture.userDirectory}, fixture.allUserPath...)
+	fixture.userPaths = append([]string{fixture.userDirectory}, fixture.userPaths...)
 	if status := fixture.installer.GetStatus(); status.PathHint != "" || !status.IsPathCommandFromThisApp {
 		t.Errorf("with ~/.local/bin on the PATH: %+v", status)
 	}
@@ -151,7 +151,7 @@ func TestInstallSkipsReadOnlySystemDirectories(t *testing.T) {
 
 func TestPathHintFollowsTheShell(t *testing.T) {
 	fixture := createInstallFixture(t)
-	installer := CreateInstaller(InstallerConfig{BundledPath: fixture.bundledPath, HomeDirectory: fixture.homeDirectory, Shell: "/bin/bash"})
+	installer := NewInstaller(InstallerConfig{BundledPath: fixture.bundledPath, HomeDirectory: fixture.homeDirectory, Shell: "/bin/bash"})
 	if hint := installer.buildPathHint(fixture.userDirectory, []string{"/usr/bin"}); hint != `echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bash_profile` {
 		t.Errorf("bash hint %q", hint)
 	}
@@ -176,7 +176,7 @@ func TestInstallNeverOverwritesOtherFiles(t *testing.T) {
 		t.Error("file changed")
 	}
 	want := []Installation{{Path: existingPath, Kind: InstallationOther, Description: "a file that is not from Hisar"}}
-	if !reflect.DeepEqual(status.AllInstallation, want) || status.InstalledPath != "" || status.IsPathCommandFromThisApp || status.PathCommandPath != existingPath {
+	if !reflect.DeepEqual(status.Installations, want) || status.InstalledPath != "" || status.IsPathCommandFromThisApp || status.PathCommandPath != existingPath {
 		t.Errorf("status %+v", status)
 	}
 
@@ -195,7 +195,7 @@ func TestInstallReplacesLinkToAnotherHisarApp(t *testing.T) {
 	os.MkdirAll(fixture.homebrewBin, 0o755)
 	linkPath := filepath.Join(fixture.homebrewBin, "hisar")
 	os.Symlink(fixture.otherAppBinary, linkPath)
-	if status := fixture.installer.GetStatus(); len(status.AllInstallation) != 1 || status.AllInstallation[0].Kind != InstallationOtherApp {
+	if status := fixture.installer.GetStatus(); len(status.Installations) != 1 || status.Installations[0].Kind != InstallationOtherApp {
 		t.Fatalf("status before %+v", status)
 	}
 	if _, err := fixture.installer.Install(); err != nil {
@@ -226,7 +226,7 @@ func TestUninstallRemovesOnlyLinksIntoHisarApp(t *testing.T) {
 	if readLink(t, filepath.Join(fixture.usrLocalBin, "hisar")) != fixture.foreignBinary {
 		t.Error("foreign link removed")
 	}
-	if status.InstalledPath != "" || len(status.AllInstallation) != 1 || status.AllInstallation[0].Kind != InstallationOther {
+	if status.InstalledPath != "" || len(status.Installations) != 1 || status.Installations[0].Kind != InstallationOther {
 		t.Errorf("status %+v", status)
 	}
 	if status.PathCommandTarget != fixture.foreignBinary || status.IsPathCommandFromThisApp {
@@ -236,7 +236,7 @@ func TestUninstallRemovesOnlyLinksIntoHisarApp(t *testing.T) {
 
 func TestDevelopmentBuildCannotInstall(t *testing.T) {
 	fixture := createInstallFixture(t)
-	installer := CreateInstaller(InstallerConfig{BundledPath: filepath.Join(fixture.root, "missing", "hisar"), HomeDirectory: fixture.homeDirectory, SystemDirectories: []string{fixture.homebrewBin}})
+	installer := NewInstaller(InstallerConfig{BundledPath: filepath.Join(fixture.root, "missing", "hisar"), HomeDirectory: fixture.homeDirectory, SystemDirectories: []string{fixture.homebrewBin}})
 	status, err := installer.Install()
 	if err == nil || status.IsAvailable {
 		t.Errorf("development install: %+v %v", status, err)
@@ -247,9 +247,9 @@ func TestDevelopmentBuildCannotInstall(t *testing.T) {
 }
 
 func TestParseUserPathOutput(t *testing.T) {
-	allDirectory, err := parseUserPathOutput("Last login: today\nwelcome\n__HISAR_PATH__/opt/homebrew/bin:/usr/bin:/Users/a/.local/bin\n")
-	if err != nil || !reflect.DeepEqual(allDirectory, []string{"/opt/homebrew/bin", "/usr/bin", "/Users/a/.local/bin"}) {
-		t.Errorf("parsed %v %v", allDirectory, err)
+	directories, err := parseUserPathOutput("Last login: today\nwelcome\n__HISAR_PATH__/opt/homebrew/bin:/usr/bin:/Users/a/.local/bin\n")
+	if err != nil || !reflect.DeepEqual(directories, []string{"/opt/homebrew/bin", "/usr/bin", "/Users/a/.local/bin"}) {
+		t.Errorf("parsed %v %v", directories, err)
 	}
 	if _, err := parseUserPathOutput("no marker"); err == nil {
 		t.Error("output without the marker accepted")
@@ -259,13 +259,13 @@ func TestParseUserPathOutput(t *testing.T) {
 func TestUserPathReaderFallsBackWithoutShell(t *testing.T) {
 	t.Setenv("PATH", "/custom/bin")
 	reader := &UserPathReader{Shell: filepath.Join(t.TempDir(), "missing-shell")}
-	allDirectory := reader.Read()
+	directories := reader.Read()
 	found := false
-	for _, directory := range allDirectory {
+	for _, directory := range directories {
 		found = found || directory == "/custom/bin"
 	}
 	if !found {
-		t.Errorf("fallback PATH %v misses the process PATH", allDirectory)
+		t.Errorf("fallback PATH %v misses the process PATH", directories)
 	}
 }
 
@@ -273,7 +273,7 @@ func TestUserPathReaderUsesLoginShell(t *testing.T) {
 	shellPath := filepath.Join(t.TempDir(), "shell")
 	os.WriteFile(shellPath, []byte("#!/bin/sh\necho noise\nPATH=/from/shell/bin:/usr/bin\nprintf '\\n__HISAR_PATH__%s\\n' \"$PATH\"\n"), 0o755)
 	reader := &UserPathReader{Shell: shellPath}
-	if allDirectory := reader.Read(); !reflect.DeepEqual(allDirectory, []string{"/from/shell/bin", "/usr/bin"}) {
-		t.Errorf("shell PATH %v", allDirectory)
+	if directories := reader.Read(); !reflect.DeepEqual(directories, []string{"/from/shell/bin", "/usr/bin"}) {
+		t.Errorf("shell PATH %v", directories)
 	}
 }

@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 )
 
-func CreateLoginItem(homeDirectory string) LoginItem {
-	return CreateXDGAutostart(homeDirectory, getExecutablePath())
+func NewLoginItem(homeDirectory string) LoginItem {
+	return NewXDGAutostart(homeDirectory, getExecutablePath())
 }
 
 // getExecutablePath prefers the AppImage file, since the running binary lives in its temporary mount.

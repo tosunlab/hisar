@@ -15,7 +15,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func ListAllProcessArgument(pid int) ([]string, error) {
+func ListProcessArguments(pid int) ([]string, error) {
 	raw, err := unix.SysctlRaw("kern.procargs2", pid)
 	if err != nil {
 		return nil, err
@@ -32,14 +32,14 @@ func GetProcessWorkingDirectory(pid int) (string, error) {
 	return C.GoString(buffer), nil
 }
 
-func listAllProcessID() ([]int, error) {
-	allKernelProcess, err := unix.SysctlKinfoProcSlice("kern.proc.all")
+func listProcessIDs() ([]int, error) {
+	kernelProcesses, err := unix.SysctlKinfoProcSlice("kern.proc.all")
 	if err != nil {
 		return nil, err
 	}
-	allProcessID := make([]int, 0, len(allKernelProcess))
-	for _, kernelProcess := range allKernelProcess {
-		allProcessID = append(allProcessID, int(kernelProcess.Proc.P_pid))
+	processIDs := make([]int, 0, len(kernelProcesses))
+	for _, kernelProcess := range kernelProcesses {
+		processIDs = append(processIDs, int(kernelProcess.Proc.P_pid))
 	}
-	return allProcessID, nil
+	return processIDs, nil
 }

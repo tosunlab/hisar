@@ -19,18 +19,22 @@ type Argon2Params struct {
 	Threads   uint8  `json:"p"`
 }
 
-var (
-	DefaultArgon2Params = Argon2Params{Time: 24, MemoryKiB: 64 * 1024, Threads: 4}
+var ErrBadSalt = errors.New("crypt: salt must be 16 bytes")
 
-	// Enforced client-side: the server supplies the params and must not be able to weaken them.
-	MinArgon2Params = Argon2Params{Time: 2, MemoryKiB: 32 * 1024, Threads: 1}
-	MaxArgon2Params = Argon2Params{Time: 64, MemoryKiB: 1024 * 1024, Threads: 16}
+// DefaultArgon2Params are the parameters new accounts get.
+func DefaultArgon2Params() Argon2Params {
+	return Argon2Params{Time: 24, MemoryKiB: 64 * 1024, Threads: 4}
+}
 
-	ErrBadSalt = errors.New("crypt: salt must be 16 bytes")
-)
+// MinArgon2Params and MaxArgon2Params are enforced client-side: the server supplies the params and must not be able to weaken them.
+func MinArgon2Params() Argon2Params { return Argon2Params{Time: 2, MemoryKiB: 32 * 1024, Threads: 1} }
+
+func MaxArgon2Params() Argon2Params {
+	return Argon2Params{Time: 64, MemoryKiB: 1024 * 1024, Threads: 16}
+}
 
 func (params Argon2Params) Validate() error {
-	minimum, maximum := MinArgon2Params, MaxArgon2Params
+	minimum, maximum := MinArgon2Params(), MaxArgon2Params()
 	if params.Time < minimum.Time || params.Time > maximum.Time ||
 		params.MemoryKiB < minimum.MemoryKiB || params.MemoryKiB > maximum.MemoryKiB ||
 		params.Threads < minimum.Threads || params.Threads > maximum.Threads {
@@ -55,7 +59,7 @@ func (derivedKeys *DerivedKeys) Wipe() {
 	clear(derivedKeys.AuthKey)
 }
 
-func DeriveAllKey(password, salt []byte, params Argon2Params, secretKey SecretKey) (*DerivedKeys, error) {
+func DeriveKeys(password, salt []byte, params Argon2Params, secretKey SecretKey) (*DerivedKeys, error) {
 	if err := params.Validate(); err != nil {
 		return nil, err
 	}

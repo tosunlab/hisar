@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/tryhisar/hisar/core/browserprotocol"
 )
 
 func GetDefaultSocketPath(homeDirectory string) string {
@@ -27,24 +29,24 @@ type HostConfig struct {
 func RunHost(input io.Reader, output io.Writer, config HostConfig) error {
 	connection, err := dialDesktop(config)
 	if err != nil {
-		return answerAllUnavailable(input, output)
+		return answerUnavailable(input, output)
 	}
 	defer connection.Close()
-	connectFrame, err := json.Marshal(connectMessage{Type: "connect", ExtensionOrigin: config.ExtensionOrigin})
+	connectFrame, err := json.Marshal(browserprotocol.ConnectMessage{Type: "connect", ExtensionOrigin: config.ExtensionOrigin})
 	if err != nil {
 		return err
 	}
-	if err := WriteMessage(connection, connectFrame); err != nil {
-		return answerAllUnavailable(input, output)
+	if err := browserprotocol.WriteMessage(connection, connectFrame); err != nil {
+		return answerUnavailable(input, output)
 	}
 
 	var waitGroup sync.WaitGroup
 	waitGroup.Add(1)
 	go func() {
 		defer waitGroup.Done()
-		relayAllMessage(connection, output)
+		relayMessages(connection, output)
 	}()
-	err = relayAllMessage(input, connection)
+	err = relayMessages(input, connection)
 	if unixConnection, ok := connection.(*net.UnixConn); ok {
 		unixConnection.CloseWrite()
 	}
@@ -74,38 +76,38 @@ func dialDesktop(config HostConfig) (net.Conn, error) {
 	return nil, err
 }
 
-// relayAllMessage copies whole frames, so an oversized or truncated message never reaches the other side.
-func relayAllMessage(reader io.Reader, writer io.Writer) error {
+// relayMessages copies whole frames, so an oversized or truncated message never reaches the other side.
+func relayMessages(reader io.Reader, writer io.Writer) error {
 	for {
-		message, err := ReadMessage(reader)
+		message, err := browserprotocol.ReadMessage(reader)
 		if errors.Is(err, io.EOF) {
 			return nil
 		}
 		if err != nil {
 			return err
 		}
-		if err := WriteMessage(writer, message); err != nil {
+		if err := browserprotocol.WriteMessage(writer, message); err != nil {
 			return err
 		}
 	}
 }
 
-func answerAllUnavailable(input io.Reader, output io.Writer) error {
+func answerUnavailable(input io.Reader, output io.Writer) error {
 	for {
-		message, err := ReadMessage(input)
+		message, err := browserprotocol.ReadMessage(input)
 		if errors.Is(err, io.EOF) {
 			return nil
 		}
 		if err != nil {
 			return err
 		}
-		var request Request
+		var request browserprotocol.Request
 		json.Unmarshal(message, &request)
-		response, err := json.Marshal(Response{ID: request.ID, Error: CreateError(ErrorDesktopUnavailable, "Hisar is not running")})
+		response, err := json.Marshal(browserprotocol.Response{ID: request.ID, Error: browserprotocol.NewError(browserprotocol.ErrorDesktopUnavailable, "Hisar is not running")})
 		if err != nil {
 			return err
 		}
-		if err := WriteMessage(output, response); err != nil {
+		if err := browserprotocol.WriteMessage(output, response); err != nil {
 			return err
 		}
 	}

@@ -8,13 +8,15 @@ The server stores only ciphertext. Keys are derived on your devices from your ma
 
 | Path | What |
 |---|---|
-| `core/` | Shared Go library: crypto, item model, local store, sync |
+| `core/` | Shared Go library: crypto, item model, sessions and sync, and `core/app`, the app backend of the Mac and the iPhone |
 | `server/` | `hisar-server` sync server (Go + Postgres) |
 | `cli/` | `hisar` command-line client |
 | `desktop/` | Desktop app (Wails v3 + Vue), see [desktop/README.md](desktop/README.md) |
 | `extension/` | Browser extension |
 | `mobile/` | iOS and Android apps |
 | `docs/` | Design docs |
+
+Where each package is and where new code goes: [CLAUDE.md](CLAUDE.md).
 
 ## Command-line tool
 

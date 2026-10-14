@@ -8,22 +8,17 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-)
 
-type BrowserInstallation struct {
-	Name         string `json:"name"`
-	ManifestPath string `json:"manifestPath"`
-	IsInstalled  bool   `json:"isInstalled"`
-	ErrorMessage string `json:"errorMessage"`
-}
+	"github.com/tryhisar/hisar/core/browserprotocol"
+)
 
 type knownBrowser struct {
 	name             string
 	profileDirectory string
 }
 
-// getAllKnownBrowser lists Chromium browsers by the directory that holds their NativeMessagingHosts.
-func getAllKnownBrowser(homeDirectory, operatingSystem string) []knownBrowser {
+// getKnownBrowsers lists Chromium browsers by the directory that holds their NativeMessagingHosts.
+func getKnownBrowsers(homeDirectory, operatingSystem string) []knownBrowser {
 	if operatingSystem == "darwin" {
 		support := filepath.Join(homeDirectory, "Library", "Application Support")
 		return []knownBrowser{
@@ -49,27 +44,27 @@ func getAllKnownBrowser(homeDirectory, operatingSystem string) []knownBrowser {
 
 func buildHostManifest(hostPath string) ([]byte, error) {
 	return json.MarshalIndent(map[string]any{
-		"name":            HostName,
+		"name":            browserprotocol.HostName,
 		"description":     "Hisar password manager",
 		"path":            hostPath,
 		"type":            "stdio",
-		"allowed_origins": []string{AllowedOrigin},
+		"allowed_origins": []string{browserprotocol.AllowedOrigin},
 	}, "", "  ")
 }
 
-// InstallAllHostManifest registers the native host with every installed Chromium browser; it only writes changed files.
-func InstallAllHostManifest(homeDirectory, hostPath string) []BrowserInstallation {
-	return installAllHostManifest(homeDirectory, hostPath, runtime.GOOS)
+// InstallHostManifests registers the native host with every installed Chromium browser; it only writes changed files.
+func InstallHostManifests(homeDirectory, hostPath string) []browserprotocol.BrowserInstallation {
+	return installHostManifests(homeDirectory, hostPath, runtime.GOOS)
 }
 
-func installAllHostManifest(homeDirectory, hostPath, operatingSystem string) []BrowserInstallation {
+func installHostManifests(homeDirectory, hostPath, operatingSystem string) []browserprotocol.BrowserInstallation {
 	manifest, manifestErr := buildHostManifest(hostPath)
-	allInstallation := []BrowserInstallation{}
-	for _, browser := range getAllKnownBrowser(homeDirectory, operatingSystem) {
+	installations := []browserprotocol.BrowserInstallation{}
+	for _, browser := range getKnownBrowsers(homeDirectory, operatingSystem) {
 		if _, err := os.Stat(browser.profileDirectory); err != nil {
 			continue
 		}
-		installation := BrowserInstallation{Name: browser.name, ManifestPath: filepath.Join(browser.profileDirectory, "NativeMessagingHosts", HostName+".json")}
+		installation := browserprotocol.BrowserInstallation{Name: browser.name, ManifestPath: filepath.Join(browser.profileDirectory, "NativeMessagingHosts", browserprotocol.HostName+".json")}
 		err := manifestErr
 		if err == nil {
 			err = writeFileIfChanged(installation.ManifestPath, manifest)
@@ -78,9 +73,9 @@ func installAllHostManifest(homeDirectory, hostPath, operatingSystem string) []B
 		if err != nil {
 			installation.ErrorMessage = err.Error()
 		}
-		allInstallation = append(allInstallation, installation)
+		installations = append(installations, installation)
 	}
-	return allInstallation
+	return installations
 }
 
 func writeFileIfChanged(path string, content []byte) error {

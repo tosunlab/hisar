@@ -5,9 +5,9 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/tryhisar/hisar/core/client"
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
-	"github.com/tryhisar/hisar/core/proto"
 )
 
 var (
@@ -18,7 +18,7 @@ var (
 
 // Fetched holds a link after its one counted view, so a wrong passphrase can be retried without another view.
 type Fetched struct {
-	Link    *proto.PublicShareLink
+	Link    *apitypes.PublicShareLink
 	LinkKey []byte
 }
 
@@ -42,12 +42,12 @@ func Fetch(ctx context.Context, httpClient *http.Client, link string) (*Fetched,
 	if err != nil {
 		return nil, err
 	}
-	apiClient := client.Create(serverURL)
+	apiClient := apiclient.New(serverURL)
 	if httpClient != nil {
 		apiClient.HTTP = httpClient
 	}
 	publicLink, err := apiClient.OpenPublicShareLink(ctx, id)
-	if client.IsStatus(err, http.StatusNotFound) {
+	if apiclient.IsStatus(err, http.StatusNotFound) {
 		return nil, ErrGone
 	}
 	if err != nil {

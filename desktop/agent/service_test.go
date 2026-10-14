@@ -16,7 +16,7 @@ import (
 
 type emptyKeySource struct{}
 
-func (emptyKeySource) ListAllKey(context.Context) ([]sshagent.Key, error) { return nil, nil }
+func (emptyKeySource) ListKeys(context.Context) ([]sshagent.Key, error) { return nil, nil }
 
 // createShortTempDirectory keeps unix socket paths under the macOS limit of about 104 bytes.
 func createShortTempDirectory(t *testing.T) string {
@@ -46,10 +46,10 @@ func waitForRunning(t *testing.T, service *Service, wantRunning bool) Status {
 
 func TestServeAndStop(t *testing.T) {
 	homeDirectory := createShortTempDirectory(t)
-	approver := CreateApprover(ApproverConfig{Biometric: &fakeBiometric{isAvailable: true}})
-	service := CreateService(Config{
+	approver := NewApprover(ApproverConfig{Biometric: &fakeBiometric{isAvailable: true}})
+	service := NewService(Config{
 		HomeDirectory: homeDirectory,
-		Server:        sshagent.CreateServer(emptyKeySource{}, approver, nil),
+		Server:        sshagent.NewServer(emptyKeySource{}, approver, nil),
 		Approver:      approver,
 	})
 	socketPath := filepath.Join(homeDirectory, ".hisar", "agent.sock")
@@ -70,10 +70,10 @@ func TestServeAndStop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	allKey, err := agent.NewClient(connection).List()
+	keys, err := agent.NewClient(connection).List()
 	connection.Close()
-	if err != nil || len(allKey) != 0 {
-		t.Errorf("list: %v %v", allKey, err)
+	if err != nil || len(keys) != 0 {
+		t.Errorf("list: %v %v", keys, err)
 	}
 
 	cancel()
@@ -99,7 +99,7 @@ func TestServeReportsListenError(t *testing.T) {
 	if err := os.WriteFile(socketPath, []byte("not a socket"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	service := CreateService(Config{HomeDirectory: homeDirectory, SocketPath: socketPath, Server: sshagent.CreateServer(emptyKeySource{}, CreateApprover(ApproverConfig{}), nil)})
+	service := NewService(Config{HomeDirectory: homeDirectory, SocketPath: socketPath, Server: sshagent.NewServer(emptyKeySource{}, NewApprover(ApproverConfig{}), nil)})
 	if err := Serve(context.Background(), service); err == nil {
 		t.Fatal("serve on a regular file succeeded")
 	}
@@ -111,14 +111,14 @@ func TestServeReportsListenError(t *testing.T) {
 		t.Errorf("section = %q", status.ConfigSection)
 	}
 
-	if err := Serve(context.Background(), CreateService(Config{HomeDirectory: homeDirectory})); err == nil {
+	if err := Serve(context.Background(), NewService(Config{HomeDirectory: homeDirectory})); err == nil {
 		t.Error("serve without a server succeeded")
 	}
 }
 
 func TestServiceConfiguresSSHConfig(t *testing.T) {
 	homeDirectory := t.TempDir()
-	service := CreateService(Config{HomeDirectory: homeDirectory, Now: func() time.Time { return testTime }})
+	service := NewService(Config{HomeDirectory: homeDirectory, Now: func() time.Time { return testTime }})
 	status, err := service.ConfigureSSHConfig()
 	if err != nil || !status.IsSSHConfigured || status.BackupPath != "" {
 		t.Fatalf("configure: %+v %v", status, err)
@@ -134,21 +134,21 @@ func TestServiceConfiguresSSHConfig(t *testing.T) {
 
 func TestServiceRespondsToApproval(t *testing.T) {
 	emitter := createFakeEmitter()
-	approver := CreateApprover(ApproverConfig{Emit: emitter.emit})
-	service := CreateService(Config{HomeDirectory: t.TempDir(), Approver: approver})
+	approver := NewApprover(ApproverConfig{Emit: emitter.emit})
+	service := NewService(Config{HomeDirectory: t.TempDir(), Approver: approver})
 	resultChannel := startApproval(approver, context.Background(), createTestRequest())
 	approvalEvent := waitForApprovalEvent(t, emitter)
-	if allPending := service.ListAllPendingSSHApproval(); len(allPending) != 1 {
-		t.Errorf("pending = %+v", allPending)
+	if pendingRequests := service.ListPendingSSHApprovals(); len(pendingRequests) != 1 {
+		t.Errorf("pending = %+v", pendingRequests)
 	}
 	service.RespondSSHApproval("unknown", false, false)
 	service.RespondSSHApproval(approvalEvent.RequestID, true, true)
 	if result := waitForResult(t, resultChannel); !result.result.IsAllowed || !result.result.IsRemembered {
 		t.Errorf("result = %+v", result)
 	}
-	withoutApprover := CreateService(Config{HomeDirectory: t.TempDir()})
+	withoutApprover := NewService(Config{HomeDirectory: t.TempDir()})
 	withoutApprover.RespondSSHApproval("any", true, false)
-	if allPending := withoutApprover.ListAllPendingSSHApproval(); len(allPending) != 0 {
-		t.Errorf("pending without approver = %+v", allPending)
+	if pendingRequests := withoutApprover.ListPendingSSHApprovals(); len(pendingRequests) != 0 {
+		t.Errorf("pending without approver = %+v", pendingRequests)
 	}
 }

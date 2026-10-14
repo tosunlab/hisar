@@ -48,19 +48,19 @@ func TestPrintImportPreview(t *testing.T) {
 }
 
 func TestSelectAllQueuedItem(t *testing.T) {
-	allItem := []item.Item{{Overview: item.Overview{Title: "A"}}, {Overview: item.Overview{Title: "B"}}, {Overview: item.Overview{Title: "C"}}}
-	getAllTitle := func(allQueuedItem []item.Item) []string {
-		allTitle := []string{}
-		for _, vaultItem := range allQueuedItem {
-			allTitle = append(allTitle, vaultItem.Overview.Title)
+	items := []item.Item{{Overview: item.Overview{Title: "A"}}, {Overview: item.Overview{Title: "B"}}, {Overview: item.Overview{Title: "C"}}}
+	getTitles := func(queuedItems []item.Item) []string {
+		titles := []string{}
+		for _, vaultItem := range queuedItems {
+			titles = append(titles, vaultItem.Overview.Title)
 		}
-		return allTitle
+		return titles
 	}
-	if allTitle := getAllTitle(selectAllQueuedItem(allItem, []int{0, 2}, true)); !reflect.DeepEqual(allTitle, []string{"B"}) {
-		t.Errorf("skipping duplicates: %v", allTitle)
+	if titles := getTitles(selectQueuedItems(items, []int{0, 2}, true)); !reflect.DeepEqual(titles, []string{"B"}) {
+		t.Errorf("skipping duplicates: %v", titles)
 	}
-	if allTitle := getAllTitle(selectAllQueuedItem(allItem, []int{0, 2}, false)); !reflect.DeepEqual(allTitle, []string{"A", "B", "C"}) {
-		t.Errorf("including duplicates: %v", allTitle)
+	if titles := getTitles(selectQueuedItems(items, []int{0, 2}, false)); !reflect.DeepEqual(titles, []string{"A", "B", "C"}) {
+		t.Errorf("including duplicates: %v", titles)
 	}
 }
 
@@ -71,9 +71,9 @@ func TestRunImportChecksTheFileBeforeUnlocking(t *testing.T) {
 	os.WriteFile(invalidPath, []byte("foo,bar\nHunter2-SecretValue,1\n"), 0o600)
 	validPath := filepath.Join(directory, "export.csv")
 	os.WriteFile(validPath, []byte(testImportCSV), 0o600)
-	allCase := []struct {
+	cases := []struct {
 		name    string
-		allArg  []string
+		args    []string
 		wantErr string
 	}{
 		{"no file", []string{}, "usage"},
@@ -85,10 +85,10 @@ func TestRunImportChecksTheFileBeforeUnlocking(t *testing.T) {
 		{"wrong explicit format", []string{validPath, "-format", "bitwarden-json"}, "Bitwarden"},
 		{"valid file needs a login", []string{validPath, "-y"}, "not logged in"},
 	}
-	for _, testCase := range allCase {
+	for _, testCase := range cases {
 		flags := flag.NewFlagSet("import", flag.ContinueOnError)
 		flags.SetOutput(&bytes.Buffer{})
-		err := runImport(context.Background(), flags, testCase.allArg)
+		err := runImport(context.Background(), &standaloneBackend{}, flags, testCase.args)
 		if err == nil || !strings.Contains(err.Error(), testCase.wantErr) {
 			t.Errorf("%s: err = %v, want %q", testCase.name, err, testCase.wantErr)
 		}
@@ -96,7 +96,7 @@ func TestRunImportChecksTheFileBeforeUnlocking(t *testing.T) {
 			t.Errorf("%s: the error shows a value from the file: %v", testCase.name, err)
 		}
 	}
-	if err := runImport(context.Background(), flag.NewFlagSet("import", flag.ContinueOnError), []string{}); !errors.Is(err, errUsage) {
+	if err := runImport(context.Background(), &standaloneBackend{}, flag.NewFlagSet("import", flag.ContinueOnError), []string{}); !errors.Is(err, errUsage) {
 		t.Errorf("usage: %v", err)
 	}
 }
@@ -109,5 +109,25 @@ func TestOfferToDeleteImportFileWhenConfirmed(t *testing.T) {
 	}
 	if _, err := os.Stat(path); err != nil {
 		t.Errorf("-y deleted the export without asking: %v", err)
+	}
+}
+
+func TestDotenvFileNames(t *testing.T) {
+	for path, want := range map[string]bool{
+		".env": true, "app/.env": true, ".env.production": true, "staging.env": true,
+		"export.csv": false, "environment.json": false, ".envrc": false,
+	} {
+		if isDotenvFile(path, "") != want {
+			t.Errorf("%s: %v", path, !want)
+		}
+	}
+	if !isDotenvFile("settings.txt", dotenvFormat) || isDotenvFile(".env", "csv") {
+		t.Error("an explicit format did not win")
+	}
+	if title := buildDefaultItemTitle("/work/shop/.env.production"); title != "shop production" {
+		t.Errorf("default item name %q", title)
+	}
+	if title := buildDefaultItemTitle("/work/shop/.env"); title != "shop" {
+		t.Errorf("default item name %q", title)
 	}
 }

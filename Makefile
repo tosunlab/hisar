@@ -14,19 +14,21 @@ build-cli-all:
 		GOOS=$${t%/*} GOARCH=$${t#*/} CGO_ENABLED=0 go build -o /dev/null ./cli/cmd/hisar || exit 1; \
 	done
 
-# -p 1: database tests in different packages share one schema.
-# desktop: the vault, biometric and agent packages; the Wails main package needs cgo and the built frontend.
 # Release archives and SHA256SUMS of the standalone CLI in bin/cli-release, as the cli-<version> release workflow builds them.
 package-cli-release:
 	./scripts/package-cli-release.sh $(VERSION) bin/cli-release
 
+# -p 1: database tests in different packages share one schema.
+# desktop: every package but the Wails main package, which needs cgo and the built frontend.
+DESKTOP_PACKAGES = $(shell cd desktop && go list -e ./... | grep -v '^github.com/tryhisar/hisar/desktop$$')
+
 test:
 	@for m in $(MODULES); do (cd $$m && go test -p 1 -count=1 $(TESTFLAGS) ./...) || exit 1; done
-	cd desktop && go test -count=1 $(TESTFLAGS) ./vault/ ./biometric/ ./background/ ./agent/ ./appinfo/ ./browser/ ./commandline/ ./passkey/ ./updater/ ./windowplacement/ ./systemidle/ ./cmd/...
+	cd desktop && go test -count=1 $(TESTFLAGS) $(DESKTOP_PACKAGES)
 
 vet:
 	@for m in $(MODULES); do (cd $$m && go vet ./...) || exit 1; done
-	cd desktop && go vet ./vault/ ./biometric/ ./background/ ./agent/ ./appinfo/ ./browser/ ./commandline/ ./passkey/ ./updater/ ./windowplacement/ ./systemidle/ ./cmd/...
+	cd desktop && go vet $(DESKTOP_PACKAGES)
 
 test-end-to-end: build
 	go build -o bin/hisar-smtp-sink ./server/cmd/hisar-smtp-sink

@@ -13,13 +13,15 @@ import (
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/time/rate"
 
-	"github.com/tryhisar/hisar/core/client"
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/pake"
-	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/core/session"
 	"github.com/tryhisar/hisar/server/internal/mail/mailtest"
+	"github.com/tryhisar/hisar/server/internal/ratelimit"
+	"github.com/tryhisar/hisar/server/internal/service"
 )
 
 type lifecycleAccount struct {
@@ -30,9 +32,9 @@ type lifecycleAccount struct {
 
 func signUpLifecycleAccount(t *testing.T, server *Server, baseURL, email string) *lifecycleAccount {
 	t.Helper()
-	invite := requireValue[*proto.InviteResponse](t)(server.CreateInvite(context.Background(), email, proto.RoleMember, nil))
+	invite := requireValue[*apitypes.InviteResponse](t)(server.CreateInvite(context.Background(), email, apitypes.RoleMember, nil))
 	password := []byte(email + " password")
-	signedUp, secretKey, err := session.SignUp(context.Background(), client.Create(baseURL), invite.Token, email, strings.Split(email, "@")[0], password, testDevice)
+	signedUp, secretKey, err := session.SignUp(context.Background(), apiclient.New(baseURL), invite.Token, email, strings.Split(email, "@")[0], password, testDevice)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,33 +43,33 @@ func signUpLifecycleAccount(t *testing.T, server *Server, baseURL, email string)
 
 func setupLifecycleServer(t *testing.T) (string, *Server, string, *mailtest.Recorder) {
 	baseURL, server, databaseURL := setupServer(t)
-	server.reauthenticationLimiter = createIPLimiter(rate.Inf, 1)
+	server.service.Limiters.Reauthentication = ratelimit.New(rate.Inf, 1)
 	return baseURL, server, databaseURL, attachMailRecorder(server)
 }
 
 func findLatestEmail(t *testing.T, server *Server, recorder *mailtest.Recorder, recipient, subject string) string {
 	t.Helper()
 	server.WaitForBackgroundWork()
-	allMessage := recorder.ListAllMessage()
-	for index := len(allMessage) - 1; index >= 0; index-- {
-		if allMessage[index].To == recipient && allMessage[index].Subject == subject {
-			return allMessage[index].Body
+	messages := recorder.ListMessages()
+	for index := len(messages) - 1; index >= 0; index-- {
+		if messages[index].To == recipient && messages[index].Subject == subject {
+			return messages[index].Body
 		}
 	}
 	t.Fatalf("no %q email to %s", subject, recipient)
 	return ""
 }
 
-func readAllItemTitle(t *testing.T, signedIn *session.Session, vaultName string) []string {
+func readItemTitles(t *testing.T, signedIn *session.Session, vaultName string) []string {
 	t.Helper()
 	ctx := context.Background()
 	vault := requireValue[*session.Vault](t)(signedIn.FindVault(ctx, vaultName))
-	allTitle := []string{}
-	for _, vaultItem := range requireValue[[]item.Item](t)(signedIn.ListAllItem(ctx, vault)) {
-		allTitle = append(allTitle, vaultItem.Overview.Title+"="+vaultItem.Details.Password)
+	titles := []string{}
+	for _, vaultItem := range requireValue[[]item.Item](t)(signedIn.ListItems(ctx, vault)) {
+		titles = append(titles, vaultItem.Overview.Title+"="+vaultItem.Details.Password)
 	}
-	slices.Sort(allTitle)
-	return allTitle
+	slices.Sort(titles)
+	return titles
 }
 
 func TestChangeMasterPassword(t *testing.T) {
@@ -77,10 +79,10 @@ func TestChangeMasterPassword(t *testing.T) {
 	bob := signUpLifecycleAccount(t, server, baseURL, "bob@example.com")
 	personal := requireValue[*session.Vault](t)(alice.session.FindVault(ctx, "Personal"))
 	requireValue[*item.Item](t)(alice.session.SaveItem(ctx, personal, &item.Item{Overview: item.Overview{Title: "GitHub"}, Details: item.Details{Password: "gh-pass"}}))
-	team := requireValue[*session.Vault](t)(alice.session.CreateVault(ctx, "Team", proto.VaultShared))
+	team := requireValue[*session.Vault](t)(alice.session.CreateVault(ctx, "Team", apitypes.VaultShared))
 	requireValue[*item.Item](t)(alice.session.SaveItem(ctx, team, &item.Item{Overview: item.Overview{Title: "AWS"}, Details: item.Details{Password: "aws-pass"}}))
-	shareThroughInvitation(t, alice.session, bob.session, team, proto.VaultEditor)
-	laptop := requireValue[*session.Session](t)(session.LogIn(ctx, client.Create(baseURL), "alice@example.com", alice.password, alice.secretKey, proto.DeviceInfo{Name: "laptop", Platform: "go"}))
+	shareThroughInvitation(t, alice.session, bob.session, team, apitypes.VaultEditor)
+	laptop := requireValue[*session.Session](t)(session.LogIn(ctx, apiclient.New(baseURL), "alice@example.com", alice.password, alice.secretKey, apitypes.DeviceInfo{Name: "laptop", Platform: "go"}))
 	laptopEvents := openEventStream(t, laptop.Client)
 	waitForSubscriber(t, server, alice.session.AccountID, 1)
 	newPassword := []byte("a brand new master password")
@@ -109,34 +111,34 @@ func TestChangeMasterPassword(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Error("the other device's event stream stayed open")
 	}
-	if _, err := laptop.Client.ListAllVault(ctx); !client.IsStatus(err, http.StatusUnauthorized) {
+	if _, err := laptop.Client.ListVaults(ctx); !apiclient.IsStatus(err, http.StatusUnauthorized) {
 		t.Errorf("other device after the change: %v", err)
 	}
-	if allDevice := requireValue[[]proto.Device](t)(alice.session.Client.ListAllDevice(ctx)); len(allDevice) != 1 || !allDevice[0].Current {
-		t.Errorf("devices after the change: %+v", allDevice)
+	if devices := requireValue[[]apitypes.Device](t)(alice.session.Client.ListDevices(ctx)); len(devices) != 1 || !devices[0].Current {
+		t.Errorf("devices after the change: %+v", devices)
 	}
-	if _, err := session.LogIn(ctx, client.Create(baseURL), "alice@example.com", alice.password, alice.secretKey, testDevice); !errors.Is(err, session.ErrBadCredentials) {
+	if _, err := session.LogIn(ctx, apiclient.New(baseURL), "alice@example.com", alice.password, alice.secretKey, testDevice); !errors.Is(err, session.ErrBadCredentials) {
 		t.Errorf("old password still signs in: %v", err)
 	}
 	if _, err := session.Unlock(ctx, alice.session.Client, nil, alice.password, alice.secretKey); !errors.Is(err, session.ErrBadCredentials) {
 		t.Errorf("old password still unlocks: %v", err)
 	}
 	unlocked := requireValue[*session.Session](t)(session.UnlockWithAccountUnlockKey(ctx, alice.session.Client, nil, change.AccountUnlockKey, alice.session.AccountID))
-	if !bytes.Equal(unlocked.Keyset.GetAllPublicKey(unlocked.AccountID).Sign, alice.session.Keyset.GetAllPublicKey(alice.session.AccountID).Sign) {
+	if !bytes.Equal(unlocked.Keyset.GetPublicKeys(unlocked.AccountID).Sign, alice.session.Keyset.GetPublicKeys(alice.session.AccountID).Sign) {
 		t.Error("the keyset changed")
 	}
-	signedIn := requireValue[*session.Session](t)(session.LogIn(ctx, client.Create(baseURL), "alice@example.com", newPassword, alice.secretKey, testDevice))
-	if allTitle := readAllItemTitle(t, signedIn, "Personal"); !slices.Equal(allTitle, []string{"GitHub=gh-pass"}) {
-		t.Errorf("personal items after the change: %v", allTitle)
+	signedIn := requireValue[*session.Session](t)(session.LogIn(ctx, apiclient.New(baseURL), "alice@example.com", newPassword, alice.secretKey, testDevice))
+	if titles := readItemTitles(t, signedIn, "Personal"); !slices.Equal(titles, []string{"GitHub=gh-pass"}) {
+		t.Errorf("personal items after the change: %v", titles)
 	}
-	if allTitle := readAllItemTitle(t, signedIn, "Team"); !slices.Equal(allTitle, []string{"AWS=aws-pass"}) {
-		t.Errorf("shared items after the change: %v", allTitle)
+	if titles := readItemTitles(t, signedIn, "Team"); !slices.Equal(titles, []string{"AWS=aws-pass"}) {
+		t.Errorf("shared items after the change: %v", titles)
 	}
-	if allTitle := readAllItemTitle(t, bob.session, "Team"); !slices.Equal(allTitle, []string{"AWS=aws-pass"}) {
-		t.Errorf("the other member's items after the change: %v", allTitle)
+	if titles := readItemTitles(t, bob.session, "Team"); !slices.Equal(titles, []string{"AWS=aws-pass"}) {
+		t.Errorf("the other member's items after the change: %v", titles)
 	}
-	aliceMember := requireValue[*proto.Member](t)(bob.session.GetVerifiedMember(ctx, "alice@example.com"))
-	if !bytes.Equal(aliceMember.PublicKeys.Sign, alice.session.Keyset.GetAllPublicKey(alice.session.AccountID).Sign) {
+	aliceMember := requireValue[*apitypes.Member](t)(bob.session.GetVerifiedMember(ctx, "alice@example.com"))
+	if !bytes.Equal(aliceMember.PublicKeys.Sign, alice.session.Keyset.GetPublicKeys(alice.session.AccountID).Sign) {
 		t.Error("alice's public keys changed, which would break pinned keys")
 	}
 
@@ -151,9 +153,9 @@ func TestReplaceSecretKey(t *testing.T) {
 	ctx := context.Background()
 	alice := signUpLifecycleAccount(t, server, baseURL, "alice@example.com")
 	bob := signUpLifecycleAccount(t, server, baseURL, "bob@example.com")
-	team := requireValue[*session.Vault](t)(bob.session.CreateVault(ctx, "Team", proto.VaultShared))
+	team := requireValue[*session.Vault](t)(bob.session.CreateVault(ctx, "Team", apitypes.VaultShared))
 	requireValue[*item.Item](t)(bob.session.SaveItem(ctx, team, &item.Item{Overview: item.Overview{Title: "Deploy"}, Details: item.Details{Password: "deploy-pass"}}))
-	shareThroughInvitation(t, bob.session, alice.session, team, proto.VaultReader)
+	shareThroughInvitation(t, bob.session, alice.session, team, apitypes.VaultReader)
 
 	if _, err := alice.session.ReplaceSecretKey(ctx, []byte("wrong"), alice.secretKey); !errors.Is(err, session.ErrBadCredentials) {
 		t.Errorf("wrong password: %v", err)
@@ -166,15 +168,15 @@ func TestReplaceSecretKey(t *testing.T) {
 	if change.SecretKey.Encode() == alice.secretKey.Encode() || change.SecretKey.AccountID != alice.secretKey.AccountID {
 		t.Fatalf("new Secret Key: %s", change.SecretKey.Encode())
 	}
-	if _, err := session.LogIn(ctx, client.Create(baseURL), "alice@example.com", alice.password, alice.secretKey, testDevice); !errors.Is(err, session.ErrBadCredentials) {
+	if _, err := session.LogIn(ctx, apiclient.New(baseURL), "alice@example.com", alice.password, alice.secretKey, testDevice); !errors.Is(err, session.ErrBadCredentials) {
 		t.Errorf("old Emergency Kit still signs in: %v", err)
 	}
-	signedIn := requireValue[*session.Session](t)(session.LogIn(ctx, client.Create(baseURL), "alice@example.com", alice.password, change.SecretKey, testDevice))
-	if allTitle := readAllItemTitle(t, signedIn, "Team"); !slices.Equal(allTitle, []string{"Deploy=deploy-pass"}) {
-		t.Errorf("shared items after replacing the Secret Key: %v", allTitle)
+	signedIn := requireValue[*session.Session](t)(session.LogIn(ctx, apiclient.New(baseURL), "alice@example.com", alice.password, change.SecretKey, testDevice))
+	if titles := readItemTitles(t, signedIn, "Team"); !slices.Equal(titles, []string{"Deploy=deploy-pass"}) {
+		t.Errorf("shared items after replacing the Secret Key: %v", titles)
 	}
-	if allTitle := readAllItemTitle(t, signedIn, "Personal"); len(allTitle) != 0 {
-		t.Errorf("personal items: %v", allTitle)
+	if titles := readItemTitles(t, signedIn, "Personal"); len(titles) != 0 {
+		t.Errorf("personal items: %v", titles)
 	}
 	if _, err := alice.session.ReplaceSecretKey(ctx, alice.password, alice.secretKey); !errors.Is(err, session.ErrBadCredentials) {
 		t.Errorf("replacing again with the old Secret Key: %v", err)
@@ -185,13 +187,13 @@ func TestReplaceSecretKey(t *testing.T) {
 	}
 }
 
-func startReauthentication(t *testing.T, apiClient *client.Client, password []byte, secretKey crypt.SecretKey) (*proto.ReauthenticateResponse, []byte) {
+func startReauthentication(t *testing.T, apiClient *apiclient.Client, password []byte, secretKey crypt.SecretKey) (*apitypes.ReauthenticateResponse, []byte) {
 	t.Helper()
 	ctx := context.Background()
-	account := requireValue[*proto.Account](t)(apiClient.GetAccount(ctx))
-	derivedKeys := requireValue[*crypt.DerivedKeys](t)(crypt.DeriveAllKey(password, account.Salt, account.Argon2, secretKey))
+	account := requireValue[*apitypes.Account](t)(apiClient.GetAccount(ctx))
+	derivedKeys := requireValue[*crypt.DerivedKeys](t)(crypt.DeriveKeys(password, account.Salt, account.Argon2, secretKey))
 	defer derivedKeys.Wipe()
-	opaqueClient, err := pake.CreateConfig().Client()
+	opaqueClient, err := pake.NewConfig().Client()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,12 +201,12 @@ func startReauthentication(t *testing.T, apiClient *client.Client, password []by
 	if err != nil {
 		t.Fatal(err)
 	}
-	response := requireValue[*proto.ReauthenticateResponse](t)(apiClient.Reauthenticate(ctx, &proto.ReauthenticateRequest{KE1: keyExchange1.Serialize()}))
+	response := requireValue[*apitypes.ReauthenticateResponse](t)(apiClient.Reauthenticate(ctx, &apitypes.ReauthenticateRequest{KE1: keyExchange1.Serialize()}))
 	keyExchange2, err := opaqueClient.Deserialize.KE2(response.KE2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	keyExchange3, _, _, err := opaqueClient.GenerateKE3(keyExchange2, []byte(account.AccountID), pake.ServerIdentity)
+	keyExchange3, _, _, err := opaqueClient.GenerateKE3(keyExchange2, []byte(account.AccountID), pake.ServerIdentity())
 	if err != nil {
 		return response, []byte("not a proof")
 	}
@@ -215,28 +217,28 @@ func TestReauthenticationIsBoundToItsSession(t *testing.T) {
 	baseURL, server, databaseURL, _ := setupLifecycleServer(t)
 	ctx := context.Background()
 	alice := signUpLifecycleAccount(t, server, baseURL, "alice@example.com")
-	laptop := requireValue[*session.Session](t)(session.LogIn(ctx, client.Create(baseURL), "alice@example.com", alice.password, alice.secretKey, testDevice))
+	laptop := requireValue[*session.Session](t)(session.LogIn(ctx, apiclient.New(baseURL), "alice@example.com", alice.password, alice.secretKey, testDevice))
 
 	reauthentication, keyExchange3 := startReauthentication(t, alice.session.Client, alice.password, alice.secretKey)
-	request := &proto.DeleteAccountRequest{ReauthenticationID: reauthentication.ReauthenticationID, KE3: keyExchange3, Email: "alice@example.com"}
-	if err := laptop.Client.DeleteAccount(ctx, request); !client.IsStatus(err, http.StatusForbidden) {
+	request := &apitypes.DeleteAccountRequest{ReauthenticationID: reauthentication.ReauthenticationID, KE3: keyExchange3, Email: "alice@example.com"}
+	if err := laptop.Client.DeleteAccount(ctx, request); !apiclient.IsStatus(err, http.StatusForbidden) {
 		t.Errorf("proof used by another session: %v", err)
 	}
 
 	reauthentication, keyExchange3 = startReauthentication(t, alice.session.Client, alice.password, alice.secretKey)
-	if _, err := alice.session.Client.FinishLogin(ctx, &proto.LoginFinishRequest{LoginID: reauthentication.ReauthenticationID, KE3: keyExchange3, Device: testDevice}); !client.IsStatus(err, http.StatusUnauthorized) {
+	if _, err := alice.session.Client.FinishLogin(ctx, &apitypes.LoginFinishRequest{LoginID: reauthentication.ReauthenticationID, KE3: keyExchange3, Device: testDevice}); !apiclient.IsStatus(err, http.StatusUnauthorized) {
 		t.Errorf("a re-authentication created a session: %v", err)
 	}
 
 	reauthentication, keyExchange3 = startReauthentication(t, alice.session.Client, []byte("wrong password"), alice.secretKey)
-	request = &proto.DeleteAccountRequest{ReauthenticationID: reauthentication.ReauthenticationID, KE3: keyExchange3, Email: "alice@example.com"}
-	if err := alice.session.Client.DeleteAccount(ctx, request); !client.IsStatus(err, http.StatusForbidden) {
+	request = &apitypes.DeleteAccountRequest{ReauthenticationID: reauthentication.ReauthenticationID, KE3: keyExchange3, Email: "alice@example.com"}
+	if err := alice.session.Client.DeleteAccount(ctx, request); !apiclient.IsStatus(err, http.StatusForbidden) {
 		t.Errorf("a wrong proof: %v", err)
 	}
 
 	reauthentication, keyExchange3 = startReauthentication(t, alice.session.Client, alice.password, alice.secretKey)
-	request = &proto.DeleteAccountRequest{ReauthenticationID: reauthentication.ReauthenticationID, KE3: keyExchange3, Email: "someone@example.com"}
-	if err := alice.session.Client.DeleteAccount(ctx, request); !client.IsStatus(err, http.StatusBadRequest) {
+	request = &apitypes.DeleteAccountRequest{ReauthenticationID: reauthentication.ReauthenticationID, KE3: keyExchange3, Email: "someone@example.com"}
+	if err := alice.session.Client.DeleteAccount(ctx, request); !apiclient.IsStatus(err, http.StatusBadRequest) {
 		t.Errorf("another email: %v", err)
 	}
 	if _, err := alice.session.Client.GetAccount(ctx); err != nil {
@@ -250,12 +252,12 @@ func TestReauthenticationIsBoundToItsSession(t *testing.T) {
 		t.Errorf("audited failures: %d %v", failureCount, err)
 	}
 
-	server.reauthenticationLimiter = createReauthenticationLimiter()
+	server.service.Limiters.Reauthentication = service.NewReauthenticationLimiter()
 	var lastErr error
 	for range 6 {
-		_, lastErr = alice.session.Client.Reauthenticate(ctx, &proto.ReauthenticateRequest{KE1: []byte{1}})
+		_, lastErr = alice.session.Client.Reauthenticate(ctx, &apitypes.ReauthenticateRequest{KE1: []byte{1}})
 	}
-	if !client.IsStatus(lastErr, http.StatusTooManyRequests) {
+	if !apiclient.IsStatus(lastErr, http.StatusTooManyRequests) {
 		t.Errorf("re-authentication is not rate limited: %v", lastErr)
 	}
 }
@@ -267,36 +269,36 @@ func TestDeleteAccount(t *testing.T) {
 	bob := signUpLifecycleAccount(t, server, baseURL, "bob@example.com")
 	carol := signUpLifecycleAccount(t, server, baseURL, "carol@example.com")
 
-	family := requireValue[*session.Vault](t)(alice.session.CreateVault(ctx, "Family", proto.VaultShared))
+	family := requireValue[*session.Vault](t)(alice.session.CreateVault(ctx, "Family", apitypes.VaultShared))
 	requireValue[*item.Item](t)(alice.session.SaveItem(ctx, family, &item.Item{Overview: item.Overview{Title: "Wi-Fi"}, Details: item.Details{Password: "wifi"}}))
-	shareThroughInvitation(t, alice.session, bob.session, family, proto.VaultEditor)
-	shareThroughInvitation(t, alice.session, carol.session, family, proto.VaultReader)
-	team := requireValue[*session.Vault](t)(alice.session.CreateVault(ctx, "Team", proto.VaultShared))
+	shareThroughInvitation(t, alice.session, bob.session, family, apitypes.VaultEditor)
+	shareThroughInvitation(t, alice.session, carol.session, family, apitypes.VaultReader)
+	team := requireValue[*session.Vault](t)(alice.session.CreateVault(ctx, "Team", apitypes.VaultShared))
 	requireValue[*item.Item](t)(alice.session.SaveItem(ctx, team, &item.Item{Overview: item.Overview{Title: "CI"}, Details: item.Details{Password: "ci-pass"}}))
-	shareThroughInvitation(t, alice.session, carol.session, team, proto.VaultOwner)
-	bobVault := requireValue[*session.Vault](t)(bob.session.CreateVault(ctx, "Bob's", proto.VaultShared))
-	shareThroughInvitation(t, bob.session, alice.session, bobVault, proto.VaultEditor)
+	shareThroughInvitation(t, alice.session, carol.session, team, apitypes.VaultOwner)
+	bobVault := requireValue[*session.Vault](t)(bob.session.CreateVault(ctx, "Bob's", apitypes.VaultShared))
+	shareThroughInvitation(t, bob.session, alice.session, bobVault, apitypes.VaultEditor)
 	requireValue[*session.ShareLink](t)(alice.session.ShareText(ctx, "Note", "text", session.ShareLinkOptions{Expiry: time.Hour, MaxViews: 1}))
-	if err := alice.session.InviteToVault(ctx, family, "dave@example.com", proto.VaultReader); err != nil {
+	if err := alice.session.InviteToVault(ctx, family, "dave@example.com", apitypes.VaultReader); err != nil {
 		t.Fatal(err)
 	}
 
 	preview := requireValue[*session.AccountDeletionPreview](t)(alice.session.PreviewAccountDeletion(ctx))
-	allOwnedName := []string{}
-	for _, ownedVault := range preview.AllOwnedVault {
-		allOwnedName = append(allOwnedName, ownedVault.Name)
+	ownedNames := []string{}
+	for _, ownedVault := range preview.OwnedVaults {
+		ownedNames = append(ownedNames, ownedVault.Name)
 		if ownedVault.Name == "Family" && ownedVault.OtherMemberCount != 2 {
 			t.Errorf("Family members losing access: %d", ownedVault.OtherMemberCount)
 		}
 	}
-	slices.Sort(allOwnedName)
-	allMemberName := []string{}
-	for _, memberVault := range preview.AllMemberVault {
-		allMemberName = append(allMemberName, memberVault.Name+":"+memberVault.Role)
+	slices.Sort(ownedNames)
+	memberNames := []string{}
+	for _, memberVault := range preview.MemberVaults {
+		memberNames = append(memberNames, memberVault.Name+":"+memberVault.Role)
 	}
-	slices.Sort(allMemberName)
-	if !slices.Equal(allOwnedName, []string{"Family", "Personal"}) || !slices.Equal(allMemberName, []string{"Bob's:editor", "Team:owner"}) {
-		t.Errorf("preview vaults: owned %v, member %v", allOwnedName, allMemberName)
+	slices.Sort(memberNames)
+	if !slices.Equal(ownedNames, []string{"Family", "Personal"}) || !slices.Equal(memberNames, []string{"Bob's:editor", "Team:owner"}) {
+		t.Errorf("preview vaults: owned %v, member %v", ownedNames, memberNames)
 	}
 	if preview.ShareLinkCount != 1 || preview.SentInvitationCount != 1 || preview.DeviceCount != 1 {
 		t.Errorf("preview counts: %+v", preview)
@@ -319,31 +321,31 @@ func TestDeleteAccount(t *testing.T) {
 	if err := alice.session.DeleteAccount(ctx, alice.password, alice.secretKey, " Alice@Example.com "); err != nil {
 		t.Fatal(err)
 	}
-	bobEvents.waitForEvent(t, proto.EventVaultsChanged)
-	carolEvents.waitForEvent(t, proto.EventVaultsChanged)
+	bobEvents.waitForEvent(t, apitypes.EventVaultsChanged)
+	carolEvents.waitForEvent(t, apitypes.EventVaultsChanged)
 	select {
 	case <-aliceEvents.finished:
 	case <-time.After(5 * time.Second):
 		t.Error("the deleted account's event stream stayed open")
 	}
 
-	if _, err := alice.session.Client.GetAccount(ctx); !client.IsStatus(err, http.StatusUnauthorized) {
+	if _, err := alice.session.Client.GetAccount(ctx); !apiclient.IsStatus(err, http.StatusUnauthorized) {
 		t.Errorf("deleted account's session: %v", err)
 	}
-	if _, err := session.LogIn(ctx, client.Create(baseURL), "alice@example.com", alice.password, alice.secretKey, testDevice); !errors.Is(err, session.ErrBadCredentials) {
+	if _, err := session.LogIn(ctx, apiclient.New(baseURL), "alice@example.com", alice.password, alice.secretKey, testDevice); !errors.Is(err, session.ErrBadCredentials) {
 		t.Errorf("deleted account signs in: %v", err)
 	}
 	if _, err := bob.session.FindVault(ctx, "Family"); !errors.Is(err, session.ErrNotFound) {
 		t.Errorf("bob still has the deleted vault: %v", err)
 	}
-	if allTitle := readAllItemTitle(t, carol.session, "Team"); !slices.Equal(allTitle, []string{"CI=ci-pass"}) {
-		t.Errorf("the co-owner's items: %v", allTitle)
+	if titles := readItemTitles(t, carol.session, "Team"); !slices.Equal(titles, []string{"CI=ci-pass"}) {
+		t.Errorf("the co-owner's items: %v", titles)
 	}
-	if allMember := requireValue[[]proto.VaultMember](t)(bob.session.Client.ListAllVaultMember(ctx, bobVault.ID)); len(allMember) != 1 {
-		t.Errorf("bob's vault members: %+v", allMember)
+	if members := requireValue[[]apitypes.VaultMember](t)(bob.session.Client.ListVaultMembers(ctx, bobVault.ID)); len(members) != 1 {
+		t.Errorf("bob's vault members: %+v", members)
 	}
-	invitationList := requireValue[*proto.ShareInvitationList](t)(bob.session.Client.ListAllShareInvitation(ctx))
-	if len(invitationList.AllSent) != 0 {
+	invitationList := requireValue[*apitypes.ShareInvitationList](t)(bob.session.Client.ListShareInvitations(ctx))
+	if len(invitationList.Sent) != 0 {
 		t.Errorf("invitations bob sees: %+v", invitationList)
 	}
 

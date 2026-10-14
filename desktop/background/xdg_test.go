@@ -10,17 +10,17 @@ import (
 func TestXDGAutostartUsesConfigHome(t *testing.T) {
 	homeDirectory := t.TempDir()
 	t.Setenv("XDG_CONFIG_HOME", "")
-	autostart := CreateXDGAutostart(homeDirectory, "/usr/local/bin/Hisar")
+	autostart := NewXDGAutostart(homeDirectory, "/usr/local/bin/Hisar")
 	if want := filepath.Join(homeDirectory, ".config", "autostart", "com.tryhisar.hisar.desktop"); autostart.GetPath() != want {
 		t.Errorf("path %q, want %q", autostart.GetPath(), want)
 	}
 	configHome := filepath.Join(t.TempDir(), "config")
 	t.Setenv("XDG_CONFIG_HOME", configHome)
-	if autostart := CreateXDGAutostart(homeDirectory, "/usr/local/bin/Hisar"); !strings.HasPrefix(autostart.GetPath(), configHome+string(filepath.Separator)) {
+	if autostart := NewXDGAutostart(homeDirectory, "/usr/local/bin/Hisar"); !strings.HasPrefix(autostart.GetPath(), configHome+string(filepath.Separator)) {
 		t.Errorf("XDG_CONFIG_HOME ignored: %q", autostart.GetPath())
 	}
 	t.Setenv("XDG_CONFIG_HOME", "relative/config")
-	if autostart := CreateXDGAutostart(homeDirectory, "/usr/local/bin/Hisar"); !strings.HasPrefix(autostart.GetPath(), homeDirectory) {
+	if autostart := NewXDGAutostart(homeDirectory, "/usr/local/bin/Hisar"); !strings.HasPrefix(autostart.GetPath(), homeDirectory) {
 		t.Errorf("relative XDG_CONFIG_HOME used: %q", autostart.GetPath())
 	}
 }
@@ -28,7 +28,7 @@ func TestXDGAutostartUsesConfigHome(t *testing.T) {
 func TestXDGAutostartRegistersAndUnregisters(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", "")
 	homeDirectory := t.TempDir()
-	autostart := CreateXDGAutostart(homeDirectory, "/opt/Hisar Desktop/Hisar")
+	autostart := NewXDGAutostart(homeDirectory, "/opt/Hisar Desktop/Hisar")
 	if state, err := autostart.GetState(); err != nil || state != LoginItemNotRegistered {
 		t.Fatalf("before: %s %v", state, err)
 	}
@@ -67,7 +67,7 @@ func TestXDGAutostartRegistersAndUnregisters(t *testing.T) {
 
 func TestXDGAutostartHonoursDisabledEntry(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", "")
-	autostart := CreateXDGAutostart(t.TempDir(), "/usr/bin/Hisar")
+	autostart := NewXDGAutostart(t.TempDir(), "/usr/bin/Hisar")
 	for _, line := range []string{"Hidden=true", "X-GNOME-Autostart-enabled=false", "Hidden = True"} {
 		os.MkdirAll(filepath.Dir(autostart.GetPath()), 0o755)
 		os.WriteFile(autostart.GetPath(), []byte("[Desktop Entry]\nExec=/usr/bin/Hisar --hidden\n"+line+"\n"), 0o644)

@@ -92,32 +92,32 @@ type header struct {
 
 // Collect decrypts every vault the session can read, items sorted by title.
 func Collect(ctx context.Context, unlockedSession *session.Session) ([]Vault, error) {
-	allSessionVault, err := unlockedSession.ListAllVault(ctx)
+	sessionVaults, err := unlockedSession.ListVaults(ctx)
 	if err != nil {
 		return nil, err
 	}
-	allVault := make([]Vault, 0, len(allSessionVault))
-	for index := range allSessionVault {
-		sessionVault := &allSessionVault[index]
-		allItem, err := unlockedSession.ListAllItem(ctx, sessionVault)
+	vaults := make([]Vault, 0, len(sessionVaults))
+	for index := range sessionVaults {
+		sessionVault := &sessionVaults[index]
+		items, err := unlockedSession.ListItems(ctx, sessionVault)
 		if err != nil {
 			return nil, err
 		}
-		allVault = append(allVault, ConvertVault(sessionVault.ID, sessionVault.Name, sessionVault.Type, allItem))
+		vaults = append(vaults, ConvertVault(sessionVault.ID, sessionVault.Name, sessionVault.Type, items))
 	}
-	return allVault, nil
+	return vaults, nil
 }
 
-func ConvertVault(vaultID, name, vaultType string, allItem []item.Item) Vault {
-	vault := Vault{ID: vaultID, Name: name, Type: vaultType, Items: make([]Item, 0, len(allItem))}
-	for _, vaultItem := range allItem {
+func ConvertVault(vaultID, name, vaultType string, items []item.Item) Vault {
+	vault := Vault{ID: vaultID, Name: name, Type: vaultType, Items: make([]Item, 0, len(items))}
+	for _, vaultItem := range items {
 		vault.Items = append(vault.Items, Item{ID: vaultItem.ID, Overview: vaultItem.Overview, Details: vaultItem.Details})
 	}
 	return vault
 }
 
-func Build(account Account, allVault []Vault, exportedAt time.Time) *Document {
-	return &Document{Format: FormatPlain, Version: Version, ExportedAt: exportedAt.UTC(), Account: account, Vaults: allVault}
+func Build(account Account, vaults []Vault, exportedAt time.Time) *Document {
+	return &Document{Format: FormatPlain, Version: Version, ExportedAt: exportedAt.UTC(), Account: account, Vaults: vaults}
 }
 
 func CheckPassphrase(passphrase []byte) error {
@@ -136,7 +136,7 @@ func EncodePlain(document *Document) ([]byte, error) {
 }
 
 func EncodeEncrypted(document *Document, passphrase []byte) ([]byte, error) {
-	return encodeEncryptedWithParams(document, passphrase, crypt.DefaultArgon2Params)
+	return encodeEncryptedWithParams(document, passphrase, crypt.DefaultArgon2Params())
 }
 
 func encodeEncryptedWithParams(document *Document, passphrase []byte, params crypt.Argon2Params) ([]byte, error) {

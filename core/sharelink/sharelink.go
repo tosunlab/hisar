@@ -13,6 +13,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/item"
 )
@@ -20,9 +21,9 @@ import (
 const (
 	PayloadVersion      = 1
 	MaxPayloadSize      = 48 << 10
-	MaxCiphertextSize   = 64 << 10
-	MaxLabelSize        = 4 << 10
-	MaxViews            = 100
+	MaxCiphertextSize   = apitypes.ShareLinkMaxCiphertextSize
+	MaxLabelSize        = apitypes.ShareLinkMaxLabelSize
+	MaxViews            = apitypes.ShareLinkMaxViews
 	MinPassphraseLength = 8
 	MaxTitleLength      = 200
 )
@@ -45,14 +46,11 @@ const (
 	customFieldPrefix = "field:"
 )
 
-var (
-	ExpiryHour  = time.Hour
-	ExpiryDay   = 24 * time.Hour
-	ExpiryWeek  = 7 * 24 * time.Hour
-	ExpiryMonth = 30 * 24 * time.Hour
-
-	AllExpiry     = []time.Duration{ExpiryHour, ExpiryDay, ExpiryWeek, ExpiryMonth}
-	DefaultExpiry = ExpiryWeek
+const (
+	ExpiryHour  = apitypes.ShareLinkExpiryHour
+	ExpiryDay   = apitypes.ShareLinkExpiryDay
+	ExpiryWeek  = apitypes.ShareLinkExpiryWeek
+	ExpiryMonth = apitypes.ShareLinkExpiryMonth
 )
 
 var (
@@ -79,36 +77,36 @@ type Payload struct {
 
 func GetCustomFieldKey(index int) string { return customFieldPrefix + strconv.Itoa(index) }
 
-func ListAllAvailableFieldKey(vaultItem *item.Item) []string {
-	var allKey []string
+func ListAvailableFieldKeys(vaultItem *item.Item) []string {
+	var keys []string
 	if vaultItem.Overview.Username != "" {
-		allKey = append(allKey, FieldUsername)
+		keys = append(keys, FieldUsername)
 	}
 	if vaultItem.Details.Password != "" {
-		allKey = append(allKey, FieldPassword)
+		keys = append(keys, FieldPassword)
 	}
 	if len(vaultItem.Overview.URLs) > 0 {
-		allKey = append(allKey, FieldURLs)
+		keys = append(keys, FieldURLs)
 	}
 	for index, field := range vaultItem.Details.Fields {
 		if field.Value != "" {
-			allKey = append(allKey, GetCustomFieldKey(index))
+			keys = append(keys, GetCustomFieldKey(index))
 		}
 	}
 	if vaultItem.Details.Notes != "" {
-		allKey = append(allKey, FieldNotes)
+		keys = append(keys, FieldNotes)
 	}
-	return allKey
+	return keys
 }
 
-func ListAllDefaultFieldKey(vaultItem *item.Item) []string {
-	var allKey []string
-	for _, key := range ListAllAvailableFieldKey(vaultItem) {
+func ListDefaultFieldKeys(vaultItem *item.Item) []string {
+	var keys []string
+	for _, key := range ListAvailableFieldKeys(vaultItem) {
 		if key == FieldUsername || key == FieldPassword {
-			allKey = append(allKey, key)
+			keys = append(keys, key)
 		}
 	}
-	return allKey
+	return keys
 }
 
 func DescribeFieldKey(vaultItem *item.Item, key string) string {
@@ -144,10 +142,10 @@ func parseCustomFieldKey(key string, vaultItem *item.Item) (int, bool) {
 }
 
 // BuildItemPayload copies only the chosen fields; key material (SSH private keys, passkeys, one-time password secrets) has no key.
-func BuildItemPayload(vaultItem *item.Item, allFieldKey []string) (*Payload, error) {
+func BuildItemPayload(vaultItem *item.Item, fieldKeys []string) (*Payload, error) {
 	payload := &Payload{Version: PayloadVersion, Title: limitText(vaultItem.Overview.Title, MaxTitleLength), Fields: []Field{}}
 	isChosen := map[string]bool{}
-	for _, key := range allFieldKey {
+	for _, key := range fieldKeys {
 		if key == FieldUsername || key == FieldPassword || key == FieldURLs || key == FieldNotes {
 			isChosen[key] = true
 			continue
@@ -322,40 +320,6 @@ func ParseURL(link string) (serverURL, id string, linkKey []byte, err error) {
 	return parsedURL.Scheme + "://" + parsedURL.Host, id, linkKey, nil
 }
 
-func ParseExpiry(text string) (time.Duration, error) {
-	switch strings.ToLower(strings.TrimSpace(text)) {
-	case "1h", "1hour", "1 hour":
-		return ExpiryHour, nil
-	case "1d", "1day", "1 day", "24h":
-		return ExpiryDay, nil
-	case "7d", "7days", "7 days", "1w":
-		return ExpiryWeek, nil
-	case "30d", "30days", "30 days":
-		return ExpiryMonth, nil
-	}
-	return 0, fmt.Errorf("expiry %q: use 1h, 1d, 7d or 30d", text)
-}
-
-func IsAllowedExpiry(expiry time.Duration) bool {
-	for _, allowed := range AllExpiry {
-		if expiry == allowed {
-			return true
-		}
-	}
-	return false
-}
-
-// ParseViews returns 0 for unlimited.
-func ParseViews(text string) (int, error) {
-	text = strings.ToLower(strings.TrimSpace(text))
-	if text == "unlimited" || text == "0" {
-		return 0, nil
-	}
-	views, err := strconv.Atoi(text)
-	if err != nil || views < 1 || views > MaxViews {
-		return 0, fmt.Errorf("views %q: use a number from 1 to %d, or unlimited", text, MaxViews)
-	}
-	return views, nil
-}
+func IsAllowedExpiry(expiry time.Duration) bool { return apitypes.IsAllowedShareLinkExpiry(expiry) }
 
 func IsAllowedViews(views int) bool { return views >= 0 && views <= MaxViews }

@@ -23,22 +23,22 @@ func dialAppForAgent(context.Context) (mcpserver.AppConnection, error) {
 	if err != nil {
 		return nil, err
 	}
-	return mcpserver.CreateSocketConnection(client.connection, appRequestTimeout), nil
+	return mcpserver.NewProtocolConnection(client.protocolClient, appRequestTimeout), nil
 }
 
 // runMCP serves MCP on stdin and stdout until the agent closes stdin; stdout carries only protocol messages.
-func runMCP(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
-	allPositional, err := parse(flags, allArg)
+func runMCP(ctx context.Context, flags *flag.FlagSet, args []string) error {
+	positionals, err := parse(flags, args)
 	if err != nil {
 		return err
 	}
-	if len(allPositional) != 0 {
+	if len(positionals) != 0 {
 		return errUsage
 	}
 	if isStandaloneForcedByOption || isStandaloneRequested() {
 		return errMCPNeedsApp
 	}
-	server, closeApp := mcpserver.CreateServer(mcpserver.Config{Version: version, Dial: dialAppForAgent})
+	server, closeApp := mcpserver.NewServer(mcpserver.Config{Version: version, Dial: dialAppForAgent})
 	defer closeApp()
 	err = server.Run(ctx, &mcp.StdioTransport{})
 	if errors.Is(err, io.EOF) || errors.Is(err, context.Canceled) {

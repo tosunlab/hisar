@@ -19,13 +19,13 @@ type RotatedItem struct {
 type VaultRotation struct {
 	VaultID   string
 	EncName   []byte
-	AllAccess []Member
-	AllItem   []RotatedItem
+	Accesses  []Member
+	Items     []RotatedItem
 	RotatedBy string
 }
 
 // RotateVault replaces the vault name, all access grants and all items in one transaction.
-// It returns ErrConflict unless rotation.AllItem matches the stored items and revisions exactly,
+// It returns ErrConflict unless rotation.Items matches the stored items and revisions exactly,
 // and ErrNotMember when it would add an account.
 // Item history is dropped because it is encrypted with the previous key.
 func (s *Store) RotateVault(ctx context.Context, rotation VaultRotation) error {
@@ -35,42 +35,42 @@ func (s *Store) RotateVault(ctx context.Context, rotation VaultRotation) error {
 			return convertNoRowsToNotFound(err)
 		}
 
-		allRow, err := transaction.Query(ctx, `SELECT id, revision FROM items WHERE vault_id = $1`, rotation.VaultID)
+		rows, err := transaction.Query(ctx, `SELECT id, revision FROM items WHERE vault_id = $1`, rotation.VaultID)
 		if err != nil {
 			return err
 		}
-		allCurrentRevisionByID := map[string]string{}
-		for allRow.Next() {
+		currentRevisionsByID := map[string]string{}
+		for rows.Next() {
 			var itemID, revision string
-			if err := allRow.Scan(&itemID, &revision); err != nil {
-				allRow.Close()
+			if err := rows.Scan(&itemID, &revision); err != nil {
+				rows.Close()
 				return err
 			}
-			allCurrentRevisionByID[itemID] = revision
+			currentRevisionsByID[itemID] = revision
 		}
-		allRow.Close()
-		if err := allRow.Err(); err != nil {
+		rows.Close()
+		if err := rows.Err(); err != nil {
 			return err
 		}
-		if len(allCurrentRevisionByID) != len(rotation.AllItem) {
+		if len(currentRevisionsByID) != len(rotation.Items) {
 			return ErrConflict
 		}
-		for _, rotatedItem := range rotation.AllItem {
-			if currentRevision, found := allCurrentRevisionByID[rotatedItem.ID]; !found || currentRevision != rotatedItem.BaseRevision {
+		for _, rotatedItem := range rotation.Items {
+			if currentRevision, found := currentRevisionsByID[rotatedItem.ID]; !found || currentRevision != rotatedItem.BaseRevision {
 				return ErrConflict
 			}
 		}
 
 		var currentMemberCount int
-		allRotatedAccountID := make([]string, 0, len(rotation.AllAccess))
-		for _, access := range rotation.AllAccess {
-			allRotatedAccountID = append(allRotatedAccountID, access.AccountID)
+		rotatedAccountIDs := make([]string, 0, len(rotation.Accesses))
+		for _, access := range rotation.Accesses {
+			rotatedAccountIDs = append(rotatedAccountIDs, access.AccountID)
 		}
 		if err := transaction.QueryRow(ctx, `SELECT count(*) FROM vault_access WHERE vault_id = $1 AND account_id = ANY($2)`,
-			rotation.VaultID, allRotatedAccountID).Scan(&currentMemberCount); err != nil {
+			rotation.VaultID, rotatedAccountIDs).Scan(&currentMemberCount); err != nil {
 			return err
 		}
-		if currentMemberCount != len(rotation.AllAccess) {
+		if currentMemberCount != len(rotation.Accesses) {
 			return ErrNotMember
 		}
 
@@ -80,7 +80,7 @@ func (s *Store) RotateVault(ctx context.Context, rotation VaultRotation) error {
 		if _, err := transaction.Exec(ctx, `DELETE FROM vault_access WHERE vault_id = $1`, rotation.VaultID); err != nil {
 			return err
 		}
-		for _, access := range rotation.AllAccess {
+		for _, access := range rotation.Accesses {
 			if _, err := transaction.Exec(ctx,
 				`INSERT INTO vault_access (vault_id, account_id, wrapped_key, role, granted_by) VALUES ($1, $2, $3, $4, $5)`,
 				rotation.VaultID, access.AccountID, access.WrappedKey, access.Role, rotation.RotatedBy); err != nil {
@@ -90,7 +90,7 @@ func (s *Store) RotateVault(ctx context.Context, rotation VaultRotation) error {
 		if _, err := transaction.Exec(ctx, `DELETE FROM item_history WHERE vault_id = $1`, rotation.VaultID); err != nil {
 			return err
 		}
-		for _, rotatedItem := range rotation.AllItem {
+		for _, rotatedItem := range rotation.Items {
 			vaultSeq++
 			if _, err := transaction.Exec(ctx, `
 				UPDATE items SET revision = $3, seq = $4, deleted = $5, overview = $6, details = $7, updated_by = $8, updated_at = now()

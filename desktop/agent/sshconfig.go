@@ -143,11 +143,11 @@ func RemoveSSHConfig(homeDirectory string, now time.Time) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	allLine := strings.SplitAfter(content, "\n")
-	allKeptLine := make([]string, 0, len(allLine))
+	lines := strings.SplitAfter(content, "\n")
+	keptLines := make([]string, 0, len(lines))
 	isInSection := false
 	isAfterSection := false
-	for _, line := range allLine {
+	for _, line := range lines {
 		trimmedLine := strings.TrimSpace(line)
 		switch {
 		case trimmedLine == configSectionStart:
@@ -161,8 +161,8 @@ func RemoveSSHConfig(homeDirectory string, now time.Time) (string, error) {
 			isAfterSection = false
 		default:
 			isAfterSection = false
-			allKeptLine = append(allKeptLine, line)
+			keptLines = append(keptLines, line)
 		}
 	}
-	return backupPath, writeSSHConfig(homeDirectory, strings.Join(allKeptLine, ""))
+	return backupPath, writeSSHConfig(homeDirectory, strings.Join(keptLines, ""))
 }

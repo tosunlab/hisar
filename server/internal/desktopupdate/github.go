@@ -45,8 +45,8 @@ type GitHub struct {
 	apiHost    string
 	httpClient *http.Client
 
-	mutex              sync.Mutex
-	allCachedPageByURL map[string]cachedPage
+	mutex            sync.Mutex
+	cachedPagesByURL map[string]cachedPage
 }
 
 type gitHubAsset struct {
@@ -60,7 +60,7 @@ type gitHubRelease struct {
 	TagName      string        `json:"tag_name"`
 	IsDraft      bool          `json:"draft"`
 	IsPrerelease bool          `json:"prerelease"`
-	AllAsset     []gitHubAsset `json:"assets"`
+	Assets       []gitHubAsset `json:"assets"`
 }
 
 var errNotFound = errors.New("not found on GitHub")
@@ -73,7 +73,7 @@ func (limitError *rateLimitError) Error() string {
 	return fmt.Sprintf("GitHub rate limit reached, retrying in %s", limitError.retryDelay.Round(time.Second))
 }
 
-func CreateGitHub(config GitHubConfig) (*GitHub, error) {
+func NewGitHub(config GitHubConfig) (*GitHub, error) {
 	config.APIURL = strings.TrimRight(strings.TrimSpace(config.APIURL), "/")
 	if config.APIURL == "" {
 		config.APIURL = DefaultGitHubAPIURL
@@ -89,12 +89,12 @@ func CreateGitHub(config GitHubConfig) (*GitHub, error) {
 	config.Token = strings.TrimSpace(config.Token)
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.ResponseHeaderTimeout = 30 * time.Second
-	gitHub := &GitHub{config: config, apiHost: parsedURL.Host, allCachedPageByURL: map[string]cachedPage{}}
+	gitHub := &GitHub{config: config, apiHost: parsedURL.Host, cachedPagesByURL: map[string]cachedPage{}}
 	gitHub.httpClient = &http.Client{
 		Transport: transport,
 		// Asset downloads redirect to storage on another host; the token must stay with the API.
-		CheckRedirect: func(request *http.Request, allPreviousRequest []*http.Request) error {
-			if len(allPreviousRequest) >= 10 {
+		CheckRedirect: func(request *http.Request, previousRequests []*http.Request) error {
+			if len(previousRequests) >= 10 {
 				return errors.New("too many redirects")
 			}
 			if request.URL.Host != parsedURL.Host || request.URL.Scheme != parsedURL.Scheme {
@@ -175,7 +175,7 @@ func hasNextPage(linkHeader string) bool {
 func (gitHub *GitHub) getReleasePage(ctx context.Context, page int) ([]gitHubRelease, bool, error) {
 	address := gitHub.buildURL("/releases", url.Values{"per_page": {strconv.Itoa(releasePageSize)}, "page": {strconv.Itoa(page)}})
 	gitHub.mutex.Lock()
-	cached, isCached := gitHub.allCachedPageByURL[address]
+	cached, isCached := gitHub.cachedPagesByURL[address]
 	gitHub.mutex.Unlock()
 	response, err := gitHub.get(ctx, address, "application/vnd.github+json", cached.etag)
 	if err != nil {
@@ -195,35 +195,35 @@ func (gitHub *GitHub) getReleasePage(ctx context.Context, page int) ([]gitHubRel
 		cached = cachedPage{etag: response.Header.Get("ETag"), content: content, hasNext: hasNextPage(response.Header.Get("Link"))}
 		gitHub.mutex.Lock()
 		if cached.etag != "" {
-			gitHub.allCachedPageByURL[address] = cached
+			gitHub.cachedPagesByURL[address] = cached
 		} else {
-			delete(gitHub.allCachedPageByURL, address)
+			delete(gitHub.cachedPagesByURL, address)
 		}
 		gitHub.mutex.Unlock()
 	}
-	var allRelease []gitHubRelease
-	if err := json.Unmarshal(cached.content, &allRelease); err != nil {
+	var releases []gitHubRelease
+	if err := json.Unmarshal(cached.content, &releases); err != nil {
 		return nil, false, fmt.Errorf("release list: %w", err)
 	}
-	return allRelease, cached.hasNext, nil
+	return releases, cached.hasNext, nil
 }
 
-func (gitHub *GitHub) listAllRelease(ctx context.Context) ([]gitHubRelease, error) {
-	var allRelease []gitHubRelease
+func (gitHub *GitHub) listReleases(ctx context.Context) ([]gitHubRelease, error) {
+	var releases []gitHubRelease
 	for page := 1; page <= maximumReleasePageCount; page++ {
-		allPageRelease, hasNext, err := gitHub.getReleasePage(ctx, page)
+		pageReleases, hasNext, err := gitHub.getReleasePage(ctx, page)
 		if errors.Is(err, errNotFound) {
 			return nil, fmt.Errorf("list releases: no repository %s (a private repository needs a token)", gitHub.config.Repository)
 		}
 		if err != nil {
 			return nil, fmt.Errorf("list releases: %w", err)
 		}
-		allRelease = append(allRelease, allPageRelease...)
-		if !hasNext || len(allPageRelease) == 0 {
+		releases = append(releases, pageReleases...)
+		if !hasNext || len(pageReleases) == 0 {
 			break
 		}
 	}
-	return allRelease, nil
+	return releases, nil
 }
 
 // openAsset returns the asset's body unread; the caller closes it.

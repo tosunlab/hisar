@@ -24,19 +24,19 @@ func scanItem(row pgx.CollectableRow) (Item, error) {
 	return item, err
 }
 
-// ListAllChange returns items with seq > since, and the vault's current seq.
-func (s *Store) ListAllChange(ctx context.Context, vaultID string, since int64, limit int) (allItem []Item, vaultSeq int64, err error) {
+// ListChanges returns items with seq > since, and the vault's current seq.
+func (s *Store) ListChanges(ctx context.Context, vaultID string, since int64, limit int) (items []Item, vaultSeq int64, err error) {
 	if err := s.pool.QueryRow(ctx, `SELECT seq FROM vaults WHERE id = $1`, vaultID).Scan(&vaultSeq); err != nil {
 		return nil, 0, convertNoRowsToNotFound(err)
 	}
-	allRow, err := s.pool.Query(ctx, `
+	rows, err := s.pool.Query(ctx, `
 		SELECT id, revision, seq, deleted, overview, details, updated_at, updated_by
 		FROM items WHERE vault_id = $1 AND seq > $2 ORDER BY seq LIMIT $3`, vaultID, since, limit)
 	if err != nil {
 		return nil, 0, err
 	}
-	allItem, err = pgx.CollectRows(allRow, scanItem)
-	return allItem, vaultSeq, err
+	items, err = pgx.CollectRows(rows, scanItem)
+	return items, vaultSeq, err
 }
 
 // PutItem writes a new revision if baseRevision matches the stored one ("" for a new item).
@@ -50,25 +50,25 @@ func (s *Store) PutItem(ctx context.Context, vaultID, baseRevision string, item 
 			return convertNoRowsToNotFound(err)
 		}
 
-		allRow, err := transaction.Query(ctx, `
+		rows, err := transaction.Query(ctx, `
 			SELECT id, revision, seq, deleted, overview, details, updated_at, updated_by
 			FROM items WHERE vault_id = $1 AND id = $2`, vaultID, item.ID)
 		if err != nil {
 			return err
 		}
-		allExistingItem, err := pgx.CollectRows(allRow, scanItem)
+		existingItems, err := pgx.CollectRows(rows, scanItem)
 		if err != nil {
 			return err
 		}
 
 		switch {
-		case len(allExistingItem) == 1 && allExistingItem[0].Revision == item.Revision:
-			*item = allExistingItem[0]
+		case len(existingItems) == 1 && existingItems[0].Revision == item.Revision:
+			*item = existingItems[0]
 			return nil
-		case len(allExistingItem) == 1 && allExistingItem[0].Revision != baseRevision:
-			current = &allExistingItem[0]
+		case len(existingItems) == 1 && existingItems[0].Revision != baseRevision:
+			current = &existingItems[0]
 			return ErrConflict
-		case len(allExistingItem) == 0 && baseRevision != "":
+		case len(existingItems) == 0 && baseRevision != "":
 			return ErrConflict
 		}
 
@@ -98,13 +98,13 @@ func (s *Store) PutItem(ctx context.Context, vaultID, baseRevision string, item 
 }
 
 func (s *Store) GetItemHistory(ctx context.Context, vaultID, itemID string) ([]Item, error) {
-	allRow, err := s.pool.Query(ctx, `
+	rows, err := s.pool.Query(ctx, `
 		SELECT id, revision, 0::bigint, deleted, overview, details, updated_at, updated_by
 		FROM item_history WHERE vault_id = $1 AND id = $2 ORDER BY updated_at DESC`, vaultID, itemID)
 	if err != nil {
 		return nil, err
 	}
-	return pgx.CollectRows(allRow, scanItem)
+	return pgx.CollectRows(rows, scanItem)
 }
 
 // PruneHistory deletes history older than maxAge, always keeping each item's current revision.

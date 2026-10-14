@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tryhisar/hisar/core/localsocket"
 	"github.com/tryhisar/hisar/core/sshagent"
 )
 
@@ -48,11 +49,11 @@ type Config struct {
 
 // ApplicationPeerResolver adds the app a peer runs in, so approvals are remembered per app.
 type ApplicationPeerResolver struct {
-	Base                sshagent.PeerResolver
+	Base                localsocket.PeerResolver
 	FindApplicationPath func(pid int) (string, bool)
 }
 
-func (resolver ApplicationPeerResolver) ResolvePeer(connection net.Conn) (sshagent.PeerInfo, error) {
+func (resolver ApplicationPeerResolver) ResolvePeer(connection net.Conn) (localsocket.PeerInfo, error) {
 	peer, err := resolver.Base.ResolvePeer(connection)
 	if err != nil || peer.PID <= 0 || resolver.FindApplicationPath == nil {
 		return peer, err
@@ -75,7 +76,7 @@ func GetDefaultSocketPath(homeDirectory string) string {
 	return filepath.Join(homeDirectory, ".hisar", "agent.sock")
 }
 
-func CreateService(config Config) *Service {
+func NewService(config Config) *Service {
 	if config.SocketPath == "" {
 		config.SocketPath = GetDefaultSocketPath(config.HomeDirectory)
 	}
@@ -118,7 +119,7 @@ func (s *Service) SetSigningRemember(seconds int) (Status, error) {
 	}
 	err := s.config.ApprovalPreference.SetSigningRememberSeconds(seconds)
 	if s.config.Approver != nil {
-		s.config.Approver.ClearAllRememberedSigning()
+		s.config.Approver.ClearRememberedSignings()
 	}
 	return s.buildStatus(), err
 }
@@ -186,11 +187,11 @@ func (s *Service) SetSSHApprovalRemembered(requestID string, isRemembered bool) 
 	}
 }
 
-func (s *Service) ListAllPendingSSHApproval() []ApprovalEvent {
+func (s *Service) ListPendingSSHApprovals() []ApprovalEvent {
 	if s.config.Approver == nil {
 		return []ApprovalEvent{}
 	}
-	return s.config.Approver.ListAllPendingApproval()
+	return s.config.Approver.ListPendingApprovals()
 }
 
 func (s *Service) setServing(isRunning bool, serveError error) {
@@ -207,7 +208,7 @@ func Serve(ctx context.Context, service *Service) error {
 		service.setServing(false, err)
 		return err
 	}
-	listener, err := sshagent.ListenUnixSocket(service.config.SocketPath)
+	listener, err := localsocket.ListenUnixSocket(service.config.SocketPath)
 	if err != nil {
 		service.setServing(false, err)
 		return err

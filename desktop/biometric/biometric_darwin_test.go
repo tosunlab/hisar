@@ -11,7 +11,7 @@ import (
 )
 
 func TestKeychainRoundtrip(t *testing.T) {
-	biometric := Create("hisar-test-" + fmt.Sprint(time.Now().UnixNano()))
+	biometric := New("hisar-test-" + fmt.Sprint(time.Now().UnixNano()))
 	accountID := "TEST01"
 	t.Cleanup(func() { biometric.DeleteKey(accountID) })
 
@@ -47,5 +47,5 @@ func TestKeychainRoundtrip(t *testing.T) {
 }
 
 func TestIsAvailableDoesNotPrompt(t *testing.T) {
-	t.Logf("Touch ID available: %v", Create("hisar-test").IsAvailable())
+	t.Logf("Touch ID available: %v", New("hisar-test").IsAvailable())
 }

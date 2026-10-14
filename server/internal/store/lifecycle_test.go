@@ -10,10 +10,10 @@ import (
 	"github.com/google/uuid"
 )
 
-func countQueryRow(t *testing.T, database *Store, query string, allArgument ...any) int {
+func countQueryRow(t *testing.T, database *Store, query string, arguments ...any) int {
 	t.Helper()
 	var rowCount int
-	if err := database.pool.QueryRow(context.Background(), query, allArgument...).Scan(&rowCount); err != nil {
+	if err := database.pool.QueryRow(context.Background(), query, arguments...).Scan(&rowCount); err != nil {
 		t.Fatal(err)
 	}
 	return rowCount
@@ -60,8 +60,8 @@ func TestUpdateAccountCredentials(t *testing.T) {
 	if _, err := database.GetSessionByHash(ctx, aliceSession.TokenHash, time.Hour); err != nil {
 		t.Errorf("changing device signed out: %v", err)
 	}
-	if allDevice, _ := database.ListAllDevice(ctx, "ALICE1"); len(allDevice) != 1 || allDevice[0].ID != aliceSession.DeviceID {
-		t.Errorf("devices after change: %+v", allDevice)
+	if devices, _ := database.ListDevices(ctx, "ALICE1"); len(devices) != 1 || devices[0].ID != aliceSession.DeviceID {
+		t.Errorf("devices after change: %+v", devices)
 	}
 	if _, err := database.UpdateAccountCredentials(ctx, update); !errors.Is(err, ErrConflict) {
 		t.Errorf("second change with the same proof: %v", err)
@@ -114,18 +114,18 @@ func TestDeleteAccount(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(preview.AllOwnedVault) != 1 || preview.AllOwnedVault[0].ID != soleVault || preview.AllOwnedVault[0].OtherMemberCount != 2 {
-		t.Errorf("owned vaults: %+v", preview.AllOwnedVault)
+	if len(preview.OwnedVaults) != 1 || preview.OwnedVaults[0].ID != soleVault || preview.OwnedVaults[0].OtherMemberCount != 2 {
+		t.Errorf("owned vaults: %+v", preview.OwnedVaults)
 	}
-	allMemberVaultID := []string{}
-	for _, memberVault := range preview.AllMemberVault {
-		allMemberVaultID = append(allMemberVaultID, memberVault.ID)
+	memberVaultIDs := []string{}
+	for _, memberVault := range preview.MemberVaults {
+		memberVaultIDs = append(memberVaultIDs, memberVault.ID)
 	}
-	slices.Sort(allMemberVaultID)
+	slices.Sort(memberVaultIDs)
 	expectedMemberVaultID := []string{coOwnedVault, bobVault}
 	slices.Sort(expectedMemberVaultID)
-	if !slices.Equal(allMemberVaultID, expectedMemberVaultID) {
-		t.Errorf("member vaults: %+v", preview.AllMemberVault)
+	if !slices.Equal(memberVaultIDs, expectedMemberVaultID) {
+		t.Errorf("member vaults: %+v", preview.MemberVaults)
 	}
 	if preview.ShareLinkCount != 1 || preview.SentInvitationCount != 2 || preview.ReceivedInvitationCount != 1 || preview.DeviceCount != 1 {
 		t.Errorf("preview counts: %+v", preview)
@@ -144,12 +144,12 @@ func TestDeleteAccount(t *testing.T) {
 	if deleted.Email != "alice@example.com" || deleted.DeletedVaultCount != 1 {
 		t.Errorf("deleted: %+v", deleted)
 	}
-	slices.Sort(deleted.AllVaultMemberAccountID)
-	if !slices.Equal(deleted.AllVaultMemberAccountID, []string{"BOB111", "CAROL1"}) {
-		t.Errorf("vault members to notify: %v", deleted.AllVaultMemberAccountID)
+	slices.Sort(deleted.VaultMemberAccountIDs)
+	if !slices.Equal(deleted.VaultMemberAccountIDs, []string{"BOB111", "CAROL1"}) {
+		t.Errorf("vault members to notify: %v", deleted.VaultMemberAccountIDs)
 	}
-	if !slices.Contains(deleted.AllInvitationAccountID, "BOB111") {
-		t.Errorf("invitation accounts to notify: %v", deleted.AllInvitationAccountID)
+	if !slices.Contains(deleted.InvitationAccountIDs, "BOB111") {
+		t.Errorf("invitation accounts to notify: %v", deleted.InvitationAccountIDs)
 	}
 
 	for name, query := range map[string]string{

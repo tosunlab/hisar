@@ -24,7 +24,7 @@ const (
 // ErrPrivateKeyRefused keeps SSH private keys inside the app; the label stays reserved so no custom field can stand in for it.
 var ErrPrivateKeyRefused = errors.New("SSH private keys never leave Hisar; use the Hisar SSH agent instead")
 
-var allBuiltInFieldByLabel = map[string]string{
+var builtInFieldsByLabel = map[string]string{
 	"password":      FieldPassword,
 	"username":      FieldUsername,
 	"notes":         FieldNotes,
@@ -44,8 +44,8 @@ type Vault struct {
 
 // Source lists what references resolve against; the desktop app and standalone hisar each provide one.
 type Source interface {
-	ListAllVault() ([]Vault, error)
-	ListAllItem(vaultID string) ([]item.Item, error)
+	ListVaults() ([]Vault, error)
+	ListItems(vaultID string) ([]item.Item, error)
 }
 
 // Error is a reference that did not resolve; it never carries a value.
@@ -74,44 +74,44 @@ func (resolved Resolved) Describe() string {
 
 // GetBuiltInField returns the field a built-in label names, ignoring case.
 func GetBuiltInField(label string) (string, bool) {
-	field, isBuiltIn := allBuiltInFieldByLabel[strings.ToLower(strings.TrimSpace(label))]
+	field, isBuiltIn := builtInFieldsByLabel[strings.ToLower(strings.TrimSpace(label))]
 	return field, isBuiltIn
 }
 
 type resolver struct {
 	source          Source
-	allVault        []Vault
-	allItemByVault  map[string][]item.Item
+	vaults          []Vault
+	itemsByVault    map[string][]item.Item
 	isVaultListRead bool
 }
 
 // ResolveAll resolves every reference or none: a source error is returned as it is, and every reference
 // that does not resolve is listed in one joined error of *Error values.
-func ResolveAll(source Source, allText []string, now time.Time) ([]Resolved, error) {
-	state := &resolver{source: source, allItemByVault: map[string][]item.Item{}}
-	allResolved := make([]Resolved, len(allText))
-	var allFailure []error
-	for index, text := range allText {
+func ResolveAll(source Source, texts []string, now time.Time) ([]Resolved, error) {
+	state := &resolver{source: source, itemsByVault: map[string][]item.Item{}}
+	resolvedReferences := make([]Resolved, len(texts))
+	var failures []error
+	for index, text := range texts {
 		resolved, err := state.resolve(text, now)
 		var resolveError *Error
 		if errors.As(err, &resolveError) {
-			allFailure = append(allFailure, resolveError)
+			failures = append(failures, resolveError)
 			continue
 		}
 		if err != nil {
 			return nil, err
 		}
-		allResolved[index] = resolved
+		resolvedReferences[index] = resolved
 	}
-	if len(allFailure) > 0 {
-		return nil, errors.Join(allFailure...)
+	if len(failures) > 0 {
+		return nil, errors.Join(failures...)
 	}
-	return allResolved, nil
+	return resolvedReferences, nil
 }
 
 // Locate finds the vault, item and field a reference names, without reading the value.
 func Locate(source Source, text string) (Resolved, error) {
-	state := &resolver{source: source, allItemByVault: map[string][]item.Item{}}
+	state := &resolver{source: source, itemsByVault: map[string][]item.Item{}}
 	resolved, err := state.resolve(text, time.Now())
 	resolved.Value = ""
 	return resolved, err
@@ -123,23 +123,23 @@ func (state *resolver) resolve(text string, now time.Time) (Resolved, error) {
 		return Resolved{}, &Error{Reference: text, Reason: err.Error()}
 	}
 	if !state.isVaultListRead {
-		if state.allVault, err = state.source.ListAllVault(); err != nil {
+		if state.vaults, err = state.source.ListVaults(); err != nil {
 			return Resolved{}, err
 		}
 		state.isVaultListRead = true
 	}
-	vault, err := findVault(state.allVault, reference.Vault)
+	vault, err := findVault(state.vaults, reference.Vault)
 	if err != nil {
 		return Resolved{}, &Error{Reference: text, Reason: err.Error()}
 	}
-	allItem, isListed := state.allItemByVault[vault.ID]
+	items, isListed := state.itemsByVault[vault.ID]
 	if !isListed {
-		if allItem, err = state.source.ListAllItem(vault.ID); err != nil {
+		if items, err = state.source.ListItems(vault.ID); err != nil {
 			return Resolved{}, err
 		}
-		state.allItemByVault[vault.ID] = allItem
+		state.itemsByVault[vault.ID] = items
 	}
-	vaultItem, err := findItem(allItem, vault.Name, reference.Item)
+	vaultItem, err := findItem(items, vault.Name, reference.Item)
 	if err != nil {
 		return Resolved{}, &Error{Reference: text, Reason: err.Error()}
 	}
@@ -150,51 +150,51 @@ func (state *resolver) resolve(text string, now time.Time) (Resolved, error) {
 	return Resolved{Reference: reference, VaultID: vault.ID, ItemID: vaultItem.ID, VaultName: vault.Name, ItemTitle: vaultItem.Overview.Title, FieldLabel: label, Value: value}, nil
 }
 
-func findVault(allVault []Vault, query string) (Vault, error) {
-	var allMatch []Vault
-	for _, vault := range allVault {
+func findVault(vaults []Vault, query string) (Vault, error) {
+	var matches []Vault
+	for _, vault := range vaults {
 		if vault.ID == query {
 			return vault, nil
 		}
 		if strings.EqualFold(vault.Name, query) {
-			allMatch = append(allMatch, vault)
+			matches = append(matches, vault)
 		}
 	}
-	switch len(allMatch) {
+	switch len(matches) {
 	case 0:
 		return Vault{}, fmt.Errorf("no vault is named %q", query)
 	case 1:
-		return allMatch[0], nil
+		return matches[0], nil
 	}
-	allID := make([]string, 0, len(allMatch))
-	for _, match := range allMatch {
-		allID = append(allID, match.ID)
+	iDs := make([]string, 0, len(matches))
+	for _, match := range matches {
+		iDs = append(iDs, match.ID)
 	}
-	return Vault{}, fmt.Errorf("%d vaults are named %q; use the vault's ID instead (%s)", len(allMatch), query, strings.Join(allID, ", "))
+	return Vault{}, fmt.Errorf("%d vaults are named %q; use the vault's ID instead (%s)", len(matches), query, strings.Join(iDs, ", "))
 }
 
-func findItem(allItem []item.Item, vaultName, query string) (*item.Item, error) {
-	var allMatch []*item.Item
-	for index := range allItem {
-		vaultItem := &allItem[index]
+func findItem(items []item.Item, vaultName, query string) (*item.Item, error) {
+	var matches []*item.Item
+	for index := range items {
+		vaultItem := &items[index]
 		if vaultItem.ID == query {
 			return vaultItem, nil
 		}
 		if strings.EqualFold(vaultItem.Overview.Title, query) {
-			allMatch = append(allMatch, vaultItem)
+			matches = append(matches, vaultItem)
 		}
 	}
-	switch len(allMatch) {
+	switch len(matches) {
 	case 0:
 		return nil, fmt.Errorf("no item in vault %q is titled %q", vaultName, query)
 	case 1:
-		return allMatch[0], nil
+		return matches[0], nil
 	}
-	allID := make([]string, 0, len(allMatch))
-	for _, match := range allMatch {
-		allID = append(allID, match.ID)
+	iDs := make([]string, 0, len(matches))
+	for _, match := range matches {
+		iDs = append(iDs, match.ID)
 	}
-	return nil, fmt.Errorf("%d items in vault %q are titled %q; use the item's ID instead (%s)", len(allMatch), vaultName, query, strings.Join(allID, ", "))
+	return nil, fmt.Errorf("%d items in vault %q are titled %q; use the item's ID instead (%s)", len(matches), vaultName, query, strings.Join(iDs, ", "))
 }
 
 // ReadField returns the value a field label names and the label to show for it; an empty value is an error.
@@ -241,21 +241,21 @@ func ReadField(vaultItem *item.Item, label string, now time.Time) (string, strin
 
 func readCustomField(vaultItem *item.Item, label string) (string, string, error) {
 	title := vaultItem.Overview.Title
-	var allMatch []item.Field
+	var matches []item.Field
 	for _, field := range vaultItem.Details.Fields {
 		if strings.EqualFold(field.Name, label) {
-			allMatch = append(allMatch, field)
+			matches = append(matches, field)
 		}
 	}
 	switch {
-	case len(allMatch) == 0:
+	case len(matches) == 0:
 		return "", "", fmt.Errorf("item %q has no field %q", title, label)
-	case len(allMatch) > 1:
-		return "", "", fmt.Errorf("item %q has %d fields labelled %q; rename one of them", title, len(allMatch), label)
-	case allMatch[0].Value == "":
-		return "", "", fmt.Errorf("field %q of item %q is empty", allMatch[0].Name, title)
+	case len(matches) > 1:
+		return "", "", fmt.Errorf("item %q has %d fields labelled %q; rename one of them", title, len(matches), label)
+	case matches[0].Value == "":
+		return "", "", fmt.Errorf("field %q of item %q is empty", matches[0].Name, title)
 	}
-	return allMatch[0].Value, allMatch[0].Name, nil
+	return matches[0].Value, matches[0].Name, nil
 }
 
 // CheckCustomFieldLabel tells whether a reference can name the item's custom field with this label.

@@ -39,9 +39,9 @@ func TestShareLinkStore(t *testing.T) {
 		t.Fatalf("over the live cap: %v", err)
 	}
 
-	allLink, err := database.ListAllShareLink(ctx, "ALICE1")
-	if err != nil || len(allLink) != 2 {
-		t.Fatalf("alice's live links: %+v %v", allLink, err)
+	links, err := database.ListShareLinks(ctx, "ALICE1")
+	if err != nil || len(links) != 2 {
+		t.Fatalf("alice's live links: %+v %v", links, err)
 	}
 	viewed, err := database.ViewShareLink(ctx, "passphrase")
 	if err != nil || viewed.PassphraseIterations != 600000 || len(viewed.PassphraseSalt) != 16 || viewed.ViewCount != 1 || viewed.AccountID != "BOB123" {
@@ -72,7 +72,7 @@ func TestShareLinkStore(t *testing.T) {
 	if err := database.DeleteShareLink(ctx, "ALICE1", "unlimited"); err != nil {
 		t.Fatal(err)
 	}
-	deletedCount, err := database.DeleteAllExpiredShareLink(ctx)
+	deletedCount, err := database.DeleteExpiredShareLinks(ctx)
 	if err != nil || deletedCount != 1 {
 		t.Fatalf("sweep deleted %d, %v", deletedCount, err)
 	}

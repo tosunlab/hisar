@@ -4,35 +4,17 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"errors"
-	"fmt"
 	"io"
-	"io/fs"
 	"net"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
-	"time"
 
+	"github.com/tryhisar/hisar/core/localsocket"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 )
-
-const UnknownPeerName = "unknown"
-
-// PeerInfo is the program on the other end of a connection; ApplicationPath is the app it runs in, when the resolver knows it.
-type PeerInfo struct {
-	PID             int
-	Path            string
-	Name            string
-	ApplicationPath string
-}
-
-type PeerResolver interface {
-	ResolvePeer(connection net.Conn) (PeerInfo, error)
-}
 
 func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
 	stopClosingListener := context.AfterFunc(ctx, func() { listener.Close() })
@@ -57,76 +39,25 @@ func (s *Server) serveConnection(ctx context.Context, connection net.Conn) {
 	stopClosingConnection := context.AfterFunc(connectionContext, func() { connection.Close() })
 	defer stopClosingConnection()
 	defer connection.Close()
-	peer := PeerInfo{Name: UnknownPeerName}
+	peer := localsocket.PeerInfo{Name: localsocket.UnknownPeerName}
 	if s.peerResolver != nil {
 		if resolvedPeer, err := s.peerResolver.ResolvePeer(connection); err == nil {
 			peer = resolvedPeer
 		}
 	}
 	if peer.Name == "" {
-		peer.Name = UnknownPeerName
+		peer.Name = localsocket.UnknownPeerName
 	}
-	reader := WatchConnectionClose(connection, cancel)
+	reader := localsocket.WatchConnectionClose(connection, cancel)
 	agent.ServeAgent(s.CreateAgent(connectionContext, peer), struct {
 		io.Reader
 		io.Writer
 	}{reader, connection})
 }
 
-// WatchConnectionClose reads the connection ahead of its user, so a peer that hangs up cancels the request it is waiting for.
-func WatchConnectionClose(connection net.Conn, cancel context.CancelFunc) io.Reader {
-	pipeReader, pipeWriter := io.Pipe()
-	go func() {
-		_, err := io.Copy(pipeWriter, connection)
-		cancel()
-		pipeWriter.CloseWithError(err)
-	}()
-	return pipeReader
-}
-
-func ListenUnixSocket(path string) (net.Listener, error) {
-	directory := filepath.Dir(path)
-	if err := os.MkdirAll(directory, 0o700); err != nil {
-		return nil, err
-	}
-	if err := os.Chmod(directory, 0o700); err != nil {
-		return nil, err
-	}
-	if err := removeStaleSocket(path); err != nil {
-		return nil, err
-	}
-	listener, err := net.Listen("unix", path)
-	if err != nil {
-		return nil, err
-	}
-	if err := os.Chmod(path, 0o600); err != nil {
-		listener.Close()
-		return nil, err
-	}
-	return listener, nil
-}
-
-func removeStaleSocket(path string) error {
-	fileInfo, err := os.Lstat(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	if fileInfo.Mode()&fs.ModeSocket == 0 {
-		return fmt.Errorf("sshagent: %s exists and is not a socket", path)
-	}
-	if connection, err := net.DialTimeout("unix", path, time.Second); err == nil {
-		connection.Close()
-		return fmt.Errorf("sshagent: another agent is listening on %s", path)
-	}
-	return os.Remove(path)
-}
-
-func findKnownHostName(allPath []string, hostKey ssh.PublicKey) string {
+func findKnownHostName(paths []string, hostKey ssh.PublicKey) string {
 	hostKeyBlob := hostKey.Marshal()
-	for _, path := range allPath {
+	for _, path := range paths {
 		if hostName := findKnownHostNameInFile(path, hostKeyBlob); hostName != "" {
 			return hostName
 		}
@@ -160,11 +91,11 @@ func findKnownHostNameInFile(path string, hostKeyBlob []byte) string {
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 	for scanner.Scan() {
-		marker, allHost, publicKey, _, _, err := ssh.ParseKnownHosts(scanner.Bytes())
+		marker, hosts, publicKey, _, _, err := ssh.ParseKnownHosts(scanner.Bytes())
 		if err != nil || marker != "" || !bytes.Equal(publicKey.Marshal(), hostKeyBlob) {
 			continue
 		}
-		for _, host := range allHost {
+		for _, host := range hosts {
 			if !strings.HasPrefix(host, "|") && !strings.ContainsAny(host, "*?!") {
 				return host
 			}

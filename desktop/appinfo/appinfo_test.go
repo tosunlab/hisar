@@ -9,7 +9,7 @@ import (
 type fakeProcess struct {
 	path             string
 	parentPID        int
-	allArgument      []string
+	arguments        []string
 	workingDirectory string
 }
 
@@ -30,9 +30,9 @@ func (tree fakeProcessTree) createReader() ProcessReader {
 			}
 			return 0, errNoProcess
 		},
-		ListAllArgument: func(pid int) ([]string, error) {
-			if process, isFound := tree[pid]; isFound && process.allArgument != nil {
-				return process.allArgument, nil
+		ListArguments: func(pid int) ([]string, error) {
+			if process, isFound := tree[pid]; isFound && process.arguments != nil {
+				return process.arguments, nil
 			}
 			return nil, errNoProcess
 		},
@@ -46,7 +46,7 @@ func (tree fakeProcessTree) createReader() ProcessReader {
 }
 
 func (tree fakeProcessTree) findAppPath(pid int) string {
-	return CreateResolver(System{ProcessReader: tree.createReader()}).Resolve(pid).App.Path
+	return NewResolver(System{ProcessReader: tree.createReader()}).Resolve(pid).App.Path
 }
 
 const (
@@ -60,7 +60,7 @@ const (
 )
 
 func TestFindAppWalksPastDeveloperTools(t *testing.T) {
-	allCase := []struct {
+	cases := []struct {
 		name string
 		tree fakeProcessTree
 		want string
@@ -149,7 +149,7 @@ func TestFindAppWalksPastDeveloperTools(t *testing.T) {
 			10: {path: terminalPath, parentPID: 1},
 		}, "/System/Applications/Utilities/Terminal.app"},
 	}
-	for _, testCase := range allCase {
+	for _, testCase := range cases {
 		requestingPID := 0
 		for pid := range testCase.tree {
 			requestingPID = max(requestingPID, pid)
@@ -175,24 +175,24 @@ func TestIsDeveloperToolPath(t *testing.T) {
 
 func TestListAllProcess(t *testing.T) {
 	tree := fakeProcessTree{
-		50: {path: systemSSHPath, parentPID: 40, allArgument: []string{"ssh", "-o", "SendEnv=GIT_PROTOCOL", "git@git.tryhisar.com", "git-receive-pack 'hisar/core.git'"}},
-		40: {path: xcodeGitPath, parentPID: 10, allArgument: []string{"git", "push"}, workingDirectory: "/Users/developer/src/core"},
+		50: {path: systemSSHPath, parentPID: 40, arguments: []string{"ssh", "-o", "SendEnv=GIT_PROTOCOL", "git@git.tryhisar.com", "git-receive-pack 'hisar/core.git'"}},
+		40: {path: xcodeGitPath, parentPID: 10, arguments: []string{"git", "push"}, workingDirectory: "/Users/developer/src/core"},
 		10: {path: terminalPath, parentPID: 1},
 	}
-	allProcess := ListAllProcess(50, tree.createReader())
-	if len(allProcess) != 3 || allProcess[0].PID != 50 || allProcess[1].WorkingDirectory != "/Users/developer/src/core" || !slices.Equal(allProcess[1].AllArgument, []string{"git", "push"}) || allProcess[2].AllArgument != nil {
-		t.Errorf("process chain: %+v", allProcess)
+	processes := ListProcesses(50, tree.createReader())
+	if len(processes) != 3 || processes[0].PID != 50 || processes[1].WorkingDirectory != "/Users/developer/src/core" || !slices.Equal(processes[1].Arguments, []string{"git", "push"}) || processes[2].Arguments != nil {
+		t.Errorf("process chain: %+v", processes)
 	}
 	looping := ProcessReader{GetPath: func(int) (string, error) { return "/usr/bin/x", nil }, GetParentPID: func(pid int) (int, error) { return pid + 1, nil }}
-	if allProcess := ListAllProcess(2, looping); len(allProcess) != maximumAncestorCount {
-		t.Errorf("an endless ancestry gave %d processes", len(allProcess))
+	if processes := ListProcesses(2, looping); len(processes) != maximumAncestorCount {
+		t.Errorf("an endless ancestry gave %d processes", len(processes))
 	}
 	selfParent := ProcessReader{GetPath: func(int) (string, error) { return "/usr/bin/x", nil }, GetParentPID: func(pid int) (int, error) { return pid, nil }}
-	if allProcess := ListAllProcess(7, selfParent); len(allProcess) != 1 {
-		t.Errorf("a process that is its own parent gave %d processes", len(allProcess))
+	if processes := ListProcesses(7, selfParent); len(processes) != 1 {
+		t.Errorf("a process that is its own parent gave %d processes", len(processes))
 	}
-	if allProcess := ListAllProcess(1, looping); len(allProcess) != 0 {
-		t.Errorf("launchd gave %d processes", len(allProcess))
+	if processes := ListProcesses(1, looping); len(processes) != 0 {
+		t.Errorf("launchd gave %d processes", len(processes))
 	}
 }
 
@@ -203,7 +203,7 @@ func TestFindApp(t *testing.T) {
 		300: {path: terminalPath, parentPID: 1},
 		600: {path: "/usr/bin/cron", parentPID: 1},
 	}
-	resolver := CreateResolver(System{ProcessReader: tree.createReader()})
+	resolver := NewResolver(System{ProcessReader: tree.createReader()})
 	requester := resolver.Resolve(500)
 	if requester.Kind != RequesterKindApp || requester.App.Path != "/System/Applications/Utilities/Terminal.app" || requester.Name != "Terminal" {
 		t.Errorf("ssh in Terminal: %+v", requester)
@@ -219,9 +219,9 @@ func TestFindApp(t *testing.T) {
 func TestParseKernelProcessArgument(t *testing.T) {
 	raw := []byte{3, 0, 0, 0}
 	raw = append(raw, "/usr/bin/git\x00\x00\x00\x00git\x00push\x00\x00HOME=/Users/developer\x00GITHUB_TOKEN=secret\x00"...)
-	allArgument, err := parseKernelProcessArgument(raw)
-	if err != nil || !slices.Equal(allArgument, []string{"git", "push", ""}) {
-		t.Errorf("arguments %q, %v", allArgument, err)
+	arguments, err := parseKernelProcessArgument(raw)
+	if err != nil || !slices.Equal(arguments, []string{"git", "push", ""}) {
+		t.Errorf("arguments %q, %v", arguments, err)
 	}
 	for _, malformed := range [][]byte{{1, 0}, {1, 0, 0, 0, 'x'}, {0xff, 0xff, 0, 0, '/', 0}} {
 		if _, err := parseKernelProcessArgument(malformed); err == nil {
@@ -229,16 +229,16 @@ func TestParseKernelProcessArgument(t *testing.T) {
 		}
 	}
 	truncated := append([]byte{5, 0, 0, 0}, "/bin/ls\x00ls\x00-l"...)
-	if allArgument, err := parseKernelProcessArgument(truncated); err != nil || !slices.Equal(allArgument, []string{"ls", "-l"}) {
-		t.Errorf("truncated: %q, %v", allArgument, err)
+	if arguments, err := parseKernelProcessArgument(truncated); err != nil || !slices.Equal(arguments, []string{"ls", "-l"}) {
+		t.Errorf("truncated: %q, %v", arguments, err)
 	}
 }
 
 func TestParseLinuxCommandLine(t *testing.T) {
-	if allArgument := parseLinuxCommandLine([]byte("git\x00push\x00origin\x00")); !slices.Equal(allArgument, []string{"git", "push", "origin"}) {
-		t.Errorf("%q", allArgument)
+	if arguments := parseLinuxCommandLine([]byte("git\x00push\x00origin\x00")); !slices.Equal(arguments, []string{"git", "push", "origin"}) {
+		t.Errorf("%q", arguments)
 	}
-	if allArgument := parseLinuxCommandLine(nil); len(allArgument) != 0 {
-		t.Errorf("empty: %q", allArgument)
+	if arguments := parseLinuxCommandLine(nil); len(arguments) != 0 {
+		t.Errorf("empty: %q", arguments)
 	}
 }

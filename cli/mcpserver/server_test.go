@@ -21,7 +21,7 @@ import (
 
 type fakeApp struct {
 	mutex       sync.Mutex
-	allRequest  []cliprotocol.Request
+	requests    []cliprotocol.Request
 	dialCount   int
 	closeCount  int
 	dialError   error
@@ -36,7 +36,7 @@ type fakeAppConnection struct {
 func (connection *fakeAppConnection) Call(_ context.Context, request cliprotocol.Request, result any) error {
 	app := connection.app
 	app.mutex.Lock()
-	app.allRequest = append(app.allRequest, request)
+	app.requests = append(app.requests, request)
 	answer := app.answer
 	app.mutex.Unlock()
 	if request.Type == cliprotocol.TypeAgentHello {
@@ -67,20 +67,20 @@ func (app *fakeApp) dial(context.Context) (AppConnection, error) {
 	return &fakeAppConnection{app: app}, nil
 }
 
-func (app *fakeApp) listAllRequestType() []string {
+func (app *fakeApp) listRequestTypes() []string {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
-	allType := []string{}
-	for _, request := range app.allRequest {
-		allType = append(allType, request.Type)
+	types := []string{}
+	for _, request := range app.requests {
+		types = append(types, request.Type)
 	}
-	return allType
+	return types
 }
 
 func (app *fakeApp) getLastRequest() cliprotocol.Request {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
-	return app.allRequest[len(app.allRequest)-1]
+	return app.requests[len(app.requests)-1]
 }
 
 const testSecret = "s3cr3t-token-value"
@@ -90,15 +90,15 @@ func answerWithSecret(request cliprotocol.Request) (any, error) {
 	case cliprotocol.TypeAgentListVault:
 		return cliprotocol.AgentVaultListResult{Vaults: []cliprotocol.AgentVault{{ID: "v1", Name: "Work", ItemCount: 1}}}, nil
 	case cliprotocol.TypeAgentResolveSecret, cliprotocol.TypeAgentRevealSecret:
-		allValue := []string{}
+		values := []string{}
 		for range request.References {
-			allValue = append(allValue, testSecret)
+			values = append(values, testSecret)
 		}
-		return cliprotocol.ResolveSecretResult{Values: allValue}, nil
+		return cliprotocol.ResolveSecretResult{Values: values}, nil
 	case cliprotocol.TypeAgentGetCode:
 		return cliprotocol.CodeResult{Code: "123456", ExpiresAt: "2026-10-11T09:00:30Z", Period: 30}, nil
 	}
-	return nil, cliprotocol.CreateError(cliprotocol.ErrorInvalidRequest, "unexpected "+request.Type)
+	return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "unexpected "+request.Type)
 }
 
 type testServer struct {
@@ -111,7 +111,7 @@ func createTestServer(t *testing.T, app *fakeApp) *testServer {
 	if app.answer == nil {
 		app.answer = answerWithSecret
 	}
-	server, closeApp := CreateServer(Config{
+	server, closeApp := NewServer(Config{
 		Version: "1.2.3", Dial: app.dial, Environment: []string{"PATH=" + os.Getenv("PATH"), "HOME=/nowhere", "TOKEN=from-the-agent"},
 		WorkingDirectory: t.TempDir(), KillDelay: 200 * time.Millisecond,
 		Now: func() time.Time { return time.Date(2026, 10, 11, 9, 0, 12, 500_000_000, time.UTC) },
@@ -141,13 +141,13 @@ func (server *testServer) callTool(t *testing.T, name string, argument any) *mcp
 }
 
 func getText(result *mcp.CallToolResult) string {
-	allText := []string{}
+	texts := []string{}
 	for _, content := range result.Content {
 		if text, isText := content.(*mcp.TextContent); isText {
-			allText = append(allText, text.Text)
+			texts = append(texts, text.Text)
 		}
 	}
-	return strings.Join(allText, "\n")
+	return strings.Join(texts, "\n")
 }
 
 func decodeOutput[Output any](t *testing.T, result *mcp.CallToolResult) Output {
@@ -179,49 +179,49 @@ func TestToolsAreListedWithSchemasForModels(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	allName := []string{}
-	allToolByName := map[string]*mcp.Tool{}
+	names := []string{}
+	toolsByName := map[string]*mcp.Tool{}
 	for _, tool := range result.Tools {
-		allName = append(allName, tool.Name)
-		allToolByName[tool.Name] = tool
+		names = append(names, tool.Name)
+		toolsByName[tool.Name] = tool
 	}
-	slices.Sort(allName)
-	if !slices.Equal(allName, []string{"get_one_time_code", "get_secret", "list_vaults", "run_with_secrets", "search_items"}) {
-		t.Fatalf("tools = %q", allName)
+	slices.Sort(names)
+	if !slices.Equal(names, []string{"get_one_time_code", "get_secret", "list_vaults", "run_with_secrets", "search_items"}) {
+		t.Fatalf("tools = %q", names)
 	}
-	allRequired := map[string][]string{
+	required := map[string][]string{
 		"list_vaults": nil, "search_items": {"query"}, "run_with_secrets": {"command", "env"}, "get_one_time_code": {"item"}, "get_secret": {"reference"},
 	}
-	for name, allExpected := range allRequired {
-		schema, _ := json.Marshal(allToolByName[name].InputSchema)
+	for name, expectedValues := range required {
+		schema, _ := json.Marshal(toolsByName[name].InputSchema)
 		var decoded struct {
 			Type       string                     `json:"type"`
 			Required   []string                   `json:"required"`
 			Properties map[string]json.RawMessage `json:"properties"`
 		}
 		json.Unmarshal(schema, &decoded)
-		if decoded.Type != "object" || !slices.Equal(decoded.Required, allExpected) {
+		if decoded.Type != "object" || !slices.Equal(decoded.Required, expectedValues) {
 			t.Errorf("%s input schema: %s", name, schema)
 		}
-		if allToolByName[name].OutputSchema == nil || allToolByName[name].Description == "" {
+		if toolsByName[name].OutputSchema == nil || toolsByName[name].Description == "" {
 			t.Errorf("%s has no output schema or description", name)
 		}
 	}
-	runSchema, _ := json.Marshal(allToolByName["run_with_secrets"].InputSchema)
+	runSchema, _ := json.Marshal(toolsByName["run_with_secrets"].InputSchema)
 	for _, property := range []string{`"workingDirectory"`, `"timeoutSeconds"`, `hisar://vault/item/field`} {
 		if !strings.Contains(string(runSchema), property) {
 			t.Errorf("run_with_secrets schema lacks %s: %s", property, runSchema)
 		}
 	}
 	for _, name := range []string{"list_vaults", "search_items", "run_with_secrets"} {
-		if description := allToolByName[name].Description; !strings.Contains(description, "never returned") && !strings.Contains(description, "Returns no secrets") {
+		if description := toolsByName[name].Description; !strings.Contains(description, "never returned") && !strings.Contains(description, "Returns no secrets") {
 			t.Errorf("%s does not say it never returns values: %s", name, description)
 		}
 	}
-	if description := allToolByName["get_secret"].Description; !strings.Contains(description, "only tool that returns a secret value") || !strings.Contains(description, "approval") {
+	if description := toolsByName["get_secret"].Description; !strings.Contains(description, "only tool that returns a secret value") || !strings.Contains(description, "approval") {
 		t.Errorf("get_secret description: %s", description)
 	}
-	if runAnnotations := allToolByName["run_with_secrets"].Annotations; runAnnotations.ReadOnlyHint || runAnnotations.DestructiveHint == nil || !*runAnnotations.DestructiveHint {
+	if runAnnotations := toolsByName["run_with_secrets"].Annotations; runAnnotations.ReadOnlyHint || runAnnotations.DestructiveHint == nil || !*runAnnotations.DestructiveHint {
 		t.Error("run_with_secrets is not marked destructive")
 	}
 	initializeResult := server.session.InitializeResult()
@@ -238,10 +238,10 @@ func TestServerConnectsLazilyAndIntroducesTheAgentOnce(t *testing.T) {
 	}
 	server.callTool(t, "list_vaults", map[string]any{})
 	server.callTool(t, "list_vaults", map[string]any{})
-	if app.dialCount != 1 || !slices.Equal(app.listAllRequestType(), []string{cliprotocol.TypeAgentHello, cliprotocol.TypeAgentListVault, cliprotocol.TypeAgentListVault}) {
-		t.Fatalf("dials %d, requests %q", app.dialCount, app.listAllRequestType())
+	if app.dialCount != 1 || !slices.Equal(app.listRequestTypes(), []string{cliprotocol.TypeAgentHello, cliprotocol.TypeAgentListVault, cliprotocol.TypeAgentListVault}) {
+		t.Fatalf("dials %d, requests %q", app.dialCount, app.listRequestTypes())
 	}
-	hello := app.allRequest[0]
+	hello := app.requests[0]
 	if hello.AgentName != "claude-code" || hello.AgentVersion != "2.1.0" {
 		t.Errorf("agent.hello = %+v", hello)
 	}
@@ -291,7 +291,7 @@ func TestListAndSearchWithoutAgentVaultsExplainHowToEnableOne(t *testing.T) {
 	if searchOutput.Items == nil || !strings.Contains(searchOutput.Message, "Settings → Developer tools → Coding agents") {
 		t.Errorf("search: %+v", searchOutput)
 	}
-	search := app.allRequest[len(app.allRequest)-2]
+	search := app.requests[len(app.requests)-2]
 	if search.Type != cliprotocol.TypeAgentSearchItem || search.Vault != "Work" {
 		t.Errorf("search request = %+v", search)
 	}
@@ -382,7 +382,7 @@ func TestRunWithSecretsStopsTheCommandAtTheTimeout(t *testing.T) {
 func TestRunWithSecretsChecksEverythingBeforeAsking(t *testing.T) {
 	app := &fakeApp{}
 	server := createTestServer(t, app)
-	allCase := []struct {
+	cases := []struct {
 		argument map[string]any
 		message  string
 	}{
@@ -395,7 +395,7 @@ func TestRunWithSecretsChecksEverythingBeforeAsking(t *testing.T) {
 		{map[string]any{"command": []string{"env"}, "env": map[string]string{"TOKEN": "hisar://Work/Stripe/password"}, "timeoutSeconds": 601}, "timeoutSeconds must be between 1 and 600"},
 		{map[string]any{"command": []string{"env"}, "env": map[string]string{"TOKEN": "hisar://Work/Stripe/password"}, "workingDirectory": "/no/such/directory"}, "working directory /no/such/directory does not exist"},
 	}
-	for _, testCase := range allCase {
+	for _, testCase := range cases {
 		result := server.callTool(t, "run_with_secrets", testCase.argument)
 		if !result.IsError || !strings.Contains(getText(result), testCase.message) {
 			t.Errorf("%v: %s", testCase.argument, getText(result))
@@ -409,16 +409,16 @@ func TestRunWithSecretsChecksEverythingBeforeAsking(t *testing.T) {
 func TestDenialsAreClearToolErrors(t *testing.T) {
 	app := &fakeApp{}
 	server := createTestServer(t, app)
-	allCase := []struct {
+	cases := []struct {
 		answer  error
 		message string
 	}{
-		{cliprotocol.CreateError(cliprotocol.ErrorDenied, "Hisar denied the request (it was declined)"), "The user denied access in Hisar."},
-		{cliprotocol.CreateError(cliprotocol.ErrorDenied, "Hisar denied the request (it was not answered within 2 minutes)"), "The user did not answer Hisar's approval dialog in time."},
-		{cliprotocol.CreateError(cliprotocol.ErrorNotFound, "hisar://Personal/Bank/password: no vault is named \"Personal\""), "no vault is named \"Personal\""},
-		{cliprotocol.CreateError(cliprotocol.ErrorSignedOut, "signed out"), "Hisar is not signed in."},
+		{cliprotocol.NewError(cliprotocol.ErrorDenied, "Hisar denied the request (it was declined)"), "The user denied access in Hisar."},
+		{cliprotocol.NewError(cliprotocol.ErrorDenied, "Hisar denied the request (it was not answered within 2 minutes)"), "The user did not answer Hisar's approval dialog in time."},
+		{cliprotocol.NewError(cliprotocol.ErrorNotFound, "hisar://Personal/Bank/password: no vault is named \"Personal\""), "no vault is named \"Personal\""},
+		{cliprotocol.NewError(cliprotocol.ErrorSignedOut, "signed out"), "Hisar is not signed in."},
 	}
-	for _, testCase := range allCase {
+	for _, testCase := range cases {
 		app.answer = func(cliprotocol.Request) (any, error) { return nil, testCase.answer }
 		result := server.callTool(t, "get_secret", map[string]any{"reference": "hisar://Personal/Bank/password"})
 		if !result.IsError || getText(result) != testCase.message && !strings.Contains(getText(result), testCase.message) {

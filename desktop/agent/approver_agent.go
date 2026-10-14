@@ -8,7 +8,7 @@ import (
 	"unicode"
 
 	"github.com/tryhisar/hisar/core/approval"
-	"github.com/tryhisar/hisar/desktop/commandline"
+	"github.com/tryhisar/hisar/core/clisocket"
 )
 
 const (
@@ -20,7 +20,7 @@ const (
 	agentRevealRememberLabel = "Allow this item for 1 hour"
 )
 
-var allKnownAgentNameByClientName = map[string]string{
+var knownAgentNamesByClientName = map[string]string{
 	"claude-code":           "Claude Code",
 	"claude-ai":             "Claude",
 	"cursor-vscode":         "Cursor",
@@ -38,11 +38,11 @@ func cleanAgentName(name string) string {
 }
 
 // DescribeAgentName names the agent: its title, a known display name for its client name, or the name itself.
-func DescribeAgentName(identity commandline.AgentIdentity) string {
+func DescribeAgentName(identity clisocket.AgentIdentity) string {
 	if title := cleanAgentName(identity.Title); title != "" {
 		return title
 	}
-	if knownName, isKnown := allKnownAgentNameByClientName[strings.ToLower(strings.TrimSpace(identity.Name))]; isKnown {
+	if knownName, isKnown := knownAgentNamesByClientName[strings.ToLower(strings.TrimSpace(identity.Name))]; isKnown {
 		return knownName
 	}
 	if name := cleanAgentName(identity.Name); name != "" {
@@ -51,34 +51,34 @@ func DescribeAgentName(identity commandline.AgentIdentity) string {
 	return unknownAgentName
 }
 
-func describeAgentAction(request commandline.AgentApprovalRequest) string {
+func describeAgentAction(request clisocket.AgentApprovalRequest) string {
 	switch request.Kind {
-	case commandline.AgentRequestRun:
-		return describeSecretAction(len(request.AllSecretName), true)
-	case commandline.AgentRequestCode:
+	case clisocket.AgentRequestRun:
+		return describeSecretAction(len(request.SecretNames), true)
+	case clisocket.AgentRequestCode:
 		return fmt.Sprintf("get the one-time code of “%s”", request.RevealedName)
-	case commandline.AgentRequestReveal:
+	case clisocket.AgentRequestReveal:
 		return fmt.Sprintf("read “%s”", request.RevealedName)
 	}
 	return "use Hisar"
 }
 
-func describeAgentRememberLabel(request commandline.AgentApprovalRequest) string {
+func describeAgentRememberLabel(request clisocket.AgentApprovalRequest) string {
 	switch request.Kind {
-	case commandline.AgentRequestRun:
-		if len(request.AllSecretName) == 1 {
+	case clisocket.AgentRequestRun:
+		if len(request.SecretNames) == 1 {
 			return "Allow this secret for this agent for 1 hour"
 		}
 		return "Allow these secrets for this agent for 1 hour"
-	case commandline.AgentRequestCode:
+	case clisocket.AgentRequestCode:
 		return "Allow this one-time code for this agent for 1 hour"
-	case commandline.AgentRequestReveal:
+	case clisocket.AgentRequestReveal:
 		return agentRevealRememberLabel
 	}
 	return ""
 }
 
-func (approver *Approver) buildAgentEvent(requestID string, request commandline.AgentApprovalRequest) ApprovalEvent {
+func (approver *Approver) buildAgentEvent(requestID string, request clisocket.AgentApprovalRequest) ApprovalEvent {
 	agentName := DescribeAgentName(request.Agent)
 	event := ApprovalEvent{
 		RequestID:            requestID,
@@ -89,23 +89,23 @@ func (approver *Approver) buildAgentEvent(requestID string, request commandline.
 		TerminalName:         request.TerminalName,
 		Purpose:              request.Kind,
 		Action:               describeAgentAction(request),
-		IsRememberable:       request.Kind != commandline.AgentRequestConnect,
+		IsRememberable:       request.Kind != clisocket.AgentRequestConnect,
 		RememberLabel:        describeAgentRememberLabel(request),
 		IsConnectionApproval: request.IsConnectionApproval,
 		IsTouchIDApproval:    approver.IsTouchIDApproval(),
 		TimeoutAt:            approver.config.Now().Add(approver.config.Timeout).UTC().Format(time.RFC3339),
-		AllSecretName:        []string{},
-		AllChainProcess:      []ChainProcess{},
+		SecretNames:          []string{},
+		ChainProcesses:       []ChainProcess{},
 	}
-	if request.Kind == commandline.AgentRequestRun {
+	if request.Kind == clisocket.AgentRequestRun {
 		event.CommandLine = formatCommandLine(request.CommandLine)
 		event.WorkingDirectory = truncateText(shortenHomePath(request.WorkingDirectory, approver.config.HomeDirectory), maximumDirectoryLength)
 	}
-	if request.Kind == commandline.AgentRequestReveal {
+	if request.Kind == clisocket.AgentRequestReveal {
 		event.Warning = fmt.Sprintf("The value will be visible to %s and can end up in its transcript and logs.", agentName)
 	}
-	if len(request.AllSecretName) > 0 {
-		event.AllSecretName, event.MoreSecretCount = limitSecretName(request.AllSecretName)
+	if len(request.SecretNames) > 0 {
+		event.SecretNames, event.MoreSecretCount = limitSecretName(request.SecretNames)
 	}
 	if requester, isResolved := approver.resolveRequester(request.ClientPID); isResolved {
 		applyRequester(&event, requester)
@@ -136,14 +136,14 @@ func (approver *Approver) buildAgentPhoneDescription(event ApprovalEvent) approv
 		CommandLine:  event.CommandLine,
 		TerminalName: event.TerminalName,
 	}
-	if event.Purpose == commandline.AgentRequestConnect {
+	if event.Purpose == clisocket.AgentRequestConnect {
 		description.CommandLine = event.ClientPath
 	}
 	if event.WorkingDirectory != "" {
 		description.RepositoryPath = event.WorkingDirectory
 	}
-	if len(event.AllSecretName) > 0 {
-		description.Secrets = append([]string{}, event.AllSecretName...)
+	if len(event.SecretNames) > 0 {
+		description.Secrets = append([]string{}, event.SecretNames...)
 		if event.MoreSecretCount > 0 {
 			description.Secrets = append(description.Secrets, fmt.Sprintf("and %d more", event.MoreSecretCount))
 		}
@@ -156,9 +156,9 @@ func (approver *Approver) buildAgentPhoneDescription(event ApprovalEvent) approv
 }
 
 // ApproveAgent asks about one request of hisar mcp; when Hisar is locked, approving also unlocks it.
-func (approver *Approver) ApproveAgent(ctx context.Context, request commandline.AgentApprovalRequest) (commandline.AgentApprovalResult, error) {
+func (approver *Approver) ApproveAgent(ctx context.Context, request clisocket.AgentApprovalRequest) (clisocket.AgentApprovalResult, error) {
 	if approver.config.Emit == nil {
-		return commandline.AgentApprovalResult{}, commandline.ErrDenied
+		return clisocket.AgentApprovalResult{}, clisocket.ErrDenied
 	}
 	receivedAt := approver.config.Now()
 	event := approver.buildAgentEvent(generateRequestID(), request)
@@ -173,9 +173,9 @@ func (approver *Approver) ApproveAgent(ctx context.Context, request commandline.
 	}
 	if !approver.waitForApproval(ctx, pending) {
 		if pending.timedOutAfter > 0 {
-			return commandline.AgentApprovalResult{}, commandline.TimeoutError{Timeout: pending.timedOutAfter}
+			return clisocket.AgentApprovalResult{}, clisocket.TimeoutError{Timeout: pending.timedOutAfter}
 		}
-		return commandline.AgentApprovalResult{}, commandline.ErrDenied
+		return clisocket.AgentApprovalResult{}, clisocket.ErrDenied
 	}
-	return commandline.AgentApprovalResult{IsRemembered: event.IsRememberable && approver.isPendingRemembered(pending)}, nil
+	return clisocket.AgentApprovalResult{IsRemembered: event.IsRememberable && approver.isPendingRemembered(pending)}, nil
 }

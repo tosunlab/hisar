@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tryhisar/hisar/desktop/browser"
+	"github.com/tryhisar/hisar/core/browserprotocol"
 )
 
 type storedPasskey struct {
@@ -73,12 +73,12 @@ func checkPasskeyFlow(t *testing.T, hisar *Hisar, personalID, itemID string) {
 	}
 	publicKey := readCOSEPublicKey(t, authenticatorData)
 
-	allPasskey := decodeJSON[[]storedPasskey](t)(hisar.ListAllPasskeyForRelyingParty("github.com", ""))
-	if len(allPasskey) != 1 || allPasskey[0].CredentialID != created.CredentialID || allPasskey[0].UserHandle != base64.RawURLEncoding.EncodeToString([]byte("octocat-id")) || allPasskey[0].Title != "GitHub" {
-		t.Fatalf("passkeys for github.com = %+v", allPasskey)
+	passkeys := decodeJSON[[]storedPasskey](t)(hisar.ListAllPasskeyForRelyingParty("github.com", ""))
+	if len(passkeys) != 1 || passkeys[0].CredentialID != created.CredentialID || passkeys[0].UserHandle != base64.RawURLEncoding.EncodeToString([]byte("octocat-id")) || passkeys[0].Title != "GitHub" {
+		t.Fatalf("passkeys for github.com = %+v", passkeys)
 	}
-	if allEveryPasskey := decodeJSON[[]storedPasskey](t)(hisar.ListAllPasskey()); len(allEveryPasskey) != 1 || allEveryPasskey[0].RelyingPartyID != "github.com" {
-		t.Errorf("every passkey = %+v", allEveryPasskey)
+	if everyPasskeys := decodeJSON[[]storedPasskey](t)(hisar.ListAllPasskey()); len(everyPasskeys) != 1 || everyPasskeys[0].RelyingPartyID != "github.com" {
+		t.Errorf("every passkey = %+v", everyPasskeys)
 	}
 
 	assertionHash := sha256.Sum256([]byte(`{"type":"webauthn.get","challenge":"BAUG","origin":"https://github.com"}`))
@@ -138,10 +138,10 @@ func TestPasskeyArgumentsAndErrors(t *testing.T) {
 	if _, err := hisar.AssertPasskey("co.uk", "AQ", "AQ"); err == nil || strings.Contains(err.Error(), "invalid-request") {
 		t.Errorf("error code kept in the message: %v", err)
 	}
-	if allValue, err := decodeStringArray(" "); err != nil || allValue != nil {
-		t.Errorf("empty array text = %v %v", allValue, err)
+	if values, err := decodeStringArray(" "); err != nil || values != nil {
+		t.Errorf("empty array text = %v %v", values, err)
 	}
-	if _, err := encodePasskeyJSON(nil, browser.CreateError(browser.ErrorNotFound, "passkey: passkey not found")); err == nil || err.Error() != "passkey not found" {
+	if _, err := encodePasskeyJSON(nil, browserprotocol.NewError(browserprotocol.ErrorNotFound, "passkey: passkey not found")); err == nil || err.Error() != "passkey not found" {
 		t.Errorf("converted error = %v", err)
 	}
 	if _, err := encodePasskeyJSON(nil, errors.New("plain")); err == nil || err.Error() != "plain" {

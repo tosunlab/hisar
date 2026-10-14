@@ -13,11 +13,14 @@ import (
 
 	"github.com/zalando/go-keyring"
 
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
-	"github.com/tryhisar/hisar/core/proto"
 )
 
 const keyringService = "hisar"
+
+// SecretKeyEnvironmentVariable overrides the keychain, for headless machines and scripting.
+const SecretKeyEnvironmentVariable = "HISAR_SECRET_KEY"
 
 type State struct {
 	Server    string            `json:"server"`
@@ -25,40 +28,47 @@ type State struct {
 	AccountID string            `json:"accountId"`
 	Token     string            `json:"token"`
 	DeviceID  string            `json:"deviceId"`
-	AllPin    map[string][]byte `json:"pins,omitempty"`
-	AllSeq    map[string]int64  `json:"seqs,omitempty"`
+	Pins      map[string][]byte `json:"pins,omitempty"`
+	Seqs      map[string]int64  `json:"seqs,omitempty"`
 
 	// BiometricUnlock is the account unlock key sealed with a key kept in the OS keychain.
 	BiometricUnlock      []byte    `json:"biometricUnlock,omitempty"`
 	LastPasswordUnlockAt time.Time `json:"lastPasswordUnlockAt,omitzero"`
 
-	AllPairedBrowser []PairedBrowser `json:"pairedBrowsers,omitempty"`
+	PairedBrowsers []PairedBrowser `json:"pairedBrowsers,omitempty"`
 	// IsExactHostMatch limits browser autofill to the item's exact host instead of its registrable domain.
 	IsExactHostMatch bool `json:"exactHostMatch,omitempty"`
-	// IsAutomaticUpdateCheckDisabled is a device preference of the desktop app, so Reset keeps it.
-	IsAutomaticUpdateCheckDisabled bool `json:"automaticUpdateCheckDisabled,omitempty"`
-	// IsCommandLineIntegrationDisabled turns off the desktop app's CLI socket; a device preference that Reset keeps.
-	IsCommandLineIntegrationDisabled bool `json:"commandLineIntegrationDisabled,omitempty"`
-	// IsCompactSSHApproval shows SSH approvals as a card at the top right; a device preference that Reset keeps.
-	IsCompactSSHApproval bool `json:"compactSSHApproval,omitempty"`
-	// AutoLockSeconds is the desktop app's chosen auto-lock delay (0: the default); a device preference that Reset keeps.
-	AutoLockSeconds int `json:"autoLockSeconds,omitempty"`
-	// IsPhoneApprovalDisabled stops sending approval dialogs to the account's iPhones; a device preference that Reset keeps.
-	IsPhoneApprovalDisabled bool `json:"phoneApprovalDisabled,omitempty"`
-	// SigningRememberSeconds is how long an approved commit signature may be remembered (0: always ask); a device preference that Reset keeps.
-	SigningRememberSeconds int `json:"signingRememberSeconds,omitempty"`
-	// AllAgentVaultID lists the vaults coding agents may see through hisar mcp; every other vault is invisible to them.
-	AllAgentVaultID []string `json:"agentVaults,omitempty"`
-	// IsOpenAtLoginConfigured records that the desktop app registered its login item once; a device preference that Reset keeps.
-	IsOpenAtLoginConfigured bool `json:"openAtLoginConfigured,omitempty"`
-	// IsOpenAtLoginDisabled is set when the user turned "Open Hisar at login" off; a device preference that Reset keeps.
-	IsOpenAtLoginDisabled bool `json:"openAtLoginDisabled,omitempty"`
-	// Appearance ("system", "light", "dark") and Color ("neutral", "blue", "purple", "green") are this device's theme;
-	// empty means the defaults, and Reset keeps both.
-	Appearance string `json:"appearance,omitempty"`
-	Color      string `json:"color,omitempty"`
+	// AgentVaultIDs lists the vaults coding agents may see through hisar mcp; every other vault is invisible to them.
+	AgentVaultIDs []string `json:"agentVaults,omitempty"`
+
+	// Settings are this device's preferences; Reset keeps them. Embedded, so state.json keeps its flat keys.
+	Settings
 
 	path string
+}
+
+// Settings are device preferences of the apps that outlive signing out.
+type Settings struct {
+	// IsAutomaticUpdateCheckDisabled turns off the desktop app's automatic update check.
+	IsAutomaticUpdateCheckDisabled bool `json:"automaticUpdateCheckDisabled,omitempty"`
+	// IsCommandLineIntegrationDisabled turns off the desktop app's CLI socket.
+	IsCommandLineIntegrationDisabled bool `json:"commandLineIntegrationDisabled,omitempty"`
+	// IsCompactSSHApproval shows SSH approvals as a card at the top right.
+	IsCompactSSHApproval bool `json:"compactSSHApproval,omitempty"`
+	// AutoLockSeconds is the chosen auto-lock delay (0: the default).
+	AutoLockSeconds int `json:"autoLockSeconds,omitempty"`
+	// IsPhoneApprovalDisabled stops sending approval dialogs to the account's iPhones.
+	IsPhoneApprovalDisabled bool `json:"phoneApprovalDisabled,omitempty"`
+	// SigningRememberSeconds is how long an approved commit signature may be remembered (0: always ask).
+	SigningRememberSeconds int `json:"signingRememberSeconds,omitempty"`
+	// IsOpenAtLoginConfigured records that the desktop app registered its login item once.
+	IsOpenAtLoginConfigured bool `json:"openAtLoginConfigured,omitempty"`
+	// IsOpenAtLoginDisabled is set when the user turned "Open Hisar at login" off.
+	IsOpenAtLoginDisabled bool `json:"openAtLoginDisabled,omitempty"`
+	// Appearance ("system", "light", "dark") and Color ("neutral", "blue", "purple", "green") are this device's theme;
+	// empty means the defaults.
+	Appearance string `json:"appearance,omitempty"`
+	Color      string `json:"color,omitempty"`
 }
 
 type PairedBrowser struct {
@@ -69,8 +79,8 @@ type PairedBrowser struct {
 	LastUsedAt time.Time `json:"lastUsedAt"`
 }
 
-func (s *State) GetSeq(vaultID string) int64      { return s.AllSeq[vaultID] }
-func (s *State) SetSeq(vaultID string, seq int64) { s.AllSeq[vaultID] = seq }
+func (s *State) GetSeq(vaultID string) int64      { return s.Seqs[vaultID] }
+func (s *State) SetSeq(vaultID string, seq int64) { s.Seqs[vaultID] = seq }
 
 // GetPath returns the value of environmentVariable if set, otherwise <user config dir>/hisar/<fileName>.
 func GetPath(environmentVariable, fileName string) (string, error) {
@@ -95,11 +105,11 @@ func Load(path string) (*State, error) {
 			return nil, fmt.Errorf("%s: %w", path, err)
 		}
 	}
-	if state.AllPin == nil {
-		state.AllPin = map[string][]byte{}
+	if state.Pins == nil {
+		state.Pins = map[string][]byte{}
 	}
-	if state.AllSeq == nil {
-		state.AllSeq = map[string]int64{}
+	if state.Seqs == nil {
+		state.Seqs = map[string]int64{}
 	}
 	return state, nil
 }
@@ -121,28 +131,22 @@ func (s *State) Save() error {
 
 // Reset forgets the account, session, pins and seqs but keeps the file location and the device preferences.
 func (s *State) Reset() {
-	*s = State{
-		path: s.path, AllPin: map[string][]byte{}, AllSeq: map[string]int64{},
-		IsAutomaticUpdateCheckDisabled: s.IsAutomaticUpdateCheckDisabled, IsCommandLineIntegrationDisabled: s.IsCommandLineIntegrationDisabled,
-		IsCompactSSHApproval: s.IsCompactSSHApproval, AutoLockSeconds: s.AutoLockSeconds, IsPhoneApprovalDisabled: s.IsPhoneApprovalDisabled,
-		IsOpenAtLoginConfigured: s.IsOpenAtLoginConfigured, IsOpenAtLoginDisabled: s.IsOpenAtLoginDisabled,
-		Appearance: s.Appearance, Color: s.Color, SigningRememberSeconds: s.SigningRememberSeconds,
-	}
+	*s = State{path: s.path, Pins: map[string][]byte{}, Seqs: map[string]int64{}, Settings: s.Settings}
 }
 
 // IsMemberKeyChanged reports whether a signing key differs from the one pinned for the account.
 func (s *State) IsMemberKeyChanged(accountID string, signingPublicKey []byte) bool {
-	pinned, found := s.AllPin[accountID]
+	pinned, found := s.Pins[accountID]
 	return found && !bytes.Equal(pinned, signingPublicKey)
 }
 
 // CheckMemberPin trusts a member's signing key on first use and refuses it if it changes later.
 // The caller saves the state.
-func (s *State) CheckMemberPin(member *proto.Member) error {
+func (s *State) CheckMemberPin(member *apitypes.Member) error {
 	if s.IsMemberKeyChanged(member.AccountID, member.PublicKeys.Sign) {
 		return fmt.Errorf("the signing key of %s changed since you last shared with them; stopping", member.Email)
 	}
-	s.AllPin[member.AccountID] = append([]byte(nil), member.PublicKeys.Sign...)
+	s.Pins[member.AccountID] = append([]byte(nil), member.PublicKeys.Sign...)
 	return nil
 }
 
@@ -150,9 +154,9 @@ func (s *State) IsLoggedIn() bool {
 	return s.Token != "" && s.AccountID != ""
 }
 
-// HISAR_SECRET_KEY overrides the keychain, for headless machines and scripting.
+// LoadSecretKey reads the Secret Key from SecretKeyEnvironmentVariable, or else the keychain.
 func LoadSecretKey(accountID string) (crypt.SecretKey, error) {
-	encodedSecretKey := os.Getenv("HISAR_SECRET_KEY")
+	encodedSecretKey := os.Getenv(SecretKeyEnvironmentVariable)
 	if encodedSecretKey == "" {
 		var err error
 		if encodedSecretKey, err = keyring.Get(keyringService, accountID); err != nil {
@@ -170,14 +174,14 @@ func LoadSecretKey(accountID string) (crypt.SecretKey, error) {
 }
 
 func StoreSecretKey(secretKey crypt.SecretKey) error {
-	if os.Getenv("HISAR_SECRET_KEY") != "" {
+	if os.Getenv(SecretKeyEnvironmentVariable) != "" {
 		return nil
 	}
 	return keyring.Set(keyringService, secretKey.AccountID, secretKey.Encode())
 }
 
 func DeleteSecretKey(accountID string) error {
-	if os.Getenv("HISAR_SECRET_KEY") != "" {
+	if os.Getenv(SecretKeyEnvironmentVariable) != "" {
 		return nil
 	}
 	err := keyring.Delete(keyringService, accountID)

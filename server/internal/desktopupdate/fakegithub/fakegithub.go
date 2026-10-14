@@ -28,7 +28,7 @@ type Release struct {
 	TagName      string
 	IsDraft      bool
 	IsPrerelease bool
-	AllAsset     []Asset
+	Assets       []Asset
 }
 
 type storedAsset struct {
@@ -38,8 +38,8 @@ type storedAsset struct {
 
 type storedRelease struct {
 	Release
-	id        int64
-	allStored []storedAsset
+	id     int64
+	stored []storedAsset
 }
 
 type Request struct {
@@ -60,23 +60,23 @@ type Server struct {
 	// BeforeDownload runs before storage sends an asset, e.g. to stream it slowly; false means it answered itself.
 	BeforeDownload func(writer http.ResponseWriter, request *http.Request, assetName string) bool
 
-	mutex                   sync.Mutex
-	allRelease              []*storedRelease
-	nextID                  int64
-	allRequest              []Request
-	allStorageAuthorization []string
-	rateLimitStatus         int
-	rateLimitDelay          int
-	closeAll                func()
+	mutex                 sync.Mutex
+	releases              []*storedRelease
+	nextID                int64
+	requests              []Request
+	storageAuthorizations []string
+	rateLimitStatus       int
+	rateLimitDelay        int
+	closeAll              func()
 }
 
-func Create(repository, token string) *Server {
+func New(repository, token string) *Server {
 	return &Server{Repository: repository, Token: token, nextID: 1}
 }
 
 // Start serves the API and the storage on two test servers.
 func Start(t testing.TB, repository, token string) *Server {
-	fake := Create(repository, token)
+	fake := New(repository, token)
 	api := httptest.NewServer(http.HandlerFunc(fake.ServeAPI))
 	storage := httptest.NewServer(http.HandlerFunc(fake.ServeStorage))
 	fake.closeAll = func() {
@@ -99,25 +99,25 @@ func (fake *Server) AddRelease(release Release) {
 	defer fake.mutex.Unlock()
 	stored := &storedRelease{Release: release, id: fake.nextID}
 	fake.nextID++
-	for _, asset := range release.AllAsset {
-		stored.allStored = append(stored.allStored, storedAsset{id: fake.nextID, Asset: asset})
+	for _, asset := range release.Assets {
+		stored.stored = append(stored.stored, storedAsset{id: fake.nextID, Asset: asset})
 		fake.nextID++
 	}
-	fake.allRelease = append(fake.allRelease, stored)
+	fake.releases = append(fake.releases, stored)
 }
 
 // PublishRelease does what the Publish workflow does: renames update-unpublished.json to update.json and ends the prerelease.
 func (fake *Server) PublishRelease(tagName string) {
 	fake.mutex.Lock()
 	defer fake.mutex.Unlock()
-	for _, stored := range fake.allRelease {
+	for _, stored := range fake.releases {
 		if stored.TagName != tagName {
 			continue
 		}
 		stored.IsPrerelease = false
-		for index := range stored.allStored {
-			if stored.allStored[index].Name == "update-unpublished.json" {
-				stored.allStored[index].Name = "update.json"
+		for index := range stored.stored {
+			if stored.stored[index].Name == "update-unpublished.json" {
+				stored.stored[index].Name = "update.json"
 			}
 		}
 	}
@@ -130,23 +130,23 @@ func (fake *Server) LimitRate(status, retryAfterSecond int) {
 	fake.rateLimitStatus, fake.rateLimitDelay = status, retryAfterSecond
 }
 
-func (fake *Server) GetAllRequest() []Request {
+func (fake *Server) GetRequests() []Request {
 	fake.mutex.Lock()
 	defer fake.mutex.Unlock()
-	return append([]Request(nil), fake.allRequest...)
+	return append([]Request(nil), fake.requests...)
 }
 
-// GetAllStorageAuthorization returns the Authorization header of every storage request, in order.
-func (fake *Server) GetAllStorageAuthorization() []string {
+// GetStorageAuthorizations returns the Authorization header of every storage request, in order.
+func (fake *Server) GetStorageAuthorizations() []string {
 	fake.mutex.Lock()
 	defer fake.mutex.Unlock()
-	return append([]string(nil), fake.allStorageAuthorization...)
+	return append([]string(nil), fake.storageAuthorizations...)
 }
 
 func (fake *Server) recordRequest(request *http.Request, status int) {
 	fake.mutex.Lock()
 	defer fake.mutex.Unlock()
-	fake.allRequest = append(fake.allRequest, Request{
+	fake.requests = append(fake.requests, Request{
 		Path: request.URL.RequestURI(), Authorization: request.Header.Get("Authorization"), IfNoneMatch: request.Header.Get("If-None-Match"), Status: status,
 	})
 }
@@ -154,8 +154,8 @@ func (fake *Server) recordRequest(request *http.Request, status int) {
 func (fake *Server) findAsset(assetID int64) (storedAsset, bool) {
 	fake.mutex.Lock()
 	defer fake.mutex.Unlock()
-	for _, stored := range fake.allRelease {
-		for _, asset := range stored.allStored {
+	for _, stored := range fake.releases {
+		for _, asset := range stored.stored {
 			if asset.id == assetID {
 				return asset, true
 			}
@@ -216,30 +216,30 @@ func (fake *Server) listRelease(writer http.ResponseWriter, request *http.Reques
 	page, _ := strconv.Atoi(query.Get("page"))
 	page = max(page, 1)
 	fake.mutex.Lock()
-	allListed := []map[string]any{}
-	for index := len(fake.allRelease) - 1; index >= 0; index-- {
-		stored := fake.allRelease[index]
+	listed := []map[string]any{}
+	for index := len(fake.releases) - 1; index >= 0; index-- {
+		stored := fake.releases[index]
 		if stored.IsDraft && fake.Token == "" {
 			continue
 		}
-		allAsset := []map[string]any{}
-		for _, asset := range stored.allStored {
-			allAsset = append(allAsset, map[string]any{
+		assets := []map[string]any{}
+		for _, asset := range stored.stored {
+			assets = append(assets, map[string]any{
 				"id": asset.id, "name": asset.Name, "size": len(asset.Content), "state": "uploaded",
 				"url": "https://api.github.invalid/assets/" + strconv.FormatInt(asset.id, 10),
 			})
 		}
-		allListed = append(allListed, map[string]any{
-			"id": stored.id, "tag_name": stored.TagName, "draft": stored.IsDraft, "prerelease": stored.IsPrerelease, "assets": allAsset,
+		listed = append(listed, map[string]any{
+			"id": stored.id, "tag_name": stored.TagName, "draft": stored.IsDraft, "prerelease": stored.IsPrerelease, "assets": assets,
 		})
 	}
 	fake.mutex.Unlock()
-	start, end := min((page-1)*pageSize, len(allListed)), min(page*pageSize, len(allListed))
-	content, _ := json.Marshal(allListed[start:end])
+	start, end := min((page-1)*pageSize, len(listed)), min(page*pageSize, len(listed))
+	content, _ := json.Marshal(listed[start:end])
 	digest := sha256.Sum256(content)
 	etag := `W/"` + hex.EncodeToString(digest[:]) + `"`
 	writer.Header().Set("ETag", etag)
-	if end < len(allListed) {
+	if end < len(listed) {
 		writer.Header().Set("Link", fmt.Sprintf(`<%s?per_page=%d&page=%d>; rel="next"`, request.URL.Path, pageSize, page+1))
 	}
 	if request.Header.Get("If-None-Match") == etag {
@@ -253,7 +253,7 @@ func (fake *Server) listRelease(writer http.ResponseWriter, request *http.Reques
 
 func (fake *Server) ServeStorage(writer http.ResponseWriter, request *http.Request) {
 	fake.mutex.Lock()
-	fake.allStorageAuthorization = append(fake.allStorageAuthorization, request.Header.Get("Authorization"))
+	fake.storageAuthorizations = append(fake.storageAuthorizations, request.Header.Get("Authorization"))
 	fake.mutex.Unlock()
 	assetID, err := strconv.ParseInt(strings.TrimPrefix(request.URL.Path, "/assets/"), 10, 64)
 	asset, found := fake.findAsset(assetID)
@@ -284,9 +284,9 @@ type ReleaseConfig struct {
 	IsUnpublished      bool
 }
 
-// CreateDesktopRelease returns the release the Release desktop workflow creates, with a fixed signature;
+// NewDesktopRelease returns the release the Release desktop workflow creates, with a fixed signature;
 // published unless IsUnpublished, in which case it is a prerelease with update-unpublished.json.
-func CreateDesktopRelease(config ReleaseConfig) Release {
+func NewDesktopRelease(config ReleaseConfig) Release {
 	archiveName := "Hisar-" + config.Version + ".zip"
 	if config.ReleaseNotesFormat == "" {
 		config.ReleaseNotesFormat = "markdown"
@@ -309,7 +309,7 @@ func CreateDesktopRelease(config ReleaseConfig) Release {
 	return Release{
 		TagName:      "desktop-" + config.Version,
 		IsPrerelease: config.IsUnpublished,
-		AllAsset: []Asset{
+		Assets: []Asset{
 			{Name: "Hisar-" + config.Version + ".dmg", Content: []byte("dmg of " + config.Version)},
 			{Name: archiveName, Content: config.Archive},
 			{Name: metadataName, Content: metadata},

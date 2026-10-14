@@ -11,9 +11,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tryhisar/hisar/cli/internal/dotenv"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/item"
-	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/core/secretreference"
 )
 
@@ -23,21 +24,21 @@ type dotenvImportOption struct {
 	vaultName     string
 	isVaultChosen bool
 	itemTitle     string
-	allChosenKey  []string
+	chosenKeys    []string
 	isDryRun      bool
 	isConfirmed   bool
 }
 
 // dotenvPlan is what an import stores and how the file changes; nothing is written while it is only planned.
 type dotenvPlan struct {
-	path               string
-	layout             *dotenvLayout
-	allStoredVariable  []dotenvVariable
-	allKeptName        []string
-	vault              cliprotocol.Vault
-	itemTitle          string
-	existingItemID     string
-	allReferenceByName map[string]string
+	path             string
+	layout           *dotenv.Layout
+	storedVariables  []dotenv.LayoutVariable
+	keptNames        []string
+	vault            cliprotocol.Vault
+	itemTitle        string
+	existingItemID   string
+	referencesByName map[string]string
 }
 
 func isDotenvFile(path, format string) bool {
@@ -79,55 +80,41 @@ func checkStorableName(name string) error {
 	return fmt.Errorf("%s can't be stored: in a secret reference “%s” means the item's %s; rename the variable or keep it as it is", name, strings.ToLower(name), fieldDescription)
 }
 
-func listAllStorableVariable(allVariable []dotenvVariable) (allStorable []dotenvVariable, allSkippedDescription []string) {
-	for _, variable := range allVariable {
-		switch {
-		case variable.value == "":
-			allSkippedDescription = append(allSkippedDescription, variable.name+" (empty)")
-		case secretreference.IsReference(variable.value):
-			allSkippedDescription = append(allSkippedDescription, variable.name+" (already a secret reference)")
-		default:
-			allStorable = append(allStorable, variable)
-		}
-	}
-	return allStorable, allSkippedDescription
-}
-
-func chooseDotenvVariable(allStorable []dotenvVariable, allChosenKey []string) (map[string]bool, error) {
-	allChosenByName := map[string]bool{}
-	if allChosenKey != nil {
-		for _, key := range allChosenKey {
-			if !slices.ContainsFunc(allStorable, func(variable dotenvVariable) bool { return variable.name == key }) {
+func chooseDotenvVariable(storable []dotenv.LayoutVariable, chosenKeys []string) (map[string]bool, error) {
+	chosenByName := map[string]bool{}
+	if chosenKeys != nil {
+		for _, key := range chosenKeys {
+			if !slices.ContainsFunc(storable, func(variable dotenv.LayoutVariable) bool { return variable.Name == key }) {
 				return nil, fmt.Errorf("--keys names %s, which is not a variable with a value in the file", key)
 			}
-			allChosenByName[key] = true
+			chosenByName[key] = true
 		}
-		return allChosenByName, nil
+		return chosenByName, nil
 	}
-	for _, variable := range allStorable {
-		allChosenByName[variable.name] = variable.isSecretLooking
+	for _, variable := range storable {
+		chosenByName[variable.Name] = variable.IsSecretLooking
 	}
-	return allChosenByName, nil
+	return chosenByName, nil
 }
 
-func printDotenvChoice(allStorable []dotenvVariable, allChosenByName map[string]bool) {
+func printDotenvChoice(storable []dotenv.LayoutVariable, chosenByName map[string]bool) {
 	nameWidth := 0
-	for _, variable := range allStorable {
-		nameWidth = max(nameWidth, len(variable.name))
+	for _, variable := range storable {
+		nameWidth = max(nameWidth, len(variable.Name))
 	}
-	for index, variable := range allStorable {
-		mark, description := " ", "stays a plain value ("+variable.reason+")"
-		if allChosenByName[variable.name] {
+	for index, variable := range storable {
+		mark, description := " ", "stays a plain value ("+variable.Reason+")"
+		if chosenByName[variable.Name] {
 			mark, description = "x", "store in Hisar"
 		}
-		fmt.Fprintf(os.Stderr, "  [%s] %2d  %-*s  %s\n", mark, index+1, nameWidth, variable.name, description)
+		fmt.Fprintf(os.Stderr, "  [%s] %2d  %-*s  %s\n", mark, index+1, nameWidth, variable.Name, description)
 	}
 }
 
 // toggleDotenvChoice lets the user switch variables by number until they press Return.
-func toggleDotenvChoice(allStorable []dotenvVariable, allChosenByName map[string]bool) error {
+func toggleDotenvChoice(storable []dotenv.LayoutVariable, chosenByName map[string]bool) error {
 	for {
-		printDotenvChoice(allStorable, allChosenByName)
+		printDotenvChoice(storable, chosenByName)
 		answer, err := prompt("Type numbers to switch them (for example 2 5), or press Return to continue", "")
 		if err != nil {
 			return err
@@ -137,29 +124,29 @@ func toggleDotenvChoice(allStorable []dotenvVariable, allChosenByName map[string
 		}
 		for _, field := range strings.FieldsFunc(answer, func(character rune) bool { return character == ' ' || character == ',' }) {
 			number, err := strconv.Atoi(field)
-			if err != nil || number < 1 || number > len(allStorable) {
-				fmt.Fprintf(os.Stderr, "%s is not a number from 1 to %d.\n", field, len(allStorable))
+			if err != nil || number < 1 || number > len(storable) {
+				fmt.Fprintf(os.Stderr, "%s is not a number from 1 to %d.\n", field, len(storable))
 				continue
 			}
-			name := allStorable[number-1].name
-			allChosenByName[name] = !allChosenByName[name]
+			name := storable[number-1].Name
+			chosenByName[name] = !chosenByName[name]
 		}
 	}
 }
 
-func chooseDotenvVault(ctx context.Context, access vaultAccess) (cliprotocol.Vault, error) {
-	allVault, err := access.listAllVault(ctx)
+func chooseDotenvVault(ctx context.Context, access backend) (cliprotocol.Vault, error) {
+	vaults, err := access.listVaults(ctx)
 	if err != nil {
 		return cliprotocol.Vault{}, err
 	}
-	allWritable := slices.DeleteFunc(allVault, func(vault cliprotocol.Vault) bool {
-		return vault.Role != proto.VaultOwner && vault.Role != proto.VaultEditor
+	writable := slices.DeleteFunc(vaults, func(vault cliprotocol.Vault) bool {
+		return !apitypes.CanWriteItems(vault.Role)
 	})
-	if len(allWritable) == 0 {
+	if len(writable) == 0 {
 		return cliprotocol.Vault{}, errors.New("you have no vault you can add items to")
 	}
 	fmt.Fprintln(os.Stderr, "Vault:")
-	for index, vault := range allWritable {
+	for index, vault := range writable {
 		fmt.Fprintf(os.Stderr, "  %d) %s\n", index+1, vault.Name)
 	}
 	for {
@@ -167,21 +154,21 @@ func chooseDotenvVault(ctx context.Context, access vaultAccess) (cliprotocol.Vau
 		if err != nil {
 			return cliprotocol.Vault{}, err
 		}
-		if number, err := strconv.Atoi(answer); err == nil && number >= 1 && number <= len(allWritable) {
-			return allWritable[number-1], nil
+		if number, err := strconv.Atoi(answer); err == nil && number >= 1 && number <= len(writable) {
+			return writable[number-1], nil
 		}
-		for _, vault := range allWritable {
+		for _, vault := range writable {
 			if strings.EqualFold(vault.Name, answer) {
 				return vault, nil
 			}
 		}
-		fmt.Fprintf(os.Stderr, "Enter a number from 1 to %d.\n", len(allWritable))
+		fmt.Fprintf(os.Stderr, "Enter a number from 1 to %d.\n", len(writable))
 	}
 }
 
-func buildReferenceVaultSegment(allVault []cliprotocol.Vault, vault cliprotocol.Vault) string {
+func buildReferenceVaultSegment(vaults []cliprotocol.Vault, vault cliprotocol.Vault) string {
 	sameNameCount := 0
-	for _, candidate := range allVault {
+	for _, candidate := range vaults {
 		if strings.EqualFold(candidate.Name, vault.Name) {
 			sameNameCount++
 		}
@@ -192,27 +179,27 @@ func buildReferenceVaultSegment(allVault []cliprotocol.Vault, vault cliprotocol.
 	return vault.Name
 }
 
-func findDotenvItem(ctx context.Context, access vaultAccess, vault cliprotocol.Vault, title string) (string, error) {
-	allItem, err := access.listAllItem(ctx, vault.ID)
+func findDotenvItem(ctx context.Context, access backend, vault cliprotocol.Vault, title string) (string, error) {
+	items, err := access.listItems(ctx, vault.ID)
 	if err != nil {
 		return "", err
 	}
-	allMatchID := []string{}
-	for _, vaultItem := range allItem {
+	matchIDs := []string{}
+	for _, vaultItem := range items {
 		if strings.EqualFold(vaultItem.Overview.Title, title) {
-			allMatchID = append(allMatchID, vaultItem.ID)
+			matchIDs = append(matchIDs, vaultItem.ID)
 		}
 	}
-	if len(allMatchID) > 1 {
-		return "", fmt.Errorf("%d items in %s are titled %q; choose another item name", len(allMatchID), vault.Name, title)
+	if len(matchIDs) > 1 {
+		return "", fmt.Errorf("%d items in %s are titled %q; choose another item name", len(matchIDs), vault.Name, title)
 	}
-	if len(allMatchID) == 1 {
-		return allMatchID[0], nil
+	if len(matchIDs) == 1 {
+		return matchIDs[0], nil
 	}
 	return "", nil
 }
 
-func importDotenv(ctx context.Context, access vaultAccess, path string, option dotenvImportOption) error {
+func importDotenv(ctx context.Context, access backend, path string, option dotenvImportOption) error {
 	plan, err := planDotenvImport(ctx, access, path, option)
 	if err != nil || plan == nil {
 		return err
@@ -234,67 +221,67 @@ func importDotenv(ctx context.Context, access vaultAccess, path string, option d
 	if err := storeDotenvItem(ctx, access, plan); err != nil {
 		return err
 	}
-	if err := rewriteDotenvFile(plan.path, plan.layout.render(plan.allReferenceByName)); err != nil {
+	if err := rewriteDotenvFile(plan.path, plan.layout.Render(plan.referencesByName)); err != nil {
 		return fmt.Errorf("the values are stored in %s › %s, but %s could not be rewritten: %w", plan.vault.Name, plan.itemTitle, path, err)
 	}
-	fmt.Fprintf(os.Stderr, "Stored %s in %s › %s and rewrote %s with secret references.\n", formatValueCount(len(plan.allStoredVariable)), plan.vault.Name, plan.itemTitle, path)
+	fmt.Fprintf(os.Stderr, "Stored %s in %s › %s and rewrote %s with secret references.\n", formatValueCount(len(plan.storedVariables)), plan.vault.Name, plan.itemTitle, path)
 	fmt.Fprintf(os.Stderr, "Run a command with them:\n  hisar run --env-file %s -- <command>\n", quoteShellWord(path))
 	return nil
 }
 
-func planDotenvImport(ctx context.Context, access vaultAccess, path string, option dotenvImportOption) (*dotenvPlan, error) {
+func planDotenvImport(ctx context.Context, access backend, path string, option dotenvImportOption) (*dotenvPlan, error) {
 	content, err := readImportFile(path)
 	if err != nil {
 		return nil, err
 	}
-	layout, err := parseDotenvLayout(path, string(content))
+	layout, err := dotenv.ParseLayout(path, string(content))
 	clear(content)
 	if err != nil {
 		return nil, err
 	}
-	allStorable, allSkippedDescription := listAllStorableVariable(layout.listAllVariable())
-	if len(allStorable) == 0 {
+	storable, skippedDescriptions := dotenv.StorableVariables(layout.ListVariables())
+	if len(storable) == 0 {
 		fmt.Fprintf(os.Stderr, "%s has no values to store; it was not changed.\n", path)
 		return nil, nil
 	}
-	allChosenByName, err := chooseDotenvVariable(allStorable, option.allChosenKey)
+	chosenByName, err := chooseDotenvVariable(storable, option.chosenKeys)
 	if err != nil {
 		return nil, err
 	}
 	isInteractive := isInteractiveTerminal()
-	if isInteractive && option.allChosenKey == nil {
-		fmt.Fprintf(os.Stderr, "Found %s in %s:\n", formatVariableCount(len(allStorable)), path)
-		if err := toggleDotenvChoice(allStorable, allChosenByName); err != nil {
+	if isInteractive && option.chosenKeys == nil {
+		fmt.Fprintf(os.Stderr, "Found %s in %s:\n", formatVariableCount(len(storable)), path)
+		if err := toggleDotenvChoice(storable, chosenByName); err != nil {
 			return nil, err
 		}
 	}
-	plan := &dotenvPlan{path: path, layout: layout, allReferenceByName: map[string]string{}}
-	for _, variable := range allStorable {
-		if !allChosenByName[variable.name] {
-			plan.allKeptName = append(plan.allKeptName, variable.name)
+	plan := &dotenvPlan{path: path, layout: layout, referencesByName: map[string]string{}}
+	for _, variable := range storable {
+		if !chosenByName[variable.Name] {
+			plan.keptNames = append(plan.keptNames, variable.Name)
 			continue
 		}
-		if err := checkStorableName(variable.name); err != nil {
+		if err := checkStorableName(variable.Name); err != nil {
 			return nil, err
 		}
-		plan.allStoredVariable = append(plan.allStoredVariable, variable)
+		plan.storedVariables = append(plan.storedVariables, variable)
 	}
-	for _, description := range allSkippedDescription {
-		plan.allKeptName = append(plan.allKeptName, description)
+	for _, description := range skippedDescriptions {
+		plan.keptNames = append(plan.keptNames, description)
 	}
-	if len(plan.allStoredVariable) == 0 {
+	if len(plan.storedVariables) == 0 {
 		fmt.Fprintf(os.Stderr, "No variables chosen; %s was not changed.\n", path)
 		return nil, nil
 	}
 
 	plan.itemTitle = strings.TrimSpace(option.itemTitle)
 	isOffline := option.isDryRun && option.isVaultChosen && plan.itemTitle != ""
-	var allVault []cliprotocol.Vault
+	var vaults []cliprotocol.Vault
 	switch {
 	case isOffline:
 		plan.vault = cliprotocol.Vault{Name: option.vaultName}
 	case option.isVaultChosen:
-		if plan.vault, err = findAccessVault(ctx, access, option.vaultName); err != nil {
+		if plan.vault, err = findBackendVault(ctx, access, option.vaultName); err != nil {
 			return nil, err
 		}
 	case isInteractive:
@@ -304,7 +291,7 @@ func planDotenvImport(ctx context.Context, access vaultAccess, path string, opti
 	default:
 		return nil, errors.New("pass --vault and --item, or run hisar import in a terminal to choose them")
 	}
-	if !isOffline && plan.vault.Role != proto.VaultOwner && plan.vault.Role != proto.VaultEditor {
+	if !isOffline && !apitypes.CanWriteItems(plan.vault.Role) {
 		return nil, fmt.Errorf("you can only read %q; choose a vault you can edit", plan.vault.Name)
 	}
 	if plan.itemTitle == "" {
@@ -318,16 +305,16 @@ func planDotenvImport(ctx context.Context, access vaultAccess, path string, opti
 	}
 	vaultSegment := plan.vault.Name
 	if !isOffline {
-		if allVault, err = access.listAllVault(ctx); err != nil {
+		if vaults, err = access.listVaults(ctx); err != nil {
 			return nil, err
 		}
-		vaultSegment = buildReferenceVaultSegment(allVault, plan.vault)
+		vaultSegment = buildReferenceVaultSegment(vaults, plan.vault)
 		if plan.existingItemID, err = findDotenvItem(ctx, access, plan.vault, plan.itemTitle); err != nil {
 			return nil, err
 		}
 	}
-	for _, variable := range plan.allStoredVariable {
-		plan.allReferenceByName[variable.name] = secretreference.Reference{Vault: vaultSegment, Item: plan.itemTitle, Field: variable.name}.String()
+	for _, variable := range plan.storedVariables {
+		plan.referencesByName[variable.Name] = secretreference.Reference{Vault: vaultSegment, Item: plan.itemTitle, Field: variable.Name}.String()
 	}
 	return plan, nil
 }
@@ -337,20 +324,20 @@ func printDotenvPlan(plan *dotenvPlan) {
 	if plan.existingItemID != "" {
 		action = "the existing item"
 	}
-	fmt.Fprintf(os.Stderr, "Store %s in %s › %s (%s), as concealed fields:\n", formatValueCount(len(plan.allStoredVariable)), plan.vault.Name, plan.itemTitle, action)
-	for _, variable := range plan.allStoredVariable {
+	fmt.Fprintf(os.Stderr, "Store %s in %s › %s (%s), as concealed fields:\n", formatValueCount(len(plan.storedVariables)), plan.vault.Name, plan.itemTitle, action)
+	for _, variable := range plan.storedVariables {
 		note := ""
-		if variable.occurrenceCount > 1 && variable.hasOtherValue {
-			note = fmt.Sprintf(" (set %d times; the last value is stored, as hisar run reads it)", variable.occurrenceCount)
+		if variable.OccurrenceCount > 1 && variable.HasOtherValue {
+			note = fmt.Sprintf(" (set %d times; the last value is stored, as hisar run reads it)", variable.OccurrenceCount)
 		}
-		fmt.Fprintf(os.Stderr, "  %s%s\n", variable.name, note)
+		fmt.Fprintf(os.Stderr, "  %s%s\n", variable.Name, note)
 	}
 	fmt.Fprintf(os.Stderr, "Then rewrite %s:\n", plan.path)
-	for _, variable := range plan.allStoredVariable {
-		fmt.Fprintf(os.Stderr, "  %s=%s\n", variable.name, plan.allReferenceByName[variable.name])
+	for _, variable := range plan.storedVariables {
+		fmt.Fprintf(os.Stderr, "  %s=%s\n", variable.Name, plan.referencesByName[variable.Name])
 	}
-	if len(plan.allKeptName) > 0 {
-		fmt.Fprintf(os.Stderr, "Kept as they are: %s\n", strings.Join(plan.allKeptName, ", "))
+	if len(plan.keptNames) > 0 {
+		fmt.Fprintf(os.Stderr, "Kept as they are: %s\n", strings.Join(plan.keptNames, ", "))
 	}
 }
 
@@ -381,7 +368,7 @@ func setDotenvValue(vaultItem *item.Item, name, value string) {
 	vaultItem.Details.Fields = append(vaultItem.Details.Fields, item.Field{Name: name, Value: value, Concealed: true})
 }
 
-func storeDotenvItem(ctx context.Context, access vaultAccess, plan *dotenvPlan) error {
+func storeDotenvItem(ctx context.Context, access backend, plan *dotenvPlan) error {
 	vaultItem := &item.Item{Overview: item.Overview{Title: plan.itemTitle}}
 	if plan.existingItemID != "" {
 		existing, err := access.getItem(ctx, plan.vault.ID, plan.existingItemID)
@@ -390,13 +377,13 @@ func storeDotenvItem(ctx context.Context, access vaultAccess, plan *dotenvPlan) 
 		}
 		vaultItem = existing
 	}
-	for _, variable := range plan.allStoredVariable {
-		setDotenvValue(vaultItem, variable.name, variable.value)
+	for _, variable := range plan.storedVariables {
+		setDotenvValue(vaultItem, variable.Name, variable.Value)
 	}
-	for _, variable := range plan.allStoredVariable {
-		value, _, err := secretreference.ReadField(vaultItem, variable.name, time.Now())
-		if err != nil || value != variable.value {
-			return fmt.Errorf("%s: %s can't be read back through its secret reference; nothing was stored", plan.itemTitle, variable.name)
+	for _, variable := range plan.storedVariables {
+		value, _, err := secretreference.ReadField(vaultItem, variable.Name, time.Now())
+		if err != nil || value != variable.Value {
+			return fmt.Errorf("%s: %s can't be read back through its secret reference; nothing was stored", plan.itemTitle, variable.Name)
 		}
 	}
 	return access.saveItem(ctx, plan.vault.ID, vaultItem)

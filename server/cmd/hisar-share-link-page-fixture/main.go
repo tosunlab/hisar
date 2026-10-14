@@ -16,12 +16,13 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 
-	"github.com/tryhisar/hisar/core/client"
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/item"
-	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/core/session"
 	"github.com/tryhisar/hisar/core/sharelink"
 	"github.com/tryhisar/hisar/server/internal/api"
+	"github.com/tryhisar/hisar/server/internal/service"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
@@ -34,7 +35,7 @@ type fixture struct {
 	BaseURL    string            `json:"baseURL"`
 	Password   string            `json:"password"`
 	Passphrase string            `json:"passphrase"`
-	AllLink    map[string]string `json:"links"`
+	Links      map[string]string `json:"links"`
 }
 
 func main() {
@@ -60,7 +61,7 @@ func main() {
 		log.Fatal(err)
 	}
 	defer os.RemoveAll(secretDirectory)
-	secrets, err := api.LoadOrCreateAllSecret(filepath.Join(secretDirectory, "secrets.json"))
+	secrets, err := api.LoadOrCreateSecrets(filepath.Join(secretDirectory, "secrets.json"))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -69,14 +70,14 @@ func main() {
 		log.Fatal(err)
 	}
 	baseURL := "http://" + listener.Addr().String()
-	server, err := api.CreateServer(database, secrets, api.Config{PublicURL: baseURL, AuthBurst: 1000})
+	server, err := api.NewServer(database, secrets, api.Config{Config: service.Config{PublicURL: baseURL}, AuthBurst: 1000})
 	if err != nil {
 		log.Fatal(err)
 	}
 	app := server.CreateApp()
 	go app.Listener(listener, fiber.ListenConfig{DisableStartupMessage: true, GracefulContext: ctx})
 
-	created, err := createAllShareLink(ctx, server, baseURL)
+	created, err := createShareLinks(ctx, server, baseURL)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -86,15 +87,15 @@ func main() {
 	<-ctx.Done()
 }
 
-func createAllShareLink(ctx context.Context, server *api.Server, baseURL string) (*fixture, error) {
+func createShareLinks(ctx context.Context, server *api.Server, baseURL string) (*fixture, error) {
 	suffix := make([]byte, 4)
 	rand.Read(suffix)
 	email := "page-" + hex.EncodeToString(suffix) + "@example.com"
-	invite, err := server.CreateInvite(ctx, email, proto.RoleMember, nil)
+	invite, err := server.CreateInvite(ctx, email, apitypes.RoleMember, nil)
 	if err != nil {
 		return nil, err
 	}
-	owner, _, err := session.SignUp(ctx, client.Create(baseURL), invite.Token, email, "Page fixture", []byte("fixture master password"), proto.DeviceInfo{Name: "fixture", Platform: "go"})
+	owner, _, err := session.SignUp(ctx, apiclient.New(baseURL), invite.Token, email, "Page fixture", []byte("fixture master password"), apitypes.DeviceInfo{Name: "fixture", Platform: "go"})
 	if err != nil {
 		return nil, err
 	}
@@ -115,11 +116,11 @@ func createAllShareLink(ctx context.Context, server *api.Server, baseURL string)
 	if _, err := owner.SaveItem(ctx, vault, vaultItem); err != nil {
 		return nil, err
 	}
-	allFieldKey := sharelink.ListAllAvailableFieldKey(vaultItem)
-	result := &fixture{BaseURL: baseURL, Password: fixturePassword, Passphrase: fixturePassphrase, AllLink: map[string]string{}}
+	fieldKeys := sharelink.ListAvailableFieldKeys(vaultItem)
+	result := &fixture{BaseURL: baseURL, Password: fixturePassword, Passphrase: fixturePassphrase, Links: map[string]string{}}
 	for name, share := range map[string]func() (*session.ShareLink, error){
 		"item": func() (*session.ShareLink, error) {
-			return owner.ShareItem(ctx, vault, vaultItem, allFieldKey, session.ShareLinkOptions{Expiry: sharelink.ExpiryWeek, MaxViews: 3})
+			return owner.ShareItem(ctx, vault, vaultItem, fieldKeys, session.ShareLinkOptions{Expiry: sharelink.ExpiryWeek, MaxViews: 3})
 		},
 		"passphrase": func() (*session.ShareLink, error) {
 			return owner.ShareItem(ctx, vault, vaultItem, []string{sharelink.FieldUsername, sharelink.FieldPassword}, session.ShareLinkOptions{Expiry: sharelink.ExpiryDay, MaxViews: 2, Passphrase: []byte(fixturePassphrase)})
@@ -131,7 +132,7 @@ func createAllShareLink(ctx context.Context, server *api.Server, baseURL string)
 			return owner.ShareText(ctx, "Staging database URL", "postgres://deploy:s3cr3t@db.internal:5432/app", session.ShareLinkOptions{Expiry: sharelink.ExpiryMonth})
 		},
 		"screenshot": func() (*session.ShareLink, error) {
-			return owner.ShareItem(ctx, vault, vaultItem, allFieldKey, session.ShareLinkOptions{Expiry: sharelink.ExpiryWeek, MaxViews: 5})
+			return owner.ShareItem(ctx, vault, vaultItem, fieldKeys, session.ShareLinkOptions{Expiry: sharelink.ExpiryWeek, MaxViews: 5})
 		},
 		"screenshotPassphrase": func() (*session.ShareLink, error) {
 			return owner.ShareItem(ctx, vault, vaultItem, []string{sharelink.FieldPassword}, session.ShareLinkOptions{Expiry: sharelink.ExpiryDay, MaxViews: 2, Passphrase: []byte(fixturePassphrase)})
@@ -141,7 +142,7 @@ func createAllShareLink(ctx context.Context, server *api.Server, baseURL string)
 		if err != nil {
 			return nil, err
 		}
-		result.AllLink[name] = created.URL
+		result.Links[name] = created.URL
 	}
 	return result, nil
 }

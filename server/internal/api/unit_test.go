@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -18,12 +19,14 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"golang.org/x/time/rate"
 
-	"github.com/tryhisar/hisar/core/proto"
+	"github.com/tryhisar/hisar/core/apitypes"
+	"github.com/tryhisar/hisar/server/internal/ratelimit"
+	"github.com/tryhisar/hisar/server/internal/service"
 )
 
 func TestSecretsCreatedOnceWithPrivateMode(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "secrets.json")
-	created, err := LoadOrCreateAllSecret(path)
+	created, err := LoadOrCreateSecrets(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,14 +37,14 @@ func TestSecretsCreatedOnceWithPrivateMode(t *testing.T) {
 	if fileInfo.Mode().Perm() != 0o600 {
 		t.Errorf("mode = %o", fileInfo.Mode().Perm())
 	}
-	reloaded, err := LoadOrCreateAllSecret(path)
+	reloaded, err := LoadOrCreateSecrets(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(created.OpaqueKeyMaterial, reloaded.OpaqueKeyMaterial) || !bytes.Equal(created.HMACKey, reloaded.HMACKey) {
 		t.Error("secrets changed on reload")
 	}
-	if _, err := CreateServer(nil, reloaded, Config{}); err != nil {
+	if _, err := NewServer(nil, reloaded, Config{}); err != nil {
 		t.Errorf("reloaded secrets unusable: %v", err)
 	}
 }
@@ -49,49 +52,30 @@ func TestSecretsCreatedOnceWithPrivateMode(t *testing.T) {
 func TestSecretsRejectsIncomplete(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "secrets.json")
 	os.WriteFile(path, []byte(`{"hmacKey":"AAAA"}`), 0o600)
-	if _, err := LoadOrCreateAllSecret(path); err == nil {
+	if _, err := LoadOrCreateSecrets(path); err == nil {
 		t.Error("incomplete secrets accepted")
 	}
 }
 
-func TestLoginCache(t *testing.T) {
-	cache := createLoginCache(50 * time.Millisecond)
-	loginID := cache.put(&pendingLogin{accountID: "A"})
-	if pending := cache.take(loginID); pending == nil || pending.accountID != "A" {
-		t.Fatal("take failed")
-	}
-	if cache.take(loginID) != nil {
-		t.Error("login state reusable")
-	}
-	loginID = cache.put(&pendingLogin{accountID: "A"})
-	time.Sleep(60 * time.Millisecond)
-	if cache.take(loginID) != nil {
-		t.Error("expired login state returned")
-	}
-	if cache.take("nope") != nil {
-		t.Error("unknown id returned state")
-	}
-}
-
 func TestIPLimiter(t *testing.T) {
-	limiter := createIPLimiter(rate.Every(time.Hour), 3)
+	limiter := ratelimit.New(rate.Every(time.Hour), 3)
 	for attempt := range 3 {
-		if !limiter.allow("1.1.1.1") {
+		if !limiter.Allow("1.1.1.1") {
 			t.Fatalf("request %d denied", attempt)
 		}
 	}
-	if limiter.allow("1.1.1.1") {
+	if limiter.Allow("1.1.1.1") {
 		t.Error("burst exceeded")
 	}
-	if !limiter.allow("2.2.2.2") {
+	if !limiter.Allow("2.2.2.2") {
 		t.Error("other IP limited")
 	}
 }
 
-func sendGet(t *testing.T, app *fiber.App, path string, allHeader map[string]string) (int, string) {
+func sendGet(t *testing.T, app *fiber.App, path string, headers map[string]string) (int, string) {
 	t.Helper()
 	request := httptest.NewRequest("GET", path, nil)
-	for key, value := range allHeader {
+	for key, value := range headers {
 		request.Header.Set(key, value)
 	}
 	response, err := app.Test(request)
@@ -103,12 +87,12 @@ func sendGet(t *testing.T, app *fiber.App, path string, allHeader map[string]str
 }
 
 func TestClientIP(t *testing.T) {
-	allForwardedHeader := map[string]string{"X-Forwarded-For": "6.6.6.6, 1.2.3.4"}
+	forwardedHeaders := map[string]string{"X-Forwarded-For": "6.6.6.6, 1.2.3.4"}
 	for _, trustProxy := range []bool{false, true} {
 		server := &Server{config: Config{TrustProxy: trustProxy}}
 		app := fiber.New()
 		app.Get("/", func(c fiber.Ctx) error { return c.SendString(server.getClientIP(c)) })
-		_, clientIP := sendGet(t, app, "/", allForwardedHeader)
+		_, clientIP := sendGet(t, app, "/", forwardedHeaders)
 		if trustProxy && clientIP != "1.2.3.4" {
 			t.Errorf("trusted proxy: %s", clientIP)
 		}
@@ -118,14 +102,33 @@ func TestClientIP(t *testing.T) {
 	}
 }
 
+func TestErrorHandlerAnswersAnItemConflictWithTheCurrentItem(t *testing.T) {
+	app := fiber.New(fiber.Config{ErrorHandler: handleError})
+	app.Get("/conflict", func(c fiber.Ctx) error {
+		return fmt.Errorf("saving: %w", &service.ItemConflictError{Current: &apitypes.Item{ID: "current", Revision: "r2"}})
+	})
+	app.Get("/never-existed", func(c fiber.Ctx) error { return &service.ItemConflictError{} })
+
+	status, body := sendGet(t, app, "/conflict", nil)
+	var decoded apitypes.ConflictResponse
+	if status != fiber.StatusConflict || json.Unmarshal([]byte(body), &decoded) != nil || decoded.Current == nil || decoded.Current.ID != "current" || decoded.Current.Revision != "r2" {
+		t.Errorf("conflict: %d %s", status, body)
+	}
+	status, body = sendGet(t, app, "/never-existed", nil)
+	decoded = apitypes.ConflictResponse{}
+	if status != fiber.StatusConflict || json.Unmarshal([]byte(body), &decoded) != nil || decoded.Current != nil {
+		t.Errorf("conflict on an item that never existed: %d %s", status, body)
+	}
+}
+
 func TestErrorHandler(t *testing.T) {
 	app := fiber.New(fiber.Config{ErrorHandler: handleError, BodyLimit: 16})
-	app.Use(setAllSecurityHeader)
+	app.Use(setSecurityHeaders)
 	app.Get("/internal", func(c fiber.Ctx) error { return errors.New("database password is hunter2") })
 	app.Get("/forbidden", func(c fiber.Ctx) error { return createAPIError(fiber.StatusForbidden, "admin only") })
 	app.Post("/body", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) })
 
-	allCase := []struct {
+	cases := []struct {
 		path   string
 		status int
 		error  string
@@ -134,9 +137,9 @@ func TestErrorHandler(t *testing.T) {
 		{"/forbidden", 403, "admin only"},
 		{"/missing", 404, ""},
 	}
-	for _, testCase := range allCase {
+	for _, testCase := range cases {
 		status, body := sendGet(t, app, testCase.path, nil)
-		var decoded proto.Error
+		var decoded apitypes.Error
 		if status != testCase.status || json.Unmarshal([]byte(body), &decoded) != nil || (testCase.error != "" && decoded.Error != testCase.error) {
 			t.Errorf("%s: %d %s", testCase.path, status, body)
 		}
@@ -166,7 +169,7 @@ func TestErrorHandler(t *testing.T) {
 }
 
 func TestPrivacyPolicyAndTerms(t *testing.T) {
-	server, err := CreateServer(nil, generateAllSecret(), Config{})
+	server, err := NewServer(nil, generateSecrets(), Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,11 +228,11 @@ func TestLegalPagesLinkToEachOther(t *testing.T) {
 }
 
 func TestNormalEndpointsKeepSmallBodyLimit(t *testing.T) {
-	server, err := CreateServer(nil, generateAllSecret(), Config{})
+	server, err := NewServer(nil, generateSecrets(), Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	server.limiter = createIPLimiter(rate.Inf, 1)
+	server.limiter = ratelimit.New(rate.Inf, 1)
 	app := server.CreateApp()
 	largeBody := `{"email":"` + strings.Repeat("a", maxBody+1) + `"}`
 	request := httptest.NewRequest("POST", "/api/v1/auth/login/start", strings.NewReader(largeBody))
@@ -244,13 +247,10 @@ func TestNormalEndpointsKeepSmallBodyLimit(t *testing.T) {
 }
 
 func TestValidators(t *testing.T) {
-	if !isValidUUID("0f8fad5b-d9cb-469f-a165-70867728950e") || isValidUUID("0f8fad5bd9cb469fa16570867728950e") || isValidUUID("../x") {
+	if !service.IsValidUUID("0f8fad5b-d9cb-469f-a165-70867728950e") || service.IsValidUUID("0f8fad5bd9cb469fa16570867728950e") || service.IsValidUUID("../x") {
 		t.Error("isValidUUID")
 	}
-	if normalizeEmail("  Alice@Example.COM ") != "alice@example.com" {
+	if apitypes.NormalizeEmail("  Alice@Example.COM ") != "alice@example.com" {
 		t.Error("normalizeEmail")
-	}
-	if isValidDevice(proto.DeviceInfo{}) || isValidDevice(proto.DeviceInfo{Name: string(make([]byte, 101)), Platform: "x"}) {
-		t.Error("invalid device accepted")
 	}
 }

@@ -10,41 +10,42 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 
-	"github.com/tryhisar/hisar/core/client"
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/item"
-	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/core/session"
+	"github.com/tryhisar/hisar/server/internal/realtime"
 )
 
 type eventStream struct {
-	allEvent chan client.Event
+	events   chan apiclient.Event
 	finished chan error
 	cancel   context.CancelFunc
 }
 
-func openEventStream(t *testing.T, apiClient *client.Client) *eventStream {
+func openEventStream(t *testing.T, apiClient *apiclient.Client) *eventStream {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
-	stream := &eventStream{allEvent: make(chan client.Event, 16), finished: make(chan error, 1), cancel: cancel}
+	stream := &eventStream{events: make(chan apiclient.Event, 16), finished: make(chan error, 1), cancel: cancel}
 	go func() {
-		stream.finished <- apiClient.StreamEvents(ctx, func(event client.Event) { stream.allEvent <- event })
+		stream.finished <- apiClient.StreamEvents(ctx, func(event apiclient.Event) { stream.events <- event })
 	}()
 	t.Cleanup(cancel)
 	return stream
 }
 
-func (stream *eventStream) waitForEvent(t *testing.T, name string) client.Event {
+func (stream *eventStream) waitForEvent(t *testing.T, name string) apiclient.Event {
 	t.Helper()
 	timeout := time.After(5 * time.Second)
 	for {
 		select {
-		case event := <-stream.allEvent:
+		case event := <-stream.events:
 			if event.Name == name {
 				return event
 			}
 		case <-timeout:
 			t.Fatalf("no %s event", name)
-			return client.Event{}
+			return apiclient.Event{}
 		}
 	}
 }
@@ -52,7 +53,7 @@ func (stream *eventStream) waitForEvent(t *testing.T, name string) client.Event 
 func (stream *eventStream) expectNoEvent(t *testing.T) {
 	t.Helper()
 	select {
-	case event := <-stream.allEvent:
+	case event := <-stream.events:
 		t.Errorf("unexpected event %s %s", event.Name, event.Data)
 	case <-time.After(300 * time.Millisecond):
 	}
@@ -61,18 +62,18 @@ func (stream *eventStream) expectNoEvent(t *testing.T) {
 func waitForSubscriber(t *testing.T, server *Server, accountID string, count int) {
 	t.Helper()
 	for range 100 {
-		if server.events.countSubscriber(accountID) == count {
+		if server.events.CountSubscribers(accountID) == count {
 			return
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	t.Fatalf("%s has %d event streams, want %d", accountID, server.events.countSubscriber(accountID), count)
+	t.Fatalf("%s has %d event streams, want %d", accountID, server.events.CountSubscribers(accountID), count)
 }
 
 func signUpTestAccount(t *testing.T, ctx context.Context, server *Server, baseURL, email, role string) *session.Session {
 	t.Helper()
-	invite := requireValue[*proto.InviteResponse](t)(server.CreateInvite(ctx, email, role, nil))
-	signedUp, _, err := session.SignUp(ctx, client.Create(baseURL), invite.Token, email, email, []byte(email+" password"), testDevice)
+	invite := requireValue[*apitypes.InviteResponse](t)(server.CreateInvite(ctx, email, role, nil))
+	signedUp, _, err := session.SignUp(ctx, apiclient.New(baseURL), invite.Token, email, email, []byte(email+" password"), testDevice)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,54 +84,54 @@ func TestEventStream(t *testing.T) {
 	baseURL, server, _ := setupServer(t)
 	server.config.EventHeartbeatInterval = 100 * time.Millisecond
 	ctx := context.Background()
-	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", proto.RoleAdmin)
-	bob := signUpTestAccount(t, ctx, server, baseURL, "bob@example.com", proto.RoleMember)
-	carol := signUpTestAccount(t, ctx, server, baseURL, "carol@example.com", proto.RoleMember)
+	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", apitypes.RoleAdmin)
+	bob := signUpTestAccount(t, ctx, server, baseURL, "bob@example.com", apitypes.RoleMember)
+	carol := signUpTestAccount(t, ctx, server, baseURL, "carol@example.com", apitypes.RoleMember)
 
 	bobStream := openEventStream(t, bob.Client)
 	carolStream := openEventStream(t, carol.Client)
 	waitForSubscriber(t, server, bob.AccountID, 1)
 	waitForSubscriber(t, server, carol.AccountID, 1)
 
-	family := requireValue[*session.Vault](t)(alice.CreateVault(ctx, "Family", proto.VaultShared))
+	family := requireValue[*session.Vault](t)(alice.CreateVault(ctx, "Family", apitypes.VaultShared))
 	aliceStream := openEventStream(t, alice.Client)
 	waitForSubscriber(t, server, alice.AccountID, 1)
-	if err := alice.InviteToVault(ctx, family, "bob@example.com", proto.VaultEditor); err != nil {
+	if err := alice.InviteToVault(ctx, family, "bob@example.com", apitypes.VaultEditor); err != nil {
 		t.Fatal(err)
 	}
-	bobStream.waitForEvent(t, proto.EventShareInvitationsChanged)
-	invitationList := requireValue[*proto.ShareInvitationList](t)(bob.Client.ListAllShareInvitation(ctx))
-	if len(invitationList.AllReceived) != 1 {
+	bobStream.waitForEvent(t, apitypes.EventShareInvitationsChanged)
+	invitationList := requireValue[*apitypes.ShareInvitationList](t)(bob.Client.ListShareInvitations(ctx))
+	if len(invitationList.Received) != 1 {
 		t.Fatalf("Bob's invitations: %+v", invitationList)
 	}
-	if err := bob.Client.AcceptShareInvitation(ctx, invitationList.AllReceived[0].ID); err != nil {
+	if err := bob.Client.AcceptShareInvitation(ctx, invitationList.Received[0].ID); err != nil {
 		t.Fatal(err)
 	}
-	aliceStream.waitForEvent(t, proto.EventShareInvitationsChanged)
-	if allCompleted, err := alice.CompleteAllAcceptedShare(ctx); err != nil || len(allCompleted) != 1 {
-		t.Fatalf("completed: %+v %v", allCompleted, err)
+	aliceStream.waitForEvent(t, apitypes.EventShareInvitationsChanged)
+	if completedShares, err := alice.CompleteAcceptedShares(ctx); err != nil || len(completedShares) != 1 {
+		t.Fatalf("completed: %+v %v", completedShares, err)
 	}
-	bobStream.waitForEvent(t, proto.EventVaultsChanged)
+	bobStream.waitForEvent(t, apitypes.EventVaultsChanged)
 
 	if _, err := alice.SaveItem(ctx, family, &item.Item{Overview: item.Overview{Title: "Netflix"}}); err != nil {
 		t.Fatal(err)
 	}
-	event := bobStream.waitForEvent(t, proto.EventVaultChanged)
-	var changed proto.VaultChangedEvent
+	event := bobStream.waitForEvent(t, apitypes.EventVaultChanged)
+	var changed apitypes.VaultChangedEvent
 	if err := json.Unmarshal(event.Data, &changed); err != nil || changed.VaultID != family.ID || changed.Seq < 1 {
 		t.Errorf("vault-changed = %s (%v)", event.Data, err)
 	}
 	carolStream.expectNoEvent(t)
 
-	allStream := []*eventStream{}
-	for range maxEventStreamPerAccount - 1 {
-		allStream = append(allStream, openEventStream(t, carol.Client))
+	streams := []*eventStream{}
+	for range realtime.MaxStreamsPerAccount - 1 {
+		streams = append(streams, openEventStream(t, carol.Client))
 	}
-	waitForSubscriber(t, server, carol.AccountID, maxEventStreamPerAccount)
-	if err := carol.Client.StreamEvents(ctx, func(client.Event) {}); !client.IsStatus(err, http.StatusTooManyRequests) {
+	waitForSubscriber(t, server, carol.AccountID, realtime.MaxStreamsPerAccount)
+	if err := carol.Client.StreamEvents(ctx, func(apiclient.Event) {}); !apiclient.IsStatus(err, http.StatusTooManyRequests) {
 		t.Errorf("one stream too many: %v", err)
 	}
-	for _, stream := range allStream {
+	for _, stream := range streams {
 		stream.cancel()
 	}
 
@@ -146,7 +147,7 @@ func TestEventStream(t *testing.T) {
 		t.Fatal("the event stream outlived its session")
 	}
 	waitForSubscriber(t, server, bob.AccountID, 0)
-	if err := bob.Client.StreamEvents(ctx, func(client.Event) {}); !client.IsStatus(err, http.StatusUnauthorized) {
+	if err := bob.Client.StreamEvents(ctx, func(apiclient.Event) {}); !apiclient.IsStatus(err, http.StatusUnauthorized) {
 		t.Errorf("stream without a session: %v", err)
 	}
 }
@@ -164,7 +165,7 @@ func TestEventStreamOutlivesWriteTimeout(t *testing.T) {
 	t.Cleanup(func() { app.Shutdown() })
 	baseURL := "http://" + listener.Addr().String()
 	ctx := context.Background()
-	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", proto.RoleAdmin)
+	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", apitypes.RoleAdmin)
 	stream := openEventStream(t, alice.Client)
 	waitForSubscriber(t, server, alice.AccountID, 1)
 	time.Sleep(3 * time.Second)
@@ -173,27 +174,9 @@ func TestEventStreamOutlivesWriteTimeout(t *testing.T) {
 		t.Fatalf("stream ended after three write timeouts: %v", err)
 	default:
 	}
-	allVault := requireValue[[]session.Vault](t)(alice.ListAllVault(ctx))
-	if _, err := alice.SaveItem(ctx, &allVault[0], &item.Item{Overview: item.Overview{Title: "later"}}); err != nil {
+	vaults := requireValue[[]session.Vault](t)(alice.ListVaults(ctx))
+	if _, err := alice.SaveItem(ctx, &vaults[0], &item.Item{Overview: item.Overview{Title: "later"}}); err != nil {
 		t.Fatal(err)
 	}
-	stream.waitForEvent(t, proto.EventVaultChanged)
-}
-
-func TestEventBrokerOverflowEndsStream(t *testing.T) {
-	broker := createEventBroker()
-	subscriber, isSubscribed := broker.subscribe("ABC123", nil)
-	if !isSubscribed {
-		t.Fatal("not subscribed")
-	}
-	for range eventSubscriberBufferCount + 1 {
-		broker.publish([]string{"ABC123", "OTHER1"}, serverEvent{name: proto.EventVaultsChanged})
-	}
-	if !broker.isOverflowed(subscriber) || len(subscriber.channel) != eventSubscriberBufferCount {
-		t.Errorf("overflowed = %v with %d queued", broker.isOverflowed(subscriber), len(subscriber.channel))
-	}
-	broker.unsubscribe("ABC123", subscriber)
-	if broker.countSubscriber("ABC123") != 0 || len(broker.allSubscriberByAccount) != 0 {
-		t.Error("unsubscribe left state behind")
-	}
+	stream.waitForEvent(t, apitypes.EventVaultChanged)
 }

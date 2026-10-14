@@ -14,7 +14,7 @@ func createRFCConfig(algorithm string, seedLength int) Config {
 }
 
 func TestRFC6238Vectors(t *testing.T) {
-	allCase := []struct {
+	cases := []struct {
 		unixTime                     int64
 		sha1Code, sha256Code, sha512 string
 	}{
@@ -25,7 +25,7 @@ func TestRFC6238Vectors(t *testing.T) {
 		{2000000000, "69279037", "90698825", "38618901"},
 		{20000000000, "65353130", "77737706", "47863826"},
 	}
-	for _, testCase := range allCase {
+	for _, testCase := range cases {
 		at := time.Unix(testCase.unixTime, 0)
 		for algorithm, want := range map[string]string{"SHA1": testCase.sha1Code, "SHA256": testCase.sha256Code, "SHA512": testCase.sha512} {
 			seedLength := map[string]int{"SHA1": 20, "SHA256": 32, "SHA512": 64}[algorithm]

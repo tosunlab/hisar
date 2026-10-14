@@ -29,12 +29,12 @@ func TestParse(t *testing.T) {
 }
 
 func TestCompareFollowsSemanticVersioning(t *testing.T) {
-	allOrdered := []string{
+	ordered := []string{
 		"0.1.5", "0.1.6-alpha", "0.1.6", "0.2.0", "1.0.0-alpha", "1.0.0-alpha.1", "1.0.0-alpha.beta", "1.0.0-alpha-test",
 		"1.0.0-beta", "1.0.0-beta.2", "1.0.0-beta.11", "1.0.0-rc.1", "1.0.0", "1.0.1", "1.10.0", "2.0.0",
 	}
-	for firstIndex, firstText := range allOrdered {
-		for secondIndex, secondText := range allOrdered {
+	for firstIndex, firstText := range ordered {
+		for secondIndex, secondText := range ordered {
 			first, _ := Parse(firstText)
 			second, _ := Parse(secondText)
 			expected := 0

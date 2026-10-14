@@ -59,7 +59,7 @@ func TestGetSocketPath(t *testing.T) {
 }
 
 func TestResponseErrorMessage(t *testing.T) {
-	var err error = CreateError(ErrorDenied, "denied in Hisar")
+	var err error = NewError(ErrorDenied, "denied in Hisar")
 	var responseError *ResponseError
 	if !errors.As(err, &responseError) || responseError.Code != ErrorDenied || err.Error() != "denied in Hisar" {
 		t.Errorf("error: %v", err)

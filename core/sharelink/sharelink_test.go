@@ -7,7 +7,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/item"
@@ -55,11 +54,11 @@ func TestBuildItemPayloadSharesOnlyChosenFields(t *testing.T) {
 
 func TestPayloadNeverContainsKeyMaterial(t *testing.T) {
 	vaultItem := createFullItem()
-	allKey := ListAllAvailableFieldKey(vaultItem)
-	if want := []string{FieldUsername, FieldPassword, FieldURLs, GetCustomFieldKey(0), GetCustomFieldKey(2), FieldNotes}; !slices.Equal(allKey, want) {
-		t.Fatalf("available keys %v", allKey)
+	keys := ListAvailableFieldKeys(vaultItem)
+	if want := []string{FieldUsername, FieldPassword, FieldURLs, GetCustomFieldKey(0), GetCustomFieldKey(2), FieldNotes}; !slices.Equal(keys, want) {
+		t.Fatalf("available keys %v", keys)
 	}
-	payload, err := BuildItemPayload(vaultItem, allKey)
+	payload, err := BuildItemPayload(vaultItem, keys)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,13 +87,13 @@ func TestPayloadNeverContainsKeyMaterial(t *testing.T) {
 
 func TestBuildItemPayloadNeedsAValue(t *testing.T) {
 	sshKey := &item.Item{Overview: item.Overview{Title: "Deploy key", Category: item.CategorySSHKey}, Details: item.Details{PrivateKey: privateKeyText}}
-	if allKey := ListAllAvailableFieldKey(sshKey); len(allKey) != 0 {
-		t.Fatalf("an SSH key without notes offers %v", allKey)
+	if keys := ListAvailableFieldKeys(sshKey); len(keys) != 0 {
+		t.Fatalf("an SSH key without notes offers %v", keys)
 	}
 	if _, err := BuildItemPayload(sshKey, []string{FieldUsername, FieldPassword}); !errors.Is(err, ErrNoField) {
 		t.Fatalf("empty fields: %v", err)
 	}
-	if got := ListAllDefaultFieldKey(createFullItem()); !slices.Equal(got, []string{FieldUsername, FieldPassword}) {
+	if got := ListDefaultFieldKeys(createFullItem()); !slices.Equal(got, []string{FieldUsername, FieldPassword}) {
 		t.Fatalf("default keys %v", got)
 	}
 }
@@ -168,29 +167,6 @@ func TestLinkURL(t *testing.T) {
 	} {
 		if _, _, _, err := ParseURL(broken); !errors.Is(err, ErrBadLink) {
 			t.Errorf("%s: %v", broken, err)
-		}
-	}
-}
-
-func TestParseExpiryAndViews(t *testing.T) {
-	for text, want := range map[string]time.Duration{"1h": time.Hour, "1d": 24 * time.Hour, "7d": 7 * 24 * time.Hour, "30D": 30 * 24 * time.Hour} {
-		if got, err := ParseExpiry(text); err != nil || got != want {
-			t.Errorf("expiry %s: %v %v", text, got, err)
-		}
-	}
-	for _, text := range []string{"2d", "31d", "", "forever"} {
-		if _, err := ParseExpiry(text); err == nil {
-			t.Errorf("expiry %q accepted", text)
-		}
-	}
-	for text, want := range map[string]int{"1": 1, "100": 100, "unlimited": 0, "0": 0} {
-		if got, err := ParseViews(text); err != nil || got != want {
-			t.Errorf("views %s: %v %v", text, got, err)
-		}
-	}
-	for _, text := range []string{"101", "-1", "many"} {
-		if _, err := ParseViews(text); err == nil {
-			t.Errorf("views %q accepted", text)
 		}
 	}
 }

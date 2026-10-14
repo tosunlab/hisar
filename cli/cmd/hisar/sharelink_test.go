@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/cliprotocol"
-	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/core/sharelink"
 )
 
@@ -47,16 +47,16 @@ func TestShareLinkThroughTheApp(t *testing.T) {
 	if stdout != testShareLinkURL+"\n" || !strings.Contains(stderr, `Share link for "GitHub" (password)`) || !strings.Contains(stderr, "3 views; send the passphrase another way") {
 		t.Errorf("stdout %q stderr %q", stdout, stderr)
 	}
-	allCreate := app.findRequest(cliprotocol.TypeCreateShareLink)
-	if len(allCreate) != 1 {
-		t.Fatalf("requests %v", app.listAllRequestType())
+	createRequests := app.findRequest(cliprotocol.TypeCreateShareLink)
+	if len(createRequests) != 1 {
+		t.Fatalf("requests %v", app.listRequestTypes())
 	}
-	change := allCreate[0].ShareLink
-	if allCreate[0].Vault != "Work" || allCreate[0].Query != "GitHub" || !slices.Equal(change.Fields, []string{"password", "Recovery code"}) ||
+	change := createRequests[0].ShareLink
+	if createRequests[0].Vault != "Work" || createRequests[0].Query != "GitHub" || !slices.Equal(change.Fields, []string{"password", "Recovery code"}) ||
 		change.ExpiresInSeconds != 86400 || change.MaxViews != 3 || change.Passphrase != "correct horse" || change.Text != "" {
-		t.Errorf("request %+v %+v", allCreate[0], change)
+		t.Errorf("request %+v %+v", createRequests[0], change)
 	}
-	if slices.Contains(app.listAllRequestType(), cliprotocol.TypeGetItem) {
+	if slices.Contains(app.listRequestTypes(), cliprotocol.TypeGetItem) {
 		t.Error("the CLI fetched the item's secrets to share it")
 	}
 }
@@ -78,7 +78,7 @@ func TestShareLinkRefusesBadOptions(t *testing.T) {
 	app := startFakeApp(t)
 	app.answer = answerFakeShareLinkRequest
 	for _, testCase := range []struct {
-		allArg  []string
+		args    []string
 		input   string
 		failure string
 	}{
@@ -90,13 +90,13 @@ func TestShareLinkRefusesBadOptions(t *testing.T) {
 		{[]string{"share-link"}, "", "usage"},
 		{[]string{"share-link", "GitHub", "GitLab"}, "", "usage"},
 	} {
-		_, _, err := runCapturingOutput(t, false, testCase.input, testCase.allArg...)
+		_, _, err := runCapturingOutput(t, false, testCase.input, testCase.args...)
 		if err == nil || !strings.Contains(err.Error(), testCase.failure) {
-			t.Errorf("%v: %v", testCase.allArg, err)
+			t.Errorf("%v: %v", testCase.args, err)
 		}
 	}
-	if allCreate := app.findRequest(cliprotocol.TypeCreateShareLink); len(allCreate) != 0 {
-		t.Errorf("bad options reached the app: %+v", allCreate)
+	if createRequests := app.findRequest(cliprotocol.TypeCreateShareLink); len(createRequests) != 0 {
+		t.Errorf("bad options reached the app: %+v", createRequests)
 	}
 }
 
@@ -137,9 +137,9 @@ func startPublicShareLinkServer(t *testing.T, payload *sharelink.Payload, passph
 			return
 		}
 		count := viewCount.Add(1)
-		link := proto.PublicShareLink{Ciphertext: sealed.Ciphertext, ExpiresAt: time.Date(2026, 10, 18, 9, 0, 0, 0, time.UTC), MaxViews: maxViews, ViewCount: int(count)}
+		link := apitypes.PublicShareLink{Ciphertext: sealed.Ciphertext, ExpiresAt: time.Date(2026, 10, 18, 9, 0, 0, 0, time.UTC), MaxViews: maxViews, ViewCount: int(count)}
 		if sealed.Passphrase != nil {
-			link.Passphrase = &proto.ShareLinkPassphrase{Salt: sealed.Passphrase.Salt, Iterations: sealed.Passphrase.Iterations}
+			link.Passphrase = &apitypes.ShareLinkPassphrase{Salt: sealed.Passphrase.Salt, Iterations: sealed.Passphrase.Iterations}
 		}
 		json.NewEncoder(writer).Encode(link)
 	}))
@@ -169,5 +169,28 @@ func TestShareLinkOpenDecryptsWithoutAnAccount(t *testing.T) {
 	}
 	if _, _, err := runCapturingOutput(t, false, "", "share-link", "open", strings.Split(link, "#")[0]); !errors.Is(err, sharelink.ErrBadLink) {
 		t.Errorf("link without its key: %v", err)
+	}
+}
+
+func TestParseExpiryAndViews(t *testing.T) {
+	for text, want := range map[string]time.Duration{"1h": time.Hour, "1d": 24 * time.Hour, "7d": 7 * 24 * time.Hour, "30D": 30 * 24 * time.Hour} {
+		if got, err := parseExpiry(text); err != nil || got != want {
+			t.Errorf("expiry %s: %v %v", text, got, err)
+		}
+	}
+	for _, text := range []string{"2d", "31d", "", "forever"} {
+		if _, err := parseExpiry(text); err == nil {
+			t.Errorf("expiry %q accepted", text)
+		}
+	}
+	for text, want := range map[string]int{"1": 1, "100": 100, "unlimited": 0, "0": 0} {
+		if got, err := parseViews(text); err != nil || got != want {
+			t.Errorf("views %s: %v %v", text, got, err)
+		}
+	}
+	for _, text := range []string{"101", "-1", "many"} {
+		if _, err := parseViews(text); err == nil {
+			t.Errorf("views %q accepted", text)
+		}
 	}
 }

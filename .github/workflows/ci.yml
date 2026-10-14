@@ -39,7 +39,7 @@ jobs:
           cache-dependency-path: "**/go.sum"
       - name: Check gofmt
         run: |
-          allUnformatted=$(gofmt -l core server cli mobile desktop/vault desktop/biometric desktop/background desktop/agent desktop/appinfo desktop/browser desktop/commandline desktop/passkey desktop/updater desktop/cmd desktop/main.go desktop/touchid.go desktop/tray.go)
+          allUnformatted=$(gofmt -l $(git ls-files "*.go"))
           if [ -n "$allUnformatted" ]; then echo "$allUnformatted"; exit 1; fi
       - name: go vet
         run: make vet

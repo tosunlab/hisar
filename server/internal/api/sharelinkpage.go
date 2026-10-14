@@ -10,7 +10,7 @@ import (
 )
 
 //go:embed sharelinkpage/page.html sharelinkpage/page.css sharelinkpage/page.js
-var allShareLinkPageFile embed.FS
+var shareLinkPageFiles embed.FS
 
 type shareLinkPage struct {
 	body                  []byte
@@ -20,7 +20,7 @@ type shareLinkPage struct {
 var builtShareLinkPage = buildShareLinkPage()
 
 func readShareLinkPageFile(name string) string {
-	content, err := allShareLinkPageFile.ReadFile("sharelinkpage/" + name)
+	content, err := shareLinkPageFiles.ReadFile("sharelinkpage/" + name)
 	if err != nil {
 		panic(err)
 	}

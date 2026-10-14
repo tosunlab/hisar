@@ -9,8 +9,8 @@ import (
 	"runtime"
 	"testing"
 
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/cliprotocol"
-	"github.com/tryhisar/hisar/core/proto"
 )
 
 func setVersion(t *testing.T, testVersion string) {
@@ -21,9 +21,9 @@ func setVersion(t *testing.T, testVersion string) {
 }
 
 func TestClientVersionIsSentOnlyForReleases(t *testing.T) {
-	var allHeader []http.Header
+	var headers []http.Header
 	httpServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		allHeader = append(allHeader, request.Header.Clone())
+		headers = append(headers, request.Header.Clone())
 		writer.WriteHeader(http.StatusNoContent)
 	}))
 	defer httpServer.Close()
@@ -31,11 +31,11 @@ func TestClientVersionIsSentOnlyForReleases(t *testing.T) {
 	createClient(httpServer.URL).CheckVersion(context.Background())
 	setVersion(t, "1.2.3")
 	createClient(httpServer.URL).CheckVersion(context.Background())
-	if allHeader[0].Get(proto.VersionHeader) != "" {
-		t.Errorf("a development build sent version %q", allHeader[0].Get(proto.VersionHeader))
+	if headers[0].Get(apitypes.VersionHeader) != "" {
+		t.Errorf("a development build sent version %q", headers[0].Get(apitypes.VersionHeader))
 	}
-	if allHeader[1].Get(proto.PlatformHeader) != runtime.GOOS+"/cli" || allHeader[1].Get(proto.VersionHeader) != "1.2.3" {
-		t.Errorf("a release sent %q %q", allHeader[1].Get(proto.PlatformHeader), allHeader[1].Get(proto.VersionHeader))
+	if headers[1].Get(apitypes.PlatformHeader) != runtime.GOOS+"/cli" || headers[1].Get(apitypes.VersionHeader) != "1.2.3" {
+		t.Errorf("a release sent %q %q", headers[1].Get(apitypes.PlatformHeader), headers[1].Get(apitypes.VersionHeader))
 	}
 	if getDeviceInfo().Platform != runtime.GOOS+"/cli" {
 		t.Errorf("device platform %q", getDeviceInfo().Platform)
@@ -46,7 +46,7 @@ func TestDescribeUpdateRequired(t *testing.T) {
 	setVersion(t, "0.9.0")
 	httpServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		writer.WriteHeader(http.StatusUpgradeRequired)
-		json.NewEncoder(writer).Encode(proto.UpgradeRequired{Error: "update required", MinimumVersion: "1.0.0", UpdateURL: "https://tryhisar.com/download"})
+		json.NewEncoder(writer).Encode(apitypes.UpgradeRequired{Error: "update required", MinimumVersion: "1.0.0", UpdateURL: "https://tryhisar.com/download"})
 	}))
 	defer httpServer.Close()
 	err := createClient(httpServer.URL).CheckVersion(context.Background())
@@ -56,11 +56,11 @@ func TestDescribeUpdateRequired(t *testing.T) {
 		t.Errorf("server refusal: %q", message)
 	}
 
-	appError := cliprotocol.CreateError(cliprotocol.ErrorUpdateRequired, "Hisar needs an update: the server requires version 0.1.6 or later and this Mac has 0.1.5. Open Hisar and choose Update now.")
+	appError := cliprotocol.NewError(cliprotocol.ErrorUpdateRequired, "Hisar needs an update: the server requires version 0.1.6 or later and this Mac has 0.1.5. Open Hisar and choose Update now.")
 	if message, isUpdateRequired := describeUpdateRequired(appError); !isUpdateRequired || message != "update required. "+appError.Message {
 		t.Errorf("app refusal: %q", message)
 	}
-	for _, other := range []error{nil, errors.New("other"), cliprotocol.CreateError(cliprotocol.ErrorLocked, "locked")} {
+	for _, other := range []error{nil, errors.New("other"), cliprotocol.NewError(cliprotocol.ErrorLocked, "locked")} {
 		if _, isUpdateRequired := describeUpdateRequired(other); isUpdateRequired {
 			t.Errorf("%v read as update required", other)
 		}

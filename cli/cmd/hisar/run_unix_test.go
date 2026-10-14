@@ -71,7 +71,7 @@ func startHelperRun(t *testing.T, mode string, isMaskingDisabled bool, sentSigna
 	captured := createCapturedStdio(t, "")
 	resultChannel := make(chan runResult, 1)
 	go func() {
-		exitCode, err := runWithSecret(context.Background(), runOption{isMaskingDisabled: isMaskingDisabled, allCommandArg: []string{getTestBinary(t)}},
+		exitCode, err := runWithSecret(context.Background(), runOption{isMaskingDisabled: isMaskingDisabled, commandArgs: []string{getTestBinary(t)}},
 			createHelperEnvironment(mode, "READY_FILE="+readyPath), (&recordingResolver{}).resolve, captured.stdio)
 		resultChannel <- runResult{exitCode: exitCode, err: err}
 	}()
@@ -143,7 +143,7 @@ func TestCheckForegroundJobWithoutATerminal(t *testing.T) {
 	if _, err := os.Open("/dev/tty"); err != nil && checkForegroundJob() {
 		t.Error("a process without a terminal counts as its foreground job")
 	}
-	if !strings.Contains(fmt.Sprint(allForwardedSignal), "interrupt") {
-		t.Errorf("forwarded signals %v", allForwardedSignal)
+	if !strings.Contains(fmt.Sprint(forwardedSignals), "interrupt") {
+		t.Errorf("forwarded signals %v", forwardedSignals)
 	}
 }

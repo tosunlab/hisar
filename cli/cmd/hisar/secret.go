@@ -18,51 +18,51 @@ import (
 var isStandaloneForcedByOption bool
 
 type sessionSecretSource struct {
-	ctx          context.Context
-	session      *session.Session
-	allVaultByID map[string]*session.Vault
+	ctx        context.Context
+	session    *session.Session
+	vaultsByID map[string]*session.Vault
 }
 
-func (source *sessionSecretSource) ListAllVault() ([]secretreference.Vault, error) {
-	allSessionVault, err := source.session.ListAllVault(source.ctx)
+func (source *sessionSecretSource) ListVaults() ([]secretreference.Vault, error) {
+	sessionVaults, err := source.session.ListVaults(source.ctx)
 	if err != nil {
 		return nil, err
 	}
-	source.allVaultByID = map[string]*session.Vault{}
-	allVault := make([]secretreference.Vault, 0, len(allSessionVault))
-	for index := range allSessionVault {
-		source.allVaultByID[allSessionVault[index].ID] = &allSessionVault[index]
-		allVault = append(allVault, secretreference.Vault{ID: allSessionVault[index].ID, Name: allSessionVault[index].Name})
+	source.vaultsByID = map[string]*session.Vault{}
+	vaults := make([]secretreference.Vault, 0, len(sessionVaults))
+	for index := range sessionVaults {
+		source.vaultsByID[sessionVaults[index].ID] = &sessionVaults[index]
+		vaults = append(vaults, secretreference.Vault{ID: sessionVaults[index].ID, Name: sessionVaults[index].Name})
 	}
-	return allVault, nil
+	return vaults, nil
 }
 
-func (source *sessionSecretSource) ListAllItem(vaultID string) ([]item.Item, error) {
-	vault, isFound := source.allVaultByID[vaultID]
+func (source *sessionSecretSource) ListItems(vaultID string) ([]item.Item, error) {
+	vault, isFound := source.vaultsByID[vaultID]
 	if !isFound {
 		return nil, fmt.Errorf("vault %q: not found", vaultID)
 	}
-	return source.session.ListAllItem(source.ctx, vault)
+	return source.session.ListItems(source.ctx, vault)
 }
 
-// checkAllReference parses every reference before anything is asked, so a typo never opens an approval.
-func checkAllReference(allReference []string) error {
-	var allFailure []error
-	for _, text := range allReference {
+// checkReferences parses every reference before anything is asked, so a typo never opens an approval.
+func checkReferences(references []string) error {
+	var failures []error
+	for _, text := range references {
 		if _, err := secretreference.Parse(text); err != nil {
-			allFailure = append(allFailure, &secretreference.Error{Reference: text, Reason: err.Error()})
+			failures = append(failures, &secretreference.Error{Reference: text, Reason: err.Error()})
 		}
 	}
-	return errors.Join(allFailure...)
+	return errors.Join(failures...)
 }
 
-// resolveAllReference asks the app for every reference in one request, or resolves them standalone; the values
-// come back in the order of allReference.
-func resolveAllReference(ctx context.Context, allReference []string, commandLine []string) ([]string, error) {
-	if err := checkAllReference(allReference); err != nil {
+// resolveReferences asks the app for every reference in one request, or resolves them standalone; the values
+// come back in the order of references.
+func resolveReferences(ctx context.Context, references []string, commandLine []string) ([]string, error) {
+	if err := checkReferences(references); err != nil {
 		return nil, err
 	}
-	if len(allReference) > cliprotocol.MaxReferenceCount {
+	if len(references) > cliprotocol.MaxReferenceCount {
 		return nil, fmt.Errorf("at most %d different secret references can be used at once", cliprotocol.MaxReferenceCount)
 	}
 	mode := chooseMode(isStandaloneForcedByOption)
@@ -70,10 +70,10 @@ func resolveAllReference(ctx context.Context, allReference []string, commandLine
 	if mode.client != nil {
 		defer mode.client.Close()
 		var result cliprotocol.ResolveSecretResult
-		if err := mode.client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeResolveSecret, References: allReference, CommandLine: commandLine}, &result); err != nil {
+		if err := mode.client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeResolveSecret, References: references, CommandLine: commandLine}, &result); err != nil {
 			return nil, err
 		}
-		if len(result.Values) != len(allReference) {
+		if len(result.Values) != len(references) {
 			return nil, errors.New("the Hisar app answered with the wrong number of values")
 		}
 		return result.Values, nil
@@ -82,37 +82,37 @@ func resolveAllReference(ctx context.Context, allReference []string, commandLine
 	if err != nil {
 		return nil, err
 	}
-	var allValue []string
+	var values []string
 	err = func() error {
-		allResolved, err := secretreference.ResolveAll(&sessionSecretSource{ctx: ctx, session: unlockedSession}, allReference, time.Now())
+		resolvedReferences, err := secretreference.ResolveAll(&sessionSecretSource{ctx: ctx, session: unlockedSession}, references, time.Now())
 		if err != nil {
 			return err
 		}
-		for _, resolved := range allResolved {
-			allValue = append(allValue, resolved.Value)
+		for _, resolved := range resolvedReferences {
+			values = append(values, resolved.Value)
 		}
 		return nil
 	}()
-	return allValue, finishSession(currentState, unlockedSession, err)
+	return values, finishSession(currentState, unlockedSession, err)
 }
 
-func runRead(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
+func runRead(ctx context.Context, flags *flag.FlagSet, args []string) error {
 	isNewlineOmitted := flags.Bool("no-newline", false, "never end the value with a newline")
-	allPositional, err := parse(flags, allArg)
+	positionals, err := parse(flags, args)
 	if err != nil {
 		return err
 	}
-	if len(allPositional) != 1 {
+	if len(positionals) != 1 {
 		return errUsage
 	}
-	if !secretreference.IsReference(allPositional[0]) {
-		return fmt.Errorf("%q is not a secret reference; use hisar://<vault>/<item>/<field>", allPositional[0])
+	if !secretreference.IsReference(positionals[0]) {
+		return fmt.Errorf("%q is not a secret reference; use hisar://<vault>/<item>/<field>", positionals[0])
 	}
-	allValue, err := resolveAllReference(ctx, allPositional, nil)
+	values, err := resolveReferences(ctx, positionals, nil)
 	if err != nil {
 		return err
 	}
-	output := allValue[0]
+	output := values[0]
 	if !*isNewlineOmitted && term.IsTerminal(int(os.Stdout.Fd())) {
 		output += "\n"
 	}

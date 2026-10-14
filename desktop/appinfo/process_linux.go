@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-func ListAllProcessArgument(pid int) ([]string, error) {
+func ListProcessArguments(pid int) ([]string, error) {
 	raw, err := os.ReadFile("/proc/" + strconv.Itoa(pid) + "/cmdline")
 	if err != nil {
 		return nil, err
@@ -21,35 +21,35 @@ func GetProcessWorkingDirectory(pid int) (string, error) {
 }
 
 func setPlatformProcessFunction(system *System) {
-	system.ListAllProcessID = listAllProcessID
+	system.ListProcessIDs = listProcessIDs
 	system.GetSSHRemoteHost = getSSHRemoteHost
 }
 
-func listAllProcessID() ([]int, error) {
-	allEntry, err := os.ReadDir("/proc")
+func listProcessIDs() ([]int, error) {
+	entries, err := os.ReadDir("/proc")
 	if err != nil {
 		return nil, err
 	}
-	allProcessID := []int{}
-	for _, entry := range allEntry {
+	processIDs := []int{}
+	for _, entry := range entries {
 		if pid, err := strconv.Atoi(entry.Name()); err == nil {
-			allProcessID = append(allProcessID, pid)
+			processIDs = append(processIDs, pid)
 		}
 	}
-	return allProcessID, nil
+	return processIDs, nil
 }
 
 // getSSHRemoteHost finds the peer of the TCP socket an sshd process holds, through /proc/net/tcp and tcp6.
 func getSSHRemoteHost(pid int) (string, error) {
-	allLink, err := filepath.Glob("/proc/" + strconv.Itoa(pid) + "/fd/*")
+	links, err := filepath.Glob("/proc/" + strconv.Itoa(pid) + "/fd/*")
 	if err != nil {
 		return "", err
 	}
-	allSocketInode := map[string]bool{}
-	for _, link := range allLink {
+	socketInodes := map[string]bool{}
+	for _, link := range links {
 		if target, err := os.Readlink(link); err == nil {
 			if inode, isSocket := strings.CutPrefix(target, "socket:["); isSocket {
-				allSocketInode[strings.TrimSuffix(inode, "]")] = true
+				socketInodes[strings.TrimSuffix(inode, "]")] = true
 			}
 		}
 	}
@@ -58,7 +58,7 @@ func getSSHRemoteHost(pid int) (string, error) {
 		if err != nil {
 			continue
 		}
-		if host := findTCPRemoteHost(string(table), allSocketInode); host != "" {
+		if host := findTCPRemoteHost(string(table), socketInodes); host != "" {
 			return host, nil
 		}
 	}

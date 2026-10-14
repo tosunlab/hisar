@@ -13,21 +13,21 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/cache"
-	"github.com/tryhisar/hisar/core/client"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/item"
-	"github.com/tryhisar/hisar/core/proto"
 )
 
 type offlineTestServer struct {
 	mutex         sync.Mutex
-	account       proto.Account
-	allVault      []proto.Vault
-	allItemByID   map[string]proto.Item
+	account       apitypes.Account
+	vaults        []apitypes.Vault
+	itemsByID     map[string]apitypes.Item
 	seq           int64
 	isUnreachable bool
-	allSince      []string
+	sinceValues   []string
 }
 
 func (server *offlineTestServer) setUnreachable(isUnreachable bool) {
@@ -46,13 +46,13 @@ func (server *offlineTestServer) createHandler() http.Handler {
 		writeJSON(writer, server.account)
 	})
 	mux.HandleFunc("GET /api/v1/vaults", func(writer http.ResponseWriter, request *http.Request) {
-		writeJSON(writer, server.allVault)
+		writeJSON(writer, server.vaults)
 	})
 	mux.HandleFunc("GET /api/v1/vaults/{vaultID}/changes", func(writer http.ResponseWriter, request *http.Request) {
-		server.allSince = append(server.allSince, request.URL.Query().Get("since"))
+		server.sinceValues = append(server.sinceValues, request.URL.Query().Get("since"))
 		since, _ := strconv.ParseInt(request.URL.Query().Get("since"), 10, 64)
-		response := proto.ChangesResponse{Items: []proto.Item{}, NextSeq: server.seq}
-		for _, storedItem := range server.allItemByID {
+		response := apitypes.ChangesResponse{Items: []apitypes.Item{}, NextSeq: server.seq}
+		for _, storedItem := range server.itemsByID {
 			if storedItem.Seq > since {
 				response.Items = append(response.Items, storedItem)
 			}
@@ -60,14 +60,14 @@ func (server *offlineTestServer) createHandler() http.Handler {
 		writeJSON(writer, response)
 	})
 	mux.HandleFunc("PUT /api/v1/vaults/{vaultID}/items/{itemID}", func(writer http.ResponseWriter, request *http.Request) {
-		var putRequest proto.PutItemRequest
+		var putRequest apitypes.PutItemRequest
 		json.NewDecoder(request.Body).Decode(&putRequest)
 		server.seq++
-		server.allItemByID[request.PathValue("itemID")] = proto.Item{
+		server.itemsByID[request.PathValue("itemID")] = apitypes.Item{
 			ID: request.PathValue("itemID"), Revision: putRequest.Revision, Seq: server.seq, Deleted: putRequest.Deleted,
 			Overview: putRequest.Overview, Details: putRequest.Details,
 		}
-		writeJSON(writer, proto.PutItemResponse{Seq: server.seq})
+		writeJSON(writer, apitypes.PutItemResponse{Seq: server.seq})
 	})
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		server.mutex.Lock()
@@ -82,7 +82,7 @@ func (server *offlineTestServer) createHandler() http.Handler {
 
 type offlineTestAccount struct {
 	server    *offlineTestServer
-	apiClient *client.Client
+	apiClient *apiclient.Client
 	password  []byte
 	secretKey crypt.SecretKey
 	vaultID   string
@@ -101,7 +101,7 @@ func createOfflineTestAccount(t *testing.T) offlineTestAccount {
 	}
 	password := []byte("correct horse battery")
 	salt := crypt.GenerateSalt()
-	derivedKeys, err := crypt.DeriveAllKey(password, salt, crypt.MinArgon2Params, secretKey)
+	derivedKeys, err := crypt.DeriveKeys(password, salt, crypt.MinArgon2Params(), secretKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,17 +121,17 @@ func createOfflineTestAccount(t *testing.T) offlineTestAccount {
 		t.Fatal(err)
 	}
 	server := &offlineTestServer{
-		account: proto.Account{
-			AccountID: accountID, Email: "alice@example.com", Name: "Alice", Role: proto.RoleAdmin,
-			Salt: salt, Argon2: crypt.MinArgon2Params, EncKeyset: encryptedKeyset, PublicKeys: keyset.GetAllPublicKey(accountID),
+		account: apitypes.Account{
+			AccountID: accountID, Email: "alice@example.com", Name: "Alice", Role: apitypes.RoleAdmin,
+			Salt: salt, Argon2: crypt.MinArgon2Params(), EncKeyset: encryptedKeyset, PublicKeys: keyset.GetPublicKeys(accountID),
 		},
-		allVault:    []proto.Vault{{ID: vaultID, Type: proto.VaultShared, EncName: encryptedName, Role: proto.VaultOwner, WrappedKey: wrappedKey}},
-		allItemByID: map[string]proto.Item{},
+		vaults:    []apitypes.Vault{{ID: vaultID, Type: apitypes.VaultShared, EncName: encryptedName, Role: apitypes.VaultOwner, WrappedKey: wrappedKey}},
+		itemsByID: map[string]apitypes.Item{},
 	}
 	keyset.Wipe()
 	httpServer := httptest.NewServer(server.createHandler())
 	t.Cleanup(httpServer.Close)
-	apiClient := client.Create(httpServer.URL)
+	apiClient := apiclient.New(httpServer.URL)
 	apiClient.Token = "token"
 	return offlineTestAccount{server: server, apiClient: apiClient, password: password, secretKey: secretKey, vaultID: vaultID}
 }
@@ -146,22 +146,22 @@ func openTestCache(t *testing.T) *cache.Cache {
 	return testCache
 }
 
-func listAllTitle(t *testing.T, unlockedSession *Session) []string {
+func listTitles(t *testing.T, unlockedSession *Session) []string {
 	t.Helper()
 	ctx := context.Background()
-	allVault, err := unlockedSession.ListAllVault(ctx)
-	if err != nil || len(allVault) != 1 {
-		t.Fatalf("vaults: %+v %v", allVault, err)
+	vaults, err := unlockedSession.ListVaults(ctx)
+	if err != nil || len(vaults) != 1 {
+		t.Fatalf("vaults: %+v %v", vaults, err)
 	}
-	allItem, err := unlockedSession.ListAllItem(ctx, &allVault[0])
+	items, err := unlockedSession.ListItems(ctx, &vaults[0])
 	if err != nil {
 		t.Fatal(err)
 	}
-	allTitle := []string{}
-	for _, vaultItem := range allItem {
-		allTitle = append(allTitle, vaultItem.Overview.Title)
+	titles := []string{}
+	for _, vaultItem := range items {
+		titles = append(titles, vaultItem.Overview.Title)
 	}
-	return allTitle
+	return titles
 }
 
 func TestUnlockOfflineFromCache(t *testing.T) {
@@ -170,7 +170,7 @@ func TestUnlockOfflineFromCache(t *testing.T) {
 	ctx := context.Background()
 
 	account.server.setUnreachable(true)
-	if _, err := Unlock(ctx, account.apiClient, testCache, account.password, account.secretKey); !client.IsUnreachable(err) {
+	if _, err := Unlock(ctx, account.apiClient, testCache, account.password, account.secretKey); !apiclient.IsUnreachable(err) {
 		t.Fatalf("unlock with an empty cache while unreachable: %v", err)
 	}
 	account.server.setUnreachable(false)
@@ -189,7 +189,7 @@ func TestUnlockOfflineFromCache(t *testing.T) {
 	if _, err := Unlock(ctx, account.apiClient, testCache, []byte("wrong password"), account.secretKey); !errors.Is(err, ErrBadCredentials) {
 		t.Errorf("offline unlock with a wrong password: %v", err)
 	}
-	if _, err := Unlock(ctx, account.apiClient, nil, account.password, account.secretKey); !client.IsUnreachable(err) {
+	if _, err := Unlock(ctx, account.apiClient, nil, account.password, account.secretKey); !apiclient.IsUnreachable(err) {
 		t.Errorf("offline unlock without a cache: %v", err)
 	}
 	accountUnlockKey, err := DeriveAccountUnlockKey(ctx, account.apiClient, testCache, account.password, account.secretKey)
@@ -209,8 +209,8 @@ func TestUnlockDoesNotHideServerErrors(t *testing.T) {
 	if _, err := Unlock(ctx, account.apiClient, testCache, account.password, account.secretKey); err != nil {
 		t.Fatal(err)
 	}
-	signedOutClient := client.Create(account.apiClient.BaseURL + "/missing")
-	if _, err := Unlock(ctx, signedOutClient, testCache, account.password, account.secretKey); err == nil || client.IsUnreachable(err) {
+	signedOutClient := apiclient.New(account.apiClient.BaseURL + "/missing")
+	if _, err := Unlock(ctx, signedOutClient, testCache, account.password, account.secretKey); err == nil || apiclient.IsUnreachable(err) {
 		t.Errorf("a 404 must not fall back to the cache: %v", err)
 	}
 }
@@ -223,21 +223,21 @@ func TestListAllItemDownloadsOnlyChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer unlockedSession.Lock()
-	allVault, err := unlockedSession.ListAllVault(ctx)
+	vaults, err := unlockedSession.ListVaults(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
-	vault := &allVault[0]
+	vault := &vaults[0]
 	for _, title := range []string{"Netflix", "Bank"} {
 		if _, err := unlockedSession.SaveItem(ctx, vault, &item.Item{Overview: item.Overview{Title: title}}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if allTitle := listAllTitle(t, unlockedSession); strings.Join(allTitle, ",") != "Bank,Netflix" {
-		t.Fatalf("titles = %v", allTitle)
+	if titles := listTitles(t, unlockedSession); strings.Join(titles, ",") != "Bank,Netflix" {
+		t.Fatalf("titles = %v", titles)
 	}
-	bank := proto.Item{}
-	for _, storedItem := range account.server.allItemByID {
+	bank := apitypes.Item{}
+	for _, storedItem := range account.server.itemsByID {
 		if storedItem.Seq == 2 {
 			bank = storedItem
 		}
@@ -248,22 +248,22 @@ func TestListAllItemDownloadsOnlyChanges(t *testing.T) {
 	if _, err := unlockedSession.SaveItem(ctx, vault, &item.Item{Overview: item.Overview{Title: "Email"}}); err != nil {
 		t.Fatal(err)
 	}
-	if allTitle := listAllTitle(t, unlockedSession); strings.Join(allTitle, ",") != "Email,Netflix" {
-		t.Fatalf("titles after changes = %v", allTitle)
+	if titles := listTitles(t, unlockedSession); strings.Join(titles, ",") != "Email,Netflix" {
+		t.Fatalf("titles after changes = %v", titles)
 	}
-	if allSince := strings.Join(account.server.allSince, ","); allSince != "0,2" {
-		t.Errorf("since values requested = %s, want 0,2", allSince)
+	if sinceValues := strings.Join(account.server.sinceValues, ","); sinceValues != "0,2" {
+		t.Errorf("since values requested = %s, want 0,2", sinceValues)
 	}
 
 	account.server.setUnreachable(true)
-	if allTitle := listAllTitle(t, unlockedSession); strings.Join(allTitle, ",") != "Email,Netflix" || !unlockedSession.IsOffline() {
-		t.Errorf("offline titles = %v, offline = %v", allTitle, unlockedSession.IsOffline())
+	if titles := listTitles(t, unlockedSession); strings.Join(titles, ",") != "Email,Netflix" || !unlockedSession.IsOffline() {
+		t.Errorf("offline titles = %v, offline = %v", titles, unlockedSession.IsOffline())
 	}
-	if _, err := unlockedSession.SaveItem(ctx, vault, &item.Item{Overview: item.Overview{Title: "Offline"}}); !client.IsUnreachable(err) {
+	if _, err := unlockedSession.SaveItem(ctx, vault, &item.Item{Overview: item.Overview{Title: "Offline"}}); !apiclient.IsUnreachable(err) {
 		t.Errorf("saving offline: %v", err)
 	}
 	account.server.setUnreachable(false)
-	listAllTitle(t, unlockedSession)
+	listTitles(t, unlockedSession)
 	if unlockedSession.IsOffline() {
 		t.Error("still offline after the server came back")
 	}
@@ -277,17 +277,17 @@ func TestListAllItemDetectsRollbackAgainstCache(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer unlockedSession.Lock()
-	allVault, _ := unlockedSession.ListAllVault(ctx)
+	vaults, _ := unlockedSession.ListVaults(ctx)
 	for _, title := range []string{"One", "Two"} {
-		if _, err := unlockedSession.SaveItem(ctx, &allVault[0], &item.Item{Overview: item.Overview{Title: title}}); err != nil {
+		if _, err := unlockedSession.SaveItem(ctx, &vaults[0], &item.Item{Overview: item.Overview{Title: title}}); err != nil {
 			t.Fatal(err)
 		}
 	}
-	listAllTitle(t, unlockedSession)
+	listTitles(t, unlockedSession)
 	account.server.mutex.Lock()
 	account.server.seq = 1
 	account.server.mutex.Unlock()
-	if _, err := unlockedSession.ListAllItem(ctx, &allVault[0]); !errors.Is(err, ErrRollback) {
+	if _, err := unlockedSession.ListItems(ctx, &vaults[0]); !errors.Is(err, ErrRollback) {
 		t.Errorf("rollback not detected: %v", err)
 	}
 }
@@ -301,15 +301,15 @@ func TestListAllItemRedownloadsUndecryptableCache(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer unlockedSession.Lock()
-	allVault, _ := unlockedSession.ListAllVault(ctx)
-	if _, err := unlockedSession.SaveItem(ctx, &allVault[0], &item.Item{Overview: item.Overview{Title: "Netflix"}}); err != nil {
+	vaults, _ := unlockedSession.ListVaults(ctx)
+	if _, err := unlockedSession.SaveItem(ctx, &vaults[0], &item.Item{Overview: item.Overview{Title: "Netflix"}}); err != nil {
 		t.Fatal(err)
 	}
-	listAllTitle(t, unlockedSession)
-	if err := testCache.ApplyAllChange(account.vaultID, []proto.Item{{ID: "corrupted", Revision: "r", Overview: []byte("not ciphertext")}}, account.server.seq); err != nil {
+	listTitles(t, unlockedSession)
+	if err := testCache.ApplyChanges(account.vaultID, []apitypes.Item{{ID: "corrupted", Revision: "r", Overview: []byte("not ciphertext")}}, account.server.seq); err != nil {
 		t.Fatal(err)
 	}
-	if allTitle := listAllTitle(t, unlockedSession); strings.Join(allTitle, ",") != "Netflix" {
-		t.Errorf("titles after a corrupted cache = %v", allTitle)
+	if titles := listTitles(t, unlockedSession); strings.Join(titles, ",") != "Netflix" {
+		t.Errorf("titles after a corrupted cache = %v", titles)
 	}
 }

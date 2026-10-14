@@ -14,7 +14,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/tryhisar/hisar/cli/masking"
+	"github.com/tryhisar/hisar/cli/internal/dotenv"
+	"github.com/tryhisar/hisar/cli/internal/masking"
 	"github.com/tryhisar/hisar/core/secretreference"
 )
 
@@ -29,19 +30,10 @@ type exitCodeError int
 
 func (code exitCodeError) Error() string { return fmt.Sprintf("exit code %d", int(code)) }
 
-type multipleValue []string
-
-func (allValue *multipleValue) String() string { return strings.Join(*allValue, ", ") }
-
-func (allValue *multipleValue) Set(value string) error {
-	*allValue = append(*allValue, value)
-	return nil
-}
-
 type runOption struct {
-	allEnvironmentFile []string
-	isMaskingDisabled  bool
-	allCommandArg      []string
+	environmentFiles  []string
+	isMaskingDisabled bool
+	commandArgs       []string
 }
 
 type runStdio struct {
@@ -50,33 +42,33 @@ type runStdio struct {
 	stderr *os.File
 }
 
-type referenceResolver func(ctx context.Context, allReference []string, commandLine []string) ([]string, error)
+type referenceResolver func(ctx context.Context, references []string, commandLine []string) ([]string, error)
 
 // isForegroundJob tells whether the terminal already sends its SIGINT and SIGQUIT to the command as well.
 var isForegroundJob = checkForegroundJob
 
-func parseRunOption(flags *flag.FlagSet, allArg []string) (runOption, error) {
+func parseRunOption(flags *flag.FlagSet, args []string) (runOption, error) {
 	var option runOption
-	allEnvironmentFile := multipleValue{}
-	flags.Var(&allEnvironmentFile, "env-file", "read variables from this dotenv file (repeatable; later files win)")
+	environmentFiles := repeatedFlag{}
+	flags.Var(&environmentFiles, "env-file", "read variables from this dotenv file (repeatable; later files win)")
 	flags.BoolVar(&option.isMaskingDisabled, "no-masking", false, "connect the command straight to the terminal; its output is not masked")
-	if err := flags.Parse(allArg); err != nil {
+	if err := flags.Parse(args); err != nil {
 		return option, err
 	}
-	option.allEnvironmentFile = allEnvironmentFile
-	option.allCommandArg = flags.Args()
-	if len(option.allCommandArg) == 0 {
+	option.environmentFiles = environmentFiles
+	option.commandArgs = flags.Args()
+	if len(option.commandArgs) == 0 {
 		return option, errUsage
 	}
 	return option, nil
 }
 
-func runRun(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
-	option, err := parseRunOption(flags, allArg)
+func runRun(ctx context.Context, flags *flag.FlagSet, args []string) error {
+	option, err := parseRunOption(flags, args)
 	if err != nil {
 		return err
 	}
-	exitCode, err := runWithSecret(ctx, option, os.Environ(), resolveAllReference, runStdio{stdin: os.Stdin, stdout: os.Stdout, stderr: os.Stderr})
+	exitCode, err := runWithSecret(ctx, option, os.Environ(), resolveReferences, runStdio{stdin: os.Stdin, stdout: os.Stdout, stderr: os.Stderr})
 	if err != nil {
 		return err
 	}
@@ -87,48 +79,48 @@ func runRun(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
 }
 
 // buildRunEnvironment applies the env files in order; a real variable wins over the files unless its value is a reference.
-func buildRunEnvironment(allEnviron []string, allFileVariable []environmentVariable) []environmentVariable {
-	var allVariable []environmentVariable
+func buildRunEnvironment(environ []string, fileVariables []dotenv.Variable) []dotenv.Variable {
+	var variables []dotenv.Variable
 	indexByName := map[string]int{}
-	for _, entry := range allEnviron {
+	for _, entry := range environ {
 		name, value, hasEquals := strings.Cut(entry, "=")
 		if !hasEquals || name == "" {
 			continue
 		}
 		if index, isKnown := indexByName[name]; isKnown {
-			allVariable[index].value = value
+			variables[index].Value = value
 			continue
 		}
-		indexByName[name] = len(allVariable)
-		allVariable = append(allVariable, environmentVariable{name: name, value: value})
+		indexByName[name] = len(variables)
+		variables = append(variables, dotenv.Variable{Name: name, Value: value})
 	}
 	isFromFile := map[string]bool{}
-	for _, fileVariable := range allFileVariable {
-		index, isKnown := indexByName[fileVariable.name]
+	for _, fileVariable := range fileVariables {
+		index, isKnown := indexByName[fileVariable.Name]
 		if !isKnown {
-			indexByName[fileVariable.name] = len(allVariable)
-			allVariable = append(allVariable, fileVariable)
-			isFromFile[fileVariable.name] = true
+			indexByName[fileVariable.Name] = len(variables)
+			variables = append(variables, fileVariable)
+			isFromFile[fileVariable.Name] = true
 			continue
 		}
-		if isFromFile[fileVariable.name] || secretreference.IsReference(allVariable[index].value) {
-			allVariable[index].value = fileVariable.value
-			isFromFile[fileVariable.name] = true
+		if isFromFile[fileVariable.Name] || secretreference.IsReference(variables[index].Value) {
+			variables[index].Value = fileVariable.Value
+			isFromFile[fileVariable.Name] = true
 		}
 	}
-	return allVariable
+	return variables
 }
 
-func listAllUniqueReference(allVariable []environmentVariable) []string {
-	var allReference []string
+func listUniqueReferences(variables []dotenv.Variable) []string {
+	var references []string
 	isListed := map[string]bool{}
-	for _, variable := range allVariable {
-		if secretreference.IsReference(variable.value) && !isListed[variable.value] {
-			isListed[variable.value] = true
-			allReference = append(allReference, variable.value)
+	for _, variable := range variables {
+		if secretreference.IsReference(variable.Value) && !isListed[variable.Value] {
+			isListed[variable.Value] = true
+			references = append(references, variable.Value)
 		}
 	}
-	return allReference
+	return references
 }
 
 func findCommandPath(name string) (string, int, error) {
@@ -143,64 +135,64 @@ func findCommandPath(name string) (string, int, error) {
 }
 
 // runWithSecret resolves the references, starts the command with the values in its environment and returns its exit code.
-func runWithSecret(ctx context.Context, option runOption, allEnviron []string, resolve referenceResolver, stdio runStdio) (int, error) {
-	var allFileVariable []environmentVariable
-	for _, path := range option.allEnvironmentFile {
-		allVariableInFile, err := readEnvironmentFile(path)
+func runWithSecret(ctx context.Context, option runOption, environ []string, resolve referenceResolver, stdio runStdio) (int, error) {
+	var fileVariables []dotenv.Variable
+	for _, path := range option.environmentFiles {
+		variablesInFile, err := dotenv.ReadFile(path)
 		if err != nil {
 			return 0, err
 		}
-		allFileVariable = append(allFileVariable, allVariableInFile...)
+		fileVariables = append(fileVariables, variablesInFile...)
 	}
-	allVariable := buildRunEnvironment(allEnviron, allFileVariable)
-	commandPath, exitCode, err := findCommandPath(option.allCommandArg[0])
+	variables := buildRunEnvironment(environ, fileVariables)
+	commandPath, exitCode, err := findCommandPath(option.commandArgs[0])
 	if err != nil {
 		fmt.Fprintln(stdio.stderr, "hisar:", err)
 		return exitCode, nil
 	}
 
-	allReference := listAllUniqueReference(allVariable)
-	var allSecretValue []string
-	if len(allReference) == 0 {
+	references := listUniqueReferences(variables)
+	var secretValues []string
+	if len(references) == 0 {
 		fmt.Fprintln(stdio.stderr, "hisar: no secret references found")
 	} else {
-		allValue, err := resolve(ctx, allReference, option.allCommandArg)
+		values, err := resolve(ctx, references, option.commandArgs)
 		if err != nil {
 			return 0, err
 		}
 		valueByReference := map[string]string{}
-		for index, reference := range allReference {
-			valueByReference[reference] = allValue[index]
+		for index, reference := range references {
+			valueByReference[reference] = values[index]
 		}
-		for index, variable := range allVariable {
-			value, isReference := valueByReference[variable.value]
+		for index, variable := range variables {
+			value, isReference := valueByReference[variable.Value]
 			if !isReference {
 				continue
 			}
-			allVariable[index].value = value
-			allSecretValue = append(allSecretValue, value)
+			variables[index].Value = value
+			secretValues = append(secretValues, value)
 			if !option.isMaskingDisabled && len(value) < masking.MinimumLength {
-				fmt.Fprintf(stdio.stderr, "hisar: %s is shorter than %d bytes and is not masked\n", variable.name, masking.MinimumLength)
+				fmt.Fprintf(stdio.stderr, "hisar: %s is shorter than %d bytes and is not masked\n", variable.Name, masking.MinimumLength)
 			}
 		}
 	}
 
-	allEnvironmentEntry := make([]string, 0, len(allVariable))
-	for _, variable := range allVariable {
-		allEnvironmentEntry = append(allEnvironmentEntry, variable.name+"="+variable.value)
+	environmentEntries := make([]string, 0, len(variables))
+	for _, variable := range variables {
+		environmentEntries = append(environmentEntries, variable.Name+"="+variable.Value)
 	}
-	command := exec.Command(commandPath, option.allCommandArg[1:]...)
-	command.Args[0] = option.allCommandArg[0]
-	command.Env = allEnvironmentEntry
+	command := exec.Command(commandPath, option.commandArgs[1:]...)
+	command.Args[0] = option.commandArgs[0]
+	command.Env = environmentEntries
 	command.Stdin = stdio.stdin
 	if option.isMaskingDisabled {
 		command.Stdout, command.Stderr = stdio.stdout, stdio.stderr
 		return startAndWait(command, stdio.stderr, nil)
 	}
-	return runMasked(command, stdio, allSecretValue)
+	return runMasked(command, stdio, secretValues)
 }
 
-func runMasked(command *exec.Cmd, stdio runStdio, allSecretValue []string) (int, error) {
+func runMasked(command *exec.Cmd, stdio runStdio, secretValues []string) (int, error) {
 	stdoutReader, stdoutWriter, err := os.Pipe()
 	if err != nil {
 		return 0, err
@@ -221,7 +213,7 @@ func runMasked(command *exec.Cmd, stdio runStdio, allSecretValue []string) (int,
 		output *os.File
 	}{{stdoutReader, stdio.stdout}, {stderrReader, stdio.stderr}} {
 		waitGroup.Go(func() {
-			masking.CopyMasked(masking.CreateSecretMasker(stream.output, allSecretValue), stream.reader, masking.FlushDelay, stop)
+			masking.CopyMasked(masking.NewSecretMasker(stream.output, secretValues), stream.reader, masking.FlushDelay, stop)
 		})
 	}
 	afterStart := func() {
@@ -247,7 +239,7 @@ func runMasked(command *exec.Cmd, stdio runStdio, allSecretValue []string) (int,
 // startAndWait forwards signals to the command while it runs; a command a signal ended exits 128 + its number.
 func startAndWait(command *exec.Cmd, stderr *os.File, afterStart func()) (int, error) {
 	signalChannel := make(chan os.Signal, 8)
-	signal.Notify(signalChannel, allForwardedSignal...)
+	signal.Notify(signalChannel, forwardedSignals...)
 	defer signal.Stop(signalChannel)
 	if err := command.Start(); err != nil {
 		fmt.Fprintf(stderr, "hisar: %s: %v\n", command.Args[0], err)

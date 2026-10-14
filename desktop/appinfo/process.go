@@ -11,14 +11,14 @@ import (
 
 const tcpEstablishedState = "01"
 
-// findTCPRemoteHost reads a /proc/net/tcp table: the remote address of an established socket among allSocketInode.
-func findTCPRemoteHost(table string, allSocketInode map[string]bool) string {
+// findTCPRemoteHost reads a /proc/net/tcp table: the remote address of an established socket among socketInodes.
+func findTCPRemoteHost(table string, socketInodes map[string]bool) string {
 	for _, line := range strings.Split(table, "\n") {
-		allField := strings.Fields(line)
-		if len(allField) < 10 || allField[3] != tcpEstablishedState || !allSocketInode[allField[9]] {
+		fields := strings.Fields(line)
+		if len(fields) < 10 || fields[3] != tcpEstablishedState || !socketInodes[fields[9]] {
 			continue
 		}
-		hexAddress, _, _ := strings.Cut(allField[2], ":")
+		hexAddress, _, _ := strings.Cut(fields[2], ":")
 		raw, err := hex.DecodeString(hexAddress)
 		if err != nil || (len(raw) != net.IPv4len && len(raw) != net.IPv6len) {
 			continue
@@ -51,13 +51,13 @@ func parseKernelProcessArgument(raw []byte) ([]string, error) {
 		return nil, errors.New("appinfo: no executable path in process arguments")
 	}
 	rest = bytes.TrimLeft(rest, "\x00")
-	allArgument := make([]string, 0, argumentCount)
-	for len(allArgument) < argumentCount && len(rest) > 0 {
+	arguments := make([]string, 0, argumentCount)
+	for len(arguments) < argumentCount && len(rest) > 0 {
 		argument, remaining, _ := bytes.Cut(rest, []byte{0})
-		allArgument = append(allArgument, string(argument))
+		arguments = append(arguments, string(argument))
 		rest = remaining
 	}
-	return allArgument, nil
+	return arguments, nil
 }
 
 func parseLinuxCommandLine(raw []byte) []string {
@@ -65,9 +65,9 @@ func parseLinuxCommandLine(raw []byte) []string {
 	if len(raw) == 0 {
 		return []string{}
 	}
-	allArgument := []string{}
+	arguments := []string{}
 	for _, argument := range bytes.Split(raw, []byte{0}) {
-		allArgument = append(allArgument, string(argument))
+		arguments = append(arguments, string(argument))
 	}
-	return allArgument
+	return arguments
 }

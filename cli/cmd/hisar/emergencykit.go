@@ -12,9 +12,9 @@ import (
 	"github.com/tryhisar/hisar/core/emergencykit"
 )
 
-func runEmergencyKit(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
+func runEmergencyKit(ctx context.Context, flags *flag.FlagSet, args []string) error {
 	outputPath := flags.String("o", "Hisar Emergency Kit.pdf", "where to save the PDF")
-	if _, err := parse(flags, allArg); err != nil {
+	if _, err := parse(flags, args); err != nil {
 		return err
 	}
 	if _, err := os.Stat(*outputPath); err == nil {

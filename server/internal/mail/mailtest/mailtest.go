@@ -17,13 +17,13 @@ import (
 )
 
 type Recorder struct {
-	mutex      sync.Mutex
-	allMessage []mail.Message
-	changed    chan struct{}
-	SendError  error
+	mutex     sync.Mutex
+	messages  []mail.Message
+	changed   chan struct{}
+	SendError error
 }
 
-func CreateRecorder() *Recorder {
+func NewRecorder() *Recorder {
 	return &Recorder{changed: make(chan struct{})}
 }
 
@@ -33,16 +33,16 @@ func (recorder *Recorder) Send(_ context.Context, message mail.Message) error {
 	if recorder.SendError != nil {
 		return recorder.SendError
 	}
-	recorder.allMessage = append(recorder.allMessage, message)
+	recorder.messages = append(recorder.messages, message)
 	close(recorder.changed)
 	recorder.changed = make(chan struct{})
 	return nil
 }
 
-func (recorder *Recorder) ListAllMessage() []mail.Message {
+func (recorder *Recorder) ListMessages() []mail.Message {
 	recorder.mutex.Lock()
 	defer recorder.mutex.Unlock()
-	return append([]mail.Message(nil), recorder.allMessage...)
+	return append([]mail.Message(nil), recorder.messages...)
 }
 
 // WaitForMessageCount returns the messages once there are at least count of them, or what arrived before the timeout.
@@ -50,25 +50,25 @@ func (recorder *Recorder) WaitForMessageCount(count int, timeout time.Duration) 
 	deadline := time.After(timeout)
 	for {
 		recorder.mutex.Lock()
-		allMessage, changed := append([]mail.Message(nil), recorder.allMessage...), recorder.changed
+		messages, changed := append([]mail.Message(nil), recorder.messages...), recorder.changed
 		recorder.mutex.Unlock()
-		if len(allMessage) >= count {
-			return allMessage
+		if len(messages) >= count {
+			return messages
 		}
 		select {
 		case <-changed:
 		case <-deadline:
-			return allMessage
+			return messages
 		}
 	}
 }
 
 type ReceivedMessage struct {
-	From         string
-	AllRecipient []string
-	Username     string
-	IsTLS        bool
-	Data         string
+	From       string
+	Recipients []string
+	Username   string
+	IsTLS      bool
+	Data       string
 }
 
 type SinkConfig struct {
@@ -80,11 +80,11 @@ type SinkConfig struct {
 
 // Sink accepts every message on a local port; it implements only what the server's SMTP client uses.
 type Sink struct {
-	listener   net.Listener
-	config     SinkConfig
-	mutex      sync.Mutex
-	allMessage []ReceivedMessage
-	waitGroup  sync.WaitGroup
+	listener  net.Listener
+	config    SinkConfig
+	mutex     sync.Mutex
+	messages  []ReceivedMessage
+	waitGroup sync.WaitGroup
 }
 
 func StartSink(address string, config SinkConfig) (*Sink, error) {
@@ -113,10 +113,10 @@ func (sink *Sink) Close() error {
 	return err
 }
 
-func (sink *Sink) ListAllMessage() []ReceivedMessage {
+func (sink *Sink) ListMessages() []ReceivedMessage {
 	sink.mutex.Lock()
 	defer sink.mutex.Unlock()
-	return append([]ReceivedMessage(nil), sink.allMessage...)
+	return append([]ReceivedMessage(nil), sink.messages...)
 }
 
 func (sink *Sink) acceptAll() {
@@ -154,12 +154,12 @@ func (sink *Sink) serve(connection net.Conn, isTLS, isGreeting bool) {
 		verb, argument, _ := strings.Cut(line, " ")
 		switch strings.ToUpper(verb) {
 		case "EHLO", "HELO":
-			allExtension := []string{"250-hisar-smtp-sink", "250-8BITMIME", "250-AUTH PLAIN"}
+			extensions := []string{"250-hisar-smtp-sink", "250-8BITMIME", "250-AUTH PLAIN"}
 			if sink.config.TLSConfig != nil && !isTLS {
-				allExtension = append(allExtension, "250-STARTTLS")
+				extensions = append(extensions, "250-STARTTLS")
 			}
-			allExtension = append(allExtension, "250 SMTPUTF8")
-			for _, extension := range allExtension {
+			extensions = append(extensions, "250 SMTPUTF8")
+			for _, extension := range extensions {
 				if !reply(extension) {
 					return
 				}
@@ -185,30 +185,30 @@ func (sink *Sink) serve(connection net.Conn, isTLS, isGreeting bool) {
 				continue
 			}
 			decoded, err := base64.StdEncoding.DecodeString(initialResponse)
-			allPart := strings.Split(string(decoded), "\x00")
-			if err != nil || len(allPart) != 3 {
+			parts := strings.Split(string(decoded), "\x00")
+			if err != nil || len(parts) != 3 {
 				reply("535 invalid credentials")
 				continue
 			}
-			username = allPart[1]
+			username = parts[1]
 			reply("235 authenticated")
 		case "MAIL":
 			current = ReceivedMessage{From: extractPath(argument), Username: username, IsTLS: isTLS}
 			reply("250 ok")
 		case "RCPT":
-			current.AllRecipient = append(current.AllRecipient, extractPath(argument))
+			current.Recipients = append(current.Recipients, extractPath(argument))
 			reply("250 ok")
 		case "DATA":
 			if !reply("354 end with <CRLF>.<CRLF>") {
 				return
 			}
-			allLine, err := reader.ReadDotLines()
+			lines, err := reader.ReadDotLines()
 			if err != nil {
 				return
 			}
-			current.Data = strings.Join(allLine, "\r\n")
+			current.Data = strings.Join(lines, "\r\n")
 			sink.mutex.Lock()
-			sink.allMessage = append(sink.allMessage, current)
+			sink.messages = append(sink.messages, current)
 			sink.mutex.Unlock()
 			if sink.config.OnMessage != nil {
 				sink.config.OnMessage(current)

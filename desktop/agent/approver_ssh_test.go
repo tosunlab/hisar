@@ -13,7 +13,7 @@ type sshApproverOption struct {
 	biometric  Biometric
 	unlocker   Unlocker
 	isCompact  bool
-	allProcess []appinfo.Process
+	processes  []appinfo.Process
 	fileSystem fakeFileSystem
 }
 
@@ -23,7 +23,7 @@ func createSSHApprover(emitter *fakeEmitter, option sshApproverOption) *Approver
 	}
 	config := ApproverConfig{
 		Biometric: option.biometric, Emit: emitter.emit, ShowApprovalWindow: emitter.showWindow, HideApprovalWindow: emitter.hideWindow,
-		ResolveRequester:  func(int) appinfo.Requester { return createTerminalRequester(option.allProcess) },
+		ResolveRequester:  func(int) appinfo.Requester { return createTerminalRequester(option.processes) },
 		ReadFile:          option.fileSystem.readFile,
 		HomeDirectory:     testHomeDirectory,
 		IsCompactApproval: func() bool { return option.isCompact },
@@ -31,7 +31,7 @@ func createSSHApprover(emitter *fakeEmitter, option sshApproverOption) *Approver
 	if option.unlocker != nil {
 		config.Unlocker = option.unlocker
 	}
-	return CreateApprover(config)
+	return NewApprover(config)
 }
 
 func createPushChain() []appinfo.Process {
@@ -44,7 +44,7 @@ func createPushChain() []appinfo.Process {
 func TestSSHApprovalDescribesThePush(t *testing.T) {
 	emitter := createFakeEmitter()
 	biometric := &fakeBiometric{isAvailable: true}
-	approver := createSSHApprover(emitter, sshApproverOption{biometric: biometric, allProcess: createPushChain()})
+	approver := createSSHApprover(emitter, sshApproverOption{biometric: biometric, processes: createPushChain()})
 	resultChannel := startApproval(approver, context.Background(), createTestRequest())
 	event := waitForApprovalEvent(t, emitter)
 	if event.Purpose != PurposePush || event.Action != "push to" || event.Target != testRemoteHost || event.CommandLine != "git push origin main" ||
@@ -55,8 +55,8 @@ func TestSSHApprovalDescribesThePush(t *testing.T) {
 	if result := waitForResult(t, resultChannel); !result.result.IsAllowed || !result.result.IsRemembered {
 		t.Errorf("result = %+v", result)
 	}
-	if allReason := biometric.listAllReason(); len(allReason) != 1 || allReason[0] != `allow "Terminal" to push to git.tryhisar.com` {
-		t.Errorf("Touch ID reasons = %q", allReason)
+	if reasons := biometric.listReasons(); len(reasons) != 1 || reasons[0] != `allow "Terminal" to push to git.tryhisar.com` {
+		t.Errorf("Touch ID reasons = %q", reasons)
 	}
 
 	resultChannel = startApproval(approver, context.Background(), createTestRequest())
@@ -69,7 +69,7 @@ func TestSSHApprovalDescribesThePush(t *testing.T) {
 
 func TestCommitSigningIsNeverRemembered(t *testing.T) {
 	emitter := createFakeEmitter()
-	approver := createSSHApprover(emitter, sshApproverOption{allProcess: createSigningChain(), fileSystem: fakeFileSystem{
+	approver := createSSHApprover(emitter, sshApproverOption{processes: createSigningChain(), fileSystem: fakeFileSystem{
 		testSigningBuffer: "tree 4b825dc642cb6eb9a060e54bf8d69288fbee4904\n\nAdd the approval dialog\n",
 	}})
 	request := createTestRequest()
@@ -86,7 +86,7 @@ func TestCommitSigningIsNeverRemembered(t *testing.T) {
 }
 
 func TestCompactApprovalOnlyWhenNothingElseIsNeeded(t *testing.T) {
-	allCase := []struct {
+	cases := []struct {
 		name        string
 		option      sshApproverOption
 		isForwarded bool
@@ -98,7 +98,7 @@ func TestCompactApprovalOnlyWhenNothingElseIsNeeded(t *testing.T) {
 		{"without Touch ID", sshApproverOption{isCompact: true, biometric: &fakeBiometric{}}, false, false},
 		{"locked", sshApproverOption{isCompact: true, unlocker: &fakeUnlocker{isLocked: true, isTouchIDUnlockReady: true}}, false, false},
 	}
-	for _, testCase := range allCase {
+	for _, testCase := range cases {
 		emitter := createFakeEmitter()
 		approver := createSSHApprover(emitter, testCase.option)
 		request := createTestRequest()
@@ -106,8 +106,8 @@ func TestCompactApprovalOnlyWhenNothingElseIsNeeded(t *testing.T) {
 		resultChannel := startApproval(approver, context.Background(), request)
 		event := waitForApprovalEvent(t, emitter)
 		approver.presenter.waitUntilIdle()
-		if event.IsCompact != testCase.want || !slices.Equal(emitter.listAllShownCompact(), []bool{testCase.want}) {
-			t.Errorf("%s: compact %v, shown %v", testCase.name, event.IsCompact, emitter.listAllShownCompact())
+		if event.IsCompact != testCase.want || !slices.Equal(emitter.listShownCompact(), []bool{testCase.want}) {
+			t.Errorf("%s: compact %v, shown %v", testCase.name, event.IsCompact, emitter.listShownCompact())
 		}
 		approver.Respond(event.RequestID, false, false)
 		waitForResult(t, resultChannel)
@@ -124,8 +124,8 @@ func TestWindowFollowsTheFirstRequest(t *testing.T) {
 	secondChannel := startApproval(approver, context.Background(), createTestRequest())
 	secondEvent := waitForApprovalEvent(t, emitter)
 	approver.presenter.waitUntilIdle()
-	if !secondEvent.IsCompact || !slices.Equal(emitter.listAllShownCompact(), []bool{false, false}) {
-		t.Errorf("a compact request resized the full dialog: %v", emitter.listAllShownCompact())
+	if !secondEvent.IsCompact || !slices.Equal(emitter.listShownCompact(), []bool{false, false}) {
+		t.Errorf("a compact request resized the full dialog: %v", emitter.listShownCompact())
 	}
 	approver.Respond(firstEvent.RequestID, false, false)
 	approver.Respond(secondEvent.RequestID, false, false)
@@ -137,7 +137,7 @@ func TestLockedSSHRequestUnlocksWithTouchID(t *testing.T) {
 	emitter := createFakeEmitter()
 	biometric := &fakeBiometric{isAvailable: true}
 	unlocker := &fakeUnlocker{isLocked: true, isTouchIDUnlockReady: true}
-	approver := createSSHApprover(emitter, sshApproverOption{biometric: biometric, unlocker: unlocker, isCompact: true, allProcess: createPushChain()})
+	approver := createSSHApprover(emitter, sshApproverOption{biometric: biometric, unlocker: unlocker, isCompact: true, processes: createPushChain()})
 	request := createTestRequest()
 	request.IsUnlockRequired, request.KeyID, request.KeyTitle, request.Fingerprint = true, "", "", ""
 	resultChannel := startApproval(approver, context.Background(), request)
@@ -152,8 +152,8 @@ func TestLockedSSHRequestUnlocksWithTouchID(t *testing.T) {
 	if unlocker.IsLocked() || unlocker.touchIDUnlockCount != 1 {
 		t.Error("Touch ID did not unlock Hisar")
 	}
-	if allReason := biometric.listAllReason(); len(allReason) != 1 || allReason[0] != `unlock Hisar and allow "Terminal" to push to git.tryhisar.com` {
-		t.Errorf("Touch ID reasons = %q", allReason)
+	if reasons := biometric.listReasons(); len(reasons) != 1 || reasons[0] != `unlock Hisar and allow "Terminal" to push to git.tryhisar.com` {
+		t.Errorf("Touch ID reasons = %q", reasons)
 	}
 }
 
@@ -175,7 +175,7 @@ func TestLockedSSHRequestUnlocksWithPassword(t *testing.T) {
 	if result := waitForResult(t, resultChannel); !result.result.IsAllowed || result.result.IsRemembered {
 		t.Errorf("result = %+v", result)
 	}
-	if unlocker.IsLocked() || len(biometric.listAllReason()) != 0 {
+	if unlocker.IsLocked() || len(biometric.listReasons()) != 0 {
 		t.Error("the password did not unlock Hisar without Touch ID")
 	}
 }
@@ -194,8 +194,8 @@ func TestSSHApprovalWithMasterPasswordInsteadOfTouchID(t *testing.T) {
 	if result := waitForResult(t, resultChannel); !result.result.IsAllowed || !result.result.IsRemembered {
 		t.Errorf("result = %+v", result)
 	}
-	if len(biometric.listAllReason()) != 0 || len(unlocker.allPassword) != 1 {
-		t.Errorf("Touch ID %v, passwords %v", biometric.listAllReason(), unlocker.allPassword)
+	if len(biometric.listReasons()) != 0 || len(unlocker.passwords) != 1 {
+		t.Errorf("Touch ID %v, passwords %v", biometric.listReasons(), unlocker.passwords)
 	}
 
 	withoutUnlocker := createSSHApprover(emitter, sshApproverOption{})
@@ -211,7 +211,7 @@ func TestSSHApprovalWithMasterPasswordInsteadOfTouchID(t *testing.T) {
 
 func TestForwardedSSHRequestEvent(t *testing.T) {
 	emitter := createFakeEmitter()
-	approver := createSSHApprover(emitter, sshApproverOption{isCompact: true, allProcess: append([]appinfo.Process{createSSHProcess("-A", "build.example.com")}, createShellAndTerminal()...)})
+	approver := createSSHApprover(emitter, sshApproverOption{isCompact: true, processes: append([]appinfo.Process{createSSHProcess("-A", "build.example.com")}, createShellAndTerminal()...)})
 	request := createTestRequest()
 	request.IsForwarded, request.IsRememberable, request.ForwardedFromHost, request.DestinationPort = true, false, "build.example.com", 2222
 	resultChannel := startApproval(approver, context.Background(), request)

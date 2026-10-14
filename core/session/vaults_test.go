@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/tryhisar/hisar/core/proto"
+	"github.com/tryhisar/hisar/core/apitypes"
 )
 
 func TestRemovedVaultsAreReportedOnce(t *testing.T) {
@@ -16,42 +16,42 @@ func TestRemovedVaultsAreReportedOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := unlockedSession.ListAllVault(ctx); err != nil {
+	if _, err := unlockedSession.ListVaults(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if allRemoved := unlockedSession.TakeAllRemovedVault(); len(allRemoved) != 0 {
-		t.Fatalf("removed before any change: %+v", allRemoved)
+	if removed := unlockedSession.TakeRemovedVaults(); len(removed) != 0 {
+		t.Fatalf("removed before any change: %+v", removed)
 	}
 
 	account.server.mutex.Lock()
-	familyVault := account.server.allVault[0]
-	account.server.allVault = nil
+	familyVault := account.server.vaults[0]
+	account.server.vaults = nil
 	account.server.mutex.Unlock()
-	if _, err := unlockedSession.ListAllVault(ctx); err != nil {
+	if _, err := unlockedSession.ListVaults(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if allRemoved := unlockedSession.TakeAllRemovedVault(); !reflect.DeepEqual(allRemoved, []RemovedVault{{ID: account.vaultID, Name: "Family"}}) {
-		t.Errorf("removed: %+v", allRemoved)
+	if removed := unlockedSession.TakeRemovedVaults(); !reflect.DeepEqual(removed, []RemovedVault{{ID: account.vaultID, Name: "Family"}}) {
+		t.Errorf("removed: %+v", removed)
 	}
-	if allRemoved := unlockedSession.TakeAllRemovedVault(); len(allRemoved) != 0 {
-		t.Errorf("reported twice: %+v", allRemoved)
+	if removed := unlockedSession.TakeRemovedVaults(); len(removed) != 0 {
+		t.Errorf("reported twice: %+v", removed)
 	}
 
 	account.server.mutex.Lock()
-	account.server.allVault = []proto.Vault{familyVault}
+	account.server.vaults = []apitypes.Vault{familyVault}
 	account.server.mutex.Unlock()
-	if _, err := unlockedSession.ListAllVault(ctx); err != nil {
+	if _, err := unlockedSession.ListVaults(ctx); err != nil {
 		t.Fatal(err)
 	}
 	unlockedSession.noteOwnRemoval(account.vaultID)
 	account.server.mutex.Lock()
-	account.server.allVault = nil
+	account.server.vaults = nil
 	account.server.mutex.Unlock()
-	if _, err := unlockedSession.ListAllVault(ctx); err != nil {
+	if _, err := unlockedSession.ListVaults(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if allRemoved := unlockedSession.TakeAllRemovedVault(); len(allRemoved) != 0 {
-		t.Errorf("the session's own deletion was reported: %+v", allRemoved)
+	if removed := unlockedSession.TakeRemovedVaults(); len(removed) != 0 {
+		t.Errorf("the session's own deletion was reported: %+v", removed)
 	}
 }
 
@@ -62,12 +62,12 @@ func TestVaultChecksBeforeAsking(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	editorVault := &Vault{ID: account.vaultID, Type: proto.VaultShared, Name: "Family", Role: proto.VaultEditor, Key: make([]byte, 32)}
+	editorVault := &Vault{ID: account.vaultID, Type: apitypes.VaultShared, Name: "Family", Role: apitypes.VaultEditor, Key: make([]byte, 32)}
 	if err := unlockedSession.RenameVault(ctx, editorVault, "Renamed"); !errors.Is(err, ErrNotVaultOwner) {
 		t.Errorf("editor renames: %v", err)
 	}
 	ownerVault := *editorVault
-	ownerVault.Role = proto.VaultOwner
+	ownerVault.Role = apitypes.VaultOwner
 	if err := unlockedSession.RenameVault(ctx, &ownerVault, "   "); !errors.Is(err, ErrVaultNameEmpty) {
 		t.Errorf("blank name: %v", err)
 	}
@@ -75,14 +75,14 @@ func TestVaultChecksBeforeAsking(t *testing.T) {
 		t.Errorf("editor deletes: %v", err)
 	}
 	personalVault := ownerVault
-	personalVault.Type = proto.VaultPersonal
+	personalVault.Type = apitypes.VaultPersonal
 	if _, err := unlockedSession.DeleteVault(ctx, &personalVault, VaultDeletion{}); !errors.Is(err, ErrPersonalVault) {
 		t.Errorf("personal vault deleted: %v", err)
 	}
 	if err := unlockedSession.LeaveVault(ctx, &personalVault); !errors.Is(err, ErrLeavePersonalVault) {
 		t.Errorf("personal vault left: %v", err)
 	}
-	readerTarget := &Vault{ID: "other", Role: proto.VaultReader}
+	readerTarget := &Vault{ID: "other", Role: apitypes.VaultReader}
 	if _, err := unlockedSession.DeleteVault(ctx, &ownerVault, VaultDeletion{MoveTo: readerTarget}); !errors.Is(err, ErrTargetNotWritable) {
 		t.Errorf("moving into a read-only vault: %v", err)
 	}

@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tryhisar/hisar/core/clisocket"
 	"github.com/tryhisar/hisar/desktop/appinfo"
-	"github.com/tryhisar/hisar/desktop/commandline"
 )
 
 type fakeUnlocker struct {
@@ -16,7 +16,7 @@ type fakeUnlocker struct {
 	isLocked             bool
 	isTouchIDUnlockReady bool
 	correctPassword      string
-	allPassword          []string
+	passwords            []string
 	touchIDUnlockCount   int
 }
 
@@ -42,7 +42,7 @@ func (unlocker *fakeUnlocker) UnlockWithTouchID(authenticate func(reason string)
 func (unlocker *fakeUnlocker) UnlockWithPassword(password string) error {
 	unlocker.mutex.Lock()
 	defer unlocker.mutex.Unlock()
-	unlocker.allPassword = append(unlocker.allPassword, password)
+	unlocker.passwords = append(unlocker.passwords, password)
 	if password != unlocker.correctPassword {
 		return errors.New("Incorrect master password.")
 	}
@@ -53,7 +53,7 @@ func (unlocker *fakeUnlocker) UnlockWithPassword(password string) error {
 func (unlocker *fakeUnlocker) VerifyPassword(password string) error {
 	unlocker.mutex.Lock()
 	defer unlocker.mutex.Unlock()
-	unlocker.allPassword = append(unlocker.allPassword, password)
+	unlocker.passwords = append(unlocker.passwords, password)
 	if password != unlocker.correctPassword {
 		return errors.New("Incorrect master password.")
 	}
@@ -61,7 +61,7 @@ func (unlocker *fakeUnlocker) VerifyPassword(password string) error {
 }
 
 func createCommandLineApprover(biometric Biometric, emitter *fakeEmitter, unlocker Unlocker, timeout time.Duration) *Approver {
-	return CreateApprover(ApproverConfig{
+	return NewApprover(ApproverConfig{
 		Biometric: biometric, Emit: emitter.emit, ShowApprovalWindow: emitter.showWindow, HideApprovalWindow: emitter.hideWindow,
 		ResolveRequester: func(pid int) appinfo.Requester {
 			if pid != 77 {
@@ -74,8 +74,8 @@ func createCommandLineApprover(biometric Biometric, emitter *fakeEmitter, unlock
 	})
 }
 
-func createCommandLineRequest() commandline.ApprovalRequest {
-	return commandline.ApprovalRequest{ClientPID: 77, ParentPID: 42, ClientPath: "/Applications/Hisar.app/Contents/Helpers/hisar", TerminalName: "ttys003"}
+func createCommandLineRequest() clisocket.ApprovalRequest {
+	return clisocket.ApprovalRequest{ClientPID: 77, ParentPID: 42, ClientPath: "/Applications/Hisar.app/Contents/Helpers/hisar", TerminalName: "ttys003"}
 }
 
 func startCommandLineApproval(approver *Approver, ctx context.Context) chan error {
@@ -120,8 +120,8 @@ func TestCommandLineApprovalNamesTheTerminalAndUsesTouchID(t *testing.T) {
 	if err := waitForCommandLineResult(t, resultChannel); err != nil {
 		t.Fatalf("approval: %v", err)
 	}
-	if allReason := biometric.listAllReason(); len(allReason) != 1 || allReason[0] != `allow "hisar" in Terminal to use Hisar` {
-		t.Errorf("Touch ID reasons = %q", allReason)
+	if reasons := biometric.listReasons(); len(reasons) != 1 || reasons[0] != `allow "hisar" in Terminal to use Hisar` {
+		t.Errorf("Touch ID reasons = %q", reasons)
 	}
 }
 
@@ -131,12 +131,12 @@ func TestCommandLineApprovalDenyAndTimeout(t *testing.T) {
 	resultChannel := startCommandLineApproval(approver, context.Background())
 	event := waitForApprovalEvent(t, emitter)
 	approver.Respond(event.RequestID, false, false)
-	if err := waitForCommandLineResult(t, resultChannel); !errors.Is(err, commandline.ErrDenied) {
+	if err := waitForCommandLineResult(t, resultChannel); !errors.Is(err, clisocket.ErrDenied) {
 		t.Errorf("deny: %v", err)
 	}
 
 	timeoutApprover := createCommandLineApprover(&fakeBiometric{isAvailable: true}, createFakeEmitter(), &fakeUnlocker{}, 20*time.Millisecond)
-	if err := timeoutApprover.ApproveCommandLine(context.Background(), createCommandLineRequest()); !errors.Is(err, commandline.ErrDenied) {
+	if err := timeoutApprover.ApproveCommandLine(context.Background(), createCommandLineRequest()); !errors.Is(err, clisocket.ErrDenied) {
 		t.Errorf("timeout: %v", err)
 	}
 
@@ -146,7 +146,7 @@ func TestCommandLineApprovalDenyAndTimeout(t *testing.T) {
 	resultChannel = startCommandLineApproval(disconnectApprover, ctx)
 	waitForApprovalEvent(t, disconnectEmitter)
 	cancel()
-	if err := waitForCommandLineResult(t, resultChannel); !errors.Is(err, commandline.ErrDenied) {
+	if err := waitForCommandLineResult(t, resultChannel); !errors.Is(err, clisocket.ErrDenied) {
 		t.Errorf("client gone: %v", err)
 	}
 }
@@ -161,13 +161,13 @@ func TestCommandLineApprovalWithoutTouchIDNeedsAuthorize(t *testing.T) {
 		t.Error("Touch ID offered without Touch ID")
 	}
 	approver.Respond(event.RequestID, true, false)
-	if err := waitForCommandLineResult(t, resultChannel); err != nil || len(biometric.listAllReason()) != 0 {
-		t.Errorf("approval %v, Touch ID %v", err, biometric.listAllReason())
+	if err := waitForCommandLineResult(t, resultChannel); err != nil || len(biometric.listReasons()) != 0 {
+		t.Errorf("approval %v, Touch ID %v", err, biometric.listReasons())
 	}
 }
 
 func TestCommandLineApprovalUnlocksWithTouchID(t *testing.T) {
-	biometric := &fakeBiometric{isAvailable: true, allAuthenticateResult: []error{errors.New("no match")}}
+	biometric := &fakeBiometric{isAvailable: true, authenticateResults: []error{errors.New("no match")}}
 	emitter := createFakeEmitter()
 	unlocker := &fakeUnlocker{isLocked: true, isTouchIDUnlockReady: true}
 	approver := createCommandLineApprover(biometric, emitter, unlocker, 0)
@@ -187,8 +187,8 @@ func TestCommandLineApprovalUnlocksWithTouchID(t *testing.T) {
 	if unlocker.IsLocked() || unlocker.touchIDUnlockCount != 1 {
 		t.Errorf("unlocked %v, Touch ID unlocks %d", !unlocker.IsLocked(), unlocker.touchIDUnlockCount)
 	}
-	if allReason := biometric.listAllReason(); len(allReason) != 2 || allReason[1] != `unlock Hisar for "hisar" in Terminal` {
-		t.Errorf("Touch ID reasons = %q", allReason)
+	if reasons := biometric.listReasons(); len(reasons) != 2 || reasons[1] != `unlock Hisar for "hisar" in Terminal` {
+		t.Errorf("Touch ID reasons = %q", reasons)
 	}
 }
 
@@ -217,8 +217,8 @@ func TestCommandLineApprovalUnlocksWithPassword(t *testing.T) {
 	if err := waitForCommandLineResult(t, resultChannel); err != nil {
 		t.Fatalf("approval: %v", err)
 	}
-	if unlocker.IsLocked() || len(biometric.listAllReason()) != 0 {
-		t.Errorf("locked %v, Touch ID %v", unlocker.IsLocked(), biometric.listAllReason())
+	if unlocker.IsLocked() || len(biometric.listReasons()) != 0 {
+		t.Errorf("locked %v, Touch ID %v", unlocker.IsLocked(), biometric.listReasons())
 	}
 }
 
@@ -233,8 +233,8 @@ func TestCommandLineApprovalWithPasswordWhileUnlocked(t *testing.T) {
 	if err := waitForCommandLineResult(t, resultChannel); err != nil {
 		t.Fatalf("approval: %v", err)
 	}
-	if len(unlocker.allPassword) != 1 || len(biometric.listAllReason()) != 0 {
-		t.Errorf("passwords %v, Touch ID %v", unlocker.allPassword, biometric.listAllReason())
+	if len(unlocker.passwords) != 1 || len(biometric.listReasons()) != 0 {
+		t.Errorf("passwords %v, Touch ID %v", unlocker.passwords, biometric.listReasons())
 	}
 	if approver.RespondWithPassword("unknown", "correct horse battery", false) {
 		t.Error("a password answered an unknown request")

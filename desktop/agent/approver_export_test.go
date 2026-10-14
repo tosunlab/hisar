@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/tryhisar/hisar/desktop/commandline"
+	"github.com/tryhisar/hisar/core/clisocket"
 )
 
 func TestExportApprovalSaysWhatIsWritten(t *testing.T) {
@@ -20,7 +20,7 @@ func TestExportApprovalSaysWhatIsWritten(t *testing.T) {
 		emitter := createFakeEmitter()
 		approver := createCommandLineApprover(biometric, emitter, &fakeUnlocker{}, 0)
 		request := createCommandLineRequest()
-		request.Export = &commandline.ExportDescription{IsPlain: testCase.isPlain, Path: "/Users/alice/hisar-export.hisar"}
+		request.Export = &clisocket.ExportDescription{IsPlain: testCase.isPlain, Path: "/Users/alice/hisar-export.hisar"}
 		resultChannel := make(chan error, 1)
 		go func() { resultChannel <- approver.ApproveCommandLine(context.Background(), request) }()
 		event := waitForApprovalEvent(t, emitter)
@@ -31,8 +31,8 @@ func TestExportApprovalSaysWhatIsWritten(t *testing.T) {
 		if err := waitForCommandLineResult(t, resultChannel); err != nil {
 			t.Fatal(err)
 		}
-		if allReason := biometric.listAllReason(); len(allReason) != 1 || allReason[0] != `allow "hisar" in Terminal to export all your vaults` {
-			t.Errorf("Touch ID reasons = %q", allReason)
+		if reasons := biometric.listReasons(); len(reasons) != 1 || reasons[0] != `allow "hisar" in Terminal to export all your vaults` {
+			t.Errorf("Touch ID reasons = %q", reasons)
 		}
 	}
 }

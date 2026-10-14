@@ -1,0 +1,30 @@
+package main
+
+import (
+	"github.com/tryhisar/hisar/core/app"
+	"github.com/tryhisar/hisar/desktop/agent"
+	"github.com/wailsapp/wails/v3/pkg/application"
+)
+
+// Events the backend emits to the windows; the frontend listens for these names.
+const (
+	eventLocked            = "locked"
+	eventUnlocked          = "unlocked"
+	eventThemeChanged      = "theme-changed"
+	eventUpdateRequired    = "update-required"
+	eventInviteLink        = "invite-link"
+	eventRemoteChange      = "remote-change"
+	eventShareLinksChanged = "share-links-changed"
+	eventBrowserPairing    = "browser-pairing"
+)
+
+// init registers the typed events, so the generated bindings know their data.
+func init() {
+	application.RegisterEvent[string](eventLocked)
+	application.RegisterEvent[string](eventUnlocked)
+	application.RegisterEvent[agent.ApprovalEvent](agent.ApprovalEventName)
+	application.RegisterEvent[string](agent.ApprovalClosedEventName)
+	application.RegisterEvent[app.Theme](eventThemeChanged)
+	application.RegisterEvent[app.UpdateRequirement](eventUpdateRequired)
+	application.RegisterEvent[string](eventInviteLink)
+}

@@ -12,15 +12,15 @@ const linuxAppBinaryName = "Hisar"
 type systemAppLauncher struct{}
 
 func (systemAppLauncher) LaunchApp() error {
-	var allCandidatePath []string
+	var candidatePaths []string
 	if executablePath, err := os.Executable(); err == nil {
-		allCandidatePath = append(allCandidatePath, filepath.Join(filepath.Dir(executablePath), linuxAppBinaryName))
+		candidatePaths = append(candidatePaths, filepath.Join(filepath.Dir(executablePath), linuxAppBinaryName))
 	}
 	if pathCommand, err := exec.LookPath(linuxAppBinaryName); err == nil {
-		allCandidatePath = append(allCandidatePath, pathCommand)
+		candidatePaths = append(candidatePaths, pathCommand)
 	}
-	allCandidatePath = append(allCandidatePath, "/usr/local/bin/"+linuxAppBinaryName, "/usr/bin/"+linuxAppBinaryName)
-	appPath := findAppBinary(allCandidatePath)
+	candidatePaths = append(candidatePaths, "/usr/local/bin/"+linuxAppBinaryName, "/usr/bin/"+linuxAppBinaryName)
+	appPath := findAppBinary(candidatePaths)
 	if appPath == "" {
 		return errAppNotInstalled
 	}

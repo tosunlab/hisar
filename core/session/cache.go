@@ -3,19 +3,19 @@ package session
 import (
 	"context"
 
-	"github.com/tryhisar/hisar/core/client"
-	"github.com/tryhisar/hisar/core/proto"
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 )
 
 // Cache keeps the server's encrypted records so a session can unlock and read while the server is unreachable.
 type Cache interface {
-	SaveAccount(account *proto.Account) error
-	LoadAccount(accountID string) (*proto.Account, error)
-	ReplaceAllVault(allVault []proto.Vault) error
-	ListAllVault() ([]proto.Vault, error)
+	SaveAccount(account *apitypes.Account) error
+	LoadAccount(accountID string) (*apitypes.Account, error)
+	ReplaceVaults(vaults []apitypes.Vault) error
+	ListVaults() ([]apitypes.Vault, error)
 	GetSeq(vaultID string) (int64, error)
-	ApplyAllChange(vaultID string, allItem []proto.Item, nextSeq int64) error
-	ListAllItem(vaultID string) ([]proto.Item, error)
+	ApplyChanges(vaultID string, items []apitypes.Item, nextSeq int64) error
+	ListItems(vaultID string) ([]apitypes.Item, error)
 	ResetVault(vaultID string) error
 }
 
@@ -35,7 +35,7 @@ func (s *Session) AttachCache(ctx context.Context, accountCache Cache) error {
 }
 
 // getAccount falls back to the cached account only when the server cannot be reached.
-func getAccount(ctx context.Context, apiClient *client.Client, accountCache Cache, accountID string) (account *proto.Account, isOffline bool, err error) {
+func getAccount(ctx context.Context, apiClient *apiclient.Client, accountCache Cache, accountID string) (account *apitypes.Account, isOffline bool, err error) {
 	account, err = apiClient.GetAccount(ctx)
 	if err == nil {
 		if accountCache != nil && account.AccountID == accountID {
@@ -43,7 +43,7 @@ func getAccount(ctx context.Context, apiClient *client.Client, accountCache Cach
 		}
 		return account, false, nil
 	}
-	if accountCache == nil || !client.IsUnreachable(err) {
+	if accountCache == nil || !apiclient.IsUnreachable(err) {
 		return nil, false, err
 	}
 	cachedAccount, cacheErr := accountCache.LoadAccount(accountID)
@@ -53,57 +53,21 @@ func getAccount(ctx context.Context, apiClient *client.Client, accountCache Cach
 	return cachedAccount, true, nil
 }
 
-func (s *Session) listAllProtoVault(ctx context.Context) ([]proto.Vault, error) {
-	allProtoVault, err := s.Client.ListAllVault(ctx)
+func (s *Session) listProtoVaults(ctx context.Context) ([]apitypes.Vault, error) {
+	protoVaults, err := s.Client.ListVaults(ctx)
 	if s.Cache == nil {
-		return allProtoVault, err
+		return protoVaults, err
 	}
 	if err == nil {
 		s.isOffline.Store(false)
-		if allCachedVault, cacheErr := s.Cache.ListAllVault(); cacheErr == nil {
-			s.noteAllRemovedVault(allCachedVault, allProtoVault)
+		if cachedVaults, cacheErr := s.Cache.ListVaults(); cacheErr == nil {
+			s.noteRemovedVaults(cachedVaults, protoVaults)
 		}
-		return allProtoVault, s.Cache.ReplaceAllVault(allProtoVault)
+		return protoVaults, s.Cache.ReplaceVaults(protoVaults)
 	}
-	if !client.IsUnreachable(err) {
+	if !apiclient.IsUnreachable(err) {
 		return nil, err
 	}
 	s.isOffline.Store(true)
-	return s.Cache.ListAllVault()
-}
-
-// syncVault downloads the changes since the cached seq and returns the vault's cached items.
-func (s *Session) syncVault(ctx context.Context, vault *Vault) ([]proto.Item, error) {
-	since, err := s.Cache.GetSeq(vault.ID)
-	if err != nil {
-		return nil, err
-	}
-	for {
-		changeResponse, err := s.Client.ListAllChange(ctx, vault.ID, since, 0)
-		if client.IsUnreachable(err) {
-			s.isOffline.Store(true)
-			return s.Cache.ListAllItem(vault.ID)
-		}
-		if err != nil {
-			return nil, err
-		}
-		if changeResponse.NextSeq < since {
-			return nil, ErrRollback
-		}
-		if err := s.Cache.ApplyAllChange(vault.ID, changeResponse.Items, changeResponse.NextSeq); err != nil {
-			return nil, err
-		}
-		since = changeResponse.NextSeq
-		if !changeResponse.More {
-			break
-		}
-	}
-	if s.SeqStore != nil {
-		if since < s.SeqStore.GetSeq(vault.ID) {
-			return nil, ErrRollback
-		}
-		s.SeqStore.SetSeq(vault.ID, since)
-	}
-	s.isOffline.Store(false)
-	return s.Cache.ListAllItem(vault.ID)
+	return s.Cache.ListVaults()
 }

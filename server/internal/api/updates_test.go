@@ -12,11 +12,12 @@ import (
 
 	"golang.org/x/time/rate"
 
-	"github.com/tryhisar/hisar/core/client"
-	"github.com/tryhisar/hisar/core/proto"
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/session"
 	"github.com/tryhisar/hisar/server/internal/desktopupdate"
 	"github.com/tryhisar/hisar/server/internal/desktopupdate/fakegithub"
+	"github.com/tryhisar/hisar/server/internal/ratelimit"
 )
 
 const updateGitHubToken = "github_pat_update"
@@ -33,22 +34,22 @@ func setupUpdateServer(t *testing.T) *updateTestServer {
 	t.Helper()
 	baseURL, server, _ := setupServer(t)
 	ctx := context.Background()
-	invite := requireValue[*proto.InviteResponse](t)(server.CreateInvite(ctx, "member@example.com", proto.RoleMember, nil))
-	signedUp, _, err := session.SignUp(ctx, client.Create(baseURL), invite.Token, "member@example.com", "Member", []byte("member password"), testDevice)
+	invite := requireValue[*apitypes.InviteResponse](t)(server.CreateInvite(ctx, "member@example.com", apitypes.RoleMember, nil))
+	signedUp, _, err := session.SignUp(ctx, apiclient.New(baseURL), invite.Token, "member@example.com", "Member", []byte("member password"), testDevice)
 	if err != nil {
 		t.Fatal(err)
 	}
 	fake := fakegithub.Start(t, fakegithub.DefaultRepository, updateGitHubToken)
 	archive := bytes.Repeat([]byte("hisar update archive "), 200<<10)
-	fake.AddRelease(fakegithub.CreateDesktopRelease(fakegithub.ReleaseConfig{
+	fake.AddRelease(fakegithub.NewDesktopRelease(fakegithub.ReleaseConfig{
 		Version: "0.2.0", BuildNumber: 2000, Archive: archive, ReleaseNotes: "New & <improved>", PublishedAt: time.Now(),
 	}))
-	gitHub, err := desktopupdate.CreateGitHub(desktopupdate.GitHubConfig{APIURL: fake.URL, Repository: fakegithub.DefaultRepository, Token: updateGitHubToken})
+	gitHub, err := desktopupdate.NewGitHub(desktopupdate.GitHubConfig{APIURL: fake.URL, Repository: fakegithub.DefaultRepository, Token: updateGitHubToken})
 	if err != nil {
 		t.Fatal(err)
 	}
-	server.config.DesktopUpdates = desktopupdate.CreateSource(gitHub, desktopupdate.SourceConfig{PublicURL: server.config.PublicURL})
-	server.updateLimiter = createIPLimiter(rate.Inf, 1)
+	server.config.DesktopUpdates = desktopupdate.NewSource(gitHub, desktopupdate.SourceConfig{PublicURL: server.config.PublicURL})
+	server.updateLimiter = ratelimit.New(rate.Inf, 1)
 	return &updateTestServer{baseURL: baseURL, server: server, token: signedUp.Client.Token, fake: fake, archive: archive}
 }
 
@@ -68,7 +69,7 @@ func (updateServer *updateTestServer) get(t *testing.T, path, token string) (*ht
 }
 
 func readErrorMessage(body []byte) string {
-	var apiError proto.Error
+	var apiError apitypes.Error
 	json.Unmarshal(body, &apiError)
 	return apiError.Error
 }
@@ -82,8 +83,8 @@ func TestDesktopUpdatesRequireSession(t *testing.T) {
 			}
 		}
 	}
-	if allRequest := updateServer.fake.GetAllRequest(); len(allRequest) != 0 {
-		t.Errorf("GitHub asked without a session: %+v", allRequest)
+	if requests := updateServer.fake.GetRequests(); len(requests) != 0 {
+		t.Errorf("GitHub asked without a session: %+v", requests)
 	}
 }
 
@@ -121,12 +122,12 @@ func TestDesktopAppcastAndDownload(t *testing.T) {
 	if response.Header.Get("Content-Type") != "application/octet-stream" {
 		t.Errorf("content type %q", response.Header.Get("Content-Type"))
 	}
-	for _, request := range updateServer.fake.GetAllRequest() {
+	for _, request := range updateServer.fake.GetRequests() {
 		if request.Authorization != "Bearer "+updateGitHubToken {
 			t.Errorf("GitHub got %q for %s", request.Authorization, request.Path)
 		}
 	}
-	for _, authorization := range updateServer.fake.GetAllStorageAuthorization() {
+	for _, authorization := range updateServer.fake.GetStorageAuthorizations() {
 		if authorization != "" {
 			t.Errorf("token forwarded to storage: %q", authorization)
 		}
@@ -151,13 +152,13 @@ func TestDesktopUpdateDownloadRefusesBadNames(t *testing.T) {
 	}
 	// Only update.json of 0.2.0 is read; no bad name reaches GitHub.
 	assetCount := 0
-	for _, request := range updateServer.fake.GetAllRequest() {
+	for _, request := range updateServer.fake.GetRequests() {
 		if strings.Contains(request.Path, "/releases/assets/") {
 			assetCount++
 		}
 	}
 	if assetCount != 1 {
-		t.Errorf("asked GitHub for %d assets: %+v", assetCount, updateServer.fake.GetAllRequest())
+		t.Errorf("asked GitHub for %d assets: %+v", assetCount, updateServer.fake.GetRequests())
 	}
 }
 
@@ -171,7 +172,7 @@ func TestDesktopUpdatesUnreachableSource(t *testing.T) {
 
 func TestDesktopUpdatesAreRateLimited(t *testing.T) {
 	updateServer := setupUpdateServer(t)
-	updateServer.server.updateLimiter = createIPLimiter(rate.Every(time.Hour), 2)
+	updateServer.server.updateLimiter = ratelimit.New(rate.Every(time.Hour), 2)
 	for attempt := range 2 {
 		if response, _ := updateServer.get(t, "appcast.xml", updateServer.token); response.StatusCode != http.StatusOK {
 			t.Fatalf("request %d: %d", attempt, response.StatusCode)

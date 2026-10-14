@@ -17,10 +17,10 @@ type Secrets struct {
 	HMACKey           []byte `json:"hmacKey"`
 }
 
-func LoadOrCreateAllSecret(path string) (*Secrets, error) {
+func LoadOrCreateSecrets(path string) (*Secrets, error) {
 	fileContent, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
-		generated := generateAllSecret()
+		generated := generateSecrets()
 		encoded, err := json.MarshalIndent(generated, "", "  ")
 		if err != nil {
 			return nil, err
@@ -48,14 +48,14 @@ func LoadOrCreateAllSecret(path string) (*Secrets, error) {
 	return &secrets, nil
 }
 
-func generateAllSecret() *Secrets {
-	opaqueConfiguration := pake.CreateConfig()
+func generateSecrets() *Secrets {
+	opaqueConfiguration := pake.NewConfig()
 	privateKey, publicKey := opaqueConfiguration.KeyGen()
 	serverKeyMaterial := &opaque.ServerKeyMaterial{
 		PrivateKey:     privateKey,
 		PublicKeyBytes: publicKey.Encode(),
 		OPRFGlobalSeed: opaqueConfiguration.GenerateOPRFSeed(),
-		Identity:       pake.ServerIdentity,
+		Identity:       pake.ServerIdentity(),
 	}
 	hmacKey := make([]byte, 32)
 	rand.Read(hmacKey)

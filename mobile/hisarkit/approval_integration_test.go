@@ -17,17 +17,18 @@ import (
 	"golang.org/x/crypto/ssh"
 	sshAgentClient "golang.org/x/crypto/ssh/agent"
 
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/app"
 	"github.com/tryhisar/hisar/core/approval"
-	"github.com/tryhisar/hisar/core/client"
 	"github.com/tryhisar/hisar/core/crypt"
+	"github.com/tryhisar/hisar/core/localsocket"
 	"github.com/tryhisar/hisar/core/localstate"
 	"github.com/tryhisar/hisar/core/sshagent"
 	"github.com/tryhisar/hisar/desktop/agent"
-	"github.com/tryhisar/hisar/desktop/vault"
 )
 
 type approvalEventRecorder struct {
-	allEvent chan [2]string
+	events chan [2]string
 }
 
 func (recorder *approvalEventRecorder) OnLocked() {}
@@ -37,7 +38,7 @@ func (recorder *approvalEventRecorder) OnRemoteChange() {}
 func (recorder *approvalEventRecorder) OnUpdateRequired() {}
 
 func (recorder *approvalEventRecorder) OnApprovalEvent(eventName, requestID string) {
-	recorder.allEvent <- [2]string{eventName, requestID}
+	recorder.events <- [2]string{eventName, requestID}
 }
 
 func (recorder *approvalEventRecorder) waitFor(t *testing.T, eventName, requestID string) {
@@ -45,7 +46,7 @@ func (recorder *approvalEventRecorder) waitFor(t *testing.T, eventName, requestI
 	timeout := time.After(15 * time.Second)
 	for {
 		select {
-		case event := <-recorder.allEvent:
+		case event := <-recorder.events:
 			if event[0] == eventName && (requestID == "" || event[1] == requestID) {
 				return
 			}
@@ -56,14 +57,14 @@ func (recorder *approvalEventRecorder) waitFor(t *testing.T, eventName, requestI
 }
 
 type macSecretKeyStore struct {
-	mutex          sync.Mutex
-	allByAccountID map[string]crypt.SecretKey
+	mutex       sync.Mutex
+	byAccountID map[string]crypt.SecretKey
 }
 
 func (store *macSecretKeyStore) LoadSecretKey(accountID string) (crypt.SecretKey, error) {
 	store.mutex.Lock()
 	defer store.mutex.Unlock()
-	secretKey, isFound := store.allByAccountID[accountID]
+	secretKey, isFound := store.byAccountID[accountID]
 	if !isFound {
 		return crypt.SecretKey{}, errors.New("not in the keychain")
 	}
@@ -73,31 +74,31 @@ func (store *macSecretKeyStore) LoadSecretKey(accountID string) (crypt.SecretKey
 func (store *macSecretKeyStore) StoreSecretKey(secretKey crypt.SecretKey) error {
 	store.mutex.Lock()
 	defer store.mutex.Unlock()
-	store.allByAccountID[secretKey.AccountID] = secretKey
+	store.byAccountID[secretKey.AccountID] = secretKey
 	return nil
 }
 
 func (store *macSecretKeyStore) DeleteSecretKey(accountID string) error {
 	store.mutex.Lock()
 	defer store.mutex.Unlock()
-	delete(store.allByAccountID, accountID)
+	delete(store.byAccountID, accountID)
 	return nil
 }
 
 type macDialog struct {
-	allEvent chan agent.ApprovalEvent
+	events chan agent.ApprovalEvent
 }
 
 func (dialog *macDialog) emit(eventName string, data any) {
 	if event, isApprovalEvent := data.(agent.ApprovalEvent); isApprovalEvent && eventName == agent.ApprovalEventName {
-		dialog.allEvent <- event
+		dialog.events <- event
 	}
 }
 
 func (dialog *macDialog) waitForEvent(t *testing.T) agent.ApprovalEvent {
 	t.Helper()
 	select {
-	case event := <-dialog.allEvent:
+	case event := <-dialog.events:
 		return event
 	case <-time.After(15 * time.Second):
 		t.Fatal("the Mac never showed the approval dialog")
@@ -168,13 +169,13 @@ func startSSHServer(t *testing.T, authorizedKey ssh.PublicKey) (string, ssh.Publ
 			}
 			go func() {
 				defer connection.Close()
-				serverConnection, allNewChannel, allRequest, err := ssh.NewServerConn(connection, serverConfig)
+				serverConnection, newChannels, requests, err := ssh.NewServerConn(connection, serverConfig)
 				if err != nil {
 					return
 				}
 				defer serverConnection.Close()
-				go ssh.DiscardRequests(allRequest)
-				for newChannel := range allNewChannel {
+				go ssh.DiscardRequests(requests)
+				for newChannel := range newChannels {
 					newChannel.Reject(ssh.Prohibited, "no channels")
 				}
 			}()
@@ -198,8 +199,8 @@ func TestIntegrationPhoneApproval(t *testing.T) {
 	const email, password = "phone-approval@example.com", "phone approval master password"
 
 	phoneDirectory := t.TempDir()
-	recorder := &approvalEventRecorder{allEvent: make(chan [2]string, 64)}
-	biometric := &fakeBiometric{allKeyByAccountID: map[string][]byte{}}
+	recorder := &approvalEventRecorder{events: make(chan [2]string, 64)}
+	biometric := &fakeBiometric{keysByAccountID: map[string][]byte{}}
 	phoneSecretKeyStore := createMemorySecretKeyStore()
 	phone, err := New(phoneDirectory, "Test iPhone", phoneSecretKeyStore, biometric, &fakeClipboard{}, recorder)
 	if err != nil {
@@ -214,17 +215,17 @@ func TestIntegrationPhoneApproval(t *testing.T) {
 	}
 
 	macDirectory := t.TempDir()
-	mac, err := vault.CreateService(vault.Config{
+	mac, err := app.NewService(app.Config{
 		StatePath:      filepath.Join(macDirectory, "desktop.json"),
 		CachePath:      filepath.Join(macDirectory, "desktop-cache.db"),
 		DeviceName:     "Test MacBook Pro.local",
 		Platform:       "darwin/desktop",
-		SecretKeyStore: &macSecretKeyStore{allByAccountID: map[string]crypt.SecretKey{}},
+		SecretKeyStore: &macSecretKeyStore{byAccountID: map[string]crypt.SecretKey{}},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	phoneApprover := vault.CreatePhoneApprover(mac)
+	phoneApprover := app.NewPhoneApprover(mac)
 	if _, err := mac.SignIn(serverURL, email, signUp.SecretKey, password); err != nil {
 		t.Fatal(err)
 	}
@@ -237,11 +238,11 @@ func TestIntegrationPhoneApproval(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 	}
 
-	allVault, err := mac.ListAllVault()
-	if err != nil || len(allVault) == 0 {
-		t.Fatalf("vaults: %+v %v", allVault, err)
+	vaults, err := mac.ListVaults()
+	if err != nil || len(vaults) == 0 {
+		t.Fatalf("vaults: %+v %v", vaults, err)
 	}
-	generated, err := mac.GenerateSSHKey(allVault[0].ID, "Phone approval key", "")
+	generated, err := mac.GenerateSSHKey(vaults[0].ID, "Phone approval key", "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -249,16 +250,16 @@ func TestIntegrationPhoneApproval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dialog := &macDialog{allEvent: make(chan agent.ApprovalEvent, 8)}
-	approver := agent.CreateApprover(agent.ApproverConfig{Emit: dialog.emit, PhoneApprover: phoneApprover, Timeout: 30 * time.Second})
-	agentServer := sshagent.CreateServer(vault.CreateSSHKeySource(mac), approver, sshagent.SystemPeerResolver{})
+	dialog := &macDialog{events: make(chan agent.ApprovalEvent, 8)}
+	approver := agent.NewApprover(agent.ApproverConfig{Emit: dialog.emit, PhoneApprover: phoneApprover, Timeout: 30 * time.Second})
+	agentServer := sshagent.NewServer(app.NewSSHKeySource(mac), approver, localsocket.SystemPeerResolver{})
 	socketDirectory, err := os.MkdirTemp("", "hisar")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(socketDirectory)
 	socketPath := filepath.Join(socketDirectory, "agent.sock")
-	listener, err := sshagent.ListenUnixSocket(socketPath)
+	listener, err := localsocket.ListenUnixSocket(socketPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -268,7 +269,7 @@ func TestIntegrationPhoneApproval(t *testing.T) {
 	address, hostKey := startSSHServer(t, authorizedKey)
 
 	startSSHSignIn := func() chan error {
-		agentServer.ClearAllApproval()
+		agentServer.ClearApprovals()
 		resultChannel := make(chan error, 1)
 		go func() { resultChannel <- signInWithSSHAgent(socketPath, address, hostKey) }()
 		return resultChannel
@@ -284,13 +285,13 @@ func TestIntegrationPhoneApproval(t *testing.T) {
 	}
 	findPhoneRequest := func(requestID string) phoneApprovalRequest {
 		t.Helper()
-		allRequest := decodeJSON[[]phoneApprovalRequest](t)(phone.ListAllPendingApproval())
-		for _, request := range allRequest {
+		requests := decodeJSON[[]phoneApprovalRequest](t)(phone.ListAllPendingApproval())
+		for _, request := range requests {
 			if request.RequestID == requestID {
 				return request
 			}
 		}
-		t.Fatalf("the phone does not list %s: %+v", requestID, allRequest)
+		t.Fatalf("the phone does not list %s: %+v", requestID, requests)
 		return phoneApprovalRequest{}
 	}
 
@@ -300,12 +301,12 @@ func TestIntegrationPhoneApproval(t *testing.T) {
 		t.Fatalf("the Mac's dialog does not offer the iPhone: %+v", dialogEvent)
 	}
 	recorder.waitFor(t, "approval-requested", "")
-	allRequest := decodeJSON[[]phoneApprovalRequest](t)(phone.ListAllPendingApproval())
-	if len(allRequest) != 1 || allRequest[0].RequesterDeviceName != "Test MacBook Pro" || allRequest[0].Kind != approval.KindSSH ||
-		allRequest[0].KeyName != "Phone approval key" || allRequest[0].IsForwarded || allRequest[0].Purpose == "" {
-		t.Fatalf("the phone shows %+v", allRequest)
+	requests := decodeJSON[[]phoneApprovalRequest](t)(phone.ListAllPendingApproval())
+	if len(requests) != 1 || requests[0].RequesterDeviceName != "Test MacBook Pro" || requests[0].Kind != approval.KindSSH ||
+		requests[0].KeyName != "Phone approval key" || requests[0].IsForwarded || requests[0].Purpose == "" {
+		t.Fatalf("the phone shows %+v", requests)
 	}
-	requestID := allRequest[0].RequestID
+	requestID := requests[0].RequestID
 	if err := phone.ApproveApproval(requestID, false); err != nil {
 		t.Fatal(err)
 	}
@@ -366,7 +367,7 @@ func TestIntegrationPhoneApproval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	forger := client.Create(serverURL)
+	forger := apiclient.New(serverURL)
 	forger.Token = phoneState.Token
 	ctx := context.Background()
 	account, err := forger.GetAccount(ctx)
@@ -413,7 +414,7 @@ func TestIntegrationPhoneApproval(t *testing.T) {
 		t.Fatalf("the Mac did not send the request while the phone app was closed: %+v", lateDialog)
 	}
 	time.Sleep(2 * time.Second)
-	relaunchedPhone, err := New(phoneDirectory, "Test iPhone", phoneSecretKeyStore, biometric, &fakeClipboard{}, &approvalEventRecorder{allEvent: make(chan [2]string, 64)})
+	relaunchedPhone, err := New(phoneDirectory, "Test iPhone", phoneSecretKeyStore, biometric, &fakeClipboard{}, &approvalEventRecorder{events: make(chan [2]string, 64)})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -438,7 +439,7 @@ func TestIntegrationPhoneApproval(t *testing.T) {
 	if phoneApprover.IsPhoneApprovalAvailable() {
 		t.Error("a locked Mac offers phone approvals")
 	}
-	if allRequest := decodeJSON[[]phoneApprovalRequest](t)(relaunchedPhone.ListAllPendingApproval()); len(allRequest) != 0 {
-		t.Errorf("requests left on the phone: %+v", allRequest)
+	if requests := decodeJSON[[]phoneApprovalRequest](t)(relaunchedPhone.ListAllPendingApproval()); len(requests) != 0 {
+		t.Errorf("requests left on the phone: %+v", requests)
 	}
 }

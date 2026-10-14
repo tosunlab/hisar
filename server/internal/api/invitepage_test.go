@@ -13,9 +13,11 @@ import (
 
 	"golang.org/x/time/rate"
 
-	"github.com/tryhisar/hisar/core/client"
-	"github.com/tryhisar/hisar/core/proto"
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/session"
+	"github.com/tryhisar/hisar/server/internal/ratelimit"
+	"github.com/tryhisar/hisar/server/internal/service"
 )
 
 func fetchInvitePage(t *testing.T, baseURL, token string) (*http.Response, string) {
@@ -70,7 +72,7 @@ func TestInvitePage(t *testing.T) {
 	baseURL, server, _ := setupServer(t)
 	ctx := context.Background()
 
-	operatorInvite := requireValue[*proto.InviteResponse](t)(server.CreateInvite(ctx, "ada@example.com", proto.RoleAdmin, nil))
+	operatorInvite := requireValue[*apitypes.InviteResponse](t)(server.CreateInvite(ctx, "ada@example.com", apitypes.RoleAdmin, nil))
 	response, body := fetchInvitePage(t, baseURL, operatorInvite.Token)
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("valid operator invite: %d", response.StatusCode)
@@ -86,7 +88,7 @@ func TestInvitePage(t *testing.T) {
 		`href="https://tryhisar.com/download" rel="noopener noreferrer" data-testid="download">Download for Mac</a>`,
 		`data-copy="invite-code" aria-label="Copy invite code" hidden>Copy</button>`,
 		"Install command-line tool",
-		formatExpiry(time.Now().Add(server.config.InviteTTL)),
+		service.FormatExpiry(time.Now().Add(server.config.InviteTTL)),
 	} {
 		if !strings.Contains(body, expected) {
 			t.Errorf("valid page lacks %q", expected)
@@ -97,11 +99,11 @@ func TestInvitePage(t *testing.T) {
 	}
 
 	adaPassword := []byte("ada master password")
-	ada, _, err := session.SignUp(ctx, client.Create(baseURL), operatorInvite.Token, "ada@example.com", `Ada <b>"Lovelace"</b>`, adaPassword, testDevice)
+	ada, _, err := session.SignUp(ctx, apiclient.New(baseURL), operatorInvite.Token, "ada@example.com", `Ada <b>"Lovelace"</b>`, adaPassword, testDevice)
 	if err != nil {
 		t.Fatal(err)
 	}
-	userInvite := requireValue[*proto.InviteResponse](t)(server.CreateInvite(ctx, "grace@example.com", proto.RoleMember, &ada.AccountID))
+	userInvite := requireValue[*apitypes.InviteResponse](t)(server.CreateInvite(ctx, "grace@example.com", apitypes.RoleMember, &ada.AccountID))
 	response, body = fetchInvitePage(t, baseURL, userInvite.Token)
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("valid invite from a user: %d", response.StatusCode)
@@ -121,7 +123,7 @@ func TestInvitePage(t *testing.T) {
 	}
 
 	server.config.InviteTTL = -time.Minute
-	expiredInvite := requireValue[*proto.InviteResponse](t)(server.CreateInvite(ctx, "late@example.com", proto.RoleMember, &ada.AccountID))
+	expiredInvite := requireValue[*apitypes.InviteResponse](t)(server.CreateInvite(ctx, "late@example.com", apitypes.RoleMember, &ada.AccountID))
 	response, invalidBody := fetchInvitePage(t, baseURL, "never-issued-token")
 	if response.StatusCode != http.StatusNotFound {
 		t.Errorf("unknown invite: %d", response.StatusCode)
@@ -147,7 +149,7 @@ func TestInvitePage(t *testing.T) {
 
 func TestInvitePageRateLimit(t *testing.T) {
 	baseURL, server, _ := setupServer(t)
-	server.invitePageLimiter = createIPLimiter(rate.Every(time.Hour), 2)
+	server.invitePageLimiter = ratelimit.New(rate.Every(time.Hour), 2)
 	for attempt := 1; attempt <= 3; attempt++ {
 		response, body := fetchInvitePage(t, baseURL, "some-token")
 		wantStatus := http.StatusNotFound
@@ -166,7 +168,7 @@ func TestInviteDeepLink(t *testing.T) {
 		"http://api.tryhisar.com":    "hisar://invite/abc_DEF-1?server=https%3A%2F%2Fapi.tryhisar.com",
 		"http://127.0.0.1:19400/sub": "hisar://invite/abc_DEF-1?server=http%3A%2F%2F127.0.0.1%3A19400",
 	} {
-		server := &Server{config: Config{PublicURL: publicURL}}
+		server := &Server{config: Config{Config: service.Config{PublicURL: publicURL}}}
 		if deepLink := server.buildInviteDeepLink("abc_DEF-1"); deepLink != expected {
 			t.Errorf("%s: %s, want %s", publicURL, deepLink, expected)
 		}

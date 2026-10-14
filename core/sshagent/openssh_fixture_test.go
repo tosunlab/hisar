@@ -17,6 +17,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tryhisar/hisar/core/localsocket"
+	"github.com/tryhisar/hisar/core/sshkey"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 )
@@ -33,9 +35,9 @@ type recordedMessage struct {
 }
 
 type recordedConnection struct {
-	Name       string            `json:"name"`
-	AllMessage []recordedMessage `json:"messages"`
-	mutex      sync.Mutex
+	Name     string            `json:"name"`
+	Messages []recordedMessage `json:"messages"`
+	mutex    sync.Mutex
 }
 
 type openSSHFixture struct {
@@ -43,7 +45,7 @@ type openSSHFixture struct {
 	HostPublicKey    string                `json:"hostPublicKey"`
 	ClientPrivateKey string                `json:"clientPrivateKey"`
 	KnownHostsName   string                `json:"knownHostsName"`
-	AllConnection    []*recordedConnection `json:"connections"`
+	Connections      []*recordedConnection `json:"connections"`
 }
 
 type recordingAgent struct {
@@ -54,7 +56,7 @@ type recordingAgent struct {
 func (recorder *recordingAgent) record(message recordedMessage) {
 	recorder.connection.mutex.Lock()
 	defer recorder.connection.mutex.Unlock()
-	recorder.connection.AllMessage = append(recorder.connection.AllMessage, message)
+	recorder.connection.Messages = append(recorder.connection.Messages, message)
 }
 
 func (recorder *recordingAgent) List() ([]*agent.Key, error) {
@@ -76,12 +78,12 @@ func (recorder *recordingAgent) Extension(extensionType string, contents []byte)
 	return nil, agent.ErrExtensionUnsupported
 }
 
-func findProgram(t *testing.T, name string, allCandidate ...string) string {
+func findProgram(t *testing.T, name string, candidates ...string) string {
 	t.Helper()
 	if path, err := exec.LookPath(name); err == nil {
 		return path
 	}
-	for _, candidate := range allCandidate {
+	for _, candidate := range candidates {
 		if _, err := os.Stat(candidate); err == nil {
 			return candidate
 		}
@@ -90,13 +92,13 @@ func findProgram(t *testing.T, name string, allCandidate ...string) string {
 	return ""
 }
 
-func runProgram(t *testing.T, environment []string, program string, allArgument ...string) string {
+func runProgram(t *testing.T, environment []string, program string, arguments ...string) string {
 	t.Helper()
-	command := exec.Command(program, allArgument...)
+	command := exec.Command(program, arguments...)
 	command.Env = append(os.Environ(), environment...)
 	output, err := command.CombinedOutput()
 	if err != nil {
-		t.Fatalf("%s %s: %v\n%s", program, strings.Join(allArgument, " "), err, output)
+		t.Fatalf("%s %s: %v\n%s", program, strings.Join(arguments, " "), err, output)
 	}
 	return string(output)
 }
@@ -152,7 +154,7 @@ func TestRecordOpenSSHFixture(t *testing.T) {
 			}
 			fixtureMutex.Lock()
 			recorded := &recordedConnection{Name: currentName}
-			fixture.AllConnection = append(fixture.AllConnection, recorded)
+			fixture.Connections = append(fixture.Connections, recorded)
 			fixtureMutex.Unlock()
 			go func() {
 				defer connection.Close()
@@ -192,7 +194,7 @@ func TestRecordOpenSSHFixture(t *testing.T) {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	allSSHOption := []string{"-F", "/dev/null", "-o", "UserKnownHostsFile=" + knownHostsPath, "-o", "StrictHostKeyChecking=yes", "-o", "BatchMode=yes", "-p", fmt.Sprint(openSSHFixturePort), "-l", currentUser.Username}
+	sshOptions := []string{"-F", "/dev/null", "-o", "UserKnownHostsFile=" + knownHostsPath, "-o", "StrictHostKeyChecking=yes", "-o", "BatchMode=yes", "-p", fmt.Sprint(openSSHFixturePort), "-l", currentUser.Username}
 	agentEnvironment := []string{"SSH_AUTH_SOCK=" + agentSocketPath}
 	setName := func(name string) {
 		fixtureMutex.Lock()
@@ -201,11 +203,11 @@ func TestRecordOpenSSHFixture(t *testing.T) {
 	}
 
 	setName("direct")
-	runProgram(t, agentEnvironment, sshPath, append(append([]string{}, allSSHOption...), "-o", "IdentityAgent="+agentSocketPath, "127.0.0.1", "true")...)
+	runProgram(t, agentEnvironment, sshPath, append(append([]string{}, sshOptions...), "-o", "IdentityAgent="+agentSocketPath, "127.0.0.1", "true")...)
 	setName("forwarded")
 	// The guard keeps the second hop off any agent but the forwarded one, which sshd puts under ~/.ssh/agent or /tmp.
-	hopCommand := `case "$SSH_AUTH_SOCK" in */.ssh/agent/*|/tmp/*|/private/tmp/*) ;; *) exit 97;; esac; ssh ` + strings.Join(allSSHOption, " ") + ` 127.0.0.1 true`
-	runProgram(t, agentEnvironment, sshPath, append(append([]string{}, allSSHOption...), "-o", "IdentityAgent="+agentSocketPath, "-A", "127.0.0.1", hopCommand)...)
+	hopCommand := `case "$SSH_AUTH_SOCK" in */.ssh/agent/*|/tmp/*|/private/tmp/*) ;; *) exit 97;; esac; ssh ` + strings.Join(sshOptions, " ") + ` 127.0.0.1 true`
+	runProgram(t, agentEnvironment, sshPath, append(append([]string{}, sshOptions...), "-o", "IdentityAgent="+agentSocketPath, "-A", "127.0.0.1", hopCommand)...)
 	setName("commit-signature")
 	payloadPath := filepath.Join(directory, "commit")
 	os.WriteFile(payloadPath, []byte("tree 4b825dc642cb6eb9a060e54bf8d69288fbee4904\nauthor Fixture <fixture@example.com> 1760000000 +0000\ncommitter Fixture <fixture@example.com> 1760000000 +0000\n\nRecord the OpenSSH fixture\n"), 0o600)
@@ -215,7 +217,7 @@ func TestRecordOpenSSHFixture(t *testing.T) {
 	fixture.OpenSSHVersion = strings.TrimSpace(runProgram(t, nil, sshPath, "-V"))
 	fixtureMutex.Lock()
 	defer fixtureMutex.Unlock()
-	fixture.AllConnection = slices.DeleteFunc(fixture.AllConnection, func(connection *recordedConnection) bool { return len(connection.AllMessage) == 0 })
+	fixture.Connections = slices.DeleteFunc(fixture.Connections, func(connection *recordedConnection) bool { return len(connection.Messages) == 0 })
 	encoded, err := json.MarshalIndent(fixture, "", "  ")
 	if err != nil {
 		t.Fatal(err)
@@ -226,7 +228,7 @@ func TestRecordOpenSSHFixture(t *testing.T) {
 	if err := os.WriteFile(openSSHFixturePath, append(encoded, '\n'), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("recorded %d connections with %s", len(fixture.AllConnection), fixture.OpenSSHVersion)
+	t.Logf("recorded %d connections with %s", len(fixture.Connections), fixture.OpenSSHVersion)
 }
 
 func loadOpenSSHFixture(t *testing.T) *openSSHFixture {
@@ -245,7 +247,7 @@ func loadOpenSSHFixture(t *testing.T) *openSSHFixture {
 // findConnection returns the named connection whose first session binding is or is not for forwarding; without one, it counts as not forwarding.
 func (fixture *openSSHFixture) findConnection(t *testing.T, name string, isForwarding bool) *recordedConnection {
 	t.Helper()
-	for _, connection := range fixture.AllConnection {
+	for _, connection := range fixture.Connections {
 		if connection.Name == name && isFirstBindingForwarding(connection) == isForwarding {
 			return connection
 		}
@@ -255,7 +257,7 @@ func (fixture *openSSHFixture) findConnection(t *testing.T, name string, isForwa
 }
 
 func isFirstBindingForwarding(connection *recordedConnection) bool {
-	for _, message := range connection.AllMessage {
+	for _, message := range connection.Messages {
 		if message.ExtensionType == SessionBindExtension {
 			binding, err := parseSessionBind(message.Contents)
 			return err == nil && binding.isForwarding
@@ -265,14 +267,14 @@ func isFirstBindingForwarding(connection *recordedConnection) bool {
 }
 
 type replayResult struct {
-	allRequest []ApprovalRequest
-	allError   []error
+	requests []ApprovalRequest
+	errs     []error
 }
 
 // replay sends a recorded connection to the agent the way agent.ServeAgent would.
 func (fixture *openSSHFixture) replay(t *testing.T, connection *recordedConnection, modify func(index int, message recordedMessage) recordedMessage) replayResult {
 	t.Helper()
-	signer, err := ParseKeyMaterial([]byte(fixture.ClientPrivateKey))
+	signer, err := sshkey.ParseKeyMaterial([]byte(fixture.ClientPrivateKey))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,11 +283,11 @@ func (fixture *openSSHFixture) replay(t *testing.T, connection *recordedConnecti
 		t.Fatal(err)
 	}
 	approver := &fakeApprover{isApproving: true}
-	server := CreateServer(&fakeKeySource{allKey: []Key{{ID: "fixture", Title: "Fixture", PrivateKeyPEM: []byte(fixture.ClientPrivateKey)}}}, approver, nil)
-	server.SetAllKnownHostsPath([]string{writeKnownHosts(t, fixture.KnownHostsName+" "+strings.TrimSpace(string(ssh.MarshalAuthorizedKey(hostKey))))})
-	connectionAgent := server.CreateAgent(context.Background(), PeerInfo{PID: 4242, Path: "/usr/bin/ssh", Name: "ssh"})
+	server := NewServer(&fakeKeySource{keys: []Key{{ID: "fixture", Title: "Fixture", PrivateKeyPEM: []byte(fixture.ClientPrivateKey)}}}, approver, nil)
+	server.SetKnownHostsPaths([]string{writeKnownHosts(t, fixture.KnownHostsName+" "+strings.TrimSpace(string(ssh.MarshalAuthorizedKey(hostKey))))})
+	connectionAgent := server.CreateAgent(context.Background(), localsocket.PeerInfo{PID: 4242, Path: "/usr/bin/ssh", Name: "ssh"})
 	result := replayResult{}
-	for index, message := range connection.AllMessage {
+	for index, message := range connection.Messages {
 		if modify != nil {
 			message = modify(index, message)
 		}
@@ -300,17 +302,17 @@ func (fixture *openSSHFixture) replay(t *testing.T, connection *recordedConnecti
 		case "sign":
 			_, err = connectionAgent.Sign(signer.PublicKey(), message.Contents)
 		}
-		result.allError = append(result.allError, err)
+		result.errs = append(result.errs, err)
 	}
 	approver.mutex.Lock()
-	result.allRequest = append(result.allRequest, approver.allRequest...)
+	result.requests = append(result.requests, approver.requests...)
 	approver.mutex.Unlock()
 	return result
 }
 
 func requireNoReplayError(t *testing.T, result replayResult) {
 	t.Helper()
-	for index, err := range result.allError {
+	for index, err := range result.errs {
 		if err != nil {
 			t.Fatalf("message %d: %v", index, err)
 		}
@@ -322,10 +324,10 @@ func TestOpenSSHFixtureDirectLogin(t *testing.T) {
 	connection := fixture.findConnection(t, "direct", false)
 	result := fixture.replay(t, connection, nil)
 	requireNoReplayError(t, result)
-	if len(result.allRequest) == 0 {
+	if len(result.requests) == 0 {
 		t.Fatal("the recorded login asked for nothing")
 	}
-	for _, request := range result.allRequest {
+	for _, request := range result.requests {
 		if request.IsForwarded || request.DestinationHost != "127.0.0.1" || request.DestinationPort != openSSHFixturePort || request.DestinationFingerprint == "" {
 			t.Errorf("direct request = %+v", request)
 		}
@@ -345,8 +347,8 @@ func TestOpenSSHFixtureTamperedBindingRefused(t *testing.T) {
 		}
 		return message
 	})
-	if bindingIndex < 0 || !errors.Is(result.allError[bindingIndex], ErrInvalidBinding) {
-		t.Errorf("a tampered signature was accepted: %v", result.allError)
+	if bindingIndex < 0 || !errors.Is(result.errs[bindingIndex], ErrInvalidBinding) {
+		t.Errorf("a tampered signature was accepted: %v", result.errs)
 	}
 }
 
@@ -363,8 +365,8 @@ func TestOpenSSHFixtureOtherSessionRefused(t *testing.T) {
 		}
 		return message
 	})
-	if signIndex < 0 || !errors.Is(result.allError[signIndex], ErrSessionMismatch) {
-		t.Errorf("a signature for another session was accepted: %v", result.allError)
+	if signIndex < 0 || !errors.Is(result.errs[signIndex], ErrSessionMismatch) {
+		t.Errorf("a signature for another session was accepted: %v", result.errs)
 	}
 }
 
@@ -372,7 +374,7 @@ func TestOpenSSHFixtureForwardedHop(t *testing.T) {
 	fixture := loadOpenSSHFixture(t)
 	connection := fixture.findConnection(t, "forwarded", true)
 	isForwardingSeen, isHopSeen := false, false
-	for _, message := range connection.AllMessage {
+	for _, message := range connection.Messages {
 		if message.ExtensionType != SessionBindExtension {
 			continue
 		}
@@ -388,10 +390,10 @@ func TestOpenSSHFixtureForwardedHop(t *testing.T) {
 	}
 	result := fixture.replay(t, connection, nil)
 	requireNoReplayError(t, result)
-	if len(result.allRequest) == 0 {
+	if len(result.requests) == 0 {
 		t.Fatal("the forwarded hop asked for nothing")
 	}
-	request := result.allRequest[len(result.allRequest)-1]
+	request := result.requests[len(result.requests)-1]
 	if !request.IsForwarded || request.ForwardedFromHost != "127.0.0.1" || request.ForwardedFromPort != openSSHFixturePort || request.DestinationHost != "127.0.0.1" || request.IsRememberable {
 		t.Errorf("forwarded request = %+v", request)
 	}
@@ -404,10 +406,10 @@ func TestOpenSSHFixtureCommitSignature(t *testing.T) {
 	connection := fixture.findConnection(t, "commit-signature", false)
 	result := fixture.replay(t, connection, nil)
 	requireNoReplayError(t, result)
-	if len(result.allRequest) != 1 {
-		t.Fatalf("requests: %+v", result.allRequest)
+	if len(result.requests) != 1 {
+		t.Fatalf("requests: %+v", result.requests)
 	}
-	if request := result.allRequest[0]; request.SignatureNamespace != GitSignatureNamespace || request.IsRememberable || request.DestinationFingerprint != "" {
+	if request := result.requests[0]; request.SignatureNamespace != GitSignatureNamespace || request.IsRememberable || request.DestinationFingerprint != "" {
 		t.Errorf("signature request = %+v", request)
 	}
 }

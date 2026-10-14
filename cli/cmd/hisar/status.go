@@ -40,16 +40,16 @@ func writeStandaloneStatus(output io.Writer, mode commandMode, currentState *loc
 	fmt.Fprintf(output, "state:   %s\n", statePath)
 }
 
-func runStatusThroughApp(_ context.Context, client *appClient, flags *flag.FlagSet, allArg []string) error {
-	if _, err := parse(flags, allArg); err != nil {
+func runStatusThroughApp(_ context.Context, client *appClient, flags *flag.FlagSet, args []string) error {
+	if _, err := parse(flags, args); err != nil {
 		return err
 	}
 	writeAppStatus(os.Stdout, commandMode{client: client, socketPath: client.socketPath})
 	return nil
 }
 
-func runStatus(_ context.Context, flags *flag.FlagSet, allArg []string) error {
-	if _, err := parse(flags, allArg); err != nil {
+func runStatus(_ context.Context, flags *flag.FlagSet, args []string) error {
+	if _, err := parse(flags, args); err != nil {
 		return err
 	}
 	statePath, err := localstate.GetPath("HISAR_STATE", "state.json")

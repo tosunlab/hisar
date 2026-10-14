@@ -74,40 +74,30 @@ func ReadSmallRegularFile(path string, maximumSize int64) ([]byte, error) {
 }
 
 type sshCommandLine struct {
-	host              string
-	port              int
-	allRemoteArgument []string
-}
-
-func getProgramName(process appinfo.Process) string {
-	if process.Path != "" {
-		return filepath.Base(process.Path)
-	}
-	if len(process.AllArgument) > 0 {
-		return filepath.Base(process.AllArgument[0])
-	}
-	return ""
+	host            string
+	port            int
+	remoteArguments []string
 }
 
 func isGitProcess(process appinfo.Process) bool {
-	return getProgramName(process) == "git"
+	return appinfo.GetProgramName(process) == "git"
 }
 
 // parseSSHCommandLine reads the destination and remote command of an ssh invocation.
-func parseSSHCommandLine(allArgument []string) sshCommandLine {
+func parseSSHCommandLine(arguments []string) sshCommandLine {
 	parsed := sshCommandLine{}
-	for index := 1; index < len(allArgument); index++ {
-		argument := allArgument[index]
+	for index := 1; index < len(arguments); index++ {
+		argument := arguments[index]
 		if argument == "--" {
-			if index+1 < len(allArgument) {
-				parsed.setDestination(allArgument[index+1])
-				parsed.allRemoteArgument = allArgument[index+2:]
+			if index+1 < len(arguments) {
+				parsed.setDestination(arguments[index+1])
+				parsed.remoteArguments = arguments[index+2:]
 			}
 			return parsed
 		}
 		if !strings.HasPrefix(argument, "-") || argument == "-" {
 			parsed.setDestination(argument)
-			parsed.allRemoteArgument = allArgument[index+1:]
+			parsed.remoteArguments = arguments[index+1:]
 			return parsed
 		}
 		for letterIndex := 1; letterIndex < len(argument); letterIndex++ {
@@ -116,9 +106,9 @@ func parseSSHCommandLine(allArgument []string) sshCommandLine {
 				continue
 			}
 			value := argument[letterIndex+1:]
-			if value == "" && index+1 < len(allArgument) {
+			if value == "" && index+1 < len(arguments) {
 				index++
-				value = allArgument[index]
+				value = arguments[index]
 			}
 			parsed.applyOption(letter, value)
 			break
@@ -165,9 +155,9 @@ func (parsed *sshCommandLine) setDestination(destination string) {
 }
 
 // findGitSubcommand skips git's global options, like -C <path>, to the subcommand.
-func findGitSubcommand(allArgument []string) string {
-	for index := 1; index < len(allArgument); index++ {
-		argument := allArgument[index]
+func findGitSubcommand(arguments []string) string {
+	for index := 1; index < len(arguments); index++ {
+		argument := arguments[index]
 		if !strings.HasPrefix(argument, "-") {
 			return argument
 		}
@@ -178,15 +168,15 @@ func findGitSubcommand(allArgument []string) string {
 	return ""
 }
 
-func describeRemoteGitCommand(allRemoteArgument []string) (string, bool) {
-	allWord := strings.Fields(strings.Join(allRemoteArgument, " "))
-	if len(allWord) == 0 {
+func describeRemoteGitCommand(remoteArguments []string) (string, bool) {
+	words := strings.Fields(strings.Join(remoteArguments, " "))
+	if len(words) == 0 {
 		return "", false
 	}
-	command := filepath.Base(allWord[0])
-	if command == "git" && len(allWord) > 1 {
-		command = "git-" + allWord[1]
-		allWord = allWord[1:]
+	command := filepath.Base(words[0])
+	if command == "git" && len(words) > 1 {
+		command = "git-" + words[1]
+		words = words[1:]
 	}
 	switch command {
 	case "git-receive-pack":
@@ -194,7 +184,7 @@ func describeRemoteGitCommand(allRemoteArgument []string) (string, bool) {
 	case "git-upload-pack", "git-upload-archive":
 		return PurposeFetch, true
 	case "git-lfs-authenticate", "git-lfs-transfer":
-		for _, word := range allWord[1:] {
+		for _, word := range words[1:] {
 			if strings.Trim(word, `'"`) == "upload" {
 				return PurposePush, true
 			}
@@ -229,15 +219,15 @@ func quoteArgument(argument string) string {
 }
 
 // formatCommandLine shows a process's arguments like a shell would, without secrets, cut to fit the dialog.
-func formatCommandLine(allArgument []string) string {
-	if len(allArgument) == 0 {
+func formatCommandLine(arguments []string) string {
+	if len(arguments) == 0 {
 		return ""
 	}
-	allQuoted := []string{quoteArgument(filepath.Base(allArgument[0]))}
-	for index := 1; index < len(allArgument); index++ {
-		allQuoted = append(allQuoted, quoteArgument(redactArgument(allArgument[index-1], allArgument[index])))
+	quoted := []string{quoteArgument(filepath.Base(arguments[0]))}
+	for index := 1; index < len(arguments); index++ {
+		quoted = append(quoted, quoteArgument(redactArgument(arguments[index-1], arguments[index])))
 	}
-	return truncateText(strings.Join(allQuoted, " "), maximumCommandLineLength)
+	return truncateText(strings.Join(quoted, " "), maximumCommandLineLength)
 }
 
 func truncateText(text string, maximumLength int) string {
@@ -321,16 +311,16 @@ func parseSignedPayload(payload []byte) (isTag bool, tagName string, subject str
 }
 
 func findSignedPayloadPath(process appinfo.Process) string {
-	allArgument := process.AllArgument
-	if getProgramName(process) != "ssh-keygen" || len(allArgument) < 3 {
+	arguments := process.Arguments
+	if appinfo.GetProgramName(process) != "ssh-keygen" || len(arguments) < 3 {
 		return ""
 	}
 	isSign, isGitNamespace := false, false
-	for index := 1; index+1 < len(allArgument); index++ {
-		isSign = isSign || (allArgument[index] == "-Y" && allArgument[index+1] == "sign")
-		isGitNamespace = isGitNamespace || (allArgument[index] == "-n" && allArgument[index+1] == sshagent.GitSignatureNamespace)
+	for index := 1; index+1 < len(arguments); index++ {
+		isSign = isSign || (arguments[index] == "-Y" && arguments[index+1] == "sign")
+		isGitNamespace = isGitNamespace || (arguments[index] == "-n" && arguments[index+1] == sshagent.GitSignatureNamespace)
 	}
-	path := allArgument[len(allArgument)-1]
+	path := arguments[len(arguments)-1]
 	if !isSign || !isGitNamespace || strings.HasPrefix(path, "-") {
 		return ""
 	}
@@ -350,10 +340,10 @@ type gitChain struct {
 	isClone   bool
 }
 
-func findGitChain(allProcess []appinfo.Process) gitChain {
+func findGitChain(processes []appinfo.Process) gitChain {
 	chain := gitChain{}
-	for index := range allProcess {
-		process := &allProcess[index]
+	for index := range processes {
+		process := &processes[index]
 		if !isGitProcess(*process) {
 			continue
 		}
@@ -361,7 +351,7 @@ func findGitChain(allProcess []appinfo.Process) gitChain {
 			chain.nearest = process
 		}
 		chain.outermost = process
-		switch findGitSubcommand(process.AllArgument) {
+		switch findGitSubcommand(process.Arguments) {
 		case "pull":
 			chain.isPull = true
 		case "clone":
@@ -372,23 +362,23 @@ func findGitChain(allProcess []appinfo.Process) gitChain {
 }
 
 // DescribeRequest says what a request is for from the requesting process chain (nearest first) and the agent request.
-func DescribeRequest(allProcess []appinfo.Process, request sshagent.ApprovalRequest, homeDirectory string, readFile FileReader) RequestDescription {
+func DescribeRequest(processes []appinfo.Process, request sshagent.ApprovalRequest, homeDirectory string, readFile FileReader) RequestDescription {
 	if readFile == nil {
 		readFile = ReadSmallRegularFile
 	}
 	description := RequestDescription{Purpose: PurposeUseKey}
 	var peer appinfo.Process
-	if len(allProcess) > 0 {
-		peer = allProcess[0]
+	if len(processes) > 0 {
+		peer = processes[0]
 	}
-	chain := findGitChain(allProcess)
+	chain := findGitChain(processes)
 	if chain.nearest != nil && chain.nearest.WorkingDirectory != "" {
 		description.RepositoryPath = shortenHomePath(chain.nearest.WorkingDirectory, homeDirectory)
 	}
 	host, port := request.DestinationHost, request.DestinationPort
 	parsedSSH := sshCommandLine{}
-	if getProgramName(peer) == "ssh" {
-		parsedSSH = parseSSHCommandLine(peer.AllArgument)
+	if appinfo.GetProgramName(peer) == "ssh" {
+		parsedSSH = parseSSHCommandLine(peer.Arguments)
 	}
 	if request.IsForwarded {
 		description.ForwardedFromHost = request.ForwardedFromHost
@@ -426,8 +416,8 @@ func DescribeRequest(allProcess []appinfo.Process, request sshagent.ApprovalRequ
 		if chain.nearest != nil && chain.nearest.WorkingDirectory != "" {
 			description.Branch = readBranch(chain.nearest.WorkingDirectory, readFile)
 		}
-	case len(parsedSSH.allRemoteArgument) > 0 && isGitRemoteCommand(parsedSSH.allRemoteArgument):
-		purpose, _ := describeRemoteGitCommand(parsedSSH.allRemoteArgument)
+	case len(parsedSSH.remoteArguments) > 0 && isGitRemoteCommand(parsedSSH.remoteArguments):
+		purpose, _ := describeRemoteGitCommand(parsedSSH.remoteArguments)
 		if purpose == PurposeFetch && chain.isPull {
 			purpose = PurposePull
 		} else if purpose == PurposeFetch && chain.isClone {
@@ -442,17 +432,17 @@ func DescribeRequest(allProcess []appinfo.Process, request sshagent.ApprovalRequ
 	}
 
 	commandProcess := chain.outermost
-	if (commandProcess == nil || request.IsForwarded) && len(peer.AllArgument) > 0 {
+	if (commandProcess == nil || request.IsForwarded) && len(peer.Arguments) > 0 {
 		commandProcess = &peer
 	}
 	if commandProcess != nil {
-		description.CommandLine = formatCommandLine(commandProcess.AllArgument)
+		description.CommandLine = formatCommandLine(commandProcess.Arguments)
 	}
 	return description
 }
 
-func isGitRemoteCommand(allRemoteArgument []string) bool {
-	_, isGit := describeRemoteGitCommand(allRemoteArgument)
+func isGitRemoteCommand(remoteArguments []string) bool {
+	_, isGit := describeRemoteGitCommand(remoteArguments)
 	return isGit
 }
 

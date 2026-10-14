@@ -5,8 +5,8 @@ import (
 	"errors"
 	"time"
 
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/item"
-	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/core/sharelink"
 )
 
@@ -42,13 +42,13 @@ func (options ShareLinkOptions) validate() error {
 	return nil
 }
 
-func (s *Session) ShareItem(ctx context.Context, vault *Vault, vaultItem *item.Item, allFieldKey []string, options ShareLinkOptions) (*ShareLink, error) {
-	payload, err := sharelink.BuildItemPayload(vaultItem, allFieldKey)
+func (s *Session) ShareItem(ctx context.Context, vault *Vault, vaultItem *item.Item, fieldKeys []string, options ShareLinkOptions) (*ShareLink, error) {
+	payload, err := sharelink.BuildItemPayload(vaultItem, fieldKeys)
 	if err != nil {
 		return nil, err
 	}
 	label := &sharelink.Label{Title: payload.Title, VaultID: vault.ID, ItemID: vaultItem.ID, FieldLabels: []string{}}
-	for _, key := range allFieldKey {
+	for _, key := range fieldKeys {
 		label.FieldLabels = append(label.FieldLabels, sharelink.DescribeFieldKey(vaultItem, key))
 	}
 	return s.createShareLink(ctx, payload, label, options)
@@ -75,14 +75,14 @@ func (s *Session) createShareLink(ctx context.Context, payload *sharelink.Payloa
 	if err != nil {
 		return nil, err
 	}
-	request := &proto.CreateShareLinkRequest{
+	request := &apitypes.CreateShareLinkRequest{
 		Ciphertext:       sealed.Ciphertext,
 		EncryptedLabel:   encryptedLabel,
 		ExpiresInSeconds: int64(options.Expiry / time.Second),
 		MaxViews:         options.MaxViews,
 	}
 	if sealed.Passphrase != nil {
-		request.Passphrase = &proto.ShareLinkPassphrase{Salt: sealed.Passphrase.Salt, Iterations: sealed.Passphrase.Iterations}
+		request.Passphrase = &apitypes.ShareLinkPassphrase{Salt: sealed.Passphrase.Salt, Iterations: sealed.Passphrase.Iterations}
 	}
 	created, err := s.Client.CreateShareLink(ctx, request)
 	if err != nil {
@@ -91,7 +91,7 @@ func (s *Session) createShareLink(ctx context.Context, payload *sharelink.Payloa
 	return s.buildShareLink(created, label), nil
 }
 
-func (s *Session) buildShareLink(link *proto.ShareLink, label *sharelink.Label) *ShareLink {
+func (s *Session) buildShareLink(link *apitypes.ShareLink, label *sharelink.Label) *ShareLink {
 	shareLink := &ShareLink{
 		ID: link.ID, CreatedAt: link.CreatedAt, ExpiresAt: link.ExpiresAt, MaxViews: link.MaxViews, ViewCount: link.ViewCount,
 		HasPassphrase: link.HasPassphrase, Title: "Unknown link", FieldLabels: []string{},
@@ -106,20 +106,20 @@ func (s *Session) buildShareLink(link *proto.ShareLink, label *sharelink.Label) 
 	return shareLink
 }
 
-func (s *Session) ListAllShareLink(ctx context.Context) ([]ShareLink, error) {
-	allLink, err := s.Client.ListAllShareLink(ctx)
+func (s *Session) ListShareLinks(ctx context.Context) ([]ShareLink, error) {
+	links, err := s.Client.ListShareLinks(ctx)
 	if err != nil {
 		return nil, err
 	}
-	allShareLink := make([]ShareLink, 0, len(allLink))
-	for index := range allLink {
-		label, err := sharelink.OpenLabel(s.Keyset.UserKey, s.AccountID, allLink[index].EncryptedLabel)
+	shareLinks := make([]ShareLink, 0, len(links))
+	for index := range links {
+		label, err := sharelink.OpenLabel(s.Keyset.UserKey, s.AccountID, links[index].EncryptedLabel)
 		if err != nil {
 			label = nil
 		}
-		allShareLink = append(allShareLink, *s.buildShareLink(&allLink[index], label))
+		shareLinks = append(shareLinks, *s.buildShareLink(&links[index], label))
 	}
-	return allShareLink, nil
+	return shareLinks, nil
 }
 
 func (s *Session) RevokeShareLink(ctx context.Context, shareLinkID string) error {

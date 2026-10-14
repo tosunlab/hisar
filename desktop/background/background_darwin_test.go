@@ -5,7 +5,7 @@ package background
 import "testing"
 
 func TestLoginItemOutsideAppBundleIsUnavailable(t *testing.T) {
-	loginItem := CreateLoginItem(t.TempDir())
+	loginItem := NewLoginItem(t.TempDir())
 	if state, err := loginItem.GetState(); err != nil || state != LoginItemUnavailable {
 		t.Errorf("state %s %v", state, err)
 	}

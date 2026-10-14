@@ -108,12 +108,12 @@ func TestShowingUsesPointerDisplay(t *testing.T) {
 		VisibleFrame: Rectangle{X: 1800, Y: 0, Width: 2560, Height: 1415},
 		ScaleFactor:  1,
 	}
-	allDisplay := []Display{builtInDisplay, secondaryDisplay}
+	displays := []Display{builtInDisplay, secondaryDisplay}
 	staleFrame := Rectangle{X: 100, Y: 100, Width: 380, Height: 120}
-	frame, _ := CalculateWindowFrame(allDisplay, Point{X: 3000, Y: 700}, staleFrame, Request{Width: 380, Height: 120, IsCompact: true, IsShowing: true})
+	frame, _ := CalculateWindowFrame(displays, Point{X: 3000, Y: 700}, staleFrame, Request{Width: 380, Height: 120, IsCompact: true, IsShowing: true})
 	assertFrame(t, frame, Rectangle{X: 4360 - 16 - 380, Y: 1415 - 16 - 120, Width: 380, Height: 120})
 
-	frame, _ = CalculateWindowFrame(allDisplay, Point{X: 900, Y: 1169}, staleFrame, Request{Width: 380, Height: 120, IsCompact: true, IsShowing: true})
+	frame, _ = CalculateWindowFrame(displays, Point{X: 900, Y: 1169}, staleFrame, Request{Width: 380, Height: 120, IsCompact: true, IsShowing: true})
 	assertInsideVisibleFrame(t, builtInDisplay, frame)
 }
 

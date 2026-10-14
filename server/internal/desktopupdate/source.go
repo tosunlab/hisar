@@ -30,9 +30,9 @@ type SourceConfig struct {
 }
 
 type snapshot struct {
-	appcast          []byte
-	allReleaseByName map[string]*Release
-	fetchedAt        time.Time
+	appcast        []byte
+	releasesByName map[string]*Release
+	fetchedAt      time.Time
 }
 
 // Source caches the appcast and the assets of the releases in it.
@@ -45,30 +45,30 @@ type Source struct {
 	rateLimitedUntil time.Time
 	rateLimitErr     error
 	// An asset's content never changes; a new upload gets a new asset ID.
-	allMetadataByAssetID map[int64][]byte
+	metadataByAssetID map[int64][]byte
 }
 
-func CreateSource(gitHub *GitHub, config SourceConfig) *Source {
+func NewSource(gitHub *GitHub, config SourceConfig) *Source {
 	if config.CacheDuration == 0 {
 		config.CacheDuration = defaultCacheDuration
 	}
 	if config.Now == nil {
 		config.Now = time.Now
 	}
-	return &Source{gitHub: gitHub, config: config, allMetadataByAssetID: map[int64][]byte{}}
+	return &Source{gitHub: gitHub, config: config, metadataByAssetID: map[int64][]byte{}}
 }
 
 type candidateRelease struct {
-	version        string
-	buildNumber    int64
-	allAssetByName map[string]gitHubAsset
+	version      string
+	buildNumber  int64
+	assetsByName map[string]gitHubAsset
 }
 
-// selectAllCandidate keeps published desktop releases, newest first: a desktop-MAJOR.MINOR.PATCH tag, neither draft nor prerelease, with an update.json asset.
-func selectAllCandidate(allRelease []gitHubRelease) []candidateRelease {
-	allCandidate := []candidateRelease{}
+// selectCandidates keeps published desktop releases, newest first: a desktop-MAJOR.MINOR.PATCH tag, neither draft nor prerelease, with an update.json asset.
+func selectCandidates(releases []gitHubRelease) []candidateRelease {
+	candidates := []candidateRelease{}
 	seenVersion := map[string]bool{}
-	for _, listed := range allRelease {
+	for _, listed := range releases {
 		version, isDesktop := strings.CutPrefix(listed.TagName, releaseTagPrefix)
 		if !isDesktop || listed.IsDraft || listed.IsPrerelease || seenVersion[version] {
 			continue
@@ -77,35 +77,35 @@ func selectAllCandidate(allRelease []gitHubRelease) []candidateRelease {
 		if err != nil {
 			continue
 		}
-		allAssetByName := map[string]gitHubAsset{}
-		for _, asset := range listed.AllAsset {
+		assetsByName := map[string]gitHubAsset{}
+		for _, asset := range listed.Assets {
 			if IsValidFileName(asset.Name) && (asset.State == "" || asset.State == "uploaded") {
-				allAssetByName[asset.Name] = asset
+				assetsByName[asset.Name] = asset
 			}
 		}
-		if _, found := allAssetByName[metadataFileName]; !found {
+		if _, found := assetsByName[metadataFileName]; !found {
 			continue
 		}
 		seenVersion[version] = true
-		allCandidate = append(allCandidate, candidateRelease{version: version, buildNumber: buildNumber, allAssetByName: allAssetByName})
+		candidates = append(candidates, candidateRelease{version: version, buildNumber: buildNumber, assetsByName: assetsByName})
 	}
-	slices.SortFunc(allCandidate, func(first, second candidateRelease) int { return cmp.Compare(second.buildNumber, first.buildNumber) })
-	return allCandidate
+	slices.SortFunc(candidates, func(first, second candidateRelease) int { return cmp.Compare(second.buildNumber, first.buildNumber) })
+	return candidates
 }
 
 func (source *Source) fetchSnapshot(ctx context.Context) (*snapshot, error) {
-	allListedRelease, err := source.gitHub.listAllRelease(ctx)
+	listedReleases, err := source.gitHub.listReleases(ctx)
 	if err != nil {
 		return nil, err
 	}
-	allCandidate := selectAllCandidate(allListedRelease)
-	allRelease := []*Release{}
-	allMetadataByAssetID := map[int64][]byte{}
-	for _, candidate := range allCandidate[:min(len(allCandidate), maximumInspectedCount)] {
-		if len(allRelease) == appcastItemCount {
+	candidates := selectCandidates(listedReleases)
+	releases := []*Release{}
+	metadataByAssetID := map[int64][]byte{}
+	for _, candidate := range candidates[:min(len(candidates), maximumInspectedCount)] {
+		if len(releases) == appcastItemCount {
 			break
 		}
-		release, err := source.fetchRelease(ctx, candidate, allMetadataByAssetID)
+		release, err := source.fetchRelease(ctx, candidate, metadataByAssetID)
 		if err != nil {
 			var limitError *rateLimitError
 			if ctx.Err() != nil || errors.As(err, &limitError) {
@@ -114,30 +114,30 @@ func (source *Source) fetchSnapshot(ctx context.Context) (*snapshot, error) {
 			log.Printf("desktop update %s skipped: %v", candidate.version, err)
 			continue
 		}
-		allRelease = append(allRelease, release)
+		releases = append(releases, release)
 	}
-	source.allMetadataByAssetID = allMetadataByAssetID
-	fetched := &snapshot{appcast: BuildAppcast(source.config.PublicURL, allRelease), allReleaseByName: map[string]*Release{}, fetchedAt: source.config.Now()}
-	for _, release := range allRelease {
-		fetched.allReleaseByName[release.Version] = release
+	source.metadataByAssetID = metadataByAssetID
+	fetched := &snapshot{appcast: BuildAppcast(source.config.PublicURL, releases), releasesByName: map[string]*Release{}, fetchedAt: source.config.Now()}
+	for _, release := range releases {
+		fetched.releasesByName[release.Version] = release
 	}
 	return fetched, nil
 }
 
-func (source *Source) fetchRelease(ctx context.Context, candidate candidateRelease, allMetadataByAssetID map[int64][]byte) (*Release, error) {
-	metadataAsset := candidate.allAssetByName[metadataFileName]
+func (source *Source) fetchRelease(ctx context.Context, candidate candidateRelease, metadataByAssetID map[int64][]byte) (*Release, error) {
+	metadataAsset := candidate.assetsByName[metadataFileName]
 	if metadataAsset.Size > maximumMetadataSize {
 		return nil, errors.New("update.json is too large")
 	}
-	content, found := source.allMetadataByAssetID[metadataAsset.ID]
+	content, found := source.metadataByAssetID[metadataAsset.ID]
 	if !found {
 		var err error
 		if content, err = source.gitHub.readAsset(ctx, metadataAsset.ID, maximumMetadataSize); err != nil {
 			return nil, fmt.Errorf("read update.json: %w", err)
 		}
 	}
-	allMetadataByAssetID[metadataAsset.ID] = content
-	return parseRelease(content, candidate.version, candidate.allAssetByName)
+	metadataByAssetID[metadataAsset.ID] = content
+	return parseRelease(content, candidate.version, candidate.assetsByName)
 }
 
 // getSnapshot refreshes an expired cache. When GitHub fails it keeps serving the previous appcast and retries after a minute,
@@ -195,11 +195,11 @@ func (source *Source) OpenFile(ctx context.Context, version, fileName string) (i
 	if err != nil {
 		return nil, 0, err
 	}
-	release, found := current.allReleaseByName[version]
+	release, found := current.releasesByName[version]
 	if !found {
 		return nil, 0, ErrFileNotFound
 	}
-	asset, found := release.allAssetByName[fileName]
+	asset, found := release.assetsByName[fileName]
 	if !found {
 		return nil, 0, ErrFileNotFound
 	}

@@ -118,8 +118,8 @@ func FormatTime(moment time.Time) string {
 	return moment.UTC().Format(timeLayout)
 }
 
-// CreateRequest builds a request that lasts lifetime, at most MaximumLifetime, from now.
-func CreateRequest(requesterDeviceID, requesterDeviceName string, description Description, now time.Time, lifetime time.Duration) Request {
+// NewRequest builds a request that lasts lifetime, at most MaximumLifetime, from now.
+func NewRequest(requesterDeviceID, requesterDeviceName string, description Description, now time.Time, lifetime time.Duration) Request {
 	createdAt := now.UTC().Truncate(time.Millisecond)
 	return Request{
 		RequestID:           GenerateRequestID(),
@@ -276,30 +276,30 @@ type trackedRequest struct {
 
 // Tracker holds the requests this device posted and accepts at most one valid answer for each.
 type Tracker struct {
-	mutex      sync.Mutex
-	allPending map[string]*trackedRequest
+	mutex           sync.Mutex
+	pendingRequests map[string]*trackedRequest
 }
 
-func CreateTracker() *Tracker {
-	return &Tracker{allPending: map[string]*trackedRequest{}}
+func NewTracker() *Tracker {
+	return &Tracker{pendingRequests: map[string]*trackedRequest{}}
 }
 
 func (tracker *Tracker) Add(requestID string, sealedRequest []byte, expiresAt time.Time) {
 	tracker.mutex.Lock()
 	defer tracker.mutex.Unlock()
-	tracker.allPending[requestID] = &trackedRequest{requestHash: crypt.HashApprovalRequest(sealedRequest), expiresAt: expiresAt}
+	tracker.pendingRequests[requestID] = &trackedRequest{requestHash: crypt.HashApprovalRequest(sealedRequest), expiresAt: expiresAt}
 }
 
 func (tracker *Tracker) Remove(requestID string) {
 	tracker.mutex.Lock()
 	defer tracker.mutex.Unlock()
-	delete(tracker.allPending, requestID)
+	delete(tracker.pendingRequests, requestID)
 }
 
 func (tracker *Tracker) RemoveAll() {
 	tracker.mutex.Lock()
 	defer tracker.mutex.Unlock()
-	clear(tracker.allPending)
+	clear(tracker.pendingRequests)
 }
 
 // Accept returns the decision of a valid answer, see AcceptAnswer.
@@ -313,7 +313,7 @@ func (tracker *Tracker) Accept(keyset *crypt.Keyset, accountID, requestID string
 func (tracker *Tracker) AcceptAnswer(keyset *crypt.Keyset, accountID, requestID string, sealedAnswer []byte, ownDeviceID string, now time.Time) (AcceptedAnswer, error) {
 	tracker.mutex.Lock()
 	defer tracker.mutex.Unlock()
-	pending, isFound := tracker.allPending[requestID]
+	pending, isFound := tracker.pendingRequests[requestID]
 	if !isFound {
 		return AcceptedAnswer{}, ErrUnknownRequest
 	}

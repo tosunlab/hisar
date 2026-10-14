@@ -2,16 +2,18 @@ import { Browser } from "@wailsio/runtime";
 import { ApprovalTouchIDService, TouchIDPromptService } from "../bindings/github.com/tryhisar/hisar/desktop";
 import { Service as AgentService } from "../bindings/github.com/tryhisar/hisar/desktop/agent";
 import type { ApprovalEvent, Status as SSHAgentStatus } from "../bindings/github.com/tryhisar/hisar/desktop/agent";
-import { BrowserBridge, CommandLineService, InviteLinkService, LoginItemService, Service, UpdateService } from "../bindings/github.com/tryhisar/hisar/desktop/vault";
-import type { BrowserInstallation } from "../bindings/github.com/tryhisar/hisar/desktop/browser";
-import type { Installation as CommandLineInstallation } from "../bindings/github.com/tryhisar/hisar/desktop/commandline";
+import { BrowserBridge, InviteLinkService, Service, UpdateService } from "../bindings/github.com/tryhisar/hisar/core/app";
+import type { BrowserInstallation } from "../bindings/github.com/tryhisar/hisar/core/browserprotocol";
+import { Service as CommandLineService } from "../bindings/github.com/tryhisar/hisar/desktop/commandline";
+import type { Installation as CommandLineInstallation, Status as BoundCommandLineStatus } from "../bindings/github.com/tryhisar/hisar/desktop/commandline";
+import { Service as LoginItemService } from "../bindings/github.com/tryhisar/hisar/desktop/loginitem";
+import type { Status as LoginItemStatus } from "../bindings/github.com/tryhisar/hisar/desktop/loginitem";
 import type {
   AccountDeletionPreview as BoundAccountDeletionPreview,
   BrowserPairingRequest,
   CredentialChangeResult,
   DeletionVault,
   BrowserStatus as BoundBrowserStatus,
-  CommandLineStatus as BoundCommandLineStatus,
   Device,
   PairedBrowser,
   Person,
@@ -23,7 +25,6 @@ import type {
   ItemDetail as BoundItemDetail,
   ItemField,
   ItemPasskey,
-  LoginItemStatus,
   OneTimeCode,
   PasswordConfig,
   ReceivedShareInvitation,
@@ -48,7 +49,7 @@ import type {
   VaultMember,
   VaultSummary,
   WaitingShareInvitation,
-} from "../bindings/github.com/tryhisar/hisar/desktop/vault";
+} from "../bindings/github.com/tryhisar/hisar/core/app";
 
 export type {
   ApprovalEvent,
@@ -192,16 +193,16 @@ const wailsApi = {
   lock: (): Promise<Status> => Service.Lock(),
   signOut: (): Promise<Status> => Service.SignOut(),
   reportActivity: (): Promise<void> => Service.ReportActivity(),
-  listAllVault: async (): Promise<VaultSummary[]> => (await Service.ListAllVault()) ?? [],
+  listAllVault: async (): Promise<VaultSummary[]> => (await Service.ListVaults()) ?? [],
   createVault: (name: string): Promise<VaultSummary> => Service.CreateVault(name),
   getVaultActions: async (vaultID: string): Promise<VaultActions> => normalizeVaultActions(await Service.GetVaultActions(vaultID)),
   renameVault: (vaultID: string, name: string): Promise<VaultSummary> => Service.RenameVault(vaultID, name),
   deleteVault: (vaultID: string, request: VaultDeletionRequest): Promise<VaultDeletionResult> => Service.DeleteVault(vaultID, request),
   leaveVault: (vaultID: string): Promise<void> => Service.LeaveVault(vaultID),
-  listAllRemovedVault: async (): Promise<RemovedVaultNotice[]> => (await Service.ListAllRemovedVault()) ?? [],
+  listAllRemovedVault: async (): Promise<RemovedVaultNotice[]> => (await Service.ListRemovedVaults()) ?? [],
   getExportOptions: (): Promise<ExportOptions> => Service.GetExportOptions(),
-  exportAllData: (request: ExportRequest): Promise<ExportResult> => Service.ExportAllData(request),
-  listAllItem: async (vaultID: string): Promise<ItemDetail[]> => ((await Service.ListAllItem(vaultID)) ?? []).map(normalizeItem),
+  exportAllData: (request: ExportRequest): Promise<ExportResult> => Service.ExportData(request),
+  listAllItem: async (vaultID: string): Promise<ItemDetail[]> => ((await Service.ListItems(vaultID)) ?? []).map(normalizeItem),
   getItem: async (vaultID: string, itemID: string): Promise<ItemDetail> => normalizeItem(await Service.GetItem(vaultID, itemID)),
   saveItem: async (vaultID: string, detail: ItemDetail): Promise<ItemDetail> =>
     normalizeItem(await Service.SaveItem(vaultID, detail)),
@@ -213,31 +214,31 @@ const wailsApi = {
     normalizeItem(await Service.GenerateSSHKey(vaultID, title, keyType)),
   importSSHKey: async (vaultID: string, title: string, privateKeyText: string, passphrase: string): Promise<ItemDetail> =>
     normalizeItem(await Service.ImportSSHKey(vaultID, title, privateKeyText, passphrase)),
-  listAllPerson: async (): Promise<Person[]> => (await Service.ListAllPerson()) ?? [],
-  listAllVaultMember: async (vaultID: string): Promise<VaultMember[]> => (await Service.ListAllVaultMember(vaultID)) ?? [],
+  listAllPerson: async (): Promise<Person[]> => (await Service.ListPeople()) ?? [],
+  listAllVaultMember: async (vaultID: string): Promise<VaultMember[]> => (await Service.ListVaultMembers(vaultID)) ?? [],
   shareVault: (vaultID: string, email: string, role: VaultRole): Promise<void> => Service.ShareVault(vaultID, email, role),
   changeVaultMemberRole: (vaultID: string, accountID: string, role: VaultRole): Promise<void> =>
     Service.ChangeVaultMemberRole(vaultID, accountID, role),
   removeVaultMember: (vaultID: string, accountID: string): Promise<void> => Service.RemoveVaultMember(vaultID, accountID),
   invitePerson: (email: string): Promise<void> => Service.InvitePerson(email),
-  listAllShareInvitation: async (): Promise<ShareInvitations> => normalizeShareInvitations(await Service.ListAllShareInvitation()),
+  listAllShareInvitation: async (): Promise<ShareInvitations> => normalizeShareInvitations(await Service.ListShareInvitations()),
   acceptShareInvitation: (invitationID: string): Promise<void> => Service.AcceptShareInvitation(invitationID),
   declineShareInvitation: (invitationID: string): Promise<void> => Service.DeclineShareInvitation(invitationID),
   cancelShareInvitation: (invitationID: string): Promise<void> => Service.CancelShareInvitation(invitationID),
-  listAllShareAwaitingUnlock: async (): Promise<ShareAwaitingUnlock[]> => (await Service.ListAllShareAwaitingUnlock()) ?? [],
-  listAllShareLinkField: async (vaultID: string, itemID: string): Promise<ShareLinkField[]> => (await Service.ListAllShareLinkField(vaultID, itemID)) ?? [],
+  listAllShareAwaitingUnlock: async (): Promise<ShareAwaitingUnlock[]> => (await Service.ListSharesAwaitingUnlock()) ?? [],
+  listAllShareLinkField: async (vaultID: string, itemID: string): Promise<ShareLinkField[]> => (await Service.ListShareLinkFields(vaultID, itemID)) ?? [],
   createShareLink: async (request: ShareLinkRequest): Promise<ShareLink> => normalizeShareLink(await Service.CreateShareLink(request)),
-  listAllShareLink: async (): Promise<ShareLink[]> => ((await Service.ListAllShareLink()) ?? []).map(normalizeShareLink),
+  listAllShareLink: async (): Promise<ShareLink[]> => ((await Service.ListShareLinks()) ?? []).map(normalizeShareLink),
   revokeShareLink: (shareLinkID: string): Promise<void> => Service.RevokeShareLink(shareLinkID),
   copyShareLink: (shareLinkID: string): Promise<void> => Service.CopyShareLink(shareLinkID),
-  listAllDevice: async (): Promise<Device[]> => (await Service.ListAllDevice()) ?? [],
+  listAllDevice: async (): Promise<Device[]> => (await Service.ListDevices()) ?? [],
   revokeDevice: (deviceID: string): Promise<void> => Service.RevokeDevice(deviceID),
   getSSHAgentStatus: (): Promise<SSHAgentStatus> => AgentService.GetStatus(),
   configureSSHConfig: (): Promise<SSHAgentStatus> => AgentService.ConfigureSSHConfig(),
   removeSSHConfig: (): Promise<SSHAgentStatus> => AgentService.RemoveSSHConfig(),
   respondSSHApproval: (requestID: string, isAuthorized: boolean, isRemembered: boolean): Promise<void> =>
     AgentService.RespondSSHApproval(requestID, isAuthorized, isRemembered),
-  listAllPendingSSHApproval: async (): Promise<ApprovalEvent[]> => (await AgentService.ListAllPendingSSHApproval()) ?? [],
+  listAllPendingSSHApproval: async (): Promise<ApprovalEvent[]> => (await AgentService.ListPendingSSHApprovals()) ?? [],
   respondApprovalWithPassword: (requestID: string, password: string, isRemembered: boolean): Promise<void> =>
     AgentService.RespondApprovalWithPassword(requestID, password, isRemembered),
   setSSHApprovalRemembered: (requestID: string, isRemembered: boolean): Promise<void> => AgentService.SetSSHApprovalRemembered(requestID, isRemembered),
@@ -294,10 +295,10 @@ const wailsApi = {
   uninstallCommandLineTool: async (): Promise<CommandLineStatus> => normalizeCommandLineStatus(await CommandLineService.UninstallCommandLineTool()),
   setCommandLineIntegration: async (isEnabled: boolean): Promise<CommandLineStatus> =>
     normalizeCommandLineStatus(await CommandLineService.SetCommandLineIntegration(isEnabled)),
-  listAllAgentVaultID: async (): Promise<string[]> => (await Service.ListAllAgentVaultID()) ?? [],
+  listAllAgentVaultID: async (): Promise<string[]> => (await Service.ListAgentVaultIDs()) ?? [],
   setVaultAvailableToAgents: async (vaultID: string, isAvailable: boolean): Promise<string[]> =>
     (await Service.SetVaultAvailableToAgents(vaultID, isAvailable)) ?? [],
-  listAllImportFormat: async (): Promise<ImportFormat[]> => (await Service.ListAllImportFormat()) ?? [],
+  listAllImportFormat: async (): Promise<ImportFormat[]> => (await Service.ListImportFormats()) ?? [],
   chooseImportFile: async (vaultID: string, format: string): Promise<ImportPreview> =>
     normalizeImportPreview(await Service.ChooseImportFile(vaultID, format)),
   previewImport: async (vaultID: string): Promise<ImportPreview> => normalizeImportPreview(await Service.PreviewImport(vaultID)),

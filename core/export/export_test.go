@@ -15,7 +15,7 @@ import (
 const testPassphrase = "correct horse battery staple"
 
 func buildTestDocument() *Document {
-	allItem := []item.Item{
+	items := []item.Item{
 		{ID: "11111111-1111-1111-1111-111111111111", Overview: item.Overview{Title: "GitHub", Username: "alice", URLs: []string{"https://github.com"}, Tags: []string{"work"}}, Details: item.Details{
 			Password:        "hunter2",
 			Notes:           "first line\nsecond line",
@@ -31,15 +31,15 @@ func buildTestDocument() *Document {
 		}},
 		{ID: "33333333-3333-3333-3333-333333333333", Overview: item.Overview{Title: "Wi-Fi"}, Details: item.Details{Notes: "ünïcödé ✓"}},
 	}
-	for index := range allItem {
-		item.UpdatePasskeyOverview(&allItem[index])
+	for index := range items {
+		item.UpdatePasskeyOverview(&items[index])
 	}
-	allVault := []Vault{
-		ConvertVault("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "Personal", "personal", allItem[:2]),
-		ConvertVault("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "Work / Ops", "shared", allItem[2:]),
+	vaults := []Vault{
+		ConvertVault("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "Personal", "personal", items[:2]),
+		ConvertVault("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "Work / Ops", "shared", items[2:]),
 		ConvertVault("cccccccc-cccc-cccc-cccc-cccccccccccc", "Empty", "shared", nil),
 	}
-	return Build(Account{Email: "alice@example.com", Server: "https://api.tryhisar.com"}, allVault, time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC))
+	return Build(Account{Email: "alice@example.com", Server: "https://api.tryhisar.com"}, vaults, time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC))
 }
 
 func TestPlainExportRoundTrip(t *testing.T) {
@@ -71,7 +71,7 @@ func TestPlainExportRoundTrip(t *testing.T) {
 
 func TestEncryptedExportRoundTrip(t *testing.T) {
 	document := buildTestDocument()
-	encoded, err := encodeEncryptedWithParams(document, []byte(testPassphrase), crypt.MinArgon2Params)
+	encoded, err := encodeEncryptedWithParams(document, []byte(testPassphrase), crypt.MinArgon2Params())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestEncryptedExportRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	if envelope.Format != FormatEncrypted || envelope.Version != Version || envelope.KDF.Algorithm != KDFArgon2id || envelope.Cipher != CipherXChaCha20 ||
-		len(envelope.KDF.Salt) != crypt.SaltSize || envelope.KDF.MemoryKiB != crypt.MinArgon2Params.MemoryKiB {
+		len(envelope.KDF.Salt) != crypt.SaltSize || envelope.KDF.MemoryKiB != crypt.MinArgon2Params().MemoryKiB {
 		t.Errorf("envelope: %+v", envelope)
 	}
 	if format, err := DetectFormat(encoded); err != nil || format != FormatEncrypted {
@@ -99,7 +99,7 @@ func TestEncryptedExportRoundTrip(t *testing.T) {
 		t.Errorf("round trip differs:\n got %+v\nwant %+v", decoded, document)
 	}
 	precomposed, decomposed := "caf"+string(rune(0xe9))+" au lait export", "cafe"+string(rune(0x301))+" au lait export"
-	withAccent, err := encodeEncryptedWithParams(document, []byte(precomposed), crypt.MinArgon2Params)
+	withAccent, err := encodeEncryptedWithParams(document, []byte(precomposed), crypt.MinArgon2Params())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestEncryptedExportRoundTrip(t *testing.T) {
 }
 
 func TestEncryptedExportRefusesWrongPassphraseAndTampering(t *testing.T) {
-	encoded, err := encodeEncryptedWithParams(buildTestDocument(), []byte(testPassphrase), crypt.MinArgon2Params)
+	encoded, err := encodeEncryptedWithParams(buildTestDocument(), []byte(testPassphrase), crypt.MinArgon2Params())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +130,7 @@ func TestEncryptedExportRefusesWrongPassphraseAndTampering(t *testing.T) {
 		modified, _ := json.Marshal(copied)
 		return modified
 	}
-	allCase := map[string]struct {
+	cases := map[string]struct {
 		content []byte
 		want    error
 	}{
@@ -144,7 +144,7 @@ func TestEncryptedExportRefusesWrongPassphraseAndTampering(t *testing.T) {
 		"newer version":           {modify(func(document *EncryptedDocument) { document.Version = 2 }), ErrUnsupportedVersion},
 		"truncated ciphertext":    {modify(func(document *EncryptedDocument) { document.Ciphertext = document.Ciphertext[:10] }), ErrDamagedExport},
 	}
-	for name, testCase := range allCase {
+	for name, testCase := range cases {
 		if _, err := Decode(testCase.content, []byte(testPassphrase)); !errors.Is(err, testCase.want) {
 			t.Errorf("%s: %v, want %v", name, err, testCase.want)
 		}

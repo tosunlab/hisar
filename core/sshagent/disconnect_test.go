@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tryhisar/hisar/core/localsocket"
+	"github.com/tryhisar/hisar/core/sshkey"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -24,20 +26,20 @@ func (approver *waitingApprover) Approve(ctx context.Context, request ApprovalRe
 }
 
 func TestClientDisconnectCancelsTheWaitingApproval(t *testing.T) {
-	material, err := GenerateEd25519Key("laptop")
+	material, err := sshkey.GenerateEd25519Key("laptop")
 	if err != nil {
 		t.Fatal(err)
 	}
-	signer, err := ParseKeyMaterial(material.PrivateKeyPEM)
+	signer, err := sshkey.ParseKeyMaterial(material.PrivateKeyPEM)
 	if err != nil {
 		t.Fatal(err)
 	}
 	approver := &waitingApprover{startedChannel: make(chan struct{}, 1), cancelledChannel: make(chan struct{}, 1)}
 	resolver := &fakePeerResolver{}
 	resolver.setPath("/usr/bin/ssh-keygen")
-	server := CreateServer(&fakeKeySource{allKey: []Key{createTestKey(t, "key-1", "Laptop", material)}}, approver, resolver)
+	server := NewServer(&fakeKeySource{keys: []Key{createTestKey(t, "key-1", "Laptop", material)}}, approver, resolver)
 	socketPath := filepath.Join(createShortTempDirectory(t), "agent.sock")
-	listener, err := ListenUnixSocket(socketPath)
+	listener, err := localsocket.ListenUnixSocket(socketPath)
 	if err != nil {
 		t.Fatal(err)
 	}

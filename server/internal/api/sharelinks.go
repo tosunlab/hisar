@@ -1,169 +1,61 @@
 package api
 
 import (
-	"crypto/rand"
-	"encoding/base64"
-	"errors"
-	"regexp"
-	"slices"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
 	"golang.org/x/time/rate"
 
-	"github.com/tryhisar/hisar/core/crypt"
-	"github.com/tryhisar/hisar/core/proto"
-	"github.com/tryhisar/hisar/core/sharelink"
-	"github.com/tryhisar/hisar/server/internal/store"
+	"github.com/tryhisar/hisar/core/apitypes"
+	"github.com/tryhisar/hisar/server/internal/ratelimit"
 )
 
 const (
-	shareLinkPerAccountPerDay = 100
-	maxLiveShareLinkCount     = 500
-	shareLinkReadBurst        = 30
-	shareLinkReadInterval     = 2 * time.Second
-	shareLinkIDSize           = 16
+	shareLinkReadBurst    = 30
+	shareLinkReadInterval = 2 * time.Second
 )
 
-var (
-	allShareLinkExpirySeconds = []int64{3600, 86400, 7 * 86400, 30 * 86400}
-	shareLinkIDPattern        = regexp.MustCompile(`^[A-Za-z0-9_-]{22}$`)
-
-	errTooManyShareLink     = createAPIError(fiber.StatusTooManyRequests, "too many share links today; try again tomorrow")
-	errTooManyLiveShareLink = createAPIError(fiber.StatusTooManyRequests, "you have too many live share links; revoke some first")
-	errShareLinkNotFound    = createAPIError(fiber.StatusNotFound, "not found")
-)
-
-func createShareLinkReadLimiter() *ipLimiter {
-	return createIPLimiter(rate.Every(shareLinkReadInterval), shareLinkReadBurst)
-}
-
-func generateShareLinkID() string {
-	allRandomByte := make([]byte, shareLinkIDSize)
-	rand.Read(allRandomByte)
-	return base64.RawURLEncoding.EncodeToString(allRandomByte)
-}
-
-func validateShareLinkRequest(request *proto.CreateShareLinkRequest) error {
-	switch {
-	case len(request.Ciphertext) == 0 || len(request.Ciphertext) > sharelink.MaxCiphertextSize:
-		return createAPIError(fiber.StatusBadRequest, "the share link must be between 1 byte and 64 KiB")
-	case len(request.EncryptedLabel) == 0 || len(request.EncryptedLabel) > sharelink.MaxLabelSize:
-		return createAPIError(fiber.StatusBadRequest, "the share link label must be between 1 byte and 4 KiB")
-	case !slices.Contains(allShareLinkExpirySeconds, request.ExpiresInSeconds):
-		return createAPIError(fiber.StatusBadRequest, "a share link expires after 1 hour, 1 day, 7 days or 30 days")
-	case request.MaxViews < 0 || request.MaxViews > sharelink.MaxViews:
-		return createAPIError(fiber.StatusBadRequest, "a share link allows 1 to 100 views, or 0 for unlimited")
-	}
-	if request.Passphrase != nil {
-		params := crypt.ShareLinkPassphraseParams{Salt: request.Passphrase.Salt, Iterations: request.Passphrase.Iterations}
-		if params.Validate() != nil {
-			return createAPIError(fiber.StatusBadRequest, "the passphrase needs a 16-byte salt and 600000 to 10000000 iterations")
-		}
-	}
-	return nil
-}
-
-func convertToProtoShareLink(link *store.ShareLink) proto.ShareLink {
-	return proto.ShareLink{
-		ID: link.ID, EncryptedLabel: link.EncryptedLabel, CreatedAt: link.CreatedAt, ExpiresAt: link.ExpiresAt,
-		MaxViews: link.MaxViews, ViewCount: link.ViewCount, HasPassphrase: link.PassphraseSalt != nil,
-	}
-}
-
-func (s *Server) publishShareLinksChanged(accountID string) {
-	s.events.publish([]string{accountID}, serverEvent{name: proto.EventShareLinksChanged, data: struct{}{}})
+func newShareLinkReadLimiter() *ratelimit.Limiter {
+	return ratelimit.New(rate.Every(shareLinkReadInterval), shareLinkReadBurst)
 }
 
 func (s *Server) handleCreateShareLink(c fiber.Ctx) error {
-	currentSession := getSession(c)
-	var request proto.CreateShareLinkRequest
-	if err := decodeBodyWithLimit(c, &request, sharelink.MaxCiphertextSize*2); err != nil {
+	var request apitypes.CreateShareLinkRequest
+	if err := decodeBodyWithLimit(c, &request, apitypes.ShareLinkMaxCiphertextSize*2); err != nil {
 		return err
 	}
-	if err := validateShareLinkRequest(&request); err != nil {
-		return err
-	}
-	if !s.shareLinkAccountLimiter.allow(currentSession.AccountID) {
-		return errTooManyShareLink
-	}
-	link := &store.ShareLink{
-		AccountID: currentSession.AccountID, Ciphertext: request.Ciphertext, EncryptedLabel: request.EncryptedLabel, MaxViews: request.MaxViews,
-	}
-	if request.Passphrase != nil {
-		link.PassphraseSalt, link.PassphraseIterations = request.Passphrase.Salt, request.Passphrase.Iterations
-	}
-	ttl := time.Duration(request.ExpiresInSeconds) * time.Second
-	var err error
-	for range 3 {
-		link.ID = generateShareLinkID()
-		if err = s.store.CreateShareLink(c.Context(), link, ttl, maxLiveShareLinkCount); !errors.Is(err, store.ErrExists) {
-			break
-		}
-	}
-	if errors.Is(err, store.ErrConflict) {
-		return errTooManyLiveShareLink
-	}
+	link, err := s.service.CreateShareLink(c.Context(), s.getActor(c), &request)
 	if err != nil {
 		return err
 	}
-	s.recordAudit(c, currentSession.AccountID, currentSession.DeviceID, "share-link-create", map[string]string{"shareLinkID": link.ID})
-	s.publishShareLinksChanged(currentSession.AccountID)
-	response := convertToProtoShareLink(link)
-	response.EncryptedLabel = nil
-	return c.Status(fiber.StatusCreated).JSON(response)
+	return c.Status(fiber.StatusCreated).JSON(link)
 }
 
-func (s *Server) handleListAllShareLink(c fiber.Ctx) error {
-	allLink, err := s.store.ListAllShareLink(c.Context(), getSession(c).AccountID)
+func (s *Server) handleListShareLinks(c fiber.Ctx) error {
+	links, err := s.service.ListShareLinks(c.Context(), s.getActor(c))
 	if err != nil {
 		return err
 	}
-	allResponse := make([]proto.ShareLink, 0, len(allLink))
-	for index := range allLink {
-		allResponse = append(allResponse, convertToProtoShareLink(&allLink[index]))
-	}
-	return c.JSON(allResponse)
+	return c.JSON(links)
 }
 
 func (s *Server) handleRevokeShareLink(c fiber.Ctx) error {
-	currentSession := getSession(c)
-	linkID := c.Params("id")
-	if !shareLinkIDPattern.MatchString(linkID) {
-		return errShareLinkNotFound
-	}
-	if err := s.store.DeleteShareLink(c.Context(), currentSession.AccountID, linkID); errors.Is(err, store.ErrNotFound) {
-		return errShareLinkNotFound
-	} else if err != nil {
+	if err := s.service.RevokeShareLink(c.Context(), s.getActor(c), c.Params("id")); err != nil {
 		return err
 	}
-	s.recordAudit(c, currentSession.AccountID, currentSession.DeviceID, "share-link-revoke", map[string]string{"shareLinkID": linkID})
-	s.publishShareLinksChanged(currentSession.AccountID)
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-// handleViewShareLink answers a malformed, unknown, expired, used-up and revoked ID with the same 404.
+// handleViewShareLink is public: anyone with the link's ID may fetch it, so reads are limited per IP.
 func (s *Server) handleViewShareLink(c fiber.Ctx) error {
-	if !s.shareLinkReadLimiter.allow(s.getClientIP(c)) {
+	if !s.shareLinkReadLimiter.Allow(s.getClientIP(c)) {
 		return createAPIError(fiber.StatusTooManyRequests, "too many requests")
 	}
-	linkID := c.Params("id")
-	if !shareLinkIDPattern.MatchString(linkID) {
-		return errShareLinkNotFound
-	}
-	link, err := s.store.ViewShareLink(c.Context(), linkID)
-	if errors.Is(err, store.ErrNotFound) {
-		return errShareLinkNotFound
-	}
+	link, err := s.service.ViewShareLink(c.Context(), c.Params("id"))
 	if err != nil {
 		return err
 	}
-	s.publishShareLinksChanged(link.AccountID)
-	response := proto.PublicShareLink{Ciphertext: link.Ciphertext, ExpiresAt: link.ExpiresAt, MaxViews: link.MaxViews, ViewCount: link.ViewCount}
-	if link.PassphraseSalt != nil {
-		response.Passphrase = &proto.ShareLinkPassphrase{Salt: link.PassphraseSalt, Iterations: link.PassphraseIterations}
-	}
 	c.Set("Referrer-Policy", "no-referrer")
 	c.Set("X-Robots-Tag", "noindex, nofollow")
-	return c.JSON(response)
+	return c.JSON(link)
 }

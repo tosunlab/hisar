@@ -9,11 +9,11 @@ import (
 )
 
 type remoteChangeRecorder struct {
-	allRemoteChange chan struct{}
+	remoteChanges chan struct{}
 }
 
 func createRemoteChangeRecorder() *remoteChangeRecorder {
-	return &remoteChangeRecorder{allRemoteChange: make(chan struct{}, 64)}
+	return &remoteChangeRecorder{remoteChanges: make(chan struct{}, 64)}
 }
 
 func (recorder *remoteChangeRecorder) OnLocked() {}
@@ -24,7 +24,7 @@ func (recorder *remoteChangeRecorder) OnUpdateRequired() {}
 
 func (recorder *remoteChangeRecorder) OnRemoteChange() {
 	select {
-	case recorder.allRemoteChange <- struct{}{}:
+	case recorder.remoteChanges <- struct{}{}:
 	default:
 	}
 }
@@ -32,7 +32,7 @@ func (recorder *remoteChangeRecorder) OnRemoteChange() {
 func (recorder *remoteChangeRecorder) drain() {
 	for {
 		select {
-		case <-recorder.allRemoteChange:
+		case <-recorder.remoteChanges:
 		default:
 			return
 		}
@@ -44,7 +44,7 @@ func (recorder *remoteChangeRecorder) waitUntil(t *testing.T, description string
 	deadline := time.After(30 * time.Second)
 	for !isDone() {
 		select {
-		case <-recorder.allRemoteChange:
+		case <-recorder.remoteChanges:
 		case <-time.After(time.Second):
 		case <-deadline:
 			t.Fatalf("timed out waiting until %s", description)
@@ -99,12 +99,12 @@ func signUpMobile(t *testing.T, inviteLink, email, name string, listener EventLi
 
 func findVaultByName(t *testing.T, hisar *Hisar, name string) *sharingVaultSummary {
 	t.Helper()
-	allVault := decodeJSON[[]sharingVaultSummary](t)(hisar.ListAllVault())
-	index := slices.IndexFunc(allVault, func(vault sharingVaultSummary) bool { return vault.Name == name })
+	vaults := decodeJSON[[]sharingVaultSummary](t)(hisar.ListAllVault())
+	index := slices.IndexFunc(vaults, func(vault sharingVaultSummary) bool { return vault.Name == name })
 	if index < 0 {
 		return nil
 	}
-	return &allVault[index]
+	return &vaults[index]
 }
 
 // TestIntegrationMobileSharing runs against a real server from scripts/test-end-to-end.sh: the iPhone owns a vault,
@@ -157,13 +157,13 @@ func TestIntegrationMobileSharing(t *testing.T) {
 	}
 	var invitation received
 	recipientRecorder.waitUntil(t, "the recipient sees the invitation", func() bool {
-		allReceived := decodeJSON[struct {
+		receivedInvitations := decodeJSON[struct {
 			Received []received `json:"received"`
 		}](t)(recipient.ListAllShareInvitation()).Received
-		if len(allReceived) == 1 {
-			invitation = allReceived[0]
+		if len(receivedInvitations) == 1 {
+			invitation = receivedInvitations[0]
 		}
-		return len(allReceived) == 1
+		return len(receivedInvitations) == 1
 	})
 	if invitation.VaultID != deployKeys.ID || invitation.Role != "reader" || invitation.InvitedByEmail != ownerEmail {
 		t.Fatalf("received invitation = %+v", invitation)
@@ -177,8 +177,8 @@ func TestIntegrationMobileSharing(t *testing.T) {
 		t.Fatal(err)
 	}
 	ownerRecorder.waitUntil(t, "the owner's iPhone completes the share on its own", func() bool {
-		allMember := decodeJSON[[]sharingMember](t)(owner.ListAllVaultMember(deployKeys.ID))
-		return slices.ContainsFunc(allMember, func(member sharingMember) bool { return member.Email == recipientEmail })
+		members := decodeJSON[[]sharingMember](t)(owner.ListAllVaultMember(deployKeys.ID))
+		return slices.ContainsFunc(members, func(member sharingMember) bool { return member.Email == recipientEmail })
 	})
 	sharing = decodeJSON[vaultSharing](t)(owner.GetVaultSharing(deployKeys.ID))
 	if len(sharing.Members) != 2 || sharing.CompletionError != "" || len(sharing.Invitations) != 1 || sharing.Invitations[0].Email != "nobody-mobile-sharing@example.com" {
@@ -229,8 +229,8 @@ func TestIntegrationMobileSharing(t *testing.T) {
 	recipientRecorder.waitUntil(t, "the removed recipient loses the vault", func() bool {
 		return findVaultByName(t, recipient, "Deploy keys") == nil
 	})
-	if allMember := decodeJSON[vaultSharing](t)(owner.GetVaultSharing(deployKeys.ID)).Members; len(allMember) != 1 {
-		t.Errorf("members after removing: %+v", allMember)
+	if members := decodeJSON[vaultSharing](t)(owner.GetVaultSharing(deployKeys.ID)).Members; len(members) != 1 {
+		t.Errorf("members after removing: %+v", members)
 	}
 	if item := decodeJSON[struct {
 		Password string `json:"password"`
@@ -270,12 +270,12 @@ func checkShareWaitingForLockedOwner(t *testing.T, owner, recipient *Hisar, owne
 	if err := recipient.AcceptShareInvitation(received[index].ID); err != nil {
 		t.Fatal(err)
 	}
-	allWaiting := decodeJSON[waitingList](t)(recipient.ListAllShareInvitation()).Waiting
-	if len(allWaiting) != 1 || allWaiting[0].VaultID != releaseKeys.ID || allWaiting[0].InvitedByName != "Mobile Owner" || allWaiting[0].InvitedByEmail != ownerEmail {
-		t.Fatalf("the recipient's waiting share: %+v", allWaiting)
+	waiting := decodeJSON[waitingList](t)(recipient.ListAllShareInvitation()).Waiting
+	if len(waiting) != 1 || waiting[0].VaultID != releaseKeys.ID || waiting[0].InvitedByName != "Mobile Owner" || waiting[0].InvitedByEmail != ownerEmail {
+		t.Fatalf("the recipient's waiting share: %+v", waiting)
 	}
-	if acceptedAt, err := time.Parse(time.RFC3339, allWaiting[0].AcceptedAt); err != nil || time.Since(acceptedAt) > time.Minute {
-		t.Errorf("accepted at %q: %v", allWaiting[0].AcceptedAt, err)
+	if acceptedAt, err := time.Parse(time.RFC3339, waiting[0].AcceptedAt); err != nil || time.Since(acceptedAt) > time.Minute {
+		t.Errorf("accepted at %q: %v", waiting[0].AcceptedAt, err)
 	}
 
 	type awaitingUnlock struct {
@@ -283,20 +283,20 @@ func checkShareWaitingForLockedOwner(t *testing.T, owner, recipient *Hisar, owne
 		RecipientEmail string `json:"recipientEmail"`
 		AcceptedAt     string `json:"acceptedAt"`
 	}
-	allAwaiting := decodeJSON[[]awaitingUnlock](t)(owner.ListAllShareAwaitingUnlock())
-	if len(allAwaiting) != 1 || allAwaiting[0].RecipientName != "Mobile Recipient" || allAwaiting[0].RecipientEmail != recipientEmail || allAwaiting[0].AcceptedAt != allWaiting[0].AcceptedAt {
-		t.Fatalf("the locked owner's banner: %+v", allAwaiting)
+	awaitingShares := decodeJSON[[]awaitingUnlock](t)(owner.ListAllShareAwaitingUnlock())
+	if len(awaitingShares) != 1 || awaitingShares[0].RecipientName != "Mobile Recipient" || awaitingShares[0].RecipientEmail != recipientEmail || awaitingShares[0].AcceptedAt != waiting[0].AcceptedAt {
+		t.Fatalf("the locked owner's banner: %+v", awaitingShares)
 	}
 
 	if _, err := owner.Unlock("mobile sharing master password"); err != nil {
 		t.Fatal(err)
 	}
-	if allAwaiting := decodeJSON[[]awaitingUnlock](t)(owner.ListAllShareAwaitingUnlock()); len(allAwaiting) != 0 {
-		t.Errorf("unlocked owner still has a lock screen banner: %+v", allAwaiting)
+	if awaitingShares := decodeJSON[[]awaitingUnlock](t)(owner.ListAllShareAwaitingUnlock()); len(awaitingShares) != 0 {
+		t.Errorf("unlocked owner still has a lock screen banner: %+v", awaitingShares)
 	}
 	decodeJSON[waitingList](t)(owner.ListAllShareInvitation())
-	if allWaiting := decodeJSON[waitingList](t)(recipient.ListAllShareInvitation()).Waiting; len(allWaiting) != 0 {
-		t.Errorf("the recipient still waits after the owner unlocked: %+v", allWaiting)
+	if waiting := decodeJSON[waitingList](t)(recipient.ListAllShareInvitation()).Waiting; len(waiting) != 0 {
+		t.Errorf("the recipient still waits after the owner unlocked: %+v", waiting)
 	}
 	if findVaultByName(t, recipient, "Release keys") == nil {
 		t.Error("the recipient has no access after the owner unlocked")

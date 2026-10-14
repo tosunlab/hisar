@@ -5,21 +5,21 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/tryhisar/hisar/desktop/vault"
+	"github.com/tryhisar/hisar/core/app"
 )
 
 const emergencyKitFileName = "Hisar Emergency Kit.pdf"
 
 var errMacApprovalDisabled = errors.New("approving Mac requests is turned off in Settings on this iPhone")
 
-// SetAutoLock takes 30, 60, 300, 600 or 3600 seconds and returns vault.Status as JSON.
+// SetAutoLock takes 30, 60, 300, 600 or 3600 seconds and returns app.Status as JSON.
 func (hisar *Hisar) SetAutoLock(seconds int) (string, error) {
 	return encodeJSON(hisar.service.SetAutoLock(seconds))
 }
 
-// ListAllDevice returns the account's signed-in devices ([]vault.Device) as JSON, this device first.
+// ListAllDevice returns the account's signed-in devices ([]app.Device) as JSON, this device first.
 func (hisar *Hisar) ListAllDevice() (string, error) {
-	return encodeJSON(hisar.service.ListAllDevice())
+	return encodeJSON(hisar.service.ListDevices())
 }
 
 // RevokeDevice signs out another device; this iPhone signs out with SignOut.
@@ -36,7 +36,7 @@ type emergencyKitResult struct {
 // {"secretKey", "emergencyKitPath"} as JSON; the app deletes the file once it is shared.
 func (hisar *Hisar) ExportEmergencyKit(password, directory string) (string, error) {
 	defer releaseMemory()
-	export, err := vault.ExportEmergencyKit(hisar.service, password)
+	export, err := app.ExportEmergencyKit(hisar.service, password)
 	if err != nil {
 		return "", err
 	}
@@ -57,20 +57,20 @@ func (hisar *Hisar) CopySecretReference(vaultID, itemID, fieldName string) (stri
 
 // The Mac's switch for sending requests to phones is the same state field; on the phone it means this phone answers none.
 func (hisar *Hisar) IsMacApprovalAllowed() bool {
-	return vault.CreateApprovalPreference(hisar.service).IsPhoneApproval()
+	return app.NewApprovalPreference(hisar.service).IsPhoneApproval()
 }
 
 func (hisar *Hisar) SetMacApprovalAllowed(isAllowed bool) error {
-	return vault.CreateApprovalPreference(hisar.service).SetPhoneApproval(isAllowed)
+	return app.NewApprovalPreference(hisar.service).SetPhoneApproval(isAllowed)
 }
 
-// GetTheme returns this iPhone's vault.Theme as JSON; the AutoFill extension reads the same state file.
+// GetTheme returns this iPhone's app.Theme as JSON; the AutoFill extension reads the same state file.
 func (hisar *Hisar) GetTheme() string {
 	theme, _ := encodeJSON(hisar.service.GetTheme(), nil)
 	return theme
 }
 
-// SetTheme takes "system", "light" or "dark" and "neutral", "blue", "purple" or "green" and returns vault.Theme as JSON.
+// SetTheme takes "system", "light" or "dark" and "neutral", "blue", "purple" or "green" and returns app.Theme as JSON.
 func (hisar *Hisar) SetTheme(appearance, color string) (string, error) {
 	return encodeJSON(hisar.service.SetTheme(appearance, color))
 }

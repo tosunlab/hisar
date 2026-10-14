@@ -65,21 +65,21 @@ func (s *Store) GetAccountByID(ctx context.Context, accountID string) (*Account,
 	return scanAccount(s.pool.QueryRow(ctx, `SELECT `+accountColumnList+` FROM accounts WHERE id = $1`, accountID))
 }
 
-func (s *Store) ListAllAccount(ctx context.Context) ([]Account, error) {
-	allRow, err := s.pool.Query(ctx, `SELECT `+accountColumnList+` FROM accounts ORDER BY created_at`)
+func (s *Store) ListAccounts(ctx context.Context) ([]Account, error) {
+	rows, err := s.pool.Query(ctx, `SELECT `+accountColumnList+` FROM accounts ORDER BY created_at`)
 	if err != nil {
 		return nil, err
 	}
-	defer allRow.Close()
-	var allAccount []Account
-	for allRow.Next() {
-		account, err := scanAccount(allRow)
+	defer rows.Close()
+	var accounts []Account
+	for rows.Next() {
+		account, err := scanAccount(rows)
 		if err != nil {
 			return nil, err
 		}
-		allAccount = append(allAccount, *account)
+		accounts = append(accounts, *account)
 	}
-	return allAccount, allRow.Err()
+	return accounts, rows.Err()
 }
 
 func (s *Store) CreateInvite(ctx context.Context, tokenHash []byte, email, role string, createdBy *string, ttl time.Duration) error {
@@ -190,14 +190,14 @@ func (s *Store) DeleteSession(ctx context.Context, tokenHash []byte) error {
 	return err
 }
 
-func (s *Store) ListAllDevice(ctx context.Context, accountID string) ([]Device, error) {
-	allRow, err := s.pool.Query(ctx,
+func (s *Store) ListDevices(ctx context.Context, accountID string) ([]Device, error) {
+	rows, err := s.pool.Query(ctx,
 		`SELECT id, account_id, name, platform, created_at, last_seen_at FROM devices
 		 WHERE account_id = $1 AND revoked_at IS NULL ORDER BY created_at`, accountID)
 	if err != nil {
 		return nil, err
 	}
-	return pgx.CollectRows(allRow, func(row pgx.CollectableRow) (Device, error) {
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (Device, error) {
 		var device Device
 		err := row.Scan(&device.ID, &device.AccountID, &device.Name, &device.Platform, &device.CreatedAt, &device.LastSeenAt)
 		return device, err

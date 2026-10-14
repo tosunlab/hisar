@@ -13,7 +13,7 @@ func TestFormatKeyFingerprint(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	signingKey := keyset.GetAllPublicKey(GenerateAccountID()).Sign
+	signingKey := keyset.GetPublicKeys(GenerateAccountID()).Sign
 	fingerprint := FormatKeyFingerprint(signingKey)
 	if !regexp.MustCompile(`^[0-9A-F]{4}( [0-9A-F]{4}){3}$`).MatchString(fingerprint) {
 		t.Errorf("format: %q", fingerprint)

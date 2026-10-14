@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -22,76 +23,67 @@ import (
 
 const maxPassphraseAttempt = 3
 
-type repeatedFlag []string
-
-func (values *repeatedFlag) String() string { return strings.Join(*values, ",") }
-
-func (values *repeatedFlag) Set(value string) error {
-	*values = append(*values, value)
-	return nil
-}
-
 type shareLinkOption struct {
 	vaultName      string
-	allFieldName   repeatedFlag
+	fieldNames     repeatedFlag
 	expiry         string
 	views          string
 	isPassphrase   bool
 	isText         bool
 	title          string
-	allPositional  []string
+	positionals    []string
 	expiryDuration time.Duration
 	maxViews       int
 }
 
-func parseShareLinkOption(flags *flag.FlagSet, allArg []string) (*shareLinkOption, error) {
+func parseShareLinkOption(flags *flag.FlagSet, args []string) (*shareLinkOption, error) {
 	option := &shareLinkOption{}
 	flags.StringVar(&option.vaultName, "v", "Personal", "vault name or ID")
-	flags.Var(&option.allFieldName, "field", "a field to share: username, password, url, notes or a custom field's label (repeat for more; default username and password)")
+	flags.Var(&option.fieldNames, "field", "a field to share: username, password, url, notes or a custom field's label (repeat for more; default username and password)")
 	flags.StringVar(&option.expiry, "expires", "7d", "1h, 1d, 7d or 30d")
 	flags.StringVar(&option.views, "views", "1", "how many times the link can be opened: 1-100 or unlimited")
 	flags.BoolVar(&option.isPassphrase, "passphrase", false, "also require a passphrase (asked for; send it to the recipient another way)")
 	flags.BoolVar(&option.isText, "text", false, "share text read from stdin instead of an item")
 	flags.StringVar(&option.title, "title", "", "title of a --text share")
 	var err error
-	if option.allPositional, err = parse(flags, allArg); err != nil {
+	if option.positionals, err = parse(flags, args); err != nil {
 		return nil, err
 	}
 	return option, nil
 }
 
 func (option *shareLinkOption) validateCreation() error {
-	if option.isText != (len(option.allPositional) == 0) || len(option.allPositional) > 1 {
+	if option.isText != (len(option.positionals) == 0) || len(option.positionals) > 1 {
 		return errUsage
 	}
-	if option.isText && len(option.allFieldName) > 0 {
+	if option.isText && len(option.fieldNames) > 0 {
 		return errors.New("--field is for items; --text shares one text")
 	}
 	var err error
-	if option.expiryDuration, err = sharelink.ParseExpiry(option.expiry); err != nil {
+	if option.expiryDuration, err = parseExpiry(option.expiry); err != nil {
 		return err
 	}
-	option.maxViews, err = sharelink.ParseViews(option.views)
+	option.maxViews, err = parseViews(option.views)
 	return err
 }
 
-func runShareLink(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
-	option, err := parseShareLinkOption(flags, allArg)
+func runShareLink(ctx context.Context, flags *flag.FlagSet, args []string) error {
+	option, err := parseShareLinkOption(flags, args)
 	if err != nil {
 		return err
 	}
-	if len(option.allPositional) > 0 && !option.isText {
-		switch option.allPositional[0] {
+	if len(option.positionals) > 0 && !option.isText {
+		switch option.positionals[0] {
 		case "open":
-			if len(option.allPositional) != 2 {
+			if len(option.positionals) != 2 {
 				return errUsage
 			}
-			return openShareLink(ctx, option.allPositional[1])
+			return openShareLink(ctx, option.positionals[1])
 		case "revoke":
-			if len(option.allPositional) != 2 {
+			if len(option.positionals) != 2 {
 				return errUsage
 			}
-			return revokeShareLink(ctx, option.allPositional[1])
+			return revokeShareLink(ctx, option.positionals[1])
 		}
 	}
 	if err := option.validateCreation(); err != nil {
@@ -158,7 +150,7 @@ func createShareLinkThroughApp(ctx context.Context, client *appClient, option *s
 	}
 	defer clear(passphrase)
 	change := &cliprotocol.ShareLinkChange{
-		Fields: option.allFieldName, ExpiresInSeconds: int64(option.expiryDuration / time.Second), MaxViews: option.maxViews, Passphrase: string(passphrase),
+		Fields: option.fieldNames, ExpiresInSeconds: int64(option.expiryDuration / time.Second), MaxViews: option.maxViews, Passphrase: string(passphrase),
 	}
 	request := cliprotocol.Request{Type: cliprotocol.TypeCreateShareLink, ShareLink: change}
 	if option.isText {
@@ -167,7 +159,7 @@ func createShareLinkThroughApp(ctx context.Context, client *appClient, option *s
 		}
 		change.Title = option.title
 	} else {
-		request.Vault, request.Query = option.vaultName, option.allPositional[0]
+		request.Vault, request.Query = option.vaultName, option.positionals[0]
 	}
 	fmt.Fprintln(os.Stderr, "Approve the share link in Hisar's approval window…")
 	var result cliprotocol.ShareLinkResult
@@ -203,8 +195,8 @@ func createShareLinkStandalone(ctx context.Context, option *shareLinkOption) err
 		}()
 		return finishSession(currentState, unlockedSession, err)
 	}
-	return runWithItem(ctx, option.vaultName, option.allPositional[0], func(unlockedSession *session.Session, vault *session.Vault, vaultItem *item.Item) error {
-		allFieldKey, err := sharelink.FindAllFieldKey(vaultItem, option.allFieldName)
+	return runWithItem(ctx, option.vaultName, option.positionals[0], func(unlockedSession *session.Session, vault *session.Vault, vaultItem *item.Item) error {
+		fieldKeys, err := sharelink.FindFieldKeys(vaultItem, option.fieldNames)
 		if err != nil {
 			return err
 		}
@@ -212,7 +204,7 @@ func createShareLinkStandalone(ctx context.Context, option *shareLinkOption) err
 			return err
 		}
 		defer clear(options.Passphrase)
-		created, err := unlockedSession.ShareItem(ctx, vault, vaultItem, allFieldKey, options)
+		created, err := unlockedSession.ShareItem(ctx, vault, vaultItem, fieldKeys, options)
 		if err != nil {
 			return err
 		}
@@ -262,14 +254,14 @@ func printCreatedShareLink(link cliprotocol.ShareLink) {
 	fmt.Println(link.URL)
 }
 
-func printAllShareLink(allShareLink []cliprotocol.ShareLink) error {
-	if len(allShareLink) == 0 {
+func printShareLinks(shareLinks []cliprotocol.ShareLink) error {
+	if len(shareLinks) == 0 {
 		fmt.Fprintln(os.Stderr, "No live share links.")
 		return nil
 	}
 	writer := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(writer, "ID\tTITLE\tSHARES\tVIEWS\tEXPIRES\tPASSPHRASE")
-	for _, link := range allShareLink {
+	for _, link := range shareLinks {
 		passphrase := "no"
 		if link.HasPassphrase {
 			passphrase = "yes"
@@ -279,45 +271,12 @@ func printAllShareLink(allShareLink []cliprotocol.ShareLink) error {
 	return writer.Flush()
 }
 
-func runListAllShareLink(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
-	if err := parseWithoutArgument(flags, allArg); err != nil {
-		return err
-	}
-	currentState, unlockedSession, err := unlock(ctx)
-	if err != nil {
-		return err
-	}
-	err = func() error {
-		allLink, err := unlockedSession.ListAllShareLink(ctx)
-		if err != nil {
-			return err
-		}
-		allShareLink := make([]cliprotocol.ShareLink, 0, len(allLink))
-		for index := range allLink {
-			allShareLink = append(allShareLink, convertToCommandLineShareLink(&allLink[index], false))
-		}
-		return printAllShareLink(allShareLink)
-	}()
-	return finishSession(currentState, unlockedSession, err)
-}
-
-func parseWithoutArgument(flags *flag.FlagSet, allArg []string) error {
-	allPositional, err := parse(flags, allArg)
-	if err == nil && len(allPositional) != 0 {
+func parseWithoutArgument(flags *flag.FlagSet, args []string) error {
+	positionals, err := parse(flags, args)
+	if err == nil && len(positionals) != 0 {
 		return errUsage
 	}
 	return err
-}
-
-func runListAllShareLinkThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, allArg []string) error {
-	if err := parseWithoutArgument(flags, allArg); err != nil {
-		return err
-	}
-	var result cliprotocol.ShareLinkListResult
-	if err := client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeListShareLink}, &result); err != nil {
-		return err
-	}
-	return printAllShareLink(result.ShareLinks)
 }
 
 func revokeShareLink(ctx context.Context, shareLinkID string) error {
@@ -384,4 +343,66 @@ func openShareLink(ctx context.Context, link string) error {
 		fmt.Fprintf(os.Stderr, "%d more views until %s.\n", viewsLeft, fetched.Link.ExpiresAt.Local().Format("2006-01-02 15:04"))
 	}
 	return nil
+}
+
+func parseExpiry(text string) (time.Duration, error) {
+	switch strings.ToLower(strings.TrimSpace(text)) {
+	case "1h", "1hour", "1 hour":
+		return sharelink.ExpiryHour, nil
+	case "1d", "1day", "1 day", "24h":
+		return sharelink.ExpiryDay, nil
+	case "7d", "7days", "7 days", "1w":
+		return sharelink.ExpiryWeek, nil
+	case "30d", "30days", "30 days":
+		return sharelink.ExpiryMonth, nil
+	}
+	return 0, fmt.Errorf("expiry %q: use 1h, 1d, 7d or 30d", text)
+}
+
+// parseViews returns 0 for unlimited.
+func parseViews(text string) (int, error) {
+	text = strings.ToLower(strings.TrimSpace(text))
+	if text == "unlimited" || text == "0" {
+		return 0, nil
+	}
+	views, err := strconv.Atoi(text)
+	if err != nil || views < 1 || views > sharelink.MaxViews {
+		return 0, fmt.Errorf("views %q: use a number from 1 to %d, or unlimited", text, sharelink.MaxViews)
+	}
+	return views, nil
+}
+
+func runListShareLinks(ctx context.Context, access backend, flags *flag.FlagSet, args []string) error {
+	if err := parseWithoutArgument(flags, args); err != nil {
+		return err
+	}
+	shareLinks, err := access.listShareLinks(ctx)
+	if err != nil {
+		return err
+	}
+	return printShareLinks(shareLinks)
+}
+
+// runWithItem unlocks, finds the vault and item, and runs action; share-link chooses its mode itself and needs the session.
+func runWithItem(ctx context.Context, vaultName, query string, action func(*session.Session, *session.Vault, *item.Item) error) error {
+	currentState, unlockedSession, err := unlock(ctx)
+	if err != nil {
+		return err
+	}
+	err = func() error {
+		vault, err := unlockedSession.FindVault(ctx, vaultName)
+		if err != nil {
+			return err
+		}
+		items, err := unlockedSession.ListItems(ctx, vault)
+		if err != nil {
+			return err
+		}
+		vaultItem, err := findItem(items, query)
+		if err != nil {
+			return err
+		}
+		return action(unlockedSession, vault, vaultItem)
+	}()
+	return finishSession(currentState, unlockedSession, err)
 }

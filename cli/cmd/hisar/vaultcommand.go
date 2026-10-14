@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"text/tabwriter"
 
 	"golang.org/x/term"
 
@@ -39,62 +40,53 @@ func addVaultCommandFlag(flags *flag.FlagSet) *vaultOption {
 	return option
 }
 
-func runVault(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
-	access := &sessionVaultAccess{}
-	return access.finish(runVaultWithAccess(ctx, access, flags, allArg))
-}
-
-func runVaultThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, allArg []string) error {
-	return runVaultWithAccess(ctx, appVaultAccess{client: client}, flags, allArg)
-}
-
-func runVaultWithAccess(ctx context.Context, access vaultAccess, flags *flag.FlagSet, allArg []string) error {
+func runVault(ctx context.Context, access backend, flags *flag.FlagSet, args []string) error {
 	option := addVaultCommandFlag(flags)
-	allPositional, err := parse(flags, allArg)
+	positionals, err := parse(flags, args)
 	if err != nil {
 		return err
 	}
-	if len(allPositional) == 0 {
+	if len(positionals) == 0 {
 		return errUsage
 	}
-	subcommand, allPositional := allPositional[0], allPositional[1:]
+	subcommand, positionals := positionals[0], positionals[1:]
 	switch subcommand {
 	case "create":
-		if len(allPositional) != 1 {
+		if len(positionals) != 1 {
 			return errUsage
 		}
-		vault, err := access.createVault(ctx, allPositional[0])
+		vault, err := access.createVault(ctx, positionals[0])
 		if err == nil {
 			fmt.Fprintf(os.Stderr, "Created vault %q. Share it with `hisar share %q <email>`.\n", vault.Name, vault.Name)
 		}
 		return err
 	case "rename":
-		if len(allPositional) < 1 || len(allPositional) > 2 {
+		if len(positionals) < 1 || len(positionals) > 2 {
 			return errUsage
 		}
-		return renameVaultInteractively(ctx, access, allPositional)
+		return renameVaultInteractively(ctx, access, positionals)
 	case "delete":
-		if len(allPositional) != 1 {
+		if len(positionals) != 1 {
 			return errUsage
 		}
-		return deleteVaultInteractively(ctx, access, allPositional[0], *option)
+		return deleteVaultInteractively(ctx, access, positionals[0], *option)
 	case "leave":
-		if len(allPositional) != 1 {
+		if len(positionals) != 1 {
 			return errUsage
 		}
-		return leaveVaultInteractively(ctx, access, allPositional[0], option.isConfirmed)
+		return leaveVaultInteractively(ctx, access, positionals[0], option.isConfirmed)
 	}
 	return errUsage
 }
 
-func renameVaultInteractively(ctx context.Context, access vaultAccess, allPositional []string) error {
-	vault, err := findAccessVault(ctx, access, allPositional[0])
+func renameVaultInteractively(ctx context.Context, access backend, positionals []string) error {
+	vault, err := findBackendVault(ctx, access, positionals[0])
 	if err != nil {
 		return err
 	}
 	newName := ""
-	if len(allPositional) == 2 {
-		newName = allPositional[1]
+	if len(positionals) == 2 {
+		newName = positionals[1]
 	} else if isInteractiveTerminal() {
 		if newName, err = promptRequired("New name", vault.Name); err != nil {
 			return err
@@ -121,17 +113,17 @@ func describeVaultMember(member cliprotocol.VaultMember) string {
 }
 
 func printMemberLosingAccess(actions cliprotocol.VaultActionsResult) {
-	if len(actions.AllMemberLosingAccess) == 0 {
+	if len(actions.MembersLosingAccess) == 0 {
 		return
 	}
 	fmt.Fprintln(os.Stderr, "These people lose access:")
-	for _, member := range actions.AllMemberLosingAccess {
+	for _, member := range actions.MembersLosingAccess {
 		fmt.Fprintf(os.Stderr, "  %s\n", describeVaultMember(member))
 	}
 }
 
-func deleteVaultInteractively(ctx context.Context, access vaultAccess, nameOrID string, option vaultOption) error {
-	vault, err := findAccessVault(ctx, access, nameOrID)
+func deleteVaultInteractively(ctx context.Context, access backend, nameOrID string, option vaultOption) error {
+	vault, err := findBackendVault(ctx, access, nameOrID)
 	if err != nil {
 		return err
 	}
@@ -148,7 +140,7 @@ func deleteVaultInteractively(ctx context.Context, access vaultAccess, nameOrID 
 		return errors.New("choose either --move-to or --delete-items")
 	}
 	if option.moveTo != "" {
-		target, err := findAccessVault(ctx, access, option.moveTo)
+		target, err := findBackendVault(ctx, access, option.moveTo)
 		if err != nil {
 			return err
 		}
@@ -209,7 +201,7 @@ func deleteVaultInteractively(ctx context.Context, access vaultAccess, nameOrID 
 }
 
 func findTargetName(actions cliprotocol.VaultActionsResult, vaultID string) string {
-	for _, target := range actions.AllTargetVault {
+	for _, target := range actions.TargetVaults {
 		if target.ID == vaultID {
 			return target.Name
 		}
@@ -219,10 +211,10 @@ func findTargetName(actions cliprotocol.VaultActionsResult, vaultID string) stri
 
 func chooseItemDeletion(actions cliprotocol.VaultActionsResult) (cliprotocol.VaultDeletion, error) {
 	fmt.Fprintln(os.Stderr, "What happens to its items?")
-	for index, target := range actions.AllTargetVault {
+	for index, target := range actions.TargetVaults {
 		fmt.Fprintf(os.Stderr, "  %d) Move them to %s\n", index+1, target.Name)
 	}
-	deleteChoice := len(actions.AllTargetVault) + 1
+	deleteChoice := len(actions.TargetVaults) + 1
 	fmt.Fprintf(os.Stderr, "  %d) Delete them with the vault\n", deleteChoice)
 	for {
 		answer, err := prompt("Choose", "1")
@@ -236,13 +228,13 @@ func chooseItemDeletion(actions cliprotocol.VaultActionsResult) (cliprotocol.Vau
 		case choice == deleteChoice:
 			return cliprotocol.VaultDeletion{IsDeletingItems: true}, nil
 		default:
-			return cliprotocol.VaultDeletion{MoveToVaultID: actions.AllTargetVault[choice-1].ID}, nil
+			return cliprotocol.VaultDeletion{MoveToVaultID: actions.TargetVaults[choice-1].ID}, nil
 		}
 	}
 }
 
-func leaveVaultInteractively(ctx context.Context, access vaultAccess, nameOrID string, isConfirmed bool) error {
-	vault, err := findAccessVault(ctx, access, nameOrID)
+func leaveVaultInteractively(ctx context.Context, access backend, nameOrID string, isConfirmed bool) error {
+	vault, err := findBackendVault(ctx, access, nameOrID)
 	if err != nil {
 		return err
 	}
@@ -266,5 +258,37 @@ func leaveVaultInteractively(ctx context.Context, access vaultAccess, nameOrID s
 		return err
 	}
 	fmt.Fprintf(os.Stderr, "You left %s.\n", vault.Name)
+	return nil
+}
+
+func runListVaults(ctx context.Context, access backend, flags *flag.FlagSet, args []string) error {
+	if _, err := parse(flags, args); err != nil {
+		return err
+	}
+	vaults, err := access.listVaults(ctx)
+	if err != nil {
+		return err
+	}
+	writer := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(writer, "NAME\tTYPE\tROLE\tID")
+	for _, vault := range vaults {
+		fmt.Fprintf(writer, "%s\t%s\t%s\t%s\n", vault.Name, vault.Type, vault.Role, vault.ID)
+	}
+	return writer.Flush()
+}
+
+func runCreateVault(ctx context.Context, access backend, flags *flag.FlagSet, args []string) error {
+	positionals, err := parse(flags, args)
+	if err != nil {
+		return err
+	}
+	if len(positionals) != 1 {
+		return errUsage
+	}
+	vault, err := access.createVault(ctx, positionals[0])
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "Created vault %q. Share it with `hisar share %q <email>`.\n", vault.Name, vault.Name)
 	return nil
 }

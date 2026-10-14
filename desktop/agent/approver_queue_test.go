@@ -83,7 +83,7 @@ func waitUntil(t *testing.T, condition func() bool, description string) {
 
 func (phone *fakePhone) answerRequest(index int, isApproved bool) {
 	phone.mutex.Lock()
-	decide := phone.allDecide[index]
+	decide := phone.decisions[index]
 	phone.mutex.Unlock()
 	decide(createPhoneAnswer(isApproved, false))
 }
@@ -93,7 +93,7 @@ func TestDeadlineEndsATouchIDCheckNobodyAnswers(t *testing.T) {
 	emitter := createFakeEmitter()
 	phone := createFakePhone()
 	phone.isAvailable = false
-	approver := CreateApprover(ApproverConfig{
+	approver := NewApprover(ApproverConfig{
 		Biometric: biometric, CancelBiometric: biometric.cancel, Emit: emitter.emit, ShowApprovalWindow: emitter.showWindow,
 		PhoneApprover: phone, Timeout: 200 * time.Millisecond,
 	})
@@ -105,7 +105,7 @@ func TestDeadlineEndsATouchIDCheckNobodyAnswers(t *testing.T) {
 		t.Errorf("result = %+v", result)
 	}
 	waitUntil(t, func() bool { return !biometric.isWaiting() }, "the Touch ID check was left open after the deadline")
-	if len(approver.ListAllPendingApproval()) != 0 {
+	if len(approver.ListPendingApprovals()) != 0 {
 		t.Error("the request is still pending")
 	}
 	if startCount, _ := phone.getStartAndFinishCount(); startCount != 0 {
@@ -117,7 +117,7 @@ func TestDeadlineAndPhoneDoNotWaitForTheWindow(t *testing.T) {
 	releaseChannel := make(chan struct{})
 	t.Cleanup(func() { close(releaseChannel) })
 	phone := createFakePhone()
-	approver := CreateApprover(ApproverConfig{
+	approver := NewApprover(ApproverConfig{
 		Biometric:            &fakeBiometric{isAvailable: true},
 		Emit:                 func(string, any) { <-releaseChannel },
 		ShowApprovalWindow:   func(bool) { <-releaseChannel },
@@ -149,7 +149,7 @@ func TestQueuedRequestsAreAnsweredOnThePhoneWhileTheFirstIsStuck(t *testing.T) {
 	biometric := createStuckBiometric()
 	emitter := createFakeEmitter()
 	phone := createFakePhone()
-	approver := CreateApprover(ApproverConfig{
+	approver := NewApprover(ApproverConfig{
 		Biometric: biometric, CancelBiometric: biometric.cancel, Emit: emitter.emit, PhoneApprover: phone,
 		Timeout: 500 * time.Millisecond, PhoneApprovalTimeout: 1500 * time.Millisecond,
 	})
@@ -203,7 +203,7 @@ func TestClientDisconnectEndsTouchIDAndWithdrawsThePhoneRequest(t *testing.T) {
 	biometric := createStuckBiometric()
 	emitter := createFakeEmitter()
 	phone := createFakePhone()
-	approver := CreateApprover(ApproverConfig{Biometric: biometric, CancelBiometric: biometric.cancel, Emit: emitter.emit, PhoneApprover: phone})
+	approver := NewApprover(ApproverConfig{Biometric: biometric, CancelBiometric: biometric.cancel, Emit: emitter.emit, PhoneApprover: phone})
 	ctx, cancel := context.WithCancel(context.Background())
 	resultChannel := startApproval(approver, ctx, createTestRequest())
 	event := waitForApprovalEvent(t, emitter)
@@ -217,7 +217,7 @@ func TestClientDisconnectEndsTouchIDAndWithdrawsThePhoneRequest(t *testing.T) {
 	waitUntil(t, func() bool { return !biometric.isWaiting() }, "the Touch ID check was left open after the client disconnected")
 	waitUntil(t, func() bool { _, finishCount := phone.getStartAndFinishCount(); return finishCount == 1 }, "the phone request was not withdrawn")
 	waitUntil(t, func() bool {
-		for _, eventName := range emitter.listAllEventName() {
+		for _, eventName := range emitter.listEventNames() {
 			if eventName == ApprovalClosedEventName {
 				return true
 			}
@@ -229,7 +229,7 @@ func TestClientDisconnectEndsTouchIDAndWithdrawsThePhoneRequest(t *testing.T) {
 func TestTouchIDOfAFinishedRequestNeverStarts(t *testing.T) {
 	biometric := createStuckBiometric()
 	emitter := createFakeEmitter()
-	approver := CreateApprover(ApproverConfig{Biometric: biometric, CancelBiometric: biometric.cancel, Emit: emitter.emit})
+	approver := NewApprover(ApproverConfig{Biometric: biometric, CancelBiometric: biometric.cancel, Emit: emitter.emit})
 	firstChannel := startApproval(approver, context.Background(), createTestRequest())
 	firstEvent := waitForApprovalEvent(t, emitter)
 	approver.Respond(firstEvent.RequestID, true, false)
@@ -250,17 +250,17 @@ func TestTouchIDOfAFinishedRequestNeverStarts(t *testing.T) {
 	}
 	approver.Respond(firstEvent.RequestID, false, false)
 	waitForResultWithin(t, firstChannel, 3*time.Second, "the first request")
-	allAuthorizeEnded := make(chan struct{})
+	authorizeEnded := make(chan struct{})
 	go func() {
-		approver.allAuthorizing.Wait()
-		close(allAuthorizeEnded)
+		approver.authorizing.Wait()
+		close(authorizeEnded)
 	}()
 	select {
-	case <-allAuthorizeEnded:
+	case <-authorizeEnded:
 	case <-biometric.startedChannel:
 		t.Error("Touch ID started for a request that had already ended")
 		biometric.cancel()
-		<-allAuthorizeEnded
+		<-authorizeEnded
 	}
 	if biometric.isWaiting() {
 		t.Error("a Touch ID check is still waiting")

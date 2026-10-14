@@ -18,19 +18,19 @@ type Version struct {
 func Parse(text string) (Version, error) {
 	core, _, _ := strings.Cut(text, "+")
 	core, preRelease, hasPreRelease := strings.Cut(core, "-")
-	allPart := strings.Split(core, ".")
-	if len(allPart) != 3 {
+	parts := strings.Split(core, ".")
+	if len(parts) != 3 {
 		return Version{}, fmt.Errorf("version %q is not MAJOR.MINOR.PATCH", text)
 	}
-	var allNumber [3]uint64
-	for index, part := range allPart {
+	var numbers [3]uint64
+	for index, part := range parts {
 		number, err := parseNumber(part)
 		if err != nil {
 			return Version{}, fmt.Errorf("version %q is not MAJOR.MINOR.PATCH", text)
 		}
-		allNumber[index] = number
+		numbers[index] = number
 	}
-	version := Version{Major: allNumber[0], Minor: allNumber[1], Patch: allNumber[2]}
+	version := Version{Major: numbers[0], Minor: numbers[1], Patch: numbers[2]}
 	if hasPreRelease {
 		for identifier := range strings.SplitSeq(preRelease, ".") {
 			if !isValidPreReleaseIdentifier(identifier) {

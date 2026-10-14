@@ -117,8 +117,8 @@ func findAppBundlePath(executablePath string) string {
 	return bundlePath + ".app"
 }
 
-func findAppBinary(allCandidatePath []string) string {
-	for _, candidatePath := range allCandidatePath {
+func findAppBinary(candidatePaths []string) string {
+	for _, candidatePath := range candidatePaths {
 		if candidatePath == "" {
 			continue
 		}
