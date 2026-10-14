@@ -38,6 +38,13 @@ type ApprovalRequest struct {
 	AllSecretName   []string
 	CommandLine     []string
 	ShareLink       *ShareLinkDescription
+	Export          *ExportDescription
+}
+
+// ExportDescription is an export of every vault to Path; IsPlain means the file is not encrypted.
+type ExportDescription struct {
+	IsPlain bool
+	Path    string
 }
 
 type ShareLinkDescription struct {

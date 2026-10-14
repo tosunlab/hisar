@@ -4,7 +4,7 @@ enum AccountLifecycleLogic {
     static let minimumPasswordLength = 10
     static let passwordChangeWarning = "Your other devices will be signed out. Sign in on them with the new master password."
     static let secretKeyReplacementWarning = "Your other devices will be signed out. Sign in on them with your master password and the new Secret Key from the new Emergency Kit. Your old Emergency Kit stops working."
-    static let exportAdvice = "Export your items first."
+    static let exportAdvice = "Export your items first in Settings → Account → Export data."
 
     static func describeNewPasswordProblem(currentPassword: String, newPassword: String, repeatedPassword: String) -> String? {
         if newPassword.isEmpty { return nil }

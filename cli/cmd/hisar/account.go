@@ -259,7 +259,7 @@ func printAccountDeletionPreview(output io.Writer, preview *session.AccountDelet
 		fmt.Fprintf(output, "  Invitations for you removed: %d\n", preview.ReceivedInvitationCount)
 	}
 	fmt.Fprintf(output, "  Devices signed out: %d, including this one\n", preview.DeviceCount)
-	fmt.Fprintln(output, "Export your items first if you want to keep a copy.")
+	fmt.Fprintln(output, "Export your items first with `hisar export` if you want to keep a copy.")
 }
 
 func describeDeletionVault(vault session.DeletionVault) string {

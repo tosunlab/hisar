@@ -8,6 +8,13 @@ struct ItemListView: View {
     @State private var isEditorShown = false
     @State private var isSharingShown = false
     @State private var isPersonalVaultNoteShown = false
+    @State private var vaultActions: VaultActions?
+    @State private var deletionActions: VaultActions?
+    @State private var isRenameShown = false
+    @State private var newName = ""
+    @State private var isLeaveConfirmationShown = false
+    @State private var blockedReason: String?
+    @Environment(\.dismiss) private var dismiss
 
     private var vault: VaultSummary? { model.findVault(vaultID: vaultID) }
     private var isShared: Bool { vault?.type == "shared" }
@@ -85,6 +92,55 @@ struct ItemListView: View {
                     .accessibilityIdentifier("add-item")
                 }
             }
+            if vault != nil {
+                ToolbarItem(placement: .topBarTrailing) {
+                    VaultActionsMenu(
+                        actions: vaultActions,
+                        rename: {
+                            newName = vault?.name ?? ""
+                            isRenameShown = true
+                        },
+                        delete: { deletionActions = $0 },
+                        leave: { isLeaveConfirmationShown = true },
+                        showBlockedReason: { blockedReason = $0 }
+                    )
+                }
+            }
+        }
+        .task(id: vault) {
+            vaultActions = await model.loadVaultActions(vaultID: vaultID)
+        }
+        .onChange(of: vault == nil) { _, isGone in
+            if isGone { dismiss() }
+        }
+        .sheet(item: $deletionActions) { actions in
+            VaultDeletionSheet(actions: actions) {}
+                .environmentObject(model)
+        }
+        .alert("Rename vault", isPresented: $isRenameShown) {
+            TextField("Vault name", text: $newName)
+                .accessibilityIdentifier("rename-vault-name")
+            Button("Cancel", role: .cancel) {}
+            Button("Rename") {
+                let enteredName = newName
+                Task { await model.renameVault(vaultID: vaultID, name: enteredName) }
+            }
+            .accessibilityIdentifier("rename-vault-confirm")
+        } message: {
+            Text("Everyone who shares the vault sees the new name.")
+        }
+        .alert("Can't do that", isPresented: Binding(get: { blockedReason != nil }, set: { if !$0 { blockedReason = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(blockedReason ?? "")
+        }
+        .confirmationDialog("Leave “\(vault?.name ?? "this vault")”?", isPresented: $isLeaveConfirmationShown, titleVisibility: .visible) {
+            Button("Leave vault", role: .destructive) {
+                Task { await model.leaveVault(vaultID: vaultID) }
+            }
+            .accessibilityIdentifier("leave-vault-confirm")
+        } message: {
+            Text("You lose access to its items on all your devices. An owner can invite you again.")
         }
         .sheet(isPresented: $isEditorShown) {
             ItemEditorView(vaultID: vaultID, originalItem: nil) { _ in }

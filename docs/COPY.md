@@ -25,7 +25,7 @@ One name for each thing, the same on the Mac, the iPhone, the browser extension,
 | "Your other devices will be signed out. Sign in on them with the new master password." / "…with your master password and the new Secret Key from the new Emergency Kit." | Logged out, session invalidated |
 | "This device was signed out. If your master password or Secret Key was changed on another device, sign in with the new one." | Session expired, unauthorized |
 | Delete account…, Delete account (the confirm button, after typing the email) | Close account, Remove account, Deactivate |
-| "Export your items first." (or a link to Settings → Export) | Back up your data |
+| "Export your items first in Settings → Export." (Mac), "… in Settings → Account → Export data." (iPhone), "… with `hisar export`" (CLI) | Back up your data |
 
 ## People and sharing
 
@@ -48,6 +48,23 @@ One name for each thing, the same on the Mac, the iPhone, the browser extension,
 | Other fields (custom fields below username and password) | Fields, Custom fields, Extra fields |
 | Secret (a field hidden until revealed) | Concealed, Hidden |
 | secret reference | secret URI, reference link |
+
+## Vaults and your data
+
+| Use | Not |
+|---|---|
+| Rename…, Delete vault…, Leave vault… (the vault's menu; ⋯ is labelled "Vault actions") | Remove vault, Archive, Exit vault |
+| Delete “Work”? · These people lose access: · Move its N items to [vault] · Delete the vault and its N items · Type Work to confirm · Delete vault | Are you sure?, Destroy, Wipe |
+| Leave “Work”? · You lose access to its items on all your devices. An owner can invite you again. · Leave vault | Unsubscribe, Quit vault |
+| Your Personal vault can't be deleted. It is the vault Hisar keeps for you alone, and logins saved from the browser and the iPhone go there. | Cannot delete default vault |
+| “Work” is no longer available: it was deleted, or you no longer have access to it. | Vault removed by admin |
+| Moved N items to Personal and deleted Work. · Deleted Work. · You left Work. | — |
+| Export (Settings section on the Mac), Export data… (iPhone, Settings → Account), `hisar export` | Backup, Download my data, Takeout |
+| encrypted export, export passphrase ("at least 10 characters"; Hisar can't recover it) | export password, backup key, master password (for the export's own passphrase) |
+| Plain JSON, with the warning "Plain JSON is not encrypted. Anyone who gets the file can read every password, one-time code secret and SSH private key in it. Delete it when you are done." | unencrypted backup, raw export |
+| Export with Touch ID… / Export with Face ID · Exported N items from M vaults to <path>. | — |
+| that passphrase doesn't open this export | wrong password, decryption failed |
+| `.env` import: "Store N values in Personal › shop", "Kept as they are: PORT", "Run a command with them: hisar run --env-file .env -- <command>" | migrate, vault-ify |
 
 ## Developer tools
 

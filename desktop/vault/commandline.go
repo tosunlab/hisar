@@ -103,6 +103,27 @@ func (bridge *CommandLineBridge) answer(request *cliprotocol.Request) (any, erro
 	case cliprotocol.TypeCreateVault:
 		summary, err := s.CreateVault(request.Name)
 		return cliprotocol.VaultResult{Vault: convertToCommandLineVault(summary)}, err
+	case cliprotocol.TypeGetVaultActions:
+		return s.getCommandLineVaultActions(request.VaultID)
+	case cliprotocol.TypeRenameVault:
+		summary, err := s.RenameVault(request.VaultID, request.Name)
+		return cliprotocol.VaultResult{Vault: convertToCommandLineVault(summary)}, err
+	case cliprotocol.TypeDeleteVault:
+		if request.VaultDeletion == nil {
+			return nil, cliprotocol.CreateError(cliprotocol.ErrorInvalidRequest, "say what happens to the vault's items")
+		}
+		result, err := s.DeleteVault(request.VaultID, VaultDeletionRequest{
+			MoveToVaultID: request.VaultDeletion.MoveToVaultID, IsDeletingItems: request.VaultDeletion.IsDeletingItems, ConfirmedName: request.VaultDeletion.ConfirmedName,
+		})
+		return cliprotocol.VaultDeletionResult{MovedCount: result.MovedCount}, err
+	case cliprotocol.TypeLeaveVault:
+		return nil, s.LeaveVault(request.VaultID)
+	case cliprotocol.TypeExport:
+		if request.Export == nil {
+			return nil, cliprotocol.CreateError(cliprotocol.ErrorInvalidRequest, "the export is missing")
+		}
+		result, err := s.writeExportFile(request.Export.Format, request.Export.Passphrase, request.Export.Path)
+		return cliprotocol.ExportResult{Path: result.Path, VaultCount: result.VaultCount, ItemCount: result.ItemCount}, err
 	case cliprotocol.TypeListItem:
 		allDetail, err := s.ListAllItem(request.VaultID)
 		if err != nil {
@@ -239,6 +260,12 @@ func (bridge *CommandLineBridge) saveItem(vaultID string, change *cliprotocol.It
 		}
 	}
 	detail.Title, detail.Username, detail.URLs, detail.Password, detail.Notes = change.Title, change.Username, change.URLs, change.Password, change.Notes
+	if change.Fields != nil {
+		detail.Fields = []ItemField{}
+		for _, field := range *change.Fields {
+			detail.Fields = append(detail.Fields, ItemField{Name: field.Name, Value: field.Value, Concealed: field.Concealed})
+		}
+	}
 	saved, err := bridge.service.SaveItem(vaultID, detail)
 	if err != nil {
 		return nil, err
@@ -285,6 +312,26 @@ func (s *Service) saveAllCommandLineImport(vaultID string, allImportedItem []ite
 		}
 		result.SavedCount++
 		s.replaceCachedItem(vault.ID, vaultItem)
+	}
+	return result, nil
+}
+
+func (s *Service) getCommandLineVaultActions(vaultID string) (cliprotocol.VaultActionsResult, error) {
+	actions, err := s.GetVaultActions(vaultID)
+	if err != nil {
+		return cliprotocol.VaultActionsResult{}, err
+	}
+	result := cliprotocol.VaultActionsResult{
+		Vault: convertToCommandLineVault(actions.Vault), CanRename: actions.CanRename,
+		CanDelete: actions.CanDelete, DeleteBlockedReason: actions.DeleteBlockedReason,
+		CanLeave: actions.CanLeave, LeaveBlockedReason: actions.LeaveBlockedReason,
+		AllMemberLosingAccess: []cliprotocol.VaultMember{}, AllTargetVault: []cliprotocol.Vault{},
+	}
+	for _, member := range actions.AllMemberLosingAccess {
+		result.AllMemberLosingAccess = append(result.AllMemberLosingAccess, cliprotocol.VaultMember{Name: member.Name, Email: member.Email, Role: member.Role})
+	}
+	for _, target := range actions.AllTargetVault {
+		result.AllTargetVault = append(result.AllTargetVault, convertToCommandLineVault(target))
 	}
 	return result, nil
 }

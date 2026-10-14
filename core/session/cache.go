@@ -60,6 +60,9 @@ func (s *Session) listAllProtoVault(ctx context.Context) ([]proto.Vault, error) 
 	}
 	if err == nil {
 		s.isOffline.Store(false)
+		if allCachedVault, cacheErr := s.Cache.ListAllVault(); cacheErr == nil {
+			s.noteAllRemovedVault(allCachedVault, allProtoVault)
+		}
 		return allProtoVault, s.Cache.ReplaceAllVault(allProtoVault)
 	}
 	if !client.IsUnreachable(err) {

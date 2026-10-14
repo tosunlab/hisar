@@ -24,10 +24,13 @@ import ItemEditor from "./ItemEditor.vue";
 import ImportPanel from "./ImportPanel.vue";
 import ItemTile from "./ItemTile.vue";
 import SettingsPanel from "./SettingsPanel.vue";
+import RemovedVaultBanner from "./RemovedVaultBanner.vue";
 import ShareInvitationBanner from "./ShareInvitationBanner.vue";
 import SharedLinksPanel from "./SharedLinksPanel.vue";
 import ShareLinkDialog from "./ShareLinkDialog.vue";
 import SSHKeyForm from "./SSHKeyForm.vue";
+import VaultDialog from "./VaultDialog.vue";
+import VaultMenu from "./VaultMenu.vue";
 import VaultSharingPanel from "./VaultSharingPanel.vue";
 
 const personalVaultNotice = "Personal vaults are private. Create a shared vault to share items with other people.";
@@ -42,6 +45,17 @@ const shortcutModifier = isMacPlatform() ? "⌘" : "Ctrl+";
 const allVisibleItem = computed(() => filterAllItem(store.allItem, store.searchQuery));
 const selectedVault = computed(() => store.allVault.find((vault) => vault.id === store.selectedVaultID));
 const canEdit = computed(() => selectedVault.value !== undefined && selectedVault.value.role !== "reader");
+const vaultMenu = ref<{ vaultID: string; x: number; y: number } | null>(null);
+const vaultMenuVault = computed(() => store.allVault.find((vault) => vault.id === vaultMenu.value?.vaultID));
+
+function openVaultMenuAtPointer(vaultID: string, event: MouseEvent): void {
+  vaultMenu.value = { vaultID, x: event.clientX, y: event.clientY };
+}
+
+function openVaultMenuBelow(event: MouseEvent): void {
+  const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  vaultMenu.value = { vaultID: store.selectedVaultID, x: Math.max(8, bounds.right - 168), y: bounds.bottom + 6 };
+}
 
 async function submitNewVault(): Promise<void> {
   if (await createVault(newVaultName.value)) {
@@ -111,6 +125,7 @@ onBeforeUnmount(() => {
       <div class="title-bar"></div>
       <div class="sidebar-brand"><HisarLogo :size="24" show-wordmark /></div>
       <ShareInvitationBanner />
+      <RemovedVaultBanner />
 
       <nav aria-label="Vaults">
         <p class="section-label">Vaults</p>
@@ -119,7 +134,9 @@ onBeforeUnmount(() => {
           :key="vault.id"
           class="vault"
           :class="{ selected: vault.id === store.selectedVaultID }"
+          :data-testid="`vault-${vault.id}`"
           @click="selectVault(vault.id)"
+          @contextmenu.prevent="openVaultMenuAtPointer(vault.id, $event)"
         >
           <AppIcon :name="vault.type === 'personal' ? 'user' : 'users'" />
           <span class="vault-name">{{ vault.name }}</span>
@@ -181,6 +198,18 @@ onBeforeUnmount(() => {
           <span v-else-if="selectedVault" class="private-badge" :title="personalVaultNotice" data-testid="personal-vault-private">
             <AppIcon name="lock" :size="13" /> Private
           </span>
+          <button
+            v-if="selectedVault"
+            class="ghost icon-button"
+            title="Vault actions"
+            aria-label="Vault actions"
+            aria-haspopup="menu"
+            data-testid="vault-actions"
+            @pointerdown.stop
+            @click="openVaultMenuBelow"
+          >
+            <AppIcon name="more" />
+          </button>
           <button
             class="primary icon-button"
             :disabled="!canEdit"
@@ -256,6 +285,8 @@ onBeforeUnmount(() => {
     <VaultSharingPanel v-if="store.isSharingOpen" />
     <ImportPanel v-if="store.isImportOpen" />
     <SharedLinksPanel v-if="store.isShareLinksOpen" />
+    <VaultDialog v-if="store.vaultDialog" :key="`${store.vaultDialog.mode}-${store.vaultDialog.actions.vault.id}`" :dialog="store.vaultDialog" />
+    <VaultMenu v-if="vaultMenu && vaultMenuVault" :vault="vaultMenuVault" :x="vaultMenu.x" :y="vaultMenu.y" @close="vaultMenu = null" />
     <ShareLinkDialog v-if="store.shareLinkDialog" :key="`${store.shareLinkDialog.mode}-${store.shareLinkDialog.itemID}`" />
   </div>
 </template>

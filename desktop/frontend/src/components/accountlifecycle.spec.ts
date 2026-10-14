@@ -169,7 +169,7 @@ describe("Delete account", () => {
     api.previewAccountDeletion.mockResolvedValue(createPreview());
     const wrapper = mount(DeleteAccountDialog);
     await flushPromises();
-    expect(wrapper.find('[data-testid="delete-account-export"]').text()).toContain("Export your items first.");
+    expect(wrapper.find('[data-testid="delete-account-export"]').text()).toContain("Export your items first in Settings → Export.");
     const consequences = wrapper.find('[data-testid="delete-account-consequences"]').text();
     expect(consequences).toContain("Deleted with their items: Personal.");
     expect(wrapper.find('[data-testid="delete-account-owned-shared-vault"]').text()).toContain("Family is deleted with its items: you are its only owner, so 2 people lose access");

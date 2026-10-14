@@ -83,7 +83,7 @@ func TestPrintAccountDeletionPreview(t *testing.T) {
 		"Share links revoked: 3",
 		"Invitations you sent withdrawn: 1",
 		"Devices signed out: 2, including this one",
-		"Export your items first",
+		"Export your items first with `hisar export`",
 	} {
 		if !strings.Contains(output.String(), expected) {
 			t.Errorf("preview misses %q:\n%s", expected, output.String())

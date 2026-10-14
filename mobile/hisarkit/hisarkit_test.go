@@ -284,6 +284,7 @@ func TestIntegrationMobileFlow(t *testing.T) {
 	if len(allItem) != 1 || allItem[0].Title != "GitHub" || allItem[0].Password != "" || allItem[0].OneTimePassword != "" || !allItem[0].HasOneTimePassword {
 		t.Errorf("items (without secrets) = %+v", allItem)
 	}
+	checkVaultManagementAndExport(t, hisar, personalID, password)
 	type oneTimeCode struct {
 		Code      string `json:"code"`
 		ExpiresAt string `json:"expiresAt"`

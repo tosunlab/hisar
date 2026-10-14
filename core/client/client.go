@@ -247,6 +247,14 @@ func (c *Client) RotateVault(ctx context.Context, vaultID string, request *proto
 	return c.sendRequest(ctx, "POST", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/rotate", nil, request, nil, nil)
 }
 
+func (c *Client) RenameVault(ctx context.Context, vaultID string, request *proto.RenameVaultRequest) error {
+	return c.sendRequest(ctx, "PUT", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/name", nil, request, nil, nil)
+}
+
+func (c *Client) DeleteVault(ctx context.Context, vaultID string, request *proto.DeleteVaultRequest) error {
+	return c.sendRequest(ctx, "POST", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/delete", nil, request, nil, nil)
+}
+
 func (c *Client) ListAllChange(ctx context.Context, vaultID string, since int64, limit int) (*proto.ChangesResponse, error) {
 	var response proto.ChangesResponse
 	query := url.Values{"since": {strconv.FormatInt(since, 10)}}

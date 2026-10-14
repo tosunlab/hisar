@@ -29,6 +29,13 @@ import type {
   ReceivedShareInvitation,
   SentShareInvitation,
   ShareAwaitingUnlock,
+  ExportOptions,
+  ExportRequest,
+  ExportResult,
+  RemovedVaultNotice,
+  VaultActions as BoundVaultActions,
+  VaultDeletionRequest,
+  VaultDeletionResult,
   ShareInvitations as BoundShareInvitations,
   ShareLink as BoundShareLink,
   ShareLinkField,
@@ -48,6 +55,12 @@ export type {
   CredentialChangeResult,
   DeletionVault,
   Device,
+  ExportOptions,
+  ExportRequest,
+  ExportResult,
+  RemovedVaultNotice,
+  VaultDeletionRequest,
+  VaultDeletionResult,
   Person,
   ImportDuplicate,
   ImportFormat,
@@ -91,6 +104,15 @@ function normalizeShareInvitations(invitations: BoundShareInvitations): ShareInv
     waiting: invitations.waiting ?? [],
     completionError: invitations.completionError,
   };
+}
+
+export interface VaultActions extends Omit<BoundVaultActions, "membersLosingAccess" | "targetVaults"> {
+  membersLosingAccess: VaultMember[];
+  targetVaults: VaultSummary[];
+}
+
+function normalizeVaultActions(actions: BoundVaultActions): VaultActions {
+  return { ...actions, membersLosingAccess: actions.membersLosingAccess ?? [], targetVaults: actions.targetVaults ?? [] };
 }
 
 export interface ShareLink extends Omit<BoundShareLink, "fieldLabels"> {
@@ -172,6 +194,13 @@ const wailsApi = {
   reportActivity: (): Promise<void> => Service.ReportActivity(),
   listAllVault: async (): Promise<VaultSummary[]> => (await Service.ListAllVault()) ?? [],
   createVault: (name: string): Promise<VaultSummary> => Service.CreateVault(name),
+  getVaultActions: async (vaultID: string): Promise<VaultActions> => normalizeVaultActions(await Service.GetVaultActions(vaultID)),
+  renameVault: (vaultID: string, name: string): Promise<VaultSummary> => Service.RenameVault(vaultID, name),
+  deleteVault: (vaultID: string, request: VaultDeletionRequest): Promise<VaultDeletionResult> => Service.DeleteVault(vaultID, request),
+  leaveVault: (vaultID: string): Promise<void> => Service.LeaveVault(vaultID),
+  listAllRemovedVault: async (): Promise<RemovedVaultNotice[]> => (await Service.ListAllRemovedVault()) ?? [],
+  getExportOptions: (): Promise<ExportOptions> => Service.GetExportOptions(),
+  exportAllData: (request: ExportRequest): Promise<ExportResult> => Service.ExportAllData(request),
   listAllItem: async (vaultID: string): Promise<ItemDetail[]> => ((await Service.ListAllItem(vaultID)) ?? []).map(normalizeItem),
   getItem: async (vaultID: string, itemID: string): Promise<ItemDetail> => normalizeItem(await Service.GetItem(vaultID, itemID)),
   saveItem: async (vaultID: string, detail: ItemDetail): Promise<ItemDetail> =>

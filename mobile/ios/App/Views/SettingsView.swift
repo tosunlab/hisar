@@ -175,6 +175,7 @@ struct SettingsView: View {
 
 struct AccountView: View {
     @EnvironmentObject private var model: AppModel
+    @State private var isExportShown = false
 
     var body: some View {
         List {
@@ -193,6 +194,16 @@ struct AccountView: View {
                 Text("To sign in on a new device you need your master password and your Secret Key. The Emergency Kit holds your Secret Key and has a space to write your master password.")
             }
             Section {
+                Button {
+                    isExportShown = true
+                } label: {
+                    Label("Export data…", systemImage: "square.and.arrow.up.on.square")
+                }
+                .accessibilityIdentifier("open-export")
+            } footer: {
+                Text("A copy of every vault you can open, encrypted with a passphrase you choose, or as plain JSON.")
+            }
+            Section {
                 NavigationLink(value: SettingsDestination.deleteAccount) {
                     Label("Delete account", systemImage: "person.crop.circle.badge.xmark")
                         .foregroundStyle(.red)
@@ -205,6 +216,10 @@ struct AccountView: View {
         }
         .applyThemedListStyle()
         .navigationTitle("Account")
+        .sheet(isPresented: $isExportShown) {
+            ExportDataView()
+                .environmentObject(model)
+        }
     }
 }
 

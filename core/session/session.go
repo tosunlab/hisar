@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	"github.com/google/uuid"
@@ -47,6 +48,10 @@ type Session struct {
 	// Cache, when set, stores the server's encrypted records; reads fall back to it while the server is unreachable.
 	Cache     Cache
 	isOffline atomic.Bool
+
+	removalMutex    sync.Mutex
+	allRemovedVault []RemovedVault
+	allOwnRemovalID map[string]bool
 }
 
 type Vault struct {

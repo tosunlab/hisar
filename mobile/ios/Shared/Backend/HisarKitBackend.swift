@@ -166,6 +166,38 @@ final class HisarKitBackend: VaultBackend {
         try callReturningNothing { try hisar.removeVaultMember(vaultID, accountID: accountID) }
     }
 
+    func getVaultActions(vaultID: String) throws -> VaultActions {
+        try decode(VaultActions.self, from: callReturningText { hisar.getVaultActions(vaultID, error: $0) })
+    }
+
+    func renameVault(vaultID: String, name: String) throws -> VaultSummary {
+        try decode(VaultSummary.self, from: callReturningText { hisar.renameVault(vaultID, name: name, error: $0) })
+    }
+
+    func deleteVault(vaultID: String, request: VaultDeletionRequest) throws -> VaultDeletionResult {
+        let requestJSON = String(decoding: try JSONEncoder().encode(request), as: UTF8.self)
+        return try decode(VaultDeletionResult.self, from: callReturningText { hisar.deleteVault(vaultID, requestJSON: requestJSON, error: $0) })
+    }
+
+    func leaveVault(vaultID: String) throws {
+        try callReturningNothing { try hisar.leaveVault(vaultID) }
+    }
+
+    func listAllRemovedVault() throws -> [RemovedVaultNotice] {
+        try decode([RemovedVaultNotice]?.self, from: callReturningText { hisar.listAllRemovedVault($0) }) ?? []
+    }
+
+    func getExportOptions() throws -> ExportOptions {
+        try decode(ExportOptions.self, from: callReturningText { hisar.getExportOptions($0) })
+    }
+
+    func exportAllData(format: ExportFormat, passphrase: String, password: String, directory: URL) throws -> ExportResult {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return try decode(ExportResult.self, from: callReturningText {
+            hisar.exportAllData(format.rawValue, passphrase: passphrase, password: password, directory: directory.path, error: $0)
+        })
+    }
+
     func listAllItem(vaultID: String) throws -> [ItemDetail] {
         try decode([ItemDetail]?.self, from: callReturningText { hisar.listAllItem(vaultID, error: $0) }) ?? []
     }

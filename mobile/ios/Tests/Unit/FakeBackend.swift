@@ -36,6 +36,9 @@ class FakeBackend: VaultBackend {
     var theme = VaultTheme.standard
     var isThemeSaveFailing = false
     var allCopiedReference: [String] = []
+    var allPendingRemovedVault: [RemovedVaultNotice] = []
+    var allDeletionRequest: [VaultDeletionRequest] = []
+    var exportOptions = ExportOptions(isBiometricAvailable: true, minPassphraseLength: 10)
     var currentPassword = FakeBackend.password
     var currentSecretKey = FakeBackend.secretKey
     var deletionPreview = AccountDeletionPreview(email: "alice@example.com")
@@ -572,6 +575,97 @@ extension FakeBackend {
         guard let device = allDevice.first(where: { $0.id == deviceID }) else { throw BackendError(message: "this device is already signed out") }
         guard !device.isCurrent else { throw BackendError(message: "sign out this device instead") }
         allDevice.removeAll { $0.id == deviceID }
+    }
+
+
+    func getVaultActions(vaultID: String) throws -> VaultActions {
+        record("getVaultActions")
+        try requireUnlocked()
+        guard let vault = allVault.first(where: { $0.id == vaultID }) else { throw BackendError(message: "vault not found") }
+        var actions = VaultActions(vault: vault, canRename: vault.role == Member.vaultRoleOwner)
+        let allMember = allVaultMemberByVaultID[vaultID] ?? []
+        actions.allMemberLosingAccess = allMember.filter { !$0.isCurrentUser }
+        if vault.type == "personal" {
+            actions.deleteBlockedReason = "Your Personal vault can't be deleted."
+            actions.leaveBlockedReason = "You can't leave your Personal vault."
+        } else if vault.role != Member.vaultRoleOwner {
+            actions.deleteBlockedReason = "Only an owner of this vault can delete it. You can leave it instead."
+            actions.canLeave = true
+        } else {
+            actions.canDelete = true
+            actions.leaveBlockedReason = "You are its only owner."
+            actions.allTargetVault = allVault.filter { $0.id != vaultID && $0.role != Member.vaultRoleReader }
+        }
+        return actions
+    }
+
+    func renameVault(vaultID: String, name: String) throws -> VaultSummary {
+        record("renameVault")
+        try requireUnlocked()
+        let name = name.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { throw BackendError(message: "Enter a vault name") }
+        guard let index = allVault.firstIndex(where: { $0.id == vaultID }), allVault[index].role == Member.vaultRoleOwner else {
+            throw BackendError(message: "Only an owner of the vault can do that")
+        }
+        allVault[index].name = name
+        return allVault[index]
+    }
+
+    func deleteVault(vaultID: String, request: VaultDeletionRequest) throws -> VaultDeletionResult {
+        record("deleteVault")
+        try requireUnlocked()
+        allDeletionRequest.append(request)
+        guard let vault = allVault.first(where: { $0.id == vaultID }) else { throw BackendError(message: "vault not found") }
+        let allItem = allItemByVaultID[vaultID] ?? []
+        var result = VaultDeletionResult()
+        if !request.moveToVaultID.isEmpty {
+            guard let target = allVault.first(where: { $0.id == request.moveToVaultID }) else { throw BackendError(message: "vault not found") }
+            allItemByVaultID[target.id, default: []].append(contentsOf: allItem)
+            result = VaultDeletionResult(movedCount: allItem.count, targetVaultName: target.name)
+        } else if request.isDeletingItems {
+            guard request.confirmedName.trimmingCharacters(in: .whitespaces) == vault.name else {
+                throw BackendError(message: "Type the vault's name to delete it together with its items")
+            }
+        } else if !allItem.isEmpty {
+            throw BackendError(message: "This vault has items")
+        }
+        allVault.removeAll { $0.id == vaultID }
+        allItemByVaultID[vaultID] = nil
+        return result
+    }
+
+    func leaveVault(vaultID: String) throws {
+        record("leaveVault")
+        try requireUnlocked()
+        allVault.removeAll { $0.id == vaultID }
+        allItemByVaultID[vaultID] = nil
+    }
+
+    func listAllRemovedVault() throws -> [RemovedVaultNotice] {
+        record("listAllRemovedVault")
+        try requireUnlocked()
+        let allNotice = allPendingRemovedVault
+        allPendingRemovedVault = []
+        return allNotice
+    }
+
+    func getExportOptions() throws -> ExportOptions {
+        record("getExportOptions")
+        return exportOptions
+    }
+
+    func exportAllData(format: ExportFormat, passphrase: String, password: String, directory: URL) throws -> ExportResult {
+        record("exportAllData")
+        try requireUnlocked()
+        if password.isEmpty {
+            guard isBiometricSucceeding else { throw BackendError(message: "Face ID was cancelled.") }
+        } else if password != Self.password {
+            throw BackendError(message: "Incorrect email, master password or Secret Key")
+        }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let path = directory.appendingPathComponent(format == .plain ? "Hisar export (not encrypted).json" : "Hisar export.hisar")
+        try Data("{}".utf8).write(to: path)
+        return ExportResult(path: path.path, vaultCount: allVault.count, itemCount: allItemByVaultID.values.map(\.count).reduce(0, +))
     }
 
     func exportEmergencyKit(password: String, directory: URL) throws -> EmergencyKitExport {

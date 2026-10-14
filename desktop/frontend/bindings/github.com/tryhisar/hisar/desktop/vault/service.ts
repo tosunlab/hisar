@@ -123,6 +123,10 @@ export function DeletePasskey(vaultID: string, itemID: string, credentialID: str
     return $Call.ByID(1337987028, vaultID, itemID, credentialID);
 }
 
+export function DeleteVault(vaultID: string, request: $models.VaultDeletionRequest): $CancellablePromise<$models.VaultDeletionResult> {
+    return $Call.ByID(1572618096, vaultID, request);
+}
+
 export function DisableBiometricUnlock(): $CancellablePromise<$models.Status> {
     return $Call.ByID(3456338865);
 }
@@ -149,6 +153,14 @@ export function EnableNewAccountBiometricUnlock(): $CancellablePromise<$models.S
 }
 
 /**
+ * ExportAllData asks for Touch ID or the master password, then saves every vault the user can read where they choose.
+ * Nothing about plans or the server's answer limits it: offline it exports this device's encrypted cache.
+ */
+export function ExportAllData(request: $models.ExportRequest): $CancellablePromise<$models.ExportResult> {
+    return $Call.ByID(1152117132, request);
+}
+
+/**
  * ForgetNewAccountSecretKey drops the sign-up Secret Key and account unlock key once onboarding is done.
  */
 export function ForgetNewAccountSecretKey(): $CancellablePromise<void> {
@@ -164,6 +176,10 @@ export function GeneratePassword(config: $models.PasswordConfig): $CancellablePr
  */
 export function GenerateSSHKey(vaultID: string, title: string, keyType: string): $CancellablePromise<$models.ItemDetail> {
     return $Call.ByID(3886306793, vaultID, title, keyType);
+}
+
+export function GetExportOptions(): $CancellablePromise<$models.ExportOptions> {
+    return $Call.ByID(1327267779);
 }
 
 export function GetItem(vaultID: string, itemID: string): $CancellablePromise<$models.ItemDetail> {
@@ -185,6 +201,10 @@ export function GetTheme(): $CancellablePromise<$models.Theme> {
     return $Call.ByID(3918327958);
 }
 
+export function GetVaultActions(vaultID: string): $CancellablePromise<$models.VaultActions> {
+    return $Call.ByID(3537251462, vaultID);
+}
+
 /**
  * ImportSSHKey stores an existing OpenSSH or PEM private key, decrypted with the passphrase if it has one.
  */
@@ -197,6 +217,10 @@ export function ImportSSHKey(vaultID: string, title: string, privateKeyText: str
  */
 export function InvitePerson(email: string): $CancellablePromise<void> {
     return $Call.ByID(3011347471, email);
+}
+
+export function LeaveVault(vaultID: string): $CancellablePromise<void> {
+    return $Call.ByID(532267662, vaultID);
 }
 
 /**
@@ -229,6 +253,14 @@ export function ListAllItem(vaultID: string): $CancellablePromise<$models.ItemDe
  */
 export function ListAllPerson(): $CancellablePromise<$models.Person[] | null> {
     return $Call.ByID(1826275351);
+}
+
+/**
+ * ListAllRemovedVault returns, once, the vaults that disappeared since the last call because someone else deleted
+ * them or removed the user.
+ */
+export function ListAllRemovedVault(): $CancellablePromise<$models.RemovedVaultNotice[] | null> {
+    return $Call.ByID(1267828210);
 }
 
 /**
@@ -285,6 +317,10 @@ export function PreviewImport(vaultID: string): $CancellablePromise<$models.Impo
  */
 export function RemoveVaultMember(vaultID: string, accountID: string): $CancellablePromise<void> {
     return $Call.ByID(1680404315, vaultID, accountID);
+}
+
+export function RenameVault(vaultID: string, name: string): $CancellablePromise<$models.VaultSummary> {
+    return $Call.ByID(2091758903, vaultID, name);
 }
 
 /**

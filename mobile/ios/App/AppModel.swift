@@ -47,6 +47,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var allWaitingInvitation: [WaitingShareInvitation] = []
     @Published private(set) var allShareAwaitingUnlock: [ShareAwaitingUnlock] = []
     @Published private(set) var remoteChangeCount = 0
+    @Published private(set) var allRemovedVaultNotice: [RemovedVaultNotice] = []
 
     var receivedInvitationCount: Int { allReceivedInvitation.count }
 
@@ -134,6 +135,7 @@ final class AppModel: ObservableObject {
             lockCount += 1
             allReceivedInvitation = []
             allWaitingInvitation = []
+            allRemovedVaultNotice = []
             selectedTab = .vaults
             clearAllApproval()
         }
@@ -327,14 +329,15 @@ final class AppModel: ObservableObject {
         guard status.isUnlocked else { return }
         isRefreshing = true
         defer { isRefreshing = false }
-        guard let result = await perform(isBusyShown: false, { backend -> ([VaultSummary], [String: [ItemDetail]], [StoredPasskey], ShareInvitations?) in
+        guard let result = await perform(isBusyShown: false, { backend -> ([VaultSummary], [String: [ItemDetail]], [StoredPasskey], ShareInvitations?, [RemovedVaultNotice]) in
             let shareInvitations = try? backend.listAllShareInvitation()
             let allVault = try backend.listAllVault()
+            let allRemovedVault = (try? backend.listAllRemovedVault()) ?? []
             var allItemByVaultID: [String: [ItemDetail]] = [:]
             for vault in allVault {
                 allItemByVaultID[vault.id] = try backend.listAllItem(vaultID: vault.id)
             }
-            return (allVault, allItemByVaultID, (try? backend.listAllPasskey()) ?? [], shareInvitations)
+            return (allVault, allItemByVaultID, (try? backend.listAllPasskey()) ?? [], shareInvitations, allRemovedVault)
         }) else {
             refreshStatus()
             return
@@ -345,6 +348,7 @@ final class AppModel: ObservableObject {
         if let shareInvitations = result.3 {
             applyShareInvitations(shareInvitations)
         }
+        addAllRemovedVaultNotice(result.4)
         refreshStatus()
         await publishAllCredentialIdentity()
     }
@@ -474,6 +478,83 @@ final class AppModel: ObservableObject {
         guard await perform({ try $0.removeVaultMember(vaultID: vaultID, accountID: accountID) }) != nil else { return false }
         await refreshVault(vaultID: vaultID)
         return true
+    }
+
+    func loadVaultActions(vaultID: String) async -> VaultActions? {
+        await perform(isBusyShown: false) { try $0.getVaultActions(vaultID: vaultID) }
+    }
+
+    @discardableResult
+    func renameVault(vaultID: String, name: String) async -> Bool {
+        guard let renamed = await perform({ try $0.renameVault(vaultID: vaultID, name: name) }) else { return false }
+        if let index = allVault.firstIndex(where: { $0.id == vaultID }) {
+            allVault[index].name = renamed.name
+            allVault.sort { Self.sortVault($0, $1) }
+        }
+        showNotice("Renamed the vault to \(renamed.name)")
+        return true
+    }
+
+    @discardableResult
+    func deleteVault(vaultID: String, request: VaultDeletionRequest) async -> Bool {
+        let vaultName = findVault(vaultID: vaultID)?.name ?? "the vault"
+        guard let result = await perform({ try $0.deleteVault(vaultID: vaultID, request: request) }) else { return false }
+        removeVaultLocally(vaultID: vaultID)
+        await refreshAll()
+        if result.movedCount > 0 {
+            showNotice("Moved \(Self.describeItemCount(result.movedCount)) to \(result.targetVaultName) and deleted \(vaultName).")
+        } else {
+            showNotice("Deleted \(vaultName).")
+        }
+        return true
+    }
+
+    @discardableResult
+    func leaveVault(vaultID: String) async -> Bool {
+        let vaultName = findVault(vaultID: vaultID)?.name ?? "the vault"
+        guard await perform({ try $0.leaveVault(vaultID: vaultID) }) != nil else { return false }
+        removeVaultLocally(vaultID: vaultID)
+        await refreshAll()
+        showNotice("You left \(vaultName).")
+        return true
+    }
+
+    private func removeVaultLocally(vaultID: String) {
+        allVault.removeAll { $0.id == vaultID }
+        allItemByVaultID[vaultID] = nil
+        allPasskey.removeAll { $0.vaultID == vaultID }
+    }
+
+    private func addAllRemovedVaultNotice(_ allNotice: [RemovedVaultNotice]) {
+        for notice in allNotice where !allRemovedVaultNotice.contains(where: { $0.id == notice.id }) {
+            allRemovedVaultNotice.append(notice)
+        }
+    }
+
+    func dismissRemovedVaultNotice(_ notice: RemovedVaultNotice) {
+        allRemovedVaultNotice.removeAll { $0.id == notice.id }
+    }
+
+    static func describeItemCount(_ count: Int) -> String {
+        count == 1 ? "1 item" : "\(count) items"
+    }
+
+    func loadExportOptions() async -> ExportOptions? {
+        await perform(isBusyShown: false) { try $0.getExportOptions() }
+    }
+
+    // The export goes into a folder of its own in the temporary directory; removeExport deletes that folder.
+    func exportAllData(format: ExportFormat, passphrase: String, password: String) async -> ExportResult? {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("Export-\(UUID().uuidString)", isDirectory: true)
+        let result = await perform { try $0.exportAllData(format: format, passphrase: format == .encrypted ? passphrase : "", password: password, directory: directory) }
+        if result == nil {
+            try? FileManager.default.removeItem(at: directory)
+        }
+        return result
+    }
+
+    func removeExport(_ result: ExportResult) {
+        try? FileManager.default.removeItem(at: URL(fileURLWithPath: result.path).deletingLastPathComponent())
     }
 
     func saveItem(vaultID: String, item: ItemDetail) async -> ItemDetail? {

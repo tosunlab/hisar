@@ -84,6 +84,29 @@ export interface Device {
     "isCurrent": boolean;
 }
 
+/**
+ * ExportOptions tells the Settings screen whether Touch ID can approve an export or the master password is needed.
+ */
+export interface ExportOptions {
+    "isBiometricAvailable": boolean;
+    "minPassphraseLength": number;
+}
+
+/**
+ * ExportRequest: Passphrase protects an encrypted export; Password is the master password when Touch ID is unavailable.
+ */
+export interface ExportRequest {
+    "format": string;
+    "passphrase": string;
+    "password": string;
+}
+
+export interface ExportResult {
+    "path": string;
+    "vaultCount": number;
+    "itemCount": number;
+}
+
 export interface ImportDuplicate {
     "title": string;
     "username": string;
@@ -228,6 +251,15 @@ export interface ReceivedShareInvitation {
 }
 
 /**
+ * RemovedVaultNotice is a vault that disappeared on a sync: deleted by an owner, or the user's access was removed.
+ */
+export interface RemovedVaultNotice {
+    "id": string;
+    "name": string;
+    "message": string;
+}
+
+/**
  * SentShareInvitation: State is "pending" until the person accepts, then "accepted" until this app completes the share;
  * RecipientName and AcceptedAt (RFC 3339) are empty while pending.
  */
@@ -365,6 +397,35 @@ export interface UpdateStatus {
     "isAvailable": boolean;
     "isSignedIn": boolean;
     "isAutomaticCheckEnabled": boolean;
+}
+
+/**
+ * VaultActions is what the vault's menu needs: who may rename, delete or leave it, what deleting it means, and why not.
+ * AllMemberLosingAccess leaves out the current user; AllTargetVault holds the vaults its items can move to.
+ */
+export interface VaultActions {
+    "vault": VaultSummary;
+    "canRename": boolean;
+    "canDelete": boolean;
+    "deleteBlockedReason": string;
+    "canLeave": boolean;
+    "leaveBlockedReason": string;
+    "membersLosingAccess": VaultMember[] | null;
+    "targetVaults": VaultSummary[] | null;
+}
+
+/**
+ * VaultDeletionRequest: MoveToVaultID moves every item there first; IsDeletingItems needs ConfirmedName to be the vault's name.
+ */
+export interface VaultDeletionRequest {
+    "moveToVaultId": string;
+    "isDeletingItems": boolean;
+    "confirmedName": string;
+}
+
+export interface VaultDeletionResult {
+    "movedCount": number;
+    "targetVaultName": string;
 }
 
 export interface VaultMember {

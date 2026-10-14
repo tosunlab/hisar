@@ -736,6 +736,101 @@ struct EmergencyKitExport: Codable, Equatable {
     var emergencyKitPath: String
 }
 
+// VaultActions says who may rename, delete or leave a vault and what deleting it means; members leave out the user.
+struct VaultActions: Codable, Hashable {
+    var vault: VaultSummary
+    var canRename: Bool
+    var canDelete: Bool
+    var deleteBlockedReason: String
+    var canLeave: Bool
+    var leaveBlockedReason: String
+    var allMemberLosingAccess: [Member]
+    var allTargetVault: [VaultSummary]
+
+    enum CodingKeys: String, CodingKey {
+        case vault, canRename, canDelete, deleteBlockedReason, canLeave, leaveBlockedReason
+        case allMemberLosingAccess = "membersLosingAccess"
+        case allTargetVault = "targetVaults"
+    }
+
+    init(vault: VaultSummary, canRename: Bool = false, canDelete: Bool = false, deleteBlockedReason: String = "", canLeave: Bool = false, leaveBlockedReason: String = "", allMemberLosingAccess: [Member] = [], allTargetVault: [VaultSummary] = []) {
+        self.vault = vault
+        self.canRename = canRename
+        self.canDelete = canDelete
+        self.deleteBlockedReason = deleteBlockedReason
+        self.canLeave = canLeave
+        self.leaveBlockedReason = leaveBlockedReason
+        self.allMemberLosingAccess = allMemberLosingAccess
+        self.allTargetVault = allTargetVault
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        vault = try container.decode(VaultSummary.self, forKey: .vault)
+        canRename = try container.decodeIfPresent(Bool.self, forKey: .canRename) ?? false
+        canDelete = try container.decodeIfPresent(Bool.self, forKey: .canDelete) ?? false
+        deleteBlockedReason = try container.decodeIfPresent(String.self, forKey: .deleteBlockedReason) ?? ""
+        canLeave = try container.decodeIfPresent(Bool.self, forKey: .canLeave) ?? false
+        leaveBlockedReason = try container.decodeIfPresent(String.self, forKey: .leaveBlockedReason) ?? ""
+        allMemberLosingAccess = try container.decodeIfPresent([Member].self, forKey: .allMemberLosingAccess) ?? []
+        allTargetVault = try container.decodeIfPresent([VaultSummary].self, forKey: .allTargetVault) ?? []
+    }
+}
+
+// VaultDeletionRequest: moveToVaultID moves every item first; isDeletingItems needs confirmedName, the vault's name.
+struct VaultDeletionRequest: Codable, Equatable {
+    var moveToVaultID: String = ""
+    var isDeletingItems = false
+    var confirmedName = ""
+
+    enum CodingKeys: String, CodingKey {
+        case moveToVaultID = "moveToVaultId"
+        case isDeletingItems, confirmedName
+    }
+}
+
+struct VaultDeletionResult: Codable, Equatable {
+    var movedCount: Int
+    var targetVaultName: String
+
+    init(movedCount: Int = 0, targetVaultName: String = "") {
+        self.movedCount = movedCount
+        self.targetVaultName = targetVaultName
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        movedCount = try container.decodeIfPresent(Int.self, forKey: .movedCount) ?? 0
+        targetVaultName = try container.decodeIfPresent(String.self, forKey: .targetVaultName) ?? ""
+    }
+}
+
+// RemovedVaultNotice is a vault someone else deleted, or that the user lost access to.
+struct RemovedVaultNotice: Codable, Hashable, Identifiable {
+    var id: String
+    var name: String
+    var message: String
+}
+
+struct ExportOptions: Codable, Equatable {
+    var isBiometricAvailable: Bool
+    var minPassphraseLength: Int
+}
+
+struct ExportResult: Codable, Equatable {
+    var path: String
+    var vaultCount: Int
+    var itemCount: Int
+}
+
+enum ExportFormat: String, CaseIterable, Identifiable {
+    case encrypted
+    case plain
+
+    var id: String { rawValue }
+    var label: String { self == .encrypted ? "Encrypted export" : "Plain JSON" }
+}
+
 struct CredentialChangeResult: Codable, Equatable {
     var status: VaultStatus
     var secretKey: String
