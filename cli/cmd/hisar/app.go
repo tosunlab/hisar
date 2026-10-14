@@ -2,12 +2,10 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -24,10 +22,9 @@ const (
 )
 
 type appClient struct {
-	connection            net.Conn
+	protocolClient        *cliprotocol.Client
 	socketPath            string
 	hello                 cliprotocol.HelloResult
-	nextID                int
 	isApprovalNoticeShown bool
 }
 
@@ -70,7 +67,7 @@ func dialApp(socketPath string) (*appClient, error) {
 	if err != nil {
 		return nil, &appUnreachableError{socketPath: socketPath}
 	}
-	client := &appClient{connection: connection, socketPath: socketPath}
+	client := &appClient{protocolClient: cliprotocol.NewClient(connection), socketPath: socketPath}
 	if err := client.callWithTimeout(context.Background(), cliprotocol.Request{Type: cliprotocol.TypeHello}, &client.hello, appHelloTimeout); err != nil {
 		connection.Close()
 		var responseError *cliprotocol.ResponseError
@@ -87,7 +84,7 @@ func dialApp(socketPath string) (*appClient, error) {
 }
 
 func (client *appClient) Close() error {
-	return client.connection.Close()
+	return client.protocolClient.Close()
 }
 
 func (client *appClient) showApprovalNotice() {
@@ -108,39 +105,8 @@ func (client *appClient) call(ctx context.Context, request cliprotocol.Request, 
 }
 
 func (client *appClient) callWithTimeout(ctx context.Context, request cliprotocol.Request, result any, timeout time.Duration) error {
-	client.nextID++
-	request.ID = strconv.Itoa(client.nextID)
 	request.ClientPlatform, request.ClientVersion = getPlatform(), getClientVersion()
-	client.connection.SetDeadline(time.Now().Add(timeout))
-	stopClosing := context.AfterFunc(ctx, func() { client.connection.SetDeadline(time.Now()) })
-	defer stopClosing()
-	if err := cliprotocol.WriteJSON(client.connection, request); err != nil {
-		return client.describeConnectionError(ctx, err)
-	}
-	var response cliprotocol.Response
-	if err := cliprotocol.ReadJSON(client.connection, &response); err != nil {
-		return client.describeConnectionError(ctx, err)
-	}
-	if response.ID != request.ID {
-		return errors.New("the Hisar app answered another request")
-	}
-	if response.Error != nil {
-		return response.Error
-	}
-	if result != nil && len(response.Result) > 0 {
-		return json.Unmarshal(response.Result, result)
-	}
-	return nil
-}
-
-func (client *appClient) describeConnectionError(ctx context.Context, err error) error {
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
-	if errors.Is(err, os.ErrDeadlineExceeded) {
-		return errors.New("the Hisar app did not answer in time")
-	}
-	return fmt.Errorf("lost the connection to the Hisar app: %w", err)
+	return client.protocolClient.Call(ctx, request, result, timeout)
 }
 
 func findAppVault(ctx context.Context, client *appClient, nameOrID string) (cliprotocol.Vault, error) {

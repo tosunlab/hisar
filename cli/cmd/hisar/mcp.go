@@ -23,7 +23,7 @@ func dialAppForAgent(context.Context) (mcpserver.AppConnection, error) {
 	if err != nil {
 		return nil, err
 	}
-	return mcpserver.NewSocketConnection(client.connection, appRequestTimeout), nil
+	return mcpserver.NewProtocolConnection(client.protocolClient, appRequestTimeout), nil
 }
 
 // runMCP serves MCP on stdin and stdout until the agent closes stdin; stdout carries only protocol messages.

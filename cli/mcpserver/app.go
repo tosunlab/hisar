@@ -2,12 +2,9 @@ package mcpserver
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
-	"os"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -30,53 +27,26 @@ type AppConnection interface {
 type AppDialer func(ctx context.Context) (AppConnection, error)
 
 type socketConnection struct {
-	connection net.Conn
-	timeout    time.Duration
-	lastID     int
+	client  *cliprotocol.Client
+	timeout time.Duration
 }
 
 // NewSocketConnection speaks the CLI protocol on a connection the caller opened; timeout bounds each request.
 func NewSocketConnection(connection net.Conn, timeout time.Duration) AppConnection {
-	return &socketConnection{connection: connection, timeout: timeout}
+	return &socketConnection{client: cliprotocol.NewClient(connection), timeout: timeout}
+}
+
+// NewProtocolConnection uses a client that already said hello to the app.
+func NewProtocolConnection(client *cliprotocol.Client, timeout time.Duration) AppConnection {
+	return &socketConnection{client: client, timeout: timeout}
 }
 
 func (connection *socketConnection) Call(ctx context.Context, request cliprotocol.Request, result any) error {
-	connection.lastID++
-	request.ID = strconv.Itoa(connection.lastID)
-	connection.connection.SetDeadline(time.Now().Add(connection.timeout))
-	stopClosing := context.AfterFunc(ctx, func() { connection.connection.SetDeadline(time.Now()) })
-	defer stopClosing()
-	if err := cliprotocol.WriteJSON(connection.connection, request); err != nil {
-		return describeConnectionError(ctx, err)
-	}
-	var response cliprotocol.Response
-	if err := cliprotocol.ReadJSON(connection.connection, &response); err != nil {
-		return describeConnectionError(ctx, err)
-	}
-	if response.ID != request.ID {
-		return errors.New("the Hisar app answered another request")
-	}
-	if response.Error != nil {
-		return response.Error
-	}
-	if result != nil && len(response.Result) > 0 {
-		return json.Unmarshal(response.Result, result)
-	}
-	return nil
+	return connection.client.Call(ctx, request, result, connection.timeout)
 }
 
 func (connection *socketConnection) Close() error {
-	return connection.connection.Close()
-}
-
-func describeConnectionError(ctx context.Context, err error) error {
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
-	if errors.Is(err, os.ErrDeadlineExceeded) {
-		return errors.New("the Hisar app did not answer in time")
-	}
-	return fmt.Errorf("lost the connection to the Hisar app: %w", err)
+	return connection.client.Close()
 }
 
 // appSession connects on the first call, introduces the agent, and connects again after a lost connection.

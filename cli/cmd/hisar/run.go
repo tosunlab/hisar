@@ -30,15 +30,6 @@ type exitCodeError int
 
 func (code exitCodeError) Error() string { return fmt.Sprintf("exit code %d", int(code)) }
 
-type multipleValue []string
-
-func (values *multipleValue) String() string { return strings.Join(*values, ", ") }
-
-func (values *multipleValue) Set(value string) error {
-	*values = append(*values, value)
-	return nil
-}
-
 type runOption struct {
 	environmentFiles  []string
 	isMaskingDisabled bool
@@ -58,7 +49,7 @@ var isForegroundJob = checkForegroundJob
 
 func parseRunOption(flags *flag.FlagSet, args []string) (runOption, error) {
 	var option runOption
-	environmentFiles := multipleValue{}
+	environmentFiles := repeatedFlag{}
 	flags.Var(&environmentFiles, "env-file", "read variables from this dotenv file (repeatable; later files win)")
 	flags.BoolVar(&option.isMaskingDisabled, "no-masking", false, "connect the command straight to the terminal; its output is not masked")
 	if err := flags.Parse(args); err != nil {

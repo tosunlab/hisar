@@ -23,15 +23,6 @@ import (
 
 const maxPassphraseAttempt = 3
 
-type repeatedFlag []string
-
-func (values *repeatedFlag) String() string { return strings.Join(*values, ",") }
-
-func (values *repeatedFlag) Set(value string) error {
-	*values = append(*values, value)
-	return nil
-}
-
 type shareLinkOption struct {
 	vaultName      string
 	fieldNames     repeatedFlag

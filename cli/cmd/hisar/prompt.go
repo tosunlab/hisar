@@ -105,3 +105,13 @@ func parse(flags *flag.FlagSet, args []string) ([]string, error) {
 }
 
 var errUsage = errors.New("usage")
+
+// repeatedFlag collects every value of a flag given more than once.
+type repeatedFlag []string
+
+func (values *repeatedFlag) String() string { return strings.Join(*values, ",") }
+
+func (values *repeatedFlag) Set(value string) error {
+	*values = append(*values, value)
+	return nil
+}
