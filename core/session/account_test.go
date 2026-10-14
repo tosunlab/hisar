@@ -9,9 +9,9 @@ import (
 	"sync/atomic"
 	"testing"
 
-	"github.com/tryhisar/hisar/core/client"
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
-	"github.com/tryhisar/hisar/core/proto"
 )
 
 func TestStrongerArgon2ParamsNeverLowersTheCost(t *testing.T) {
@@ -38,7 +38,7 @@ func TestWrongCurrentPasswordSendsNothing(t *testing.T) {
 	}
 	keyset, _ := crypt.GenerateKeyset()
 	encryptedKeyset, _ := keyset.Encrypt(derivedKeys.AccountUnlockKey, "ABC123")
-	account := proto.Account{AccountID: "ABC123", Email: "a@example.com", Argon2: crypt.MinArgon2Params, Salt: salt, EncKeyset: encryptedKeyset, PublicKeys: keyset.GetAllPublicKey("ABC123")}
+	account := apitypes.Account{AccountID: "ABC123", Email: "a@example.com", Argon2: crypt.MinArgon2Params, Salt: salt, EncKeyset: encryptedKeyset, PublicKeys: keyset.GetAllPublicKey("ABC123")}
 	var reauthenticationCount atomic.Int32
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/account", func(writer http.ResponseWriter, request *http.Request) {
@@ -51,7 +51,7 @@ func TestWrongCurrentPasswordSendsNothing(t *testing.T) {
 	})
 	server := httptest.NewServer(mux)
 	defer server.Close()
-	signedIn := &Session{Client: client.Create(server.URL), AccountID: "ABC123", Email: "a@example.com", Keyset: keyset}
+	signedIn := &Session{Client: apiclient.Create(server.URL), AccountID: "ABC123", Email: "a@example.com", Keyset: keyset}
 	ctx := context.Background()
 
 	if _, err := signedIn.ChangeMasterPassword(ctx, []byte("wrong master password"), []byte("a new master password"), secretKey); !errors.Is(err, ErrBadCredentials) {

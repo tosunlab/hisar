@@ -18,7 +18,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"golang.org/x/time/rate"
 
-	"github.com/tryhisar/hisar/core/proto"
+	"github.com/tryhisar/hisar/core/apitypes"
 )
 
 func TestSecretsCreatedOnceWithPrivateMode(t *testing.T) {
@@ -136,7 +136,7 @@ func TestErrorHandler(t *testing.T) {
 	}
 	for _, testCase := range allCase {
 		status, body := sendGet(t, app, testCase.path, nil)
-		var decoded proto.Error
+		var decoded apitypes.Error
 		if status != testCase.status || json.Unmarshal([]byte(body), &decoded) != nil || (testCase.error != "" && decoded.Error != testCase.error) {
 			t.Errorf("%s: %d %s", testCase.path, status, body)
 		}
@@ -250,7 +250,7 @@ func TestValidators(t *testing.T) {
 	if normalizeEmail("  Alice@Example.COM ") != "alice@example.com" {
 		t.Error("normalizeEmail")
 	}
-	if isValidDevice(proto.DeviceInfo{}) || isValidDevice(proto.DeviceInfo{Name: string(make([]byte, 101)), Platform: "x"}) {
+	if isValidDevice(apitypes.DeviceInfo{}) || isValidDevice(apitypes.DeviceInfo{Name: string(make([]byte, 101)), Platform: "x"}) {
 		t.Error("invalid device accepted")
 	}
 }

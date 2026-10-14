@@ -19,10 +19,10 @@ import (
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/time/rate"
 
-	"github.com/tryhisar/hisar/core/client"
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/item"
-	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/core/session"
 	"github.com/tryhisar/hisar/core/sharelink"
 )
@@ -90,7 +90,7 @@ func TestShareLinkLifecycle(t *testing.T) {
 	baseURL, server, _ := setupServer(t)
 	server.shareLinkReadLimiter = createIPLimiter(rate.Inf, 1)
 	ctx := context.Background()
-	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", proto.RoleAdmin)
+	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", apitypes.RoleAdmin)
 	vault, vaultItem := createSharedItem(t, alice)
 
 	created, err := alice.ShareItem(ctx, vault, vaultItem, []string{sharelink.FieldUsername, sharelink.FieldPassword}, session.ShareLinkOptions{Expiry: sharelink.ExpiryDay, MaxViews: 2})
@@ -109,7 +109,7 @@ func TestShareLinkLifecycle(t *testing.T) {
 		strings.Join(allLink[0].FieldLabels, ",") != "username,password" || allLink[0].HasPassphrase {
 		t.Fatalf("listed %+v", allLink)
 	}
-	storedLink := requireValue[[]proto.ShareLink](t)(alice.Client.ListAllShareLink(ctx))
+	storedLink := requireValue[[]apitypes.ShareLink](t)(alice.Client.ListAllShareLink(ctx))
 	if bytes.Contains(storedLink[0].EncryptedLabel, []byte("GitHub")) {
 		t.Fatal("the label is stored in the clear")
 	}
@@ -162,7 +162,7 @@ func TestShareLinkLifecycle(t *testing.T) {
 	if err := alice.RevokeShareLink(ctx, textLink.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := alice.RevokeShareLink(ctx, textLink.ID); !client.IsStatus(err, http.StatusNotFound) {
+	if err := alice.RevokeShareLink(ctx, textLink.ID); !apiclient.IsStatus(err, http.StatusNotFound) {
 		t.Fatalf("second revoke: %v", err)
 	}
 	if _, err := sharelink.Fetch(ctx, nil, textLink.URL); !errors.Is(err, sharelink.ErrGone) {
@@ -174,7 +174,7 @@ func TestShareLinkViewsAreCountedOnceUnderConcurrency(t *testing.T) {
 	baseURL, server, _ := setupServer(t)
 	server.shareLinkReadLimiter = createIPLimiter(rate.Inf, 1)
 	ctx := context.Background()
-	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", proto.RoleAdmin)
+	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", apitypes.RoleAdmin)
 	vault, vaultItem := createSharedItem(t, alice)
 	const maxViews, requestCount = 5, 40
 	created, err := alice.ShareItem(ctx, vault, vaultItem, []string{sharelink.FieldPassword}, session.ShareLinkOptions{Expiry: sharelink.ExpiryHour, MaxViews: maxViews})
@@ -221,8 +221,8 @@ func TestShareLinkNotFoundIsAlwaysTheSame(t *testing.T) {
 	baseURL, server, databaseURL := setupServer(t)
 	server.shareLinkReadLimiter = createIPLimiter(rate.Inf, 1)
 	ctx := context.Background()
-	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", proto.RoleAdmin)
-	bob := signUpTestAccount(t, ctx, server, baseURL, "bob@example.com", proto.RoleMember)
+	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", apitypes.RoleAdmin)
+	bob := signUpTestAccount(t, ctx, server, baseURL, "bob@example.com", apitypes.RoleMember)
 	vault, vaultItem := createSharedItem(t, alice)
 	share := func() *session.ShareLink {
 		created, err := alice.ShareItem(ctx, vault, vaultItem, []string{sharelink.FieldPassword}, defaultShareLinkOptions)
@@ -248,10 +248,10 @@ func TestShareLinkNotFoundIsAlwaysTheSame(t *testing.T) {
 	}
 
 	live := share()
-	if err := bob.RevokeShareLink(ctx, live.ID); !client.IsStatus(err, http.StatusNotFound) {
+	if err := bob.RevokeShareLink(ctx, live.ID); !apiclient.IsStatus(err, http.StatusNotFound) {
 		t.Fatalf("revoking another account's link: %v", err)
 	}
-	if err := alice.RevokeShareLink(ctx, expired.ID); !client.IsStatus(err, http.StatusNotFound) {
+	if err := alice.RevokeShareLink(ctx, expired.ID); !apiclient.IsStatus(err, http.StatusNotFound) {
 		t.Fatalf("revoking an expired link: %v", err)
 	}
 	if listed := requireValue[[]session.ShareLink](t)(bob.ListAllShareLink(ctx)); len(listed) != 0 {
@@ -265,7 +265,7 @@ func TestShareLinkNotFoundIsAlwaysTheSame(t *testing.T) {
 func TestCreateShareLinkValidation(t *testing.T) {
 	baseURL, server, _ := setupServer(t)
 	ctx := context.Background()
-	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", proto.RoleAdmin)
+	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", apitypes.RoleAdmin)
 	valid := func() map[string]any {
 		return map[string]any{"ciphertext": []byte{1, 2, 3}, "encryptedLabel": []byte{4}, "expiresInSeconds": 3600, "maxViews": 1, "passphrase": nil}
 	}
@@ -310,7 +310,7 @@ func TestCreateShareLinkValidation(t *testing.T) {
 func TestShareLinkRateLimits(t *testing.T) {
 	baseURL, server, _ := setupServer(t)
 	ctx := context.Background()
-	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", proto.RoleAdmin)
+	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", apitypes.RoleAdmin)
 	vault, vaultItem := createSharedItem(t, alice)
 
 	server.shareLinkAccountLimiter = createDailyLimiter(2)
@@ -322,7 +322,7 @@ func TestShareLinkRateLimits(t *testing.T) {
 		}
 		links = append(links, created)
 	}
-	if _, err := alice.ShareItem(ctx, vault, vaultItem, []string{sharelink.FieldPassword}, defaultShareLinkOptions); !client.IsStatus(err, http.StatusTooManyRequests) {
+	if _, err := alice.ShareItem(ctx, vault, vaultItem, []string{sharelink.FieldPassword}, defaultShareLinkOptions); !apiclient.IsStatus(err, http.StatusTooManyRequests) {
 		t.Fatalf("third link of the day: %v", err)
 	}
 
@@ -341,15 +341,15 @@ func TestShareLinkRateLimits(t *testing.T) {
 func TestLiveShareLinkCap(t *testing.T) {
 	baseURL, server, _ := setupServer(t)
 	ctx := context.Background()
-	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", proto.RoleAdmin)
+	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", apitypes.RoleAdmin)
 	server.shareLinkAccountLimiter = createDailyLimiter(maxLiveShareLinkCount + 10)
-	request := &proto.CreateShareLinkRequest{Ciphertext: []byte{1}, EncryptedLabel: []byte{1}, ExpiresInSeconds: 3600, MaxViews: 1}
+	request := &apitypes.CreateShareLinkRequest{Ciphertext: []byte{1}, EncryptedLabel: []byte{1}, ExpiresInSeconds: 3600, MaxViews: 1}
 	for index := range maxLiveShareLinkCount {
 		if _, err := alice.Client.CreateShareLink(ctx, request); err != nil {
 			t.Fatalf("link %d: %v", index, err)
 		}
 	}
-	if _, err := alice.Client.CreateShareLink(ctx, request); !client.IsStatus(err, http.StatusTooManyRequests) {
+	if _, err := alice.Client.CreateShareLink(ctx, request); !apiclient.IsStatus(err, http.StatusTooManyRequests) {
 		t.Fatalf("link over the cap: %v", err)
 	}
 }
@@ -358,7 +358,7 @@ func TestShareLinkEvents(t *testing.T) {
 	baseURL, server, _ := setupServer(t)
 	server.shareLinkReadLimiter = createIPLimiter(rate.Inf, 1)
 	ctx := context.Background()
-	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", proto.RoleAdmin)
+	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", apitypes.RoleAdmin)
 	vault, vaultItem := createSharedItem(t, alice)
 	subscriber, isSubscribed := server.events.subscribe(alice.AccountID, nil)
 	if !isSubscribed {
@@ -373,7 +373,7 @@ func TestShareLinkEvents(t *testing.T) {
 	for _, step := range []string{"create", "view"} {
 		select {
 		case event := <-subscriber.channel:
-			if event.name != proto.EventShareLinksChanged {
+			if event.name != apitypes.EventShareLinksChanged {
 				t.Fatalf("%s: event %s", step, event.name)
 			}
 		case <-time.After(5 * time.Second):

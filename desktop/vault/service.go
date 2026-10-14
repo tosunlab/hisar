@@ -13,12 +13,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/cache"
-	"github.com/tryhisar/hisar/core/client"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/localstate"
-	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/core/session"
 	"github.com/tryhisar/hisar/core/totp"
 )
@@ -119,8 +119,8 @@ func (s *Service) notifySessionChange() {
 	}
 }
 
-func (s *Service) getDeviceInfo() proto.DeviceInfo {
-	return proto.DeviceInfo{Name: s.config.DeviceName, Platform: s.config.Platform}
+func (s *Service) getDeviceInfo() apitypes.DeviceInfo {
+	return apitypes.DeviceInfo{Name: s.config.DeviceName, Platform: s.config.Platform}
 }
 
 func (s *Service) buildStatus() Status {
@@ -453,7 +453,7 @@ func (s *Service) Unlock(password string) (Status, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	unlocked, err := session.Unlock(ctx, apiClient, accountCache, passwordBytes, secretKey)
-	if client.IsStatus(err, http.StatusUnauthorized) {
+	if apiclient.IsStatus(err, http.StatusUnauthorized) {
 		s.endSignedOutSession(token)
 		return s.GetStatus(), nil
 	}
@@ -555,8 +555,8 @@ func convertToVaultSummary(vault *session.Vault, itemCount int) VaultSummary {
 // sortAllVaultSummary puts personal vaults first, then sorts by name.
 func sortAllVaultSummary(allSummary []VaultSummary) {
 	slices.SortFunc(allSummary, func(first, second VaultSummary) int {
-		if (first.Type == proto.VaultPersonal) != (second.Type == proto.VaultPersonal) {
-			if first.Type == proto.VaultPersonal {
+		if (first.Type == apitypes.VaultPersonal) != (second.Type == apitypes.VaultPersonal) {
+			if first.Type == apitypes.VaultPersonal {
 				return -1
 			}
 			return 1
@@ -576,7 +576,7 @@ func (s *Service) CreateVault(name string) (VaultSummary, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	vault, createErr := s.unlockedSession.CreateVault(ctx, strings.TrimSpace(name), proto.VaultShared)
+	vault, createErr := s.unlockedSession.CreateVault(ctx, strings.TrimSpace(name), apitypes.VaultShared)
 	if err := s.state.Save(); createErr == nil && err != nil {
 		return VaultSummary{}, err
 	}
@@ -917,11 +917,11 @@ func convertError(err error) error {
 		return errors.New("the server returned older data than this device has seen; contact Hisar support")
 	case errors.Is(err, session.ErrKeyMismatch):
 		return errors.New("the server returned keys that do not match your account; contact Hisar support")
-	case client.IsStatus(err, http.StatusForbidden):
+	case apiclient.IsStatus(err, http.StatusForbidden):
 		return errors.New("you do not have permission to do that")
-	case client.IsStatus(err, http.StatusTooManyRequests):
+	case apiclient.IsStatus(err, http.StatusTooManyRequests):
 		return errors.New("too many attempts; wait a minute and try again")
-	case client.IsUnreachable(err):
+	case apiclient.IsUnreachable(err):
 		return ErrOffline
 	}
 	return err

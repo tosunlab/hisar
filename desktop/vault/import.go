@@ -10,10 +10,10 @@ import (
 	"slices"
 	"time"
 
-	"github.com/tryhisar/hisar/core/client"
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/importer"
 	"github.com/tryhisar/hisar/core/item"
-	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/core/session"
 )
 
@@ -152,7 +152,7 @@ func (s *Service) checkEditableVault(vaultID string) error {
 	if err != nil {
 		return err
 	}
-	if vault.Role == proto.VaultReader {
+	if vault.Role == apitypes.VaultReader {
 		return errReadOnlyVault
 	}
 	return nil
@@ -176,7 +176,7 @@ func (s *Service) loadEditableVaultItem(ctx context.Context, vaultID string) (*s
 	if err != nil {
 		return nil, nil, err
 	}
-	if vault.Role == proto.VaultReader {
+	if vault.Role == apitypes.VaultReader {
 		return nil, nil, errReadOnlyVault
 	}
 	allExisting, err := s.unlockedSession.ListAllItem(ctx, vault)
@@ -291,8 +291,8 @@ func (s *Service) ContinueImport() (ImportProgress, error) {
 
 // isImportStoppingError: these failures would repeat for every item, so the import pauses and can be continued.
 func isImportStoppingError(err error) bool {
-	return err != nil && (client.IsUnreachable(err) || client.IsStatus(err, http.StatusUnauthorized) ||
-		client.IsStatus(err, http.StatusForbidden) || client.IsStatus(err, http.StatusTooManyRequests) || errors.Is(err, context.DeadlineExceeded))
+	return err != nil && (apiclient.IsUnreachable(err) || apiclient.IsStatus(err, http.StatusUnauthorized) ||
+		apiclient.IsStatus(err, http.StatusForbidden) || apiclient.IsStatus(err, http.StatusTooManyRequests) || errors.Is(err, context.DeadlineExceeded))
 }
 
 func (s *Service) buildImportProgress() ImportProgress {

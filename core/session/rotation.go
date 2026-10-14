@@ -8,9 +8,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/tryhisar/hisar/core/client"
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
-	"github.com/tryhisar/hisar/core/proto"
 )
 
 const maxRotationAttemptCount = 3
@@ -21,9 +21,9 @@ type AccessGrant struct {
 	Role      string
 }
 
-func (s *Session) listAllProtoItem(ctx context.Context, vault *Vault) ([]proto.Item, error) {
+func (s *Session) listAllProtoItem(ctx context.Context, vault *Vault) ([]apitypes.Item, error) {
 	var since int64
-	var allProtoItem []proto.Item
+	var allProtoItem []apitypes.Item
 	for {
 		changeResponse, err := s.Client.ListAllChange(ctx, vault.ID, since, 0)
 		if err != nil {
@@ -44,13 +44,13 @@ func (s *Session) RotateVaultKey(ctx context.Context, vault *Vault, allAccessGra
 	if err != nil {
 		return err
 	}
-	allMemberByID := map[string]proto.Member{}
+	allMemberByID := map[string]apitypes.Member{}
 	for _, member := range allMember {
 		allMemberByID[member.AccountID] = member
 	}
 
 	newVaultKey := crypt.GenerateKey()
-	request := &proto.RotateVaultRequest{}
+	request := &apitypes.RotateVaultRequest{}
 	if request.EncName, err = crypt.SealVaultName(newVaultKey, vault.ID, []byte(vault.Name)); err != nil {
 		return err
 	}
@@ -71,7 +71,7 @@ func (s *Session) RotateVaultKey(ctx context.Context, vault *Vault, allAccessGra
 		if err != nil {
 			return err
 		}
-		request.AllAccess = append(request.AllAccess, proto.RotatedAccess{AccountID: member.AccountID, Role: grant.Role, WrappedKey: wrappedKey})
+		request.AllAccess = append(request.AllAccess, apitypes.RotatedAccess{AccountID: member.AccountID, Role: grant.Role, WrappedKey: wrappedKey})
 	}
 
 	allProtoItem, err := s.listAllProtoItem(ctx, vault)
@@ -94,7 +94,7 @@ func (s *Session) RotateVaultKey(ctx context.Context, vault *Vault, allAccessGra
 	return nil
 }
 
-func reencryptItem(vault *Vault, newVaultKey []byte, protoItem *proto.Item) (*proto.RotatedItem, error) {
+func reencryptItem(vault *Vault, newVaultKey []byte, protoItem *apitypes.Item) (*apitypes.RotatedItem, error) {
 	overview, err := crypt.OpenItemPart(vault.Key, vault.ID, protoItem.ID, protoItem.Revision, crypt.Overview, protoItem.Overview)
 	if err != nil {
 		return nil, fmt.Errorf("item %s: %w", protoItem.ID, err)
@@ -108,7 +108,7 @@ func reencryptItem(vault *Vault, newVaultKey []byte, protoItem *proto.Item) (*pr
 	if err != nil {
 		return nil, err
 	}
-	rotatedItem := &proto.RotatedItem{ID: protoItem.ID, BaseRevision: protoItem.Revision, Revision: revision.String(), Deleted: protoItem.Deleted}
+	rotatedItem := &apitypes.RotatedItem{ID: protoItem.ID, BaseRevision: protoItem.Revision, Revision: revision.String(), Deleted: protoItem.Deleted}
 	if rotatedItem.Overview, err = crypt.SealItemPart(newVaultKey, vault.ID, protoItem.ID, rotatedItem.Revision, crypt.Overview, overview); err != nil {
 		return nil, err
 	}
@@ -142,7 +142,7 @@ func (s *Session) RemoveVaultMember(ctx context.Context, vault *Vault, accountID
 			return fmt.Errorf("member %s: %w", accountID, ErrNotFound)
 		}
 		err = s.RotateVaultKey(ctx, vault, allAccessGrant)
-		if client.IsStatus(err, http.StatusConflict) && attempt < maxRotationAttemptCount {
+		if apiclient.IsStatus(err, http.StatusConflict) && attempt < maxRotationAttemptCount {
 			continue
 		}
 		return err

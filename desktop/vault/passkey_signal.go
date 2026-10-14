@@ -6,8 +6,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/item"
-	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/desktop/browser"
 	"github.com/tryhisar/hisar/desktop/passkey"
 )
@@ -125,7 +125,7 @@ func (s *Service) applyPasskeySignal(ctx context.Context, signalType string, req
 	}
 	var allPendingSave []pendingPasskeySignalSave
 	for vaultID, allItem := range s.allItemByVaultID {
-		if vault := s.allVaultByID[vaultID]; vault == nil || vault.Role == proto.VaultReader {
+		if vault := s.allVaultByID[vaultID]; vault == nil || vault.Role == apitypes.VaultReader {
 			continue
 		}
 		for _, vaultItem := range allItem {

@@ -6,8 +6,8 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
-	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
@@ -22,10 +22,10 @@ func (s *Server) handleRotateVault(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	if role != proto.VaultOwner {
+	if role != apitypes.VaultOwner {
 		return createAPIError(fiber.StatusForbidden, "owner only")
 	}
-	var request proto.RotateVaultRequest
+	var request apitypes.RotateVaultRequest
 	if err := decodeBodyWithLimit(c, &request, maxRotationBody); err != nil {
 		return err
 	}
@@ -50,7 +50,7 @@ func (s *Server) handleRotateVault(c fiber.Ctx) error {
 		} else if err != nil {
 			return err
 		}
-		if access.AccountID == currentSession.AccountID && access.Role == proto.VaultOwner {
+		if access.AccountID == currentSession.AccountID && access.Role == apitypes.VaultOwner {
 			isRotatingOwnerKept = true
 		}
 		allMember = append(allMember, store.Member{AccountID: access.AccountID, Role: access.Role, WrappedKey: access.WrappedKey})

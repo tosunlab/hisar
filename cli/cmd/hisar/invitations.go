@@ -10,10 +10,10 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/tryhisar/hisar/core/client"
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/crypt"
-	"github.com/tryhisar/hisar/core/proto"
 )
 
 const shortInvitationIDLength = 8
@@ -21,7 +21,7 @@ const shortInvitationIDLength = 8
 var errPersonalVaultShare = errors.New("personal vaults cannot be shared; create one with `hisar vault-create`")
 
 func isValidVaultRole(role string) bool {
-	return role == proto.VaultOwner || role == proto.VaultEditor || role == proto.VaultReader
+	return role == apitypes.VaultOwner || role == apitypes.VaultEditor || role == apitypes.VaultReader
 }
 
 // getShareArgument returns the vault and email from the arguments, asking for what is missing.
@@ -198,7 +198,7 @@ func collectInvitationID(invitationList cliprotocol.InvitationListResult, isSent
 	return allInvitationID
 }
 
-func convertToCommandLineInvitationList(invitationList *proto.ShareInvitationList, allVaultNameByID map[string]string) cliprotocol.InvitationListResult {
+func convertToCommandLineInvitationList(invitationList *apitypes.ShareInvitationList, allVaultNameByID map[string]string) cliprotocol.InvitationListResult {
 	result := cliprotocol.InvitationListResult{}
 	for _, received := range invitationList.AllReceived {
 		result.Received = append(result.Received, cliprotocol.ReceivedInvitation{
@@ -242,7 +242,7 @@ func runListAllPerson(ctx context.Context, flags *flag.FlagSet, allArg []string)
 }
 
 func runShare(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
-	role := flags.String("r", proto.VaultEditor, "owner, editor or reader")
+	role := flags.String("r", apitypes.VaultEditor, "owner, editor or reader")
 	allPositional, err := parse(flags, allArg)
 	if err != nil {
 		return err
@@ -260,7 +260,7 @@ func runShare(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
 		if err != nil {
 			return err
 		}
-		if vault.Type == proto.VaultPersonal {
+		if vault.Type == apitypes.VaultPersonal {
 			return errPersonalVaultShare
 		}
 		if err := unlockedSession.InviteToVault(ctx, vault, email, *role); err != nil {
@@ -288,7 +288,7 @@ func runInvite(ctx context.Context, flags *flag.FlagSet, allArg []string) error 
 	if err != nil {
 		return err
 	}
-	if _, err := createAuthedClient(currentState).Invite(ctx, &proto.InviteRequest{Email: strings.TrimSpace(email)}); err != nil {
+	if _, err := createAuthedClient(currentState).Invite(ctx, &apitypes.InviteRequest{Email: strings.TrimSpace(email)}); err != nil {
 		return err
 	}
 	fmt.Fprintf(os.Stderr, "Invitation sent to %s.\n", strings.TrimSpace(email))
@@ -296,10 +296,10 @@ func runInvite(ctx context.Context, flags *flag.FlagSet, allArg []string) error 
 }
 
 // completeAllAcceptedShare asks for the master password only when someone accepted an invitation this account sent.
-func completeAllAcceptedShare(ctx context.Context, invitationList *proto.ShareInvitationList) (map[string]string, error) {
+func completeAllAcceptedShare(ctx context.Context, invitationList *apitypes.ShareInvitationList) (map[string]string, error) {
 	isAnyAccepted := false
 	for _, sent := range invitationList.AllSent {
-		isAnyAccepted = isAnyAccepted || sent.State == proto.ShareInvitationAccepted
+		isAnyAccepted = isAnyAccepted || sent.State == apitypes.ShareInvitationAccepted
 	}
 	if !isAnyAccepted {
 		return nil, nil
@@ -364,7 +364,7 @@ func runInvitations(ctx context.Context, flags *flag.FlagSet, allArg []string) e
 	return printInvitationList(result)
 }
 
-func answerInvitation(ctx context.Context, authedClient *client.Client, action invitationAction, query string, invitationList cliprotocol.InvitationListResult) error {
+func answerInvitation(ctx context.Context, authedClient *apiclient.Client, action invitationAction, query string, invitationList cliprotocol.InvitationListResult) error {
 	invitationID, err := findInvitationID(collectInvitationID(invitationList, action.isSent), query)
 	if err != nil {
 		return err
@@ -402,7 +402,7 @@ func listAllAppPerson(ctx context.Context, client *appClient) ([]cliprotocol.Per
 }
 
 func runShareThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, allArg []string) error {
-	role := flags.String("r", proto.VaultEditor, "owner, editor or reader")
+	role := flags.String("r", apitypes.VaultEditor, "owner, editor or reader")
 	allPositional, err := parse(flags, allArg)
 	if err != nil {
 		return err
@@ -415,7 +415,7 @@ func runShareThroughApp(ctx context.Context, client *appClient, flags *flag.Flag
 	if err != nil {
 		return err
 	}
-	if vault.Type == proto.VaultPersonal {
+	if vault.Type == apitypes.VaultPersonal {
 		return errPersonalVaultShare
 	}
 	if err := client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeShareVault, VaultID: vault.ID, Email: email, Role: *role}, nil); err != nil {

@@ -11,12 +11,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tryhisar/hisar/core/client"
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/export"
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/localstate"
-	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/core/session"
 )
 
@@ -193,8 +193,8 @@ func (access *sessionVaultAccess) listAllVault(ctx context.Context) ([]cliprotoc
 		allVault = append(allVault, cliprotocol.Vault{ID: vault.ID, Name: vault.Name, Type: vault.Type, Role: vault.Role})
 	}
 	slices.SortFunc(allVault, func(first, second cliprotocol.Vault) int {
-		if (first.Type == proto.VaultPersonal) != (second.Type == proto.VaultPersonal) {
-			if first.Type == proto.VaultPersonal {
+		if (first.Type == apitypes.VaultPersonal) != (second.Type == apitypes.VaultPersonal) {
+			if first.Type == apitypes.VaultPersonal {
 				return -1
 			}
 			return 1
@@ -208,7 +208,7 @@ func (access *sessionVaultAccess) createVault(ctx context.Context, name string) 
 	if err := access.requireSession(ctx); err != nil {
 		return cliprotocol.Vault{}, err
 	}
-	vault, err := access.unlockedSession.CreateVault(ctx, name, proto.VaultShared)
+	vault, err := access.unlockedSession.CreateVault(ctx, name, apitypes.VaultShared)
 	if err != nil {
 		return cliprotocol.Vault{}, err
 	}
@@ -267,12 +267,12 @@ func (access *sessionVaultAccess) getVaultActions(ctx context.Context, vaultID s
 	}
 	actions := cliprotocol.VaultActionsResult{
 		Vault:                 cliprotocol.Vault{ID: vault.ID, Name: vault.Name, Type: vault.Type, Role: vault.Role, ItemCount: len(allItem)},
-		CanRename:             vault.Role == proto.VaultOwner,
+		CanRename:             vault.Role == apitypes.VaultOwner,
 		AllMemberLosingAccess: []cliprotocol.VaultMember{},
 		AllTargetVault:        []cliprotocol.Vault{},
 	}
 	ownerCount := 0
-	if vault.Type != proto.VaultPersonal {
+	if vault.Type != apitypes.VaultPersonal {
 		allAccess, err := access.unlockedSession.Client.ListAllVaultMember(ctx, vault.ID)
 		if err != nil {
 			return cliprotocol.VaultActionsResult{}, err
@@ -282,23 +282,23 @@ func (access *sessionVaultAccess) getVaultActions(ctx context.Context, vaultID s
 			return cliprotocol.VaultActionsResult{}, err
 		}
 		for _, vaultAccess := range allAccess {
-			if vaultAccess.Role == proto.VaultOwner {
+			if vaultAccess.Role == apitypes.VaultOwner {
 				ownerCount++
 			}
 			if vaultAccess.AccountID == access.unlockedSession.AccountID {
 				continue
 			}
 			member := cliprotocol.VaultMember{Role: vaultAccess.Role}
-			if index := slices.IndexFunc(allPerson, func(person proto.Member) bool { return person.AccountID == vaultAccess.AccountID }); index >= 0 {
+			if index := slices.IndexFunc(allPerson, func(person apitypes.Member) bool { return person.AccountID == vaultAccess.AccountID }); index >= 0 {
 				member.Name, member.Email = allPerson[index].Name, allPerson[index].Email
 			}
 			actions.AllMemberLosingAccess = append(actions.AllMemberLosingAccess, member)
 		}
 	}
 	switch {
-	case vault.Type == proto.VaultPersonal:
+	case vault.Type == apitypes.VaultPersonal:
 		actions.DeleteBlockedReason = "Your Personal vault can't be deleted. It is the vault Hisar keeps for you alone, and logins saved from the browser and the iPhone go there."
-	case vault.Role != proto.VaultOwner:
+	case vault.Role != apitypes.VaultOwner:
 		actions.DeleteBlockedReason = "Only an owner of this vault can delete it. You can leave it instead."
 	case len(access.allVaultByID) <= 1:
 		actions.DeleteBlockedReason = "Your only vault can't be deleted. Create another vault first."
@@ -306,9 +306,9 @@ func (access *sessionVaultAccess) getVaultActions(ctx context.Context, vaultID s
 		actions.CanDelete = true
 	}
 	switch {
-	case vault.Type == proto.VaultPersonal:
+	case vault.Type == apitypes.VaultPersonal:
 		actions.LeaveBlockedReason = "You can't leave your Personal vault."
-	case vault.Role == proto.VaultOwner && ownerCount <= 1:
+	case vault.Role == apitypes.VaultOwner && ownerCount <= 1:
 		actions.LeaveBlockedReason = "You are its only owner. Delete the vault, or make someone else an owner first."
 	default:
 		actions.CanLeave = true
@@ -318,7 +318,7 @@ func (access *sessionVaultAccess) getVaultActions(ctx context.Context, vaultID s
 		return cliprotocol.VaultActionsResult{}, err
 	}
 	for _, target := range allTarget {
-		if target.ID != vault.ID && (target.Role == proto.VaultOwner || target.Role == proto.VaultEditor) {
+		if target.ID != vault.ID && (target.Role == apitypes.VaultOwner || target.Role == apitypes.VaultEditor) {
 			actions.AllTargetVault = append(actions.AllTargetVault, target)
 		}
 	}
@@ -348,8 +348,8 @@ func (access *sessionVaultAccess) deleteVault(ctx context.Context, vaultID strin
 		}
 	}
 	movedCount, err := access.unlockedSession.DeleteVault(ctx, vault, sessionDeletion)
-	if client.IsStatus(err, http.StatusBadRequest) || client.IsStatus(err, http.StatusForbidden) {
-		var apiError *client.APIError
+	if apiclient.IsStatus(err, http.StatusBadRequest) || apiclient.IsStatus(err, http.StatusForbidden) {
+		var apiError *apiclient.APIError
 		if errors.As(err, &apiError) {
 			return 0, errors.New(apiError.Message)
 		}
@@ -363,8 +363,8 @@ func (access *sessionVaultAccess) leaveVault(ctx context.Context, vaultID string
 		return err
 	}
 	err = access.unlockedSession.LeaveVault(ctx, vault)
-	var apiError *client.APIError
-	if client.IsStatus(err, http.StatusBadRequest) && errors.As(err, &apiError) {
+	var apiError *apiclient.APIError
+	if apiclient.IsStatus(err, http.StatusBadRequest) && errors.As(err, &apiError) {
 		return errors.New(apiError.Message)
 	}
 	return err

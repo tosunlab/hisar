@@ -1,4 +1,4 @@
-package client
+package apiclient
 
 import (
 	"bufio"
@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tryhisar/hisar/core/proto"
+	"github.com/tryhisar/hisar/core/apitypes"
 )
 
 // Event is one server-sent event from GET /api/v1/events.
@@ -55,7 +55,7 @@ func (c *Client) StreamEvents(ctx context.Context, handleEvent func(Event)) erro
 	defer idleTimer.Stop()
 	isIdle := func() bool { return !idleTimer.Stop() }
 	scanner := bufio.NewScanner(response.Body)
-	scanner.Buffer(make([]byte, 64*1024), proto.MaxEventSize)
+	scanner.Buffer(make([]byte, 64*1024), apitypes.MaxEventSize)
 	var eventName string
 	var allDataLine []string
 	for scanner.Scan() {

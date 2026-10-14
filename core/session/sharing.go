@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/tryhisar/hisar/core/client"
-	"github.com/tryhisar/hisar/core/proto"
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 )
 
 // CompletedShare is an accepted share invitation whose vault key the owner wrapped for the recipient.
@@ -15,12 +15,12 @@ type CompletedShare struct {
 	VaultID   string
 	VaultName string
 	Role      string
-	Recipient proto.Member
+	Recipient apitypes.Member
 }
 
 // InviteToVault sends a share invitation; the server answers the same whether or not the email has an account.
 func (s *Session) InviteToVault(ctx context.Context, vault *Vault, email, role string) error {
-	_, err := s.Client.CreateShareInvitation(ctx, vault.ID, &proto.ShareInvitationRequest{Email: email, Role: role})
+	_, err := s.Client.CreateShareInvitation(ctx, vault.ID, &apitypes.ShareInvitationRequest{Email: email, Role: role})
 	return err
 }
 
@@ -31,9 +31,9 @@ func (s *Session) CompleteAllAcceptedShare(ctx context.Context) ([]CompletedShar
 	if err != nil {
 		return nil, err
 	}
-	var allAccepted []proto.SentShareInvitation
+	var allAccepted []apitypes.SentShareInvitation
 	for _, invitation := range invitationList.AllSent {
-		if invitation.State == proto.ShareInvitationAccepted && invitation.Recipient != nil {
+		if invitation.State == apitypes.ShareInvitationAccepted && invitation.Recipient != nil {
 			allAccepted = append(allAccepted, invitation)
 		}
 	}
@@ -46,7 +46,7 @@ func (s *Session) CompleteAllAcceptedShare(ctx context.Context) ([]CompletedShar
 	}
 	allOwnedVaultByID := map[string]*Vault{}
 	for index := range allVault {
-		if allVault[index].Role == proto.VaultOwner {
+		if allVault[index].Role == apitypes.VaultOwner {
 			allOwnedVaultByID[allVault[index].ID] = &allVault[index]
 		}
 	}
@@ -72,7 +72,7 @@ func (s *Session) CompleteAllAcceptedShare(ctx context.Context) ([]CompletedShar
 			}
 		}
 		err := s.ShareVault(ctx, vault, &recipient, invitation.Role)
-		if client.IsStatus(err, http.StatusConflict) {
+		if apiclient.IsStatus(err, http.StatusConflict) {
 			continue
 		}
 		if err != nil {

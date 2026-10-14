@@ -10,7 +10,7 @@ import (
 
 	_ "modernc.org/sqlite"
 
-	"github.com/tryhisar/hisar/core/proto"
+	"github.com/tryhisar/hisar/core/apitypes"
 )
 
 const schemaVersion = 1
@@ -79,7 +79,7 @@ func Remove(path string) error {
 	return errors.Join(allErr...)
 }
 
-func (c *Cache) SaveAccount(account *proto.Account) error {
+func (c *Cache) SaveAccount(account *apitypes.Account) error {
 	data, err := json.Marshal(account)
 	if err != nil {
 		return err
@@ -89,7 +89,7 @@ func (c *Cache) SaveAccount(account *proto.Account) error {
 }
 
 // LoadAccount returns nil when the account is not cached.
-func (c *Cache) LoadAccount(accountID string) (*proto.Account, error) {
+func (c *Cache) LoadAccount(accountID string) (*apitypes.Account, error) {
 	var data []byte
 	err := c.database.QueryRow(`SELECT data FROM accounts WHERE account_id = ?`, accountID).Scan(&data)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -98,7 +98,7 @@ func (c *Cache) LoadAccount(accountID string) (*proto.Account, error) {
 	if err != nil {
 		return nil, err
 	}
-	account := &proto.Account{}
+	account := &apitypes.Account{}
 	if err := json.Unmarshal(data, account); err != nil {
 		return nil, err
 	}
@@ -106,7 +106,7 @@ func (c *Cache) LoadAccount(accountID string) (*proto.Account, error) {
 }
 
 // ReplaceAllVault stores the server's vault list and forgets vaults, with their items, that are no longer in it.
-func (c *Cache) ReplaceAllVault(allVault []proto.Vault) error {
+func (c *Cache) ReplaceAllVault(allVault []apitypes.Vault) error {
 	transaction, err := c.database.Begin()
 	if err != nil {
 		return err
@@ -139,19 +139,19 @@ func (c *Cache) ReplaceAllVault(allVault []proto.Vault) error {
 	return transaction.Commit()
 }
 
-func (c *Cache) ListAllVault() ([]proto.Vault, error) {
+func (c *Cache) ListAllVault() ([]apitypes.Vault, error) {
 	allRow, err := c.database.Query(`SELECT data FROM vaults WHERE data IS NOT NULL ORDER BY vault_id`)
 	if err != nil {
 		return nil, err
 	}
 	defer allRow.Close()
-	allVault := []proto.Vault{}
+	allVault := []apitypes.Vault{}
 	for allRow.Next() {
 		var data []byte
 		if err := allRow.Scan(&data); err != nil {
 			return nil, err
 		}
-		var vault proto.Vault
+		var vault apitypes.Vault
 		if err := json.Unmarshal(data, &vault); err != nil {
 			return nil, err
 		}
@@ -171,7 +171,7 @@ func (c *Cache) GetSeq(vaultID string) (int64, error) {
 }
 
 // ApplyAllChange stores one page of changes and the seq it reaches in one transaction; deleted items are removed.
-func (c *Cache) ApplyAllChange(vaultID string, allItem []proto.Item, nextSeq int64) error {
+func (c *Cache) ApplyAllChange(vaultID string, allItem []apitypes.Item, nextSeq int64) error {
 	transaction, err := c.database.Begin()
 	if err != nil {
 		return err
@@ -198,19 +198,19 @@ func (c *Cache) ApplyAllChange(vaultID string, allItem []proto.Item, nextSeq int
 	return transaction.Commit()
 }
 
-func (c *Cache) ListAllItem(vaultID string) ([]proto.Item, error) {
+func (c *Cache) ListAllItem(vaultID string) ([]apitypes.Item, error) {
 	allRow, err := c.database.Query(`SELECT data FROM items WHERE vault_id = ? ORDER BY item_id`, vaultID)
 	if err != nil {
 		return nil, err
 	}
 	defer allRow.Close()
-	allItem := []proto.Item{}
+	allItem := []apitypes.Item{}
 	for allRow.Next() {
 		var data []byte
 		if err := allRow.Scan(&data); err != nil {
 			return nil, err
 		}
-		var protoItem proto.Item
+		var protoItem apitypes.Item
 		if err := json.Unmarshal(data, &protoItem); err != nil {
 			return nil, err
 		}

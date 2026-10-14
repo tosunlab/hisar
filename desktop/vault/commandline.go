@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/item"
-	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/core/session"
 	"github.com/tryhisar/hisar/desktop/commandline"
 )
@@ -290,7 +290,7 @@ func (s *Service) saveAllCommandLineImport(vaultID string, allImportedItem []ite
 	if err != nil {
 		return result, err
 	}
-	if vault.Role == proto.VaultReader {
+	if vault.Role == apitypes.VaultReader {
 		return result, errReadOnlyVault
 	}
 	if s.allItemByVaultID[vault.ID] == nil {

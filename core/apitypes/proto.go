@@ -1,5 +1,5 @@
-// Package proto defines the JSON wire types of the /api/v1 HTTP API.
-package proto
+// Package apitypes defines the JSON wire types of the /api/v1 HTTP API.
+package apitypes
 
 import (
 	"time"

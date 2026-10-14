@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
-	"github.com/tryhisar/hisar/core/proto"
 )
 
 func TestGetPath(t *testing.T) {
@@ -180,7 +180,7 @@ func TestCheckMemberPin(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	member := &proto.Member{AccountID: "BOB111", Email: "bob@example.com", PublicKeys: crypt.PublicKeys{Sign: []byte{1, 2, 3}}}
+	member := &apitypes.Member{AccountID: "BOB111", Email: "bob@example.com", PublicKeys: crypt.PublicKeys{Sign: []byte{1, 2, 3}}}
 	if state.IsMemberKeyChanged(member.AccountID, member.PublicKeys.Sign) {
 		t.Error("unpinned key reported as changed")
 	}
@@ -190,7 +190,7 @@ func TestCheckMemberPin(t *testing.T) {
 	if err := state.CheckMemberPin(member); err != nil {
 		t.Errorf("same key again: %v", err)
 	}
-	substitutedMember := &proto.Member{AccountID: "BOB111", Email: "bob@example.com", PublicKeys: crypt.PublicKeys{Sign: []byte{9, 9, 9}}}
+	substitutedMember := &apitypes.Member{AccountID: "BOB111", Email: "bob@example.com", PublicKeys: crypt.PublicKeys{Sign: []byte{9, 9, 9}}}
 	if !state.IsMemberKeyChanged(substitutedMember.AccountID, substitutedMember.PublicKeys.Sign) {
 		t.Error("substituted key not reported as changed")
 	}

@@ -9,7 +9,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 
-	"github.com/tryhisar/hisar/core/proto"
+	"github.com/tryhisar/hisar/core/apitypes"
 )
 
 func createMinimumVersionApp(t *testing.T, minimumVersions MinimumVersions) *fiber.App {
@@ -21,21 +21,21 @@ func createMinimumVersionApp(t *testing.T, minimumVersions MinimumVersions) *fib
 	return server.CreateApp()
 }
 
-func sendVersionedRequest(t *testing.T, app *fiber.App, method, path, platform, version string) (int, proto.UpgradeRequired) {
+func sendVersionedRequest(t *testing.T, app *fiber.App, method, path, platform, version string) (int, apitypes.UpgradeRequired) {
 	t.Helper()
 	request := httptest.NewRequest(method, path, nil)
 	if platform != "" {
-		request.Header.Set(proto.PlatformHeader, platform)
+		request.Header.Set(apitypes.PlatformHeader, platform)
 	}
 	if version != "" {
-		request.Header.Set(proto.VersionHeader, version)
+		request.Header.Set(apitypes.VersionHeader, version)
 	}
 	response, err := app.Test(request)
 	if err != nil {
 		t.Fatal(err)
 	}
 	body, _ := io.ReadAll(response.Body)
-	var upgradeRequired proto.UpgradeRequired
+	var upgradeRequired apitypes.UpgradeRequired
 	if response.StatusCode == http.StatusUpgradeRequired {
 		if err := json.Unmarshal(body, &upgradeRequired); err != nil {
 			t.Fatalf("426 body %q: %v", body, err)
@@ -49,11 +49,11 @@ func TestMinimumVersionPerPlatform(t *testing.T) {
 	for _, testCase := range []struct {
 		platform, oldVersion, currentVersion, updateURL string
 	}{
-		{proto.PlatformDesktopMacOS, "0.1.5", "0.1.6", "https://tryhisar.com/download"},
-		{proto.PlatformIOS, "0.9.9", "1.0.0", "https://tryhisar.com/download"},
+		{apitypes.PlatformDesktopMacOS, "0.1.5", "0.1.6", "https://tryhisar.com/download"},
+		{apitypes.PlatformIOS, "0.9.9", "1.0.0", "https://tryhisar.com/download"},
 		{"linux/cli", "1.0.0-alpha-test", "1.0.1", "https://tryhisar.com/download"},
 		{"darwin/cli", "0.2.0", "1.0.0", "https://tryhisar.com/download"},
-		{proto.PlatformExtension, "0.2.0", "0.3.0-rc.1+build", "https://chromewebstore.google.com/detail/mmipiffoogblblocokimpemdopmdjghf"},
+		{apitypes.PlatformExtension, "0.2.0", "0.3.0-rc.1+build", "https://chromewebstore.google.com/detail/mmipiffoogblblocokimpemdopmdjghf"},
 	} {
 		status, upgradeRequired := sendVersionedRequest(t, app, "GET", "/api/v1/version-check", testCase.platform, testCase.oldVersion)
 		if status != http.StatusUpgradeRequired || upgradeRequired.UpdateURL != testCase.updateURL || upgradeRequired.Error != "update required" {
@@ -69,7 +69,7 @@ func TestMinimumVersionPerPlatform(t *testing.T) {
 			t.Errorf("%s %s refused: %d", testCase.platform, testCase.currentVersion, status)
 		}
 	}
-	if status, upgradeRequired := sendVersionedRequest(t, app, "GET", "/api/v1/version-check", proto.PlatformDesktopMacOS, "0.1.0"); upgradeRequired.MinimumVersion != "0.1.6" || status != http.StatusUpgradeRequired {
+	if status, upgradeRequired := sendVersionedRequest(t, app, "GET", "/api/v1/version-check", apitypes.PlatformDesktopMacOS, "0.1.0"); upgradeRequired.MinimumVersion != "0.1.6" || status != http.StatusUpgradeRequired {
 		t.Errorf("minimumVersion: %+v", upgradeRequired)
 	}
 }
@@ -98,19 +98,19 @@ func TestMinimumVersionLetsOtherRequestsThrough(t *testing.T) {
 	app := createMinimumVersionApp(t, MinimumVersions{DesktopMacOS: "0.1.6", CLI: "1.0.0"})
 	for name, request := range map[string]struct{ platform, version string }{
 		"no headers":               {"", ""},
-		"platform without version": {proto.PlatformDesktopMacOS, ""},
+		"platform without version": {apitypes.PlatformDesktopMacOS, ""},
 		"version without platform": {"", "0.0.1"},
 		"unknown platform":         {"go", "0.0.1"},
 		"Linux desktop":            {"linux/desktop", "0.0.1"},
-		"platform without minimum": {proto.PlatformIOS, "0.0.1"},
-		"development build":        {proto.PlatformDesktopMacOS, "development"},
+		"platform without minimum": {apitypes.PlatformIOS, "0.0.1"},
+		"development build":        {apitypes.PlatformDesktopMacOS, "development"},
 		"unparsable version":       {"linux/cli", "v0.1"},
 	} {
 		if status, _ := sendVersionedRequest(t, app, "GET", "/api/v1/version-check", request.platform, request.version); status != http.StatusNoContent {
 			t.Errorf("%s: %d", name, status)
 		}
 	}
-	if status, _ := sendVersionedRequest(t, app, "GET", "/api/v1/desktop/updates/appcast.xml", proto.PlatformDesktopMacOS, "0.1.0"); status != http.StatusUnauthorized {
+	if status, _ := sendVersionedRequest(t, app, "GET", "/api/v1/desktop/updates/appcast.xml", apitypes.PlatformDesktopMacOS, "0.1.0"); status != http.StatusUnauthorized {
 		t.Errorf("the update feed refused an app that needs it to update: %d", status)
 	}
 	for _, path := range []string{"/healthz", "/privacy", "/s/AbCdEfGhIjKlMnOpQrStUv"} {
@@ -119,7 +119,7 @@ func TestMinimumVersionLetsOtherRequestsThrough(t *testing.T) {
 		}
 	}
 	noMinimumApp := createMinimumVersionApp(t, MinimumVersions{})
-	if status, _ := sendVersionedRequest(t, noMinimumApp, "GET", "/api/v1/version-check", proto.PlatformDesktopMacOS, "0.0.1"); status != http.StatusNoContent {
+	if status, _ := sendVersionedRequest(t, noMinimumApp, "GET", "/api/v1/version-check", apitypes.PlatformDesktopMacOS, "0.0.1"); status != http.StatusNoContent {
 		t.Errorf("without a minimum: %d", status)
 	}
 }

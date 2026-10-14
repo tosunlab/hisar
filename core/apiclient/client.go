@@ -1,4 +1,4 @@
-package client
+package apiclient
 
 import (
 	"bytes"
@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tryhisar/hisar/core/proto"
+	"github.com/tryhisar/hisar/core/apitypes"
 )
 
 type Client struct {
@@ -57,12 +57,12 @@ func (c *Client) setClientHeader(header http.Header) {
 	if c.Version == "" {
 		return
 	}
-	header.Set(proto.PlatformHeader, c.Platform)
-	header.Set(proto.VersionHeader, c.Version)
+	header.Set(apitypes.PlatformHeader, c.Platform)
+	header.Set(apitypes.VersionHeader, c.Version)
 }
 
 func (c *Client) readUpgradeRequired(data []byte) error {
-	var body proto.UpgradeRequired
+	var body apitypes.UpgradeRequired
 	json.Unmarshal(data, &body)
 	upgradeRequired := &UpgradeRequiredError{MinimumVersion: body.MinimumVersion, UpdateURL: body.UpdateURL}
 	if c.OnUpgradeRequired != nil {
@@ -129,7 +129,7 @@ func (c *Client) sendRequest(ctx context.Context, method, path string, header ht
 		return &APIError{Status: response.StatusCode, Message: "conflict"}
 	}
 	if response.StatusCode >= 300 {
-		var errorBody proto.Error
+		var errorBody apitypes.Error
 		if json.Unmarshal(data, &errorBody) != nil || errorBody.Error == "" {
 			errorBody.Error = http.StatusText(response.StatusCode)
 		}
@@ -146,28 +146,28 @@ func (c *Client) CheckVersion(ctx context.Context) error {
 	return c.sendRequest(ctx, "GET", "/api/v1/version-check", nil, nil, nil, nil)
 }
 
-func (c *Client) FetchPrelogin(ctx context.Context, email string) (*proto.PreloginResponse, error) {
-	var response proto.PreloginResponse
+func (c *Client) FetchPrelogin(ctx context.Context, email string) (*apitypes.PreloginResponse, error) {
+	var response apitypes.PreloginResponse
 	return &response, c.sendRequest(ctx, "GET", "/api/v1/auth/prelogin?email="+url.QueryEscape(email), nil, nil, &response, nil)
 }
 
-func (c *Client) StartRegistration(ctx context.Context, request *proto.RegisterStartRequest) (*proto.RegisterStartResponse, error) {
-	var response proto.RegisterStartResponse
+func (c *Client) StartRegistration(ctx context.Context, request *apitypes.RegisterStartRequest) (*apitypes.RegisterStartResponse, error) {
+	var response apitypes.RegisterStartResponse
 	return &response, c.sendRequest(ctx, "POST", "/api/v1/auth/register/start", nil, request, &response, nil)
 }
 
-func (c *Client) FinishRegistration(ctx context.Context, request *proto.RegisterFinishRequest) (*proto.SessionResponse, error) {
-	var response proto.SessionResponse
+func (c *Client) FinishRegistration(ctx context.Context, request *apitypes.RegisterFinishRequest) (*apitypes.SessionResponse, error) {
+	var response apitypes.SessionResponse
 	return &response, c.sendRequest(ctx, "POST", "/api/v1/auth/register/finish", nil, request, &response, nil)
 }
 
-func (c *Client) StartLogin(ctx context.Context, request *proto.LoginStartRequest) (*proto.LoginStartResponse, error) {
-	var response proto.LoginStartResponse
+func (c *Client) StartLogin(ctx context.Context, request *apitypes.LoginStartRequest) (*apitypes.LoginStartResponse, error) {
+	var response apitypes.LoginStartResponse
 	return &response, c.sendRequest(ctx, "POST", "/api/v1/auth/login/start", nil, request, &response, nil)
 }
 
-func (c *Client) FinishLogin(ctx context.Context, request *proto.LoginFinishRequest) (*proto.SessionResponse, error) {
-	var response proto.SessionResponse
+func (c *Client) FinishLogin(ctx context.Context, request *apitypes.LoginFinishRequest) (*apitypes.SessionResponse, error) {
+	var response apitypes.SessionResponse
 	return &response, c.sendRequest(ctx, "POST", "/api/v1/auth/login/finish", nil, request, &response, nil)
 }
 
@@ -175,28 +175,28 @@ func (c *Client) Logout(ctx context.Context) error {
 	return c.sendRequest(ctx, "POST", "/api/v1/auth/logout", nil, nil, nil, nil)
 }
 
-func (c *Client) GetAccount(ctx context.Context) (*proto.Account, error) {
-	var account proto.Account
+func (c *Client) GetAccount(ctx context.Context) (*apitypes.Account, error) {
+	var account apitypes.Account
 	return &account, c.sendRequest(ctx, "GET", "/api/v1/account", nil, nil, &account, nil)
 }
 
-func (c *Client) ListAllMember(ctx context.Context) ([]proto.Member, error) {
-	var allMember []proto.Member
+func (c *Client) ListAllMember(ctx context.Context) ([]apitypes.Member, error) {
+	var allMember []apitypes.Member
 	return allMember, c.sendRequest(ctx, "GET", "/api/v1/members", nil, nil, &allMember, nil)
 }
 
-func (c *Client) Invite(ctx context.Context, request *proto.InviteRequest) (*proto.InvitationSentResponse, error) {
-	var response proto.InvitationSentResponse
+func (c *Client) Invite(ctx context.Context, request *apitypes.InviteRequest) (*apitypes.InvitationSentResponse, error) {
+	var response apitypes.InvitationSentResponse
 	return &response, c.sendRequest(ctx, "POST", "/api/v1/invites", nil, request, &response, nil)
 }
 
-func (c *Client) CreateShareInvitation(ctx context.Context, vaultID string, request *proto.ShareInvitationRequest) (*proto.InvitationSentResponse, error) {
-	var response proto.InvitationSentResponse
+func (c *Client) CreateShareInvitation(ctx context.Context, vaultID string, request *apitypes.ShareInvitationRequest) (*apitypes.InvitationSentResponse, error) {
+	var response apitypes.InvitationSentResponse
 	return &response, c.sendRequest(ctx, "POST", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/share-invitations", nil, request, &response, nil)
 }
 
-func (c *Client) ListAllShareInvitation(ctx context.Context) (*proto.ShareInvitationList, error) {
-	var response proto.ShareInvitationList
+func (c *Client) ListAllShareInvitation(ctx context.Context) (*apitypes.ShareInvitationList, error) {
+	var response apitypes.ShareInvitationList
 	return &response, c.sendRequest(ctx, "GET", "/api/v1/share-invitations", nil, nil, &response, nil)
 }
 
@@ -212,8 +212,8 @@ func (c *Client) CancelShareInvitation(ctx context.Context, invitationID string)
 	return c.sendRequest(ctx, "DELETE", "/api/v1/share-invitations/"+url.PathEscape(invitationID), nil, nil, nil, nil)
 }
 
-func (c *Client) ListAllDevice(ctx context.Context) ([]proto.Device, error) {
-	var allDevice []proto.Device
+func (c *Client) ListAllDevice(ctx context.Context) ([]apitypes.Device, error) {
+	var allDevice []apitypes.Device
 	return allDevice, c.sendRequest(ctx, "GET", "/api/v1/devices", nil, nil, &allDevice, nil)
 }
 
@@ -221,21 +221,21 @@ func (c *Client) RevokeDevice(ctx context.Context, deviceID string) error {
 	return c.sendRequest(ctx, "DELETE", "/api/v1/devices/"+url.PathEscape(deviceID), nil, nil, nil, nil)
 }
 
-func (c *Client) ListAllVault(ctx context.Context) ([]proto.Vault, error) {
-	var allVault []proto.Vault
+func (c *Client) ListAllVault(ctx context.Context) ([]apitypes.Vault, error) {
+	var allVault []apitypes.Vault
 	return allVault, c.sendRequest(ctx, "GET", "/api/v1/vaults", nil, nil, &allVault, nil)
 }
 
-func (c *Client) CreateVault(ctx context.Context, request *proto.CreateVaultRequest) error {
+func (c *Client) CreateVault(ctx context.Context, request *apitypes.CreateVaultRequest) error {
 	return c.sendRequest(ctx, "POST", "/api/v1/vaults", nil, request, nil, nil)
 }
 
-func (c *Client) ListAllVaultMember(ctx context.Context, vaultID string) ([]proto.VaultMember, error) {
-	var allVaultMember []proto.VaultMember
+func (c *Client) ListAllVaultMember(ctx context.Context, vaultID string) ([]apitypes.VaultMember, error) {
+	var allVaultMember []apitypes.VaultMember
 	return allVaultMember, c.sendRequest(ctx, "GET", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/members", nil, nil, &allVaultMember, nil)
 }
 
-func (c *Client) SetAccess(ctx context.Context, vaultID, accountID string, request *proto.SetAccessRequest) error {
+func (c *Client) SetAccess(ctx context.Context, vaultID, accountID string, request *apitypes.SetAccessRequest) error {
 	return c.sendRequest(ctx, "PUT", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/access/"+url.PathEscape(accountID), nil, request, nil, nil)
 }
 
@@ -243,20 +243,20 @@ func (c *Client) RemoveAccess(ctx context.Context, vaultID, accountID string) er
 	return c.sendRequest(ctx, "DELETE", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/access/"+url.PathEscape(accountID), nil, nil, nil, nil)
 }
 
-func (c *Client) RotateVault(ctx context.Context, vaultID string, request *proto.RotateVaultRequest) error {
+func (c *Client) RotateVault(ctx context.Context, vaultID string, request *apitypes.RotateVaultRequest) error {
 	return c.sendRequest(ctx, "POST", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/rotate", nil, request, nil, nil)
 }
 
-func (c *Client) RenameVault(ctx context.Context, vaultID string, request *proto.RenameVaultRequest) error {
+func (c *Client) RenameVault(ctx context.Context, vaultID string, request *apitypes.RenameVaultRequest) error {
 	return c.sendRequest(ctx, "PUT", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/name", nil, request, nil, nil)
 }
 
-func (c *Client) DeleteVault(ctx context.Context, vaultID string, request *proto.DeleteVaultRequest) error {
+func (c *Client) DeleteVault(ctx context.Context, vaultID string, request *apitypes.DeleteVaultRequest) error {
 	return c.sendRequest(ctx, "POST", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/delete", nil, request, nil, nil)
 }
 
-func (c *Client) ListAllChange(ctx context.Context, vaultID string, since int64, limit int) (*proto.ChangesResponse, error) {
-	var response proto.ChangesResponse
+func (c *Client) ListAllChange(ctx context.Context, vaultID string, since int64, limit int) (*apitypes.ChangesResponse, error) {
+	var response apitypes.ChangesResponse
 	query := url.Values{"since": {strconv.FormatInt(since, 10)}}
 	if limit > 0 {
 		query.Set("limit", strconv.Itoa(limit))
@@ -265,13 +265,13 @@ func (c *Client) ListAllChange(ctx context.Context, vaultID string, since int64,
 }
 
 // PutItem returns the server's current item on a 409 (nil if the item does not exist).
-func (c *Client) PutItem(ctx context.Context, vaultID, itemID, baseRevision string, request *proto.PutItemRequest) (int64, *proto.Item, error) {
+func (c *Client) PutItem(ctx context.Context, vaultID, itemID, baseRevision string, request *apitypes.PutItemRequest) (int64, *apitypes.Item, error) {
 	header := http.Header{}
 	if baseRevision != "" {
 		header.Set("If-Match", `"`+baseRevision+`"`)
 	}
-	var response proto.PutItemResponse
-	var conflict proto.ConflictResponse
+	var response apitypes.PutItemResponse
+	var conflict apitypes.ConflictResponse
 	err := c.sendRequest(ctx, "PUT", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/items/"+url.PathEscape(itemID), header, request, &response, &conflict)
 	if IsStatus(err, http.StatusConflict) {
 		return 0, conflict.Current, err
@@ -279,13 +279,13 @@ func (c *Client) PutItem(ctx context.Context, vaultID, itemID, baseRevision stri
 	return response.Seq, nil, err
 }
 
-func (c *Client) CreateShareLink(ctx context.Context, request *proto.CreateShareLinkRequest) (*proto.ShareLink, error) {
-	var response proto.ShareLink
+func (c *Client) CreateShareLink(ctx context.Context, request *apitypes.CreateShareLinkRequest) (*apitypes.ShareLink, error) {
+	var response apitypes.ShareLink
 	return &response, c.sendRequest(ctx, "POST", "/api/v1/share-links", nil, request, &response, nil)
 }
 
-func (c *Client) ListAllShareLink(ctx context.Context) ([]proto.ShareLink, error) {
-	var allShareLink []proto.ShareLink
+func (c *Client) ListAllShareLink(ctx context.Context) ([]apitypes.ShareLink, error) {
+	var allShareLink []apitypes.ShareLink
 	return allShareLink, c.sendRequest(ctx, "GET", "/api/v1/share-links", nil, nil, &allShareLink, nil)
 }
 
@@ -294,31 +294,31 @@ func (c *Client) RevokeShareLink(ctx context.Context, shareLinkID string) error 
 }
 
 // OpenPublicShareLink needs no session and counts one view.
-func (c *Client) OpenPublicShareLink(ctx context.Context, shareLinkID string) (*proto.PublicShareLink, error) {
-	var response proto.PublicShareLink
+func (c *Client) OpenPublicShareLink(ctx context.Context, shareLinkID string) (*apitypes.PublicShareLink, error) {
+	var response apitypes.PublicShareLink
 	return &response, c.sendRequest(ctx, "GET", "/api/v1/public/share-links/"+url.PathEscape(shareLinkID), nil, nil, &response, nil)
 }
 
-func (c *Client) Reauthenticate(ctx context.Context, request *proto.ReauthenticateRequest) (*proto.ReauthenticateResponse, error) {
-	var response proto.ReauthenticateResponse
+func (c *Client) Reauthenticate(ctx context.Context, request *apitypes.ReauthenticateRequest) (*apitypes.ReauthenticateResponse, error) {
+	var response apitypes.ReauthenticateResponse
 	return &response, c.sendRequest(ctx, "POST", "/api/v1/account/reauthenticate", nil, request, &response, nil)
 }
 
-func (c *Client) ChangeCredentials(ctx context.Context, request *proto.ChangeCredentialsRequest) (*proto.ChangeCredentialsResponse, error) {
-	var response proto.ChangeCredentialsResponse
+func (c *Client) ChangeCredentials(ctx context.Context, request *apitypes.ChangeCredentialsRequest) (*apitypes.ChangeCredentialsResponse, error) {
+	var response apitypes.ChangeCredentialsResponse
 	return &response, c.sendRequest(ctx, "PUT", "/api/v1/account/credentials", nil, request, &response, nil)
 }
 
-func (c *Client) GetAccountDeletionPreview(ctx context.Context) (*proto.AccountDeletionPreview, error) {
-	var response proto.AccountDeletionPreview
+func (c *Client) GetAccountDeletionPreview(ctx context.Context) (*apitypes.AccountDeletionPreview, error) {
+	var response apitypes.AccountDeletionPreview
 	return &response, c.sendRequest(ctx, "GET", "/api/v1/account/deletion-preview", nil, nil, &response, nil)
 }
 
-func (c *Client) DeleteAccount(ctx context.Context, request *proto.DeleteAccountRequest) error {
+func (c *Client) DeleteAccount(ctx context.Context, request *apitypes.DeleteAccountRequest) error {
 	return c.sendRequest(ctx, "POST", "/api/v1/account/delete", nil, request, nil, nil)
 }
 
-func (c *Client) GetItemHistory(ctx context.Context, vaultID, itemID string) ([]proto.Item, error) {
-	var allItem []proto.Item
+func (c *Client) GetItemHistory(ctx context.Context, vaultID, itemID string) ([]apitypes.Item, error) {
+	var allItem []apitypes.Item
 	return allItem, c.sendRequest(ctx, "GET", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/items/"+url.PathEscape(itemID)+"/history", nil, nil, &allItem, nil)
 }

@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tryhisar/hisar/core/client"
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/localstate"
-	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/core/session"
 )
 
@@ -355,9 +355,9 @@ func TestSetAutoLock(t *testing.T) {
 
 func TestSortAllVaultSummary(t *testing.T) {
 	allSummary := []VaultSummary{
-		{Name: "zeta", Type: proto.VaultShared},
-		{Name: "Personal", Type: proto.VaultPersonal},
-		{Name: "Alpha", Type: proto.VaultShared},
+		{Name: "zeta", Type: apitypes.VaultShared},
+		{Name: "Personal", Type: apitypes.VaultPersonal},
+		{Name: "Alpha", Type: apitypes.VaultShared},
 	}
 	sortAllVaultSummary(allSummary)
 	if allSummary[0].Name != "Personal" || allSummary[1].Name != "Alpha" || allSummary[2].Name != "zeta" {
@@ -403,11 +403,11 @@ func TestGeneratePassword(t *testing.T) {
 
 func TestConvertError(t *testing.T) {
 	allCase := map[error]string{
-		session.ErrBadCredentials:                                   "incorrect email, master password or Secret Key",
-		session.ErrConflict:                                         "changed on another device",
-		session.ErrRollback:                                         "older data",
-		&client.APIError{Status: 403, Message: "admin only"}:        "permission",
-		&client.APIError{Status: 429, Message: "too many requests"}: "wait a minute",
+		session.ErrBadCredentials: "incorrect email, master password or Secret Key",
+		session.ErrConflict:       "changed on another device",
+		session.ErrRollback:       "older data",
+		&apiclient.APIError{Status: 403, Message: "admin only"}:        "permission",
+		&apiclient.APIError{Status: 429, Message: "too many requests"}: "wait a minute",
 	}
 	for input, want := range allCase {
 		if got := convertError(input).Error(); !strings.Contains(got, want) {
@@ -555,7 +555,7 @@ func TestIntegrationDesktopFlow(t *testing.T) {
 	}
 
 	family, err := service.CreateVault("Family")
-	if err != nil || family.Type != proto.VaultShared {
+	if err != nil || family.Type != apitypes.VaultShared {
 		t.Fatalf("create vault: %+v %v", family, err)
 	}
 	allVault, _ = service.ListAllVault()

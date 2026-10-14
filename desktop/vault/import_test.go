@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/item"
-	"github.com/tryhisar/hisar/core/proto"
 )
 
 func writeImportFile(t *testing.T, fileName, content string) string {
@@ -195,7 +195,7 @@ func TestImportRejectsReadOnlyVaultAndUnknownFormat(t *testing.T) {
 		t.Fatal(err)
 	}
 	service.mutex.Lock()
-	service.allVaultByID[test.familyID].Role = proto.VaultReader
+	service.allVaultByID[test.familyID].Role = apitypes.VaultReader
 	service.mutex.Unlock()
 	if _, err := service.PreviewImport(test.familyID); !errors.Is(err, errReadOnlyVault) {
 		t.Errorf("preview for a read-only vault: %v", err)

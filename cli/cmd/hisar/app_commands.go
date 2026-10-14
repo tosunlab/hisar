@@ -11,10 +11,10 @@ import (
 	"text/tabwriter"
 	"time"
 
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/importer"
 	"github.com/tryhisar/hisar/core/item"
-	"github.com/tryhisar/hisar/core/proto"
 )
 
 func describeStandaloneOnly(commandName, appAlternative string) error {
@@ -247,7 +247,7 @@ func runImportThroughApp(ctx context.Context, client *appClient, flags *flag.Fla
 	if err != nil {
 		return err
 	}
-	if vault.Role == proto.VaultReader {
+	if vault.Role == apitypes.VaultReader {
 		return fmt.Errorf("you can only read %q; choose a vault you can edit with -v", vault.Name)
 	}
 	allExisting, err := listAllAppItem(ctx, client, vault.ID)

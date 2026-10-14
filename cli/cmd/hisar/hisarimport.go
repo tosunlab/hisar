@@ -7,11 +7,11 @@ import (
 	"os"
 	"strings"
 
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/export"
 	"github.com/tryhisar/hisar/core/importer"
 	"github.com/tryhisar/hisar/core/item"
-	"github.com/tryhisar/hisar/core/proto"
 )
 
 const maxExportPassphraseAttempt = 3
@@ -67,7 +67,7 @@ func planHisarImport(ctx context.Context, access vaultAccess, document *export.D
 		if chosenVault, err = findAccessVault(ctx, access, option.vaultName); err != nil {
 			return nil, err
 		}
-		if chosenVault.Role == proto.VaultReader {
+		if chosenVault.Role == apitypes.VaultReader {
 			return nil, fmt.Errorf("you can only read %q; choose a vault you can edit with -v", chosenVault.Name)
 		}
 	}
@@ -97,16 +97,16 @@ func planHisarImport(ctx context.Context, access vaultAccess, document *export.D
 
 func findImportTarget(allVault []cliprotocol.Vault, exported export.Vault) (cliprotocol.Vault, bool) {
 	isWritable := func(vault cliprotocol.Vault) bool {
-		return vault.Role == proto.VaultOwner || vault.Role == proto.VaultEditor
+		return vault.Role == apitypes.VaultOwner || vault.Role == apitypes.VaultEditor
 	}
 	for _, vault := range allVault {
-		if exported.Type == proto.VaultPersonal && vault.Type == proto.VaultPersonal {
+		if exported.Type == apitypes.VaultPersonal && vault.Type == apitypes.VaultPersonal {
 			return vault, false
 		}
 	}
 	for _, candidateName := range []string{exported.Name, exported.Name + " (imported)"} {
 		for _, vault := range allVault {
-			if exported.Type != proto.VaultPersonal && strings.EqualFold(vault.Name, candidateName) && isWritable(vault) {
+			if exported.Type != apitypes.VaultPersonal && strings.EqualFold(vault.Name, candidateName) && isWritable(vault) {
 				return vault, false
 			}
 		}

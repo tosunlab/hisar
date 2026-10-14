@@ -16,7 +16,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 
-	"github.com/tryhisar/hisar/core/proto"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/server/internal/api"
 	"github.com/tryhisar/hisar/server/internal/desktopupdate"
 	"github.com/tryhisar/hisar/server/internal/mail"
@@ -308,9 +308,9 @@ func invite(ctx context.Context, allArg []string) error {
 	if err != nil {
 		return err
 	}
-	defaultRole := proto.RoleMember
+	defaultRole := apitypes.RoleMember
 	if len(allAccount) == 0 {
-		defaultRole = proto.RoleAdmin
+		defaultRole = apitypes.RoleAdmin
 	}
 
 	input := bufio.NewReader(os.Stdin)
@@ -324,7 +324,7 @@ func invite(ctx context.Context, allArg []string) error {
 	if !strings.Contains(*email, "@") {
 		return fmt.Errorf("invalid email %q", *email)
 	}
-	if *role != proto.RoleAdmin && *role != proto.RoleMember {
+	if *role != apitypes.RoleAdmin && *role != apitypes.RoleMember {
 		return fmt.Errorf("invalid role %q", *role)
 	}
 

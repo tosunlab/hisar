@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tryhisar/hisar/core/client"
-	"github.com/tryhisar/hisar/core/proto"
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/session"
 )
 
@@ -92,12 +92,12 @@ func (s *Service) GetVaultActions(vaultID string) (VaultActions, error) {
 	}
 	actions := VaultActions{
 		Vault:                 convertToVaultSummary(vault, itemCount),
-		CanRename:             vault.Role == proto.VaultOwner,
+		CanRename:             vault.Role == apitypes.VaultOwner,
 		AllMemberLosingAccess: []VaultMember{},
 		AllTargetVault:        []VaultSummary{},
 	}
 	allMember := []VaultMember{}
-	if vault.Type != proto.VaultPersonal {
+	if vault.Type != apitypes.VaultPersonal {
 		if allMember, err = s.listAllVaultMember(ctx, vault.ID); err != nil {
 			return VaultActions{}, err
 		}
@@ -109,9 +109,9 @@ func (s *Service) GetVaultActions(vaultID string) (VaultActions, error) {
 	}
 
 	switch {
-	case vault.Type == proto.VaultPersonal:
+	case vault.Type == apitypes.VaultPersonal:
 		actions.DeleteBlockedReason = personalVaultDeleteReason
-	case vault.Role != proto.VaultOwner:
+	case vault.Role != apitypes.VaultOwner:
 		actions.DeleteBlockedReason = notOwnerDeleteReason
 	case len(s.allVaultByID) <= 1:
 		actions.DeleteBlockedReason = onlyVaultDeleteReason
@@ -120,14 +120,14 @@ func (s *Service) GetVaultActions(vaultID string) (VaultActions, error) {
 	}
 	ownerCount := 0
 	for _, member := range allMember {
-		if member.Role == proto.VaultOwner {
+		if member.Role == apitypes.VaultOwner {
 			ownerCount++
 		}
 	}
 	switch {
-	case vault.Type == proto.VaultPersonal:
+	case vault.Type == apitypes.VaultPersonal:
 		actions.LeaveBlockedReason = personalVaultLeaveReason
-	case vault.Role == proto.VaultOwner && ownerCount <= 1:
+	case vault.Role == apitypes.VaultOwner && ownerCount <= 1:
 		actions.LeaveBlockedReason = onlyOwnerLeaveReason
 	default:
 		actions.CanLeave = true
@@ -135,7 +135,7 @@ func (s *Service) GetVaultActions(vaultID string) (VaultActions, error) {
 
 	if actions.CanDelete {
 		for _, candidate := range s.allVaultByID {
-			if candidate.ID == vault.ID || (candidate.Role != proto.VaultOwner && candidate.Role != proto.VaultEditor) {
+			if candidate.ID == vault.ID || (candidate.Role != apitypes.VaultOwner && candidate.Role != apitypes.VaultEditor) {
 				continue
 			}
 			candidateCount, err := s.loadVaultItemCount(ctx, candidate)
@@ -223,7 +223,7 @@ func (s *Service) LeaveVault(vaultID string) error {
 		return err
 	}
 	if err := s.unlockedSession.LeaveVault(ctx, vault); err != nil {
-		if client.IsStatus(err, http.StatusBadRequest) {
+		if apiclient.IsStatus(err, http.StatusBadRequest) {
 			return errors.New(onlyOwnerLeaveReason)
 		}
 		return convertVaultError(err)
@@ -270,12 +270,12 @@ func convertVaultError(err error) error {
 	case errors.Is(err, session.ErrNotVaultOwner), errors.Is(err, session.ErrPersonalVault), errors.Is(err, session.ErrTargetNotWritable),
 		errors.Is(err, session.ErrVaultNameEmpty), errors.Is(err, session.ErrLeavePersonalVault):
 		return err
-	case client.IsStatus(err, http.StatusForbidden):
+	case apiclient.IsStatus(err, http.StatusForbidden):
 		return errors.New("only an owner of this vault can do that")
-	case client.IsStatus(err, http.StatusConflict):
+	case apiclient.IsStatus(err, http.StatusConflict):
 		return errors.New("the vault changed on another device; try again")
-	case client.IsStatus(err, http.StatusBadRequest):
-		var apiError *client.APIError
+	case apiclient.IsStatus(err, http.StatusBadRequest):
+		var apiError *apiclient.APIError
 		if errors.As(err, &apiError) {
 			return errors.New(apiError.Message)
 		}

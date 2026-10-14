@@ -8,8 +8,8 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/google/uuid"
 
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
-	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
@@ -28,7 +28,7 @@ func isValidUUID(value string) bool {
 }
 
 func isValidVaultRole(role string) bool {
-	return role == proto.VaultOwner || role == proto.VaultEditor || role == proto.VaultReader
+	return role == apitypes.VaultOwner || role == apitypes.VaultEditor || role == apitypes.VaultReader
 }
 
 // getVaultRole returns the caller's role; missing vaults and non-members both get 404.
@@ -49,7 +49,7 @@ func (s *Server) requireVaultOwner(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	if role != proto.VaultOwner {
+	if role != apitypes.VaultOwner {
 		return createAPIError(fiber.StatusForbidden, "owner only")
 	}
 	return nil
@@ -60,9 +60,9 @@ func (s *Server) handleListAllVault(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	allVault := make([]proto.Vault, 0, len(allStoredVault))
+	allVault := make([]apitypes.Vault, 0, len(allStoredVault))
 	for _, vault := range allStoredVault {
-		allVault = append(allVault, proto.Vault{
+		allVault = append(allVault, apitypes.Vault{
 			ID: vault.ID, Type: vault.Type, EncName: vault.EncName, Seq: vault.Seq, Role: vault.Role, WrappedKey: vault.WrappedKey,
 		})
 	}
@@ -71,11 +71,11 @@ func (s *Server) handleListAllVault(c fiber.Ctx) error {
 
 func (s *Server) handleCreateVault(c fiber.Ctx) error {
 	currentSession := getSession(c)
-	var request proto.CreateVaultRequest
+	var request apitypes.CreateVaultRequest
 	if err := decodeBody(c, &request); err != nil {
 		return err
 	}
-	if !isValidUUID(request.ID) || (request.Type != proto.VaultPersonal && request.Type != proto.VaultShared) ||
+	if !isValidUUID(request.ID) || (request.Type != apitypes.VaultPersonal && request.Type != apitypes.VaultShared) ||
 		len(request.EncName) == 0 || len(request.EncName) > maxEncName ||
 		len(request.WrappedKey) == 0 || len(request.WrappedKey) > maxWrappedKey {
 		return createAPIError(fiber.StatusBadRequest, "invalid vault")
@@ -89,7 +89,7 @@ func (s *Server) handleCreateVault(c fiber.Ctx) error {
 	}
 	s.recordAudit(c, currentSession.AccountID, currentSession.DeviceID, "vault_created", map[string]string{"vault": vault.ID, "type": vault.Type})
 	s.publishVaultsChanged(currentSession.AccountID)
-	return c.Status(fiber.StatusCreated).JSON(proto.Vault{ID: vault.ID, Type: vault.Type, EncName: vault.EncName, Role: proto.VaultOwner, WrappedKey: request.WrappedKey})
+	return c.Status(fiber.StatusCreated).JSON(apitypes.Vault{ID: vault.ID, Type: vault.Type, EncName: vault.EncName, Role: apitypes.VaultOwner, WrappedKey: request.WrappedKey})
 }
 
 func (s *Server) handleListAllVaultMember(c fiber.Ctx) error {
@@ -100,9 +100,9 @@ func (s *Server) handleListAllVaultMember(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	allMember := make([]proto.VaultMember, 0, len(allStoredMember))
+	allMember := make([]apitypes.VaultMember, 0, len(allStoredMember))
 	for _, member := range allStoredMember {
-		allMember = append(allMember, proto.VaultMember{AccountID: member.AccountID, Role: member.Role, GrantedBy: member.GrantedBy})
+		allMember = append(allMember, apitypes.VaultMember{AccountID: member.AccountID, Role: member.Role, GrantedBy: member.GrantedBy})
 	}
 	return c.JSON(allMember)
 }
@@ -113,14 +113,14 @@ func (s *Server) handleSetAccess(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	if role != proto.VaultOwner {
+	if role != apitypes.VaultOwner {
 		return createAPIError(fiber.StatusForbidden, "owner only")
 	}
 	target := c.Params("account")
 	if target == currentSession.AccountID {
 		return createAPIError(fiber.StatusBadRequest, "cannot change own access")
 	}
-	var request proto.SetAccessRequest
+	var request apitypes.SetAccessRequest
 	if err := decodeBody(c, &request); err != nil {
 		return err
 	}
@@ -163,7 +163,7 @@ func (s *Server) handleRemoveAccess(c fiber.Ctx) error {
 	if target == currentSession.AccountID {
 		return s.leaveVault(c, vaultID)
 	}
-	if role != proto.VaultOwner {
+	if role != apitypes.VaultOwner {
 		return createAPIError(fiber.StatusForbidden, "owner only")
 	}
 	switch err := s.store.RemoveAccess(c.Context(), vaultID, target); {
@@ -177,8 +177,8 @@ func (s *Server) handleRemoveAccess(c fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func convertToProtoItem(storeItem *store.Item) proto.Item {
-	return proto.Item{ID: storeItem.ID, Revision: storeItem.Revision, Seq: storeItem.Seq, Deleted: storeItem.Deleted, Overview: storeItem.Overview, Details: storeItem.Details, UpdatedAt: storeItem.UpdatedAt, UpdatedBy: storeItem.UpdatedBy}
+func convertToProtoItem(storeItem *store.Item) apitypes.Item {
+	return apitypes.Item{ID: storeItem.ID, Revision: storeItem.Revision, Seq: storeItem.Seq, Deleted: storeItem.Deleted, Overview: storeItem.Overview, Details: storeItem.Details, UpdatedAt: storeItem.UpdatedAt, UpdatedBy: storeItem.UpdatedBy}
 }
 
 func (s *Server) handleListAllChange(c fiber.Ctx) error {
@@ -205,7 +205,7 @@ func (s *Server) handleListAllChange(c fiber.Ctx) error {
 		return err
 	}
 	// NextSeq below the client's since signals a server rollback; it is not clamped.
-	response := proto.ChangesResponse{Items: make([]proto.Item, 0, len(allItem)), NextSeq: vaultSeq}
+	response := apitypes.ChangesResponse{Items: make([]apitypes.Item, 0, len(allItem)), NextSeq: vaultSeq}
 	for index := range allItem {
 		response.Items = append(response.Items, convertToProtoItem(&allItem[index]))
 	}
@@ -224,11 +224,11 @@ func (s *Server) handlePutItem(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	if role == proto.VaultReader {
+	if role == apitypes.VaultReader {
 		return createAPIError(fiber.StatusForbidden, "read only")
 	}
 	itemID := c.Params("item")
-	var request proto.PutItemRequest
+	var request apitypes.PutItemRequest
 	if err := decodeBody(c, &request); err != nil {
 		return err
 	}
@@ -243,7 +243,7 @@ func (s *Server) handlePutItem(c fiber.Ctx) error {
 	currentStoreItem, err := s.store.PutItem(c.Context(), c.Params("vault"), baseRevision, storeItem)
 	switch {
 	case errors.Is(err, store.ErrConflict):
-		conflictResponse := proto.ConflictResponse{}
+		conflictResponse := apitypes.ConflictResponse{}
 		if currentStoreItem != nil {
 			currentItem := convertToProtoItem(currentStoreItem)
 			conflictResponse.Current = &currentItem
@@ -253,7 +253,7 @@ func (s *Server) handlePutItem(c fiber.Ctx) error {
 		return err
 	}
 	s.publishVaultChanged(c.Context(), c.Params("vault"), storeItem.Seq)
-	return c.JSON(proto.PutItemResponse{Seq: storeItem.Seq})
+	return c.JSON(apitypes.PutItemResponse{Seq: storeItem.Seq})
 }
 
 func (s *Server) handleGetItemHistory(c fiber.Ctx) error {
@@ -268,7 +268,7 @@ func (s *Server) handleGetItemHistory(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	allProtoItem := make([]proto.Item, 0, len(allItem))
+	allProtoItem := make([]apitypes.Item, 0, len(allItem))
 	for index := range allItem {
 		allProtoItem = append(allProtoItem, convertToProtoItem(&allItem[index]))
 	}
@@ -297,7 +297,7 @@ func (s *Server) handleRenameVault(c fiber.Ctx) error {
 	if err := s.requireVaultOwner(c); err != nil {
 		return err
 	}
-	var request proto.RenameVaultRequest
+	var request apitypes.RenameVaultRequest
 	if err := decodeBody(c, &request); err != nil {
 		return err
 	}
@@ -333,7 +333,7 @@ func (s *Server) handleDeleteVault(c fiber.Ctx) error {
 	if err := s.requireVaultOwner(c); err != nil {
 		return err
 	}
-	var request proto.DeleteVaultRequest
+	var request apitypes.DeleteVaultRequest
 	if err := decodeBodyWithLimit(c, &request, maxRotationBody); err != nil {
 		return err
 	}

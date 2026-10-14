@@ -13,10 +13,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tryhisar/hisar/core/client"
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/localstate"
-	"github.com/tryhisar/hisar/core/proto"
 )
 
 func (server *fakeAPIServer) getVaultRole(vaultID string) string {
@@ -32,7 +32,7 @@ func (server *fakeAPIServer) addAllSharingRoute(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/members", func(writer http.ResponseWriter, request *http.Request) {
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
-		allPerson := []proto.Member{}
+		allPerson := []apitypes.Member{}
 		for _, member := range server.allMember {
 			if member.AccountID == server.accountID || server.isSharingVaultWith(member.AccountID) {
 				allPerson = append(allPerson, member)
@@ -41,40 +41,40 @@ func (server *fakeAPIServer) addAllSharingRoute(mux *http.ServeMux) {
 		writeJSON(writer, http.StatusOK, allPerson)
 	})
 	mux.HandleFunc("POST /api/v1/vaults/{vaultID}/share-invitations", func(writer http.ResponseWriter, request *http.Request) {
-		var shareRequest proto.ShareInvitationRequest
+		var shareRequest apitypes.ShareInvitationRequest
 		if err := json.NewDecoder(request.Body).Decode(&shareRequest); err != nil {
-			writeJSON(writer, http.StatusBadRequest, proto.Error{Error: err.Error()})
+			writeJSON(writer, http.StatusBadRequest, apitypes.Error{Error: err.Error()})
 			return
 		}
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
 		vaultID := request.PathValue("vaultID")
-		if server.getVaultRole(vaultID) != proto.VaultOwner {
-			writeJSON(writer, http.StatusForbidden, proto.Error{Error: "owner only"})
+		if server.getVaultRole(vaultID) != apitypes.VaultOwner {
+			writeJSON(writer, http.StatusForbidden, apitypes.Error{Error: "owner only"})
 			return
 		}
 		for _, access := range server.allAccessByVaultID[vaultID] {
 			if member := server.findMember(access.AccountID); member != nil && member.Email == shareRequest.Email {
-				writeJSON(writer, http.StatusConflict, proto.Error{Error: "this person already has access to the vault"})
+				writeJSON(writer, http.StatusConflict, apitypes.Error{Error: "this person already has access to the vault"})
 				return
 			}
 		}
-		server.allShareInvitation = slices.DeleteFunc(server.allShareInvitation, func(invitation proto.SentShareInvitation) bool {
+		server.allShareInvitation = slices.DeleteFunc(server.allShareInvitation, func(invitation apitypes.SentShareInvitation) bool {
 			return invitation.VaultID == vaultID && invitation.Email == shareRequest.Email
 		})
-		server.allShareInvitation = append(server.allShareInvitation, proto.SentShareInvitation{
+		server.allShareInvitation = append(server.allShareInvitation, apitypes.SentShareInvitation{
 			ID: fmt.Sprintf("invitation-%d", len(server.allShareInvitation)+1), VaultID: vaultID, Email: shareRequest.Email, Role: shareRequest.Role,
-			State: proto.ShareInvitationPending, InvitedBy: server.accountID, ExpiresAt: time.Now().Add(7 * 24 * time.Hour),
+			State: apitypes.ShareInvitationPending, InvitedBy: server.accountID, ExpiresAt: time.Now().Add(7 * 24 * time.Hour),
 		})
-		writeJSON(writer, http.StatusAccepted, proto.InvitationSentResponse{Message: proto.InvitationSentMessage})
+		writeJSON(writer, http.StatusAccepted, apitypes.InvitationSentResponse{Message: apitypes.InvitationSentMessage})
 	})
 	mux.HandleFunc("GET /api/v1/share-invitations", func(writer http.ResponseWriter, request *http.Request) {
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
-		response := proto.ShareInvitationList{AllReceived: append([]proto.ReceivedShareInvitation{}, server.allReceivedShareInvitation...), AllSent: []proto.SentShareInvitation{},
+		response := apitypes.ShareInvitationList{AllReceived: append([]apitypes.ReceivedShareInvitation{}, server.allReceivedShareInvitation...), AllSent: []apitypes.SentShareInvitation{},
 			AllWaiting: server.allWaitingShareInvitation}
 		for _, invitation := range server.allShareInvitation {
-			if server.getVaultRole(invitation.VaultID) == proto.VaultOwner {
+			if server.getVaultRole(invitation.VaultID) == apitypes.VaultOwner {
 				response.AllSent = append(response.AllSent, invitation)
 			}
 		}
@@ -84,9 +84,9 @@ func (server *fakeAPIServer) addAllSharingRoute(mux *http.ServeMux) {
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
 		invitationID := request.PathValue("invitationID")
-		index := slices.IndexFunc(server.allReceivedShareInvitation, func(invitation proto.ReceivedShareInvitation) bool { return invitation.ID == invitationID })
+		index := slices.IndexFunc(server.allReceivedShareInvitation, func(invitation apitypes.ReceivedShareInvitation) bool { return invitation.ID == invitationID })
 		if index < 0 {
-			writeJSON(writer, http.StatusNotFound, proto.Error{Error: "this invitation no longer exists"})
+			writeJSON(writer, http.StatusNotFound, apitypes.Error{Error: "this invitation no longer exists"})
 			return
 		}
 		server.allReceivedShareInvitation = slices.Delete(server.allReceivedShareInvitation, index, index+1)
@@ -97,9 +97,9 @@ func (server *fakeAPIServer) addAllSharingRoute(mux *http.ServeMux) {
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
 		invitationID := request.PathValue("invitationID")
-		index := slices.IndexFunc(server.allShareInvitation, func(invitation proto.SentShareInvitation) bool { return invitation.ID == invitationID })
-		if index < 0 || server.getVaultRole(server.allShareInvitation[index].VaultID) != proto.VaultOwner {
-			writeJSON(writer, http.StatusNotFound, proto.Error{Error: "this invitation no longer exists"})
+		index := slices.IndexFunc(server.allShareInvitation, func(invitation apitypes.SentShareInvitation) bool { return invitation.ID == invitationID })
+		if index < 0 || server.getVaultRole(server.allShareInvitation[index].VaultID) != apitypes.VaultOwner {
+			writeJSON(writer, http.StatusNotFound, apitypes.Error{Error: "this invitation no longer exists"})
 			return
 		}
 		server.allShareInvitation = slices.Delete(server.allShareInvitation, index, index+1)
@@ -110,38 +110,38 @@ func (server *fakeAPIServer) addAllSharingRoute(mux *http.ServeMux) {
 		defer server.mutex.Unlock()
 		vaultID := request.PathValue("vaultID")
 		if server.getVaultRole(vaultID) == "" {
-			writeJSON(writer, http.StatusNotFound, proto.Error{Error: "not found"})
+			writeJSON(writer, http.StatusNotFound, apitypes.Error{Error: "not found"})
 			return
 		}
-		allVaultMember := []proto.VaultMember{}
+		allVaultMember := []apitypes.VaultMember{}
 		for _, access := range server.allAccessByVaultID[vaultID] {
-			allVaultMember = append(allVaultMember, proto.VaultMember{AccountID: access.AccountID, Role: access.Role})
+			allVaultMember = append(allVaultMember, apitypes.VaultMember{AccountID: access.AccountID, Role: access.Role})
 		}
 		writeJSON(writer, http.StatusOK, allVaultMember)
 	})
 	mux.HandleFunc("PUT /api/v1/vaults/{vaultID}/access/{accountID}", func(writer http.ResponseWriter, request *http.Request) {
-		var setRequest proto.SetAccessRequest
+		var setRequest apitypes.SetAccessRequest
 		if err := json.NewDecoder(request.Body).Decode(&setRequest); err != nil {
-			writeJSON(writer, http.StatusBadRequest, proto.Error{Error: err.Error()})
+			writeJSON(writer, http.StatusBadRequest, apitypes.Error{Error: err.Error()})
 			return
 		}
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
 		vaultID, accountID := request.PathValue("vaultID"), request.PathValue("accountID")
-		if server.getVaultRole(vaultID) != proto.VaultOwner {
-			writeJSON(writer, http.StatusForbidden, proto.Error{Error: "owner only"})
+		if server.getVaultRole(vaultID) != apitypes.VaultOwner {
+			writeJSON(writer, http.StatusForbidden, apitypes.Error{Error: "owner only"})
 			return
 		}
 		allAccess := server.allAccessByVaultID[vaultID]
-		access := proto.RotatedAccess{AccountID: accountID, Role: setRequest.Role, WrappedKey: setRequest.WrappedKey}
-		if index := slices.IndexFunc(allAccess, func(existing proto.RotatedAccess) bool { return existing.AccountID == accountID }); index >= 0 {
+		access := apitypes.RotatedAccess{AccountID: accountID, Role: setRequest.Role, WrappedKey: setRequest.WrappedKey}
+		if index := slices.IndexFunc(allAccess, func(existing apitypes.RotatedAccess) bool { return existing.AccountID == accountID }); index >= 0 {
 			allAccess[index] = access
 		} else {
-			invitationIndex := slices.IndexFunc(server.allShareInvitation, func(invitation proto.SentShareInvitation) bool {
-				return invitation.VaultID == vaultID && invitation.State == proto.ShareInvitationAccepted && invitation.Recipient != nil && invitation.Recipient.AccountID == accountID
+			invitationIndex := slices.IndexFunc(server.allShareInvitation, func(invitation apitypes.SentShareInvitation) bool {
+				return invitation.VaultID == vaultID && invitation.State == apitypes.ShareInvitationAccepted && invitation.Recipient != nil && invitation.Recipient.AccountID == accountID
 			})
 			if invitationIndex < 0 {
-				writeJSON(writer, http.StatusConflict, proto.Error{Error: "this person has not accepted an invitation to this vault"})
+				writeJSON(writer, http.StatusConflict, apitypes.Error{Error: "this person has not accepted an invitation to this vault"})
 				return
 			}
 			server.allShareInvitation = slices.Delete(server.allShareInvitation, invitationIndex, invitationIndex+1)
@@ -150,32 +150,32 @@ func (server *fakeAPIServer) addAllSharingRoute(mux *http.ServeMux) {
 		writer.WriteHeader(http.StatusNoContent)
 	})
 	mux.HandleFunc("POST /api/v1/vaults/{vaultID}/rotate", func(writer http.ResponseWriter, request *http.Request) {
-		var rotateRequest proto.RotateVaultRequest
+		var rotateRequest apitypes.RotateVaultRequest
 		if err := json.NewDecoder(request.Body).Decode(&rotateRequest); err != nil {
-			writeJSON(writer, http.StatusBadRequest, proto.Error{Error: err.Error()})
+			writeJSON(writer, http.StatusBadRequest, apitypes.Error{Error: err.Error()})
 			return
 		}
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
 		vaultID := request.PathValue("vaultID")
-		if server.getVaultRole(vaultID) != proto.VaultOwner {
-			writeJSON(writer, http.StatusForbidden, proto.Error{Error: "owner only"})
+		if server.getVaultRole(vaultID) != apitypes.VaultOwner {
+			writeJSON(writer, http.StatusForbidden, apitypes.Error{Error: "owner only"})
 			return
 		}
 		allItem := server.allItemByVaultID[vaultID]
 		if len(rotateRequest.AllItem) != len(allItem) {
-			writeJSON(writer, http.StatusConflict, proto.Error{Error: "items changed"})
+			writeJSON(writer, http.StatusConflict, apitypes.Error{Error: "items changed"})
 			return
 		}
 		for _, rotatedItem := range rotateRequest.AllItem {
 			if stored, found := allItem[rotatedItem.ID]; !found || stored.Revision != rotatedItem.BaseRevision {
-				writeJSON(writer, http.StatusConflict, proto.Error{Error: "items changed"})
+				writeJSON(writer, http.StatusConflict, apitypes.Error{Error: "items changed"})
 				return
 			}
 		}
 		for _, rotatedItem := range rotateRequest.AllItem {
 			server.seq++
-			allItem[rotatedItem.ID] = proto.Item{ID: rotatedItem.ID, Revision: rotatedItem.Revision, Seq: server.seq, Deleted: rotatedItem.Deleted, Overview: rotatedItem.Overview, Details: rotatedItem.Details}
+			allItem[rotatedItem.ID] = apitypes.Item{ID: rotatedItem.ID, Revision: rotatedItem.Revision, Seq: server.seq, Deleted: rotatedItem.Deleted, Overview: rotatedItem.Overview, Details: rotatedItem.Details}
 		}
 		server.allAccessByVaultID[vaultID] = rotateRequest.AllAccess
 		for index := range server.allVault {
@@ -192,19 +192,19 @@ func (server *fakeAPIServer) addAllSharingRoute(mux *http.ServeMux) {
 		writer.WriteHeader(http.StatusNoContent)
 	})
 	mux.HandleFunc("POST /api/v1/invites", func(writer http.ResponseWriter, request *http.Request) {
-		var inviteRequest proto.InviteRequest
+		var inviteRequest apitypes.InviteRequest
 		if err := json.NewDecoder(request.Body).Decode(&inviteRequest); err != nil {
-			writeJSON(writer, http.StatusBadRequest, proto.Error{Error: err.Error()})
+			writeJSON(writer, http.StatusBadRequest, apitypes.Error{Error: err.Error()})
 			return
 		}
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
 		if server.isEmailUnavailable {
-			writeJSON(writer, http.StatusNotImplemented, proto.Error{Error: "email is not configured on this server"})
+			writeJSON(writer, http.StatusNotImplemented, apitypes.Error{Error: "email is not configured on this server"})
 			return
 		}
 		server.allInvitedEmail = append(server.allInvitedEmail, inviteRequest.Email)
-		writeJSON(writer, http.StatusAccepted, proto.InvitationSentResponse{Message: proto.InvitationSentMessage})
+		writeJSON(writer, http.StatusAccepted, apitypes.InvitationSentResponse{Message: apitypes.InvitationSentMessage})
 	})
 	mux.HandleFunc("GET /api/v1/devices", func(writer http.ResponseWriter, request *http.Request) {
 		server.mutex.Lock()
@@ -225,12 +225,12 @@ func (server *fakeAPIServer) addAllSharingRoute(mux *http.ServeMux) {
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
 		deviceID := request.PathValue("deviceID")
-		server.allDevice = slices.DeleteFunc(server.allDevice, func(device proto.Device) bool { return device.ID == deviceID })
+		server.allDevice = slices.DeleteFunc(server.allDevice, func(device apitypes.Device) bool { return device.ID == deviceID })
 		writer.WriteHeader(http.StatusNoContent)
 	})
 }
 
-func (server *fakeAPIServer) findMember(accountID string) *proto.Member {
+func (server *fakeAPIServer) findMember(accountID string) *apitypes.Member {
 	for index := range server.allMember {
 		if server.allMember[index].AccountID == accountID {
 			member := server.allMember[index]
@@ -242,8 +242,8 @@ func (server *fakeAPIServer) findMember(accountID string) *proto.Member {
 
 func (server *fakeAPIServer) isSharingVaultWith(accountID string) bool {
 	for _, allAccess := range server.allAccessByVaultID {
-		isMine := slices.ContainsFunc(allAccess, func(access proto.RotatedAccess) bool { return access.AccountID == server.accountID })
-		if isMine && slices.ContainsFunc(allAccess, func(access proto.RotatedAccess) bool { return access.AccountID == accountID }) {
+		isMine := slices.ContainsFunc(allAccess, func(access apitypes.RotatedAccess) bool { return access.AccountID == server.accountID })
+		if isMine && slices.ContainsFunc(allAccess, func(access apitypes.RotatedAccess) bool { return access.AccountID == accountID }) {
 			return true
 		}
 	}
@@ -251,15 +251,15 @@ func (server *fakeAPIServer) isSharingVaultWith(accountID string) bool {
 }
 
 // acceptShareInvitation plays the recipient accepting their pending invitation.
-func (server *fakeAPIServer) acceptShareInvitation(t *testing.T, recipient proto.Member) {
+func (server *fakeAPIServer) acceptShareInvitation(t *testing.T, recipient apitypes.Member) {
 	t.Helper()
 	server.mutex.Lock()
 	defer server.mutex.Unlock()
 	for index := range server.allShareInvitation {
 		invitation := &server.allShareInvitation[index]
-		if invitation.Email == recipient.Email && invitation.State == proto.ShareInvitationPending {
+		if invitation.Email == recipient.Email && invitation.State == apitypes.ShareInvitationPending {
 			acceptedAt := time.Date(2026, 10, 11, 8, 30, 0, 0, time.UTC)
-			invitation.State = proto.ShareInvitationAccepted
+			invitation.State = apitypes.ShareInvitationAccepted
 			invitation.Recipient = &recipient
 			invitation.AcceptedAt = &acceptedAt
 			return
@@ -275,7 +275,7 @@ func (server *fakeAPIServer) countShareInvitation() int {
 }
 
 // shareThroughInvitation invites the member, accepts as them and lets the service complete the share.
-func shareThroughInvitation(t *testing.T, test unlockedTestService, vaultID string, member proto.Member, role string) {
+func shareThroughInvitation(t *testing.T, test unlockedTestService, vaultID string, member apitypes.Member, role string) {
 	t.Helper()
 	if err := test.service.ShareVault(vaultID, member.Email, role); err != nil {
 		t.Fatal(err)
@@ -290,14 +290,14 @@ func shareThroughInvitation(t *testing.T, test unlockedTestService, vaultID stri
 	}
 }
 
-func (server *fakeAPIServer) addMember(t *testing.T, name, email string) (proto.Member, *crypt.Keyset) {
+func (server *fakeAPIServer) addMember(t *testing.T, name, email string) (apitypes.Member, *crypt.Keyset) {
 	t.Helper()
 	keyset, err := crypt.GenerateKeyset()
 	if err != nil {
 		t.Fatal(err)
 	}
 	accountID := crypt.GenerateAccountID()
-	member := proto.Member{AccountID: accountID, Email: email, Name: name, Role: proto.RoleMember, PublicKeys: keyset.GetAllPublicKey(accountID)}
+	member := apitypes.Member{AccountID: accountID, Email: email, Name: name, Role: apitypes.RoleMember, PublicKeys: keyset.GetAllPublicKey(accountID)}
 	server.mutex.Lock()
 	defer server.mutex.Unlock()
 	server.allMember = append(server.allMember, member)
@@ -320,7 +320,7 @@ func (server *fakeAPIServer) replaceMemberKey(t *testing.T, accountID string) {
 	}
 }
 
-func (server *fakeAPIServer) getAccess(vaultID, accountID string) (proto.RotatedAccess, bool) {
+func (server *fakeAPIServer) getAccess(vaultID, accountID string) (apitypes.RotatedAccess, bool) {
 	server.mutex.Lock()
 	defer server.mutex.Unlock()
 	for _, access := range server.allAccessByVaultID[vaultID] {
@@ -328,7 +328,7 @@ func (server *fakeAPIServer) getAccess(vaultID, accountID string) (proto.Rotated
 			return access, true
 		}
 	}
-	return proto.RotatedAccess{}, false
+	return apitypes.RotatedAccess{}, false
 }
 
 func (server *fakeAPIServer) setVaultRole(vaultID, role string) {
@@ -362,12 +362,12 @@ func TestShareVaultSendsInvitationAndCompletesOnAccept(t *testing.T) {
 	service := test.service
 	bob, bobKeyset := test.apiServer.addMember(t, "Bob", "b@example.com")
 
-	if err := service.ShareVault(test.familyID, " B@example.com ", proto.VaultEditor); err != nil {
+	if err := service.ShareVault(test.familyID, " B@example.com ", apitypes.VaultEditor); err != nil {
 		t.Fatal(err)
 	}
 	invitations, err := service.ListAllShareInvitation()
 	if err != nil || len(invitations.AllSent) != 1 || invitations.AllSent[0].Email != "b@example.com" || invitations.AllSent[0].VaultName != "Family" ||
-		invitations.AllSent[0].State != proto.ShareInvitationPending || invitations.AllSent[0].Role != proto.VaultEditor {
+		invitations.AllSent[0].State != apitypes.ShareInvitationPending || invitations.AllSent[0].Role != apitypes.VaultEditor {
 		t.Fatalf("sent invitations: %+v %v", invitations, err)
 	}
 	if _, found := test.apiServer.getAccess(test.familyID, bob.AccountID); found {
@@ -382,7 +382,7 @@ func TestShareVaultSendsInvitationAndCompletesOnAccept(t *testing.T) {
 		t.Fatal("sync failed")
 	}
 	access, found := test.apiServer.getAccess(test.familyID, bob.AccountID)
-	if !found || access.Role != proto.VaultEditor {
+	if !found || access.Role != apitypes.VaultEditor {
 		t.Fatalf("access after the sync completed the share: %+v %v", access, found)
 	}
 	unwrappedKey, err := bobKeyset.UnwrapVaultKey(test.familyID, bob.AccountID, access.WrappedKey)
@@ -401,16 +401,16 @@ func TestShareVaultSendsInvitationAndCompletesOnAccept(t *testing.T) {
 	if err != nil || len(allVaultMember) != 2 {
 		t.Fatalf("vault members: %+v %v", allVaultMember, err)
 	}
-	if owner := allVaultMember[0]; owner.Name != "Alice" || owner.Role != proto.VaultOwner || !owner.IsCurrentUser {
+	if owner := allVaultMember[0]; owner.Name != "Alice" || owner.Role != apitypes.VaultOwner || !owner.IsCurrentUser {
 		t.Errorf("owner = %+v", owner)
 	}
-	if member := allVaultMember[1]; member.Email != "b@example.com" || member.Role != proto.VaultEditor || member.IsCurrentUser ||
+	if member := allVaultMember[1]; member.Email != "b@example.com" || member.Role != apitypes.VaultEditor || member.IsCurrentUser ||
 		member.SecurityCode != crypt.FormatKeyFingerprint(bob.PublicKeys.Sign) || member.IsKeyChanged {
 		t.Errorf("member = %+v", member)
 	}
 
 	allPerson, err := service.ListAllPerson()
-	if err != nil || len(allPerson) != 2 || allPerson[0].Name != "Alice" || !allPerson[0].IsCurrentUser || allPerson[0].Role != proto.RoleAdmin {
+	if err != nil || len(allPerson) != 2 || allPerson[0].Name != "Alice" || !allPerson[0].IsCurrentUser || allPerson[0].Role != apitypes.RoleAdmin {
 		t.Fatalf("people: %+v %v", allPerson, err)
 	}
 	if allPerson[1].SecurityCode != crypt.FormatKeyFingerprint(bob.PublicKeys.Sign) || allPerson[1].IsCurrentUser {
@@ -418,10 +418,10 @@ func TestShareVaultSendsInvitationAndCompletesOnAccept(t *testing.T) {
 	}
 
 	test.apiServer.replaceMemberKey(t, bob.AccountID)
-	if err := service.ChangeVaultMemberRole(test.familyID, bob.AccountID, proto.VaultReader); err == nil || !strings.Contains(err.Error(), "changed") {
+	if err := service.ChangeVaultMemberRole(test.familyID, bob.AccountID, apitypes.VaultReader); err == nil || !strings.Contains(err.Error(), "changed") {
 		t.Errorf("role change after the key changed: %v", err)
 	}
-	if access, _ := test.apiServer.getAccess(test.familyID, bob.AccountID); access.Role != proto.VaultEditor {
+	if access, _ := test.apiServer.getAccess(test.familyID, bob.AccountID); access.Role != apitypes.VaultEditor {
 		t.Errorf("role changed despite the key change: %+v", access)
 	}
 	if allPerson, _ := service.ListAllPerson(); !allPerson[1].IsKeyChanged {
@@ -434,17 +434,17 @@ func TestCompletingAShareRefusesAChangedKey(t *testing.T) {
 	service := test.service
 	bob, _ := test.apiServer.addMember(t, "Bob", "b@example.com")
 	travelID := createSharedTestVault(t, service, "Travel")
-	shareThroughInvitation(t, test, test.familyID, bob, proto.VaultReader)
+	shareThroughInvitation(t, test, test.familyID, bob, apitypes.VaultReader)
 
 	test.apiServer.replaceMemberKey(t, bob.AccountID)
 	substituted := *test.apiServer.findMember(bob.AccountID)
-	if err := service.ShareVault(travelID, "b@example.com", proto.VaultReader); err != nil {
+	if err := service.ShareVault(travelID, "b@example.com", apitypes.VaultReader); err != nil {
 		t.Fatal(err)
 	}
 	test.apiServer.acceptShareInvitation(t, substituted)
 	invitations, err := service.ListAllShareInvitation()
 	if err != nil || !strings.Contains(invitations.CompletionError, "signing key of b@example.com changed") ||
-		len(invitations.AllSent) != 1 || invitations.AllSent[0].State != proto.ShareInvitationAccepted ||
+		len(invitations.AllSent) != 1 || invitations.AllSent[0].State != apitypes.ShareInvitationAccepted ||
 		invitations.AllSent[0].RecipientName != "Bob" || invitations.AllSent[0].AcceptedAt != "2026-10-11T08:30:00Z" || invitations.AllSent[0].VaultName != "Travel" {
 		t.Fatalf("completing with a substituted key: %+v %v", invitations, err)
 	}
@@ -467,22 +467,22 @@ func TestShareVaultValidatesAndReportsServerErrors(t *testing.T) {
 	service := test.service
 	bob, _ := test.apiServer.addMember(t, "Bob", "b@example.com")
 
-	if err := service.ShareVault(test.familyID, "nobody@example.com", proto.VaultReader); err != nil {
+	if err := service.ShareVault(test.familyID, "nobody@example.com", apitypes.VaultReader); err != nil {
 		t.Errorf("unknown email: %v", err)
 	}
-	if err := service.ShareVault(test.familyID, "A@example.com", proto.VaultReader); !errors.Is(err, errShareWithOwnAccount) {
+	if err := service.ShareVault(test.familyID, "A@example.com", apitypes.VaultReader); !errors.Is(err, errShareWithOwnAccount) {
 		t.Errorf("share with yourself: %v", err)
 	}
 	if err := service.ShareVault(test.familyID, "b@example.com", "admin"); err == nil || !strings.Contains(err.Error(), "owner, editor or reader") {
 		t.Errorf("invalid role: %v", err)
 	}
 	for _, badEmail := range []string{"", "bob", "@example.com", "bob@", "Bob <b@example.com>"} {
-		if err := service.ShareVault(test.familyID, badEmail, proto.VaultReader); !errors.Is(err, errInvalidEmail) {
+		if err := service.ShareVault(test.familyID, badEmail, apitypes.VaultReader); !errors.Is(err, errInvalidEmail) {
 			t.Errorf("email %q: %v", badEmail, err)
 		}
 	}
-	shareThroughInvitation(t, test, test.familyID, bob, proto.VaultReader)
-	if err := service.ShareVault(test.familyID, "b@example.com", proto.VaultEditor); !errors.Is(err, errAlreadyHasAccess) {
+	shareThroughInvitation(t, test, test.familyID, bob, apitypes.VaultReader)
+	if err := service.ShareVault(test.familyID, "b@example.com", apitypes.VaultEditor); !errors.Is(err, errAlreadyHasAccess) {
 		t.Errorf("share with a member: %v", err)
 	}
 	for status, expected := range map[int]error{
@@ -491,11 +491,11 @@ func TestShareVaultValidatesAndReportsServerErrors(t *testing.T) {
 		http.StatusNotFound:        errInvitationNotFound,
 		http.StatusForbidden:       errOwnerOnly,
 	} {
-		if err := convertInvitationError(&client.APIError{Status: status, Message: "server message"}); !errors.Is(err, expected) {
+		if err := convertInvitationError(&apiclient.APIError{Status: status, Message: "server message"}); !errors.Is(err, expected) {
 			t.Errorf("%d: %v", status, err)
 		}
 	}
-	if err := convertInvitationError(&client.APIError{Status: http.StatusBadRequest, Message: "personal vaults cannot be shared"}); err == nil || err.Error() != "personal vaults cannot be shared" {
+	if err := convertInvitationError(&apiclient.APIError{Status: http.StatusBadRequest, Message: "personal vaults cannot be shared"}); err == nil || err.Error() != "personal vaults cannot be shared" {
 		t.Errorf("400: %v", err)
 	}
 }
@@ -505,10 +505,10 @@ func TestShareVaultRefusesPersonalVaultAndNonOwner(t *testing.T) {
 	service := test.service
 	bob, _ := test.apiServer.addMember(t, "Bob", "b@example.com")
 
-	if err := service.ShareVault(test.personalID, "b@example.com", proto.VaultReader); !errors.Is(err, errPersonalVault) {
+	if err := service.ShareVault(test.personalID, "b@example.com", apitypes.VaultReader); !errors.Is(err, errPersonalVault) {
 		t.Errorf("share personal vault: %v", err)
 	}
-	if err := service.ChangeVaultMemberRole(test.personalID, bob.AccountID, proto.VaultReader); !errors.Is(err, errPersonalVault) {
+	if err := service.ChangeVaultMemberRole(test.personalID, bob.AccountID, apitypes.VaultReader); !errors.Is(err, errPersonalVault) {
 		t.Errorf("role change in personal vault: %v", err)
 	}
 	if err := service.RemoveVaultMember(test.personalID, bob.AccountID); !errors.Is(err, errPersonalVault) {
@@ -518,11 +518,11 @@ func TestShareVaultRefusesPersonalVaultAndNonOwner(t *testing.T) {
 		t.Error("an invitation to the personal vault was sent")
 	}
 
-	test.apiServer.setVaultRole(test.familyID, proto.VaultEditor)
+	test.apiServer.setVaultRole(test.familyID, apitypes.VaultEditor)
 	if _, err := service.ListAllVault(); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.ShareVault(test.familyID, "b@example.com", proto.VaultReader); !errors.Is(err, errOwnerOnly) {
+	if err := service.ShareVault(test.familyID, "b@example.com", apitypes.VaultReader); !errors.Is(err, errOwnerOnly) {
 		t.Errorf("share as editor: %v", err)
 	}
 	if err := service.RemoveVaultMember(test.familyID, bob.AccountID); !errors.Is(err, errOwnerOnly) {
@@ -531,7 +531,7 @@ func TestShareVaultRefusesPersonalVaultAndNonOwner(t *testing.T) {
 	if allVaultMember, err := service.ListAllVaultMember(test.familyID); err != nil || len(allVaultMember) != 1 {
 		t.Errorf("editors can list members: %+v %v", allVaultMember, err)
 	}
-	if err := convertSharingError(&client.APIError{Status: http.StatusForbidden, Message: "owner only"}); !errors.Is(err, errOwnerOnly) {
+	if err := convertSharingError(&apiclient.APIError{Status: http.StatusForbidden, Message: "owner only"}); !errors.Is(err, errOwnerOnly) {
 		t.Errorf("403 from the server: %v", err)
 	}
 }
@@ -540,9 +540,9 @@ func TestReceivedShareInvitationsCanBeAnswered(t *testing.T) {
 	test := createUnlockedTestService(t)
 	service := test.service
 	expiresAt := time.Date(2026, 10, 18, 9, 0, 0, 0, time.UTC)
-	test.apiServer.allReceivedShareInvitation = []proto.ReceivedShareInvitation{
-		{ID: "from-carol", VaultID: "vault-1", Role: proto.VaultEditor, InvitedByName: "Carol", InvitedByEmail: "c@example.com", ExpiresAt: expiresAt},
-		{ID: "from-dave", VaultID: "vault-2", Role: proto.VaultReader, InvitedByName: "Dave", InvitedByEmail: "d@example.com", ExpiresAt: expiresAt},
+	test.apiServer.allReceivedShareInvitation = []apitypes.ReceivedShareInvitation{
+		{ID: "from-carol", VaultID: "vault-1", Role: apitypes.VaultEditor, InvitedByName: "Carol", InvitedByEmail: "c@example.com", ExpiresAt: expiresAt},
+		{ID: "from-dave", VaultID: "vault-2", Role: apitypes.VaultReader, InvitedByName: "Dave", InvitedByEmail: "d@example.com", ExpiresAt: expiresAt},
 	}
 	invitations, err := service.ListAllShareInvitation()
 	if err != nil || len(invitations.AllReceived) != 2 || invitations.AllReceived[0].InvitedByName != "Carol" ||
@@ -565,7 +565,7 @@ func TestReceivedShareInvitationsCanBeAnswered(t *testing.T) {
 		t.Errorf("answers: %v", test.apiServer.allAnsweredShareInvitation)
 	}
 
-	if err := service.ShareVault(test.familyID, "e@example.com", proto.VaultReader); err != nil {
+	if err := service.ShareVault(test.familyID, "e@example.com", apitypes.VaultReader); err != nil {
 		t.Fatal(err)
 	}
 	invitations, _ = service.ListAllShareInvitation()
@@ -586,15 +586,15 @@ func TestReceivedShareInvitationsCanBeAnswered(t *testing.T) {
 func TestRecipientSeesWhoTheShareIsWaitingFor(t *testing.T) {
 	test := createUnlockedTestService(t)
 	acceptedAt := time.Date(2026, 10, 11, 7, 0, 0, 0, time.UTC)
-	test.apiServer.allWaitingShareInvitation = []proto.WaitingShareInvitation{
-		{ID: "from-carol", VaultID: "vault-1", Role: proto.VaultEditor, InvitedByName: "Carol", InvitedByEmail: "c@example.com", AcceptedAt: acceptedAt},
+	test.apiServer.allWaitingShareInvitation = []apitypes.WaitingShareInvitation{
+		{ID: "from-carol", VaultID: "vault-1", Role: apitypes.VaultEditor, InvitedByName: "Carol", InvitedByEmail: "c@example.com", AcceptedAt: acceptedAt},
 	}
 	invitations, err := test.service.ListAllShareInvitation()
 	if err != nil || len(invitations.AllWaiting) != 1 || len(invitations.AllReceived) != 0 {
 		t.Fatalf("waiting: %+v %v", invitations, err)
 	}
 	if waiting := invitations.AllWaiting[0]; waiting.ID != "from-carol" || waiting.InvitedByName != "Carol" || waiting.InvitedByEmail != "c@example.com" ||
-		waiting.Role != proto.VaultEditor || waiting.AcceptedAt != "2026-10-11T07:00:00Z" {
+		waiting.Role != apitypes.VaultEditor || waiting.AcceptedAt != "2026-10-11T07:00:00Z" {
 		t.Errorf("waiting = %+v", waiting)
 	}
 	test.apiServer.allWaitingShareInvitation = nil
@@ -607,7 +607,7 @@ func TestLockedAppListsSharesAwaitingUnlock(t *testing.T) {
 	test := createUnlockedTestService(t)
 	service := test.service
 	bob, _ := test.apiServer.addMember(t, "Bob", "b@example.com")
-	if err := service.ShareVault(test.familyID, "b@example.com", proto.VaultEditor); err != nil {
+	if err := service.ShareVault(test.familyID, "b@example.com", apitypes.VaultEditor); err != nil {
 		t.Fatal(err)
 	}
 	test.apiServer.acceptShareInvitation(t, bob)
@@ -647,7 +647,7 @@ func TestShareInvitationEventCompletesShare(t *testing.T) {
 	test := createUnlockedTestService(t)
 	service := test.service
 	bob, _ := test.apiServer.addMember(t, "Bob", "b@example.com")
-	if err := service.ShareVault(test.familyID, "b@example.com", proto.VaultReader); err != nil {
+	if err := service.ShareVault(test.familyID, "b@example.com", apitypes.VaultReader); err != nil {
 		t.Fatal(err)
 	}
 	remoteChange := make(chan struct{}, 4)
@@ -660,13 +660,13 @@ func TestShareInvitationEventCompletesShare(t *testing.T) {
 	go service.watchEvents(ctx, service.unlockedSession.Client, make(chan struct{}))
 
 	test.apiServer.acceptShareInvitation(t, bob)
-	test.apiServer.eventChannel <- proto.EventShareInvitationsChanged
+	test.apiServer.eventChannel <- apitypes.EventShareInvitationsChanged
 	select {
 	case <-remoteChange:
 	case <-time.After(5 * time.Second):
 		t.Fatal("no refresh after share-invitations-changed")
 	}
-	if access, found := test.apiServer.getAccess(test.familyID, bob.AccountID); !found || access.Role != proto.VaultReader {
+	if access, found := test.apiServer.getAccess(test.familyID, bob.AccountID); !found || access.Role != apitypes.VaultReader {
 		t.Errorf("access after the event: %+v %v", access, found)
 	}
 }
@@ -677,23 +677,23 @@ func TestChangeVaultMemberRole(t *testing.T) {
 	bob, _ := test.apiServer.addMember(t, "Bob", "b@example.com")
 	carol, _ := test.apiServer.addMember(t, "Carol", "c@example.com")
 
-	shareThroughInvitation(t, test, test.familyID, bob, proto.VaultEditor)
-	if err := service.ChangeVaultMemberRole(test.familyID, bob.AccountID, proto.VaultReader); err != nil {
+	shareThroughInvitation(t, test, test.familyID, bob, apitypes.VaultEditor)
+	if err := service.ChangeVaultMemberRole(test.familyID, bob.AccountID, apitypes.VaultReader); err != nil {
 		t.Fatal(err)
 	}
-	if access, _ := test.apiServer.getAccess(test.familyID, bob.AccountID); access.Role != proto.VaultReader {
+	if access, _ := test.apiServer.getAccess(test.familyID, bob.AccountID); access.Role != apitypes.VaultReader {
 		t.Errorf("role after change: %+v", access)
 	}
-	if err := service.ChangeVaultMemberRole(test.familyID, bob.AccountID, proto.VaultOwner); err != nil {
+	if err := service.ChangeVaultMemberRole(test.familyID, bob.AccountID, apitypes.VaultOwner); err != nil {
 		t.Fatal(err)
 	}
-	if allVaultMember, _ := service.ListAllVaultMember(test.familyID); len(allVaultMember) != 2 || allVaultMember[1].Role != proto.VaultOwner {
+	if allVaultMember, _ := service.ListAllVaultMember(test.familyID); len(allVaultMember) != 2 || allVaultMember[1].Role != apitypes.VaultOwner {
 		t.Errorf("members after promotion: %+v", allVaultMember)
 	}
-	if err := service.ChangeVaultMemberRole(test.familyID, test.accountID, proto.VaultReader); !errors.Is(err, errOwnAccess) {
+	if err := service.ChangeVaultMemberRole(test.familyID, test.accountID, apitypes.VaultReader); !errors.Is(err, errOwnAccess) {
 		t.Errorf("change own role: %v", err)
 	}
-	if err := service.ChangeVaultMemberRole(test.familyID, carol.AccountID, proto.VaultReader); err == nil || !strings.Contains(err.Error(), "no longer has access") {
+	if err := service.ChangeVaultMemberRole(test.familyID, carol.AccountID, apitypes.VaultReader); err == nil || !strings.Contains(err.Error(), "no longer has access") {
 		t.Errorf("change role of a non-member: %v", err)
 	}
 	if _, found := test.apiServer.getAccess(test.familyID, carol.AccountID); found {
@@ -711,8 +711,8 @@ func TestRemoveVaultMemberRotatesKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	shareThroughInvitation(t, test, test.familyID, bob, proto.VaultEditor)
-	shareThroughInvitation(t, test, test.familyID, carol, proto.VaultEditor)
+	shareThroughInvitation(t, test, test.familyID, bob, apitypes.VaultEditor)
+	shareThroughInvitation(t, test, test.familyID, carol, apitypes.VaultEditor)
 	oldKey := getCachedVaultKey(t, service, test.familyID)
 
 	if err := service.RemoveVaultMember(test.familyID, test.accountID); err == nil || !strings.Contains(err.Error(), "yourself") {
@@ -729,7 +729,7 @@ func TestRemoveVaultMemberRotatesKey(t *testing.T) {
 		t.Error("Bob still has access")
 	}
 	carolAccess, found := test.apiServer.getAccess(test.familyID, carol.AccountID)
-	if !found || carolAccess.Role != proto.VaultEditor {
+	if !found || carolAccess.Role != apitypes.VaultEditor {
 		t.Fatalf("Carol's access: %+v %v", carolAccess, found)
 	}
 	if carolKey, err := carolKeyset.UnwrapVaultKey(test.familyID, carol.AccountID, carolAccess.WrappedKey); err != nil || !bytes.Equal(carolKey, newKey) {
@@ -747,7 +747,7 @@ func TestRemoveVaultMemberRotatesKey(t *testing.T) {
 	}
 
 	dave, _ := test.apiServer.addMember(t, "Dave", "d@example.com")
-	shareThroughInvitation(t, test, test.familyID, dave, proto.VaultReader)
+	shareThroughInvitation(t, test, test.familyID, dave, apitypes.VaultReader)
 	test.apiServer.replaceMemberKey(t, carol.AccountID)
 	if err := service.RemoveVaultMember(test.familyID, dave.AccountID); err == nil || !strings.Contains(err.Error(), "signing key of c@example.com changed") {
 		t.Errorf("rotation wrapped the key for a substituted key: %v", err)
@@ -779,14 +779,14 @@ func checkSharingFlow(t *testing.T, service *Service, familyID, memberEmail, mem
 		t.Fatalf("a stranger is listed: %+v %v", allPerson, err)
 	}
 
-	if err := service.ShareVault(familyID, memberEmail, proto.VaultReader); err != nil {
+	if err := service.ShareVault(familyID, memberEmail, apitypes.VaultReader); err != nil {
 		t.Fatalf("share: %v", err)
 	}
-	if err := service.ShareVault(familyID, "nobody-"+memberEmail, proto.VaultReader); err != nil {
+	if err := service.ShareVault(familyID, "nobody-"+memberEmail, apitypes.VaultReader); err != nil {
 		t.Fatalf("share with an unknown email: %v", err)
 	}
 	received, err := member.ListAllShareInvitation()
-	if err != nil || len(received.AllReceived) != 1 || received.AllReceived[0].VaultID != familyID || received.AllReceived[0].Role != proto.VaultReader {
+	if err != nil || len(received.AllReceived) != 1 || received.AllReceived[0].VaultID != familyID || received.AllReceived[0].Role != apitypes.VaultReader {
 		t.Fatalf("member's invitations: %+v %v", received, err)
 	}
 	if err := member.AcceptShareInvitation(received.AllReceived[0].ID); err != nil {
@@ -804,28 +804,28 @@ func checkSharingFlow(t *testing.T, service *Service, familyID, memberEmail, mem
 		t.Fatal(err)
 	}
 	personIndex := slices.IndexFunc(allPerson, func(person Person) bool { return person.AccountID == memberAccountID })
-	if personIndex < 0 || allPerson[personIndex].Role != proto.RoleMember || len(allPerson[personIndex].SecurityCode) != 19 {
+	if personIndex < 0 || allPerson[personIndex].Role != apitypes.RoleMember || len(allPerson[personIndex].SecurityCode) != 19 {
 		t.Fatalf("people: %+v", allPerson)
 	}
 	allMemberVault, err := member.ListAllVault()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if index := slices.IndexFunc(allMemberVault, func(vault VaultSummary) bool { return vault.ID == familyID }); index < 0 || allMemberVault[index].Role != proto.VaultReader {
+	if index := slices.IndexFunc(allMemberVault, func(vault VaultSummary) bool { return vault.ID == familyID }); index < 0 || allMemberVault[index].Role != apitypes.VaultReader {
 		t.Fatalf("member's vaults after share: %+v", allMemberVault)
 	}
 	if fetched, err := member.GetItem(familyID, saved.ID); err != nil || fetched.Password != "shared family password" {
 		t.Fatalf("member reads the shared item: %+v %v", fetched, err)
 	}
-	if err := member.ShareVault(familyID, "desktop@example.com", proto.VaultReader); !errors.Is(err, errOwnerOnly) {
+	if err := member.ShareVault(familyID, "desktop@example.com", apitypes.VaultReader); !errors.Is(err, errOwnerOnly) {
 		t.Errorf("reader shares: %v", err)
 	}
 
-	if err := service.ChangeVaultMemberRole(familyID, memberAccountID, proto.VaultEditor); err != nil {
+	if err := service.ChangeVaultMemberRole(familyID, memberAccountID, apitypes.VaultEditor); err != nil {
 		t.Fatalf("change role: %v", err)
 	}
 	allVaultMember, err := service.ListAllVaultMember(familyID)
-	if err != nil || len(allVaultMember) != 2 || !allVaultMember[0].IsCurrentUser || allVaultMember[1].Role != proto.VaultEditor || allVaultMember[1].Email != memberEmail {
+	if err != nil || len(allVaultMember) != 2 || !allVaultMember[0].IsCurrentUser || allVaultMember[1].Role != apitypes.VaultEditor || allVaultMember[1].Email != memberEmail {
 		t.Fatalf("vault members: %+v %v", allVaultMember, err)
 	}
 
@@ -873,7 +873,7 @@ func TestInvitePerson(t *testing.T) {
 		t.Errorf("invalid email: %v", err)
 	}
 	test.apiServer.mutex.Lock()
-	test.apiServer.role = proto.RoleMember
+	test.apiServer.role = apitypes.RoleMember
 	test.apiServer.mutex.Unlock()
 	if err := service.InvitePerson("other@example.com"); err != nil {
 		t.Errorf("a member's invite: %v", err)
@@ -890,7 +890,7 @@ func TestListAllDeviceAndRevoke(t *testing.T) {
 	test := createUnlockedTestService(t)
 	service := test.service
 	now := time.Now()
-	test.apiServer.allDevice = []proto.Device{
+	test.apiServer.allDevice = []apitypes.Device{
 		{ID: "old-phone", Name: "iPhone", Platform: "ios/mobile", LastSeenAt: now.Add(-48 * time.Hour)},
 		{ID: "this-mac", Name: "MacBook", Platform: "darwin/desktop", LastSeenAt: now.Add(-time.Hour), Current: true},
 		{ID: "laptop", Name: "ThinkPad", Platform: "linux/cli", LastSeenAt: now},

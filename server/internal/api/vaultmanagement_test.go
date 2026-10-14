@@ -10,9 +10,9 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/tryhisar/hisar/core/client"
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/item"
-	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/core/session"
 )
 
@@ -31,7 +31,7 @@ func findPersonalVault(t *testing.T, signedIn *session.Session) *session.Vault {
 	t.Helper()
 	allVault := requireValue[[]session.Vault](t)(signedIn.ListAllVault(context.Background()))
 	for index := range allVault {
-		if allVault[index].Type == proto.VaultPersonal {
+		if allVault[index].Type == apitypes.VaultPersonal {
 			return &allVault[index]
 		}
 	}
@@ -58,24 +58,24 @@ func TestVaultRenameDeleteAndLeavePermissions(t *testing.T) {
 	baseURL, server, databaseURL := setupServer(t)
 	attachMailRecorder(server)
 	ctx := context.Background()
-	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", proto.RoleMember)
-	bob := signUpTestAccount(t, ctx, server, baseURL, "bob@example.com", proto.RoleMember)
-	carol := signUpTestAccount(t, ctx, server, baseURL, "carol@example.com", proto.RoleMember)
-	work := requireValue[*session.Vault](t)(alice.CreateVault(ctx, "Work", proto.VaultShared))
-	shareThroughInvitation(t, alice, bob, work, proto.VaultEditor)
-	shareThroughInvitation(t, alice, carol, work, proto.VaultReader)
+	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", apitypes.RoleMember)
+	bob := signUpTestAccount(t, ctx, server, baseURL, "bob@example.com", apitypes.RoleMember)
+	carol := signUpTestAccount(t, ctx, server, baseURL, "carol@example.com", apitypes.RoleMember)
+	work := requireValue[*session.Vault](t)(alice.CreateVault(ctx, "Work", apitypes.VaultShared))
+	shareThroughInvitation(t, alice, bob, work, apitypes.VaultEditor)
+	shareThroughInvitation(t, alice, carol, work, apitypes.VaultReader)
 
 	bobWork, _ := findTestVault(t, bob, work.ID)
 	carolWork, _ := findTestVault(t, carol, work.ID)
-	expectStatus(t, "editor renames", bob.Client.RenameVault(ctx, work.ID, &proto.RenameVaultRequest{EncName: []byte{1}}), http.StatusForbidden)
-	bobWork.Role = proto.VaultOwner
-	if err := bob.RenameVault(ctx, bobWork, "Taken over"); !client.IsStatus(err, http.StatusForbidden) {
+	expectStatus(t, "editor renames", bob.Client.RenameVault(ctx, work.ID, &apitypes.RenameVaultRequest{EncName: []byte{1}}), http.StatusForbidden)
+	bobWork.Role = apitypes.VaultOwner
+	if err := bob.RenameVault(ctx, bobWork, "Taken over"); !apiclient.IsStatus(err, http.StatusForbidden) {
 		t.Errorf("editor renames through the session: %v", err)
 	}
-	expectStatus(t, "editor deletes", bob.Client.DeleteVault(ctx, work.ID, &proto.DeleteVaultRequest{IsDeletingItems: true}), http.StatusForbidden)
-	expectStatus(t, "reader deletes", carol.Client.DeleteVault(ctx, work.ID, &proto.DeleteVaultRequest{IsDeletingItems: true}), http.StatusForbidden)
-	stranger := signUpTestAccount(t, ctx, server, baseURL, "dave@example.com", proto.RoleMember)
-	expectStatus(t, "stranger renames", stranger.Client.RenameVault(ctx, work.ID, &proto.RenameVaultRequest{EncName: []byte{1}}), http.StatusNotFound)
+	expectStatus(t, "editor deletes", bob.Client.DeleteVault(ctx, work.ID, &apitypes.DeleteVaultRequest{IsDeletingItems: true}), http.StatusForbidden)
+	expectStatus(t, "reader deletes", carol.Client.DeleteVault(ctx, work.ID, &apitypes.DeleteVaultRequest{IsDeletingItems: true}), http.StatusForbidden)
+	stranger := signUpTestAccount(t, ctx, server, baseURL, "dave@example.com", apitypes.RoleMember)
+	expectStatus(t, "stranger renames", stranger.Client.RenameVault(ctx, work.ID, &apitypes.RenameVaultRequest{EncName: []byte{1}}), http.StatusNotFound)
 	expectStatus(t, "stranger leaves", stranger.Client.RemoveAccess(ctx, work.ID, stranger.AccountID), http.StatusNotFound)
 
 	if err := alice.RenameVault(ctx, work, "Work (2026)"); err != nil {
@@ -89,7 +89,7 @@ func TestVaultRenameDeleteAndLeavePermissions(t *testing.T) {
 	if _, err := alice.DeleteVault(ctx, personal, session.VaultDeletion{}); !errors.Is(err, session.ErrPersonalVault) {
 		t.Errorf("deleting the personal vault through the session: %v", err)
 	}
-	expectStatus(t, "owner deletes the personal vault", alice.Client.DeleteVault(ctx, personal.ID, &proto.DeleteVaultRequest{}), http.StatusBadRequest)
+	expectStatus(t, "owner deletes the personal vault", alice.Client.DeleteVault(ctx, personal.ID, &apitypes.DeleteVaultRequest{}), http.StatusBadRequest)
 	expectStatus(t, "only owner leaves", alice.Client.RemoveAccess(ctx, work.ID, alice.AccountID), http.StatusBadRequest)
 	expectStatus(t, "owner leaves the personal vault", alice.Client.RemoveAccess(ctx, personal.ID, alice.AccountID), http.StatusBadRequest)
 
@@ -99,16 +99,16 @@ func TestVaultRenameDeleteAndLeavePermissions(t *testing.T) {
 	if _, isFound := findTestVault(t, carol, work.ID); isFound {
 		t.Error("carol still lists the vault she left")
 	}
-	if _, err := carol.Client.ListAllChange(ctx, work.ID, 0, 0); !client.IsStatus(err, http.StatusNotFound) {
+	if _, err := carol.Client.ListAllChange(ctx, work.ID, 0, 0); !apiclient.IsStatus(err, http.StatusNotFound) {
 		t.Errorf("carol reads the vault she left: %v", err)
 	}
-	allMember := requireValue[[]proto.VaultMember](t)(alice.Client.ListAllVaultMember(ctx, work.ID))
-	if slices.ContainsFunc(allMember, func(member proto.VaultMember) bool { return member.AccountID == carol.AccountID }) {
+	allMember := requireValue[[]apitypes.VaultMember](t)(alice.Client.ListAllVaultMember(ctx, work.ID))
+	if slices.ContainsFunc(allMember, func(member apitypes.VaultMember) bool { return member.AccountID == carol.AccountID }) {
 		t.Errorf("carol is still a member: %+v", allMember)
 	}
 
-	bobMember := requireValue[*proto.Member](t)(alice.GetVerifiedMember(ctx, bob.AccountID))
-	if err := alice.ShareVault(ctx, work, bobMember, proto.VaultOwner); err != nil {
+	bobMember := requireValue[*apitypes.Member](t)(alice.GetVerifiedMember(ctx, bob.AccountID))
+	if err := alice.ShareVault(ctx, work, bobMember, apitypes.VaultOwner); err != nil {
 		t.Fatal(err)
 	}
 	if err := alice.Client.RemoveAccess(ctx, work.ID, alice.AccountID); err != nil {
@@ -131,12 +131,12 @@ func TestDeleteVaultMovesItemsDecryptableIntoTarget(t *testing.T) {
 	baseURL, server, databaseURL := setupServer(t)
 	attachMailRecorder(server)
 	ctx := context.Background()
-	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", proto.RoleMember)
-	bob := signUpTestAccount(t, ctx, server, baseURL, "bob@example.com", proto.RoleMember)
-	work := requireValue[*session.Vault](t)(alice.CreateVault(ctx, "Work", proto.VaultShared))
-	shareThroughInvitation(t, alice, bob, work, proto.VaultEditor)
-	bobOnly := requireValue[*session.Vault](t)(bob.CreateVault(ctx, "Bob's", proto.VaultShared))
-	shareThroughInvitation(t, bob, alice, bobOnly, proto.VaultReader)
+	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", apitypes.RoleMember)
+	bob := signUpTestAccount(t, ctx, server, baseURL, "bob@example.com", apitypes.RoleMember)
+	work := requireValue[*session.Vault](t)(alice.CreateVault(ctx, "Work", apitypes.VaultShared))
+	shareThroughInvitation(t, alice, bob, work, apitypes.VaultEditor)
+	bobOnly := requireValue[*session.Vault](t)(bob.CreateVault(ctx, "Bob's", apitypes.VaultShared))
+	shareThroughInvitation(t, bob, alice, bobOnly, apitypes.VaultReader)
 
 	allCreated := []item.Item{
 		createTestItem(t, alice, work, item.Item{Overview: item.Overview{Title: "GitHub", Username: "alice", URLs: []string{"https://github.com"}}, Details: item.Details{
@@ -157,9 +157,9 @@ func TestDeleteVaultMovesItemsDecryptableIntoTarget(t *testing.T) {
 	if _, err := alice.DeleteVault(ctx, work, session.VaultDeletion{MoveTo: aliceBobOnly}); !errors.Is(err, session.ErrTargetNotWritable) {
 		t.Errorf("moving into a read-only vault through the session: %v", err)
 	}
-	expectStatus(t, "moving into a read-only vault", alice.Client.DeleteVault(ctx, work.ID, &proto.DeleteVaultRequest{MoveToVaultID: bobOnly.ID, AllMovedItem: []proto.MovedItem{}}), http.StatusForbidden)
+	expectStatus(t, "moving into a read-only vault", alice.Client.DeleteVault(ctx, work.ID, &apitypes.DeleteVaultRequest{MoveToVaultID: bobOnly.ID, AllMovedItem: []apitypes.MovedItem{}}), http.StatusForbidden)
 	personal := findPersonalVault(t, alice)
-	expectStatus(t, "moving without every item", alice.Client.DeleteVault(ctx, work.ID, &proto.DeleteVaultRequest{MoveToVaultID: personal.ID, AllMovedItem: []proto.MovedItem{}}), http.StatusConflict)
+	expectStatus(t, "moving without every item", alice.Client.DeleteVault(ctx, work.ID, &apitypes.DeleteVaultRequest{MoveToVaultID: personal.ID, AllMovedItem: []apitypes.MovedItem{}}), http.StatusConflict)
 
 	bobEvents := openEventStream(t, bob.Client)
 	waitForSubscriber(t, server, bob.AccountID, 1)
@@ -167,7 +167,7 @@ func TestDeleteVaultMovesItemsDecryptableIntoTarget(t *testing.T) {
 	if err != nil || movedCount != len(allCreated) {
 		t.Fatalf("move and delete: %d moved, %v", movedCount, err)
 	}
-	bobEvents.waitForEvent(t, proto.EventVaultsChanged)
+	bobEvents.waitForEvent(t, apitypes.EventVaultsChanged)
 
 	allMoved := requireValue[[]item.Item](t)(alice.ListAllItem(ctx, personal))
 	if len(allMoved) != len(allCreated) {
@@ -188,15 +188,15 @@ func TestDeleteVaultMovesItemsDecryptableIntoTarget(t *testing.T) {
 	if _, isFound := findTestVault(t, bob, work.ID); isFound {
 		t.Error("bob still lists the deleted vault")
 	}
-	if _, err := bob.Client.ListAllChange(ctx, work.ID, 0, 0); !client.IsStatus(err, http.StatusNotFound) {
+	if _, err := bob.Client.ListAllChange(ctx, work.ID, 0, 0); !apiclient.IsStatus(err, http.StatusNotFound) {
 		t.Errorf("reading the deleted vault: %v", err)
 	}
-	history := requireValue[[]proto.Item](t)(alice.Client.GetItemHistory(ctx, personal.ID, allCreated[0].ID))
+	history := requireValue[[]apitypes.Item](t)(alice.Client.GetItemHistory(ctx, personal.ID, allCreated[0].ID))
 	if len(history) != 1 {
 		t.Errorf("moved item history: %d entries", len(history))
 	}
 
-	scratch := requireValue[*session.Vault](t)(alice.CreateVault(ctx, "Scratch", proto.VaultShared))
+	scratch := requireValue[*session.Vault](t)(alice.CreateVault(ctx, "Scratch", apitypes.VaultShared))
 	createTestItem(t, alice, scratch, item.Item{Overview: item.Overview{Title: "Throwaway"}})
 	if _, err := alice.DeleteVault(ctx, scratch, session.VaultDeletion{IsDeletingItems: true}); err != nil {
 		t.Fatalf("delete with items: %v", err)

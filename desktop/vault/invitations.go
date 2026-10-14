@@ -6,15 +6,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tryhisar/hisar/core/client"
-	"github.com/tryhisar/hisar/core/proto"
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 )
 
 // completeAllAcceptedShare wraps vault keys for people who accepted this user's share invitations, pinning their
 // signing keys. It returns whether a share was completed; a failure is kept for ListAllShareInvitation to show.
 func (s *Service) completeAllAcceptedShare(ctx context.Context) bool {
 	allCompleted, completeErr := s.unlockedSession.CompleteAllAcceptedShare(ctx)
-	if client.IsUnreachable(completeErr) || client.IsStatus(completeErr, http.StatusNotFound) {
+	if apiclient.IsUnreachable(completeErr) || apiclient.IsStatus(completeErr, http.StatusNotFound) {
 		return false
 	}
 	s.shareCompletionError = ""
@@ -72,7 +72,7 @@ func (s *Service) ListAllShareInvitation() (ShareInvitations, error) {
 
 func formatTime(value time.Time) string { return value.UTC().Format(time.RFC3339) }
 
-func convertToSentShareInvitation(sent proto.SentShareInvitation, vaultName string) SentShareInvitation {
+func convertToSentShareInvitation(sent apitypes.SentShareInvitation, vaultName string) SentShareInvitation {
 	invitation := SentShareInvitation{
 		ID: sent.ID, VaultID: sent.VaultID, VaultName: vaultName, Email: sent.Email, Role: sent.Role, State: sent.State,
 		ExpiresAt: formatTime(sent.ExpiresAt),
@@ -102,14 +102,14 @@ func (s *Service) ListAllShareAwaitingUnlock() ([]ShareAwaitingUnlock, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	invitationList, err := apiClient.ListAllShareInvitation(ctx)
-	if client.IsUnreachable(err) {
+	if apiclient.IsUnreachable(err) {
 		return allAwaiting, nil
 	}
 	if err != nil {
 		return allAwaiting, convertError(err)
 	}
 	for _, sent := range invitationList.AllSent {
-		if sent.State != proto.ShareInvitationAccepted || sent.Recipient == nil {
+		if sent.State != apitypes.ShareInvitationAccepted || sent.Recipient == nil {
 			continue
 		}
 		awaiting := ShareAwaitingUnlock{InvitationID: sent.ID, RecipientName: sent.Recipient.Name, RecipientEmail: sent.Recipient.Email}

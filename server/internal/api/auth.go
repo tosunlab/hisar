@@ -15,8 +15,8 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/google/uuid"
 
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
-	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
@@ -48,7 +48,7 @@ func (s *Server) handlePrelogin(c fiber.Ctx) error {
 	account, err := s.store.GetAccountByEmail(c.Context(), email)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
-		return c.JSON(proto.PreloginResponse{
+		return c.JSON(apitypes.PreloginResponse{
 			Salt:   s.computeMAC("prelogin-salt", email)[:crypt.SaltSize],
 			Argon2: crypt.DefaultArgon2Params,
 		})
@@ -59,7 +59,7 @@ func (s *Server) handlePrelogin(c fiber.Ctx) error {
 	if err := json.Unmarshal(account.Argon2Params, &argon2Params); err != nil {
 		return err
 	}
-	return c.JSON(proto.PreloginResponse{Salt: account.Salt, Argon2: argon2Params})
+	return c.JSON(apitypes.PreloginResponse{Salt: account.Salt, Argon2: argon2Params})
 }
 
 func (s *Server) checkInvite(c fiber.Ctx, token, email string) bool {
@@ -70,7 +70,7 @@ func (s *Server) checkInvite(c fiber.Ctx, token, email string) bool {
 var errInvalidInvite = createAPIError(fiber.StatusForbidden, "invalid invite")
 
 func (s *Server) handleRegisterStart(c fiber.Ctx) error {
-	var request proto.RegisterStartRequest
+	var request apitypes.RegisterStartRequest
 	if err := decodeBody(c, &request); err != nil {
 		return err
 	}
@@ -91,11 +91,11 @@ func (s *Server) handleRegisterStart(c fiber.Ctx) error {
 	if err != nil {
 		return createAPIError(fiber.StatusBadRequest, "invalid registration request")
 	}
-	return c.JSON(proto.RegisterStartResponse{Response: response.Serialize()})
+	return c.JSON(apitypes.RegisterStartResponse{Response: response.Serialize()})
 }
 
 func (s *Server) handleRegisterFinish(c fiber.Ctx) error {
-	var request proto.RegisterFinishRequest
+	var request apitypes.RegisterFinishRequest
 	if err := decodeBody(c, &request); err != nil {
 		return err
 	}
@@ -140,24 +140,24 @@ func (s *Server) handleRegisterFinish(c fiber.Ctx) error {
 		return err
 	}
 	s.recordAudit(c, account.ID, device.ID, "signup", map[string]string{"email": email, "role": account.Role})
-	return c.JSON(proto.SessionResponse{Token: token, AccountID: account.ID, DeviceID: device.ID})
+	return c.JSON(apitypes.SessionResponse{Token: token, AccountID: account.ID, DeviceID: device.ID})
 }
 
-func (s *Server) createSession(accountID string, deviceInfo proto.DeviceInfo) (string, *store.Device, *store.Session) {
+func (s *Server) createSession(accountID string, deviceInfo apitypes.DeviceInfo) (string, *store.Device, *store.Session) {
 	token := generateToken()
 	device := &store.Device{ID: uuid.NewString(), AccountID: accountID, Name: deviceInfo.Name, Platform: deviceInfo.Platform}
 	currentSession := &store.Session{TokenHash: hashToken(token), AccountID: accountID, DeviceID: device.ID, ExpiresAt: time.Now().Add(s.config.SessionTTL)}
 	return token, device, currentSession
 }
 
-func isValidDevice(device proto.DeviceInfo) bool {
+func isValidDevice(device apitypes.DeviceInfo) bool {
 	return device.Name != "" && len(device.Name) <= 100 && device.Platform != "" && len(device.Platform) <= 50
 }
 
 var errInvalidLogin = createAPIError(fiber.StatusBadRequest, "invalid login request")
 
 func (s *Server) handleLoginStart(c fiber.Ctx) error {
-	var request proto.LoginStartRequest
+	var request apitypes.LoginStartRequest
 	if err := decodeBody(c, &request); err != nil {
 		return err
 	}
@@ -194,13 +194,13 @@ func (s *Server) handleLoginStart(c fiber.Ctx) error {
 	}
 	loginID := s.loginCache.put(&pendingLogin{accountID: accountID, clientMAC: serverOutput.ClientMAC})
 	clear(serverOutput.SessionSecret)
-	return c.JSON(proto.LoginStartResponse{LoginID: loginID, KE2: keyExchange2.Serialize()})
+	return c.JSON(apitypes.LoginStartResponse{LoginID: loginID, KE2: keyExchange2.Serialize()})
 }
 
 var errLoginFailed = createAPIError(fiber.StatusUnauthorized, "login failed")
 
 func (s *Server) handleLoginFinish(c fiber.Ctx) error {
-	var request proto.LoginFinishRequest
+	var request apitypes.LoginFinishRequest
 	if err := decodeBody(c, &request); err != nil {
 		return err
 	}
@@ -221,7 +221,7 @@ func (s *Server) handleLoginFinish(c fiber.Ctx) error {
 		return err
 	}
 	s.recordAudit(c, pending.accountID, device.ID, "login", map[string]string{"device": device.Name, "platform": device.Platform})
-	return c.JSON(proto.SessionResponse{Token: token, AccountID: pending.accountID, DeviceID: device.ID})
+	return c.JSON(apitypes.SessionResponse{Token: token, AccountID: pending.accountID, DeviceID: device.ID})
 }
 
 func (s *Server) handleLogout(c fiber.Ctx) error {

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tryhisar/hisar/core/client"
+	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/session"
 )
 
@@ -100,8 +100,8 @@ func TestConvertAccountError(t *testing.T) {
 		expected string
 	}{
 		"wrong password": {session.ErrBadCredentials, "the master password is not correct"},
-		"signed out":     {&client.APIError{Status: http.StatusUnauthorized}, "sign in again with `hisar login`"},
-		"changed":        {&client.APIError{Status: http.StatusConflict}, "changed on another device"},
+		"signed out":     {&apiclient.APIError{Status: http.StatusUnauthorized}, "sign in again with `hisar login`"},
+		"changed":        {&apiclient.APIError{Status: http.StatusConflict}, "changed on another device"},
 		"email":          {session.ErrEmailMismatch, "nothing was deleted"},
 	}
 	for name, testCase := range allCase {

@@ -5,8 +5,8 @@ import (
 	"errors"
 	"time"
 
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/item"
-	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/core/sharelink"
 )
 
@@ -75,14 +75,14 @@ func (s *Session) createShareLink(ctx context.Context, payload *sharelink.Payloa
 	if err != nil {
 		return nil, err
 	}
-	request := &proto.CreateShareLinkRequest{
+	request := &apitypes.CreateShareLinkRequest{
 		Ciphertext:       sealed.Ciphertext,
 		EncryptedLabel:   encryptedLabel,
 		ExpiresInSeconds: int64(options.Expiry / time.Second),
 		MaxViews:         options.MaxViews,
 	}
 	if sealed.Passphrase != nil {
-		request.Passphrase = &proto.ShareLinkPassphrase{Salt: sealed.Passphrase.Salt, Iterations: sealed.Passphrase.Iterations}
+		request.Passphrase = &apitypes.ShareLinkPassphrase{Salt: sealed.Passphrase.Salt, Iterations: sealed.Passphrase.Iterations}
 	}
 	created, err := s.Client.CreateShareLink(ctx, request)
 	if err != nil {
@@ -91,7 +91,7 @@ func (s *Session) createShareLink(ctx context.Context, payload *sharelink.Payloa
 	return s.buildShareLink(created, label), nil
 }
 
-func (s *Session) buildShareLink(link *proto.ShareLink, label *sharelink.Label) *ShareLink {
+func (s *Session) buildShareLink(link *apitypes.ShareLink, label *sharelink.Label) *ShareLink {
 	shareLink := &ShareLink{
 		ID: link.ID, CreatedAt: link.CreatedAt, ExpiresAt: link.ExpiresAt, MaxViews: link.MaxViews, ViewCount: link.ViewCount,
 		HasPassphrase: link.HasPassphrase, Title: "Unknown link", FieldLabels: []string{},

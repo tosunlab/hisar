@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/item"
-	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/core/session"
 	"github.com/tryhisar/hisar/core/sshagent"
 )
@@ -170,8 +170,8 @@ func (source *SSHKeySource) ListAllKey(ctx context.Context) ([]sshagent.Key, err
 	}
 	// Servers stop after about 6 attempts, so keys from the personal vault come first.
 	slices.SortFunc(allVault, func(first, second *session.Vault) int {
-		if (first.Type == proto.VaultPersonal) != (second.Type == proto.VaultPersonal) {
-			if first.Type == proto.VaultPersonal {
+		if (first.Type == apitypes.VaultPersonal) != (second.Type == apitypes.VaultPersonal) {
+			if first.Type == apitypes.VaultPersonal {
 				return -1
 			}
 			return 1

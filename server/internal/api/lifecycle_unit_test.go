@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tryhisar/hisar/core/proto"
+	"github.com/tryhisar/hisar/core/apitypes"
 )
 
 func TestComposeCredentialsChangedEmail(t *testing.T) {
@@ -16,9 +16,9 @@ func TestComposeCredentialsChangedEmail(t *testing.T) {
 		subject              string
 		allExpected          []string
 	}{
-		{proto.CredentialChangeMasterPassword, 0, "Your Hisar master password was changed", []string{"No other devices were signed in.", "11 October 2026 at 09:30 UTC"}},
-		{proto.CredentialChangeMasterPassword, 1, "Your Hisar master password was changed", []string{"Your other device was signed out.", "Your Secret Key and Emergency Kit stay the same."}},
-		{proto.CredentialChangeSecretKey, 3, "Your Hisar Secret Key was replaced", []string{"Your 3 other devices were signed out.", "Your old Secret Key and Emergency Kit no longer work."}},
+		{apitypes.CredentialChangeMasterPassword, 0, "Your Hisar master password was changed", []string{"No other devices were signed in.", "11 October 2026 at 09:30 UTC"}},
+		{apitypes.CredentialChangeMasterPassword, 1, "Your Hisar master password was changed", []string{"Your other device was signed out.", "Your Secret Key and Emergency Kit stay the same."}},
+		{apitypes.CredentialChangeSecretKey, 3, "Your Hisar Secret Key was replaced", []string{"Your 3 other devices were signed out.", "Your old Secret Key and Emergency Kit no longer work."}},
 	} {
 		message := composeCredentialsChangedEmail("alice@example.com", testCase.change, testCase.signedOutDeviceCount, changedAt)
 		if message.To != "alice@example.com" || message.Subject != testCase.subject {

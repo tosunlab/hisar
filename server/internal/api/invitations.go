@@ -9,7 +9,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"golang.org/x/time/rate"
 
-	"github.com/tryhisar/hisar/core/proto"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/server/internal/mail"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
@@ -28,7 +28,7 @@ var (
 	errInvalidEmail         = createAPIError(fiber.StatusBadRequest, "enter a valid email address")
 	errTooManyInvitation    = createAPIError(fiber.StatusTooManyRequests, "too many invitations today; try again tomorrow")
 	errShareInvitationGone  = createAPIError(fiber.StatusNotFound, "this invitation no longer exists")
-	invitationSentResponse  = proto.InvitationSentResponse{Message: proto.InvitationSentMessage}
+	invitationSentResponse  = apitypes.InvitationSentResponse{Message: apitypes.InvitationSentMessage}
 	errShareWithYourself    = createAPIError(fiber.StatusBadRequest, "you already have access to this vault")
 	errAlreadyHasVaultShare = createAPIError(fiber.StatusConflict, "this person already has access to the vault")
 )
@@ -59,7 +59,7 @@ func (s *Server) handleCreateInvite(c fiber.Ctx) error {
 	if !s.isEmailConfigured() {
 		return errEmailNotConfigured
 	}
-	var request proto.InviteRequest
+	var request apitypes.InviteRequest
 	if err := decodeBody(c, &request); err != nil {
 		return err
 	}
@@ -67,7 +67,7 @@ func (s *Server) handleCreateInvite(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	if request.Role != "" && request.Role != proto.RoleMember {
+	if request.Role != "" && request.Role != apitypes.RoleMember {
 		return createAPIError(fiber.StatusBadRequest, "invites from the app always create member accounts")
 	}
 	if !s.allowInvitation(c, s.inviteAccountLimiter, s.inviteIPLimiter) {
@@ -84,7 +84,7 @@ func (s *Server) handleCreateInvite(c fiber.Ctx) error {
 			log.Printf("invite: %v", err)
 			return
 		}
-		token, expiresAt, err := s.createInviteToken(ctx, email, proto.RoleMember, &inviterID)
+		token, expiresAt, err := s.createInviteToken(ctx, email, apitypes.RoleMember, &inviterID)
 		if err != nil {
 			log.Printf("invite: %v", err)
 			return
@@ -101,12 +101,12 @@ func (s *Server) createInviteToken(ctx context.Context, email, role string, crea
 }
 
 // CreateInvite is the operator's invite: it returns the link instead of emailing it.
-func (s *Server) CreateInvite(ctx context.Context, email, role string, createdBy *string) (*proto.InviteResponse, error) {
+func (s *Server) CreateInvite(ctx context.Context, email, role string, createdBy *string) (*apitypes.InviteResponse, error) {
 	token, _, err := s.createInviteToken(ctx, email, role, createdBy)
 	if err != nil {
 		return nil, err
 	}
-	return &proto.InviteResponse{Token: token, URL: s.buildInviteLink(token)}, nil
+	return &apitypes.InviteResponse{Token: token, URL: s.buildInviteLink(token)}, nil
 }
 
 func (s *Server) handleCreateShareInvitation(c fiber.Ctx) error {
@@ -119,10 +119,10 @@ func (s *Server) handleCreateShareInvitation(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	if vaultType != proto.VaultShared {
+	if vaultType != apitypes.VaultShared {
 		return createAPIError(fiber.StatusBadRequest, "personal vaults cannot be shared")
 	}
-	var request proto.ShareInvitationRequest
+	var request apitypes.ShareInvitationRequest
 	if err := decodeBody(c, &request); err != nil {
 		return err
 	}
@@ -171,7 +171,7 @@ func (s *Server) notifyShareInvitation(ctx context.Context, inviter *store.Accou
 		if !s.isEmailConfigured() {
 			return
 		}
-		token, expiresAt, err := s.createInviteToken(ctx, email, proto.RoleMember, &inviter.ID)
+		token, expiresAt, err := s.createInviteToken(ctx, email, apitypes.RoleMember, &inviter.ID)
 		if err != nil {
 			log.Printf("share invitation: %v", err)
 			return
@@ -182,8 +182,8 @@ func (s *Server) notifyShareInvitation(ctx context.Context, inviter *store.Accou
 	}
 }
 
-func convertToProtoMember(account *store.Account) proto.Member {
-	return proto.Member{AccountID: account.ID, Email: account.Email, Name: account.Name, Role: account.Role, PublicKeys: getAllPublicKey(account)}
+func convertToProtoMember(account *store.Account) apitypes.Member {
+	return apitypes.Member{AccountID: account.ID, Email: account.Email, Name: account.Name, Role: account.Role, PublicKeys: getAllPublicKey(account)}
 }
 
 func (s *Server) handleListAllShareInvitation(c fiber.Ctx) error {
@@ -204,25 +204,25 @@ func (s *Server) handleListAllShareInvitation(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	response := proto.ShareInvitationList{
-		AllReceived: make([]proto.ReceivedShareInvitation, 0, len(allStoredReceived)),
-		AllSent:     make([]proto.SentShareInvitation, 0, len(allStoredSent)),
-		AllWaiting:  make([]proto.WaitingShareInvitation, 0, len(allStoredWaiting)),
+	response := apitypes.ShareInvitationList{
+		AllReceived: make([]apitypes.ReceivedShareInvitation, 0, len(allStoredReceived)),
+		AllSent:     make([]apitypes.SentShareInvitation, 0, len(allStoredSent)),
+		AllWaiting:  make([]apitypes.WaitingShareInvitation, 0, len(allStoredWaiting)),
 	}
 	for _, waiting := range allStoredWaiting {
-		response.AllWaiting = append(response.AllWaiting, proto.WaitingShareInvitation{
+		response.AllWaiting = append(response.AllWaiting, apitypes.WaitingShareInvitation{
 			ID: waiting.ID, VaultID: waiting.VaultID, Role: waiting.Role, InvitedByName: waiting.InvitedByName, InvitedByEmail: waiting.InvitedByEmail,
 			AcceptedAt: *waiting.AcceptedAt,
 		})
 	}
 	for _, received := range allStoredReceived {
-		response.AllReceived = append(response.AllReceived, proto.ReceivedShareInvitation{
+		response.AllReceived = append(response.AllReceived, apitypes.ReceivedShareInvitation{
 			ID: received.ID, VaultID: received.VaultID, Role: received.Role, InvitedByName: received.InvitedByName, InvitedByEmail: received.InvitedByEmail,
 			CreatedAt: received.CreatedAt, ExpiresAt: received.ExpiresAt,
 		})
 	}
 	for _, sent := range allStoredSent {
-		protoSent := proto.SentShareInvitation{
+		protoSent := apitypes.SentShareInvitation{
 			ID: sent.ID, VaultID: sent.VaultID, Email: sent.Email, Role: sent.Role, State: sent.State, InvitedBy: sent.InvitedBy,
 			CreatedAt: sent.CreatedAt, ExpiresAt: sent.ExpiresAt, AcceptedAt: sent.AcceptedAt,
 		}

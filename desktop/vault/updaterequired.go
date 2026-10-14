@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tryhisar/hisar/core/client"
+	"github.com/tryhisar/hisar/core/apiclient"
 )
 
 const (
@@ -49,14 +49,14 @@ func SetAppVersion(s *Service, version string) {
 	s.config.AppVersion = version
 }
 
-func (s *Service) createClient(server string) *client.Client {
-	apiClient := client.Create(server)
+func (s *Service) createClient(server string) *apiclient.Client {
+	apiClient := apiclient.Create(server)
 	apiClient.Platform, apiClient.Version = s.config.Platform, s.config.AppVersion
 	apiClient.OnUpgradeRequired = s.recordUpdateRequired
 	return apiClient
 }
 
-func (s *Service) recordUpdateRequired(upgradeRequired *client.UpgradeRequiredError) {
+func (s *Service) recordUpdateRequired(upgradeRequired *apiclient.UpgradeRequiredError) {
 	requirement := UpdateRequirement{CurrentVersion: s.config.AppVersion, MinimumVersion: upgradeRequired.MinimumVersion, UpdateURL: upgradeRequired.UpdateURL}
 	s.updateRequirement.mutex.Lock()
 	isChanged := s.updateRequirement.requirement == nil || *s.updateRequirement.requirement != requirement
@@ -103,7 +103,7 @@ func (s *Service) CheckMinimumVersion() Status {
 	ctx, cancel := context.WithTimeout(context.Background(), versionCheckTimeout)
 	defer cancel()
 	err := s.createClient(server).CheckVersion(ctx)
-	if _, isUpgradeRequired := client.AsUpgradeRequired(err); !isUpgradeRequired && !client.IsUnreachable(err) {
+	if _, isUpgradeRequired := apiclient.AsUpgradeRequired(err); !isUpgradeRequired && !apiclient.IsUnreachable(err) {
 		s.clearUpdateRequirement()
 	}
 	return s.GetStatus()
@@ -130,15 +130,15 @@ func (s *Service) checkClientVersion(platform, version string) *UpdateRequiremen
 	if server == "" {
 		return nil
 	}
-	apiClient := client.Create(server)
+	apiClient := apiclient.Create(server)
 	apiClient.Platform, apiClient.Version = platform, version
 	ctx, cancel := context.WithTimeout(context.Background(), clientVersionCheckTimeout)
 	defer cancel()
 	err := apiClient.CheckVersion(ctx)
 	check := clientVersionCheck{expiresAt: now.Add(clientVersionCheckLifetime)}
-	if upgradeRequired, isUpgradeRequired := client.AsUpgradeRequired(err); isUpgradeRequired {
+	if upgradeRequired, isUpgradeRequired := apiclient.AsUpgradeRequired(err); isUpgradeRequired {
 		check.requirement = &UpdateRequirement{CurrentVersion: version, MinimumVersion: upgradeRequired.MinimumVersion, UpdateURL: upgradeRequired.UpdateURL}
-	} else if client.IsUnreachable(err) {
+	} else if apiclient.IsUnreachable(err) {
 		check.expiresAt = now.Add(unreachableClientVersionCheckLifetime)
 	}
 	s.updateRequirement.mutex.Lock()

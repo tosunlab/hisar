@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/localstate"
-	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/desktop/commandline"
 )
 
@@ -261,7 +261,7 @@ func TestCommandLineSharingAndDevices(t *testing.T) {
 	}
 	test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeShareVault, VaultID: test.testService.familyID, Email: "bob@example.com", Role: "reader"}, nil)
 	test.testService.apiServer.mutex.Lock()
-	test.testService.apiServer.allReceivedShareInvitation = []proto.ReceivedShareInvitation{{ID: "from-carol", VaultID: "vault-2", Role: "editor", InvitedByName: "Carol", InvitedByEmail: "c@example.com"}}
+	test.testService.apiServer.allReceivedShareInvitation = []apitypes.ReceivedShareInvitation{{ID: "from-carol", VaultID: "vault-2", Role: "editor", InvitedByName: "Carol", InvitedByEmail: "c@example.com"}}
 	test.testService.apiServer.mutex.Unlock()
 	var invitationList cliprotocol.InvitationListResult
 	test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeListInvitation}, &invitationList)

@@ -12,7 +12,7 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 
-	"github.com/tryhisar/hisar/core/proto"
+	"github.com/tryhisar/hisar/core/apitypes"
 )
 
 const (
@@ -128,16 +128,16 @@ func (s *Server) publishVaultChanged(ctx context.Context, vaultID string, seq in
 	for _, member := range allMember {
 		allAccountID = append(allAccountID, member.AccountID)
 	}
-	s.events.publish(allAccountID, serverEvent{name: proto.EventVaultChanged, data: proto.VaultChangedEvent{VaultID: vaultID, Seq: seq}})
+	s.events.publish(allAccountID, serverEvent{name: apitypes.EventVaultChanged, data: apitypes.VaultChangedEvent{VaultID: vaultID, Seq: seq}})
 }
 
 // publishVaultsChanged tells accounts that their list of vaults changed, e.g. after sharing or removal.
 func (s *Server) publishVaultsChanged(allAccountID ...string) {
-	s.events.publish(allAccountID, serverEvent{name: proto.EventVaultsChanged, data: struct{}{}})
+	s.events.publish(allAccountID, serverEvent{name: apitypes.EventVaultsChanged, data: struct{}{}})
 }
 
 func (s *Server) publishShareInvitationsChanged(allAccountID ...string) {
-	s.events.publish(allAccountID, serverEvent{name: proto.EventShareInvitationsChanged, data: struct{}{}})
+	s.events.publish(allAccountID, serverEvent{name: apitypes.EventShareInvitationsChanged, data: struct{}{}})
 }
 
 // publishShareInvitationsChangedToOwner tells the vault's owners, who complete accepted shares, and allOtherAccountID.
@@ -148,7 +148,7 @@ func (s *Server) publishShareInvitationsChangedToOwner(ctx context.Context, vaul
 	}
 	allAccountID := allOtherAccountID
 	for _, member := range allMember {
-		if member.Role == proto.VaultOwner {
+		if member.Role == apitypes.VaultOwner {
 			allAccountID = append(allAccountID, member.AccountID)
 		}
 	}

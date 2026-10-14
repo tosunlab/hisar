@@ -14,9 +14,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/localstate"
-	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/desktop/browser"
 )
 
@@ -177,7 +177,7 @@ func (bridge *BrowserBridge) findUpdateRequired(extensionVersion string) *browse
 	if requirement := bridge.service.getUpdateRequirement(); requirement != nil {
 		return &browser.UpdateRequirement{Target: browser.UpdateTargetApp, CurrentVersion: describeVersion(requirement.CurrentVersion), MinimumVersion: requirement.MinimumVersion, UpdateURL: requirement.UpdateURL}
 	}
-	if requirement := bridge.service.checkClientVersion(proto.PlatformExtension, extensionVersion); requirement != nil {
+	if requirement := bridge.service.checkClientVersion(apitypes.PlatformExtension, extensionVersion); requirement != nil {
 		return &browser.UpdateRequirement{Target: browser.UpdateTargetExtension, CurrentVersion: requirement.CurrentVersion, MinimumVersion: requirement.MinimumVersion, UpdateURL: requirement.UpdateURL}
 	}
 	return nil
@@ -559,7 +559,7 @@ func (s *Service) findPersonalVaultID(ctx context.Context) (string, error) {
 		return "", err
 	}
 	for vaultID, vault := range s.allVaultByID {
-		if vault.Type == proto.VaultPersonal && vault.Role != proto.VaultReader {
+		if vault.Type == apitypes.VaultPersonal && vault.Role != apitypes.VaultReader {
 			return vaultID, nil
 		}
 	}

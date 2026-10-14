@@ -12,18 +12,18 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/tryhisar/hisar/core/client"
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/localstate"
-	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/core/session"
 	"github.com/tryhisar/hisar/core/totp"
 )
 
 const defaultServer = "https://api.tryhisar.com"
 
-func getDeviceInfo() proto.DeviceInfo {
+func getDeviceInfo() apitypes.DeviceInfo {
 	host, err := os.Hostname()
 	if err != nil || host == "" {
 		host = "unknown"
@@ -31,10 +31,10 @@ func getDeviceInfo() proto.DeviceInfo {
 	if len(host) > 100 {
 		host = host[:100]
 	}
-	return proto.DeviceInfo{Name: host, Platform: getPlatform()}
+	return apitypes.DeviceInfo{Name: host, Platform: getPlatform()}
 }
 
-func createAuthedClient(currentState *localstate.State) *client.Client {
+func createAuthedClient(currentState *localstate.State) *apiclient.Client {
 	authedClient := createClient(currentState.Server)
 	authedClient.Token = currentState.Token
 	return authedClient
@@ -59,7 +59,7 @@ func unlock(ctx context.Context) (*localstate.State, *session.Session, error) {
 	}
 	defer clear(password)
 	unlockedSession, err := session.Unlock(ctx, createAuthedClient(currentState), nil, password, secretKey)
-	if client.IsStatus(err, 401) {
+	if apiclient.IsStatus(err, 401) {
 		return nil, nil, errSignedOutByServer
 	}
 	if err != nil {
@@ -231,7 +231,7 @@ func runLogout(ctx context.Context, flags *flag.FlagSet, allArg []string) error 
 	if err := requireLogin(currentState); err != nil {
 		return err
 	}
-	if err := createAuthedClient(currentState).Logout(ctx); err != nil && !client.IsStatus(err, 401) {
+	if err := createAuthedClient(currentState).Logout(ctx); err != nil && !apiclient.IsStatus(err, 401) {
 		return err
 	}
 	currentState.Token = ""
@@ -289,7 +289,7 @@ func runCreateVault(ctx context.Context, flags *flag.FlagSet, allArg []string) e
 	if err != nil {
 		return err
 	}
-	vault, err := unlockedSession.CreateVault(ctx, allPositional[0], proto.VaultShared)
+	vault, err := unlockedSession.CreateVault(ctx, allPositional[0], apitypes.VaultShared)
 	if err == nil {
 		fmt.Fprintf(os.Stderr, "Created vault %q. Share it with `hisar share %q <email>`.\n", vault.Name, vault.Name)
 	}

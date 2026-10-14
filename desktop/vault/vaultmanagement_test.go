@@ -10,20 +10,20 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/export"
-	"github.com/tryhisar/hisar/core/proto"
 )
 
 func (server *fakeAPIServer) addAllVaultManagementRoute(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/v1/vaults/{vaultID}/name", func(writer http.ResponseWriter, request *http.Request) {
-		var renameRequest proto.RenameVaultRequest
+		var renameRequest apitypes.RenameVaultRequest
 		json.NewDecoder(request.Body).Decode(&renameRequest)
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
 		vaultID := request.PathValue("vaultID")
-		if server.getVaultRole(vaultID) != proto.VaultOwner {
-			writeJSON(writer, http.StatusForbidden, proto.Error{Error: "owner only"})
+		if server.getVaultRole(vaultID) != apitypes.VaultOwner {
+			writeJSON(writer, http.StatusForbidden, apitypes.Error{Error: "owner only"})
 			return
 		}
 		for index := range server.allVault {
@@ -34,13 +34,13 @@ func (server *fakeAPIServer) addAllVaultManagementRoute(mux *http.ServeMux) {
 		writer.WriteHeader(http.StatusNoContent)
 	})
 	mux.HandleFunc("POST /api/v1/vaults/{vaultID}/delete", func(writer http.ResponseWriter, request *http.Request) {
-		var deleteRequest proto.DeleteVaultRequest
+		var deleteRequest apitypes.DeleteVaultRequest
 		json.NewDecoder(request.Body).Decode(&deleteRequest)
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
 		vaultID := request.PathValue("vaultID")
-		if server.getVaultRole(vaultID) != proto.VaultOwner {
-			writeJSON(writer, http.StatusForbidden, proto.Error{Error: "owner only"})
+		if server.getVaultRole(vaultID) != apitypes.VaultOwner {
+			writeJSON(writer, http.StatusForbidden, apitypes.Error{Error: "owner only"})
 			return
 		}
 		liveCount := 0
@@ -51,17 +51,17 @@ func (server *fakeAPIServer) addAllVaultManagementRoute(mux *http.ServeMux) {
 		}
 		if deleteRequest.MoveToVaultID != "" {
 			if len(deleteRequest.AllMovedItem) != liveCount {
-				writeJSON(writer, http.StatusConflict, proto.Error{Error: "the vault changed"})
+				writeJSON(writer, http.StatusConflict, apitypes.Error{Error: "the vault changed"})
 				return
 			}
 			for _, movedItem := range deleteRequest.AllMovedItem {
 				server.seq++
-				server.allItemByVaultID[deleteRequest.MoveToVaultID][movedItem.ID] = proto.Item{
+				server.allItemByVaultID[deleteRequest.MoveToVaultID][movedItem.ID] = apitypes.Item{
 					ID: movedItem.ID, Revision: movedItem.Revision, Seq: server.seq, Overview: movedItem.Overview, Details: movedItem.Details,
 				}
 			}
 		} else if liveCount > 0 && !deleteRequest.IsDeletingItems {
-			writeJSON(writer, http.StatusConflict, proto.Error{Error: "the vault has items"})
+			writeJSON(writer, http.StatusConflict, apitypes.Error{Error: "the vault has items"})
 			return
 		}
 		server.removeVault(vaultID)
@@ -72,11 +72,11 @@ func (server *fakeAPIServer) addAllVaultManagementRoute(mux *http.ServeMux) {
 		defer server.mutex.Unlock()
 		vaultID := request.PathValue("vaultID")
 		if request.PathValue("accountID") != server.accountID || server.getVaultRole(vaultID) == "" {
-			writeJSON(writer, http.StatusNotFound, proto.Error{Error: "not found"})
+			writeJSON(writer, http.StatusNotFound, apitypes.Error{Error: "not found"})
 			return
 		}
-		if server.getVaultRole(vaultID) == proto.VaultOwner {
-			writeJSON(writer, http.StatusBadRequest, proto.Error{Error: "the only owner can't leave a vault"})
+		if server.getVaultRole(vaultID) == apitypes.VaultOwner {
+			writeJSON(writer, http.StatusBadRequest, apitypes.Error{Error: "the only owner can't leave a vault"})
 			return
 		}
 		server.removeVault(vaultID)
@@ -85,7 +85,7 @@ func (server *fakeAPIServer) addAllVaultManagementRoute(mux *http.ServeMux) {
 }
 
 func (server *fakeAPIServer) removeVault(vaultID string) {
-	server.allVault = slices.DeleteFunc(server.allVault, func(vault proto.Vault) bool { return vault.ID == vaultID })
+	server.allVault = slices.DeleteFunc(server.allVault, func(vault apitypes.Vault) bool { return vault.ID == vaultID })
 	delete(server.allItemByVaultID, vaultID)
 	delete(server.allAccessByVaultID, vaultID)
 }
@@ -93,7 +93,7 @@ func (server *fakeAPIServer) removeVault(vaultID string) {
 func (server *fakeAPIServer) hasVault(vaultID string) bool {
 	server.mutex.Lock()
 	defer server.mutex.Unlock()
-	return slices.ContainsFunc(server.allVault, func(vault proto.Vault) bool { return vault.ID == vaultID })
+	return slices.ContainsFunc(server.allVault, func(vault apitypes.Vault) bool { return vault.ID == vaultID })
 }
 
 func TestVaultActions(t *testing.T) {
@@ -101,7 +101,7 @@ func TestVaultActions(t *testing.T) {
 	service := test.service
 	bob, _ := test.apiServer.addMember(t, "Bob", "bob@example.com")
 	test.apiServer.mutex.Lock()
-	test.apiServer.allAccessByVaultID[test.familyID] = append(test.apiServer.allAccessByVaultID[test.familyID], proto.RotatedAccess{AccountID: bob.AccountID, Role: proto.VaultEditor})
+	test.apiServer.allAccessByVaultID[test.familyID] = append(test.apiServer.allAccessByVaultID[test.familyID], apitypes.RotatedAccess{AccountID: bob.AccountID, Role: apitypes.VaultEditor})
 	test.apiServer.mutex.Unlock()
 
 	personal, err := service.GetVaultActions(test.personalID)
@@ -125,7 +125,7 @@ func TestVaultActions(t *testing.T) {
 		t.Errorf("target vaults: %+v", family.AllTargetVault)
 	}
 
-	test.apiServer.setVaultRole(test.familyID, proto.VaultEditor)
+	test.apiServer.setVaultRole(test.familyID, apitypes.VaultEditor)
 	asEditor, err := service.GetVaultActions(test.familyID)
 	if err != nil {
 		t.Fatal(err)
@@ -149,7 +149,7 @@ func TestRenameVault(t *testing.T) {
 	if _, err := service.RenameVault(test.familyID, " "); err == nil || !strings.Contains(err.Error(), "enter a vault name") {
 		t.Errorf("blank name: %v", err)
 	}
-	test.apiServer.setVaultRole(test.familyID, proto.VaultReader)
+	test.apiServer.setVaultRole(test.familyID, apitypes.VaultReader)
 	service.ListAllVault()
 	if _, err := service.RenameVault(test.familyID, "Mine"); err == nil || !strings.Contains(err.Error(), "only an owner") {
 		t.Errorf("reader renames: %v", err)
@@ -236,7 +236,7 @@ func TestLeaveVaultAndRemovedVaultNotice(t *testing.T) {
 	if err := service.LeaveVault(test.familyID); err == nil || err.Error() != onlyOwnerLeaveReason {
 		t.Errorf("only owner leaves: %v", err)
 	}
-	test.apiServer.setVaultRole(test.familyID, proto.VaultEditor)
+	test.apiServer.setVaultRole(test.familyID, apitypes.VaultEditor)
 	if _, err := service.ListAllVault(); err != nil {
 		t.Fatal(err)
 	}

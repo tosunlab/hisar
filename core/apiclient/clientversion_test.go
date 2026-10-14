@@ -1,4 +1,4 @@
-package client
+package apiclient
 
 import (
 	"context"
@@ -7,14 +7,14 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/tryhisar/hisar/core/proto"
+	"github.com/tryhisar/hisar/core/apitypes"
 )
 
 func TestClientSendsPlatformAndVersion(t *testing.T) {
 	var allPlatform, allVersion []string
 	fakeClient := startFakeServer(t, func(writer http.ResponseWriter, request *http.Request) {
-		allPlatform = append(allPlatform, request.Header.Get(proto.PlatformHeader))
-		allVersion = append(allVersion, request.Header.Get(proto.VersionHeader))
+		allPlatform = append(allPlatform, request.Header.Get(apitypes.PlatformHeader))
+		allVersion = append(allVersion, request.Header.Get(apitypes.VersionHeader))
 		if request.URL.Path == "/api/v1/events" {
 			writer.WriteHeader(http.StatusUnauthorized)
 			return
@@ -24,7 +24,7 @@ func TestClientSendsPlatformAndVersion(t *testing.T) {
 	if err := fakeClient.CheckVersion(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	fakeClient.Platform, fakeClient.Version = proto.PlatformDesktopMacOS, "0.1.6"
+	fakeClient.Platform, fakeClient.Version = apitypes.PlatformDesktopMacOS, "0.1.6"
 	if err := fakeClient.CheckVersion(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +42,7 @@ func TestClientSendsPlatformAndVersion(t *testing.T) {
 func TestUpgradeRequired(t *testing.T) {
 	fakeClient := startFakeServer(t, func(writer http.ResponseWriter, request *http.Request) {
 		writer.WriteHeader(http.StatusUpgradeRequired)
-		json.NewEncoder(writer).Encode(proto.UpgradeRequired{Error: "update required", MinimumVersion: "0.1.6", UpdateURL: "https://tryhisar.com/download"})
+		json.NewEncoder(writer).Encode(apitypes.UpgradeRequired{Error: "update required", MinimumVersion: "0.1.6", UpdateURL: "https://tryhisar.com/download"})
 	})
 	fakeClient.Platform, fakeClient.Version = "linux/cli", "0.1.5"
 	var allHeard []*UpgradeRequiredError
@@ -73,18 +73,18 @@ func TestUpgradeRequired(t *testing.T) {
 
 func TestGetClient(t *testing.T) {
 	for platform, expected := range map[string]string{
-		"darwin/desktop":    proto.ClientDesktopMacOS,
-		"ios/mobile":        proto.ClientIOS,
-		"darwin/cli":        proto.ClientCLI,
-		"linux/cli":         proto.ClientCLI,
-		"windows/cli":       proto.ClientCLI,
-		"browser/extension": proto.ClientExtension,
+		"darwin/desktop":    apitypes.ClientDesktopMacOS,
+		"ios/mobile":        apitypes.ClientIOS,
+		"darwin/cli":        apitypes.ClientCLI,
+		"linux/cli":         apitypes.ClientCLI,
+		"windows/cli":       apitypes.ClientCLI,
+		"browser/extension": apitypes.ClientExtension,
 		"linux/desktop":     "",
 		"/cli":              "",
 		"go":                "",
 		"":                  "",
 	} {
-		if client := proto.GetClient(platform); client != expected {
+		if client := apitypes.GetClient(platform); client != expected {
 			t.Errorf("GetClient(%q) = %q, want %q", platform, client, expected)
 		}
 	}

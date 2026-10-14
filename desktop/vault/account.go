@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tryhisar/hisar/core/client"
+	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/session"
 )
@@ -50,9 +50,9 @@ func convertAccountError(err error) error {
 		return errors.New("type the email of this account to confirm")
 	case errors.Is(err, session.ErrSamePassword), errors.Is(err, session.ErrPasswordTooWeak):
 		return err
-	case client.IsStatus(err, http.StatusConflict):
+	case apiclient.IsStatus(err, http.StatusConflict):
 		return errors.New("your master password or Secret Key was just changed on another device; sign in again")
-	case client.IsUnreachable(err):
+	case apiclient.IsUnreachable(err):
 		return errors.New("cannot reach the Hisar server; this needs a connection")
 	}
 	return convertError(err)

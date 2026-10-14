@@ -12,11 +12,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/appversion"
-	"github.com/tryhisar/hisar/core/client"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/localstate"
-	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/desktop/browser"
 )
 
@@ -40,8 +40,8 @@ func (server *fakeVersionServer) countCheck() int {
 
 func (server *fakeVersionServer) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
 	server.mutex.Lock()
-	clientName := proto.GetClient(request.Header.Get(proto.PlatformHeader))
-	version := request.Header.Get(proto.VersionHeader)
+	clientName := apitypes.GetClient(request.Header.Get(apitypes.PlatformHeader))
+	version := request.Header.Get(apitypes.VersionHeader)
 	minimumVersion := server.minimumVersionByClient[clientName]
 	if request.URL.Path == "/api/v1/version-check" {
 		server.allCheckedVersion = append(server.allCheckedVersion, clientName+" "+version)
@@ -49,7 +49,7 @@ func (server *fakeVersionServer) ServeHTTP(writer http.ResponseWriter, request *
 	server.mutex.Unlock()
 	if isOlder, err := appversion.IsOlder(version, minimumVersion); err == nil && isOlder {
 		writer.WriteHeader(http.StatusUpgradeRequired)
-		json.NewEncoder(writer).Encode(proto.UpgradeRequired{Error: "update required", MinimumVersion: minimumVersion, UpdateURL: "https://tryhisar.com/download"})
+		json.NewEncoder(writer).Encode(apitypes.UpgradeRequired{Error: "update required", MinimumVersion: minimumVersion, UpdateURL: "https://tryhisar.com/download"})
 		return
 	}
 	if request.URL.Path == "/api/v1/version-check" {
@@ -71,7 +71,7 @@ func createVersionTestService(t *testing.T, appVersion string, minimumVersionByC
 		t.Fatal(err)
 	}
 	service, _, _ := createTestService(t, statePath, createMemorySecretKeyStore())
-	service.config.Platform, service.config.AppVersion = proto.PlatformDesktopMacOS, appVersion
+	service.config.Platform, service.config.AppVersion = apitypes.PlatformDesktopMacOS, appVersion
 	allHeard := make(chan UpdateRequirement, 10)
 	service.config.OnUpdateRequired = func(requirement UpdateRequirement) { allHeard <- requirement }
 	return service, versionServer, httpServer, allHeard
@@ -89,7 +89,7 @@ func waitForUpdateRequired(t *testing.T, allHeard chan UpdateRequirement) Update
 }
 
 func TestAnyServerAnswerCanRequireAnUpdate(t *testing.T) {
-	service, _, _, allHeard := createVersionTestService(t, "0.1.5", map[string]string{proto.ClientDesktopMacOS: "0.1.6"})
+	service, _, _, allHeard := createVersionTestService(t, "0.1.5", map[string]string{apitypes.ClientDesktopMacOS: "0.1.6"})
 	if status := service.GetStatus(); status.UpdateRequired != nil {
 		t.Fatalf("required before any server contact: %+v", status.UpdateRequired)
 	}
@@ -112,7 +112,7 @@ func TestAnyServerAnswerCanRequireAnUpdate(t *testing.T) {
 }
 
 func TestCheckMinimumVersion(t *testing.T) {
-	service, versionServer, httpServer, allHeard := createVersionTestService(t, "0.1.5", map[string]string{proto.ClientDesktopMacOS: "0.1.6"})
+	service, versionServer, httpServer, allHeard := createVersionTestService(t, "0.1.5", map[string]string{apitypes.ClientDesktopMacOS: "0.1.6"})
 	if status := service.CheckMinimumVersion(); status.UpdateRequired == nil || status.UpdateRequired.MinimumVersion != "0.1.6" {
 		t.Fatalf("an old version passed: %+v", status.UpdateRequired)
 	}
@@ -121,12 +121,12 @@ func TestCheckMinimumVersion(t *testing.T) {
 		t.Errorf("checked %q", versionServer.allCheckedVersion)
 	}
 
-	versionServer.setMinimumVersion(proto.ClientDesktopMacOS, "0.1.0")
+	versionServer.setMinimumVersion(apitypes.ClientDesktopMacOS, "0.1.0")
 	if status := service.CheckMinimumVersion(); status.UpdateRequired != nil {
 		t.Errorf("a lowered minimum still refuses: %+v", status.UpdateRequired)
 	}
 
-	versionServer.setMinimumVersion(proto.ClientDesktopMacOS, "0.1.6")
+	versionServer.setMinimumVersion(apitypes.ClientDesktopMacOS, "0.1.6")
 	service.CheckMinimumVersion()
 	httpServer.Close()
 	if status := service.CheckMinimumVersion(); status.UpdateRequired == nil {
@@ -135,7 +135,7 @@ func TestCheckMinimumVersion(t *testing.T) {
 }
 
 func TestOfflineKeepsWorkingWithoutARequirement(t *testing.T) {
-	service, _, httpServer, _ := createVersionTestService(t, "0.1.5", map[string]string{proto.ClientDesktopMacOS: "0.1.6"})
+	service, _, httpServer, _ := createVersionTestService(t, "0.1.5", map[string]string{apitypes.ClientDesktopMacOS: "0.1.6"})
 	httpServer.Close()
 	if status := service.CheckMinimumVersion(); status.UpdateRequired != nil {
 		t.Errorf("unreachable server required an update: %+v", status.UpdateRequired)
@@ -146,7 +146,7 @@ func TestOfflineKeepsWorkingWithoutARequirement(t *testing.T) {
 }
 
 func TestDevelopmentBuildSendsNoVersion(t *testing.T) {
-	service, versionServer, _, _ := createVersionTestService(t, "", map[string]string{proto.ClientDesktopMacOS: "9.0.0"})
+	service, versionServer, _, _ := createVersionTestService(t, "", map[string]string{apitypes.ClientDesktopMacOS: "9.0.0"})
 	if status := service.CheckMinimumVersion(); status.UpdateRequired != nil {
 		t.Errorf("development build refused: %+v", status.UpdateRequired)
 	}
@@ -156,7 +156,7 @@ func TestDevelopmentBuildSendsNoVersion(t *testing.T) {
 }
 
 func TestUpdateRequiredRefusesLocalRequests(t *testing.T) {
-	service, _, _, allHeard := createVersionTestService(t, "0.1.5", map[string]string{proto.ClientDesktopMacOS: "0.1.6"})
+	service, _, _, allHeard := createVersionTestService(t, "0.1.5", map[string]string{apitypes.ClientDesktopMacOS: "0.1.6"})
 	service.CheckMinimumVersion()
 	waitForUpdateRequired(t, allHeard)
 
@@ -193,7 +193,7 @@ func TestUpdateRequiredRefusesLocalRequests(t *testing.T) {
 }
 
 func TestOtherAppsAreCheckedThroughHisar(t *testing.T) {
-	service, versionServer, _, _ := createVersionTestService(t, "0.1.6", map[string]string{proto.ClientDesktopMacOS: "0.1.6", proto.ClientExtension: "0.3.0", proto.ClientCLI: "1.0.0"})
+	service, versionServer, _, _ := createVersionTestService(t, "0.1.6", map[string]string{apitypes.ClientDesktopMacOS: "0.1.6", apitypes.ClientExtension: "0.3.0", apitypes.ClientCLI: "1.0.0"})
 	bridge := CreateBrowserBridge(service, BrowserBridgeConfig{})
 	hello := bridge.answerHello(&browser.Request{Type: "hello", ExtensionVersion: "0.2.0"})
 	if hello.UpdateRequired == nil || hello.UpdateRequired.Target != browser.UpdateTargetExtension || hello.UpdateRequired.CurrentVersion != "0.2.0" || hello.UpdateRequired.MinimumVersion != "0.3.0" {
@@ -255,7 +255,7 @@ func TestParseInviteDeepLink(t *testing.T) {
 }
 
 func TestUpgradeRequiredStopsTheEventStream(t *testing.T) {
-	service, _, httpServer, _ := createVersionTestService(t, "0.1.5", map[string]string{proto.ClientDesktopMacOS: "0.1.6"})
+	service, _, httpServer, _ := createVersionTestService(t, "0.1.5", map[string]string{apitypes.ClientDesktopMacOS: "0.1.6"})
 	finished := make(chan struct{})
 	go func() {
 		service.watchEvents(context.Background(), service.createClient(httpServer.URL), make(chan struct{}))
@@ -266,7 +266,7 @@ func TestUpgradeRequiredStopsTheEventStream(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("the event stream kept reconnecting to a server that refuses this version")
 	}
-	if _, isUpgradeRequired := client.AsUpgradeRequired(service.requireCurrentVersion()); isUpgradeRequired {
+	if _, isUpgradeRequired := apiclient.AsUpgradeRequired(service.requireCurrentVersion()); isUpgradeRequired {
 		t.Error("requireCurrentVersion returned the client error instead of UpdateRequiredError")
 	}
 }

@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/approval"
-	"github.com/tryhisar/hisar/core/client"
 	"github.com/tryhisar/hisar/core/crypt"
-	"github.com/tryhisar/hisar/core/proto"
 )
 
 const (
@@ -20,23 +20,23 @@ const (
 )
 
 type fakeApproval struct {
-	request      proto.CreateApprovalRequest
+	request      apitypes.CreateApprovalRequest
 	sealedAnswer []byte
 	isResolved   bool
 }
 
 func (server *fakeAPIServer) addAllApprovalRoute(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/approvals", func(writer http.ResponseWriter, request *http.Request) {
-		var createRequest proto.CreateApprovalRequest
+		var createRequest apitypes.CreateApprovalRequest
 		if err := json.NewDecoder(request.Body).Decode(&createRequest); err != nil {
-			writeJSON(writer, http.StatusBadRequest, proto.Error{Error: err.Error()})
+			writeJSON(writer, http.StatusBadRequest, apitypes.Error{Error: err.Error()})
 			return
 		}
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
 		if server.failingApprovalPostCount > 0 {
 			server.failingApprovalPostCount--
-			writeJSON(writer, http.StatusServiceUnavailable, proto.Error{Error: "unavailable"})
+			writeJSON(writer, http.StatusServiceUnavailable, apitypes.Error{Error: "unavailable"})
 			return
 		}
 		if server.allApprovalByRequestID == nil {
@@ -48,10 +48,10 @@ func (server *fakeAPIServer) addAllApprovalRoute(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/v1/approvals", func(writer http.ResponseWriter, request *http.Request) {
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
-		allPending := []proto.PendingApproval{}
+		allPending := []apitypes.PendingApproval{}
 		for _, stored := range server.allApprovalByRequestID {
 			if stored.sealedAnswer == nil && !stored.isResolved {
-				allPending = append(allPending, proto.PendingApproval{RequestID: stored.request.RequestID, SealedRequest: stored.request.SealedRequest, ExpiresAt: stored.request.ExpiresAt})
+				allPending = append(allPending, apitypes.PendingApproval{RequestID: stored.request.RequestID, SealedRequest: stored.request.SealedRequest, ExpiresAt: stored.request.ExpiresAt})
 			}
 		}
 		writeJSON(writer, http.StatusOK, allPending)
@@ -61,15 +61,15 @@ func (server *fakeAPIServer) addAllApprovalRoute(mux *http.ServeMux) {
 		defer server.mutex.Unlock()
 		stored, isFound := server.allApprovalByRequestID[request.PathValue("requestID")]
 		if !isFound {
-			writeJSON(writer, http.StatusNotFound, proto.Error{Error: "not found"})
+			writeJSON(writer, http.StatusNotFound, apitypes.Error{Error: "not found"})
 			return
 		}
-		writeJSON(writer, http.StatusOK, proto.Approval{RequestID: stored.request.RequestID, SealedRequest: stored.request.SealedRequest, SealedAnswer: stored.sealedAnswer, IsResolved: stored.isResolved, ExpiresAt: stored.request.ExpiresAt})
+		writeJSON(writer, http.StatusOK, apitypes.Approval{RequestID: stored.request.RequestID, SealedRequest: stored.request.SealedRequest, SealedAnswer: stored.sealedAnswer, IsResolved: stored.isResolved, ExpiresAt: stored.request.ExpiresAt})
 	})
 	mux.HandleFunc("POST /api/v1/approvals/{requestID}/answer", func(writer http.ResponseWriter, request *http.Request) {
-		var answerRequest proto.AnswerApprovalRequest
+		var answerRequest apitypes.AnswerApprovalRequest
 		if err := json.NewDecoder(request.Body).Decode(&answerRequest); err != nil {
-			writeJSON(writer, http.StatusBadRequest, proto.Error{Error: err.Error()})
+			writeJSON(writer, http.StatusBadRequest, apitypes.Error{Error: err.Error()})
 			return
 		}
 		server.mutex.Lock()
@@ -77,9 +77,9 @@ func (server *fakeAPIServer) addAllApprovalRoute(mux *http.ServeMux) {
 		stored, isFound := server.allApprovalByRequestID[request.PathValue("requestID")]
 		switch {
 		case !isFound:
-			writeJSON(writer, http.StatusNotFound, proto.Error{Error: "not found"})
+			writeJSON(writer, http.StatusNotFound, apitypes.Error{Error: "not found"})
 		case stored.sealedAnswer != nil:
-			writeJSON(writer, http.StatusConflict, proto.Error{Error: "already answered"})
+			writeJSON(writer, http.StatusConflict, apitypes.Error{Error: "already answered"})
 		default:
 			stored.sealedAnswer = answerRequest.SealedAnswer
 			writer.WriteHeader(http.StatusNoContent)
@@ -132,9 +132,9 @@ func (server *fakeAPIServer) setAnswer(requestID string, sealedAnswer []byte) {
 
 func sendApprovalEvent(t *testing.T, apiServer *fakeAPIServer, eventName, requestID string) {
 	t.Helper()
-	data, _ := json.Marshal(proto.ApprovalEvent{RequestID: requestID})
+	data, _ := json.Marshal(apitypes.ApprovalEvent{RequestID: requestID})
 	select {
-	case apiServer.approvalEventChannel <- client.Event{Name: eventName, Data: data}:
+	case apiServer.approvalEventChannel <- apiclient.Event{Name: eventName, Data: data}:
 	case <-time.After(5 * time.Second):
 		t.Fatal("the service never read the event stream")
 	}
@@ -152,12 +152,12 @@ func createPhoneApprovalTest(t *testing.T) *phoneApprovalTest {
 	t.Helper()
 	test := createUnlockedTestService(t)
 	test.apiServer.mutex.Lock()
-	test.apiServer.allDevice = []proto.Device{
+	test.apiServer.allDevice = []apitypes.Device{
 		{ID: testMacDeviceID, Name: "MacBook Pro", Platform: "darwin/desktop", Current: true},
 		{ID: testPhoneDeviceID, Name: "Hisar on iPhone", Platform: "ios/mobile"},
 	}
 	test.apiServer.eventChannel = make(chan string)
-	test.apiServer.approvalEventChannel = make(chan client.Event)
+	test.apiServer.approvalEventChannel = make(chan apiclient.Event)
 	test.apiServer.mutex.Unlock()
 	phoneApprover := CreatePhoneApprover(test.service)
 	test.service.mutex.Lock()
@@ -267,9 +267,9 @@ func TestPhoneApprovalApprovedAndDenied(t *testing.T) {
 	for _, decision := range []string{approval.DecisionApprove, approval.DecisionDeny} {
 		stored, finish := test.start(t)
 		test.apiServer.setAnswer(stored.request.RequestID, test.answerAsPhone(t, stored, decision, testPhoneDeviceID))
-		sendApprovalEvent(t, test.apiServer, proto.EventApprovalAnswered, stored.request.RequestID)
+		sendApprovalEvent(t, test.apiServer, apitypes.EventApprovalAnswered, stored.request.RequestID)
 		test.expectDecision(t, decision == approval.DecisionApprove)
-		sendApprovalEvent(t, test.apiServer, proto.EventApprovalAnswered, stored.request.RequestID)
+		sendApprovalEvent(t, test.apiServer, apitypes.EventApprovalAnswered, stored.request.RequestID)
 		test.expectNoDecision(t)
 		finish()
 		finish()
@@ -308,7 +308,7 @@ func TestPhoneApprovalCarriesTheRememberChoice(t *testing.T) {
 			t.Fatalf("%s: the phone sees %+v, %v", testCase.name, request.Description, err)
 		}
 		test.apiServer.setAnswer(stored.request.RequestID, testCase.answer(stored, request))
-		sendApprovalEvent(t, test.apiServer, proto.EventApprovalAnswered, stored.request.RequestID)
+		sendApprovalEvent(t, test.apiServer, apitypes.EventApprovalAnswered, stored.request.RequestID)
 		select {
 		case answer := <-answerChannel:
 			if answer.Decision != approval.DecisionApprove || answer.IsRemembered != testCase.wantIsRemembered {
@@ -339,7 +339,7 @@ func TestPhoneApprovalRefusesForgedAndSelfAnswers(t *testing.T) {
 	}
 	for name, sealedAnswer := range allForged {
 		test.apiServer.setAnswer(requestID, sealedAnswer)
-		sendApprovalEvent(t, test.apiServer, proto.EventApprovalAnswered, requestID)
+		sendApprovalEvent(t, test.apiServer, apitypes.EventApprovalAnswered, requestID)
 		select {
 		case isApproved := <-test.decisionChannel:
 			t.Errorf("%s: decided %v", name, isApproved)
@@ -347,7 +347,7 @@ func TestPhoneApprovalRefusesForgedAndSelfAnswers(t *testing.T) {
 		}
 	}
 	test.apiServer.setAnswer(requestID, test.answerAsPhone(t, stored, approval.DecisionApprove, testPhoneDeviceID))
-	sendApprovalEvent(t, test.apiServer, proto.EventApprovalAnswered, requestID)
+	sendApprovalEvent(t, test.apiServer, apitypes.EventApprovalAnswered, requestID)
 	test.expectDecision(t, true)
 }
 
@@ -404,7 +404,7 @@ func TestPhoneApprovalAvailability(t *testing.T) {
 func TestPhoneListsAndAnswersRequests(t *testing.T) {
 	test := createUnlockedTestService(t)
 	test.apiServer.mutex.Lock()
-	test.apiServer.allDevice = []proto.Device{
+	test.apiServer.allDevice = []apitypes.Device{
 		{ID: testMacDeviceID, Name: "MacBook Pro", Platform: "darwin/desktop"},
 		{ID: testPhoneDeviceID, Name: "Hisar on iPhone", Platform: "ios/mobile", Current: true},
 	}
@@ -424,7 +424,7 @@ func TestPhoneListsAndAnswersRequests(t *testing.T) {
 		if test.apiServer.allApprovalByRequestID == nil {
 			test.apiServer.allApprovalByRequestID = map[string]*fakeApproval{}
 		}
-		test.apiServer.allApprovalByRequestID[request.RequestID] = &fakeApproval{request: proto.CreateApprovalRequest{RequestID: request.RequestID, SealedRequest: sealedRequest, ExpiresAt: request.ExpiresAt}}
+		test.apiServer.allApprovalByRequestID[request.RequestID] = &fakeApproval{request: apitypes.CreateApprovalRequest{RequestID: request.RequestID, SealedRequest: sealedRequest, ExpiresAt: request.ExpiresAt}}
 		test.apiServer.mutex.Unlock()
 		return request, sealedRequest
 	}
@@ -432,7 +432,7 @@ func TestPhoneListsAndAnswersRequests(t *testing.T) {
 	postRequest(testMacDeviceID, time.Now().Add(-approval.MaximumLifetime-time.Second))
 	postRequest(testPhoneDeviceID, time.Now())
 	test.apiServer.mutex.Lock()
-	test.apiServer.allApprovalByRequestID[approval.GenerateRequestID()] = &fakeApproval{request: proto.CreateApprovalRequest{RequestID: "not-a-request", SealedRequest: []byte("garbage")}}
+	test.apiServer.allApprovalByRequestID[approval.GenerateRequestID()] = &fakeApproval{request: apitypes.CreateApprovalRequest{RequestID: "not-a-request", SealedRequest: []byte("garbage")}}
 	test.apiServer.mutex.Unlock()
 
 	allRequest, err := ListAllPendingPhoneApproval(test.service)
@@ -518,7 +518,7 @@ func TestPhoneApprovalChecksAStaleDeviceListBeforeAnswering(t *testing.T) {
 	stored, finish := test.start(t)
 	defer finish()
 	test.apiServer.setAnswer(stored.request.RequestID, test.answerAsPhone(t, stored, approval.DecisionApprove, testPhoneDeviceID))
-	sendApprovalEvent(t, test.apiServer, proto.EventApprovalAnswered, stored.request.RequestID)
+	sendApprovalEvent(t, test.apiServer, apitypes.EventApprovalAnswered, stored.request.RequestID)
 	test.expectDecision(t, true)
 }
 
@@ -563,7 +563,7 @@ func TestPhoneApprovalPostIsRetried(t *testing.T) {
 	stored, finish := test.start(t)
 	defer finish()
 	test.apiServer.setAnswer(stored.request.RequestID, test.answerAsPhone(t, stored, approval.DecisionDeny, testPhoneDeviceID))
-	sendApprovalEvent(t, test.apiServer, proto.EventApprovalAnswered, stored.request.RequestID)
+	sendApprovalEvent(t, test.apiServer, apitypes.EventApprovalAnswered, stored.request.RequestID)
 	test.expectDecision(t, false)
 }
 
@@ -571,7 +571,7 @@ func TestPhoneApprovalOutlivesAHangingDeviceRefresh(t *testing.T) {
 	test := createPhoneApprovalTest(t)
 	stored, finish := test.start(t)
 	test.apiServer.setAnswer(stored.request.RequestID, test.answerAsPhone(t, stored, approval.DecisionApprove, testPhoneDeviceID))
-	sendApprovalEvent(t, test.apiServer, proto.EventApprovalAnswered, stored.request.RequestID)
+	sendApprovalEvent(t, test.apiServer, apitypes.EventApprovalAnswered, stored.request.RequestID)
 	test.expectDecision(t, true)
 	finish()
 

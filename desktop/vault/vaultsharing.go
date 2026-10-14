@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tryhisar/hisar/core/proto"
+	"github.com/tryhisar/hisar/core/apitypes"
 )
 
 type VaultSharing struct {
@@ -29,12 +29,12 @@ func GetVaultSharing(s *Service, vaultID string) (VaultSharing, error) {
 	if err != nil {
 		return VaultSharing{}, err
 	}
-	if vault.Type == proto.VaultPersonal {
+	if vault.Type == apitypes.VaultPersonal {
 		return VaultSharing{}, errPersonalVault
 	}
 	sharing := VaultSharing{
 		Vault:         convertToVaultSummary(vault, len(s.allItemByVaultID[vaultID])),
-		IsOwner:       vault.Role == proto.VaultOwner,
+		IsOwner:       vault.Role == apitypes.VaultOwner,
 		AllInvitation: []SentShareInvitation{},
 	}
 	if sharing.IsOwner {
@@ -49,7 +49,7 @@ func GetVaultSharing(s *Service, vaultID string) (VaultSharing, error) {
 				continue
 			}
 			sharing.AllInvitation = append(sharing.AllInvitation, convertToSentShareInvitation(sent, vault.Name))
-			if sent.State == proto.ShareInvitationAccepted {
+			if sent.State == apitypes.ShareInvitationAccepted {
 				allAcceptedEmail = append(allAcceptedEmail, sent.Email)
 			}
 		}

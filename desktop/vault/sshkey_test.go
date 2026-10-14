@@ -18,10 +18,10 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
-	"github.com/tryhisar/hisar/core/client"
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/item"
-	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/core/session"
 	"github.com/tryhisar/hisar/core/sshagent"
 )
@@ -29,23 +29,23 @@ import (
 // fakeAPIServer stores encrypted vaults and items in memory, like the Hisar server API.
 type fakeAPIServer struct {
 	mutex                      sync.Mutex
-	allVault                   []proto.Vault
-	allItemByVaultID           map[string]map[string]proto.Item
+	allVault                   []apitypes.Vault
+	allItemByVaultID           map[string]map[string]apitypes.Item
 	seq                        int64
 	accountID                  string
 	role                       string
-	allMember                  []proto.Member
-	allAccessByVaultID         map[string][]proto.RotatedAccess
-	allDevice                  []proto.Device
+	allMember                  []apitypes.Member
+	allAccessByVaultID         map[string][]apitypes.RotatedAccess
+	allDevice                  []apitypes.Device
 	isUnreachable              bool
 	eventChannel               chan string
-	allShareInvitation         []proto.SentShareInvitation
-	allReceivedShareInvitation []proto.ReceivedShareInvitation
-	allWaitingShareInvitation  []proto.WaitingShareInvitation
+	allShareInvitation         []apitypes.SentShareInvitation
+	allReceivedShareInvitation []apitypes.ReceivedShareInvitation
+	allWaitingShareInvitation  []apitypes.WaitingShareInvitation
 	allAnsweredShareInvitation []string
 	allInvitedEmail            []string
 	isEmailUnavailable         bool
-	approvalEventChannel       chan client.Event
+	approvalEventChannel       chan apiclient.Event
 	eventStreamCount           int
 	allApprovalByRequestID     map[string]*fakeApproval
 	failingApprovalPostCount   int
@@ -69,7 +69,7 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 	mux.HandleFunc("GET /api/v1/account", func(writer http.ResponseWriter, request *http.Request) {
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
-		writeJSON(writer, http.StatusOK, proto.Account{AccountID: server.accountID, Role: server.role})
+		writeJSON(writer, http.StatusOK, apitypes.Account{AccountID: server.accountID, Role: server.role})
 	})
 	mux.HandleFunc("GET /api/v1/vaults", func(writer http.ResponseWriter, request *http.Request) {
 		server.mutex.Lock()
@@ -77,45 +77,45 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 		writeJSON(writer, http.StatusOK, server.allVault)
 	})
 	mux.HandleFunc("POST /api/v1/vaults", func(writer http.ResponseWriter, request *http.Request) {
-		var createRequest proto.CreateVaultRequest
+		var createRequest apitypes.CreateVaultRequest
 		if err := json.NewDecoder(request.Body).Decode(&createRequest); err != nil {
-			writeJSON(writer, http.StatusBadRequest, proto.Error{Error: err.Error()})
+			writeJSON(writer, http.StatusBadRequest, apitypes.Error{Error: err.Error()})
 			return
 		}
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
-		server.allVault = append(server.allVault, proto.Vault{ID: createRequest.ID, Type: createRequest.Type, EncName: createRequest.EncName, Role: proto.VaultOwner, WrappedKey: createRequest.WrappedKey})
-		server.allItemByVaultID[createRequest.ID] = map[string]proto.Item{}
-		server.allAccessByVaultID[createRequest.ID] = []proto.RotatedAccess{{AccountID: server.accountID, Role: proto.VaultOwner, WrappedKey: createRequest.WrappedKey}}
+		server.allVault = append(server.allVault, apitypes.Vault{ID: createRequest.ID, Type: createRequest.Type, EncName: createRequest.EncName, Role: apitypes.VaultOwner, WrappedKey: createRequest.WrappedKey})
+		server.allItemByVaultID[createRequest.ID] = map[string]apitypes.Item{}
+		server.allAccessByVaultID[createRequest.ID] = []apitypes.RotatedAccess{{AccountID: server.accountID, Role: apitypes.VaultOwner, WrappedKey: createRequest.WrappedKey}}
 		writer.WriteHeader(http.StatusCreated)
 	})
 	mux.HandleFunc("GET /api/v1/vaults/{vaultID}/changes", func(writer http.ResponseWriter, request *http.Request) {
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
-		allItem := []proto.Item{}
+		allItem := []apitypes.Item{}
 		for _, storedItem := range server.allItemByVaultID[request.PathValue("vaultID")] {
 			allItem = append(allItem, storedItem)
 		}
-		writeJSON(writer, http.StatusOK, proto.ChangesResponse{Items: allItem, NextSeq: server.seq})
+		writeJSON(writer, http.StatusOK, apitypes.ChangesResponse{Items: allItem, NextSeq: server.seq})
 	})
 	mux.HandleFunc("PUT /api/v1/vaults/{vaultID}/items/{itemID}", func(writer http.ResponseWriter, request *http.Request) {
-		var putRequest proto.PutItemRequest
+		var putRequest apitypes.PutItemRequest
 		if err := json.NewDecoder(request.Body).Decode(&putRequest); err != nil {
-			writeJSON(writer, http.StatusBadRequest, proto.Error{Error: err.Error()})
+			writeJSON(writer, http.StatusBadRequest, apitypes.Error{Error: err.Error()})
 			return
 		}
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
 		allItem, found := server.allItemByVaultID[request.PathValue("vaultID")]
 		if !found {
-			writeJSON(writer, http.StatusNotFound, proto.Error{Error: "vault not found"})
+			writeJSON(writer, http.StatusNotFound, apitypes.Error{Error: "vault not found"})
 			return
 		}
 		itemID := request.PathValue("itemID")
 		current, exists := allItem[itemID]
 		baseRevision := strings.Trim(request.Header.Get("If-Match"), `"`)
 		if (exists && current.Revision != baseRevision) || (!exists && baseRevision != "") {
-			conflict := proto.ConflictResponse{}
+			conflict := apitypes.ConflictResponse{}
 			if exists {
 				conflict.Current = &current
 			}
@@ -123,8 +123,8 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 			return
 		}
 		server.seq++
-		allItem[itemID] = proto.Item{ID: itemID, Revision: putRequest.Revision, Seq: server.seq, Deleted: putRequest.Deleted, Overview: putRequest.Overview, Details: putRequest.Details}
-		writeJSON(writer, http.StatusOK, proto.PutItemResponse{Seq: server.seq})
+		allItem[itemID] = apitypes.Item{ID: itemID, Revision: putRequest.Revision, Seq: server.seq, Deleted: putRequest.Deleted, Overview: putRequest.Overview, Details: putRequest.Details}
+		writeJSON(writer, http.StatusOK, apitypes.PutItemResponse{Seq: server.seq})
 	})
 	mux.HandleFunc("GET /api/v1/events", func(writer http.ResponseWriter, request *http.Request) {
 		server.mutex.Lock()
@@ -188,11 +188,11 @@ func createUnlockedTestService(t *testing.T) unlockedTestService {
 	}
 	accountID := crypt.GenerateAccountID()
 	apiServer := &fakeAPIServer{
-		allItemByVaultID:   map[string]map[string]proto.Item{},
+		allItemByVaultID:   map[string]map[string]apitypes.Item{},
 		accountID:          accountID,
-		role:               proto.RoleAdmin,
-		allMember:          []proto.Member{{AccountID: accountID, Email: "a@example.com", Name: "Alice", Role: proto.RoleAdmin, PublicKeys: keyset.GetAllPublicKey(accountID)}},
-		allAccessByVaultID: map[string][]proto.RotatedAccess{},
+		role:               apitypes.RoleAdmin,
+		allMember:          []apitypes.Member{{AccountID: accountID, Email: "a@example.com", Name: "Alice", Role: apitypes.RoleAdmin, PublicKeys: keyset.GetAllPublicKey(accountID)}},
+		allAccessByVaultID: map[string][]apitypes.RotatedAccess{},
 	}
 	httpServer := httptest.NewServer(apiServer.createHandler())
 	t.Cleanup(httpServer.Close)
@@ -200,15 +200,15 @@ func createUnlockedTestService(t *testing.T) unlockedTestService {
 	service, clipboard, _ := createTestService(t, filepath.Join(t.TempDir(), "desktop.json"), createMemorySecretKeyStore())
 	lockedCount := 0
 	service.config.OnLock = func() { lockedCount++ }
-	apiClient := client.Create(httpServer.URL)
+	apiClient := apiclient.Create(httpServer.URL)
 	apiClient.Token = "token"
-	unlockedSession := &session.Session{Client: apiClient, AccountID: accountID, Email: "a@example.com", Name: "Alice", Role: proto.RoleAdmin, Keyset: keyset}
+	unlockedSession := &session.Session{Client: apiClient, AccountID: accountID, Email: "a@example.com", Name: "Alice", Role: apitypes.RoleAdmin, Keyset: keyset}
 	ctx := context.Background()
-	personal, err := unlockedSession.CreateVault(ctx, "Personal", proto.VaultPersonal)
+	personal, err := unlockedSession.CreateVault(ctx, "Personal", apitypes.VaultPersonal)
 	if err != nil {
 		t.Fatal(err)
 	}
-	family, err := unlockedSession.CreateVault(ctx, "Family", proto.VaultShared)
+	family, err := unlockedSession.CreateVault(ctx, "Family", apitypes.VaultShared)
 	if err != nil {
 		t.Fatal(err)
 	}

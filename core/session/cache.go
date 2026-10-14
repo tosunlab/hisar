@@ -3,19 +3,19 @@ package session
 import (
 	"context"
 
-	"github.com/tryhisar/hisar/core/client"
-	"github.com/tryhisar/hisar/core/proto"
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 )
 
 // Cache keeps the server's encrypted records so a session can unlock and read while the server is unreachable.
 type Cache interface {
-	SaveAccount(account *proto.Account) error
-	LoadAccount(accountID string) (*proto.Account, error)
-	ReplaceAllVault(allVault []proto.Vault) error
-	ListAllVault() ([]proto.Vault, error)
+	SaveAccount(account *apitypes.Account) error
+	LoadAccount(accountID string) (*apitypes.Account, error)
+	ReplaceAllVault(allVault []apitypes.Vault) error
+	ListAllVault() ([]apitypes.Vault, error)
 	GetSeq(vaultID string) (int64, error)
-	ApplyAllChange(vaultID string, allItem []proto.Item, nextSeq int64) error
-	ListAllItem(vaultID string) ([]proto.Item, error)
+	ApplyAllChange(vaultID string, allItem []apitypes.Item, nextSeq int64) error
+	ListAllItem(vaultID string) ([]apitypes.Item, error)
 	ResetVault(vaultID string) error
 }
 
@@ -35,7 +35,7 @@ func (s *Session) AttachCache(ctx context.Context, accountCache Cache) error {
 }
 
 // getAccount falls back to the cached account only when the server cannot be reached.
-func getAccount(ctx context.Context, apiClient *client.Client, accountCache Cache, accountID string) (account *proto.Account, isOffline bool, err error) {
+func getAccount(ctx context.Context, apiClient *apiclient.Client, accountCache Cache, accountID string) (account *apitypes.Account, isOffline bool, err error) {
 	account, err = apiClient.GetAccount(ctx)
 	if err == nil {
 		if accountCache != nil && account.AccountID == accountID {
@@ -43,7 +43,7 @@ func getAccount(ctx context.Context, apiClient *client.Client, accountCache Cach
 		}
 		return account, false, nil
 	}
-	if accountCache == nil || !client.IsUnreachable(err) {
+	if accountCache == nil || !apiclient.IsUnreachable(err) {
 		return nil, false, err
 	}
 	cachedAccount, cacheErr := accountCache.LoadAccount(accountID)
@@ -53,7 +53,7 @@ func getAccount(ctx context.Context, apiClient *client.Client, accountCache Cach
 	return cachedAccount, true, nil
 }
 
-func (s *Session) listAllProtoVault(ctx context.Context) ([]proto.Vault, error) {
+func (s *Session) listAllProtoVault(ctx context.Context) ([]apitypes.Vault, error) {
 	allProtoVault, err := s.Client.ListAllVault(ctx)
 	if s.Cache == nil {
 		return allProtoVault, err
@@ -65,7 +65,7 @@ func (s *Session) listAllProtoVault(ctx context.Context) ([]proto.Vault, error) 
 		}
 		return allProtoVault, s.Cache.ReplaceAllVault(allProtoVault)
 	}
-	if !client.IsUnreachable(err) {
+	if !apiclient.IsUnreachable(err) {
 		return nil, err
 	}
 	s.isOffline.Store(true)
@@ -73,14 +73,14 @@ func (s *Session) listAllProtoVault(ctx context.Context) ([]proto.Vault, error) 
 }
 
 // syncVault downloads the changes since the cached seq and returns the vault's cached items.
-func (s *Session) syncVault(ctx context.Context, vault *Vault) ([]proto.Item, error) {
+func (s *Session) syncVault(ctx context.Context, vault *Vault) ([]apitypes.Item, error) {
 	since, err := s.Cache.GetSeq(vault.ID)
 	if err != nil {
 		return nil, err
 	}
 	for {
 		changeResponse, err := s.Client.ListAllChange(ctx, vault.ID, since, 0)
-		if client.IsUnreachable(err) {
+		if apiclient.IsUnreachable(err) {
 			s.isOffline.Store(true)
 			return s.Cache.ListAllItem(vault.ID)
 		}

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tryhisar/hisar/core/client"
+	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/emergencykit"
 	"github.com/tryhisar/hisar/core/localstate"
@@ -56,11 +56,11 @@ func convertAccountError(err error) error {
 		return errors.New("the master password is not correct")
 	case errors.Is(err, session.ErrEmailMismatch):
 		return errors.New("the email does not match this account; nothing was deleted")
-	case client.IsStatus(err, http.StatusUnauthorized):
+	case apiclient.IsStatus(err, http.StatusUnauthorized):
 		return errSignedOutByServer
-	case client.IsStatus(err, http.StatusConflict):
+	case apiclient.IsStatus(err, http.StatusConflict):
 		return errors.New("your master password or Secret Key was just changed on another device; sign in again with `hisar login`")
-	case client.IsStatus(err, http.StatusTooManyRequests):
+	case apiclient.IsStatus(err, http.StatusTooManyRequests):
 		return errors.New("too many attempts; wait a minute and try again")
 	}
 	return err

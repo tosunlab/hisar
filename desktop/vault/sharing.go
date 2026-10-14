@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tryhisar/hisar/core/client"
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
-	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/core/session"
 )
 
@@ -29,11 +29,11 @@ var (
 )
 
 func isValidVaultRole(role string) bool {
-	return role == proto.VaultOwner || role == proto.VaultEditor || role == proto.VaultReader
+	return role == apitypes.VaultOwner || role == apitypes.VaultEditor || role == apitypes.VaultReader
 }
 
 func convertSharingError(err error) error {
-	if client.IsStatus(err, http.StatusForbidden) {
+	if apiclient.IsStatus(err, http.StatusForbidden) {
 		return errOwnerOnly
 	}
 	return convertError(err)
@@ -41,16 +41,16 @@ func convertSharingError(err error) error {
 
 func convertInvitationError(err error) error {
 	switch {
-	case client.IsStatus(err, http.StatusNotImplemented):
+	case apiclient.IsStatus(err, http.StatusNotImplemented):
 		return errEmailNotConfigured
-	case client.IsStatus(err, http.StatusTooManyRequests):
+	case apiclient.IsStatus(err, http.StatusTooManyRequests):
 		return errTooManyInvitation
-	case client.IsStatus(err, http.StatusNotFound):
+	case apiclient.IsStatus(err, http.StatusNotFound):
 		return errInvitationNotFound
-	case client.IsStatus(err, http.StatusConflict):
+	case apiclient.IsStatus(err, http.StatusConflict):
 		return errAlreadyHasAccess
-	case client.IsStatus(err, http.StatusBadRequest):
-		var apiError *client.APIError
+	case apiclient.IsStatus(err, http.StatusBadRequest):
+		var apiError *apiclient.APIError
 		if errors.As(err, &apiError) {
 			return errors.New(apiError.Message)
 		}
@@ -118,7 +118,7 @@ func (s *Service) listAllVaultMember(ctx context.Context, vaultID string) ([]Vau
 	if err != nil {
 		return nil, convertError(err)
 	}
-	allProtoMemberByID := map[string]proto.Member{}
+	allProtoMemberByID := map[string]apitypes.Member{}
 	for _, protoMember := range allProtoMember {
 		allProtoMemberByID[protoMember.AccountID] = protoMember
 	}
@@ -138,7 +138,7 @@ func (s *Service) listAllVaultMember(ctx context.Context, vaultID string) ([]Vau
 		}
 		allVaultMember = append(allVaultMember, vaultMember)
 	}
-	allRoleOrder := []string{proto.VaultOwner, proto.VaultEditor, proto.VaultReader}
+	allRoleOrder := []string{apitypes.VaultOwner, apitypes.VaultEditor, apitypes.VaultReader}
 	slices.SortStableFunc(allVaultMember, func(first, second VaultMember) int {
 		if order := slices.Index(allRoleOrder, first.Role) - slices.Index(allRoleOrder, second.Role); order != 0 {
 			return order
@@ -154,17 +154,17 @@ func (s *Service) findSharableVault(ctx context.Context, vaultID string) (*sessi
 	if err != nil {
 		return nil, err
 	}
-	if vault.Type == proto.VaultPersonal {
+	if vault.Type == apitypes.VaultPersonal {
 		return nil, errPersonalVault
 	}
-	if vault.Role != proto.VaultOwner {
+	if vault.Role != apitypes.VaultOwner {
 		return nil, errOwnerOnly
 	}
 	return vault, nil
 }
 
 // shareWithMember checks the member's pinned signing key, then wraps the vault key for them with the role.
-func (s *Service) shareWithMember(ctx context.Context, vault *session.Vault, member *proto.Member, role string) error {
+func (s *Service) shareWithMember(ctx context.Context, vault *session.Vault, member *apitypes.Member, role string) error {
 	pinErr := s.state.CheckMemberPin(member)
 	if err := s.state.Save(); pinErr == nil && err != nil {
 		return err
@@ -175,7 +175,7 @@ func (s *Service) shareWithMember(ctx context.Context, vault *session.Vault, mem
 	return convertSharingError(s.unlockedSession.ShareVault(ctx, vault, member, role))
 }
 
-func (s *Service) getVerifiedMember(ctx context.Context, emailOrID string) (*proto.Member, error) {
+func (s *Service) getVerifiedMember(ctx context.Context, emailOrID string) (*apitypes.Member, error) {
 	member, err := s.unlockedSession.GetVerifiedMember(ctx, emailOrID)
 	if errors.Is(err, session.ErrNotFound) {
 		return nil, errMemberNotFound
@@ -235,7 +235,7 @@ func (s *Service) ChangeVaultMemberRole(vaultID, accountID, role string) error {
 	if err != nil {
 		return convertSharingError(err)
 	}
-	if !slices.ContainsFunc(allVaultMember, func(vaultMember proto.VaultMember) bool { return vaultMember.AccountID == accountID }) {
+	if !slices.ContainsFunc(allVaultMember, func(vaultMember apitypes.VaultMember) bool { return vaultMember.AccountID == accountID }) {
 		return errors.New("this person no longer has access to the vault; share it with them again")
 	}
 	member, err := s.getVerifiedMember(ctx, accountID)
@@ -268,7 +268,7 @@ func (s *Service) RemoveVaultMember(vaultID, accountID string) error {
 	if errors.Is(removeErr, session.ErrNotFound) {
 		return errors.New("this person no longer has access to the vault")
 	}
-	if client.IsStatus(removeErr, http.StatusConflict) {
+	if apiclient.IsStatus(removeErr, http.StatusConflict) {
 		return errors.New("the vault kept changing on other devices; try again")
 	}
 	if removeErr != nil {
@@ -302,7 +302,7 @@ func (s *Service) InvitePerson(email string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	_, err = s.unlockedSession.Client.Invite(ctx, &proto.InviteRequest{Email: email})
+	_, err = s.unlockedSession.Client.Invite(ctx, &apitypes.InviteRequest{Email: email})
 	return convertInvitationError(err)
 }
 
@@ -319,7 +319,7 @@ func (s *Service) ListAllDevice() ([]Device, error) {
 	if err != nil {
 		return nil, convertError(err)
 	}
-	slices.SortStableFunc(allProtoDevice, func(first, second proto.Device) int {
+	slices.SortStableFunc(allProtoDevice, func(first, second apitypes.Device) int {
 		if first.Current != second.Current {
 			if first.Current {
 				return -1
@@ -355,14 +355,14 @@ func (s *Service) RevokeDevice(deviceID string) error {
 	if err != nil {
 		return convertError(err)
 	}
-	index := slices.IndexFunc(allProtoDevice, func(protoDevice proto.Device) bool { return protoDevice.ID == deviceID })
+	index := slices.IndexFunc(allProtoDevice, func(protoDevice apitypes.Device) bool { return protoDevice.ID == deviceID })
 	if index < 0 {
 		return errors.New("this device is already signed out")
 	}
 	if allProtoDevice[index].Current {
 		return errCurrentDevice
 	}
-	if err := s.unlockedSession.Client.RevokeDevice(ctx, deviceID); err != nil && !client.IsStatus(err, http.StatusNotFound) {
+	if err := s.unlockedSession.Client.RevokeDevice(ctx, deviceID); err != nil && !apiclient.IsStatus(err, http.StatusNotFound) {
 		return convertError(err)
 	}
 	return nil

@@ -12,11 +12,11 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/tryhisar/hisar/core/client"
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/export"
 	"github.com/tryhisar/hisar/core/importer"
 	"github.com/tryhisar/hisar/core/item"
-	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/core/session"
 )
 
@@ -98,8 +98,8 @@ func selectAllQueuedItem(allItem []item.Item, allDuplicateIndex []int, isSkippin
 
 // isImportStoppingError: these failures would repeat for every item, so the import stops.
 func isImportStoppingError(err error) bool {
-	return client.IsUnreachable(err) || client.IsStatus(err, http.StatusUnauthorized) || client.IsStatus(err, http.StatusForbidden) ||
-		client.IsStatus(err, http.StatusTooManyRequests) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
+	return apiclient.IsUnreachable(err) || apiclient.IsStatus(err, http.StatusUnauthorized) || apiclient.IsStatus(err, http.StatusForbidden) ||
+		apiclient.IsStatus(err, http.StatusTooManyRequests) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
 func saveAllImportedItem(ctx context.Context, unlockedSession *session.Session, vault *session.Vault, allQueuedItem []item.Item) (int, error) {
@@ -237,7 +237,7 @@ func runImport(ctx context.Context, flags *flag.FlagSet, allArg []string) error 
 		if err != nil {
 			return err
 		}
-		if vault.Role == proto.VaultReader {
+		if vault.Role == apitypes.VaultReader {
 			return fmt.Errorf("you can only read %q; choose a vault you can edit with -v", vault.Name)
 		}
 		allExisting, err := unlockedSession.ListAllItem(ctx, vault)

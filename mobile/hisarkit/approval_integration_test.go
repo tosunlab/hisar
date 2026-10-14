@@ -17,8 +17,8 @@ import (
 	"golang.org/x/crypto/ssh"
 	sshAgentClient "golang.org/x/crypto/ssh/agent"
 
+	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/approval"
-	"github.com/tryhisar/hisar/core/client"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/localstate"
 	"github.com/tryhisar/hisar/core/sshagent"
@@ -366,7 +366,7 @@ func TestIntegrationPhoneApproval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	forger := client.Create(serverURL)
+	forger := apiclient.Create(serverURL)
 	forger.Token = phoneState.Token
 	ctx := context.Background()
 	account, err := forger.GetAccount(ctx)

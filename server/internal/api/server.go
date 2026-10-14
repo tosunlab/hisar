@@ -15,8 +15,8 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"golang.org/x/time/rate"
 
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/pake"
-	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/server/internal/desktopupdate"
 	"github.com/tryhisar/hisar/server/internal/mail"
 	"github.com/tryhisar/hisar/server/internal/store"
@@ -242,7 +242,7 @@ func handleError(c fiber.Ctx, err error) error {
 	if fiberError.Code == fiber.StatusRequestEntityTooLarge {
 		message = "request too large"
 	}
-	return c.Status(fiberError.Code).JSON(proto.Error{Error: message})
+	return c.Status(fiberError.Code).JSON(apitypes.Error{Error: message})
 }
 
 func createAPIError(status int, message string) error { return fiber.NewError(status, message) }

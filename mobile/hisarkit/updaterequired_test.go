@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/tryhisar/hisar/core/proto"
+	"github.com/tryhisar/hisar/core/apitypes"
 )
 
 type updateRequiredRecorder struct {
@@ -29,7 +29,7 @@ func TestUpdateRequiredReachesTheApp(t *testing.T) {
 	httpServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		allSentHeader <- request.Header.Clone()
 		writer.WriteHeader(http.StatusUpgradeRequired)
-		json.NewEncoder(writer).Encode(proto.UpgradeRequired{Error: "update required", MinimumVersion: "0.2.0", UpdateURL: "https://tryhisar.com/download"})
+		json.NewEncoder(writer).Encode(apitypes.UpgradeRequired{Error: "update required", MinimumVersion: "0.2.0", UpdateURL: "https://tryhisar.com/download"})
 	}))
 	defer httpServer.Close()
 	stateDirectory := t.TempDir()
@@ -54,8 +54,8 @@ func TestUpdateRequiredReachesTheApp(t *testing.T) {
 	if status.UpdateRequired == nil || status.UpdateRequired.CurrentVersion != "0.1.0" || status.UpdateRequired.MinimumVersion != "0.2.0" || status.UpdateRequired.UpdateURL != "https://tryhisar.com/download" {
 		t.Fatalf("status: %+v", status.UpdateRequired)
 	}
-	if header := <-allSentHeader; header.Get(proto.PlatformHeader) != "ios/mobile" || header.Get(proto.VersionHeader) != "0.1.0" {
-		t.Errorf("sent %q %q", header.Get(proto.PlatformHeader), header.Get(proto.VersionHeader))
+	if header := <-allSentHeader; header.Get(apitypes.PlatformHeader) != "ios/mobile" || header.Get(apitypes.VersionHeader) != "0.1.0" {
+		t.Errorf("sent %q %q", header.Get(apitypes.PlatformHeader), header.Get(apitypes.VersionHeader))
 	}
 	select {
 	case <-recorder.allUpdateRequired:

@@ -11,8 +11,8 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"golang.org/x/time/rate"
 
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
-	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/core/sharelink"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
@@ -44,7 +44,7 @@ func generateShareLinkID() string {
 	return base64.RawURLEncoding.EncodeToString(allRandomByte)
 }
 
-func validateShareLinkRequest(request *proto.CreateShareLinkRequest) error {
+func validateShareLinkRequest(request *apitypes.CreateShareLinkRequest) error {
 	switch {
 	case len(request.Ciphertext) == 0 || len(request.Ciphertext) > sharelink.MaxCiphertextSize:
 		return createAPIError(fiber.StatusBadRequest, "the share link must be between 1 byte and 64 KiB")
@@ -64,20 +64,20 @@ func validateShareLinkRequest(request *proto.CreateShareLinkRequest) error {
 	return nil
 }
 
-func convertToProtoShareLink(link *store.ShareLink) proto.ShareLink {
-	return proto.ShareLink{
+func convertToProtoShareLink(link *store.ShareLink) apitypes.ShareLink {
+	return apitypes.ShareLink{
 		ID: link.ID, EncryptedLabel: link.EncryptedLabel, CreatedAt: link.CreatedAt, ExpiresAt: link.ExpiresAt,
 		MaxViews: link.MaxViews, ViewCount: link.ViewCount, HasPassphrase: link.PassphraseSalt != nil,
 	}
 }
 
 func (s *Server) publishShareLinksChanged(accountID string) {
-	s.events.publish([]string{accountID}, serverEvent{name: proto.EventShareLinksChanged, data: struct{}{}})
+	s.events.publish([]string{accountID}, serverEvent{name: apitypes.EventShareLinksChanged, data: struct{}{}})
 }
 
 func (s *Server) handleCreateShareLink(c fiber.Ctx) error {
 	currentSession := getSession(c)
-	var request proto.CreateShareLinkRequest
+	var request apitypes.CreateShareLinkRequest
 	if err := decodeBodyWithLimit(c, &request, sharelink.MaxCiphertextSize*2); err != nil {
 		return err
 	}
@@ -119,7 +119,7 @@ func (s *Server) handleListAllShareLink(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	allResponse := make([]proto.ShareLink, 0, len(allLink))
+	allResponse := make([]apitypes.ShareLink, 0, len(allLink))
 	for index := range allLink {
 		allResponse = append(allResponse, convertToProtoShareLink(&allLink[index]))
 	}
@@ -159,9 +159,9 @@ func (s *Server) handleViewShareLink(c fiber.Ctx) error {
 		return err
 	}
 	s.publishShareLinksChanged(link.AccountID)
-	response := proto.PublicShareLink{Ciphertext: link.Ciphertext, ExpiresAt: link.ExpiresAt, MaxViews: link.MaxViews, ViewCount: link.ViewCount}
+	response := apitypes.PublicShareLink{Ciphertext: link.Ciphertext, ExpiresAt: link.ExpiresAt, MaxViews: link.MaxViews, ViewCount: link.ViewCount}
 	if link.PassphraseSalt != nil {
-		response.Passphrase = &proto.ShareLinkPassphrase{Salt: link.PassphraseSalt, Iterations: link.PassphraseIterations}
+		response.Passphrase = &apitypes.ShareLinkPassphrase{Salt: link.PassphraseSalt, Iterations: link.PassphraseIterations}
 	}
 	c.Set("Referrer-Policy", "no-referrer")
 	c.Set("X-Robots-Tag", "noindex, nofollow")

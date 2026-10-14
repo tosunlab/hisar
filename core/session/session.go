@@ -14,11 +14,11 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/tryhisar/hisar/core/client"
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/pake"
-	"github.com/tryhisar/hisar/core/proto"
 )
 
 var (
@@ -36,7 +36,7 @@ type SeqStore interface {
 }
 
 type Session struct {
-	Client    *client.Client
+	Client    *apiclient.Client
 	AccountID string
 	Email     string
 	Name      string
@@ -44,7 +44,7 @@ type Session struct {
 	Keyset    *crypt.Keyset
 	SeqStore  SeqStore
 	// MemberVerifier, when set, is asked to accept each member a vault key is wrapped for (e.g. key pinning).
-	MemberVerifier func(member *proto.Member) error
+	MemberVerifier func(member *apitypes.Member) error
 	// Cache, when set, stores the server's encrypted records; reads fall back to it while the server is unreachable.
 	Cache     Cache
 	isOffline atomic.Bool
@@ -134,17 +134,17 @@ func (credential *accountCredential) registerOpaque(derivedKeys *crypt.DerivedKe
 	return nil
 }
 
-func SignUp(ctx context.Context, apiClient *client.Client, invite, email, name string, password []byte, device proto.DeviceInfo) (*Session, crypt.SecretKey, error) {
+func SignUp(ctx context.Context, apiClient *apiclient.Client, invite, email, name string, password []byte, device apitypes.DeviceInfo) (*Session, crypt.SecretKey, error) {
 	newSession, secretKey, accountUnlockKey, err := SignUpKeepingAccountUnlockKey(ctx, apiClient, invite, email, name, password, device)
 	clear(accountUnlockKey)
 	return newSession, secretKey, err
 }
 
 // SignUpKeepingAccountUnlockKey also returns a copy of the account unlock key; the caller wipes it.
-func SignUpKeepingAccountUnlockKey(ctx context.Context, apiClient *client.Client, invite, email, name string, password []byte, device proto.DeviceInfo) (*Session, crypt.SecretKey, []byte, error) {
+func SignUpKeepingAccountUnlockKey(ctx context.Context, apiClient *apiclient.Client, invite, email, name string, password []byte, device apitypes.DeviceInfo) (*Session, crypt.SecretKey, []byte, error) {
 	accountID := crypt.GenerateAccountID()
 	credential, err := createAccountCredential(accountID, password, func(registrationRequest []byte) ([]byte, error) {
-		startResponse, err := apiClient.StartRegistration(ctx, &proto.RegisterStartRequest{Invite: invite, Email: email, AccountID: accountID, Request: registrationRequest})
+		startResponse, err := apiClient.StartRegistration(ctx, &apitypes.RegisterStartRequest{Invite: invite, Email: email, AccountID: accountID, Request: registrationRequest})
 		if err != nil {
 			return nil, err
 		}
@@ -155,7 +155,7 @@ func SignUpKeepingAccountUnlockKey(ctx context.Context, apiClient *client.Client
 	}
 	secretKey := credential.secretKey
 
-	sessionResponse, err := apiClient.FinishRegistration(ctx, &proto.RegisterFinishRequest{
+	sessionResponse, err := apiClient.FinishRegistration(ctx, &apitypes.RegisterFinishRequest{
 		Invite:     invite,
 		Email:      email,
 		Name:       name,
@@ -175,14 +175,14 @@ func SignUpKeepingAccountUnlockKey(ctx context.Context, apiClient *client.Client
 	apiClient.Token = sessionResponse.Token
 
 	newSession := &Session{Client: apiClient, AccountID: accountID, Email: email, Name: name, Keyset: credential.keyset}
-	if _, err := newSession.CreateVault(ctx, "Personal", proto.VaultPersonal); err != nil {
+	if _, err := newSession.CreateVault(ctx, "Personal", apitypes.VaultPersonal); err != nil {
 		clear(credential.accountUnlockKey)
 		return nil, secretKey, nil, fmt.Errorf("create personal vault: %w", err)
 	}
 	return newSession, secretKey, credential.accountUnlockKey, nil
 }
 
-func LogIn(ctx context.Context, apiClient *client.Client, email string, password []byte, secretKey crypt.SecretKey, device proto.DeviceInfo) (*Session, error) {
+func LogIn(ctx context.Context, apiClient *apiclient.Client, email string, password []byte, secretKey crypt.SecretKey, device apitypes.DeviceInfo) (*Session, error) {
 	prelogin, err := apiClient.FetchPrelogin(ctx, email)
 	if err != nil {
 		return nil, err
@@ -201,7 +201,7 @@ func LogIn(ctx context.Context, apiClient *client.Client, email string, password
 	if err != nil {
 		return nil, err
 	}
-	startResponse, err := apiClient.StartLogin(ctx, &proto.LoginStartRequest{Email: email, KE1: keyExchange1.Serialize()})
+	startResponse, err := apiClient.StartLogin(ctx, &apitypes.LoginStartRequest{Email: email, KE1: keyExchange1.Serialize()})
 	if err != nil {
 		return nil, err
 	}
@@ -214,8 +214,8 @@ func LogIn(ctx context.Context, apiClient *client.Client, email string, password
 	if err != nil {
 		return nil, ErrBadCredentials
 	}
-	sessionResponse, err := apiClient.FinishLogin(ctx, &proto.LoginFinishRequest{LoginID: startResponse.LoginID, KE3: keyExchange3.Serialize(), Device: device})
-	if client.IsStatus(err, http.StatusUnauthorized) {
+	sessionResponse, err := apiClient.FinishLogin(ctx, &apitypes.LoginFinishRequest{LoginID: startResponse.LoginID, KE3: keyExchange3.Serialize(), Device: device})
+	if apiclient.IsStatus(err, http.StatusUnauthorized) {
 		return nil, ErrBadCredentials
 	}
 	if err != nil {
@@ -229,7 +229,7 @@ func LogIn(ctx context.Context, apiClient *client.Client, email string, password
 }
 
 // Unlock decrypts the keyset; with a non-nil accountCache it works offline from the cached account.
-func Unlock(ctx context.Context, apiClient *client.Client, accountCache Cache, password []byte, secretKey crypt.SecretKey) (*Session, error) {
+func Unlock(ctx context.Context, apiClient *apiclient.Client, accountCache Cache, password []byte, secretKey crypt.SecretKey) (*Session, error) {
 	account, isOffline, err := getAccount(ctx, apiClient, accountCache, secretKey.AccountID)
 	if err != nil {
 		return nil, err
@@ -246,7 +246,7 @@ func Unlock(ctx context.Context, apiClient *client.Client, accountCache Cache, p
 }
 
 // DeriveAccountUnlockKey returns a copy of the account unlock key after checking it opens the keyset; the caller wipes it.
-func DeriveAccountUnlockKey(ctx context.Context, apiClient *client.Client, accountCache Cache, password []byte, secretKey crypt.SecretKey) ([]byte, error) {
+func DeriveAccountUnlockKey(ctx context.Context, apiClient *apiclient.Client, accountCache Cache, password []byte, secretKey crypt.SecretKey) ([]byte, error) {
 	account, _, err := getAccount(ctx, apiClient, accountCache, secretKey.AccountID)
 	if err != nil {
 		return nil, err
@@ -268,7 +268,7 @@ func DeriveAccountUnlockKey(ctx context.Context, apiClient *client.Client, accou
 }
 
 // UnlockWithAccountUnlockKey decrypts the keyset with an already derived account unlock key.
-func UnlockWithAccountUnlockKey(ctx context.Context, apiClient *client.Client, accountCache Cache, accountUnlockKey []byte, accountID string) (*Session, error) {
+func UnlockWithAccountUnlockKey(ctx context.Context, apiClient *apiclient.Client, accountCache Cache, accountUnlockKey []byte, accountID string) (*Session, error) {
 	account, isOffline, err := getAccount(ctx, apiClient, accountCache, accountID)
 	if err != nil {
 		return nil, err
@@ -279,7 +279,7 @@ func UnlockWithAccountUnlockKey(ctx context.Context, apiClient *client.Client, a
 	return decryptAccountKeyset(account, apiClient, accountCache, isOffline, accountUnlockKey)
 }
 
-func decryptAccountKeyset(account *proto.Account, apiClient *client.Client, accountCache Cache, isOffline bool, accountUnlockKey []byte) (*Session, error) {
+func decryptAccountKeyset(account *apitypes.Account, apiClient *apiclient.Client, accountCache Cache, isOffline bool, accountUnlockKey []byte) (*Session, error) {
 	keyset, err := crypt.DecryptKeyset(accountUnlockKey, account.AccountID, account.EncKeyset)
 	if err != nil {
 		return nil, ErrBadCredentials
@@ -305,11 +305,11 @@ func (s *Session) CreateVault(ctx context.Context, name, vaultType string) (*Vau
 	if err != nil {
 		return nil, err
 	}
-	request := &proto.CreateVaultRequest{ID: vaultID, Type: vaultType, EncName: encryptedName, WrappedKey: wrappedKey}
+	request := &apitypes.CreateVaultRequest{ID: vaultID, Type: vaultType, EncName: encryptedName, WrappedKey: wrappedKey}
 	if err := s.Client.CreateVault(ctx, request); err != nil {
 		return nil, err
 	}
-	return &Vault{ID: vaultID, Type: vaultType, Name: name, Role: proto.VaultOwner, Key: vaultKey}, nil
+	return &Vault{ID: vaultID, Type: vaultType, Name: name, Role: apitypes.VaultOwner, Key: vaultKey}, nil
 }
 
 func (s *Session) ListAllVault(ctx context.Context) ([]Vault, error) {
@@ -374,9 +374,9 @@ func (s *Session) ListAllItem(ctx context.Context, vault *Vault) ([]item.Item, e
 	return decryptAllItem(vault, allProtoItem)
 }
 
-func (s *Session) downloadAllItem(ctx context.Context, vault *Vault) ([]proto.Item, error) {
+func (s *Session) downloadAllItem(ctx context.Context, vault *Vault) ([]apitypes.Item, error) {
 	var since, nextSeq int64
-	allProtoItemByID := map[string]proto.Item{}
+	allProtoItemByID := map[string]apitypes.Item{}
 	for {
 		changeResponse, err := s.Client.ListAllChange(ctx, vault.ID, since, 0)
 		if err != nil {
@@ -397,7 +397,7 @@ func (s *Session) downloadAllItem(ctx context.Context, vault *Vault) ([]proto.It
 		}
 		s.SeqStore.SetSeq(vault.ID, nextSeq)
 	}
-	allProtoItem := make([]proto.Item, 0, len(allProtoItemByID))
+	allProtoItem := make([]apitypes.Item, 0, len(allProtoItemByID))
 	for _, protoItem := range allProtoItemByID {
 		if !protoItem.Deleted {
 			allProtoItem = append(allProtoItem, protoItem)
@@ -406,7 +406,7 @@ func (s *Session) downloadAllItem(ctx context.Context, vault *Vault) ([]proto.It
 	return allProtoItem, nil
 }
 
-func decryptAllItem(vault *Vault, allProtoItem []proto.Item) ([]item.Item, error) {
+func decryptAllItem(vault *Vault, allProtoItem []apitypes.Item) ([]item.Item, error) {
 	allItem := make([]item.Item, 0, len(allProtoItem))
 	for _, protoItem := range allProtoItem {
 		vaultItem, err := decryptItem(vault, &protoItem)
@@ -421,7 +421,7 @@ func decryptAllItem(vault *Vault, allProtoItem []proto.Item) ([]item.Item, error
 	return allItem, nil
 }
 
-func decryptItem(vault *Vault, protoItem *proto.Item) (*item.Item, error) {
+func decryptItem(vault *Vault, protoItem *apitypes.Item) (*item.Item, error) {
 	vaultItem := &item.Item{ID: protoItem.ID, Revision: protoItem.Revision}
 	overview, err := crypt.OpenItemPart(vault.Key, vault.ID, protoItem.ID, protoItem.Revision, crypt.Overview, protoItem.Overview)
 	if err != nil {
@@ -477,10 +477,10 @@ func (s *Session) putItem(ctx context.Context, vault *Vault, vaultItem *item.Ite
 		return nil, err
 	}
 
-	_, serverItem, err := s.Client.PutItem(ctx, vault.ID, vaultItem.ID, vaultItem.Revision, &proto.PutItemRequest{
+	_, serverItem, err := s.Client.PutItem(ctx, vault.ID, vaultItem.ID, vaultItem.Revision, &apitypes.PutItemRequest{
 		Revision: revision.String(), Deleted: deleted, Overview: encryptedOverview, Details: encryptedDetails,
 	})
-	if client.IsStatus(err, http.StatusConflict) {
+	if apiclient.IsStatus(err, http.StatusConflict) {
 		if serverItem == nil || serverItem.Deleted {
 			return nil, ErrConflict
 		}
@@ -499,7 +499,7 @@ func (s *Session) putItem(ctx context.Context, vault *Vault, vaultItem *item.Ite
 
 // GetVerifiedMember returns a member whose KEM key is signed by their signing key.
 // Callers should additionally pin the member's PublicKeys.Sign (trust on first use).
-func (s *Session) GetVerifiedMember(ctx context.Context, emailOrID string) (*proto.Member, error) {
+func (s *Session) GetVerifiedMember(ctx context.Context, emailOrID string) (*apitypes.Member, error) {
 	allMember, err := s.Client.ListAllMember(ctx)
 	if err != nil {
 		return nil, err
@@ -516,7 +516,7 @@ func (s *Session) GetVerifiedMember(ctx context.Context, emailOrID string) (*pro
 	return nil, fmt.Errorf("member %q: %w", emailOrID, ErrNotFound)
 }
 
-func (s *Session) ShareVault(ctx context.Context, vault *Vault, member *proto.Member, role string) error {
+func (s *Session) ShareVault(ctx context.Context, vault *Vault, member *apitypes.Member, role string) error {
 	if err := member.PublicKeys.Verify(member.AccountID); err != nil {
 		return err
 	}
@@ -524,5 +524,5 @@ func (s *Session) ShareVault(ctx context.Context, vault *Vault, member *proto.Me
 	if err != nil {
 		return err
 	}
-	return s.Client.SetAccess(ctx, vault.ID, member.AccountID, &proto.SetAccessRequest{WrappedKey: wrappedKey, Role: role})
+	return s.Client.SetAccess(ctx, vault.ID, member.AccountID, &apitypes.SetAccessRequest{WrappedKey: wrappedKey, Role: role})
 }

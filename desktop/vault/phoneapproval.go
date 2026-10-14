@@ -11,9 +11,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/approval"
-	"github.com/tryhisar/hisar/core/client"
-	"github.com/tryhisar/hisar/core/proto"
 )
 
 const (
@@ -90,7 +90,7 @@ func (s *Service) forgetPhoneApprovalSession() {
 	}()
 }
 
-func (s *Service) startPhoneApprovalDeviceRefresh(apiClient *client.Client) {
+func (s *Service) startPhoneApprovalDeviceRefresh(apiClient *apiclient.Client) {
 	relay := s.phoneApprovals
 	relay.mutex.Lock()
 	if relay.isRefreshing {
@@ -103,11 +103,11 @@ func (s *Service) startPhoneApprovalDeviceRefresh(apiClient *client.Client) {
 }
 
 // refreshPhoneApprovalDevice learns this device's ID and whether the account has an iPhone.
-func (s *Service) refreshPhoneApprovalDevice(apiClient *client.Client) (string, error) {
+func (s *Service) refreshPhoneApprovalDevice(apiClient *apiclient.Client) (string, error) {
 	return s.refreshPhoneApprovalDeviceWithin(apiClient, phoneApprovalRequestTimeout)
 }
 
-func (s *Service) refreshPhoneApprovalDeviceWithin(apiClient *client.Client, timeout time.Duration) (string, error) {
+func (s *Service) refreshPhoneApprovalDeviceWithin(apiClient *apiclient.Client, timeout time.Duration) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 	allDevice, err := apiClient.ListAllDevice(ctx)
@@ -139,7 +139,7 @@ func (s *Service) refreshPhoneApprovalDeviceWithin(apiClient *client.Client, tim
 	return relay.ownDeviceID, nil
 }
 
-func (s *Service) getOwnDeviceID(apiClient *client.Client) (string, error) {
+func (s *Service) getOwnDeviceID(apiClient *apiclient.Client) (string, error) {
 	relay := s.phoneApprovals
 	relay.mutex.Lock()
 	ownDeviceID := relay.ownDeviceID
@@ -220,7 +220,7 @@ func (phoneApprover *PhoneApprover) StartPhoneApproval(description approval.Desc
 	postedChannel := make(chan bool, 1)
 	finishedChannel := make(chan struct{})
 	go func() {
-		isPosted := postPhoneApproval(apiClient, &proto.CreateApprovalRequest{RequestID: request.RequestID, SealedRequest: sealedRequest, ExpiresAt: request.ExpiresAt}, finishedChannel)
+		isPosted := postPhoneApproval(apiClient, &apitypes.CreateApprovalRequest{RequestID: request.RequestID, SealedRequest: sealedRequest, ExpiresAt: request.ExpiresAt}, finishedChannel)
 		if !isPosted {
 			s.forgetPhoneApproval(request.RequestID)
 		}
@@ -244,7 +244,7 @@ func (phoneApprover *PhoneApprover) StartPhoneApproval(description approval.Desc
 }
 
 // postPhoneApproval tries again after a failure, e.g. right after the Mac wakes; a duplicate ID means an earlier try arrived.
-func postPhoneApproval(apiClient *client.Client, createRequest *proto.CreateApprovalRequest, finishedChannel chan struct{}) bool {
+func postPhoneApproval(apiClient *apiclient.Client, createRequest *apitypes.CreateApprovalRequest, finishedChannel chan struct{}) bool {
 	for attempt := range phoneApprovalPostAttemptCount {
 		if attempt > 0 {
 			select {
@@ -256,11 +256,11 @@ func postPhoneApproval(apiClient *client.Client, createRequest *proto.CreateAppr
 		ctx, cancel := context.WithTimeout(context.Background(), phoneApprovalRequestTimeout)
 		err := apiClient.CreateApproval(ctx, createRequest)
 		cancel()
-		if err == nil || client.IsStatus(err, http.StatusConflict) {
+		if err == nil || apiclient.IsStatus(err, http.StatusConflict) {
 			return true
 		}
 		log.Printf("phone approval: post attempt %d: %v", attempt+1, err)
-		if client.IsStatus(err, http.StatusBadRequest) {
+		if apiclient.IsStatus(err, http.StatusBadRequest) {
 			return false
 		}
 	}
@@ -276,12 +276,12 @@ func (s *Service) forgetPhoneApproval(requestID string) {
 }
 
 // handleApprovalEvent hands answers to the waiting dialogs and tells the UI, which lists requests on a phone.
-func (s *Service) handleApprovalEvent(apiClient *client.Client, event client.Event) {
-	var approvalEvent proto.ApprovalEvent
+func (s *Service) handleApprovalEvent(apiClient *apiclient.Client, event apiclient.Event) {
+	var approvalEvent apitypes.ApprovalEvent
 	if err := json.Unmarshal(event.Data, &approvalEvent); err != nil || !approval.IsValidRequestID(approvalEvent.RequestID) {
 		return
 	}
-	if event.Name == proto.EventApprovalAnswered {
+	if event.Name == apitypes.EventApprovalAnswered {
 		go s.acceptPhoneApprovalAnswer(apiClient, approvalEvent.RequestID)
 	}
 	if s.config.OnApprovalEvent != nil {
@@ -290,7 +290,7 @@ func (s *Service) handleApprovalEvent(apiClient *client.Client, event client.Eve
 }
 
 // acceptPhoneApprovalAnswer fetches the answer and checks it with the account's own keys; an invalid one is ignored.
-func (s *Service) acceptPhoneApprovalAnswer(apiClient *client.Client, requestID string) {
+func (s *Service) acceptPhoneApprovalAnswer(apiClient *apiclient.Client, requestID string) {
 	relay := s.phoneApprovals
 	relay.mutex.Lock()
 	_, isWaiting := relay.allDecideByRequestID[requestID]
@@ -326,7 +326,7 @@ func (s *Service) acceptPhoneApprovalAnswer(apiClient *client.Client, requestID 
 	}
 }
 
-func (s *Service) getUnlockedClient() (*client.Client, error) {
+func (s *Service) getUnlockedClient() (*apiclient.Client, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if s.unlockedSession == nil {
@@ -394,7 +394,7 @@ func AnswerPhoneApproval(s *Service, requestID string, isApproved, isRemembered 
 	ctx, cancel := context.WithTimeout(context.Background(), phoneApprovalRequestTimeout)
 	defer cancel()
 	stored, err := apiClient.GetApproval(ctx, requestID)
-	if client.IsStatus(err, http.StatusNotFound) {
+	if apiclient.IsStatus(err, http.StatusNotFound) {
 		return errPhoneApprovalGone
 	}
 	if err != nil {
@@ -427,7 +427,7 @@ func AnswerPhoneApproval(s *Service, requestID string, isApproved, isRemembered 
 		return err
 	}
 	err = apiClient.AnswerApproval(ctx, requestID, sealedAnswer)
-	if client.IsStatus(err, http.StatusNotFound) || client.IsStatus(err, http.StatusConflict) || client.IsStatus(err, http.StatusGone) {
+	if apiclient.IsStatus(err, http.StatusNotFound) || apiclient.IsStatus(err, http.StatusConflict) || apiclient.IsStatus(err, http.StatusGone) {
 		return errPhoneApprovalGone
 	}
 	return convertError(err)

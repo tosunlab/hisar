@@ -8,7 +8,7 @@ import (
 	"slices"
 	"time"
 
-	"github.com/tryhisar/hisar/core/client"
+	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/session"
 	"github.com/tryhisar/hisar/core/sharelink"
@@ -161,7 +161,7 @@ func (s *Service) RevokeShareLink(shareLinkID string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	err := s.unlockedSession.RevokeShareLink(ctx, shareLinkID)
-	if client.IsStatus(err, http.StatusNotFound) {
+	if apiclient.IsStatus(err, http.StatusNotFound) {
 		return errShareLinkGone
 	}
 	return convertError(err)

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/item"
-	"github.com/tryhisar/hisar/core/proto"
 )
 
 // checkRemoteChangeFlow saves an item from a second device and expects the first to sync it through the event stream.
@@ -82,7 +82,7 @@ func TestRemoteChangeSyncsAndNotifies(t *testing.T) {
 	deadline := time.After(10 * time.Second)
 	for isSent := false; !isSent; {
 		select {
-		case eventChannel <- proto.EventVaultChanged:
+		case eventChannel <- apitypes.EventVaultChanged:
 			isSent = true
 		case <-deadline:
 			t.Fatal("the service never opened the event stream")
@@ -102,7 +102,7 @@ func TestRemoteChangeSyncsAndNotifies(t *testing.T) {
 
 	service.Lock()
 	select {
-	case eventChannel <- proto.EventVaultChanged:
+	case eventChannel <- apitypes.EventVaultChanged:
 		select {
 		case <-remoteChangeChannel:
 			t.Error("a locked service synced")

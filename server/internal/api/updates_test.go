@@ -12,8 +12,8 @@ import (
 
 	"golang.org/x/time/rate"
 
-	"github.com/tryhisar/hisar/core/client"
-	"github.com/tryhisar/hisar/core/proto"
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/session"
 	"github.com/tryhisar/hisar/server/internal/desktopupdate"
 	"github.com/tryhisar/hisar/server/internal/desktopupdate/fakegithub"
@@ -33,8 +33,8 @@ func setupUpdateServer(t *testing.T) *updateTestServer {
 	t.Helper()
 	baseURL, server, _ := setupServer(t)
 	ctx := context.Background()
-	invite := requireValue[*proto.InviteResponse](t)(server.CreateInvite(ctx, "member@example.com", proto.RoleMember, nil))
-	signedUp, _, err := session.SignUp(ctx, client.Create(baseURL), invite.Token, "member@example.com", "Member", []byte("member password"), testDevice)
+	invite := requireValue[*apitypes.InviteResponse](t)(server.CreateInvite(ctx, "member@example.com", apitypes.RoleMember, nil))
+	signedUp, _, err := session.SignUp(ctx, apiclient.Create(baseURL), invite.Token, "member@example.com", "Member", []byte("member password"), testDevice)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func (updateServer *updateTestServer) get(t *testing.T, path, token string) (*ht
 }
 
 func readErrorMessage(body []byte) string {
-	var apiError proto.Error
+	var apiError apitypes.Error
 	json.Unmarshal(body, &apiError)
 	return apiError.Error
 }

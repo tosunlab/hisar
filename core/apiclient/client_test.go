@@ -1,4 +1,4 @@
-package client
+package apiclient
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/tryhisar/hisar/core/proto"
+	"github.com/tryhisar/hisar/core/apitypes"
 )
 
 func startFakeServer(t *testing.T, handler http.HandlerFunc) *Client {
@@ -30,13 +30,13 @@ func TestRequestShape(t *testing.T) {
 		if got := request.Header.Get("If-Match"); got != `"rev-0"` {
 			t.Errorf("If-Match = %q", got)
 		}
-		var putRequest proto.PutItemRequest
+		var putRequest apitypes.PutItemRequest
 		if err := json.NewDecoder(request.Body).Decode(&putRequest); err != nil || putRequest.Revision != "rev-1" {
 			t.Errorf("body: %+v %v", putRequest, err)
 		}
-		json.NewEncoder(writer).Encode(proto.PutItemResponse{Seq: 7})
+		json.NewEncoder(writer).Encode(apitypes.PutItemResponse{Seq: 7})
 	})
-	seq, current, err := fakeClient.PutItem(context.Background(), "v/1", "i1", "rev-0", &proto.PutItemRequest{Revision: "rev-1"})
+	seq, current, err := fakeClient.PutItem(context.Background(), "v/1", "i1", "rev-0", &apitypes.PutItemRequest{Revision: "rev-1"})
 	if err != nil || seq != 7 || current != nil {
 		t.Fatalf("seq=%d cur=%v err=%v", seq, current, err)
 	}
@@ -47,9 +47,9 @@ func TestNewItemHasNoIfMatch(t *testing.T) {
 		if _, ok := request.Header["If-Match"]; ok {
 			t.Error("If-Match sent for new item")
 		}
-		json.NewEncoder(writer).Encode(proto.PutItemResponse{Seq: 1})
+		json.NewEncoder(writer).Encode(apitypes.PutItemResponse{Seq: 1})
 	})
-	if _, _, err := fakeClient.PutItem(context.Background(), "v", "i", "", &proto.PutItemRequest{}); err != nil {
+	if _, _, err := fakeClient.PutItem(context.Background(), "v", "i", "", &apitypes.PutItemRequest{}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -57,9 +57,9 @@ func TestNewItemHasNoIfMatch(t *testing.T) {
 func TestConflictReturnsCurrent(t *testing.T) {
 	fakeClient := startFakeServer(t, func(writer http.ResponseWriter, request *http.Request) {
 		writer.WriteHeader(http.StatusConflict)
-		json.NewEncoder(writer).Encode(proto.ConflictResponse{Current: &proto.Item{ID: "i", Revision: "rev-9"}})
+		json.NewEncoder(writer).Encode(apitypes.ConflictResponse{Current: &apitypes.Item{ID: "i", Revision: "rev-9"}})
 	})
-	_, current, err := fakeClient.PutItem(context.Background(), "v", "i", "rev-0", &proto.PutItemRequest{})
+	_, current, err := fakeClient.PutItem(context.Background(), "v", "i", "rev-0", &apitypes.PutItemRequest{})
 	if !IsStatus(err, http.StatusConflict) || current == nil || current.Revision != "rev-9" {
 		t.Fatalf("cur=%+v err=%v", current, err)
 	}
@@ -96,7 +96,7 @@ func TestQueryEscaping(t *testing.T) {
 		if request.Header.Get("Authorization") != "Bearer tok" {
 			t.Error("missing token")
 		}
-		json.NewEncoder(writer).Encode(proto.PreloginResponse{Salt: []byte{1}})
+		json.NewEncoder(writer).Encode(apitypes.PreloginResponse{Salt: []byte{1}})
 	})
 	prelogin, err := preloginClient.FetchPrelogin(context.Background(), "a+b@example.com")
 	if err != nil || len(prelogin.Salt) != 1 {
@@ -107,7 +107,7 @@ func TestQueryEscaping(t *testing.T) {
 		if request.URL.Query().Get("since") != "42" || request.URL.Query().Get("limit") != "10" {
 			t.Errorf("query = %s", request.URL.RawQuery)
 		}
-		json.NewEncoder(writer).Encode(proto.ChangesResponse{NextSeq: 50})
+		json.NewEncoder(writer).Encode(apitypes.ChangesResponse{NextSeq: 50})
 	})
 	changeResponse, err := changeClient.ListAllChange(context.Background(), "v", 42, 10)
 	if err != nil || changeResponse.NextSeq != 50 {

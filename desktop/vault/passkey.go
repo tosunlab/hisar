@@ -13,8 +13,8 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/item"
-	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/desktop/browser"
 	"github.com/tryhisar/hisar/desktop/passkey"
 )
@@ -209,7 +209,7 @@ func (s *Service) listAllWritableLogin(ctx context.Context, origin string) ([]br
 	defer s.mutex.Unlock()
 	return slices.DeleteFunc(allLogin, func(login browser.Login) bool {
 		vault := s.allVaultByID[login.VaultID]
-		return vault == nil || vault.Role == proto.VaultReader
+		return vault == nil || vault.Role == apitypes.VaultReader
 	}), nil
 }
 

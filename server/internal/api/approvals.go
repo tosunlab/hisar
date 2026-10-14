@@ -9,7 +9,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"golang.org/x/time/rate"
 
-	"github.com/tryhisar/hisar/core/proto"
+	"github.com/tryhisar/hisar/core/apitypes"
 )
 
 const (
@@ -119,7 +119,7 @@ func (s *Server) limitApprovalRate(c fiber.Ctx) error {
 }
 
 func (s *Server) handleCreateApproval(c fiber.Ctx) error {
-	var request proto.CreateApprovalRequest
+	var request apitypes.CreateApprovalRequest
 	if err := decodeBodyWithLimit(c, &request, approvalMaximumBody); err != nil {
 		return err
 	}
@@ -170,7 +170,7 @@ func (s *Server) handleCreateApproval(c fiber.Ctx) error {
 		expiresAt:         expiresAt,
 	}
 	relay.mutex.Unlock()
-	s.publishApprovalEvent(currentSession.AccountID, proto.EventApprovalRequested, request.RequestID)
+	s.publishApprovalEvent(currentSession.AccountID, apitypes.EventApprovalRequested, request.RequestID)
 	return c.SendStatus(fiber.StatusCreated)
 }
 
@@ -179,10 +179,10 @@ func (s *Server) handleListAllPendingApproval(c fiber.Ctx) error {
 	relay := s.approvals
 	relay.mutex.Lock()
 	now := relay.now()
-	allPending := []proto.PendingApproval{}
+	allPending := []apitypes.PendingApproval{}
 	for _, approval := range relay.allApprovalByAccount[accountID] {
 		if approval.isOpen(now) {
-			allPending = append(allPending, proto.PendingApproval{
+			allPending = append(allPending, apitypes.PendingApproval{
 				RequestID:         approval.requestID,
 				SealedRequest:     approval.sealedRequest,
 				RequesterDeviceID: approval.requesterDeviceID,
@@ -204,7 +204,7 @@ func (s *Server) handleGetApproval(c fiber.Ctx) error {
 	if approval == nil {
 		return errNotFound
 	}
-	return c.JSON(proto.Approval{
+	return c.JSON(apitypes.Approval{
 		RequestID:     approval.requestID,
 		SealedRequest: approval.sealedRequest,
 		SealedAnswer:  approval.sealedAnswer,
@@ -214,7 +214,7 @@ func (s *Server) handleGetApproval(c fiber.Ctx) error {
 }
 
 func (s *Server) handleAnswerApproval(c fiber.Ctx) error {
-	var request proto.AnswerApprovalRequest
+	var request apitypes.AnswerApprovalRequest
 	if err := decodeBodyWithLimit(c, &request, approvalMaximumBody); err != nil {
 		return err
 	}
@@ -243,7 +243,7 @@ func (s *Server) handleAnswerApproval(c fiber.Ctx) error {
 	if apiError != nil {
 		return apiError
 	}
-	s.publishApprovalEvent(currentSession.AccountID, proto.EventApprovalAnswered, approval.requestID)
+	s.publishApprovalEvent(currentSession.AccountID, apitypes.EventApprovalAnswered, approval.requestID)
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -262,10 +262,10 @@ func (s *Server) handleResolveApproval(c fiber.Ctx) error {
 	}
 	approval.isResolved = true
 	relay.mutex.Unlock()
-	s.publishApprovalEvent(currentSession.AccountID, proto.EventApprovalResolved, approval.requestID)
+	s.publishApprovalEvent(currentSession.AccountID, apitypes.EventApprovalResolved, approval.requestID)
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
 func (s *Server) publishApprovalEvent(accountID, eventName, requestID string) {
-	s.events.publish([]string{accountID}, serverEvent{name: eventName, data: proto.ApprovalEvent{RequestID: requestID}})
+	s.events.publish([]string{accountID}, serverEvent{name: eventName, data: apitypes.ApprovalEvent{RequestID: requestID}})
 }

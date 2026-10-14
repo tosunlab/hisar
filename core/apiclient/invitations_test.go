@@ -1,4 +1,4 @@
-package client
+package apiclient
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tryhisar/hisar/core/proto"
+	"github.com/tryhisar/hisar/core/apitypes"
 )
 
 func TestShareInvitationRequests(t *testing.T) {
@@ -16,27 +16,27 @@ func TestShareInvitationRequests(t *testing.T) {
 		allRequest = append(allRequest, request.Method+" "+request.URL.Path)
 		switch request.URL.Path {
 		case "/api/v1/vaults/vault-1/share-invitations":
-			var shareRequest proto.ShareInvitationRequest
-			if err := json.NewDecoder(request.Body).Decode(&shareRequest); err != nil || shareRequest.Email != "bob@example.com" || shareRequest.Role != proto.VaultReader {
+			var shareRequest apitypes.ShareInvitationRequest
+			if err := json.NewDecoder(request.Body).Decode(&shareRequest); err != nil || shareRequest.Email != "bob@example.com" || shareRequest.Role != apitypes.VaultReader {
 				t.Errorf("share request: %+v %v", shareRequest, err)
 			}
 			writer.WriteHeader(http.StatusAccepted)
-			json.NewEncoder(writer).Encode(proto.InvitationSentResponse{Message: proto.InvitationSentMessage})
+			json.NewEncoder(writer).Encode(apitypes.InvitationSentResponse{Message: apitypes.InvitationSentMessage})
 		case "/api/v1/share-invitations":
-			json.NewEncoder(writer).Encode(proto.ShareInvitationList{AllReceived: []proto.ReceivedShareInvitation{{ID: "invitation-1"}}})
+			json.NewEncoder(writer).Encode(apitypes.ShareInvitationList{AllReceived: []apitypes.ReceivedShareInvitation{{ID: "invitation-1"}}})
 		case "/api/v1/invites":
-			var inviteRequest proto.InviteRequest
+			var inviteRequest apitypes.InviteRequest
 			if err := json.NewDecoder(request.Body).Decode(&inviteRequest); err != nil || inviteRequest.Email != "carol@example.com" || inviteRequest.Role != "" {
 				t.Errorf("invite request: %+v %v", inviteRequest, err)
 			}
 			writer.WriteHeader(http.StatusAccepted)
-			json.NewEncoder(writer).Encode(proto.InvitationSentResponse{Message: proto.InvitationSentMessage})
+			json.NewEncoder(writer).Encode(apitypes.InvitationSentResponse{Message: apitypes.InvitationSentMessage})
 		default:
 			writer.WriteHeader(http.StatusNoContent)
 		}
 	})
 	ctx := context.Background()
-	if response, err := fakeClient.CreateShareInvitation(ctx, "vault-1", &proto.ShareInvitationRequest{Email: "bob@example.com", Role: proto.VaultReader}); err != nil || response.Message != proto.InvitationSentMessage {
+	if response, err := fakeClient.CreateShareInvitation(ctx, "vault-1", &apitypes.ShareInvitationRequest{Email: "bob@example.com", Role: apitypes.VaultReader}); err != nil || response.Message != apitypes.InvitationSentMessage {
 		t.Fatalf("create: %+v %v", response, err)
 	}
 	if invitationList, err := fakeClient.ListAllShareInvitation(ctx); err != nil || len(invitationList.AllReceived) != 1 || invitationList.AllReceived[0].ID != "invitation-1" {
@@ -47,7 +47,7 @@ func TestShareInvitationRequests(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if response, err := fakeClient.Invite(ctx, &proto.InviteRequest{Email: "carol@example.com"}); err != nil || response.Message != proto.InvitationSentMessage {
+	if response, err := fakeClient.Invite(ctx, &apitypes.InviteRequest{Email: "carol@example.com"}); err != nil || response.Message != apitypes.InvitationSentMessage {
 		t.Fatalf("invite: %+v %v", response, err)
 	}
 	expected := []string{

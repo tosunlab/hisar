@@ -16,9 +16,9 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 
-	"github.com/tryhisar/hisar/core/client"
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/item"
-	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/core/session"
 	"github.com/tryhisar/hisar/core/sharelink"
 	"github.com/tryhisar/hisar/server/internal/api"
@@ -90,11 +90,11 @@ func createAllShareLink(ctx context.Context, server *api.Server, baseURL string)
 	suffix := make([]byte, 4)
 	rand.Read(suffix)
 	email := "page-" + hex.EncodeToString(suffix) + "@example.com"
-	invite, err := server.CreateInvite(ctx, email, proto.RoleMember, nil)
+	invite, err := server.CreateInvite(ctx, email, apitypes.RoleMember, nil)
 	if err != nil {
 		return nil, err
 	}
-	owner, _, err := session.SignUp(ctx, client.Create(baseURL), invite.Token, email, "Page fixture", []byte("fixture master password"), proto.DeviceInfo{Name: "fixture", Platform: "go"})
+	owner, _, err := session.SignUp(ctx, apiclient.Create(baseURL), invite.Token, email, "Page fixture", []byte("fixture master password"), apitypes.DeviceInfo{Name: "fixture", Platform: "go"})
 	if err != nil {
 		return nil, err
 	}

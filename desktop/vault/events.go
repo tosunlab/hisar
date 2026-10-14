@@ -6,9 +6,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/tryhisar/hisar/core/client"
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/item"
-	"github.com/tryhisar/hisar/core/proto"
 )
 
 const (
@@ -19,7 +19,7 @@ const (
 )
 
 // watchEvents keeps the server's event stream open while the session is unlocked and syncs on every change.
-func (s *Service) watchEvents(ctx context.Context, apiClient *client.Client, reconnectChannel chan struct{}) {
+func (s *Service) watchEvents(ctx context.Context, apiClient *apiclient.Client, reconnectChannel chan struct{}) {
 	allPendingSync := make(chan struct{}, 1)
 	go s.runAllPendingSync(ctx, allPendingSync)
 	retryDelay := eventRetryMinimum
@@ -36,16 +36,16 @@ func (s *Service) watchEvents(ctx context.Context, apiClient *client.Client, rec
 			case <-streamFinished:
 			}
 		}()
-		err := apiClient.StreamEvents(streamContext, func(event client.Event) {
+		err := apiClient.StreamEvents(streamContext, func(event apiclient.Event) {
 			switch event.Name {
-			case proto.EventVaultChanged, proto.EventVaultsChanged, proto.EventShareInvitationsChanged:
+			case apitypes.EventVaultChanged, apitypes.EventVaultsChanged, apitypes.EventShareInvitationsChanged:
 				select {
 				case allPendingSync <- struct{}{}:
 				default:
 				}
-			case proto.EventApprovalRequested, proto.EventApprovalAnswered, proto.EventApprovalResolved:
+			case apitypes.EventApprovalRequested, apitypes.EventApprovalAnswered, apitypes.EventApprovalResolved:
 				s.handleApprovalEvent(apiClient, event)
-			case proto.EventShareLinksChanged:
+			case apitypes.EventShareLinksChanged:
 				if s.config.OnShareLinksChange != nil {
 					s.config.OnShareLinksChange()
 				}
@@ -53,10 +53,10 @@ func (s *Service) watchEvents(ctx context.Context, apiClient *client.Client, rec
 		})
 		close(streamFinished)
 		cancelStream()
-		if _, isUpgradeRequired := client.AsUpgradeRequired(err); isUpgradeRequired || ctx.Err() != nil {
+		if _, isUpgradeRequired := apiclient.AsUpgradeRequired(err); isUpgradeRequired || ctx.Err() != nil {
 			return
 		}
-		if client.IsStatus(err, http.StatusUnauthorized) {
+		if apiclient.IsStatus(err, http.StatusUnauthorized) {
 			go s.endSignedOutSession(apiClient.Token)
 			return
 		}

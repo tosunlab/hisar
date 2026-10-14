@@ -6,8 +6,8 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
-	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
@@ -20,7 +20,7 @@ func (s *Server) handleGetAccount(c fiber.Ctx) error {
 	if err := json.Unmarshal(account.Argon2Params, &argon2Params); err != nil {
 		return err
 	}
-	return c.JSON(proto.Account{
+	return c.JSON(apitypes.Account{
 		AccountID:  account.ID,
 		Email:      account.Email,
 		Name:       account.Name,
@@ -41,7 +41,7 @@ func (s *Server) handleListAllMember(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	allMember := make([]proto.Member, 0, len(allAccount))
+	allMember := make([]apitypes.Member, 0, len(allAccount))
 	for index := range allAccount {
 		allMember = append(allMember, convertToProtoMember(&allAccount[index]))
 	}
@@ -54,9 +54,9 @@ func (s *Server) handleListAllDevice(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	allDevice := make([]proto.Device, 0, len(allStoredDevice))
+	allDevice := make([]apitypes.Device, 0, len(allStoredDevice))
 	for _, device := range allStoredDevice {
-		allDevice = append(allDevice, proto.Device{ID: device.ID, Name: device.Name, Platform: device.Platform, CreatedAt: device.CreatedAt, LastSeenAt: device.LastSeenAt, Current: device.ID == currentSession.DeviceID})
+		allDevice = append(allDevice, apitypes.Device{ID: device.ID, Name: device.Name, Platform: device.Platform, CreatedAt: device.CreatedAt, LastSeenAt: device.LastSeenAt, Current: device.ID == currentSession.DeviceID})
 	}
 	return c.JSON(allDevice)
 }

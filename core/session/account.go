@@ -9,10 +9,10 @@ import (
 
 	"github.com/bytemare/opaque"
 
-	"github.com/tryhisar/hisar/core/client"
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/pake"
-	"github.com/tryhisar/hisar/core/proto"
 )
 
 var (
@@ -55,7 +55,7 @@ func (s *Session) ChangeMasterPassword(ctx context.Context, currentPassword, new
 	if bytes.Equal(currentPassword, newPassword) {
 		return nil, ErrSamePassword
 	}
-	return s.changeCredentials(ctx, proto.CredentialChangeMasterPassword, currentPassword, secretKey, newPassword, secretKey)
+	return s.changeCredentials(ctx, apitypes.CredentialChangeMasterPassword, currentPassword, secretKey, newPassword, secretKey)
 }
 
 // ReplaceSecretKey keeps the master password and the account ID; the old Secret Key and Emergency Kit stop working.
@@ -64,11 +64,11 @@ func (s *Session) ReplaceSecretKey(ctx context.Context, password []byte, current
 	if err != nil {
 		return nil, err
 	}
-	return s.changeCredentials(ctx, proto.CredentialChangeSecretKey, password, currentSecretKey, password, newSecretKey)
+	return s.changeCredentials(ctx, apitypes.CredentialChangeSecretKey, password, currentSecretKey, password, newSecretKey)
 }
 
 type verifiedAccount struct {
-	account     *proto.Account
+	account     *apitypes.Account
 	currentKeys *crypt.DerivedKeys
 	keyset      *crypt.Keyset
 }
@@ -144,10 +144,10 @@ func (s *Session) changeCredentials(ctx context.Context, change string, currentP
 	if err != nil {
 		return nil, err
 	}
-	var reauthentication *proto.ReauthenticateResponse
+	var reauthentication *apitypes.ReauthenticateResponse
 	err = credential.registerOpaque(newKeys, s.AccountID, func(registrationRequest []byte) ([]byte, error) {
 		var requestErr error
-		reauthentication, requestErr = s.Client.Reauthenticate(ctx, &proto.ReauthenticateRequest{KE1: keyExchange1.Serialize(), RegistrationRequest: registrationRequest})
+		reauthentication, requestErr = s.Client.Reauthenticate(ctx, &apitypes.ReauthenticateRequest{KE1: keyExchange1.Serialize(), RegistrationRequest: registrationRequest})
 		if requestErr != nil {
 			return nil, requestErr
 		}
@@ -160,7 +160,7 @@ func (s *Session) changeCredentials(ctx context.Context, change string, currentP
 	if err != nil {
 		return nil, err
 	}
-	response, err := s.Client.ChangeCredentials(ctx, &proto.ChangeCredentialsRequest{
+	response, err := s.Client.ChangeCredentials(ctx, &apitypes.ChangeCredentialsRequest{
 		ReauthenticationID: reauthentication.ReauthenticationID,
 		KE3:                keyExchange3,
 		Change:             change,
@@ -184,7 +184,7 @@ func (s *Session) changeCredentials(ctx context.Context, change string, currentP
 	}, nil
 }
 
-func finishReauthentication(loginClient *opaque.Client, reauthentication *proto.ReauthenticateResponse, accountID string) ([]byte, error) {
+func finishReauthentication(loginClient *opaque.Client, reauthentication *apitypes.ReauthenticateResponse, accountID string) ([]byte, error) {
 	keyExchange2, err := loginClient.Deserialize.KE2(reauthentication.KE2)
 	if err != nil {
 		return nil, ErrBadCredentials
@@ -198,7 +198,7 @@ func finishReauthentication(loginClient *opaque.Client, reauthentication *proto.
 
 // A failed proof is 403, never 401: clients treat 401 as a signed-out device.
 func convertReauthenticationError(err error) error {
-	if client.IsStatus(err, http.StatusForbidden) {
+	if apiclient.IsStatus(err, http.StatusForbidden) {
 		return ErrBadCredentials
 	}
 	return err
@@ -226,7 +226,7 @@ func (s *Session) PreviewAccountDeletion(ctx context.Context) (*AccountDeletionP
 	}
 	for _, ownedVault := range response.AllOwnedVault {
 		preview.AllOwnedVault = append(preview.AllOwnedVault, DeletionVault{
-			ID: ownedVault.VaultID, Name: allVaultName[ownedVault.VaultID], Type: ownedVault.Type, Role: proto.VaultOwner, OtherMemberCount: ownedVault.OtherMemberCount,
+			ID: ownedVault.VaultID, Name: allVaultName[ownedVault.VaultID], Type: ownedVault.Type, Role: apitypes.VaultOwner, OtherMemberCount: ownedVault.OtherMemberCount,
 		})
 	}
 	for _, memberVault := range response.AllMemberVault {
@@ -259,7 +259,7 @@ func (s *Session) DeleteAccount(ctx context.Context, password []byte, secretKey 
 	if err != nil {
 		return err
 	}
-	reauthentication, err := s.Client.Reauthenticate(ctx, &proto.ReauthenticateRequest{KE1: keyExchange1.Serialize()})
+	reauthentication, err := s.Client.Reauthenticate(ctx, &apitypes.ReauthenticateRequest{KE1: keyExchange1.Serialize()})
 	if err != nil {
 		return err
 	}
@@ -267,6 +267,6 @@ func (s *Session) DeleteAccount(ctx context.Context, password []byte, secretKey 
 	if err != nil {
 		return err
 	}
-	err = s.Client.DeleteAccount(ctx, &proto.DeleteAccountRequest{ReauthenticationID: reauthentication.ReauthenticationID, KE3: keyExchange3, Email: strings.TrimSpace(email)})
+	err = s.Client.DeleteAccount(ctx, &apitypes.DeleteAccountRequest{ReauthenticationID: reauthentication.ReauthenticationID, KE3: keyExchange3, Email: strings.TrimSpace(email)})
 	return convertReauthenticationError(err)
 }

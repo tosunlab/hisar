@@ -9,9 +9,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/tryhisar/hisar/core/client"
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
-	"github.com/tryhisar/hisar/core/proto"
 )
 
 var (
@@ -30,7 +30,7 @@ type RemovedVault struct {
 	Name string
 }
 
-func (s *Session) noteAllRemovedVault(allCachedVault, allCurrentVault []proto.Vault) {
+func (s *Session) noteAllRemovedVault(allCachedVault, allCurrentVault []apitypes.Vault) {
 	allCurrentID := map[string]bool{}
 	for _, vault := range allCurrentVault {
 		allCurrentID[vault.ID] = true
@@ -89,14 +89,14 @@ func (s *Session) RenameVault(ctx context.Context, vault *Vault, name string) er
 	if name == "" {
 		return ErrVaultNameEmpty
 	}
-	if vault.Role != proto.VaultOwner {
+	if vault.Role != apitypes.VaultOwner {
 		return ErrNotVaultOwner
 	}
 	encryptedName, err := crypt.SealVaultName(vault.Key, vault.ID, []byte(name))
 	if err != nil {
 		return err
 	}
-	if err := s.Client.RenameVault(ctx, vault.ID, &proto.RenameVaultRequest{EncName: encryptedName}); err != nil {
+	if err := s.Client.RenameVault(ctx, vault.ID, &apitypes.RenameVaultRequest{EncName: encryptedName}); err != nil {
 		return err
 	}
 	vault.Name = name
@@ -105,7 +105,7 @@ func (s *Session) RenameVault(ctx context.Context, vault *Vault, name string) er
 
 // LeaveVault removes the caller's own access and wrapped key.
 func (s *Session) LeaveVault(ctx context.Context, vault *Vault) error {
-	if vault.Type == proto.VaultPersonal {
+	if vault.Type == apitypes.VaultPersonal {
 		return ErrLeavePersonalVault
 	}
 	if err := s.Client.RemoveAccess(ctx, vault.ID, s.AccountID); err != nil {
@@ -119,15 +119,15 @@ func (s *Session) LeaveVault(ctx context.Context, vault *Vault) error {
 // so the server never sees plaintext, and the server moves them and deletes the vault in one transaction.
 // It returns how many items were moved, and retries when the vault changes during the move.
 func (s *Session) DeleteVault(ctx context.Context, vault *Vault, deletion VaultDeletion) (int, error) {
-	if vault.Role != proto.VaultOwner {
+	if vault.Role != apitypes.VaultOwner {
 		return 0, ErrNotVaultOwner
 	}
-	if vault.Type == proto.VaultPersonal {
+	if vault.Type == apitypes.VaultPersonal {
 		return 0, ErrPersonalVault
 	}
 	if deletion.MoveTo == nil {
-		err := s.Client.DeleteVault(ctx, vault.ID, &proto.DeleteVaultRequest{IsDeletingItems: deletion.IsDeletingItems})
-		if client.IsStatus(err, http.StatusConflict) {
+		err := s.Client.DeleteVault(ctx, vault.ID, &apitypes.DeleteVaultRequest{IsDeletingItems: deletion.IsDeletingItems})
+		if apiclient.IsStatus(err, http.StatusConflict) {
 			return 0, ErrVaultNotEmpty
 		}
 		if err == nil {
@@ -136,7 +136,7 @@ func (s *Session) DeleteVault(ctx context.Context, vault *Vault, deletion VaultD
 		return 0, err
 	}
 	target := deletion.MoveTo
-	if target.ID == vault.ID || (target.Role != proto.VaultOwner && target.Role != proto.VaultEditor) {
+	if target.ID == vault.ID || (target.Role != apitypes.VaultOwner && target.Role != apitypes.VaultEditor) {
 		return 0, ErrTargetNotWritable
 	}
 	for attempt := 1; ; attempt++ {
@@ -145,7 +145,7 @@ func (s *Session) DeleteVault(ctx context.Context, vault *Vault, deletion VaultD
 			return 0, err
 		}
 		err = s.Client.DeleteVault(ctx, vault.ID, request)
-		if client.IsStatus(err, http.StatusConflict) && attempt < maxRotationAttemptCount {
+		if apiclient.IsStatus(err, http.StatusConflict) && attempt < maxRotationAttemptCount {
 			continue
 		}
 		if err != nil {
@@ -156,12 +156,12 @@ func (s *Session) DeleteVault(ctx context.Context, vault *Vault, deletion VaultD
 	}
 }
 
-func (s *Session) buildVaultMove(ctx context.Context, vault, target *Vault) (*proto.DeleteVaultRequest, error) {
+func (s *Session) buildVaultMove(ctx context.Context, vault, target *Vault) (*apitypes.DeleteVaultRequest, error) {
 	allProtoItem, err := s.listAllProtoItem(ctx, vault)
 	if err != nil {
 		return nil, err
 	}
-	request := &proto.DeleteVaultRequest{MoveToVaultID: target.ID, AllMovedItem: []proto.MovedItem{}}
+	request := &apitypes.DeleteVaultRequest{MoveToVaultID: target.ID, AllMovedItem: []apitypes.MovedItem{}}
 	for index := range allProtoItem {
 		protoItem := &allProtoItem[index]
 		if protoItem.Deleted {
@@ -177,7 +177,7 @@ func (s *Session) buildVaultMove(ctx context.Context, vault, target *Vault) (*pr
 }
 
 // reencryptItemForVault keeps the item ID; the new AAD binds the target vault ID and a new revision.
-func reencryptItemForVault(source, target *Vault, protoItem *proto.Item) (*proto.MovedItem, error) {
+func reencryptItemForVault(source, target *Vault, protoItem *apitypes.Item) (*apitypes.MovedItem, error) {
 	overview, err := crypt.OpenItemPart(source.Key, source.ID, protoItem.ID, protoItem.Revision, crypt.Overview, protoItem.Overview)
 	if err != nil {
 		return nil, fmt.Errorf("item %s: %w", protoItem.ID, err)
@@ -191,7 +191,7 @@ func reencryptItemForVault(source, target *Vault, protoItem *proto.Item) (*proto
 	if err != nil {
 		return nil, err
 	}
-	movedItem := &proto.MovedItem{ID: protoItem.ID, BaseRevision: protoItem.Revision, Revision: revision.String()}
+	movedItem := &apitypes.MovedItem{ID: protoItem.ID, BaseRevision: protoItem.Revision, Revision: revision.String()}
 	if movedItem.Overview, err = crypt.SealItemPart(target.Key, target.ID, protoItem.ID, movedItem.Revision, crypt.Overview, overview); err != nil {
 		return nil, err
 	}

@@ -12,23 +12,23 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/cliprotocol"
-	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/core/sharelink"
 	"github.com/tryhisar/hisar/desktop/commandline"
 )
 
 type fakeShareLinkAPI struct {
 	mutex          sync.Mutex
-	allLinkByID    map[string]proto.ShareLink
-	allCiphertext  map[string]proto.PublicShareLink
+	allLinkByID    map[string]apitypes.ShareLink
+	allCiphertext  map[string]apitypes.PublicShareLink
 	createdCounter int
 }
 
 // serveShareLinkAPI answers the share link endpoints and passes everything else to the other test API.
 func serveShareLinkAPI(t *testing.T, testService unlockedTestService) *fakeShareLinkAPI {
 	t.Helper()
-	api := &fakeShareLinkAPI{allLinkByID: map[string]proto.ShareLink{}, allCiphertext: map[string]proto.PublicShareLink{}}
+	api := &fakeShareLinkAPI{allLinkByID: map[string]apitypes.ShareLink{}, allCiphertext: map[string]apitypes.PublicShareLink{}}
 	service := testService.service
 	service.mutex.Lock()
 	upstream, err := url.Parse(service.unlockedSession.Client.BaseURL)
@@ -58,13 +58,13 @@ func (api *fakeShareLinkAPI) answer(writer http.ResponseWriter, request *http.Re
 	id := request.URL.Path[strings.LastIndex(request.URL.Path, "/")+1:]
 	switch {
 	case request.Method == http.MethodPost:
-		var create proto.CreateShareLinkRequest
+		var create apitypes.CreateShareLinkRequest
 		json.NewDecoder(request.Body).Decode(&create)
 		api.createdCounter++
 		id = strings.Repeat(string(rune('A'+api.createdCounter)), 22)
-		link := proto.ShareLink{ID: id, EncryptedLabel: create.EncryptedLabel, CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Duration(create.ExpiresInSeconds) * time.Second), MaxViews: create.MaxViews, HasPassphrase: create.Passphrase != nil}
+		link := apitypes.ShareLink{ID: id, EncryptedLabel: create.EncryptedLabel, CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Duration(create.ExpiresInSeconds) * time.Second), MaxViews: create.MaxViews, HasPassphrase: create.Passphrase != nil}
 		api.allLinkByID[id] = link
-		api.allCiphertext[id] = proto.PublicShareLink{Ciphertext: create.Ciphertext, Passphrase: create.Passphrase, ExpiresAt: link.ExpiresAt, MaxViews: link.MaxViews}
+		api.allCiphertext[id] = apitypes.PublicShareLink{Ciphertext: create.Ciphertext, Passphrase: create.Passphrase, ExpiresAt: link.ExpiresAt, MaxViews: link.MaxViews}
 		writer.WriteHeader(http.StatusCreated)
 		json.NewEncoder(writer).Encode(link)
 	case request.Method == http.MethodGet && strings.Contains(request.URL.Path, "/public/"):
@@ -76,7 +76,7 @@ func (api *fakeShareLinkAPI) answer(writer http.ResponseWriter, request *http.Re
 		}
 		json.NewEncoder(writer).Encode(public)
 	case request.Method == http.MethodGet:
-		allLink := []proto.ShareLink{}
+		allLink := []apitypes.ShareLink{}
 		for _, link := range api.allLinkByID {
 			allLink = append(allLink, link)
 		}

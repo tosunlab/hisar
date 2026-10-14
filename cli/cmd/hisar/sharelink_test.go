@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/cliprotocol"
-	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/core/sharelink"
 )
 
@@ -137,9 +137,9 @@ func startPublicShareLinkServer(t *testing.T, payload *sharelink.Payload, passph
 			return
 		}
 		count := viewCount.Add(1)
-		link := proto.PublicShareLink{Ciphertext: sealed.Ciphertext, ExpiresAt: time.Date(2026, 10, 18, 9, 0, 0, 0, time.UTC), MaxViews: maxViews, ViewCount: int(count)}
+		link := apitypes.PublicShareLink{Ciphertext: sealed.Ciphertext, ExpiresAt: time.Date(2026, 10, 18, 9, 0, 0, 0, time.UTC), MaxViews: maxViews, ViewCount: int(count)}
 		if sealed.Passphrase != nil {
-			link.Passphrase = &proto.ShareLinkPassphrase{Salt: sealed.Passphrase.Salt, Iterations: sealed.Passphrase.Iterations}
+			link.Passphrase = &apitypes.ShareLinkPassphrase{Salt: sealed.Passphrase.Salt, Iterations: sealed.Passphrase.Iterations}
 		}
 		json.NewEncoder(writer).Encode(link)
 	}))

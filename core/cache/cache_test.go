@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/tryhisar/hisar/core/proto"
+	"github.com/tryhisar/hisar/core/apitypes"
 )
 
 func openTestCache(t *testing.T) (*Cache, string) {
@@ -32,7 +32,7 @@ func TestAccountRoundTrip(t *testing.T) {
 	if account, err := testCache.LoadAccount("ABC123"); err != nil || account != nil {
 		t.Fatalf("empty cache: %v %v", account, err)
 	}
-	account := &proto.Account{AccountID: "ABC123", Email: "alice@example.com", Salt: []byte{1, 2}, EncKeyset: []byte{3, 4}}
+	account := &apitypes.Account{AccountID: "ABC123", Email: "alice@example.com", Salt: []byte{1, 2}, EncKeyset: []byte{3, 4}}
 	if err := testCache.SaveAccount(account); err != nil {
 		t.Fatal(err)
 	}
@@ -54,13 +54,13 @@ func TestApplyAllChangeAndSeq(t *testing.T) {
 	if seq, err := testCache.GetSeq("vault-1"); err != nil || seq != 0 {
 		t.Fatalf("seq of unknown vault: %d %v", seq, err)
 	}
-	if err := testCache.ApplyAllChange("vault-1", []proto.Item{
+	if err := testCache.ApplyAllChange("vault-1", []apitypes.Item{
 		{ID: "item-a", Revision: "r1", Seq: 1, Overview: []byte("a1")},
 		{ID: "item-b", Revision: "r1", Seq: 2, Overview: []byte("b1")},
 	}, 2); err != nil {
 		t.Fatal(err)
 	}
-	if err := testCache.ApplyAllChange("vault-1", []proto.Item{
+	if err := testCache.ApplyAllChange("vault-1", []apitypes.Item{
 		{ID: "item-a", Revision: "r2", Seq: 3, Overview: []byte("a2")},
 		{ID: "item-b", Seq: 4, Deleted: true},
 		{ID: "item-c", Seq: 5, Deleted: true},
@@ -81,19 +81,19 @@ func TestApplyAllChangeAndSeq(t *testing.T) {
 
 func TestReplaceAllVaultForgetsRemovedVaults(t *testing.T) {
 	testCache, _ := openTestCache(t)
-	if err := testCache.ApplyAllChange("vault-new", []proto.Item{{ID: "item-x"}}, 1); err != nil {
+	if err := testCache.ApplyAllChange("vault-new", []apitypes.Item{{ID: "item-x"}}, 1); err != nil {
 		t.Fatal(err)
 	}
-	if err := testCache.ReplaceAllVault([]proto.Vault{{ID: "vault-1", Role: "owner"}, {ID: "vault-2", Role: "reader"}}); err != nil {
+	if err := testCache.ReplaceAllVault([]apitypes.Vault{{ID: "vault-1", Role: "owner"}, {ID: "vault-2", Role: "reader"}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := testCache.ApplyAllChange("vault-2", []proto.Item{{ID: "item-y"}}, 7); err != nil {
+	if err := testCache.ApplyAllChange("vault-2", []apitypes.Item{{ID: "item-y"}}, 7); err != nil {
 		t.Fatal(err)
 	}
 	if allItem, _ := testCache.ListAllItem("vault-new"); len(allItem) != 0 {
 		t.Errorf("items of an unlisted vault kept: %v", allItem)
 	}
-	if err := testCache.ReplaceAllVault([]proto.Vault{{ID: "vault-1", Role: "editor"}}); err != nil {
+	if err := testCache.ReplaceAllVault([]apitypes.Vault{{ID: "vault-1", Role: "editor"}}); err != nil {
 		t.Fatal(err)
 	}
 	allVault, err := testCache.ListAllVault()
@@ -110,7 +110,7 @@ func TestReplaceAllVaultForgetsRemovedVaults(t *testing.T) {
 
 func TestResetVault(t *testing.T) {
 	testCache, _ := openTestCache(t)
-	if err := testCache.ApplyAllChange("vault-1", []proto.Item{{ID: "item-a"}}, 9); err != nil {
+	if err := testCache.ApplyAllChange("vault-1", []apitypes.Item{{ID: "item-a"}}, 9); err != nil {
 		t.Fatal(err)
 	}
 	if err := testCache.ResetVault("vault-1"); err != nil {
@@ -125,7 +125,7 @@ func TestResetVault(t *testing.T) {
 
 func TestReopenKeepsDataAndRemoveDeletesIt(t *testing.T) {
 	testCache, path := openTestCache(t)
-	if err := testCache.ApplyAllChange("vault-1", []proto.Item{{ID: "item-a"}}, 3); err != nil {
+	if err := testCache.ApplyAllChange("vault-1", []apitypes.Item{{ID: "item-a"}}, 3); err != nil {
 		t.Fatal(err)
 	}
 	testCache.Close()

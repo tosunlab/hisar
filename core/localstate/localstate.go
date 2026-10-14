@@ -13,8 +13,8 @@ import (
 
 	"github.com/zalando/go-keyring"
 
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
-	"github.com/tryhisar/hisar/core/proto"
 )
 
 const keyringService = "hisar"
@@ -138,7 +138,7 @@ func (s *State) IsMemberKeyChanged(accountID string, signingPublicKey []byte) bo
 
 // CheckMemberPin trusts a member's signing key on first use and refuses it if it changes later.
 // The caller saves the state.
-func (s *State) CheckMemberPin(member *proto.Member) error {
+func (s *State) CheckMemberPin(member *apitypes.Member) error {
 	if s.IsMemberKeyChanged(member.AccountID, member.PublicKeys.Sign) {
 		return fmt.Errorf("the signing key of %s changed since you last shared with them; stopping", member.Email)
 	}

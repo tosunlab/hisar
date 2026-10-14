@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/tryhisar/hisar/core/client"
+	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/session"
 )
@@ -158,7 +158,7 @@ func (s *Service) unlockWithBiometric(authenticate func() error) (Status, error)
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	unlocked, err := session.UnlockWithAccountUnlockKey(ctx, apiClient, accountCache, accountUnlockKey, accountID)
-	if client.IsStatus(err, http.StatusUnauthorized) {
+	if apiclient.IsStatus(err, http.StatusUnauthorized) {
 		s.endSignedOutSession(token)
 		return s.GetStatus(), nil
 	}

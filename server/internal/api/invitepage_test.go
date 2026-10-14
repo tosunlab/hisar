@@ -13,8 +13,8 @@ import (
 
 	"golang.org/x/time/rate"
 
-	"github.com/tryhisar/hisar/core/client"
-	"github.com/tryhisar/hisar/core/proto"
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/session"
 )
 
@@ -70,7 +70,7 @@ func TestInvitePage(t *testing.T) {
 	baseURL, server, _ := setupServer(t)
 	ctx := context.Background()
 
-	operatorInvite := requireValue[*proto.InviteResponse](t)(server.CreateInvite(ctx, "ada@example.com", proto.RoleAdmin, nil))
+	operatorInvite := requireValue[*apitypes.InviteResponse](t)(server.CreateInvite(ctx, "ada@example.com", apitypes.RoleAdmin, nil))
 	response, body := fetchInvitePage(t, baseURL, operatorInvite.Token)
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("valid operator invite: %d", response.StatusCode)
@@ -97,11 +97,11 @@ func TestInvitePage(t *testing.T) {
 	}
 
 	adaPassword := []byte("ada master password")
-	ada, _, err := session.SignUp(ctx, client.Create(baseURL), operatorInvite.Token, "ada@example.com", `Ada <b>"Lovelace"</b>`, adaPassword, testDevice)
+	ada, _, err := session.SignUp(ctx, apiclient.Create(baseURL), operatorInvite.Token, "ada@example.com", `Ada <b>"Lovelace"</b>`, adaPassword, testDevice)
 	if err != nil {
 		t.Fatal(err)
 	}
-	userInvite := requireValue[*proto.InviteResponse](t)(server.CreateInvite(ctx, "grace@example.com", proto.RoleMember, &ada.AccountID))
+	userInvite := requireValue[*apitypes.InviteResponse](t)(server.CreateInvite(ctx, "grace@example.com", apitypes.RoleMember, &ada.AccountID))
 	response, body = fetchInvitePage(t, baseURL, userInvite.Token)
 	if response.StatusCode != http.StatusOK {
 		t.Fatalf("valid invite from a user: %d", response.StatusCode)
@@ -121,7 +121,7 @@ func TestInvitePage(t *testing.T) {
 	}
 
 	server.config.InviteTTL = -time.Minute
-	expiredInvite := requireValue[*proto.InviteResponse](t)(server.CreateInvite(ctx, "late@example.com", proto.RoleMember, &ada.AccountID))
+	expiredInvite := requireValue[*apitypes.InviteResponse](t)(server.CreateInvite(ctx, "late@example.com", apitypes.RoleMember, &ada.AccountID))
 	response, invalidBody := fetchInvitePage(t, baseURL, "never-issued-token")
 	if response.StatusCode != http.StatusNotFound {
 		t.Errorf("unknown invite: %d", response.StatusCode)

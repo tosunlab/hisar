@@ -3,7 +3,7 @@ package vault
 import (
 	"testing"
 
-	"github.com/tryhisar/hisar/core/proto"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/desktop/browser"
 )
 
@@ -125,7 +125,7 @@ func TestPasskeySignals(t *testing.T) {
 
 	service.mutex.Lock()
 	familyRole := service.allVaultByID[familyID].Role
-	service.allVaultByID[familyID].Role = proto.VaultReader
+	service.allVaultByID[familyID].Role = apitypes.VaultReader
 	service.mutex.Unlock()
 	if count, _ := sendPasskeySignal(t, testBridge, token, PasskeySignalUnknownCredential, browser.PasskeyRequest{Origin: "https://example.com", RelyingPartyID: "example.com", CredentialID: inFamily.CredentialID}); count != 0 {
 		t.Errorf("changed a passkey in a read-only vault: %d", count)

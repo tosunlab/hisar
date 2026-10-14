@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"runtime"
 
+	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/appversion"
-	"github.com/tryhisar/hisar/core/client"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 )
 
@@ -20,15 +20,15 @@ func getClientVersion() string {
 	return version
 }
 
-func createClient(server string) *client.Client {
-	apiClient := client.Create(server)
+func createClient(server string) *apiclient.Client {
+	apiClient := apiclient.Create(server)
 	apiClient.Platform, apiClient.Version = getPlatform(), getClientVersion()
 	return apiClient
 }
 
 // describeUpdateRequired explains a refusal by the server (standalone) or by the Hisar app (app mode) and how to update.
 func describeUpdateRequired(err error) (string, bool) {
-	if upgradeRequired, isUpgradeRequired := client.AsUpgradeRequired(err); isUpgradeRequired {
+	if upgradeRequired, isUpgradeRequired := apiclient.AsUpgradeRequired(err); isUpgradeRequired {
 		return fmt.Sprintf("update required: the Hisar server needs hisar %s or later, and this is %s.\n"+
 			"Download the latest hisar from %s, or on a Mac install the one that comes with the Hisar app (Settings → Developer tools).",
 			upgradeRequired.MinimumVersion, version, upgradeRequired.UpdateURL), true

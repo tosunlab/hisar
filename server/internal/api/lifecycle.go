@@ -12,8 +12,8 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"golang.org/x/time/rate"
 
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
-	"github.com/tryhisar/hisar/core/proto"
 	"github.com/tryhisar/hisar/server/internal/mail"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
@@ -29,7 +29,7 @@ var (
 )
 
 func (s *Server) handleReauthenticate(c fiber.Ctx) error {
-	var request proto.ReauthenticateRequest
+	var request apitypes.ReauthenticateRequest
 	if err := decodeBody(c, &request); err != nil {
 		return err
 	}
@@ -73,7 +73,7 @@ func (s *Server) handleReauthenticate(c fiber.Ctx) error {
 		recordHash:       store.HashOpaqueRecord(account.OpaqueRecord),
 	})
 	clear(serverOutput.SessionSecret)
-	return c.JSON(proto.ReauthenticateResponse{ReauthenticationID: reauthenticationID, KE2: keyExchange2.Serialize(), RegistrationResponse: registrationResponse})
+	return c.JSON(apitypes.ReauthenticateResponse{ReauthenticationID: reauthenticationID, KE2: keyExchange2.Serialize(), RegistrationResponse: registrationResponse})
 }
 
 // finishReauthentication accepts a proof only from the session that started it.
@@ -92,12 +92,12 @@ func (s *Server) finishReauthentication(c fiber.Ctx, reauthenticationID string, 
 }
 
 func (s *Server) handleChangeCredentials(c fiber.Ctx) error {
-	var request proto.ChangeCredentialsRequest
+	var request apitypes.ChangeCredentialsRequest
 	if err := decodeBody(c, &request); err != nil {
 		return err
 	}
 	switch {
-	case request.Change != proto.CredentialChangeMasterPassword && request.Change != proto.CredentialChangeSecretKey,
+	case request.Change != apitypes.CredentialChangeMasterPassword && request.Change != apitypes.CredentialChangeSecretKey,
 		len(request.Salt) != crypt.SaltSize,
 		request.Argon2.Validate() != nil,
 		len(request.EncKeyset) == 0 || len(request.EncKeyset) > maxKeysetSize:
@@ -137,7 +137,7 @@ func (s *Server) handleChangeCredentials(c fiber.Ctx) error {
 			s.runInBackground(func(ctx context.Context) { s.sendEmail(ctx, message) })
 		}
 	}
-	return c.JSON(proto.ChangeCredentialsResponse{SignedOutDeviceCount: signedOutDeviceCount})
+	return c.JSON(apitypes.ChangeCredentialsResponse{SignedOutDeviceCount: signedOutDeviceCount})
 }
 
 func (s *Server) handleGetAccountDeletionPreview(c fiber.Ctx) error {
@@ -145,25 +145,25 @@ func (s *Server) handleGetAccountDeletionPreview(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	response := proto.AccountDeletionPreview{
-		AllOwnedVault:           make([]proto.DeletionOwnedVault, 0, len(preview.AllOwnedVault)),
-		AllMemberVault:          make([]proto.DeletionMemberVault, 0, len(preview.AllMemberVault)),
+	response := apitypes.AccountDeletionPreview{
+		AllOwnedVault:           make([]apitypes.DeletionOwnedVault, 0, len(preview.AllOwnedVault)),
+		AllMemberVault:          make([]apitypes.DeletionMemberVault, 0, len(preview.AllMemberVault)),
 		ShareLinkCount:          preview.ShareLinkCount,
 		SentInvitationCount:     preview.SentInvitationCount,
 		ReceivedInvitationCount: preview.ReceivedInvitationCount,
 		DeviceCount:             preview.DeviceCount,
 	}
 	for _, ownedVault := range preview.AllOwnedVault {
-		response.AllOwnedVault = append(response.AllOwnedVault, proto.DeletionOwnedVault{VaultID: ownedVault.ID, Type: ownedVault.Type, OtherMemberCount: ownedVault.OtherMemberCount})
+		response.AllOwnedVault = append(response.AllOwnedVault, apitypes.DeletionOwnedVault{VaultID: ownedVault.ID, Type: ownedVault.Type, OtherMemberCount: ownedVault.OtherMemberCount})
 	}
 	for _, memberVault := range preview.AllMemberVault {
-		response.AllMemberVault = append(response.AllMemberVault, proto.DeletionMemberVault{VaultID: memberVault.ID, Type: memberVault.Type, Role: memberVault.Role})
+		response.AllMemberVault = append(response.AllMemberVault, apitypes.DeletionMemberVault{VaultID: memberVault.ID, Type: memberVault.Type, Role: memberVault.Role})
 	}
 	return c.JSON(response)
 }
 
 func (s *Server) handleDeleteAccount(c fiber.Ctx) error {
-	var request proto.DeleteAccountRequest
+	var request apitypes.DeleteAccountRequest
 	if err := decodeBody(c, &request); err != nil {
 		return err
 	}
@@ -207,7 +207,7 @@ func composeCredentialsChangedEmail(recipient, change string, signedOutDeviceCou
 	} else if signedOutDeviceCount > 1 {
 		signedOut = fmt.Sprintf("Your %d other devices were signed out.", signedOutDeviceCount)
 	}
-	if change == proto.CredentialChangeSecretKey {
+	if change == apitypes.CredentialChangeSecretKey {
 		return mail.Message{
 			To:      recipient,
 			Subject: "Your Hisar Secret Key was replaced",
