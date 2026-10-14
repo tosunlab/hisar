@@ -96,4 +96,3 @@ func TestReadEnvironmentFile(t *testing.T) {
 		t.Error("a missing file was read")
 	}
 }
-
