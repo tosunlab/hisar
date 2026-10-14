@@ -38,3 +38,27 @@ type PublicShareLink struct {
 	MaxViews   int                  `json:"maxViews"`
 	ViewCount  int                  `json:"viewCount"`
 }
+
+// Share link limits the server enforces and the apps respect.
+const (
+	ShareLinkMaxCiphertextSize = 64 << 10
+	ShareLinkMaxLabelSize      = 4 << 10
+	ShareLinkMaxViews          = 100
+)
+
+// The only lifetimes a share link may have.
+const (
+	ShareLinkExpiryHour  = time.Hour
+	ShareLinkExpiryDay   = 24 * time.Hour
+	ShareLinkExpiryWeek  = 7 * 24 * time.Hour
+	ShareLinkExpiryMonth = 30 * 24 * time.Hour
+)
+
+// IsAllowedShareLinkExpiry reports whether expiry is one of the allowed lifetimes.
+func IsAllowedShareLinkExpiry(expiry time.Duration) bool {
+	switch expiry {
+	case ShareLinkExpiryHour, ShareLinkExpiryDay, ShareLinkExpiryWeek, ShareLinkExpiryMonth:
+		return true
+	}
+	return false
+}

@@ -13,7 +13,6 @@ import (
 
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
-	"github.com/tryhisar/hisar/core/sharelink"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
@@ -26,8 +25,11 @@ const (
 )
 
 var (
-	allShareLinkExpirySeconds = []int64{3600, 86400, 7 * 86400, 30 * 86400}
-	shareLinkIDPattern        = regexp.MustCompile(`^[A-Za-z0-9_-]{22}$`)
+	allShareLinkExpirySeconds = []int64{
+		int64(apitypes.ShareLinkExpiryHour / time.Second), int64(apitypes.ShareLinkExpiryDay / time.Second),
+		int64(apitypes.ShareLinkExpiryWeek / time.Second), int64(apitypes.ShareLinkExpiryMonth / time.Second),
+	}
+	shareLinkIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{22}$`)
 
 	errTooManyShareLink     = createAPIError(fiber.StatusTooManyRequests, "too many share links today; try again tomorrow")
 	errTooManyLiveShareLink = createAPIError(fiber.StatusTooManyRequests, "you have too many live share links; revoke some first")
@@ -46,13 +48,13 @@ func generateShareLinkID() string {
 
 func validateShareLinkRequest(request *apitypes.CreateShareLinkRequest) error {
 	switch {
-	case len(request.Ciphertext) == 0 || len(request.Ciphertext) > sharelink.MaxCiphertextSize:
+	case len(request.Ciphertext) == 0 || len(request.Ciphertext) > apitypes.ShareLinkMaxCiphertextSize:
 		return createAPIError(fiber.StatusBadRequest, "the share link must be between 1 byte and 64 KiB")
-	case len(request.EncryptedLabel) == 0 || len(request.EncryptedLabel) > sharelink.MaxLabelSize:
+	case len(request.EncryptedLabel) == 0 || len(request.EncryptedLabel) > apitypes.ShareLinkMaxLabelSize:
 		return createAPIError(fiber.StatusBadRequest, "the share link label must be between 1 byte and 4 KiB")
 	case !slices.Contains(allShareLinkExpirySeconds, request.ExpiresInSeconds):
 		return createAPIError(fiber.StatusBadRequest, "a share link expires after 1 hour, 1 day, 7 days or 30 days")
-	case request.MaxViews < 0 || request.MaxViews > sharelink.MaxViews:
+	case request.MaxViews < 0 || request.MaxViews > apitypes.ShareLinkMaxViews:
 		return createAPIError(fiber.StatusBadRequest, "a share link allows 1 to 100 views, or 0 for unlimited")
 	}
 	if request.Passphrase != nil {
@@ -78,7 +80,7 @@ func (s *Server) publishShareLinksChanged(accountID string) {
 func (s *Server) handleCreateShareLink(c fiber.Ctx) error {
 	currentSession := getSession(c)
 	var request apitypes.CreateShareLinkRequest
-	if err := decodeBodyWithLimit(c, &request, sharelink.MaxCiphertextSize*2); err != nil {
+	if err := decodeBodyWithLimit(c, &request, apitypes.ShareLinkMaxCiphertextSize*2); err != nil {
 		return err
 	}
 	if err := validateShareLinkRequest(&request); err != nil {

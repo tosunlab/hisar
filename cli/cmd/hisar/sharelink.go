@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"strconv"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -68,10 +69,10 @@ func (option *shareLinkOption) validateCreation() error {
 		return errors.New("--field is for items; --text shares one text")
 	}
 	var err error
-	if option.expiryDuration, err = sharelink.ParseExpiry(option.expiry); err != nil {
+	if option.expiryDuration, err = parseExpiry(option.expiry); err != nil {
 		return err
 	}
-	option.maxViews, err = sharelink.ParseViews(option.views)
+	option.maxViews, err = parseViews(option.views)
 	return err
 }
 
@@ -384,4 +385,31 @@ func openShareLink(ctx context.Context, link string) error {
 		fmt.Fprintf(os.Stderr, "%d more views until %s.\n", viewsLeft, fetched.Link.ExpiresAt.Local().Format("2006-01-02 15:04"))
 	}
 	return nil
+}
+
+func parseExpiry(text string) (time.Duration, error) {
+	switch strings.ToLower(strings.TrimSpace(text)) {
+	case "1h", "1hour", "1 hour":
+		return sharelink.ExpiryHour, nil
+	case "1d", "1day", "1 day", "24h":
+		return sharelink.ExpiryDay, nil
+	case "7d", "7days", "7 days", "1w":
+		return sharelink.ExpiryWeek, nil
+	case "30d", "30days", "30 days":
+		return sharelink.ExpiryMonth, nil
+	}
+	return 0, fmt.Errorf("expiry %q: use 1h, 1d, 7d or 30d", text)
+}
+
+// parseViews returns 0 for unlimited.
+func parseViews(text string) (int, error) {
+	text = strings.ToLower(strings.TrimSpace(text))
+	if text == "unlimited" || text == "0" {
+		return 0, nil
+	}
+	views, err := strconv.Atoi(text)
+	if err != nil || views < 1 || views > sharelink.MaxViews {
+		return 0, fmt.Errorf("views %q: use a number from 1 to %d, or unlimited", text, sharelink.MaxViews)
+	}
+	return views, nil
 }

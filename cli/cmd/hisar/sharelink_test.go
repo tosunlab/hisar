@@ -171,3 +171,26 @@ func TestShareLinkOpenDecryptsWithoutAnAccount(t *testing.T) {
 		t.Errorf("link without its key: %v", err)
 	}
 }
+
+func TestParseExpiryAndViews(t *testing.T) {
+	for text, want := range map[string]time.Duration{"1h": time.Hour, "1d": 24 * time.Hour, "7d": 7 * 24 * time.Hour, "30D": 30 * 24 * time.Hour} {
+		if got, err := parseExpiry(text); err != nil || got != want {
+			t.Errorf("expiry %s: %v %v", text, got, err)
+		}
+	}
+	for _, text := range []string{"2d", "31d", "", "forever"} {
+		if _, err := parseExpiry(text); err == nil {
+			t.Errorf("expiry %q accepted", text)
+		}
+	}
+	for text, want := range map[string]int{"1": 1, "100": 100, "unlimited": 0, "0": 0} {
+		if got, err := parseViews(text); err != nil || got != want {
+			t.Errorf("views %s: %v %v", text, got, err)
+		}
+	}
+	for _, text := range []string{"101", "-1", "many"} {
+		if _, err := parseViews(text); err == nil {
+			t.Errorf("views %q accepted", text)
+		}
+	}
+}

@@ -271,8 +271,8 @@ func TestCreateShareLinkValidation(t *testing.T) {
 	}
 	for name, change := range map[string]func(map[string]any){
 		"empty ciphertext":       func(body map[string]any) { body["ciphertext"] = []byte{} },
-		"ciphertext over 64 KiB": func(body map[string]any) { body["ciphertext"] = make([]byte, sharelink.MaxCiphertextSize+1) },
-		"label over 4 KiB":       func(body map[string]any) { body["encryptedLabel"] = make([]byte, sharelink.MaxLabelSize+1) },
+		"ciphertext over 64 KiB": func(body map[string]any) { body["ciphertext"] = make([]byte, apitypes.ShareLinkMaxCiphertextSize+1) },
+		"label over 4 KiB":       func(body map[string]any) { body["encryptedLabel"] = make([]byte, apitypes.ShareLinkMaxLabelSize+1) },
 		"two hours":              func(body map[string]any) { body["expiresInSeconds"] = 7200 },
 		"31 days":                func(body map[string]any) { body["expiresInSeconds"] = 31 * 86400 },
 		"101 views":              func(body map[string]any) { body["maxViews"] = 101 },

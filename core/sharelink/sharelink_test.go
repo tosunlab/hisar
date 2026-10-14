@@ -7,7 +7,6 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/item"
@@ -168,29 +167,6 @@ func TestLinkURL(t *testing.T) {
 	} {
 		if _, _, _, err := ParseURL(broken); !errors.Is(err, ErrBadLink) {
 			t.Errorf("%s: %v", broken, err)
-		}
-	}
-}
-
-func TestParseExpiryAndViews(t *testing.T) {
-	for text, want := range map[string]time.Duration{"1h": time.Hour, "1d": 24 * time.Hour, "7d": 7 * 24 * time.Hour, "30D": 30 * 24 * time.Hour} {
-		if got, err := ParseExpiry(text); err != nil || got != want {
-			t.Errorf("expiry %s: %v %v", text, got, err)
-		}
-	}
-	for _, text := range []string{"2d", "31d", "", "forever"} {
-		if _, err := ParseExpiry(text); err == nil {
-			t.Errorf("expiry %q accepted", text)
-		}
-	}
-	for text, want := range map[string]int{"1": 1, "100": 100, "unlimited": 0, "0": 0} {
-		if got, err := ParseViews(text); err != nil || got != want {
-			t.Errorf("views %s: %v %v", text, got, err)
-		}
-	}
-	for _, text := range []string{"101", "-1", "many"} {
-		if _, err := ParseViews(text); err == nil {
-			t.Errorf("views %q accepted", text)
 		}
 	}
 }
