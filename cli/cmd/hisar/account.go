@@ -216,7 +216,7 @@ Replaced your Secret Key. %s This is your new Secret Key:
     %s
 
 `, describeSignedOutDevice(credentialChange.SignedOutDeviceCount), newSecretKey)
-		if os.Getenv("HISAR_SECRET_KEY") != "" {
+		if os.Getenv(localstate.SecretKeyEnvironmentVariable) != "" {
 			fmt.Fprintln(os.Stderr, "HISAR_SECRET_KEY still holds the old Secret Key; set it to the new one.")
 		}
 		document, err := emergencykit.Generate(emergencykit.Kit{
