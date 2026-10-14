@@ -8,7 +8,7 @@ import (
 
 func TestGenerate(t *testing.T) {
 	allConfig := []GeneratorConfig{
-		DefaultGeneratorConfig,
+		DefaultGeneratorConfig(),
 		{Length: 4, Digits: true, Symbols: true},
 		{Length: 12},
 		{Length: 64, Digits: true},

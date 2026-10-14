@@ -111,7 +111,7 @@ func (s *Session) verifyCurrentCredentials(ctx context.Context, password []byte,
 
 // strongerArgon2Params never lowers a cost the account already uses.
 func strongerArgon2Params(current crypt.Argon2Params) crypt.Argon2Params {
-	params := crypt.DefaultArgon2Params
+	params := crypt.DefaultArgon2Params()
 	if current.Validate() != nil {
 		return params
 	}
@@ -189,7 +189,7 @@ func finishReauthentication(loginClient *opaque.Client, reauthentication *apityp
 	if err != nil {
 		return nil, ErrBadCredentials
 	}
-	keyExchange3, _, _, err := loginClient.GenerateKE3(keyExchange2, []byte(accountID), pake.ServerIdentity)
+	keyExchange3, _, _, err := loginClient.GenerateKE3(keyExchange2, []byte(accountID), pake.ServerIdentity())
 	if err != nil {
 		return nil, ErrBadCredentials
 	}

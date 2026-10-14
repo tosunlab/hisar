@@ -204,7 +204,7 @@ func startReauthentication(t *testing.T, apiClient *apiclient.Client, password [
 	if err != nil {
 		t.Fatal(err)
 	}
-	keyExchange3, _, _, err := opaqueClient.GenerateKE3(keyExchange2, []byte(account.AccountID), pake.ServerIdentity)
+	keyExchange3, _, _, err := opaqueClient.GenerateKE3(keyExchange2, []byte(account.AccountID), pake.ServerIdentity())
 	if err != nil {
 		return response, []byte("not a proof")
 	}

@@ -181,7 +181,7 @@ func TestEndToEnd(t *testing.T) {
 		anonymous := apiclient.Create(baseURL)
 		first := requireValue[*apitypes.PreloginResponse](t)(anonymous.FetchPrelogin(ctx, "ghost@example.com"))
 		second := requireValue[*apitypes.PreloginResponse](t)(anonymous.FetchPrelogin(ctx, "ghost@example.com"))
-		if len(first.Salt) != crypt.SaltSize || !bytes.Equal(first.Salt, second.Salt) || first.Argon2 != crypt.DefaultArgon2Params {
+		if len(first.Salt) != crypt.SaltSize || !bytes.Equal(first.Salt, second.Salt) || first.Argon2 != crypt.DefaultArgon2Params() {
 			t.Errorf("fake prelogin not stable: %+v %+v", first, second)
 		}
 	})

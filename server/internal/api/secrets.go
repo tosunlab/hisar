@@ -55,7 +55,7 @@ func generateAllSecret() *Secrets {
 		PrivateKey:     privateKey,
 		PublicKeyBytes: publicKey.Encode(),
 		OPRFGlobalSeed: opaqueConfiguration.GenerateOPRFSeed(),
-		Identity:       pake.ServerIdentity,
+		Identity:       pake.ServerIdentity(),
 	}
 	hmacKey := make([]byte, 32)
 	rand.Read(hmacKey)

@@ -479,7 +479,7 @@ func promptItem(vaultItem *item.Item) error {
 	}
 	switch {
 	case string(password) == "gen" || (len(password) == 0 && vaultItem.Details.Password == ""):
-		if vaultItem.Details.Password, err = item.GeneratePassword(item.DefaultGeneratorConfig); err != nil {
+		if vaultItem.Details.Password, err = item.GeneratePassword(item.DefaultGeneratorConfig()); err != nil {
 			return err
 		}
 		fmt.Fprintln(os.Stderr, "Generated a new password.")
@@ -563,7 +563,7 @@ func runRemove(ctx context.Context, flags *flag.FlagSet, allArg []string) error 
 }
 
 func runGenerate(_ context.Context, flags *flag.FlagSet, allArg []string) error {
-	length := flags.Int("n", item.DefaultGeneratorConfig.Length, "length")
+	length := flags.Int("n", item.DefaultGeneratorConfig().Length, "length")
 	noSymbols := flags.Bool("no-symbols", false, "letters and digits only")
 	if _, err := parse(flags, allArg); err != nil {
 		return err

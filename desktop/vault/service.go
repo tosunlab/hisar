@@ -829,7 +829,7 @@ func (s *Service) DeleteItem(vaultID, itemID string) error {
 
 func (s *Service) GeneratePassword(config PasswordConfig) (string, error) {
 	if config.Length == 0 {
-		config.Length = item.DefaultGeneratorConfig.Length
+		config.Length = item.DefaultGeneratorConfig().Length
 	}
 	return item.GeneratePassword(item.GeneratorConfig{Length: config.Length, Digits: config.Digits, Symbols: config.Symbols})
 }

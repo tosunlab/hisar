@@ -136,7 +136,7 @@ func EncodePlain(document *Document) ([]byte, error) {
 }
 
 func EncodeEncrypted(document *Document, passphrase []byte) ([]byte, error) {
-	return encodeEncryptedWithParams(document, passphrase, crypt.DefaultArgon2Params)
+	return encodeEncryptedWithParams(document, passphrase, crypt.DefaultArgon2Params())
 }
 
 func encodeEncryptedWithParams(document *Document, passphrase []byte, params crypt.Argon2Params) ([]byte, error) {

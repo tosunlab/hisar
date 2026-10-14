@@ -101,7 +101,7 @@ func createOfflineTestAccount(t *testing.T) offlineTestAccount {
 	}
 	password := []byte("correct horse battery")
 	salt := crypt.GenerateSalt()
-	derivedKeys, err := crypt.DeriveAllKey(password, salt, crypt.MinArgon2Params, secretKey)
+	derivedKeys, err := crypt.DeriveAllKey(password, salt, crypt.MinArgon2Params(), secretKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func createOfflineTestAccount(t *testing.T) offlineTestAccount {
 	server := &offlineTestServer{
 		account: apitypes.Account{
 			AccountID: accountID, Email: "alice@example.com", Name: "Alice", Role: apitypes.RoleAdmin,
-			Salt: salt, Argon2: crypt.MinArgon2Params, EncKeyset: encryptedKeyset, PublicKeys: keyset.GetAllPublicKey(accountID),
+			Salt: salt, Argon2: crypt.MinArgon2Params(), EncKeyset: encryptedKeyset, PublicKeys: keyset.GetAllPublicKey(accountID),
 		},
 		allVault:    []apitypes.Vault{{ID: vaultID, Type: apitypes.VaultShared, EncName: encryptedName, Role: apitypes.VaultOwner, WrappedKey: wrappedKey}},
 		allItemByID: map[string]apitypes.Item{},

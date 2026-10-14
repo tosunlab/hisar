@@ -87,7 +87,9 @@ type GeneratorConfig struct {
 	Symbols bool
 }
 
-var DefaultGeneratorConfig = GeneratorConfig{Length: 24, Digits: true, Symbols: true}
+func DefaultGeneratorConfig() GeneratorConfig {
+	return GeneratorConfig{Length: 24, Digits: true, Symbols: true}
+}
 
 // GeneratePassword returns a random password containing at least one character of each enabled class.
 func GeneratePassword(config GeneratorConfig) (string, error) {

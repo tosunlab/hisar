@@ -84,8 +84,8 @@ type pendingImport struct {
 }
 
 func (s *Service) ListAllImportFormat() []ImportFormat {
-	allFormat := make([]ImportFormat, 0, len(importer.AllFormat))
-	for _, format := range importer.AllFormat {
+	allFormat := make([]ImportFormat, 0, len(importer.Formats()))
+	for _, format := range importer.Formats() {
 		allFormat = append(allFormat, ImportFormat{ID: format.ID, Name: format.Name})
 	}
 	return allFormat

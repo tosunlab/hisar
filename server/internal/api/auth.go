@@ -50,7 +50,7 @@ func (s *Server) handlePrelogin(c fiber.Ctx) error {
 	case errors.Is(err, store.ErrNotFound):
 		return c.JSON(apitypes.PreloginResponse{
 			Salt:   s.computeMAC("prelogin-salt", email)[:crypt.SaltSize],
-			Argon2: crypt.DefaultArgon2Params,
+			Argon2: crypt.DefaultArgon2Params(),
 		})
 	case err != nil:
 		return err

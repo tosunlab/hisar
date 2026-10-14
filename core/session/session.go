@@ -86,7 +86,7 @@ func createAccountCredential(accountID string, password []byte, register func(re
 	if err != nil {
 		return nil, err
 	}
-	credential := &accountCredential{secretKey: secretKey, salt: crypt.GenerateSalt(), argon2Params: crypt.DefaultArgon2Params}
+	credential := &accountCredential{secretKey: secretKey, salt: crypt.GenerateSalt(), argon2Params: crypt.DefaultArgon2Params()}
 	derivedKeys, err := crypt.DeriveAllKey(password, credential.salt, credential.argon2Params, secretKey)
 	if err != nil {
 		return nil, err
@@ -126,7 +126,7 @@ func (credential *accountCredential) registerOpaque(derivedKeys *crypt.DerivedKe
 	if err != nil {
 		return err
 	}
-	record, _, err := opaqueClient.RegistrationFinalize(registrationResponse, []byte(accountID), pake.ServerIdentity)
+	record, _, err := opaqueClient.RegistrationFinalize(registrationResponse, []byte(accountID), pake.ServerIdentity())
 	if err != nil {
 		return err
 	}
@@ -209,7 +209,7 @@ func LogIn(ctx context.Context, apiClient *apiclient.Client, email string, passw
 	if err != nil {
 		return nil, ErrBadCredentials
 	}
-	keyExchange3, _, _, err := opaqueClient.GenerateKE3(keyExchange2, []byte(secretKey.AccountID), pake.ServerIdentity)
+	keyExchange3, _, _, err := opaqueClient.GenerateKE3(keyExchange2, []byte(secretKey.AccountID), pake.ServerIdentity())
 	opaqueClient.ClearState()
 	if err != nil {
 		return nil, ErrBadCredentials

@@ -71,7 +71,7 @@ func TestPlainExportRoundTrip(t *testing.T) {
 
 func TestEncryptedExportRoundTrip(t *testing.T) {
 	document := buildTestDocument()
-	encoded, err := encodeEncryptedWithParams(document, []byte(testPassphrase), crypt.MinArgon2Params)
+	encoded, err := encodeEncryptedWithParams(document, []byte(testPassphrase), crypt.MinArgon2Params())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,7 +85,7 @@ func TestEncryptedExportRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	if envelope.Format != FormatEncrypted || envelope.Version != Version || envelope.KDF.Algorithm != KDFArgon2id || envelope.Cipher != CipherXChaCha20 ||
-		len(envelope.KDF.Salt) != crypt.SaltSize || envelope.KDF.MemoryKiB != crypt.MinArgon2Params.MemoryKiB {
+		len(envelope.KDF.Salt) != crypt.SaltSize || envelope.KDF.MemoryKiB != crypt.MinArgon2Params().MemoryKiB {
 		t.Errorf("envelope: %+v", envelope)
 	}
 	if format, err := DetectFormat(encoded); err != nil || format != FormatEncrypted {
@@ -99,7 +99,7 @@ func TestEncryptedExportRoundTrip(t *testing.T) {
 		t.Errorf("round trip differs:\n got %+v\nwant %+v", decoded, document)
 	}
 	precomposed, decomposed := "caf"+string(rune(0xe9))+" au lait export", "cafe"+string(rune(0x301))+" au lait export"
-	withAccent, err := encodeEncryptedWithParams(document, []byte(precomposed), crypt.MinArgon2Params)
+	withAccent, err := encodeEncryptedWithParams(document, []byte(precomposed), crypt.MinArgon2Params())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestEncryptedExportRoundTrip(t *testing.T) {
 }
 
 func TestEncryptedExportRefusesWrongPassphraseAndTampering(t *testing.T) {
-	encoded, err := encodeEncryptedWithParams(buildTestDocument(), []byte(testPassphrase), crypt.MinArgon2Params)
+	encoded, err := encodeEncryptedWithParams(buildTestDocument(), []byte(testPassphrase), crypt.MinArgon2Params())
 	if err != nil {
 		t.Fatal(err)
 	}

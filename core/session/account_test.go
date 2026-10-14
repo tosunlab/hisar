@@ -20,10 +20,10 @@ func TestStrongerArgon2ParamsNeverLowersTheCost(t *testing.T) {
 		t.Errorf("stronger account: %+v", params)
 	}
 	weaker := crypt.Argon2Params{Time: 2, MemoryKiB: 32 * 1024, Threads: 1}
-	if params := strongerArgon2Params(weaker); params != crypt.DefaultArgon2Params {
+	if params := strongerArgon2Params(weaker); params != crypt.DefaultArgon2Params() {
 		t.Errorf("weaker account: %+v", params)
 	}
-	if params := strongerArgon2Params(crypt.Argon2Params{Time: 1 << 30}); params != crypt.DefaultArgon2Params {
+	if params := strongerArgon2Params(crypt.Argon2Params{Time: 1 << 30}); params != crypt.DefaultArgon2Params() {
 		t.Errorf("out of range: %+v", params)
 	}
 }
@@ -32,13 +32,13 @@ func TestWrongCurrentPasswordSendsNothing(t *testing.T) {
 	password := []byte("current master password")
 	secretKey, _ := crypt.GenerateSecretKey("ABC123")
 	salt := crypt.GenerateSalt()
-	derivedKeys, err := crypt.DeriveAllKey(password, salt, crypt.MinArgon2Params, secretKey)
+	derivedKeys, err := crypt.DeriveAllKey(password, salt, crypt.MinArgon2Params(), secretKey)
 	if err != nil {
 		t.Fatal(err)
 	}
 	keyset, _ := crypt.GenerateKeyset()
 	encryptedKeyset, _ := keyset.Encrypt(derivedKeys.AccountUnlockKey, "ABC123")
-	account := apitypes.Account{AccountID: "ABC123", Email: "a@example.com", Argon2: crypt.MinArgon2Params, Salt: salt, EncKeyset: encryptedKeyset, PublicKeys: keyset.GetAllPublicKey("ABC123")}
+	account := apitypes.Account{AccountID: "ABC123", Email: "a@example.com", Argon2: crypt.MinArgon2Params(), Salt: salt, EncKeyset: encryptedKeyset, PublicKeys: keyset.GetAllPublicKey("ABC123")}
 	var reauthenticationCount atomic.Int32
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/account", func(writer http.ResponseWriter, request *http.Request) {

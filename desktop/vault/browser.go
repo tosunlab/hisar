@@ -140,7 +140,7 @@ func (bridge *BrowserBridge) handleRequest(ctx context.Context, request *browser
 		result, err := bridge.service.saveLogin(ctx, request)
 		return result, convertBrowserError(err)
 	case "password.generate":
-		config := item.DefaultGeneratorConfig
+		config := item.DefaultGeneratorConfig()
 		if request.Length > 0 {
 			config.Length = request.Length
 		}

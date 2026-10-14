@@ -140,7 +140,7 @@ func TestDeriveAllKeyVector(t *testing.T) {
 func TestDeriveAllKeyProperties(t *testing.T) {
 	salt := GenerateSalt()
 	secretKey := createTestSecretKey(t)
-	params := MinArgon2Params
+	params := MinArgon2Params()
 
 	composed, err := DeriveAllKey([]byte("café"), salt, params, secretKey)
 	if err != nil {
@@ -164,7 +164,7 @@ func TestDeriveAllKeyProperties(t *testing.T) {
 func TestDeriveAllKeyKeepsInput(t *testing.T) {
 	for _, original := range []string{"ascii password", "café"} {
 		password := []byte(original)
-		if _, err := DeriveAllKey(password, GenerateSalt(), MinArgon2Params, createTestSecretKey(t)); err != nil {
+		if _, err := DeriveAllKey(password, GenerateSalt(), MinArgon2Params(), createTestSecretKey(t)); err != nil {
 			t.Fatal(err)
 		}
 		if string(password) != original {
@@ -186,7 +186,7 @@ func TestDeriveAllKeyRejects(t *testing.T) {
 			t.Errorf("%+v accepted", params)
 		}
 	}
-	if _, err := DeriveAllKey([]byte("pw"), []byte("short"), MinArgon2Params, secretKey); !errors.Is(err, ErrBadSalt) {
+	if _, err := DeriveAllKey([]byte("pw"), []byte("short"), MinArgon2Params(), secretKey); !errors.Is(err, ErrBadSalt) {
 		t.Errorf("short salt: %v", err)
 	}
 }
@@ -288,7 +288,7 @@ func BenchmarkDeriveAllKeyDefault(b *testing.B) {
 	secretKey, _ := GenerateSecretKey("ABC123")
 	salt := GenerateSalt()
 	for b.Loop() {
-		if _, err := DeriveAllKey([]byte("correct horse battery staple"), salt, DefaultArgon2Params, secretKey); err != nil {
+		if _, err := DeriveAllKey([]byte("correct horse battery staple"), salt, DefaultArgon2Params(), secretKey); err != nil {
 			b.Fatal(err)
 		}
 	}

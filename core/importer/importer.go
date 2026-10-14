@@ -35,13 +35,16 @@ type FormatInfo struct {
 	Name string `json:"name"`
 }
 
-var AllFormat = []FormatInfo{
+var formats = []FormatInfo{
 	{FormatOnePasswordExport, "1Password export (.1pux)"},
 	{FormatOnePasswordCSV, "1Password CSV"},
 	{FormatBitwardenJSON, "Bitwarden JSON (not encrypted)"},
 	{FormatBitwardenCSV, "Bitwarden CSV"},
 	{FormatCSV, "CSV (Chrome, Firefox, Safari, Edge and others)"},
 }
+
+// Formats lists the formats Parse reads, in the order to offer them.
+func Formats() []FormatInfo { return slices.Clone(formats) }
 
 var (
 	ErrUnknownFormat   = errors.New("this file is not a 1Password, Bitwarden or CSV export that Hisar can read")
@@ -70,7 +73,7 @@ type Summary struct {
 }
 
 func GetFormatName(format string) string {
-	for _, info := range AllFormat {
+	for _, info := range formats {
 		if info.ID == format {
 			return info.Name
 		}
@@ -79,7 +82,7 @@ func GetFormatName(format string) string {
 }
 
 func IsKnownFormat(format string) bool {
-	return format == FormatAutomatic || slices.ContainsFunc(AllFormat, func(info FormatInfo) bool { return info.ID == format })
+	return format == FormatAutomatic || slices.ContainsFunc(formats, func(info FormatInfo) bool { return info.ID == format })
 }
 
 // Parse reads content in the given format, or detects it when format is FormatAutomatic.
