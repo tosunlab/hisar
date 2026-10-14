@@ -22,6 +22,8 @@ const (
 	maxLimit      = 1000
 )
 
+var errOwnerOnly = createAPIError(fiber.StatusForbidden, "owner only")
+
 func isValidUUID(value string) bool {
 	_, err := uuid.Parse(value)
 	return err == nil && len(value) == 36
@@ -46,7 +48,7 @@ func (s *Server) requireVaultOwner(c fiber.Ctx) error {
 		return err
 	}
 	if role != apitypes.VaultOwner {
-		return createAPIError(fiber.StatusForbidden, "owner only")
+		return errOwnerOnly
 	}
 	return nil
 }
@@ -105,12 +107,8 @@ func (s *Server) handleListVaultMembers(c fiber.Ctx) error {
 
 func (s *Server) handleSetAccess(c fiber.Ctx) error {
 	currentSession := getSession(c)
-	role, err := s.getVaultRole(c)
-	if err != nil {
+	if err := s.requireVaultOwner(c); err != nil {
 		return err
-	}
-	if role != apitypes.VaultOwner {
-		return createAPIError(fiber.StatusForbidden, "owner only")
 	}
 	target := c.Params("account")
 	if target == currentSession.AccountID {
@@ -160,7 +158,7 @@ func (s *Server) handleRemoveAccess(c fiber.Ctx) error {
 		return s.leaveVault(c, vaultID)
 	}
 	if role != apitypes.VaultOwner {
-		return createAPIError(fiber.StatusForbidden, "owner only")
+		return errOwnerOnly
 	}
 	switch err := s.store.RemoveAccess(c.Context(), vaultID, target); {
 	case errors.Is(err, store.ErrNotFound):
@@ -361,7 +359,7 @@ func (s *Server) handleDeleteVault(c fiber.Ctx) error {
 	})
 	switch {
 	case errors.Is(err, store.ErrNotOwner):
-		return createAPIError(fiber.StatusForbidden, "owner only")
+		return errOwnerOnly
 	case errors.Is(err, store.ErrPersonalVault):
 		return createAPIError(fiber.StatusBadRequest, "personal vaults can't be deleted")
 	case errors.Is(err, store.ErrOnlyVault):

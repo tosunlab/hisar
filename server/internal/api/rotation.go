@@ -18,12 +18,8 @@ const (
 
 func (s *Server) handleRotateVault(c fiber.Ctx) error {
 	currentSession := getSession(c)
-	role, err := s.getVaultRole(c)
-	if err != nil {
+	if err := s.requireVaultOwner(c); err != nil {
 		return err
-	}
-	if role != apitypes.VaultOwner {
-		return createAPIError(fiber.StatusForbidden, "owner only")
 	}
 	var request apitypes.RotateVaultRequest
 	if err := decodeBodyWithLimit(c, &request, maxRotationBody); err != nil {
