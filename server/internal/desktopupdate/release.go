@@ -13,7 +13,10 @@ import (
 	"github.com/tryhisar/hisar/core/appversion"
 )
 
-const metadataFileName = "update.json"
+const (
+	metadataFileName    = "update.json"
+	maximumMetadataSize = 1 << 20
+)
 
 var (
 	fileNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$`)
@@ -31,7 +34,7 @@ type Release struct {
 	ReleaseNotesFormat   string    `json:"releaseNotesFormat"`
 	PublishedAt          time.Time `json:"publishedAt"`
 
-	allFileSizeByName map[string]int64
+	allAssetByName map[string]gitHubAsset
 }
 
 // GetBuildNumber maps MAJOR.MINOR.PATCH to MAJOR*1000000 + MINOR*1000 + PATCH, the app's CFBundleVersion.
@@ -52,7 +55,7 @@ func IsValidFileName(fileName string) bool {
 	return fileNamePattern.MatchString(fileName) && !strings.Contains(fileName, "..")
 }
 
-func parseRelease(content []byte, version string, allFileSizeByName map[string]int64) (*Release, error) {
+func parseRelease(content []byte, version string, allAssetByName map[string]gitHubAsset) (*Release, error) {
 	decoder := json.NewDecoder(bytes.NewReader(content))
 	decoder.DisallowUnknownFields()
 	release := &Release{}
@@ -82,11 +85,11 @@ func parseRelease(content []byte, version string, allFileSizeByName map[string]i
 	if signature, err := base64.StdEncoding.DecodeString(release.EdSignature); err != nil || len(signature) != 64 {
 		return nil, errors.New("the EdDSA signature is not 64 bytes of base64")
 	}
-	if size, found := allFileSizeByName[release.Archive]; !found {
-		return nil, fmt.Errorf("archive %s is not in the package", release.Archive)
-	} else if size != release.Length {
-		return nil, fmt.Errorf("archive %s has %d bytes, update.json says %d", release.Archive, size, release.Length)
+	if asset, found := allAssetByName[release.Archive]; !found {
+		return nil, fmt.Errorf("archive %s is not in the release", release.Archive)
+	} else if asset.Size != release.Length {
+		return nil, fmt.Errorf("archive %s has %d bytes, update.json says %d", release.Archive, asset.Size, release.Length)
 	}
-	release.allFileSizeByName = allFileSizeByName
+	release.allAssetByName = allAssetByName
 	return release, nil
 }

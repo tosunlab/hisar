@@ -15,7 +15,7 @@ func escapeXML(text string) string {
 	return buffer.String()
 }
 
-// BuildDownloadURL is where the app downloads a release file: the Hisar server, not GitLab.
+// BuildDownloadURL is where the app downloads a release file: the Hisar server, not GitHub.
 func BuildDownloadURL(publicURL, version, fileName string) string {
 	return strings.TrimRight(publicURL, "/") + "/api/v1/desktop/updates/" + url.PathEscape(version) + "/" + url.PathEscape(fileName)
 }

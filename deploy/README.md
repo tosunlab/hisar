@@ -82,28 +82,33 @@ with someone who already has an account still works, and they see the invitation
 The server never sends credentials without TLS. The emails are plain text without tracking; failures are logged as
 `email not sent: …`, without the recipient's address.
 
-## Desktop app updates (optional)
+## Desktop app updates
 
-The macOS app checks the server it is signed in to for updates (`docs/DESIGN.md` §9.1.1). The server reads the
-`hisar-desktop` generic package of a GitLab project that holds the signed desktop releases, so it needs a read-only token:
+The macOS app checks the server it is signed in to for updates (`docs/DESIGN.md` §9.1.1). The server reads the published
+`desktop-<version>` releases of `hisarapp/core` on GitHub and relays the appcast and the download, so apps never talk to
+GitHub. This needs no setup once the repository is public; while it is private, the server needs a read-only token:
 
-1. In GitLab, open that project → **Settings → Access tokens** → **Add new token**.
-2. Name it e.g. `hisar-server updates`, set an expiry date, choose the role **Reporter** and only the scope **read_api**,
-   then create it and copy the token.
+1. On GitHub, open **Settings → Developer settings → Personal access tokens → Fine-grained tokens** →
+   **Generate new token**.
+2. Name it e.g. `hisar-server updates`, set an expiry date, choose the resource owner `hisarapp`, **Only select
+   repositories** → `hisarapp/core`, and under **Repository permissions** only **Contents: Read-only**. Create it and copy
+   the token.
 3. In `.env` on the server, uncomment and fill in:
 
    ```sh
-   HISAR_UPDATE_GITLAB_URL=https://gitlab.example.com
-   HISAR_UPDATE_GITLAB_PROJECT_ID=123        # Settings → General, "Project ID"
-   HISAR_UPDATE_GITLAB_TOKEN=glpat-…
+   HISAR_DESKTOP_UPDATE_GITHUB_TOKEN=github_pat_…
    ```
 
-4. `chmod 600 .env && docker compose up -d`. The log says `desktop updates from https://gitlab.example.com project 123`.
+4. `chmod 600 .env && docker compose up -d`. The log says
+   `desktop updates from the GitHub Releases of hisarapp/core, with a token`.
 
 Check it with a session token from a signed-in device (`desktop.json` in the app's state folder):
-`curl -H "Authorization: Bearer <token>" https://<domain>/api/v1/desktop/updates/appcast.xml`. Without the variables the
-endpoints answer 404 "updates are not configured on this server". Renew the token before it expires; until then, update
-checks fail with "the update source is unreachable".
+`curl -H "Authorization: Bearer <token>" https://<domain>/api/v1/desktop/updates/appcast.xml`. The appcast is cached for
+10 minutes; if GitHub is unreachable or rate limits the server, the last appcast is served. Without a usable token for a
+private repository (missing or expired), update checks fail with "the update source is unreachable" and the log says
+`no repository hisarapp/core (a private repository needs a token)`. `HISAR_DESKTOP_UPDATE_GITHUB_REPOSITORY` reads another
+repository (e.g. a fork with its own signed releases), and `HISAR_DESKTOP_UPDATE_GITHUB_REPOSITORY=off` turns updates off:
+the endpoints then answer 404 "updates are not configured on this server".
 
 ## Upgrades
 
