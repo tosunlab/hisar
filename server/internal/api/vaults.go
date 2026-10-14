@@ -1,7 +1,6 @@
 package api
 
 import (
-	"errors"
 	"strconv"
 	"strings"
 
@@ -92,10 +91,6 @@ func (s *Server) handlePutItem(c fiber.Ctx) error {
 	}
 	baseRevision := strings.Trim(strings.TrimPrefix(c.Get("If-Match"), "W/"), `"`)
 	seq, err := s.service.PutItem(c.Context(), s.getActor(c), c.Params("vault"), c.Params("item"), baseRevision, &request)
-	var conflict *service.ItemConflictError
-	if errors.As(err, &conflict) {
-		return c.Status(fiber.StatusConflict).JSON(apitypes.ConflictResponse{Current: conflict.Current})
-	}
 	if err != nil {
 		return err
 	}

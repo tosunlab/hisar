@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -98,6 +99,25 @@ func TestClientIP(t *testing.T) {
 		if !trustProxy && (clientIP == "1.2.3.4" || clientIP == "6.6.6.6") {
 			t.Errorf("untrusted proxy header used: %s", clientIP)
 		}
+	}
+}
+
+func TestErrorHandlerAnswersAnItemConflictWithTheCurrentItem(t *testing.T) {
+	app := fiber.New(fiber.Config{ErrorHandler: handleError})
+	app.Get("/conflict", func(c fiber.Ctx) error {
+		return fmt.Errorf("saving: %w", &service.ItemConflictError{Current: &apitypes.Item{ID: "current", Revision: "r2"}})
+	})
+	app.Get("/never-existed", func(c fiber.Ctx) error { return &service.ItemConflictError{} })
+
+	status, body := sendGet(t, app, "/conflict", nil)
+	var decoded apitypes.ConflictResponse
+	if status != fiber.StatusConflict || json.Unmarshal([]byte(body), &decoded) != nil || decoded.Current == nil || decoded.Current.ID != "current" || decoded.Current.Revision != "r2" {
+		t.Errorf("conflict: %d %s", status, body)
+	}
+	status, body = sendGet(t, app, "/never-existed", nil)
+	decoded = apitypes.ConflictResponse{}
+	if status != fiber.StatusConflict || json.Unmarshal([]byte(body), &decoded) != nil || decoded.Current != nil {
+		t.Errorf("conflict on an item that never existed: %d %s", status, body)
 	}
 }
 
