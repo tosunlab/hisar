@@ -131,3 +131,7 @@ func (s *Service) GetStatus() Status {
 	defer s.mutex.Unlock()
 	return s.buildStatus()
 }
+
+func (status Status) isSignedIn() bool {
+	return status.State != StateSignedOut
+}

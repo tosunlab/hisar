@@ -111,3 +111,20 @@ func (s *Service) findVault(ctx context.Context, vaultID string) (*session.Vault
 	}
 	return nil, fmt.Errorf("vault %w", ErrNotFound)
 }
+
+func (s *Service) findPersonalVaultID(ctx context.Context) (string, error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if err := s.requireUnlockedWithoutActivity(); err != nil {
+		return "", err
+	}
+	if err := s.loadAllItemOfAllVault(ctx); err != nil {
+		return "", err
+	}
+	for vaultID, vault := range s.allVaultByID {
+		if vault.Type == apitypes.VaultPersonal && vault.Role != apitypes.VaultReader {
+			return vaultID, nil
+		}
+	}
+	return "", fmt.Errorf("personal vault %w", ErrNotFound)
+}
