@@ -14,6 +14,7 @@ import (
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/session"
+	"github.com/tryhisar/hisar/server/internal/realtime"
 )
 
 type eventStream struct {
@@ -61,12 +62,12 @@ func (stream *eventStream) expectNoEvent(t *testing.T) {
 func waitForSubscriber(t *testing.T, server *Server, accountID string, count int) {
 	t.Helper()
 	for range 100 {
-		if server.events.countSubscriber(accountID) == count {
+		if server.events.CountSubscribers(accountID) == count {
 			return
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	t.Fatalf("%s has %d event streams, want %d", accountID, server.events.countSubscriber(accountID), count)
+	t.Fatalf("%s has %d event streams, want %d", accountID, server.events.CountSubscribers(accountID), count)
 }
 
 func signUpTestAccount(t *testing.T, ctx context.Context, server *Server, baseURL, email, role string) *session.Session {
@@ -123,10 +124,10 @@ func TestEventStream(t *testing.T) {
 	carolStream.expectNoEvent(t)
 
 	streams := []*eventStream{}
-	for range maxEventStreamPerAccount - 1 {
+	for range realtime.MaxStreamsPerAccount - 1 {
 		streams = append(streams, openEventStream(t, carol.Client))
 	}
-	waitForSubscriber(t, server, carol.AccountID, maxEventStreamPerAccount)
+	waitForSubscriber(t, server, carol.AccountID, realtime.MaxStreamsPerAccount)
 	if err := carol.Client.StreamEvents(ctx, func(apiclient.Event) {}); !apiclient.IsStatus(err, http.StatusTooManyRequests) {
 		t.Errorf("one stream too many: %v", err)
 	}
@@ -178,22 +179,4 @@ func TestEventStreamOutlivesWriteTimeout(t *testing.T) {
 		t.Fatal(err)
 	}
 	stream.waitForEvent(t, apitypes.EventVaultChanged)
-}
-
-func TestEventBrokerOverflowEndsStream(t *testing.T) {
-	broker := createEventBroker()
-	subscriber, isSubscribed := broker.subscribe("ABC123", nil)
-	if !isSubscribed {
-		t.Fatal("not subscribed")
-	}
-	for range eventSubscriberBufferCount + 1 {
-		broker.publish([]string{"ABC123", "OTHER1"}, serverEvent{name: apitypes.EventVaultsChanged})
-	}
-	if !broker.isOverflowed(subscriber) || len(subscriber.channel) != eventSubscriberBufferCount {
-		t.Errorf("overflowed = %v with %d queued", broker.isOverflowed(subscriber), len(subscriber.channel))
-	}
-	broker.unsubscribe("ABC123", subscriber)
-	if broker.countSubscriber("ABC123") != 0 || len(broker.subscribersByAccount) != 0 {
-		t.Error("unsubscribe left state behind")
-	}
 }

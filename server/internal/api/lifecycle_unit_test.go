@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/tryhisar/hisar/core/apitypes"
+	"github.com/tryhisar/hisar/server/internal/realtime"
 )
 
 func TestComposeCredentialsChangedEmail(t *testing.T) {
@@ -40,16 +41,16 @@ func TestComposeAccountDeletedEmail(t *testing.T) {
 }
 
 func TestEventBrokerEndsAllStreamExceptTheKeptOne(t *testing.T) {
-	broker := createEventBroker()
-	kept, _ := broker.subscribe("ALICE1", []byte("kept"))
-	ended, _ := broker.subscribe("ALICE1", []byte("ended"))
-	other, _ := broker.subscribe("BOB111", []byte("bob"))
-	broker.endStreams("ALICE1", []byte("kept"))
-	if broker.isEnded(kept) || !broker.isEnded(ended) || broker.isEnded(other) {
-		t.Errorf("ended: kept %v, ended %v, other account %v", broker.isEnded(kept), broker.isEnded(ended), broker.isEnded(other))
+	broker := realtime.NewBroker()
+	kept, _ := broker.Subscribe("ALICE1", []byte("kept"))
+	ended, _ := broker.Subscribe("ALICE1", []byte("ended"))
+	other, _ := broker.Subscribe("BOB111", []byte("bob"))
+	broker.EndStreams("ALICE1", []byte("kept"))
+	if broker.IsEnded(kept) || !broker.IsEnded(ended) || broker.IsEnded(other) {
+		t.Errorf("ended: kept %v, ended %v, other account %v", broker.IsEnded(kept), broker.IsEnded(ended), broker.IsEnded(other))
 	}
-	broker.endStreams("ALICE1", nil)
-	if !broker.isEnded(kept) {
+	broker.EndStreams("ALICE1", nil)
+	if !broker.IsEnded(kept) {
 		t.Error("ending every stream kept one")
 	}
 }

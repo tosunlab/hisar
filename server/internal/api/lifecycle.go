@@ -130,7 +130,7 @@ func (s *Server) handleChangeCredentials(c fiber.Ctx) error {
 	case err != nil:
 		return err
 	}
-	s.events.endStreams(currentSession.AccountID, currentSession.TokenHash)
+	s.events.EndStreams(currentSession.AccountID, currentSession.TokenHash)
 	s.recordAudit(c, currentSession.AccountID, currentSession.DeviceID, "credentials_changed", map[string]any{"change": request.Change, "signedOutDevices": signedOutDeviceCount})
 	if s.isEmailConfigured() {
 		if account, err := s.store.GetAccountByID(c.Context(), currentSession.AccountID); err == nil {
@@ -189,7 +189,7 @@ func (s *Server) handleDeleteAccount(c fiber.Ctx) error {
 	case err != nil:
 		return err
 	}
-	s.events.endStreams(currentSession.AccountID, nil)
+	s.events.EndStreams(currentSession.AccountID, nil)
 	s.approvals.removeForAccount(currentSession.AccountID)
 	s.publishVaultsChanged(deleted.VaultMemberAccountIDs...)
 	s.publishShareInvitationsChanged(deleted.InvitationAccountIDs...)

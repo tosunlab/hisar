@@ -10,6 +10,7 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/tryhisar/hisar/core/apitypes"
+	"github.com/tryhisar/hisar/server/internal/realtime"
 )
 
 const (
@@ -269,5 +270,5 @@ func (s *Server) handleResolveApproval(c fiber.Ctx) error {
 }
 
 func (s *Server) publishApprovalEvent(accountID, eventName, requestID string) {
-	s.events.publish([]string{accountID}, serverEvent{name: eventName, data: apitypes.ApprovalEvent{RequestID: requestID}})
+	s.events.Publish([]string{accountID}, realtime.Event{Name: eventName, Data: apitypes.ApprovalEvent{RequestID: requestID}})
 }

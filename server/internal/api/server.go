@@ -20,6 +20,7 @@ import (
 	"github.com/tryhisar/hisar/server/internal/desktopupdate"
 	"github.com/tryhisar/hisar/server/internal/mail"
 	"github.com/tryhisar/hisar/server/internal/ratelimit"
+	"github.com/tryhisar/hisar/server/internal/realtime"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
@@ -59,7 +60,7 @@ type Server struct {
 	loginCache          *loginCache
 	limiter             *ratelimit.Limiter
 	updateLimiter       *ratelimit.Limiter
-	events              *eventBroker
+	events              *realtime.Broker
 	approvals           *approvalRelay
 
 	inviteAccountLimiter          *ratelimit.Limiter
@@ -115,7 +116,7 @@ func NewServer(database *store.Store, secrets *Secrets, config Config) (*Server,
 		loginCache:          createLoginCache(time.Minute),
 		limiter:             ratelimit.New(rate.Every(6*time.Second), config.AuthBurst),
 		updateLimiter:       ratelimit.New(rate.Every(10*time.Second), 20),
-		events:              createEventBroker(),
+		events:              realtime.NewBroker(),
 		approvals:           createApprovalRelay(),
 
 		inviteAccountLimiter:          ratelimit.NewDaily(invitePerAccountPerDay),

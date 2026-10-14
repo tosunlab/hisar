@@ -361,11 +361,11 @@ func TestShareLinkEvents(t *testing.T) {
 	ctx := context.Background()
 	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", apitypes.RoleAdmin)
 	vault, vaultItem := createSharedItem(t, alice)
-	subscriber, isSubscribed := server.events.subscribe(alice.AccountID, nil)
+	subscriber, isSubscribed := server.events.Subscribe(alice.AccountID, nil)
 	if !isSubscribed {
 		t.Fatal("no subscription")
 	}
-	defer server.events.unsubscribe(alice.AccountID, subscriber)
+	defer server.events.Unsubscribe(alice.AccountID, subscriber)
 	created, err := alice.ShareItem(ctx, vault, vaultItem, []string{sharelink.FieldPassword}, defaultShareLinkOptions)
 	if err != nil {
 		t.Fatal(err)
@@ -373,9 +373,9 @@ func TestShareLinkEvents(t *testing.T) {
 	openShareLink(t, created.URL, nil)
 	for _, step := range []string{"create", "view"} {
 		select {
-		case event := <-subscriber.channel:
-			if event.name != apitypes.EventShareLinksChanged {
-				t.Fatalf("%s: event %s", step, event.name)
+		case event := <-subscriber.Events:
+			if event.Name != apitypes.EventShareLinksChanged {
+				t.Fatalf("%s: event %s", step, event.Name)
 			}
 		case <-time.After(5 * time.Second):
 			t.Fatalf("%s: no event", step)

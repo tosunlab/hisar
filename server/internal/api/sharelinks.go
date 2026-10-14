@@ -14,6 +14,7 @@ import (
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/server/internal/ratelimit"
+	"github.com/tryhisar/hisar/server/internal/realtime"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
@@ -75,7 +76,7 @@ func convertToProtoShareLink(link *store.ShareLink) apitypes.ShareLink {
 }
 
 func (s *Server) publishShareLinksChanged(accountID string) {
-	s.events.publish([]string{accountID}, serverEvent{name: apitypes.EventShareLinksChanged, data: struct{}{}})
+	s.events.Publish([]string{accountID}, realtime.Event{Name: apitypes.EventShareLinksChanged, Data: struct{}{}})
 }
 
 func (s *Server) handleCreateShareLink(c fiber.Ctx) error {
