@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tryhisar/hisar/core/sshkey"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 )
@@ -272,7 +273,7 @@ type replayResult struct {
 // replay sends a recorded connection to the agent the way agent.ServeAgent would.
 func (fixture *openSSHFixture) replay(t *testing.T, connection *recordedConnection, modify func(index int, message recordedMessage) recordedMessage) replayResult {
 	t.Helper()
-	signer, err := ParseKeyMaterial([]byte(fixture.ClientPrivateKey))
+	signer, err := sshkey.ParseKeyMaterial([]byte(fixture.ClientPrivateKey))
 	if err != nil {
 		t.Fatal(err)
 	}

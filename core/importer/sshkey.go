@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/tryhisar/hisar/core/item"
-	"github.com/tryhisar/hisar/core/sshagent"
+	"github.com/tryhisar/hisar/core/sshkey"
 )
 
 // buildSSHKeyItem returns a reason instead of an item when the key cannot be stored.
@@ -16,11 +16,11 @@ func buildSSHKeyItem(title, privateKeyText, notes string) (item.Item, string) {
 	}
 	privateKeyBytes := []byte(strings.TrimSpace(privateKeyText) + "\n")
 	defer clear(privateKeyBytes)
-	material, err := sshagent.ImportPrivateKey(privateKeyBytes, nil, title)
+	material, err := sshkey.ImportPrivateKey(privateKeyBytes, nil, title)
 	switch {
-	case errors.Is(err, sshagent.ErrPassphraseRequired):
+	case errors.Is(err, sshkey.ErrPassphraseRequired):
 		return item.Item{}, "the SSH key is protected by a passphrase; add it in Hisar with SSH key → Import"
-	case errors.Is(err, sshagent.ErrUnsupportedKey):
+	case errors.Is(err, sshkey.ErrUnsupportedKey):
 		return item.Item{}, "this SSH key type is not supported; Hisar stores Ed25519, RSA and ECDSA keys"
 	case err != nil:
 		return item.Item{}, "the SSH private key could not be read"

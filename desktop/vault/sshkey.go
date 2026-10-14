@@ -11,6 +11,7 @@ import (
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/session"
 	"github.com/tryhisar/hisar/core/sshagent"
+	"github.com/tryhisar/hisar/core/sshkey"
 )
 
 const (
@@ -27,13 +28,13 @@ func (s *Service) GenerateSSHKey(vaultID, title, keyType string) (ItemDetail, er
 	if err := s.checkUnlocked(); err != nil {
 		return ItemDetail{}, err
 	}
-	var material *sshagent.KeyMaterial
+	var material *sshkey.KeyMaterial
 	var err error
 	switch strings.ToLower(strings.TrimSpace(keyType)) {
 	case "", SSHKeyTypeEd25519:
-		material, err = sshagent.GenerateEd25519Key(title)
+		material, err = sshkey.GenerateEd25519Key(title)
 	case SSHKeyTypeRSA:
-		material, err = sshagent.GenerateRSAKey(sshagent.DefaultRSABits, title)
+		material, err = sshkey.GenerateRSAKey(sshkey.DefaultRSABits, title)
 	default:
 		return ItemDetail{}, errors.New("choose an Ed25519 or RSA key")
 	}
@@ -59,7 +60,7 @@ func (s *Service) ImportSSHKey(vaultID, title, privateKeyText, passphrase string
 	defer clear(privateKeyBytes)
 	passphraseBytes := []byte(passphrase)
 	defer clear(passphraseBytes)
-	material, err := sshagent.ImportPrivateKey(privateKeyBytes, passphraseBytes, title)
+	material, err := sshkey.ImportPrivateKey(privateKeyBytes, passphraseBytes, title)
 	if err != nil {
 		return ItemDetail{}, convertImportError(err)
 	}
@@ -68,13 +69,13 @@ func (s *Service) ImportSSHKey(vaultID, title, privateKeyText, passphrase string
 
 func convertImportError(err error) error {
 	switch {
-	case errors.Is(err, sshagent.ErrPassphraseRequired):
+	case errors.Is(err, sshkey.ErrPassphraseRequired):
 		return errors.New("this key is protected by a passphrase; enter it to import the key")
-	case errors.Is(err, sshagent.ErrWrongPassphrase):
+	case errors.Is(err, sshkey.ErrWrongPassphrase):
 		return errors.New("the passphrase is not correct")
-	case errors.Is(err, sshagent.ErrUnsupportedKey):
+	case errors.Is(err, sshkey.ErrUnsupportedKey):
 		return errors.New("this key type is not supported; use an Ed25519, RSA or ECDSA key")
-	case errors.Is(err, sshagent.ErrInvalidKey):
+	case errors.Is(err, sshkey.ErrInvalidKey):
 		return errors.New("this is not a private key in OpenSSH or PEM format")
 	}
 	return err
@@ -86,7 +87,7 @@ func (s *Service) checkUnlocked() error {
 	return s.requireUnlocked()
 }
 
-func buildSSHKeyItem(title string, material *sshagent.KeyMaterial) item.Item {
+func buildSSHKeyItem(title string, material *sshkey.KeyMaterial) item.Item {
 	return item.Item{
 		Overview: item.Overview{
 			Title:       title,
@@ -99,7 +100,7 @@ func buildSSHKeyItem(title string, material *sshagent.KeyMaterial) item.Item {
 	}
 }
 
-func (s *Service) saveSSHKey(vaultID, title string, material *sshagent.KeyMaterial) (ItemDetail, error) {
+func (s *Service) saveSSHKey(vaultID, title string, material *sshkey.KeyMaterial) (ItemDetail, error) {
 	defer clear(material.PrivateKeyPEM)
 	s.mutex.Lock()
 	defer s.mutex.Unlock()

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/tryhisar/hisar/core/sshkey"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -286,7 +287,7 @@ func TestSessionBindSequenceRules(t *testing.T) {
 
 func TestSessionBindRSAHostKey(t *testing.T) {
 	material := getAllTestMaterial()["rsa"]
-	rsaSigner, err := ParseKeyMaterial(material.PrivateKeyPEM)
+	rsaSigner, err := sshkey.ParseKeyMaterial(material.PrivateKeyPEM)
 	if err != nil {
 		t.Fatal(err)
 	}

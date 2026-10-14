@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tryhisar/hisar/core/sshkey"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 )
@@ -247,7 +248,7 @@ func (connection *connectionAgent) listAllResolvedKey() ([]resolvedKey, error) {
 	}
 	allResolvedKey := make([]resolvedKey, 0, len(allKey))
 	for _, key := range allKey {
-		signer, err := ParseKeyMaterial(key.PrivateKeyPEM)
+		signer, err := sshkey.ParseKeyMaterial(key.PrivateKeyPEM)
 		if err != nil {
 			continue
 		}

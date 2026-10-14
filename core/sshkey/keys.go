@@ -1,4 +1,4 @@
-package sshagent
+package sshkey
 
 import (
 	"crypto"
@@ -22,10 +22,10 @@ const (
 )
 
 var (
-	ErrPassphraseRequired = errors.New("sshagent: passphrase required")
-	ErrWrongPassphrase    = errors.New("sshagent: wrong passphrase")
-	ErrUnsupportedKey     = errors.New("sshagent: unsupported key type")
-	ErrInvalidKey         = errors.New("sshagent: invalid private key")
+	ErrPassphraseRequired = errors.New("sshkey: passphrase required")
+	ErrWrongPassphrase    = errors.New("sshkey: wrong passphrase")
+	ErrUnsupportedKey     = errors.New("sshkey: unsupported key type")
+	ErrInvalidKey         = errors.New("sshkey: invalid private key")
 )
 
 type KeyMaterial struct {
@@ -48,7 +48,7 @@ func GenerateRSAKey(bits int, comment string) (*KeyMaterial, error) {
 		bits = DefaultRSABits
 	}
 	if bits < minimumRSABits || bits > maximumRSABits {
-		return nil, fmt.Errorf("sshagent: RSA key size %d out of range", bits)
+		return nil, fmt.Errorf("sshkey: RSA key size %d out of range", bits)
 	}
 	privateKey, err := rsa.GenerateKey(rand.Reader, bits)
 	if err != nil {

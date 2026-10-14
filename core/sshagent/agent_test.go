@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tryhisar/hisar/core/sshkey"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 )
@@ -125,7 +126,7 @@ func createShortTempDirectory(t *testing.T) string {
 	return directory
 }
 
-func createTestKey(t *testing.T, id, title string, material *KeyMaterial) Key {
+func createTestKey(t *testing.T, id, title string, material *sshkey.KeyMaterial) Key {
 	t.Helper()
 	return Key{ID: id, VaultID: "personal", Title: title, PrivateKeyPEM: material.PrivateKeyPEM}
 }
@@ -193,11 +194,11 @@ func connectSSHWithAgent(address string, agentClient agent.ExtendedAgent) error 
 
 func generateHostSigner(t *testing.T) ssh.Signer {
 	t.Helper()
-	material, err := GenerateEd25519Key("host")
+	material, err := sshkey.GenerateEd25519Key("host")
 	if err != nil {
 		t.Fatal(err)
 	}
-	signer, err := ParseKeyMaterial(material.PrivateKeyPEM)
+	signer, err := sshkey.ParseKeyMaterial(material.PrivateKeyPEM)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +246,7 @@ func startSSHServer(t *testing.T, allowedKey ssh.PublicKey) string {
 
 func getPublicKey(t *testing.T, key Key) ssh.PublicKey {
 	t.Helper()
-	signer, err := ParseKeyMaterial(key.PrivateKeyPEM)
+	signer, err := sshkey.ParseKeyMaterial(key.PrivateKeyPEM)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -254,17 +255,17 @@ func getPublicKey(t *testing.T, key Key) ssh.PublicKey {
 
 var (
 	sharedMaterialOnce sync.Once
-	allSharedMaterial  map[string]*KeyMaterial
+	allSharedMaterial  map[string]*sshkey.KeyMaterial
 )
 
-func getAllTestMaterial() map[string]*KeyMaterial {
+func getAllTestMaterial() map[string]*sshkey.KeyMaterial {
 	sharedMaterialOnce.Do(func() {
-		allSharedMaterial = map[string]*KeyMaterial{}
-		ed25519Material, err := GenerateEd25519Key("ed")
+		allSharedMaterial = map[string]*sshkey.KeyMaterial{}
+		ed25519Material, err := sshkey.GenerateEd25519Key("ed")
 		if err != nil {
 			panic(err)
 		}
-		rsaMaterial, err := GenerateRSAKey(2048, "rsa")
+		rsaMaterial, err := sshkey.GenerateRSAKey(2048, "rsa")
 		if err != nil {
 			panic(err)
 		}
@@ -276,7 +277,7 @@ func getAllTestMaterial() map[string]*KeyMaterial {
 		if err != nil {
 			panic(err)
 		}
-		ecdsaMaterial, err := ImportPrivateKey(pem.EncodeToMemory(ecdsaBlock), nil, "ecdsa")
+		ecdsaMaterial, err := sshkey.ImportPrivateKey(pem.EncodeToMemory(ecdsaBlock), nil, "ecdsa")
 		if err != nil {
 			panic(err)
 		}

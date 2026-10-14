@@ -24,6 +24,7 @@ import (
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/session"
 	"github.com/tryhisar/hisar/core/sshagent"
+	"github.com/tryhisar/hisar/core/sshkey"
 )
 
 // fakeAPIServer stores encrypted vaults and items in memory, like the Hisar server API.
@@ -256,7 +257,7 @@ func TestGenerateSSHKey(t *testing.T) {
 	}
 	checkSSHKeyDetail(t, ed25519Detail, "Laptop", ssh.KeyAlgoED25519)
 	cachedItem := getCachedItem(t, service, test.personalID, ed25519Detail.ID)
-	signer, err := sshagent.ParseKeyMaterial([]byte(cachedItem.Details.PrivateKey))
+	signer, err := sshkey.ParseKeyMaterial([]byte(cachedItem.Details.PrivateKey))
 	if err != nil {
 		t.Fatalf("stored private key: %v", err)
 	}
@@ -270,7 +271,7 @@ func TestGenerateSSHKey(t *testing.T) {
 	}
 	checkSSHKeyDetail(t, rsaDetail, "Legacy server", ssh.KeyAlgoRSA)
 	rsaItem := getCachedItem(t, service, test.personalID, rsaDetail.ID)
-	rsaSigner, err := sshagent.ParseKeyMaterial([]byte(rsaItem.Details.PrivateKey))
+	rsaSigner, err := sshkey.ParseKeyMaterial([]byte(rsaItem.Details.PrivateKey))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -489,7 +490,7 @@ func TestListAllKey(t *testing.T) {
 			t.Errorf("%s: key metadata = %+v", stage, allKey)
 		}
 		for _, key := range allKey {
-			if _, err := sshagent.ParseKeyMaterial(key.PrivateKeyPEM); err != nil {
+			if _, err := sshkey.ParseKeyMaterial(key.PrivateKeyPEM); err != nil {
 				t.Errorf("%s: %s: %v", stage, key.Title, err)
 			}
 		}
