@@ -54,11 +54,11 @@ func TestBuildItemPayloadSharesOnlyChosenFields(t *testing.T) {
 
 func TestPayloadNeverContainsKeyMaterial(t *testing.T) {
 	vaultItem := createFullItem()
-	allKey := ListAllAvailableFieldKey(vaultItem)
-	if want := []string{FieldUsername, FieldPassword, FieldURLs, GetCustomFieldKey(0), GetCustomFieldKey(2), FieldNotes}; !slices.Equal(allKey, want) {
-		t.Fatalf("available keys %v", allKey)
+	keys := ListAvailableFieldKeys(vaultItem)
+	if want := []string{FieldUsername, FieldPassword, FieldURLs, GetCustomFieldKey(0), GetCustomFieldKey(2), FieldNotes}; !slices.Equal(keys, want) {
+		t.Fatalf("available keys %v", keys)
 	}
-	payload, err := BuildItemPayload(vaultItem, allKey)
+	payload, err := BuildItemPayload(vaultItem, keys)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,13 +87,13 @@ func TestPayloadNeverContainsKeyMaterial(t *testing.T) {
 
 func TestBuildItemPayloadNeedsAValue(t *testing.T) {
 	sshKey := &item.Item{Overview: item.Overview{Title: "Deploy key", Category: item.CategorySSHKey}, Details: item.Details{PrivateKey: privateKeyText}}
-	if allKey := ListAllAvailableFieldKey(sshKey); len(allKey) != 0 {
-		t.Fatalf("an SSH key without notes offers %v", allKey)
+	if keys := ListAvailableFieldKeys(sshKey); len(keys) != 0 {
+		t.Fatalf("an SSH key without notes offers %v", keys)
 	}
 	if _, err := BuildItemPayload(sshKey, []string{FieldUsername, FieldPassword}); !errors.Is(err, ErrNoField) {
 		t.Fatalf("empty fields: %v", err)
 	}
-	if got := ListAllDefaultFieldKey(createFullItem()); !slices.Equal(got, []string{FieldUsername, FieldPassword}) {
+	if got := ListDefaultFieldKeys(createFullItem()); !slices.Equal(got, []string{FieldUsername, FieldPassword}) {
 		t.Fatalf("default keys %v", got)
 	}
 }

@@ -11,8 +11,8 @@ func TestThemeDefaultsAndIsKeptOnSignOut(t *testing.T) {
 	if theme := service.GetTheme(); theme != (Theme{Appearance: "system", Color: "neutral"}) {
 		t.Errorf("default theme = %+v", theme)
 	}
-	var allAppliedTheme []Theme
-	service.config.OnThemeChange = func(theme Theme) { allAppliedTheme = append(allAppliedTheme, theme) }
+	var appliedThemes []Theme
+	service.config.OnThemeChange = func(theme Theme) { appliedThemes = append(appliedThemes, theme) }
 	if theme, err := service.SetTheme("dark", "green"); err != nil || theme != (Theme{Appearance: "dark", Color: "green"}) {
 		t.Fatalf("SetTheme = %+v, %v", theme, err)
 	}
@@ -22,8 +22,8 @@ func TestThemeDefaultsAndIsKeptOnSignOut(t *testing.T) {
 	if _, err := service.SetTheme("light", "orange"); err == nil {
 		t.Error("an unknown colour was accepted")
 	}
-	if len(allAppliedTheme) != 1 || allAppliedTheme[0].Color != "green" {
-		t.Errorf("theme changes heard: %+v", allAppliedTheme)
+	if len(appliedThemes) != 1 || appliedThemes[0].Color != "green" {
+		t.Errorf("theme changes heard: %+v", appliedThemes)
 	}
 	if _, err := service.SignOut(); err != nil {
 		t.Fatal(err)

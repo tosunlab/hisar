@@ -40,14 +40,14 @@ func NewUnlocked(t testing.TB) *Unlocked {
 	t.Cleanup(httpServer.Close)
 
 	directory := t.TempDir()
-	service, err := app.CreateService(app.Config{
+	service, err := app.NewService(app.Config{
 		StatePath: filepath.Join(directory, "desktop.json"), DeviceName: "test", Platform: "test/desktop",
 		SecretKeyStore: memorySecretKeyStore{}, IsEventStreamDisabled: true,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	apiClient := apiclient.Create(httpServer.URL)
+	apiClient := apiclient.New(httpServer.URL)
 	apiClient.Token = "token"
 	unlockedSession := &session.Session{Client: apiClient, AccountID: accountID, Email: "a@example.com", Name: "Alice", Role: apitypes.RoleAdmin, Keyset: keyset}
 	ctx := context.Background()

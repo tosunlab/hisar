@@ -55,8 +55,8 @@ type ImportPreview struct {
 	LoginCount      int                  `json:"loginCount"`
 	SecureNoteCount int                  `json:"secureNoteCount"`
 	SSHKeyCount     int                  `json:"sshKeyCount"`
-	AllSkipped      []ImportSkippedEntry `json:"allSkipped"`
-	AllDuplicate    []ImportDuplicate    `json:"allDuplicate"`
+	Skipped         []ImportSkippedEntry `json:"allSkipped"`
+	Duplicates      []ImportDuplicate    `json:"allDuplicate"`
 }
 
 type ImportProgress struct {
@@ -67,28 +67,28 @@ type ImportProgress struct {
 	SavedCount int                  `json:"savedCount"`
 	TotalCount int                  `json:"totalCount"`
 	IsDone     bool                 `json:"isDone"`
-	AllFailed  []ImportSkippedEntry `json:"allFailed"`
+	Failed     []ImportSkippedEntry `json:"allFailed"`
 }
 
 // pendingImport holds the parsed export between the preview and saving; locking drops it.
 type pendingImport struct {
-	filePath      string
-	format        string
-	allItem       []item.Item
-	allSkipped    []importer.SkippedEntry
-	isStarted     bool
-	vaultID       string
-	allQueuedItem []item.Item
-	savedCount    int
-	allFailed     []ImportSkippedEntry
+	filePath    string
+	format      string
+	items       []item.Item
+	skipped     []importer.SkippedEntry
+	isStarted   bool
+	vaultID     string
+	queuedItems []item.Item
+	savedCount  int
+	failed      []ImportSkippedEntry
 }
 
-func (s *Service) ListAllImportFormat() []ImportFormat {
-	allFormat := make([]ImportFormat, 0, len(importer.Formats()))
+func (s *Service) ListImportFormats() []ImportFormat {
+	formats := make([]ImportFormat, 0, len(importer.Formats()))
 	for _, format := range importer.Formats() {
-		allFormat = append(allFormat, ImportFormat{ID: format.ID, Name: format.Name})
+		formats = append(formats, ImportFormat{ID: format.ID, Name: format.Name})
 	}
-	return allFormat
+	return formats
 }
 
 // ChooseImportFile asks for an export file and reads it; format "" detects it from the file.
@@ -121,7 +121,7 @@ func (s *Service) ChooseImportFile(vaultID, format string) (ImportPreview, error
 	if err := s.requireUnlocked(); err != nil {
 		return ImportPreview{}, err
 	}
-	s.pendingImport = &pendingImport{filePath: path, format: result.Format, allItem: result.AllItem, allSkipped: result.AllSkipped}
+	s.pendingImport = &pendingImport{filePath: path, format: result.Format, items: result.Items, skipped: result.Skipped}
 	return s.buildImportPreview(vaultID)
 }
 
@@ -179,23 +179,23 @@ func (s *Service) loadEditableVaultItem(ctx context.Context, vaultID string) (*s
 	if vault.Role == apitypes.VaultReader {
 		return nil, nil, errReadOnlyVault
 	}
-	allExisting, err := s.unlockedSession.ListAllItem(ctx, vault)
+	existingItems, err := s.unlockedSession.ListItems(ctx, vault)
 	if err != nil {
 		return nil, nil, convertError(err)
 	}
-	s.allItemByVaultID[vault.ID] = allExisting
-	return vault, allExisting, nil
+	s.itemsByVaultID[vault.ID] = existingItems
+	return vault, existingItems, nil
 }
 
 func (s *Service) buildImportPreview(vaultID string) (ImportPreview, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	vault, allExisting, err := s.loadEditableVaultItem(ctx, vaultID)
+	vault, existingItems, err := s.loadEditableVaultItem(ctx, vaultID)
 	if err != nil {
 		return ImportPreview{}, err
 	}
 	pending := s.pendingImport
-	summary := importer.Summarize(pending.allItem)
+	summary := importer.Summarize(pending.items)
 	preview := ImportPreview{
 		FileName:        filepath.Base(pending.filePath),
 		FilePath:        pending.filePath,
@@ -203,23 +203,23 @@ func (s *Service) buildImportPreview(vaultID string) (ImportPreview, error) {
 		FormatName:      importer.GetFormatName(pending.format),
 		VaultID:         vault.ID,
 		VaultName:       vault.Name,
-		ItemCount:       len(pending.allItem),
+		ItemCount:       len(pending.items),
 		LoginCount:      summary.LoginCount,
 		SecureNoteCount: summary.SecureNoteCount,
 		SSHKeyCount:     summary.SSHKeyCount,
-		AllSkipped:      []ImportSkippedEntry{},
-		AllDuplicate:    []ImportDuplicate{},
+		Skipped:         []ImportSkippedEntry{},
+		Duplicates:      []ImportDuplicate{},
 	}
-	for _, skipped := range pending.allSkipped {
-		preview.AllSkipped = append(preview.AllSkipped, ImportSkippedEntry{Title: skipped.Title, Reason: skipped.Reason})
+	for _, skipped := range pending.skipped {
+		preview.Skipped = append(preview.Skipped, ImportSkippedEntry{Title: skipped.Title, Reason: skipped.Reason})
 	}
-	for _, index := range importer.FindAllDuplicateIndex(pending.allItem, allExisting) {
-		duplicate := pending.allItem[index]
+	for _, index := range importer.FindDuplicateIndexes(pending.items, existingItems) {
+		duplicate := pending.items[index]
 		firstURL := ""
 		if len(duplicate.Overview.URLs) > 0 {
 			firstURL = duplicate.Overview.URLs[0]
 		}
-		preview.AllDuplicate = append(preview.AllDuplicate, ImportDuplicate{Title: duplicate.Overview.Title, Username: duplicate.Overview.Username, URL: firstURL})
+		preview.Duplicates = append(preview.Duplicates, ImportDuplicate{Title: duplicate.Overview.Title, Username: duplicate.Overview.Username, URL: firstURL})
 	}
 	return preview, nil
 }
@@ -237,22 +237,22 @@ func (s *Service) StartImport(vaultID string, isSkippingDuplicate bool) (ImportP
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	vault, allExisting, err := s.loadEditableVaultItem(ctx, vaultID)
+	vault, existingItems, err := s.loadEditableVaultItem(ctx, vaultID)
 	if err != nil {
 		return ImportProgress{}, err
 	}
-	allQueuedItem := slices.Clone(pending.allItem)
+	queuedItems := slices.Clone(pending.items)
 	if isSkippingDuplicate {
-		allDuplicateIndex := importer.FindAllDuplicateIndex(pending.allItem, allExisting)
-		allQueuedItem = allQueuedItem[:0]
-		for index, vaultItem := range pending.allItem {
-			if !slices.Contains(allDuplicateIndex, index) {
-				allQueuedItem = append(allQueuedItem, vaultItem)
+		duplicateIndexes := importer.FindDuplicateIndexes(pending.items, existingItems)
+		queuedItems = queuedItems[:0]
+		for index, vaultItem := range pending.items {
+			if !slices.Contains(duplicateIndexes, index) {
+				queuedItems = append(queuedItems, vaultItem)
 			}
 		}
 	}
-	pending.isStarted, pending.vaultID, pending.allQueuedItem, pending.allItem = true, vault.ID, allQueuedItem, nil
-	pending.allFailed = []ImportSkippedEntry{}
+	pending.isStarted, pending.vaultID, pending.queuedItems, pending.items = true, vault.ID, queuedItems, nil
+	pending.failed = []ImportSkippedEntry{}
 	return s.buildImportProgress(), nil
 }
 
@@ -272,15 +272,15 @@ func (s *Service) ContinueImport() (ImportProgress, error) {
 	if err != nil {
 		return ImportProgress{}, err
 	}
-	for batchCount := 0; batchCount < importBatchSize && len(pending.allQueuedItem) > 0; batchCount++ {
-		vaultItem := pending.allQueuedItem[0]
+	for batchCount := 0; batchCount < importBatchSize && len(pending.queuedItems) > 0; batchCount++ {
+		vaultItem := pending.queuedItems[0]
 		_, err := s.unlockedSession.SaveItem(ctx, vault, &vaultItem)
 		if isImportStoppingError(err) {
 			return ImportProgress{}, convertError(err)
 		}
-		pending.allQueuedItem = pending.allQueuedItem[1:]
+		pending.queuedItems = pending.queuedItems[1:]
 		if err != nil {
-			pending.allFailed = append(pending.allFailed, ImportSkippedEntry{Title: vaultItem.Overview.Title, Reason: convertError(err).Error()})
+			pending.failed = append(pending.failed, ImportSkippedEntry{Title: vaultItem.Overview.Title, Reason: convertError(err).Error()})
 			continue
 		}
 		pending.savedCount++
@@ -302,11 +302,11 @@ func (s *Service) buildImportProgress() ImportProgress {
 		FilePath:   pending.filePath,
 		VaultID:    pending.vaultID,
 		SavedCount: pending.savedCount,
-		TotalCount: pending.savedCount + len(pending.allFailed) + len(pending.allQueuedItem),
-		IsDone:     len(pending.allQueuedItem) == 0,
-		AllFailed:  slices.Clone(pending.allFailed),
+		TotalCount: pending.savedCount + len(pending.failed) + len(pending.queuedItems),
+		IsDone:     len(pending.queuedItems) == 0,
+		Failed:     slices.Clone(pending.failed),
 	}
-	if vault, found := s.allVaultByID[pending.vaultID]; found {
+	if vault, found := s.vaultsByID[pending.vaultID]; found {
 		progress.VaultName = vault.Name
 	}
 	return progress
@@ -326,7 +326,7 @@ func (s *Service) DeleteImportFile() error {
 		return err
 	}
 	pending := s.pendingImport
-	if pending == nil || !pending.isStarted || len(pending.allQueuedItem) > 0 {
+	if pending == nil || !pending.isStarted || len(pending.queuedItems) > 0 {
 		return ErrNoPendingImport
 	}
 	if err := os.Remove(pending.filePath); err != nil && !errors.Is(err, os.ErrNotExist) {

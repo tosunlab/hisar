@@ -89,18 +89,18 @@ func confirm(label string) (bool, error) {
 }
 
 // parse allows flags before and after positional arguments.
-func parse(flags *flag.FlagSet, allArg []string) ([]string, error) {
-	var allPositional []string
+func parse(flags *flag.FlagSet, args []string) ([]string, error) {
+	var positionals []string
 	for {
-		if err := flags.Parse(allArg); err != nil {
+		if err := flags.Parse(args); err != nil {
 			return nil, err
 		}
-		allArg = flags.Args()
-		if len(allArg) == 0 {
-			return allPositional, nil
+		args = flags.Args()
+		if len(args) == 0 {
+			return positionals, nil
 		}
-		allPositional = append(allPositional, allArg[0])
-		allArg = allArg[1:]
+		positionals = append(positionals, args[0])
+		args = args[1:]
 	}
 }
 

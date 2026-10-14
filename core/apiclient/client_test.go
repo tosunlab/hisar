@@ -16,7 +16,7 @@ func startFakeServer(t *testing.T, handler http.HandlerFunc) *Client {
 	t.Helper()
 	testServer := httptest.NewServer(handler)
 	t.Cleanup(testServer.Close)
-	fakeClient := Create(testServer.URL + "/")
+	fakeClient := New(testServer.URL + "/")
 	fakeClient.Token = "tok"
 	return fakeClient
 }
@@ -68,7 +68,7 @@ func TestConflictReturnsCurrent(t *testing.T) {
 }
 
 func TestErrors(t *testing.T) {
-	allCase := []struct {
+	cases := []struct {
 		status int
 		body   string
 		want   string
@@ -77,7 +77,7 @@ func TestErrors(t *testing.T) {
 		{http.StatusInternalServerError, `not json`, "Internal Server Error"},
 		{http.StatusConflict, `{"error":"vault exists"}`, "vault exists"},
 	}
-	for _, testCase := range allCase {
+	for _, testCase := range cases {
 		fakeClient := startFakeServer(t, func(writer http.ResponseWriter, request *http.Request) {
 			writer.WriteHeader(testCase.status)
 			writer.Write([]byte(testCase.body))
@@ -111,7 +111,7 @@ func TestQueryEscaping(t *testing.T) {
 		}
 		json.NewEncoder(writer).Encode(apitypes.ChangesResponse{NextSeq: 50})
 	})
-	changeResponse, err := changeClient.ListAllChange(context.Background(), "v", 42, 10)
+	changeResponse, err := changeClient.ListChanges(context.Background(), "v", 42, 10)
 	if err != nil || changeResponse.NextSeq != 50 {
 		t.Fatal(changeResponse, err)
 	}
@@ -120,11 +120,11 @@ func TestQueryEscaping(t *testing.T) {
 func TestIsUnreachable(t *testing.T) {
 	stoppedServer := httptest.NewServer(http.NotFoundHandler())
 	stoppedServer.Close()
-	if _, err := Create(stoppedServer.URL).GetAccount(context.Background()); !IsUnreachable(err) {
+	if _, err := New(stoppedServer.URL).GetAccount(context.Background()); !IsUnreachable(err) {
 		t.Errorf("connection refused: %v", err)
 	}
-	allCase := map[int]bool{http.StatusBadGateway: true, http.StatusServiceUnavailable: true, http.StatusGatewayTimeout: true, http.StatusUnauthorized: false, http.StatusInternalServerError: false}
-	for status, want := range allCase {
+	cases := map[int]bool{http.StatusBadGateway: true, http.StatusServiceUnavailable: true, http.StatusGatewayTimeout: true, http.StatusUnauthorized: false, http.StatusInternalServerError: false}
+	for status, want := range cases {
 		fakeClient := startFakeServer(t, func(writer http.ResponseWriter, request *http.Request) { writer.WriteHeader(status) })
 		if _, err := fakeClient.GetAccount(context.Background()); IsUnreachable(err) != want {
 			t.Errorf("%d: unreachable = %v", status, !want)

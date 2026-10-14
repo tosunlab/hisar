@@ -25,7 +25,7 @@ type fakeApproval struct {
 	isResolved   bool
 }
 
-func (server *fakeAPIServer) addAllApprovalRoute(mux *http.ServeMux) {
+func (server *fakeAPIServer) addApprovalRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/v1/approvals", func(writer http.ResponseWriter, request *http.Request) {
 		var createRequest apitypes.CreateApprovalRequest
 		if err := json.NewDecoder(request.Body).Decode(&createRequest); err != nil {
@@ -39,27 +39,27 @@ func (server *fakeAPIServer) addAllApprovalRoute(mux *http.ServeMux) {
 			writeJSON(writer, http.StatusServiceUnavailable, apitypes.Error{Error: "unavailable"})
 			return
 		}
-		if server.allApprovalByRequestID == nil {
-			server.allApprovalByRequestID = map[string]*fakeApproval{}
+		if server.approvalsByRequestID == nil {
+			server.approvalsByRequestID = map[string]*fakeApproval{}
 		}
-		server.allApprovalByRequestID[createRequest.RequestID] = &fakeApproval{request: createRequest}
+		server.approvalsByRequestID[createRequest.RequestID] = &fakeApproval{request: createRequest}
 		writer.WriteHeader(http.StatusCreated)
 	})
 	mux.HandleFunc("GET /api/v1/approvals", func(writer http.ResponseWriter, request *http.Request) {
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
-		allPending := []apitypes.PendingApproval{}
-		for _, stored := range server.allApprovalByRequestID {
+		pendingRequests := []apitypes.PendingApproval{}
+		for _, stored := range server.approvalsByRequestID {
 			if stored.sealedAnswer == nil && !stored.isResolved {
-				allPending = append(allPending, apitypes.PendingApproval{RequestID: stored.request.RequestID, SealedRequest: stored.request.SealedRequest, ExpiresAt: stored.request.ExpiresAt})
+				pendingRequests = append(pendingRequests, apitypes.PendingApproval{RequestID: stored.request.RequestID, SealedRequest: stored.request.SealedRequest, ExpiresAt: stored.request.ExpiresAt})
 			}
 		}
-		writeJSON(writer, http.StatusOK, allPending)
+		writeJSON(writer, http.StatusOK, pendingRequests)
 	})
 	mux.HandleFunc("GET /api/v1/approvals/{requestID}", func(writer http.ResponseWriter, request *http.Request) {
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
-		stored, isFound := server.allApprovalByRequestID[request.PathValue("requestID")]
+		stored, isFound := server.approvalsByRequestID[request.PathValue("requestID")]
 		if !isFound {
 			writeJSON(writer, http.StatusNotFound, apitypes.Error{Error: "not found"})
 			return
@@ -74,7 +74,7 @@ func (server *fakeAPIServer) addAllApprovalRoute(mux *http.ServeMux) {
 		}
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
-		stored, isFound := server.allApprovalByRequestID[request.PathValue("requestID")]
+		stored, isFound := server.approvalsByRequestID[request.PathValue("requestID")]
 		switch {
 		case !isFound:
 			writeJSON(writer, http.StatusNotFound, apitypes.Error{Error: "not found"})
@@ -88,7 +88,7 @@ func (server *fakeAPIServer) addAllApprovalRoute(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/v1/approvals/{requestID}", func(writer http.ResponseWriter, request *http.Request) {
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
-		if stored, isFound := server.allApprovalByRequestID[request.PathValue("requestID")]; isFound {
+		if stored, isFound := server.approvalsByRequestID[request.PathValue("requestID")]; isFound {
 			stored.isResolved = true
 		}
 		writer.WriteHeader(http.StatusNoContent)
@@ -98,7 +98,7 @@ func (server *fakeAPIServer) addAllApprovalRoute(mux *http.ServeMux) {
 func (server *fakeAPIServer) findApproval(requestID string) (fakeApproval, bool) {
 	server.mutex.Lock()
 	defer server.mutex.Unlock()
-	stored, isFound := server.allApprovalByRequestID[requestID]
+	stored, isFound := server.approvalsByRequestID[requestID]
 	if !isFound {
 		return fakeApproval{}, false
 	}
@@ -110,7 +110,7 @@ func (server *fakeAPIServer) waitForApproval(t *testing.T) fakeApproval {
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		server.mutex.Lock()
-		for _, stored := range server.allApprovalByRequestID {
+		for _, stored := range server.approvalsByRequestID {
 			if !stored.isResolved && stored.sealedAnswer == nil {
 				found := *stored
 				server.mutex.Unlock()
@@ -127,7 +127,7 @@ func (server *fakeAPIServer) waitForApproval(t *testing.T) fakeApproval {
 func (server *fakeAPIServer) setAnswer(requestID string, sealedAnswer []byte) {
 	server.mutex.Lock()
 	defer server.mutex.Unlock()
-	server.allApprovalByRequestID[requestID].sealedAnswer = sealedAnswer
+	server.approvalsByRequestID[requestID].sealedAnswer = sealedAnswer
 }
 
 func sendApprovalEvent(t *testing.T, apiServer *fakeAPIServer, eventName, requestID string) {
@@ -152,14 +152,14 @@ func createPhoneApprovalTest(t *testing.T) *phoneApprovalTest {
 	t.Helper()
 	test := createUnlockedTestService(t)
 	test.apiServer.mutex.Lock()
-	test.apiServer.allDevice = []apitypes.Device{
+	test.apiServer.devices = []apitypes.Device{
 		{ID: testMacDeviceID, Name: "MacBook Pro", Platform: "darwin/desktop", Current: true},
 		{ID: testPhoneDeviceID, Name: "Hisar on iPhone", Platform: "ios/mobile"},
 	}
 	test.apiServer.eventChannel = make(chan string)
 	test.apiServer.approvalEventChannel = make(chan apiclient.Event)
 	test.apiServer.mutex.Unlock()
-	phoneApprover := CreatePhoneApprover(test.service)
+	phoneApprover := NewPhoneApprover(test.service)
 	test.service.mutex.Lock()
 	test.service.config.DeviceName = "MacBook-Pro.local"
 	keyset := test.service.unlockedSession.Keyset
@@ -280,7 +280,7 @@ func TestPhoneApprovalApprovedAndDenied(t *testing.T) {
 func TestPhoneApprovalCarriesTheRememberChoice(t *testing.T) {
 	test := createPhoneApprovalTest(t)
 	description := approval.Description{Kind: approval.KindSSH, AppName: "Terminal", Purpose: "push to git.tryhisar.com", KeyName: "hisar gitlab", RememberLabel: "Also allows Terminal for 1 hour", IsRememberedByDefault: true}
-	allCase := []struct {
+	cases := []struct {
 		name             string
 		answer           func(stored fakeApproval, request approval.Request) []byte
 		wantIsRemembered bool
@@ -299,7 +299,7 @@ func TestPhoneApprovalCarriesTheRememberChoice(t *testing.T) {
 			return sealedAnswer
 		}, false},
 	}
-	for _, testCase := range allCase {
+	for _, testCase := range cases {
 		answerChannel := make(chan approval.AcceptedAnswer, 1)
 		finish := test.phoneApprover.StartPhoneApproval(description, time.Now().Add(2*time.Minute), func(answer approval.AcceptedAnswer) { answerChannel <- answer })
 		stored := test.apiServer.waitForApproval(t)
@@ -331,13 +331,13 @@ func TestPhoneApprovalRefusesForgedAndSelfAnswers(t *testing.T) {
 	otherKeyset, _ := crypt.GenerateKeyset()
 	forgedRequest, _ := approval.OpenRequest(test.keyset, test.accountID, requestID, stored.request.SealedRequest, testPhoneDeviceID, time.Now())
 	signedByOther, _ := approval.CreateAnswer(otherKeyset, test.accountID, stored.request.SealedRequest, forgedRequest, approval.DecisionApprove, testPhoneDeviceID, "Hisar on iPhone", time.Now())
-	allForged := map[string][]byte{
+	forged := map[string][]byte{
 		"signed and sealed by another account":                           signedByOther,
 		"from the Mac itself":                                            test.signAnswerFromDevice(t, stored, testMacDeviceID, test.keyset),
 		"sealed to the account by the server, signed by another account": test.signAnswerFromDevice(t, stored, testPhoneDeviceID, otherKeyset),
 		"garbage": []byte("approve"),
 	}
-	for name, sealedAnswer := range allForged {
+	for name, sealedAnswer := range forged {
 		test.apiServer.setAnswer(requestID, sealedAnswer)
 		sendApprovalEvent(t, test.apiServer, apitypes.EventApprovalAnswered, requestID)
 		select {
@@ -371,7 +371,7 @@ func TestPhoneApprovalEndsWhenHisarLocks(t *testing.T) {
 
 func TestPhoneApprovalAvailability(t *testing.T) {
 	test := createPhoneApprovalTest(t)
-	preference := CreateApprovalPreference(test.service)
+	preference := NewApprovalPreference(test.service)
 	if err := preference.SetPhoneApproval(false); err != nil {
 		t.Fatal(err)
 	}
@@ -386,7 +386,7 @@ func TestPhoneApprovalAvailability(t *testing.T) {
 	preference.SetPhoneApproval(true)
 
 	test.apiServer.mutex.Lock()
-	test.apiServer.allDevice = test.apiServer.allDevice[:1]
+	test.apiServer.devices = test.apiServer.devices[:1]
 	test.apiServer.mutex.Unlock()
 	if _, err := test.service.refreshPhoneApprovalDevice(test.service.unlockedSession.Client); err != nil {
 		t.Fatal(err)
@@ -395,8 +395,8 @@ func TestPhoneApprovalAvailability(t *testing.T) {
 		t.Error("available without an iPhone on the account")
 	}
 	test.apiServer.mutex.Lock()
-	if len(test.apiServer.allApprovalByRequestID) != 0 {
-		t.Errorf("requests were posted: %d", len(test.apiServer.allApprovalByRequestID))
+	if len(test.apiServer.approvalsByRequestID) != 0 {
+		t.Errorf("requests were posted: %d", len(test.apiServer.approvalsByRequestID))
 	}
 	test.apiServer.mutex.Unlock()
 }
@@ -404,7 +404,7 @@ func TestPhoneApprovalAvailability(t *testing.T) {
 func TestPhoneListsAndAnswersRequests(t *testing.T) {
 	test := createUnlockedTestService(t)
 	test.apiServer.mutex.Lock()
-	test.apiServer.allDevice = []apitypes.Device{
+	test.apiServer.devices = []apitypes.Device{
 		{ID: testMacDeviceID, Name: "MacBook Pro", Platform: "darwin/desktop"},
 		{ID: testPhoneDeviceID, Name: "Hisar on iPhone", Platform: "ios/mobile", Current: true},
 	}
@@ -415,16 +415,16 @@ func TestPhoneListsAndAnswersRequests(t *testing.T) {
 	test.service.mutex.Unlock()
 
 	postRequest := func(requesterDeviceID string, createdAt time.Time) (approval.Request, []byte) {
-		request := approval.CreateRequest(requesterDeviceID, "MacBook Pro", approval.Description{Kind: approval.KindCommandLine, AppName: "hisar in Terminal", Purpose: "use Hisar", TerminalName: "ttys003"}, createdAt, approval.MaximumLifetime)
+		request := approval.NewRequest(requesterDeviceID, "MacBook Pro", approval.Description{Kind: approval.KindCommandLine, AppName: "hisar in Terminal", Purpose: "use Hisar", TerminalName: "ttys003"}, createdAt, approval.MaximumLifetime)
 		sealedRequest, err := approval.SealRequest(keyset, test.accountID, request)
 		if err != nil {
 			t.Fatal(err)
 		}
 		test.apiServer.mutex.Lock()
-		if test.apiServer.allApprovalByRequestID == nil {
-			test.apiServer.allApprovalByRequestID = map[string]*fakeApproval{}
+		if test.apiServer.approvalsByRequestID == nil {
+			test.apiServer.approvalsByRequestID = map[string]*fakeApproval{}
 		}
-		test.apiServer.allApprovalByRequestID[request.RequestID] = &fakeApproval{request: apitypes.CreateApprovalRequest{RequestID: request.RequestID, SealedRequest: sealedRequest, ExpiresAt: request.ExpiresAt}}
+		test.apiServer.approvalsByRequestID[request.RequestID] = &fakeApproval{request: apitypes.CreateApprovalRequest{RequestID: request.RequestID, SealedRequest: sealedRequest, ExpiresAt: request.ExpiresAt}}
 		test.apiServer.mutex.Unlock()
 		return request, sealedRequest
 	}
@@ -432,21 +432,21 @@ func TestPhoneListsAndAnswersRequests(t *testing.T) {
 	postRequest(testMacDeviceID, time.Now().Add(-approval.MaximumLifetime-time.Second))
 	postRequest(testPhoneDeviceID, time.Now())
 	test.apiServer.mutex.Lock()
-	test.apiServer.allApprovalByRequestID[approval.GenerateRequestID()] = &fakeApproval{request: apitypes.CreateApprovalRequest{RequestID: "not-a-request", SealedRequest: []byte("garbage")}}
+	test.apiServer.approvalsByRequestID[approval.GenerateRequestID()] = &fakeApproval{request: apitypes.CreateApprovalRequest{RequestID: "not-a-request", SealedRequest: []byte("garbage")}}
 	test.apiServer.mutex.Unlock()
 
-	allRequest, err := ListAllPendingPhoneApproval(test.service)
+	requests, err := ListPendingPhoneApprovals(test.service)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(allRequest) != 1 || allRequest[0].RequestID != open.RequestID || allRequest[0].RequesterDeviceName != "MacBook Pro" || allRequest[0].TerminalName != "ttys003" || allRequest[0].Kind != approval.KindCommandLine {
-		t.Fatalf("listed = %+v", allRequest)
+	if len(requests) != 1 || requests[0].RequestID != open.RequestID || requests[0].RequesterDeviceName != "MacBook Pro" || requests[0].TerminalName != "ttys003" || requests[0].Kind != approval.KindCommandLine {
+		t.Fatalf("listed = %+v", requests)
 	}
 	if err := AnswerPhoneApproval(test.service, open.RequestID, true, false); err != nil {
 		t.Fatal(err)
 	}
 	stored, _ := test.apiServer.findApproval(open.RequestID)
-	tracker := approval.CreateTracker()
+	tracker := approval.NewTracker()
 	tracker.Add(open.RequestID, sealedRequest, open.ExpiresAt)
 	test.service.mutex.Lock()
 	decision, err := tracker.Accept(keyset, test.accountID, open.RequestID, stored.sealedAnswer, testMacDeviceID, time.Now())
@@ -460,12 +460,12 @@ func TestPhoneListsAndAnswersRequests(t *testing.T) {
 	if err := AnswerPhoneApproval(test.service, approval.GenerateRequestID(), true, false); !errors.Is(err, errPhoneApprovalGone) {
 		t.Errorf("answering an unknown request: %v", err)
 	}
-	if allRequest, _ := ListAllPendingPhoneApproval(test.service); len(allRequest) != 0 {
-		t.Errorf("an answered request is still listed: %+v", allRequest)
+	if requests, _ := ListPendingPhoneApprovals(test.service); len(requests) != 0 {
+		t.Errorf("an answered request is still listed: %+v", requests)
 	}
 
 	test.service.Lock()
-	if _, err := ListAllPendingPhoneApproval(test.service); !errors.Is(err, ErrLocked) {
+	if _, err := ListPendingPhoneApprovals(test.service); !errors.Is(err, ErrLocked) {
 		t.Errorf("listing while locked: %v", err)
 	}
 	if err := AnswerPhoneApproval(test.service, open.RequestID, true, false); !errors.Is(err, ErrLocked) {
@@ -475,7 +475,7 @@ func TestPhoneListsAndAnswersRequests(t *testing.T) {
 
 func TestPhoneApprovalLastsAsLongAsTheDialog(t *testing.T) {
 	test := createPhoneApprovalTest(t)
-	allCase := []struct {
+	cases := []struct {
 		dialogTimeout time.Duration
 		want          time.Duration
 	}{
@@ -483,7 +483,7 @@ func TestPhoneApprovalLastsAsLongAsTheDialog(t *testing.T) {
 		{30 * time.Second, 30 * time.Second},
 		{10 * time.Minute, approval.MaximumLifetime},
 	}
-	for _, testCase := range allCase {
+	for _, testCase := range cases {
 		stored, finish := test.startUntil(t, time.Now().Add(testCase.dialogTimeout))
 		request, err := approval.OpenRequest(test.keyset, test.accountID, stored.request.RequestID, stored.request.SealedRequest, testPhoneDeviceID, time.Now())
 		if err != nil {
@@ -541,11 +541,11 @@ func TestPhoneApprovalDoesNotDependOnTheLastSyncBeingOnline(t *testing.T) {
 	test.service.config.CachePath = filepath.Join(t.TempDir(), "desktop-cache.db")
 	test.service.unlockedSession.Cache = test.service.getCache()
 	test.service.mutex.Unlock()
-	if _, err := test.service.ListAllVault(); err != nil {
+	if _, err := test.service.ListVaults(); err != nil {
 		t.Fatal(err)
 	}
 	test.apiServer.setUnreachable(true)
-	test.service.ListAllVault()
+	test.service.ListVaults()
 	test.apiServer.setUnreachable(false)
 	if !test.service.GetStatus().IsOffline {
 		t.Fatal("the test did not leave the session offline")

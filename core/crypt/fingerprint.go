@@ -10,9 +10,9 @@ import (
 // that two people can compare in person.
 func FormatKeyFingerprint(signingPublicKey []byte) string {
 	digest := sha256.Sum256(signingPublicKey)
-	allGroup := make([]string, 4)
-	for index := range allGroup {
-		allGroup[index] = fmt.Sprintf("%02X%02X", digest[2*index], digest[2*index+1])
+	groups := make([]string, 4)
+	for index := range groups {
+		groups[index] = fmt.Sprintf("%02X%02X", digest[2*index], digest[2*index+1])
 	}
-	return strings.Join(allGroup, " ")
+	return strings.Join(groups, " ")
 }

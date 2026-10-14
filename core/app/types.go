@@ -96,9 +96,9 @@ type WaitingShareInvitation struct {
 
 // ShareInvitations: CompletionError says why an accepted share could not be completed, e.g. a changed signing key.
 type ShareInvitations struct {
-	AllReceived     []ReceivedShareInvitation `json:"received"`
-	AllSent         []SentShareInvitation     `json:"sent"`
-	AllWaiting      []WaitingShareInvitation  `json:"waiting"`
+	Received        []ReceivedShareInvitation `json:"received"`
+	Sent            []SentShareInvitation     `json:"sent"`
+	Waiting         []WaitingShareInvitation  `json:"waiting"`
 	CompletionError string                    `json:"completionError"`
 }
 
@@ -154,7 +154,7 @@ type ItemDetail struct {
 	OneTimePassword    string `json:"oneTimePassword"`
 	HasOneTimePassword bool   `json:"hasOneTimePassword"`
 
-	AllPasskey []ItemPasskey `json:"passkeys"`
+	Passkeys []ItemPasskey `json:"passkeys"`
 }
 
 // OneTimeCode is the current code of an item's one-time password; ExpiresAt is RFC 3339.

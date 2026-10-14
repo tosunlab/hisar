@@ -51,6 +51,6 @@ type ResponseError struct {
 
 func (e *ResponseError) Error() string { return e.Message }
 
-func CreateError(code, message string) *ResponseError {
+func NewError(code, message string) *ResponseError {
 	return &ResponseError{Code: code, Message: message}
 }

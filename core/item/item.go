@@ -65,13 +65,13 @@ type Item struct {
 }
 
 func UpdatePasskeyOverview(vaultItem *Item) {
-	var allRelyingPartyID []string
+	var relyingPartyIDs []string
 	for _, passkey := range vaultItem.Details.Passkeys {
-		if !slices.Contains(allRelyingPartyID, passkey.RelyingPartyID) {
-			allRelyingPartyID = append(allRelyingPartyID, passkey.RelyingPartyID)
+		if !slices.Contains(relyingPartyIDs, passkey.RelyingPartyID) {
+			relyingPartyIDs = append(relyingPartyIDs, passkey.RelyingPartyID)
 		}
 	}
-	vaultItem.Overview.PasskeyRelyingPartyIDs = allRelyingPartyID
+	vaultItem.Overview.PasskeyRelyingPartyIDs = relyingPartyIDs
 }
 
 const (
@@ -93,30 +93,30 @@ func DefaultGeneratorConfig() GeneratorConfig {
 
 // GeneratePassword returns a random password containing at least one character of each enabled class.
 func GeneratePassword(config GeneratorConfig) (string, error) {
-	allClass := []string{lowerClass, upperClass}
+	classes := []string{lowerClass, upperClass}
 	if config.Digits {
-		allClass = append(allClass, digitClass)
+		classes = append(classes, digitClass)
 	}
 	if config.Symbols {
-		allClass = append(allClass, symbolClass)
+		classes = append(classes, symbolClass)
 	}
-	if config.Length < len(allClass) || config.Length > 256 {
+	if config.Length < len(classes) || config.Length > 256 {
 		return "", errors.New("item: invalid password length")
 	}
-	alphabet := strings.Join(allClass, "")
+	alphabet := strings.Join(classes, "")
 	for {
 		password := make([]byte, config.Length)
 		for i := range password {
 			password[i] = alphabet[generateRandomIndex(len(alphabet))]
 		}
-		if containsAllClass(string(password), allClass) {
+		if containsClasses(string(password), classes) {
 			return string(password), nil
 		}
 	}
 }
 
-func containsAllClass(password string, allClass []string) bool {
-	for _, class := range allClass {
+func containsClasses(password string, classes []string) bool {
+	for _, class := range classes {
 		if !strings.ContainsAny(password, class) {
 			return false
 		}

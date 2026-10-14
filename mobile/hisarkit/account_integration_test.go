@@ -14,7 +14,7 @@ func TestIntegrationMobileAccountLifecycle(t *testing.T) {
 	}
 	const email, password, newPassword = "mobile-lifecycle@example.com", "mobile master password", "mobile new master password"
 	secretKeyStore := createMemorySecretKeyStore()
-	biometric := &fakeBiometric{allKeyByAccountID: map[string][]byte{}}
+	biometric := &fakeBiometric{keysByAccountID: map[string][]byte{}}
 	hisar, err := New(t.TempDir(), "Test iPhone", secretKeyStore, biometric, &fakeClipboard{}, nil)
 	if err != nil {
 		t.Fatal(err)

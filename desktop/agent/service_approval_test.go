@@ -54,7 +54,7 @@ func (preference *fakeApprovalPreference) SetSigningRememberSeconds(seconds int)
 func TestServiceSigningRememberClearsRememberedSigning(t *testing.T) {
 	preference := &fakeApprovalPreference{}
 	test := createSigningTest(t, 600, nil)
-	service := CreateService(Config{HomeDirectory: t.TempDir(), ApprovalPreference: preference, Approver: test.approver})
+	service := NewService(Config{HomeDirectory: t.TempDir(), ApprovalPreference: preference, Approver: test.approver})
 	if service.GetStatus().SigningRememberSeconds != 0 {
 		t.Error("commit signing is remembered by default")
 	}
@@ -69,7 +69,7 @@ func TestServiceSigningRememberClearsRememberedSigning(t *testing.T) {
 
 func TestServicePhoneApprovalSwitch(t *testing.T) {
 	preference := &fakeApprovalPreference{}
-	service := CreateService(Config{HomeDirectory: t.TempDir(), ApprovalPreference: preference})
+	service := NewService(Config{HomeDirectory: t.TempDir(), ApprovalPreference: preference})
 	if !service.GetStatus().IsPhoneApproval {
 		t.Error("phone approvals are off by default")
 	}
@@ -80,7 +80,7 @@ func TestServicePhoneApprovalSwitch(t *testing.T) {
 	if status, err := service.SetPhoneApproval(true); err == nil || status.IsPhoneApproval {
 		t.Errorf("failed save: %+v %v", status, err)
 	}
-	withoutPreference := CreateService(Config{HomeDirectory: t.TempDir()})
+	withoutPreference := NewService(Config{HomeDirectory: t.TempDir()})
 	if status, err := withoutPreference.SetPhoneApproval(true); err == nil || status.IsPhoneApproval {
 		t.Errorf("the switch changed without a preference store: %+v", status)
 	}
@@ -88,9 +88,9 @@ func TestServicePhoneApprovalSwitch(t *testing.T) {
 
 func TestServiceCompactApprovalSwitchAndWindowFit(t *testing.T) {
 	preference := &fakeApprovalPreference{}
-	allFit := []string{}
-	service := CreateService(Config{HomeDirectory: t.TempDir(), ApprovalPreference: preference, FitApprovalWindow: func(isCompact bool, height int) {
-		allFit = append(allFit, fmt.Sprint(isCompact, height))
+	fitting := []string{}
+	service := NewService(Config{HomeDirectory: t.TempDir(), ApprovalPreference: preference, FitApprovalWindow: func(isCompact bool, height int) {
+		fitting = append(fitting, fmt.Sprint(isCompact, height))
 	}})
 	if service.GetStatus().IsCompactApproval {
 		t.Error("compact approvals on by default")
@@ -105,10 +105,10 @@ func TestServiceCompactApprovalSwitchAndWindowFit(t *testing.T) {
 	service.FitSSHApprovalWindow(true, 112)
 	service.FitSSHApprovalWindow(false, 0)
 	service.FitSSHApprovalWindow(false, 404)
-	if strings.Join(allFit, ",") != "true 112,false 404" {
-		t.Errorf("fits = %v", allFit)
+	if strings.Join(fitting, ",") != "true 112,false 404" {
+		t.Errorf("fits = %v", fitting)
 	}
-	withoutPreference := CreateService(Config{HomeDirectory: t.TempDir()})
+	withoutPreference := NewService(Config{HomeDirectory: t.TempDir()})
 	if _, err := withoutPreference.SetCompactSSHApproval(true); err == nil {
 		t.Error("the switch changed without a preference store")
 	}

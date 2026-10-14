@@ -18,7 +18,7 @@ type Status struct {
 	IsAvailable              bool           `json:"isAvailable"`
 	BundledPath              string         `json:"bundledPath"`
 	InstalledPath            string         `json:"installedPath"`
-	AllInstallation          []Installation `json:"allInstallation"`
+	Installations            []Installation `json:"allInstallation"`
 	PathCommandPath          string         `json:"pathCommandPath"`
 	PathCommandTarget        string         `json:"pathCommandTarget"`
 	IsPathCommandFromThisApp bool           `json:"isPathCommandFromThisApp"`
@@ -57,7 +57,7 @@ func (service *Service) buildStatus(installStatus InstallStatus) Status {
 		IsAvailable:              installStatus.IsAvailable,
 		BundledPath:              installStatus.BundledPath,
 		InstalledPath:            installStatus.InstalledPath,
-		AllInstallation:          installStatus.AllInstallation,
+		Installations:            installStatus.Installations,
 		PathCommandPath:          installStatus.PathCommandPath,
 		PathCommandTarget:        installStatus.PathCommandTarget,
 		IsPathCommandFromThisApp: installStatus.IsPathCommandFromThisApp,

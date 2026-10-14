@@ -25,7 +25,7 @@ const (
 )
 
 var (
-	allShareLinkExpirySeconds = []int64{
+	shareLinkExpirySeconds = []int64{
 		int64(apitypes.ShareLinkExpiryHour / time.Second), int64(apitypes.ShareLinkExpiryDay / time.Second),
 		int64(apitypes.ShareLinkExpiryWeek / time.Second), int64(apitypes.ShareLinkExpiryMonth / time.Second),
 	}
@@ -41,9 +41,9 @@ func createShareLinkReadLimiter() *ipLimiter {
 }
 
 func generateShareLinkID() string {
-	allRandomByte := make([]byte, shareLinkIDSize)
-	rand.Read(allRandomByte)
-	return base64.RawURLEncoding.EncodeToString(allRandomByte)
+	randomBytes := make([]byte, shareLinkIDSize)
+	rand.Read(randomBytes)
+	return base64.RawURLEncoding.EncodeToString(randomBytes)
 }
 
 func validateShareLinkRequest(request *apitypes.CreateShareLinkRequest) error {
@@ -52,7 +52,7 @@ func validateShareLinkRequest(request *apitypes.CreateShareLinkRequest) error {
 		return createAPIError(fiber.StatusBadRequest, "the share link must be between 1 byte and 64 KiB")
 	case len(request.EncryptedLabel) == 0 || len(request.EncryptedLabel) > apitypes.ShareLinkMaxLabelSize:
 		return createAPIError(fiber.StatusBadRequest, "the share link label must be between 1 byte and 4 KiB")
-	case !slices.Contains(allShareLinkExpirySeconds, request.ExpiresInSeconds):
+	case !slices.Contains(shareLinkExpirySeconds, request.ExpiresInSeconds):
 		return createAPIError(fiber.StatusBadRequest, "a share link expires after 1 hour, 1 day, 7 days or 30 days")
 	case request.MaxViews < 0 || request.MaxViews > apitypes.ShareLinkMaxViews:
 		return createAPIError(fiber.StatusBadRequest, "a share link allows 1 to 100 views, or 0 for unlimited")
@@ -116,16 +116,16 @@ func (s *Server) handleCreateShareLink(c fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(response)
 }
 
-func (s *Server) handleListAllShareLink(c fiber.Ctx) error {
-	allLink, err := s.store.ListAllShareLink(c.Context(), getSession(c).AccountID)
+func (s *Server) handleListShareLinks(c fiber.Ctx) error {
+	links, err := s.store.ListShareLinks(c.Context(), getSession(c).AccountID)
 	if err != nil {
 		return err
 	}
-	allResponse := make([]apitypes.ShareLink, 0, len(allLink))
-	for index := range allLink {
-		allResponse = append(allResponse, convertToProtoShareLink(&allLink[index]))
+	responses := make([]apitypes.ShareLink, 0, len(links))
+	for index := range links {
+		responses = append(responses, convertToProtoShareLink(&links[index]))
 	}
-	return c.JSON(allResponse)
+	return c.JSON(responses)
 }
 
 func (s *Server) handleRevokeShareLink(c fiber.Ctx) error {

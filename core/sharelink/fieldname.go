@@ -38,24 +38,24 @@ func FindFieldKey(vaultItem *item.Item, name string) (string, error) {
 	return foundKey, nil
 }
 
-// FindAllFieldKey returns the default keys for no names, and refuses a choice that shares nothing.
-func FindAllFieldKey(vaultItem *item.Item, allName []string) ([]string, error) {
-	if len(allName) == 0 {
-		allKey := ListAllDefaultFieldKey(vaultItem)
-		if len(allKey) == 0 {
+// FindFieldKeys returns the default keys for no names, and refuses a choice that shares nothing.
+func FindFieldKeys(vaultItem *item.Item, names []string) ([]string, error) {
+	if len(names) == 0 {
+		keys := ListDefaultFieldKeys(vaultItem)
+		if len(keys) == 0 {
 			return nil, fmt.Errorf("item %q has no username or password; choose what to share with --field", vaultItem.Overview.Title)
 		}
-		return allKey, nil
+		return keys, nil
 	}
-	allKey := []string{}
-	for _, name := range allName {
+	keys := []string{}
+	for _, name := range names {
 		key, err := FindFieldKey(vaultItem, name)
 		if err != nil {
 			return nil, err
 		}
-		if !slices.Contains(allKey, key) {
-			allKey = append(allKey, key)
+		if !slices.Contains(keys, key) {
+			keys = append(keys, key)
 		}
 	}
-	return allKey, nil
+	return keys, nil
 }

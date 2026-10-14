@@ -7,10 +7,10 @@ import (
 	"github.com/tryhisar/hisar/core/passkey"
 )
 
-func requestPasskeyAssertionWithPRF(t *testing.T, testBridge *browserTestBridge, token, credentialID string, allAllowedID []string, prfRequest *browserprotocol.PasskeyPRFRequest) (browserprotocol.PasskeyAssertionResult, string) {
+func requestPasskeyAssertionWithPRF(t *testing.T, testBridge *browserTestBridge, token, credentialID string, allowedIDs []string, prfRequest *browserprotocol.PasskeyPRFRequest) (browserprotocol.PasskeyAssertionResult, string) {
 	t.Helper()
 	result, code := testBridge.sendPasskeyRequest(t, "passkeys.get", token, browserprotocol.PasskeyRequest{
-		Origin: "https://example.com", RelyingPartyID: "example.com", Challenge: "Y2hhbGxlbmdl", CredentialID: credentialID, AllAllowedCredentialID: allAllowedID, PRF: prfRequest,
+		Origin: "https://example.com", RelyingPartyID: "example.com", Challenge: "Y2hhbGxlbmdl", CredentialID: credentialID, AllowedCredentialIDs: allowedIDs, PRF: prfRequest,
 	})
 	if code != "" {
 		return browserprotocol.PasskeyAssertionResult{}, code
@@ -40,8 +40,8 @@ func TestPasskeyPRF(t *testing.T) {
 	}); err == nil || err.Error() != browserprotocol.ErrorInvalidRequest {
 		t.Errorf("create with a long input: %v", err)
 	}
-	if allItem, _ := service.ListAllItem(personalID); len(allItem) != 0 {
-		t.Fatalf("refused creations saved items: %+v", allItem)
+	if items, _ := service.ListItems(personalID); len(items) != 0 {
+		t.Fatalf("refused creations saved items: %+v", items)
 	}
 
 	enabledOnly, err := relyingParty.register(t, testBridge, token, browserprotocol.PasskeyRequest{Origin: "https://example.com", UserName: "alex", PRF: &browserprotocol.PasskeyPRFRequest{}})
@@ -93,15 +93,15 @@ func TestPasskeyPRF(t *testing.T) {
 		t.Errorf("sign in with prf: {}: %+v", noInput.PRF)
 	}
 
-	allAllowedID := []string{creation.CredentialID, enabledOnly.CredentialID}
-	byCredential, code := requestPasskeyAssertionWithPRF(t, testBridge, token, creation.CredentialID, allAllowedID, &browserprotocol.PasskeyPRFRequest{
+	allowedIDs := []string{creation.CredentialID, enabledOnly.CredentialID}
+	byCredential, code := requestPasskeyAssertionWithPRF(t, testBridge, token, creation.CredentialID, allowedIDs, &browserprotocol.PasskeyPRFRequest{
 		Eval:             &browserprotocol.PasskeyPRFValues{First: saltA},
 		EvalByCredential: map[string]browserprotocol.PasskeyPRFValues{creation.CredentialID: {First: saltB}, enabledOnly.CredentialID: {First: saltA}},
 	})
 	if code != "" || byCredential.PRF.Results.First != otherSalt.PRF.Results.First {
 		t.Errorf("evalByCredential for the signing credential: %+v %s", byCredential.PRF, code)
 	}
-	fallbackToEval, _ := requestPasskeyAssertionWithPRF(t, testBridge, token, creation.CredentialID, allAllowedID, &browserprotocol.PasskeyPRFRequest{
+	fallbackToEval, _ := requestPasskeyAssertionWithPRF(t, testBridge, token, creation.CredentialID, allowedIDs, &browserprotocol.PasskeyPRFRequest{
 		Eval:             &browserprotocol.PasskeyPRFValues{First: saltA},
 		EvalByCredential: map[string]browserprotocol.PasskeyPRFValues{enabledOnly.CredentialID: {First: saltB}},
 	})
@@ -109,8 +109,8 @@ func TestPasskeyPRF(t *testing.T) {
 		t.Errorf("eval when evalByCredential has no entry for the credential: %+v", fallbackToEval.PRF)
 	}
 	for name, invalid := range map[string]struct {
-		allAllowedID []string
-		prfRequest   *browserprotocol.PasskeyPRFRequest
+		allowedIDs []string
+		prfRequest *browserprotocol.PasskeyPRFRequest
 	}{
 		"evalByCredential without allowCredentials": {nil, &browserprotocol.PasskeyPRFRequest{EvalByCredential: map[string]browserprotocol.PasskeyPRFValues{creation.CredentialID: {First: saltA}}}},
 		"key outside allowCredentials":              {[]string{creation.CredentialID}, &browserprotocol.PasskeyPRFRequest{EvalByCredential: map[string]browserprotocol.PasskeyPRFValues{enabledOnly.CredentialID: {First: saltA}}}},
@@ -119,7 +119,7 @@ func TestPasskeyPRF(t *testing.T) {
 		"input not base64url":                       {nil, &browserprotocol.PasskeyPRFRequest{Eval: &browserprotocol.PasskeyPRFValues{First: "*"}}},
 		"second input not base64url":                {nil, &browserprotocol.PasskeyPRFRequest{Eval: &browserprotocol.PasskeyPRFValues{First: saltA, Second: createStringPointer("*")}}},
 	} {
-		if _, code := requestPasskeyAssertionWithPRF(t, testBridge, token, creation.CredentialID, invalid.allAllowedID, invalid.prfRequest); code != browserprotocol.ErrorInvalidRequest {
+		if _, code := requestPasskeyAssertionWithPRF(t, testBridge, token, creation.CredentialID, invalid.allowedIDs, invalid.prfRequest); code != browserprotocol.ErrorInvalidRequest {
 			t.Errorf("%s: %s", name, code)
 		}
 	}

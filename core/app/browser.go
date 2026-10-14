@@ -40,8 +40,8 @@ type PairedBrowser struct {
 }
 
 type BrowserStatus struct {
-	AllInstallation  []browserprotocol.BrowserInstallation `json:"allInstallation"`
-	AllPairedBrowser []PairedBrowser                       `json:"allPairedBrowser"`
+	Installations    []browserprotocol.BrowserInstallation `json:"allInstallation"`
+	PairedBrowsers   []PairedBrowser                       `json:"allPairedBrowser"`
 	IsExactHostMatch bool                                  `json:"isExactHostMatch"`
 	PendingPairing   *BrowserPairingRequest                `json:"pendingPairing"`
 }
@@ -50,8 +50,8 @@ type BrowserBridgeConfig struct {
 	// ShowPairing shows the pairing code in the app window; nil clears it.
 	ShowPairing func(request *BrowserPairingRequest)
 	ShowWindow  func()
-	// InstallAllHostManifest registers the native host with the installed browsers.
-	InstallAllHostManifest func() []browserprotocol.BrowserInstallation
+	// InstallHostManifests registers the native host with the installed browsers.
+	InstallHostManifests func() []browserprotocol.BrowserInstallation
 }
 
 type pendingBrowserPairing struct {
@@ -64,27 +64,27 @@ type pendingBrowserPairing struct {
 
 // BrowserBridge answers the browser extension (browserprotocol.Handler) and is bound to the UI for Settings.
 type BrowserBridge struct {
-	service         *Service
-	config          BrowserBridgeConfig
-	mutex           sync.Mutex
-	pendingPairing  *pendingBrowserPairing
-	allInstallation []browserprotocol.BrowserInstallation
+	service        *Service
+	config         BrowserBridgeConfig
+	mutex          sync.Mutex
+	pendingPairing *pendingBrowserPairing
+	installations  []browserprotocol.BrowserInstallation
 }
 
-func CreateBrowserBridge(service *Service, config BrowserBridgeConfig) *BrowserBridge {
+func NewBrowserBridge(service *Service, config BrowserBridgeConfig) *BrowserBridge {
 	return &BrowserBridge{service: service, config: config}
 }
 
 // InstallBrowserHostManifest registers the native host; main calls it at launch. It is not a method so the UI cannot call it.
 func InstallBrowserHostManifest(bridge *BrowserBridge) []browserprotocol.BrowserInstallation {
-	if bridge.config.InstallAllHostManifest == nil {
+	if bridge.config.InstallHostManifests == nil {
 		return []browserprotocol.BrowserInstallation{}
 	}
-	allInstallation := bridge.config.InstallAllHostManifest()
+	installations := bridge.config.InstallHostManifests()
 	bridge.mutex.Lock()
-	bridge.allInstallation = allInstallation
+	bridge.installations = installations
 	bridge.mutex.Unlock()
-	return allInstallation
+	return installations
 }
 
 // browserRequestHandler keeps HandleRequest off the bound BrowserBridge, so only the extension socket reaches it.
@@ -92,7 +92,7 @@ type browserRequestHandler struct {
 	bridge *BrowserBridge
 }
 
-func CreateBrowserRequestHandler(bridge *BrowserBridge) browserprotocol.Handler {
+func NewBrowserRequestHandler(bridge *BrowserBridge) browserprotocol.Handler {
 	return browserRequestHandler{bridge: bridge}
 }
 
@@ -110,10 +110,10 @@ func (bridge *BrowserBridge) handleRequest(ctx context.Context, request *browser
 		return bridge.finishPairing(request)
 	}
 	if !bridge.isTokenValid(request.Token) {
-		return nil, browserprotocol.CreateError(browserprotocol.ErrorNotPaired, "pair this browser with Hisar first")
+		return nil, browserprotocol.NewError(browserprotocol.ErrorNotPaired, "pair this browser with Hisar first")
 	}
 	if err := bridge.service.requireCurrentVersion(); err != nil {
-		return nil, browserprotocol.CreateError(browserprotocol.ErrorUpdateRequired, err.Error())
+		return nil, browserprotocol.NewError(browserprotocol.ErrorUpdateRequired, err.Error())
 	}
 	switch request.Type {
 	case "status":
@@ -125,8 +125,8 @@ func (bridge *BrowserBridge) handleRequest(ctx context.Context, request *browser
 		}
 		return nil, nil
 	case "logins.match":
-		allLogin, err := bridge.service.listAllMatchingLogin(ctx, request.URL)
-		return browserprotocol.MatchResult{Logins: allLogin}, convertBrowserError(err)
+		logins, err := bridge.service.listMatchingLogins(ctx, request.URL)
+		return browserprotocol.MatchResult{Logins: logins}, convertBrowserError(err)
 	case "logins.fill":
 		result, err := bridge.service.getLoginForFill(ctx, request.VaultID, request.ItemID, request.URL)
 		return result, convertBrowserError(err)
@@ -152,14 +152,14 @@ func (bridge *BrowserBridge) handleRequest(ctx context.Context, request *browser
 		}
 		password, err := item.GeneratePassword(config)
 		if err != nil {
-			return nil, browserprotocol.CreateError(browserprotocol.ErrorInvalidRequest, err.Error())
+			return nil, browserprotocol.NewError(browserprotocol.ErrorInvalidRequest, err.Error())
 		}
 		return browserprotocol.PasswordResult{Password: password}, nil
 	}
 	if strings.HasPrefix(request.Type, "passkeys.") {
 		return bridge.handlePasskeyRequest(ctx, request)
 	}
-	return nil, browserprotocol.CreateError(browserprotocol.ErrorInvalidRequest, fmt.Sprintf("unknown request type %q", request.Type))
+	return nil, browserprotocol.NewError(browserprotocol.ErrorInvalidRequest, fmt.Sprintf("unknown request type %q", request.Type))
 }
 
 func (bridge *BrowserBridge) answerHello(request *browserprotocol.Request) browserprotocol.HelloResult {
@@ -167,7 +167,7 @@ func (bridge *BrowserBridge) answerHello(request *browserprotocol.Request) brows
 	updateRequired := bridge.findUpdateRequired(request.ExtensionVersion)
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	isPaired := slices.ContainsFunc(s.state.AllPairedBrowser, func(paired localstate.PairedBrowser) bool {
+	isPaired := slices.ContainsFunc(s.state.PairedBrowsers, func(paired localstate.PairedBrowser) bool {
 		return request.InstanceID != "" && paired.InstanceID == request.InstanceID
 	})
 	return browserprotocol.HelloResult{ProtocolVersion: browserprotocol.ProtocolVersion, IsPaired: isPaired, State: s.buildStatus().State, UpdateRequired: updateRequired}
@@ -193,10 +193,10 @@ func generatePairingCode() (string, error) {
 
 func (bridge *BrowserBridge) startPairing(request *browserprotocol.Request) error {
 	if strings.TrimSpace(request.InstanceID) == "" {
-		return browserprotocol.CreateError(browserprotocol.ErrorInvalidRequest, "instanceID is required")
+		return browserprotocol.NewError(browserprotocol.ErrorInvalidRequest, "instanceID is required")
 	}
 	if !bridge.service.GetStatus().isSignedIn() {
-		return browserprotocol.CreateError(browserprotocol.ErrorSignedOut, "sign in to Hisar first")
+		return browserprotocol.NewError(browserprotocol.ErrorSignedOut, "sign in to Hisar first")
 	}
 	code, err := generatePairingCode()
 	if err != nil {
@@ -224,7 +224,7 @@ func (bridge *BrowserBridge) finishPairing(request *browserprotocol.Request) (an
 	pending := bridge.pendingPairing
 	if pending == nil || pending.instanceID != request.InstanceID || bridge.service.config.Now().After(pending.expiresAt) {
 		bridge.mutex.Unlock()
-		return nil, browserprotocol.CreateError(browserprotocol.ErrorPairingFailed, "the pairing code expired; start pairing again")
+		return nil, browserprotocol.NewError(browserprotocol.ErrorPairingFailed, "the pairing code expired; start pairing again")
 	}
 	pending.attempts++
 	isCodeCorrect := subtle.ConstantTimeCompare([]byte(pending.code), []byte(strings.TrimSpace(request.Code))) == 1
@@ -236,9 +236,9 @@ func (bridge *BrowserBridge) finishPairing(request *browserprotocol.Request) (an
 		bridge.mutex.Unlock()
 		if isExhausted {
 			bridge.clearPairing()
-			return nil, browserprotocol.CreateError(browserprotocol.ErrorPairingFailed, "too many wrong codes; start pairing again")
+			return nil, browserprotocol.NewError(browserprotocol.ErrorPairingFailed, "too many wrong codes; start pairing again")
 		}
-		return nil, browserprotocol.CreateError(browserprotocol.ErrorPairingFailed, "the code does not match the one shown in Hisar")
+		return nil, browserprotocol.NewError(browserprotocol.ErrorPairingFailed, "the code does not match the one shown in Hisar")
 	}
 	bridge.pendingPairing = nil
 	bridge.mutex.Unlock()
@@ -252,10 +252,10 @@ func (bridge *BrowserBridge) finishPairing(request *browserprotocol.Request) (an
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	now := s.config.Now()
-	s.state.AllPairedBrowser = slices.DeleteFunc(s.state.AllPairedBrowser, func(paired localstate.PairedBrowser) bool {
+	s.state.PairedBrowsers = slices.DeleteFunc(s.state.PairedBrowsers, func(paired localstate.PairedBrowser) bool {
 		return paired.InstanceID == pending.instanceID
 	})
-	s.state.AllPairedBrowser = append(s.state.AllPairedBrowser, localstate.PairedBrowser{
+	s.state.PairedBrowsers = append(s.state.PairedBrowsers, localstate.PairedBrowser{
 		InstanceID: pending.instanceID, Browser: pending.browser, TokenHash: tokenHash[:], PairedAt: now, LastUsedAt: now,
 	})
 	if err := s.state.Save(); err != nil {
@@ -278,8 +278,8 @@ func (bridge *BrowserBridge) isTokenValid(token string) bool {
 	s := bridge.service
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	for index := range s.state.AllPairedBrowser {
-		paired := &s.state.AllPairedBrowser[index]
+	for index := range s.state.PairedBrowsers {
+		paired := &s.state.PairedBrowsers[index]
 		if subtle.ConstantTimeCompare(paired.TokenHash, tokenHash[:]) == 1 {
 			if now := s.config.Now(); now.Sub(paired.LastUsedAt) > browserLastUsedPrecision {
 				paired.LastUsedAt = now
@@ -294,7 +294,7 @@ func (bridge *BrowserBridge) isTokenValid(token string) bool {
 // GetBrowserStatus is for Settings: browsers with the native host, paired browsers and the matching option.
 func (bridge *BrowserBridge) GetBrowserStatus() BrowserStatus {
 	bridge.mutex.Lock()
-	status := BrowserStatus{AllInstallation: append([]browserprotocol.BrowserInstallation{}, bridge.allInstallation...), AllPairedBrowser: []PairedBrowser{}}
+	status := BrowserStatus{Installations: append([]browserprotocol.BrowserInstallation{}, bridge.installations...), PairedBrowsers: []PairedBrowser{}}
 	if pending := bridge.pendingPairing; pending != nil && bridge.service.config.Now().Before(pending.expiresAt) {
 		status.PendingPairing = &BrowserPairingRequest{Browser: pending.browser, Code: pending.code, ExpiresAt: pending.expiresAt.UTC().Format(time.RFC3339)}
 	}
@@ -303,8 +303,8 @@ func (bridge *BrowserBridge) GetBrowserStatus() BrowserStatus {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	status.IsExactHostMatch = s.state.IsExactHostMatch
-	for _, paired := range s.state.AllPairedBrowser {
-		status.AllPairedBrowser = append(status.AllPairedBrowser, PairedBrowser{
+	for _, paired := range s.state.PairedBrowsers {
+		status.PairedBrowsers = append(status.PairedBrowsers, PairedBrowser{
 			InstanceID: paired.InstanceID, Browser: paired.Browser,
 			PairedAt: paired.PairedAt.UTC().Format(time.RFC3339), LastUsedAt: paired.LastUsedAt.UTC().Format(time.RFC3339),
 		})
@@ -315,7 +315,7 @@ func (bridge *BrowserBridge) GetBrowserStatus() BrowserStatus {
 func (bridge *BrowserBridge) RemovePairedBrowser(instanceID string) (BrowserStatus, error) {
 	s := bridge.service
 	s.mutex.Lock()
-	s.state.AllPairedBrowser = slices.DeleteFunc(s.state.AllPairedBrowser, func(paired localstate.PairedBrowser) bool {
+	s.state.PairedBrowsers = slices.DeleteFunc(s.state.PairedBrowsers, func(paired localstate.PairedBrowser) bool {
 		return paired.InstanceID == instanceID
 	})
 	err := s.state.Save()
@@ -344,19 +344,19 @@ func convertBrowserError(err error) error {
 	case err == nil:
 		return nil
 	case errors.Is(err, ErrLocked):
-		return browserprotocol.CreateError(browserprotocol.ErrorLocked, "Hisar is locked")
+		return browserprotocol.NewError(browserprotocol.ErrorLocked, "Hisar is locked")
 	case errors.Is(err, ErrSignedOut):
-		return browserprotocol.CreateError(browserprotocol.ErrorSignedOut, "sign in to Hisar first")
+		return browserprotocol.NewError(browserprotocol.ErrorSignedOut, "sign in to Hisar first")
 	case errors.Is(err, ErrOffline):
-		return browserprotocol.CreateError(browserprotocol.ErrorOffline, err.Error())
+		return browserprotocol.NewError(browserprotocol.ErrorOffline, err.Error())
 	case errors.Is(err, ErrNotFound):
-		return browserprotocol.CreateError(browserprotocol.ErrorNotFound, err.Error())
+		return browserprotocol.NewError(browserprotocol.ErrorNotFound, err.Error())
 	case errors.Is(err, errNoURLMatch):
-		return browserprotocol.CreateError(browserprotocol.ErrorNoMatch, err.Error())
+		return browserprotocol.NewError(browserprotocol.ErrorNoMatch, err.Error())
 	}
 	var responseError *browserprotocol.ResponseError
 	if errors.As(err, &responseError) {
 		return responseError
 	}
-	return browserprotocol.CreateError(browserprotocol.ErrorInternal, err.Error())
+	return browserprotocol.NewError(browserprotocol.ErrorInternal, err.Error())
 }

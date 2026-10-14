@@ -24,20 +24,20 @@ func (approver *Approver) resolveRequester(pid int) (appinfo.Requester, bool) {
 	return approver.config.ResolveRequester(pid), true
 }
 
-func buildAllChainProcess(allProcess []appinfo.Process) []ChainProcess {
-	allChainProcess := []ChainProcess{}
-	for _, process := range allProcess {
+func buildChainProcesses(processes []appinfo.Process) []ChainProcess {
+	chainProcesses := []ChainProcess{}
+	for _, process := range processes {
 		name := appinfo.GetProgramName(process)
 		if name == "" {
 			continue
 		}
-		commandLine := formatCommandLine(process.AllArgument)
+		commandLine := formatCommandLine(process.Arguments)
 		if commandLine == "" {
 			commandLine = process.Path
 		}
-		allChainProcess = append(allChainProcess, ChainProcess{Name: truncateText(name, maximumAgentNameLength), CommandLine: commandLine})
+		chainProcesses = append(chainProcesses, ChainProcess{Name: truncateText(name, maximumAgentNameLength), CommandLine: commandLine})
 	}
-	return allChainProcess
+	return chainProcesses
 }
 
 // describeAppSignature says who signed an app; the warning is for an app macOS cannot vouch for.
@@ -65,7 +65,7 @@ func describeAppSignature(app appinfo.App) (string, string) {
 func applyRequester(event *ApprovalEvent, requester appinfo.Requester) {
 	event.RequesterKind = requester.Kind
 	event.AppName = requester.Name
-	event.AllChainProcess = buildAllChainProcess(requester.AllChainProcess)
+	event.ChainProcesses = buildChainProcesses(requester.ChainProcesses)
 	if requester.Kind != appinfo.RequesterKindApp {
 		return
 	}

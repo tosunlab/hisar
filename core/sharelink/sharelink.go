@@ -77,36 +77,36 @@ type Payload struct {
 
 func GetCustomFieldKey(index int) string { return customFieldPrefix + strconv.Itoa(index) }
 
-func ListAllAvailableFieldKey(vaultItem *item.Item) []string {
-	var allKey []string
+func ListAvailableFieldKeys(vaultItem *item.Item) []string {
+	var keys []string
 	if vaultItem.Overview.Username != "" {
-		allKey = append(allKey, FieldUsername)
+		keys = append(keys, FieldUsername)
 	}
 	if vaultItem.Details.Password != "" {
-		allKey = append(allKey, FieldPassword)
+		keys = append(keys, FieldPassword)
 	}
 	if len(vaultItem.Overview.URLs) > 0 {
-		allKey = append(allKey, FieldURLs)
+		keys = append(keys, FieldURLs)
 	}
 	for index, field := range vaultItem.Details.Fields {
 		if field.Value != "" {
-			allKey = append(allKey, GetCustomFieldKey(index))
+			keys = append(keys, GetCustomFieldKey(index))
 		}
 	}
 	if vaultItem.Details.Notes != "" {
-		allKey = append(allKey, FieldNotes)
+		keys = append(keys, FieldNotes)
 	}
-	return allKey
+	return keys
 }
 
-func ListAllDefaultFieldKey(vaultItem *item.Item) []string {
-	var allKey []string
-	for _, key := range ListAllAvailableFieldKey(vaultItem) {
+func ListDefaultFieldKeys(vaultItem *item.Item) []string {
+	var keys []string
+	for _, key := range ListAvailableFieldKeys(vaultItem) {
 		if key == FieldUsername || key == FieldPassword {
-			allKey = append(allKey, key)
+			keys = append(keys, key)
 		}
 	}
-	return allKey
+	return keys
 }
 
 func DescribeFieldKey(vaultItem *item.Item, key string) string {
@@ -142,10 +142,10 @@ func parseCustomFieldKey(key string, vaultItem *item.Item) (int, bool) {
 }
 
 // BuildItemPayload copies only the chosen fields; key material (SSH private keys, passkeys, one-time password secrets) has no key.
-func BuildItemPayload(vaultItem *item.Item, allFieldKey []string) (*Payload, error) {
+func BuildItemPayload(vaultItem *item.Item, fieldKeys []string) (*Payload, error) {
 	payload := &Payload{Version: PayloadVersion, Title: limitText(vaultItem.Overview.Title, MaxTitleLength), Fields: []Field{}}
 	isChosen := map[string]bool{}
-	for _, key := range allFieldKey {
+	for _, key := range fieldKeys {
 		if key == FieldUsername || key == FieldPassword || key == FieldURLs || key == FieldNotes {
 			isChosen[key] = true
 			continue

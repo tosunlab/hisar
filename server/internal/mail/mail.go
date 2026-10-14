@@ -55,7 +55,7 @@ type SMTPMailer struct {
 	checkLoopbackHost func(host string) bool
 }
 
-func CreateSMTPMailer(config SMTPConfig) (*SMTPMailer, error) {
+func NewSMTPMailer(config SMTPConfig) (*SMTPMailer, error) {
 	if strings.TrimSpace(config.Host) == "" {
 		return nil, errors.New("mail: SMTP host is empty")
 	}
@@ -172,15 +172,15 @@ func RemoveControlCharacter(text string) string {
 
 func BuildMessage(fromAddress *netmail.Address, recipient string, message Message, now time.Time) []byte {
 	var buffer bytes.Buffer
-	allRandomByte := make([]byte, 16)
-	rand.Read(allRandomByte)
+	randomBytes := make([]byte, 16)
+	rand.Read(randomBytes)
 	domain := fromAddress.Address[strings.LastIndex(fromAddress.Address, "@")+1:]
 	header := func(name, value string) { fmt.Fprintf(&buffer, "%s: %s\r\n", name, value) }
 	header("From", fromAddress.String())
 	header("To", recipient)
 	header("Subject", mime.QEncoding.Encode("utf-8", RemoveControlCharacter(message.Subject)))
 	header("Date", now.Format(time.RFC1123Z))
-	header("Message-ID", "<"+hex.EncodeToString(allRandomByte)+"@"+domain+">")
+	header("Message-ID", "<"+hex.EncodeToString(randomBytes)+"@"+domain+">")
 	header("MIME-Version", "1.0")
 	header("Content-Type", "text/plain; charset=utf-8")
 	header("Content-Transfer-Encoding", "quoted-printable")

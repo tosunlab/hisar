@@ -37,7 +37,7 @@ func TestFraming(t *testing.T) {
 }
 
 func TestIsURLMatch(t *testing.T) {
-	allCase := []struct {
+	cases := []struct {
 		itemURL, pageURL string
 		isExactHost      bool
 		want             bool
@@ -64,7 +64,7 @@ func TestIsURLMatch(t *testing.T) {
 		{"", "https://example.com", false, false},
 		{"https://co.uk", "https://bank.co.uk", false, false},
 	}
-	for _, testCase := range allCase {
+	for _, testCase := range cases {
 		if got := IsURLMatch(testCase.itemURL, testCase.pageURL, testCase.isExactHost); got != testCase.want {
 			t.Errorf("IsURLMatch(%q, %q, exact=%v) = %v", testCase.itemURL, testCase.pageURL, testCase.isExactHost, got)
 		}

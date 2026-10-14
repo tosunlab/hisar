@@ -18,10 +18,10 @@ type CommandLineBridge struct {
 	service *Service
 }
 
-// CreateCommandLineBridge also ends the CLI approvals whenever Hisar locks or signs out.
-func CreateCommandLineBridge(service *Service, approvals *clisocket.SessionApprovals) *CommandLineBridge {
+// NewCommandLineBridge also ends the CLI approvals whenever Hisar locks or signs out.
+func NewCommandLineBridge(service *Service, approvals *clisocket.SessionApprovals) *CommandLineBridge {
 	service.mutex.Lock()
-	service.allLockListener = append(service.allLockListener, approvals.ClearAll)
+	service.lockListeners = append(service.lockListeners, approvals.ClearAll)
 	service.mutex.Unlock()
 	return &CommandLineBridge{service: service}
 }
@@ -35,7 +35,7 @@ func (bridge *CommandLineBridge) GetHello() cliprotocol.HelloResult {
 func (bridge *CommandLineBridge) CheckUpdateRequired(request *cliprotocol.Request) error {
 	s := bridge.service
 	if requirement := s.getUpdateRequirement(); requirement != nil {
-		return cliprotocol.CreateError(cliprotocol.ErrorUpdateRequired, fmt.Sprintf(
+		return cliprotocol.NewError(cliprotocol.ErrorUpdateRequired, fmt.Sprintf(
 			"Hisar needs an update: the server requires version %s or later and this Mac has %s. Open Hisar and choose Update now.",
 			requirement.MinimumVersion, describeVersion(requirement.CurrentVersion)))
 	}
@@ -43,7 +43,7 @@ func (bridge *CommandLineBridge) CheckUpdateRequired(request *cliprotocol.Reques
 		return nil
 	}
 	if requirement := s.checkClientVersion(request.ClientPlatform, request.ClientVersion); requirement != nil {
-		return cliprotocol.CreateError(cliprotocol.ErrorUpdateRequired, fmt.Sprintf(
+		return cliprotocol.NewError(cliprotocol.ErrorUpdateRequired, fmt.Sprintf(
 			"hisar needs an update: the server requires version %s or later and this is %s. Install the latest hisar from %s, or use the one that comes with the Hisar app.",
 			requirement.MinimumVersion, requirement.CurrentVersion, requirement.UpdateURL))
 	}
@@ -65,15 +65,15 @@ func convertCommandLineError(err error) error {
 	case errors.As(err, &responseError):
 		return err
 	case errors.Is(err, ErrLocked):
-		return cliprotocol.CreateError(cliprotocol.ErrorLocked, "Hisar is locked; run the command again to unlock it")
+		return cliprotocol.NewError(cliprotocol.ErrorLocked, "Hisar is locked; run the command again to unlock it")
 	case errors.Is(err, ErrSignedOut):
-		return cliprotocol.CreateError(cliprotocol.ErrorSignedOut, "the Hisar app is not signed in; sign in there, or run hisar --standalone")
+		return cliprotocol.NewError(cliprotocol.ErrorSignedOut, "the Hisar app is not signed in; sign in there, or run hisar --standalone")
 	case errors.Is(err, ErrOffline):
-		return cliprotocol.CreateError(cliprotocol.ErrorOffline, err.Error())
+		return cliprotocol.NewError(cliprotocol.ErrorOffline, err.Error())
 	case errors.Is(err, ErrNotFound):
-		return cliprotocol.CreateError(cliprotocol.ErrorNotFound, err.Error())
+		return cliprotocol.NewError(cliprotocol.ErrorNotFound, err.Error())
 	}
-	return cliprotocol.CreateError(cliprotocol.ErrorInternal, err.Error())
+	return cliprotocol.NewError(cliprotocol.ErrorInternal, err.Error())
 }
 
 func (bridge *CommandLineBridge) HandleRequest(_ context.Context, request *cliprotocol.Request) (any, error) {
@@ -90,12 +90,12 @@ func (bridge *CommandLineBridge) answer(request *cliprotocol.Request) (any, erro
 	case cliprotocol.TypeAccount:
 		return s.getCommandLineAccount()
 	case cliprotocol.TypeListVault:
-		allSummary, err := s.ListAllVault()
+		summaries, err := s.ListVaults()
 		if err != nil {
 			return nil, err
 		}
 		result := cliprotocol.VaultListResult{Vaults: []cliprotocol.Vault{}}
-		for _, summary := range allSummary {
+		for _, summary := range summaries {
 			result.Vaults = append(result.Vaults, convertToCommandLineVault(summary))
 		}
 		return result, nil
@@ -109,7 +109,7 @@ func (bridge *CommandLineBridge) answer(request *cliprotocol.Request) (any, erro
 		return cliprotocol.VaultResult{Vault: convertToCommandLineVault(summary)}, err
 	case cliprotocol.TypeDeleteVault:
 		if request.VaultDeletion == nil {
-			return nil, cliprotocol.CreateError(cliprotocol.ErrorInvalidRequest, "say what happens to the vault's items")
+			return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "say what happens to the vault's items")
 		}
 		result, err := s.DeleteVault(request.VaultID, VaultDeletionRequest{
 			MoveToVaultID: request.VaultDeletion.MoveToVaultID, IsDeletingItems: request.VaultDeletion.IsDeletingItems, ConfirmedName: request.VaultDeletion.ConfirmedName,
@@ -119,17 +119,17 @@ func (bridge *CommandLineBridge) answer(request *cliprotocol.Request) (any, erro
 		return nil, s.LeaveVault(request.VaultID)
 	case cliprotocol.TypeExport:
 		if request.Export == nil {
-			return nil, cliprotocol.CreateError(cliprotocol.ErrorInvalidRequest, "the export is missing")
+			return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "the export is missing")
 		}
 		result, err := s.writeExportFile(request.Export.Format, request.Export.Passphrase, request.Export.Path)
 		return cliprotocol.ExportResult{Path: result.Path, VaultCount: result.VaultCount, ItemCount: result.ItemCount}, err
 	case cliprotocol.TypeListItem:
-		allDetail, err := s.ListAllItem(request.VaultID)
+		details, err := s.ListItems(request.VaultID)
 		if err != nil {
 			return nil, err
 		}
 		result := cliprotocol.ItemListResult{Items: []cliprotocol.Item{}}
-		for _, detail := range allDetail {
+		for _, detail := range details {
 			result.Items = append(result.Items, convertToCommandLineSummary(detail))
 		}
 		return result, nil
@@ -153,14 +153,14 @@ func (bridge *CommandLineBridge) answer(request *cliprotocol.Request) (any, erro
 		}
 		return nil, s.DeleteItem(request.VaultID, request.ItemID)
 	case cliprotocol.TypeImportItem:
-		return s.saveAllCommandLineImport(request.VaultID, request.ImportedItems)
+		return s.saveCommandLineImports(request.VaultID, request.ImportedItems)
 	case cliprotocol.TypeListPeople:
-		allPerson, err := s.ListAllPerson()
+		people, err := s.ListPeople()
 		if err != nil {
 			return nil, err
 		}
 		result := cliprotocol.PeopleListResult{People: []cliprotocol.Person{}}
-		for _, person := range allPerson {
+		for _, person := range people {
 			result.People = append(result.People, cliprotocol.Person{
 				AccountID: person.AccountID, Name: person.Name, Email: person.Email, Role: person.Role,
 				SecurityCode: person.SecurityCode, IsCurrentUser: person.IsCurrentUser, IsKeyChanged: person.IsKeyChanged,
@@ -174,17 +174,17 @@ func (bridge *CommandLineBridge) answer(request *cliprotocol.Request) (any, erro
 	case cliprotocol.TypeInvite:
 		return nil, s.InvitePerson(request.Email)
 	case cliprotocol.TypeListInvitation:
-		invitations, err := s.ListAllShareInvitation()
+		invitations, err := s.ListShareInvitations()
 		if err != nil {
 			return nil, err
 		}
 		result := cliprotocol.InvitationListResult{Received: []cliprotocol.ReceivedInvitation{}, Sent: []cliprotocol.SentInvitation{}, CompletionError: invitations.CompletionError}
-		for _, received := range invitations.AllReceived {
+		for _, received := range invitations.Received {
 			result.Received = append(result.Received, cliprotocol.ReceivedInvitation{
 				ID: received.ID, VaultID: received.VaultID, Role: received.Role, InvitedByName: received.InvitedByName, InvitedByEmail: received.InvitedByEmail, ExpiresAt: received.ExpiresAt,
 			})
 		}
-		for _, sent := range invitations.AllSent {
+		for _, sent := range invitations.Sent {
 			result.Sent = append(result.Sent, cliprotocol.SentInvitation{
 				ID: sent.ID, VaultID: sent.VaultID, VaultName: sent.VaultName, Email: sent.Email, Role: sent.Role, State: sent.State, ExpiresAt: sent.ExpiresAt,
 			})
@@ -197,27 +197,27 @@ func (bridge *CommandLineBridge) answer(request *cliprotocol.Request) (any, erro
 	case cliprotocol.TypeCancelInvitation:
 		return nil, s.CancelShareInvitation(request.InvitationID)
 	case cliprotocol.TypeListDevice:
-		allDevice, err := s.ListAllDevice()
+		devices, err := s.ListDevices()
 		if err != nil {
 			return nil, err
 		}
 		result := cliprotocol.DeviceListResult{Devices: []cliprotocol.Device{}}
-		for _, device := range allDevice {
+		for _, device := range devices {
 			result.Devices = append(result.Devices, cliprotocol.Device{ID: device.ID, Name: device.Name, Platform: device.Platform, LastSeenAt: device.LastSeenAt, IsCurrent: device.IsCurrent})
 		}
 		return result, nil
 	case cliprotocol.TypeRevokeDevice:
 		return nil, s.RevokeDevice(request.DeviceID)
 	case cliprotocol.TypeResolveSecret:
-		return s.resolveAllSecret(request.References)
+		return s.resolveSecrets(request.References)
 	case cliprotocol.TypeCreateShareLink:
 		return bridge.createShareLink(request)
 	case cliprotocol.TypeListShareLink:
-		return bridge.listAllShareLink()
+		return bridge.listShareLinks()
 	case cliprotocol.TypeRevokeShareLink:
 		return nil, s.RevokeShareLink(request.ShareLinkID)
 	}
-	return nil, cliprotocol.CreateError(cliprotocol.ErrorInvalidRequest, fmt.Sprintf("unknown request type %q", request.Type))
+	return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, fmt.Sprintf("unknown request type %q", request.Type))
 }
 
 func (s *Service) getCommandLineAccount() (cliprotocol.AccountResult, error) {
@@ -237,7 +237,7 @@ func (bridge *CommandLineBridge) getItem(vaultID, itemID string) (ItemDetail, er
 	if !errors.Is(err, ErrNotFound) {
 		return detail, err
 	}
-	if _, err := bridge.service.ListAllItem(vaultID); err != nil {
+	if _, err := bridge.service.ListItems(vaultID); err != nil {
 		return ItemDetail{}, err
 	}
 	return bridge.service.GetItem(vaultID, itemID)
@@ -245,7 +245,7 @@ func (bridge *CommandLineBridge) getItem(vaultID, itemID string) (ItemDetail, er
 
 func (bridge *CommandLineBridge) saveItem(vaultID string, change *cliprotocol.ItemChange) (any, error) {
 	if change == nil {
-		return nil, cliprotocol.CreateError(cliprotocol.ErrorInvalidRequest, "the item is missing")
+		return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "the item is missing")
 	}
 	detail := ItemDetail{URLs: []string{}, Fields: []ItemField{}}
 	if change.ID != "" {
@@ -272,11 +272,11 @@ func (bridge *CommandLineBridge) saveItem(vaultID string, change *cliprotocol.It
 	return cliprotocol.ItemResult{Item: convertToCommandLineItem(saved)}, nil
 }
 
-// saveAllCommandLineImport only creates items: IDs and revisions from the CLI are dropped.
-func (s *Service) saveAllCommandLineImport(vaultID string, allImportedItem []item.Item) (cliprotocol.ImportResult, error) {
+// saveCommandLineImports only creates items: IDs and revisions from the CLI are dropped.
+func (s *Service) saveCommandLineImports(vaultID string, importedItems []item.Item) (cliprotocol.ImportResult, error) {
 	result := cliprotocol.ImportResult{Failures: []cliprotocol.ImportFailure{}}
-	if len(allImportedItem) > cliprotocol.MaxImportBatch {
-		return result, cliprotocol.CreateError(cliprotocol.ErrorInvalidRequest, fmt.Sprintf("send at most %d items at a time", cliprotocol.MaxImportBatch))
+	if len(importedItems) > cliprotocol.MaxImportBatch {
+		return result, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, fmt.Sprintf("send at most %d items at a time", cliprotocol.MaxImportBatch))
 	}
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -292,14 +292,14 @@ func (s *Service) saveAllCommandLineImport(vaultID string, allImportedItem []ite
 	if vault.Role == apitypes.VaultReader {
 		return result, errReadOnlyVault
 	}
-	if s.allItemByVaultID[vault.ID] == nil {
-		allExisting, err := s.unlockedSession.ListAllItem(ctx, vault)
+	if s.itemsByVaultID[vault.ID] == nil {
+		existingItems, err := s.unlockedSession.ListItems(ctx, vault)
 		if err != nil {
 			return result, convertError(err)
 		}
-		s.allItemByVaultID[vault.ID] = allExisting
+		s.itemsByVaultID[vault.ID] = existingItems
 	}
-	for _, vaultItem := range allImportedItem {
+	for _, vaultItem := range importedItems {
 		vaultItem.ID, vaultItem.Revision = "", ""
 		_, err := s.unlockedSession.SaveItem(ctx, vault, &vaultItem)
 		if isImportStoppingError(err) {
@@ -324,13 +324,13 @@ func (s *Service) getCommandLineVaultActions(vaultID string) (cliprotocol.VaultA
 		Vault: convertToCommandLineVault(actions.Vault), CanRename: actions.CanRename,
 		CanDelete: actions.CanDelete, DeleteBlockedReason: actions.DeleteBlockedReason,
 		CanLeave: actions.CanLeave, LeaveBlockedReason: actions.LeaveBlockedReason,
-		AllMemberLosingAccess: []cliprotocol.VaultMember{}, AllTargetVault: []cliprotocol.Vault{},
+		MembersLosingAccess: []cliprotocol.VaultMember{}, TargetVaults: []cliprotocol.Vault{},
 	}
-	for _, member := range actions.AllMemberLosingAccess {
-		result.AllMemberLosingAccess = append(result.AllMemberLosingAccess, cliprotocol.VaultMember{Name: member.Name, Email: member.Email, Role: member.Role})
+	for _, member := range actions.MembersLosingAccess {
+		result.MembersLosingAccess = append(result.MembersLosingAccess, cliprotocol.VaultMember{Name: member.Name, Email: member.Email, Role: member.Role})
 	}
-	for _, target := range actions.AllTargetVault {
-		result.AllTargetVault = append(result.AllTargetVault, convertToCommandLineVault(target))
+	for _, target := range actions.TargetVaults {
+		result.TargetVaults = append(result.TargetVaults, convertToCommandLineVault(target))
 	}
 	return result, nil
 }
@@ -354,7 +354,7 @@ func convertToCommandLineItem(detail ItemDetail) cliprotocol.Item {
 	for _, field := range detail.Fields {
 		commandLineItem.Fields = append(commandLineItem.Fields, cliprotocol.Field{Name: field.Name, Value: field.Value, Concealed: field.Concealed})
 	}
-	for _, passkey := range detail.AllPasskey {
+	for _, passkey := range detail.Passkeys {
 		commandLineItem.Passkeys = append(commandLineItem.Passkeys, cliprotocol.Passkey{RelyingPartyID: passkey.RelyingPartyID, UserName: passkey.UserName})
 	}
 	return commandLineItem

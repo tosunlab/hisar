@@ -47,9 +47,9 @@ func createTestCertificate(t *testing.T) (tls.Certificate, *x509.CertPool) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	allTrustedCertificate := x509.NewCertPool()
-	allTrustedCertificate.AddCert(certificate)
-	return tls.Certificate{Certificate: [][]byte{certificateDER}, PrivateKey: privateKey}, allTrustedCertificate
+	trustedCertificates := x509.NewCertPool()
+	trustedCertificates.AddCert(certificate)
+	return tls.Certificate{Certificate: [][]byte{certificateDER}, PrivateKey: privateKey}, trustedCertificates
 }
 
 func startSink(t *testing.T, config mailtest.SinkConfig) (*mailtest.Sink, string, int) {
@@ -80,11 +80,11 @@ func decodeBody(t *testing.T, data string) string {
 var testMessage = mail.Message{To: "bob@example.com", Subject: "Alice\r\nBcc: eve@example.com shared a vault — with you", Body: "Line one.\nA long line " + strings.Repeat("x", 100) + "\n.\nLast line.\n"}
 
 func TestSendOverStartTLS(t *testing.T) {
-	certificate, allTrustedCertificate := createTestCertificate(t)
+	certificate, trustedCertificates := createTestCertificate(t)
 	sink, host, port := startSink(t, mailtest.SinkConfig{TLSConfig: &tls.Config{Certificates: []tls.Certificate{certificate}}})
-	mailer, err := mail.CreateSMTPMailer(mail.SMTPConfig{
+	mailer, err := mail.NewSMTPMailer(mail.SMTPConfig{
 		Host: host, Port: port, Username: "hisar", Password: "secret", From: "Hisar <noreply@tryhisar.com>",
-		TLSConfig: &tls.Config{RootCAs: allTrustedCertificate},
+		TLSConfig: &tls.Config{RootCAs: trustedCertificates},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -92,12 +92,12 @@ func TestSendOverStartTLS(t *testing.T) {
 	if err := mailer.Send(context.Background(), testMessage); err != nil {
 		t.Fatal(err)
 	}
-	allMessage := sink.ListAllMessage()
-	if len(allMessage) != 1 {
-		t.Fatalf("messages = %+v", allMessage)
+	messages := sink.ListMessages()
+	if len(messages) != 1 {
+		t.Fatalf("messages = %+v", messages)
 	}
-	received := allMessage[0]
-	if !received.IsTLS || received.Username != "hisar" || received.From != "noreply@tryhisar.com" || len(received.AllRecipient) != 1 || received.AllRecipient[0] != "bob@example.com" {
+	received := messages[0]
+	if !received.IsTLS || received.Username != "hisar" || received.From != "noreply@tryhisar.com" || len(received.Recipients) != 1 || received.Recipients[0] != "bob@example.com" {
 		t.Errorf("received = %+v", received)
 	}
 	parsed, err := netmail.ReadMessage(strings.NewReader(received.Data))
@@ -117,9 +117,9 @@ func TestSendOverStartTLS(t *testing.T) {
 }
 
 func TestSendOverImplicitTLS(t *testing.T) {
-	certificate, allTrustedCertificate := createTestCertificate(t)
+	certificate, trustedCertificates := createTestCertificate(t)
 	sink, host, port := startSink(t, mailtest.SinkConfig{TLSConfig: &tls.Config{Certificates: []tls.Certificate{certificate}}, IsImplicitTLS: true})
-	mailer, err := mail.CreateSMTPMailer(mail.SMTPConfig{Host: host, Port: port, Username: "hisar", Password: "secret", From: "noreply@tryhisar.com", TLSConfig: &tls.Config{RootCAs: allTrustedCertificate}})
+	mailer, err := mail.NewSMTPMailer(mail.SMTPConfig{Host: host, Port: port, Username: "hisar", Password: "secret", From: "noreply@tryhisar.com", TLSConfig: &tls.Config{RootCAs: trustedCertificates}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,29 +127,29 @@ func TestSendOverImplicitTLS(t *testing.T) {
 	if err := mailer.Send(context.Background(), testMessage); err != nil {
 		t.Fatal(err)
 	}
-	if allMessage := sink.ListAllMessage(); len(allMessage) != 1 || !allMessage[0].IsTLS {
-		t.Fatalf("messages = %+v", allMessage)
+	if messages := sink.ListMessages(); len(messages) != 1 || !messages[0].IsTLS {
+		t.Fatalf("messages = %+v", messages)
 	}
 }
 
 func TestSendRefusesUntrustedCertificate(t *testing.T) {
 	certificate, _ := createTestCertificate(t)
 	sink, host, port := startSink(t, mailtest.SinkConfig{TLSConfig: &tls.Config{Certificates: []tls.Certificate{certificate}}})
-	mailer, err := mail.CreateSMTPMailer(mail.SMTPConfig{Host: host, Port: port, Username: "hisar", Password: "secret", From: "noreply@tryhisar.com"})
+	mailer, err := mail.NewSMTPMailer(mail.SMTPConfig{Host: host, Port: port, Username: "hisar", Password: "secret", From: "noreply@tryhisar.com"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := mailer.Send(context.Background(), testMessage); err == nil || !strings.Contains(err.Error(), "STARTTLS") {
 		t.Errorf("untrusted certificate: %v", err)
 	}
-	if len(sink.ListAllMessage()) != 0 {
+	if len(sink.ListMessages()) != 0 {
 		t.Error("message sent over an untrusted connection")
 	}
 }
 
 func TestSendRefusesPlaintextToRemoteHost(t *testing.T) {
 	sink, host, port := startSink(t, mailtest.SinkConfig{})
-	mailer, err := mail.CreateSMTPMailer(mail.SMTPConfig{Host: host, Port: port, Username: "hisar", Password: "secret", From: "noreply@tryhisar.com"})
+	mailer, err := mail.NewSMTPMailer(mail.SMTPConfig{Host: host, Port: port, Username: "hisar", Password: "secret", From: "noreply@tryhisar.com"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,27 +157,27 @@ func TestSendRefusesPlaintextToRemoteHost(t *testing.T) {
 	if err := mailer.Send(context.Background(), testMessage); !errors.Is(err, mail.ErrNoTLS) {
 		t.Errorf("plaintext to a remote host: %v", err)
 	}
-	if len(sink.ListAllMessage()) != 0 {
+	if len(sink.ListMessages()) != 0 {
 		t.Error("message sent without TLS")
 	}
 }
 
 func TestSendAllowsPlaintextOnLoopback(t *testing.T) {
 	sink, host, port := startSink(t, mailtest.SinkConfig{})
-	mailer, err := mail.CreateSMTPMailer(mail.SMTPConfig{Host: host, Port: port, Username: "hisar", Password: "secret", From: "noreply@tryhisar.com"})
+	mailer, err := mail.NewSMTPMailer(mail.SMTPConfig{Host: host, Port: port, Username: "hisar", Password: "secret", From: "noreply@tryhisar.com"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := mailer.Send(context.Background(), testMessage); err != nil {
 		t.Fatal(err)
 	}
-	if allMessage := sink.ListAllMessage(); len(allMessage) != 1 || allMessage[0].IsTLS || allMessage[0].Username != "hisar" {
-		t.Fatalf("messages = %+v", allMessage)
+	if messages := sink.ListMessages(); len(messages) != 1 || messages[0].IsTLS || messages[0].Username != "hisar" {
+		t.Fatalf("messages = %+v", messages)
 	}
 }
 
 func TestSendRefusesInvalidRecipient(t *testing.T) {
-	mailer, err := mail.CreateSMTPMailer(mail.SMTPConfig{Host: "127.0.0.1", Port: 1, From: "noreply@tryhisar.com"})
+	mailer, err := mail.NewSMTPMailer(mail.SMTPConfig{Host: "127.0.0.1", Port: 1, From: "noreply@tryhisar.com"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,22 +195,22 @@ func TestCreateSMTPMailerValidatesConfig(t *testing.T) {
 		{Host: "smtp.example.com", Port: 70000, From: "noreply@tryhisar.com"},
 		{Host: "smtp.example.com", Port: 587, From: "not an address"},
 	} {
-		if _, err := mail.CreateSMTPMailer(config); err == nil {
+		if _, err := mail.NewSMTPMailer(config); err == nil {
 			t.Errorf("accepted %+v", config)
 		}
 	}
 }
 
 func TestRecorderWaitsForMessages(t *testing.T) {
-	recorder := mailtest.CreateRecorder()
+	recorder := mailtest.NewRecorder()
 	go func() {
 		time.Sleep(10 * time.Millisecond)
 		recorder.Send(context.Background(), mail.Message{To: "bob@example.com"})
 	}()
-	if allMessage := recorder.WaitForMessageCount(1, 5*time.Second); len(allMessage) != 1 {
-		t.Fatalf("messages = %+v", allMessage)
+	if messages := recorder.WaitForMessageCount(1, 5*time.Second); len(messages) != 1 {
+		t.Fatalf("messages = %+v", messages)
 	}
-	if allMessage := recorder.WaitForMessageCount(2, 20*time.Millisecond); len(allMessage) != 1 {
-		t.Errorf("messages after timeout = %+v", allMessage)
+	if messages := recorder.WaitForMessageCount(2, 20*time.Millisecond); len(messages) != 1 {
+		t.Errorf("messages after timeout = %+v", messages)
 	}
 }

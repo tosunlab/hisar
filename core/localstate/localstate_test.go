@@ -32,7 +32,7 @@ func TestStateRoundtrip(t *testing.T) {
 	}
 	state.Server, state.AccountID, state.Token = "https://x", "ABC123", "tok"
 	state.SetSeq("v1", 42)
-	state.AllPin["B"] = []byte{1, 2}
+	state.Pins["B"] = []byte{1, 2}
 	if err := state.Save(); err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func TestStateRoundtrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if reloadedState.Token != "tok" || reloadedState.GetSeq("v1") != 42 || reloadedState.AllPin["B"][1] != 2 || !reloadedState.IsLoggedIn() {
+	if reloadedState.Token != "tok" || reloadedState.GetSeq("v1") != 42 || reloadedState.Pins["B"][1] != 2 || !reloadedState.IsLoggedIn() {
 		t.Errorf("reloaded state: %+v", reloadedState)
 	}
 
@@ -56,7 +56,7 @@ func TestStateRoundtrip(t *testing.T) {
 	reloadedState.IsCompactSSHApproval = true
 	reloadedState.IsPhoneApprovalDisabled = true
 	reloadedState.Reset()
-	if reloadedState.IsLoggedIn() || reloadedState.GetSeq("v1") != 0 || len(reloadedState.AllPin) != 0 || !reloadedState.IsAutomaticUpdateCheckDisabled || !reloadedState.IsCommandLineIntegrationDisabled || !reloadedState.IsCompactSSHApproval || !reloadedState.IsPhoneApprovalDisabled {
+	if reloadedState.IsLoggedIn() || reloadedState.GetSeq("v1") != 0 || len(reloadedState.Pins) != 0 || !reloadedState.IsAutomaticUpdateCheckDisabled || !reloadedState.IsCommandLineIntegrationDisabled || !reloadedState.IsCompactSSHApproval || !reloadedState.IsPhoneApprovalDisabled {
 		t.Errorf("reset state: %+v", reloadedState)
 	}
 	if err := reloadedState.Save(); err != nil {
@@ -70,10 +70,10 @@ func TestAgentVaultsAreOffByDefaultAndClearedAtSignOut(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(state.AllAgentVaultID) != 0 {
-		t.Fatalf("a new state makes vaults available to agents: %q", state.AllAgentVaultID)
+	if len(state.AgentVaultIDs) != 0 {
+		t.Fatalf("a new state makes vaults available to agents: %q", state.AgentVaultIDs)
 	}
-	state.AllAgentVaultID = []string{"vault-personal"}
+	state.AgentVaultIDs = []string{"vault-personal"}
 	if err := state.Save(); err != nil {
 		t.Fatal(err)
 	}
@@ -82,12 +82,12 @@ func TestAgentVaultsAreOffByDefaultAndClearedAtSignOut(t *testing.T) {
 		t.Errorf("saved state: %s", encodedState)
 	}
 	reloadedState, err := Load(path)
-	if err != nil || len(reloadedState.AllAgentVaultID) != 1 || reloadedState.AllAgentVaultID[0] != "vault-personal" {
-		t.Fatalf("reloaded: %q %v", reloadedState.AllAgentVaultID, err)
+	if err != nil || len(reloadedState.AgentVaultIDs) != 1 || reloadedState.AgentVaultIDs[0] != "vault-personal" {
+		t.Fatalf("reloaded: %q %v", reloadedState.AgentVaultIDs, err)
 	}
 	reloadedState.Reset()
-	if len(reloadedState.AllAgentVaultID) != 0 {
-		t.Errorf("sign-out keeps the agent vaults: %q", reloadedState.AllAgentVaultID)
+	if len(reloadedState.AgentVaultIDs) != 0 {
+		t.Errorf("sign-out keeps the agent vaults: %q", reloadedState.AgentVaultIDs)
 	}
 }
 
@@ -197,7 +197,7 @@ func TestCheckMemberPin(t *testing.T) {
 	if err := state.CheckMemberPin(substitutedMember); err == nil || !strings.Contains(err.Error(), "signing key of bob@example.com changed") {
 		t.Errorf("changed signing key accepted: %v", err)
 	}
-	if pinned := state.AllPin["BOB111"]; len(pinned) != 3 || pinned[0] != 1 {
+	if pinned := state.Pins["BOB111"]; len(pinned) != 3 || pinned[0] != 1 {
 		t.Errorf("pin overwritten: %v", pinned)
 	}
 }

@@ -50,8 +50,8 @@ type DeleteAccountRequest struct {
 
 // AccountDeletionPreview names vaults by ID only: their names are encrypted.
 type AccountDeletionPreview struct {
-	AllOwnedVault           []DeletionOwnedVault  `json:"ownedVaults"`
-	AllMemberVault          []DeletionMemberVault `json:"memberVaults"`
+	OwnedVaults             []DeletionOwnedVault  `json:"ownedVaults"`
+	MemberVaults            []DeletionMemberVault `json:"memberVaults"`
 	ShareLinkCount          int                   `json:"shareLinkCount"`
 	SentInvitationCount     int                   `json:"sentInvitationCount"`
 	ReceivedInvitationCount int                   `json:"receivedInvitationCount"`

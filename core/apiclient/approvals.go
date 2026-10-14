@@ -11,9 +11,9 @@ func (c *Client) CreateApproval(ctx context.Context, request *apitypes.CreateApp
 	return c.sendRequest(ctx, "POST", "/api/v1/approvals", nil, request, nil, nil)
 }
 
-func (c *Client) ListAllPendingApproval(ctx context.Context) ([]apitypes.PendingApproval, error) {
-	var allPending []apitypes.PendingApproval
-	return allPending, c.sendRequest(ctx, "GET", "/api/v1/approvals", nil, nil, &allPending, nil)
+func (c *Client) ListPendingApprovals(ctx context.Context) ([]apitypes.PendingApproval, error) {
+	var pendingRequests []apitypes.PendingApproval
+	return pendingRequests, c.sendRequest(ctx, "GET", "/api/v1/approvals", nil, nil, &pendingRequests, nil)
 }
 
 func (c *Client) GetApproval(ctx context.Context, requestID string) (*apitypes.Approval, error) {

@@ -16,12 +16,12 @@ func startRememberingTestFlow(t *testing.T, isRememberedByDefault bool) *testFlo
 	keyset := createTestKeyset(t)
 	description := createTestDescription()
 	description.RememberLabel, description.IsRememberedByDefault = testRememberLabel, isRememberedByDefault
-	request := CreateRequest(macDeviceID, "Alper's MacBook Pro", description, testNow, MaximumLifetime)
+	request := NewRequest(macDeviceID, "Alper's MacBook Pro", description, testNow, MaximumLifetime)
 	sealedRequest, err := SealRequest(keyset, testAccountID, request)
 	if err != nil {
 		t.Fatal(err)
 	}
-	tracker := CreateTracker()
+	tracker := NewTracker()
 	tracker.Add(request.RequestID, sealedRequest, request.ExpiresAt)
 	return &testFlow{keyset: keyset, request: request, sealedRequest: sealedRequest, tracker: tracker}
 }
@@ -71,7 +71,7 @@ func TestRememberChoiceTravelsWithTheRequest(t *testing.T) {
 }
 
 func TestPhoneRememberChoiceIsAccepted(t *testing.T) {
-	allCase := []struct {
+	cases := []struct {
 		decision         string
 		isRemembered     bool
 		wantIsRemembered bool
@@ -80,7 +80,7 @@ func TestPhoneRememberChoiceIsAccepted(t *testing.T) {
 		{DecisionApprove, false, false},
 		{DecisionDeny, true, false},
 	}
-	for _, testCase := range allCase {
+	for _, testCase := range cases {
 		flow := startRememberingTestFlow(t, true)
 		accepted, err := flow.tracker.AcceptAnswer(flow.keyset, testAccountID, flow.request.RequestID, flow.answerFromPhoneRemembering(t, testCase.decision, testCase.isRemembered), macDeviceID, testNow)
 		if err != nil || accepted.Decision != testCase.decision || accepted.IsRemembered != testCase.wantIsRemembered {
@@ -112,7 +112,7 @@ func (flow *testFlow) openAnswerPlaintext(t *testing.T, sealedAnswer []byte) []b
 
 func TestRememberChoiceIsBoundBySignature(t *testing.T) {
 	isRemembered, isOnce := true, false
-	allChange := map[string]struct {
+	changes := map[string]struct {
 		isRemembered bool
 		change       func(*Answer)
 	}{
@@ -120,7 +120,7 @@ func TestRememberChoiceIsBoundBySignature(t *testing.T) {
 		"remember flipped to once": {true, func(answer *Answer) { answer.IsRemembered = &isOnce }},
 		"remember choice removed":  {true, func(answer *Answer) { answer.IsRemembered = nil }},
 	}
-	for name, testCase := range allChange {
+	for name, testCase := range changes {
 		flow := startRememberingTestFlow(t, true)
 		answer := flow.openAnswer(t, flow.answerFromPhoneRemembering(t, DecisionApprove, testCase.isRemembered))
 		testCase.change(&answer)

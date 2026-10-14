@@ -6,7 +6,7 @@ import (
 )
 
 func TestParseReference(t *testing.T) {
-	allCase := []struct {
+	cases := []struct {
 		text     string
 		expected Reference
 	}{
@@ -19,7 +19,7 @@ func TestParseReference(t *testing.T) {
 		{"hisar://Ki%C5%9Fisel/x/y", Reference{"Kişisel", "x", "y"}},
 		{"hisar://v/item?query#fragment/f", Reference{"v", "item?query#fragment", "f"}},
 	}
-	for _, testCase := range allCase {
+	for _, testCase := range cases {
 		reference, err := Parse(testCase.text)
 		if err != nil || reference != testCase.expected {
 			t.Errorf("Parse(%q) = %+v, %v; want %+v", testCase.text, reference, err, testCase.expected)
@@ -28,7 +28,7 @@ func TestParseReference(t *testing.T) {
 }
 
 func TestParseReferenceError(t *testing.T) {
-	allCase := []struct {
+	cases := []struct {
 		text    string
 		message string
 	}{
@@ -44,7 +44,7 @@ func TestParseReferenceError(t *testing.T) {
 		{"hisar://Personal/%FF/password", "must decode to UTF-8"},
 		{"hisar://Personal/\xff/password", "must be UTF-8"},
 	}
-	for _, testCase := range allCase {
+	for _, testCase := range cases {
 		_, err := Parse(testCase.text)
 		if err == nil || !strings.Contains(err.Error(), testCase.message) {
 			t.Errorf("Parse(%q) error = %v; want %q", testCase.text, err, testCase.message)
@@ -53,7 +53,7 @@ func TestParseReferenceError(t *testing.T) {
 }
 
 func TestEncodeReference(t *testing.T) {
-	allCase := []struct {
+	cases := []struct {
 		reference Reference
 		expected  string
 	}{
@@ -64,7 +64,7 @@ func TestEncodeReference(t *testing.T) {
 		{Reference{"$HOME", "`x`", "a'b\"c"}, "hisar://%24HOME/%60x%60/a%27b%22c"},
 		{Reference{"v.1", "my_item-2~", "f"}, "hisar://v.1/my_item-2~/f"},
 	}
-	for _, testCase := range allCase {
+	for _, testCase := range cases {
 		if encoded := testCase.reference.String(); encoded != testCase.expected {
 			t.Errorf("%+v.String() = %q; want %q", testCase.reference, encoded, testCase.expected)
 		}
@@ -72,9 +72,9 @@ func TestEncodeReference(t *testing.T) {
 }
 
 func TestReferenceRoundTrip(t *testing.T) {
-	allName := []string{"Personal", "a/b", "100%", "spaces in name", "tab\there", "new\nline", "Kişisel 🔑", "?#&=+", "%2F", "'quoted\"", "\\back"}
-	for _, vaultName := range allName {
-		for _, itemTitle := range allName {
+	names := []string{"Personal", "a/b", "100%", "spaces in name", "tab\there", "new\nline", "Kişisel 🔑", "?#&=+", "%2F", "'quoted\"", "\\back"}
+	for _, vaultName := range names {
+		for _, itemTitle := range names {
 			reference := Reference{Vault: vaultName, Item: itemTitle, Field: "custom " + vaultName}
 			encoded := reference.String()
 			if strings.ContainsAny(encoded, " \t\n'\"\\$`") {

@@ -11,8 +11,8 @@ import (
 	"github.com/tryhisar/hisar/core/totp"
 )
 
-// ListAllItem fetches the vault's items from the server and returns them without secrets in a stable order.
-func (s *Service) ListAllItem(vaultID string) ([]ItemDetail, error) {
+// ListItems fetches the vault's items from the server and returns them without secrets in a stable order.
+func (s *Service) ListItems(vaultID string) ([]ItemDetail, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if err := s.requireUnlocked(); err != nil {
@@ -24,24 +24,24 @@ func (s *Service) ListAllItem(vaultID string) ([]ItemDetail, error) {
 	if err != nil {
 		return nil, err
 	}
-	allItem, err := s.unlockedSession.ListAllItem(ctx, vault)
+	items, err := s.unlockedSession.ListItems(ctx, vault)
 	if err != nil {
 		return nil, convertError(err)
 	}
-	s.allItemByVaultID[vaultID] = allItem
-	allSummary := make([]ItemDetail, 0, len(allItem))
-	for index := range allItem {
-		summary := convertToItemDetail(&allItem[index])
+	s.itemsByVaultID[vaultID] = items
+	summaries := make([]ItemDetail, 0, len(items))
+	for index := range items {
+		summary := convertToItemDetail(&items[index])
 		summary.Password, summary.Notes, summary.Fields, summary.OneTimePassword = "", "", nil, ""
-		allSummary = append(allSummary, summary)
+		summaries = append(summaries, summary)
 	}
-	return allSummary, nil
+	return summaries, nil
 }
 
 func (s *Service) findItem(vaultID, itemID string) (*item.Item, error) {
-	for index, vaultItem := range s.allItemByVaultID[vaultID] {
+	for index, vaultItem := range s.itemsByVaultID[vaultID] {
 		if vaultItem.ID == itemID {
-			return &s.allItemByVaultID[vaultID][index], nil
+			return &s.itemsByVaultID[vaultID][index], nil
 		}
 	}
 	return nil, fmt.Errorf("item %w", ErrNotFound)
@@ -101,7 +101,7 @@ func convertToItemDetail(vaultItem *item.Item) ItemDetail {
 		OneTimePassword:    vaultItem.Details.OneTimePassword,
 		HasOneTimePassword: vaultItem.Details.OneTimePassword != "",
 
-		AllPasskey: convertToAllItemPasskey(vaultItem.Details.Passkeys),
+		Passkeys: convertToItemPasskeys(vaultItem.Details.Passkeys),
 	}
 	for _, field := range vaultItem.Details.Fields {
 		detail.Fields = append(detail.Fields, ItemField{Name: field.Name, Value: field.Value, Concealed: field.Concealed})
@@ -196,14 +196,14 @@ func (s *Service) buildSavedItem(vaultID string, detail ItemDetail) (item.Item, 
 }
 
 func (s *Service) replaceCachedItem(vaultID string, vaultItem item.Item) {
-	allItem := s.allItemByVaultID[vaultID]
-	for index := range allItem {
-		if allItem[index].ID == vaultItem.ID {
-			allItem[index] = vaultItem
+	items := s.itemsByVaultID[vaultID]
+	for index := range items {
+		if items[index].ID == vaultItem.ID {
+			items[index] = vaultItem
 			return
 		}
 	}
-	s.allItemByVaultID[vaultID] = append(allItem, vaultItem)
+	s.itemsByVaultID[vaultID] = append(items, vaultItem)
 }
 
 func (s *Service) DeleteItem(vaultID, itemID string) error {
@@ -225,13 +225,13 @@ func (s *Service) DeleteItem(vaultID, itemID string) error {
 	if _, err := s.unlockedSession.DeleteItem(ctx, vault, vaultItem); err != nil {
 		return convertError(err)
 	}
-	allRemaining := s.allItemByVaultID[vaultID][:0]
-	for _, cachedItem := range s.allItemByVaultID[vaultID] {
+	remaining := s.itemsByVaultID[vaultID][:0]
+	for _, cachedItem := range s.itemsByVaultID[vaultID] {
 		if cachedItem.ID != itemID {
-			allRemaining = append(allRemaining, cachedItem)
+			remaining = append(remaining, cachedItem)
 		}
 	}
-	s.allItemByVaultID[vaultID] = allRemaining
+	s.itemsByVaultID[vaultID] = remaining
 	return nil
 }
 

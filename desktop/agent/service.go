@@ -76,7 +76,7 @@ func GetDefaultSocketPath(homeDirectory string) string {
 	return filepath.Join(homeDirectory, ".hisar", "agent.sock")
 }
 
-func CreateService(config Config) *Service {
+func NewService(config Config) *Service {
 	if config.SocketPath == "" {
 		config.SocketPath = GetDefaultSocketPath(config.HomeDirectory)
 	}
@@ -119,7 +119,7 @@ func (s *Service) SetSigningRemember(seconds int) (Status, error) {
 	}
 	err := s.config.ApprovalPreference.SetSigningRememberSeconds(seconds)
 	if s.config.Approver != nil {
-		s.config.Approver.ClearAllRememberedSigning()
+		s.config.Approver.ClearRememberedSignings()
 	}
 	return s.buildStatus(), err
 }
@@ -187,11 +187,11 @@ func (s *Service) SetSSHApprovalRemembered(requestID string, isRemembered bool) 
 	}
 }
 
-func (s *Service) ListAllPendingSSHApproval() []ApprovalEvent {
+func (s *Service) ListPendingSSHApprovals() []ApprovalEvent {
 	if s.config.Approver == nil {
 		return []ApprovalEvent{}
 	}
-	return s.config.Approver.ListAllPendingApproval()
+	return s.config.Approver.ListPendingApprovals()
 }
 
 func (s *Service) setServing(isRunning bool, serveError error) {

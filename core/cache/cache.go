@@ -15,13 +15,13 @@ import (
 
 const schemaVersion = 1
 
-var allSchemaStatement = []string{
+var schemaStatements = []string{
 	`CREATE TABLE IF NOT EXISTS accounts (account_id TEXT PRIMARY KEY, data BLOB NOT NULL)`,
 	`CREATE TABLE IF NOT EXISTS vaults (vault_id TEXT PRIMARY KEY, data BLOB, seq INTEGER NOT NULL DEFAULT 0)`,
 	`CREATE TABLE IF NOT EXISTS items (vault_id TEXT NOT NULL, item_id TEXT NOT NULL, data BLOB NOT NULL, PRIMARY KEY (vault_id, item_id))`,
 }
 
-var allDropStatement = []string{`DROP TABLE IF EXISTS accounts`, `DROP TABLE IF EXISTS vaults`, `DROP TABLE IF EXISTS items`}
+var dropStatements = []string{`DROP TABLE IF EXISTS accounts`, `DROP TABLE IF EXISTS vaults`, `DROP TABLE IF EXISTS items`}
 
 type Cache struct {
 	database *sql.DB
@@ -51,12 +51,12 @@ func prepareSchema(database *sql.DB) error {
 	if err := database.QueryRow(`PRAGMA user_version`).Scan(&currentVersion); err != nil {
 		return err
 	}
-	allStatement := allSchemaStatement
+	statements := schemaStatements
 	if currentVersion != schemaVersion {
-		allStatement = append(append([]string{}, allDropStatement...), allSchemaStatement...)
-		allStatement = append(allStatement, fmt.Sprintf(`PRAGMA user_version = %d`, schemaVersion))
+		statements = append(append([]string{}, dropStatements...), schemaStatements...)
+		statements = append(statements, fmt.Sprintf(`PRAGMA user_version = %d`, schemaVersion))
 	}
-	for _, statement := range allStatement {
+	for _, statement := range statements {
 		if _, err := database.Exec(statement); err != nil {
 			return err
 		}
@@ -70,13 +70,13 @@ func (c *Cache) Close() error {
 
 // Remove deletes the cache file and SQLite's side files.
 func Remove(path string) error {
-	var allErr []error
+	var errs []error
 	for _, suffix := range []string{"", "-journal", "-wal", "-shm"} {
 		if err := os.Remove(path + suffix); err != nil && !errors.Is(err, os.ErrNotExist) {
-			allErr = append(allErr, err)
+			errs = append(errs, err)
 		}
 	}
-	return errors.Join(allErr...)
+	return errors.Join(errs...)
 }
 
 func (c *Cache) SaveAccount(account *apitypes.Account) error {
@@ -105,8 +105,8 @@ func (c *Cache) LoadAccount(accountID string) (*apitypes.Account, error) {
 	return account, nil
 }
 
-// ReplaceAllVault stores the server's vault list and forgets vaults, with their items, that are no longer in it.
-func (c *Cache) ReplaceAllVault(allVault []apitypes.Vault) error {
+// ReplaceVaults stores the server's vault list and forgets vaults, with their items, that are no longer in it.
+func (c *Cache) ReplaceVaults(vaults []apitypes.Vault) error {
 	transaction, err := c.database.Begin()
 	if err != nil {
 		return err
@@ -118,15 +118,15 @@ func (c *Cache) ReplaceAllVault(allVault []apitypes.Vault) error {
 	if _, err := transaction.Exec(`DELETE FROM listed_vaults`); err != nil {
 		return err
 	}
-	for index := range allVault {
-		data, err := json.Marshal(&allVault[index])
+	for index := range vaults {
+		data, err := json.Marshal(&vaults[index])
 		if err != nil {
 			return err
 		}
-		if _, err := transaction.Exec(`INSERT INTO vaults (vault_id, data) VALUES (?, ?) ON CONFLICT (vault_id) DO UPDATE SET data = excluded.data`, allVault[index].ID, data); err != nil {
+		if _, err := transaction.Exec(`INSERT INTO vaults (vault_id, data) VALUES (?, ?) ON CONFLICT (vault_id) DO UPDATE SET data = excluded.data`, vaults[index].ID, data); err != nil {
 			return err
 		}
-		if _, err := transaction.Exec(`INSERT OR IGNORE INTO listed_vaults (vault_id) VALUES (?)`, allVault[index].ID); err != nil {
+		if _, err := transaction.Exec(`INSERT OR IGNORE INTO listed_vaults (vault_id) VALUES (?)`, vaults[index].ID); err != nil {
 			return err
 		}
 	}
@@ -139,25 +139,25 @@ func (c *Cache) ReplaceAllVault(allVault []apitypes.Vault) error {
 	return transaction.Commit()
 }
 
-func (c *Cache) ListAllVault() ([]apitypes.Vault, error) {
-	allRow, err := c.database.Query(`SELECT data FROM vaults WHERE data IS NOT NULL ORDER BY vault_id`)
+func (c *Cache) ListVaults() ([]apitypes.Vault, error) {
+	rows, err := c.database.Query(`SELECT data FROM vaults WHERE data IS NOT NULL ORDER BY vault_id`)
 	if err != nil {
 		return nil, err
 	}
-	defer allRow.Close()
-	allVault := []apitypes.Vault{}
-	for allRow.Next() {
+	defer rows.Close()
+	vaults := []apitypes.Vault{}
+	for rows.Next() {
 		var data []byte
-		if err := allRow.Scan(&data); err != nil {
+		if err := rows.Scan(&data); err != nil {
 			return nil, err
 		}
 		var vault apitypes.Vault
 		if err := json.Unmarshal(data, &vault); err != nil {
 			return nil, err
 		}
-		allVault = append(allVault, vault)
+		vaults = append(vaults, vault)
 	}
-	return allVault, allRow.Err()
+	return vaults, rows.Err()
 }
 
 // GetSeq returns the vault seq the cached items are complete up to, 0 when nothing is cached.
@@ -170,25 +170,25 @@ func (c *Cache) GetSeq(vaultID string) (int64, error) {
 	return seq, err
 }
 
-// ApplyAllChange stores one page of changes and the seq it reaches in one transaction; deleted items are removed.
-func (c *Cache) ApplyAllChange(vaultID string, allItem []apitypes.Item, nextSeq int64) error {
+// ApplyChanges stores one page of changes and the seq it reaches in one transaction; deleted items are removed.
+func (c *Cache) ApplyChanges(vaultID string, items []apitypes.Item, nextSeq int64) error {
 	transaction, err := c.database.Begin()
 	if err != nil {
 		return err
 	}
 	defer transaction.Rollback()
-	for index := range allItem {
-		if allItem[index].Deleted {
-			if _, err := transaction.Exec(`DELETE FROM items WHERE vault_id = ? AND item_id = ?`, vaultID, allItem[index].ID); err != nil {
+	for index := range items {
+		if items[index].Deleted {
+			if _, err := transaction.Exec(`DELETE FROM items WHERE vault_id = ? AND item_id = ?`, vaultID, items[index].ID); err != nil {
 				return err
 			}
 			continue
 		}
-		data, err := json.Marshal(&allItem[index])
+		data, err := json.Marshal(&items[index])
 		if err != nil {
 			return err
 		}
-		if _, err := transaction.Exec(`INSERT INTO items (vault_id, item_id, data) VALUES (?, ?, ?) ON CONFLICT (vault_id, item_id) DO UPDATE SET data = excluded.data`, vaultID, allItem[index].ID, data); err != nil {
+		if _, err := transaction.Exec(`INSERT INTO items (vault_id, item_id, data) VALUES (?, ?, ?) ON CONFLICT (vault_id, item_id) DO UPDATE SET data = excluded.data`, vaultID, items[index].ID, data); err != nil {
 			return err
 		}
 	}
@@ -198,25 +198,25 @@ func (c *Cache) ApplyAllChange(vaultID string, allItem []apitypes.Item, nextSeq 
 	return transaction.Commit()
 }
 
-func (c *Cache) ListAllItem(vaultID string) ([]apitypes.Item, error) {
-	allRow, err := c.database.Query(`SELECT data FROM items WHERE vault_id = ? ORDER BY item_id`, vaultID)
+func (c *Cache) ListItems(vaultID string) ([]apitypes.Item, error) {
+	rows, err := c.database.Query(`SELECT data FROM items WHERE vault_id = ? ORDER BY item_id`, vaultID)
 	if err != nil {
 		return nil, err
 	}
-	defer allRow.Close()
-	allItem := []apitypes.Item{}
-	for allRow.Next() {
+	defer rows.Close()
+	items := []apitypes.Item{}
+	for rows.Next() {
 		var data []byte
-		if err := allRow.Scan(&data); err != nil {
+		if err := rows.Scan(&data); err != nil {
 			return nil, err
 		}
 		var protoItem apitypes.Item
 		if err := json.Unmarshal(data, &protoItem); err != nil {
 			return nil, err
 		}
-		allItem = append(allItem, protoItem)
+		items = append(items, protoItem)
 	}
-	return allItem, allRow.Err()
+	return items, rows.Err()
 }
 
 // ResetVault drops a vault's items and seq so the next sync downloads everything again.

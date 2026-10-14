@@ -39,9 +39,9 @@ func answerVaultDataRequest(request cliprotocol.Request) (any, *cliprotocol.Resp
 		}
 		return cliprotocol.VaultActionsResult{
 			Vault: cliprotocol.Vault{ID: "work-id", Name: "Work", ItemCount: 3}, CanRename: true, CanDelete: true,
-			LeaveBlockedReason:    "You are its only owner.",
-			AllMemberLosingAccess: []cliprotocol.VaultMember{{Name: "Ada", Email: "ada@example.com", Role: "editor"}},
-			AllTargetVault:        []cliprotocol.Vault{{ID: "personal-id", Name: "Personal", Role: "owner"}},
+			LeaveBlockedReason:  "You are its only owner.",
+			MembersLosingAccess: []cliprotocol.VaultMember{{Name: "Ada", Email: "ada@example.com", Role: "editor"}},
+			TargetVaults:        []cliprotocol.Vault{{ID: "personal-id", Name: "Personal", Role: "owner"}},
 		}, nil
 	case cliprotocol.TypeRenameVault, cliprotocol.TypeLeaveVault:
 		return struct{}{}, nil
@@ -110,10 +110,10 @@ func TestVaultCommandsThroughApp(t *testing.T) {
 	if _, _, err := runCapturingOutput(t, false, "", "vault", "delete", "Work", "--delete-items", "--confirm", "Work"); err != nil {
 		t.Fatalf("delete with items: %v", err)
 	}
-	allDeletion := app.findRequest(cliprotocol.TypeDeleteVault)
-	if len(allDeletion) != 2 || allDeletion[0].VaultDeletion.MoveToVaultID != "personal-id" ||
-		!allDeletion[1].VaultDeletion.IsDeletingItems || allDeletion[1].VaultDeletion.ConfirmedName != "Work" {
-		t.Errorf("deletion requests: %+v", allDeletion)
+	deletions := app.findRequest(cliprotocol.TypeDeleteVault)
+	if len(deletions) != 2 || deletions[0].VaultDeletion.MoveToVaultID != "personal-id" ||
+		!deletions[1].VaultDeletion.IsDeletingItems || deletions[1].VaultDeletion.ConfirmedName != "Work" {
+		t.Errorf("deletion requests: %+v", deletions)
 	}
 
 	if _, _, err := runCapturingOutput(t, false, "", "vault", "leave", "Work", "-y"); err == nil || !strings.Contains(err.Error(), "only owner") {
@@ -139,9 +139,9 @@ func TestVaultDeleteWizardAsksForTheTypedName(t *testing.T) {
 	if _, stderr, err := runCapturingOutput(t, false, "\ny\n", "vault", "delete", "Work"); err != nil || !strings.Contains(stderr, "Move 3 items to Personal and delete Work?") {
 		t.Fatalf("move by default: %v\n%s", err, stderr)
 	}
-	allDeletion := app.findRequest(cliprotocol.TypeDeleteVault)
-	if len(allDeletion) != 2 || !allDeletion[0].VaultDeletion.IsDeletingItems || allDeletion[1].VaultDeletion.MoveToVaultID != "personal-id" {
-		t.Errorf("deletion requests: %+v", allDeletion)
+	deletions := app.findRequest(cliprotocol.TypeDeleteVault)
+	if len(deletions) != 2 || !deletions[0].VaultDeletion.IsDeletingItems || deletions[1].VaultDeletion.MoveToVaultID != "personal-id" {
+		t.Errorf("deletion requests: %+v", deletions)
 	}
 }
 
@@ -158,9 +158,9 @@ func TestExportThroughAppNeverReplacesAFile(t *testing.T) {
 	if err != nil || !strings.Contains(stderr, "Exported 6 items from 3 vaults to "+encryptedPath) {
 		t.Fatalf("encrypted export: %v %s", err, stderr)
 	}
-	allExport := app.findRequest(cliprotocol.TypeExport)
-	if len(allExport) != 1 || allExport[0].Export.Format != "encrypted" || allExport[0].Export.Passphrase != "a long export passphrase" || allExport[0].Export.Path != encryptedPath {
-		t.Errorf("export request: %+v", allExport)
+	exports := app.findRequest(cliprotocol.TypeExport)
+	if len(exports) != 1 || exports[0].Export.Format != "encrypted" || exports[0].Export.Passphrase != "a long export passphrase" || exports[0].Export.Path != encryptedPath {
+		t.Errorf("export request: %+v", exports)
 	}
 
 	plainPath := filepath.Join(directory, "backup.json")
@@ -177,8 +177,8 @@ func TestExportThroughAppNeverReplacesAFile(t *testing.T) {
 	if _, _, err := runCapturingOutput(t, false, "", "export", "--format", "csv"); err == nil {
 		t.Error("an unknown format was accepted")
 	}
-	if allExport := app.findRequest(cliprotocol.TypeExport); len(allExport) != 2 || allExport[1].Export.Format != "plain" || allExport[1].Export.Passphrase != "" {
-		t.Errorf("export requests: %+v", allExport)
+	if exports := app.findRequest(cliprotocol.TypeExport); len(exports) != 2 || exports[1].Export.Format != "plain" || exports[1].Export.Passphrase != "" {
+		t.Errorf("export requests: %+v", exports)
 	}
 }
 
@@ -213,15 +213,15 @@ func TestDotenvImportThroughApp(t *testing.T) {
 	if err != nil || !strings.Contains(stderr, "hisar run --env-file "+envPath+" -- <command>") || !strings.Contains(stderr, "(the existing item)") {
 		t.Fatalf("import: %v\n%s", err, stderr)
 	}
-	allSave := app.findRequest(cliprotocol.TypeSaveItem)
-	if len(allSave) != 1 || allSave[0].VaultID != "work-id" || allSave[0].Item.ID != "shop-id" || allSave[0].Item.Fields == nil {
-		t.Fatalf("save requests: %+v", allSave)
+	saveRequests := app.findRequest(cliprotocol.TypeSaveItem)
+	if len(saveRequests) != 1 || saveRequests[0].VaultID != "work-id" || saveRequests[0].Item.ID != "shop-id" || saveRequests[0].Item.Fields == nil {
+		t.Fatalf("save requests: %+v", saveRequests)
 	}
-	allField := *allSave[0].Item.Fields
-	if !slices.Contains(allField, cliprotocol.Field{Name: "STRIPE_KEY", Value: "sk_live_x", Concealed: true}) ||
-		!slices.Contains(allField, cliprotocol.Field{Name: "DATABASE_URL", Value: "postgres://shop:pw@db/shop", Concealed: true}) ||
-		!slices.Contains(allField, cliprotocol.Field{Name: "region", Value: "eu"}) || len(allField) != 3 {
-		t.Errorf("fields: %+v", allField)
+	fields := *saveRequests[0].Item.Fields
+	if !slices.Contains(fields, cliprotocol.Field{Name: "STRIPE_KEY", Value: "sk_live_x", Concealed: true}) ||
+		!slices.Contains(fields, cliprotocol.Field{Name: "DATABASE_URL", Value: "postgres://shop:pw@db/shop", Concealed: true}) ||
+		!slices.Contains(fields, cliprotocol.Field{Name: "region", Value: "eu"}) || len(fields) != 3 {
+		t.Errorf("fields: %+v", fields)
 	}
 	content, _ := os.ReadFile(envPath)
 	want := "# shop\nexport STRIPE_KEY=\"hisar://Work/shop/STRIPE_KEY\" # live key\nPORT=8080\nDATABASE_URL=hisar://Work/shop/DATABASE_URL\nAPI_URL=https://api.example.com\n"
@@ -231,8 +231,8 @@ func TestDotenvImportThroughApp(t *testing.T) {
 	if fileInfo, _ := os.Stat(envPath); fileInfo.Mode().Perm() != 0o640 {
 		t.Errorf("mode %v", fileInfo.Mode().Perm())
 	}
-	if allEntry, _ := os.ReadDir(directory); len(allEntry) != 1 {
-		t.Errorf("files next to .env: %v", allEntry)
+	if entries, _ := os.ReadDir(directory); len(entries) != 1 {
+		t.Errorf("files next to .env: %v", entries)
 	}
 
 	os.WriteFile(envPath, []byte("CODE=1234\nTOKEN=abc\n"), 0o600)
@@ -254,11 +254,11 @@ func TestDotenvImportWizard(t *testing.T) {
 	if err != nil || !strings.Contains(stderr, "[x]  1  TOKEN") || !strings.Contains(stderr, "[ ]  2  PORT") {
 		t.Fatalf("wizard: %v\n%s", err, stderr)
 	}
-	allSave := app.findRequest(cliprotocol.TypeSaveItem)
-	if len(allSave) != 1 || allSave[0].VaultID != "personal-id" || allSave[0].Item.Title != "app" || allSave[0].Item.ID != "" {
-		t.Fatalf("save: %+v", allSave)
+	saveRequests := app.findRequest(cliprotocol.TypeSaveItem)
+	if len(saveRequests) != 1 || saveRequests[0].VaultID != "personal-id" || saveRequests[0].Item.Title != "app" || saveRequests[0].Item.ID != "" {
+		t.Fatalf("save: %+v", saveRequests)
 	}
-	if fields := *allSave[0].Item.Fields; len(fields) != 1 || fields[0].Name != "PORT" {
+	if fields := *saveRequests[0].Item.Fields; len(fields) != 1 || fields[0].Name != "PORT" {
 		t.Errorf("switched fields: %+v", fields)
 	}
 	if content, _ := os.ReadFile(envPath); string(content) != "TOKEN=abc\nPORT=hisar://Personal/app/PORT\n" {
@@ -295,15 +295,15 @@ func TestHisarExportImportThroughApp(t *testing.T) {
 		!strings.Contains(stderr, "Family → Family (imported) (new vault): 1 item") || !strings.Contains(stderr, "Side project → Side project (new vault)") {
 		t.Fatalf("import: %v\n%s", err, stderr)
 	}
-	allCreate := app.findRequest(cliprotocol.TypeCreateVault)
-	if len(allCreate) != 2 || allCreate[0].Name != "Family (imported)" || allCreate[1].Name != "Side project" {
-		t.Errorf("created vaults: %+v", allCreate)
+	createRequests := app.findRequest(cliprotocol.TypeCreateVault)
+	if len(createRequests) != 2 || createRequests[0].Name != "Family (imported)" || createRequests[1].Name != "Side project" {
+		t.Errorf("created vaults: %+v", createRequests)
 	}
-	allImport := app.findRequest(cliprotocol.TypeImportItem)
-	if len(allImport) != 3 || allImport[0].VaultID != "personal-id" || len(allImport[0].ImportedItems) != 1 || allImport[0].ImportedItems[0].Details.OneTimePassword == "" {
-		t.Fatalf("import requests: %+v", allImport)
+	imports := app.findRequest(cliprotocol.TypeImportItem)
+	if len(imports) != 3 || imports[0].VaultID != "personal-id" || len(imports[0].ImportedItems) != 1 || imports[0].ImportedItems[0].Details.OneTimePassword == "" {
+		t.Fatalf("import requests: %+v", imports)
 	}
-	if allImport[2].ImportedItems[0].Details.PrivateKey != "KEY" {
+	if imports[2].ImportedItems[0].Details.PrivateKey != "KEY" {
 		t.Error("the SSH private key was not imported")
 	}
 	if _, err := os.Stat(path); err != nil {

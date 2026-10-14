@@ -51,15 +51,15 @@ func (s *Store) CreateShareLink(ctx context.Context, link *ShareLink, ttl time.D
 	})
 }
 
-func (s *Store) ListAllShareLink(ctx context.Context, accountID string) ([]ShareLink, error) {
-	allRow, err := s.pool.Query(ctx, `
+func (s *Store) ListShareLinks(ctx context.Context, accountID string) ([]ShareLink, error) {
+	rows, err := s.pool.Query(ctx, `
 		SELECT id, account_id, encrypted_label, passphrase_salt, coalesce(passphrase_iterations, 0), max_views, view_count, created_at, expires_at
 		FROM share_links WHERE account_id = $1 AND expires_at > now()
 		ORDER BY created_at DESC, id`, accountID)
 	if err != nil {
 		return nil, err
 	}
-	return pgx.CollectRows(allRow, func(row pgx.CollectableRow) (ShareLink, error) {
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (ShareLink, error) {
 		var link ShareLink
 		err := row.Scan(&link.ID, &link.AccountID, &link.EncryptedLabel, &link.PassphraseSalt, &link.PassphraseIterations, &link.MaxViews, &link.ViewCount, &link.CreatedAt, &link.ExpiresAt)
 		return link, err
@@ -102,7 +102,7 @@ func (s *Store) ViewShareLink(ctx context.Context, linkID string) (*ShareLink, e
 	return &link, nil
 }
 
-func (s *Store) DeleteAllExpiredShareLink(ctx context.Context) (int64, error) {
+func (s *Store) DeleteExpiredShareLinks(ctx context.Context) (int64, error) {
 	commandTag, err := s.pool.Exec(ctx, `DELETE FROM share_links WHERE expires_at <= now()`)
 	return commandTag.RowsAffected(), err
 }

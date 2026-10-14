@@ -51,12 +51,12 @@ func createTestDescription() Description {
 func startTestFlow(t *testing.T) *testFlow {
 	t.Helper()
 	keyset := createTestKeyset(t)
-	request := CreateRequest(macDeviceID, "Alper's MacBook Pro", createTestDescription(), testNow, MaximumLifetime)
+	request := NewRequest(macDeviceID, "Alper's MacBook Pro", createTestDescription(), testNow, MaximumLifetime)
 	sealedRequest, err := SealRequest(keyset, testAccountID, request)
 	if err != nil {
 		t.Fatal(err)
 	}
-	tracker := CreateTracker()
+	tracker := NewTracker()
 	tracker.Add(request.RequestID, sealedRequest, request.ExpiresAt)
 	return &testFlow{keyset: keyset, request: request, sealedRequest: sealedRequest, tracker: tracker}
 }
@@ -109,7 +109,7 @@ func (flow *testFlow) forgeAnswer(t *testing.T, signingKeyset *crypt.Keyset, cha
 func TestSecretsSurviveSealing(t *testing.T) {
 	keyset := createTestKeyset(t)
 	description := Description{Kind: KindCommandLine, AppName: "hisar in Terminal", Purpose: "run a command with 5 secrets", CommandLine: "npm test", Secrets: []string{"Personal › GitHub › password", "and 4 more"}}
-	request := CreateRequest(macDeviceID, "Alper's MacBook Pro", description, testNow, MaximumLifetime)
+	request := NewRequest(macDeviceID, "Alper's MacBook Pro", description, testNow, MaximumLifetime)
 	sealedRequest, err := SealRequest(keyset, testAccountID, request)
 	if err != nil {
 		t.Fatal(err)
@@ -128,7 +128,7 @@ func TestAppIconSurvivesSealingUnlessTooLarge(t *testing.T) {
 	description := createTestDescription()
 	description.AppIcon = []byte{0x89, 'P', 'N', 'G'}
 	description.AppWarning = "iTerm2 is not signed"
-	request := CreateRequest(macDeviceID, "Alper's MacBook Pro", description, testNow, MaximumLifetime)
+	request := NewRequest(macDeviceID, "Alper's MacBook Pro", description, testNow, MaximumLifetime)
 	sealedRequest, err := SealRequest(keyset, testAccountID, request)
 	if err != nil {
 		t.Fatal(err)
@@ -234,7 +234,7 @@ func TestForgedAndTamperedAnswersAreRefused(t *testing.T) {
 	tampered := append([]byte(nil), genuine...)
 	tampered[len(tampered)/2] ^= 1
 	sealedToOtherAccount, _ := crypt.SealApprovalAnswer(otherKeyset.GetKEMPublicKey(), testAccountID, flow.request.RequestID, []byte("{}"))
-	allCase := map[string]struct {
+	cases := map[string]struct {
 		sealedAnswer []byte
 		want         error
 	}{
@@ -247,7 +247,7 @@ func TestForgedAndTamperedAnswersAreRefused(t *testing.T) {
 		"garbage":                     {[]byte("not sealed"), crypt.ErrBadVersion},
 		"too large":                   {make([]byte, MaximumSealedSize+1), ErrSealedTooLarge},
 	}
-	for name, testCase := range allCase {
+	for name, testCase := range cases {
 		if _, err := flow.accept(testCase.sealedAnswer, testNow); !errors.Is(err, testCase.want) {
 			t.Errorf("%s: got %v, want %v", name, err, testCase.want)
 		}
@@ -355,7 +355,7 @@ func TestUnknownFieldsAreIgnored(t *testing.T) {
 		t.Fatalf("a request with unknown fields: %+v, %v", opened.Description, err)
 	}
 	flow.sealedRequest = sealedRequest
-	flow.tracker = CreateTracker()
+	flow.tracker = NewTracker()
 	flow.tracker.Add(flow.request.RequestID, sealedRequest, flow.request.ExpiresAt)
 	sealedAnswer := flow.forgeAnswer(t, flow.keyset, nil)
 	answerPlaintext, err := flow.keyset.OpenApprovalAnswer(testAccountID, flow.request.RequestID, sealedAnswer)
@@ -379,7 +379,7 @@ func TestRequestIDAndLifetime(t *testing.T) {
 			t.Errorf("%q counted as valid", invalid)
 		}
 	}
-	request := CreateRequest(macDeviceID, "Mac", createTestDescription(), testNow, 5*time.Minute)
+	request := NewRequest(macDeviceID, "Mac", createTestDescription(), testNow, 5*time.Minute)
 	if request.ExpiresAt.Sub(request.CreatedAt) != MaximumLifetime {
 		t.Errorf("lifetime = %v", request.ExpiresAt.Sub(request.CreatedAt))
 	}

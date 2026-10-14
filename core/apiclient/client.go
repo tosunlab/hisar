@@ -27,7 +27,7 @@ type Client struct {
 	OnUpgradeRequired func(*UpgradeRequiredError)
 }
 
-func Create(baseURL string) *Client {
+func New(baseURL string) *Client {
 	return &Client{BaseURL: strings.TrimRight(baseURL, "/"), HTTP: &http.Client{Timeout: 30 * time.Second}}
 }
 
@@ -100,8 +100,8 @@ func (c *Client) sendRequest(ctx context.Context, method, path string, header ht
 	if err != nil {
 		return err
 	}
-	for headerName, allHeaderValue := range header {
-		request.Header[headerName] = allHeaderValue
+	for headerName, headerValues := range header {
+		request.Header[headerName] = headerValues
 	}
 	if input != nil {
 		request.Header.Set("Content-Type", "application/json")
@@ -181,9 +181,9 @@ func (c *Client) GetAccount(ctx context.Context) (*apitypes.Account, error) {
 	return &account, c.sendRequest(ctx, "GET", "/api/v1/account", nil, nil, &account, nil)
 }
 
-func (c *Client) ListAllMember(ctx context.Context) ([]apitypes.Member, error) {
-	var allMember []apitypes.Member
-	return allMember, c.sendRequest(ctx, "GET", "/api/v1/members", nil, nil, &allMember, nil)
+func (c *Client) ListMembers(ctx context.Context) ([]apitypes.Member, error) {
+	var members []apitypes.Member
+	return members, c.sendRequest(ctx, "GET", "/api/v1/members", nil, nil, &members, nil)
 }
 
 func (c *Client) Invite(ctx context.Context, request *apitypes.InviteRequest) (*apitypes.InvitationSentResponse, error) {
@@ -196,7 +196,7 @@ func (c *Client) CreateShareInvitation(ctx context.Context, vaultID string, requ
 	return &response, c.sendRequest(ctx, "POST", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/share-invitations", nil, request, &response, nil)
 }
 
-func (c *Client) ListAllShareInvitation(ctx context.Context) (*apitypes.ShareInvitationList, error) {
+func (c *Client) ListShareInvitations(ctx context.Context) (*apitypes.ShareInvitationList, error) {
 	var response apitypes.ShareInvitationList
 	return &response, c.sendRequest(ctx, "GET", "/api/v1/share-invitations", nil, nil, &response, nil)
 }
@@ -213,27 +213,27 @@ func (c *Client) CancelShareInvitation(ctx context.Context, invitationID string)
 	return c.sendRequest(ctx, "DELETE", "/api/v1/share-invitations/"+url.PathEscape(invitationID), nil, nil, nil, nil)
 }
 
-func (c *Client) ListAllDevice(ctx context.Context) ([]apitypes.Device, error) {
-	var allDevice []apitypes.Device
-	return allDevice, c.sendRequest(ctx, "GET", "/api/v1/devices", nil, nil, &allDevice, nil)
+func (c *Client) ListDevices(ctx context.Context) ([]apitypes.Device, error) {
+	var devices []apitypes.Device
+	return devices, c.sendRequest(ctx, "GET", "/api/v1/devices", nil, nil, &devices, nil)
 }
 
 func (c *Client) RevokeDevice(ctx context.Context, deviceID string) error {
 	return c.sendRequest(ctx, "DELETE", "/api/v1/devices/"+url.PathEscape(deviceID), nil, nil, nil, nil)
 }
 
-func (c *Client) ListAllVault(ctx context.Context) ([]apitypes.Vault, error) {
-	var allVault []apitypes.Vault
-	return allVault, c.sendRequest(ctx, "GET", "/api/v1/vaults", nil, nil, &allVault, nil)
+func (c *Client) ListVaults(ctx context.Context) ([]apitypes.Vault, error) {
+	var vaults []apitypes.Vault
+	return vaults, c.sendRequest(ctx, "GET", "/api/v1/vaults", nil, nil, &vaults, nil)
 }
 
 func (c *Client) CreateVault(ctx context.Context, request *apitypes.CreateVaultRequest) error {
 	return c.sendRequest(ctx, "POST", "/api/v1/vaults", nil, request, nil, nil)
 }
 
-func (c *Client) ListAllVaultMember(ctx context.Context, vaultID string) ([]apitypes.VaultMember, error) {
-	var allVaultMember []apitypes.VaultMember
-	return allVaultMember, c.sendRequest(ctx, "GET", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/members", nil, nil, &allVaultMember, nil)
+func (c *Client) ListVaultMembers(ctx context.Context, vaultID string) ([]apitypes.VaultMember, error) {
+	var vaultMembers []apitypes.VaultMember
+	return vaultMembers, c.sendRequest(ctx, "GET", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/members", nil, nil, &vaultMembers, nil)
 }
 
 func (c *Client) SetAccess(ctx context.Context, vaultID, accountID string, request *apitypes.SetAccessRequest) error {
@@ -256,7 +256,7 @@ func (c *Client) DeleteVault(ctx context.Context, vaultID string, request *apity
 	return c.sendRequest(ctx, "POST", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/delete", nil, request, nil, nil)
 }
 
-func (c *Client) ListAllChange(ctx context.Context, vaultID string, since int64, limit int) (*apitypes.ChangesResponse, error) {
+func (c *Client) ListChanges(ctx context.Context, vaultID string, since int64, limit int) (*apitypes.ChangesResponse, error) {
 	var response apitypes.ChangesResponse
 	query := url.Values{"since": {strconv.FormatInt(since, 10)}}
 	if limit > 0 {
@@ -285,9 +285,9 @@ func (c *Client) CreateShareLink(ctx context.Context, request *apitypes.CreateSh
 	return &response, c.sendRequest(ctx, "POST", "/api/v1/share-links", nil, request, &response, nil)
 }
 
-func (c *Client) ListAllShareLink(ctx context.Context) ([]apitypes.ShareLink, error) {
-	var allShareLink []apitypes.ShareLink
-	return allShareLink, c.sendRequest(ctx, "GET", "/api/v1/share-links", nil, nil, &allShareLink, nil)
+func (c *Client) ListShareLinks(ctx context.Context) ([]apitypes.ShareLink, error) {
+	var shareLinks []apitypes.ShareLink
+	return shareLinks, c.sendRequest(ctx, "GET", "/api/v1/share-links", nil, nil, &shareLinks, nil)
 }
 
 func (c *Client) RevokeShareLink(ctx context.Context, shareLinkID string) error {
@@ -320,6 +320,6 @@ func (c *Client) DeleteAccount(ctx context.Context, request *apitypes.DeleteAcco
 }
 
 func (c *Client) GetItemHistory(ctx context.Context, vaultID, itemID string) ([]apitypes.Item, error) {
-	var allItem []apitypes.Item
-	return allItem, c.sendRequest(ctx, "GET", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/items/"+url.PathEscape(itemID)+"/history", nil, nil, &allItem, nil)
+	var items []apitypes.Item
+	return items, c.sendRequest(ctx, "GET", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/items/"+url.PathEscape(itemID)+"/history", nil, nil, &items, nil)
 }

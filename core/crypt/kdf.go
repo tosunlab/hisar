@@ -59,7 +59,7 @@ func (derivedKeys *DerivedKeys) Wipe() {
 	clear(derivedKeys.AuthKey)
 }
 
-func DeriveAllKey(password, salt []byte, params Argon2Params, secretKey SecretKey) (*DerivedKeys, error) {
+func DeriveKeys(password, salt []byte, params Argon2Params, secretKey SecretKey) (*DerivedKeys, error) {
 	if err := params.Validate(); err != nil {
 		return nil, err
 	}

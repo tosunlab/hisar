@@ -11,9 +11,9 @@ import (
 )
 
 func TestShareInvitationRequests(t *testing.T) {
-	var allRequest []string
+	var requests []string
 	fakeClient := startFakeServer(t, func(writer http.ResponseWriter, request *http.Request) {
-		allRequest = append(allRequest, request.Method+" "+request.URL.Path)
+		requests = append(requests, request.Method+" "+request.URL.Path)
 		switch request.URL.Path {
 		case "/api/v1/vaults/vault-1/share-invitations":
 			var shareRequest apitypes.ShareInvitationRequest
@@ -23,7 +23,7 @@ func TestShareInvitationRequests(t *testing.T) {
 			writer.WriteHeader(http.StatusAccepted)
 			json.NewEncoder(writer).Encode(apitypes.InvitationSentResponse{Message: apitypes.InvitationSentMessage})
 		case "/api/v1/share-invitations":
-			json.NewEncoder(writer).Encode(apitypes.ShareInvitationList{AllReceived: []apitypes.ReceivedShareInvitation{{ID: "invitation-1"}}})
+			json.NewEncoder(writer).Encode(apitypes.ShareInvitationList{Received: []apitypes.ReceivedShareInvitation{{ID: "invitation-1"}}})
 		case "/api/v1/invites":
 			var inviteRequest apitypes.InviteRequest
 			if err := json.NewDecoder(request.Body).Decode(&inviteRequest); err != nil || inviteRequest.Email != "carol@example.com" || inviteRequest.Role != "" {
@@ -39,7 +39,7 @@ func TestShareInvitationRequests(t *testing.T) {
 	if response, err := fakeClient.CreateShareInvitation(ctx, "vault-1", &apitypes.ShareInvitationRequest{Email: "bob@example.com", Role: apitypes.VaultReader}); err != nil || response.Message != apitypes.InvitationSentMessage {
 		t.Fatalf("create: %+v %v", response, err)
 	}
-	if invitationList, err := fakeClient.ListAllShareInvitation(ctx); err != nil || len(invitationList.AllReceived) != 1 || invitationList.AllReceived[0].ID != "invitation-1" {
+	if invitationList, err := fakeClient.ListShareInvitations(ctx); err != nil || len(invitationList.Received) != 1 || invitationList.Received[0].ID != "invitation-1" {
 		t.Fatalf("list: %+v %v", invitationList, err)
 	}
 	for _, send := range []func(context.Context, string) error{fakeClient.AcceptShareInvitation, fakeClient.DeclineShareInvitation, fakeClient.CancelShareInvitation} {
@@ -58,7 +58,7 @@ func TestShareInvitationRequests(t *testing.T) {
 		"DELETE /api/v1/share-invitations/invitation-1",
 		"POST /api/v1/invites",
 	}
-	if strings.Join(allRequest, "\n") != strings.Join(expected, "\n") {
-		t.Errorf("requests:\n%s", strings.Join(allRequest, "\n"))
+	if strings.Join(requests, "\n") != strings.Join(expected, "\n") {
+		t.Errorf("requests:\n%s", strings.Join(requests, "\n"))
 	}
 }

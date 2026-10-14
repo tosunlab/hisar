@@ -57,9 +57,9 @@ func TestIntegrationAgentThroughApp(t *testing.T) {
 	t.Cleanup(func() { os.RemoveAll(socketDirectory) })
 	socketPath := filepath.Join(socketDirectory, "hisar", "cli.sock")
 	approver := &recordingAgentApprover{}
-	approvals := clisocket.CreateSessionApprovals(0, nil)
-	runner := clisocket.CreateRunner(clisocket.CreateServer(clisocket.ServerConfig{
-		Handler: app.CreateCommandLineBridge(service, approvals), Approver: &countingApprover{}, AgentApprover: approver, Approvals: approvals,
+	approvals := clisocket.NewSessionApprovals(0, nil)
+	runner := clisocket.NewRunner(clisocket.NewServer(clisocket.ServerConfig{
+		Handler: app.NewCommandLineBridge(service, approvals), Approver: &countingApprover{}, AgentApprover: approver, Approvals: approvals,
 	}), socketPath)
 	runner.Start()
 	t.Cleanup(runner.Stop)
@@ -81,7 +81,7 @@ func TestIntegrationAgentThroughApp(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer session.Close()
-	allOutput := []string{}
+	outputs := []string{}
 	call := func(name string, argument map[string]any, output any) {
 		t.Helper()
 		result, err := session.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: argument})
@@ -89,7 +89,7 @@ func TestIntegrationAgentThroughApp(t *testing.T) {
 			t.Fatalf("%s: %v", name, err)
 		}
 		text := result.Content[0].(*mcp.TextContent).Text
-		allOutput = append(allOutput, text)
+		outputs = append(outputs, text)
 		if result.IsError {
 			t.Fatalf("%s: %s", name, text)
 		}
@@ -135,24 +135,24 @@ func TestIntegrationAgentThroughApp(t *testing.T) {
 		t.Fatalf("hidden vault: %+v %v", result, err)
 	}
 
-	allKind := []string{}
-	for _, request := range approver.allRequest {
-		allKind = append(allKind, request.Kind)
+	kinds := []string{}
+	for _, request := range approver.requests {
+		kinds = append(kinds, request.Kind)
 		if request.Agent.Name != "claude-code" || request.Agent.Version != "2.1.0" || !strings.HasSuffix(request.ClientPath, filepath.Base(binaryPath)) {
 			t.Errorf("approval request = %+v", request)
 		}
 	}
-	if !slices.Equal(allKind, []string{clisocket.AgentRequestConnect, clisocket.AgentRequestRun, clisocket.AgentRequestReveal}) {
-		t.Errorf("approvals = %q", allKind)
+	if !slices.Equal(kinds, []string{clisocket.AgentRequestConnect, clisocket.AgentRequestRun, clisocket.AgentRequestReveal}) {
+		t.Errorf("approvals = %q", kinds)
 	}
 	expectedDirectory, _ := filepath.EvalSymlinks(command.Dir)
-	if run := approver.allRequest[1]; !slices.Equal(run.AllSecretName, []string{"Personal › Stripe › api key"}) || run.CommandLine[0] != "sh" || run.WorkingDirectory != expectedDirectory {
+	if run := approver.requests[1]; !slices.Equal(run.SecretNames, []string{"Personal › Stripe › api key"}) || run.CommandLine[0] != "sh" || run.WorkingDirectory != expectedDirectory {
 		t.Errorf("run approval = %+v", run)
 	}
-	allText := strings.Join(allOutput, "\n")
+	texts := strings.Join(outputs, "\n")
 	for _, hidden := range []string{"Infra", "Root server", hiddenSecret, hiddenVault.ID, "restricted key notes", "stripe-dashboard-password"} {
-		if strings.Contains(allText, hidden) {
-			t.Errorf("an agent saw %q:\n%s", hidden, allText)
+		if strings.Contains(texts, hidden) {
+			t.Errorf("an agent saw %q:\n%s", hidden, texts)
 		}
 	}
 }

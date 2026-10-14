@@ -28,18 +28,18 @@ var errPhoneApprovalGone = errors.New("this request is no longer waiting for an 
 
 // phoneApprovalRelay is the backend's part of phone approvals: the requests this device posted and what it knows about its devices.
 type phoneApprovalRelay struct {
-	mutex                sync.Mutex
-	isRequester          bool
-	ownDeviceID          string
-	hasIOSDevice         bool
-	deviceRefreshedAt    time.Time
-	isRefreshing         bool
-	tracker              *approval.Tracker
-	allDecideByRequestID map[string]func(answer approval.AcceptedAnswer)
+	mutex              sync.Mutex
+	isRequester        bool
+	ownDeviceID        string
+	hasIOSDevice       bool
+	deviceRefreshedAt  time.Time
+	isRefreshing       bool
+	tracker            *approval.Tracker
+	decidesByRequestID map[string]func(answer approval.AcceptedAnswer)
 }
 
 func createPhoneApprovalRelay() *phoneApprovalRelay {
-	return &phoneApprovalRelay{tracker: approval.CreateTracker(), allDecideByRequestID: map[string]func(answer approval.AcceptedAnswer){}}
+	return &phoneApprovalRelay{tracker: approval.NewTracker(), decidesByRequestID: map[string]func(answer approval.AcceptedAnswer){}}
 }
 
 // PhoneApprover lets the approval window send its requests to the account's iPhones; it is not bound to the UI.
@@ -47,7 +47,7 @@ type PhoneApprover struct {
 	service *Service
 }
 
-func CreatePhoneApprover(service *Service) *PhoneApprover {
+func NewPhoneApprover(service *Service) *PhoneApprover {
 	relay := service.phoneApprovals
 	relay.mutex.Lock()
 	relay.isRequester = true
@@ -59,22 +59,22 @@ func CreatePhoneApprover(service *Service) *PhoneApprover {
 func (s *Service) forgetPhoneApprovalSession() {
 	relay := s.phoneApprovals
 	relay.mutex.Lock()
-	allRequestID := make([]string, 0, len(relay.allDecideByRequestID))
-	for requestID := range relay.allDecideByRequestID {
-		allRequestID = append(allRequestID, requestID)
+	requestIDs := make([]string, 0, len(relay.decidesByRequestID))
+	for requestID := range relay.decidesByRequestID {
+		requestIDs = append(requestIDs, requestID)
 	}
-	clear(relay.allDecideByRequestID)
+	clear(relay.decidesByRequestID)
 	relay.tracker.RemoveAll()
 	relay.ownDeviceID, relay.hasIOSDevice, relay.deviceRefreshedAt = "", false, time.Time{}
 	relay.mutex.Unlock()
-	if len(allRequestID) == 0 || s.unlockedSession == nil {
+	if len(requestIDs) == 0 || s.unlockedSession == nil {
 		return
 	}
 	apiClient := s.unlockedSession.Client
 	go func() {
 		ctx, cancel := context.WithTimeout(context.Background(), phoneApprovalRequestTimeout)
 		defer cancel()
-		for _, requestID := range allRequestID {
+		for _, requestID := range requestIDs {
 			apiClient.ResolveApproval(ctx, requestID)
 		}
 	}()
@@ -100,7 +100,7 @@ func (s *Service) refreshPhoneApprovalDevice(apiClient *apiclient.Client) (strin
 func (s *Service) refreshPhoneApprovalDeviceWithin(apiClient *apiclient.Client, timeout time.Duration) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-	allDevice, err := apiClient.ListAllDevice(ctx)
+	devices, err := apiClient.ListDevices(ctx)
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	relay := s.phoneApprovals
@@ -114,7 +114,7 @@ func (s *Service) refreshPhoneApprovalDeviceWithin(apiClient *apiclient.Client, 
 		return "", ErrLocked
 	}
 	relay.ownDeviceID, relay.hasIOSDevice = "", false
-	for _, device := range allDevice {
+	for _, device := range devices {
 		switch {
 		case device.Current:
 			relay.ownDeviceID = device.ID
@@ -193,7 +193,7 @@ func (phoneApprover *PhoneApprover) StartPhoneApproval(description approval.Desc
 	if lifetime <= 0 || lifetime > approval.MaximumLifetime {
 		lifetime = approval.MaximumLifetime
 	}
-	request := approval.CreateRequest(ownDeviceID, s.getPhoneApprovalDeviceName(), description, now, lifetime)
+	request := approval.NewRequest(ownDeviceID, s.getPhoneApprovalDeviceName(), description, now, lifetime)
 	sealedRequest, err := approval.SealRequest(s.unlockedSession.Keyset, s.unlockedSession.AccountID, request)
 	apiClient := s.unlockedSession.Client
 	if err != nil {
@@ -203,7 +203,7 @@ func (phoneApprover *PhoneApprover) StartPhoneApproval(description approval.Desc
 	}
 	relay.mutex.Lock()
 	relay.tracker.Add(request.RequestID, sealedRequest, request.ExpiresAt)
-	relay.allDecideByRequestID[request.RequestID] = decide
+	relay.decidesByRequestID[request.RequestID] = decide
 	relay.mutex.Unlock()
 	s.mutex.Unlock()
 
@@ -262,7 +262,7 @@ func (s *Service) forgetPhoneApproval(requestID string) {
 	relay.mutex.Lock()
 	defer relay.mutex.Unlock()
 	relay.tracker.Remove(requestID)
-	delete(relay.allDecideByRequestID, requestID)
+	delete(relay.decidesByRequestID, requestID)
 }
 
 // handleApprovalEvent hands answers to the waiting dialogs and tells the UI, which lists requests on a phone.
@@ -283,7 +283,7 @@ func (s *Service) handleApprovalEvent(apiClient *apiclient.Client, event apiclie
 func (s *Service) acceptPhoneApprovalAnswer(apiClient *apiclient.Client, requestID string) {
 	relay := s.phoneApprovals
 	relay.mutex.Lock()
-	_, isWaiting := relay.allDecideByRequestID[requestID]
+	_, isWaiting := relay.decidesByRequestID[requestID]
 	relay.mutex.Unlock()
 	if !isWaiting {
 		return
@@ -301,9 +301,9 @@ func (s *Service) acceptPhoneApprovalAnswer(apiClient *apiclient.Client, request
 	}
 	relay.mutex.Lock()
 	accepted, err := relay.tracker.AcceptAnswer(s.unlockedSession.Keyset, s.unlockedSession.AccountID, requestID, stored.SealedAnswer, relay.ownDeviceID, s.config.Now())
-	decide := relay.allDecideByRequestID[requestID]
+	decide := relay.decidesByRequestID[requestID]
 	if err == nil {
-		delete(relay.allDecideByRequestID, requestID)
+		delete(relay.decidesByRequestID, requestID)
 	}
 	relay.mutex.Unlock()
 	s.mutex.Unlock()

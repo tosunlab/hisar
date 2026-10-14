@@ -10,10 +10,10 @@ import (
 	"github.com/tryhisar/hisar/core/apitypes"
 )
 
-// completeAllAcceptedShare wraps vault keys for people who accepted this user's share invitations, pinning their
-// signing keys. It returns whether a share was completed; a failure is kept for ListAllShareInvitation to show.
-func (s *Service) completeAllAcceptedShare(ctx context.Context) bool {
-	allCompleted, completeErr := s.unlockedSession.CompleteAllAcceptedShare(ctx)
+// completeAcceptedShares wraps vault keys for people who accepted this user's share invitations, pinning their
+// signing keys. It returns whether a share was completed; a failure is kept for ListShareInvitations to show.
+func (s *Service) completeAcceptedShares(ctx context.Context) bool {
+	completedShares, completeErr := s.unlockedSession.CompleteAcceptedShares(ctx)
 	if apiclient.IsUnreachable(completeErr) || apiclient.IsStatus(completeErr, http.StatusNotFound) {
 		return false
 	}
@@ -21,15 +21,15 @@ func (s *Service) completeAllAcceptedShare(ctx context.Context) bool {
 	if completeErr != nil {
 		s.shareCompletionError = completeErr.Error()
 	}
-	if len(allCompleted) > 0 {
+	if len(completedShares) > 0 {
 		s.state.Save()
-		s.loadAllVault(ctx)
+		s.loadVaults(ctx)
 	}
-	return len(allCompleted) > 0
+	return len(completedShares) > 0
 }
 
-// ListAllShareInvitation completes accepted shares first, then returns the invitations this user received and sent.
-func (s *Service) ListAllShareInvitation() (ShareInvitations, error) {
+// ListShareInvitations completes accepted shares first, then returns the invitations this user received and sent.
+func (s *Service) ListShareInvitations() (ShareInvitations, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if err := s.requireUnlocked(); err != nil {
@@ -37,35 +37,35 @@ func (s *Service) ListAllShareInvitation() (ShareInvitations, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	s.completeAllAcceptedShare(ctx)
-	invitationList, err := s.unlockedSession.Client.ListAllShareInvitation(ctx)
+	s.completeAcceptedShares(ctx)
+	invitationList, err := s.unlockedSession.Client.ListShareInvitations(ctx)
 	if err != nil {
 		return ShareInvitations{}, convertError(err)
 	}
 	result := ShareInvitations{
-		AllReceived:     make([]ReceivedShareInvitation, 0, len(invitationList.AllReceived)),
-		AllSent:         make([]SentShareInvitation, 0, len(invitationList.AllSent)),
-		AllWaiting:      make([]WaitingShareInvitation, 0, len(invitationList.AllWaiting)),
+		Received:        make([]ReceivedShareInvitation, 0, len(invitationList.Received)),
+		Sent:            make([]SentShareInvitation, 0, len(invitationList.Sent)),
+		Waiting:         make([]WaitingShareInvitation, 0, len(invitationList.Waiting)),
 		CompletionError: s.shareCompletionError,
 	}
-	for _, waiting := range invitationList.AllWaiting {
-		result.AllWaiting = append(result.AllWaiting, WaitingShareInvitation{
+	for _, waiting := range invitationList.Waiting {
+		result.Waiting = append(result.Waiting, WaitingShareInvitation{
 			ID: waiting.ID, VaultID: waiting.VaultID, Role: waiting.Role, InvitedByName: waiting.InvitedByName, InvitedByEmail: waiting.InvitedByEmail,
 			AcceptedAt: formatTime(waiting.AcceptedAt),
 		})
 	}
-	for _, received := range invitationList.AllReceived {
-		result.AllReceived = append(result.AllReceived, ReceivedShareInvitation{
+	for _, received := range invitationList.Received {
+		result.Received = append(result.Received, ReceivedShareInvitation{
 			ID: received.ID, VaultID: received.VaultID, Role: received.Role, InvitedByName: received.InvitedByName, InvitedByEmail: received.InvitedByEmail,
 			ExpiresAt: received.ExpiresAt.UTC().Format(time.RFC3339),
 		})
 	}
-	for _, sent := range invitationList.AllSent {
+	for _, sent := range invitationList.Sent {
 		vaultName := ""
-		if vault, found := s.allVaultByID[sent.VaultID]; found {
+		if vault, found := s.vaultsByID[sent.VaultID]; found {
 			vaultName = vault.Name
 		}
-		result.AllSent = append(result.AllSent, convertToSentShareInvitation(sent, vaultName))
+		result.Sent = append(result.Sent, convertToSentShareInvitation(sent, vaultName))
 	}
 	return result, nil
 }
@@ -86,29 +86,29 @@ func convertToSentShareInvitation(sent apitypes.SentShareInvitation, vaultName s
 	return invitation
 }
 
-// ListAllShareAwaitingUnlock lists, while locked, the shares people accepted that this app finishes once unlocked.
+// ListSharesAwaitingUnlock lists, while locked, the shares people accepted that this app finishes once unlocked.
 // It needs only the saved session; unlocked, signed out or offline, the list is empty.
-func (s *Service) ListAllShareAwaitingUnlock() ([]ShareAwaitingUnlock, error) {
+func (s *Service) ListSharesAwaitingUnlock() ([]ShareAwaitingUnlock, error) {
 	s.mutex.Lock()
 	isLocked := s.unlockedSession == nil && s.state.IsLoggedIn()
 	server, token := s.state.Server, s.state.Token
 	s.mutex.Unlock()
-	allAwaiting := []ShareAwaitingUnlock{}
+	awaitingShares := []ShareAwaitingUnlock{}
 	if !isLocked {
-		return allAwaiting, nil
+		return awaitingShares, nil
 	}
 	apiClient := s.createClient(server)
 	apiClient.Token = token
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	invitationList, err := apiClient.ListAllShareInvitation(ctx)
+	invitationList, err := apiClient.ListShareInvitations(ctx)
 	if apiclient.IsUnreachable(err) {
-		return allAwaiting, nil
+		return awaitingShares, nil
 	}
 	if err != nil {
-		return allAwaiting, convertError(err)
+		return awaitingShares, convertError(err)
 	}
-	for _, sent := range invitationList.AllSent {
+	for _, sent := range invitationList.Sent {
 		if sent.State != apitypes.ShareInvitationAccepted || sent.Recipient == nil {
 			continue
 		}
@@ -116,9 +116,9 @@ func (s *Service) ListAllShareAwaitingUnlock() ([]ShareAwaitingUnlock, error) {
 		if sent.AcceptedAt != nil {
 			awaiting.AcceptedAt = formatTime(*sent.AcceptedAt)
 		}
-		allAwaiting = append(allAwaiting, awaiting)
+		awaitingShares = append(awaitingShares, awaiting)
 	}
-	return allAwaiting, nil
+	return awaitingShares, nil
 }
 
 func (s *Service) answerShareInvitation(invitationID string, send func(context.Context, string) error) error {

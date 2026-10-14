@@ -60,11 +60,11 @@ func convertToShareLink(link *session.ShareLink) ShareLink {
 	}
 }
 
-func listAllShareLinkField(vaultItem *item.Item) []ShareLinkField {
-	allDefaultKey := sharelink.ListAllDefaultFieldKey(vaultItem)
-	allField := []ShareLinkField{}
-	for _, key := range sharelink.ListAllAvailableFieldKey(vaultItem) {
-		field := ShareLinkField{Key: key, Label: sharelink.DescribeFieldKey(vaultItem, key), IsDefault: slices.Contains(allDefaultKey, key)}
+func listShareLinkFields(vaultItem *item.Item) []ShareLinkField {
+	defaultKeys := sharelink.ListDefaultFieldKeys(vaultItem)
+	fields := []ShareLinkField{}
+	for _, key := range sharelink.ListAvailableFieldKeys(vaultItem) {
+		field := ShareLinkField{Key: key, Label: sharelink.DescribeFieldKey(vaultItem, key), IsDefault: slices.Contains(defaultKeys, key)}
 		switch key {
 		case sharelink.FieldPassword:
 			field.IsConcealed = true
@@ -76,12 +76,12 @@ func listAllShareLinkField(vaultItem *item.Item) []ShareLinkField {
 				}
 			}
 		}
-		allField = append(allField, field)
+		fields = append(fields, field)
 	}
-	return allField
+	return fields
 }
 
-func (s *Service) ListAllShareLinkField(vaultID, itemID string) ([]ShareLinkField, error) {
+func (s *Service) ListShareLinkFields(vaultID, itemID string) ([]ShareLinkField, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if err := s.requireUnlocked(); err != nil {
@@ -91,7 +91,7 @@ func (s *Service) ListAllShareLinkField(vaultID, itemID string) ([]ShareLinkFiel
 	if err != nil {
 		return nil, err
 	}
-	return listAllShareLinkField(vaultItem), nil
+	return listShareLinkFields(vaultItem), nil
 }
 
 func (request ShareLinkRequest) buildOptions() session.ShareLinkOptions {
@@ -130,7 +130,7 @@ func (s *Service) CreateShareLink(request ShareLinkRequest) (ShareLink, error) {
 	return convertToShareLink(created), nil
 }
 
-func (s *Service) ListAllShareLink() ([]ShareLink, error) {
+func (s *Service) ListShareLinks() ([]ShareLink, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if err := s.requireUnlocked(); err != nil {
@@ -138,18 +138,18 @@ func (s *Service) ListAllShareLink() ([]ShareLink, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	allLink, err := s.unlockedSession.ListAllShareLink(ctx)
+	links, err := s.unlockedSession.ListShareLinks(ctx)
 	if err != nil {
 		return nil, convertError(err)
 	}
-	allShareLink := make([]ShareLink, 0, len(allLink))
-	for index := range allLink {
-		shareLink := convertToShareLink(&allLink[index])
+	shareLinks := make([]ShareLink, 0, len(links))
+	for index := range links {
+		shareLink := convertToShareLink(&links[index])
 		// Lists never carry the key; CopyShareLink copies a link through the backend.
 		shareLink.URL = ""
-		allShareLink = append(allShareLink, shareLink)
+		shareLinks = append(shareLinks, shareLink)
 	}
-	return allShareLink, nil
+	return shareLinks, nil
 }
 
 func (s *Service) RevokeShareLink(shareLinkID string) error {
@@ -176,16 +176,16 @@ func (s *Service) CopyShareLink(shareLinkID string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	allLink, err := s.unlockedSession.ListAllShareLink(ctx)
+	links, err := s.unlockedSession.ListShareLinks(ctx)
 	if err != nil {
 		return convertError(err)
 	}
-	index := slices.IndexFunc(allLink, func(link session.ShareLink) bool { return link.ID == shareLinkID })
+	index := slices.IndexFunc(links, func(link session.ShareLink) bool { return link.ID == shareLinkID })
 	if index < 0 {
 		return errShareLinkGone
 	}
-	if allLink[index].URL == "" {
+	if links[index].URL == "" {
 		return fmt.Errorf("this link %w on this device", ErrNotFound)
 	}
-	return s.copyText(allLink[index].URL)
+	return s.copyText(links[index].URL)
 }

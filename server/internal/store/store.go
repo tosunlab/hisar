@@ -15,7 +15,7 @@ import (
 )
 
 //go:embed migrations/*.sql
-var allMigrationFile embed.FS
+var migrationFiles embed.FS
 
 var (
 	ErrNotFound = errors.New("store: not found")
@@ -43,7 +43,7 @@ func (s *Store) Close() { s.pool.Close() }
 
 // createMigrator uses a Postgres advisory lock so concurrent server starts migrate only once.
 func (s *Store) createMigrator() (*goose.Provider, error) {
-	migrationDirectory, err := fs.Sub(allMigrationFile, "migrations")
+	migrationDirectory, err := fs.Sub(migrationFiles, "migrations")
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +70,7 @@ func (s *Store) RollbackMigration(ctx context.Context) (*goose.MigrationResult, 
 	return migrator.Down(ctx)
 }
 
-func (s *Store) GetAllMigrationStatus(ctx context.Context) ([]*goose.MigrationStatus, error) {
+func (s *Store) GetMigrationStatuses(ctx context.Context) ([]*goose.MigrationStatus, error) {
 	migrator, err := s.createMigrator()
 	if err != nil {
 		return nil, err

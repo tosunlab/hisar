@@ -4,15 +4,15 @@ import (
 	"github.com/tryhisar/hisar/core/approval"
 )
 
-// ListAllPendingApproval lets a window that opens late show requests it missed.
-func (approver *Approver) ListAllPendingApproval() []ApprovalEvent {
+// ListPendingApprovals lets a window that opens late show requests it missed.
+func (approver *Approver) ListPendingApprovals() []ApprovalEvent {
 	approver.mutex.Lock()
 	defer approver.mutex.Unlock()
-	allEvent := make([]ApprovalEvent, 0, len(approver.allPending))
-	for _, pending := range approver.allPending {
-		allEvent = append(allEvent, pending.event)
+	events := make([]ApprovalEvent, 0, len(approver.pendingRequests))
+	for _, pending := range approver.pendingRequests {
+		events = append(events, pending.event)
 	}
-	return allEvent
+	return events
 }
 
 // Respond answers a pending approval; it returns false for an unknown or finished request, or one already being answered.
@@ -90,7 +90,7 @@ func (approver *Approver) respondFromPhone(pending *pendingApproval, answer appr
 func (approver *Approver) DenyAll() {
 	approver.mutex.Lock()
 	isCancellingTouchID := false
-	for _, pending := range approver.allPending {
+	for _, pending := range approver.pendingRequests {
 		approver.sendResponse(pending, approvalResponse{})
 		isCancellingTouchID = approver.markTouchIDCancelled(pending) || isCancellingTouchID
 	}

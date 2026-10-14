@@ -31,8 +31,8 @@ func TestExportApprovalSaysWhatIsWritten(t *testing.T) {
 		if err := waitForCommandLineResult(t, resultChannel); err != nil {
 			t.Fatal(err)
 		}
-		if allReason := biometric.listAllReason(); len(allReason) != 1 || allReason[0] != `allow "hisar" in Terminal to export all your vaults` {
-			t.Errorf("Touch ID reasons = %q", allReason)
+		if reasons := biometric.listReasons(); len(reasons) != 1 || reasons[0] != `allow "hisar" in Terminal to export all your vaults` {
+			t.Errorf("Touch ID reasons = %q", reasons)
 		}
 	}
 }

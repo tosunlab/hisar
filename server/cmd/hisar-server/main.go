@@ -76,9 +76,9 @@ func getEnv(key, defaultValue string) string {
 
 func main() {
 	log.SetFlags(log.LstdFlags | log.LUTC)
-	command, allArg := "serve", os.Args[1:]
-	if len(allArg) > 0 && !strings.HasPrefix(allArg[0], "-") {
-		command, allArg = allArg[0], allArg[1:]
+	command, args := "serve", os.Args[1:]
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		command, args = args[0], args[1:]
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -87,11 +87,11 @@ func main() {
 	var err error
 	switch command {
 	case "serve":
-		err = serve(ctx, allArg)
+		err = serve(ctx, args)
 	case "invite":
-		err = invite(ctx, allArg)
+		err = invite(ctx, args)
 	case "migrate":
-		err = migrate(ctx, allArg)
+		err = migrate(ctx, args)
 	default:
 		printUsage()
 		os.Exit(2)
@@ -111,16 +111,16 @@ func setup(ctx context.Context) (*store.Store, *api.Server, error) {
 		return nil, nil, fmt.Errorf("open database: %w", err)
 	}
 	if getEnv("HISAR_AUTO_MIGRATE", "true") == "true" {
-		allResult, err := database.Migrate(ctx)
+		results, err := database.Migrate(ctx)
 		if err != nil {
 			database.Close()
 			return nil, nil, fmt.Errorf("migrate: %w", err)
 		}
-		for _, result := range allResult {
+		for _, result := range results {
 			log.Printf("applied migration %s", result.Source.Path)
 		}
 	}
-	secrets, err := api.LoadOrCreateAllSecret(getEnv("HISAR_SECRETS_FILE", "hisar-secrets.json"))
+	secrets, err := api.LoadOrCreateSecrets(getEnv("HISAR_SECRETS_FILE", "hisar-secrets.json"))
 	if err != nil {
 		database.Close()
 		return nil, nil, fmt.Errorf("secrets: %w", err)
@@ -146,7 +146,7 @@ func setup(ctx context.Context) (*store.Store, *api.Server, error) {
 		database.Close()
 		return nil, nil, err
 	}
-	server, err := api.CreateServer(database, secrets, api.Config{
+	server, err := api.NewServer(database, secrets, api.Config{
 		PublicURL:       publicURL,
 		TrustProxy:      getEnv("HISAR_TRUST_PROXY", "false") == "true",
 		AuthBurst:       authBurst,
@@ -181,7 +181,7 @@ func createDesktopUpdateSource(publicURL string) (*desktopupdate.Source, error) 
 		return nil, nil
 	}
 	token := strings.TrimSpace(os.Getenv("HISAR_DESKTOP_UPDATE_GITHUB_TOKEN"))
-	gitHub, err := desktopupdate.CreateGitHub(desktopupdate.GitHubConfig{
+	gitHub, err := desktopupdate.NewGitHub(desktopupdate.GitHubConfig{
 		APIURL:     getEnv("HISAR_DESKTOP_UPDATE_GITHUB_API_URL", desktopupdate.DefaultGitHubAPIURL),
 		Repository: repository,
 		Token:      token,
@@ -194,13 +194,13 @@ func createDesktopUpdateSource(publicURL string) (*desktopupdate.Source, error) 
 		tokenNote = "with a token"
 	}
 	log.Printf("desktop updates from the GitHub Releases of %s, %s", repository, tokenNote)
-	return desktopupdate.CreateSource(gitHub, desktopupdate.SourceConfig{PublicURL: publicURL}), nil
+	return desktopupdate.NewSource(gitHub, desktopupdate.SourceConfig{PublicURL: publicURL}), nil
 }
 
 func createMailer() (mail.Mailer, error) {
-	allName := []string{"HISAR_SMTP_HOST", "HISAR_SMTP_PORT", "HISAR_SMTP_USERNAME", "HISAR_SMTP_PASSWORD", "HISAR_SMTP_FROM"}
+	names := []string{"HISAR_SMTP_HOST", "HISAR_SMTP_PORT", "HISAR_SMTP_USERNAME", "HISAR_SMTP_PASSWORD", "HISAR_SMTP_FROM"}
 	setCount := 0
-	for _, name := range allName {
+	for _, name := range names {
 		if os.Getenv(name) != "" {
 			setCount++
 		}
@@ -208,14 +208,14 @@ func createMailer() (mail.Mailer, error) {
 	if setCount == 0 {
 		return nil, nil
 	}
-	if setCount != len(allName) {
+	if setCount != len(names) {
 		return nil, errors.New("email needs HISAR_SMTP_HOST, HISAR_SMTP_PORT, HISAR_SMTP_USERNAME, HISAR_SMTP_PASSWORD and HISAR_SMTP_FROM together")
 	}
 	port, err := strconv.Atoi(os.Getenv("HISAR_SMTP_PORT"))
 	if err != nil {
 		return nil, fmt.Errorf("HISAR_SMTP_PORT must be a port number")
 	}
-	mailer, err := mail.CreateSMTPMailer(mail.SMTPConfig{
+	mailer, err := mail.NewSMTPMailer(mail.SMTPConfig{
 		Host: os.Getenv("HISAR_SMTP_HOST"), Port: port, Username: os.Getenv("HISAR_SMTP_USERNAME"), Password: os.Getenv("HISAR_SMTP_PASSWORD"), From: os.Getenv("HISAR_SMTP_FROM"),
 	})
 	if err != nil {
@@ -225,10 +225,10 @@ func createMailer() (mail.Mailer, error) {
 	return mailer, nil
 }
 
-func serve(ctx context.Context, allArg []string) error {
+func serve(ctx context.Context, args []string) error {
 	flagSet := flag.NewFlagSet("serve", flag.ExitOnError)
 	address := flagSet.String("addr", getEnv("HISAR_ADDR", ":8080"), "listen address")
-	flagSet.Parse(allArg)
+	flagSet.Parse(args)
 
 	database, server, err := setup(ctx)
 	if err != nil {
@@ -236,8 +236,8 @@ func serve(ctx context.Context, allArg []string) error {
 	}
 	defer database.Close()
 
-	go pruneAllOldRecord(ctx, database)
-	go deleteAllExpiredShareLink(ctx, database, shareLinkSweepInterval)
+	go pruneOldRecords(ctx, database)
+	go deleteExpiredShareLinks(ctx, database, shareLinkSweepInterval)
 
 	app := server.CreateApp()
 	log.Printf("hisar-server listening on %s", *address)
@@ -248,7 +248,7 @@ func serve(ctx context.Context, allArg []string) error {
 	})
 }
 
-func pruneAllOldRecord(ctx context.Context, database *store.Store) {
+func pruneOldRecords(ctx context.Context, database *store.Store) {
 	ticker := time.NewTicker(24 * time.Hour)
 	defer ticker.Stop()
 	for {
@@ -275,11 +275,11 @@ func pruneAllOldRecord(ctx context.Context, database *store.Store) {
 	}
 }
 
-func deleteAllExpiredShareLink(ctx context.Context, database *store.Store, interval time.Duration) {
+func deleteExpiredShareLinks(ctx context.Context, database *store.Store, interval time.Duration) {
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 	for {
-		if deletedCount, err := database.DeleteAllExpiredShareLink(ctx); err != nil && ctx.Err() == nil {
+		if deletedCount, err := database.DeleteExpiredShareLinks(ctx); err != nil && ctx.Err() == nil {
 			log.Printf("delete expired share links: %v", err)
 		} else if deletedCount > 0 {
 			log.Printf("deleted %d expired share links", deletedCount)
@@ -292,11 +292,11 @@ func deleteAllExpiredShareLink(ctx context.Context, database *store.Store, inter
 	}
 }
 
-func invite(ctx context.Context, allArg []string) error {
+func invite(ctx context.Context, args []string) error {
 	flagSet := flag.NewFlagSet("invite", flag.ExitOnError)
 	email := flagSet.String("email", "", "email address of the invitee")
 	role := flagSet.String("role", "", "admin or member")
-	flagSet.Parse(allArg)
+	flagSet.Parse(args)
 
 	database, server, err := setup(ctx)
 	if err != nil {
@@ -304,12 +304,12 @@ func invite(ctx context.Context, allArg []string) error {
 	}
 	defer database.Close()
 
-	allAccount, err := database.ListAllAccount(ctx)
+	accounts, err := database.ListAccounts(ctx)
 	if err != nil {
 		return err
 	}
 	defaultRole := apitypes.RoleMember
-	if len(allAccount) == 0 {
+	if len(accounts) == 0 {
 		defaultRole = apitypes.RoleAdmin
 	}
 
@@ -336,8 +336,8 @@ func invite(ctx context.Context, allArg []string) error {
 	return nil
 }
 
-func migrate(ctx context.Context, allArg []string) error {
-	if len(allArg) != 1 {
+func migrate(ctx context.Context, args []string) error {
+	if len(args) != 1 {
 		return errors.New("usage: hisar-server migrate up|down|status")
 	}
 	databaseURL := os.Getenv("HISAR_DATABASE_URL")
@@ -350,16 +350,16 @@ func migrate(ctx context.Context, allArg []string) error {
 	}
 	defer database.Close()
 
-	switch allArg[0] {
+	switch args[0] {
 	case "up":
-		allResult, err := database.Migrate(ctx)
+		results, err := database.Migrate(ctx)
 		if err != nil {
 			return err
 		}
-		if len(allResult) == 0 {
+		if len(results) == 0 {
 			fmt.Println("no pending migrations")
 		}
-		for _, result := range allResult {
+		for _, result := range results {
 			fmt.Printf("applied %s (%s)\n", result.Source.Path, result.Duration)
 		}
 	case "down":
@@ -369,11 +369,11 @@ func migrate(ctx context.Context, allArg []string) error {
 		}
 		fmt.Printf("rolled back %s\n", result.Source.Path)
 	case "status":
-		allStatus, err := database.GetAllMigrationStatus(ctx)
+		statuses, err := database.GetMigrationStatuses(ctx)
 		if err != nil {
 			return err
 		}
-		for _, status := range allStatus {
+		for _, status := range statuses {
 			appliedAt := "pending"
 			if !status.AppliedAt.IsZero() {
 				appliedAt = status.AppliedAt.Format(time.RFC3339)
@@ -381,7 +381,7 @@ func migrate(ctx context.Context, allArg []string) error {
 			fmt.Printf("%-24s %s\n", status.Source.Path, appliedAt)
 		}
 	default:
-		return fmt.Errorf("unknown migrate command %q", allArg[0])
+		return fmt.Errorf("unknown migrate command %q", args[0])
 	}
 	return nil
 }

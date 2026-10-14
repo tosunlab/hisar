@@ -17,8 +17,8 @@ const (
 )
 
 var (
-	allAppearance = []string{"system", "light", "dark"}
-	allThemeColor = []string{"neutral", "blue", "purple", "green"}
+	appearances = []string{"system", "light", "dark"}
+	themeColors = []string{"neutral", "blue", "purple", "green"}
 )
 
 func (s *Service) GetTheme() Theme {
@@ -29,10 +29,10 @@ func (s *Service) GetTheme() Theme {
 
 func (s *Service) buildTheme() Theme {
 	theme := Theme{Appearance: defaultAppearance, Color: defaultThemeColor}
-	if slices.Contains(allAppearance, s.state.Appearance) {
+	if slices.Contains(appearances, s.state.Appearance) {
 		theme.Appearance = s.state.Appearance
 	}
-	if slices.Contains(allThemeColor, s.state.Color) {
+	if slices.Contains(themeColors, s.state.Color) {
 		theme.Color = s.state.Color
 	}
 	return theme
@@ -40,10 +40,10 @@ func (s *Service) buildTheme() Theme {
 
 // SetTheme saves the theme for this device; it is kept when signing out.
 func (s *Service) SetTheme(appearance, color string) (Theme, error) {
-	if !slices.Contains(allAppearance, appearance) {
+	if !slices.Contains(appearances, appearance) {
 		return Theme{}, errors.New("choose System, Light or Dark")
 	}
-	if !slices.Contains(allThemeColor, color) {
+	if !slices.Contains(themeColors, color) {
 		return Theme{}, errors.New("choose Neutral, Blue, Purple or Green")
 	}
 	s.mutex.Lock()

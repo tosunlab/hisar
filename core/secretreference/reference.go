@@ -26,12 +26,12 @@ func Parse(text string) (Reference, error) {
 	if !IsReference(text) {
 		return Reference{}, ErrNotReference
 	}
-	allSegment := strings.Split(text[len(Scheme):], "/")
-	if len(allSegment) != 3 {
-		return Reference{}, fmt.Errorf("a secret reference has three parts, hisar://<vault>/<item>/<field>; this one has %d", len(allSegment))
+	segments := strings.Split(text[len(Scheme):], "/")
+	if len(segments) != 3 {
+		return Reference{}, fmt.Errorf("a secret reference has three parts, hisar://<vault>/<item>/<field>; this one has %d", len(segments))
 	}
-	allDecoded := make([]string, len(allSegment))
-	for index, segment := range allSegment {
+	decodedValues := make([]string, len(segments))
+	for index, segment := range segments {
 		decoded, err := decodeSegment(segment)
 		if err != nil {
 			return Reference{}, err
@@ -39,9 +39,9 @@ func Parse(text string) (Reference, error) {
 		if strings.TrimSpace(decoded) == "" {
 			return Reference{}, fmt.Errorf("the %s of a secret reference is empty", []string{"vault", "item", "field"}[index])
 		}
-		allDecoded[index] = decoded
+		decodedValues[index] = decoded
 	}
-	return Reference{Vault: allDecoded[0], Item: allDecoded[1], Field: allDecoded[2]}, nil
+	return Reference{Vault: decodedValues[0], Item: decodedValues[1], Field: decodedValues[2]}, nil
 }
 
 func (reference Reference) String() string {

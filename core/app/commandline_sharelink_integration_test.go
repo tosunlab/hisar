@@ -17,11 +17,11 @@ var shareLinkURLPattern = regexp.MustCompile(`https?://\S+/s/([A-Za-z0-9_-]+)#\S
 func checkShareLinkThroughApp(t *testing.T, approver *unlockingApprover, binaryPath, socketPath, statePath string) {
 	t.Helper()
 	ctx := context.Background()
-	run := func(input string, allArg ...string) string {
+	run := func(input string, args ...string) string {
 		t.Helper()
-		output, err := runCommandLineBinary(t, binaryPath, socketPath, statePath, input, allArg...)
+		output, err := runCommandLineBinary(t, binaryPath, socketPath, statePath, input, args...)
 		if err != nil {
-			t.Fatalf("hisar %s: %v\n%s", strings.Join(allArg, " "), err, output)
+			t.Fatalf("hisar %s: %v\n%s", strings.Join(args, " "), err, output)
 		}
 		return output
 	}
@@ -35,9 +35,9 @@ func checkShareLinkThroughApp(t *testing.T, approver *unlockingApprover, binaryP
 		t.Errorf("a share link in an approved session asked %d times", count-approvalCount)
 	}
 	approver.mutex.Lock()
-	description := approver.allRequest[len(approver.allRequest)-1].ShareLink
+	description := approver.requests[len(approver.requests)-1].ShareLink
 	approver.mutex.Unlock()
-	if description == nil || description.Title != "GitHub" || !slices.Equal(description.AllFieldLabel, []string{"password"}) || description.Detail != "Expires in 1 day · 2 views" {
+	if description == nil || description.Title != "GitHub" || !slices.Equal(description.FieldLabels, []string{"password"}) || description.Detail != "Expires in 1 day · 2 views" {
 		t.Errorf("approval description %+v", description)
 	}
 

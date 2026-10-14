@@ -26,36 +26,36 @@ func (s *Session) InviteToVault(ctx context.Context, vault *Vault, email, role s
 	return err
 }
 
-// CompleteAllAcceptedShare wraps the vault key for every recipient who accepted an invitation to a vault this account owns.
+// CompleteAcceptedShares wraps the vault key for every recipient who accepted an invitation to a vault this account owns.
 // Recipients whose keys do not verify, or whom MemberVerifier refuses, are skipped and reported in the error.
-func (s *Session) CompleteAllAcceptedShare(ctx context.Context) ([]CompletedShare, error) {
-	invitationList, err := s.Client.ListAllShareInvitation(ctx)
+func (s *Session) CompleteAcceptedShares(ctx context.Context) ([]CompletedShare, error) {
+	invitationList, err := s.Client.ListShareInvitations(ctx)
 	if err != nil {
 		return nil, err
 	}
-	var allAccepted []apitypes.SentShareInvitation
-	for _, invitation := range invitationList.AllSent {
+	var accepted []apitypes.SentShareInvitation
+	for _, invitation := range invitationList.Sent {
 		if invitation.State == apitypes.ShareInvitationAccepted && invitation.Recipient != nil {
-			allAccepted = append(allAccepted, invitation)
+			accepted = append(accepted, invitation)
 		}
 	}
-	if len(allAccepted) == 0 {
+	if len(accepted) == 0 {
 		return nil, nil
 	}
-	allVault, err := s.ListAllVault(ctx)
+	vaults, err := s.ListVaults(ctx)
 	if err != nil {
 		return nil, err
 	}
-	allOwnedVaultByID := map[string]*Vault{}
-	for index := range allVault {
-		if allVault[index].Role == apitypes.VaultOwner {
-			allOwnedVaultByID[allVault[index].ID] = &allVault[index]
+	ownedVaultsByID := map[string]*Vault{}
+	for index := range vaults {
+		if vaults[index].Role == apitypes.VaultOwner {
+			ownedVaultsByID[vaults[index].ID] = &vaults[index]
 		}
 	}
-	var allCompleted []CompletedShare
-	var allError []error
-	for _, invitation := range allAccepted {
-		vault, found := allOwnedVaultByID[invitation.VaultID]
+	var completedShares []CompletedShare
+	var errs []error
+	for _, invitation := range accepted {
+		vault, found := ownedVaultsByID[invitation.VaultID]
 		if !found {
 			continue
 		}
@@ -64,12 +64,12 @@ func (s *Session) CompleteAllAcceptedShare(ctx context.Context) ([]CompletedShar
 			continue
 		}
 		if err := recipient.PublicKeys.Verify(recipient.AccountID); err != nil {
-			allError = append(allError, fmt.Errorf("%s: %w", recipient.Email, err))
+			errs = append(errs, fmt.Errorf("%s: %w", recipient.Email, err))
 			continue
 		}
 		if s.MemberVerifier != nil {
 			if err := s.MemberVerifier(&recipient); err != nil {
-				allError = append(allError, err)
+				errs = append(errs, err)
 				continue
 			}
 		}
@@ -78,23 +78,23 @@ func (s *Session) CompleteAllAcceptedShare(ctx context.Context) ([]CompletedShar
 			continue
 		}
 		if err != nil {
-			allError = append(allError, fmt.Errorf("%s: %w", recipient.Email, err))
+			errs = append(errs, fmt.Errorf("%s: %w", recipient.Email, err))
 			continue
 		}
-		allCompleted = append(allCompleted, CompletedShare{VaultID: vault.ID, VaultName: vault.Name, Role: invitation.Role, Recipient: recipient})
+		completedShares = append(completedShares, CompletedShare{VaultID: vault.ID, VaultName: vault.Name, Role: invitation.Role, Recipient: recipient})
 	}
-	return allCompleted, errors.Join(allError...)
+	return completedShares, errors.Join(errs...)
 }
 
 // GetVerifiedMember returns a member whose KEM key is signed by their signing key.
 // Callers should additionally pin the member's PublicKeys.Sign (trust on first use).
 func (s *Session) GetVerifiedMember(ctx context.Context, emailOrID string) (*apitypes.Member, error) {
-	allMember, err := s.Client.ListAllMember(ctx)
+	members, err := s.Client.ListMembers(ctx)
 	if err != nil {
 		return nil, err
 	}
-	for i := range allMember {
-		member := &allMember[i]
+	for i := range members {
+		member := &members[i]
 		if member.AccountID == emailOrID || strings.EqualFold(member.Email, emailOrID) {
 			if err := member.PublicKeys.Verify(member.AccountID); err != nil {
 				return nil, fmt.Errorf("member %s: %w", member.Email, err)

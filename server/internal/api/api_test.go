@@ -51,7 +51,7 @@ func setupServer(t *testing.T) (baseURL string, server *Server, databaseURL stri
 	if _, err := database.Migrate(ctx); err != nil {
 		t.Fatal(err)
 	}
-	server, err = CreateServer(database, generateAllSecret(), Config{PublicURL: "https://hisar.test"})
+	server, err = NewServer(database, generateSecrets(), Config{PublicURL: "https://hisar.test"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -68,7 +68,7 @@ func setupServer(t *testing.T) (baseURL string, server *Server, databaseURL stri
 }
 
 func attachMailRecorder(server *Server) *mailtest.Recorder {
-	recorder := mailtest.CreateRecorder()
+	recorder := mailtest.NewRecorder()
 	server.config.Mailer = recorder
 	return recorder
 }
@@ -79,16 +79,16 @@ var inviteTokenPattern = regexp.MustCompile(`/invite/([A-Za-z0-9_-]+)`)
 func findInviteToken(t *testing.T, server *Server, recorder *mailtest.Recorder, recipient string) string {
 	t.Helper()
 	server.WaitForBackgroundWork()
-	allMessage := recorder.ListAllMessage()
-	for index := len(allMessage) - 1; index >= 0; index-- {
-		if allMessage[index].To != recipient {
+	messages := recorder.ListMessages()
+	for index := len(messages) - 1; index >= 0; index-- {
+		if messages[index].To != recipient {
 			continue
 		}
-		if match := inviteTokenPattern.FindStringSubmatch(allMessage[index].Body); match != nil {
+		if match := inviteTokenPattern.FindStringSubmatch(messages[index].Body); match != nil {
 			return match[1]
 		}
 	}
-	t.Fatalf("no invite emailed to %s: %+v", recipient, allMessage)
+	t.Fatalf("no invite emailed to %s: %+v", recipient, messages)
 	return ""
 }
 
@@ -99,19 +99,19 @@ func shareThroughInvitation(t *testing.T, owner, recipient *session.Session, vau
 	if err := owner.InviteToVault(ctx, vault, recipient.Email, role); err != nil {
 		t.Fatal(err)
 	}
-	invitationList := requireValue[*apitypes.ShareInvitationList](t)(recipient.Client.ListAllShareInvitation(ctx))
-	invitationIndex := slices.IndexFunc(invitationList.AllReceived, func(invitation apitypes.ReceivedShareInvitation) bool { return invitation.VaultID == vault.ID })
+	invitationList := requireValue[*apitypes.ShareInvitationList](t)(recipient.Client.ListShareInvitations(ctx))
+	invitationIndex := slices.IndexFunc(invitationList.Received, func(invitation apitypes.ReceivedShareInvitation) bool { return invitation.VaultID == vault.ID })
 	if invitationIndex < 0 {
 		t.Fatalf("%s received no invitation to %s: %+v", recipient.Email, vault.Name, invitationList)
 	}
-	if err := recipient.Client.AcceptShareInvitation(ctx, invitationList.AllReceived[invitationIndex].ID); err != nil {
+	if err := recipient.Client.AcceptShareInvitation(ctx, invitationList.Received[invitationIndex].ID); err != nil {
 		t.Fatal(err)
 	}
-	allCompleted, err := owner.CompleteAllAcceptedShare(ctx)
-	if err != nil || !slices.ContainsFunc(allCompleted, func(completed session.CompletedShare) bool {
+	completedShares, err := owner.CompleteAcceptedShares(ctx)
+	if err != nil || !slices.ContainsFunc(completedShares, func(completed session.CompletedShare) bool {
 		return completed.VaultID == vault.ID && completed.Recipient.AccountID == recipient.AccountID && completed.Role == role
 	}) {
-		t.Fatalf("completed shares: %+v %v", allCompleted, err)
+		t.Fatalf("completed shares: %+v %v", completedShares, err)
 	}
 }
 
@@ -136,22 +136,22 @@ func TestEndToEnd(t *testing.T) {
 	alicePassword := []byte("alice password")
 
 	aliceInvite := requireValue[*apitypes.InviteResponse](t)(server.CreateInvite(ctx, "alice@example.com", apitypes.RoleAdmin, nil))
-	alice, aliceSecretKey, err := session.SignUp(ctx, apiclient.Create(baseURL), aliceInvite.Token, "Alice@Example.com", "Alice", alicePassword, testDevice)
+	alice, aliceSecretKey, err := session.SignUp(ctx, apiclient.New(baseURL), aliceInvite.Token, "Alice@Example.com", "Alice", alicePassword, testDevice)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := session.SignUp(ctx, apiclient.Create(baseURL), aliceInvite.Token, "alice@example.com", "Again", alicePassword, testDevice); !apiclient.IsStatus(err, http.StatusForbidden) {
+	if _, _, err := session.SignUp(ctx, apiclient.New(baseURL), aliceInvite.Token, "alice@example.com", "Again", alicePassword, testDevice); !apiclient.IsStatus(err, http.StatusForbidden) {
 		t.Fatalf("invite reuse: %v", err)
 	}
 
-	allVault := requireValue[[]session.Vault](t)(alice.ListAllVault(ctx))
-	if len(allVault) != 1 || allVault[0].Name != "Personal" || allVault[0].Type != apitypes.VaultPersonal {
-		t.Fatalf("vaults after signup: %+v", allVault)
+	vaults := requireValue[[]session.Vault](t)(alice.ListVaults(ctx))
+	if len(vaults) != 1 || vaults[0].Name != "Personal" || vaults[0].Type != apitypes.VaultPersonal {
+		t.Fatalf("vaults after signup: %+v", vaults)
 	}
 
 	t.Run("login", func(t *testing.T) {
 		otherSecretKey, _ := crypt.GenerateSecretKey(aliceSecretKey.AccountID)
-		allCase := map[string]struct {
+		cases := map[string]struct {
 			email     string
 			password  []byte
 			secretKey crypt.SecretKey
@@ -160,16 +160,16 @@ func TestEndToEnd(t *testing.T) {
 			"wrong secret key": {"alice@example.com", alicePassword, otherSecretKey},
 			"unknown email":    {"nobody@example.com", alicePassword, aliceSecretKey},
 		}
-		for name, testCase := range allCase {
-			if _, err := session.LogIn(ctx, apiclient.Create(baseURL), testCase.email, testCase.password, testCase.secretKey, testDevice); !errors.Is(err, session.ErrBadCredentials) {
+		for name, testCase := range cases {
+			if _, err := session.LogIn(ctx, apiclient.New(baseURL), testCase.email, testCase.password, testCase.secretKey, testDevice); !errors.Is(err, session.ErrBadCredentials) {
 				t.Errorf("%s: %v", name, err)
 			}
 		}
-		loggedIn := requireValue[*session.Session](t)(session.LogIn(ctx, apiclient.Create(baseURL), "alice@example.com", alicePassword, aliceSecretKey, testDevice))
+		loggedIn := requireValue[*session.Session](t)(session.LogIn(ctx, apiclient.New(baseURL), "alice@example.com", alicePassword, aliceSecretKey, testDevice))
 		if loggedIn.Role != apitypes.RoleAdmin {
 			t.Errorf("role = %q", loggedIn.Role)
 		}
-		tokenClient := apiclient.Create(baseURL)
+		tokenClient := apiclient.New(baseURL)
 		tokenClient.Token = loggedIn.Client.Token
 		requireValue[*session.Session](t)(session.Unlock(ctx, tokenClient, nil, alicePassword, aliceSecretKey))
 		if _, err := session.Unlock(ctx, tokenClient, nil, []byte("nope"), aliceSecretKey); !errors.Is(err, session.ErrBadCredentials) {
@@ -178,7 +178,7 @@ func TestEndToEnd(t *testing.T) {
 	})
 
 	t.Run("prelogin hides unknown accounts", func(t *testing.T) {
-		anonymous := apiclient.Create(baseURL)
+		anonymous := apiclient.New(baseURL)
 		first := requireValue[*apitypes.PreloginResponse](t)(anonymous.FetchPrelogin(ctx, "ghost@example.com"))
 		second := requireValue[*apitypes.PreloginResponse](t)(anonymous.FetchPrelogin(ctx, "ghost@example.com"))
 		if len(first.Salt) != crypt.SaltSize || !bytes.Equal(first.Salt, second.Salt) || first.Argon2 != crypt.DefaultArgon2Params() {
@@ -188,7 +188,7 @@ func TestEndToEnd(t *testing.T) {
 
 	recorder := attachMailRecorder(server)
 	requireValue[*apitypes.InvitationSentResponse](t)(alice.Client.Invite(ctx, &apitypes.InviteRequest{Email: "bob@example.com"}))
-	bob, _, err := session.SignUp(ctx, apiclient.Create(baseURL), findInviteToken(t, server, recorder, "bob@example.com"), "bob@example.com", "Bob", []byte("bob password"), testDevice)
+	bob, _, err := session.SignUp(ctx, apiclient.New(baseURL), findInviteToken(t, server, recorder, "bob@example.com"), "bob@example.com", "Bob", []byte("bob password"), testDevice)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,13 +213,13 @@ func TestEndToEnd(t *testing.T) {
 	bobMember := requireValue[*apitypes.Member](t)(alice.GetVerifiedMember(ctx, "bob@example.com"))
 
 	bobFamily := requireValue[*session.Vault](t)(bob.FindVault(ctx, "family"))
-	allBobItem := requireValue[[]item.Item](t)(bob.ListAllItem(ctx, bobFamily))
-	if len(allBobItem) != 1 || allBobItem[0].Details.Password != "hunter2" {
-		t.Fatalf("bob items: %+v", allBobItem)
+	bobItems := requireValue[[]item.Item](t)(bob.ListItems(ctx, bobFamily))
+	if len(bobItems) != 1 || bobItems[0].Details.Password != "hunter2" {
+		t.Fatalf("bob items: %+v", bobItems)
 	}
 
 	t.Run("conflict", func(t *testing.T) {
-		staleCopy := allBobItem[0]
+		staleCopy := bobItems[0]
 		netflix.Details.Password = "alice-new"
 		requireValue[*item.Item](t)(alice.SaveItem(ctx, family, netflix))
 
@@ -236,14 +236,14 @@ func TestEndToEnd(t *testing.T) {
 	})
 
 	t.Run("delete and history", func(t *testing.T) {
-		allItem := requireValue[[]item.Item](t)(bob.ListAllItem(ctx, bobFamily))
-		requireValue[*item.Item](t)(bob.DeleteItem(ctx, bobFamily, &allItem[0]))
-		if allRemaining := requireValue[[]item.Item](t)(alice.ListAllItem(ctx, family)); len(allRemaining) != 0 {
-			t.Errorf("items after delete: %+v", allRemaining)
+		items := requireValue[[]item.Item](t)(bob.ListItems(ctx, bobFamily))
+		requireValue[*item.Item](t)(bob.DeleteItem(ctx, bobFamily, &items[0]))
+		if remaining := requireValue[[]item.Item](t)(alice.ListItems(ctx, family)); len(remaining) != 0 {
+			t.Errorf("items after delete: %+v", remaining)
 		}
-		allHistory := requireValue[[]apitypes.Item](t)(alice.Client.GetItemHistory(ctx, family.ID, netflix.ID))
-		if len(allHistory) != 4 || !allHistory[0].Deleted {
-			t.Errorf("history: %d entries", len(allHistory))
+		histories := requireValue[[]apitypes.Item](t)(alice.Client.GetItemHistory(ctx, family.ID, netflix.ID))
+		if len(histories) != 4 || !histories[0].Deleted {
+			t.Errorf("history: %d entries", len(histories))
 		}
 	})
 
@@ -259,7 +259,7 @@ func TestEndToEnd(t *testing.T) {
 
 	t.Run("non-member gets 404", func(t *testing.T) {
 		bobPersonal := requireValue[*session.Vault](t)(bob.FindVault(ctx, "Personal"))
-		if _, err := alice.Client.ListAllChange(ctx, bobPersonal.ID, 0, 0); !apiclient.IsStatus(err, http.StatusNotFound) {
+		if _, err := alice.Client.ListChanges(ctx, bobPersonal.ID, 0, 0); !apiclient.IsStatus(err, http.StatusNotFound) {
 			t.Errorf("changes on foreign vault: %v", err)
 		}
 		if err := alice.Client.SetAccess(ctx, bobPersonal.ID, alice.AccountID, &apitypes.SetAccessRequest{WrappedKey: []byte{1}, Role: apitypes.VaultOwner}); !apiclient.IsStatus(err, http.StatusNotFound) {
@@ -270,7 +270,7 @@ func TestEndToEnd(t *testing.T) {
 	t.Run("rollback detected", func(t *testing.T) {
 		alice.SeqStore = seqStore{family.ID: 1 << 40}
 		defer func() { alice.SeqStore = nil }()
-		if _, err := alice.ListAllItem(ctx, family); !errors.Is(err, session.ErrRollback) {
+		if _, err := alice.ListItems(ctx, family); !errors.Is(err, session.ErrRollback) {
 			t.Errorf("rollback: %v", err)
 		}
 	})
@@ -283,16 +283,16 @@ func TestEndToEnd(t *testing.T) {
 		if _, err := connection.Exec(ctx, `UPDATE items SET details = set_byte(details, 30, get_byte(details, 30) # 1) WHERE id = $1`, bank.ID); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := alice.ListAllItem(ctx, family); !errors.Is(err, crypt.ErrDecrypt) {
+		if _, err := alice.ListItems(ctx, family); !errors.Is(err, crypt.ErrDecrypt) {
 			t.Errorf("tampered item: %v", err)
 		}
 	})
 
 	t.Run("revoked device loses access", func(t *testing.T) {
-		laptop := requireValue[*session.Session](t)(session.LogIn(ctx, apiclient.Create(baseURL), "alice@example.com", alicePassword, aliceSecretKey, apitypes.DeviceInfo{Name: "laptop", Platform: "go"}))
-		allDevice := requireValue[[]apitypes.Device](t)(alice.Client.ListAllDevice(ctx))
+		laptop := requireValue[*session.Session](t)(session.LogIn(ctx, apiclient.New(baseURL), "alice@example.com", alicePassword, aliceSecretKey, apitypes.DeviceInfo{Name: "laptop", Platform: "go"}))
+		devices := requireValue[[]apitypes.Device](t)(alice.Client.ListDevices(ctx))
 		var laptopID string
-		for _, device := range allDevice {
+		for _, device := range devices {
 			if device.Name == "laptop" {
 				laptopID = device.ID
 			}
@@ -300,7 +300,7 @@ func TestEndToEnd(t *testing.T) {
 		if err := alice.Client.RevokeDevice(ctx, laptopID); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := laptop.Client.ListAllVault(ctx); !apiclient.IsStatus(err, http.StatusUnauthorized) {
+		if _, err := laptop.Client.ListVaults(ctx); !apiclient.IsStatus(err, http.StatusUnauthorized) {
 			t.Errorf("revoked device: %v", err)
 		}
 	})
@@ -313,8 +313,8 @@ func TestEndToEnd(t *testing.T) {
 		requireValue[*item.Item](t)(alice.DeleteItem(ctx, trip, deletedItem))
 		shareThroughInvitation(t, alice, bob, trip, apitypes.VaultEditor)
 		bobTrip := requireValue[*session.Vault](t)(bob.FindVault(ctx, "Trip"))
-		if allItem := requireValue[[]item.Item](t)(bob.ListAllItem(ctx, bobTrip)); len(allItem) != 1 {
-			t.Fatalf("bob items before removal: %d", len(allItem))
+		if items := requireValue[[]item.Item](t)(bob.ListItems(ctx, bobTrip)); len(items) != 1 {
+			t.Fatalf("bob items before removal: %d", len(items))
 		}
 		oldVaultKey := append([]byte(nil), bobTrip.Key...)
 
@@ -334,33 +334,33 @@ func TestEndToEnd(t *testing.T) {
 		if bytes.Equal(trip.Key, oldVaultKey) {
 			t.Error("vault key did not change")
 		}
-		if _, err := bob.Client.ListAllChange(ctx, trip.ID, 0, 0); !apiclient.IsStatus(err, http.StatusNotFound) {
+		if _, err := bob.Client.ListChanges(ctx, trip.ID, 0, 0); !apiclient.IsStatus(err, http.StatusNotFound) {
 			t.Errorf("removed member still reads the vault: %v", err)
 		}
 		if _, err := bob.FindVault(ctx, "Trip"); !errors.Is(err, session.ErrNotFound) {
 			t.Errorf("removed member still lists the vault: %v", err)
 		}
 
-		allChange := requireValue[*apitypes.ChangesResponse](t)(alice.Client.ListAllChange(ctx, trip.ID, 0, 0))
-		if len(allChange.Items) != 2 {
-			t.Fatalf("items after rotation (live + deleted): %d", len(allChange.Items))
+		changes := requireValue[*apitypes.ChangesResponse](t)(alice.Client.ListChanges(ctx, trip.ID, 0, 0))
+		if len(changes.Items) != 2 {
+			t.Fatalf("items after rotation (live + deleted): %d", len(changes.Items))
 		}
-		for _, protoItem := range allChange.Items {
+		for _, protoItem := range changes.Items {
 			if _, err := crypt.OpenItemPart(oldVaultKey, trip.ID, protoItem.ID, protoItem.Revision, crypt.Details, protoItem.Details); err == nil {
 				t.Error("old vault key still decrypts rotated items")
 			}
 		}
 
-		reloaded := requireValue[*session.Session](t)(session.LogIn(ctx, apiclient.Create(baseURL), "alice@example.com", alicePassword, aliceSecretKey, testDevice))
+		reloaded := requireValue[*session.Session](t)(session.LogIn(ctx, apiclient.New(baseURL), "alice@example.com", alicePassword, aliceSecretKey, testDevice))
 		reloadedTrip := requireValue[*session.Vault](t)(reloaded.FindVault(ctx, "Trip"))
-		allItem := requireValue[[]item.Item](t)(reloaded.ListAllItem(ctx, reloadedTrip))
-		if len(allItem) != 1 || allItem[0].Details.Password != "hotel-pass" {
-			t.Errorf("owner items after rotation: %+v", allItem)
+		items := requireValue[[]item.Item](t)(reloaded.ListItems(ctx, reloadedTrip))
+		if len(items) != 1 || items[0].Details.Password != "hotel-pass" {
+			t.Errorf("owner items after rotation: %+v", items)
 		}
 
 		staleRequest := &apitypes.RotateVaultRequest{
-			EncName:   []byte{1},
-			AllAccess: []apitypes.RotatedAccess{{AccountID: alice.AccountID, Role: apitypes.VaultOwner, WrappedKey: []byte{1}}},
+			EncName:  []byte{1},
+			Accesses: []apitypes.RotatedAccess{{AccountID: alice.AccountID, Role: apitypes.VaultOwner, WrappedKey: []byte{1}}},
 		}
 		if err := alice.Client.RotateVault(ctx, trip.ID, staleRequest); !apiclient.IsStatus(err, http.StatusConflict) {
 			t.Errorf("rotation without the vault's items: %v", err)

@@ -12,25 +12,25 @@ type App struct {
 	Signature Signature
 }
 
-// Process is one process of a chain; AllArgument and WorkingDirectory are empty when they cannot be read.
+// Process is one process of a chain; Arguments and WorkingDirectory are empty when they cannot be read.
 type Process struct {
 	PID              int
 	Path             string
-	AllArgument      []string
+	Arguments        []string
 	WorkingDirectory string
 }
 
-// ProcessReader reads processes; nil ListAllArgument or GetWorkingDirectory leave those fields empty.
+// ProcessReader reads processes; nil ListArguments or GetWorkingDirectory leave those fields empty.
 type ProcessReader struct {
 	GetPath             func(pid int) (string, error)
 	GetParentPID        func(pid int) (int, error)
-	ListAllArgument     func(pid int) ([]string, error)
+	ListArguments       func(pid int) ([]string, error)
 	GetWorkingDirectory func(pid int) (string, error)
 }
 
 const maximumAncestorCount = 16
 
-var allDeveloperToolMarker = []string{
+var developerToolMarkers = []string{
 	"/Library/Developer/",
 	".app/Contents/Developer/",
 	"/Hisar.app/Contents/Helpers/",
@@ -39,7 +39,7 @@ var allDeveloperToolMarker = []string{
 
 // IsDeveloperToolPath reports tools that run on behalf of an app, like Xcode's git behind the /usr/bin/git shim.
 func IsDeveloperToolPath(path string) bool {
-	for _, marker := range allDeveloperToolMarker {
+	for _, marker := range developerToolMarkers {
 		if strings.Contains(path, marker) {
 			return true
 		}
@@ -47,9 +47,9 @@ func IsDeveloperToolPath(path string) bool {
 	return false
 }
 
-// ListAllProcess returns the process and its ancestors, nearest first, stopping before launchd.
-func ListAllProcess(pid int, reader ProcessReader) []Process {
-	allProcess := []Process{}
+// ListProcesses returns the process and its ancestors, nearest first, stopping before launchd.
+func ListProcesses(pid int, reader ProcessReader) []Process {
+	processes := []Process{}
 	for range maximumAncestorCount {
 		if pid <= 1 {
 			break
@@ -58,9 +58,9 @@ func ListAllProcess(pid int, reader ProcessReader) []Process {
 		if path, err := reader.GetPath(pid); err == nil {
 			process.Path = path
 		}
-		if reader.ListAllArgument != nil {
-			if allArgument, err := reader.ListAllArgument(pid); err == nil {
-				process.AllArgument = allArgument
+		if reader.ListArguments != nil {
+			if arguments, err := reader.ListArguments(pid); err == nil {
+				process.Arguments = arguments
 			}
 		}
 		if reader.GetWorkingDirectory != nil {
@@ -68,14 +68,14 @@ func ListAllProcess(pid int, reader ProcessReader) []Process {
 				process.WorkingDirectory = workingDirectory
 			}
 		}
-		allProcess = append(allProcess, process)
+		processes = append(processes, process)
 		parentPID, err := reader.GetParentPID(pid)
 		if err != nil || parentPID == pid {
 			break
 		}
 		pid = parentPID
 	}
-	return allProcess
+	return processes
 }
 
 // getOutermostBundlePath returns the first ".app" directory in a path, so helper apps resolve to the app that ships them.

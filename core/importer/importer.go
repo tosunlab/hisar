@@ -61,9 +61,9 @@ type SkippedEntry struct {
 }
 
 type Result struct {
-	Format     string
-	AllItem    []item.Item
-	AllSkipped []SkippedEntry
+	Format  string
+	Items   []item.Item
+	Skipped []SkippedEntry
 }
 
 type Summary struct {
@@ -112,7 +112,7 @@ func Parse(fileName string, content []byte, format string) (*Result, error) {
 		return nil, err
 	}
 	result.Format = format
-	removeAllRepeatedItem(result)
+	removeRepeatedItems(result)
 	return result, nil
 }
 
@@ -135,9 +135,9 @@ func DetectFormat(fileName string, content []byte) (string, error) {
 	if trimmed[0] == '{' || trimmed[0] == '[' {
 		var probe struct {
 			Encrypted bool             `json:"encrypted"`
-			AllItem   *json.RawMessage `json:"items"`
+			Items     *json.RawMessage `json:"items"`
 		}
-		if err := json.Unmarshal(trimmed, &probe); err != nil || (!probe.Encrypted && probe.AllItem == nil) {
+		if err := json.Unmarshal(trimmed, &probe); err != nil || (!probe.Encrypted && probe.Items == nil) {
 			return "", ErrUnknownFormat
 		}
 		return FormatBitwardenJSON, nil
@@ -155,9 +155,9 @@ func GetKind(vaultItem item.Item) string {
 	return KindLogin
 }
 
-func Summarize(allItem []item.Item) Summary {
+func Summarize(items []item.Item) Summary {
 	summary := Summary{}
-	for _, vaultItem := range allItem {
+	for _, vaultItem := range items {
 		switch GetKind(vaultItem) {
 		case KindSSHKey:
 			summary.SSHKeyCount++
@@ -186,19 +186,19 @@ func BuildDuplicateKey(vaultItem item.Item) string {
 	}, "\x00")
 }
 
-// FindAllDuplicateIndex returns the positions in allImported of items that allExisting already has.
-func FindAllDuplicateIndex(allImported, allExisting []item.Item) []int {
-	allExistingKey := map[string]bool{}
-	for _, existing := range allExisting {
-		allExistingKey[BuildDuplicateKey(existing)] = true
+// FindDuplicateIndexes returns the positions in importedItems of items that existingItems already has.
+func FindDuplicateIndexes(importedItems, existingItems []item.Item) []int {
+	existingKeys := map[string]bool{}
+	for _, existing := range existingItems {
+		existingKeys[BuildDuplicateKey(existing)] = true
 	}
-	allIndex := []int{}
-	for index, imported := range allImported {
-		if allExistingKey[BuildDuplicateKey(imported)] {
-			allIndex = append(allIndex, index)
+	indexes := []int{}
+	for index, imported := range importedItems {
+		if existingKeys[BuildDuplicateKey(imported)] {
+			indexes = append(indexes, index)
 		}
 	}
-	return allIndex
+	return indexes
 }
 
 func normalizeURL(link string) string {
@@ -231,27 +231,27 @@ func finishItem(vaultItem *item.Item) bool {
 	vaultItem.Overview.Title = strings.TrimSpace(vaultItem.Overview.Title)
 	vaultItem.Overview.Username = strings.TrimSpace(vaultItem.Overview.Username)
 	vaultItem.Details.Notes = strings.TrimRight(strings.ReplaceAll(vaultItem.Details.Notes, "\r\n", "\n"), " \n\t")
-	allURL := []string{}
+	urLs := []string{}
 	for _, link := range vaultItem.Overview.URLs {
-		if link = strings.TrimSpace(link); link != "" && !slices.Contains(allURL, link) {
-			allURL = append(allURL, link)
+		if link = strings.TrimSpace(link); link != "" && !slices.Contains(urLs, link) {
+			urLs = append(urLs, link)
 		}
 	}
 	vaultItem.Overview.URLs = nil
-	if len(allURL) > 0 {
-		vaultItem.Overview.URLs = allURL
+	if len(urLs) > 0 {
+		vaultItem.Overview.URLs = urLs
 	}
-	allTag := []string{}
+	tags := []string{}
 	for _, tag := range vaultItem.Overview.Tags {
-		if tag = strings.TrimSpace(tag); tag != "" && !slices.Contains(allTag, tag) {
-			allTag = append(allTag, tag)
+		if tag = strings.TrimSpace(tag); tag != "" && !slices.Contains(tags, tag) {
+			tags = append(tags, tag)
 		}
 	}
 	vaultItem.Overview.Tags = nil
-	if len(allTag) > 0 {
-		vaultItem.Overview.Tags = allTag
+	if len(tags) > 0 {
+		vaultItem.Overview.Tags = tags
 	}
-	allField := []item.Field{}
+	fields := []item.Field{}
 	for _, field := range vaultItem.Details.Fields {
 		field.Name = strings.TrimSpace(field.Name)
 		if field.Value == "" {
@@ -260,11 +260,11 @@ func finishItem(vaultItem *item.Item) bool {
 		if field.Name == "" {
 			field.Name = "Field"
 		}
-		allField = append(allField, field)
+		fields = append(fields, field)
 	}
 	vaultItem.Details.Fields = nil
-	if len(allField) > 0 {
-		vaultItem.Details.Fields = allField
+	if len(fields) > 0 {
+		vaultItem.Details.Fields = fields
 	}
 	hasContent := vaultItem.Overview.Username != "" || vaultItem.Details.Password != "" || len(vaultItem.Overview.URLs) > 0 ||
 		vaultItem.Details.Notes != "" || len(vaultItem.Details.Fields) > 0 || vaultItem.Details.PrivateKey != "" || vaultItem.Details.OneTimePassword != ""
@@ -306,21 +306,21 @@ func getFallbackTitle(vaultItem *item.Item) string {
 	return "Untitled"
 }
 
-func removeAllRepeatedItem(result *Result) {
-	allSeen := map[string]bool{}
-	allUnique := make([]item.Item, 0, len(result.AllItem))
-	for _, vaultItem := range result.AllItem {
+func removeRepeatedItems(result *Result) {
+	seen := map[string]bool{}
+	unique := make([]item.Item, 0, len(result.Items))
+	for _, vaultItem := range result.Items {
 		encoded, _ := json.Marshal([]any{vaultItem.Overview, vaultItem.Details})
 		key := string(encoded)
 		clear(encoded)
-		if allSeen[key] {
-			result.AllSkipped = append(result.AllSkipped, SkippedEntry{Title: vaultItem.Overview.Title, Reason: reasonRepeated})
+		if seen[key] {
+			result.Skipped = append(result.Skipped, SkippedEntry{Title: vaultItem.Overview.Title, Reason: reasonRepeated})
 			continue
 		}
-		allSeen[key] = true
-		allUnique = append(allUnique, vaultItem)
+		seen[key] = true
+		unique = append(unique, vaultItem)
 	}
-	result.AllItem = allUnique
+	result.Items = unique
 }
 
 func describeEntry(title string) string {

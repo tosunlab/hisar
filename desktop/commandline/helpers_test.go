@@ -74,7 +74,7 @@ func (store *savingSecretKeyStore) DeleteSecretKey(accountID string) error {
 func createSignedOutAppService(t *testing.T) *app.Service {
 	t.Helper()
 	directory := t.TempDir()
-	service, err := app.CreateService(app.Config{
+	service, err := app.NewService(app.Config{
 		StatePath: filepath.Join(directory, "desktop.json"), CachePath: filepath.Join(directory, "desktop-cache.db"),
 		DeviceName: "test", Platform: "test/desktop", SecretKeyStore: &savingSecretKeyStore{secretKeys: map[string]crypt.SecretKey{}},
 	})
@@ -87,11 +87,11 @@ func createSignedOutAppService(t *testing.T) *app.Service {
 
 func findPersonalVaultID(t *testing.T, service *app.Service) string {
 	t.Helper()
-	allVault, err := service.ListAllVault()
+	vaults, err := service.ListVaults()
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, vault := range allVault {
+	for _, vault := range vaults {
 		if vault.Type == "personal" {
 			return vault.ID
 		}

@@ -58,18 +58,18 @@ import "unsafe"
 
 const maximumDisplayCount = 32
 
-func ReadAllDisplay() []Display {
-	var allCDisplay [maximumDisplayCount]C.PlacementDisplay
-	count := int(C.readAllDisplay(&allCDisplay[0], maximumDisplayCount))
-	allDisplay := make([]Display, 0, count)
-	for _, cDisplay := range allCDisplay[:count] {
-		allDisplay = append(allDisplay, Display{
+func ReadDisplays() []Display {
+	var cDisplays [maximumDisplayCount]C.PlacementDisplay
+	count := int(C.readAllDisplay(&cDisplays[0], maximumDisplayCount))
+	displays := make([]Display, 0, count)
+	for _, cDisplay := range cDisplays[:count] {
+		displays = append(displays, Display{
 			Frame:        convertCRectangle(cDisplay.frame),
 			VisibleFrame: convertCRectangle(cDisplay.visibleFrame),
 			ScaleFactor:  float64(cDisplay.scaleFactor),
 		})
 	}
-	return allDisplay
+	return displays
 }
 
 func ReadPointerLocation() Point {
@@ -87,7 +87,7 @@ func PlaceWindow(nativeWindow unsafe.Pointer, request Request) bool {
 	if nativeWindow == nil {
 		return false
 	}
-	frame, isFound := CalculateWindowFrame(ReadAllDisplay(), ReadPointerLocation(), ReadWindowFrame(nativeWindow), request)
+	frame, isFound := CalculateWindowFrame(ReadDisplays(), ReadPointerLocation(), ReadWindowFrame(nativeWindow), request)
 	if !isFound {
 		return false
 	}

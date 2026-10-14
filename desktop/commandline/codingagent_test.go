@@ -22,7 +22,7 @@ import (
 
 type recordingAgentApprover struct {
 	mutex        sync.Mutex
-	allRequest   []clisocket.AgentApprovalRequest
+	requests     []clisocket.AgentApprovalRequest
 	result       error
 	isRemembered bool
 }
@@ -30,7 +30,7 @@ type recordingAgentApprover struct {
 func (approver *recordingAgentApprover) ApproveAgent(_ context.Context, request clisocket.AgentApprovalRequest) (clisocket.AgentApprovalResult, error) {
 	approver.mutex.Lock()
 	defer approver.mutex.Unlock()
-	approver.allRequest = append(approver.allRequest, request)
+	approver.requests = append(approver.requests, request)
 	return clisocket.AgentApprovalResult{IsRemembered: approver.isRemembered}, approver.result
 }
 
@@ -43,13 +43,13 @@ func (approver *recordingAgentApprover) answer(result error, isRemembered bool) 
 func (approver *recordingAgentApprover) getRequestCount() int {
 	approver.mutex.Lock()
 	defer approver.mutex.Unlock()
-	return len(approver.allRequest)
+	return len(approver.requests)
 }
 
 func (approver *recordingAgentApprover) getLastRequest() clisocket.AgentApprovalRequest {
 	approver.mutex.Lock()
 	defer approver.mutex.Unlock()
-	return approver.allRequest[len(approver.allRequest)-1]
+	return approver.requests[len(approver.requests)-1]
 }
 
 type codingAgentTest struct {
@@ -103,17 +103,17 @@ func createCodingAgentTest(t *testing.T) *codingAgentTest {
 		t.Fatal(err)
 	}
 
-	approvals := clisocket.CreateSessionApprovals(0, test.getNow)
-	server := clisocket.CreateServer(clisocket.ServerConfig{
-		Handler: app.CreateCommandLineBridge(service, approvals), Approver: &countingApprover{}, AgentApprover: test.approver,
+	approvals := clisocket.NewSessionApprovals(0, test.getNow)
+	server := clisocket.NewServer(clisocket.ServerConfig{
+		Handler: app.NewCommandLineBridge(service, approvals), Approver: &countingApprover{}, AgentApprover: test.approver,
 		PeerResolver: staticPeerResolver{}, Approvals: approvals,
 	})
 	dial := func(context.Context) (mcpserver.AppConnection, error) {
 		serverSide, clientSide := net.Pipe()
 		go server.ServeConnection(context.Background(), serverSide)
-		return mcpserver.CreateSocketConnection(clientSide, 10*time.Second), nil
+		return mcpserver.NewSocketConnection(clientSide, 10*time.Second), nil
 	}
-	mcpServer, closeApp := mcpserver.CreateServer(mcpserver.Config{Version: "test", Dial: dial, WorkingDirectory: t.TempDir(), Environment: []string{"PATH=" + os.Getenv("PATH")}})
+	mcpServer, closeApp := mcpserver.NewServer(mcpserver.Config{Version: "test", Dial: dial, WorkingDirectory: t.TempDir(), Environment: []string{"PATH=" + os.Getenv("PATH")}})
 	t.Cleanup(closeApp)
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
 	if _, err := mcpServer.Connect(context.Background(), serverTransport, nil); err != nil {
@@ -133,13 +133,13 @@ func (test *codingAgentTest) call(t *testing.T, name string, argument map[string
 	if err != nil {
 		t.Fatalf("%s: %v", name, err)
 	}
-	allText := []string{}
+	texts := []string{}
 	for _, content := range result.Content {
 		if text, isText := content.(*mcp.TextContent); isText {
-			allText = append(allText, text.Text)
+			texts = append(texts, text.Text)
 		}
 	}
-	return strings.Join(allText, "\n"), result.IsError
+	return strings.Join(texts, "\n"), result.IsError
 }
 
 func (test *codingAgentTest) mustCall(t *testing.T, name string, argument map[string]any, output any) string {
@@ -180,9 +180,9 @@ func TestAgentSeesOnlyTheVaultsAvailableToAgents(t *testing.T) {
 		t.Errorf("vaults = %+v", vaultOutput)
 	}
 	var searchOutput mcpserver.SearchItemsOutput
-	allText := test.mustCall(t, "search_items", map[string]any{"query": ""}, &searchOutput)
-	if searchOutput.TotalCount != 2 || strings.Contains(allText, "Infra") || strings.Contains(allText, "Production database") || strings.Contains(allText, test.hiddenVaultID) {
-		t.Errorf("search shows the hidden vault: %s", allText)
+	texts := test.mustCall(t, "search_items", map[string]any{"query": ""}, &searchOutput)
+	if searchOutput.TotalCount != 2 || strings.Contains(texts, "Infra") || strings.Contains(texts, "Production database") || strings.Contains(texts, test.hiddenVaultID) {
+		t.Errorf("search shows the hidden vault: %s", texts)
 	}
 	for _, query := range []string{"production", "admin", "infra"} {
 		test.mustCall(t, "search_items", map[string]any{"query": query}, &searchOutput)
@@ -214,29 +214,29 @@ func TestAgentSearchReturnsMetadataAndReferencesButNeverValues(t *testing.T) {
 	test := createCodingAgentTest(t)
 	test.makePersonalAvailable(t)
 	var searchOutput mcpserver.SearchItemsOutput
-	allText := test.mustCall(t, "search_items", map[string]any{"query": "git"}, &searchOutput)
+	texts := test.mustCall(t, "search_items", map[string]any{"query": "git"}, &searchOutput)
 	if searchOutput.TotalCount != 1 || len(searchOutput.Items) != 1 {
-		t.Fatalf("search = %s", allText)
+		t.Fatalf("search = %s", texts)
 	}
 	github := searchOutput.Items[0]
-	allFieldLabel := []string{}
+	fieldLabels := []string{}
 	for _, field := range github.Fields {
-		allFieldLabel = append(allFieldLabel, field.Label+"="+field.Reference)
+		fieldLabels = append(fieldLabels, field.Label+"="+field.Reference)
 	}
 	if github.Title != "GitHub" || github.Type != "login" || github.Username != "octocat" || !slices.Equal(github.URLs, []string{"https://github.com"}) ||
-		!github.HasNotes || !github.HasOneTimePassword || github.VaultName != "Personal" || !slices.Equal(allFieldLabel, []string{
+		!github.HasNotes || !github.HasOneTimePassword || github.VaultName != "Personal" || !slices.Equal(fieldLabels, []string{
 		"username=hisar://Personal/GitHub/username", "password=hisar://Personal/GitHub/password", "one-time code=hisar://Personal/GitHub/otp",
 		"API token=hisar://Personal/GitHub/API%20token",
 	}) {
 		t.Errorf("item = %+v", github)
 	}
-	allText += test.mustCall(t, "search_items", map[string]any{"query": "deploy"}, &searchOutput)
+	texts += test.mustCall(t, "search_items", map[string]any{"query": "deploy"}, &searchOutput)
 	if len(searchOutput.Items) != 1 || searchOutput.Items[0].Type != "ssh-key" || len(searchOutput.Items[0].Fields) != 2 {
 		t.Errorf("SSH key = %+v", searchOutput.Items)
 	}
 	for _, secret := range []string{githubPassword, githubToken, githubNotes, "recovery codes", "JBSWY3DPEHPK3PXP", "PRIVATE KEY"} {
-		if strings.Contains(allText, secret) {
-			t.Errorf("search returned %q: %s", secret, allText)
+		if strings.Contains(texts, secret) {
+			t.Errorf("search returned %q: %s", secret, texts)
 		}
 	}
 	if test.approver.getRequestCount() != 1 {
@@ -257,7 +257,7 @@ func TestAgentGetSecretNeedsApprovalForTheItem(t *testing.T) {
 		t.Errorf("denied: %s", text)
 	}
 	request := test.approver.getLastRequest()
-	if request.Kind != clisocket.AgentRequestReveal || request.RevealedName != "GitHub › password" || !slices.Equal(request.AllSecretName, []string{"Personal › GitHub › password"}) ||
+	if request.Kind != clisocket.AgentRequestReveal || request.RevealedName != "GitHub › password" || !slices.Equal(request.SecretNames, []string{"Personal › GitHub › password"}) ||
 		request.Agent.Name != "claude-code" || !request.IsConnectionApproval {
 		t.Errorf("reveal approval = %+v", request)
 	}
@@ -304,19 +304,19 @@ func TestAgentRunsCommandsWithMaskedSecrets(t *testing.T) {
 	test.makePersonalAvailable(t)
 	directory := t.TempDir()
 	var runOutput mcpserver.RunOutput
-	allText := test.mustCall(t, "run_with_secrets", map[string]any{
+	texts := test.mustCall(t, "run_with_secrets", map[string]any{
 		"command":          []string{"sh", "-c", `echo "password=$GITHUB_PASSWORD"; echo "token=$GITHUB_TOKEN" >&2; exit 4`},
 		"env":              map[string]string{"GITHUB_PASSWORD": "hisar://Personal/GitHub/password", "GITHUB_TOKEN": "hisar://Personal/GitHub/API%20token"},
 		"workingDirectory": directory,
 	}, &runOutput)
 	if runOutput.ExitCode != 4 || runOutput.Stdout != "password=<concealed by hisar>\n" || runOutput.Stderr != "token=<concealed by hisar>\n" ||
-		strings.Contains(allText, githubPassword) || strings.Contains(allText, githubToken) {
-		t.Errorf("run = %s", allText)
+		strings.Contains(texts, githubPassword) || strings.Contains(texts, githubToken) {
+		t.Errorf("run = %s", texts)
 	}
 	request := test.approver.getLastRequest()
 	if request.Kind != clisocket.AgentRequestRun || request.Agent.Name != "claude-code" || request.WorkingDirectory != directory ||
 		!slices.Equal(request.CommandLine, []string{"sh", "-c", `echo "password=$GITHUB_PASSWORD"; echo "token=$GITHUB_TOKEN" >&2; exit 4`}) ||
-		!slices.Equal(request.AllSecretName, []string{"Personal › GitHub › password", "Personal › GitHub › API token"}) || request.ClientPath != "/usr/local/bin/hisar" {
+		!slices.Equal(request.SecretNames, []string{"Personal › GitHub › password", "Personal › GitHub › API token"}) || request.ClientPath != "/usr/local/bin/hisar" {
 		t.Errorf("run approval = %+v", request)
 	}
 }
@@ -330,7 +330,7 @@ func TestAgentGetsOneTimeCodesAfterApproval(t *testing.T) {
 		t.Errorf("code = %+v", codeOutput)
 	}
 	if request := test.approver.getLastRequest(); request.Kind != clisocket.AgentRequestCode || request.RevealedName != "GitHub" ||
-		!slices.Equal(request.AllSecretName, []string{"Personal › GitHub › one-time code"}) {
+		!slices.Equal(request.SecretNames, []string{"Personal › GitHub › one-time code"}) {
 		t.Errorf("code approval = %+v", request)
 	}
 	var searchOutput mcpserver.SearchItemsOutput

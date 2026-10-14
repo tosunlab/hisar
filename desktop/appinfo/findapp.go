@@ -5,17 +5,17 @@ import (
 	"strings"
 )
 
-func (resolver *Resolver) listAllRegularAppPath() map[string]int {
-	allRegularAppPath := map[string]int{}
-	if resolver.system.ListAllRunningApp == nil {
-		return allRegularAppPath
+func (resolver *Resolver) listRegularAppPaths() map[string]int {
+	regularAppPaths := map[string]int{}
+	if resolver.system.ListRunningApps == nil {
+		return regularAppPaths
 	}
-	for _, runningApp := range resolver.system.ListAllRunningApp() {
+	for _, runningApp := range resolver.system.ListRunningApps() {
 		if runningApp.IsRegular && runningApp.BundlePath != "" {
-			allRegularAppPath[strings.TrimSuffix(runningApp.BundlePath, "/")] = runningApp.PID
+			regularAppPaths[strings.TrimSuffix(runningApp.BundlePath, "/")] = runningApp.PID
 		}
 	}
-	return allRegularAppPath
+	return regularAppPaths
 }
 
 func getAppBundlePath(path string) string {
@@ -26,10 +26,10 @@ func getAppBundlePath(path string) string {
 }
 
 // findDockApp returns the index of the nearest process whose bundle, or the app macOS holds responsible for it, is in the Dock.
-func (resolver *Resolver) findDockApp(allProcess []Process, allRegularAppPath map[string]int) (int, string, bool) {
-	for index, process := range allProcess {
+func (resolver *Resolver) findDockApp(processes []Process, regularAppPaths map[string]int) (int, string, bool) {
+	for index, process := range processes {
 		if bundlePath := getAppBundlePath(process.Path); bundlePath != "" {
-			if _, isRegular := allRegularAppPath[bundlePath]; isRegular {
+			if _, isRegular := regularAppPaths[bundlePath]; isRegular {
 				return index, bundlePath, true
 			}
 		}
@@ -45,7 +45,7 @@ func (resolver *Resolver) findDockApp(allProcess []Process, allRegularAppPath ma
 			continue
 		}
 		if bundlePath := getAppBundlePath(responsiblePath); bundlePath != "" {
-			if _, isRegular := allRegularAppPath[bundlePath]; isRegular {
+			if _, isRegular := regularAppPaths[bundlePath]; isRegular {
 				return index + 1, bundlePath, true
 			}
 		}
@@ -54,7 +54,7 @@ func (resolver *Resolver) findDockApp(allProcess []Process, allRegularAppPath ma
 }
 
 // findAppBySigningTeam maps a daemon outside any bundle, like iTermServer, to the one Dock app signed by the same team.
-func (resolver *Resolver) findAppBySigningTeam(process Process, allRegularAppPath map[string]int) (string, bool) {
+func (resolver *Resolver) findAppBySigningTeam(process Process, regularAppPaths map[string]int) (string, bool) {
 	if process.Path == "" || getOutermostBundlePath(process.Path) != "" || resolver.system.GetTeamID == nil || resolver.system.GetSignature == nil {
 		return "", false
 	}
@@ -62,55 +62,55 @@ func (resolver *Resolver) findAppBySigningTeam(process Process, allRegularAppPat
 	if teamID == "" {
 		return "", false
 	}
-	allMatchingPath := []string{}
-	for bundlePath := range allRegularAppPath {
+	matchingPaths := []string{}
+	for bundlePath := range regularAppPaths {
 		if resolver.getTeamID(bundlePath) == teamID {
-			allMatchingPath = append(allMatchingPath, bundlePath)
+			matchingPaths = append(matchingPaths, bundlePath)
 		}
 	}
-	if len(allMatchingPath) != 1 {
+	if len(matchingPaths) != 1 {
 		return "", false
 	}
 	if signature := resolver.getSignature(process.Path); signature.Status != SignatureStatusDeveloper || signature.TeamID != teamID {
 		return "", false
 	}
-	return allMatchingPath[0], true
+	return matchingPaths[0], true
 }
 
 // findAppInChain finds the app of a chain without following multiplexers or SSH sessions; the index is where the chain shown ends.
-func (resolver *Resolver) findAppInChain(allProcess []Process, allRegularAppPath map[string]int) (int, string, bool) {
-	if index, bundlePath, isFound := resolver.findDockApp(allProcess, allRegularAppPath); isFound {
+func (resolver *Resolver) findAppInChain(processes []Process, regularAppPaths map[string]int) (int, string, bool) {
+	if index, bundlePath, isFound := resolver.findDockApp(processes, regularAppPaths); isFound {
 		return index, bundlePath, true
 	}
-	for index, process := range allProcess {
+	for index, process := range processes {
 		if bundlePath := getAppBundlePath(process.Path); bundlePath != "" {
 			return index, bundlePath, true
 		}
 	}
-	if len(allProcess) == 0 {
+	if len(processes) == 0 {
 		return 0, "", false
 	}
-	oldest := allProcess[len(allProcess)-1]
+	oldest := processes[len(processes)-1]
 	if parentPID, err := resolver.system.GetParentPID(oldest.PID); err != nil || parentPID > launchdPID {
 		return 0, "", false
 	}
-	if bundlePath, isFound := resolver.findAppBySigningTeam(oldest, allRegularAppPath); isFound {
-		return len(allProcess) - 1, bundlePath, true
+	if bundlePath, isFound := resolver.findAppBySigningTeam(oldest, regularAppPaths); isFound {
+		return len(processes) - 1, bundlePath, true
 	}
 	return 0, "", false
 }
 
 // findMultiplexerApp resolves every client of a tmux or screen server; they must all be in one app.
-func (resolver *Resolver) findMultiplexerApp(server Process, name string, allRegularAppPath map[string]int) (string, bool) {
-	if resolver.system.ListAllProcessID == nil {
+func (resolver *Resolver) findMultiplexerApp(server Process, name string, regularAppPaths map[string]int) (string, bool) {
+	if resolver.system.ListProcessIDs == nil {
 		return "", false
 	}
-	allProcessID, err := resolver.system.ListAllProcessID()
+	processIDs, err := resolver.system.ListProcessIDs()
 	if err != nil {
 		return "", false
 	}
 	foundPath := ""
-	for _, pid := range allProcessID {
+	for _, pid := range processIDs {
 		if pid == server.PID || pid <= launchdPID {
 			continue
 		}
@@ -121,8 +121,8 @@ func (resolver *Resolver) findMultiplexerApp(server Process, name string, allReg
 		if parentPID, err := resolver.system.GetParentPID(pid); err != nil || parentPID <= launchdPID {
 			continue
 		}
-		allClientProcess := ListAllProcess(pid, ProcessReader{GetPath: resolver.system.GetPath, GetParentPID: resolver.system.GetParentPID})
-		_, bundlePath, isFound := resolver.findAppInChain(allClientProcess, allRegularAppPath)
+		clientProcesses := ListProcesses(pid, ProcessReader{GetPath: resolver.system.GetPath, GetParentPID: resolver.system.GetParentPID})
+		_, bundlePath, isFound := resolver.findAppInChain(clientProcesses, regularAppPaths)
 		if !isFound || (foundPath != "" && foundPath != bundlePath) {
 			return "", false
 		}
@@ -131,9 +131,9 @@ func (resolver *Resolver) findMultiplexerApp(server Process, name string, allReg
 	return foundPath, foundPath != ""
 }
 
-func (resolver *Resolver) describeSSHSession(allProcess []Process, index int) string {
+func (resolver *Resolver) describeSSHSession(processes []Process, index int) string {
 	if resolver.system.GetSSHRemoteHost != nil {
-		for _, process := range allProcess[index:] {
+		for _, process := range processes[index:] {
 			if !isSSHServer(GetProgramName(process)) {
 				break
 			}

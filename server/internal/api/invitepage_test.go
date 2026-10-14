@@ -97,7 +97,7 @@ func TestInvitePage(t *testing.T) {
 	}
 
 	adaPassword := []byte("ada master password")
-	ada, _, err := session.SignUp(ctx, apiclient.Create(baseURL), operatorInvite.Token, "ada@example.com", `Ada <b>"Lovelace"</b>`, adaPassword, testDevice)
+	ada, _, err := session.SignUp(ctx, apiclient.New(baseURL), operatorInvite.Token, "ada@example.com", `Ada <b>"Lovelace"</b>`, adaPassword, testDevice)
 	if err != nil {
 		t.Fatal(err)
 	}

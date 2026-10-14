@@ -57,7 +57,7 @@ type AgentApprovalRequest struct {
 	Kind             string
 	CommandLine      []string
 	WorkingDirectory string
-	AllSecretName    []string
+	SecretNames      []string
 	// RevealedName is "item › field" of a reveal request.
 	RevealedName string
 	// IsConnectionApproval: approving also lets the agent list and search the agent-visible vaults.
@@ -76,20 +76,20 @@ type AgentApprover interface {
 // AgentSecretLocator finds the secrets of an agent request among the agent-visible vaults without reading them.
 // It fails with a *cliprotocol.ResponseError: not-found for a reference it cannot use, locked while Hisar is locked.
 type AgentSecretLocator interface {
-	LocateAllAgentSecret(request *cliprotocol.Request) ([]AgentSecret, error)
+	LocateAgentSecrets(request *cliprotocol.Request) ([]AgentSecret, error)
 }
 
 type agentConnectionState struct {
-	isApproved          bool
-	lastRequestAt       time.Time
-	allGrantExpiryByKey map[string]time.Time
+	isApproved         bool
+	lastRequestAt      time.Time
+	grantExpiriesByKey map[string]time.Time
 }
 
 func (approvals *SessionApprovals) getAgentConnection(connectionID uint64) *agentConnectionState {
-	connection, isFound := approvals.allAgentConnectionByID[connectionID]
+	connection, isFound := approvals.agentConnectionsByID[connectionID]
 	if !isFound {
-		connection = &agentConnectionState{allGrantExpiryByKey: map[string]time.Time{}}
-		approvals.allAgentConnectionByID[connectionID] = connection
+		connection = &agentConnectionState{grantExpiriesByKey: map[string]time.Time{}}
+		approvals.agentConnectionsByID[connectionID] = connection
 	}
 	return connection
 }
@@ -111,7 +111,7 @@ func (approvals *SessionApprovals) refreshAgentConnection(connectionID uint64) b
 func (approvals *SessionApprovals) IsAgentConnectionApproved(connectionID uint64) bool {
 	approvals.mutex.Lock()
 	defer approvals.mutex.Unlock()
-	connection, isFound := approvals.allAgentConnectionByID[connectionID]
+	connection, isFound := approvals.agentConnectionsByID[connectionID]
 	return isFound && connection.isApproved && approvals.now().Sub(connection.lastRequestAt) < approvals.lifetime
 }
 
@@ -122,7 +122,7 @@ func (approvals *SessionApprovals) getGeneration() int {
 }
 
 // approveAgentConnection records an approval unless Hisar locked while the dialog was open.
-func (approvals *SessionApprovals) approveAgentConnection(connectionID uint64, generation int, allGrantKey []string) {
+func (approvals *SessionApprovals) approveAgentConnection(connectionID uint64, generation int, grantKeys []string) {
 	approvals.mutex.Lock()
 	defer approvals.mutex.Unlock()
 	if generation != approvals.generation {
@@ -131,30 +131,30 @@ func (approvals *SessionApprovals) approveAgentConnection(connectionID uint64, g
 	connection := approvals.getAgentConnection(connectionID)
 	now := approvals.now()
 	connection.isApproved, connection.lastRequestAt = true, now
-	for _, key := range allGrantKey {
-		connection.allGrantExpiryByKey[key] = now.Add(AgentGrantLifetime)
+	for _, key := range grantKeys {
+		connection.grantExpiriesByKey[key] = now.Add(AgentGrantLifetime)
 	}
 }
 
-func (approvals *SessionApprovals) isAllAgentGranted(connectionID uint64, allGrantKey []string) bool {
+func (approvals *SessionApprovals) isAgentGranted(connectionID uint64, grantKeys []string) bool {
 	approvals.mutex.Lock()
 	defer approvals.mutex.Unlock()
 	connection := approvals.getAgentConnection(connectionID)
 	now := approvals.now()
-	for _, key := range allGrantKey {
-		expiresAt, isFound := connection.allGrantExpiryByKey[key]
+	for _, key := range grantKeys {
+		expiresAt, isFound := connection.grantExpiriesByKey[key]
 		if !isFound || !now.Before(expiresAt) {
-			delete(connection.allGrantExpiryByKey, key)
+			delete(connection.grantExpiriesByKey, key)
 			return false
 		}
 	}
-	return len(allGrantKey) > 0
+	return len(grantKeys) > 0
 }
 
 func (approvals *SessionApprovals) ForgetAgentConnection(connectionID uint64) {
 	approvals.mutex.Lock()
 	defer approvals.mutex.Unlock()
-	delete(approvals.allAgentConnectionByID, connectionID)
+	delete(approvals.agentConnectionsByID, connectionID)
 }
 
 func getAgentRequestKind(requestType string) (string, bool) {
@@ -174,41 +174,41 @@ func getAgentRequestKind(requestType string) (string, bool) {
 func checkAgentRequest(kind string, request *cliprotocol.Request) error {
 	switch {
 	case kind == AgentRequestRun && (len(request.References) == 0 || len(request.References) > cliprotocol.MaxAgentReferenceCount):
-		return cliprotocol.CreateError(cliprotocol.ErrorInvalidRequest, fmt.Sprintf("send between 1 and %d secret references", cliprotocol.MaxAgentReferenceCount))
+		return cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, fmt.Sprintf("send between 1 and %d secret references", cliprotocol.MaxAgentReferenceCount))
 	case kind == AgentRequestCode && len(request.References)+min(len(request.ItemID), 1) != 1:
-		return cliprotocol.CreateError(cliprotocol.ErrorInvalidRequest, "send one secret reference or one item ID")
+		return cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "send one secret reference or one item ID")
 	case kind == AgentRequestReveal && len(request.References) != 1:
-		return cliprotocol.CreateError(cliprotocol.ErrorInvalidRequest, "send one secret reference")
+		return cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "send one secret reference")
 	}
 	return nil
 }
 
 func (s *Server) startAgentConnection(client *connectionPeer, request *cliprotocol.Request) (any, error) {
 	if client.agent != nil {
-		return nil, cliprotocol.CreateError(cliprotocol.ErrorInvalidRequest, "this connection already belongs to an agent")
+		return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "this connection already belongs to an agent")
 	}
 	client.agent = &AgentIdentity{Name: request.AgentName, Title: request.AgentTitle, Version: request.AgentVersion}
 	return struct{}{}, nil
 }
 
-// locateAllAgentSecret reports isLocked instead of failing while Hisar is locked: the dialog unlocks it first.
-func (s *Server) locateAllAgentSecret(request *cliprotocol.Request) ([]AgentSecret, bool, error) {
+// locateAgentSecrets reports isLocked instead of failing while Hisar is locked: the dialog unlocks it first.
+func (s *Server) locateAgentSecrets(request *cliprotocol.Request) ([]AgentSecret, bool, error) {
 	locator, isLocator := s.config.Handler.(AgentSecretLocator)
 	if !isLocator {
-		return nil, false, cliprotocol.CreateError(cliprotocol.ErrorInternal, "the Hisar app cannot answer agents")
+		return nil, false, cliprotocol.NewError(cliprotocol.ErrorInternal, "the Hisar app cannot answer agents")
 	}
-	allSecret, err := locator.LocateAllAgentSecret(request)
+	secrets, err := locator.LocateAgentSecrets(request)
 	var responseError *cliprotocol.ResponseError
 	if errors.As(err, &responseError) && responseError.Code == cliprotocol.ErrorLocked {
 		return nil, true, nil
 	}
-	return allSecret, false, err
+	return secrets, false, err
 }
 
 func (s *Server) answerAgentRequest(ctx context.Context, client *connectionPeer, request *cliprotocol.Request) (any, error) {
 	kind, isKnown := getAgentRequestKind(request.Type)
 	if !isKnown {
-		return nil, cliprotocol.CreateError(cliprotocol.ErrorInvalidRequest, fmt.Sprintf("unknown request type %q", request.Type))
+		return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, fmt.Sprintf("unknown request type %q", request.Type))
 	}
 	if err := checkAgentRequest(kind, request); err != nil {
 		return nil, err
@@ -225,43 +225,43 @@ func (s *Server) answerAgentRequest(ctx context.Context, client *connectionPeer,
 		return s.config.Handler.HandleRequest(ctx, request)
 	}
 
-	allSecret, isLocked, err := s.locateAllAgentSecret(request)
+	secrets, isLocked, err := s.locateAgentSecrets(request)
 	if err != nil {
 		return nil, err
 	}
-	if !isLocked && approvals.refreshAgentConnection(client.connectionID) && approvals.isAllAgentGranted(client.connectionID, buildAllGrantKey(kind, allSecret)) {
+	if !isLocked && approvals.refreshAgentConnection(client.connectionID) && approvals.isAgentGranted(client.connectionID, buildGrantKeys(kind, secrets)) {
 		return s.config.Handler.HandleRequest(ctx, request)
 	}
 	generation := approvals.getGeneration()
-	result, err := s.askAgentApproval(ctx, client, kind, request, allSecret)
+	result, err := s.askAgentApproval(ctx, client, kind, request, secrets)
 	if err != nil {
 		return nil, err
 	}
-	var allGrantKey []string
+	var grantKeys []string
 	if result.IsRemembered {
 		if isLocked {
-			if allSecret, _, err = s.locateAllAgentSecret(request); err != nil {
+			if secrets, _, err = s.locateAgentSecrets(request); err != nil {
 				return nil, err
 			}
 		}
-		allGrantKey = buildAllGrantKey(kind, allSecret)
+		grantKeys = buildGrantKeys(kind, secrets)
 	}
-	approvals.approveAgentConnection(client.connectionID, generation, allGrantKey)
+	approvals.approveAgentConnection(client.connectionID, generation, grantKeys)
 	return s.config.Handler.HandleRequest(ctx, request)
 }
 
-func buildAllGrantKey(kind string, allSecret []AgentSecret) []string {
-	allKey := make([]string, 0, len(allSecret))
-	for _, secret := range allSecret {
-		allKey = append(allKey, secret.getGrantKey(kind))
+func buildGrantKeys(kind string, secrets []AgentSecret) []string {
+	keys := make([]string, 0, len(secrets))
+	for _, secret := range secrets {
+		keys = append(keys, secret.getGrantKey(kind))
 	}
-	return allKey
+	return keys
 }
 
 // askAgentApproval names the secrets as found, or as the references are written while Hisar is locked.
-func (s *Server) askAgentApproval(ctx context.Context, client *connectionPeer, kind string, request *cliprotocol.Request, allSecret []AgentSecret) (AgentApprovalResult, error) {
+func (s *Server) askAgentApproval(ctx context.Context, client *connectionPeer, kind string, request *cliprotocol.Request, secrets []AgentSecret) (AgentApprovalResult, error) {
 	if s.config.AgentApprover == nil {
-		return AgentApprovalResult{}, cliprotocol.CreateError(cliprotocol.ErrorDenied, ErrDenied.Error())
+		return AgentApprovalResult{}, cliprotocol.NewError(cliprotocol.ErrorDenied, ErrDenied.Error())
 	}
 	approvalRequest := AgentApprovalRequest{
 		ClientPID: client.peer.PID, TerminalName: client.session.TerminalName, Agent: *client.agent, Kind: kind,
@@ -273,43 +273,43 @@ func (s *Server) askAgentApproval(ctx context.Context, client *connectionPeer, k
 		approvalRequest.CommandLine, approvalRequest.WorkingDirectory = request.CommandLine, request.WorkingDirectory
 	}
 	if kind != AgentRequestConnect {
-		approvalRequest.AllSecretName, approvalRequest.RevealedName = describeAllAgentSecret(request, allSecret)
+		approvalRequest.SecretNames, approvalRequest.RevealedName = describeAgentSecrets(request, secrets)
 	}
 	result, err := s.config.AgentApprover.ApproveAgent(ctx, approvalRequest)
 	if errors.Is(err, ErrDenied) {
-		return result, cliprotocol.CreateError(cliprotocol.ErrorDenied, err.Error())
+		return result, cliprotocol.NewError(cliprotocol.ErrorDenied, err.Error())
 	}
 	return result, err
 }
 
-func describeAllAgentSecret(request *cliprotocol.Request, allSecret []AgentSecret) ([]string, string) {
-	allName := make([]string, 0, max(len(allSecret), len(request.References)))
+func describeAgentSecrets(request *cliprotocol.Request, secrets []AgentSecret) ([]string, string) {
+	names := make([]string, 0, max(len(secrets), len(request.References)))
 	revealedName := ""
-	if len(allSecret) > 0 {
-		for _, secret := range allSecret {
-			allName = append(allName, secret.Describe())
+	if len(secrets) > 0 {
+		for _, secret := range secrets {
+			names = append(names, secret.Describe())
 		}
-		revealedName = allSecret[0].ItemTitle + " › " + allSecret[0].FieldLabel
+		revealedName = secrets[0].ItemTitle + " › " + secrets[0].FieldLabel
 		if request.Type == cliprotocol.TypeAgentGetCode {
-			revealedName = allSecret[0].ItemTitle
+			revealedName = secrets[0].ItemTitle
 		}
-		return allName, revealedName
+		return names, revealedName
 	}
 	for _, text := range request.References {
 		reference, err := secretreference.Parse(text)
 		if err != nil {
-			allName = append(allName, text)
+			names = append(names, text)
 			continue
 		}
-		allName = append(allName, reference.Describe())
+		names = append(names, reference.Describe())
 		revealedName = reference.Item + " › " + reference.Field
 		if request.Type == cliprotocol.TypeAgentGetCode {
 			revealedName = reference.Item
 		}
 	}
-	if len(allName) == 0 && request.ItemID != "" {
-		allName = append(allName, "item "+request.ItemID)
+	if len(names) == 0 && request.ItemID != "" {
+		names = append(names, "item "+request.ItemID)
 		revealedName = "item " + request.ItemID
 	}
-	return allName, revealedName
+	return names, revealedName
 }

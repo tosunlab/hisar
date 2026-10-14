@@ -20,40 +20,40 @@ type serviceSecretSource struct {
 	isCacheOnly bool
 }
 
-func (source serviceSecretSource) ListAllVault() ([]secretreference.Vault, error) {
+func (source serviceSecretSource) ListVaults() ([]secretreference.Vault, error) {
 	s := source.service
-	if !source.isCacheOnly || len(s.allVaultByID) == 0 {
-		if err := s.loadAllVault(source.ctx); err != nil {
+	if !source.isCacheOnly || len(s.vaultsByID) == 0 {
+		if err := s.loadVaults(source.ctx); err != nil {
 			return nil, err
 		}
 	}
-	allVault := make([]secretreference.Vault, 0, len(s.allVaultByID))
-	for _, vault := range s.allVaultByID {
-		allVault = append(allVault, secretreference.Vault{ID: vault.ID, Name: vault.Name})
+	vaults := make([]secretreference.Vault, 0, len(s.vaultsByID))
+	for _, vault := range s.vaultsByID {
+		vaults = append(vaults, secretreference.Vault{ID: vault.ID, Name: vault.Name})
 	}
-	return allVault, nil
+	return vaults, nil
 }
 
-func (source serviceSecretSource) ListAllItem(vaultID string) ([]item.Item, error) {
+func (source serviceSecretSource) ListItems(vaultID string) ([]item.Item, error) {
 	s := source.service
-	if allItem, isCached := s.allItemByVaultID[vaultID]; isCached && source.isCacheOnly {
-		return allItem, nil
+	if items, isCached := s.itemsByVaultID[vaultID]; isCached && source.isCacheOnly {
+		return items, nil
 	}
-	vault, isFound := s.allVaultByID[vaultID]
+	vault, isFound := s.vaultsByID[vaultID]
 	if !isFound {
 		return nil, fmt.Errorf("vault %w", ErrNotFound)
 	}
-	allItem, err := s.unlockedSession.ListAllItem(source.ctx, vault)
+	items, err := s.unlockedSession.ListItems(source.ctx, vault)
 	if err != nil {
 		return nil, convertError(err)
 	}
-	s.allItemByVaultID[vaultID] = allItem
-	return allItem, nil
+	s.itemsByVaultID[vaultID] = items
+	return items, nil
 }
 
-func (s *Service) resolveAllSecret(allReference []string) (cliprotocol.ResolveSecretResult, error) {
-	if len(allReference) == 0 || len(allReference) > cliprotocol.MaxReferenceCount {
-		return cliprotocol.ResolveSecretResult{}, cliprotocol.CreateError(cliprotocol.ErrorInvalidRequest, fmt.Sprintf("send between 1 and %d secret references", cliprotocol.MaxReferenceCount))
+func (s *Service) resolveSecrets(references []string) (cliprotocol.ResolveSecretResult, error) {
+	if len(references) == 0 || len(references) > cliprotocol.MaxReferenceCount {
+		return cliprotocol.ResolveSecretResult{}, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, fmt.Sprintf("send between 1 and %d secret references", cliprotocol.MaxReferenceCount))
 	}
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -62,49 +62,49 @@ func (s *Service) resolveAllSecret(allReference []string) (cliprotocol.ResolveSe
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	allResolved, err := secretreference.ResolveAll(serviceSecretSource{service: s, ctx: ctx}, allReference, time.Now())
+	resolvedReferences, err := secretreference.ResolveAll(serviceSecretSource{service: s, ctx: ctx}, references, time.Now())
 	var resolveError *secretreference.Error
 	if errors.As(err, &resolveError) {
-		return cliprotocol.ResolveSecretResult{}, cliprotocol.CreateError(cliprotocol.ErrorNotFound, err.Error())
+		return cliprotocol.ResolveSecretResult{}, cliprotocol.NewError(cliprotocol.ErrorNotFound, err.Error())
 	}
 	if err != nil {
 		return cliprotocol.ResolveSecretResult{}, err
 	}
-	result := cliprotocol.ResolveSecretResult{Values: make([]string, 0, len(allResolved))}
-	for _, resolved := range allResolved {
+	result := cliprotocol.ResolveSecretResult{Values: make([]string, 0, len(resolvedReferences))}
+	for _, resolved := range resolvedReferences {
 		result.Values = append(result.Values, resolved.Value)
 	}
 	return result, nil
 }
 
-// DescribeAllSecret names the secrets for the approval window: with the vault, item and field names while
+// DescribeSecrets names the secrets for the approval window: with the vault, item and field names while
 // Hisar is unlocked, and as the references are written while it is locked.
-func (bridge *CommandLineBridge) DescribeAllSecret(allReference []string) []string {
+func (bridge *CommandLineBridge) DescribeSecrets(references []string) []string {
 	s := bridge.service
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	allName := make([]string, 0, len(allReference))
-	for _, text := range allReference {
+	names := make([]string, 0, len(references))
+	for _, text := range references {
 		if s.unlockedSession != nil {
 			if resolved, err := secretreference.Locate(serviceSecretSource{service: s, ctx: ctx, isCacheOnly: true}, text); err == nil {
-				allName = append(allName, resolved.Describe())
+				names = append(names, resolved.Describe())
 				continue
 			}
 		}
 		if reference, err := secretreference.Parse(text); err == nil {
-			allName = append(allName, reference.Describe())
+			names = append(names, reference.Describe())
 		} else {
-			allName = append(allName, text)
+			names = append(names, text)
 		}
 	}
-	return allName
+	return names
 }
 
-func isSharedName(allName []string, name string) bool {
+func isSharedName(names []string, name string) bool {
 	count := 0
-	for _, candidate := range allName {
+	for _, candidate := range names {
 		if strings.EqualFold(candidate, name) {
 			count++
 		}
@@ -120,7 +120,7 @@ func (s *Service) CopySecretReference(vaultID, itemID, fieldName string) (string
 	if err := s.requireUnlocked(); err != nil {
 		return "", err
 	}
-	vault, isFound := s.allVaultByID[vaultID]
+	vault, isFound := s.vaultsByID[vaultID]
 	if !isFound {
 		return "", fmt.Errorf("vault %w", ErrNotFound)
 	}
@@ -139,19 +139,19 @@ func (s *Service) CopySecretReference(vaultID, itemID, fieldName string) (string
 	if _, _, err := secretreference.ReadField(vaultItem, label, time.Now()); err != nil {
 		return "", err
 	}
-	allVaultName := make([]string, 0, len(s.allVaultByID))
-	for _, candidate := range s.allVaultByID {
-		allVaultName = append(allVaultName, candidate.Name)
+	vaultNames := make([]string, 0, len(s.vaultsByID))
+	for _, candidate := range s.vaultsByID {
+		vaultNames = append(vaultNames, candidate.Name)
 	}
-	allItemTitle := make([]string, 0, len(s.allItemByVaultID[vaultID]))
-	for _, candidate := range s.allItemByVaultID[vaultID] {
-		allItemTitle = append(allItemTitle, candidate.Overview.Title)
+	itemTitles := make([]string, 0, len(s.itemsByVaultID[vaultID]))
+	for _, candidate := range s.itemsByVaultID[vaultID] {
+		itemTitles = append(itemTitles, candidate.Overview.Title)
 	}
 	reference := secretreference.Reference{Vault: vault.Name, Item: vaultItem.Overview.Title, Field: label}
-	if strings.TrimSpace(vault.Name) == "" || isSharedName(allVaultName, vault.Name) {
+	if strings.TrimSpace(vault.Name) == "" || isSharedName(vaultNames, vault.Name) {
 		reference.Vault = vault.ID
 	}
-	if strings.TrimSpace(vaultItem.Overview.Title) == "" || isSharedName(allItemTitle, vaultItem.Overview.Title) {
+	if strings.TrimSpace(vaultItem.Overview.Title) == "" || isSharedName(itemTitles, vaultItem.Overview.Title) {
 		reference.Item = vaultItem.ID
 	}
 	text := reference.String()

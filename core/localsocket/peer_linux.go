@@ -29,9 +29,9 @@ func GetParentPID(pid int) (int, error) {
 		return 0, err
 	}
 	afterName := stat[bytes.LastIndexByte(stat, ')')+1:]
-	allField := strings.Fields(string(afterName))
-	if len(allField) < 2 {
+	fields := strings.Fields(string(afterName))
+	if len(fields) < 2 {
 		return 0, errors.New("localsocket: unexpected /proc stat format")
 	}
-	return strconv.Atoi(allField[1])
+	return strconv.Atoi(fields[1])
 }

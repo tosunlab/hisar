@@ -19,21 +19,21 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-var allSignatureStatus = map[C.int]string{0: SignatureStatusUnsigned, 1: SignatureStatusInvalid, 2: SignatureStatusDeveloper, 3: SignatureStatusApple}
+var signatureStatuses = map[C.int]string{0: SignatureStatusUnsigned, 1: SignatureStatusInvalid, 2: SignatureStatusDeveloper, 3: SignatureStatusApple}
 
-var allSignerPrefix = []string{"Developer ID Application: ", "Apple Development: ", "Apple Distribution: ", "Mac Developer: ", "3rd Party Mac Developer Application: "}
+var signerPrefixes = []string{"Developer ID Application: ", "Apple Development: ", "Apple Distribution: ", "Mac Developer: ", "3rd Party Mac Developer Application: "}
 
-func CreateSystemResolver() *Resolver {
-	return CreateResolver(System{
+func NewSystemResolver() *Resolver {
+	return NewResolver(System{
 		ProcessReader: ProcessReader{
 			GetPath:             GetProcessPath,
 			GetParentPID:        localsocket.GetParentPID,
-			ListAllArgument:     ListAllProcessArgument,
+			ListArguments:       ListProcessArguments,
 			GetWorkingDirectory: GetProcessWorkingDirectory,
 		},
 		GetResponsiblePID:    getResponsiblePID,
-		ListAllProcessID:     listAllProcessID,
-		ListAllRunningApp:    listAllRunningApp,
+		ListProcessIDs:       listProcessIDs,
+		ListRunningApps:      listRunningApps,
 		GetSignature:         getSignature,
 		GetTeamID:            getTeamID,
 		GetBundleDisplayName: getBundleDisplayName,
@@ -68,22 +68,22 @@ func getResponsiblePID(pid int) (int, error) {
 	return responsiblePID, nil
 }
 
-func listAllRunningApp() []RunningApp {
+func listRunningApps() []RunningApp {
 	var count C.int
-	allInfo := C.copyAllRunningApp(&count)
-	if allInfo == nil {
+	infos := C.copyAllRunningApp(&count)
+	if infos == nil {
 		return []RunningApp{}
 	}
-	defer C.freeAllRunningApp(allInfo, count)
-	allRunningApp := []RunningApp{}
-	for _, info := range unsafe.Slice(allInfo, int(count)) {
-		allRunningApp = append(allRunningApp, RunningApp{PID: int(info.pid), IsRegular: info.isRegular != 0, BundlePath: C.GoString(info.bundlePath)})
+	defer C.freeAllRunningApp(infos, count)
+	runningApps := []RunningApp{}
+	for _, info := range unsafe.Slice(infos, int(count)) {
+		runningApps = append(runningApps, RunningApp{PID: int(info.pid), IsRegular: info.isRegular != 0, BundlePath: C.GoString(info.bundlePath)})
 	}
-	return allRunningApp
+	return runningApps
 }
 
 func cleanSignerName(signerName string) string {
-	for _, prefix := range allSignerPrefix {
+	for _, prefix := range signerPrefixes {
 		if trimmed, isTrimmed := strings.CutPrefix(signerName, prefix); isTrimmed {
 			return trimmed
 		}
@@ -98,7 +98,7 @@ func getSignature(path string) Signature {
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
 	info := C.checkSignature(cPath)
-	return Signature{Status: allSignatureStatus[info.status], TeamID: takeCString(info.teamID), SignerName: cleanSignerName(takeCString(info.signerName))}
+	return Signature{Status: signatureStatuses[info.status], TeamID: takeCString(info.teamID), SignerName: cleanSignerName(takeCString(info.signerName))}
 }
 
 func getTeamID(path string) string {

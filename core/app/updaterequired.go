@@ -37,9 +37,9 @@ type clientVersionCheck struct {
 }
 
 type updateRequirementState struct {
-	mutex                sync.Mutex
-	requirement          *UpdateRequirement
-	allClientCheckByName map[string]clientVersionCheck
+	mutex              sync.Mutex
+	requirement        *UpdateRequirement
+	clientChecksByName map[string]clientVersionCheck
 }
 
 // SetAppVersion is for apps that learn their version after creating the service; not a method, so the UI cannot call it.
@@ -50,7 +50,7 @@ func SetAppVersion(s *Service, version string) {
 }
 
 func (s *Service) createClient(server string) *apiclient.Client {
-	apiClient := apiclient.Create(server)
+	apiClient := apiclient.New(server)
 	apiClient.Platform, apiClient.Version = s.config.Platform, s.config.AppVersion
 	apiClient.OnUpgradeRequired = s.recordUpdateRequired
 	return apiClient
@@ -118,7 +118,7 @@ func (s *Service) checkClientVersion(platform, version string) *UpdateRequiremen
 	checkName := platform + " " + version
 	now := s.config.Now()
 	s.updateRequirement.mutex.Lock()
-	if check, isCached := s.updateRequirement.allClientCheckByName[checkName]; isCached && now.Before(check.expiresAt) {
+	if check, isCached := s.updateRequirement.clientChecksByName[checkName]; isCached && now.Before(check.expiresAt) {
 		s.updateRequirement.mutex.Unlock()
 		return check.requirement
 	}
@@ -130,7 +130,7 @@ func (s *Service) checkClientVersion(platform, version string) *UpdateRequiremen
 	if server == "" {
 		return nil
 	}
-	apiClient := apiclient.Create(server)
+	apiClient := apiclient.New(server)
 	apiClient.Platform, apiClient.Version = platform, version
 	ctx, cancel := context.WithTimeout(context.Background(), clientVersionCheckTimeout)
 	defer cancel()
@@ -142,10 +142,10 @@ func (s *Service) checkClientVersion(platform, version string) *UpdateRequiremen
 		check.expiresAt = now.Add(unreachableClientVersionCheckLifetime)
 	}
 	s.updateRequirement.mutex.Lock()
-	if s.updateRequirement.allClientCheckByName == nil {
-		s.updateRequirement.allClientCheckByName = map[string]clientVersionCheck{}
+	if s.updateRequirement.clientChecksByName == nil {
+		s.updateRequirement.clientChecksByName = map[string]clientVersionCheck{}
 	}
-	s.updateRequirement.allClientCheckByName[checkName] = check
+	s.updateRequirement.clientChecksByName[checkName] = check
 	s.updateRequirement.mutex.Unlock()
 	return check.requirement
 }

@@ -26,11 +26,11 @@ const (
 
 type fakeSystem struct {
 	tree                fakeProcessTree
-	allRunningApp       []RunningApp
-	allResponsiblePID   map[int]int
-	allTeamID           map[string]string
-	allSignature        map[string]Signature
-	allRemoteHost       map[int]string
+	runningApps         []RunningApp
+	responsiblePIDs     map[int]int
+	teamIDs             map[string]string
+	signatures          map[string]Signature
+	remoteHosts         map[int]string
 	signatureCheckCount map[string]int
 	iconRenderCount     map[string]int
 	modificationTime    time.Time
@@ -39,41 +39,41 @@ type fakeSystem struct {
 func createFakeSystem(tree fakeProcessTree) *fakeSystem {
 	return &fakeSystem{
 		tree:                tree,
-		allResponsiblePID:   map[int]int{},
-		allTeamID:           map[string]string{},
-		allSignature:        map[string]Signature{},
-		allRemoteHost:       map[int]string{},
+		responsiblePIDs:     map[int]int{},
+		teamIDs:             map[string]string{},
+		signatures:          map[string]Signature{},
+		remoteHosts:         map[int]string{},
 		signatureCheckCount: map[string]int{},
 		iconRenderCount:     map[string]int{},
 	}
 }
 
 func (system *fakeSystem) createResolver() *Resolver {
-	return CreateResolver(System{
+	return NewResolver(System{
 		ProcessReader: system.tree.createReader(),
 		GetResponsiblePID: func(pid int) (int, error) {
-			if responsiblePID, isFound := system.allResponsiblePID[pid]; isFound {
+			if responsiblePID, isFound := system.responsiblePIDs[pid]; isFound {
 				return responsiblePID, nil
 			}
 			return pid, nil
 		},
-		ListAllProcessID: func() ([]int, error) {
-			allProcessID := []int{}
+		ListProcessIDs: func() ([]int, error) {
+			processIDs := []int{}
 			for pid := range system.tree {
-				allProcessID = append(allProcessID, pid)
+				processIDs = append(processIDs, pid)
 			}
-			slices.Sort(allProcessID)
-			return allProcessID, nil
+			slices.Sort(processIDs)
+			return processIDs, nil
 		},
-		ListAllRunningApp: func() []RunningApp { return system.allRunningApp },
+		ListRunningApps: func() []RunningApp { return system.runningApps },
 		GetSignature: func(path string) Signature {
 			system.signatureCheckCount[path]++
-			if signature, isFound := system.allSignature[path]; isFound {
+			if signature, isFound := system.signatures[path]; isFound {
 				return signature
 			}
 			return Signature{Status: SignatureStatusUnsigned}
 		},
-		GetTeamID:            func(path string) string { return system.allTeamID[path] },
+		GetTeamID:            func(path string) string { return system.teamIDs[path] },
 		GetBundleDisplayName: func(bundlePath string) string { return map[string]string{iTermPath: "iTerm2"}[bundlePath] },
 		GetBundleIconPNG: func(bundlePath string, size int) ([]byte, error) {
 			system.iconRenderCount[bundlePath]++
@@ -83,7 +83,7 @@ func (system *fakeSystem) createResolver() *Resolver {
 			return []byte{0x89, 'P', 'N', 'G', byte(size)}, nil
 		},
 		GetSSHRemoteHost: func(pid int) (string, error) {
-			if host, isFound := system.allRemoteHost[pid]; isFound {
+			if host, isFound := system.remoteHosts[pid]; isFound {
 				return host, nil
 			}
 			return "", errors.New("no connection")
@@ -94,9 +94,9 @@ func (system *fakeSystem) createResolver() *Resolver {
 
 func createSigningInITermTree() fakeProcessTree {
 	return fakeProcessTree{
-		70: {path: sshKeygenPath, parentPID: 60, allArgument: []string{"/usr/bin/ssh-keygen", "-Y", "sign", "-n", "git", "-f", "/tmp/key.pub", "/tmp/.git_signing_buffer_tmpX"}},
-		60: {path: xcodeGitPath, parentPID: 50, allArgument: []string{"git", "commit", "-m", "Fix"}},
-		50: {path: loginShellPath, parentPID: 40, allArgument: []string{"-zsh"}},
+		70: {path: sshKeygenPath, parentPID: 60, arguments: []string{"/usr/bin/ssh-keygen", "-Y", "sign", "-n", "git", "-f", "/tmp/key.pub", "/tmp/.git_signing_buffer_tmpX"}},
+		60: {path: xcodeGitPath, parentPID: 50, arguments: []string{"git", "commit", "-m", "Fix"}},
+		50: {path: loginShellPath, parentPID: 40, arguments: []string{"-zsh"}},
 		40: {path: loginProgramPath, parentPID: 30},
 		30: {path: iTermServerPath, parentPID: 1},
 		10: {path: iTermPath + "/Contents/MacOS/iTerm2", parentPID: 1},
@@ -105,25 +105,25 @@ func createSigningInITermTree() fakeProcessTree {
 
 func createITermSystem() *fakeSystem {
 	system := createFakeSystem(createSigningInITermTree())
-	system.allRunningApp = []RunningApp{
+	system.runningApps = []RunningApp{
 		{PID: 10, BundlePath: iTermPath, IsRegular: true},
 		{PID: 11, BundlePath: "/Applications/Hisar.app", IsRegular: false},
 		{PID: 12, BundlePath: "/System/Applications/Utilities/Terminal.app", IsRegular: true},
 	}
-	system.allTeamID = map[string]string{iTermServerPath: iTermTeamID, iTermPath: iTermTeamID, "/System/Applications/Utilities/Terminal.app": ""}
-	system.allSignature = map[string]Signature{
+	system.teamIDs = map[string]string{iTermServerPath: iTermTeamID, iTermPath: iTermTeamID, "/System/Applications/Utilities/Terminal.app": ""}
+	system.signatures = map[string]Signature{
 		iTermServerPath: {Status: SignatureStatusDeveloper, TeamID: iTermTeamID, SignerName: "George Nachman (H7V7XYVQ7D)"},
 		iTermPath:       {Status: SignatureStatusDeveloper, TeamID: iTermTeamID, SignerName: "George Nachman (H7V7XYVQ7D)"},
 	}
 	return system
 }
 
-func listAllProgramName(allProcess []Process) []string {
-	allName := []string{}
-	for _, process := range allProcess {
-		allName = append(allName, GetProgramName(process))
+func listProgramNames(processes []Process) []string {
+	names := []string{}
+	for _, process := range processes {
+		names = append(names, GetProgramName(process))
 	}
-	return allName
+	return names
 }
 
 func TestResolveSigningInITermThroughItsServer(t *testing.T) {
@@ -132,11 +132,11 @@ func TestResolveSigningInITermThroughItsServer(t *testing.T) {
 	if requester.Kind != RequesterKindApp || requester.Name != "iTerm2" || requester.App.Path != iTermPath {
 		t.Fatalf("requester %+v", requester)
 	}
-	if allName := listAllProgramName(requester.AllChainProcess); !slices.Equal(allName, []string{"ssh-keygen", "git", "zsh"}) {
-		t.Errorf("chain %q", allName)
+	if names := listProgramNames(requester.ChainProcesses); !slices.Equal(names, []string{"ssh-keygen", "git", "zsh"}) {
+		t.Errorf("chain %q", names)
 	}
-	if len(requester.AllProcess) != 5 || requester.AllProcess[1].AllArgument[1] != "commit" {
-		t.Errorf("all processes %+v", requester.AllProcess)
+	if len(requester.Processes) != 5 || requester.Processes[1].Arguments[1] != "commit" {
+		t.Errorf("all processes %+v", requester.Processes)
 	}
 	if requester.App.Signature.Status != SignatureStatusDeveloper || requester.App.Signature.TeamID != iTermTeamID || !strings.HasPrefix(requester.App.IconURL, "data:image/png;base64,") {
 		t.Errorf("app %+v", requester.App)
@@ -145,18 +145,18 @@ func TestResolveSigningInITermThroughItsServer(t *testing.T) {
 
 func TestSigningTeamMustMatchExactlyOneValidApp(t *testing.T) {
 	unsignedServer := createITermSystem()
-	unsignedServer.allSignature[iTermServerPath] = Signature{Status: SignatureStatusInvalid}
+	unsignedServer.signatures[iTermServerPath] = Signature{Status: SignatureStatusInvalid}
 	if requester := unsignedServer.createResolver().Resolve(70); requester.Kind != RequesterKindBackground || requester.Name != "A background process" {
 		t.Errorf("a server whose signature does not verify: %+v", requester)
 	}
 	twoApps := createITermSystem()
-	twoApps.allRunningApp = append(twoApps.allRunningApp, RunningApp{PID: 13, BundlePath: "/Applications/iTerm Beta.app", IsRegular: true})
-	twoApps.allTeamID["/Applications/iTerm Beta.app"] = iTermTeamID
+	twoApps.runningApps = append(twoApps.runningApps, RunningApp{PID: 13, BundlePath: "/Applications/iTerm Beta.app", IsRegular: true})
+	twoApps.teamIDs["/Applications/iTerm Beta.app"] = iTermTeamID
 	if requester := twoApps.createResolver().Resolve(70); requester.Kind != RequesterKindBackground {
 		t.Errorf("two apps of the same team: %+v", requester)
 	}
 	notRunning := createITermSystem()
-	notRunning.allRunningApp = notRunning.allRunningApp[1:]
+	notRunning.runningApps = notRunning.runningApps[1:]
 	if requester := notRunning.createResolver().Resolve(70); requester.Kind != RequesterKindBackground {
 		t.Errorf("iTerm2 not running: %+v", requester)
 	}
@@ -174,17 +174,17 @@ func TestResolveVisualStudioCodeHelpers(t *testing.T) {
 		43: {path: codeHelperPath, parentPID: 20},
 		20: {path: visualStudioPath + "/Contents/MacOS/Code", parentPID: 1},
 	})
-	system.allRunningApp = []RunningApp{{PID: 20, BundlePath: visualStudioPath, IsRegular: true}}
-	system.allSignature[visualStudioPath] = Signature{Status: SignatureStatusDeveloper, TeamID: visualStudioTeam, SignerName: "Microsoft Corporation (UBF8T346G9)"}
+	system.runningApps = []RunningApp{{PID: 20, BundlePath: visualStudioPath, IsRegular: true}}
+	system.signatures[visualStudioPath] = Signature{Status: SignatureStatusDeveloper, TeamID: visualStudioTeam, SignerName: "Microsoft Corporation (UBF8T346G9)"}
 	resolver := system.createResolver()
 	requester := resolver.Resolve(90)
 	if requester.Kind != RequesterKindApp || requester.Name != "Visual Studio Code" || requester.App.Signature.TeamID != visualStudioTeam {
 		t.Fatalf("git extension: %+v", requester)
 	}
-	if allName := listAllProgramName(requester.AllChainProcess); !slices.Equal(allName, []string{"ssh-keygen", "bash", "git"}) {
-		t.Errorf("chain %q", allName)
+	if names := listProgramNames(requester.ChainProcesses); !slices.Equal(names, []string{"ssh-keygen", "bash", "git"}) {
+		t.Errorf("chain %q", names)
 	}
-	if requester := resolver.Resolve(45); requester.App.Path != visualStudioPath || !slices.Equal(listAllProgramName(requester.AllChainProcess), []string{"ssh", "zsh"}) {
+	if requester := resolver.Resolve(45); requester.App.Path != visualStudioPath || !slices.Equal(listProgramNames(requester.ChainProcesses), []string{"ssh", "zsh"}) {
 		t.Errorf("integrated terminal: %+v", requester)
 	}
 }
@@ -195,10 +195,10 @@ func TestResolveThroughResponsibleProcess(t *testing.T) {
 		80: {path: "/Users/developer/.cursor/extensions/runner", parentPID: 1},
 		20: {path: "/Applications/Cursor.app/Contents/MacOS/Cursor", parentPID: 1},
 	})
-	system.allRunningApp = []RunningApp{{PID: 20, BundlePath: "/Applications/Cursor.app", IsRegular: true}}
-	system.allResponsiblePID[80] = 20
+	system.runningApps = []RunningApp{{PID: 20, BundlePath: "/Applications/Cursor.app", IsRegular: true}}
+	system.responsiblePIDs[80] = 20
 	requester := system.createResolver().Resolve(90)
-	if requester.Name != "Cursor" || !slices.Equal(listAllProgramName(requester.AllChainProcess), []string{"ssh", "runner"}) {
+	if requester.Name != "Cursor" || !slices.Equal(listProgramNames(requester.ChainProcesses), []string{"ssh", "runner"}) {
 		t.Errorf("a process Cursor is responsible for: %+v", requester)
 	}
 }
@@ -210,8 +210,8 @@ func TestDockAppWinsOverNearerBundle(t *testing.T) {
 		70: {path: loginShellPath, parentPID: 10},
 		10: {path: "/Applications/Ghostty.app/Contents/MacOS/ghostty", parentPID: 1},
 	})
-	system.allRunningApp = []RunningApp{{PID: 10, BundlePath: "/Applications/Ghostty.app", IsRegular: true}, {PID: 11, BundlePath: "/Applications/Docker.app", IsRegular: false}}
-	if requester := system.createResolver().Resolve(90); requester.Name != "Ghostty" || !slices.Equal(listAllProgramName(requester.AllChainProcess), []string{"ssh", "docker", "zsh"}) {
+	system.runningApps = []RunningApp{{PID: 10, BundlePath: "/Applications/Ghostty.app", IsRegular: true}, {PID: 11, BundlePath: "/Applications/Docker.app", IsRegular: false}}
+	if requester := system.createResolver().Resolve(90); requester.Name != "Ghostty" || !slices.Equal(listProgramNames(requester.ChainProcesses), []string{"ssh", "docker", "zsh"}) {
 		t.Errorf("docker in Ghostty: %+v", requester)
 	}
 }
@@ -231,7 +231,7 @@ func TestResolveTmux(t *testing.T) {
 	system := createITermSystem()
 	system.tree = tree
 	requester := system.createResolver().Resolve(90)
-	if requester.Name != "iTerm2" || !slices.Equal(listAllProgramName(requester.AllChainProcess), []string{"ssh-keygen", "git", "zsh", "tmux"}) {
+	if requester.Name != "iTerm2" || !slices.Equal(listProgramNames(requester.ChainProcesses), []string{"ssh-keygen", "git", "zsh", "tmux"}) {
 		t.Errorf("tmux attached in iTerm2: %+v", requester)
 	}
 	tree[42] = fakeProcess{path: tmuxPath, parentPID: 41}
@@ -255,12 +255,12 @@ func TestResolveSSHSession(t *testing.T) {
 		50: {path: sshServerPath, parentPID: 40},
 		40: {path: "/usr/sbin/sshd", parentPID: 1},
 	})
-	system.allRemoteHost[60] = "192.0.2.10"
+	system.remoteHosts[60] = "192.0.2.10"
 	requester := system.createResolver().Resolve(90)
-	if requester.Kind != RequesterKindSSHSession || requester.Name != "An SSH session from 192.0.2.10" || !slices.Equal(listAllProgramName(requester.AllChainProcess), []string{"ssh-keygen", "git", "zsh"}) {
+	if requester.Kind != RequesterKindSSHSession || requester.Name != "An SSH session from 192.0.2.10" || !slices.Equal(listProgramNames(requester.ChainProcesses), []string{"ssh-keygen", "git", "zsh"}) {
 		t.Errorf("SSH session: %+v", requester)
 	}
-	delete(system.allRemoteHost, 60)
+	delete(system.remoteHosts, 60)
 	if requester := system.createResolver().Resolve(90); requester.Name != "An SSH session" {
 		t.Errorf("SSH session without a host: %+v", requester)
 	}
@@ -272,7 +272,7 @@ func TestResolveBackgroundProcess(t *testing.T) {
 		80: {path: backgroundJobPath, parentPID: 1},
 	})
 	requester := system.createResolver().Resolve(90)
-	if requester.Kind != RequesterKindBackground || requester.Name != "A background process" || !slices.Equal(listAllProgramName(requester.AllChainProcess), []string{"ssh", "backup"}) {
+	if requester.Kind != RequesterKindBackground || requester.Name != "A background process" || !slices.Equal(listProgramNames(requester.ChainProcesses), []string{"ssh", "backup"}) {
 		t.Errorf("launchd job: %+v", requester)
 	}
 }
@@ -282,7 +282,7 @@ func TestUnsignedAppKeepsItsBundleName(t *testing.T) {
 		90: {path: sshKeygenPath, parentPID: 80},
 		80: {path: unsignedAppPath + "/Contents/MacOS/iTerm2", parentPID: 1},
 	})
-	system.allRunningApp = []RunningApp{{PID: 80, BundlePath: unsignedAppPath, IsRegular: true}}
+	system.runningApps = []RunningApp{{PID: 80, BundlePath: unsignedAppPath, IsRegular: true}}
 	requester := system.createResolver().Resolve(90)
 	if requester.Name != "iTerm" || requester.App.Path != unsignedAppPath || requester.App.Signature.Status != SignatureStatusUnsigned {
 		t.Errorf("unsigned app: %+v", requester)
@@ -291,8 +291,8 @@ func TestUnsignedAppKeepsItsBundleName(t *testing.T) {
 
 func TestNameAndIconComeFromTheBundle(t *testing.T) {
 	system := createFakeSystem(fakeProcessTree{
-		90: {path: "/usr/bin/ssh", parentPID: 80, allArgument: []string{"Visual Studio Code"}},
-		80: {path: "/tmp/fake/NoIcon.app/Contents/MacOS/x", parentPID: 1, allArgument: []string{"/Applications/iTerm.app/Contents/MacOS/iTerm2"}},
+		90: {path: "/usr/bin/ssh", parentPID: 80, arguments: []string{"Visual Studio Code"}},
+		80: {path: "/tmp/fake/NoIcon.app/Contents/MacOS/x", parentPID: 1, arguments: []string{"/Applications/iTerm.app/Contents/MacOS/iTerm2"}},
 	})
 	requester := system.createResolver().Resolve(90)
 	if requester.Name != "NoIcon" || requester.App.IconURL != "" {
@@ -329,24 +329,24 @@ func TestSignatureIsCheckedAgainWhenTheBundleChanges(t *testing.T) {
 		t.Errorf("checked %d times while unchanged", system.signatureCheckCount[iTermPath])
 	}
 	system.modificationTime = system.modificationTime.Add(time.Hour)
-	system.allSignature[iTermPath] = Signature{Status: SignatureStatusInvalid}
+	system.signatures[iTermPath] = Signature{Status: SignatureStatusInvalid}
 	if requester := resolver.Resolve(70); requester.App.Signature.Status != SignatureStatusInvalid || system.signatureCheckCount[iTermPath] != 2 {
 		t.Errorf("after a change: %+v, %d checks", requester.App.Signature, system.signatureCheckCount[iTermPath])
 	}
 }
 
 func TestChainLeavesOutLoginAndStaysShort(t *testing.T) {
-	allProcess := []Process{}
+	processes := []Process{}
 	for index := range 12 {
 		path := loginShellPath
 		if index == 2 {
 			path = loginProgramPath
 		}
-		allProcess = append(allProcess, Process{PID: 100 - index, Path: path})
+		processes = append(processes, Process{PID: 100 - index, Path: path})
 	}
-	allChainProcess := buildChain(allProcess, len(allProcess))
-	if len(allChainProcess) != maximumChainLength || slices.Contains(listAllProgramName(allChainProcess), "login") {
-		t.Errorf("chain %q", listAllProgramName(allChainProcess))
+	chainProcesses := buildChain(processes, len(processes))
+	if len(chainProcesses) != maximumChainLength || slices.Contains(listProgramNames(chainProcesses), "login") {
+		t.Errorf("chain %q", listProgramNames(chainProcesses))
 	}
 }
 

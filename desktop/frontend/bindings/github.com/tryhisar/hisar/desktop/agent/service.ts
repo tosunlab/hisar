@@ -32,8 +32,8 @@ export function GetStatus(): $CancellablePromise<$models.Status> {
     return $Call.ByID(1154302022);
 }
 
-export function ListAllPendingSSHApproval(): $CancellablePromise<$models.ApprovalEvent[] | null> {
-    return $Call.ByID(2316091107);
+export function ListPendingSSHApprovals(): $CancellablePromise<$models.ApprovalEvent[] | null> {
+    return $Call.ByID(2555831409);
 }
 
 export function RemoveSSHConfig(): $CancellablePromise<$models.Status> {

@@ -25,12 +25,12 @@ var errTestLocked = errors.New("hisar is locked")
 
 type fakeKeySource struct {
 	mutex       sync.Mutex
-	allKey      []Key
+	keys        []Key
 	isLocked    bool
 	lockedError error
 }
 
-func (source *fakeKeySource) ListAllKey(ctx context.Context) ([]Key, error) {
+func (source *fakeKeySource) ListKeys(ctx context.Context) ([]Key, error) {
 	source.mutex.Lock()
 	defer source.mutex.Unlock()
 	if source.isLocked && source.lockedError != nil {
@@ -39,7 +39,7 @@ func (source *fakeKeySource) ListAllKey(ctx context.Context) ([]Key, error) {
 	if source.isLocked {
 		return nil, errTestLocked
 	}
-	return append([]Key(nil), source.allKey...), nil
+	return append([]Key(nil), source.keys...), nil
 }
 
 func (source *fakeKeySource) setLocked(isLocked bool) {
@@ -52,13 +52,13 @@ type fakeApprover struct {
 	mutex        sync.Mutex
 	isApproving  bool
 	isRemembered bool
-	allRequest   []ApprovalRequest
+	requests     []ApprovalRequest
 	onApprove    func()
 }
 
 func (approver *fakeApprover) Approve(ctx context.Context, request ApprovalRequest) (ApprovalResult, error) {
 	approver.mutex.Lock()
-	approver.allRequest = append(approver.allRequest, request)
+	approver.requests = append(approver.requests, request)
 	result := ApprovalResult{IsAllowed: approver.isApproving, IsRemembered: approver.isRemembered}
 	onApprove := approver.onApprove
 	approver.mutex.Unlock()
@@ -77,17 +77,17 @@ func (approver *fakeApprover) setApproving(isApproving bool) {
 func (approver *fakeApprover) countRequest() int {
 	approver.mutex.Lock()
 	defer approver.mutex.Unlock()
-	return len(approver.allRequest)
+	return len(approver.requests)
 }
 
 func (approver *fakeApprover) getLastRequest(t *testing.T) ApprovalRequest {
 	t.Helper()
 	approver.mutex.Lock()
 	defer approver.mutex.Unlock()
-	if len(approver.allRequest) == 0 {
+	if len(approver.requests) == 0 {
 		t.Fatal("approver was never asked")
 	}
-	return approver.allRequest[len(approver.allRequest)-1]
+	return approver.requests[len(approver.requests)-1]
 }
 
 type fakePeerResolver struct {
@@ -113,7 +113,7 @@ type agentFixture struct {
 	approver   *fakeApprover
 	resolver   *fakePeerResolver
 	socketPath string
-	allKey     []Key
+	keys       []Key
 }
 
 func createShortTempDirectory(t *testing.T) string {
@@ -132,16 +132,16 @@ func createTestKey(t *testing.T, id, title string, material *sshkey.KeyMaterial)
 	return Key{ID: id, VaultID: "personal", Title: title, PrivateKeyPEM: material.PrivateKeyPEM}
 }
 
-func startAgent(t *testing.T, allKey []Key) *agentFixture {
+func startAgent(t *testing.T, keys []Key) *agentFixture {
 	t.Helper()
 	fixture := &agentFixture{
-		source:   &fakeKeySource{allKey: allKey},
+		source:   &fakeKeySource{keys: keys},
 		approver: &fakeApprover{isApproving: true, isRemembered: true},
 		resolver: &fakePeerResolver{},
-		allKey:   allKey,
+		keys:     keys,
 	}
 	fixture.resolver.setPath("/usr/bin/ssh")
-	fixture.server = CreateServer(fixture.source, fixture.approver, fixture.resolver)
+	fixture.server = NewServer(fixture.source, fixture.approver, fixture.resolver)
 	fixture.socketPath = filepath.Join(createShortTempDirectory(t), "agent", "agent.sock")
 	listener, err := localsocket.ListenUnixSocket(fixture.socketPath)
 	if err != nil {
@@ -230,12 +230,12 @@ func startSSHServer(t *testing.T, allowedKey ssh.PublicKey) string {
 			}
 			go func() {
 				defer connection.Close()
-				serverConnection, allChannel, allRequest, err := ssh.NewServerConn(connection, serverConfig)
+				serverConnection, channels, requests, err := ssh.NewServerConn(connection, serverConfig)
 				if err != nil {
 					return
 				}
-				go ssh.DiscardRequests(allRequest)
-				for newChannel := range allChannel {
+				go ssh.DiscardRequests(requests)
+				for newChannel := range channels {
 					newChannel.Reject(ssh.Prohibited, "no channels")
 				}
 				serverConnection.Close()
@@ -256,12 +256,12 @@ func getPublicKey(t *testing.T, key Key) ssh.PublicKey {
 
 var (
 	sharedMaterialOnce sync.Once
-	allSharedMaterial  map[string]*sshkey.KeyMaterial
+	sharedMaterials    map[string]*sshkey.KeyMaterial
 )
 
-func getAllTestMaterial() map[string]*sshkey.KeyMaterial {
+func getTestMaterials() map[string]*sshkey.KeyMaterial {
 	sharedMaterialOnce.Do(func() {
-		allSharedMaterial = map[string]*sshkey.KeyMaterial{}
+		sharedMaterials = map[string]*sshkey.KeyMaterial{}
 		ed25519Material, err := sshkey.GenerateEd25519Key("ed")
 		if err != nil {
 			panic(err)
@@ -282,15 +282,15 @@ func getAllTestMaterial() map[string]*sshkey.KeyMaterial {
 		if err != nil {
 			panic(err)
 		}
-		allSharedMaterial["ed25519"] = ed25519Material
-		allSharedMaterial["rsa"] = rsaMaterial
-		allSharedMaterial["ecdsa"] = ecdsaMaterial
+		sharedMaterials["ed25519"] = ed25519Material
+		sharedMaterials["rsa"] = rsaMaterial
+		sharedMaterials["ecdsa"] = ecdsaMaterial
 	})
-	return allSharedMaterial
+	return sharedMaterials
 }
 
 func TestEndToEndApproved(t *testing.T) {
-	for name, material := range getAllTestMaterial() {
+	for name, material := range getTestMaterials() {
 		t.Run(name, func(t *testing.T) {
 			key := createTestKey(t, "id-"+name, "Title "+name, material)
 			fixture := startAgent(t, []Key{key})
@@ -316,7 +316,7 @@ func TestEndToEndApproved(t *testing.T) {
 }
 
 func TestEndToEndDenied(t *testing.T) {
-	key := createTestKey(t, "id", "Work", getAllTestMaterial()["ed25519"])
+	key := createTestKey(t, "id", "Work", getTestMaterials()["ed25519"])
 	fixture := startAgent(t, []Key{key})
 	fixture.approver.setApproving(false)
 	address := startSSHServer(t, getPublicKey(t, key))
@@ -337,10 +337,10 @@ func TestEndToEndDenied(t *testing.T) {
 }
 
 func TestEndToEndWrongKeyNotSigned(t *testing.T) {
-	allMaterial := getAllTestMaterial()
-	key := createTestKey(t, "id", "Work", allMaterial["ed25519"])
+	materials := getTestMaterials()
+	key := createTestKey(t, "id", "Work", materials["ed25519"])
 	fixture := startAgent(t, []Key{key})
-	address := startSSHServer(t, getPublicKey(t, createTestKey(t, "other", "Other", allMaterial["rsa"])))
+	address := startSSHServer(t, getPublicKey(t, createTestKey(t, "other", "Other", materials["rsa"])))
 	if err := fixture.connectSSH(t, address); err == nil {
 		t.Fatal("ssh auth succeeded with an unauthorized key")
 	}
@@ -350,7 +350,7 @@ func TestEndToEndWrongKeyNotSigned(t *testing.T) {
 }
 
 func TestApprovalCachedPerClientPath(t *testing.T) {
-	key := createTestKey(t, "id", "Work", getAllTestMaterial()["ed25519"])
+	key := createTestKey(t, "id", "Work", getTestMaterials()["ed25519"])
 	fixture := startAgent(t, []Key{key})
 	address := startSSHServer(t, getPublicKey(t, key))
 	connect := func(wantCount int) {
@@ -369,7 +369,7 @@ func TestApprovalCachedPerClientPath(t *testing.T) {
 	connect(2)
 	fixture.resolver.setPath("/usr/bin/ssh")
 	connect(2)
-	fixture.server.ClearAllApproval()
+	fixture.server.ClearApprovals()
 	connect(3)
 	connect(3)
 }
@@ -387,9 +387,9 @@ func (approver *fakeApprover) setRemembered(isRemembered bool) {
 }
 
 func TestApprovalRememberedPerApplication(t *testing.T) {
-	allMaterial := getAllTestMaterial()
-	key := createTestKey(t, "id", "Work", allMaterial["ed25519"])
-	otherKey := createTestKey(t, "other", "Deploy", allMaterial["rsa"])
+	materials := getTestMaterials()
+	key := createTestKey(t, "id", "Work", materials["ed25519"])
+	otherKey := createTestKey(t, "other", "Deploy", materials["rsa"])
 	fixture := startAgent(t, []Key{key, otherKey})
 	address := startSSHServer(t, getPublicKey(t, key))
 	otherAddress := startSSHServer(t, getPublicKey(t, otherKey))
@@ -417,13 +417,13 @@ func TestApprovalRememberedPerApplication(t *testing.T) {
 	fixture.resolver.setApplication("/usr/bin/ssh", "/Applications/Ghostty.app")
 	connect(address, 4)
 	connect(address, 5)
-	fixture.server.ClearAllApproval()
+	fixture.server.ClearApprovals()
 	fixture.resolver.setApplication("/usr/bin/ssh", terminalPath)
 	connect(address, 6)
 }
 
 func TestApprovalExpiresAfterLifetime(t *testing.T) {
-	key := createTestKey(t, "id", "Work", getAllTestMaterial()["ed25519"])
+	key := createTestKey(t, "id", "Work", getTestMaterials()["ed25519"])
 	fixture := startAgent(t, []Key{key})
 	address := startSSHServer(t, getPublicKey(t, key))
 	var clockMutex sync.Mutex
@@ -459,11 +459,11 @@ func TestApprovalExpiresAfterLifetime(t *testing.T) {
 }
 
 func TestAlwaysAskKeyPromptsEveryTime(t *testing.T) {
-	allMaterial := getAllTestMaterial()
-	alwaysAskKey := createTestKey(t, "always", "Production", allMaterial["ed25519"])
-	normalKey := createTestKey(t, "normal", "Personal", allMaterial["rsa"])
+	materials := getTestMaterials()
+	alwaysAskKey := createTestKey(t, "always", "Production", materials["ed25519"])
+	normalKey := createTestKey(t, "normal", "Personal", materials["rsa"])
 	fixture := startAgent(t, []Key{alwaysAskKey, normalKey})
-	fixture.server.SetAllAlwaysAskKeyID([]string{"always"})
+	fixture.server.SetAlwaysAskKeyIDs([]string{"always"})
 	alwaysAskAddress := startSSHServer(t, getPublicKey(t, alwaysAskKey))
 	for attempt := 1; attempt <= 3; attempt++ {
 		if err := fixture.connectSSH(t, alwaysAskAddress); err != nil {
@@ -485,7 +485,7 @@ func TestAlwaysAskKeyPromptsEveryTime(t *testing.T) {
 	if count := fixture.approver.countRequest(); count != 4 {
 		t.Errorf("normal key approval count = %d, want 4", count-3)
 	}
-	fixture.server.SetAllAlwaysAskKeyID(nil)
+	fixture.server.SetAlwaysAskKeyIDs(nil)
 	for range 2 {
 		if err := fixture.connectSSH(t, alwaysAskAddress); err != nil {
 			t.Fatal(err)
@@ -497,7 +497,7 @@ func TestAlwaysAskKeyPromptsEveryTime(t *testing.T) {
 }
 
 func TestUnknownClientPathNotCached(t *testing.T) {
-	key := createTestKey(t, "id", "Work", getAllTestMaterial()["ed25519"])
+	key := createTestKey(t, "id", "Work", getTestMaterials()["ed25519"])
 	fixture := startAgent(t, []Key{key})
 	fixture.resolver.mutex.Lock()
 	fixture.resolver.peer = localsocket.PeerInfo{}
@@ -517,9 +517,9 @@ func TestUnknownClientPathNotCached(t *testing.T) {
 }
 
 func TestClearDuringApprovalDiscardsResult(t *testing.T) {
-	key := createTestKey(t, "id", "Work", getAllTestMaterial()["ed25519"])
+	key := createTestKey(t, "id", "Work", getTestMaterials()["ed25519"])
 	fixture := startAgent(t, []Key{key})
-	fixture.approver.onApprove = fixture.server.ClearAllApproval
+	fixture.approver.onApprove = fixture.server.ClearApprovals
 	address := startSSHServer(t, getPublicKey(t, key))
 	for range 2 {
 		if err := fixture.connectSSH(t, address); err != nil {
@@ -532,26 +532,26 @@ func TestClearDuringApprovalDiscardsResult(t *testing.T) {
 }
 
 func TestListShowsTitles(t *testing.T) {
-	allMaterial := getAllTestMaterial()
-	allKey := []Key{
-		createTestKey(t, "1", "GitHub", allMaterial["ed25519"]),
-		createTestKey(t, "2", "Work server", allMaterial["rsa"]),
-		createTestKey(t, "3", "Router", allMaterial["ecdsa"]),
+	materials := getTestMaterials()
+	keys := []Key{
+		createTestKey(t, "1", "GitHub", materials["ed25519"]),
+		createTestKey(t, "2", "Work server", materials["rsa"]),
+		createTestKey(t, "3", "Router", materials["ecdsa"]),
 		{ID: "4", Title: "Broken", PrivateKeyPEM: []byte("not a key")},
 	}
-	fixture := startAgent(t, allKey)
-	allAgentKey, err := fixture.dialAgent(t).List()
+	fixture := startAgent(t, keys)
+	agentKeys, err := fixture.dialAgent(t).List()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(allAgentKey) != 3 {
-		t.Fatalf("listed %d keys, want 3", len(allAgentKey))
+	if len(agentKeys) != 3 {
+		t.Fatalf("listed %d keys, want 3", len(agentKeys))
 	}
-	for index, agentKey := range allAgentKey {
-		if agentKey.Comment != allKey[index].Title {
-			t.Errorf("key %d comment = %q, want %q", index, agentKey.Comment, allKey[index].Title)
+	for index, agentKey := range agentKeys {
+		if agentKey.Comment != keys[index].Title {
+			t.Errorf("key %d comment = %q, want %q", index, agentKey.Comment, keys[index].Title)
 		}
-		if !bytes.Equal(agentKey.Marshal(), getPublicKey(t, allKey[index]).Marshal()) {
+		if !bytes.Equal(agentKey.Marshal(), getPublicKey(t, keys[index]).Marshal()) {
 			t.Errorf("key %d blob mismatch", index)
 		}
 	}
@@ -561,7 +561,7 @@ func TestListShowsTitles(t *testing.T) {
 }
 
 func TestReadOnlyOperationsRefused(t *testing.T) {
-	key := createTestKey(t, "id", "Work", getAllTestMaterial()["ed25519"])
+	key := createTestKey(t, "id", "Work", getTestMaterials()["ed25519"])
 	fixture := startAgent(t, []Key{key})
 	agentClient := fixture.dialAgent(t)
 	newKey := generateTestEd25519Key(t)
@@ -580,9 +580,9 @@ func TestReadOnlyOperationsRefused(t *testing.T) {
 	if err := agentClient.Unlock([]byte("passphrase")); err == nil {
 		t.Error("Unlock accepted")
 	}
-	allAgentKey, err := agentClient.List()
-	if err != nil || len(allAgentKey) != 1 {
-		t.Errorf("keys changed after refused operations: %v %v", allAgentKey, err)
+	agentKeys, err := agentClient.List()
+	if err != nil || len(agentKeys) != 1 {
+		t.Errorf("keys changed after refused operations: %v %v", agentKeys, err)
 	}
 	directAgent := fixture.server.CreateAgent(context.Background(), localsocket.PeerInfo{})
 	if _, err := directAgent.Signers(); !errors.Is(err, ErrReadOnly) {
@@ -602,7 +602,7 @@ func TestReadOnlyOperationsRefused(t *testing.T) {
 }
 
 func TestLockedSourceFailsGracefully(t *testing.T) {
-	key := createTestKey(t, "id", "Work", getAllTestMaterial()["ed25519"])
+	key := createTestKey(t, "id", "Work", getTestMaterials()["ed25519"])
 	fixture := startAgent(t, []Key{key})
 	address := startSSHServer(t, getPublicKey(t, key))
 	agentClient := fixture.dialAgent(t)
@@ -637,7 +637,7 @@ func (source *fakeKeySource) setLockedWith(isLocked bool) {
 }
 
 func TestLockedSourceAsksToUnlock(t *testing.T) {
-	key := createTestKey(t, "id", "Work", getAllTestMaterial()["ed25519"])
+	key := createTestKey(t, "id", "Work", getTestMaterials()["ed25519"])
 	fixture := startAgent(t, []Key{key})
 	address := startSSHServer(t, getPublicKey(t, key))
 	fixture.resolver.setApplication("/usr/bin/ssh", "/Applications/Ghostty.app")
@@ -663,7 +663,7 @@ func TestLockedSourceAsksToUnlock(t *testing.T) {
 }
 
 func TestLockedSourceUnlockForgottenWithoutRemember(t *testing.T) {
-	key := createTestKey(t, "id", "Work", getAllTestMaterial()["ed25519"])
+	key := createTestKey(t, "id", "Work", getTestMaterials()["ed25519"])
 	fixture := startAgent(t, []Key{key})
 	address := startSSHServer(t, getPublicKey(t, key))
 	fixture.approver.setRemembered(false)
@@ -685,7 +685,7 @@ func TestLockedSourceUnlockForgottenWithoutRemember(t *testing.T) {
 }
 
 func TestLockedSourceUnlockDenied(t *testing.T) {
-	key := createTestKey(t, "id", "Work", getAllTestMaterial()["ed25519"])
+	key := createTestKey(t, "id", "Work", getTestMaterials()["ed25519"])
 	fixture := startAgent(t, []Key{key})
 	fixture.source.setLockedWith(true)
 	fixture.approver.setApproving(false)
@@ -705,9 +705,9 @@ func TestLockedSourceUnlockDenied(t *testing.T) {
 }
 
 func TestUnlockApprovalStillAsksForAlwaysAskKey(t *testing.T) {
-	key := createTestKey(t, "always", "Production", getAllTestMaterial()["ed25519"])
+	key := createTestKey(t, "always", "Production", getTestMaterials()["ed25519"])
 	fixture := startAgent(t, []Key{key})
-	fixture.server.SetAllAlwaysAskKeyID([]string{"always"})
+	fixture.server.SetAlwaysAskKeyIDs([]string{"always"})
 	fixture.source.setLockedWith(true)
 	fixture.approver.onApprove = func() { fixture.source.setLockedWith(false) }
 	agentClient := fixture.dialAgent(t)
@@ -732,7 +732,7 @@ func buildSignatureData(namespace string) []byte {
 }
 
 func TestCommitSigningAsksEveryTime(t *testing.T) {
-	key := createTestKey(t, "id", "Signing", getAllTestMaterial()["ed25519"])
+	key := createTestKey(t, "id", "Signing", getTestMaterials()["ed25519"])
 	fixture := startAgent(t, []Key{key})
 	fixture.resolver.setApplication("/usr/bin/ssh-keygen", "/System/Applications/Utilities/Terminal.app")
 	agentClient := fixture.dialAgent(t)
@@ -768,7 +768,7 @@ func TestParseSignatureNamespace(t *testing.T) {
 	if namespace, isSignature := parseSignatureNamespace(buildSignatureData("git")); !isSignature || namespace != "git" {
 		t.Errorf("namespace %q %v", namespace, isSignature)
 	}
-	for _, data := range [][]byte{nil, []byte("SSHSIG"), []byte("SSHSIG\x00\x00\x00\x09git"), buildUserAuthData([]byte("session"), getPublicKey(t, createTestKey(t, "id", "x", getAllTestMaterial()["ed25519"])), nil)} {
+	for _, data := range [][]byte{nil, []byte("SSHSIG"), []byte("SSHSIG\x00\x00\x00\x09git"), buildUserAuthData([]byte("session"), getPublicKey(t, createTestKey(t, "id", "x", getTestMaterials()["ed25519"])), nil)} {
 		if namespace, isSignature := parseSignatureNamespace(data); isSignature {
 			t.Errorf("%q parsed as a signature for %q", data, namespace)
 		}
@@ -799,10 +799,10 @@ func TestSplitKnownHostName(t *testing.T) {
 }
 
 func TestSignUnknownKey(t *testing.T) {
-	allMaterial := getAllTestMaterial()
-	key := createTestKey(t, "id", "Work", allMaterial["ed25519"])
+	materials := getTestMaterials()
+	key := createTestKey(t, "id", "Work", materials["ed25519"])
 	fixture := startAgent(t, []Key{key})
-	otherKey := getPublicKey(t, createTestKey(t, "other", "Other", allMaterial["rsa"]))
+	otherKey := getPublicKey(t, createTestKey(t, "other", "Other", materials["rsa"]))
 	if _, err := fixture.dialAgent(t).Sign(otherKey, []byte("data")); err == nil {
 		t.Error("signed with a key the agent does not hold")
 	}
@@ -816,17 +816,17 @@ func TestSignUnknownKey(t *testing.T) {
 }
 
 func TestSignRSAFlags(t *testing.T) {
-	key := createTestKey(t, "id", "RSA", getAllTestMaterial()["rsa"])
+	key := createTestKey(t, "id", "RSA", getTestMaterials()["rsa"])
 	fixture := startAgent(t, []Key{key})
 	agentClient := fixture.dialAgent(t)
 	publicKey := getPublicKey(t, key)
 	data := []byte("commit to sign")
-	allFlagFormat := map[agent.SignatureFlags]string{
+	flagFormats := map[agent.SignatureFlags]string{
 		0:                            ssh.KeyAlgoRSA,
 		agent.SignatureFlagRsaSha256: ssh.KeyAlgoRSASHA256,
 		agent.SignatureFlagRsaSha512: ssh.KeyAlgoRSASHA512,
 	}
-	for flags, wantFormat := range allFlagFormat {
+	for flags, wantFormat := range flagFormats {
 		signature, err := agentClient.SignWithFlags(publicKey, data, flags)
 		if err != nil {
 			t.Fatalf("flags %d: %v", flags, err)
@@ -838,9 +838,9 @@ func TestSignRSAFlags(t *testing.T) {
 			t.Errorf("flags %d: verify: %v", flags, err)
 		}
 	}
-	ed25519Key := createTestKey(t, "ed", "Ed", getAllTestMaterial()["ed25519"])
+	ed25519Key := createTestKey(t, "ed", "Ed", getTestMaterials()["ed25519"])
 	fixture.source.mutex.Lock()
-	fixture.source.allKey = append(fixture.source.allKey, ed25519Key)
+	fixture.source.keys = append(fixture.source.keys, ed25519Key)
 	fixture.source.mutex.Unlock()
 	signature, err := agentClient.SignWithFlags(getPublicKey(t, ed25519Key), data, agent.SignatureFlagRsaSha256)
 	if err != nil {
@@ -863,7 +863,7 @@ func TestUnknownExtensionUnsupported(t *testing.T) {
 }
 
 func TestServeStopsOnCancel(t *testing.T) {
-	server := CreateServer(&fakeKeySource{}, &fakeApprover{}, &fakePeerResolver{})
+	server := NewServer(&fakeKeySource{}, &fakeApprover{}, &fakePeerResolver{})
 	listener, err := localsocket.ListenUnixSocket(filepath.Join(createShortTempDirectory(t), "agent.sock"))
 	if err != nil {
 		t.Fatal(err)
@@ -895,9 +895,9 @@ func TestServeStopsOnCancel(t *testing.T) {
 }
 
 func TestServeWithoutPeerResolver(t *testing.T) {
-	key := createTestKey(t, "id", "Work", getAllTestMaterial()["ed25519"])
+	key := createTestKey(t, "id", "Work", getTestMaterials()["ed25519"])
 	approver := &fakeApprover{isApproving: true}
-	server := CreateServer(&fakeKeySource{allKey: []Key{key}}, approver, nil)
+	server := NewServer(&fakeKeySource{keys: []Key{key}}, approver, nil)
 	listener, err := localsocket.ListenUnixSocket(filepath.Join(createShortTempDirectory(t), "agent.sock"))
 	if err != nil {
 		t.Fatal(err)

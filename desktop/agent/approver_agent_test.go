@@ -45,7 +45,7 @@ func createAgentRequest(kind string) clisocket.AgentApprovalRequest {
 }
 
 func TestDescribeAgentName(t *testing.T) {
-	allCase := []struct {
+	cases := []struct {
 		identity clisocket.AgentIdentity
 		expected string
 	}{
@@ -57,7 +57,7 @@ func TestDescribeAgentName(t *testing.T) {
 		{clisocket.AgentIdentity{Name: "   "}, "A coding agent"},
 		{clisocket.AgentIdentity{Name: "an agent with a very long name that goes on and on and on and on forever"}, "an agent with a very long name that goes on and on and on a…"},
 	}
-	for _, testCase := range allCase {
+	for _, testCase := range cases {
 		if name := DescribeAgentName(testCase.identity); name != testCase.expected {
 			t.Errorf("%+v = %q; want %q", testCase.identity, name, testCase.expected)
 		}
@@ -79,8 +79,8 @@ func TestAgentConnectionDialogNamesTheAgentAndItsApp(t *testing.T) {
 	if result := waitForAgentResult(t, resultChannel); result.err != nil || result.result.IsRemembered {
 		t.Errorf("result = %+v", result)
 	}
-	if allReason := biometric.listAllReason(); !slices.Equal(allReason, []string{`allow "Claude Code" to use Hisar`}) {
-		t.Errorf("Touch ID reasons = %q", allReason)
+	if reasons := biometric.listReasons(); !slices.Equal(reasons, []string{`allow "Claude Code" to use Hisar`}) {
+		t.Errorf("Touch ID reasons = %q", reasons)
 	}
 }
 
@@ -91,11 +91,11 @@ func TestAgentRunDialogShowsTheCommandAndSecrets(t *testing.T) {
 	request := createAgentRequest(clisocket.AgentRequestRun)
 	request.CommandLine = []string{"/usr/local/bin/npm", "run", "deploy", "--", "--message", "it's live"}
 	request.WorkingDirectory = "/Users/alice/src/app"
-	request.AllSecretName = []string{"Work › Stripe › api key", "Work › AWS › access key", "Work › AWS › secret key", "Work › GitHub › token", "Personal › npm › token"}
+	request.SecretNames = []string{"Work › Stripe › api key", "Work › AWS › access key", "Work › AWS › secret key", "Work › GitHub › token", "Personal › npm › token"}
 	resultChannel := startAgentApproval(approver, request)
 	event := waitForApprovalEvent(t, emitter)
 	if event.Action != "run a command with 5 secrets" || event.CommandLine != `npm run deploy -- --message 'it'\''s live'` || event.WorkingDirectory != "~/src/app" ||
-		!slices.Equal(event.AllSecretName, request.AllSecretName[:4]) || event.MoreSecretCount != 1 || !event.IsRememberable || event.IsRememberedByDefault ||
+		!slices.Equal(event.SecretNames, request.SecretNames[:4]) || event.MoreSecretCount != 1 || !event.IsRememberable || event.IsRememberedByDefault ||
 		event.RememberLabel != "Allow these secrets for this agent for 1 hour" {
 		t.Errorf("event = %+v", event)
 	}
@@ -109,7 +109,7 @@ func TestAgentRevealDialogWarnsAndIsNotRememberedByDefault(t *testing.T) {
 	emitter := createFakeEmitter()
 	approver := createCommandLineApprover(&fakeBiometric{isAvailable: false}, emitter, &fakeUnlocker{}, 0)
 	request := createAgentRequest(clisocket.AgentRequestReveal)
-	request.AllSecretName, request.RevealedName = []string{"Work › Stripe › api key"}, "Stripe › api key"
+	request.SecretNames, request.RevealedName = []string{"Work › Stripe › api key"}, "Stripe › api key"
 	resultChannel := startAgentApproval(approver, request)
 	event := waitForApprovalEvent(t, emitter)
 	if event.Action != "read “Stripe › api key”" || event.Warning != "The value will be visible to Claude Code and can end up in its transcript and logs." ||
@@ -141,7 +141,7 @@ func TestAgentDialogUnlocksALockedHisar(t *testing.T) {
 	unlocker := &fakeUnlocker{isLocked: true, correctPassword: "right"}
 	approver := createCommandLineApprover(&fakeBiometric{isAvailable: true}, emitter, unlocker, 0)
 	request := createAgentRequest(clisocket.AgentRequestCode)
-	request.AllSecretName, request.RevealedName = []string{"Personal › GitHub › one-time code"}, "GitHub"
+	request.SecretNames, request.RevealedName = []string{"Personal › GitHub › one-time code"}, "GitHub"
 	resultChannel := startAgentApproval(approver, request)
 	event := waitForApprovalEvent(t, emitter)
 	if !event.IsUnlockRequired || !event.IsPasswordUnlock || event.Action != "get the one-time code of “GitHub”" {
@@ -159,7 +159,7 @@ func TestAgentDialogGoesToThePhoneWithTheAgentName(t *testing.T) {
 	approver := createPhoneApprover(emitter, phone, &fakeBiometric{isAvailable: true}, nil, nil)
 	request := createAgentRequest(clisocket.AgentRequestRun)
 	request.CommandLine, request.WorkingDirectory = []string{"npm", "test"}, testHomeDirectory+"/src/app"
-	request.AllSecretName = []string{"Work › Stripe › api key"}
+	request.SecretNames = []string{"Work › Stripe › api key"}
 	resultChannel := startAgentApproval(approver, request)
 	event := waitForApprovalEvent(t, emitter)
 	if !event.IsPhoneApproval {

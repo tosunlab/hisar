@@ -25,12 +25,12 @@ func TestRotateVault(t *testing.T) {
 		}
 	}
 
-	createRotation := func(allRotatedItem []RotatedItem) VaultRotation {
+	createRotation := func(rotatedItems []RotatedItem) VaultRotation {
 		return VaultRotation{
 			VaultID:   vaultID,
 			EncName:   []byte("new-name"),
-			AllAccess: []Member{{AccountID: "AAAAAA", Role: "owner", WrappedKey: []byte{9}}},
-			AllItem:   allRotatedItem,
+			Accesses:  []Member{{AccountID: "AAAAAA", Role: "owner", WrappedKey: []byte{9}}},
+			Items:     rotatedItems,
 			RotatedBy: "AAAAAA",
 		}
 	}
@@ -38,7 +38,7 @@ func TestRotateVault(t *testing.T) {
 		return RotatedItem{ID: vaultItem.ID, BaseRevision: baseRevision, Revision: uuid.NewString(), Overview: []byte("new-o"), Details: []byte("new-d")}
 	}
 
-	allConflictCase := map[string][]RotatedItem{
+	conflictCases := map[string][]RotatedItem{
 		"stale revision": {rotateItem(firstItem, uuid.NewString()), rotateItem(secondItem, secondItem.Revision)},
 		"missing item":   {rotateItem(firstItem, firstItem.Revision)},
 		"extra item": {
@@ -46,8 +46,8 @@ func TestRotateVault(t *testing.T) {
 			{ID: uuid.NewString(), BaseRevision: uuid.NewString(), Revision: uuid.NewString(), Overview: []byte{1}, Details: []byte{1}},
 		},
 	}
-	for name, allRotatedItem := range allConflictCase {
-		if err := database.RotateVault(ctx, createRotation(allRotatedItem)); !errors.Is(err, ErrConflict) {
+	for name, rotatedItems := range conflictCases {
+		if err := database.RotateVault(ctx, createRotation(rotatedItems)); !errors.Is(err, ErrConflict) {
 			t.Errorf("%s: %v", name, err)
 		}
 	}
@@ -55,28 +55,28 @@ func TestRotateVault(t *testing.T) {
 		t.Fatal("a failed rotation changed access")
 	}
 
-	allRotatedItem := []RotatedItem{rotateItem(firstItem, firstItem.Revision), rotateItem(secondItem, secondItem.Revision)}
-	if err := database.RotateVault(ctx, createRotation(allRotatedItem)); err != nil {
+	rotatedItems := []RotatedItem{rotateItem(firstItem, firstItem.Revision), rotateItem(secondItem, secondItem.Revision)}
+	if err := database.RotateVault(ctx, createRotation(rotatedItems)); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := database.GetVaultRole(ctx, vaultID, "BBBBBB"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("removed member still has access: %v", err)
 	}
-	allVault, _ := database.ListAllVault(ctx, "AAAAAA")
-	if len(allVault) != 1 || string(allVault[0].EncName) != "new-name" || allVault[0].WrappedKey[0] != 9 {
-		t.Errorf("owner vault after rotation: %+v", allVault)
+	vaults, _ := database.ListVaults(ctx, "AAAAAA")
+	if len(vaults) != 1 || string(vaults[0].EncName) != "new-name" || vaults[0].WrappedKey[0] != 9 {
+		t.Errorf("owner vault after rotation: %+v", vaults)
 	}
-	allChange, vaultSeq, err := database.ListAllChange(ctx, vaultID, 2, 100)
-	if err != nil || len(allChange) != 2 || vaultSeq != 4 {
-		t.Fatalf("changes after rotation: %d items, seq %d, %v", len(allChange), vaultSeq, err)
+	changes, vaultSeq, err := database.ListChanges(ctx, vaultID, 2, 100)
+	if err != nil || len(changes) != 2 || vaultSeq != 4 {
+		t.Fatalf("changes after rotation: %d items, seq %d, %v", len(changes), vaultSeq, err)
 	}
-	for _, changed := range allChange {
+	for _, changed := range changes {
 		if string(changed.Overview) != "new-o" || changed.UpdatedBy != "AAAAAA" {
 			t.Errorf("item not rotated: %+v", changed)
 		}
 	}
-	allHistory, _ := database.GetItemHistory(ctx, vaultID, firstItem.ID)
-	if len(allHistory) != 1 || allHistory[0].Revision != allRotatedItem[0].Revision {
-		t.Errorf("history after rotation: %+v", allHistory)
+	histories, _ := database.GetItemHistory(ctx, vaultID, firstItem.ID)
+	if len(histories) != 1 || histories[0].Revision != rotatedItems[0].Revision {
+		t.Errorf("history after rotation: %+v", histories)
 	}
 }

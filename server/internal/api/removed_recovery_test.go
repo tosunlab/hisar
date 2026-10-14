@@ -17,13 +17,13 @@ func TestRecoveryEndpointsAreGone(t *testing.T) {
 	baseURL, server, _ := setupServer(t)
 	ctx := context.Background()
 	adminInvite := requireValue[*apitypes.InviteResponse](t)(server.CreateInvite(ctx, "admin@example.com", apitypes.RoleAdmin, nil))
-	admin, _, err := session.SignUp(ctx, apiclient.Create(baseURL), adminInvite.Token, "admin@example.com", "Admin", []byte("admin password"), testDevice)
+	admin, _, err := session.SignUp(ctx, apiclient.New(baseURL), adminInvite.Token, "admin@example.com", "Admin", []byte("admin password"), testDevice)
 	if err != nil {
 		t.Fatal(err)
 	}
 	vault := requireValue[*session.Vault](t)(admin.CreateVault(ctx, "Work", apitypes.VaultShared))
 
-	allRemovedEndpoint := []struct{ method, path string }{
+	removedEndpoints := []struct{ method, path string }{
 		{"GET", "/api/v1/recovery/keyset"},
 		{"POST", "/api/v1/recovery/keyset"},
 		{"PUT", "/api/v1/vaults/" + vault.ID + "/recovery"},
@@ -35,7 +35,7 @@ func TestRecoveryEndpointsAreGone(t *testing.T) {
 		{"POST", "/api/v1/admin/recovery/" + admin.AccountID},
 		{"POST", "/api/v1/admin/recovery/" + admin.AccountID + "/complete"},
 	}
-	for _, endpoint := range allRemovedEndpoint {
+	for _, endpoint := range removedEndpoints {
 		for _, token := range []string{admin.Client.Token, ""} {
 			request, err := http.NewRequestWithContext(ctx, endpoint.method, baseURL+endpoint.path, strings.NewReader("{}"))
 			if err != nil {
@@ -56,9 +56,9 @@ func TestRecoveryEndpointsAreGone(t *testing.T) {
 		}
 	}
 
-	allVault := requireValue[[]apitypes.Vault](t)(admin.Client.ListAllVault(ctx))
-	if len(allVault) != 2 {
-		t.Fatalf("vaults: %+v", allVault)
+	vaults := requireValue[[]apitypes.Vault](t)(admin.Client.ListVaults(ctx))
+	if len(vaults) != 2 {
+		t.Fatalf("vaults: %+v", vaults)
 	}
 	if err := admin.Client.CreateVault(ctx, &apitypes.CreateVaultRequest{ID: uuid.NewString(), Type: apitypes.VaultShared, EncName: []byte{1}, WrappedKey: []byte{1}}); err != nil {
 		t.Errorf("a shared vault without a recovery wrapping was refused: %v", err)

@@ -104,12 +104,12 @@ func TestShareLinkLifecycle(t *testing.T) {
 		t.Fatalf("created %+v", created)
 	}
 
-	allLink := requireValue[[]session.ShareLink](t)(alice.ListAllShareLink(ctx))
-	if len(allLink) != 1 || allLink[0].Title != "GitHub" || allLink[0].URL != created.URL || allLink[0].ItemID != vaultItem.ID ||
-		strings.Join(allLink[0].FieldLabels, ",") != "username,password" || allLink[0].HasPassphrase {
-		t.Fatalf("listed %+v", allLink)
+	links := requireValue[[]session.ShareLink](t)(alice.ListShareLinks(ctx))
+	if len(links) != 1 || links[0].Title != "GitHub" || links[0].URL != created.URL || links[0].ItemID != vaultItem.ID ||
+		strings.Join(links[0].FieldLabels, ",") != "username,password" || links[0].HasPassphrase {
+		t.Fatalf("listed %+v", links)
 	}
-	storedLink := requireValue[[]apitypes.ShareLink](t)(alice.Client.ListAllShareLink(ctx))
+	storedLink := requireValue[[]apitypes.ShareLink](t)(alice.Client.ListShareLinks(ctx))
 	if bytes.Contains(storedLink[0].EncryptedLabel, []byte("GitHub")) {
 		t.Fatal("the label is stored in the clear")
 	}
@@ -121,7 +121,7 @@ func TestShareLinkLifecycle(t *testing.T) {
 	if bytes.Contains(fetched.Link.Ciphertext, []byte("k7#Vq2!mZp9@")) || bytes.Contains(fetched.Link.Ciphertext, []byte("GEZDGNBV")) {
 		t.Fatal("the server holds plaintext")
 	}
-	if listed := requireValue[[]session.ShareLink](t)(alice.ListAllShareLink(ctx)); listed[0].ViewCount != 1 {
+	if listed := requireValue[[]session.ShareLink](t)(alice.ListShareLinks(ctx)); listed[0].ViewCount != 1 {
 		t.Fatalf("views after one open: %+v", listed)
 	}
 	if _, fetched = openShareLink(t, created.URL, nil); fetched.Link.ViewCount != 2 {
@@ -130,7 +130,7 @@ func TestShareLinkLifecycle(t *testing.T) {
 	if _, err := sharelink.Fetch(ctx, nil, created.URL); !errors.Is(err, sharelink.ErrGone) {
 		t.Fatalf("third view: %v", err)
 	}
-	if listed := requireValue[[]session.ShareLink](t)(alice.ListAllShareLink(ctx)); len(listed) != 0 {
+	if listed := requireValue[[]session.ShareLink](t)(alice.ListShareLinks(ctx)); len(listed) != 0 {
 		t.Fatalf("a used-up link is still listed: %+v", listed)
 	}
 
@@ -182,34 +182,34 @@ func TestShareLinkViewsAreCountedOnceUnderConcurrency(t *testing.T) {
 		t.Fatal(err)
 	}
 	var waitGroup sync.WaitGroup
-	allStatus := make(chan int, requestCount)
-	allViewCount := make(chan int, requestCount)
+	statuses := make(chan int, requestCount)
+	viewCounts := make(chan int, requestCount)
 	for range requestCount {
 		waitGroup.Go(func() {
 			fetched, err := sharelink.Fetch(ctx, nil, created.URL)
 			switch {
 			case errors.Is(err, sharelink.ErrGone):
-				allStatus <- http.StatusNotFound
+				statuses <- http.StatusNotFound
 			case err != nil:
 				t.Error(err)
 			default:
-				allStatus <- http.StatusOK
-				allViewCount <- fetched.Link.ViewCount
+				statuses <- http.StatusOK
+				viewCounts <- fetched.Link.ViewCount
 			}
 		})
 	}
 	waitGroup.Wait()
-	close(allStatus)
-	close(allViewCount)
+	close(statuses)
+	close(viewCounts)
 	statusCount := map[int]int{}
-	for status := range allStatus {
+	for status := range statuses {
 		statusCount[status]++
 	}
 	if statusCount[http.StatusOK] != maxViews || statusCount[http.StatusNotFound] != requestCount-maxViews {
 		t.Fatalf("statuses %v", statusCount)
 	}
 	isSeen := map[int]bool{}
-	for viewCount := range allViewCount {
+	for viewCount := range viewCounts {
 		if isSeen[viewCount] || viewCount < 1 || viewCount > maxViews {
 			t.Fatalf("view count %d handed out twice or out of range", viewCount)
 		}
@@ -254,10 +254,10 @@ func TestShareLinkNotFoundIsAlwaysTheSame(t *testing.T) {
 	if err := alice.RevokeShareLink(ctx, expired.ID); !apiclient.IsStatus(err, http.StatusNotFound) {
 		t.Fatalf("revoking an expired link: %v", err)
 	}
-	if listed := requireValue[[]session.ShareLink](t)(bob.ListAllShareLink(ctx)); len(listed) != 0 {
+	if listed := requireValue[[]session.ShareLink](t)(bob.ListShareLinks(ctx)); len(listed) != 0 {
 		t.Fatalf("bob sees alice's links: %+v", listed)
 	}
-	if listed := requireValue[[]session.ShareLink](t)(alice.ListAllShareLink(ctx)); len(listed) != 1 || listed[0].ID != live.ID {
+	if listed := requireValue[[]session.ShareLink](t)(alice.ListShareLinks(ctx)); len(listed) != 1 || listed[0].ID != live.ID {
 		t.Fatalf("alice's live links: %+v", listed)
 	}
 }
@@ -383,7 +383,7 @@ func TestShareLinkEvents(t *testing.T) {
 }
 
 func TestShareLinkPage(t *testing.T) {
-	server, err := CreateServer(nil, generateAllSecret(), Config{})
+	server, err := NewServer(nil, generateSecrets(), Config{})
 	if err != nil {
 		t.Fatal(err)
 	}

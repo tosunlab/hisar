@@ -38,9 +38,9 @@ type Session struct {
 	Cache     Cache
 	isOffline atomic.Bool
 
-	removalMutex    sync.Mutex
-	allRemovedVault []RemovedVault
-	allOwnRemovalID map[string]bool
+	removalMutex  sync.Mutex
+	removedVaults []RemovedVault
+	ownRemovalIDs map[string]bool
 }
 
 type Vault struct {

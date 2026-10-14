@@ -369,7 +369,7 @@ export interface UpdateStatus {
 
 /**
  * VaultActions is what the vault's menu needs: who may rename, delete or leave it, what deleting it means, and why not.
- * AllMemberLosingAccess leaves out the current user; AllTargetVault holds the vaults its items can move to.
+ * MembersLosingAccess leaves out the current user; TargetVaults holds the vaults its items can move to.
  */
 export interface VaultActions {
     "vault": VaultSummary;

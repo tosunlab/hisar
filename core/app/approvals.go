@@ -15,7 +15,7 @@ type ApprovalPreference struct {
 	service *Service
 }
 
-func CreateApprovalPreference(service *Service) *ApprovalPreference {
+func NewApprovalPreference(service *Service) *ApprovalPreference {
 	return &ApprovalPreference{service: service}
 }
 
@@ -49,21 +49,21 @@ func (preference *ApprovalPreference) SetPhoneApproval(isEnabled bool) error {
 	return s.state.Save()
 }
 
-var allSigningRememberSeconds = []int{0, 600, 3600}
+var signingRememberSeconds = []int{0, 600, 3600}
 
 // GetSigningRememberSeconds is how long an approved commit signature may be remembered; 0 always asks.
 func (preference *ApprovalPreference) GetSigningRememberSeconds() int {
 	s := preference.service
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	if !slices.Contains(allSigningRememberSeconds, s.state.SigningRememberSeconds) {
+	if !slices.Contains(signingRememberSeconds, s.state.SigningRememberSeconds) {
 		return 0
 	}
 	return s.state.SigningRememberSeconds
 }
 
 func (preference *ApprovalPreference) SetSigningRememberSeconds(seconds int) error {
-	if !slices.Contains(allSigningRememberSeconds, seconds) {
+	if !slices.Contains(signingRememberSeconds, seconds) {
 		return errors.New("choose Always ask, 10 minutes or 1 hour")
 	}
 	s := preference.service
@@ -79,8 +79,8 @@ type ApprovalUnlocker struct {
 	onUnlock func()
 }
 
-// CreateApprovalUnlocker calls onUnlock after an unlock from the approval window, so the main window can follow.
-func CreateApprovalUnlocker(service *Service, onUnlock func()) *ApprovalUnlocker {
+// NewApprovalUnlocker calls onUnlock after an unlock from the approval window, so the main window can follow.
+func NewApprovalUnlocker(service *Service, onUnlock func()) *ApprovalUnlocker {
 	return &ApprovalUnlocker{service: service, onUnlock: onUnlock}
 }
 

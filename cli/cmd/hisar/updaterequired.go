@@ -21,7 +21,7 @@ func getClientVersion() string {
 }
 
 func createClient(server string) *apiclient.Client {
-	apiClient := apiclient.Create(server)
+	apiClient := apiclient.New(server)
 	apiClient.Platform, apiClient.Version = getPlatform(), getClientVersion()
 	return apiClient
 }

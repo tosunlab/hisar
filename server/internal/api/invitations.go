@@ -183,45 +183,45 @@ func (s *Server) notifyShareInvitation(ctx context.Context, inviter *store.Accou
 }
 
 func convertToProtoMember(account *store.Account) apitypes.Member {
-	return apitypes.Member{AccountID: account.ID, Email: account.Email, Name: account.Name, Role: account.Role, PublicKeys: getAllPublicKey(account)}
+	return apitypes.Member{AccountID: account.ID, Email: account.Email, Name: account.Name, Role: account.Role, PublicKeys: getPublicKeys(account)}
 }
 
-func (s *Server) handleListAllShareInvitation(c fiber.Ctx) error {
+func (s *Server) handleListShareInvitations(c fiber.Ctx) error {
 	currentSession := getSession(c)
 	account, err := s.store.GetAccountByID(c.Context(), currentSession.AccountID)
 	if err != nil {
 		return err
 	}
-	allStoredReceived, err := s.store.ListAllReceivedShareInvitation(c.Context(), account.Email)
+	storedReceived, err := s.store.ListReceivedShareInvitations(c.Context(), account.Email)
 	if err != nil {
 		return err
 	}
-	allStoredSent, err := s.store.ListAllSentShareInvitation(c.Context(), account.ID)
+	storedSent, err := s.store.ListSentShareInvitations(c.Context(), account.ID)
 	if err != nil {
 		return err
 	}
-	allStoredWaiting, err := s.store.ListAllWaitingShareInvitation(c.Context(), account.ID)
+	storedWaiting, err := s.store.ListWaitingShareInvitations(c.Context(), account.ID)
 	if err != nil {
 		return err
 	}
 	response := apitypes.ShareInvitationList{
-		AllReceived: make([]apitypes.ReceivedShareInvitation, 0, len(allStoredReceived)),
-		AllSent:     make([]apitypes.SentShareInvitation, 0, len(allStoredSent)),
-		AllWaiting:  make([]apitypes.WaitingShareInvitation, 0, len(allStoredWaiting)),
+		Received: make([]apitypes.ReceivedShareInvitation, 0, len(storedReceived)),
+		Sent:     make([]apitypes.SentShareInvitation, 0, len(storedSent)),
+		Waiting:  make([]apitypes.WaitingShareInvitation, 0, len(storedWaiting)),
 	}
-	for _, waiting := range allStoredWaiting {
-		response.AllWaiting = append(response.AllWaiting, apitypes.WaitingShareInvitation{
+	for _, waiting := range storedWaiting {
+		response.Waiting = append(response.Waiting, apitypes.WaitingShareInvitation{
 			ID: waiting.ID, VaultID: waiting.VaultID, Role: waiting.Role, InvitedByName: waiting.InvitedByName, InvitedByEmail: waiting.InvitedByEmail,
 			AcceptedAt: *waiting.AcceptedAt,
 		})
 	}
-	for _, received := range allStoredReceived {
-		response.AllReceived = append(response.AllReceived, apitypes.ReceivedShareInvitation{
+	for _, received := range storedReceived {
+		response.Received = append(response.Received, apitypes.ReceivedShareInvitation{
 			ID: received.ID, VaultID: received.VaultID, Role: received.Role, InvitedByName: received.InvitedByName, InvitedByEmail: received.InvitedByEmail,
 			CreatedAt: received.CreatedAt, ExpiresAt: received.ExpiresAt,
 		})
 	}
-	for _, sent := range allStoredSent {
+	for _, sent := range storedSent {
 		protoSent := apitypes.SentShareInvitation{
 			ID: sent.ID, VaultID: sent.VaultID, Email: sent.Email, Role: sent.Role, State: sent.State, InvitedBy: sent.InvitedBy,
 			CreatedAt: sent.CreatedAt, ExpiresAt: sent.ExpiresAt, AcceptedAt: sent.AcceptedAt,
@@ -230,7 +230,7 @@ func (s *Server) handleListAllShareInvitation(c fiber.Ctx) error {
 			recipient := convertToProtoMember(sent.Recipient)
 			protoSent.Recipient = &recipient
 		}
-		response.AllSent = append(response.AllSent, protoSent)
+		response.Sent = append(response.Sent, protoSent)
 	}
 	return c.JSON(response)
 }
@@ -324,10 +324,10 @@ func (s *Server) handleCancelShareInvitation(c fiber.Ctx) error {
 		return err
 	}
 	s.recordAudit(c, currentSession.AccountID, currentSession.DeviceID, "share_invitation_cancelled", map[string]string{"vault": vaultID, "invitation": invitationID})
-	allAccountID := []string{}
+	accountIDs := []string{}
 	if recipient, err := s.store.GetAccountByEmail(c.Context(), email); err == nil {
-		allAccountID = append(allAccountID, recipient.ID)
+		accountIDs = append(accountIDs, recipient.ID)
 	}
-	s.publishShareInvitationsChangedToOwner(c.Context(), vaultID, allAccountID...)
+	s.publishShareInvitationsChangedToOwner(c.Context(), vaultID, accountIDs...)
 	return c.SendStatus(fiber.StatusNoContent)
 }

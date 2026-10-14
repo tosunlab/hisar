@@ -54,17 +54,17 @@ func runImportToEnd(t *testing.T, service *Service) (ImportProgress, int) {
 	}
 }
 
-func listAllItemByTitle(t *testing.T, service *Service, vaultID string) map[string]ItemDetail {
+func listItemsByTitle(t *testing.T, service *Service, vaultID string) map[string]ItemDetail {
 	t.Helper()
-	allItem, err := service.ListAllItem(vaultID)
+	items, err := service.ListItems(vaultID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	allItemByTitle := map[string]ItemDetail{}
-	for _, listed := range allItem {
-		allItemByTitle[listed.Title] = listed
+	itemsByTitle := map[string]ItemDetail{}
+	for _, listed := range items {
+		itemsByTitle[listed.Title] = listed
 	}
-	return allItemByTitle
+	return itemsByTitle
 }
 
 func TestImportPreviewSaveAndDeleteFile(t *testing.T) {
@@ -86,15 +86,15 @@ func TestImportPreviewSaveAndDeleteFile(t *testing.T) {
 	if preview.VaultName != "Personal" || preview.ItemCount != 14 || preview.LoginCount != 13 || preview.SecureNoteCount != 1 || preview.SSHKeyCount != 0 {
 		t.Errorf("preview counts = %+v", preview)
 	}
-	if len(preview.AllDuplicate) != 1 || preview.AllDuplicate[0] != (ImportDuplicate{Title: "GitHub", Username: "alice", URL: "https://github.com"}) {
-		t.Errorf("duplicates = %+v", preview.AllDuplicate)
+	if len(preview.Duplicates) != 1 || preview.Duplicates[0] != (ImportDuplicate{Title: "GitHub", Username: "alice", URL: "https://github.com"}) {
+		t.Errorf("duplicates = %+v", preview.Duplicates)
 	}
-	if len(preview.AllSkipped) != 0 {
-		t.Errorf("skipped = %+v", preview.AllSkipped)
+	if len(preview.Skipped) != 0 {
+		t.Errorf("skipped = %+v", preview.Skipped)
 	}
 
 	familyPreview, err := service.PreviewImport(test.familyID)
-	if err != nil || familyPreview.VaultName != "Family" || len(familyPreview.AllDuplicate) != 0 || familyPreview.ItemCount != 14 {
+	if err != nil || familyPreview.VaultName != "Family" || len(familyPreview.Duplicates) != 0 || familyPreview.ItemCount != 14 {
 		t.Errorf("family preview = %+v %v", familyPreview, err)
 	}
 
@@ -112,22 +112,22 @@ func TestImportPreviewSaveAndDeleteFile(t *testing.T) {
 		t.Errorf("delete before the import finished: %v", err)
 	}
 	finished, callCount := runImportToEnd(t, service)
-	if finished.SavedCount != 13 || finished.TotalCount != 13 || len(finished.AllFailed) != 0 || callCount != 2 {
+	if finished.SavedCount != 13 || finished.TotalCount != 13 || len(finished.Failed) != 0 || callCount != 2 {
 		t.Errorf("finished = %+v after %d calls", finished, callCount)
 	}
 
-	allItemByTitle := listAllItemByTitle(t, service, test.personalID)
-	if len(allItemByTitle) != 14 {
-		t.Errorf("vault has %d items", len(allItemByTitle))
+	itemsByTitle := listItemsByTitle(t, service, test.personalID)
+	if len(itemsByTitle) != 14 {
+		t.Errorf("vault has %d items", len(itemsByTitle))
 	}
-	if github, _ := service.GetItem(test.personalID, allItemByTitle["GitHub"].ID); github.Password != "existing-pass" {
+	if github, _ := service.GetItem(test.personalID, itemsByTitle["GitHub"].ID); github.Password != "existing-pass" {
 		t.Errorf("the duplicate replaced the existing item: %q", github.Password)
 	}
-	site, _ := service.GetItem(test.personalID, allItemByTitle["Site 07"].ID)
+	site, _ := service.GetItem(test.personalID, itemsByTitle["Site 07"].ID)
 	if site.Username != "user07" || site.Password != "pass-07" || site.URLs[0] != "https://site07.example.com" || site.Category != item.CategoryLogin {
 		t.Errorf("imported login = %+v", site)
 	}
-	if note, _ := service.GetItem(test.personalID, allItemByTitle["Wi-Fi"].ID); note.Notes != "Network: Home\nKey: under the mat" {
+	if note, _ := service.GetItem(test.personalID, itemsByTitle["Wi-Fi"].ID); note.Notes != "Network: Home\nKey: under the mat" {
 		t.Errorf("imported note = %+v", note)
 	}
 
@@ -158,9 +158,9 @@ func TestImportIncludesDuplicatesWhenAsked(t *testing.T) {
 	if finished, _ := runImportToEnd(t, service); finished.SavedCount != 3 {
 		t.Errorf("finished = %+v", finished)
 	}
-	allItem, _ := service.ListAllItem(test.familyID)
-	if len(allItem) != 4 {
-		t.Errorf("family vault has %d items, want both GitHub items", len(allItem))
+	items, _ := service.ListItems(test.familyID)
+	if len(items) != 4 {
+		t.Errorf("family vault has %d items, want both GitHub items", len(items))
 	}
 	if _, err := os.Stat(service.config.FileOpener.(*fakeFileOpener).path); err != nil {
 		t.Errorf("export file removed without asking: %v", err)
@@ -195,7 +195,7 @@ func TestImportRejectsReadOnlyVaultAndUnknownFormat(t *testing.T) {
 		t.Fatal(err)
 	}
 	service.mutex.Lock()
-	service.allVaultByID[test.familyID].Role = apitypes.VaultReader
+	service.vaultsByID[test.familyID].Role = apitypes.VaultReader
 	service.mutex.Unlock()
 	if _, err := service.PreviewImport(test.familyID); !errors.Is(err, errReadOnlyVault) {
 		t.Errorf("preview for a read-only vault: %v", err)
@@ -278,18 +278,18 @@ func TestImportPausesWhileOffline(t *testing.T) {
 	}
 	test.apiServer.setUnreachable(false)
 	finished, _ := runImportToEnd(t, service)
-	if finished.SavedCount != 16 || finished.TotalCount != 16 || len(finished.AllFailed) != 0 {
+	if finished.SavedCount != 16 || finished.TotalCount != 16 || len(finished.Failed) != 0 {
 		t.Errorf("finished = %+v", finished)
 	}
-	if allItem, _ := service.ListAllItem(test.personalID); len(allItem) != 16 {
-		t.Errorf("vault has %d items after resuming", len(allItem))
+	if items, _ := service.ListItems(test.personalID); len(items) != 16 {
+		t.Errorf("vault has %d items after resuming", len(items))
 	}
 }
 
 func TestListAllImportFormat(t *testing.T) {
 	test := createUnlockedTestService(t)
-	allFormat := test.service.ListAllImportFormat()
-	if len(allFormat) != 5 || allFormat[0].ID != "1pux" || allFormat[4].ID != "csv" {
-		t.Errorf("formats = %+v", allFormat)
+	formats := test.service.ListImportFormats()
+	if len(formats) != 5 || formats[0].ID != "1pux" || formats[4].ID != "csv" {
+		t.Errorf("formats = %+v", formats)
 	}
 }

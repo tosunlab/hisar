@@ -48,19 +48,19 @@ func TestPrintImportPreview(t *testing.T) {
 }
 
 func TestSelectAllQueuedItem(t *testing.T) {
-	allItem := []item.Item{{Overview: item.Overview{Title: "A"}}, {Overview: item.Overview{Title: "B"}}, {Overview: item.Overview{Title: "C"}}}
-	getAllTitle := func(allQueuedItem []item.Item) []string {
-		allTitle := []string{}
-		for _, vaultItem := range allQueuedItem {
-			allTitle = append(allTitle, vaultItem.Overview.Title)
+	items := []item.Item{{Overview: item.Overview{Title: "A"}}, {Overview: item.Overview{Title: "B"}}, {Overview: item.Overview{Title: "C"}}}
+	getTitles := func(queuedItems []item.Item) []string {
+		titles := []string{}
+		for _, vaultItem := range queuedItems {
+			titles = append(titles, vaultItem.Overview.Title)
 		}
-		return allTitle
+		return titles
 	}
-	if allTitle := getAllTitle(selectAllQueuedItem(allItem, []int{0, 2}, true)); !reflect.DeepEqual(allTitle, []string{"B"}) {
-		t.Errorf("skipping duplicates: %v", allTitle)
+	if titles := getTitles(selectQueuedItems(items, []int{0, 2}, true)); !reflect.DeepEqual(titles, []string{"B"}) {
+		t.Errorf("skipping duplicates: %v", titles)
 	}
-	if allTitle := getAllTitle(selectAllQueuedItem(allItem, []int{0, 2}, false)); !reflect.DeepEqual(allTitle, []string{"A", "B", "C"}) {
-		t.Errorf("including duplicates: %v", allTitle)
+	if titles := getTitles(selectQueuedItems(items, []int{0, 2}, false)); !reflect.DeepEqual(titles, []string{"A", "B", "C"}) {
+		t.Errorf("including duplicates: %v", titles)
 	}
 }
 
@@ -71,9 +71,9 @@ func TestRunImportChecksTheFileBeforeUnlocking(t *testing.T) {
 	os.WriteFile(invalidPath, []byte("foo,bar\nHunter2-SecretValue,1\n"), 0o600)
 	validPath := filepath.Join(directory, "export.csv")
 	os.WriteFile(validPath, []byte(testImportCSV), 0o600)
-	allCase := []struct {
+	cases := []struct {
 		name    string
-		allArg  []string
+		args    []string
 		wantErr string
 	}{
 		{"no file", []string{}, "usage"},
@@ -85,10 +85,10 @@ func TestRunImportChecksTheFileBeforeUnlocking(t *testing.T) {
 		{"wrong explicit format", []string{validPath, "-format", "bitwarden-json"}, "Bitwarden"},
 		{"valid file needs a login", []string{validPath, "-y"}, "not logged in"},
 	}
-	for _, testCase := range allCase {
+	for _, testCase := range cases {
 		flags := flag.NewFlagSet("import", flag.ContinueOnError)
 		flags.SetOutput(&bytes.Buffer{})
-		err := runImport(context.Background(), flags, testCase.allArg)
+		err := runImport(context.Background(), flags, testCase.args)
 		if err == nil || !strings.Contains(err.Error(), testCase.wantErr) {
 			t.Errorf("%s: err = %v, want %q", testCase.name, err, testCase.wantErr)
 		}

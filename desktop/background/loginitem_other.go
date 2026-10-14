@@ -2,4 +2,4 @@
 
 package background
 
-func CreateLoginItem(homeDirectory string) LoginItem { return unavailableLoginItem{} }
+func NewLoginItem(homeDirectory string) LoginItem { return unavailableLoginItem{} }

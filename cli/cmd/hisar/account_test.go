@@ -16,24 +16,24 @@ import (
 	"github.com/tryhisar/hisar/core/session"
 )
 
-func runAccountWithInput(t *testing.T, input string, allArg ...string) error {
+func runAccountWithInput(t *testing.T, input string, args ...string) error {
 	t.Helper()
 	originalReader := stdinReader
 	defer func() { stdinReader = originalReader }()
 	stdinReader = bufio.NewReader(strings.NewReader(input))
 	flags := flag.NewFlagSet("account", flag.ContinueOnError)
 	flags.SetOutput(&bytes.Buffer{})
-	return runAccount(context.Background(), flags, allArg)
+	return runAccount(context.Background(), flags, args)
 }
 
 func TestAccountCommandChecksItsArgumentsBeforeUnlocking(t *testing.T) {
 	t.Setenv("HISAR_STATE", filepath.Join(t.TempDir(), "state.json"))
 	existingKitPath := filepath.Join(t.TempDir(), "kit.pdf")
 	os.WriteFile(existingKitPath, []byte("old kit"), 0o600)
-	allCase := []struct {
+	cases := []struct {
 		name    string
 		input   string
-		allArg  []string
+		args    []string
 		wantErr string
 	}{
 		{"unknown action", "", []string{"rename"}, "unknown account action"},
@@ -43,8 +43,8 @@ func TestAccountCommandChecksItsArgumentsBeforeUnlocking(t *testing.T) {
 		{"replace needs a login", "", []string{"replace-secret-key", "-o", filepath.Join(t.TempDir(), "new.pdf")}, "not logged in"},
 		{"delete needs a login", "", []string{"delete", "--email", "a@example.com"}, "not logged in"},
 	}
-	for _, testCase := range allCase {
-		err := runAccountWithInput(t, testCase.input, testCase.allArg...)
+	for _, testCase := range cases {
+		err := runAccountWithInput(t, testCase.input, testCase.args...)
 		if err == nil || !strings.Contains(err.Error(), testCase.wantErr) {
 			t.Errorf("%s: err = %v, want %q", testCase.name, err, testCase.wantErr)
 		}
@@ -67,11 +67,11 @@ func TestPromptChangedPasswordRefusesWeakAndUnchangedPasswords(t *testing.T) {
 func TestPrintAccountDeletionPreview(t *testing.T) {
 	var output bytes.Buffer
 	printAccountDeletionPreview(&output, &session.AccountDeletionPreview{
-		AllOwnedVault: []session.DeletionVault{
+		OwnedVaults: []session.DeletionVault{
 			{Name: "Personal", Type: "personal", Role: "owner"},
 			{Name: "Family", Type: "shared", Role: "owner", OtherMemberCount: 2},
 		},
-		AllMemberVault:      []session.DeletionVault{{Name: "Work", Type: "shared", Role: "editor"}},
+		MemberVaults:        []session.DeletionVault{{Name: "Work", Type: "shared", Role: "editor"}},
 		ShareLinkCount:      3,
 		SentInvitationCount: 1,
 		DeviceCount:         2,
@@ -95,7 +95,7 @@ func TestPrintAccountDeletionPreview(t *testing.T) {
 }
 
 func TestConvertAccountError(t *testing.T) {
-	allCase := map[string]struct {
+	cases := map[string]struct {
 		err      error
 		expected string
 	}{
@@ -104,7 +104,7 @@ func TestConvertAccountError(t *testing.T) {
 		"changed":        {&apiclient.APIError{Status: http.StatusConflict}, "changed on another device"},
 		"email":          {session.ErrEmailMismatch, "nothing was deleted"},
 	}
-	for name, testCase := range allCase {
+	for name, testCase := range cases {
 		if err := convertAccountError(testCase.err); !strings.Contains(err.Error(), testCase.expected) {
 			t.Errorf("%s: %v", name, err)
 		}

@@ -13,7 +13,7 @@ func (hisar *Hisar) ListAllPendingApproval() (string, error) {
 	if !hisar.IsMacApprovalAllowed() {
 		return "[]", nil
 	}
-	return encodeJSON(app.ListAllPendingPhoneApproval(hisar.service))
+	return encodeJSON(app.ListPendingPhoneApprovals(hisar.service))
 }
 
 // ApproveApproval asks for Face ID, then signs and sends the approval with the sheet's remember switch.
@@ -36,7 +36,7 @@ func (hisar *Hisar) ApproveApprovalWithPassword(requestID, password string, isRe
 	if !hisar.IsMacApprovalAllowed() {
 		return errMacApprovalDisabled
 	}
-	if err := app.CreateApprovalUnlocker(hisar.service, nil).VerifyPassword(password); err != nil {
+	if err := app.NewApprovalUnlocker(hisar.service, nil).VerifyPassword(password); err != nil {
 		return err
 	}
 	return app.AnswerPhoneApproval(hisar.service, requestID, true, isRemembered)

@@ -75,11 +75,11 @@ func TestGenerateSSHKey(t *testing.T) {
 		t.Errorf("missing vault: %v", err)
 	}
 
-	allItem, err := service.ListAllItem(test.personalID)
-	if err != nil || len(allItem) != 2 {
-		t.Fatalf("list after reload: %+v %v", allItem, err)
+	items, err := service.ListItems(test.personalID)
+	if err != nil || len(items) != 2 {
+		t.Fatalf("list after reload: %+v %v", items, err)
 	}
-	for _, listed := range allItem {
+	for _, listed := range items {
 		checkSSHKeyDetail(t, listed, listed.Title, listed.KeyType)
 	}
 	if reloaded := getCachedItem(t, service, test.personalID, ed25519Detail.ID); reloaded.Details.PrivateKey != cachedItem.Details.PrivateKey {
@@ -183,7 +183,7 @@ func TestSaveItemKeepsSSHKeyMaterial(t *testing.T) {
 		t.Errorf("login fields stored on an SSH key: %+v", saved)
 	}
 
-	if _, err := service.ListAllItem(test.personalID); err != nil {
+	if _, err := service.ListItems(test.personalID); err != nil {
 		t.Fatal(err)
 	}
 	reloaded := getCachedItem(t, service, test.personalID, generated.ID)
@@ -244,13 +244,13 @@ func TestCopyFieldPublicKey(t *testing.T) {
 
 func TestListAllKey(t *testing.T) {
 	signedOut, _, _ := createTestService(t, filepath.Join(t.TempDir(), "desktop.json"), createMemorySecretKeyStore())
-	if allKey, err := CreateSSHKeySource(signedOut).ListAllKey(context.Background()); !errors.Is(err, ErrSignedOut) || len(allKey) != 0 {
-		t.Errorf("signed out: %d keys, %v", len(allKey), err)
+	if keys, err := NewSSHKeySource(signedOut).ListKeys(context.Background()); !errors.Is(err, ErrSignedOut) || len(keys) != 0 {
+		t.Errorf("signed out: %d keys, %v", len(keys), err)
 	}
 
 	test := createUnlockedTestService(t)
 	service := test.service
-	keySource := CreateSSHKeySource(service)
+	keySource := NewSSHKeySource(service)
 	familyKey, err := service.GenerateSSHKey(test.familyID, "Family server", "")
 	if err != nil {
 		t.Fatal(err)
@@ -263,31 +263,31 @@ func TestListAllKey(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	checkAllKey := func(stage string) {
+	checkKeys := func(stage string) {
 		t.Helper()
-		allKey, err := keySource.ListAllKey(context.Background())
+		keys, err := keySource.ListKeys(context.Background())
 		if err != nil {
 			t.Fatalf("%s: %v", stage, err)
 		}
-		if len(allKey) != 2 || allKey[0].ID != personalKey.ID || allKey[1].ID != familyKey.ID {
-			t.Fatalf("%s: keys = %+v", stage, allKey)
+		if len(keys) != 2 || keys[0].ID != personalKey.ID || keys[1].ID != familyKey.ID {
+			t.Fatalf("%s: keys = %+v", stage, keys)
 		}
-		if allKey[0].VaultID != test.personalID || allKey[0].Title != "Laptop" || allKey[1].VaultID != test.familyID {
-			t.Errorf("%s: key metadata = %+v", stage, allKey)
+		if keys[0].VaultID != test.personalID || keys[0].Title != "Laptop" || keys[1].VaultID != test.familyID {
+			t.Errorf("%s: key metadata = %+v", stage, keys)
 		}
-		for _, key := range allKey {
+		for _, key := range keys {
 			if _, err := sshkey.ParseKeyMaterial(key.PrivateKeyPEM); err != nil {
 				t.Errorf("%s: %s: %v", stage, key.Title, err)
 			}
 		}
 	}
-	checkAllKey("cached")
+	checkKeys("cached")
 
 	service.mutex.Lock()
-	service.allVaultByID = nil
-	service.allItemByVaultID = map[string][]item.Item{}
+	service.vaultsByID = nil
+	service.itemsByVaultID = map[string][]item.Item{}
 	service.mutex.Unlock()
-	checkAllKey("loaded from the server")
+	checkKeys("loaded from the server")
 
 	if *test.lockedCount != 0 {
 		t.Fatalf("OnLock called %d times before lock", *test.lockedCount)
@@ -298,8 +298,8 @@ func TestListAllKey(t *testing.T) {
 	if *test.lockedCount != 1 {
 		t.Errorf("OnLock called %d times after lock", *test.lockedCount)
 	}
-	if allKey, err := keySource.ListAllKey(context.Background()); !errors.Is(err, ErrLocked) || !errors.Is(err, sshagent.ErrLocked) || err.Error() != ErrLocked.Error() || len(allKey) != 0 {
-		t.Errorf("locked: %d keys, %v", len(allKey), err)
+	if keys, err := keySource.ListKeys(context.Background()); !errors.Is(err, ErrLocked) || !errors.Is(err, sshagent.ErrLocked) || err.Error() != ErrLocked.Error() || len(keys) != 0 {
+		t.Errorf("locked: %d keys, %v", len(keys), err)
 	}
 	service.Lock()
 	if *test.lockedCount != 1 {

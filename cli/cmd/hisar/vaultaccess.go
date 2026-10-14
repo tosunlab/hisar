@@ -22,13 +22,13 @@ import (
 
 // vaultAccess is what the vault, export and import commands need, through the app or standalone.
 type vaultAccess interface {
-	listAllVault(ctx context.Context) ([]cliprotocol.Vault, error)
+	listVaults(ctx context.Context) ([]cliprotocol.Vault, error)
 	createVault(ctx context.Context, name string) (cliprotocol.Vault, error)
-	listAllItem(ctx context.Context, vaultID string) ([]item.Item, error)
+	listItems(ctx context.Context, vaultID string) ([]item.Item, error)
 	getItem(ctx context.Context, vaultID, itemID string) (*item.Item, error)
 	// saveItem creates an item without an ID, or updates its title, username, websites, password, notes and fields.
 	saveItem(ctx context.Context, vaultID string, vaultItem *item.Item) error
-	importAllItem(ctx context.Context, vaultID string, allItem []item.Item) (int, error)
+	importItems(ctx context.Context, vaultID string, items []item.Item) (int, error)
 	getVaultActions(ctx context.Context, vaultID string) (cliprotocol.VaultActionsResult, error)
 	renameVault(ctx context.Context, vaultID, name string) error
 	deleteVault(ctx context.Context, vaultID string, deletion cliprotocol.VaultDeletion) (int, error)
@@ -38,39 +38,39 @@ type vaultAccess interface {
 }
 
 func findAccessVault(ctx context.Context, access vaultAccess, nameOrID string) (cliprotocol.Vault, error) {
-	allVault, err := access.listAllVault(ctx)
+	vaults, err := access.listVaults(ctx)
 	if err != nil {
 		return cliprotocol.Vault{}, err
 	}
-	for _, vault := range allVault {
+	for _, vault := range vaults {
 		if vault.ID == nameOrID {
 			return vault, nil
 		}
 	}
-	allMatch := []cliprotocol.Vault{}
-	for _, vault := range allVault {
+	matches := []cliprotocol.Vault{}
+	for _, vault := range vaults {
 		if strings.EqualFold(vault.Name, nameOrID) {
-			allMatch = append(allMatch, vault)
+			matches = append(matches, vault)
 		}
 	}
-	switch len(allMatch) {
+	switch len(matches) {
 	case 0:
 		return cliprotocol.Vault{}, fmt.Errorf("vault %q: not found", nameOrID)
 	case 1:
-		return allMatch[0], nil
+		return matches[0], nil
 	}
-	allID := []string{}
-	for _, vault := range allMatch {
-		allID = append(allID, vault.ID)
+	iDs := []string{}
+	for _, vault := range matches {
+		iDs = append(iDs, vault.ID)
 	}
-	return cliprotocol.Vault{}, fmt.Errorf("%d vaults are named %q; use an ID instead: %s", len(allMatch), nameOrID, strings.Join(allID, ", "))
+	return cliprotocol.Vault{}, fmt.Errorf("%d vaults are named %q; use an ID instead: %s", len(matches), nameOrID, strings.Join(iDs, ", "))
 }
 
 type appVaultAccess struct {
 	client *appClient
 }
 
-func (access appVaultAccess) listAllVault(ctx context.Context) ([]cliprotocol.Vault, error) {
+func (access appVaultAccess) listVaults(ctx context.Context) ([]cliprotocol.Vault, error) {
 	var vaultList cliprotocol.VaultListResult
 	err := access.client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeListVault}, &vaultList)
 	return vaultList.Vaults, err
@@ -82,8 +82,8 @@ func (access appVaultAccess) createVault(ctx context.Context, name string) (clip
 	return vaultResult.Vault, err
 }
 
-func (access appVaultAccess) listAllItem(ctx context.Context, vaultID string) ([]item.Item, error) {
-	return listAllAppItem(ctx, access.client, vaultID)
+func (access appVaultAccess) listItems(ctx context.Context, vaultID string) ([]item.Item, error) {
+	return listAppItems(ctx, access.client, vaultID)
 }
 
 func (access appVaultAccess) getItem(ctx context.Context, vaultID, itemID string) (*item.Item, error) {
@@ -92,11 +92,11 @@ func (access appVaultAccess) getItem(ctx context.Context, vaultID, itemID string
 
 func (access appVaultAccess) saveItem(ctx context.Context, vaultID string, vaultItem *item.Item) error {
 	change := convertToItemChange(vaultItem)
-	allField := []cliprotocol.Field{}
+	fields := []cliprotocol.Field{}
 	for _, field := range vaultItem.Details.Fields {
-		allField = append(allField, cliprotocol.Field{Name: field.Name, Value: field.Value, Concealed: field.Concealed})
+		fields = append(fields, cliprotocol.Field{Name: field.Name, Value: field.Value, Concealed: field.Concealed})
 	}
-	change.Fields = &allField
+	change.Fields = &fields
 	var itemResult cliprotocol.ItemResult
 	if err := access.client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeSaveItem, VaultID: vaultID, Item: change}, &itemResult); err != nil {
 		return err
@@ -105,8 +105,8 @@ func (access appVaultAccess) saveItem(ctx context.Context, vaultID string, vault
 	return nil
 }
 
-func (access appVaultAccess) importAllItem(ctx context.Context, vaultID string, allItem []item.Item) (int, error) {
-	return importAllThroughApp(ctx, access.client, vaultID, allItem)
+func (access appVaultAccess) importItems(ctx context.Context, vaultID string, items []item.Item) (int, error) {
+	return importThroughApps(ctx, access.client, vaultID, items)
 }
 
 func (access appVaultAccess) getVaultActions(ctx context.Context, vaultID string) (cliprotocol.VaultActionsResult, error) {
@@ -141,7 +141,7 @@ func (access appVaultAccess) finish(err error) error { return err }
 type sessionVaultAccess struct {
 	currentState    *localstate.State
 	unlockedSession *session.Session
-	allVaultByID    map[string]*session.Vault
+	vaultsByID      map[string]*session.Vault
 }
 
 func (access *sessionVaultAccess) requireSession(ctx context.Context) error {
@@ -156,43 +156,43 @@ func (access *sessionVaultAccess) requireSession(ctx context.Context) error {
 	return nil
 }
 
-func (access *sessionVaultAccess) loadAllVault(ctx context.Context) error {
+func (access *sessionVaultAccess) loadVaults(ctx context.Context) error {
 	if err := access.requireSession(ctx); err != nil {
 		return err
 	}
-	allVault, err := access.unlockedSession.ListAllVault(ctx)
+	vaults, err := access.unlockedSession.ListVaults(ctx)
 	if err != nil {
 		return err
 	}
-	access.allVaultByID = map[string]*session.Vault{}
-	for index := range allVault {
-		access.allVaultByID[allVault[index].ID] = &allVault[index]
+	access.vaultsByID = map[string]*session.Vault{}
+	for index := range vaults {
+		access.vaultsByID[vaults[index].ID] = &vaults[index]
 	}
 	return nil
 }
 
 func (access *sessionVaultAccess) findVault(ctx context.Context, vaultID string) (*session.Vault, error) {
-	if vault, isFound := access.allVaultByID[vaultID]; isFound {
+	if vault, isFound := access.vaultsByID[vaultID]; isFound {
 		return vault, nil
 	}
-	if err := access.loadAllVault(ctx); err != nil {
+	if err := access.loadVaults(ctx); err != nil {
 		return nil, err
 	}
-	if vault, isFound := access.allVaultByID[vaultID]; isFound {
+	if vault, isFound := access.vaultsByID[vaultID]; isFound {
 		return vault, nil
 	}
 	return nil, fmt.Errorf("vault %s: not found", vaultID)
 }
 
-func (access *sessionVaultAccess) listAllVault(ctx context.Context) ([]cliprotocol.Vault, error) {
-	if err := access.loadAllVault(ctx); err != nil {
+func (access *sessionVaultAccess) listVaults(ctx context.Context) ([]cliprotocol.Vault, error) {
+	if err := access.loadVaults(ctx); err != nil {
 		return nil, err
 	}
-	allVault := []cliprotocol.Vault{}
-	for _, vault := range access.allVaultByID {
-		allVault = append(allVault, cliprotocol.Vault{ID: vault.ID, Name: vault.Name, Type: vault.Type, Role: vault.Role})
+	vaults := []cliprotocol.Vault{}
+	for _, vault := range access.vaultsByID {
+		vaults = append(vaults, cliprotocol.Vault{ID: vault.ID, Name: vault.Name, Type: vault.Type, Role: vault.Role})
 	}
-	slices.SortFunc(allVault, func(first, second cliprotocol.Vault) int {
+	slices.SortFunc(vaults, func(first, second cliprotocol.Vault) int {
 		if (first.Type == apitypes.VaultPersonal) != (second.Type == apitypes.VaultPersonal) {
 			if first.Type == apitypes.VaultPersonal {
 				return -1
@@ -201,7 +201,7 @@ func (access *sessionVaultAccess) listAllVault(ctx context.Context) ([]cliprotoc
 		}
 		return strings.Compare(strings.ToLower(first.Name), strings.ToLower(second.Name))
 	})
-	return allVault, nil
+	return vaults, nil
 }
 
 func (access *sessionVaultAccess) createVault(ctx context.Context, name string) (cliprotocol.Vault, error) {
@@ -212,28 +212,28 @@ func (access *sessionVaultAccess) createVault(ctx context.Context, name string) 
 	if err != nil {
 		return cliprotocol.Vault{}, err
 	}
-	if access.allVaultByID != nil {
-		access.allVaultByID[vault.ID] = vault
+	if access.vaultsByID != nil {
+		access.vaultsByID[vault.ID] = vault
 	}
 	return cliprotocol.Vault{ID: vault.ID, Name: vault.Name, Type: vault.Type, Role: vault.Role}, nil
 }
 
-func (access *sessionVaultAccess) listAllItem(ctx context.Context, vaultID string) ([]item.Item, error) {
+func (access *sessionVaultAccess) listItems(ctx context.Context, vaultID string) ([]item.Item, error) {
 	vault, err := access.findVault(ctx, vaultID)
 	if err != nil {
 		return nil, err
 	}
-	return access.unlockedSession.ListAllItem(ctx, vault)
+	return access.unlockedSession.ListItems(ctx, vault)
 }
 
 func (access *sessionVaultAccess) getItem(ctx context.Context, vaultID, itemID string) (*item.Item, error) {
-	allItem, err := access.listAllItem(ctx, vaultID)
+	items, err := access.listItems(ctx, vaultID)
 	if err != nil {
 		return nil, err
 	}
-	for index := range allItem {
-		if allItem[index].ID == itemID {
-			return &allItem[index], nil
+	for index := range items {
+		if items[index].ID == itemID {
+			return &items[index], nil
 		}
 	}
 	return nil, fmt.Errorf("item %s: not found", itemID)
@@ -248,12 +248,12 @@ func (access *sessionVaultAccess) saveItem(ctx context.Context, vaultID string, 
 	return err
 }
 
-func (access *sessionVaultAccess) importAllItem(ctx context.Context, vaultID string, allItem []item.Item) (int, error) {
+func (access *sessionVaultAccess) importItems(ctx context.Context, vaultID string, items []item.Item) (int, error) {
 	vault, err := access.findVault(ctx, vaultID)
 	if err != nil {
 		return 0, err
 	}
-	return saveAllImportedItem(ctx, access.unlockedSession, vault, allItem)
+	return saveImportedItems(ctx, access.unlockedSession, vault, items)
 }
 
 func (access *sessionVaultAccess) getVaultActions(ctx context.Context, vaultID string) (cliprotocol.VaultActionsResult, error) {
@@ -261,26 +261,26 @@ func (access *sessionVaultAccess) getVaultActions(ctx context.Context, vaultID s
 	if err != nil {
 		return cliprotocol.VaultActionsResult{}, err
 	}
-	allItem, err := access.unlockedSession.ListAllItem(ctx, vault)
+	items, err := access.unlockedSession.ListItems(ctx, vault)
 	if err != nil {
 		return cliprotocol.VaultActionsResult{}, err
 	}
 	actions := cliprotocol.VaultActionsResult{
-		Vault:                 cliprotocol.Vault{ID: vault.ID, Name: vault.Name, Type: vault.Type, Role: vault.Role, ItemCount: len(allItem)},
-		AllMemberLosingAccess: []cliprotocol.VaultMember{},
-		AllTargetVault:        []cliprotocol.Vault{},
+		Vault:               cliprotocol.Vault{ID: vault.ID, Name: vault.Name, Type: vault.Type, Role: vault.Role, ItemCount: len(items)},
+		MembersLosingAccess: []cliprotocol.VaultMember{},
+		TargetVaults:        []cliprotocol.Vault{},
 	}
 	ownerCount := 0
 	if vault.Type != apitypes.VaultPersonal {
-		allAccess, err := access.unlockedSession.Client.ListAllVaultMember(ctx, vault.ID)
+		accesses, err := access.unlockedSession.Client.ListVaultMembers(ctx, vault.ID)
 		if err != nil {
 			return cliprotocol.VaultActionsResult{}, err
 		}
-		allPerson, err := access.unlockedSession.Client.ListAllMember(ctx)
+		people, err := access.unlockedSession.Client.ListMembers(ctx)
 		if err != nil {
 			return cliprotocol.VaultActionsResult{}, err
 		}
-		for _, vaultAccess := range allAccess {
+		for _, vaultAccess := range accesses {
 			if vaultAccess.Role == apitypes.VaultOwner {
 				ownerCount++
 			}
@@ -288,22 +288,22 @@ func (access *sessionVaultAccess) getVaultActions(ctx context.Context, vaultID s
 				continue
 			}
 			member := cliprotocol.VaultMember{Role: vaultAccess.Role}
-			if index := slices.IndexFunc(allPerson, func(person apitypes.Member) bool { return person.AccountID == vaultAccess.AccountID }); index >= 0 {
-				member.Name, member.Email = allPerson[index].Name, allPerson[index].Email
+			if index := slices.IndexFunc(people, func(person apitypes.Member) bool { return person.AccountID == vaultAccess.AccountID }); index >= 0 {
+				member.Name, member.Email = people[index].Name, people[index].Email
 			}
-			actions.AllMemberLosingAccess = append(actions.AllMemberLosingAccess, member)
+			actions.MembersLosingAccess = append(actions.MembersLosingAccess, member)
 		}
 	}
-	permissions := session.GetVaultPermissions(vault.Type, vault.Role, len(access.allVaultByID), ownerCount)
+	permissions := session.GetVaultPermissions(vault.Type, vault.Role, len(access.vaultsByID), ownerCount)
 	actions.CanRename, actions.CanDelete, actions.DeleteBlockedReason = permissions.CanRename, permissions.CanDelete, permissions.DeleteBlockedReason
 	actions.CanLeave, actions.LeaveBlockedReason = permissions.CanLeave, permissions.LeaveBlockedReason
-	allTarget, err := access.listAllVault(ctx)
+	targets, err := access.listVaults(ctx)
 	if err != nil {
 		return cliprotocol.VaultActionsResult{}, err
 	}
-	for _, target := range allTarget {
+	for _, target := range targets {
 		if target.ID != vault.ID && apitypes.CanWriteItems(target.Role) {
-			actions.AllTargetVault = append(actions.AllTargetVault, target)
+			actions.TargetVaults = append(actions.TargetVaults, target)
 		}
 	}
 	return actions, nil
@@ -358,11 +358,11 @@ func (access *sessionVaultAccess) writeExport(ctx context.Context, change clipro
 	if err := access.requireSession(ctx); err != nil {
 		return cliprotocol.ExportResult{}, err
 	}
-	allVault, err := export.Collect(ctx, access.unlockedSession)
+	vaults, err := export.Collect(ctx, access.unlockedSession)
 	if err != nil {
 		return cliprotocol.ExportResult{}, err
 	}
-	document := export.Build(export.Account{Email: access.currentState.Email, Server: access.currentState.Server}, allVault, time.Now())
+	document := export.Build(export.Account{Email: access.currentState.Email, Server: access.currentState.Server}, vaults, time.Now())
 	var content []byte
 	if change.Format == cliprotocol.ExportFormatPlain {
 		content, err = export.EncodePlain(document)

@@ -32,7 +32,7 @@ func (hisar *Hisar) LeaveVault(vaultID string) error {
 
 // ListAllRemovedVault returns, once, the vaults another person deleted or removed this user from, as JSON.
 func (hisar *Hisar) ListAllRemovedVault() (string, error) {
-	return encodeJSON(hisar.service.ListAllRemovedVault(), nil)
+	return encodeJSON(hisar.service.ListRemovedVaults(), nil)
 }
 
 func (hisar *Hisar) GetExportOptions() (string, error) {
@@ -42,7 +42,7 @@ func (hisar *Hisar) GetExportOptions() (string, error) {
 // ExportAllData asks for Face ID, or checks the master password when one is given, then writes the export into
 // directory and returns app.ExportResult as JSON; the app shares the file and deletes it afterwards.
 func (hisar *Hisar) ExportAllData(format, passphrase, password, directory string) (string, error) {
-	result, err := app.ExportAllDataToDirectory(hisar.service, app.ExportRequest{Format: format, Passphrase: passphrase, Password: password}, directory)
+	result, err := app.ExportDataToDirectory(hisar.service, app.ExportRequest{Format: format, Passphrase: passphrase, Password: password}, directory)
 	releaseMemory()
 	return encodeJSON(result, err)
 }

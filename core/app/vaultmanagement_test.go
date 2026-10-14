@@ -16,7 +16,7 @@ import (
 	"github.com/tryhisar/hisar/core/session"
 )
 
-func (server *fakeAPIServer) addAllVaultManagementRoute(mux *http.ServeMux) {
+func (server *fakeAPIServer) addVaultManagementRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/v1/vaults/{vaultID}/name", func(writer http.ResponseWriter, request *http.Request) {
 		var renameRequest apitypes.RenameVaultRequest
 		json.NewDecoder(request.Body).Decode(&renameRequest)
@@ -27,9 +27,9 @@ func (server *fakeAPIServer) addAllVaultManagementRoute(mux *http.ServeMux) {
 			writeJSON(writer, http.StatusForbidden, apitypes.Error{Error: "owner only"})
 			return
 		}
-		for index := range server.allVault {
-			if server.allVault[index].ID == vaultID {
-				server.allVault[index].EncName = renameRequest.EncName
+		for index := range server.vaults {
+			if server.vaults[index].ID == vaultID {
+				server.vaults[index].EncName = renameRequest.EncName
 			}
 		}
 		writer.WriteHeader(http.StatusNoContent)
@@ -45,19 +45,19 @@ func (server *fakeAPIServer) addAllVaultManagementRoute(mux *http.ServeMux) {
 			return
 		}
 		liveCount := 0
-		for _, storedItem := range server.allItemByVaultID[vaultID] {
+		for _, storedItem := range server.itemsByVaultID[vaultID] {
 			if !storedItem.Deleted {
 				liveCount++
 			}
 		}
 		if deleteRequest.MoveToVaultID != "" {
-			if len(deleteRequest.AllMovedItem) != liveCount {
+			if len(deleteRequest.MovedItems) != liveCount {
 				writeJSON(writer, http.StatusConflict, apitypes.Error{Error: "the vault changed"})
 				return
 			}
-			for _, movedItem := range deleteRequest.AllMovedItem {
+			for _, movedItem := range deleteRequest.MovedItems {
 				server.seq++
-				server.allItemByVaultID[deleteRequest.MoveToVaultID][movedItem.ID] = apitypes.Item{
+				server.itemsByVaultID[deleteRequest.MoveToVaultID][movedItem.ID] = apitypes.Item{
 					ID: movedItem.ID, Revision: movedItem.Revision, Seq: server.seq, Overview: movedItem.Overview, Details: movedItem.Details,
 				}
 			}
@@ -86,15 +86,15 @@ func (server *fakeAPIServer) addAllVaultManagementRoute(mux *http.ServeMux) {
 }
 
 func (server *fakeAPIServer) removeVault(vaultID string) {
-	server.allVault = slices.DeleteFunc(server.allVault, func(vault apitypes.Vault) bool { return vault.ID == vaultID })
-	delete(server.allItemByVaultID, vaultID)
-	delete(server.allAccessByVaultID, vaultID)
+	server.vaults = slices.DeleteFunc(server.vaults, func(vault apitypes.Vault) bool { return vault.ID == vaultID })
+	delete(server.itemsByVaultID, vaultID)
+	delete(server.accessesByVaultID, vaultID)
 }
 
 func (server *fakeAPIServer) hasVault(vaultID string) bool {
 	server.mutex.Lock()
 	defer server.mutex.Unlock()
-	return slices.ContainsFunc(server.allVault, func(vault apitypes.Vault) bool { return vault.ID == vaultID })
+	return slices.ContainsFunc(server.vaults, func(vault apitypes.Vault) bool { return vault.ID == vaultID })
 }
 
 func TestVaultActions(t *testing.T) {
@@ -102,7 +102,7 @@ func TestVaultActions(t *testing.T) {
 	service := test.service
 	bob, _ := test.apiServer.addMember(t, "Bob", "bob@example.com")
 	test.apiServer.mutex.Lock()
-	test.apiServer.allAccessByVaultID[test.familyID] = append(test.apiServer.allAccessByVaultID[test.familyID], apitypes.RotatedAccess{AccountID: bob.AccountID, Role: apitypes.VaultEditor})
+	test.apiServer.accessesByVaultID[test.familyID] = append(test.apiServer.accessesByVaultID[test.familyID], apitypes.RotatedAccess{AccountID: bob.AccountID, Role: apitypes.VaultEditor})
 	test.apiServer.mutex.Unlock()
 
 	personal, err := service.GetVaultActions(test.personalID)
@@ -119,11 +119,11 @@ func TestVaultActions(t *testing.T) {
 	if !family.CanDelete || family.CanLeave || family.LeaveBlockedReason != session.OnlyOwnerLeaveReason {
 		t.Errorf("family actions: %+v", family)
 	}
-	if len(family.AllMemberLosingAccess) != 1 || family.AllMemberLosingAccess[0].Email != "bob@example.com" {
-		t.Errorf("members losing access: %+v", family.AllMemberLosingAccess)
+	if len(family.MembersLosingAccess) != 1 || family.MembersLosingAccess[0].Email != "bob@example.com" {
+		t.Errorf("members losing access: %+v", family.MembersLosingAccess)
 	}
-	if len(family.AllTargetVault) != 1 || family.AllTargetVault[0].ID != test.personalID {
-		t.Errorf("target vaults: %+v", family.AllTargetVault)
+	if len(family.TargetVaults) != 1 || family.TargetVaults[0].ID != test.personalID {
+		t.Errorf("target vaults: %+v", family.TargetVaults)
 	}
 
 	test.apiServer.setVaultRole(test.familyID, apitypes.VaultEditor)
@@ -143,15 +143,15 @@ func TestRenameVault(t *testing.T) {
 	if err != nil || renamed.Name != "Home" {
 		t.Fatalf("rename: %+v %v", renamed, err)
 	}
-	allVault, err := service.ListAllVault()
-	if err != nil || !slices.ContainsFunc(allVault, func(vault VaultSummary) bool { return vault.ID == test.familyID && vault.Name == "Home" }) {
-		t.Errorf("after rename: %+v %v", allVault, err)
+	vaults, err := service.ListVaults()
+	if err != nil || !slices.ContainsFunc(vaults, func(vault VaultSummary) bool { return vault.ID == test.familyID && vault.Name == "Home" }) {
+		t.Errorf("after rename: %+v %v", vaults, err)
 	}
 	if _, err := service.RenameVault(test.familyID, " "); err == nil || !strings.Contains(err.Error(), "enter a vault name") {
 		t.Errorf("blank name: %v", err)
 	}
 	test.apiServer.setVaultRole(test.familyID, apitypes.VaultReader)
-	service.ListAllVault()
+	service.ListVaults()
 	if _, err := service.RenameVault(test.familyID, "Mine"); err == nil || !strings.Contains(err.Error(), "only an owner") {
 		t.Errorf("reader renames: %v", err)
 	}
@@ -183,9 +183,9 @@ func TestDeleteVaultMovesItemsIntoAnotherVault(t *testing.T) {
 	if test.apiServer.hasVault(test.familyID) {
 		t.Error("the vault is still on the server")
 	}
-	allVault, err := service.ListAllVault()
-	if err != nil || len(allVault) != 1 || allVault[0].ItemCount != 2 {
-		t.Fatalf("vaults after the move: %+v %v", allVault, err)
+	vaults, err := service.ListVaults()
+	if err != nil || len(vaults) != 1 || vaults[0].ItemCount != 2 {
+		t.Fatalf("vaults after the move: %+v %v", vaults, err)
 	}
 	moved, err := service.GetItem(test.personalID, login.ID)
 	if err != nil || moved.Password != "hunter2" || len(moved.Fields) != 1 || moved.Fields[0].Value != "ghp_x" {
@@ -194,10 +194,10 @@ func TestDeleteVaultMovesItemsIntoAnotherVault(t *testing.T) {
 	if movedKey := getCachedItem(t, service, test.personalID, sshKey.ID); movedKey.Details.PrivateKey != privateKey {
 		t.Error("the moved SSH key lost its private key")
 	}
-	if slices.Contains(service.ListAllAgentVaultID(), test.familyID) {
+	if slices.Contains(service.ListAgentVaultIDs(), test.familyID) {
 		t.Error("the deleted vault is still available to agents")
 	}
-	if notices := service.ListAllRemovedVault(); len(notices) != 0 {
+	if notices := service.ListRemovedVaults(); len(notices) != 0 {
 		t.Errorf("own deletion became a notice: %+v", notices)
 	}
 }
@@ -231,23 +231,23 @@ func TestLeaveVaultAndRemovedVaultNotice(t *testing.T) {
 	service.mutex.Lock()
 	service.unlockedSession.Cache = service.getCache()
 	service.mutex.Unlock()
-	if _, err := service.ListAllVault(); err != nil {
+	if _, err := service.ListVaults(); err != nil {
 		t.Fatal(err)
 	}
 	if err := service.LeaveVault(test.familyID); err == nil || err.Error() != session.OnlyOwnerLeaveReason {
 		t.Errorf("only owner leaves: %v", err)
 	}
 	test.apiServer.setVaultRole(test.familyID, apitypes.VaultEditor)
-	if _, err := service.ListAllVault(); err != nil {
+	if _, err := service.ListVaults(); err != nil {
 		t.Fatal(err)
 	}
 	if err := service.LeaveVault(test.familyID); err != nil {
 		t.Fatal(err)
 	}
-	if allVault, _ := service.ListAllVault(); len(allVault) != 1 {
-		t.Errorf("vaults after leaving: %+v", allVault)
+	if vaults, _ := service.ListVaults(); len(vaults) != 1 {
+		t.Errorf("vaults after leaving: %+v", vaults)
 	}
-	if notices := service.ListAllRemovedVault(); len(notices) != 0 {
+	if notices := service.ListRemovedVaults(); len(notices) != 0 {
 		t.Errorf("leaving became a notice: %+v", notices)
 	}
 
@@ -255,20 +255,20 @@ func TestLeaveVaultAndRemovedVaultNotice(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.ListAllVault(); err != nil {
+	if _, err := service.ListVaults(); err != nil {
 		t.Fatal(err)
 	}
 	test.apiServer.mutex.Lock()
 	test.apiServer.removeVault(shared.ID)
 	test.apiServer.mutex.Unlock()
-	if _, err := service.ListAllVault(); err != nil {
+	if _, err := service.ListVaults(); err != nil {
 		t.Fatal(err)
 	}
-	notices := service.ListAllRemovedVault()
+	notices := service.ListRemovedVaults()
 	if len(notices) != 1 || notices[0].Name != "Team" || !strings.Contains(notices[0].Message, "“Team” is no longer available") {
 		t.Errorf("notices: %+v", notices)
 	}
-	if again := service.ListAllRemovedVault(); len(again) != 0 {
+	if again := service.ListRemovedVaults(); len(again) != 0 {
 		t.Errorf("notice shown twice: %+v", again)
 	}
 }
@@ -288,16 +288,16 @@ func TestExportAllData(t *testing.T) {
 	directory := t.TempDir()
 	saver := service.config.FileSaver.(*fakeFileSaver)
 
-	if _, err := service.ExportAllData(ExportRequest{Format: ExportFormatEncrypted, Passphrase: "short"}); !errors.Is(err, export.ErrPassphraseTooShort) {
+	if _, err := service.ExportData(ExportRequest{Format: ExportFormatEncrypted, Passphrase: "short"}); !errors.Is(err, export.ErrPassphraseTooShort) {
 		t.Errorf("short passphrase: %v", err)
 	}
-	if _, err := service.ExportAllData(ExportRequest{Format: "csv"}); !errors.Is(err, errUnknownExportFormat) {
+	if _, err := service.ExportData(ExportRequest{Format: "csv"}); !errors.Is(err, errUnknownExportFormat) {
 		t.Errorf("unknown format: %v", err)
 	}
 	biometric := service.config.Biometric.(*fakeBiometric)
 	biometric.setAuthenticateError(errors.New("cancelled"))
 	saver.path = filepath.Join(directory, "denied.hisar")
-	if _, err := service.ExportAllData(ExportRequest{Format: ExportFormatEncrypted, Passphrase: "a long export passphrase"}); err == nil {
+	if _, err := service.ExportData(ExportRequest{Format: ExportFormatEncrypted, Passphrase: "a long export passphrase"}); err == nil {
 		t.Error("exported after Touch ID failed")
 	}
 	if _, err := os.Stat(saver.path); !errors.Is(err, os.ErrNotExist) {
@@ -306,7 +306,7 @@ func TestExportAllData(t *testing.T) {
 	biometric.setAuthenticateError(nil)
 
 	saver.path = filepath.Join(directory, "export.hisar")
-	result, err := service.ExportAllData(ExportRequest{Format: ExportFormatEncrypted, Passphrase: "a long export passphrase"})
+	result, err := service.ExportData(ExportRequest{Format: ExportFormatEncrypted, Passphrase: "a long export passphrase"})
 	if err != nil || result.VaultCount != 2 || result.ItemCount != 2 || result.Path != saver.path {
 		t.Fatalf("encrypted export: %+v %v", result, err)
 	}
@@ -335,7 +335,7 @@ func TestExportAllData(t *testing.T) {
 
 	test.apiServer.setUnreachable(true)
 	saver.path = filepath.Join(directory, "offline.json")
-	offline, err := service.ExportAllData(ExportRequest{Format: ExportFormatPlain})
+	offline, err := service.ExportData(ExportRequest{Format: ExportFormatPlain})
 	test.apiServer.setUnreachable(false)
 	if err != nil || offline.ItemCount != 2 {
 		t.Errorf("offline export from the cache: %+v %v", offline, err)
@@ -366,7 +366,7 @@ func TestVaultManagementAndExportThroughTheCommandLine(t *testing.T) {
 
 	var actions cliprotocol.VaultActionsResult
 	test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeGetVaultActions, VaultID: familyID}, &actions)
-	if !actions.CanDelete || actions.Vault.ItemCount != 1 || len(actions.AllTargetVault) != 1 || actions.AllTargetVault[0].ID != personalID {
+	if !actions.CanDelete || actions.Vault.ItemCount != 1 || len(actions.TargetVaults) != 1 || actions.TargetVaults[0].ID != personalID {
 		t.Errorf("actions: %+v", actions)
 	}
 	var renamed cliprotocol.VaultResult
@@ -376,8 +376,8 @@ func TestVaultManagementAndExportThroughTheCommandLine(t *testing.T) {
 	}
 
 	var saved cliprotocol.ItemResult
-	allField := []cliprotocol.Field{{Name: "API_TOKEN", Value: "token-value", Concealed: true}}
-	test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeSaveItem, VaultID: personalID, Item: &cliprotocol.ItemChange{Title: "shop", Fields: &allField}}, &saved)
+	fields := []cliprotocol.Field{{Name: "API_TOKEN", Value: "token-value", Concealed: true}}
+	test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeSaveItem, VaultID: personalID, Item: &cliprotocol.ItemChange{Title: "shop", Fields: &fields}}, &saved)
 	if detail, err := service.GetItem(personalID, saved.Item.ID); err != nil || len(detail.Fields) != 1 || detail.Fields[0].Value != "token-value" {
 		t.Errorf("saved with fields: %+v %v", detail, err)
 	}

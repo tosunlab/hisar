@@ -100,7 +100,7 @@ func (writer *pageWriter) wrapText(text string, width float64) []string {
 		}
 		return measured
 	}
-	var allLine []string
+	var lines []string
 	currentLine := ""
 	for _, word := range strings.Fields(text) {
 		candidate := word
@@ -112,23 +112,23 @@ func (writer *pageWriter) wrapText(text string, width float64) []string {
 			continue
 		}
 		if currentLine != "" {
-			allLine = append(allLine, currentLine)
+			lines = append(lines, currentLine)
 		}
 		currentLine = word
 		for measure(currentLine) > width && len([]rune(currentLine)) > 1 {
-			allRune := []rune(currentLine)
-			splitIndex := len(allRune) - 1
-			for splitIndex > 1 && measure(string(allRune[:splitIndex])) > width {
+			runes := []rune(currentLine)
+			splitIndex := len(runes) - 1
+			for splitIndex > 1 && measure(string(runes[:splitIndex])) > width {
 				splitIndex--
 			}
-			allLine = append(allLine, string(allRune[:splitIndex]))
-			currentLine = string(allRune[splitIndex:])
+			lines = append(lines, string(runes[:splitIndex]))
+			currentLine = string(runes[splitIndex:])
 		}
 	}
 	if currentLine != "" {
-		allLine = append(allLine, currentLine)
+		lines = append(lines, currentLine)
 	}
-	return allLine
+	return lines
 }
 
 func (writer *pageWriter) writeParagraph(x, y, width float64, text string, lineHeight float64) float64 {
@@ -221,19 +221,19 @@ func (writer *pageWriter) drawSignInSection(kit Kit) error {
 		return err
 	}
 	qrCode.DisableBorder = true
-	allModuleRow := qrCode.Bitmap()
-	moduleSize := qrSize / float64(len(allModuleRow))
+	moduleRows := qrCode.Bitmap()
+	moduleSize := qrSize / float64(len(moduleRows))
 	qrX := pageMargin + contentWide - qrSize - 14
 	qrY := sectionTop + 14
 	writer.document.SetFillColor(11, 12, 14)
 	// One rectangle per run of dark modules, slightly overlapping vertically, avoids hairline seams.
-	for rowIndex, allModule := range allModuleRow {
-		for runStart := 0; runStart < len(allModule); runStart++ {
-			if !allModule[runStart] {
+	for rowIndex, modules := range moduleRows {
+		for runStart := 0; runStart < len(modules); runStart++ {
+			if !modules[runStart] {
 				continue
 			}
 			runEnd := runStart
-			for runEnd+1 < len(allModule) && allModule[runEnd+1] {
+			for runEnd+1 < len(modules) && modules[runEnd+1] {
 				runEnd++
 			}
 			writer.fillRectangle(qrX+float64(runStart)*moduleSize, qrY+float64(rowIndex)*moduleSize, float64(runEnd-runStart+1)*moduleSize, moduleSize+0.4, 0)
@@ -285,12 +285,12 @@ func (writer *pageWriter) drawSignInSteps() {
 	writer.setFont("bold", 13)
 	writer.writeText(pageMargin, writer.cursorY, "Signing in on a new device")
 	writer.cursorY += 28
-	allStep := []string{
+	steps := []string{
 		"Install Hisar and open it.",
 		"Choose Sign in, then enter the sign-in address, email and Secret Key from this kit.",
 		"Enter your master password. Hisar stores the Secret Key on that device, so you only need this kit again for the next new device.",
 	}
-	for stepIndex, step := range allStep {
+	for stepIndex, step := range steps {
 		writer.document.SetFillColor(240, 241, 243)
 		writer.fillRectangle(pageMargin, writer.cursorY-3, 20, 20, 10)
 		writer.document.SetTextColor(11, 12, 14)

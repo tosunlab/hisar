@@ -33,8 +33,8 @@ type DeletionMemberVault struct {
 }
 
 type DeletionPreview struct {
-	AllOwnedVault           []DeletionOwnedVault
-	AllMemberVault          []DeletionMemberVault
+	OwnedVaults             []DeletionOwnedVault
+	MemberVaults            []DeletionMemberVault
 	ShareLinkCount          int
 	SentInvitationCount     int
 	ReceivedInvitationCount int
@@ -44,11 +44,11 @@ type DeletionPreview struct {
 type DeletedAccount struct {
 	Email string
 	Name  string
-	// AllVaultMemberAccountID shared a vault with the deleted account: their vault list or member list changed.
-	AllVaultMemberAccountID []string
-	// AllInvitationAccountID had a share invitation from or to the deleted account.
-	AllInvitationAccountID []string
-	DeletedVaultCount      int
+	// VaultMemberAccountIDs shared a vault with the deleted account: their vault list or member list changed.
+	VaultMemberAccountIDs []string
+	// InvitationAccountIDs had a share invitation from or to the deleted account.
+	InvitationAccountIDs []string
+	DeletedVaultCount    int
 }
 
 func HashOpaqueRecord(opaqueRecord []byte) []byte {
@@ -108,10 +108,10 @@ type accountVaultAccess struct {
 	otherMemberCount int
 }
 
-func listAllAccountVaultAccess(ctx context.Context, queryer interface {
+func listAccountVaultAccesses(ctx context.Context, queryer interface {
 	Query(context.Context, string, ...any) (pgx.Rows, error)
 }, accountID string) ([]accountVaultAccess, error) {
-	allRow, err := queryer.Query(ctx, `
+	rows, err := queryer.Query(ctx, `
 		SELECT v.id, v.type, a.role,
 			EXISTS (SELECT 1 FROM vault_access o WHERE o.vault_id = v.id AND o.role = 'owner' AND o.account_id <> $1),
 			(SELECT count(*) FROM vault_access m WHERE m.vault_id = v.id AND m.account_id <> $1)
@@ -120,7 +120,7 @@ func listAllAccountVaultAccess(ctx context.Context, queryer interface {
 	if err != nil {
 		return nil, err
 	}
-	return pgx.CollectRows(allRow, func(row pgx.CollectableRow) (accountVaultAccess, error) {
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (accountVaultAccess, error) {
 		var access accountVaultAccess
 		err := row.Scan(&access.vaultID, &access.vaultType, &access.role, &access.hasOtherOwner, &access.otherMemberCount)
 		return access, err
@@ -136,16 +136,16 @@ func (s *Store) PreviewAccountDeletion(ctx context.Context, accountID string) (*
 	if err != nil {
 		return nil, err
 	}
-	allAccess, err := listAllAccountVaultAccess(ctx, s.pool, accountID)
+	accesses, err := listAccountVaultAccesses(ctx, s.pool, accountID)
 	if err != nil {
 		return nil, err
 	}
-	preview := &DeletionPreview{AllOwnedVault: []DeletionOwnedVault{}, AllMemberVault: []DeletionMemberVault{}}
-	for _, access := range allAccess {
+	preview := &DeletionPreview{OwnedVaults: []DeletionOwnedVault{}, MemberVaults: []DeletionMemberVault{}}
+	for _, access := range accesses {
 		if access.isDeletedWithAccount() {
-			preview.AllOwnedVault = append(preview.AllOwnedVault, DeletionOwnedVault{ID: access.vaultID, Type: access.vaultType, OtherMemberCount: access.otherMemberCount})
+			preview.OwnedVaults = append(preview.OwnedVaults, DeletionOwnedVault{ID: access.vaultID, Type: access.vaultType, OtherMemberCount: access.otherMemberCount})
 		} else {
-			preview.AllMemberVault = append(preview.AllMemberVault, DeletionMemberVault{ID: access.vaultID, Type: access.vaultType, Role: access.role})
+			preview.MemberVaults = append(preview.MemberVaults, DeletionMemberVault{ID: access.vaultID, Type: access.vaultType, Role: access.role})
 		}
 	}
 	err = s.pool.QueryRow(ctx, `
@@ -160,12 +160,12 @@ func (s *Store) PreviewAccountDeletion(ctx context.Context, accountID string) (*
 	return preview, err
 }
 
-func collectAllAccountID(ctx context.Context, transaction pgx.Tx, query string, allArgument ...any) ([]string, error) {
-	allRow, err := transaction.Query(ctx, query, allArgument...)
+func collectAccountIDs(ctx context.Context, transaction pgx.Tx, query string, arguments ...any) ([]string, error) {
+	rows, err := transaction.Query(ctx, query, arguments...)
 	if err != nil {
 		return nil, err
 	}
-	return pgx.CollectRows(allRow, pgx.RowTo[string])
+	return pgx.CollectRows(rows, pgx.RowTo[string])
 }
 
 // DeleteAccount deletes the account and everything that is only its own in one transaction.
@@ -178,35 +178,35 @@ func (s *Store) DeleteAccount(ctx context.Context, accountID string, tokenHash, 
 			return err
 		}
 		deleted.Email, deleted.Name = email, name
-		allAccess, err := listAllAccountVaultAccess(ctx, transaction, accountID)
+		accesses, err := listAccountVaultAccesses(ctx, transaction, accountID)
 		if err != nil {
 			return err
 		}
-		allDeletedVaultID := []string{}
-		for _, access := range allAccess {
+		deletedVaultIDs := []string{}
+		for _, access := range accesses {
 			if access.isDeletedWithAccount() {
-				allDeletedVaultID = append(allDeletedVaultID, access.vaultID)
+				deletedVaultIDs = append(deletedVaultIDs, access.vaultID)
 			}
 		}
-		deleted.DeletedVaultCount = len(allDeletedVaultID)
-		if deleted.AllVaultMemberAccountID, err = collectAllAccountID(ctx, transaction, `
+		deleted.DeletedVaultCount = len(deletedVaultIDs)
+		if deleted.VaultMemberAccountIDs, err = collectAccountIDs(ctx, transaction, `
 			SELECT DISTINCT m.account_id FROM vault_access m
 			WHERE m.vault_id IN (SELECT vault_id FROM vault_access WHERE account_id = $1) AND m.account_id <> $1`, accountID); err != nil {
 			return err
 		}
-		if deleted.AllInvitationAccountID, err = collectAllAccountID(ctx, transaction, `
+		if deleted.InvitationAccountIDs, err = collectAccountIDs(ctx, transaction, `
 			SELECT o.account_id FROM share_invitations i JOIN vault_access o ON o.vault_id = i.vault_id AND o.role = 'owner'
 			WHERE (i.email = $2 OR i.accepted_by = $1) AND o.account_id <> $1
 			UNION
 			SELECT a.id FROM share_invitations i JOIN accounts a ON a.email = i.email
-			WHERE (i.invited_by = $1 OR i.vault_id = ANY($3::uuid[])) AND a.id <> $1`, accountID, email, allDeletedVaultID); err != nil {
+			WHERE (i.invited_by = $1 OR i.vault_id = ANY($3::uuid[])) AND a.id <> $1`, accountID, email, deletedVaultIDs); err != nil {
 			return err
 		}
 		for _, statement := range []struct {
-			query       string
-			allArgument []any
+			query     string
+			arguments []any
 		}{
-			{`DELETE FROM vaults WHERE id = ANY($1::uuid[])`, []any{allDeletedVaultID}},
+			{`DELETE FROM vaults WHERE id = ANY($1::uuid[])`, []any{deletedVaultIDs}},
 			{`DELETE FROM share_invitations WHERE invited_by = $1 OR accepted_by = $1 OR email = $2`, []any{accountID, email}},
 			{`DELETE FROM invites WHERE email = $2 OR (created_by = $1 AND used_at IS NULL)`, []any{accountID, email}},
 			{`DELETE FROM share_links WHERE account_id = $1`, []any{accountID}},
@@ -215,7 +215,7 @@ func (s *Store) DeleteAccount(ctx context.Context, accountID string, tokenHash, 
 			{`DELETE FROM vault_access WHERE account_id = $1`, []any{accountID}},
 			{`DELETE FROM accounts WHERE id = $1`, []any{accountID}},
 		} {
-			if _, err := transaction.Exec(ctx, statement.query, statement.allArgument...); err != nil {
+			if _, err := transaction.Exec(ctx, statement.query, statement.arguments...); err != nil {
 				return err
 			}
 		}

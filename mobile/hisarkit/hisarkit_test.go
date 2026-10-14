@@ -14,18 +14,18 @@ import (
 )
 
 type memorySecretKeyStore struct {
-	mutex          sync.Mutex
-	allByAccountID map[string]string
+	mutex       sync.Mutex
+	byAccountID map[string]string
 }
 
 func createMemorySecretKeyStore() *memorySecretKeyStore {
-	return &memorySecretKeyStore{allByAccountID: map[string]string{}}
+	return &memorySecretKeyStore{byAccountID: map[string]string{}}
 }
 
 func (store *memorySecretKeyStore) LoadSecretKey(accountID string) (string, error) {
 	store.mutex.Lock()
 	defer store.mutex.Unlock()
-	secretKey, found := store.allByAccountID[accountID]
+	secretKey, found := store.byAccountID[accountID]
 	if !found {
 		return "", errors.New("not in the keychain")
 	}
@@ -35,20 +35,20 @@ func (store *memorySecretKeyStore) LoadSecretKey(accountID string) (string, erro
 func (store *memorySecretKeyStore) StoreSecretKey(accountID, secretKey string) error {
 	store.mutex.Lock()
 	defer store.mutex.Unlock()
-	store.allByAccountID[accountID] = secretKey
+	store.byAccountID[accountID] = secretKey
 	return nil
 }
 
 func (store *memorySecretKeyStore) DeleteSecretKey(accountID string) error {
 	store.mutex.Lock()
 	defer store.mutex.Unlock()
-	delete(store.allByAccountID, accountID)
+	delete(store.byAccountID, accountID)
 	return nil
 }
 
 type fakeBiometric struct {
 	mutex             sync.Mutex
-	allKeyByAccountID map[string][]byte
+	keysByAccountID   map[string][]byte
 	authenticateCount int
 }
 
@@ -64,14 +64,14 @@ func (biometric *fakeBiometric) Authenticate(reason string) error {
 func (biometric *fakeBiometric) StoreKey(accountID string, key []byte) error {
 	biometric.mutex.Lock()
 	defer biometric.mutex.Unlock()
-	biometric.allKeyByAccountID[accountID] = append([]byte(nil), key...)
+	biometric.keysByAccountID[accountID] = append([]byte(nil), key...)
 	return nil
 }
 
 func (biometric *fakeBiometric) LoadKey(accountID string) ([]byte, error) {
 	biometric.mutex.Lock()
 	defer biometric.mutex.Unlock()
-	key, found := biometric.allKeyByAccountID[accountID]
+	key, found := biometric.keysByAccountID[accountID]
 	if !found {
 		return nil, errors.New("no key")
 	}
@@ -81,7 +81,7 @@ func (biometric *fakeBiometric) LoadKey(accountID string) ([]byte, error) {
 func (biometric *fakeBiometric) DeleteKey(accountID string) error {
 	biometric.mutex.Lock()
 	defer biometric.mutex.Unlock()
-	delete(biometric.allKeyByAccountID, accountID)
+	delete(biometric.keysByAccountID, accountID)
 	return nil
 }
 
@@ -188,13 +188,13 @@ func TestAdapters(t *testing.T) {
 	if err := adapter.StoreSecretKey(secretKey); err != nil {
 		t.Fatal(err)
 	}
-	if store.allByAccountID["ABC123"] != secretKey.Encode() {
-		t.Errorf("stored = %q", store.allByAccountID["ABC123"])
+	if store.byAccountID["ABC123"] != secretKey.Encode() {
+		t.Errorf("stored = %q", store.byAccountID["ABC123"])
 	}
 	if loaded, err := adapter.LoadSecretKey("ABC123"); err != nil || loaded.Encode() != secretKey.Encode() {
 		t.Errorf("loaded = %v %v", loaded, err)
 	}
-	store.allByAccountID["BROKEN"] = "not a secret key"
+	store.byAccountID["BROKEN"] = "not a secret key"
 	if _, err := adapter.LoadSecretKey("BROKEN"); err == nil {
 		t.Error("a malformed Secret Key was accepted")
 	}
@@ -211,13 +211,13 @@ func TestAdapters(t *testing.T) {
 }
 
 func TestConvertServiceIdentifierToURL(t *testing.T) {
-	allCase := map[string]string{
+	cases := map[string]string{
 		"github.com":                    "https://github.com",
 		" accounts.google.com ":         "https://accounts.google.com",
 		"https://github.com/login":      "https://github.com/login",
 		"http://router.home.arpa/admin": "http://router.home.arpa/admin",
 	}
-	for serviceIdentifier, want := range allCase {
+	for serviceIdentifier, want := range cases {
 		if got := convertServiceIdentifierToURL(serviceIdentifier); got != want {
 			t.Errorf("%q = %q, want %q", serviceIdentifier, got, want)
 		}
@@ -233,7 +233,7 @@ func TestIntegrationMobileFlow(t *testing.T) {
 	const password = "mobile master password"
 	stateDirectory := t.TempDir()
 	secretKeyStore := createMemorySecretKeyStore()
-	biometric := &fakeBiometric{allKeyByAccountID: map[string][]byte{}}
+	biometric := &fakeBiometric{keysByAccountID: map[string][]byte{}}
 	hisar, err := New(stateDirectory, "Test iPhone", secretKeyStore, biometric, &fakeClipboard{}, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -256,18 +256,18 @@ func TestIntegrationMobileFlow(t *testing.T) {
 		t.Fatalf("biometric unlock still on: %+v", current)
 	}
 
-	allVault := decodeJSON[[]struct {
+	vaults := decodeJSON[[]struct {
 		ID   string `json:"id"`
 		Type string `json:"type"`
 	}](t)(hisar.ListAllVault())
 	personalID := ""
-	for _, vault := range allVault {
+	for _, vault := range vaults {
 		if vault.Type == "personal" {
 			personalID = vault.ID
 		}
 	}
 	if personalID == "" {
-		t.Fatalf("no personal vault: %+v", allVault)
+		t.Fatalf("no personal vault: %+v", vaults)
 	}
 	saved := decodeJSON[struct {
 		ID string `json:"id"`
@@ -275,14 +275,14 @@ func TestIntegrationMobileFlow(t *testing.T) {
 	if saved.ID == "" {
 		t.Fatal("saved item has no id")
 	}
-	allItem := decodeJSON[[]struct {
+	items := decodeJSON[[]struct {
 		Title              string `json:"title"`
 		Password           string `json:"password"`
 		OneTimePassword    string `json:"oneTimePassword"`
 		HasOneTimePassword bool   `json:"hasOneTimePassword"`
 	}](t)(hisar.ListAllItem(personalID))
-	if len(allItem) != 1 || allItem[0].Title != "GitHub" || allItem[0].Password != "" || allItem[0].OneTimePassword != "" || !allItem[0].HasOneTimePassword {
-		t.Errorf("items (without secrets) = %+v", allItem)
+	if len(items) != 1 || items[0].Title != "GitHub" || items[0].Password != "" || items[0].OneTimePassword != "" || !items[0].HasOneTimePassword {
+		t.Errorf("items (without secrets) = %+v", items)
 	}
 	checkVaultManagementAndExport(t, hisar, personalID, password)
 	type oneTimeCode struct {
@@ -305,13 +305,13 @@ func TestIntegrationMobileFlow(t *testing.T) {
 		t.Error("one-time code handed out for another site")
 	}
 
-	allLogin := decodeJSON[[]struct {
+	logins := decodeJSON[[]struct {
 		ItemID             string `json:"itemID"`
 		Username           string `json:"username"`
 		HasOneTimePassword bool   `json:"hasOneTimePassword"`
 	}](t)(hisar.ListAllLoginForService("github.com"))
-	if len(allLogin) != 1 || allLogin[0].ItemID != saved.ID || allLogin[0].Username != "octocat" || !allLogin[0].HasOneTimePassword {
-		t.Fatalf("logins for github.com = %+v", allLogin)
+	if len(logins) != 1 || logins[0].ItemID != saved.ID || logins[0].Username != "octocat" || !logins[0].HasOneTimePassword {
+		t.Fatalf("logins for github.com = %+v", logins)
 	}
 	login := decodeJSON[struct {
 		Username           string `json:"username"`
@@ -345,8 +345,8 @@ func TestIntegrationMobileFlow(t *testing.T) {
 	if current := decodeJSON[status](t)(extension.UnlockWithBiometric()); current.State != "unlocked" {
 		t.Fatalf("biometric unlock: %+v", current)
 	}
-	if allLogin := decodeJSON[[]struct{}](t)(extension.ListAllLoginForService("github.com")); len(allLogin) != 1 {
-		t.Errorf("extension logins = %d", len(allLogin))
+	if logins := decodeJSON[[]struct{}](t)(extension.ListAllLoginForService("github.com")); len(logins) != 1 {
+		t.Errorf("extension logins = %d", len(logins))
 	}
 	if _, err := extension.Unlock("wrong password"); err == nil {
 		t.Error("wrong password unlocked")
@@ -354,7 +354,7 @@ func TestIntegrationMobileFlow(t *testing.T) {
 	if current := decodeJSON[status](t)(extension.SignOut()); current.State != "signed-out" {
 		t.Errorf("sign out: %+v", current)
 	}
-	if len(secretKeyStore.allByAccountID) != 0 {
+	if len(secretKeyStore.byAccountID) != 0 {
 		t.Error("Secret Key kept after sign out")
 	}
 }
@@ -375,13 +375,13 @@ func checkSharingFlow(t *testing.T, hisar *Hisar) {
 	if created.ID == "" || created.Name != "Shared from iPhone" || created.Type != "shared" || created.Role != "owner" {
 		t.Fatalf("created vault = %+v", created)
 	}
-	allVault := decodeJSON[[]vaultSummary](t)(hisar.ListAllVault())
+	vaults := decodeJSON[[]vaultSummary](t)(hisar.ListAllVault())
 	isListed := false
-	for _, vault := range allVault {
+	for _, vault := range vaults {
 		isListed = isListed || vault.ID == created.ID
 	}
 	if !isListed {
-		t.Errorf("the new vault is missing from %+v", allVault)
+		t.Errorf("the new vault is missing from %+v", vaults)
 	}
 
 	type member struct {
@@ -391,19 +391,19 @@ func checkSharingFlow(t *testing.T, hisar *Hisar) {
 		SecurityCode  string `json:"securityCode"`
 		IsCurrentUser bool   `json:"isCurrentUser"`
 	}
-	allMember := decodeJSON[[]member](t)(hisar.ListAllPerson())
+	members := decodeJSON[[]member](t)(hisar.ListAllPerson())
 	var currentUser *member
-	for index := range allMember {
-		if allMember[index].IsCurrentUser {
-			currentUser = &allMember[index]
+	for index := range members {
+		if members[index].IsCurrentUser {
+			currentUser = &members[index]
 		}
 	}
-	if currentUser == nil || currentUser.Email != "mobile@example.com" || currentUser.SecurityCode == "" || len(allMember) != 1 {
-		t.Fatalf("people = %+v", allMember)
+	if currentUser == nil || currentUser.Email != "mobile@example.com" || currentUser.SecurityCode == "" || len(members) != 1 {
+		t.Fatalf("people = %+v", members)
 	}
-	allVaultMember := decodeJSON[[]member](t)(hisar.ListAllVaultMember(created.ID))
-	if len(allVaultMember) != 1 || !allVaultMember[0].IsCurrentUser || allVaultMember[0].Role != "owner" {
-		t.Errorf("members of the new vault = %+v", allVaultMember)
+	vaultMembers := decodeJSON[[]member](t)(hisar.ListAllVaultMember(created.ID))
+	if len(vaultMembers) != 1 || !vaultMembers[0].IsCurrentUser || vaultMembers[0].Role != "owner" {
+		t.Errorf("members of the new vault = %+v", vaultMembers)
 	}
 	if err := hisar.ShareVault(created.ID, "nobody-from-iphone@example.com", "editor"); err != nil {
 		t.Errorf("share with an address that has no account: %v", err)

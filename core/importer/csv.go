@@ -24,7 +24,7 @@ const (
 	columnArchived = "archived"
 )
 
-var allColumnAlias = map[string]string{
+var columnAliases = map[string]string{
 	"title": columnTitle, "name": columnTitle, "account": columnTitle, "item name": columnTitle, "entry": columnTitle,
 	"username": columnUsername, "user name": columnUsername, "login_username": columnUsername, "login": columnUsername, "login name": columnUsername,
 	"user": columnUsername, "email": columnUsername, "e-mail": columnUsername, "email address": columnUsername,
@@ -39,24 +39,24 @@ var allColumnAlias = map[string]string{
 	"archived": columnArchived,
 }
 
-// allIgnoredColumn holds export metadata that is not worth keeping as a field.
-var allIgnoredColumn = map[string]bool{
+// ignoredColumns holds export metadata that is not worth keeping as a field.
+var ignoredColumns = map[string]bool{
 	"favorite": true, "fav": true, "reprompt": true, "httprealm": true, "formactionorigin": true, "guid": true,
 	"timecreated": true, "timelastused": true, "timepasswordchanged": true, "created": true, "modified": true, "last modified": true,
 }
 
 type csvLayout struct {
-	allIndexByColumn map[string]int
-	allExtraIndex    []int
-	allColumnName    []string
+	indexesByColumn map[string]int
+	extraIndexes    []int
+	columnNames     []string
 }
 
-func (layout *csvLayout) getValue(allValue []string, column string) string {
-	index, found := layout.allIndexByColumn[column]
-	if !found || index >= len(allValue) {
+func (layout *csvLayout) getValue(values []string, column string) string {
+	index, found := layout.indexesByColumn[column]
+	if !found || index >= len(values) {
 		return ""
 	}
-	return allValue[index]
+	return values[index]
 }
 
 func normalizeColumnName(name string) string {
@@ -64,37 +64,37 @@ func normalizeColumnName(name string) string {
 }
 
 // buildCSVLayout assigns each role to an exactly named column first, then to the first alias.
-func buildCSVLayout(allColumnName []string) (*csvLayout, error) {
-	layout := &csvLayout{allIndexByColumn: map[string]int{}, allColumnName: allColumnName}
-	allIsAssigned := make([]bool, len(allColumnName))
-	for index, name := range allColumnName {
+func buildCSVLayout(columnNames []string) (*csvLayout, error) {
+	layout := &csvLayout{indexesByColumn: map[string]int{}, columnNames: columnNames}
+	isAssigned := make([]bool, len(columnNames))
+	for index, name := range columnNames {
 		normalized := normalizeColumnName(name)
-		if column, found := allColumnAlias[normalized]; found && column == normalized {
-			if _, taken := layout.allIndexByColumn[column]; !taken {
-				layout.allIndexByColumn[column] = index
-				allIsAssigned[index] = true
+		if column, found := columnAliases[normalized]; found && column == normalized {
+			if _, taken := layout.indexesByColumn[column]; !taken {
+				layout.indexesByColumn[column] = index
+				isAssigned[index] = true
 			}
 		}
 	}
-	for index, name := range allColumnName {
-		if allIsAssigned[index] {
+	for index, name := range columnNames {
+		if isAssigned[index] {
 			continue
 		}
 		normalized := normalizeColumnName(name)
-		if column, found := allColumnAlias[normalized]; found {
-			if _, taken := layout.allIndexByColumn[column]; !taken {
-				layout.allIndexByColumn[column] = index
+		if column, found := columnAliases[normalized]; found {
+			if _, taken := layout.indexesByColumn[column]; !taken {
+				layout.indexesByColumn[column] = index
 				continue
 			}
 		}
-		if normalized != "" && !allIgnoredColumn[normalized] {
-			layout.allExtraIndex = append(layout.allExtraIndex, index)
+		if normalized != "" && !ignoredColumns[normalized] {
+			layout.extraIndexes = append(layout.extraIndexes, index)
 		}
 	}
-	_, hasPassword := layout.allIndexByColumn[columnPassword]
-	_, hasUsername := layout.allIndexByColumn[columnUsername]
-	_, hasURL := layout.allIndexByColumn[columnURL]
-	_, hasTitle := layout.allIndexByColumn[columnTitle]
+	_, hasPassword := layout.indexesByColumn[columnPassword]
+	_, hasUsername := layout.indexesByColumn[columnUsername]
+	_, hasURL := layout.indexesByColumn[columnURL]
+	_, hasTitle := layout.indexesByColumn[columnTitle]
 	if !hasPassword && !(hasUsername && (hasURL || hasTitle)) {
 		return nil, errors.New("the first row of the CSV file must name the columns, for example title, username, password, url and notes")
 	}
@@ -123,24 +123,24 @@ func convertCSVError(err error) error {
 }
 
 func detectCSVFormat(content []byte) (string, error) {
-	allColumnName, err := createCSVReader(content).Read()
+	columnNames, err := createCSVReader(content).Read()
 	if errors.Is(err, io.EOF) {
 		return "", ErrEmptyFile
 	}
 	if err != nil {
 		return "", ErrUnknownFormat
 	}
-	allNormalized := map[string]bool{}
-	for _, name := range allColumnName {
-		allNormalized[normalizeColumnName(name)] = true
+	normalized := map[string]bool{}
+	for _, name := range columnNames {
+		normalized[normalizeColumnName(name)] = true
 	}
 	switch {
-	case allNormalized["login_password"] || allNormalized["login_username"] || allNormalized["login_uri"]:
+	case normalized["login_password"] || normalized["login_username"] || normalized["login_uri"]:
 		return FormatBitwardenCSV, nil
-	case allNormalized["archived"] && allNormalized["otpauth"] && allNormalized["title"]:
+	case normalized["archived"] && normalized["otpauth"] && normalized["title"]:
 		return FormatOnePasswordCSV, nil
 	}
-	if _, err := buildCSVLayout(allColumnName); err != nil {
+	if _, err := buildCSVLayout(columnNames); err != nil {
 		return "", ErrUnknownFormat
 	}
 	return FormatCSV, nil
@@ -148,40 +148,40 @@ func detectCSVFormat(content []byte) (string, error) {
 
 func parseCSV(content []byte, format string) (*Result, error) {
 	reader := createCSVReader(content)
-	allColumnName, err := reader.Read()
+	columnNames, err := reader.Read()
 	if errors.Is(err, io.EOF) {
 		return nil, ErrEmptyFile
 	}
 	if err != nil {
 		return nil, convertCSVError(err)
 	}
-	layout, err := buildCSVLayout(allColumnName)
+	layout, err := buildCSVLayout(columnNames)
 	if err != nil {
 		return nil, err
 	}
-	result := &Result{AllItem: []item.Item{}, AllSkipped: []SkippedEntry{}}
+	result := &Result{Items: []item.Item{}, Skipped: []SkippedEntry{}}
 	for {
-		allValue, err := reader.Read()
+		values, err := reader.Read()
 		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
 			return nil, convertCSVError(err)
 		}
-		vaultItem, reason := convertCSVRecord(layout, allValue, format)
+		vaultItem, reason := convertCSVRecord(layout, values, format)
 		if reason != "" {
-			result.AllSkipped = append(result.AllSkipped, SkippedEntry{Title: describeEntry(layout.getValue(allValue, columnTitle)), Reason: reason})
+			result.Skipped = append(result.Skipped, SkippedEntry{Title: describeEntry(layout.getValue(values, columnTitle)), Reason: reason})
 			continue
 		}
 		if finishItem(&vaultItem) {
-			result.AllItem = append(result.AllItem, vaultItem)
+			result.Items = append(result.Items, vaultItem)
 		}
 	}
 	return result, nil
 }
 
-func convertCSVRecord(layout *csvLayout, allValue []string, format string) (item.Item, string) {
-	getValue := func(column string) string { return layout.getValue(allValue, column) }
+func convertCSVRecord(layout *csvLayout, values []string, format string) (item.Item, string) {
+	getValue := func(column string) string { return layout.getValue(values, column) }
 	if format == FormatOnePasswordCSV && strings.EqualFold(strings.TrimSpace(getValue(columnArchived)), "true") {
 		return item.Item{}, "archived in 1Password"
 	}
@@ -196,7 +196,7 @@ func convertCSVRecord(layout *csvLayout, allValue []string, format string) (item
 		Overview: item.Overview{Title: getValue(columnTitle), Username: getValue(columnUsername)},
 		Details:  item.Details{Password: getValue(columnPassword), Notes: getValue(columnNotes)},
 	}
-	vaultItem.Overview.URLs = splitAllURL(getValue(columnURL), format)
+	vaultItem.Overview.URLs = splitURLs(getValue(columnURL), format)
 	addOneTimePassword(&vaultItem, "One-time password", strings.TrimSpace(getValue(columnOTP)))
 	if tagText := getValue(columnTags); tagText != "" {
 		if format == FormatBitwardenCSV {
@@ -206,18 +206,18 @@ func convertCSVRecord(layout *csvLayout, allValue []string, format string) (item
 		}
 	}
 	if format == FormatBitwardenCSV {
-		vaultItem.Details.Fields = append(vaultItem.Details.Fields, parseAllBitwardenCSVField(getValue(columnFields))...)
+		vaultItem.Details.Fields = append(vaultItem.Details.Fields, parseBitwardenCSVFields(getValue(columnFields))...)
 	}
-	for _, index := range layout.allExtraIndex {
-		if index < len(allValue) && strings.TrimSpace(allValue[index]) != "" {
-			vaultItem.Details.Fields = append(vaultItem.Details.Fields, item.Field{Name: layout.allColumnName[index], Value: allValue[index]})
+	for _, index := range layout.extraIndexes {
+		if index < len(values) && strings.TrimSpace(values[index]) != "" {
+			vaultItem.Details.Fields = append(vaultItem.Details.Fields, item.Field{Name: layout.columnNames[index], Value: values[index]})
 		}
 	}
 	return vaultItem, ""
 }
 
-// splitAllURL: Bitwarden joins several URIs with commas; LastPass marks secure notes with the URL http://sn.
-func splitAllURL(text string, format string) []string {
+// splitURLs: Bitwarden joins several URIs with commas; LastPass marks secure notes with the URL http://sn.
+func splitURLs(text string, format string) []string {
 	text = strings.TrimSpace(text)
 	if text == "" || strings.EqualFold(text, "http://sn") {
 		return nil
@@ -228,9 +228,9 @@ func splitAllURL(text string, format string) []string {
 	return strings.Split(text, "\n")
 }
 
-// parseAllBitwardenCSVField reads Bitwarden's "name: value" lines.
-func parseAllBitwardenCSVField(text string) []item.Field {
-	allField := []item.Field{}
+// parseBitwardenCSVFields reads Bitwarden's "name: value" lines.
+func parseBitwardenCSVFields(text string) []item.Field {
+	fields := []item.Field{}
 	for _, line := range strings.Split(strings.ReplaceAll(text, "\r\n", "\n"), "\n") {
 		if strings.TrimSpace(line) == "" {
 			continue
@@ -239,7 +239,7 @@ func parseAllBitwardenCSVField(text string) []item.Field {
 		if !found {
 			name, value = "Field", line
 		}
-		allField = append(allField, item.Field{Name: name, Value: value})
+		fields = append(fields, item.Field{Name: name, Value: value})
 	}
-	return allField
+	return fields
 }

@@ -36,7 +36,7 @@ func TestDeleteVaultRules(t *testing.T) {
 		t.Errorf("deleting a vault with items without a choice: %v", err)
 	}
 	moveTo := func(baseRevision string) VaultDeletion {
-		return VaultDeletion{VaultID: onlyVaultID, AccountID: "AAAAAA", MoveToVaultID: targetID, AllMovedItem: []MovedItem{
+		return VaultDeletion{VaultID: onlyVaultID, AccountID: "AAAAAA", MoveToVaultID: targetID, MovedItems: []MovedItem{
 			{ID: liveItem.ID, BaseRevision: baseRevision, Revision: uuid.NewString(), Overview: []byte("new-o"), Details: []byte("new-d")},
 		}}
 	}
@@ -46,19 +46,19 @@ func TestDeleteVaultRules(t *testing.T) {
 	if role, _ := database.GetVaultRole(ctx, onlyVaultID, "BBBBBB"); role != "editor" {
 		t.Fatal("a failed deletion changed the vault")
 	}
-	allFormerMember, err := database.DeleteVault(ctx, moveTo(liveItem.Revision))
-	if err != nil || len(allFormerMember) != 2 {
-		t.Fatalf("move and delete: %v %v", allFormerMember, err)
+	formerMembers, err := database.DeleteVault(ctx, moveTo(liveItem.Revision))
+	if err != nil || len(formerMembers) != 2 {
+		t.Fatalf("move and delete: %v %v", formerMembers, err)
 	}
 	if _, err := database.GetVaultRole(ctx, onlyVaultID, "AAAAAA"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("the deleted vault still has access grants: %v", err)
 	}
-	allMoved, targetSeq, err := database.ListAllChange(ctx, targetID, 0, 100)
-	if err != nil || len(allMoved) != 1 || string(allMoved[0].Overview) != "new-o" || targetSeq != 1 {
-		t.Errorf("target after the move: %+v seq %d %v", allMoved, targetSeq, err)
+	movedItems, targetSeq, err := database.ListChanges(ctx, targetID, 0, 100)
+	if err != nil || len(movedItems) != 1 || string(movedItems[0].Overview) != "new-o" || targetSeq != 1 {
+		t.Errorf("target after the move: %+v seq %d %v", movedItems, targetSeq, err)
 	}
-	if allHistory, _ := database.GetItemHistory(ctx, onlyVaultID, liveItem.ID); len(allHistory) != 0 {
-		t.Errorf("history of the deleted vault remains: %d", len(allHistory))
+	if histories, _ := database.GetItemHistory(ctx, onlyVaultID, liveItem.ID); len(histories) != 0 {
+		t.Errorf("history of the deleted vault remains: %d", len(histories))
 	}
 }
 
@@ -83,8 +83,8 @@ func TestLeaveVault(t *testing.T) {
 	if err := database.RenameVault(ctx, vaultID, []byte("renamed")); err != nil {
 		t.Fatal(err)
 	}
-	if allVault, _ := database.ListAllVault(ctx, "BBBBBB"); len(allVault) != 1 || string(allVault[0].EncName) != "renamed" {
-		t.Errorf("after leave and rename: %+v", allVault)
+	if vaults, _ := database.ListVaults(ctx, "BBBBBB"); len(vaults) != 1 || string(vaults[0].EncName) != "renamed" {
+		t.Errorf("after leave and rename: %+v", vaults)
 	}
 	if err := database.RenameVault(ctx, uuid.NewString(), []byte("x")); !errors.Is(err, ErrNotFound) {
 		t.Errorf("renaming a missing vault: %v", err)

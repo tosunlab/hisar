@@ -24,7 +24,7 @@ func (memorySecretKeyStore) DeleteSecretKey(string) error { return nil }
 
 func createAppService(t *testing.T, statePath string) *app.Service {
 	t.Helper()
-	appService, err := app.CreateService(app.Config{StatePath: statePath, SecretKeyStore: memorySecretKeyStore{}})
+	appService, err := app.NewService(app.Config{StatePath: statePath, SecretKeyStore: memorySecretKeyStore{}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +51,7 @@ func TestCommandLineSwitchIsSavedAndKeptOnSignOut(t *testing.T) {
 	statePath := filepath.Join(t.TempDir(), "desktop.json")
 	service := createAppService(t, statePath)
 	runner := &fakeCommandLineRunner{}
-	installer := CreateInstaller(InstallerConfig{BundledPath: filepath.Join(t.TempDir(), "missing"), HomeDirectory: t.TempDir(), SystemDirectories: []string{}})
+	installer := NewInstaller(InstallerConfig{BundledPath: filepath.Join(t.TempDir(), "missing"), HomeDirectory: t.TempDir(), SystemDirectories: []string{}})
 	commandLineService := NewService(service, installer, runner)
 	StartIntegration(commandLineService)
 	status := commandLineService.GetCommandLineStatus()

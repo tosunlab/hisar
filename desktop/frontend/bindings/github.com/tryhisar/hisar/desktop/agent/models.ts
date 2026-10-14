@@ -3,7 +3,7 @@
 
 /**
  * ApprovalEvent is what the approval window shows; AppName and AppIconURL describe the app responsible for the request,
- * or for another RequesterKind what stands in for one ("A background process"), with the programs in between in AllChainProcess.
+ * or for another RequesterKind what stands in for one ("A background process"), with the programs in between in ChainProcesses.
  * Command-line requests have Kind ApprovalKindCommandLine and no key; either kind unlocks Hisar when IsUnlockRequired.
  */
 export interface ApprovalEvent {
@@ -43,7 +43,7 @@ export interface ApprovalEvent {
     "isPhoneApproval": boolean;
 
     /**
-     * AllSecretName lists the first secrets of a secrets.resolve request; MoreSecretCount counts the rest.
+     * SecretNames lists the first secrets of a secrets.resolve request; MoreSecretCount counts the rest.
      */
     "allSecretName": string[] | null;
     "moreSecretCount": number;

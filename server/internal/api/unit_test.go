@@ -23,7 +23,7 @@ import (
 
 func TestSecretsCreatedOnceWithPrivateMode(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "secrets.json")
-	created, err := LoadOrCreateAllSecret(path)
+	created, err := LoadOrCreateSecrets(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -34,14 +34,14 @@ func TestSecretsCreatedOnceWithPrivateMode(t *testing.T) {
 	if fileInfo.Mode().Perm() != 0o600 {
 		t.Errorf("mode = %o", fileInfo.Mode().Perm())
 	}
-	reloaded, err := LoadOrCreateAllSecret(path)
+	reloaded, err := LoadOrCreateSecrets(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(created.OpaqueKeyMaterial, reloaded.OpaqueKeyMaterial) || !bytes.Equal(created.HMACKey, reloaded.HMACKey) {
 		t.Error("secrets changed on reload")
 	}
-	if _, err := CreateServer(nil, reloaded, Config{}); err != nil {
+	if _, err := NewServer(nil, reloaded, Config{}); err != nil {
 		t.Errorf("reloaded secrets unusable: %v", err)
 	}
 }
@@ -49,7 +49,7 @@ func TestSecretsCreatedOnceWithPrivateMode(t *testing.T) {
 func TestSecretsRejectsIncomplete(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "secrets.json")
 	os.WriteFile(path, []byte(`{"hmacKey":"AAAA"}`), 0o600)
-	if _, err := LoadOrCreateAllSecret(path); err == nil {
+	if _, err := LoadOrCreateSecrets(path); err == nil {
 		t.Error("incomplete secrets accepted")
 	}
 }
@@ -88,10 +88,10 @@ func TestIPLimiter(t *testing.T) {
 	}
 }
 
-func sendGet(t *testing.T, app *fiber.App, path string, allHeader map[string]string) (int, string) {
+func sendGet(t *testing.T, app *fiber.App, path string, headers map[string]string) (int, string) {
 	t.Helper()
 	request := httptest.NewRequest("GET", path, nil)
-	for key, value := range allHeader {
+	for key, value := range headers {
 		request.Header.Set(key, value)
 	}
 	response, err := app.Test(request)
@@ -103,12 +103,12 @@ func sendGet(t *testing.T, app *fiber.App, path string, allHeader map[string]str
 }
 
 func TestClientIP(t *testing.T) {
-	allForwardedHeader := map[string]string{"X-Forwarded-For": "6.6.6.6, 1.2.3.4"}
+	forwardedHeaders := map[string]string{"X-Forwarded-For": "6.6.6.6, 1.2.3.4"}
 	for _, trustProxy := range []bool{false, true} {
 		server := &Server{config: Config{TrustProxy: trustProxy}}
 		app := fiber.New()
 		app.Get("/", func(c fiber.Ctx) error { return c.SendString(server.getClientIP(c)) })
-		_, clientIP := sendGet(t, app, "/", allForwardedHeader)
+		_, clientIP := sendGet(t, app, "/", forwardedHeaders)
 		if trustProxy && clientIP != "1.2.3.4" {
 			t.Errorf("trusted proxy: %s", clientIP)
 		}
@@ -120,12 +120,12 @@ func TestClientIP(t *testing.T) {
 
 func TestErrorHandler(t *testing.T) {
 	app := fiber.New(fiber.Config{ErrorHandler: handleError, BodyLimit: 16})
-	app.Use(setAllSecurityHeader)
+	app.Use(setSecurityHeaders)
 	app.Get("/internal", func(c fiber.Ctx) error { return errors.New("database password is hunter2") })
 	app.Get("/forbidden", func(c fiber.Ctx) error { return createAPIError(fiber.StatusForbidden, "admin only") })
 	app.Post("/body", func(c fiber.Ctx) error { return c.SendStatus(fiber.StatusNoContent) })
 
-	allCase := []struct {
+	cases := []struct {
 		path   string
 		status int
 		error  string
@@ -134,7 +134,7 @@ func TestErrorHandler(t *testing.T) {
 		{"/forbidden", 403, "admin only"},
 		{"/missing", 404, ""},
 	}
-	for _, testCase := range allCase {
+	for _, testCase := range cases {
 		status, body := sendGet(t, app, testCase.path, nil)
 		var decoded apitypes.Error
 		if status != testCase.status || json.Unmarshal([]byte(body), &decoded) != nil || (testCase.error != "" && decoded.Error != testCase.error) {
@@ -166,7 +166,7 @@ func TestErrorHandler(t *testing.T) {
 }
 
 func TestPrivacyPolicyAndTerms(t *testing.T) {
-	server, err := CreateServer(nil, generateAllSecret(), Config{})
+	server, err := NewServer(nil, generateSecrets(), Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,7 +225,7 @@ func TestLegalPagesLinkToEachOther(t *testing.T) {
 }
 
 func TestNormalEndpointsKeepSmallBodyLimit(t *testing.T) {
-	server, err := CreateServer(nil, generateAllSecret(), Config{})
+	server, err := NewServer(nil, generateSecrets(), Config{})
 	if err != nil {
 		t.Fatal(err)
 	}

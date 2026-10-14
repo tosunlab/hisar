@@ -32,7 +32,7 @@ import (
 )
 
 //go:embed all:frontend/dist
-var allAsset embed.FS
+var assets embed.FS
 
 func main() {
 	statePath, err := localstate.GetPath("HISAR_DESKTOP_STATE", "desktop.json")
@@ -48,7 +48,7 @@ func main() {
 		log.Fatal(err)
 	}
 	clipboard := &wailsClipboard{}
-	touchID := biometric.Create("Hisar Touch ID")
+	touchID := biometric.New("Hisar Touch ID")
 	notifier := &appNotifier{}
 	fileSaver := &wailsFileSaver{}
 	fileOpener := &wailsFileOpener{}
@@ -69,10 +69,10 @@ func main() {
 		FileOpener:            fileOpener,
 		OnLock: func() {
 			if agentServer != nil {
-				agentServer.ClearAllApproval()
+				agentServer.ClearApprovals()
 			}
 			if approver != nil {
-				approver.ClearAllRememberedSigning()
+				approver.ClearRememberedSignings()
 			}
 		},
 		OnRemoteChange:     notifier.NotifyRemoteChange,
@@ -84,11 +84,11 @@ func main() {
 			}
 		},
 	}
-	vaultService, err := app.CreateService(vaultConfig)
+	vaultService, err := app.NewService(vaultConfig)
 	if err != nil {
 		log.Fatal(err)
 	}
-	updateService := app.CreateUpdateService(vaultService, updater.Updater{})
+	updateService := app.NewUpdateService(vaultService, updater.Updater{})
 	executablePath, err := os.Executable()
 	if err != nil {
 		log.Fatal(err)
@@ -118,9 +118,9 @@ func main() {
 		}
 		return approvalWindow.NativeWindow()
 	}, biometric.PromptSizeSmall)
-	approvalPreference := app.CreateApprovalPreference(vaultService)
-	requesterResolver := appinfo.CreateSystemResolver()
-	approver = agent.CreateApprover(agent.ApproverConfig{
+	approvalPreference := app.NewApprovalPreference(vaultService)
+	requesterResolver := appinfo.NewSystemResolver()
+	approver = agent.NewApprover(agent.ApproverConfig{
 		Biometric:       approvalTouchID,
 		CancelBiometric: approvalTouchID.CancelPrompt,
 		Emit:            func(eventName string, data any) { wailsApp.Event.Emit(eventName, data) },
@@ -136,8 +136,8 @@ func main() {
 		GetAppIconPNG:      requesterResolver.GetIconPNG,
 		HomeDirectory:      homeDirectory,
 		IsCompactApproval:  approvalPreference.IsCompactSSHApproval,
-		Unlocker:           app.CreateApprovalUnlocker(vaultService, func() { wailsApp.Event.Emit(eventUnlocked, "approval") }),
-		PhoneApprover:      app.CreatePhoneApprover(vaultService),
+		Unlocker:           app.NewApprovalUnlocker(vaultService, func() { wailsApp.Event.Emit(eventUnlocked, "approval") }),
+		PhoneApprover:      app.NewPhoneApprover(vaultService),
 		GetSigningRememberDuration: func() time.Duration {
 			return time.Duration(approvalPreference.GetSigningRememberSeconds()) * time.Second
 		},
@@ -149,13 +149,13 @@ func main() {
 			return requester.App.Path, requester.App.Path != ""
 		},
 	}
-	agentServer = sshagent.CreateServer(app.CreateSSHKeySource(vaultService), approver, peerResolver)
-	agentServer.SetAllKnownHostsPath([]string{filepath.Join(homeDirectory, ".ssh", "known_hosts"), "/etc/ssh/ssh_known_hosts"})
+	agentServer = sshagent.NewServer(app.NewSSHKeySource(vaultService), approver, peerResolver)
+	agentServer.SetKnownHostsPaths([]string{filepath.Join(homeDirectory, ".ssh", "known_hosts"), "/etc/ssh/ssh_known_hosts"})
 	socketPath := os.Getenv("HISAR_SSH_AGENT_SOCKET")
 	if socketPath == "" {
 		socketPath = agent.GetDefaultSocketPath(homeDirectory)
 	}
-	agentService := agent.CreateService(agent.Config{
+	agentService := agent.NewService(agent.Config{
 		HomeDirectory:      homeDirectory,
 		SocketPath:         socketPath,
 		Server:             agentServer,
@@ -169,26 +169,26 @@ func main() {
 	agentStopped := make(chan struct{})
 
 	browserHostPath := filepath.Join(executableDirectory, "hisar-browser-host")
-	browserBridge := app.CreateBrowserBridge(vaultService, app.BrowserBridgeConfig{
+	browserBridge := app.NewBrowserBridge(vaultService, app.BrowserBridgeConfig{
 		ShowPairing: func(request *app.BrowserPairingRequest) { wailsApp.Event.Emit(eventBrowserPairing, request) },
 		ShowWindow:  showWindow,
-		InstallAllHostManifest: func() []browserprotocol.BrowserInstallation {
+		InstallHostManifests: func() []browserprotocol.BrowserInstallation {
 			if _, err := os.Stat(browserHostPath); err != nil {
 				return []browserprotocol.BrowserInstallation{}
 			}
-			return browser.InstallAllHostManifest(homeDirectory, browserHostPath)
+			return browser.InstallHostManifests(homeDirectory, browserHostPath)
 		},
 	})
 	browserSocketPath := os.Getenv("HISAR_BROWSER_SOCKET")
 	if browserSocketPath == "" {
 		browserSocketPath = browser.GetDefaultSocketPath(homeDirectory)
 	}
-	browserServer := browser.CreateServer(app.CreateBrowserRequestHandler(browserBridge), localsocket.SystemPeerResolver{}, browserHostPath)
+	browserServer := browser.NewServer(app.NewBrowserRequestHandler(browserBridge), localsocket.SystemPeerResolver{}, browserHostPath)
 
-	commandLineApprovals := clisocket.CreateSessionApprovals(clisocket.DefaultApprovalLifetime, nil)
-	commandLineBridge := app.CreateCommandLineBridge(vaultService, commandLineApprovals)
+	commandLineApprovals := clisocket.NewSessionApprovals(clisocket.DefaultApprovalLifetime, nil)
+	commandLineBridge := app.NewCommandLineBridge(vaultService, commandLineApprovals)
 	var commandLineService *commandline.Service
-	commandLineServer := clisocket.CreateServer(clisocket.ServerConfig{
+	commandLineServer := clisocket.NewServer(clisocket.ServerConfig{
 		Handler:             commandLineBridge,
 		CheckUpdateRequired: commandLineBridge.CheckUpdateRequired,
 		Approver:            approver,
@@ -200,17 +200,17 @@ func main() {
 	if commandLineSocketPath == "" {
 		commandLineSocketPath = cliprotocol.GetDefaultSocketPath(homeDirectory)
 	}
-	commandLineRunner := clisocket.CreateRunner(commandLineServer, commandLineSocketPath)
+	commandLineRunner := clisocket.NewRunner(commandLineServer, commandLineSocketPath)
 	userPathReader := &commandline.UserPathReader{Shell: getLoginShell()}
-	commandLineService = commandline.NewService(vaultService, commandline.CreateInstaller(commandline.InstallerConfig{
+	commandLineService = commandline.NewService(vaultService, commandline.NewInstaller(commandline.InstallerConfig{
 		BundledPath:   filepath.Join(filepath.Dir(executableDirectory), "Helpers", "hisar"),
 		HomeDirectory: homeDirectory,
 		GetUserPath:   userPathReader.Read,
 		Shell:         getLoginShell(),
 	}), commandLineRunner)
 
-	loginItemService := loginitem.NewService(vaultService, background.CreateLoginItem(homeDirectory))
-	inviteLinkService := app.CreateInviteLinkService()
+	loginItemService := loginitem.NewService(vaultService, background.NewLoginItem(homeDirectory))
+	inviteLinkService := app.NewInviteLinkService()
 	isHiddenLaunchRequested := background.IsHiddenLaunchRequested(os.Args[1:])
 	background.StartLaunchObserver()
 
@@ -246,7 +246,7 @@ func main() {
 			}
 		},
 		Assets: application.AssetOptions{
-			Handler: application.AssetFileServerFS(allAsset),
+			Handler: application.AssetFileServerFS(assets),
 		},
 		// Accessory until the main window shows, so a hidden launch never shows a Dock icon or takes the focus.
 		Mac: application.MacOptions{

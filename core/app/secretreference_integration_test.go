@@ -80,9 +80,9 @@ func checkSecretReferenceThroughApp(t *testing.T, service *Service, approver *un
 		t.Fatalf("hisar run asked %d times", count-approvalCount)
 	}
 	approver.mutex.Lock()
-	request := approver.allRequest[len(approver.allRequest)-1]
+	request := approver.requests[len(approver.requests)-1]
 	approver.mutex.Unlock()
-	if !request.IsSecretRequest || !slices.Equal(request.AllSecretName, []string{"Personal › Deploy › password", "Personal › Deploy › API token"}) || !slices.Equal(request.CommandLine, []string{testBinary}) {
+	if !request.IsSecretRequest || !slices.Equal(request.SecretNames, []string{"Personal › Deploy › password", "Personal › Deploy › API token"}) || !slices.Equal(request.CommandLine, []string{testBinary}) {
 		t.Errorf("approval request: %+v", request)
 	}
 

@@ -43,15 +43,15 @@ func (s *Store) CreateVault(ctx context.Context, vault *Vault, ownerWrappedKey [
 	})
 }
 
-func (s *Store) ListAllVault(ctx context.Context, accountID string) ([]Vault, error) {
-	allRow, err := s.pool.Query(ctx, `
+func (s *Store) ListVaults(ctx context.Context, accountID string) ([]Vault, error) {
+	rows, err := s.pool.Query(ctx, `
 		SELECT v.id, v.type, v.enc_name, v.seq, v.created_by, v.created_at, a.role, a.wrapped_key
 		FROM vaults v JOIN vault_access a ON a.vault_id = v.id
 		WHERE a.account_id = $1 ORDER BY v.created_at`, accountID)
 	if err != nil {
 		return nil, err
 	}
-	return pgx.CollectRows(allRow, func(row pgx.CollectableRow) (Vault, error) {
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (Vault, error) {
 		var vault Vault
 		err := row.Scan(&vault.ID, &vault.Type, &vault.EncName, &vault.Seq, &vault.CreatedBy, &vault.CreatedAt, &vault.Role, &vault.WrappedKey)
 		return vault, err
@@ -71,13 +71,13 @@ func (s *Store) GetVaultRole(ctx context.Context, vaultID, accountID string) (st
 	return role, convertNoRowsToNotFound(err)
 }
 
-func (s *Store) ListAllMember(ctx context.Context, vaultID string) ([]Member, error) {
-	allRow, err := s.pool.Query(ctx,
+func (s *Store) ListMembers(ctx context.Context, vaultID string) ([]Member, error) {
+	rows, err := s.pool.Query(ctx,
 		`SELECT account_id, role, wrapped_key, granted_by FROM vault_access WHERE vault_id = $1 ORDER BY granted_at`, vaultID)
 	if err != nil {
 		return nil, err
 	}
-	return pgx.CollectRows(allRow, func(row pgx.CollectableRow) (Member, error) {
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (Member, error) {
 		var member Member
 		err := row.Scan(&member.AccountID, &member.Role, &member.WrappedKey, &member.GrantedBy)
 		return member, err

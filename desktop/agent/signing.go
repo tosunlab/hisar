@@ -15,8 +15,8 @@ type signingScope struct {
 }
 
 type rememberedSigning struct {
-	allExpiresAtByScope map[signingScope]time.Time
-	epoch               uint64
+	expiresAtByScope map[signingScope]time.Time
+	epoch            uint64
 }
 
 func formatRememberDuration(duration time.Duration) string {
@@ -56,7 +56,7 @@ func findSigningScope(event ApprovalEvent, request sshagent.ApprovalRequest) (si
 func (approver *Approver) isSigningRemembered(scope signingScope) bool {
 	approver.mutex.Lock()
 	defer approver.mutex.Unlock()
-	expiresAt, isFound := approver.signing.allExpiresAtByScope[scope]
+	expiresAt, isFound := approver.signing.expiresAtByScope[scope]
 	return isFound && approver.config.Now().Before(expiresAt)
 }
 
@@ -73,17 +73,17 @@ func (approver *Approver) rememberSigning(scope signingScope, duration time.Dura
 	if approver.signing.epoch != epoch || duration <= 0 {
 		return
 	}
-	if approver.signing.allExpiresAtByScope == nil {
-		approver.signing.allExpiresAtByScope = map[signingScope]time.Time{}
+	if approver.signing.expiresAtByScope == nil {
+		approver.signing.expiresAtByScope = map[signingScope]time.Time{}
 	}
-	approver.signing.allExpiresAtByScope[scope] = approver.config.Now().Add(duration)
+	approver.signing.expiresAtByScope[scope] = approver.config.Now().Add(duration)
 }
 
-// ClearAllRememberedSigning forgets every remembered commit signature; Hisar calls it when it locks and when the setting changes.
-func (approver *Approver) ClearAllRememberedSigning() {
+// ClearRememberedSignings forgets every remembered commit signature; Hisar calls it when it locks and when the setting changes.
+func (approver *Approver) ClearRememberedSignings() {
 	approver.mutex.Lock()
 	defer approver.mutex.Unlock()
-	approver.signing.allExpiresAtByScope = nil
+	approver.signing.expiresAtByScope = nil
 	approver.signing.epoch++
 }
 

@@ -22,8 +22,8 @@ type Server struct {
 	listener        net.Listener
 }
 
-// CreateServer accepts only peers running allowedPeerPath when that file exists, i.e. in the packaged app.
-func CreateServer(handler browserprotocol.Handler, peerResolver localsocket.PeerResolver, allowedPeerPath string) *Server {
+// NewServer accepts only peers running allowedPeerPath when that file exists, i.e. in the packaged app.
+func NewServer(handler browserprotocol.Handler, peerResolver localsocket.PeerResolver, allowedPeerPath string) *Server {
 	return &Server{handler: handler, peerResolver: peerResolver, allowedPeerPath: allowedPeerPath}
 }
 
@@ -88,7 +88,7 @@ func (s *Server) serveConnection(ctx context.Context, connection net.Conn) {
 		response := s.answerMessage(ctx, message)
 		encoded, err := json.Marshal(response)
 		if err != nil {
-			encoded, _ = json.Marshal(browserprotocol.Response{ID: response.ID, Error: browserprotocol.CreateError(browserprotocol.ErrorInternal, err.Error())})
+			encoded, _ = json.Marshal(browserprotocol.Response{ID: response.ID, Error: browserprotocol.NewError(browserprotocol.ErrorInternal, err.Error())})
 		}
 		if err := browserprotocol.WriteMessage(connection, encoded); err != nil {
 			return

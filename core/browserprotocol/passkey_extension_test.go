@@ -18,8 +18,8 @@ func TestPasskeyExtensionParameters(t *testing.T) {
 	if byCredential.First != "" || byCredential.Second == nil || *byCredential.Second != "Aw" {
 		t.Errorf("evalByCredential: %+v", byCredential)
 	}
-	if len(request.AllAcceptedCredentialID) != 2 {
-		t.Errorf("allAcceptedCredentialIds: %+v", request.AllAcceptedCredentialID)
+	if len(request.AcceptedCredentialIDs) != 2 {
+		t.Errorf("allAcceptedCredentialIds: %+v", request.AcceptedCredentialIDs)
 	}
 
 	second := "Bg"

@@ -30,7 +30,7 @@ func (s *Session) CreateVault(ctx context.Context, name, vaultType string) (*Vau
 	if err != nil {
 		return nil, err
 	}
-	wrappedKey, err := crypt.WrapVaultKey(s.Keyset.GetAllPublicKey(s.AccountID).KEM, vaultID, s.AccountID, vaultKey)
+	wrappedKey, err := crypt.WrapVaultKey(s.Keyset.GetPublicKeys(s.AccountID).KEM, vaultID, s.AccountID, vaultKey)
 	if err != nil {
 		return nil, err
 	}
@@ -41,13 +41,13 @@ func (s *Session) CreateVault(ctx context.Context, name, vaultType string) (*Vau
 	return &Vault{ID: vaultID, Type: vaultType, Name: name, Role: apitypes.VaultOwner, Key: vaultKey}, nil
 }
 
-func (s *Session) ListAllVault(ctx context.Context) ([]Vault, error) {
-	allProtoVault, err := s.listAllProtoVault(ctx)
+func (s *Session) ListVaults(ctx context.Context) ([]Vault, error) {
+	protoVaults, err := s.listProtoVaults(ctx)
 	if err != nil {
 		return nil, err
 	}
-	allVault := make([]Vault, 0, len(allProtoVault))
-	for _, protoVault := range allProtoVault {
+	vaults := make([]Vault, 0, len(protoVaults))
+	for _, protoVault := range protoVaults {
 		vaultKey, err := s.Keyset.UnwrapVaultKey(protoVault.ID, s.AccountID, protoVault.WrappedKey)
 		if err != nil {
 			return nil, fmt.Errorf("vault %s: %w", protoVault.ID, err)
@@ -56,21 +56,21 @@ func (s *Session) ListAllVault(ctx context.Context) ([]Vault, error) {
 		if err != nil {
 			return nil, fmt.Errorf("vault %s: %w", protoVault.ID, err)
 		}
-		allVault = append(allVault, Vault{
+		vaults = append(vaults, Vault{
 			ID: protoVault.ID, Type: protoVault.Type, Name: string(name), Role: protoVault.Role, Key: vaultKey,
 		})
 	}
-	return allVault, nil
+	return vaults, nil
 }
 
 func (s *Session) FindVault(ctx context.Context, nameOrID string) (*Vault, error) {
-	allVault, err := s.ListAllVault(ctx)
+	vaults, err := s.ListVaults(ctx)
 	if err != nil {
 		return nil, err
 	}
-	for i := range allVault {
-		if allVault[i].ID == nameOrID || strings.EqualFold(allVault[i].Name, nameOrID) {
-			return &allVault[i], nil
+	for i := range vaults {
+		if vaults[i].ID == nameOrID || strings.EqualFold(vaults[i].Name, nameOrID) {
+			return &vaults[i], nil
 		}
 	}
 	return nil, fmt.Errorf("vault %q: %w", nameOrID, ErrNotFound)
@@ -83,19 +83,19 @@ type RemovedVault struct {
 	Name string
 }
 
-func (s *Session) noteAllRemovedVault(allCachedVault, allCurrentVault []apitypes.Vault) {
-	allCurrentID := map[string]bool{}
-	for _, vault := range allCurrentVault {
-		allCurrentID[vault.ID] = true
+func (s *Session) noteRemovedVaults(cachedVaults, currentVaults []apitypes.Vault) {
+	currentIDs := map[string]bool{}
+	for _, vault := range currentVaults {
+		currentIDs[vault.ID] = true
 	}
 	s.removalMutex.Lock()
 	defer s.removalMutex.Unlock()
-	for _, cachedVault := range allCachedVault {
-		if allCurrentID[cachedVault.ID] {
+	for _, cachedVault := range cachedVaults {
+		if currentIDs[cachedVault.ID] {
 			continue
 		}
-		if s.allOwnRemovalID[cachedVault.ID] {
-			delete(s.allOwnRemovalID, cachedVault.ID)
+		if s.ownRemovalIDs[cachedVault.ID] {
+			delete(s.ownRemovalIDs, cachedVault.ID)
 			continue
 		}
 		removed := RemovedVault{ID: cachedVault.ID}
@@ -107,26 +107,26 @@ func (s *Session) noteAllRemovedVault(allCachedVault, allCurrentVault []apitypes
 				clear(vaultKey)
 			}
 		}
-		s.allRemovedVault = append(s.allRemovedVault, removed)
+		s.removedVaults = append(s.removedVaults, removed)
 	}
 }
 
 func (s *Session) noteOwnRemoval(vaultID string) {
 	s.removalMutex.Lock()
 	defer s.removalMutex.Unlock()
-	if s.allOwnRemovalID == nil {
-		s.allOwnRemovalID = map[string]bool{}
+	if s.ownRemovalIDs == nil {
+		s.ownRemovalIDs = map[string]bool{}
 	}
-	s.allOwnRemovalID[vaultID] = true
+	s.ownRemovalIDs[vaultID] = true
 }
 
-// TakeAllRemovedVault returns the vaults that disappeared since the last call, other than those this session deleted or left.
-func (s *Session) TakeAllRemovedVault() []RemovedVault {
+// TakeRemovedVaults returns the vaults that disappeared since the last call, other than those this session deleted or left.
+func (s *Session) TakeRemovedVaults() []RemovedVault {
 	s.removalMutex.Lock()
 	defer s.removalMutex.Unlock()
-	allRemoved := s.allRemovedVault
-	s.allRemovedVault = nil
-	return allRemoved
+	removed := s.removedVaults
+	s.removedVaults = nil
+	return removed
 }
 
 // VaultDeletion says what happens to a vault's items: moved into MoveTo, or deleted with the vault when IsDeletingItems.
@@ -205,18 +205,18 @@ func (s *Session) DeleteVault(ctx context.Context, vault *Vault, deletion VaultD
 			return 0, err
 		}
 		s.noteOwnRemoval(vault.ID)
-		return len(request.AllMovedItem), nil
+		return len(request.MovedItems), nil
 	}
 }
 
 func (s *Session) buildVaultMove(ctx context.Context, vault, target *Vault) (*apitypes.DeleteVaultRequest, error) {
-	allProtoItem, err := s.listAllProtoItem(ctx, vault)
+	protoItems, err := s.listProtoItems(ctx, vault)
 	if err != nil {
 		return nil, err
 	}
-	request := &apitypes.DeleteVaultRequest{MoveToVaultID: target.ID, AllMovedItem: []apitypes.MovedItem{}}
-	for index := range allProtoItem {
-		protoItem := &allProtoItem[index]
+	request := &apitypes.DeleteVaultRequest{MoveToVaultID: target.ID, MovedItems: []apitypes.MovedItem{}}
+	for index := range protoItems {
+		protoItem := &protoItems[index]
 		if protoItem.Deleted {
 			continue
 		}
@@ -225,7 +225,7 @@ func (s *Session) buildVaultMove(ctx context.Context, vault, target *Vault) (*ap
 		if err != nil {
 			return nil, err
 		}
-		request.AllMovedItem = append(request.AllMovedItem, apitypes.MovedItem{
+		request.MovedItems = append(request.MovedItems, apitypes.MovedItem{
 			ID: protoItem.ID, BaseRevision: protoItem.Revision, Revision: moved.revision, Overview: moved.overview, Details: moved.details,
 		})
 	}

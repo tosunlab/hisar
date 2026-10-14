@@ -82,16 +82,16 @@ func (capture *outputCapture) getText() (string, bool) {
 
 type preparedCommand struct {
 	path             string
-	allArgument      []string
+	arguments        []string
 	workingDirectory string
-	allVariableName  []string
-	allReference     []string
+	variableNames    []string
+	references       []string
 	timeout          time.Duration
 }
 
 // prepareCommand checks everything that can fail before the user is asked: names, references, directory, program.
 func prepareCommand(input RunInput, defaultDirectory string) (preparedCommand, error) {
-	prepared := preparedCommand{allArgument: input.Command, timeout: DefaultTimeout}
+	prepared := preparedCommand{arguments: input.Command, timeout: DefaultTimeout}
 	if len(input.Command) == 0 || input.Command[0] == "" {
 		return prepared, errors.New("command is empty; pass the program and its arguments, e.g. [\"npm\", \"test\"]")
 	}
@@ -112,26 +112,26 @@ func prepareCommand(input RunInput, defaultDirectory string) (preparedCommand, e
 		return prepared, errors.New("the command's arguments are longer than 1 MiB")
 	}
 	for name := range input.Env {
-		prepared.allVariableName = append(prepared.allVariableName, name)
+		prepared.variableNames = append(prepared.variableNames, name)
 	}
-	slices.Sort(prepared.allVariableName)
-	var allFailure []string
-	for _, name := range prepared.allVariableName {
+	slices.Sort(prepared.variableNames)
+	var failures []string
+	for _, name := range prepared.variableNames {
 		reference := input.Env[name]
 		switch {
 		case !variableNamePattern.MatchString(name):
-			allFailure = append(allFailure, fmt.Sprintf("%q is not a valid variable name", name))
+			failures = append(failures, fmt.Sprintf("%q is not a valid variable name", name))
 		case !secretreference.IsReference(reference):
-			allFailure = append(allFailure, fmt.Sprintf("%s: the value must be a hisar://vault/item/field reference", name))
+			failures = append(failures, fmt.Sprintf("%s: the value must be a hisar://vault/item/field reference", name))
 		default:
 			if _, err := secretreference.Parse(reference); err != nil {
-				allFailure = append(allFailure, fmt.Sprintf("%s: %s: %v", name, reference, err))
+				failures = append(failures, fmt.Sprintf("%s: %s: %v", name, reference, err))
 			}
 		}
-		prepared.allReference = append(prepared.allReference, reference)
+		prepared.references = append(prepared.references, reference)
 	}
-	if len(allFailure) > 0 {
-		return prepared, errors.New(strings.Join(allFailure, "; "))
+	if len(failures) > 0 {
+		return prepared, errors.New(strings.Join(failures, "; "))
 	}
 	if input.TimeoutSeconds < 0 || time.Duration(input.TimeoutSeconds)*time.Second > MaximumTimeout {
 		return prepared, fmt.Errorf("timeoutSeconds must be between 1 and %d", int(MaximumTimeout.Seconds()))
@@ -166,40 +166,40 @@ func prepareCommand(input RunInput, defaultDirectory string) (preparedCommand, e
 }
 
 // buildEnvironment replaces or adds the variables that come from Hisar.
-func buildEnvironment(allBaseEntry []string, allValueByName map[string]string) []string {
-	allEntry := make([]string, 0, len(allBaseEntry)+len(allValueByName))
-	for _, entry := range allBaseEntry {
+func buildEnvironment(baseEntries []string, valuesByName map[string]string) []string {
+	entries := make([]string, 0, len(baseEntries)+len(valuesByName))
+	for _, entry := range baseEntries {
 		name, _, _ := strings.Cut(entry, "=")
-		if _, isReplaced := allValueByName[name]; !isReplaced {
-			allEntry = append(allEntry, entry)
+		if _, isReplaced := valuesByName[name]; !isReplaced {
+			entries = append(entries, entry)
 		}
 	}
-	allName := make([]string, 0, len(allValueByName))
-	for name := range allValueByName {
-		allName = append(allName, name)
+	names := make([]string, 0, len(valuesByName))
+	for name := range valuesByName {
+		names = append(names, name)
 	}
-	slices.Sort(allName)
-	for _, name := range allName {
-		allEntry = append(allEntry, name+"="+allValueByName[name])
+	slices.Sort(names)
+	for _, name := range names {
+		entries = append(entries, name+"="+valuesByName[name])
 	}
-	return allEntry
+	return entries
 }
 
 // runPrepared starts the command in its own process group, masks its output, and stops the group at the timeout.
-func runPrepared(ctx context.Context, prepared preparedCommand, allEnvironmentEntry []string, allSecretValue []string, killDelay time.Duration) (RunOutput, error) {
+func runPrepared(ctx context.Context, prepared preparedCommand, environmentEntries []string, secretValues []string, killDelay time.Duration) (RunOutput, error) {
 	var stdout, stderr outputCapture
-	stdoutMasker := masking.CreateSecretMasker(&stdout, allSecretValue)
-	stderrMasker := masking.CreateSecretMasker(&stderr, allSecretValue)
-	command := exec.Command(prepared.path, prepared.allArgument[1:]...)
-	command.Args[0] = prepared.allArgument[0]
+	stdoutMasker := masking.NewSecretMasker(&stdout, secretValues)
+	stderrMasker := masking.NewSecretMasker(&stderr, secretValues)
+	command := exec.Command(prepared.path, prepared.arguments[1:]...)
+	command.Args[0] = prepared.arguments[0]
 	command.Dir = prepared.workingDirectory
-	command.Env = allEnvironmentEntry
+	command.Env = environmentEntries
 	command.Stdout, command.Stderr = stdoutMasker, stderrMasker
 	command.WaitDelay = outputDrainDuration
 	startInProcessGroup(command)
 	startedAt := time.Now()
 	if err := command.Start(); err != nil {
-		return RunOutput{}, fmt.Errorf("%s: %v", prepared.allArgument[0], err)
+		return RunOutput{}, fmt.Errorf("%s: %v", prepared.arguments[0], err)
 	}
 	waitResult := make(chan error, 1)
 	go func() { waitResult <- command.Wait() }()

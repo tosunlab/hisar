@@ -56,7 +56,7 @@ func TestUpdateServiceFollowsSession(t *testing.T) {
 	}
 	service, _, _ := createTestService(t, statePath, createMemorySecretKeyStore())
 	updater := &fakeUpdater{isAvailable: true}
-	updateService := CreateUpdateService(service, updater)
+	updateService := NewUpdateService(service, updater)
 
 	if feedURL, authorization := updater.getSession(); feedURL != "https://hisar.test/api/v1/desktop/updates/appcast.xml" || authorization != "Bearer session-token" {
 		t.Errorf("session at launch: %q %q", feedURL, authorization)
@@ -84,7 +84,7 @@ func TestUpdateServiceFollowsSession(t *testing.T) {
 
 	relaunched, _, _ := createTestService(t, statePath, createMemorySecretKeyStore())
 	relaunchedUpdater := &fakeUpdater{isAvailable: true, isAutomaticCheckEnabled: true}
-	status = CreateUpdateService(relaunched, relaunchedUpdater).GetUpdateStatus()
+	status = NewUpdateService(relaunched, relaunchedUpdater).GetUpdateStatus()
 	if status.IsSignedIn || status.IsAutomaticCheckEnabled || relaunchedUpdater.isAutomaticCheckEnabled {
 		t.Errorf("preference lost after sign-out and relaunch: %+v", status)
 	}
@@ -97,7 +97,7 @@ func TestUpdateServiceWithoutUpdater(t *testing.T) {
 	state.Save()
 	service, _, _ := createTestService(t, statePath, createMemorySecretKeyStore())
 	updater := &fakeUpdater{}
-	updateService := CreateUpdateService(service, updater)
+	updateService := NewUpdateService(service, updater)
 	if status, err := updateService.CheckForUpdates(); !errors.Is(err, errUpdatesUnavailable) || status.IsAvailable || updater.checkCount != 0 {
 		t.Errorf("check without an updater: %+v %v", status, err)
 	}

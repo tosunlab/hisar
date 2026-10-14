@@ -14,7 +14,7 @@ func TestComposeCredentialsChangedEmail(t *testing.T) {
 		change               string
 		signedOutDeviceCount int
 		subject              string
-		allExpected          []string
+		expectedValues       []string
 	}{
 		{apitypes.CredentialChangeMasterPassword, 0, "Your Hisar master password was changed", []string{"No other devices were signed in.", "11 October 2026 at 09:30 UTC"}},
 		{apitypes.CredentialChangeMasterPassword, 1, "Your Hisar master password was changed", []string{"Your other device was signed out.", "Your Secret Key and Emergency Kit stay the same."}},
@@ -24,7 +24,7 @@ func TestComposeCredentialsChangedEmail(t *testing.T) {
 		if message.To != "alice@example.com" || message.Subject != testCase.subject {
 			t.Errorf("%s: %q to %q", testCase.change, message.Subject, message.To)
 		}
-		for _, expected := range testCase.allExpected {
+		for _, expected := range testCase.expectedValues {
 			if !strings.Contains(message.Body, expected) {
 				t.Errorf("%s with %d devices: no %q in %s", testCase.change, testCase.signedOutDeviceCount, expected, message.Body)
 			}
@@ -44,11 +44,11 @@ func TestEventBrokerEndsAllStreamExceptTheKeptOne(t *testing.T) {
 	kept, _ := broker.subscribe("ALICE1", []byte("kept"))
 	ended, _ := broker.subscribe("ALICE1", []byte("ended"))
 	other, _ := broker.subscribe("BOB111", []byte("bob"))
-	broker.endAllStream("ALICE1", []byte("kept"))
+	broker.endStreams("ALICE1", []byte("kept"))
 	if broker.isEnded(kept) || !broker.isEnded(ended) || broker.isEnded(other) {
 		t.Errorf("ended: kept %v, ended %v, other account %v", broker.isEnded(kept), broker.isEnded(ended), broker.isEnded(other))
 	}
-	broker.endAllStream("ALICE1", nil)
+	broker.endStreams("ALICE1", nil)
 	if !broker.isEnded(kept) {
 		t.Error("ending every stream kept one")
 	}

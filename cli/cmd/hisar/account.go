@@ -27,10 +27,10 @@ const (
 
 var errSignedOutByServer = errors.New("this device was signed out. If your master password or Secret Key was changed on another device, sign in again with `hisar login`")
 
-func runAccount(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
+func runAccount(ctx context.Context, flags *flag.FlagSet, args []string) error {
 	action := ""
-	if len(allArg) > 0 && !strings.HasPrefix(allArg[0], "-") {
-		action, allArg = allArg[0], allArg[1:]
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		action, args = args[0], args[1:]
 	}
 	if action == "" {
 		var err error
@@ -41,11 +41,11 @@ func runAccount(ctx context.Context, flags *flag.FlagSet, allArg []string) error
 	}
 	switch action {
 	case accountChangePassword:
-		return runChangePassword(ctx, flags, allArg)
+		return runChangePassword(ctx, flags, args)
 	case accountReplaceSecretKey:
-		return runReplaceSecretKey(ctx, flags, allArg)
+		return runReplaceSecretKey(ctx, flags, args)
 	case accountDelete:
-		return runDeleteAccount(ctx, flags, allArg)
+		return runDeleteAccount(ctx, flags, args)
 	}
 	return fmt.Errorf("unknown account action %q; use change-password, replace-secret-key or delete", action)
 }
@@ -142,11 +142,11 @@ func describeSignedOutDevice(signedOutDeviceCount int) string {
 	return fmt.Sprintf("%d other devices were signed out.", signedOutDeviceCount)
 }
 
-func runChangePassword(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
+func runChangePassword(ctx context.Context, flags *flag.FlagSet, args []string) error {
 	isYes := flags.Bool("y", false, "do not ask for confirmation")
-	if allPositional, err := parse(flags, allArg); err != nil {
+	if positionals, err := parse(flags, args); err != nil {
 		return err
-	} else if len(allPositional) != 0 {
+	} else if len(positionals) != 0 {
 		return errUsage
 	}
 	fmt.Fprintln(os.Stderr, `Changing your master password signs out your other devices: they need the new master password
@@ -176,12 +176,12 @@ to sign in again. Your Secret Key and Emergency Kit stay the same, and so do you
 	return finishSession(currentState, unlockedSession, err)
 }
 
-func runReplaceSecretKey(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
+func runReplaceSecretKey(ctx context.Context, flags *flag.FlagSet, args []string) error {
 	outputPath := flags.String("o", "Hisar Emergency Kit.pdf", "where to save the new Emergency Kit PDF")
 	isYes := flags.Bool("y", false, "do not ask for confirmation")
-	if allPositional, err := parse(flags, allArg); err != nil {
+	if positionals, err := parse(flags, args); err != nil {
 		return err
-	} else if len(allPositional) != 0 {
+	} else if len(positionals) != 0 {
 		return errUsage
 	}
 	if _, err := os.Stat(*outputPath); err == nil {
@@ -236,7 +236,7 @@ Replaced your Secret Key. %s This is your new Secret Key:
 
 func printAccountDeletionPreview(output io.Writer, preview *session.AccountDeletionPreview) {
 	fmt.Fprintln(output, "Deleting your account removes it from the Hisar server for good. Nobody can restore it.")
-	for _, vault := range preview.AllOwnedVault {
+	for _, vault := range preview.OwnedVaults {
 		switch {
 		case vault.OtherMemberCount == 1:
 			fmt.Fprintf(output, "  Deleted with its items: %s (1 other person loses access)\n", describeDeletionVault(vault))
@@ -246,7 +246,7 @@ func printAccountDeletionPreview(output io.Writer, preview *session.AccountDelet
 			fmt.Fprintf(output, "  Deleted with its items: %s\n", describeDeletionVault(vault))
 		}
 	}
-	for _, vault := range preview.AllMemberVault {
+	for _, vault := range preview.MemberVaults {
 		fmt.Fprintf(output, "  Your access is removed: %s (%s; it stays with its other owners)\n", describeDeletionVault(vault), vault.Role)
 	}
 	if preview.ShareLinkCount > 0 {
@@ -269,11 +269,11 @@ func describeDeletionVault(vault session.DeletionVault) string {
 	return fmt.Sprintf("%q", vault.Name)
 }
 
-func runDeleteAccount(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
+func runDeleteAccount(ctx context.Context, flags *flag.FlagSet, args []string) error {
 	confirmedEmail := flags.String("email", "", "the account's email, to confirm without a prompt")
-	if allPositional, err := parse(flags, allArg); err != nil {
+	if positionals, err := parse(flags, args); err != nil {
 		return err
-	} else if len(allPositional) != 0 {
+	} else if len(positionals) != 0 {
 		return errUsage
 	}
 	currentState, unlockedSession, secretKey, password, err := unlockForAccountChange(ctx)

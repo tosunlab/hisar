@@ -16,9 +16,9 @@ import (
 type fakePhone struct {
 	mutex          sync.Mutex
 	isAvailable    bool
-	allDescription []approval.Description
-	allDecide      []func(answer approval.AcceptedAnswer)
-	allExpiresAt   []time.Time
+	descriptions   []approval.Description
+	decisions      []func(answer approval.AcceptedAnswer)
+	expiresAt      []time.Time
 	finishCount    int
 	startedChannel chan struct{}
 }
@@ -35,9 +35,9 @@ func (phone *fakePhone) IsPhoneApprovalAvailable() bool {
 
 func (phone *fakePhone) StartPhoneApproval(description approval.Description, expiresAt time.Time, decide func(answer approval.AcceptedAnswer)) func() {
 	phone.mutex.Lock()
-	phone.allDescription = append(phone.allDescription, description)
-	phone.allDecide = append(phone.allDecide, decide)
-	phone.allExpiresAt = append(phone.allExpiresAt, expiresAt)
+	phone.descriptions = append(phone.descriptions, description)
+	phone.decisions = append(phone.decisions, decide)
+	phone.expiresAt = append(phone.expiresAt, expiresAt)
 	phone.mutex.Unlock()
 	phone.startedChannel <- struct{}{}
 	return func() {
@@ -56,7 +56,7 @@ func (phone *fakePhone) waitForStart(t *testing.T) approval.Description {
 	}
 	phone.mutex.Lock()
 	defer phone.mutex.Unlock()
-	return phone.allDescription[len(phone.allDescription)-1]
+	return phone.descriptions[len(phone.descriptions)-1]
 }
 
 // answer is an answer without the remember choice, as an older phone sends it.
@@ -66,7 +66,7 @@ func (phone *fakePhone) answer(isApproved bool) {
 
 func (phone *fakePhone) answerRemembering(isApproved, isRemembered bool) {
 	phone.mutex.Lock()
-	decide := phone.allDecide[len(phone.allDecide)-1]
+	decide := phone.decisions[len(phone.decisions)-1]
 	phone.mutex.Unlock()
 	decide(createPhoneAnswer(isApproved, isRemembered))
 }
@@ -81,13 +81,13 @@ func createPhoneAnswer(isApproved, isRemembered bool) approval.AcceptedAnswer {
 func (phone *fakePhone) getStartAndFinishCount() (int, int) {
 	phone.mutex.Lock()
 	defer phone.mutex.Unlock()
-	return len(phone.allDecide), phone.finishCount
+	return len(phone.decisions), phone.finishCount
 }
 
-func createPhoneApprover(emitter *fakeEmitter, phone *fakePhone, biometric Biometric, unlocker Unlocker, allProcess []appinfo.Process) *Approver {
+func createPhoneApprover(emitter *fakeEmitter, phone *fakePhone, biometric Biometric, unlocker Unlocker, processes []appinfo.Process) *Approver {
 	config := ApproverConfig{
 		Biometric: biometric, Emit: emitter.emit, ShowApprovalWindow: emitter.showWindow, HideApprovalWindow: emitter.hideWindow,
-		ResolveRequester: func(int) appinfo.Requester { return createTerminalRequester(allProcess) },
+		ResolveRequester: func(int) appinfo.Requester { return createTerminalRequester(processes) },
 		HomeDirectory:    testHomeDirectory,
 		PhoneApprover:    phone,
 		Timeout:          5 * time.Second,
@@ -95,7 +95,7 @@ func createPhoneApprover(emitter *fakeEmitter, phone *fakePhone, biometric Biome
 	if unlocker != nil {
 		config.Unlocker = unlocker
 	}
-	return CreateApprover(config)
+	return NewApprover(config)
 }
 
 func TestPhoneApprovesTheDialog(t *testing.T) {
@@ -122,8 +122,8 @@ func TestPhoneApprovesTheDialog(t *testing.T) {
 	if !result.result.IsAllowed || !result.result.IsRemembered {
 		t.Errorf("result = %+v", result)
 	}
-	if allReason := biometric.listAllReason(); len(allReason) != 0 {
-		t.Errorf("Touch ID asked after the phone approved: %q", allReason)
+	if reasons := biometric.listReasons(); len(reasons) != 0 {
+		t.Errorf("Touch ID asked after the phone approved: %q", reasons)
 	}
 	if startCount, finishCount := phone.getStartAndFinishCount(); startCount != 1 || finishCount != 1 {
 		t.Errorf("phone requests started %d, finished %d", startCount, finishCount)
@@ -206,7 +206,7 @@ func TestPhoneAnswerCancelsTouchIDInProgress(t *testing.T) {
 			t.Errorf("Touch ID was cancelled %d times", cancelCount)
 		}
 		approver.presenter.waitUntilIdle()
-		for _, eventName := range emitter.listAllEventName() {
+		for _, eventName := range emitter.listEventNames() {
 			if eventName == ApprovalFailedEventName {
 				t.Error("the cancelled Touch ID check was shown as a failure")
 			}
@@ -274,7 +274,7 @@ func TestPhoneApprovalOfForwardedAndSigningRequestsIsOnce(t *testing.T) {
 func TestPhoneApprovesCommandLine(t *testing.T) {
 	emitter := createFakeEmitter()
 	phone := createFakePhone()
-	approver := CreateApprover(ApproverConfig{
+	approver := NewApprover(ApproverConfig{
 		Biometric: &fakeBiometric{isAvailable: true}, Emit: emitter.emit, ShowApprovalWindow: emitter.showWindow, HideApprovalWindow: emitter.hideWindow,
 		ResolveRequester: func(int) appinfo.Requester { return createTerminalRequester(nil) },
 		PhoneApprover:    phone,
@@ -305,15 +305,15 @@ func TestLatePhoneAnswerIsIgnored(t *testing.T) {
 		t.Fatal("Deny on the Mac was overruled")
 	}
 	phone.answer(true)
-	if allPending := approver.ListAllPendingApproval(); len(allPending) != 0 {
-		t.Errorf("pending after a late answer: %+v", allPending)
+	if pendingRequests := approver.ListPendingApprovals(); len(pendingRequests) != 0 {
+		t.Errorf("pending after a late answer: %+v", pendingRequests)
 	}
 }
 
 func TestDialogTheIPhoneCanAnswerWaitsLonger(t *testing.T) {
 	emitter := createFakeEmitter()
 	phone := createFakePhone()
-	approver := CreateApprover(ApproverConfig{
+	approver := NewApprover(ApproverConfig{
 		Emit: emitter.emit, ShowApprovalWindow: emitter.showWindow, HideApprovalWindow: emitter.hideWindow,
 		PhoneApprover: phone, Timeout: 100 * time.Millisecond, PhoneApprovalTimeout: 3 * time.Second,
 	})
@@ -326,7 +326,7 @@ func TestDialogTheIPhoneCanAnswerWaitsLonger(t *testing.T) {
 		t.Errorf("the dialog times out at %q", event.TimeoutAt)
 	}
 	phone.mutex.Lock()
-	expiresAt := phone.allExpiresAt[0]
+	expiresAt := phone.expiresAt[0]
 	phone.mutex.Unlock()
 	if expiresAt.Sub(startedAt) < 2900*time.Millisecond || expiresAt.Sub(startedAt) > 3100*time.Millisecond {
 		t.Errorf("the phone's request expires after %v, not with the dialog", expiresAt.Sub(startedAt))

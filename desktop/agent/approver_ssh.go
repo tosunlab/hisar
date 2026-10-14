@@ -23,7 +23,7 @@ func (approver *Approver) buildApprovalEvent(requestID string, request sshagent.
 		Fingerprint:            request.Fingerprint,
 		DestinationHost:        request.DestinationHost,
 		DestinationFingerprint: request.DestinationFingerprint,
-		AllChainProcess:        []ChainProcess{},
+		ChainProcesses:         []ChainProcess{},
 		IsForwarded:            request.IsForwarded,
 		IsRememberable:         request.IsRememberable,
 		IsTouchIDApproval:      approver.IsTouchIDApproval(),
@@ -32,12 +32,12 @@ func (approver *Approver) buildApprovalEvent(requestID string, request sshagent.
 	if request.DestinationPort != 0 && request.DestinationHost != "" {
 		event.DestinationHost = net.JoinHostPort(request.DestinationHost, fmt.Sprint(request.DestinationPort))
 	}
-	allProcess := []appinfo.Process{}
+	processes := []appinfo.Process{}
 	if requester, isResolved := approver.resolveRequester(request.ClientPID); isResolved {
 		applyRequester(&event, requester)
-		allProcess = requester.AllProcess
+		processes = requester.Processes
 	}
-	description := DescribeRequest(allProcess, request, approver.config.HomeDirectory, approver.config.ReadFile)
+	description := DescribeRequest(processes, request, approver.config.HomeDirectory, approver.config.ReadFile)
 	event.Purpose, event.Action, event.Target = description.Purpose, description.Action, description.Target
 	event.CommandLine, event.RepositoryPath, event.HostAndPort = description.CommandLine, description.RepositoryPath, description.HostAndPort
 	event.Branch, event.CommitSubject, event.ForwardedFromHost = description.Branch, description.CommitSubject, description.ForwardedFromHost

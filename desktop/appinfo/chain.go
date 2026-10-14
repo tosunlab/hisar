@@ -9,8 +9,8 @@ func GetProgramName(process Process) string {
 	if process.Path != "" {
 		return filepath.Base(process.Path)
 	}
-	if len(process.AllArgument) > 0 {
-		return filepath.Base(process.AllArgument[0])
+	if len(process.Arguments) > 0 {
+		return filepath.Base(process.Arguments[0])
 	}
 	return ""
 }
@@ -34,16 +34,16 @@ func isHiddenFromChain(process Process) bool {
 }
 
 // buildChain lists the processes nearest first up to limit, without login, at most maximumChainLength.
-func buildChain(allProcess []Process, limit int) []Process {
-	allChainProcess := []Process{}
-	for _, process := range allProcess[:limit] {
+func buildChain(processes []Process, limit int) []Process {
+	chainProcesses := []Process{}
+	for _, process := range processes[:limit] {
 		if isHiddenFromChain(process) {
 			continue
 		}
-		if len(allChainProcess) == maximumChainLength {
+		if len(chainProcesses) == maximumChainLength {
 			break
 		}
-		allChainProcess = append(allChainProcess, process)
+		chainProcesses = append(chainProcesses, process)
 	}
-	return allChainProcess
+	return chainProcesses
 }

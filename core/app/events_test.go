@@ -64,7 +64,7 @@ func TestRemoteChangeSyncsAndNotifies(t *testing.T) {
 	eventChannel := testService.apiServer.eventChannel
 	testService.apiServer.mutex.Unlock()
 
-	if _, err := service.ListAllVault(); err != nil {
+	if _, err := service.ListVaults(); err != nil {
 		t.Fatal(err)
 	}
 	family, err := service.findVault(context.Background(), testService.familyID)
@@ -76,7 +76,7 @@ func TestRemoteChangeSyncsAndNotifies(t *testing.T) {
 		t.Fatal(err)
 	}
 	service.mutex.Lock()
-	service.allItemByVaultID[testService.familyID] = []item.Item{}
+	service.itemsByVaultID[testService.familyID] = []item.Item{}
 	service.mutex.Unlock()
 
 	deadline := time.After(10 * time.Second)
@@ -94,10 +94,10 @@ func TestRemoteChangeSyncsAndNotifies(t *testing.T) {
 		t.Fatal("no remote change notification")
 	}
 	service.mutex.Lock()
-	allCachedItem := service.allItemByVaultID[testService.familyID]
+	cachedItems := service.itemsByVaultID[testService.familyID]
 	service.mutex.Unlock()
-	if len(allCachedItem) != 1 || allCachedItem[0].Overview.Title != "Saved elsewhere" {
-		t.Errorf("cache after the event = %+v", allCachedItem)
+	if len(cachedItems) != 1 || cachedItems[0].Overview.Title != "Saved elsewhere" {
+		t.Errorf("cache after the event = %+v", cachedItems)
 	}
 
 	service.Lock()

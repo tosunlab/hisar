@@ -35,10 +35,10 @@ type ItemPasskey struct {
 	CreatedAt       string `json:"createdAt"`
 }
 
-func convertToAllItemPasskey(allPasskey []item.Passkey) []ItemPasskey {
-	allItemPasskey := make([]ItemPasskey, 0, len(allPasskey))
-	for _, storedPasskey := range allPasskey {
-		allItemPasskey = append(allItemPasskey, ItemPasskey{
+func convertToItemPasskeys(passkeys []item.Passkey) []ItemPasskey {
+	itemPasskeys := make([]ItemPasskey, 0, len(passkeys))
+	for _, storedPasskey := range passkeys {
+		itemPasskeys = append(itemPasskeys, ItemPasskey{
 			CredentialID:    encodeBase64URL(storedPasskey.CredentialID),
 			RelyingPartyID:  storedPasskey.RelyingPartyID,
 			UserName:        storedPasskey.UserName,
@@ -46,7 +46,7 @@ func convertToAllItemPasskey(allPasskey []item.Passkey) []ItemPasskey {
 			CreatedAt:       storedPasskey.CreatedAt.UTC().Format(time.RFC3339),
 		})
 	}
-	return allItemPasskey
+	return itemPasskeys
 }
 
 func encodeBase64URL(value []byte) string {
@@ -57,23 +57,23 @@ func decodeBase64URL(value string) ([]byte, error) {
 	return base64.RawURLEncoding.DecodeString(strings.TrimRight(value, "="))
 }
 
-func decodeAllCredentialID(allEncoded []string) ([][]byte, error) {
-	if len(allEncoded) > maxPasskeyCredentialCount {
+func decodeCredentialIDs(encodedValues []string) ([][]byte, error) {
+	if len(encodedValues) > maxPasskeyCredentialCount {
 		return nil, passkey.ErrInvalidRequest
 	}
-	allCredentialID := make([][]byte, 0, len(allEncoded))
-	for _, encoded := range allEncoded {
+	credentialIDs := make([][]byte, 0, len(encodedValues))
+	for _, encoded := range encodedValues {
 		credentialID, err := decodeBase64URL(encoded)
 		if err != nil || len(credentialID) == 0 || len(credentialID) > 1023 {
 			return nil, passkey.ErrInvalidRequest
 		}
-		allCredentialID = append(allCredentialID, credentialID)
+		credentialIDs = append(credentialIDs, credentialID)
 	}
-	return allCredentialID, nil
+	return credentialIDs, nil
 }
 
-func containsCredentialID(allCredentialID [][]byte, credentialID []byte) bool {
-	return slices.ContainsFunc(allCredentialID, func(candidate []byte) bool { return bytes.Equal(candidate, credentialID) })
+func containsCredentialID(credentialIDs [][]byte, credentialID []byte) bool {
+	return slices.ContainsFunc(credentialIDs, func(candidate []byte) bool { return bytes.Equal(candidate, credentialID) })
 }
 
 // DeletePasskey removes one passkey from an item; credentialID is base64url.
@@ -115,23 +115,23 @@ func (s *Service) DeletePasskey(vaultID, itemID, credentialID string) (ItemDetai
 func (bridge *BrowserBridge) handlePasskeyRequest(ctx context.Context, request *browserprotocol.Request) (any, error) {
 	var passkeyRequest browserprotocol.PasskeyRequest
 	if len(request.Passkey) == 0 || json.Unmarshal(request.Passkey, &passkeyRequest) != nil {
-		return nil, browserprotocol.CreateError(browserprotocol.ErrorInvalidRequest, "the passkey request is not valid")
+		return nil, browserprotocol.NewError(browserprotocol.ErrorInvalidRequest, "the passkey request is not valid")
 	}
 	var result any
 	var err error
 	switch request.Type {
 	case "passkeys.list":
-		result, err = bridge.service.listAllPasskeyForRequest(ctx, &passkeyRequest)
+		result, err = bridge.service.listPasskeysForRequest(ctx, &passkeyRequest)
 	case "passkeys.prepare":
 		result, err = bridge.service.preparePasskeyCreation(ctx, &passkeyRequest)
 	case "passkeys.create":
 		result, err = bridge.service.createPasskey(ctx, &passkeyRequest)
 	case "passkeys.get":
 		result, err = bridge.service.signPasskeyAssertion(ctx, &passkeyRequest)
-	case PasskeySignalUnknownCredential, PasskeySignalAllAcceptedCredentials, PasskeySignalCurrentUserDetails:
+	case PasskeySignalUnknownCredential, PasskeySignalAcceptedCredentials, PasskeySignalCurrentUserDetails:
 		result, err = bridge.service.applyPasskeySignal(ctx, request.Type, &passkeyRequest)
 	default:
-		return nil, browserprotocol.CreateError(browserprotocol.ErrorInvalidRequest, fmt.Sprintf("unknown request type %q", request.Type))
+		return nil, browserprotocol.NewError(browserprotocol.ErrorInvalidRequest, fmt.Sprintf("unknown request type %q", request.Type))
 	}
 	return result, convertPasskeyError(err)
 }
@@ -139,7 +139,7 @@ func (bridge *BrowserBridge) handlePasskeyRequest(ctx context.Context, request *
 func convertPasskeyError(err error) error {
 	switch {
 	case errors.Is(err, passkey.ErrInvalidOrigin), errors.Is(err, passkey.ErrInvalidRelyingPartyID), errors.Is(err, passkey.ErrInvalidRequest), errors.Is(err, errPasskeyExcluded):
-		return browserprotocol.CreateError(browserprotocol.ErrorInvalidRequest, err.Error())
+		return browserprotocol.NewError(browserprotocol.ErrorInvalidRequest, err.Error())
 	}
 	return convertBrowserError(err)
 }
@@ -151,64 +151,64 @@ type passkeyMatch struct {
 	passkey item.Passkey
 }
 
-// collectAllPasskey runs under the service mutex with every vault's items loaded; an empty relyingPartyID collects every passkey.
-func (s *Service) collectAllPasskey(relyingPartyID string) []passkeyMatch {
-	var allMatch []passkeyMatch
-	for vaultID, allItem := range s.allItemByVaultID {
-		if s.allVaultByID[vaultID] == nil {
+// collectPasskeys runs under the service mutex with every vault's items loaded; an empty relyingPartyID collects every passkey.
+func (s *Service) collectPasskeys(relyingPartyID string) []passkeyMatch {
+	var matches []passkeyMatch
+	for vaultID, items := range s.itemsByVaultID {
+		if s.vaultsByID[vaultID] == nil {
 			continue
 		}
-		for _, vaultItem := range allItem {
+		for _, vaultItem := range items {
 			if !isLoginItem(&vaultItem) {
 				continue
 			}
 			for _, storedPasskey := range vaultItem.Details.Passkeys {
 				if relyingPartyID == "" || storedPasskey.RelyingPartyID == relyingPartyID {
-					allMatch = append(allMatch, passkeyMatch{vaultID: vaultID, itemID: vaultItem.ID, title: vaultItem.Overview.Title, passkey: storedPasskey})
+					matches = append(matches, passkeyMatch{vaultID: vaultID, itemID: vaultItem.ID, title: vaultItem.Overview.Title, passkey: storedPasskey})
 				}
 			}
 		}
 	}
-	slices.SortFunc(allMatch, func(first, second passkeyMatch) int {
+	slices.SortFunc(matches, func(first, second passkeyMatch) int {
 		if comparison := strings.Compare(strings.ToLower(first.title), strings.ToLower(second.title)); comparison != 0 {
 			return comparison
 		}
 		return strings.Compare(strings.ToLower(first.passkey.UserName), strings.ToLower(second.passkey.UserName))
 	})
-	return allMatch
+	return matches
 }
 
-// loadAllPasskey runs under the service mutex.
-func (s *Service) loadAllPasskey(ctx context.Context, relyingPartyID string) ([]passkeyMatch, error) {
+// loadPasskeys runs under the service mutex.
+func (s *Service) loadPasskeys(ctx context.Context, relyingPartyID string) ([]passkeyMatch, error) {
 	if err := s.requireUnlockedWithoutActivity(); err != nil {
 		return nil, err
 	}
-	if err := s.loadAllItemOfAllVault(ctx); err != nil {
+	if err := s.loadItemsOfAllVault(ctx); err != nil {
 		return nil, err
 	}
-	return s.collectAllPasskey(relyingPartyID), nil
+	return s.collectPasskeys(relyingPartyID), nil
 }
 
-func filterAllAllowedPasskey(allMatch []passkeyMatch, allAllowedID [][]byte) []passkeyMatch {
-	if len(allAllowedID) == 0 {
-		return allMatch
+func filterAllowedPasskeys(matches []passkeyMatch, allowedIDs [][]byte) []passkeyMatch {
+	if len(allowedIDs) == 0 {
+		return matches
 	}
-	return slices.DeleteFunc(slices.Clone(allMatch), func(match passkeyMatch) bool { return !containsCredentialID(allAllowedID, match.passkey.CredentialID) })
+	return slices.DeleteFunc(slices.Clone(matches), func(match passkeyMatch) bool { return !containsCredentialID(allowedIDs, match.passkey.CredentialID) })
 }
 
-func isAnyPasskeyExcluded(allMatch []passkeyMatch, allExcludedID [][]byte) bool {
-	return slices.ContainsFunc(allMatch, func(match passkeyMatch) bool { return containsCredentialID(allExcludedID, match.passkey.CredentialID) })
+func isAnyPasskeyExcluded(matches []passkeyMatch, excludedIDs [][]byte) bool {
+	return slices.ContainsFunc(matches, func(match passkeyMatch) bool { return containsCredentialID(excludedIDs, match.passkey.CredentialID) })
 }
 
-func (s *Service) listAllWritableLogin(ctx context.Context, origin string) ([]browserprotocol.Login, error) {
-	allLogin, _, err := s.listAllLoginForURL(ctx, origin)
+func (s *Service) listWritableLogins(ctx context.Context, origin string) ([]browserprotocol.Login, error) {
+	logins, _, err := s.listLoginsForURL(ctx, origin)
 	if err != nil {
 		return nil, err
 	}
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	return slices.DeleteFunc(allLogin, func(login browserprotocol.Login) bool {
-		vault := s.allVaultByID[login.VaultID]
+	return slices.DeleteFunc(logins, func(login browserprotocol.Login) bool {
+		vault := s.vaultsByID[login.VaultID]
 		return vault == nil || vault.Role == apitypes.VaultReader
 	}), nil
 }
@@ -228,18 +228,18 @@ func resolvePlatformPasskeyTarget(requestedRelyingPartyID string) (passkeyTarget
 	return passkeyTarget{relyingPartyID: relyingPartyID, origin: "https://" + relyingPartyID}, err
 }
 
-func (s *Service) preparePasskeySave(ctx context.Context, target passkeyTarget, allExcludedID [][]byte) (browserprotocol.PasskeyPrepareResult, error) {
+func (s *Service) preparePasskeySave(ctx context.Context, target passkeyTarget, excludedIDs [][]byte) (browserprotocol.PasskeyPrepareResult, error) {
 	s.mutex.Lock()
-	allMatch, err := s.loadAllPasskey(ctx, target.relyingPartyID)
+	matches, err := s.loadPasskeys(ctx, target.relyingPartyID)
 	s.mutex.Unlock()
 	if err != nil {
 		return browserprotocol.PasskeyPrepareResult{}, err
 	}
-	allLogin, err := s.listAllWritableLogin(ctx, target.origin)
+	logins, err := s.listWritableLogins(ctx, target.origin)
 	if err != nil {
 		return browserprotocol.PasskeyPrepareResult{}, err
 	}
-	return browserprotocol.PasskeyPrepareResult{IsExcluded: isAnyPasskeyExcluded(allMatch, allExcludedID), AllLogin: allLogin}, nil
+	return browserprotocol.PasskeyPrepareResult{IsExcluded: isAnyPasskeyExcluded(matches, excludedIDs), Logins: logins}, nil
 }
 
 type passkeyUser struct {
@@ -268,11 +268,11 @@ func buildPasskeyLoginURL(origin, relyingPartyID string) string {
 }
 
 type passkeySave struct {
-	target        passkeyTarget
-	user          passkeyUser
-	allExcludedID [][]byte
-	vaultID       string
-	itemID        string
+	target      passkeyTarget
+	user        passkeyUser
+	excludedIDs [][]byte
+	vaultID     string
+	itemID      string
 }
 
 type savedPasskey struct {
@@ -284,11 +284,11 @@ type savedPasskey struct {
 func (s *Service) savePasskey(ctx context.Context, save passkeySave, createCredential func() (passkey.Creation, error)) (savedPasskey, error) {
 	isExistingItem := save.vaultID != "" || save.itemID != ""
 	if isExistingItem {
-		allLogin, err := s.listAllWritableLogin(ctx, save.target.origin)
+		logins, err := s.listWritableLogins(ctx, save.target.origin)
 		if err != nil {
 			return savedPasskey{}, err
 		}
-		if !slices.ContainsFunc(allLogin, func(login browserprotocol.Login) bool {
+		if !slices.ContainsFunc(logins, func(login browserprotocol.Login) bool {
 			return login.VaultID == save.vaultID && login.ItemID == save.itemID
 		}) {
 			return savedPasskey{}, errNoURLMatch
@@ -306,11 +306,11 @@ func (s *Service) savePasskey(ctx context.Context, save passkeySave, createCrede
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	relyingPartyID := save.target.relyingPartyID
-	allMatch, err := s.loadAllPasskey(ctx, relyingPartyID)
+	matches, err := s.loadPasskeys(ctx, relyingPartyID)
 	if err != nil {
 		return savedPasskey{}, err
 	}
-	if isAnyPasskeyExcluded(allMatch, save.allExcludedID) {
+	if isAnyPasskeyExcluded(matches, save.excludedIDs) {
 		return savedPasskey{}, errPasskeyExcluded
 	}
 	creation, err := createCredential()
@@ -351,30 +351,30 @@ func (s *Service) savePasskey(ctx context.Context, save passkeySave, createCrede
 	return savedPasskey{creation: creation, vaultID: vaultID, itemID: vaultItem.ID}, nil
 }
 
-func (s *Service) signWithPasskey(ctx context.Context, relyingPartyID string, credentialID []byte, allAllowedID [][]byte, sign func(item.Passkey) (passkey.Assertion, error)) (item.Passkey, passkey.Assertion, error) {
+func (s *Service) signWithPasskey(ctx context.Context, relyingPartyID string, credentialID []byte, allowedIDs [][]byte, sign func(item.Passkey) (passkey.Assertion, error)) (item.Passkey, passkey.Assertion, error) {
 	if len(credentialID) == 0 {
 		return item.Passkey{}, passkey.Assertion{}, passkey.ErrInvalidRequest
 	}
-	if len(allAllowedID) > 0 && !containsCredentialID(allAllowedID, credentialID) {
+	if len(allowedIDs) > 0 && !containsCredentialID(allowedIDs, credentialID) {
 		return item.Passkey{}, passkey.Assertion{}, fmt.Errorf("passkey %w", ErrNotFound)
 	}
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	allMatch, err := s.loadAllPasskey(ctx, relyingPartyID)
+	matches, err := s.loadPasskeys(ctx, relyingPartyID)
 	if err != nil {
 		return item.Passkey{}, passkey.Assertion{}, err
 	}
-	index := slices.IndexFunc(allMatch, func(match passkeyMatch) bool { return bytes.Equal(match.passkey.CredentialID, credentialID) })
+	index := slices.IndexFunc(matches, func(match passkeyMatch) bool { return bytes.Equal(match.passkey.CredentialID, credentialID) })
 	if index < 0 {
 		return item.Passkey{}, passkey.Assertion{}, fmt.Errorf("passkey %w", ErrNotFound)
 	}
-	storedPasskey := allMatch[index].passkey
+	storedPasskey := matches[index].passkey
 	assertion, err := sign(storedPasskey)
 	return storedPasskey, assertion, err
 }
 
-func (s *Service) listAllPasskeyForRequest(ctx context.Context, request *browserprotocol.PasskeyRequest) (browserprotocol.PasskeyListResult, error) {
-	allAllowedID, err := decodeAllCredentialID(request.AllAllowedCredentialID)
+func (s *Service) listPasskeysForRequest(ctx context.Context, request *browserprotocol.PasskeyRequest) (browserprotocol.PasskeyListResult, error) {
+	allowedIDs, err := decodeCredentialIDs(request.AllowedCredentialIDs)
 	if err != nil {
 		return browserprotocol.PasskeyListResult{}, err
 	}
@@ -384,13 +384,13 @@ func (s *Service) listAllPasskeyForRequest(ctx context.Context, request *browser
 	}
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	allMatch, err := s.loadAllPasskey(ctx, target.relyingPartyID)
+	matches, err := s.loadPasskeys(ctx, target.relyingPartyID)
 	if err != nil {
 		return browserprotocol.PasskeyListResult{}, err
 	}
-	result := browserprotocol.PasskeyListResult{AllPasskey: []browserprotocol.PasskeySummary{}}
-	for _, match := range filterAllAllowedPasskey(allMatch, allAllowedID) {
-		result.AllPasskey = append(result.AllPasskey, browserprotocol.PasskeySummary{
+	result := browserprotocol.PasskeyListResult{Passkeys: []browserprotocol.PasskeySummary{}}
+	for _, match := range filterAllowedPasskeys(matches, allowedIDs) {
+		result.Passkeys = append(result.Passkeys, browserprotocol.PasskeySummary{
 			CredentialID: encodeBase64URL(match.passkey.CredentialID), VaultID: match.vaultID, ItemID: match.itemID,
 			Title: match.title, UserName: match.passkey.UserName, UserDisplayName: match.passkey.UserDisplayName,
 		})
@@ -399,7 +399,7 @@ func (s *Service) listAllPasskeyForRequest(ctx context.Context, request *browser
 }
 
 func (s *Service) preparePasskeyCreation(ctx context.Context, request *browserprotocol.PasskeyRequest) (browserprotocol.PasskeyPrepareResult, error) {
-	allExcludedID, err := decodeAllCredentialID(request.AllExcludedCredentialID)
+	excludedIDs, err := decodeCredentialIDs(request.ExcludedCredentialIDs)
 	if err != nil {
 		return browserprotocol.PasskeyPrepareResult{}, err
 	}
@@ -407,7 +407,7 @@ func (s *Service) preparePasskeyCreation(ctx context.Context, request *browserpr
 	if err != nil {
 		return browserprotocol.PasskeyPrepareResult{}, err
 	}
-	return s.preparePasskeySave(ctx, target, allExcludedID)
+	return s.preparePasskeySave(ctx, target, excludedIDs)
 }
 
 func (s *Service) createPasskey(ctx context.Context, request *browserprotocol.PasskeyRequest) (browserprotocol.PasskeyCreationResult, error) {
@@ -419,7 +419,7 @@ func (s *Service) createPasskey(ctx context.Context, request *browserprotocol.Pa
 	if err != nil {
 		return browserprotocol.PasskeyCreationResult{}, passkey.ErrInvalidRequest
 	}
-	allExcludedID, err := decodeAllCredentialID(request.AllExcludedCredentialID)
+	excludedIDs, err := decodeCredentialIDs(request.ExcludedCredentialIDs)
 	if err != nil {
 		return browserprotocol.PasskeyCreationResult{}, err
 	}
@@ -428,7 +428,7 @@ func (s *Service) createPasskey(ctx context.Context, request *browserprotocol.Pa
 		return browserprotocol.PasskeyCreationResult{}, err
 	}
 	var prfResult *browserprotocol.PasskeyPRFResult
-	saved, err := s.savePasskey(ctx, passkeySave{target: target, user: user, allExcludedID: allExcludedID, vaultID: request.VaultID, itemID: request.ItemID}, func() (passkey.Creation, error) {
+	saved, err := s.savePasskey(ctx, passkeySave{target: target, user: user, excludedIDs: excludedIDs, vaultID: request.VaultID, itemID: request.ItemID}, func() (passkey.Creation, error) {
 		creation, err := passkey.CreateCredential(passkey.CreationRequest{
 			Origin: request.Origin, TopOrigin: request.TopOrigin, IsCrossOrigin: request.IsCrossOrigin, RelyingPartyID: target.relyingPartyID, Challenge: challenge,
 		})
@@ -464,7 +464,7 @@ func (s *Service) signPasskeyAssertion(ctx context.Context, request *browserprot
 	if err != nil {
 		return browserprotocol.PasskeyAssertionResult{}, passkey.ErrInvalidRequest
 	}
-	allAllowedID, err := decodeAllCredentialID(request.AllAllowedCredentialID)
+	allowedIDs, err := decodeCredentialIDs(request.AllowedCredentialIDs)
 	if err != nil {
 		return browserprotocol.PasskeyAssertionResult{}, err
 	}
@@ -473,9 +473,9 @@ func (s *Service) signPasskeyAssertion(ctx context.Context, request *browserprot
 		return browserprotocol.PasskeyAssertionResult{}, err
 	}
 	var prfResult *browserprotocol.PasskeyPRFResult
-	storedPasskey, assertion, err := s.signWithPasskey(ctx, target.relyingPartyID, credentialID, allAllowedID, func(storedPasskey item.Passkey) (passkey.Assertion, error) {
+	storedPasskey, assertion, err := s.signWithPasskey(ctx, target.relyingPartyID, credentialID, allowedIDs, func(storedPasskey item.Passkey) (passkey.Assertion, error) {
 		var err error
-		if prfResult, err = evaluatePasskeyAssertionPRF(request.PRF, allAllowedID, storedPasskey); err != nil {
+		if prfResult, err = evaluatePasskeyAssertionPRF(request.PRF, allowedIDs, storedPasskey); err != nil {
 			return passkey.Assertion{}, err
 		}
 		return passkey.SignAssertion(passkey.AssertionRequest{

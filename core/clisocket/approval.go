@@ -35,7 +35,7 @@ type ApprovalRequest struct {
 	ParentPID       int
 	TerminalName    string
 	IsSecretRequest bool
-	AllSecretName   []string
+	SecretNames     []string
 	CommandLine     []string
 	ShareLink       *ShareLinkDescription
 	Export          *ExportDescription
@@ -48,9 +48,9 @@ type ExportDescription struct {
 }
 
 type ShareLinkDescription struct {
-	Title         string
-	AllFieldLabel []string
-	Detail        string
+	Title       string
+	FieldLabels []string
+	Detail      string
 }
 
 // Approver asks the user; it returns nil when approved and ErrDenied otherwise.
@@ -65,16 +65,16 @@ type pendingSessionApproval struct {
 
 // SessionApprovals remembers approved terminal sessions until the lifetime passes after their last request.
 type SessionApprovals struct {
-	mutex                   sync.Mutex
-	lifetime                time.Duration
-	now                     func() time.Time
-	allLastRequestBySession map[sessionKey]time.Time
-	allPendingBySession     map[sessionKey]*pendingSessionApproval
-	allAgentConnectionByID  map[uint64]*agentConnectionState
-	generation              int
+	mutex                 sync.Mutex
+	lifetime              time.Duration
+	now                   func() time.Time
+	lastRequestsBySession map[sessionKey]time.Time
+	pendingBySession      map[sessionKey]*pendingSessionApproval
+	agentConnectionsByID  map[uint64]*agentConnectionState
+	generation            int
 }
 
-func CreateSessionApprovals(lifetime time.Duration, now func() time.Time) *SessionApprovals {
+func NewSessionApprovals(lifetime time.Duration, now func() time.Time) *SessionApprovals {
 	if lifetime == 0 {
 		lifetime = DefaultApprovalLifetime
 	}
@@ -82,21 +82,21 @@ func CreateSessionApprovals(lifetime time.Duration, now func() time.Time) *Sessi
 		now = time.Now
 	}
 	return &SessionApprovals{
-		lifetime:                lifetime,
-		now:                     now,
-		allLastRequestBySession: map[sessionKey]time.Time{},
-		allPendingBySession:     map[sessionKey]*pendingSessionApproval{},
-		allAgentConnectionByID:  map[uint64]*agentConnectionState{},
+		lifetime:              lifetime,
+		now:                   now,
+		lastRequestsBySession: map[sessionKey]time.Time{},
+		pendingBySession:      map[sessionKey]*pendingSessionApproval{},
+		agentConnectionsByID:  map[uint64]*agentConnectionState{},
 	}
 }
 
 func (approvals *SessionApprovals) isCurrent(key sessionKey) bool {
-	lastRequestAt, isFound := approvals.allLastRequestBySession[key]
+	lastRequestAt, isFound := approvals.lastRequestsBySession[key]
 	if !isFound {
 		return false
 	}
 	if approvals.now().Sub(lastRequestAt) >= approvals.lifetime {
-		delete(approvals.allLastRequestBySession, key)
+		delete(approvals.lastRequestsBySession, key)
 		return false
 	}
 	return true
@@ -113,11 +113,11 @@ func (approvals *SessionApprovals) Require(session TerminalSession, ask func() e
 	key := session.getKey()
 	approvals.mutex.Lock()
 	if approvals.isCurrent(key) {
-		approvals.allLastRequestBySession[key] = approvals.now()
+		approvals.lastRequestsBySession[key] = approvals.now()
 		approvals.mutex.Unlock()
 		return nil
 	}
-	if pending, isPending := approvals.allPendingBySession[key]; isPending {
+	if pending, isPending := approvals.pendingBySession[key]; isPending {
 		approvals.mutex.Unlock()
 		<-pending.done
 		if pending.err != nil {
@@ -126,16 +126,16 @@ func (approvals *SessionApprovals) Require(session TerminalSession, ask func() e
 		return approvals.Require(session, ask)
 	}
 	pending := &pendingSessionApproval{done: make(chan struct{})}
-	approvals.allPendingBySession[key] = pending
+	approvals.pendingBySession[key] = pending
 	generation := approvals.generation
 	approvals.mutex.Unlock()
 
 	pending.err = ask()
 
 	approvals.mutex.Lock()
-	delete(approvals.allPendingBySession, key)
+	delete(approvals.pendingBySession, key)
 	if pending.err == nil && generation == approvals.generation {
-		approvals.allLastRequestBySession[key] = approvals.now()
+		approvals.lastRequestsBySession[key] = approvals.now()
 	}
 	approvals.mutex.Unlock()
 	close(pending.done)
@@ -153,7 +153,7 @@ func (approvals *SessionApprovals) RequireAlways(session TerminalSession, ask fu
 	}
 	approvals.mutex.Lock()
 	if generation == approvals.generation {
-		approvals.allLastRequestBySession[key] = approvals.now()
+		approvals.lastRequestsBySession[key] = approvals.now()
 	}
 	approvals.mutex.Unlock()
 	return nil
@@ -163,7 +163,7 @@ func (approvals *SessionApprovals) RequireAlways(session TerminalSession, ask fu
 func (approvals *SessionApprovals) ClearAll() {
 	approvals.mutex.Lock()
 	defer approvals.mutex.Unlock()
-	clear(approvals.allLastRequestBySession)
-	clear(approvals.allAgentConnectionByID)
+	clear(approvals.lastRequestsBySession)
+	clear(approvals.agentConnectionsByID)
 	approvals.generation++
 }

@@ -34,29 +34,29 @@ func (fileSystem fakeFileSystem) readFile(path string, maximumSize int64) ([]byt
 	return []byte(content), nil
 }
 
-func createSSHProcess(allArgument ...string) appinfo.Process {
-	return appinfo.Process{PID: 50, Path: "/usr/bin/ssh", AllArgument: append([]string{"ssh"}, allArgument...), WorkingDirectory: testRepositoryPath}
+func createSSHProcess(arguments ...string) appinfo.Process {
+	return appinfo.Process{PID: 50, Path: "/usr/bin/ssh", Arguments: append([]string{"ssh"}, arguments...), WorkingDirectory: testRepositoryPath}
 }
 
-func createGitProcess(pid int, allArgument ...string) appinfo.Process {
-	return appinfo.Process{PID: pid, Path: testXcodeGitPath, AllArgument: append([]string{"git"}, allArgument...), WorkingDirectory: testRepositoryPath}
+func createGitProcess(pid int, arguments ...string) appinfo.Process {
+	return appinfo.Process{PID: pid, Path: testXcodeGitPath, Arguments: append([]string{"git"}, arguments...), WorkingDirectory: testRepositoryPath}
 }
 
 func createShellAndTerminal() []appinfo.Process {
 	return []appinfo.Process{
-		{PID: 30, Path: "/bin/zsh", AllArgument: []string{"-zsh"}, WorkingDirectory: testRepositoryPath},
-		{PID: 10, Path: testTerminalPath, AllArgument: []string{testTerminalPath}, WorkingDirectory: "/"},
+		{PID: 30, Path: "/bin/zsh", Arguments: []string{"-zsh"}, WorkingDirectory: testRepositoryPath},
+		{PID: 10, Path: testTerminalPath, Arguments: []string{testTerminalPath}, WorkingDirectory: "/"},
 	}
 }
 
-func describeChain(allProcess []appinfo.Process, request sshagent.ApprovalRequest, fileSystem fakeFileSystem) RequestDescription {
-	return DescribeRequest(allProcess, request, testHomeDirectory, fileSystem.readFile)
+func describeChain(processes []appinfo.Process, request sshagent.ApprovalRequest, fileSystem fakeFileSystem) RequestDescription {
+	return DescribeRequest(processes, request, testHomeDirectory, fileSystem.readFile)
 }
 
 func TestDescribeGitOverSSH(t *testing.T) {
-	allCase := []struct {
+	cases := []struct {
 		name           string
-		allProcess     []appinfo.Process
+		processes      []appinfo.Process
 		wantPurpose    string
 		wantAction     string
 		wantCommand    string
@@ -81,7 +81,7 @@ func TestDescribeGitOverSSH(t *testing.T) {
 		}, createShellAndTerminal()...), PurposeClone, "clone from", "git clone ssh://git@git.tryhisar.com:2200/hisar/core.git", "git.tryhisar.com:2200"},
 		{"Git LFS upload", append([]appinfo.Process{
 			createSSHProcess("git@"+testRemoteHost, "git-lfs-authenticate", "'hisar/core.git'", "upload"),
-			{PID: 45, Path: "/opt/homebrew/bin/git-lfs", AllArgument: []string{"git-lfs", "pre-push", "origin"}},
+			{PID: 45, Path: "/opt/homebrew/bin/git-lfs", Arguments: []string{"git-lfs", "pre-push", "origin"}},
 			createGitProcess(40, "push"),
 		}, createShellAndTerminal()...), PurposePush, "push to", "git push", "git.tryhisar.com:22"},
 		{"git as a remote command word", []appinfo.Process{createSSHProcess("-oPort=443", "git@"+testRemoteHost, "git upload-pack 'x'")}, PurposeFetch, "fetch from", "ssh -oPort=443 git@git.tryhisar.com 'git upload-pack '\\''x'\\'''", "git.tryhisar.com:443"},
@@ -90,8 +90,8 @@ func TestDescribeGitOverSSH(t *testing.T) {
 		}, createShellAndTerminal()...), PurposeSignIn, "sign in to", "ssh -l deploy -i ~/.ssh/id_ed25519.pub prod.example.com", "prod.example.com:22"},
 		{"ssh with a port option and an IPv6 host", []appinfo.Process{createSSHProcess("-p2201", "-o", "Port 2202", "admin@2001:db8::1")}, PurposeSignIn, "sign in to", "ssh -p2201 -o 'Port 2202' admin@2001:db8::1", "[2001:db8::1]:2202"},
 	}
-	for _, testCase := range allCase {
-		description := describeChain(testCase.allProcess, sshagent.ApprovalRequest{}, nil)
+	for _, testCase := range cases {
+		description := describeChain(testCase.processes, sshagent.ApprovalRequest{}, nil)
 		if description.Purpose != testCase.wantPurpose || description.Action != testCase.wantAction || description.CommandLine != testCase.wantCommand || description.HostAndPort != testCase.wantHostAndPor {
 			t.Errorf("%s: %+v", testCase.name, description)
 		}
@@ -111,7 +111,7 @@ func TestDescribeUsesTheSessionBindingWithoutArguments(t *testing.T) {
 	if description.Purpose != PurposeUseKey || description.Action != "use your SSH key" || description.HostAndPort != "SHA256:host" {
 		t.Errorf("unknown host: %+v", description)
 	}
-	description = describeChain([]appinfo.Process{{PID: 9, Path: "/usr/local/bin/deploy-tool", AllArgument: []string{"deploy-tool", "--env", "prod"}}}, sshagent.ApprovalRequest{}, nil)
+	description = describeChain([]appinfo.Process{{PID: 9, Path: "/usr/local/bin/deploy-tool", Arguments: []string{"deploy-tool", "--env", "prod"}}}, sshagent.ApprovalRequest{}, nil)
 	if description.Purpose != PurposeUseKey || description.CommandLine != "deploy-tool --env prod" || description.HostAndPort != "" {
 		t.Errorf("other program: %+v", description)
 	}
@@ -119,7 +119,7 @@ func TestDescribeUsesTheSessionBindingWithoutArguments(t *testing.T) {
 
 func createSigningChain() []appinfo.Process {
 	return append([]appinfo.Process{
-		{PID: 60, Path: "/usr/bin/ssh-keygen", AllArgument: []string{"ssh-keygen", "-Y", "sign", "-n", "git", "-f", "/Users/developer/.ssh/signing.pub", testSigningBuffer}, WorkingDirectory: testRepositoryPath},
+		{PID: 60, Path: "/usr/bin/ssh-keygen", Arguments: []string{"ssh-keygen", "-Y", "sign", "-n", "git", "-f", "/Users/developer/.ssh/signing.pub", testSigningBuffer}, WorkingDirectory: testRepositoryPath},
 		createGitProcess(40, "commit", "-S", "-m", "Fix the login redirect"),
 	}, createShellAndTerminal()...)
 }
@@ -148,7 +148,7 @@ func TestDescribeCommitSigning(t *testing.T) {
 		t.Errorf("unlock before signing: %+v", description)
 	}
 	otherNamespace := createSigningChain()
-	otherNamespace[0].AllArgument[4] = "file"
+	otherNamespace[0].Arguments[4] = "file"
 	if description := describeChain(otherNamespace, unlockRequest, fileSystem); description.Purpose == PurposeSignCommit {
 		t.Errorf("a file signature counted as a commit: %+v", description)
 	}
@@ -156,7 +156,7 @@ func TestDescribeCommitSigning(t *testing.T) {
 
 func TestDescribeTagSigningInAWorktree(t *testing.T) {
 	relativeChain := createSigningChain()
-	relativeChain[0].AllArgument[len(relativeChain[0].AllArgument)-1] = ".git_signing_buffer_tmpZ"
+	relativeChain[0].Arguments[len(relativeChain[0].Arguments)-1] = ".git_signing_buffer_tmpZ"
 	fileSystem := fakeFileSystem{
 		testRepositoryPath + "/.git_signing_buffer_tmpZ":       "object 1111111111111111111111111111111111111111\ntype commit\ntag v1.4.0\ntagger Deniz <deniz@example.com> 1760000000 +0300\n\nRelease 1.4.0\n",
 		testRepositoryPath + "/.git":                           "gitdir: ../core.git/worktrees/release\n",
@@ -177,18 +177,18 @@ func TestDescribeTagSigningInAWorktree(t *testing.T) {
 }
 
 func TestDescribeForwardedRequest(t *testing.T) {
-	allProcess := append([]appinfo.Process{createSSHProcess("-A", "dev@build.example.com")}, createShellAndTerminal()...)
+	processes := append([]appinfo.Process{createSSHProcess("-A", "dev@build.example.com")}, createShellAndTerminal()...)
 	request := sshagent.ApprovalRequest{IsForwarded: true, ForwardedFromHost: "build.example.com", ForwardedFromFingerprint: "SHA256:build", DestinationHost: "github.com", DestinationFingerprint: "SHA256:github"}
-	description := describeChain(allProcess, request, nil)
+	description := describeChain(processes, request, nil)
 	if description.ForwardedFromHost != "build.example.com" || description.Purpose != PurposeSignIn || description.Target != "github.com" || description.HostAndPort != "github.com:22" || description.CommandLine != "ssh -A dev@build.example.com" || description.RepositoryPath != "" {
 		t.Errorf("forwarded: %+v", description)
 	}
 	request = sshagent.ApprovalRequest{IsForwarded: true, ForwardedFromPort: 2222, ForwardedFromHost: "build.example.com", ForwardedFromFingerprint: "SHA256:build"}
-	if description := describeChain(allProcess, request, nil); description.ForwardedFromHost != "build.example.com:2222" || description.Purpose != PurposeUseKey {
+	if description := describeChain(processes, request, nil); description.ForwardedFromHost != "build.example.com:2222" || description.Purpose != PurposeUseKey {
 		t.Errorf("forwarded without a hop: %+v", description)
 	}
 	request = sshagent.ApprovalRequest{IsForwarded: true, ForwardedFromFingerprint: "SHA256:build"}
-	if description := describeChain(allProcess, request, nil); description.ForwardedFromHost != "build.example.com" {
+	if description := describeChain(processes, request, nil); description.ForwardedFromHost != "build.example.com" {
 		t.Errorf("forwarded host from the arguments: %+v", description)
 	}
 	if description := describeChain(nil, request, nil); description.ForwardedFromHost != "SHA256:build" {
@@ -198,8 +198,8 @@ func TestDescribeForwardedRequest(t *testing.T) {
 
 func TestFormatCommandLine(t *testing.T) {
 	for _, testCase := range []struct {
-		allArgument []string
-		want        string
+		arguments []string
+		want      string
 	}{
 		{[]string{"/usr/bin/git", "push", "origin", "main"}, "git push origin main"},
 		{[]string{"git", "commit", "-m", "it's done"}, `git commit -m 'it'\''s done'`},
@@ -210,8 +210,8 @@ func TestFormatCommandLine(t *testing.T) {
 		{[]string{"git", "commit", "-m", strings.Repeat("ğ", 300)}, "git commit -m '" + strings.Repeat("ğ", maximumCommandLineLength-len([]rune("git commit -m '"))-1) + "…"},
 		{nil, ""},
 	} {
-		if commandLine := formatCommandLine(testCase.allArgument); commandLine != testCase.want {
-			t.Errorf("%q: %q, want %q", testCase.allArgument, commandLine, testCase.want)
+		if commandLine := formatCommandLine(testCase.arguments); commandLine != testCase.want {
+			t.Errorf("%q: %q, want %q", testCase.arguments, commandLine, testCase.want)
 		}
 	}
 	if commandLine := formatCommandLine([]string{"git", "commit", "-m", "\xff\xfe"}); !strings.Contains(commandLine, "�") {

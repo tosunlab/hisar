@@ -25,7 +25,7 @@ const (
 var inviteCodePattern = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
 
 //go:embed invitepage/page.html invitepage/page.css invitepage/page.js
-var allInvitePageFile embed.FS
+var invitePageFiles embed.FS
 
 type invitePageTemplate struct {
 	template              *template.Template
@@ -49,7 +49,7 @@ type invitePageData struct {
 var builtInvitePage = buildInvitePage()
 
 func readInvitePageFile(name string) string {
-	content, err := allInvitePageFile.ReadFile("invitepage/" + name)
+	content, err := invitePageFiles.ReadFile("invitepage/" + name)
 	if err != nil {
 		panic(err)
 	}

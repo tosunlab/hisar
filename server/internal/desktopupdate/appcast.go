@@ -20,13 +20,13 @@ func BuildDownloadURL(publicURL, version, fileName string) string {
 	return strings.TrimRight(publicURL, "/") + "/api/v1/desktop/updates/" + url.PathEscape(version) + "/" + url.PathEscape(fileName)
 }
 
-// BuildAppcast writes a Sparkle appcast; allRelease is newest first.
-func BuildAppcast(publicURL string, allRelease []*Release) []byte {
+// BuildAppcast writes a Sparkle appcast; releases is newest first.
+func BuildAppcast(publicURL string, releases []*Release) []byte {
 	var buffer bytes.Buffer
 	buffer.WriteString(`<?xml version="1.0" encoding="utf-8"?>` + "\n")
 	buffer.WriteString(`<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">` + "\n")
 	buffer.WriteString("<channel>\n<title>Hisar for macOS</title>\n")
-	for _, release := range allRelease {
+	for _, release := range releases {
 		buffer.WriteString("<item>\n")
 		fmt.Fprintf(&buffer, "<title>%s</title>\n", escapeXML("Hisar "+release.Version))
 		fmt.Fprintf(&buffer, "<pubDate>%s</pubDate>\n", release.PublishedAt.UTC().Format(time.RFC1123Z))

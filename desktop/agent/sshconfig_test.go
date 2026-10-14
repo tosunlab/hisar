@@ -96,8 +96,8 @@ func TestConfigureSSHConfigKeepsExistingConfig(t *testing.T) {
 	if readTestFile(t, configPath) != configured {
 		t.Error("second configure changed the file")
 	}
-	if allBackup, _ := filepath.Glob(configPath + ".hisar-backup-*"); len(allBackup) != 1 {
-		t.Errorf("backups = %v", allBackup)
+	if backups, _ := filepath.Glob(configPath + ".hisar-backup-*"); len(backups) != 1 {
+		t.Errorf("backups = %v", backups)
 	}
 
 	removeBackupPath, err := RemoveSSHConfig(homeDirectory, testTime)

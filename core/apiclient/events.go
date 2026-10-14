@@ -57,7 +57,7 @@ func (c *Client) StreamEvents(ctx context.Context, handleEvent func(Event)) erro
 	scanner := bufio.NewScanner(response.Body)
 	scanner.Buffer(make([]byte, 64*1024), apitypes.MaxEventSize)
 	var eventName string
-	var allDataLine []string
+	var dataLines []string
 	for scanner.Scan() {
 		if isIdle() {
 			return ErrEventStreamIdle
@@ -66,15 +66,15 @@ func (c *Client) StreamEvents(ctx context.Context, handleEvent func(Event)) erro
 		line := scanner.Text()
 		switch {
 		case line == "":
-			if eventName != "" || len(allDataLine) > 0 {
-				handleEvent(Event{Name: eventName, Data: []byte(strings.Join(allDataLine, "\n"))})
+			if eventName != "" || len(dataLines) > 0 {
+				handleEvent(Event{Name: eventName, Data: []byte(strings.Join(dataLines, "\n"))})
 			}
-			eventName, allDataLine = "", nil
+			eventName, dataLines = "", nil
 		case strings.HasPrefix(line, ":"):
 		case strings.HasPrefix(line, "event:"):
 			eventName = strings.TrimSpace(strings.TrimPrefix(line, "event:"))
 		case strings.HasPrefix(line, "data:"):
-			allDataLine = append(allDataLine, strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
+			dataLines = append(dataLines, strings.TrimPrefix(strings.TrimPrefix(line, "data:"), " "))
 		}
 	}
 	if isIdle() {

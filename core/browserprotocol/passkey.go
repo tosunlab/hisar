@@ -2,22 +2,22 @@ package browserprotocol
 
 // PasskeyRequest is the nested "passkey" parameter of the passkeys.* requests; binary values are base64url.
 type PasskeyRequest struct {
-	Origin                  string   `json:"origin"`
-	TopOrigin               string   `json:"topOrigin,omitempty"`
-	IsCrossOrigin           bool     `json:"isCrossOrigin,omitempty"`
-	RelyingPartyID          string   `json:"relyingPartyId,omitempty"`
-	Challenge               string   `json:"challenge,omitempty"`
-	UserHandle              string   `json:"userHandle,omitempty"`
-	UserName                string   `json:"userName,omitempty"`
-	UserDisplayName         string   `json:"userDisplayName,omitempty"`
-	AllAllowedCredentialID  []string `json:"allowCredentials,omitempty"`
-	AllExcludedCredentialID []string `json:"excludeCredentials,omitempty"`
-	CredentialID            string   `json:"credentialId,omitempty"`
-	VaultID                 string   `json:"vaultID,omitempty"`
-	ItemID                  string   `json:"itemID,omitempty"`
+	Origin                string   `json:"origin"`
+	TopOrigin             string   `json:"topOrigin,omitempty"`
+	IsCrossOrigin         bool     `json:"isCrossOrigin,omitempty"`
+	RelyingPartyID        string   `json:"relyingPartyId,omitempty"`
+	Challenge             string   `json:"challenge,omitempty"`
+	UserHandle            string   `json:"userHandle,omitempty"`
+	UserName              string   `json:"userName,omitempty"`
+	UserDisplayName       string   `json:"userDisplayName,omitempty"`
+	AllowedCredentialIDs  []string `json:"allowCredentials,omitempty"`
+	ExcludedCredentialIDs []string `json:"excludeCredentials,omitempty"`
+	CredentialID          string   `json:"credentialId,omitempty"`
+	VaultID               string   `json:"vaultID,omitempty"`
+	ItemID                string   `json:"itemID,omitempty"`
 
-	PRF                     *PasskeyPRFRequest `json:"prf,omitempty"`
-	AllAcceptedCredentialID []string           `json:"allAcceptedCredentialIds,omitempty"`
+	PRF                   *PasskeyPRFRequest `json:"prf,omitempty"`
+	AcceptedCredentialIDs []string           `json:"allAcceptedCredentialIds,omitempty"`
 }
 
 type PasskeySummary struct {
@@ -30,12 +30,12 @@ type PasskeySummary struct {
 }
 
 type PasskeyListResult struct {
-	AllPasskey []PasskeySummary `json:"passkeys"`
+	Passkeys []PasskeySummary `json:"passkeys"`
 }
 
 type PasskeyPrepareResult struct {
 	IsExcluded bool    `json:"isExcluded"`
-	AllLogin   []Login `json:"logins"`
+	Logins     []Login `json:"logins"`
 }
 
 type PasskeyCreationResult struct {

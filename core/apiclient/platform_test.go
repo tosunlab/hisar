@@ -11,10 +11,10 @@ import (
 )
 
 func TestClientSendsPlatformAndVersion(t *testing.T) {
-	var allPlatform, allVersion []string
+	var platforms, versions []string
 	fakeClient := startFakeServer(t, func(writer http.ResponseWriter, request *http.Request) {
-		allPlatform = append(allPlatform, request.Header.Get(apitypes.PlatformHeader))
-		allVersion = append(allVersion, request.Header.Get(apitypes.VersionHeader))
+		platforms = append(platforms, request.Header.Get(apitypes.PlatformHeader))
+		versions = append(versions, request.Header.Get(apitypes.VersionHeader))
 		if request.URL.Path == "/api/v1/events" {
 			writer.WriteHeader(http.StatusUnauthorized)
 			return
@@ -29,12 +29,12 @@ func TestClientSendsPlatformAndVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 	fakeClient.StreamEvents(context.Background(), func(Event) {})
-	if allPlatform[0] != "" || allVersion[0] != "" {
-		t.Errorf("headers without a version: %q %q", allPlatform[0], allVersion[0])
+	if platforms[0] != "" || versions[0] != "" {
+		t.Errorf("headers without a version: %q %q", platforms[0], versions[0])
 	}
 	for index := 1; index < 3; index++ {
-		if allPlatform[index] != "darwin/desktop" || allVersion[index] != "0.1.6" {
-			t.Errorf("request %d sent %q %q", index, allPlatform[index], allVersion[index])
+		if platforms[index] != "darwin/desktop" || versions[index] != "0.1.6" {
+			t.Errorf("request %d sent %q %q", index, platforms[index], versions[index])
 		}
 	}
 }
@@ -45,8 +45,8 @@ func TestUpgradeRequired(t *testing.T) {
 		json.NewEncoder(writer).Encode(apitypes.UpgradeRequired{Error: "update required", MinimumVersion: "0.1.6", UpdateURL: "https://tryhisar.com/download"})
 	})
 	fakeClient.Platform, fakeClient.Version = "linux/cli", "0.1.5"
-	var allHeard []*UpgradeRequiredError
-	fakeClient.OnUpgradeRequired = func(upgradeRequired *UpgradeRequiredError) { allHeard = append(allHeard, upgradeRequired) }
+	var heards []*UpgradeRequiredError
+	fakeClient.OnUpgradeRequired = func(upgradeRequired *UpgradeRequiredError) { heards = append(heards, upgradeRequired) }
 
 	_, err := fakeClient.GetAccount(context.Background())
 	upgradeRequired, ok := AsUpgradeRequired(err)
@@ -60,8 +60,8 @@ func TestUpgradeRequired(t *testing.T) {
 	if _, ok := AsUpgradeRequired(streamErr); !ok {
 		t.Errorf("event stream: %v", streamErr)
 	}
-	if len(allHeard) != 2 || allHeard[0].MinimumVersion != "0.1.6" {
-		t.Errorf("OnUpgradeRequired heard %d", len(allHeard))
+	if len(heards) != 2 || heards[0].MinimumVersion != "0.1.6" {
+		t.Errorf("OnUpgradeRequired heard %d", len(heards))
 	}
 	if _, ok := AsUpgradeRequired(errors.New("other")); ok {
 		t.Error("another error read as upgrade required")

@@ -78,7 +78,7 @@ func New(stateDirectory, deviceName string, secretKeyStore SecretKeyStore, biome
 		config.OnRemoteChange = listener.OnRemoteChange
 		config.OnUpdateRequired = func(app.UpdateRequirement) { listener.OnUpdateRequired() }
 	}
-	service, err := app.CreateService(config)
+	service, err := app.NewService(config)
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +206,7 @@ func (hisar *Hisar) ReportActivity() {
 
 // ListAllVault returns []app.VaultSummary as JSON; it also syncs every vault.
 func (hisar *Hisar) ListAllVault() (string, error) {
-	return encodeJSON(hisar.service.ListAllVault())
+	return encodeJSON(hisar.service.ListVaults())
 }
 
 // CreateVault creates a shared vault owned by the current user and returns its app.VaultSummary as JSON.
@@ -216,7 +216,7 @@ func (hisar *Hisar) CreateVault(name string) (string, error) {
 
 // ListAllPerson returns the user and the people they share a vault with ([]app.Person) as JSON; isCurrentUser marks the user.
 func (hisar *Hisar) ListAllPerson() (string, error) {
-	return encodeJSON(hisar.service.ListAllPerson())
+	return encodeJSON(hisar.service.ListPeople())
 }
 
 // InvitePerson asks the server to email a sign-up invite.
@@ -226,13 +226,13 @@ func (hisar *Hisar) InvitePerson(email string) error {
 
 // ListAllShareInvitation returns app.ShareInvitations as JSON, after completing shares that people accepted.
 func (hisar *Hisar) ListAllShareInvitation() (string, error) {
-	return encodeJSON(hisar.service.ListAllShareInvitation())
+	return encodeJSON(hisar.service.ListShareInvitations())
 }
 
 // ListAllShareAwaitingUnlock returns []app.ShareAwaitingUnlock as JSON for the lock screen: shares people accepted that this
 // app finishes once unlocked. It is empty while unlocked, offline or signed out.
 func (hisar *Hisar) ListAllShareAwaitingUnlock() (string, error) {
-	return encodeJSON(hisar.service.ListAllShareAwaitingUnlock())
+	return encodeJSON(hisar.service.ListSharesAwaitingUnlock())
 }
 
 func (hisar *Hisar) AcceptShareInvitation(invitationID string) error {
@@ -249,7 +249,7 @@ func (hisar *Hisar) CancelShareInvitation(invitationID string) error {
 
 // ListAllVaultMember returns who has access to a shared vault ([]app.VaultMember) as JSON, owners first.
 func (hisar *Hisar) ListAllVaultMember(vaultID string) (string, error) {
-	return encodeJSON(hisar.service.ListAllVaultMember(vaultID))
+	return encodeJSON(hisar.service.ListVaultMembers(vaultID))
 }
 
 // ShareVault emails a share invitation for a shared vault the user owns; role is "owner", "editor" or "reader".
@@ -268,7 +268,7 @@ func (hisar *Hisar) RemoveVaultMember(vaultID, accountID string) error {
 
 // ListAllItem returns []app.ItemDetail without passwords, notes, fields and one-time password secrets (hasOneTimePassword says whether there is one), as JSON.
 func (hisar *Hisar) ListAllItem(vaultID string) (string, error) {
-	return encodeJSON(hisar.service.ListAllItem(vaultID))
+	return encodeJSON(hisar.service.ListItems(vaultID))
 }
 
 // GetItem returns one app.ItemDetail with its secrets, as JSON.
@@ -305,7 +305,7 @@ func (hisar *Hisar) GeneratePassword(length int, isDigitIncluded, isSymbolInclud
 
 // ListAllLoginForService returns the logins matching an AutoFill service identifier (a URL or a bare domain), as JSON.
 func (hisar *Hisar) ListAllLoginForService(serviceIdentifier string) (string, error) {
-	return encodeJSON(app.ListAllLoginForURL(hisar.service, convertServiceIdentifierToURL(serviceIdentifier)))
+	return encodeJSON(app.ListLoginsForURL(hisar.service, convertServiceIdentifierToURL(serviceIdentifier)))
 }
 
 // GetLoginForService returns {"username", "password", "hasOneTimePassword"} as JSON after checking the login matches the service again.
@@ -328,25 +328,25 @@ func convertServiceIdentifierToURL(serviceIdentifier string) string {
 
 // ListAllPasskey returns every passkey in a login ([]app.StoredPasskey, binary values base64url) as JSON, for the credential identity store.
 func (hisar *Hisar) ListAllPasskey() (string, error) {
-	return encodePasskeyJSON(app.ListAllPasskey(hisar.service))
+	return encodePasskeyJSON(app.ListPasskeys(hisar.service))
 }
 
 // ListAllPasskeyForRelyingParty takes the allowed credential IDs as a JSON array of base64url strings; an empty array allows all.
 func (hisar *Hisar) ListAllPasskeyForRelyingParty(relyingPartyID, allowedCredentialIDsJSON string) (string, error) {
-	allAllowedCredentialID, err := decodeStringArray(allowedCredentialIDsJSON)
+	allowedCredentialIDs, err := decodeStringArray(allowedCredentialIDsJSON)
 	if err != nil {
 		return "", err
 	}
-	return encodePasskeyJSON(app.ListAllPasskeyForRelyingParty(hisar.service, relyingPartyID, allAllowedCredentialID))
+	return encodePasskeyJSON(app.ListPasskeysForRelyingParty(hisar.service, relyingPartyID, allowedCredentialIDs))
 }
 
 // PreparePasskeyRegistration returns {"isExcluded", "logins"} as JSON: the writable logins matching the relying party.
 func (hisar *Hisar) PreparePasskeyRegistration(relyingPartyID, excludedCredentialIDsJSON string) (string, error) {
-	allExcludedCredentialID, err := decodeStringArray(excludedCredentialIDsJSON)
+	excludedCredentialIDs, err := decodeStringArray(excludedCredentialIDsJSON)
 	if err != nil {
 		return "", err
 	}
-	return encodePasskeyJSON(app.PreparePasskeyRegistration(hisar.service, relyingPartyID, allExcludedCredentialID))
+	return encodePasskeyJSON(app.PreparePasskeyRegistration(hisar.service, relyingPartyID, excludedCredentialIDs))
 }
 
 // CreatePasskey takes a app.PasskeyRegistration and returns a app.PasskeyRegistrationResult, as JSON; the private key stays in Go.
@@ -372,11 +372,11 @@ func decodeStringArray(text string) ([]string, error) {
 	if strings.TrimSpace(text) == "" {
 		return nil, nil
 	}
-	var allValue []string
-	if err := json.Unmarshal([]byte(text), &allValue); err != nil {
+	var values []string
+	if err := json.Unmarshal([]byte(text), &values); err != nil {
 		return nil, errors.New("hisarkit: the credential IDs are not a JSON array of strings")
 	}
-	return allValue, nil
+	return values, nil
 }
 
 // encodePasskeyJSON drops the browser protocol's error code, so the app shows only the message.

@@ -20,15 +20,15 @@ import (
 
 type fakeShareLinkAPI struct {
 	mutex          sync.Mutex
-	allLinkByID    map[string]apitypes.ShareLink
-	allCiphertext  map[string]apitypes.PublicShareLink
+	linksByID      map[string]apitypes.ShareLink
+	ciphertexts    map[string]apitypes.PublicShareLink
 	createdCounter int
 }
 
 // serveShareLinkAPI answers the share link endpoints and passes everything else to the other test API.
 func serveShareLinkAPI(t *testing.T, testService unlockedTestService) *fakeShareLinkAPI {
 	t.Helper()
-	api := &fakeShareLinkAPI{allLinkByID: map[string]apitypes.ShareLink{}, allCiphertext: map[string]apitypes.PublicShareLink{}}
+	api := &fakeShareLinkAPI{linksByID: map[string]apitypes.ShareLink{}, ciphertexts: map[string]apitypes.PublicShareLink{}}
 	service := testService.service
 	service.mutex.Lock()
 	upstream, err := url.Parse(service.unlockedSession.Client.BaseURL)
@@ -63,12 +63,12 @@ func (api *fakeShareLinkAPI) answer(writer http.ResponseWriter, request *http.Re
 		api.createdCounter++
 		id = strings.Repeat(string(rune('A'+api.createdCounter)), 22)
 		link := apitypes.ShareLink{ID: id, EncryptedLabel: create.EncryptedLabel, CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Duration(create.ExpiresInSeconds) * time.Second), MaxViews: create.MaxViews, HasPassphrase: create.Passphrase != nil}
-		api.allLinkByID[id] = link
-		api.allCiphertext[id] = apitypes.PublicShareLink{Ciphertext: create.Ciphertext, Passphrase: create.Passphrase, ExpiresAt: link.ExpiresAt, MaxViews: link.MaxViews}
+		api.linksByID[id] = link
+		api.ciphertexts[id] = apitypes.PublicShareLink{Ciphertext: create.Ciphertext, Passphrase: create.Passphrase, ExpiresAt: link.ExpiresAt, MaxViews: link.MaxViews}
 		writer.WriteHeader(http.StatusCreated)
 		json.NewEncoder(writer).Encode(link)
 	case request.Method == http.MethodGet && strings.Contains(request.URL.Path, "/public/"):
-		public, isFound := api.allCiphertext[id]
+		public, isFound := api.ciphertexts[id]
 		if !isFound {
 			writer.WriteHeader(http.StatusNotFound)
 			writer.Write([]byte(`{"error":"not found"}`))
@@ -76,19 +76,19 @@ func (api *fakeShareLinkAPI) answer(writer http.ResponseWriter, request *http.Re
 		}
 		json.NewEncoder(writer).Encode(public)
 	case request.Method == http.MethodGet:
-		allLink := []apitypes.ShareLink{}
-		for _, link := range api.allLinkByID {
-			allLink = append(allLink, link)
+		links := []apitypes.ShareLink{}
+		for _, link := range api.linksByID {
+			links = append(links, link)
 		}
-		json.NewEncoder(writer).Encode(allLink)
+		json.NewEncoder(writer).Encode(links)
 	case request.Method == http.MethodDelete:
-		if _, isFound := api.allLinkByID[id]; !isFound {
+		if _, isFound := api.linksByID[id]; !isFound {
 			writer.WriteHeader(http.StatusNotFound)
 			writer.Write([]byte(`{"error":"not found"}`))
 			return
 		}
-		delete(api.allLinkByID, id)
-		delete(api.allCiphertext, id)
+		delete(api.linksByID, id)
+		delete(api.ciphertexts, id)
 		writer.WriteHeader(http.StatusNoContent)
 	}
 }
@@ -124,7 +124,7 @@ func TestCommandLineShareLinksThroughTheApp(t *testing.T) {
 	if payload.Title != "GitHub" || len(payload.Fields) != 2 || payload.Fields[0].Value != "github-password" || payload.Fields[1].Value != "a1b2" {
 		t.Fatalf("payload %+v", payload)
 	}
-	if encoded, _ := json.Marshal(api.allCiphertext); strings.Contains(string(encoded), "github-password") {
+	if encoded, _ := json.Marshal(api.ciphertexts); strings.Contains(string(encoded), "github-password") {
 		t.Fatal("the server received the password")
 	}
 
@@ -176,20 +176,20 @@ func TestCommandLineShareLinksThroughTheApp(t *testing.T) {
 
 func TestCommandLineShareLinkDescription(t *testing.T) {
 	testService := createUnlockedTestService(t)
-	bridge := CreateCommandLineBridge(testService.service, clisocket.CreateSessionApprovals(0, nil))
+	bridge := NewCommandLineBridge(testService.service, clisocket.NewSessionApprovals(0, nil))
 	if _, err := testService.service.SaveItem(testService.personalID, ItemDetail{Title: "GitHub", Username: "alice", Password: "pw", URLs: []string{"https://github.com"}}); err != nil {
 		t.Fatal(err)
 	}
 	request := &cliprotocol.Request{Vault: "Personal", Query: "git", ShareLink: &cliprotocol.ShareLinkChange{}}
-	if title, allLabel := bridge.DescribeShareLink(request); title != "GitHub" || strings.Join(allLabel, ",") != "username,password" {
-		t.Errorf("default description %q %v", title, allLabel)
+	if title, labels := bridge.DescribeShareLink(request); title != "GitHub" || strings.Join(labels, ",") != "username,password" {
+		t.Errorf("default description %q %v", title, labels)
 	}
 	request.ShareLink.Fields = []string{"URL"}
-	if title, allLabel := bridge.DescribeShareLink(request); title != "GitHub" || strings.Join(allLabel, ",") != "website" {
-		t.Errorf("description %q %v", title, allLabel)
+	if title, labels := bridge.DescribeShareLink(request); title != "GitHub" || strings.Join(labels, ",") != "website" {
+		t.Errorf("description %q %v", title, labels)
 	}
 	testService.service.Lock()
-	if title, allLabel := bridge.DescribeShareLink(request); title != "git" || strings.Join(allLabel, ",") != "URL" {
-		t.Errorf("locked description %q %v", title, allLabel)
+	if title, labels := bridge.DescribeShareLink(request); title != "git" || strings.Join(labels, ",") != "URL" {
+		t.Errorf("locked description %q %v", title, labels)
 	}
 }

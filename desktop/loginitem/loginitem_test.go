@@ -49,7 +49,7 @@ func (loginItem *fakeLoginItem) OpenSystemSettings() error {
 
 func createLoginItemTestService(t *testing.T, statePath string, loginItem *fakeLoginItem) *Service {
 	t.Helper()
-	appService, err := app.CreateService(app.Config{StatePath: statePath, SecretKeyStore: memorySecretKeyStore{}})
+	appService, err := app.NewService(app.Config{StatePath: statePath, SecretKeyStore: memorySecretKeyStore{}})
 	if err != nil {
 		t.Fatal(err)
 	}

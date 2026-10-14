@@ -6,12 +6,12 @@ import (
 	"time"
 )
 
-var allAutoLockSeconds = []int{30, 60, 300, 600, 3600}
+var autoLockSeconds = []int{30, 60, 300, 600, 3600}
 
 const minimumLockRecheckInterval = 10 * time.Millisecond
 
 func (s *Service) getAutoLockAfter() time.Duration {
-	if slices.Contains(allAutoLockSeconds, s.state.AutoLockSeconds) {
+	if slices.Contains(autoLockSeconds, s.state.AutoLockSeconds) {
 		return time.Duration(s.state.AutoLockSeconds) * time.Second
 	}
 	return s.config.AutoLockAfter
@@ -19,7 +19,7 @@ func (s *Service) getAutoLockAfter() time.Duration {
 
 // SetAutoLock stores how long Hisar stays unlocked without activity and restarts the countdown.
 func (s *Service) SetAutoLock(seconds int) (Status, error) {
-	if !slices.Contains(allAutoLockSeconds, seconds) {
+	if !slices.Contains(autoLockSeconds, seconds) {
 		return Status{}, errors.New("choose 30 seconds, 1 minute, 5 minutes, 10 minutes or 1 hour")
 	}
 	s.mutex.Lock()
@@ -106,17 +106,17 @@ func (s *Service) lockSession() {
 		s.unlockedSession.Lock()
 		s.unlockedSession = nil
 	}
-	for _, vault := range s.allVaultByID {
+	for _, vault := range s.vaultsByID {
 		clear(vault.Key)
 	}
-	s.allVaultByID = nil
-	s.allItemByVaultID = nil
+	s.vaultsByID = nil
+	s.itemsByVaultID = nil
 	s.pendingImport = nil
 	if wasUnlocked && s.config.OnLock != nil {
 		s.config.OnLock()
 	}
 	if wasUnlocked {
-		for _, lockListener := range s.allLockListener {
+		for _, lockListener := range s.lockListeners {
 			lockListener()
 		}
 		s.notifyStatusListener()

@@ -39,22 +39,22 @@ func checkVaultManagementAndExport(t *testing.T, hisar *Hisar, personalID, passw
 	}](t)(hisar.DeleteVault(trip.ID, `{"moveToVaultId":"`+personalID+`"}`)); moved.MovedCount != 1 {
 		t.Errorf("moved: %+v", moved)
 	}
-	allItem := decodeJSON[[]struct {
+	items := decodeJSON[[]struct {
 		ID    string `json:"id"`
 		Title string `json:"title"`
 	}](t)(hisar.ListAllItem(personalID))
-	hotelIndex := slices.IndexFunc(allItem, func(listed struct {
+	hotelIndex := slices.IndexFunc(items, func(listed struct {
 		ID    string `json:"id"`
 		Title string `json:"title"`
 	}) bool {
 		return listed.Title == "Hotel"
 	})
-	if len(allItem) != 2 || hotelIndex < 0 {
-		t.Fatalf("personal items after the move: %+v", allItem)
+	if len(items) != 2 || hotelIndex < 0 {
+		t.Fatalf("personal items after the move: %+v", items)
 	}
 	if hotel := decodeJSON[struct {
 		Password string `json:"password"`
-	}](t)(hisar.GetItem(personalID, allItem[hotelIndex].ID)); hotel.Password != "hotel-secret" {
+	}](t)(hisar.GetItem(personalID, items[hotelIndex].ID)); hotel.Password != "hotel-secret" {
 		t.Errorf("moved item: %+v", hotel)
 	}
 	exportDirectory := t.TempDir()
@@ -109,7 +109,7 @@ func TestVaultManagementWhileSignedOut(t *testing.T) {
 	if _, err := hisar.ExportAllData("encrypted", "short", "", exportDirectory); err == nil {
 		t.Error("a short export passphrase was accepted")
 	}
-	if allEntry, _ := os.ReadDir(exportDirectory); len(allEntry) != 0 {
-		t.Errorf("files written by failed exports: %v", allEntry)
+	if entries, _ := os.ReadDir(exportDirectory); len(entries) != 0 {
+		t.Errorf("files written by failed exports: %v", entries)
 	}
 }

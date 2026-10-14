@@ -47,16 +47,16 @@ func TestShareLinkThroughTheApp(t *testing.T) {
 	if stdout != testShareLinkURL+"\n" || !strings.Contains(stderr, `Share link for "GitHub" (password)`) || !strings.Contains(stderr, "3 views; send the passphrase another way") {
 		t.Errorf("stdout %q stderr %q", stdout, stderr)
 	}
-	allCreate := app.findRequest(cliprotocol.TypeCreateShareLink)
-	if len(allCreate) != 1 {
-		t.Fatalf("requests %v", app.listAllRequestType())
+	createRequests := app.findRequest(cliprotocol.TypeCreateShareLink)
+	if len(createRequests) != 1 {
+		t.Fatalf("requests %v", app.listRequestTypes())
 	}
-	change := allCreate[0].ShareLink
-	if allCreate[0].Vault != "Work" || allCreate[0].Query != "GitHub" || !slices.Equal(change.Fields, []string{"password", "Recovery code"}) ||
+	change := createRequests[0].ShareLink
+	if createRequests[0].Vault != "Work" || createRequests[0].Query != "GitHub" || !slices.Equal(change.Fields, []string{"password", "Recovery code"}) ||
 		change.ExpiresInSeconds != 86400 || change.MaxViews != 3 || change.Passphrase != "correct horse" || change.Text != "" {
-		t.Errorf("request %+v %+v", allCreate[0], change)
+		t.Errorf("request %+v %+v", createRequests[0], change)
 	}
-	if slices.Contains(app.listAllRequestType(), cliprotocol.TypeGetItem) {
+	if slices.Contains(app.listRequestTypes(), cliprotocol.TypeGetItem) {
 		t.Error("the CLI fetched the item's secrets to share it")
 	}
 }
@@ -78,7 +78,7 @@ func TestShareLinkRefusesBadOptions(t *testing.T) {
 	app := startFakeApp(t)
 	app.answer = answerFakeShareLinkRequest
 	for _, testCase := range []struct {
-		allArg  []string
+		args    []string
 		input   string
 		failure string
 	}{
@@ -90,13 +90,13 @@ func TestShareLinkRefusesBadOptions(t *testing.T) {
 		{[]string{"share-link"}, "", "usage"},
 		{[]string{"share-link", "GitHub", "GitLab"}, "", "usage"},
 	} {
-		_, _, err := runCapturingOutput(t, false, testCase.input, testCase.allArg...)
+		_, _, err := runCapturingOutput(t, false, testCase.input, testCase.args...)
 		if err == nil || !strings.Contains(err.Error(), testCase.failure) {
-			t.Errorf("%v: %v", testCase.allArg, err)
+			t.Errorf("%v: %v", testCase.args, err)
 		}
 	}
-	if allCreate := app.findRequest(cliprotocol.TypeCreateShareLink); len(allCreate) != 0 {
-		t.Errorf("bad options reached the app: %+v", allCreate)
+	if createRequests := app.findRequest(cliprotocol.TypeCreateShareLink); len(createRequests) != 0 {
+		t.Errorf("bad options reached the app: %+v", createRequests)
 	}
 }
 

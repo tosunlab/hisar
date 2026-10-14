@@ -7,16 +7,16 @@ import (
 )
 
 func TestFindInvitationID(t *testing.T) {
-	allInvitationID := []string{"a1b2c3d4-1111", "a1b2ffff-2222", "e5f6a7b8-3333"}
+	invitationIDs := []string{"a1b2c3d4-1111", "a1b2ffff-2222", "e5f6a7b8-3333"}
 	for query, expected := range map[string]string{"e5": "e5f6a7b8-3333", "a1b2c3": "a1b2c3d4-1111", " A1B2F ": "a1b2ffff-2222", "e5f6a7b8-3333": "e5f6a7b8-3333"} {
-		if invitationID, err := findInvitationID(allInvitationID, query); err != nil || invitationID != expected {
+		if invitationID, err := findInvitationID(invitationIDs, query); err != nil || invitationID != expected {
 			t.Errorf("%q: %q %v", query, invitationID, err)
 		}
 	}
-	if _, err := findInvitationID(allInvitationID, "a1b2"); err == nil || !strings.Contains(err.Error(), "more than one") {
+	if _, err := findInvitationID(invitationIDs, "a1b2"); err == nil || !strings.Contains(err.Error(), "more than one") {
 		t.Errorf("ambiguous: %v", err)
 	}
-	if _, err := findInvitationID(allInvitationID, "zz"); err == nil || !strings.Contains(err.Error(), "no invitation") {
+	if _, err := findInvitationID(invitationIDs, "zz"); err == nil || !strings.Contains(err.Error(), "no invitation") {
 		t.Errorf("unknown: %v", err)
 	}
 	if _, err := findInvitationID(nil, "a1"); err == nil || !strings.Contains(err.Error(), "no invitations") {

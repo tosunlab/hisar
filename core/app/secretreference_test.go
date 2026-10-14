@@ -60,7 +60,7 @@ func TestResolveSecretsThroughTheApp(t *testing.T) {
 func TestResolveSecretsWhileLocked(t *testing.T) {
 	testService := createUnlockedTestService(t)
 	testService.service.Lock()
-	if _, err := testService.service.resolveAllSecret([]string{"hisar://Personal/GitHub/password"}); err == nil || convertCommandLineError(err).(*cliprotocol.ResponseError).Code != cliprotocol.ErrorLocked {
+	if _, err := testService.service.resolveSecrets([]string{"hisar://Personal/GitHub/password"}); err == nil || convertCommandLineError(err).(*cliprotocol.ResponseError).Code != cliprotocol.ErrorLocked {
 		t.Errorf("locked: %v", err)
 	}
 }
@@ -72,16 +72,16 @@ func TestDescribeSecretsForTheApprovalWindow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	bridge := CreateCommandLineBridge(service, clisocket.CreateSessionApprovals(0, nil))
-	allReference := []string{"hisar://" + testService.personalID + "/" + github.ID + "/PASSWORD", "hisar://Personal/Nothing/password", "hisar://Work/AWS%20prod/secret%20key", "not a reference"}
-	allExpected := []string{"Personal › GitHub › password", "Personal › Nothing › password", "Work › AWS prod › secret key", "not a reference"}
-	if allName := bridge.DescribeAllSecret(allReference); !slices.Equal(allName, allExpected) {
-		t.Errorf("unlocked: %q", allName)
+	bridge := NewCommandLineBridge(service, clisocket.NewSessionApprovals(0, nil))
+	references := []string{"hisar://" + testService.personalID + "/" + github.ID + "/PASSWORD", "hisar://Personal/Nothing/password", "hisar://Work/AWS%20prod/secret%20key", "not a reference"}
+	expectedValues := []string{"Personal › GitHub › password", "Personal › Nothing › password", "Work › AWS prod › secret key", "not a reference"}
+	if names := bridge.DescribeSecrets(references); !slices.Equal(names, expectedValues) {
+		t.Errorf("unlocked: %q", names)
 	}
 	service.Lock()
-	allExpected[0] = testService.personalID + " › " + github.ID + " › PASSWORD"
-	if allName := bridge.DescribeAllSecret(allReference); !slices.Equal(allName, allExpected) {
-		t.Errorf("locked: %q", allName)
+	expectedValues[0] = testService.personalID + " › " + github.ID + " › PASSWORD"
+	if names := bridge.DescribeSecrets(references); !slices.Equal(names, expectedValues) {
+		t.Errorf("locked: %q", names)
 	}
 }
 
@@ -103,7 +103,7 @@ func TestCopySecretReference(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	allCase := []struct {
+	cases := []struct {
 		itemID    string
 		fieldName string
 		expected  string
@@ -117,7 +117,7 @@ func TestCopySecretReference(t *testing.T) {
 		{sshKey.ID, "public key", "hisar://Personal/Deploy%20key/public%20key"},
 		{sshKey.ID, "fingerprint", "hisar://Personal/Deploy%20key/fingerprint"},
 	}
-	for _, testCase := range allCase {
+	for _, testCase := range cases {
 		reference, err := service.CopySecretReference(personalID, testCase.itemID, testCase.fieldName)
 		if err != nil || reference != testCase.expected {
 			t.Errorf("%s: %q, %v; want %q", testCase.fieldName, reference, err, testCase.expected)
@@ -126,8 +126,8 @@ func TestCopySecretReference(t *testing.T) {
 		if copied, _ := testService.clipboard.GetText(); copied != testCase.expected {
 			t.Errorf("clipboard holds %q", copied)
 		}
-		allResolved, err := secretreference.ResolveAll(serviceSecretSource{service: service, ctx: t.Context()}, []string{reference}, service.config.Now())
-		if err != nil || allResolved[0].Value == "" {
+		resolvedReferences, err := secretreference.ResolveAll(serviceSecretSource{service: service, ctx: t.Context()}, []string{reference}, service.config.Now())
+		if err != nil || resolvedReferences[0].Value == "" {
 			t.Errorf("%s does not resolve: %v", reference, err)
 		}
 	}

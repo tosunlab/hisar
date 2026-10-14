@@ -39,26 +39,26 @@ type Display struct {
 }
 
 // SelectPointerDisplay returns the display under the pointer, else the first one (the primary display).
-func SelectPointerDisplay(allDisplay []Display, pointer Point) (Display, bool) {
-	for _, display := range allDisplay {
+func SelectPointerDisplay(displays []Display, pointer Point) (Display, bool) {
+	for _, display := range displays {
 		if display.Frame.containsPoint(pointer) {
 			return display, true
 		}
 	}
-	if len(allDisplay) == 0 {
+	if len(displays) == 0 {
 		return Display{}, false
 	}
-	return allDisplay[0], true
+	return displays[0], true
 }
 
 // SelectWindowDisplay returns the display holding most of the window, else the first one.
-func SelectWindowDisplay(allDisplay []Display, windowFrame Rectangle) (Display, bool) {
-	if len(allDisplay) == 0 {
+func SelectWindowDisplay(displays []Display, windowFrame Rectangle) (Display, bool) {
+	if len(displays) == 0 {
 		return Display{}, false
 	}
-	selectedDisplay := allDisplay[0]
+	selectedDisplay := displays[0]
 	largestArea := 0.0
-	for _, display := range allDisplay {
+	for _, display := range displays {
 		if area := display.Frame.calculateIntersectionArea(windowFrame); area > largestArea {
 			selectedDisplay, largestArea = display, area
 		}
@@ -102,13 +102,13 @@ type Request struct {
 	IsShowing bool
 }
 
-func CalculateWindowFrame(allDisplay []Display, pointer Point, currentFrame Rectangle, request Request) (Rectangle, bool) {
+func CalculateWindowFrame(displays []Display, pointer Point, currentFrame Rectangle, request Request) (Rectangle, bool) {
 	var display Display
 	var isFound bool
 	if request.IsShowing {
-		display, isFound = SelectPointerDisplay(allDisplay, pointer)
+		display, isFound = SelectPointerDisplay(displays, pointer)
 	} else {
-		display, isFound = SelectWindowDisplay(allDisplay, currentFrame)
+		display, isFound = SelectWindowDisplay(displays, currentFrame)
 	}
 	if !isFound {
 		return Rectangle{}, false

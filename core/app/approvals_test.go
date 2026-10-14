@@ -8,7 +8,7 @@ import (
 func TestCompactSSHApprovalIsSavedAndKeptOnSignOut(t *testing.T) {
 	statePath := filepath.Join(t.TempDir(), "desktop.json")
 	service, _, _ := createTestService(t, statePath, createMemorySecretKeyStore())
-	preference := CreateApprovalPreference(service)
+	preference := NewApprovalPreference(service)
 	if preference.IsCompactSSHApproval() {
 		t.Error("compact approvals are on by default")
 	}
@@ -19,7 +19,7 @@ func TestCompactSSHApprovalIsSavedAndKeptOnSignOut(t *testing.T) {
 		t.Fatal(err)
 	}
 	reloaded, _, _ := createTestService(t, statePath, createMemorySecretKeyStore())
-	reloadedPreference := CreateApprovalPreference(reloaded)
+	reloadedPreference := NewApprovalPreference(reloaded)
 	if !reloadedPreference.IsCompactSSHApproval() {
 		t.Error("the compact approval switch was not kept")
 	}
@@ -31,7 +31,7 @@ func TestCompactSSHApprovalIsSavedAndKeptOnSignOut(t *testing.T) {
 func TestPhoneApprovalSwitchIsSavedAndKeptOnSignOut(t *testing.T) {
 	statePath := filepath.Join(t.TempDir(), "desktop.json")
 	service, _, _ := createTestService(t, statePath, createMemorySecretKeyStore())
-	preference := CreateApprovalPreference(service)
+	preference := NewApprovalPreference(service)
 	if !preference.IsPhoneApproval() {
 		t.Error("phone approvals are off by default")
 	}
@@ -42,7 +42,7 @@ func TestPhoneApprovalSwitchIsSavedAndKeptOnSignOut(t *testing.T) {
 		t.Fatal(err)
 	}
 	reloaded, _, _ := createTestService(t, statePath, createMemorySecretKeyStore())
-	reloadedPreference := CreateApprovalPreference(reloaded)
+	reloadedPreference := NewApprovalPreference(reloaded)
 	if reloadedPreference.IsPhoneApproval() {
 		t.Error("the phone approval switch was not kept")
 	}
@@ -54,7 +54,7 @@ func TestPhoneApprovalSwitchIsSavedAndKeptOnSignOut(t *testing.T) {
 func TestSigningRememberIsOffByDefaultAndKeptOnSignOut(t *testing.T) {
 	statePath := filepath.Join(t.TempDir(), "desktop.json")
 	service, _, _ := createTestService(t, statePath, createMemorySecretKeyStore())
-	preference := CreateApprovalPreference(service)
+	preference := NewApprovalPreference(service)
 	if seconds := preference.GetSigningRememberSeconds(); seconds != 0 {
 		t.Errorf("commit signing is remembered for %d seconds by default", seconds)
 	}
@@ -68,7 +68,7 @@ func TestSigningRememberIsOffByDefaultAndKeptOnSignOut(t *testing.T) {
 		t.Fatal(err)
 	}
 	reloaded, _, _ := createTestService(t, statePath, createMemorySecretKeyStore())
-	reloadedPreference := CreateApprovalPreference(reloaded)
+	reloadedPreference := NewApprovalPreference(reloaded)
 	if seconds := reloadedPreference.GetSigningRememberSeconds(); seconds != 600 {
 		t.Errorf("kept %d seconds", seconds)
 	}

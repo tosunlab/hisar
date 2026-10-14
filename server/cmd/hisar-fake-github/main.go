@@ -18,14 +18,14 @@ func main() {
 	address := flag.String("addr", "127.0.0.1:18092", "loopback address to listen on")
 	token := flag.String("token", "", "bearer token the API requires (empty: none)")
 	flag.Parse()
-	fake := fakegithub.Create(fakegithub.DefaultRepository, *token)
+	fake := fakegithub.New(fakegithub.DefaultRepository, *token)
 	fake.StorageURL = "http://" + *address + "/storage"
 	publishedAt := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
-	fake.AddRelease(fakegithub.Release{TagName: "cli-1.0.0", AllAsset: []fakegithub.Asset{{Name: "SHA256SUMS", Content: []byte("sums")}}})
-	fake.AddRelease(fakegithub.CreateDesktopRelease(fakegithub.ReleaseConfig{
+	fake.AddRelease(fakegithub.Release{TagName: "cli-1.0.0", Assets: []fakegithub.Asset{{Name: "SHA256SUMS", Content: []byte("sums")}}})
+	fake.AddRelease(fakegithub.NewDesktopRelease(fakegithub.ReleaseConfig{
 		Version: "0.2.0", BuildNumber: 2000, Archive: []byte("end-to-end archive of 0.2.0"), ReleaseNotes: "Published release", PublishedAt: publishedAt,
 	}))
-	fake.AddRelease(fakegithub.CreateDesktopRelease(fakegithub.ReleaseConfig{
+	fake.AddRelease(fakegithub.NewDesktopRelease(fakegithub.ReleaseConfig{
 		Version: "0.3.0", BuildNumber: 3000, Archive: []byte("end-to-end archive of 0.3.0"), ReleaseNotes: "Not published yet", PublishedAt: publishedAt, IsUnpublished: true,
 	}))
 	mux := http.NewServeMux()

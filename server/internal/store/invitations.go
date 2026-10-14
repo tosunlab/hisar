@@ -65,8 +65,8 @@ func (s *Store) UpsertShareInvitation(ctx context.Context, invitation *ShareInvi
 	return invitationID, err
 }
 
-func (s *Store) ListAllReceivedShareInvitation(ctx context.Context, email string) ([]ReceivedShareInvitation, error) {
-	allRow, err := s.pool.Query(ctx, `
+func (s *Store) ListReceivedShareInvitations(ctx context.Context, email string) ([]ReceivedShareInvitation, error) {
+	rows, err := s.pool.Query(ctx, `
 		SELECT i.id, i.vault_id, i.email, i.role, i.invited_by, i.state, i.created_at, i.expires_at, a.name, a.email
 		FROM share_invitations i JOIN accounts a ON a.id = i.invited_by
 		WHERE i.email = $1 AND i.state = 'pending' AND i.expires_at > now()
@@ -74,7 +74,7 @@ func (s *Store) ListAllReceivedShareInvitation(ctx context.Context, email string
 	if err != nil {
 		return nil, err
 	}
-	return pgx.CollectRows(allRow, func(row pgx.CollectableRow) (ReceivedShareInvitation, error) {
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (ReceivedShareInvitation, error) {
 		var invitation ReceivedShareInvitation
 		err := row.Scan(&invitation.ID, &invitation.VaultID, &invitation.Email, &invitation.Role, &invitation.InvitedBy, &invitation.State,
 			&invitation.CreatedAt, &invitation.ExpiresAt, &invitation.InvitedByName, &invitation.InvitedByEmail)
@@ -82,9 +82,9 @@ func (s *Store) ListAllReceivedShareInvitation(ctx context.Context, email string
 	})
 }
 
-// ListAllSentShareInvitation returns the live invitations of every vault the account owns; accepted ones never expire.
-func (s *Store) ListAllSentShareInvitation(ctx context.Context, accountID string) ([]SentShareInvitation, error) {
-	allRow, err := s.pool.Query(ctx, `
+// ListSentShareInvitations returns the live invitations of every vault the account owns; accepted ones never expire.
+func (s *Store) ListSentShareInvitations(ctx context.Context, accountID string) ([]SentShareInvitation, error) {
+	rows, err := s.pool.Query(ctx, `
 		SELECT i.id, i.vault_id, i.email, i.role, i.invited_by, i.state, i.created_at, i.expires_at, i.accepted_at,
 			r.id, r.email, r.name, r.role, r.kem_pub, r.sign_pub, r.kem_sig
 		FROM share_invitations i
@@ -95,7 +95,7 @@ func (s *Store) ListAllSentShareInvitation(ctx context.Context, accountID string
 	if err != nil {
 		return nil, err
 	}
-	return pgx.CollectRows(allRow, func(row pgx.CollectableRow) (SentShareInvitation, error) {
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (SentShareInvitation, error) {
 		var invitation SentShareInvitation
 		var recipientID, recipientEmail, recipientName, recipientRole *string
 		var recipientKEMPub, recipientSignPub, recipientKEMSig []byte
@@ -119,9 +119,9 @@ func (s *Store) AcceptShareInvitation(ctx context.Context, invitationID, account
 	return vaultID, acceptedAt, convertNoRowsToNotFound(err)
 }
 
-// ListAllWaitingShareInvitation returns the invitations the account accepted that no owner's app has completed yet.
-func (s *Store) ListAllWaitingShareInvitation(ctx context.Context, accountID string) ([]ReceivedShareInvitation, error) {
-	allRow, err := s.pool.Query(ctx, `
+// ListWaitingShareInvitations returns the invitations the account accepted that no owner's app has completed yet.
+func (s *Store) ListWaitingShareInvitations(ctx context.Context, accountID string) ([]ReceivedShareInvitation, error) {
+	rows, err := s.pool.Query(ctx, `
 		SELECT i.id, i.vault_id, i.email, i.role, i.invited_by, i.state, i.created_at, i.expires_at, i.accepted_at, a.name, a.email
 		FROM share_invitations i JOIN accounts a ON a.id = i.invited_by
 		WHERE i.accepted_by = $1 AND i.state = 'accepted'
@@ -129,7 +129,7 @@ func (s *Store) ListAllWaitingShareInvitation(ctx context.Context, accountID str
 	if err != nil {
 		return nil, err
 	}
-	return pgx.CollectRows(allRow, func(row pgx.CollectableRow) (ReceivedShareInvitation, error) {
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (ReceivedShareInvitation, error) {
 		var invitation ReceivedShareInvitation
 		err := row.Scan(&invitation.ID, &invitation.VaultID, &invitation.Email, &invitation.Role, &invitation.InvitedBy, &invitation.State,
 			&invitation.CreatedAt, &invitation.ExpiresAt, &invitation.AcceptedAt, &invitation.InvitedByName, &invitation.InvitedByEmail)
@@ -178,9 +178,9 @@ func (s *Store) IsVaultMemberEmail(ctx context.Context, vaultID, email string) (
 	return isMember, err
 }
 
-// ListAllPerson returns the account and everyone who shares at least one vault with it.
-func (s *Store) ListAllPerson(ctx context.Context, accountID string) ([]Account, error) {
-	allRow, err := s.pool.Query(ctx, `
+// ListPeople returns the account and everyone who shares at least one vault with it.
+func (s *Store) ListPeople(ctx context.Context, accountID string) ([]Account, error) {
+	rows, err := s.pool.Query(ctx, `
 		SELECT `+accountColumnList+` FROM accounts WHERE id = $1 OR id IN (
 			SELECT other.account_id FROM vault_access mine JOIN vault_access other ON other.vault_id = mine.vault_id
 			WHERE mine.account_id = $1)
@@ -188,14 +188,14 @@ func (s *Store) ListAllPerson(ctx context.Context, accountID string) ([]Account,
 	if err != nil {
 		return nil, err
 	}
-	defer allRow.Close()
-	var allAccount []Account
-	for allRow.Next() {
-		account, err := scanAccount(allRow)
+	defer rows.Close()
+	var accounts []Account
+	for rows.Next() {
+		account, err := scanAccount(rows)
 		if err != nil {
 			return nil, err
 		}
-		allAccount = append(allAccount, *account)
+		accounts = append(accounts, *account)
 	}
-	return allAccount, allRow.Err()
+	return accounts, rows.Err()
 }

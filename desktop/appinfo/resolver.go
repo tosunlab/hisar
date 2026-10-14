@@ -42,8 +42,8 @@ type RunningApp struct {
 type System struct {
 	ProcessReader
 	GetResponsiblePID    func(pid int) (int, error)
-	ListAllProcessID     func() ([]int, error)
-	ListAllRunningApp    func() []RunningApp
+	ListProcessIDs       func() ([]int, error)
+	ListRunningApps      func() []RunningApp
 	GetSignature         func(path string) Signature
 	GetTeamID            func(path string) string
 	GetBundleDisplayName func(bundlePath string) string
@@ -54,11 +54,11 @@ type System struct {
 
 // Requester is who a request comes from: the app responsible for it, or what stands in for one, and the process chain.
 type Requester struct {
-	Kind            string
-	Name            string
-	App             App
-	AllProcess      []Process
-	AllChainProcess []Process
+	Kind           string
+	Name           string
+	App            App
+	Processes      []Process
+	ChainProcesses []Process
 }
 
 type cachedSignature struct {
@@ -68,24 +68,24 @@ type cachedSignature struct {
 
 // Resolver finds the app responsible for a process; bundle names, icons and signatures are cached per bundle path.
 type Resolver struct {
-	system             System
-	mutex              sync.Mutex
-	allIconByKey       map[string][]byte
-	allNameByPath      map[string]string
-	allSignatureByPath map[string]cachedSignature
-	allTeamIDByPath    map[string]cachedSignature
+	system           System
+	mutex            sync.Mutex
+	iconsByKey       map[string][]byte
+	namesByPath      map[string]string
+	signaturesByPath map[string]cachedSignature
+	teamIDsByPath    map[string]cachedSignature
 }
 
-func CreateResolver(system System) *Resolver {
+func NewResolver(system System) *Resolver {
 	if system.GetModificationTime == nil {
 		system.GetModificationTime = getModificationTime
 	}
 	return &Resolver{
-		system:             system,
-		allIconByKey:       map[string][]byte{},
-		allNameByPath:      map[string]string{},
-		allSignatureByPath: map[string]cachedSignature{},
-		allTeamIDByPath:    map[string]cachedSignature{},
+		system:           system,
+		iconsByKey:       map[string][]byte{},
+		namesByPath:      map[string]string{},
+		signaturesByPath: map[string]cachedSignature{},
+		teamIDsByPath:    map[string]cachedSignature{},
 	}
 }
 
@@ -93,39 +93,39 @@ var errIconUnavailable = errors.New("appinfo: icons are not available")
 
 // Resolve finds who is behind a process: the app responsible for it, an SSH session, a tmux server or a background process.
 func (resolver *Resolver) Resolve(pid int) Requester {
-	allProcess := ListAllProcess(pid, resolver.system.ProcessReader)
-	requester := Requester{Kind: RequesterKindProcess, Name: "A process without an app", AllProcess: allProcess, AllChainProcess: buildChain(allProcess, len(allProcess))}
-	if len(allProcess) == 0 {
+	processes := ListProcesses(pid, resolver.system.ProcessReader)
+	requester := Requester{Kind: RequesterKindProcess, Name: "A process without an app", Processes: processes, ChainProcesses: buildChain(processes, len(processes))}
+	if len(processes) == 0 {
 		return requester
 	}
-	allRegularAppPath := resolver.listAllRegularAppPath()
-	if index, bundlePath, isFound := resolver.findAppInChain(allProcess, allRegularAppPath); isFound {
-		return resolver.buildAppRequester(requester, bundlePath, buildChain(allProcess, index))
+	regularAppPaths := resolver.listRegularAppPaths()
+	if index, bundlePath, isFound := resolver.findAppInChain(processes, regularAppPaths); isFound {
+		return resolver.buildAppRequester(requester, bundlePath, buildChain(processes, index))
 	}
-	for index, process := range allProcess {
+	for index, process := range processes {
 		name := GetProgramName(process)
 		if isSSHServer(name) {
-			requester.Kind, requester.Name, requester.AllChainProcess = RequesterKindSSHSession, resolver.describeSSHSession(allProcess, index), buildChain(allProcess, index)
+			requester.Kind, requester.Name, requester.ChainProcesses = RequesterKindSSHSession, resolver.describeSSHSession(processes, index), buildChain(processes, index)
 			return requester
 		}
 		if multiplexerName := getMultiplexerName(name); multiplexerName != "" {
-			allChainProcess := buildChain(allProcess, index+1)
-			if bundlePath, isFound := resolver.findMultiplexerApp(process, multiplexerName, allRegularAppPath); isFound {
-				return resolver.buildAppRequester(requester, bundlePath, allChainProcess)
+			chainProcesses := buildChain(processes, index+1)
+			if bundlePath, isFound := resolver.findMultiplexerApp(process, multiplexerName, regularAppPaths); isFound {
+				return resolver.buildAppRequester(requester, bundlePath, chainProcesses)
 			}
-			requester.Kind, requester.Name, requester.AllChainProcess = RequesterKindMultiplexer, multiplexerName, allChainProcess
+			requester.Kind, requester.Name, requester.ChainProcesses = RequesterKindMultiplexer, multiplexerName, chainProcesses
 			return requester
 		}
 	}
-	oldest := allProcess[len(allProcess)-1]
+	oldest := processes[len(processes)-1]
 	if parentPID, err := resolver.system.GetParentPID(oldest.PID); err == nil && parentPID <= launchdPID {
 		requester.Kind, requester.Name = RequesterKindBackground, "A background process"
 	}
 	return requester
 }
 
-func (resolver *Resolver) buildAppRequester(requester Requester, bundlePath string, allChainProcess []Process) Requester {
-	requester.Kind, requester.App, requester.AllChainProcess = RequesterKindApp, resolver.DescribeApp(bundlePath), allChainProcess
+func (resolver *Resolver) buildAppRequester(requester Requester, bundlePath string, chainProcesses []Process) Requester {
+	requester.Kind, requester.App, requester.ChainProcesses = RequesterKindApp, resolver.DescribeApp(bundlePath), chainProcesses
 	requester.Name = requester.App.Name
 	return requester
 }

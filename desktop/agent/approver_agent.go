@@ -20,7 +20,7 @@ const (
 	agentRevealRememberLabel = "Allow this item for 1 hour"
 )
 
-var allKnownAgentNameByClientName = map[string]string{
+var knownAgentNamesByClientName = map[string]string{
 	"claude-code":           "Claude Code",
 	"claude-ai":             "Claude",
 	"cursor-vscode":         "Cursor",
@@ -42,7 +42,7 @@ func DescribeAgentName(identity clisocket.AgentIdentity) string {
 	if title := cleanAgentName(identity.Title); title != "" {
 		return title
 	}
-	if knownName, isKnown := allKnownAgentNameByClientName[strings.ToLower(strings.TrimSpace(identity.Name))]; isKnown {
+	if knownName, isKnown := knownAgentNamesByClientName[strings.ToLower(strings.TrimSpace(identity.Name))]; isKnown {
 		return knownName
 	}
 	if name := cleanAgentName(identity.Name); name != "" {
@@ -54,7 +54,7 @@ func DescribeAgentName(identity clisocket.AgentIdentity) string {
 func describeAgentAction(request clisocket.AgentApprovalRequest) string {
 	switch request.Kind {
 	case clisocket.AgentRequestRun:
-		return describeSecretAction(len(request.AllSecretName), true)
+		return describeSecretAction(len(request.SecretNames), true)
 	case clisocket.AgentRequestCode:
 		return fmt.Sprintf("get the one-time code of “%s”", request.RevealedName)
 	case clisocket.AgentRequestReveal:
@@ -66,7 +66,7 @@ func describeAgentAction(request clisocket.AgentApprovalRequest) string {
 func describeAgentRememberLabel(request clisocket.AgentApprovalRequest) string {
 	switch request.Kind {
 	case clisocket.AgentRequestRun:
-		if len(request.AllSecretName) == 1 {
+		if len(request.SecretNames) == 1 {
 			return "Allow this secret for this agent for 1 hour"
 		}
 		return "Allow these secrets for this agent for 1 hour"
@@ -94,8 +94,8 @@ func (approver *Approver) buildAgentEvent(requestID string, request clisocket.Ag
 		IsConnectionApproval: request.IsConnectionApproval,
 		IsTouchIDApproval:    approver.IsTouchIDApproval(),
 		TimeoutAt:            approver.config.Now().Add(approver.config.Timeout).UTC().Format(time.RFC3339),
-		AllSecretName:        []string{},
-		AllChainProcess:      []ChainProcess{},
+		SecretNames:          []string{},
+		ChainProcesses:       []ChainProcess{},
 	}
 	if request.Kind == clisocket.AgentRequestRun {
 		event.CommandLine = formatCommandLine(request.CommandLine)
@@ -104,8 +104,8 @@ func (approver *Approver) buildAgentEvent(requestID string, request clisocket.Ag
 	if request.Kind == clisocket.AgentRequestReveal {
 		event.Warning = fmt.Sprintf("The value will be visible to %s and can end up in its transcript and logs.", agentName)
 	}
-	if len(request.AllSecretName) > 0 {
-		event.AllSecretName, event.MoreSecretCount = limitSecretName(request.AllSecretName)
+	if len(request.SecretNames) > 0 {
+		event.SecretNames, event.MoreSecretCount = limitSecretName(request.SecretNames)
 	}
 	if requester, isResolved := approver.resolveRequester(request.ClientPID); isResolved {
 		applyRequester(&event, requester)
@@ -142,8 +142,8 @@ func (approver *Approver) buildAgentPhoneDescription(event ApprovalEvent) approv
 	if event.WorkingDirectory != "" {
 		description.RepositoryPath = event.WorkingDirectory
 	}
-	if len(event.AllSecretName) > 0 {
-		description.Secrets = append([]string{}, event.AllSecretName...)
+	if len(event.SecretNames) > 0 {
+		description.Secrets = append([]string{}, event.SecretNames...)
 		if event.MoreSecretCount > 0 {
 			description.Secrets = append(description.Secrets, fmt.Sprintf("and %d more", event.MoreSecretCount))
 		}

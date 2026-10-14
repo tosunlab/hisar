@@ -28,37 +28,37 @@ func (s *Server) handleGetAccount(c fiber.Ctx) error {
 		Argon2:     argon2Params,
 		Salt:       account.Salt,
 		EncKeyset:  account.EncKeyset,
-		PublicKeys: getAllPublicKey(account),
+		PublicKeys: getPublicKeys(account),
 	})
 }
 
-func getAllPublicKey(account *store.Account) crypt.PublicKeys {
+func getPublicKeys(account *store.Account) crypt.PublicKeys {
 	return crypt.PublicKeys{KEM: account.KEMPub, Sign: account.SignPub, KEMSig: account.KEMSig}
 }
 
-func (s *Server) handleListAllMember(c fiber.Ctx) error {
-	allAccount, err := s.store.ListAllPerson(c.Context(), getSession(c).AccountID)
+func (s *Server) handleListMembers(c fiber.Ctx) error {
+	accounts, err := s.store.ListPeople(c.Context(), getSession(c).AccountID)
 	if err != nil {
 		return err
 	}
-	allMember := make([]apitypes.Member, 0, len(allAccount))
-	for index := range allAccount {
-		allMember = append(allMember, convertToProtoMember(&allAccount[index]))
+	members := make([]apitypes.Member, 0, len(accounts))
+	for index := range accounts {
+		members = append(members, convertToProtoMember(&accounts[index]))
 	}
-	return c.JSON(allMember)
+	return c.JSON(members)
 }
 
-func (s *Server) handleListAllDevice(c fiber.Ctx) error {
+func (s *Server) handleListDevices(c fiber.Ctx) error {
 	currentSession := getSession(c)
-	allStoredDevice, err := s.store.ListAllDevice(c.Context(), currentSession.AccountID)
+	storedDevices, err := s.store.ListDevices(c.Context(), currentSession.AccountID)
 	if err != nil {
 		return err
 	}
-	allDevice := make([]apitypes.Device, 0, len(allStoredDevice))
-	for _, device := range allStoredDevice {
-		allDevice = append(allDevice, apitypes.Device{ID: device.ID, Name: device.Name, Platform: device.Platform, CreatedAt: device.CreatedAt, LastSeenAt: device.LastSeenAt, Current: device.ID == currentSession.DeviceID})
+	devices := make([]apitypes.Device, 0, len(storedDevices))
+	for _, device := range storedDevices {
+		devices = append(devices, apitypes.Device{ID: device.ID, Name: device.Name, Platform: device.Platform, CreatedAt: device.CreatedAt, LastSeenAt: device.LastSeenAt, Current: device.ID == currentSession.DeviceID})
 	}
-	return c.JSON(allDevice)
+	return c.JSON(devices)
 }
 
 func (s *Server) handleRevokeDevice(c fiber.Ctx) error {

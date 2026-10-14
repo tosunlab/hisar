@@ -289,18 +289,18 @@ type importTestCase struct {
 	isEncrypted bool
 }
 
-func buildAllImportTestCase(t *testing.T, passphrase []byte) []importTestCase {
+func buildImportTestCases(t *testing.T, passphrase []byte) []importTestCase {
 	t.Helper()
 	ed25519Key := generateTestEd25519Key(t)
 	rsaKey := getTestRSAKey(t)
-	allECDSAKey := map[string]*ecdsa.PrivateKey{
+	ecdsaKeys := map[string]*ecdsa.PrivateKey{
 		ssh.KeyAlgoECDSA256: generateTestECDSAKey(t, elliptic.P256()),
 		ssh.KeyAlgoECDSA384: generateTestECDSAKey(t, elliptic.P384()),
 		ssh.KeyAlgoECDSA521: generateTestECDSAKey(t, elliptic.P521()),
 	}
 	sha256Option := pbkdf2TestOption{prf: oidHMACWithSHA256, createHash: sha256.New, cipherOID: oidAES256CBC, keyLength: 32}
 	sha1Option := pbkdf2TestOption{createHash: sha1.New, cipherOID: oidAES128CBC, keyLength: 16, withKeyLength: true}
-	allTestCase := []importTestCase{
+	testCases := []importTestCase{
 		{"ed25519/openssh", encodeOpenSSHKey(t, ed25519Key, nil), ed25519Key, ssh.KeyAlgoED25519, false},
 		{"ed25519/openssh-encrypted", encodeOpenSSHKey(t, ed25519Key, passphrase), ed25519Key, ssh.KeyAlgoED25519, true},
 		{"ed25519/pkcs8", encodePKCS8Key(t, ed25519Key), ed25519Key, ssh.KeyAlgoED25519, false},
@@ -312,12 +312,12 @@ func buildAllImportTestCase(t *testing.T, passphrase []byte) []importTestCase {
 		{"rsa/pkcs8", encodePKCS8Key(t, rsaKey), rsaKey, ssh.KeyAlgoRSA, false},
 		{"rsa/pkcs8-encrypted-sha1", encodeEncryptedPKCS8Key(t, rsaKey, passphrase, sha1Option), rsaKey, ssh.KeyAlgoRSA, true},
 	}
-	for keyType, ecdsaKey := range allECDSAKey {
+	for keyType, ecdsaKey := range ecdsaKeys {
 		ecDER, err := x509.MarshalECPrivateKey(ecdsaKey)
 		if err != nil {
 			t.Fatal(err)
 		}
-		allTestCase = append(allTestCase,
+		testCases = append(testCases,
 			importTestCase{keyType + "/openssh", encodeOpenSSHKey(t, ecdsaKey, nil), ecdsaKey, keyType, false},
 			importTestCase{keyType + "/openssh-encrypted", encodeOpenSSHKey(t, ecdsaKey, passphrase), ecdsaKey, keyType, true},
 			importTestCase{keyType + "/sec1", pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: ecDER}), ecdsaKey, keyType, false},
@@ -326,12 +326,12 @@ func buildAllImportTestCase(t *testing.T, passphrase []byte) []importTestCase {
 			importTestCase{keyType + "/pkcs8-encrypted", encodeEncryptedPKCS8Key(t, ecdsaKey, passphrase, sha256Option), ecdsaKey, keyType, true},
 		)
 	}
-	return allTestCase
+	return testCases
 }
 
 func TestImportPrivateKey(t *testing.T) {
 	passphrase := []byte("correct horse battery staple")
-	for _, testCase := range buildAllImportTestCase(t, passphrase) {
+	for _, testCase := range buildImportTestCases(t, passphrase) {
 		t.Run(testCase.name, func(t *testing.T) {
 			wantFingerprint := getPublicFingerprint(t, testCase.privateKey)
 			var usedPassphrase []byte
@@ -394,7 +394,7 @@ func TestImportRejectsInvalidInput(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	allInvalid := map[string][]byte{
+	invalids := map[string][]byte{
 		"empty":           nil,
 		"not pem":         []byte("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI"),
 		"garbage block":   pem.EncodeToMemory(&pem.Block{Type: "OPENSSH PRIVATE KEY", Bytes: []byte("garbage")}),
@@ -403,7 +403,7 @@ func TestImportRejectsInvalidInput(t *testing.T) {
 		"x25519 pkcs8":    encodePKCS8Key(t, x25519Key),
 		"truncated pkcs1": pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(getTestRSAKey(t))[:40]}),
 	}
-	for name, pemBytes := range allInvalid {
+	for name, pemBytes := range invalids {
 		_, err := ImportPrivateKey(pemBytes, []byte("passphrase"), "")
 		if err == nil {
 			t.Errorf("%s: accepted", name)
@@ -443,22 +443,22 @@ func TestParseKeyMaterialRejectsInvalid(t *testing.T) {
 }
 
 func TestRemovePKCS7Padding(t *testing.T) {
-	allValid := map[string][]byte{
+	valid := map[string][]byte{
 		"one":  append(make([]byte, 15), 1),
 		"full": append(make([]byte, 16), 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16),
 	}
-	for name, padded := range allValid {
+	for name, padded := range valid {
 		if _, ok := removePKCS7Padding(padded); !ok {
 			t.Errorf("%s rejected", name)
 		}
 	}
-	allInvalid := map[string][]byte{
+	invalids := map[string][]byte{
 		"empty":    nil,
 		"zero":     make([]byte, 16),
 		"too long": append(make([]byte, 15), 17),
 		"mixed":    append(make([]byte, 14), 1, 2),
 	}
-	for name, padded := range allInvalid {
+	for name, padded := range invalids {
 		if _, ok := removePKCS7Padding(padded); ok {
 			t.Errorf("%s accepted", name)
 		}

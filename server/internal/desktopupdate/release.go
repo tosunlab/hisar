@@ -34,7 +34,7 @@ type Release struct {
 	ReleaseNotesFormat   string    `json:"releaseNotesFormat"`
 	PublishedAt          time.Time `json:"publishedAt"`
 
-	allAssetByName map[string]gitHubAsset
+	assetsByName map[string]gitHubAsset
 }
 
 // GetBuildNumber maps MAJOR.MINOR.PATCH to MAJOR*1000000 + MINOR*1000 + PATCH, the app's CFBundleVersion.
@@ -55,7 +55,7 @@ func IsValidFileName(fileName string) bool {
 	return fileNamePattern.MatchString(fileName) && !strings.Contains(fileName, "..")
 }
 
-func parseRelease(content []byte, version string, allAssetByName map[string]gitHubAsset) (*Release, error) {
+func parseRelease(content []byte, version string, assetsByName map[string]gitHubAsset) (*Release, error) {
 	decoder := json.NewDecoder(bytes.NewReader(content))
 	decoder.DisallowUnknownFields()
 	release := &Release{}
@@ -85,11 +85,11 @@ func parseRelease(content []byte, version string, allAssetByName map[string]gitH
 	if signature, err := base64.StdEncoding.DecodeString(release.EdSignature); err != nil || len(signature) != 64 {
 		return nil, errors.New("the EdDSA signature is not 64 bytes of base64")
 	}
-	if asset, found := allAssetByName[release.Archive]; !found {
+	if asset, found := assetsByName[release.Archive]; !found {
 		return nil, fmt.Errorf("archive %s is not in the release", release.Archive)
 	} else if asset.Size != release.Length {
 		return nil, fmt.Errorf("archive %s has %d bytes, update.json says %d", release.Archive, asset.Size, release.Length)
 	}
-	release.allAssetByName = allAssetByName
+	release.assetsByName = assetsByName
 	return release, nil
 }

@@ -17,8 +17,8 @@ type knownBrowser struct {
 	profileDirectory string
 }
 
-// getAllKnownBrowser lists Chromium browsers by the directory that holds their NativeMessagingHosts.
-func getAllKnownBrowser(homeDirectory, operatingSystem string) []knownBrowser {
+// getKnownBrowsers lists Chromium browsers by the directory that holds their NativeMessagingHosts.
+func getKnownBrowsers(homeDirectory, operatingSystem string) []knownBrowser {
 	if operatingSystem == "darwin" {
 		support := filepath.Join(homeDirectory, "Library", "Application Support")
 		return []knownBrowser{
@@ -52,15 +52,15 @@ func buildHostManifest(hostPath string) ([]byte, error) {
 	}, "", "  ")
 }
 
-// InstallAllHostManifest registers the native host with every installed Chromium browser; it only writes changed files.
-func InstallAllHostManifest(homeDirectory, hostPath string) []browserprotocol.BrowserInstallation {
-	return installAllHostManifest(homeDirectory, hostPath, runtime.GOOS)
+// InstallHostManifests registers the native host with every installed Chromium browser; it only writes changed files.
+func InstallHostManifests(homeDirectory, hostPath string) []browserprotocol.BrowserInstallation {
+	return installHostManifests(homeDirectory, hostPath, runtime.GOOS)
 }
 
-func installAllHostManifest(homeDirectory, hostPath, operatingSystem string) []browserprotocol.BrowserInstallation {
+func installHostManifests(homeDirectory, hostPath, operatingSystem string) []browserprotocol.BrowserInstallation {
 	manifest, manifestErr := buildHostManifest(hostPath)
-	allInstallation := []browserprotocol.BrowserInstallation{}
-	for _, browser := range getAllKnownBrowser(homeDirectory, operatingSystem) {
+	installations := []browserprotocol.BrowserInstallation{}
+	for _, browser := range getKnownBrowsers(homeDirectory, operatingSystem) {
 		if _, err := os.Stat(browser.profileDirectory); err != nil {
 			continue
 		}
@@ -73,9 +73,9 @@ func installAllHostManifest(homeDirectory, hostPath, operatingSystem string) []b
 		if err != nil {
 			installation.ErrorMessage = err.Error()
 		}
-		allInstallation = append(allInstallation, installation)
+		installations = append(installations, installation)
 	}
-	return allInstallation
+	return installations
 }
 
 func writeFileIfChanged(path string, content []byte) error {

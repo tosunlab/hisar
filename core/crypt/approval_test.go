@@ -14,11 +14,11 @@ const (
 
 func createVectorKeyset(t *testing.T) *Keyset {
 	t.Helper()
-	allSeed := make([]byte, 3*seedSize)
-	for index := range allSeed {
-		allSeed[index] = byte(index)
+	seeds := make([]byte, 3*seedSize)
+	for index := range seeds {
+		seeds[index] = byte(index)
 	}
-	keyset, err := decodeKeyset(allSeed)
+	keyset, err := decodeKeyset(seeds)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +98,7 @@ func TestApprovalRequestSealOpen(t *testing.T) {
 	}
 	tampered := bytes.Clone(sealed)
 	tampered[len(tampered)-1] ^= 1
-	allCase := map[string]struct {
+	cases := map[string]struct {
 		keyset               *Keyset
 		accountID, requestID string
 		sealed               []byte
@@ -112,7 +112,7 @@ func TestApprovalRequestSealOpen(t *testing.T) {
 		"empty":                {keyset, testApprovalAccountID, testApprovalRequestID, nil, ErrShortCipher},
 		"answer is no request": {keyset, testApprovalAccountID, testApprovalRequestID, mustSealAnswer(t, keyset), ErrDecrypt},
 	}
-	for name, testCase := range allCase {
+	for name, testCase := range cases {
 		if _, err := testCase.keyset.OpenApprovalRequest(testCase.accountID, testCase.requestID, testCase.sealed); !errors.Is(err, testCase.want) {
 			t.Errorf("%s: got %v, want %v", name, err, testCase.want)
 		}
@@ -151,7 +151,7 @@ func TestApprovalAnswerSignatureBindsEveryField(t *testing.T) {
 	if err := VerifyApprovalAnswer(keyset.GetSigningPublicKey(), fields, signature); err != nil {
 		t.Fatal(err)
 	}
-	allChange := map[string]func(*ApprovalAnswerFields){
+	changes := map[string]func(*ApprovalAnswerFields){
 		"account": func(changed *ApprovalAnswerFields) { changed.AccountID = "XYZ789" },
 		"request": func(changed *ApprovalAnswerFields) { changed.RequestID = "ffeeddccbbaa99887766554433221100" },
 		"request hash": func(changed *ApprovalAnswerFields) {
@@ -165,7 +165,7 @@ func TestApprovalAnswerSignatureBindsEveryField(t *testing.T) {
 			changed.RememberChoice = ApprovalRememberChoice
 		},
 	}
-	for name, change := range allChange {
+	for name, change := range changes {
 		changed := fields
 		change(&changed)
 		if err := VerifyApprovalAnswer(keyset.GetSigningPublicKey(), changed, signature); !errors.Is(err, ErrBadSignature) {
@@ -181,7 +181,7 @@ func TestApprovalAnswerSignatureBindsEveryField(t *testing.T) {
 	if err := VerifyApprovalAnswer(keyset.GetSigningPublicKey(), fields, otherKeyset.SignApprovalAnswer(fields)); !errors.Is(err, ErrBadSignature) {
 		t.Errorf("signed by another account: %v", err)
 	}
-	kemSignature := keyset.GetAllPublicKey(testApprovalAccountID).KEMSig
+	kemSignature := keyset.GetPublicKeys(testApprovalAccountID).KEMSig
 	if err := VerifyApprovalAnswer(keyset.GetSigningPublicKey(), fields, kemSignature); !errors.Is(err, ErrBadSignature) {
 		t.Errorf("a signature from another domain: %v", err)
 	}

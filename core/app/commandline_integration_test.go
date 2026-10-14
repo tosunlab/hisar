@@ -18,22 +18,22 @@ import (
 
 // unlockingApprover stands in for the approval window: it types a wrong and then the right password when Hisar is locked.
 type unlockingApprover struct {
-	mutex                   sync.Mutex
-	unlocker                *ApprovalUnlocker
-	password                string
-	allRequest              []clisocket.ApprovalRequest
-	allWrongPasswordMessage []string
+	mutex                 sync.Mutex
+	unlocker              *ApprovalUnlocker
+	password              string
+	requests              []clisocket.ApprovalRequest
+	wrongPasswordMessages []string
 }
 
 func (approver *unlockingApprover) ApproveCommandLine(_ context.Context, request clisocket.ApprovalRequest) error {
 	approver.mutex.Lock()
 	defer approver.mutex.Unlock()
-	approver.allRequest = append(approver.allRequest, request)
+	approver.requests = append(approver.requests, request)
 	if !approver.unlocker.IsLocked() {
 		return nil
 	}
 	if err := approver.unlocker.UnlockWithPassword("not the master password"); err != nil {
-		approver.allWrongPasswordMessage = append(approver.allWrongPasswordMessage, err.Error())
+		approver.wrongPasswordMessages = append(approver.wrongPasswordMessages, err.Error())
 	}
 	return approver.unlocker.UnlockWithPassword(approver.password)
 }
@@ -41,12 +41,12 @@ func (approver *unlockingApprover) ApproveCommandLine(_ context.Context, request
 func (approver *unlockingApprover) getRequestCount() int {
 	approver.mutex.Lock()
 	defer approver.mutex.Unlock()
-	return len(approver.allRequest)
+	return len(approver.requests)
 }
 
-func runCommandLineBinary(t *testing.T, binaryPath, socketPath, statePath, input string, allArg ...string) (string, error) {
+func runCommandLineBinary(t *testing.T, binaryPath, socketPath, statePath, input string, args ...string) (string, error) {
 	t.Helper()
-	command := exec.Command(binaryPath, allArg...)
+	command := exec.Command(binaryPath, args...)
 	command.Env = []string{"PATH=" + os.Getenv("PATH"), "HOME=" + os.Getenv("HOME"), cliprotocol.SocketEnvironment + "=" + socketPath, "HISAR_STATE=" + statePath, "HISAR_SECRET_KEY=-", "HISAR_NO_LAUNCH=1"}
 	command.Stdin = strings.NewReader(input)
 	output, err := command.CombinedOutput()
@@ -74,10 +74,10 @@ func TestIntegrationCommandLineThroughApp(t *testing.T) {
 	socketPath := filepath.Join(socketDirectory, "hisar", "cli.sock")
 	statePath := filepath.Join(socketDirectory, "standalone", "state.json")
 	unlockCount := 0
-	approver := &unlockingApprover{unlocker: CreateApprovalUnlocker(service, func() { unlockCount++ }), password: password}
-	approvals := clisocket.CreateSessionApprovals(0, nil)
-	runner := clisocket.CreateRunner(clisocket.CreateServer(clisocket.ServerConfig{
-		Handler: CreateCommandLineBridge(service, approvals), Approver: approver, Approvals: approvals,
+	approver := &unlockingApprover{unlocker: NewApprovalUnlocker(service, func() { unlockCount++ }), password: password}
+	approvals := clisocket.NewSessionApprovals(0, nil)
+	runner := clisocket.NewRunner(clisocket.NewServer(clisocket.ServerConfig{
+		Handler: NewCommandLineBridge(service, approvals), Approver: approver, Approvals: approvals,
 	}), socketPath)
 	runner.Start()
 	t.Cleanup(runner.Stop)
@@ -88,11 +88,11 @@ func TestIntegrationCommandLineThroughApp(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
-	run := func(input string, allArg ...string) string {
+	run := func(input string, args ...string) string {
 		t.Helper()
-		output, err := runCommandLineBinary(t, binaryPath, socketPath, statePath, input, allArg...)
+		output, err := runCommandLineBinary(t, binaryPath, socketPath, statePath, input, args...)
 		if err != nil {
-			t.Fatalf("hisar %s: %v\n%s", strings.Join(allArg, " "), err, output)
+			t.Fatalf("hisar %s: %v\n%s", strings.Join(args, " "), err, output)
 		}
 		return output
 	}
@@ -106,8 +106,8 @@ func TestIntegrationCommandLineThroughApp(t *testing.T) {
 	if service.GetStatus().State != StateUnlocked || unlockCount != 1 {
 		t.Fatalf("the approval did not unlock Hisar: %s, %d", service.GetStatus().State, unlockCount)
 	}
-	if len(approver.allWrongPasswordMessage) != 1 || approver.allWrongPasswordMessage[0] != "Incorrect master password." {
-		t.Errorf("wrong password: %v", approver.allWrongPasswordMessage)
+	if len(approver.wrongPasswordMessages) != 1 || approver.wrongPasswordMessages[0] != "Incorrect master password." {
+		t.Errorf("wrong password: %v", approver.wrongPasswordMessages)
 	}
 	if output := run("", "get", "github", "-f", "password"); output != "from-the-command-line\n" {
 		t.Errorf("get -f password: %q", output)
@@ -121,11 +121,11 @@ func TestIntegrationCommandLineThroughApp(t *testing.T) {
 	if output := run("\n\n\n\nedited through the app\n", "edit", "github"); !strings.Contains(output, `Saved "GitHub".`) {
 		t.Errorf("edit:\n%s", output)
 	}
-	allItem, err := service.ListAllItem(findPersonalVaultID(t, service))
-	if err != nil || len(allItem) != 1 {
-		t.Fatalf("items in the app: %+v %v", allItem, err)
+	items, err := service.ListItems(findPersonalVaultID(t, service))
+	if err != nil || len(items) != 1 {
+		t.Fatalf("items in the app: %+v %v", items, err)
 	}
-	if detail, err := service.GetItem(findPersonalVaultID(t, service), allItem[0].ID); err != nil || detail.Notes != "edited through the app" || detail.Password != "from-the-command-line" {
+	if detail, err := service.GetItem(findPersonalVaultID(t, service), items[0].ID); err != nil || detail.Notes != "edited through the app" || detail.Password != "from-the-command-line" {
 		t.Errorf("edited item in the app: %+v %v", detail, err)
 	}
 	if count := approver.getRequestCount(); count != 1 {
@@ -157,11 +157,11 @@ func TestIntegrationCommandLineThroughApp(t *testing.T) {
 
 func findPersonalVaultID(t *testing.T, service *Service) string {
 	t.Helper()
-	allVault, err := service.ListAllVault()
+	vaults, err := service.ListVaults()
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, vault := range allVault {
+	for _, vault := range vaults {
 		if vault.Type == "personal" {
 			return vault.ID
 		}

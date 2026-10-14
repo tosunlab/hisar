@@ -18,8 +18,8 @@ type Service struct {
 	config                       Config
 	state                        *localstate.State
 	unlockedSession              *session.Session
-	allVaultByID                 map[string]*session.Vault
-	allItemByVaultID             map[string][]item.Item
+	vaultsByID                   map[string]*session.Vault
+	itemsByVaultID               map[string][]item.Item
 	lockTimer                    *time.Timer
 	clipboardClearTimer          *time.Timer
 	name                         string
@@ -32,8 +32,8 @@ type Service struct {
 	reconnectEvents              chan struct{}
 	onSessionChange              func(server, token string, isSignedIn bool)
 	shareCompletionError         string
-	allLockListener              []func()
-	allStatusListener            []func()
+	lockListeners                []func()
+	statusListeners              []func()
 	phoneApprovals               *phoneApprovalRelay
 	signedOutReason              string
 	updateRequirement            updateRequirementState
@@ -73,7 +73,7 @@ func (s *Service) attachCache(ctx context.Context, unlockedSession *session.Sess
 	}
 }
 
-func CreateService(config Config) (*Service, error) {
+func NewService(config Config) (*Service, error) {
 	if config.AutoLockAfter == 0 {
 		config.AutoLockAfter = 10 * time.Minute
 	}

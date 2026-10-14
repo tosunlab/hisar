@@ -55,9 +55,9 @@ func (s *Server) serveConnection(ctx context.Context, connection net.Conn) {
 	}{reader, connection})
 }
 
-func findKnownHostName(allPath []string, hostKey ssh.PublicKey) string {
+func findKnownHostName(paths []string, hostKey ssh.PublicKey) string {
 	hostKeyBlob := hostKey.Marshal()
-	for _, path := range allPath {
+	for _, path := range paths {
 		if hostName := findKnownHostNameInFile(path, hostKeyBlob); hostName != "" {
 			return hostName
 		}
@@ -91,11 +91,11 @@ func findKnownHostNameInFile(path string, hostKeyBlob []byte) string {
 	scanner := bufio.NewScanner(file)
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 	for scanner.Scan() {
-		marker, allHost, publicKey, _, _, err := ssh.ParseKnownHosts(scanner.Bytes())
+		marker, hosts, publicKey, _, _, err := ssh.ParseKnownHosts(scanner.Bytes())
 		if err != nil || marker != "" || !bytes.Equal(publicKey.Marshal(), hostKeyBlob) {
 			continue
 		}
-		for _, host := range allHost {
+		for _, host := range hosts {
 			if !strings.HasPrefix(host, "|") && !strings.ContainsAny(host, "*?!") {
 				return host
 			}

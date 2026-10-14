@@ -51,7 +51,7 @@ func (relyingParty *passkeyRelyingParty) registerOnPlatform(t *testing.T, servic
 	if credential.AttestationFormat != "none" || !credential.Flags.UserVerified || !credential.Flags.BackupState || encodeBase64URL(credential.ID) != result.CredentialID {
 		t.Errorf("credential = %+v", credential)
 	}
-	relyingParty.user.allCredential = append(relyingParty.user.allCredential, *credential)
+	relyingParty.user.credentials = append(relyingParty.user.credentials, *credential)
 	return result, nil
 }
 
@@ -107,7 +107,7 @@ func TestPlatformPasskeyCreateAndSignInFromClientDataHash(t *testing.T) {
 	}
 
 	prepared, err := PreparePasskeyRegistration(service, "Example.com", nil)
-	if err != nil || prepared.IsExcluded || len(prepared.AllLogin) != 1 || prepared.AllLogin[0].ItemID != existing.ID {
+	if err != nil || prepared.IsExcluded || len(prepared.Logins) != 1 || prepared.Logins[0].ItemID != existing.ID {
 		t.Fatalf("prepare = %+v %v", prepared, err)
 	}
 	relyingParty := createPasskeyRelyingParty(t, "example.com", "https://login.example.com", []byte("platform-user"))
@@ -121,22 +121,22 @@ func TestPlatformPasskeyCreateAndSignInFromClientDataHash(t *testing.T) {
 		t.Errorf("saved to %s/%s", created.VaultID, created.ItemID)
 	}
 
-	allStoredPasskey, err := ListAllPasskeyForRelyingParty(service, "example.com", nil)
+	storedPasskeys, err := ListPasskeysForRelyingParty(service, "example.com", nil)
 	expected := []StoredPasskey{{
 		CredentialID: created.CredentialID, RelyingPartyID: "example.com", UserName: "alex@example.com", UserDisplayName: "Alex",
 		UserHandle: encodeBase64URL([]byte("platform-user")), VaultID: personalID, ItemID: existing.ID, Title: "Example",
 	}}
-	if err != nil || !reflect.DeepEqual(allStoredPasskey, expected) {
-		t.Fatalf("passkeys for example.com = %+v %v", allStoredPasskey, err)
+	if err != nil || !reflect.DeepEqual(storedPasskeys, expected) {
+		t.Fatalf("passkeys for example.com = %+v %v", storedPasskeys, err)
 	}
-	if allEveryPasskey, err := ListAllPasskey(service); err != nil || !reflect.DeepEqual(allEveryPasskey, expected) {
-		t.Errorf("every passkey = %+v %v", allEveryPasskey, err)
+	if everyPasskeys, err := ListPasskeys(service); err != nil || !reflect.DeepEqual(everyPasskeys, expected) {
+		t.Errorf("every passkey = %+v %v", everyPasskeys, err)
 	}
-	if allAllowedPasskey, err := ListAllPasskeyForRelyingParty(service, "example.com", []string{"AQ"}); err != nil || len(allAllowedPasskey) != 0 {
-		t.Errorf("passkeys allowed by another credential ID = %+v %v", allAllowedPasskey, err)
+	if allowedPasskeys, err := ListPasskeysForRelyingParty(service, "example.com", []string{"AQ"}); err != nil || len(allowedPasskeys) != 0 {
+		t.Errorf("passkeys allowed by another credential ID = %+v %v", allowedPasskeys, err)
 	}
-	if allSubdomainPasskey, err := ListAllPasskeyForRelyingParty(service, "login.example.com", nil); err != nil || len(allSubdomainPasskey) != 0 {
-		t.Errorf("passkeys for login.example.com = %+v %v", allSubdomainPasskey, err)
+	if subdomainPasskeys, err := ListPasskeysForRelyingParty(service, "login.example.com", nil); err != nil || len(subdomainPasskeys) != 0 {
+		t.Errorf("passkeys for login.example.com = %+v %v", subdomainPasskeys, err)
 	}
 
 	if err := relyingParty.signInOnPlatform(t, service, "https://login.example.com", "example.com", created.CredentialID); err != nil {
@@ -150,7 +150,7 @@ func TestPlatformPasskeyCreateAndSignInFromClientDataHash(t *testing.T) {
 		t.Errorf("prepare with the passkey excluded = %+v %v", prepared, err)
 	}
 	if _, err := relyingParty.registerOnPlatform(t, service, "https://login.example.com", PasskeyRegistration{
-		RelyingPartyID: "example.com", UserName: "alex@example.com", AllExcludedCredentialID: []string{created.CredentialID},
+		RelyingPartyID: "example.com", UserName: "alex@example.com", ExcludedCredentialIDs: []string{created.CredentialID},
 	}); readResponseErrorCode(err) != browserprotocol.ErrorInvalidRequest {
 		t.Errorf("creating with an excluded credential: %v", err)
 	}
@@ -161,7 +161,7 @@ func TestPlatformPasskeyCreateAndSignInFromClientDataHash(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if detail, err := service.GetItem(personalID, existing.ID); err != nil || len(detail.AllPasskey) != 1 || detail.AllPasskey[0].CredentialID != replacement.CredentialID || detail.Password != "pw" {
+	if detail, err := service.GetItem(personalID, existing.ID); err != nil || len(detail.Passkeys) != 1 || detail.Passkeys[0].CredentialID != replacement.CredentialID || detail.Password != "pw" {
 		t.Fatalf("after replacing the passkey: %+v %v", detail, err)
 	}
 	if err := relyingParty.signInOnPlatform(t, service, "https://login.example.com", "example.com", created.CredentialID); readResponseErrorCode(err) != browserprotocol.ErrorNotFound {
@@ -178,7 +178,7 @@ func TestPlatformPasskeyCreatesNewLoginAndSurvivesEdits(t *testing.T) {
 		t.Fatal(err)
 	}
 	detail, err := service.GetItem(created.VaultID, created.ItemID)
-	if err != nil || created.VaultID != testService.personalID || detail.Title != "shop.example" || detail.Username != "buyer" || !reflect.DeepEqual(detail.URLs, []string{"https://www.shop.example"}) || len(detail.AllPasskey) != 1 {
+	if err != nil || created.VaultID != testService.personalID || detail.Title != "shop.example" || detail.Username != "buyer" || !reflect.DeepEqual(detail.URLs, []string{"https://www.shop.example"}) || len(detail.Passkeys) != 1 {
 		t.Fatalf("new login = %+v %v", detail, err)
 	}
 
@@ -188,8 +188,8 @@ func TestPlatformPasskeyCreatesNewLoginAndSurvivesEdits(t *testing.T) {
 		t.Fatal(err)
 	}
 	edited.Title = "Shop"
-	edited.AllPasskey = []ItemPasskey{}
-	if saved, err := service.SaveItem(created.VaultID, edited); err != nil || saved.Title != "Shop" || len(saved.AllPasskey) != 1 {
+	edited.Passkeys = []ItemPasskey{}
+	if saved, err := service.SaveItem(created.VaultID, edited); err != nil || saved.Title != "Shop" || len(saved.Passkeys) != 1 {
 		t.Fatalf("edit = %+v %v", saved, err)
 	}
 	if err := relyingParty.signInOnPlatform(t, service, "https://www.shop.example", "www.shop.example", created.CredentialID); err != nil {
@@ -198,8 +198,8 @@ func TestPlatformPasskeyCreatesNewLoginAndSurvivesEdits(t *testing.T) {
 	if _, err := service.DeletePasskey(created.VaultID, created.ItemID, created.CredentialID); err != nil {
 		t.Fatal(err)
 	}
-	if allStoredPasskey, err := ListAllPasskey(service); err != nil || len(allStoredPasskey) != 0 {
-		t.Errorf("after delete = %+v %v", allStoredPasskey, err)
+	if storedPasskeys, err := ListPasskeys(service); err != nil || len(storedPasskeys) != 0 {
+		t.Errorf("after delete = %+v %v", storedPasskeys, err)
 	}
 }
 
@@ -217,7 +217,7 @@ func TestPlatformPasskeyRefusals(t *testing.T) {
 		"empty user handle":   {RelyingPartyID: "example.com", ClientDataHash: validHash},
 		"short hash":          {RelyingPartyID: "example.com", UserHandle: "AQ", ClientDataHash: "AQ"},
 		"missing hash":        {RelyingPartyID: "example.com", UserHandle: "AQ"},
-		"bad excluded ID":     {RelyingPartyID: "example.com", UserHandle: "AQ", ClientDataHash: validHash, AllExcludedCredentialID: []string{"*"}},
+		"bad excluded ID":     {RelyingPartyID: "example.com", UserHandle: "AQ", ClientDataHash: validHash, ExcludedCredentialIDs: []string{"*"}},
 		"65-byte user handle": {RelyingPartyID: "example.com", UserHandle: encodeBase64URL(make([]byte, 65)), ClientDataHash: validHash},
 	} {
 		if _, err := CreatePasskeyForRelyingParty(service, registration); readResponseErrorCode(err) != browserprotocol.ErrorInvalidRequest {
@@ -235,11 +235,11 @@ func TestPlatformPasskeyRefusals(t *testing.T) {
 	if _, err := SignPasskeyForRelyingParty(service, "example.com", "AQ", validHash); readResponseErrorCode(err) != browserprotocol.ErrorNotFound {
 		t.Errorf("signing with an unknown passkey: %v", err)
 	}
-	if _, err := ListAllPasskeyForRelyingParty(service, "com", nil); readResponseErrorCode(err) != browserprotocol.ErrorInvalidRequest {
+	if _, err := ListPasskeysForRelyingParty(service, "com", nil); readResponseErrorCode(err) != browserprotocol.ErrorInvalidRequest {
 		t.Errorf("listing for a public suffix: %v", err)
 	}
 	service.Lock()
-	if _, err := ListAllPasskey(service); readResponseErrorCode(err) != browserprotocol.ErrorLocked {
+	if _, err := ListPasskeys(service); readResponseErrorCode(err) != browserprotocol.ErrorLocked {
 		t.Errorf("listing while locked: %v", err)
 	}
 	if _, err := SignPasskeyForRelyingParty(service, "example.com", "AQ", validHash); readResponseErrorCode(err) != browserprotocol.ErrorLocked {

@@ -37,7 +37,7 @@ func TestClientDisconnectCancelsTheWaitingApproval(t *testing.T) {
 	approver := &waitingApprover{startedChannel: make(chan struct{}, 1), cancelledChannel: make(chan struct{}, 1)}
 	resolver := &fakePeerResolver{}
 	resolver.setPath("/usr/bin/ssh-keygen")
-	server := CreateServer(&fakeKeySource{allKey: []Key{createTestKey(t, "key-1", "Laptop", material)}}, approver, resolver)
+	server := NewServer(&fakeKeySource{keys: []Key{createTestKey(t, "key-1", "Laptop", material)}}, approver, resolver)
 	socketPath := filepath.Join(createShortTempDirectory(t), "agent.sock")
 	listener, err := localsocket.ListenUnixSocket(socketPath)
 	if err != nil {

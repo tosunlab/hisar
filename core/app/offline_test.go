@@ -20,7 +20,7 @@ func TestOfflineShowsCachedVaultsAndRefusesChanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.ListAllVault(); err != nil {
+	if _, err := service.ListVaults(); err != nil {
 		t.Fatal(err)
 	}
 	if service.GetStatus().IsOffline {
@@ -28,16 +28,16 @@ func TestOfflineShowsCachedVaultsAndRefusesChanges(t *testing.T) {
 	}
 
 	testService.apiServer.setUnreachable(true)
-	allVault, err := service.ListAllVault()
-	if err != nil || len(allVault) != 2 {
-		t.Fatalf("vaults offline: %+v %v", allVault, err)
+	vaults, err := service.ListVaults()
+	if err != nil || len(vaults) != 2 {
+		t.Fatalf("vaults offline: %+v %v", vaults, err)
 	}
 	if !service.GetStatus().IsOffline {
 		t.Error("status does not say offline")
 	}
-	allItem, err := service.ListAllItem(testService.familyID)
-	if err != nil || len(allItem) != 1 || allItem[0].Title != "Netflix" {
-		t.Fatalf("items offline: %+v %v", allItem, err)
+	items, err := service.ListItems(testService.familyID)
+	if err != nil || len(items) != 1 || items[0].Title != "Netflix" {
+		t.Fatalf("items offline: %+v %v", items, err)
 	}
 	if detail, err := service.GetItem(testService.familyID, saved.ID); err != nil || detail.Password != "hunter2" {
 		t.Errorf("item offline: %+v %v", detail, err)
@@ -47,7 +47,7 @@ func TestOfflineShowsCachedVaultsAndRefusesChanges(t *testing.T) {
 	}
 
 	testService.apiServer.setUnreachable(false)
-	if _, err := service.ListAllVault(); err != nil {
+	if _, err := service.ListVaults(); err != nil {
 		t.Fatal(err)
 	}
 	if service.GetStatus().IsOffline {

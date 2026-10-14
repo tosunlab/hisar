@@ -16,7 +16,7 @@ import (
 
 type browserTestBridge struct {
 	bridge      *BrowserBridge
-	allPairing  []*BrowserPairingRequest
+	pairing     []*BrowserPairingRequest
 	showCount   int
 	testService unlockedTestService
 	currentTime time.Time
@@ -26,15 +26,15 @@ func createBrowserTestBridge(t *testing.T) *browserTestBridge {
 	t.Helper()
 	testBridge := &browserTestBridge{testService: createUnlockedTestService(t), currentTime: time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)}
 	testBridge.testService.service.config.Now = func() time.Time { return testBridge.currentTime }
-	testBridge.bridge = CreateBrowserBridge(testBridge.testService.service, BrowserBridgeConfig{
-		ShowPairing: func(request *BrowserPairingRequest) { testBridge.allPairing = append(testBridge.allPairing, request) },
+	testBridge.bridge = NewBrowserBridge(testBridge.testService.service, BrowserBridgeConfig{
+		ShowPairing: func(request *BrowserPairingRequest) { testBridge.pairing = append(testBridge.pairing, request) },
 		ShowWindow:  func() { testBridge.showCount++ },
 	})
 	return testBridge
 }
 
 func (testBridge *browserTestBridge) sendRequest(request browserprotocol.Request) (any, string) {
-	result, err := CreateBrowserRequestHandler(testBridge.bridge).HandleRequest(context.Background(), &request)
+	result, err := NewBrowserRequestHandler(testBridge.bridge).HandleRequest(context.Background(), &request)
 	if err == nil {
 		return result, ""
 	}
@@ -50,7 +50,7 @@ func (testBridge *browserTestBridge) pair(t *testing.T, instanceID string) strin
 	if _, code := testBridge.sendRequest(browserprotocol.Request{Type: "pair.start", InstanceID: instanceID, Browser: "Chrome"}); code != "" {
 		t.Fatalf("pair.start: %s", code)
 	}
-	pairing := testBridge.allPairing[len(testBridge.allPairing)-1]
+	pairing := testBridge.pairing[len(testBridge.pairing)-1]
 	result, code := testBridge.sendRequest(browserprotocol.Request{Type: "pair.finish", InstanceID: instanceID, Code: pairing.Code})
 	if code != "" {
 		t.Fatalf("pair.finish: %s", code)
@@ -71,7 +71,7 @@ func TestBrowserPairing(t *testing.T) {
 	if _, code := testBridge.sendRequest(browserprotocol.Request{Type: "pair.start", InstanceID: "chrome-1", Browser: "Chrome"}); code != "" {
 		t.Fatal(code)
 	}
-	pairing := testBridge.allPairing[0]
+	pairing := testBridge.pairing[0]
 	if len(pairing.Code) != 6 || pairing.Browser != "Chrome" || testBridge.showCount != 1 {
 		t.Fatalf("pairing shown: %+v, window shown %d times", pairing, testBridge.showCount)
 	}
@@ -93,8 +93,8 @@ func TestBrowserPairing(t *testing.T) {
 		t.Fatalf("right code: %s", code)
 	}
 	token := result.(browserprotocol.TokenResult).Token
-	if len(token) < 40 || testBridge.allPairing[len(testBridge.allPairing)-1] != nil {
-		t.Errorf("token %q, pairing still shown: %+v", token, testBridge.allPairing)
+	if len(token) < 40 || testBridge.pairing[len(testBridge.pairing)-1] != nil {
+		t.Errorf("token %q, pairing still shown: %+v", token, testBridge.pairing)
 	}
 	if _, code := testBridge.sendRequest(browserprotocol.Request{Type: "pair.finish", InstanceID: "chrome-1", Code: pairing.Code}); code != browserprotocol.ErrorPairingFailed {
 		t.Errorf("code reused: %s", code)
@@ -108,11 +108,11 @@ func TestBrowserPairing(t *testing.T) {
 		t.Error("hello after pairing is not paired")
 	}
 	browserStatus := testBridge.bridge.GetBrowserStatus()
-	if len(browserStatus.AllPairedBrowser) != 1 || browserStatus.AllPairedBrowser[0].Browser != "Chrome" || browserStatus.PendingPairing != nil {
+	if len(browserStatus.PairedBrowsers) != 1 || browserStatus.PairedBrowsers[0].Browser != "Chrome" || browserStatus.PendingPairing != nil {
 		t.Errorf("Settings: %+v", browserStatus)
 	}
 	stateContent := testBridge.testService.service.state
-	if string(stateContent.AllPairedBrowser[0].TokenHash) == token {
+	if string(stateContent.PairedBrowsers[0].TokenHash) == token {
 		t.Error("the token itself is stored")
 	}
 
@@ -127,7 +127,7 @@ func TestBrowserPairing(t *testing.T) {
 func TestBrowserPairingLimits(t *testing.T) {
 	testBridge := createBrowserTestBridge(t)
 	testBridge.sendRequest(browserprotocol.Request{Type: "pair.start", InstanceID: "chrome-1"})
-	code := testBridge.allPairing[0].Code
+	code := testBridge.pairing[0].Code
 	for attempt := range browserPairingMaxAttempts {
 		wrongCode := "999999"
 		if code == wrongCode {
@@ -142,15 +142,15 @@ func TestBrowserPairingLimits(t *testing.T) {
 	}
 
 	testBridge.sendRequest(browserprotocol.Request{Type: "pair.start", InstanceID: "chrome-1"})
-	code = testBridge.allPairing[len(testBridge.allPairing)-1].Code
+	code = testBridge.pairing[len(testBridge.pairing)-1].Code
 	testBridge.currentTime = testBridge.currentTime.Add(browserPairingLifetime + time.Second)
 	if _, errorCode := testBridge.sendRequest(browserprotocol.Request{Type: "pair.finish", InstanceID: "chrome-1", Code: code}); errorCode != browserprotocol.ErrorPairingFailed {
 		t.Errorf("expired code: %s", errorCode)
 	}
 
 	signedOut, _, _ := createTestService(t, filepath.Join(t.TempDir(), "desktop.json"), createMemorySecretKeyStore())
-	signedOutBridge := CreateBrowserBridge(signedOut, BrowserBridgeConfig{})
-	if _, err := CreateBrowserRequestHandler(signedOutBridge).HandleRequest(context.Background(), &browserprotocol.Request{Type: "pair.start", InstanceID: "x"}); err == nil {
+	signedOutBridge := NewBrowserBridge(signedOut, BrowserBridgeConfig{})
+	if _, err := NewBrowserRequestHandler(signedOutBridge).HandleRequest(context.Background(), &browserprotocol.Request{Type: "pair.start", InstanceID: "x"}); err == nil {
 		t.Error("pairing while signed out")
 	}
 }
@@ -163,57 +163,57 @@ func checkBrowserFlow(t *testing.T, service *Service, personalID string) {
 		t.Fatal(err)
 	}
 	var pairingCode string
-	bridge := CreateBrowserBridge(service, BrowserBridgeConfig{ShowPairing: func(request *BrowserPairingRequest) {
+	bridge := NewBrowserBridge(service, BrowserBridgeConfig{ShowPairing: func(request *BrowserPairingRequest) {
 		if request != nil {
 			pairingCode = request.Code
 		}
 	}})
-	handler := CreateBrowserRequestHandler(bridge)
+	handler := NewBrowserRequestHandler(bridge)
 
 	// Each message is answered as the socket server answers it, and its result goes through JSON as it does to the extension.
-	sendAllMessage := func(allMessage ...string) []browserprotocol.Response {
+	sendMessages := func(messages ...string) []browserprotocol.Response {
 		t.Helper()
-		allResponse := []browserprotocol.Response{}
-		for _, message := range allMessage {
+		responses := []browserprotocol.Response{}
+		for _, message := range messages {
 			encoded, err := json.Marshal(browserprotocol.Answer(context.Background(), handler, []byte(message)))
 			if err != nil {
 				t.Fatal(err)
 			}
 			var response browserprotocol.Response
 			json.Unmarshal(encoded, &response)
-			allResponse = append(allResponse, response)
+			responses = append(responses, response)
 		}
-		return allResponse
+		return responses
 	}
-	sendAllMessage(`{"id":"1","type":"pair.start","instanceID":"integration","browser":"Chrome"}`)
-	allResponse := sendAllMessage(fmt.Sprintf(`{"id":"2","type":"pair.finish","instanceID":"integration","code":%q}`, pairingCode))
-	if len(allResponse) != 1 || !allResponse[0].OK {
-		t.Fatalf("pairing over the host: %+v", allResponse)
+	sendMessages(`{"id":"1","type":"pair.start","instanceID":"integration","browser":"Chrome"}`)
+	responses := sendMessages(fmt.Sprintf(`{"id":"2","type":"pair.finish","instanceID":"integration","code":%q}`, pairingCode))
+	if len(responses) != 1 || !responses[0].OK {
+		t.Fatalf("pairing over the host: %+v", responses)
 	}
-	token := allResponse[0].Result.(map[string]any)["token"].(string)
+	token := responses[0].Result.(map[string]any)["token"].(string)
 
-	allResponse = sendAllMessage(fmt.Sprintf(`{"id":"3","type":"logins.match","token":%q,"url":"https://intranet.example.com/login"}`, token))
-	allLogin := allResponse[0].Result.(map[string]any)["logins"].([]any)
-	if len(allLogin) != 1 {
-		t.Fatalf("match over the host: %+v", allResponse)
+	responses = sendMessages(fmt.Sprintf(`{"id":"3","type":"logins.match","token":%q,"url":"https://intranet.example.com/login"}`, token))
+	logins := responses[0].Result.(map[string]any)["logins"].([]any)
+	if len(logins) != 1 {
+		t.Fatalf("match over the host: %+v", responses)
 	}
-	itemID := allLogin[0].(map[string]any)["itemID"].(string)
-	allResponse = sendAllMessage(
+	itemID := logins[0].(map[string]any)["itemID"].(string)
+	responses = sendMessages(
 		fmt.Sprintf(`{"id":"4","type":"logins.fill","token":%q,"vaultID":%q,"itemID":%q,"url":"https://intranet.example.com/login"}`, token, personalID, itemID),
 		fmt.Sprintf(`{"id":"5","type":"logins.fill","token":%q,"vaultID":%q,"itemID":%q,"url":"https://phishing.example.net/login"}`, token, personalID, itemID),
 		fmt.Sprintf(`{"id":"6","type":"logins.save","token":%q,"url":"https://shop.example.org/signin","username":"desktop","password":"shop-password"}`, token),
 		`{"id":"7","type":"status","token":"wrong"}`,
 	)
-	if len(allResponse) != 4 || allResponse[0].Result.(map[string]any)["password"] != "intranet-password" {
-		t.Fatalf("fill over the host: %+v", allResponse)
+	if len(responses) != 4 || responses[0].Result.(map[string]any)["password"] != "intranet-password" {
+		t.Fatalf("fill over the host: %+v", responses)
 	}
-	if allResponse[1].Error == nil || allResponse[1].Error.Code != browserprotocol.ErrorNoMatch {
-		t.Errorf("fill on another site: %+v", allResponse[1])
+	if responses[1].Error == nil || responses[1].Error.Code != browserprotocol.ErrorNoMatch {
+		t.Errorf("fill on another site: %+v", responses[1])
 	}
-	if !allResponse[2].OK || allResponse[3].Error.Code != browserprotocol.ErrorNotPaired {
-		t.Errorf("save and wrong token: %+v %+v", allResponse[2], allResponse[3])
+	if !responses[2].OK || responses[3].Error.Code != browserprotocol.ErrorNotPaired {
+		t.Errorf("save and wrong token: %+v %+v", responses[2], responses[3])
 	}
-	savedID := allResponse[2].Result.(map[string]any)["itemID"].(string)
+	savedID := responses[2].Result.(map[string]any)["itemID"].(string)
 	if saved, err := service.GetItem(personalID, savedID); err != nil || saved.Title != "shop.example.org" || saved.Password != "shop-password" {
 		t.Errorf("saved login: %+v %v", saved, err)
 	}
@@ -244,9 +244,9 @@ func TestBrowserLogins(t *testing.T) {
 	}
 
 	match, code := testBridge.sendRequest(browserprotocol.Request{Type: "logins.match", Token: token, URL: "https://github.com/login"})
-	allLogin := match.(browserprotocol.MatchResult).Logins
-	if code != "" || len(allLogin) != 1 || allLogin[0].Title != "GitHub" || allLogin[0].VaultName != "Personal" {
-		t.Fatalf("match: %+v %s", allLogin, code)
+	logins := match.(browserprotocol.MatchResult).Logins
+	if code != "" || len(logins) != 1 || logins[0].Title != "GitHub" || logins[0].VaultName != "Personal" {
+		t.Fatalf("match: %+v %s", logins, code)
 	}
 	if match, _ := testBridge.sendRequest(browserprotocol.Request{Type: "logins.match", Token: token, URL: "https://accounts.google.com/"}); len(match.(browserprotocol.MatchResult).Logins) != 1 {
 		t.Errorf("subdomain match: %+v", match)
@@ -334,8 +334,8 @@ func TestBrowserOneTimeCode(t *testing.T) {
 	}
 
 	match, _ := testBridge.sendRequest(browserprotocol.Request{Type: "logins.match", Token: token, URL: "https://github.com/sessions/two-factor"})
-	if allLogin := match.(browserprotocol.MatchResult).Logins; len(allLogin) != 1 || !allLogin[0].HasOneTimePassword {
-		t.Fatalf("match: %+v", allLogin)
+	if logins := match.(browserprotocol.MatchResult).Logins; len(logins) != 1 || !logins[0].HasOneTimePassword {
+		t.Fatalf("match: %+v", logins)
 	}
 	fill, _ := testBridge.sendRequest(browserprotocol.Request{Type: "logins.fill", Token: token, VaultID: personalID, ItemID: github.ID, URL: "https://github.com/login"})
 	if !fill.(browserprotocol.FillResult).HasOneTimePassword {

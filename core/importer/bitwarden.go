@@ -23,11 +23,11 @@ const (
 
 type bitwardenExport struct {
 	Encrypted bool `json:"encrypted"`
-	AllFolder []struct {
+	Folders   []struct {
 		ID   string `json:"id"`
 		Name string `json:"name"`
 	} `json:"folders"`
-	AllItem []bitwardenItem `json:"items"`
+	Items []bitwardenItem `json:"items"`
 }
 
 type bitwardenItem struct {
@@ -35,7 +35,7 @@ type bitwardenItem struct {
 	Name     string `json:"name"`
 	Notes    string `json:"notes"`
 	FolderID string `json:"folderId"`
-	AllField []struct {
+	Fields   []struct {
 		Name  string `json:"name"`
 		Value string `json:"value"`
 		Type  int    `json:"type"`
@@ -44,7 +44,7 @@ type bitwardenItem struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
 		TOTP     string `json:"totp"`
-		AllURI   []struct {
+		URIs     []struct {
 			URI string `json:"uri"`
 		} `json:"uris"`
 	} `json:"login"`
@@ -65,22 +65,22 @@ func parseBitwardenJSON(content []byte) (*Result, error) {
 	if export.Encrypted {
 		return nil, ErrEncryptedExport
 	}
-	allFolderName := map[string]string{}
-	for _, folder := range export.AllFolder {
-		allFolderName[folder.ID] = folder.Name
+	folderNames := map[string]string{}
+	for _, folder := range export.Folders {
+		folderNames[folder.ID] = folder.Name
 	}
-	result := &Result{AllItem: []item.Item{}, AllSkipped: []SkippedEntry{}}
-	for _, entry := range export.AllItem {
+	result := &Result{Items: []item.Item{}, Skipped: []SkippedEntry{}}
+	for _, entry := range export.Items {
 		vaultItem, reason := convertBitwardenItem(entry)
 		if reason != "" {
-			result.AllSkipped = append(result.AllSkipped, SkippedEntry{Title: describeEntry(entry.Name), Reason: reason})
+			result.Skipped = append(result.Skipped, SkippedEntry{Title: describeEntry(entry.Name), Reason: reason})
 			continue
 		}
-		if folderName := allFolderName[entry.FolderID]; folderName != "" {
+		if folderName := folderNames[entry.FolderID]; folderName != "" {
 			vaultItem.Overview.Tags = []string{folderName}
 		}
 		if finishItem(&vaultItem) {
-			result.AllItem = append(result.AllItem, vaultItem)
+			result.Items = append(result.Items, vaultItem)
 		}
 	}
 	return result, nil
@@ -105,12 +105,12 @@ func convertBitwardenItem(entry bitwardenItem) (item.Item, string) {
 	if entry.Login != nil {
 		vaultItem.Overview.Username = entry.Login.Username
 		vaultItem.Details.Password = entry.Login.Password
-		for _, uri := range entry.Login.AllURI {
+		for _, uri := range entry.Login.URIs {
 			vaultItem.Overview.URLs = append(vaultItem.Overview.URLs, uri.URI)
 		}
 		addOneTimePassword(&vaultItem, "One-time password", entry.Login.TOTP)
 	}
-	for _, field := range entry.AllField {
+	for _, field := range entry.Fields {
 		if field.Type == bitwardenFieldLinked {
 			continue
 		}

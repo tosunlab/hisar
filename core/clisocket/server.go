@@ -26,12 +26,12 @@ type Handler interface {
 
 // SecretDescriber names the secrets of a secrets.resolve request for the approval window.
 type SecretDescriber interface {
-	DescribeAllSecret(allReference []string) []string
+	DescribeSecrets(references []string) []string
 }
 
 // ShareLinkDescriber names the item and fields of a shareLinks.create request for the approval window.
 type ShareLinkDescriber interface {
-	DescribeShareLink(request *cliprotocol.Request) (title string, allFieldLabel []string)
+	DescribeShareLink(request *cliprotocol.Request) (title string, fieldLabels []string)
 }
 
 type ServerConfig struct {
@@ -61,12 +61,12 @@ type connectionPeer struct {
 	agent        *AgentIdentity
 }
 
-func CreateServer(config ServerConfig) *Server {
+func NewServer(config ServerConfig) *Server {
 	if config.PeerResolver == nil {
 		config.PeerResolver = SystemPeerResolver{}
 	}
 	if config.Approvals == nil {
-		config.Approvals = CreateSessionApprovals(0, nil)
+		config.Approvals = NewSessionApprovals(0, nil)
 	}
 	if config.IsEnabled == nil {
 		config.IsEnabled = func() bool { return true }
@@ -77,7 +77,7 @@ func CreateServer(config ServerConfig) *Server {
 	return &Server{config: config}
 }
 
-func (s *Server) ClearAllApproval() {
+func (s *Server) ClearApprovals() {
 	s.config.Approvals.ClearAll()
 }
 
@@ -152,7 +152,7 @@ func (s *Server) ServeConnection(ctx context.Context, connection net.Conn) {
 func (s *Server) answerMessage(ctx context.Context, client *connectionPeer, message []byte) cliprotocol.Response {
 	var request cliprotocol.Request
 	if err := json.Unmarshal(message, &request); err != nil || request.ID == "" || request.Type == "" {
-		return buildErrorResponse(request.ID, cliprotocol.CreateError(cliprotocol.ErrorInvalidRequest, "the request is not valid"))
+		return buildErrorResponse(request.ID, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "the request is not valid"))
 	}
 	result, err := s.answerRequest(ctx, client, &request)
 	if err != nil {
@@ -171,14 +171,14 @@ func (s *Server) answerMessage(ctx context.Context, client *connectionPeer, mess
 func buildErrorResponse(requestID string, err error) cliprotocol.Response {
 	var responseError *cliprotocol.ResponseError
 	if !errors.As(err, &responseError) {
-		responseError = cliprotocol.CreateError(cliprotocol.ErrorInternal, err.Error())
+		responseError = cliprotocol.NewError(cliprotocol.ErrorInternal, err.Error())
 	}
 	return cliprotocol.Response{ID: requestID, Error: responseError}
 }
 
 func (s *Server) answerRequest(ctx context.Context, client *connectionPeer, request *cliprotocol.Request) (any, error) {
 	if !s.config.IsEnabled() {
-		return nil, cliprotocol.CreateError(cliprotocol.ErrorIntegrationDisabled, "the Hisar app does not let the command-line tool use it")
+		return nil, cliprotocol.NewError(cliprotocol.ErrorIntegrationDisabled, "the Hisar app does not let the command-line tool use it")
 	}
 	hello := s.config.Handler.GetHello()
 	if request.Type == cliprotocol.TypeHello {
@@ -199,25 +199,25 @@ func (s *Server) answerRequest(ctx context.Context, client *connectionPeer, requ
 		return s.startAgentConnection(client, request)
 	}
 	if (client.agent != nil) != cliprotocol.IsAgentRequest(request.Type) {
-		return nil, cliprotocol.CreateError(cliprotocol.ErrorInvalidRequest, "agent requests and other requests cannot share a connection")
+		return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "agent requests and other requests cannot share a connection")
 	}
 	if hello.State == cliprotocol.StateSignedOut {
 		if client.agent != nil {
-			return nil, cliprotocol.CreateError(cliprotocol.ErrorSignedOut, "the Hisar app is not signed in; sign in there")
+			return nil, cliprotocol.NewError(cliprotocol.ErrorSignedOut, "the Hisar app is not signed in; sign in there")
 		}
-		return nil, cliprotocol.CreateError(cliprotocol.ErrorSignedOut, "the Hisar app is not signed in; sign in there, or run hisar --standalone")
+		return nil, cliprotocol.NewError(cliprotocol.ErrorSignedOut, "the Hisar app is not signed in; sign in there, or run hisar --standalone")
 	}
 	if client.agent != nil {
 		return s.answerAgentRequest(ctx, client, request)
 	}
 	if request.Type == cliprotocol.TypeResolveSecret && (len(request.References) == 0 || len(request.References) > cliprotocol.MaxReferenceCount) {
-		return nil, cliprotocol.CreateError(cliprotocol.ErrorInvalidRequest, fmt.Sprintf("send between 1 and %d secret references", cliprotocol.MaxReferenceCount))
+		return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, fmt.Sprintf("send between 1 and %d secret references", cliprotocol.MaxReferenceCount))
 	}
 	if request.Type == cliprotocol.TypeCreateShareLink && request.ShareLink == nil {
-		return nil, cliprotocol.CreateError(cliprotocol.ErrorInvalidRequest, "the share link is missing")
+		return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "the share link is missing")
 	}
 	if request.Type == cliprotocol.TypeExport && request.Export == nil {
-		return nil, cliprotocol.CreateError(cliprotocol.ErrorInvalidRequest, "the export is missing")
+		return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "the export is missing")
 	}
 	require := s.config.Approvals.Require
 	if request.Type == cliprotocol.TypeCreateShareLink || request.Type == cliprotocol.TypeExport {
@@ -227,7 +227,7 @@ func (s *Server) answerRequest(ctx context.Context, client *connectionPeer, requ
 	}
 	if err := require(client.session, func() error { return s.askApproval(ctx, client, request) }); err != nil {
 		if errors.Is(err, ErrDenied) {
-			return nil, cliprotocol.CreateError(cliprotocol.ErrorDenied, err.Error())
+			return nil, cliprotocol.NewError(cliprotocol.ErrorDenied, err.Error())
 		}
 		return nil, err
 	}
@@ -244,7 +244,7 @@ func (s *Server) askApproval(ctx context.Context, client *connectionPeer, reques
 	if request.Type == cliprotocol.TypeResolveSecret {
 		approvalRequest.IsSecretRequest = true
 		approvalRequest.CommandLine = request.CommandLine
-		approvalRequest.AllSecretName = s.describeAllSecret(request.References)
+		approvalRequest.SecretNames = s.describeSecrets(request.References)
 	}
 	if request.Type == cliprotocol.TypeCreateShareLink {
 		approvalRequest.ShareLink = s.describeShareLink(request)
@@ -255,33 +255,33 @@ func (s *Server) askApproval(ctx context.Context, client *connectionPeer, reques
 	return s.config.Approver.ApproveCommandLine(ctx, approvalRequest)
 }
 
-func (s *Server) describeAllSecret(allReference []string) []string {
+func (s *Server) describeSecrets(references []string) []string {
 	if describer, isDescriber := s.config.Handler.(SecretDescriber); isDescriber {
-		return describer.DescribeAllSecret(allReference)
+		return describer.DescribeSecrets(references)
 	}
-	allName := make([]string, 0, len(allReference))
-	for _, text := range allReference {
+	names := make([]string, 0, len(references))
+	for _, text := range references {
 		if reference, err := secretreference.Parse(text); err == nil {
-			allName = append(allName, reference.Describe())
+			names = append(names, reference.Describe())
 		} else {
-			allName = append(allName, text)
+			names = append(names, text)
 		}
 	}
-	return allName
+	return names
 }
 
 func (s *Server) describeShareLink(request *cliprotocol.Request) *ShareLinkDescription {
-	description := &ShareLinkDescription{Title: request.Query, AllFieldLabel: append([]string{}, request.ShareLink.Fields...), Detail: describeShareLinkLimit(request.ShareLink)}
+	description := &ShareLinkDescription{Title: request.Query, FieldLabels: append([]string{}, request.ShareLink.Fields...), Detail: describeShareLinkLimit(request.ShareLink)}
 	if request.ShareLink.Text != "" || request.Query == "" {
-		description.Title, description.AllFieldLabel = request.ShareLink.Title, []string{"text"}
+		description.Title, description.FieldLabels = request.ShareLink.Title, []string{"text"}
 		if description.Title == "" {
 			description.Title = "Shared text"
 		}
 	} else if describer, isDescriber := s.config.Handler.(ShareLinkDescriber); isDescriber {
-		description.Title, description.AllFieldLabel = describer.DescribeShareLink(request)
+		description.Title, description.FieldLabels = describer.DescribeShareLink(request)
 	}
-	if len(description.AllFieldLabel) == 0 {
-		description.AllFieldLabel = []string{"username", "password"}
+	if len(description.FieldLabels) == 0 {
+		description.FieldLabels = []string{"username", "password"}
 	}
 	return description
 }
@@ -305,9 +305,9 @@ func describeShareLinkLimit(change *cliprotocol.ShareLinkChange) string {
 	case 1:
 		views = "1 view"
 	}
-	allPart := []string{"Expires in " + expiry, views}
+	parts := []string{"Expires in " + expiry, views}
 	if change.Passphrase != "" {
-		allPart = append(allPart, "passphrase")
+		parts = append(parts, "passphrase")
 	}
-	return strings.Join(allPart, " · ")
+	return strings.Join(parts, " · ")
 }

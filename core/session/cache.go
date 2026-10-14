@@ -11,11 +11,11 @@ import (
 type Cache interface {
 	SaveAccount(account *apitypes.Account) error
 	LoadAccount(accountID string) (*apitypes.Account, error)
-	ReplaceAllVault(allVault []apitypes.Vault) error
-	ListAllVault() ([]apitypes.Vault, error)
+	ReplaceVaults(vaults []apitypes.Vault) error
+	ListVaults() ([]apitypes.Vault, error)
 	GetSeq(vaultID string) (int64, error)
-	ApplyAllChange(vaultID string, allItem []apitypes.Item, nextSeq int64) error
-	ListAllItem(vaultID string) ([]apitypes.Item, error)
+	ApplyChanges(vaultID string, items []apitypes.Item, nextSeq int64) error
+	ListItems(vaultID string) ([]apitypes.Item, error)
 	ResetVault(vaultID string) error
 }
 
@@ -53,21 +53,21 @@ func getAccount(ctx context.Context, apiClient *apiclient.Client, accountCache C
 	return cachedAccount, true, nil
 }
 
-func (s *Session) listAllProtoVault(ctx context.Context) ([]apitypes.Vault, error) {
-	allProtoVault, err := s.Client.ListAllVault(ctx)
+func (s *Session) listProtoVaults(ctx context.Context) ([]apitypes.Vault, error) {
+	protoVaults, err := s.Client.ListVaults(ctx)
 	if s.Cache == nil {
-		return allProtoVault, err
+		return protoVaults, err
 	}
 	if err == nil {
 		s.isOffline.Store(false)
-		if allCachedVault, cacheErr := s.Cache.ListAllVault(); cacheErr == nil {
-			s.noteAllRemovedVault(allCachedVault, allProtoVault)
+		if cachedVaults, cacheErr := s.Cache.ListVaults(); cacheErr == nil {
+			s.noteRemovedVaults(cachedVaults, protoVaults)
 		}
-		return allProtoVault, s.Cache.ReplaceAllVault(allProtoVault)
+		return protoVaults, s.Cache.ReplaceVaults(protoVaults)
 	}
 	if !apiclient.IsUnreachable(err) {
 		return nil, err
 	}
 	s.isOffline.Store(true)
-	return s.Cache.ListAllVault()
+	return s.Cache.ListVaults()
 }

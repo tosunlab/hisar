@@ -14,13 +14,13 @@ import (
 
 const plainExportWarning = "Plain JSON is not encrypted: anyone who gets the file can read every password, one-time code secret and SSH private key in it."
 
-func runExport(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
+func runExport(ctx context.Context, flags *flag.FlagSet, args []string) error {
 	access := &sessionVaultAccess{}
-	return access.finish(runExportWithAccess(ctx, access, flags, allArg))
+	return access.finish(runExportWithAccess(ctx, access, flags, args))
 }
 
-func runExportThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, allArg []string) error {
-	return runExportWithAccess(ctx, appVaultAccess{client: client}, flags, allArg)
+func runExportThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, args []string) error {
+	return runExportWithAccess(ctx, appVaultAccess{client: client}, flags, args)
 }
 
 func buildDefaultExportPath(format string, now time.Time) string {
@@ -79,15 +79,15 @@ func promptExportPassphrase() ([]byte, error) {
 	}
 }
 
-func runExportWithAccess(ctx context.Context, access vaultAccess, flags *flag.FlagSet, allArg []string) error {
+func runExportWithAccess(ctx context.Context, access vaultAccess, flags *flag.FlagSet, args []string) error {
 	outputPath := flags.String("o", "", "the file to write; it must not exist yet (default hisar-export-<date>.hisar or .json)")
 	format := flags.String("format", "", "encrypted (default) or plain")
 	isConfirmed := flags.Bool("y", false, "write a plain JSON export without asking")
-	allPositional, err := parse(flags, allArg)
+	positionals, err := parse(flags, args)
 	if err != nil {
 		return err
 	}
-	if len(allPositional) != 0 {
+	if len(positionals) != 0 {
 		return errUsage
 	}
 	isInteractive := isInteractiveTerminal()

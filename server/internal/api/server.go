@@ -74,7 +74,7 @@ type Server struct {
 	backgroundWork                sync.WaitGroup
 }
 
-func CreateServer(database *store.Store, secrets *Secrets, config Config) (*Server, error) {
+func NewServer(database *store.Store, secrets *Secrets, config Config) (*Server, error) {
 	if config.SessionTTL == 0 {
 		config.SessionTTL = 30 * 24 * time.Hour
 	}
@@ -93,7 +93,7 @@ func CreateServer(database *store.Store, secrets *Secrets, config Config) (*Serv
 	if config.ShareAcceptedEmailDelay == 0 {
 		config.ShareAcceptedEmailDelay = defaultShareAcceptedEmailDelay
 	}
-	opaqueConfiguration := pake.CreateConfig()
+	opaqueConfiguration := pake.NewConfig()
 	serverKeyMaterial, err := opaqueConfiguration.DecodeServerKeyMaterial(secrets.OpaqueKeyMaterial)
 	if err != nil {
 		return nil, err
@@ -141,7 +141,7 @@ func (s *Server) CreateApp() *fiber.App {
 		Immutable:    true,
 		ErrorHandler: handleError,
 	})
-	app.Use(setAllSecurityHeader)
+	app.Use(setSecurityHeaders)
 	app.Get("/healthz", func(c fiber.Ctx) error { return c.SendString("ok\n") })
 	app.Get("/privacy", sendPrivacyPolicy)
 	app.Get("/terms", sendTermsOfService)
@@ -164,16 +164,16 @@ func (s *Server) CreateApp() *fiber.App {
 	apiGroup.Put("/account/credentials", s.requireSession, s.handleChangeCredentials)
 	apiGroup.Get("/account/deletion-preview", s.requireSession, s.handleGetAccountDeletionPreview)
 	apiGroup.Post("/account/delete", s.requireSession, s.handleDeleteAccount)
-	apiGroup.Get("/members", s.requireSession, s.handleListAllMember)
+	apiGroup.Get("/members", s.requireSession, s.handleListMembers)
 	apiGroup.Post("/invites", s.requireSession, s.handleCreateInvite)
-	apiGroup.Get("/devices", s.requireSession, s.handleListAllDevice)
+	apiGroup.Get("/devices", s.requireSession, s.handleListDevices)
 	apiGroup.Delete("/devices/:id", s.requireSession, s.handleRevokeDevice)
 
-	apiGroup.Get("/vaults", s.requireSession, s.handleListAllVault)
+	apiGroup.Get("/vaults", s.requireSession, s.handleListVaults)
 	apiGroup.Post("/vaults", s.requireSession, s.handleCreateVault)
-	apiGroup.Get("/vaults/:vault/members", s.requireSession, s.handleListAllVaultMember)
+	apiGroup.Get("/vaults/:vault/members", s.requireSession, s.handleListVaultMembers)
 	apiGroup.Post("/vaults/:vault/share-invitations", s.requireSession, s.handleCreateShareInvitation)
-	apiGroup.Get("/share-invitations", s.requireSession, s.handleListAllShareInvitation)
+	apiGroup.Get("/share-invitations", s.requireSession, s.handleListShareInvitations)
 	apiGroup.Post("/share-invitations/:invitation/accept", s.requireSession, s.handleAcceptShareInvitation)
 	apiGroup.Post("/share-invitations/:invitation/decline", s.requireSession, s.handleDeclineShareInvitation)
 	apiGroup.Delete("/share-invitations/:invitation", s.requireSession, s.handleCancelShareInvitation)
@@ -182,17 +182,17 @@ func (s *Server) CreateApp() *fiber.App {
 	apiGroup.Post("/vaults/:vault/rotate", s.requireSession, s.handleRotateVault)
 	apiGroup.Put("/vaults/:vault/name", s.requireSession, s.handleRenameVault)
 	apiGroup.Post("/vaults/:vault/delete", s.requireSession, s.handleDeleteVault)
-	apiGroup.Get("/vaults/:vault/changes", s.requireSession, s.handleListAllChange)
+	apiGroup.Get("/vaults/:vault/changes", s.requireSession, s.handleListChanges)
 	apiGroup.Put("/vaults/:vault/items/:item", s.requireSession, s.handlePutItem)
 	apiGroup.Get("/vaults/:vault/items/:item/history", s.requireSession, s.handleGetItemHistory)
 
 	apiGroup.Post("/share-links", s.requireSession, s.handleCreateShareLink)
-	apiGroup.Get("/share-links", s.requireSession, s.handleListAllShareLink)
+	apiGroup.Get("/share-links", s.requireSession, s.handleListShareLinks)
 	apiGroup.Delete("/share-links/:id", s.requireSession, s.handleRevokeShareLink)
 	apiGroup.Get("/public/share-links/:id", s.handleViewShareLink)
 
 	apiGroup.Post("/approvals", s.requireSession, s.limitApprovalRate, s.handleCreateApproval)
-	apiGroup.Get("/approvals", s.requireSession, s.limitApprovalRate, s.handleListAllPendingApproval)
+	apiGroup.Get("/approvals", s.requireSession, s.limitApprovalRate, s.handleListPendingApprovals)
 	apiGroup.Get("/approvals/:id", s.requireSession, s.limitApprovalRate, s.handleGetApproval)
 	apiGroup.Post("/approvals/:id/answer", s.requireSession, s.limitApprovalRate, s.handleAnswerApproval)
 	apiGroup.Delete("/approvals/:id", s.requireSession, s.limitApprovalRate, s.handleResolveApproval)
@@ -222,7 +222,7 @@ func sendLegalPage(c fiber.Ctx, page []byte) error {
 	return c.Send(page)
 }
 
-func setAllSecurityHeader(c fiber.Ctx) error {
+func setSecurityHeaders(c fiber.Ctx) error {
 	c.Set("Strict-Transport-Security", "max-age=63072000; includeSubDomains")
 	c.Set("X-Content-Type-Options", "nosniff")
 	c.Set("X-Frame-Options", "DENY")
@@ -282,8 +282,8 @@ func (s *Server) limitRate(c fiber.Ctx) error {
 func (s *Server) getClientIP(c fiber.Ctx) string {
 	if s.config.TrustProxy {
 		if forwardedFor := c.Get("X-Forwarded-For"); forwardedFor != "" {
-			allForwardedIP := strings.Split(forwardedFor, ",")
-			return strings.TrimSpace(allForwardedIP[len(allForwardedIP)-1])
+			forwardedIPs := strings.Split(forwardedFor, ",")
+			return strings.TrimSpace(forwardedIPs[len(forwardedIPs)-1])
 		}
 	}
 	return c.RequestCtx().RemoteIP().String()
@@ -322,10 +322,10 @@ func decodeBodyWithLimit(c fiber.Ctx, target any, limit int) error {
 }
 
 type ipLimiter struct {
-	mutex     sync.Mutex
-	every     rate.Limit
-	burst     int
-	allClient map[string]*ipEntry
+	mutex   sync.Mutex
+	every   rate.Limit
+	burst   int
+	clients map[string]*ipEntry
 }
 
 type ipEntry struct {
@@ -334,24 +334,24 @@ type ipEntry struct {
 }
 
 func createIPLimiter(every rate.Limit, burst int) *ipLimiter {
-	return &ipLimiter{every: every, burst: burst, allClient: map[string]*ipEntry{}}
+	return &ipLimiter{every: every, burst: burst, clients: map[string]*ipEntry{}}
 }
 
 func (l *ipLimiter) allow(ip string) bool {
 	l.mutex.Lock()
 	defer l.mutex.Unlock()
 	now := time.Now()
-	if len(l.allClient) > 10000 {
-		for clientIP, entry := range l.allClient {
+	if len(l.clients) > 10000 {
+		for clientIP, entry := range l.clients {
 			if now.Sub(entry.seen) > 10*time.Minute {
-				delete(l.allClient, clientIP)
+				delete(l.clients, clientIP)
 			}
 		}
 	}
-	entry, ok := l.allClient[ip]
+	entry, ok := l.clients[ip]
 	if !ok {
 		entry = &ipEntry{limiter: rate.NewLimiter(l.every, l.burst)}
-		l.allClient[ip] = entry
+		l.clients[ip] = entry
 	}
 	entry.seen = now
 	return entry.limiter.Allow()

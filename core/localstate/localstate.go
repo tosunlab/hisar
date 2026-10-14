@@ -28,18 +28,18 @@ type State struct {
 	AccountID string            `json:"accountId"`
 	Token     string            `json:"token"`
 	DeviceID  string            `json:"deviceId"`
-	AllPin    map[string][]byte `json:"pins,omitempty"`
-	AllSeq    map[string]int64  `json:"seqs,omitempty"`
+	Pins      map[string][]byte `json:"pins,omitempty"`
+	Seqs      map[string]int64  `json:"seqs,omitempty"`
 
 	// BiometricUnlock is the account unlock key sealed with a key kept in the OS keychain.
 	BiometricUnlock      []byte    `json:"biometricUnlock,omitempty"`
 	LastPasswordUnlockAt time.Time `json:"lastPasswordUnlockAt,omitzero"`
 
-	AllPairedBrowser []PairedBrowser `json:"pairedBrowsers,omitempty"`
+	PairedBrowsers []PairedBrowser `json:"pairedBrowsers,omitempty"`
 	// IsExactHostMatch limits browser autofill to the item's exact host instead of its registrable domain.
 	IsExactHostMatch bool `json:"exactHostMatch,omitempty"`
-	// AllAgentVaultID lists the vaults coding agents may see through hisar mcp; every other vault is invisible to them.
-	AllAgentVaultID []string `json:"agentVaults,omitempty"`
+	// AgentVaultIDs lists the vaults coding agents may see through hisar mcp; every other vault is invisible to them.
+	AgentVaultIDs []string `json:"agentVaults,omitempty"`
 
 	// Settings are this device's preferences; Reset keeps them. Embedded, so state.json keeps its flat keys.
 	Settings
@@ -79,8 +79,8 @@ type PairedBrowser struct {
 	LastUsedAt time.Time `json:"lastUsedAt"`
 }
 
-func (s *State) GetSeq(vaultID string) int64      { return s.AllSeq[vaultID] }
-func (s *State) SetSeq(vaultID string, seq int64) { s.AllSeq[vaultID] = seq }
+func (s *State) GetSeq(vaultID string) int64      { return s.Seqs[vaultID] }
+func (s *State) SetSeq(vaultID string, seq int64) { s.Seqs[vaultID] = seq }
 
 // GetPath returns the value of environmentVariable if set, otherwise <user config dir>/hisar/<fileName>.
 func GetPath(environmentVariable, fileName string) (string, error) {
@@ -105,11 +105,11 @@ func Load(path string) (*State, error) {
 			return nil, fmt.Errorf("%s: %w", path, err)
 		}
 	}
-	if state.AllPin == nil {
-		state.AllPin = map[string][]byte{}
+	if state.Pins == nil {
+		state.Pins = map[string][]byte{}
 	}
-	if state.AllSeq == nil {
-		state.AllSeq = map[string]int64{}
+	if state.Seqs == nil {
+		state.Seqs = map[string]int64{}
 	}
 	return state, nil
 }
@@ -131,12 +131,12 @@ func (s *State) Save() error {
 
 // Reset forgets the account, session, pins and seqs but keeps the file location and the device preferences.
 func (s *State) Reset() {
-	*s = State{path: s.path, AllPin: map[string][]byte{}, AllSeq: map[string]int64{}, Settings: s.Settings}
+	*s = State{path: s.path, Pins: map[string][]byte{}, Seqs: map[string]int64{}, Settings: s.Settings}
 }
 
 // IsMemberKeyChanged reports whether a signing key differs from the one pinned for the account.
 func (s *State) IsMemberKeyChanged(accountID string, signingPublicKey []byte) bool {
-	pinned, found := s.AllPin[accountID]
+	pinned, found := s.Pins[accountID]
 	return found && !bytes.Equal(pinned, signingPublicKey)
 }
 
@@ -146,7 +146,7 @@ func (s *State) CheckMemberPin(member *apitypes.Member) error {
 	if s.IsMemberKeyChanged(member.AccountID, member.PublicKeys.Sign) {
 		return fmt.Errorf("the signing key of %s changed since you last shared with them; stopping", member.Email)
 	}
-	s.AllPin[member.AccountID] = append([]byte(nil), member.PublicKeys.Sign...)
+	s.Pins[member.AccountID] = append([]byte(nil), member.PublicKeys.Sign...)
 	return nil
 }
 

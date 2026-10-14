@@ -25,16 +25,16 @@ func TestStreamEvents(t *testing.T) {
 		fmt.Fprint(writer, "data: first\ndata: second\n\n")
 	}))
 	defer testServer.Close()
-	apiClient := Create(testServer.URL)
+	apiClient := New(testServer.URL)
 	apiClient.Token = "token"
-	var allEvent []Event
-	err := apiClient.StreamEvents(context.Background(), func(event Event) { allEvent = append(allEvent, event) })
+	var events []Event
+	err := apiClient.StreamEvents(context.Background(), func(event Event) { events = append(events, event) })
 	if err != nil {
 		t.Fatalf("stream ended with %v", err)
 	}
-	if len(allEvent) != 3 || allEvent[0].Name != "vault-changed" || string(allEvent[0].Data) != `{"vaultID":"v1","seq":7}` ||
-		allEvent[1].Name != "vaults-changed" || string(allEvent[2].Data) != "first\nsecond" {
-		t.Errorf("events = %+v", allEvent)
+	if len(events) != 3 || events[0].Name != "vault-changed" || string(events[0].Data) != `{"vaultID":"v1","seq":7}` ||
+		events[1].Name != "vaults-changed" || string(events[2].Data) != "first\nsecond" {
+		t.Errorf("events = %+v", events)
 	}
 
 	apiClient.Token = "wrong"
@@ -61,7 +61,7 @@ func TestStreamEventsOutlivesRequestTimeoutAndStopsWithContext(t *testing.T) {
 		}
 	}))
 	defer testServer.Close()
-	apiClient := Create(testServer.URL)
+	apiClient := New(testServer.URL)
 	apiClient.HTTP.Timeout = 50 * time.Millisecond
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()

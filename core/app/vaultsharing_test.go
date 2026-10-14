@@ -28,11 +28,11 @@ func TestGetVaultSharingCompletesAcceptedSharesAndListsTheVaultOnly(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if sharing.Vault.ID != test.familyID || sharing.Vault.Name != "Family" || !sharing.IsOwner || len(sharing.AllMember) != 1 || !sharing.AllMember[0].IsCurrentUser {
+	if sharing.Vault.ID != test.familyID || sharing.Vault.Name != "Family" || !sharing.IsOwner || len(sharing.Members) != 1 || !sharing.Members[0].IsCurrentUser {
 		t.Fatalf("before anyone accepted: %+v", sharing)
 	}
-	if len(sharing.AllInvitation) != 2 || sharing.AllInvitation[0].VaultName != "Family" || sharing.AllInvitation[0].State != apitypes.ShareInvitationPending {
-		t.Fatalf("Family's invitations: %+v", sharing.AllInvitation)
+	if len(sharing.Invitations) != 2 || sharing.Invitations[0].VaultName != "Family" || sharing.Invitations[0].State != apitypes.ShareInvitationPending {
+		t.Fatalf("Family's invitations: %+v", sharing.Invitations)
 	}
 
 	test.apiServer.acceptShareInvitation(t, bob)
@@ -43,12 +43,12 @@ func TestGetVaultSharingCompletesAcceptedSharesAndListsTheVaultOnly(t *testing.T
 	if access, found := test.apiServer.getAccess(test.familyID, bob.AccountID); !found || access.Role != apitypes.VaultEditor {
 		t.Fatalf("Bob's access after opening the sharing screen: %+v %v", access, found)
 	}
-	if len(sharing.AllMember) != 2 || sharing.AllMember[1].Email != "b@example.com" || sharing.AllMember[1].Role != apitypes.VaultEditor ||
-		sharing.AllMember[1].SecurityCode != crypt.FormatKeyFingerprint(bob.PublicKeys.Sign) {
-		t.Fatalf("members after completing: %+v", sharing.AllMember)
+	if len(sharing.Members) != 2 || sharing.Members[1].Email != "b@example.com" || sharing.Members[1].Role != apitypes.VaultEditor ||
+		sharing.Members[1].SecurityCode != crypt.FormatKeyFingerprint(bob.PublicKeys.Sign) {
+		t.Fatalf("members after completing: %+v", sharing.Members)
 	}
-	if len(sharing.AllInvitation) != 1 || sharing.AllInvitation[0].Email != "nobody@example.com" {
-		t.Errorf("invitations after completing: %+v", sharing.AllInvitation)
+	if len(sharing.Invitations) != 1 || sharing.Invitations[0].Email != "nobody@example.com" {
+		t.Errorf("invitations after completing: %+v", sharing.Invitations)
 	}
 }
 
@@ -68,8 +68,8 @@ func TestGetVaultSharingShowsARefusedChangedKeyOnlyForItsVault(t *testing.T) {
 	if err != nil || !strings.Contains(travel.CompletionError, "signing key of b@example.com changed") {
 		t.Fatalf("Travel after a key change: %+v %v", travel, err)
 	}
-	if len(travel.AllInvitation) != 1 || travel.AllInvitation[0].State != apitypes.ShareInvitationAccepted {
-		t.Errorf("the refused invitation should stay accepted: %+v", travel.AllInvitation)
+	if len(travel.Invitations) != 1 || travel.Invitations[0].State != apitypes.ShareInvitationAccepted {
+		t.Errorf("the refused invitation should stay accepted: %+v", travel.Invitations)
 	}
 	if _, found := test.apiServer.getAccess(travelID, bob.AccountID); found {
 		t.Error("the vault key was wrapped to a substituted key")
@@ -78,8 +78,8 @@ func TestGetVaultSharingShowsARefusedChangedKeyOnlyForItsVault(t *testing.T) {
 	if err != nil || family.CompletionError != "" {
 		t.Errorf("Family shows Travel's error: %+v %v", family, err)
 	}
-	if !family.AllMember[1].IsKeyChanged {
-		t.Errorf("Bob's changed key is not marked: %+v", family.AllMember)
+	if !family.Members[1].IsKeyChanged {
+		t.Errorf("Bob's changed key is not marked: %+v", family.Members)
 	}
 }
 
@@ -96,11 +96,11 @@ func TestGetVaultSharingRefusesPersonalVaultAndHidesInvitationsFromNonOwners(t *
 		t.Fatal(err)
 	}
 	test.apiServer.setVaultRole(test.familyID, apitypes.VaultEditor)
-	if _, err := service.ListAllVault(); err != nil {
+	if _, err := service.ListVaults(); err != nil {
 		t.Fatal(err)
 	}
 	sharing, err := GetVaultSharing(service, test.familyID)
-	if err != nil || sharing.IsOwner || len(sharing.AllInvitation) != 0 || len(sharing.AllMember) != 1 {
+	if err != nil || sharing.IsOwner || len(sharing.Invitations) != 0 || len(sharing.Members) != 1 {
 		t.Errorf("as an editor: %+v %v", sharing, err)
 	}
 	service.Lock()

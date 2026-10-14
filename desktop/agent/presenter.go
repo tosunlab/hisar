@@ -7,7 +7,7 @@ import (
 // presenter runs window and event calls in order on its own goroutine, so a window that cannot be shown never holds up a request.
 type presenter struct {
 	mutex     sync.Mutex
-	allAction []func()
+	actions   []func()
 	isRunning bool
 	idle      sync.Cond
 }
@@ -15,24 +15,24 @@ type presenter struct {
 func (presenter *presenter) present(action func()) {
 	presenter.mutex.Lock()
 	defer presenter.mutex.Unlock()
-	presenter.allAction = append(presenter.allAction, action)
+	presenter.actions = append(presenter.actions, action)
 	if !presenter.isRunning {
 		presenter.isRunning = true
-		go presenter.runAllAction()
+		go presenter.runActions()
 	}
 }
 
-func (presenter *presenter) runAllAction() {
+func (presenter *presenter) runActions() {
 	for {
 		presenter.mutex.Lock()
-		if len(presenter.allAction) == 0 {
+		if len(presenter.actions) == 0 {
 			presenter.isRunning = false
 			presenter.idle.Broadcast()
 			presenter.mutex.Unlock()
 			return
 		}
-		action := presenter.allAction[0]
-		presenter.allAction = presenter.allAction[1:]
+		action := presenter.actions[0]
+		presenter.actions = presenter.actions[1:]
 		presenter.mutex.Unlock()
 		action()
 	}

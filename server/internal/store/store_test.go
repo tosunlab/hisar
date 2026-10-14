@@ -67,21 +67,21 @@ func TestMigrations(t *testing.T) {
 	database := createTestStore(t)
 	ctx := context.Background()
 
-	allResult, err := database.Migrate(ctx)
-	if err != nil || len(allResult) != 0 {
-		t.Fatalf("second migrate applied %d: %v", len(allResult), err)
+	results, err := database.Migrate(ctx)
+	if err != nil || len(results) != 0 {
+		t.Fatalf("second migrate applied %d: %v", len(results), err)
 	}
-	allStatus, err := database.GetAllMigrationStatus(ctx)
-	if err != nil || len(allStatus) == 0 {
+	statuses, err := database.GetMigrationStatuses(ctx)
+	if err != nil || len(statuses) == 0 {
 		t.Fatalf("status: %v", err)
 	}
-	for _, status := range allStatus {
+	for _, status := range statuses {
 		if status.AppliedAt.IsZero() {
 			t.Errorf("%s not applied", status.Source.Path)
 		}
 	}
 
-	allRecoveryTable := []string{"recovery_keyset", "vault_recovery", "recovery_tokens", "account_recovery"}
+	recoveryTables := []string{"recovery_keyset", "vault_recovery", "recovery_tokens", "account_recovery"}
 
 	if countConstraint(t, database, "items_updated_by_fkey") != 0 || countConstraint(t, database, "vaults_created_by_fkey") != 0 {
 		t.Error("account deletion migration left the account foreign keys")
@@ -104,7 +104,7 @@ func TestMigrations(t *testing.T) {
 	if rolledBack, err = database.RollbackMigration(ctx); err != nil {
 		t.Fatal(err)
 	}
-	for _, tableName := range allRecoveryTable {
+	for _, tableName := range recoveryTables {
 		if countTable(t, database, tableName) != 1 {
 			t.Errorf("%s missing after rolling back %s", tableName, rolledBack.Source.Path)
 		}
@@ -123,7 +123,7 @@ func TestMigrations(t *testing.T) {
 	if rolledBack, err = database.RollbackMigration(ctx); err != nil {
 		t.Fatal(err)
 	}
-	for _, tableName := range allRecoveryTable {
+	for _, tableName := range recoveryTables {
 		if countTable(t, database, tableName) != 0 {
 			t.Errorf("%s still exists after rolling back %s", tableName, rolledBack.Source.Path)
 		}
@@ -139,10 +139,10 @@ func TestMigrations(t *testing.T) {
 		t.Errorf("accounts table still exists after rolling back %s", rolledBack.Source.Path)
 	}
 
-	if allResult, err = database.Migrate(ctx); err != nil || len(allResult) != 6 {
-		t.Fatalf("re-apply: %d %v", len(allResult), err)
+	if results, err = database.Migrate(ctx); err != nil || len(results) != 6 {
+		t.Fatalf("re-apply: %d %v", len(results), err)
 	}
-	for _, tableName := range allRecoveryTable {
+	for _, tableName := range recoveryTables {
 		if countTable(t, database, tableName) != 0 {
 			t.Errorf("%s exists after re-applying", tableName)
 		}
@@ -213,8 +213,8 @@ func TestRemoveRecoveryMigrationDeletesRecoveryData(t *testing.T) {
 		}
 	}
 
-	if allResult, err := database.Migrate(ctx); err != nil || len(allResult) != 3 {
-		t.Fatalf("applied %d: %v", len(allResult), err)
+	if results, err := database.Migrate(ctx); err != nil || len(results) != 3 {
+		t.Fatalf("applied %d: %v", len(results), err)
 	}
 	for _, tableName := range []string{"recovery_keyset", "vault_recovery", "recovery_tokens", "account_recovery"} {
 		if countTable(t, database, tableName) != 0 {
@@ -227,9 +227,9 @@ func TestRemoveRecoveryMigrationDeletesRecoveryData(t *testing.T) {
 	if countRow(t, database, "accounts") != 2 || countRow(t, database, "sessions") != 2 {
 		t.Error("the migration changed accounts or sessions")
 	}
-	allVault, err := database.ListAllVault(ctx, "AAAAAA")
-	if err != nil || len(allVault) != 1 || allVault[0].ID != vaultID || allVault[0].Role != "owner" || len(allVault[0].WrappedKey) != 1 {
-		t.Fatalf("vault after the migration: %+v %v", allVault, err)
+	vaults, err := database.ListVaults(ctx, "AAAAAA")
+	if err != nil || len(vaults) != 1 || vaults[0].ID != vaultID || vaults[0].Role != "owner" || len(vaults[0].WrappedKey) != 1 {
+		t.Fatalf("vault after the migration: %+v %v", vaults, err)
 	}
 
 	for range 3 {
@@ -373,18 +373,18 @@ func TestPutItem(t *testing.T) {
 		t.Errorf("stale base: %v %+v", err, currentItem)
 	}
 
-	allItem, seq, err := database.ListAllChange(ctx, vaultID, 0, 10)
-	if err != nil || seq != 2 || len(allItem) != 1 || allItem[0].Revision != revision2 {
-		t.Errorf("changes: seq=%d items=%+v %v", seq, allItem, err)
+	items, seq, err := database.ListChanges(ctx, vaultID, 0, 10)
+	if err != nil || seq != 2 || len(items) != 1 || items[0].Revision != revision2 {
+		t.Errorf("changes: seq=%d items=%+v %v", seq, items, err)
 	}
-	if allItem, _, _ := database.ListAllChange(ctx, vaultID, 2, 10); len(allItem) != 0 {
-		t.Errorf("changes since current: %d items", len(allItem))
+	if items, _, _ := database.ListChanges(ctx, vaultID, 2, 10); len(items) != 0 {
+		t.Errorf("changes since current: %d items", len(items))
 	}
-	if _, _, err := database.ListAllChange(ctx, uuid.NewString(), 0, 10); !errors.Is(err, ErrNotFound) {
+	if _, _, err := database.ListChanges(ctx, uuid.NewString(), 0, 10); !errors.Is(err, ErrNotFound) {
 		t.Errorf("changes on missing vault: %v", err)
 	}
-	if allHistory, _ := database.GetItemHistory(ctx, vaultID, itemID); len(allHistory) != 2 {
-		t.Errorf("history: %d entries", len(allHistory))
+	if histories, _ := database.GetItemHistory(ctx, vaultID, itemID); len(histories) != 2 {
+		t.Errorf("history: %d entries", len(histories))
 	}
 }
 
@@ -402,15 +402,15 @@ func TestChangesPaging(t *testing.T) {
 	var since int64
 	var total int
 	for {
-		allItem, _, err := database.ListAllChange(ctx, vaultID, since, 2)
+		items, _, err := database.ListChanges(ctx, vaultID, since, 2)
 		if err != nil {
 			t.Fatal(err)
 		}
-		total += len(allItem)
-		if len(allItem) < 2 {
+		total += len(items)
+		if len(items) < 2 {
 			break
 		}
-		since = allItem[len(allItem)-1].Seq
+		since = items[len(items)-1].Seq
 	}
 	if total != 5 {
 		t.Errorf("paged %d items, want 5", total)
@@ -432,9 +432,9 @@ func TestPruneHistory(t *testing.T) {
 	if err != nil || prunedCount != 1 {
 		t.Fatalf("pruned %d, %v", prunedCount, err)
 	}
-	allHistory, _ := database.GetItemHistory(ctx, vaultID, itemID)
-	if len(allHistory) != 1 || allHistory[0].Revision != revision2 {
-		t.Errorf("remaining history: %+v", allHistory)
+	histories, _ := database.GetItemHistory(ctx, vaultID, itemID)
+	if len(histories) != 1 || histories[0].Revision != revision2 {
+		t.Errorf("remaining history: %+v", histories)
 	}
 }
 
@@ -451,15 +451,15 @@ func TestPruneAudit(t *testing.T) {
 	if err != nil || prunedCount != 1 {
 		t.Fatalf("pruned %d, %v", prunedCount, err)
 	}
-	var allRemainingIP []string
-	allRow, _ := database.pool.Query(ctx, `SELECT ip FROM audit_events`)
-	for allRow.Next() {
+	var remainingIPs []string
+	rows, _ := database.pool.Query(ctx, `SELECT ip FROM audit_events`)
+	for rows.Next() {
 		var ip string
-		allRow.Scan(&ip)
-		allRemainingIP = append(allRemainingIP, ip)
+		rows.Scan(&ip)
+		remainingIPs = append(remainingIPs, ip)
 	}
-	if len(allRemainingIP) != 1 || allRemainingIP[0] != "192.0.2.2" {
-		t.Errorf("remaining audit events: %v", allRemainingIP)
+	if len(remainingIPs) != 1 || remainingIPs[0] != "192.0.2.2" {
+		t.Errorf("remaining audit events: %v", remainingIPs)
 	}
 }
 
@@ -498,7 +498,7 @@ func TestPruneExpiredInvitation(t *testing.T) {
 	if inviteCount != 2 || shareInvitationCount != 2 {
 		t.Errorf("left %d invites and %d share invitations", inviteCount, shareInvitationCount)
 	}
-	if allWaiting, _ := database.ListAllWaitingShareInvitation(ctx, "BBBBBB"); len(allWaiting) != 1 {
+	if waiting, _ := database.ListWaitingShareInvitations(ctx, "BBBBBB"); len(waiting) != 1 {
 		t.Error("an accepted invitation was pruned")
 	}
 }
@@ -522,12 +522,12 @@ func TestVaultAccess(t *testing.T) {
 	if role, _ := database.GetVaultRole(ctx, vaultID, "BBBBBB"); role != "editor" {
 		t.Errorf("role after update = %q", role)
 	}
-	allVault, _ := database.ListAllVault(ctx, "BBBBBB")
-	if len(allVault) != 1 || allVault[0].WrappedKey[0] != 2 {
-		t.Errorf("bob vaults: %+v", allVault)
+	vaults, _ := database.ListVaults(ctx, "BBBBBB")
+	if len(vaults) != 1 || vaults[0].WrappedKey[0] != 2 {
+		t.Errorf("bob vaults: %+v", vaults)
 	}
-	if allMember, _ := database.ListAllMember(ctx, vaultID); len(allMember) != 2 {
-		t.Errorf("members: %d", len(allMember))
+	if members, _ := database.ListMembers(ctx, vaultID); len(members) != 2 {
+		t.Errorf("members: %d", len(members))
 	}
 	if err := database.RemoveAccess(ctx, vaultID, "BBBBBB"); err != nil {
 		t.Fatal(err)

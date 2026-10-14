@@ -23,7 +23,7 @@ import (
 type fakeVersionServer struct {
 	mutex                  sync.Mutex
 	minimumVersionByClient map[string]string
-	allCheckedVersion      []string
+	checkedVersions        []string
 }
 
 func (server *fakeVersionServer) setMinimumVersion(clientName, minimumVersion string) {
@@ -35,7 +35,7 @@ func (server *fakeVersionServer) setMinimumVersion(clientName, minimumVersion st
 func (server *fakeVersionServer) countCheck() int {
 	server.mutex.Lock()
 	defer server.mutex.Unlock()
-	return len(server.allCheckedVersion)
+	return len(server.checkedVersions)
 }
 
 func (server *fakeVersionServer) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
@@ -44,7 +44,7 @@ func (server *fakeVersionServer) ServeHTTP(writer http.ResponseWriter, request *
 	version := request.Header.Get(apitypes.VersionHeader)
 	minimumVersion := server.minimumVersionByClient[clientName]
 	if request.URL.Path == "/api/v1/version-check" {
-		server.allCheckedVersion = append(server.allCheckedVersion, clientName+" "+version)
+		server.checkedVersions = append(server.checkedVersions, clientName+" "+version)
 	}
 	server.mutex.Unlock()
 	if isOlder, err := appversion.IsOlder(version, minimumVersion); err == nil && isOlder {
@@ -72,15 +72,15 @@ func createVersionTestService(t *testing.T, appVersion string, minimumVersionByC
 	}
 	service, _, _ := createTestService(t, statePath, createMemorySecretKeyStore())
 	service.config.Platform, service.config.AppVersion = apitypes.PlatformDesktopMacOS, appVersion
-	allHeard := make(chan UpdateRequirement, 10)
-	service.config.OnUpdateRequired = func(requirement UpdateRequirement) { allHeard <- requirement }
-	return service, versionServer, httpServer, allHeard
+	heards := make(chan UpdateRequirement, 10)
+	service.config.OnUpdateRequired = func(requirement UpdateRequirement) { heards <- requirement }
+	return service, versionServer, httpServer, heards
 }
 
-func waitForUpdateRequired(t *testing.T, allHeard chan UpdateRequirement) UpdateRequirement {
+func waitForUpdateRequired(t *testing.T, heards chan UpdateRequirement) UpdateRequirement {
 	t.Helper()
 	select {
-	case requirement := <-allHeard:
+	case requirement := <-heards:
 		return requirement
 	case <-time.After(5 * time.Second):
 		t.Fatal("OnUpdateRequired was not called")
@@ -89,36 +89,36 @@ func waitForUpdateRequired(t *testing.T, allHeard chan UpdateRequirement) Update
 }
 
 func TestAnyServerAnswerCanRequireAnUpdate(t *testing.T) {
-	service, _, _, allHeard := createVersionTestService(t, "0.1.5", map[string]string{apitypes.ClientDesktopMacOS: "0.1.6"})
+	service, _, _, heards := createVersionTestService(t, "0.1.5", map[string]string{apitypes.ClientDesktopMacOS: "0.1.6"})
 	if status := service.GetStatus(); status.UpdateRequired != nil {
 		t.Fatalf("required before any server contact: %+v", status.UpdateRequired)
 	}
-	if _, err := service.ListAllShareAwaitingUnlock(); err == nil {
+	if _, err := service.ListSharesAwaitingUnlock(); err == nil {
 		t.Error("the refused request succeeded")
 	}
 	expected := UpdateRequirement{CurrentVersion: "0.1.5", MinimumVersion: "0.1.6", UpdateURL: "https://tryhisar.com/download"}
-	if heard := waitForUpdateRequired(t, allHeard); heard != expected {
+	if heard := waitForUpdateRequired(t, heards); heard != expected {
 		t.Errorf("OnUpdateRequired heard %+v", heard)
 	}
 	if status := service.GetStatus(); status.UpdateRequired == nil || *status.UpdateRequired != expected {
 		t.Errorf("status: %+v", status.UpdateRequired)
 	}
-	service.ListAllShareAwaitingUnlock()
+	service.ListSharesAwaitingUnlock()
 	select {
-	case heard := <-allHeard:
+	case heard := <-heards:
 		t.Errorf("the same requirement was announced twice: %+v", heard)
 	case <-time.After(50 * time.Millisecond):
 	}
 }
 
 func TestCheckMinimumVersion(t *testing.T) {
-	service, versionServer, httpServer, allHeard := createVersionTestService(t, "0.1.5", map[string]string{apitypes.ClientDesktopMacOS: "0.1.6"})
+	service, versionServer, httpServer, heards := createVersionTestService(t, "0.1.5", map[string]string{apitypes.ClientDesktopMacOS: "0.1.6"})
 	if status := service.CheckMinimumVersion(); status.UpdateRequired == nil || status.UpdateRequired.MinimumVersion != "0.1.6" {
 		t.Fatalf("an old version passed: %+v", status.UpdateRequired)
 	}
-	waitForUpdateRequired(t, allHeard)
-	if versionServer.allCheckedVersion[0] != "desktop-macos 0.1.5" {
-		t.Errorf("checked %q", versionServer.allCheckedVersion)
+	waitForUpdateRequired(t, heards)
+	if versionServer.checkedVersions[0] != "desktop-macos 0.1.5" {
+		t.Errorf("checked %q", versionServer.checkedVersions)
 	}
 
 	versionServer.setMinimumVersion(apitypes.ClientDesktopMacOS, "0.1.0")
@@ -150,40 +150,40 @@ func TestDevelopmentBuildSendsNoVersion(t *testing.T) {
 	if status := service.CheckMinimumVersion(); status.UpdateRequired != nil {
 		t.Errorf("development build refused: %+v", status.UpdateRequired)
 	}
-	if versionServer.allCheckedVersion[0] != " " {
-		t.Errorf("development build sent %q", versionServer.allCheckedVersion[0])
+	if versionServer.checkedVersions[0] != " " {
+		t.Errorf("development build sent %q", versionServer.checkedVersions[0])
 	}
 }
 
 func TestUpdateRequiredRefusesLocalRequests(t *testing.T) {
-	service, _, _, allHeard := createVersionTestService(t, "0.1.5", map[string]string{apitypes.ClientDesktopMacOS: "0.1.6"})
+	service, _, _, heards := createVersionTestService(t, "0.1.5", map[string]string{apitypes.ClientDesktopMacOS: "0.1.6"})
 	service.CheckMinimumVersion()
-	waitForUpdateRequired(t, allHeard)
+	waitForUpdateRequired(t, heards)
 
-	_, err := CreateSSHKeySource(service).ListAllKey(context.Background())
+	_, err := NewSSHKeySource(service).ListKeys(context.Background())
 	var updateRequired *UpdateRequiredError
 	if !errors.As(err, &updateRequired) || err.Error() != "Hisar needs an update: the server requires version 0.1.6 or later. Open Hisar to update." {
 		t.Errorf("SSH agent: %v", err)
 	}
-	if heard := waitForUpdateRequired(t, allHeard); heard.MinimumVersion != "0.1.6" {
+	if heard := waitForUpdateRequired(t, heards); heard.MinimumVersion != "0.1.6" {
 		t.Errorf("the SSH request did not bring up the update screen: %+v", heard)
 	}
 
-	err = CreateCommandLineBridge(service, nil).CheckUpdateRequired(&cliprotocol.Request{Type: cliprotocol.TypeListVault})
+	err = NewCommandLineBridge(service, nil).CheckUpdateRequired(&cliprotocol.Request{Type: cliprotocol.TypeListVault})
 	var responseError *cliprotocol.ResponseError
 	if !errors.As(err, &responseError) || responseError.Code != cliprotocol.ErrorUpdateRequired ||
 		responseError.Message != "Hisar needs an update: the server requires version 0.1.6 or later and this Mac has 0.1.5. Open Hisar and choose Update now." {
 		t.Errorf("command-line tool: %v", err)
 	}
 
-	bridge := CreateBrowserBridge(service, BrowserBridgeConfig{})
+	bridge := NewBrowserBridge(service, BrowserBridgeConfig{})
 	hello := bridge.answerHello(&browserprotocol.Request{Type: "hello", ExtensionVersion: "0.2.0"})
 	if hello.UpdateRequired == nil || *hello.UpdateRequired != (browserprotocol.UpdateRequirement{Target: browserprotocol.UpdateTargetApp, CurrentVersion: "0.1.5", MinimumVersion: "0.1.6", UpdateURL: "https://tryhisar.com/download"}) {
 		t.Errorf("browser hello: %+v", hello.UpdateRequired)
 	}
 	service.mutex.Lock()
 	browserTokenHash := sha256.Sum256([]byte("browser-token"))
-	service.state.AllPairedBrowser = append(service.state.AllPairedBrowser, localstate.PairedBrowser{InstanceID: "i", TokenHash: browserTokenHash[:]})
+	service.state.PairedBrowsers = append(service.state.PairedBrowsers, localstate.PairedBrowser{InstanceID: "i", TokenHash: browserTokenHash[:]})
 	service.mutex.Unlock()
 	_, err = bridge.handleRequest(context.Background(), &browserprotocol.Request{Type: "logins.match", Token: "browser-token", URL: "https://github.com"})
 	var browserError *browserprotocol.ResponseError
@@ -194,7 +194,7 @@ func TestUpdateRequiredRefusesLocalRequests(t *testing.T) {
 
 func TestOtherAppsAreCheckedThroughHisar(t *testing.T) {
 	service, versionServer, _, _ := createVersionTestService(t, "0.1.6", map[string]string{apitypes.ClientDesktopMacOS: "0.1.6", apitypes.ClientExtension: "0.3.0", apitypes.ClientCLI: "1.0.0"})
-	bridge := CreateBrowserBridge(service, BrowserBridgeConfig{})
+	bridge := NewBrowserBridge(service, BrowserBridgeConfig{})
 	hello := bridge.answerHello(&browserprotocol.Request{Type: "hello", ExtensionVersion: "0.2.0"})
 	if hello.UpdateRequired == nil || hello.UpdateRequired.Target != browserprotocol.UpdateTargetExtension || hello.UpdateRequired.CurrentVersion != "0.2.0" || hello.UpdateRequired.MinimumVersion != "0.3.0" {
 		t.Errorf("old extension: %+v", hello.UpdateRequired)
@@ -210,7 +210,7 @@ func TestOtherAppsAreCheckedThroughHisar(t *testing.T) {
 		t.Errorf("extension without a version: %+v", hello.UpdateRequired)
 	}
 
-	commandLineBridge := CreateCommandLineBridge(service, nil)
+	commandLineBridge := NewCommandLineBridge(service, nil)
 	err := commandLineBridge.CheckUpdateRequired(&cliprotocol.Request{Type: cliprotocol.TypeListVault, ClientPlatform: "darwin/cli", ClientVersion: "0.9.0"})
 	var responseError *cliprotocol.ResponseError
 	if !errors.As(err, &responseError) || responseError.Code != cliprotocol.ErrorUpdateRequired ||
@@ -245,7 +245,7 @@ func TestParseInviteDeepLink(t *testing.T) {
 			t.Errorf("ParseInviteDeepLink(%q) = %q", link, invite)
 		}
 	}
-	service := CreateInviteLinkService()
+	service := NewInviteLinkService()
 	if invite, err := OpenInviteLink(service, "hisar://invite/abc"); err != nil || invite != "abc" {
 		t.Fatalf("OpenInviteLink: %q %v", invite, err)
 	}

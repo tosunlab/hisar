@@ -31,9 +31,9 @@ type PublicKeys struct {
 }
 
 func GenerateKeyset() (*Keyset, error) {
-	allSeed := make([]byte, 3*seedSize)
-	rand.Read(allSeed)
-	return decodeKeyset(allSeed)
+	seeds := make([]byte, 3*seedSize)
+	rand.Read(seeds)
+	return decodeKeyset(seeds)
 }
 
 func decodeKeyset(encoded []byte) (*Keyset, error) {
@@ -84,7 +84,7 @@ func DecryptKeyset(accountUnlockKey []byte, accountID string, ciphertext []byte)
 	return decodeKeyset(plaintext)
 }
 
-func (keyset *Keyset) GetAllPublicKey(accountID string) PublicKeys {
+func (keyset *Keyset) GetPublicKeys(accountID string) PublicKeys {
 	kemPublicKey := keyset.kemPrivateKey.PublicKey().Bytes()
 	signingPublicKey := keyset.signingPrivateKey.Public().(ed25519.PublicKey)
 	return PublicKeys{

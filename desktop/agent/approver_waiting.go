@@ -53,8 +53,8 @@ func (approver *Approver) waitForApproval(ctx context.Context, pending *pendingA
 	timer := time.NewTimer(max(timeoutAt.Sub(approver.config.Now()), 0))
 	defer timer.Stop()
 	approver.mutex.Lock()
-	approver.allPending = append(approver.allPending, pending)
-	isFirstCompact := approver.allPending[0].event.IsCompact
+	approver.pendingRequests = append(approver.pendingRequests, pending)
+	isFirstCompact := approver.pendingRequests[0].event.IsCompact
 	approver.mutex.Unlock()
 	if pending.event.IsPhoneApproval {
 		finishPhoneApproval := phoneApprover.StartPhoneApproval(pending.phoneRequest, timeoutAt, func(answer approval.AcceptedAnswer) { approver.respondFromPhone(pending, answer) })
@@ -81,9 +81,9 @@ func (approver *Approver) waitForApproval(ctx context.Context, pending *pendingA
 				return false
 			}
 			isAuthorizing = true
-			approver.allAuthorizing.Add(1)
+			approver.authorizing.Add(1)
 			go func() {
-				defer approver.allAuthorizing.Done()
+				defer approver.authorizing.Done()
 				authorizeResultChannel <- approver.authorize(pending, response)
 			}()
 		case authorizeError := <-authorizeResultChannel:
@@ -159,7 +159,7 @@ func (approver *Approver) SetRemembered(requestID string, isRemembered bool) {
 }
 
 func (approver *Approver) findPending(requestID string) *pendingApproval {
-	for _, pending := range approver.allPending {
+	for _, pending := range approver.pendingRequests {
 		if pending.event.RequestID == requestID {
 			return pending
 		}
@@ -169,8 +169,8 @@ func (approver *Approver) findPending(requestID string) *pendingApproval {
 
 func (approver *Approver) finishApproval(pending *pendingApproval) {
 	approver.mutex.Lock()
-	approver.allPending = slices.DeleteFunc(approver.allPending, func(candidate *pendingApproval) bool { return candidate == pending })
-	isLastPending := len(approver.allPending) == 0
+	approver.pendingRequests = slices.DeleteFunc(approver.pendingRequests, func(candidate *pendingApproval) bool { return candidate == pending })
+	isLastPending := len(approver.pendingRequests) == 0
 	pending.isFinished = true
 	isTouchIDWaiting := pending.isAuthenticating && approver.config.CancelBiometric != nil
 	isCancellingFirst := approver.markTouchIDCancelled(pending)

@@ -32,8 +32,8 @@ type LoginItem interface {
 	OpenSystemSettings() error
 }
 
-func IsHiddenLaunchRequested(allArgument []string) bool {
-	return slices.Contains(allArgument, HiddenArgument)
+func IsHiddenLaunchRequested(arguments []string) bool {
+	return slices.Contains(arguments, HiddenArgument)
 }
 
 type unavailableLoginItem struct{}

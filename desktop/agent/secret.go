@@ -18,11 +18,11 @@ func describeSecretAction(secretCount int, isRun bool) string {
 	return fmt.Sprintf("read %d %s", secretCount, noun)
 }
 
-func limitSecretName(allSecretName []string) ([]string, int) {
-	shownCount := min(len(allSecretName), shownSecretCount)
-	allShown := make([]string, 0, shownCount)
-	for _, name := range allSecretName[:shownCount] {
-		allShown = append(allShown, truncateText(name, maximumSecretNameCount))
+func limitSecretName(secretNames []string) ([]string, int) {
+	shownCount := min(len(secretNames), shownSecretCount)
+	shown := make([]string, 0, shownCount)
+	for _, name := range secretNames[:shownCount] {
+		shown = append(shown, truncateText(name, maximumSecretNameCount))
 	}
-	return allShown, len(allSecretName) - shownCount
+	return shown, len(secretNames) - shownCount
 }

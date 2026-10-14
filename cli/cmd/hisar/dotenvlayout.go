@@ -11,14 +11,14 @@ var dotenvByteOrderMark = string(rune(0xfeff))
 
 // dotenvLayout keeps a .env file's exact text so that chosen values can be replaced and everything else stays as it was.
 type dotenvLayout struct {
-	allLine         []string
+	lines           []string
 	lineEnding      string
 	hasByteOrder    bool
 	hasFinalNewline bool
-	allEntry        []dotenvEntry
+	entries         []dotenvEntry
 }
 
-// dotenvEntry spans allLine[startLine..endLine]; replacing it keeps prefix (indent, export, name, =) and suffix (a comment).
+// dotenvEntry spans lines[startLine..endLine]; replacing it keeps prefix (indent, export, name, =) and suffix (a comment).
 type dotenvEntry struct {
 	name      string
 	value     string
@@ -39,28 +39,28 @@ func parseDotenvLayout(path, content string) (*dotenvLayout, error) {
 	}
 	content = strings.ReplaceAll(content, "\r\n", "\n")
 	layout.hasFinalNewline = strings.HasSuffix(content, "\n")
-	layout.allLine = strings.Split(strings.TrimSuffix(content, "\n"), "\n")
+	layout.lines = strings.Split(strings.TrimSuffix(content, "\n"), "\n")
 	if content == "" {
-		layout.allLine = nil
+		layout.lines = nil
 	}
-	for index := 0; index < len(layout.allLine); index++ {
-		line := layout.allLine[index]
+	for index := 0; index < len(layout.lines); index++ {
+		line := layout.lines[index]
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
 			continue
 		}
-		entry, err := parseDotenvEntry(layout.allLine, index)
+		entry, err := parseDotenvEntry(layout.lines, index)
 		if err != nil {
 			return nil, fmt.Errorf("%s:%d: %s", path, index+1, err)
 		}
-		layout.allEntry = append(layout.allEntry, entry)
+		layout.entries = append(layout.entries, entry)
 		index = entry.endLine
 	}
 	return layout, nil
 }
 
-func parseDotenvEntry(allLine []string, startLine int) (dotenvEntry, error) {
-	line := allLine[startLine]
+func parseDotenvEntry(lines []string, startLine int) (dotenvEntry, error) {
+	line := lines[startLine]
 	entry := dotenvEntry{startLine: startLine, endLine: startLine}
 	position := len(line) - len(strings.TrimLeft(line, " \t"))
 	if rest, isExported := strings.CutPrefix(line[position:], "export"); isExported && rest != "" && (rest[0] == ' ' || rest[0] == '\t') {
@@ -103,7 +103,7 @@ func parseDotenvEntry(allLine []string, startLine int) (dotenvEntry, error) {
 					return entry, errorAfterQuote
 				}
 				entry.value, entry.endLine = builder.String(), lineIndex
-				entry.suffix = allLine[lineIndex][textStart+index+1:]
+				entry.suffix = lines[lineIndex][textStart+index+1:]
 				return entry, nil
 			}
 			if character == '\\' && entry.quote == '"' && index+1 < len(text) {
@@ -125,36 +125,36 @@ func parseDotenvEntry(allLine []string, startLine int) (dotenvEntry, error) {
 			}
 			builder.WriteByte(character)
 		}
-		if lineIndex+1 >= len(allLine) {
+		if lineIndex+1 >= len(lines) {
 			return entry, errorUnterminatedQuote
 		}
 		builder.WriteByte('\n')
 		lineIndex++
-		text, textStart = allLine[lineIndex], 0
+		text, textStart = lines[lineIndex], 0
 	}
 }
 
-// render writes the file back, replacing the value of every entry named in allReferenceByName.
-func (layout *dotenvLayout) render(allReferenceByName map[string]string) string {
-	allLine := []string{}
+// render writes the file back, replacing the value of every entry named in referencesByName.
+func (layout *dotenvLayout) render(referencesByName map[string]string) string {
+	lines := []string{}
 	nextEntry := 0
-	for index := 0; index < len(layout.allLine); index++ {
-		if nextEntry < len(layout.allEntry) && layout.allEntry[nextEntry].startLine == index {
-			entry := layout.allEntry[nextEntry]
+	for index := 0; index < len(layout.lines); index++ {
+		if nextEntry < len(layout.entries) && layout.entries[nextEntry].startLine == index {
+			entry := layout.entries[nextEntry]
 			nextEntry++
-			if reference, isReplaced := allReferenceByName[entry.name]; isReplaced {
+			if reference, isReplaced := referencesByName[entry.name]; isReplaced {
 				quote := ""
 				if entry.quote != 0 {
 					quote = string(entry.quote)
 				}
-				allLine = append(allLine, entry.prefix+quote+reference+quote+entry.suffix)
+				lines = append(lines, entry.prefix+quote+reference+quote+entry.suffix)
 				index = entry.endLine
 				continue
 			}
 		}
-		allLine = append(allLine, layout.allLine[index])
+		lines = append(lines, layout.lines[index])
 	}
-	content := strings.Join(allLine, layout.lineEnding)
+	content := strings.Join(lines, layout.lineEnding)
 	if layout.hasFinalNewline {
 		content += layout.lineEnding
 	}
@@ -174,43 +174,43 @@ type dotenvVariable struct {
 	reason          string
 }
 
-func (layout *dotenvLayout) listAllVariable() []dotenvVariable {
-	allVariable := []dotenvVariable{}
+func (layout *dotenvLayout) listVariables() []dotenvVariable {
+	variables := []dotenvVariable{}
 	indexByName := map[string]int{}
-	for _, entry := range layout.allEntry {
+	for _, entry := range layout.entries {
 		index, isSeen := indexByName[entry.name]
 		if !isSeen {
-			indexByName[entry.name] = len(allVariable)
-			allVariable = append(allVariable, dotenvVariable{name: entry.name, value: entry.value, occurrenceCount: 1})
+			indexByName[entry.name] = len(variables)
+			variables = append(variables, dotenvVariable{name: entry.name, value: entry.value, occurrenceCount: 1})
 			continue
 		}
-		variable := &allVariable[index]
+		variable := &variables[index]
 		variable.occurrenceCount++
 		variable.hasOtherValue = variable.hasOtherValue || variable.value != entry.value
 		variable.value = entry.value
 	}
-	for index := range allVariable {
-		allVariable[index].isSecretLooking, allVariable[index].reason = classifyDotenvVariable(allVariable[index].name, allVariable[index].value)
+	for index := range variables {
+		variables[index].isSecretLooking, variables[index].reason = classifyDotenvVariable(variables[index].name, variables[index].value)
 	}
-	return allVariable
+	return variables
 }
 
 var (
-	allSecretWord = map[string]bool{
+	secretWords = map[string]bool{
 		"SECRET": true, "SECRETS": true, "TOKEN": true, "TOKENS": true, "PASSWORD": true, "PASSWD": true, "PWD": true, "PASS": true,
 		"PASSPHRASE": true, "KEY": true, "APIKEY": true, "PRIVATE": true, "CREDENTIAL": true, "CREDENTIALS": true, "AUTH": true,
 		"SALT": true, "DSN": true, "COOKIE": true, "CERT": true, "SIGNING": true, "WEBHOOK": true,
 	}
-	allPlainName = map[string]bool{
+	plainNames = map[string]bool{
 		"PORT": true, "HOST": true, "HOSTNAME": true, "NODE_ENV": true, "ENV": true, "ENVIRONMENT": true, "APP_ENV": true,
 		"RAILS_ENV": true, "RACK_ENV": true, "FLASK_ENV": true, "GO_ENV": true, "DEBUG": true, "LOG_LEVEL": true, "LOGLEVEL": true,
 		"TZ": true, "LANG": true, "LC_ALL": true, "NODE_OPTIONS": true, "PYTHONPATH": true,
 	}
-	allPlainSuffix   = []string{"_PORT", "_HOST", "_HOSTNAME", "_ENV", "_MODE", "_LEVEL", "_REGION", "_TIMEOUT", "_VERSION", "_DEBUG", "_ENABLED", "_NAME"}
-	allAddressSuffix = []string{"_URL", "_URI", "_ENDPOINT", "_DOMAIN", "_ORIGIN", "_ADDR", "_ADDRESS"}
-	numberPattern    = regexp.MustCompile(`^-?[0-9]+(\.[0-9]+)?$`)
-	allPlainWord     = map[string]bool{"true": true, "false": true, "yes": true, "no": true, "on": true, "off": true}
-	allSecretQuery   = []string{"token", "key", "secret", "password", "pass", "sig", "signature", "auth", "credential"}
+	plainSuffixes   = []string{"_PORT", "_HOST", "_HOSTNAME", "_ENV", "_MODE", "_LEVEL", "_REGION", "_TIMEOUT", "_VERSION", "_DEBUG", "_ENABLED", "_NAME"}
+	addressSuffixes = []string{"_URL", "_URI", "_ENDPOINT", "_DOMAIN", "_ORIGIN", "_ADDR", "_ADDRESS"}
+	numberPattern   = regexp.MustCompile(`^-?[0-9]+(\.[0-9]+)?$`)
+	plainWords      = map[string]bool{"true": true, "false": true, "yes": true, "no": true, "on": true, "off": true}
+	secretQueries   = []string{"token", "key", "secret", "password", "pass", "sig", "signature", "auth", "credential"}
 )
 
 // classifyDotenvVariable says whether a value looks secret; configuration such as PORT, NODE_ENV or a URL without
@@ -218,7 +218,7 @@ var (
 func classifyDotenvVariable(name, value string) (bool, string) {
 	upperName := strings.ToUpper(name)
 	for _, word := range strings.Split(upperName, "_") {
-		if allSecretWord[word] {
+		if secretWords[word] {
 			return true, "the name looks secret"
 		}
 	}
@@ -227,7 +227,7 @@ func classifyDotenvVariable(name, value string) (bool, string) {
 			return true, "a URL with a password"
 		}
 		for queryName := range parsedURL.Query() {
-			for _, secretQuery := range allSecretQuery {
+			for _, secretQuery := range secretQueries {
 				if strings.Contains(strings.ToLower(queryName), secretQuery) {
 					return true, "a URL with a credential"
 				}
@@ -235,15 +235,15 @@ func classifyDotenvVariable(name, value string) (bool, string) {
 		}
 		return false, "a URL without credentials"
 	}
-	if allPlainName[upperName] {
+	if plainNames[upperName] {
 		return false, "configuration"
 	}
-	for _, suffix := range append(append([]string{}, allPlainSuffix...), allAddressSuffix...) {
+	for _, suffix := range append(append([]string{}, plainSuffixes...), addressSuffixes...) {
 		if strings.HasSuffix(upperName, suffix) {
 			return false, "configuration"
 		}
 	}
-	if numberPattern.MatchString(value) || allPlainWord[strings.ToLower(value)] {
+	if numberPattern.MatchString(value) || plainWords[strings.ToLower(value)] {
 		return false, "a number or switch"
 	}
 	return true, "may be secret"

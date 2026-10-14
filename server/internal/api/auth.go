@@ -23,14 +23,14 @@ import (
 const maxKeysetSize = 1024
 
 func generateToken() string {
-	allRandomByte := make([]byte, 32)
-	rand.Read(allRandomByte)
-	return base64.RawURLEncoding.EncodeToString(allRandomByte)
+	randomBytes := make([]byte, 32)
+	rand.Read(randomBytes)
+	return base64.RawURLEncoding.EncodeToString(randomBytes)
 }
 
-func (s *Server) computeMAC(allPart ...string) []byte {
+func (s *Server) computeMAC(parts ...string) []byte {
 	hmacHash := hmac.New(sha256.New, s.secrets.HMACKey)
-	for _, part := range allPart {
+	for _, part := range parts {
 		hmacHash.Write([]byte(part))
 		hmacHash.Write([]byte{0})
 	}
@@ -239,38 +239,38 @@ type pendingLogin struct {
 }
 
 type loginCache struct {
-	mutex      sync.Mutex
-	ttl        time.Duration
-	allPending map[string]*pendingLogin
+	mutex           sync.Mutex
+	ttl             time.Duration
+	pendingRequests map[string]*pendingLogin
 }
 
 func createLoginCache(ttl time.Duration) *loginCache {
-	return &loginCache{ttl: ttl, allPending: map[string]*pendingLogin{}}
+	return &loginCache{ttl: ttl, pendingRequests: map[string]*pendingLogin{}}
 }
 
 func (c *loginCache) put(pending *pendingLogin) string {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	now := time.Now()
-	for existingLoginID, existingLogin := range c.allPending {
+	for existingLoginID, existingLogin := range c.pendingRequests {
 		if now.After(existingLogin.expires) {
-			delete(c.allPending, existingLoginID)
+			delete(c.pendingRequests, existingLoginID)
 		}
 	}
 	pending.expires = now.Add(c.ttl)
 	loginID := generateToken()
-	c.allPending[loginID] = pending
+	c.pendingRequests[loginID] = pending
 	return loginID
 }
 
 func (c *loginCache) take(loginID string) *pendingLogin {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	pending, ok := c.allPending[loginID]
+	pending, ok := c.pendingRequests[loginID]
 	if !ok {
 		return nil
 	}
-	delete(c.allPending, loginID)
+	delete(c.pendingRequests, loginID)
 	if time.Now().After(pending.expires) {
 		return nil
 	}

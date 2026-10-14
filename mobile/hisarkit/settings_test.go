@@ -50,8 +50,8 @@ func TestSettingsWhileSignedOut(t *testing.T) {
 	if err := hisar.SetMacApprovalAllowed(false); err != nil {
 		t.Fatal(err)
 	}
-	if allApproval, err := hisar.ListAllPendingApproval(); err != nil || allApproval != "[]" {
-		t.Errorf("requests listed with approving turned off: %q %v", allApproval, err)
+	if approvals, err := hisar.ListAllPendingApproval(); err != nil || approvals != "[]" {
+		t.Errorf("requests listed with approving turned off: %q %v", approvals, err)
 	}
 	if err := hisar.ApproveApproval("request", false); !errors.Is(err, errMacApprovalDisabled) {
 		t.Errorf("approve with approving turned off: %v", err)
@@ -123,11 +123,11 @@ func checkSettingsFlow(t *testing.T, hisar *Hisar, password, secretKey, personal
 		LastSeenAt string `json:"lastSeenAt"`
 		IsCurrent  bool   `json:"isCurrent"`
 	}
-	allDevice := decodeJSON[[]device](t)(hisar.ListAllDevice())
-	if len(allDevice) != 1 || !allDevice[0].IsCurrent || allDevice[0].Name != "Test iPhone" || allDevice[0].Platform != "ios/mobile" || allDevice[0].LastSeenAt == "" {
-		t.Fatalf("devices = %+v", allDevice)
+	devices := decodeJSON[[]device](t)(hisar.ListAllDevice())
+	if len(devices) != 1 || !devices[0].IsCurrent || devices[0].Name != "Test iPhone" || devices[0].Platform != "ios/mobile" || devices[0].LastSeenAt == "" {
+		t.Fatalf("devices = %+v", devices)
 	}
-	if err := hisar.RevokeDevice(allDevice[0].ID); err == nil {
+	if err := hisar.RevokeDevice(devices[0].ID); err == nil {
 		t.Error("revoked this iPhone instead of signing out")
 	}
 	if err := hisar.RevokeDevice("no-such-device"); err == nil || !strings.Contains(err.Error(), "already signed out") {

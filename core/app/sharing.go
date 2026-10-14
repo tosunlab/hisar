@@ -62,8 +62,8 @@ func normalizeEmail(email string) (string, error) {
 	return email, nil
 }
 
-// ListAllPerson returns the user and the people they share a vault with, with the security code of their signing key.
-func (s *Service) ListAllPerson() ([]Person, error) {
+// ListPeople returns the user and the people they share a vault with, with the security code of their signing key.
+func (s *Service) ListPeople() ([]Person, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if err := s.requireUnlocked(); err != nil {
@@ -71,13 +71,13 @@ func (s *Service) ListAllPerson() ([]Person, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	allProtoMember, err := s.unlockedSession.Client.ListAllMember(ctx)
+	protoMembers, err := s.unlockedSession.Client.ListMembers(ctx)
 	if err != nil {
 		return nil, convertError(err)
 	}
-	allPerson := make([]Person, 0, len(allProtoMember))
-	for _, protoMember := range allProtoMember {
-		allPerson = append(allPerson, Person{
+	people := make([]Person, 0, len(protoMembers))
+	for _, protoMember := range protoMembers {
+		people = append(people, Person{
 			AccountID:     protoMember.AccountID,
 			Name:          protoMember.Name,
 			Email:         protoMember.Email,
@@ -87,14 +87,14 @@ func (s *Service) ListAllPerson() ([]Person, error) {
 			IsKeyChanged:  s.state.IsMemberKeyChanged(protoMember.AccountID, protoMember.PublicKeys.Sign),
 		})
 	}
-	slices.SortFunc(allPerson, func(first, second Person) int {
+	slices.SortFunc(people, func(first, second Person) int {
 		return strings.Compare(strings.ToLower(first.Name+first.Email), strings.ToLower(second.Name+second.Email))
 	})
-	return allPerson, nil
+	return people, nil
 }
 
-// ListAllVaultMember returns who has access to a vault, owners first.
-func (s *Service) ListAllVaultMember(vaultID string) ([]VaultMember, error) {
+// ListVaultMembers returns who has access to a vault, owners first.
+func (s *Service) ListVaultMembers(vaultID string) ([]VaultMember, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if err := s.requireUnlocked(); err != nil {
@@ -102,25 +102,25 @@ func (s *Service) ListAllVaultMember(vaultID string) ([]VaultMember, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	return s.listAllVaultMember(ctx, vaultID)
+	return s.listVaultMembers(ctx, vaultID)
 }
 
-func (s *Service) listAllVaultMember(ctx context.Context, vaultID string) ([]VaultMember, error) {
-	allAccess, err := s.unlockedSession.Client.ListAllVaultMember(ctx, vaultID)
+func (s *Service) listVaultMembers(ctx context.Context, vaultID string) ([]VaultMember, error) {
+	accesses, err := s.unlockedSession.Client.ListVaultMembers(ctx, vaultID)
 	if err != nil {
 		return nil, convertError(err)
 	}
-	allProtoMember, err := s.unlockedSession.Client.ListAllMember(ctx)
+	protoMembers, err := s.unlockedSession.Client.ListMembers(ctx)
 	if err != nil {
 		return nil, convertError(err)
 	}
-	allProtoMemberByID := map[string]apitypes.Member{}
-	for _, protoMember := range allProtoMember {
-		allProtoMemberByID[protoMember.AccountID] = protoMember
+	protoMembersByID := map[string]apitypes.Member{}
+	for _, protoMember := range protoMembers {
+		protoMembersByID[protoMember.AccountID] = protoMember
 	}
-	allVaultMember := make([]VaultMember, 0, len(allAccess))
-	for _, access := range allAccess {
-		protoMember := allProtoMemberByID[access.AccountID]
+	vaultMembers := make([]VaultMember, 0, len(accesses))
+	for _, access := range accesses {
+		protoMember := protoMembersByID[access.AccountID]
 		vaultMember := VaultMember{
 			AccountID:     access.AccountID,
 			Name:          protoMember.Name,
@@ -132,16 +132,16 @@ func (s *Service) listAllVaultMember(ctx context.Context, vaultID string) ([]Vau
 			vaultMember.SecurityCode = crypt.FormatKeyFingerprint(protoMember.PublicKeys.Sign)
 			vaultMember.IsKeyChanged = s.state.IsMemberKeyChanged(access.AccountID, protoMember.PublicKeys.Sign)
 		}
-		allVaultMember = append(allVaultMember, vaultMember)
+		vaultMembers = append(vaultMembers, vaultMember)
 	}
-	allRoleOrder := []string{apitypes.VaultOwner, apitypes.VaultEditor, apitypes.VaultReader}
-	slices.SortStableFunc(allVaultMember, func(first, second VaultMember) int {
-		if order := slices.Index(allRoleOrder, first.Role) - slices.Index(allRoleOrder, second.Role); order != 0 {
+	roleOrders := []string{apitypes.VaultOwner, apitypes.VaultEditor, apitypes.VaultReader}
+	slices.SortStableFunc(vaultMembers, func(first, second VaultMember) int {
+		if order := slices.Index(roleOrders, first.Role) - slices.Index(roleOrders, second.Role); order != 0 {
 			return order
 		}
 		return strings.Compare(strings.ToLower(first.Name), strings.ToLower(second.Name))
 	})
-	return allVaultMember, nil
+	return vaultMembers, nil
 }
 
 // findSharableVault returns a shared vault the current user owns.
@@ -227,11 +227,11 @@ func (s *Service) ChangeVaultMemberRole(vaultID, accountID, role string) error {
 	if err != nil {
 		return err
 	}
-	allVaultMember, err := s.unlockedSession.Client.ListAllVaultMember(ctx, vaultID)
+	vaultMembers, err := s.unlockedSession.Client.ListVaultMembers(ctx, vaultID)
 	if err != nil {
 		return convertSharingError(err)
 	}
-	if !slices.ContainsFunc(allVaultMember, func(vaultMember apitypes.VaultMember) bool { return vaultMember.AccountID == accountID }) {
+	if !slices.ContainsFunc(vaultMembers, func(vaultMember apitypes.VaultMember) bool { return vaultMember.AccountID == accountID }) {
 		return errors.New("this person no longer has access to the vault; share it with them again")
 	}
 	member, err := s.getVerifiedMember(ctx, accountID)
@@ -270,18 +270,18 @@ func (s *Service) RemoveVaultMember(vaultID, accountID string) error {
 	if removeErr != nil {
 		return convertSharingError(removeErr)
 	}
-	if err := s.loadAllVault(ctx); err != nil {
+	if err := s.loadVaults(ctx); err != nil {
 		return err
 	}
-	refreshed, found := s.allVaultByID[vaultID]
+	refreshed, found := s.vaultsByID[vaultID]
 	if !found {
 		return nil
 	}
-	allItem, err := s.unlockedSession.ListAllItem(ctx, refreshed)
+	items, err := s.unlockedSession.ListItems(ctx, refreshed)
 	if err != nil {
 		return convertError(err)
 	}
-	s.allItemByVaultID[vaultID] = allItem
+	s.itemsByVaultID[vaultID] = items
 	return nil
 }
 
@@ -302,8 +302,8 @@ func (s *Service) InvitePerson(email string) error {
 	return convertInvitationError(err)
 }
 
-// ListAllDevice returns the devices signed in to this account, this device first, then the most recently seen.
-func (s *Service) ListAllDevice() ([]Device, error) {
+// ListDevices returns the devices signed in to this account, this device first, then the most recently seen.
+func (s *Service) ListDevices() ([]Device, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if err := s.requireUnlocked(); err != nil {
@@ -311,11 +311,11 @@ func (s *Service) ListAllDevice() ([]Device, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	allProtoDevice, err := s.unlockedSession.Client.ListAllDevice(ctx)
+	protoDevices, err := s.unlockedSession.Client.ListDevices(ctx)
 	if err != nil {
 		return nil, convertError(err)
 	}
-	slices.SortStableFunc(allProtoDevice, func(first, second apitypes.Device) int {
+	slices.SortStableFunc(protoDevices, func(first, second apitypes.Device) int {
 		if first.Current != second.Current {
 			if first.Current {
 				return -1
@@ -324,9 +324,9 @@ func (s *Service) ListAllDevice() ([]Device, error) {
 		}
 		return second.LastSeenAt.Compare(first.LastSeenAt)
 	})
-	allDevice := make([]Device, 0, len(allProtoDevice))
-	for _, protoDevice := range allProtoDevice {
-		allDevice = append(allDevice, Device{
+	devices := make([]Device, 0, len(protoDevices))
+	for _, protoDevice := range protoDevices {
+		devices = append(devices, Device{
 			ID:         protoDevice.ID,
 			Name:       protoDevice.Name,
 			Platform:   protoDevice.Platform,
@@ -335,7 +335,7 @@ func (s *Service) ListAllDevice() ([]Device, error) {
 			IsCurrent:  protoDevice.Current,
 		})
 	}
-	return allDevice, nil
+	return devices, nil
 }
 
 // RevokeDevice signs another device out; this device signs out with SignOut instead.
@@ -347,15 +347,15 @@ func (s *Service) RevokeDevice(deviceID string) error {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	allProtoDevice, err := s.unlockedSession.Client.ListAllDevice(ctx)
+	protoDevices, err := s.unlockedSession.Client.ListDevices(ctx)
 	if err != nil {
 		return convertError(err)
 	}
-	index := slices.IndexFunc(allProtoDevice, func(protoDevice apitypes.Device) bool { return protoDevice.ID == deviceID })
+	index := slices.IndexFunc(protoDevices, func(protoDevice apitypes.Device) bool { return protoDevice.ID == deviceID })
 	if index < 0 {
 		return errors.New("this device is already signed out")
 	}
-	if allProtoDevice[index].Current {
+	if protoDevices[index].Current {
 		return errCurrentDevice
 	}
 	if err := s.unlockedSession.Client.RevokeDevice(ctx, deviceID); err != nil && !apiclient.IsStatus(err, http.StatusNotFound) {

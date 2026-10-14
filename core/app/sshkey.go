@@ -127,7 +127,7 @@ type SSHKeySource struct {
 	service *Service
 }
 
-func CreateSSHKeySource(service *Service) *SSHKeySource {
+func NewSSHKeySource(service *Service) *SSHKeySource {
 	return &SSHKeySource{service: service}
 }
 
@@ -140,8 +140,8 @@ func (lockedKeySourceError) Is(target error) bool {
 	return target == ErrLocked || target == sshagent.ErrLocked
 }
 
-// ListAllKey returns ErrLocked or ErrSignedOut unless Hisar is unlocked; it does not postpone auto-lock.
-func (source *SSHKeySource) ListAllKey(ctx context.Context) ([]sshagent.Key, error) {
+// ListKeys returns ErrLocked or ErrSignedOut unless Hisar is unlocked; it does not postpone auto-lock.
+func (source *SSHKeySource) ListKeys(ctx context.Context) ([]sshagent.Key, error) {
 	s := source.service
 	if err := s.requireCurrentVersion(); err != nil {
 		var updateRequired *UpdateRequiredError
@@ -160,17 +160,17 @@ func (source *SSHKeySource) ListAllKey(ctx context.Context) ([]sshagent.Key, err
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	if s.allVaultByID == nil {
-		if err := s.loadAllVault(ctx); err != nil {
+	if s.vaultsByID == nil {
+		if err := s.loadVaults(ctx); err != nil {
 			return nil, err
 		}
 	}
-	allVault := make([]*session.Vault, 0, len(s.allVaultByID))
-	for _, vault := range s.allVaultByID {
-		allVault = append(allVault, vault)
+	vaults := make([]*session.Vault, 0, len(s.vaultsByID))
+	for _, vault := range s.vaultsByID {
+		vaults = append(vaults, vault)
 	}
 	// Servers stop after about 6 attempts, so keys from the personal vault come first.
-	slices.SortFunc(allVault, func(first, second *session.Vault) int {
+	slices.SortFunc(vaults, func(first, second *session.Vault) int {
 		if (first.Type == apitypes.VaultPersonal) != (second.Type == apitypes.VaultPersonal) {
 			if first.Type == apitypes.VaultPersonal {
 				return -1
@@ -179,22 +179,22 @@ func (source *SSHKeySource) ListAllKey(ctx context.Context) ([]sshagent.Key, err
 		}
 		return strings.Compare(strings.ToLower(first.Name), strings.ToLower(second.Name))
 	})
-	allKey := []sshagent.Key{}
-	for _, vault := range allVault {
-		allItem, isCached := s.allItemByVaultID[vault.ID]
+	keys := []sshagent.Key{}
+	for _, vault := range vaults {
+		items, isCached := s.itemsByVaultID[vault.ID]
 		if !isCached {
-			loadedItem, err := s.unlockedSession.ListAllItem(ctx, vault)
+			loadedItem, err := s.unlockedSession.ListItems(ctx, vault)
 			if err != nil {
 				return nil, convertError(err)
 			}
-			s.allItemByVaultID[vault.ID] = loadedItem
-			allItem = loadedItem
+			s.itemsByVaultID[vault.ID] = loadedItem
+			items = loadedItem
 		}
-		for _, vaultItem := range allItem {
+		for _, vaultItem := range items {
 			if vaultItem.Overview.Category != item.CategorySSHKey || vaultItem.Details.PrivateKey == "" {
 				continue
 			}
-			allKey = append(allKey, sshagent.Key{
+			keys = append(keys, sshagent.Key{
 				ID:            vaultItem.ID,
 				VaultID:       vault.ID,
 				Title:         vaultItem.Overview.Title,
@@ -202,5 +202,5 @@ func (source *SSHKeySource) ListAllKey(ctx context.Context) ([]sshagent.Key, err
 			})
 		}
 	}
-	return allKey, nil
+	return keys, nil
 }

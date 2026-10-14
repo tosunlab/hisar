@@ -14,7 +14,7 @@ import (
 
 const extensionStoreURL = "https://chromewebstore.google.com/detail/mmipiffoogblblocokimpemdopmdjghf"
 
-var allUpdateURLByClient = map[string]string{
+var updateURLsByClient = map[string]string{
 	apitypes.ClientDesktopMacOS: downloadURL,
 	apitypes.ClientIOS:          downloadURL,
 	apitypes.ClientCLI:          downloadURL,
@@ -72,7 +72,7 @@ func (s *Server) requireMinimumVersion(c fiber.Ctx) error {
 	return c.Status(fiber.StatusUpgradeRequired).JSON(apitypes.UpgradeRequired{
 		Error:          "update required",
 		MinimumVersion: minimumVersion,
-		UpdateURL:      allUpdateURLByClient[client],
+		UpdateURL:      updateURLsByClient[client],
 	})
 }
 

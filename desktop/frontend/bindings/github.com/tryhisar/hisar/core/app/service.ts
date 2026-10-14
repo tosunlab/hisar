@@ -153,11 +153,11 @@ export function EnableNewAccountBiometricUnlock(): $CancellablePromise<$models.S
 }
 
 /**
- * ExportAllData asks for Touch ID or the master password, then saves every vault the user can read where they choose.
+ * ExportData asks for Touch ID or the master password, then saves every vault the user can read where they choose.
  * Nothing about plans or the server's answer limits it: offline it exports this device's encrypted cache.
  */
-export function ExportAllData(request: $models.ExportRequest): $CancellablePromise<$models.ExportResult> {
-    return $Call.ByID(3648450930, request);
+export function ExportData(request: $models.ExportRequest): $CancellablePromise<$models.ExportResult> {
+    return $Call.ByID(3435195759, request);
 }
 
 /**
@@ -224,77 +224,77 @@ export function LeaveVault(vaultID: string): $CancellablePromise<void> {
 }
 
 /**
- * ListAllAgentVaultID returns the vaults that coding agents may see through hisar mcp on this device.
+ * ListAgentVaultIDs returns the vaults that coding agents may see through hisar mcp on this device.
  */
-export function ListAllAgentVaultID(): $CancellablePromise<string[] | null> {
-    return $Call.ByID(2873167074);
+export function ListAgentVaultIDs(): $CancellablePromise<string[] | null> {
+    return $Call.ByID(414268516);
 }
 
 /**
- * ListAllDevice returns the devices signed in to this account, this device first, then the most recently seen.
+ * ListDevices returns the devices signed in to this account, this device first, then the most recently seen.
  */
-export function ListAllDevice(): $CancellablePromise<$models.Device[] | null> {
-    return $Call.ByID(2560032070);
+export function ListDevices(): $CancellablePromise<$models.Device[] | null> {
+    return $Call.ByID(351045304);
 }
 
-export function ListAllImportFormat(): $CancellablePromise<$models.ImportFormat[] | null> {
-    return $Call.ByID(1250597342);
+export function ListImportFormats(): $CancellablePromise<$models.ImportFormat[] | null> {
+    return $Call.ByID(410989716);
 }
 
 /**
- * ListAllItem fetches the vault's items from the server and returns them without secrets in a stable order.
+ * ListItems fetches the vault's items from the server and returns them without secrets in a stable order.
  */
-export function ListAllItem(vaultID: string): $CancellablePromise<$models.ItemDetail[] | null> {
-    return $Call.ByID(1905874531, vaultID);
+export function ListItems(vaultID: string): $CancellablePromise<$models.ItemDetail[] | null> {
+    return $Call.ByID(3836872759, vaultID);
 }
 
 /**
- * ListAllPerson returns the user and the people they share a vault with, with the security code of their signing key.
+ * ListPeople returns the user and the people they share a vault with, with the security code of their signing key.
  */
-export function ListAllPerson(): $CancellablePromise<$models.Person[] | null> {
-    return $Call.ByID(1777922713);
+export function ListPeople(): $CancellablePromise<$models.Person[] | null> {
+    return $Call.ByID(3121813414);
 }
 
 /**
- * ListAllRemovedVault returns, once, the vaults that disappeared since the last call because someone else deleted
+ * ListRemovedVaults returns, once, the vaults that disappeared since the last call because someone else deleted
  * them or removed the user.
  */
-export function ListAllRemovedVault(): $CancellablePromise<$models.RemovedVaultNotice[] | null> {
-    return $Call.ByID(1918740044);
+export function ListRemovedVaults(): $CancellablePromise<$models.RemovedVaultNotice[] | null> {
+    return $Call.ByID(1293780866);
 }
 
 /**
- * ListAllShareAwaitingUnlock lists, while locked, the shares people accepted that this app finishes once unlocked.
+ * ListShareInvitations completes accepted shares first, then returns the invitations this user received and sent.
+ */
+export function ListShareInvitations(): $CancellablePromise<$models.ShareInvitations> {
+    return $Call.ByID(3974478764);
+}
+
+export function ListShareLinkFields(vaultID: string, itemID: string): $CancellablePromise<$models.ShareLinkField[] | null> {
+    return $Call.ByID(2765260589, vaultID, itemID);
+}
+
+export function ListShareLinks(): $CancellablePromise<$models.ShareLink[] | null> {
+    return $Call.ByID(935254761);
+}
+
+/**
+ * ListSharesAwaitingUnlock lists, while locked, the shares people accepted that this app finishes once unlocked.
  * It needs only the saved session; unlocked, signed out or offline, the list is empty.
  */
-export function ListAllShareAwaitingUnlock(): $CancellablePromise<$models.ShareAwaitingUnlock[] | null> {
-    return $Call.ByID(2378951473);
+export function ListSharesAwaitingUnlock(): $CancellablePromise<$models.ShareAwaitingUnlock[] | null> {
+    return $Call.ByID(4072556127);
 }
 
 /**
- * ListAllShareInvitation completes accepted shares first, then returns the invitations this user received and sent.
+ * ListVaultMembers returns who has access to a vault, owners first.
  */
-export function ListAllShareInvitation(): $CancellablePromise<$models.ShareInvitations> {
-    return $Call.ByID(1050562808);
+export function ListVaultMembers(vaultID: string): $CancellablePromise<$models.VaultMember[] | null> {
+    return $Call.ByID(3228686690, vaultID);
 }
 
-export function ListAllShareLink(): $CancellablePromise<$models.ShareLink[] | null> {
-    return $Call.ByID(2237765691);
-}
-
-export function ListAllShareLinkField(vaultID: string, itemID: string): $CancellablePromise<$models.ShareLinkField[] | null> {
-    return $Call.ByID(1051232133, vaultID, itemID);
-}
-
-export function ListAllVault(): $CancellablePromise<$models.VaultSummary[] | null> {
-    return $Call.ByID(3474444856);
-}
-
-/**
- * ListAllVaultMember returns who has access to a vault, owners first.
- */
-export function ListAllVaultMember(vaultID: string): $CancellablePromise<$models.VaultMember[] | null> {
-    return $Call.ByID(3543912554, vaultID);
+export function ListVaults(): $CancellablePromise<$models.VaultSummary[] | null> {
+    return $Call.ByID(65661788);
 }
 
 export function Lock(): $CancellablePromise<$models.Status> {

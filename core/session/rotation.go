@@ -19,16 +19,16 @@ type AccessGrant struct {
 	Role      string
 }
 
-// RotateVaultKey re-encrypts the vault under a new key that only allAccessGrant can unwrap.
+// RotateVaultKey re-encrypts the vault under a new key that only accessGrants can unwrap.
 // The caller must stay an owner. On success vault.Key is replaced by the new key.
-func (s *Session) RotateVaultKey(ctx context.Context, vault *Vault, allAccessGrant []AccessGrant) error {
-	allMember, err := s.Client.ListAllMember(ctx)
+func (s *Session) RotateVaultKey(ctx context.Context, vault *Vault, accessGrants []AccessGrant) error {
+	members, err := s.Client.ListMembers(ctx)
 	if err != nil {
 		return err
 	}
-	allMemberByID := map[string]apitypes.Member{}
-	for _, member := range allMember {
-		allMemberByID[member.AccountID] = member
+	membersByID := map[string]apitypes.Member{}
+	for _, member := range members {
+		membersByID[member.AccountID] = member
 	}
 
 	newVaultKey := crypt.GenerateKey()
@@ -36,8 +36,8 @@ func (s *Session) RotateVaultKey(ctx context.Context, vault *Vault, allAccessGra
 	if request.EncName, err = crypt.SealVaultName(newVaultKey, vault.ID, []byte(vault.Name)); err != nil {
 		return err
 	}
-	for _, grant := range allAccessGrant {
-		member, found := allMemberByID[grant.AccountID]
+	for _, grant := range accessGrants {
+		member, found := membersByID[grant.AccountID]
 		if !found {
 			return fmt.Errorf("member %s: %w", grant.AccountID, ErrNotFound)
 		}
@@ -53,19 +53,19 @@ func (s *Session) RotateVaultKey(ctx context.Context, vault *Vault, allAccessGra
 		if err != nil {
 			return err
 		}
-		request.AllAccess = append(request.AllAccess, apitypes.RotatedAccess{AccountID: member.AccountID, Role: grant.Role, WrappedKey: wrappedKey})
+		request.Accesses = append(request.Accesses, apitypes.RotatedAccess{AccountID: member.AccountID, Role: grant.Role, WrappedKey: wrappedKey})
 	}
 
-	allProtoItem, err := s.listAllProtoItem(ctx, vault)
+	protoItems, err := s.listProtoItems(ctx, vault)
 	if err != nil {
 		return err
 	}
-	for _, protoItem := range allProtoItem {
+	for _, protoItem := range protoItems {
 		rotated, err := reencryptItem(vault.Key, vault.ID, newVaultKey, vault.ID, &protoItem)
 		if err != nil {
 			return err
 		}
-		request.AllItem = append(request.AllItem, apitypes.RotatedItem{
+		request.Items = append(request.Items, apitypes.RotatedItem{
 			ID: protoItem.ID, BaseRevision: protoItem.Revision, Revision: rotated.revision, Deleted: protoItem.Deleted, Overview: rotated.overview, Details: rotated.details,
 		})
 	}
@@ -85,23 +85,23 @@ func (s *Session) RemoveVaultMember(ctx context.Context, vault *Vault, accountID
 		return errors.New("owners cannot remove themselves from a vault")
 	}
 	for attempt := 1; ; attempt++ {
-		allVaultMember, err := s.Client.ListAllVaultMember(ctx, vault.ID)
+		vaultMembers, err := s.Client.ListVaultMembers(ctx, vault.ID)
 		if err != nil {
 			return err
 		}
-		var allAccessGrant []AccessGrant
+		var accessGrants []AccessGrant
 		isMember := false
-		for _, vaultMember := range allVaultMember {
+		for _, vaultMember := range vaultMembers {
 			if vaultMember.AccountID == accountID {
 				isMember = true
 				continue
 			}
-			allAccessGrant = append(allAccessGrant, AccessGrant{AccountID: vaultMember.AccountID, Role: vaultMember.Role})
+			accessGrants = append(accessGrants, AccessGrant{AccountID: vaultMember.AccountID, Role: vaultMember.Role})
 		}
 		if !isMember {
 			return fmt.Errorf("member %s: %w", accountID, ErrNotFound)
 		}
-		err = s.RotateVaultKey(ctx, vault, allAccessGrant)
+		err = s.RotateVaultKey(ctx, vault, accessGrants)
 		if apiclient.IsStatus(err, http.StatusConflict) && attempt < maxRotationAttemptCount {
 			continue
 		}

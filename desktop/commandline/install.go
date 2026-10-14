@@ -46,7 +46,7 @@ type InstallStatus struct {
 	IsAvailable              bool           `json:"isAvailable"`
 	BundledPath              string         `json:"bundledPath"`
 	InstalledPath            string         `json:"installedPath"`
-	AllInstallation          []Installation `json:"allInstallation"`
+	Installations            []Installation `json:"allInstallation"`
 	PathCommandPath          string         `json:"pathCommandPath"`
 	PathCommandTarget        string         `json:"pathCommandTarget"`
 	IsPathCommandFromThisApp bool           `json:"isPathCommandFromThisApp"`
@@ -67,7 +67,7 @@ type Installer struct {
 	config InstallerConfig
 }
 
-func CreateInstaller(config InstallerConfig) *Installer {
+func NewInstaller(config InstallerConfig) *Installer {
 	if config.SystemDirectories == nil {
 		config.SystemDirectories = DefaultSystemDirectories
 	}
@@ -81,7 +81,7 @@ func (installer *Installer) getUserDirectory() string {
 	return filepath.Join(installer.config.HomeDirectory, ".local", "bin")
 }
 
-func (installer *Installer) getAllInstallDirectory() []string {
+func (installer *Installer) getInstallDirectories() []string {
 	return append(slices.Clone(installer.config.SystemDirectories), installer.getUserDirectory())
 }
 
@@ -135,8 +135,8 @@ func (installer *Installer) describe(path string) (Installation, bool) {
 	return installation, true
 }
 
-func (installer *Installer) findPathCommand(allDirectory []string) string {
-	for _, directory := range allDirectory {
+func (installer *Installer) findPathCommand(directories []string) string {
+	for _, directory := range directories {
 		if directory == "" {
 			continue
 		}
@@ -148,8 +148,8 @@ func (installer *Installer) findPathCommand(allDirectory []string) string {
 	return ""
 }
 
-func (installer *Installer) buildPathHint(directory string, allUserDirectory []string) string {
-	if slices.ContainsFunc(allUserDirectory, func(candidate string) bool { return filepath.Clean(candidate) == directory }) {
+func (installer *Installer) buildPathHint(directory string, userDirectories []string) string {
+	if slices.ContainsFunc(userDirectories, func(candidate string) bool { return filepath.Clean(candidate) == directory }) {
 		return ""
 	}
 	shownDirectory := directory
@@ -164,25 +164,25 @@ func (installer *Installer) buildPathHint(directory string, allUserDirectory []s
 }
 
 func (installer *Installer) GetStatus() InstallStatus {
-	status := InstallStatus{IsAvailable: installer.isAvailable(), BundledPath: installer.config.BundledPath, AllInstallation: []Installation{}}
-	for _, directory := range installer.getAllInstallDirectory() {
+	status := InstallStatus{IsAvailable: installer.isAvailable(), BundledPath: installer.config.BundledPath, Installations: []Installation{}}
+	for _, directory := range installer.getInstallDirectories() {
 		installation, isFound := installer.describe(filepath.Join(directory, commandName))
 		if !isFound {
 			continue
 		}
-		status.AllInstallation = append(status.AllInstallation, installation)
+		status.Installations = append(status.Installations, installation)
 		if installation.Kind == InstallationThisApp && status.InstalledPath == "" {
 			status.InstalledPath = installation.Path
 		}
 	}
-	allUserDirectory := installer.config.GetUserPath()
-	status.PathCommandPath = installer.findPathCommand(allUserDirectory)
+	userDirectories := installer.config.GetUserPath()
+	status.PathCommandPath = installer.findPathCommand(userDirectories)
 	if status.PathCommandPath != "" {
 		status.PathCommandTarget, _ = filepath.EvalSymlinks(status.PathCommandPath)
 		status.IsPathCommandFromThisApp = status.IsAvailable && isSamePath(status.PathCommandPath, installer.config.BundledPath)
 	}
 	if status.InstalledPath != "" {
-		status.PathHint = installer.buildPathHint(filepath.Dir(status.InstalledPath), allUserDirectory)
+		status.PathHint = installer.buildPathHint(filepath.Dir(status.InstalledPath), userDirectories)
 	}
 	return status
 }
@@ -229,17 +229,17 @@ func (installer *Installer) Install() (InstallStatus, error) {
 
 // Uninstall removes only hisar symlinks that point into a Hisar.app.
 func (installer *Installer) Uninstall() (InstallStatus, error) {
-	var allError []error
-	for _, directory := range installer.getAllInstallDirectory() {
+	var errs []error
+	for _, directory := range installer.getInstallDirectories() {
 		installation, isFound := installer.describe(filepath.Join(directory, commandName))
 		if !isFound || installation.Kind == InstallationOther {
 			continue
 		}
 		if err := os.Remove(installation.Path); err != nil {
-			allError = append(allError, fmt.Errorf("could not remove %s: %w", installation.Path, err))
+			errs = append(errs, fmt.Errorf("could not remove %s: %w", installation.Path, err))
 		}
 	}
-	return installer.GetStatus(), errors.Join(allError...)
+	return installer.GetStatus(), errors.Join(errs...)
 }
 
 // UserPathReader reads the PATH of the user's login shell, which apps started from Finder do not get.
@@ -256,12 +256,12 @@ func (reader *UserPathReader) Read() []string {
 	if time.Now().Before(reader.cachedUntil) {
 		return reader.cachedPath
 	}
-	allDirectory, err := readLoginShellPath(reader.Shell)
-	if err != nil || len(allDirectory) == 0 {
-		allDirectory = readSystemPath()
+	directories, err := readLoginShellPath(reader.Shell)
+	if err != nil || len(directories) == 0 {
+		directories = readSystemPath()
 	}
-	reader.cachedPath, reader.cachedUntil = allDirectory, time.Now().Add(userPathCacheLifetime)
-	return allDirectory
+	reader.cachedPath, reader.cachedUntil = directories, time.Now().Add(userPathCacheLifetime)
+	return directories
 }
 
 func readLoginShellPath(shell string) ([]string, error) {
@@ -289,12 +289,12 @@ func parseUserPathOutput(output string) ([]string, error) {
 }
 
 func readSystemPath() []string {
-	var allDirectory []string
-	allPathFile := []string{"/etc/paths"}
-	if allExtraFile, err := filepath.Glob("/etc/paths.d/*"); err == nil {
-		allPathFile = append(allPathFile, allExtraFile...)
+	var directories []string
+	pathFiles := []string{"/etc/paths"}
+	if extraFiles, err := filepath.Glob("/etc/paths.d/*"); err == nil {
+		pathFiles = append(pathFiles, extraFiles...)
 	}
-	for _, pathFile := range allPathFile {
+	for _, pathFile := range pathFiles {
 		file, err := os.Open(pathFile)
 		if err != nil {
 			continue
@@ -302,15 +302,15 @@ func readSystemPath() []string {
 		scanner := bufio.NewScanner(file)
 		for scanner.Scan() {
 			if line := strings.TrimSpace(scanner.Text()); line != "" && !strings.HasPrefix(line, "#") {
-				allDirectory = append(allDirectory, line)
+				directories = append(directories, line)
 			}
 		}
 		file.Close()
 	}
 	for _, directory := range filepath.SplitList(os.Getenv("PATH")) {
-		if !slices.Contains(allDirectory, directory) {
-			allDirectory = append(allDirectory, directory)
+		if !slices.Contains(directories, directory) {
+			directories = append(directories, directory)
 		}
 	}
-	return allDirectory
+	return directories
 }

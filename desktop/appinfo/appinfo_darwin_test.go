@@ -17,7 +17,7 @@ import (
 const terminalBundlePath = "/System/Applications/Utilities/Terminal.app"
 
 func TestDescribeTerminalOnMacOS(t *testing.T) {
-	resolver := CreateSystemResolver()
+	resolver := NewSystemResolver()
 	app := resolver.DescribeApp(terminalBundlePath)
 	if app.Name != "Terminal" || !strings.HasPrefix(app.IconURL, "data:image/png;base64,") || len(app.IconURL) < 1000 {
 		t.Errorf("Terminal: name %q, icon %d bytes", app.Name, len(app.IconURL))
@@ -55,9 +55,9 @@ func TestSignatureOnMacOS(t *testing.T) {
 }
 
 func TestReadThisProcessOnMacOS(t *testing.T) {
-	allArgument, err := ListAllProcessArgument(os.Getpid())
-	if err != nil || !slices.Equal(allArgument, os.Args) {
-		t.Errorf("arguments %q, want %q: %v", allArgument, os.Args, err)
+	arguments, err := ListProcessArguments(os.Getpid())
+	if err != nil || !slices.Equal(arguments, os.Args) {
+		t.Errorf("arguments %q, want %q: %v", arguments, os.Args, err)
 	}
 	workingDirectory, err := GetProcessWorkingDirectory(os.Getpid())
 	expected, _ := os.Getwd()
@@ -72,7 +72,7 @@ func TestReadThisProcessOnMacOS(t *testing.T) {
 	if path, err := GetProcessPath(os.Getpid()); err != nil || path != executablePath {
 		t.Errorf("path %q, want %q: %v", path, executablePath, err)
 	}
-	if allProcessID, err := listAllProcessID(); err != nil || !slices.Contains(allProcessID, os.Getpid()) {
+	if processIDs, err := listProcessIDs(); err != nil || !slices.Contains(processIDs, os.Getpid()) {
 		t.Errorf("this process is not running: %v", err)
 	}
 }
@@ -83,9 +83,9 @@ func TestResolveChildOfThisProcessOnMacOS(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer command.Process.Kill()
-	requester := CreateSystemResolver().Resolve(command.Process.Pid)
-	if len(requester.AllChainProcess) == 0 || GetProgramName(requester.AllChainProcess[0]) != "sleep" {
-		t.Fatalf("chain %+v", requester.AllChainProcess)
+	requester := NewSystemResolver().Resolve(command.Process.Pid)
+	if len(requester.ChainProcesses) == 0 || GetProgramName(requester.ChainProcesses[0]) != "sleep" {
+		t.Fatalf("chain %+v", requester.ChainProcesses)
 	}
 	if requester.Name == "" || requester.Kind == "" {
 		t.Errorf("requester %+v", requester)
@@ -93,7 +93,7 @@ func TestResolveChildOfThisProcessOnMacOS(t *testing.T) {
 	if requester.Kind == RequesterKindApp && (requester.App.Path == "" || requester.App.IconURL == "" || requester.App.Signature.Status == "") {
 		t.Errorf("app %+v", requester.App)
 	}
-	logRequester(t, "a child of this test", CreateSystemResolver(), command.Process.Pid)
+	logRequester(t, "a child of this test", NewSystemResolver(), command.Process.Pid)
 }
 
 func logRequester(t *testing.T, label string, resolver *Resolver, pid int) Requester {
@@ -106,21 +106,21 @@ func logRequester(t *testing.T, label string, resolver *Resolver, pid int) Reque
 	cachedDuration := time.Since(startedAt)
 	icon, _ := resolver.GetIconPNG(requester.App.Path, PhoneIconSize)
 	t.Logf("%s, pid %d: %q (%s) %s, dialog icon %d bytes as a data URL, phone icon %d bytes, signature %+v, chain %q, resolved in %v, then %v cached",
-		label, pid, requester.Name, requester.Kind, requester.App.Path, len(requester.App.IconURL), len(icon), requester.App.Signature, listAllProgramName(requester.AllChainProcess),
+		label, pid, requester.Name, requester.Kind, requester.App.Path, len(requester.App.IconURL), len(icon), requester.App.Signature, listProgramNames(requester.ChainProcesses),
 		firstDuration.Round(time.Millisecond), cachedDuration.Round(time.Millisecond))
 	return requester
 }
 
 // TestResolveRunningAppsOnMacOS resolves shells and tools that other apps on this Mac started, when those apps are running.
 func TestResolveRunningAppsOnMacOS(t *testing.T) {
-	resolver := CreateSystemResolver()
-	allProcessID, err := listAllProcessID()
+	resolver := NewSystemResolver()
+	processIDs, err := listProcessIDs()
 	if err != nil {
 		t.Fatal(err)
 	}
-	allLabelByMarker := map[string]string{"/iTermServer-": "a shell in iTerm2", "/Visual Studio Code.app/Contents/Frameworks/Code Helper (Plugin).app/": "Visual Studio Code's extension host"}
-	allFoundLabel := map[string]bool{}
-	for _, pid := range allProcessID {
+	labelsByMarker := map[string]string{"/iTermServer-": "a shell in iTerm2", "/Visual Studio Code.app/Contents/Frameworks/Code Helper (Plugin).app/": "Visual Studio Code's extension host"}
+	foundLabels := map[string]bool{}
+	for _, pid := range processIDs {
 		parentPID, err := resolver.system.GetParentPID(pid)
 		if err != nil || parentPID <= launchdPID {
 			continue
@@ -131,19 +131,19 @@ func TestResolveRunningAppsOnMacOS(t *testing.T) {
 		if getOutermostBundlePath(path) != "" {
 			ancestorPath = path
 		}
-		for marker, label := range allLabelByMarker {
-			if allFoundLabel[label] || !strings.Contains(ancestorPath, marker) {
+		for marker, label := range labelsByMarker {
+			if foundLabels[label] || !strings.Contains(ancestorPath, marker) {
 				continue
 			}
-			allFoundLabel[label] = true
+			foundLabels[label] = true
 			requester := logRequester(t, label, resolver, pid)
 			if requester.Kind != RequesterKindApp || requester.App.IconURL == "" || requester.App.Signature.Status != SignatureStatusDeveloper {
 				t.Errorf("%s: %+v", label, requester)
 			}
 		}
 	}
-	for _, label := range allLabelByMarker {
-		if !allFoundLabel[label] {
+	for _, label := range labelsByMarker {
+		if !foundLabels[label] {
 			t.Logf("%s: not running", label)
 		}
 	}

@@ -42,7 +42,7 @@ func Fetch(ctx context.Context, httpClient *http.Client, link string) (*Fetched,
 	if err != nil {
 		return nil, err
 	}
-	apiClient := apiclient.Create(serverURL)
+	apiClient := apiclient.New(serverURL)
 	if httpClient != nil {
 		apiClient.HTTP = httpClient
 	}

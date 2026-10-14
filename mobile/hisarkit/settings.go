@@ -19,7 +19,7 @@ func (hisar *Hisar) SetAutoLock(seconds int) (string, error) {
 
 // ListAllDevice returns the account's signed-in devices ([]app.Device) as JSON, this device first.
 func (hisar *Hisar) ListAllDevice() (string, error) {
-	return encodeJSON(hisar.service.ListAllDevice())
+	return encodeJSON(hisar.service.ListDevices())
 }
 
 // RevokeDevice signs out another device; this iPhone signs out with SignOut.
@@ -57,11 +57,11 @@ func (hisar *Hisar) CopySecretReference(vaultID, itemID, fieldName string) (stri
 
 // The Mac's switch for sending requests to phones is the same state field; on the phone it means this phone answers none.
 func (hisar *Hisar) IsMacApprovalAllowed() bool {
-	return app.CreateApprovalPreference(hisar.service).IsPhoneApproval()
+	return app.NewApprovalPreference(hisar.service).IsPhoneApproval()
 }
 
 func (hisar *Hisar) SetMacApprovalAllowed(isAllowed bool) error {
-	return app.CreateApprovalPreference(hisar.service).SetPhoneApproval(isAllowed)
+	return app.NewApprovalPreference(hisar.service).SetPhoneApproval(isAllowed)
 }
 
 // GetTheme returns this iPhone's app.Theme as JSON; the AutoFill extension reads the same state file.

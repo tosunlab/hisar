@@ -129,7 +129,7 @@ func (s *Server) handleChangeCredentials(c fiber.Ctx) error {
 	case err != nil:
 		return err
 	}
-	s.events.endAllStream(currentSession.AccountID, currentSession.TokenHash)
+	s.events.endStreams(currentSession.AccountID, currentSession.TokenHash)
 	s.recordAudit(c, currentSession.AccountID, currentSession.DeviceID, "credentials_changed", map[string]any{"change": request.Change, "signedOutDevices": signedOutDeviceCount})
 	if s.isEmailConfigured() {
 		if account, err := s.store.GetAccountByID(c.Context(), currentSession.AccountID); err == nil {
@@ -146,18 +146,18 @@ func (s *Server) handleGetAccountDeletionPreview(c fiber.Ctx) error {
 		return err
 	}
 	response := apitypes.AccountDeletionPreview{
-		AllOwnedVault:           make([]apitypes.DeletionOwnedVault, 0, len(preview.AllOwnedVault)),
-		AllMemberVault:          make([]apitypes.DeletionMemberVault, 0, len(preview.AllMemberVault)),
+		OwnedVaults:             make([]apitypes.DeletionOwnedVault, 0, len(preview.OwnedVaults)),
+		MemberVaults:            make([]apitypes.DeletionMemberVault, 0, len(preview.MemberVaults)),
 		ShareLinkCount:          preview.ShareLinkCount,
 		SentInvitationCount:     preview.SentInvitationCount,
 		ReceivedInvitationCount: preview.ReceivedInvitationCount,
 		DeviceCount:             preview.DeviceCount,
 	}
-	for _, ownedVault := range preview.AllOwnedVault {
-		response.AllOwnedVault = append(response.AllOwnedVault, apitypes.DeletionOwnedVault{VaultID: ownedVault.ID, Type: ownedVault.Type, OtherMemberCount: ownedVault.OtherMemberCount})
+	for _, ownedVault := range preview.OwnedVaults {
+		response.OwnedVaults = append(response.OwnedVaults, apitypes.DeletionOwnedVault{VaultID: ownedVault.ID, Type: ownedVault.Type, OtherMemberCount: ownedVault.OtherMemberCount})
 	}
-	for _, memberVault := range preview.AllMemberVault {
-		response.AllMemberVault = append(response.AllMemberVault, apitypes.DeletionMemberVault{VaultID: memberVault.ID, Type: memberVault.Type, Role: memberVault.Role})
+	for _, memberVault := range preview.MemberVaults {
+		response.MemberVaults = append(response.MemberVaults, apitypes.DeletionMemberVault{VaultID: memberVault.ID, Type: memberVault.Type, Role: memberVault.Role})
 	}
 	return c.JSON(response)
 }
@@ -188,10 +188,10 @@ func (s *Server) handleDeleteAccount(c fiber.Ctx) error {
 	case err != nil:
 		return err
 	}
-	s.events.endAllStream(currentSession.AccountID, nil)
-	s.approvals.removeAllForAccount(currentSession.AccountID)
-	s.publishVaultsChanged(deleted.AllVaultMemberAccountID...)
-	s.publishShareInvitationsChanged(deleted.AllInvitationAccountID...)
+	s.events.endStreams(currentSession.AccountID, nil)
+	s.approvals.removeForAccount(currentSession.AccountID)
+	s.publishVaultsChanged(deleted.VaultMemberAccountIDs...)
+	s.publishShareInvitationsChanged(deleted.InvitationAccountIDs...)
 	s.recordAudit(c, currentSession.AccountID, "", "account_deleted", map[string]int{"deletedVaults": deleted.DeletedVaultCount})
 	if s.isEmailConfigured() {
 		message := composeAccountDeletedEmail(deleted.Email, time.Now())

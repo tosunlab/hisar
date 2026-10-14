@@ -20,8 +20,8 @@ const (
 
 // watchEvents keeps the server's event stream open while the session is unlocked and syncs on every change.
 func (s *Service) watchEvents(ctx context.Context, apiClient *apiclient.Client, reconnectChannel chan struct{}) {
-	allPendingSync := make(chan struct{}, 1)
-	go s.runAllPendingSync(ctx, allPendingSync)
+	pendingSyncs := make(chan struct{}, 1)
+	go s.runPendingSyncs(ctx, pendingSyncs)
 	retryDelay := eventRetryMinimum
 	for ctx.Err() == nil {
 		connectedAt := time.Now()
@@ -40,7 +40,7 @@ func (s *Service) watchEvents(ctx context.Context, apiClient *apiclient.Client, 
 			switch event.Name {
 			case apitypes.EventVaultChanged, apitypes.EventVaultsChanged, apitypes.EventShareInvitationsChanged:
 				select {
-				case allPendingSync <- struct{}{}:
+				case pendingSyncs <- struct{}{}:
 				default:
 				}
 			case apitypes.EventApprovalRequested, apitypes.EventApprovalAnswered, apitypes.EventApprovalResolved:
@@ -93,34 +93,34 @@ func ReconnectEventStream(s *Service) {
 	}
 }
 
-// runAllPendingSync coalesces bursts of events into one sync at a time.
-func (s *Service) runAllPendingSync(ctx context.Context, allPendingSync chan struct{}) {
+// runPendingSyncs coalesces bursts of events into one sync at a time.
+func (s *Service) runPendingSyncs(ctx context.Context, pendingSyncs chan struct{}) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-allPendingSync:
-			if s.syncAllVault(ctx) && s.config.OnRemoteChange != nil {
+		case <-pendingSyncs:
+			if s.syncVaults(ctx) && s.config.OnRemoteChange != nil {
 				s.config.OnRemoteChange()
 			}
 		}
 	}
 }
 
-func (s *Service) syncAllVault(ctx context.Context) bool {
+func (s *Service) syncVaults(ctx context.Context) bool {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if s.unlockedSession == nil || ctx.Err() != nil {
 		return false
 	}
-	s.completeAllAcceptedShare(ctx)
-	if err := s.loadAllVault(ctx); err != nil {
+	s.completeAcceptedShares(ctx)
+	if err := s.loadVaults(ctx); err != nil {
 		return false
 	}
-	allPreviousItem := s.allItemByVaultID
-	s.allItemByVaultID = map[string][]item.Item{}
-	if err := s.loadAllItemOfAllVault(ctx); err != nil {
-		s.allItemByVaultID = allPreviousItem
+	previousItems := s.itemsByVaultID
+	s.itemsByVaultID = map[string][]item.Item{}
+	if err := s.loadItemsOfAllVault(ctx); err != nil {
+		s.itemsByVaultID = previousItems
 		return false
 	}
 	return true

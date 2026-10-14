@@ -34,12 +34,12 @@ func TestShareLinkAlwaysAsksAndApprovesTheSession(t *testing.T) {
 			t.Fatalf("after %d share links in an approved session: %d approvals", attempt, count)
 		}
 	}
-	request := fixture.approver.allRequest[1]
-	if request.ShareLink == nil || request.ShareLink.Title != "git" || !slices.Equal(request.ShareLink.AllFieldLabel, []string{"password", "recovery code"}) ||
+	request := fixture.approver.requests[1]
+	if request.ShareLink == nil || request.ShareLink.Title != "git" || !slices.Equal(request.ShareLink.FieldLabels, []string{"password", "recovery code"}) ||
 		request.ShareLink.Detail != "Expires in 7 days · 1 view · passphrase" || request.IsSecretRequest {
 		t.Errorf("approval request %+v %+v", request, request.ShareLink)
 	}
-	if request := fixture.approver.allRequest[0]; request.ShareLink != nil {
+	if request := fixture.approver.requests[0]; request.ShareLink != nil {
 		t.Errorf("vaults.list described a share link: %+v", request.ShareLink)
 	}
 }
@@ -65,7 +65,7 @@ func TestDeniedShareLinkIsNotCreatedAndApprovesNothing(t *testing.T) {
 	if response := client.send(t, createShareLinkRequest()); getErrorCode(response) != cliprotocol.ErrorDenied {
 		t.Fatalf("denied share link: %+v", response)
 	}
-	if fixture.approvals.IsApproved(fixture.resolver.session) || slices.Contains(fixture.handler.allType, cliprotocol.TypeCreateShareLink) {
+	if fixture.approvals.IsApproved(fixture.resolver.session) || slices.Contains(fixture.handler.types, cliprotocol.TypeCreateShareLink) {
 		t.Error("a denied share link approved the session or reached the handler")
 	}
 	if response := client.send(t, cliprotocol.Request{Type: cliprotocol.TypeCreateShareLink}); getErrorCode(response) != cliprotocol.ErrorInvalidRequest {
@@ -80,11 +80,11 @@ func TestShareLinkApprovalUsesTheHandlersNames(t *testing.T) {
 	client.send(t, createShareLinkRequest())
 	textRequest := cliprotocol.Request{Type: cliprotocol.TypeCreateShareLink, ShareLink: &cliprotocol.ShareLinkChange{Text: "hello", ExpiresInSeconds: 3600, MaxViews: 0}}
 	client.send(t, textRequest)
-	first, second := fixture.approver.allRequest[0].ShareLink, fixture.approver.allRequest[1].ShareLink
-	if first.Title != "GitHub" || !slices.Equal(first.AllFieldLabel, []string{"password", "Recovery code"}) {
+	first, second := fixture.approver.requests[0].ShareLink, fixture.approver.requests[1].ShareLink
+	if first.Title != "GitHub" || !slices.Equal(first.FieldLabels, []string{"password", "Recovery code"}) {
 		t.Errorf("item description %+v", first)
 	}
-	if second.Title != "Shared text" || !slices.Equal(second.AllFieldLabel, []string{"text"}) || second.Detail != "Expires in 1 hour · unlimited views" {
+	if second.Title != "Shared text" || !slices.Equal(second.FieldLabels, []string{"text"}) || second.Detail != "Expires in 1 hour · unlimited views" {
 		t.Errorf("text description %+v", second)
 	}
 }

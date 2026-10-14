@@ -172,13 +172,13 @@ func TestCommandExplainsThatHisarIsNotRunning(t *testing.T) {
 	useFakeAppLauncher(t, launcher)
 	appLaunchTimeout = 300 * time.Millisecond
 
-	for _, allArg := range [][]string{{"vaults"}, {"get", "GitHub"}, {"read", "hisar://Personal/GitHub/password"}} {
-		_, stderr, err := runCapturingOutput(t, false, "", allArg...)
+	for _, args := range [][]string{{"vaults"}, {"get", "GitHub"}, {"read", "hisar://Personal/GitHub/password"}} {
+		_, stderr, err := runCapturingOutput(t, false, "", args...)
 		if !errors.Is(err, errAppNotRunning) {
-			t.Errorf("%v: %v", allArg, err)
+			t.Errorf("%v: %v", args, err)
 		}
 		if !strings.Contains(stderr, "Starting Hisar…") || strings.Contains(stderr, "refused") {
-			t.Errorf("%v stderr %q", allArg, stderr)
+			t.Errorf("%v stderr %q", args, stderr)
 		}
 	}
 	stdout, _, err := runCapturingOutput(t, false, "", "status")
@@ -234,11 +234,11 @@ func TestFindAppBinary(t *testing.T) {
 	os.WriteFile(notExecutablePath, []byte("x"), 0o644)
 	executablePath := filepath.Join(directory, "Hisar")
 	os.WriteFile(executablePath, []byte("#!/bin/sh\n"), 0o755)
-	allCandidatePath := []string{"", filepath.Join(directory, "missing"), directory, notExecutablePath, executablePath}
-	if got := findAppBinary(allCandidatePath); got != executablePath {
+	candidatePaths := []string{"", filepath.Join(directory, "missing"), directory, notExecutablePath, executablePath}
+	if got := findAppBinary(candidatePaths); got != executablePath {
 		t.Errorf("found %q", got)
 	}
-	if got := findAppBinary(allCandidatePath[:4]); got != "" {
+	if got := findAppBinary(candidatePaths[:4]); got != "" {
 		t.Errorf("found %q without an app", got)
 	}
 }

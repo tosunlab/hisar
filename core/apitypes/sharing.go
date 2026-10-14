@@ -49,9 +49,9 @@ type WaitingShareInvitation struct {
 	AcceptedAt     time.Time `json:"acceptedAt"`
 }
 
-// ShareInvitationList: AllWaiting is missing from servers older than the field.
+// ShareInvitationList: Waiting is missing from servers older than the field.
 type ShareInvitationList struct {
-	AllReceived []ReceivedShareInvitation `json:"received"`
-	AllSent     []SentShareInvitation     `json:"sent"`
-	AllWaiting  []WaitingShareInvitation  `json:"waiting"`
+	Received []ReceivedShareInvitation `json:"received"`
+	Sent     []SentShareInvitation     `json:"sent"`
+	Waiting  []WaitingShareInvitation  `json:"waiting"`
 }

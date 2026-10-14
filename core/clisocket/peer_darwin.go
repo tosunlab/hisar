@@ -49,11 +49,11 @@ func findTerminalName(terminalDevice int64) string {
 	if terminalDevice == 0 {
 		return ""
 	}
-	allEntry, err := os.ReadDir("/dev")
+	entries, err := os.ReadDir("/dev")
 	if err != nil {
 		return ""
 	}
-	for _, entry := range allEntry {
+	for _, entry := range entries {
 		if !strings.HasPrefix(entry.Name(), "tty") && entry.Name() != "console" {
 			continue
 		}

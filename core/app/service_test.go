@@ -21,7 +21,7 @@ func TestSignedOutService(t *testing.T) {
 	if status := service.GetStatus(); status.State != StateSignedOut {
 		t.Fatalf("state = %q", status.State)
 	}
-	if _, err := service.ListAllVault(); !errors.Is(err, ErrSignedOut) {
+	if _, err := service.ListVaults(); !errors.Is(err, ErrSignedOut) {
 		t.Errorf("ListAllVault: %v", err)
 	}
 	if _, err := service.Unlock("password"); !errors.Is(err, ErrSignedOut) {
@@ -80,8 +80,8 @@ func TestSavedSessionStartsLocked(t *testing.T) {
 		t.Fatalf("status = %+v", status)
 	}
 	for name, call := range map[string]func() error{
-		"ListAllVault": func() error { _, err := service.ListAllVault(); return err },
-		"ListAllItem":  func() error { _, err := service.ListAllItem("vault"); return err },
+		"ListAllVault": func() error { _, err := service.ListVaults(); return err },
+		"ListAllItem":  func() error { _, err := service.ListItems("vault"); return err },
 		"GetItem":      func() error { _, err := service.GetItem("vault", "item"); return err },
 		"CopyField":    func() error { return service.CopyField("vault", "item", "password") },
 		"CreateVault":  func() error { _, err := service.CreateVault("Family"); return err },
@@ -145,14 +145,14 @@ func TestParseInvite(t *testing.T) {
 }
 
 func TestResolveServer(t *testing.T) {
-	allCase := map[string]string{
+	cases := map[string]string{
 		"api.tryhisar.com":           "https://api.tryhisar.com",
 		" api.tryhisar.com/ ":        "https://api.tryhisar.com",
 		"https://api.tryhisar.com":   "https://api.tryhisar.com",
 		"http://127.0.0.1:18080":     "http://127.0.0.1:18080",
 		"hisar.example.com:8443/api": "https://hisar.example.com:8443/api",
 	}
-	for input, expected := range allCase {
+	for input, expected := range cases {
 		if server, err := resolveServer(input); err != nil || server != expected {
 			t.Errorf("%q: %q %v", input, server, err)
 		}
@@ -191,14 +191,14 @@ func TestSetAutoLock(t *testing.T) {
 }
 
 func TestSortAllVaultSummary(t *testing.T) {
-	allSummary := []VaultSummary{
+	summaries := []VaultSummary{
 		{Name: "zeta", Type: apitypes.VaultShared},
 		{Name: "Personal", Type: apitypes.VaultPersonal},
 		{Name: "Alpha", Type: apitypes.VaultShared},
 	}
-	sortAllVaultSummary(allSummary)
-	if allSummary[0].Name != "Personal" || allSummary[1].Name != "Alpha" || allSummary[2].Name != "zeta" {
-		t.Errorf("order = %+v", allSummary)
+	sortVaultSummaries(summaries)
+	if summaries[0].Name != "Personal" || summaries[1].Name != "Alpha" || summaries[2].Name != "zeta" {
+		t.Errorf("order = %+v", summaries)
 	}
 }
 
@@ -239,14 +239,14 @@ func TestGeneratePassword(t *testing.T) {
 }
 
 func TestConvertError(t *testing.T) {
-	allCase := map[error]string{
+	cases := map[error]string{
 		session.ErrBadCredentials: "incorrect email, master password or Secret Key",
 		session.ErrConflict:       "changed on another device",
 		session.ErrRollback:       "older data",
 		&apiclient.APIError{Status: 403, Message: "admin only"}:        "permission",
 		&apiclient.APIError{Status: 429, Message: "too many requests"}: "wait a minute",
 	}
-	for input, want := range allCase {
+	for input, want := range cases {
 		if got := convertError(input).Error(); !strings.Contains(got, want) {
 			t.Errorf("%v -> %q, want %q", input, got, want)
 		}
@@ -265,7 +265,7 @@ func TestIntegrationDesktopFlow(t *testing.T) {
 	secretKeyStore := createMemorySecretKeyStore()
 	service, clipboard, _ := createTestService(t, statePath, secretKeyStore)
 	updater := &fakeUpdater{isAvailable: true}
-	CreateUpdateService(service, updater)
+	NewUpdateService(service, updater)
 
 	signUpResult, err := service.SignUp(inviteLink, email, "Desktop User", password)
 	if err != nil {
@@ -333,19 +333,19 @@ func TestIntegrationDesktopFlow(t *testing.T) {
 		t.Fatalf("turn off Touch ID: %+v %v", status, err)
 	}
 
-	allVault, err := service.ListAllVault()
-	if err != nil || len(allVault) != 1 || allVault[0].Name != "Personal" {
-		t.Fatalf("vaults after sign up: %+v %v", allVault, err)
+	vaults, err := service.ListVaults()
+	if err != nil || len(vaults) != 1 || vaults[0].Name != "Personal" {
+		t.Fatalf("vaults after sign up: %+v %v", vaults, err)
 	}
-	personalID := allVault[0].ID
+	personalID := vaults[0].ID
 
 	saved, err := service.SaveItem(personalID, ItemDetail{Title: "GitHub", Username: "desktop", URLs: []string{"https://github.com"}, Password: "hunter2hunter2"})
 	if err != nil || saved.ID == "" || saved.Revision == "" {
 		t.Fatalf("save: %+v %v", saved, err)
 	}
-	allItem, err := service.ListAllItem(personalID)
-	if err != nil || len(allItem) != 1 || allItem[0].Title != "GitHub" || allItem[0].Password != "" {
-		t.Fatalf("list must not include secrets: %+v %v", allItem, err)
+	items, err := service.ListItems(personalID)
+	if err != nil || len(items) != 1 || items[0].Title != "GitHub" || items[0].Password != "" {
+		t.Fatalf("list must not include secrets: %+v %v", items, err)
 	}
 	fetched, err := service.GetItem(personalID, saved.ID)
 	if err != nil || fetched.Password != "hunter2hunter2" {
@@ -362,12 +362,12 @@ func TestIntegrationDesktopFlow(t *testing.T) {
 	checkBrowserFlow(t, service, personalID)
 	checkRemoteChangeFlow(t, service, serverURL, email, signUpResult.SecretKey, password, personalID)
 
-	allStatusChange := make(chan string, 2)
-	AddStatusListener(service, func() { allStatusChange <- service.GetStatus().State })
+	statusChanges := make(chan string, 2)
+	AddStatusListener(service, func() { statusChanges <- service.GetStatus().State })
 	if status := service.Lock(); status.State != StateLocked {
 		t.Fatalf("lock: %+v", status)
 	}
-	expectStatusChange(t, allStatusChange, StateLocked)
+	expectStatusChange(t, statusChanges, StateLocked)
 	if _, err := service.GetItem(personalID, saved.ID); !errors.Is(err, ErrLocked) {
 		t.Errorf("get while locked: %v", err)
 	}
@@ -377,9 +377,9 @@ func TestIntegrationDesktopFlow(t *testing.T) {
 	if status, err := service.Unlock(password); err != nil || status.State != StateUnlocked || status.Name != "Desktop User" {
 		t.Fatalf("unlock: %+v %v", status, err)
 	}
-	expectStatusChange(t, allStatusChange, StateUnlocked)
+	expectStatusChange(t, statusChanges, StateUnlocked)
 
-	if _, err := service.ListAllItem(personalID); err != nil {
+	if _, err := service.ListItems(personalID); err != nil {
 		t.Fatal(err)
 	}
 	edited := saved
@@ -395,9 +395,9 @@ func TestIntegrationDesktopFlow(t *testing.T) {
 	if err != nil || family.Type != apitypes.VaultShared {
 		t.Fatalf("create vault: %+v %v", family, err)
 	}
-	allVault, _ = service.ListAllVault()
-	if len(allVault) != 2 || allVault[0].Name != "Personal" || allVault[1].Name != "Family" || allVault[0].ItemCount != 1 || allVault[1].ItemCount != 0 {
-		t.Errorf("vaults: %+v", allVault)
+	vaults, _ = service.ListVaults()
+	if len(vaults) != 2 || vaults[0].Name != "Personal" || vaults[1].Name != "Family" || vaults[0].ItemCount != 1 || vaults[1].ItemCount != 0 {
+		t.Errorf("vaults: %+v", vaults)
 	}
 
 	if memberInviteLink := os.Getenv("HISAR_TEST_MEMBER_INVITE_LINK"); memberInviteLink != "" {
@@ -409,13 +409,13 @@ func TestIntegrationDesktopFlow(t *testing.T) {
 	if err := service.DeleteItem(personalID, saved.ID); err != nil {
 		t.Fatal(err)
 	}
-	if allItem, _ := service.ListAllItem(personalID); len(allItem) != 0 {
-		t.Errorf("items after delete: %+v", allItem)
+	if items, _ := service.ListItems(personalID); len(items) != 0 {
+		t.Errorf("items after delete: %+v", items)
 	}
 
 	biometric := service.config.Biometric.(*fakeBiometric)
 	accountID := service.state.AccountID
-	if _, err := service.EnableBiometricUnlock("wrong password"); err == nil || len(biometric.allKey) != 0 {
+	if _, err := service.EnableBiometricUnlock("wrong password"); err == nil || len(biometric.keys) != 0 {
 		t.Errorf("enable Touch ID with wrong password: %v", err)
 	}
 	if status, err := service.EnableBiometricUnlock(password); err != nil || !status.BiometricEnabled || status.BiometricReady {
@@ -432,8 +432,8 @@ func TestIntegrationDesktopFlow(t *testing.T) {
 	if status, err := service.UnlockWithBiometric(); err != nil || status.State != StateUnlocked {
 		t.Fatalf("unlock with Touch ID: %+v %v", status, err)
 	}
-	if allVault, err := service.ListAllVault(); err != nil || len(allVault) != 2 {
-		t.Errorf("vaults after Touch ID unlock: %d %v", len(allVault), err)
+	if vaults, err := service.ListVaults(); err != nil || len(vaults) != 2 {
+		t.Errorf("vaults after Touch ID unlock: %d %v", len(vaults), err)
 	}
 
 	service.config.Now = func() time.Time { return time.Now().Add(15 * 24 * time.Hour) }
@@ -448,12 +448,12 @@ func TestIntegrationDesktopFlow(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	biometric.allKey[accountID] = crypt.GenerateKey()
+	biometric.keys[accountID] = crypt.GenerateKey()
 	service.Lock()
 	if _, err := service.UnlockWithBiometric(); err == nil || !strings.Contains(err.Error(), "turned off") {
 		t.Errorf("tampered Touch ID key: %v", err)
 	}
-	if status := service.GetStatus(); status.BiometricEnabled || len(biometric.allKey) != 0 {
+	if status := service.GetStatus(); status.BiometricEnabled || len(biometric.keys) != 0 {
 		t.Errorf("Touch ID still enabled after failure: %+v", status)
 	}
 	if _, err := service.Unlock(password); err != nil {
@@ -466,10 +466,10 @@ func TestIntegrationDesktopFlow(t *testing.T) {
 	if status, err := service.SignOut(); err != nil || status.State != StateSignedOut {
 		t.Fatalf("sign out: %+v %v", status, err)
 	}
-	if len(secretKeyStore.allByAccountID) != 0 {
+	if len(secretKeyStore.byAccountID) != 0 {
 		t.Error("Secret Key kept after sign out")
 	}
-	if len(biometric.allKey) != 0 || service.GetStatus().BiometricEnabled {
+	if len(biometric.keys) != 0 || service.GetStatus().BiometricEnabled {
 		t.Error("Touch ID key kept after sign out")
 	}
 
@@ -509,9 +509,9 @@ func checkOfflineFlow(t *testing.T, statePath string, secretKeyStore SecretKeySt
 	if _, err := service.Unlock(password); err != nil {
 		t.Fatal(err)
 	}
-	allOnlineVault, err := service.ListAllVault()
-	if err != nil || len(allOnlineVault) == 0 {
-		t.Fatalf("vaults before going offline: %+v %v", allOnlineVault, err)
+	onlineVaults, err := service.ListVaults()
+	if err != nil || len(onlineVaults) == 0 {
+		t.Fatalf("vaults before going offline: %+v %v", onlineVaults, err)
 	}
 	service.Lock()
 
@@ -525,11 +525,11 @@ func checkOfflineFlow(t *testing.T, statePath string, secretKeyStore SecretKeySt
 	if _, err := service.Unlock("wrong password"); err == nil || !strings.Contains(err.Error(), "incorrect") {
 		t.Errorf("offline unlock with a wrong password: %v", err)
 	}
-	allOfflineVault, err := service.ListAllVault()
-	if err != nil || !reflect.DeepEqual(allOfflineVault, allOnlineVault) {
-		t.Errorf("offline vaults = %+v, online %+v (%v)", allOfflineVault, allOnlineVault, err)
+	offlineVaults, err := service.ListVaults()
+	if err != nil || !reflect.DeepEqual(offlineVaults, onlineVaults) {
+		t.Errorf("offline vaults = %+v, online %+v (%v)", offlineVaults, onlineVaults, err)
 	}
-	if _, err := service.SaveItem(allOnlineVault[0].ID, ItemDetail{Title: "Written offline"}); !errors.Is(err, ErrOffline) {
+	if _, err := service.SaveItem(onlineVaults[0].ID, ItemDetail{Title: "Written offline"}); !errors.Is(err, ErrOffline) {
 		t.Errorf("save offline: %v", err)
 	}
 }

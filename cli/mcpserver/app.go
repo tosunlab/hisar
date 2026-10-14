@@ -35,8 +35,8 @@ type socketConnection struct {
 	lastID     int
 }
 
-// CreateSocketConnection speaks the CLI protocol on a connection the caller opened; timeout bounds each request.
-func CreateSocketConnection(connection net.Conn, timeout time.Duration) AppConnection {
+// NewSocketConnection speaks the CLI protocol on a connection the caller opened; timeout bounds each request.
+func NewSocketConnection(connection net.Conn, timeout time.Duration) AppConnection {
 	return &socketConnection{connection: connection, timeout: timeout}
 }
 

@@ -40,7 +40,7 @@ type InviteLinkService struct {
 	pendingInvite string
 }
 
-func CreateInviteLinkService() *InviteLinkService { return &InviteLinkService{} }
+func NewInviteLinkService() *InviteLinkService { return &InviteLinkService{} }
 
 // OpenInviteLink keeps the invite until the UI takes it; not a method, so the UI cannot call it.
 func OpenInviteLink(service *InviteLinkService, link string) (string, error) {

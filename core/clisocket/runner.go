@@ -21,7 +21,7 @@ type RunnerStatus struct {
 	ErrorMessage string
 }
 
-func CreateRunner(server *Server, socketPath string) *Runner {
+func NewRunner(server *Server, socketPath string) *Runner {
 	return &Runner{server: server, socketPath: socketPath}
 }
 
@@ -58,7 +58,7 @@ func (runner *Runner) Stop() {
 		cancel()
 		<-stopped
 	}
-	runner.server.ClearAllApproval()
+	runner.server.ClearApprovals()
 }
 
 func (runner *Runner) GetStatus() RunnerStatus {

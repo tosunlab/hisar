@@ -65,9 +65,9 @@ func Open(key, ciphertext, associatedData []byte) ([]byte, error) {
 }
 
 // encodeContext length-prefixes each field so that field boundaries are unambiguous.
-func encodeContext(label string, allField ...string) []byte {
+func encodeContext(label string, fields ...string) []byte {
 	encoded := []byte(label)
-	for _, field := range allField {
+	for _, field := range fields {
 		encoded = binary.BigEndian.AppendUint32(encoded, uint32(len(field)))
 		encoded = append(encoded, field...)
 	}

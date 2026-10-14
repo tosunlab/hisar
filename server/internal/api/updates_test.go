@@ -34,20 +34,20 @@ func setupUpdateServer(t *testing.T) *updateTestServer {
 	baseURL, server, _ := setupServer(t)
 	ctx := context.Background()
 	invite := requireValue[*apitypes.InviteResponse](t)(server.CreateInvite(ctx, "member@example.com", apitypes.RoleMember, nil))
-	signedUp, _, err := session.SignUp(ctx, apiclient.Create(baseURL), invite.Token, "member@example.com", "Member", []byte("member password"), testDevice)
+	signedUp, _, err := session.SignUp(ctx, apiclient.New(baseURL), invite.Token, "member@example.com", "Member", []byte("member password"), testDevice)
 	if err != nil {
 		t.Fatal(err)
 	}
 	fake := fakegithub.Start(t, fakegithub.DefaultRepository, updateGitHubToken)
 	archive := bytes.Repeat([]byte("hisar update archive "), 200<<10)
-	fake.AddRelease(fakegithub.CreateDesktopRelease(fakegithub.ReleaseConfig{
+	fake.AddRelease(fakegithub.NewDesktopRelease(fakegithub.ReleaseConfig{
 		Version: "0.2.0", BuildNumber: 2000, Archive: archive, ReleaseNotes: "New & <improved>", PublishedAt: time.Now(),
 	}))
-	gitHub, err := desktopupdate.CreateGitHub(desktopupdate.GitHubConfig{APIURL: fake.URL, Repository: fakegithub.DefaultRepository, Token: updateGitHubToken})
+	gitHub, err := desktopupdate.NewGitHub(desktopupdate.GitHubConfig{APIURL: fake.URL, Repository: fakegithub.DefaultRepository, Token: updateGitHubToken})
 	if err != nil {
 		t.Fatal(err)
 	}
-	server.config.DesktopUpdates = desktopupdate.CreateSource(gitHub, desktopupdate.SourceConfig{PublicURL: server.config.PublicURL})
+	server.config.DesktopUpdates = desktopupdate.NewSource(gitHub, desktopupdate.SourceConfig{PublicURL: server.config.PublicURL})
 	server.updateLimiter = createIPLimiter(rate.Inf, 1)
 	return &updateTestServer{baseURL: baseURL, server: server, token: signedUp.Client.Token, fake: fake, archive: archive}
 }
@@ -82,8 +82,8 @@ func TestDesktopUpdatesRequireSession(t *testing.T) {
 			}
 		}
 	}
-	if allRequest := updateServer.fake.GetAllRequest(); len(allRequest) != 0 {
-		t.Errorf("GitHub asked without a session: %+v", allRequest)
+	if requests := updateServer.fake.GetRequests(); len(requests) != 0 {
+		t.Errorf("GitHub asked without a session: %+v", requests)
 	}
 }
 
@@ -121,12 +121,12 @@ func TestDesktopAppcastAndDownload(t *testing.T) {
 	if response.Header.Get("Content-Type") != "application/octet-stream" {
 		t.Errorf("content type %q", response.Header.Get("Content-Type"))
 	}
-	for _, request := range updateServer.fake.GetAllRequest() {
+	for _, request := range updateServer.fake.GetRequests() {
 		if request.Authorization != "Bearer "+updateGitHubToken {
 			t.Errorf("GitHub got %q for %s", request.Authorization, request.Path)
 		}
 	}
-	for _, authorization := range updateServer.fake.GetAllStorageAuthorization() {
+	for _, authorization := range updateServer.fake.GetStorageAuthorizations() {
 		if authorization != "" {
 			t.Errorf("token forwarded to storage: %q", authorization)
 		}
@@ -151,13 +151,13 @@ func TestDesktopUpdateDownloadRefusesBadNames(t *testing.T) {
 	}
 	// Only update.json of 0.2.0 is read; no bad name reaches GitHub.
 	assetCount := 0
-	for _, request := range updateServer.fake.GetAllRequest() {
+	for _, request := range updateServer.fake.GetRequests() {
 		if strings.Contains(request.Path, "/releases/assets/") {
 			assetCount++
 		}
 	}
 	if assetCount != 1 {
-		t.Errorf("asked GitHub for %d assets: %+v", assetCount, updateServer.fake.GetAllRequest())
+		t.Errorf("asked GitHub for %d assets: %+v", assetCount, updateServer.fake.GetRequests())
 	}
 }
 

@@ -79,8 +79,8 @@ func isTrue() *bool {
 	return &value
 }
 
-// CreateServer returns the hisar MCP server; Close ends its connection to the app.
-func CreateServer(config Config) (*mcp.Server, func()) {
+// NewServer returns the hisar MCP server; Close ends its connection to the app.
+func NewServer(config Config) (*mcp.Server, func()) {
 	if config.Now == nil {
 		config.Now = time.Now
 	}
@@ -193,40 +193,40 @@ func (server *toolServer) runWithSecrets(ctx context.Context, request *mcp.CallT
 	if err != nil {
 		return nil, RunOutput{}, err
 	}
-	allUniqueReference := []string{}
-	for _, reference := range prepared.allReference {
-		if !slices.Contains(allUniqueReference, reference) {
-			allUniqueReference = append(allUniqueReference, reference)
+	uniqueReferences := []string{}
+	for _, reference := range prepared.references {
+		if !slices.Contains(uniqueReferences, reference) {
+			uniqueReferences = append(uniqueReferences, reference)
 		}
 	}
 	var result cliprotocol.ResolveSecretResult
-	appRequest := cliprotocol.Request{Type: cliprotocol.TypeAgentResolveSecret, References: allUniqueReference, CommandLine: input.Command, WorkingDirectory: prepared.workingDirectory}
+	appRequest := cliprotocol.Request{Type: cliprotocol.TypeAgentResolveSecret, References: uniqueReferences, CommandLine: input.Command, WorkingDirectory: prepared.workingDirectory}
 	if err := server.call(ctx, request, appRequest, &result); err != nil {
 		return nil, RunOutput{}, err
 	}
-	if len(result.Values) != len(allUniqueReference) {
+	if len(result.Values) != len(uniqueReferences) {
 		return nil, RunOutput{}, errors.New("the Hisar app answered with the wrong number of values")
 	}
 	valueByReference := map[string]string{}
-	for index, reference := range allUniqueReference {
+	for index, reference := range uniqueReferences {
 		valueByReference[reference] = result.Values[index]
 	}
 	output := RunOutput{}
-	allValueByName := map[string]string{}
-	for index, name := range prepared.allVariableName {
-		value := valueByReference[prepared.allReference[index]]
-		allValueByName[name] = value
+	valuesByName := map[string]string{}
+	for index, name := range prepared.variableNames {
+		value := valueByReference[prepared.references[index]]
+		valuesByName[name] = value
 		if len(value) < masking.MinimumLength {
 			output.Warnings = append(output.Warnings, fmt.Sprintf("%s is shorter than %d bytes and is not masked", name, masking.MinimumLength))
 		}
 	}
-	allBaseEntry := server.config.Environment
-	if allBaseEntry == nil {
-		allBaseEntry = os.Environ()
+	baseEntries := server.config.Environment
+	if baseEntries == nil {
+		baseEntries = os.Environ()
 	}
-	allWarning := output.Warnings
-	output, err = runPrepared(ctx, prepared, buildEnvironment(allBaseEntry, allValueByName), result.Values, server.config.KillDelay)
-	output.Warnings = allWarning
+	warnings := output.Warnings
+	output, err = runPrepared(ctx, prepared, buildEnvironment(baseEntries, valuesByName), result.Values, server.config.KillDelay)
+	output.Warnings = warnings
 	return nil, output, err
 }
 

@@ -7,13 +7,13 @@ import (
 )
 
 func TestGenerate(t *testing.T) {
-	allConfig := []GeneratorConfig{
+	configs := []GeneratorConfig{
 		DefaultGeneratorConfig(),
 		{Length: 4, Digits: true, Symbols: true},
 		{Length: 12},
 		{Length: 64, Digits: true},
 	}
-	for _, config := range allConfig {
+	for _, config := range configs {
 		seenPassword := map[string]bool{}
 		for range 50 {
 			password, err := GeneratePassword(config)

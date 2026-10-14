@@ -29,7 +29,7 @@ func createAccountCredential(accountID string, password []byte, register func(re
 		return nil, err
 	}
 	credential := &accountCredential{secretKey: secretKey, salt: crypt.GenerateSalt(), argon2Params: crypt.DefaultArgon2Params()}
-	derivedKeys, err := crypt.DeriveAllKey(password, credential.salt, credential.argon2Params, secretKey)
+	derivedKeys, err := crypt.DeriveKeys(password, credential.salt, credential.argon2Params, secretKey)
 	if err != nil {
 		return nil, err
 	}
@@ -76,7 +76,7 @@ func SignUpKeepingAccountUnlockKey(ctx context.Context, apiClient *apiclient.Cli
 		Salt:       credential.salt,
 		Argon2:     credential.argon2Params,
 		EncKeyset:  credential.encryptedKeyset,
-		PublicKeys: credential.keyset.GetAllPublicKey(accountID),
+		PublicKeys: credential.keyset.GetPublicKeys(accountID),
 		Device:     device,
 	})
 	if err != nil {
@@ -99,7 +99,7 @@ func LogIn(ctx context.Context, apiClient *apiclient.Client, email string, passw
 	if err != nil {
 		return nil, err
 	}
-	derivedKeys, err := crypt.DeriveAllKey(password, prelogin.Salt, prelogin.Argon2, secretKey)
+	derivedKeys, err := crypt.DeriveKeys(password, prelogin.Salt, prelogin.Argon2, secretKey)
 	if err != nil {
 		return nil, err
 	}
@@ -142,7 +142,7 @@ func deriveAccountKeys(ctx context.Context, apiClient *apiclient.Client, account
 	if account.AccountID != secretKey.AccountID {
 		return nil, false, nil, ErrBadCredentials
 	}
-	derivedKeys, err := crypt.DeriveAllKey(password, account.Salt, account.Argon2, secretKey)
+	derivedKeys, err := crypt.DeriveKeys(password, account.Salt, account.Argon2, secretKey)
 	if err != nil {
 		return nil, false, nil, err
 	}
@@ -191,7 +191,7 @@ func decryptAccountKeyset(account *apitypes.Account, apiClient *apiclient.Client
 	if err != nil {
 		return nil, ErrBadCredentials
 	}
-	ownPublicKeyBundle := keyset.GetAllPublicKey(account.AccountID)
+	ownPublicKeyBundle := keyset.GetPublicKeys(account.AccountID)
 	if !bytes.Equal(ownPublicKeyBundle.KEM, account.PublicKeys.KEM) || !bytes.Equal(ownPublicKeyBundle.Sign, account.PublicKeys.Sign) {
 		keyset.Wipe()
 		return nil, ErrKeyMismatch

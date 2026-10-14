@@ -13,9 +13,9 @@ import (
 )
 
 const (
-	PasskeySignalUnknownCredential      = "passkeys.signalUnknownCredential"
-	PasskeySignalAllAcceptedCredentials = "passkeys.signalAllAcceptedCredentials"
-	PasskeySignalCurrentUserDetails     = "passkeys.signalCurrentUserDetails"
+	PasskeySignalUnknownCredential   = "passkeys.signalUnknownCredential"
+	PasskeySignalAcceptedCredentials = "passkeys.signalAllAcceptedCredentials"
+	PasskeySignalCurrentUserDetails  = "passkeys.signalCurrentUserDetails"
 )
 
 // passkeySignalChange returns the passkey to keep (nil removes it) and whether it changed.
@@ -38,27 +38,27 @@ func decodeSignalUserHandle(encoded string) ([]byte, error) {
 func buildPasskeySignalChange(signalType string, request *browserprotocol.PasskeyRequest) (passkeySignalChange, error) {
 	switch signalType {
 	case PasskeySignalUnknownCredential:
-		allCredentialID, err := decodeAllCredentialID([]string{request.CredentialID})
+		credentialIDs, err := decodeCredentialIDs([]string{request.CredentialID})
 		if err != nil {
 			return nil, err
 		}
 		return func(storedPasskey item.Passkey) (*item.Passkey, bool) {
-			if bytes.Equal(storedPasskey.CredentialID, allCredentialID[0]) {
+			if bytes.Equal(storedPasskey.CredentialID, credentialIDs[0]) {
 				return nil, true
 			}
 			return &storedPasskey, false
 		}, nil
-	case PasskeySignalAllAcceptedCredentials:
+	case PasskeySignalAcceptedCredentials:
 		userHandle, err := decodeSignalUserHandle(request.UserHandle)
 		if err != nil {
 			return nil, err
 		}
-		allAcceptedID, err := decodeAllCredentialID(request.AllAcceptedCredentialID)
+		acceptedIDs, err := decodeCredentialIDs(request.AcceptedCredentialIDs)
 		if err != nil {
 			return nil, err
 		}
 		return func(storedPasskey item.Passkey) (*item.Passkey, bool) {
-			if bytes.Equal(storedPasskey.UserHandle, userHandle) && !containsCredentialID(allAcceptedID, storedPasskey.CredentialID) {
+			if bytes.Equal(storedPasskey.UserHandle, userHandle) && !containsCredentialID(acceptedIDs, storedPasskey.CredentialID) {
 				return nil, true
 			}
 			return &storedPasskey, false
@@ -84,11 +84,11 @@ func buildPasskeySignalChange(signalType string, request *browserprotocol.Passke
 }
 
 func applyPasskeySignalChange(vaultItem *item.Item, relyingPartyID string, change passkeySignalChange) ([]item.Passkey, int) {
-	allPasskey := make([]item.Passkey, 0, len(vaultItem.Details.Passkeys))
+	passkeys := make([]item.Passkey, 0, len(vaultItem.Details.Passkeys))
 	changeCount := 0
 	for _, storedPasskey := range vaultItem.Details.Passkeys {
 		if storedPasskey.RelyingPartyID != relyingPartyID {
-			allPasskey = append(allPasskey, storedPasskey)
+			passkeys = append(passkeys, storedPasskey)
 			continue
 		}
 		kept, isChanged := change(storedPasskey)
@@ -96,10 +96,10 @@ func applyPasskeySignalChange(vaultItem *item.Item, relyingPartyID string, chang
 			changeCount++
 		}
 		if kept != nil {
-			allPasskey = append(allPasskey, *kept)
+			passkeys = append(passkeys, *kept)
 		}
 	}
-	return allPasskey, changeCount
+	return passkeys, changeCount
 }
 
 // applyPasskeySignal is best effort: locked or signed out, it changes nothing and reports no error.
@@ -120,29 +120,29 @@ func (s *Service) applyPasskeySignal(ctx context.Context, signalType string, req
 	if s.requireUnlockedWithoutActivity() != nil {
 		return browserprotocol.PasskeySignalResult{}, nil
 	}
-	if err := s.loadAllItemOfAllVault(ctx); err != nil {
+	if err := s.loadItemsOfAllVault(ctx); err != nil {
 		return browserprotocol.PasskeySignalResult{}, err
 	}
-	var allPendingSave []pendingPasskeySignalSave
-	for vaultID, allItem := range s.allItemByVaultID {
-		if vault := s.allVaultByID[vaultID]; vault == nil || vault.Role == apitypes.VaultReader {
+	var pendingSaves []pendingPasskeySignalSave
+	for vaultID, items := range s.itemsByVaultID {
+		if vault := s.vaultsByID[vaultID]; vault == nil || vault.Role == apitypes.VaultReader {
 			continue
 		}
-		for _, vaultItem := range allItem {
+		for _, vaultItem := range items {
 			if !isLoginItem(&vaultItem) {
 				continue
 			}
-			allPasskey, changeCount := applyPasskeySignalChange(&vaultItem, relyingPartyID, change)
+			passkeys, changeCount := applyPasskeySignalChange(&vaultItem, relyingPartyID, change)
 			if changeCount == 0 {
 				continue
 			}
-			vaultItem.Details.Passkeys = allPasskey
+			vaultItem.Details.Passkeys = passkeys
 			item.UpdatePasskeyOverview(&vaultItem)
-			allPendingSave = append(allPendingSave, pendingPasskeySignalSave{vaultID: vaultID, vaultItem: vaultItem, changeCount: changeCount})
+			pendingSaves = append(pendingSaves, pendingPasskeySignalSave{vaultID: vaultID, vaultItem: vaultItem, changeCount: changeCount})
 		}
 	}
 	result := browserprotocol.PasskeySignalResult{}
-	for _, pendingSave := range allPendingSave {
+	for _, pendingSave := range pendingSaves {
 		vault, err := s.findVault(ctx, pendingSave.vaultID)
 		if err != nil {
 			return result, err

@@ -21,13 +21,13 @@ func getModificationTime(path string) (time.Time, error) {
 	}
 	contentsPath := filepath.Join(path, "Contents")
 	executableDirectory := filepath.Join(contentsPath, "MacOS")
-	allPath := []string{contentsPath, filepath.Join(contentsPath, "Info.plist"), executableDirectory, filepath.Join(contentsPath, "_CodeSignature", "CodeResources")}
-	if allEntry, err := os.ReadDir(executableDirectory); err == nil {
-		for _, entry := range allEntry {
-			allPath = append(allPath, filepath.Join(executableDirectory, entry.Name()))
+	paths := []string{contentsPath, filepath.Join(contentsPath, "Info.plist"), executableDirectory, filepath.Join(contentsPath, "_CodeSignature", "CodeResources")}
+	if entries, err := os.ReadDir(executableDirectory); err == nil {
+		for _, entry := range entries {
+			paths = append(paths, filepath.Join(executableDirectory, entry.Name()))
 		}
 	}
-	for _, candidatePath := range allPath {
+	for _, candidatePath := range paths {
 		if candidateInfo, err := os.Stat(candidatePath); err == nil && candidateInfo.ModTime().After(latest) {
 			latest = candidateInfo.ModTime()
 		}
@@ -46,7 +46,7 @@ func (resolver *Resolver) DescribeApp(bundlePath string) App {
 
 func (resolver *Resolver) getBundleName(bundlePath string) string {
 	resolver.mutex.Lock()
-	name, isCached := resolver.allNameByPath[bundlePath]
+	name, isCached := resolver.namesByPath[bundlePath]
 	resolver.mutex.Unlock()
 	if isCached {
 		return name
@@ -58,7 +58,7 @@ func (resolver *Resolver) getBundleName(bundlePath string) string {
 		name = strings.TrimSuffix(filepath.Base(bundlePath), ".app")
 	}
 	resolver.mutex.Lock()
-	resolver.allNameByPath[bundlePath] = name
+	resolver.namesByPath[bundlePath] = name
 	resolver.mutex.Unlock()
 	return name
 }
@@ -67,7 +67,7 @@ func (resolver *Resolver) getBundleName(bundlePath string) string {
 func (resolver *Resolver) GetIconPNG(bundlePath string, size int) ([]byte, error) {
 	key := bundlePath + "\x00" + strconv.Itoa(size)
 	resolver.mutex.Lock()
-	icon, isCached := resolver.allIconByKey[key]
+	icon, isCached := resolver.iconsByKey[key]
 	resolver.mutex.Unlock()
 	if isCached {
 		return icon, nil
@@ -80,7 +80,7 @@ func (resolver *Resolver) GetIconPNG(bundlePath string, size int) ([]byte, error
 		return nil, err
 	}
 	resolver.mutex.Lock()
-	resolver.allIconByKey[key] = icon
+	resolver.iconsByKey[key] = icon
 	resolver.mutex.Unlock()
 	return icon, nil
 }
@@ -90,30 +90,30 @@ func (resolver *Resolver) getSignature(path string) Signature {
 	if resolver.system.GetSignature == nil {
 		return Signature{}
 	}
-	return resolver.getCachedSignature(resolver.allSignatureByPath, path, resolver.system.GetSignature)
+	return resolver.getCachedSignature(resolver.signaturesByPath, path, resolver.system.GetSignature)
 }
 
 // getTeamID reads the Team ID a file is signed with, without checking the signature.
 func (resolver *Resolver) getTeamID(path string) string {
-	return resolver.getCachedSignature(resolver.allTeamIDByPath, path, func(path string) Signature {
+	return resolver.getCachedSignature(resolver.teamIDsByPath, path, func(path string) Signature {
 		return Signature{TeamID: resolver.system.GetTeamID(path)}
 	}).TeamID
 }
 
-func (resolver *Resolver) getCachedSignature(allCachedByPath map[string]cachedSignature, path string, read func(path string) Signature) Signature {
+func (resolver *Resolver) getCachedSignature(cachedByPath map[string]cachedSignature, path string, read func(path string) Signature) Signature {
 	modificationTime, err := resolver.system.GetModificationTime(path)
 	if err != nil {
 		return read(path)
 	}
 	resolver.mutex.Lock()
-	cached, isCached := allCachedByPath[path]
+	cached, isCached := cachedByPath[path]
 	resolver.mutex.Unlock()
 	if isCached && cached.modificationTime.Equal(modificationTime) {
 		return cached.signature
 	}
 	signature := read(path)
 	resolver.mutex.Lock()
-	allCachedByPath[path] = cachedSignature{modificationTime: modificationTime, signature: signature}
+	cachedByPath[path] = cachedSignature{modificationTime: modificationTime, signature: signature}
 	resolver.mutex.Unlock()
 	return signature
 }

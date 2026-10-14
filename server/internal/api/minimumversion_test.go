@@ -14,7 +14,7 @@ import (
 
 func createMinimumVersionApp(t *testing.T, minimumVersions MinimumVersions) *fiber.App {
 	t.Helper()
-	server, err := CreateServer(nil, generateAllSecret(), Config{MinimumVersions: minimumVersions})
+	server, err := NewServer(nil, generateSecrets(), Config{MinimumVersions: minimumVersions})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,19 +125,19 @@ func TestMinimumVersionLetsOtherRequestsThrough(t *testing.T) {
 }
 
 func TestVersionCheckRateLimit(t *testing.T) {
-	server, err := CreateServer(nil, generateAllSecret(), Config{})
+	server, err := NewServer(nil, generateSecrets(), Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
 	server.versionCheckLimiter = createIPLimiter(0, 1)
 	app := server.CreateApp()
-	allStatus := []int{}
+	statuses := []int{}
 	for range 2 {
 		status, _ := sendVersionedRequest(t, app, "GET", "/api/v1/version-check", "", "")
-		allStatus = append(allStatus, status)
+		statuses = append(statuses, status)
 	}
-	if allStatus[0] != http.StatusNoContent || allStatus[1] != http.StatusTooManyRequests {
-		t.Errorf("statuses %v", allStatus)
+	if statuses[0] != http.StatusNoContent || statuses[1] != http.StatusTooManyRequests {
+		t.Errorf("statuses %v", statuses)
 	}
 }
 

@@ -9,11 +9,11 @@ import (
 	"time"
 )
 
-func maskAll(t *testing.T, allSecret []string, allChunk ...string) string {
+func maskAll(t *testing.T, secrets []string, chunks ...string) string {
 	t.Helper()
 	var output bytes.Buffer
-	masker := CreateSecretMasker(&output, allSecret)
-	for _, chunk := range allChunk {
+	masker := NewSecretMasker(&output, secrets)
+	for _, chunk := range chunks {
 		masker.Write([]byte(chunk))
 	}
 	if err := masker.Flush(); err != nil {
@@ -23,10 +23,10 @@ func maskAll(t *testing.T, allSecret []string, allChunk ...string) string {
 }
 
 func TestMaskReplacesEveryOccurrence(t *testing.T) {
-	allCase := []struct {
-		allSecret []string
-		input     string
-		expected  string
+	cases := []struct {
+		secrets  []string
+		input    string
+		expected string
 	}{
 		{[]string{"hunter22"}, "password=hunter22\nagain hunter22!", "password=<concealed by hisar>\nagain <concealed by hisar>!"},
 		{[]string{"abcdef", "cdefgh"}, "xabcdefghy", "x<concealed by hisar>y"},
@@ -39,39 +39,39 @@ func TestMaskReplacesEveryOccurrence(t *testing.T) {
 		{[]string{"şifre-değeri"}, "değer: şifre-değeri.", "değer: <concealed by hisar>."},
 		{nil, "nothing to hide", "nothing to hide"},
 	}
-	for _, testCase := range allCase {
-		if output := maskAll(t, testCase.allSecret, testCase.input); output != testCase.expected {
-			t.Errorf("mask %q in %q = %q; want %q", testCase.allSecret, testCase.input, output, testCase.expected)
+	for _, testCase := range cases {
+		if output := maskAll(t, testCase.secrets, testCase.input); output != testCase.expected {
+			t.Errorf("mask %q in %q = %q; want %q", testCase.secrets, testCase.input, output, testCase.expected)
 		}
 	}
 }
 
 func TestMaskFindsSecretsAcrossEveryWriteBoundary(t *testing.T) {
-	allSecret := []string{"s3cr3t-value", "value-2-xyz", "token"}
+	secrets := []string{"s3cr3t-value", "value-2-xyz", "token"}
 	input := "a s3cr3t-value-2-xyz b token\ntokens s3cr3t-valu s3cr3t-value"
-	expected := maskAll(t, allSecret, input)
+	expected := maskAll(t, secrets, input)
 	if expected != "a <concealed by hisar> b <concealed by hisar>\n<concealed by hisar>s s3cr3t-valu <concealed by hisar>" {
 		t.Fatalf("whole input: %q", expected)
 	}
 	for first := 0; first <= len(input); first++ {
 		for second := first; second <= len(input); second++ {
-			if output := maskAll(t, allSecret, input[:first], input[first:second], input[second:]); output != expected {
+			if output := maskAll(t, secrets, input[:first], input[first:second], input[second:]); output != expected {
 				t.Fatalf("split at %d and %d: %q", first, second, output)
 			}
 		}
 	}
-	allByte := make([]string, 0, len(input))
+	byteValues := make([]string, 0, len(input))
 	for index := range input {
-		allByte = append(allByte, input[index:index+1])
+		byteValues = append(byteValues, input[index:index+1])
 	}
-	if output := maskAll(t, allSecret, allByte...); output != expected {
+	if output := maskAll(t, secrets, byteValues...); output != expected {
 		t.Errorf("one byte at a time: %q", output)
 	}
 }
 
 func TestMaskHoldsBackOnlyAPossibleSecret(t *testing.T) {
 	var output bytes.Buffer
-	masker := CreateSecretMasker(&output, []string{"hunter22"})
+	masker := NewSecretMasker(&output, []string{"hunter22"})
 	masker.Write([]byte("Enter the code: hun"))
 	if output.String() != "Enter the code: " || !masker.hasHeld() {
 		t.Errorf("written %q while a secret may follow", output.String())
@@ -87,9 +87,9 @@ func TestMaskHoldsBackOnlyAPossibleSecret(t *testing.T) {
 }
 
 func TestMaskSkipsShortAndDuplicateValues(t *testing.T) {
-	masker := CreateSecretMasker(io.Discard, []string{"abc", "", "abcd", "abcd"})
-	if len(masker.allSecret) != 1 || string(masker.allSecret[0]) != "abcd" {
-		t.Errorf("secrets %q", masker.allSecret)
+	masker := NewSecretMasker(io.Discard, []string{"abc", "", "abcd", "abcd"})
+	if len(masker.secrets) != 1 || string(masker.secrets[0]) != "abcd" {
+		t.Errorf("secrets %q", masker.secrets)
 	}
 }
 
@@ -126,7 +126,7 @@ func TestCopyMaskedFlushesAHeldTailAfterTheDelay(t *testing.T) {
 	var output lockedBuffer
 	done := make(chan error, 1)
 	go func() {
-		done <- CopyMasked(CreateSecretMasker(&output, []string{"hunter22"}), reader, 50*time.Millisecond, nil)
+		done <- CopyMasked(NewSecretMasker(&output, []string{"hunter22"}), reader, 50*time.Millisecond, nil)
 	}()
 	writer.Write([]byte("Password: hunt"))
 	waitForText(t, &output, "Password: ", time.Second)
@@ -150,7 +150,7 @@ func TestCopyMaskedJoinsAValueSplitAcrossQuickWrites(t *testing.T) {
 	var output lockedBuffer
 	done := make(chan error, 1)
 	go func() {
-		done <- CopyMasked(CreateSecretMasker(&output, []string{"hunter22"}), reader, time.Second, nil)
+		done <- CopyMasked(NewSecretMasker(&output, []string{"hunter22"}), reader, time.Second, nil)
 	}()
 	for _, chunk := range []string{"token=hu", "nte", "r22\n"} {
 		writer.Write([]byte(chunk))
@@ -169,7 +169,7 @@ func TestCopyMaskedStopsWhenAsked(t *testing.T) {
 	var output lockedBuffer
 	stop := make(chan struct{})
 	done := make(chan error, 1)
-	go func() { done <- CopyMasked(CreateSecretMasker(&output, []string{"hunter22"}), reader, time.Hour, stop) }()
+	go func() { done <- CopyMasked(NewSecretMasker(&output, []string{"hunter22"}), reader, time.Hour, stop) }()
 	writer.Write([]byte("left open by a background process: hunt"))
 	waitForText(t, &output, "left open by a background process: ", time.Second)
 	close(stop)

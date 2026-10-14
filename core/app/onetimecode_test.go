@@ -24,9 +24,9 @@ func TestOneTimePassword(t *testing.T) {
 	if saved.OneTimePassword != "otpauth://totp/?secret="+secret || !saved.HasOneTimePassword {
 		t.Errorf("stored = %q", saved.OneTimePassword)
 	}
-	allSummary, err := service.ListAllItem(testService.personalID)
-	if err != nil || len(allSummary) != 1 || allSummary[0].OneTimePassword != "" || !allSummary[0].HasOneTimePassword {
-		t.Fatalf("summary = %+v %v", allSummary, err)
+	summaries, err := service.ListItems(testService.personalID)
+	if err != nil || len(summaries) != 1 || summaries[0].OneTimePassword != "" || !summaries[0].HasOneTimePassword {
+		t.Fatalf("summary = %+v %v", summaries, err)
 	}
 
 	config, _ := totp.Parse(saved.OneTimePassword)

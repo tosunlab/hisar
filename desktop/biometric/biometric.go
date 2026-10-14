@@ -29,7 +29,7 @@ type Biometric struct {
 }
 
 // Create returns a Biometric storing keys as generic passwords under the given keychain service name.
-func Create(service string) *Biometric {
+func New(service string) *Biometric {
 	return &Biometric{service: service}
 }
 

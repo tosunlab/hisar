@@ -22,19 +22,19 @@ type byteRange struct {
 // SecretMasker replaces every occurrence of a secret with ConcealedText. It holds back only a tail that could
 // still become a secret, so a value split across writes is still found.
 type SecretMasker struct {
-	allSecret     [][]byte
+	secrets       [][]byte
 	maximumLength int
 	held          []byte
 	output        io.Writer
 }
 
-func CreateSecretMasker(output io.Writer, allValue []string) *SecretMasker {
+func NewSecretMasker(output io.Writer, values []string) *SecretMasker {
 	masker := &SecretMasker{output: output}
-	for _, value := range allValue {
-		if len(value) < MinimumLength || slices.ContainsFunc(masker.allSecret, func(secret []byte) bool { return string(secret) == value }) {
+	for _, value := range values {
+		if len(value) < MinimumLength || slices.ContainsFunc(masker.secrets, func(secret []byte) bool { return string(secret) == value }) {
 			continue
 		}
-		masker.allSecret = append(masker.allSecret, []byte(value))
+		masker.secrets = append(masker.secrets, []byte(value))
 		masker.maximumLength = max(masker.maximumLength, len(value))
 	}
 	return masker
@@ -59,15 +59,15 @@ func (masker *SecretMasker) emit(isFinal bool) error {
 	if !isFinal {
 		holdFrom = masker.findPartialStart(data)
 	}
-	allRun := masker.findAllRun(data)
-	for _, run := range allRun {
+	runs := masker.findRuns(data)
+	for _, run := range runs {
 		if run.start < holdFrom && run.end > holdFrom {
 			holdFrom = run.start
 		}
 	}
 	output := make([]byte, 0, holdFrom)
 	position := 0
-	for _, run := range allRun {
+	for _, run := range runs {
 		if run.end > holdFrom {
 			break
 		}
@@ -88,7 +88,7 @@ func (masker *SecretMasker) emit(isFinal bool) error {
 func (masker *SecretMasker) findPartialStart(data []byte) int {
 	for start := max(0, len(data)-masker.maximumLength+1); start < len(data); start++ {
 		tail := data[start:]
-		for _, secret := range masker.allSecret {
+		for _, secret := range masker.secrets {
 			if len(secret) > len(tail) && bytes.HasPrefix(secret, tail) {
 				return start
 			}
@@ -97,29 +97,29 @@ func (masker *SecretMasker) findPartialStart(data []byte) int {
 	return len(data)
 }
 
-// findAllRun finds every occurrence of every secret and merges the ones that overlap into one run.
-func (masker *SecretMasker) findAllRun(data []byte) []byteRange {
-	var allMatch []byteRange
-	for _, secret := range masker.allSecret {
+// findRuns finds every occurrence of every secret and merges the ones that overlap into one run.
+func (masker *SecretMasker) findRuns(data []byte) []byteRange {
+	var matches []byteRange
+	for _, secret := range masker.secrets {
 		for start := 0; start <= len(data)-len(secret); {
 			index := bytes.Index(data[start:], secret)
 			if index < 0 {
 				break
 			}
-			allMatch = append(allMatch, byteRange{start: start + index, end: start + index + len(secret)})
+			matches = append(matches, byteRange{start: start + index, end: start + index + len(secret)})
 			start += index + 1
 		}
 	}
-	slices.SortFunc(allMatch, func(first, second byteRange) int { return first.start - second.start })
-	var allRun []byteRange
-	for _, match := range allMatch {
-		if last := len(allRun) - 1; last >= 0 && match.start < allRun[last].end {
-			allRun[last].end = max(allRun[last].end, match.end)
+	slices.SortFunc(matches, func(first, second byteRange) int { return first.start - second.start })
+	var runs []byteRange
+	for _, match := range matches {
+		if last := len(runs) - 1; last >= 0 && match.start < runs[last].end {
+			runs[last].end = max(runs[last].end, match.end)
 			continue
 		}
-		allRun = append(allRun, match)
+		runs = append(runs, match)
 	}
-	return allRun
+	return runs
 }
 
 // CopyMasked copies source to the masker until source ends or stop closes; a held tail is written as it is

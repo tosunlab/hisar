@@ -156,16 +156,16 @@ func findAppVault(ctx context.Context, client *appClient, nameOrID string) (clip
 	return cliprotocol.Vault{}, fmt.Errorf("vault %q: not found", nameOrID)
 }
 
-func listAllAppItem(ctx context.Context, client *appClient, vaultID string) ([]item.Item, error) {
+func listAppItems(ctx context.Context, client *appClient, vaultID string) ([]item.Item, error) {
 	var itemList cliprotocol.ItemListResult
 	if err := client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeListItem, VaultID: vaultID}, &itemList); err != nil {
 		return nil, err
 	}
-	allItem := make([]item.Item, 0, len(itemList.Items))
+	items := make([]item.Item, 0, len(itemList.Items))
 	for _, appItem := range itemList.Items {
-		allItem = append(allItem, convertFromAppItem(appItem))
+		items = append(items, convertFromAppItem(appItem))
 	}
-	return allItem, nil
+	return items, nil
 }
 
 func getAppItem(ctx context.Context, client *appClient, vaultID, itemID string) (*item.Item, error) {
@@ -183,11 +183,11 @@ func findAppItem(ctx context.Context, client *appClient, vaultName, query string
 	if err != nil {
 		return vault, nil, err
 	}
-	allItem, err := listAllAppItem(ctx, client, vault.ID)
+	items, err := listAppItems(ctx, client, vault.ID)
 	if err != nil {
 		return vault, nil, err
 	}
-	summary, err := findItem(allItem, query)
+	summary, err := findItem(items, query)
 	if err != nil {
 		return vault, nil, err
 	}

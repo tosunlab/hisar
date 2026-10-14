@@ -24,18 +24,18 @@ func (approver *Approver) buildCommandLineEvent(requestID string, request clisoc
 		TerminalName:      request.TerminalName,
 		IsTouchIDApproval: approver.IsTouchIDApproval(),
 		TimeoutAt:         approver.config.Now().Add(approver.config.Timeout).UTC().Format(time.RFC3339),
-		AllSecretName:     []string{},
-		AllChainProcess:   []ChainProcess{},
+		SecretNames:       []string{},
+		ChainProcesses:    []ChainProcess{},
 	}
 	if request.IsSecretRequest {
-		event.Action = describeSecretAction(len(request.AllSecretName), len(request.CommandLine) > 0)
+		event.Action = describeSecretAction(len(request.SecretNames), len(request.CommandLine) > 0)
 		event.CommandLine = formatCommandLine(request.CommandLine)
-		event.AllSecretName, event.MoreSecretCount = limitSecretName(request.AllSecretName)
+		event.SecretNames, event.MoreSecretCount = limitSecretName(request.SecretNames)
 	}
 	if request.ShareLink != nil {
 		event.Action = fmt.Sprintf("create a share link for “%s”", truncateText(request.ShareLink.Title, maximumSecretNameCount))
 		event.CommandLine = request.ShareLink.Detail
-		event.AllSecretName, event.MoreSecretCount = limitSecretName(request.ShareLink.AllFieldLabel)
+		event.SecretNames, event.MoreSecretCount = limitSecretName(request.ShareLink.FieldLabels)
 		event.Warning = shareLinkWarning
 	}
 	if request.Export != nil {
@@ -70,7 +70,7 @@ func (approver *Approver) buildCommandLinePhoneDescription(event ApprovalEvent) 
 	if event.Action != "" {
 		description.Purpose = event.Action
 		description.CommandLine = event.CommandLine
-		description.Secrets = append([]string{}, event.AllSecretName...)
+		description.Secrets = append([]string{}, event.SecretNames...)
 		if event.MoreSecretCount > 0 {
 			description.Secrets = append(description.Secrets, fmt.Sprintf("and %d more", event.MoreSecretCount))
 		}

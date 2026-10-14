@@ -22,7 +22,7 @@ import (
 )
 
 func TestResolveRelyingPartyID(t *testing.T) {
-	allCase := []struct {
+	cases := []struct {
 		origin          string
 		relyingPartyID  string
 		expectedID      string
@@ -57,7 +57,7 @@ func TestResolveRelyingPartyID(t *testing.T) {
 		{"null", "", "", true},
 		{"", "", "", true},
 	}
-	for _, testCase := range allCase {
+	for _, testCase := range cases {
 		relyingPartyID, err := ResolveRelyingPartyID(testCase.origin, testCase.relyingPartyID)
 		if testCase.isErrorExpected {
 			if err == nil {
@@ -139,12 +139,12 @@ func TestEncodeCOSEPublicKey(t *testing.T) {
 }
 
 func TestBuildAttestationObject(t *testing.T) {
-	allCase := map[int]string{
+	cases := map[int]string{
 		5:   "45",
 		37:  "5825",
 		300: "59012c",
 	}
-	for length, lengthHeader := range allCase {
+	for length, lengthHeader := range cases {
 		authenticatorData := bytes.Repeat([]byte{0xaa}, length)
 		encoded := BuildAttestationObject(authenticatorData)
 		prefix := "a3" + "63666d74" + "646e6f6e65" + "6761747453746d74" + "a0" + "68617574684461746" + "1" + lengthHeader
@@ -193,7 +193,7 @@ func TestBuildAuthenticatorData(t *testing.T) {
 
 type testUser struct {
 	userHandle      []byte
-	allCredential   []webauthn.Credential
+	credentials     []webauthn.Credential
 	userName        string
 	userDisplayName string
 }
@@ -201,15 +201,15 @@ type testUser struct {
 func (user *testUser) WebAuthnID() []byte                         { return user.userHandle }
 func (user *testUser) WebAuthnName() string                       { return user.userName }
 func (user *testUser) WebAuthnDisplayName() string                { return user.userDisplayName }
-func (user *testUser) WebAuthnCredentials() []webauthn.Credential { return user.allCredential }
+func (user *testUser) WebAuthnCredentials() []webauthn.Credential { return user.credentials }
 
 func encodeBase64URL(value []byte) string {
 	return base64.RawURLEncoding.EncodeToString(value)
 }
 
-func createTestRelyingParty(t *testing.T, relyingPartyID string, allOrigin ...string) *webauthn.WebAuthn {
+func createTestRelyingParty(t *testing.T, relyingPartyID string, origins ...string) *webauthn.WebAuthn {
 	t.Helper()
-	relyingParty, err := webauthn.New(&webauthn.Config{RPID: relyingPartyID, RPDisplayName: "Example", RPOrigins: allOrigin})
+	relyingParty, err := webauthn.New(&webauthn.Config{RPID: relyingPartyID, RPDisplayName: "Example", RPOrigins: origins})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -308,7 +308,7 @@ func TestCreateAndSignVerifiedByWebAuthnLibrary(t *testing.T) {
 		t.Fatalf("SPKI public key does not belong to the stored key: %v", err)
 	}
 
-	user.allCredential = []webauthn.Credential{*credential}
+	user.credentials = []webauthn.Credential{*credential}
 	assertionRequest := AssertionRequest{Origin: "https://login.example.com", RelyingPartyID: "example.com"}
 	if err := signInWithRelyingParty(t, relyingParty, user, assertionRequest, "example.com", creation.CredentialID, creation.PrivateKey); err != nil {
 		t.Fatalf("sign in rejected: %v", err)
@@ -370,7 +370,7 @@ func TestSignAssertionRejectsBadKey(t *testing.T) {
 }
 
 func TestValidateRelyingPartyID(t *testing.T) {
-	allCase := []struct {
+	cases := []struct {
 		relyingPartyID  string
 		expectedID      string
 		isErrorExpected bool
@@ -396,7 +396,7 @@ func TestValidateRelyingPartyID(t *testing.T) {
 		{"exa mple.com", "", true},
 		{strings.Repeat("a", 250) + ".com", "", true},
 	}
-	for _, testCase := range allCase {
+	for _, testCase := range cases {
 		relyingPartyID, err := ValidateRelyingPartyID(testCase.relyingPartyID)
 		if testCase.isErrorExpected {
 			if !errors.Is(err, ErrInvalidRelyingPartyID) {
@@ -450,7 +450,7 @@ func TestClientDataHashCeremoniesVerifiedByWebAuthnLibrary(t *testing.T) {
 	if credential.AttestationFormat != "none" || !credential.Flags.UserPresent || !credential.Flags.UserVerified || !credential.Flags.BackupEligible || !credential.Flags.BackupState || credential.Authenticator.SignCount != 0 {
 		t.Errorf("credential = %+v", credential)
 	}
-	user.allCredential = []webauthn.Credential{*credential}
+	user.credentials = []webauthn.Credential{*credential}
 
 	assertionOptions, assertionSession, err := relyingParty.BeginDiscoverableLogin()
 	if err != nil {

@@ -10,27 +10,27 @@ import (
 )
 
 type memorySource struct {
-	allVault       []Vault
-	allItemByVault map[string][]item.Item
+	vaults         []Vault
+	itemsByVault   map[string][]item.Item
 	listItemCount  int
 	vaultListError error
 }
 
-func (source *memorySource) ListAllVault() ([]Vault, error) {
-	return source.allVault, source.vaultListError
+func (source *memorySource) ListVaults() ([]Vault, error) {
+	return source.vaults, source.vaultListError
 }
 
-func (source *memorySource) ListAllItem(vaultID string) ([]item.Item, error) {
+func (source *memorySource) ListItems(vaultID string) ([]item.Item, error) {
 	source.listItemCount++
-	return source.allItemByVault[vaultID], nil
+	return source.itemsByVault[vaultID], nil
 }
 
 const rfcOneTimePassword = "otpauth://totp/Example?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
 
 func createTestSource() *memorySource {
 	return &memorySource{
-		allVault: []Vault{{ID: "vault-personal", Name: "Personal"}, {ID: "vault-work-1", Name: "Work"}, {ID: "vault-work-2", Name: "work"}, {ID: "vault-team", Name: "Team/Ops"}},
-		allItemByVault: map[string][]item.Item{
+		vaults: []Vault{{ID: "vault-personal", Name: "Personal"}, {ID: "vault-work-1", Name: "Work"}, {ID: "vault-work-2", Name: "work"}, {ID: "vault-team", Name: "Team/Ops"}},
+		itemsByVault: map[string][]item.Item{
 			"vault-personal": {
 				{ID: "item-github", Overview: item.Overview{Title: "GitHub", Username: "octocat", URLs: []string{"https://github.com", "https://gist.github.com"}},
 					Details: item.Details{Password: "github-password", Notes: "notes text", OneTimePassword: rfcOneTimePassword,
@@ -50,7 +50,7 @@ func createTestSource() *memorySource {
 func TestResolveAll(t *testing.T) {
 	source := createTestSource()
 	now := time.Unix(59, 0)
-	allCase := []struct {
+	cases := []struct {
 		reference   string
 		value       string
 		description string
@@ -72,17 +72,17 @@ func TestResolveAll(t *testing.T) {
 		{"hisar://Team%2FOps/Ops/password", "ops-password", "Team/Ops › Ops › password"},
 		{"hisar://vault-work-1/AWS/password", "aws", "Work › AWS › password"},
 	}
-	allText := make([]string, 0, len(allCase))
-	for _, testCase := range allCase {
-		allText = append(allText, testCase.reference)
+	texts := make([]string, 0, len(cases))
+	for _, testCase := range cases {
+		texts = append(texts, testCase.reference)
 	}
-	allResolved, err := ResolveAll(source, allText, now)
+	resolvedReferences, err := ResolveAll(source, texts, now)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for index, testCase := range allCase {
-		if allResolved[index].Value != testCase.value || allResolved[index].Describe() != testCase.description {
-			t.Errorf("%s = %q (%s); want %q (%s)", testCase.reference, allResolved[index].Value, allResolved[index].Describe(), testCase.value, testCase.description)
+	for index, testCase := range cases {
+		if resolvedReferences[index].Value != testCase.value || resolvedReferences[index].Describe() != testCase.description {
+			t.Errorf("%s = %q (%s); want %q (%s)", testCase.reference, resolvedReferences[index].Value, resolvedReferences[index].Describe(), testCase.value, testCase.description)
 		}
 	}
 	if source.listItemCount != 3 {
@@ -91,7 +91,7 @@ func TestResolveAll(t *testing.T) {
 }
 
 func TestResolveAllFailure(t *testing.T) {
-	allCase := []struct {
+	cases := []struct {
 		reference string
 		reason    string
 	}{
@@ -110,16 +110,16 @@ func TestResolveAllFailure(t *testing.T) {
 		{"hisar://Personal/GitHub", "has three parts"},
 		{"hisar://Personal/Git%zzHub/password", "not a valid percent-encoding"},
 	}
-	allText := []string{"hisar://Personal/GitHub/password"}
-	for _, testCase := range allCase {
-		allText = append(allText, testCase.reference)
+	texts := []string{"hisar://Personal/GitHub/password"}
+	for _, testCase := range cases {
+		texts = append(texts, testCase.reference)
 	}
-	allResolved, err := ResolveAll(createTestSource(), allText, time.Now())
-	if err == nil || allResolved != nil {
-		t.Fatalf("resolved %v", allResolved)
+	resolvedReferences, err := ResolveAll(createTestSource(), texts, time.Now())
+	if err == nil || resolvedReferences != nil {
+		t.Fatalf("resolved %v", resolvedReferences)
 	}
 	message := err.Error()
-	for _, testCase := range allCase {
+	for _, testCase := range cases {
 		line := findLine(message, testCase.reference+": ")
 		if !strings.Contains(line, testCase.reason) {
 			t.Errorf("error for %s lacks %q:\n%s", testCase.reference, testCase.reason, message)
@@ -130,8 +130,8 @@ func TestResolveAllFailure(t *testing.T) {
 			t.Errorf("error shows the value %q:\n%s", secret, message)
 		}
 	}
-	if lineCount := strings.Count(message, "\n") + 1; lineCount != len(allCase) {
-		t.Errorf("%d lines for %d failures:\n%s", lineCount, len(allCase), message)
+	if lineCount := strings.Count(message, "\n") + 1; lineCount != len(cases) {
+		t.Errorf("%d lines for %d failures:\n%s", lineCount, len(cases), message)
 	}
 }
 
@@ -159,7 +159,7 @@ func TestResolvedNamesTheVaultAndItemIDs(t *testing.T) {
 }
 
 func TestBuiltInFieldWinsOverCustomField(t *testing.T) {
-	vaultItem := createTestSource().allItemByVault["vault-personal"][0]
+	vaultItem := createTestSource().itemsByVault["vault-personal"][0]
 	value, label, err := ReadField(&vaultItem, "Password", time.Now())
 	if err != nil || value != "github-password" || label != "password" {
 		t.Errorf("ReadField(Password) = %q, %q, %v", value, label, err)

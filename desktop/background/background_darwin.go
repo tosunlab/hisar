@@ -17,7 +17,7 @@ import (
 
 type appServiceLoginItem struct{}
 
-func CreateLoginItem(homeDirectory string) LoginItem { return appServiceLoginItem{} }
+func NewLoginItem(homeDirectory string) LoginItem { return appServiceLoginItem{} }
 
 func (appServiceLoginItem) GetState() (LoginItemState, error) {
 	switch C.hisarLoginItemGetStatus() {

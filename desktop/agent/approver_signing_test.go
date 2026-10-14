@@ -66,16 +66,16 @@ func createSigningTest(t *testing.T, rememberSeconds int, phone *fakePhone) *sig
 	if phone != nil {
 		config.PhoneApprover = phone
 	}
-	test.approver = CreateApprover(config)
+	test.approver = NewApprover(config)
 	return test
 }
 
 func createRebaseChain(repositoryPath string) []appinfo.Process {
 	return []appinfo.Process{
-		{PID: 60, Path: "/usr/bin/ssh-keygen", AllArgument: []string{"ssh-keygen", "-Y", "sign", "-n", "git", "-f", "/Users/developer/.ssh/signing.pub", testSigningBuffer}, WorkingDirectory: repositoryPath},
-		{PID: 40, Path: testXcodeGitPath, AllArgument: []string{"git", "rebase", "-i", "main"}, WorkingDirectory: repositoryPath},
-		{PID: 30, Path: "/bin/zsh", AllArgument: []string{"-zsh"}, WorkingDirectory: repositoryPath},
-		{PID: 10, Path: testTerminalPath, AllArgument: []string{testTerminalPath}, WorkingDirectory: "/"},
+		{PID: 60, Path: "/usr/bin/ssh-keygen", Arguments: []string{"ssh-keygen", "-Y", "sign", "-n", "git", "-f", "/Users/developer/.ssh/signing.pub", testSigningBuffer}, WorkingDirectory: repositoryPath},
+		{PID: 40, Path: testXcodeGitPath, Arguments: []string{"git", "rebase", "-i", "main"}, WorkingDirectory: repositoryPath},
+		{PID: 30, Path: "/bin/zsh", Arguments: []string{"-zsh"}, WorkingDirectory: repositoryPath},
+		{PID: 10, Path: testTerminalPath, Arguments: []string{testTerminalPath}, WorkingDirectory: "/"},
 	}
 }
 
@@ -163,7 +163,7 @@ func TestUncheckedSigningAsksAgain(t *testing.T) {
 }
 
 func TestRememberedSigningScope(t *testing.T) {
-	allCase := []struct {
+	cases := []struct {
 		name           string
 		change         func(test *signingTest, request *sshagent.ApprovalRequest)
 		isRememberable bool
@@ -174,10 +174,10 @@ func TestRememberedSigningScope(t *testing.T) {
 		}, true},
 		{"another app", func(test *signingTest, request *sshagent.ApprovalRequest) {
 			app := appinfo.App{Name: "iTerm2", Path: testItermBundlePath}
-			test.requester = appinfo.Requester{Kind: appinfo.RequesterKindApp, Name: "iTerm2", App: app, AllProcess: createRebaseChain(testRepositoryPath)}
+			test.requester = appinfo.Requester{Kind: appinfo.RequesterKindApp, Name: "iTerm2", App: app, Processes: createRebaseChain(testRepositoryPath)}
 		}, true},
 		{"a background process", func(test *signingTest, request *sshagent.ApprovalRequest) {
-			test.requester = appinfo.Requester{Kind: appinfo.RequesterKindBackground, Name: "A background process", AllProcess: createRebaseChain(testRepositoryPath)}
+			test.requester = appinfo.Requester{Kind: appinfo.RequesterKindBackground, Name: "A background process", Processes: createRebaseChain(testRepositoryPath)}
 		}, false},
 		{"no repository", func(test *signingTest, request *sshagent.ApprovalRequest) {
 			test.requester = createTerminalRequester(createRebaseChain("")[:1])
@@ -188,7 +188,7 @@ func TestRememberedSigningScope(t *testing.T) {
 		{"a key that always asks", func(test *signingTest, request *sshagent.ApprovalRequest) { request.IsAlwaysAskKey = true }, false},
 		{"a forwarded request", func(test *signingTest, request *sshagent.ApprovalRequest) { request.IsForwarded = true }, false},
 	}
-	for _, testCase := range allCase {
+	for _, testCase := range cases {
 		test := createSigningTest(t, 600, nil)
 		test.approveInDialog(t, createSigningRequest(), true)
 		request := createSigningRequest()
@@ -226,14 +226,14 @@ func TestRememberedSigningExpires(t *testing.T) {
 func TestLockClearsRememberedSigning(t *testing.T) {
 	test := createSigningTest(t, 600, nil)
 	test.approveInDialog(t, createSigningRequest(), true)
-	test.approver.ClearAllRememberedSigning()
+	test.approver.ClearRememberedSignings()
 	if test.isSignedWithoutAsking(t, createSigningRequest()) {
 		t.Fatal("remembered after Hisar locked")
 	}
 
 	resultChannel := startApproval(test.approver, context.Background(), createSigningRequest())
 	event := waitForApprovalEvent(t, test.emitter)
-	test.approver.ClearAllRememberedSigning()
+	test.approver.ClearRememberedSignings()
 	test.approver.Respond(event.RequestID, true, true)
 	waitForResult(t, resultChannel)
 	if test.isSignedWithoutAsking(t, createSigningRequest()) {

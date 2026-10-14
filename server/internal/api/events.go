@@ -36,44 +36,44 @@ type eventSubscriber struct {
 
 // eventBroker fans vault changes out to the event streams of one server process.
 type eventBroker struct {
-	mutex                  sync.Mutex
-	allSubscriberByAccount map[string]map[*eventSubscriber]struct{}
+	mutex                sync.Mutex
+	subscribersByAccount map[string]map[*eventSubscriber]struct{}
 }
 
 func createEventBroker() *eventBroker {
-	return &eventBroker{allSubscriberByAccount: map[string]map[*eventSubscriber]struct{}{}}
+	return &eventBroker{subscribersByAccount: map[string]map[*eventSubscriber]struct{}{}}
 }
 
 func (broker *eventBroker) subscribe(accountID string, tokenHash []byte) (*eventSubscriber, bool) {
 	broker.mutex.Lock()
 	defer broker.mutex.Unlock()
-	allSubscriber := broker.allSubscriberByAccount[accountID]
-	if len(allSubscriber) >= maxEventStreamPerAccount {
+	subscribers := broker.subscribersByAccount[accountID]
+	if len(subscribers) >= maxEventStreamPerAccount {
 		return nil, false
 	}
-	if allSubscriber == nil {
-		allSubscriber = map[*eventSubscriber]struct{}{}
-		broker.allSubscriberByAccount[accountID] = allSubscriber
+	if subscribers == nil {
+		subscribers = map[*eventSubscriber]struct{}{}
+		broker.subscribersByAccount[accountID] = subscribers
 	}
 	subscriber := &eventSubscriber{tokenHash: tokenHash, channel: make(chan serverEvent, eventSubscriberBufferCount)}
-	allSubscriber[subscriber] = struct{}{}
+	subscribers[subscriber] = struct{}{}
 	return subscriber, true
 }
 
 func (broker *eventBroker) unsubscribe(accountID string, subscriber *eventSubscriber) {
 	broker.mutex.Lock()
 	defer broker.mutex.Unlock()
-	delete(broker.allSubscriberByAccount[accountID], subscriber)
-	if len(broker.allSubscriberByAccount[accountID]) == 0 {
-		delete(broker.allSubscriberByAccount, accountID)
+	delete(broker.subscribersByAccount[accountID], subscriber)
+	if len(broker.subscribersByAccount[accountID]) == 0 {
+		delete(broker.subscribersByAccount, accountID)
 	}
 }
 
-func (broker *eventBroker) publish(allAccountID []string, event serverEvent) {
+func (broker *eventBroker) publish(accountIDs []string, event serverEvent) {
 	broker.mutex.Lock()
 	defer broker.mutex.Unlock()
-	for _, accountID := range allAccountID {
-		for subscriber := range broker.allSubscriberByAccount[accountID] {
+	for _, accountID := range accountIDs {
+		for subscriber := range broker.subscribersByAccount[accountID] {
 			select {
 			case subscriber.channel <- event:
 			default:
@@ -83,11 +83,11 @@ func (broker *eventBroker) publish(allAccountID []string, event serverEvent) {
 	}
 }
 
-// endAllStream closes the account's streams except the one of keptTokenHash, without waiting for the next heartbeat.
-func (broker *eventBroker) endAllStream(accountID string, keptTokenHash []byte) {
+// endStreams closes the account's streams except the one of keptTokenHash, without waiting for the next heartbeat.
+func (broker *eventBroker) endStreams(accountID string, keptTokenHash []byte) {
 	broker.mutex.Lock()
 	defer broker.mutex.Unlock()
-	for subscriber := range broker.allSubscriberByAccount[accountID] {
+	for subscriber := range broker.subscribersByAccount[accountID] {
 		if keptTokenHash != nil && bytes.Equal(subscriber.tokenHash, keptTokenHash) {
 			continue
 		}
@@ -114,45 +114,45 @@ func (broker *eventBroker) isOverflowed(subscriber *eventSubscriber) bool {
 func (broker *eventBroker) countSubscriber(accountID string) int {
 	broker.mutex.Lock()
 	defer broker.mutex.Unlock()
-	return len(broker.allSubscriberByAccount[accountID])
+	return len(broker.subscribersByAccount[accountID])
 }
 
 // publishVaultChanged tells every member of a vault that it reached seq.
 func (s *Server) publishVaultChanged(ctx context.Context, vaultID string, seq int64) {
-	allMember, err := s.store.ListAllMember(ctx, vaultID)
+	members, err := s.store.ListMembers(ctx, vaultID)
 	if err != nil {
 		log.Printf("events: members of %s: %v", vaultID, err)
 		return
 	}
-	allAccountID := make([]string, 0, len(allMember))
-	for _, member := range allMember {
-		allAccountID = append(allAccountID, member.AccountID)
+	accountIDs := make([]string, 0, len(members))
+	for _, member := range members {
+		accountIDs = append(accountIDs, member.AccountID)
 	}
-	s.events.publish(allAccountID, serverEvent{name: apitypes.EventVaultChanged, data: apitypes.VaultChangedEvent{VaultID: vaultID, Seq: seq}})
+	s.events.publish(accountIDs, serverEvent{name: apitypes.EventVaultChanged, data: apitypes.VaultChangedEvent{VaultID: vaultID, Seq: seq}})
 }
 
 // publishVaultsChanged tells accounts that their list of vaults changed, e.g. after sharing or removal.
-func (s *Server) publishVaultsChanged(allAccountID ...string) {
-	s.events.publish(allAccountID, serverEvent{name: apitypes.EventVaultsChanged, data: struct{}{}})
+func (s *Server) publishVaultsChanged(accountIDs ...string) {
+	s.events.publish(accountIDs, serverEvent{name: apitypes.EventVaultsChanged, data: struct{}{}})
 }
 
-func (s *Server) publishShareInvitationsChanged(allAccountID ...string) {
-	s.events.publish(allAccountID, serverEvent{name: apitypes.EventShareInvitationsChanged, data: struct{}{}})
+func (s *Server) publishShareInvitationsChanged(accountIDs ...string) {
+	s.events.publish(accountIDs, serverEvent{name: apitypes.EventShareInvitationsChanged, data: struct{}{}})
 }
 
-// publishShareInvitationsChangedToOwner tells the vault's owners, who complete accepted shares, and allOtherAccountID.
-func (s *Server) publishShareInvitationsChangedToOwner(ctx context.Context, vaultID string, allOtherAccountID ...string) {
-	allMember, err := s.store.ListAllMember(ctx, vaultID)
+// publishShareInvitationsChangedToOwner tells the vault's owners, who complete accepted shares, and otherAccountIDs.
+func (s *Server) publishShareInvitationsChangedToOwner(ctx context.Context, vaultID string, otherAccountIDs ...string) {
+	members, err := s.store.ListMembers(ctx, vaultID)
 	if err != nil {
 		log.Printf("events: members of %s: %v", vaultID, err)
 	}
-	allAccountID := allOtherAccountID
-	for _, member := range allMember {
+	accountIDs := otherAccountIDs
+	for _, member := range members {
 		if member.Role == apitypes.VaultOwner {
-			allAccountID = append(allAccountID, member.AccountID)
+			accountIDs = append(accountIDs, member.AccountID)
 		}
 	}
-	s.publishShareInvitationsChanged(allAccountID...)
+	s.publishShareInvitationsChanged(accountIDs...)
 }
 
 func writeEvent(writer *bufio.Writer, event serverEvent) error {

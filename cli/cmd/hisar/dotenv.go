@@ -26,11 +26,11 @@ func readEnvironmentFile(path string) ([]environmentVariable, error) {
 func parseEnvironmentFile(path, content string) ([]environmentVariable, error) {
 	content = strings.TrimPrefix(content, "\uFEFF")
 	content = strings.ReplaceAll(content, "\r\n", "\n")
-	allLine := strings.Split(content, "\n")
-	var allVariable []environmentVariable
-	for index := 0; index < len(allLine); index++ {
+	lines := strings.Split(content, "\n")
+	var variables []environmentVariable
+	for index := 0; index < len(lines); index++ {
 		lineNumber := index + 1
-		line := strings.TrimSpace(allLine[index])
+		line := strings.TrimSpace(lines[index])
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
@@ -47,17 +47,17 @@ func parseEnvironmentFile(path, content string) ([]environmentVariable, error) {
 		}
 		rawValue = strings.TrimLeft(rawValue, " \t")
 		if rawValue == "" || (rawValue[0] != '"' && rawValue[0] != '\'') {
-			allVariable = append(allVariable, environmentVariable{name: name, value: parseUnquotedValue(rawValue)})
+			variables = append(variables, environmentVariable{name: name, value: parseUnquotedValue(rawValue)})
 			continue
 		}
-		value, consumedLineCount, err := parseQuotedValue(rawValue, allLine[index+1:])
+		value, consumedLineCount, err := parseQuotedValue(rawValue, lines[index+1:])
 		if err != nil {
 			return nil, fmt.Errorf("%s:%d: %s %s", path, lineNumber, name, err)
 		}
 		index += consumedLineCount
-		allVariable = append(allVariable, environmentVariable{name: name, value: value})
+		variables = append(variables, environmentVariable{name: name, value: value})
 	}
-	return allVariable, nil
+	return variables, nil
 }
 
 func parseUnquotedValue(rawValue string) string {
@@ -74,7 +74,7 @@ func parseUnquotedValue(rawValue string) string {
 }
 
 // parseQuotedValue reads a single- or double-quoted value that may continue on the following lines.
-func parseQuotedValue(rawValue string, allFollowingLine []string) (string, int, error) {
+func parseQuotedValue(rawValue string, followingLines []string) (string, int, error) {
 	quote := rawValue[0]
 	text := rawValue[1:]
 	consumedLineCount := 0
@@ -108,11 +108,11 @@ func parseQuotedValue(rawValue string, allFollowingLine []string) (string, int, 
 			}
 			builder.WriteByte(character)
 		}
-		if consumedLineCount >= len(allFollowingLine) {
+		if consumedLineCount >= len(followingLines) {
 			return "", 0, errorUnterminatedQuote
 		}
 		builder.WriteByte('\n')
-		text = allFollowingLine[consumedLineCount]
+		text = followingLines[consumedLineCount]
 		consumedLineCount++
 	}
 }

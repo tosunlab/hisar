@@ -98,14 +98,14 @@ type VaultMember struct {
 }
 
 type VaultActionsResult struct {
-	Vault                 Vault         `json:"vault"`
-	CanRename             bool          `json:"canRename"`
-	CanDelete             bool          `json:"canDelete"`
-	DeleteBlockedReason   string        `json:"deleteBlockedReason,omitempty"`
-	CanLeave              bool          `json:"canLeave"`
-	LeaveBlockedReason    string        `json:"leaveBlockedReason,omitempty"`
-	AllMemberLosingAccess []VaultMember `json:"membersLosingAccess"`
-	AllTargetVault        []Vault       `json:"targetVaults"`
+	Vault               Vault         `json:"vault"`
+	CanRename           bool          `json:"canRename"`
+	CanDelete           bool          `json:"canDelete"`
+	DeleteBlockedReason string        `json:"deleteBlockedReason,omitempty"`
+	CanLeave            bool          `json:"canLeave"`
+	LeaveBlockedReason  string        `json:"leaveBlockedReason,omitempty"`
+	MembersLosingAccess []VaultMember `json:"membersLosingAccess"`
+	TargetVaults        []Vault       `json:"targetVaults"`
 }
 
 const (

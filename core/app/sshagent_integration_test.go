@@ -21,16 +21,16 @@ import (
 
 // recordingApprover stands in for the approval window; with unlock set, it unlocks Hisar for requests that need it.
 type recordingApprover struct {
-	mutex      sync.Mutex
-	isAllowed  bool
-	unlock     func() error
-	allRequest []sshagent.ApprovalRequest
+	mutex     sync.Mutex
+	isAllowed bool
+	unlock    func() error
+	requests  []sshagent.ApprovalRequest
 }
 
 func (approver *recordingApprover) Approve(ctx context.Context, request sshagent.ApprovalRequest) (sshagent.ApprovalResult, error) {
 	approver.mutex.Lock()
 	defer approver.mutex.Unlock()
-	approver.allRequest = append(approver.allRequest, request)
+	approver.requests = append(approver.requests, request)
 	if request.IsUnlockRequired && approver.unlock != nil && approver.isAllowed {
 		if err := approver.unlock(); err != nil {
 			return sshagent.ApprovalResult{}, err
@@ -42,7 +42,7 @@ func (approver *recordingApprover) Approve(ctx context.Context, request sshagent
 func (approver *recordingApprover) getLastRequest() sshagent.ApprovalRequest {
 	approver.mutex.Lock()
 	defer approver.mutex.Unlock()
-	return approver.allRequest[len(approver.allRequest)-1]
+	return approver.requests[len(approver.requests)-1]
 }
 
 func (approver *recordingApprover) setUnlock(unlock func() error) {
@@ -60,7 +60,7 @@ func (approver *recordingApprover) setAllowed(isAllowed bool) {
 func (approver *recordingApprover) countRequest() int {
 	approver.mutex.Lock()
 	defer approver.mutex.Unlock()
-	return len(approver.allRequest)
+	return len(approver.requests)
 }
 
 // startSSHServer accepts public key authentication for authorizedKey only.
@@ -96,13 +96,13 @@ func startSSHServer(t *testing.T, authorizedKey ssh.PublicKey) (string, ssh.Publ
 			}
 			go func() {
 				defer connection.Close()
-				serverConnection, allNewChannel, allRequest, err := ssh.NewServerConn(connection, serverConfig)
+				serverConnection, newChannels, requests, err := ssh.NewServerConn(connection, serverConfig)
 				if err != nil {
 					return
 				}
 				defer serverConnection.Close()
-				go ssh.DiscardRequests(allRequest)
-				for newChannel := range allNewChannel {
+				go ssh.DiscardRequests(requests)
+				for newChannel := range newChannels {
 					newChannel.Reject(ssh.Prohibited, "no channels")
 				}
 			}()
@@ -129,7 +129,7 @@ func dialWithAgent(socketPath, address string, hostKey ssh.PublicKey) error {
 	return client.Close()
 }
 
-func listAllAgentKey(t *testing.T, socketPath string) ([]*agent.Key, error) {
+func listAgentKeys(t *testing.T, socketPath string) ([]*agent.Key, error) {
 	t.Helper()
 	agentConnection, err := net.Dial("unix", socketPath)
 	if err != nil {
@@ -158,8 +158,8 @@ func checkSSHAgentFlow(t *testing.T, service *Service, personalID, password stri
 	defer os.RemoveAll(socketDirectory)
 	socketPath := filepath.Join(socketDirectory, "agent.sock")
 	approver := &recordingApprover{isAllowed: true}
-	agentServer := sshagent.CreateServer(CreateSSHKeySource(service), approver, localsocket.SystemPeerResolver{})
-	service.config.OnLock = agentServer.ClearAllApproval
+	agentServer := sshagent.NewServer(NewSSHKeySource(service), approver, localsocket.SystemPeerResolver{})
+	service.config.OnLock = agentServer.ClearApprovals
 	defer func() { service.config.OnLock = nil }()
 	listener, err := localsocket.ListenUnixSocket(socketPath)
 	if err != nil {
@@ -173,17 +173,17 @@ func checkSSHAgentFlow(t *testing.T, service *Service, personalID, password stri
 		<-serveResult
 	}()
 
-	allKey, err := listAllAgentKey(t, socketPath)
-	if err != nil || len(allKey) != 1 || allKey[0].Comment != "Desktop SSH key" || !bytes.Equal(allKey[0].Blob, authorizedKey.Marshal()) {
-		t.Fatalf("agent keys: %v %v", allKey, err)
+	keys, err := listAgentKeys(t, socketPath)
+	if err != nil || len(keys) != 1 || keys[0].Comment != "Desktop SSH key" || !bytes.Equal(keys[0].Blob, authorizedKey.Marshal()) {
+		t.Fatalf("agent keys: %v %v", keys, err)
 	}
 
 	address, hostKey := startSSHServer(t, authorizedKey)
 	if err := dialWithAgent(socketPath, address, hostKey); err != nil {
 		t.Fatalf("ssh login with the Hisar agent: %v", err)
 	}
-	if approver.countRequest() != 1 || approver.allRequest[0].KeyTitle != "Desktop SSH key" || approver.allRequest[0].Fingerprint != generated.Fingerprint {
-		t.Errorf("approval requests: %+v", approver.allRequest)
+	if approver.countRequest() != 1 || approver.requests[0].KeyTitle != "Desktop SSH key" || approver.requests[0].Fingerprint != generated.Fingerprint {
+		t.Errorf("approval requests: %+v", approver.requests)
 	}
 
 	approver.setAllowed(false)
@@ -191,14 +191,14 @@ func checkSSHAgentFlow(t *testing.T, service *Service, personalID, password stri
 	if err := dialWithAgent(socketPath, address, hostKey); err == nil {
 		t.Error("ssh login succeeded while Hisar is locked")
 	}
-	if allKey, _ := listAllAgentKey(t, socketPath); len(allKey) != 0 {
-		t.Errorf("agent lists %d keys while locked", len(allKey))
+	if keys, _ := listAgentKeys(t, socketPath); len(keys) != 0 {
+		t.Errorf("agent lists %d keys while locked", len(keys))
 	}
 	if request := approver.getLastRequest(); !request.IsUnlockRequired || request.KeyID != "" {
 		t.Errorf("a locked agent did not ask to unlock: %+v", request)
 	}
 
-	unlocker := CreateApprovalUnlocker(service, nil)
+	unlocker := NewApprovalUnlocker(service, nil)
 	approver.setAllowed(true)
 	approver.setUnlock(func() error { return unlocker.UnlockWithPassword(password) })
 	requestCount := approver.countRequest()
@@ -231,13 +231,13 @@ func checkSSHAgentFlow(t *testing.T, service *Service, personalID, password stri
 	if err := dialWithAgent(socketPath, address, hostKey); err != nil {
 		t.Errorf("ssh login after unlock: %v", err)
 	}
-	if _, err := service.ListAllItem(personalID); err != nil {
+	if _, err := service.ListItems(personalID); err != nil {
 		t.Fatal(err)
 	}
 	if err := service.DeleteItem(personalID, generated.ID); err != nil {
 		t.Fatal(err)
 	}
-	if allKey, err := listAllAgentKey(t, socketPath); err != nil || len(allKey) != 0 {
-		t.Errorf("agent keys after delete: %v %v", allKey, err)
+	if keys, err := listAgentKeys(t, socketPath); err != nil || len(keys) != 0 {
+		t.Errorf("agent keys after delete: %v %v", keys, err)
 	}
 }

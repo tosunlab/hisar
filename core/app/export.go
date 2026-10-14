@@ -60,9 +60,9 @@ func checkExportRequest(format, passphrase string) error {
 	return errUnknownExportFormat
 }
 
-// ExportAllData asks for Touch ID or the master password, then saves every vault the user can read where they choose.
+// ExportData asks for Touch ID or the master password, then saves every vault the user can read where they choose.
 // Nothing about plans or the server's answer limits it: offline it exports this device's encrypted cache.
-func (s *Service) ExportAllData(request ExportRequest) (ExportResult, error) {
+func (s *Service) ExportData(request ExportRequest) (ExportResult, error) {
 	if err := checkExportRequest(request.Format, request.Passphrase); err != nil {
 		return ExportResult{}, err
 	}
@@ -105,9 +105,9 @@ func (s *Service) authenticateExport(password string) error {
 	return errExportNeedsPassword
 }
 
-// ExportAllDataToDirectory is for platforms that share the file themselves, such as the iPhone; a function rather than
-// a method so the desktop UI, which saves through ExportAllData, can't call it.
-func ExportAllDataToDirectory(s *Service, request ExportRequest, directory string) (ExportResult, error) {
+// ExportDataToDirectory is for platforms that share the file themselves, such as the iPhone; a function rather than
+// a method so the desktop UI, which saves through ExportData, can't call it.
+func ExportDataToDirectory(s *Service, request ExportRequest, directory string) (ExportResult, error) {
 	if err := checkExportRequest(request.Format, request.Passphrase); err != nil {
 		return ExportResult{}, err
 	}
@@ -167,13 +167,13 @@ func (s *Service) buildExport(format, passphrase string) ([]byte, ExportResult, 
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	allVault, err := export.Collect(ctx, s.unlockedSession)
+	vaults, err := export.Collect(ctx, s.unlockedSession)
 	account := export.Account{Email: s.state.Email, Server: s.state.Server}
 	s.mutex.Unlock()
 	if err != nil {
 		return nil, ExportResult{}, convertError(err)
 	}
-	document := export.Build(account, allVault, s.config.Now())
+	document := export.Build(account, vaults, s.config.Now())
 	result := ExportResult{VaultCount: len(document.Vaults), ItemCount: document.CountItem()}
 	if format == ExportFormatPlain {
 		content, err := export.EncodePlain(document)

@@ -22,7 +22,7 @@ func TestListAllShareLinkFieldOffersValuesWithDefaults(t *testing.T) {
 			Passkeys:        []item.Passkey{{RelyingPartyID: "github.com"}},
 		},
 	}
-	allField := listAllShareLinkField(vaultItem)
+	fields := listShareLinkFields(vaultItem)
 	want := []ShareLinkField{
 		{Key: "username", Label: "username", IsDefault: true},
 		{Key: "password", Label: "password", IsDefault: true, IsConcealed: true},
@@ -31,12 +31,12 @@ func TestListAllShareLinkFieldOffersValuesWithDefaults(t *testing.T) {
 		{Key: "field:2", Label: "Region"},
 		{Key: "notes", Label: "notes"},
 	}
-	if !slices.Equal(allField, want) {
-		t.Fatalf("fields %+v", allField)
+	if !slices.Equal(fields, want) {
+		t.Fatalf("fields %+v", fields)
 	}
 	sshKey := &item.Item{Overview: item.Overview{Title: "Deploy key", Category: item.CategorySSHKey}, Details: item.Details{PrivateKey: "-----BEGIN OPENSSH PRIVATE KEY-----"}}
-	if allSSHKeyField := listAllShareLinkField(sshKey); len(allSSHKeyField) != 0 {
-		t.Fatalf("an SSH key without notes offers %+v", allSSHKeyField)
+	if sshKeyFields := listShareLinkFields(sshKey); len(sshKeyFields) != 0 {
+		t.Fatalf("an SSH key without notes offers %+v", sshKeyFields)
 	}
 }
 
@@ -51,8 +51,8 @@ func TestShareLinksNeedAnUnlockedSession(t *testing.T) {
 	request := ShareLinkRequest{VaultID: "vault", ItemID: "item", FieldKeys: []string{"password"}, ExpiresInSeconds: 3600, MaxViews: 1}
 	for name, call := range map[string]func() error{
 		"CreateShareLink":       func() error { _, err := service.CreateShareLink(request); return err },
-		"ListAllShareLink":      func() error { _, err := service.ListAllShareLink(); return err },
-		"ListAllShareLinkField": func() error { _, err := service.ListAllShareLinkField("vault", "item"); return err },
+		"ListAllShareLink":      func() error { _, err := service.ListShareLinks(); return err },
+		"ListAllShareLinkField": func() error { _, err := service.ListShareLinkFields("vault", "item"); return err },
 		"RevokeShareLink":       func() error { return service.RevokeShareLink("link") },
 		"CopyShareLink":         func() error { return service.CopyShareLink("link") },
 	} {

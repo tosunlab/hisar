@@ -27,12 +27,12 @@ type MovedItem struct {
 	Details      []byte
 }
 
-// VaultDeletion: with MoveToVaultID, AllMovedItem must be exactly the vault's live items at their current revisions.
+// VaultDeletion: with MoveToVaultID, MovedItems must be exactly the vault's live items at their current revisions.
 type VaultDeletion struct {
 	VaultID         string
 	AccountID       string
 	MoveToVaultID   string
-	AllMovedItem    []MovedItem
+	MovedItems      []MovedItem
 	IsDeletingItems bool
 }
 
@@ -50,32 +50,32 @@ func (s *Store) RenameVault(ctx context.Context, vaultID string, encName []byte)
 // DeleteVault deletes the vault, its access grants, items, history and invitations in one transaction, after moving
 // its live items into another vault when asked. It returns the accounts that had access to the deleted vault.
 func (s *Store) DeleteVault(ctx context.Context, deletion VaultDeletion) ([]string, error) {
-	var allFormerMemberID []string
+	var formerMemberIDs []string
 	err := s.runInTransaction(ctx, func(transaction pgx.Tx) error {
-		allLockedVaultID := []string{deletion.VaultID}
+		lockedVaultIDs := []string{deletion.VaultID}
 		if deletion.MoveToVaultID != "" {
-			allLockedVaultID = append(allLockedVaultID, deletion.MoveToVaultID)
+			lockedVaultIDs = append(lockedVaultIDs, deletion.MoveToVaultID)
 		}
 		// Locking in ID order keeps two concurrent moves between the same vaults from deadlocking.
-		slices.Sort(allLockedVaultID)
-		allRow, err := transaction.Query(ctx, `SELECT id::text, type FROM vaults WHERE id = ANY($1::uuid[]) ORDER BY id FOR UPDATE`, allLockedVaultID)
+		slices.Sort(lockedVaultIDs)
+		rows, err := transaction.Query(ctx, `SELECT id::text, type FROM vaults WHERE id = ANY($1::uuid[]) ORDER BY id FOR UPDATE`, lockedVaultIDs)
 		if err != nil {
 			return err
 		}
-		allVaultTypeByID := map[string]string{}
-		for allRow.Next() {
+		vaultTypesByID := map[string]string{}
+		for rows.Next() {
 			var vaultID, vaultType string
-			if err := allRow.Scan(&vaultID, &vaultType); err != nil {
-				allRow.Close()
+			if err := rows.Scan(&vaultID, &vaultType); err != nil {
+				rows.Close()
 				return err
 			}
-			allVaultTypeByID[vaultID] = vaultType
+			vaultTypesByID[vaultID] = vaultType
 		}
-		allRow.Close()
-		if err := allRow.Err(); err != nil {
+		rows.Close()
+		if err := rows.Err(); err != nil {
 			return err
 		}
-		vaultType, isFound := allVaultTypeByID[deletion.VaultID]
+		vaultType, isFound := vaultTypesByID[deletion.VaultID]
 		if !isFound {
 			return ErrNotFound
 		}
@@ -99,19 +99,19 @@ func (s *Store) DeleteVault(ctx context.Context, deletion VaultDeletion) ([]stri
 			return ErrOnlyVault
 		}
 
-		allLiveRevisionByID, err := listAllLiveRevision(ctx, transaction, deletion.VaultID)
+		liveRevisionsByID, err := listLiveRevisions(ctx, transaction, deletion.VaultID)
 		if err != nil {
 			return err
 		}
 		switch {
 		case deletion.MoveToVaultID != "":
-			if _, isFound := allVaultTypeByID[deletion.MoveToVaultID]; !isFound {
+			if _, isFound := vaultTypesByID[deletion.MoveToVaultID]; !isFound {
 				return ErrNotFound
 			}
-			if err := moveAllItem(ctx, transaction, deletion, allLiveRevisionByID); err != nil {
+			if err := moveItems(ctx, transaction, deletion, liveRevisionsByID); err != nil {
 				return err
 			}
-		case len(allLiveRevisionByID) > 0 && !deletion.IsDeletingItems:
+		case len(liveRevisionsByID) > 0 && !deletion.IsDeletingItems:
 			return ErrVaultNotEmpty
 		}
 
@@ -119,33 +119,33 @@ func (s *Store) DeleteVault(ctx context.Context, deletion VaultDeletion) ([]stri
 		if err != nil {
 			return err
 		}
-		if allFormerMemberID, err = pgx.CollectRows(memberRow, pgx.RowTo[string]); err != nil {
+		if formerMemberIDs, err = pgx.CollectRows(memberRow, pgx.RowTo[string]); err != nil {
 			return err
 		}
 		_, err = transaction.Exec(ctx, `DELETE FROM vaults WHERE id = $1`, deletion.VaultID)
 		return err
 	})
-	return allFormerMemberID, err
+	return formerMemberIDs, err
 }
 
-func listAllLiveRevision(ctx context.Context, transaction pgx.Tx, vaultID string) (map[string]string, error) {
-	allRow, err := transaction.Query(ctx, `SELECT id::text, revision::text FROM items WHERE vault_id = $1 AND NOT deleted`, vaultID)
+func listLiveRevisions(ctx context.Context, transaction pgx.Tx, vaultID string) (map[string]string, error) {
+	rows, err := transaction.Query(ctx, `SELECT id::text, revision::text FROM items WHERE vault_id = $1 AND NOT deleted`, vaultID)
 	if err != nil {
 		return nil, err
 	}
-	defer allRow.Close()
-	allRevisionByID := map[string]string{}
-	for allRow.Next() {
+	defer rows.Close()
+	revisionsByID := map[string]string{}
+	for rows.Next() {
 		var itemID, revision string
-		if err := allRow.Scan(&itemID, &revision); err != nil {
+		if err := rows.Scan(&itemID, &revision); err != nil {
 			return nil, err
 		}
-		allRevisionByID[itemID] = revision
+		revisionsByID[itemID] = revision
 	}
-	return allRevisionByID, allRow.Err()
+	return revisionsByID, rows.Err()
 }
 
-func moveAllItem(ctx context.Context, transaction pgx.Tx, deletion VaultDeletion, allLiveRevisionByID map[string]string) error {
+func moveItems(ctx context.Context, transaction pgx.Tx, deletion VaultDeletion, liveRevisionsByID map[string]string) error {
 	if deletion.MoveToVaultID == deletion.VaultID {
 		return ErrTargetNotWritable
 	}
@@ -161,11 +161,11 @@ func moveAllItem(ctx context.Context, transaction pgx.Tx, deletion VaultDeletion
 	if targetRole != "owner" && targetRole != "editor" {
 		return ErrTargetNotWritable
 	}
-	if len(deletion.AllMovedItem) != len(allLiveRevisionByID) {
+	if len(deletion.MovedItems) != len(liveRevisionsByID) {
 		return ErrConflict
 	}
-	for _, movedItem := range deletion.AllMovedItem {
-		if revision, isFound := allLiveRevisionByID[movedItem.ID]; !isFound || revision != movedItem.BaseRevision {
+	for _, movedItem := range deletion.MovedItems {
+		if revision, isFound := liveRevisionsByID[movedItem.ID]; !isFound || revision != movedItem.BaseRevision {
 			return ErrConflict
 		}
 	}
@@ -173,7 +173,7 @@ func moveAllItem(ctx context.Context, transaction pgx.Tx, deletion VaultDeletion
 	if err := transaction.QueryRow(ctx, `SELECT seq FROM vaults WHERE id = $1`, deletion.MoveToVaultID).Scan(&targetSeq); err != nil {
 		return err
 	}
-	for _, movedItem := range deletion.AllMovedItem {
+	for _, movedItem := range deletion.MovedItems {
 		targetSeq++
 		var updatedAt time.Time
 		err := transaction.QueryRow(ctx, `

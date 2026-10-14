@@ -21,8 +21,8 @@ func describeStandaloneOnly(commandName, appAlternative string) error {
 	return fmt.Errorf("hisar is using the Hisar app, so `%s` is not available here; %s, or run `hisar --standalone %s`", commandName, appAlternative, commandName)
 }
 
-func runWhoamiThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, allArg []string) error {
-	if _, err := parse(flags, allArg); err != nil {
+func runWhoamiThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, args []string) error {
+	if _, err := parse(flags, args); err != nil {
 		return err
 	}
 	var account cliprotocol.AccountResult
@@ -33,8 +33,8 @@ func runWhoamiThroughApp(ctx context.Context, client *appClient, flags *flag.Fla
 	return nil
 }
 
-func runListAllVaultThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, allArg []string) error {
-	if _, err := parse(flags, allArg); err != nil {
+func runListVaultThroughApps(ctx context.Context, client *appClient, flags *flag.FlagSet, args []string) error {
+	if _, err := parse(flags, args); err != nil {
 		return err
 	}
 	var vaultList cliprotocol.VaultListResult
@@ -49,54 +49,54 @@ func runListAllVaultThroughApp(ctx context.Context, client *appClient, flags *fl
 	return writer.Flush()
 }
 
-func runCreateVaultThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, allArg []string) error {
-	allPositional, err := parse(flags, allArg)
+func runCreateVaultThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, args []string) error {
+	positionals, err := parse(flags, args)
 	if err != nil {
 		return err
 	}
-	if len(allPositional) != 1 {
+	if len(positionals) != 1 {
 		return errUsage
 	}
 	var vaultResult cliprotocol.VaultResult
-	if err := client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeCreateVault, Name: allPositional[0]}, &vaultResult); err != nil {
+	if err := client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeCreateVault, Name: positionals[0]}, &vaultResult); err != nil {
 		return err
 	}
 	fmt.Fprintf(os.Stderr, "Created vault %q. Share it with `hisar share %q <email>`.\n", vaultResult.Vault.Name, vaultResult.Vault.Name)
 	return nil
 }
 
-func runListAllItemThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, allArg []string) error {
+func runListItemThroughApps(ctx context.Context, client *appClient, flags *flag.FlagSet, args []string) error {
 	vaultName := addVaultFlag(flags)
-	if _, err := parse(flags, allArg); err != nil {
+	if _, err := parse(flags, args); err != nil {
 		return err
 	}
 	vault, err := findAppVault(ctx, client, *vaultName)
 	if err != nil {
 		return err
 	}
-	allItem, err := listAllAppItem(ctx, client, vault.ID)
+	items, err := listAppItems(ctx, client, vault.ID)
 	if err != nil {
 		return err
 	}
 	writer := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(writer, "TITLE\tUSERNAME\tURL\tID")
-	for _, vaultItem := range allItem {
+	for _, vaultItem := range items {
 		fmt.Fprintf(writer, "%s\t%s\t%s\t%s\n", vaultItem.Overview.Title, vaultItem.Overview.Username, strings.Join(vaultItem.Overview.URLs, " "), vaultItem.ID)
 	}
 	return writer.Flush()
 }
 
-func runGetThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, allArg []string) error {
+func runGetThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, args []string) error {
 	vaultName := addVaultFlag(flags)
 	fieldName := flags.String("f", "", "print only this field (title, username, url, password, notes, or a custom field name)")
-	allPositional, err := parse(flags, allArg)
+	positionals, err := parse(flags, args)
 	if err != nil {
 		return err
 	}
-	if len(allPositional) != 1 {
+	if len(positionals) != 1 {
 		return errUsage
 	}
-	vault, vaultItem, err := findAppItem(ctx, client, *vaultName, allPositional[0])
+	vault, vaultItem, err := findAppItem(ctx, client, *vaultName, positionals[0])
 	if err != nil {
 		return err
 	}
@@ -128,9 +128,9 @@ func saveAppItem(ctx context.Context, client *appClient, vaultID string, vaultIt
 	return client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeSaveItem, VaultID: vaultID, Item: convertToItemChange(vaultItem)}, nil)
 }
 
-func runAddThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, allArg []string) error {
+func runAddThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, args []string) error {
 	vaultName := addVaultFlag(flags)
-	if _, err := parse(flags, allArg); err != nil {
+	if _, err := parse(flags, args); err != nil {
 		return err
 	}
 	vault, err := findAppVault(ctx, client, *vaultName)
@@ -148,16 +148,16 @@ func runAddThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSe
 	return nil
 }
 
-func runEditThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, allArg []string) error {
+func runEditThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, args []string) error {
 	vaultName := addVaultFlag(flags)
-	allPositional, err := parse(flags, allArg)
+	positionals, err := parse(flags, args)
 	if err != nil {
 		return err
 	}
-	if len(allPositional) != 1 {
+	if len(positionals) != 1 {
 		return errUsage
 	}
-	vault, vaultItem, err := findAppItem(ctx, client, *vaultName, allPositional[0])
+	vault, vaultItem, err := findAppItem(ctx, client, *vaultName, positionals[0])
 	if err != nil {
 		return err
 	}
@@ -171,16 +171,16 @@ func runEditThroughApp(ctx context.Context, client *appClient, flags *flag.FlagS
 	return nil
 }
 
-func runRemoveThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, allArg []string) error {
+func runRemoveThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, args []string) error {
 	vaultName := addVaultFlag(flags)
-	allPositional, err := parse(flags, allArg)
+	positionals, err := parse(flags, args)
 	if err != nil {
 		return err
 	}
-	if len(allPositional) != 1 {
+	if len(positionals) != 1 {
 		return errUsage
 	}
-	vault, vaultItem, err := findAppItem(ctx, client, *vaultName, allPositional[0])
+	vault, vaultItem, err := findAppItem(ctx, client, *vaultName, positionals[0])
 	if err != nil {
 		return err
 	}
@@ -195,45 +195,45 @@ func runRemoveThroughApp(ctx context.Context, client *appClient, flags *flag.Fla
 	return nil
 }
 
-func importAllThroughApp(ctx context.Context, client *appClient, vaultID string, allQueuedItem []item.Item) (int, error) {
+func importThroughApps(ctx context.Context, client *appClient, vaultID string, queuedItems []item.Item) (int, error) {
 	savedCount := 0
-	for start := 0; start < len(allQueuedItem); start += cliprotocol.MaxImportBatch {
-		allBatchItem := allQueuedItem[start:min(start+cliprotocol.MaxImportBatch, len(allQueuedItem))]
+	for start := 0; start < len(queuedItems); start += cliprotocol.MaxImportBatch {
+		batchItems := queuedItems[start:min(start+cliprotocol.MaxImportBatch, len(queuedItems))]
 		var importResult cliprotocol.ImportResult
-		err := client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeImportItem, VaultID: vaultID, ImportedItems: allBatchItem}, &importResult)
+		err := client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeImportItem, VaultID: vaultID, ImportedItems: batchItems}, &importResult)
 		savedCount += importResult.SavedCount
 		if err != nil {
 			fmt.Fprintln(os.Stderr)
-			return savedCount, fmt.Errorf("stopped after importing %d of %d items: %w", savedCount, len(allQueuedItem), err)
+			return savedCount, fmt.Errorf("stopped after importing %d of %d items: %w", savedCount, len(queuedItems), err)
 		}
 		for _, failure := range importResult.Failures {
 			fmt.Fprintf(os.Stderr, "\rcould not import %q: %s\n", failure.Title, failure.Message)
 		}
-		fmt.Fprintf(os.Stderr, "\rImported %d of %d", savedCount, len(allQueuedItem))
+		fmt.Fprintf(os.Stderr, "\rImported %d of %d", savedCount, len(queuedItems))
 	}
-	if len(allQueuedItem) > 0 {
+	if len(queuedItems) > 0 {
 		fmt.Fprintln(os.Stderr)
 	}
 	return savedCount, nil
 }
 
-func runImportThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, allArg []string) error {
+func runImportThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, args []string) error {
 	option := addImportFlag(flags)
-	allPositional, err := parse(flags, allArg)
+	positionals, err := parse(flags, args)
 	if err != nil {
 		return err
 	}
-	if len(allPositional) != 1 {
+	if len(positionals) != 1 {
 		return errUsage
 	}
 	option.readChosenFlag(flags)
-	if isHandled, err := importOwnFormat(ctx, appVaultAccess{client: client}, allPositional[0], option); isHandled {
+	if isHandled, err := importOwnFormat(ctx, appVaultAccess{client: client}, positionals[0], option); isHandled {
 		return err
 	}
 	if !importer.IsKnownFormat(option.format) {
-		return fmt.Errorf("unknown format %q; %s", option.format, describeAllImportFormat())
+		return fmt.Errorf("unknown format %q; %s", option.format, describeImportFormats())
 	}
-	path := allPositional[0]
+	path := positionals[0]
 	content, err := readImportFile(path)
 	if err != nil {
 		return err
@@ -250,32 +250,32 @@ func runImportThroughApp(ctx context.Context, client *appClient, flags *flag.Fla
 	if vault.Role == apitypes.VaultReader {
 		return fmt.Errorf("you can only read %q; choose a vault you can edit with -v", vault.Name)
 	}
-	allExisting, err := listAllAppItem(ctx, client, vault.ID)
+	existingItems, err := listAppItems(ctx, client, vault.ID)
 	if err != nil {
 		return err
 	}
-	allDuplicateIndex := importer.FindAllDuplicateIndex(result.AllItem, allExisting)
-	printImportPreview(os.Stderr, filepath.Base(path), result, vault.Name, allDuplicateIndex)
+	duplicateIndexes := importer.FindDuplicateIndexes(result.Items, existingItems)
+	printImportPreview(os.Stderr, filepath.Base(path), result, vault.Name, duplicateIndexes)
 	isSkippingDuplicate := !option.isIncludingDuplicate
-	if !option.isConfirmed && isSkippingDuplicate && len(allDuplicateIndex) > 0 {
-		isIncluding, err := confirm(fmt.Sprintf("Also import the %s already in %s?", formatItemCount(len(allDuplicateIndex)), vault.Name))
+	if !option.isConfirmed && isSkippingDuplicate && len(duplicateIndexes) > 0 {
+		isIncluding, err := confirm(fmt.Sprintf("Also import the %s already in %s?", formatItemCount(len(duplicateIndexes)), vault.Name))
 		if err != nil {
 			return err
 		}
 		isSkippingDuplicate = !isIncluding
 	}
-	allQueuedItem := selectAllQueuedItem(result.AllItem, allDuplicateIndex, isSkippingDuplicate)
-	if len(allQueuedItem) == 0 {
+	queuedItems := selectQueuedItems(result.Items, duplicateIndexes, isSkippingDuplicate)
+	if len(queuedItems) == 0 {
 		fmt.Fprintln(os.Stderr, "Nothing to import.")
 		return nil
 	}
 	if !option.isConfirmed {
-		isImporting, err := confirm(fmt.Sprintf("Import %s into %s?", formatItemCount(len(allQueuedItem)), vault.Name))
+		isImporting, err := confirm(fmt.Sprintf("Import %s into %s?", formatItemCount(len(queuedItems)), vault.Name))
 		if err != nil || !isImporting {
 			return err
 		}
 	}
-	savedCount, err := importAllThroughApp(ctx, client, vault.ID, allQueuedItem)
+	savedCount, err := importThroughApps(ctx, client, vault.ID, queuedItems)
 	if err != nil {
 		return err
 	}
@@ -283,24 +283,24 @@ func runImportThroughApp(ctx context.Context, client *appClient, flags *flag.Fla
 	return offerToDeleteImportFile(path, option.isConfirmed)
 }
 
-func runUnshareThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, allArg []string) error {
-	allPositional, err := parse(flags, allArg)
+func runUnshareThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, args []string) error {
+	positionals, err := parse(flags, args)
 	if err != nil {
 		return err
 	}
-	if len(allPositional) != 2 {
+	if len(positionals) != 2 {
 		return errUsage
 	}
-	vault, err := findAppVault(ctx, client, allPositional[0])
+	vault, err := findAppVault(ctx, client, positionals[0])
 	if err != nil {
 		return err
 	}
-	allPerson, err := listAllAppPerson(ctx, client)
+	people, err := listAppPeople(ctx, client)
 	if err != nil {
 		return err
 	}
-	for _, member := range allPerson {
-		if !strings.EqualFold(member.Email, strings.TrimSpace(allPositional[1])) && member.AccountID != allPositional[1] {
+	for _, member := range people {
+		if !strings.EqualFold(member.Email, strings.TrimSpace(positionals[1])) && member.AccountID != positionals[1] {
 			continue
 		}
 		if err := client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeUnshareVault, VaultID: vault.ID, AccountID: member.AccountID}, nil); err != nil {
@@ -309,11 +309,11 @@ func runUnshareThroughApp(ctx context.Context, client *appClient, flags *flag.Fl
 		fmt.Fprintf(os.Stderr, "Removed %s from %q and rotated the vault key.\n", member.Email, vault.Name)
 		return nil
 	}
-	return fmt.Errorf("member %q: not found", allPositional[1])
+	return fmt.Errorf("member %q: not found", positionals[1])
 }
 
-func runListAllDeviceThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, allArg []string) error {
-	if _, err := parse(flags, allArg); err != nil {
+func runListDeviceThroughApps(ctx context.Context, client *appClient, flags *flag.FlagSet, args []string) error {
+	if _, err := parse(flags, args); err != nil {
 		return err
 	}
 	var deviceList cliprotocol.DeviceListResult
@@ -336,15 +336,15 @@ func runListAllDeviceThroughApp(ctx context.Context, client *appClient, flags *f
 	return writer.Flush()
 }
 
-func runRevokeDeviceThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, allArg []string) error {
-	allPositional, err := parse(flags, allArg)
+func runRevokeDeviceThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, args []string) error {
+	positionals, err := parse(flags, args)
 	if err != nil {
 		return err
 	}
-	if len(allPositional) != 1 {
+	if len(positionals) != 1 {
 		return errUsage
 	}
-	if err := client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeRevokeDevice, DeviceID: allPositional[0]}, nil); err != nil {
+	if err := client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeRevokeDevice, DeviceID: positionals[0]}, nil); err != nil {
 		return err
 	}
 	fmt.Fprintln(os.Stderr, "Device signed out.")

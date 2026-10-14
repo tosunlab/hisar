@@ -57,7 +57,7 @@ type PhoneApprover interface {
 }
 
 // ApprovalEvent is what the approval window shows; AppName and AppIconURL describe the app responsible for the request,
-// or for another RequesterKind what stands in for one ("A background process"), with the programs in between in AllChainProcess.
+// or for another RequesterKind what stands in for one ("A background process"), with the programs in between in ChainProcesses.
 // Command-line requests have Kind ApprovalKindCommandLine and no key; either kind unlocks Hisar when IsUnlockRequired.
 type ApprovalEvent struct {
 	RequestID              string         `json:"requestID"`
@@ -69,7 +69,7 @@ type ApprovalEvent struct {
 	AppSignature           string         `json:"appSignature"`
 	AppSigner              string         `json:"appSigner"`
 	AppWarning             string         `json:"appWarning"`
-	AllChainProcess        []ChainProcess `json:"allChainProcess"`
+	ChainProcesses         []ChainProcess `json:"allChainProcess"`
 	ClientName             string         `json:"clientName"`
 	ClientPath             string         `json:"clientPath"`
 	KeyTitle               string         `json:"keyTitle"`
@@ -94,8 +94,8 @@ type ApprovalEvent struct {
 	IsUnlockRequired       bool           `json:"isUnlockRequired"`
 	IsPasswordUnlock       bool           `json:"isPasswordUnlock"`
 	IsPhoneApproval        bool           `json:"isPhoneApproval"`
-	// AllSecretName lists the first secrets of a secrets.resolve request; MoreSecretCount counts the rest.
-	AllSecretName   []string `json:"allSecretName"`
+	// SecretNames lists the first secrets of a secrets.resolve request; MoreSecretCount counts the rest.
+	SecretNames     []string `json:"allSecretName"`
 	MoreSecretCount int      `json:"moreSecretCount"`
 	// Agent requests (Kind ApprovalKindAgent) name the agent; Purpose is connect, run, code or reveal.
 	AgentName             string `json:"agentName"`
@@ -165,16 +165,16 @@ type pendingApproval struct {
 type Approver struct {
 	config         ApproverConfig
 	biometricMutex sync.Mutex
-	// allAuthorizing counts authorize goroutines, which may outlive their request while another Touch ID check holds biometricMutex.
-	allAuthorizing sync.WaitGroup
-	mutex          sync.Mutex
-	allPending     []*pendingApproval
-	presenter      presenter
+	// authorizing counts authorize goroutines, which may outlive their request while another Touch ID check holds biometricMutex.
+	authorizing     sync.WaitGroup
+	mutex           sync.Mutex
+	pendingRequests []*pendingApproval
+	presenter       presenter
 	// signing is guarded by mutex.
 	signing rememberedSigning
 }
 
-func CreateApprover(config ApproverConfig) *Approver {
+func NewApprover(config ApproverConfig) *Approver {
 	if config.Timeout == 0 {
 		config.Timeout = defaultApprovalTimeout
 	}

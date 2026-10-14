@@ -41,38 +41,38 @@ func (approval *storedApproval) isOpen(now time.Time) bool {
 
 // approvalRelay keeps sealed phone approvals in memory; it never sees what they say.
 type approvalRelay struct {
-	mutex                  sync.Mutex
-	now                    func() time.Time
-	allApprovalByAccount   map[string]map[string]*storedApproval
-	allLimiterByAccount    map[string]*rate.Limiter
-	allLimiterLastUsedTime map[string]time.Time
+	mutex                sync.Mutex
+	now                  func() time.Time
+	approvalsByAccount   map[string]map[string]*storedApproval
+	limitersByAccount    map[string]*rate.Limiter
+	limiterLastUsedTimes map[string]time.Time
 }
 
 func createApprovalRelay() *approvalRelay {
 	return &approvalRelay{
-		now:                    time.Now,
-		allApprovalByAccount:   map[string]map[string]*storedApproval{},
-		allLimiterByAccount:    map[string]*rate.Limiter{},
-		allLimiterLastUsedTime: map[string]time.Time{},
+		now:                  time.Now,
+		approvalsByAccount:   map[string]map[string]*storedApproval{},
+		limitersByAccount:    map[string]*rate.Limiter{},
+		limiterLastUsedTimes: map[string]time.Time{},
 	}
 }
 
-// removeAllExpired drops approvals past their retention; the caller holds the mutex.
-func (relay *approvalRelay) removeAllExpired(now time.Time) {
-	for accountID, allApproval := range relay.allApprovalByAccount {
-		for requestID, approval := range allApproval {
+// removeExpired drops approvals past their retention; the caller holds the mutex.
+func (relay *approvalRelay) removeExpired(now time.Time) {
+	for accountID, approvals := range relay.approvalsByAccount {
+		for requestID, approval := range approvals {
 			if now.After(approval.expiresAt.Add(approvalRetention)) {
-				delete(allApproval, requestID)
+				delete(approvals, requestID)
 			}
 		}
-		if len(allApproval) == 0 {
-			delete(relay.allApprovalByAccount, accountID)
+		if len(approvals) == 0 {
+			delete(relay.approvalsByAccount, accountID)
 		}
 	}
-	for accountID, lastUsedTime := range relay.allLimiterLastUsedTime {
+	for accountID, lastUsedTime := range relay.limiterLastUsedTimes {
 		if now.Sub(lastUsedTime) > 10*time.Minute {
-			delete(relay.allLimiterByAccount, accountID)
-			delete(relay.allLimiterLastUsedTime, accountID)
+			delete(relay.limitersByAccount, accountID)
+			delete(relay.limiterLastUsedTimes, accountID)
 		}
 	}
 }
@@ -80,26 +80,26 @@ func (relay *approvalRelay) removeAllExpired(now time.Time) {
 func (relay *approvalRelay) allow(accountID string) bool {
 	relay.mutex.Lock()
 	defer relay.mutex.Unlock()
-	limiter, isFound := relay.allLimiterByAccount[accountID]
+	limiter, isFound := relay.limitersByAccount[accountID]
 	if !isFound {
 		limiter = rate.NewLimiter(rate.Every(approvalRateEvery), approvalRateBurst)
-		relay.allLimiterByAccount[accountID] = limiter
+		relay.limitersByAccount[accountID] = limiter
 	}
-	relay.allLimiterLastUsedTime[accountID] = relay.now()
+	relay.limiterLastUsedTimes[accountID] = relay.now()
 	return limiter.Allow()
 }
 
-func (relay *approvalRelay) removeAllForAccount(accountID string) {
+func (relay *approvalRelay) removeForAccount(accountID string) {
 	relay.mutex.Lock()
 	defer relay.mutex.Unlock()
-	delete(relay.allApprovalByAccount, accountID)
-	delete(relay.allLimiterByAccount, accountID)
-	delete(relay.allLimiterLastUsedTime, accountID)
+	delete(relay.approvalsByAccount, accountID)
+	delete(relay.limitersByAccount, accountID)
+	delete(relay.limiterLastUsedTimes, accountID)
 }
 
 // find returns an approval of the account that is still within its retention; the caller holds the mutex.
 func (relay *approvalRelay) find(accountID, requestID string, now time.Time) *storedApproval {
-	approval, isFound := relay.allApprovalByAccount[accountID][requestID]
+	approval, isFound := relay.approvalsByAccount[accountID][requestID]
 	if !isFound || now.After(approval.expiresAt.Add(approvalRetention)) {
 		return nil
 	}
@@ -137,18 +137,18 @@ func (s *Server) handleCreateApproval(c fiber.Ctx) error {
 		relay.mutex.Unlock()
 		return createAPIError(fiber.StatusBadRequest, "the approval must expire within 3 minutes")
 	}
-	relay.removeAllExpired(now)
-	allApproval := relay.allApprovalByAccount[currentSession.AccountID]
-	if allApproval == nil {
-		allApproval = map[string]*storedApproval{}
-		relay.allApprovalByAccount[currentSession.AccountID] = allApproval
+	relay.removeExpired(now)
+	approvals := relay.approvalsByAccount[currentSession.AccountID]
+	if approvals == nil {
+		approvals = map[string]*storedApproval{}
+		relay.approvalsByAccount[currentSession.AccountID] = approvals
 	}
-	if _, isFound := allApproval[request.RequestID]; isFound {
+	if _, isFound := approvals[request.RequestID]; isFound {
 		relay.mutex.Unlock()
 		return createAPIError(fiber.StatusConflict, "an approval with this ID exists")
 	}
 	openCount := 0
-	for _, approval := range allApproval {
+	for _, approval := range approvals {
 		if approval.isOpen(now) {
 			openCount++
 		}
@@ -161,7 +161,7 @@ func (s *Server) handleCreateApproval(c fiber.Ctx) error {
 	if latestExpiry := now.Add(approvalMaximumLifetime); expiresAt.After(latestExpiry) {
 		expiresAt = latestExpiry
 	}
-	allApproval[request.RequestID] = &storedApproval{
+	approvals[request.RequestID] = &storedApproval{
 		requestID:         request.RequestID,
 		accountID:         currentSession.AccountID,
 		requesterDeviceID: currentSession.DeviceID,
@@ -174,15 +174,15 @@ func (s *Server) handleCreateApproval(c fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusCreated)
 }
 
-func (s *Server) handleListAllPendingApproval(c fiber.Ctx) error {
+func (s *Server) handleListPendingApprovals(c fiber.Ctx) error {
 	accountID := getSession(c).AccountID
 	relay := s.approvals
 	relay.mutex.Lock()
 	now := relay.now()
-	allPending := []apitypes.PendingApproval{}
-	for _, approval := range relay.allApprovalByAccount[accountID] {
+	pendingRequests := []apitypes.PendingApproval{}
+	for _, approval := range relay.approvalsByAccount[accountID] {
 		if approval.isOpen(now) {
-			allPending = append(allPending, apitypes.PendingApproval{
+			pendingRequests = append(pendingRequests, apitypes.PendingApproval{
 				RequestID:         approval.requestID,
 				SealedRequest:     approval.sealedRequest,
 				RequesterDeviceID: approval.requesterDeviceID,
@@ -192,8 +192,10 @@ func (s *Server) handleListAllPendingApproval(c fiber.Ctx) error {
 		}
 	}
 	relay.mutex.Unlock()
-	sort.Slice(allPending, func(first, second int) bool { return allPending[first].CreatedAt.Before(allPending[second].CreatedAt) })
-	return c.JSON(allPending)
+	sort.Slice(pendingRequests, func(first, second int) bool {
+		return pendingRequests[first].CreatedAt.Before(pendingRequests[second].CreatedAt)
+	})
+	return c.JSON(pendingRequests)
 }
 
 func (s *Server) handleGetApproval(c fiber.Ctx) error {

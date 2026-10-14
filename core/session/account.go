@@ -36,8 +36,8 @@ type DeletionVault struct {
 }
 
 type AccountDeletionPreview struct {
-	AllOwnedVault           []DeletionVault
-	AllMemberVault          []DeletionVault
+	OwnedVaults             []DeletionVault
+	MemberVaults            []DeletionVault
 	ShareLinkCount          int
 	SentInvitationCount     int
 	ReceivedInvitationCount int
@@ -87,7 +87,7 @@ func (s *Session) verifyCurrentCredentials(ctx context.Context, password []byte,
 	if account.AccountID != s.AccountID {
 		return nil, ErrBadCredentials
 	}
-	currentKeys, err := crypt.DeriveAllKey(password, account.Salt, account.Argon2, secretKey)
+	currentKeys, err := crypt.DeriveKeys(password, account.Salt, account.Argon2, secretKey)
 	if err != nil {
 		return nil, err
 	}
@@ -96,8 +96,8 @@ func (s *Session) verifyCurrentCredentials(ctx context.Context, password []byte,
 		currentKeys.Wipe()
 		return nil, ErrBadCredentials
 	}
-	publicKeys := keyset.GetAllPublicKey(account.AccountID)
-	isSessionKeyset := s.Keyset == nil || bytes.Equal(s.Keyset.GetAllPublicKey(s.AccountID).Sign, publicKeys.Sign)
+	publicKeys := keyset.GetPublicKeys(account.AccountID)
+	isSessionKeyset := s.Keyset == nil || bytes.Equal(s.Keyset.GetPublicKeys(s.AccountID).Sign, publicKeys.Sign)
 	if !bytes.Equal(publicKeys.KEM, account.PublicKeys.KEM) || !bytes.Equal(publicKeys.Sign, account.PublicKeys.Sign) || !isSessionKeyset {
 		currentKeys.Wipe()
 		keyset.Wipe()
@@ -126,7 +126,7 @@ func (s *Session) changeCredentials(ctx context.Context, change string, currentP
 	defer verified.wipe()
 
 	credential := &accountCredential{secretKey: newSecretKey, salt: crypt.GenerateSalt(), argon2Params: strongerArgon2Params(verified.account.Argon2), keyset: verified.keyset}
-	newKeys, err := crypt.DeriveAllKey(newPassword, credential.salt, credential.argon2Params, newSecretKey)
+	newKeys, err := crypt.DeriveKeys(newPassword, credential.salt, credential.argon2Params, newSecretKey)
 	if err != nil {
 		return nil, err
 	}
@@ -190,29 +190,29 @@ func (s *Session) PreviewAccountDeletion(ctx context.Context) (*AccountDeletionP
 	if err != nil {
 		return nil, err
 	}
-	allVaultName := map[string]string{}
-	if allVault, err := s.ListAllVault(ctx); err == nil {
-		for index := range allVault {
-			allVaultName[allVault[index].ID] = allVault[index].Name
-			clear(allVault[index].Key)
+	vaultNames := map[string]string{}
+	if vaults, err := s.ListVaults(ctx); err == nil {
+		for index := range vaults {
+			vaultNames[vaults[index].ID] = vaults[index].Name
+			clear(vaults[index].Key)
 		}
 	}
 	preview := &AccountDeletionPreview{
-		AllOwnedVault:           []DeletionVault{},
-		AllMemberVault:          []DeletionVault{},
+		OwnedVaults:             []DeletionVault{},
+		MemberVaults:            []DeletionVault{},
 		ShareLinkCount:          response.ShareLinkCount,
 		SentInvitationCount:     response.SentInvitationCount,
 		ReceivedInvitationCount: response.ReceivedInvitationCount,
 		DeviceCount:             response.DeviceCount,
 	}
-	for _, ownedVault := range response.AllOwnedVault {
-		preview.AllOwnedVault = append(preview.AllOwnedVault, DeletionVault{
-			ID: ownedVault.VaultID, Name: allVaultName[ownedVault.VaultID], Type: ownedVault.Type, Role: apitypes.VaultOwner, OtherMemberCount: ownedVault.OtherMemberCount,
+	for _, ownedVault := range response.OwnedVaults {
+		preview.OwnedVaults = append(preview.OwnedVaults, DeletionVault{
+			ID: ownedVault.VaultID, Name: vaultNames[ownedVault.VaultID], Type: ownedVault.Type, Role: apitypes.VaultOwner, OtherMemberCount: ownedVault.OtherMemberCount,
 		})
 	}
-	for _, memberVault := range response.AllMemberVault {
-		preview.AllMemberVault = append(preview.AllMemberVault, DeletionVault{
-			ID: memberVault.VaultID, Name: allVaultName[memberVault.VaultID], Type: memberVault.Type, Role: memberVault.Role,
+	for _, memberVault := range response.MemberVaults {
+		preview.MemberVaults = append(preview.MemberVaults, DeletionVault{
+			ID: memberVault.VaultID, Name: vaultNames[memberVault.VaultID], Type: memberVault.Type, Role: memberVault.Role,
 		})
 	}
 	return preview, nil

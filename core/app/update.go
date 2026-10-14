@@ -34,8 +34,8 @@ type UpdateService struct {
 	updater Updater
 }
 
-// CreateUpdateService hands the updater the current session now and on every sign-in and sign-out.
-func CreateUpdateService(service *Service, updater Updater) *UpdateService {
+// NewUpdateService hands the updater the current session now and on every sign-in and sign-out.
+func NewUpdateService(service *Service, updater Updater) *UpdateService {
 	updateService := &UpdateService{service: service, updater: updater}
 	service.mutex.Lock()
 	defer service.mutex.Unlock()

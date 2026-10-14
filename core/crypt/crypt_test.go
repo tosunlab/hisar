@@ -30,7 +30,7 @@ func TestSealOpen(t *testing.T) {
 
 	tampered := bytes.Clone(ciphertext)
 	tampered[len(tampered)-1] ^= 1
-	allCase := map[string]struct {
+	cases := map[string]struct {
 		key, ciphertext, associatedData []byte
 		want                            error
 	}{
@@ -41,7 +41,7 @@ func TestSealOpen(t *testing.T) {
 		"short":       {key, ciphertext[:20], []byte("aad"), ErrShortCipher},
 		"short key":   {key[:16], ciphertext, []byte("aad"), ErrBadKeySize},
 	}
-	for name, testCase := range allCase {
+	for name, testCase := range cases {
 		if _, err := Open(testCase.key, testCase.ciphertext, testCase.associatedData); !errors.Is(err, testCase.want) {
 			t.Errorf("%s: got %v, want %v", name, err, testCase.want)
 		}
@@ -125,7 +125,7 @@ func createTestSecretKey(t *testing.T) SecretKey {
 
 func TestDeriveAllKeyVector(t *testing.T) {
 	salt := decodeHex(t, "000102030405060708090a0b0c0d0e0f")
-	derivedKeys, err := DeriveAllKey([]byte("correct horse battery staple"), salt, Argon2Params{Time: 3, MemoryKiB: 64 * 1024, Threads: 4}, createTestSecretKey(t))
+	derivedKeys, err := DeriveKeys([]byte("correct horse battery staple"), salt, Argon2Params{Time: 3, MemoryKiB: 64 * 1024, Threads: 4}, createTestSecretKey(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,11 +142,11 @@ func TestDeriveAllKeyProperties(t *testing.T) {
 	secretKey := createTestSecretKey(t)
 	params := MinArgon2Params()
 
-	composed, err := DeriveAllKey([]byte("café"), salt, params, secretKey)
+	composed, err := DeriveKeys([]byte("café"), salt, params, secretKey)
 	if err != nil {
 		t.Fatal(err)
 	}
-	decomposed, _ := DeriveAllKey([]byte("café"), salt, params, secretKey)
+	decomposed, _ := DeriveKeys([]byte("café"), salt, params, secretKey)
 	if !bytes.Equal(composed.AccountUnlockKey, decomposed.AccountUnlockKey) {
 		t.Error("password not unicode-normalized")
 	}
@@ -155,7 +155,7 @@ func TestDeriveAllKeyProperties(t *testing.T) {
 	}
 
 	otherSecretKey, _ := GenerateSecretKey(secretKey.AccountID)
-	withOtherSecretKey, _ := DeriveAllKey([]byte("café"), salt, params, otherSecretKey)
+	withOtherSecretKey, _ := DeriveKeys([]byte("café"), salt, params, otherSecretKey)
 	if bytes.Equal(composed.AccountUnlockKey, withOtherSecretKey.AccountUnlockKey) {
 		t.Error("secret key does not affect AccountUnlockKey")
 	}
@@ -164,7 +164,7 @@ func TestDeriveAllKeyProperties(t *testing.T) {
 func TestDeriveAllKeyKeepsInput(t *testing.T) {
 	for _, original := range []string{"ascii password", "café"} {
 		password := []byte(original)
-		if _, err := DeriveAllKey(password, GenerateSalt(), MinArgon2Params(), createTestSecretKey(t)); err != nil {
+		if _, err := DeriveKeys(password, GenerateSalt(), MinArgon2Params(), createTestSecretKey(t)); err != nil {
 			t.Fatal(err)
 		}
 		if string(password) != original {
@@ -175,18 +175,18 @@ func TestDeriveAllKeyKeepsInput(t *testing.T) {
 
 func TestDeriveAllKeyRejects(t *testing.T) {
 	secretKey := createTestSecretKey(t)
-	allWeakParams := []Argon2Params{
+	weakParams := []Argon2Params{
 		{Time: 1, MemoryKiB: 64 * 1024, Threads: 4},
 		{Time: 3, MemoryKiB: 1024, Threads: 4},
 		{Time: 3, MemoryKiB: 64 * 1024, Threads: 0},
 		{Time: 3, MemoryKiB: 4 * 1024 * 1024, Threads: 4},
 	}
-	for _, params := range allWeakParams {
-		if _, err := DeriveAllKey([]byte("pw"), GenerateSalt(), params, secretKey); err == nil {
+	for _, params := range weakParams {
+		if _, err := DeriveKeys([]byte("pw"), GenerateSalt(), params, secretKey); err == nil {
 			t.Errorf("%+v accepted", params)
 		}
 	}
-	if _, err := DeriveAllKey([]byte("pw"), []byte("short"), MinArgon2Params(), secretKey); !errors.Is(err, ErrBadSalt) {
+	if _, err := DeriveKeys([]byte("pw"), []byte("short"), MinArgon2Params(), secretKey); !errors.Is(err, ErrBadSalt) {
 		t.Errorf("short salt: %v", err)
 	}
 }
@@ -218,7 +218,7 @@ func TestKeyset(t *testing.T) {
 
 func TestPublicKeys(t *testing.T) {
 	keyset, _ := GenerateKeyset()
-	publicKeys := keyset.GetAllPublicKey("ABC123")
+	publicKeys := keyset.GetPublicKeys("ABC123")
 	if err := publicKeys.Verify("ABC123"); err != nil {
 		t.Fatal(err)
 	}
@@ -227,7 +227,7 @@ func TestPublicKeys(t *testing.T) {
 	}
 	otherKeyset, _ := GenerateKeyset()
 	substituted := publicKeys
-	substituted.KEM = otherKeyset.GetAllPublicKey("ABC123").KEM
+	substituted.KEM = otherKeyset.GetPublicKeys("ABC123").KEM
 	if err := substituted.Verify("ABC123"); err == nil {
 		t.Error("substituted KEM key accepted")
 	}
@@ -238,7 +238,7 @@ func TestVaultKeyWrap(t *testing.T) {
 	bob, _ := GenerateKeyset()
 	vaultKey := GenerateKey()
 
-	wrappedKey, err := WrapVaultKey(alice.GetAllPublicKey("ALICE1").KEM, "vault-1", "ALICE1", vaultKey)
+	wrappedKey, err := WrapVaultKey(alice.GetPublicKeys("ALICE1").KEM, "vault-1", "ALICE1", vaultKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -263,13 +263,13 @@ func TestItemParts(t *testing.T) {
 	if plaintext, err := OpenItemPart(vaultKey, "v1", "i1", "r1", Overview, sealedOverview); err != nil || string(plaintext) != `{"title":"x"}` {
 		t.Fatalf("roundtrip: %v", err)
 	}
-	allMismatch := map[string][4]string{
+	mismatches := map[string][4]string{
 		"vault":    {"v2", "i1", "r1", string(Overview)},
 		"item":     {"v1", "i2", "r1", string(Overview)},
 		"revision": {"v1", "i1", "r2", string(Overview)},
 		"part":     {"v1", "i1", "r1", string(Details)},
 	}
-	for name, mismatch := range allMismatch {
+	for name, mismatch := range mismatches {
 		if _, err := OpenItemPart(vaultKey, mismatch[0], mismatch[1], mismatch[2], ItemPart(mismatch[3]), sealedOverview); err == nil {
 			t.Errorf("opened with different %s", name)
 		}
@@ -288,7 +288,7 @@ func BenchmarkDeriveAllKeyDefault(b *testing.B) {
 	secretKey, _ := GenerateSecretKey("ABC123")
 	salt := GenerateSalt()
 	for b.Loop() {
-		if _, err := DeriveAllKey([]byte("correct horse battery staple"), salt, DefaultArgon2Params(), secretKey); err != nil {
+		if _, err := DeriveKeys([]byte("correct horse battery staple"), salt, DefaultArgon2Params(), secretKey); err != nil {
 			b.Fatal(err)
 		}
 	}

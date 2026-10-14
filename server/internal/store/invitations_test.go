@@ -25,19 +25,19 @@ func TestShareInvitationLifecycle(t *testing.T) {
 		t.Fatalf("renewed invitation %s, %v", renewedID, err)
 	}
 
-	allReceived, err := database.ListAllReceivedShareInvitation(ctx, "b@example.com")
-	if err != nil || len(allReceived) != 1 || allReceived[0].Role != "reader" || allReceived[0].InvitedByEmail != "a@example.com" || allReceived[0].InvitedByName != "AAAAAA" {
-		t.Fatalf("received: %+v %v", allReceived, err)
+	receivedInvitations, err := database.ListReceivedShareInvitations(ctx, "b@example.com")
+	if err != nil || len(receivedInvitations) != 1 || receivedInvitations[0].Role != "reader" || receivedInvitations[0].InvitedByEmail != "a@example.com" || receivedInvitations[0].InvitedByName != "AAAAAA" {
+		t.Fatalf("received: %+v %v", receivedInvitations, err)
 	}
-	if allReceived, _ := database.ListAllReceivedShareInvitation(ctx, "c@example.com"); len(allReceived) != 0 {
-		t.Errorf("Carol received Bob's invitation: %+v", allReceived)
+	if receivedInvitations, _ := database.ListReceivedShareInvitations(ctx, "c@example.com"); len(receivedInvitations) != 0 {
+		t.Errorf("Carol received Bob's invitation: %+v", receivedInvitations)
 	}
-	allSent, err := database.ListAllSentShareInvitation(ctx, "AAAAAA")
-	if err != nil || len(allSent) != 1 || allSent[0].State != ShareInvitationPending || allSent[0].Recipient != nil {
-		t.Fatalf("sent: %+v %v", allSent, err)
+	sent, err := database.ListSentShareInvitations(ctx, "AAAAAA")
+	if err != nil || len(sent) != 1 || sent[0].State != ShareInvitationPending || sent[0].Recipient != nil {
+		t.Fatalf("sent: %+v %v", sent, err)
 	}
-	if allSent, _ := database.ListAllSentShareInvitation(ctx, "BBBBBB"); len(allSent) != 0 {
-		t.Errorf("a non-owner sees sent invitations: %+v", allSent)
+	if sent, _ := database.ListSentShareInvitations(ctx, "BBBBBB"); len(sent) != 0 {
+		t.Errorf("a non-owner sees sent invitations: %+v", sent)
 	}
 
 	if _, err := database.GrantAccess(ctx, vaultID, Member{AccountID: "BBBBBB", Role: "reader", WrappedKey: []byte{1}, GrantedBy: "AAAAAA"}); !errors.Is(err, ErrNoInvitation) {
@@ -46,8 +46,8 @@ func TestShareInvitationLifecycle(t *testing.T) {
 	if _, _, err := database.AcceptShareInvitation(ctx, invitationID, "CCCCCC", "c@example.com"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("accept with another email: %v", err)
 	}
-	if allWaiting, err := database.ListAllWaitingShareInvitation(ctx, "BBBBBB"); err != nil || len(allWaiting) != 0 {
-		t.Errorf("waiting before accepting: %+v %v", allWaiting, err)
+	if waiting, err := database.ListWaitingShareInvitations(ctx, "BBBBBB"); err != nil || len(waiting) != 0 {
+		t.Errorf("waiting before accepting: %+v %v", waiting, err)
 	}
 	acceptedVaultID, acceptedAt, err := database.AcceptShareInvitation(ctx, invitationID, "BBBBBB", "b@example.com")
 	if err != nil || acceptedVaultID != vaultID || time.Since(acceptedAt) > time.Minute {
@@ -56,21 +56,21 @@ func TestShareInvitationLifecycle(t *testing.T) {
 	if _, _, err := database.AcceptShareInvitation(ctx, invitationID, "BBBBBB", "b@example.com"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("accept twice: %v", err)
 	}
-	if allReceived, _ := database.ListAllReceivedShareInvitation(ctx, "b@example.com"); len(allReceived) != 0 {
-		t.Errorf("accepted invitation still received: %+v", allReceived)
+	if receivedInvitations, _ := database.ListReceivedShareInvitations(ctx, "b@example.com"); len(receivedInvitations) != 0 {
+		t.Errorf("accepted invitation still received: %+v", receivedInvitations)
 	}
-	allSent, _ = database.ListAllSentShareInvitation(ctx, "AAAAAA")
-	if len(allSent) != 1 || allSent[0].State != ShareInvitationAccepted || allSent[0].Recipient == nil || allSent[0].Recipient.ID != "BBBBBB" || allSent[0].Recipient.Email != "b@example.com" ||
-		allSent[0].AcceptedAt == nil || !allSent[0].AcceptedAt.Equal(acceptedAt) {
-		t.Fatalf("sent after accept: %+v", allSent)
+	sent, _ = database.ListSentShareInvitations(ctx, "AAAAAA")
+	if len(sent) != 1 || sent[0].State != ShareInvitationAccepted || sent[0].Recipient == nil || sent[0].Recipient.ID != "BBBBBB" || sent[0].Recipient.Email != "b@example.com" ||
+		sent[0].AcceptedAt == nil || !sent[0].AcceptedAt.Equal(acceptedAt) {
+		t.Fatalf("sent after accept: %+v", sent)
 	}
-	allWaiting, err := database.ListAllWaitingShareInvitation(ctx, "BBBBBB")
-	if err != nil || len(allWaiting) != 1 || allWaiting[0].ID != invitationID || allWaiting[0].InvitedByEmail != "a@example.com" ||
-		allWaiting[0].AcceptedAt == nil || !allWaiting[0].AcceptedAt.Equal(acceptedAt) {
-		t.Fatalf("waiting after accept: %+v %v", allWaiting, err)
+	waiting, err := database.ListWaitingShareInvitations(ctx, "BBBBBB")
+	if err != nil || len(waiting) != 1 || waiting[0].ID != invitationID || waiting[0].InvitedByEmail != "a@example.com" ||
+		waiting[0].AcceptedAt == nil || !waiting[0].AcceptedAt.Equal(acceptedAt) {
+		t.Fatalf("waiting after accept: %+v %v", waiting, err)
 	}
-	if allWaiting, _ := database.ListAllWaitingShareInvitation(ctx, "AAAAAA"); len(allWaiting) != 0 {
-		t.Errorf("the owner waits for their own invitation: %+v", allWaiting)
+	if waiting, _ := database.ListWaitingShareInvitations(ctx, "AAAAAA"); len(waiting) != 0 {
+		t.Errorf("the owner waits for their own invitation: %+v", waiting)
 	}
 	acceptance, err := database.GetShareAcceptance(ctx, invitationID, acceptedAt)
 	if err != nil || acceptance.VaultID != vaultID || acceptance.Inviter.Email != "a@example.com" || acceptance.Recipient.Email != "b@example.com" {
@@ -87,11 +87,11 @@ func TestShareInvitationLifecycle(t *testing.T) {
 	if err != nil || !isNewMember {
 		t.Fatalf("grant after acceptance: %v %v", isNewMember, err)
 	}
-	if allSent, _ := database.ListAllSentShareInvitation(ctx, "AAAAAA"); len(allSent) != 0 {
-		t.Errorf("completed invitation still listed: %+v", allSent)
+	if sent, _ := database.ListSentShareInvitations(ctx, "AAAAAA"); len(sent) != 0 {
+		t.Errorf("completed invitation still listed: %+v", sent)
 	}
-	if allWaiting, _ := database.ListAllWaitingShareInvitation(ctx, "BBBBBB"); len(allWaiting) != 0 {
-		t.Errorf("completed invitation still waiting: %+v", allWaiting)
+	if waiting, _ := database.ListWaitingShareInvitations(ctx, "BBBBBB"); len(waiting) != 0 {
+		t.Errorf("completed invitation still waiting: %+v", waiting)
 	}
 	if _, err := database.GetShareAcceptance(ctx, invitationID, acceptedAt); !errors.Is(err, ErrNotFound) {
 		t.Errorf("acceptance after completion: %v", err)
@@ -127,8 +127,8 @@ func TestShareInvitationDeclineCancelAndExpiry(t *testing.T) {
 	if declinedVaultID, err := database.DeclineShareInvitation(ctx, invitationID, "b@example.com"); err != nil || declinedVaultID != vaultID {
 		t.Fatalf("decline: %s %v", declinedVaultID, err)
 	}
-	if allSent, _ := database.ListAllSentShareInvitation(ctx, "AAAAAA"); len(allSent) != 0 {
-		t.Errorf("declined invitation still listed: %+v", allSent)
+	if sent, _ := database.ListSentShareInvitations(ctx, "AAAAAA"); len(sent) != 0 {
+		t.Errorf("declined invitation still listed: %+v", sent)
 	}
 
 	invitationID, _ = database.UpsertShareInvitation(ctx, &ShareInvitation{VaultID: vaultID, Email: "nobody@example.com", Role: "reader", InvitedBy: "AAAAAA"}, time.Hour)
@@ -141,11 +141,11 @@ func TestShareInvitationDeclineCancelAndExpiry(t *testing.T) {
 	}
 
 	expiredID, _ := database.UpsertShareInvitation(ctx, &ShareInvitation{VaultID: vaultID, Email: "b@example.com", Role: "reader", InvitedBy: "AAAAAA"}, -time.Minute)
-	if allReceived, _ := database.ListAllReceivedShareInvitation(ctx, "b@example.com"); len(allReceived) != 0 {
-		t.Errorf("expired invitation received: %+v", allReceived)
+	if receivedInvitations, _ := database.ListReceivedShareInvitations(ctx, "b@example.com"); len(receivedInvitations) != 0 {
+		t.Errorf("expired invitation received: %+v", receivedInvitations)
 	}
-	if allSent, _ := database.ListAllSentShareInvitation(ctx, "AAAAAA"); len(allSent) != 0 {
-		t.Errorf("expired invitation sent: %+v", allSent)
+	if sent, _ := database.ListSentShareInvitations(ctx, "AAAAAA"); len(sent) != 0 {
+		t.Errorf("expired invitation sent: %+v", sent)
 	}
 	if _, _, err := database.AcceptShareInvitation(ctx, expiredID, "BBBBBB", "b@example.com"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("accept expired: %v", err)
@@ -168,26 +168,26 @@ func TestListAllPersonOnlySharesVaults(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	listAllPersonID := func(accountID string) []string {
-		allPerson, err := database.ListAllPerson(ctx, accountID)
+	listPersonIDs := func(accountID string) []string {
+		people, err := database.ListPeople(ctx, accountID)
 		if err != nil {
 			t.Fatal(err)
 		}
-		var allID []string
-		for _, person := range allPerson {
-			allID = append(allID, person.ID)
+		var iDs []string
+		for _, person := range people {
+			iDs = append(iDs, person.ID)
 		}
-		slices.Sort(allID)
-		return allID
+		slices.Sort(iDs)
+		return iDs
 	}
-	if allID := listAllPersonID("AAAAAA"); !slices.Equal(allID, []string{"AAAAAA", "BBBBBB", "CCCCCC"}) {
-		t.Errorf("Alice sees %v", allID)
+	if iDs := listPersonIDs("AAAAAA"); !slices.Equal(iDs, []string{"AAAAAA", "BBBBBB", "CCCCCC"}) {
+		t.Errorf("Alice sees %v", iDs)
 	}
-	if allID := listAllPersonID("BBBBBB"); !slices.Equal(allID, []string{"AAAAAA", "BBBBBB"}) {
-		t.Errorf("Bob sees %v", allID)
+	if iDs := listPersonIDs("BBBBBB"); !slices.Equal(iDs, []string{"AAAAAA", "BBBBBB"}) {
+		t.Errorf("Bob sees %v", iDs)
 	}
-	if allID := listAllPersonID("DDDDDD"); !slices.Equal(allID, []string{"DDDDDD"}) {
-		t.Errorf("Dave sees %v", allID)
+	if iDs := listPersonIDs("DDDDDD"); !slices.Equal(iDs, []string{"DDDDDD"}) {
+		t.Errorf("Dave sees %v", iDs)
 	}
 }
 
@@ -200,7 +200,7 @@ func TestRotateVaultCannotAddMember(t *testing.T) {
 	rotation := VaultRotation{
 		VaultID:   vaultID,
 		EncName:   []byte("new-name"),
-		AllAccess: []Member{{AccountID: "AAAAAA", Role: "owner", WrappedKey: []byte{9}}, {AccountID: "BBBBBB", Role: "editor", WrappedKey: []byte{9}}},
+		Accesses:  []Member{{AccountID: "AAAAAA", Role: "owner", WrappedKey: []byte{9}}, {AccountID: "BBBBBB", Role: "editor", WrappedKey: []byte{9}}},
 		RotatedBy: "AAAAAA",
 	}
 	if err := database.RotateVault(ctx, rotation); !errors.Is(err, ErrNotMember) {
@@ -209,7 +209,7 @@ func TestRotateVaultCannotAddMember(t *testing.T) {
 	if _, err := database.GetVaultRole(ctx, vaultID, "BBBBBB"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("Bob got access: %v", err)
 	}
-	rotation.AllAccess = rotation.AllAccess[:1]
+	rotation.Accesses = rotation.Accesses[:1]
 	if err := database.RotateVault(ctx, rotation); err != nil {
 		t.Fatal(err)
 	}

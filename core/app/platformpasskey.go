@@ -22,14 +22,14 @@ type StoredPasskey struct {
 }
 
 type PasskeyRegistration struct {
-	RelyingPartyID          string   `json:"relyingPartyId"`
-	UserName                string   `json:"userName"`
-	UserDisplayName         string   `json:"userDisplayName"`
-	UserHandle              string   `json:"userHandle"`
-	ClientDataHash          string   `json:"clientDataHash"`
-	AllExcludedCredentialID []string `json:"excludeCredentials"`
-	VaultID                 string   `json:"vaultID"`
-	ItemID                  string   `json:"itemID"`
+	RelyingPartyID        string   `json:"relyingPartyId"`
+	UserName              string   `json:"userName"`
+	UserDisplayName       string   `json:"userDisplayName"`
+	UserHandle            string   `json:"userHandle"`
+	ClientDataHash        string   `json:"clientDataHash"`
+	ExcludedCredentialIDs []string `json:"excludeCredentials"`
+	VaultID               string   `json:"vaultID"`
+	ItemID                string   `json:"itemID"`
 }
 
 type PasskeyRegistrationResult struct {
@@ -47,30 +47,30 @@ type PasskeyAssertion struct {
 	UserHandle        string `json:"userHandle"`
 }
 
-func convertToAllStoredPasskey(allMatch []passkeyMatch) []StoredPasskey {
-	allStoredPasskey := make([]StoredPasskey, 0, len(allMatch))
-	for _, match := range allMatch {
-		allStoredPasskey = append(allStoredPasskey, StoredPasskey{
+func convertToStoredPasskeys(matches []passkeyMatch) []StoredPasskey {
+	storedPasskeys := make([]StoredPasskey, 0, len(matches))
+	for _, match := range matches {
+		storedPasskeys = append(storedPasskeys, StoredPasskey{
 			CredentialID: encodeBase64URL(match.passkey.CredentialID), RelyingPartyID: match.passkey.RelyingPartyID,
 			UserName: match.passkey.UserName, UserDisplayName: match.passkey.UserDisplayName, UserHandle: encodeBase64URL(match.passkey.UserHandle),
 			VaultID: match.vaultID, ItemID: match.itemID, Title: match.title,
 		})
 	}
-	return allStoredPasskey
+	return storedPasskeys
 }
 
-func ListAllPasskey(s *Service) ([]StoredPasskey, error) {
+func ListPasskeys(s *Service) ([]StoredPasskey, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	allMatch, err := s.loadAllPasskey(context.Background(), "")
+	matches, err := s.loadPasskeys(context.Background(), "")
 	if err != nil {
 		return nil, convertPasskeyError(err)
 	}
-	return convertToAllStoredPasskey(allMatch), nil
+	return convertToStoredPasskeys(matches), nil
 }
 
-func ListAllPasskeyForRelyingParty(s *Service, relyingPartyID string, allAllowedCredentialID []string) ([]StoredPasskey, error) {
-	allAllowedID, err := decodeAllCredentialID(allAllowedCredentialID)
+func ListPasskeysForRelyingParty(s *Service, relyingPartyID string, allowedCredentialIDs []string) ([]StoredPasskey, error) {
+	allowedIDs, err := decodeCredentialIDs(allowedCredentialIDs)
 	if err != nil {
 		return nil, convertPasskeyError(err)
 	}
@@ -80,15 +80,15 @@ func ListAllPasskeyForRelyingParty(s *Service, relyingPartyID string, allAllowed
 	}
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	allMatch, err := s.loadAllPasskey(context.Background(), target.relyingPartyID)
+	matches, err := s.loadPasskeys(context.Background(), target.relyingPartyID)
 	if err != nil {
 		return nil, convertPasskeyError(err)
 	}
-	return convertToAllStoredPasskey(filterAllAllowedPasskey(allMatch, allAllowedID)), nil
+	return convertToStoredPasskeys(filterAllowedPasskeys(matches, allowedIDs)), nil
 }
 
-func PreparePasskeyRegistration(s *Service, relyingPartyID string, allExcludedCredentialID []string) (browserprotocol.PasskeyPrepareResult, error) {
-	allExcludedID, err := decodeAllCredentialID(allExcludedCredentialID)
+func PreparePasskeyRegistration(s *Service, relyingPartyID string, excludedCredentialIDs []string) (browserprotocol.PasskeyPrepareResult, error) {
+	excludedIDs, err := decodeCredentialIDs(excludedCredentialIDs)
 	if err != nil {
 		return browserprotocol.PasskeyPrepareResult{}, convertPasskeyError(err)
 	}
@@ -96,7 +96,7 @@ func PreparePasskeyRegistration(s *Service, relyingPartyID string, allExcludedCr
 	if err != nil {
 		return browserprotocol.PasskeyPrepareResult{}, convertPasskeyError(err)
 	}
-	result, err := s.preparePasskeySave(context.Background(), target, allExcludedID)
+	result, err := s.preparePasskeySave(context.Background(), target, excludedIDs)
 	return result, convertPasskeyError(err)
 }
 
@@ -114,7 +114,7 @@ func (s *Service) createPlatformPasskey(ctx context.Context, registration Passke
 	if err != nil || len(clientDataHash) != passkey.ClientDataHashLength {
 		return PasskeyRegistrationResult{}, passkey.ErrInvalidRequest
 	}
-	allExcludedID, err := decodeAllCredentialID(registration.AllExcludedCredentialID)
+	excludedIDs, err := decodeCredentialIDs(registration.ExcludedCredentialIDs)
 	if err != nil {
 		return PasskeyRegistrationResult{}, err
 	}
@@ -122,7 +122,7 @@ func (s *Service) createPlatformPasskey(ctx context.Context, registration Passke
 	if err != nil {
 		return PasskeyRegistrationResult{}, err
 	}
-	saved, err := s.savePasskey(ctx, passkeySave{target: target, user: user, allExcludedID: allExcludedID, vaultID: registration.VaultID, itemID: registration.ItemID}, func() (passkey.Creation, error) {
+	saved, err := s.savePasskey(ctx, passkeySave{target: target, user: user, excludedIDs: excludedIDs, vaultID: registration.VaultID, itemID: registration.ItemID}, func() (passkey.Creation, error) {
 		return passkey.CreateCredentialWithClientDataHash(target.relyingPartyID, clientDataHash)
 	})
 	if err != nil {

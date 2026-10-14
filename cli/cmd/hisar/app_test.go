@@ -22,7 +22,7 @@ type fakeApp struct {
 	socketPath  string
 	hello       cliprotocol.HelloResult
 	helloError  *cliprotocol.ResponseError
-	allRequest  []cliprotocol.Request
+	requests    []cliprotocol.Request
 	answer      func(request cliprotocol.Request) (any, *cliprotocol.ResponseError)
 	connections int
 }
@@ -75,7 +75,7 @@ func (app *fakeApp) serve(connection net.Conn) {
 			return
 		}
 		app.mutex.Lock()
-		app.allRequest = append(app.allRequest, request)
+		app.requests = append(app.requests, request)
 		answer, hello, helloError := app.answer, app.hello, app.helloError
 		app.mutex.Unlock()
 		var result any
@@ -95,26 +95,26 @@ func (app *fakeApp) serve(connection net.Conn) {
 	}
 }
 
-func (app *fakeApp) listAllRequestType() []string {
+func (app *fakeApp) listRequestTypes() []string {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
-	allType := []string{}
-	for _, request := range app.allRequest {
-		allType = append(allType, request.Type)
+	types := []string{}
+	for _, request := range app.requests {
+		types = append(types, request.Type)
 	}
-	return allType
+	return types
 }
 
 func (app *fakeApp) findRequest(requestType string) []cliprotocol.Request {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
-	allMatch := []cliprotocol.Request{}
-	for _, request := range app.allRequest {
+	matches := []cliprotocol.Request{}
+	for _, request := range app.requests {
 		if request.Type == requestType {
-			allMatch = append(allMatch, request)
+			matches = append(matches, request)
 		}
 	}
-	return allMatch
+	return matches
 }
 
 func answerFakeVaultRequest(request cliprotocol.Request) (any, *cliprotocol.ResponseError) {
@@ -138,7 +138,7 @@ func answerFakeVaultRequest(request cliprotocol.Request) (any, *cliprotocol.Resp
 		return cliprotocol.ItemResult{Item: cliprotocol.Item{ID: request.ItemID, Revision: "r2", Title: "Bank", Username: "alice", Password: "bank-password"}}, nil
 	case cliprotocol.TypeGetCode:
 		if request.ItemID != "github-id" {
-			return nil, cliprotocol.CreateError(cliprotocol.ErrorNotFound, "one-time password not found")
+			return nil, cliprotocol.NewError(cliprotocol.ErrorNotFound, "one-time password not found")
 		}
 		return cliprotocol.CodeResult{Code: "123456", ExpiresAt: "2026-10-11T10:00:30Z", Period: 30}, nil
 	case cliprotocol.TypeCreateVault:
@@ -164,15 +164,15 @@ func answerFakeVaultRequest(request cliprotocol.Request) (any, *cliprotocol.Resp
 	case cliprotocol.TypeListDevice:
 		return cliprotocol.DeviceListResult{Devices: []cliprotocol.Device{{ID: "device-1", Name: "Mac", Platform: "darwin/desktop", LastSeenAt: "2026-10-11T09:00:00Z", IsCurrent: true}}}, nil
 	}
-	return nil, cliprotocol.CreateError(cliprotocol.ErrorInvalidRequest, "unknown request type")
+	return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "unknown request type")
 }
 
 // runCapturingOutput runs a command as main does, with the given input, and returns stdout and stderr.
-func runCapturingOutput(t *testing.T, isStandaloneForced bool, input string, allArg ...string) (string, string, error) {
+func runCapturingOutput(t *testing.T, isStandaloneForced bool, input string, args ...string) (string, string, error) {
 	t.Helper()
-	selected, isFound := findCommand(allArg[0])
+	selected, isFound := findCommand(args[0])
 	if !isFound {
-		t.Fatalf("no command %q", allArg[0])
+		t.Fatalf("no command %q", args[0])
 	}
 	originalStdout, originalStderr, originalReader := os.Stdout, os.Stderr, stdinReader
 	stdoutReader, stdoutWriter, _ := os.Pipe()
@@ -182,7 +182,7 @@ func runCapturingOutput(t *testing.T, isStandaloneForced bool, input string, all
 	stdoutChannel, stderrChannel := make(chan string), make(chan string)
 	go func() { content, _ := io.ReadAll(stdoutReader); stdoutChannel <- string(content) }()
 	go func() { content, _ := io.ReadAll(stderrReader); stderrChannel <- string(content) }()
-	err := runCommand(context.Background(), selected, isStandaloneForced, flag.NewFlagSet(selected.name, flag.ContinueOnError), allArg[1:])
+	err := runCommand(context.Background(), selected, isStandaloneForced, flag.NewFlagSet(selected.name, flag.ContinueOnError), args[1:])
 	stdoutWriter.Close()
 	stderrWriter.Close()
 	os.Stdout, os.Stderr, stdinReader = originalStdout, originalStderr, originalReader
@@ -213,7 +213,7 @@ func TestChooseModeFallsBackToStandalone(t *testing.T) {
 	t.Setenv(standaloneEnvironment, "")
 
 	app.mutex.Lock()
-	app.helloError = cliprotocol.CreateError(cliprotocol.ErrorIntegrationDisabled, "off")
+	app.helloError = cliprotocol.NewError(cliprotocol.ErrorIntegrationDisabled, "off")
 	app.mutex.Unlock()
 	if mode := chooseMode(false); mode.client != nil || !strings.Contains(mode.reason, "turned off") {
 		t.Errorf("switch off: %+v", mode)
@@ -395,9 +395,9 @@ func TestImportThroughTheAppSendsBatches(t *testing.T) {
 	if err != nil || !strings.Contains(stderr, "Imported 12 items into Personal.") {
 		t.Fatalf("import: %q %v", stderr, err)
 	}
-	allBatch := app.findRequest(cliprotocol.TypeImportItem)
-	if len(allBatch) != 2 || len(allBatch[0].ImportedItems) != 10 || len(allBatch[1].ImportedItems) != 2 {
-		t.Errorf("batches %d", len(allBatch))
+	batches := app.findRequest(cliprotocol.TypeImportItem)
+	if len(batches) != 2 || len(batches[0].ImportedItems) != 10 || len(batches[1].ImportedItems) != 2 {
+		t.Errorf("batches %d", len(batches))
 	}
 	if _, err := os.Stat(path); err != nil {
 		t.Error("import -y deleted the export")
@@ -411,7 +411,7 @@ func TestDeniedRequestIsReportedNotRetriedStandalone(t *testing.T) {
 	app := startFakeApp(t)
 	app.mutex.Lock()
 	app.answer = func(cliprotocol.Request) (any, *cliprotocol.ResponseError) {
-		return nil, cliprotocol.CreateError(cliprotocol.ErrorDenied, "Hisar denied the request (it was not answered within 2 minutes)")
+		return nil, cliprotocol.NewError(cliprotocol.ErrorDenied, "Hisar denied the request (it was not answered within 2 minutes)")
 	}
 	app.mutex.Unlock()
 	_, _, err := runCapturingOutput(t, false, "", "vaults")
@@ -456,8 +456,8 @@ func TestStatusShowsTheMode(t *testing.T) {
 	if err != nil || !strings.Contains(stdout, "mode:    Hisar app ("+app.socketPath+")") || !strings.Contains(stdout, "account: alice@example.com on https://hisar.example.com") || !strings.Contains(stdout, "asks for approval") {
 		t.Errorf("app status: %q %v", stdout, err)
 	}
-	if allType := app.listAllRequestType(); len(allType) != 1 || allType[0] != cliprotocol.TypeHello {
-		t.Errorf("status needed more than hello: %v", allType)
+	if types := app.listRequestTypes(); len(types) != 1 || types[0] != cliprotocol.TypeHello {
+		t.Errorf("status needed more than hello: %v", types)
 	}
 	app.mutex.Lock()
 	app.hello.State, app.hello.IsApproved = cliprotocol.StateLocked, false
@@ -475,20 +475,20 @@ func TestStatusShowsTheMode(t *testing.T) {
 func TestStandaloneModeKeepsItsOwnSignIn(t *testing.T) {
 	app := startFakeApp(t)
 	app.mutex.Lock()
-	app.helloError = cliprotocol.CreateError(cliprotocol.ErrorIntegrationDisabled, "off")
+	app.helloError = cliprotocol.NewError(cliprotocol.ErrorIntegrationDisabled, "off")
 	app.mutex.Unlock()
 	if _, _, err := runCapturingOutput(t, false, "", "whoami"); err == nil || !strings.Contains(err.Error(), "not logged in") {
 		t.Errorf("whoami with the switch off: %v", err)
 	}
-	if allType := app.listAllRequestType(); len(allType) != 1 || allType[0] != cliprotocol.TypeHello {
-		t.Errorf("standalone sent %v", allType)
+	if types := app.listRequestTypes(); len(types) != 1 || types[0] != cliprotocol.TypeHello {
+		t.Errorf("standalone sent %v", types)
 	}
 }
 
 func TestParseGlobalOption(t *testing.T) {
-	option, allArg, err := parseGlobalOption([]string{"--standalone", "get", "github", "-f", "password"})
-	if err != nil || !option.isStandalone || strings.Join(allArg, " ") != "get github -f password" {
-		t.Errorf("%+v %v %v", option, allArg, err)
+	option, args, err := parseGlobalOption([]string{"--standalone", "get", "github", "-f", "password"})
+	if err != nil || !option.isStandalone || strings.Join(args, " ") != "get github -f password" {
+		t.Errorf("%+v %v %v", option, args, err)
 	}
 	if option, _, _ := parseGlobalOption([]string{"--version"}); !option.isVersion {
 		t.Error("--version not read")

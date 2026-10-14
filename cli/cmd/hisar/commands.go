@@ -79,15 +79,15 @@ func finishSession(currentState *localstate.State, currentSession *session.Sessi
 	return err
 }
 
-func runSignup(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
-	allPositional, err := parse(flags, allArg)
+func runSignup(ctx context.Context, flags *flag.FlagSet, args []string) error {
+	positionals, err := parse(flags, args)
 	if err != nil {
 		return err
 	}
-	if len(allPositional) != 1 {
+	if len(positionals) != 1 {
 		return errUsage
 	}
-	server, token, err := parseInvite(allPositional[0])
+	server, token, err := parseInvite(positionals[0])
 	if err != nil {
 		return err
 	}
@@ -147,8 +147,8 @@ func parseInvite(link string) (server, token string, err error) {
 	return server, token, nil
 }
 
-func runLogin(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
-	if _, err := parse(flags, allArg); err != nil {
+func runLogin(ctx context.Context, flags *flag.FlagSet, args []string) error {
+	if _, err := parse(flags, args); err != nil {
 		return err
 	}
 	currentState, err := loadState()
@@ -202,8 +202,8 @@ func runLogin(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
 	return nil
 }
 
-func getFirstNonEmpty(allValue ...string) string {
-	for _, value := range allValue {
+func getFirstNonEmpty(values ...string) string {
+	for _, value := range values {
 		if value != "" {
 			return value
 		}
@@ -211,8 +211,8 @@ func getFirstNonEmpty(allValue ...string) string {
 	return ""
 }
 
-func runLogout(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
-	if _, err := parse(flags, allArg); err != nil {
+func runLogout(ctx context.Context, flags *flag.FlagSet, args []string) error {
+	if _, err := parse(flags, args); err != nil {
 		return err
 	}
 	currentState, err := loadState()
@@ -229,8 +229,8 @@ func runLogout(ctx context.Context, flags *flag.FlagSet, allArg []string) error 
 	return currentState.Save()
 }
 
-func runWhoami(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
-	if _, err := parse(flags, allArg); err != nil {
+func runWhoami(ctx context.Context, flags *flag.FlagSet, args []string) error {
+	if _, err := parse(flags, args); err != nil {
 		return err
 	}
 	currentState, err := loadState()
@@ -248,19 +248,19 @@ func runWhoami(ctx context.Context, flags *flag.FlagSet, allArg []string) error 
 	return nil
 }
 
-func runListAllVault(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
-	if _, err := parse(flags, allArg); err != nil {
+func runListVaults(ctx context.Context, flags *flag.FlagSet, args []string) error {
+	if _, err := parse(flags, args); err != nil {
 		return err
 	}
 	currentState, unlockedSession, err := unlock(ctx)
 	if err != nil {
 		return err
 	}
-	allVault, err := unlockedSession.ListAllVault(ctx)
+	vaults, err := unlockedSession.ListVaults(ctx)
 	if err == nil {
 		writer := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
 		fmt.Fprintln(writer, "NAME\tTYPE\tROLE\tID")
-		for _, vault := range allVault {
+		for _, vault := range vaults {
 			fmt.Fprintf(writer, "%s\t%s\t%s\t%s\n", vault.Name, vault.Type, vault.Role, vault.ID)
 		}
 		writer.Flush()
@@ -268,19 +268,19 @@ func runListAllVault(ctx context.Context, flags *flag.FlagSet, allArg []string) 
 	return finishSession(currentState, unlockedSession, err)
 }
 
-func runCreateVault(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
-	allPositional, err := parse(flags, allArg)
+func runCreateVault(ctx context.Context, flags *flag.FlagSet, args []string) error {
+	positionals, err := parse(flags, args)
 	if err != nil {
 		return err
 	}
-	if len(allPositional) != 1 {
+	if len(positionals) != 1 {
 		return errUsage
 	}
 	currentState, unlockedSession, err := unlock(ctx)
 	if err != nil {
 		return err
 	}
-	vault, err := unlockedSession.CreateVault(ctx, allPositional[0], apitypes.VaultShared)
+	vault, err := unlockedSession.CreateVault(ctx, positionals[0], apitypes.VaultShared)
 	if err == nil {
 		fmt.Fprintf(os.Stderr, "Created vault %q. Share it with `hisar share %q <email>`.\n", vault.Name, vault.Name)
 	}
@@ -291,9 +291,9 @@ func addVaultFlag(flags *flag.FlagSet) *string {
 	return flags.String("v", "Personal", "vault name or ID")
 }
 
-func runListAllItem(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
+func runListItems(ctx context.Context, flags *flag.FlagSet, args []string) error {
 	vaultName := addVaultFlag(flags)
-	if _, err := parse(flags, allArg); err != nil {
+	if _, err := parse(flags, args); err != nil {
 		return err
 	}
 	currentState, unlockedSession, err := unlock(ctx)
@@ -305,13 +305,13 @@ func runListAllItem(ctx context.Context, flags *flag.FlagSet, allArg []string) e
 		if err != nil {
 			return err
 		}
-		allItem, err := unlockedSession.ListAllItem(ctx, vault)
+		items, err := unlockedSession.ListItems(ctx, vault)
 		if err != nil {
 			return err
 		}
 		writer := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
 		fmt.Fprintln(writer, "TITLE\tUSERNAME\tURL\tID")
-		for _, vaultItem := range allItem {
+		for _, vaultItem := range items {
 			fmt.Fprintf(writer, "%s\t%s\t%s\t%s\n", vaultItem.Overview.Title, vaultItem.Overview.Username, strings.Join(vaultItem.Overview.URLs, " "), vaultItem.ID)
 		}
 		return writer.Flush()
@@ -319,26 +319,26 @@ func runListAllItem(ctx context.Context, flags *flag.FlagSet, allArg []string) e
 	return finishSession(currentState, unlockedSession, err)
 }
 
-func findItem(allItem []item.Item, query string) (*item.Item, error) {
-	var allMatch []*item.Item
-	for index := range allItem {
-		vaultItem := &allItem[index]
+func findItem(items []item.Item, query string) (*item.Item, error) {
+	var matches []*item.Item
+	for index := range items {
+		vaultItem := &items[index]
 		if vaultItem.ID == query || strings.EqualFold(vaultItem.Overview.Title, query) {
 			return vaultItem, nil
 		}
 		if strings.Contains(strings.ToLower(vaultItem.Overview.Title), strings.ToLower(query)) {
-			allMatch = append(allMatch, vaultItem)
+			matches = append(matches, vaultItem)
 		}
 	}
-	switch len(allMatch) {
+	switch len(matches) {
 	case 0:
 		return nil, fmt.Errorf("no item matches %q", query)
 	case 1:
-		return allMatch[0], nil
+		return matches[0], nil
 	}
 	var builder strings.Builder
-	fmt.Fprintf(&builder, "%q matches %d items; use the exact title or ID:", query, len(allMatch))
-	for _, match := range allMatch {
+	fmt.Fprintf(&builder, "%q matches %d items; use the exact title or ID:", query, len(matches))
+	for _, match := range matches {
 		fmt.Fprintf(&builder, "\n  %s  %s", match.ID, match.Overview.Title)
 	}
 	return nil, errors.New(builder.String())
@@ -355,11 +355,11 @@ func runWithItem(ctx context.Context, vaultName, query string, action func(*sess
 		if err != nil {
 			return err
 		}
-		allItem, err := unlockedSession.ListAllItem(ctx, vault)
+		items, err := unlockedSession.ListItems(ctx, vault)
 		if err != nil {
 			return err
 		}
-		vaultItem, err := findItem(allItem, query)
+		vaultItem, err := findItem(items, query)
 		if err != nil {
 			return err
 		}
@@ -368,17 +368,17 @@ func runWithItem(ctx context.Context, vaultName, query string, action func(*sess
 	return finishSession(currentState, unlockedSession, err)
 }
 
-func runGet(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
+func runGet(ctx context.Context, flags *flag.FlagSet, args []string) error {
 	vaultName := addVaultFlag(flags)
 	fieldName := flags.String("f", "", "print only this field (title, username, url, password, notes, or a custom field name)")
-	allPositional, err := parse(flags, allArg)
+	positionals, err := parse(flags, args)
 	if err != nil {
 		return err
 	}
-	if len(allPositional) != 1 {
+	if len(positionals) != 1 {
 		return errUsage
 	}
-	return runWithItem(ctx, *vaultName, allPositional[0], func(_ *session.Session, _ *session.Vault, vaultItem *item.Item) error {
+	return runWithItem(ctx, *vaultName, positionals[0], func(_ *session.Session, _ *session.Vault, vaultItem *item.Item) error {
 		if *fieldName != "" {
 			value, ok := getFieldValue(vaultItem, *fieldName)
 			if !ok {
@@ -460,9 +460,9 @@ func promptItem(vaultItem *item.Item) error {
 	return err
 }
 
-func runAdd(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
+func runAdd(ctx context.Context, flags *flag.FlagSet, args []string) error {
 	vaultName := addVaultFlag(flags)
-	if _, err := parse(flags, allArg); err != nil {
+	if _, err := parse(flags, args); err != nil {
 		return err
 	}
 	currentState, unlockedSession, err := unlock(ctx)
@@ -487,16 +487,16 @@ func runAdd(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
 	return finishSession(currentState, unlockedSession, err)
 }
 
-func runEdit(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
+func runEdit(ctx context.Context, flags *flag.FlagSet, args []string) error {
 	vaultName := addVaultFlag(flags)
-	allPositional, err := parse(flags, allArg)
+	positionals, err := parse(flags, args)
 	if err != nil {
 		return err
 	}
-	if len(allPositional) != 1 {
+	if len(positionals) != 1 {
 		return errUsage
 	}
-	return runWithItem(ctx, *vaultName, allPositional[0], func(unlockedSession *session.Session, vault *session.Vault, vaultItem *item.Item) error {
+	return runWithItem(ctx, *vaultName, positionals[0], func(unlockedSession *session.Session, vault *session.Vault, vaultItem *item.Item) error {
 		if err := promptItem(vaultItem); err != nil {
 			return err
 		}
@@ -510,16 +510,16 @@ func runEdit(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
 	})
 }
 
-func runRemove(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
+func runRemove(ctx context.Context, flags *flag.FlagSet, args []string) error {
 	vaultName := addVaultFlag(flags)
-	allPositional, err := parse(flags, allArg)
+	positionals, err := parse(flags, args)
 	if err != nil {
 		return err
 	}
-	if len(allPositional) != 1 {
+	if len(positionals) != 1 {
 		return errUsage
 	}
-	return runWithItem(ctx, *vaultName, allPositional[0], func(unlockedSession *session.Session, vault *session.Vault, vaultItem *item.Item) error {
+	return runWithItem(ctx, *vaultName, positionals[0], func(unlockedSession *session.Session, vault *session.Vault, vaultItem *item.Item) error {
 		ok, err := confirm(fmt.Sprintf("Delete %q from %s?", vaultItem.Overview.Title, vault.Name))
 		if err != nil || !ok {
 			return err
@@ -532,10 +532,10 @@ func runRemove(ctx context.Context, flags *flag.FlagSet, allArg []string) error 
 	})
 }
 
-func runGenerate(_ context.Context, flags *flag.FlagSet, allArg []string) error {
+func runGenerate(_ context.Context, flags *flag.FlagSet, args []string) error {
 	length := flags.Int("n", item.DefaultGeneratorConfig().Length, "length")
 	noSymbols := flags.Bool("no-symbols", false, "letters and digits only")
-	if _, err := parse(flags, allArg); err != nil {
+	if _, err := parse(flags, args); err != nil {
 		return err
 	}
 	password, err := item.GeneratePassword(item.GeneratorConfig{Length: *length, Digits: true, Symbols: !*noSymbols})
@@ -546,12 +546,12 @@ func runGenerate(_ context.Context, flags *flag.FlagSet, allArg []string) error 
 	return nil
 }
 
-func runUnshare(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
-	allPositional, err := parse(flags, allArg)
+func runUnshare(ctx context.Context, flags *flag.FlagSet, args []string) error {
+	positionals, err := parse(flags, args)
 	if err != nil {
 		return err
 	}
-	if len(allPositional) != 2 {
+	if len(positionals) != 2 {
 		return errUsage
 	}
 	currentState, unlockedSession, err := unlock(ctx)
@@ -559,11 +559,11 @@ func runUnshare(ctx context.Context, flags *flag.FlagSet, allArg []string) error
 		return err
 	}
 	err = func() error {
-		vault, err := unlockedSession.FindVault(ctx, allPositional[0])
+		vault, err := unlockedSession.FindVault(ctx, positionals[0])
 		if err != nil {
 			return err
 		}
-		member, err := unlockedSession.GetVerifiedMember(ctx, allPositional[1])
+		member, err := unlockedSession.GetVerifiedMember(ctx, positionals[1])
 		if err != nil {
 			return err
 		}
@@ -576,8 +576,8 @@ func runUnshare(ctx context.Context, flags *flag.FlagSet, allArg []string) error
 	return finishSession(currentState, unlockedSession, err)
 }
 
-func runListAllDevice(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
-	if _, err := parse(flags, allArg); err != nil {
+func runListDevices(ctx context.Context, flags *flag.FlagSet, args []string) error {
+	if _, err := parse(flags, args); err != nil {
 		return err
 	}
 	currentState, err := loadState()
@@ -587,13 +587,13 @@ func runListAllDevice(ctx context.Context, flags *flag.FlagSet, allArg []string)
 	if err := requireLogin(currentState); err != nil {
 		return err
 	}
-	allDevice, err := createAuthedClient(currentState).ListAllDevice(ctx)
+	devices, err := createAuthedClient(currentState).ListDevices(ctx)
 	if err != nil {
 		return err
 	}
 	writer := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(writer, "NAME\tPLATFORM\tLAST SEEN\tID")
-	for _, device := range allDevice {
+	for _, device := range devices {
 		name := device.Name
 		if device.Current {
 			name += " (this device)"
@@ -603,12 +603,12 @@ func runListAllDevice(ctx context.Context, flags *flag.FlagSet, allArg []string)
 	return writer.Flush()
 }
 
-func runRevokeDevice(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
-	allPositional, err := parse(flags, allArg)
+func runRevokeDevice(ctx context.Context, flags *flag.FlagSet, args []string) error {
+	positionals, err := parse(flags, args)
 	if err != nil {
 		return err
 	}
-	if len(allPositional) != 1 {
+	if len(positionals) != 1 {
 		return errUsage
 	}
 	currentState, err := loadState()
@@ -618,7 +618,7 @@ func runRevokeDevice(ctx context.Context, flags *flag.FlagSet, allArg []string) 
 	if err := requireLogin(currentState); err != nil {
 		return err
 	}
-	if err := createAuthedClient(currentState).RevokeDevice(ctx, allPositional[0]); err != nil {
+	if err := createAuthedClient(currentState).RevokeDevice(ctx, positionals[0]); err != nil {
 		return err
 	}
 	fmt.Fprintln(os.Stderr, "Device signed out.")

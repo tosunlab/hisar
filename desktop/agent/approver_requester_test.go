@@ -16,16 +16,16 @@ import (
 const iTermBundlePath = "/Applications/iTerm.app"
 
 func createITermSigningRequester() appinfo.Requester {
-	allProcess := []appinfo.Process{
-		{PID: 70, Path: "/usr/bin/ssh-keygen", AllArgument: []string{"/usr/bin/ssh-keygen", "-Y", "sign", "-n", "git", "-f", "/Users/developer/.ssh/signing.pub", testSigningBuffer}, WorkingDirectory: testRepositoryPath},
+	processes := []appinfo.Process{
+		{PID: 70, Path: "/usr/bin/ssh-keygen", Arguments: []string{"/usr/bin/ssh-keygen", "-Y", "sign", "-n", "git", "-f", "/Users/developer/.ssh/signing.pub", testSigningBuffer}, WorkingDirectory: testRepositoryPath},
 		createGitProcess(60, "-c", "http.extraHeader=Authorization: Bearer abc", "commit", "-S", "-m", "Fix"),
-		{PID: 50, Path: "/bin/zsh", AllArgument: []string{"-zsh"}},
+		{PID: 50, Path: "/bin/zsh", Arguments: []string{"-zsh"}},
 	}
 	app := appinfo.App{
 		Name: "iTerm2", Path: iTermBundlePath, IconURL: "data:image/png;base64,iTerm",
 		Signature: appinfo.Signature{Status: appinfo.SignatureStatusDeveloper, TeamID: "H7V7XYVQ7D", SignerName: "George Nachman (H7V7XYVQ7D)"},
 	}
-	return appinfo.Requester{Kind: appinfo.RequesterKindApp, Name: "iTerm2", App: app, AllProcess: append(allProcess, appinfo.Process{PID: 40, Path: "/usr/bin/login"}), AllChainProcess: allProcess}
+	return appinfo.Requester{Kind: appinfo.RequesterKindApp, Name: "iTerm2", App: app, Processes: append(processes, appinfo.Process{PID: 40, Path: "/usr/bin/login"}), ChainProcesses: processes}
 }
 
 type requesterApproverOption struct {
@@ -47,7 +47,7 @@ func createRequesterApprover(emitter *fakeEmitter, option requesterApproverOptio
 	if option.phone != nil {
 		config.PhoneApprover = option.phone
 	}
-	return CreateApprover(config)
+	return NewApprover(config)
 }
 
 func TestSigningInITermNamesITerm(t *testing.T) {
@@ -62,14 +62,14 @@ func TestSigningInITermNamesITerm(t *testing.T) {
 	if event.AppSignature != appinfo.SignatureStatusDeveloper || event.AppSigner != "Signed by George Nachman (H7V7XYVQ7D)" || event.AppWarning != "" {
 		t.Errorf("signature %q %q %q", event.AppSignature, event.AppSigner, event.AppWarning)
 	}
-	allName := []string{}
-	for _, chainProcess := range event.AllChainProcess {
-		allName = append(allName, chainProcess.Name)
+	names := []string{}
+	for _, chainProcess := range event.ChainProcesses {
+		names = append(names, chainProcess.Name)
 	}
-	if !slices.Equal(allName, []string{"ssh-keygen", "git", "zsh"}) {
-		t.Errorf("chain %q", allName)
+	if !slices.Equal(names, []string{"ssh-keygen", "git", "zsh"}) {
+		t.Errorf("chain %q", names)
 	}
-	if gitCommandLine := event.AllChainProcess[1].CommandLine; strings.Contains(gitCommandLine, "abc") || !strings.Contains(gitCommandLine, "commit -S") {
+	if gitCommandLine := event.ChainProcesses[1].CommandLine; strings.Contains(gitCommandLine, "abc") || !strings.Contains(gitCommandLine, "commit -S") {
 		t.Errorf("git's command line %q", gitCommandLine)
 	}
 	if event.Purpose != PurposeSignCommit || event.CommitSubject != "Fix" || event.CommandLine == "" {
@@ -77,8 +77,8 @@ func TestSigningInITermNamesITerm(t *testing.T) {
 	}
 	approver.Respond(event.RequestID, true, false)
 	waitForResult(t, resultChannel)
-	if allReason := biometric.listAllReason(); len(allReason) != 1 || allReason[0] != `allow "iTerm2" to sign a commit` {
-		t.Errorf("Touch ID reason %q", allReason)
+	if reasons := biometric.listReasons(); len(reasons) != 1 || reasons[0] != `allow "iTerm2" to sign a commit` {
+		t.Errorf("Touch ID reason %q", reasons)
 	}
 }
 
@@ -131,8 +131,8 @@ func TestRequesterWithoutAnApp(t *testing.T) {
 		}
 		approver.Respond(event.RequestID, true, false)
 		waitForResult(t, resultChannel)
-		if allReason := biometric.listAllReason(); len(allReason) != 1 || allReason[0] != testCase.wantReason {
-			t.Errorf("Touch ID reason %q", allReason)
+		if reasons := biometric.listReasons(); len(reasons) != 1 || reasons[0] != testCase.wantReason {
+			t.Errorf("Touch ID reason %q", reasons)
 		}
 	}
 }
@@ -143,7 +143,7 @@ func TestCommandLineAndAgentNameTheirApp(t *testing.T) {
 	approver := createRequesterApprover(emitter, requesterApproverOption{requester: createITermSigningRequester(), biometric: &fakeBiometric{isAvailable: true}, phone: phone})
 	resultChannel := startCommandLineApproval(approver, context.Background())
 	event := waitForApprovalEvent(t, emitter)
-	if event.AppName != "iTerm2" || event.AppSigner == "" || len(event.AllChainProcess) != 3 || phone.waitForStart(t).AppName != "hisar in iTerm2" {
+	if event.AppName != "iTerm2" || event.AppSigner == "" || len(event.ChainProcesses) != 3 || phone.waitForStart(t).AppName != "hisar in iTerm2" {
 		t.Errorf("command line: %+v", event)
 	}
 	approver.DenyAll()
@@ -172,19 +172,19 @@ func TestPhoneGetsTheAppIconWhenSmall(t *testing.T) {
 	} {
 		emitter := createFakeEmitter()
 		phone := createFakePhone()
-		allRequestedSize := []int{}
+		requestedSizes := []int{}
 		approver := createRequesterApprover(emitter, requesterApproverOption{
 			requester: createITermSigningRequester(), biometric: &fakeBiometric{isAvailable: true}, phone: phone,
 			getAppIconPNG: func(bundlePath string, size int) ([]byte, error) {
-				allRequestedSize = append(allRequestedSize, size)
+				requestedSizes = append(requestedSizes, size)
 				return testCase.icon, testCase.err
 			},
 		})
 		resultChannel := startApproval(approver, context.Background(), sshagent.ApprovalRequest{ClientPID: 70, ClientName: "ssh", DestinationHost: "github.com"})
 		waitForApprovalEvent(t, emitter)
 		description := phone.waitForStart(t)
-		if (description.AppIcon != nil) != testCase.wantIcon || (testCase.wantIcon && !reflect.DeepEqual(description.AppIcon, testCase.icon)) || !slices.Equal(allRequestedSize, []int{appinfo.PhoneIconSize}) {
-			t.Errorf("%s: icon %d bytes, sizes %v", testCase.name, len(description.AppIcon), allRequestedSize)
+		if (description.AppIcon != nil) != testCase.wantIcon || (testCase.wantIcon && !reflect.DeepEqual(description.AppIcon, testCase.icon)) || !slices.Equal(requestedSizes, []int{appinfo.PhoneIconSize}) {
+			t.Errorf("%s: icon %d bytes, sizes %v", testCase.name, len(description.AppIcon), requestedSizes)
 		}
 		approver.DenyAll()
 		waitForResult(t, resultChannel)

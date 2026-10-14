@@ -24,15 +24,15 @@ func TestDotenvLayoutRewritesOnlyChosenValues(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	allParsed, err := parseEnvironmentFile(".env", content)
+	parsedValues, err := parseEnvironmentFile(".env", content)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(allParsed) != len(layout.allEntry) {
-		t.Fatalf("hisar run reads %d variables, the layout %d", len(allParsed), len(layout.allEntry))
+	if len(parsedValues) != len(layout.entries) {
+		t.Fatalf("hisar run reads %d variables, the layout %d", len(parsedValues), len(layout.entries))
 	}
-	for index, parsed := range allParsed {
-		if entry := layout.allEntry[index]; entry.name != parsed.name || entry.value != parsed.value {
+	for index, parsed := range parsedValues {
+		if entry := layout.entries[index]; entry.name != parsed.name || entry.value != parsed.value {
 			t.Errorf("entry %d: layout %q=%q, hisar run %q=%q", index, entry.name, entry.value, parsed.name, parsed.value)
 		}
 	}
@@ -60,19 +60,19 @@ func TestDotenvLayoutRewritesOnlyChosenValues(t *testing.T) {
 	if rendered != want {
 		t.Errorf("rendered:\n%s\nwant:\n%s", rendered, want)
 	}
-	allRewritten, err := parseEnvironmentFile(".env", rendered)
+	rewritten, err := parseEnvironmentFile(".env", rendered)
 	if err != nil {
 		t.Fatalf("hisar run can't read the rewritten file: %v", err)
 	}
-	for _, variable := range allRewritten {
+	for _, variable := range rewritten {
 		if variable.name == "DATABASE_PASSWORD" && variable.value != "hisar://Personal/app/DATABASE_PASSWORD" {
 			t.Errorf("hisar run reads %q", variable.value)
 		}
 	}
 
-	allVariable := layout.listAllVariable()
+	variables := layout.listVariables()
 	byName := map[string]dotenvVariable{}
-	for _, variable := range allVariable {
+	for _, variable := range variables {
 		byName[variable.name] = variable
 	}
 	if stripe := byName["STRIPE_KEY"]; stripe.value != "sk_live_2" || stripe.occurrenceCount != 2 || !stripe.hasOtherValue {
@@ -81,9 +81,9 @@ func TestDotenvLayoutRewritesOnlyChosenValues(t *testing.T) {
 	if privateKey := byName["PRIVATE_KEY"]; privateKey.value != "-----BEGIN KEY-----\nline two\n-----END KEY-----" {
 		t.Errorf("multiline value: %q", privateKey.value)
 	}
-	allStorable, allSkipped := listAllStorableVariable(allVariable)
-	if len(allStorable) != 6 || !reflect.DeepEqual(allSkipped, []string{"EMPTY (empty)", "ALREADY (already a secret reference)"}) {
-		t.Errorf("storable %d, skipped %v", len(allStorable), allSkipped)
+	storable, skipped := listStorableVariables(variables)
+	if len(storable) != 6 || !reflect.DeepEqual(skipped, []string{"EMPTY (empty)", "ALREADY (already a secret reference)"}) {
+		t.Errorf("storable %d, skipped %v", len(storable), skipped)
 	}
 }
 

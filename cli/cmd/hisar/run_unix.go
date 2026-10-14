@@ -9,7 +9,7 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-var allForwardedSignal = []os.Signal{syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGQUIT}
+var forwardedSignals = []os.Signal{syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP, syscall.SIGQUIT}
 
 func isTerminalSignal(receivedSignal os.Signal) bool {
 	return receivedSignal == syscall.SIGINT || receivedSignal == syscall.SIGQUIT

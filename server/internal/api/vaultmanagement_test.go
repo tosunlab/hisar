@@ -18,10 +18,10 @@ import (
 
 func findTestVault(t *testing.T, signedIn *session.Session, vaultID string) (*session.Vault, bool) {
 	t.Helper()
-	allVault := requireValue[[]session.Vault](t)(signedIn.ListAllVault(context.Background()))
-	for index := range allVault {
-		if allVault[index].ID == vaultID {
-			return &allVault[index], true
+	vaults := requireValue[[]session.Vault](t)(signedIn.ListVaults(context.Background()))
+	for index := range vaults {
+		if vaults[index].ID == vaultID {
+			return &vaults[index], true
 		}
 	}
 	return nil, false
@@ -29,17 +29,17 @@ func findTestVault(t *testing.T, signedIn *session.Session, vaultID string) (*se
 
 func findPersonalVault(t *testing.T, signedIn *session.Session) *session.Vault {
 	t.Helper()
-	allVault := requireValue[[]session.Vault](t)(signedIn.ListAllVault(context.Background()))
-	for index := range allVault {
-		if allVault[index].Type == apitypes.VaultPersonal {
-			return &allVault[index]
+	vaults := requireValue[[]session.Vault](t)(signedIn.ListVaults(context.Background()))
+	for index := range vaults {
+		if vaults[index].Type == apitypes.VaultPersonal {
+			return &vaults[index]
 		}
 	}
 	t.Fatal("no personal vault")
 	return nil
 }
 
-func listAllAuditType(t *testing.T, databaseURL string) []string {
+func listAuditTypes(t *testing.T, databaseURL string) []string {
 	t.Helper()
 	ctx := context.Background()
 	connection, err := pgx.Connect(ctx, databaseURL)
@@ -47,11 +47,11 @@ func listAllAuditType(t *testing.T, databaseURL string) []string {
 		t.Fatal(err)
 	}
 	defer connection.Close(ctx)
-	allRow, err := connection.Query(ctx, `SELECT type FROM audit_events ORDER BY id`)
+	rows, err := connection.Query(ctx, `SELECT type FROM audit_events ORDER BY id`)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return requireValue[[]string](t)(pgx.CollectRows(allRow, pgx.RowTo[string]))
+	return requireValue[[]string](t)(pgx.CollectRows(rows, pgx.RowTo[string]))
 }
 
 func TestVaultRenameDeleteAndLeavePermissions(t *testing.T) {
@@ -99,12 +99,12 @@ func TestVaultRenameDeleteAndLeavePermissions(t *testing.T) {
 	if _, isFound := findTestVault(t, carol, work.ID); isFound {
 		t.Error("carol still lists the vault she left")
 	}
-	if _, err := carol.Client.ListAllChange(ctx, work.ID, 0, 0); !apiclient.IsStatus(err, http.StatusNotFound) {
+	if _, err := carol.Client.ListChanges(ctx, work.ID, 0, 0); !apiclient.IsStatus(err, http.StatusNotFound) {
 		t.Errorf("carol reads the vault she left: %v", err)
 	}
-	allMember := requireValue[[]apitypes.VaultMember](t)(alice.Client.ListAllVaultMember(ctx, work.ID))
-	if slices.ContainsFunc(allMember, func(member apitypes.VaultMember) bool { return member.AccountID == carol.AccountID }) {
-		t.Errorf("carol is still a member: %+v", allMember)
+	members := requireValue[[]apitypes.VaultMember](t)(alice.Client.ListVaultMembers(ctx, work.ID))
+	if slices.ContainsFunc(members, func(member apitypes.VaultMember) bool { return member.AccountID == carol.AccountID }) {
+		t.Errorf("carol is still a member: %+v", members)
 	}
 
 	bobMember := requireValue[*apitypes.Member](t)(alice.GetVerifiedMember(ctx, bob.AccountID))
@@ -114,8 +114,8 @@ func TestVaultRenameDeleteAndLeavePermissions(t *testing.T) {
 	if err := alice.Client.RemoveAccess(ctx, work.ID, alice.AccountID); err != nil {
 		t.Errorf("an owner leaves while another owner remains: %v", err)
 	}
-	if !slices.Contains(listAllAuditType(t, databaseURL), "vault_renamed") || !slices.Contains(listAllAuditType(t, databaseURL), "vault_left") {
-		t.Errorf("audit events: %v", listAllAuditType(t, databaseURL))
+	if !slices.Contains(listAuditTypes(t, databaseURL), "vault_renamed") || !slices.Contains(listAuditTypes(t, databaseURL), "vault_left") {
+		t.Errorf("audit events: %v", listAuditTypes(t, databaseURL))
 	}
 }
 
@@ -138,7 +138,7 @@ func TestDeleteVaultMovesItemsDecryptableIntoTarget(t *testing.T) {
 	bobOnly := requireValue[*session.Vault](t)(bob.CreateVault(ctx, "Bob's", apitypes.VaultShared))
 	shareThroughInvitation(t, bob, alice, bobOnly, apitypes.VaultReader)
 
-	allCreated := []item.Item{
+	createdItems := []item.Item{
 		createTestItem(t, alice, work, item.Item{Overview: item.Overview{Title: "GitHub", Username: "alice", URLs: []string{"https://github.com"}}, Details: item.Details{
 			Password: "hunter2", OneTimePassword: "otpauth://totp/GitHub?secret=JBSWY3DPEHPK3PXP", Fields: []item.Field{{Name: "API_TOKEN", Value: "ghp_secret", Concealed: true}},
 		}}),
@@ -157,29 +157,29 @@ func TestDeleteVaultMovesItemsDecryptableIntoTarget(t *testing.T) {
 	if _, err := alice.DeleteVault(ctx, work, session.VaultDeletion{MoveTo: aliceBobOnly}); !errors.Is(err, session.ErrTargetNotWritable) {
 		t.Errorf("moving into a read-only vault through the session: %v", err)
 	}
-	expectStatus(t, "moving into a read-only vault", alice.Client.DeleteVault(ctx, work.ID, &apitypes.DeleteVaultRequest{MoveToVaultID: bobOnly.ID, AllMovedItem: []apitypes.MovedItem{}}), http.StatusForbidden)
+	expectStatus(t, "moving into a read-only vault", alice.Client.DeleteVault(ctx, work.ID, &apitypes.DeleteVaultRequest{MoveToVaultID: bobOnly.ID, MovedItems: []apitypes.MovedItem{}}), http.StatusForbidden)
 	personal := findPersonalVault(t, alice)
-	expectStatus(t, "moving without every item", alice.Client.DeleteVault(ctx, work.ID, &apitypes.DeleteVaultRequest{MoveToVaultID: personal.ID, AllMovedItem: []apitypes.MovedItem{}}), http.StatusConflict)
+	expectStatus(t, "moving without every item", alice.Client.DeleteVault(ctx, work.ID, &apitypes.DeleteVaultRequest{MoveToVaultID: personal.ID, MovedItems: []apitypes.MovedItem{}}), http.StatusConflict)
 
 	bobEvents := openEventStream(t, bob.Client)
 	waitForSubscriber(t, server, bob.AccountID, 1)
 	movedCount, err := alice.DeleteVault(ctx, work, session.VaultDeletion{MoveTo: personal})
-	if err != nil || movedCount != len(allCreated) {
+	if err != nil || movedCount != len(createdItems) {
 		t.Fatalf("move and delete: %d moved, %v", movedCount, err)
 	}
 	bobEvents.waitForEvent(t, apitypes.EventVaultsChanged)
 
-	allMoved := requireValue[[]item.Item](t)(alice.ListAllItem(ctx, personal))
-	if len(allMoved) != len(allCreated) {
-		t.Fatalf("personal vault has %d items, want %d", len(allMoved), len(allCreated))
+	movedItems := requireValue[[]item.Item](t)(alice.ListItems(ctx, personal))
+	if len(movedItems) != len(createdItems) {
+		t.Fatalf("personal vault has %d items, want %d", len(movedItems), len(createdItems))
 	}
-	for _, created := range allCreated {
-		index := slices.IndexFunc(allMoved, func(moved item.Item) bool { return moved.ID == created.ID })
+	for _, created := range createdItems {
+		index := slices.IndexFunc(movedItems, func(moved item.Item) bool { return moved.ID == created.ID })
 		if index < 0 {
 			t.Fatalf("%q was not moved", created.Overview.Title)
 		}
-		if !reflect.DeepEqual(allMoved[index].Overview, created.Overview) || !reflect.DeepEqual(allMoved[index].Details, created.Details) {
-			t.Errorf("moved item differs:\n got %+v\nwant %+v", allMoved[index], created)
+		if !reflect.DeepEqual(movedItems[index].Overview, created.Overview) || !reflect.DeepEqual(movedItems[index].Details, created.Details) {
+			t.Errorf("moved item differs:\n got %+v\nwant %+v", movedItems[index], created)
 		}
 	}
 	if _, isFound := findTestVault(t, alice, work.ID); isFound {
@@ -188,10 +188,10 @@ func TestDeleteVaultMovesItemsDecryptableIntoTarget(t *testing.T) {
 	if _, isFound := findTestVault(t, bob, work.ID); isFound {
 		t.Error("bob still lists the deleted vault")
 	}
-	if _, err := bob.Client.ListAllChange(ctx, work.ID, 0, 0); !apiclient.IsStatus(err, http.StatusNotFound) {
+	if _, err := bob.Client.ListChanges(ctx, work.ID, 0, 0); !apiclient.IsStatus(err, http.StatusNotFound) {
 		t.Errorf("reading the deleted vault: %v", err)
 	}
-	history := requireValue[[]apitypes.Item](t)(alice.Client.GetItemHistory(ctx, personal.ID, allCreated[0].ID))
+	history := requireValue[[]apitypes.Item](t)(alice.Client.GetItemHistory(ctx, personal.ID, createdItems[0].ID))
 	if len(history) != 1 {
 		t.Errorf("moved item history: %d entries", len(history))
 	}
@@ -204,7 +204,7 @@ func TestDeleteVaultMovesItemsDecryptableIntoTarget(t *testing.T) {
 	if _, isFound := findTestVault(t, alice, scratch.ID); isFound {
 		t.Error("the vault deleted with its items is still listed")
 	}
-	if !slices.Contains(listAllAuditType(t, databaseURL), "vault_deleted") {
-		t.Errorf("audit events: %v", listAllAuditType(t, databaseURL))
+	if !slices.Contains(listAuditTypes(t, databaseURL), "vault_deleted") {
+		t.Errorf("audit events: %v", listAuditTypes(t, databaseURL))
 	}
 }

@@ -47,7 +47,7 @@ func (resolver *fakePeerResolver) setSession(session TerminalSession) {
 
 type fakeApprover struct {
 	mutex          sync.Mutex
-	allRequest     []ApprovalRequest
+	requests       []ApprovalRequest
 	result         error
 	release        chan struct{}
 	requestCount   atomic.Int32
@@ -57,7 +57,7 @@ type fakeApprover struct {
 func (approver *fakeApprover) ApproveCommandLine(ctx context.Context, request ApprovalRequest) error {
 	approver.requestCount.Add(1)
 	approver.mutex.Lock()
-	approver.allRequest = append(approver.allRequest, request)
+	approver.requests = append(approver.requests, request)
 	release := approver.release
 	result := approver.result
 	approver.mutex.Unlock()
@@ -75,7 +75,7 @@ func (approver *fakeApprover) ApproveCommandLine(ctx context.Context, request Ap
 type fakeHandler struct {
 	mutex    sync.Mutex
 	state    string
-	allType  []string
+	types    []string
 	resultBy map[string]any
 }
 
@@ -88,9 +88,9 @@ func (handler *fakeHandler) GetHello() cliprotocol.HelloResult {
 func (handler *fakeHandler) HandleRequest(_ context.Context, request *cliprotocol.Request) (any, error) {
 	handler.mutex.Lock()
 	defer handler.mutex.Unlock()
-	handler.allType = append(handler.allType, request.Type)
+	handler.types = append(handler.types, request.Type)
 	if request.Type == cliprotocol.TypeGetItem && request.ItemID == "missing" {
-		return nil, cliprotocol.CreateError(cliprotocol.ErrorNotFound, "item not found")
+		return nil, cliprotocol.NewError(cliprotocol.ErrorNotFound, "item not found")
 	}
 	return handler.resultBy[request.Type], nil
 }
@@ -121,8 +121,8 @@ func createServerFixture(t *testing.T) *serverFixture {
 		now:      time.Date(2026, 10, 11, 9, 0, 0, 0, time.UTC),
 	}
 	fixture.isEnabled.Store(true)
-	fixture.approvals = CreateSessionApprovals(0, fixture.getNow)
-	fixture.server = CreateServer(ServerConfig{
+	fixture.approvals = NewSessionApprovals(0, fixture.getNow)
+	fixture.server = NewServer(ServerConfig{
 		Handler:      fixture.handler,
 		Approver:     fixture.approver,
 		PeerResolver: fixture.resolver,
@@ -232,7 +232,7 @@ func TestApprovalIsReusedWithinTheSession(t *testing.T) {
 	if count := fixture.approver.requestCount.Load(); count != 1 {
 		t.Errorf("approval asked %d times for one session", count)
 	}
-	request := fixture.approver.allRequest[0]
+	request := fixture.approver.requests[0]
 	if request.ClientPID != 1234 || request.ParentPID != 4321 || request.TerminalName != "ttys003" || request.ClientPath != "/Applications/Hisar.app/Contents/Helpers/hisar" {
 		t.Errorf("approval request: %+v", request)
 	}
@@ -272,7 +272,7 @@ func TestClearAllApprovalEndsApprovals(t *testing.T) {
 	fixture := createServerFixture(t)
 	client := fixture.connect(t)
 	client.send(t, cliprotocol.Request{Type: cliprotocol.TypeListVault})
-	fixture.server.ClearAllApproval()
+	fixture.server.ClearApprovals()
 	client.send(t, cliprotocol.Request{Type: cliprotocol.TypeListVault})
 	if count := fixture.approver.requestCount.Load(); count != 2 {
 		t.Errorf("approval asked %d times across a lock", count)
@@ -288,7 +288,7 @@ func TestApprovalDuringLockIsNotRemembered(t *testing.T) {
 	for fixture.approver.requestCount.Load() == 0 {
 		time.Sleep(time.Millisecond)
 	}
-	fixture.server.ClearAllApproval()
+	fixture.server.ClearApprovals()
 	close(fixture.approver.release)
 	<-done
 	if fixture.approvals.IsApproved(fixture.resolver.session) {
@@ -303,8 +303,8 @@ func TestDeniedApprovalReturnsDenied(t *testing.T) {
 	if getErrorCode(response) != cliprotocol.ErrorDenied || response.Error.Message != ErrDenied.Error() {
 		t.Fatalf("denied: %+v", response)
 	}
-	if len(fixture.handler.allType) != 0 {
-		t.Errorf("handler ran after a denial: %v", fixture.handler.allType)
+	if len(fixture.handler.types) != 0 {
+		t.Errorf("handler ran after a denial: %v", fixture.handler.types)
 	}
 	fixture.approver.result = nil
 	if response := fixture.connect(t).send(t, cliprotocol.Request{Type: cliprotocol.TypeListVault}); !response.OK {
@@ -316,10 +316,10 @@ func TestConcurrentRequestsShareOnePrompt(t *testing.T) {
 	fixture := createServerFixture(t)
 	fixture.approver.release = make(chan struct{})
 	var waitGroup sync.WaitGroup
-	allResponse := make([]cliprotocol.Response, 3)
-	for index := range allResponse {
+	responses := make([]cliprotocol.Response, 3)
+	for index := range responses {
 		client := fixture.connect(t)
-		waitGroup.Go(func() { allResponse[index] = client.send(t, cliprotocol.Request{Type: cliprotocol.TypeListVault}) })
+		waitGroup.Go(func() { responses[index] = client.send(t, cliprotocol.Request{Type: cliprotocol.TypeListVault}) })
 	}
 	for fixture.approver.requestCount.Load() == 0 {
 		time.Sleep(time.Millisecond)
@@ -327,7 +327,7 @@ func TestConcurrentRequestsShareOnePrompt(t *testing.T) {
 	time.Sleep(20 * time.Millisecond)
 	close(fixture.approver.release)
 	waitGroup.Wait()
-	for index, response := range allResponse {
+	for index, response := range responses {
 		if !response.OK {
 			t.Errorf("request %d: %+v", index, response.Error)
 		}
@@ -346,17 +346,17 @@ func TestSwitchOffRefusesRequests(t *testing.T) {
 			t.Errorf("%s with the switch off: %+v", requestType, response)
 		}
 	}
-	if fixture.approver.requestCount.Load() != 0 || len(fixture.handler.allType) != 0 {
+	if fixture.approver.requestCount.Load() != 0 || len(fixture.handler.types) != 0 {
 		t.Error("a request went through with the switch off")
 	}
 }
 
 func TestUpdateRequiredRefusesEverythingButHello(t *testing.T) {
 	fixture := createServerFixture(t)
-	var allCheckedVersion []string
+	var checkedVersions []string
 	fixture.server.config.CheckUpdateRequired = func(request *cliprotocol.Request) error {
-		allCheckedVersion = append(allCheckedVersion, request.ClientVersion)
-		return cliprotocol.CreateError(cliprotocol.ErrorUpdateRequired, "Hisar needs an update")
+		checkedVersions = append(checkedVersions, request.ClientVersion)
+		return cliprotocol.NewError(cliprotocol.ErrorUpdateRequired, "Hisar needs an update")
 	}
 	client := fixture.connect(t)
 	if response := client.send(t, cliprotocol.Request{Type: cliprotocol.TypeHello, ClientVersion: "0.1.0"}); response.Error != nil {
@@ -371,11 +371,11 @@ func TestUpdateRequiredRefusesEverythingButHello(t *testing.T) {
 	if response := agentClient.send(t, cliprotocol.Request{Type: cliprotocol.TypeAgentHello, AgentName: "claude-code"}); getErrorCode(response) != cliprotocol.ErrorUpdateRequired {
 		t.Errorf("agent.hello: %+v", response)
 	}
-	if fixture.approver.requestCount.Load() != 0 || len(fixture.handler.allType) != 0 {
+	if fixture.approver.requestCount.Load() != 0 || len(fixture.handler.types) != 0 {
 		t.Error("a request went through while an update is required")
 	}
-	if len(allCheckedVersion) != 3 || allCheckedVersion[0] != "0.1.0" {
-		t.Errorf("checked %q", allCheckedVersion)
+	if len(checkedVersions) != 3 || checkedVersions[0] != "0.1.0" {
+		t.Errorf("checked %q", checkedVersions)
 	}
 }
 
@@ -464,7 +464,7 @@ func shortTempDirectory(t *testing.T) string {
 func TestRunnerServesPrivateSocketAndStops(t *testing.T) {
 	fixture := createServerFixture(t)
 	socketPath := filepath.Join(shortTempDirectory(t), "hisar", "cli.sock")
-	runner := CreateRunner(fixture.server, socketPath)
+	runner := NewRunner(fixture.server, socketPath)
 	runner.Start()
 	var connection net.Conn
 	var err error
@@ -509,7 +509,7 @@ func TestRunnerReportsServeError(t *testing.T) {
 	fixture := createServerFixture(t)
 	socketPath := filepath.Join(shortTempDirectory(t), "cli.sock")
 	os.WriteFile(socketPath, []byte("not a socket"), 0o600)
-	runner := CreateRunner(fixture.server, socketPath)
+	runner := NewRunner(fixture.server, socketPath)
 	runner.Start()
 	for range 200 {
 		if runner.GetStatus().ErrorMessage != "" {

@@ -42,7 +42,7 @@ func createRelease(version, releaseNotes string, isUnpublished bool) fakegithub.
 	if err != nil {
 		panic(err)
 	}
-	return fakegithub.CreateDesktopRelease(fakegithub.ReleaseConfig{
+	return fakegithub.NewDesktopRelease(fakegithub.ReleaseConfig{
 		Version: version, BuildNumber: buildNumber, Archive: []byte("zip of " + version), ReleaseNotes: releaseNotes, IsUnpublished: isUnpublished,
 		PublishedAt: time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC).Add(time.Duration(buildNumber) * time.Second),
 	})
@@ -60,16 +60,16 @@ func startFake(t *testing.T) *fakegithub.Server {
 
 func createSource(t *testing.T, apiURL, token string, clock *testClock) *desktopupdate.Source {
 	t.Helper()
-	gitHub, err := desktopupdate.CreateGitHub(desktopupdate.GitHubConfig{APIURL: apiURL + "/", Repository: fakegithub.DefaultRepository, Token: token})
+	gitHub, err := desktopupdate.NewGitHub(desktopupdate.GitHubConfig{APIURL: apiURL + "/", Repository: fakegithub.DefaultRepository, Token: token})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return desktopupdate.CreateSource(gitHub, desktopupdate.SourceConfig{PublicURL: "https://hisar.test/", Now: clock.getNow})
+	return desktopupdate.NewSource(gitHub, desktopupdate.SourceConfig{PublicURL: "https://hisar.test/", Now: clock.getNow})
 }
 
 type appcastDocument struct {
 	XMLName xml.Name `xml:"rss"`
-	AllItem []struct {
+	Items   []struct {
 		Title                string `xml:"title"`
 		PublishedAt          string `xml:"pubDate"`
 		Version              string `xml:"http://www.andymatuschak.org/xml-namespaces/sparkle version"`
@@ -96,18 +96,18 @@ func parseAppcast(t *testing.T, appcast []byte) appcastDocument {
 	return document
 }
 
-func listAllShortVersion(t *testing.T, appcast []byte) string {
+func listShortVersions(t *testing.T, appcast []byte) string {
 	t.Helper()
-	allShortVersion := []string{}
-	for _, item := range parseAppcast(t, appcast).AllItem {
-		allShortVersion = append(allShortVersion, item.ShortVersion)
+	shortVersions := []string{}
+	for _, item := range parseAppcast(t, appcast).Items {
+		shortVersions = append(shortVersions, item.ShortVersion)
 	}
-	return strings.Join(allShortVersion, " ")
+	return strings.Join(shortVersions, " ")
 }
 
 func countAPIRequest(fake *fakegithub.Server, test func(fakegithub.Request) bool) int {
 	count := 0
-	for _, request := range fake.GetAllRequest() {
+	for _, request := range fake.GetRequests() {
 		if test(request) {
 			count++
 		}
@@ -120,8 +120,8 @@ func isAssetRequest(request fakegithub.Request) bool {
 }
 
 func TestGetBuildNumber(t *testing.T) {
-	allExpected := map[string]int64{"0.0.1": 1, "0.1.0": 1000, "0.2.1": 2001, "1.0.0": 1000000, "12.345.999": 12345999}
-	for version, expected := range allExpected {
+	expectedValues := map[string]int64{"0.0.1": 1, "0.1.0": 1000, "0.2.1": 2001, "1.0.0": 1000000, "12.345.999": 12345999}
+	for version, expected := range expectedValues {
 		if buildNumber, err := desktopupdate.GetBuildNumber(version); err != nil || buildNumber != expected {
 			t.Errorf("%s: %d %v", version, buildNumber, err)
 		}
@@ -157,7 +157,7 @@ func TestIsValidFileName(t *testing.T) {
 }
 
 func TestCreateGitHubValidatesConfig(t *testing.T) {
-	allConfig := []desktopupdate.GitHubConfig{
+	configs := []desktopupdate.GitHubConfig{
 		{APIURL: "api.github.com", Repository: "hisarapp/core"},
 		{APIURL: "ftp://api.github.com", Repository: "hisarapp/core"},
 		{Repository: "hisarapp"},
@@ -167,13 +167,13 @@ func TestCreateGitHubValidatesConfig(t *testing.T) {
 		{Repository: "hisarapp/core?x=1"},
 		{Repository: ""},
 	}
-	for _, config := range allConfig {
-		if _, err := desktopupdate.CreateGitHub(config); err == nil {
+	for _, config := range configs {
+		if _, err := desktopupdate.NewGitHub(config); err == nil {
 			t.Errorf("%+v accepted", config)
 		}
 	}
 	for _, config := range []desktopupdate.GitHubConfig{{Repository: "hisarapp/core"}, {APIURL: "https://github.example.com/api/v3/", Repository: " Owner-1/repo.name_2 ", Token: "t"}} {
-		if _, err := desktopupdate.CreateGitHub(config); err != nil {
+		if _, err := desktopupdate.NewGitHub(config); err != nil {
 			t.Errorf("%+v refused: %v", config, err)
 		}
 	}
@@ -237,22 +237,22 @@ func TestAppcastListsNewestPublishedDesktopReleases(t *testing.T) {
 	withoutVersion := createRelease("1.6.0", "", false)
 	withoutVersion.TagName = "desktop-latest"
 	fake.AddRelease(withoutVersion)
-	wrongBuildNumber := fakegithub.CreateDesktopRelease(fakegithub.ReleaseConfig{Version: "2.0.0", BuildNumber: 1, Archive: []byte("x"), PublishedAt: time.Now()})
+	wrongBuildNumber := fakegithub.NewDesktopRelease(fakegithub.ReleaseConfig{Version: "2.0.0", BuildNumber: 1, Archive: []byte("x"), PublishedAt: time.Now()})
 	fake.AddRelease(wrongBuildNumber)
 	// The other apps' releases push the desktop ones onto the second page.
 	for index := range 120 {
-		fake.AddRelease(fakegithub.Release{TagName: fmt.Sprintf("cli-0.0.%d", index), AllAsset: []fakegithub.Asset{{Name: "SHA256SUMS", Content: []byte("sums")}}})
+		fake.AddRelease(fakegithub.Release{TagName: fmt.Sprintf("cli-0.0.%d", index), Assets: []fakegithub.Asset{{Name: "SHA256SUMS", Content: []byte("sums")}}})
 	}
 
 	appcast, err := createSource(t, fake.URL, testToken, &testClock{now: time.Now()}).GetAppcast(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if allShortVersion := listAllShortVersion(t, appcast); allShortVersion != "1.0.0 0.11.0 0.10.0 0.9.0 0.3.0" {
-		t.Fatalf("items: %v\n%s", allShortVersion, appcast)
+	if shortVersions := listShortVersions(t, appcast); shortVersions != "1.0.0 0.11.0 0.10.0 0.9.0 0.3.0" {
+		t.Fatalf("items: %v\n%s", shortVersions, appcast)
 	}
 	document := parseAppcast(t, appcast)
-	newest, withNotes := document.AllItem[0], document.AllItem[1]
+	newest, withNotes := document.Items[0], document.Items[1]
 	if newest.Version != "1000000" || newest.Title != "Hisar 1.0.0" || newest.MinimumSystemVersion != "12.0" || newest.Description != nil {
 		t.Errorf("newest item: %+v", newest)
 	}
@@ -276,7 +276,7 @@ func TestAppcastListsNewestPublishedDesktopReleases(t *testing.T) {
 	}
 	// 2.0.0 (refused) and the five in the appcast; never the older 0.2.0 and 0.1.0 or the skipped releases.
 	if assetCount := countAPIRequest(fake, isAssetRequest); assetCount != 6 {
-		t.Errorf("read %d update.json files: %+v", assetCount, fake.GetAllRequest())
+		t.Errorf("read %d update.json files: %+v", assetCount, fake.GetRequests())
 	}
 }
 
@@ -286,7 +286,7 @@ func TestPublishingOffersTheRelease(t *testing.T) {
 	fake.AddRelease(createRelease("0.3.0", "", true))
 	clock := &testClock{now: time.Now()}
 	source := createSource(t, fake.URL, testToken, clock)
-	if appcast, _ := source.GetAppcast(context.Background()); listAllShortVersion(t, appcast) != "0.2.0" {
+	if appcast, _ := source.GetAppcast(context.Background()); listShortVersions(t, appcast) != "0.2.0" {
 		t.Fatalf("unpublished release offered:\n%s", appcast)
 	}
 	if _, _, err := source.OpenFile(context.Background(), "0.3.0", "Hisar-0.3.0.zip"); !errors.Is(err, desktopupdate.ErrFileNotFound) {
@@ -294,7 +294,7 @@ func TestPublishingOffersTheRelease(t *testing.T) {
 	}
 	fake.PublishRelease("desktop-0.3.0")
 	clock.advance(11 * time.Minute)
-	if appcast, _ := source.GetAppcast(context.Background()); listAllShortVersion(t, appcast) != "0.3.0 0.2.0" {
+	if appcast, _ := source.GetAppcast(context.Background()); listShortVersions(t, appcast) != "0.3.0 0.2.0" {
 		t.Errorf("published release not offered:\n%s", appcast)
 	}
 }
@@ -307,25 +307,25 @@ func TestAppcastIsCachedForTenMinutes(t *testing.T) {
 	if _, err := source.GetAppcast(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	requestCount := len(fake.GetAllRequest())
+	requestCount := len(fake.GetRequests())
 	clock.advance(9 * time.Minute)
 	source.GetAppcast(context.Background())
-	if len(fake.GetAllRequest()) != requestCount {
+	if len(fake.GetRequests()) != requestCount {
 		t.Error("appcast refreshed before ten minutes")
 	}
 
 	clock.advance(2 * time.Minute)
-	if appcast, _ := source.GetAppcast(context.Background()); listAllShortVersion(t, appcast) != "0.2.0" {
+	if appcast, _ := source.GetAppcast(context.Background()); listShortVersions(t, appcast) != "0.2.0" {
 		t.Errorf("appcast after an unchanged refresh:\n%s", appcast)
 	}
-	allRefreshRequest := fake.GetAllRequest()[requestCount:]
-	if len(allRefreshRequest) != 1 || allRefreshRequest[0].IfNoneMatch == "" || allRefreshRequest[0].Status != http.StatusNotModified {
-		t.Errorf("unchanged refresh: %+v", allRefreshRequest)
+	refreshRequests := fake.GetRequests()[requestCount:]
+	if len(refreshRequests) != 1 || refreshRequests[0].IfNoneMatch == "" || refreshRequests[0].Status != http.StatusNotModified {
+		t.Errorf("unchanged refresh: %+v", refreshRequests)
 	}
 
 	addRelease(fake, "0.3.0", "")
 	clock.advance(11 * time.Minute)
-	if appcast, _ := source.GetAppcast(context.Background()); listAllShortVersion(t, appcast) != "0.3.0 0.2.0" {
+	if appcast, _ := source.GetAppcast(context.Background()); listShortVersions(t, appcast) != "0.3.0 0.2.0" {
 		t.Errorf("appcast not refreshed after ten minutes:\n%s", appcast)
 	}
 	if assetCount := countAPIRequest(fake, isAssetRequest); assetCount != 2 {
@@ -347,14 +347,14 @@ func TestAppcastSurvivesGitHubOutage(t *testing.T) {
 	if err != nil || !bytes.Contains(appcast, []byte("0.2.0")) {
 		t.Errorf("cached appcast not served during an outage: %v", err)
 	}
-	requestCount := len(fake.GetAllRequest())
+	requestCount := len(fake.GetRequests())
 	source.GetAppcast(context.Background())
-	if len(fake.GetAllRequest()) != requestCount {
+	if len(fake.GetRequests()) != requestCount {
 		t.Error("retried GitHub right after a failure")
 	}
 	clock.advance(time.Minute)
 	source.GetAppcast(context.Background())
-	if len(fake.GetAllRequest()) == requestCount {
+	if len(fake.GetRequests()) == requestCount {
 		t.Error("did not retry GitHub a minute after a failure")
 	}
 
@@ -377,13 +377,13 @@ func TestAppcastWaitsOutTheRateLimit(t *testing.T) {
 			fake.LimitRate(status, 600)
 			clock.advance(11 * time.Minute)
 			appcast, err := source.GetAppcast(context.Background())
-			if err != nil || listAllShortVersion(t, appcast) != "0.2.0" {
+			if err != nil || listShortVersions(t, appcast) != "0.2.0" {
 				t.Fatalf("cached appcast not served while rate limited: %v", err)
 			}
-			requestCount := len(fake.GetAllRequest())
+			requestCount := len(fake.GetRequests())
 			clock.advance(5 * time.Minute)
 			source.GetAppcast(context.Background())
-			if len(fake.GetAllRequest()) != requestCount {
+			if len(fake.GetRequests()) != requestCount {
 				t.Error("asked GitHub again before the rate limit reset")
 			}
 
@@ -391,15 +391,15 @@ func TestAppcastWaitsOutTheRateLimit(t *testing.T) {
 			if _, err := uncached.GetAppcast(context.Background()); err == nil || !strings.Contains(err.Error(), "rate limit") {
 				t.Errorf("no cached appcast: %v", err)
 			}
-			requestCount = len(fake.GetAllRequest())
-			if _, err := uncached.GetAppcast(context.Background()); err == nil || len(fake.GetAllRequest()) != requestCount {
+			requestCount = len(fake.GetRequests())
+			if _, err := uncached.GetAppcast(context.Background()); err == nil || len(fake.GetRequests()) != requestCount {
 				t.Errorf("asked GitHub again without a cached appcast: %v", err)
 			}
 
 			fake.LimitRate(0, 0)
 			clock.advance(6 * time.Minute)
 			addRelease(fake, "0.3.0", "")
-			if appcast, _ := source.GetAppcast(context.Background()); listAllShortVersion(t, appcast) != "0.3.0 0.2.0" {
+			if appcast, _ := source.GetAppcast(context.Background()); listShortVersions(t, appcast) != "0.3.0 0.2.0" {
 				t.Errorf("appcast not refreshed after the rate limit reset:\n%s", appcast)
 			}
 		})
@@ -430,7 +430,7 @@ func TestOpenFileStreamsAssetsThroughTheAPI(t *testing.T) {
 	}
 	content, _ := io.ReadAll(reader)
 	reader.Close()
-	if archive := release.AllAsset[1].Content; size != int64(len(archive)) || !bytes.Equal(content, archive) {
+	if archive := release.Assets[1].Content; size != int64(len(archive)) || !bytes.Equal(content, archive) {
 		t.Errorf("zip: %d %q", size, content)
 	}
 
@@ -448,7 +448,7 @@ func TestOpenFileStreamsAssetsThroughTheAPI(t *testing.T) {
 		t.Errorf("streamed %d bytes", len(content))
 	}
 
-	for _, request := range fake.GetAllRequest() {
+	for _, request := range fake.GetRequests() {
 		if request.Authorization != "Bearer "+testToken {
 			t.Errorf("%s sent without the token: %q", request.Path, request.Authorization)
 		}
@@ -456,11 +456,11 @@ func TestOpenFileStreamsAssetsThroughTheAPI(t *testing.T) {
 			t.Errorf("%s answered %d", request.Path, request.Status)
 		}
 	}
-	allStorageAuthorization := fake.GetAllStorageAuthorization()
-	if len(allStorageAuthorization) != 3 {
-		t.Errorf("storage asked %d times", len(allStorageAuthorization))
+	storageAuthorizations := fake.GetStorageAuthorizations()
+	if len(storageAuthorizations) != 3 {
+		t.Errorf("storage asked %d times", len(storageAuthorizations))
 	}
-	for _, authorization := range allStorageAuthorization {
+	for _, authorization := range storageAuthorizations {
 		if authorization != "" {
 			t.Errorf("token forwarded to storage: %q", authorization)
 		}
@@ -479,7 +479,7 @@ func TestOpenFileWithoutToken(t *testing.T) {
 	if string(content) != "zip of 0.2.0" {
 		t.Errorf("content %q", content)
 	}
-	for _, request := range fake.GetAllRequest() {
+	for _, request := range fake.GetRequests() {
 		if request.Authorization != "" {
 			t.Errorf("%s sent a token: %q", request.Path, request.Authorization)
 		}
@@ -491,7 +491,7 @@ func TestOpenFileRefusesUnlistedFiles(t *testing.T) {
 	addRelease(fake, "0.2.0", "")
 	fake.AddRelease(createRelease("0.1.0", "", true))
 	source := createSource(t, fake.URL, testToken, &testClock{now: time.Now()})
-	allCase := [][2]string{
+	cases := [][2]string{
 		{"0.2.0", "Hisar-0.3.0.zip"},
 		{"0.1.0", "Hisar-0.1.0.dmg"},
 		{"0.3.0", "Hisar-0.3.0.zip"},
@@ -501,7 +501,7 @@ func TestOpenFileRefusesUnlistedFiles(t *testing.T) {
 		{"0.2", "update.json"},
 		{"0.2.0", "secret%2fkey"},
 	}
-	for _, testCase := range allCase {
+	for _, testCase := range cases {
 		if _, _, err := source.OpenFile(context.Background(), testCase[0], testCase[1]); !errors.Is(err, desktopupdate.ErrFileNotFound) {
 			t.Errorf("%s/%s: %v", testCase[0], testCase[1], err)
 		}

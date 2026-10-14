@@ -51,7 +51,7 @@ func keepUsing(t *testing.T, test unlockedTestService, duration time.Duration) {
 		if isLocked(test) {
 			return
 		}
-		if _, err := test.service.ListAllVault(); err != nil {
+		if _, err := test.service.ListVaults(); err != nil {
 			t.Fatal(err)
 		}
 	}

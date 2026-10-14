@@ -15,29 +15,29 @@ import (
 
 type fakeAgentHandler struct {
 	fakeHandler
-	allSecretByReference map[string]AgentSecret
+	secretsByReference map[string]AgentSecret
 }
 
-func (handler *fakeAgentHandler) LocateAllAgentSecret(request *cliprotocol.Request) ([]AgentSecret, error) {
+func (handler *fakeAgentHandler) LocateAgentSecrets(request *cliprotocol.Request) ([]AgentSecret, error) {
 	handler.mutex.Lock()
 	defer handler.mutex.Unlock()
 	if handler.state == cliprotocol.StateLocked {
-		return nil, cliprotocol.CreateError(cliprotocol.ErrorLocked, "locked")
+		return nil, cliprotocol.NewError(cliprotocol.ErrorLocked, "locked")
 	}
-	var allSecret []AgentSecret
+	var secrets []AgentSecret
 	for _, reference := range request.References {
-		secret, isFound := handler.allSecretByReference[reference]
+		secret, isFound := handler.secretsByReference[reference]
 		if !isFound {
-			return nil, cliprotocol.CreateError(cliprotocol.ErrorNotFound, reference+": not found")
+			return nil, cliprotocol.NewError(cliprotocol.ErrorNotFound, reference+": not found")
 		}
-		allSecret = append(allSecret, secret)
+		secrets = append(secrets, secret)
 	}
-	return allSecret, nil
+	return secrets, nil
 }
 
 type fakeAgentApprover struct {
 	mutex        sync.Mutex
-	allRequest   []AgentApprovalRequest
+	requests     []AgentApprovalRequest
 	result       error
 	isRemembered bool
 	onApprove    func()
@@ -48,7 +48,7 @@ type fakeAgentApprover struct {
 
 func (approver *fakeAgentApprover) ApproveAgent(ctx context.Context, request AgentApprovalRequest) (AgentApprovalResult, error) {
 	approver.mutex.Lock()
-	approver.allRequest = append(approver.allRequest, request)
+	approver.requests = append(approver.requests, request)
 	if approver.onApprove != nil {
 		approver.onApprove()
 	}
@@ -67,13 +67,13 @@ func (approver *fakeAgentApprover) ApproveAgent(ctx context.Context, request Age
 func (approver *fakeAgentApprover) getRequestCount() int {
 	approver.mutex.Lock()
 	defer approver.mutex.Unlock()
-	return len(approver.allRequest)
+	return len(approver.requests)
 }
 
 func (approver *fakeAgentApprover) getLastRequest() AgentApprovalRequest {
 	approver.mutex.Lock()
 	defer approver.mutex.Unlock()
-	return approver.allRequest[len(approver.allRequest)-1]
+	return approver.requests[len(approver.requests)-1]
 }
 
 func (approver *fakeAgentApprover) set(result error, isRemembered bool) {
@@ -100,12 +100,12 @@ func createAgentFixture(t *testing.T) *agentFixture {
 		fakeHandler: fakeHandler{state: cliprotocol.StateUnlocked, resultBy: map[string]any{
 			cliprotocol.TypeAgentListVault: cliprotocol.AgentVaultListResult{Vaults: []cliprotocol.AgentVault{{ID: "v2", Name: "Work", ItemCount: 2}}},
 		}},
-		allSecretByReference: map[string]AgentSecret{
+		secretsByReference: map[string]AgentSecret{
 			stripeReference: {VaultID: "v2", ItemID: "stripe", VaultName: "Work", ItemTitle: "Stripe", FieldLabel: "api key"},
 			githubReference: {VaultID: "v2", ItemID: "github", VaultName: "Work", ItemTitle: "GitHub", FieldLabel: "password"},
 		},
 	}
-	fixture.server = CreateServer(ServerConfig{
+	fixture.server = NewServer(ServerConfig{
 		Handler: fixture.agentHandler, Approver: fixture.approver, AgentApprover: fixture.agentApprover,
 		PeerResolver: fixture.resolver, Approvals: fixture.approvals, IsEnabled: fixture.isEnabled.Load,
 	})
@@ -138,7 +138,7 @@ func TestAgentConnectionIsApprovedOnceAndNamesTheAgent(t *testing.T) {
 	}
 	request := fixture.agentApprover.getLastRequest()
 	if request.Kind != AgentRequestConnect || request.Agent.Name != "claude-code" || request.Agent.Version != "2.1.0" || !request.IsConnectionApproval ||
-		request.ClientPath != "/Applications/Hisar.app/Contents/Helpers/hisar" || request.ParentPID != 4321 || request.TerminalName != "ttys003" || len(request.AllSecretName) != 0 {
+		request.ClientPath != "/Applications/Hisar.app/Contents/Helpers/hisar" || request.ParentPID != 4321 || request.TerminalName != "ttys003" || len(request.SecretNames) != 0 {
 		t.Errorf("connection approval: %+v", request)
 	}
 	if fixture.approver.requestCount.Load() != 0 {
@@ -192,9 +192,9 @@ func TestAgentRunAsksPerCallWithTheCommandAndSecrets(t *testing.T) {
 	if count := fixture.agentApprover.getRequestCount(); count != 2 {
 		t.Fatalf("approvals = %d; want one per call", count)
 	}
-	first, second := fixture.agentApprover.allRequest[0], fixture.agentApprover.allRequest[1]
+	first, second := fixture.agentApprover.requests[0], fixture.agentApprover.requests[1]
 	if first.Kind != AgentRequestRun || !slices.Equal(first.CommandLine, []string{"npm", "test"}) || first.WorkingDirectory != "/Users/alice/src/app" ||
-		!slices.Equal(first.AllSecretName, []string{"Work › Stripe › api key", "Work › GitHub › password"}) || !first.IsConnectionApproval {
+		!slices.Equal(first.SecretNames, []string{"Work › Stripe › api key", "Work › GitHub › password"}) || !first.IsConnectionApproval {
 		t.Errorf("first run: %+v", first)
 	}
 	if second.IsConnectionApproval {
@@ -205,8 +205,8 @@ func TestAgentRunAsksPerCallWithTheCommandAndSecrets(t *testing.T) {
 		t.Errorf("the run's approval did not approve the connection (%d approvals)", count)
 	}
 	handler := fixture.agentHandler
-	if !slices.Equal(handler.allType, []string{cliprotocol.TypeAgentResolveSecret, cliprotocol.TypeAgentResolveSecret, cliprotocol.TypeAgentListVault}) {
-		t.Errorf("handled %q", handler.allType)
+	if !slices.Equal(handler.types, []string{cliprotocol.TypeAgentResolveSecret, cliprotocol.TypeAgentResolveSecret, cliprotocol.TypeAgentListVault}) {
+		t.Errorf("handled %q", handler.types)
 	}
 }
 
@@ -247,7 +247,7 @@ func TestAgentRememberedSecretsLastAnHourForThoseSecretsOnly(t *testing.T) {
 func TestAgentRevealAsksPerItemAndRemembersTheItem(t *testing.T) {
 	fixture := createAgentFixture(t)
 	client := fixture.connectAgent(t)
-	fixture.agentHandler.allSecretByReference["hisar://Work/Stripe/username"] = AgentSecret{VaultID: "v2", ItemID: "stripe", VaultName: "Work", ItemTitle: "Stripe", FieldLabel: "username"}
+	fixture.agentHandler.secretsByReference["hisar://Work/Stripe/username"] = AgentSecret{VaultID: "v2", ItemID: "stripe", VaultName: "Work", ItemTitle: "Stripe", FieldLabel: "username"}
 	reveal := cliprotocol.Request{Type: cliprotocol.TypeAgentRevealSecret, References: []string{stripeReference}}
 
 	fixture.agentApprover.set(ErrDenied, false)
@@ -256,7 +256,7 @@ func TestAgentRevealAsksPerItemAndRemembersTheItem(t *testing.T) {
 		t.Fatalf("denied: %+v", response.Error)
 	}
 	if request := fixture.agentApprover.getLastRequest(); request.Kind != AgentRequestReveal || request.RevealedName != "Stripe › api key" ||
-		!slices.Equal(request.AllSecretName, []string{"Work › Stripe › api key"}) || !request.IsConnectionApproval {
+		!slices.Equal(request.SecretNames, []string{"Work › Stripe › api key"}) || !request.IsConnectionApproval {
 		t.Errorf("reveal request: %+v", request)
 	}
 	if code := getErrorCode(client.send(t, cliprotocol.Request{Type: cliprotocol.TypeAgentListVault})); code != cliprotocol.ErrorDenied {
@@ -309,11 +309,11 @@ func TestAgentReferencesAreCheckedBeforeAsking(t *testing.T) {
 			t.Errorf("%s %q: %q", request.Type, request.References, code)
 		}
 	}
-	allReference := make([]string, cliprotocol.MaxAgentReferenceCount+1)
-	for index := range allReference {
-		allReference[index] = stripeReference
+	references := make([]string, cliprotocol.MaxAgentReferenceCount+1)
+	for index := range references {
+		references[index] = stripeReference
 	}
-	if code := getErrorCode(client.send(t, cliprotocol.Request{Type: cliprotocol.TypeAgentResolveSecret, References: allReference})); code != cliprotocol.ErrorInvalidRequest {
+	if code := getErrorCode(client.send(t, cliprotocol.Request{Type: cliprotocol.TypeAgentResolveSecret, References: references})); code != cliprotocol.ErrorInvalidRequest {
 		t.Errorf("too many references: %q", code)
 	}
 	if fixture.agentApprover.getRequestCount() != 0 {
@@ -330,7 +330,7 @@ func TestAgentRequestWhileLockedUnlocksInTheDialog(t *testing.T) {
 	if response := client.send(t, cliprotocol.Request{Type: cliprotocol.TypeAgentGetCode, References: []string{githubReference}}); response.Error != nil {
 		t.Fatal(response.Error)
 	}
-	if request := fixture.agentApprover.getLastRequest(); request.Kind != AgentRequestCode || !slices.Equal(request.AllSecretName, []string{"Work › GitHub › password"}) || request.RevealedName != "GitHub" {
+	if request := fixture.agentApprover.getLastRequest(); request.Kind != AgentRequestCode || !slices.Equal(request.SecretNames, []string{"Work › GitHub › password"}) || request.RevealedName != "GitHub" {
 		t.Errorf("locked request: %+v", request)
 	}
 	fixture.agentApprover.onApprove = nil
@@ -375,13 +375,13 @@ func TestAgentHelloReportsTheAgentApproval(t *testing.T) {
 }
 
 func TestDescribeAgentSecretsWhileLocked(t *testing.T) {
-	allName, revealedName := describeAllAgentSecret(&cliprotocol.Request{Type: cliprotocol.TypeAgentRevealSecret, References: []string{stripeReference}}, nil)
-	if !slices.Equal(allName, []string{"Work › Stripe › api key"}) || revealedName != "Stripe › api key" {
-		t.Errorf("%q %q", allName, revealedName)
+	names, revealedName := describeAgentSecrets(&cliprotocol.Request{Type: cliprotocol.TypeAgentRevealSecret, References: []string{stripeReference}}, nil)
+	if !slices.Equal(names, []string{"Work › Stripe › api key"}) || revealedName != "Stripe › api key" {
+		t.Errorf("%q %q", names, revealedName)
 	}
-	allName, revealedName = describeAllAgentSecret(&cliprotocol.Request{Type: cliprotocol.TypeAgentGetCode, ItemID: "item-1"}, nil)
-	if !slices.Equal(allName, []string{"item item-1"}) || revealedName != "item item-1" {
-		t.Errorf("%q %q", allName, revealedName)
+	names, revealedName = describeAgentSecrets(&cliprotocol.Request{Type: cliprotocol.TypeAgentGetCode, ItemID: "item-1"}, nil)
+	if !slices.Equal(names, []string{"item item-1"}) || revealedName != "item item-1" {
+		t.Errorf("%q %q", names, revealedName)
 	}
 }
 

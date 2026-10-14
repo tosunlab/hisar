@@ -44,9 +44,9 @@ type RotatedItem struct {
 
 // RotateVaultRequest replaces the vault key: every member's wrapped key and every item, re-encrypted.
 type RotateVaultRequest struct {
-	EncName   []byte          `json:"encName"`
-	AllAccess []RotatedAccess `json:"access"`
-	AllItem   []RotatedItem   `json:"items"`
+	EncName  []byte          `json:"encName"`
+	Accesses []RotatedAccess `json:"access"`
+	Items    []RotatedItem   `json:"items"`
 }
 
 type RenameVaultRequest struct {
@@ -62,10 +62,10 @@ type MovedItem struct {
 	Details      []byte `json:"details"`
 }
 
-// DeleteVaultRequest: a vault with live items needs either MoveToVaultID with every live item in AllMovedItem,
+// DeleteVaultRequest: a vault with live items needs either MoveToVaultID with every live item in MovedItems,
 // or IsDeletingItems.
 type DeleteVaultRequest struct {
 	MoveToVaultID   string      `json:"moveToVaultId,omitempty"`
-	AllMovedItem    []MovedItem `json:"movedItems,omitempty"`
+	MovedItems      []MovedItem `json:"movedItems,omitempty"`
 	IsDeletingItems bool        `json:"deleteItems,omitempty"`
 }

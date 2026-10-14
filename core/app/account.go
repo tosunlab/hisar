@@ -34,8 +34,8 @@ type DeletionVault struct {
 
 type AccountDeletionPreview struct {
 	Email                   string          `json:"email"`
-	AllOwnedVault           []DeletionVault `json:"ownedVaults"`
-	AllMemberVault          []DeletionVault `json:"memberVaults"`
+	OwnedVaults             []DeletionVault `json:"ownedVaults"`
+	MemberVaults            []DeletionVault `json:"memberVaults"`
 	ShareLinkCount          int             `json:"shareLinkCount"`
 	SentInvitationCount     int             `json:"sentInvitationCount"`
 	ReceivedInvitationCount int             `json:"receivedInvitationCount"`
@@ -129,8 +129,8 @@ func (s *Service) PreviewAccountDeletion() (AccountDeletionPreview, error) {
 	}
 	result := AccountDeletionPreview{
 		Email:                   s.state.Email,
-		AllOwnedVault:           convertAllDeletionVault(preview.AllOwnedVault),
-		AllMemberVault:          convertAllDeletionVault(preview.AllMemberVault),
+		OwnedVaults:             convertDeletionVaults(preview.OwnedVaults),
+		MemberVaults:            convertDeletionVaults(preview.MemberVaults),
 		ShareLinkCount:          preview.ShareLinkCount,
 		SentInvitationCount:     preview.SentInvitationCount,
 		ReceivedInvitationCount: preview.ReceivedInvitationCount,
@@ -139,16 +139,16 @@ func (s *Service) PreviewAccountDeletion() (AccountDeletionPreview, error) {
 	return result, nil
 }
 
-func convertAllDeletionVault(allVault []session.DeletionVault) []DeletionVault {
-	allConverted := make([]DeletionVault, 0, len(allVault))
-	for _, vault := range allVault {
+func convertDeletionVaults(vaults []session.DeletionVault) []DeletionVault {
+	converted := make([]DeletionVault, 0, len(vaults))
+	for _, vault := range vaults {
 		name := vault.Name
 		if name == "" {
 			name = "A vault"
 		}
-		allConverted = append(allConverted, DeletionVault{ID: vault.ID, Name: name, Type: vault.Type, Role: vault.Role, OtherMemberCount: vault.OtherMemberCount})
+		converted = append(converted, DeletionVault{ID: vault.ID, Name: name, Type: vault.Type, Role: vault.Role, OtherMemberCount: vault.OtherMemberCount})
 	}
-	return allConverted
+	return converted
 }
 
 // DeleteAccount needs the master password and the account's email; afterwards this device is signed out and wiped.

@@ -35,7 +35,7 @@ func main() {
 		mutex.Lock()
 		defer mutex.Unlock()
 		messageCount++
-		for _, recipient := range received.AllRecipient {
+		for _, recipient := range received.Recipients {
 			path := filepath.Join(*directory, fmt.Sprintf("%04d-%s.txt", messageCount, filepath.Base(recipient)))
 			if err := os.WriteFile(path, []byte(decodeMessage(received)), 0o600); err != nil {
 				log.Printf("write %s: %v", path, err)
@@ -63,5 +63,5 @@ func decodeMessage(received mailtest.ReceivedMessage) string {
 		body = quotedprintable.NewReader(parsed.Body)
 	}
 	decodedBody, _ := io.ReadAll(body)
-	return fmt.Sprintf("From: %s\nTo: %s\nSubject: %s\n\n%s", received.From, strings.Join(received.AllRecipient, ", "), subject, strings.ReplaceAll(string(decodedBody), "\r\n", "\n"))
+	return fmt.Sprintf("From: %s\nTo: %s\nSubject: %s\n\n%s", received.From, strings.Join(received.Recipients, ", "), subject, strings.ReplaceAll(string(decodedBody), "\r\n", "\n"))
 }

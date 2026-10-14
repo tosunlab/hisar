@@ -14,46 +14,46 @@ import (
 	"github.com/tryhisar/hisar/core/item"
 )
 
-// ListAllItem fetches and decrypts all live items of a vault; with a Cache it downloads only the changes.
-func (s *Session) ListAllItem(ctx context.Context, vault *Vault) ([]item.Item, error) {
+// ListItems fetches and decrypts all live items of a vault; with a Cache it downloads only the changes.
+func (s *Session) ListItems(ctx context.Context, vault *Vault) ([]item.Item, error) {
 	if s.Cache == nil {
-		allProtoItem, err := s.downloadAllItem(ctx, vault)
+		protoItems, err := s.downloadItems(ctx, vault)
 		if err != nil {
 			return nil, err
 		}
-		return decryptAllItem(vault, allProtoItem)
+		return decryptItems(vault, protoItems)
 	}
-	allProtoItem, err := s.syncVault(ctx, vault)
+	protoItems, err := s.syncVault(ctx, vault)
 	if err != nil {
 		return nil, err
 	}
-	allItem, err := decryptAllItem(vault, allProtoItem)
+	items, err := decryptItems(vault, protoItems)
 	if err == nil || s.IsOffline() {
-		return allItem, err
+		return items, err
 	}
 	// A cached item that no longer decrypts, e.g. after a key rotation raced a sync, is downloaded again.
 	if err := s.Cache.ResetVault(vault.ID); err != nil {
 		return nil, err
 	}
-	if allProtoItem, err = s.syncVault(ctx, vault); err != nil {
+	if protoItems, err = s.syncVault(ctx, vault); err != nil {
 		return nil, err
 	}
-	return decryptAllItem(vault, allProtoItem)
+	return decryptItems(vault, protoItems)
 }
 
-func decryptAllItem(vault *Vault, allProtoItem []apitypes.Item) ([]item.Item, error) {
-	allItem := make([]item.Item, 0, len(allProtoItem))
-	for _, protoItem := range allProtoItem {
+func decryptItems(vault *Vault, protoItems []apitypes.Item) ([]item.Item, error) {
+	items := make([]item.Item, 0, len(protoItems))
+	for _, protoItem := range protoItems {
 		vaultItem, err := decryptItem(vault, &protoItem)
 		if err != nil {
 			return nil, err
 		}
-		allItem = append(allItem, *vaultItem)
+		items = append(items, *vaultItem)
 	}
-	sort.Slice(allItem, func(i, j int) bool {
-		return strings.ToLower(allItem[i].Overview.Title) < strings.ToLower(allItem[j].Overview.Title)
+	sort.Slice(items, func(i, j int) bool {
+		return strings.ToLower(items[i].Overview.Title) < strings.ToLower(items[j].Overview.Title)
 	})
-	return allItem, nil
+	return items, nil
 }
 
 func decryptItem(vault *Vault, protoItem *apitypes.Item) (*item.Item, error) {

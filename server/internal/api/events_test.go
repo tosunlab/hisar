@@ -17,7 +17,7 @@ import (
 )
 
 type eventStream struct {
-	allEvent chan apiclient.Event
+	events   chan apiclient.Event
 	finished chan error
 	cancel   context.CancelFunc
 }
@@ -25,9 +25,9 @@ type eventStream struct {
 func openEventStream(t *testing.T, apiClient *apiclient.Client) *eventStream {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
-	stream := &eventStream{allEvent: make(chan apiclient.Event, 16), finished: make(chan error, 1), cancel: cancel}
+	stream := &eventStream{events: make(chan apiclient.Event, 16), finished: make(chan error, 1), cancel: cancel}
 	go func() {
-		stream.finished <- apiClient.StreamEvents(ctx, func(event apiclient.Event) { stream.allEvent <- event })
+		stream.finished <- apiClient.StreamEvents(ctx, func(event apiclient.Event) { stream.events <- event })
 	}()
 	t.Cleanup(cancel)
 	return stream
@@ -38,7 +38,7 @@ func (stream *eventStream) waitForEvent(t *testing.T, name string) apiclient.Eve
 	timeout := time.After(5 * time.Second)
 	for {
 		select {
-		case event := <-stream.allEvent:
+		case event := <-stream.events:
 			if event.Name == name {
 				return event
 			}
@@ -52,7 +52,7 @@ func (stream *eventStream) waitForEvent(t *testing.T, name string) apiclient.Eve
 func (stream *eventStream) expectNoEvent(t *testing.T) {
 	t.Helper()
 	select {
-	case event := <-stream.allEvent:
+	case event := <-stream.events:
 		t.Errorf("unexpected event %s %s", event.Name, event.Data)
 	case <-time.After(300 * time.Millisecond):
 	}
@@ -72,7 +72,7 @@ func waitForSubscriber(t *testing.T, server *Server, accountID string, count int
 func signUpTestAccount(t *testing.T, ctx context.Context, server *Server, baseURL, email, role string) *session.Session {
 	t.Helper()
 	invite := requireValue[*apitypes.InviteResponse](t)(server.CreateInvite(ctx, email, role, nil))
-	signedUp, _, err := session.SignUp(ctx, apiclient.Create(baseURL), invite.Token, email, email, []byte(email+" password"), testDevice)
+	signedUp, _, err := session.SignUp(ctx, apiclient.New(baseURL), invite.Token, email, email, []byte(email+" password"), testDevice)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,16 +99,16 @@ func TestEventStream(t *testing.T) {
 		t.Fatal(err)
 	}
 	bobStream.waitForEvent(t, apitypes.EventShareInvitationsChanged)
-	invitationList := requireValue[*apitypes.ShareInvitationList](t)(bob.Client.ListAllShareInvitation(ctx))
-	if len(invitationList.AllReceived) != 1 {
+	invitationList := requireValue[*apitypes.ShareInvitationList](t)(bob.Client.ListShareInvitations(ctx))
+	if len(invitationList.Received) != 1 {
 		t.Fatalf("Bob's invitations: %+v", invitationList)
 	}
-	if err := bob.Client.AcceptShareInvitation(ctx, invitationList.AllReceived[0].ID); err != nil {
+	if err := bob.Client.AcceptShareInvitation(ctx, invitationList.Received[0].ID); err != nil {
 		t.Fatal(err)
 	}
 	aliceStream.waitForEvent(t, apitypes.EventShareInvitationsChanged)
-	if allCompleted, err := alice.CompleteAllAcceptedShare(ctx); err != nil || len(allCompleted) != 1 {
-		t.Fatalf("completed: %+v %v", allCompleted, err)
+	if completedShares, err := alice.CompleteAcceptedShares(ctx); err != nil || len(completedShares) != 1 {
+		t.Fatalf("completed: %+v %v", completedShares, err)
 	}
 	bobStream.waitForEvent(t, apitypes.EventVaultsChanged)
 
@@ -122,15 +122,15 @@ func TestEventStream(t *testing.T) {
 	}
 	carolStream.expectNoEvent(t)
 
-	allStream := []*eventStream{}
+	streams := []*eventStream{}
 	for range maxEventStreamPerAccount - 1 {
-		allStream = append(allStream, openEventStream(t, carol.Client))
+		streams = append(streams, openEventStream(t, carol.Client))
 	}
 	waitForSubscriber(t, server, carol.AccountID, maxEventStreamPerAccount)
 	if err := carol.Client.StreamEvents(ctx, func(apiclient.Event) {}); !apiclient.IsStatus(err, http.StatusTooManyRequests) {
 		t.Errorf("one stream too many: %v", err)
 	}
-	for _, stream := range allStream {
+	for _, stream := range streams {
 		stream.cancel()
 	}
 
@@ -173,8 +173,8 @@ func TestEventStreamOutlivesWriteTimeout(t *testing.T) {
 		t.Fatalf("stream ended after three write timeouts: %v", err)
 	default:
 	}
-	allVault := requireValue[[]session.Vault](t)(alice.ListAllVault(ctx))
-	if _, err := alice.SaveItem(ctx, &allVault[0], &item.Item{Overview: item.Overview{Title: "later"}}); err != nil {
+	vaults := requireValue[[]session.Vault](t)(alice.ListVaults(ctx))
+	if _, err := alice.SaveItem(ctx, &vaults[0], &item.Item{Overview: item.Overview{Title: "later"}}); err != nil {
 		t.Fatal(err)
 	}
 	stream.waitForEvent(t, apitypes.EventVaultChanged)
@@ -193,7 +193,7 @@ func TestEventBrokerOverflowEndsStream(t *testing.T) {
 		t.Errorf("overflowed = %v with %d queued", broker.isOverflowed(subscriber), len(subscriber.channel))
 	}
 	broker.unsubscribe("ABC123", subscriber)
-	if broker.countSubscriber("ABC123") != 0 || len(broker.allSubscriberByAccount) != 0 {
+	if broker.countSubscriber("ABC123") != 0 || len(broker.subscribersByAccount) != 0 {
 		t.Error("unsubscribe left state behind")
 	}
 }

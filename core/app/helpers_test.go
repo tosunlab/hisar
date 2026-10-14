@@ -54,18 +54,18 @@ func (notifier *fakeLockNotifier) getLockedCount() int {
 }
 
 type memorySecretKeyStore struct {
-	mutex          sync.Mutex
-	allByAccountID map[string]crypt.SecretKey
+	mutex       sync.Mutex
+	byAccountID map[string]crypt.SecretKey
 }
 
 func createMemorySecretKeyStore() *memorySecretKeyStore {
-	return &memorySecretKeyStore{allByAccountID: map[string]crypt.SecretKey{}}
+	return &memorySecretKeyStore{byAccountID: map[string]crypt.SecretKey{}}
 }
 
 func (store *memorySecretKeyStore) LoadSecretKey(accountID string) (crypt.SecretKey, error) {
 	store.mutex.Lock()
 	defer store.mutex.Unlock()
-	secretKey, found := store.allByAccountID[accountID]
+	secretKey, found := store.byAccountID[accountID]
 	if !found {
 		return secretKey, errors.New("not in memory store")
 	}
@@ -75,14 +75,14 @@ func (store *memorySecretKeyStore) LoadSecretKey(accountID string) (crypt.Secret
 func (store *memorySecretKeyStore) StoreSecretKey(secretKey crypt.SecretKey) error {
 	store.mutex.Lock()
 	defer store.mutex.Unlock()
-	store.allByAccountID[secretKey.AccountID] = secretKey
+	store.byAccountID[secretKey.AccountID] = secretKey
 	return nil
 }
 
 func (store *memorySecretKeyStore) DeleteSecretKey(accountID string) error {
 	store.mutex.Lock()
 	defer store.mutex.Unlock()
-	delete(store.allByAccountID, accountID)
+	delete(store.byAccountID, accountID)
 	return nil
 }
 
@@ -105,11 +105,11 @@ func (fileOpener *fakeFileOpener) ChooseOpenPath() (string, error) {
 type fakeBiometric struct {
 	mutex             sync.Mutex
 	authenticateError error
-	allKey            map[string][]byte
+	keys              map[string][]byte
 }
 
 func createFakeBiometric() *fakeBiometric {
-	return &fakeBiometric{allKey: map[string][]byte{}}
+	return &fakeBiometric{keys: map[string][]byte{}}
 }
 
 func (biometric *fakeBiometric) IsAvailable() bool { return true }
@@ -129,14 +129,14 @@ func (biometric *fakeBiometric) Authenticate(reason string) error {
 func (biometric *fakeBiometric) StoreKey(accountID string, key []byte) error {
 	biometric.mutex.Lock()
 	defer biometric.mutex.Unlock()
-	biometric.allKey[accountID] = append([]byte(nil), key...)
+	biometric.keys[accountID] = append([]byte(nil), key...)
 	return nil
 }
 
 func (biometric *fakeBiometric) LoadKey(accountID string) ([]byte, error) {
 	biometric.mutex.Lock()
 	defer biometric.mutex.Unlock()
-	key, found := biometric.allKey[accountID]
+	key, found := biometric.keys[accountID]
 	if !found {
 		return nil, errors.New("no key")
 	}
@@ -146,7 +146,7 @@ func (biometric *fakeBiometric) LoadKey(accountID string) ([]byte, error) {
 func (biometric *fakeBiometric) DeleteKey(accountID string) error {
 	biometric.mutex.Lock()
 	defer biometric.mutex.Unlock()
-	delete(biometric.allKey, accountID)
+	delete(biometric.keys, accountID)
 	return nil
 }
 
@@ -154,7 +154,7 @@ func createTestService(t *testing.T, statePath string, secretKeyStore SecretKeyS
 	t.Helper()
 	clipboard := &fakeClipboard{}
 	lockNotifier := &fakeLockNotifier{}
-	service, err := CreateService(Config{
+	service, err := NewService(Config{
 		StatePath:           statePath,
 		CachePath:           filepath.Join(filepath.Dir(statePath), "desktop-cache.db"),
 		DeviceName:          "test",
@@ -199,11 +199,11 @@ func createUnlockedTestService(t *testing.T) unlockedTestService {
 	}
 	accountID := crypt.GenerateAccountID()
 	apiServer := &fakeAPIServer{
-		allItemByVaultID:   map[string]map[string]apitypes.Item{},
-		accountID:          accountID,
-		role:               apitypes.RoleAdmin,
-		allMember:          []apitypes.Member{{AccountID: accountID, Email: "a@example.com", Name: "Alice", Role: apitypes.RoleAdmin, PublicKeys: keyset.GetAllPublicKey(accountID)}},
-		allAccessByVaultID: map[string][]apitypes.RotatedAccess{},
+		itemsByVaultID:    map[string]map[string]apitypes.Item{},
+		accountID:         accountID,
+		role:              apitypes.RoleAdmin,
+		members:           []apitypes.Member{{AccountID: accountID, Email: "a@example.com", Name: "Alice", Role: apitypes.RoleAdmin, PublicKeys: keyset.GetPublicKeys(accountID)}},
+		accessesByVaultID: map[string][]apitypes.RotatedAccess{},
 	}
 	httpServer := httptest.NewServer(apiServer.createHandler())
 	t.Cleanup(httpServer.Close)
@@ -211,7 +211,7 @@ func createUnlockedTestService(t *testing.T) unlockedTestService {
 	service, clipboard, _ := createTestService(t, filepath.Join(t.TempDir(), "desktop.json"), createMemorySecretKeyStore())
 	lockedCount := 0
 	service.config.OnLock = func() { lockedCount++ }
-	apiClient := apiclient.Create(httpServer.URL)
+	apiClient := apiclient.New(httpServer.URL)
 	apiClient.Token = "token"
 	unlockedSession := &session.Session{Client: apiClient, AccountID: accountID, Email: "a@example.com", Name: "Alice", Role: apitypes.RoleAdmin, Keyset: keyset}
 	ctx := context.Background()

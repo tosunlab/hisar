@@ -61,8 +61,8 @@ func evaluatePasskeyCreationPRF(request *browserprotocol.PasskeyPRFRequest, priv
 }
 
 // selectAssertionPRFInput applies the spec's evalByCredential checks against allowCredentials.
-func selectAssertionPRFInput(request *browserprotocol.PasskeyPRFRequest, allAllowedID [][]byte, credentialID []byte) (*browserprotocol.PasskeyPRFValues, error) {
-	if len(request.EvalByCredential) > 0 && len(allAllowedID) == 0 {
+func selectAssertionPRFInput(request *browserprotocol.PasskeyPRFRequest, allowedIDs [][]byte, credentialID []byte) (*browserprotocol.PasskeyPRFValues, error) {
+	if len(request.EvalByCredential) > 0 && len(allowedIDs) == 0 {
 		return nil, passkey.ErrInvalidRequest
 	}
 	if len(request.EvalByCredential) > maxPasskeyCredentialCount {
@@ -71,7 +71,7 @@ func selectAssertionPRFInput(request *browserprotocol.PasskeyPRFRequest, allAllo
 	var selected *browserprotocol.PasskeyPRFValues
 	for encodedID, values := range request.EvalByCredential {
 		decodedID, err := decodeBase64URL(encodedID)
-		if err != nil || len(decodedID) == 0 || !containsCredentialID(allAllowedID, decodedID) {
+		if err != nil || len(decodedID) == 0 || !containsCredentialID(allowedIDs, decodedID) {
 			return nil, passkey.ErrInvalidRequest
 		}
 		if bytes.Equal(decodedID, credentialID) {
@@ -84,11 +84,11 @@ func selectAssertionPRFInput(request *browserprotocol.PasskeyPRFRequest, allAllo
 	return selected, nil
 }
 
-func evaluatePasskeyAssertionPRF(request *browserprotocol.PasskeyPRFRequest, allAllowedID [][]byte, storedPasskey item.Passkey) (*browserprotocol.PasskeyPRFResult, error) {
+func evaluatePasskeyAssertionPRF(request *browserprotocol.PasskeyPRFRequest, allowedIDs [][]byte, storedPasskey item.Passkey) (*browserprotocol.PasskeyPRFResult, error) {
 	if request == nil {
 		return nil, nil
 	}
-	selected, err := selectAssertionPRFInput(request, allAllowedID, storedPasskey.CredentialID)
+	selected, err := selectAssertionPRFInput(request, allowedIDs, storedPasskey.CredentialID)
 	if err != nil {
 		return nil, err
 	}

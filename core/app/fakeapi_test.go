@@ -13,28 +13,28 @@ import (
 
 // fakeAPIServer stores encrypted vaults and items in memory, like the Hisar server API.
 type fakeAPIServer struct {
-	mutex                      sync.Mutex
-	allVault                   []apitypes.Vault
-	allItemByVaultID           map[string]map[string]apitypes.Item
-	seq                        int64
-	accountID                  string
-	role                       string
-	allMember                  []apitypes.Member
-	allAccessByVaultID         map[string][]apitypes.RotatedAccess
-	allDevice                  []apitypes.Device
-	isUnreachable              bool
-	eventChannel               chan string
-	allShareInvitation         []apitypes.SentShareInvitation
-	allReceivedShareInvitation []apitypes.ReceivedShareInvitation
-	allWaitingShareInvitation  []apitypes.WaitingShareInvitation
-	allAnsweredShareInvitation []string
-	allInvitedEmail            []string
-	isEmailUnavailable         bool
-	approvalEventChannel       chan apiclient.Event
-	eventStreamCount           int
-	allApprovalByRequestID     map[string]*fakeApproval
-	failingApprovalPostCount   int
-	deviceListHangingChannel   chan struct{}
+	mutex                    sync.Mutex
+	vaults                   []apitypes.Vault
+	itemsByVaultID           map[string]map[string]apitypes.Item
+	seq                      int64
+	accountID                string
+	role                     string
+	members                  []apitypes.Member
+	accessesByVaultID        map[string][]apitypes.RotatedAccess
+	devices                  []apitypes.Device
+	isUnreachable            bool
+	eventChannel             chan string
+	shareInvitations         []apitypes.SentShareInvitation
+	receivedShareInvitations []apitypes.ReceivedShareInvitation
+	waitingShareInvitations  []apitypes.WaitingShareInvitation
+	answeredShareInvitations []string
+	invitedEmails            []string
+	isEmailUnavailable       bool
+	approvalEventChannel     chan apiclient.Event
+	eventStreamCount         int
+	approvalsByRequestID     map[string]*fakeApproval
+	failingApprovalPostCount int
+	deviceListHangingChannel chan struct{}
 }
 
 func (server *fakeAPIServer) setUnreachable(isUnreachable bool) {
@@ -59,7 +59,7 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 	mux.HandleFunc("GET /api/v1/vaults", func(writer http.ResponseWriter, request *http.Request) {
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
-		writeJSON(writer, http.StatusOK, server.allVault)
+		writeJSON(writer, http.StatusOK, server.vaults)
 	})
 	mux.HandleFunc("POST /api/v1/vaults", func(writer http.ResponseWriter, request *http.Request) {
 		var createRequest apitypes.CreateVaultRequest
@@ -69,19 +69,19 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 		}
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
-		server.allVault = append(server.allVault, apitypes.Vault{ID: createRequest.ID, Type: createRequest.Type, EncName: createRequest.EncName, Role: apitypes.VaultOwner, WrappedKey: createRequest.WrappedKey})
-		server.allItemByVaultID[createRequest.ID] = map[string]apitypes.Item{}
-		server.allAccessByVaultID[createRequest.ID] = []apitypes.RotatedAccess{{AccountID: server.accountID, Role: apitypes.VaultOwner, WrappedKey: createRequest.WrappedKey}}
+		server.vaults = append(server.vaults, apitypes.Vault{ID: createRequest.ID, Type: createRequest.Type, EncName: createRequest.EncName, Role: apitypes.VaultOwner, WrappedKey: createRequest.WrappedKey})
+		server.itemsByVaultID[createRequest.ID] = map[string]apitypes.Item{}
+		server.accessesByVaultID[createRequest.ID] = []apitypes.RotatedAccess{{AccountID: server.accountID, Role: apitypes.VaultOwner, WrappedKey: createRequest.WrappedKey}}
 		writer.WriteHeader(http.StatusCreated)
 	})
 	mux.HandleFunc("GET /api/v1/vaults/{vaultID}/changes", func(writer http.ResponseWriter, request *http.Request) {
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
-		allItem := []apitypes.Item{}
-		for _, storedItem := range server.allItemByVaultID[request.PathValue("vaultID")] {
-			allItem = append(allItem, storedItem)
+		items := []apitypes.Item{}
+		for _, storedItem := range server.itemsByVaultID[request.PathValue("vaultID")] {
+			items = append(items, storedItem)
 		}
-		writeJSON(writer, http.StatusOK, apitypes.ChangesResponse{Items: allItem, NextSeq: server.seq})
+		writeJSON(writer, http.StatusOK, apitypes.ChangesResponse{Items: items, NextSeq: server.seq})
 	})
 	mux.HandleFunc("PUT /api/v1/vaults/{vaultID}/items/{itemID}", func(writer http.ResponseWriter, request *http.Request) {
 		var putRequest apitypes.PutItemRequest
@@ -91,13 +91,13 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 		}
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
-		allItem, found := server.allItemByVaultID[request.PathValue("vaultID")]
+		items, found := server.itemsByVaultID[request.PathValue("vaultID")]
 		if !found {
 			writeJSON(writer, http.StatusNotFound, apitypes.Error{Error: "vault not found"})
 			return
 		}
 		itemID := request.PathValue("itemID")
-		current, exists := allItem[itemID]
+		current, exists := items[itemID]
 		baseRevision := strings.Trim(request.Header.Get("If-Match"), `"`)
 		if (exists && current.Revision != baseRevision) || (!exists && baseRevision != "") {
 			conflict := apitypes.ConflictResponse{}
@@ -108,7 +108,7 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 			return
 		}
 		server.seq++
-		allItem[itemID] = apitypes.Item{ID: itemID, Revision: putRequest.Revision, Seq: server.seq, Deleted: putRequest.Deleted, Overview: putRequest.Overview, Details: putRequest.Details}
+		items[itemID] = apitypes.Item{ID: itemID, Revision: putRequest.Revision, Seq: server.seq, Deleted: putRequest.Deleted, Overview: putRequest.Overview, Details: putRequest.Details}
 		writeJSON(writer, http.StatusOK, apitypes.PutItemResponse{Seq: server.seq})
 	})
 	mux.HandleFunc("GET /api/v1/events", func(writer http.ResponseWriter, request *http.Request) {
@@ -139,9 +139,9 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 			}
 		}
 	})
-	server.addAllSharingRoute(mux)
-	server.addAllApprovalRoute(mux)
-	server.addAllVaultManagementRoute(mux)
+	server.addSharingRoutes(mux)
+	server.addApprovalRoutes(mux)
+	server.addVaultManagementRoutes(mux)
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		server.mutex.Lock()
 		isUnreachable := server.isUnreachable

@@ -22,8 +22,8 @@ type PhoneApprovalRequest struct {
 	approval.Description
 }
 
-// ListAllPendingPhoneApproval opens the other devices' open requests; expired, answered and withdrawn ones are left out.
-func ListAllPendingPhoneApproval(s *Service) ([]PhoneApprovalRequest, error) {
+// ListPendingPhoneApprovals opens the other devices' open requests; expired, answered and withdrawn ones are left out.
+func ListPendingPhoneApprovals(s *Service) ([]PhoneApprovalRequest, error) {
 	apiClient, err := s.getUnlockedClient()
 	if err != nil {
 		return nil, err
@@ -34,7 +34,7 @@ func ListAllPendingPhoneApproval(s *Service) ([]PhoneApprovalRequest, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), phoneApprovalRequestTimeout)
 	defer cancel()
-	allPending, err := apiClient.ListAllPendingApproval(ctx)
+	pendingRequests, err := apiClient.ListPendingApprovals(ctx)
 	if err != nil {
 		return nil, convertError(err)
 	}
@@ -43,13 +43,13 @@ func ListAllPendingPhoneApproval(s *Service) ([]PhoneApprovalRequest, error) {
 	if s.unlockedSession == nil || s.unlockedSession.Client != apiClient {
 		return nil, ErrLocked
 	}
-	allRequest := []PhoneApprovalRequest{}
-	for _, pending := range allPending {
+	requests := []PhoneApprovalRequest{}
+	for _, pending := range pendingRequests {
 		request, err := approval.OpenRequest(s.unlockedSession.Keyset, s.unlockedSession.AccountID, pending.RequestID, pending.SealedRequest, ownDeviceID, s.config.Now())
 		if err != nil {
 			continue
 		}
-		allRequest = append(allRequest, PhoneApprovalRequest{
+		requests = append(requests, PhoneApprovalRequest{
 			RequestID:           request.RequestID,
 			RequesterDeviceName: request.RequesterDeviceName,
 			CreatedAt:           request.CreatedAt.UTC().Format(time.RFC3339Nano),
@@ -57,8 +57,8 @@ func ListAllPendingPhoneApproval(s *Service) ([]PhoneApprovalRequest, error) {
 			Description:         request.Description,
 		})
 	}
-	sort.SliceStable(allRequest, func(first, second int) bool { return allRequest[first].CreatedAt < allRequest[second].CreatedAt })
-	return allRequest, nil
+	sort.SliceStable(requests, func(first, second int) bool { return requests[first].CreatedAt < requests[second].CreatedAt })
+	return requests, nil
 }
 
 // AnswerPhoneApproval signs this device's decision and, for a request that offers it, the remember switch; the caller checked Face ID

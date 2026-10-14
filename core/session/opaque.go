@@ -14,7 +14,7 @@ type opaqueLogin struct {
 
 // startOpaqueLogin returns the login and its serialized KE1; the caller clears the login.
 func startOpaqueLogin(authKey []byte) (*opaqueLogin, []byte, error) {
-	client, err := pake.CreateConfig().Client()
+	client, err := pake.NewConfig().Client()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -49,7 +49,7 @@ func (credential *accountCredential) registerOpaque(derivedKeys *crypt.DerivedKe
 	if credential.encryptedKeyset, err = credential.keyset.Encrypt(derivedKeys.AccountUnlockKey, accountID); err != nil {
 		return err
 	}
-	opaqueClient, err := pake.CreateConfig().Client()
+	opaqueClient, err := pake.NewConfig().Client()
 	if err != nil {
 		return err
 	}

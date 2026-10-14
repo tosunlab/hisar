@@ -61,9 +61,9 @@ type commandLineTest struct {
 
 func createCommandLineTest(t *testing.T) *commandLineTest {
 	t.Helper()
-	test := &commandLineTest{testService: createUnlockedTestService(t), approvals: clisocket.CreateSessionApprovals(0, nil), approver: &countingApprover{}}
-	bridge := CreateCommandLineBridge(test.testService.service, test.approvals)
-	server := clisocket.CreateServer(clisocket.ServerConfig{Handler: bridge, Approver: test.approver, PeerResolver: staticPeerResolver{}, Approvals: test.approvals})
+	test := &commandLineTest{testService: createUnlockedTestService(t), approvals: clisocket.NewSessionApprovals(0, nil), approver: &countingApprover{}}
+	bridge := NewCommandLineBridge(test.testService.service, test.approvals)
+	server := clisocket.NewServer(clisocket.ServerConfig{Handler: bridge, Approver: test.approver, PeerResolver: staticPeerResolver{}, Approvals: test.approvals})
 	serverSide, clientSide := net.Pipe()
 	go server.ServeConnection(context.Background(), serverSide)
 	t.Cleanup(func() { clientSide.Close() })
@@ -137,7 +137,7 @@ func TestCommandLineItemsThroughTheApp(t *testing.T) {
 	}
 
 	service.mutex.Lock()
-	delete(service.allItemByVaultID, test.testService.personalID)
+	delete(service.itemsByVaultID, test.testService.personalID)
 	service.mutex.Unlock()
 
 	var itemResult cliprotocol.ItemResult
@@ -240,8 +240,8 @@ func TestCommandLineImportOnlyCreatesItems(t *testing.T) {
 	if kept, err := service.GetItem(vaultID, existing.ID); err != nil || kept.Title != "Keep me" || kept.Password != "original" {
 		t.Errorf("import replaced an existing item: %+v %v", kept, err)
 	}
-	allTooMany := make([]item.Item, cliprotocol.MaxImportBatch+1)
-	if failure := test.send(t, cliprotocol.Request{Type: cliprotocol.TypeImportItem, VaultID: vaultID, ImportedItems: allTooMany}, nil); !strings.HasPrefix(failure, cliprotocol.ErrorInvalidRequest) {
+	tooManies := make([]item.Item, cliprotocol.MaxImportBatch+1)
+	if failure := test.send(t, cliprotocol.Request{Type: cliprotocol.TypeImportItem, VaultID: vaultID, ImportedItems: tooManies}, nil); !strings.HasPrefix(failure, cliprotocol.ErrorInvalidRequest) {
 		t.Errorf("oversized batch: %q", failure)
 	}
 }
@@ -254,12 +254,12 @@ func TestCommandLineSharingAndDevices(t *testing.T) {
 		t.Errorf("people %+v", peopleList)
 	}
 	test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeInvite, Email: "new@example.com"}, nil)
-	if invited := test.testService.apiServer.allInvitedEmail; len(invited) != 1 || invited[0] != "new@example.com" {
+	if invited := test.testService.apiServer.invitedEmails; len(invited) != 1 || invited[0] != "new@example.com" {
 		t.Errorf("invited %v", invited)
 	}
 	test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeShareVault, VaultID: test.testService.familyID, Email: "bob@example.com", Role: "reader"}, nil)
 	test.testService.apiServer.mutex.Lock()
-	test.testService.apiServer.allReceivedShareInvitation = []apitypes.ReceivedShareInvitation{{ID: "from-carol", VaultID: "vault-2", Role: "editor", InvitedByName: "Carol", InvitedByEmail: "c@example.com"}}
+	test.testService.apiServer.receivedShareInvitations = []apitypes.ReceivedShareInvitation{{ID: "from-carol", VaultID: "vault-2", Role: "editor", InvitedByName: "Carol", InvitedByEmail: "c@example.com"}}
 	test.testService.apiServer.mutex.Unlock()
 	var invitationList cliprotocol.InvitationListResult
 	test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeListInvitation}, &invitationList)
@@ -308,15 +308,15 @@ func TestLockEndsCommandLineApprovals(t *testing.T) {
 }
 
 func TestConvertCommandLineError(t *testing.T) {
-	allCase := map[error]string{
+	cases := map[error]string{
 		ErrLocked:                       cliprotocol.ErrorLocked,
 		ErrSignedOut:                    cliprotocol.ErrorSignedOut,
 		ErrOffline:                      cliprotocol.ErrorOffline,
 		errors.Join(ErrNotFound):        cliprotocol.ErrorNotFound,
 		errors.New("permission denied"): cliprotocol.ErrorInternal,
-		cliprotocol.CreateError(cliprotocol.ErrorDenied, "denied"): cliprotocol.ErrorDenied,
+		cliprotocol.NewError(cliprotocol.ErrorDenied, "denied"): cliprotocol.ErrorDenied,
 	}
-	for err, want := range allCase {
+	for err, want := range cases {
 		var responseError *cliprotocol.ResponseError
 		if !errors.As(convertCommandLineError(err), &responseError) || responseError.Code != want {
 			t.Errorf("%v: %v", err, convertCommandLineError(err))

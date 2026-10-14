@@ -22,16 +22,16 @@ func waitForSignedOut(t *testing.T, service *Service) Status {
 
 func findVaultSummary(t *testing.T, service *Service, name string) VaultSummary {
 	t.Helper()
-	allVault, err := service.ListAllVault()
+	vaults, err := service.ListVaults()
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, vault := range allVault {
+	for _, vault := range vaults {
 		if vault.Name == name {
 			return vault
 		}
 	}
-	t.Fatalf("no vault %q in %+v", name, allVault)
+	t.Fatalf("no vault %q in %+v", name, vaults)
 	return VaultSummary{}
 }
 
@@ -102,8 +102,8 @@ func TestIntegrationAccountLifecycle(t *testing.T) {
 		if _, err := mac.Unlock(newPassword); err != nil {
 			t.Fatal(err)
 		}
-		if allItem, err := mac.ListAllItem(personal.ID); err != nil || len(allItem) != 1 || allItem[0].Title != "GitHub" {
-			t.Errorf("items after the change: %+v %v", allItem, err)
+		if items, err := mac.ListItems(personal.ID); err != nil || len(items) != 1 || items[0].Title != "GitHub" {
+			t.Errorf("items after the change: %+v %v", items, err)
 		}
 	})
 
@@ -143,7 +143,7 @@ func TestIntegrationAccountLifecycle(t *testing.T) {
 
 	t.Run("delete account", func(t *testing.T) {
 		preview, err := mac.PreviewAccountDeletion()
-		if err != nil || preview.Email != email || len(preview.AllOwnedVault) != 1 || preview.AllOwnedVault[0].Name != "Personal" || preview.DeviceCount != 2 {
+		if err != nil || preview.Email != email || len(preview.OwnedVaults) != 1 || preview.OwnedVaults[0].Name != "Personal" || preview.DeviceCount != 2 {
 			t.Fatalf("preview: %+v %v", preview, err)
 		}
 		if _, err := mac.DeleteAccount(newPassword, "someone@example.com"); err == nil || !strings.Contains(err.Error(), "type the email") {
@@ -159,7 +159,7 @@ func TestIntegrationAccountLifecycle(t *testing.T) {
 		if _, err := mac.config.SecretKeyStore.LoadSecretKey(signUpResult.SecretKey[3:9]); err == nil {
 			t.Error("the Secret Key stayed in the keychain")
 		}
-		if len(mac.config.Biometric.(*fakeBiometric).allKey) != 0 {
+		if len(mac.config.Biometric.(*fakeBiometric).keys) != 0 {
 			t.Error("the Touch ID key stayed in the keychain")
 		}
 		if laptopStatus, err := laptop.Unlock(newPassword); err != nil || laptopStatus.State != StateSignedOut || laptopStatus.SignedOutReason == "" {

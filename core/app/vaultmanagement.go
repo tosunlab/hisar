@@ -20,16 +20,16 @@ var (
 )
 
 // VaultActions is what the vault's menu needs: who may rename, delete or leave it, what deleting it means, and why not.
-// AllMemberLosingAccess leaves out the current user; AllTargetVault holds the vaults its items can move to.
+// MembersLosingAccess leaves out the current user; TargetVaults holds the vaults its items can move to.
 type VaultActions struct {
-	Vault                 VaultSummary   `json:"vault"`
-	CanRename             bool           `json:"canRename"`
-	CanDelete             bool           `json:"canDelete"`
-	DeleteBlockedReason   string         `json:"deleteBlockedReason"`
-	CanLeave              bool           `json:"canLeave"`
-	LeaveBlockedReason    string         `json:"leaveBlockedReason"`
-	AllMemberLosingAccess []VaultMember  `json:"membersLosingAccess"`
-	AllTargetVault        []VaultSummary `json:"targetVaults"`
+	Vault               VaultSummary   `json:"vault"`
+	CanRename           bool           `json:"canRename"`
+	CanDelete           bool           `json:"canDelete"`
+	DeleteBlockedReason string         `json:"deleteBlockedReason"`
+	CanLeave            bool           `json:"canLeave"`
+	LeaveBlockedReason  string         `json:"leaveBlockedReason"`
+	MembersLosingAccess []VaultMember  `json:"membersLosingAccess"`
+	TargetVaults        []VaultSummary `json:"targetVaults"`
 }
 
 // VaultDeletionRequest: MoveToVaultID moves every item there first; IsDeletingItems needs ConfirmedName to be the vault's name.
@@ -52,15 +52,15 @@ type RemovedVaultNotice struct {
 }
 
 func (s *Service) loadVaultItemCount(ctx context.Context, vault *session.Vault) (int, error) {
-	allItem, found := s.allItemByVaultID[vault.ID]
+	items, found := s.itemsByVaultID[vault.ID]
 	if !found {
 		var err error
-		if allItem, err = s.unlockedSession.ListAllItem(ctx, vault); err != nil {
+		if items, err = s.unlockedSession.ListItems(ctx, vault); err != nil {
 			return 0, convertError(err)
 		}
-		s.allItemByVaultID[vault.ID] = allItem
+		s.itemsByVaultID[vault.ID] = items
 	}
-	return len(allItem), nil
+	return len(items), nil
 }
 
 func (s *Service) GetVaultActions(vaultID string) (VaultActions, error) {
@@ -71,7 +71,7 @@ func (s *Service) GetVaultActions(vaultID string) (VaultActions, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	if err := s.loadAllVault(ctx); err != nil {
+	if err := s.loadVaults(ctx); err != nil {
 		return VaultActions{}, err
 	}
 	vault, err := s.findVault(ctx, vaultID)
@@ -83,34 +83,34 @@ func (s *Service) GetVaultActions(vaultID string) (VaultActions, error) {
 		return VaultActions{}, err
 	}
 	actions := VaultActions{
-		Vault:                 convertToVaultSummary(vault, itemCount),
-		AllMemberLosingAccess: []VaultMember{},
-		AllTargetVault:        []VaultSummary{},
+		Vault:               convertToVaultSummary(vault, itemCount),
+		MembersLosingAccess: []VaultMember{},
+		TargetVaults:        []VaultSummary{},
 	}
-	allMember := []VaultMember{}
+	members := []VaultMember{}
 	if vault.Type != apitypes.VaultPersonal {
-		if allMember, err = s.listAllVaultMember(ctx, vault.ID); err != nil {
+		if members, err = s.listVaultMembers(ctx, vault.ID); err != nil {
 			return VaultActions{}, err
 		}
 	}
-	for _, member := range allMember {
+	for _, member := range members {
 		if !member.IsCurrentUser {
-			actions.AllMemberLosingAccess = append(actions.AllMemberLosingAccess, member)
+			actions.MembersLosingAccess = append(actions.MembersLosingAccess, member)
 		}
 	}
 
 	ownerCount := 0
-	for _, member := range allMember {
+	for _, member := range members {
 		if member.Role == apitypes.VaultOwner {
 			ownerCount++
 		}
 	}
-	permissions := session.GetVaultPermissions(vault.Type, vault.Role, len(s.allVaultByID), ownerCount)
+	permissions := session.GetVaultPermissions(vault.Type, vault.Role, len(s.vaultsByID), ownerCount)
 	actions.CanRename, actions.CanDelete, actions.DeleteBlockedReason = permissions.CanRename, permissions.CanDelete, permissions.DeleteBlockedReason
 	actions.CanLeave, actions.LeaveBlockedReason = permissions.CanLeave, permissions.LeaveBlockedReason
 
 	if actions.CanDelete {
-		for _, candidate := range s.allVaultByID {
+		for _, candidate := range s.vaultsByID {
 			if candidate.ID == vault.ID || !apitypes.CanWriteItems(candidate.Role) {
 				continue
 			}
@@ -118,9 +118,9 @@ func (s *Service) GetVaultActions(vaultID string) (VaultActions, error) {
 			if err != nil {
 				return VaultActions{}, err
 			}
-			actions.AllTargetVault = append(actions.AllTargetVault, convertToVaultSummary(candidate, candidateCount))
+			actions.TargetVaults = append(actions.TargetVaults, convertToVaultSummary(candidate, candidateCount))
 		}
-		sortAllVaultSummary(actions.AllTargetVault)
+		sortVaultSummaries(actions.TargetVaults)
 	}
 	return actions, nil
 }
@@ -140,7 +140,7 @@ func (s *Service) RenameVault(vaultID, name string) (VaultSummary, error) {
 	if err := s.unlockedSession.RenameVault(ctx, vault, name); err != nil {
 		return VaultSummary{}, convertVaultError(err)
 	}
-	return convertToVaultSummary(vault, len(s.allItemByVaultID[vault.ID])), nil
+	return convertToVaultSummary(vault, len(s.itemsByVaultID[vault.ID])), nil
 }
 
 func (s *Service) DeleteVault(vaultID string, request VaultDeletionRequest) (VaultDeletionResult, error) {
@@ -151,7 +151,7 @@ func (s *Service) DeleteVault(vaultID string, request VaultDeletionRequest) (Vau
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	if err := s.loadAllVault(ctx); err != nil {
+	if err := s.loadVaults(ctx); err != nil {
 		return VaultDeletionResult{}, err
 	}
 	vault, err := s.findVault(ctx, vaultID)
@@ -181,7 +181,7 @@ func (s *Service) DeleteVault(vaultID string, request VaultDeletionRequest) (Vau
 	}
 	s.forgetVault(vault.ID)
 	if deletion.MoveTo != nil {
-		delete(s.allItemByVaultID, deletion.MoveTo.ID)
+		delete(s.itemsByVaultID, deletion.MoveTo.ID)
 	}
 	return result, nil
 }
@@ -210,35 +210,35 @@ func (s *Service) LeaveVault(vaultID string) error {
 
 // forgetVault drops a vault this device deleted or left, including its coding agent switch.
 func (s *Service) forgetVault(vaultID string) {
-	if vault, found := s.allVaultByID[vaultID]; found {
+	if vault, found := s.vaultsByID[vaultID]; found {
 		clear(vault.Key)
-		delete(s.allVaultByID, vaultID)
+		delete(s.vaultsByID, vaultID)
 	}
-	delete(s.allItemByVaultID, vaultID)
-	if slices.Contains(s.state.AllAgentVaultID, vaultID) {
-		s.state.AllAgentVaultID = slices.DeleteFunc(s.state.AllAgentVaultID, func(candidate string) bool { return candidate == vaultID })
+	delete(s.itemsByVaultID, vaultID)
+	if slices.Contains(s.state.AgentVaultIDs, vaultID) {
+		s.state.AgentVaultIDs = slices.DeleteFunc(s.state.AgentVaultIDs, func(candidate string) bool { return candidate == vaultID })
 		s.state.Save()
 	}
 }
 
-// ListAllRemovedVault returns, once, the vaults that disappeared since the last call because someone else deleted
+// ListRemovedVaults returns, once, the vaults that disappeared since the last call because someone else deleted
 // them or removed the user.
-func (s *Service) ListAllRemovedVault() []RemovedVaultNotice {
+func (s *Service) ListRemovedVaults() []RemovedVaultNotice {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	allNotice := []RemovedVaultNotice{}
+	notices := []RemovedVaultNotice{}
 	if s.unlockedSession == nil {
-		return allNotice
+		return notices
 	}
-	for _, removed := range s.unlockedSession.TakeAllRemovedVault() {
+	for _, removed := range s.unlockedSession.TakeRemovedVaults() {
 		s.forgetVault(removed.ID)
 		notice := RemovedVaultNotice{ID: removed.ID, Name: removed.Name, Message: "A vault is no longer available: it was deleted, or you no longer have access to it."}
 		if removed.Name != "" {
 			notice.Message = "“" + removed.Name + "” is no longer available: it was deleted, or you no longer have access to it."
 		}
-		allNotice = append(allNotice, notice)
+		notices = append(notices, notice)
 	}
-	return allNotice
+	return notices
 }
 
 func convertVaultError(err error) error {

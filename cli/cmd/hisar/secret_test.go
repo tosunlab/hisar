@@ -15,19 +15,19 @@ func answerSecretRequest(request cliprotocol.Request) (any, *cliprotocol.Respons
 	if request.Type != cliprotocol.TypeResolveSecret {
 		return answerFakeVaultRequest(request)
 	}
-	allValueByReference := map[string]string{
+	valuesByReference := map[string]string{
 		"hisar://Personal/GitHub/password":    "github-password",
 		"hisar://Personal/GitHub/API%20token": "token-value",
 	}
-	allValue := []string{}
+	values := []string{}
 	for _, reference := range request.References {
-		value, isFound := allValueByReference[reference]
+		value, isFound := valuesByReference[reference]
 		if !isFound {
-			return nil, cliprotocol.CreateError(cliprotocol.ErrorNotFound, reference+`: no item in vault "Personal" is titled "Missing"`)
+			return nil, cliprotocol.NewError(cliprotocol.ErrorNotFound, reference+`: no item in vault "Personal" is titled "Missing"`)
 		}
-		allValue = append(allValue, value)
+		values = append(values, value)
 	}
-	return cliprotocol.ResolveSecretResult{Values: allValue}, nil
+	return cliprotocol.ResolveSecretResult{Values: values}, nil
 }
 
 func TestReadThroughTheApp(t *testing.T) {
@@ -40,12 +40,12 @@ func TestReadThroughTheApp(t *testing.T) {
 	if stdout, _, _ := runCapturingOutput(t, false, "", "read", "hisar://Personal/GitHub/API%20token", "--no-newline"); stdout != "token-value" {
 		t.Errorf("read --no-newline: %q", stdout)
 	}
-	allRequest := app.findRequest(cliprotocol.TypeResolveSecret)
-	if len(allRequest) != 2 || !slices.Equal(allRequest[0].References, []string{"hisar://Personal/GitHub/password"}) || len(allRequest[0].CommandLine) != 0 {
-		t.Errorf("requests %+v", allRequest)
+	requests := app.findRequest(cliprotocol.TypeResolveSecret)
+	if len(requests) != 2 || !slices.Equal(requests[0].References, []string{"hisar://Personal/GitHub/password"}) || len(requests[0].CommandLine) != 0 {
+		t.Errorf("requests %+v", requests)
 	}
-	if !slices.Equal(app.listAllRequestType(), []string{"hello", "secrets.resolve", "hello", "secrets.resolve"}) {
-		t.Errorf("request types %v", app.listAllRequestType())
+	if !slices.Equal(app.listRequestTypes(), []string{"hello", "secrets.resolve", "hello", "secrets.resolve"}) {
+		t.Errorf("request types %v", app.listRequestTypes())
 	}
 }
 
@@ -58,8 +58,8 @@ func TestReadReportsBadReferencesWithoutAsking(t *testing.T) {
 	if _, _, err := runCapturingOutput(t, false, "", "read", "Personal/GitHub/password"); err == nil || !strings.Contains(err.Error(), "is not a secret reference") {
 		t.Errorf("not a reference: %v", err)
 	}
-	if len(app.listAllRequestType()) != 0 {
-		t.Errorf("asked the app: %v", app.listAllRequestType())
+	if len(app.listRequestTypes()) != 0 {
+		t.Errorf("asked the app: %v", app.listRequestTypes())
 	}
 	_, _, err := runCapturingOutput(t, false, "", "read", "hisar://Personal/Missing/password")
 	var responseError *cliprotocol.ResponseError
@@ -85,10 +85,10 @@ func TestRunThroughTheAppSendsOneRequest(t *testing.T) {
 	if stdout != "stdout: <concealed by hisar>\n" || stderr != "Approve hisar in this terminal in Hisar's approval window…\nstderr: <concealed by hisar>\n" {
 		t.Errorf("stdout %q, stderr %q", stdout, stderr)
 	}
-	allRequest := app.findRequest(cliprotocol.TypeResolveSecret)
-	if len(allRequest) != 1 || !slices.Equal(allRequest[0].References, []string{"hisar://Personal/GitHub/password", "hisar://Personal/GitHub/API%20token"}) ||
-		!slices.Equal(allRequest[0].CommandLine, []string{getTestBinary(t), "-test.run=none"}) {
-		t.Errorf("requests %+v", allRequest)
+	requests := app.findRequest(cliprotocol.TypeResolveSecret)
+	if len(requests) != 1 || !slices.Equal(requests[0].References, []string{"hisar://Personal/GitHub/password", "hisar://Personal/GitHub/API%20token"}) ||
+		!slices.Equal(requests[0].CommandLine, []string{getTestBinary(t), "-test.run=none"}) {
+		t.Errorf("requests %+v", requests)
 	}
 }
 
@@ -100,7 +100,7 @@ func TestRunWithoutReferencesNeverAsksTheApp(t *testing.T) {
 	if err != nil || stdout != "stdout: not a reference\n" || !strings.HasPrefix(stderr, "hisar: no secret references found\n") {
 		t.Errorf("stdout %q, stderr %q, %v", stdout, stderr, err)
 	}
-	if len(app.listAllRequestType()) != 0 {
-		t.Errorf("asked the app: %v", app.listAllRequestType())
+	if len(app.listRequestTypes()) != 0 {
+		t.Errorf("asked the app: %v", app.listRequestTypes())
 	}
 }

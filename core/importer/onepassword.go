@@ -23,20 +23,20 @@ const (
 	onePasswordSSHKey     = "114"
 )
 
-var allOnePasswordCategoryName = map[string]string{
+var onePasswordCategoryNames = map[string]string{
 	"001": "Login", "002": "Credit Card", "003": "Secure Note", "004": "Identity", "005": "Password", "006": "Document",
 	"100": "Software License", "101": "Bank Account", "102": "Database", "103": "Driver License", "104": "Outdoor License",
 	"105": "Membership", "106": "Passport", "107": "Reward Program", "108": "Social Security Number", "109": "Wireless Router",
 	"110": "Server", "111": "Email Account", "112": "API Credential", "113": "Medical Record", "114": "SSH Key", "115": "Crypto Wallet",
 }
 
-// allOnePasswordCredentialCategory become logins with their fields; other categories hold personal records Hisar has no type for yet.
-var allOnePasswordCredentialCategory = map[string]bool{"100": true, "102": true, "109": true, "110": true, "111": true, "112": true}
+// onePasswordCredentialCategories become logins with their fields; other categories hold personal records Hisar has no type for yet.
+var onePasswordCredentialCategories = map[string]bool{"100": true, "102": true, "109": true, "110": true, "111": true, "112": true}
 
 type onePasswordExport struct {
-	AllAccount []struct {
-		AllVault []struct {
-			AllItem []onePasswordItem `json:"items"`
+	Accounts []struct {
+		Vaults []struct {
+			Items []onePasswordItem `json:"items"`
 		} `json:"vaults"`
 	} `json:"accounts"`
 }
@@ -45,7 +45,7 @@ type onePasswordItem struct {
 	State        string `json:"state"`
 	CategoryUUID string `json:"categoryUuid"`
 	Details      struct {
-		AllLoginField []struct {
+		LoginFields []struct {
 			Value       string `json:"value"`
 			Name        string `json:"name"`
 			FieldType   string `json:"fieldType"`
@@ -53,18 +53,18 @@ type onePasswordItem struct {
 		} `json:"loginFields"`
 		NotesPlain string `json:"notesPlain"`
 		Password   string `json:"password"`
-		AllSection []struct {
-			Title    string             `json:"title"`
-			AllField []onePasswordField `json:"fields"`
+		Sections   []struct {
+			Title  string             `json:"title"`
+			Fields []onePasswordField `json:"fields"`
 		} `json:"sections"`
 	} `json:"details"`
 	Overview struct {
-		Title  string `json:"title"`
-		URL    string `json:"url"`
-		AllURL []struct {
+		Title string `json:"title"`
+		URL   string `json:"url"`
+		URLs  []struct {
 			URL string `json:"url"`
 		} `json:"urls"`
-		AllTag []string `json:"tags"`
+		Tags []string `json:"tags"`
 	} `json:"overview"`
 }
 
@@ -110,17 +110,17 @@ func parseOnePasswordExport(content []byte) (*Result, error) {
 	if err := json.Unmarshal(data, &export); err != nil {
 		return nil, errors.New("the 1Password export could not be read; export it from 1Password again")
 	}
-	result := &Result{AllItem: []item.Item{}, AllSkipped: []SkippedEntry{}}
-	for _, account := range export.AllAccount {
-		for _, vault := range account.AllVault {
-			for _, onePasswordEntry := range vault.AllItem {
+	result := &Result{Items: []item.Item{}, Skipped: []SkippedEntry{}}
+	for _, account := range export.Accounts {
+		for _, vault := range account.Vaults {
+			for _, onePasswordEntry := range vault.Items {
 				vaultItem, reason := convertOnePasswordItem(onePasswordEntry)
 				if reason != "" {
-					result.AllSkipped = append(result.AllSkipped, SkippedEntry{Title: describeEntry(onePasswordEntry.Overview.Title), Reason: reason})
+					result.Skipped = append(result.Skipped, SkippedEntry{Title: describeEntry(onePasswordEntry.Overview.Title), Reason: reason})
 					continue
 				}
 				if finishItem(&vaultItem) {
-					result.AllItem = append(result.AllItem, vaultItem)
+					result.Items = append(result.Items, vaultItem)
 				}
 			}
 		}
@@ -136,25 +136,25 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 	switch {
 	case category == onePasswordSSHKey:
 		return convertOnePasswordSSHKey(entry)
-	case category == onePasswordLogin, category == onePasswordPassword, category == onePasswordSecureNote, allOnePasswordCredentialCategory[category]:
+	case category == onePasswordLogin, category == onePasswordPassword, category == onePasswordSecureNote, onePasswordCredentialCategories[category]:
 	default:
-		categoryName, found := allOnePasswordCategoryName[category]
+		categoryName, found := onePasswordCategoryNames[category]
 		if !found {
 			categoryName = "this kind of"
 		}
 		return item.Item{}, fmt.Sprintf("1Password %s items are not supported in Hisar yet", categoryName)
 	}
 	vaultItem := item.Item{
-		Overview: item.Overview{Title: entry.Overview.Title, Tags: entry.Overview.AllTag},
+		Overview: item.Overview{Title: entry.Overview.Title, Tags: entry.Overview.Tags},
 		Details:  item.Details{Password: entry.Details.Password, Notes: entry.Details.NotesPlain},
 	}
 	if entry.Overview.URL != "" {
 		vaultItem.Overview.URLs = append(vaultItem.Overview.URLs, entry.Overview.URL)
 	}
-	for _, link := range entry.Overview.AllURL {
+	for _, link := range entry.Overview.URLs {
 		vaultItem.Overview.URLs = append(vaultItem.Overview.URLs, link.URL)
 	}
-	for _, loginField := range entry.Details.AllLoginField {
+	for _, loginField := range entry.Details.LoginFields {
 		switch {
 		case loginField.Designation == "username" && vaultItem.Overview.Username == "":
 			vaultItem.Overview.Username = loginField.Value
@@ -165,13 +165,13 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 			vaultItem.Details.Fields = append(vaultItem.Details.Fields, item.Field{Name: loginField.Name, Value: loginField.Value, Concealed: loginField.FieldType == "P"})
 		}
 	}
-	for _, section := range entry.Details.AllSection {
-		for _, sectionField := range section.AllField {
+	for _, section := range entry.Details.Sections {
+		for _, sectionField := range section.Fields {
 			if _, isFile := sectionField.Value["file"]; isFile {
 				continue
 			}
 			value, isConcealed := convertOnePasswordFieldValue(sectionField.Value)
-			if allOnePasswordCredentialCategory[category] && promoteOnePasswordField(&vaultItem, sectionField.ID, value) {
+			if onePasswordCredentialCategories[category] && promoteOnePasswordField(&vaultItem, sectionField.ID, value) {
 				continue
 			}
 			name := sectionField.Title
@@ -209,8 +209,8 @@ func promoteOnePasswordField(vaultItem *item.Item, fieldID, value string) bool {
 }
 
 func convertOnePasswordSSHKey(entry onePasswordItem) (item.Item, string) {
-	for _, section := range entry.Details.AllSection {
-		for _, sectionField := range section.AllField {
+	for _, section := range entry.Details.Sections {
+		for _, sectionField := range section.Fields {
 			rawKey, found := sectionField.Value["sshKey"]
 			if !found {
 				continue
@@ -231,8 +231,8 @@ func convertOnePasswordSSHKey(entry onePasswordItem) (item.Item, string) {
 }
 
 // convertOnePasswordFieldValue reads the single typed value 1Password stores per field.
-func convertOnePasswordFieldValue(allValueByType map[string]json.RawMessage) (string, bool) {
-	for valueType, rawValue := range allValueByType {
+func convertOnePasswordFieldValue(valuesByType map[string]json.RawMessage) (string, bool) {
+	for valueType, rawValue := range valuesByType {
 		isConcealed := valueType == "concealed" || valueType == "totp" || valueType == "creditCardNumber"
 		var text string
 		if json.Unmarshal(rawValue, &text) == nil {
@@ -265,7 +265,7 @@ func convertOnePasswordFieldValue(allValueByType map[string]json.RawMessage) (st
 				Country string `json:"country"`
 			}
 			if json.Unmarshal(rawValue, &address) == nil {
-				return joinAllNonEmpty([]string{address.Street, address.City, address.State, address.Zip, address.Country}, ", "), false
+				return joinNonEmpties([]string{address.Street, address.City, address.State, address.Zip, address.Country}, ", "), false
 			}
 		}
 		var number json.Number
@@ -280,8 +280,8 @@ func convertOnePasswordFieldValue(allValueByType map[string]json.RawMessage) (st
 	return "", false
 }
 
-func getFirstNonEmpty(allValue ...string) string {
-	for _, value := range allValue {
+func getFirstNonEmpty(values ...string) string {
+	for _, value := range values {
 		if strings.TrimSpace(value) != "" {
 			return value
 		}
@@ -289,12 +289,12 @@ func getFirstNonEmpty(allValue ...string) string {
 	return ""
 }
 
-func joinAllNonEmpty(allValue []string, separator string) string {
-	allNonEmpty := []string{}
-	for _, value := range allValue {
+func joinNonEmpties(values []string, separator string) string {
+	nonEmpties := []string{}
+	for _, value := range values {
 		if value = strings.TrimSpace(value); value != "" {
-			allNonEmpty = append(allNonEmpty, value)
+			nonEmpties = append(nonEmpties, value)
 		}
 	}
-	return strings.Join(allNonEmpty, separator)
+	return strings.Join(nonEmpties, separator)
 }

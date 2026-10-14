@@ -4,12 +4,12 @@ package app
 func AddStatusListener(service *Service, listener func()) {
 	service.mutex.Lock()
 	defer service.mutex.Unlock()
-	service.allStatusListener = append(service.allStatusListener, listener)
+	service.statusListeners = append(service.statusListeners, listener)
 }
 
 // notifyStatusListener runs with the service mutex held, so listeners that read the status must not run inline.
 func (s *Service) notifyStatusListener() {
-	for _, listener := range s.allStatusListener {
+	for _, listener := range s.statusListeners {
 		go listener()
 	}
 }

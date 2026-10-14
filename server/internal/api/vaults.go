@@ -51,18 +51,18 @@ func (s *Server) requireVaultOwner(c fiber.Ctx) error {
 	return nil
 }
 
-func (s *Server) handleListAllVault(c fiber.Ctx) error {
-	allStoredVault, err := s.store.ListAllVault(c.Context(), getSession(c).AccountID)
+func (s *Server) handleListVaults(c fiber.Ctx) error {
+	storedVaults, err := s.store.ListVaults(c.Context(), getSession(c).AccountID)
 	if err != nil {
 		return err
 	}
-	allVault := make([]apitypes.Vault, 0, len(allStoredVault))
-	for _, vault := range allStoredVault {
-		allVault = append(allVault, apitypes.Vault{
+	vaults := make([]apitypes.Vault, 0, len(storedVaults))
+	for _, vault := range storedVaults {
+		vaults = append(vaults, apitypes.Vault{
 			ID: vault.ID, Type: vault.Type, EncName: vault.EncName, Seq: vault.Seq, Role: vault.Role, WrappedKey: vault.WrappedKey,
 		})
 	}
-	return c.JSON(allVault)
+	return c.JSON(vaults)
 }
 
 func (s *Server) handleCreateVault(c fiber.Ctx) error {
@@ -88,19 +88,19 @@ func (s *Server) handleCreateVault(c fiber.Ctx) error {
 	return c.Status(fiber.StatusCreated).JSON(apitypes.Vault{ID: vault.ID, Type: vault.Type, EncName: vault.EncName, Role: apitypes.VaultOwner, WrappedKey: request.WrappedKey})
 }
 
-func (s *Server) handleListAllVaultMember(c fiber.Ctx) error {
+func (s *Server) handleListVaultMembers(c fiber.Ctx) error {
 	if _, err := s.getVaultRole(c); err != nil {
 		return err
 	}
-	allStoredMember, err := s.store.ListAllMember(c.Context(), c.Params("vault"))
+	storedMembers, err := s.store.ListMembers(c.Context(), c.Params("vault"))
 	if err != nil {
 		return err
 	}
-	allMember := make([]apitypes.VaultMember, 0, len(allStoredMember))
-	for _, member := range allStoredMember {
-		allMember = append(allMember, apitypes.VaultMember{AccountID: member.AccountID, Role: member.Role, GrantedBy: member.GrantedBy})
+	members := make([]apitypes.VaultMember, 0, len(storedMembers))
+	for _, member := range storedMembers {
+		members = append(members, apitypes.VaultMember{AccountID: member.AccountID, Role: member.Role, GrantedBy: member.GrantedBy})
 	}
-	return c.JSON(allMember)
+	return c.JSON(members)
 }
 
 func (s *Server) handleSetAccess(c fiber.Ctx) error {
@@ -177,7 +177,7 @@ func convertToProtoItem(storeItem *store.Item) apitypes.Item {
 	return apitypes.Item{ID: storeItem.ID, Revision: storeItem.Revision, Seq: storeItem.Seq, Deleted: storeItem.Deleted, Overview: storeItem.Overview, Details: storeItem.Details, UpdatedAt: storeItem.UpdatedAt, UpdatedBy: storeItem.UpdatedBy}
 }
 
-func (s *Server) handleListAllChange(c fiber.Ctx) error {
+func (s *Server) handleListChanges(c fiber.Ctx) error {
 	if _, err := s.getVaultRole(c); err != nil {
 		return err
 	}
@@ -196,20 +196,20 @@ func (s *Server) handleListAllChange(c fiber.Ctx) error {
 		}
 	}
 
-	allItem, vaultSeq, err := s.store.ListAllChange(c.Context(), c.Params("vault"), since, limit)
+	items, vaultSeq, err := s.store.ListChanges(c.Context(), c.Params("vault"), since, limit)
 	if err != nil {
 		return err
 	}
 	// NextSeq below the client's since signals a server rollback; it is not clamped.
-	response := apitypes.ChangesResponse{Items: make([]apitypes.Item, 0, len(allItem)), NextSeq: vaultSeq}
-	for index := range allItem {
-		response.Items = append(response.Items, convertToProtoItem(&allItem[index]))
+	response := apitypes.ChangesResponse{Items: make([]apitypes.Item, 0, len(items)), NextSeq: vaultSeq}
+	for index := range items {
+		response.Items = append(response.Items, convertToProtoItem(&items[index]))
 	}
-	if len(allItem) == limit {
+	if len(items) == limit {
 		response.More = true
-		response.NextSeq = allItem[len(allItem)-1].Seq
-	} else if len(allItem) > 0 {
-		response.NextSeq = max(vaultSeq, allItem[len(allItem)-1].Seq)
+		response.NextSeq = items[len(items)-1].Seq
+	} else if len(items) > 0 {
+		response.NextSeq = max(vaultSeq, items[len(items)-1].Seq)
 	}
 	return c.JSON(response)
 }
@@ -260,15 +260,15 @@ func (s *Server) handleGetItemHistory(c fiber.Ctx) error {
 	if !isValidUUID(itemID) {
 		return errNotFound
 	}
-	allItem, err := s.store.GetItemHistory(c.Context(), c.Params("vault"), itemID)
+	items, err := s.store.GetItemHistory(c.Context(), c.Params("vault"), itemID)
 	if err != nil {
 		return err
 	}
-	allProtoItem := make([]apitypes.Item, 0, len(allItem))
-	for index := range allItem {
-		allProtoItem = append(allProtoItem, convertToProtoItem(&allItem[index]))
+	protoItems := make([]apitypes.Item, 0, len(items))
+	for index := range items {
+		protoItems = append(protoItems, convertToProtoItem(&items[index]))
 	}
-	return c.JSON(allProtoItem)
+	return c.JSON(protoItems)
 }
 
 // leaveVault removes the caller's access and wrapped key; the vault key is not rotated, since only owners can rotate.
@@ -284,7 +284,7 @@ func (s *Server) leaveVault(c fiber.Ctx, vaultID string) error {
 	}
 	s.recordAudit(c, currentSession.AccountID, currentSession.DeviceID, "vault_left", map[string]string{"vault": vaultID})
 	s.publishVaultsChanged(currentSession.AccountID)
-	s.publishVaultsChangedToAllMember(c, vaultID)
+	s.publishVaultsChangedToMembers(c, vaultID)
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
@@ -308,20 +308,20 @@ func (s *Server) handleRenameVault(c fiber.Ctx) error {
 		return err
 	}
 	s.recordAudit(c, currentSession.AccountID, currentSession.DeviceID, "vault_renamed", map[string]string{"vault": vaultID})
-	s.publishVaultsChangedToAllMember(c, vaultID)
+	s.publishVaultsChangedToMembers(c, vaultID)
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
-func (s *Server) publishVaultsChangedToAllMember(c fiber.Ctx, vaultID string) {
-	allMember, err := s.store.ListAllMember(c.Context(), vaultID)
+func (s *Server) publishVaultsChangedToMembers(c fiber.Ctx, vaultID string) {
+	members, err := s.store.ListMembers(c.Context(), vaultID)
 	if err != nil {
 		return
 	}
-	allAccountID := make([]string, 0, len(allMember))
-	for _, member := range allMember {
-		allAccountID = append(allAccountID, member.AccountID)
+	accountIDs := make([]string, 0, len(members))
+	for _, member := range members {
+		accountIDs = append(accountIDs, member.AccountID)
 	}
-	s.publishVaultsChanged(allAccountID...)
+	s.publishVaultsChanged(accountIDs...)
 }
 
 func (s *Server) handleDeleteVault(c fiber.Ctx) error {
@@ -335,29 +335,29 @@ func (s *Server) handleDeleteVault(c fiber.Ctx) error {
 	}
 	errInvalidDeletion := createAPIError(fiber.StatusBadRequest, "invalid vault deletion")
 	vaultID := c.Params("vault")
-	if request.MoveToVaultID == "" && len(request.AllMovedItem) > 0 ||
+	if request.MoveToVaultID == "" && len(request.MovedItems) > 0 ||
 		request.MoveToVaultID != "" && (!isValidUUID(request.MoveToVaultID) || request.MoveToVaultID == vaultID || request.IsDeletingItems) ||
-		len(request.AllMovedItem) > maxRotatedItemCount {
+		len(request.MovedItems) > maxRotatedItemCount {
 		return errInvalidDeletion
 	}
-	allSeenItemID := map[string]bool{}
-	allMovedItem := make([]store.MovedItem, 0, len(request.AllMovedItem))
-	for _, movedItem := range request.AllMovedItem {
+	seenItemIDs := map[string]bool{}
+	movedItems := make([]store.MovedItem, 0, len(request.MovedItems))
+	for _, movedItem := range request.MovedItems {
 		if !isValidUUID(movedItem.ID) || !isValidUUID(movedItem.BaseRevision) || !isValidUUID(movedItem.Revision) ||
-			allSeenItemID[movedItem.ID] ||
+			seenItemIDs[movedItem.ID] ||
 			len(movedItem.Overview) == 0 || len(movedItem.Overview) > maxOverview ||
 			len(movedItem.Details) == 0 || len(movedItem.Details) > maxDetails {
 			return errInvalidDeletion
 		}
-		allSeenItemID[movedItem.ID] = true
-		allMovedItem = append(allMovedItem, store.MovedItem{
+		seenItemIDs[movedItem.ID] = true
+		movedItems = append(movedItems, store.MovedItem{
 			ID: movedItem.ID, BaseRevision: movedItem.BaseRevision, Revision: movedItem.Revision, Overview: movedItem.Overview, Details: movedItem.Details,
 		})
 	}
 
-	allFormerMemberID, err := s.store.DeleteVault(c.Context(), store.VaultDeletion{
+	formerMemberIDs, err := s.store.DeleteVault(c.Context(), store.VaultDeletion{
 		VaultID: vaultID, AccountID: currentSession.AccountID, MoveToVaultID: request.MoveToVaultID,
-		AllMovedItem: allMovedItem, IsDeletingItems: request.IsDeletingItems,
+		MovedItems: movedItems, IsDeletingItems: request.IsDeletingItems,
 	})
 	switch {
 	case errors.Is(err, store.ErrNotOwner):
@@ -379,14 +379,14 @@ func (s *Server) handleDeleteVault(c fiber.Ctx) error {
 	case err != nil:
 		return err
 	}
-	detail := map[string]string{"vault": vaultID, "members": strconv.Itoa(len(allFormerMemberID))}
+	detail := map[string]string{"vault": vaultID, "members": strconv.Itoa(len(formerMemberIDs))}
 	if request.MoveToVaultID != "" {
-		detail["movedTo"], detail["items"] = request.MoveToVaultID, strconv.Itoa(len(allMovedItem))
+		detail["movedTo"], detail["items"] = request.MoveToVaultID, strconv.Itoa(len(movedItems))
 	} else if request.IsDeletingItems {
 		detail["itemsDeleted"] = "true"
 	}
 	s.recordAudit(c, currentSession.AccountID, currentSession.DeviceID, "vault_deleted", detail)
-	s.publishVaultsChanged(allFormerMemberID...)
+	s.publishVaultsChanged(formerMemberIDs...)
 	if request.MoveToVaultID != "" {
 		s.publishVaultChanged(c.Context(), request.MoveToVaultID, 0)
 	}

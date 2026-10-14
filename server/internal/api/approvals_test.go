@@ -47,11 +47,11 @@ func setupApprovalAccounts(t *testing.T) (*Server, approvalAccounts) {
 	ctx := context.Background()
 	invite := requireValue[*apitypes.InviteResponse](t)(server.CreateInvite(ctx, "dev@example.com", apitypes.RoleAdmin, nil))
 	password := []byte("dev password")
-	mac, secretKey, err := session.SignUp(ctx, apiclient.Create(baseURL), invite.Token, "dev@example.com", "Dev", password, apitypes.DeviceInfo{Name: "MacBook Pro", Platform: "darwin/desktop"})
+	mac, secretKey, err := session.SignUp(ctx, apiclient.New(baseURL), invite.Token, "dev@example.com", "Dev", password, apitypes.DeviceInfo{Name: "MacBook Pro", Platform: "darwin/desktop"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	phone, err := session.LogIn(ctx, apiclient.Create(baseURL), "dev@example.com", password, secretKey, apitypes.DeviceInfo{Name: "Hisar on iPhone", Platform: "ios/mobile"})
+	phone, err := session.LogIn(ctx, apiclient.New(baseURL), "dev@example.com", password, secretKey, apitypes.DeviceInfo{Name: "Hisar on iPhone", Platform: "ios/mobile"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +61,7 @@ func setupApprovalAccounts(t *testing.T) (*Server, approvalAccounts) {
 
 func findOwnDeviceID(t *testing.T, signedIn *session.Session) string {
 	t.Helper()
-	for _, device := range requireValue[[]apitypes.Device](t)(signedIn.Client.ListAllDevice(context.Background())) {
+	for _, device := range requireValue[[]apitypes.Device](t)(signedIn.Client.ListDevices(context.Background())) {
 		if device.Current {
 			return device.ID
 		}
@@ -96,7 +96,7 @@ func TestApprovalRelayFlow(t *testing.T) {
 	waitForSubscriber(t, server, accounts.mac.AccountID, 2)
 	waitForSubscriber(t, server, accounts.other.AccountID, 1)
 
-	request := approval.CreateRequest(macDeviceID, "MacBook Pro", approval.Description{Kind: approval.KindSSH, AppName: "Terminal", Purpose: "push to git.tryhisar.com"}, time.Now(), approval.MaximumLifetime)
+	request := approval.NewRequest(macDeviceID, "MacBook Pro", approval.Description{Kind: approval.KindSSH, AppName: "Terminal", Purpose: "push to git.tryhisar.com"}, time.Now(), approval.MaximumLifetime)
 	sealedRequest := requireValue[[]byte](t)(approval.SealRequest(accounts.mac.Keyset, accounts.mac.AccountID, request))
 	if err := accounts.mac.Client.CreateApproval(ctx, &apitypes.CreateApprovalRequest{RequestID: request.RequestID, SealedRequest: sealedRequest, ExpiresAt: request.ExpiresAt}); err != nil {
 		t.Fatal(err)
@@ -107,12 +107,12 @@ func TestApprovalRelayFlow(t *testing.T) {
 	}
 	otherStream.expectNoEvent(t)
 
-	allPending := requireValue[[]apitypes.PendingApproval](t)(accounts.phone.Client.ListAllPendingApproval(ctx))
-	if len(allPending) != 1 || allPending[0].RequestID != request.RequestID || allPending[0].RequesterDeviceID != macDeviceID || string(allPending[0].SealedRequest) != string(sealedRequest) {
-		t.Fatalf("pending = %+v", allPending)
+	pendingRequests := requireValue[[]apitypes.PendingApproval](t)(accounts.phone.Client.ListPendingApprovals(ctx))
+	if len(pendingRequests) != 1 || pendingRequests[0].RequestID != request.RequestID || pendingRequests[0].RequesterDeviceID != macDeviceID || string(pendingRequests[0].SealedRequest) != string(sealedRequest) {
+		t.Fatalf("pending = %+v", pendingRequests)
 	}
-	if allOtherPending := requireValue[[]apitypes.PendingApproval](t)(accounts.other.Client.ListAllPendingApproval(ctx)); len(allOtherPending) != 0 {
-		t.Errorf("another account sees %+v", allOtherPending)
+	if otherPending := requireValue[[]apitypes.PendingApproval](t)(accounts.other.Client.ListPendingApprovals(ctx)); len(otherPending) != 0 {
+		t.Errorf("another account sees %+v", otherPending)
 	}
 	_, err := accounts.other.Client.GetApproval(ctx, request.RequestID)
 	expectStatus(t, "another account reads it", err, http.StatusNotFound)
@@ -120,8 +120,8 @@ func TestApprovalRelayFlow(t *testing.T) {
 	expectStatus(t, "another account resolves it", accounts.other.Client.ResolveApproval(ctx, request.RequestID), http.StatusNotFound)
 	expectStatus(t, "the Mac answers its own request", accounts.mac.Client.AnswerApproval(ctx, request.RequestID, []byte("answer")), http.StatusForbidden)
 
-	opened := requireValue[approval.Request](t)(approval.OpenRequest(accounts.phone.Keyset, accounts.phone.AccountID, allPending[0].RequestID, allPending[0].SealedRequest, phoneDeviceID, time.Now()))
-	sealedAnswer := requireValue[[]byte](t)(approval.CreateAnswer(accounts.phone.Keyset, accounts.phone.AccountID, allPending[0].SealedRequest, opened, approval.DecisionApprove, phoneDeviceID, "Hisar on iPhone", time.Now()))
+	opened := requireValue[approval.Request](t)(approval.OpenRequest(accounts.phone.Keyset, accounts.phone.AccountID, pendingRequests[0].RequestID, pendingRequests[0].SealedRequest, phoneDeviceID, time.Now()))
+	sealedAnswer := requireValue[[]byte](t)(approval.CreateAnswer(accounts.phone.Keyset, accounts.phone.AccountID, pendingRequests[0].SealedRequest, opened, approval.DecisionApprove, phoneDeviceID, "Hisar on iPhone", time.Now()))
 	if err := accounts.phone.Client.AnswerApproval(ctx, request.RequestID, sealedAnswer); err != nil {
 		t.Fatal(err)
 	}
@@ -130,12 +130,12 @@ func TestApprovalRelayFlow(t *testing.T) {
 		t.Errorf("approval-answered for %q", requestID)
 	}
 	otherStream.expectNoEvent(t)
-	if allPending := requireValue[[]apitypes.PendingApproval](t)(accounts.phone.Client.ListAllPendingApproval(ctx)); len(allPending) != 0 {
-		t.Errorf("an answered approval is still pending: %+v", allPending)
+	if pendingRequests := requireValue[[]apitypes.PendingApproval](t)(accounts.phone.Client.ListPendingApprovals(ctx)); len(pendingRequests) != 0 {
+		t.Errorf("an answered approval is still pending: %+v", pendingRequests)
 	}
 
 	stored := requireValue[*apitypes.Approval](t)(accounts.mac.Client.GetApproval(ctx, request.RequestID))
-	tracker := approval.CreateTracker()
+	tracker := approval.NewTracker()
 	tracker.Add(request.RequestID, sealedRequest, request.ExpiresAt)
 	if decision, err := tracker.Accept(accounts.mac.Keyset, accounts.mac.AccountID, request.RequestID, stored.SealedAnswer, macDeviceID, time.Now()); err != nil || decision != approval.DecisionApprove {
 		t.Errorf("the Mac accepts the relayed answer: %q %v", decision, err)
@@ -152,7 +152,7 @@ func TestApprovalRelayFlow(t *testing.T) {
 		t.Error("not marked resolved")
 	}
 
-	withdrawn := approval.CreateRequest(macDeviceID, "MacBook Pro", approval.Description{Kind: approval.KindCommandLine, AppName: "hisar"}, time.Now(), approval.MaximumLifetime)
+	withdrawn := approval.NewRequest(macDeviceID, "MacBook Pro", approval.Description{Kind: approval.KindCommandLine, AppName: "hisar"}, time.Now(), approval.MaximumLifetime)
 	if err := accounts.mac.Client.CreateApproval(ctx, &apitypes.CreateApprovalRequest{RequestID: withdrawn.RequestID, SealedRequest: sealedRequest, ExpiresAt: withdrawn.ExpiresAt}); err != nil {
 		t.Fatal(err)
 	}
@@ -167,7 +167,7 @@ func TestApprovalRelayValidation(t *testing.T) {
 	ctx := context.Background()
 	now := time.Now()
 	validID := approval.GenerateRequestID()
-	allCase := map[string]apitypes.CreateApprovalRequest{
+	cases := map[string]apitypes.CreateApprovalRequest{
 		"malformed ID":         {RequestID: "not-an-id", SealedRequest: []byte("sealed"), ExpiresAt: now.Add(time.Minute)},
 		"upper-case ID":        {RequestID: "00112233445566778899AABBCCDDEEFF", SealedRequest: []byte("sealed"), ExpiresAt: now.Add(time.Minute)},
 		"empty":                {RequestID: validID, ExpiresAt: now.Add(time.Minute)},
@@ -175,7 +175,7 @@ func TestApprovalRelayValidation(t *testing.T) {
 		"expires in 4 minutes": {RequestID: validID, SealedRequest: []byte("sealed"), ExpiresAt: now.Add(4 * time.Minute)},
 		"already expired":      {RequestID: validID, SealedRequest: []byte("sealed"), ExpiresAt: now.Add(-time.Second)},
 	}
-	for name, request := range allCase {
+	for name, request := range cases {
 		expectStatus(t, name, accounts.mac.Client.CreateApproval(ctx, &request), http.StatusBadRequest)
 	}
 	if err := accounts.mac.Client.CreateApproval(ctx, &apitypes.CreateApprovalRequest{RequestID: validID, SealedRequest: []byte("sealed"), ExpiresAt: now.Add(time.Minute)}); err != nil {
@@ -195,18 +195,18 @@ func TestApprovalRelayValidation(t *testing.T) {
 	}
 
 	server.approvals.mutex.Lock()
-	server.approvals.allLimiterByAccount = map[string]*rate.Limiter{}
+	server.approvals.limitersByAccount = map[string]*rate.Limiter{}
 	server.approvals.mutex.Unlock()
 	limitedCount := 0
 	for range approvalRateBurst + 10 {
-		if _, err := accounts.phone.Client.ListAllPendingApproval(ctx); apiclient.IsStatus(err, http.StatusTooManyRequests) {
+		if _, err := accounts.phone.Client.ListPendingApprovals(ctx); apiclient.IsStatus(err, http.StatusTooManyRequests) {
 			limitedCount++
 		}
 	}
 	if limitedCount == 0 {
 		t.Error("the per-account rate limit never applied")
 	}
-	if _, err := accounts.other.Client.ListAllPendingApproval(ctx); err != nil {
+	if _, err := accounts.other.Client.ListPendingApprovals(ctx); err != nil {
 		t.Errorf("another account was rate limited: %v", err)
 	}
 }
@@ -229,8 +229,8 @@ func TestApprovalRelayExpiry(t *testing.T) {
 	}
 
 	clock.advance(approvalMaximumLifetime + time.Second)
-	if allPending := requireValue[[]apitypes.PendingApproval](t)(accounts.phone.Client.ListAllPendingApproval(ctx)); len(allPending) != 0 {
-		t.Errorf("an expired approval is pending: %+v", allPending)
+	if pendingRequests := requireValue[[]apitypes.PendingApproval](t)(accounts.phone.Client.ListPendingApprovals(ctx)); len(pendingRequests) != 0 {
+		t.Errorf("an expired approval is pending: %+v", pendingRequests)
 	}
 	expectStatus(t, "an answer after expiry", accounts.phone.Client.AnswerApproval(ctx, requestID, []byte("answer")), http.StatusGone)
 	if _, err := accounts.mac.Client.GetApproval(ctx, requestID); err != nil {
@@ -244,7 +244,7 @@ func TestApprovalRelayExpiry(t *testing.T) {
 		t.Fatal(err)
 	}
 	server.approvals.mutex.Lock()
-	_, isKept := server.approvals.allApprovalByAccount[accounts.mac.AccountID][requestID]
+	_, isKept := server.approvals.approvalsByAccount[accounts.mac.AccountID][requestID]
 	server.approvals.mutex.Unlock()
 	if isKept {
 		t.Error("the expired approval is still in memory after a write")
@@ -253,8 +253,8 @@ func TestApprovalRelayExpiry(t *testing.T) {
 
 func TestApprovalRelayNeedsSession(t *testing.T) {
 	baseURL, _, _ := setupServer(t)
-	anonymous := apiclient.Create(baseURL)
-	_, err := anonymous.ListAllPendingApproval(context.Background())
+	anonymous := apiclient.New(baseURL)
+	_, err := anonymous.ListPendingApprovals(context.Background())
 	expectStatus(t, "without a session", err, http.StatusUnauthorized)
 	expectStatus(t, "posting without a session", anonymous.CreateApproval(context.Background(), &apitypes.CreateApprovalRequest{RequestID: approval.GenerateRequestID(), SealedRequest: []byte("x"), ExpiresAt: time.Now().Add(time.Minute)}), http.StatusUnauthorized)
 }
@@ -272,9 +272,9 @@ func TestApprovalRelayKeepsALongerDialogsRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 	clock.advance(90 * time.Second)
-	allPending := requireValue[[]apitypes.PendingApproval](t)(accounts.phone.Client.ListAllPendingApproval(ctx))
-	if len(allPending) != 1 || allPending[0].RequestID != requestID {
-		t.Fatalf("a phone that connects 90 s later sees %+v", allPending)
+	pendingRequests := requireValue[[]apitypes.PendingApproval](t)(accounts.phone.Client.ListPendingApprovals(ctx))
+	if len(pendingRequests) != 1 || pendingRequests[0].RequestID != requestID {
+		t.Fatalf("a phone that connects 90 s later sees %+v", pendingRequests)
 	}
 	if err := accounts.phone.Client.AnswerApproval(ctx, requestID, []byte("answer")); err != nil {
 		t.Errorf("answering 90 s later: %v", err)

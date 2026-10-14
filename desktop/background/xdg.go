@@ -17,7 +17,7 @@ type XDGAutostart struct {
 	ExecutablePath  string
 }
 
-func CreateXDGAutostart(homeDirectory, executablePath string) *XDGAutostart {
+func NewXDGAutostart(homeDirectory, executablePath string) *XDGAutostart {
 	configDirectory := os.Getenv("XDG_CONFIG_HOME")
 	if !filepath.IsAbs(configDirectory) {
 		configDirectory = filepath.Join(homeDirectory, ".config")

@@ -22,7 +22,7 @@ func TestExportAlwaysAsks(t *testing.T) {
 			t.Fatalf("after %d exports in an approved session: %d approvals", attempt, count)
 		}
 	}
-	request := fixture.approver.allRequest[1]
+	request := fixture.approver.requests[1]
 	if request.Export == nil || !request.Export.IsPlain || request.Export.Path != "/tmp/hisar-export.json" || request.ShareLink != nil {
 		t.Errorf("approval request %+v %+v", request, request.Export)
 	}
@@ -31,11 +31,11 @@ func TestExportAlwaysAsks(t *testing.T) {
 	}
 
 	fixture.approver.result = ErrDenied
-	before := len(fixture.handler.allType)
+	before := len(fixture.handler.types)
 	if response := client.send(t, exportRequest); getErrorCode(response) != cliprotocol.ErrorDenied {
 		t.Fatalf("denied export: %+v", response)
 	}
-	if slices.Contains(fixture.handler.allType[before:], cliprotocol.TypeExport) {
+	if slices.Contains(fixture.handler.types[before:], cliprotocol.TypeExport) {
 		t.Error("a denied export reached the handler")
 	}
 }

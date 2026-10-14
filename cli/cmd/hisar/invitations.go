@@ -21,32 +21,32 @@ const shortInvitationIDLength = 8
 var errPersonalVaultShare = errors.New("personal vaults cannot be shared; create one with `hisar vault-create`")
 
 // getShareArgument returns the vault and email from the arguments, asking for what is missing.
-func getShareArgument(allPositional []string, role string) (vaultName, email string, err error) {
-	if len(allPositional) > 2 {
+func getShareArgument(positionals []string, role string) (vaultName, email string, err error) {
+	if len(positionals) > 2 {
 		return "", "", errUsage
 	}
 	if !apitypes.IsValidVaultRole(role) {
 		return "", "", fmt.Errorf("invalid role %q: use owner, editor or reader", role)
 	}
-	if len(allPositional) > 0 {
-		vaultName = allPositional[0]
+	if len(positionals) > 0 {
+		vaultName = positionals[0]
 	} else if vaultName, err = promptRequired("Vault", ""); err != nil {
 		return "", "", err
 	}
-	if len(allPositional) > 1 {
-		email = allPositional[1]
+	if len(positionals) > 1 {
+		email = positionals[1]
 	} else if email, err = promptRequired("Email", ""); err != nil {
 		return "", "", err
 	}
 	return vaultName, strings.ToLower(strings.TrimSpace(email)), nil
 }
 
-func getInviteEmail(allPositional []string) (string, error) {
-	switch len(allPositional) {
+func getInviteEmail(positionals []string) (string, error) {
+	switch len(positionals) {
 	case 0:
 		return promptRequired("Email", "")
 	case 1:
-		return allPositional[0], nil
+		return positionals[0], nil
 	}
 	return "", errUsage
 }
@@ -69,10 +69,10 @@ func formatDate(timestamp string) string {
 	return timestamp
 }
 
-func printAllPerson(allPerson []cliprotocol.Person) error {
+func printPeople(people []cliprotocol.Person) error {
 	writer := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(writer, "NAME\tEMAIL\tSECURITY CODE\tACCOUNT")
-	for _, person := range allPerson {
+	for _, person := range people {
 		name := person.Name
 		if person.IsCurrentUser {
 			name += " (you)"
@@ -122,31 +122,31 @@ func printInvitationList(invitationList cliprotocol.InvitationListResult) error 
 }
 
 // findInvitationID resolves a full ID or a unique prefix of one, asking when none was given.
-func findInvitationID(allInvitationID []string, query string) (string, error) {
-	if len(allInvitationID) == 0 {
+func findInvitationID(invitationIDs []string, query string) (string, error) {
+	if len(invitationIDs) == 0 {
 		return "", errors.New("no invitations to answer; run `hisar invitations` to list them")
 	}
 	if query == "" {
 		defaultValue := ""
-		if len(allInvitationID) == 1 {
-			defaultValue = shortenInvitationID(allInvitationID[0])
+		if len(invitationIDs) == 1 {
+			defaultValue = shortenInvitationID(invitationIDs[0])
 		}
 		var err error
 		if query, err = promptRequired("Invitation", defaultValue); err != nil {
 			return "", err
 		}
 	}
-	var allMatch []string
-	for _, invitationID := range allInvitationID {
+	var matches []string
+	for _, invitationID := range invitationIDs {
 		if strings.HasPrefix(invitationID, strings.ToLower(strings.TrimSpace(query))) {
-			allMatch = append(allMatch, invitationID)
+			matches = append(matches, invitationID)
 		}
 	}
-	switch len(allMatch) {
+	switch len(matches) {
 	case 0:
 		return "", fmt.Errorf("no invitation %q; run `hisar invitations` to list them", query)
 	case 1:
-		return allMatch[0], nil
+		return matches[0], nil
 	}
 	return "", fmt.Errorf("%q matches more than one invitation; use more of its ID", query)
 }
@@ -157,62 +157,62 @@ type invitationAction struct {
 	confirmText string
 }
 
-var allInvitationAction = map[string]invitationAction{
+var invitationActions = map[string]invitationAction{
 	"accept":  {name: "accept", confirmText: "Accepted. You get access once the owner's Hisar finishes sharing."},
 	"decline": {name: "decline", confirmText: "Declined."},
 	"cancel":  {name: "cancel", isSent: true, confirmText: "Cancelled."},
 }
 
-func parseInvitationArgument(allPositional []string) (action *invitationAction, query string, err error) {
-	if len(allPositional) == 0 {
+func parseInvitationArgument(positionals []string) (action *invitationAction, query string, err error) {
+	if len(positionals) == 0 {
 		return nil, "", nil
 	}
-	if len(allPositional) > 2 {
+	if len(positionals) > 2 {
 		return nil, "", errUsage
 	}
-	found, ok := allInvitationAction[allPositional[0]]
+	found, ok := invitationActions[positionals[0]]
 	if !ok {
-		return nil, "", fmt.Errorf("unknown action %q: use accept, decline or cancel", allPositional[0])
+		return nil, "", fmt.Errorf("unknown action %q: use accept, decline or cancel", positionals[0])
 	}
-	if len(allPositional) == 2 {
-		query = allPositional[1]
+	if len(positionals) == 2 {
+		query = positionals[1]
 	}
 	return &found, query, nil
 }
 
 func collectInvitationID(invitationList cliprotocol.InvitationListResult, isSent bool) []string {
-	var allInvitationID []string
+	var invitationIDs []string
 	if isSent {
 		for _, sent := range invitationList.Sent {
-			allInvitationID = append(allInvitationID, sent.ID)
+			invitationIDs = append(invitationIDs, sent.ID)
 		}
-		return allInvitationID
+		return invitationIDs
 	}
 	for _, received := range invitationList.Received {
-		allInvitationID = append(allInvitationID, received.ID)
+		invitationIDs = append(invitationIDs, received.ID)
 	}
-	return allInvitationID
+	return invitationIDs
 }
 
-func convertToCommandLineInvitationList(invitationList *apitypes.ShareInvitationList, allVaultNameByID map[string]string) cliprotocol.InvitationListResult {
+func convertToCommandLineInvitationList(invitationList *apitypes.ShareInvitationList, vaultNamesByID map[string]string) cliprotocol.InvitationListResult {
 	result := cliprotocol.InvitationListResult{}
-	for _, received := range invitationList.AllReceived {
+	for _, received := range invitationList.Received {
 		result.Received = append(result.Received, cliprotocol.ReceivedInvitation{
 			ID: received.ID, VaultID: received.VaultID, Role: received.Role, InvitedByName: received.InvitedByName, InvitedByEmail: received.InvitedByEmail,
 			ExpiresAt: received.ExpiresAt.UTC().Format(time.RFC3339),
 		})
 	}
-	for _, sent := range invitationList.AllSent {
+	for _, sent := range invitationList.Sent {
 		result.Sent = append(result.Sent, cliprotocol.SentInvitation{
-			ID: sent.ID, VaultID: sent.VaultID, VaultName: allVaultNameByID[sent.VaultID], Email: sent.Email, Role: sent.Role, State: sent.State,
+			ID: sent.ID, VaultID: sent.VaultID, VaultName: vaultNamesByID[sent.VaultID], Email: sent.Email, Role: sent.Role, State: sent.State,
 			ExpiresAt: sent.ExpiresAt.UTC().Format(time.RFC3339),
 		})
 	}
 	return result
 }
 
-func runListAllPerson(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
-	if _, err := parse(flags, allArg); err != nil {
+func runListPeople(ctx context.Context, flags *flag.FlagSet, args []string) error {
+	if _, err := parse(flags, args); err != nil {
 		return err
 	}
 	currentState, err := loadState()
@@ -222,28 +222,28 @@ func runListAllPerson(ctx context.Context, flags *flag.FlagSet, allArg []string)
 	if err := requireLogin(currentState); err != nil {
 		return err
 	}
-	allMember, err := createAuthedClient(currentState).ListAllMember(ctx)
+	members, err := createAuthedClient(currentState).ListMembers(ctx)
 	if err != nil {
 		return err
 	}
-	allPerson := make([]cliprotocol.Person, 0, len(allMember))
-	for _, member := range allMember {
-		allPerson = append(allPerson, cliprotocol.Person{
+	people := make([]cliprotocol.Person, 0, len(members))
+	for _, member := range members {
+		people = append(people, cliprotocol.Person{
 			AccountID: member.AccountID, Name: member.Name, Email: member.Email, Role: member.Role,
 			SecurityCode: crypt.FormatKeyFingerprint(member.PublicKeys.Sign), IsCurrentUser: member.AccountID == currentState.AccountID,
 			IsKeyChanged: currentState.IsMemberKeyChanged(member.AccountID, member.PublicKeys.Sign),
 		})
 	}
-	return printAllPerson(allPerson)
+	return printPeople(people)
 }
 
-func runShare(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
+func runShare(ctx context.Context, flags *flag.FlagSet, args []string) error {
 	role := flags.String("r", apitypes.VaultEditor, "owner, editor or reader")
-	allPositional, err := parse(flags, allArg)
+	positionals, err := parse(flags, args)
 	if err != nil {
 		return err
 	}
-	vaultName, email, err := getShareArgument(allPositional, *role)
+	vaultName, email, err := getShareArgument(positionals, *role)
 	if err != nil {
 		return err
 	}
@@ -268,8 +268,8 @@ func runShare(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
 	return finishSession(currentState, unlockedSession, err)
 }
 
-func runInvite(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
-	allPositional, err := parse(flags, allArg)
+func runInvite(ctx context.Context, flags *flag.FlagSet, args []string) error {
+	positionals, err := parse(flags, args)
 	if err != nil {
 		return err
 	}
@@ -280,7 +280,7 @@ func runInvite(ctx context.Context, flags *flag.FlagSet, allArg []string) error 
 	if err := requireLogin(currentState); err != nil {
 		return err
 	}
-	email, err := getInviteEmail(allPositional)
+	email, err := getInviteEmail(positionals)
 	if err != nil {
 		return err
 	}
@@ -291,10 +291,10 @@ func runInvite(ctx context.Context, flags *flag.FlagSet, allArg []string) error 
 	return nil
 }
 
-// completeAllAcceptedShare asks for the master password only when someone accepted an invitation this account sent.
-func completeAllAcceptedShare(ctx context.Context, invitationList *apitypes.ShareInvitationList) (map[string]string, error) {
+// completeAcceptedShares asks for the master password only when someone accepted an invitation this account sent.
+func completeAcceptedShares(ctx context.Context, invitationList *apitypes.ShareInvitationList) (map[string]string, error) {
 	isAnyAccepted := false
-	for _, sent := range invitationList.AllSent {
+	for _, sent := range invitationList.Sent {
 		isAnyAccepted = isAnyAccepted || sent.State == apitypes.ShareInvitationAccepted
 	}
 	if !isAnyAccepted {
@@ -305,30 +305,30 @@ func completeAllAcceptedShare(ctx context.Context, invitationList *apitypes.Shar
 	if err != nil {
 		return nil, err
 	}
-	allVaultNameByID := map[string]string{}
+	vaultNamesByID := map[string]string{}
 	err = func() error {
-		allCompleted, completeErr := unlockedSession.CompleteAllAcceptedShare(ctx)
-		for _, completed := range allCompleted {
+		completedShares, completeErr := unlockedSession.CompleteAcceptedShares(ctx)
+		for _, completed := range completedShares {
 			fmt.Fprintf(os.Stderr, "Shared %q with %s as %s. Their security code: %s\n", completed.VaultName, completed.Recipient.Email, completed.Role,
 				crypt.FormatKeyFingerprint(completed.Recipient.PublicKeys.Sign))
 		}
-		allVault, err := unlockedSession.ListAllVault(ctx)
+		vaults, err := unlockedSession.ListVaults(ctx)
 		if err == nil {
-			for _, vault := range allVault {
-				allVaultNameByID[vault.ID] = vault.Name
+			for _, vault := range vaults {
+				vaultNamesByID[vault.ID] = vault.Name
 			}
 		}
 		return completeErr
 	}()
-	return allVaultNameByID, finishSession(currentState, unlockedSession, err)
+	return vaultNamesByID, finishSession(currentState, unlockedSession, err)
 }
 
-func runInvitations(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
-	allPositional, err := parse(flags, allArg)
+func runInvitations(ctx context.Context, flags *flag.FlagSet, args []string) error {
+	positionals, err := parse(flags, args)
 	if err != nil {
 		return err
 	}
-	action, query, err := parseInvitationArgument(allPositional)
+	action, query, err := parseInvitationArgument(positionals)
 	if err != nil {
 		return err
 	}
@@ -340,20 +340,20 @@ func runInvitations(ctx context.Context, flags *flag.FlagSet, allArg []string) e
 		return err
 	}
 	authedClient := createAuthedClient(currentState)
-	invitationList, err := authedClient.ListAllShareInvitation(ctx)
+	invitationList, err := authedClient.ListShareInvitations(ctx)
 	if err != nil {
 		return err
 	}
 	if action != nil {
 		return answerInvitation(ctx, authedClient, *action, query, convertToCommandLineInvitationList(invitationList, nil))
 	}
-	allVaultNameByID, completeErr := completeAllAcceptedShare(ctx, invitationList)
-	if allVaultNameByID != nil {
-		if invitationList, err = authedClient.ListAllShareInvitation(ctx); err != nil {
+	vaultNamesByID, completeErr := completeAcceptedShares(ctx, invitationList)
+	if vaultNamesByID != nil {
+		if invitationList, err = authedClient.ListShareInvitations(ctx); err != nil {
 			return err
 		}
 	}
-	result := convertToCommandLineInvitationList(invitationList, allVaultNameByID)
+	result := convertToCommandLineInvitationList(invitationList, vaultNamesByID)
 	if completeErr != nil {
 		result.CompletionError = completeErr.Error()
 	}
@@ -380,30 +380,30 @@ func answerInvitation(ctx context.Context, authedClient *apiclient.Client, actio
 	return nil
 }
 
-func runListAllPersonThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, allArg []string) error {
-	if _, err := parse(flags, allArg); err != nil {
+func runListPersonThroughApps(ctx context.Context, client *appClient, flags *flag.FlagSet, args []string) error {
+	if _, err := parse(flags, args); err != nil {
 		return err
 	}
-	allPerson, err := listAllAppPerson(ctx, client)
+	people, err := listAppPeople(ctx, client)
 	if err != nil {
 		return err
 	}
-	return printAllPerson(allPerson)
+	return printPeople(people)
 }
 
-func listAllAppPerson(ctx context.Context, client *appClient) ([]cliprotocol.Person, error) {
+func listAppPeople(ctx context.Context, client *appClient) ([]cliprotocol.Person, error) {
 	var peopleList cliprotocol.PeopleListResult
 	err := client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeListPeople}, &peopleList)
 	return peopleList.People, err
 }
 
-func runShareThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, allArg []string) error {
+func runShareThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, args []string) error {
 	role := flags.String("r", apitypes.VaultEditor, "owner, editor or reader")
-	allPositional, err := parse(flags, allArg)
+	positionals, err := parse(flags, args)
 	if err != nil {
 		return err
 	}
-	vaultName, email, err := getShareArgument(allPositional, *role)
+	vaultName, email, err := getShareArgument(positionals, *role)
 	if err != nil {
 		return err
 	}
@@ -421,12 +421,12 @@ func runShareThroughApp(ctx context.Context, client *appClient, flags *flag.Flag
 	return nil
 }
 
-func runInviteThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, allArg []string) error {
-	allPositional, err := parse(flags, allArg)
+func runInviteThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, args []string) error {
+	positionals, err := parse(flags, args)
 	if err != nil {
 		return err
 	}
-	email, err := getInviteEmail(allPositional)
+	email, err := getInviteEmail(positionals)
 	if err != nil {
 		return err
 	}
@@ -437,12 +437,12 @@ func runInviteThroughApp(ctx context.Context, client *appClient, flags *flag.Fla
 	return nil
 }
 
-func runInvitationsThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, allArg []string) error {
-	allPositional, err := parse(flags, allArg)
+func runInvitationsThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, args []string) error {
+	positionals, err := parse(flags, args)
 	if err != nil {
 		return err
 	}
-	action, query, err := parseInvitationArgument(allPositional)
+	action, query, err := parseInvitationArgument(positionals)
 	if err != nil {
 		return err
 	}
