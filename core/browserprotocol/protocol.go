@@ -1,5 +1,6 @@
-// Package browser connects the browser extension to the desktop app over native messaging.
-package browser
+// Package browserprotocol is the native-messaging protocol between the browser extension and the Hisar app:
+// framing, request and result types, error codes, passkey messages and URL matching.
+package browserprotocol
 
 import (
 	"encoding/binary"
@@ -71,7 +72,7 @@ func CreateError(code, message string) *ResponseError {
 	return &ResponseError{Code: code, Message: message}
 }
 
-type connectMessage struct {
+type ConnectMessage struct {
 	Type            string `json:"type"`
 	ExtensionOrigin string `json:"extensionOrigin"`
 }

@@ -10,12 +10,13 @@ import (
 	"os"
 	"sync"
 
+	"github.com/tryhisar/hisar/core/browserprotocol"
 	"github.com/tryhisar/hisar/core/sshagent"
 )
 
 // Handler answers one request; returning a *ResponseError sends its code to the extension.
 type Handler interface {
-	HandleRequest(ctx context.Context, request *Request) (any, error)
+	HandleRequest(ctx context.Context, request *browserprotocol.Request) (any, error)
 }
 
 type Server struct {
@@ -72,17 +73,17 @@ func (s *Server) serveConnection(ctx context.Context, connection net.Conn) {
 		log.Printf("browser: refused a connection from an unknown process")
 		return
 	}
-	firstMessage, err := ReadMessage(connection)
+	firstMessage, err := browserprotocol.ReadMessage(connection)
 	if err != nil {
 		return
 	}
-	var connect connectMessage
-	if json.Unmarshal(firstMessage, &connect) != nil || connect.Type != "connect" || connect.ExtensionOrigin != AllowedOrigin {
+	var connect browserprotocol.ConnectMessage
+	if json.Unmarshal(firstMessage, &connect) != nil || connect.Type != "connect" || connect.ExtensionOrigin != browserprotocol.AllowedOrigin {
 		log.Printf("browser: refused extension origin %q", connect.ExtensionOrigin)
 		return
 	}
 	for {
-		message, err := ReadMessage(connection)
+		message, err := browserprotocol.ReadMessage(connection)
 		if err != nil {
 			if !errors.Is(err, io.EOF) {
 				log.Printf("browser: %v", err)
@@ -92,29 +93,29 @@ func (s *Server) serveConnection(ctx context.Context, connection net.Conn) {
 		response := s.answerMessage(ctx, message)
 		encoded, err := json.Marshal(response)
 		if err != nil {
-			encoded, _ = json.Marshal(Response{ID: response.ID, Error: CreateError(ErrorInternal, err.Error())})
+			encoded, _ = json.Marshal(browserprotocol.Response{ID: response.ID, Error: browserprotocol.CreateError(browserprotocol.ErrorInternal, err.Error())})
 		}
-		if err := WriteMessage(connection, encoded); err != nil {
+		if err := browserprotocol.WriteMessage(connection, encoded); err != nil {
 			return
 		}
 	}
 }
 
-func (s *Server) answerMessage(ctx context.Context, message []byte) Response {
-	var request Request
+func (s *Server) answerMessage(ctx context.Context, message []byte) browserprotocol.Response {
+	var request browserprotocol.Request
 	if err := json.Unmarshal(message, &request); err != nil || request.ID == "" || request.Type == "" {
-		return Response{ID: request.ID, Error: CreateError(ErrorInvalidRequest, "the request is not valid")}
+		return browserprotocol.Response{ID: request.ID, Error: browserprotocol.CreateError(browserprotocol.ErrorInvalidRequest, "the request is not valid")}
 	}
 	result, err := s.handler.HandleRequest(ctx, &request)
 	if err != nil {
-		var responseError *ResponseError
+		var responseError *browserprotocol.ResponseError
 		if !errors.As(err, &responseError) {
-			responseError = CreateError(ErrorInternal, err.Error())
+			responseError = browserprotocol.CreateError(browserprotocol.ErrorInternal, err.Error())
 		}
-		return Response{ID: request.ID, Error: responseError}
+		return browserprotocol.Response{ID: request.ID, Error: responseError}
 	}
 	if result == nil {
 		result = struct{}{}
 	}
-	return Response{ID: request.ID, OK: true, Result: result}
+	return browserprotocol.Response{ID: request.ID, OK: true, Result: result}
 }

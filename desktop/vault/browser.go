@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/tryhisar/hisar/core/apitypes"
+	"github.com/tryhisar/hisar/core/browserprotocol"
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/localstate"
 	"github.com/tryhisar/hisar/desktop/browser"
@@ -96,11 +97,11 @@ func CreateBrowserRequestHandler(bridge *BrowserBridge) browser.Handler {
 	return browserRequestHandler{bridge: bridge}
 }
 
-func (handler browserRequestHandler) HandleRequest(ctx context.Context, request *browser.Request) (any, error) {
+func (handler browserRequestHandler) HandleRequest(ctx context.Context, request *browserprotocol.Request) (any, error) {
 	return handler.bridge.handleRequest(ctx, request)
 }
 
-func (bridge *BrowserBridge) handleRequest(ctx context.Context, request *browser.Request) (any, error) {
+func (bridge *BrowserBridge) handleRequest(ctx context.Context, request *browserprotocol.Request) (any, error) {
 	switch request.Type {
 	case "hello":
 		return bridge.answerHello(request), nil
@@ -110,15 +111,15 @@ func (bridge *BrowserBridge) handleRequest(ctx context.Context, request *browser
 		return bridge.finishPairing(request)
 	}
 	if !bridge.isTokenValid(request.Token) {
-		return nil, browser.CreateError(browser.ErrorNotPaired, "pair this browser with Hisar first")
+		return nil, browserprotocol.CreateError(browserprotocol.ErrorNotPaired, "pair this browser with Hisar first")
 	}
 	if err := bridge.service.requireCurrentVersion(); err != nil {
-		return nil, browser.CreateError(browser.ErrorUpdateRequired, err.Error())
+		return nil, browserprotocol.CreateError(browserprotocol.ErrorUpdateRequired, err.Error())
 	}
 	switch request.Type {
 	case "status":
 		status := bridge.service.GetStatus()
-		return browser.StatusResult{State: status.State, Email: status.Email, IsOffline: status.IsOffline}, nil
+		return browserprotocol.StatusResult{State: status.State, Email: status.Email, IsOffline: status.IsOffline}, nil
 	case "unlock":
 		if bridge.config.ShowWindow != nil {
 			bridge.config.ShowWindow()
@@ -126,7 +127,7 @@ func (bridge *BrowserBridge) handleRequest(ctx context.Context, request *browser
 		return nil, nil
 	case "logins.match":
 		allLogin, err := bridge.service.listAllMatchingLogin(ctx, request.URL)
-		return browser.MatchResult{Logins: allLogin}, convertBrowserError(err)
+		return browserprotocol.MatchResult{Logins: allLogin}, convertBrowserError(err)
 	case "logins.fill":
 		result, err := bridge.service.getLoginForFill(ctx, request.VaultID, request.ItemID, request.URL)
 		return result, convertBrowserError(err)
@@ -152,17 +153,17 @@ func (bridge *BrowserBridge) handleRequest(ctx context.Context, request *browser
 		}
 		password, err := item.GeneratePassword(config)
 		if err != nil {
-			return nil, browser.CreateError(browser.ErrorInvalidRequest, err.Error())
+			return nil, browserprotocol.CreateError(browserprotocol.ErrorInvalidRequest, err.Error())
 		}
-		return browser.PasswordResult{Password: password}, nil
+		return browserprotocol.PasswordResult{Password: password}, nil
 	}
 	if strings.HasPrefix(request.Type, "passkeys.") {
 		return bridge.handlePasskeyRequest(ctx, request)
 	}
-	return nil, browser.CreateError(browser.ErrorInvalidRequest, fmt.Sprintf("unknown request type %q", request.Type))
+	return nil, browserprotocol.CreateError(browserprotocol.ErrorInvalidRequest, fmt.Sprintf("unknown request type %q", request.Type))
 }
 
-func (bridge *BrowserBridge) answerHello(request *browser.Request) browser.HelloResult {
+func (bridge *BrowserBridge) answerHello(request *browserprotocol.Request) browserprotocol.HelloResult {
 	s := bridge.service
 	updateRequired := bridge.findUpdateRequired(request.ExtensionVersion)
 	s.mutex.Lock()
@@ -170,15 +171,15 @@ func (bridge *BrowserBridge) answerHello(request *browser.Request) browser.Hello
 	isPaired := slices.ContainsFunc(s.state.AllPairedBrowser, func(paired localstate.PairedBrowser) bool {
 		return request.InstanceID != "" && paired.InstanceID == request.InstanceID
 	})
-	return browser.HelloResult{ProtocolVersion: browser.ProtocolVersion, IsPaired: isPaired, State: s.buildStatus().State, UpdateRequired: updateRequired}
+	return browserprotocol.HelloResult{ProtocolVersion: browserprotocol.ProtocolVersion, IsPaired: isPaired, State: s.buildStatus().State, UpdateRequired: updateRequired}
 }
 
-func (bridge *BrowserBridge) findUpdateRequired(extensionVersion string) *browser.UpdateRequirement {
+func (bridge *BrowserBridge) findUpdateRequired(extensionVersion string) *browserprotocol.UpdateRequirement {
 	if requirement := bridge.service.getUpdateRequirement(); requirement != nil {
-		return &browser.UpdateRequirement{Target: browser.UpdateTargetApp, CurrentVersion: describeVersion(requirement.CurrentVersion), MinimumVersion: requirement.MinimumVersion, UpdateURL: requirement.UpdateURL}
+		return &browserprotocol.UpdateRequirement{Target: browserprotocol.UpdateTargetApp, CurrentVersion: describeVersion(requirement.CurrentVersion), MinimumVersion: requirement.MinimumVersion, UpdateURL: requirement.UpdateURL}
 	}
 	if requirement := bridge.service.checkClientVersion(apitypes.PlatformExtension, extensionVersion); requirement != nil {
-		return &browser.UpdateRequirement{Target: browser.UpdateTargetExtension, CurrentVersion: requirement.CurrentVersion, MinimumVersion: requirement.MinimumVersion, UpdateURL: requirement.UpdateURL}
+		return &browserprotocol.UpdateRequirement{Target: browserprotocol.UpdateTargetExtension, CurrentVersion: requirement.CurrentVersion, MinimumVersion: requirement.MinimumVersion, UpdateURL: requirement.UpdateURL}
 	}
 	return nil
 }
@@ -191,12 +192,12 @@ func generatePairingCode() (string, error) {
 	return fmt.Sprintf("%06d", number.Int64()), nil
 }
 
-func (bridge *BrowserBridge) startPairing(request *browser.Request) error {
+func (bridge *BrowserBridge) startPairing(request *browserprotocol.Request) error {
 	if strings.TrimSpace(request.InstanceID) == "" {
-		return browser.CreateError(browser.ErrorInvalidRequest, "instanceID is required")
+		return browserprotocol.CreateError(browserprotocol.ErrorInvalidRequest, "instanceID is required")
 	}
 	if !bridge.service.GetStatus().isSignedIn() {
-		return browser.CreateError(browser.ErrorSignedOut, "sign in to Hisar first")
+		return browserprotocol.CreateError(browserprotocol.ErrorSignedOut, "sign in to Hisar first")
 	}
 	code, err := generatePairingCode()
 	if err != nil {
@@ -219,12 +220,12 @@ func (bridge *BrowserBridge) startPairing(request *browser.Request) error {
 	return nil
 }
 
-func (bridge *BrowserBridge) finishPairing(request *browser.Request) (any, error) {
+func (bridge *BrowserBridge) finishPairing(request *browserprotocol.Request) (any, error) {
 	bridge.mutex.Lock()
 	pending := bridge.pendingPairing
 	if pending == nil || pending.instanceID != request.InstanceID || bridge.service.config.Now().After(pending.expiresAt) {
 		bridge.mutex.Unlock()
-		return nil, browser.CreateError(browser.ErrorPairingFailed, "the pairing code expired; start pairing again")
+		return nil, browserprotocol.CreateError(browserprotocol.ErrorPairingFailed, "the pairing code expired; start pairing again")
 	}
 	pending.attempts++
 	isCodeCorrect := subtle.ConstantTimeCompare([]byte(pending.code), []byte(strings.TrimSpace(request.Code))) == 1
@@ -236,9 +237,9 @@ func (bridge *BrowserBridge) finishPairing(request *browser.Request) (any, error
 		bridge.mutex.Unlock()
 		if isExhausted {
 			bridge.clearPairing()
-			return nil, browser.CreateError(browser.ErrorPairingFailed, "too many wrong codes; start pairing again")
+			return nil, browserprotocol.CreateError(browserprotocol.ErrorPairingFailed, "too many wrong codes; start pairing again")
 		}
-		return nil, browser.CreateError(browser.ErrorPairingFailed, "the code does not match the one shown in Hisar")
+		return nil, browserprotocol.CreateError(browserprotocol.ErrorPairingFailed, "the code does not match the one shown in Hisar")
 	}
 	bridge.pendingPairing = nil
 	bridge.mutex.Unlock()
@@ -261,7 +262,7 @@ func (bridge *BrowserBridge) finishPairing(request *browser.Request) (any, error
 	if err := s.state.Save(); err != nil {
 		return nil, err
 	}
-	return browser.TokenResult{Token: token}, nil
+	return browserprotocol.TokenResult{Token: token}, nil
 }
 
 func (bridge *BrowserBridge) clearPairing() {
@@ -348,27 +349,27 @@ func convertBrowserError(err error) error {
 	case err == nil:
 		return nil
 	case errors.Is(err, ErrLocked):
-		return browser.CreateError(browser.ErrorLocked, "Hisar is locked")
+		return browserprotocol.CreateError(browserprotocol.ErrorLocked, "Hisar is locked")
 	case errors.Is(err, ErrSignedOut):
-		return browser.CreateError(browser.ErrorSignedOut, "sign in to Hisar first")
+		return browserprotocol.CreateError(browserprotocol.ErrorSignedOut, "sign in to Hisar first")
 	case errors.Is(err, ErrOffline):
-		return browser.CreateError(browser.ErrorOffline, err.Error())
+		return browserprotocol.CreateError(browserprotocol.ErrorOffline, err.Error())
 	case errors.Is(err, ErrNotFound):
-		return browser.CreateError(browser.ErrorNotFound, err.Error())
+		return browserprotocol.CreateError(browserprotocol.ErrorNotFound, err.Error())
 	case errors.Is(err, errNoURLMatch):
-		return browser.CreateError(browser.ErrorNoMatch, err.Error())
+		return browserprotocol.CreateError(browserprotocol.ErrorNoMatch, err.Error())
 	}
-	var responseError *browser.ResponseError
+	var responseError *browserprotocol.ResponseError
 	if errors.As(err, &responseError) {
 		return responseError
 	}
-	return browser.CreateError(browser.ErrorInternal, err.Error())
+	return browserprotocol.CreateError(browserprotocol.ErrorInternal, err.Error())
 }
 
 var errNoURLMatch = errors.New("this login is not saved for this site")
 
 // listAllLoginForURL loads every vault's items if needed and returns the logins whose URLs match pageURL.
-func (s *Service) listAllLoginForURL(ctx context.Context, pageURL string) ([]browser.Login, map[string]item.Item, error) {
+func (s *Service) listAllLoginForURL(ctx context.Context, pageURL string) ([]browserprotocol.Login, map[string]item.Item, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if err := s.requireUnlockedWithoutActivity(); err != nil {
@@ -377,7 +378,7 @@ func (s *Service) listAllLoginForURL(ctx context.Context, pageURL string) ([]bro
 	if err := s.loadAllItemOfAllVault(ctx); err != nil {
 		return nil, nil, err
 	}
-	allLogin := []browser.Login{}
+	allLogin := []browserprotocol.Login{}
 	allItemByKey := map[string]item.Item{}
 	for vaultID, allItem := range s.allItemByVaultID {
 		vault := s.allVaultByID[vaultID]
@@ -386,18 +387,18 @@ func (s *Service) listAllLoginForURL(ctx context.Context, pageURL string) ([]bro
 		}
 		for _, vaultItem := range allItem {
 			if !isLoginItem(&vaultItem) || !slices.ContainsFunc(vaultItem.Overview.URLs, func(itemURL string) bool {
-				return browser.IsURLMatch(itemURL, pageURL, s.state.IsExactHostMatch)
+				return browserprotocol.IsURLMatch(itemURL, pageURL, s.state.IsExactHostMatch)
 			}) {
 				continue
 			}
-			allLogin = append(allLogin, browser.Login{
+			allLogin = append(allLogin, browserprotocol.Login{
 				VaultID: vaultID, ItemID: vaultItem.ID, Title: vaultItem.Overview.Title, Username: vaultItem.Overview.Username, VaultName: vault.Name,
 				HasOneTimePassword: vaultItem.Details.OneTimePassword != "",
 			})
 			allItemByKey[vaultID+"/"+vaultItem.ID] = vaultItem
 		}
 	}
-	slices.SortFunc(allLogin, func(first, second browser.Login) int {
+	slices.SortFunc(allLogin, func(first, second browserprotocol.Login) int {
 		if comparison := strings.Compare(strings.ToLower(first.Title), strings.ToLower(second.Title)); comparison != 0 {
 			return comparison
 		}
@@ -443,12 +444,12 @@ func (s *Service) loadAllItemOfAllVault(ctx context.Context) error {
 }
 
 // ListAllLoginForURL and GetLoginForURL serve the mobile AutoFill extensions; as functions, Wails does not bind them.
-func ListAllLoginForURL(s *Service, pageURL string) ([]browser.Login, error) {
+func ListAllLoginForURL(s *Service, pageURL string) ([]browserprotocol.Login, error) {
 	allLogin, err := s.listAllMatchingLogin(context.Background(), pageURL)
 	return allLogin, convertBrowserError(err)
 }
 
-func GetLoginForURL(s *Service, vaultID, itemID, pageURL string) (browser.FillResult, error) {
+func GetLoginForURL(s *Service, vaultID, itemID, pageURL string) (browserprotocol.FillResult, error) {
 	result, err := s.getLoginForFill(context.Background(), vaultID, itemID, pageURL)
 	return result, convertBrowserError(err)
 }
@@ -458,21 +459,21 @@ func GetOneTimeCodeForURL(s *Service, vaultID, itemID, pageURL string) (OneTimeC
 	return result, convertBrowserError(err)
 }
 
-func (s *Service) listAllMatchingLogin(ctx context.Context, pageURL string) ([]browser.Login, error) {
+func (s *Service) listAllMatchingLogin(ctx context.Context, pageURL string) ([]browserprotocol.Login, error) {
 	allLogin, _, err := s.listAllLoginForURL(ctx, pageURL)
 	return allLogin, err
 }
 
-func (s *Service) getLoginForFill(ctx context.Context, vaultID, itemID, pageURL string) (browser.FillResult, error) {
+func (s *Service) getLoginForFill(ctx context.Context, vaultID, itemID, pageURL string) (browserprotocol.FillResult, error) {
 	_, allItemByKey, err := s.listAllLoginForURL(ctx, pageURL)
 	if err != nil {
-		return browser.FillResult{}, err
+		return browserprotocol.FillResult{}, err
 	}
 	vaultItem, found := allItemByKey[vaultID+"/"+itemID]
 	if !found {
-		return browser.FillResult{}, errNoURLMatch
+		return browserprotocol.FillResult{}, errNoURLMatch
 	}
-	return browser.FillResult{Username: vaultItem.Overview.Username, Password: vaultItem.Details.Password, HasOneTimePassword: vaultItem.Details.OneTimePassword != ""}, nil
+	return browserprotocol.FillResult{Username: vaultItem.Overview.Username, Password: vaultItem.Details.Password, HasOneTimePassword: vaultItem.Details.OneTimePassword != ""}, nil
 }
 
 // getOneTimeCodeForFill applies the fill rule: the item must match pageURL. Only the code leaves, never the secret.
@@ -488,12 +489,12 @@ func (s *Service) getOneTimeCodeForFill(ctx context.Context, vaultID, itemID, pa
 	return generateOneTimeCode(&vaultItem, s.config.Now())
 }
 
-func (s *Service) checkLogin(ctx context.Context, pageURL, username, password string) (browser.CheckResult, error) {
+func (s *Service) checkLogin(ctx context.Context, pageURL, username, password string) (browserprotocol.CheckResult, error) {
 	allLogin, allItemByKey, err := s.listAllLoginForURL(ctx, pageURL)
 	if err != nil {
-		return browser.CheckResult{}, err
+		return browserprotocol.CheckResult{}, err
 	}
-	var allCandidate []browser.Login
+	var allCandidate []browserprotocol.Login
 	for _, login := range allLogin {
 		if strings.EqualFold(strings.TrimSpace(login.Username), strings.TrimSpace(username)) {
 			allCandidate = append(allCandidate, login)
@@ -503,50 +504,50 @@ func (s *Service) checkLogin(ctx context.Context, pageURL, username, password st
 		allCandidate = allLogin
 	}
 	if len(allCandidate) == 0 {
-		return browser.CheckResult{Status: "new"}, nil
+		return browserprotocol.CheckResult{Status: "new"}, nil
 	}
 	for _, candidate := range allCandidate {
 		if allItemByKey[candidate.VaultID+"/"+candidate.ItemID].Details.Password == password {
-			return browser.CheckResult{Status: "unchanged", VaultID: candidate.VaultID, ItemID: candidate.ItemID, Title: candidate.Title}, nil
+			return browserprotocol.CheckResult{Status: "unchanged", VaultID: candidate.VaultID, ItemID: candidate.ItemID, Title: candidate.Title}, nil
 		}
 	}
 	first := allCandidate[0]
-	return browser.CheckResult{Status: "changed", VaultID: first.VaultID, ItemID: first.ItemID, Title: first.Title}, nil
+	return browserprotocol.CheckResult{Status: "changed", VaultID: first.VaultID, ItemID: first.ItemID, Title: first.Title}, nil
 }
 
-func (s *Service) saveLogin(ctx context.Context, request *browser.Request) (browser.SaveResult, error) {
+func (s *Service) saveLogin(ctx context.Context, request *browserprotocol.Request) (browserprotocol.SaveResult, error) {
 	if request.Password == "" {
-		return browser.SaveResult{}, browser.CreateError(browser.ErrorInvalidRequest, "the password is empty")
+		return browserprotocol.SaveResult{}, browserprotocol.CreateError(browserprotocol.ErrorInvalidRequest, "the password is empty")
 	}
 	if request.ItemID != "" {
 		_, allItemByKey, err := s.listAllLoginForURL(ctx, request.URL)
 		if err != nil {
-			return browser.SaveResult{}, err
+			return browserprotocol.SaveResult{}, err
 		}
 		vaultItem, found := allItemByKey[request.VaultID+"/"+request.ItemID]
 		if !found {
-			return browser.SaveResult{}, errNoURLMatch
+			return browserprotocol.SaveResult{}, errNoURLMatch
 		}
 		detail := convertToItemDetail(&vaultItem)
 		detail.Username, detail.Password = request.Username, request.Password
 		saved, err := s.SaveItem(request.VaultID, detail)
 		if err != nil {
-			return browser.SaveResult{}, err
+			return browserprotocol.SaveResult{}, err
 		}
-		return browser.SaveResult{VaultID: request.VaultID, ItemID: saved.ID}, nil
+		return browserprotocol.SaveResult{VaultID: request.VaultID, ItemID: saved.ID}, nil
 	}
 	vaultID, err := s.findPersonalVaultID(ctx)
 	if err != nil {
-		return browser.SaveResult{}, err
+		return browserprotocol.SaveResult{}, err
 	}
 	saved, err := s.SaveItem(vaultID, ItemDetail{
-		Category: item.CategoryLogin, Title: browser.GetSiteName(request.URL), Username: request.Username, Password: request.Password,
-		URLs: []string{browser.GetOrigin(request.URL)}, Fields: []ItemField{},
+		Category: item.CategoryLogin, Title: browserprotocol.GetSiteName(request.URL), Username: request.Username, Password: request.Password,
+		URLs: []string{browserprotocol.GetOrigin(request.URL)}, Fields: []ItemField{},
 	})
 	if err != nil {
-		return browser.SaveResult{}, err
+		return browserprotocol.SaveResult{}, err
 	}
-	return browser.SaveResult{VaultID: vaultID, ItemID: saved.ID}, nil
+	return browserprotocol.SaveResult{VaultID: vaultID, ItemID: saved.ID}, nil
 }
 
 func (s *Service) findPersonalVaultID(ctx context.Context) (string, error) {

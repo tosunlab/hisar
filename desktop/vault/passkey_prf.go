@@ -3,12 +3,12 @@ package vault
 import (
 	"bytes"
 
+	"github.com/tryhisar/hisar/core/browserprotocol"
 	"github.com/tryhisar/hisar/core/item"
-	"github.com/tryhisar/hisar/desktop/browser"
 	"github.com/tryhisar/hisar/core/passkey"
 )
 
-func decodePRFInput(values *browser.PasskeyPRFValues) (passkey.PRFInput, error) {
+func decodePRFInput(values *browserprotocol.PasskeyPRFValues) (passkey.PRFInput, error) {
 	first, err := decodeBase64URL(values.First)
 	if err != nil || len(first) > passkey.MaxPRFInputLength {
 		return passkey.PRFInput{}, passkey.ErrInvalidRequest
@@ -24,7 +24,7 @@ func decodePRFInput(values *browser.PasskeyPRFValues) (passkey.PRFInput, error) 
 	return input, nil
 }
 
-func evaluatePRFValues(values *browser.PasskeyPRFValues, privateKeyDER []byte) (*browser.PasskeyPRFValues, error) {
+func evaluatePRFValues(values *browserprotocol.PasskeyPRFValues, privateKeyDER []byte) (*browserprotocol.PasskeyPRFValues, error) {
 	input, err := decodePRFInput(values)
 	if err != nil {
 		return nil, err
@@ -33,7 +33,7 @@ func evaluatePRFValues(values *browser.PasskeyPRFValues, privateKeyDER []byte) (
 	if err != nil {
 		return nil, err
 	}
-	results := &browser.PasskeyPRFValues{First: encodeBase64URL(output.First)}
+	results := &browserprotocol.PasskeyPRFValues{First: encodeBase64URL(output.First)}
 	if input.HasSecond {
 		second := encodeBase64URL(output.Second)
 		results.Second = &second
@@ -42,14 +42,14 @@ func evaluatePRFValues(values *browser.PasskeyPRFValues, privateKeyDER []byte) (
 }
 
 // evaluatePasskeyCreationPRF runs before the new passkey is saved, so an invalid input saves nothing.
-func evaluatePasskeyCreationPRF(request *browser.PasskeyPRFRequest, privateKeyDER []byte) (*browser.PasskeyPRFResult, error) {
+func evaluatePasskeyCreationPRF(request *browserprotocol.PasskeyPRFRequest, privateKeyDER []byte) (*browserprotocol.PasskeyPRFResult, error) {
 	if request == nil {
 		return nil, nil
 	}
 	if len(request.EvalByCredential) > 0 {
 		return nil, passkey.ErrInvalidRequest
 	}
-	result := &browser.PasskeyPRFResult{IsEnabled: true}
+	result := &browserprotocol.PasskeyPRFResult{IsEnabled: true}
 	if request.Eval != nil {
 		results, err := evaluatePRFValues(request.Eval, privateKeyDER)
 		if err != nil {
@@ -61,14 +61,14 @@ func evaluatePasskeyCreationPRF(request *browser.PasskeyPRFRequest, privateKeyDE
 }
 
 // selectAssertionPRFInput applies the spec's evalByCredential checks against allowCredentials.
-func selectAssertionPRFInput(request *browser.PasskeyPRFRequest, allAllowedID [][]byte, credentialID []byte) (*browser.PasskeyPRFValues, error) {
+func selectAssertionPRFInput(request *browserprotocol.PasskeyPRFRequest, allAllowedID [][]byte, credentialID []byte) (*browserprotocol.PasskeyPRFValues, error) {
 	if len(request.EvalByCredential) > 0 && len(allAllowedID) == 0 {
 		return nil, passkey.ErrInvalidRequest
 	}
 	if len(request.EvalByCredential) > maxPasskeyCredentialCount {
 		return nil, passkey.ErrInvalidRequest
 	}
-	var selected *browser.PasskeyPRFValues
+	var selected *browserprotocol.PasskeyPRFValues
 	for encodedID, values := range request.EvalByCredential {
 		decodedID, err := decodeBase64URL(encodedID)
 		if err != nil || len(decodedID) == 0 || !containsCredentialID(allAllowedID, decodedID) {
@@ -84,7 +84,7 @@ func selectAssertionPRFInput(request *browser.PasskeyPRFRequest, allAllowedID []
 	return selected, nil
 }
 
-func evaluatePasskeyAssertionPRF(request *browser.PasskeyPRFRequest, allAllowedID [][]byte, storedPasskey item.Passkey) (*browser.PasskeyPRFResult, error) {
+func evaluatePasskeyAssertionPRF(request *browserprotocol.PasskeyPRFRequest, allAllowedID [][]byte, storedPasskey item.Passkey) (*browserprotocol.PasskeyPRFResult, error) {
 	if request == nil {
 		return nil, nil
 	}
@@ -93,11 +93,11 @@ func evaluatePasskeyAssertionPRF(request *browser.PasskeyPRFRequest, allAllowedI
 		return nil, err
 	}
 	if selected == nil {
-		return &browser.PasskeyPRFResult{}, nil
+		return &browserprotocol.PasskeyPRFResult{}, nil
 	}
 	results, err := evaluatePRFValues(selected, storedPasskey.PrivateKey)
 	if err != nil {
 		return nil, err
 	}
-	return &browser.PasskeyPRFResult{Results: results}, nil
+	return &browserprotocol.PasskeyPRFResult{Results: results}, nil
 }

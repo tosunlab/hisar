@@ -3,7 +3,6 @@ package browser
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"io"
@@ -14,80 +13,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tryhisar/hisar/core/browserprotocol"
 	"github.com/tryhisar/hisar/core/sshagent"
 )
-
-func TestFraming(t *testing.T) {
-	var buffer bytes.Buffer
-	if err := WriteMessage(&buffer, []byte(`{"id":"1"}`)); err != nil {
-		t.Fatal(err)
-	}
-	if binary.NativeEndian.Uint32(buffer.Bytes()[:4]) != 10 {
-		t.Errorf("length prefix = %v", buffer.Bytes()[:4])
-	}
-	message, err := ReadMessage(&buffer)
-	if err != nil || string(message) != `{"id":"1"}` {
-		t.Fatalf("read: %q %v", message, err)
-	}
-	if _, err := ReadMessage(&buffer); !errors.Is(err, io.EOF) {
-		t.Errorf("empty input: %v", err)
-	}
-	if err := WriteMessage(io.Discard, make([]byte, MaxMessageSize+1)); !errors.Is(err, ErrMessageTooLarge) {
-		t.Errorf("oversized write: %v", err)
-	}
-	oversized := binary.NativeEndian.AppendUint32(nil, MaxMessageSize+1)
-	if _, err := ReadMessage(bytes.NewReader(oversized)); !errors.Is(err, ErrMessageTooLarge) {
-		t.Errorf("oversized read: %v", err)
-	}
-	truncated := append(binary.NativeEndian.AppendUint32(nil, 10), []byte("abc")...)
-	if _, err := ReadMessage(bytes.NewReader(truncated)); err == nil {
-		t.Error("truncated message accepted")
-	}
-}
-
-func TestIsURLMatch(t *testing.T) {
-	allCase := []struct {
-		itemURL, pageURL string
-		isExactHost      bool
-		want             bool
-	}{
-		{"https://github.com", "https://github.com/login", false, true},
-		{"github.com", "https://github.com/login", false, true},
-		{"https://google.com", "https://accounts.google.com/signin", false, true},
-		{"https://google.com", "https://accounts.google.com/signin", true, false},
-		{"https://www.example.com", "https://example.com", false, true},
-		{"https://Example.COM.", "https://example.com", true, true},
-		{"https://alice.github.io", "https://mallory.github.io", false, false},
-		{"https://example.com", "https://example.com.evil.net", false, false},
-		{"https://example.com", "https://evilexample.com", false, false},
-		{"http://router.home.arpa", "https://router.home.arpa", false, true},
-		{"https://example.com", "http://example.com", false, false},
-		{"https://example.com:8443", "https://example.com:8443/", false, true},
-		{"https://example.com:8443", "https://example.com", false, false},
-		{"https://example.com:443", "https://example.com", false, true},
-		{"http://192.168.1.1", "http://192.168.1.1/admin", false, true},
-		{"http://192.168.1.1", "http://192.168.1.2", false, false},
-		{"http://localhost:3000", "http://localhost:3000/login", false, true},
-		{"https://example.com", "file:///etc/passwd", false, false},
-		{"https://example.com", "javascript:alert(1)", false, false},
-		{"", "https://example.com", false, false},
-		{"https://co.uk", "https://bank.co.uk", false, false},
-	}
-	for _, testCase := range allCase {
-		if got := IsURLMatch(testCase.itemURL, testCase.pageURL, testCase.isExactHost); got != testCase.want {
-			t.Errorf("IsURLMatch(%q, %q, exact=%v) = %v", testCase.itemURL, testCase.pageURL, testCase.isExactHost, got)
-		}
-	}
-}
-
-func TestGetSiteNameAndOrigin(t *testing.T) {
-	if name := GetSiteName("https://www.GitHub.com/login"); name != "github.com" {
-		t.Errorf("site name = %q", name)
-	}
-	if origin := GetOrigin("https://example.com:8443/a?b"); origin != "https://example.com:8443" {
-		t.Errorf("origin = %q", origin)
-	}
-}
 
 func TestInstallAllHostManifest(t *testing.T) {
 	homeDirectory := t.TempDir()
@@ -115,7 +43,7 @@ func TestInstallAllHostManifest(t *testing.T) {
 	if err := json.Unmarshal(content, &manifest); err != nil {
 		t.Fatal(err)
 	}
-	if manifest.Name != HostName || manifest.Type != "stdio" || manifest.Path != "/Applications/Hisar.app/Contents/MacOS/hisar-browser-host" ||
+	if manifest.Name != browserprotocol.HostName || manifest.Type != "stdio" || manifest.Path != "/Applications/Hisar.app/Contents/MacOS/hisar-browser-host" ||
 		len(manifest.AllowedOrigins) != 1 || manifest.AllowedOrigins[0] != "chrome-extension://mmipiffoogblblocokimpemdopmdjghf/" {
 		t.Errorf("manifest = %+v", manifest)
 	}
@@ -132,18 +60,18 @@ func TestInstallAllHostManifest(t *testing.T) {
 }
 
 type recordingHandler struct {
-	allRequest []Request
+	allRequest []browserprotocol.Request
 }
 
-func (handler *recordingHandler) HandleRequest(ctx context.Context, request *Request) (any, error) {
+func (handler *recordingHandler) HandleRequest(ctx context.Context, request *browserprotocol.Request) (any, error) {
 	handler.allRequest = append(handler.allRequest, *request)
 	switch request.Type {
 	case "status":
-		return StatusResult{State: "unlocked", Email: "alice@example.com"}, nil
+		return browserprotocol.StatusResult{State: "unlocked", Email: "alice@example.com"}, nil
 	case "unlock":
 		return nil, nil
 	case "logins.fill":
-		return nil, CreateError(ErrorNoMatch, "this login is not for this site")
+		return nil, browserprotocol.CreateError(browserprotocol.ErrorNoMatch, "this login is not for this site")
 	}
 	return nil, errors.New("boom")
 }
@@ -189,26 +117,26 @@ func encodeAllFrame(t *testing.T, allMessage ...string) []byte {
 	t.Helper()
 	var buffer bytes.Buffer
 	for _, message := range allMessage {
-		if err := WriteMessage(&buffer, []byte(message)); err != nil {
+		if err := browserprotocol.WriteMessage(&buffer, []byte(message)); err != nil {
 			t.Fatal(err)
 		}
 	}
 	return buffer.Bytes()
 }
 
-func decodeAllResponse(t *testing.T, output []byte) []Response {
+func decodeAllResponse(t *testing.T, output []byte) []browserprotocol.Response {
 	t.Helper()
 	reader := bytes.NewReader(output)
-	allResponse := []Response{}
+	allResponse := []browserprotocol.Response{}
 	for {
-		message, err := ReadMessage(reader)
+		message, err := browserprotocol.ReadMessage(reader)
 		if errors.Is(err, io.EOF) {
 			return allResponse
 		}
 		if err != nil {
 			t.Fatal(err)
 		}
-		var response Response
+		var response browserprotocol.Response
 		if err := json.Unmarshal(message, &response); err != nil {
 			t.Fatal(err)
 		}
@@ -227,7 +155,7 @@ func TestHostRelaysThroughServer(t *testing.T) {
 		`{"id":"5","type":"unlock"}`,
 	)
 	var output bytes.Buffer
-	if err := RunHost(bytes.NewReader(input), &output, HostConfig{SocketPath: socketPath, ExtensionOrigin: AllowedOrigin}); err != nil {
+	if err := RunHost(bytes.NewReader(input), &output, HostConfig{SocketPath: socketPath, ExtensionOrigin: browserprotocol.AllowedOrigin}); err != nil {
 		t.Fatal(err)
 	}
 	allResponse := decodeAllResponse(t, output.Bytes())
@@ -237,13 +165,13 @@ func TestHostRelaysThroughServer(t *testing.T) {
 	if !allResponse[0].OK || allResponse[0].ID != "1" {
 		t.Errorf("status response: %+v", allResponse[0])
 	}
-	if allResponse[1].OK || allResponse[1].Error.Code != ErrorNoMatch {
+	if allResponse[1].OK || allResponse[1].Error.Code != browserprotocol.ErrorNoMatch {
 		t.Errorf("fill response: %+v", allResponse[1])
 	}
-	if allResponse[2].Error == nil || allResponse[2].Error.Code != ErrorInternal {
+	if allResponse[2].Error == nil || allResponse[2].Error.Code != browserprotocol.ErrorInternal {
 		t.Errorf("handler error: %+v", allResponse[2])
 	}
-	if allResponse[3].Error == nil || allResponse[3].Error.Code != ErrorInvalidRequest {
+	if allResponse[3].Error == nil || allResponse[3].Error.Code != browserprotocol.ErrorInvalidRequest {
 		t.Errorf("invalid JSON: %+v", allResponse[3])
 	}
 	if !allResponse[4].OK || string(mustMarshal(t, allResponse[4].Result)) != "{}" {
@@ -282,14 +210,14 @@ func TestServerRefusesUnknownPeer(t *testing.T) {
 	handler := &recordingHandler{}
 	socketPath := startTestServer(t, handler, fakePeerResolver{path: "/usr/bin/python3"}, hostPath)
 	var output bytes.Buffer
-	RunHost(bytes.NewReader(encodeAllFrame(t, `{"id":"1","type":"status"}`)), &output, HostConfig{SocketPath: socketPath, ExtensionOrigin: AllowedOrigin})
+	RunHost(bytes.NewReader(encodeAllFrame(t, `{"id":"1","type":"status"}`)), &output, HostConfig{SocketPath: socketPath, ExtensionOrigin: browserprotocol.AllowedOrigin})
 	if len(handler.allRequest) != 0 {
 		t.Error("an unknown process was served")
 	}
 
 	allowedSocketPath := startTestServer(t, handler, fakePeerResolver{path: hostPath}, hostPath)
 	output.Reset()
-	RunHost(bytes.NewReader(encodeAllFrame(t, `{"id":"1","type":"status"}`)), &output, HostConfig{SocketPath: allowedSocketPath, ExtensionOrigin: AllowedOrigin})
+	RunHost(bytes.NewReader(encodeAllFrame(t, `{"id":"1","type":"status"}`)), &output, HostConfig{SocketPath: allowedSocketPath, ExtensionOrigin: browserprotocol.AllowedOrigin})
 	if allResponse := decodeAllResponse(t, output.Bytes()); len(allResponse) != 1 || !allResponse[0].OK {
 		t.Errorf("the packaged host was refused: %+v", allResponse)
 	}
@@ -301,14 +229,14 @@ func TestHostAnswersUnavailableAndLaunchesApp(t *testing.T) {
 	var output bytes.Buffer
 	input := encodeAllFrame(t, `{"id":"a","type":"hello"}`, `{"id":"b","type":"status"}`)
 	err := RunHost(bytes.NewReader(input), &output, HostConfig{
-		SocketPath: missingSocket, ExtensionOrigin: AllowedOrigin,
+		SocketPath: missingSocket, ExtensionOrigin: browserprotocol.AllowedOrigin,
 		LaunchApp: func() error { launchCount++; return nil }, RetryFor: 50 * time.Millisecond, RetryEvery: 10 * time.Millisecond,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	allResponse := decodeAllResponse(t, output.Bytes())
-	if launchCount != 1 || len(allResponse) != 2 || allResponse[1].ID != "b" || allResponse[1].Error.Code != ErrorDesktopUnavailable {
+	if launchCount != 1 || len(allResponse) != 2 || allResponse[1].ID != "b" || allResponse[1].Error.Code != browserprotocol.ErrorDesktopUnavailable {
 		t.Errorf("launches %d, responses %+v", launchCount, allResponse)
 	}
 }
@@ -329,7 +257,7 @@ func TestHostConnectsOnceTheLaunchedAppListens(t *testing.T) {
 	}
 	var output bytes.Buffer
 	err = RunHost(bytes.NewReader(encodeAllFrame(t, `{"id":"1","type":"status"}`)), &output, HostConfig{
-		SocketPath: socketPath, ExtensionOrigin: AllowedOrigin, LaunchApp: launchApp, RetryFor: 2 * time.Second, RetryEvery: 20 * time.Millisecond,
+		SocketPath: socketPath, ExtensionOrigin: browserprotocol.AllowedOrigin, LaunchApp: launchApp, RetryFor: 2 * time.Second, RetryEvery: 20 * time.Millisecond,
 	})
 	if err != nil {
 		t.Fatal(err)

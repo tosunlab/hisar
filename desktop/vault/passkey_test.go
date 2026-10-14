@@ -9,7 +9,7 @@ import (
 
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
-	"github.com/tryhisar/hisar/desktop/browser"
+	"github.com/tryhisar/hisar/core/browserprotocol"
 )
 
 type passkeyTestUser struct {
@@ -36,16 +36,16 @@ func createPasskeyRelyingParty(t *testing.T, relyingPartyID, origin string, user
 	return &passkeyRelyingParty{webAuthn: webAuthn, user: &passkeyTestUser{userHandle: userHandle}}
 }
 
-func (testBridge *browserTestBridge) sendPasskeyRequest(t *testing.T, requestType, token string, passkeyRequest browser.PasskeyRequest) (any, string) {
+func (testBridge *browserTestBridge) sendPasskeyRequest(t *testing.T, requestType, token string, passkeyRequest browserprotocol.PasskeyRequest) (any, string) {
 	t.Helper()
 	encoded, err := json.Marshal(passkeyRequest)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return testBridge.sendRequest(browser.Request{Type: requestType, Token: token, Passkey: encoded})
+	return testBridge.sendRequest(browserprotocol.Request{Type: requestType, Token: token, Passkey: encoded})
 }
 
-func (relyingParty *passkeyRelyingParty) register(t *testing.T, testBridge *browserTestBridge, token string, passkeyRequest browser.PasskeyRequest) (browser.PasskeyCreationResult, error) {
+func (relyingParty *passkeyRelyingParty) register(t *testing.T, testBridge *browserTestBridge, token string, passkeyRequest browserprotocol.PasskeyRequest) (browserprotocol.PasskeyCreationResult, error) {
 	t.Helper()
 	options, session, err := relyingParty.webAuthn.BeginRegistration(relyingParty.user)
 	if err != nil {
@@ -55,9 +55,9 @@ func (relyingParty *passkeyRelyingParty) register(t *testing.T, testBridge *brow
 	passkeyRequest.UserHandle = encodeBase64URL(relyingParty.user.userHandle)
 	result, code := testBridge.sendPasskeyRequest(t, "passkeys.create", token, passkeyRequest)
 	if code != "" {
-		return browser.PasskeyCreationResult{}, errors.New(code)
+		return browserprotocol.PasskeyCreationResult{}, errors.New(code)
 	}
-	creation := result.(browser.PasskeyCreationResult)
+	creation := result.(browserprotocol.PasskeyCreationResult)
 	body, _ := json.Marshal(map[string]any{
 		"id": creation.CredentialID, "rawId": creation.CredentialID, "type": "public-key", "clientExtensionResults": map[string]any{},
 		"response": map[string]any{"clientDataJSON": creation.ClientDataJSON, "attestationObject": creation.AttestationObject},
@@ -74,7 +74,7 @@ func (relyingParty *passkeyRelyingParty) register(t *testing.T, testBridge *brow
 	return creation, nil
 }
 
-func (relyingParty *passkeyRelyingParty) signIn(t *testing.T, testBridge *browserTestBridge, token string, passkeyRequest browser.PasskeyRequest) error {
+func (relyingParty *passkeyRelyingParty) signIn(t *testing.T, testBridge *browserTestBridge, token string, passkeyRequest browserprotocol.PasskeyRequest) error {
 	t.Helper()
 	options, session, err := relyingParty.webAuthn.BeginDiscoverableLogin()
 	if err != nil {
@@ -85,7 +85,7 @@ func (relyingParty *passkeyRelyingParty) signIn(t *testing.T, testBridge *browse
 	if code != "" {
 		return errors.New(code)
 	}
-	assertion := result.(browser.PasskeyAssertionResult)
+	assertion := result.(browserprotocol.PasskeyAssertionResult)
 	body, _ := json.Marshal(map[string]any{
 		"id": assertion.CredentialID, "rawId": assertion.CredentialID, "type": "public-key", "clientExtensionResults": map[string]any{},
 		"response": map[string]any{
@@ -119,14 +119,14 @@ func TestPasskeyCreateAndSignIn(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	prepared, code := testBridge.sendPasskeyRequest(t, "passkeys.prepare", token, browser.PasskeyRequest{Origin: "https://login.example.com", RelyingPartyID: "example.com"})
-	allLogin := prepared.(browser.PasskeyPrepareResult).AllLogin
-	if code != "" || prepared.(browser.PasskeyPrepareResult).IsExcluded || len(allLogin) != 1 || allLogin[0].ItemID != existing.ID {
+	prepared, code := testBridge.sendPasskeyRequest(t, "passkeys.prepare", token, browserprotocol.PasskeyRequest{Origin: "https://login.example.com", RelyingPartyID: "example.com"})
+	allLogin := prepared.(browserprotocol.PasskeyPrepareResult).AllLogin
+	if code != "" || prepared.(browserprotocol.PasskeyPrepareResult).IsExcluded || len(allLogin) != 1 || allLogin[0].ItemID != existing.ID {
 		t.Fatalf("prepare: %+v %s", prepared, code)
 	}
 
 	relyingParty := createPasskeyRelyingParty(t, "example.com", "https://login.example.com", []byte("user-0001"))
-	creation, err := relyingParty.register(t, testBridge, token, browser.PasskeyRequest{
+	creation, err := relyingParty.register(t, testBridge, token, browserprotocol.PasskeyRequest{
 		Origin: "https://login.example.com", RelyingPartyID: "example.com", UserName: "alex@example.com", UserDisplayName: "Alex",
 		VaultID: personalID, ItemID: existing.ID,
 	})
@@ -149,56 +149,56 @@ func TestPasskeyCreateAndSignIn(t *testing.T) {
 		t.Errorf("item detail exposes key material: %s", encodedDetail)
 	}
 
-	if err := relyingParty.signIn(t, testBridge, token, browser.PasskeyRequest{Origin: "https://login.example.com", RelyingPartyID: "example.com", CredentialID: creation.CredentialID}); err != nil {
+	if err := relyingParty.signIn(t, testBridge, token, browserprotocol.PasskeyRequest{Origin: "https://login.example.com", RelyingPartyID: "example.com", CredentialID: creation.CredentialID}); err != nil {
 		t.Fatalf("sign in: %v", err)
 	}
-	if err := relyingParty.signIn(t, testBridge, token, browser.PasskeyRequest{Origin: "https://login.example.com", RelyingPartyID: "example.com", CredentialID: creation.CredentialID, AllAllowedCredentialID: []string{creation.CredentialID}}); err != nil {
+	if err := relyingParty.signIn(t, testBridge, token, browserprotocol.PasskeyRequest{Origin: "https://login.example.com", RelyingPartyID: "example.com", CredentialID: creation.CredentialID, AllAllowedCredentialID: []string{creation.CredentialID}}); err != nil {
 		t.Fatalf("sign in with allowCredentials: %v", err)
 	}
-	if err := relyingParty.signIn(t, testBridge, token, browser.PasskeyRequest{Origin: "https://login.example.com", RelyingPartyID: "example.com", CredentialID: creation.CredentialID, AllAllowedCredentialID: []string{"b3RoZXI"}}); err == nil || err.Error() != browser.ErrorNotFound {
+	if err := relyingParty.signIn(t, testBridge, token, browserprotocol.PasskeyRequest{Origin: "https://login.example.com", RelyingPartyID: "example.com", CredentialID: creation.CredentialID, AllAllowedCredentialID: []string{"b3RoZXI"}}); err == nil || err.Error() != browserprotocol.ErrorNotFound {
 		t.Errorf("sign in with a credential outside allowCredentials: %v", err)
 	}
-	if err := relyingParty.signIn(t, testBridge, token, browser.PasskeyRequest{Origin: "https://example.com.evil.net", RelyingPartyID: "example.com", CredentialID: creation.CredentialID}); err == nil || err.Error() != browser.ErrorInvalidRequest {
+	if err := relyingParty.signIn(t, testBridge, token, browserprotocol.PasskeyRequest{Origin: "https://example.com.evil.net", RelyingPartyID: "example.com", CredentialID: creation.CredentialID}); err == nil || err.Error() != browserprotocol.ErrorInvalidRequest {
 		t.Errorf("sign in from another origin: %v", err)
 	}
-	if err := relyingParty.signIn(t, testBridge, token, browser.PasskeyRequest{Origin: "https://evil.example.net", CredentialID: creation.CredentialID}); err == nil || err.Error() != browser.ErrorNotFound {
+	if err := relyingParty.signIn(t, testBridge, token, browserprotocol.PasskeyRequest{Origin: "https://evil.example.net", CredentialID: creation.CredentialID}); err == nil || err.Error() != browserprotocol.ErrorNotFound {
 		t.Errorf("sign in for another relying party ID: %v", err)
 	}
 
-	listed, code := testBridge.sendPasskeyRequest(t, "passkeys.list", token, browser.PasskeyRequest{Origin: "https://example.com", RelyingPartyID: "example.com"})
-	allPasskey := listed.(browser.PasskeyListResult).AllPasskey
+	listed, code := testBridge.sendPasskeyRequest(t, "passkeys.list", token, browserprotocol.PasskeyRequest{Origin: "https://example.com", RelyingPartyID: "example.com"})
+	allPasskey := listed.(browserprotocol.PasskeyListResult).AllPasskey
 	if code != "" || len(allPasskey) != 1 || allPasskey[0].Title != "Example" || allPasskey[0].UserDisplayName != "Alex" || allPasskey[0].ItemID != existing.ID {
 		t.Errorf("list: %+v %s", listed, code)
 	}
-	if listed, _ := testBridge.sendPasskeyRequest(t, "passkeys.list", token, browser.PasskeyRequest{Origin: "https://login.example.com"}); len(listed.(browser.PasskeyListResult).AllPasskey) != 0 {
+	if listed, _ := testBridge.sendPasskeyRequest(t, "passkeys.list", token, browserprotocol.PasskeyRequest{Origin: "https://login.example.com"}); len(listed.(browserprotocol.PasskeyListResult).AllPasskey) != 0 {
 		t.Errorf("passkey for example.com listed under the RP ID login.example.com: %+v", listed)
 	}
-	if listed, _ := testBridge.sendPasskeyRequest(t, "passkeys.list", token, browser.PasskeyRequest{Origin: "https://example.com", RelyingPartyID: "example.com", AllAllowedCredentialID: []string{"b3RoZXI"}}); len(listed.(browser.PasskeyListResult).AllPasskey) != 0 {
+	if listed, _ := testBridge.sendPasskeyRequest(t, "passkeys.list", token, browserprotocol.PasskeyRequest{Origin: "https://example.com", RelyingPartyID: "example.com", AllAllowedCredentialID: []string{"b3RoZXI"}}); len(listed.(browserprotocol.PasskeyListResult).AllPasskey) != 0 {
 		t.Errorf("allowCredentials ignored: %+v", listed)
 	}
-	if _, code := testBridge.sendPasskeyRequest(t, "passkeys.list", token, browser.PasskeyRequest{Origin: "https://evil.example.net", RelyingPartyID: "example.com"}); code != browser.ErrorInvalidRequest {
+	if _, code := testBridge.sendPasskeyRequest(t, "passkeys.list", token, browserprotocol.PasskeyRequest{Origin: "https://evil.example.net", RelyingPartyID: "example.com"}); code != browserprotocol.ErrorInvalidRequest {
 		t.Errorf("list for a foreign RP ID: %s", code)
 	}
 
-	excluded, code := testBridge.sendPasskeyRequest(t, "passkeys.prepare", token, browser.PasskeyRequest{Origin: "https://example.com", RelyingPartyID: "example.com", AllExcludedCredentialID: []string{creation.CredentialID}})
-	if code != "" || !excluded.(browser.PasskeyPrepareResult).IsExcluded {
+	excluded, code := testBridge.sendPasskeyRequest(t, "passkeys.prepare", token, browserprotocol.PasskeyRequest{Origin: "https://example.com", RelyingPartyID: "example.com", AllExcludedCredentialID: []string{creation.CredentialID}})
+	if code != "" || !excluded.(browserprotocol.PasskeyPrepareResult).IsExcluded {
 		t.Errorf("prepare with excludeCredentials: %+v %s", excluded, code)
 	}
-	if _, err := relyingParty.register(t, testBridge, token, browser.PasskeyRequest{Origin: "https://example.com", RelyingPartyID: "example.com", UserName: "alex@example.com", AllExcludedCredentialID: []string{creation.CredentialID}}); err == nil || err.Error() != browser.ErrorInvalidRequest {
+	if _, err := relyingParty.register(t, testBridge, token, browserprotocol.PasskeyRequest{Origin: "https://example.com", RelyingPartyID: "example.com", UserName: "alex@example.com", AllExcludedCredentialID: []string{creation.CredentialID}}); err == nil || err.Error() != browserprotocol.ErrorInvalidRequest {
 		t.Errorf("create despite excludeCredentials: %v", err)
 	}
 
-	replacement, err := relyingParty.register(t, testBridge, token, browser.PasskeyRequest{Origin: "https://login.example.com", RelyingPartyID: "example.com", UserName: "alex@example.com", VaultID: personalID, ItemID: existing.ID})
+	replacement, err := relyingParty.register(t, testBridge, token, browserprotocol.PasskeyRequest{Origin: "https://login.example.com", RelyingPartyID: "example.com", UserName: "alex@example.com", VaultID: personalID, ItemID: existing.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if cachedItem := getCachedItem(t, service, personalID, existing.ID); len(cachedItem.Details.Passkeys) != 1 || encodeBase64URL(cachedItem.Details.Passkeys[0].CredentialID) != replacement.CredentialID {
 		t.Errorf("same user handle did not replace the passkey: %+v", cachedItem.Details.Passkeys)
 	}
-	if _, err := relyingParty.register(t, testBridge, token, browser.PasskeyRequest{Origin: "https://evil.example.net", UserName: "x", VaultID: personalID, ItemID: existing.ID}); err == nil || err.Error() != browser.ErrorNoMatch {
+	if _, err := relyingParty.register(t, testBridge, token, browserprotocol.PasskeyRequest{Origin: "https://evil.example.net", UserName: "x", VaultID: personalID, ItemID: existing.ID}); err == nil || err.Error() != browserprotocol.ErrorNoMatch {
 		t.Errorf("saving to a login of another site: %v", err)
 	}
-	if _, err := relyingParty.register(t, testBridge, token, browser.PasskeyRequest{Origin: "https://evil.example.net", RelyingPartyID: "example.com", UserName: "x"}); err == nil || err.Error() != browser.ErrorInvalidRequest {
+	if _, err := relyingParty.register(t, testBridge, token, browserprotocol.PasskeyRequest{Origin: "https://evil.example.net", RelyingPartyID: "example.com", UserName: "x"}); err == nil || err.Error() != browserprotocol.ErrorInvalidRequest {
 		t.Errorf("creating for a foreign RP ID: %v", err)
 	}
 }
@@ -208,7 +208,7 @@ func TestPasskeyCreatesNewLogin(t *testing.T) {
 	service := testBridge.testService.service
 	token := testBridge.pair(t, "chrome-1")
 	relyingParty := createPasskeyRelyingParty(t, "www.shop.example", "https://www.shop.example", []byte{7, 7, 7})
-	creation, err := relyingParty.register(t, testBridge, token, browser.PasskeyRequest{Origin: "https://www.shop.example", UserName: "buyer", UserDisplayName: "Buyer"})
+	creation, err := relyingParty.register(t, testBridge, token, browserprotocol.PasskeyRequest{Origin: "https://www.shop.example", UserName: "buyer", UserDisplayName: "Buyer"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -219,7 +219,7 @@ func TestPasskeyCreatesNewLogin(t *testing.T) {
 	if err != nil || created.Title != "shop.example" || created.Username != "buyer" || !reflect.DeepEqual(created.URLs, []string{"https://www.shop.example"}) || created.Category != "login" || len(created.AllPasskey) != 1 {
 		t.Fatalf("created login: %+v %v", created, err)
 	}
-	if err := relyingParty.signIn(t, testBridge, token, browser.PasskeyRequest{Origin: "https://www.shop.example", CredentialID: creation.CredentialID}); err != nil {
+	if err := relyingParty.signIn(t, testBridge, token, browserprotocol.PasskeyRequest{Origin: "https://www.shop.example", CredentialID: creation.CredentialID}); err != nil {
 		t.Fatalf("sign in: %v", err)
 	}
 	if loginURL := buildPasskeyLoginURL("https://login.example.com", "example.com"); loginURL != "https://example.com" {
@@ -236,7 +236,7 @@ func TestPasskeySurvivesEditsWithoutPasskeyFields(t *testing.T) {
 	personalID := testBridge.testService.personalID
 	token := testBridge.pair(t, "chrome-1")
 	relyingParty := createPasskeyRelyingParty(t, "example.com", "https://example.com", []byte{1, 2})
-	creation, err := relyingParty.register(t, testBridge, token, browser.PasskeyRequest{Origin: "https://example.com", UserName: "alex"})
+	creation, err := relyingParty.register(t, testBridge, token, browserprotocol.PasskeyRequest{Origin: "https://example.com", UserName: "alex"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,7 +267,7 @@ func TestPasskeySurvivesEditsWithoutPasskeyFields(t *testing.T) {
 	if _, err := service.SaveItem(personalID, saved); err != nil {
 		t.Fatal(err)
 	}
-	if err := relyingParty.signIn(t, testBridge, token, browser.PasskeyRequest{Origin: "https://example.com", CredentialID: creation.CredentialID}); err != nil {
+	if err := relyingParty.signIn(t, testBridge, token, browserprotocol.PasskeyRequest{Origin: "https://example.com", CredentialID: creation.CredentialID}); err != nil {
 		t.Fatalf("sign in after edits: %v", err)
 	}
 
@@ -281,7 +281,7 @@ func TestPasskeySurvivesEditsWithoutPasskeyFields(t *testing.T) {
 	if cachedItem := getCachedItem(t, service, personalID, creation.ItemID); len(cachedItem.Details.Passkeys) != 0 || cachedItem.Overview.PasskeyRelyingPartyIDs != nil {
 		t.Errorf("after delete: %+v", cachedItem)
 	}
-	if err := relyingParty.signIn(t, testBridge, token, browser.PasskeyRequest{Origin: "https://example.com", CredentialID: creation.CredentialID}); err == nil || err.Error() != browser.ErrorNotFound {
+	if err := relyingParty.signIn(t, testBridge, token, browserprotocol.PasskeyRequest{Origin: "https://example.com", CredentialID: creation.CredentialID}); err == nil || err.Error() != browserprotocol.ErrorNotFound {
 		t.Errorf("sign in with a deleted passkey: %v", err)
 	}
 }
@@ -290,20 +290,20 @@ func TestPasskeyRequestRefusals(t *testing.T) {
 	testBridge := createBrowserTestBridge(t)
 	service := testBridge.testService.service
 	token := testBridge.pair(t, "chrome-1")
-	request := browser.PasskeyRequest{Origin: "https://example.com", UserHandle: "AQ", Challenge: "AQ", UserName: "alex"}
-	if _, code := testBridge.sendPasskeyRequest(t, "passkeys.create", "", request); code != browser.ErrorNotPaired {
+	request := browserprotocol.PasskeyRequest{Origin: "https://example.com", UserHandle: "AQ", Challenge: "AQ", UserName: "alex"}
+	if _, code := testBridge.sendPasskeyRequest(t, "passkeys.create", "", request); code != browserprotocol.ErrorNotPaired {
 		t.Errorf("without token: %s", code)
 	}
-	if _, code := testBridge.sendRequest(browser.Request{Type: "passkeys.list", Token: token}); code != browser.ErrorInvalidRequest {
+	if _, code := testBridge.sendRequest(browserprotocol.Request{Type: "passkeys.list", Token: token}); code != browserprotocol.ErrorInvalidRequest {
 		t.Errorf("without passkey parameters: %s", code)
 	}
-	if _, code := testBridge.sendRequest(browser.Request{Type: "passkeys.list", Token: token, Passkey: json.RawMessage(`"text"`)}); code != browser.ErrorInvalidRequest {
+	if _, code := testBridge.sendRequest(browserprotocol.Request{Type: "passkeys.list", Token: token, Passkey: json.RawMessage(`"text"`)}); code != browserprotocol.ErrorInvalidRequest {
 		t.Errorf("malformed passkey parameters: %s", code)
 	}
-	if _, code := testBridge.sendPasskeyRequest(t, "passkeys.delete", token, request); code != browser.ErrorInvalidRequest {
+	if _, code := testBridge.sendPasskeyRequest(t, "passkeys.delete", token, request); code != browserprotocol.ErrorInvalidRequest {
 		t.Errorf("unknown passkey request: %s", code)
 	}
-	for name, invalid := range map[string]browser.PasskeyRequest{
+	for name, invalid := range map[string]browserprotocol.PasskeyRequest{
 		"empty user handle":     {Origin: "https://example.com", Challenge: "AQ"},
 		"65-byte user handle":   {Origin: "https://example.com", Challenge: "AQ", UserHandle: encodeBase64URL(make([]byte, 65))},
 		"empty challenge":       {Origin: "https://example.com", UserHandle: "AQ"},
@@ -312,7 +312,7 @@ func TestPasskeyRequestRefusals(t *testing.T) {
 		"bad excluded ID":       {Origin: "https://example.com", UserHandle: "AQ", Challenge: "AQ", AllExcludedCredentialID: []string{"*"}},
 		"too many excluded IDs": {Origin: "https://example.com", UserHandle: "AQ", Challenge: "AQ", AllExcludedCredentialID: make([]string, 65)},
 	} {
-		if _, code := testBridge.sendPasskeyRequest(t, "passkeys.create", token, invalid); code != browser.ErrorInvalidRequest {
+		if _, code := testBridge.sendPasskeyRequest(t, "passkeys.create", token, invalid); code != browserprotocol.ErrorInvalidRequest {
 			t.Errorf("%s: %s", name, code)
 		}
 	}
@@ -320,7 +320,7 @@ func TestPasskeyRequestRefusals(t *testing.T) {
 	for _, requestType := range []string{"passkeys.list", "passkeys.prepare", "passkeys.create", "passkeys.get"} {
 		passkeyRequest := request
 		passkeyRequest.CredentialID = "AQ"
-		if _, code := testBridge.sendPasskeyRequest(t, requestType, token, passkeyRequest); code != browser.ErrorLocked {
+		if _, code := testBridge.sendPasskeyRequest(t, requestType, token, passkeyRequest); code != browserprotocol.ErrorLocked {
 			t.Errorf("%s while locked: %s", requestType, code)
 		}
 	}

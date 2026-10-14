@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+
+	"github.com/tryhisar/hisar/core/browserprotocol"
 )
 
 type BrowserInstallation struct {
@@ -49,11 +51,11 @@ func getAllKnownBrowser(homeDirectory, operatingSystem string) []knownBrowser {
 
 func buildHostManifest(hostPath string) ([]byte, error) {
 	return json.MarshalIndent(map[string]any{
-		"name":            HostName,
+		"name":            browserprotocol.HostName,
 		"description":     "Hisar password manager",
 		"path":            hostPath,
 		"type":            "stdio",
-		"allowed_origins": []string{AllowedOrigin},
+		"allowed_origins": []string{browserprotocol.AllowedOrigin},
 	}, "", "  ")
 }
 
@@ -69,7 +71,7 @@ func installAllHostManifest(homeDirectory, hostPath, operatingSystem string) []B
 		if _, err := os.Stat(browser.profileDirectory); err != nil {
 			continue
 		}
-		installation := BrowserInstallation{Name: browser.name, ManifestPath: filepath.Join(browser.profileDirectory, "NativeMessagingHosts", HostName+".json")}
+		installation := BrowserInstallation{Name: browser.name, ManifestPath: filepath.Join(browser.profileDirectory, "NativeMessagingHosts", browserprotocol.HostName+".json")}
 		err := manifestErr
 		if err == nil {
 			err = writeFileIfChanged(installation.ManifestPath, manifest)

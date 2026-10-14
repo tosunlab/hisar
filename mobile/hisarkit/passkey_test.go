@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tryhisar/hisar/desktop/browser"
+	"github.com/tryhisar/hisar/core/browserprotocol"
 )
 
 type storedPasskey struct {
@@ -141,7 +141,7 @@ func TestPasskeyArgumentsAndErrors(t *testing.T) {
 	if allValue, err := decodeStringArray(" "); err != nil || allValue != nil {
 		t.Errorf("empty array text = %v %v", allValue, err)
 	}
-	if _, err := encodePasskeyJSON(nil, browser.CreateError(browser.ErrorNotFound, "passkey: passkey not found")); err == nil || err.Error() != "passkey not found" {
+	if _, err := encodePasskeyJSON(nil, browserprotocol.CreateError(browserprotocol.ErrorNotFound, "passkey: passkey not found")); err == nil || err.Error() != "passkey not found" {
 		t.Errorf("converted error = %v", err)
 	}
 	if _, err := encodePasskeyJSON(nil, errors.New("plain")); err == nil || err.Error() != "plain" {

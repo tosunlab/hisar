@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/tryhisar/hisar/core/browserprotocol"
 )
 
 func GetDefaultSocketPath(homeDirectory string) string {
@@ -30,11 +32,11 @@ func RunHost(input io.Reader, output io.Writer, config HostConfig) error {
 		return answerAllUnavailable(input, output)
 	}
 	defer connection.Close()
-	connectFrame, err := json.Marshal(connectMessage{Type: "connect", ExtensionOrigin: config.ExtensionOrigin})
+	connectFrame, err := json.Marshal(browserprotocol.ConnectMessage{Type: "connect", ExtensionOrigin: config.ExtensionOrigin})
 	if err != nil {
 		return err
 	}
-	if err := WriteMessage(connection, connectFrame); err != nil {
+	if err := browserprotocol.WriteMessage(connection, connectFrame); err != nil {
 		return answerAllUnavailable(input, output)
 	}
 
@@ -77,14 +79,14 @@ func dialDesktop(config HostConfig) (net.Conn, error) {
 // relayAllMessage copies whole frames, so an oversized or truncated message never reaches the other side.
 func relayAllMessage(reader io.Reader, writer io.Writer) error {
 	for {
-		message, err := ReadMessage(reader)
+		message, err := browserprotocol.ReadMessage(reader)
 		if errors.Is(err, io.EOF) {
 			return nil
 		}
 		if err != nil {
 			return err
 		}
-		if err := WriteMessage(writer, message); err != nil {
+		if err := browserprotocol.WriteMessage(writer, message); err != nil {
 			return err
 		}
 	}
@@ -92,20 +94,20 @@ func relayAllMessage(reader io.Reader, writer io.Writer) error {
 
 func answerAllUnavailable(input io.Reader, output io.Writer) error {
 	for {
-		message, err := ReadMessage(input)
+		message, err := browserprotocol.ReadMessage(input)
 		if errors.Is(err, io.EOF) {
 			return nil
 		}
 		if err != nil {
 			return err
 		}
-		var request Request
+		var request browserprotocol.Request
 		json.Unmarshal(message, &request)
-		response, err := json.Marshal(Response{ID: request.ID, Error: CreateError(ErrorDesktopUnavailable, "Hisar is not running")})
+		response, err := json.Marshal(browserprotocol.Response{ID: request.ID, Error: browserprotocol.CreateError(browserprotocol.ErrorDesktopUnavailable, "Hisar is not running")})
 		if err != nil {
 			return err
 		}
-		if err := WriteMessage(output, response); err != nil {
+		if err := browserprotocol.WriteMessage(output, response); err != nil {
 			return err
 		}
 	}

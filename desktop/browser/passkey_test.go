@@ -4,17 +4,19 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+
+	"github.com/tryhisar/hisar/core/browserprotocol"
 )
 
 type passkeyRecordingHandler struct {
-	passkeyRequest PasskeyRequest
+	passkeyRequest browserprotocol.PasskeyRequest
 }
 
-func (handler *passkeyRecordingHandler) HandleRequest(_ context.Context, request *Request) (any, error) {
+func (handler *passkeyRecordingHandler) HandleRequest(_ context.Context, request *browserprotocol.Request) (any, error) {
 	if err := json.Unmarshal(request.Passkey, &handler.passkeyRequest); err != nil {
-		return nil, CreateError(ErrorInvalidRequest, err.Error())
+		return nil, browserprotocol.CreateError(browserprotocol.ErrorInvalidRequest, err.Error())
 	}
-	return PasskeyListResult{AllPasskey: []PasskeySummary{{CredentialID: "AQ", Title: "Example"}}}, nil
+	return browserprotocol.PasskeyListResult{AllPasskey: []browserprotocol.PasskeySummary{{CredentialID: "AQ", Title: "Example"}}}, nil
 }
 
 func TestPasskeyParametersPassThrough(t *testing.T) {

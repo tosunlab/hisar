@@ -1,4 +1,4 @@
-package browser
+package browserprotocol
 
 // PasskeyRequest is the nested "passkey" parameter of the passkeys.* requests; binary values are base64url.
 type PasskeyRequest struct {

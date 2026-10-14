@@ -15,9 +15,9 @@ import (
 	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/appversion"
+	"github.com/tryhisar/hisar/core/browserprotocol"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/localstate"
-	"github.com/tryhisar/hisar/desktop/browser"
 )
 
 type fakeVersionServer struct {
@@ -177,17 +177,17 @@ func TestUpdateRequiredRefusesLocalRequests(t *testing.T) {
 	}
 
 	bridge := CreateBrowserBridge(service, BrowserBridgeConfig{})
-	hello := bridge.answerHello(&browser.Request{Type: "hello", ExtensionVersion: "0.2.0"})
-	if hello.UpdateRequired == nil || *hello.UpdateRequired != (browser.UpdateRequirement{Target: browser.UpdateTargetApp, CurrentVersion: "0.1.5", MinimumVersion: "0.1.6", UpdateURL: "https://tryhisar.com/download"}) {
+	hello := bridge.answerHello(&browserprotocol.Request{Type: "hello", ExtensionVersion: "0.2.0"})
+	if hello.UpdateRequired == nil || *hello.UpdateRequired != (browserprotocol.UpdateRequirement{Target: browserprotocol.UpdateTargetApp, CurrentVersion: "0.1.5", MinimumVersion: "0.1.6", UpdateURL: "https://tryhisar.com/download"}) {
 		t.Errorf("browser hello: %+v", hello.UpdateRequired)
 	}
 	service.mutex.Lock()
 	browserTokenHash := sha256.Sum256([]byte("browser-token"))
 	service.state.AllPairedBrowser = append(service.state.AllPairedBrowser, localstate.PairedBrowser{InstanceID: "i", TokenHash: browserTokenHash[:]})
 	service.mutex.Unlock()
-	_, err = bridge.handleRequest(context.Background(), &browser.Request{Type: "logins.match", Token: "browser-token", URL: "https://github.com"})
-	var browserError *browser.ResponseError
-	if !errors.As(err, &browserError) || browserError.Code != browser.ErrorUpdateRequired {
+	_, err = bridge.handleRequest(context.Background(), &browserprotocol.Request{Type: "logins.match", Token: "browser-token", URL: "https://github.com"})
+	var browserError *browserprotocol.ResponseError
+	if !errors.As(err, &browserError) || browserError.Code != browserprotocol.ErrorUpdateRequired {
 		t.Errorf("browser fill: %v", err)
 	}
 }
@@ -195,18 +195,18 @@ func TestUpdateRequiredRefusesLocalRequests(t *testing.T) {
 func TestOtherAppsAreCheckedThroughHisar(t *testing.T) {
 	service, versionServer, _, _ := createVersionTestService(t, "0.1.6", map[string]string{apitypes.ClientDesktopMacOS: "0.1.6", apitypes.ClientExtension: "0.3.0", apitypes.ClientCLI: "1.0.0"})
 	bridge := CreateBrowserBridge(service, BrowserBridgeConfig{})
-	hello := bridge.answerHello(&browser.Request{Type: "hello", ExtensionVersion: "0.2.0"})
-	if hello.UpdateRequired == nil || hello.UpdateRequired.Target != browser.UpdateTargetExtension || hello.UpdateRequired.CurrentVersion != "0.2.0" || hello.UpdateRequired.MinimumVersion != "0.3.0" {
+	hello := bridge.answerHello(&browserprotocol.Request{Type: "hello", ExtensionVersion: "0.2.0"})
+	if hello.UpdateRequired == nil || hello.UpdateRequired.Target != browserprotocol.UpdateTargetExtension || hello.UpdateRequired.CurrentVersion != "0.2.0" || hello.UpdateRequired.MinimumVersion != "0.3.0" {
 		t.Errorf("old extension: %+v", hello.UpdateRequired)
 	}
-	bridge.answerHello(&browser.Request{Type: "hello", ExtensionVersion: "0.2.0"})
+	bridge.answerHello(&browserprotocol.Request{Type: "hello", ExtensionVersion: "0.2.0"})
 	if versionServer.countCheck() != 1 {
 		t.Errorf("the extension's version was checked %d times; the answer is kept for an hour", versionServer.countCheck())
 	}
-	if hello := bridge.answerHello(&browser.Request{Type: "hello", ExtensionVersion: "0.3.0"}); hello.UpdateRequired != nil {
+	if hello := bridge.answerHello(&browserprotocol.Request{Type: "hello", ExtensionVersion: "0.3.0"}); hello.UpdateRequired != nil {
 		t.Errorf("current extension: %+v", hello.UpdateRequired)
 	}
-	if hello := bridge.answerHello(&browser.Request{Type: "hello"}); hello.UpdateRequired != nil {
+	if hello := bridge.answerHello(&browserprotocol.Request{Type: "hello"}); hello.UpdateRequired != nil {
 		t.Errorf("extension without a version: %+v", hello.UpdateRequired)
 	}
 

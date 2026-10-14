@@ -1,4 +1,4 @@
-package browser
+package browserprotocol
 
 // PasskeyPRFValues holds base64url PRF inputs or outputs; Second is nil when not given.
 type PasskeyPRFValues struct {

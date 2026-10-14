@@ -3,8 +3,8 @@ package vault
 import (
 	"context"
 
+	"github.com/tryhisar/hisar/core/browserprotocol"
 	"github.com/tryhisar/hisar/core/item"
-	"github.com/tryhisar/hisar/desktop/browser"
 	"github.com/tryhisar/hisar/core/passkey"
 )
 
@@ -87,14 +87,14 @@ func ListAllPasskeyForRelyingParty(s *Service, relyingPartyID string, allAllowed
 	return convertToAllStoredPasskey(filterAllAllowedPasskey(allMatch, allAllowedID)), nil
 }
 
-func PreparePasskeyRegistration(s *Service, relyingPartyID string, allExcludedCredentialID []string) (browser.PasskeyPrepareResult, error) {
+func PreparePasskeyRegistration(s *Service, relyingPartyID string, allExcludedCredentialID []string) (browserprotocol.PasskeyPrepareResult, error) {
 	allExcludedID, err := decodeAllCredentialID(allExcludedCredentialID)
 	if err != nil {
-		return browser.PasskeyPrepareResult{}, convertPasskeyError(err)
+		return browserprotocol.PasskeyPrepareResult{}, convertPasskeyError(err)
 	}
 	target, err := resolvePlatformPasskeyTarget(relyingPartyID)
 	if err != nil {
-		return browser.PasskeyPrepareResult{}, convertPasskeyError(err)
+		return browserprotocol.PasskeyPrepareResult{}, convertPasskeyError(err)
 	}
 	result, err := s.preparePasskeySave(context.Background(), target, allExcludedID)
 	return result, convertPasskeyError(err)

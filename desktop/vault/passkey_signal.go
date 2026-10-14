@@ -7,8 +7,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/tryhisar/hisar/core/apitypes"
+	"github.com/tryhisar/hisar/core/browserprotocol"
 	"github.com/tryhisar/hisar/core/item"
-	"github.com/tryhisar/hisar/desktop/browser"
 	"github.com/tryhisar/hisar/core/passkey"
 )
 
@@ -35,7 +35,7 @@ func decodeSignalUserHandle(encoded string) ([]byte, error) {
 	return userHandle, nil
 }
 
-func buildPasskeySignalChange(signalType string, request *browser.PasskeyRequest) (passkeySignalChange, error) {
+func buildPasskeySignalChange(signalType string, request *browserprotocol.PasskeyRequest) (passkeySignalChange, error) {
 	switch signalType {
 	case PasskeySignalUnknownCredential:
 		allCredentialID, err := decodeAllCredentialID([]string{request.CredentialID})
@@ -103,25 +103,25 @@ func applyPasskeySignalChange(vaultItem *item.Item, relyingPartyID string, chang
 }
 
 // applyPasskeySignal is best effort: locked or signed out, it changes nothing and reports no error.
-func (s *Service) applyPasskeySignal(ctx context.Context, signalType string, request *browser.PasskeyRequest) (browser.PasskeySignalResult, error) {
+func (s *Service) applyPasskeySignal(ctx context.Context, signalType string, request *browserprotocol.PasskeyRequest) (browserprotocol.PasskeySignalResult, error) {
 	change, err := buildPasskeySignalChange(signalType, request)
 	if err != nil {
-		return browser.PasskeySignalResult{}, err
+		return browserprotocol.PasskeySignalResult{}, err
 	}
 	if strings.TrimSpace(request.RelyingPartyID) == "" {
-		return browser.PasskeySignalResult{}, passkey.ErrInvalidRelyingPartyID
+		return browserprotocol.PasskeySignalResult{}, passkey.ErrInvalidRelyingPartyID
 	}
 	relyingPartyID, err := passkey.ResolveRelyingPartyID(request.Origin, request.RelyingPartyID)
 	if err != nil {
-		return browser.PasskeySignalResult{}, err
+		return browserprotocol.PasskeySignalResult{}, err
 	}
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if s.requireUnlockedWithoutActivity() != nil {
-		return browser.PasskeySignalResult{}, nil
+		return browserprotocol.PasskeySignalResult{}, nil
 	}
 	if err := s.loadAllItemOfAllVault(ctx); err != nil {
-		return browser.PasskeySignalResult{}, err
+		return browserprotocol.PasskeySignalResult{}, err
 	}
 	var allPendingSave []pendingPasskeySignalSave
 	for vaultID, allItem := range s.allItemByVaultID {
@@ -141,7 +141,7 @@ func (s *Service) applyPasskeySignal(ctx context.Context, signalType string, req
 			allPendingSave = append(allPendingSave, pendingPasskeySignalSave{vaultID: vaultID, vaultItem: vaultItem, changeCount: changeCount})
 		}
 	}
-	result := browser.PasskeySignalResult{}
+	result := browserprotocol.PasskeySignalResult{}
 	for _, pendingSave := range allPendingSave {
 		vault, err := s.findVault(ctx, pendingSave.vaultID)
 		if err != nil {

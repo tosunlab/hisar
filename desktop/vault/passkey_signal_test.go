@@ -4,16 +4,16 @@ import (
 	"testing"
 
 	"github.com/tryhisar/hisar/core/apitypes"
-	"github.com/tryhisar/hisar/desktop/browser"
+	"github.com/tryhisar/hisar/core/browserprotocol"
 )
 
-func sendPasskeySignal(t *testing.T, testBridge *browserTestBridge, token, signalType string, passkeyRequest browser.PasskeyRequest) (int, string) {
+func sendPasskeySignal(t *testing.T, testBridge *browserTestBridge, token, signalType string, passkeyRequest browserprotocol.PasskeyRequest) (int, string) {
 	t.Helper()
 	result, code := testBridge.sendPasskeyRequest(t, signalType, token, passkeyRequest)
 	if code != "" {
 		return 0, code
 	}
-	return result.(browser.PasskeySignalResult).ChangedPasskeyCount, ""
+	return result.(browserprotocol.PasskeySignalResult).ChangedPasskeyCount, ""
 }
 
 func getItemDetail(t *testing.T, service *Service, vaultID, itemID string) ItemDetail {
@@ -40,7 +40,7 @@ func TestPasskeySignals(t *testing.T) {
 	}
 	alex := createPasskeyRelyingParty(t, "example.com", "https://example.com", []byte("user-alex"))
 	kim := createPasskeyRelyingParty(t, "example.com", "https://example.com", []byte("user-kim"))
-	register := func(relyingParty *passkeyRelyingParty, passkeyRequest browser.PasskeyRequest) browser.PasskeyCreationResult {
+	register := func(relyingParty *passkeyRelyingParty, passkeyRequest browserprotocol.PasskeyRequest) browserprotocol.PasskeyCreationResult {
 		t.Helper()
 		creation, err := relyingParty.register(t, testBridge, token, passkeyRequest)
 		if err != nil {
@@ -48,13 +48,13 @@ func TestPasskeySignals(t *testing.T) {
 		}
 		return creation
 	}
-	inExisting := register(alex, browser.PasskeyRequest{Origin: "https://example.com", UserName: "alex@example.com", VaultID: personalID, ItemID: existing.ID})
-	inFamily := register(alex, browser.PasskeyRequest{Origin: "https://example.com", UserName: "alex", VaultID: familyID, ItemID: familyLogin.ID})
-	inNewLogin := register(alex, browser.PasskeyRequest{Origin: "https://example.com", UserName: "alex-second"})
-	kimPasskey := register(kim, browser.PasskeyRequest{Origin: "https://example.com", UserName: "kim", UserDisplayName: "Kim"})
-	otherSite := register(createPasskeyRelyingParty(t, "other.example.net", "https://other.example.net", []byte("user-alex")), browser.PasskeyRequest{Origin: "https://other.example.net", UserName: "alex"})
+	inExisting := register(alex, browserprotocol.PasskeyRequest{Origin: "https://example.com", UserName: "alex@example.com", VaultID: personalID, ItemID: existing.ID})
+	inFamily := register(alex, browserprotocol.PasskeyRequest{Origin: "https://example.com", UserName: "alex", VaultID: familyID, ItemID: familyLogin.ID})
+	inNewLogin := register(alex, browserprotocol.PasskeyRequest{Origin: "https://example.com", UserName: "alex-second"})
+	kimPasskey := register(kim, browserprotocol.PasskeyRequest{Origin: "https://example.com", UserName: "kim", UserDisplayName: "Kim"})
+	otherSite := register(createPasskeyRelyingParty(t, "other.example.net", "https://other.example.net", []byte("user-alex")), browserprotocol.PasskeyRequest{Origin: "https://other.example.net", UserName: "alex"})
 
-	for name, refused := range map[string]browser.PasskeyRequest{
+	for name, refused := range map[string]browserprotocol.PasskeyRequest{
 		"RP ID of another site":  {Origin: "https://evil.example.net", RelyingPartyID: "example.com", CredentialID: inExisting.CredentialID},
 		"public suffix as RP ID": {Origin: "https://example.com", RelyingPartyID: "com", CredentialID: inExisting.CredentialID},
 		"no RP ID":               {Origin: "https://example.com", CredentialID: inExisting.CredentialID},
@@ -62,47 +62,47 @@ func TestPasskeySignals(t *testing.T) {
 		"credential ID":          {Origin: "https://example.com", RelyingPartyID: "example.com", CredentialID: "*"},
 		"empty credential ID":    {Origin: "https://example.com", RelyingPartyID: "example.com"},
 	} {
-		if _, code := sendPasskeySignal(t, testBridge, token, PasskeySignalUnknownCredential, refused); code != browser.ErrorInvalidRequest {
+		if _, code := sendPasskeySignal(t, testBridge, token, PasskeySignalUnknownCredential, refused); code != browserprotocol.ErrorInvalidRequest {
 			t.Errorf("unknown credential, %s: %s", name, code)
 		}
 	}
-	for name, refused := range map[string]browser.PasskeyRequest{
+	for name, refused := range map[string]browserprotocol.PasskeyRequest{
 		"RP ID of another site": {Origin: "https://evil.example.net", RelyingPartyID: "example.com", UserHandle: encodeBase64URL([]byte("user-alex"))},
 		"no user handle":        {Origin: "https://example.com", RelyingPartyID: "example.com"},
 		"65-byte user handle":   {Origin: "https://example.com", RelyingPartyID: "example.com", UserHandle: encodeBase64URL(make([]byte, 65))},
 		"bad accepted ID":       {Origin: "https://example.com", RelyingPartyID: "example.com", UserHandle: "AQ", AllAcceptedCredentialID: []string{"*"}},
 		"65 accepted IDs":       {Origin: "https://example.com", RelyingPartyID: "example.com", UserHandle: "AQ", AllAcceptedCredentialID: make([]string, 65)},
 	} {
-		if _, code := sendPasskeySignal(t, testBridge, token, PasskeySignalAllAcceptedCredentials, refused); code != browser.ErrorInvalidRequest {
+		if _, code := sendPasskeySignal(t, testBridge, token, PasskeySignalAllAcceptedCredentials, refused); code != browserprotocol.ErrorInvalidRequest {
 			t.Errorf("all accepted credentials, %s: %s", name, code)
 		}
 	}
-	if _, code := sendPasskeySignal(t, testBridge, token, PasskeySignalCurrentUserDetails, browser.PasskeyRequest{
+	if _, code := sendPasskeySignal(t, testBridge, token, PasskeySignalCurrentUserDetails, browserprotocol.PasskeyRequest{
 		Origin: "https://evil.example.net", RelyingPartyID: "example.com", UserHandle: encodeBase64URL([]byte("user-kim")), UserName: "evil",
-	}); code != browser.ErrorInvalidRequest {
+	}); code != browserprotocol.ErrorInvalidRequest {
 		t.Errorf("current user details for another site: %s", code)
 	}
-	if _, code := sendPasskeySignal(t, testBridge, token, PasskeySignalCurrentUserDetails, browser.PasskeyRequest{
+	if _, code := sendPasskeySignal(t, testBridge, token, PasskeySignalCurrentUserDetails, browserprotocol.PasskeyRequest{
 		Origin: "https://example.com", RelyingPartyID: "example.com", UserHandle: encodeBase64URL([]byte("user-kim")), UserName: string(make([]rune, 257)),
-	}); code != browser.ErrorInvalidRequest {
+	}); code != browserprotocol.ErrorInvalidRequest {
 		t.Errorf("long user name: %s", code)
 	}
-	if _, code := sendPasskeySignal(t, testBridge, "", PasskeySignalUnknownCredential, browser.PasskeyRequest{Origin: "https://example.com", RelyingPartyID: "example.com", CredentialID: inExisting.CredentialID}); code != browser.ErrorNotPaired {
+	if _, code := sendPasskeySignal(t, testBridge, "", PasskeySignalUnknownCredential, browserprotocol.PasskeyRequest{Origin: "https://example.com", RelyingPartyID: "example.com", CredentialID: inExisting.CredentialID}); code != browserprotocol.ErrorNotPaired {
 		t.Errorf("without token: %s", code)
 	}
 	if len(getCachedItem(t, service, personalID, existing.ID).Details.Passkeys) != 1 {
 		t.Fatal("a refused signal changed the item")
 	}
 
-	if count, code := sendPasskeySignal(t, testBridge, token, PasskeySignalUnknownCredential, browser.PasskeyRequest{Origin: "https://example.com", RelyingPartyID: "example.com", CredentialID: otherSite.CredentialID}); code != "" || count != 0 {
+	if count, code := sendPasskeySignal(t, testBridge, token, PasskeySignalUnknownCredential, browserprotocol.PasskeyRequest{Origin: "https://example.com", RelyingPartyID: "example.com", CredentialID: otherSite.CredentialID}); code != "" || count != 0 {
 		t.Errorf("unknown credential of another RP ID: %d %s", count, code)
 	}
-	if count, _ := sendPasskeySignal(t, testBridge, token, PasskeySignalUnknownCredential, browser.PasskeyRequest{Origin: "https://other.example.net", RelyingPartyID: "other.example.net", CredentialID: inExisting.CredentialID}); count != 0 {
+	if count, _ := sendPasskeySignal(t, testBridge, token, PasskeySignalUnknownCredential, browserprotocol.PasskeyRequest{Origin: "https://other.example.net", RelyingPartyID: "other.example.net", CredentialID: inExisting.CredentialID}); count != 0 {
 		t.Errorf("another site removed a passkey of example.com: %d", count)
 	}
 
 	beforeRevision := getItemDetail(t, service, personalID, existing.ID).Revision
-	count, code := sendPasskeySignal(t, testBridge, token, PasskeySignalUnknownCredential, browser.PasskeyRequest{Origin: "https://login.example.com", RelyingPartyID: "example.com", CredentialID: inExisting.CredentialID})
+	count, code := sendPasskeySignal(t, testBridge, token, PasskeySignalUnknownCredential, browserprotocol.PasskeyRequest{Origin: "https://login.example.com", RelyingPartyID: "example.com", CredentialID: inExisting.CredentialID})
 	if code != "" || count != 1 {
 		t.Fatalf("unknown credential: %d %s", count, code)
 	}
@@ -116,10 +116,10 @@ func TestPasskeySignals(t *testing.T) {
 	if stored := testBridge.testService.apiServer.allItemByVaultID[personalID][existing.ID]; stored.Revision != afterUnknown.Revision {
 		t.Errorf("the change did not reach the server: %s, want %s", stored.Revision, afterUnknown.Revision)
 	}
-	if err := alex.signIn(t, testBridge, token, browser.PasskeyRequest{Origin: "https://example.com", CredentialID: inExisting.CredentialID}); err == nil || err.Error() != browser.ErrorNotFound {
+	if err := alex.signIn(t, testBridge, token, browserprotocol.PasskeyRequest{Origin: "https://example.com", CredentialID: inExisting.CredentialID}); err == nil || err.Error() != browserprotocol.ErrorNotFound {
 		t.Errorf("sign in with the removed passkey: %v", err)
 	}
-	if count, _ := sendPasskeySignal(t, testBridge, token, PasskeySignalUnknownCredential, browser.PasskeyRequest{Origin: "https://example.com", RelyingPartyID: "example.com", CredentialID: inExisting.CredentialID}); count != 0 || getItemDetail(t, service, personalID, existing.ID).Revision != afterUnknown.Revision {
+	if count, _ := sendPasskeySignal(t, testBridge, token, PasskeySignalUnknownCredential, browserprotocol.PasskeyRequest{Origin: "https://example.com", RelyingPartyID: "example.com", CredentialID: inExisting.CredentialID}); count != 0 || getItemDetail(t, service, personalID, existing.ID).Revision != afterUnknown.Revision {
 		t.Errorf("repeated signal saved again: %d", count)
 	}
 
@@ -127,7 +127,7 @@ func TestPasskeySignals(t *testing.T) {
 	familyRole := service.allVaultByID[familyID].Role
 	service.allVaultByID[familyID].Role = apitypes.VaultReader
 	service.mutex.Unlock()
-	if count, _ := sendPasskeySignal(t, testBridge, token, PasskeySignalUnknownCredential, browser.PasskeyRequest{Origin: "https://example.com", RelyingPartyID: "example.com", CredentialID: inFamily.CredentialID}); count != 0 {
+	if count, _ := sendPasskeySignal(t, testBridge, token, PasskeySignalUnknownCredential, browserprotocol.PasskeyRequest{Origin: "https://example.com", RelyingPartyID: "example.com", CredentialID: inFamily.CredentialID}); count != 0 {
 		t.Errorf("changed a passkey in a read-only vault: %d", count)
 	}
 	service.mutex.Lock()
@@ -135,7 +135,7 @@ func TestPasskeySignals(t *testing.T) {
 	service.mutex.Unlock()
 
 	kimRevision := getItemDetail(t, service, personalID, kimPasskey.ItemID).Revision
-	count, code = sendPasskeySignal(t, testBridge, token, PasskeySignalAllAcceptedCredentials, browser.PasskeyRequest{
+	count, code = sendPasskeySignal(t, testBridge, token, PasskeySignalAllAcceptedCredentials, browserprotocol.PasskeyRequest{
 		Origin: "https://example.com", RelyingPartyID: "example.com", UserHandle: encodeBase64URL([]byte("user-alex")), AllAcceptedCredentialID: []string{inNewLogin.CredentialID, kimPasskey.CredentialID},
 	})
 	if code != "" || count != 1 {
@@ -153,12 +153,12 @@ func TestPasskeySignals(t *testing.T) {
 	if otherSiteDetail := getItemDetail(t, service, personalID, otherSite.ItemID); len(otherSiteDetail.AllPasskey) != 1 {
 		t.Errorf("passkey of another RP ID with the same user handle removed: %+v", otherSiteDetail)
 	}
-	count, _ = sendPasskeySignal(t, testBridge, token, PasskeySignalAllAcceptedCredentials, browser.PasskeyRequest{Origin: "https://example.com", RelyingPartyID: "example.com", UserHandle: encodeBase64URL([]byte("user-alex"))})
+	count, _ = sendPasskeySignal(t, testBridge, token, PasskeySignalAllAcceptedCredentials, browserprotocol.PasskeyRequest{Origin: "https://example.com", RelyingPartyID: "example.com", UserHandle: encodeBase64URL([]byte("user-alex"))})
 	if newLogin := getItemDetail(t, service, personalID, inNewLogin.ItemID); count != 1 || len(newLogin.AllPasskey) != 0 || newLogin.Title != "example.com" || newLogin.Username != "alex-second" {
 		t.Errorf("an empty accepted list: %d %+v", count, newLogin)
 	}
 
-	kimDetails := browser.PasskeyRequest{Origin: "https://example.com", RelyingPartyID: "example.com", UserHandle: encodeBase64URL([]byte("user-kim")), UserName: "  kim@example.com ", UserDisplayName: "Kim Example"}
+	kimDetails := browserprotocol.PasskeyRequest{Origin: "https://example.com", RelyingPartyID: "example.com", UserHandle: encodeBase64URL([]byte("user-kim")), UserName: "  kim@example.com ", UserDisplayName: "Kim Example"}
 	count, code = sendPasskeySignal(t, testBridge, token, PasskeySignalCurrentUserDetails, kimDetails)
 	kimItem := getItemDetail(t, service, personalID, kimPasskey.ItemID)
 	if code != "" || count != 1 || kimItem.AllPasskey[0].UserName != "kim@example.com" || kimItem.AllPasskey[0].UserDisplayName != "Kim Example" || kimItem.Username != "kim" || kimItem.Revision == kimRevision {
@@ -170,7 +170,7 @@ func TestPasskeySignals(t *testing.T) {
 	if count, _ := sendPasskeySignal(t, testBridge, token, PasskeySignalCurrentUserDetails, kimDetails); count != 0 || getItemDetail(t, service, personalID, kimPasskey.ItemID).Revision != kimItem.Revision {
 		t.Errorf("unchanged user details saved again: %d", count)
 	}
-	if err := kim.signIn(t, testBridge, token, browser.PasskeyRequest{Origin: "https://example.com", CredentialID: kimPasskey.CredentialID}); err != nil {
+	if err := kim.signIn(t, testBridge, token, browserprotocol.PasskeyRequest{Origin: "https://example.com", CredentialID: kimPasskey.CredentialID}); err != nil {
 		t.Errorf("sign in after the user details changed: %v", err)
 	}
 }
@@ -179,13 +179,13 @@ func TestPasskeySignalsWhileLocked(t *testing.T) {
 	testBridge := createBrowserTestBridge(t)
 	service := testBridge.testService.service
 	token := testBridge.pair(t, "chrome-1")
-	creation, err := createPasskeyRelyingParty(t, "example.com", "https://example.com", []byte("user-alex")).register(t, testBridge, token, browser.PasskeyRequest{Origin: "https://example.com", UserName: "alex"})
+	creation, err := createPasskeyRelyingParty(t, "example.com", "https://example.com", []byte("user-alex")).register(t, testBridge, token, browserprotocol.PasskeyRequest{Origin: "https://example.com", UserName: "alex"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	beforeLock := testBridge.testService.apiServer.allItemByVaultID[creation.VaultID][creation.ItemID]
 	service.Lock()
-	for signalType, passkeyRequest := range map[string]browser.PasskeyRequest{
+	for signalType, passkeyRequest := range map[string]browserprotocol.PasskeyRequest{
 		PasskeySignalUnknownCredential:      {Origin: "https://example.com", RelyingPartyID: "example.com", CredentialID: creation.CredentialID},
 		PasskeySignalAllAcceptedCredentials: {Origin: "https://example.com", RelyingPartyID: "example.com", UserHandle: encodeBase64URL([]byte("user-alex"))},
 		PasskeySignalCurrentUserDetails:     {Origin: "https://example.com", RelyingPartyID: "example.com", UserHandle: encodeBase64URL([]byte("user-alex")), UserName: "renamed"},
@@ -194,7 +194,7 @@ func TestPasskeySignalsWhileLocked(t *testing.T) {
 			t.Errorf("%s while locked: %d %s", signalType, count, code)
 		}
 	}
-	if _, code := sendPasskeySignal(t, testBridge, token, PasskeySignalUnknownCredential, browser.PasskeyRequest{Origin: "https://evil.example.net", RelyingPartyID: "example.com", CredentialID: creation.CredentialID}); code != browser.ErrorInvalidRequest {
+	if _, code := sendPasskeySignal(t, testBridge, token, PasskeySignalUnknownCredential, browserprotocol.PasskeyRequest{Origin: "https://evil.example.net", RelyingPartyID: "example.com", CredentialID: creation.CredentialID}); code != browserprotocol.ErrorInvalidRequest {
 		t.Errorf("wrong RP ID while locked: %s", code)
 	}
 	if afterLock := testBridge.testService.apiServer.allItemByVaultID[creation.VaultID][creation.ItemID]; afterLock.Revision != beforeLock.Revision {

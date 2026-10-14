@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tryhisar/hisar/core/browserprotocol"
 	"github.com/tryhisar/hisar/core/crypt"
-	"github.com/tryhisar/hisar/desktop/browser"
 	"github.com/tryhisar/hisar/desktop/vault"
 )
 
@@ -381,7 +381,7 @@ func decodeStringArray(text string) ([]string, error) {
 
 // encodePasskeyJSON drops the browser protocol's error code, so the app shows only the message.
 func encodePasskeyJSON(value any, err error) (string, error) {
-	var responseError *browser.ResponseError
+	var responseError *browserprotocol.ResponseError
 	if errors.As(err, &responseError) {
 		err = errors.New(strings.TrimPrefix(responseError.Message, "passkey: "))
 	}
