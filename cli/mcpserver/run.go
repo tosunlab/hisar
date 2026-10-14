@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/tryhisar/hisar/cli/masking"
+	"github.com/tryhisar/hisar/cli/internal/masking"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/secretreference"
 )

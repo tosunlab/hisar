@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/tryhisar/hisar/cli/internal/dotenv"
-	"github.com/tryhisar/hisar/cli/masking"
+	"github.com/tryhisar/hisar/cli/internal/masking"
 	"github.com/tryhisar/hisar/core/secretreference"
 )
 
