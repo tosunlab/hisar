@@ -16,6 +16,7 @@ import (
 	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/session"
+	"github.com/tryhisar/hisar/server/internal/ratelimit"
 )
 
 func fetchInvitePage(t *testing.T, baseURL, token string) (*http.Response, string) {
@@ -147,7 +148,7 @@ func TestInvitePage(t *testing.T) {
 
 func TestInvitePageRateLimit(t *testing.T) {
 	baseURL, server, _ := setupServer(t)
-	server.invitePageLimiter = createIPLimiter(rate.Every(time.Hour), 2)
+	server.invitePageLimiter = ratelimit.New(rate.Every(time.Hour), 2)
 	for attempt := 1; attempt <= 3; attempt++ {
 		response, body := fetchInvitePage(t, baseURL, "some-token")
 		wantStatus := http.StatusNotFound

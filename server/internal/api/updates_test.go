@@ -17,6 +17,7 @@ import (
 	"github.com/tryhisar/hisar/core/session"
 	"github.com/tryhisar/hisar/server/internal/desktopupdate"
 	"github.com/tryhisar/hisar/server/internal/desktopupdate/fakegithub"
+	"github.com/tryhisar/hisar/server/internal/ratelimit"
 )
 
 const updateGitHubToken = "github_pat_update"
@@ -48,7 +49,7 @@ func setupUpdateServer(t *testing.T) *updateTestServer {
 		t.Fatal(err)
 	}
 	server.config.DesktopUpdates = desktopupdate.NewSource(gitHub, desktopupdate.SourceConfig{PublicURL: server.config.PublicURL})
-	server.updateLimiter = createIPLimiter(rate.Inf, 1)
+	server.updateLimiter = ratelimit.New(rate.Inf, 1)
 	return &updateTestServer{baseURL: baseURL, server: server, token: signedUp.Client.Token, fake: fake, archive: archive}
 }
 
@@ -171,7 +172,7 @@ func TestDesktopUpdatesUnreachableSource(t *testing.T) {
 
 func TestDesktopUpdatesAreRateLimited(t *testing.T) {
 	updateServer := setupUpdateServer(t)
-	updateServer.server.updateLimiter = createIPLimiter(rate.Every(time.Hour), 2)
+	updateServer.server.updateLimiter = ratelimit.New(rate.Every(time.Hour), 2)
 	for attempt := range 2 {
 		if response, _ := updateServer.get(t, "appcast.xml", updateServer.token); response.StatusCode != http.StatusOK {
 			t.Fatalf("request %d: %d", attempt, response.StatusCode)

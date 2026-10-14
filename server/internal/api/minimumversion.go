@@ -10,6 +10,7 @@ import (
 
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/appversion"
+	"github.com/tryhisar/hisar/server/internal/ratelimit"
 )
 
 const extensionStoreURL = "https://chromewebstore.google.com/detail/mmipiffoogblblocokimpemdopmdjghf"
@@ -76,10 +77,12 @@ func (s *Server) requireMinimumVersion(c fiber.Ctx) error {
 	})
 }
 
-func createVersionCheckLimiter() *ipLimiter { return createIPLimiter(rate.Every(2*time.Second), 30) }
+func createVersionCheckLimiter() *ratelimit.Limiter {
+	return ratelimit.New(rate.Every(2*time.Second), 30)
+}
 
 func (s *Server) limitVersionCheckRate(c fiber.Ctx) error {
-	if !s.versionCheckLimiter.allow(s.getClientIP(c)) {
+	if !s.versionCheckLimiter.Allow(s.getClientIP(c)) {
 		return createAPIError(fiber.StatusTooManyRequests, "too many requests")
 	}
 	return c.Next()

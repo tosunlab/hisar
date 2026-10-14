@@ -21,6 +21,7 @@ import (
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/session"
 	"github.com/tryhisar/hisar/server/internal/mail/mailtest"
+	"github.com/tryhisar/hisar/server/internal/ratelimit"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
@@ -55,7 +56,7 @@ func setupServer(t *testing.T) (baseURL string, server *Server, databaseURL stri
 	if err != nil {
 		t.Fatal(err)
 	}
-	server.limiter = createIPLimiter(rate.Inf, 1)
+	server.limiter = ratelimit.New(rate.Inf, 1)
 
 	app := server.CreateApp()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")

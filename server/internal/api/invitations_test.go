@@ -18,6 +18,7 @@ import (
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/session"
 	"github.com/tryhisar/hisar/server/internal/mail"
+	"github.com/tryhisar/hisar/server/internal/ratelimit"
 )
 
 func sendRawRequest(t *testing.T, baseURL, token, method, path string, body any) (int, string) {
@@ -94,7 +95,7 @@ func TestInviteByEmail(t *testing.T) {
 		}
 	}
 
-	server.inviteAccountLimiter = createDailyLimiter(2)
+	server.inviteAccountLimiter = ratelimit.NewDaily(2)
 	for index := range 2 {
 		if _, err := carol.Client.Invite(ctx, &apitypes.InviteRequest{Email: "dave@example.com"}); err != nil {
 			t.Fatalf("invite %d: %v", index, err)
@@ -106,7 +107,7 @@ func TestInviteByEmail(t *testing.T) {
 	if _, err := alice.Client.Invite(ctx, &apitypes.InviteRequest{Email: "dave@example.com"}); err != nil {
 		t.Errorf("another account's invite was limited: %v", err)
 	}
-	server.inviteIPLimiter = createDailyLimiter(1)
+	server.inviteIPLimiter = ratelimit.NewDaily(1)
 	if _, err := alice.Client.Invite(ctx, &apitypes.InviteRequest{Email: "erin@example.com"}); err != nil {
 		t.Fatal(err)
 	}
@@ -314,7 +315,7 @@ func TestShareInvitationWithoutEnumeration(t *testing.T) {
 	})
 
 	t.Run("share invitations are rate limited", func(t *testing.T) {
-		server.shareInvitationAccountLimiter = createDailyLimiter(1)
+		server.shareInvitationAccountLimiter = ratelimit.NewDaily(1)
 		if err := alice.InviteToVault(ctx, work, "frank@example.com", apitypes.VaultReader); err != nil {
 			t.Fatal(err)
 		}
@@ -430,8 +431,8 @@ func TestAcceptedShareTellsInviterAndRecipient(t *testing.T) {
 
 	t.Run("accepted emails are rate limited per inviter", func(t *testing.T) {
 		server.config.ShareAcceptedEmailDelay = 50 * time.Millisecond
-		server.shareAcceptedEmailLimiter = createDailyLimiter(1)
-		server.shareAcceptedEmailLimiter.allow(alice.AccountID)
+		server.shareAcceptedEmailLimiter = ratelimit.NewDaily(1)
+		server.shareAcceptedEmailLimiter.Allow(alice.AccountID)
 		dave := signUpTestAccount(t, ctx, server, baseURL, "dave@example.com", apitypes.RoleMember)
 		emailCountBefore := acceptInvitation(dave)
 		time.Sleep(500 * time.Millisecond)

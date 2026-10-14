@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"golang.org/x/time/rate"
 
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/server/internal/mail"
+	"github.com/tryhisar/hisar/server/internal/ratelimit"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
@@ -34,16 +34,8 @@ var (
 )
 
 // dailyLimiter allows count requests per key per day, refilled evenly.
-type dailyLimiter struct{ limiter *ipLimiter }
-
-func createDailyLimiter(count int) *dailyLimiter {
-	return &dailyLimiter{limiter: createIPLimiter(rate.Every(24*time.Hour/time.Duration(count)), count)}
-}
-
-func (limiter *dailyLimiter) allow(key string) bool { return limiter.limiter.allow(key) }
-
-func (s *Server) allowInvitation(c fiber.Ctx, accountLimiter, ipLimiter *dailyLimiter) bool {
-	return accountLimiter.allow(getSession(c).AccountID) && ipLimiter.allow(s.getClientIP(c))
+func (s *Server) allowInvitation(c fiber.Ctx, accountLimiter, ipLimiter *ratelimit.Limiter) bool {
+	return accountLimiter.Allow(getSession(c).AccountID) && ipLimiter.Allow(s.getClientIP(c))
 }
 
 func parseEmail(email string) (string, error) {
@@ -304,7 +296,7 @@ func (s *Server) sendShareAcceptedEmail(ctx context.Context, invitationID string
 		log.Printf("share accepted email: %v", err)
 		return
 	}
-	if !s.shareAcceptedEmailLimiter.allow(acceptance.Inviter.ID) {
+	if !s.shareAcceptedEmailLimiter.Allow(acceptance.Inviter.ID) {
 		return
 	}
 	s.sendEmail(ctx, composeShareAcceptedEmail(&acceptance.Inviter, &acceptance.Recipient))

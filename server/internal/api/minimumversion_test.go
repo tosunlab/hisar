@@ -10,6 +10,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/tryhisar/hisar/core/apitypes"
+	"github.com/tryhisar/hisar/server/internal/ratelimit"
 )
 
 func createMinimumVersionApp(t *testing.T, minimumVersions MinimumVersions) *fiber.App {
@@ -129,7 +130,7 @@ func TestVersionCheckRateLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server.versionCheckLimiter = createIPLimiter(0, 1)
+	server.versionCheckLimiter = ratelimit.New(0, 1)
 	app := server.CreateApp()
 	statuses := []int{}
 	for range 2 {

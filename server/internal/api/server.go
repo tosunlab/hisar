@@ -19,6 +19,7 @@ import (
 	"github.com/tryhisar/hisar/core/pake"
 	"github.com/tryhisar/hisar/server/internal/desktopupdate"
 	"github.com/tryhisar/hisar/server/internal/mail"
+	"github.com/tryhisar/hisar/server/internal/ratelimit"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
@@ -56,21 +57,21 @@ type Server struct {
 	opaqueConfiguration *opaque.Configuration
 	opaque              *opaque.Server
 	loginCache          *loginCache
-	limiter             *ipLimiter
-	updateLimiter       *ipLimiter
+	limiter             *ratelimit.Limiter
+	updateLimiter       *ratelimit.Limiter
 	events              *eventBroker
 	approvals           *approvalRelay
 
-	inviteAccountLimiter          *dailyLimiter
-	inviteIPLimiter               *dailyLimiter
-	shareInvitationAccountLimiter *dailyLimiter
-	shareInvitationIPLimiter      *dailyLimiter
-	shareAcceptedEmailLimiter     *dailyLimiter
-	shareLinkAccountLimiter       *dailyLimiter
-	shareLinkReadLimiter          *ipLimiter
-	reauthenticationLimiter       *ipLimiter
-	invitePageLimiter             *ipLimiter
-	versionCheckLimiter           *ipLimiter
+	inviteAccountLimiter          *ratelimit.Limiter
+	inviteIPLimiter               *ratelimit.Limiter
+	shareInvitationAccountLimiter *ratelimit.Limiter
+	shareInvitationIPLimiter      *ratelimit.Limiter
+	shareAcceptedEmailLimiter     *ratelimit.Limiter
+	shareLinkAccountLimiter       *ratelimit.Limiter
+	shareLinkReadLimiter          *ratelimit.Limiter
+	reauthenticationLimiter       *ratelimit.Limiter
+	invitePageLimiter             *ratelimit.Limiter
+	versionCheckLimiter           *ratelimit.Limiter
 	backgroundWork                sync.WaitGroup
 }
 
@@ -112,17 +113,17 @@ func NewServer(database *store.Store, secrets *Secrets, config Config) (*Server,
 		opaqueConfiguration: opaqueConfiguration,
 		opaque:              opaqueServer,
 		loginCache:          createLoginCache(time.Minute),
-		limiter:             createIPLimiter(rate.Every(6*time.Second), config.AuthBurst),
-		updateLimiter:       createIPLimiter(rate.Every(10*time.Second), 20),
+		limiter:             ratelimit.New(rate.Every(6*time.Second), config.AuthBurst),
+		updateLimiter:       ratelimit.New(rate.Every(10*time.Second), 20),
 		events:              createEventBroker(),
 		approvals:           createApprovalRelay(),
 
-		inviteAccountLimiter:          createDailyLimiter(invitePerAccountPerDay),
-		inviteIPLimiter:               createDailyLimiter(invitePerIPPerDay),
-		shareInvitationAccountLimiter: createDailyLimiter(shareInvitationPerAccountPerDay),
-		shareInvitationIPLimiter:      createDailyLimiter(shareInvitationPerIPPerDay),
-		shareAcceptedEmailLimiter:     createDailyLimiter(shareAcceptedEmailPerInviterPerDay),
-		shareLinkAccountLimiter:       createDailyLimiter(shareLinkPerAccountPerDay),
+		inviteAccountLimiter:          ratelimit.NewDaily(invitePerAccountPerDay),
+		inviteIPLimiter:               ratelimit.NewDaily(invitePerIPPerDay),
+		shareInvitationAccountLimiter: ratelimit.NewDaily(shareInvitationPerAccountPerDay),
+		shareInvitationIPLimiter:      ratelimit.NewDaily(shareInvitationPerIPPerDay),
+		shareAcceptedEmailLimiter:     ratelimit.NewDaily(shareAcceptedEmailPerInviterPerDay),
+		shareLinkAccountLimiter:       ratelimit.NewDaily(shareLinkPerAccountPerDay),
 		shareLinkReadLimiter:          createShareLinkReadLimiter(),
 		reauthenticationLimiter:       createReauthenticationLimiter(),
 		invitePageLimiter:             createInvitePageLimiter(),
@@ -272,7 +273,7 @@ func (s *Server) requireSession(c fiber.Ctx) error {
 }
 
 func (s *Server) limitRate(c fiber.Ctx) error {
-	if !s.limiter.allow(s.getClientIP(c)) {
+	if !s.limiter.Allow(s.getClientIP(c)) {
 		return createAPIError(fiber.StatusTooManyRequests, "too many requests")
 	}
 	return c.Next()
@@ -319,40 +320,4 @@ func decodeBodyWithLimit(c fiber.Ctx, target any, limit int) error {
 		return createAPIError(fiber.StatusBadRequest, "invalid request body")
 	}
 	return nil
-}
-
-type ipLimiter struct {
-	mutex   sync.Mutex
-	every   rate.Limit
-	burst   int
-	clients map[string]*ipEntry
-}
-
-type ipEntry struct {
-	limiter *rate.Limiter
-	seen    time.Time
-}
-
-func createIPLimiter(every rate.Limit, burst int) *ipLimiter {
-	return &ipLimiter{every: every, burst: burst, clients: map[string]*ipEntry{}}
-}
-
-func (l *ipLimiter) allow(ip string) bool {
-	l.mutex.Lock()
-	defer l.mutex.Unlock()
-	now := time.Now()
-	if len(l.clients) > 10000 {
-		for clientIP, entry := range l.clients {
-			if now.Sub(entry.seen) > 10*time.Minute {
-				delete(l.clients, clientIP)
-			}
-		}
-	}
-	entry, ok := l.clients[ip]
-	if !ok {
-		entry = &ipEntry{limiter: rate.NewLimiter(l.every, l.burst)}
-		l.clients[ip] = entry
-	}
-	entry.seen = now
-	return entry.limiter.Allow()
 }

@@ -15,11 +15,12 @@ import (
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/server/internal/mail"
+	"github.com/tryhisar/hisar/server/internal/ratelimit"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
-func createReauthenticationLimiter() *ipLimiter {
-	return createIPLimiter(rate.Every(30*time.Second), 5)
+func createReauthenticationLimiter() *ratelimit.Limiter {
+	return ratelimit.New(rate.Every(30*time.Second), 5)
 }
 
 var (
@@ -34,7 +35,7 @@ func (s *Server) handleReauthenticate(c fiber.Ctx) error {
 		return err
 	}
 	currentSession := getSession(c)
-	if !s.reauthenticationLimiter.allow(currentSession.AccountID) {
+	if !s.reauthenticationLimiter.Allow(currentSession.AccountID) {
 		return createAPIError(fiber.StatusTooManyRequests, "too many attempts; wait a minute and try again")
 	}
 	keyExchange1, err := s.opaque.Deserialize.KE1(request.KE1)

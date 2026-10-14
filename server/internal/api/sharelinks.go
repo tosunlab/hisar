@@ -13,6 +13,7 @@ import (
 
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
+	"github.com/tryhisar/hisar/server/internal/ratelimit"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
@@ -36,8 +37,8 @@ var (
 	errShareLinkNotFound    = createAPIError(fiber.StatusNotFound, "not found")
 )
 
-func createShareLinkReadLimiter() *ipLimiter {
-	return createIPLimiter(rate.Every(shareLinkReadInterval), shareLinkReadBurst)
+func createShareLinkReadLimiter() *ratelimit.Limiter {
+	return ratelimit.New(rate.Every(shareLinkReadInterval), shareLinkReadBurst)
 }
 
 func generateShareLinkID() string {
@@ -86,7 +87,7 @@ func (s *Server) handleCreateShareLink(c fiber.Ctx) error {
 	if err := validateShareLinkRequest(&request); err != nil {
 		return err
 	}
-	if !s.shareLinkAccountLimiter.allow(currentSession.AccountID) {
+	if !s.shareLinkAccountLimiter.Allow(currentSession.AccountID) {
 		return errTooManyShareLink
 	}
 	link := &store.ShareLink{
@@ -146,7 +147,7 @@ func (s *Server) handleRevokeShareLink(c fiber.Ctx) error {
 
 // handleViewShareLink answers a malformed, unknown, expired, used-up and revoked ID with the same 404.
 func (s *Server) handleViewShareLink(c fiber.Ctx) error {
-	if !s.shareLinkReadLimiter.allow(s.getClientIP(c)) {
+	if !s.shareLinkReadLimiter.Allow(s.getClientIP(c)) {
 		return createAPIError(fiber.StatusTooManyRequests, "too many requests")
 	}
 	linkID := c.Params("id")

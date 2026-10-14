@@ -19,6 +19,7 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/tryhisar/hisar/core/apitypes"
+	"github.com/tryhisar/hisar/server/internal/ratelimit"
 )
 
 func TestSecretsCreatedOnceWithPrivateMode(t *testing.T) {
@@ -74,16 +75,16 @@ func TestLoginCache(t *testing.T) {
 }
 
 func TestIPLimiter(t *testing.T) {
-	limiter := createIPLimiter(rate.Every(time.Hour), 3)
+	limiter := ratelimit.New(rate.Every(time.Hour), 3)
 	for attempt := range 3 {
-		if !limiter.allow("1.1.1.1") {
+		if !limiter.Allow("1.1.1.1") {
 			t.Fatalf("request %d denied", attempt)
 		}
 	}
-	if limiter.allow("1.1.1.1") {
+	if limiter.Allow("1.1.1.1") {
 		t.Error("burst exceeded")
 	}
-	if !limiter.allow("2.2.2.2") {
+	if !limiter.Allow("2.2.2.2") {
 		t.Error("other IP limited")
 	}
 }
@@ -229,7 +230,7 @@ func TestNormalEndpointsKeepSmallBodyLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	server.limiter = createIPLimiter(rate.Inf, 1)
+	server.limiter = ratelimit.New(rate.Inf, 1)
 	app := server.CreateApp()
 	largeBody := `{"email":"` + strings.Repeat("a", maxBody+1) + `"}`
 	request := httptest.NewRequest("POST", "/api/v1/auth/login/start", strings.NewReader(largeBody))

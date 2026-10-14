@@ -18,7 +18,7 @@ const updateWriteIdleTimeout = 60 * time.Second
 var errUpdatesNotConfigured = createAPIError(fiber.StatusNotFound, "updates are not configured on this server")
 
 func (s *Server) limitUpdateRate(c fiber.Ctx) error {
-	if !s.updateLimiter.allow(s.getClientIP(c)) {
+	if !s.updateLimiter.Allow(s.getClientIP(c)) {
 		return createAPIError(fiber.StatusTooManyRequests, "too many requests")
 	}
 	return c.Next()

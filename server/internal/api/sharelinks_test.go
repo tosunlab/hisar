@@ -25,6 +25,7 @@ import (
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/session"
 	"github.com/tryhisar/hisar/core/sharelink"
+	"github.com/tryhisar/hisar/server/internal/ratelimit"
 )
 
 var defaultShareLinkOptions = session.ShareLinkOptions{Expiry: sharelink.ExpiryWeek, MaxViews: 1}
@@ -88,7 +89,7 @@ func setShareLinkExpiry(t *testing.T, databaseURL, linkID string, expiresAt time
 
 func TestShareLinkLifecycle(t *testing.T) {
 	baseURL, server, _ := setupServer(t)
-	server.shareLinkReadLimiter = createIPLimiter(rate.Inf, 1)
+	server.shareLinkReadLimiter = ratelimit.New(rate.Inf, 1)
 	ctx := context.Background()
 	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", apitypes.RoleAdmin)
 	vault, vaultItem := createSharedItem(t, alice)
@@ -172,7 +173,7 @@ func TestShareLinkLifecycle(t *testing.T) {
 
 func TestShareLinkViewsAreCountedOnceUnderConcurrency(t *testing.T) {
 	baseURL, server, _ := setupServer(t)
-	server.shareLinkReadLimiter = createIPLimiter(rate.Inf, 1)
+	server.shareLinkReadLimiter = ratelimit.New(rate.Inf, 1)
 	ctx := context.Background()
 	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", apitypes.RoleAdmin)
 	vault, vaultItem := createSharedItem(t, alice)
@@ -219,7 +220,7 @@ func TestShareLinkViewsAreCountedOnceUnderConcurrency(t *testing.T) {
 
 func TestShareLinkNotFoundIsAlwaysTheSame(t *testing.T) {
 	baseURL, server, databaseURL := setupServer(t)
-	server.shareLinkReadLimiter = createIPLimiter(rate.Inf, 1)
+	server.shareLinkReadLimiter = ratelimit.New(rate.Inf, 1)
 	ctx := context.Background()
 	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", apitypes.RoleAdmin)
 	bob := signUpTestAccount(t, ctx, server, baseURL, "bob@example.com", apitypes.RoleMember)
@@ -313,7 +314,7 @@ func TestShareLinkRateLimits(t *testing.T) {
 	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", apitypes.RoleAdmin)
 	vault, vaultItem := createSharedItem(t, alice)
 
-	server.shareLinkAccountLimiter = createDailyLimiter(2)
+	server.shareLinkAccountLimiter = ratelimit.NewDaily(2)
 	var links []*session.ShareLink
 	for range 2 {
 		created, err := alice.ShareItem(ctx, vault, vaultItem, []string{sharelink.FieldPassword}, session.ShareLinkOptions{Expiry: sharelink.ExpiryHour})
@@ -326,7 +327,7 @@ func TestShareLinkRateLimits(t *testing.T) {
 		t.Fatalf("third link of the day: %v", err)
 	}
 
-	server.shareLinkReadLimiter = createIPLimiter(rate.Every(time.Hour), 3)
+	server.shareLinkReadLimiter = ratelimit.New(rate.Every(time.Hour), 3)
 	for range 3 {
 		openShareLink(t, links[0].URL, nil)
 	}
@@ -342,7 +343,7 @@ func TestLiveShareLinkCap(t *testing.T) {
 	baseURL, server, _ := setupServer(t)
 	ctx := context.Background()
 	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", apitypes.RoleAdmin)
-	server.shareLinkAccountLimiter = createDailyLimiter(maxLiveShareLinkCount + 10)
+	server.shareLinkAccountLimiter = ratelimit.NewDaily(maxLiveShareLinkCount + 10)
 	request := &apitypes.CreateShareLinkRequest{Ciphertext: []byte{1}, EncryptedLabel: []byte{1}, ExpiresInSeconds: 3600, MaxViews: 1}
 	for index := range maxLiveShareLinkCount {
 		if _, err := alice.Client.CreateShareLink(ctx, request); err != nil {
@@ -356,7 +357,7 @@ func TestLiveShareLinkCap(t *testing.T) {
 
 func TestShareLinkEvents(t *testing.T) {
 	baseURL, server, _ := setupServer(t)
-	server.shareLinkReadLimiter = createIPLimiter(rate.Inf, 1)
+	server.shareLinkReadLimiter = ratelimit.New(rate.Inf, 1)
 	ctx := context.Background()
 	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", apitypes.RoleAdmin)
 	vault, vaultItem := createSharedItem(t, alice)

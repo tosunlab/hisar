@@ -14,6 +14,7 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/tryhisar/hisar/server/internal/mail"
+	"github.com/tryhisar/hisar/server/internal/ratelimit"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
@@ -81,10 +82,12 @@ func (page invitePageTemplate) render(data invitePageData) ([]byte, error) {
 	return []byte(body[:scriptIndex] + page.script + body[scriptIndex+len("@@script@@"):]), nil
 }
 
-func createInvitePageLimiter() *ipLimiter { return createIPLimiter(rate.Every(2*time.Second), 30) }
+func createInvitePageLimiter() *ratelimit.Limiter {
+	return ratelimit.New(rate.Every(2*time.Second), 30)
+}
 
 func (s *Server) limitInvitePageRate(c fiber.Ctx) error {
-	if !s.invitePageLimiter.allow(s.getClientIP(c)) {
+	if !s.invitePageLimiter.Allow(s.getClientIP(c)) {
 		c.Set(fiber.HeaderContentType, fiber.MIMETextPlainCharsetUTF8)
 		return c.Status(fiber.StatusTooManyRequests).SendString("Too many requests. Wait a minute and try again.\n")
 	}

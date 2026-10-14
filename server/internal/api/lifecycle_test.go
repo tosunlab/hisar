@@ -20,6 +20,7 @@ import (
 	"github.com/tryhisar/hisar/core/pake"
 	"github.com/tryhisar/hisar/core/session"
 	"github.com/tryhisar/hisar/server/internal/mail/mailtest"
+	"github.com/tryhisar/hisar/server/internal/ratelimit"
 )
 
 type lifecycleAccount struct {
@@ -41,7 +42,7 @@ func signUpLifecycleAccount(t *testing.T, server *Server, baseURL, email string)
 
 func setupLifecycleServer(t *testing.T) (string, *Server, string, *mailtest.Recorder) {
 	baseURL, server, databaseURL := setupServer(t)
-	server.reauthenticationLimiter = createIPLimiter(rate.Inf, 1)
+	server.reauthenticationLimiter = ratelimit.New(rate.Inf, 1)
 	return baseURL, server, databaseURL, attachMailRecorder(server)
 }
 
