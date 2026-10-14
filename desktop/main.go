@@ -28,6 +28,7 @@ import (
 	"github.com/tryhisar/hisar/desktop/biometric"
 	"github.com/tryhisar/hisar/desktop/browser"
 	"github.com/tryhisar/hisar/desktop/commandline"
+	"github.com/tryhisar/hisar/desktop/loginitem"
 	"github.com/tryhisar/hisar/desktop/systemidle"
 	"github.com/tryhisar/hisar/desktop/updater"
 	"github.com/tryhisar/hisar/desktop/vault"
@@ -311,7 +312,7 @@ func main() {
 
 	commandLineApprovals := clisocket.CreateSessionApprovals(clisocket.DefaultApprovalLifetime, nil)
 	commandLineBridge := vault.CreateCommandLineBridge(vaultService, commandLineApprovals)
-	var commandLineService *vault.CommandLineService
+	var commandLineService *commandline.Service
 	commandLineServer := clisocket.CreateServer(clisocket.ServerConfig{
 		Handler:             commandLineBridge,
 		CheckUpdateRequired: commandLineBridge.CheckUpdateRequired,
@@ -326,14 +327,14 @@ func main() {
 	}
 	commandLineRunner := clisocket.CreateRunner(commandLineServer, commandLineSocketPath)
 	userPathReader := &commandline.UserPathReader{Shell: getLoginShell()}
-	commandLineService = vault.CreateCommandLineService(vaultService, commandline.CreateInstaller(commandline.InstallerConfig{
+	commandLineService = commandline.NewService(vaultService, commandline.CreateInstaller(commandline.InstallerConfig{
 		BundledPath:   filepath.Join(filepath.Dir(executableDirectory), "Helpers", "hisar"),
 		HomeDirectory: homeDirectory,
 		GetUserPath:   userPathReader.Read,
 		Shell:         getLoginShell(),
 	}), commandLineRunner)
 
-	loginItemService := vault.CreateLoginItemService(vaultService, background.CreateLoginItem(homeDirectory))
+	loginItemService := loginitem.NewService(vaultService, background.CreateLoginItem(homeDirectory))
 	inviteLinkService := vault.CreateInviteLinkService()
 	isHiddenLaunchRequested := background.IsHiddenLaunchRequested(os.Args[1:])
 	background.StartLaunchObserver()
@@ -446,7 +447,7 @@ func main() {
 			}
 		})
 		go func() {
-			if err := vault.ApplyOpenAtLoginOnLaunch(loginItemService); err != nil {
+			if err := loginitem.ApplyOnLaunch(loginItemService); err != nil {
 				log.Printf("open at login: %v", err)
 			}
 		}()
@@ -486,7 +487,7 @@ func main() {
 			log.Printf("SSH agent on %s: %v", socketPath, err)
 		}
 	}()
-	vault.StartCommandLineIntegration(commandLineService)
+	commandline.StartIntegration(commandLineService)
 	go func() {
 		vault.InstallBrowserHostManifest(browserBridge)
 		if err := browserServer.Serve(agentContext, browserSocketPath); err != nil {
