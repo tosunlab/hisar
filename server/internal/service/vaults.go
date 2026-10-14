@@ -82,7 +82,7 @@ func (s *Service) CreateVault(ctx context.Context, actor Actor, request *apitype
 		return apitypes.Vault{}, err
 	}
 	s.recordAudit(ctx, actor, "vault_created", map[string]string{"vault": vault.ID, "type": vault.Type})
-	s.PublishVaultsChanged(actor.AccountID)
+	s.publishVaultsChanged(actor.AccountID)
 	return apitypes.Vault{ID: vault.ID, Type: vault.Type, EncName: vault.EncName, Role: apitypes.VaultOwner, WrappedKey: request.WrappedKey}, nil
 }
 
@@ -129,9 +129,9 @@ func (s *Service) SetAccess(ctx context.Context, actor Actor, vaultID, targetAcc
 		return err
 	}
 	s.recordAudit(ctx, actor, "vault_access_set", map[string]string{"vault": vaultID, "account": targetAccountID, "role": request.Role})
-	s.PublishVaultsChanged(targetAccountID)
+	s.publishVaultsChanged(targetAccountID)
 	if isNewMember {
-		s.PublishShareInvitationsChangedToOwner(ctx, vaultID)
+		s.publishShareInvitationsChangedToOwner(ctx, vaultID)
 	}
 	return nil
 }
@@ -155,7 +155,7 @@ func (s *Service) RemoveAccess(ctx context.Context, actor Actor, vaultID, target
 		return err
 	}
 	s.recordAudit(ctx, actor, "vault_access_removed", map[string]string{"vault": vaultID, "account": targetAccountID})
-	s.PublishVaultsChanged(targetAccountID)
+	s.publishVaultsChanged(targetAccountID)
 	return nil
 }
 
@@ -170,7 +170,7 @@ func (s *Service) leaveVault(ctx context.Context, actor Actor, vaultID string) e
 		return err
 	}
 	s.recordAudit(ctx, actor, "vault_left", map[string]string{"vault": vaultID})
-	s.PublishVaultsChanged(actor.AccountID)
+	s.publishVaultsChanged(actor.AccountID)
 	s.publishVaultsChangedToMembers(ctx, vaultID)
 	return nil
 }
@@ -236,7 +236,7 @@ func (s *Service) PutItem(ctx context.Context, actor Actor, vaultID, itemID, bas
 	case err != nil:
 		return 0, err
 	}
-	s.PublishVaultChanged(ctx, vaultID, storeItem.Seq)
+	s.publishVaultChanged(ctx, vaultID, storeItem.Seq)
 	return storeItem.Seq, nil
 }
 
@@ -333,9 +333,9 @@ func (s *Service) DeleteVault(ctx context.Context, actor Actor, vaultID string, 
 		detail["itemsDeleted"] = "true"
 	}
 	s.recordAudit(ctx, actor, "vault_deleted", detail)
-	s.PublishVaultsChanged(formerMemberIDs...)
+	s.publishVaultsChanged(formerMemberIDs...)
 	if request.MoveToVaultID != "" {
-		s.PublishVaultChanged(ctx, request.MoveToVaultID, 0)
+		s.publishVaultChanged(ctx, request.MoveToVaultID, 0)
 	}
 	return nil
 }
@@ -414,7 +414,7 @@ func (s *Service) RotateVault(ctx context.Context, actor Actor, vaultID string, 
 	for _, member := range previousMembers {
 		previousAccountIDs = append(previousAccountIDs, member.AccountID)
 	}
-	s.PublishVaultsChanged(previousAccountIDs...)
-	s.PublishVaultChanged(ctx, vaultID, 0)
+	s.publishVaultsChanged(previousAccountIDs...)
+	s.publishVaultChanged(ctx, vaultID, 0)
 	return nil
 }

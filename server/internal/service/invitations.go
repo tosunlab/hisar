@@ -72,7 +72,7 @@ func (s *Service) CreateInvite(ctx context.Context, actor Actor, request *apityp
 func (s *Service) newInviteToken(ctx context.Context, email, role string, createdBy *string) (string, time.Time, error) {
 	token := generateToken()
 	expiresAt := time.Now().Add(s.config.InviteTTL)
-	return token, expiresAt, s.store.CreateInvite(ctx, HashToken(token), email, role, createdBy, s.config.InviteTTL)
+	return token, expiresAt, s.store.CreateInvite(ctx, hashToken(token), email, role, createdBy, s.config.InviteTTL)
 }
 
 // CreateOperatorInvite is the operator's invite: it returns the link instead of emailing it.
@@ -96,7 +96,7 @@ type PendingInvite struct {
 
 // GetPendingInvite returns the invite of a token for the invite page; unknown, used and expired ones are ErrNotFound.
 func (s *Service) GetPendingInvite(ctx context.Context, token string) (*PendingInvite, error) {
-	invite, err := s.store.GetInviteWithInviter(ctx, HashToken(token))
+	invite, err := s.store.GetInviteWithInviter(ctx, hashToken(token))
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, ErrNotFound
 	}
@@ -168,7 +168,7 @@ func (s *Service) notifyShareInvitation(ctx context.Context, inviter *store.Acco
 	recipient, err := s.store.GetAccountByEmail(ctx, email)
 	switch {
 	case err == nil:
-		s.PublishShareInvitationsChanged(recipient.ID)
+		s.publishShareInvitationsChanged(recipient.ID)
 		if s.isEmailConfigured() {
 			s.sendEmail(ctx, composeShareInvitationEmail(inviter, email, role))
 		}
@@ -260,7 +260,7 @@ func (s *Service) AnswerShareInvitation(ctx context.Context, actor Actor, invita
 		return err
 	}
 	s.recordAudit(ctx, actor, eventType, map[string]string{"vault": vaultID, "invitation": invitationID})
-	s.PublishShareInvitationsChangedToOwner(ctx, vaultID, account.ID)
+	s.publishShareInvitationsChangedToOwner(ctx, vaultID, account.ID)
 	if isAccepted {
 		s.scheduleShareAcceptedEmail(invitationID, acceptedAt)
 	}
@@ -309,6 +309,6 @@ func (s *Service) CancelShareInvitation(ctx context.Context, actor Actor, invita
 	if recipient, err := s.store.GetAccountByEmail(ctx, email); err == nil {
 		accountIDs = append(accountIDs, recipient.ID)
 	}
-	s.PublishShareInvitationsChangedToOwner(ctx, vaultID, accountIDs...)
+	s.publishShareInvitationsChangedToOwner(ctx, vaultID, accountIDs...)
 	return nil
 }

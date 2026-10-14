@@ -34,8 +34,8 @@ func generateToken() string {
 	return base64.RawURLEncoding.EncodeToString(randomBytes)
 }
 
-// HashToken is how session and invite tokens are stored: only their SHA-256.
-func HashToken(token string) []byte {
+// hashToken is how session and invite tokens are stored: only their SHA-256.
+func hashToken(token string) []byte {
 	hash := sha256.Sum256([]byte(token))
 	return hash[:]
 }
@@ -49,7 +49,7 @@ type Session struct {
 
 // Authenticate returns the session of a bearer token, or ErrUnauthorized.
 func (s *Service) Authenticate(ctx context.Context, token string) (*Session, error) {
-	stored, err := s.store.GetSessionByHash(ctx, HashToken(token), s.config.SessionTTL)
+	stored, err := s.store.GetSessionByHash(ctx, hashToken(token), s.config.SessionTTL)
 	if err != nil {
 		return nil, err
 	}
@@ -83,7 +83,7 @@ func (s *Service) Prelogin(ctx context.Context, email string) (apitypes.Prelogin
 }
 
 func (s *Service) checkInvite(ctx context.Context, token, email string) bool {
-	invite, err := s.store.GetInviteByHash(ctx, HashToken(token))
+	invite, err := s.store.GetInviteByHash(ctx, hashToken(token))
 	return err == nil && invite.Email == apitypes.NormalizeEmail(email)
 }
 
@@ -140,7 +140,7 @@ func (s *Service) RegisterFinish(ctx context.Context, actor Actor, request *apit
 		KEMSig:       request.PublicKeys.KEMSig,
 	}
 	token, device, newSession := s.newSession(account.ID, request.Device)
-	switch err := s.store.RedeemInvite(ctx, HashToken(request.Invite), account, device, newSession); {
+	switch err := s.store.RedeemInvite(ctx, hashToken(request.Invite), account, device, newSession); {
 	case errors.Is(err, store.ErrNotFound):
 		return apitypes.SessionResponse{}, errInvalidInvite
 	case errors.Is(err, store.ErrExists):
@@ -155,7 +155,7 @@ func (s *Service) RegisterFinish(ctx context.Context, actor Actor, request *apit
 func (s *Service) newSession(accountID string, deviceInfo apitypes.DeviceInfo) (string, *store.Device, *store.Session) {
 	token := generateToken()
 	device := &store.Device{ID: uuid.NewString(), AccountID: accountID, Name: deviceInfo.Name, Platform: deviceInfo.Platform}
-	newSession := &store.Session{TokenHash: HashToken(token), AccountID: accountID, DeviceID: device.ID, ExpiresAt: time.Now().Add(s.config.SessionTTL)}
+	newSession := &store.Session{TokenHash: hashToken(token), AccountID: accountID, DeviceID: device.ID, ExpiresAt: time.Now().Add(s.config.SessionTTL)}
 	return token, device, newSession
 }
 

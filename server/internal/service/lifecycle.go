@@ -171,8 +171,8 @@ func (s *Service) DeleteAccount(ctx context.Context, actor Actor, request *apity
 	}
 	s.events.EndStreams(actor.AccountID, nil)
 	s.Approvals.removeForAccount(actor.AccountID)
-	s.PublishVaultsChanged(deleted.VaultMemberAccountIDs...)
-	s.PublishShareInvitationsChanged(deleted.InvitationAccountIDs...)
+	s.publishVaultsChanged(deleted.VaultMemberAccountIDs...)
+	s.publishShareInvitationsChanged(deleted.InvitationAccountIDs...)
 	s.recordAudit(ctx, Actor{AccountID: actor.AccountID, IP: actor.IP}, "account_deleted", map[string]int{"deletedVaults": deleted.DeletedVaultCount})
 	if s.isEmailConfigured() {
 		message := composeAccountDeletedEmail(deleted.Email, time.Now())
