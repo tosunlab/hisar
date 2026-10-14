@@ -307,22 +307,22 @@ DESKTOP_INVITE=$("$BIN/hisar-server" invite --email desktop@example.com --role a
 DESKTOP_MEMBER_INVITE=$("$BIN/hisar-server" invite --email desktop-member@example.com </dev/null | tail -1)
 DESKTOP_RESULT=$(HISAR_TEST_SERVER_URL="http://127.0.0.1:$PORT" HISAR_TEST_INVITE_LINK="$DESKTOP_INVITE" \
   HISAR_TEST_MEMBER_INVITE_LINK="$DESKTOP_MEMBER_INVITE" \
-  go -C "$ROOT/desktop" test -count=1 -v -run TestIntegrationDesktopFlow ./vault/ 2>&1 || true)
+  go -C "$ROOT/core" test -count=1 -v -run TestIntegrationDesktopFlow ./app/ 2>&1 || true)
 expect "desktop app backend against the server" "$DESKTOP_RESULT" "--- PASS: TestIntegrationDesktopFlow"
 
 LIFECYCLE_INVITE=$("$BIN/hisar-server" invite --email lifecycle@example.com </dev/null | tail -1)
 LIFECYCLE_RESULT=$(HISAR_TEST_SERVER_URL="http://127.0.0.1:$PORT" HISAR_TEST_LIFECYCLE_INVITE_LINK="$LIFECYCLE_INVITE" \
-  go -C "$ROOT/desktop" test -count=1 -v -run TestIntegrationAccountLifecycle ./vault/ 2>&1 || true)
+  go -C "$ROOT/core" test -count=1 -v -run TestIntegrationAccountLifecycle ./app/ 2>&1 || true)
 expect "the Mac changes the master password and replaces the Secret Key, signing out its other device, then deletes the account" "$LIFECYCLE_RESULT" "--- PASS: TestIntegrationAccountLifecycle"
 
 COMMAND_LINE_INVITE=$("$BIN/hisar-server" invite --email cli@example.com </dev/null | tail -1)
 COMMAND_LINE_RESULT=$(HISAR_STANDALONE= HISAR_TEST_SERVER_URL="http://127.0.0.1:$PORT" HISAR_TEST_CLI_INVITE_LINK="$COMMAND_LINE_INVITE" HISAR_TEST_CLI_BINARY="$BIN/hisar" \
-  go -C "$ROOT/desktop" test -count=1 -v -run TestIntegrationCommandLineThroughApp ./vault/ 2>&1 || true)
+  go -C "$ROOT/core" test -count=1 -v -run TestIntegrationCommandLineThroughApp ./app/ 2>&1 || true)
 expect "hisar through the desktop app backend" "$COMMAND_LINE_RESULT" "--- PASS: TestIntegrationCommandLineThroughApp"
 
 AGENT_INVITE=$("$BIN/hisar-server" invite --email agent@example.com </dev/null | tail -1)
 AGENT_RESULT=$(HISAR_STANDALONE= HISAR_TEST_SERVER_URL="http://127.0.0.1:$PORT" HISAR_TEST_AGENT_INVITE_LINK="$AGENT_INVITE" HISAR_TEST_CLI_BINARY="$BIN/hisar" \
-  go -C "$ROOT/desktop" test -count=1 -v -run TestIntegrationAgentThroughApp ./vault/ 2>&1 || true)
+  go -C "$ROOT/desktop" test -count=1 -v -run TestIntegrationAgentThroughApp ./commandline/ 2>&1 || true)
 expect "hisar mcp speaks MCP over stdio through the desktop app backend and shows agents only their vaults" "$AGENT_RESULT" "--- PASS: TestIntegrationAgentThroughApp"
 
 MOBILE_INVITE=$("$BIN/hisar-server" invite --email mobile@example.com </dev/null | tail -1)

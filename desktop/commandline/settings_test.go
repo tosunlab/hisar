@@ -5,10 +5,10 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/tryhisar/hisar/core/app"
 	"github.com/tryhisar/hisar/core/clisocket"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/localstate"
-	"github.com/tryhisar/hisar/desktop/vault"
 )
 
 // memorySecretKeyStore keeps the tests away from the keychain; they never store a Secret Key.
@@ -22,9 +22,9 @@ func (memorySecretKeyStore) StoreSecretKey(crypt.SecretKey) error { return nil }
 
 func (memorySecretKeyStore) DeleteSecretKey(string) error { return nil }
 
-func createAppService(t *testing.T, statePath string) *vault.Service {
+func createAppService(t *testing.T, statePath string) *app.Service {
 	t.Helper()
-	appService, err := vault.CreateService(vault.Config{StatePath: statePath, SecretKeyStore: memorySecretKeyStore{}})
+	appService, err := app.CreateService(app.Config{StatePath: statePath, SecretKeyStore: memorySecretKeyStore{}})
 	if err != nil {
 		t.Fatal(err)
 	}

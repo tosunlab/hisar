@@ -5,15 +5,15 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/tryhisar/hisar/desktop/vault"
+	"github.com/tryhisar/hisar/core/app"
 )
 
 type secretKeyReplacement struct {
-	vault.CredentialChangeResult
+	app.CredentialChangeResult
 	EmergencyKitPath string `json:"emergencyKitPath"`
 }
 
-// ChangeMasterPassword returns vault.CredentialChangeResult as JSON; every other device is signed out.
+// ChangeMasterPassword returns app.CredentialChangeResult as JSON; every other device is signed out.
 func (hisar *Hisar) ChangeMasterPassword(currentPassword, newPassword string) (string, error) {
 	defer releaseMemory()
 	return encodeJSON(hisar.service.ChangeMasterPassword(currentPassword, newPassword))
@@ -27,7 +27,7 @@ func (hisar *Hisar) ReplaceSecretKey(password, directory string) (string, error)
 		return "", err
 	}
 	replacement := secretKeyReplacement{CredentialChangeResult: result}
-	export, err := vault.ExportNewSecretKeyEmergencyKit(hisar.service)
+	export, err := app.ExportNewSecretKeyEmergencyKit(hisar.service)
 	if err == nil {
 		err = os.MkdirAll(directory, 0o700)
 	}
@@ -40,12 +40,12 @@ func (hisar *Hisar) ReplaceSecretKey(password, directory string) (string, error)
 	return encodeJSON(replacement, nil)
 }
 
-// PreviewAccountDeletion returns vault.AccountDeletionPreview as JSON.
+// PreviewAccountDeletion returns app.AccountDeletionPreview as JSON.
 func (hisar *Hisar) PreviewAccountDeletion() (string, error) {
 	return encodeJSON(hisar.service.PreviewAccountDeletion())
 }
 
-// DeleteAccount returns the signed-out vault.Status as JSON; the app then removes its AutoFill identities.
+// DeleteAccount returns the signed-out app.Status as JSON; the app then removes its AutoFill identities.
 func (hisar *Hisar) DeleteAccount(password, email string) (string, error) {
 	defer releaseMemory()
 	if password == "" {

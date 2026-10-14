@@ -4,9 +4,9 @@ package loginitem
 import (
 	"log"
 
+	"github.com/tryhisar/hisar/core/app"
 	"github.com/tryhisar/hisar/core/localstate"
 	"github.com/tryhisar/hisar/desktop/background"
-	"github.com/tryhisar/hisar/desktop/vault"
 )
 
 // Status is the switch and what the system reports.
@@ -20,11 +20,11 @@ type Status struct {
 
 // Service is bound to the UI for the "Open Hisar at login" switch.
 type Service struct {
-	appService *vault.Service
+	appService *app.Service
 	loginItem  background.LoginItem
 }
 
-func NewService(appService *vault.Service, loginItem background.LoginItem) *Service {
+func NewService(appService *app.Service, loginItem background.LoginItem) *Service {
 	return &Service{appService: appService, loginItem: loginItem}
 }
 
@@ -34,7 +34,7 @@ func ApplyOnLaunch(service *Service) error {
 	if state, err := service.loginItem.GetState(); err != nil || state == background.LoginItemUnavailable {
 		return err
 	}
-	settings := vault.ReadSettings(service.appService)
+	settings := app.ReadSettings(service.appService)
 	if settings.IsOpenAtLoginConfigured {
 		return nil
 	}
@@ -45,7 +45,7 @@ func ApplyOnLaunch(service *Service) error {
 			log.Printf("open at login: %v", registerError)
 		}
 	}
-	if err := vault.UpdateSettings(service.appService, func(settings *localstate.Settings) { settings.IsOpenAtLoginConfigured = true }); err != nil {
+	if err := app.UpdateSettings(service.appService, func(settings *localstate.Settings) { settings.IsOpenAtLoginConfigured = true }); err != nil {
 		return err
 	}
 	return registerError
@@ -57,7 +57,7 @@ func (service *Service) GetLoginItemStatus() Status {
 
 func (service *Service) buildStatus(changeError error) Status {
 	state, err := service.loginItem.GetState()
-	isOpenAtLogin := !vault.ReadSettings(service.appService).IsOpenAtLoginDisabled
+	isOpenAtLogin := !app.ReadSettings(service.appService).IsOpenAtLoginDisabled
 	status := Status{
 		IsAvailable:           state != background.LoginItemUnavailable,
 		IsOpenAtLogin:         isOpenAtLogin && state != background.LoginItemUnavailable,
@@ -78,7 +78,7 @@ func (service *Service) SetOpenAtLogin(isEnabled bool) (Status, error) {
 	if state, _ := service.loginItem.GetState(); state == background.LoginItemUnavailable {
 		return service.buildStatus(nil), background.ErrUnavailable
 	}
-	saveError := vault.UpdateSettings(service.appService, func(settings *localstate.Settings) {
+	saveError := app.UpdateSettings(service.appService, func(settings *localstate.Settings) {
 		settings.IsOpenAtLoginDisabled = !isEnabled
 		settings.IsOpenAtLoginConfigured = true
 	})

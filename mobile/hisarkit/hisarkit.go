@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tryhisar/hisar/core/app"
 	"github.com/tryhisar/hisar/core/browserprotocol"
 	"github.com/tryhisar/hisar/core/crypt"
-	"github.com/tryhisar/hisar/desktop/vault"
 )
 
 // SecretKeyStore keeps the Secret Key in the iOS Keychain, shared with the AutoFill extension.
@@ -48,7 +48,7 @@ type EventListener interface {
 }
 
 type Hisar struct {
-	service   *vault.Service
+	service   *app.Service
 	biometric Biometric
 }
 
@@ -57,7 +57,7 @@ func New(stateDirectory, deviceName string, secretKeyStore SecretKeyStore, biome
 	if secretKeyStore == nil {
 		return nil, errors.New("hisarkit: a SecretKeyStore is required")
 	}
-	config := vault.Config{
+	config := app.Config{
 		StatePath:                     filepath.Join(stateDirectory, "hisar.json"),
 		CachePath:                     filepath.Join(stateDirectory, "hisar-cache.db"),
 		DeviceName:                    deviceName,
@@ -76,9 +76,9 @@ func New(stateDirectory, deviceName string, secretKeyStore SecretKeyStore, biome
 		config.LockNotifier = lockNotifierAdapter{listener: listener}
 		config.OnApprovalEvent = listener.OnApprovalEvent
 		config.OnRemoteChange = listener.OnRemoteChange
-		config.OnUpdateRequired = func(vault.UpdateRequirement) { listener.OnUpdateRequired() }
+		config.OnUpdateRequired = func(app.UpdateRequirement) { listener.OnUpdateRequired() }
 	}
-	service, err := vault.CreateService(config)
+	service, err := app.CreateService(config)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +135,7 @@ func releaseMemory() {
 	debug.FreeOSMemory()
 }
 
-// Status returns vault.Status as JSON.
+// Status returns app.Status as JSON.
 func (hisar *Hisar) Status() string {
 	encoded, _ := encodeJSON(hisar.service.GetStatus(), nil)
 	return encoded
@@ -143,10 +143,10 @@ func (hisar *Hisar) Status() string {
 
 // SetAppVersion must run right after New, before any request: the server compares it with its minimum for iOS.
 func (hisar *Hisar) SetAppVersion(version string) {
-	vault.SetAppVersion(hisar.service, version)
+	app.SetAppVersion(hisar.service, version)
 }
 
-// CheckMinimumVersion asks the server whether it still accepts this version and returns vault.Status as JSON.
+// CheckMinimumVersion asks the server whether it still accepts this version and returns app.Status as JSON.
 func (hisar *Hisar) CheckMinimumVersion() string {
 	encoded, _ := encodeJSON(hisar.service.CheckMinimumVersion(), nil)
 	return encoded
@@ -204,17 +204,17 @@ func (hisar *Hisar) ReportActivity() {
 	hisar.service.ReportActivity()
 }
 
-// ListAllVault returns []vault.VaultSummary as JSON; it also syncs every vault.
+// ListAllVault returns []app.VaultSummary as JSON; it also syncs every vault.
 func (hisar *Hisar) ListAllVault() (string, error) {
 	return encodeJSON(hisar.service.ListAllVault())
 }
 
-// CreateVault creates a shared vault owned by the current user and returns its vault.VaultSummary as JSON.
+// CreateVault creates a shared vault owned by the current user and returns its app.VaultSummary as JSON.
 func (hisar *Hisar) CreateVault(name string) (string, error) {
 	return encodeJSON(hisar.service.CreateVault(name))
 }
 
-// ListAllPerson returns the user and the people they share a vault with ([]vault.Person) as JSON; isCurrentUser marks the user.
+// ListAllPerson returns the user and the people they share a vault with ([]app.Person) as JSON; isCurrentUser marks the user.
 func (hisar *Hisar) ListAllPerson() (string, error) {
 	return encodeJSON(hisar.service.ListAllPerson())
 }
@@ -224,12 +224,12 @@ func (hisar *Hisar) InvitePerson(email string) error {
 	return hisar.service.InvitePerson(email)
 }
 
-// ListAllShareInvitation returns vault.ShareInvitations as JSON, after completing shares that people accepted.
+// ListAllShareInvitation returns app.ShareInvitations as JSON, after completing shares that people accepted.
 func (hisar *Hisar) ListAllShareInvitation() (string, error) {
 	return encodeJSON(hisar.service.ListAllShareInvitation())
 }
 
-// ListAllShareAwaitingUnlock returns []vault.ShareAwaitingUnlock as JSON for the lock screen: shares people accepted that this
+// ListAllShareAwaitingUnlock returns []app.ShareAwaitingUnlock as JSON for the lock screen: shares people accepted that this
 // app finishes once unlocked. It is empty while unlocked, offline or signed out.
 func (hisar *Hisar) ListAllShareAwaitingUnlock() (string, error) {
 	return encodeJSON(hisar.service.ListAllShareAwaitingUnlock())
@@ -247,7 +247,7 @@ func (hisar *Hisar) CancelShareInvitation(invitationID string) error {
 	return hisar.service.CancelShareInvitation(invitationID)
 }
 
-// ListAllVaultMember returns who has access to a shared vault ([]vault.VaultMember) as JSON, owners first.
+// ListAllVaultMember returns who has access to a shared vault ([]app.VaultMember) as JSON, owners first.
 func (hisar *Hisar) ListAllVaultMember(vaultID string) (string, error) {
 	return encodeJSON(hisar.service.ListAllVaultMember(vaultID))
 }
@@ -266,19 +266,19 @@ func (hisar *Hisar) RemoveVaultMember(vaultID, accountID string) error {
 	return hisar.service.RemoveVaultMember(vaultID, accountID)
 }
 
-// ListAllItem returns []vault.ItemDetail without passwords, notes, fields and one-time password secrets (hasOneTimePassword says whether there is one), as JSON.
+// ListAllItem returns []app.ItemDetail without passwords, notes, fields and one-time password secrets (hasOneTimePassword says whether there is one), as JSON.
 func (hisar *Hisar) ListAllItem(vaultID string) (string, error) {
 	return encodeJSON(hisar.service.ListAllItem(vaultID))
 }
 
-// GetItem returns one vault.ItemDetail with its secrets, as JSON.
+// GetItem returns one app.ItemDetail with its secrets, as JSON.
 func (hisar *Hisar) GetItem(vaultID, itemID string) (string, error) {
 	return encodeJSON(hisar.service.GetItem(vaultID, itemID))
 }
 
-// SaveItem takes and returns a vault.ItemDetail as JSON; an empty id creates the item.
+// SaveItem takes and returns a app.ItemDetail as JSON; an empty id creates the item.
 func (hisar *Hisar) SaveItem(vaultID, itemJSON string) (string, error) {
-	var detail vault.ItemDetail
+	var detail app.ItemDetail
 	if err := json.Unmarshal([]byte(itemJSON), &detail); err != nil {
 		return "", errors.New("hisarkit: the item is not valid JSON")
 	}
@@ -289,7 +289,7 @@ func (hisar *Hisar) DeleteItem(vaultID, itemID string) error {
 	return hisar.service.DeleteItem(vaultID, itemID)
 }
 
-// GetOneTimeCode returns vault.OneTimeCode ({"code", "expiresAt", "period"}) as JSON; the app asks again once it expires.
+// GetOneTimeCode returns app.OneTimeCode ({"code", "expiresAt", "period"}) as JSON; the app asks again once it expires.
 func (hisar *Hisar) GetOneTimeCode(vaultID, itemID string) (string, error) {
 	return encodeJSON(hisar.service.GetOneTimeCode(vaultID, itemID))
 }
@@ -300,22 +300,22 @@ func (hisar *Hisar) CopyField(vaultID, itemID, fieldName string) error {
 }
 
 func (hisar *Hisar) GeneratePassword(length int, isDigitIncluded, isSymbolIncluded bool) (string, error) {
-	return hisar.service.GeneratePassword(vault.PasswordConfig{Length: length, Digits: isDigitIncluded, Symbols: isSymbolIncluded})
+	return hisar.service.GeneratePassword(app.PasswordConfig{Length: length, Digits: isDigitIncluded, Symbols: isSymbolIncluded})
 }
 
 // ListAllLoginForService returns the logins matching an AutoFill service identifier (a URL or a bare domain), as JSON.
 func (hisar *Hisar) ListAllLoginForService(serviceIdentifier string) (string, error) {
-	return encodeJSON(vault.ListAllLoginForURL(hisar.service, convertServiceIdentifierToURL(serviceIdentifier)))
+	return encodeJSON(app.ListAllLoginForURL(hisar.service, convertServiceIdentifierToURL(serviceIdentifier)))
 }
 
 // GetLoginForService returns {"username", "password", "hasOneTimePassword"} as JSON after checking the login matches the service again.
 func (hisar *Hisar) GetLoginForService(vaultID, itemID, serviceIdentifier string) (string, error) {
-	return encodeJSON(vault.GetLoginForURL(hisar.service, vaultID, itemID, convertServiceIdentifierToURL(serviceIdentifier)))
+	return encodeJSON(app.GetLoginForURL(hisar.service, vaultID, itemID, convertServiceIdentifierToURL(serviceIdentifier)))
 }
 
-// GetOneTimeCodeForService returns vault.OneTimeCode as JSON after checking the login matches the service, as GetLoginForService does.
+// GetOneTimeCodeForService returns app.OneTimeCode as JSON after checking the login matches the service, as GetLoginForService does.
 func (hisar *Hisar) GetOneTimeCodeForService(vaultID, itemID, serviceIdentifier string) (string, error) {
-	return encodeJSON(vault.GetOneTimeCodeForURL(hisar.service, vaultID, itemID, convertServiceIdentifierToURL(serviceIdentifier)))
+	return encodeJSON(app.GetOneTimeCodeForURL(hisar.service, vaultID, itemID, convertServiceIdentifierToURL(serviceIdentifier)))
 }
 
 func convertServiceIdentifierToURL(serviceIdentifier string) string {
@@ -326,9 +326,9 @@ func convertServiceIdentifierToURL(serviceIdentifier string) string {
 	return "https://" + serviceIdentifier
 }
 
-// ListAllPasskey returns every passkey in a login ([]vault.StoredPasskey, binary values base64url) as JSON, for the credential identity store.
+// ListAllPasskey returns every passkey in a login ([]app.StoredPasskey, binary values base64url) as JSON, for the credential identity store.
 func (hisar *Hisar) ListAllPasskey() (string, error) {
-	return encodePasskeyJSON(vault.ListAllPasskey(hisar.service))
+	return encodePasskeyJSON(app.ListAllPasskey(hisar.service))
 }
 
 // ListAllPasskeyForRelyingParty takes the allowed credential IDs as a JSON array of base64url strings; an empty array allows all.
@@ -337,7 +337,7 @@ func (hisar *Hisar) ListAllPasskeyForRelyingParty(relyingPartyID, allowedCredent
 	if err != nil {
 		return "", err
 	}
-	return encodePasskeyJSON(vault.ListAllPasskeyForRelyingParty(hisar.service, relyingPartyID, allAllowedCredentialID))
+	return encodePasskeyJSON(app.ListAllPasskeyForRelyingParty(hisar.service, relyingPartyID, allAllowedCredentialID))
 }
 
 // PreparePasskeyRegistration returns {"isExcluded", "logins"} as JSON: the writable logins matching the relying party.
@@ -346,24 +346,24 @@ func (hisar *Hisar) PreparePasskeyRegistration(relyingPartyID, excludedCredentia
 	if err != nil {
 		return "", err
 	}
-	return encodePasskeyJSON(vault.PreparePasskeyRegistration(hisar.service, relyingPartyID, allExcludedCredentialID))
+	return encodePasskeyJSON(app.PreparePasskeyRegistration(hisar.service, relyingPartyID, allExcludedCredentialID))
 }
 
-// CreatePasskey takes a vault.PasskeyRegistration and returns a vault.PasskeyRegistrationResult, as JSON; the private key stays in Go.
+// CreatePasskey takes a app.PasskeyRegistration and returns a app.PasskeyRegistrationResult, as JSON; the private key stays in Go.
 func (hisar *Hisar) CreatePasskey(registrationJSON string) (string, error) {
-	var registration vault.PasskeyRegistration
+	var registration app.PasskeyRegistration
 	if err := json.Unmarshal([]byte(registrationJSON), &registration); err != nil {
 		return "", errors.New("hisarkit: the passkey registration is not valid JSON")
 	}
-	return encodePasskeyJSON(vault.CreatePasskeyForRelyingParty(hisar.service, registration))
+	return encodePasskeyJSON(app.CreatePasskeyForRelyingParty(hisar.service, registration))
 }
 
-// AssertPasskey signs authenticatorData || clientDataHash and returns a vault.PasskeyAssertion as JSON; IDs and the hash are base64url.
+// AssertPasskey signs authenticatorData || clientDataHash and returns a app.PasskeyAssertion as JSON; IDs and the hash are base64url.
 func (hisar *Hisar) AssertPasskey(relyingPartyID, credentialID, clientDataHash string) (string, error) {
-	return encodePasskeyJSON(vault.SignPasskeyForRelyingParty(hisar.service, relyingPartyID, credentialID, clientDataHash))
+	return encodePasskeyJSON(app.SignPasskeyForRelyingParty(hisar.service, relyingPartyID, credentialID, clientDataHash))
 }
 
-// DeletePasskey returns the item without the passkey as vault.ItemDetail JSON.
+// DeletePasskey returns the item without the passkey as app.ItemDetail JSON.
 func (hisar *Hisar) DeletePasskey(vaultID, itemID, credentialID string) (string, error) {
 	return encodeJSON(hisar.service.DeletePasskey(vaultID, itemID, credentialID))
 }

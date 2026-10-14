@@ -11,3 +11,21 @@ export interface Installation {
     "isSymlink": boolean;
     "description": string;
 }
+
+/**
+ * Status is Settings → Developer tools → Command-line tool: the installed hisar, the PATH, and the app integration.
+ */
+export interface Status {
+    "isAvailable": boolean;
+    "bundledPath": string;
+    "installedPath": string;
+    "allInstallation": Installation[] | null;
+    "pathCommandPath": string;
+    "pathCommandTarget": string;
+    "isPathCommandFromThisApp": boolean;
+    "pathHint": string;
+    "isIntegrationEnabled": boolean;
+    "socketPath": string;
+    "isServing": boolean;
+    "errorMessage": string;
+}

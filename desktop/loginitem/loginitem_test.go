@@ -5,10 +5,10 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/tryhisar/hisar/core/app"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/localstate"
 	"github.com/tryhisar/hisar/desktop/background"
-	"github.com/tryhisar/hisar/desktop/vault"
 )
 
 type fakeLoginItem struct {
@@ -49,7 +49,7 @@ func (loginItem *fakeLoginItem) OpenSystemSettings() error {
 
 func createLoginItemTestService(t *testing.T, statePath string, loginItem *fakeLoginItem) *Service {
 	t.Helper()
-	appService, err := vault.CreateService(vault.Config{StatePath: statePath, SecretKeyStore: memorySecretKeyStore{}})
+	appService, err := app.CreateService(app.Config{StatePath: statePath, SecretKeyStore: memorySecretKeyStore{}})
 	if err != nil {
 		t.Fatal(err)
 	}

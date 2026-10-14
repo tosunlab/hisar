@@ -15,6 +15,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 
+	"github.com/tryhisar/hisar/core/app"
 	"github.com/tryhisar/hisar/core/appversion"
 	"github.com/tryhisar/hisar/core/browserprotocol"
 	"github.com/tryhisar/hisar/core/cliprotocol"
@@ -31,7 +32,6 @@ import (
 	"github.com/tryhisar/hisar/desktop/loginitem"
 	"github.com/tryhisar/hisar/desktop/systemidle"
 	"github.com/tryhisar/hisar/desktop/updater"
-	"github.com/tryhisar/hisar/desktop/vault"
 	"github.com/tryhisar/hisar/desktop/windowplacement"
 )
 
@@ -43,8 +43,8 @@ func init() {
 	application.RegisterEvent[string]("unlocked")
 	application.RegisterEvent[agent.ApprovalEvent](agent.ApprovalEventName)
 	application.RegisterEvent[string](agent.ApprovalClosedEventName)
-	application.RegisterEvent[vault.Theme]("theme-changed")
-	application.RegisterEvent[vault.UpdateRequirement]("update-required")
+	application.RegisterEvent[app.Theme]("theme-changed")
+	application.RegisterEvent[app.UpdateRequirement]("update-required")
 	application.RegisterEvent[string]("invite-link")
 }
 
@@ -72,7 +72,7 @@ func (notifier *wailsLockNotifier) NotifyShareLinksChange() {
 }
 
 // NotifyThemeChange tells every window, the approval window too, and switches the native parts to light or dark.
-func (notifier *wailsLockNotifier) NotifyThemeChange(theme vault.Theme) {
+func (notifier *wailsLockNotifier) NotifyThemeChange(theme app.Theme) {
 	background.SetAppAppearance(theme.Appearance)
 	if notifier.app != nil {
 		notifier.app.Event.Emit("theme-changed", theme)
@@ -179,8 +179,8 @@ func main() {
 	fileOpener := &wailsFileOpener{}
 	var agentServer *sshagent.Server
 	var approver *agent.Approver
-	var showUpdateRequired func(requirement vault.UpdateRequirement)
-	vaultConfig := vault.Config{
+	var showUpdateRequired func(requirement app.UpdateRequirement)
+	vaultConfig := app.Config{
 		StatePath:             statePath,
 		CachePath:             cachePath,
 		DeviceName:            getDeviceName(),
@@ -203,30 +203,30 @@ func main() {
 		OnRemoteChange:     lockNotifier.NotifyRemoteChange,
 		OnShareLinksChange: lockNotifier.NotifyShareLinksChange,
 		OnThemeChange:      lockNotifier.NotifyThemeChange,
-		OnUpdateRequired: func(requirement vault.UpdateRequirement) {
+		OnUpdateRequired: func(requirement app.UpdateRequirement) {
 			if showUpdateRequired != nil {
 				showUpdateRequired(requirement)
 			}
 		},
 	}
-	vaultService, err := vault.CreateService(vaultConfig)
+	vaultService, err := app.CreateService(vaultConfig)
 	if err != nil {
 		log.Fatal(err)
 	}
-	updateService := vault.CreateUpdateService(vaultService, updater.Updater{})
+	updateService := app.CreateUpdateService(vaultService, updater.Updater{})
 	executablePath, err := os.Executable()
 	if err != nil {
 		log.Fatal(err)
 	}
 	executableDirectory := filepath.Dir(executablePath)
 
-	var app *application.App
+	var wailsApp *application.App
 	var window *application.WebviewWindow
 	// The browser bridge calls this from its own goroutines; AppKit aborts unless window calls run on the main thread.
 	showWindow := func() {
 		application.InvokeAsync(func() {
 			background.SetDockIconVisible(true)
-			app.Show()
+			wailsApp.Show()
 			window.UnMinimise()
 			window.Show()
 			window.Focus()
@@ -243,12 +243,12 @@ func main() {
 		}
 		return approvalWindow.NativeWindow()
 	}, biometric.PromptSizeSmall)
-	approvalPreference := vault.CreateApprovalPreference(vaultService)
+	approvalPreference := app.CreateApprovalPreference(vaultService)
 	requesterResolver := appinfo.CreateSystemResolver()
 	approver = agent.CreateApprover(agent.ApproverConfig{
 		Biometric:       approvalTouchID,
 		CancelBiometric: approvalTouchID.CancelPrompt,
-		Emit:            func(eventName string, data any) { app.Event.Emit(eventName, data) },
+		Emit:            func(eventName string, data any) { wailsApp.Event.Emit(eventName, data) },
 		ShowApprovalWindow: func(isCompact bool) {
 			application.InvokeAsync(func() {
 				placeApprovalWindow(approvalWindow, isCompact, 0, true)
@@ -261,8 +261,8 @@ func main() {
 		GetAppIconPNG:      requesterResolver.GetIconPNG,
 		HomeDirectory:      homeDirectory,
 		IsCompactApproval:  approvalPreference.IsCompactSSHApproval,
-		Unlocker:           vault.CreateApprovalUnlocker(vaultService, func() { app.Event.Emit("unlocked", "approval") }),
-		PhoneApprover:      vault.CreatePhoneApprover(vaultService),
+		Unlocker:           app.CreateApprovalUnlocker(vaultService, func() { wailsApp.Event.Emit("unlocked", "approval") }),
+		PhoneApprover:      app.CreatePhoneApprover(vaultService),
 		GetSigningRememberDuration: func() time.Duration {
 			return time.Duration(approvalPreference.GetSigningRememberSeconds()) * time.Second
 		},
@@ -274,7 +274,7 @@ func main() {
 			return requester.App.Path, requester.App.Path != ""
 		},
 	}
-	agentServer = sshagent.CreateServer(vault.CreateSSHKeySource(vaultService), approver, peerResolver)
+	agentServer = sshagent.CreateServer(app.CreateSSHKeySource(vaultService), approver, peerResolver)
 	agentServer.SetAllKnownHostsPath([]string{filepath.Join(homeDirectory, ".ssh", "known_hosts"), "/etc/ssh/ssh_known_hosts"})
 	socketPath := os.Getenv("HISAR_SSH_AGENT_SOCKET")
 	if socketPath == "" {
@@ -294,8 +294,8 @@ func main() {
 	agentStopped := make(chan struct{})
 
 	browserHostPath := filepath.Join(executableDirectory, "hisar-browser-host")
-	browserBridge := vault.CreateBrowserBridge(vaultService, vault.BrowserBridgeConfig{
-		ShowPairing: func(request *vault.BrowserPairingRequest) { app.Event.Emit("browser-pairing", request) },
+	browserBridge := app.CreateBrowserBridge(vaultService, app.BrowserBridgeConfig{
+		ShowPairing: func(request *app.BrowserPairingRequest) { wailsApp.Event.Emit("browser-pairing", request) },
 		ShowWindow:  showWindow,
 		InstallAllHostManifest: func() []browserprotocol.BrowserInstallation {
 			if _, err := os.Stat(browserHostPath); err != nil {
@@ -308,10 +308,10 @@ func main() {
 	if browserSocketPath == "" {
 		browserSocketPath = browser.GetDefaultSocketPath(homeDirectory)
 	}
-	browserServer := browser.CreateServer(vault.CreateBrowserRequestHandler(browserBridge), localsocket.SystemPeerResolver{}, browserHostPath)
+	browserServer := browser.CreateServer(app.CreateBrowserRequestHandler(browserBridge), localsocket.SystemPeerResolver{}, browserHostPath)
 
 	commandLineApprovals := clisocket.CreateSessionApprovals(clisocket.DefaultApprovalLifetime, nil)
-	commandLineBridge := vault.CreateCommandLineBridge(vaultService, commandLineApprovals)
+	commandLineBridge := app.CreateCommandLineBridge(vaultService, commandLineApprovals)
 	var commandLineService *commandline.Service
 	commandLineServer := clisocket.CreateServer(clisocket.ServerConfig{
 		Handler:             commandLineBridge,
@@ -335,11 +335,11 @@ func main() {
 	}), commandLineRunner)
 
 	loginItemService := loginitem.NewService(vaultService, background.CreateLoginItem(homeDirectory))
-	inviteLinkService := vault.CreateInviteLinkService()
+	inviteLinkService := app.CreateInviteLinkService()
 	isHiddenLaunchRequested := background.IsHiddenLaunchRequested(os.Args[1:])
 	background.StartLaunchObserver()
 
-	app = application.New(application.Options{
+	wailsApp = application.New(application.Options{
 		Name:        "Hisar",
 		Description: "End-to-end encrypted password, SSH key and secrets manager for developers",
 		SingleInstance: &application.SingleInstanceOptions{
@@ -381,9 +381,9 @@ func main() {
 			DisableQuitOnLastWindowClosed: true,
 		},
 	})
-	clipboard.app, lockNotifier.app = app, app
+	clipboard.app, lockNotifier.app = wailsApp, wailsApp
 
-	window = app.Window.NewWithOptions(application.WebviewWindowOptions{
+	window = wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:     "Hisar",
 		Width:     1100,
 		Height:    700,
@@ -399,7 +399,7 @@ func main() {
 		URL:              "/",
 	})
 	fileSaver.chooseSavePath = func(defaultFileName string) (string, error) {
-		return app.Dialog.SaveFile().
+		return wailsApp.Dialog.SaveFile().
 			SetFilename(defaultFileName).
 			AddFilter("PDF document", "*.pdf").
 			CanCreateDirectories(true).
@@ -408,7 +408,7 @@ func main() {
 	}
 	// No file type filter: exports often have other extensions, and the importer detects the format from the content.
 	fileOpener.chooseOpenPath = func() (string, error) {
-		return app.Dialog.OpenFile().
+		return wailsApp.Dialog.OpenFile().
 			SetTitle("Import passwords").
 			CanChooseFiles(true).
 			AttachToWindow(window).
@@ -420,23 +420,23 @@ func main() {
 		event.Cancel()
 		hideWindow()
 	})
-	app.Event.RegisterApplicationEventHook(events.Mac.ApplicationShouldHandleReopen, func(event *application.ApplicationEvent) {
+	wailsApp.Event.RegisterApplicationEventHook(events.Mac.ApplicationShouldHandleReopen, func(event *application.ApplicationEvent) {
 		event.Cancel()
 		showWindow()
 	})
-	showUpdateRequired = func(requirement vault.UpdateRequirement) {
-		app.Event.Emit("update-required", requirement)
+	showUpdateRequired = func(requirement app.UpdateRequirement) {
+		wailsApp.Event.Emit("update-required", requirement)
 		showWindow()
 	}
-	app.Event.OnApplicationEvent(events.Common.ApplicationLaunchedWithUrl, func(event *application.ApplicationEvent) {
-		invite, err := vault.OpenInviteLink(inviteLinkService, event.Context().URL())
+	wailsApp.Event.OnApplicationEvent(events.Common.ApplicationLaunchedWithUrl, func(event *application.ApplicationEvent) {
+		invite, err := app.OpenInviteLink(inviteLinkService, event.Context().URL())
 		if err != nil {
 			return
 		}
-		app.Event.Emit("invite-link", invite)
+		wailsApp.Event.Emit("invite-link", invite)
 		showWindow()
 	})
-	app.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
+	wailsApp.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
 		background.SetAppAppearance(vaultService.GetTheme().Appearance)
 		updater.Start()
 		go vaultService.CheckMinimumVersion()
@@ -452,9 +452,9 @@ func main() {
 			}
 		}()
 	})
-	createMenuBarItem(app, vaultService, showWindow)
+	createMenuBarItem(wailsApp, vaultService, showWindow)
 
-	approvalWindow = app.Window.NewWithOptions(application.WebviewWindowOptions{
+	approvalWindow = wailsApp.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:                "ssh-approval",
 		Title:               "Hisar Access Requested",
 		Width:               fullApprovalWidth,
@@ -489,13 +489,13 @@ func main() {
 	}()
 	commandline.StartIntegration(commandLineService)
 	go func() {
-		vault.InstallBrowserHostManifest(browserBridge)
+		app.InstallBrowserHostManifest(browserBridge)
 		if err := browserServer.Serve(agentContext, browserSocketPath); err != nil {
 			log.Printf("browser extension bridge on %s: %v", browserSocketPath, err)
 		}
 	}()
 
-	if err := app.Run(); err != nil {
+	if err := wailsApp.Run(); err != nil {
 		log.Fatal(err)
 	}
 }

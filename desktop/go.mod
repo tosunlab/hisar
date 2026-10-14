@@ -3,7 +3,6 @@ module github.com/tryhisar/hisar/desktop
 go 1.26.0
 
 require (
-	github.com/go-webauthn/webauthn v0.18.2
 	github.com/wailsapp/wails/v3 v3.0.0-beta.23
 	golang.org/x/crypto v0.57.0
 )
@@ -19,16 +18,10 @@ require (
 	github.com/bytemare/secp256k1 v0.3.0 // indirect
 	github.com/danieljoos/wincred v1.2.3 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/fxamacker/cbor/v2 v2.9.4 // indirect
-	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
-	github.com/go-webauthn/x v0.3.1 // indirect
-	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
-	github.com/google/go-tpm v0.9.8 // indirect
 	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/gtank/ristretto255 v0.2.0 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
-	github.com/philhofer/fwd v1.2.0 // indirect
 	github.com/phpdave11/gofpdi v1.0.14-0.20211212211723-1f10f9844311 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
@@ -36,8 +29,7 @@ require (
 	github.com/segmentio/encoding v0.5.4 // indirect
 	github.com/signintech/gopdf v0.38.1 // indirect
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e // indirect
-	github.com/tinylib/msgp v1.6.4 // indirect
-	github.com/x448/float16 v0.8.4 // indirect
+	github.com/stretchr/testify v1.12.1 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
 	github.com/zalando/go-keyring v0.2.8 // indirect
 	golang.org/x/image v0.46.0 // indirect

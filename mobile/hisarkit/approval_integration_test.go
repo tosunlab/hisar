@@ -18,13 +18,13 @@ import (
 	sshAgentClient "golang.org/x/crypto/ssh/agent"
 
 	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/app"
 	"github.com/tryhisar/hisar/core/approval"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/localsocket"
 	"github.com/tryhisar/hisar/core/localstate"
 	"github.com/tryhisar/hisar/core/sshagent"
 	"github.com/tryhisar/hisar/desktop/agent"
-	"github.com/tryhisar/hisar/desktop/vault"
 )
 
 type approvalEventRecorder struct {
@@ -215,7 +215,7 @@ func TestIntegrationPhoneApproval(t *testing.T) {
 	}
 
 	macDirectory := t.TempDir()
-	mac, err := vault.CreateService(vault.Config{
+	mac, err := app.CreateService(app.Config{
 		StatePath:      filepath.Join(macDirectory, "desktop.json"),
 		CachePath:      filepath.Join(macDirectory, "desktop-cache.db"),
 		DeviceName:     "Test MacBook Pro.local",
@@ -225,7 +225,7 @@ func TestIntegrationPhoneApproval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	phoneApprover := vault.CreatePhoneApprover(mac)
+	phoneApprover := app.CreatePhoneApprover(mac)
 	if _, err := mac.SignIn(serverURL, email, signUp.SecretKey, password); err != nil {
 		t.Fatal(err)
 	}
@@ -252,7 +252,7 @@ func TestIntegrationPhoneApproval(t *testing.T) {
 	}
 	dialog := &macDialog{allEvent: make(chan agent.ApprovalEvent, 8)}
 	approver := agent.CreateApprover(agent.ApproverConfig{Emit: dialog.emit, PhoneApprover: phoneApprover, Timeout: 30 * time.Second})
-	agentServer := sshagent.CreateServer(vault.CreateSSHKeySource(mac), approver, localsocket.SystemPeerResolver{})
+	agentServer := sshagent.CreateServer(app.CreateSSHKeySource(mac), approver, localsocket.SystemPeerResolver{})
 	socketDirectory, err := os.MkdirTemp("", "hisar")
 	if err != nil {
 		t.Fatal(err)

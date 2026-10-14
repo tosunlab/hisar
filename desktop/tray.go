@@ -6,7 +6,7 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
-	"github.com/tryhisar/hisar/desktop/vault"
+	"github.com/tryhisar/hisar/core/app"
 )
 
 //go:embed build/menu-bar-icon.png
@@ -17,17 +17,17 @@ var linuxTrayIcon []byte
 
 func getLockMenuLabel(state string) string {
 	switch state {
-	case vault.StateUnlocked:
+	case app.StateUnlocked:
 		return "Lock"
-	case vault.StateLocked:
+	case app.StateLocked:
 		return "Unlock…"
 	}
 	return "Sign In…"
 }
 
 // createMenuBarItem keeps Hisar reachable while its window is closed: open, lock or unlock, and quit.
-func createMenuBarItem(app *application.App, vaultService *vault.Service, showMainWindow func()) {
-	tray := app.SystemTray.New()
+func createMenuBarItem(wailsApp *application.App, vaultService *app.Service, showMainWindow func()) {
+	tray := wailsApp.SystemTray.New()
 	if runtime.GOOS == "darwin" {
 		tray.SetTemplateIcon(menuBarIcon)
 	} else {
@@ -38,17 +38,17 @@ func createMenuBarItem(app *application.App, vaultService *vault.Service, showMa
 	menu.Add("Open Hisar").OnClick(func(*application.Context) { showMainWindow() })
 	lockItem := menu.Add(getLockMenuLabel(vaultService.GetStatus().State))
 	lockItem.OnClick(func(*application.Context) {
-		if vaultService.GetStatus().State != vault.StateUnlocked {
+		if vaultService.GetStatus().State != app.StateUnlocked {
 			showMainWindow()
 			return
 		}
 		vaultService.Lock()
-		app.Event.Emit("locked", "menu-bar")
+		wailsApp.Event.Emit("locked", "menu-bar")
 	})
 	menu.AddSeparator()
-	menu.Add("Quit Hisar").OnClick(func(*application.Context) { app.Quit() })
+	menu.Add("Quit Hisar").OnClick(func(*application.Context) { wailsApp.Quit() })
 	tray.SetMenu(menu)
-	vault.AddStatusListener(vaultService, func() {
+	app.AddStatusListener(vaultService, func() {
 		label := getLockMenuLabel(vaultService.GetStatus().State)
 		application.InvokeAsync(func() { lockItem.SetLabel(label) })
 	})

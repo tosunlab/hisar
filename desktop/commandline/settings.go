@@ -1,9 +1,9 @@
 package commandline
 
 import (
+	"github.com/tryhisar/hisar/core/app"
 	"github.com/tryhisar/hisar/core/clisocket"
 	"github.com/tryhisar/hisar/core/localstate"
-	"github.com/tryhisar/hisar/desktop/vault"
 )
 
 // Runner serves the CLI socket while the integration is on.
@@ -31,12 +31,12 @@ type Status struct {
 
 // Service is bound to the UI for Settings → Developer tools → Command-line tool.
 type Service struct {
-	appService *vault.Service
+	appService *app.Service
 	installer  *Installer
 	runner     Runner
 }
 
-func NewService(appService *vault.Service, installer *Installer, runner Runner) *Service {
+func NewService(appService *app.Service, installer *Installer, runner Runner) *Service {
 	return &Service{appService: appService, installer: installer, runner: runner}
 }
 
@@ -48,7 +48,7 @@ func StartIntegration(service *Service) {
 }
 
 func (service *Service) IsIntegrationEnabled() bool {
-	return !vault.ReadSettings(service.appService).IsCommandLineIntegrationDisabled
+	return !app.ReadSettings(service.appService).IsCommandLineIntegrationDisabled
 }
 
 func (service *Service) buildStatus(installStatus InstallStatus) Status {
@@ -85,7 +85,7 @@ func (service *Service) UninstallCommandLineTool() (Status, error) {
 
 // SetCommandLineIntegration saves the switch, then opens or closes the socket; turning it off ends every approval.
 func (service *Service) SetCommandLineIntegration(isEnabled bool) (Status, error) {
-	err := vault.UpdateSettings(service.appService, func(settings *localstate.Settings) { settings.IsCommandLineIntegrationDisabled = !isEnabled })
+	err := app.UpdateSettings(service.appService, func(settings *localstate.Settings) { settings.IsCommandLineIntegrationDisabled = !isEnabled })
 	if isEnabled {
 		service.runner.Start()
 	} else {

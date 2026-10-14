@@ -2,16 +2,18 @@ import { Browser } from "@wailsio/runtime";
 import { ApprovalTouchIDService, TouchIDPromptService } from "../bindings/github.com/tryhisar/hisar/desktop";
 import { Service as AgentService } from "../bindings/github.com/tryhisar/hisar/desktop/agent";
 import type { ApprovalEvent, Status as SSHAgentStatus } from "../bindings/github.com/tryhisar/hisar/desktop/agent";
-import { BrowserBridge, CommandLineService, InviteLinkService, LoginItemService, Service, UpdateService } from "../bindings/github.com/tryhisar/hisar/desktop/vault";
-import type { BrowserInstallation } from "../bindings/github.com/tryhisar/hisar/desktop/browser";
-import type { Installation as CommandLineInstallation } from "../bindings/github.com/tryhisar/hisar/desktop/commandline";
+import { BrowserBridge, InviteLinkService, Service, UpdateService } from "../bindings/github.com/tryhisar/hisar/core/app";
+import type { BrowserInstallation } from "../bindings/github.com/tryhisar/hisar/core/browserprotocol";
+import { Service as CommandLineService } from "../bindings/github.com/tryhisar/hisar/desktop/commandline";
+import type { Installation as CommandLineInstallation, Status as BoundCommandLineStatus } from "../bindings/github.com/tryhisar/hisar/desktop/commandline";
+import { Service as LoginItemService } from "../bindings/github.com/tryhisar/hisar/desktop/loginitem";
+import type { Status as LoginItemStatus } from "../bindings/github.com/tryhisar/hisar/desktop/loginitem";
 import type {
   AccountDeletionPreview as BoundAccountDeletionPreview,
   BrowserPairingRequest,
   CredentialChangeResult,
   DeletionVault,
   BrowserStatus as BoundBrowserStatus,
-  CommandLineStatus as BoundCommandLineStatus,
   Device,
   PairedBrowser,
   Person,
@@ -23,7 +25,6 @@ import type {
   ItemDetail as BoundItemDetail,
   ItemField,
   ItemPasskey,
-  LoginItemStatus,
   OneTimeCode,
   PasswordConfig,
   ReceivedShareInvitation,
@@ -48,7 +49,7 @@ import type {
   VaultMember,
   VaultSummary,
   WaitingShareInvitation,
-} from "../bindings/github.com/tryhisar/hisar/desktop/vault";
+} from "../bindings/github.com/tryhisar/hisar/core/app";
 
 export type {
   ApprovalEvent,

@@ -97,20 +97,5 @@ func (s *Server) serveConnection(ctx context.Context, connection net.Conn) {
 }
 
 func (s *Server) answerMessage(ctx context.Context, message []byte) browserprotocol.Response {
-	var request browserprotocol.Request
-	if err := json.Unmarshal(message, &request); err != nil || request.ID == "" || request.Type == "" {
-		return browserprotocol.Response{ID: request.ID, Error: browserprotocol.CreateError(browserprotocol.ErrorInvalidRequest, "the request is not valid")}
-	}
-	result, err := s.handler.HandleRequest(ctx, &request)
-	if err != nil {
-		var responseError *browserprotocol.ResponseError
-		if !errors.As(err, &responseError) {
-			responseError = browserprotocol.CreateError(browserprotocol.ErrorInternal, err.Error())
-		}
-		return browserprotocol.Response{ID: request.ID, Error: responseError}
-	}
-	if result == nil {
-		result = struct{}{}
-	}
-	return browserprotocol.Response{ID: request.ID, OK: true, Result: result}
+	return browserprotocol.Answer(ctx, s.handler, message)
 }
