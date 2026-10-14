@@ -1,6 +1,6 @@
 //go:build darwin || linux
 
-package sshagent
+package localsocket
 
 import (
 	"errors"
@@ -18,7 +18,7 @@ func GetProcessPath(pid int) (string, error) {
 func (SystemPeerResolver) ResolvePeer(connection net.Conn) (PeerInfo, error) {
 	syscallConnection, ok := connection.(syscall.Conn)
 	if !ok {
-		return PeerInfo{}, errors.New("sshagent: connection has no file descriptor")
+		return PeerInfo{}, errors.New("localsocket: connection has no file descriptor")
 	}
 	rawConnection, err := syscallConnection.SyscallConn()
 	if err != nil {

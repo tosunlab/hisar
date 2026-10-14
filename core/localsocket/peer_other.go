@@ -1,6 +1,6 @@
 //go:build !darwin && !linux
 
-package sshagent
+package localsocket
 
 import (
 	"errors"
@@ -14,9 +14,9 @@ func (SystemPeerResolver) ResolvePeer(net.Conn) (PeerInfo, error) {
 }
 
 func GetParentPID(pid int) (int, error) {
-	return 0, errors.New("sshagent: parent processes are not available on this platform")
+	return 0, errors.New("localsocket: parent processes are not available on this platform")
 }
 
 func GetProcessPath(pid int) (string, error) {
-	return "", errors.New("sshagent: process paths are not available on this platform")
+	return "", errors.New("localsocket: process paths are not available on this platform")
 }

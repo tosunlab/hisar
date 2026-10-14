@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/tryhisar/hisar/core/browserprotocol"
-	"github.com/tryhisar/hisar/core/sshagent"
+	"github.com/tryhisar/hisar/core/localsocket"
 )
 
 func TestInstallAllHostManifest(t *testing.T) {
@@ -80,11 +80,11 @@ type fakePeerResolver struct {
 	path string
 }
 
-func (resolver fakePeerResolver) ResolvePeer(net.Conn) (sshagent.PeerInfo, error) {
-	return sshagent.PeerInfo{Path: resolver.path}, nil
+func (resolver fakePeerResolver) ResolvePeer(net.Conn) (localsocket.PeerInfo, error) {
+	return localsocket.PeerInfo{Path: resolver.path}, nil
 }
 
-func startTestServer(t *testing.T, handler Handler, peerResolver sshagent.PeerResolver, allowedPeerPath string) string {
+func startTestServer(t *testing.T, handler Handler, peerResolver localsocket.PeerResolver, allowedPeerPath string) string {
 	t.Helper()
 	socketDirectory, err := os.MkdirTemp("/tmp", "hisar-browser-")
 	if err != nil {

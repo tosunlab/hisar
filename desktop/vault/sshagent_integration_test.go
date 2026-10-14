@@ -15,6 +15,7 @@ import (
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 
+	"github.com/tryhisar/hisar/core/localsocket"
 	"github.com/tryhisar/hisar/core/sshagent"
 )
 
@@ -157,10 +158,10 @@ func checkSSHAgentFlow(t *testing.T, service *Service, personalID, password stri
 	defer os.RemoveAll(socketDirectory)
 	socketPath := filepath.Join(socketDirectory, "agent.sock")
 	approver := &recordingApprover{isAllowed: true}
-	agentServer := sshagent.CreateServer(CreateSSHKeySource(service), approver, sshagent.SystemPeerResolver{})
+	agentServer := sshagent.CreateServer(CreateSSHKeySource(service), approver, localsocket.SystemPeerResolver{})
 	service.config.OnLock = agentServer.ClearAllApproval
 	defer func() { service.config.OnLock = nil }()
-	listener, err := sshagent.ListenUnixSocket(socketPath)
+	listener, err := localsocket.ListenUnixSocket(socketPath)
 	if err != nil {
 		t.Fatal(err)
 	}

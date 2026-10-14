@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tryhisar/hisar/core/localsocket"
 	"github.com/tryhisar/hisar/core/sshkey"
 	"golang.org/x/crypto/ssh"
 )
@@ -38,7 +39,7 @@ func TestClientDisconnectCancelsTheWaitingApproval(t *testing.T) {
 	resolver.setPath("/usr/bin/ssh-keygen")
 	server := CreateServer(&fakeKeySource{allKey: []Key{createTestKey(t, "key-1", "Laptop", material)}}, approver, resolver)
 	socketPath := filepath.Join(createShortTempDirectory(t), "agent.sock")
-	listener, err := ListenUnixSocket(socketPath)
+	listener, err := localsocket.ListenUnixSocket(socketPath)
 	if err != nil {
 		t.Fatal(err)
 	}

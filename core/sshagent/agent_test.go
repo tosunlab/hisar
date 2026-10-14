@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tryhisar/hisar/core/localsocket"
 	"github.com/tryhisar/hisar/core/sshkey"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
@@ -91,10 +92,10 @@ func (approver *fakeApprover) getLastRequest(t *testing.T) ApprovalRequest {
 
 type fakePeerResolver struct {
 	mutex sync.Mutex
-	peer  PeerInfo
+	peer  localsocket.PeerInfo
 }
 
-func (resolver *fakePeerResolver) ResolvePeer(net.Conn) (PeerInfo, error) {
+func (resolver *fakePeerResolver) ResolvePeer(net.Conn) (localsocket.PeerInfo, error) {
 	resolver.mutex.Lock()
 	defer resolver.mutex.Unlock()
 	return resolver.peer, nil
@@ -103,7 +104,7 @@ func (resolver *fakePeerResolver) ResolvePeer(net.Conn) (PeerInfo, error) {
 func (resolver *fakePeerResolver) setPath(path string) {
 	resolver.mutex.Lock()
 	defer resolver.mutex.Unlock()
-	resolver.peer = PeerInfo{PID: 4242, Path: path, Name: filepath.Base(path)}
+	resolver.peer = localsocket.PeerInfo{PID: 4242, Path: path, Name: filepath.Base(path)}
 }
 
 type agentFixture struct {
@@ -142,7 +143,7 @@ func startAgent(t *testing.T, allKey []Key) *agentFixture {
 	fixture.resolver.setPath("/usr/bin/ssh")
 	fixture.server = CreateServer(fixture.source, fixture.approver, fixture.resolver)
 	fixture.socketPath = filepath.Join(createShortTempDirectory(t), "agent", "agent.sock")
-	listener, err := ListenUnixSocket(fixture.socketPath)
+	listener, err := localsocket.ListenUnixSocket(fixture.socketPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -376,7 +377,7 @@ func TestApprovalCachedPerClientPath(t *testing.T) {
 func (resolver *fakePeerResolver) setApplication(path, applicationPath string) {
 	resolver.mutex.Lock()
 	defer resolver.mutex.Unlock()
-	resolver.peer = PeerInfo{PID: 4242, Path: path, Name: filepath.Base(path), ApplicationPath: applicationPath}
+	resolver.peer = localsocket.PeerInfo{PID: 4242, Path: path, Name: filepath.Base(path), ApplicationPath: applicationPath}
 }
 
 func (approver *fakeApprover) setRemembered(isRemembered bool) {
@@ -499,7 +500,7 @@ func TestUnknownClientPathNotCached(t *testing.T) {
 	key := createTestKey(t, "id", "Work", getAllTestMaterial()["ed25519"])
 	fixture := startAgent(t, []Key{key})
 	fixture.resolver.mutex.Lock()
-	fixture.resolver.peer = PeerInfo{}
+	fixture.resolver.peer = localsocket.PeerInfo{}
 	fixture.resolver.mutex.Unlock()
 	address := startSSHServer(t, getPublicKey(t, key))
 	for range 2 {
@@ -510,8 +511,8 @@ func TestUnknownClientPathNotCached(t *testing.T) {
 	if count := fixture.approver.countRequest(); count != 2 {
 		t.Errorf("approval count = %d, want 2", count)
 	}
-	if name := fixture.approver.getLastRequest(t).ClientName; name != UnknownPeerName {
-		t.Errorf("client name = %q, want %q", name, UnknownPeerName)
+	if name := fixture.approver.getLastRequest(t).ClientName; name != localsocket.UnknownPeerName {
+		t.Errorf("client name = %q, want %q", name, localsocket.UnknownPeerName)
 	}
 }
 
@@ -583,7 +584,7 @@ func TestReadOnlyOperationsRefused(t *testing.T) {
 	if err != nil || len(allAgentKey) != 1 {
 		t.Errorf("keys changed after refused operations: %v %v", allAgentKey, err)
 	}
-	directAgent := fixture.server.CreateAgent(context.Background(), PeerInfo{})
+	directAgent := fixture.server.CreateAgent(context.Background(), localsocket.PeerInfo{})
 	if _, err := directAgent.Signers(); !errors.Is(err, ErrReadOnly) {
 		t.Errorf("Signers err = %v", err)
 	}
@@ -618,7 +619,7 @@ func TestLockedSourceFailsGracefully(t *testing.T) {
 	if fixture.approver.countRequest() != 0 {
 		t.Error("approval requested while locked")
 	}
-	directAgent := fixture.server.CreateAgent(context.Background(), PeerInfo{})
+	directAgent := fixture.server.CreateAgent(context.Background(), localsocket.PeerInfo{})
 	if _, err := directAgent.List(); !errors.Is(err, errTestLocked) {
 		t.Errorf("List err = %v, want wrapped source error", err)
 	}
@@ -805,7 +806,7 @@ func TestSignUnknownKey(t *testing.T) {
 	if _, err := fixture.dialAgent(t).Sign(otherKey, []byte("data")); err == nil {
 		t.Error("signed with a key the agent does not hold")
 	}
-	directAgent := fixture.server.CreateAgent(context.Background(), PeerInfo{})
+	directAgent := fixture.server.CreateAgent(context.Background(), localsocket.PeerInfo{})
 	if _, err := directAgent.Sign(otherKey, []byte("data")); !errors.Is(err, ErrKeyNotFound) {
 		t.Errorf("err = %v, want ErrKeyNotFound", err)
 	}
@@ -855,7 +856,7 @@ func TestUnknownExtensionUnsupported(t *testing.T) {
 	if _, err := fixture.dialAgent(t).Extension("query", nil); !errors.Is(err, agent.ErrExtensionUnsupported) {
 		t.Errorf("err = %v, want ErrExtensionUnsupported", err)
 	}
-	directAgent := fixture.server.CreateAgent(context.Background(), PeerInfo{})
+	directAgent := fixture.server.CreateAgent(context.Background(), localsocket.PeerInfo{})
 	if _, err := directAgent.Extension("unknown@example.com", []byte{1}); !errors.Is(err, agent.ErrExtensionUnsupported) {
 		t.Errorf("direct err = %v", err)
 	}
@@ -863,7 +864,7 @@ func TestUnknownExtensionUnsupported(t *testing.T) {
 
 func TestServeStopsOnCancel(t *testing.T) {
 	server := CreateServer(&fakeKeySource{}, &fakeApprover{}, &fakePeerResolver{})
-	listener, err := ListenUnixSocket(filepath.Join(createShortTempDirectory(t), "agent.sock"))
+	listener, err := localsocket.ListenUnixSocket(filepath.Join(createShortTempDirectory(t), "agent.sock"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -897,7 +898,7 @@ func TestServeWithoutPeerResolver(t *testing.T) {
 	key := createTestKey(t, "id", "Work", getAllTestMaterial()["ed25519"])
 	approver := &fakeApprover{isApproving: true}
 	server := CreateServer(&fakeKeySource{allKey: []Key{key}}, approver, nil)
-	listener, err := ListenUnixSocket(filepath.Join(createShortTempDirectory(t), "agent.sock"))
+	listener, err := localsocket.ListenUnixSocket(filepath.Join(createShortTempDirectory(t), "agent.sock"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -912,7 +913,7 @@ func TestServeWithoutPeerResolver(t *testing.T) {
 	if _, err := agent.NewClient(connection).Sign(getPublicKey(t, key), []byte("data")); err != nil {
 		t.Fatal(err)
 	}
-	if request := approver.getLastRequest(t); request.ClientName != UnknownPeerName || request.ClientPath != "" {
+	if request := approver.getLastRequest(t); request.ClientName != localsocket.UnknownPeerName || request.ClientPath != "" {
 		t.Errorf("request = %+v", request)
 	}
 }

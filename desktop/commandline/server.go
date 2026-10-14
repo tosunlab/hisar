@@ -14,8 +14,8 @@ import (
 	"sync/atomic"
 
 	"github.com/tryhisar/hisar/core/cliprotocol"
+	"github.com/tryhisar/hisar/core/localsocket"
 	"github.com/tryhisar/hisar/core/secretreference"
-	"github.com/tryhisar/hisar/core/sshagent"
 )
 
 // Handler answers approved requests; returning a *cliprotocol.ResponseError sends its code to the CLI.
@@ -83,7 +83,7 @@ func (s *Server) ClearAllApproval() {
 
 // Serve listens until ctx ends; closing the listener removes the socket.
 func (s *Server) Serve(ctx context.Context, socketPath string) error {
-	listener, err := sshagent.ListenUnixSocket(socketPath)
+	listener, err := localsocket.ListenUnixSocket(socketPath)
 	if err != nil {
 		return err
 	}
@@ -133,7 +133,7 @@ func (s *Server) ServeConnection(ctx context.Context, connection net.Conn) {
 	}
 	client.connectionID = s.lastConnectionID.Add(1)
 	defer s.config.Approvals.ForgetAgentConnection(client.connectionID)
-	reader := sshagent.WatchConnectionClose(connection, cancel)
+	reader := localsocket.WatchConnectionClose(connection, cancel)
 	for {
 		message, err := cliprotocol.ReadMessage(reader)
 		if err != nil {

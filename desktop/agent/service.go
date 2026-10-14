@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tryhisar/hisar/core/localsocket"
 	"github.com/tryhisar/hisar/core/sshagent"
 )
 
@@ -48,11 +49,11 @@ type Config struct {
 
 // ApplicationPeerResolver adds the app a peer runs in, so approvals are remembered per app.
 type ApplicationPeerResolver struct {
-	Base                sshagent.PeerResolver
+	Base                localsocket.PeerResolver
 	FindApplicationPath func(pid int) (string, bool)
 }
 
-func (resolver ApplicationPeerResolver) ResolvePeer(connection net.Conn) (sshagent.PeerInfo, error) {
+func (resolver ApplicationPeerResolver) ResolvePeer(connection net.Conn) (localsocket.PeerInfo, error) {
 	peer, err := resolver.Base.ResolvePeer(connection)
 	if err != nil || peer.PID <= 0 || resolver.FindApplicationPath == nil {
 		return peer, err
@@ -207,7 +208,7 @@ func Serve(ctx context.Context, service *Service) error {
 		service.setServing(false, err)
 		return err
 	}
-	listener, err := sshagent.ListenUnixSocket(service.config.SocketPath)
+	listener, err := localsocket.ListenUnixSocket(service.config.SocketPath)
 	if err != nil {
 		service.setServing(false, err)
 		return err

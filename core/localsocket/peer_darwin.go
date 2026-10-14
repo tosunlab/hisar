@@ -1,4 +1,4 @@
-package sshagent
+package localsocket
 
 import (
 	"bytes"
@@ -24,7 +24,7 @@ func getExecutablePath(pid int) (string, error) {
 	}
 	path := strings.TrimSpace(string(output))
 	if path == "" {
-		return "", errors.New("sshagent: empty process path")
+		return "", errors.New("localsocket: empty process path")
 	}
 	return path, nil
 }
@@ -36,11 +36,11 @@ func readProcessArgumentPath(pid int) (string, error) {
 		return "", err
 	}
 	if len(processArgument) < 5 {
-		return "", errors.New("sshagent: short kern.procargs2")
+		return "", errors.New("localsocket: short kern.procargs2")
 	}
 	path, _, _ := bytes.Cut(processArgument[4:], []byte{0})
 	if len(path) == 0 {
-		return "", errors.New("sshagent: empty process path")
+		return "", errors.New("localsocket: empty process path")
 	}
 	return string(path), nil
 }

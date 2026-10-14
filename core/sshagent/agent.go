@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tryhisar/hisar/core/localsocket"
 	"github.com/tryhisar/hisar/core/sshkey"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
@@ -97,7 +98,7 @@ func getApprovalScope(request ApprovalRequest) string {
 type Server struct {
 	keySource         KeySource
 	approver          Approver
-	peerResolver      PeerResolver
+	peerResolver      localsocket.PeerResolver
 	mutex             sync.Mutex
 	allApprovedAt     map[approvalCacheKey]time.Time
 	approvalLifetime  time.Duration
@@ -107,7 +108,7 @@ type Server struct {
 	allKnownHostsPath []string
 }
 
-func CreateServer(keySource KeySource, approver Approver, peerResolver PeerResolver) *Server {
+func CreateServer(keySource KeySource, approver Approver, peerResolver localsocket.PeerResolver) *Server {
 	return &Server{
 		keySource:         keySource,
 		approver:          approver,
@@ -141,7 +142,7 @@ func (s *Server) ClearAllApproval() {
 	s.approvalEpoch++
 }
 
-func (s *Server) CreateAgent(ctx context.Context, peer PeerInfo) agent.ExtendedAgent {
+func (s *Server) CreateAgent(ctx context.Context, peer localsocket.PeerInfo) agent.ExtendedAgent {
 	return &connectionAgent{server: s, ctx: ctx, peer: peer}
 }
 
@@ -224,7 +225,7 @@ type sessionBinding struct {
 type connectionAgent struct {
 	server     *Server
 	ctx        context.Context
-	peer       PeerInfo
+	peer       localsocket.PeerInfo
 	mutex      sync.Mutex
 	allBinding []sessionBinding
 	// unlockApproval is set when the approval window unlocked Hisar for this connection; its signatures then do not ask again.

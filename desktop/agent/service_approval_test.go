@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/tryhisar/hisar/core/sshagent"
+	"github.com/tryhisar/hisar/core/localsocket"
 )
 
 type fakeApprovalPreference struct {
@@ -116,11 +116,11 @@ func TestServiceCompactApprovalSwitchAndWindowFit(t *testing.T) {
 }
 
 type fixedPeerResolver struct {
-	peer sshagent.PeerInfo
+	peer localsocket.PeerInfo
 	err  error
 }
 
-func (resolver fixedPeerResolver) ResolvePeer(net.Conn) (sshagent.PeerInfo, error) {
+func (resolver fixedPeerResolver) ResolvePeer(net.Conn) (localsocket.PeerInfo, error) {
 	return resolver.peer, resolver.err
 }
 
@@ -131,11 +131,11 @@ func TestApplicationPeerResolver(t *testing.T) {
 		}
 		return "", false
 	}
-	resolver := ApplicationPeerResolver{Base: fixedPeerResolver{peer: sshagent.PeerInfo{PID: 42, Path: "/usr/bin/ssh", Name: "ssh"}}, FindApplicationPath: findApplicationPath}
+	resolver := ApplicationPeerResolver{Base: fixedPeerResolver{peer: localsocket.PeerInfo{PID: 42, Path: "/usr/bin/ssh", Name: "ssh"}}, FindApplicationPath: findApplicationPath}
 	if peer, err := resolver.ResolvePeer(nil); err != nil || peer.ApplicationPath != "/System/Applications/Utilities/Terminal.app" || peer.Path != "/usr/bin/ssh" {
 		t.Errorf("peer = %+v %v", peer, err)
 	}
-	resolver.Base = fixedPeerResolver{peer: sshagent.PeerInfo{PID: 43, Path: "/usr/bin/ssh"}}
+	resolver.Base = fixedPeerResolver{peer: localsocket.PeerInfo{PID: 43, Path: "/usr/bin/ssh"}}
 	if peer, _ := resolver.ResolvePeer(nil); peer.ApplicationPath != "" {
 		t.Errorf("a peer without an app got %q", peer.ApplicationPath)
 	}

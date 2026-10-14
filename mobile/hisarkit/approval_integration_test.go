@@ -20,6 +20,7 @@ import (
 	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/approval"
 	"github.com/tryhisar/hisar/core/crypt"
+	"github.com/tryhisar/hisar/core/localsocket"
 	"github.com/tryhisar/hisar/core/localstate"
 	"github.com/tryhisar/hisar/core/sshagent"
 	"github.com/tryhisar/hisar/desktop/agent"
@@ -251,14 +252,14 @@ func TestIntegrationPhoneApproval(t *testing.T) {
 	}
 	dialog := &macDialog{allEvent: make(chan agent.ApprovalEvent, 8)}
 	approver := agent.CreateApprover(agent.ApproverConfig{Emit: dialog.emit, PhoneApprover: phoneApprover, Timeout: 30 * time.Second})
-	agentServer := sshagent.CreateServer(vault.CreateSSHKeySource(mac), approver, sshagent.SystemPeerResolver{})
+	agentServer := sshagent.CreateServer(vault.CreateSSHKeySource(mac), approver, localsocket.SystemPeerResolver{})
 	socketDirectory, err := os.MkdirTemp("", "hisar")
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(socketDirectory)
 	socketPath := filepath.Join(socketDirectory, "agent.sock")
-	listener, err := sshagent.ListenUnixSocket(socketPath)
+	listener, err := localsocket.ListenUnixSocket(socketPath)
 	if err != nil {
 		t.Fatal(err)
 	}

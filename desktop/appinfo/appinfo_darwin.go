@@ -15,7 +15,7 @@ import (
 	"strings"
 	"unsafe"
 
-	"github.com/tryhisar/hisar/core/sshagent"
+	"github.com/tryhisar/hisar/core/localsocket"
 	"golang.org/x/sys/unix"
 )
 
@@ -27,7 +27,7 @@ func CreateSystemResolver() *Resolver {
 	return CreateResolver(System{
 		ProcessReader: ProcessReader{
 			GetPath:             GetProcessPath,
-			GetParentPID:        sshagent.GetParentPID,
+			GetParentPID:        localsocket.GetParentPID,
 			ListAllArgument:     ListAllProcessArgument,
 			GetWorkingDirectory: GetProcessWorkingDirectory,
 		},

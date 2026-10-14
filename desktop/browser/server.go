@@ -11,7 +11,7 @@ import (
 	"sync"
 
 	"github.com/tryhisar/hisar/core/browserprotocol"
-	"github.com/tryhisar/hisar/core/sshagent"
+	"github.com/tryhisar/hisar/core/localsocket"
 )
 
 // Handler answers one request; returning a *ResponseError sends its code to the extension.
@@ -21,19 +21,19 @@ type Handler interface {
 
 type Server struct {
 	handler         Handler
-	peerResolver    sshagent.PeerResolver
+	peerResolver    localsocket.PeerResolver
 	allowedPeerPath string
 	mutex           sync.Mutex
 	listener        net.Listener
 }
 
 // CreateServer accepts only peers running allowedPeerPath when that file exists, i.e. in the packaged app.
-func CreateServer(handler Handler, peerResolver sshagent.PeerResolver, allowedPeerPath string) *Server {
+func CreateServer(handler Handler, peerResolver localsocket.PeerResolver, allowedPeerPath string) *Server {
 	return &Server{handler: handler, peerResolver: peerResolver, allowedPeerPath: allowedPeerPath}
 }
 
 func (s *Server) Serve(ctx context.Context, socketPath string) error {
-	listener, err := sshagent.ListenUnixSocket(socketPath)
+	listener, err := localsocket.ListenUnixSocket(socketPath)
 	if err != nil {
 		return err
 	}

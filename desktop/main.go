@@ -17,6 +17,7 @@ import (
 
 	"github.com/tryhisar/hisar/core/appversion"
 	"github.com/tryhisar/hisar/core/cliprotocol"
+	"github.com/tryhisar/hisar/core/localsocket"
 	"github.com/tryhisar/hisar/core/localstate"
 	"github.com/tryhisar/hisar/core/sshagent"
 	"github.com/tryhisar/hisar/desktop/agent"
@@ -264,7 +265,7 @@ func main() {
 		},
 	})
 	peerResolver := agent.ApplicationPeerResolver{
-		Base: sshagent.SystemPeerResolver{},
+		Base: localsocket.SystemPeerResolver{},
 		FindApplicationPath: func(pid int) (string, bool) {
 			requester := requesterResolver.Resolve(pid)
 			return requester.App.Path, requester.App.Path != ""
@@ -304,7 +305,7 @@ func main() {
 	if browserSocketPath == "" {
 		browserSocketPath = browser.GetDefaultSocketPath(homeDirectory)
 	}
-	browserServer := browser.CreateServer(vault.CreateBrowserRequestHandler(browserBridge), sshagent.SystemPeerResolver{}, browserHostPath)
+	browserServer := browser.CreateServer(vault.CreateBrowserRequestHandler(browserBridge), localsocket.SystemPeerResolver{}, browserHostPath)
 
 	commandLineApprovals := commandline.CreateSessionApprovals(commandline.DefaultApprovalLifetime, nil)
 	commandLineBridge := vault.CreateCommandLineBridge(vaultService, commandLineApprovals)

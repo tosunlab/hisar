@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/tryhisar/hisar/core/localsocket"
 	"github.com/tryhisar/hisar/core/sshkey"
 	"golang.org/x/crypto/ssh"
 )
@@ -162,7 +163,7 @@ func TestSessionBindRejectsMismatchedUserAuth(t *testing.T) {
 	fixture := startAgent(t, []Key{key})
 	hostSigner := generateHostSigner(t)
 	sessionID := generateRandomBytes(t, 32)
-	directAgent := fixture.server.CreateAgent(context.Background(), PeerInfo{Path: "/usr/bin/ssh", Name: "ssh"})
+	directAgent := fixture.server.CreateAgent(context.Background(), localsocket.PeerInfo{Path: "/usr/bin/ssh", Name: "ssh"})
 	if _, err := directAgent.Extension(SessionBindExtension, buildSessionBind(t, hostSigner, sessionID, false)); err != nil {
 		t.Fatal(err)
 	}
@@ -241,7 +242,7 @@ func TestSessionBindMalformed(t *testing.T) {
 		"empty session":     buildRawBind(hostKeyBlob, nil, ssh.Marshal(wrongSignature)),
 		"long session":      buildRawBind(hostKeyBlob, make([]byte, maximumSessionIDSize+1), ssh.Marshal(wrongSignature)),
 	}
-	directAgent := fixture.server.CreateAgent(context.Background(), PeerInfo{})
+	directAgent := fixture.server.CreateAgent(context.Background(), localsocket.PeerInfo{})
 	for name, payload := range allMalformed {
 		if _, err := directAgent.Extension(SessionBindExtension, payload); !errors.Is(err, ErrInvalidBinding) {
 			t.Errorf("%s: err = %v, want ErrInvalidBinding", name, err)
@@ -259,7 +260,7 @@ func TestSessionBindSequenceRules(t *testing.T) {
 	fixture := startAgent(t, nil)
 	hostSigner := generateHostSigner(t)
 	sessionID := generateRandomBytes(t, 32)
-	directAgent := fixture.server.CreateAgent(context.Background(), PeerInfo{})
+	directAgent := fixture.server.CreateAgent(context.Background(), localsocket.PeerInfo{})
 	authBind := buildSessionBind(t, hostSigner, sessionID, false)
 	if _, err := directAgent.Extension(SessionBindExtension, authBind); err != nil {
 		t.Fatal(err)
@@ -274,7 +275,7 @@ func TestSessionBindSequenceRules(t *testing.T) {
 		t.Errorf("bind after authentication bind: err = %v", err)
 	}
 
-	forwardingAgent := fixture.server.CreateAgent(context.Background(), PeerInfo{})
+	forwardingAgent := fixture.server.CreateAgent(context.Background(), localsocket.PeerInfo{})
 	for index := range maximumSessionBinding {
 		if _, err := forwardingAgent.Extension(SessionBindExtension, buildSessionBind(t, hostSigner, generateRandomBytes(t, 32), true)); err != nil {
 			t.Fatalf("forwarding bind %d: %v", index, err)
@@ -302,7 +303,7 @@ func TestSessionBindRSAHostKey(t *testing.T) {
 		Signature    []byte
 		IsForwarding bool
 	}{rsaSigner.PublicKey().Marshal(), sessionID, ssh.Marshal(signature), false})
-	directAgent := CreateServer(&fakeKeySource{}, &fakeApprover{}, nil).CreateAgent(context.Background(), PeerInfo{})
+	directAgent := CreateServer(&fakeKeySource{}, &fakeApprover{}, nil).CreateAgent(context.Background(), localsocket.PeerInfo{})
 	if _, err := directAgent.Extension(SessionBindExtension, payload); err != nil {
 		t.Errorf("rsa-sha2-512 host signature: %v", err)
 	}

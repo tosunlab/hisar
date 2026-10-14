@@ -1,4 +1,4 @@
-package sshagent
+package localsocket
 
 import (
 	"bytes"
@@ -31,7 +31,7 @@ func GetParentPID(pid int) (int, error) {
 	afterName := stat[bytes.LastIndexByte(stat, ')')+1:]
 	allField := strings.Fields(string(afterName))
 	if len(allField) < 2 {
-		return 0, errors.New("sshagent: unexpected /proc stat format")
+		return 0, errors.New("localsocket: unexpected /proc stat format")
 	}
 	return strconv.Atoi(allField[1])
 }

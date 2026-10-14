@@ -6,7 +6,7 @@ import (
 	"net"
 	"syscall"
 
-	"github.com/tryhisar/hisar/core/sshagent"
+	"github.com/tryhisar/hisar/core/localsocket"
 )
 
 type Peer struct {
@@ -70,9 +70,9 @@ func (SystemPeerResolver) GetTerminalSession(pid int) (TerminalSession, error) {
 }
 
 func (SystemPeerResolver) GetProcessPath(pid int) (string, error) {
-	return sshagent.GetProcessPath(pid)
+	return localsocket.GetProcessPath(pid)
 }
 
 func (SystemPeerResolver) GetParentPID(pid int) (int, error) {
-	return sshagent.GetParentPID(pid)
+	return localsocket.GetParentPID(pid)
 }

@@ -2,13 +2,13 @@
 
 package appinfo
 
-import "github.com/tryhisar/hisar/core/sshagent"
+import "github.com/tryhisar/hisar/core/localsocket"
 
 func CreateSystemResolver() *Resolver {
 	system := System{
 		ProcessReader: ProcessReader{
-			GetPath:             sshagent.GetProcessPath,
-			GetParentPID:        sshagent.GetParentPID,
+			GetPath:             localsocket.GetProcessPath,
+			GetParentPID:        localsocket.GetParentPID,
 			ListAllArgument:     ListAllProcessArgument,
 			GetWorkingDirectory: GetProcessWorkingDirectory,
 		},

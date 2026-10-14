@@ -1,4 +1,4 @@
-package sshagent
+package localsocket
 
 import (
 	"io/fs"

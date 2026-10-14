@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tryhisar/hisar/core/localsocket"
 	"github.com/tryhisar/hisar/core/sshkey"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
@@ -284,7 +285,7 @@ func (fixture *openSSHFixture) replay(t *testing.T, connection *recordedConnecti
 	approver := &fakeApprover{isApproving: true}
 	server := CreateServer(&fakeKeySource{allKey: []Key{{ID: "fixture", Title: "Fixture", PrivateKeyPEM: []byte(fixture.ClientPrivateKey)}}}, approver, nil)
 	server.SetAllKnownHostsPath([]string{writeKnownHosts(t, fixture.KnownHostsName+" "+strings.TrimSpace(string(ssh.MarshalAuthorizedKey(hostKey))))})
-	connectionAgent := server.CreateAgent(context.Background(), PeerInfo{PID: 4242, Path: "/usr/bin/ssh", Name: "ssh"})
+	connectionAgent := server.CreateAgent(context.Background(), localsocket.PeerInfo{PID: 4242, Path: "/usr/bin/ssh", Name: "ssh"})
 	result := replayResult{}
 	for index, message := range connection.AllMessage {
 		if modify != nil {
