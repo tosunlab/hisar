@@ -79,18 +79,8 @@ type sshCommandLine struct {
 	allRemoteArgument []string
 }
 
-func getProgramName(process appinfo.Process) string {
-	if process.Path != "" {
-		return filepath.Base(process.Path)
-	}
-	if len(process.AllArgument) > 0 {
-		return filepath.Base(process.AllArgument[0])
-	}
-	return ""
-}
-
 func isGitProcess(process appinfo.Process) bool {
-	return getProgramName(process) == "git"
+	return appinfo.GetProgramName(process) == "git"
 }
 
 // parseSSHCommandLine reads the destination and remote command of an ssh invocation.
@@ -322,7 +312,7 @@ func parseSignedPayload(payload []byte) (isTag bool, tagName string, subject str
 
 func findSignedPayloadPath(process appinfo.Process) string {
 	allArgument := process.AllArgument
-	if getProgramName(process) != "ssh-keygen" || len(allArgument) < 3 {
+	if appinfo.GetProgramName(process) != "ssh-keygen" || len(allArgument) < 3 {
 		return ""
 	}
 	isSign, isGitNamespace := false, false
@@ -387,7 +377,7 @@ func DescribeRequest(allProcess []appinfo.Process, request sshagent.ApprovalRequ
 	}
 	host, port := request.DestinationHost, request.DestinationPort
 	parsedSSH := sshCommandLine{}
-	if getProgramName(peer) == "ssh" {
+	if appinfo.GetProgramName(peer) == "ssh" {
 		parsedSSH = parseSSHCommandLine(peer.AllArgument)
 	}
 	if request.IsForwarded {
