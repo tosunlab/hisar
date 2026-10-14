@@ -7,12 +7,9 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/bytemare/opaque"
-
 	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
-	"github.com/tryhisar/hisar/core/pake"
 )
 
 var (
@@ -135,19 +132,15 @@ func (s *Session) changeCredentials(ctx context.Context, change string, currentP
 	}
 	defer newKeys.Wipe()
 
-	loginClient, err := pake.CreateConfig().Client()
+	login, keyExchange1, err := startOpaqueLogin(verified.currentKeys.AuthKey)
 	if err != nil {
 		return nil, err
 	}
-	defer loginClient.ClearState()
-	keyExchange1, err := loginClient.GenerateKE1(verified.currentKeys.AuthKey)
-	if err != nil {
-		return nil, err
-	}
+	defer login.clear()
 	var reauthentication *apitypes.ReauthenticateResponse
 	err = credential.registerOpaque(newKeys, s.AccountID, func(registrationRequest []byte) ([]byte, error) {
 		var requestErr error
-		reauthentication, requestErr = s.Client.Reauthenticate(ctx, &apitypes.ReauthenticateRequest{KE1: keyExchange1.Serialize(), RegistrationRequest: registrationRequest})
+		reauthentication, requestErr = s.Client.Reauthenticate(ctx, &apitypes.ReauthenticateRequest{KE1: keyExchange1, RegistrationRequest: registrationRequest})
 		if requestErr != nil {
 			return nil, requestErr
 		}
@@ -156,7 +149,7 @@ func (s *Session) changeCredentials(ctx context.Context, change string, currentP
 	if err != nil {
 		return nil, err
 	}
-	keyExchange3, err := finishReauthentication(loginClient, reauthentication, s.AccountID)
+	keyExchange3, err := login.finish(reauthentication.KE2, s.AccountID)
 	if err != nil {
 		return nil, err
 	}
@@ -182,18 +175,6 @@ func (s *Session) changeCredentials(ctx context.Context, change string, currentP
 		AccountUnlockKey:     append([]byte(nil), newKeys.AccountUnlockKey...),
 		SignedOutDeviceCount: response.SignedOutDeviceCount,
 	}, nil
-}
-
-func finishReauthentication(loginClient *opaque.Client, reauthentication *apitypes.ReauthenticateResponse, accountID string) ([]byte, error) {
-	keyExchange2, err := loginClient.Deserialize.KE2(reauthentication.KE2)
-	if err != nil {
-		return nil, ErrBadCredentials
-	}
-	keyExchange3, _, _, err := loginClient.GenerateKE3(keyExchange2, []byte(accountID), pake.ServerIdentity())
-	if err != nil {
-		return nil, ErrBadCredentials
-	}
-	return keyExchange3.Serialize(), nil
 }
 
 // A failed proof is 403, never 401: clients treat 401 as a signed-out device.
@@ -250,20 +231,16 @@ func (s *Session) DeleteAccount(ctx context.Context, password []byte, secretKey 
 	if !strings.EqualFold(verified.account.Email, strings.TrimSpace(email)) {
 		return ErrEmailMismatch
 	}
-	loginClient, err := pake.CreateConfig().Client()
+	login, keyExchange1, err := startOpaqueLogin(verified.currentKeys.AuthKey)
 	if err != nil {
 		return err
 	}
-	defer loginClient.ClearState()
-	keyExchange1, err := loginClient.GenerateKE1(verified.currentKeys.AuthKey)
+	defer login.clear()
+	reauthentication, err := s.Client.Reauthenticate(ctx, &apitypes.ReauthenticateRequest{KE1: keyExchange1})
 	if err != nil {
 		return err
 	}
-	reauthentication, err := s.Client.Reauthenticate(ctx, &apitypes.ReauthenticateRequest{KE1: keyExchange1.Serialize()})
-	if err != nil {
-		return err
-	}
-	keyExchange3, err := finishReauthentication(loginClient, reauthentication, s.AccountID)
+	keyExchange3, err := login.finish(reauthentication.KE2, s.AccountID)
 	if err != nil {
 		return err
 	}

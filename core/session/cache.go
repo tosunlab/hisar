@@ -71,39 +71,3 @@ func (s *Session) listAllProtoVault(ctx context.Context) ([]apitypes.Vault, erro
 	s.isOffline.Store(true)
 	return s.Cache.ListAllVault()
 }
-
-// syncVault downloads the changes since the cached seq and returns the vault's cached items.
-func (s *Session) syncVault(ctx context.Context, vault *Vault) ([]apitypes.Item, error) {
-	since, err := s.Cache.GetSeq(vault.ID)
-	if err != nil {
-		return nil, err
-	}
-	for {
-		changeResponse, err := s.Client.ListAllChange(ctx, vault.ID, since, 0)
-		if apiclient.IsUnreachable(err) {
-			s.isOffline.Store(true)
-			return s.Cache.ListAllItem(vault.ID)
-		}
-		if err != nil {
-			return nil, err
-		}
-		if changeResponse.NextSeq < since {
-			return nil, ErrRollback
-		}
-		if err := s.Cache.ApplyAllChange(vault.ID, changeResponse.Items, changeResponse.NextSeq); err != nil {
-			return nil, err
-		}
-		since = changeResponse.NextSeq
-		if !changeResponse.More {
-			break
-		}
-	}
-	if s.SeqStore != nil {
-		if since < s.SeqStore.GetSeq(vault.ID) {
-			return nil, ErrRollback
-		}
-		s.SeqStore.SetSeq(vault.ID, since)
-	}
-	s.isOffline.Store(false)
-	return s.Cache.ListAllItem(vault.ID)
-}

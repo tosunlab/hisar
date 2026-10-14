@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/google/uuid"
-
 	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
@@ -19,22 +17,6 @@ const maxRotationAttemptCount = 3
 type AccessGrant struct {
 	AccountID string
 	Role      string
-}
-
-func (s *Session) listAllProtoItem(ctx context.Context, vault *Vault) ([]apitypes.Item, error) {
-	var since int64
-	var allProtoItem []apitypes.Item
-	for {
-		changeResponse, err := s.Client.ListAllChange(ctx, vault.ID, since, 0)
-		if err != nil {
-			return nil, err
-		}
-		allProtoItem = append(allProtoItem, changeResponse.Items...)
-		if !changeResponse.More {
-			return allProtoItem, nil
-		}
-		since = changeResponse.NextSeq
-	}
 }
 
 // RotateVaultKey re-encrypts the vault under a new key that only allAccessGrant can unwrap.
@@ -79,11 +61,13 @@ func (s *Session) RotateVaultKey(ctx context.Context, vault *Vault, allAccessGra
 		return err
 	}
 	for _, protoItem := range allProtoItem {
-		rotatedItem, err := reencryptItem(vault, newVaultKey, &protoItem)
+		rotated, err := reencryptItem(vault.Key, vault.ID, newVaultKey, vault.ID, &protoItem)
 		if err != nil {
 			return err
 		}
-		request.AllItem = append(request.AllItem, *rotatedItem)
+		request.AllItem = append(request.AllItem, apitypes.RotatedItem{
+			ID: protoItem.ID, BaseRevision: protoItem.Revision, Revision: rotated.revision, Deleted: protoItem.Deleted, Overview: rotated.overview, Details: rotated.details,
+		})
 	}
 
 	if err := s.Client.RotateVault(ctx, vault.ID, request); err != nil {
@@ -92,30 +76,6 @@ func (s *Session) RotateVaultKey(ctx context.Context, vault *Vault, allAccessGra
 	clear(vault.Key)
 	vault.Key = newVaultKey
 	return nil
-}
-
-func reencryptItem(vault *Vault, newVaultKey []byte, protoItem *apitypes.Item) (*apitypes.RotatedItem, error) {
-	overview, err := crypt.OpenItemPart(vault.Key, vault.ID, protoItem.ID, protoItem.Revision, crypt.Overview, protoItem.Overview)
-	if err != nil {
-		return nil, fmt.Errorf("item %s: %w", protoItem.ID, err)
-	}
-	details, err := crypt.OpenItemPart(vault.Key, vault.ID, protoItem.ID, protoItem.Revision, crypt.Details, protoItem.Details)
-	if err != nil {
-		return nil, fmt.Errorf("item %s: %w", protoItem.ID, err)
-	}
-	defer clear(details)
-	revision, err := uuid.NewV7()
-	if err != nil {
-		return nil, err
-	}
-	rotatedItem := &apitypes.RotatedItem{ID: protoItem.ID, BaseRevision: protoItem.Revision, Revision: revision.String(), Deleted: protoItem.Deleted}
-	if rotatedItem.Overview, err = crypt.SealItemPart(newVaultKey, vault.ID, protoItem.ID, rotatedItem.Revision, crypt.Overview, overview); err != nil {
-		return nil, err
-	}
-	if rotatedItem.Details, err = crypt.SealItemPart(newVaultKey, vault.ID, protoItem.ID, rotatedItem.Revision, crypt.Details, details); err != nil {
-		return nil, err
-	}
-	return rotatedItem, nil
 }
 
 // RemoveVaultMember removes a member and rotates the vault key so they cannot read future changes.

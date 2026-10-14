@@ -23,6 +23,59 @@ var (
 	ErrLeavePersonalVault = errors.New("you can't leave your Personal vault")
 )
 
+func (s *Session) CreateVault(ctx context.Context, name, vaultType string) (*Vault, error) {
+	vaultID := uuid.NewString()
+	vaultKey := crypt.GenerateKey()
+	encryptedName, err := crypt.SealVaultName(vaultKey, vaultID, []byte(name))
+	if err != nil {
+		return nil, err
+	}
+	wrappedKey, err := crypt.WrapVaultKey(s.Keyset.GetAllPublicKey(s.AccountID).KEM, vaultID, s.AccountID, vaultKey)
+	if err != nil {
+		return nil, err
+	}
+	request := &apitypes.CreateVaultRequest{ID: vaultID, Type: vaultType, EncName: encryptedName, WrappedKey: wrappedKey}
+	if err := s.Client.CreateVault(ctx, request); err != nil {
+		return nil, err
+	}
+	return &Vault{ID: vaultID, Type: vaultType, Name: name, Role: apitypes.VaultOwner, Key: vaultKey}, nil
+}
+
+func (s *Session) ListAllVault(ctx context.Context) ([]Vault, error) {
+	allProtoVault, err := s.listAllProtoVault(ctx)
+	if err != nil {
+		return nil, err
+	}
+	allVault := make([]Vault, 0, len(allProtoVault))
+	for _, protoVault := range allProtoVault {
+		vaultKey, err := s.Keyset.UnwrapVaultKey(protoVault.ID, s.AccountID, protoVault.WrappedKey)
+		if err != nil {
+			return nil, fmt.Errorf("vault %s: %w", protoVault.ID, err)
+		}
+		name, err := crypt.OpenVaultName(vaultKey, protoVault.ID, protoVault.EncName)
+		if err != nil {
+			return nil, fmt.Errorf("vault %s: %w", protoVault.ID, err)
+		}
+		allVault = append(allVault, Vault{
+			ID: protoVault.ID, Type: protoVault.Type, Name: string(name), Role: protoVault.Role, Key: vaultKey,
+		})
+	}
+	return allVault, nil
+}
+
+func (s *Session) FindVault(ctx context.Context, nameOrID string) (*Vault, error) {
+	allVault, err := s.ListAllVault(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range allVault {
+		if allVault[i].ID == nameOrID || strings.EqualFold(allVault[i].Name, nameOrID) {
+			return &allVault[i], nil
+		}
+	}
+	return nil, fmt.Errorf("vault %q: %w", nameOrID, ErrNotFound)
+}
+
 // RemovedVault is a cached vault that the server no longer lists: someone deleted it, or the user lost access.
 // Name is empty when the cached key no longer opens it.
 type RemovedVault struct {
@@ -167,36 +220,14 @@ func (s *Session) buildVaultMove(ctx context.Context, vault, target *Vault) (*ap
 		if protoItem.Deleted {
 			continue
 		}
-		movedItem, err := reencryptItemForVault(vault, target, protoItem)
+		// The item keeps its ID; the new AAD binds the target vault ID and a new revision.
+		moved, err := reencryptItem(vault.Key, vault.ID, target.Key, target.ID, protoItem)
 		if err != nil {
 			return nil, err
 		}
-		request.AllMovedItem = append(request.AllMovedItem, *movedItem)
+		request.AllMovedItem = append(request.AllMovedItem, apitypes.MovedItem{
+			ID: protoItem.ID, BaseRevision: protoItem.Revision, Revision: moved.revision, Overview: moved.overview, Details: moved.details,
+		})
 	}
 	return request, nil
-}
-
-// reencryptItemForVault keeps the item ID; the new AAD binds the target vault ID and a new revision.
-func reencryptItemForVault(source, target *Vault, protoItem *apitypes.Item) (*apitypes.MovedItem, error) {
-	overview, err := crypt.OpenItemPart(source.Key, source.ID, protoItem.ID, protoItem.Revision, crypt.Overview, protoItem.Overview)
-	if err != nil {
-		return nil, fmt.Errorf("item %s: %w", protoItem.ID, err)
-	}
-	details, err := crypt.OpenItemPart(source.Key, source.ID, protoItem.ID, protoItem.Revision, crypt.Details, protoItem.Details)
-	if err != nil {
-		return nil, fmt.Errorf("item %s: %w", protoItem.ID, err)
-	}
-	defer clear(details)
-	revision, err := uuid.NewV7()
-	if err != nil {
-		return nil, err
-	}
-	movedItem := &apitypes.MovedItem{ID: protoItem.ID, BaseRevision: protoItem.Revision, Revision: revision.String()}
-	if movedItem.Overview, err = crypt.SealItemPart(target.Key, target.ID, protoItem.ID, movedItem.Revision, crypt.Overview, overview); err != nil {
-		return nil, err
-	}
-	if movedItem.Details, err = crypt.SealItemPart(target.Key, target.ID, protoItem.ID, movedItem.Revision, crypt.Details, details); err != nil {
-		return nil, err
-	}
-	return movedItem, nil
 }

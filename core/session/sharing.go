@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/apitypes"
+	"github.com/tryhisar/hisar/core/crypt"
 )
 
 // CompletedShare is an accepted share invitation whose vault key the owner wrapped for the recipient.
@@ -82,4 +84,34 @@ func (s *Session) CompleteAllAcceptedShare(ctx context.Context) ([]CompletedShar
 		allCompleted = append(allCompleted, CompletedShare{VaultID: vault.ID, VaultName: vault.Name, Role: invitation.Role, Recipient: recipient})
 	}
 	return allCompleted, errors.Join(allError...)
+}
+
+// GetVerifiedMember returns a member whose KEM key is signed by their signing key.
+// Callers should additionally pin the member's PublicKeys.Sign (trust on first use).
+func (s *Session) GetVerifiedMember(ctx context.Context, emailOrID string) (*apitypes.Member, error) {
+	allMember, err := s.Client.ListAllMember(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range allMember {
+		member := &allMember[i]
+		if member.AccountID == emailOrID || strings.EqualFold(member.Email, emailOrID) {
+			if err := member.PublicKeys.Verify(member.AccountID); err != nil {
+				return nil, fmt.Errorf("member %s: %w", member.Email, err)
+			}
+			return member, nil
+		}
+	}
+	return nil, fmt.Errorf("member %q: %w", emailOrID, ErrNotFound)
+}
+
+func (s *Session) ShareVault(ctx context.Context, vault *Vault, member *apitypes.Member, role string) error {
+	if err := member.PublicKeys.Verify(member.AccountID); err != nil {
+		return err
+	}
+	wrappedKey, err := crypt.WrapVaultKey(member.PublicKeys.KEM, vault.ID, member.AccountID, vault.Key)
+	if err != nil {
+		return err
+	}
+	return s.Client.SetAccess(ctx, vault.ID, member.AccountID, &apitypes.SetAccessRequest{WrappedKey: wrappedKey, Role: role})
 }
