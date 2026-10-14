@@ -13,6 +13,7 @@ import (
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/export"
+	"github.com/tryhisar/hisar/core/session"
 )
 
 func (server *fakeAPIServer) addAllVaultManagementRoute(mux *http.ServeMux) {
@@ -115,7 +116,7 @@ func TestVaultActions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !family.CanDelete || family.CanLeave || family.LeaveBlockedReason != onlyOwnerLeaveReason {
+	if !family.CanDelete || family.CanLeave || family.LeaveBlockedReason != session.OnlyOwnerLeaveReason {
 		t.Errorf("family actions: %+v", family)
 	}
 	if len(family.AllMemberLosingAccess) != 1 || family.AllMemberLosingAccess[0].Email != "bob@example.com" {
@@ -130,7 +131,7 @@ func TestVaultActions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if asEditor.CanDelete || asEditor.DeleteBlockedReason != notOwnerDeleteReason || !asEditor.CanLeave || asEditor.CanRename {
+	if asEditor.CanDelete || asEditor.DeleteBlockedReason != session.NotOwnerDeleteReason || !asEditor.CanLeave || asEditor.CanRename {
 		t.Errorf("editor actions: %+v", asEditor)
 	}
 }
@@ -233,7 +234,7 @@ func TestLeaveVaultAndRemovedVaultNotice(t *testing.T) {
 	if _, err := service.ListAllVault(); err != nil {
 		t.Fatal(err)
 	}
-	if err := service.LeaveVault(test.familyID); err == nil || err.Error() != onlyOwnerLeaveReason {
+	if err := service.LeaveVault(test.familyID); err == nil || err.Error() != session.OnlyOwnerLeaveReason {
 		t.Errorf("only owner leaves: %v", err)
 	}
 	test.apiServer.setVaultRole(test.familyID, apitypes.VaultEditor)

@@ -40,7 +40,7 @@ func (s *Server) handleRotateVault(c fiber.Ctx) error {
 	allSeenAccountID := map[string]bool{}
 	allMember := make([]store.Member, 0, len(request.AllAccess))
 	for _, access := range request.AllAccess {
-		if !crypt.IsValidAccountID(access.AccountID) || !isValidVaultRole(access.Role) || allSeenAccountID[access.AccountID] ||
+		if !crypt.IsValidAccountID(access.AccountID) || !apitypes.IsValidVaultRole(access.Role) || allSeenAccountID[access.AccountID] ||
 			len(access.WrappedKey) == 0 || len(access.WrappedKey) > maxWrappedKey {
 			return errInvalidRotation
 		}

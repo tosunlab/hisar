@@ -28,10 +28,6 @@ var (
 	errShareWithOwnAccount = errors.New("that is your own email; you already have access")
 )
 
-func isValidVaultRole(role string) bool {
-	return role == apitypes.VaultOwner || role == apitypes.VaultEditor || role == apitypes.VaultReader
-}
-
 func convertSharingError(err error) error {
 	if apiclient.IsStatus(err, http.StatusForbidden) {
 		return errOwnerOnly
@@ -59,7 +55,7 @@ func convertInvitationError(err error) error {
 }
 
 func normalizeEmail(email string) (string, error) {
-	email = strings.ToLower(strings.TrimSpace(email))
+	email = apitypes.NormalizeEmail(email)
 	if at := strings.Index(email, "@"); at < 1 || at == len(email)-1 || strings.ContainsAny(email, " <>,") {
 		return "", errInvalidEmail
 	}
@@ -197,7 +193,7 @@ func (s *Service) ShareVault(vaultID, email, role string) error {
 	if err != nil {
 		return err
 	}
-	if !isValidVaultRole(role) {
+	if !apitypes.IsValidVaultRole(role) {
 		return errors.New("choose owner, editor or reader")
 	}
 	if email == strings.ToLower(s.unlockedSession.Email) {
@@ -219,7 +215,7 @@ func (s *Service) ChangeVaultMemberRole(vaultID, accountID, role string) error {
 	if err := s.requireUnlocked(); err != nil {
 		return err
 	}
-	if !isValidVaultRole(role) {
+	if !apitypes.IsValidVaultRole(role) {
 		return errors.New("choose owner, editor or reader")
 	}
 	if accountID == s.unlockedSession.AccountID {

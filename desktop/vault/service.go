@@ -17,6 +17,7 @@ import (
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/cache"
 	"github.com/tryhisar/hisar/core/crypt"
+	"github.com/tryhisar/hisar/core/invitelink"
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/localstate"
 	"github.com/tryhisar/hisar/core/session"
@@ -353,20 +354,12 @@ func (s *Service) SignIn(server, email, secretKeyText, password string) (Status,
 	return s.buildStatus(), nil
 }
 
-func parseLinkToken(link, pathPrefix string, errInvalid error) (server, token string, err error) {
-	parsedURL, err := url.Parse(strings.TrimSpace(link))
-	if err != nil || (parsedURL.Scheme != "https" && parsedURL.Scheme != "http") || parsedURL.Host == "" {
-		return "", "", errInvalid
-	}
-	token, found := strings.CutPrefix(parsedURL.Path, pathPrefix)
-	if !found || token == "" || strings.Contains(token, "/") {
-		return "", "", errInvalid
-	}
-	return parsedURL.Scheme + "://" + parsedURL.Host, token, nil
-}
-
 func parseInviteLink(link string) (server, token string, err error) {
-	return parseLinkToken(link, "/invite/", errors.New("paste the full invite link you received"))
+	server, token, ok := invitelink.Parse(link)
+	if !ok {
+		return "", "", errors.New("paste the full invite link you received")
+	}
+	return server, token, nil
 }
 
 var inviteCodePattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
@@ -374,7 +367,7 @@ var inviteCodePattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 // A bare invite code belongs to the default server; a pasted link keeps its own.
 func parseInvite(invite string) (server, token string, err error) {
 	invite = strings.TrimSpace(invite)
-	if strings.Contains(invite, "/invite/") {
+	if strings.Contains(invite, invitelink.PathPrefix) {
 		return parseInviteLink(invite)
 	}
 	if !inviteCodePattern.MatchString(invite) {
@@ -874,37 +867,14 @@ func (s *Service) copyText(text string) error {
 	return nil
 }
 
+// fieldNames are the names the apps pass to CopyField for built-in fields.
+var fieldNames = item.FieldNames{
+	"username": item.FieldUsername, "password": item.FieldPassword, "url": item.FieldURL, "notes": item.FieldNotes,
+	"public key": item.FieldPublicKey, "fingerprint": item.FieldFingerprint, "one-time code": item.FieldOneTimeCode,
+}
+
 func getFieldValue(vaultItem *item.Item, fieldName string) (string, bool) {
-	switch strings.ToLower(fieldName) {
-	case "username":
-		return vaultItem.Overview.Username, true
-	case "password":
-		return vaultItem.Details.Password, true
-	case "url":
-		if len(vaultItem.Overview.URLs) == 0 {
-			return "", false
-		}
-		return vaultItem.Overview.URLs[0], true
-	case "notes":
-		return vaultItem.Details.Notes, true
-	case "public key":
-		return vaultItem.Overview.PublicKey, true
-	case "fingerprint":
-		return vaultItem.Overview.Fingerprint, true
-	case "one-time code":
-		config, err := totp.Parse(vaultItem.Details.OneTimePassword)
-		if err != nil {
-			return "", false
-		}
-		code, _ := config.GenerateCode(time.Now())
-		return code, true
-	}
-	for _, field := range vaultItem.Details.Fields {
-		if strings.EqualFold(field.Name, fieldName) {
-			return field.Value, true
-		}
-	}
-	return "", false
+	return item.LookupField(vaultItem, fieldName, fieldNames, time.Now())
 }
 
 func convertError(err error) error {

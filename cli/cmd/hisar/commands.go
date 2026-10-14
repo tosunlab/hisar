@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"net/url"
 	"os"
 	"strings"
 	"text/tabwriter"
@@ -15,10 +14,10 @@ import (
 	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
+	"github.com/tryhisar/hisar/core/invitelink"
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/localstate"
 	"github.com/tryhisar/hisar/core/session"
-	"github.com/tryhisar/hisar/core/totp"
 )
 
 const defaultServer = "https://api.tryhisar.com"
@@ -141,19 +140,11 @@ including Hisar.
 }
 
 func parseInvite(link string) (server, token string, err error) {
-	return parseLinkToken(link, "/invite/", errors.New("invalid invite link"))
-}
-
-func parseLinkToken(link, pathPrefix string, errInvalid error) (server, token string, err error) {
-	parsedURL, err := url.Parse(strings.TrimSpace(link))
-	if err != nil || (parsedURL.Scheme != "https" && parsedURL.Scheme != "http") || parsedURL.Host == "" {
-		return "", "", errInvalid
+	server, token, ok := invitelink.Parse(link)
+	if !ok {
+		return "", "", errors.New("invalid invite link")
 	}
-	token, ok := strings.CutPrefix(parsedURL.Path, pathPrefix)
-	if !ok || token == "" || strings.Contains(token, "/") {
-		return "", "", errInvalid
-	}
-	return parsedURL.Scheme + "://" + parsedURL.Host, token, nil
+	return server, token, nil
 }
 
 func runLogin(ctx context.Context, flags *flag.FlagSet, allArg []string) error {
@@ -424,35 +415,14 @@ func writeItem(output io.Writer, vaultItem *item.Item) error {
 	return writer.Flush()
 }
 
+// fieldNames are the names hisar get -f accepts for built-in fields.
+var fieldNames = item.FieldNames{
+	"title": item.FieldTitle, "username": item.FieldUsername, "url": item.FieldURL, "password": item.FieldPassword,
+	"notes": item.FieldNotes, "code": item.FieldOneTimeCode, "one-time code": item.FieldOneTimeCode,
+}
+
 func getFieldValue(vaultItem *item.Item, name string) (string, bool) {
-	switch strings.ToLower(name) {
-	case "title":
-		return vaultItem.Overview.Title, true
-	case "username":
-		return vaultItem.Overview.Username, true
-	case "url":
-		if len(vaultItem.Overview.URLs) == 0 {
-			return "", false
-		}
-		return vaultItem.Overview.URLs[0], true
-	case "password":
-		return vaultItem.Details.Password, true
-	case "notes":
-		return vaultItem.Details.Notes, true
-	case "code", "one-time code":
-		config, err := totp.Parse(vaultItem.Details.OneTimePassword)
-		if err != nil {
-			return "", false
-		}
-		code, _ := config.GenerateCode(time.Now())
-		return code, true
-	}
-	for _, field := range vaultItem.Details.Fields {
-		if strings.EqualFold(field.Name, name) {
-			return field.Value, true
-		}
-	}
-	return "", false
+	return item.LookupField(vaultItem, name, fieldNames, time.Now())
 }
 
 func promptItem(vaultItem *item.Item) error {

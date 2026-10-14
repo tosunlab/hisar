@@ -13,14 +13,6 @@ import (
 	"github.com/tryhisar/hisar/core/session"
 )
 
-const (
-	personalVaultDeleteReason = "Your Personal vault can't be deleted. It is the vault Hisar keeps for you alone, and logins saved from the browser and the iPhone go there."
-	onlyVaultDeleteReason     = "Your only vault can't be deleted. Create another vault first."
-	notOwnerDeleteReason      = "Only an owner of this vault can delete it. You can leave it instead."
-	personalVaultLeaveReason  = "You can't leave your Personal vault."
-	onlyOwnerLeaveReason      = "You are its only owner. Delete the vault, or make someone else an owner first."
-)
-
 var (
 	errConfirmVaultName = errors.New("type the vault's name to delete it together with its items")
 	errChooseItemAction = errors.New("this vault has items; move them to another vault or delete them with the vault")
@@ -92,7 +84,6 @@ func (s *Service) GetVaultActions(vaultID string) (VaultActions, error) {
 	}
 	actions := VaultActions{
 		Vault:                 convertToVaultSummary(vault, itemCount),
-		CanRename:             vault.Role == apitypes.VaultOwner,
 		AllMemberLosingAccess: []VaultMember{},
 		AllTargetVault:        []VaultSummary{},
 	}
@@ -108,34 +99,19 @@ func (s *Service) GetVaultActions(vaultID string) (VaultActions, error) {
 		}
 	}
 
-	switch {
-	case vault.Type == apitypes.VaultPersonal:
-		actions.DeleteBlockedReason = personalVaultDeleteReason
-	case vault.Role != apitypes.VaultOwner:
-		actions.DeleteBlockedReason = notOwnerDeleteReason
-	case len(s.allVaultByID) <= 1:
-		actions.DeleteBlockedReason = onlyVaultDeleteReason
-	default:
-		actions.CanDelete = true
-	}
 	ownerCount := 0
 	for _, member := range allMember {
 		if member.Role == apitypes.VaultOwner {
 			ownerCount++
 		}
 	}
-	switch {
-	case vault.Type == apitypes.VaultPersonal:
-		actions.LeaveBlockedReason = personalVaultLeaveReason
-	case vault.Role == apitypes.VaultOwner && ownerCount <= 1:
-		actions.LeaveBlockedReason = onlyOwnerLeaveReason
-	default:
-		actions.CanLeave = true
-	}
+	permissions := session.GetVaultPermissions(vault.Type, vault.Role, len(s.allVaultByID), ownerCount)
+	actions.CanRename, actions.CanDelete, actions.DeleteBlockedReason = permissions.CanRename, permissions.CanDelete, permissions.DeleteBlockedReason
+	actions.CanLeave, actions.LeaveBlockedReason = permissions.CanLeave, permissions.LeaveBlockedReason
 
 	if actions.CanDelete {
 		for _, candidate := range s.allVaultByID {
-			if candidate.ID == vault.ID || (candidate.Role != apitypes.VaultOwner && candidate.Role != apitypes.VaultEditor) {
+			if candidate.ID == vault.ID || !apitypes.CanWriteItems(candidate.Role) {
 				continue
 			}
 			candidateCount, err := s.loadVaultItemCount(ctx, candidate)
@@ -224,7 +200,7 @@ func (s *Service) LeaveVault(vaultID string) error {
 	}
 	if err := s.unlockedSession.LeaveVault(ctx, vault); err != nil {
 		if apiclient.IsStatus(err, http.StatusBadRequest) {
-			return errors.New(onlyOwnerLeaveReason)
+			return errors.New(session.OnlyOwnerLeaveReason)
 		}
 		return convertVaultError(err)
 	}

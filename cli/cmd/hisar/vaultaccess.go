@@ -267,7 +267,6 @@ func (access *sessionVaultAccess) getVaultActions(ctx context.Context, vaultID s
 	}
 	actions := cliprotocol.VaultActionsResult{
 		Vault:                 cliprotocol.Vault{ID: vault.ID, Name: vault.Name, Type: vault.Type, Role: vault.Role, ItemCount: len(allItem)},
-		CanRename:             vault.Role == apitypes.VaultOwner,
 		AllMemberLosingAccess: []cliprotocol.VaultMember{},
 		AllTargetVault:        []cliprotocol.Vault{},
 	}
@@ -295,30 +294,15 @@ func (access *sessionVaultAccess) getVaultActions(ctx context.Context, vaultID s
 			actions.AllMemberLosingAccess = append(actions.AllMemberLosingAccess, member)
 		}
 	}
-	switch {
-	case vault.Type == apitypes.VaultPersonal:
-		actions.DeleteBlockedReason = "Your Personal vault can't be deleted. It is the vault Hisar keeps for you alone, and logins saved from the browser and the iPhone go there."
-	case vault.Role != apitypes.VaultOwner:
-		actions.DeleteBlockedReason = "Only an owner of this vault can delete it. You can leave it instead."
-	case len(access.allVaultByID) <= 1:
-		actions.DeleteBlockedReason = "Your only vault can't be deleted. Create another vault first."
-	default:
-		actions.CanDelete = true
-	}
-	switch {
-	case vault.Type == apitypes.VaultPersonal:
-		actions.LeaveBlockedReason = "You can't leave your Personal vault."
-	case vault.Role == apitypes.VaultOwner && ownerCount <= 1:
-		actions.LeaveBlockedReason = "You are its only owner. Delete the vault, or make someone else an owner first."
-	default:
-		actions.CanLeave = true
-	}
+	permissions := session.GetVaultPermissions(vault.Type, vault.Role, len(access.allVaultByID), ownerCount)
+	actions.CanRename, actions.CanDelete, actions.DeleteBlockedReason = permissions.CanRename, permissions.CanDelete, permissions.DeleteBlockedReason
+	actions.CanLeave, actions.LeaveBlockedReason = permissions.CanLeave, permissions.LeaveBlockedReason
 	allTarget, err := access.listAllVault(ctx)
 	if err != nil {
 		return cliprotocol.VaultActionsResult{}, err
 	}
 	for _, target := range allTarget {
-		if target.ID != vault.ID && (target.Role == apitypes.VaultOwner || target.Role == apitypes.VaultEditor) {
+		if target.ID != vault.ID && apitypes.CanWriteItems(target.Role) {
 			actions.AllTargetVault = append(actions.AllTargetVault, target)
 		}
 	}

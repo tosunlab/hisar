@@ -22,8 +22,6 @@ import (
 
 const maxKeysetSize = 1024
 
-func normalizeEmail(email string) string { return strings.ToLower(strings.TrimSpace(email)) }
-
 func generateToken() string {
 	allRandomByte := make([]byte, 32)
 	rand.Read(allRandomByte)
@@ -41,7 +39,7 @@ func (s *Server) computeMAC(allPart ...string) []byte {
 
 // Unknown emails get a stable fake salt so prelogin does not reveal which accounts exist.
 func (s *Server) handlePrelogin(c fiber.Ctx) error {
-	email := normalizeEmail(c.Query("email"))
+	email := apitypes.NormalizeEmail(c.Query("email"))
 	if email == "" {
 		return createAPIError(fiber.StatusBadRequest, "email required")
 	}
@@ -64,7 +62,7 @@ func (s *Server) handlePrelogin(c fiber.Ctx) error {
 
 func (s *Server) checkInvite(c fiber.Ctx, token, email string) bool {
 	invite, err := s.store.GetInviteByHash(c.Context(), hashToken(token))
-	return err == nil && invite.Email == normalizeEmail(email)
+	return err == nil && invite.Email == apitypes.NormalizeEmail(email)
 }
 
 var errInvalidInvite = createAPIError(fiber.StatusForbidden, "invalid invite")
@@ -99,7 +97,7 @@ func (s *Server) handleRegisterFinish(c fiber.Ctx) error {
 	if err := decodeBody(c, &request); err != nil {
 		return err
 	}
-	email := normalizeEmail(request.Email)
+	email := apitypes.NormalizeEmail(request.Email)
 	if !s.checkInvite(c, request.Invite, email) {
 		return errInvalidInvite
 	}
@@ -161,7 +159,7 @@ func (s *Server) handleLoginStart(c fiber.Ctx) error {
 	if err := decodeBody(c, &request); err != nil {
 		return err
 	}
-	email := normalizeEmail(request.Email)
+	email := apitypes.NormalizeEmail(request.Email)
 	keyExchange1, err := s.opaque.Deserialize.KE1(request.KE1)
 	if err != nil || email == "" {
 		return errInvalidLogin

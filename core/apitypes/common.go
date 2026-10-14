@@ -1,5 +1,7 @@
 package apitypes
 
+import "strings"
+
 const (
 	RoleAdmin  = "admin"
 	RoleMember = "member"
@@ -20,3 +22,14 @@ type DeviceInfo struct {
 	Name     string `json:"name"`
 	Platform string `json:"platform"`
 }
+
+// IsValidVaultRole reports whether role is one a vault member can have.
+func IsValidVaultRole(role string) bool {
+	return role == VaultOwner || role == VaultEditor || role == VaultReader
+}
+
+// NormalizeEmail is the form emails are stored and compared in.
+func NormalizeEmail(email string) string { return strings.ToLower(strings.TrimSpace(email)) }
+
+// CanWriteItems reports whether a member with role may add and change items, and so receive moved items.
+func CanWriteItems(role string) bool { return role == VaultOwner || role == VaultEditor }

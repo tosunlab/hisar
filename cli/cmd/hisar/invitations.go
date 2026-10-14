@@ -20,16 +20,12 @@ const shortInvitationIDLength = 8
 
 var errPersonalVaultShare = errors.New("personal vaults cannot be shared; create one with `hisar vault-create`")
 
-func isValidVaultRole(role string) bool {
-	return role == apitypes.VaultOwner || role == apitypes.VaultEditor || role == apitypes.VaultReader
-}
-
 // getShareArgument returns the vault and email from the arguments, asking for what is missing.
 func getShareArgument(allPositional []string, role string) (vaultName, email string, err error) {
 	if len(allPositional) > 2 {
 		return "", "", errUsage
 	}
-	if !isValidVaultRole(role) {
+	if !apitypes.IsValidVaultRole(role) {
 		return "", "", fmt.Errorf("invalid role %q: use owner, editor or reader", role)
 	}
 	if len(allPositional) > 0 {

@@ -47,7 +47,7 @@ func (s *Server) allowInvitation(c fiber.Ctx, accountLimiter, ipLimiter *dailyLi
 }
 
 func parseEmail(email string) (string, error) {
-	recipient, err := mail.ParseRecipient(normalizeEmail(email))
+	recipient, err := mail.ParseRecipient(apitypes.NormalizeEmail(email))
 	if err != nil {
 		return "", errInvalidEmail
 	}
@@ -130,7 +130,7 @@ func (s *Server) handleCreateShareInvitation(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	if !isValidVaultRole(request.Role) {
+	if !apitypes.IsValidVaultRole(request.Role) {
 		return createAPIError(fiber.StatusBadRequest, "choose owner, editor or reader")
 	}
 	inviter, err := s.store.GetAccountByID(c.Context(), currentSession.AccountID)

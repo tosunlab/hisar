@@ -247,7 +247,7 @@ func TestValidators(t *testing.T) {
 	if !isValidUUID("0f8fad5b-d9cb-469f-a165-70867728950e") || isValidUUID("0f8fad5bd9cb469fa16570867728950e") || isValidUUID("../x") {
 		t.Error("isValidUUID")
 	}
-	if normalizeEmail("  Alice@Example.COM ") != "alice@example.com" {
+	if apitypes.NormalizeEmail("  Alice@Example.COM ") != "alice@example.com" {
 		t.Error("normalizeEmail")
 	}
 	if isValidDevice(apitypes.DeviceInfo{}) || isValidDevice(apitypes.DeviceInfo{Name: string(make([]byte, 101)), Platform: "x"}) {

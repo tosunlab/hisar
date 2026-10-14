@@ -27,10 +27,6 @@ func isValidUUID(value string) bool {
 	return err == nil && len(value) == 36
 }
 
-func isValidVaultRole(role string) bool {
-	return role == apitypes.VaultOwner || role == apitypes.VaultEditor || role == apitypes.VaultReader
-}
-
 // getVaultRole returns the caller's role; missing vaults and non-members both get 404.
 func (s *Server) getVaultRole(c fiber.Ctx) (string, error) {
 	vaultID := c.Params("vault")
@@ -124,7 +120,7 @@ func (s *Server) handleSetAccess(c fiber.Ctx) error {
 	if err := decodeBody(c, &request); err != nil {
 		return err
 	}
-	if !isValidVaultRole(request.Role) || len(request.WrappedKey) == 0 || len(request.WrappedKey) > maxWrappedKey {
+	if !apitypes.IsValidVaultRole(request.Role) || len(request.WrappedKey) == 0 || len(request.WrappedKey) > maxWrappedKey {
 		return createAPIError(fiber.StatusBadRequest, "invalid access")
 	}
 	errNoAccount := createAPIError(fiber.StatusNotFound, "account not found")

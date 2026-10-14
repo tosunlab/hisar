@@ -172,7 +172,7 @@ func (s *Server) handleDeleteAccount(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	if normalizeEmail(request.Email) != account.Email {
+	if apitypes.NormalizeEmail(request.Email) != account.Email {
 		return createAPIError(fiber.StatusBadRequest, "the email does not match this account")
 	}
 	pending, err := s.finishReauthentication(c, request.ReauthenticationID, request.KE3)

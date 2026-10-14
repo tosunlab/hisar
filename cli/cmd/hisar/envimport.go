@@ -153,7 +153,7 @@ func chooseDotenvVault(ctx context.Context, access vaultAccess) (cliprotocol.Vau
 		return cliprotocol.Vault{}, err
 	}
 	allWritable := slices.DeleteFunc(allVault, func(vault cliprotocol.Vault) bool {
-		return vault.Role != apitypes.VaultOwner && vault.Role != apitypes.VaultEditor
+		return !apitypes.CanWriteItems(vault.Role)
 	})
 	if len(allWritable) == 0 {
 		return cliprotocol.Vault{}, errors.New("you have no vault you can add items to")
@@ -304,7 +304,7 @@ func planDotenvImport(ctx context.Context, access vaultAccess, path string, opti
 	default:
 		return nil, errors.New("pass --vault and --item, or run hisar import in a terminal to choose them")
 	}
-	if !isOffline && plan.vault.Role != apitypes.VaultOwner && plan.vault.Role != apitypes.VaultEditor {
+	if !isOffline && !apitypes.CanWriteItems(plan.vault.Role) {
 		return nil, fmt.Errorf("you can only read %q; choose a vault you can edit", plan.vault.Name)
 	}
 	if plan.itemTitle == "" {

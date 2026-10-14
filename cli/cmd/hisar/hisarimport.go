@@ -97,7 +97,7 @@ func planHisarImport(ctx context.Context, access vaultAccess, document *export.D
 
 func findImportTarget(allVault []cliprotocol.Vault, exported export.Vault) (cliprotocol.Vault, bool) {
 	isWritable := func(vault cliprotocol.Vault) bool {
-		return vault.Role == apitypes.VaultOwner || vault.Role == apitypes.VaultEditor
+		return apitypes.CanWriteItems(vault.Role)
 	}
 	for _, vault := range allVault {
 		if exported.Type == apitypes.VaultPersonal && vault.Type == apitypes.VaultPersonal {

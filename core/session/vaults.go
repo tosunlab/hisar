@@ -189,7 +189,7 @@ func (s *Session) DeleteVault(ctx context.Context, vault *Vault, deletion VaultD
 		return 0, err
 	}
 	target := deletion.MoveTo
-	if target.ID == vault.ID || (target.Role != apitypes.VaultOwner && target.Role != apitypes.VaultEditor) {
+	if target.ID == vault.ID || !apitypes.CanWriteItems(target.Role) {
 		return 0, ErrTargetNotWritable
 	}
 	for attempt := 1; ; attempt++ {
