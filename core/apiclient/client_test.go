@@ -3,6 +3,8 @@ package apiclient
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -127,5 +129,15 @@ func TestIsUnreachable(t *testing.T) {
 		if _, err := fakeClient.GetAccount(context.Background()); IsUnreachable(err) != want {
 			t.Errorf("%d: unreachable = %v", status, !want)
 		}
+	}
+}
+
+func TestIsStatusMatchesWrappedErrors(t *testing.T) {
+	apiError := &APIError{Status: http.StatusForbidden}
+	if !IsStatus(fmt.Errorf("vault v1: %w", apiError), http.StatusForbidden) {
+		t.Error("wrapped API error not matched")
+	}
+	if IsStatus(fmt.Errorf("vault v1: %w", apiError), http.StatusNotFound) || IsStatus(errors.New("plain"), http.StatusForbidden) {
+		t.Error("matched the wrong status or a plain error")
 	}
 }

@@ -71,9 +71,10 @@ func (c *Client) readUpgradeRequired(data []byte) error {
 	return upgradeRequired
 }
 
+// IsStatus reports whether err is, or wraps, an API error with the given HTTP status.
 func IsStatus(err error, status int) bool {
-	apiError, ok := err.(*APIError)
-	return ok && apiError.Status == status
+	var apiError *APIError
+	return errors.As(err, &apiError) && apiError.Status == status
 }
 
 // IsUnreachable reports a failed connection or a reverse proxy that cannot reach the server.
