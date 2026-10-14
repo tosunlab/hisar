@@ -2,12 +2,14 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"reflect"
 	"slices"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/tryhisar/hisar/core/apiclient"
@@ -117,6 +119,57 @@ func TestVaultRenameDeleteAndLeavePermissions(t *testing.T) {
 	if !slices.Contains(listAuditTypes(t, databaseURL), "vault_renamed") || !slices.Contains(listAuditTypes(t, databaseURL), "vault_left") {
 		t.Errorf("audit events: %v", listAuditTypes(t, databaseURL))
 	}
+}
+
+func getStatusAndError(t *testing.T, signedIn *session.Session, path string) (int, string) {
+	t.Helper()
+	request := requireValue[*http.Request](t)(http.NewRequest(http.MethodGet, signedIn.Client.BaseURL+path, nil))
+	request.Header.Set("Authorization", "Bearer "+signedIn.Client.Token)
+	response := requireValue[*http.Response](t)(http.DefaultClient.Do(request))
+	defer response.Body.Close()
+	var body apitypes.Error
+	json.NewDecoder(response.Body).Decode(&body)
+	return response.StatusCode, body.Error
+}
+
+func TestVaultAccessIsCheckedBeforeTheRequest(t *testing.T) {
+	baseURL, server, _ := setupServer(t)
+	attachMailRecorder(server)
+	ctx := context.Background()
+	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", apitypes.RoleMember)
+	carol := signUpTestAccount(t, ctx, server, baseURL, "carol@example.com", apitypes.RoleMember)
+	stranger := signUpTestAccount(t, ctx, server, baseURL, "dave@example.com", apitypes.RoleMember)
+	work := requireValue[*session.Vault](t)(alice.CreateVault(ctx, "Work", apitypes.VaultShared))
+	shareThroughInvitation(t, alice, carol, work, apitypes.VaultReader)
+
+	for _, test := range []struct {
+		description string
+		signedIn    *session.Session
+		query       string
+		status      int
+		message     string
+	}{
+		{"stranger with a malformed since", stranger, "since=x", http.StatusNotFound, "not found"},
+		{"stranger with an out-of-range limit", stranger, "limit=0", http.StatusNotFound, "not found"},
+		{"member with a malformed since", carol, "since=x", http.StatusBadRequest, "invalid since"},
+		{"member with a negative since", carol, "since=-1", http.StatusBadRequest, "invalid since"},
+		{"member with a malformed limit", carol, "limit=x", http.StatusBadRequest, "invalid limit"},
+		{"member with a limit above the maximum", carol, "limit=1001", http.StatusBadRequest, "invalid limit"},
+		{"member with valid numbers", carol, "since=0&limit=1000", http.StatusOK, ""},
+	} {
+		status, message := getStatusAndError(t, test.signedIn, "/api/v1/vaults/"+work.ID+"/changes?"+test.query)
+		if status != test.status || message != test.message {
+			t.Errorf("%s: got %d %q, want %d %q", test.description, status, message, test.status, test.message)
+		}
+	}
+
+	_, _, err := carol.Client.PutItem(ctx, work.ID, uuid.NewString(), "", &apitypes.PutItemRequest{Revision: uuid.NewString(), Overview: []byte{1}, Details: []byte{1}})
+	var apiError *apiclient.APIError
+	if !errors.As(err, &apiError) || apiError.Status != http.StatusForbidden || apiError.Message != "read only" {
+		t.Errorf("reader saves an item: %v", err)
+	}
+	_, _, err = stranger.Client.PutItem(ctx, work.ID, uuid.NewString(), "", &apitypes.PutItemRequest{Revision: uuid.NewString(), Overview: []byte{1}, Details: []byte{1}})
+	expectStatus(t, "stranger saves an item", err, http.StatusNotFound)
 }
 
 func createTestItem(t *testing.T, owner *session.Session, vault *session.Vault, vaultItem item.Item) item.Item {

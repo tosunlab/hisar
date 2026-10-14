@@ -180,10 +180,16 @@ func convertToProtoItem(storeItem *store.Item) apitypes.Item {
 }
 
 // ListChanges returns up to limit changes after since. NextSeq below the client's since signals a server rollback;
-// it is not clamped.
+// it is not clamped. A vault the caller cannot see is not found before since and limit are checked.
 func (s *Service) ListChanges(ctx context.Context, actor Actor, vaultID string, since int64, limit int) (apitypes.ChangesResponse, error) {
 	if _, err := s.GetVaultRole(ctx, actor, vaultID); err != nil {
 		return apitypes.ChangesResponse{}, err
+	}
+	if since < 0 {
+		return apitypes.ChangesResponse{}, newError(KindInvalid, "invalid since")
+	}
+	if limit < 1 || limit > MaxChangeLimit {
+		return apitypes.ChangesResponse{}, newError(KindInvalid, "invalid limit")
 	}
 	items, vaultSeq, err := s.store.ListChanges(ctx, vaultID, since, limit)
 	if err != nil {
@@ -209,14 +215,22 @@ type ItemConflictError struct {
 
 func (err *ItemConflictError) Error() string { return "item conflict" }
 
-// PutItem saves a new revision of an item, refusing it with *ItemConflictError unless baseRevision is the current one.
-func (s *Service) PutItem(ctx context.Context, actor Actor, vaultID, itemID, baseRevision string, request *apitypes.PutItemRequest) (int64, error) {
+// CheckItemWrite refuses a caller who may not change items in the vault: not found for a non-member, read only for a reader.
+func (s *Service) CheckItemWrite(ctx context.Context, actor Actor, vaultID string) error {
 	role, err := s.GetVaultRole(ctx, actor, vaultID)
 	if err != nil {
-		return 0, err
+		return err
 	}
 	if role == apitypes.VaultReader {
-		return 0, errReadOnly
+		return errReadOnly
+	}
+	return nil
+}
+
+// PutItem saves a new revision of an item, refusing it with *ItemConflictError unless baseRevision is the current one.
+func (s *Service) PutItem(ctx context.Context, actor Actor, vaultID, itemID, baseRevision string, request *apitypes.PutItemRequest) (int64, error) {
+	if err := s.CheckItemWrite(ctx, actor, vaultID); err != nil {
+		return 0, err
 	}
 	if !IsValidUUID(itemID) || !IsValidUUID(request.Revision) || (baseRevision != "" && !IsValidUUID(baseRevision)) ||
 		len(request.Overview) == 0 || len(request.Overview) > maxOverview ||

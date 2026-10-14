@@ -57,22 +57,21 @@ func (s *Server) handleRemoveAccess(c fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
+// handleListChanges leaves the range checks to the service, which answers not found first for a vault the caller
+// cannot see; a malformed number becomes an out-of-range one.
 func (s *Server) handleListChanges(c fiber.Ctx) error {
-	if _, err := s.service.GetVaultRole(c.Context(), s.getActor(c), c.Params("vault")); err != nil {
-		return err
-	}
 	var since int64
 	if sinceQuery := c.Query("since"); sinceQuery != "" {
 		var err error
-		if since, err = strconv.ParseInt(sinceQuery, 10, 64); err != nil || since < 0 {
-			return createAPIError(fiber.StatusBadRequest, "invalid since")
+		if since, err = strconv.ParseInt(sinceQuery, 10, 64); err != nil {
+			since = -1
 		}
 	}
 	limit := service.DefaultChangeLimit
 	if limitQuery := c.Query("limit"); limitQuery != "" {
 		var err error
-		if limit, err = strconv.Atoi(limitQuery); err != nil || limit < 1 || limit > service.MaxChangeLimit {
-			return createAPIError(fiber.StatusBadRequest, "invalid limit")
+		if limit, err = strconv.Atoi(limitQuery); err != nil {
+			limit = 0
 		}
 	}
 	response, err := s.service.ListChanges(c.Context(), s.getActor(c), c.Params("vault"), since, limit)
@@ -83,12 +82,9 @@ func (s *Server) handleListChanges(c fiber.Ctx) error {
 }
 
 func (s *Server) handlePutItem(c fiber.Ctx) error {
-	role, err := s.service.GetVaultRole(c.Context(), s.getActor(c), c.Params("vault"))
-	if err != nil {
+	// A reader is refused before the body is read; PutItem checks again.
+	if err := s.service.CheckItemWrite(c.Context(), s.getActor(c), c.Params("vault")); err != nil {
 		return err
-	}
-	if role == apitypes.VaultReader {
-		return createAPIError(fiber.StatusForbidden, "read only")
 	}
 	var request apitypes.PutItemRequest
 	if err := decodeBody(c, &request); err != nil {
