@@ -4,9 +4,11 @@ import (
 	"cmp"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 	"slices"
+	"strings"
 	"sync"
 	"time"
 )
@@ -33,65 +35,88 @@ type snapshot struct {
 	fetchedAt        time.Time
 }
 
-// Source caches the appcast and the files of the releases in it.
+// Source caches the appcast and the assets of the releases in it.
 type Source struct {
-	gitLab        *GitLab
-	config        SourceConfig
-	mutex         sync.Mutex
-	cached        *snapshot
-	lastFailureAt time.Time
+	gitHub           *GitHub
+	config           SourceConfig
+	mutex            sync.Mutex
+	cached           *snapshot
+	lastFailureAt    time.Time
+	rateLimitedUntil time.Time
+	rateLimitErr     error
+	// An asset's content never changes; a new upload gets a new asset ID.
+	allMetadataByAssetID map[int64][]byte
 }
 
-func CreateSource(gitLab *GitLab, config SourceConfig) *Source {
+func CreateSource(gitHub *GitHub, config SourceConfig) *Source {
 	if config.CacheDuration == 0 {
 		config.CacheDuration = defaultCacheDuration
 	}
 	if config.Now == nil {
 		config.Now = time.Now
 	}
-	return &Source{gitLab: gitLab, config: config}
+	return &Source{gitHub: gitHub, config: config, allMetadataByAssetID: map[int64][]byte{}}
 }
 
-type versionedPackage struct {
-	gitLabPackage
-	buildNumber int64
+type candidateRelease struct {
+	version        string
+	buildNumber    int64
+	allAssetByName map[string]gitHubAsset
+}
+
+// selectAllCandidate keeps published desktop releases, newest first: a desktop-MAJOR.MINOR.PATCH tag, neither draft nor prerelease, with an update.json asset.
+func selectAllCandidate(allRelease []gitHubRelease) []candidateRelease {
+	allCandidate := []candidateRelease{}
+	seenVersion := map[string]bool{}
+	for _, listed := range allRelease {
+		version, isDesktop := strings.CutPrefix(listed.TagName, releaseTagPrefix)
+		if !isDesktop || listed.IsDraft || listed.IsPrerelease || seenVersion[version] {
+			continue
+		}
+		buildNumber, err := GetBuildNumber(version)
+		if err != nil {
+			continue
+		}
+		allAssetByName := map[string]gitHubAsset{}
+		for _, asset := range listed.AllAsset {
+			if IsValidFileName(asset.Name) && (asset.State == "" || asset.State == "uploaded") {
+				allAssetByName[asset.Name] = asset
+			}
+		}
+		if _, found := allAssetByName[metadataFileName]; !found {
+			continue
+		}
+		seenVersion[version] = true
+		allCandidate = append(allCandidate, candidateRelease{version: version, buildNumber: buildNumber, allAssetByName: allAssetByName})
+	}
+	slices.SortFunc(allCandidate, func(first, second candidateRelease) int { return cmp.Compare(second.buildNumber, first.buildNumber) })
+	return allCandidate
 }
 
 func (source *Source) fetchSnapshot(ctx context.Context) (*snapshot, error) {
-	allPackage, err := source.gitLab.listAllPackage(ctx)
+	allListedRelease, err := source.gitHub.listAllRelease(ctx)
 	if err != nil {
 		return nil, err
 	}
-	allCandidate := []versionedPackage{}
-	seenVersion := map[string]bool{}
-	for _, listedPackage := range allPackage {
-		if listedPackage.Name != PackageName || listedPackage.PackageType != "generic" || (listedPackage.Status != "" && listedPackage.Status != "default") {
-			continue
-		}
-		buildNumber, err := GetBuildNumber(listedPackage.Version)
-		if err != nil || seenVersion[listedPackage.Version] {
-			continue
-		}
-		seenVersion[listedPackage.Version] = true
-		allCandidate = append(allCandidate, versionedPackage{gitLabPackage: listedPackage, buildNumber: buildNumber})
-	}
-	slices.SortFunc(allCandidate, func(first, second versionedPackage) int { return cmp.Compare(second.buildNumber, first.buildNumber) })
-
+	allCandidate := selectAllCandidate(allListedRelease)
 	allRelease := []*Release{}
+	allMetadataByAssetID := map[int64][]byte{}
 	for _, candidate := range allCandidate[:min(len(allCandidate), maximumInspectedCount)] {
 		if len(allRelease) == appcastItemCount {
 			break
 		}
-		release, err := source.fetchRelease(ctx, candidate.gitLabPackage)
+		release, err := source.fetchRelease(ctx, candidate, allMetadataByAssetID)
 		if err != nil {
-			if ctx.Err() != nil {
-				return nil, ctx.Err()
+			var limitError *rateLimitError
+			if ctx.Err() != nil || errors.As(err, &limitError) {
+				return nil, cmp.Or(ctx.Err(), err)
 			}
-			log.Printf("desktop update %s skipped: %v", candidate.Version, err)
+			log.Printf("desktop update %s skipped: %v", candidate.version, err)
 			continue
 		}
 		allRelease = append(allRelease, release)
 	}
+	source.allMetadataByAssetID = allMetadataByAssetID
 	fetched := &snapshot{appcast: BuildAppcast(source.config.PublicURL, allRelease), allReleaseByName: map[string]*Release{}, fetchedAt: source.config.Now()}
 	for _, release := range allRelease {
 		fetched.allReleaseByName[release.Version] = release
@@ -99,35 +124,36 @@ func (source *Source) fetchSnapshot(ctx context.Context) (*snapshot, error) {
 	return fetched, nil
 }
 
-func (source *Source) fetchRelease(ctx context.Context, listedPackage gitLabPackage) (*Release, error) {
-	allFile, err := source.gitLab.listAllPackageFile(ctx, listedPackage.ID)
-	if err != nil {
-		return nil, err
+func (source *Source) fetchRelease(ctx context.Context, candidate candidateRelease, allMetadataByAssetID map[int64][]byte) (*Release, error) {
+	metadataAsset := candidate.allAssetByName[metadataFileName]
+	if metadataAsset.Size > maximumMetadataSize {
+		return nil, errors.New("update.json is too large")
 	}
-	allFileSizeByName := map[string]int64{}
-	for _, file := range allFile {
-		// A re-uploaded file is listed again; the newest upload is served, and it comes last.
-		if IsValidFileName(file.FileName) {
-			allFileSizeByName[file.FileName] = file.Size
+	content, found := source.allMetadataByAssetID[metadataAsset.ID]
+	if !found {
+		var err error
+		if content, err = source.gitHub.readAsset(ctx, metadataAsset.ID, maximumMetadataSize); err != nil {
+			return nil, fmt.Errorf("read update.json: %w", err)
 		}
 	}
-	if _, found := allFileSizeByName[metadataFileName]; !found {
-		return nil, errors.New("no update.json")
-	}
-	content, err := source.gitLab.readMetadata(ctx, listedPackage.Version)
-	if err != nil {
-		return nil, err
-	}
-	return parseRelease(content, listedPackage.Version, allFileSizeByName)
+	allMetadataByAssetID[metadataAsset.ID] = content
+	return parseRelease(content, candidate.version, candidate.allAssetByName)
 }
 
-// getSnapshot refreshes an expired cache; when GitLab fails it keeps serving the previous appcast and retries after a minute.
+// getSnapshot refreshes an expired cache. When GitHub fails it keeps serving the previous appcast and retries after a minute,
+// or once GitHub's rate limit allows.
 func (source *Source) getSnapshot(ctx context.Context) (*snapshot, error) {
 	source.mutex.Lock()
 	defer source.mutex.Unlock()
 	now := source.config.Now()
 	if source.cached != nil && now.Sub(source.cached.fetchedAt) < source.config.CacheDuration {
 		return source.cached, nil
+	}
+	if now.Before(source.rateLimitedUntil) {
+		if source.cached != nil {
+			return source.cached, nil
+		}
+		return nil, source.rateLimitErr
 	}
 	if source.cached != nil && now.Sub(source.lastFailureAt) < defaultRetryAfterError {
 		return source.cached, nil
@@ -137,6 +163,11 @@ func (source *Source) getSnapshot(ctx context.Context) (*snapshot, error) {
 	fetched, err := source.fetchSnapshot(fetchContext)
 	if err != nil {
 		source.lastFailureAt = now
+		var limitError *rateLimitError
+		if errors.As(err, &limitError) {
+			source.rateLimitedUntil = now.Add(max(limitError.retryDelay, defaultRetryAfterError))
+			source.rateLimitErr = err
+		}
 		if source.cached != nil {
 			log.Printf("desktop updates: serving the cached appcast: %v", err)
 			return source.cached, nil
@@ -168,11 +199,11 @@ func (source *Source) OpenFile(ctx context.Context, version, fileName string) (i
 	if !found {
 		return nil, 0, ErrFileNotFound
 	}
-	listedSize, found := release.allFileSizeByName[fileName]
+	asset, found := release.allAssetByName[fileName]
 	if !found {
 		return nil, 0, ErrFileNotFound
 	}
-	response, err := source.gitLab.openFile(ctx, version, fileName)
+	response, err := source.gitHub.openAsset(ctx, asset.ID)
 	if errors.Is(err, errNotFound) {
 		return nil, 0, ErrFileNotFound
 	}
@@ -181,7 +212,7 @@ func (source *Source) OpenFile(ctx context.Context, version, fileName string) (i
 	}
 	size := response.ContentLength
 	if size < 0 {
-		size = listedSize
+		size = asset.Size
 	}
 	return response.Body, size, nil
 }

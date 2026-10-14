@@ -30,6 +30,7 @@ vet:
 
 test-end-to-end: build
 	go build -o bin/hisar-smtp-sink ./server/cmd/hisar-smtp-sink
+	go build -o bin/hisar-fake-github ./server/cmd/hisar-fake-github
 	./scripts/test-end-to-end.sh
 
 docker:

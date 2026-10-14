@@ -20,12 +20,17 @@ export HISAR_NO_LAUNCH=1
 # Invites and share invitations go to a local SMTP sink that writes each email to $MAIL.
 export HISAR_SMTP_HOST=127.0.0.1 HISAR_SMTP_PORT=$SMTP_PORT HISAR_SMTP_USERNAME=hisar HISAR_SMTP_PASSWORD=end-to-end HISAR_SMTP_FROM='Hisar <noreply@hisar.test>'
 : "${HISAR_DATABASE_URL:?set HISAR_DATABASE_URL to an empty database}"
+# Desktop updates come from a local fake of GitHub Releases, never from github.com.
+GITHUB_PORT=${END_TO_END_GITHUB_PORT:-18092}
+export HISAR_DESKTOP_UPDATE_GITHUB_API_URL=http://127.0.0.1:$GITHUB_PORT HISAR_DESKTOP_UPDATE_GITHUB_TOKEN=end-to-end-github-token
 
 "$BIN/hisar-smtp-sink" -addr "127.0.0.1:$SMTP_PORT" -dir "$MAIL" >"$T/smtp.log" 2>&1 &
 SINK=$!
+"$BIN/hisar-fake-github" -addr "127.0.0.1:$GITHUB_PORT" -token "$HISAR_DESKTOP_UPDATE_GITHUB_TOKEN" >"$T/github.log" 2>&1 &
+GITHUB=$!
 "$BIN/hisar-server" serve -addr "127.0.0.1:$PORT" >"$T/server.log" 2>&1 &
 SERVER=$!
-trap 'kill $SERVER $SINK 2>/dev/null || true; rm -rf "$T"' EXIT
+trap 'kill $SERVER $SINK $GITHUB 2>/dev/null || true; rm -rf "$T"' EXIT
 curl -sf --retry 20 --retry-all-errors --retry-delay 1 "http://127.0.0.1:$PORT/healthz" >/dev/null
 
 fail() { echo "FAIL: $*" >&2; cat "$T/server.log" >&2; exit 1; }
@@ -289,7 +294,12 @@ expect "the deleted account's device is signed out" "$(D whoami 2>&1 || true)" "
 
 APPCAST_URL=http://127.0.0.1:$PORT/api/v1/desktop/updates/appcast.xml
 expect "desktop updates need a session" "$(curl -s "$APPCAST_URL")" "unauthorized"
-expect "desktop updates not configured" "$(curl -s -H "Authorization: Bearer $ALICE_TOKEN" "$APPCAST_URL")" "updates are not configured on this server"
+APPCAST=$(curl -s -H "Authorization: Bearer $ALICE_TOKEN" "$APPCAST_URL")
+expect "the appcast offers the published desktop release from GitHub" "$APPCAST" "<enclosure url=\"$HISAR_PUBLIC_URL/api/v1/desktop/updates/0.2.0/Hisar-0.2.0.zip\" length=\"27\""
+[[ "$APPCAST" != *"0.3.0"* ]] || fail "the appcast offers the unpublished 0.3.0"
+echo "ok   the appcast leaves out the unpublished release"
+expect "the update archive is proxied from GitHub" "$(curl -s -H "Authorization: Bearer $ALICE_TOKEN" "http://127.0.0.1:$PORT/api/v1/desktop/updates/0.2.0/Hisar-0.2.0.zip")" "end-to-end archive of 0.2.0"
+expect "an unpublished release can't be downloaded" "$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $ALICE_TOKEN" "http://127.0.0.1:$PORT/api/v1/desktop/updates/0.3.0/Hisar-0.3.0.zip")" "404"
 
 expect "logout" "$(A logout && A whoami 2>&1 || true)" "not logged in"
 
@@ -352,4 +362,6 @@ expect "an old Mac app is refused before sign-in" "$(curl -s -w ' %{http_code}' 
 expect "a current Mac app passes the version check" "$(curl -s -o /dev/null -w '%{http_code}' -H 'Hisar-Platform: darwin/desktop' -H 'Hisar-Version: 0.2.0' "$VERSION_CHECK_URL")" "204"
 expect "a pre-release of the minimum is older than the release" "$(curl -s -o /dev/null -w '%{http_code}' -H 'Hisar-Platform: linux/cli' -H 'Hisar-Version: 1.0.0-alpha-test' "$VERSION_CHECK_URL")" "426"
 expect "the update feed stays open to an old Mac app" "$(curl -s -H 'Hisar-Platform: darwin/desktop' -H 'Hisar-Version: 0.1.9' "$APPCAST_URL")" "unauthorized"
+expect "an old Mac app gets the appcast" "$(curl -s -H 'Hisar-Platform: darwin/desktop' -H 'Hisar-Version: 0.1.9' -H "Authorization: Bearer $BOB_TOKEN" "$APPCAST_URL")" "<sparkle:shortVersionString>0.2.0</sparkle:shortVersionString>"
+expect "an old Mac app downloads the update" "$(curl -s -H 'Hisar-Platform: darwin/desktop' -H 'Hisar-Version: 0.1.9' -H "Authorization: Bearer $BOB_TOKEN" "http://127.0.0.1:$PORT/api/v1/desktop/updates/0.2.0/Hisar-0.2.0.zip")" "end-to-end archive of 0.2.0"
 echo "end-to-end test passed"

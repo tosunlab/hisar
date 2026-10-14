@@ -54,10 +54,10 @@ email for invites and share invitations (optional; all five or none):
   HISAR_SMTP_PASSWORD  SMTP password
   HISAR_SMTP_FROM      sender, e.g. "Hisar <noreply@tryhisar.com>"
 
-desktop updates (optional; all three or none):
-  HISAR_UPDATE_GITLAB_URL         GitLab holding the hisar-desktop generic package, e.g. https://git.tryhisar.com
-  HISAR_UPDATE_GITLAB_PROJECT_ID  numeric ID of that GitLab project
-  HISAR_UPDATE_GITLAB_TOKEN       project access token, Reporter role, read_api scope
+desktop updates (the Mac app's Sparkle feed, read from GitHub Releases):
+  HISAR_DESKTOP_UPDATE_GITHUB_REPOSITORY  owner/name with the desktop-<version> releases (default hisarapp/core); off disables updates
+  HISAR_DESKTOP_UPDATE_GITHUB_TOKEN       optional read-only token (Contents: read), needed while the repository is private
+  HISAR_DESKTOP_UPDATE_GITHUB_API_URL     GitHub API base URL (default https://api.github.com)
 
 minimum app versions (optional; empty means no minimum, older apps get 426 Upgrade Required):
   HISAR_MINIMUM_VERSION_DESKTOP_MACOS  e.g. 0.1.6
@@ -175,19 +175,26 @@ func readMinimumVersions() api.MinimumVersions {
 }
 
 func createDesktopUpdateSource(publicURL string) (*desktopupdate.Source, error) {
-	gitLabURL, projectID, token := os.Getenv("HISAR_UPDATE_GITLAB_URL"), os.Getenv("HISAR_UPDATE_GITLAB_PROJECT_ID"), os.Getenv("HISAR_UPDATE_GITLAB_TOKEN")
-	if gitLabURL == "" && projectID == "" && token == "" {
+	repository := strings.TrimSpace(getEnv("HISAR_DESKTOP_UPDATE_GITHUB_REPOSITORY", desktopupdate.DefaultGitHubRepository))
+	if repository == "off" {
+		log.Printf("desktop updates are off")
 		return nil, nil
 	}
-	if gitLabURL == "" || projectID == "" || token == "" {
-		return nil, errors.New("desktop updates need HISAR_UPDATE_GITLAB_URL, HISAR_UPDATE_GITLAB_PROJECT_ID and HISAR_UPDATE_GITLAB_TOKEN together")
-	}
-	gitLab, err := desktopupdate.CreateGitLab(desktopupdate.GitLabConfig{BaseURL: gitLabURL, ProjectID: projectID, Token: token})
+	token := strings.TrimSpace(os.Getenv("HISAR_DESKTOP_UPDATE_GITHUB_TOKEN"))
+	gitHub, err := desktopupdate.CreateGitHub(desktopupdate.GitHubConfig{
+		APIURL:     getEnv("HISAR_DESKTOP_UPDATE_GITHUB_API_URL", desktopupdate.DefaultGitHubAPIURL),
+		Repository: repository,
+		Token:      token,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("desktop updates: %w", err)
 	}
-	log.Printf("desktop updates from %s project %s", gitLabURL, projectID)
-	return desktopupdate.CreateSource(gitLab, desktopupdate.SourceConfig{PublicURL: publicURL}), nil
+	tokenNote := "without a token"
+	if token != "" {
+		tokenNote = "with a token"
+	}
+	log.Printf("desktop updates from the GitHub Releases of %s, %s", repository, tokenNote)
+	return desktopupdate.CreateSource(gitHub, desktopupdate.SourceConfig{PublicURL: publicURL}), nil
 }
 
 func createMailer() (mail.Mailer, error) {
