@@ -161,7 +161,7 @@ func (option *importOption) readChosenFlag(flags *flag.FlagSet) {
 }
 
 // importOwnFormat handles .env files and Hisar's own exports; other files go to the password manager importers.
-func importOwnFormat(ctx context.Context, access vaultAccess, path string, option *importOption) (bool, error) {
+func importOwnFormat(ctx context.Context, access backend, path string, option *importOption) (bool, error) {
 	if isDotenvFile(path, option.format) {
 		dotenvOption := dotenvImportOption{
 			vaultName: option.vaultName, isVaultChosen: option.isVaultChosen, itemTitle: option.itemTitle,
@@ -210,7 +210,7 @@ func runImport(ctx context.Context, flags *flag.FlagSet, args []string) error {
 		return errUsage
 	}
 	option.readChosenFlag(flags)
-	access := &sessionVaultAccess{}
+	access := &standaloneBackend{}
 	if isHandled, err := importOwnFormat(ctx, access, positionals[0], option); isHandled {
 		return access.finish(err)
 	}

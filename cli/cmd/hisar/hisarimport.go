@@ -57,14 +57,14 @@ func decodeHisarExport(format string, content []byte) (*export.Document, error) 
 
 // planHisarImport maps each exported vault to the user's vault of the same name, the Personal vault to Personal,
 // and a vault that is missing or read-only to a new vault; with -v everything goes into that vault.
-func planHisarImport(ctx context.Context, access vaultAccess, document *export.Document, option hisarImportOption) ([]exportedVaultPlan, error) {
+func planHisarImport(ctx context.Context, access backend, document *export.Document, option hisarImportOption) ([]exportedVaultPlan, error) {
 	vaults, err := access.listVaults(ctx)
 	if err != nil {
 		return nil, err
 	}
 	var chosenVault cliprotocol.Vault
 	if option.isVaultChosen {
-		if chosenVault, err = findAccessVault(ctx, access, option.vaultName); err != nil {
+		if chosenVault, err = findBackendVault(ctx, access, option.vaultName); err != nil {
 			return nil, err
 		}
 		if chosenVault.Role == apitypes.VaultReader {
@@ -144,7 +144,7 @@ func printHisarImportPreview(fileName string, document *export.Document, format 
 	}
 }
 
-func importHisarExport(ctx context.Context, access vaultAccess, path, format string, content []byte, option hisarImportOption) error {
+func importHisarExport(ctx context.Context, access backend, path, format string, content []byte, option hisarImportOption) error {
 	document, err := decodeHisarExport(format, content)
 	if err != nil {
 		return err

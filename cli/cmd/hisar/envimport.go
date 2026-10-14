@@ -147,7 +147,7 @@ func toggleDotenvChoice(storable []dotenvVariable, chosenByName map[string]bool)
 	}
 }
 
-func chooseDotenvVault(ctx context.Context, access vaultAccess) (cliprotocol.Vault, error) {
+func chooseDotenvVault(ctx context.Context, access backend) (cliprotocol.Vault, error) {
 	vaults, err := access.listVaults(ctx)
 	if err != nil {
 		return cliprotocol.Vault{}, err
@@ -192,7 +192,7 @@ func buildReferenceVaultSegment(vaults []cliprotocol.Vault, vault cliprotocol.Va
 	return vault.Name
 }
 
-func findDotenvItem(ctx context.Context, access vaultAccess, vault cliprotocol.Vault, title string) (string, error) {
+func findDotenvItem(ctx context.Context, access backend, vault cliprotocol.Vault, title string) (string, error) {
 	items, err := access.listItems(ctx, vault.ID)
 	if err != nil {
 		return "", err
@@ -212,7 +212,7 @@ func findDotenvItem(ctx context.Context, access vaultAccess, vault cliprotocol.V
 	return "", nil
 }
 
-func importDotenv(ctx context.Context, access vaultAccess, path string, option dotenvImportOption) error {
+func importDotenv(ctx context.Context, access backend, path string, option dotenvImportOption) error {
 	plan, err := planDotenvImport(ctx, access, path, option)
 	if err != nil || plan == nil {
 		return err
@@ -242,7 +242,7 @@ func importDotenv(ctx context.Context, access vaultAccess, path string, option d
 	return nil
 }
 
-func planDotenvImport(ctx context.Context, access vaultAccess, path string, option dotenvImportOption) (*dotenvPlan, error) {
+func planDotenvImport(ctx context.Context, access backend, path string, option dotenvImportOption) (*dotenvPlan, error) {
 	content, err := readImportFile(path)
 	if err != nil {
 		return nil, err
@@ -294,7 +294,7 @@ func planDotenvImport(ctx context.Context, access vaultAccess, path string, opti
 	case isOffline:
 		plan.vault = cliprotocol.Vault{Name: option.vaultName}
 	case option.isVaultChosen:
-		if plan.vault, err = findAccessVault(ctx, access, option.vaultName); err != nil {
+		if plan.vault, err = findBackendVault(ctx, access, option.vaultName); err != nil {
 			return nil, err
 		}
 	case isInteractive:
@@ -381,7 +381,7 @@ func setDotenvValue(vaultItem *item.Item, name, value string) {
 	vaultItem.Details.Fields = append(vaultItem.Details.Fields, item.Field{Name: name, Value: value, Concealed: true})
 }
 
-func storeDotenvItem(ctx context.Context, access vaultAccess, plan *dotenvPlan) error {
+func storeDotenvItem(ctx context.Context, access backend, plan *dotenvPlan) error {
 	vaultItem := &item.Item{Overview: item.Overview{Title: plan.itemTitle}}
 	if plan.existingItemID != "" {
 		existing, err := access.getItem(ctx, plan.vault.ID, plan.existingItemID)

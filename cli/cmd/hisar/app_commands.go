@@ -227,7 +227,7 @@ func runImportThroughApp(ctx context.Context, client *appClient, flags *flag.Fla
 		return errUsage
 	}
 	option.readChosenFlag(flags)
-	if isHandled, err := importOwnFormat(ctx, appVaultAccess{client: client}, positionals[0], option); isHandled {
+	if isHandled, err := importOwnFormat(ctx, appBackend{client: client}, positionals[0], option); isHandled {
 		return err
 	}
 	if !importer.IsKnownFormat(option.format) {

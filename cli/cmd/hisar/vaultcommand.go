@@ -40,15 +40,15 @@ func addVaultCommandFlag(flags *flag.FlagSet) *vaultOption {
 }
 
 func runVault(ctx context.Context, flags *flag.FlagSet, args []string) error {
-	access := &sessionVaultAccess{}
+	access := &standaloneBackend{}
 	return access.finish(runVaultWithAccess(ctx, access, flags, args))
 }
 
 func runVaultThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, args []string) error {
-	return runVaultWithAccess(ctx, appVaultAccess{client: client}, flags, args)
+	return runVaultWithAccess(ctx, appBackend{client: client}, flags, args)
 }
 
-func runVaultWithAccess(ctx context.Context, access vaultAccess, flags *flag.FlagSet, args []string) error {
+func runVaultWithAccess(ctx context.Context, access backend, flags *flag.FlagSet, args []string) error {
 	option := addVaultCommandFlag(flags)
 	positionals, err := parse(flags, args)
 	if err != nil {
@@ -87,8 +87,8 @@ func runVaultWithAccess(ctx context.Context, access vaultAccess, flags *flag.Fla
 	return errUsage
 }
 
-func renameVaultInteractively(ctx context.Context, access vaultAccess, positionals []string) error {
-	vault, err := findAccessVault(ctx, access, positionals[0])
+func renameVaultInteractively(ctx context.Context, access backend, positionals []string) error {
+	vault, err := findBackendVault(ctx, access, positionals[0])
 	if err != nil {
 		return err
 	}
@@ -130,8 +130,8 @@ func printMemberLosingAccess(actions cliprotocol.VaultActionsResult) {
 	}
 }
 
-func deleteVaultInteractively(ctx context.Context, access vaultAccess, nameOrID string, option vaultOption) error {
-	vault, err := findAccessVault(ctx, access, nameOrID)
+func deleteVaultInteractively(ctx context.Context, access backend, nameOrID string, option vaultOption) error {
+	vault, err := findBackendVault(ctx, access, nameOrID)
 	if err != nil {
 		return err
 	}
@@ -148,7 +148,7 @@ func deleteVaultInteractively(ctx context.Context, access vaultAccess, nameOrID 
 		return errors.New("choose either --move-to or --delete-items")
 	}
 	if option.moveTo != "" {
-		target, err := findAccessVault(ctx, access, option.moveTo)
+		target, err := findBackendVault(ctx, access, option.moveTo)
 		if err != nil {
 			return err
 		}
@@ -241,8 +241,8 @@ func chooseItemDeletion(actions cliprotocol.VaultActionsResult) (cliprotocol.Vau
 	}
 }
 
-func leaveVaultInteractively(ctx context.Context, access vaultAccess, nameOrID string, isConfirmed bool) error {
-	vault, err := findAccessVault(ctx, access, nameOrID)
+func leaveVaultInteractively(ctx context.Context, access backend, nameOrID string, isConfirmed bool) error {
+	vault, err := findBackendVault(ctx, access, nameOrID)
 	if err != nil {
 		return err
 	}
