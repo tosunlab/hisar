@@ -10,10 +10,8 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/cliprotocol"
-	"github.com/tryhisar/hisar/core/crypt"
 )
 
 const shortInvitationIDLength = 8
@@ -211,33 +209,18 @@ func convertToCommandLineInvitationList(invitationList *apitypes.ShareInvitation
 	return result
 }
 
-func runListPeople(ctx context.Context, flags *flag.FlagSet, args []string) error {
+func runListPeople(ctx context.Context, access backend, flags *flag.FlagSet, args []string) error {
 	if _, err := parse(flags, args); err != nil {
 		return err
 	}
-	currentState, err := loadState()
+	people, err := access.listPeople(ctx)
 	if err != nil {
 		return err
-	}
-	if err := requireLogin(currentState); err != nil {
-		return err
-	}
-	members, err := createAuthedClient(currentState).ListMembers(ctx)
-	if err != nil {
-		return err
-	}
-	people := make([]cliprotocol.Person, 0, len(members))
-	for _, member := range members {
-		people = append(people, cliprotocol.Person{
-			AccountID: member.AccountID, Name: member.Name, Email: member.Email, Role: member.Role,
-			SecurityCode: crypt.FormatKeyFingerprint(member.PublicKeys.Sign), IsCurrentUser: member.AccountID == currentState.AccountID,
-			IsKeyChanged: currentState.IsMemberKeyChanged(member.AccountID, member.PublicKeys.Sign),
-		})
 	}
 	return printPeople(people)
 }
 
-func runShare(ctx context.Context, flags *flag.FlagSet, args []string) error {
+func runShare(ctx context.Context, access backend, flags *flag.FlagSet, args []string) error {
 	role := flags.String("r", apitypes.VaultEditor, "owner, editor or reader")
 	positionals, err := parse(flags, args)
 	if err != nil {
@@ -247,181 +230,42 @@ func runShare(ctx context.Context, flags *flag.FlagSet, args []string) error {
 	if err != nil {
 		return err
 	}
-	currentState, unlockedSession, err := unlock(ctx)
-	if err != nil {
-		return err
-	}
-	err = func() error {
-		vault, err := unlockedSession.FindVault(ctx, vaultName)
-		if err != nil {
-			return err
-		}
-		if vault.Type == apitypes.VaultPersonal {
-			return errPersonalVaultShare
-		}
-		if err := unlockedSession.InviteToVault(ctx, vault, email, *role); err != nil {
-			return err
-		}
-		printShareSent(email, vault.Name, *role, "then run `hisar invitations` to finish sharing.")
-		return nil
-	}()
-	return finishSession(currentState, unlockedSession, err)
-}
-
-func runInvite(ctx context.Context, flags *flag.FlagSet, args []string) error {
-	positionals, err := parse(flags, args)
-	if err != nil {
-		return err
-	}
-	currentState, err := loadState()
-	if err != nil {
-		return err
-	}
-	if err := requireLogin(currentState); err != nil {
-		return err
-	}
-	email, err := getInviteEmail(positionals)
-	if err != nil {
-		return err
-	}
-	if _, err := createAuthedClient(currentState).Invite(ctx, &apitypes.InviteRequest{Email: strings.TrimSpace(email)}); err != nil {
-		return err
-	}
-	fmt.Fprintf(os.Stderr, "Invitation sent to %s.\n", strings.TrimSpace(email))
-	return nil
-}
-
-// completeAcceptedShares asks for the master password only when someone accepted an invitation this account sent.
-func completeAcceptedShares(ctx context.Context, invitationList *apitypes.ShareInvitationList) (map[string]string, error) {
-	isAnyAccepted := false
-	for _, sent := range invitationList.Sent {
-		isAnyAccepted = isAnyAccepted || sent.State == apitypes.ShareInvitationAccepted
-	}
-	if !isAnyAccepted {
-		return nil, nil
-	}
-	fmt.Fprintln(os.Stderr, "Someone accepted your invitation; unlock to finish sharing.")
-	currentState, unlockedSession, err := unlock(ctx)
-	if err != nil {
-		return nil, err
-	}
-	vaultNamesByID := map[string]string{}
-	err = func() error {
-		completedShares, completeErr := unlockedSession.CompleteAcceptedShares(ctx)
-		for _, completed := range completedShares {
-			fmt.Fprintf(os.Stderr, "Shared %q with %s as %s. Their security code: %s\n", completed.VaultName, completed.Recipient.Email, completed.Role,
-				crypt.FormatKeyFingerprint(completed.Recipient.PublicKeys.Sign))
-		}
-		vaults, err := unlockedSession.ListVaults(ctx)
-		if err == nil {
-			for _, vault := range vaults {
-				vaultNamesByID[vault.ID] = vault.Name
-			}
-		}
-		return completeErr
-	}()
-	return vaultNamesByID, finishSession(currentState, unlockedSession, err)
-}
-
-func runInvitations(ctx context.Context, flags *flag.FlagSet, args []string) error {
-	positionals, err := parse(flags, args)
-	if err != nil {
-		return err
-	}
-	action, query, err := parseInvitationArgument(positionals)
-	if err != nil {
-		return err
-	}
-	currentState, err := loadState()
-	if err != nil {
-		return err
-	}
-	if err := requireLogin(currentState); err != nil {
-		return err
-	}
-	authedClient := createAuthedClient(currentState)
-	invitationList, err := authedClient.ListShareInvitations(ctx)
-	if err != nil {
-		return err
-	}
-	if action != nil {
-		return answerInvitation(ctx, authedClient, *action, query, convertToCommandLineInvitationList(invitationList, nil))
-	}
-	vaultNamesByID, completeErr := completeAcceptedShares(ctx, invitationList)
-	if vaultNamesByID != nil {
-		if invitationList, err = authedClient.ListShareInvitations(ctx); err != nil {
-			return err
-		}
-	}
-	result := convertToCommandLineInvitationList(invitationList, vaultNamesByID)
-	if completeErr != nil {
-		result.CompletionError = completeErr.Error()
-	}
-	return printInvitationList(result)
-}
-
-func answerInvitation(ctx context.Context, authedClient *apiclient.Client, action invitationAction, query string, invitationList cliprotocol.InvitationListResult) error {
-	invitationID, err := findInvitationID(collectInvitationID(invitationList, action.isSent), query)
-	if err != nil {
-		return err
-	}
-	switch action.name {
-	case "accept":
-		err = authedClient.AcceptShareInvitation(ctx, invitationID)
-	case "decline":
-		err = authedClient.DeclineShareInvitation(ctx, invitationID)
-	default:
-		err = authedClient.CancelShareInvitation(ctx, invitationID)
-	}
-	if err != nil {
-		return err
-	}
-	fmt.Fprintln(os.Stderr, action.confirmText)
-	return nil
-}
-
-func runListPersonThroughApps(ctx context.Context, client *appClient, flags *flag.FlagSet, args []string) error {
-	if _, err := parse(flags, args); err != nil {
-		return err
-	}
-	people, err := listAppPeople(ctx, client)
-	if err != nil {
-		return err
-	}
-	return printPeople(people)
-}
-
-func listAppPeople(ctx context.Context, client *appClient) ([]cliprotocol.Person, error) {
-	var peopleList cliprotocol.PeopleListResult
-	err := client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeListPeople}, &peopleList)
-	return peopleList.People, err
-}
-
-func runShareThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, args []string) error {
-	role := flags.String("r", apitypes.VaultEditor, "owner, editor or reader")
-	positionals, err := parse(flags, args)
-	if err != nil {
-		return err
-	}
-	vaultName, email, err := getShareArgument(positionals, *role)
-	if err != nil {
-		return err
-	}
-	vault, err := findAppVault(ctx, client, vaultName)
+	vault, err := findVaultByNameOrID(ctx, access, vaultName)
 	if err != nil {
 		return err
 	}
 	if vault.Type == apitypes.VaultPersonal {
 		return errPersonalVaultShare
 	}
-	if err := client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeShareVault, VaultID: vault.ID, Email: email, Role: *role}, nil); err != nil {
+	completion, err := access.shareVault(ctx, vault.ID, email, *role)
+	if err != nil {
 		return err
 	}
-	printShareSent(email, vault.Name, *role, "the Hisar app then finishes sharing.")
+	printShareSent(email, vault.Name, *role, completion)
 	return nil
 }
 
-func runInviteThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, args []string) error {
+func runUnshare(ctx context.Context, access backend, flags *flag.FlagSet, args []string) error {
+	positionals, err := parse(flags, args)
+	if err != nil {
+		return err
+	}
+	if len(positionals) != 2 {
+		return errUsage
+	}
+	vault, err := findVaultByNameOrID(ctx, access, positionals[0])
+	if err != nil {
+		return err
+	}
+	email, err := access.unshareVault(ctx, vault.ID, positionals[1])
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "Removed %s from %q and rotated the vault key.\n", email, vault.Name)
+	return nil
+}
+
+func runInvite(ctx context.Context, access backend, flags *flag.FlagSet, args []string) error {
 	positionals, err := parse(flags, args)
 	if err != nil {
 		return err
@@ -430,14 +274,14 @@ func runInviteThroughApp(ctx context.Context, client *appClient, flags *flag.Fla
 	if err != nil {
 		return err
 	}
-	if err := client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeInvite, Email: strings.TrimSpace(email)}, nil); err != nil {
+	if err := access.invite(ctx, strings.TrimSpace(email)); err != nil {
 		return err
 	}
 	fmt.Fprintf(os.Stderr, "Invitation sent to %s.\n", strings.TrimSpace(email))
 	return nil
 }
 
-func runInvitationsThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, args []string) error {
+func runInvitations(ctx context.Context, access backend, flags *flag.FlagSet, args []string) error {
 	positionals, err := parse(flags, args)
 	if err != nil {
 		return err
@@ -446,8 +290,8 @@ func runInvitationsThroughApp(ctx context.Context, client *appClient, flags *fla
 	if err != nil {
 		return err
 	}
-	var invitationList cliprotocol.InvitationListResult
-	if err := client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeListInvitation}, &invitationList); err != nil {
+	invitationList, err := access.listInvitations(ctx)
+	if err != nil {
 		return err
 	}
 	if action == nil {
@@ -457,8 +301,7 @@ func runInvitationsThroughApp(ctx context.Context, client *appClient, flags *fla
 	if err != nil {
 		return err
 	}
-	requestType := map[string]string{"accept": cliprotocol.TypeAcceptInvitation, "decline": cliprotocol.TypeDeclineInvitation, "cancel": cliprotocol.TypeCancelInvitation}[action.name]
-	if err := client.call(ctx, cliprotocol.Request{Type: requestType, InvitationID: invitationID}, nil); err != nil {
+	if err := access.answerInvitation(ctx, action.name, invitationID); err != nil {
 		return err
 	}
 	fmt.Fprintln(os.Stderr, action.confirmText)

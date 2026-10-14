@@ -229,94 +229,8 @@ func runLogout(ctx context.Context, flags *flag.FlagSet, args []string) error {
 	return currentState.Save()
 }
 
-func runWhoami(ctx context.Context, flags *flag.FlagSet, args []string) error {
-	if _, err := parse(flags, args); err != nil {
-		return err
-	}
-	currentState, err := loadState()
-	if err != nil {
-		return err
-	}
-	if err := requireLogin(currentState); err != nil {
-		return err
-	}
-	account, err := createAuthedClient(currentState).GetAccount(ctx)
-	if err != nil {
-		return err
-	}
-	fmt.Printf("%s <%s>\naccount: %s\nrole:    %s\nserver:  %s\n", account.Name, account.Email, account.AccountID, account.Role, currentState.Server)
-	return nil
-}
-
-func runListVaults(ctx context.Context, flags *flag.FlagSet, args []string) error {
-	if _, err := parse(flags, args); err != nil {
-		return err
-	}
-	currentState, unlockedSession, err := unlock(ctx)
-	if err != nil {
-		return err
-	}
-	vaults, err := unlockedSession.ListVaults(ctx)
-	if err == nil {
-		writer := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-		fmt.Fprintln(writer, "NAME\tTYPE\tROLE\tID")
-		for _, vault := range vaults {
-			fmt.Fprintf(writer, "%s\t%s\t%s\t%s\n", vault.Name, vault.Type, vault.Role, vault.ID)
-		}
-		writer.Flush()
-	}
-	return finishSession(currentState, unlockedSession, err)
-}
-
-func runCreateVault(ctx context.Context, flags *flag.FlagSet, args []string) error {
-	positionals, err := parse(flags, args)
-	if err != nil {
-		return err
-	}
-	if len(positionals) != 1 {
-		return errUsage
-	}
-	currentState, unlockedSession, err := unlock(ctx)
-	if err != nil {
-		return err
-	}
-	vault, err := unlockedSession.CreateVault(ctx, positionals[0], apitypes.VaultShared)
-	if err == nil {
-		fmt.Fprintf(os.Stderr, "Created vault %q. Share it with `hisar share %q <email>`.\n", vault.Name, vault.Name)
-	}
-	return finishSession(currentState, unlockedSession, err)
-}
-
 func addVaultFlag(flags *flag.FlagSet) *string {
 	return flags.String("v", "Personal", "vault name or ID")
-}
-
-func runListItems(ctx context.Context, flags *flag.FlagSet, args []string) error {
-	vaultName := addVaultFlag(flags)
-	if _, err := parse(flags, args); err != nil {
-		return err
-	}
-	currentState, unlockedSession, err := unlock(ctx)
-	if err != nil {
-		return err
-	}
-	err = func() error {
-		vault, err := unlockedSession.FindVault(ctx, *vaultName)
-		if err != nil {
-			return err
-		}
-		items, err := unlockedSession.ListItems(ctx, vault)
-		if err != nil {
-			return err
-		}
-		writer := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-		fmt.Fprintln(writer, "TITLE\tUSERNAME\tURL\tID")
-		for _, vaultItem := range items {
-			fmt.Fprintf(writer, "%s\t%s\t%s\t%s\n", vaultItem.Overview.Title, vaultItem.Overview.Username, strings.Join(vaultItem.Overview.URLs, " "), vaultItem.ID)
-		}
-		return writer.Flush()
-	}()
-	return finishSession(currentState, unlockedSession, err)
 }
 
 func findItem(items []item.Item, query string) (*item.Item, error) {
@@ -342,53 +256,6 @@ func findItem(items []item.Item, query string) (*item.Item, error) {
 		fmt.Fprintf(&builder, "\n  %s  %s", match.ID, match.Overview.Title)
 	}
 	return nil, errors.New(builder.String())
-}
-
-// runWithItem unlocks, finds the vault and item, and runs action.
-func runWithItem(ctx context.Context, vaultName, query string, action func(*session.Session, *session.Vault, *item.Item) error) error {
-	currentState, unlockedSession, err := unlock(ctx)
-	if err != nil {
-		return err
-	}
-	err = func() error {
-		vault, err := unlockedSession.FindVault(ctx, vaultName)
-		if err != nil {
-			return err
-		}
-		items, err := unlockedSession.ListItems(ctx, vault)
-		if err != nil {
-			return err
-		}
-		vaultItem, err := findItem(items, query)
-		if err != nil {
-			return err
-		}
-		return action(unlockedSession, vault, vaultItem)
-	}()
-	return finishSession(currentState, unlockedSession, err)
-}
-
-func runGet(ctx context.Context, flags *flag.FlagSet, args []string) error {
-	vaultName := addVaultFlag(flags)
-	fieldName := flags.String("f", "", "print only this field (title, username, url, password, notes, or a custom field name)")
-	positionals, err := parse(flags, args)
-	if err != nil {
-		return err
-	}
-	if len(positionals) != 1 {
-		return errUsage
-	}
-	return runWithItem(ctx, *vaultName, positionals[0], func(_ *session.Session, _ *session.Vault, vaultItem *item.Item) error {
-		if *fieldName != "" {
-			value, ok := getFieldValue(vaultItem, *fieldName)
-			if !ok {
-				return fmt.Errorf("item has no field %q", *fieldName)
-			}
-			fmt.Println(value)
-			return nil
-		}
-		return writeItem(os.Stdout, vaultItem)
-	})
 }
 
 func writeItem(output io.Writer, vaultItem *item.Item) error {
@@ -460,78 +327,6 @@ func promptItem(vaultItem *item.Item) error {
 	return err
 }
 
-func runAdd(ctx context.Context, flags *flag.FlagSet, args []string) error {
-	vaultName := addVaultFlag(flags)
-	if _, err := parse(flags, args); err != nil {
-		return err
-	}
-	currentState, unlockedSession, err := unlock(ctx)
-	if err != nil {
-		return err
-	}
-	err = func() error {
-		vault, err := unlockedSession.FindVault(ctx, *vaultName)
-		if err != nil {
-			return err
-		}
-		vaultItem := &item.Item{}
-		if err := promptItem(vaultItem); err != nil {
-			return err
-		}
-		if _, err := unlockedSession.SaveItem(ctx, vault, vaultItem); err != nil {
-			return err
-		}
-		fmt.Fprintf(os.Stderr, "Saved %q to %s.\n", vaultItem.Overview.Title, vault.Name)
-		return nil
-	}()
-	return finishSession(currentState, unlockedSession, err)
-}
-
-func runEdit(ctx context.Context, flags *flag.FlagSet, args []string) error {
-	vaultName := addVaultFlag(flags)
-	positionals, err := parse(flags, args)
-	if err != nil {
-		return err
-	}
-	if len(positionals) != 1 {
-		return errUsage
-	}
-	return runWithItem(ctx, *vaultName, positionals[0], func(unlockedSession *session.Session, vault *session.Vault, vaultItem *item.Item) error {
-		if err := promptItem(vaultItem); err != nil {
-			return err
-		}
-		if _, err := unlockedSession.SaveItem(ctx, vault, vaultItem); errors.Is(err, session.ErrConflict) {
-			return errors.New("item was changed on another device meanwhile; run edit again")
-		} else if err != nil {
-			return err
-		}
-		fmt.Fprintf(os.Stderr, "Saved %q.\n", vaultItem.Overview.Title)
-		return nil
-	})
-}
-
-func runRemove(ctx context.Context, flags *flag.FlagSet, args []string) error {
-	vaultName := addVaultFlag(flags)
-	positionals, err := parse(flags, args)
-	if err != nil {
-		return err
-	}
-	if len(positionals) != 1 {
-		return errUsage
-	}
-	return runWithItem(ctx, *vaultName, positionals[0], func(unlockedSession *session.Session, vault *session.Vault, vaultItem *item.Item) error {
-		ok, err := confirm(fmt.Sprintf("Delete %q from %s?", vaultItem.Overview.Title, vault.Name))
-		if err != nil || !ok {
-			return err
-		}
-		if _, err := unlockedSession.DeleteItem(ctx, vault, vaultItem); err != nil {
-			return err
-		}
-		fmt.Fprintf(os.Stderr, "Deleted %q.\n", vaultItem.Overview.Title)
-		return nil
-	})
-}
-
 func runGenerate(_ context.Context, flags *flag.FlagSet, args []string) error {
 	length := flags.Int("n", item.DefaultGeneratorConfig().Length, "length")
 	noSymbols := flags.Bool("no-symbols", false, "letters and digits only")
@@ -546,48 +341,23 @@ func runGenerate(_ context.Context, flags *flag.FlagSet, args []string) error {
 	return nil
 }
 
-func runUnshare(ctx context.Context, flags *flag.FlagSet, args []string) error {
-	positionals, err := parse(flags, args)
-	if err != nil {
-		return err
-	}
-	if len(positionals) != 2 {
-		return errUsage
-	}
-	currentState, unlockedSession, err := unlock(ctx)
-	if err != nil {
-		return err
-	}
-	err = func() error {
-		vault, err := unlockedSession.FindVault(ctx, positionals[0])
-		if err != nil {
-			return err
-		}
-		member, err := unlockedSession.GetVerifiedMember(ctx, positionals[1])
-		if err != nil {
-			return err
-		}
-		if err := unlockedSession.RemoveVaultMember(ctx, vault, member.AccountID); err != nil {
-			return err
-		}
-		fmt.Fprintf(os.Stderr, "Removed %s from %q and rotated the vault key.\n", member.Email, vault.Name)
-		return nil
-	}()
-	return finishSession(currentState, unlockedSession, err)
-}
-
-func runListDevices(ctx context.Context, flags *flag.FlagSet, args []string) error {
+func runWhoami(ctx context.Context, access backend, flags *flag.FlagSet, args []string) error {
 	if _, err := parse(flags, args); err != nil {
 		return err
 	}
-	currentState, err := loadState()
+	account, err := access.account(ctx)
 	if err != nil {
 		return err
 	}
-	if err := requireLogin(currentState); err != nil {
+	fmt.Printf("%s <%s>\naccount: %s\nrole:    %s\nserver:  %s\n", account.Name, account.Email, account.AccountID, account.Role, account.Server)
+	return nil
+}
+
+func runListDevices(ctx context.Context, access backend, flags *flag.FlagSet, args []string) error {
+	if _, err := parse(flags, args); err != nil {
 		return err
 	}
-	devices, err := createAuthedClient(currentState).ListDevices(ctx)
+	devices, err := access.listDevices(ctx)
 	if err != nil {
 		return err
 	}
@@ -595,15 +365,19 @@ func runListDevices(ctx context.Context, flags *flag.FlagSet, args []string) err
 	fmt.Fprintln(writer, "NAME\tPLATFORM\tLAST SEEN\tID")
 	for _, device := range devices {
 		name := device.Name
-		if device.Current {
+		if device.IsCurrent {
 			name += " (this device)"
 		}
-		fmt.Fprintf(writer, "%s\t%s\t%s\t%s\n", name, device.Platform, device.LastSeenAt.Local().Format("2006-01-02 15:04"), device.ID)
+		lastSeen := device.LastSeenAt
+		if lastSeenAt, err := time.Parse(time.RFC3339, device.LastSeenAt); err == nil {
+			lastSeen = lastSeenAt.Local().Format("2006-01-02 15:04")
+		}
+		fmt.Fprintf(writer, "%s\t%s\t%s\t%s\n", name, device.Platform, lastSeen, device.ID)
 	}
 	return writer.Flush()
 }
 
-func runRevokeDevice(ctx context.Context, flags *flag.FlagSet, args []string) error {
+func runRevokeDevice(ctx context.Context, access backend, flags *flag.FlagSet, args []string) error {
 	positionals, err := parse(flags, args)
 	if err != nil {
 		return err
@@ -611,14 +385,7 @@ func runRevokeDevice(ctx context.Context, flags *flag.FlagSet, args []string) er
 	if len(positionals) != 1 {
 		return errUsage
 	}
-	currentState, err := loadState()
-	if err != nil {
-		return err
-	}
-	if err := requireLogin(currentState); err != nil {
-		return err
-	}
-	if err := createAuthedClient(currentState).RevokeDevice(ctx, positionals[0]); err != nil {
+	if err := access.revokeDevice(ctx, positionals[0]); err != nil {
 		return err
 	}
 	fmt.Fprintln(os.Stderr, "Device signed out.")

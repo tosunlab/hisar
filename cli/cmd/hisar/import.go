@@ -200,81 +200,6 @@ func importOwnFormat(ctx context.Context, access backend, path string, option *i
 	})
 }
 
-func runImport(ctx context.Context, flags *flag.FlagSet, args []string) error {
-	option := addImportFlag(flags)
-	positionals, err := parse(flags, args)
-	if err != nil {
-		return err
-	}
-	if len(positionals) != 1 {
-		return errUsage
-	}
-	option.readChosenFlag(flags)
-	access := &standaloneBackend{}
-	if isHandled, err := importOwnFormat(ctx, access, positionals[0], option); isHandled {
-		return access.finish(err)
-	}
-	if !importer.IsKnownFormat(option.format) {
-		return fmt.Errorf("unknown format %q; %s", option.format, describeImportFormats())
-	}
-	path := positionals[0]
-	content, err := readImportFile(path)
-	if err != nil {
-		return err
-	}
-	result, err := importer.Parse(filepath.Base(path), content, option.format)
-	clear(content)
-	if err != nil {
-		return err
-	}
-
-	currentState, unlockedSession, err := unlock(ctx)
-	if err != nil {
-		return err
-	}
-	err = func() error {
-		vault, err := unlockedSession.FindVault(ctx, option.vaultName)
-		if err != nil {
-			return err
-		}
-		if vault.Role == apitypes.VaultReader {
-			return fmt.Errorf("you can only read %q; choose a vault you can edit with -v", vault.Name)
-		}
-		existingItems, err := unlockedSession.ListItems(ctx, vault)
-		if err != nil {
-			return err
-		}
-		duplicateIndexes := importer.FindDuplicateIndexes(result.Items, existingItems)
-		printImportPreview(os.Stderr, filepath.Base(path), result, vault.Name, duplicateIndexes)
-		isSkippingDuplicate := !option.isIncludingDuplicate
-		if !option.isConfirmed && isSkippingDuplicate && len(duplicateIndexes) > 0 {
-			isIncluding, err := confirm(fmt.Sprintf("Also import the %s already in %s?", formatItemCount(len(duplicateIndexes)), vault.Name))
-			if err != nil {
-				return err
-			}
-			isSkippingDuplicate = !isIncluding
-		}
-		queuedItems := selectQueuedItems(result.Items, duplicateIndexes, isSkippingDuplicate)
-		if len(queuedItems) == 0 {
-			fmt.Fprintln(os.Stderr, "Nothing to import.")
-			return nil
-		}
-		if !option.isConfirmed {
-			isImporting, err := confirm(fmt.Sprintf("Import %s into %s?", formatItemCount(len(queuedItems)), vault.Name))
-			if err != nil || !isImporting {
-				return err
-			}
-		}
-		savedCount, err := saveImportedItems(ctx, unlockedSession, vault, queuedItems)
-		if err != nil {
-			return err
-		}
-		fmt.Fprintf(os.Stderr, "Imported %s into %s.\n", formatItemCount(savedCount), vault.Name)
-		return offerToDeleteImportFile(path, option.isConfirmed)
-	}()
-	return finishSession(currentState, unlockedSession, err)
-}
-
 func offerToDeleteImportFile(path string, isConfirmed bool) error {
 	warning := fmt.Sprintf("%s holds these passwords in plain text.", path)
 	if isConfirmed {
@@ -290,4 +215,70 @@ func offerToDeleteImportFile(path string, isConfirmed bool) error {
 	}
 	fmt.Fprintf(os.Stderr, "Deleted %s.\n", path)
 	return nil
+}
+
+func runImport(ctx context.Context, access backend, flags *flag.FlagSet, args []string) error {
+	option := addImportFlag(flags)
+	positionals, err := parse(flags, args)
+	if err != nil {
+		return err
+	}
+	if len(positionals) != 1 {
+		return errUsage
+	}
+	option.readChosenFlag(flags)
+	if isHandled, err := importOwnFormat(ctx, access, positionals[0], option); isHandled {
+		return err
+	}
+	if !importer.IsKnownFormat(option.format) {
+		return fmt.Errorf("unknown format %q; %s", option.format, describeImportFormats())
+	}
+	path := positionals[0]
+	content, err := readImportFile(path)
+	if err != nil {
+		return err
+	}
+	result, err := importer.Parse(filepath.Base(path), content, option.format)
+	clear(content)
+	if err != nil {
+		return err
+	}
+	vault, err := findVaultByNameOrID(ctx, access, option.vaultName)
+	if err != nil {
+		return err
+	}
+	if vault.Role == apitypes.VaultReader {
+		return fmt.Errorf("you can only read %q; choose a vault you can edit with -v", vault.Name)
+	}
+	existingItems, err := access.listItems(ctx, vault.ID)
+	if err != nil {
+		return err
+	}
+	duplicateIndexes := importer.FindDuplicateIndexes(result.Items, existingItems)
+	printImportPreview(os.Stderr, filepath.Base(path), result, vault.Name, duplicateIndexes)
+	isSkippingDuplicate := !option.isIncludingDuplicate
+	if !option.isConfirmed && isSkippingDuplicate && len(duplicateIndexes) > 0 {
+		isIncluding, err := confirm(fmt.Sprintf("Also import the %s already in %s?", formatItemCount(len(duplicateIndexes)), vault.Name))
+		if err != nil {
+			return err
+		}
+		isSkippingDuplicate = !isIncluding
+	}
+	queuedItems := selectQueuedItems(result.Items, duplicateIndexes, isSkippingDuplicate)
+	if len(queuedItems) == 0 {
+		fmt.Fprintln(os.Stderr, "Nothing to import.")
+		return nil
+	}
+	if !option.isConfirmed {
+		isImporting, err := confirm(fmt.Sprintf("Import %s into %s?", formatItemCount(len(queuedItems)), vault.Name))
+		if err != nil || !isImporting {
+			return err
+		}
+	}
+	savedCount, err := access.importItems(ctx, vault.ID, queuedItems)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "Imported %s into %s.\n", formatItemCount(savedCount), vault.Name)
+	return offerToDeleteImportFile(path, option.isConfirmed)
 }

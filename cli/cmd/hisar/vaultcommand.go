@@ -8,6 +8,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"text/tabwriter"
 
 	"golang.org/x/term"
 
@@ -39,16 +40,7 @@ func addVaultCommandFlag(flags *flag.FlagSet) *vaultOption {
 	return option
 }
 
-func runVault(ctx context.Context, flags *flag.FlagSet, args []string) error {
-	access := &standaloneBackend{}
-	return access.finish(runVaultWithAccess(ctx, access, flags, args))
-}
-
-func runVaultThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, args []string) error {
-	return runVaultWithAccess(ctx, appBackend{client: client}, flags, args)
-}
-
-func runVaultWithAccess(ctx context.Context, access backend, flags *flag.FlagSet, args []string) error {
+func runVault(ctx context.Context, access backend, flags *flag.FlagSet, args []string) error {
 	option := addVaultCommandFlag(flags)
 	positionals, err := parse(flags, args)
 	if err != nil {
@@ -266,5 +258,37 @@ func leaveVaultInteractively(ctx context.Context, access backend, nameOrID strin
 		return err
 	}
 	fmt.Fprintf(os.Stderr, "You left %s.\n", vault.Name)
+	return nil
+}
+
+func runListVaults(ctx context.Context, access backend, flags *flag.FlagSet, args []string) error {
+	if _, err := parse(flags, args); err != nil {
+		return err
+	}
+	vaults, err := access.listVaults(ctx)
+	if err != nil {
+		return err
+	}
+	writer := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(writer, "NAME\tTYPE\tROLE\tID")
+	for _, vault := range vaults {
+		fmt.Fprintf(writer, "%s\t%s\t%s\t%s\n", vault.Name, vault.Type, vault.Role, vault.ID)
+	}
+	return writer.Flush()
+}
+
+func runCreateVault(ctx context.Context, access backend, flags *flag.FlagSet, args []string) error {
+	positionals, err := parse(flags, args)
+	if err != nil {
+		return err
+	}
+	if len(positionals) != 1 {
+		return errUsage
+	}
+	vault, err := access.createVault(ctx, positionals[0])
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "Created vault %q. Share it with `hisar share %q <email>`.\n", vault.Name, vault.Name)
 	return nil
 }

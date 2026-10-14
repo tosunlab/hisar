@@ -14,15 +14,6 @@ import (
 
 const plainExportWarning = "Plain JSON is not encrypted: anyone who gets the file can read every password, one-time code secret and SSH private key in it."
 
-func runExport(ctx context.Context, flags *flag.FlagSet, args []string) error {
-	access := &standaloneBackend{}
-	return access.finish(runExportWithAccess(ctx, access, flags, args))
-}
-
-func runExportThroughApp(ctx context.Context, client *appClient, flags *flag.FlagSet, args []string) error {
-	return runExportWithAccess(ctx, appBackend{client: client}, flags, args)
-}
-
 func buildDefaultExportPath(format string, now time.Time) string {
 	if format == cliprotocol.ExportFormatPlain {
 		return "hisar-export-" + now.Format("2006-01-02") + ".json"
@@ -79,7 +70,7 @@ func promptExportPassphrase() ([]byte, error) {
 	}
 }
 
-func runExportWithAccess(ctx context.Context, access backend, flags *flag.FlagSet, args []string) error {
+func runExport(ctx context.Context, access backend, flags *flag.FlagSet, args []string) error {
 	outputPath := flags.String("o", "", "the file to write; it must not exist yet (default hisar-export-<date>.hisar or .json)")
 	format := flags.String("format", "", "encrypted (default) or plain")
 	isConfirmed := flags.Bool("y", false, "write a plain JSON export without asking")

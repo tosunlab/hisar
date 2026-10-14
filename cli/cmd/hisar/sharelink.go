@@ -280,45 +280,12 @@ func printShareLinks(shareLinks []cliprotocol.ShareLink) error {
 	return writer.Flush()
 }
 
-func runListShareLinks(ctx context.Context, flags *flag.FlagSet, args []string) error {
-	if err := parseWithoutArgument(flags, args); err != nil {
-		return err
-	}
-	currentState, unlockedSession, err := unlock(ctx)
-	if err != nil {
-		return err
-	}
-	err = func() error {
-		links, err := unlockedSession.ListShareLinks(ctx)
-		if err != nil {
-			return err
-		}
-		shareLinks := make([]cliprotocol.ShareLink, 0, len(links))
-		for index := range links {
-			shareLinks = append(shareLinks, convertToCommandLineShareLink(&links[index], false))
-		}
-		return printShareLinks(shareLinks)
-	}()
-	return finishSession(currentState, unlockedSession, err)
-}
-
 func parseWithoutArgument(flags *flag.FlagSet, args []string) error {
 	positionals, err := parse(flags, args)
 	if err == nil && len(positionals) != 0 {
 		return errUsage
 	}
 	return err
-}
-
-func runListShareLinkThroughApps(ctx context.Context, client *appClient, flags *flag.FlagSet, args []string) error {
-	if err := parseWithoutArgument(flags, args); err != nil {
-		return err
-	}
-	var result cliprotocol.ShareLinkListResult
-	if err := client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeListShareLink}, &result); err != nil {
-		return err
-	}
-	return printShareLinks(result.ShareLinks)
 }
 
 func revokeShareLink(ctx context.Context, shareLinkID string) error {
@@ -412,4 +379,39 @@ func parseViews(text string) (int, error) {
 		return 0, fmt.Errorf("views %q: use a number from 1 to %d, or unlimited", text, sharelink.MaxViews)
 	}
 	return views, nil
+}
+
+func runListShareLinks(ctx context.Context, access backend, flags *flag.FlagSet, args []string) error {
+	if err := parseWithoutArgument(flags, args); err != nil {
+		return err
+	}
+	shareLinks, err := access.listShareLinks(ctx)
+	if err != nil {
+		return err
+	}
+	return printShareLinks(shareLinks)
+}
+
+// runWithItem unlocks, finds the vault and item, and runs action; share-link chooses its mode itself and needs the session.
+func runWithItem(ctx context.Context, vaultName, query string, action func(*session.Session, *session.Vault, *item.Item) error) error {
+	currentState, unlockedSession, err := unlock(ctx)
+	if err != nil {
+		return err
+	}
+	err = func() error {
+		vault, err := unlockedSession.FindVault(ctx, vaultName)
+		if err != nil {
+			return err
+		}
+		items, err := unlockedSession.ListItems(ctx, vault)
+		if err != nil {
+			return err
+		}
+		vaultItem, err := findItem(items, query)
+		if err != nil {
+			return err
+		}
+		return action(unlockedSession, vault, vaultItem)
+	}()
+	return finishSession(currentState, unlockedSession, err)
 }
