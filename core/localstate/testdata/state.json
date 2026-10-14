@@ -1,0 +1,38 @@
+{
+  "server": "https://api.tryhisar.com",
+  "email": "a@example.com",
+  "accountId": "ABC123",
+  "token": "tok",
+  "deviceId": "dev1",
+  "pins": {
+    "ABC123": "AQID"
+  },
+  "seqs": {
+    "v1": 7
+  },
+  "biometricUnlock": "BAUG",
+  "lastPasswordUnlockAt": "2026-01-02T03:04:05Z",
+  "pairedBrowsers": [
+    {
+      "instanceId": "i1",
+      "browser": "chrome",
+      "tokenHash": "BwgJ",
+      "pairedAt": "2026-01-02T03:04:05Z",
+      "lastUsedAt": "2026-01-03T03:04:05Z"
+    }
+  ],
+  "exactHostMatch": true,
+  "automaticUpdateCheckDisabled": true,
+  "commandLineIntegrationDisabled": true,
+  "compactSSHApproval": true,
+  "autoLockSeconds": 300,
+  "phoneApprovalDisabled": true,
+  "signingRememberSeconds": 600,
+  "agentVaults": [
+    "v1"
+  ],
+  "openAtLoginConfigured": true,
+  "openAtLoginDisabled": true,
+  "appearance": "dark",
+  "color": "blue"
+}

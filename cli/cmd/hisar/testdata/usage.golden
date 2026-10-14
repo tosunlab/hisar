@@ -1,0 +1,37 @@
+usage: hisar [--standalone] <command> [arguments]
+
+commands:
+  status                                                 show whether hisar uses the Hisar app or its own sign-in, and the account
+  signup             <invite-link>                       create your account from an invite
+  login                                                  sign in on this device
+  logout                                                 sign out on this device
+  whoami                                                 show the signed-in account
+  vaults                                                 list vaults
+  vault-create       <name>                              create a shared vault
+  vault              rename|delete|leave|create <vault>  rename, delete or leave a vault, or create one (rename <vault> [name] | delete <vault> [--move-to v | --delete-items --confirm <name>] [-y] | leave <vault> [-y] | create <name>)
+  ls                 [-v vault]                          list items
+  get                <item> [-f field] [-v vault]        show an item, or one field of it (e.g. -f password, -f code)
+  read               <hisar://vault/item/field> [--no-newline] print one secret, for scripts
+  run                [--env-file f]... [--no-masking] -- <cmd> run a command with the secrets its hisar:// references name, masked in its output
+  mcp                                                    serve coding agents over MCP (stdio): they use secrets without seeing them, after you approve in the Hisar app
+  add                [-v vault]                          add a login
+  edit               <item> [-v vault]                   edit an item
+  rm                 <item> [-v vault]                   delete an item
+  import             <file> [-v vault] [-format f] [-y]  import a Hisar export, a 1Password, Bitwarden or browser CSV export, or a .env file (--item, --keys, --dry-run)
+  export             [-o file] [--format encrypted|plain] export every vault you can open, encrypted with a passphrase you choose or as plain JSON
+  generate           [-n length] [-no-symbols]           generate a password
+  people                                                 list the people you share vaults with, with their security codes
+  share              <vault> <email> [-r role]           invite someone to a vault by email (role: owner, editor, reader)
+  unshare            <vault> <email>                     remove someone from a vault and rotate its key
+  invitations        [accept|decline|cancel <id>]        list share invitations, answer them, and finish accepted shares
+  invite             <email>                             email someone an invite to create a Hisar account
+  share-link         <item>|--text|open <url>|revoke <id> share an item or text with anyone through an end-to-end encrypted link (--field, --expires 1h|1d|7d|30d, --views, --passphrase)
+  share-links                                            list your live share links
+  account            change-password|replace-secret-key [-o file]|delete change your master password, replace your Secret Key (with a new Emergency Kit) or delete your account
+  emergency-kit      [-o file]                           save your Emergency Kit PDF (sign-in address, email, Secret Key)
+  devices                                                list your signed-in devices
+  revoke-device      <id>                                sign out a device
+
+hisar uses the Hisar app when it lets the command-line tool use it, and starts the app when it is
+installed but not running (HISAR_NO_LAUNCH=1 never starts it); otherwise it signs in on its own. --standalone or HISAR_STANDALONE=1 always signs in on its own.
+hisar --version prints the version.
