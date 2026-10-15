@@ -102,6 +102,8 @@ func convertToItemDetail(vaultItem *item.Item) ItemDetail {
 		HasOneTimePassword: vaultItem.Details.OneTimePassword != "",
 
 		Passkeys: convertToItemPasskeys(vaultItem.Details.Passkeys),
+
+		CanConvertToSecureNote: vaultItem.IsCategory(item.CategoryLogin) && item.HasOnlyNotes(vaultItem),
 	}
 	for _, field := range vaultItem.Details.Fields {
 		detail.Fields = append(detail.Fields, ItemField{Name: field.Name, Value: field.Value, Concealed: field.Concealed})
@@ -165,26 +167,35 @@ func (s *Service) SaveItem(vaultID string, detail ItemDetail) (ItemDetail, error
 	return convertToItemDetail(&vaultItem), nil
 }
 
-// buildSavedItem keeps the category and passkeys of an existing item; an ssh-key item only takes the title and notes from the editor.
+// buildSavedItem keeps the category and passkeys of an existing item; an ssh-key item only takes the title and notes from
+// the editor. A secure note keeps only its title, notes and custom fields.
 func (s *Service) buildSavedItem(vaultID string, detail ItemDetail) (item.Item, error) {
 	var cachedItem *item.Item
 	if detail.ID != "" {
 		cachedItem, _ = s.findItem(vaultID, detail.ID)
 	}
 	if cachedItem == nil {
-		if detail.Category == item.CategorySSHKey {
+		switch detail.Category {
+		case "", item.CategoryLogin, item.CategorySecureNote:
+		case item.CategorySSHKey:
 			if detail.ID == "" {
 				return item.Item{}, errors.New("generate or import an SSH key instead")
 			}
 			return item.Item{}, errors.New("this SSH key is not loaded; reload the vault and try again")
+		default:
+			return item.Item{}, fmt.Errorf("unknown item type %q", detail.Category)
 		}
-		return convertFromItemDetail(detail), nil
+		vaultItem := convertFromItemDetail(detail)
+		vaultItem.Overview.Category = detail.Category
+		keepSecureNoteFields(&vaultItem)
+		return vaultItem, nil
 	}
-	if cachedItem.Overview.Category != item.CategorySSHKey {
+	if !cachedItem.IsCategory(item.CategorySSHKey) {
 		vaultItem := convertFromItemDetail(detail)
 		vaultItem.Overview.Category = cachedItem.Overview.Category
 		vaultItem.Details.Passkeys = cachedItem.Details.Passkeys
 		item.UpdatePasskeyOverview(&vaultItem)
+		keepSecureNoteFields(&vaultItem)
 		return vaultItem, nil
 	}
 	vaultItem := *cachedItem
@@ -193,6 +204,45 @@ func (s *Service) buildSavedItem(vaultID string, detail ItemDetail) (item.Item, 
 	vaultItem.Details.Notes = detail.Notes
 	vaultItem.Details.OneTimePassword = detail.OneTimePassword
 	return vaultItem, nil
+}
+
+// keepSecureNoteFields drops from a secure note what its form does not show, so it holds no secret nobody can see.
+func keepSecureNoteFields(vaultItem *item.Item) {
+	if !vaultItem.IsCategory(item.CategorySecureNote) {
+		return
+	}
+	vaultItem.Overview.Username, vaultItem.Overview.URLs = "", nil
+	vaultItem.Details.Password, vaultItem.Details.OneTimePassword = "", ""
+}
+
+// ConvertToSecureNote turns a login with only notes and custom fields, such as one imported before Hisar had secure notes,
+// into a secure note.
+func (s *Service) ConvertToSecureNote(vaultID, itemID string) (ItemDetail, error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if err := s.requireUnlocked(); err != nil {
+		return ItemDetail{}, err
+	}
+	cachedItem, err := s.findItem(vaultID, itemID)
+	if err != nil {
+		return ItemDetail{}, err
+	}
+	if !cachedItem.IsCategory(item.CategoryLogin) || !item.HasOnlyNotes(cachedItem) {
+		return ItemDetail{}, errors.New("only a login with nothing but notes and custom fields can become a secure note")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	vault, err := s.findVault(ctx, vaultID)
+	if err != nil {
+		return ItemDetail{}, err
+	}
+	vaultItem := *cachedItem
+	vaultItem.Overview.Category = item.CategorySecureNote
+	if _, err := s.unlockedSession.SaveItem(ctx, vault, &vaultItem); err != nil {
+		return ItemDetail{}, convertError(err)
+	}
+	s.replaceCachedItem(vaultID, vaultItem)
+	return convertToItemDetail(&vaultItem), nil
 }
 
 func (s *Service) replaceCachedItem(vaultID string, vaultItem item.Item) {

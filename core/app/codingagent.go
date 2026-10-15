@@ -175,12 +175,8 @@ func (s *Service) searchAgentItems(query, vaultQuery string) (cliprotocol.AgentI
 }
 
 func convertToAgentItem(vault *session.Vault, vaultItem *item.Item, isVaultNameShared, isItemTitleShared bool) cliprotocol.AgentItem {
-	itemType := vaultItem.Overview.Category
-	if itemType == "" {
-		itemType = "login"
-	}
 	agentItem := cliprotocol.AgentItem{
-		ID: vaultItem.ID, VaultID: vault.ID, VaultName: vault.Name, Title: vaultItem.Overview.Title, Type: itemType,
+		ID: vaultItem.ID, VaultID: vault.ID, VaultName: vault.Name, Title: vaultItem.Overview.Title, Type: vaultItem.Category(),
 		Username: vaultItem.Overview.Username, URLs: append([]string{}, vaultItem.Overview.URLs...),
 		HasNotes: strings.TrimSpace(vaultItem.Details.Notes) != "", HasOneTimePassword: vaultItem.Details.OneTimePassword != "",
 		Fields: []cliprotocol.AgentField{},

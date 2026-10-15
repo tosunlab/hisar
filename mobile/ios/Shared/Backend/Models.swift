@@ -142,6 +142,7 @@ struct ItemField: Codable, Hashable {
 struct ItemDetail: Codable, Identifiable, Hashable {
     static let categoryLogin = "login"
     static let categorySSHKey = "ssh-key"
+    static let categorySecureNote = "secure-note"
 
     var id: String
     var revision: String
@@ -158,15 +159,17 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     var oneTimePassword: String
     var hasOneTimePassword: Bool
     var allPasskey: [ItemPasskey]
+    /// A login with nothing but notes and custom fields, which the backend can turn into a secure note.
+    var canConvertToSecureNote: Bool
 
     enum CodingKeys: String, CodingKey {
-        case id, revision, category, title, username, password, notes, publicKey, fingerprint, keyType, oneTimePassword, hasOneTimePassword
+        case id, revision, category, title, username, password, notes, publicKey, fingerprint, keyType, oneTimePassword, hasOneTimePassword, canConvertToSecureNote
         case allURL = "urls"
         case allField = "fields"
         case allPasskey = "passkeys"
     }
 
-    init(id: String = "", revision: String = "", category: String = ItemDetail.categoryLogin, title: String = "", username: String = "", allURL: [String] = [], password: String = "", notes: String = "", allField: [ItemField] = [], publicKey: String = "", fingerprint: String = "", keyType: String = "", oneTimePassword: String = "", hasOneTimePassword: Bool = false, allPasskey: [ItemPasskey] = []) {
+    init(id: String = "", revision: String = "", category: String = ItemDetail.categoryLogin, title: String = "", username: String = "", allURL: [String] = [], password: String = "", notes: String = "", allField: [ItemField] = [], publicKey: String = "", fingerprint: String = "", keyType: String = "", oneTimePassword: String = "", hasOneTimePassword: Bool = false, allPasskey: [ItemPasskey] = [], canConvertToSecureNote: Bool = false) {
         self.id = id
         self.revision = revision
         self.category = category
@@ -182,6 +185,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         self.oneTimePassword = oneTimePassword
         self.hasOneTimePassword = hasOneTimePassword
         self.allPasskey = allPasskey
+        self.canConvertToSecureNote = canConvertToSecureNote
     }
 
     init(from decoder: Decoder) throws {
@@ -201,10 +205,12 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         oneTimePassword = try container.decodeIfPresent(String.self, forKey: .oneTimePassword) ?? ""
         hasOneTimePassword = try container.decodeIfPresent(Bool.self, forKey: .hasOneTimePassword) ?? false
         allPasskey = try container.decodeIfPresent([ItemPasskey].self, forKey: .allPasskey) ?? []
+        canConvertToSecureNote = try container.decodeIfPresent(Bool.self, forKey: .canConvertToSecureNote) ?? false
     }
 
     var isLogin: Bool { category.isEmpty || category == Self.categoryLogin }
     var isSSHKey: Bool { category == Self.categorySSHKey }
+    var isSecureNote: Bool { category == Self.categorySecureNote }
 }
 
 struct SignUpResult: Codable, Equatable {

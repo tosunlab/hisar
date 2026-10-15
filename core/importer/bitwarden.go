@@ -102,6 +102,9 @@ func convertBitwardenItem(entry bitwardenItem) (item.Item, string) {
 		return item.Item{}, "this kind of Bitwarden item is not supported in Hisar yet"
 	}
 	vaultItem := item.Item{Overview: item.Overview{Title: entry.Name}, Details: item.Details{Notes: entry.Notes}}
+	if entry.Type == bitwardenSecureNote {
+		vaultItem.Overview.Category = item.CategorySecureNote
+	}
 	if entry.Login != nil {
 		vaultItem.Overview.Username = entry.Login.Username
 		vaultItem.Details.Password = entry.Login.Password

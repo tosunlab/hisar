@@ -57,6 +57,7 @@ function createPreviewItem(id: string, title: string, username: string, link: st
     oneTimePassword: "",
     hasOneTimePassword: false,
     passkeys: [],
+    canConvertToSecureNote: false,
     ...extra,
   };
 }
@@ -95,6 +96,14 @@ const allPreviewItemByVaultID: Record<string, ItemDetail[]> = {
     createPreviewItem("linear", "Linear", "alper@tryhisar.com", "https://linear.app", "Mx9$Lp2!Qw7@"),
     createPreviewSSHKey("github-ssh", "GitHub SSH key", "ssh-ed25519", "Also used for commit signing."),
     createPreviewSSHKey("raspberry", "Raspberry Pi", "ssh-rsa"),
+    createPreviewItem("recovery-codes", "GitHub recovery codes", "", "", "", {
+      category: "secure-note",
+      notes: "1. 4821-9930\n2. 1177-0042\n3. 5510-3384\n\nGenerated when two-factor sign-in was turned on.",
+    }),
+    createPreviewItem("door-codes", "Door codes", "", "", "", {
+      notes: "Front door 1234\nGarage 5678",
+      canConvertToSecureNote: true,
+    }),
   ],
   team: [
     createPreviewItem("sentry", "Sentry", "team@example.com", "https://sentry.io", "sentry-team-pass", { notes: "Shared team account" }),
@@ -797,9 +806,9 @@ const allPreviewImportItem: ItemDetail[] = [
   createPreviewItem("import-trendyol", "Trendyol", "alper@gmail.com", "https://trendyol.com", "imported-12"),
   createPreviewItem("import-turkcell", "Turkcell", "5321234567", "https://turkcell.com.tr", "imported-13"),
   createPreviewItem("import-garanti", "Garanti BBVA", "48211990", "https://garantibbva.com.tr", "imported-14"),
-  createPreviewItem("import-cabin", "Wi-Fi at the cabin", "", "", "", { notes: "Network: Kale\nKey: under the mat" }),
-  createPreviewItem("import-codes", "Server recovery codes", "", "", "", { notes: "1. 4821-9930\n2. 1177-0042" }),
-  createPreviewItem("import-insurance", "Car insurance", "", "", "", { notes: "Policy 88-120-4471, renews in March" }),
+  createPreviewItem("import-cabin", "Wi-Fi at the cabin", "", "", "", { category: "secure-note", notes: "Network: Kale\nKey: under the mat" }),
+  createPreviewItem("import-codes", "Server recovery codes", "", "", "", { category: "secure-note", notes: "1. 4821-9930\n2. 1177-0042" }),
+  createPreviewItem("import-insurance", "Car insurance", "", "", "", { category: "secure-note", notes: "Policy 88-120-4471, renews in March" }),
   createPreviewSSHKey("import-deploy", "Deploy key", "ssh-ed25519", "Used by CI."),
 ];
 
@@ -830,8 +839,8 @@ function buildPreviewImportPreview(vaultID: string): ImportPreview {
     vaultId: vaultID,
     vaultName: vault.name,
     itemCount: allPreviewImportItem.length,
-    loginCount: allPreviewImportItem.filter((detail) => detail.category === "" && (detail.username || detail.password || detail.urls.length > 0)).length,
-    secureNoteCount: allPreviewImportItem.filter((detail) => detail.category === "" && !detail.username && !detail.password && detail.urls.length === 0).length,
+    loginCount: allPreviewImportItem.filter((detail) => detail.category === "").length,
+    secureNoteCount: allPreviewImportItem.filter((detail) => detail.category === "secure-note").length,
     sshKeyCount: allPreviewImportItem.filter((detail) => detail.category === "ssh-key").length,
     allSkipped: allPreviewImportSkipped,
     allDuplicate: findAllPreviewImportDuplicate(vaultID).map((detail) => ({ title: detail.title, username: detail.username, url: detail.urls[0] ?? "" })),
@@ -974,6 +983,11 @@ export const previewApi = {
   deletePasskey: (vaultID: string, itemID: string, credentialID: string) => {
     const vaultItem = allPreviewItemByVaultID[vaultID].find((candidate) => candidate.id === itemID)!;
     vaultItem.passkeys = vaultItem.passkeys.filter((passkey) => passkey.credentialId !== credentialID);
+    return resolveAfterDelay(structuredClone(vaultItem));
+  },
+  convertToSecureNote: (vaultID: string, itemID: string) => {
+    const vaultItem = allPreviewItemByVaultID[vaultID].find((candidate) => candidate.id === itemID)!;
+    Object.assign(vaultItem, { category: "secure-note", canConvertToSecureNote: false });
     return resolveAfterDelay(structuredClone(vaultItem));
   },
   deleteItem: (vaultID: string, itemID: string) => {

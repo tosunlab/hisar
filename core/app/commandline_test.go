@@ -117,6 +117,9 @@ func TestCommandLineItemsThroughTheApp(t *testing.T) {
 	if hello.State != cliprotocol.StateUnlocked || hello.Email != "a@example.com" || hello.IsApproved {
 		t.Errorf("hello %+v", hello)
 	}
+	if !hello.HasFeature(cliprotocol.FeatureSecureNotes) {
+		t.Errorf("hello does not announce secure notes: %+v", hello.Features)
+	}
 
 	var account cliprotocol.AccountResult
 	test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeAccount}, &account)

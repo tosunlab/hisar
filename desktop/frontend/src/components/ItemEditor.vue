@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { reactive, ref } from "vue";
 import { createEmptyItem, type ItemDetail } from "../api";
-import { sshKeyCategory } from "../util";
+import { getItemIcon, secureNoteCategory, sshKeyCategory } from "../util";
 import { cancelEditing, saveItem, store } from "../store";
 import AppIcon from "./AppIcon.vue";
 import ItemTile from "./ItemTile.vue";
@@ -13,7 +13,11 @@ function createDraft(): ItemDetail {
     const selected = store.selectedItem;
     return { ...selected, urls: [...selected.urls], fields: selected.fields.map((field) => ({ ...field })), passkeys: [...(selected.passkeys ?? [])] };
   }
-  return createEmptyItem();
+  const empty = createEmptyItem();
+  if (store.editorMode === "create-secure-note") {
+    empty.category = secureNoteCategory;
+  }
+  return empty;
 }
 
 const draft = reactive<ItemDetail>(createDraft());
@@ -21,6 +25,8 @@ const urlText = ref(draft.urls.join("\n"));
 const isPasswordVisible = ref(false);
 const isGeneratorOpen = ref(store.editorMode === "create");
 const isSSHKey = draft.category === sshKeyCategory;
+const isSecureNote = draft.category === secureNoteCategory;
+const isCreating = store.editorMode === "create" || store.editorMode === "create-secure-note";
 
 function usePassword(password: string): void {
   draft.password = password;
@@ -48,15 +54,22 @@ async function submitItem(): Promise<void> {
 <template>
   <form class="item-editor" @submit.prevent="submitItem">
     <header>
-      <ItemTile :title="draft.title || '?'" :size="52" :icon="isSSHKey ? 'key' : undefined" />
-      <input v-model="draft.title" class="title-input" name="title" placeholder="Item title" aria-label="Title" required autofocus />
+      <ItemTile :title="draft.title || '?'" :size="52" :icon="getItemIcon(draft.category)" />
+      <input v-model="draft.title" class="title-input" name="title" :placeholder="isSecureNote ? 'Note title' : 'Item title'" aria-label="Title" required autofocus />
     </header>
+
+    <section v-if="isSecureNote" class="card editor-card" data-testid="secure-note-editor">
+      <label class="last">
+        <span>Notes</span>
+        <textarea v-model="draft.notes" name="notes" rows="12" placeholder="Anything worth keeping safe: recovery codes, door codes, account details"></textarea>
+      </label>
+    </section>
 
     <p v-if="isSSHKey" class="card ssh-key-note muted" data-testid="ssh-key-note">
       <AppIcon name="key" :size="14" /> The key itself cannot be changed. To replace it, add a new SSH key.
     </p>
 
-    <section v-if="!isSSHKey" class="card editor-card">
+    <section v-if="!isSSHKey && !isSecureNote" class="card editor-card">
       <label>
         <span>Username</span>
         <input v-model="draft.username" name="username" autocomplete="off" placeholder="Username or email" />
@@ -130,7 +143,7 @@ async function submitItem(): Promise<void> {
       <p class="muted passkey-note">Passkeys stay as they are when you save. Delete one from the item view.</p>
     </section>
 
-    <section class="card editor-card">
+    <section v-if="!isSecureNote" class="card editor-card">
       <label class="last">
         <span>Notes</span>
         <textarea v-model="draft.notes" name="notes" rows="4" placeholder="Anything else worth keeping safe"></textarea>
@@ -141,7 +154,7 @@ async function submitItem(): Promise<void> {
       <span class="muted"><AppIcon name="shield" :size="12" /> Encrypted on this device before saving</span>
       <div class="spacer"></div>
       <button type="button" class="ghost" @click="cancelEditing">Cancel</button>
-      <button class="primary" type="submit" :disabled="store.isBusy">{{ store.editorMode === "create" ? "Add item" : "Save" }}</button>
+      <button class="primary" type="submit" :disabled="store.isBusy">{{ isCreating ? "Add item" : "Save" }}</button>
     </div>
   </form>
 </template>

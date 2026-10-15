@@ -157,12 +157,15 @@ binaries, the server Docker image for amd64 and arm64 (built into a throwaway re
 (typecheck, tests, bundle check), the desktop app's Linux build, the extension (tests, Chromium end-to-end tests, zip) and the
 share link page in Chromium against the server.
 
-`.github/workflows/macos.yml` builds the Mac app (Touch ID and Sparkle tests, bundle and signature checks) and, when `mobile/` differs
-from `main`, the iPhone app (HisarKit, Xcode project check, unit tests, UI tests against a local server) on GitHub's `macos-26` runners
-with Xcode 26.6. macOS minutes count ten times against the plan's included minutes, so these jobs never run on their own:
+`.github/workflows/macos.yml` builds the Mac app (Touch ID and Sparkle tests, bundle and signature checks) and the iPhone app
+(HisarKit, Xcode project check, unit tests, UI tests against a local server) on GitHub's `macos-26` runners with Xcode 26.6. macOS
+minutes count ten times against the plan's included minutes, so a pull request runs each job only when it changes what that job builds,
+compared with the base branch:
 
-- on a pull request, add the label `run-macos`; every later push to that pull request runs them again until the label is removed;
-- or run it by hand: Actions → macOS and iOS → Run workflow, on a branch (tick "Build and test the iPhone app" to force the iPhone job).
+- the Mac app when `desktop/`, `cli/` (the app bundles `hisar`), `core/`, `go.work` or the workflow changes;
+- the iPhone app when `mobile/`, `core/`, `go.work` or the workflow changes (`core/app` is the backend of both apps);
+- both, whatever changed, while the pull request has the label `run-macos`;
+- or by hand: Actions → macOS and iOS → Run workflow, on a branch (tick "Build and test the iPhone app" to add the iPhone job).
 
 A run takes roughly 15–25 minutes for the Mac app and 40–60 minutes for the iPhone app, so about 150–250 included minutes for the Mac
 app alone and up to 850 with the iPhone app. A desktop release build costs about the same as the Mac app job.

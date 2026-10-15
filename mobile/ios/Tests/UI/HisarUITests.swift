@@ -38,6 +38,22 @@ final class HisarUITests: HisarUITestCase {
         goBack()
         goBack()
         waitFor(app.buttons["vault-Personal"])
+
+        app.buttons["new-menu"].tap()
+        waitFor(app.buttons["new-secure-note"])
+        app.buttons["new-secure-note"].tap()
+        type("Recovery codes", into: app.textFields["editor-title"])
+        XCTAssertFalse(app.textFields["editor-username"].exists, "a secure note asks for a username")
+        let notesField = app.textViews["editor-notes"].exists ? app.textViews["editor-notes"] : app.textFields["editor-notes"]
+        type("4821-9930", into: notesField)
+        saveScreenshot("add-secure-note")
+        app.buttons["editor-save"].tap()
+        waitFor(app.staticTexts["secure-note-notes"])
+        XCTAssertEqual(app.staticTexts["secure-note-notes"].label, "4821-9930")
+        XCTAssertFalse(app.staticTexts["password-value"].exists)
+        saveScreenshot("secure-note")
+        goBack()
+        waitFor(app.buttons["vault-Personal"])
         openTab("Search")
         let searchField = app.searchFields.firstMatch
         type("git", into: searchField)

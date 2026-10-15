@@ -70,7 +70,7 @@ To work on the design without a server, run the UI in a browser with sample data
 ```sh
 cd desktop/frontend && npm run preview:ui
 # http://127.0.0.1:5180/?state=signed-out | locked | unlocked
-# extra parameters: &vault=team &item=sentry &editor=create|edit|ssh-key &secretKey=1 &touchIdOffer=1 &search=git
+# extra parameters: &vault=team &item=sentry &editor=create|edit|secure-note|ssh-key &secretKey=1 &touchIdOffer=1 &search=git
 # SSH: &item=raspberry (SSH key) &settings=1 &noTouchID=1 (in-app approval note) &compact=1 (compact approvals on) &agent=error &sshConfigured=1
 # sharing: &sharing=1 (sharing panel; add &vault=work for the read-only view) &code=elif (security code) &remove=deniz
 # settings: &settings=1 &invite=form|1 (invite form, or a sent invite) &revoke=mac-mini &settingsSection=general|security|ssh|developer|browser|people|devices|account|help &settingsSearch=<text>
@@ -98,6 +98,15 @@ Design: `docs/DESIGN.md` §6. The Emergency Kit (email, server and Secret Key) p
 
 - **Lost Secret Key**: it is on the Emergency Kit. Settings → Security → Emergency Kit saves a new kit after the master password, and the sign-in screen says where to find it.
 - **Forgotten master password**: nobody can recover it, including Hisar. The Create account form and the Secret Key screen after sign up say so.
+
+## Secure notes
+
+Design: `docs/DESIGN.md` §4.5 (categories).
+
+- **+** → **Secure note** opens an editor with the title, a large notes field and custom fields; there is no username, password or website. The item list shows the note icon and "Secure note".
+- A note's view shows its notes first, with **Copy** and a secret reference (`hisar://<vault>/<note>/notes`), then its custom fields. The browser extension never offers notes for filling.
+- A login with nothing but notes and custom fields, such as one imported before secure notes existed, shows **Convert to secure note**.
+- Preview: `&item=recovery-codes` (a note), `&item=door-codes` (a login that can be converted), `&editor=secure-note`.
 
 ## Import from other password managers
 

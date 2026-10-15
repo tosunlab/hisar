@@ -31,7 +31,7 @@ func (s *Service) listLoginsForURL(ctx context.Context, pageURL string) ([]brows
 			continue
 		}
 		for _, vaultItem := range items {
-			if !isLoginItem(&vaultItem) || !slices.ContainsFunc(vaultItem.Overview.URLs, func(itemURL string) bool {
+			if !vaultItem.IsCategory(item.CategoryLogin) || !slices.ContainsFunc(vaultItem.Overview.URLs, func(itemURL string) bool {
 				return browserprotocol.IsURLMatch(itemURL, pageURL, s.state.IsExactHostMatch)
 			}) {
 				continue
@@ -50,10 +50,6 @@ func (s *Service) listLoginsForURL(ctx context.Context, pageURL string) ([]brows
 		return strings.Compare(strings.ToLower(first.Username), strings.ToLower(second.Username))
 	})
 	return logins, itemsByKey, nil
-}
-
-func isLoginItem(vaultItem *item.Item) bool {
-	return vaultItem.Overview.Category == "" || vaultItem.Overview.Category == item.CategoryLogin
 }
 
 // requireUnlockedWithoutActivity checks the lock state like requireUnlocked but, like the SSH agent, does not postpone auto-lock.

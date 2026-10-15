@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/tryhisar/hisar/core/cliprotocol"
+	"github.com/tryhisar/hisar/core/item"
 )
 
 type fakeApp struct {
@@ -41,7 +42,7 @@ func startFakeApp(t *testing.T) *fakeApp {
 	t.Helper()
 	app := &fakeApp{
 		socketPath: filepath.Join(createShortTempDirectory(t), "cli.sock"),
-		hello:      cliprotocol.HelloResult{ProtocolVersion: cliprotocol.ProtocolVersion, State: cliprotocol.StateUnlocked, Email: "alice@example.com", Server: "https://hisar.example.com"},
+		hello:      cliprotocol.HelloResult{ProtocolVersion: cliprotocol.ProtocolVersion, State: cliprotocol.StateUnlocked, Email: "alice@example.com", Server: "https://hisar.example.com", Features: cliprotocol.ListFeatures()},
 		answer:     answerFakeVaultRequest,
 	}
 	listener, err := net.Listen("unix", app.socketPath)
@@ -127,6 +128,8 @@ func answerFakeVaultRequest(request cliprotocol.Request) (any, *cliprotocol.Resp
 		return cliprotocol.ItemListResult{Items: []cliprotocol.Item{
 			{ID: "github-id", Revision: "r1", Title: "GitHub", Username: "alice", URLs: []string{"https://github.com"}, HasOneTimePassword: true},
 			{ID: "bank-id", Revision: "r2", Title: "Bank", Username: "alice"},
+			{ID: "note-id", Revision: "r3", Category: item.CategorySecureNote, Title: "Recovery codes"},
+			{ID: "key-id", Revision: "r4", Category: item.CategorySSHKey, Title: "Deploy key", PublicKey: "ssh-ed25519 AAAA deploy"},
 		}}, nil
 	case cliprotocol.TypeGetItem:
 		if request.ItemID == "github-id" {
@@ -134,6 +137,12 @@ func answerFakeVaultRequest(request cliprotocol.Request) (any, *cliprotocol.Resp
 				ID: "github-id", Revision: "r1", Title: "GitHub", Username: "alice", URLs: []string{"https://github.com"}, Password: "github-password",
 				Notes: "work", Fields: []cliprotocol.Field{{Name: "PIN", Value: "1234"}}, Passkeys: []cliprotocol.Passkey{{RelyingPartyID: "github.com", UserName: "alice"}}, HasOneTimePassword: true,
 			}}, nil
+		}
+		if request.ItemID == "key-id" {
+			return cliprotocol.ItemResult{Item: cliprotocol.Item{ID: "key-id", Revision: "r4", Category: item.CategorySSHKey, Title: "Deploy key", PublicKey: "ssh-ed25519 AAAA deploy"}}, nil
+		}
+		if request.ItemID == "note-id" {
+			return cliprotocol.ItemResult{Item: cliprotocol.Item{ID: "note-id", Revision: "r3", Category: item.CategorySecureNote, Title: "Recovery codes", Notes: "one\ntwo"}}, nil
 		}
 		return cliprotocol.ItemResult{Item: cliprotocol.Item{ID: request.ItemID, Revision: "r2", Title: "Bank", Username: "alice", Password: "bank-password"}}, nil
 	case cliprotocol.TypeGetCode:
@@ -261,6 +270,13 @@ func TestCommandsRunThroughTheApp(t *testing.T) {
 	if err != nil || !strings.Contains(stdout, "GitHub") || !strings.Contains(stdout, "bank-id") {
 		t.Errorf("ls: %q %v", stdout, err)
 	}
+	if lines := strings.Split(stdout, "\n"); len(lines) < 4 || strings.Fields(lines[0])[3] != "TYPE" || !strings.Contains(lines[1], " login ") || !strings.Contains(lines[3], " secure-note ") {
+		t.Errorf("ls types: %q", stdout)
+	}
+	stdout, _, err = runCapturingOutput(t, false, "", "get", "recovery")
+	if err != nil || !strings.Contains(stdout, "notes:") || !strings.Contains(stdout, "one\ntwo") || strings.Contains(stdout, "username") {
+		t.Errorf("get note: %q %v", stdout, err)
+	}
 	stdout, _, err = runCapturingOutput(t, false, "", "get", "git", "-f", "password")
 	if err != nil || stdout != "github-password\n" {
 		t.Errorf("get -f password: %q %v", stdout, err)
@@ -289,6 +305,50 @@ func TestCommandsRunThroughTheApp(t *testing.T) {
 	}
 }
 
+func TestAddNoteRefusesAnAppWithoutSecureNotes(t *testing.T) {
+	app := startFakeApp(t)
+	app.mutex.Lock()
+	app.hello.Features = nil
+	app.mutex.Unlock()
+	_, stderr, err := runCapturingOutput(t, false, "Wi-Fi\nNetwork: home\n\n", "add", "--type", "secure-note")
+	if err == nil || !strings.Contains(err.Error(), "cannot save secure-note items") {
+		t.Fatalf("add --type secure-note through an older app: %v", err)
+	}
+	if strings.Contains(stderr, "Title") {
+		t.Errorf("asked for the note before refusing: %q", stderr)
+	}
+	if saved := app.findRequest(cliprotocol.TypeSaveItem); len(saved) != 0 {
+		t.Errorf("sent the note to an older app: %+v", saved)
+	}
+	if _, stderr, err := runCapturingOutput(t, false, "Netflix\nalice\nhttps://netflix.com\nnetflix-password\nshared\n", "add"); err != nil || !strings.Contains(stderr, `Saved "Netflix"`) {
+		t.Errorf("a login through an older app: %q %v", stderr, err)
+	}
+}
+
+func TestAddAndEditFollowTheItemType(t *testing.T) {
+	app := startFakeApp(t)
+	_, stderr, err := runCapturingOutput(t, false, "Visa\n", "add", "--type", "credit-card")
+	if err == nil || !strings.Contains(err.Error(), `unknown item type "credit-card"; use one of login, secure-note`) {
+		t.Errorf("add an unknown type: %v", err)
+	}
+	if strings.Contains(stderr, "Title") {
+		t.Errorf("asked for an item of an unknown type: %q", stderr)
+	}
+	_, stderr, err = runCapturingOutput(t, false, "\n\n\n\n\n", "edit", "deploy")
+	if err == nil || !strings.Contains(err.Error(), "hisar cannot edit ssh-key items") || strings.Contains(stderr, "Username") {
+		t.Errorf("edit an SSH key: %q %v", stderr, err)
+	}
+	if saved := app.findRequest(cliprotocol.TypeSaveItem); len(saved) != 0 {
+		t.Errorf("saved %+v", saved)
+	}
+	if _, _, err := runCapturingOutput(t, false, "Netflix\nalice\n\npw\n\n", "add", "--type", "login"); err != nil {
+		t.Fatal(err)
+	}
+	if login := app.findRequest(cliprotocol.TypeSaveItem)[0]; login.Item.Category != item.CategoryLogin || login.Item.Username != "alice" {
+		t.Errorf("add --type login request %+v", login.Item)
+	}
+}
+
 func TestWriteCommandsRunThroughTheApp(t *testing.T) {
 	app := startFakeApp(t)
 	if _, stderr, err := runCapturingOutput(t, false, "Netflix\nalice\nhttps://netflix.com\nnetflix-password\nshared\n", "add"); err != nil || !strings.Contains(stderr, `Saved "Netflix" to Personal.`) {
@@ -305,6 +365,25 @@ func TestWriteCommandsRunThroughTheApp(t *testing.T) {
 	edited := app.findRequest(cliprotocol.TypeSaveItem)[1]
 	if edited.Item.ID != "github-id" || edited.Item.Revision != "r1" || edited.Item.Password != "github-password" || edited.Item.Notes != "edited" {
 		t.Errorf("edit request %+v", edited.Item)
+	}
+
+	if _, stderr, err := runCapturingOutput(t, false, "Wi-Fi\nNetwork: home\n\nPassword: correct horse\n.\nignored\n", "add", "--type", "secure-note"); err != nil || !strings.Contains(stderr, `Saved "Wi-Fi" to Personal.`) {
+		t.Fatalf("add --type secure-note: %q %v", stderr, err)
+	}
+	if note := app.findRequest(cliprotocol.TypeSaveItem)[2]; note.Item.Category != item.CategorySecureNote || note.Item.Notes != "Network: home\n\nPassword: correct horse" || note.Item.Username != "" || note.Item.Password != "" {
+		t.Errorf("add --type secure-note request %+v", note.Item)
+	}
+	if _, stderr, err := runCapturingOutput(t, false, "\n.\n", "edit", "recovery"); err != nil || strings.Contains(stderr, "Username") || strings.Contains(stderr, "Password") {
+		t.Fatalf("edit note keeping its notes: %q %v", stderr, err)
+	}
+	if kept := app.findRequest(cliprotocol.TypeSaveItem)[3]; kept.Item.ID != "note-id" || kept.Item.Notes != "one\ntwo" || kept.Item.Category != item.CategorySecureNote {
+		t.Errorf("edit note request %+v", kept.Item)
+	}
+	if _, _, err := runCapturingOutput(t, false, "Codes\n\n1. 4821-9930\n\n2. 1177-0042\n\n", "edit", "recovery"); err != nil {
+		t.Fatal(err)
+	}
+	if replaced := app.findRequest(cliprotocol.TypeSaveItem)[4]; replaced.Item.Title != "Codes" || replaced.Item.Notes != "1. 4821-9930\n\n2. 1177-0042" {
+		t.Errorf("edit note piped without a final \".\" %+v", replaced.Item)
 	}
 
 	if _, _, err := runCapturingOutput(t, false, "y\n", "rm", "bank"); err != nil {

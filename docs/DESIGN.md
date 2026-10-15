@@ -129,8 +129,20 @@ The server stores `encKeyset`, the KEM public key, the Ed25519 public key and th
 
 An item has two encrypted parts so lists and search don't decrypt every secret:
 
-- **overview**: title, URLs, tags, icon hint, subtitle (username).
+- **overview**: title, category, URLs, tags, icon hint, subtitle (username).
 - **details**: fields, passwords, notes, TOTP seeds, passkeys, history of field values.
+
+**Categories.** `overview.category` is the item's type, set when the item is created and kept by every edit:
+
+| Category | Holds | Shown as |
+|---|---|---|
+| `login`, or empty (items saved before categories) | username, password, websites, one-time password, passkeys, custom fields, notes | a login; the only category the browser extension and iOS AutoFill offer |
+| `secure-note` | notes and custom fields; saving drops a username, password, website or one-time password, so a note never hides a secret its form does not show | a notes-first view with Copy and a secret reference (`hisar://<vault>/<note>/notes`) |
+| `ssh-key` | §9.6 | §9.6 |
+
+- **Creating:** desktop **+** → Secure note, iOS **+** → New secure note (or a vault's Add item → Secure note), `hisar add --type secure-note`. The backend refuses a category it does not know.
+- **Converting:** a login with nothing but notes and custom fields (`item.HasOnlyNotes`), such as one imported before secure notes existed, shows "Convert to secure note" (`app.Service.ConvertToSecureNote`, driven by `ItemDetail.canConvertToSecureNote`). Nothing is converted without the user asking.
+- **Older apps** show a secure note as a login with only notes and keep its category when they edit it.
 
 ```
 aad      = "hisar/v1/item" || vaultID || itemID || revision || part      (part ∈ {"overview","details"})
@@ -723,14 +735,14 @@ It then dials the socket and sends `hello` every 200 ms for up to 10 s. Once the
 
 | Type | Parameters | Result |
 |---|---|---|
-| `hello` | — | `protocolVersion` (1), `state` (`signed-out`, `locked`, `unlocked`), `email`, `server`, `isApproved` (for this terminal session); never needs an approval |
+| `hello` | — | `protocolVersion` (1), `state` (`signed-out`, `locked`, `unlocked`), `email`, `server`, `isApproved` (for this terminal session), `features` (what the app understands beyond the protocol version: `secure-notes`; an older app sends none); never needs an approval |
 | `account` | — | `accountID`, `name`, `email`, `role`, `server` |
 | `vaults.list` | — | `vaults`: `[{id, name, type, role, itemCount}]` |
 | `vaults.create` | `name` | `vault` |
 | `items.list` | `vaultID` | `items`: summaries `{id, revision, category, title, username, urls, hasOneTimePassword}` |
 | `items.get` | `vaultID`, `itemID` | `item`: the summary plus `password`, `notes`, `fields`, `passkeys` (`relyingPartyID`, `userName`), `publicKey`, `fingerprint` |
 | `items.code` | `vaultID`, `itemID` | `code`, `expiresAt` (RFC 3339), `period` |
-| `items.save` | `vaultID`, `item` (`id` and `revision` for an update; `title`, `username`, `urls`, `password`, `notes`, optional `fields`) | `item`. An update keeps everything else of the item: one-time password, passkeys, SSH key, and the fields unless `fields` is sent (`.env` import) |
+| `items.save` | `vaultID`, `item` (`id` and `revision` for an update; `title`, `username`, `urls`, `password`, `notes`, optional `fields`, optional `category` of a new item: `login` or `secure-note`, sent only to an app whose `hello` lists `secure-notes`, since an older app ignores it and saves a login) | `item`. An update keeps everything else of the item: category, one-time password, passkeys, SSH key, and the fields unless `fields` is sent (`.env` import) |
 | `vaults.actions` | `vaultID` | `vault`, `canRename`, `canDelete`, `deleteBlockedReason`, `canLeave`, `leaveBlockedReason`, `membersLosingAccess` (`name`, `email`, `role`), `targetVaults` (§5.10) |
 | `vaults.rename` | `vaultID`, `name` | `vault` |
 | `vaults.delete` | `vaultID`, `vaultDeletion` (`moveToVaultID`, or `isDeletingItems` with `confirmedName`, the vault's name as typed) | `movedCount` |
@@ -957,7 +969,7 @@ Every use of a key asks, unless an approval for the same key and app is remember
 | Hisar export, encrypted or plain JSON (§9.11; CLI) | JSON with `format` `hisar-encrypted-export` or `hisar-export` | every item of every vault, vault by vault (below) | — |
 | `.env` (CLI) | the file name, or `-format dotenv` | the chosen variables as fields of one item; the file is rewritten to secret references (below) | empty values and existing references |
 
-- Secure notes have no category of their own yet: they are logins with only a title and notes, and the preview counts them separately.
+- Secure notes are saved as `secure-note` items (§4.5): 1Password Secure Notes, Bitwarden secure notes (JSON type 2 and CSV `type` `note`) and LastPass `http://sn` rows, even with only custom fields or nothing but a title, and any other entry with nothing but notes (and custom fields). A source note that comes with a username, password or website stays a login, so they are shown.
 - An entry that repeats an earlier one exactly is reported, not imported twice. Items already in the target vault are matched by title, username and the first website (case and `www.`/scheme ignored; SSH keys by fingerprint) and skipped unless the user includes them.
 - One-time passwords (1Password `totp` fields and `otpauth://` values, Bitwarden `login.totp`, a CSV `otpauth`/`totp`/`otp` column) go through `totp.Normalize` into `details.oneTimePassword` (§4.5). One that does not parse, such as a Steam code, or a second one on the same item, stays a concealed field.
 - SSH private keys go through `sshagent.ImportPrivateKey` and are stored as OpenSSH keys, as in §9.6.

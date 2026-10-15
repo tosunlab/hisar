@@ -185,8 +185,9 @@ func convertCSVRecord(layout *csvLayout, values []string, format string) (item.I
 	if format == FormatOnePasswordCSV && strings.EqualFold(strings.TrimSpace(getValue(columnArchived)), "true") {
 		return item.Item{}, "archived in 1Password"
 	}
+	entryType := strings.ToLower(strings.TrimSpace(getValue(columnType)))
 	if format == FormatBitwardenCSV {
-		switch entryType := strings.ToLower(strings.TrimSpace(getValue(columnType))); entryType {
+		switch entryType {
 		case "", "login", "note":
 		default:
 			return item.Item{}, fmt.Sprintf("Bitwarden %s items are not supported in Hisar yet", entryType)
@@ -195,6 +196,11 @@ func convertCSVRecord(layout *csvLayout, values []string, format string) (item.I
 	vaultItem := item.Item{
 		Overview: item.Overview{Title: getValue(columnTitle), Username: getValue(columnUsername)},
 		Details:  item.Details{Password: getValue(columnPassword), Notes: getValue(columnNotes)},
+	}
+	// A Bitwarden note and a LastPass http://sn row are notes even without notes text; finishItem still makes one with a
+	// username, password or website a login.
+	if (format == FormatBitwardenCSV && entryType == "note") || isLastPassSecureNoteURL(getValue(columnURL)) {
+		vaultItem.Overview.Category = item.CategorySecureNote
 	}
 	vaultItem.Overview.URLs = splitURLs(getValue(columnURL), format)
 	addOneTimePassword(&vaultItem, "One-time password", strings.TrimSpace(getValue(columnOTP)))
@@ -216,10 +222,15 @@ func convertCSVRecord(layout *csvLayout, values []string, format string) (item.I
 	return vaultItem, ""
 }
 
-// splitURLs: Bitwarden joins several URIs with commas; LastPass marks secure notes with the URL http://sn.
+// isLastPassSecureNoteURL: LastPass marks secure notes with the URL http://sn.
+func isLastPassSecureNoteURL(text string) bool {
+	return strings.EqualFold(strings.TrimSpace(text), "http://sn")
+}
+
+// splitURLs: Bitwarden joins several URIs with commas; a LastPass secure note has no website.
 func splitURLs(text string, format string) []string {
 	text = strings.TrimSpace(text)
-	if text == "" || strings.EqualFold(text, "http://sn") {
+	if text == "" || isLastPassSecureNoteURL(text) {
 		return nil
 	}
 	if format == FormatBitwardenCSV {

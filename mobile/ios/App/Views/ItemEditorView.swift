@@ -3,6 +3,8 @@ import SwiftUI
 struct ItemEditorView: View {
     var vaultID: String
     var originalItem: ItemDetail?
+    /// The category of a new item; an existing item keeps its own.
+    var newCategory: String = ItemDetail.categoryLogin
     var finish: (ItemDetail?) -> Void
 
     @EnvironmentObject private var model: AppModel
@@ -28,7 +30,14 @@ struct ItemEditorView: View {
                     TextField("Title", text: $draft.title)
                         .accessibilityIdentifier("editor-title")
                 }
-                if !draft.isSSHKey {
+                if draft.isSecureNote {
+                    Section("Note") {
+                        TextField("Recovery codes, door codes, account details…", text: $draft.notes, axis: .vertical)
+                            .lineLimit(8...30)
+                            .accessibilityIdentifier("editor-notes")
+                    }
+                    buildFieldSection()
+                } else if !draft.isSSHKey {
                     Section("Login") {
                         TextField("Username or email", text: $draft.username)
                             .textInputAutocapitalization(.never)
@@ -91,33 +100,14 @@ struct ItemEditorView: View {
                             Label("Add website", systemImage: "plus")
                         }
                     }
-                    Section("Other fields") {
-                        ForEach(draft.allField.indices, id: \.self) { index in
-                            VStack(alignment: .leading, spacing: 8) {
-                                TextField("Name", text: $draft.allField[index].name)
-                                    .font(.caption)
-                                if draft.allField[index].concealed {
-                                    SecureField("Value", text: $draft.allField[index].value)
-                                } else {
-                                    TextField("Value", text: $draft.allField[index].value)
-                                }
-                                Toggle("Secret", isOn: $draft.allField[index].concealed)
-                                    .font(.caption)
-                                    .foregroundStyle(.themeSecondary)
-                            }
-                        }
-                        .onDelete { draft.allField.remove(atOffsets: $0) }
-                        Button {
-                            draft.allField.append(ItemField(name: "", value: "", concealed: false))
-                        } label: {
-                            Label("Add field", systemImage: "plus")
-                        }
-                    }
+                    buildFieldSection()
                 }
-                Section("Notes") {
-                    TextField("Notes", text: $draft.notes, axis: .vertical)
-                        .lineLimit(3...10)
-                        .accessibilityIdentifier("editor-notes")
+                if !draft.isSecureNote {
+                    Section("Notes") {
+                        TextField("Notes", text: $draft.notes, axis: .vertical)
+                            .lineLimit(3...10)
+                            .accessibilityIdentifier("editor-notes")
+                    }
                 }
                 if !isNew {
                     Section {
@@ -129,7 +119,7 @@ struct ItemEditorView: View {
                     }
                 }
             }
-            .navigationTitle(isNew ? "New login" : "Edit item")
+            .navigationTitle(isNew ? (draft.isSecureNote ? "New secure note" : "New login") : "Edit item")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -172,6 +162,33 @@ struct ItemEditorView: View {
         if let originalItem {
             draft = originalItem
             allURLText = originalItem.allURL.isEmpty ? [""] : originalItem.allURL
+        } else {
+            draft.category = newCategory
+        }
+    }
+
+    private func buildFieldSection() -> some View {
+        Section("Other fields") {
+            ForEach(draft.allField.indices, id: \.self) { index in
+                VStack(alignment: .leading, spacing: 8) {
+                    TextField("Name", text: $draft.allField[index].name)
+                        .font(.caption)
+                    if draft.allField[index].concealed {
+                        SecureField("Value", text: $draft.allField[index].value)
+                    } else {
+                        TextField("Value", text: $draft.allField[index].value)
+                    }
+                    Toggle("Secret", isOn: $draft.allField[index].concealed)
+                        .font(.caption)
+                        .foregroundStyle(.themeSecondary)
+                }
+            }
+            .onDelete { draft.allField.remove(atOffsets: $0) }
+            Button {
+                draft.allField.append(ItemField(name: "", value: "", concealed: false))
+            } label: {
+                Label("Add field", systemImage: "plus")
+            }
         }
     }
 

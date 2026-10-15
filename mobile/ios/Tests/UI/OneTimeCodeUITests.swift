@@ -29,6 +29,8 @@ final class OneTimeCodeUITests: HisarUITestCase {
         app.buttons["vault-Personal"].tap()
         waitFor(app.buttons["add-item"])
         app.buttons["add-item"].tap()
+        waitFor(app.buttons["add-login"])
+        app.buttons["add-login"].tap()
         type("Example", into: app.textFields["editor-title"])
         type("code-user", into: app.textFields["editor-username"])
         type("code-password-1", into: app.secureTextFields["editor-password"])

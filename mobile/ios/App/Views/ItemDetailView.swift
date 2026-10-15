@@ -89,7 +89,7 @@ struct ItemDetailView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(item.title)
                             .font(.title2.weight(.bold))
-                        Text("\(vault?.name ?? "") · \(item.isSSHKey ? "SSH key" : "Login")")
+                        Text("\(vault?.name ?? "") · \(item.isSSHKey ? "SSH key" : (item.isSecureNote ? "Secure note" : "Login"))")
                             .font(.subheadline)
                             .foregroundStyle(.themeSecondary)
                     }
@@ -99,6 +99,8 @@ struct ItemDetailView: View {
             }
             if item.isSSHKey {
                 buildSSHKeySection(item: item)
+            } else if item.isSecureNote {
+                buildSecureNoteSection(item: item)
             } else {
                 buildLoginSection(item: item)
             }
@@ -145,8 +147,8 @@ struct ItemDetailView: View {
                     }
                 }
             }
-            if !item.notes.isEmpty {
-                Section("Notes") {
+            if !item.notes.isEmpty && !item.isSecureNote {
+                Section {
                     Text(item.notes)
                         .textSelection(.enabled)
                         .contextMenu {
@@ -161,9 +163,24 @@ struct ItemDetailView: View {
                                 Label("Copy Secret Reference", systemImage: "terminal")
                             }
                         }
+                } header: {
+                    Text("Notes")
                 }
             }
-            if let referenceField = item.isSSHKey ? "public key" : (item.password.isEmpty ? nil : "password") {
+            if isWritable && item.canConvertToSecureNote {
+                Section {
+                    Button {
+                        Task { await convertToSecureNote() }
+                    } label: {
+                        Label("Convert to secure note", systemImage: "note.text")
+                    }
+                    .disabled(model.isBusy)
+                    .accessibilityIdentifier("convert-to-secure-note")
+                } footer: {
+                    Text("This login has no username, password or website. As a secure note, it opens straight to its notes and fields.")
+                }
+            }
+            if let referenceField = item.isSSHKey ? "public key" : (item.isSecureNote ? (item.notes.isEmpty ? nil : "notes") : (item.password.isEmpty ? nil : "password")) {
                 Section {
                     Button {
                         copyReference(fieldName: referenceField)
@@ -209,6 +226,33 @@ struct ItemDetailView: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func buildSecureNoteSection(item: ItemDetail) -> some View {
+        Section {
+            if item.notes.isEmpty {
+                Text("This note is empty.")
+                    .foregroundStyle(.themeSecondary)
+            } else {
+                Text(item.notes)
+                    .textSelection(.enabled)
+                    .accessibilityIdentifier("secure-note-notes")
+                Button {
+                    copy(fieldName: "notes", label: "Notes")
+                } label: {
+                    Label("Copy notes", systemImage: "doc.on.doc")
+                }
+                .accessibilityIdentifier("copy-notes")
+            }
+        } header: {
+            Text("Note")
+        }
+    }
+
+    private func convertToSecureNote() async {
+        guard let item, let convertedItem = await model.convertToSecureNote(vaultID: vaultID, itemID: item.id) else { return }
+        self.item = convertedItem
     }
 
     @ViewBuilder

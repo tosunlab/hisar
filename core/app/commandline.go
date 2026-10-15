@@ -247,7 +247,7 @@ func (bridge *CommandLineBridge) saveItem(vaultID string, change *cliprotocol.It
 	if change == nil {
 		return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "the item is missing")
 	}
-	detail := ItemDetail{URLs: []string{}, Fields: []ItemField{}}
+	detail := ItemDetail{Category: change.Category, URLs: []string{}, Fields: []ItemField{}}
 	if change.ID != "" {
 		existing, err := bridge.getItem(vaultID, change.ID)
 		if err != nil {

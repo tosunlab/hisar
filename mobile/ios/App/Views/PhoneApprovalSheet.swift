@@ -21,6 +21,27 @@ struct PhoneApprovalSheet: View {
                     header
                         .listRowBackground(Color.clear)
                 }
+                // Right below the request, so the field is on screen and can take focus when Face ID is not available;
+                // a List creates no row below the screen.
+                if let errorMessage {
+                    Section {
+                        ErrorBanner(message: errorMessage)
+                    }
+                }
+                if isPasswordRequired {
+                    Section {
+                        SecureField("Master password", text: $password)
+                            .textContentType(.password)
+                            .submitLabel(.go)
+                            .focused($isPasswordFocused)
+                            .onSubmit(submitPassword)
+                            .accessibilityIdentifier("phone-approval-password")
+                    } header: {
+                        Text("Approve with your master password")
+                    } footer: {
+                        Text("Face ID is not available, so Hisar checks your master password instead.")
+                    }
+                }
                 if approval.isRememberable {
                     Section {
                         Toggle(approval.rememberLabel, isOn: Binding(get: { approval.resolveRememberChoice(chosenRemember) }, set: { chosenRemember = $0 }))
@@ -58,25 +79,6 @@ struct PhoneApprovalSheet: View {
                     Label("End-to-end encrypted. Only your devices can read this request. Approving lets this one request continue; it does not unlock Hisar on your Mac.", systemImage: "lock.shield")
                         .accessibilityElement(children: .combine)
                         .accessibilityIdentifier("phone-approval-encryption-note")
-                }
-                if let errorMessage {
-                    Section {
-                        ErrorBanner(message: errorMessage)
-                    }
-                }
-                if isPasswordRequired {
-                    Section {
-                        SecureField("Master password", text: $password)
-                            .textContentType(.password)
-                            .submitLabel(.go)
-                            .focused($isPasswordFocused)
-                            .onSubmit(submitPassword)
-                            .accessibilityIdentifier("phone-approval-password")
-                    } header: {
-                        Text("Approve with your master password")
-                    } footer: {
-                        Text("Face ID is not available, so Hisar checks your master password instead.")
-                    }
                 }
             }
             .listStyle(.insetGrouped)

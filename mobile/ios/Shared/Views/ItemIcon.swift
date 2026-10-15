@@ -12,8 +12,8 @@ struct ItemIcon: View {
         ZStack {
             RoundedRectangle(cornerRadius: scaledSize * 0.25, style: .continuous)
                 .fill(.fill.tertiary)
-            if item.isSSHKey {
-                Image(systemName: "key.horizontal")
+            if let symbol = item.isSSHKey ? "key.horizontal" : (item.isSecureNote ? "note.text" : nil) {
+                Image(systemName: symbol)
                     .font(size > 40 ? .title2 : .footnote)
                     .fontWeight(.semibold)
             } else {

@@ -91,7 +91,21 @@ func (access appBackend) account(ctx context.Context) (cliprotocol.AccountResult
 	return account, err
 }
 
+// checkNewItemCategory: an older app ignores the category and saves a login, so a newer category needs an app that
+// announces its feature.
+func (access appBackend) checkNewItemCategory(category string) error {
+	if feature := cliprotocol.GetCategoryFeature(category); feature != "" && !access.client.hello.HasFeature(feature) {
+		return fmt.Errorf("this version of the Hisar app cannot save %s items; update the Hisar app, or run hisar with --standalone", category)
+	}
+	return nil
+}
+
 func (access appBackend) savePromptedItem(ctx context.Context, vaultID string, vaultItem *item.Item) error {
+	if vaultItem.ID == "" {
+		if err := access.checkNewItemCategory(vaultItem.Overview.Category); err != nil {
+			return err
+		}
+	}
 	return access.client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeSaveItem, VaultID: vaultID, Item: convertToItemChange(vaultItem)}, nil)
 }
 

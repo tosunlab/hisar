@@ -292,6 +292,55 @@ func getFieldValue(vaultItem *item.Item, name string) (string, bool) {
 	return item.LookupField(vaultItem, name, fieldNames, time.Now())
 }
 
+// itemType is a category hisar can add and edit, with the prompts that fill an item of it in.
+type itemType struct {
+	category string
+	prompt   func(*item.Item) error
+}
+
+// itemTypes are the categories add --type takes and edit understands; a new category is one more row.
+var itemTypes = []itemType{
+	{category: item.CategoryLogin, prompt: promptItem},
+	{category: item.CategorySecureNote, prompt: promptNote},
+}
+
+func findItemType(category string) (itemType, bool) {
+	for _, candidate := range itemTypes {
+		if candidate.category == category {
+			return candidate, true
+		}
+	}
+	return itemType{}, false
+}
+
+func listItemTypeNames() string {
+	names := make([]string, 0, len(itemTypes))
+	for _, candidate := range itemTypes {
+		names = append(names, candidate.category)
+	}
+	return strings.Join(names, ", ")
+}
+
+// promptNote asks for a secure note's title and its notes, which may span several lines.
+func promptNote(vaultItem *item.Item) error {
+	var err error
+	if vaultItem.Overview.Title, err = promptRequired("Title", vaultItem.Overview.Title); err != nil {
+		return err
+	}
+	label := `Notes (end with a line containing only ".")`
+	if vaultItem.Details.Notes != "" {
+		label = `Notes (end with a line containing only "."; a "." right away keeps the current notes)`
+	}
+	notes, err := promptLines(label)
+	if err != nil {
+		return err
+	}
+	if notes != "" || vaultItem.Details.Notes == "" {
+		vaultItem.Details.Notes = notes
+	}
+	return nil
+}
+
 func promptItem(vaultItem *item.Item) error {
 	var err error
 	if vaultItem.Overview.Title, err = promptRequired("Title", vaultItem.Overview.Title); err != nil {

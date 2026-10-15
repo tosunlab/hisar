@@ -1,11 +1,20 @@
 package cliprotocol
 
+import "slices"
+
 type HelloResult struct {
 	ProtocolVersion int    `json:"protocolVersion"`
 	State           string `json:"state"`
 	Email           string `json:"email"`
 	Server          string `json:"server"`
 	IsApproved      bool   `json:"isApproved"`
+	// Features lists what the app understands beyond ProtocolVersion; an older app sends none.
+	Features []string `json:"features,omitempty"`
+}
+
+// HasFeature reports whether the app announced feature.
+func (hello HelloResult) HasFeature(feature string) bool {
+	return slices.Contains(hello.Features, feature)
 }
 
 type AccountResult struct {
@@ -78,6 +87,9 @@ type ItemChange struct {
 	Password string   `json:"password"`
 	Notes    string   `json:"notes"`
 	Fields   *[]Field `json:"fields,omitempty"`
+	// Category is the type of a new item (login or secure-note); an existing item keeps its own. An app that does not
+	// announce FeatureSecureNotes ignores it, so hisar checks the feature before sending a secure note.
+	Category string `json:"category,omitempty"`
 }
 
 // VaultDeletion: MoveToVaultID moves the items; IsDeletingItems deletes them and needs ConfirmedName, the vault's name.

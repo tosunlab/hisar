@@ -215,6 +215,10 @@ final class HisarKitBackend: VaultBackend {
         try callReturningNothing { try hisar.deleteItem(vaultID, itemID: itemID) }
     }
 
+    func convertToSecureNote(vaultID: String, itemID: String) throws -> ItemDetail {
+        try decode(ItemDetail.self, from: callReturningText { hisar.convert(toSecureNote: vaultID, itemID: itemID, error: $0) })
+    }
+
     func getOneTimeCode(vaultID: String, itemID: String) throws -> OneTimeCode {
         try decode(OneTimeCode.self, from: callReturningText { hisar.getOneTimeCode(vaultID, itemID: itemID, error: $0) })
     }

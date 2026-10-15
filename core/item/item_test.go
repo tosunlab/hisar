@@ -129,3 +129,43 @@ func TestSSHKeyFieldJSON(t *testing.T) {
 		t.Errorf("private key = %q", decoded.Details.PrivateKey)
 	}
 }
+
+func TestHasOnlyNotes(t *testing.T) {
+	cases := []struct {
+		description string
+		vaultItem   Item
+		isOnlyNotes bool
+	}{
+		{"notes", Item{Details: Details{Notes: "door code 1234"}}, true},
+		{"notes and custom fields", Item{Details: Details{Notes: "router", Fields: []Field{{Name: "PIN", Value: "0000", Concealed: true}}}}, true},
+		{"custom fields without notes", Item{Details: Details{Fields: []Field{{Name: "PIN", Value: "0000"}}}}, true},
+		{"a password and custom fields", Item{Details: Details{Password: "x", Fields: []Field{{Name: "PIN", Value: "0000"}}}}, false},
+		{"empty", Item{}, false},
+		{"notes and a username", Item{Overview: Overview{Username: "alice"}, Details: Details{Notes: "x"}}, false},
+		{"notes and a password", Item{Details: Details{Notes: "x", Password: "secret"}}, false},
+		{"notes and a website", Item{Overview: Overview{URLs: []string{"https://example.com"}}, Details: Details{Notes: "x"}}, false},
+		{"notes and a one-time password", Item{Details: Details{Notes: "x", OneTimePassword: "otpauth://totp/x?secret=JBSWY3DPEHPK3PXP"}}, false},
+		{"notes and a private key", Item{Details: Details{Notes: "x", PrivateKey: "-----BEGIN OPENSSH PRIVATE KEY-----"}}, false},
+		{"notes and a passkey", Item{Details: Details{Notes: "x", Passkeys: []Passkey{{RelyingPartyID: "example.com"}}}}, false},
+	}
+	for _, testCase := range cases {
+		if isOnlyNotes := HasOnlyNotes(&testCase.vaultItem); isOnlyNotes != testCase.isOnlyNotes {
+			t.Errorf("%s: HasOnlyNotes = %v", testCase.description, isOnlyNotes)
+		}
+	}
+}
+
+func TestCategory(t *testing.T) {
+	for stored, want := range map[string]string{"": CategoryLogin, CategoryLogin: CategoryLogin, CategorySecureNote: CategorySecureNote, CategorySSHKey: CategorySSHKey} {
+		vaultItem := &Item{Overview: Overview{Category: stored}}
+		if got := vaultItem.Category(); got != want {
+			t.Errorf("Category() of %q = %q, want %q", stored, got, want)
+		}
+		if !vaultItem.IsCategory(want) {
+			t.Errorf("IsCategory(%q) of %q = false", want, stored)
+		}
+	}
+	if (&Item{}).IsCategory(CategorySecureNote) {
+		t.Error("an item without a category is a secure note")
+	}
+}

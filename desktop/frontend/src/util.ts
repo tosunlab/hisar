@@ -135,6 +135,15 @@ export function isMacPlatform(): boolean {
 }
 
 export const sshKeyCategory = "ssh-key";
+export const secureNoteCategory = "secure-note";
+
+// getItemIcon is the tile icon of an item's category; logins show their initials instead.
+export function getItemIcon(category: string): "key" | "note" | undefined {
+  if (category === sshKeyCategory) {
+    return "key";
+  }
+  return category === secureNoteCategory ? "note" : undefined;
+}
 
 const allKeyTypeLabel: Record<string, string> = {
   "ssh-ed25519": "Ed25519",

@@ -537,3 +537,55 @@ func TestGetFormatName(t *testing.T) {
 		t.Error("IsKnownFormat")
 	}
 }
+
+func TestParseSavesSecureNotesAsSecureNotes(t *testing.T) {
+	bitwarden := parseFixture(t, "export.json", []byte(`{"encrypted":false,"items":[
+		{"type":2,"name":"Wi-Fi","notes":"Network: home","fields":[{"name":"PIN","value":"0000","type":1}]},
+		{"type":2,"name":"Fields only","fields":[{"name":"Account","value":"42","type":0}]},
+		{"type":2,"name":"Note with a login","notes":"x","login":{"username":"alice"}},
+		{"type":1,"name":"Login with only notes","notes":"Door code 1234"},
+		{"type":1,"name":"GitHub","notes":"Work","login":{"username":"alice","password":"pw"}}]}`), FormatAutomatic)
+	onePassword := parseFixture(t, "export.1pux", buildOnePasswordExport(t, []byte(`{"accounts":[{"vaults":[{"items":[
+		{"categoryUuid":"003","overview":{"title":"Recipe"},"details":{"notesPlain":"Flour, water"}},
+		{"categoryUuid":"001","overview":{"title":"Mail"},"details":{"notesPlain":"Old account","loginFields":[{"designation":"username","value":"alice"}]}}]}]}]}`)), FormatAutomatic)
+	lastPass := parseFixture(t, "lastpass_export.csv", readFixture(t, "lastpass.csv", testKeySet{}), FormatAutomatic)
+	bitwardenCSV := parseFixture(t, "bitwarden_export.csv", []byte("folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp\n"+
+		",0,note,Router,,\"PIN: 0000\nSSID: home\",0,,,,\n"+
+		",0,note,CSV note with a login,x,,0,,alice,,\n"+
+		",0,login,CSV login,,,0,https://example.com,alice,pw,\n"), FormatAutomatic)
+	if bitwardenCSV.Format != FormatBitwardenCSV {
+		t.Fatalf("format = %q", bitwardenCSV.Format)
+	}
+	lastPassEmpty := parseFixture(t, "lastpass_export.csv", []byte("url,username,password,totp,extra,name,grouping,fav\nhttp://sn,,,,,Empty note,Personal,0\n"), FormatAutomatic)
+
+	cases := []struct {
+		result   *Result
+		title    string
+		category string
+	}{
+		{bitwarden, "Wi-Fi", item.CategorySecureNote},
+		{bitwarden, "Fields only", item.CategorySecureNote},
+		{bitwarden, "Note with a login", item.CategoryLogin},
+		{bitwarden, "Login with only notes", item.CategorySecureNote},
+		{bitwarden, "GitHub", item.CategoryLogin},
+		{onePassword, "Recipe", item.CategorySecureNote},
+		{onePassword, "Mail", item.CategoryLogin},
+		{lastPass, "Database notes", item.CategorySecureNote},
+		{lastPass, "GitHub", item.CategoryLogin},
+		{bitwardenCSV, "Router", item.CategorySecureNote},
+		{bitwardenCSV, "CSV note with a login", item.CategoryLogin},
+		{bitwardenCSV, "CSV login", item.CategoryLogin},
+		{lastPassEmpty, "Empty note", item.CategorySecureNote},
+	}
+	for _, testCase := range cases {
+		if vaultItem := findTestItem(t, testCase.result, testCase.title); vaultItem.Overview.Category != testCase.category {
+			t.Errorf("%s: category %q, want %q", testCase.title, vaultItem.Overview.Category, testCase.category)
+		}
+	}
+	if router := findTestItem(t, bitwardenCSV, "Router"); !reflect.DeepEqual(router.Details.Fields, []item.Field{{Name: "PIN", Value: "0000"}, {Name: "SSID", Value: "home"}}) {
+		t.Errorf("CSV note fields = %+v", router.Details.Fields)
+	}
+	if wifi := findTestItem(t, bitwarden, "Wi-Fi"); !reflect.DeepEqual(wifi.Details.Fields, []item.Field{{Name: "PIN", Value: "0000", Concealed: true}}) {
+		t.Errorf("note fields = %+v", wifi.Details.Fields)
+	}
+}

@@ -2,6 +2,8 @@ package cliprotocol
 
 import (
 	"strings"
+
+	"github.com/tryhisar/hisar/core/item"
 )
 
 const (
@@ -13,6 +15,24 @@ const (
 	MaxAgentReferenceCount = 100
 	SocketEnvironment      = "HISAR_CLI_SOCKET"
 )
+
+// Features name what an app understands beyond ProtocolVersion, so a newer hisar can tell an older app apart without
+// a version bump, which would turn off app mode for every command.
+const (
+	// FeatureSecureNotes: items.save creates the category ItemChange.Category names.
+	FeatureSecureNotes = "secure-notes"
+)
+
+// ListFeatures returns the features this build of the app announces in hello.
+func ListFeatures() []string {
+	return []string{FeatureSecureNotes}
+}
+
+// GetCategoryFeature returns the feature an app must announce before items.save may create an item of category, or ""
+// when every app can (logins).
+func GetCategoryFeature(category string) string {
+	return map[string]string{item.CategorySecureNote: FeatureSecureNotes}[category]
+}
 
 const (
 	StateSignedOut = "signed-out"
