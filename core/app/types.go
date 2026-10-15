@@ -160,6 +160,23 @@ type ItemDetail struct {
 	// Card holds a credit card's values, which are stored as named custom fields; Fields then holds only the others.
 	// Summaries keep only the type, brand and last four digits.
 	Card *ItemCard `json:"card,omitempty"`
+	// Identity holds an identity's values, stored as named custom fields like a card's; summaries keep only the name and
+	// email.
+	Identity *ItemIdentity `json:"identity,omitempty"`
+}
+
+// ItemIdentity is a person's details; the document numbers are optional and concealed.
+type ItemIdentity struct {
+	FirstName            string `json:"firstName"`
+	MiddleName           string `json:"middleName"`
+	LastName             string `json:"lastName"`
+	BirthDate            string `json:"birthDate"`
+	Email                string `json:"email"`
+	Phone                string `json:"phone"`
+	Address              string `json:"address"`
+	PassportNumber       string `json:"passportNumber"`
+	DriversLicenseNumber string `json:"driversLicenseNumber"`
+	NationalIDNumber     string `json:"nationalIdNumber"`
 }
 
 // ItemCard is a card's values. Type is the brand saved with the card, which the user may choose; Brand is the one its

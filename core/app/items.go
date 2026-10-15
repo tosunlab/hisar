@@ -36,6 +36,9 @@ func (s *Service) ListItems(vaultID string) ([]ItemDetail, error) {
 		if summary.Card != nil {
 			summary.Card = &ItemCard{Type: summary.Card.Type, CardDescription: CardDescription{Brand: summary.Card.Brand, Last4: summary.Card.Last4}}
 		}
+		if identity := summary.Identity; identity != nil {
+			summary.Identity = &ItemIdentity{FirstName: identity.FirstName, MiddleName: identity.MiddleName, LastName: identity.LastName, Email: identity.Email}
+		}
 		summaries = append(summaries, summary)
 	}
 	return summaries, nil
@@ -118,6 +121,11 @@ func convertToItemDetail(vaultItem *item.Item, now time.Time) ItemDetail {
 			CardDescription: convertToCardDescription(item.DescribeCard(card.Number, card.Expiry, now)),
 		}
 	}
+	if vaultItem.IsCategory(item.CategoryIdentity) {
+		var identity item.Identity
+		identity, fields = item.ReadIdentity(vaultItem)
+		detail.Identity = convertToItemIdentity(identity)
+	}
 	for _, field := range fields {
 		detail.Fields = append(detail.Fields, ItemField{Name: field.Name, Value: field.Value, Concealed: field.Concealed})
 	}
@@ -134,13 +142,18 @@ func (s *Service) DescribeCard(number, expiry string) CardDescription {
 	return convertToCardDescription(item.DescribeCard(number, expiry, s.config.Now()))
 }
 
-// getStoredFields returns an item's custom fields as they are stored: a card's values first, as named fields.
+// getStoredFields returns an item's custom fields as they are stored: a card's or identity's values first, as named
+// fields.
 func getStoredFields(detail ItemDetail) []ItemField {
-	if detail.Card == nil {
+	var vaultItem item.Item
+	switch {
+	case detail.Card != nil:
+		item.WriteCard(&vaultItem, convertFromItemCard(detail.Card), nil)
+	case detail.Identity != nil:
+		item.WriteIdentity(&vaultItem, convertFromItemIdentity(detail.Identity), nil)
+	default:
 		return detail.Fields
 	}
-	var vaultItem item.Item
-	item.WriteCard(&vaultItem, convertFromItemCard(detail.Card), nil)
 	fields := []ItemField{}
 	for _, field := range vaultItem.Details.Fields {
 		fields = append(fields, ItemField{Name: field.Name, Value: field.Value, Concealed: field.Concealed})
@@ -150,6 +163,22 @@ func getStoredFields(detail ItemDetail) []ItemField {
 
 func convertFromItemCard(card *ItemCard) item.Card {
 	return item.Card{Cardholder: card.Cardholder, Type: card.Type, Number: card.Number, Expiry: card.Expiry, SecurityCode: card.SecurityCode, PIN: card.PIN, BillingAddress: card.BillingAddress}
+}
+
+func convertToItemIdentity(identity item.Identity) *ItemIdentity {
+	return &ItemIdentity{
+		FirstName: identity.FirstName, MiddleName: identity.MiddleName, LastName: identity.LastName, BirthDate: identity.BirthDate,
+		Email: identity.Email, Phone: identity.Phone, Address: identity.Address,
+		PassportNumber: identity.PassportNumber, DriversLicenseNumber: identity.DriversLicenseNumber, NationalIDNumber: identity.NationalIDNumber,
+	}
+}
+
+func convertFromItemIdentity(identity *ItemIdentity) item.Identity {
+	return item.Identity{
+		FirstName: identity.FirstName, MiddleName: identity.MiddleName, LastName: identity.LastName, BirthDate: identity.BirthDate,
+		Email: identity.Email, Phone: identity.Phone, Address: identity.Address,
+		PassportNumber: identity.PassportNumber, DriversLicenseNumber: identity.DriversLicenseNumber, NationalIDNumber: identity.NationalIDNumber,
+	}
 }
 
 func convertFromItemDetail(detail ItemDetail) item.Item {
@@ -218,7 +247,7 @@ func (s *Service) buildSavedItem(vaultID string, detail ItemDetail) (item.Item, 
 	}
 	if cachedItem == nil {
 		switch detail.Category {
-		case "", item.CategoryLogin, item.CategorySecureNote, item.CategoryCreditCard:
+		case "", item.CategoryLogin, item.CategorySecureNote, item.CategoryCreditCard, item.CategoryIdentity:
 		case item.CategorySSHKey:
 			if detail.ID == "" {
 				return item.Item{}, errors.New("generate or import an SSH key instead")
@@ -252,17 +281,22 @@ func (s *Service) buildSavedItem(vaultID string, detail ItemDetail) (item.Item, 
 	return vaultItem, nil
 }
 
-// applyCategory shapes a saved item to its category: a secure note or card moves login data into custom fields, and a
-// card's values from detail.Card become its named fields. A category from a newer app keeps everything, since the editors
-// show it as a login. Without detail.Card (the CLI), a card's named fields come in detail.Fields.
+// applyCategory shapes a saved item to its category: a secure note, card or identity moves login data into custom fields,
+// and a card's or identity's values from detail become its named fields. A category from a newer app keeps everything,
+// since the editors show it as a login. Without detail.Card or detail.Identity (the CLI), the named fields come in
+// detail.Fields.
 func applyCategory(vaultItem *item.Item, detail ItemDetail) {
-	if vaultItem.IsCategory(item.CategoryCreditCard) && detail.Card != nil {
+	switch {
+	case vaultItem.IsCategory(item.CategoryCreditCard) && detail.Card != nil:
 		item.WriteCard(vaultItem, convertFromItemCard(detail.Card), vaultItem.Details.Fields)
+	case vaultItem.IsCategory(item.CategoryIdentity) && detail.Identity != nil:
+		item.WriteIdentity(vaultItem, convertFromItemIdentity(detail.Identity), vaultItem.Details.Fields)
 	}
 	if vaultItem.OmitsLoginData() {
 		vaultItem.MoveLoginDataToFields()
 	}
 	item.NormalizeCard(vaultItem)
+	item.NormalizeIdentity(vaultItem)
 }
 
 // ConvertToSecureNote turns a login with only notes and custom fields, such as one imported before Hisar had secure notes,

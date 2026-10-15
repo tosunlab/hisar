@@ -58,7 +58,7 @@ func TestSecureNoteKeepsItsCategoryAndOnlyItsFields(t *testing.T) {
 
 func TestSaveItemRefusesAnUnknownCategory(t *testing.T) {
 	testService := createUnlockedTestService(t)
-	if _, err := testService.service.SaveItem(testService.personalID, ItemDetail{Category: "identity", Title: "Passport"}); err == nil || !strings.Contains(err.Error(), "unknown item type") {
+	if _, err := testService.service.SaveItem(testService.personalID, ItemDetail{Category: "wireless-router", Title: "Router"}); err == nil || !strings.Contains(err.Error(), "unknown item type") {
 		t.Errorf("err = %v", err)
 	}
 }
@@ -143,18 +143,18 @@ func TestEditingAnItemOfANewerCategoryKeepsItsLoginData(t *testing.T) {
 	service.mutex.Lock()
 	for index := range service.itemsByVaultID[vaultID] {
 		if service.itemsByVaultID[vaultID][index].ID == saved.ID {
-			service.itemsByVaultID[vaultID][index].Overview.Category = "identity"
+			service.itemsByVaultID[vaultID][index].Overview.Category = "wireless-router"
 		}
 	}
 	service.mutex.Unlock()
 
-	saved.Title, saved.Category = "Passport 2", "identity"
+	saved.Title, saved.Category = "Passport 2", "wireless-router"
 	edited, err := service.SaveItem(vaultID, saved)
 	if err != nil {
 		t.Fatal(err)
 	}
 	stored := getCachedItem(t, service, vaultID, edited.ID)
-	if stored.Overview.Category != "identity" || stored.Overview.Username != "alice" || stored.Details.Password != "secret" || len(stored.Overview.URLs) != 1 {
+	if stored.Overview.Category != "wireless-router" || stored.Overview.Username != "alice" || stored.Details.Password != "secret" || len(stored.Overview.URLs) != 1 {
 		t.Errorf("stored = %+v", stored)
 	}
 }
