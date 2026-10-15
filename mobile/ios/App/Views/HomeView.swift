@@ -11,13 +11,33 @@ struct ItemDestination: Hashable {
 
 enum ItemCategoryDestination: String, Hashable, CaseIterable {
     case logins
+    case secureNotes
     case sshKeys
 
-    var title: String { self == .logins ? "Logins" : "SSH keys" }
-    var systemImage: String { self == .logins ? "globe" : "key.horizontal" }
+    var title: String {
+        switch self {
+        case .logins: "Logins"
+        case .secureNotes: "Secure notes"
+        case .sshKeys: "SSH keys"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .logins: "globe"
+        case .secureNotes: "note.text"
+        case .sshKeys: "key.horizontal"
+        }
+    }
+
+    var emptyTitle: String { "No \(title.lowercased())" }
 
     func includes(_ item: ItemDetail) -> Bool {
-        self == .sshKeys ? item.isSSHKey : item.isLogin
+        switch self {
+        case .logins: item.isLogin
+        case .secureNotes: item.isSecureNote
+        case .sshKeys: item.isSSHKey
+        }
     }
 }
 
@@ -26,6 +46,7 @@ struct VaultsView: View {
     @State private var navigationPath = NavigationPath()
     @State private var isNewVaultShown = false
     @State private var isNewLoginShown = false
+    @State private var isNewSecureNoteShown = false
 
     private var personalVault: VaultSummary? { model.allVault.first { $0.type == "personal" } }
 
@@ -86,6 +107,13 @@ struct VaultsView: View {
                         .disabled(personalVault == nil)
                         .accessibilityIdentifier("new-login")
                         Button {
+                            isNewSecureNoteShown = true
+                        } label: {
+                            Label("New secure note", systemImage: "note.text")
+                        }
+                        .disabled(personalVault == nil)
+                        .accessibilityIdentifier("new-secure-note")
+                        Button {
                             isNewVaultShown = true
                         } label: {
                             Label("New vault", systemImage: "square.stack.3d.up.badge.plus")
@@ -122,6 +150,16 @@ struct VaultsView: View {
         .sheet(isPresented: $isNewLoginShown) {
             if let personalVault {
                 ItemEditorView(vaultID: personalVault.id, originalItem: nil) { savedItem in
+                    if let savedItem {
+                        navigationPath.append(ItemDestination(vaultID: personalVault.id, itemID: savedItem.id))
+                    }
+                }
+                .environmentObject(model)
+            }
+        }
+        .sheet(isPresented: $isNewSecureNoteShown) {
+            if let personalVault {
+                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categorySecureNote) { savedItem in
                     if let savedItem {
                         navigationPath.append(ItemDestination(vaultID: personalVault.id, itemID: savedItem.id))
                     }
@@ -235,7 +273,7 @@ struct ItemRow: View {
     }
 
     private func buildSubtitle() -> String {
-        let detail = item.isSSHKey ? (item.keyType.isEmpty ? "SSH key" : item.keyType) : item.username
+        let detail = item.isSSHKey ? (item.keyType.isEmpty ? "SSH key" : item.keyType) : (item.isSecureNote ? "Secure note" : item.username)
         guard let vaultName else { return detail }
         return detail.isEmpty ? vaultName : "\(detail) · \(vaultName)"
     }

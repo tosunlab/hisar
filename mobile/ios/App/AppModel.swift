@@ -584,6 +584,17 @@ final class AppModel: ObservableObject {
         return true
     }
 
+    func convertToSecureNote(vaultID: String, itemID: String) async -> ItemDetail? {
+        guard let convertedItem = await perform({ try $0.convertToSecureNote(vaultID: vaultID, itemID: itemID) }) else { return nil }
+        if let index = allItemByVaultID[vaultID]?.firstIndex(where: { $0.id == itemID }) {
+            allItemByVaultID[vaultID]?[index].category = convertedItem.category
+            allItemByVaultID[vaultID]?[index].revision = convertedItem.revision
+            allItemByVaultID[vaultID]?[index].canConvertToSecureNote = false
+        }
+        showNotice("Converted to a secure note.")
+        return convertedItem
+    }
+
     func deletePasskey(vaultID: String, itemID: String, credentialID: String) async -> ItemDetail? {
         guard let updatedItem = await perform({ try $0.deletePasskey(vaultID: vaultID, itemID: itemID, credentialID: credentialID) }) else { return nil }
         if let index = allItemByVaultID[vaultID]?.firstIndex(where: { $0.id == itemID }) {

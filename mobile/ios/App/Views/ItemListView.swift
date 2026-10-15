@@ -5,7 +5,7 @@ struct ItemListView: View {
 
     @EnvironmentObject private var model: AppModel
     @State private var searchText = ""
-    @State private var isEditorShown = false
+    @State private var newItemCategory: String?
     @State private var isSharingShown = false
     @State private var isPersonalVaultNoteShown = false
     @State private var vaultActions: VaultActions?
@@ -84,8 +84,19 @@ struct ItemListView: View {
             }
             if isWritable {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        isEditorShown = true
+                    Menu {
+                        Button {
+                            newItemCategory = ItemDetail.categoryLogin
+                        } label: {
+                            Label("Login", systemImage: "person.badge.key")
+                        }
+                        .accessibilityIdentifier("add-login")
+                        Button {
+                            newItemCategory = ItemDetail.categorySecureNote
+                        } label: {
+                            Label("Secure note", systemImage: "note.text")
+                        }
+                        .accessibilityIdentifier("add-secure-note")
                     } label: {
                         Label("Add item", systemImage: "plus")
                     }
@@ -142,8 +153,8 @@ struct ItemListView: View {
         } message: {
             Text("You lose access to its items on all your devices. An owner can invite you again.")
         }
-        .sheet(isPresented: $isEditorShown) {
-            ItemEditorView(vaultID: vaultID, originalItem: nil) { _ in }
+        .sheet(isPresented: Binding(get: { newItemCategory != nil }, set: { if !$0 { newItemCategory = nil } })) {
+            ItemEditorView(vaultID: vaultID, originalItem: nil, newCategory: newItemCategory ?? ItemDetail.categoryLogin) { _ in }
                 .environmentObject(model)
         }
         .sheet(isPresented: $isSharingShown) {
@@ -176,7 +187,7 @@ struct ItemCategoryListView: View {
         .applyThemedListStyle()
         .overlay {
             if allReference.isEmpty {
-                ContentUnavailableView(category == .logins ? "No logins" : "No SSH keys", systemImage: category.systemImage)
+                ContentUnavailableView(category.emptyTitle, systemImage: category.systemImage)
             }
         }
         .refreshable { await model.refreshAll() }

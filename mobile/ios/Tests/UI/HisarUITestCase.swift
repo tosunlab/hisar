@@ -138,6 +138,8 @@ class HisarUITestCase: XCTestCase {
         app.buttons["vault-Personal"].tap()
         waitFor(app.buttons["add-item"])
         app.buttons["add-item"].tap()
+        waitFor(app.buttons["add-login"])
+        app.buttons["add-login"].tap()
         type(title, into: app.textFields["editor-title"])
         type(username, into: app.textFields["editor-username"])
         type(password, into: app.secureTextFields["editor-password"])

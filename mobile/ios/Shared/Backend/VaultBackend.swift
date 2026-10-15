@@ -39,6 +39,7 @@ protocol VaultBackend: AnyObject {
     func getItem(vaultID: String, itemID: String) throws -> ItemDetail
     func saveItem(vaultID: String, item: ItemDetail) throws -> ItemDetail
     func deleteItem(vaultID: String, itemID: String) throws
+    func convertToSecureNote(vaultID: String, itemID: String) throws -> ItemDetail
     func getOneTimeCode(vaultID: String, itemID: String) throws -> OneTimeCode
     func getOneTimeCodeForService(vaultID: String, itemID: String, serviceIdentifier: String) throws -> OneTimeCode
     func copyField(vaultID: String, itemID: String, fieldName: String) throws

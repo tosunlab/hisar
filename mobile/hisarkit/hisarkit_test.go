@@ -325,6 +325,7 @@ func TestIntegrationMobileFlow(t *testing.T) {
 		t.Error("login handed out for another site")
 	}
 
+	checkSecureNoteFlow(t, hisar, personalID)
 	checkPasskeyFlow(t, hisar, personalID, saved.ID)
 	checkSharingFlow(t, hisar)
 	checkSettingsFlow(t, hisar, password, signUp.SecretKey, personalID, saved.ID)
@@ -439,5 +440,33 @@ func checkSharingFlow(t *testing.T, hisar *Hisar) {
 	}
 	if err := hisar.InvitePerson("invited-from-iphone@example.com"); err != nil && !strings.Contains(err.Error(), "cannot send email") {
 		t.Errorf("invite: %v", err)
+	}
+}
+
+// checkSecureNoteFlow creates a note and converts a notes-only login, then deletes both, leaving the vault as it was.
+func checkSecureNoteFlow(t *testing.T, hisar *Hisar, personalID string) {
+	t.Helper()
+	type itemDetail struct {
+		ID                     string `json:"id"`
+		Category               string `json:"category"`
+		Notes                  string `json:"notes"`
+		Password               string `json:"password"`
+		CanConvertToSecureNote bool   `json:"canConvertToSecureNote"`
+	}
+	note := decodeJSON[itemDetail](t)(hisar.SaveItem(personalID, `{"category":"secure-note","title":"Recovery codes","notes":"one\ntwo","password":"dropped","urls":[],"fields":[]}`))
+	if note.Category != "secure-note" || note.Notes != "one\ntwo" || note.Password != "" || note.CanConvertToSecureNote {
+		t.Errorf("secure note = %+v", note)
+	}
+	imported := decodeJSON[itemDetail](t)(hisar.SaveItem(personalID, `{"title":"Door codes","notes":"Front 1234","urls":[],"fields":[]}`))
+	if !imported.CanConvertToSecureNote {
+		t.Errorf("notes-only login = %+v", imported)
+	}
+	if converted := decodeJSON[itemDetail](t)(hisar.ConvertToSecureNote(personalID, imported.ID)); converted.Category != "secure-note" || converted.Notes != "Front 1234" {
+		t.Errorf("converted = %+v", converted)
+	}
+	for _, itemID := range []string{note.ID, imported.ID} {
+		if err := hisar.DeleteItem(personalID, itemID); err != nil {
+			t.Fatal(err)
+		}
 	}
 }

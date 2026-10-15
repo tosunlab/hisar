@@ -284,6 +284,39 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(identityStore.allIdentity.contains { $0.host == "www.netflix.com" })
     }
 
+    func testSaveSecureNoteKeepsItsCategoryAndIsNotALogin() async {
+        let model = await createUnlockedModel()
+        let draft = ItemDetail(category: ItemDetail.categorySecureNote, title: "Recovery codes", notes: "one\ntwo")
+        guard let savedItem = await model.saveItem(vaultID: "personal", item: draft) else { return XCTFail("note not saved") }
+        XCTAssertTrue(savedItem.isSecureNote)
+        let reference = model.listAllItemReference(vaultID: "personal").first { $0.item.id == savedItem.id }
+        XCTAssertEqual(reference?.item.notes, "")
+        XCTAssertEqual(reference?.item.isSecureNote, true)
+        XCTAssertEqual(model.listAllItemReference().filter { ItemCategoryDestination.secureNotes.includes($0.item) }.map(\.item.title), ["Recovery codes"])
+        XCTAssertFalse(model.listAllItemReference().contains { ItemCategoryDestination.logins.includes($0.item) && $0.item.id == savedItem.id })
+    }
+
+    func testConvertToSecureNoteUpdatesTheItem() async {
+        let model = await createUnlockedModel()
+        let draft = ItemDetail(title: "Door codes", notes: "Front 1234", canConvertToSecureNote: true)
+        guard let login = await model.saveItem(vaultID: "personal", item: draft) else { return XCTFail("login not saved") }
+        guard let converted = await model.convertToSecureNote(vaultID: "personal", itemID: login.id) else { return XCTFail("not converted") }
+        XCTAssertTrue(converted.isSecureNote)
+        XCTAssertFalse(converted.canConvertToSecureNote)
+        let reference = model.listAllItemReference(vaultID: "personal").first { $0.item.id == login.id }
+        XCTAssertEqual(reference?.item.category, ItemDetail.categorySecureNote)
+        XCTAssertEqual(reference?.item.canConvertToSecureNote, false)
+        XCTAssertEqual(model.noticeMessage, "Converted to a secure note.")
+    }
+
+    func testConvertToSecureNoteRefusesALoginWithAPassword() async {
+        let model = await createUnlockedModel()
+        let converted = await model.convertToSecureNote(vaultID: "personal", itemID: "github")
+        XCTAssertNil(converted)
+        XCTAssertNotNil(model.errorMessage)
+        XCTAssertEqual(model.listAllItemReference(vaultID: "personal").first { $0.item.id == "github" }?.item.isLogin, true)
+    }
+
     func testCopyFieldShowsNotice() async {
         let model = await createUnlockedModel()
         await model.copyField(vaultID: "personal", itemID: "github", fieldName: "password", label: "Password")
