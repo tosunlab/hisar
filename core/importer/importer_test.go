@@ -256,7 +256,7 @@ func TestParseBitwardenJSON(t *testing.T) {
 	wantVisa := []item.Field{
 		{Name: item.FieldCardholder, Value: "Alice"},
 		{Name: item.FieldCardNumber, Value: "4111 1111 1111 1111", Concealed: true},
-		{Name: item.FieldExpiry, Value: "12/2027"},
+		{Name: item.FieldExpiry, Value: "12/27"},
 		{Name: item.FieldSecurityCode, Value: "123", Concealed: true},
 	}
 	if visa := findTestItem(t, result, "Visa"); visa.Overview.Category != item.CategoryCreditCard || !reflect.DeepEqual(visa.Details.Fields, wantVisa) {
@@ -618,7 +618,7 @@ func TestParseOnePasswordCreditCard(t *testing.T) {
 	wantFields := []item.Field{
 		{Name: item.FieldCardholder, Value: "Alice Smith"},
 		{Name: item.FieldCardNumber, Value: "3782 822463 10005", Concealed: true},
-		{Name: item.FieldExpiry, Value: "12/2029"},
+		{Name: item.FieldExpiry, Value: "12/29"},
 		{Name: item.FieldSecurityCode, Value: "1234", Concealed: true},
 		{Name: item.FieldPIN, Value: "9876", Concealed: true},
 		{Name: item.FieldBillingAddress, Value: "1 Main St, Springfield, 12345, us"},

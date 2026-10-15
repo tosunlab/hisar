@@ -487,7 +487,7 @@ func checkCreditCardFlow(t *testing.T, hisar *Hisar, personalID string) {
 		} `json:"card"`
 	}
 	card := decodeJSON[itemDetail](t)(hisar.SaveItem(personalID, `{"category":"credit-card","title":"Visa","urls":[],"fields":[],"card":{"number":"4111111111111111","expiry":"1229","securityCode":"123"}}`))
-	if card.Card == nil || card.Card.Number != "4111 1111 1111 1111" || card.Card.Expiry != "12/2029" || card.Card.Brand != "Visa" || card.Card.Last4 != "1111" {
+	if card.Card == nil || card.Card.Number != "4111 1111 1111 1111" || card.Card.Expiry != "12/29" || card.Card.Brand != "Visa" || card.Card.Last4 != "1111" {
 		t.Errorf("credit card = %+v", card.Card)
 	}
 	for _, summary := range decodeJSON[[]itemDetail](t)(hisar.ListAllItem(personalID)) {

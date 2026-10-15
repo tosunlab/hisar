@@ -221,7 +221,7 @@ var expiryPatterns = []struct {
 	{regexp.MustCompile(`^(\d{2})(\d{2})$`), 1, 2},
 }
 
-// NormalizeExpiry writes an expiry such as 12/27, 1227, 12/2027 or 2027-12 as MM/YYYY; isValid is false for anything else.
+// NormalizeExpiry writes an expiry such as 12/27, 1227, 12/2027 or 2027-12 as MM/YY; isValid is false for anything else.
 func NormalizeExpiry(expiry string) (normalized string, isValid bool) {
 	expiry = strings.TrimSpace(expiry)
 	for _, expiryPattern := range expiryPatterns {
@@ -231,13 +231,10 @@ func NormalizeExpiry(expiry string) (normalized string, isValid bool) {
 		}
 		month, _ := strconv.Atoi(match[expiryPattern.monthGroup])
 		year, _ := strconv.Atoi(match[expiryPattern.yearGroup])
-		if len(match[expiryPattern.yearGroup]) == 2 {
-			year += 2000
-		}
 		if month < 1 || month > 12 {
 			return "", false
 		}
-		return fmt.Sprintf("%02d/%04d", month, year), true
+		return fmt.Sprintf("%02d/%02d", month, year%100), true
 	}
 	return "", false
 }
@@ -260,7 +257,7 @@ func DescribeCard(number, expiry string, now time.Time) CardDescription {
 		normalized, isValid := NormalizeExpiry(expiry)
 		switch {
 		case !isValid:
-			description.ExpiryWarning = "Use month and year, like 12/2027"
+			description.ExpiryWarning = "Use month and year, like 12/27"
 		case isExpired(normalized, now):
 			description.ExpiryWarning = "This card has expired"
 		}
@@ -272,5 +269,6 @@ func DescribeCard(number, expiry string, now time.Time) CardDescription {
 func isExpired(normalizedExpiry string, now time.Time) bool {
 	month, _ := strconv.Atoi(normalizedExpiry[:2])
 	year, _ := strconv.Atoi(normalizedExpiry[3:])
+	year += 2000
 	return !now.Before(time.Date(year, time.Month(month)+1, 1, 0, 0, 0, 0, time.UTC))
 }

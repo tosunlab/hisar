@@ -66,13 +66,14 @@ func TestCardNumberChecksAndFormatting(t *testing.T) {
 
 func TestNormalizeExpiry(t *testing.T) {
 	for expiry, want := range map[string]string{
-		"12/27":     "12/2027",
-		"1/27":      "01/2027",
-		"12/2027":   "12/2027",
-		"12 / 2027": "12/2027",
-		"1227":      "12/2027",
-		"2027-12":   "12/2027",
-		"12-27":     "12/2027",
+		"12/27":     "12/27",
+		"1/27":      "01/27",
+		"12/2027":   "12/27",
+		"12 / 2027": "12/27",
+		"2/2031":    "02/31",
+		"1227":      "12/27",
+		"2027-12":   "12/27",
+		"12-27":     "12/27",
 		"13/27":     "",
 		"December":  "",
 	} {
@@ -89,10 +90,10 @@ func TestDescribeCard(t *testing.T) {
 		number, expiry string
 		want           CardDescription
 	}{
-		{"4111 1111 1111 1111", "10/2026", CardDescription{Brand: "Visa", Last4: "1111"}},
+		{"4111 1111 1111 1111", "10/26", CardDescription{Brand: "Visa", Last4: "1111"}},
 		{"4111 1111 1111 1112", "12/27", CardDescription{Brand: "Visa", Last4: "1112", NumberWarning: "This doesn't look like a valid card number"}},
-		{"4111111111111111", "09/2026", CardDescription{Brand: "Visa", Last4: "1111", ExpiryWarning: "This card has expired"}},
-		{"", "soon", CardDescription{ExpiryWarning: "Use month and year, like 12/2027"}},
+		{"4111111111111111", "09/26", CardDescription{Brand: "Visa", Last4: "1111", ExpiryWarning: "This card has expired"}},
+		{"", "soon", CardDescription{ExpiryWarning: "Use month and year, like 12/27"}},
 		{"", "", CardDescription{}},
 	}
 	for _, testCase := range cases {
@@ -122,7 +123,7 @@ func TestReadAndWriteCard(t *testing.T) {
 	NormalizeCard(&vaultItem)
 	wantFields := []Field{
 		{Name: FieldCardNumber, Value: "4111 1111 1111 1111", Concealed: true},
-		{Name: FieldExpiry, Value: "12/2027"},
+		{Name: FieldExpiry, Value: "12/27"},
 		{Name: FieldSecurityCode, Value: "123", Concealed: true},
 		{Name: "Bank", Value: "İş Bankası"},
 		{Name: "Card number", Value: "a second number stays a field"},

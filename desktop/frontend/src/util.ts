@@ -161,6 +161,82 @@ export function formatCardSummary(card: { brand: string; last4: string } | null 
   return [card?.brand ?? "", last4].filter((part) => part !== "").join(" ") || "Credit card";
 }
 
+// formatCardNumberInput groups a card number as it is typed, the way core/item saves it: 4-6-5 for American Express,
+// 4-6-4 for a 14-digit Diners Club number and fours otherwise. Text with other characters is left as typed.
+export function formatCardNumberInput(value: string): string {
+  if (!/^[\d -]*$/.test(value)) {
+    return value;
+  }
+  const digits = value.replace(/\D/g, "");
+  let groupSizes = [4];
+  if (/^3[47]/.test(digits) && digits.length <= 15) {
+    groupSizes = [4, 6, 5];
+  } else if (/^3(0[0-5]|[689])/.test(digits) && digits.length <= 14) {
+    groupSizes = [4, 6, 4];
+  }
+  const groups: string[] = [];
+  for (let start = 0, index = 0; start < digits.length; index++) {
+    const size = groupSizes[Math.min(index, groupSizes.length - 1)];
+    groups.push(digits.slice(start, start + size));
+    start += size;
+  }
+  return groups.join(" ");
+}
+
+// formatExpiryInput writes an expiry as MM/YY while it is typed: "1230" becomes "12/30", "3" becomes "03" and "1/" becomes
+// "01/". A pasted 12/2030 or 2030-12 becomes 12/30, and text with other characters is left as typed.
+export function formatExpiryInput(value: string): string {
+  if (!/^[\d /.-]*$/.test(value)) {
+    return value;
+  }
+  const yearFirst = value.match(/^\s*(\d{4})\s*[/.-]\s*(\d{1,2})\s*$/);
+  if (yearFirst) {
+    return `${yearFirst[2].padStart(2, "0")}/${yearFirst[1].slice(2)}`;
+  }
+  const separated = value.match(/^\s*(\d{1,2})\s*[/.-]\s*(\d*)\s*$/);
+  if (separated) {
+    const year = separated[2].length === 4 ? separated[2].slice(2) : separated[2].slice(0, 2);
+    return `${separated[1].padStart(2, "0")}/${year}`;
+  }
+  let digits = value.replace(/\D/g, "");
+  if (/^([2-9]|1[3-9])/.test(digits)) {
+    digits = `0${digits}`;
+  }
+  if (digits.length <= 2) {
+    return digits;
+  }
+  return `${digits.slice(0, 2)}/${digits.length === 6 ? digits.slice(4) : digits.slice(2, 4)}`;
+}
+
+// formatInputAsTyped puts format(input.value) into the input and keeps the caret after the same number of digits.
+// Backspace over a separator removes the digit before it, so a space or slash the formatter adds never blocks deleting.
+export function formatInputAsTyped(input: HTMLInputElement, format: (value: string) => string, previousValue: string, inputType: string): string {
+  let value = input.value;
+  let caret = input.selectionStart ?? value.length;
+  const isCaretAtEnd = caret === value.length;
+  if (inputType === "deleteContentBackward" && caret > 0 && format(value) === previousValue) {
+    value = value.slice(0, caret - 1) + value.slice(caret);
+    caret -= 1;
+  }
+  const formatted = format(value);
+  if (formatted === input.value) {
+    return formatted;
+  }
+  const digitsBeforeCaret = value.slice(0, caret).replace(/\D/g, "").length;
+  let position = 0;
+  for (let seen = 0; position < formatted.length && seen < digitsBeforeCaret; position++) {
+    if (/\d/.test(formatted[position])) {
+      seen++;
+    }
+  }
+  input.value = formatted;
+  if (isCaretAtEnd) {
+    position = formatted.length;
+  }
+  input.setSelectionRange(position, position);
+  return formatted;
+}
+
 const allKeyTypeLabel: Record<string, string> = {
   "ssh-ed25519": "Ed25519",
   "ssh-rsa": "RSA",

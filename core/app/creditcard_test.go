@@ -24,7 +24,7 @@ func TestCreditCardIsStoredAsNamedFields(t *testing.T) {
 	wantFields := []item.Field{
 		{Name: item.FieldCardholder, Value: "Alice Smith"},
 		{Name: item.FieldCardNumber, Value: "4111 1111 1111 1111", Concealed: true},
-		{Name: item.FieldExpiry, Value: "12/2029"},
+		{Name: item.FieldExpiry, Value: "12/29"},
 		{Name: item.FieldSecurityCode, Value: "123", Concealed: true},
 		{Name: item.FieldPIN, Value: "0000", Concealed: true},
 		{Name: item.FieldBillingAddress, Value: "1 Main St"},
@@ -36,7 +36,7 @@ func TestCreditCardIsStoredAsNamedFields(t *testing.T) {
 	if stored.Overview.Category != item.CategoryCreditCard || stored.Overview.Username != "" || stored.Details.Password != "" || stored.Overview.URLs != nil {
 		t.Errorf("stored card = %+v", stored)
 	}
-	if saved.Card == nil || saved.Card.Brand != "Visa" || saved.Card.Last4 != "1111" || saved.Card.Expiry != "12/2029" || saved.Card.NumberWarning != "" {
+	if saved.Card == nil || saved.Card.Brand != "Visa" || saved.Card.Last4 != "1111" || saved.Card.Expiry != "12/29" || saved.Card.NumberWarning != "" {
 		t.Errorf("saved card = %+v", saved.Card)
 	}
 	if !reflect.DeepEqual(saved.Fields, []ItemField{{Name: "Bank", Value: "İş Bankası"}}) {

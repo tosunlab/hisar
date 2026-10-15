@@ -89,6 +89,23 @@ describe("Creating a credit card", () => {
     expect(store.editorMode).toBe("view");
   });
 
+  it("formats the number and expiry as they are typed", async () => {
+    store.editorMode = "create-credit-card";
+    const wrapper = mount(ItemEditor);
+    const number = wrapper.find('input[name="cardNumber"]');
+    await number.setValue("4444555555555555");
+    expect((number.element as HTMLInputElement).value).toBe("4444 5555 5555 5555");
+    const expiry = wrapper.find('input[name="expiry"]');
+    await expiry.setValue("0130");
+    expect((expiry.element as HTMLInputElement).value).toBe("01/30");
+
+    api.saveItem.mockResolvedValue(createCardItem());
+    await wrapper.find('input[name="title"]').setValue("Visa");
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(api.saveItem).toHaveBeenCalledWith("personal", expect.objectContaining({ card: expect.objectContaining({ number: "4444 5555 5555 5555", expiry: "01/30" }) }));
+  });
+
   it("edits a card without sharing its object with the item being viewed", async () => {
     store.selectedItem = createCardItem();
     store.editorMode = "edit";
@@ -115,7 +132,7 @@ describe("Viewing a credit card", () => {
   });
 
   it("shows an expired card's warning", () => {
-    store.selectedItem = createCardItem({ card: { ...createCardItem().card!, expiry: "09/2020", expiryWarning: "This card has expired" } });
+    store.selectedItem = createCardItem({ card: { ...createCardItem().card!, expiry: "09/20", expiryWarning: "This card has expired" } });
     const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false } });
     expect(wrapper.find('[data-testid="card-warning-Expiry"]').text()).toBe("This card has expired");
   });

@@ -61,7 +61,7 @@ final class HisarUITests: HisarUITestCase {
         type("Visa", into: app.textFields["editor-title"])
         XCTAssertFalse(app.textFields["editor-username"].exists, "a credit card asks for a username")
         type("4111111111111111", into: app.secureTextFields["editor-card-number"])
-        type("12/2029", into: app.textFields["editor-card-expiry"])
+        type("1229", into: app.textFields["editor-card-expiry"])
         type("123", into: app.secureTextFields["editor-card-security-code"])
         saveScreenshot("add-credit-card")
         app.buttons["editor-save"].tap()

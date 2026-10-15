@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onBeforeUnmount, reactive, ref, watch } from "vue";
 import { api, createEmptyCard, createEmptyItem, type CardDescription, type ItemDetail } from "../api";
-import { creditCardCategory, getItemIcon, secureNoteCategory, sshKeyCategory } from "../util";
+import { creditCardCategory, formatCardNumberInput, formatExpiryInput, formatInputAsTyped, getItemIcon, secureNoteCategory, sshKeyCategory } from "../util";
 import { cancelEditing, saveItem, store } from "../store";
 import AppIcon from "./AppIcon.vue";
 import ItemTile from "./ItemTile.vue";
@@ -62,6 +62,13 @@ watch(
 );
 onBeforeUnmount(() => clearTimeout(describeTimer));
 
+// The number and expiry are formatted as they are typed, the way Hisar saves them.
+function formatCardInput(event: Event, key: "number" | "expiry", format: (value: string) => string): void {
+  if (draft.card) {
+    draft.card[key] = formatInputAsTyped(event.target as HTMLInputElement, format, draft.card[key], (event as InputEvent).inputType ?? "");
+  }
+}
+
 function usePassword(password: string): void {
   draft.password = password;
   isGeneratorOpen.value = false;
@@ -107,20 +114,21 @@ async function submitItem(): Promise<void> {
       <label>
         <span class="label-row">Card number <span v-if="cardDescription.brand" class="brand-badge" data-testid="card-brand">{{ cardDescription.brand }}</span></span>
         <input
-          v-model="draft.card.number"
+          :value="draft.card.number"
           name="cardNumber"
           class="monospace"
           :type="isCardSecretVisible ? 'text' : 'password'"
           inputmode="numeric"
           autocomplete="off"
           placeholder="1234 5678 9012 3456"
+          @input="formatCardInput($event, 'number', formatCardNumberInput)"
         />
         <small v-if="cardDescription.numberWarning" class="hint warning-text" data-testid="card-number-warning">{{ cardDescription.numberWarning }}</small>
       </label>
       <div class="row card-row">
         <label>
           <span>Expiry</span>
-          <input v-model="draft.card.expiry" name="expiry" autocomplete="off" placeholder="MM/YYYY" />
+          <input :value="draft.card.expiry" name="expiry" inputmode="numeric" autocomplete="off" placeholder="MM/YY" @input="formatCardInput($event, 'expiry', formatExpiryInput)" />
           <small v-if="cardDescription.expiryWarning" class="hint warning-text" data-testid="card-expiry-warning">{{ cardDescription.expiryWarning }}</small>
         </label>
         <label>

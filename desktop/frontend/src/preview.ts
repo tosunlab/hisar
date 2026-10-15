@@ -112,7 +112,7 @@ const allPreviewItemByVaultID: Record<string, ItemDetail[]> = {
       card: {
         cardholder: "Alper Tosun",
         number: "4111 1111 1111 1111",
-        expiry: "09/2026",
+        expiry: "09/26",
         securityCode: "123",
         pin: "4821",
         billingAddress: "Bağdat Cd. 100\nKadıköy, İstanbul",
@@ -1017,7 +1017,7 @@ export const previewApi = {
       brand,
       last4: digits.length >= 4 ? digits.slice(-4) : "",
       numberWarning: number.trim() && !isValidNumber ? "This doesn't look like a valid card number" : "",
-      expiryWarning: expiry.trim() && !/^(0?[1-9]|1[0-2])\s*[/.-]\s*(\d{2}|\d{4})$/.test(expiry.trim()) ? "Use month and year, like 12/2027" : "",
+      expiryWarning: expiry.trim() && !/^(0?[1-9]|1[0-2])\s*[/.-]\s*\d{2}$/.test(expiry.trim()) ? "Use month and year, like 12/27" : "",
     });
   },
   convertToSecureNote: (vaultID: string, itemID: string) => {

@@ -38,7 +38,7 @@ export function createCardItem(overrides: Partial<ItemDetail> = {}): ItemDetail 
     card: {
       cardholder: "Alice Smith",
       number: "4111 1111 1111 1111",
-      expiry: "12/2029",
+      expiry: "12/29",
       securityCode: "123",
       pin: "0000",
       billingAddress: "1 Main St",

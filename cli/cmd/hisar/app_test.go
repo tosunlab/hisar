@@ -339,7 +339,7 @@ func TestCreditCardsThroughTheApp(t *testing.T) {
 	if err != nil || !strings.Contains(stderr, `Saved "Visa" to Personal.`) {
 		t.Fatalf("add --type credit-card: %q %v", stderr, err)
 	}
-	if !strings.Contains(stderr, "Note: This doesn't look like a valid card number.") || !strings.Contains(stderr, "Note: Use month and year, like 12/2027.") {
+	if !strings.Contains(stderr, "Note: This doesn't look like a valid card number.") || !strings.Contains(stderr, "Note: Use month and year, like 12/27.") {
 		t.Errorf("no warnings: %q", stderr)
 	}
 	added := app.findRequest(cliprotocol.TypeSaveItem)[0].Item

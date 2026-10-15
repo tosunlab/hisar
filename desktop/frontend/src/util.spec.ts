@@ -14,7 +14,7 @@ import {
   getPlatformIcon,
   getTileColor,
 } from "./util";
-import { describePerson, formatTimeAgo } from "./util";
+import { describePerson, formatCardNumberInput, formatExpiryInput, formatInputAsTyped, formatTimeAgo } from "./util";
 
 describe("computePasswordStrength", () => {
   it("rates random passwords by length and character classes", () => {
@@ -136,5 +136,59 @@ describe("banner formatting", () => {
     expect(describePerson("Ada", "ada@example.com")).toBe("Ada");
     expect(describePerson("", "ada@example.com")).toBe("ada@example.com");
     expect(describePerson("ada@example.com", "ada@example.com")).toBe("ada@example.com");
+  });
+});
+
+describe("card input formatting", () => {
+  it("groups a card number as it is typed", () => {
+    expect(formatCardNumberInput("4444555555555555")).toBe("4444 5555 5555 5555");
+    expect(formatCardNumberInput("44445")).toBe("4444 5");
+    expect(formatCardNumberInput("4444 ")).toBe("4444");
+    expect(formatCardNumberInput("4111-1111-1111-1111")).toBe("4111 1111 1111 1111");
+    expect(formatCardNumberInput("378282246310005")).toBe("3782 822463 10005");
+    expect(formatCardNumberInput("36227206271667")).toBe("3622 720627 1667");
+    expect(formatCardNumberInput("3056930009020004")).toBe("3056 9300 0902 0004");
+    expect(formatCardNumberInput("4111111111111111111")).toBe("4111 1111 1111 1111 111");
+    expect(formatCardNumberInput("Store card #12")).toBe("Store card #12");
+  });
+
+  it("writes an expiry as MM/YY as it is typed", () => {
+    const cases: Record<string, string> = {
+      "0": "0",
+      "01": "01",
+      "013": "01/3",
+      "0130": "01/30",
+      "01305": "01/30",
+      "3": "03",
+      "13": "01/3",
+      "1/": "01/",
+      "01/": "01/",
+      "1/30": "01/30",
+      "12/2030": "12/30",
+      "2030-12": "12/30",
+      "122030": "12/30",
+      "": "",
+      "soon": "soon",
+    };
+    for (const [typed, want] of Object.entries(cases)) {
+      expect(formatExpiryInput(typed), typed).toBe(want);
+    }
+  });
+
+  it("keeps the caret after the same digits and deletes through a separator", () => {
+    const input = document.createElement("input");
+    input.value = "41111";
+    expect(formatInputAsTyped(input, formatCardNumberInput, "4111", "insertText")).toBe("4111 1");
+    expect(input.selectionStart).toBe(6);
+
+    input.value = "4111 9 1111";
+    input.setSelectionRange(6, 6);
+    expect(formatInputAsTyped(input, formatCardNumberInput, "4111 1111", "insertText")).toBe("4111 9111 1");
+    expect(input.selectionStart).toBe(6);
+
+    input.value = "41111111";
+    input.setSelectionRange(4, 4);
+    expect(formatInputAsTyped(input, formatCardNumberInput, "4111 1111", "deleteContentBackward")).toBe("4111 111");
+    expect(input.selectionStart).toBe(3);
   });
 });

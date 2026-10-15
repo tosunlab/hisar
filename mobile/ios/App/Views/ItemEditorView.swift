@@ -177,13 +177,18 @@ struct ItemEditorView: View {
         }
     }
 
-    /// A binding to one of the card's values, creating the card on first write.
+    /// A binding to one of the card's values, creating the card on first write. The number and expiry are formatted as they
+    /// are typed, the way Hisar saves them.
     private func bindCard(_ keyPath: WritableKeyPath<ItemCard, String>) -> Binding<String> {
         Binding(
             get: { draft.card?[keyPath: keyPath] ?? "" },
             set: { value in
                 var card = draft.card ?? ItemCard()
-                card[keyPath: keyPath] = value
+                switch keyPath {
+                case \ItemCard.number: card.number = ItemCard.formatNumberInput(value)
+                case \ItemCard.expiry: card.expiry = ItemCard.formatExpiryInput(value)
+                default: card[keyPath: keyPath] = value
+                }
                 draft.card = card
             }
         )
@@ -212,8 +217,8 @@ struct ItemEditorView: View {
                 .textContentType(.name)
                 .accessibilityIdentifier("editor-cardholder")
             buildCardField("Card number", \.number, identifier: "editor-card-number", isSecret: true)
-            TextField("Expiry (MM/YYYY)", text: bindCard(\.expiry))
-                .keyboardType(.numbersAndPunctuation)
+            TextField("Expiry (MM/YY)", text: bindCard(\.expiry))
+                .keyboardType(.numberPad)
                 .accessibilityIdentifier("editor-card-expiry")
             buildCardField("Security code", \.securityCode, identifier: "editor-card-security-code", isSecret: true)
             buildCardField("PIN", \.pin, identifier: "editor-card-pin", isSecret: true)
