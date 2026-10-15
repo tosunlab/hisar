@@ -184,7 +184,8 @@ func Summarize(items []item.Item) Summary {
 
 // BuildDuplicateKey matches items by title, username and first website; SSH keys match by fingerprint, cards by title and
 // last four digits, or by the whole number when it has no four digits to go by, such as a store card's "STORE-12A", and
-// identities by title, full name and first document number.
+// identities by title, full name, email and first document number, so a home and a work identity with no documents stay
+// apart.
 func BuildDuplicateKey(vaultItem item.Item) string {
 	if vaultItem.IsCategory(item.CategorySSHKey) && vaultItem.Overview.Fingerprint != "" {
 		return "ssh-key\x00" + vaultItem.Overview.Fingerprint
@@ -200,7 +201,9 @@ func BuildDuplicateKey(vaultItem item.Item) string {
 	if vaultItem.IsCategory(item.CategoryIdentity) {
 		identity, _ := item.ReadIdentity(&vaultItem)
 		documentNumber := getFirstNonEmpty(identity.PassportNumber, identity.DriversLicenseNumber, identity.NationalIDNumber)
-		return strings.ToLower(strings.Join([]string{"identity", strings.TrimSpace(vaultItem.Overview.Title), identity.FullName(), strings.TrimSpace(documentNumber)}, "\x00"))
+		return strings.ToLower(strings.Join([]string{
+			"identity", strings.TrimSpace(vaultItem.Overview.Title), identity.FullName(), strings.TrimSpace(identity.Email), strings.TrimSpace(documentNumber),
+		}, "\x00"))
 	}
 	firstURL := ""
 	if len(vaultItem.Overview.URLs) > 0 {

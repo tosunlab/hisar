@@ -722,6 +722,19 @@ func TestIdentitiesWithTheSameTitleAreNotDuplicates(t *testing.T) {
 	if BuildDuplicateKey(identity("Alice", "U1")) != BuildDuplicateKey(identity("alice", "u1")) {
 		t.Error("an identity does not match itself written in another case")
 	}
+
+	withEmail := func(email string) item.Item {
+		var vaultItem item.Item
+		vaultItem.Overview = item.Overview{Title: "Identity", Category: item.CategoryIdentity}
+		item.WriteIdentity(&vaultItem, item.Identity{FirstName: "Alice", LastName: "Example", Email: email}, nil)
+		return vaultItem
+	}
+	if BuildDuplicateKey(withEmail("alice@home.example")) == BuildDuplicateKey(withEmail("alice@work.example")) {
+		t.Error("a home and a work identity with no documents match")
+	}
+	if BuildDuplicateKey(withEmail("alice@home.example")) != BuildDuplicateKey(withEmail("Alice@Home.example")) {
+		t.Error("an identity does not match itself with its email in another case")
+	}
 }
 
 func TestCardsWithTheSameTitleAreNotDuplicates(t *testing.T) {
