@@ -207,6 +207,8 @@ const wailsApi = {
   saveItem: async (vaultID: string, detail: ItemDetail): Promise<ItemDetail> =>
     normalizeItem(await Service.SaveItem(vaultID, detail)),
   deleteItem: (vaultID: string, itemID: string): Promise<void> => Service.DeleteItem(vaultID, itemID),
+  convertToSecureNote: async (vaultID: string, itemID: string): Promise<ItemDetail> =>
+    normalizeItem(await Service.ConvertToSecureNote(vaultID, itemID)),
   deletePasskey: async (vaultID: string, itemID: string, credentialID: string): Promise<ItemDetail> =>
     normalizeItem(await Service.DeletePasskey(vaultID, itemID, credentialID)),
   generatePassword: (config: PasswordConfig): Promise<string> => Service.GeneratePassword(config),
@@ -339,5 +341,6 @@ export function createEmptyItem(): ItemDetail {
     oneTimePassword: "",
     hasOneTimePassword: false,
     passkeys: [],
+    canConvertToSecureNote: false,
   };
 }

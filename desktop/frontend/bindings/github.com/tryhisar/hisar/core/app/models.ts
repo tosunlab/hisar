@@ -154,6 +154,11 @@ export interface ItemDetail {
     "oneTimePassword": string;
     "hasOneTimePassword": boolean;
     "passkeys": ItemPasskey[] | null;
+
+    /**
+     * CanConvertToSecureNote: a login with only notes, which ConvertToSecureNote turns into a secure note.
+     */
+    "canConvertToSecureNote": boolean;
 }
 
 export interface ItemField {

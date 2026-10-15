@@ -11,12 +11,13 @@ import {
   selectItem,
   selectVault,
   startCreatingItem,
+  startCreatingSecureNote,
   startCreatingSSHKey,
   store,
   syncInBackground,
   syncInterval,
 } from "../store";
-import { formatKeyType, getDomain, getInitials, isMacPlatform, sshKeyCategory } from "../util";
+import { formatKeyType, getDomain, getInitials, getItemIcon, isMacPlatform, secureNoteCategory, sshKeyCategory } from "../util";
 import AppIcon from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
 import ItemDetailPanel from "./ItemDetailPanel.vue";
@@ -225,6 +226,9 @@ onBeforeUnmount(() => {
             <button class="ghost" role="menuitem" data-testid="new-login" @click="chooseNewItem(startCreatingItem)">
               <AppIcon name="globe" /> Login <kbd>{{ shortcutModifier }}N</kbd>
             </button>
+            <button class="ghost" role="menuitem" data-testid="new-secure-note" @click="chooseNewItem(startCreatingSecureNote)">
+              <AppIcon name="note" /> Secure note
+            </button>
             <button class="ghost" role="menuitem" data-testid="new-ssh-key" @click="chooseNewItem(startCreatingSSHKey)">
               <AppIcon name="key" /> SSH key
             </button>
@@ -251,10 +255,11 @@ onBeforeUnmount(() => {
       <ul v-else>
         <li v-for="vaultItem in allVisibleItem" :key="vaultItem.id">
           <button class="item" :class="{ selected: store.selectedItem?.id === vaultItem.id }" @click="selectItem(vaultItem.id)">
-            <ItemTile :title="vaultItem.title" :icon="vaultItem.category === sshKeyCategory ? 'key' : undefined" />
+            <ItemTile :title="vaultItem.title" :icon="getItemIcon(vaultItem.category)" />
             <span class="item-text">
               <span class="item-title">{{ vaultItem.title }}</span>
               <span v-if="vaultItem.category === sshKeyCategory" class="item-subtitle">{{ formatKeyType(vaultItem.keyType) }} SSH key</span>
+              <span v-else-if="vaultItem.category === secureNoteCategory" class="item-subtitle">Secure note</span>
               <span v-else class="item-subtitle">{{ vaultItem.username || (vaultItem.urls[0] ? getDomain(vaultItem.urls[0]) : "") }}</span>
             </span>
           </button>

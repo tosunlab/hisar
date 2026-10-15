@@ -10,6 +10,7 @@ import {
   selectItem,
   selectVault,
   startCreatingItem,
+  startCreatingSecureNote,
   startCreatingSSHKey,
   startEditingItem,
   store,
@@ -235,6 +236,8 @@ export async function applyPreviewParameter(): Promise<void> {
   }
   if (parameter.get("editor") === "create") {
     startCreatingItem();
+  } else if (parameter.get("editor") === "secure-note") {
+    startCreatingSecureNote();
   } else if (parameter.get("editor") === "ssh-key") {
     startCreatingSSHKey();
   } else if (parameter.get("editor") === "edit") {

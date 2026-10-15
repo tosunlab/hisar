@@ -22,8 +22,21 @@ export function createItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
     oneTimePassword: "",
     hasOneTimePassword: false,
     passkeys: [],
+    canConvertToSecureNote: false,
     ...overrides,
   };
+}
+
+export function createSecureNoteItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
+  return createItem({
+    id: "note-1",
+    category: "secure-note",
+    title: "Recovery codes",
+    username: "",
+    urls: [],
+    notes: "1. 4821-9930\n2. 1177-0042",
+    ...overrides,
+  });
 }
 
 export function createSSHKeyItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
@@ -351,6 +364,7 @@ export function createApiMock() {
     getItem: vi.fn(),
     saveItem: vi.fn(),
     deleteItem: vi.fn(),
+    convertToSecureNote: vi.fn(),
     deletePasskey: vi.fn(),
     generatePassword: vi.fn(),
     generateSSHKey: vi.fn(),

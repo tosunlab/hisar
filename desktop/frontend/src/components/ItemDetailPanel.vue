@@ -1,7 +1,17 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { copyField, deleteItem, getAllShareLinkForItem, hasShareableField, openItemShareLinkDialog, openWebsite, startEditingItem, store } from "../store";
-import { formatKeyType, getDomain, sshKeyCategory } from "../util";
+import {
+  convertToSecureNote,
+  copyField,
+  deleteItem,
+  getAllShareLinkForItem,
+  hasShareableField,
+  openItemShareLinkDialog,
+  openWebsite,
+  startEditingItem,
+  store,
+} from "../store";
+import { formatKeyType, getDomain, getItemIcon, secureNoteCategory, sshKeyCategory } from "../util";
 import AppIcon from "./AppIcon.vue";
 import CommitSigningPanel from "./CommitSigningPanel.vue";
 import ItemTile from "./ItemTile.vue";
@@ -17,6 +27,7 @@ const isPasswordRevealed = ref(false);
 const allRevealedFieldName = ref<string[]>([]);
 const isConfirmingDelete = ref(false);
 const isSSHKey = computed(() => store.selectedItem?.category === sshKeyCategory);
+const isSecureNote = computed(() => store.selectedItem?.category === secureNoteCategory);
 const isShareable = computed(() => store.selectedItem !== null && hasShareableField(store.selectedItem));
 const allItemShareLink = computed(() => (store.selectedItem ? getAllShareLinkForItem(store.selectedVaultID, store.selectedItem.id) : []));
 
@@ -43,13 +54,14 @@ function maskSecret(secret: string): string {
 <template>
   <article v-if="store.selectedItem" class="item-detail">
     <header>
-      <ItemTile :title="store.selectedItem.title" :size="52" :icon="isSSHKey ? 'key' : undefined" />
+      <ItemTile :title="store.selectedItem.title" :size="52" :icon="getItemIcon(store.selectedItem.category)" />
       <div class="heading">
         <h2>{{ store.selectedItem.title }}</h2>
         <div class="meta">
           <span class="badge"><AppIcon :name="isShared ? 'users' : 'user'" :size="12" /> {{ vaultName }}</span>
           <span v-if="isShared" class="badge">shared</span>
           <span v-if="isSSHKey" class="muted">SSH key</span>
+          <span v-else-if="isSecureNote" class="muted">Secure note</span>
           <span v-else-if="store.selectedItem.urls[0]" class="muted">{{ getDomain(store.selectedItem.urls[0]) }}</span>
         </div>
       </div>
@@ -106,6 +118,41 @@ function maskSecret(secret: string): string {
       </section>
       <p class="agent-hint muted"><AppIcon name="terminal" :size="14" /> Hisar's SSH agent offers this key while Hisar is unlocked.</p>
       <CommitSigningPanel v-if="store.selectedItem.publicKey" :public-key="store.selectedItem.publicKey" />
+    </template>
+
+    <template v-else-if="isSecureNote">
+      <section class="card notes-card secure-note" data-testid="secure-note-notes">
+        <div class="row">
+          <p class="section-label">Notes</p>
+          <div class="spacer"></div>
+          <template v-if="store.selectedItem.notes">
+            <button data-testid="copy-notes" @click="copyField('notes', 'Notes')"><AppIcon name="copy" /> Copy</button>
+            <SecretReferenceButton field-name="notes" label="notes" />
+          </template>
+        </div>
+        <p v-if="store.selectedItem.notes" class="notes">{{ store.selectedItem.notes }}</p>
+        <p v-else class="muted no-fields">This note is empty.</p>
+      </section>
+      <section v-if="store.selectedItem.fields.length > 0" class="card field-card note-fields">
+        <div v-for="field in store.selectedItem.fields" :key="field.name" class="field">
+          <span class="field-label">{{ field.name }}</span>
+          <span class="field-value" :class="{ monospace: field.concealed }">
+            {{ field.concealed && !allRevealedFieldName.includes(field.name) ? maskSecret(field.value) : field.value }}
+          </span>
+          <span class="field-actions">
+            <button
+              v-if="field.concealed"
+              class="ghost icon-button"
+              :aria-label="`${allRevealedFieldName.includes(field.name) ? 'Hide' : 'Reveal'} ${field.name}`"
+              @click="toggleFieldReveal(field.name)"
+            >
+              <AppIcon :name="allRevealedFieldName.includes(field.name) ? 'eyeOff' : 'eye'" />
+            </button>
+            <button class="ghost icon-button" :aria-label="`Copy ${field.name}`" title="Copy" @click="copyField(field.name, field.name)"><AppIcon name="copy" /></button>
+            <SecretReferenceButton :field-name="field.name" :label="field.name" />
+          </span>
+        </div>
+      </section>
     </template>
 
     <section v-else class="card field-card">
@@ -179,9 +226,13 @@ function maskSecret(secret: string): string {
 
     <PasskeyList v-if="(store.selectedItem.passkeys ?? []).length > 0" :passkeys="store.selectedItem.passkeys ?? []" :can-delete="canEdit" />
 
-    <section v-if="store.selectedItem.notes" class="card notes-card">
+    <section v-if="store.selectedItem.notes && !isSecureNote" class="card notes-card">
       <p class="section-label">Notes</p>
       <p class="notes">{{ store.selectedItem.notes }}</p>
+      <p v-if="canEdit && store.selectedItem.canConvertToSecureNote" class="convert-note muted">
+        This login has nothing but notes.
+        <button class="ghost" data-testid="convert-to-secure-note" @click="convertToSecureNote"><AppIcon name="note" /> Convert to secure note</button>
+      </p>
     </section>
 
     <section v-if="allItemShareLink.length > 0" class="card share-links-card" data-testid="item-share-links">
@@ -339,6 +390,32 @@ h2 {
   white-space: pre-wrap;
   user-select: text;
   -webkit-user-select: text;
+}
+
+.secure-note {
+  margin-top: 0;
+}
+
+.secure-note .row {
+  margin-bottom: 8px;
+}
+
+.secure-note .section-label {
+  margin: 0;
+}
+
+.note-fields {
+  margin-top: 14px;
+}
+
+.convert-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-border);
+  font-size: 12px;
 }
 
 .share-links-card {

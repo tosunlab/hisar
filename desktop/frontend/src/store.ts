@@ -35,7 +35,7 @@ import {
   type ExportResult,
 } from "./api";
 
-export type EditorMode = "view" | "edit" | "create" | "create-ssh-key";
+export type EditorMode = "view" | "edit" | "create" | "create-secure-note" | "create-ssh-key";
 export type ImportStep = "choose" | "preview" | "saving" | "done";
 
 export interface ShareLinkDialog {
@@ -634,6 +634,11 @@ export function startCreatingItem(): void {
   store.editorMode = "create";
 }
 
+export function startCreatingSecureNote(): void {
+  store.selectedItem = null;
+  store.editorMode = "create-secure-note";
+}
+
 export function startCreatingSSHKey(): void {
   store.selectedItem = null;
   store.editorMode = "create-ssh-key";
@@ -693,6 +698,21 @@ export async function saveItem(detail: ItemDetail): Promise<boolean> {
   store.editorMode = "view";
   showNotice("Saved");
   return true;
+}
+
+export async function convertToSecureNote(): Promise<void> {
+  if (!store.selectedItem) {
+    return;
+  }
+  const converted = await runAction(() => api.convertToSecureNote(store.selectedVaultID, store.selectedItem?.id ?? ""));
+  if (!converted) {
+    return;
+  }
+  store.allItem = store.allItem.map((vaultItem) => (vaultItem.id === converted.id ? { ...vaultItem, category: converted.category, revision: converted.revision, canConvertToSecureNote: false } : vaultItem));
+  if (store.selectedItem?.id === converted.id) {
+    store.selectedItem = converted;
+  }
+  showNotice("Converted to a secure note");
 }
 
 export async function deleteItem(itemID: string): Promise<void> {
