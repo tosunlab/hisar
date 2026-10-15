@@ -246,13 +246,13 @@ func (s *Service) buildSavedItem(vaultID string, detail ItemDetail) (item.Item, 
 	return vaultItem, nil
 }
 
-// applyCategory shapes a saved item to its category: only a login keeps login data, and a card's values from detail.Card
-// become its named fields. Without detail.Card (the CLI), a card's named fields come in detail.Fields.
+// applyCategory shapes a saved item to its category: a secure note or card drops login data, and a card's values from
+// detail.Card become its named fields. A category from a newer app keeps everything, since the editors show it as a login. Without detail.Card (the CLI), a card's named fields come in detail.Fields.
 func applyCategory(vaultItem *item.Item, detail ItemDetail) {
 	if vaultItem.IsCategory(item.CategoryCreditCard) && detail.Card != nil {
 		item.WriteCard(vaultItem, convertFromItemCard(detail.Card), vaultItem.Details.Fields)
 	}
-	if !vaultItem.IsCategory(item.CategoryLogin) {
+	if vaultItem.OmitsLoginData() {
 		vaultItem.DropLoginData()
 	}
 	item.NormalizeCard(vaultItem)

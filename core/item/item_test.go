@@ -169,3 +169,12 @@ func TestCategory(t *testing.T) {
 		t.Error("an item without a category is a secure note")
 	}
 }
+
+func TestOmitsLoginData(t *testing.T) {
+	for category, want := range map[string]bool{"": false, CategoryLogin: false, CategorySSHKey: false, CategorySecureNote: true, CategoryCreditCard: true, "identity": false} {
+		vaultItem := Item{Overview: Overview{Category: category}}
+		if got := vaultItem.OmitsLoginData(); got != want {
+			t.Errorf("OmitsLoginData for %q = %v, want %v", category, got, want)
+		}
+	}
+}

@@ -107,7 +107,7 @@ so rich values are JSON strings.
   row in the command table, and the `backend` methods it needs in both implementations. Standalone-only commands use
   `run`. Update `testdata/usage.golden` with `go test ./cmd/hisar -run TestUsageGolden -update`.
 - **A new item type:** the category and its named-field schema in `core/item` (as `card.go`: fields with fixed names, so
-  older apps keep them), its rules in `core/app` `applyCategory`, a row in the CLI's `itemTypes` table, a `cliprotocol`
+  older apps keep them), `Item.OmitsLoginData` if its form has no login data, its rules in `core/app` `applyCategory`, a row in the CLI's `itemTypes` table, a `cliprotocol`
   feature in `GetCategoryFeature`, the importers, then the desktop and iPhone screens.
 - **A new CLI ↔ app request:** the type string and result in `core/cliprotocol`, the answer in `core/app/commandline.go`.
 - **A new desktop OS integration:** its own `desktop/<name>` package with platform files; wire it in `desktop/main.go`.

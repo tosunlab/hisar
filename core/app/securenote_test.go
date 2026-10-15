@@ -124,3 +124,30 @@ func TestCommandLineCreatesASecureNote(t *testing.T) {
 		t.Errorf("edited %+v", edited.Item)
 	}
 }
+
+func TestEditingAnItemOfANewerCategoryKeepsItsLoginData(t *testing.T) {
+	testService := createUnlockedTestService(t)
+	service, vaultID := testService.service, testService.personalID
+	saved, err := service.SaveItem(vaultID, ItemDetail{Title: "Passport", Username: "alice", Password: "secret", URLs: []string{"https://gov.example"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A newer app saved the item with a category this app does not know.
+	service.mutex.Lock()
+	for index := range service.itemsByVaultID[vaultID] {
+		if service.itemsByVaultID[vaultID][index].ID == saved.ID {
+			service.itemsByVaultID[vaultID][index].Overview.Category = "identity"
+		}
+	}
+	service.mutex.Unlock()
+
+	saved.Title, saved.Category = "Passport 2", "identity"
+	edited, err := service.SaveItem(vaultID, saved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored := getCachedItem(t, service, vaultID, edited.ID)
+	if stored.Overview.Category != "identity" || stored.Overview.Username != "alice" || stored.Details.Password != "secret" || len(stored.Overview.URLs) != 1 {
+		t.Errorf("stored = %+v", stored)
+	}
+}
