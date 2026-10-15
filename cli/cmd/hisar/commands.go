@@ -303,6 +303,7 @@ var itemTypes = []itemType{
 	{category: item.CategoryLogin, prompt: promptItem},
 	{category: item.CategorySecureNote, prompt: promptNote},
 	{category: item.CategoryCreditCard, prompt: promptCard},
+	{category: item.CategoryIdentity, prompt: promptIdentity},
 }
 
 func findItemType(category string) (itemType, bool) {
@@ -342,27 +343,19 @@ func promptNote(vaultItem *item.Item) error {
 	return nil
 }
 
-// promptCard asks for a card's title and each of its values; secret ones are read without echo, and an empty answer keeps
-// the current value. Warnings about the number or expiry are shown but do not stop the save.
-func promptCard(vaultItem *item.Item) error {
-	var err error
-	if vaultItem.Overview.Title, err = promptRequired("Title", vaultItem.Overview.Title); err != nil {
-		return err
-	}
-	card, otherFields := item.ReadCard(vaultItem)
-	for _, field := range item.ListCardFields() {
-		value := field.Value(&card)
+// promptNamedFields asks for each value of a record kept in named fields, such as a card; secret ones are read without
+// echo, and an empty answer keeps the current value. hint adds to a field's prompt.
+func promptNamedFields[T any](record *T, namedFields []item.NamedField[T], hint func(field item.NamedField[T], value string) string) error {
+	for _, field := range namedFields {
+		value := field.Value(record)
+		label := field.Name + hint(field, *value)
 		if !field.Concealed {
-			label := field.Name
-			if field.Name == item.FieldCardType && *value == "" {
-				label += " (empty to work it out from the number)"
-			}
+			var err error
 			if *value, err = prompt(label, *value); err != nil {
 				return err
 			}
 			continue
 		}
-		label := field.Name
 		if *value != "" {
 			label += " (empty to keep)"
 		}
@@ -375,6 +368,26 @@ func promptCard(vaultItem *item.Item) error {
 		}
 		clear(secret)
 	}
+	return nil
+}
+
+// promptCard asks for a card's title and each of its values. Warnings about the number or expiry are shown but do not
+// stop the save.
+func promptCard(vaultItem *item.Item) error {
+	var err error
+	if vaultItem.Overview.Title, err = promptRequired("Title", vaultItem.Overview.Title); err != nil {
+		return err
+	}
+	card, otherFields := item.ReadCard(vaultItem)
+	err = promptNamedFields(&card, item.ListCardFields(), func(field item.CardField, value string) string {
+		if field.Name == item.FieldCardType && value == "" {
+			return " (empty to work it out from the number)"
+		}
+		return ""
+	})
+	if err != nil {
+		return err
+	}
 	description := item.DescribeCard(card.Number, card.Expiry, time.Now())
 	for _, warning := range []string{description.NumberWarning, description.ExpiryWarning} {
 		if warning != "" {
@@ -383,6 +396,27 @@ func promptCard(vaultItem *item.Item) error {
 	}
 	item.WriteCard(vaultItem, card, otherFields)
 	item.NormalizeCard(vaultItem)
+	return nil
+}
+
+// promptIdentity asks for an identity's title and each of its values; the document numbers are read without echo.
+func promptIdentity(vaultItem *item.Item) error {
+	var err error
+	if vaultItem.Overview.Title, err = promptRequired("Title", vaultItem.Overview.Title); err != nil {
+		return err
+	}
+	identity, otherFields := item.ReadIdentity(vaultItem)
+	err = promptNamedFields(&identity, item.ListIdentityFields(), func(field item.IdentityField, value string) string {
+		if field.Name == item.FieldBirthDate && value == "" {
+			return " (YYYY-MM-DD)"
+		}
+		return ""
+	})
+	if err != nil {
+		return err
+	}
+	item.WriteIdentity(vaultItem, identity, otherFields)
+	item.NormalizeIdentity(vaultItem)
 	return nil
 }
 
