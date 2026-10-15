@@ -172,7 +172,7 @@ func Summarize(items []item.Item) Summary {
 
 // BuildDuplicateKey matches items by title, username and first website; SSH keys match by fingerprint.
 func BuildDuplicateKey(vaultItem item.Item) string {
-	if vaultItem.Overview.Category == item.CategorySSHKey && vaultItem.Overview.Fingerprint != "" {
+	if vaultItem.IsCategory(item.CategorySSHKey) && vaultItem.Overview.Fingerprint != "" {
 		return "ssh-key\x00" + vaultItem.Overview.Fingerprint
 	}
 	firstURL := ""
@@ -275,7 +275,7 @@ func finishItem(vaultItem *item.Item) bool {
 		vaultItem.Overview.Title = getFallbackTitle(vaultItem)
 	}
 	switch {
-	case vaultItem.Overview.Category == item.CategorySecureNote && item.HasLoginData(vaultItem):
+	case vaultItem.IsCategory(item.CategorySecureNote) && item.HasLoginData(vaultItem):
 		// A note that came with a username, password or website stays a login, so they are shown.
 		vaultItem.Overview.Category = item.CategoryLogin
 	case vaultItem.Overview.Category == "" && item.HasOnlyNotes(vaultItem):

@@ -159,7 +159,7 @@ func (s *Service) collectPasskeys(relyingPartyID string) []passkeyMatch {
 			continue
 		}
 		for _, vaultItem := range items {
-			if !item.IsLogin(&vaultItem) {
+			if !vaultItem.IsCategory(item.CategoryLogin) {
 				continue
 			}
 			for _, storedPasskey := range vaultItem.Details.Passkeys {

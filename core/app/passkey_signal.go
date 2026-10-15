@@ -129,7 +129,7 @@ func (s *Service) applyPasskeySignal(ctx context.Context, signalType string, req
 			continue
 		}
 		for _, vaultItem := range items {
-			if !item.IsLogin(&vaultItem) {
+			if !vaultItem.IsCategory(item.CategoryLogin) {
 				continue
 			}
 			passkeys, changeCount := applyPasskeySignalChange(&vaultItem, relyingPartyID, change)

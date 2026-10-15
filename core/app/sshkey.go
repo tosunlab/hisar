@@ -191,7 +191,7 @@ func (source *SSHKeySource) ListKeys(ctx context.Context) ([]sshagent.Key, error
 			items = loadedItem
 		}
 		for _, vaultItem := range items {
-			if vaultItem.Overview.Category != item.CategorySSHKey || vaultItem.Details.PrivateKey == "" {
+			if !vaultItem.IsCategory(item.CategorySSHKey) || vaultItem.Details.PrivateKey == "" {
 				continue
 			}
 			keys = append(keys, sshagent.Key{

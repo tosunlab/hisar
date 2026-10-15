@@ -31,7 +31,7 @@ func (s *Service) listLoginsForURL(ctx context.Context, pageURL string) ([]brows
 			continue
 		}
 		for _, vaultItem := range items {
-			if !item.IsLogin(&vaultItem) || !slices.ContainsFunc(vaultItem.Overview.URLs, func(itemURL string) bool {
+			if !vaultItem.IsCategory(item.CategoryLogin) || !slices.ContainsFunc(vaultItem.Overview.URLs, func(itemURL string) bool {
 				return browserprotocol.IsURLMatch(itemURL, pageURL, s.state.IsExactHostMatch)
 			}) {
 				continue

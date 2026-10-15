@@ -155,10 +155,17 @@ func TestHasOnlyNotes(t *testing.T) {
 	}
 }
 
-func TestIsLogin(t *testing.T) {
-	for category, isLogin := range map[string]bool{"": true, CategoryLogin: true, CategorySecureNote: false, CategorySSHKey: false} {
-		if got := IsLogin(&Item{Overview: Overview{Category: category}}); got != isLogin {
-			t.Errorf("IsLogin(%q) = %v", category, got)
+func TestCategory(t *testing.T) {
+	for stored, want := range map[string]string{"": CategoryLogin, CategoryLogin: CategoryLogin, CategorySecureNote: CategorySecureNote, CategorySSHKey: CategorySSHKey} {
+		vaultItem := &Item{Overview: Overview{Category: stored}}
+		if got := vaultItem.Category(); got != want {
+			t.Errorf("Category() of %q = %q, want %q", stored, got, want)
 		}
+		if !vaultItem.IsCategory(want) {
+			t.Errorf("IsCategory(%q) of %q = false", want, stored)
+		}
+	}
+	if (&Item{}).IsCategory(CategorySecureNote) {
+		t.Error("an item without a category is a secure note")
 	}
 }

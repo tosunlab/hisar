@@ -103,7 +103,7 @@ func convertToItemDetail(vaultItem *item.Item) ItemDetail {
 
 		Passkeys: convertToItemPasskeys(vaultItem.Details.Passkeys),
 
-		CanConvertToSecureNote: item.IsLogin(vaultItem) && item.HasOnlyNotes(vaultItem),
+		CanConvertToSecureNote: vaultItem.IsCategory(item.CategoryLogin) && item.HasOnlyNotes(vaultItem),
 	}
 	for _, field := range vaultItem.Details.Fields {
 		detail.Fields = append(detail.Fields, ItemField{Name: field.Name, Value: field.Value, Concealed: field.Concealed})
@@ -190,7 +190,7 @@ func (s *Service) buildSavedItem(vaultID string, detail ItemDetail) (item.Item, 
 		keepSecureNoteFields(&vaultItem)
 		return vaultItem, nil
 	}
-	if cachedItem.Overview.Category != item.CategorySSHKey {
+	if !cachedItem.IsCategory(item.CategorySSHKey) {
 		vaultItem := convertFromItemDetail(detail)
 		vaultItem.Overview.Category = cachedItem.Overview.Category
 		vaultItem.Details.Passkeys = cachedItem.Details.Passkeys
@@ -208,7 +208,7 @@ func (s *Service) buildSavedItem(vaultID string, detail ItemDetail) (item.Item, 
 
 // keepSecureNoteFields drops from a secure note what its form does not show, so it holds no secret nobody can see.
 func keepSecureNoteFields(vaultItem *item.Item) {
-	if vaultItem.Overview.Category != item.CategorySecureNote {
+	if !vaultItem.IsCategory(item.CategorySecureNote) {
 		return
 	}
 	vaultItem.Overview.Username, vaultItem.Overview.URLs = "", nil
@@ -227,7 +227,7 @@ func (s *Service) ConvertToSecureNote(vaultID, itemID string) (ItemDetail, error
 	if err != nil {
 		return ItemDetail{}, err
 	}
-	if !item.IsLogin(cachedItem) || !item.HasOnlyNotes(cachedItem) {
+	if !cachedItem.IsCategory(item.CategoryLogin) || !item.HasOnlyNotes(cachedItem) {
 		return ItemDetail{}, errors.New("only a login with nothing but notes and custom fields can become a secure note")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

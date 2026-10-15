@@ -28,7 +28,7 @@ func runListItems(ctx context.Context, access backend, flags *flag.FlagSet, args
 	writer := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
 	fmt.Fprintln(writer, "TITLE\tUSERNAME\tURL\tTYPE\tID")
 	for _, vaultItem := range items {
-		fmt.Fprintf(writer, "%s\t%s\t%s\t%s\t%s\n", vaultItem.Overview.Title, vaultItem.Overview.Username, strings.Join(vaultItem.Overview.URLs, " "), getItemType(&vaultItem), vaultItem.ID)
+		fmt.Fprintf(writer, "%s\t%s\t%s\t%s\t%s\n", vaultItem.Overview.Title, vaultItem.Overview.Username, strings.Join(vaultItem.Overview.URLs, " "), vaultItem.Category(), vaultItem.ID)
 	}
 	return writer.Flush()
 }
@@ -67,14 +67,6 @@ func runGet(ctx context.Context, access backend, flags *flag.FlagSet, args []str
 		return nil
 	}
 	return writeItem(os.Stdout, vaultItem)
-}
-
-// getItemType names the item's category; an item saved without one is a login.
-func getItemType(vaultItem *item.Item) string {
-	if vaultItem.Overview.Category == "" {
-		return item.CategoryLogin
-	}
-	return vaultItem.Overview.Category
 }
 
 func runAdd(ctx context.Context, access backend, flags *flag.FlagSet, args []string) error {

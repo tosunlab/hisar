@@ -66,9 +66,17 @@ type Item struct {
 	Details  Details
 }
 
-// IsLogin reports whether the item is a login, including one saved without a category.
-func IsLogin(vaultItem *Item) bool {
-	return vaultItem.Overview.Category == "" || vaultItem.Overview.Category == CategoryLogin
+// Category returns the item's category; an item saved without one is a login.
+func (vaultItem *Item) Category() string {
+	if vaultItem.Overview.Category == "" {
+		return CategoryLogin
+	}
+	return vaultItem.Overview.Category
+}
+
+// IsCategory reports whether the item has category, counting an item saved without one as a login.
+func (vaultItem *Item) IsCategory(category string) bool {
+	return vaultItem.Category() == category
 }
 
 // HasLoginData reports whether the item holds anything only a login shows: a username, password, website, one-time

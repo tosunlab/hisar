@@ -293,7 +293,7 @@ func getFieldValue(vaultItem *item.Item, name string) (string, bool) {
 }
 
 func promptItemOrNote(vaultItem *item.Item) error {
-	if vaultItem.Overview.Category == item.CategorySecureNote {
+	if vaultItem.IsCategory(item.CategorySecureNote) {
 		return promptNote(vaultItem)
 	}
 	return promptItem(vaultItem)
