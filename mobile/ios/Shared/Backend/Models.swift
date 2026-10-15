@@ -279,6 +279,28 @@ struct ItemIdentity: Codable, Hashable {
 
     /// The identity's line in lists: the full name, or the email when it has no name.
     var summary: String { fullName.isEmpty ? (email.isEmpty ? "Identity" : email) : fullName }
+
+    /// Birth dates are stored as YYYY-MM-DD, a day without a time or time zone.
+    private static let birthDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+
+    /// The day a stored YYYY-MM-DD birth date names, or nil for any other text. A day that does not exist, such as
+    /// 2023-02-31, is nil too: the formatter would roll it over into March.
+    static func parseBirthDate(_ birthDate: String) -> Date? {
+        guard let date = birthDateFormatter.date(from: birthDate), birthDateFormatter.string(from: date) == birthDate else {
+            return nil
+        }
+        return date
+    }
+
+    /// The birth date as it is stored, YYYY-MM-DD.
+    static func formatBirthDate(_ date: Date) -> String { birthDateFormatter.string(from: date) }
 }
 
 /// The names core/item stores a card's values under; copying and secret references use them.

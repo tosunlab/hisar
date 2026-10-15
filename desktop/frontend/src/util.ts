@@ -184,6 +184,17 @@ export function formatIdentitySummary(identity: IdentityName | null | undefined)
   return formatFullName(identity) || identity?.email || "Identity";
 }
 
+// isCalendarDate tells whether date is a day that exists written as YYYY-MM-DD, the only value a date input shows; it
+// rejects 2023-02-31.
+export function isCalendarDate(date: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return false;
+  }
+  const [year, month, day] = date.split("-").map(Number);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return parsed.getUTCFullYear() === year && parsed.getUTCMonth() === month - 1 && parsed.getUTCDate() === day;
+}
+
 // The brands an editor offers as a card's type, in the order of core/item ListCardBrands.
 export const allCardBrand = ["Visa", "Mastercard", "American Express", "Discover", "Diners Club", "JCB", "UnionPay", "Maestro", "Troy"];
 

@@ -305,32 +305,23 @@ struct ItemEditorView: View {
         )
     }
 
-    /// Birth dates are stored as YYYY-MM-DD, a day without a time or time zone.
-    private static let birthDateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(identifier: "UTC")
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter
-    }()
-
-    /// A date picker for a stored YYYY-MM-DD birth date; an imported date in another form, such as 04/12/1990, stays text.
+    /// A date picker for a stored YYYY-MM-DD birth date; an imported date in another form, such as 04/12/1990, or a day that
+    /// does not exist, such as 2023-02-31, stays text.
     @ViewBuilder
     private func buildBirthDateRow() -> some View {
         let birthDate = bindIdentity(\.birthDate)
         if birthDate.wrappedValue.isEmpty {
             Button {
-                birthDate.wrappedValue = Self.birthDateFormatter.string(from: Date())
+                birthDate.wrappedValue = ItemIdentity.formatBirthDate(Date())
             } label: {
                 Label("Add birth date", systemImage: "calendar.badge.plus")
             }
             .accessibilityIdentifier("editor-identity-add-birth-date")
-        } else if let date = Self.birthDateFormatter.date(from: birthDate.wrappedValue) {
+        } else if let date = ItemIdentity.parseBirthDate(birthDate.wrappedValue) {
             HStack {
                 DatePicker(
                     "Birth date",
-                    selection: Binding(get: { date }, set: { birthDate.wrappedValue = Self.birthDateFormatter.string(from: $0) }),
+                    selection: Binding(get: { date }, set: { birthDate.wrappedValue = ItemIdentity.formatBirthDate($0) }),
                     in: ...Date(),
                     displayedComponents: .date
                 )

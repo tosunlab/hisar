@@ -96,13 +96,13 @@ describe("Creating an identity", () => {
     expect(store.editorMode).toBe("view");
   });
 
-  it("keeps an imported birth date that is not year first editable as text", () => {
-    store.selectedItem = createIdentityItem({ identity: { ...createIdentityItem().identity!, birthDate: "04/12/1990" } });
+  it.each(["04/12/1990", "2023-02-31"])("keeps an imported birth date %s that is no calendar day editable as text", (date) => {
+    store.selectedItem = createIdentityItem({ identity: { ...createIdentityItem().identity!, birthDate: date } });
     store.editorMode = "edit";
     const wrapper = mount(ItemEditor);
     const birthDate = wrapper.find('input[name="birthDate"]');
     expect(birthDate.attributes("type")).toBe("text");
-    expect((birthDate.element as HTMLInputElement).value).toBe("04/12/1990");
+    expect((birthDate.element as HTMLInputElement).value).toBe(date);
   });
 });
 

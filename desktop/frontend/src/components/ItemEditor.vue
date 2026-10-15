@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { api, createEmptyCard, createEmptyIdentity, createEmptyItem, type CardDescription, type ItemDetail } from "../api";
-import { allCardBrand, creditCardCategory, identityCategory, formatCardNumberInput, formatExpiryInput, formatInputAsTyped, getItemIcon, secureNoteCategory, sshKeyCategory } from "../util";
+import { allCardBrand, creditCardCategory, identityCategory, formatCardNumberInput, formatExpiryInput, formatInputAsTyped, getItemIcon, isCalendarDate, secureNoteCategory, sshKeyCategory } from "../util";
 import { cancelEditing, saveItem, store } from "../store";
 import AppIcon from "./AppIcon.vue";
 import ItemTile from "./ItemTile.vue";
@@ -42,8 +42,9 @@ const isSecureNote = draft.category === secureNoteCategory;
 const isCreditCard = draft.category === creditCardCategory;
 const isIdentity = draft.category === identityCategory;
 const isDocumentNumberVisible = ref(false);
-// A birth date imported in another form, such as 04/12/1990, stays editable as text; a date picker would show it empty.
-const isBirthDateText = Boolean(draft.identity?.birthDate) && !/^\d{4}-\d{2}-\d{2}$/.test(draft.identity?.birthDate ?? "");
+// A birth date imported in another form, such as 04/12/1990, or with no such day, such as 2023-02-31, stays editable as
+// text; a date picker would show it empty.
+const isBirthDateText = Boolean(draft.identity?.birthDate) && !isCalendarDate(draft.identity?.birthDate ?? "");
 const isCreating = store.editorMode.startsWith("create");
 const isCardSecretVisible = ref(false);
 const cardDescription = ref<CardDescription>({

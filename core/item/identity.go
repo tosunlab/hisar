@@ -1,11 +1,11 @@
 package item
 
 import (
-	"fmt"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // CategoryIdentity items keep a person's details in custom fields with the names below, as cards do, so an app that does
@@ -96,10 +96,13 @@ func NormalizeBirthDate(date string) string {
 	if match == nil {
 		return date
 	}
+	year, _ := strconv.Atoi(match[1])
 	month, _ := strconv.Atoi(match[2])
 	day, _ := strconv.Atoi(match[3])
-	if month < 1 || month > 12 || day < 1 || day > 31 {
+	// time.Date carries an impossible day, such as February 31, into the next month.
+	parsed := time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.UTC)
+	if parsed.Year() != year || int(parsed.Month()) != month || parsed.Day() != day {
 		return date
 	}
-	return fmt.Sprintf("%s-%02d-%02d", match[1], month, day)
+	return parsed.Format(time.DateOnly)
 }

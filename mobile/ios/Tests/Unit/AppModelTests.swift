@@ -347,6 +347,14 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(model.listAllItemReference().contains { ItemCategoryDestination.logins.includes($0.item) && $0.item.id == savedItem.id })
     }
 
+    func testBirthDatePickerTakesOnlyDaysThatExist() {
+        XCTAssertEqual(ItemIdentity.parseBirthDate("1990-04-12").map(ItemIdentity.formatBirthDate), "1990-04-12")
+        XCTAssertNotNil(ItemIdentity.parseBirthDate("2024-02-29"))
+        XCTAssertNil(ItemIdentity.parseBirthDate("2023-02-31"))
+        XCTAssertNil(ItemIdentity.parseBirthDate("2023-02-29"))
+        XCTAssertNil(ItemIdentity.parseBirthDate("04/12/1990"))
+    }
+
     func testIdentityDecodesFromTheBackendAndSummarizes() throws {
         let json = #"{"category":"identity","title":"Work","identity":{"firstName":"","lastName":"","email":"alice@example.com","nationalIdNumber":"N1"}}"#
         let item = try JSONDecoder().decode(ItemDetail.self, from: Data(json.utf8))
