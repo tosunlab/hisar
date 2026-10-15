@@ -206,7 +206,9 @@ async function submitItem(): Promise<void> {
         </label>
         <label>
           <span>Email</span>
-          <input v-model="draft.identity.email" name="email" type="email" autocomplete="off" />
+          <!-- Not type="email": the browser would refuse to save a value it does not take for one address, such as one saved
+               on the iPhone or imported. -->
+          <input v-model="draft.identity.email" name="email" inputmode="email" autocomplete="off" spellcheck="false" />
         </label>
         <label>
           <span>Phone</span>

@@ -104,6 +104,22 @@ describe("Creating an identity", () => {
     expect(birthDate.attributes("type")).toBe("text");
     expect((birthDate.element as HTMLInputElement).value).toBe(date);
   });
+
+  it("saves an identity whose email is not one address", async () => {
+    store.selectedItem = createIdentityItem({ identity: { ...createIdentityItem().identity!, email: "Alice / work" } });
+    store.editorMode = "edit";
+    api.saveItem.mockResolvedValue(createIdentityItem());
+    api.listAllItem.mockResolvedValue([]);
+    const wrapper = mount(ItemEditor);
+    await wrapper.find('input[name="lastName"]').setValue("Sample");
+    expect((wrapper.find("form").element as HTMLFormElement).checkValidity()).toBe(true);
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(api.saveItem).toHaveBeenCalledWith(
+      "personal",
+      expect.objectContaining({ identity: expect.objectContaining({ email: "Alice / work", lastName: "Sample" }) }),
+    );
+  });
 });
 
 describe("Viewing an identity", () => {
