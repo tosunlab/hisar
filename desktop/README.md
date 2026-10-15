@@ -105,7 +105,7 @@ Design: `docs/DESIGN.md` §4.5 (categories).
 
 - **+** → **Secure note** opens an editor with the title, a large notes field and custom fields; there is no username, password or website. The item list shows the note icon and "Secure note".
 - A note's view shows its notes first, with **Copy** and a secret reference (`hisar://<vault>/<note>/notes`), then its custom fields. The browser extension never offers notes for filling.
-- A login with nothing but notes, such as one imported before secure notes existed, shows **Convert to secure note** under its notes.
+- A login with nothing but notes and custom fields, such as one imported before secure notes existed, shows **Convert to secure note**.
 - Preview: `&item=recovery-codes` (a note), `&item=door-codes` (a login that can be converted), `&editor=secure-note`.
 
 ## Import from other password managers

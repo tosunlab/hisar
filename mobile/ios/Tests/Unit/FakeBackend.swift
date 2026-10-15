@@ -369,8 +369,8 @@ class FakeBackend: VaultBackend {
     func convertToSecureNote(vaultID: String, itemID: String) throws -> ItemDetail {
         record("convertToSecureNote")
         var item = try getItem(vaultID: vaultID, itemID: itemID)
-        guard item.isLogin, item.username.isEmpty, item.password.isEmpty, item.allURL.isEmpty, !item.notes.isEmpty else {
-            throw BackendError(message: "only a login with nothing but notes can become a secure note")
+        guard item.isLogin, item.username.isEmpty, item.password.isEmpty, item.allURL.isEmpty, !item.notes.isEmpty || !item.allField.isEmpty else {
+            throw BackendError(message: "only a login with nothing but notes and custom fields can become a secure note")
         }
         item.category = ItemDetail.categorySecureNote
         item.canConvertToSecureNote = false

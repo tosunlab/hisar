@@ -78,9 +78,9 @@ func HasLoginData(vaultItem *Item) bool {
 		vaultItem.Details.OneTimePassword != "" || vaultItem.Details.PrivateKey != "" || len(vaultItem.Details.Passkeys) > 0
 }
 
-// HasOnlyNotes reports whether a secure note can hold everything the item has: notes, and perhaps custom fields.
+// HasOnlyNotes reports whether a secure note can hold everything the item has: notes, custom fields or both.
 func HasOnlyNotes(vaultItem *Item) bool {
-	return vaultItem.Details.Notes != "" && !HasLoginData(vaultItem)
+	return !HasLoginData(vaultItem) && (vaultItem.Details.Notes != "" || len(vaultItem.Details.Fields) > 0)
 }
 
 func UpdatePasskeyOverview(vaultItem *Item) {

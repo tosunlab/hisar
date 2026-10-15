@@ -118,6 +118,8 @@ describe("Converting a login to a secure note", () => {
     expect(mountDetail(false).find('[data-testid="convert-to-secure-note"]').exists()).toBe(false);
     store.selectedItem = createItem({ notes: "work account" });
     expect(mountDetail().find('[data-testid="convert-to-secure-note"]').exists()).toBe(false);
+    store.selectedItem = createItem({ username: "", urls: [], fields: [{ name: "PIN", value: "0000", concealed: true }], canConvertToSecureNote: true });
+    expect(mountDetail().find('[data-testid="convert-to-secure-note"]').exists()).toBe(true);
   });
 
   it("converts the item and shows it as a note", async () => {

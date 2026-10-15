@@ -156,7 +156,7 @@ export interface ItemDetail {
     "passkeys": ItemPasskey[] | null;
 
     /**
-     * CanConvertToSecureNote: a login with only notes, which ConvertToSecureNote turns into a secure note.
+     * CanConvertToSecureNote: a login with only notes and custom fields, which ConvertToSecureNote turns into a secure note.
      */
     "canConvertToSecureNote": boolean;
 }

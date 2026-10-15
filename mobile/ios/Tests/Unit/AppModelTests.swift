@@ -309,6 +309,15 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.noticeMessage, "Converted to a secure note.")
     }
 
+    func testConvertToSecureNoteTakesALoginWithOnlyCustomFields() async {
+        let model = await createUnlockedModel()
+        let draft = ItemDetail(title: "Router", allField: [ItemField(name: "PIN", value: "0000", concealed: true)], canConvertToSecureNote: true)
+        guard let login = await model.saveItem(vaultID: "personal", item: draft) else { return XCTFail("login not saved") }
+        let converted = await model.convertToSecureNote(vaultID: "personal", itemID: login.id)
+        XCTAssertEqual(converted?.isSecureNote, true)
+        XCTAssertEqual(converted?.allField.count, 1)
+    }
+
     func testConvertToSecureNoteRefusesALoginWithAPassword() async {
         let model = await createUnlockedModel()
         let converted = await model.convertToSecureNote(vaultID: "personal", itemID: "github")

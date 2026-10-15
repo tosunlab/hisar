@@ -77,6 +77,17 @@ func TestConvertToSecureNote(t *testing.T) {
 		t.Errorf("stored category = %q", stored.Overview.Category)
 	}
 
+	fieldsOnly, err := service.SaveItem(vaultID, ItemDetail{Title: "Router", Fields: []ItemField{{Name: "PIN", Value: "0000", Concealed: true}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !fieldsOnly.CanConvertToSecureNote {
+		t.Error("a login with only custom fields cannot be converted")
+	}
+	if converted, err := service.ConvertToSecureNote(vaultID, fieldsOnly.ID); err != nil || converted.Category != item.CategorySecureNote || converted.Notes != "" || len(converted.Fields) != 1 {
+		t.Errorf("converted fields-only login = %+v, %v", converted, err)
+	}
+
 	login, err := service.SaveItem(vaultID, ItemDetail{Title: "GitHub", Password: "pw", Notes: "work"})
 	if err != nil {
 		t.Fatal(err)

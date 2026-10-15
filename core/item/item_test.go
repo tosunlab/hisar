@@ -138,7 +138,8 @@ func TestHasOnlyNotes(t *testing.T) {
 	}{
 		{"notes", Item{Details: Details{Notes: "door code 1234"}}, true},
 		{"notes and custom fields", Item{Details: Details{Notes: "router", Fields: []Field{{Name: "PIN", Value: "0000", Concealed: true}}}}, true},
-		{"custom fields without notes", Item{Details: Details{Fields: []Field{{Name: "PIN", Value: "0000"}}}}, false},
+		{"custom fields without notes", Item{Details: Details{Fields: []Field{{Name: "PIN", Value: "0000"}}}}, true},
+		{"a password and custom fields", Item{Details: Details{Password: "x", Fields: []Field{{Name: "PIN", Value: "0000"}}}}, false},
 		{"empty", Item{}, false},
 		{"notes and a username", Item{Overview: Overview{Username: "alice"}, Details: Details{Notes: "x"}}, false},
 		{"notes and a password", Item{Details: Details{Notes: "x", Password: "secret"}}, false},

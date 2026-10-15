@@ -61,7 +61,8 @@ export function ContinueImport(): $CancellablePromise<$models.ImportProgress> {
 }
 
 /**
- * ConvertToSecureNote turns a login with only notes, such as one imported before Hisar had secure notes, into a secure note.
+ * ConvertToSecureNote turns a login with only notes and custom fields, such as one imported before Hisar had secure notes,
+ * into a secure note.
  */
 export function ConvertToSecureNote(vaultID: string, itemID: string): $CancellablePromise<$models.ItemDetail> {
     return $Call.ByID(2537239668, vaultID, itemID);

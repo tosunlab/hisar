@@ -163,21 +163,21 @@ struct ItemDetailView: View {
                                 Label("Copy Secret Reference", systemImage: "terminal")
                             }
                         }
-                    if isWritable && item.canConvertToSecureNote {
-                        Button {
-                            Task { await convertToSecureNote() }
-                        } label: {
-                            Label("Convert to secure note", systemImage: "note.text")
-                        }
-                        .disabled(model.isBusy)
-                        .accessibilityIdentifier("convert-to-secure-note")
-                    }
                 } header: {
                     Text("Notes")
-                } footer: {
-                    if isWritable && item.canConvertToSecureNote {
-                        Text("This login has nothing but notes. As a secure note, it opens straight to them.")
+                }
+            }
+            if isWritable && item.canConvertToSecureNote {
+                Section {
+                    Button {
+                        Task { await convertToSecureNote() }
+                    } label: {
+                        Label("Convert to secure note", systemImage: "note.text")
                     }
+                    .disabled(model.isBusy)
+                    .accessibilityIdentifier("convert-to-secure-note")
+                } footer: {
+                    Text("This login has no username, password or website. As a secure note, it opens straight to its notes and fields.")
                 }
             }
             if let referenceField = item.isSSHKey ? "public key" : (item.isSecureNote ? (item.notes.isEmpty ? nil : "notes") : (item.password.isEmpty ? nil : "password")) {

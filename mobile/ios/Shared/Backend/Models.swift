@@ -159,7 +159,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     var oneTimePassword: String
     var hasOneTimePassword: Bool
     var allPasskey: [ItemPasskey]
-    /// A login with nothing but notes, which the backend can turn into a secure note.
+    /// A login with nothing but notes and custom fields, which the backend can turn into a secure note.
     var canConvertToSecureNote: Bool
 
     enum CodingKeys: String, CodingKey {

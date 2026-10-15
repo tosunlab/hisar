@@ -229,11 +229,12 @@ function maskSecret(secret: string): string {
     <section v-if="store.selectedItem.notes && !isSecureNote" class="card notes-card">
       <p class="section-label">Notes</p>
       <p class="notes">{{ store.selectedItem.notes }}</p>
-      <p v-if="canEdit && store.selectedItem.canConvertToSecureNote" class="convert-note muted">
-        This login has nothing but notes.
-        <button class="ghost" data-testid="convert-to-secure-note" @click="convertToSecureNote"><AppIcon name="note" /> Convert to secure note</button>
-      </p>
     </section>
+
+    <p v-if="canEdit && store.selectedItem.canConvertToSecureNote" class="convert-note muted" data-testid="convert-note">
+      This login has no username, password or website.
+      <button class="ghost" data-testid="convert-to-secure-note" @click="convertToSecureNote"><AppIcon name="note" /> Convert to secure note</button>
+    </p>
 
     <section v-if="allItemShareLink.length > 0" class="card share-links-card" data-testid="item-share-links">
       <p class="section-label">Shared links</p>
@@ -412,9 +413,7 @@ h2 {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 12px 0 0;
-  padding-top: 10px;
-  border-top: 1px solid var(--color-border);
+  margin: 12px 2px 0;
   font-size: 12px;
 }
 

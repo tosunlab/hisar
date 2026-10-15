@@ -155,7 +155,7 @@ type ItemDetail struct {
 	HasOneTimePassword bool   `json:"hasOneTimePassword"`
 
 	Passkeys []ItemPasskey `json:"passkeys"`
-	// CanConvertToSecureNote: a login with only notes, which ConvertToSecureNote turns into a secure note.
+	// CanConvertToSecureNote: a login with only notes and custom fields, which ConvertToSecureNote turns into a secure note.
 	CanConvertToSecureNote bool `json:"canConvertToSecureNote"`
 }
 

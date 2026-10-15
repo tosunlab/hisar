@@ -215,7 +215,8 @@ func keepSecureNoteFields(vaultItem *item.Item) {
 	vaultItem.Details.Password, vaultItem.Details.OneTimePassword = "", ""
 }
 
-// ConvertToSecureNote turns a login with only notes, such as one imported before Hisar had secure notes, into a secure note.
+// ConvertToSecureNote turns a login with only notes and custom fields, such as one imported before Hisar had secure notes,
+// into a secure note.
 func (s *Service) ConvertToSecureNote(vaultID, itemID string) (ItemDetail, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -227,7 +228,7 @@ func (s *Service) ConvertToSecureNote(vaultID, itemID string) (ItemDetail, error
 		return ItemDetail{}, err
 	}
 	if !item.IsLogin(cachedItem) || !item.HasOnlyNotes(cachedItem) {
-		return ItemDetail{}, errors.New("only a login with nothing but notes can become a secure note")
+		return ItemDetail{}, errors.New("only a login with nothing but notes and custom fields can become a secure note")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
