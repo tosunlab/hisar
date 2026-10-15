@@ -9,7 +9,7 @@ commands:
   vaults                                                 list vaults
   vault-create       <name>                              create a shared vault
   vault              rename|delete|leave|create <vault>  rename, delete or leave a vault, or create one (rename <vault> [name] | delete <vault> [--move-to v | --delete-items --confirm <name>] [-y] | leave <vault> [-y] | create <name>)
-  ls                 [-v vault]                          list items
+  ls                 [-v vault] [--tag tag]              list items, or only those with a tag
   get                <item> [-f field] [-v vault]        show an item, or one field of it (e.g. -f password, -f code)
   read               <hisar://vault/item/field> [--no-newline] print one secret, for scripts
   run                [--env-file f]... [--no-masking] -- <cmd> run a command with the secrets its hisar:// references name, masked in its output

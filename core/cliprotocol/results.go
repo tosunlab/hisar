@@ -60,6 +60,7 @@ type Item struct {
 	Title              string    `json:"title"`
 	Username           string    `json:"username"`
 	URLs               []string  `json:"urls"`
+	Tags               []string  `json:"tags,omitempty"`
 	HasOneTimePassword bool      `json:"hasOneTimePassword"`
 	Password           string    `json:"password,omitempty"`
 	Notes              string    `json:"notes,omitempty"`
@@ -77,16 +78,18 @@ type ItemResult struct {
 	Item Item `json:"item"`
 }
 
-// ItemChange holds what the CLI edits; the app keeps every other part of an existing item, and the fields when Fields is nil.
+// ItemChange holds what the CLI edits; the app keeps every other part of an existing item, the fields when Fields is nil
+// and the tags when Tags is nil.
 type ItemChange struct {
-	ID       string   `json:"id,omitempty"`
-	Revision string   `json:"revision,omitempty"`
-	Title    string   `json:"title"`
-	Username string   `json:"username"`
-	URLs     []string `json:"urls"`
-	Password string   `json:"password"`
-	Notes    string   `json:"notes"`
-	Fields   *[]Field `json:"fields,omitempty"`
+	ID       string    `json:"id,omitempty"`
+	Revision string    `json:"revision,omitempty"`
+	Title    string    `json:"title"`
+	Username string    `json:"username"`
+	URLs     []string  `json:"urls"`
+	Tags     *[]string `json:"tags,omitempty"`
+	Password string    `json:"password"`
+	Notes    string    `json:"notes"`
+	Fields   *[]Field  `json:"fields,omitempty"`
 	// Category is the type of a new item (login or secure-note); an existing item keeps its own. An app that does not
 	// announce FeatureSecureNotes ignores it, so hisar checks the feature before sending a secure note.
 	Category string `json:"category,omitempty"`

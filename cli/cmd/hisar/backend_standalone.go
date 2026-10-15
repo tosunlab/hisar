@@ -323,6 +323,9 @@ func (access *standaloneBackend) account(ctx context.Context) (cliprotocol.Accou
 // checkNewItemCategory: a standalone hisar saves the whole item itself, category included.
 func (access *standaloneBackend) checkNewItemCategory(string) error { return nil }
 
+// checkTags: a standalone hisar reads the whole item, tags included.
+func (access *standaloneBackend) checkTags() error { return nil }
+
 func (access *standaloneBackend) savePromptedItem(ctx context.Context, vaultID string, vaultItem *item.Item) error {
 	err := access.saveItem(ctx, vaultID, vaultItem)
 	if errors.Is(err, session.ErrConflict) {

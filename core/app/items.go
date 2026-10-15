@@ -95,6 +95,7 @@ func convertToItemDetail(vaultItem *item.Item, now time.Time) ItemDetail {
 		Title:       vaultItem.Overview.Title,
 		Username:    vaultItem.Overview.Username,
 		URLs:        append([]string{}, vaultItem.Overview.URLs...),
+		Tags:        append([]string{}, vaultItem.Overview.Tags...),
 		Password:    vaultItem.Details.Password,
 		Notes:       vaultItem.Details.Notes,
 		Fields:      []ItemField{},
@@ -156,7 +157,7 @@ func convertFromItemDetail(detail ItemDetail) item.Item {
 	vaultItem := item.Item{
 		ID:       detail.ID,
 		Revision: detail.Revision,
-		Overview: item.Overview{Title: strings.TrimSpace(detail.Title), Username: strings.TrimSpace(detail.Username)},
+		Overview: item.Overview{Title: strings.TrimSpace(detail.Title), Username: strings.TrimSpace(detail.Username), Tags: item.NormalizeTags(detail.Tags)},
 		Details:  item.Details{Password: detail.Password, Notes: detail.Notes, OneTimePassword: detail.OneTimePassword},
 	}
 	for _, link := range detail.URLs {
@@ -208,8 +209,8 @@ func (s *Service) SaveItem(vaultID string, detail ItemDetail) (ItemDetail, error
 	return convertToItemDetail(&vaultItem, s.config.Now()), nil
 }
 
-// buildSavedItem keeps the category and passkeys of an existing item; an ssh-key item only takes the title and notes from
-// the editor. A secure note or a card keeps no login data, and a card's values become its named fields. Login data an
+// buildSavedItem keeps the category and passkeys of an existing item; an ssh-key item only takes the title, tags and notes
+// from the editor. A secure note or a card keeps no login data, and a card's values become its named fields. Login data an
 // existing one already has, which its editor does not show, is taken from the stored item, not from detail.
 func (s *Service) buildSavedItem(vaultID string, detail ItemDetail) (item.Item, error) {
 	var cachedItem *item.Item
@@ -247,6 +248,7 @@ func (s *Service) buildSavedItem(vaultID string, detail ItemDetail) (item.Item, 
 	vaultItem := *cachedItem
 	vaultItem.Revision = detail.Revision
 	vaultItem.Overview.Title = strings.TrimSpace(detail.Title)
+	vaultItem.Overview.Tags = item.NormalizeTags(detail.Tags)
 	vaultItem.Details.Notes = detail.Notes
 	vaultItem.Details.OneTimePassword = detail.OneTimePassword
 	return vaultItem, nil

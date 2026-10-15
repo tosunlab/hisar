@@ -256,16 +256,7 @@ func finishItem(vaultItem *item.Item) bool {
 	if len(urLs) > 0 {
 		vaultItem.Overview.URLs = urLs
 	}
-	tags := []string{}
-	for _, tag := range vaultItem.Overview.Tags {
-		if tag = strings.TrimSpace(tag); tag != "" && !slices.Contains(tags, tag) {
-			tags = append(tags, tag)
-		}
-	}
-	vaultItem.Overview.Tags = nil
-	if len(tags) > 0 {
-		vaultItem.Overview.Tags = tags
-	}
+	vaultItem.Overview.Tags = item.NormalizeTags(vaultItem.Overview.Tags)
 	fields := []item.Field{}
 	for _, field := range vaultItem.Details.Fields {
 		field.Name = strings.TrimSpace(field.Name)

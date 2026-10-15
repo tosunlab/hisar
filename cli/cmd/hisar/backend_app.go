@@ -100,6 +100,14 @@ func (access appBackend) checkNewItemCategory(category string) error {
 	return nil
 }
 
+// checkTags: an older app leaves tags out of items.list, so filtering by one needs an app that announces the feature.
+func (access appBackend) checkTags() error {
+	if !access.client.hello.HasFeature(cliprotocol.FeatureTags) {
+		return errors.New("this version of the Hisar app does not list tags; update the Hisar app, or run hisar with --standalone")
+	}
+	return nil
+}
+
 func (access appBackend) savePromptedItem(ctx context.Context, vaultID string, vaultItem *item.Item) error {
 	if vaultItem.ID == "" {
 		if err := access.checkNewItemCategory(vaultItem.Overview.Category); err != nil {

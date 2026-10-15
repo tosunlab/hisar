@@ -96,6 +96,26 @@ struct ItemDetailView: View {
                 }
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
+                if !item.allTag.isEmpty {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 8) {
+                            ForEach(item.allTag, id: \.self) { tag in
+                                Label(tag, systemImage: "tag")
+                                    .font(.caption.weight(.medium))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(.fill.tertiary, in: Capsule())
+                                    .accessibilityIdentifier("item-tag-\(tag)")
+                            }
+                        }
+                        .padding(.vertical, 2)
+                    }
+                    .foregroundStyle(.themeSecondary)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
+                    .accessibilityElement(children: .contain)
+                    .accessibilityIdentifier("item-tags")
+                }
             }
             if item.isSSHKey {
                 buildSSHKeySection(item: item)

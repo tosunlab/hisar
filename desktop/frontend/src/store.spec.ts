@@ -124,6 +124,41 @@ describe("store", () => {
     expect(storeModule.filterAllItem(allItem, "bank.example").map((vaultItem) => vaultItem.id)).toEqual(["2"]);
   });
 
+  it("filters items by tag, searches tags and lists the tags with their counts", () => {
+    const allItem = [
+      createItem({ id: "1", title: "GitHub", username: "octocat", tags: ["work", "dev"] }),
+      createItem({ id: "2", title: "Bank", tags: ["Finance"] }),
+      createItem({ id: "3", title: "Email", username: "alice", tags: ["work"] }),
+      createItem({ id: "4", title: "Untagged" }),
+    ];
+    expect(storeModule.filterAllItem(allItem, "", "work").map((vaultItem) => vaultItem.id)).toEqual(["1", "3"]);
+    expect(storeModule.filterAllItem(allItem, "alice", "work").map((vaultItem) => vaultItem.id)).toEqual(["3"]);
+    expect(storeModule.filterAllItem(allItem, "fin").map((vaultItem) => vaultItem.id)).toEqual(["2"]);
+    expect(storeModule.listAllTag(allItem)).toEqual([
+      { name: "dev", itemCount: 1 },
+      { name: "Finance", itemCount: 1 },
+      { name: "work", itemCount: 2 },
+    ]);
+    storeModule.selectTag("work");
+    expect(store.selectedTag).toBe("work");
+    storeModule.selectTag("work");
+    expect(store.selectedTag).toBe("");
+  });
+
+  it("clears the tag filter when a vault is selected or the last tagged item is deleted", async () => {
+    store.selectedVaultID = "personal";
+    store.allItem = [createItem({ id: "1", tags: ["work"] }), createItem({ id: "2", title: "Bank" })];
+    store.selectedTag = "work";
+    api.deleteItem.mockResolvedValue(undefined);
+    await storeModule.deleteItem("1");
+    expect(store.selectedTag).toBe("");
+
+    store.selectedTag = "work";
+    api.listAllItem.mockResolvedValue([]);
+    await storeModule.selectVault("family");
+    expect(store.selectedTag).toBe("");
+  });
+
   it("saves an item, reloads the list and shows it", async () => {
     store.selectedVaultID = "personal";
     store.editorMode = "create";

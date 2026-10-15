@@ -14,8 +14,14 @@ import (
 
 func runListItems(ctx context.Context, access backend, flags *flag.FlagSet, args []string) error {
 	vaultName := addVaultFlag(flags)
+	tag := flags.String("tag", "", "only items with this tag (case does not matter)")
 	if _, err := parse(flags, args); err != nil {
 		return err
+	}
+	if *tag != "" {
+		if err := access.checkTags(); err != nil {
+			return err
+		}
 	}
 	vault, err := findVaultByNameOrID(ctx, access, *vaultName)
 	if err != nil {
@@ -26,9 +32,12 @@ func runListItems(ctx context.Context, access backend, flags *flag.FlagSet, args
 		return err
 	}
 	writer := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
-	fmt.Fprintln(writer, "TITLE\tUSERNAME\tURL\tTYPE\tID")
+	fmt.Fprintln(writer, "TITLE\tUSERNAME\tURL\tTYPE\tTAGS\tID")
 	for _, vaultItem := range items {
-		fmt.Fprintf(writer, "%s\t%s\t%s\t%s\t%s\n", vaultItem.Overview.Title, vaultItem.Overview.Username, strings.Join(vaultItem.Overview.URLs, " "), vaultItem.Category(), vaultItem.ID)
+		if *tag != "" && !vaultItem.HasTag(*tag) {
+			continue
+		}
+		fmt.Fprintf(writer, "%s\t%s\t%s\t%s\t%s\t%s\n", vaultItem.Overview.Title, vaultItem.Overview.Username, strings.Join(vaultItem.Overview.URLs, " "), vaultItem.Category(), strings.Join(vaultItem.Overview.Tags, ","), vaultItem.ID)
 	}
 	return writer.Flush()
 }

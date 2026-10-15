@@ -8,6 +8,7 @@ import {
   hasShareableField,
   openItemShareLinkDialog,
   openWebsite,
+  selectTag,
   startEditingItem,
   store,
 } from "../store";
@@ -82,6 +83,18 @@ function maskSecret(secret: string): string {
           <span v-else-if="isSecureNote" class="muted">Secure note</span>
           <span v-else-if="isCreditCard" class="muted" data-testid="card-summary">{{ formatCardSummary(store.selectedItem.card) }}</span>
           <span v-else-if="store.selectedItem.urls[0]" class="muted">{{ getDomain(store.selectedItem.urls[0]) }}</span>
+        </div>
+        <div v-if="(store.selectedItem.tags ?? []).length > 0" class="tags" data-testid="item-tags">
+          <button
+            v-for="tag in store.selectedItem.tags ?? []"
+            :key="tag"
+            class="tag-chip"
+            :class="{ selected: tag === store.selectedTag }"
+            :title="tag === store.selectedTag ? 'Show all items' : `Show items tagged ${tag}`"
+            @click="selectTag(tag)"
+          >
+            <AppIcon name="tag" :size="11" /> {{ tag }}
+          </button>
         </div>
       </div>
       <div v-if="canEdit || isShareable" class="header-actions">
@@ -349,6 +362,27 @@ h2 {
   border: 1px solid var(--color-border-strong);
   border-radius: 10px;
   color: var(--color-text-secondary);
+}
+
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.tag-chip {
+  gap: 4px;
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: var(--color-surface);
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.tag-chip.selected {
+  background: var(--color-selected);
+  color: var(--color-text);
 }
 
 .header-actions {

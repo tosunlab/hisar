@@ -49,6 +49,7 @@ function createPreviewItem(id: string, title: string, username: string, link: st
     title,
     username,
     urls: link ? [link] : [],
+    tags: [],
     password,
     notes: "",
     fields: [],

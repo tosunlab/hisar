@@ -74,6 +74,8 @@ export const store = reactive({
   selectedItem: null as ItemDetail | null,
   editorMode: "view" as EditorMode,
   searchQuery: "",
+  // selectedTag narrows the list to the items carrying it; "" shows every item.
+  selectedTag: "",
   pendingSecretKey: "",
   isTouchIDOfferShown: false,
   pendingInvite: "",
@@ -160,6 +162,7 @@ function clearAllVaultData(): void {
   store.selectedItem = null;
   store.editorMode = "view";
   store.searchQuery = "";
+  store.selectedTag = "";
 }
 
 async function applyStatus(status: Status): Promise<void> {
@@ -585,6 +588,7 @@ export async function selectVault(vaultID: string): Promise<void> {
   store.selectedItem = null;
   store.editorMode = "view";
   store.searchQuery = "";
+  store.selectedTag = "";
   const allItem = await runAction(() => api.listAllItem(vaultID));
   store.allItem = allItem ? sortAllItem(allItem) : [];
   updateSelectedVaultItemCount();
@@ -604,14 +608,40 @@ export function sortAllItem(allItem: ItemDetail[]): ItemDetail[] {
   return [...allItem].sort((first, second) => first.title.localeCompare(second.title, undefined, { sensitivity: "base" }));
 }
 
-export function filterAllItem(allItem: ItemDetail[], query: string): ItemDetail[] {
+// filterAllItem keeps the items matching the search in their title, username, websites or tags, and carrying tag when
+// one is selected.
+export function filterAllItem(allItem: ItemDetail[], query: string, tag = ""): ItemDetail[] {
   const normalizedQuery = query.trim().toLowerCase();
-  if (!normalizedQuery) {
-    return allItem;
+  return allItem.filter((vaultItem) => {
+    const allTag = vaultItem.tags ?? [];
+    return (
+      (tag === "" || allTag.includes(tag)) &&
+      (normalizedQuery === "" || [vaultItem.title, vaultItem.username, ...vaultItem.urls, ...allTag].some((text) => text.toLowerCase().includes(normalizedQuery)))
+    );
+  });
+}
+
+export interface TagSummary {
+  name: string;
+  itemCount: number;
+}
+
+// listAllTag returns every tag of the items with how many carry it, sorted by name.
+export function listAllTag(allItem: ItemDetail[]): TagSummary[] {
+  const countByTag = new Map<string, number>();
+  for (const vaultItem of allItem) {
+    for (const tag of vaultItem.tags ?? []) {
+      countByTag.set(tag, (countByTag.get(tag) ?? 0) + 1);
+    }
   }
-  return allItem.filter((vaultItem) =>
-    [vaultItem.title, vaultItem.username, ...vaultItem.urls].some((text) => text.toLowerCase().includes(normalizedQuery)),
-  );
+  return [...countByTag]
+    .map(([name, itemCount]) => ({ name, itemCount }))
+    .sort((first, second) => first.name.localeCompare(second.name, undefined, { sensitivity: "base" }));
+}
+
+// selectTag filters the list by the tag, and clears the filter when the tag is already selected.
+export function selectTag(tag: string): void {
+  store.selectedTag = store.selectedTag === tag ? "" : tag;
 }
 
 function updateSelectedVaultItemCount(): void {
@@ -698,11 +728,20 @@ export async function saveItem(detail: ItemDetail): Promise<boolean> {
   if (allItem) {
     store.allItem = sortAllItem(allItem);
     updateSelectedVaultItemCount();
+    dropMissingTagFilter();
   }
   store.selectedItem = saved;
   store.editorMode = "view";
   showNotice("Saved");
   return true;
+}
+
+// dropMissingTagFilter clears the tag filter once no item carries the tag any more, so the list never stays empty behind
+// a tag the sidebar no longer shows.
+function dropMissingTagFilter(): void {
+  if (store.selectedTag !== "" && !store.allItem.some((vaultItem) => (vaultItem.tags ?? []).includes(store.selectedTag))) {
+    store.selectedTag = "";
+  }
 }
 
 export async function convertToSecureNote(): Promise<void> {
@@ -728,6 +767,7 @@ export async function deleteItem(itemID: string): Promise<void> {
   if (deleted) {
     store.allItem = store.allItem.filter((vaultItem) => vaultItem.id !== itemID);
     updateSelectedVaultItemCount();
+    dropMissingTagFilter();
     store.selectedItem = null;
     store.editorMode = "view";
     showNotice("Deleted");

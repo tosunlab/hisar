@@ -170,6 +170,7 @@ export interface ItemDetail {
     "title": string;
     "username": string;
     "urls": string[] | null;
+    "tags": string[] | null;
     "password": string;
     "notes": string;
     "fields": ItemField[] | null;

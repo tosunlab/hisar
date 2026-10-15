@@ -23,11 +23,13 @@ const (
 	FeatureSecureNotes = "secure-notes"
 	// FeatureCreditCards: items.save creates credit-card items from their named fields.
 	FeatureCreditCards = "credit-cards"
+	// FeatureTags: items.list and items.get return each item's tags, and items.save takes ItemChange.Tags.
+	FeatureTags = "tags"
 )
 
 // ListFeatures returns the features this build of the app announces in hello.
 func ListFeatures() []string {
-	return []string{FeatureSecureNotes, FeatureCreditCards}
+	return []string{FeatureSecureNotes, FeatureCreditCards, FeatureTags}
 }
 
 // GetCategoryFeature returns the feature an app must announce before items.save may create an item of category, or ""

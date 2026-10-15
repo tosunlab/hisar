@@ -120,6 +120,7 @@ func isAgentSearchMatch(vaultName string, vaultItem *item.Item, query string) bo
 		return true
 	}
 	texts := append([]string{vaultName, vaultItem.Overview.Title, vaultItem.Overview.Username}, vaultItem.Overview.URLs...)
+	texts = append(texts, vaultItem.Overview.Tags...)
 	return slices.ContainsFunc(texts, func(text string) bool { return strings.Contains(strings.ToLower(text), query) })
 }
 
@@ -177,7 +178,7 @@ func (s *Service) searchAgentItems(query, vaultQuery string) (cliprotocol.AgentI
 func convertToAgentItem(vault *session.Vault, vaultItem *item.Item, isVaultNameShared, isItemTitleShared bool) cliprotocol.AgentItem {
 	agentItem := cliprotocol.AgentItem{
 		ID: vaultItem.ID, VaultID: vault.ID, VaultName: vault.Name, Title: vaultItem.Overview.Title, Type: vaultItem.Category(),
-		Username: vaultItem.Overview.Username, URLs: append([]string{}, vaultItem.Overview.URLs...),
+		Username: vaultItem.Overview.Username, URLs: append([]string{}, vaultItem.Overview.URLs...), Tags: append([]string{}, vaultItem.Overview.Tags...),
 		HasNotes: strings.TrimSpace(vaultItem.Details.Notes) != "", HasOneTimePassword: vaultItem.Details.OneTimePassword != "",
 		Fields: []cliprotocol.AgentField{},
 	}

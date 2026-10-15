@@ -9,6 +9,10 @@ struct ItemDestination: Hashable {
     var itemID: String
 }
 
+struct TagDestination: Hashable {
+    var tag: String
+}
+
 enum ItemCategoryDestination: String, Hashable, CaseIterable {
     case logins
     case secureNotes
@@ -88,6 +92,21 @@ struct VaultsView: View {
                             .foregroundStyle(.themeSecondary)
                     }
                 }
+                let allTag = VaultLogic.listAllTag(model.listAllItemReference())
+                if !allTag.isEmpty {
+                    Section {
+                        ForEach(allTag) { tag in
+                            NavigationLink(value: TagDestination(tag: tag.name)) {
+                                Label(tag.name, systemImage: "tag")
+                                    .badge(tag.itemCount)
+                            }
+                            .accessibilityIdentifier("tag-\(tag.name)")
+                        }
+                    } header: {
+                        Text("Tags")
+                            .foregroundStyle(.themeSecondary)
+                    }
+                }
             }
             .applyThemedListStyle()
             .refreshable { await model.refreshAll() }
@@ -142,6 +161,9 @@ struct VaultsView: View {
             }
             .navigationDestination(for: ItemCategoryDestination.self) { category in
                 ItemCategoryListView(category: category)
+            }
+            .navigationDestination(for: TagDestination.self) { destination in
+                ItemTagListView(tag: destination.tag)
             }
             .navigationDestination(for: ItemDestination.self) { destination in
                 ItemDetailView(vaultID: destination.vaultID, itemID: destination.itemID)

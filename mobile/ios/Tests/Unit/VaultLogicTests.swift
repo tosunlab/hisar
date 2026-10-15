@@ -19,6 +19,35 @@ final class VaultLogicTests: XCTestCase {
         XCTAssertTrue(VaultLogic.filterAllItem(allItem, searchText: "nothing").isEmpty)
     }
 
+    func testTagsAreListedWithCountsAndFilterItems() {
+        var gitHub = makeReference("GitHub", username: "alice")
+        gitHub.item.allTag = ["work", "dev"]
+        var bank = makeReference("Bank", vaultName: "Family")
+        bank.item.allTag = ["Finance"]
+        var email = makeReference("Email")
+        email.item.allTag = ["work"]
+        let allItem = [gitHub, bank, email, makeReference("Untagged")]
+        XCTAssertEqual(VaultLogic.listAllTag(allItem), [TagSummary(name: "dev", itemCount: 1), TagSummary(name: "Finance", itemCount: 1), TagSummary(name: "work", itemCount: 2)])
+        XCTAssertEqual(VaultLogic.filterAllItem(allItem, tag: "work").map(\.item.title), ["GitHub", "Email"])
+        XCTAssertTrue(VaultLogic.filterAllItem(allItem, tag: "nothing").isEmpty)
+        XCTAssertEqual(VaultLogic.filterAllItem(allItem, searchText: "fin").map(\.item.title), ["Bank"])
+        XCTAssertTrue(VaultLogic.listAllTag([makeReference("Untagged")]).isEmpty)
+    }
+
+    func testSplitTagsDropsBlanksAndRepeats() {
+        XCTAssertEqual(ItemDetail.splitTags(" work, dev ,, work ,"), ["work", "dev"])
+        XCTAssertEqual(ItemDetail.splitTags("   "), [])
+    }
+
+    func testItemDetailDecodesTagsAndDefaultsToNone() throws {
+        let tagged = try JSONDecoder().decode(ItemDetail.self, from: Data(#"{"id":"1","title":"GitHub","tags":["work"]}"#.utf8))
+        XCTAssertEqual(tagged.allTag, ["work"])
+        let untagged = try JSONDecoder().decode(ItemDetail.self, from: Data(#"{"id":"2","title":"Bank"}"#.utf8))
+        XCTAssertEqual(untagged.allTag, [])
+        let encoded = try JSONSerialization.jsonObject(with: JSONEncoder().encode(tagged)) as? [String: Any]
+        XCTAssertEqual(encoded?["tags"] as? [String], ["work"])
+    }
+
     func testSortByTitleThenUsername() {
         let allItem = [makeReference("b"), makeReference("A", username: "zed"), makeReference("a", username: "amy")]
         XCTAssertEqual(VaultLogic.sortAllItem(allItem).map(\.item.username), ["amy", "zed", ""])

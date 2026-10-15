@@ -78,14 +78,36 @@ struct CredentialIdentityRecord: Hashable {
     var userHandle = Data()
 }
 
+struct TagSummary: Hashable, Identifiable {
+    var name: String
+    var itemCount: Int
+
+    var id: String { name }
+}
+
 enum VaultLogic {
     static func filterAllItem(_ allItem: [VaultItemReference], searchText: String) -> [VaultItemReference] {
         let allWord = searchText.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
         guard !allWord.isEmpty else { return allItem }
         return allItem.filter { reference in
-            let searchable = ([reference.item.title, reference.item.username, reference.vaultName] + reference.item.allURL).joined(separator: " ").lowercased()
+            let searchable = ([reference.item.title, reference.item.username, reference.vaultName] + reference.item.allURL + reference.item.allTag).joined(separator: " ").lowercased()
             return allWord.allSatisfy { searchable.contains($0) }
         }
+    }
+
+    static func filterAllItem(_ allItem: [VaultItemReference], tag: String) -> [VaultItemReference] {
+        allItem.filter { $0.item.allTag.contains(tag) }
+    }
+
+    /// Every tag of the items with how many carry it, sorted by name.
+    static func listAllTag(_ allItem: [VaultItemReference]) -> [TagSummary] {
+        var countByTag: [String: Int] = [:]
+        for reference in allItem {
+            for tag in reference.item.allTag {
+                countByTag[tag, default: 0] += 1
+            }
+        }
+        return countByTag.map { TagSummary(name: $0.key, itemCount: $0.value) }.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
     static func sortAllItem(_ allItem: [VaultItemReference]) -> [VaultItemReference] {
