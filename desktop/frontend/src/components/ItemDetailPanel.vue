@@ -15,7 +15,7 @@ import {
   cardFieldName,
   creditCardCategory,
   formatCardSummary,
-  formatFullName,
+  formatIdentitySummary,
   formatKeyType,
   getDomain,
   getItemIcon,
@@ -112,7 +112,7 @@ function maskSecret(secret: string): string {
           <span v-if="isSSHKey" class="muted">SSH key</span>
           <span v-else-if="isSecureNote" class="muted">Secure note</span>
           <span v-else-if="isCreditCard" class="muted" data-testid="card-summary">{{ formatCardSummary(store.selectedItem.card) }}</span>
-          <span v-else-if="isIdentity" class="muted" data-testid="identity-summary">{{ formatFullName(store.selectedItem.identity) || "Identity" }}</span>
+          <span v-else-if="isIdentity" class="muted" data-testid="identity-summary">{{ formatIdentitySummary(store.selectedItem.identity) }}</span>
           <span v-else-if="store.selectedItem.urls[0]" class="muted">{{ getDomain(store.selectedItem.urls[0]) }}</span>
         </div>
       </div>

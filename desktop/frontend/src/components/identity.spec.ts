@@ -138,6 +138,12 @@ describe("Viewing an identity", () => {
     expect(api.copyField).toHaveBeenCalledWith("personal", "identity-1", "Passport number");
   });
 
+  it("heads an identity with no name with its email, as the list does", () => {
+    store.selectedItem = createIdentityItem({ identity: { ...createIdentityItem().identity!, firstName: "", lastName: "" } });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false } });
+    expect(wrapper.find('[data-testid="identity-summary"]').text()).toBe("alice@example.com");
+  });
+
   it("offers a share link for an identity with only identity values", () => {
     store.selectedItem = createIdentityItem({ notes: "", fields: [] });
     const wrapper = mount(ItemDetailPanel, { props: { canEdit: false, vaultName: "Personal", isShared: false } });
