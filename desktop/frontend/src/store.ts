@@ -34,6 +34,7 @@ import {
   type ExportRequest,
   type ExportResult,
 } from "./api";
+import { formatFullName } from "./util";
 
 export type EditorMode = "view" | "edit" | "create" | "create-secure-note" | "create-credit-card" | "create-identity" | "create-ssh-key";
 export type ImportStep = "choose" | "preview" | "saving" | "done";
@@ -609,9 +610,11 @@ export function filterAllItem(allItem: ItemDetail[], query: string): ItemDetail[
   if (!normalizedQuery) {
     return allItem;
   }
-  return allItem.filter((vaultItem) =>
-    [vaultItem.title, vaultItem.username, ...vaultItem.urls].some((text) => text.toLowerCase().includes(normalizedQuery)),
-  );
+  return allItem.filter((vaultItem) => {
+    // An identity's list summary keeps its name and email, which the list shows under the title.
+    const identityText = vaultItem.identity ? [formatFullName(vaultItem.identity), vaultItem.identity.email] : [];
+    return [vaultItem.title, vaultItem.username, ...vaultItem.urls, ...identityText].some((text) => text.toLowerCase().includes(normalizedQuery));
+  });
 }
 
 function updateSelectedVaultItemCount(): void {
