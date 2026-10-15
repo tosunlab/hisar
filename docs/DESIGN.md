@@ -138,9 +138,11 @@ An item has two encrypted parts so lists and search don't decrypt every secret:
 |---|---|---|
 | `login`, or empty (items saved before categories) | username, password, websites, one-time password, passkeys, custom fields, notes | a login; the only category the browser extension and iOS AutoFill offer |
 | `secure-note` | notes and custom fields; saving drops a username, password, website or one-time password, so a note never hides a secret its form does not show | a notes-first view with Copy and a secret reference (`hisar://<vault>/<note>/notes`) |
+| `credit-card` | the custom fields Cardholder, Card number, Expiry (`MM/YYYY`), Security code, PIN and Billing address, first and in that order, then other custom fields and notes; the number, security code and PIN are concealed; saving drops login data | the brand and last four digits ("Visa •••• 4242"), the number and codes masked until revealed; lists show only the brand and last four digits |
 | `ssh-key` | §9.6 | §9.6 |
 
-- **Creating:** desktop **+** → Secure note, iOS **+** → New secure note (or a vault's Add item → Secure note), `hisar add --type secure-note`. The backend refuses a category it does not know.
+- **Creating:** desktop **+** → Secure note or Credit card, iOS **+** → New secure note or New credit card (or a vault's Add item), `hisar add --type secure-note|credit-card`. The backend refuses a category it does not know.
+- **Credit cards** keep their values as named custom fields rather than a details section of their own, so an app that does not know cards shows them as fields and keeps them when it edits the item, and `hisar get -f "card number"` and `hisar://<vault>/<card>/security code` work as for any field. `core/item/card.go` holds the schema: `ReadCard`/`WriteCard` map a `Card` to the fields (names matched ignoring case), and `NormalizeCard` groups the number as printed on the card and writes the expiry as `MM/YYYY`. `DescribeCard` names the brand from the number's first digits (Visa, Mastercard, American Express, Discover, Diners Club, JCB, UnionPay, Maestro, Troy) and warns about a failed Luhn check, an unreadable expiry or an expired card; the editors show the warnings, and a card saves anyway. Card autofill in the extension is not part of this.
 - **Converting:** a login with nothing but notes and custom fields (`item.HasOnlyNotes`), such as one imported before secure notes existed, shows "Convert to secure note" (`app.Service.ConvertToSecureNote`, driven by `ItemDetail.canConvertToSecureNote`). Nothing is converted without the user asking.
 - **Older apps** show a secure note as a login with only notes and keep its category when they edit it.
 
@@ -735,7 +737,7 @@ It then dials the socket and sends `hello` every 200 ms for up to 10 s. Once the
 
 | Type | Parameters | Result |
 |---|---|---|
-| `hello` | — | `protocolVersion` (1), `state` (`signed-out`, `locked`, `unlocked`), `email`, `server`, `isApproved` (for this terminal session), `features` (what the app understands beyond the protocol version: `secure-notes`; an older app sends none); never needs an approval |
+| `hello` | — | `protocolVersion` (1), `state` (`signed-out`, `locked`, `unlocked`), `email`, `server`, `isApproved` (for this terminal session), `features` (what the app understands beyond the protocol version: `secure-notes`, `credit-cards`; an older app sends none); never needs an approval |
 | `account` | — | `accountID`, `name`, `email`, `role`, `server` |
 | `vaults.list` | — | `vaults`: `[{id, name, type, role, itemCount}]` |
 | `vaults.create` | `name` | `vault` |
@@ -961,10 +963,10 @@ Every use of a key asks, unless an approval for the same key and app is remember
 
 | Format | Detected by | Imported | Not imported (reported with a reason) |
 |---|---|---|---|
-| 1Password `.1pux` (ZIP with `export.data`) | ZIP signature | Login and Password items with extra login fields and section fields (concealed fields stay concealed); Secure Notes; Server, Database, Wireless Router, Email Account, API Credential and Software License items as logins with their fields; SSH Keys with a private key | Credit cards, identities, documents and other personal records; archived items; attachments |
+| 1Password `.1pux` (ZIP with `export.data`) | ZIP signature | Login and Password items with extra login fields and section fields (concealed fields stay concealed); Secure Notes; Server, Database, Wireless Router, Email Account, API Credential and Software License items as logins with their fields; Credit Cards (cardholder, number, expiry, verification number, PIN and billing address as the card's fields, the rest as custom fields); SSH Keys with a private key | identities, documents and other personal records; archived items; attachments |
 | 1Password CSV | header with `Title`, `OTPAuth` and `Archived` | title, URL, username, password, one-time password, tags, notes | archived rows |
-| Bitwarden JSON (not encrypted) | JSON with `items` | logins with all URIs, notes, custom fields (hidden ones concealed, linked ones dropped), TOTP; secure notes; SSH keys; folder as tag | encrypted exports (the whole file is refused), cards, identities, passphrase-protected SSH keys |
-| Bitwarden CSV | `login_username`/`login_password`/`login_uri` columns | as JSON, without hidden-field markers | rows of other types |
+| Bitwarden JSON (not encrypted) | JSON with `items` | logins with all URIs, notes, custom fields (hidden ones concealed, linked ones dropped), TOTP; secure notes; cards (cardholder, number, expiry and security code; the brand comes from the number); SSH keys; folder as tag | encrypted exports (the whole file is refused), identities, passphrase-protected SSH keys |
+| Bitwarden CSV | `login_username`/`login_password`/`login_uri` columns | as JSON, without hidden-field markers | cards (the CSV leaves out their details; export as JSON), rows of other types |
 | CSV (Chrome, Edge, Firefox, Safari, LastPass and others) | a header row naming the columns | title (or the website's host), username, password, URL, notes, one-time password; other columns become fields. Comma, semicolon or tab separated; BOM, CRLF and quoted multiline values | rows with no content |
 | Hisar export, encrypted or plain JSON (§9.11; CLI) | JSON with `format` `hisar-encrypted-export` or `hisar-export` | every item of every vault, vault by vault (below) | — |
 | `.env` (CLI) | the file name, or `-format dotenv` | the chosen variables as fields of one item; the file is rewritten to secret references (below) | empty values and existing references |
