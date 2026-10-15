@@ -29,6 +29,7 @@ const (
 	KindSecureNote = "secure-note"
 	KindSSHKey     = "ssh-key"
 	KindCreditCard = "credit-card"
+	KindIdentity   = "identity"
 )
 
 type FormatInfo struct {
@@ -72,6 +73,7 @@ type Summary struct {
 	SecureNoteCount int `json:"secureNoteCount"`
 	SSHKeyCount     int `json:"sshKeyCount"`
 	CreditCardCount int `json:"creditCardCount"`
+	IdentityCount   int `json:"identityCount"`
 }
 
 func GetFormatName(format string) string {
@@ -155,6 +157,8 @@ func GetKind(vaultItem item.Item) string {
 		return KindSecureNote
 	case item.CategoryCreditCard:
 		return KindCreditCard
+	case item.CategoryIdentity:
+		return KindIdentity
 	}
 	return KindLogin
 }
@@ -169,6 +173,8 @@ func Summarize(items []item.Item) Summary {
 			summary.SecureNoteCount++
 		case KindCreditCard:
 			summary.CreditCardCount++
+		case KindIdentity:
+			summary.IdentityCount++
 		default:
 			summary.LoginCount++
 		}
@@ -177,7 +183,8 @@ func Summarize(items []item.Item) Summary {
 }
 
 // BuildDuplicateKey matches items by title, username and first website; SSH keys match by fingerprint, cards by title and
-// last four digits, or by the whole number when it has no four digits to go by, such as a store card's "STORE-12A".
+// last four digits, or by the whole number when it has no four digits to go by, such as a store card's "STORE-12A", and
+// identities by title, full name and first document number.
 func BuildDuplicateKey(vaultItem item.Item) string {
 	if vaultItem.IsCategory(item.CategorySSHKey) && vaultItem.Overview.Fingerprint != "" {
 		return "ssh-key\x00" + vaultItem.Overview.Fingerprint
@@ -189,6 +196,11 @@ func BuildDuplicateKey(vaultItem item.Item) string {
 			numberKey = "number\x00" + strings.ToLower(strings.TrimSpace(card.Number))
 		}
 		return "credit-card\x00" + strings.ToLower(strings.TrimSpace(vaultItem.Overview.Title)) + "\x00" + numberKey
+	}
+	if vaultItem.IsCategory(item.CategoryIdentity) {
+		identity, _ := item.ReadIdentity(&vaultItem)
+		documentNumber := getFirstNonEmpty(identity.PassportNumber, identity.DriversLicenseNumber, identity.NationalIDNumber)
+		return strings.ToLower(strings.Join([]string{"identity", strings.TrimSpace(vaultItem.Overview.Title), identity.FullName(), strings.TrimSpace(documentNumber)}, "\x00"))
 	}
 	firstURL := ""
 	if len(vaultItem.Overview.URLs) > 0 {
@@ -303,6 +315,7 @@ func finishItem(vaultItem *item.Item) bool {
 		vaultItem.MoveLoginDataToFields()
 	}
 	item.NormalizeCard(vaultItem)
+	item.NormalizeIdentity(vaultItem)
 	return true
 }
 
