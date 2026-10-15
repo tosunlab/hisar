@@ -123,6 +123,22 @@ const allPreviewItemByVaultID: Record<string, ItemDetail[]> = {
         expiryWarning: "This card has expired",
       },
     }),
+    createPreviewItem("passport", "Passport", "", "", "", {
+      category: "identity",
+      fields: [{ name: "Expiry date", value: "2031-06-30", concealed: false }],
+      identity: {
+        firstName: "Alper",
+        middleName: "",
+        lastName: "Tosun",
+        birthDate: "1990-04-12",
+        email: "alper@example.com",
+        phone: "+90 555 010 0000",
+        address: "Bağdat Cd. 100\nKadıköy, İstanbul",
+        passportNumber: "U12345678",
+        driversLicenseNumber: "",
+        nationalIdNumber: "",
+      },
+    }),
   ],
   team: [
     createPreviewItem("sentry", "Sentry", "team@example.com", "https://sentry.io", "sentry-team-pass", { notes: "Shared team account" }),
@@ -862,6 +878,7 @@ function buildPreviewImportPreview(vaultID: string): ImportPreview {
     secureNoteCount: allPreviewImportItem.filter((detail) => detail.category === "secure-note").length,
     sshKeyCount: allPreviewImportItem.filter((detail) => detail.category === "ssh-key").length,
     creditCardCount: allPreviewImportItem.filter((detail) => detail.category === "credit-card").length,
+    identityCount: allPreviewImportItem.filter((detail) => detail.category === "identity").length,
     allSkipped: allPreviewImportSkipped,
     allDuplicate: findAllPreviewImportDuplicate(vaultID).map((detail) => ({ title: detail.title, username: detail.username, url: detail.urls[0] ?? "" })),
   };

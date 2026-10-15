@@ -137,11 +137,13 @@ export function isMacPlatform(): boolean {
 export const sshKeyCategory = "ssh-key";
 export const secureNoteCategory = "secure-note";
 export const creditCardCategory = "credit-card";
+export const identityCategory = "identity";
 
-const allCategoryIcon: Record<string, "key" | "note" | "card"> = { [sshKeyCategory]: "key", [secureNoteCategory]: "note", [creditCardCategory]: "card" };
+type CategoryIcon = "key" | "note" | "card" | "identity";
+const allCategoryIcon: Record<string, CategoryIcon> = { [sshKeyCategory]: "key", [secureNoteCategory]: "note", [creditCardCategory]: "card", [identityCategory]: "identity" };
 
 // getItemIcon is the tile icon of an item's category; logins show their initials instead.
-export function getItemIcon(category: string): "key" | "note" | "card" | undefined {
+export function getItemIcon(category: string): CategoryIcon | undefined {
   return allCategoryIcon[category];
 }
 
@@ -155,6 +157,32 @@ export const cardFieldName = {
   pin: "PIN",
   billingAddress: "Billing address",
 } as const;
+
+// The names of an identity's custom fields, as core/item stores them.
+export const identityFieldName = {
+  firstName: "First name",
+  middleName: "Middle name",
+  lastName: "Last name",
+  birthDate: "Birth date",
+  email: "Email",
+  phone: "Phone",
+  address: "Address",
+  passportNumber: "Passport number",
+  driversLicenseNumber: "Driver's license number",
+  nationalIdNumber: "National ID number",
+} as const;
+
+type IdentityName = { firstName: string; middleName: string; lastName: string; email?: string };
+
+// formatFullName joins the name parts that are set, such as "Alice M. Example".
+export function formatFullName(identity: IdentityName | null | undefined): string {
+  return [identity?.firstName, identity?.middleName, identity?.lastName].filter((part) => part).join(" ");
+}
+
+// formatIdentitySummary is an identity's line in lists: the full name, or the email when it has no name.
+export function formatIdentitySummary(identity: IdentityName | null | undefined): string {
+  return formatFullName(identity) || identity?.email || "Identity";
+}
 
 // The brands an editor offers as a card's type, in the order of core/item ListCardBrands.
 export const allCardBrand = ["Visa", "Mastercard", "American Express", "Discover", "Diners Club", "JCB", "UnionPay", "Maestro", "Troy"];

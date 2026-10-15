@@ -35,7 +35,7 @@ import {
   type ExportResult,
 } from "./api";
 
-export type EditorMode = "view" | "edit" | "create" | "create-secure-note" | "create-credit-card" | "create-ssh-key";
+export type EditorMode = "view" | "edit" | "create" | "create-secure-note" | "create-credit-card" | "create-identity" | "create-ssh-key";
 export type ImportStep = "choose" | "preview" | "saving" | "done";
 
 export interface ShareLinkDialog {
@@ -642,6 +642,11 @@ export function startCreatingSecureNote(): void {
 export function startCreatingCard(): void {
   store.selectedItem = null;
   store.editorMode = "create-credit-card";
+}
+
+export function startCreatingIdentity(): void {
+  store.selectedItem = null;
+  store.editorMode = "create-identity";
 }
 
 export function startCreatingSSHKey(): void {
@@ -1265,10 +1270,13 @@ export function getAllShareLinkForItem(vaultID: string, itemID: string): ShareLi
 }
 
 export function hasShareableField(detail: ItemDetail): boolean {
-  // A card's values come in card, not in fields.
+  // A card's and an identity's values come in card and identity, not in fields.
   const card = detail.card;
   const hasCardValue = card ? [card.cardholder, card.type, card.number, card.expiry, card.securityCode, card.pin, card.billingAddress].some((value) => value) : false;
-  return Boolean(detail.username || detail.password || detail.notes || detail.urls.length > 0 || detail.fields.some((field) => field.value) || hasCardValue);
+  const hasIdentityValue = detail.identity ? Object.values(detail.identity).some((value) => value) : false;
+  return Boolean(
+    detail.username || detail.password || detail.notes || detail.urls.length > 0 || detail.fields.some((field) => field.value) || hasCardValue || hasIdentityValue,
+  );
 }
 
 export async function openShareLinks(): Promise<void> {
