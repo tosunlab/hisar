@@ -18,7 +18,7 @@ import (
 
 const (
 	DefaultGitHubAPIURL     = "https://api.github.com"
-	DefaultGitHubRepository = "hisarapp/core"
+	DefaultGitHubRepository = "tosunlab/hisarapp-core"
 	releaseTagPrefix        = "desktop-"
 	releasePageSize         = 100
 	maximumReleasePageCount = 10
