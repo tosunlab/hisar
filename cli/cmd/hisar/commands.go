@@ -292,6 +292,33 @@ func getFieldValue(vaultItem *item.Item, name string) (string, bool) {
 	return item.LookupField(vaultItem, name, fieldNames, time.Now())
 }
 
+func promptItemOrNote(vaultItem *item.Item) error {
+	if vaultItem.Overview.Category == item.CategorySecureNote {
+		return promptNote(vaultItem)
+	}
+	return promptItem(vaultItem)
+}
+
+// promptNote asks for a secure note's title and its notes, which may span several lines.
+func promptNote(vaultItem *item.Item) error {
+	var err error
+	if vaultItem.Overview.Title, err = promptRequired("Title", vaultItem.Overview.Title); err != nil {
+		return err
+	}
+	label := "Notes (end with an empty line)"
+	if vaultItem.Details.Notes != "" {
+		label = "Notes (end with an empty line; an empty first line keeps the current notes)"
+	}
+	notes, err := promptLines(label)
+	if err != nil {
+		return err
+	}
+	if notes != "" || vaultItem.Details.Notes == "" {
+		vaultItem.Details.Notes = notes
+	}
+	return nil
+}
+
 func promptItem(vaultItem *item.Item) error {
 	var err error
 	if vaultItem.Overview.Title, err = promptRequired("Title", vaultItem.Overview.Title); err != nil {

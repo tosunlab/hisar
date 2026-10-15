@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -35,6 +36,22 @@ func prompt(label, defaultValue string) (string, error) {
 		return defaultValue, nil
 	}
 	return answer, nil
+}
+
+// promptLines reads lines until an empty line or the end of the input.
+func promptLines(label string) (string, error) {
+	fmt.Fprintf(os.Stderr, "%s:\n", label)
+	var lines []string
+	for {
+		line, err := readLine()
+		if errors.Is(err, io.EOF) || (err == nil && line == "") {
+			return strings.Join(lines, "\n"), nil
+		}
+		if err != nil {
+			return "", err
+		}
+		lines = append(lines, line)
+	}
 }
 
 func promptRequired(label, defaultValue string) (string, error) {

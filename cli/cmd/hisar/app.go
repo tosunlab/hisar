@@ -180,7 +180,7 @@ func convertFromAppItem(appItem cliprotocol.Item) item.Item {
 func convertToItemChange(vaultItem *item.Item) *cliprotocol.ItemChange {
 	return &cliprotocol.ItemChange{
 		ID: vaultItem.ID, Revision: vaultItem.Revision, Title: vaultItem.Overview.Title, Username: vaultItem.Overview.Username,
-		URLs: vaultItem.Overview.URLs, Password: vaultItem.Details.Password, Notes: vaultItem.Details.Notes,
+		URLs: vaultItem.Overview.URLs, Password: vaultItem.Details.Password, Notes: vaultItem.Details.Notes, Category: vaultItem.Overview.Category,
 	}
 }
 

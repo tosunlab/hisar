@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/tryhisar/hisar/core/cliprotocol"
+	"github.com/tryhisar/hisar/core/item"
 )
 
 type fakeApp struct {
@@ -127,6 +128,7 @@ func answerFakeVaultRequest(request cliprotocol.Request) (any, *cliprotocol.Resp
 		return cliprotocol.ItemListResult{Items: []cliprotocol.Item{
 			{ID: "github-id", Revision: "r1", Title: "GitHub", Username: "alice", URLs: []string{"https://github.com"}, HasOneTimePassword: true},
 			{ID: "bank-id", Revision: "r2", Title: "Bank", Username: "alice"},
+			{ID: "note-id", Revision: "r3", Category: item.CategorySecureNote, Title: "Recovery codes"},
 		}}, nil
 	case cliprotocol.TypeGetItem:
 		if request.ItemID == "github-id" {
@@ -134,6 +136,9 @@ func answerFakeVaultRequest(request cliprotocol.Request) (any, *cliprotocol.Resp
 				ID: "github-id", Revision: "r1", Title: "GitHub", Username: "alice", URLs: []string{"https://github.com"}, Password: "github-password",
 				Notes: "work", Fields: []cliprotocol.Field{{Name: "PIN", Value: "1234"}}, Passkeys: []cliprotocol.Passkey{{RelyingPartyID: "github.com", UserName: "alice"}}, HasOneTimePassword: true,
 			}}, nil
+		}
+		if request.ItemID == "note-id" {
+			return cliprotocol.ItemResult{Item: cliprotocol.Item{ID: "note-id", Revision: "r3", Category: item.CategorySecureNote, Title: "Recovery codes", Notes: "one\ntwo"}}, nil
 		}
 		return cliprotocol.ItemResult{Item: cliprotocol.Item{ID: request.ItemID, Revision: "r2", Title: "Bank", Username: "alice", Password: "bank-password"}}, nil
 	case cliprotocol.TypeGetCode:
@@ -261,6 +266,13 @@ func TestCommandsRunThroughTheApp(t *testing.T) {
 	if err != nil || !strings.Contains(stdout, "GitHub") || !strings.Contains(stdout, "bank-id") {
 		t.Errorf("ls: %q %v", stdout, err)
 	}
+	if lines := strings.Split(stdout, "\n"); len(lines) < 4 || strings.Fields(lines[0])[3] != "TYPE" || !strings.Contains(lines[1], " login ") || !strings.Contains(lines[3], " secure-note ") {
+		t.Errorf("ls types: %q", stdout)
+	}
+	stdout, _, err = runCapturingOutput(t, false, "", "get", "recovery")
+	if err != nil || !strings.Contains(stdout, "notes:") || !strings.Contains(stdout, "one\ntwo") || strings.Contains(stdout, "username") {
+		t.Errorf("get note: %q %v", stdout, err)
+	}
 	stdout, _, err = runCapturingOutput(t, false, "", "get", "git", "-f", "password")
 	if err != nil || stdout != "github-password\n" {
 		t.Errorf("get -f password: %q %v", stdout, err)
@@ -305,6 +317,25 @@ func TestWriteCommandsRunThroughTheApp(t *testing.T) {
 	edited := app.findRequest(cliprotocol.TypeSaveItem)[1]
 	if edited.Item.ID != "github-id" || edited.Item.Revision != "r1" || edited.Item.Password != "github-password" || edited.Item.Notes != "edited" {
 		t.Errorf("edit request %+v", edited.Item)
+	}
+
+	if _, stderr, err := runCapturingOutput(t, false, "Wi-Fi\nNetwork: home\nPassword: correct horse\n\n", "add", "--note"); err != nil || !strings.Contains(stderr, `Saved "Wi-Fi" to Personal.`) {
+		t.Fatalf("add --note: %q %v", stderr, err)
+	}
+	if note := app.findRequest(cliprotocol.TypeSaveItem)[2]; note.Item.Category != item.CategorySecureNote || note.Item.Notes != "Network: home\nPassword: correct horse" || note.Item.Username != "" || note.Item.Password != "" {
+		t.Errorf("add --note request %+v", note.Item)
+	}
+	if _, stderr, err := runCapturingOutput(t, false, "\n\n", "edit", "recovery"); err != nil || strings.Contains(stderr, "Username") || strings.Contains(stderr, "Password") {
+		t.Fatalf("edit note keeping its notes: %q %v", stderr, err)
+	}
+	if kept := app.findRequest(cliprotocol.TypeSaveItem)[3]; kept.Item.ID != "note-id" || kept.Item.Notes != "one\ntwo" || kept.Item.Category != item.CategorySecureNote {
+		t.Errorf("edit note request %+v", kept.Item)
+	}
+	if _, _, err := runCapturingOutput(t, false, "Codes\nthree\n", "edit", "recovery"); err != nil {
+		t.Fatal(err)
+	}
+	if replaced := app.findRequest(cliprotocol.TypeSaveItem)[4]; replaced.Item.Title != "Codes" || replaced.Item.Notes != "three" {
+		t.Errorf("edit note at the end of the input %+v", replaced.Item)
 	}
 
 	if _, _, err := runCapturingOutput(t, false, "y\n", "rm", "bank"); err != nil {
