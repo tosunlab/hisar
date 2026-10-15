@@ -24,14 +24,14 @@ make build-ios-framework    # gomobile → mobile/build/HisarKit.xcframework (no
 make build-ios              # the app with the extension and the tests, and the free personal team variant, for the simulator
 make test-ios               # unit tests in a simulator (IOS_TESTS_PREBUILT=1 skips building what build-ios built)
 make build                  # hisar-server, for the UI tests
-HISAR_DATABASE_URL=postgres://…/hisar_ios_empty make test-ios-ui   # UI tests against a fresh server, two classes at a time
+HISAR_DATABASE_URL=postgres://…/hisar_ios_empty make test-ios-ui   # UI tests against a fresh server
 ```
 
 `IOS_SIMULATOR_ID=<udid>` picks the simulator; by default the first iPhone of the newest runtime is used
 (`scripts/find-simulator.sh`). The UI test script starts `hisar-server` on port 18082, creates invites, and passes them
-to the tests as `TEST_RUNNER_HISAR_UI_TEST_*` variables. The test classes run on two clones of the simulator at once;
-`IOS_UI_TEST_WORKERS=1` runs them one by one. Set `HISAR_UI_TEST_SCREENSHOT_DIRECTORY` to save a PNG of each
-screen.
+to the tests as `TEST_RUNNER_HISAR_UI_TEST_*` variables. The test classes run one after another; `IOS_UI_TEST_WORKERS=2`
+runs them on two clones of the simulator at once, which is quicker on a Mac with cores to spare but a loss on the CI runners.
+Set `HISAR_UI_TEST_SCREENSHOT_DIRECTORY` to save a PNG of each screen.
 
 After editing `project.yml` (adding files is enough, sources are folders), run `make generate-ios-project` and commit
 the project; CI fails if the committed project differs.

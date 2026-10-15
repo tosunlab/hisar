@@ -124,7 +124,7 @@ jobs:
           cache-dependency-path: "**/go.sum"
       - name: Select Xcode
         run: sudo xcode-select -s "$XCODE_PATH" && xcodebuild -version
-      # Booting takes a minute; it happens while HisarKit and the app build. The UI tests run on clones of it.
+      # Booting takes a minute; it happens while HisarKit and the app build, and the tests then run on it as it is.
       - name: Choose and boot the simulator
         run: |
           IOS_SIMULATOR_ID=$(mobile/ios/scripts/find-simulator.sh)
@@ -147,9 +147,6 @@ jobs:
       - run: make build-ios
       - run: make test-ios
       - run: make build
-      # The simulator must be shut down to be cloned for the UI tests.
-      - name: Shut down the simulator
-        run: xcrun simctl shutdown "$IOS_SIMULATOR_ID"
       - name: Start Postgres
         run: |
           brew list postgresql@17 >/dev/null 2>&1 || brew install postgresql@17

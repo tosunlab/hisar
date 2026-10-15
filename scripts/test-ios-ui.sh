@@ -3,8 +3,10 @@
 # Requires HISAR_DATABASE_URL pointing at an empty, disposable database, bin/hisar-server and bin/hisar (make build)
 # and mobile/build/HisarKit.xcframework (make build-ios-framework).
 #
-# The test classes run on IOS_UI_TEST_WORKERS clones of the simulator at once (2 by default; 1 runs them one by one): each
-# class signs up its own account. IOS_TESTS_PREBUILT=1 runs the tests make build-ios built instead of building them again.
+# The test classes run one after another on the simulator by default. IOS_UI_TEST_WORKERS=2 (or more) runs them on that many
+# clones of the simulator at once, each class signing up its own account; that is a loss on the GitHub macOS runners, where two
+# clones starve each other and tests time out, but can be quicker on a Mac with cores to spare. IOS_TESTS_PREBUILT=1 runs the
+# tests make build-ios built instead of building them again.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -66,7 +68,7 @@ PARTNER_LOOP=$!
 SIMULATOR_ID=${IOS_SIMULATOR_ID:-$("$ROOT/mobile/ios/scripts/find-simulator.sh")}
 ACTION=test
 if [ -n "${IOS_TESTS_PREBUILT:-}" ]; then ACTION=test-without-building; fi
-WORKERS=${IOS_UI_TEST_WORKERS:-2}
+WORKERS=${IOS_UI_TEST_WORKERS:-1}
 PARALLEL=(-parallel-testing-enabled NO)
 if [ "$WORKERS" -gt 1 ]; then PARALLEL=(-parallel-testing-enabled YES -parallel-testing-worker-count "$WORKERS"); fi
 
