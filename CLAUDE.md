@@ -119,6 +119,10 @@ so rich values are JSON strings.
   with `errors.Is`/`errors.As`.
 - No mutable exported package variables for policy; use constants or functions.
 - Shared test fixtures go in `helpers_test.go`.
+- A new request field that an older app would silently ignore needs a `cliprotocol` feature announced in `hello`
+  (`cliprotocol.ListFeatures`), checked by `hisar` before it sends the field. Bumping `ProtocolVersion` turns off app
+  mode for every command, so keep it for changes that break the framing or existing requests.
+- Commit messages: do not add a `Co-Authored-By: Claude …` trailer (or any other AI attribution line).
 
 ## Never break these
 
