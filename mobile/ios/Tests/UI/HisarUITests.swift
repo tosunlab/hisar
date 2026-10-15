@@ -54,6 +54,23 @@ final class HisarUITests: HisarUITestCase {
         saveScreenshot("secure-note")
         goBack()
         waitFor(app.buttons["vault-Personal"])
+
+        app.buttons["new-menu"].tap()
+        waitFor(app.buttons["new-credit-card"])
+        app.buttons["new-credit-card"].tap()
+        type("Visa", into: app.textFields["editor-title"])
+        XCTAssertFalse(app.textFields["editor-username"].exists, "a credit card asks for a username")
+        type("4111111111111111", into: app.secureTextFields["editor-card-number"])
+        type("12/2029", into: app.textFields["editor-card-expiry"])
+        type("123", into: app.secureTextFields["editor-card-security-code"])
+        saveScreenshot("add-credit-card")
+        app.buttons["editor-save"].tap()
+        let cardSummary = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Visa •••• 1111")).firstMatch
+        waitFor(cardSummary)
+        XCTAssertFalse(app.staticTexts["123"].exists, "the security code is shown before it is revealed")
+        saveScreenshot("credit-card")
+        goBack()
+        waitFor(app.buttons["vault-Personal"])
         openTab("Search")
         let searchField = app.searchFields.firstMatch
         type("git", into: searchField)

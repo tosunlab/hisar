@@ -351,6 +351,14 @@ class FakeBackend: VaultBackend {
         }
         savedItem.oneTimePassword = oneTimePassword.isEmpty ? "" : (oneTimePassword.hasPrefix("otpauth://") ? oneTimePassword : "otpauth://totp/?secret=\(oneTimePassword.uppercased().replacingOccurrences(of: " ", with: ""))")
         savedItem.hasOneTimePassword = !oneTimePassword.isEmpty
+        if savedItem.isCreditCard {
+            var card = savedItem.card ?? ItemCard()
+            let description = try describeCard(number: card.number, expiry: card.expiry)
+            card.brand = description.brand
+            card.last4 = description.last4
+            card.numberWarning = description.numberWarning
+            savedItem.card = card
+        }
         if savedItem.id.isEmpty {
             savedItem.id = "new-\(nextItemNumber)"
             nextItemNumber += 1
@@ -364,6 +372,19 @@ class FakeBackend: VaultBackend {
         }
         allItemByVaultID[vaultID] = allItem
         return savedItem
+    }
+
+    /// A stand-in for core/item's checks: Visa by the first digit, and a number of 16 digits ending in 1 counts as valid.
+    func describeCard(number: String, expiry: String) throws -> CardDescription {
+        record("describeCard")
+        let digits = number.filter(\.isNumber)
+        let isValid = digits.count == 16 && digits.hasSuffix("1")
+        return CardDescription(
+            brand: digits.hasPrefix("4") ? "Visa" : "",
+            last4: String(digits.suffix(4)),
+            numberWarning: number.isEmpty || isValid ? "" : "This doesn't look like a valid card number",
+            expiryWarning: ""
+        )
     }
 
     func convertToSecureNote(vaultID: String, itemID: String) throws -> ItemDetail {

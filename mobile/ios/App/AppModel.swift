@@ -565,6 +565,12 @@ final class AppModel: ObservableObject {
         summary.notes = ""
         summary.allField = []
         summary.oneTimePassword = ""
+        if let card = savedItem.card {
+            var cardSummary = ItemCard()
+            cardSummary.brand = card.brand
+            cardSummary.last4 = card.last4
+            summary.card = cardSummary
+        }
         if let index = allItem.firstIndex(where: { $0.id == savedItem.id }) {
             allItem[index] = summary
         } else {
@@ -582,6 +588,12 @@ final class AppModel: ObservableObject {
         allPasskey.removeAll { $0.vaultID == vaultID && $0.itemID == itemID }
         await publishAllCredentialIdentity()
         return true
+    }
+
+    /// The brand, last four digits and warnings for a card being typed; nil when the backend cannot answer.
+    func describeCard(number: String, expiry: String) async -> CardDescription? {
+        guard let backend else { return nil }
+        return try? await runInBackground { try backend.describeCard(number: number, expiry: expiry) }
     }
 
     func convertToSecureNote(vaultID: String, itemID: String) async -> ItemDetail? {

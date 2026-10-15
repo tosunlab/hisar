@@ -12,7 +12,7 @@ struct ItemIcon: View {
         ZStack {
             RoundedRectangle(cornerRadius: scaledSize * 0.25, style: .continuous)
                 .fill(.fill.tertiary)
-            if let symbol = item.isSSHKey ? "key.horizontal" : (item.isSecureNote ? "note.text" : nil) {
+            if let symbol = item.isSSHKey ? "key.horizontal" : (item.isSecureNote ? "note.text" : (item.isCreditCard ? "creditcard" : nil)) {
                 Image(systemName: symbol)
                     .font(size > 40 ? .title2 : .footnote)
                     .fontWeight(.semibold)

@@ -89,7 +89,7 @@ struct ItemDetailView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(item.title)
                             .font(.title2.weight(.bold))
-                        Text("\(vault?.name ?? "") · \(item.isSSHKey ? "SSH key" : (item.isSecureNote ? "Secure note" : "Login"))")
+                        Text("\(vault?.name ?? "") · \(item.isSSHKey ? "SSH key" : (item.isSecureNote ? "Secure note" : (item.isCreditCard ? (item.card ?? ItemCard()).summary : "Login")))")
                             .font(.subheadline)
                             .foregroundStyle(.themeSecondary)
                     }
@@ -101,6 +101,8 @@ struct ItemDetailView: View {
                 buildSSHKeySection(item: item)
             } else if item.isSecureNote {
                 buildSecureNoteSection(item: item)
+            } else if item.isCreditCard {
+                buildCardSection(card: item.card ?? ItemCard())
             } else {
                 buildLoginSection(item: item)
             }
@@ -180,7 +182,7 @@ struct ItemDetailView: View {
                     Text("This login has no username, password or website. As a secure note, it opens straight to its notes and fields.")
                 }
             }
-            if let referenceField = item.isSSHKey ? "public key" : (item.isSecureNote ? (item.notes.isEmpty ? nil : "notes") : (item.password.isEmpty ? nil : "password")) {
+            if let referenceField = getReferenceField(item: item) {
                 Section {
                     Button {
                         copyReference(fieldName: referenceField)
@@ -225,6 +227,51 @@ struct ItemDetailView: View {
                     }
                 }
             }
+        }
+    }
+
+    /// The field the "Copy secret reference" button names: the one a script most likely wants.
+    private func getReferenceField(item: ItemDetail) -> String? {
+        if item.isSSHKey { return "public key" }
+        if item.isSecureNote { return item.notes.isEmpty ? nil : "notes" }
+        if item.isCreditCard { return (item.card?.number ?? "").isEmpty ? nil : CardFieldName.number }
+        return item.password.isEmpty ? nil : "password"
+    }
+
+    @ViewBuilder
+    private func buildCardSection(card: ItemCard) -> some View {
+        let allRow: [(label: String, value: String, isConcealed: Bool, warning: String)] = [
+            (CardFieldName.cardholder, card.cardholder, false, ""),
+            (CardFieldName.number, card.number, true, card.numberWarning),
+            (CardFieldName.expiry, card.expiry, false, card.expiryWarning),
+            (CardFieldName.securityCode, card.securityCode, true, ""),
+            (CardFieldName.pin, card.pin, true, ""),
+            (CardFieldName.billingAddress, card.billingAddress, false, ""),
+        ].filter { !$0.value.isEmpty }
+        Section {
+            if allRow.isEmpty {
+                Text("This card has no details yet.")
+                    .foregroundStyle(.themeSecondary)
+            }
+            ForEach(allRow, id: \.label) { row in
+                VStack(alignment: .leading, spacing: 4) {
+                    SecretFieldRow(
+                        label: row.label, value: row.value, isConcealed: row.isConcealed,
+                        isRevealed: !row.isConcealed || allRevealedFieldName.contains(row.label),
+                        toggleReveal: row.isConcealed ? { toggleReveal(fieldName: row.label) } : nil,
+                        copy: { copy(fieldName: row.label, label: row.label) },
+                        copyReference: { copyReference(fieldName: row.label) }
+                    )
+                    if !row.warning.isEmpty {
+                        Text(row.warning)
+                            .font(.footnote)
+                            .foregroundStyle(.orange)
+                            .accessibilityIdentifier("card-warning-\(row.label)")
+                    }
+                }
+            }
+        } header: {
+            Text("Card")
         }
     }
 

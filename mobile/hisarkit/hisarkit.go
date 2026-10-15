@@ -289,6 +289,12 @@ func (hisar *Hisar) DeleteItem(vaultID, itemID string) error {
 	return hisar.service.DeleteItem(vaultID, itemID)
 }
 
+// DescribeCard returns app.CardDescription ({"brand", "last4", "numberWarning", "expiryWarning"}) as JSON, for the card
+// editor to show while the user types.
+func (hisar *Hisar) DescribeCard(number, expiry string) (string, error) {
+	return encodeJSON(hisar.service.DescribeCard(number, expiry), nil)
+}
+
 // ConvertToSecureNote turns a login with nothing but notes and custom fields into a secure note and returns it as app.ItemDetail JSON.
 func (hisar *Hisar) ConvertToSecureNote(vaultID, itemID string) (string, error) {
 	return encodeJSON(hisar.service.ConvertToSecureNote(vaultID, itemID))

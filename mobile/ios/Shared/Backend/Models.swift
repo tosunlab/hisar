@@ -143,6 +143,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     static let categoryLogin = "login"
     static let categorySSHKey = "ssh-key"
     static let categorySecureNote = "secure-note"
+    static let categoryCreditCard = "credit-card"
 
     var id: String
     var revision: String
@@ -161,15 +162,18 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     var allPasskey: [ItemPasskey]
     /// A login with nothing but notes and custom fields, which the backend can turn into a secure note.
     var canConvertToSecureNote: Bool
+    /// A credit card's values, stored as named custom fields; allField then holds only the others. Summaries keep only the
+    /// brand and last four digits.
+    var card: ItemCard?
 
     enum CodingKeys: String, CodingKey {
-        case id, revision, category, title, username, password, notes, publicKey, fingerprint, keyType, oneTimePassword, hasOneTimePassword, canConvertToSecureNote
+        case id, revision, category, title, username, password, notes, publicKey, fingerprint, keyType, oneTimePassword, hasOneTimePassword, canConvertToSecureNote, card
         case allURL = "urls"
         case allField = "fields"
         case allPasskey = "passkeys"
     }
 
-    init(id: String = "", revision: String = "", category: String = ItemDetail.categoryLogin, title: String = "", username: String = "", allURL: [String] = [], password: String = "", notes: String = "", allField: [ItemField] = [], publicKey: String = "", fingerprint: String = "", keyType: String = "", oneTimePassword: String = "", hasOneTimePassword: Bool = false, allPasskey: [ItemPasskey] = [], canConvertToSecureNote: Bool = false) {
+    init(id: String = "", revision: String = "", category: String = ItemDetail.categoryLogin, title: String = "", username: String = "", allURL: [String] = [], password: String = "", notes: String = "", allField: [ItemField] = [], publicKey: String = "", fingerprint: String = "", keyType: String = "", oneTimePassword: String = "", hasOneTimePassword: Bool = false, allPasskey: [ItemPasskey] = [], canConvertToSecureNote: Bool = false, card: ItemCard? = nil) {
         self.id = id
         self.revision = revision
         self.category = category
@@ -186,6 +190,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         self.hasOneTimePassword = hasOneTimePassword
         self.allPasskey = allPasskey
         self.canConvertToSecureNote = canConvertToSecureNote
+        self.card = card
     }
 
     init(from decoder: Decoder) throws {
@@ -206,11 +211,69 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         hasOneTimePassword = try container.decodeIfPresent(Bool.self, forKey: .hasOneTimePassword) ?? false
         allPasskey = try container.decodeIfPresent([ItemPasskey].self, forKey: .allPasskey) ?? []
         canConvertToSecureNote = try container.decodeIfPresent(Bool.self, forKey: .canConvertToSecureNote) ?? false
+        card = try container.decodeIfPresent(ItemCard.self, forKey: .card)
     }
 
     var isLogin: Bool { category.isEmpty || category == Self.categoryLogin }
     var isSSHKey: Bool { category == Self.categorySSHKey }
     var isSecureNote: Bool { category == Self.categorySecureNote }
+    var isCreditCard: Bool { category == Self.categoryCreditCard }
+}
+
+/// The names core/item stores a card's values under; copying and secret references use them.
+enum CardFieldName {
+    static let cardholder = "Cardholder"
+    static let number = "Card number"
+    static let expiry = "Expiry"
+    static let securityCode = "Security code"
+    static let pin = "PIN"
+    static let billingAddress = "Billing address"
+}
+
+struct ItemCard: Codable, Hashable {
+    var cardholder = ""
+    var number = ""
+    var expiry = ""
+    var securityCode = ""
+    var pin = ""
+    var billingAddress = ""
+    var brand = ""
+    var last4 = ""
+    var numberWarning = ""
+    var expiryWarning = ""
+
+    enum CodingKeys: String, CodingKey {
+        case cardholder, number, expiry, securityCode, pin, billingAddress, brand, last4, numberWarning, expiryWarning
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        cardholder = try container.decodeIfPresent(String.self, forKey: .cardholder) ?? ""
+        number = try container.decodeIfPresent(String.self, forKey: .number) ?? ""
+        expiry = try container.decodeIfPresent(String.self, forKey: .expiry) ?? ""
+        securityCode = try container.decodeIfPresent(String.self, forKey: .securityCode) ?? ""
+        pin = try container.decodeIfPresent(String.self, forKey: .pin) ?? ""
+        billingAddress = try container.decodeIfPresent(String.self, forKey: .billingAddress) ?? ""
+        brand = try container.decodeIfPresent(String.self, forKey: .brand) ?? ""
+        last4 = try container.decodeIfPresent(String.self, forKey: .last4) ?? ""
+        numberWarning = try container.decodeIfPresent(String.self, forKey: .numberWarning) ?? ""
+        expiryWarning = try container.decodeIfPresent(String.self, forKey: .expiryWarning) ?? ""
+    }
+
+    /// The card's line in lists, such as "Visa •••• 4242".
+    var summary: String {
+        let parts = [brand, last4.isEmpty ? "" : "•••• \(last4)"].filter { !$0.isEmpty }
+        return parts.isEmpty ? "Credit card" : parts.joined(separator: " ")
+    }
+}
+
+struct CardDescription: Codable, Equatable {
+    var brand = ""
+    var last4 = ""
+    var numberWarning = ""
+    var expiryWarning = ""
 }
 
 struct SignUpResult: Codable, Equatable {

@@ -15,6 +15,8 @@ struct ItemEditorView: View {
     @State private var isGeneratorShown = false
     @State private var isDeleteConfirmationShown = false
     @State private var hasLoadedDraft = false
+    @State private var isCardSecretRevealed = false
+    @State private var cardDescription = CardDescription()
 
     private var isNew: Bool { originalItem == nil }
 
@@ -36,6 +38,9 @@ struct ItemEditorView: View {
                             .lineLimit(8...30)
                             .accessibilityIdentifier("editor-notes")
                     }
+                    buildFieldSection()
+                } else if draft.isCreditCard {
+                    buildCardSections()
                     buildFieldSection()
                 } else if !draft.isSSHKey {
                     Section("Login") {
@@ -119,7 +124,7 @@ struct ItemEditorView: View {
                     }
                 }
             }
-            .navigationTitle(isNew ? (draft.isSecureNote ? "New secure note" : "New login") : "Edit item")
+            .navigationTitle(isNew ? (draft.isSecureNote ? "New secure note" : (draft.isCreditCard ? "New credit card" : "New login")) : "Edit item")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -164,6 +169,86 @@ struct ItemEditorView: View {
             allURLText = originalItem.allURL.isEmpty ? [""] : originalItem.allURL
         } else {
             draft.category = newCategory
+        }
+        if draft.isCreditCard {
+            let card = draft.card ?? ItemCard()
+            draft.card = card
+            cardDescription = CardDescription(brand: card.brand, last4: card.last4, numberWarning: card.numberWarning, expiryWarning: card.expiryWarning)
+        }
+    }
+
+    /// A binding to one of the card's values, creating the card on first write.
+    private func bindCard(_ keyPath: WritableKeyPath<ItemCard, String>) -> Binding<String> {
+        Binding(
+            get: { draft.card?[keyPath: keyPath] ?? "" },
+            set: { value in
+                var card = draft.card ?? ItemCard()
+                card[keyPath: keyPath] = value
+                draft.card = card
+            }
+        )
+    }
+
+    @ViewBuilder
+    private func buildCardField(_ title: String, _ keyPath: WritableKeyPath<ItemCard, String>, identifier: String, isSecret: Bool) -> some View {
+        Group {
+            if isSecret && !isCardSecretRevealed {
+                SecureField(title, text: bindCard(keyPath), prompt: Text(title).foregroundStyle(.themeSecondary))
+            } else {
+                TextField(title, text: bindCard(keyPath))
+            }
+        }
+        .font(isSecret ? .system(.body, design: .monospaced) : .body)
+        .keyboardType(isSecret ? .numberPad : .default)
+        .textInputAutocapitalization(.never)
+        .autocorrectionDisabled()
+        .accessibilityIdentifier(identifier)
+    }
+
+    @ViewBuilder
+    private func buildCardSections() -> some View {
+        Section {
+            TextField("Name on the card", text: bindCard(\.cardholder))
+                .textContentType(.name)
+                .accessibilityIdentifier("editor-cardholder")
+            buildCardField("Card number", \.number, identifier: "editor-card-number", isSecret: true)
+            TextField("Expiry (MM/YYYY)", text: bindCard(\.expiry))
+                .keyboardType(.numbersAndPunctuation)
+                .accessibilityIdentifier("editor-card-expiry")
+            buildCardField("Security code", \.securityCode, identifier: "editor-card-security-code", isSecret: true)
+            buildCardField("PIN", \.pin, identifier: "editor-card-pin", isSecret: true)
+            Button {
+                isCardSecretRevealed.toggle()
+            } label: {
+                Label(isCardSecretRevealed ? "Hide number and codes" : "Show number and codes", systemImage: isCardSecretRevealed ? "eye.slash" : "eye")
+            }
+        } header: {
+            HStack {
+                Text("Card")
+                Spacer()
+                if !cardDescription.brand.isEmpty {
+                    Text(cardDescription.brand)
+                        .accessibilityIdentifier("editor-card-brand")
+                }
+            }
+        } footer: {
+            let allWarning = [cardDescription.numberWarning, cardDescription.expiryWarning].filter { !$0.isEmpty }
+            if !allWarning.isEmpty {
+                Text(allWarning.joined(separator: "\n"))
+                    .foregroundStyle(.orange)
+                    .accessibilityIdentifier("editor-card-warning")
+            }
+        }
+        .task(id: "\(draft.card?.number ?? "")|\(draft.card?.expiry ?? "")") {
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled, let description = await model.describeCard(number: draft.card?.number ?? "", expiry: draft.card?.expiry ?? "") else { return }
+            cardDescription = description
+        }
+        Section("Billing address") {
+            TextField("Billing address", text: bindCard(\.billingAddress), axis: .vertical)
+                .lineLimit(2...5)
+                .textContentType(.fullStreetAddress)
+                .accessibilityIdentifier("editor-card-billing-address")
         }
     }
 
