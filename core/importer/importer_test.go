@@ -706,6 +706,24 @@ func TestParseOnePasswordPassportAndDriverLicense(t *testing.T) {
 	}
 }
 
+func TestParseOnePasswordIdentityPhone(t *testing.T) {
+	data := `{"accounts":[{"vaults":[{"items":[
+		{"categoryUuid":"004","overview":{"title":"Work"},"details":{"sections":[{"title":"Contact","fields":[
+			{"title":"business","id":"busphone","value":{"phone":"+1 555 0100"}}]}]}},
+		{"categoryUuid":"004","overview":{"title":"Home"},"details":{"sections":[{"title":"Contact","fields":[
+			{"title":"mobile","id":"cellphone","value":{"phone":"+1 555 0199"}},
+			{"title":"business","id":"busphone","value":{"phone":"+1 555 0100"}}]}]}}]}]}]}`
+	result := parseFixture(t, "export.1pux", buildOnePasswordExport(t, []byte(data)), FormatAutomatic)
+	wantWork := []item.Field{{Name: item.FieldPhone, Value: "+1 555 0100"}}
+	if work := findTestItem(t, result, "Work"); !reflect.DeepEqual(work.Details.Fields, wantWork) {
+		t.Errorf("an identity with only a business phone =\n%+v\nwant\n%+v", work.Details.Fields, wantWork)
+	}
+	wantHome := []item.Field{{Name: item.FieldPhone, Value: "+1 555 0199"}, {Name: "business", Value: "+1 555 0100"}}
+	if home := findTestItem(t, result, "Home"); !reflect.DeepEqual(home.Details.Fields, wantHome) {
+		t.Errorf("an identity with two phones =\n%+v\nwant\n%+v", home.Details.Fields, wantHome)
+	}
+}
+
 func TestIdentitiesWithTheSameTitleAreNotDuplicates(t *testing.T) {
 	identity := func(firstName, passportNumber string) item.Item {
 		var vaultItem item.Item

@@ -156,6 +156,7 @@ var onePasswordIdentityFields = map[string]func(*item.Identity) *string{
 	"defphone":  func(identity *item.Identity) *string { return &identity.Phone },
 	"cellphone": func(identity *item.Identity) *string { return &identity.Phone },
 	"homephone": func(identity *item.Identity) *string { return &identity.Phone },
+	"busphone":  func(identity *item.Identity) *string { return &identity.Phone },
 	"address":   func(identity *item.Identity) *string { return &identity.Address },
 }
 
