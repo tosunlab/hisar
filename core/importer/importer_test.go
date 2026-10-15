@@ -603,7 +603,7 @@ func TestParseSavesSecureNotesAsSecureNotes(t *testing.T) {
 }
 
 func TestParseOnePasswordCreditCard(t *testing.T) {
-	data := `{"accounts":[{"vaults":[{"items":[{"categoryUuid":"002","overview":{"title":"Amex"},"details":{"notesPlain":"Travel card","sections":[
+	data := `{"accounts":[{"vaults":[{"items":[{"categoryUuid":"002","overview":{"title":"Amex","url":"https://americanexpress.com"},"details":{"notesPlain":"Travel card","sections":[
 		{"title":"","fields":[
 			{"title":"cardholder name","id":"cardholder","value":{"string":"Alice Smith"}},
 			{"title":"type","id":"type","value":{"menu":"amex"}},
@@ -625,6 +625,10 @@ func TestParseOnePasswordCreditCard(t *testing.T) {
 		{Name: item.FieldPIN, Value: "9876", Concealed: true},
 		{Name: item.FieldBillingAddress, Value: "1 Main St, Springfield, 12345, us"},
 		{Name: "issuing bank", Value: "Bank of Hisar"},
+		{Name: "Website", Value: "https://americanexpress.com"},
+	}
+	if amex.Overview.URLs != nil {
+		t.Errorf("the card kept a website its form does not show: %v", amex.Overview.URLs)
 	}
 	if amex.Overview.Category != item.CategoryCreditCard || amex.Details.Notes != "Travel card" || !reflect.DeepEqual(amex.Details.Fields, wantFields) {
 		t.Errorf("1Password card =\n%+v\nwant fields\n%+v", amex, wantFields)

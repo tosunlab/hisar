@@ -1,7 +1,12 @@
 package app
 
 import (
+	"archive/zip"
+	"bytes"
+	"os"
+	"path/filepath"
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/tryhisar/hisar/core/cliprotocol"
@@ -101,5 +106,46 @@ func TestCommandLineCreditCardTravelsAsNamedFields(t *testing.T) {
 	test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeHello}, &hello)
 	if !hello.HasFeature(cliprotocol.FeatureCreditCards) {
 		t.Errorf("hello features = %v", hello.Features)
+	}
+}
+
+func TestImportedCardKeepsItsWebsiteThroughAnEdit(t *testing.T) {
+	test := createUnlockedTestService(t)
+	service := test.service
+	var buffer bytes.Buffer
+	writer := zip.NewWriter(&buffer)
+	fileWriter, err := writer.Create("export.data")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fileWriter.Write([]byte(`{"accounts":[{"vaults":[{"items":[{"categoryUuid":"002","overview":{"title":"Amex","url":"https://americanexpress.com"},
+		"details":{"sections":[{"fields":[{"id":"ccnum","value":{"creditCardNumber":"378282246310005"}}]}]}}]}]}]}`))
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "export.1pux")
+	if err := os.WriteFile(path, buffer.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	setImportPath(service, path)
+	if _, err := service.ChooseImportFile(test.personalID, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.StartImport(test.personalID, false); err != nil {
+		t.Fatal(err)
+	}
+	runImportToEnd(t, service)
+
+	website := ItemField{Name: "Website", Value: "https://americanexpress.com"}
+	imported, err := service.GetItem(test.personalID, listItemsByTitle(t, service, test.personalID)["Amex"].ID)
+	if err != nil || imported.Card == nil || !slices.Contains(imported.Fields, website) {
+		t.Fatalf("imported card = %+v %v", imported, err)
+	}
+	edited, err := service.SaveItem(test.personalID, imported)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(edited.Fields, website) || edited.Card.Last4 != "0005" {
+		t.Errorf("after an edit the card = %+v, fields %+v", edited.Card, edited.Fields)
 	}
 }
