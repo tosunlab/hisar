@@ -16,6 +16,7 @@ const CategoryCreditCard = "credit-card"
 // The custom field names of a card's values.
 const (
 	FieldCardholder     = "Cardholder"
+	FieldCardType       = "Type"
 	FieldCardNumber     = "Card number"
 	FieldExpiry         = "Expiry"
 	FieldSecurityCode   = "Security code"
@@ -23,9 +24,11 @@ const (
 	FieldBillingAddress = "Billing address"
 )
 
-// Card is what a credit-card item holds; Brand and Last4 come from the number.
+// Card is what a credit-card item holds. Type is the card's brand, such as Visa; saving fills it in from the number when
+// it is empty.
 type Card struct {
 	Cardholder     string
+	Type           string
 	Number         string
 	Expiry         string
 	SecurityCode   string
@@ -49,6 +52,7 @@ func ListCardFields() []CardField { return slices.Clone(cardFields) }
 // cardFields is the order of a card's fields and which of them are concealed.
 var cardFields = []CardField{
 	{FieldCardholder, false, func(card *Card) *string { return &card.Cardholder }},
+	{FieldCardType, false, func(card *Card) *string { return &card.Type }},
 	{FieldCardNumber, true, func(card *Card) *string { return &card.Number }},
 	{FieldExpiry, false, func(card *Card) *string { return &card.Expiry }},
 	{FieldSecurityCode, true, func(card *Card) *string { return &card.SecurityCode }},
@@ -94,7 +98,8 @@ func WriteCard(vaultItem *Item, card Card, otherFields []Field) {
 	}
 }
 
-// NormalizeCard tidies a credit-card item's number and expiry and puts its fields in order; other items are left alone.
+// NormalizeCard tidies a credit-card item's number, type and expiry and puts its fields in order; other items are left
+// alone. An empty type is filled in from the number.
 func NormalizeCard(vaultItem *Item) {
 	if !vaultItem.IsCategory(CategoryCreditCard) {
 		return
@@ -102,6 +107,9 @@ func NormalizeCard(vaultItem *Item) {
 	card, otherFields := ReadCard(vaultItem)
 	card.Cardholder = strings.TrimSpace(card.Cardholder)
 	card.Number = FormatCardNumber(card.Number)
+	if card.Type = NormalizeCardType(card.Type); card.Type == "" {
+		card.Type = GetCardBrand(card.Number)
+	}
 	if expiry, isValid := NormalizeExpiry(card.Expiry); isValid {
 		card.Expiry = expiry
 	} else {
@@ -164,6 +172,41 @@ var cardBrands = []struct {
 	{"Mastercard", [][2]int{{51, 55}, {2221, 2720}}},
 	{"Maestro", [][2]int{{50, 50}, {56, 58}, {6304, 6304}, {6759, 6759}, {6761, 6763}}},
 	{"Visa", [][2]int{{4, 4}}},
+}
+
+// ListCardBrands returns the brands Hisar recognizes, in the order an editor offers them as a card's type.
+func ListCardBrands() []string {
+	return []string{"Visa", "Mastercard", "American Express", "Discover", "Diners Club", "JCB", "UnionPay", "Maestro", "Troy"}
+}
+
+// cardTypeAliases maps other ways of writing a brand, such as 1Password's "mc" or Bitwarden's "Amex", to its name.
+var cardTypeAliases = map[string]string{
+	"mc":              "Mastercard",
+	"master card":     "Mastercard",
+	"amex":            "American Express",
+	"americanexpress": "American Express",
+	"diners":          "Diners Club",
+	"dinersclub":      "Diners Club",
+	"carteblanche":    "Diners Club",
+	"union pay":       "UnionPay",
+	"china unionpay":  "UnionPay",
+	"visaelectron":    "Visa",
+	"visa electron":   "Visa",
+}
+
+// NormalizeCardType writes a known brand the way ListCardBrands does, whatever its case or spelling, and keeps any other
+// type as typed.
+func NormalizeCardType(cardType string) string {
+	cardType = strings.TrimSpace(cardType)
+	for _, brand := range ListCardBrands() {
+		if strings.EqualFold(cardType, brand) {
+			return brand
+		}
+	}
+	if brand, isFound := cardTypeAliases[strings.ToLower(cardType)]; isFound {
+		return brand
+	}
+	return cardType
 }
 
 // GetCardBrand names the card network a number belongs to by its first digits, or returns "".

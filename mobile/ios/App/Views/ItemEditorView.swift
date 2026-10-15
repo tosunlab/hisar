@@ -17,6 +17,8 @@ struct ItemEditorView: View {
     @State private var hasLoadedDraft = false
     @State private var isCardSecretRevealed = false
     @State private var cardDescription = CardDescription()
+    /// The brand of the number last checked: the type follows it until the user picks a different one.
+    @State private var numberBrand = ""
 
     private var isNew: Bool { originalItem == nil }
 
@@ -174,7 +176,21 @@ struct ItemEditorView: View {
             let card = draft.card ?? ItemCard()
             draft.card = card
             cardDescription = CardDescription(brand: card.brand, last4: card.last4, numberWarning: card.numberWarning, expiryWarning: card.expiryWarning)
+            numberBrand = card.brand
         }
+    }
+
+    /// The types the picker offers: the known brands, plus a type saved from elsewhere that is not one of them.
+    private var allCardType: [String] {
+        let cardType = draft.card?.type ?? ""
+        return cardType.isEmpty || ItemCard.allBrand.contains(cardType) ? ItemCard.allBrand : ItemCard.allBrand + [cardType]
+    }
+
+    /// A type the user chose that the number does not match; the card still saves.
+    private var cardTypeMismatch: String {
+        let cardType = draft.card?.type ?? ""
+        let brand = cardDescription.brand
+        return !cardType.isEmpty && !brand.isEmpty && cardType != brand ? "The number looks like a \(brand) card" : ""
     }
 
     /// A binding to one of the card's values, creating the card on first write. The number and expiry are formatted as they
@@ -217,6 +233,13 @@ struct ItemEditorView: View {
                 .textContentType(.name)
                 .accessibilityIdentifier("editor-cardholder")
             buildCardField("Card number", \.number, identifier: "editor-card-number", isSecret: true)
+            Picker("Type", selection: bindCard(\.type)) {
+                Text("Not set").tag("")
+                ForEach(allCardType, id: \.self) { cardType in
+                    Text(cardType).tag(cardType)
+                }
+            }
+            .accessibilityIdentifier("editor-card-type")
             TextField("Expiry (MM/YY)", text: bindCard(\.expiry))
                 .keyboardType(.numberPad)
                 .accessibilityIdentifier("editor-card-expiry")
@@ -228,16 +251,9 @@ struct ItemEditorView: View {
                 Label(isCardSecretRevealed ? "Hide number and codes" : "Show number and codes", systemImage: isCardSecretRevealed ? "eye.slash" : "eye")
             }
         } header: {
-            HStack {
-                Text("Card")
-                Spacer()
-                if !cardDescription.brand.isEmpty {
-                    Text(cardDescription.brand)
-                        .accessibilityIdentifier("editor-card-brand")
-                }
-            }
+            Text("Card")
         } footer: {
-            let allWarning = [cardDescription.numberWarning, cardDescription.expiryWarning].filter { !$0.isEmpty }
+            let allWarning = [cardDescription.numberWarning, cardTypeMismatch, cardDescription.expiryWarning].filter { !$0.isEmpty }
             if !allWarning.isEmpty {
                 Text(allWarning.joined(separator: "\n"))
                     .foregroundStyle(.orange)
@@ -248,6 +264,11 @@ struct ItemEditorView: View {
             try? await Task.sleep(for: .milliseconds(250))
             guard !Task.isCancelled, let description = await model.describeCard(number: draft.card?.number ?? "", expiry: draft.card?.expiry ?? "") else { return }
             cardDescription = description
+            if var card = draft.card, card.type.isEmpty || card.type == numberBrand {
+                card.type = description.brand
+                draft.card = card
+            }
+            numberBrand = description.brand
         }
         Section("Billing address") {
             TextField("Billing address", text: bindCard(\.billingAddress), axis: .vertical)

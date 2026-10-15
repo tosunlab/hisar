@@ -242,6 +242,7 @@ struct ItemDetailView: View {
     private func buildCardSection(card: ItemCard) -> some View {
         let allRow: [(label: String, value: String, isConcealed: Bool, warning: String)] = [
             (CardFieldName.cardholder, card.cardholder, false, ""),
+            (CardFieldName.type, card.type, false, ""),
             (CardFieldName.number, card.number, true, card.numberWarning),
             (CardFieldName.expiry, card.expiry, false, card.expiryWarning),
             (CardFieldName.securityCode, card.securityCode, true, ""),

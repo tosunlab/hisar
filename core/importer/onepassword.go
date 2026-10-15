@@ -129,10 +129,11 @@ func parseOnePasswordExport(content []byte) (*Result, error) {
 	return result, nil
 }
 
-// onePasswordCardFields maps the ids of a 1Password Credit Card's fields to the card's values; its other fields (type,
-// bank, valid from, phone numbers…) stay custom fields.
+// onePasswordCardFields maps the ids of a 1Password Credit Card's fields to the card's values; its other fields (bank,
+// valid from, phone numbers…) stay custom fields.
 var onePasswordCardFields = map[string]func(*item.Card) *string{
 	"cardholder": func(card *item.Card) *string { return &card.Cardholder },
+	"type":       func(card *item.Card) *string { return &card.Type },
 	"ccnum":      func(card *item.Card) *string { return &card.Number },
 	"expiry":     func(card *item.Card) *string { return &card.Expiry },
 	"cvv":        func(card *item.Card) *string { return &card.SecurityCode },

@@ -51,9 +51,9 @@ type bitwardenItem struct {
 	SSHKey *struct {
 		PrivateKey string `json:"privateKey"`
 	} `json:"sshKey"`
-	// Card's brand is left out: Hisar works it out from the number.
 	Card *struct {
 		CardholderName string `json:"cardholderName"`
+		Brand          string `json:"brand"`
 		Number         string `json:"number"`
 		ExpMonth       string `json:"expMonth"`
 		ExpYear        string `json:"expYear"`
@@ -128,7 +128,7 @@ func convertBitwardenItem(entry bitwardenItem) (item.Item, string) {
 	if entry.Type == bitwardenCard {
 		vaultItem.Overview.Category = item.CategoryCreditCard
 		if entry.Card != nil {
-			card := item.Card{Cardholder: entry.Card.CardholderName, Number: entry.Card.Number, SecurityCode: entry.Card.Code}
+			card := item.Card{Cardholder: entry.Card.CardholderName, Type: entry.Card.Brand, Number: entry.Card.Number, SecurityCode: entry.Card.Code}
 			if entry.Card.ExpMonth != "" && entry.Card.ExpYear != "" {
 				card.Expiry = entry.Card.ExpMonth + "/" + entry.Card.ExpYear
 			}

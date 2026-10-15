@@ -355,6 +355,9 @@ class FakeBackend: VaultBackend {
             var card = savedItem.card ?? ItemCard()
             let description = try describeCard(number: card.number, expiry: card.expiry)
             card.brand = description.brand
+            if card.type.isEmpty {
+                card.type = description.brand
+            }
             card.last4 = description.last4
             card.numberWarning = description.numberWarning
             savedItem.card = card

@@ -37,6 +37,7 @@ export function createCardItem(overrides: Partial<ItemDetail> = {}): ItemDetail 
     fields: [{ name: "Bank", value: "Garanti BBVA", concealed: false }],
     card: {
       cardholder: "Alice Smith",
+      type: "Visa",
       number: "4111 1111 1111 1111",
       expiry: "12/29",
       securityCode: "123",

@@ -158,12 +158,15 @@ type ItemDetail struct {
 	// CanConvertToSecureNote: a login with only notes and custom fields, which ConvertToSecureNote turns into a secure note.
 	CanConvertToSecureNote bool `json:"canConvertToSecureNote"`
 	// Card holds a credit card's values, which are stored as named custom fields; Fields then holds only the others.
-	// Summaries keep only the brand and last four digits.
+	// Summaries keep only the type, brand and last four digits.
 	Card *ItemCard `json:"card,omitempty"`
 }
 
+// ItemCard is a card's values. Type is the brand saved with the card, which the user may choose; Brand is the one its
+// number points to. Lists show Type, or Brand when the card has no type.
 type ItemCard struct {
 	Cardholder     string `json:"cardholder"`
+	Type           string `json:"type"`
 	Number         string `json:"number"`
 	Expiry         string `json:"expiry"`
 	SecurityCode   string `json:"securityCode"`

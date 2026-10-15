@@ -112,8 +112,8 @@ Design: `docs/DESIGN.md` §4.5 (categories).
 
 Design: `docs/DESIGN.md` §4.5 (categories).
 
-- **+** → **Credit card** opens a card editor: cardholder, number, expiry, security code, PIN and billing address, then notes and custom fields. The number shows its brand as you type, and the editor warns about a number that fails its checksum, an expiry it cannot read or an expired card, but saves anyway.
-- A card's view shows "Visa •••• 4242" and keeps the number, security code and PIN masked until revealed; each value has **Copy** and a secret reference. The item list shows the brand and last four digits only.
+- **+** → **Credit card** opens a card editor: cardholder, number, type, expiry, security code, PIN and billing address, then notes and custom fields. The number and expiry are formatted as you type (`4444 5555 5555 5555`, `01/30`). The type (Visa, Mastercard, American Express…) follows the number until you pick another, with a hint when they disagree. The editor warns about a number that fails its checksum, an expiry it cannot read or an expired card, but saves anyway.
+- A card's view shows "Visa •••• 4242" and keeps the number, security code and PIN masked until revealed; each value has **Copy** and a secret reference. The item list shows the type and last four digits only.
 - Cards import from 1Password (`.1pux`) and Bitwarden JSON; a Bitwarden CSV leaves them out.
 - Preview: `&item=visa` (an expired card), `&editor=credit-card`.
 

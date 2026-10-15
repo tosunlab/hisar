@@ -567,6 +567,7 @@ final class AppModel: ObservableObject {
         summary.oneTimePassword = ""
         if let card = savedItem.card {
             var cardSummary = ItemCard()
+            cardSummary.type = card.type
             cardSummary.brand = card.brand
             cardSummary.last4 = card.last4
             summary.card = cardSummary

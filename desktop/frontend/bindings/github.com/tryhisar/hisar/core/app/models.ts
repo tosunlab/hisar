@@ -142,8 +142,13 @@ export interface ImportSkippedEntry {
     "reason": string;
 }
 
+/**
+ * ItemCard is a card's values. Type is the brand saved with the card, which the user may choose; Brand is the one its
+ * number points to. Lists show Type, or Brand when the card has no type.
+ */
 export interface ItemCard {
     "cardholder": string;
+    "type": string;
     "number": string;
     "expiry": string;
     "securityCode": string;
@@ -186,7 +191,7 @@ export interface ItemDetail {
 
     /**
      * Card holds a credit card's values, which are stored as named custom fields; Fields then holds only the others.
-     * Summaries keep only the brand and last four digits.
+     * Summaries keep only the type, brand and last four digits.
      */
     "card"?: ItemCard | null;
 }

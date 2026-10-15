@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { onBeforeUnmount, reactive, ref, watch } from "vue";
+import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { api, createEmptyCard, createEmptyItem, type CardDescription, type ItemDetail } from "../api";
-import { creditCardCategory, formatCardNumberInput, formatExpiryInput, formatInputAsTyped, getItemIcon, secureNoteCategory, sshKeyCategory } from "../util";
+import { allCardBrand, creditCardCategory, formatCardNumberInput, formatExpiryInput, formatInputAsTyped, getItemIcon, secureNoteCategory, sshKeyCategory } from "../util";
 import { cancelEditing, saveItem, store } from "../store";
 import AppIcon from "./AppIcon.vue";
 import ItemTile from "./ItemTile.vue";
@@ -45,7 +45,21 @@ const cardDescription = ref<CardDescription>({
   expiryWarning: draft.card?.expiryWarning ?? "",
 });
 
-// The backend checks the number and expiry, so the brand and warnings follow what Hisar saves.
+// The types the picker offers: the known brands, plus a type saved from elsewhere that is not one of them.
+const allCardType = computed(() => {
+  const cardType = draft.card?.type ?? "";
+  return cardType === "" || allCardBrand.includes(cardType) ? allCardBrand : [...allCardBrand, cardType];
+});
+// A type the user chose that the number does not match; the card still saves.
+const cardTypeMismatch = computed(() => {
+  const cardType = draft.card?.type ?? "";
+  const brand = cardDescription.value.brand;
+  return cardType !== "" && brand !== "" && cardType !== brand ? `The number looks like a ${brand} card` : "";
+});
+
+// The backend checks the number and expiry, so the brand and warnings follow what Hisar saves. The type follows the
+// number's brand until the user picks a different one.
+let numberBrand = cardDescription.value.brand;
 let describeTimer: ReturnType<typeof setTimeout> | undefined;
 watch(
   () => [draft.card?.number, draft.card?.expiry],
@@ -54,6 +68,10 @@ watch(
     describeTimer = setTimeout(async () => {
       try {
         cardDescription.value = await api.describeCard(draft.card?.number ?? "", draft.card?.expiry ?? "");
+        if (draft.card && (draft.card.type === "" || draft.card.type === numberBrand)) {
+          draft.card.type = cardDescription.value.brand;
+        }
+        numberBrand = cardDescription.value.brand;
       } catch {
         // A failed check only hides the hint; saving still works.
       }
@@ -112,7 +130,7 @@ async function submitItem(): Promise<void> {
         <input v-model="draft.card.cardholder" name="cardholder" autocomplete="off" placeholder="Name on the card" />
       </label>
       <label>
-        <span class="label-row">Card number <span v-if="cardDescription.brand" class="brand-badge" data-testid="card-brand">{{ cardDescription.brand }}</span></span>
+        <span>Card number</span>
         <input
           :value="draft.card.number"
           name="cardNumber"
@@ -124,6 +142,14 @@ async function submitItem(): Promise<void> {
           @input="formatCardInput($event, 'number', formatCardNumberInput)"
         />
         <small v-if="cardDescription.numberWarning" class="hint warning-text" data-testid="card-number-warning">{{ cardDescription.numberWarning }}</small>
+      </label>
+      <label>
+        <span>Type</span>
+        <select v-model="draft.card.type" name="cardType">
+          <option value="">Not set</option>
+          <option v-for="cardType in allCardType" :key="cardType" :value="cardType">{{ cardType }}</option>
+        </select>
+        <small v-if="cardTypeMismatch" class="hint warning-text" data-testid="card-type-warning">{{ cardTypeMismatch }}</small>
       </label>
       <div class="row card-row">
         <label>
@@ -274,20 +300,6 @@ header {
 
 label.last {
   margin-bottom: 0;
-}
-
-.label-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.brand-badge {
-  padding: 0 7px;
-  border: 1px solid var(--color-border-strong);
-  border-radius: 10px;
-  color: var(--color-text-secondary);
-  font-size: 11px;
 }
 
 .hint {

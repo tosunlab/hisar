@@ -111,6 +111,7 @@ const allPreviewItemByVaultID: Record<string, ItemDetail[]> = {
       fields: [{ name: "Bank", value: "Garanti BBVA", concealed: false }],
       card: {
         cardholder: "Alper Tosun",
+        type: "Visa",
         number: "4111 1111 1111 1111",
         expiry: "09/26",
         securityCode: "123",

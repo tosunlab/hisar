@@ -353,7 +353,11 @@ func promptCard(vaultItem *item.Item) error {
 	for _, field := range item.ListCardFields() {
 		value := field.Value(&card)
 		if !field.Concealed {
-			if *value, err = prompt(field.Name, *value); err != nil {
+			label := field.Name
+			if field.Name == item.FieldCardType && *value == "" {
+				label += " (empty to work it out from the number)"
+			}
+			if *value, err = prompt(label, *value); err != nil {
 				return err
 			}
 			continue

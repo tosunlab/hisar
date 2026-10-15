@@ -23,6 +23,7 @@ func TestCreditCardIsStoredAsNamedFields(t *testing.T) {
 	stored := getCachedItem(t, service, vaultID, saved.ID)
 	wantFields := []item.Field{
 		{Name: item.FieldCardholder, Value: "Alice Smith"},
+		{Name: item.FieldCardType, Value: "Visa"},
 		{Name: item.FieldCardNumber, Value: "4111 1111 1111 1111", Concealed: true},
 		{Name: item.FieldExpiry, Value: "12/29"},
 		{Name: item.FieldSecurityCode, Value: "123", Concealed: true},
@@ -36,14 +37,14 @@ func TestCreditCardIsStoredAsNamedFields(t *testing.T) {
 	if stored.Overview.Category != item.CategoryCreditCard || stored.Overview.Username != "" || stored.Details.Password != "" || stored.Overview.URLs != nil {
 		t.Errorf("stored card = %+v", stored)
 	}
-	if saved.Card == nil || saved.Card.Brand != "Visa" || saved.Card.Last4 != "1111" || saved.Card.Expiry != "12/29" || saved.Card.NumberWarning != "" {
+	if saved.Card == nil || saved.Card.Brand != "Visa" || saved.Card.Last4 != "1111" || saved.Card.Type != "Visa" || saved.Card.Expiry != "12/29" || saved.Card.NumberWarning != "" {
 		t.Errorf("saved card = %+v", saved.Card)
 	}
 	if !reflect.DeepEqual(saved.Fields, []ItemField{{Name: "Bank", Value: "İş Bankası"}}) {
 		t.Errorf("other fields = %+v", saved.Fields)
 	}
 
-	saved.Card.SecurityCode, saved.Card.Number = "456", "4111 1111 1111 1112"
+	saved.Card.SecurityCode, saved.Card.Number, saved.Card.Type = "456", "4111 1111 1111 1112", "visa electron"
 	edited, err := service.SaveItem(vaultID, saved)
 	if err != nil {
 		t.Fatal(err)
@@ -56,7 +57,7 @@ func TestCreditCardIsStoredAsNamedFields(t *testing.T) {
 	if err != nil || len(summaries) != 1 || summaries[0].Card == nil {
 		t.Fatalf("summaries = %+v, %v", summaries, err)
 	}
-	if card := summaries[0].Card; card.Brand != "Visa" || card.Last4 != "1112" || card.Number != "" || card.SecurityCode != "" || card.PIN != "" || card.Cardholder != "" {
+	if card := summaries[0].Card; card.Brand != "Visa" || card.Last4 != "1112" || card.Type != "Visa" || card.Number != "" || card.SecurityCode != "" || card.PIN != "" || card.Cardholder != "" {
 		t.Errorf("summary card = %+v", card)
 	}
 	if description := service.DescribeCard("3782 822463 10005", "13/27"); description.Brand != "American Express" || description.ExpiryWarning == "" {
@@ -77,6 +78,7 @@ func TestCommandLineCreditCardTravelsAsNamedFields(t *testing.T) {
 		Category: item.CategoryCreditCard, Title: "Mastercard", Fields: &fields,
 	}}, &created)
 	wantFields := []cliprotocol.Field{
+		{Name: item.FieldCardType, Value: "Mastercard"},
 		{Name: item.FieldCardNumber, Value: "5555 5555 5555 4444", Concealed: true},
 		{Name: item.FieldSecurityCode, Value: "321", Concealed: true},
 		{Name: "Note", Value: "work card"},
@@ -86,12 +88,12 @@ func TestCommandLineCreditCardTravelsAsNamedFields(t *testing.T) {
 	}
 
 	edited := append([]cliprotocol.Field{}, created.Item.Fields...)
-	edited[1].Value = "999"
+	edited[2].Value = "999"
 	var saved cliprotocol.ItemResult
 	test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeSaveItem, VaultID: vaultID, Item: &cliprotocol.ItemChange{
 		ID: created.Item.ID, Revision: created.Item.Revision, Title: "Mastercard", Fields: &edited,
 	}}, &saved)
-	if saved.Item.Fields[1].Value != "999" || saved.Item.Category != item.CategoryCreditCard {
+	if saved.Item.Fields[2].Value != "999" || saved.Item.Category != item.CategoryCreditCard {
 		t.Errorf("edited %+v", saved.Item)
 	}
 

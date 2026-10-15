@@ -148,6 +148,7 @@ export function getItemIcon(category: string): "key" | "note" | "card" | undefin
 // The names of a card's custom fields, as core/item stores them; copying and secret references use them.
 export const cardFieldName = {
   cardholder: "Cardholder",
+  type: "Type",
   number: "Card number",
   expiry: "Expiry",
   securityCode: "Security code",
@@ -155,10 +156,14 @@ export const cardFieldName = {
   billingAddress: "Billing address",
 } as const;
 
-// formatCardSummary is a card's line in lists: its brand and last four digits, such as "Visa •••• 4242".
-export function formatCardSummary(card: { brand: string; last4: string } | null | undefined): string {
+// The brands an editor offers as a card's type, in the order of core/item ListCardBrands.
+export const allCardBrand = ["Visa", "Mastercard", "American Express", "Discover", "Diners Club", "JCB", "UnionPay", "Maestro", "Troy"];
+
+// formatCardSummary is a card's line in lists: its type (or the brand its number points to) and last four digits, such as
+// "Visa •••• 4242".
+export function formatCardSummary(card: { type: string; brand: string; last4: string } | null | undefined): string {
   const last4 = card?.last4 ? `•••• ${card.last4}` : "";
-  return [card?.brand ?? "", last4].filter((part) => part !== "").join(" ") || "Credit card";
+  return [card?.type || card?.brand || "", last4].filter((part) => part !== "").join(" ") || "Credit card";
 }
 
 // formatCardNumberInput groups a card number as it is typed, the way core/item saves it: 4-6-5 for American Express,

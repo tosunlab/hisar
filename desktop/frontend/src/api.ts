@@ -330,7 +330,7 @@ export function getErrorMessage(error: unknown): string {
 }
 
 export function createEmptyCard(): ItemCard {
-  return { cardholder: "", number: "", expiry: "", securityCode: "", pin: "", billingAddress: "", brand: "", last4: "", numberWarning: "", expiryWarning: "" };
+  return { cardholder: "", type: "", number: "", expiry: "", securityCode: "", pin: "", billingAddress: "", brand: "", last4: "", numberWarning: "", expiryWarning: "" };
 }
 
 export function createEmptyItem(): ItemDetail {

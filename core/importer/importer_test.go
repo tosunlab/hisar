@@ -208,7 +208,7 @@ func TestParseOnePasswordExport(t *testing.T) {
 		t.Errorf("typed fields = %+v", rental.Details.Fields)
 	}
 	if visa := findTestItem(t, result, "Visa"); visa.Overview.Category != item.CategoryCreditCard ||
-		!reflect.DeepEqual(visa.Details.Fields, []item.Field{{Name: item.FieldCardNumber, Value: "4111 1111 1111 1111", Concealed: true}}) {
+		!reflect.DeepEqual(visa.Details.Fields, []item.Field{{Name: item.FieldCardType, Value: "Visa"}, {Name: item.FieldCardNumber, Value: "4111 1111 1111 1111", Concealed: true}}) {
 		t.Errorf("1Password card = %+v", visa)
 	}
 	if summary := Summarize(result.Items); summary != (Summary{LoginCount: 5, SecureNoteCount: 1, SSHKeyCount: 1, CreditCardCount: 1}) {
@@ -255,6 +255,7 @@ func TestParseBitwardenJSON(t *testing.T) {
 	}
 	wantVisa := []item.Field{
 		{Name: item.FieldCardholder, Value: "Alice"},
+		{Name: item.FieldCardType, Value: "Visa"},
 		{Name: item.FieldCardNumber, Value: "4111 1111 1111 1111", Concealed: true},
 		{Name: item.FieldExpiry, Value: "12/27"},
 		{Name: item.FieldSecurityCode, Value: "123", Concealed: true},
@@ -617,12 +618,12 @@ func TestParseOnePasswordCreditCard(t *testing.T) {
 	amex := findTestItem(t, result, "Amex")
 	wantFields := []item.Field{
 		{Name: item.FieldCardholder, Value: "Alice Smith"},
+		{Name: item.FieldCardType, Value: "American Express"},
 		{Name: item.FieldCardNumber, Value: "3782 822463 10005", Concealed: true},
 		{Name: item.FieldExpiry, Value: "12/29"},
 		{Name: item.FieldSecurityCode, Value: "1234", Concealed: true},
 		{Name: item.FieldPIN, Value: "9876", Concealed: true},
 		{Name: item.FieldBillingAddress, Value: "1 Main St, Springfield, 12345, us"},
-		{Name: "type", Value: "amex"},
 		{Name: "issuing bank", Value: "Bank of Hisar"},
 	}
 	if amex.Overview.Category != item.CategoryCreditCard || amex.Details.Notes != "Travel card" || !reflect.DeepEqual(amex.Details.Fields, wantFields) {

@@ -84,6 +84,37 @@ func TestNormalizeExpiry(t *testing.T) {
 	}
 }
 
+func TestCardType(t *testing.T) {
+	for cardType, want := range map[string]string{
+		"visa":             "Visa",
+		" MASTERCARD ":     "Mastercard",
+		"mc":               "Mastercard",
+		"Amex":             "American Express",
+		"american express": "American Express",
+		"carteblanche":     "Diners Club",
+		"RuPay":            "RuPay",
+		"":                 "",
+	} {
+		if got := NormalizeCardType(cardType); got != want {
+			t.Errorf("NormalizeCardType(%q) = %q, want %q", cardType, got, want)
+		}
+	}
+
+	chosen := Item{Overview: Overview{Category: CategoryCreditCard}, Details: Details{Fields: []Field{
+		{Name: FieldCardNumber, Value: "4111111111111111"},
+		{Name: "type", Value: "amex"},
+	}}}
+	NormalizeCard(&chosen)
+	if card, _ := ReadCard(&chosen); card.Type != "American Express" {
+		t.Errorf("a chosen type became %q", card.Type)
+	}
+	unknown := Item{Overview: Overview{Category: CategoryCreditCard}, Details: Details{Fields: []Field{{Name: FieldCardNumber, Value: "1234"}}}}
+	NormalizeCard(&unknown)
+	if card, _ := ReadCard(&unknown); card.Type != "" {
+		t.Errorf("an unknown number got the type %q", card.Type)
+	}
+}
+
 func TestDescribeCard(t *testing.T) {
 	now := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
 	cases := []struct {
@@ -122,6 +153,7 @@ func TestReadAndWriteCard(t *testing.T) {
 
 	NormalizeCard(&vaultItem)
 	wantFields := []Field{
+		{Name: FieldCardType, Value: "Visa"},
 		{Name: FieldCardNumber, Value: "4111 1111 1111 1111", Concealed: true},
 		{Name: FieldExpiry, Value: "12/27"},
 		{Name: FieldSecurityCode, Value: "123", Concealed: true},

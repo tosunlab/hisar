@@ -223,6 +223,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
 /// The names core/item stores a card's values under; copying and secret references use them.
 enum CardFieldName {
     static let cardholder = "Cardholder"
+    static let type = "Type"
     static let number = "Card number"
     static let expiry = "Expiry"
     static let securityCode = "Security code"
@@ -230,8 +231,11 @@ enum CardFieldName {
     static let billingAddress = "Billing address"
 }
 
+/// A card's values. `type` is the brand saved with the card, which the user may choose; `brand` is the one its number
+/// points to.
 struct ItemCard: Codable, Hashable {
     var cardholder = ""
+    var type = ""
     var number = ""
     var expiry = ""
     var securityCode = ""
@@ -243,7 +247,7 @@ struct ItemCard: Codable, Hashable {
     var expiryWarning = ""
 
     enum CodingKeys: String, CodingKey {
-        case cardholder, number, expiry, securityCode, pin, billingAddress, brand, last4, numberWarning, expiryWarning
+        case cardholder, type, number, expiry, securityCode, pin, billingAddress, brand, last4, numberWarning, expiryWarning
     }
 
     init() {}
@@ -251,6 +255,7 @@ struct ItemCard: Codable, Hashable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         cardholder = try container.decodeIfPresent(String.self, forKey: .cardholder) ?? ""
+        type = try container.decodeIfPresent(String.self, forKey: .type) ?? ""
         number = try container.decodeIfPresent(String.self, forKey: .number) ?? ""
         expiry = try container.decodeIfPresent(String.self, forKey: .expiry) ?? ""
         securityCode = try container.decodeIfPresent(String.self, forKey: .securityCode) ?? ""
@@ -262,9 +267,12 @@ struct ItemCard: Codable, Hashable {
         expiryWarning = try container.decodeIfPresent(String.self, forKey: .expiryWarning) ?? ""
     }
 
-    /// The card's line in lists, such as "Visa •••• 4242".
+    /// The brands an editor offers as a card's type, in the order of core/item ListCardBrands.
+    static let allBrand = ["Visa", "Mastercard", "American Express", "Discover", "Diners Club", "JCB", "UnionPay", "Maestro", "Troy"]
+
+    /// The card's line in lists: its type (or the brand its number points to) and last four digits, such as "Visa •••• 4242".
     var summary: String {
-        let parts = [brand, last4.isEmpty ? "" : "•••• \(last4)"].filter { !$0.isEmpty }
+        let parts = [type.isEmpty ? brand : type, last4.isEmpty ? "" : "•••• \(last4)"].filter { !$0.isEmpty }
         return parts.isEmpty ? "Credit card" : parts.joined(separator: " ")
     }
 

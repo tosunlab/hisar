@@ -34,7 +34,7 @@ func (s *Service) ListItems(vaultID string) ([]ItemDetail, error) {
 		summary := convertToItemDetail(&items[index])
 		summary.Password, summary.Notes, summary.Fields, summary.OneTimePassword = "", "", nil, ""
 		if summary.Card != nil {
-			summary.Card = &ItemCard{CardDescription: CardDescription{Brand: summary.Card.Brand, Last4: summary.Card.Last4}}
+			summary.Card = &ItemCard{Type: summary.Card.Type, CardDescription: CardDescription{Brand: summary.Card.Brand, Last4: summary.Card.Last4}}
 		}
 		summaries = append(summaries, summary)
 	}
@@ -113,7 +113,7 @@ func convertToItemDetail(vaultItem *item.Item) ItemDetail {
 		var card item.Card
 		card, fields = item.ReadCard(vaultItem)
 		detail.Card = &ItemCard{
-			Cardholder: card.Cardholder, Number: card.Number, Expiry: card.Expiry, SecurityCode: card.SecurityCode, PIN: card.PIN, BillingAddress: card.BillingAddress,
+			Cardholder: card.Cardholder, Type: card.Type, Number: card.Number, Expiry: card.Expiry, SecurityCode: card.SecurityCode, PIN: card.PIN, BillingAddress: card.BillingAddress,
 			CardDescription: convertToCardDescription(item.DescribeCard(card.Number, card.Expiry, time.Now())),
 		}
 	}
@@ -148,7 +148,7 @@ func getStoredFields(detail ItemDetail) []ItemField {
 }
 
 func convertFromItemCard(card *ItemCard) item.Card {
-	return item.Card{Cardholder: card.Cardholder, Number: card.Number, Expiry: card.Expiry, SecurityCode: card.SecurityCode, PIN: card.PIN, BillingAddress: card.BillingAddress}
+	return item.Card{Cardholder: card.Cardholder, Type: card.Type, Number: card.Number, Expiry: card.Expiry, SecurityCode: card.SecurityCode, PIN: card.PIN, BillingAddress: card.BillingAddress}
 }
 
 func convertFromItemDetail(detail ItemDetail) item.Item {

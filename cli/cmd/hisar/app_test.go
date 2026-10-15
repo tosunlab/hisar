@@ -334,7 +334,7 @@ func TestAddNoteRefusesAnAppWithoutSecureNotes(t *testing.T) {
 
 func TestCreditCardsThroughTheApp(t *testing.T) {
 	app := startFakeApp(t)
-	input := "Visa\nAlice Smith\n4111111111111112\n13/27\n123\n\n1 Main St\n"
+	input := "Visa\nAlice Smith\n\n4111111111111112\n13/27\n123\n\n1 Main St\n"
 	_, stderr, err := runCapturingOutput(t, false, input, "add", "--type", "credit-card")
 	if err != nil || !strings.Contains(stderr, `Saved "Visa" to Personal.`) {
 		t.Fatalf("add --type credit-card: %q %v", stderr, err)
@@ -345,6 +345,7 @@ func TestCreditCardsThroughTheApp(t *testing.T) {
 	added := app.findRequest(cliprotocol.TypeSaveItem)[0].Item
 	wantFields := []cliprotocol.Field{
 		{Name: item.FieldCardholder, Value: "Alice Smith"},
+		{Name: item.FieldCardType, Value: "Visa"},
 		{Name: item.FieldCardNumber, Value: "4111 1111 1111 1112", Concealed: true},
 		{Name: item.FieldExpiry, Value: "13/27"},
 		{Name: item.FieldSecurityCode, Value: "123", Concealed: true},

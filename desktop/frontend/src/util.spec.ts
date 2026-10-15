@@ -14,7 +14,7 @@ import {
   getPlatformIcon,
   getTileColor,
 } from "./util";
-import { describePerson, formatCardNumberInput, formatExpiryInput, formatInputAsTyped, formatTimeAgo } from "./util";
+import { describePerson, formatCardNumberInput, formatCardSummary, formatExpiryInput, formatInputAsTyped, formatTimeAgo } from "./util";
 
 describe("computePasswordStrength", () => {
   it("rates random passwords by length and character classes", () => {
@@ -136,6 +136,14 @@ describe("banner formatting", () => {
     expect(describePerson("Ada", "ada@example.com")).toBe("Ada");
     expect(describePerson("", "ada@example.com")).toBe("ada@example.com");
     expect(describePerson("ada@example.com", "ada@example.com")).toBe("ada@example.com");
+  });
+});
+
+describe("formatCardSummary", () => {
+  it("prefers the card's type to the brand of its number", () => {
+    expect(formatCardSummary({ type: "Troy", brand: "Visa", last4: "1111" })).toBe("Troy •••• 1111");
+    expect(formatCardSummary({ type: "", brand: "Visa", last4: "1111" })).toBe("Visa •••• 1111");
+    expect(formatCardSummary({ type: "", brand: "", last4: "" })).toBe("Credit card");
   });
 });
 

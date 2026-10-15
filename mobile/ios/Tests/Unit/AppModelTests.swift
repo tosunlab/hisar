@@ -313,6 +313,18 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(model.listAllItemReference().contains { ItemCategoryDestination.logins.includes($0.item) && $0.item.id == savedItem.id })
     }
 
+    func testCardTypeIsFilledInFromTheNumberAndAChosenOneIsKept() async {
+        let model = await createUnlockedModel()
+        var card = ItemCard()
+        card.number = "4111 1111 1111 1111"
+        guard let filled = await model.saveItem(vaultID: "personal", item: ItemDetail(category: ItemDetail.categoryCreditCard, title: "Visa", card: card)) else { return XCTFail("card not saved") }
+        XCTAssertEqual(filled.card?.type, "Visa")
+        card.type = "Troy"
+        guard let chosen = await model.saveItem(vaultID: "personal", item: ItemDetail(category: ItemDetail.categoryCreditCard, title: "Troy", card: card)) else { return XCTFail("card not saved") }
+        let reference = model.listAllItemReference(vaultID: "personal").first { $0.item.id == chosen.id }
+        XCTAssertEqual(reference?.item.card?.summary, "Troy •••• 1111")
+    }
+
     func testDescribeCardComesFromTheBackend() async {
         let model = await createUnlockedModel()
         let description = await model.describeCard(number: "4111 1111 1111 1112", expiry: "")

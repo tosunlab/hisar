@@ -38,6 +38,7 @@ const allCardRow = computed(() => {
   }
   return [
     { name: cardFieldName.cardholder, value: card.cardholder, concealed: false, masked: "", warning: "" },
+    { name: cardFieldName.type, value: card.type, concealed: false, masked: "", warning: "" },
     { name: cardFieldName.number, value: card.number, concealed: true, masked: card.last4 ? `•••• •••• •••• ${card.last4}` : "", warning: card.numberWarning },
     { name: cardFieldName.expiry, value: card.expiry, concealed: false, masked: "", warning: card.expiryWarning },
     { name: cardFieldName.securityCode, value: card.securityCode, concealed: true, masked: "", warning: "" },
