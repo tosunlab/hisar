@@ -155,6 +155,16 @@ describe("Viewing a credit card", () => {
     expect(api.copyField).toHaveBeenCalledWith("personal", "card-1", "Security code");
   });
 
+  it("offers a share link for a card with only card values", () => {
+    store.selectedItem = createCardItem({ notes: "", fields: [] });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: false, vaultName: "Personal", isShared: false } });
+    expect(wrapper.find('[data-testid="share-link"]').exists()).toBe(true);
+
+    store.selectedItem = createCardItem({ notes: "", fields: [], card: { ...createCardItem().card!, cardholder: "", type: "", number: "", expiry: "", securityCode: "", pin: "", billingAddress: "" } });
+    const empty = mount(ItemDetailPanel, { props: { canEdit: false, vaultName: "Personal", isShared: false } });
+    expect(empty.find('[data-testid="share-link"]').exists()).toBe(false);
+  });
+
   it("shows an expired card's warning", () => {
     store.selectedItem = createCardItem({ card: { ...createCardItem().card!, expiry: "09/20", expiryWarning: "This card has expired" } });
     const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false } });

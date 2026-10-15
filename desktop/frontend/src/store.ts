@@ -1265,7 +1265,10 @@ export function getAllShareLinkForItem(vaultID: string, itemID: string): ShareLi
 }
 
 export function hasShareableField(detail: ItemDetail): boolean {
-  return Boolean(detail.username || detail.password || detail.notes || detail.urls.length > 0 || detail.fields.some((field) => field.value));
+  // A card's values come in card, not in fields.
+  const card = detail.card;
+  const hasCardValue = card ? [card.cardholder, card.type, card.number, card.expiry, card.securityCode, card.pin, card.billingAddress].some((value) => value) : false;
+  return Boolean(detail.username || detail.password || detail.notes || detail.urls.length > 0 || detail.fields.some((field) => field.value) || hasCardValue);
 }
 
 export async function openShareLinks(): Promise<void> {
