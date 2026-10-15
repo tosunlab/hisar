@@ -325,6 +325,39 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(reference?.item.card?.summary, "Troy •••• 1111")
     }
 
+    func testSaveIdentityKeepsOnlyTheNameAndEmailInTheList() async {
+        let model = await createUnlockedModel()
+        var identity = ItemIdentity()
+        identity.firstName = "Alice"
+        identity.lastName = "Example"
+        identity.email = "alice@example.com"
+        identity.passportNumber = "U1234567"
+        identity.address = "1 Main St"
+        guard let savedItem = await model.saveItem(vaultID: "personal", item: ItemDetail(category: ItemDetail.categoryIdentity, title: "Passport", identity: identity)) else {
+            return XCTFail("identity not saved")
+        }
+        XCTAssertTrue(savedItem.isIdentity)
+        XCTAssertEqual(savedItem.identity?.passportNumber, "U1234567")
+        let reference = model.listAllItemReference(vaultID: "personal").first { $0.item.id == savedItem.id }
+        XCTAssertEqual(reference?.item.identity?.summary, "Alice Example")
+        XCTAssertEqual(reference?.item.identity?.email, "alice@example.com")
+        XCTAssertEqual(reference?.item.identity?.passportNumber, "")
+        XCTAssertEqual(reference?.item.identity?.address, "")
+        XCTAssertEqual(model.listAllItemReference().filter { ItemCategoryDestination.identities.includes($0.item) }.map(\.item.title), ["Passport"])
+        XCTAssertFalse(model.listAllItemReference().contains { ItemCategoryDestination.logins.includes($0.item) && $0.item.id == savedItem.id })
+    }
+
+    func testIdentityDecodesFromTheBackendAndSummarizes() throws {
+        let json = #"{"category":"identity","title":"Work","identity":{"firstName":"","lastName":"","email":"alice@example.com","nationalIdNumber":"N1"}}"#
+        let item = try JSONDecoder().decode(ItemDetail.self, from: Data(json.utf8))
+        XCTAssertTrue(item.isIdentity)
+        XCTAssertEqual(item.identity?.nationalIDNumber, "N1")
+        XCTAssertEqual(item.identity?.summary, "alice@example.com")
+        XCTAssertEqual(ItemIdentity().summary, "Identity")
+        let encoded = try XCTUnwrap(String(data: JSONEncoder().encode(item.identity), encoding: .utf8))
+        XCTAssertTrue(encoded.contains(#""nationalIdNumber":"N1""#), encoded)
+    }
+
     func testDescribeCardComesFromTheBackend() async {
         let model = await createUnlockedModel()
         let description = await model.describeCard(number: "4111 1111 1111 1112", expiry: "")

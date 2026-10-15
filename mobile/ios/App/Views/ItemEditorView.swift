@@ -17,6 +17,7 @@ struct ItemEditorView: View {
     @State private var hasLoadedDraft = false
     @State private var isCardSecretRevealed = false
     @State private var cardDescription = CardDescription()
+    @State private var isDocumentNumberRevealed = false
     /// The brand of the number last checked: the type follows it until the user picks a different one.
     @State private var numberBrand = ""
 
@@ -43,6 +44,9 @@ struct ItemEditorView: View {
                     buildFieldSection()
                 } else if draft.isCreditCard {
                     buildCardSections()
+                    buildFieldSection()
+                } else if draft.isIdentity {
+                    buildIdentitySections()
                     buildFieldSection()
                 } else if !draft.isSSHKey {
                     Section("Login") {
@@ -126,7 +130,7 @@ struct ItemEditorView: View {
                     }
                 }
             }
-            .navigationTitle(isNew ? (draft.isSecureNote ? "New secure note" : (draft.isCreditCard ? "New credit card" : "New login")) : "Edit item")
+            .navigationTitle(navigationTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -171,6 +175,9 @@ struct ItemEditorView: View {
             allURLText = originalItem.allURL.isEmpty ? [""] : originalItem.allURL
         } else {
             draft.category = newCategory
+        }
+        if draft.isIdentity, draft.identity == nil {
+            draft.identity = ItemIdentity()
         }
         if draft.isCreditCard {
             let card = draft.card ?? ItemCard()
@@ -275,6 +282,131 @@ struct ItemEditorView: View {
                 .lineLimit(2...5)
                 .textContentType(.fullStreetAddress)
                 .accessibilityIdentifier("editor-card-billing-address")
+        }
+    }
+
+    private var navigationTitle: String {
+        guard isNew else { return "Edit item" }
+        if draft.isSecureNote { return "New secure note" }
+        if draft.isCreditCard { return "New credit card" }
+        if draft.isIdentity { return "New identity" }
+        return "New login"
+    }
+
+    /// A binding to one of the identity's values, creating the identity on first write.
+    private func bindIdentity(_ keyPath: WritableKeyPath<ItemIdentity, String>) -> Binding<String> {
+        Binding(
+            get: { draft.identity?[keyPath: keyPath] ?? "" },
+            set: { value in
+                var identity = draft.identity ?? ItemIdentity()
+                identity[keyPath: keyPath] = value
+                draft.identity = identity
+            }
+        )
+    }
+
+    /// Birth dates are stored as YYYY-MM-DD, a day without a time or time zone.
+    private static let birthDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+
+    /// A date picker for a stored YYYY-MM-DD birth date; an imported date in another form, such as 04/12/1990, stays text.
+    @ViewBuilder
+    private func buildBirthDateRow() -> some View {
+        let birthDate = bindIdentity(\.birthDate)
+        if birthDate.wrappedValue.isEmpty {
+            Button {
+                birthDate.wrappedValue = Self.birthDateFormatter.string(from: Date())
+            } label: {
+                Label("Add birth date", systemImage: "calendar.badge.plus")
+            }
+            .accessibilityIdentifier("editor-identity-add-birth-date")
+        } else if let date = Self.birthDateFormatter.date(from: birthDate.wrappedValue) {
+            HStack {
+                DatePicker(
+                    "Birth date",
+                    selection: Binding(get: { date }, set: { birthDate.wrappedValue = Self.birthDateFormatter.string(from: $0) }),
+                    in: ...Date(),
+                    displayedComponents: .date
+                )
+                .environment(\.timeZone, TimeZone(identifier: "UTC") ?? .current)
+                .accessibilityIdentifier("editor-identity-birth-date")
+                Button(role: .destructive) {
+                    birthDate.wrappedValue = ""
+                } label: {
+                    Image(systemName: "minus.circle")
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Remove birth date")
+            }
+        } else {
+            TextField("Birth date", text: birthDate)
+                .accessibilityIdentifier("editor-identity-birth-date")
+        }
+    }
+
+    @ViewBuilder
+    private func buildDocumentField(_ title: String, _ keyPath: WritableKeyPath<ItemIdentity, String>, identifier: String) -> some View {
+        Group {
+            if isDocumentNumberRevealed {
+                TextField(title, text: bindIdentity(keyPath))
+            } else {
+                SecureField(title, text: bindIdentity(keyPath), prompt: Text(title).foregroundStyle(.themeSecondary))
+            }
+        }
+        .font(.system(.body, design: .monospaced))
+        // Without a content type, iOS takes several secure fields with a text keyboard for a sign-up form and fills them
+        // with a generated strong password; a one-time code type opts out of that.
+        .textContentType(.oneTimeCode)
+        .textInputAutocapitalization(.characters)
+        .autocorrectionDisabled()
+        .accessibilityIdentifier(identifier)
+    }
+
+    @ViewBuilder
+    private func buildIdentitySections() -> some View {
+        Section("Name") {
+            TextField("First name", text: bindIdentity(\.firstName))
+                .textContentType(.givenName)
+                .accessibilityIdentifier("editor-identity-first-name")
+            TextField("Middle name", text: bindIdentity(\.middleName))
+                .textContentType(.middleName)
+                .accessibilityIdentifier("editor-identity-middle-name")
+            TextField("Last name", text: bindIdentity(\.lastName))
+                .textContentType(.familyName)
+                .accessibilityIdentifier("editor-identity-last-name")
+        }
+        Section("Details") {
+            buildBirthDateRow()
+            TextField("Email", text: bindIdentity(\.email))
+                .keyboardType(.emailAddress)
+                .textContentType(.emailAddress)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .accessibilityIdentifier("editor-identity-email")
+            TextField("Phone", text: bindIdentity(\.phone))
+                .keyboardType(.phonePad)
+                .textContentType(.telephoneNumber)
+                .accessibilityIdentifier("editor-identity-phone")
+            TextField("Address", text: bindIdentity(\.address), axis: .vertical)
+                .lineLimit(2...5)
+                .textContentType(.fullStreetAddress)
+                .accessibilityIdentifier("editor-identity-address")
+        }
+        Section("Documents") {
+            buildDocumentField("Passport number", \.passportNumber, identifier: "editor-identity-passport-number")
+            buildDocumentField("Driver's license number", \.driversLicenseNumber, identifier: "editor-identity-drivers-license-number")
+            buildDocumentField("National ID number", \.nationalIDNumber, identifier: "editor-identity-national-id-number")
+            Button {
+                isDocumentNumberRevealed.toggle()
+            } label: {
+                Label(isDocumentNumberRevealed ? "Hide document numbers" : "Show document numbers", systemImage: isDocumentNumberRevealed ? "eye.slash" : "eye")
+            }
         }
     }
 

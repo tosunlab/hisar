@@ -144,6 +144,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     static let categorySSHKey = "ssh-key"
     static let categorySecureNote = "secure-note"
     static let categoryCreditCard = "credit-card"
+    static let categoryIdentity = "identity"
 
     var id: String
     var revision: String
@@ -165,15 +166,17 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     /// A credit card's values, stored as named custom fields; allField then holds only the others. Summaries keep only the
     /// brand and last four digits.
     var card: ItemCard?
+    /// An identity's values, stored as named custom fields like a card's. Summaries keep only the name and email.
+    var identity: ItemIdentity?
 
     enum CodingKeys: String, CodingKey {
-        case id, revision, category, title, username, password, notes, publicKey, fingerprint, keyType, oneTimePassword, hasOneTimePassword, canConvertToSecureNote, card
+        case id, revision, category, title, username, password, notes, publicKey, fingerprint, keyType, oneTimePassword, hasOneTimePassword, canConvertToSecureNote, card, identity
         case allURL = "urls"
         case allField = "fields"
         case allPasskey = "passkeys"
     }
 
-    init(id: String = "", revision: String = "", category: String = ItemDetail.categoryLogin, title: String = "", username: String = "", allURL: [String] = [], password: String = "", notes: String = "", allField: [ItemField] = [], publicKey: String = "", fingerprint: String = "", keyType: String = "", oneTimePassword: String = "", hasOneTimePassword: Bool = false, allPasskey: [ItemPasskey] = [], canConvertToSecureNote: Bool = false, card: ItemCard? = nil) {
+    init(id: String = "", revision: String = "", category: String = ItemDetail.categoryLogin, title: String = "", username: String = "", allURL: [String] = [], password: String = "", notes: String = "", allField: [ItemField] = [], publicKey: String = "", fingerprint: String = "", keyType: String = "", oneTimePassword: String = "", hasOneTimePassword: Bool = false, allPasskey: [ItemPasskey] = [], canConvertToSecureNote: Bool = false, card: ItemCard? = nil, identity: ItemIdentity? = nil) {
         self.id = id
         self.revision = revision
         self.category = category
@@ -191,6 +194,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         self.allPasskey = allPasskey
         self.canConvertToSecureNote = canConvertToSecureNote
         self.card = card
+        self.identity = identity
     }
 
     init(from decoder: Decoder) throws {
@@ -212,12 +216,69 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         allPasskey = try container.decodeIfPresent([ItemPasskey].self, forKey: .allPasskey) ?? []
         canConvertToSecureNote = try container.decodeIfPresent(Bool.self, forKey: .canConvertToSecureNote) ?? false
         card = try container.decodeIfPresent(ItemCard.self, forKey: .card)
+        identity = try container.decodeIfPresent(ItemIdentity.self, forKey: .identity)
     }
 
     var isLogin: Bool { category.isEmpty || category == Self.categoryLogin }
     var isSSHKey: Bool { category == Self.categorySSHKey }
     var isSecureNote: Bool { category == Self.categorySecureNote }
     var isCreditCard: Bool { category == Self.categoryCreditCard }
+    var isIdentity: Bool { category == Self.categoryIdentity }
+}
+
+/// The names core/item stores an identity's values under; copying and secret references use them.
+enum IdentityFieldName {
+    static let firstName = "First name"
+    static let middleName = "Middle name"
+    static let lastName = "Last name"
+    static let birthDate = "Birth date"
+    static let email = "Email"
+    static let phone = "Phone"
+    static let address = "Address"
+    static let passportNumber = "Passport number"
+    static let driversLicenseNumber = "Driver's license number"
+    static let nationalIDNumber = "National ID number"
+}
+
+/// A person's details; the document numbers are optional and concealed.
+struct ItemIdentity: Codable, Hashable {
+    var firstName = ""
+    var middleName = ""
+    var lastName = ""
+    var birthDate = ""
+    var email = ""
+    var phone = ""
+    var address = ""
+    var passportNumber = ""
+    var driversLicenseNumber = ""
+    var nationalIDNumber = ""
+
+    enum CodingKeys: String, CodingKey {
+        case firstName, middleName, lastName, birthDate, email, phone, address, passportNumber, driversLicenseNumber
+        case nationalIDNumber = "nationalIdNumber"
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        firstName = try container.decodeIfPresent(String.self, forKey: .firstName) ?? ""
+        middleName = try container.decodeIfPresent(String.self, forKey: .middleName) ?? ""
+        lastName = try container.decodeIfPresent(String.self, forKey: .lastName) ?? ""
+        birthDate = try container.decodeIfPresent(String.self, forKey: .birthDate) ?? ""
+        email = try container.decodeIfPresent(String.self, forKey: .email) ?? ""
+        phone = try container.decodeIfPresent(String.self, forKey: .phone) ?? ""
+        address = try container.decodeIfPresent(String.self, forKey: .address) ?? ""
+        passportNumber = try container.decodeIfPresent(String.self, forKey: .passportNumber) ?? ""
+        driversLicenseNumber = try container.decodeIfPresent(String.self, forKey: .driversLicenseNumber) ?? ""
+        nationalIDNumber = try container.decodeIfPresent(String.self, forKey: .nationalIDNumber) ?? ""
+    }
+
+    /// The name parts that are set, such as "Alice M. Example".
+    var fullName: String { [firstName, middleName, lastName].filter { !$0.isEmpty }.joined(separator: " ") }
+
+    /// The identity's line in lists: the full name, or the email when it has no name.
+    var summary: String { fullName.isEmpty ? (email.isEmpty ? "Identity" : email) : fullName }
 }
 
 /// The names core/item stores a card's values under; copying and secret references use them.
