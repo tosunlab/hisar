@@ -136,13 +136,29 @@ export function isMacPlatform(): boolean {
 
 export const sshKeyCategory = "ssh-key";
 export const secureNoteCategory = "secure-note";
+export const creditCardCategory = "credit-card";
+
+const allCategoryIcon: Record<string, "key" | "note" | "card"> = { [sshKeyCategory]: "key", [secureNoteCategory]: "note", [creditCardCategory]: "card" };
 
 // getItemIcon is the tile icon of an item's category; logins show their initials instead.
-export function getItemIcon(category: string): "key" | "note" | undefined {
-  if (category === sshKeyCategory) {
-    return "key";
-  }
-  return category === secureNoteCategory ? "note" : undefined;
+export function getItemIcon(category: string): "key" | "note" | "card" | undefined {
+  return allCategoryIcon[category];
+}
+
+// The names of a card's custom fields, as core/item stores them; copying and secret references use them.
+export const cardFieldName = {
+  cardholder: "Cardholder",
+  number: "Card number",
+  expiry: "Expiry",
+  securityCode: "Security code",
+  pin: "PIN",
+  billingAddress: "Billing address",
+} as const;
+
+// formatCardSummary is a card's line in lists: its brand and last four digits, such as "Visa •••• 4242".
+export function formatCardSummary(card: { brand: string; last4: string } | null | undefined): string {
+  const last4 = card?.last4 ? `•••• ${card.last4}` : "";
+  return [card?.brand ?? "", last4].filter((part) => part !== "").join(" ") || "Credit card";
 }
 
 const allKeyTypeLabel: Record<string, string> = {

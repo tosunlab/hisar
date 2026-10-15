@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { reactive, ref } from "vue";
-import { createEmptyItem, type ItemDetail } from "../api";
-import { getItemIcon, secureNoteCategory, sshKeyCategory } from "../util";
+import { onBeforeUnmount, reactive, ref, watch } from "vue";
+import { api, createEmptyCard, createEmptyItem, type CardDescription, type ItemDetail } from "../api";
+import { creditCardCategory, getItemIcon, secureNoteCategory, sshKeyCategory } from "../util";
 import { cancelEditing, saveItem, store } from "../store";
 import AppIcon from "./AppIcon.vue";
 import ItemTile from "./ItemTile.vue";
@@ -11,11 +11,20 @@ import StrengthMeter from "./StrengthMeter.vue";
 function createDraft(): ItemDetail {
   if (store.editorMode === "edit" && store.selectedItem) {
     const selected = store.selectedItem;
-    return { ...selected, urls: [...selected.urls], fields: selected.fields.map((field) => ({ ...field })), passkeys: [...(selected.passkeys ?? [])] };
+    return {
+      ...selected,
+      urls: [...selected.urls],
+      fields: selected.fields.map((field) => ({ ...field })),
+      passkeys: [...(selected.passkeys ?? [])],
+      card: selected.card ? { ...selected.card } : selected.category === creditCardCategory ? createEmptyCard() : selected.card,
+    };
   }
   const empty = createEmptyItem();
   if (store.editorMode === "create-secure-note") {
     empty.category = secureNoteCategory;
+  } else if (store.editorMode === "create-credit-card") {
+    empty.category = creditCardCategory;
+    empty.card = createEmptyCard();
   }
   return empty;
 }
@@ -26,7 +35,32 @@ const isPasswordVisible = ref(false);
 const isGeneratorOpen = ref(store.editorMode === "create");
 const isSSHKey = draft.category === sshKeyCategory;
 const isSecureNote = draft.category === secureNoteCategory;
-const isCreating = store.editorMode === "create" || store.editorMode === "create-secure-note";
+const isCreditCard = draft.category === creditCardCategory;
+const isCreating = store.editorMode.startsWith("create");
+const isCardSecretVisible = ref(false);
+const cardDescription = ref<CardDescription>({
+  brand: draft.card?.brand ?? "",
+  last4: draft.card?.last4 ?? "",
+  numberWarning: draft.card?.numberWarning ?? "",
+  expiryWarning: draft.card?.expiryWarning ?? "",
+});
+
+// The backend checks the number and expiry, so the brand and warnings follow what Hisar saves.
+let describeTimer: ReturnType<typeof setTimeout> | undefined;
+watch(
+  () => [draft.card?.number, draft.card?.expiry],
+  () => {
+    clearTimeout(describeTimer);
+    describeTimer = setTimeout(async () => {
+      try {
+        cardDescription.value = await api.describeCard(draft.card?.number ?? "", draft.card?.expiry ?? "");
+      } catch {
+        // A failed check only hides the hint; saving still works.
+      }
+    }, 250);
+  },
+);
+onBeforeUnmount(() => clearTimeout(describeTimer));
 
 function usePassword(password: string): void {
   draft.password = password;
@@ -65,11 +99,53 @@ async function submitItem(): Promise<void> {
       </label>
     </section>
 
+    <section v-if="isCreditCard && draft.card" class="card editor-card" data-testid="credit-card-editor">
+      <label>
+        <span>Cardholder</span>
+        <input v-model="draft.card.cardholder" name="cardholder" autocomplete="off" placeholder="Name on the card" />
+      </label>
+      <label>
+        <span class="label-row">Card number <span v-if="cardDescription.brand" class="brand-badge" data-testid="card-brand">{{ cardDescription.brand }}</span></span>
+        <input
+          v-model="draft.card.number"
+          name="cardNumber"
+          class="monospace"
+          :type="isCardSecretVisible ? 'text' : 'password'"
+          inputmode="numeric"
+          autocomplete="off"
+          placeholder="1234 5678 9012 3456"
+        />
+        <small v-if="cardDescription.numberWarning" class="hint warning-text" data-testid="card-number-warning">{{ cardDescription.numberWarning }}</small>
+      </label>
+      <div class="row card-row">
+        <label>
+          <span>Expiry</span>
+          <input v-model="draft.card.expiry" name="expiry" autocomplete="off" placeholder="MM/YYYY" />
+          <small v-if="cardDescription.expiryWarning" class="hint warning-text" data-testid="card-expiry-warning">{{ cardDescription.expiryWarning }}</small>
+        </label>
+        <label>
+          <span>Security code</span>
+          <input v-model="draft.card.securityCode" name="securityCode" class="monospace" :type="isCardSecretVisible ? 'text' : 'password'" inputmode="numeric" autocomplete="off" />
+        </label>
+        <label>
+          <span>PIN</span>
+          <input v-model="draft.card.pin" name="pin" class="monospace" :type="isCardSecretVisible ? 'text' : 'password'" inputmode="numeric" autocomplete="off" />
+        </label>
+      </div>
+      <button type="button" class="ghost reveal-card" @click="isCardSecretVisible = !isCardSecretVisible">
+        <AppIcon :name="isCardSecretVisible ? 'eyeOff' : 'eye'" /> {{ isCardSecretVisible ? "Hide number and codes" : "Show number and codes" }}
+      </button>
+      <label class="last">
+        <span>Billing address</span>
+        <textarea v-model="draft.card.billingAddress" name="billingAddress" rows="2"></textarea>
+      </label>
+    </section>
+
     <p v-if="isSSHKey" class="card ssh-key-note muted" data-testid="ssh-key-note">
       <AppIcon name="key" :size="14" /> The key itself cannot be changed. To replace it, add a new SSH key.
     </p>
 
-    <section v-if="!isSSHKey && !isSecureNote" class="card editor-card">
+    <section v-if="!isSSHKey && !isSecureNote && !isCreditCard" class="card editor-card">
       <label>
         <span>Username</span>
         <input v-model="draft.username" name="username" autocomplete="off" placeholder="Username or email" />
@@ -190,6 +266,43 @@ header {
 
 label.last {
   margin-bottom: 0;
+}
+
+.label-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.brand-badge {
+  padding: 0 7px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 10px;
+  color: var(--color-text-secondary);
+  font-size: 11px;
+}
+
+.hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.warning-text {
+  color: var(--color-warning);
+}
+
+.card-row {
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.card-row label {
+  flex: 1;
+}
+
+.reveal-card {
+  margin: -4px 0 12px;
 }
 
 .ssh-key-note {

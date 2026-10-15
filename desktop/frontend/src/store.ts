@@ -35,7 +35,7 @@ import {
   type ExportResult,
 } from "./api";
 
-export type EditorMode = "view" | "edit" | "create" | "create-secure-note" | "create-ssh-key";
+export type EditorMode = "view" | "edit" | "create" | "create-secure-note" | "create-credit-card" | "create-ssh-key";
 export type ImportStep = "choose" | "preview" | "saving" | "done";
 
 export interface ShareLinkDialog {
@@ -637,6 +637,11 @@ export function startCreatingItem(): void {
 export function startCreatingSecureNote(): void {
   store.selectedItem = null;
   store.editorMode = "create-secure-note";
+}
+
+export function startCreatingCard(): void {
+  store.selectedItem = null;
+  store.editorMode = "create-credit-card";
 }
 
 export function startCreatingSSHKey(): void {

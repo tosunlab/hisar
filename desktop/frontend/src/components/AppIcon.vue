@@ -19,6 +19,7 @@ const allPath = {
   external: "M14 4h6v6M20 4l-9 9M18 14v6H4V6h6",
   check: "M5 12l5 5L20 7",
   note: "M6 3h9l4 4v14H6zM9 12h6M9 16h6",
+  card: "M3 6h18v12H3zM3 10h18M7 15h3",
   field: "M4 6h16M4 12h16M4 18h10",
   close: "M6 6l12 12M18 6L6 18",
   signOut: "M15 4h4v16h-4M10 8l-4 4 4 4M6 12h11",

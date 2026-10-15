@@ -11,7 +11,7 @@ import {
   startEditingItem,
   store,
 } from "../store";
-import { formatKeyType, getDomain, getItemIcon, secureNoteCategory, sshKeyCategory } from "../util";
+import { cardFieldName, creditCardCategory, formatCardSummary, formatKeyType, getDomain, getItemIcon, secureNoteCategory, sshKeyCategory } from "../util";
 import AppIcon from "./AppIcon.vue";
 import CommitSigningPanel from "./CommitSigningPanel.vue";
 import ItemTile from "./ItemTile.vue";
@@ -28,6 +28,23 @@ const allRevealedFieldName = ref<string[]>([]);
 const isConfirmingDelete = ref(false);
 const isSSHKey = computed(() => store.selectedItem?.category === sshKeyCategory);
 const isSecureNote = computed(() => store.selectedItem?.category === secureNoteCategory);
+const isCreditCard = computed(() => store.selectedItem?.category === creditCardCategory);
+
+// The card's values as rows; the number shows only its last four digits until revealed.
+const allCardRow = computed(() => {
+  const card = store.selectedItem?.card;
+  if (!card) {
+    return [];
+  }
+  return [
+    { name: cardFieldName.cardholder, value: card.cardholder, concealed: false, masked: "", warning: "" },
+    { name: cardFieldName.number, value: card.number, concealed: true, masked: card.last4 ? `•••• •••• •••• ${card.last4}` : "", warning: card.numberWarning },
+    { name: cardFieldName.expiry, value: card.expiry, concealed: false, masked: "", warning: card.expiryWarning },
+    { name: cardFieldName.securityCode, value: card.securityCode, concealed: true, masked: "", warning: "" },
+    { name: cardFieldName.pin, value: card.pin, concealed: true, masked: "", warning: "" },
+    { name: cardFieldName.billingAddress, value: card.billingAddress, concealed: false, masked: "", warning: "" },
+  ].filter((row) => row.value !== "");
+});
 const isShareable = computed(() => store.selectedItem !== null && hasShareableField(store.selectedItem));
 const allItemShareLink = computed(() => (store.selectedItem ? getAllShareLinkForItem(store.selectedVaultID, store.selectedItem.id) : []));
 
@@ -62,6 +79,7 @@ function maskSecret(secret: string): string {
           <span v-if="isShared" class="badge">shared</span>
           <span v-if="isSSHKey" class="muted">SSH key</span>
           <span v-else-if="isSecureNote" class="muted">Secure note</span>
+          <span v-else-if="isCreditCard" class="muted" data-testid="card-summary">{{ formatCardSummary(store.selectedItem.card) }}</span>
           <span v-else-if="store.selectedItem.urls[0]" class="muted">{{ getDomain(store.selectedItem.urls[0]) }}</span>
         </div>
       </div>
@@ -119,6 +137,49 @@ function maskSecret(secret: string): string {
       <p class="agent-hint muted"><AppIcon name="terminal" :size="14" /> Hisar's SSH agent offers this key while Hisar is unlocked.</p>
       <CommitSigningPanel v-if="store.selectedItem.publicKey" :public-key="store.selectedItem.publicKey" />
     </template>
+
+    <section v-else-if="isCreditCard" class="card field-card" data-testid="credit-card-fields">
+      <div v-for="row in allCardRow" :key="row.name" class="field">
+        <span class="field-label">{{ row.name }}</span>
+        <span class="field-value">
+          <span :class="{ monospace: row.concealed, 'multiline-value': row.name === cardFieldName.billingAddress }" :data-testid="`card-${row.name}`">
+            {{ row.concealed && !allRevealedFieldName.includes(row.name) ? row.masked || maskSecret(row.value) : row.value }}
+          </span>
+          <small v-if="row.warning" class="field-warning" :data-testid="`card-warning-${row.name}`">{{ row.warning }}</small>
+        </span>
+        <span class="field-actions">
+          <button
+            v-if="row.concealed"
+            class="ghost icon-button"
+            :aria-label="`${allRevealedFieldName.includes(row.name) ? 'Hide' : 'Reveal'} ${row.name}`"
+            @click="toggleFieldReveal(row.name)"
+          >
+            <AppIcon :name="allRevealedFieldName.includes(row.name) ? 'eyeOff' : 'eye'" />
+          </button>
+          <button class="ghost icon-button" :aria-label="`Copy ${row.name}`" title="Copy" @click="copyField(row.name, row.name)"><AppIcon name="copy" /></button>
+          <SecretReferenceButton :field-name="row.name" :label="row.name" />
+        </span>
+      </div>
+      <div v-for="field in store.selectedItem.fields" :key="field.name" class="field">
+        <span class="field-label">{{ field.name }}</span>
+        <span class="field-value" :class="{ monospace: field.concealed }">
+          {{ field.concealed && !allRevealedFieldName.includes(field.name) ? maskSecret(field.value) : field.value }}
+        </span>
+        <span class="field-actions">
+          <button
+            v-if="field.concealed"
+            class="ghost icon-button"
+            :aria-label="`${allRevealedFieldName.includes(field.name) ? 'Hide' : 'Reveal'} ${field.name}`"
+            @click="toggleFieldReveal(field.name)"
+          >
+            <AppIcon :name="allRevealedFieldName.includes(field.name) ? 'eyeOff' : 'eye'" />
+          </button>
+          <button class="ghost icon-button" :aria-label="`Copy ${field.name}`" title="Copy" @click="copyField(field.name, field.name)"><AppIcon name="copy" /></button>
+          <SecretReferenceButton :field-name="field.name" :label="field.name" />
+        </span>
+      </div>
+      <p v-if="allCardRow.length === 0 && store.selectedItem.fields.length === 0" class="muted no-fields">This card has no details yet.</p>
+    </section>
 
     <template v-else-if="isSecureNote">
       <section class="card notes-card secure-note" data-testid="secure-note-notes">
@@ -407,6 +468,17 @@ h2 {
 
 .note-fields {
   margin-top: 14px;
+}
+
+.field-warning {
+  display: block;
+  margin-top: 2px;
+  color: var(--color-warning);
+  font-size: 12px;
+}
+
+.multiline-value {
+  white-space: pre-wrap;
 }
 
 .convert-note {

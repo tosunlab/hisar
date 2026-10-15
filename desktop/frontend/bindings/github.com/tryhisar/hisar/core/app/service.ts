@@ -135,6 +135,14 @@ export function DeleteVault(vaultID: string, request: $models.VaultDeletionReque
     return $Call.ByID(3950255738, vaultID, request);
 }
 
+/**
+ * DescribeCard names the brand and last four digits of a card number and warns about a number or expiry that looks
+ * wrong, for an editor to show while the user types.
+ */
+export function DescribeCard($number: string, expiry: string): $CancellablePromise<$models.CardDescription> {
+    return $Call.ByID(1966505506, $number, expiry);
+}
+
 export function DisableBiometricUnlock(): $CancellablePromise<$models.Status> {
     return $Call.ByID(2785988027);
 }

@@ -1,5 +1,6 @@
 // Development-only stand-in for the Go backend, used with `npm run preview:ui` to view the UI in a browser.
 import type {
+  CardDescription,
   ApprovalEvent,
   BrowserStatus,
   CommandLineStatus,
@@ -103,6 +104,23 @@ const allPreviewItemByVaultID: Record<string, ItemDetail[]> = {
     createPreviewItem("door-codes", "Door codes", "", "", "", {
       notes: "Front door 1234\nGarage 5678",
       canConvertToSecureNote: true,
+    }),
+    createPreviewItem("visa", "Garanti Bonus", "", "", "", {
+      category: "credit-card",
+      notes: "Main card for travel.",
+      fields: [{ name: "Bank", value: "Garanti BBVA", concealed: false }],
+      card: {
+        cardholder: "Alper Tosun",
+        number: "4111 1111 1111 1111",
+        expiry: "09/2026",
+        securityCode: "123",
+        pin: "4821",
+        billingAddress: "Bağdat Cd. 100\nKadıköy, İstanbul",
+        brand: "Visa",
+        last4: "1111",
+        numberWarning: "",
+        expiryWarning: "This card has expired",
+      },
     }),
   ],
   team: [
@@ -842,6 +860,7 @@ function buildPreviewImportPreview(vaultID: string): ImportPreview {
     loginCount: allPreviewImportItem.filter((detail) => detail.category === "").length,
     secureNoteCount: allPreviewImportItem.filter((detail) => detail.category === "secure-note").length,
     sshKeyCount: allPreviewImportItem.filter((detail) => detail.category === "ssh-key").length,
+    creditCardCount: allPreviewImportItem.filter((detail) => detail.category === "credit-card").length,
     allSkipped: allPreviewImportSkipped,
     allDuplicate: findAllPreviewImportDuplicate(vaultID).map((detail) => ({ title: detail.title, username: detail.username, url: detail.urls[0] ?? "" })),
   };
@@ -984,6 +1003,22 @@ export const previewApi = {
     const vaultItem = allPreviewItemByVaultID[vaultID].find((candidate) => candidate.id === itemID)!;
     vaultItem.passkeys = vaultItem.passkeys.filter((passkey) => passkey.credentialId !== credentialID);
     return resolveAfterDelay(structuredClone(vaultItem));
+  },
+  // A rough stand-in for core/item's checks, enough to show the editor's brand badge and warnings.
+  describeCard: (number: string, expiry: string): Promise<CardDescription> => {
+    const digits = /^[0-9 -]+$/.test(number.trim()) ? number.replace(/[^0-9]/g, "") : "";
+    const brand = digits.startsWith("4") ? "Visa" : /^5[1-5]/.test(digits) ? "Mastercard" : /^3[47]/.test(digits) ? "American Express" : /^9792/.test(digits) ? "Troy" : "";
+    const sum = [...digits].reverse().reduce((total, character, index) => {
+      const digit = Number(character) * (index % 2 === 1 ? 2 : 1);
+      return total + (digit > 9 ? digit - 9 : digit);
+    }, 0);
+    const isValidNumber = digits.length >= 12 && digits.length <= 19 && sum % 10 === 0;
+    return resolveAfterDelay({
+      brand,
+      last4: digits.length >= 4 ? digits.slice(-4) : "",
+      numberWarning: number.trim() && !isValidNumber ? "This doesn't look like a valid card number" : "",
+      expiryWarning: expiry.trim() && !/^(0?[1-9]|1[0-2])\s*[/.-]\s*(\d{2}|\d{4})$/.test(expiry.trim()) ? "Use month and year, like 12/2027" : "",
+    });
   },
   convertToSecureNote: (vaultID: string, itemID: string) => {
     const vaultItem = allPreviewItemByVaultID[vaultID].find((candidate) => candidate.id === itemID)!;

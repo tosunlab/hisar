@@ -11,13 +11,14 @@ import {
   selectItem,
   selectVault,
   startCreatingItem,
+  startCreatingCard,
   startCreatingSecureNote,
   startCreatingSSHKey,
   store,
   syncInBackground,
   syncInterval,
 } from "../store";
-import { formatKeyType, getDomain, getInitials, getItemIcon, isMacPlatform, secureNoteCategory, sshKeyCategory } from "../util";
+import { creditCardCategory, formatCardSummary, formatKeyType, getDomain, getInitials, getItemIcon, isMacPlatform, secureNoteCategory, sshKeyCategory } from "../util";
 import AppIcon from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
 import ItemDetailPanel from "./ItemDetailPanel.vue";
@@ -229,6 +230,9 @@ onBeforeUnmount(() => {
             <button class="ghost" role="menuitem" data-testid="new-secure-note" @click="chooseNewItem(startCreatingSecureNote)">
               <AppIcon name="note" /> Secure note
             </button>
+            <button class="ghost" role="menuitem" data-testid="new-credit-card" @click="chooseNewItem(startCreatingCard)">
+              <AppIcon name="card" /> Credit card
+            </button>
             <button class="ghost" role="menuitem" data-testid="new-ssh-key" @click="chooseNewItem(startCreatingSSHKey)">
               <AppIcon name="key" /> SSH key
             </button>
@@ -260,6 +264,7 @@ onBeforeUnmount(() => {
               <span class="item-title">{{ vaultItem.title }}</span>
               <span v-if="vaultItem.category === sshKeyCategory" class="item-subtitle">{{ formatKeyType(vaultItem.keyType) }} SSH key</span>
               <span v-else-if="vaultItem.category === secureNoteCategory" class="item-subtitle">Secure note</span>
+              <span v-else-if="vaultItem.category === creditCardCategory" class="item-subtitle">{{ formatCardSummary(vaultItem.card) }}</span>
               <span v-else class="item-subtitle">{{ vaultItem.username || (vaultItem.urls[0] ? getDomain(vaultItem.urls[0]) : "") }}</span>
             </span>
           </button>

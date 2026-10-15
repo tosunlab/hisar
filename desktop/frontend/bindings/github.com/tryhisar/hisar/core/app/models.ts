@@ -28,6 +28,16 @@ export interface BrowserStatus {
     "pendingPairing": BrowserPairingRequest | null;
 }
 
+/**
+ * CardDescription is what an editor shows about a card number and expiry; a warning never stops a save.
+ */
+export interface CardDescription {
+    "brand": string;
+    "last4": string;
+    "numberWarning": string;
+    "expiryWarning": string;
+}
+
 export interface CredentialChangeResult {
     "status": Status;
 
@@ -111,6 +121,7 @@ export interface ImportPreview {
     "loginCount": number;
     "secureNoteCount": number;
     "sshKeyCount": number;
+    "creditCardCount": number;
     "allSkipped": ImportSkippedEntry[] | null;
     "allDuplicate": ImportDuplicate[] | null;
 }
@@ -129,6 +140,19 @@ export interface ImportProgress {
 export interface ImportSkippedEntry {
     "title": string;
     "reason": string;
+}
+
+export interface ItemCard {
+    "cardholder": string;
+    "number": string;
+    "expiry": string;
+    "securityCode": string;
+    "pin": string;
+    "billingAddress": string;
+    "brand": string;
+    "last4": string;
+    "numberWarning": string;
+    "expiryWarning": string;
 }
 
 /**
@@ -159,6 +183,12 @@ export interface ItemDetail {
      * CanConvertToSecureNote: a login with only notes and custom fields, which ConvertToSecureNote turns into a secure note.
      */
     "canConvertToSecureNote": boolean;
+
+    /**
+     * Card holds a credit card's values, which are stored as named custom fields; Fields then holds only the others.
+     * Summaries keep only the brand and last four digits.
+     */
+    "card"?: ItemCard | null;
 }
 
 export interface ItemField {
