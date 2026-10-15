@@ -86,8 +86,23 @@ class HisarUITestCase: XCTestCase {
         button.tap()
     }
 
+    // A SwiftUI Form creates only the rows on screen, so a row further down does not exist until the form scrolls to it.
+    func scrollTo(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
+        let list = app.collectionViews.firstMatch
+        for _ in 0..<8 {
+            if element.waitForExistence(timeout: 1) && element.isHittable {
+                return
+            }
+            guard list.exists else { break }
+            list.swipeUp()
+        }
+        waitFor(element, file: file, line: line)
+    }
+
     func type(_ text: String, into element: XCUIElement) {
-        waitFor(element)
+        if !element.waitForExistence(timeout: 5) || !element.isHittable {
+            scrollTo(element)
+        }
         element.tap()
         element.typeText(text)
     }
@@ -101,17 +116,20 @@ class HisarUITestCase: XCTestCase {
         XCTAssertFalse(app.textFields["sign-in-server"].exists)
         saveScreenshot("sign-in")
         app.segmentedControls["sign-in-mode"].buttons["Create account"].tap()
-        waitFor(app.staticTexts["create-account-note"])
-        XCTAssertEqual(
-            app.staticTexts["create-account-note"].label,
-            "Your master password never leaves this iPhone. A forgotten master password can't be recovered by anyone, including Hisar."
-        )
         type(inviteLink, into: app.textFields["sign-up-invite-link"])
         type(email, into: app.textFields["sign-up-email"])
         type(name, into: app.textFields["sign-up-name"])
         type(Self.masterPassword, into: app.secureTextFields["sign-up-password"])
         type(Self.masterPassword, into: app.secureTextFields["sign-up-repeated-password"])
+        // The note is the footer below the submit button, at the end of the form.
+        let createAccountNote = app.staticTexts["create-account-note"]
+        scrollTo(createAccountNote)
+        XCTAssertEqual(
+            createAccountNote.label,
+            "Your master password never leaves this iPhone. A forgotten master password can't be recovered by anyone, including Hisar."
+        )
         saveScreenshot("create-account")
+        scrollTo(app.buttons["sign-in-submit"])
         app.buttons["sign-in-submit"].tap()
         let secretKeyText = app.staticTexts["new-secret-key"]
         waitFor(secretKeyText, timeout: 60)
