@@ -10,6 +10,7 @@ import {
   selectItem,
   selectVault,
   startCreatingItem,
+  startCreatingCard,
   startCreatingSecureNote,
   startCreatingSSHKey,
   startEditingItem,
@@ -238,6 +239,8 @@ export async function applyPreviewParameter(): Promise<void> {
     startCreatingItem();
   } else if (parameter.get("editor") === "secure-note") {
     startCreatingSecureNote();
+  } else if (parameter.get("editor") === "credit-card") {
+    startCreatingCard();
   } else if (parameter.get("editor") === "ssh-key") {
     startCreatingSSHKey();
   } else if (parameter.get("editor") === "edit") {

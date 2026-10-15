@@ -326,6 +326,7 @@ func TestIntegrationMobileFlow(t *testing.T) {
 	}
 
 	checkSecureNoteFlow(t, hisar, personalID)
+	checkCreditCardFlow(t, hisar, personalID)
 	checkPasskeyFlow(t, hisar, personalID, saved.ID)
 	checkSharingFlow(t, hisar)
 	checkSettingsFlow(t, hisar, password, signUp.SecretKey, personalID, saved.ID)
@@ -468,5 +469,39 @@ func checkSecureNoteFlow(t *testing.T, hisar *Hisar, personalID string) {
 		if err := hisar.DeleteItem(personalID, itemID); err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// checkCreditCardFlow saves a card as the iPhone does, checks what comes back and what the list shows, then deletes it.
+func checkCreditCardFlow(t *testing.T, hisar *Hisar, personalID string) {
+	t.Helper()
+	type itemDetail struct {
+		ID   string `json:"id"`
+		Card *struct {
+			Number        string `json:"number"`
+			Expiry        string `json:"expiry"`
+			SecurityCode  string `json:"securityCode"`
+			Brand         string `json:"brand"`
+			Last4         string `json:"last4"`
+			NumberWarning string `json:"numberWarning"`
+		} `json:"card"`
+	}
+	card := decodeJSON[itemDetail](t)(hisar.SaveItem(personalID, `{"category":"credit-card","title":"Visa","urls":[],"fields":[],"card":{"number":"4111111111111111","expiry":"1229","securityCode":"123"}}`))
+	if card.Card == nil || card.Card.Number != "4111 1111 1111 1111" || card.Card.Expiry != "12/29" || card.Card.Brand != "Visa" || card.Card.Last4 != "1111" {
+		t.Errorf("credit card = %+v", card.Card)
+	}
+	for _, summary := range decodeJSON[[]itemDetail](t)(hisar.ListAllItem(personalID)) {
+		if summary.ID == card.ID && (summary.Card == nil || summary.Card.Last4 != "1111" || summary.Card.Number != "" || summary.Card.SecurityCode != "") {
+			t.Errorf("card summary = %+v", summary.Card)
+		}
+	}
+	if description := decodeJSON[struct {
+		Brand         string `json:"brand"`
+		NumberWarning string `json:"numberWarning"`
+	}](t)(hisar.DescribeCard("4111 1111 1111 1112", "")); description.Brand != "Visa" || description.NumberWarning == "" {
+		t.Errorf("DescribeCard = %+v", description)
+	}
+	if err := hisar.DeleteItem(personalID, card.ID); err != nil {
+		t.Fatal(err)
 	}
 }

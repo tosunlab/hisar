@@ -189,6 +189,8 @@ func convertCSVRecord(layout *csvLayout, values []string, format string) (item.I
 	if format == FormatBitwardenCSV {
 		switch entryType {
 		case "", "login", "note":
+		case "card":
+			return item.Item{}, "Bitwarden CSV exports leave out card details; export as JSON to import cards"
 		default:
 			return item.Item{}, fmt.Sprintf("Bitwarden %s items are not supported in Hisar yet", entryType)
 		}

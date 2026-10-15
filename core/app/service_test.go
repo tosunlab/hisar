@@ -217,7 +217,7 @@ func TestConvertItemDetail(t *testing.T) {
 	if vaultItem.Details.Password != " keep spaces " || len(vaultItem.Details.Fields) != 1 {
 		t.Errorf("details = %+v", vaultItem.Details)
 	}
-	converted := convertToItemDetail(&vaultItem)
+	converted := convertToItemDetail(&vaultItem, time.Now())
 	if converted.Fields[0].Name != "PIN" || !converted.Fields[0].Concealed || converted.URLs[0] != "https://github.com" {
 		t.Errorf("converted = %+v", converted)
 	}

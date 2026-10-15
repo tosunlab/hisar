@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { reactive, ref } from "vue";
-import { createEmptyItem, type ItemDetail } from "../api";
-import { getItemIcon, secureNoteCategory, sshKeyCategory } from "../util";
+import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
+import { api, createEmptyCard, createEmptyItem, type CardDescription, type ItemDetail } from "../api";
+import { allCardBrand, creditCardCategory, formatCardNumberInput, formatExpiryInput, formatInputAsTyped, getItemIcon, secureNoteCategory, sshKeyCategory } from "../util";
 import { cancelEditing, saveItem, store } from "../store";
 import AppIcon from "./AppIcon.vue";
 import ItemTile from "./ItemTile.vue";
@@ -11,11 +11,20 @@ import StrengthMeter from "./StrengthMeter.vue";
 function createDraft(): ItemDetail {
   if (store.editorMode === "edit" && store.selectedItem) {
     const selected = store.selectedItem;
-    return { ...selected, urls: [...selected.urls], fields: selected.fields.map((field) => ({ ...field })), passkeys: [...(selected.passkeys ?? [])] };
+    return {
+      ...selected,
+      urls: [...selected.urls],
+      fields: selected.fields.map((field) => ({ ...field })),
+      passkeys: [...(selected.passkeys ?? [])],
+      card: selected.card ? { ...selected.card } : selected.category === creditCardCategory ? createEmptyCard() : selected.card,
+    };
   }
   const empty = createEmptyItem();
   if (store.editorMode === "create-secure-note") {
     empty.category = secureNoteCategory;
+  } else if (store.editorMode === "create-credit-card") {
+    empty.category = creditCardCategory;
+    empty.card = createEmptyCard();
   }
   return empty;
 }
@@ -26,7 +35,57 @@ const isPasswordVisible = ref(false);
 const isGeneratorOpen = ref(store.editorMode === "create");
 const isSSHKey = draft.category === sshKeyCategory;
 const isSecureNote = draft.category === secureNoteCategory;
-const isCreating = store.editorMode === "create" || store.editorMode === "create-secure-note";
+const isCreditCard = draft.category === creditCardCategory;
+const isCreating = store.editorMode.startsWith("create");
+const isCardSecretVisible = ref(false);
+const cardDescription = ref<CardDescription>({
+  brand: draft.card?.brand ?? "",
+  last4: draft.card?.last4 ?? "",
+  numberWarning: draft.card?.numberWarning ?? "",
+  expiryWarning: draft.card?.expiryWarning ?? "",
+});
+
+// The types the picker offers: the known brands, plus a type saved from elsewhere that is not one of them.
+const allCardType = computed(() => {
+  const cardType = draft.card?.type ?? "";
+  return cardType === "" || allCardBrand.includes(cardType) ? allCardBrand : [...allCardBrand, cardType];
+});
+// A type the user chose that the number does not match; the card still saves.
+const cardTypeMismatch = computed(() => {
+  const cardType = draft.card?.type ?? "";
+  const brand = cardDescription.value.brand;
+  return cardType !== "" && brand !== "" && cardType !== brand ? `The number looks like a ${brand} card` : "";
+});
+
+// The backend checks the number and expiry, so the brand and warnings follow what Hisar saves. The type follows the
+// number's brand until the user picks a different one.
+let numberBrand = cardDescription.value.brand;
+let describeTimer: ReturnType<typeof setTimeout> | undefined;
+watch(
+  () => [draft.card?.number, draft.card?.expiry],
+  () => {
+    clearTimeout(describeTimer);
+    describeTimer = setTimeout(async () => {
+      try {
+        cardDescription.value = await api.describeCard(draft.card?.number ?? "", draft.card?.expiry ?? "");
+        if (draft.card && (draft.card.type === "" || draft.card.type === numberBrand)) {
+          draft.card.type = cardDescription.value.brand;
+        }
+        numberBrand = cardDescription.value.brand;
+      } catch {
+        // A failed check only hides the hint; saving still works.
+      }
+    }, 250);
+  },
+);
+onBeforeUnmount(() => clearTimeout(describeTimer));
+
+// The number and expiry are formatted as they are typed, the way Hisar saves them.
+function formatCardInput(event: Event, key: "number" | "expiry", format: (value: string) => string): void {
+  if (draft.card) {
+    draft.card[key] = formatInputAsTyped(event.target as HTMLInputElement, format, draft.card[key], (event as InputEvent).inputType ?? "");
+  }
+}
 
 function usePassword(password: string): void {
   draft.password = password;
@@ -65,11 +124,62 @@ async function submitItem(): Promise<void> {
       </label>
     </section>
 
+    <section v-if="isCreditCard && draft.card" class="card editor-card" data-testid="credit-card-editor">
+      <label>
+        <span>Cardholder</span>
+        <input v-model="draft.card.cardholder" name="cardholder" autocomplete="off" placeholder="Name on the card" />
+      </label>
+      <label>
+        <span>Card number</span>
+        <input
+          :value="draft.card.number"
+          name="cardNumber"
+          class="monospace"
+          :type="isCardSecretVisible ? 'text' : 'password'"
+          inputmode="numeric"
+          autocomplete="off"
+          placeholder="1234 5678 9012 3456"
+          @input="formatCardInput($event, 'number', formatCardNumberInput)"
+        />
+        <small v-if="cardDescription.numberWarning" class="hint warning-text" data-testid="card-number-warning">{{ cardDescription.numberWarning }}</small>
+      </label>
+      <label>
+        <span>Type</span>
+        <select v-model="draft.card.type" name="cardType">
+          <option value="">Not set</option>
+          <option v-for="cardType in allCardType" :key="cardType" :value="cardType">{{ cardType }}</option>
+        </select>
+        <small v-if="cardTypeMismatch" class="hint warning-text" data-testid="card-type-warning">{{ cardTypeMismatch }}</small>
+      </label>
+      <div class="row card-row">
+        <label>
+          <span>Expiry</span>
+          <input :value="draft.card.expiry" name="expiry" inputmode="numeric" autocomplete="off" placeholder="MM/YY" @input="formatCardInput($event, 'expiry', formatExpiryInput)" />
+          <small v-if="cardDescription.expiryWarning" class="hint warning-text" data-testid="card-expiry-warning">{{ cardDescription.expiryWarning }}</small>
+        </label>
+        <label>
+          <span>Security code</span>
+          <input v-model="draft.card.securityCode" name="securityCode" class="monospace" :type="isCardSecretVisible ? 'text' : 'password'" inputmode="numeric" autocomplete="off" />
+        </label>
+        <label>
+          <span>PIN</span>
+          <input v-model="draft.card.pin" name="pin" class="monospace" :type="isCardSecretVisible ? 'text' : 'password'" inputmode="numeric" autocomplete="off" />
+        </label>
+      </div>
+      <button type="button" class="ghost reveal-card" @click="isCardSecretVisible = !isCardSecretVisible">
+        <AppIcon :name="isCardSecretVisible ? 'eyeOff' : 'eye'" /> {{ isCardSecretVisible ? "Hide number and codes" : "Show number and codes" }}
+      </button>
+      <label class="last">
+        <span>Billing address</span>
+        <textarea v-model="draft.card.billingAddress" name="billingAddress" rows="2"></textarea>
+      </label>
+    </section>
+
     <p v-if="isSSHKey" class="card ssh-key-note muted" data-testid="ssh-key-note">
       <AppIcon name="key" :size="14" /> The key itself cannot be changed. To replace it, add a new SSH key.
     </p>
 
-    <section v-if="!isSSHKey && !isSecureNote" class="card editor-card">
+    <section v-if="!isSSHKey && !isSecureNote && !isCreditCard" class="card editor-card">
       <label>
         <span>Username</span>
         <input v-model="draft.username" name="username" autocomplete="off" placeholder="Username or email" />
@@ -190,6 +300,29 @@ header {
 
 label.last {
   margin-bottom: 0;
+}
+
+.hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.warning-text {
+  color: var(--color-warning);
+}
+
+.card-row {
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.card-row label {
+  flex: 1;
+}
+
+.reveal-card {
+  margin: -4px 0 12px;
 }
 
 .ssh-key-note {

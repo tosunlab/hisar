@@ -51,6 +51,14 @@ type bitwardenItem struct {
 	SSHKey *struct {
 		PrivateKey string `json:"privateKey"`
 	} `json:"sshKey"`
+	Card *struct {
+		CardholderName string `json:"cardholderName"`
+		Brand          string `json:"brand"`
+		Number         string `json:"number"`
+		ExpMonth       string `json:"expMonth"`
+		ExpYear        string `json:"expYear"`
+		Code           string `json:"code"`
+	} `json:"card"`
 }
 
 func parseBitwardenJSON(content []byte) (*Result, error) {
@@ -88,14 +96,12 @@ func parseBitwardenJSON(content []byte) (*Result, error) {
 
 func convertBitwardenItem(entry bitwardenItem) (item.Item, string) {
 	switch entry.Type {
-	case bitwardenLogin, bitwardenSecureNote:
+	case bitwardenLogin, bitwardenSecureNote, bitwardenCard:
 	case bitwardenSSHKey:
 		if entry.SSHKey == nil {
 			return item.Item{}, "the SSH key has no private key"
 		}
 		return buildSSHKeyItem(entry.Name, entry.SSHKey.PrivateKey, entry.Notes)
-	case bitwardenCard:
-		return item.Item{}, "Bitwarden cards are not supported in Hisar yet"
 	case bitwardenIdentity:
 		return item.Item{}, "Bitwarden identities are not supported in Hisar yet"
 	default:
@@ -118,6 +124,16 @@ func convertBitwardenItem(entry bitwardenItem) (item.Item, string) {
 			continue
 		}
 		vaultItem.Details.Fields = append(vaultItem.Details.Fields, item.Field{Name: field.Name, Value: field.Value, Concealed: field.Type == bitwardenFieldHidden})
+	}
+	if entry.Type == bitwardenCard {
+		vaultItem.Overview.Category = item.CategoryCreditCard
+		if entry.Card != nil {
+			card := item.Card{Cardholder: entry.Card.CardholderName, Type: entry.Card.Brand, Number: entry.Card.Number, SecurityCode: entry.Card.Code}
+			if entry.Card.ExpMonth != "" && entry.Card.ExpYear != "" {
+				card.Expiry = entry.Card.ExpMonth + "/" + entry.Card.ExpYear
+			}
+			item.WriteCard(&vaultItem, card, vaultItem.Details.Fields)
+		}
 	}
 	return vaultItem, ""
 }

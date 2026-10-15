@@ -108,6 +108,15 @@ Design: `docs/DESIGN.md` §4.5 (categories).
 - A login with nothing but notes and custom fields, such as one imported before secure notes existed, shows **Convert to secure note**.
 - Preview: `&item=recovery-codes` (a note), `&item=door-codes` (a login that can be converted), `&editor=secure-note`.
 
+## Credit cards
+
+Design: `docs/DESIGN.md` §4.5 (categories).
+
+- **+** → **Credit card** opens a card editor: cardholder, number, type, expiry, security code, PIN and billing address, then notes and custom fields. The number and expiry are formatted as you type (`4444 5555 5555 5555`, `01/30`). The type (Visa, Mastercard, American Express…) follows the number until you pick another, with a hint when they disagree. The editor warns about a number that fails its checksum, an expiry it cannot read or an expired card, but saves anyway.
+- A card's view shows "Visa •••• 4242" and keeps the number, security code and PIN masked until revealed; each value has **Copy** and a secret reference. The item list shows the type and last four digits only.
+- Cards import from 1Password (`.1pux`) and Bitwarden JSON; a Bitwarden CSV leaves them out.
+- Preview: `&item=visa` (an expired card), `&editor=credit-card`.
+
 ## Import from other password managers
 
 Settings → General → **Import…**, or **+** → **Import…** in a vault. The parsing is `core/importer` (design: `docs/DESIGN.md` §9.7).

@@ -31,7 +31,7 @@ Five Go modules joined by `go.work`, plus two non-Go apps.
 | `apitypes` | JSON wire types of `/api/v1`, event names, roles, platform headers, share-link limits, `IsValidVaultRole`, `NormalizeEmail` |
 | `apiclient` | Typed HTTP client of `/api/v1` and its event stream |
 | `session` | A signed-in account: sign-up, login, unlock, item sync and encryption, rotation, sharing, share links, account changes, `GetVaultPermissions` |
-| `item` | The plaintext item model, `LookupField`, the password generator |
+| `item` | The plaintext item model and its categories (`card.go`: the credit-card fields), `LookupField`, the password generator |
 | `cache` | The offline SQLite copy of the server's encrypted records |
 | `localstate` | `state.json` (session state plus embedded device `Settings`) and the Secret Key in the keychain |
 | `app` | The backend of the Mac and iPhone apps, bound to the UI (see below) |
@@ -106,6 +106,9 @@ so rich values are JSON strings.
 - **A new CLI command:** a function `func(ctx, access backend, flags, args) error` in `cli/cmd/hisar`, a `withBackend`
   row in the command table, and the `backend` methods it needs in both implementations. Standalone-only commands use
   `run`. Update `testdata/usage.golden` with `go test ./cmd/hisar -run TestUsageGolden -update`.
+- **A new item type:** the category and its named-field schema in `core/item` (as `card.go`: fields with fixed names, so
+  older apps keep them), `Item.OmitsLoginData` if its form has no login data, its rules in `core/app` `applyCategory`, a row in the CLI's `itemTypes` table, a `cliprotocol`
+  feature in `GetCategoryFeature`, the importers, then the desktop and iPhone screens.
 - **A new CLI ↔ app request:** the type string and result in `core/cliprotocol`, the answer in `core/app/commandline.go`.
 - **A new desktop OS integration:** its own `desktop/<name>` package with platform files; wire it in `desktop/main.go`.
 - **A new crypto primitive or AAD label:** `core/crypt` only, with a vector in `vectors_test.go`.

@@ -11,6 +11,7 @@ import type { Status as LoginItemStatus } from "../bindings/github.com/tryhisar/
 import type {
   AccountDeletionPreview as BoundAccountDeletionPreview,
   BrowserPairingRequest,
+  CardDescription,
   CredentialChangeResult,
   DeletionVault,
   BrowserStatus as BoundBrowserStatus,
@@ -22,6 +23,7 @@ import type {
   ImportPreview as BoundImportPreview,
   ImportProgress as BoundImportProgress,
   ImportSkippedEntry,
+  ItemCard,
   ItemDetail as BoundItemDetail,
   ItemField,
   ItemPasskey,
@@ -53,6 +55,7 @@ import type {
 
 export type {
   ApprovalEvent,
+  CardDescription,
   CredentialChangeResult,
   DeletionVault,
   Device,
@@ -66,6 +69,7 @@ export type {
   ImportDuplicate,
   ImportFormat,
   ImportSkippedEntry,
+  ItemCard,
   ItemField,
   ItemPasskey,
   LoginItemStatus,
@@ -207,6 +211,7 @@ const wailsApi = {
   saveItem: async (vaultID: string, detail: ItemDetail): Promise<ItemDetail> =>
     normalizeItem(await Service.SaveItem(vaultID, detail)),
   deleteItem: (vaultID: string, itemID: string): Promise<void> => Service.DeleteItem(vaultID, itemID),
+  describeCard: (number: string, expiry: string): Promise<CardDescription> => Service.DescribeCard(number, expiry),
   convertToSecureNote: async (vaultID: string, itemID: string): Promise<ItemDetail> =>
     normalizeItem(await Service.ConvertToSecureNote(vaultID, itemID)),
   deletePasskey: async (vaultID: string, itemID: string, credentialID: string): Promise<ItemDetail> =>
@@ -322,6 +327,10 @@ export function getErrorMessage(error: unknown): string {
     return error;
   }
   return "Something went wrong";
+}
+
+export function createEmptyCard(): ItemCard {
+  return { cardholder: "", type: "", number: "", expiry: "", securityCode: "", pin: "", billingAddress: "", brand: "", last4: "", numberWarning: "", expiryWarning: "" };
 }
 
 export function createEmptyItem(): ItemDetail {

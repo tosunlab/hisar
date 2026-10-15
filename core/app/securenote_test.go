@@ -27,7 +27,14 @@ func TestSecureNoteKeepsItsCategoryAndOnlyItsFields(t *testing.T) {
 	if stored.Overview.Username != "" || stored.Details.Password != "" || stored.Overview.URLs != nil || stored.Details.OneTimePassword != "" {
 		t.Errorf("a secure note kept fields its form does not show: %+v", stored)
 	}
-	if !reflect.DeepEqual(stored.Details.Fields, []item.Field{{Name: "Wi-Fi password", Value: "correct horse", Concealed: true}}) {
+	wantFields := []item.Field{
+		{Name: "Wi-Fi password", Value: "correct horse", Concealed: true},
+		{Name: "Username", Value: "hidden"},
+		{Name: "Password", Value: "hidden", Concealed: true},
+		{Name: "Website", Value: "https://router.local"},
+		{Name: "One-time password", Value: note.Fields[4].Value, Concealed: true},
+	}
+	if !reflect.DeepEqual(stored.Details.Fields, wantFields) || !strings.Contains(wantFields[4].Value, "otpauth://") {
 		t.Errorf("custom fields = %+v", stored.Details.Fields)
 	}
 	if note.CanConvertToSecureNote {
@@ -51,7 +58,7 @@ func TestSecureNoteKeepsItsCategoryAndOnlyItsFields(t *testing.T) {
 
 func TestSaveItemRefusesAnUnknownCategory(t *testing.T) {
 	testService := createUnlockedTestService(t)
-	if _, err := testService.service.SaveItem(testService.personalID, ItemDetail{Category: "credit-card", Title: "Visa"}); err == nil || !strings.Contains(err.Error(), "unknown item type") {
+	if _, err := testService.service.SaveItem(testService.personalID, ItemDetail{Category: "identity", Title: "Passport"}); err == nil || !strings.Contains(err.Error(), "unknown item type") {
 		t.Errorf("err = %v", err)
 	}
 }
@@ -122,5 +129,32 @@ func TestCommandLineCreatesASecureNote(t *testing.T) {
 	}}, &edited)
 	if edited.Item.Category != item.CategorySecureNote || edited.Item.Notes != "three" {
 		t.Errorf("edited %+v", edited.Item)
+	}
+}
+
+func TestEditingAnItemOfANewerCategoryKeepsItsLoginData(t *testing.T) {
+	testService := createUnlockedTestService(t)
+	service, vaultID := testService.service, testService.personalID
+	saved, err := service.SaveItem(vaultID, ItemDetail{Title: "Passport", Username: "alice", Password: "secret", URLs: []string{"https://gov.example"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A newer app saved the item with a category this app does not know.
+	service.mutex.Lock()
+	for index := range service.itemsByVaultID[vaultID] {
+		if service.itemsByVaultID[vaultID][index].ID == saved.ID {
+			service.itemsByVaultID[vaultID][index].Overview.Category = "identity"
+		}
+	}
+	service.mutex.Unlock()
+
+	saved.Title, saved.Category = "Passport 2", "identity"
+	edited, err := service.SaveItem(vaultID, saved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored := getCachedItem(t, service, vaultID, edited.ID)
+	if stored.Overview.Category != "identity" || stored.Overview.Username != "alice" || stored.Details.Password != "secret" || len(stored.Overview.URLs) != 1 {
+		t.Errorf("stored = %+v", stored)
 	}
 }

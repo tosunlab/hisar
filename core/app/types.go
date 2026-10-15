@@ -157,6 +157,30 @@ type ItemDetail struct {
 	Passkeys []ItemPasskey `json:"passkeys"`
 	// CanConvertToSecureNote: a login with only notes and custom fields, which ConvertToSecureNote turns into a secure note.
 	CanConvertToSecureNote bool `json:"canConvertToSecureNote"`
+	// Card holds a credit card's values, which are stored as named custom fields; Fields then holds only the others.
+	// Summaries keep only the type, brand and last four digits.
+	Card *ItemCard `json:"card,omitempty"`
+}
+
+// ItemCard is a card's values. Type is the brand saved with the card, which the user may choose; Brand is the one its
+// number points to. Lists show Type, or Brand when the card has no type.
+type ItemCard struct {
+	Cardholder     string `json:"cardholder"`
+	Type           string `json:"type"`
+	Number         string `json:"number"`
+	Expiry         string `json:"expiry"`
+	SecurityCode   string `json:"securityCode"`
+	PIN            string `json:"pin"`
+	BillingAddress string `json:"billingAddress"`
+	CardDescription
+}
+
+// CardDescription is what an editor shows about a card number and expiry; a warning never stops a save.
+type CardDescription struct {
+	Brand         string `json:"brand"`
+	Last4         string `json:"last4"`
+	NumberWarning string `json:"numberWarning"`
+	ExpiryWarning string `json:"expiryWarning"`
 }
 
 // OneTimeCode is the current code of an item's one-time password; ExpiresAt is RFC 3339.

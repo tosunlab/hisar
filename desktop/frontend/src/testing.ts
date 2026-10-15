@@ -27,6 +27,31 @@ export function createItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
   };
 }
 
+export function createCardItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
+  return createItem({
+    id: "card-1",
+    category: "credit-card",
+    title: "Visa",
+    username: "",
+    urls: [],
+    fields: [{ name: "Bank", value: "Garanti BBVA", concealed: false }],
+    card: {
+      cardholder: "Alice Smith",
+      type: "Visa",
+      number: "4111 1111 1111 1111",
+      expiry: "12/29",
+      securityCode: "123",
+      pin: "0000",
+      billingAddress: "1 Main St",
+      brand: "Visa",
+      last4: "1111",
+      numberWarning: "",
+      expiryWarning: "",
+    },
+    ...overrides,
+  });
+}
+
 export function createSecureNoteItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
   return createItem({
     id: "note-1",
@@ -365,6 +390,7 @@ export function createApiMock() {
     saveItem: vi.fn(),
     deleteItem: vi.fn(),
     convertToSecureNote: vi.fn(),
+    describeCard: vi.fn().mockResolvedValue({ brand: "", last4: "", numberWarning: "", expiryWarning: "" }),
     deletePasskey: vi.fn(),
     generatePassword: vi.fn(),
     generateSSHKey: vi.fn(),
@@ -474,6 +500,7 @@ export function createImportPreview(overrides: Partial<ImportPreview> = {}): Imp
     loginCount: 9,
     secureNoteCount: 2,
     sshKeyCount: 1,
+    creditCardCount: 0,
     allSkipped: [{ title: "Visa", reason: "Bitwarden cards are not supported in Hisar yet" }],
     allDuplicate: [{ title: "GitHub", username: "alice", url: "https://github.com" }],
     ...overrides,

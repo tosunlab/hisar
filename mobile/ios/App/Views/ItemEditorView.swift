@@ -15,6 +15,10 @@ struct ItemEditorView: View {
     @State private var isGeneratorShown = false
     @State private var isDeleteConfirmationShown = false
     @State private var hasLoadedDraft = false
+    @State private var isCardSecretRevealed = false
+    @State private var cardDescription = CardDescription()
+    /// The brand of the number last checked: the type follows it until the user picks a different one.
+    @State private var numberBrand = ""
 
     private var isNew: Bool { originalItem == nil }
 
@@ -36,6 +40,9 @@ struct ItemEditorView: View {
                             .lineLimit(8...30)
                             .accessibilityIdentifier("editor-notes")
                     }
+                    buildFieldSection()
+                } else if draft.isCreditCard {
+                    buildCardSections()
                     buildFieldSection()
                 } else if !draft.isSSHKey {
                     Section("Login") {
@@ -119,7 +126,7 @@ struct ItemEditorView: View {
                     }
                 }
             }
-            .navigationTitle(isNew ? (draft.isSecureNote ? "New secure note" : "New login") : "Edit item")
+            .navigationTitle(isNew ? (draft.isSecureNote ? "New secure note" : (draft.isCreditCard ? "New credit card" : "New login")) : "Edit item")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -164,6 +171,110 @@ struct ItemEditorView: View {
             allURLText = originalItem.allURL.isEmpty ? [""] : originalItem.allURL
         } else {
             draft.category = newCategory
+        }
+        if draft.isCreditCard {
+            let card = draft.card ?? ItemCard()
+            draft.card = card
+            cardDescription = CardDescription(brand: card.brand, last4: card.last4, numberWarning: card.numberWarning, expiryWarning: card.expiryWarning)
+            numberBrand = card.brand
+        }
+    }
+
+    /// The types the picker offers: the known brands, plus a type saved from elsewhere that is not one of them.
+    private var allCardType: [String] {
+        let cardType = draft.card?.type ?? ""
+        return cardType.isEmpty || ItemCard.allBrand.contains(cardType) ? ItemCard.allBrand : ItemCard.allBrand + [cardType]
+    }
+
+    /// A type the user chose that the number does not match; the card still saves.
+    private var cardTypeMismatch: String {
+        let cardType = draft.card?.type ?? ""
+        let brand = cardDescription.brand
+        return !cardType.isEmpty && !brand.isEmpty && cardType != brand ? "The number looks like a \(brand) card" : ""
+    }
+
+    /// A binding to one of the card's values, creating the card on first write. The number and expiry are formatted as they
+    /// are typed, the way Hisar saves them.
+    private func bindCard(_ keyPath: WritableKeyPath<ItemCard, String>) -> Binding<String> {
+        Binding(
+            get: { draft.card?[keyPath: keyPath] ?? "" },
+            set: { value in
+                var card = draft.card ?? ItemCard()
+                switch keyPath {
+                case \ItemCard.number: card.number = ItemCard.formatNumberInput(value)
+                case \ItemCard.expiry: card.expiry = ItemCard.formatExpiryInput(value)
+                default: card[keyPath: keyPath] = value
+                }
+                draft.card = card
+            }
+        )
+    }
+
+    @ViewBuilder
+    private func buildCardField(_ title: String, _ keyPath: WritableKeyPath<ItemCard, String>, identifier: String, isSecret: Bool) -> some View {
+        Group {
+            if isSecret && !isCardSecretRevealed {
+                SecureField(title, text: bindCard(keyPath), prompt: Text(title).foregroundStyle(.themeSecondary))
+            } else {
+                TextField(title, text: bindCard(keyPath))
+            }
+        }
+        .font(isSecret ? .system(.body, design: .monospaced) : .body)
+        .keyboardType(isSecret ? .numberPad : .default)
+        .textInputAutocapitalization(.never)
+        .autocorrectionDisabled()
+        .accessibilityIdentifier(identifier)
+    }
+
+    @ViewBuilder
+    private func buildCardSections() -> some View {
+        Section {
+            TextField("Name on the card", text: bindCard(\.cardholder))
+                .textContentType(.name)
+                .accessibilityIdentifier("editor-cardholder")
+            buildCardField("Card number", \.number, identifier: "editor-card-number", isSecret: true)
+            Picker("Type", selection: bindCard(\.type)) {
+                Text("Not set").tag("")
+                ForEach(allCardType, id: \.self) { cardType in
+                    Text(cardType).tag(cardType)
+                }
+            }
+            .accessibilityIdentifier("editor-card-type")
+            TextField("Expiry (MM/YY)", text: bindCard(\.expiry))
+                .keyboardType(.numberPad)
+                .accessibilityIdentifier("editor-card-expiry")
+            buildCardField("Security code", \.securityCode, identifier: "editor-card-security-code", isSecret: true)
+            buildCardField("PIN", \.pin, identifier: "editor-card-pin", isSecret: true)
+            Button {
+                isCardSecretRevealed.toggle()
+            } label: {
+                Label(isCardSecretRevealed ? "Hide number and codes" : "Show number and codes", systemImage: isCardSecretRevealed ? "eye.slash" : "eye")
+            }
+        } header: {
+            Text("Card")
+        } footer: {
+            let allWarning = [cardDescription.numberWarning, cardTypeMismatch, cardDescription.expiryWarning].filter { !$0.isEmpty }
+            if !allWarning.isEmpty {
+                Text(allWarning.joined(separator: "\n"))
+                    .foregroundStyle(.orange)
+                    .accessibilityIdentifier("editor-card-warning")
+            }
+        }
+        .task(id: "\(draft.card?.number ?? "")|\(draft.card?.expiry ?? "")") {
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled, let description = await model.describeCard(number: draft.card?.number ?? "", expiry: draft.card?.expiry ?? "") else { return }
+            cardDescription = description
+            if var card = draft.card, card.type.isEmpty || card.type == numberBrand {
+                card.type = description.brand
+                draft.card = card
+            }
+            numberBrand = description.brand
+        }
+        Section("Billing address") {
+            TextField("Billing address", text: bindCard(\.billingAddress), axis: .vertical)
+                .lineLimit(2...5)
+                .textContentType(.fullStreetAddress)
+                .accessibilityIdentifier("editor-card-billing-address")
         }
     }
 

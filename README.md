@@ -154,16 +154,16 @@ tested as its pull request. A new push to a pull request cancels its running CI.
 `.github/workflows/ci.yml` (Linux runners): gofmt, vet, all Go tests against Postgres (failing on any skipped test except the
 `TestIntegration…` tests and `TestRecordOpenSSHFixture`), the CLI for every release platform, the end-to-end test of the built
 binaries, the server Docker image for amd64 and arm64 (built into a throwaway registry and booted, never pushed), the desktop frontend
-(typecheck, tests, bundle check), the desktop app's Linux build, the extension (tests, Chromium end-to-end tests, zip) and the
+(typecheck, tests, bundle check) and the desktop app's Linux build (both only when the pushed commits change `desktop/`, as below), the extension (tests, Chromium end-to-end tests, zip) and the
 share link page in Chromium against the server.
 
 `.github/workflows/macos.yml` builds the Mac app (Touch ID and Sparkle tests, bundle and signature checks) and the iPhone app
 (HisarKit, Xcode project check, unit tests, UI tests against a local server) on GitHub's `macos-26` runners with Xcode 26.6. macOS
-minutes count ten times against the plan's included minutes, so a pull request runs each job only when it changes what that job builds,
-compared with the base branch:
+minutes count ten times against the plan's included minutes, so each job runs only when the commits just pushed change what it builds
+(`scripts/detect-app-changes.sh`; a newly opened pull request, or a force push, is compared with the base branch instead):
 
-- the Mac app when `desktop/`, `cli/` (the app bundles `hisar`), `core/`, `go.work` or the workflow changes;
-- the iPhone app when `mobile/`, `core/`, `go.work` or the workflow changes (`core/app` is the backend of both apps);
+- the Mac app when `desktop/` or the workflow changes;
+- the iPhone app when `mobile/` or the workflow changes;
 - both, whatever changed, while the pull request has the label `run-macos`;
 - or by hand: Actions → macOS and iOS → Run workflow, on a branch (tick "Build and test the iPhone app" to add the iPhone job).
 

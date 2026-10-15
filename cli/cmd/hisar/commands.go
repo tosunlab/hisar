@@ -302,6 +302,7 @@ type itemType struct {
 var itemTypes = []itemType{
 	{category: item.CategoryLogin, prompt: promptItem},
 	{category: item.CategorySecureNote, prompt: promptNote},
+	{category: item.CategoryCreditCard, prompt: promptCard},
 }
 
 func findItemType(category string) (itemType, bool) {
@@ -338,6 +339,50 @@ func promptNote(vaultItem *item.Item) error {
 	if notes != "" || vaultItem.Details.Notes == "" {
 		vaultItem.Details.Notes = notes
 	}
+	return nil
+}
+
+// promptCard asks for a card's title and each of its values; secret ones are read without echo, and an empty answer keeps
+// the current value. Warnings about the number or expiry are shown but do not stop the save.
+func promptCard(vaultItem *item.Item) error {
+	var err error
+	if vaultItem.Overview.Title, err = promptRequired("Title", vaultItem.Overview.Title); err != nil {
+		return err
+	}
+	card, otherFields := item.ReadCard(vaultItem)
+	for _, field := range item.ListCardFields() {
+		value := field.Value(&card)
+		if !field.Concealed {
+			label := field.Name
+			if field.Name == item.FieldCardType && *value == "" {
+				label += " (empty to work it out from the number)"
+			}
+			if *value, err = prompt(label, *value); err != nil {
+				return err
+			}
+			continue
+		}
+		label := field.Name
+		if *value != "" {
+			label += " (empty to keep)"
+		}
+		secret, err := promptSecret(label)
+		if err != nil {
+			return err
+		}
+		if len(secret) > 0 {
+			*value = string(secret)
+		}
+		clear(secret)
+	}
+	description := item.DescribeCard(card.Number, card.Expiry, time.Now())
+	for _, warning := range []string{description.NumberWarning, description.ExpiryWarning} {
+		if warning != "" {
+			fmt.Fprintf(os.Stderr, "Note: %s.\n", warning)
+		}
+	}
+	item.WriteCard(vaultItem, card, otherFields)
+	item.NormalizeCard(vaultItem)
 	return nil
 }
 

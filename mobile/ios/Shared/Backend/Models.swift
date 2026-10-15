@@ -143,6 +143,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     static let categoryLogin = "login"
     static let categorySSHKey = "ssh-key"
     static let categorySecureNote = "secure-note"
+    static let categoryCreditCard = "credit-card"
 
     var id: String
     var revision: String
@@ -161,15 +162,18 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     var allPasskey: [ItemPasskey]
     /// A login with nothing but notes and custom fields, which the backend can turn into a secure note.
     var canConvertToSecureNote: Bool
+    /// A credit card's values, stored as named custom fields; allField then holds only the others. Summaries keep only the
+    /// brand and last four digits.
+    var card: ItemCard?
 
     enum CodingKeys: String, CodingKey {
-        case id, revision, category, title, username, password, notes, publicKey, fingerprint, keyType, oneTimePassword, hasOneTimePassword, canConvertToSecureNote
+        case id, revision, category, title, username, password, notes, publicKey, fingerprint, keyType, oneTimePassword, hasOneTimePassword, canConvertToSecureNote, card
         case allURL = "urls"
         case allField = "fields"
         case allPasskey = "passkeys"
     }
 
-    init(id: String = "", revision: String = "", category: String = ItemDetail.categoryLogin, title: String = "", username: String = "", allURL: [String] = [], password: String = "", notes: String = "", allField: [ItemField] = [], publicKey: String = "", fingerprint: String = "", keyType: String = "", oneTimePassword: String = "", hasOneTimePassword: Bool = false, allPasskey: [ItemPasskey] = [], canConvertToSecureNote: Bool = false) {
+    init(id: String = "", revision: String = "", category: String = ItemDetail.categoryLogin, title: String = "", username: String = "", allURL: [String] = [], password: String = "", notes: String = "", allField: [ItemField] = [], publicKey: String = "", fingerprint: String = "", keyType: String = "", oneTimePassword: String = "", hasOneTimePassword: Bool = false, allPasskey: [ItemPasskey] = [], canConvertToSecureNote: Bool = false, card: ItemCard? = nil) {
         self.id = id
         self.revision = revision
         self.category = category
@@ -186,6 +190,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         self.hasOneTimePassword = hasOneTimePassword
         self.allPasskey = allPasskey
         self.canConvertToSecureNote = canConvertToSecureNote
+        self.card = card
     }
 
     init(from decoder: Decoder) throws {
@@ -206,11 +211,123 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         hasOneTimePassword = try container.decodeIfPresent(Bool.self, forKey: .hasOneTimePassword) ?? false
         allPasskey = try container.decodeIfPresent([ItemPasskey].self, forKey: .allPasskey) ?? []
         canConvertToSecureNote = try container.decodeIfPresent(Bool.self, forKey: .canConvertToSecureNote) ?? false
+        card = try container.decodeIfPresent(ItemCard.self, forKey: .card)
     }
 
     var isLogin: Bool { category.isEmpty || category == Self.categoryLogin }
     var isSSHKey: Bool { category == Self.categorySSHKey }
     var isSecureNote: Bool { category == Self.categorySecureNote }
+    var isCreditCard: Bool { category == Self.categoryCreditCard }
+}
+
+/// The names core/item stores a card's values under; copying and secret references use them.
+enum CardFieldName {
+    static let cardholder = "Cardholder"
+    static let type = "Type"
+    static let number = "Card number"
+    static let expiry = "Expiry"
+    static let securityCode = "Security code"
+    static let pin = "PIN"
+    static let billingAddress = "Billing address"
+}
+
+/// A card's values. `type` is the brand saved with the card, which the user may choose; `brand` is the one its number
+/// points to.
+struct ItemCard: Codable, Hashable {
+    var cardholder = ""
+    var type = ""
+    var number = ""
+    var expiry = ""
+    var securityCode = ""
+    var pin = ""
+    var billingAddress = ""
+    var brand = ""
+    var last4 = ""
+    var numberWarning = ""
+    var expiryWarning = ""
+
+    enum CodingKeys: String, CodingKey {
+        case cardholder, type, number, expiry, securityCode, pin, billingAddress, brand, last4, numberWarning, expiryWarning
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        cardholder = try container.decodeIfPresent(String.self, forKey: .cardholder) ?? ""
+        type = try container.decodeIfPresent(String.self, forKey: .type) ?? ""
+        number = try container.decodeIfPresent(String.self, forKey: .number) ?? ""
+        expiry = try container.decodeIfPresent(String.self, forKey: .expiry) ?? ""
+        securityCode = try container.decodeIfPresent(String.self, forKey: .securityCode) ?? ""
+        pin = try container.decodeIfPresent(String.self, forKey: .pin) ?? ""
+        billingAddress = try container.decodeIfPresent(String.self, forKey: .billingAddress) ?? ""
+        brand = try container.decodeIfPresent(String.self, forKey: .brand) ?? ""
+        last4 = try container.decodeIfPresent(String.self, forKey: .last4) ?? ""
+        numberWarning = try container.decodeIfPresent(String.self, forKey: .numberWarning) ?? ""
+        expiryWarning = try container.decodeIfPresent(String.self, forKey: .expiryWarning) ?? ""
+    }
+
+    /// The brands an editor offers as a card's type, in the order of core/item ListCardBrands.
+    static let allBrand = ["Visa", "Mastercard", "American Express", "Discover", "Diners Club", "JCB", "UnionPay", "Maestro", "Troy"]
+
+    /// The card's line in lists: its type (or the brand its number points to) and last four digits, such as "Visa •••• 4242".
+    var summary: String {
+        let parts = [type.isEmpty ? brand : type, last4.isEmpty ? "" : "•••• \(last4)"].filter { !$0.isEmpty }
+        return parts.isEmpty ? "Credit card" : parts.joined(separator: " ")
+    }
+
+    /// Groups a card number as it is typed, the way core/item saves it: 4-6-5 for American Express, 4-6-4 for a 14-digit
+    /// Diners Club number and fours otherwise. Text with other characters is left as typed.
+    static func formatNumberInput(_ value: String) -> String {
+        guard value.allSatisfy({ $0.isASCII && ($0.isNumber || $0 == " " || $0 == "-") }) else { return value }
+        let digits = Array(value.filter(\.isNumber))
+        var allGroupSize = [4]
+        if digits.starts(with: ["3", "4"]) || digits.starts(with: ["3", "7"]), digits.count <= 15 {
+            allGroupSize = [4, 6, 5]
+        } else if String(digits).range(of: "^3(0[0-5]|[689])", options: .regularExpression) != nil, digits.count <= 14 {
+            allGroupSize = [4, 6, 4]
+        }
+        var allGroup: [String] = []
+        var start = 0
+        while start < digits.count {
+            let size = allGroupSize[min(allGroup.count, allGroupSize.count - 1)]
+            allGroup.append(String(digits[start..<min(start + size, digits.count)]))
+            start += size
+        }
+        return allGroup.joined(separator: " ")
+    }
+
+    /// Writes an expiry as MM/YY while it is typed: "1230" becomes "12/30", "3" becomes "03" and "1/" becomes "01/". A pasted
+    /// 12/2030 or 2030-12 becomes 12/30, and text with other characters is left as typed.
+    static func formatExpiryInput(_ value: String) -> String {
+        guard value.allSatisfy({ $0.isASCII && ($0.isNumber || " /.-".contains($0)) }) else { return value }
+        let trimmed = value.trimmingCharacters(in: .whitespaces)
+        if let match = trimmed.wholeMatch(of: /(\d{4})\s*[\/.\-]\s*(\d{1,2})/) {
+            return "\(pad(match.2))/\(match.1.suffix(2))"
+        }
+        if let match = trimmed.wholeMatch(of: /(\d{1,2})\s*[\/.\-]\s*(\d*)/) {
+            let year = match.2.count == 4 ? match.2.suffix(2) : match.2.prefix(2)
+            return "\(pad(match.1))/\(year)"
+        }
+        var digits = value.filter(\.isNumber)
+        if digits.range(of: "^([2-9]|1[3-9])", options: .regularExpression) != nil {
+            digits = "0" + digits
+        }
+        guard digits.count > 2 else { return digits }
+        let year = digits.count == 6 ? digits.suffix(2) : digits.dropFirst(2).prefix(2)
+        return "\(digits.prefix(2))/\(year)"
+    }
+
+    private static func pad(_ month: Substring) -> String {
+        month.count == 1 ? "0" + month : String(month)
+    }
+}
+
+struct CardDescription: Codable, Equatable {
+    var brand = ""
+    var last4 = ""
+    var numberWarning = ""
+    var expiryWarning = ""
 }
 
 struct SignUpResult: Codable, Equatable {

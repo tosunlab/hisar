@@ -18,6 +18,7 @@ const maxOnePasswordDataSize = 64 << 20
 
 const (
 	onePasswordLogin      = "001"
+	onePasswordCreditCard = "002"
 	onePasswordSecureNote = "003"
 	onePasswordPassword   = "005"
 	onePasswordSSHKey     = "114"
@@ -128,6 +129,18 @@ func parseOnePasswordExport(content []byte) (*Result, error) {
 	return result, nil
 }
 
+// onePasswordCardFields maps the ids of a 1Password Credit Card's fields to the card's values; its other fields (bank,
+// valid from, phone numbers…) stay custom fields.
+var onePasswordCardFields = map[string]func(*item.Card) *string{
+	"cardholder": func(card *item.Card) *string { return &card.Cardholder },
+	"type":       func(card *item.Card) *string { return &card.Type },
+	"ccnum":      func(card *item.Card) *string { return &card.Number },
+	"expiry":     func(card *item.Card) *string { return &card.Expiry },
+	"cvv":        func(card *item.Card) *string { return &card.SecurityCode },
+	"pin":        func(card *item.Card) *string { return &card.PIN },
+	"address":    func(card *item.Card) *string { return &card.BillingAddress },
+}
+
 func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 	if entry.State == "archived" {
 		return item.Item{}, "archived in 1Password"
@@ -136,7 +149,8 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 	switch {
 	case category == onePasswordSSHKey:
 		return convertOnePasswordSSHKey(entry)
-	case category == onePasswordLogin, category == onePasswordPassword, category == onePasswordSecureNote, onePasswordCredentialCategories[category]:
+	case category == onePasswordLogin, category == onePasswordPassword, category == onePasswordSecureNote, category == onePasswordCreditCard,
+		onePasswordCredentialCategories[category]:
 	default:
 		categoryName, found := onePasswordCategoryNames[category]
 		if !found {
@@ -151,6 +165,7 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 	if category == onePasswordSecureNote {
 		vaultItem.Overview.Category = item.CategorySecureNote
 	}
+	var card item.Card
 	if entry.Overview.URL != "" {
 		vaultItem.Overview.URLs = append(vaultItem.Overview.URLs, entry.Overview.URL)
 	}
@@ -177,6 +192,10 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 			if onePasswordCredentialCategories[category] && promoteOnePasswordField(&vaultItem, sectionField.ID, value) {
 				continue
 			}
+			if cardValue, isCardField := onePasswordCardFields[sectionField.ID]; category == onePasswordCreditCard && isCardField && *cardValue(&card) == "" {
+				*cardValue(&card) = value
+				continue
+			}
 			name := sectionField.Title
 			if name == "" {
 				name = getFirstNonEmpty(section.Title, sectionField.ID)
@@ -187,6 +206,10 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 			}
 			vaultItem.Details.Fields = append(vaultItem.Details.Fields, item.Field{Name: name, Value: value, Concealed: isConcealed})
 		}
+	}
+	if category == onePasswordCreditCard {
+		vaultItem.Overview.Category = item.CategoryCreditCard
+		item.WriteCard(&vaultItem, card, vaultItem.Details.Fields)
 	}
 	return vaultItem, ""
 }

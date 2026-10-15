@@ -31,8 +31,11 @@ func (s *Service) ListItems(vaultID string) ([]ItemDetail, error) {
 	s.itemsByVaultID[vaultID] = items
 	summaries := make([]ItemDetail, 0, len(items))
 	for index := range items {
-		summary := convertToItemDetail(&items[index])
+		summary := convertToItemDetail(&items[index], s.config.Now())
 		summary.Password, summary.Notes, summary.Fields, summary.OneTimePassword = "", "", nil, ""
+		if summary.Card != nil {
+			summary.Card = &ItemCard{Type: summary.Card.Type, CardDescription: CardDescription{Brand: summary.Card.Brand, Last4: summary.Card.Last4}}
+		}
 		summaries = append(summaries, summary)
 	}
 	return summaries, nil
@@ -57,7 +60,7 @@ func (s *Service) GetItem(vaultID, itemID string) (ItemDetail, error) {
 	if err != nil {
 		return ItemDetail{}, err
 	}
-	return convertToItemDetail(vaultItem), nil
+	return convertToItemDetail(vaultItem, s.config.Now()), nil
 }
 
 // GetOneTimeCode returns the item's current one-time code; the UI asks again once ExpiresAt passes.
@@ -83,7 +86,8 @@ func generateOneTimeCode(vaultItem *item.Item, now time.Time) (OneTimeCode, erro
 	return OneTimeCode{Code: code, ExpiresAt: expiresAt.UTC().Format(time.RFC3339), Period: config.Period}, nil
 }
 
-func convertToItemDetail(vaultItem *item.Item) ItemDetail {
+// convertToItemDetail checks a card's expiry at now.
+func convertToItemDetail(vaultItem *item.Item, now time.Time) ItemDetail {
 	detail := ItemDetail{
 		ID:          vaultItem.ID,
 		Revision:    vaultItem.Revision,
@@ -105,10 +109,47 @@ func convertToItemDetail(vaultItem *item.Item) ItemDetail {
 
 		CanConvertToSecureNote: vaultItem.IsCategory(item.CategoryLogin) && item.HasOnlyNotes(vaultItem),
 	}
-	for _, field := range vaultItem.Details.Fields {
+	fields := vaultItem.Details.Fields
+	if vaultItem.IsCategory(item.CategoryCreditCard) {
+		var card item.Card
+		card, fields = item.ReadCard(vaultItem)
+		detail.Card = &ItemCard{
+			Cardholder: card.Cardholder, Type: card.Type, Number: card.Number, Expiry: card.Expiry, SecurityCode: card.SecurityCode, PIN: card.PIN, BillingAddress: card.BillingAddress,
+			CardDescription: convertToCardDescription(item.DescribeCard(card.Number, card.Expiry, now)),
+		}
+	}
+	for _, field := range fields {
 		detail.Fields = append(detail.Fields, ItemField{Name: field.Name, Value: field.Value, Concealed: field.Concealed})
 	}
 	return detail
+}
+
+func convertToCardDescription(description item.CardDescription) CardDescription {
+	return CardDescription{Brand: description.Brand, Last4: description.Last4, NumberWarning: description.NumberWarning, ExpiryWarning: description.ExpiryWarning}
+}
+
+// DescribeCard names the brand and last four digits of a card number and warns about a number or expiry that looks
+// wrong, for an editor to show while the user types.
+func (s *Service) DescribeCard(number, expiry string) CardDescription {
+	return convertToCardDescription(item.DescribeCard(number, expiry, s.config.Now()))
+}
+
+// getStoredFields returns an item's custom fields as they are stored: a card's values first, as named fields.
+func getStoredFields(detail ItemDetail) []ItemField {
+	if detail.Card == nil {
+		return detail.Fields
+	}
+	var vaultItem item.Item
+	item.WriteCard(&vaultItem, convertFromItemCard(detail.Card), nil)
+	fields := []ItemField{}
+	for _, field := range vaultItem.Details.Fields {
+		fields = append(fields, ItemField{Name: field.Name, Value: field.Value, Concealed: field.Concealed})
+	}
+	return append(fields, detail.Fields...)
+}
+
+func convertFromItemCard(card *ItemCard) item.Card {
+	return item.Card{Cardholder: card.Cardholder, Type: card.Type, Number: card.Number, Expiry: card.Expiry, SecurityCode: card.SecurityCode, PIN: card.PIN, BillingAddress: card.BillingAddress}
 }
 
 func convertFromItemDetail(detail ItemDetail) item.Item {
@@ -164,11 +205,12 @@ func (s *Service) SaveItem(vaultID string, detail ItemDetail) (ItemDetail, error
 		return ItemDetail{}, convertError(err)
 	}
 	s.replaceCachedItem(vaultID, vaultItem)
-	return convertToItemDetail(&vaultItem), nil
+	return convertToItemDetail(&vaultItem, s.config.Now()), nil
 }
 
 // buildSavedItem keeps the category and passkeys of an existing item; an ssh-key item only takes the title and notes from
-// the editor. A secure note keeps only its title, notes and custom fields.
+// the editor. A secure note or a card keeps no login data, and a card's values become its named fields. Login data an
+// existing one already has, which its editor does not show, is taken from the stored item, not from detail.
 func (s *Service) buildSavedItem(vaultID string, detail ItemDetail) (item.Item, error) {
 	var cachedItem *item.Item
 	if detail.ID != "" {
@@ -176,7 +218,7 @@ func (s *Service) buildSavedItem(vaultID string, detail ItemDetail) (item.Item, 
 	}
 	if cachedItem == nil {
 		switch detail.Category {
-		case "", item.CategoryLogin, item.CategorySecureNote:
+		case "", item.CategoryLogin, item.CategorySecureNote, item.CategoryCreditCard:
 		case item.CategorySSHKey:
 			if detail.ID == "" {
 				return item.Item{}, errors.New("generate or import an SSH key instead")
@@ -187,7 +229,7 @@ func (s *Service) buildSavedItem(vaultID string, detail ItemDetail) (item.Item, 
 		}
 		vaultItem := convertFromItemDetail(detail)
 		vaultItem.Overview.Category = detail.Category
-		keepSecureNoteFields(&vaultItem)
+		applyCategory(&vaultItem, detail)
 		return vaultItem, nil
 	}
 	if !cachedItem.IsCategory(item.CategorySSHKey) {
@@ -195,7 +237,11 @@ func (s *Service) buildSavedItem(vaultID string, detail ItemDetail) (item.Item, 
 		vaultItem.Overview.Category = cachedItem.Overview.Category
 		vaultItem.Details.Passkeys = cachedItem.Details.Passkeys
 		item.UpdatePasskeyOverview(&vaultItem)
-		keepSecureNoteFields(&vaultItem)
+		if cachedItem.OmitsLoginData() {
+			vaultItem.Overview.Username, vaultItem.Overview.URLs = cachedItem.Overview.Username, cachedItem.Overview.URLs
+			vaultItem.Details.Password, vaultItem.Details.OneTimePassword = cachedItem.Details.Password, cachedItem.Details.OneTimePassword
+		}
+		applyCategory(&vaultItem, detail)
 		return vaultItem, nil
 	}
 	vaultItem := *cachedItem
@@ -206,13 +252,17 @@ func (s *Service) buildSavedItem(vaultID string, detail ItemDetail) (item.Item, 
 	return vaultItem, nil
 }
 
-// keepSecureNoteFields drops from a secure note what its form does not show, so it holds no secret nobody can see.
-func keepSecureNoteFields(vaultItem *item.Item) {
-	if !vaultItem.IsCategory(item.CategorySecureNote) {
-		return
+// applyCategory shapes a saved item to its category: a secure note or card moves login data into custom fields, and a
+// card's values from detail.Card become its named fields. A category from a newer app keeps everything, since the editors
+// show it as a login. Without detail.Card (the CLI), a card's named fields come in detail.Fields.
+func applyCategory(vaultItem *item.Item, detail ItemDetail) {
+	if vaultItem.IsCategory(item.CategoryCreditCard) && detail.Card != nil {
+		item.WriteCard(vaultItem, convertFromItemCard(detail.Card), vaultItem.Details.Fields)
 	}
-	vaultItem.Overview.Username, vaultItem.Overview.URLs = "", nil
-	vaultItem.Details.Password, vaultItem.Details.OneTimePassword = "", ""
+	if vaultItem.OmitsLoginData() {
+		vaultItem.MoveLoginDataToFields()
+	}
+	item.NormalizeCard(vaultItem)
 }
 
 // ConvertToSecureNote turns a login with only notes and custom fields, such as one imported before Hisar had secure notes,
@@ -242,7 +292,7 @@ func (s *Service) ConvertToSecureNote(vaultID, itemID string) (ItemDetail, error
 		return ItemDetail{}, convertError(err)
 	}
 	s.replaceCachedItem(vaultID, vaultItem)
-	return convertToItemDetail(&vaultItem), nil
+	return convertToItemDetail(&vaultItem, s.config.Now()), nil
 }
 
 func (s *Service) replaceCachedItem(vaultID string, vaultItem item.Item) {
