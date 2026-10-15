@@ -1,8 +1,8 @@
 name: macOS and iOS
 
-# macOS minutes are expensive, so each job runs only when the pull request changes desktop/ (the Mac app) or mobile/ (the
-# iPhone app), or this workflow; scripts/detect-app-changes.sh decides. The Go tests in ci.yml cover core/ for both. The
-# run-macos label, or a manual run, runs both anyway.
+# macOS minutes are expensive, so each job runs only when the pull request changes what it builds: desktop/ and cli/ (the
+# Mac app), mobile/ (the iPhone app), core/ and go.work (both), or this workflow; scripts/detect-app-changes.sh decides.
+# The run-macos label, or a manual run, runs both anyway.
 on:
   pull_request:
     types: [opened, reopened, synchronize, labeled]

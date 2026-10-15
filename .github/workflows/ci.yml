@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      # A manual run builds everything; a pull request builds the desktop app only when it changes desktop/.
+      # A manual run builds everything; a pull request builds the desktop app only when it changes desktop/, cli/, core/ or go.work.
       - name: Compare the pull request with its base
         id: changes
         env:
