@@ -260,6 +260,8 @@ func (bridge *CommandLineBridge) saveItem(vaultID string, change *cliprotocol.It
 	}
 	detail.Title, detail.Username, detail.URLs, detail.Password, detail.Notes = change.Title, change.Username, change.URLs, change.Password, change.Notes
 	if change.Fields != nil {
+		// The CLI sends a card's values as named fields, which replace the ones it read.
+		detail.Card = nil
 		detail.Fields = []ItemField{}
 		for _, field := range *change.Fields {
 			detail.Fields = append(detail.Fields, ItemField{Name: field.Name, Value: field.Value, Concealed: field.Concealed})
@@ -351,7 +353,7 @@ func convertToCommandLineItem(detail ItemDetail) cliprotocol.Item {
 	commandLineItem := convertToCommandLineSummary(detail)
 	commandLineItem.Password, commandLineItem.Notes = detail.Password, detail.Notes
 	commandLineItem.PublicKey, commandLineItem.Fingerprint = detail.PublicKey, detail.Fingerprint
-	for _, field := range detail.Fields {
+	for _, field := range getStoredFields(detail) {
 		commandLineItem.Fields = append(commandLineItem.Fields, cliprotocol.Field{Name: field.Name, Value: field.Value, Concealed: field.Concealed})
 	}
 	for _, passkey := range detail.Passkeys {

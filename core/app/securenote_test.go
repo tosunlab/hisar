@@ -51,7 +51,7 @@ func TestSecureNoteKeepsItsCategoryAndOnlyItsFields(t *testing.T) {
 
 func TestSaveItemRefusesAnUnknownCategory(t *testing.T) {
 	testService := createUnlockedTestService(t)
-	if _, err := testService.service.SaveItem(testService.personalID, ItemDetail{Category: "credit-card", Title: "Visa"}); err == nil || !strings.Contains(err.Error(), "unknown item type") {
+	if _, err := testService.service.SaveItem(testService.personalID, ItemDetail{Category: "identity", Title: "Passport"}); err == nil || !strings.Contains(err.Error(), "unknown item type") {
 		t.Errorf("err = %v", err)
 	}
 }
