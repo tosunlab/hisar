@@ -644,4 +644,17 @@ func TestCardsWithTheSameTitleAreNotDuplicates(t *testing.T) {
 	if BuildDuplicateKey(first) != BuildDuplicateKey(first) {
 		t.Error("a card does not match itself")
 	}
+
+	storeCard := func(number string) item.Item {
+		return item.Item{Overview: item.Overview{Title: "Store card", Category: item.CategoryCreditCard}, Details: item.Details{Fields: []item.Field{{Name: item.FieldCardNumber, Value: number}}}}
+	}
+	if BuildDuplicateKey(storeCard("STORE-12A")) == BuildDuplicateKey(storeCard("STORE-99B")) {
+		t.Error("two store cards with different numbers match")
+	}
+	if BuildDuplicateKey(storeCard("123")) == BuildDuplicateKey(storeCard("456")) {
+		t.Error("two cards with short numbers match")
+	}
+	if BuildDuplicateKey(storeCard("STORE-12A")) != BuildDuplicateKey(storeCard(" store-12a ")) {
+		t.Error("a store card does not match itself written in another case")
+	}
 }

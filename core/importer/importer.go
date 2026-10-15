@@ -177,14 +177,18 @@ func Summarize(items []item.Item) Summary {
 }
 
 // BuildDuplicateKey matches items by title, username and first website; SSH keys match by fingerprint, cards by title and
-// last four digits.
+// last four digits, or by the whole number when it has no four digits to go by, such as a store card's "STORE-12A".
 func BuildDuplicateKey(vaultItem item.Item) string {
 	if vaultItem.IsCategory(item.CategorySSHKey) && vaultItem.Overview.Fingerprint != "" {
 		return "ssh-key\x00" + vaultItem.Overview.Fingerprint
 	}
 	if vaultItem.IsCategory(item.CategoryCreditCard) {
 		card, _ := item.ReadCard(&vaultItem)
-		return "credit-card\x00" + strings.ToLower(strings.TrimSpace(vaultItem.Overview.Title)) + "\x00" + item.GetCardLast4(card.Number)
+		numberKey := item.GetCardLast4(card.Number)
+		if numberKey == "" {
+			numberKey = "number\x00" + strings.ToLower(strings.TrimSpace(card.Number))
+		}
+		return "credit-card\x00" + strings.ToLower(strings.TrimSpace(vaultItem.Overview.Title)) + "\x00" + numberKey
 	}
 	firstURL := ""
 	if len(vaultItem.Overview.URLs) > 0 {
