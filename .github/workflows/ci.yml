@@ -18,7 +18,7 @@ env:
 
 jobs:
   changes:
-    name: Check what the push changes
+    name: Check what the pull request changes
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -27,13 +27,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      # A manual run builds everything; a pull request builds the desktop app only when the pushed commits change desktop/.
-      - name: Compare with the commit before the push
+      # A manual run builds everything; a pull request builds the desktop app only when it changes desktop/.
+      - name: Compare the pull request with its base
         id: changes
         env:
-          EVENT_ACTION: ${{ github.event.action }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          BEFORE_SHA: ${{ github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
           IS_FORCED: ${{ github.event_name == 'workflow_dispatch' }}
           WORKFLOW_FILE: .github/workflows/ci.yml

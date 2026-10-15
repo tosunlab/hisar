@@ -1,6 +1,6 @@
 name: macOS and iOS
 
-# macOS minutes are expensive, so each job runs only when the pushed commits change desktop/ (the Mac app) or mobile/ (the
+# macOS minutes are expensive, so each job runs only when the pull request changes desktop/ (the Mac app) or mobile/ (the
 # iPhone app), or this workflow; scripts/detect-app-changes.sh decides. The Go tests in ci.yml cover core/ for both. The
 # run-macos label, or a manual run, runs both anyway.
 on:
@@ -28,7 +28,7 @@ env:
 
 jobs:
   changes:
-    name: Check what the push changes
+    name: Check what the pull request changes
     # Adding another label changes no file, so it runs nothing.
     if: github.event.action != 'labeled' || github.event.label.name == 'run-macos'
     runs-on: ubuntu-latest
@@ -40,12 +40,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - name: Compare with the commit before the push
+      - name: Compare the pull request with its base
         id: changes
         env:
-          EVENT_ACTION: ${{ github.event.action }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          BEFORE_SHA: ${{ github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           IS_FORCED: ${{ contains(github.event.pull_request.labels.*.name, 'run-macos') }}
           WORKFLOW_FILE: .github/workflows/macos.yml

@@ -159,8 +159,8 @@ share link page in Chromium against the server.
 
 `.github/workflows/macos.yml` builds the Mac app (Touch ID and Sparkle tests, bundle and signature checks) and the iPhone app
 (HisarKit, Xcode project check, unit tests, UI tests against a local server) on GitHub's `macos-26` runners with Xcode 26.6. macOS
-minutes count ten times against the plan's included minutes, so each job runs only when the commits just pushed change what it builds
-(`scripts/detect-app-changes.sh`; a newly opened pull request, or a force push, is compared with the base branch instead):
+minutes count ten times against the plan's included minutes, so each job runs only when the pull request, compared with its base
+branch on every push, changes what it builds (`scripts/detect-app-changes.sh`):
 
 - the Mac app when `desktop/` or the workflow changes;
 - the iPhone app when `mobile/` or the workflow changes;
