@@ -38,14 +38,15 @@ func prompt(label, defaultValue string) (string, error) {
 	return answer, nil
 }
 
-// promptLines reads lines until an empty line or the end of the input.
+// promptLines reads lines until one that is only "." or the end of the input, so blank lines stay in the text. Blank
+// lines at the start and end are dropped.
 func promptLines(label string) (string, error) {
 	fmt.Fprintf(os.Stderr, "%s:\n", label)
 	var lines []string
 	for {
 		line, err := readLine()
-		if errors.Is(err, io.EOF) || (err == nil && line == "") {
-			return strings.Join(lines, "\n"), nil
+		if errors.Is(err, io.EOF) || (err == nil && line == ".") {
+			return strings.Trim(strings.Join(lines, "\n"), "\n"), nil
 		}
 		if err != nil {
 			return "", err

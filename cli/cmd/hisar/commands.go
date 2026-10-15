@@ -305,9 +305,9 @@ func promptNote(vaultItem *item.Item) error {
 	if vaultItem.Overview.Title, err = promptRequired("Title", vaultItem.Overview.Title); err != nil {
 		return err
 	}
-	label := "Notes (end with an empty line)"
+	label := `Notes (end with a line containing only ".")`
 	if vaultItem.Details.Notes != "" {
-		label = "Notes (end with an empty line; an empty first line keeps the current notes)"
+		label = `Notes (end with a line containing only "."; a "." right away keeps the current notes)`
 	}
 	notes, err := promptLines(label)
 	if err != nil {

@@ -339,23 +339,23 @@ func TestWriteCommandsRunThroughTheApp(t *testing.T) {
 		t.Errorf("edit request %+v", edited.Item)
 	}
 
-	if _, stderr, err := runCapturingOutput(t, false, "Wi-Fi\nNetwork: home\nPassword: correct horse\n\n", "add", "--note"); err != nil || !strings.Contains(stderr, `Saved "Wi-Fi" to Personal.`) {
+	if _, stderr, err := runCapturingOutput(t, false, "Wi-Fi\nNetwork: home\n\nPassword: correct horse\n.\nignored\n", "add", "--note"); err != nil || !strings.Contains(stderr, `Saved "Wi-Fi" to Personal.`) {
 		t.Fatalf("add --note: %q %v", stderr, err)
 	}
-	if note := app.findRequest(cliprotocol.TypeSaveItem)[2]; note.Item.Category != item.CategorySecureNote || note.Item.Notes != "Network: home\nPassword: correct horse" || note.Item.Username != "" || note.Item.Password != "" {
+	if note := app.findRequest(cliprotocol.TypeSaveItem)[2]; note.Item.Category != item.CategorySecureNote || note.Item.Notes != "Network: home\n\nPassword: correct horse" || note.Item.Username != "" || note.Item.Password != "" {
 		t.Errorf("add --note request %+v", note.Item)
 	}
-	if _, stderr, err := runCapturingOutput(t, false, "\n\n", "edit", "recovery"); err != nil || strings.Contains(stderr, "Username") || strings.Contains(stderr, "Password") {
+	if _, stderr, err := runCapturingOutput(t, false, "\n.\n", "edit", "recovery"); err != nil || strings.Contains(stderr, "Username") || strings.Contains(stderr, "Password") {
 		t.Fatalf("edit note keeping its notes: %q %v", stderr, err)
 	}
 	if kept := app.findRequest(cliprotocol.TypeSaveItem)[3]; kept.Item.ID != "note-id" || kept.Item.Notes != "one\ntwo" || kept.Item.Category != item.CategorySecureNote {
 		t.Errorf("edit note request %+v", kept.Item)
 	}
-	if _, _, err := runCapturingOutput(t, false, "Codes\nthree\n", "edit", "recovery"); err != nil {
+	if _, _, err := runCapturingOutput(t, false, "Codes\n\n1. 4821-9930\n\n2. 1177-0042\n\n", "edit", "recovery"); err != nil {
 		t.Fatal(err)
 	}
-	if replaced := app.findRequest(cliprotocol.TypeSaveItem)[4]; replaced.Item.Title != "Codes" || replaced.Item.Notes != "three" {
-		t.Errorf("edit note at the end of the input %+v", replaced.Item)
+	if replaced := app.findRequest(cliprotocol.TypeSaveItem)[4]; replaced.Item.Title != "Codes" || replaced.Item.Notes != "1. 4821-9930\n\n2. 1177-0042" {
+		t.Errorf("edit note piped without a final \".\" %+v", replaced.Item)
 	}
 
 	if _, _, err := runCapturingOutput(t, false, "y\n", "rm", "bank"); err != nil {
