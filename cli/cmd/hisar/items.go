@@ -91,6 +91,9 @@ func runAdd(ctx context.Context, access backend, flags *flag.FlagSet, args []str
 	if *isSecureNote {
 		vaultItem.Overview.Category = item.CategorySecureNote
 	}
+	if err := access.checkNewItemCategory(vaultItem.Overview.Category); err != nil {
+		return err
+	}
 	if err := promptItemOrNote(vaultItem); err != nil {
 		return err
 	}

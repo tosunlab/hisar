@@ -24,6 +24,8 @@ type backend interface {
 	saveItem(ctx context.Context, vaultID string, vaultItem *item.Item) error
 	// savePromptedItem saves what add and edit ask for: title, username, websites, password and notes; fields stay.
 	savePromptedItem(ctx context.Context, vaultID string, vaultItem *item.Item) error
+	// checkNewItemCategory refuses a category the backend would not save as asked; add calls it before prompting.
+	checkNewItemCategory(category string) error
 	deleteItem(ctx context.Context, vaultID, itemID string) error
 	// getOneTimeCode returns errNoOneTimeCode for an item without a one-time password.
 	getOneTimeCode(ctx context.Context, vaultID, itemID string) (string, error)

@@ -14,6 +14,18 @@ const (
 	SocketEnvironment      = "HISAR_CLI_SOCKET"
 )
 
+// Features name what an app understands beyond ProtocolVersion, so a newer hisar can tell an older app apart without
+// a version bump, which would turn off app mode for every command.
+const (
+	// FeatureSecureNotes: items.save creates the category ItemChange.Category names.
+	FeatureSecureNotes = "secure-notes"
+)
+
+// ListFeatures returns the features this build of the app announces in hello.
+func ListFeatures() []string {
+	return []string{FeatureSecureNotes}
+}
+
 const (
 	StateSignedOut = "signed-out"
 	StateLocked    = "locked"

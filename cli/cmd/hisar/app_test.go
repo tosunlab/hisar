@@ -42,7 +42,7 @@ func startFakeApp(t *testing.T) *fakeApp {
 	t.Helper()
 	app := &fakeApp{
 		socketPath: filepath.Join(createShortTempDirectory(t), "cli.sock"),
-		hello:      cliprotocol.HelloResult{ProtocolVersion: cliprotocol.ProtocolVersion, State: cliprotocol.StateUnlocked, Email: "alice@example.com", Server: "https://hisar.example.com"},
+		hello:      cliprotocol.HelloResult{ProtocolVersion: cliprotocol.ProtocolVersion, State: cliprotocol.StateUnlocked, Email: "alice@example.com", Server: "https://hisar.example.com", Features: cliprotocol.ListFeatures()},
 		answer:     answerFakeVaultRequest,
 	}
 	listener, err := net.Listen("unix", app.socketPath)
@@ -298,6 +298,26 @@ func TestCommandsRunThroughTheApp(t *testing.T) {
 		if request.VaultID != "personal-id" {
 			t.Errorf("code request %+v", request)
 		}
+	}
+}
+
+func TestAddNoteRefusesAnAppWithoutSecureNotes(t *testing.T) {
+	app := startFakeApp(t)
+	app.mutex.Lock()
+	app.hello.Features = nil
+	app.mutex.Unlock()
+	_, stderr, err := runCapturingOutput(t, false, "Wi-Fi\nNetwork: home\n\n", "add", "--note")
+	if err == nil || !strings.Contains(err.Error(), "cannot save secure notes") {
+		t.Fatalf("add --note through an older app: %v", err)
+	}
+	if strings.Contains(stderr, "Title") {
+		t.Errorf("asked for the note before refusing: %q", stderr)
+	}
+	if saved := app.findRequest(cliprotocol.TypeSaveItem); len(saved) != 0 {
+		t.Errorf("sent the note to an older app: %+v", saved)
+	}
+	if _, stderr, err := runCapturingOutput(t, false, "Netflix\nalice\nhttps://netflix.com\nnetflix-password\nshared\n", "add"); err != nil || !strings.Contains(stderr, `Saved "Netflix"`) {
+		t.Errorf("a login through an older app: %q %v", stderr, err)
 	}
 }
 

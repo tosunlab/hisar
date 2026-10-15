@@ -91,7 +91,20 @@ func (access appBackend) account(ctx context.Context) (cliprotocol.AccountResult
 	return account, err
 }
 
+// checkNewItemCategory: an older app ignores the category and saves a login, so a secure note needs an app that knows them.
+func (access appBackend) checkNewItemCategory(category string) error {
+	if category == item.CategorySecureNote && !access.client.hello.HasFeature(cliprotocol.FeatureSecureNotes) {
+		return errors.New("this version of the Hisar app cannot save secure notes; update the Hisar app, or run hisar with --standalone")
+	}
+	return nil
+}
+
 func (access appBackend) savePromptedItem(ctx context.Context, vaultID string, vaultItem *item.Item) error {
+	if vaultItem.ID == "" {
+		if err := access.checkNewItemCategory(vaultItem.Overview.Category); err != nil {
+			return err
+		}
+	}
 	return access.client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeSaveItem, VaultID: vaultID, Item: convertToItemChange(vaultItem)}, nil)
 }
 

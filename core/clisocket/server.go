@@ -183,6 +183,7 @@ func (s *Server) answerRequest(ctx context.Context, client *connectionPeer, requ
 	hello := s.config.Handler.GetHello()
 	if request.Type == cliprotocol.TypeHello {
 		hello.ProtocolVersion = cliprotocol.ProtocolVersion
+		hello.Features = cliprotocol.ListFeatures()
 		if client.agent != nil {
 			hello.IsApproved = hello.State == cliprotocol.StateUnlocked && s.config.Approvals.IsAgentConnectionApproved(client.connectionID)
 		} else {
