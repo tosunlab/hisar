@@ -91,10 +91,11 @@ func (access appBackend) account(ctx context.Context) (cliprotocol.AccountResult
 	return account, err
 }
 
-// checkNewItemCategory: an older app ignores the category and saves a login, so a secure note needs an app that knows them.
+// checkNewItemCategory: an older app ignores the category and saves a login, so a newer category needs an app that
+// announces its feature.
 func (access appBackend) checkNewItemCategory(category string) error {
-	if category == item.CategorySecureNote && !access.client.hello.HasFeature(cliprotocol.FeatureSecureNotes) {
-		return errors.New("this version of the Hisar app cannot save secure notes; update the Hisar app, or run hisar with --standalone")
+	if feature := cliprotocol.GetCategoryFeature(category); feature != "" && !access.client.hello.HasFeature(feature) {
+		return fmt.Errorf("this version of the Hisar app cannot save %s items; update the Hisar app, or run hisar with --standalone", category)
 	}
 	return nil
 }

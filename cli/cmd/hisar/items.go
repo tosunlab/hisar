@@ -71,22 +71,23 @@ func runGet(ctx context.Context, access backend, flags *flag.FlagSet, args []str
 
 func runAdd(ctx context.Context, access backend, flags *flag.FlagSet, args []string) error {
 	vaultName := addVaultFlag(flags)
-	isSecureNote := flags.Bool("note", false, "add a secure note: a title and notes")
+	typeName := flags.String("type", item.CategoryLogin, "the type of item: "+listItemTypeNames())
 	if _, err := parse(flags, args); err != nil {
 		return err
+	}
+	selectedType, isFound := findItemType(*typeName)
+	if !isFound {
+		return fmt.Errorf("unknown item type %q; use one of %s", *typeName, listItemTypeNames())
 	}
 	vault, err := findVaultByNameOrID(ctx, access, *vaultName)
 	if err != nil {
 		return err
 	}
-	vaultItem := &item.Item{}
-	if *isSecureNote {
-		vaultItem.Overview.Category = item.CategorySecureNote
-	}
-	if err := access.checkNewItemCategory(vaultItem.Overview.Category); err != nil {
+	vaultItem := &item.Item{Overview: item.Overview{Category: selectedType.category}}
+	if err := access.checkNewItemCategory(selectedType.category); err != nil {
 		return err
 	}
-	if err := promptItemOrNote(vaultItem); err != nil {
+	if err := selectedType.prompt(vaultItem); err != nil {
 		return err
 	}
 	if err := access.savePromptedItem(ctx, vault.ID, vaultItem); err != nil {
@@ -109,7 +110,11 @@ func runEdit(ctx context.Context, access backend, flags *flag.FlagSet, args []st
 	if err != nil {
 		return err
 	}
-	if err := promptItemOrNote(vaultItem); err != nil {
+	selectedType, isFound := findItemType(vaultItem.Category())
+	if !isFound {
+		return fmt.Errorf("hisar cannot edit %s items; edit it in the Hisar app", vaultItem.Category())
+	}
+	if err := selectedType.prompt(vaultItem); err != nil {
 		return err
 	}
 	if err := access.savePromptedItem(ctx, vault.ID, vaultItem); err != nil {

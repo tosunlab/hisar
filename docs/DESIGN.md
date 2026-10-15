@@ -140,7 +140,7 @@ An item has two encrypted parts so lists and search don't decrypt every secret:
 | `secure-note` | notes and custom fields; saving drops a username, password, website or one-time password, so a note never hides a secret its form does not show | a notes-first view with Copy and a secret reference (`hisar://<vault>/<note>/notes`) |
 | `ssh-key` | §9.6 | §9.6 |
 
-- **Creating:** desktop **+** → Secure note, iOS **+** → New secure note (or a vault's Add item → Secure note), `hisar add --note`. The backend refuses a category it does not know.
+- **Creating:** desktop **+** → Secure note, iOS **+** → New secure note (or a vault's Add item → Secure note), `hisar add --type secure-note`. The backend refuses a category it does not know.
 - **Converting:** a login with nothing but notes and custom fields (`item.HasOnlyNotes`), such as one imported before secure notes existed, shows "Convert to secure note" (`app.Service.ConvertToSecureNote`, driven by `ItemDetail.canConvertToSecureNote`). Nothing is converted without the user asking.
 - **Older apps** show a secure note as a login with only notes and keep its category when they edit it.
 

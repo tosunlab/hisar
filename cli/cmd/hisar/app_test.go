@@ -129,6 +129,7 @@ func answerFakeVaultRequest(request cliprotocol.Request) (any, *cliprotocol.Resp
 			{ID: "github-id", Revision: "r1", Title: "GitHub", Username: "alice", URLs: []string{"https://github.com"}, HasOneTimePassword: true},
 			{ID: "bank-id", Revision: "r2", Title: "Bank", Username: "alice"},
 			{ID: "note-id", Revision: "r3", Category: item.CategorySecureNote, Title: "Recovery codes"},
+			{ID: "key-id", Revision: "r4", Category: item.CategorySSHKey, Title: "Deploy key", PublicKey: "ssh-ed25519 AAAA deploy"},
 		}}, nil
 	case cliprotocol.TypeGetItem:
 		if request.ItemID == "github-id" {
@@ -136,6 +137,9 @@ func answerFakeVaultRequest(request cliprotocol.Request) (any, *cliprotocol.Resp
 				ID: "github-id", Revision: "r1", Title: "GitHub", Username: "alice", URLs: []string{"https://github.com"}, Password: "github-password",
 				Notes: "work", Fields: []cliprotocol.Field{{Name: "PIN", Value: "1234"}}, Passkeys: []cliprotocol.Passkey{{RelyingPartyID: "github.com", UserName: "alice"}}, HasOneTimePassword: true,
 			}}, nil
+		}
+		if request.ItemID == "key-id" {
+			return cliprotocol.ItemResult{Item: cliprotocol.Item{ID: "key-id", Revision: "r4", Category: item.CategorySSHKey, Title: "Deploy key", PublicKey: "ssh-ed25519 AAAA deploy"}}, nil
 		}
 		if request.ItemID == "note-id" {
 			return cliprotocol.ItemResult{Item: cliprotocol.Item{ID: "note-id", Revision: "r3", Category: item.CategorySecureNote, Title: "Recovery codes", Notes: "one\ntwo"}}, nil
@@ -306,9 +310,9 @@ func TestAddNoteRefusesAnAppWithoutSecureNotes(t *testing.T) {
 	app.mutex.Lock()
 	app.hello.Features = nil
 	app.mutex.Unlock()
-	_, stderr, err := runCapturingOutput(t, false, "Wi-Fi\nNetwork: home\n\n", "add", "--note")
-	if err == nil || !strings.Contains(err.Error(), "cannot save secure notes") {
-		t.Fatalf("add --note through an older app: %v", err)
+	_, stderr, err := runCapturingOutput(t, false, "Wi-Fi\nNetwork: home\n\n", "add", "--type", "secure-note")
+	if err == nil || !strings.Contains(err.Error(), "cannot save secure-note items") {
+		t.Fatalf("add --type secure-note through an older app: %v", err)
 	}
 	if strings.Contains(stderr, "Title") {
 		t.Errorf("asked for the note before refusing: %q", stderr)
@@ -318,6 +322,30 @@ func TestAddNoteRefusesAnAppWithoutSecureNotes(t *testing.T) {
 	}
 	if _, stderr, err := runCapturingOutput(t, false, "Netflix\nalice\nhttps://netflix.com\nnetflix-password\nshared\n", "add"); err != nil || !strings.Contains(stderr, `Saved "Netflix"`) {
 		t.Errorf("a login through an older app: %q %v", stderr, err)
+	}
+}
+
+func TestAddAndEditFollowTheItemType(t *testing.T) {
+	app := startFakeApp(t)
+	_, stderr, err := runCapturingOutput(t, false, "Visa\n", "add", "--type", "credit-card")
+	if err == nil || !strings.Contains(err.Error(), `unknown item type "credit-card"; use one of login, secure-note`) {
+		t.Errorf("add an unknown type: %v", err)
+	}
+	if strings.Contains(stderr, "Title") {
+		t.Errorf("asked for an item of an unknown type: %q", stderr)
+	}
+	_, stderr, err = runCapturingOutput(t, false, "\n\n\n\n\n", "edit", "deploy")
+	if err == nil || !strings.Contains(err.Error(), "hisar cannot edit ssh-key items") || strings.Contains(stderr, "Username") {
+		t.Errorf("edit an SSH key: %q %v", stderr, err)
+	}
+	if saved := app.findRequest(cliprotocol.TypeSaveItem); len(saved) != 0 {
+		t.Errorf("saved %+v", saved)
+	}
+	if _, _, err := runCapturingOutput(t, false, "Netflix\nalice\n\npw\n\n", "add", "--type", "login"); err != nil {
+		t.Fatal(err)
+	}
+	if login := app.findRequest(cliprotocol.TypeSaveItem)[0]; login.Item.Category != item.CategoryLogin || login.Item.Username != "alice" {
+		t.Errorf("add --type login request %+v", login.Item)
 	}
 }
 
@@ -339,11 +367,11 @@ func TestWriteCommandsRunThroughTheApp(t *testing.T) {
 		t.Errorf("edit request %+v", edited.Item)
 	}
 
-	if _, stderr, err := runCapturingOutput(t, false, "Wi-Fi\nNetwork: home\n\nPassword: correct horse\n.\nignored\n", "add", "--note"); err != nil || !strings.Contains(stderr, `Saved "Wi-Fi" to Personal.`) {
-		t.Fatalf("add --note: %q %v", stderr, err)
+	if _, stderr, err := runCapturingOutput(t, false, "Wi-Fi\nNetwork: home\n\nPassword: correct horse\n.\nignored\n", "add", "--type", "secure-note"); err != nil || !strings.Contains(stderr, `Saved "Wi-Fi" to Personal.`) {
+		t.Fatalf("add --type secure-note: %q %v", stderr, err)
 	}
 	if note := app.findRequest(cliprotocol.TypeSaveItem)[2]; note.Item.Category != item.CategorySecureNote || note.Item.Notes != "Network: home\n\nPassword: correct horse" || note.Item.Username != "" || note.Item.Password != "" {
-		t.Errorf("add --note request %+v", note.Item)
+		t.Errorf("add --type secure-note request %+v", note.Item)
 	}
 	if _, stderr, err := runCapturingOutput(t, false, "\n.\n", "edit", "recovery"); err != nil || strings.Contains(stderr, "Username") || strings.Contains(stderr, "Password") {
 		t.Fatalf("edit note keeping its notes: %q %v", stderr, err)

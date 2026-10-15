@@ -2,6 +2,8 @@ package cliprotocol
 
 import (
 	"strings"
+
+	"github.com/tryhisar/hisar/core/item"
 )
 
 const (
@@ -24,6 +26,12 @@ const (
 // ListFeatures returns the features this build of the app announces in hello.
 func ListFeatures() []string {
 	return []string{FeatureSecureNotes}
+}
+
+// GetCategoryFeature returns the feature an app must announce before items.save may create an item of category, or ""
+// when every app can (logins).
+func GetCategoryFeature(category string) string {
+	return map[string]string{item.CategorySecureNote: FeatureSecureNotes}[category]
 }
 
 const (

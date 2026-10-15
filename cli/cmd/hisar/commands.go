@@ -292,11 +292,33 @@ func getFieldValue(vaultItem *item.Item, name string) (string, bool) {
 	return item.LookupField(vaultItem, name, fieldNames, time.Now())
 }
 
-func promptItemOrNote(vaultItem *item.Item) error {
-	if vaultItem.IsCategory(item.CategorySecureNote) {
-		return promptNote(vaultItem)
+// itemType is a category hisar can add and edit, with the prompts that fill an item of it in.
+type itemType struct {
+	category string
+	prompt   func(*item.Item) error
+}
+
+// itemTypes are the categories add --type takes and edit understands; a new category is one more row.
+var itemTypes = []itemType{
+	{category: item.CategoryLogin, prompt: promptItem},
+	{category: item.CategorySecureNote, prompt: promptNote},
+}
+
+func findItemType(category string) (itemType, bool) {
+	for _, candidate := range itemTypes {
+		if candidate.category == category {
+			return candidate, true
+		}
 	}
-	return promptItem(vaultItem)
+	return itemType{}, false
+}
+
+func listItemTypeNames() string {
+	names := make([]string, 0, len(itemTypes))
+	for _, candidate := range itemTypes {
+		names = append(names, candidate.category)
+	}
+	return strings.Join(names, ", ")
 }
 
 // promptNote asks for a secure note's title and its notes, which may span several lines.
