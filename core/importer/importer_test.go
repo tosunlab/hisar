@@ -664,7 +664,7 @@ func TestParseOnePasswordCreditCard(t *testing.T) {
 	}
 }
 
-func TestParseOnePasswordPassportAndDriverLicense(t *testing.T) {
+func TestParseOnePasswordIdentityDocuments(t *testing.T) {
 	data := `{"accounts":[{"vaults":[{"items":[
 		{"categoryUuid":"106","overview":{"title":"Passport"},"details":{"sections":[{"title":"","fields":[
 			{"title":"type","id":"type","value":{"string":"P"}},
@@ -677,7 +677,10 @@ func TestParseOnePasswordPassportAndDriverLicense(t *testing.T) {
 			{"title":"full name","id":"fullname","value":{"string":"Alice Example"}},
 			{"title":"address","id":"address","value":{"string":"1 Main St"}},
 			{"title":"number","id":"number","value":{"string":"D-998877"}},
-			{"title":"license class","id":"class","value":{"string":"B"}}]}]}}]}]}]}`
+			{"title":"license class","id":"class","value":{"string":"B"}}]}]}},
+		{"categoryUuid":"108","overview":{"title":"Social Security"},"details":{"sections":[{"title":"","fields":[
+			{"title":"name","id":"name","value":{"string":"Alice Example"}},
+			{"title":"number","id":"number","value":{"concealed":"123-45-6789"}}]}]}}]}]}]}`
 	result := parseFixture(t, "export.1pux", buildOnePasswordExport(t, []byte(data)), FormatAutomatic)
 	wantPassport := []item.Field{
 		{Name: item.FieldFirstName, Value: "Alice Maria"},
@@ -701,8 +704,16 @@ func TestParseOnePasswordPassportAndDriverLicense(t *testing.T) {
 	if license := findTestItem(t, result, "Driver License"); license.Overview.Category != item.CategoryIdentity || !reflect.DeepEqual(license.Details.Fields, wantLicense) {
 		t.Errorf("driver license =\n%+v\nwant\n%+v", license.Details.Fields, wantLicense)
 	}
-	if summary := Summarize(result.Items); summary.IdentityCount != 2 {
-		t.Errorf("summary = %+v", summary)
+	wantSSN := []item.Field{
+		{Name: item.FieldFirstName, Value: "Alice"},
+		{Name: item.FieldLastName, Value: "Example"},
+		{Name: item.FieldNationalIDNumber, Value: "123-45-6789", Concealed: true},
+	}
+	if ssn := findTestItem(t, result, "Social Security"); ssn.Overview.Category != item.CategoryIdentity || !reflect.DeepEqual(ssn.Details.Fields, wantSSN) {
+		t.Errorf("social security number =\n%+v\nwant\n%+v", ssn.Details.Fields, wantSSN)
+	}
+	if summary := Summarize(result.Items); summary.IdentityCount != 3 || len(result.Skipped) != 0 {
+		t.Errorf("summary = %+v, skipped %+v", summary, result.Skipped)
 	}
 }
 

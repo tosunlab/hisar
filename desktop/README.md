@@ -123,7 +123,7 @@ Design: `docs/DESIGN.md` §4.5 (categories).
 
 - **+** → **Identity** opens an editor for the first, middle and last name, birth date (a date picker; an imported date that is not year first stays text), email, phone, address and the passport, driver's license and national ID numbers, which are masked until shown; then notes and custom fields.
 - An identity's view shows the full name and lists each value with **Copy** and a secret reference; the document numbers are masked until revealed. The item list shows the name, or the email.
-- Identities import from 1Password (Identity, Passport, Driver License) and Bitwarden JSON; a Bitwarden CSV leaves them out.
+- Identities import from 1Password (Identity, Passport, Driver License, Social Security Number) and Bitwarden JSON; a Bitwarden CSV leaves them out.
 - Preview: `&item=passport`, `&editor=identity`.
 
 ## Import from other password managers
