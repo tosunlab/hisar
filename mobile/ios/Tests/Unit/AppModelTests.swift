@@ -355,6 +355,20 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(ItemIdentity.parseBirthDate("04/12/1990"))
     }
 
+    func testBirthDateTodayFollowsTheDevicesCalendarDay() throws {
+        var losAngeles = Calendar(identifier: .gregorian)
+        losAngeles.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Los_Angeles"))
+        var tokyo = Calendar(identifier: .gregorian)
+        tokyo.timeZone = try XCTUnwrap(TimeZone(identifier: "Asia/Tokyo"))
+        let evening = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-10-15T20:00:00-07:00"))
+        let morning = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-10-16T08:00:00+09:00"))
+
+        XCTAssertEqual(ItemIdentity.formatToday(now: evening, calendar: losAngeles), "2026-10-15")
+        XCTAssertEqual(ItemIdentity.formatBirthDate(ItemIdentity.getLatestBirthDate(now: evening, calendar: losAngeles)), "2026-10-15")
+        XCTAssertEqual(ItemIdentity.formatToday(now: morning, calendar: tokyo), "2026-10-16")
+        XCTAssertEqual(ItemIdentity.formatBirthDate(ItemIdentity.getLatestBirthDate(now: morning, calendar: tokyo)), "2026-10-16")
+    }
+
     func testIdentityDecodesFromTheBackendAndSummarizes() throws {
         let json = #"{"category":"identity","title":"Work","identity":{"firstName":"","lastName":"","email":"alice@example.com","nationalIdNumber":"N1"}}"#
         let item = try JSONDecoder().decode(ItemDetail.self, from: Data(json.utf8))

@@ -301,6 +301,18 @@ struct ItemIdentity: Codable, Hashable {
 
     /// The birth date as it is stored, YYYY-MM-DD.
     static func formatBirthDate(_ date: Date) -> String { birthDateFormatter.string(from: date) }
+
+    /// Today on the device's calendar as a stored birth date. The formatter works in UTC, which is a day ahead or behind
+    /// near midnight: at 20:00 on October 15 in Los Angeles it is already October 16 in UTC.
+    static func formatToday(now: Date = Date(), calendar: Calendar = .current) -> String {
+        let parts = calendar.dateComponents([.year, .month, .day], from: now)
+        return String(format: "%04d-%02d-%02d", parts.year ?? 1970, parts.month ?? 1, parts.day ?? 1)
+    }
+
+    /// The latest day a birth date picker offers: today on the device's calendar, as the UTC day the picker shows.
+    static func getLatestBirthDate(now: Date = Date(), calendar: Calendar = .current) -> Date {
+        parseBirthDate(formatToday(now: now, calendar: calendar)) ?? now
+    }
 }
 
 /// The names core/item stores a card's values under; copying and secret references use them.

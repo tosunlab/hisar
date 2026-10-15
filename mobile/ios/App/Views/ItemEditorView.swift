@@ -312,7 +312,7 @@ struct ItemEditorView: View {
         let birthDate = bindIdentity(\.birthDate)
         if birthDate.wrappedValue.isEmpty {
             Button {
-                birthDate.wrappedValue = ItemIdentity.formatBirthDate(Date())
+                birthDate.wrappedValue = ItemIdentity.formatToday()
             } label: {
                 Label("Add birth date", systemImage: "calendar.badge.plus")
             }
@@ -322,7 +322,7 @@ struct ItemEditorView: View {
                 DatePicker(
                     "Birth date",
                     selection: Binding(get: { date }, set: { birthDate.wrappedValue = ItemIdentity.formatBirthDate($0) }),
-                    in: ...Date(),
+                    in: ...ItemIdentity.getLatestBirthDate(),
                     displayedComponents: .date
                 )
                 .environment(\.timeZone, TimeZone(identifier: "UTC") ?? .current)
