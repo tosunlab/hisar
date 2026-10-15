@@ -86,10 +86,11 @@ func HasLoginData(vaultItem *Item) bool {
 		vaultItem.Details.OneTimePassword != "" || vaultItem.Details.PrivateKey != "" || len(vaultItem.Details.Passkeys) > 0
 }
 
-// OmitsLoginData reports whether the item's category is one Hisar knows has no place for login data: a secure note or a
-// credit card. A login keeps its login data, and so does a category from a newer app, which this app edits as a login.
+// OmitsLoginData reports whether the item's category is one Hisar knows has no place for login data: a secure note, a
+// credit card or an identity. A login keeps its login data, and so does a category from a newer app, which this app edits
+// as a login.
 func (vaultItem *Item) OmitsLoginData() bool {
-	return vaultItem.IsCategory(CategorySecureNote) || vaultItem.IsCategory(CategoryCreditCard)
+	return slices.Contains([]string{CategorySecureNote, CategoryCreditCard, CategoryIdentity}, vaultItem.Category())
 }
 
 // MoveLoginDataToFields turns what only a login shows (username, password, websites and one-time password) into custom
