@@ -208,7 +208,8 @@ func (s *Service) SaveItem(vaultID string, detail ItemDetail) (ItemDetail, error
 }
 
 // buildSavedItem keeps the category and passkeys of an existing item; an ssh-key item only takes the title and notes from
-// the editor. A secure note or a card keeps no login data, and a card's values become its named fields.
+// the editor. A secure note or a card keeps no login data, and a card's values become its named fields. Login data an
+// existing one already has, which its editor does not show, is taken from the stored item, not from detail.
 func (s *Service) buildSavedItem(vaultID string, detail ItemDetail) (item.Item, error) {
 	var cachedItem *item.Item
 	if detail.ID != "" {
@@ -235,6 +236,10 @@ func (s *Service) buildSavedItem(vaultID string, detail ItemDetail) (item.Item, 
 		vaultItem.Overview.Category = cachedItem.Overview.Category
 		vaultItem.Details.Passkeys = cachedItem.Details.Passkeys
 		item.UpdatePasskeyOverview(&vaultItem)
+		if cachedItem.OmitsLoginData() {
+			vaultItem.Overview.Username, vaultItem.Overview.URLs = cachedItem.Overview.Username, cachedItem.Overview.URLs
+			vaultItem.Details.Password, vaultItem.Details.OneTimePassword = cachedItem.Details.Password, cachedItem.Details.OneTimePassword
+		}
 		applyCategory(&vaultItem, detail)
 		return vaultItem, nil
 	}
@@ -246,14 +251,15 @@ func (s *Service) buildSavedItem(vaultID string, detail ItemDetail) (item.Item, 
 	return vaultItem, nil
 }
 
-// applyCategory shapes a saved item to its category: a secure note or card drops login data, and a card's values from
-// detail.Card become its named fields. A category from a newer app keeps everything, since the editors show it as a login. Without detail.Card (the CLI), a card's named fields come in detail.Fields.
+// applyCategory shapes a saved item to its category: a secure note or card moves login data into custom fields, and a
+// card's values from detail.Card become its named fields. A category from a newer app keeps everything, since the editors
+// show it as a login. Without detail.Card (the CLI), a card's named fields come in detail.Fields.
 func applyCategory(vaultItem *item.Item, detail ItemDetail) {
 	if vaultItem.IsCategory(item.CategoryCreditCard) && detail.Card != nil {
 		item.WriteCard(vaultItem, convertFromItemCard(detail.Card), vaultItem.Details.Fields)
 	}
 	if vaultItem.OmitsLoginData() {
-		vaultItem.DropLoginData()
+		vaultItem.MoveLoginDataToFields()
 	}
 	item.NormalizeCard(vaultItem)
 }

@@ -35,6 +35,9 @@ func TestCreditCardIsStoredAsNamedFields(t *testing.T) {
 		{Name: item.FieldPIN, Value: "0000", Concealed: true},
 		{Name: item.FieldBillingAddress, Value: "1 Main St"},
 		{Name: "Bank", Value: "İş Bankası"},
+		{Name: "Username", Value: "hidden"},
+		{Name: "Password", Value: "hidden", Concealed: true},
+		{Name: "Website", Value: "https://bank.example.com"},
 	}
 	if !reflect.DeepEqual(stored.Details.Fields, wantFields) {
 		t.Errorf("stored fields =\n%+v\nwant\n%+v", stored.Details.Fields, wantFields)
@@ -45,7 +48,7 @@ func TestCreditCardIsStoredAsNamedFields(t *testing.T) {
 	if saved.Card == nil || saved.Card.Brand != "Visa" || saved.Card.Last4 != "1111" || saved.Card.Type != "Visa" || saved.Card.Expiry != "12/29" || saved.Card.NumberWarning != "" {
 		t.Errorf("saved card = %+v", saved.Card)
 	}
-	if !reflect.DeepEqual(saved.Fields, []ItemField{{Name: "Bank", Value: "İş Bankası"}}) {
+	if len(saved.Fields) != 4 || saved.Fields[0] != (ItemField{Name: "Bank", Value: "İş Bankası"}) {
 		t.Errorf("other fields = %+v", saved.Fields)
 	}
 
@@ -54,7 +57,7 @@ func TestCreditCardIsStoredAsNamedFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if edited.Card.SecurityCode != "456" || edited.Card.NumberWarning == "" || len(edited.Fields) != 1 {
+	if edited.Card.SecurityCode != "456" || edited.Card.NumberWarning == "" || len(edited.Fields) != 4 {
 		t.Errorf("edited card = %+v, fields %+v", edited.Card, edited.Fields)
 	}
 
@@ -147,5 +150,54 @@ func TestImportedCardKeepsItsWebsiteThroughAnEdit(t *testing.T) {
 	}
 	if !slices.Contains(edited.Fields, website) || edited.Card.Last4 != "0005" {
 		t.Errorf("after an edit the card = %+v, fields %+v", edited.Card, edited.Fields)
+	}
+}
+
+func TestEditingACardKeepsLoginDataItAlreadyHad(t *testing.T) {
+	testService := createUnlockedTestService(t)
+	service, vaultID := testService.service, testService.personalID
+	saved, err := service.SaveItem(vaultID, ItemDetail{Category: item.CategoryCreditCard, Title: "Amex", Card: &ItemCard{Number: "378282246310005"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A card imported before import moved websites into fields, or saved by another app, still has one on the overview.
+	service.mutex.Lock()
+	for index := range service.itemsByVaultID[vaultID] {
+		if service.itemsByVaultID[vaultID][index].ID == saved.ID {
+			service.itemsByVaultID[vaultID][index].Overview.URLs = []string{"https://americanexpress.com"}
+		}
+	}
+	service.mutex.Unlock()
+	website := ItemField{Name: "Website", Value: "https://americanexpress.com"}
+
+	// The iPhone editor sends the websites back; an editor might as well leave them out.
+	opened, err := service.GetItem(vaultID, saved.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	withWebsite, err := service.SaveItem(vaultID, opened)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(withWebsite.Fields, []ItemField{website}) || len(withWebsite.URLs) != 0 {
+		t.Errorf("saved with its website: fields %+v, websites %v", withWebsite.Fields, withWebsite.URLs)
+	}
+
+	service.mutex.Lock()
+	for index := range service.itemsByVaultID[vaultID] {
+		if service.itemsByVaultID[vaultID][index].ID == saved.ID {
+			service.itemsByVaultID[vaultID][index].Overview.URLs = []string{"https://americanexpress.com"}
+			service.itemsByVaultID[vaultID][index].Details.Fields = service.itemsByVaultID[vaultID][index].Details.Fields[:2]
+		}
+	}
+	service.mutex.Unlock()
+	withoutWebsite := withWebsite
+	withoutWebsite.URLs, withoutWebsite.Fields = nil, nil
+	edited, err := service.SaveItem(vaultID, withoutWebsite)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(edited.Fields, []ItemField{website}) {
+		t.Errorf("saved without its website: fields %+v", edited.Fields)
 	}
 }

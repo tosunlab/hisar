@@ -92,9 +92,23 @@ func (vaultItem *Item) OmitsLoginData() bool {
 	return vaultItem.IsCategory(CategorySecureNote) || vaultItem.IsCategory(CategoryCreditCard)
 }
 
-// DropLoginData clears what only a login shows (username, websites, password and one-time password), for an item whose
-// category has no place for them, so it holds no secret its form does not show.
-func (vaultItem *Item) DropLoginData() {
+// MoveLoginDataToFields turns what only a login shows (username, password, websites and one-time password) into custom
+// fields, for an item whose form has no place for them: it then holds nothing its form does not show, and loses nothing.
+func (vaultItem *Item) MoveLoginDataToFields() {
+	var fields []Field
+	if vaultItem.Overview.Username != "" {
+		fields = append(fields, Field{Name: "Username", Value: vaultItem.Overview.Username})
+	}
+	if vaultItem.Details.Password != "" {
+		fields = append(fields, Field{Name: "Password", Value: vaultItem.Details.Password, Concealed: true})
+	}
+	for _, link := range vaultItem.Overview.URLs {
+		fields = append(fields, Field{Name: "Website", Value: link})
+	}
+	if vaultItem.Details.OneTimePassword != "" {
+		fields = append(fields, Field{Name: "One-time password", Value: vaultItem.Details.OneTimePassword, Concealed: true})
+	}
+	vaultItem.Details.Fields = append(vaultItem.Details.Fields, fields...)
 	vaultItem.Overview.Username, vaultItem.Overview.URLs = "", nil
 	vaultItem.Details.Password, vaultItem.Details.OneTimePassword = "", ""
 }

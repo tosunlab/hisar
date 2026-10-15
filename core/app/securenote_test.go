@@ -27,7 +27,14 @@ func TestSecureNoteKeepsItsCategoryAndOnlyItsFields(t *testing.T) {
 	if stored.Overview.Username != "" || stored.Details.Password != "" || stored.Overview.URLs != nil || stored.Details.OneTimePassword != "" {
 		t.Errorf("a secure note kept fields its form does not show: %+v", stored)
 	}
-	if !reflect.DeepEqual(stored.Details.Fields, []item.Field{{Name: "Wi-Fi password", Value: "correct horse", Concealed: true}}) {
+	wantFields := []item.Field{
+		{Name: "Wi-Fi password", Value: "correct horse", Concealed: true},
+		{Name: "Username", Value: "hidden"},
+		{Name: "Password", Value: "hidden", Concealed: true},
+		{Name: "Website", Value: "https://router.local"},
+		{Name: "One-time password", Value: note.Fields[4].Value, Concealed: true},
+	}
+	if !reflect.DeepEqual(stored.Details.Fields, wantFields) || !strings.Contains(wantFields[4].Value, "otpauth://") {
 		t.Errorf("custom fields = %+v", stored.Details.Fields)
 	}
 	if note.CanConvertToSecureNote {

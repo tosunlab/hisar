@@ -295,30 +295,11 @@ func finishItem(vaultItem *item.Item) bool {
 		vaultItem.Overview.Category = item.CategoryLogin
 	}
 	if vaultItem.OmitsLoginData() {
-		keepLoginDataAsFields(vaultItem)
+		// 1Password keeps a website on a card, for one.
+		vaultItem.MoveLoginDataToFields()
 	}
 	item.NormalizeCard(vaultItem)
 	return true
-}
-
-// keepLoginDataAsFields moves login data that came with an item whose form has none, such as the website 1Password keeps
-// on a card, into custom fields, so it stays visible and is not dropped the next time the item is saved.
-func keepLoginDataAsFields(vaultItem *item.Item) {
-	var fields []item.Field
-	if vaultItem.Overview.Username != "" {
-		fields = append(fields, item.Field{Name: "Username", Value: vaultItem.Overview.Username})
-	}
-	if vaultItem.Details.Password != "" {
-		fields = append(fields, item.Field{Name: "Password", Value: vaultItem.Details.Password, Concealed: true})
-	}
-	for _, link := range vaultItem.Overview.URLs {
-		fields = append(fields, item.Field{Name: "Website", Value: link})
-	}
-	if vaultItem.Details.OneTimePassword != "" {
-		fields = append(fields, item.Field{Name: "One-time password", Value: vaultItem.Details.OneTimePassword, Concealed: true})
-	}
-	vaultItem.Details.Fields = append(vaultItem.Details.Fields, fields...)
-	vaultItem.DropLoginData()
 }
 
 // addOneTimePassword keeps the first valid secret as the item's one-time password; anything else stays a concealed field.

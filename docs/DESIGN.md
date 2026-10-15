@@ -137,8 +137,8 @@ An item has two encrypted parts so lists and search don't decrypt every secret:
 | Category | Holds | Shown as |
 |---|---|---|
 | `login`, or empty (items saved before categories) | username, password, websites, one-time password, passkeys, custom fields, notes | a login; the only category the browser extension and iOS AutoFill offer |
-| `secure-note` | notes and custom fields; saving drops a username, password, website or one-time password, so a note never hides a secret its form does not show | a notes-first view with Copy and a secret reference (`hisar://<vault>/<note>/notes`) |
-| `credit-card` | the custom fields Cardholder, Type, Card number, Expiry (`MM/YY`), Security code, PIN and Billing address, first and in that order, then other custom fields and notes; the number, security code and PIN are concealed; saving drops login data | the brand and last four digits ("Visa •••• 4242"), the number and codes masked until revealed; lists show only the brand and last four digits |
+| `secure-note` | notes and custom fields; saving moves a username, password, website or one-time password into custom fields (Username, Password, Website, One-time password; secrets concealed), so a note never hides a secret its form does not show and nothing is lost | a notes-first view with Copy and a secret reference (`hisar://<vault>/<note>/notes`) |
+| `credit-card` | the custom fields Cardholder, Type, Card number, Expiry (`MM/YY`), Security code, PIN and Billing address, first and in that order, then other custom fields and notes; the number, security code and PIN are concealed; saving, and importing, move login data into custom fields as for a secure note | the brand and last four digits ("Visa •••• 4242"), the number and codes masked until revealed; lists show only the brand and last four digits |
 | `ssh-key` | §9.6 | §9.6 |
 
 - **Creating:** desktop **+** → Secure note or Credit card, iOS **+** → New secure note or New credit card (or a vault's Add item), `hisar add --type secure-note|credit-card`. The backend refuses a category it does not know.
