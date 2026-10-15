@@ -176,6 +176,41 @@ func (access *standaloneBackend) importItems(ctx context.Context, vaultID string
 	return saveImportedItems(ctx, access.unlockedSession, vault, items)
 }
 
+func (access *standaloneBackend) listFavorites(ctx context.Context) ([]cliprotocol.Favorite, error) {
+	if err := access.loadVaults(ctx); err != nil {
+		return nil, err
+	}
+	preferences, err := access.unlockedSession.LoadPreferences(ctx)
+	if err != nil {
+		return nil, err
+	}
+	favorites := []cliprotocol.Favorite{}
+	for vaultID := range access.vaultsByID {
+		items, err := access.listItems(ctx, vaultID)
+		if err != nil {
+			return nil, err
+		}
+		for _, vaultItem := range items {
+			if preferences.IsFavorite(vaultItem.ID) {
+				favorites = append(favorites, cliprotocol.Favorite{VaultID: vaultID, ItemID: vaultItem.ID})
+			}
+		}
+	}
+	return favorites, nil
+}
+
+func (access *standaloneBackend) setItemFavorite(ctx context.Context, vaultID, itemID string, isFavorite bool) error {
+	if err := access.requireSession(ctx); err != nil {
+		return err
+	}
+	change := session.FavoriteChange{RemoveItemIDs: []string{itemID}}
+	if isFavorite {
+		change = session.FavoriteChange{AddItemIDs: []string{itemID}}
+	}
+	_, err := access.unlockedSession.UpdateFavorites(ctx, nil, change)
+	return err
+}
+
 func (access *standaloneBackend) getVaultActions(ctx context.Context, vaultID string) (cliprotocol.VaultActionsResult, error) {
 	vault, err := access.findVault(ctx, vaultID)
 	if err != nil {

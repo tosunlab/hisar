@@ -43,8 +43,10 @@ type onePasswordExport struct {
 }
 
 type onePasswordItem struct {
-	State        string `json:"state"`
-	CategoryUUID string `json:"categoryUuid"`
+	State string `json:"state"`
+	// FavIndex is the item's place in 1Password's Favorites; 0 means it is not a favorite.
+	FavIndex     float64 `json:"favIndex"`
+	CategoryUUID string  `json:"categoryUuid"`
 	Details      struct {
 		LoginFields []struct {
 			Value       string `json:"value"`
@@ -120,6 +122,7 @@ func parseOnePasswordExport(content []byte) (*Result, error) {
 					result.Skipped = append(result.Skipped, SkippedEntry{Title: describeEntry(onePasswordEntry.Overview.Title), Reason: reason})
 					continue
 				}
+				vaultItem.IsFavorite = onePasswordEntry.FavIndex > 0
 				if finishItem(&vaultItem) {
 					result.Items = append(result.Items, vaultItem)
 				}

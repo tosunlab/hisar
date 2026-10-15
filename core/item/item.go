@@ -64,6 +64,9 @@ type Item struct {
 	Revision string
 	Overview Overview
 	Details  Details
+	// IsFavorite is set by importers for an item the other password manager starred. It is never sealed into the item:
+	// favorites belong to the user's account.
+	IsFavorite bool `json:",omitempty"`
 }
 
 // Category returns the item's category; an item saved without one is a login.

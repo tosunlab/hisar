@@ -19,9 +19,10 @@ var schemaStatements = []string{
 	`CREATE TABLE IF NOT EXISTS accounts (account_id TEXT PRIMARY KEY, data BLOB NOT NULL)`,
 	`CREATE TABLE IF NOT EXISTS vaults (vault_id TEXT PRIMARY KEY, data BLOB, seq INTEGER NOT NULL DEFAULT 0)`,
 	`CREATE TABLE IF NOT EXISTS items (vault_id TEXT NOT NULL, item_id TEXT NOT NULL, data BLOB NOT NULL, PRIMARY KEY (vault_id, item_id))`,
+	`CREATE TABLE IF NOT EXISTS account_preferences (account_id TEXT PRIMARY KEY, data BLOB NOT NULL)`,
 }
 
-var dropStatements = []string{`DROP TABLE IF EXISTS accounts`, `DROP TABLE IF EXISTS vaults`, `DROP TABLE IF EXISTS items`}
+var dropStatements = []string{`DROP TABLE IF EXISTS accounts`, `DROP TABLE IF EXISTS vaults`, `DROP TABLE IF EXISTS items`, `DROP TABLE IF EXISTS account_preferences`}
 
 type Cache struct {
 	database *sql.DB
@@ -103,6 +104,33 @@ func (c *Cache) LoadAccount(accountID string) (*apitypes.Account, error) {
 		return nil, err
 	}
 	return account, nil
+}
+
+// SaveAccountPreferences keeps the account's sealed preferences record as the server returned it.
+func (c *Cache) SaveAccountPreferences(accountID string, preferences *apitypes.AccountPreferences) error {
+	data, err := json.Marshal(preferences)
+	if err != nil {
+		return err
+	}
+	_, err = c.database.Exec(`INSERT INTO account_preferences (account_id, data) VALUES (?, ?) ON CONFLICT (account_id) DO UPDATE SET data = excluded.data`, accountID, data)
+	return err
+}
+
+// LoadAccountPreferences returns nil when no record is cached.
+func (c *Cache) LoadAccountPreferences(accountID string) (*apitypes.AccountPreferences, error) {
+	var data []byte
+	err := c.database.QueryRow(`SELECT data FROM account_preferences WHERE account_id = ?`, accountID).Scan(&data)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	preferences := &apitypes.AccountPreferences{}
+	if err := json.Unmarshal(data, preferences); err != nil {
+		return nil, err
+	}
+	return preferences, nil
 }
 
 // ReplaceVaults stores the server's vault list and forgets vaults, with their items, that are no longer in it.

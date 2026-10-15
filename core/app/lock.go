@@ -111,6 +111,7 @@ func (s *Service) lockSession() {
 	}
 	s.vaultsByID = nil
 	s.itemsByVaultID = nil
+	s.favorites = nil
 	s.pendingImport = nil
 	if wasUnlocked && s.config.OnLock != nil {
 		s.config.OnLock()

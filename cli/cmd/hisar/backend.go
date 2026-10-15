@@ -30,6 +30,9 @@ type backend interface {
 	// getOneTimeCode returns errNoOneTimeCode for an item without a one-time password.
 	getOneTimeCode(ctx context.Context, vaultID, itemID string) (string, error)
 	importItems(ctx context.Context, vaultID string, items []item.Item) (int, error)
+	// listFavorites returns the user's starred items in the vaults they can open.
+	listFavorites(ctx context.Context) ([]cliprotocol.Favorite, error)
+	setItemFavorite(ctx context.Context, vaultID, itemID string, isFavorite bool) error
 	getVaultActions(ctx context.Context, vaultID string) (cliprotocol.VaultActionsResult, error)
 	renameVault(ctx context.Context, vaultID, name string) error
 	deleteVault(ctx context.Context, vaultID string, deletion cliprotocol.VaultDeletion) (int, error)

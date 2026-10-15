@@ -96,6 +96,16 @@ export interface ExportResult {
     "itemCount": number;
 }
 
+/**
+ * FavoriteItem is a starred item with the vault it is in; Item is a summary without secrets, as ListItems returns.
+ */
+export interface FavoriteItem {
+    "vaultId": string;
+    "vaultName": string;
+    "vaultType": string;
+    "item": ItemDetail;
+}
+
 export interface ImportDuplicate {
     "title": string;
     "username": string;
@@ -194,6 +204,11 @@ export interface ItemDetail {
      * Summaries keep only the type, brand and last four digits.
      */
     "card"?: ItemCard | null;
+
+    /**
+     * IsFavorite: this user starred the item. Favorites belong to the user, not the item; SaveItem ignores it.
+     */
+    "isFavorite": boolean;
 }
 
 export interface ItemField {

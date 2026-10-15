@@ -284,6 +284,28 @@ func TestOpenVector(t *testing.T) {
 	}
 }
 
+func TestAccountPreferences(t *testing.T) {
+	key := decodeHex(t, "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")
+	plaintext, err := OpenAccountPreferences(key, "ABC123", decodeHex(t, vectorAccountPreferences))
+	if err != nil || string(plaintext) != `{"favoriteItemIds":["item-1"]}` {
+		t.Fatalf("vector: %q, %v", plaintext, err)
+	}
+	userKey := GenerateKey()
+	sealed, err := SealAccountPreferences(userKey, "ABC123", []byte(`{"favoriteItemIds":[]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opened, err := OpenAccountPreferences(userKey, "ABC123", sealed); err != nil || string(opened) != `{"favoriteItemIds":[]}` {
+		t.Fatalf("round trip: %q, %v", opened, err)
+	}
+	if _, err := OpenAccountPreferences(userKey, "XYZ789", sealed); err == nil {
+		t.Error("opened under another account ID")
+	}
+	if _, err := OpenShareLinkLabel(userKey, "ABC123", sealed); err == nil {
+		t.Error("opened as a share link label")
+	}
+}
+
 func BenchmarkDeriveAllKeyDefault(b *testing.B) {
 	secretKey, _ := GenerateSecretKey("ABC123")
 	salt := GenerateSalt()

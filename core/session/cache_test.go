@@ -21,13 +21,16 @@ import (
 )
 
 type offlineTestServer struct {
-	mutex         sync.Mutex
-	account       apitypes.Account
-	vaults        []apitypes.Vault
-	itemsByID     map[string]apitypes.Item
-	seq           int64
-	isUnreachable bool
-	sinceValues   []string
+	mutex                      sync.Mutex
+	account                    apitypes.Account
+	vaults                     []apitypes.Vault
+	itemsByID                  map[string]apitypes.Item
+	seq                        int64
+	isUnreachable              bool
+	sinceValues                []string
+	preferences                apitypes.AccountPreferences
+	preferencePuts             int
+	isPreferenceConflictForced bool
 }
 
 func (server *offlineTestServer) setUnreachable(isUnreachable bool) {
@@ -44,6 +47,22 @@ func (server *offlineTestServer) createHandler() http.Handler {
 	}
 	mux.HandleFunc("GET /api/v1/account", func(writer http.ResponseWriter, request *http.Request) {
 		writeJSON(writer, server.account)
+	})
+	mux.HandleFunc("GET /api/v1/account/preferences", func(writer http.ResponseWriter, request *http.Request) {
+		writeJSON(writer, server.preferences)
+	})
+	mux.HandleFunc("PUT /api/v1/account/preferences", func(writer http.ResponseWriter, request *http.Request) {
+		var putRequest apitypes.PutAccountPreferencesRequest
+		json.NewDecoder(request.Body).Decode(&putRequest)
+		server.preferencePuts++
+		if putRequest.BaseRevision != server.preferences.Revision || server.isPreferenceConflictForced {
+			writer.Header().Set("Content-Type", "application/json")
+			writer.WriteHeader(http.StatusConflict)
+			json.NewEncoder(writer).Encode(apitypes.Error{Error: "conflict"})
+			return
+		}
+		server.preferences = apitypes.AccountPreferences{Revision: server.preferences.Revision + 1, Ciphertext: putRequest.Ciphertext}
+		writeJSON(writer, apitypes.PutAccountPreferencesResponse{Revision: server.preferences.Revision})
 	})
 	mux.HandleFunc("GET /api/v1/vaults", func(writer http.ResponseWriter, request *http.Request) {
 		writeJSON(writer, server.vaults)

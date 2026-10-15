@@ -138,6 +138,16 @@ func checkSkipped(t *testing.T, result *Result, wants map[string]string) {
 	}
 }
 
+func getFavoriteTitles(items []item.Item) []string {
+	titles := []string{}
+	for _, vaultItem := range items {
+		if vaultItem.IsFavorite {
+			titles = append(titles, vaultItem.Overview.Title)
+		}
+	}
+	return titles
+}
+
 func TestParseOnePasswordExport(t *testing.T) {
 	keySet := createTestKeySet(t)
 	content := buildOnePasswordExport(t, readFixture(t, "1password-export.data", keySet))
@@ -170,6 +180,7 @@ func TestParseOnePasswordExport(t *testing.T) {
 			},
 			OneTimePassword: "otpauth://totp/GitHub:alice?issuer=GitHub&secret=JBSWY3DPEHPK3PXP",
 		},
+		IsFavorite: true,
 	}
 	if !reflect.DeepEqual(github, wantGitHub) {
 		t.Errorf("GitHub =\n%+v\nwant\n%+v", github, wantGitHub)
@@ -211,6 +222,9 @@ func TestParseOnePasswordExport(t *testing.T) {
 		!reflect.DeepEqual(visa.Details.Fields, []item.Field{{Name: item.FieldCardType, Value: "Visa"}, {Name: item.FieldCardNumber, Value: "4111 1111 1111 1111", Concealed: true}}) {
 		t.Errorf("1Password card = %+v", visa)
 	}
+	if favorites := getFavoriteTitles(result.Items); !reflect.DeepEqual(favorites, []string{"GitHub"}) {
+		t.Errorf("favorites = %q", favorites)
+	}
 	if summary := Summarize(result.Items); summary != (Summary{LoginCount: 5, SecureNoteCount: 1, SSHKeyCount: 1, CreditCardCount: 1}) {
 		t.Errorf("summary = %+v", summary)
 	}
@@ -243,9 +257,13 @@ func TestParseBitwardenJSON(t *testing.T) {
 			},
 			OneTimePassword: "otpauth://totp/?secret=JBSWY3DPEHPK3PXP",
 		},
+		IsFavorite: true,
 	}
 	if github := findTestItem(t, result, "GitHub"); !reflect.DeepEqual(github, wantGitHub) {
 		t.Errorf("GitHub =\n%+v\nwant\n%+v", github, wantGitHub)
+	}
+	if favorites := getFavoriteTitles(result.Items); !reflect.DeepEqual(favorites, []string{"GitHub"}) {
+		t.Errorf("favorites = %q", favorites)
 	}
 	if laptop := findTestItem(t, result, "Laptop"); laptop.Overview.Fingerprint != keySet.opensshFingerprint || laptop.Details.Notes != "Main key" {
 		t.Errorf("ssh key = %+v", laptop.Overview)
@@ -295,12 +313,16 @@ func TestParseBitwardenCSV(t *testing.T) {
 			},
 			OneTimePassword: "otpauth://totp/?secret=JBSWY3DPEHPK3PXP",
 		},
+		IsFavorite: true,
 	}
 	if github := findTestItem(t, result, "GitHub"); !reflect.DeepEqual(github, wantGitHub) {
 		t.Errorf("GitHub =\n%+v\nwant\n%+v", github, wantGitHub)
 	}
 	if bank := findTestItem(t, result, "Bank"); bank.Details.Password != "" || bank.Overview.Username != "alice" {
 		t.Errorf("empty password = %+v", bank)
+	}
+	if favorites := getFavoriteTitles(result.Items); !reflect.DeepEqual(favorites, []string{"GitHub"}) {
+		t.Errorf("favorites = %q", favorites)
 	}
 	if summary := Summarize(result.Items); summary != (Summary{LoginCount: 2, SecureNoteCount: 1}) {
 		t.Errorf("summary = %+v", summary)
@@ -322,6 +344,30 @@ func TestParseOnePasswordCSV(t *testing.T) {
 	}
 	if recipe := findTestItem(t, result, "Recipe"); GetKind(recipe) != KindSecureNote {
 		t.Errorf("note-only row = %+v", recipe)
+	}
+	if favorites := getFavoriteTitles(result.Items); !reflect.DeepEqual(favorites, []string{"GitHub"}) {
+		t.Errorf("favorites = %q", favorites)
+	}
+}
+
+func TestParseKeepsTheFavoriteOfARepeatedEntry(t *testing.T) {
+	content := []byte("Title,Url,Username,Password,OTPAuth,Favorite,Archived,Tags,Notes\nGitHub,https://github.com,alice,pw,,false,false,,\nGitHub,https://github.com,alice,pw,,true,false,,\n")
+	result := parseFixture(t, "1PasswordExport.csv", content, FormatAutomatic)
+	if len(result.Items) != 1 || !result.Items[0].IsFavorite {
+		t.Errorf("items = %+v", result.Items)
+	}
+}
+
+func TestParseLastPassFavoriteColumn(t *testing.T) {
+	content := []byte("url,username,password,totp,extra,name,grouping,fav\nhttps://a.example,alice,pw-a,,,A,,1\nhttps://b.example,alice,pw-b,,,B,,0\n")
+	result := parseFixture(t, "lastpass.csv", content, FormatAutomatic)
+	if favorites := getFavoriteTitles(result.Items); !reflect.DeepEqual(favorites, []string{"A"}) {
+		t.Errorf("favorites = %q", favorites)
+	}
+	for _, vaultItem := range result.Items {
+		if len(vaultItem.Details.Fields) != 0 {
+			t.Errorf("%s kept the fav column as a field: %+v", vaultItem.Overview.Title, vaultItem.Details.Fields)
+		}
 	}
 }
 

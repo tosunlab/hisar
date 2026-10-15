@@ -49,6 +49,25 @@ func TestAccountRoundTrip(t *testing.T) {
 	}
 }
 
+func TestAccountPreferencesRoundTrip(t *testing.T) {
+	testCache, _ := openTestCache(t)
+	if preferences, err := testCache.LoadAccountPreferences("ABC123"); err != nil || preferences != nil {
+		t.Fatalf("empty cache: %v %v", preferences, err)
+	}
+	for revision := int64(1); revision <= 2; revision++ {
+		if err := testCache.SaveAccountPreferences("ABC123", &apitypes.AccountPreferences{Revision: revision, Ciphertext: []byte{byte(revision)}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	preferences, err := testCache.LoadAccountPreferences("ABC123")
+	if err != nil || preferences.Revision != 2 || string(preferences.Ciphertext) != "\x02" {
+		t.Errorf("loaded: %+v %v", preferences, err)
+	}
+	if other, _ := testCache.LoadAccountPreferences("XYZ789"); other != nil {
+		t.Error("another account ID returned cached preferences")
+	}
+}
+
 func TestApplyAllChangeAndSeq(t *testing.T) {
 	testCache, _ := openTestCache(t)
 	if seq, err := testCache.GetSeq("vault-1"); err != nil || seq != 0 {

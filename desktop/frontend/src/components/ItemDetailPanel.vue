@@ -10,8 +10,9 @@ import {
   openWebsite,
   startEditingItem,
   store,
+  toggleSelectedItemFavorite,
 } from "../store";
-import { cardFieldName, creditCardCategory, formatCardSummary, formatKeyType, getDomain, getItemIcon, secureNoteCategory, sshKeyCategory } from "../util";
+import { cardFieldName, creditCardCategory, formatCardSummary, formatKeyType, getDomain, getItemIcon, isMacPlatform, secureNoteCategory, sshKeyCategory } from "../util";
 import AppIcon from "./AppIcon.vue";
 import CommitSigningPanel from "./CommitSigningPanel.vue";
 import ItemTile from "./ItemTile.vue";
@@ -23,6 +24,7 @@ import StrengthMeter from "./StrengthMeter.vue";
 
 defineProps<{ canEdit: boolean; vaultName: string; isShared: boolean }>();
 
+const shortcutModifier = isMacPlatform() ? "⌘" : "Ctrl+";
 const isPasswordRevealed = ref(false);
 const allRevealedFieldName = ref<string[]>([]);
 const isConfirmingDelete = ref(false);
@@ -84,7 +86,18 @@ function maskSecret(secret: string): string {
           <span v-else-if="store.selectedItem.urls[0]" class="muted">{{ getDomain(store.selectedItem.urls[0]) }}</span>
         </div>
       </div>
-      <div v-if="canEdit || isShareable" class="header-actions">
+      <div class="header-actions">
+        <button
+          class="ghost icon-button favorite-button"
+          :class="{ 'is-favorite': store.selectedItem.isFavorite }"
+          :aria-label="store.selectedItem.isFavorite ? 'Remove from Favorites' : 'Add to Favorites'"
+          :aria-pressed="store.selectedItem.isFavorite"
+          :title="`${store.selectedItem.isFavorite ? 'Remove from Favorites' : 'Add to Favorites'} (${shortcutModifier}D)`"
+          data-testid="favorite-toggle"
+          @click="toggleSelectedItemFavorite"
+        >
+          <AppIcon :name="store.selectedItem.isFavorite ? 'starFilled' : 'star'" />
+        </button>
         <button v-if="isShareable" title="Share with anyone through an end-to-end encrypted link" data-testid="share-link" @click="openItemShareLinkDialog">
           <AppIcon name="link" /> Share link…
         </button>
@@ -354,6 +367,10 @@ h2 {
 .header-actions {
   display: flex;
   gap: 4px;
+}
+
+.favorite-button.is-favorite {
+  color: var(--color-warning);
 }
 
 .delete-confirm {

@@ -154,6 +154,21 @@ func (bridge *CommandLineBridge) answer(request *cliprotocol.Request) (any, erro
 		return nil, s.DeleteItem(request.VaultID, request.ItemID)
 	case cliprotocol.TypeImportItem:
 		return s.saveCommandLineImports(request.VaultID, request.ImportedItems)
+	case cliprotocol.TypeListFavorite:
+		favorites, err := s.ListFavoriteItems()
+		if err != nil {
+			return nil, err
+		}
+		result := cliprotocol.FavoriteListResult{Favorites: []cliprotocol.Favorite{}}
+		for _, favorite := range favorites {
+			result.Favorites = append(result.Favorites, cliprotocol.Favorite{VaultID: favorite.VaultID, ItemID: favorite.Item.ID})
+		}
+		return result, nil
+	case cliprotocol.TypeAddFavorite, cliprotocol.TypeRemoveFavorite:
+		if _, err := bridge.getItem(request.VaultID, request.ItemID); err != nil {
+			return nil, err
+		}
+		return nil, s.SetItemFavorite(request.VaultID, request.ItemID, request.Type == cliprotocol.TypeAddFavorite)
 	case cliprotocol.TypeListPeople:
 		people, err := s.ListPeople()
 		if err != nil {
@@ -301,6 +316,7 @@ func (s *Service) saveCommandLineImports(vaultID string, importedItems []item.It
 		}
 		s.itemsByVaultID[vault.ID] = existingItems
 	}
+	favoriteItemIDs := []string{}
 	for _, vaultItem := range importedItems {
 		vaultItem.ID, vaultItem.Revision = "", ""
 		_, err := s.unlockedSession.SaveItem(ctx, vault, &vaultItem)
@@ -313,7 +329,11 @@ func (s *Service) saveCommandLineImports(vaultID string, importedItems []item.It
 		}
 		result.SavedCount++
 		s.replaceCachedItem(vault.ID, vaultItem)
+		if vaultItem.IsFavorite {
+			favoriteItemIDs = append(favoriteItemIDs, vaultItem.ID)
+		}
 	}
+	s.addImportedFavorites(ctx, favoriteItemIDs)
 	return result, nil
 }
 

@@ -38,6 +38,9 @@ struct ItemListView: View {
                     NavigationLink(value: ItemDestination(vaultID: vaultID, itemID: reference.item.id)) {
                         ItemRow(item: reference.item)
                     }
+                    .swipeActions(edge: .leading) {
+                        FavoriteSwipeButton(vaultID: vaultID, item: reference.item)
+                    }
                 }
             }
         }

@@ -30,7 +30,7 @@ Five Go modules joined by `go.work`, plus two non-Go apps.
 | `pake` | The OPAQUE configuration shared by apps and server |
 | `apitypes` | JSON wire types of `/api/v1`, event names, roles, platform headers, share-link limits, `IsValidVaultRole`, `NormalizeEmail` |
 | `apiclient` | Typed HTTP client of `/api/v1` and its event stream |
-| `session` | A signed-in account: sign-up, login, unlock, item sync and encryption, rotation, sharing, share links, account changes, `GetVaultPermissions` |
+| `session` | A signed-in account: sign-up, login, unlock, item sync and encryption, rotation, sharing, share links, account changes, the account preferences record with the favorites, `GetVaultPermissions` |
 | `item` | The plaintext item model and its categories (`card.go`: the credit-card fields), `LookupField`, the password generator |
 | `cache` | The offline SQLite copy of the server's encrypted records |
 | `localstate` | `state.json` (session state plus embedded device `Settings`) and the Secret Key in the keychain |
@@ -53,7 +53,7 @@ Five Go modules joined by `go.work`, plus two non-Go apps.
 `service.go`, `auth.go`, `lock.go`, `vaults.go`, `items.go`, `clipboard.go`, `errors.go`, `account.go`, `sharing.go`,
 `invitations.go`, `sharelink.go`, `browser.go` (extension pairing), `logins.go` (login matching), `passkey*.go`,
 `platformpasskey.go` (iOS), `commandline*.go` and `codingagent.go` (the CLI socket handler), `approvals.go`,
-`phoneapproval.go` (Mac side), `phoneapproval_answer.go` (iPhone side), `import.go`, `export.go`, `settings.go`.
+`phoneapproval.go` (Mac side), `phoneapproval_answer.go` (iPhone side), `import.go`, `export.go`, `settings.go`, `favorites.go`.
 Shared test fixtures are in `helpers_test.go`, the in-memory API in `fakeapi_test.go`.
 
 ### server
@@ -62,7 +62,7 @@ Shared test fixtures are in `helpers_test.go`, the in-memory API in `fakeapi_tes
 |---|---|
 | `cmd/hisar-server` | `serve`, `migrate`, `invite`; `setup.go` reads `HISAR_*` and wires everything |
 | `internal/api` | HTTP only: routes, sessions, per-IP limits, event stream, invite and share-link pages; handlers parse and call the service |
-| `internal/service` | The rules: rights, validation, store calls, audit, events, email. One `Service` type, a file per domain (`vaults`, `auth`, `accounts`, `lifecycle`, `invitations`, `sharelinks`, `approvals`) |
+| `internal/service` | The rules: rights, validation, store calls, audit, events, email. One `Service` type, a file per domain (`vaults`, `auth`, `accounts`, `lifecycle`, `invitations`, `sharelinks`, `approvals`, `preferences`) |
 | `internal/store` | Postgres with raw SQL (pgx) and embedded goose migrations |
 | `internal/realtime` | The per-account event broker behind `GET /api/v1/events` |
 | `internal/ratelimit` | Per-key token buckets |

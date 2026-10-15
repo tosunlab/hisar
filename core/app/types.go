@@ -160,6 +160,8 @@ type ItemDetail struct {
 	// Card holds a credit card's values, which are stored as named custom fields; Fields then holds only the others.
 	// Summaries keep only the type, brand and last four digits.
 	Card *ItemCard `json:"card,omitempty"`
+	// IsFavorite: this user starred the item. Favorites belong to the user, not the item; SaveItem ignores it.
+	IsFavorite bool `json:"isFavorite"`
 }
 
 // ItemCard is a card's values. Type is the brand saved with the card, which the user may choose; Brand is the one its

@@ -284,6 +284,7 @@ func TestIntegrationMobileFlow(t *testing.T) {
 	if len(items) != 1 || items[0].Title != "GitHub" || items[0].Password != "" || items[0].OneTimePassword != "" || !items[0].HasOneTimePassword {
 		t.Errorf("items (without secrets) = %+v", items)
 	}
+	checkFavoriteFlow(t, hisar, personalID, saved.ID)
 	checkVaultManagementAndExport(t, hisar, personalID, password)
 	type oneTimeCode struct {
 		Code      string `json:"code"`

@@ -24,6 +24,7 @@ func (s *Service) openSession(unlockedSession *session.Session) {
 	s.name = unlockedSession.Name
 	s.notifyStatusListener()
 	s.itemsByVaultID = map[string][]item.Item{}
+	s.favorites = nil
 	s.resetLockTimer()
 	if !s.config.IsEventStreamDisabled {
 		eventContext, stopEvents := context.WithCancel(context.Background())

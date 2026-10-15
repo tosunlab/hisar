@@ -202,10 +202,34 @@ expect "interactive import deletes the export file when asked" "$(printf '%s\ny\
 [[ ! -e "$T/import.csv" ]] || fail "export file still exists after the import deleted it"
 echo "ok   export file deleted"
 
+A2() { HISAR_STATE=$T/alice2.json HISAR_SECRET_KEY=$ALICE_SK hisar "$@"; }
+expect "a favorite on one device" "$(printf '%s\n' "$PW" | A favorite netflix -v Family 2>&1)" 'Added "Netflix" (Family) to Favorites.'
+expect "the favorite shows on alice's other device" "$(printf '%s\n' "$PW" | A2 ls --favorites 2>/dev/null)" "Netflix"
+expect "a favorite in a shared vault is alice's alone" "$(printf '%s\n' "$PW" | B ls --favorites 2>&1)" "No favorites yet."
+NETFLIX_ID=$(printf '%s\n' "$PW" | A ls -v Family 2>/dev/null | awk '/^Netflix/{print $NF}')
+PREFERENCES=$(curl -s -H "Authorization: Bearer $ALICE_TOKEN" "http://127.0.0.1:$PORT/api/v1/account/preferences")
+expect "the server keeps favorites as a sealed record" "$PREFERENCES" '"revision":1,"ciphertext":"'
+[[ -n "$NETFLIX_ID" && "$PREFERENCES" != *"$NETFLIX_ID"* && "$PREFERENCES" != *favorite* ]] || fail "the server can read alice's favorites: $PREFERENCES"
+echo "ok   the server cannot tell which items are favorites"
+expect "unfavorite on the other device" "$(printf '%s\n' "$PW" | A2 unfavorite netflix -v Family 2>&1)" 'Removed "Netflix" (Family) from Favorites.'
+expect "the first device sees the unfavorite" "$(printf '%s\n' "$PW" | A ls --favorites 2>&1)" "No favorites yet."
+printf '%s\n' 'Title,Url,Username,Password,OTPAuth,Favorite,Archived,Tags,Notes' \
+  'Starred VPN,https://vpn.example.com,alice,vpn-pass,,true,false,,' \
+  'Plain wiki,https://wiki.example.com,alice,wiki-pass,,false,false,,' >"$T/1password.csv"
+expect "a 1Password CSV import" "$(printf '%s\n' "$PW" | A import "$T/1password.csv" -y 2>&1)" "Imported 2 items into Personal"
+FAVORITES=$(printf '%s\n' "$PW" | A2 ls --favorites 2>/dev/null)
+expect "1Password's favorite is a favorite after the import" "$FAVORITES" "Starred VPN"
+[[ "$FAVORITES" != *"Plain wiki"* ]] || fail "an item 1Password did not star became a favorite: $FAVORITES"
+echo "ok   only 1Password's favorites became favorites"
+printf '%s\n' "$PW" | A favorite netflix -v Family >/dev/null 2>&1
+
 expect "delete" "$(printf '%s\ny\n' "$PW" | A rm netflix -v Family 2>&1)" "Deleted"
 LEFT=$(printf '%s\n' "$PW" | B ls -v Family 2>/dev/null | tail -n +2)
 [[ -z "$LEFT" ]] || fail "items left after delete: $LEFT"
 echo "ok   delete propagates"
+FAVORITES=$(printf '%s\n' "$PW" | A2 ls --favorites 2>/dev/null)
+[[ "$FAVORITES" == *"Starred VPN"* && "$FAVORITES" != *Netflix* ]] || fail "a deleted favorite is still listed: $FAVORITES"
+echo "ok   a deleted item leaves the favorites"
 
 expect "unshare rotates the vault key" "$(printf '%s\n' "$PW" | A unshare Family bob@example.com 2>&1)" "rotated the vault key"
 expect "removed member cannot read the vault" "$(printf '%s\n' "$PW" | B ls -v Family 2>&1 || true)" "not found"

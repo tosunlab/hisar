@@ -253,6 +253,14 @@ export function ListDevices(): $CancellablePromise<$models.Device[] | null> {
     return $Call.ByID(351045304);
 }
 
+/**
+ * ListFavoriteItems returns the starred items of every vault the user can open. Favorites of items that were deleted,
+ * or are in a vault the user no longer has, are left out.
+ */
+export function ListFavoriteItems(): $CancellablePromise<$models.FavoriteItem[] | null> {
+    return $Call.ByID(3721548911);
+}
+
 export function ListImportFormats(): $CancellablePromise<$models.ImportFormat[] | null> {
     return $Call.ByID(410989716);
 }
@@ -390,6 +398,13 @@ export function SaveNewAccountEmergencyKit(): $CancellablePromise<string> {
  */
 export function SetAutoLock(seconds: number): $CancellablePromise<$models.Status> {
     return $Call.ByID(3070118267, seconds);
+}
+
+/**
+ * SetItemFavorite stars or unstars an item for this user on all their devices; other people in the vault do not see it.
+ */
+export function SetItemFavorite(vaultID: string, itemID: string, isFavorite: boolean): $CancellablePromise<void> {
+    return $Call.ByID(3904304060, vaultID, itemID, isFavorite);
 }
 
 /**

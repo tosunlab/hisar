@@ -289,6 +289,17 @@ func (hisar *Hisar) DeleteItem(vaultID, itemID string) error {
 	return hisar.service.DeleteItem(vaultID, itemID)
 }
 
+// ListAllFavoriteItem returns []app.FavoriteItem ({"vaultId", "vaultName", "vaultType", "item"}, the item without secrets)
+// as JSON: the user's starred items in every vault they can open.
+func (hisar *Hisar) ListAllFavoriteItem() (string, error) {
+	return encodeJSON(hisar.service.ListFavoriteItems())
+}
+
+// SetItemFavorite stars or unstars an item for this user on all their devices.
+func (hisar *Hisar) SetItemFavorite(vaultID, itemID string, isFavorite bool) error {
+	return hisar.service.SetItemFavorite(vaultID, itemID, isFavorite)
+}
+
 // DescribeCard returns app.CardDescription ({"brand", "last4", "numberWarning", "expiryWarning"}) as JSON, for the card
 // editor to show while the user types.
 func (hisar *Hisar) DescribeCard(number, expiry string) (string, error) {

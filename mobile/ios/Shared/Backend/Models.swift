@@ -165,15 +165,17 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     /// A credit card's values, stored as named custom fields; allField then holds only the others. Summaries keep only the
     /// brand and last four digits.
     var card: ItemCard?
+    /// The user starred the item. Favorites belong to the user's account, not the item, so people sharing the vault don't see them.
+    var isFavorite: Bool
 
     enum CodingKeys: String, CodingKey {
-        case id, revision, category, title, username, password, notes, publicKey, fingerprint, keyType, oneTimePassword, hasOneTimePassword, canConvertToSecureNote, card
+        case id, revision, category, title, username, password, notes, publicKey, fingerprint, keyType, oneTimePassword, hasOneTimePassword, canConvertToSecureNote, card, isFavorite
         case allURL = "urls"
         case allField = "fields"
         case allPasskey = "passkeys"
     }
 
-    init(id: String = "", revision: String = "", category: String = ItemDetail.categoryLogin, title: String = "", username: String = "", allURL: [String] = [], password: String = "", notes: String = "", allField: [ItemField] = [], publicKey: String = "", fingerprint: String = "", keyType: String = "", oneTimePassword: String = "", hasOneTimePassword: Bool = false, allPasskey: [ItemPasskey] = [], canConvertToSecureNote: Bool = false, card: ItemCard? = nil) {
+    init(id: String = "", revision: String = "", category: String = ItemDetail.categoryLogin, title: String = "", username: String = "", allURL: [String] = [], password: String = "", notes: String = "", allField: [ItemField] = [], publicKey: String = "", fingerprint: String = "", keyType: String = "", oneTimePassword: String = "", hasOneTimePassword: Bool = false, allPasskey: [ItemPasskey] = [], canConvertToSecureNote: Bool = false, card: ItemCard? = nil, isFavorite: Bool = false) {
         self.id = id
         self.revision = revision
         self.category = category
@@ -191,6 +193,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         self.allPasskey = allPasskey
         self.canConvertToSecureNote = canConvertToSecureNote
         self.card = card
+        self.isFavorite = isFavorite
     }
 
     init(from decoder: Decoder) throws {
@@ -212,12 +215,28 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         allPasskey = try container.decodeIfPresent([ItemPasskey].self, forKey: .allPasskey) ?? []
         canConvertToSecureNote = try container.decodeIfPresent(Bool.self, forKey: .canConvertToSecureNote) ?? false
         card = try container.decodeIfPresent(ItemCard.self, forKey: .card)
+        isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
     }
 
     var isLogin: Bool { category.isEmpty || category == Self.categoryLogin }
     var isSSHKey: Bool { category == Self.categorySSHKey }
     var isSecureNote: Bool { category == Self.categorySecureNote }
     var isCreditCard: Bool { category == Self.categoryCreditCard }
+}
+
+/// One of the user's starred items with the vault it is in; the item carries no secrets, as in a vault's list.
+struct FavoriteItem: Codable, Hashable, Identifiable {
+    var vaultID: String
+    var vaultName: String
+    var vaultType: String
+    var item: ItemDetail
+
+    var id: String { LoginMatch.buildRecordIdentifier(vaultID: vaultID, itemID: item.id) }
+
+    enum CodingKeys: String, CodingKey {
+        case vaultName, vaultType, item
+        case vaultID = "vaultId"
+    }
 }
 
 /// The names core/item stores a card's values under; copying and secret references use them.

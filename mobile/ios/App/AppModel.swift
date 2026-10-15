@@ -333,6 +333,8 @@ final class AppModel: ObservableObject {
             let shareInvitations = try? backend.listAllShareInvitation()
             let allVault = try backend.listAllVault()
             let allRemovedVault = (try? backend.listAllRemovedVault()) ?? []
+            // Reads the favorites again, so the lists below mark them even when the event stream missed a change.
+            _ = try? backend.listAllFavoriteItem()
             var allItemByVaultID: [String: [ItemDetail]] = [:]
             for vault in allVault {
                 allItemByVaultID[vault.id] = try backend.listAllItem(vaultID: vault.id)
@@ -398,6 +400,21 @@ final class AppModel: ObservableObject {
             (allItemByVaultID[vault.id] ?? []).map { VaultItemReference(vaultID: vault.id, vaultName: vault.name, item: $0) }
         }
         return VaultLogic.sortAllItem(allReference)
+    }
+
+    /// The starred items of every vault, sorted by title; favorites of deleted items are already gone from the lists.
+    func listAllFavoriteReference() -> [VaultItemReference] {
+        listAllItemReference().filter { $0.item.isFavorite }
+    }
+
+    @discardableResult
+    func setItemFavorite(vaultID: String, itemID: String, isFavorite: Bool) async -> Bool {
+        guard await perform(isBusyShown: false, { try $0.setItemFavorite(vaultID: vaultID, itemID: itemID, isFavorite: isFavorite) }) != nil else { return false }
+        if let index = allItemByVaultID[vaultID]?.firstIndex(where: { $0.id == itemID }) {
+            allItemByVaultID[vaultID]?[index].isFavorite = isFavorite
+        }
+        showNotice(isFavorite ? "Added to Favorites." : "Removed from Favorites.")
+        return true
     }
 
     func countItem(vaultID: String) -> Int {

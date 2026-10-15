@@ -7,6 +7,7 @@ const (
 	vectorItemCiphertext                = "0194c998895aaeffb3757bfe36a7e3dab4428df8ed4ad7098e43c8e392be56f985236454a4876974799e93113ca0955f4ece943f8f7ec50004e70c722a02ff"
 	vectorShareLinkContentKey           = "90d72055aa1c096c21146b41bbfb646c7a7b8587960aa44a103876f24b02a740"
 	vectorShareLinkPassphraseContentKey = "c96d65b04a05cc04f2a5ffa93272b574b9090e5283605185a3ac4e36a2d2125e"
+	vectorAccountPreferences            = "016283e45b81372ec7fb02035107fa3171e57065245a6a1d181281a1689fcccfb4b26a2e358f943be9dec684c562ab9055b33769259f626ccec7bfc8b2c7607f4fad380cb3a548"
 )
 
 // Phone approvals: a request sealed to the keyset whose seeds are the bytes 0..95, and an answer signature from it.
