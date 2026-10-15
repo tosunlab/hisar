@@ -1,13 +1,15 @@
 name: macOS and iOS
 
-# macOS minutes are expensive, so pull requests only run these jobs with the run-macos label.
+# macOS minutes are expensive, so a pull request runs each job only when it changes what that job builds: desktop/ for
+# the Mac app, mobile/ for the iPhone app, and core/, go.work or this file for both (core/app is their backend; the Mac
+# app also bundles cli/). The run-macos label runs both anyway.
 on:
   pull_request:
     types: [opened, reopened, synchronize, labeled]
   workflow_dispatch:
     inputs:
       alwaysRunIos:
-        description: Build and test the iPhone app even when mobile/ did not change
+        description: Build and test the iPhone app even when nothing it builds from changed
         type: boolean
         default: false
 
@@ -25,32 +27,48 @@ env:
   XCODEGEN_VERSION: 2.46.0
 
 jobs:
-  opt-in:
-    name: Check the run-macos opt-in and mobile/ changes
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.action == 'labeled' && github.event.label.name == 'run-macos') ||
-      (github.event.action != 'labeled' && contains(github.event.pull_request.labels.*.name, 'run-macos'))
+  changes:
+    name: Check what the pull request changes
+    # Adding another label changes no file, so it runs nothing.
+    if: github.event.action != 'labeled' || github.event.label.name == 'run-macos'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
-      isMobileChanged: ${{ steps.mobileChange.outputs.isMobileChanged }}
+      isDesktopChanged: ${{ steps.changes.outputs.isDesktopChanged }}
+      isMobileChanged: ${{ steps.changes.outputs.isMobileChanged }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - name: Compare mobile/ with main
-        id: mobileChange
+      - name: Compare with the base branch
+        id: changes
         env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          IS_LABELED: ${{ contains(github.event.pull_request.labels.*.name, 'run-macos') }}
           ALWAYS_RUN_IOS: ${{ inputs.alwaysRunIos || false }}
         run: |
+          isChanged() { [ -n "$(git diff --name-only "$BASE_SHA"...HEAD -- "$@")" ]; }
+          shared=(core/ go.work .github/workflows/macos.yml)
+          isDesktopChanged=false
           isMobileChanged=false
-          if [ "$ALWAYS_RUN_IOS" = true ] || [ -n "$(git diff --name-only origin/main...HEAD -- mobile/)" ]; then isMobileChanged=true; fi
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then
+            isDesktopChanged=true
+            isMobileChanged=$ALWAYS_RUN_IOS
+          elif [ "$IS_LABELED" = true ]; then
+            isDesktopChanged=true
+            isMobileChanged=true
+          else
+            if isChanged desktop/ cli/ "${shared[@]}"; then isDesktopChanged=true; fi
+            if isChanged mobile/ "${shared[@]}"; then isMobileChanged=true; fi
+          fi
+          echo "isDesktopChanged=$isDesktopChanged" | tee -a "$GITHUB_OUTPUT"
           echo "isMobileChanged=$isMobileChanged" | tee -a "$GITHUB_OUTPUT"
 
   desktop-macos:
     name: Desktop app macOS build, Touch ID and Sparkle tests
-    needs: opt-in
+    needs: changes
+    if: needs.changes.outputs.isDesktopChanged == 'true'
     runs-on: macos-26
     timeout-minutes: 45
     steps:
@@ -97,8 +115,8 @@ jobs:
 
   ios:
     name: iPhone app build, unit tests and UI tests against the server
-    needs: opt-in
-    if: needs.opt-in.outputs.isMobileChanged == 'true'
+    needs: changes
+    if: needs.changes.outputs.isMobileChanged == 'true'
     runs-on: macos-26
     timeout-minutes: 90
     env:
