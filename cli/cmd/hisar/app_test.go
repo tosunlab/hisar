@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -130,6 +131,7 @@ func answerFakeVaultRequest(request cliprotocol.Request) (any, *cliprotocol.Resp
 			{ID: "bank-id", Revision: "r2", Title: "Bank", Username: "alice"},
 			{ID: "note-id", Revision: "r3", Category: item.CategorySecureNote, Title: "Recovery codes"},
 			{ID: "key-id", Revision: "r4", Category: item.CategorySSHKey, Title: "Deploy key", PublicKey: "ssh-ed25519 AAAA deploy"},
+			{ID: "card-id", Revision: "r5", Category: item.CategoryCreditCard, Title: "Visa"},
 		}}, nil
 	case cliprotocol.TypeGetItem:
 		if request.ItemID == "github-id" {
@@ -137,6 +139,11 @@ func answerFakeVaultRequest(request cliprotocol.Request) (any, *cliprotocol.Resp
 				ID: "github-id", Revision: "r1", Title: "GitHub", Username: "alice", URLs: []string{"https://github.com"}, Password: "github-password",
 				Notes: "work", Fields: []cliprotocol.Field{{Name: "PIN", Value: "1234"}}, Passkeys: []cliprotocol.Passkey{{RelyingPartyID: "github.com", UserName: "alice"}}, HasOneTimePassword: true,
 			}}, nil
+		}
+		if request.ItemID == "card-id" {
+			return cliprotocol.ItemResult{Item: cliprotocol.Item{ID: "card-id", Revision: "r5", Category: item.CategoryCreditCard, Title: "Visa", Fields: []cliprotocol.Field{
+				{Name: item.FieldCardNumber, Value: "4111 1111 1111 1111", Concealed: true}, {Name: item.FieldSecurityCode, Value: "123", Concealed: true},
+			}}}, nil
 		}
 		if request.ItemID == "key-id" {
 			return cliprotocol.ItemResult{Item: cliprotocol.Item{ID: "key-id", Revision: "r4", Category: item.CategorySSHKey, Title: "Deploy key", PublicKey: "ssh-ed25519 AAAA deploy"}}, nil
@@ -325,10 +332,46 @@ func TestAddNoteRefusesAnAppWithoutSecureNotes(t *testing.T) {
 	}
 }
 
+func TestCreditCardsThroughTheApp(t *testing.T) {
+	app := startFakeApp(t)
+	input := "Visa\nAlice Smith\n4111111111111112\n13/27\n123\n\n1 Main St\n"
+	_, stderr, err := runCapturingOutput(t, false, input, "add", "--type", "credit-card")
+	if err != nil || !strings.Contains(stderr, `Saved "Visa" to Personal.`) {
+		t.Fatalf("add --type credit-card: %q %v", stderr, err)
+	}
+	if !strings.Contains(stderr, "Note: This doesn't look like a valid card number.") || !strings.Contains(stderr, "Note: Use month and year, like 12/2027.") {
+		t.Errorf("no warnings: %q", stderr)
+	}
+	added := app.findRequest(cliprotocol.TypeSaveItem)[0].Item
+	wantFields := []cliprotocol.Field{
+		{Name: item.FieldCardholder, Value: "Alice Smith"},
+		{Name: item.FieldCardNumber, Value: "4111 1111 1111 1112", Concealed: true},
+		{Name: item.FieldExpiry, Value: "13/27"},
+		{Name: item.FieldSecurityCode, Value: "123", Concealed: true},
+		{Name: item.FieldBillingAddress, Value: "1 Main St"},
+	}
+	if added.Category != item.CategoryCreditCard || added.Fields == nil || !reflect.DeepEqual(*added.Fields, wantFields) {
+		t.Errorf("add request %+v %+v", added, added.Fields)
+	}
+
+	stdout, _, err := runCapturingOutput(t, false, "", "get", "visa", "-f", "security code")
+	if err != nil || stdout != "123\n" {
+		t.Errorf("get -f security code: %q %v", stdout, err)
+	}
+
+	app.mutex.Lock()
+	app.hello.Features = []string{cliprotocol.FeatureSecureNotes}
+	app.mutex.Unlock()
+	_, stderr, err = runCapturingOutput(t, false, input, "add", "--type", "credit-card")
+	if err == nil || !strings.Contains(err.Error(), "cannot save credit-card items") || strings.Contains(stderr, "Cardholder") {
+		t.Errorf("add a card through an older app: %q %v", stderr, err)
+	}
+}
+
 func TestAddAndEditFollowTheItemType(t *testing.T) {
 	app := startFakeApp(t)
-	_, stderr, err := runCapturingOutput(t, false, "Visa\n", "add", "--type", "credit-card")
-	if err == nil || !strings.Contains(err.Error(), `unknown item type "credit-card"; use one of login, secure-note`) {
+	_, stderr, err := runCapturingOutput(t, false, "Passport\n", "add", "--type", "identity")
+	if err == nil || !strings.Contains(err.Error(), `unknown item type "identity"; use one of login, secure-note, credit-card`) {
 		t.Errorf("add an unknown type: %v", err)
 	}
 	if strings.Contains(stderr, "Title") {

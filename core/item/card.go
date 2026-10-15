@@ -3,6 +3,7 @@ package item
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -32,12 +33,21 @@ type Card struct {
 	BillingAddress string
 }
 
-// cardFields is the order of a card's fields and which of them are concealed.
-var cardFields = []struct {
-	name      string
-	concealed bool
+// CardField is one of a card's values: its field name, whether it is concealed, and where it lives in a Card.
+type CardField struct {
+	Name      string
+	Concealed bool
 	value     func(*Card) *string
-}{
+}
+
+// Value points at the field's value in card.
+func (field CardField) Value(card *Card) *string { return field.value(card) }
+
+// ListCardFields returns a card's fields in the order they are stored and asked for.
+func ListCardFields() []CardField { return slices.Clone(cardFields) }
+
+// cardFields is the order of a card's fields and which of them are concealed.
+var cardFields = []CardField{
 	{FieldCardholder, false, func(card *Card) *string { return &card.Cardholder }},
 	{FieldCardNumber, true, func(card *Card) *string { return &card.Number }},
 	{FieldExpiry, false, func(card *Card) *string { return &card.Expiry }},
@@ -55,9 +65,9 @@ func ReadCard(vaultItem *Item) (Card, []Field) {
 	for _, field := range vaultItem.Details.Fields {
 		isCardField := false
 		for _, cardField := range cardFields {
-			if strings.EqualFold(field.Name, cardField.name) && !isRead[cardField.name] {
+			if strings.EqualFold(field.Name, cardField.Name) && !isRead[cardField.Name] {
 				*cardField.value(&card) = field.Value
-				isRead[cardField.name], isCardField = true, true
+				isRead[cardField.Name], isCardField = true, true
 				break
 			}
 		}
@@ -74,7 +84,7 @@ func WriteCard(vaultItem *Item, card Card, otherFields []Field) {
 	fields := []Field{}
 	for _, cardField := range cardFields {
 		if value := *cardField.value(&card); value != "" {
-			fields = append(fields, Field{Name: cardField.name, Value: value, Concealed: cardField.concealed})
+			fields = append(fields, Field{Name: cardField.Name, Value: value, Concealed: cardField.Concealed})
 		}
 	}
 	fields = append(fields, otherFields...)
