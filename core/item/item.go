@@ -86,6 +86,13 @@ func HasLoginData(vaultItem *Item) bool {
 		vaultItem.Details.OneTimePassword != "" || vaultItem.Details.PrivateKey != "" || len(vaultItem.Details.Passkeys) > 0
 }
 
+// DropLoginData clears what only a login shows (username, websites, password and one-time password), for an item whose
+// category has no place for them, so it holds no secret its form does not show.
+func (vaultItem *Item) DropLoginData() {
+	vaultItem.Overview.Username, vaultItem.Overview.URLs = "", nil
+	vaultItem.Details.Password, vaultItem.Details.OneTimePassword = "", ""
+}
+
 // HasOnlyNotes reports whether a secure note can hold everything the item has: notes, custom fields or both.
 func HasOnlyNotes(vaultItem *Item) bool {
 	return !HasLoginData(vaultItem) && (vaultItem.Details.Notes != "" || len(vaultItem.Details.Fields) > 0)
