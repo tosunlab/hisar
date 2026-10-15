@@ -145,12 +145,11 @@ func TestParseOnePasswordExport(t *testing.T) {
 	if result.Format != FormatOnePasswordExport {
 		t.Errorf("format = %q", result.Format)
 	}
-	wantTitles := []string{"GitHub", "Router admin", "Wi-Fi at the cabin", "Deploy key", "Build server", "Newsletter", "Car rental"}
+	wantTitles := []string{"GitHub", "Router admin", "Wi-Fi at the cabin", "Visa", "Deploy key", "Build server", "Newsletter", "Car rental"}
 	if titles := getTitles(result.Items); !reflect.DeepEqual(titles, wantTitles) {
 		t.Errorf("titles = %q, want %q", titles, wantTitles)
 	}
 	checkSkipped(t, result, map[string]string{
-		"Visa":          "Credit Card items are not supported",
 		"Alice Example": "Identity items are not supported",
 		"Public only":   "no private key",
 		"Old forum":     "archived",
@@ -208,7 +207,11 @@ func TestParseOnePasswordExport(t *testing.T) {
 	if rental := findTestItem(t, result, "Car rental"); !reflect.DeepEqual(rental.Details.Fields, wantRentalFields) {
 		t.Errorf("typed fields = %+v", rental.Details.Fields)
 	}
-	if summary := Summarize(result.Items); summary != (Summary{LoginCount: 5, SecureNoteCount: 1, SSHKeyCount: 1}) {
+	if visa := findTestItem(t, result, "Visa"); visa.Overview.Category != item.CategoryCreditCard ||
+		!reflect.DeepEqual(visa.Details.Fields, []item.Field{{Name: item.FieldCardNumber, Value: "4111 1111 1111 1111", Concealed: true}}) {
+		t.Errorf("1Password card = %+v", visa)
+	}
+	if summary := Summarize(result.Items); summary != (Summary{LoginCount: 5, SecureNoteCount: 1, SSHKeyCount: 1, CreditCardCount: 1}) {
 		t.Errorf("summary = %+v", summary)
 	}
 }
@@ -219,12 +222,11 @@ func TestParseBitwardenJSON(t *testing.T) {
 	if result.Format != FormatBitwardenJSON {
 		t.Errorf("format = %q", result.Format)
 	}
-	wantTitles := []string{"GitHub", "Server notes", "Laptop", "Empty password", "example.org"}
+	wantTitles := []string{"GitHub", "Server notes", "Visa", "Laptop", "Empty password", "example.org"}
 	if titles := getTitles(result.Items); !reflect.DeepEqual(titles, wantTitles) {
 		t.Errorf("titles = %q, want %q", titles, wantTitles)
 	}
 	checkSkipped(t, result, map[string]string{
-		"Visa":           "cards are not supported",
 		"Alice Example":  "identities are not supported",
 		"Protected key":  "protected by a passphrase",
 		"Empty password": reasonRepeated,
@@ -251,7 +253,16 @@ func TestParseBitwardenJSON(t *testing.T) {
 	if untitled := findTestItem(t, result, "example.org"); untitled.Overview.Tags != nil || untitled.Details.Password != "example-pass" {
 		t.Errorf("untitled login = %+v", untitled)
 	}
-	if summary := Summarize(result.Items); summary != (Summary{LoginCount: 3, SecureNoteCount: 1, SSHKeyCount: 1}) {
+	wantVisa := []item.Field{
+		{Name: item.FieldCardholder, Value: "Alice"},
+		{Name: item.FieldCardNumber, Value: "4111 1111 1111 1111", Concealed: true},
+		{Name: item.FieldExpiry, Value: "12/2027"},
+		{Name: item.FieldSecurityCode, Value: "123", Concealed: true},
+	}
+	if visa := findTestItem(t, result, "Visa"); visa.Overview.Category != item.CategoryCreditCard || !reflect.DeepEqual(visa.Details.Fields, wantVisa) {
+		t.Errorf("Bitwarden card = %+v", visa)
+	}
+	if summary := Summarize(result.Items); summary != (Summary{LoginCount: 3, SecureNoteCount: 1, SSHKeyCount: 1, CreditCardCount: 1}) {
 		t.Errorf("summary = %+v", summary)
 	}
 }
@@ -271,7 +282,7 @@ func TestParseBitwardenCSV(t *testing.T) {
 	if titles := getTitles(result.Items); !reflect.DeepEqual(titles, []string{"GitHub", "Recipe", "Bank"}) {
 		t.Errorf("titles = %q", titles)
 	}
-	checkSkipped(t, result, map[string]string{"Visa": "Bitwarden card items are not supported"})
+	checkSkipped(t, result, map[string]string{"Visa": "export as JSON to import cards"})
 	wantGitHub := item.Item{
 		Overview: item.Overview{Title: "GitHub", Category: item.CategoryLogin, Username: "alice", URLs: []string{"https://github.com", "https://gist.github.com"}, Tags: []string{"Work"}},
 		Details: item.Details{
@@ -587,5 +598,45 @@ func TestParseSavesSecureNotesAsSecureNotes(t *testing.T) {
 	}
 	if wifi := findTestItem(t, bitwarden, "Wi-Fi"); !reflect.DeepEqual(wifi.Details.Fields, []item.Field{{Name: "PIN", Value: "0000", Concealed: true}}) {
 		t.Errorf("note fields = %+v", wifi.Details.Fields)
+	}
+}
+
+func TestParseOnePasswordCreditCard(t *testing.T) {
+	data := `{"accounts":[{"vaults":[{"items":[{"categoryUuid":"002","overview":{"title":"Amex"},"details":{"notesPlain":"Travel card","sections":[
+		{"title":"","fields":[
+			{"title":"cardholder name","id":"cardholder","value":{"string":"Alice Smith"}},
+			{"title":"type","id":"type","value":{"menu":"amex"}},
+			{"title":"number","id":"ccnum","value":{"creditCardNumber":"378282246310005"}},
+			{"title":"verification number","id":"cvv","value":{"concealed":"1234"}},
+			{"title":"expiry date","id":"expiry","value":{"monthYear":202912}}]},
+		{"title":"contact information","fields":[
+			{"title":"issuing bank","id":"bank","value":{"string":"Bank of Hisar"}},
+			{"title":"PIN","id":"pin","value":{"concealed":"9876"}},
+			{"title":"billing address","id":"address","value":{"address":{"street":"1 Main St","city":"Springfield","zip":"12345","country":"us"}}}]}]}}]}]}]}`
+	result := parseFixture(t, "export.1pux", buildOnePasswordExport(t, []byte(data)), FormatAutomatic)
+	amex := findTestItem(t, result, "Amex")
+	wantFields := []item.Field{
+		{Name: item.FieldCardholder, Value: "Alice Smith"},
+		{Name: item.FieldCardNumber, Value: "3782 822463 10005", Concealed: true},
+		{Name: item.FieldExpiry, Value: "12/2029"},
+		{Name: item.FieldSecurityCode, Value: "1234", Concealed: true},
+		{Name: item.FieldPIN, Value: "9876", Concealed: true},
+		{Name: item.FieldBillingAddress, Value: "1 Main St, Springfield, 12345, us"},
+		{Name: "type", Value: "amex"},
+		{Name: "issuing bank", Value: "Bank of Hisar"},
+	}
+	if amex.Overview.Category != item.CategoryCreditCard || amex.Details.Notes != "Travel card" || !reflect.DeepEqual(amex.Details.Fields, wantFields) {
+		t.Errorf("1Password card =\n%+v\nwant fields\n%+v", amex, wantFields)
+	}
+}
+
+func TestCardsWithTheSameTitleAreNotDuplicates(t *testing.T) {
+	first := item.Item{Overview: item.Overview{Title: "Visa", Category: item.CategoryCreditCard}, Details: item.Details{Fields: []item.Field{{Name: item.FieldCardNumber, Value: "4111 1111 1111 1111"}}}}
+	second := item.Item{Overview: item.Overview{Title: "Visa", Category: item.CategoryCreditCard}, Details: item.Details{Fields: []item.Field{{Name: item.FieldCardNumber, Value: "4012 8888 8888 1881"}}}}
+	if BuildDuplicateKey(first) == BuildDuplicateKey(second) {
+		t.Error("two cards with different numbers match")
+	}
+	if BuildDuplicateKey(first) != BuildDuplicateKey(first) {
+		t.Error("a card does not match itself")
 	}
 }

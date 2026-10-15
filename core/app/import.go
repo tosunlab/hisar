@@ -55,6 +55,7 @@ type ImportPreview struct {
 	LoginCount      int                  `json:"loginCount"`
 	SecureNoteCount int                  `json:"secureNoteCount"`
 	SSHKeyCount     int                  `json:"sshKeyCount"`
+	CreditCardCount int                  `json:"creditCardCount"`
 	Skipped         []ImportSkippedEntry `json:"allSkipped"`
 	Duplicates      []ImportDuplicate    `json:"allDuplicate"`
 }
@@ -207,6 +208,7 @@ func (s *Service) buildImportPreview(vaultID string) (ImportPreview, error) {
 		LoginCount:      summary.LoginCount,
 		SecureNoteCount: summary.SecureNoteCount,
 		SSHKeyCount:     summary.SSHKeyCount,
+		CreditCardCount: summary.CreditCardCount,
 		Skipped:         []ImportSkippedEntry{},
 		Duplicates:      []ImportDuplicate{},
 	}
