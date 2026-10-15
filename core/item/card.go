@@ -308,10 +308,10 @@ func DescribeCard(number, expiry string, now time.Time) CardDescription {
 	return description
 }
 
-// isExpired: a card is valid through the last day of its expiry month.
+// isExpired: a card is valid through the last day of its expiry month, in now's time zone.
 func isExpired(normalizedExpiry string, now time.Time) bool {
 	month, _ := strconv.Atoi(normalizedExpiry[:2])
 	year, _ := strconv.Atoi(normalizedExpiry[3:])
 	year += 2000
-	return !now.Before(time.Date(year, time.Month(month)+1, 1, 0, 0, 0, 0, time.UTC))
+	return !now.Before(time.Date(year, time.Month(month)+1, 1, 0, 0, 0, 0, now.Location()))
 }

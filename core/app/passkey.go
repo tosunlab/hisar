@@ -109,7 +109,7 @@ func (s *Service) DeletePasskey(vaultID, itemID, credentialID string) (ItemDetai
 		return ItemDetail{}, convertError(err)
 	}
 	s.replaceCachedItem(vaultID, vaultItem)
-	return convertToItemDetail(&vaultItem), nil
+	return convertToItemDetail(&vaultItem, s.config.Now()), nil
 }
 
 func (bridge *BrowserBridge) handlePasskeyRequest(ctx context.Context, request *browserprotocol.Request) (any, error) {

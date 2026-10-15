@@ -118,7 +118,7 @@ func (s *Service) saveSSHKey(vaultID, title string, material *sshkey.KeyMaterial
 		return ItemDetail{}, convertError(err)
 	}
 	s.replaceCachedItem(vaultID, vaultItem)
-	return convertToItemDetail(&vaultItem), nil
+	return convertToItemDetail(&vaultItem, s.config.Now()), nil
 }
 
 // SSHKeySource offers the ssh-key items of every vault to the SSH agent. It is a separate type so the

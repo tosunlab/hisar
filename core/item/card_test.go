@@ -134,6 +134,16 @@ func TestDescribeCard(t *testing.T) {
 	}
 }
 
+func TestCardExpiresAtTheEndOfItsMonthInTheLocalTimeZone(t *testing.T) {
+	pacific := time.FixedZone("UTC-7", -7*60*60)
+	if description := DescribeCard("", "10/26", time.Date(2026, 10, 31, 18, 0, 0, 0, pacific)); description.ExpiryWarning != "" {
+		t.Errorf("on the evening of 31 October the card had expired: %q", description.ExpiryWarning)
+	}
+	if description := DescribeCard("", "10/26", time.Date(2026, 11, 1, 0, 0, 0, 0, pacific)); description.ExpiryWarning != "This card has expired" {
+		t.Errorf("on 1 November the card had not expired: %q", description.ExpiryWarning)
+	}
+}
+
 func TestReadAndWriteCard(t *testing.T) {
 	vaultItem := Item{Overview: Overview{Category: CategoryCreditCard}, Details: Details{Fields: []Field{
 		{Name: "Bank", Value: "İş Bankası"},

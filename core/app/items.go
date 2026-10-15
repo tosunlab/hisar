@@ -31,7 +31,7 @@ func (s *Service) ListItems(vaultID string) ([]ItemDetail, error) {
 	s.itemsByVaultID[vaultID] = items
 	summaries := make([]ItemDetail, 0, len(items))
 	for index := range items {
-		summary := convertToItemDetail(&items[index])
+		summary := convertToItemDetail(&items[index], s.config.Now())
 		summary.Password, summary.Notes, summary.Fields, summary.OneTimePassword = "", "", nil, ""
 		if summary.Card != nil {
 			summary.Card = &ItemCard{Type: summary.Card.Type, CardDescription: CardDescription{Brand: summary.Card.Brand, Last4: summary.Card.Last4}}
@@ -60,7 +60,7 @@ func (s *Service) GetItem(vaultID, itemID string) (ItemDetail, error) {
 	if err != nil {
 		return ItemDetail{}, err
 	}
-	return convertToItemDetail(vaultItem), nil
+	return convertToItemDetail(vaultItem, s.config.Now()), nil
 }
 
 // GetOneTimeCode returns the item's current one-time code; the UI asks again once ExpiresAt passes.
@@ -86,7 +86,8 @@ func generateOneTimeCode(vaultItem *item.Item, now time.Time) (OneTimeCode, erro
 	return OneTimeCode{Code: code, ExpiresAt: expiresAt.UTC().Format(time.RFC3339), Period: config.Period}, nil
 }
 
-func convertToItemDetail(vaultItem *item.Item) ItemDetail {
+// convertToItemDetail checks a card's expiry at now.
+func convertToItemDetail(vaultItem *item.Item, now time.Time) ItemDetail {
 	detail := ItemDetail{
 		ID:          vaultItem.ID,
 		Revision:    vaultItem.Revision,
@@ -114,7 +115,7 @@ func convertToItemDetail(vaultItem *item.Item) ItemDetail {
 		card, fields = item.ReadCard(vaultItem)
 		detail.Card = &ItemCard{
 			Cardholder: card.Cardholder, Type: card.Type, Number: card.Number, Expiry: card.Expiry, SecurityCode: card.SecurityCode, PIN: card.PIN, BillingAddress: card.BillingAddress,
-			CardDescription: convertToCardDescription(item.DescribeCard(card.Number, card.Expiry, time.Now())),
+			CardDescription: convertToCardDescription(item.DescribeCard(card.Number, card.Expiry, now)),
 		}
 	}
 	for _, field := range fields {
@@ -204,7 +205,7 @@ func (s *Service) SaveItem(vaultID string, detail ItemDetail) (ItemDetail, error
 		return ItemDetail{}, convertError(err)
 	}
 	s.replaceCachedItem(vaultID, vaultItem)
-	return convertToItemDetail(&vaultItem), nil
+	return convertToItemDetail(&vaultItem, s.config.Now()), nil
 }
 
 // buildSavedItem keeps the category and passkeys of an existing item; an ssh-key item only takes the title and notes from
@@ -291,7 +292,7 @@ func (s *Service) ConvertToSecureNote(vaultID, itemID string) (ItemDetail, error
 		return ItemDetail{}, convertError(err)
 	}
 	s.replaceCachedItem(vaultID, vaultItem)
-	return convertToItemDetail(&vaultItem), nil
+	return convertToItemDetail(&vaultItem, s.config.Now()), nil
 }
 
 func (s *Service) replaceCachedItem(vaultID string, vaultItem item.Item) {

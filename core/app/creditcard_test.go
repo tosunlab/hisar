@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/item"
@@ -199,5 +200,23 @@ func TestEditingACardKeepsLoginDataItAlreadyHad(t *testing.T) {
 	}
 	if !reflect.DeepEqual(edited.Fields, []ItemField{website}) {
 		t.Errorf("saved without its website: fields %+v", edited.Fields)
+	}
+}
+
+func TestCardViewAndEditorUseTheSameClock(t *testing.T) {
+	testService := createUnlockedTestService(t)
+	service, vaultID := testService.service, testService.personalID
+	service.config.Now = func() time.Time { return time.Date(2030, 1, 15, 12, 0, 0, 0, time.UTC) }
+	saved, err := service.SaveItem(vaultID, ItemDetail{Category: item.CategoryCreditCard, Title: "Visa", Card: &ItemCard{Number: "4111111111111111", Expiry: "12/29"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, err := service.GetItem(vaultID, saved.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	editor := service.DescribeCard("4111111111111111", "12/29")
+	if saved.Card.ExpiryWarning != "This card has expired" || opened.Card.ExpiryWarning != editor.ExpiryWarning || editor.ExpiryWarning == "" {
+		t.Errorf("saved %q, opened %q, editor %q", saved.Card.ExpiryWarning, opened.Card.ExpiryWarning, editor.ExpiryWarning)
 	}
 }

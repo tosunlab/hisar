@@ -169,7 +169,7 @@ func (s *Service) saveLogin(ctx context.Context, request *browserprotocol.Reques
 		if !found {
 			return browserprotocol.SaveResult{}, errNoURLMatch
 		}
-		detail := convertToItemDetail(&vaultItem)
+		detail := convertToItemDetail(&vaultItem, s.config.Now())
 		detail.Username, detail.Password = request.Username, request.Password
 		saved, err := s.SaveItem(request.VaultID, detail)
 		if err != nil {
