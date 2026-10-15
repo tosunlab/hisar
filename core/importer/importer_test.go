@@ -537,3 +537,40 @@ func TestGetFormatName(t *testing.T) {
 		t.Error("IsKnownFormat")
 	}
 }
+
+func TestParseSavesSecureNotesAsSecureNotes(t *testing.T) {
+	bitwarden := parseFixture(t, "export.json", []byte(`{"encrypted":false,"items":[
+		{"type":2,"name":"Wi-Fi","notes":"Network: home","fields":[{"name":"PIN","value":"0000","type":1}]},
+		{"type":2,"name":"Fields only","fields":[{"name":"Account","value":"42","type":0}]},
+		{"type":2,"name":"Note with a login","notes":"x","login":{"username":"alice"}},
+		{"type":1,"name":"Login with only notes","notes":"Door code 1234"},
+		{"type":1,"name":"GitHub","notes":"Work","login":{"username":"alice","password":"pw"}}]}`), FormatAutomatic)
+	onePassword := parseFixture(t, "export.1pux", buildOnePasswordExport(t, []byte(`{"accounts":[{"vaults":[{"items":[
+		{"categoryUuid":"003","overview":{"title":"Recipe"},"details":{"notesPlain":"Flour, water"}},
+		{"categoryUuid":"001","overview":{"title":"Mail"},"details":{"notesPlain":"Old account","loginFields":[{"designation":"username","value":"alice"}]}}]}]}]}`)), FormatAutomatic)
+	lastPass := parseFixture(t, "lastpass_export.csv", readFixture(t, "lastpass.csv", testKeySet{}), FormatAutomatic)
+
+	cases := []struct {
+		result   *Result
+		title    string
+		category string
+	}{
+		{bitwarden, "Wi-Fi", item.CategorySecureNote},
+		{bitwarden, "Fields only", item.CategorySecureNote},
+		{bitwarden, "Note with a login", item.CategoryLogin},
+		{bitwarden, "Login with only notes", item.CategorySecureNote},
+		{bitwarden, "GitHub", item.CategoryLogin},
+		{onePassword, "Recipe", item.CategorySecureNote},
+		{onePassword, "Mail", item.CategoryLogin},
+		{lastPass, "Database notes", item.CategorySecureNote},
+		{lastPass, "GitHub", item.CategoryLogin},
+	}
+	for _, testCase := range cases {
+		if vaultItem := findTestItem(t, testCase.result, testCase.title); vaultItem.Overview.Category != testCase.category {
+			t.Errorf("%s: category %q, want %q", testCase.title, vaultItem.Overview.Category, testCase.category)
+		}
+	}
+	if wifi := findTestItem(t, bitwarden, "Wi-Fi"); !reflect.DeepEqual(wifi.Details.Fields, []item.Field{{Name: "PIN", Value: "0000", Concealed: true}}) {
+		t.Errorf("note fields = %+v", wifi.Details.Fields)
+	}
+}

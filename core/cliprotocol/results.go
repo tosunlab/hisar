@@ -78,6 +78,8 @@ type ItemChange struct {
 	Password string   `json:"password"`
 	Notes    string   `json:"notes"`
 	Fields   *[]Field `json:"fields,omitempty"`
+	// Category is the type of a new item (login or secure-note); an existing item keeps its own.
+	Category string `json:"category,omitempty"`
 }
 
 // VaultDeletion: MoveToVaultID moves the items; IsDeletingItems deletes them and needs ConfirmedName, the vault's name.

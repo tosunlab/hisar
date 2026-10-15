@@ -148,6 +148,9 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 		Overview: item.Overview{Title: entry.Overview.Title, Tags: entry.Overview.Tags},
 		Details:  item.Details{Password: entry.Details.Password, Notes: entry.Details.NotesPlain},
 	}
+	if category == onePasswordSecureNote {
+		vaultItem.Overview.Category = item.CategorySecureNote
+	}
 	if entry.Overview.URL != "" {
 		vaultItem.Overview.URLs = append(vaultItem.Overview.URLs, entry.Overview.URL)
 	}

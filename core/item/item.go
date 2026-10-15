@@ -9,9 +9,11 @@ import (
 	"time"
 )
 
+// An empty category is a login: items saved before categories existed have none.
 const (
-	CategoryLogin  = "login"
-	CategorySSHKey = "ssh-key"
+	CategoryLogin      = "login"
+	CategorySSHKey     = "ssh-key"
+	CategorySecureNote = "secure-note"
 )
 
 type Overview struct {
@@ -62,6 +64,23 @@ type Item struct {
 	Revision string
 	Overview Overview
 	Details  Details
+}
+
+// IsLogin reports whether the item is a login, including one saved without a category.
+func IsLogin(vaultItem *Item) bool {
+	return vaultItem.Overview.Category == "" || vaultItem.Overview.Category == CategoryLogin
+}
+
+// HasLoginData reports whether the item holds anything only a login shows: a username, password, website, one-time
+// password, private key or passkey.
+func HasLoginData(vaultItem *Item) bool {
+	return vaultItem.Overview.Username != "" || vaultItem.Details.Password != "" || len(vaultItem.Overview.URLs) > 0 ||
+		vaultItem.Details.OneTimePassword != "" || vaultItem.Details.PrivateKey != "" || len(vaultItem.Details.Passkeys) > 0
+}
+
+// HasOnlyNotes reports whether a secure note can hold everything the item has: notes, and perhaps custom fields.
+func HasOnlyNotes(vaultItem *Item) bool {
+	return vaultItem.Details.Notes != "" && !HasLoginData(vaultItem)
 }
 
 func UpdatePasskeyOverview(vaultItem *Item) {

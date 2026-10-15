@@ -146,10 +146,10 @@ func DetectFormat(fileName string, content []byte) (string, error) {
 }
 
 func GetKind(vaultItem item.Item) string {
-	if vaultItem.Overview.Category == item.CategorySSHKey {
+	switch vaultItem.Overview.Category {
+	case item.CategorySSHKey:
 		return KindSSHKey
-	}
-	if vaultItem.Overview.Username == "" && vaultItem.Details.Password == "" && len(vaultItem.Overview.URLs) == 0 && vaultItem.Details.Notes != "" {
+	case item.CategorySecureNote:
 		return KindSecureNote
 	}
 	return KindLogin
@@ -274,7 +274,13 @@ func finishItem(vaultItem *item.Item) bool {
 		}
 		vaultItem.Overview.Title = getFallbackTitle(vaultItem)
 	}
-	if vaultItem.Overview.Category == "" {
+	switch {
+	case vaultItem.Overview.Category == item.CategorySecureNote && item.HasLoginData(vaultItem):
+		// A note that came with a username, password or website stays a login, so they are shown.
+		vaultItem.Overview.Category = item.CategoryLogin
+	case vaultItem.Overview.Category == "" && item.HasOnlyNotes(vaultItem):
+		vaultItem.Overview.Category = item.CategorySecureNote
+	case vaultItem.Overview.Category == "":
 		vaultItem.Overview.Category = item.CategoryLogin
 	}
 	return true
