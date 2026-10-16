@@ -17,7 +17,7 @@ struct ItemListView: View {
     @Environment(\.dismiss) private var dismiss
 
     private var vault: VaultSummary? { model.findVault(vaultID: vaultID) }
-    private var isShared: Bool { vault?.type == "shared" }
+    private var isShared: Bool { vault?.type == VaultSummary.typeShared || vault?.isOrganization == true }
     private var isOwner: Bool { vault?.role == Member.vaultRoleOwner }
 
     private var isWritable: Bool {
@@ -185,8 +185,13 @@ struct ItemListView: View {
                 .environmentObject(model)
         }
         .sheet(isPresented: $isSharingShown) {
-            VaultSharingView(vaultID: vaultID)
-                .environmentObject(model)
+            if let vault, vault.isOrganization {
+                OrganizationVaultSharingView(vaultID: vaultID, organizationID: vault.organizationID)
+                    .environmentObject(model)
+            } else {
+                VaultSharingView(vaultID: vaultID)
+                    .environmentObject(model)
+            }
         }
         .alert("Personal vaults are private", isPresented: $isPersonalVaultNoteShown) {
             Button("OK", role: .cancel) {}

@@ -71,6 +71,7 @@ struct VaultsView: View {
     @State private var isNewIdentityShown = false
     @State private var isNewAPICredentialShown = false
     @State private var isNewAddressShown = false
+    @State private var refusal: Refusal?
 
     private var personalVault: VaultSummary? { model.allVault.first { $0.type == "personal" } }
 
@@ -91,9 +92,15 @@ struct VaultsView: View {
                     showAll: { model.selectedTab = .approvals }
                 )
                 RemovedVaultNoticeSection(allNotice: model.allRemovedVaultNotice) { model.dismissRemovedVaultNotice($0) }
+                keyWarningSection
                 receivedInvitationSection
+                organizationInvitationSection
                 favoriteSection
-                vaultSection
+                let grouping = OrganizationLogic.groupVaults(model.allVault, allOrganization: model.allOrganization, allWaiting: model.waitingVaultKeys.allWaiting)
+                vaultSection(grouping.allOtherVault)
+                ForEach(grouping.allGroup) { group in
+                    organizationVaultSection(group)
+                }
                 if !model.allVault.isEmpty {
                     Section {
                         ForEach(ItemCategoryDestination.allCases, id: \.self) { category in
@@ -127,6 +134,7 @@ struct VaultsView: View {
             .applyThemedListStyle()
             .refreshable { await model.refreshAll() }
             .navigationTitle("Vaults")
+            .refusalAlert($refusal)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -340,7 +348,59 @@ struct VaultsView: View {
     }
 
     @ViewBuilder
-    private var vaultSection: some View {
+    private var keyWarningSection: some View {
+        let allWarning = OrganizationLogic.describeKeyWarnings(model.waitingVaultKeys)
+        if !allWarning.isEmpty {
+            Section {
+                ForEach(allWarning, id: \.self) { warning in
+                    Label {
+                        Text(warning)
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.themeWarning)
+                    }
+                    .font(.subheadline)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("vault-key-warning")
+                }
+            } footer: {
+                Text("Hisar gives vault keys only to the keys it pinned for each person. Compare security codes in Settings → Organizations.")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var organizationInvitationSection: some View {
+        if !model.allOrganizationInvitation.isEmpty {
+            Section {
+                ForEach(model.allOrganizationInvitation) { invitation in
+                    OrganizationInvitationRow(invitation: invitation, identifierPrefix: "banner-") {
+                        Task {
+                            if await model.acceptOrganizationInvitation(invitationID: invitation.id) {
+                                model.showNotice(OrganizationInvitationRow.describeJoined(invitation))
+                            } else {
+                                refusal = model.takeRefusal(title: "Accept")
+                            }
+                        }
+                    } decline: {
+                        Task {
+                            if await model.declineOrganizationInvitation(invitationID: invitation.id) {
+                                model.showNotice("Invitation declined.")
+                            } else {
+                                refusal = model.takeRefusal(title: "Decline")
+                            }
+                        }
+                    }
+                }
+            } header: {
+                Text("Invitations for you")
+                    .foregroundStyle(.themeSecondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func vaultSection(_ allVault: [VaultSummary]) -> some View {
         Section {
             if model.allVault.isEmpty {
                 if model.isRefreshing {
@@ -355,7 +415,7 @@ struct VaultsView: View {
                         .foregroundStyle(.themeSecondary)
                 }
             }
-            ForEach(model.allVault) { vault in
+            ForEach(allVault) { vault in
                 NavigationLink(value: VaultDestination(vaultID: vault.id)) {
                     VaultRow(vault: vault, itemCount: model.countItem(vaultID: vault.id))
                 }
@@ -366,22 +426,59 @@ struct VaultsView: View {
                 .foregroundStyle(.themeSecondary)
         }
     }
+
+    private func organizationVaultSection(_ group: OrganizationVaultGroup) -> some View {
+        Section {
+            ForEach(group.allVault) { vault in
+                NavigationLink(value: VaultDestination(vaultID: vault.id)) {
+                    VaultRow(vault: vault, itemCount: model.countItem(vaultID: vault.id))
+                }
+                .accessibilityIdentifier("vault-\(vault.name)")
+            }
+            if !group.waitingMessage.isEmpty {
+                Label(group.waitingMessage, systemImage: "key")
+                    .font(.subheadline)
+                    .foregroundStyle(.themeSecondary)
+                    .accessibilityIdentifier("waiting-vault-key-\(group.name)")
+            }
+        } header: {
+            Text(group.name)
+                .foregroundStyle(.themeSecondary)
+                .accessibilityIdentifier("organization-section-\(group.name)")
+        }
+    }
 }
 
 struct VaultRow: View {
     var vault: VaultSummary
     var itemCount: Int
 
+    private var subtitle: String {
+        switch vault.type {
+        case VaultSummary.typePersonal: return "Only you"
+        case VaultSummary.typeOrganization: return "Organization · \(describeVaultRole(vault.role))"
+        default: return "Shared · \(describeVaultRole(vault.role))"
+        }
+    }
+
+    private var systemImage: String {
+        switch vault.type {
+        case VaultSummary.typePersonal: return "person.crop.square"
+        case VaultSummary.typeOrganization: return "building.2"
+        default: return "person.2.square.stack"
+        }
+    }
+
     var body: some View {
         Label {
             VStack(alignment: .leading, spacing: 2) {
                 Text(vault.name)
-                Text(vault.type == "personal" ? "Only you" : "Shared · \(describeVaultRole(vault.role))")
+                Text(subtitle)
                     .font(.footnote)
                     .foregroundStyle(.themeSecondary)
             }
         } icon: {
-            Image(systemName: vault.type == "personal" ? "person.crop.square" : "person.2.square.stack")
+            Image(systemName: systemImage)
         }
         .badge(itemCount)
     }
