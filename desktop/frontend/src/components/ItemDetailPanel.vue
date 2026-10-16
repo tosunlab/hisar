@@ -47,6 +47,7 @@ import {
 } from "../util";
 import AppIcon from "./AppIcon.vue";
 import CommitSigningPanel from "./CommitSigningPanel.vue";
+import ContextMenu, { type ContextMenuAction } from "./ContextMenu.vue";
 import ItemTile from "./ItemTile.vue";
 import OneTimeCodeField from "./OneTimeCodeField.vue";
 import PasskeyList from "./PasskeyList.vue";
@@ -193,6 +194,7 @@ watch(
     isConnectionStringRevealed.value = false;
     allRevealedFieldName.value = [];
     isConfirmingDelete.value = false;
+    fieldMenu.value = null;
   },
 );
 
@@ -202,13 +204,56 @@ function toggleFieldReveal(fieldName: string): void {
     : [...allRevealedFieldName.value, fieldName];
 }
 
+// fieldMenu is the right-click menu of a field row. It offers the row's own buttons, by their labels, so it always matches
+// what the row can do: copy, reveal or hide, copy the secret reference, open. A row is a .field with its .field-actions, or
+// a block marked data-field-menu-row, such as an SSH key's public key or a note, whose buttons sit in data-field-menu-actions.
+const fieldMenu = ref<{ label: string; x: number; y: number; allAction: ContextMenuAction[] } | null>(null);
+
+function chooseFieldMenuIcon(label: string): ContextMenuAction["icon"] {
+  if (label.startsWith("Copy secret reference")) {
+    return "terminal";
+  }
+  if (label.startsWith("Copy")) {
+    return "copy";
+  }
+  if (label.startsWith("Reveal")) {
+    return "eye";
+  }
+  if (label.startsWith("Hide")) {
+    return "eyeOff";
+  }
+  return label.startsWith("Open") ? "external" : "field";
+}
+
+function openFieldMenu(event: MouseEvent): void {
+  const row = (event.target as HTMLElement).closest<HTMLElement>(".field, [data-field-menu-row]");
+  // Text selected in the row keeps the system's menu, with its Copy.
+  const selection = window.getSelection();
+  if (!row || (selection && !selection.isCollapsed && row.contains(selection.anchorNode))) {
+    return;
+  }
+  const allButton = [...row.querySelectorAll<HTMLButtonElement>(".field-actions button, [data-field-menu-actions] button")].filter(
+    (button) => !button.disabled && button.getAttribute("aria-label"),
+  );
+  if (allButton.length === 0) {
+    return;
+  }
+  event.preventDefault();
+  const allAction = allButton.map((button) => {
+    const label = button.getAttribute("aria-label") ?? "";
+    return { id: label.toLowerCase().replace(/[^a-z0-9]+/g, "-"), label, icon: chooseFieldMenuIcon(label), run: () => button.click() };
+  });
+  const label = row.querySelector(".field-label, .section-label")?.textContent?.trim() || "Field";
+  fieldMenu.value = { label, x: event.clientX, y: event.clientY, allAction };
+}
+
 function maskSecret(secret: string): string {
   return "•".repeat(Math.min(Math.max(secret.length, 10), 20));
 }
 </script>
 
 <template>
-  <article v-if="store.selectedItem" class="item-detail">
+  <article v-if="store.selectedItem" class="item-detail" @contextmenu="openFieldMenu">
     <header>
       <ItemTile :title="store.selectedItem.title" :size="52" :icon="getItemIcon(store.selectedItem.category)" />
       <div class="heading">
@@ -296,11 +341,11 @@ function maskSecret(secret: string): string {
           <span class="field-value muted">Never leaves Hisar; the SSH agent uses it</span>
           <span class="field-actions"></span>
         </div>
-        <div class="public-key-field">
-          <div class="row">
+        <div class="public-key-field" data-field-menu-row>
+          <div class="row" data-field-menu-actions>
             <span class="field-label">Public key</span>
             <div class="spacer"></div>
-            <button data-testid="copy-public-key" @click="copyField('public key', 'Public key')"><AppIcon name="copy" /> Copy public key</button>
+            <button data-testid="copy-public-key" aria-label="Copy public key" @click="copyField('public key', 'Public key')"><AppIcon name="copy" /> Copy public key</button>
             <SecretReferenceButton field-name="public key" label="public key" />
           </div>
           <p class="public-key monospace" data-testid="public-key">{{ store.selectedItem.publicKey }}</p>
@@ -366,12 +411,12 @@ function maskSecret(secret: string): string {
     </section>
 
     <template v-else-if="isSecureNote">
-      <section class="card notes-card secure-note" data-testid="secure-note-notes">
-        <div class="row">
+      <section class="card notes-card secure-note" data-testid="secure-note-notes" data-field-menu-row>
+        <div class="row" data-field-menu-actions>
           <p class="section-label">Notes</p>
           <div class="spacer"></div>
           <template v-if="store.selectedItem.notes">
-            <button data-testid="copy-notes" @click="copyField('notes', 'Notes')"><AppIcon name="copy" /> Copy</button>
+            <button data-testid="copy-notes" aria-label="Copy notes" @click="copyField('notes', 'Notes')"><AppIcon name="copy" /> Copy</button>
             <SecretReferenceButton field-name="notes" label="notes" />
           </template>
         </div>
@@ -576,6 +621,7 @@ function maskSecret(secret: string): string {
     </section>
 
     <p class="footer muted"><AppIcon name="shield" :size="12" /> End-to-end encrypted with the {{ vaultName }} vault key</p>
+    <ContextMenu v-if="fieldMenu" :label="fieldMenu.label" :x="fieldMenu.x" :y="fieldMenu.y" :all-action="fieldMenu.allAction" @close="fieldMenu = null" />
   </article>
 </template>
 

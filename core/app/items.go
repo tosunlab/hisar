@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -548,14 +549,85 @@ func (s *Service) DeleteItem(vaultID, itemID string) error {
 	if _, err := s.unlockedSession.DeleteItem(ctx, vault, vaultItem); err != nil {
 		return convertError(err)
 	}
-	remaining := s.itemsByVaultID[vaultID][:0]
-	for _, cachedItem := range s.itemsByVaultID[vaultID] {
-		if cachedItem.ID != itemID {
-			remaining = append(remaining, cachedItem)
-		}
-	}
-	s.itemsByVaultID[vaultID] = remaining
+	s.removeCachedItem(vaultID, itemID)
 	return nil
+}
+
+// removeCachedItem drops an item from the vault's cache.
+func (s *Service) removeCachedItem(vaultID, itemID string) {
+	s.itemsByVaultID[vaultID] = slices.DeleteFunc(s.itemsByVaultID[vaultID], func(cachedItem item.Item) bool { return cachedItem.ID == itemID })
+}
+
+// MoveItem moves an item to another vault the user may add items to, in one request that keeps its ID, so favorites and
+// references by ID still find it. A server keeps its SSH key link, which the apps then show as missing until a key from
+// the new vault is chosen.
+func (s *Service) MoveItem(vaultID, itemID, targetVaultID string) (ItemDetail, error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if err := s.requireUnlocked(); err != nil {
+		return ItemDetail{}, err
+	}
+	if targetVaultID == vaultID {
+		return ItemDetail{}, errors.New("the item is already in that vault")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	vault, err := s.findVault(ctx, vaultID)
+	if err != nil {
+		return ItemDetail{}, err
+	}
+	target, err := s.findVault(ctx, targetVaultID)
+	if err != nil {
+		return ItemDetail{}, err
+	}
+	cachedItem, err := s.findItem(vaultID, itemID)
+	if err != nil {
+		return ItemDetail{}, err
+	}
+	movedItem := *cachedItem
+	if _, err := s.unlockedSession.MoveItem(ctx, vault, target, &movedItem); err != nil {
+		return ItemDetail{}, convertError(err)
+	}
+	s.removeCachedItem(vaultID, itemID)
+	if _, isLoaded := s.itemsByVaultID[targetVaultID]; isLoaded {
+		s.replaceCachedItem(targetVaultID, movedItem)
+	}
+	return s.describeItem(&movedItem), nil
+}
+
+// DuplicateItem saves a copy of an item in its vault, titled "<title> copy", with everything but its passkeys: one
+// passkey can't live in two items. An SSH key is not duplicated; a key is generated or imported.
+func (s *Service) DuplicateItem(vaultID, itemID string) (ItemDetail, error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if err := s.requireUnlocked(); err != nil {
+		return ItemDetail{}, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	vault, err := s.findVault(ctx, vaultID)
+	if err != nil {
+		return ItemDetail{}, err
+	}
+	cachedItem, err := s.findItem(vaultID, itemID)
+	if err != nil {
+		return ItemDetail{}, err
+	}
+	if cachedItem.IsCategory(item.CategorySSHKey) {
+		return ItemDetail{}, errors.New("an SSH key can't be duplicated; generate or import another")
+	}
+	copiedItem := item.Item{Overview: cachedItem.Overview, Details: cachedItem.Details}
+	copiedItem.Overview.Title = strings.TrimSpace(cachedItem.Overview.Title) + " copy"
+	copiedItem.Overview.URLs = slices.Clone(cachedItem.Overview.URLs)
+	copiedItem.Overview.Tags = slices.Clone(cachedItem.Overview.Tags)
+	copiedItem.Details.Fields = slices.Clone(cachedItem.Details.Fields)
+	copiedItem.Details.Passkeys = nil
+	item.UpdatePasskeyOverview(&copiedItem)
+	if _, err := s.unlockedSession.SaveItem(ctx, vault, &copiedItem); err != nil {
+		return ItemDetail{}, convertError(err)
+	}
+	s.replaceCachedItem(vaultID, copiedItem)
+	return s.describeItem(&copiedItem), nil
 }
 
 func (s *Service) GeneratePassword(config PasswordConfig) (string, error) {

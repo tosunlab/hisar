@@ -520,6 +520,8 @@ export function createApiMock() {
     getItem: vi.fn(),
     saveItem: vi.fn(),
     deleteItem: vi.fn(),
+    moveItem: vi.fn(),
+    duplicateItem: vi.fn(),
     listAllFavoriteItem: vi.fn().mockResolvedValue([]),
     setItemFavorite: vi.fn().mockResolvedValue(undefined),
     convertToSecureNote: vi.fn(),

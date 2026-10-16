@@ -49,6 +49,8 @@ const allPath = {
   star: "M12 3.5l2.6 5.3 5.9.9-4.25 4.1 1 5.8L12 16.9l-5.25 2.7 1-5.8L3.5 9.7l5.9-.9z",
   starFilled: "M12 3.5l2.6 5.3 5.9.9-4.25 4.1 1 5.8L12 16.9l-5.25 2.7 1-5.8L3.5 9.7l5.9-.9z",
   link: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1",
+  duplicate: "M9 9h11v11H9zM5 15V4h11M14.5 12v5M12 14.5h5",
+  move: "M3 12h13M12 7l5 5-5 5M20 4v16",
 } as const;
 
 export type IconName = keyof typeof allPath;

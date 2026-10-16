@@ -26,6 +26,8 @@ import (
 const (
 	maxBody         = 2 << 20
 	maxRotationBody = 32 << 20
+	// maxMoveBody holds a moved item of the largest size, base64-encoded, and its small tombstone.
+	maxMoveBody = 4 << 20
 )
 
 type Config struct {
@@ -168,6 +170,7 @@ func (s *Server) CreateApp() *fiber.App {
 	apiGroup.Get("/vaults/:vault/changes", s.requireSession, s.handleListChanges)
 	apiGroup.Put("/vaults/:vault/items/:item", s.requireSession, s.handlePutItem)
 	apiGroup.Get("/vaults/:vault/items/:item/history", s.requireSession, s.handleGetItemHistory)
+	apiGroup.Post("/vaults/:vault/items/:item/move", s.requireSession, s.handleMoveItem)
 
 	apiGroup.Post("/share-links", s.requireSession, s.handleCreateShareLink)
 	apiGroup.Get("/share-links", s.requireSession, s.handleListShareLinks)

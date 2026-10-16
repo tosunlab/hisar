@@ -894,20 +894,90 @@ export async function convertToSecureNote(): Promise<void> {
   showNotice("Converted to a secure note");
 }
 
-export async function deleteItem(itemID: string): Promise<void> {
+// deleteItem deletes an item of vaultID, the selected vault unless the item comes from another vault's favorite.
+export async function deleteItem(itemID: string, vaultID = store.selectedVaultID): Promise<boolean> {
   const deleted = await runAction(async () => {
-    await api.deleteItem(store.selectedVaultID, itemID);
+    await api.deleteItem(vaultID, itemID);
     return true;
   });
-  if (deleted) {
-    store.allItem = store.allItem.filter((vaultItem) => vaultItem.id !== itemID);
-    store.allFavorite = store.allFavorite.filter((favorite) => favorite.item.id !== itemID);
+  if (!deleted) {
+    return false;
+  }
+  store.allItem = store.allItem.filter((vaultItem) => vaultItem.id !== itemID);
+  // Opening a favorite makes its vault the selected one but leaves allItem as the vault last listed, so allItem counts the
+  // selected vault only outside Favorites.
+  if (vaultID === store.selectedVaultID && !store.isFavoritesSelected) {
     updateSelectedVaultItemCount();
     dropMissingTagFilter();
+  } else {
+    const vault = store.allVault.find((candidate) => candidate.id === vaultID);
+    if (vault) {
+      vault.itemCount = Math.max(0, vault.itemCount - 1);
+    }
+  }
+  store.allFavorite = store.allFavorite.filter((favorite) => !(favorite.item.id === itemID && favorite.vaultId === vaultID));
+  if (store.selectedItem?.id === itemID) {
     store.selectedItem = null;
     store.editorMode = "view";
-    showNotice("Deleted");
   }
+  showNotice("Deleted");
+  return true;
+}
+
+// reloadSelectedVaultItems lists the vault on screen again, as summaries without secrets.
+async function reloadSelectedVaultItems(): Promise<void> {
+  const allItem = await runAction(() => api.listAllItem(store.selectedVaultID));
+  if (allItem) {
+    store.allItem = sortAllItem(allItem);
+  }
+}
+
+// moveItem moves an item of vaultID to targetVaultID; it keeps its ID, so it stays a favorite.
+export async function moveItem(vaultID: string, itemID: string, targetVaultID: string): Promise<boolean> {
+  const moved = await runAction(() => api.moveItem(vaultID, itemID, targetVaultID));
+  if (!moved) {
+    return false;
+  }
+  if (vaultID === store.selectedVaultID) {
+    store.allItem = store.allItem.filter((vaultItem) => vaultItem.id !== itemID);
+    dropMissingTagFilter();
+  } else if (targetVaultID === store.selectedVaultID) {
+    await reloadSelectedVaultItems();
+  }
+  for (const vault of store.allVault) {
+    if (vault.id === vaultID) {
+      vault.itemCount = Math.max(0, vault.itemCount - 1);
+    } else if (vault.id === targetVaultID) {
+      vault.itemCount += 1;
+    }
+  }
+  if (store.selectedItem?.id === itemID) {
+    store.selectedItem = null;
+    store.editorMode = "view";
+  }
+  await loadAllFavoriteQuietly();
+  const targetName = store.allVault.find((vault) => vault.id === targetVaultID)?.name ?? "the vault";
+  showNotice(`Moved ${moved.title} to ${targetName}`);
+  return true;
+}
+
+// duplicateItem saves a copy of the item in its vault and opens the copy when that vault is on screen.
+export async function duplicateItem(vaultID: string, itemID: string): Promise<boolean> {
+  const copied = await runAction(() => api.duplicateItem(vaultID, itemID));
+  if (!copied) {
+    return false;
+  }
+  const vault = store.allVault.find((candidate) => candidate.id === vaultID);
+  if (vault) {
+    vault.itemCount += 1;
+  }
+  if (vaultID === store.selectedVaultID && !store.isFavoritesSelected) {
+    await reloadSelectedVaultItems();
+    store.selectedItem = copied;
+    store.editorMode = "view";
+  }
+  showNotice(`Duplicated as ${copied.title}`);
+  return true;
 }
 
 export async function deletePasskey(credentialID: string): Promise<void> {
@@ -926,12 +996,15 @@ export async function deletePasskey(credentialID: string): Promise<void> {
 }
 
 export async function copyField(fieldName: string, label: string): Promise<void> {
-  if (!store.selectedItem) {
-    return;
+  if (store.selectedItem) {
+    await copyItemField(store.selectedVaultID, store.selectedItem.id, fieldName, label);
   }
-  const itemID = store.selectedItem.id;
+}
+
+// copyItemField copies a field of any vault's item, such as a favorite's from another vault, without selecting it.
+export async function copyItemField(vaultID: string, itemID: string, fieldName: string, label: string): Promise<void> {
   const copied = await runAction(async () => {
-    await api.copyField(store.selectedVaultID, itemID, fieldName);
+    await api.copyField(vaultID, itemID, fieldName);
     return true;
   });
   if (copied) {

@@ -254,6 +254,55 @@ func (s *Service) PutItem(ctx context.Context, actor Actor, vaultID, itemID, bas
 	return storeItem.Seq, nil
 }
 
+// MoveItem moves a live item, already re-encrypted for the target vault by the caller's app, to another vault the caller
+// may write, keeping its ID; a tombstone stays in the source vault so other devices drop it there.
+func (s *Service) MoveItem(ctx context.Context, actor Actor, vaultID, itemID string, request *apitypes.MoveItemRequest) (apitypes.MoveItemResponse, error) {
+	if err := s.CheckItemWrite(ctx, actor, vaultID); err != nil {
+		return apitypes.MoveItemResponse{}, err
+	}
+	isValidPart := func(part apitypes.PutItemRequest, isDeleted bool) bool {
+		return part.Deleted == isDeleted && IsValidUUID(part.Revision) && len(part.Overview) > 0 && len(part.Overview) <= maxOverview &&
+			len(part.Details) > 0 && len(part.Details) <= maxDetails
+	}
+	if !IsValidUUID(itemID) || !IsValidUUID(request.TargetVaultID) || request.TargetVaultID == vaultID || !IsValidUUID(request.BaseRevision) ||
+		!isValidPart(request.Tombstone, true) || !isValidPart(request.Moved, false) || request.Tombstone.Revision == request.Moved.Revision {
+		return apitypes.MoveItemResponse{}, newError(KindInvalid, "invalid item move")
+	}
+	if err := s.CheckItemWrite(ctx, actor, request.TargetVaultID); err != nil {
+		if errors.Is(err, errReadOnly) {
+			return apitypes.MoveItemResponse{}, newError(KindForbidden, "you can't add items to the target vault")
+		}
+		return apitypes.MoveItemResponse{}, err
+	}
+	move := &store.ItemMove{
+		SourceVaultID: vaultID, TargetVaultID: request.TargetVaultID, AccountID: actor.AccountID, BaseRevision: request.BaseRevision,
+		Tombstone: store.Item{Revision: request.Tombstone.Revision, Deleted: true, Overview: request.Tombstone.Overview, Details: request.Tombstone.Details},
+		Moved:     store.Item{ID: itemID, Revision: request.Moved.Revision, Overview: request.Moved.Overview, Details: request.Moved.Details},
+	}
+	currentStoreItem, err := s.store.MoveItem(ctx, move)
+	switch {
+	case errors.Is(err, store.ErrConflict):
+		conflict := &ItemConflictError{}
+		if currentStoreItem != nil {
+			currentItem := convertToProtoItem(currentStoreItem)
+			conflict.Current = &currentItem
+		}
+		return apitypes.MoveItemResponse{}, conflict
+	case errors.Is(err, store.ErrExists):
+		return apitypes.MoveItemResponse{}, newError(KindConflict, "the target vault already has this item")
+	case errors.Is(err, store.ErrTargetNotWritable):
+		return apitypes.MoveItemResponse{}, newError(KindForbidden, "you can't add items to the target vault")
+	case errors.Is(err, store.ErrNotFound):
+		return apitypes.MoveItemResponse{}, ErrNotFound
+	case err != nil:
+		return apitypes.MoveItemResponse{}, err
+	}
+	s.recordAudit(ctx, actor, "item_moved", map[string]string{"vault": vaultID, "item": itemID, "movedTo": request.TargetVaultID})
+	s.publishVaultChanged(ctx, vaultID, move.Tombstone.Seq)
+	s.publishVaultChanged(ctx, request.TargetVaultID, move.Moved.Seq)
+	return apitypes.MoveItemResponse{SourceSeq: move.Tombstone.Seq, TargetSeq: move.Moved.Seq}, nil
+}
+
 func (s *Service) GetItemHistory(ctx context.Context, actor Actor, vaultID, itemID string) ([]apitypes.Item, error) {
 	if _, err := s.GetVaultRole(ctx, actor, vaultID); err != nil {
 		return nil, err

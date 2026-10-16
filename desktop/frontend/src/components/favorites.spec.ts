@@ -182,12 +182,12 @@ describe("starring an item", () => {
     const wrapper = mount(MainView, { attachTo: document.body });
     await wrapper.findAll(".list ul .item")[0].trigger("contextmenu");
     await flushPromises();
-    const menuItem = wrapper.find('[data-testid="item-menu-favorite"]');
+    const menuItem = wrapper.find('[data-testid="context-menu-favorite"]');
     expect(menuItem.text()).toBe("Add to Favorites");
     await menuItem.trigger("click");
     await flushPromises();
     expect(api.setItemFavorite).toHaveBeenCalledWith("personal", "bank", true);
-    expect(wrapper.find('[data-testid="item-menu"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="context-menu"]').exists()).toBe(false);
     wrapper.unmount();
   });
 
