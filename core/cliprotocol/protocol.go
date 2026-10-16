@@ -27,13 +27,15 @@ const (
 	FeatureIdentities = "identities"
 	// FeatureAPICredentials: items.save creates api-credential items from their named fields.
 	FeatureAPICredentials = "api-credentials"
+	// FeatureAddresses: items.save creates address items from their named fields.
+	FeatureAddresses = "addresses"
 	// FeatureFavorites: favorites.list, favorites.add and favorites.remove; items.import stars Item.IsFavorite items.
 	FeatureFavorites = "favorites"
 )
 
 // ListFeatures returns the features this build of the app announces in hello.
 func ListFeatures() []string {
-	return []string{FeatureSecureNotes, FeatureCreditCards, FeatureIdentities, FeatureFavorites, FeatureAPICredentials}
+	return []string{FeatureSecureNotes, FeatureCreditCards, FeatureIdentities, FeatureFavorites, FeatureAPICredentials, FeatureAddresses}
 }
 
 // GetCategoryFeature returns the feature an app must announce before items.save may create an item of category, or ""
@@ -42,6 +44,7 @@ func GetCategoryFeature(category string) string {
 	return map[string]string{
 		item.CategorySecureNote: FeatureSecureNotes, item.CategoryCreditCard: FeatureCreditCards, item.CategoryIdentity: FeatureIdentities,
 		item.CategoryAPICredential: FeatureAPICredentials,
+		item.CategoryAddress:       FeatureAddresses,
 	}[category]
 }
 

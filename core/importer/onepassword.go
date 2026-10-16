@@ -146,7 +146,7 @@ var onePasswordCardFields = map[string]func(*item.Card) *string{
 	"expiry":     func(card *item.Card) *string { return &card.Expiry },
 	"cvv":        func(card *item.Card) *string { return &card.SecurityCode },
 	"pin":        func(card *item.Card) *string { return &card.PIN },
-	"address":    func(card *item.Card) *string { return &card.BillingAddress },
+	"address":    func(card *item.Card) *string { return &card.BillingAddressText },
 }
 
 // onePasswordAPICredentialFields maps the ids of a 1Password API Credential's fields to the credential's values; its other
@@ -172,7 +172,7 @@ var onePasswordIdentityFields = map[string]func(*item.Identity) *string{
 	"cellphone": func(identity *item.Identity) *string { return &identity.Phone },
 	"homephone": func(identity *item.Identity) *string { return &identity.Phone },
 	"busphone":  func(identity *item.Identity) *string { return &identity.Phone },
-	"address":   func(identity *item.Identity) *string { return &identity.Address },
+	"address":   func(identity *item.Identity) *string { return &identity.AddressText },
 }
 
 // getOnePasswordIdentityValue points at the identity value a field fills, or returns nil for a field that stays a custom

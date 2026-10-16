@@ -51,6 +51,11 @@ func (s *Service) summarizeItem(vaultItem *item.Item) ItemDetail {
 		// The key ID is not shown in lists, but search finds a credential by it.
 		summary.APICredential = &ItemAPICredential{Service: credential.Service, KeyID: credential.KeyID, Host: credential.Host}
 	}
+	if address := summary.Address; address != nil {
+		// The first line of the street is a list's subtitle when the address has no city or country.
+		firstLine, _, _ := strings.Cut(address.Street, "\n")
+		summary.Address = &ItemAddress{Street: firstLine, City: address.City, Country: address.Country}
+	}
 	return summary
 }
 
@@ -136,7 +141,8 @@ func convertToItemDetail(vaultItem *item.Item, now time.Time) ItemDetail {
 		var card item.Card
 		card, fields = item.ReadCard(vaultItem)
 		detail.Card = &ItemCard{
-			Cardholder: card.Cardholder, Type: card.Type, Number: card.Number, Expiry: card.Expiry, SecurityCode: card.SecurityCode, PIN: card.PIN, BillingAddress: card.BillingAddress,
+			Cardholder: card.Cardholder, Type: card.Type, Number: card.Number, Expiry: card.Expiry, SecurityCode: card.SecurityCode, PIN: card.PIN,
+			ItemAddress: convertToItemAddress(card.BillingAddress), BillingAddress: card.BillingAddressText,
 			CardDescription: convertToCardDescription(item.DescribeCard(card.Number, card.Expiry, now)),
 		}
 	}
@@ -152,6 +158,12 @@ func convertToItemDetail(vaultItem *item.Item, now time.Time) ItemDetail {
 			Service: credential.Service, KeyID: credential.KeyID, Secret: credential.Secret, Host: credential.Host, Expiry: credential.Expiry,
 			ExpiryWarning: item.DescribeAPICredentialExpiry(credential.Expiry, now),
 		}
+	}
+	if vaultItem.IsCategory(item.CategoryAddress) {
+		var address item.Address
+		address, fields = item.ReadAddress(vaultItem)
+		itemAddress := convertToItemAddress(address)
+		detail.Address = &itemAddress
 	}
 	for _, field := range fields {
 		detail.Fields = append(detail.Fields, ItemField{Name: field.Name, Value: field.Value, Concealed: field.Concealed})
@@ -169,8 +181,8 @@ func (s *Service) DescribeCard(number, expiry string) CardDescription {
 	return convertToCardDescription(item.DescribeCard(number, expiry, s.config.Now()))
 }
 
-// getStoredFields returns an item's custom fields as they are stored: a card's, identity's or API credential's values
-// first, as named fields.
+// getStoredFields returns an item's custom fields as they are stored: a card's, identity's, API credential's or address's
+// values first, as named fields.
 func getStoredFields(detail ItemDetail) []ItemField {
 	var vaultItem item.Item
 	switch {
@@ -180,6 +192,8 @@ func getStoredFields(detail ItemDetail) []ItemField {
 		item.WriteIdentity(&vaultItem, convertFromItemIdentity(detail.Identity), nil)
 	case detail.APICredential != nil:
 		item.WriteAPICredential(&vaultItem, convertFromItemAPICredential(detail.APICredential), nil)
+	case detail.Address != nil:
+		item.WriteAddress(&vaultItem, convertFromItemAddress(*detail.Address), nil)
 	default:
 		return detail.Fields
 	}
@@ -191,13 +205,24 @@ func getStoredFields(detail ItemDetail) []ItemField {
 }
 
 func convertFromItemCard(card *ItemCard) item.Card {
-	return item.Card{Cardholder: card.Cardholder, Type: card.Type, Number: card.Number, Expiry: card.Expiry, SecurityCode: card.SecurityCode, PIN: card.PIN, BillingAddress: card.BillingAddress}
+	return item.Card{
+		Cardholder: card.Cardholder, Type: card.Type, Number: card.Number, Expiry: card.Expiry, SecurityCode: card.SecurityCode, PIN: card.PIN,
+		BillingAddress: convertFromItemAddress(card.ItemAddress), BillingAddressText: card.BillingAddress,
+	}
+}
+
+func convertToItemAddress(address item.Address) ItemAddress {
+	return ItemAddress{Street: address.Street, City: address.City, Region: address.Region, PostalCode: address.PostalCode, Country: address.Country}
+}
+
+func convertFromItemAddress(address ItemAddress) item.Address {
+	return item.Address{Street: address.Street, City: address.City, Region: address.Region, PostalCode: address.PostalCode, Country: address.Country}
 }
 
 func convertToItemIdentity(identity item.Identity) *ItemIdentity {
 	return &ItemIdentity{
 		FirstName: identity.FirstName, MiddleName: identity.MiddleName, LastName: identity.LastName, BirthDate: identity.BirthDate,
-		Email: identity.Email, Phone: identity.Phone, Address: identity.Address,
+		Email: identity.Email, Phone: identity.Phone, ItemAddress: convertToItemAddress(identity.Address), Address: identity.AddressText,
 		PassportNumber: identity.PassportNumber, DriversLicenseNumber: identity.DriversLicenseNumber, NationalIDNumber: identity.NationalIDNumber,
 	}
 }
@@ -205,7 +230,7 @@ func convertToItemIdentity(identity item.Identity) *ItemIdentity {
 func convertFromItemIdentity(identity *ItemIdentity) item.Identity {
 	return item.Identity{
 		FirstName: identity.FirstName, MiddleName: identity.MiddleName, LastName: identity.LastName, BirthDate: identity.BirthDate,
-		Email: identity.Email, Phone: identity.Phone, Address: identity.Address,
+		Email: identity.Email, Phone: identity.Phone, Address: convertFromItemAddress(identity.ItemAddress), AddressText: identity.Address,
 		PassportNumber: identity.PassportNumber, DriversLicenseNumber: identity.DriversLicenseNumber, NationalIDNumber: identity.NationalIDNumber,
 	}
 }
@@ -280,7 +305,7 @@ func (s *Service) buildSavedItem(vaultID string, detail ItemDetail) (item.Item, 
 	}
 	if cachedItem == nil {
 		switch detail.Category {
-		case "", item.CategoryLogin, item.CategorySecureNote, item.CategoryCreditCard, item.CategoryIdentity, item.CategoryAPICredential:
+		case "", item.CategoryLogin, item.CategorySecureNote, item.CategoryCreditCard, item.CategoryIdentity, item.CategoryAPICredential, item.CategoryAddress:
 		case item.CategorySSHKey:
 			if detail.ID == "" {
 				return item.Item{}, errors.New("generate or import an SSH key instead")
@@ -326,6 +351,8 @@ func applyCategory(vaultItem *item.Item, detail ItemDetail) {
 		item.WriteIdentity(vaultItem, convertFromItemIdentity(detail.Identity), vaultItem.Details.Fields)
 	case vaultItem.IsCategory(item.CategoryAPICredential) && detail.APICredential != nil:
 		item.WriteAPICredential(vaultItem, convertFromItemAPICredential(detail.APICredential), vaultItem.Details.Fields)
+	case vaultItem.IsCategory(item.CategoryAddress) && detail.Address != nil:
+		item.WriteAddress(vaultItem, convertFromItemAddress(*detail.Address), vaultItem.Details.Fields)
 	}
 	if vaultItem.OmitsLoginData() {
 		vaultItem.MoveLoginDataToFields()
@@ -333,6 +360,7 @@ func applyCategory(vaultItem *item.Item, detail ItemDetail) {
 	item.NormalizeCard(vaultItem)
 	item.NormalizeIdentity(vaultItem)
 	item.NormalizeAPICredential(vaultItem)
+	item.NormalizeAddress(vaultItem)
 }
 
 // ConvertToSecureNote turns a login with only notes and custom fields, such as one imported before Hisar had secure notes,

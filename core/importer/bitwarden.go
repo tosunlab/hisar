@@ -163,7 +163,7 @@ func convertBitwardenItem(entry bitwardenItem) (item.Item, string) {
 		if values := entry.Identity; values != nil {
 			identity := item.Identity{
 				FirstName: values.FirstName, MiddleName: values.MiddleName, LastName: values.LastName, Email: values.Email, Phone: values.Phone,
-				Address:        joinAddress(values.Address1, values.Address2, values.Address3, joinNonEmpty(", ", values.City, values.State, values.PostalCode), values.Country),
+				AddressText:    joinAddress(values.Address1, values.Address2, values.Address3, joinNonEmpty(", ", values.City, values.State, values.PostalCode), values.Country),
 				PassportNumber: values.PassportNumber, DriversLicenseNumber: values.LicenseNumber, NationalIDNumber: values.SSN,
 			}
 			// The username moves into a custom field with the rest of the login data when the import finishes.

@@ -27,13 +27,16 @@ const (
 // Card is what a credit-card item holds. Type is the card's brand, such as Visa; saving fills it in from the number when
 // it is empty.
 type Card struct {
-	Cardholder     string
-	Type           string
-	Number         string
-	Expiry         string
-	SecurityCode   string
-	PIN            string
-	BillingAddress string
+	Cardholder   string
+	Type         string
+	Number       string
+	Expiry       string
+	SecurityCode string
+	PIN          string
+	// BillingAddress is kept in the fields an address item has; BillingAddressText is a one-line address saved before
+	// that, stored as "Billing address", which stays as it is.
+	BillingAddress     Address
+	BillingAddressText string
 }
 
 // CardField is one of a card's values.
@@ -43,15 +46,20 @@ type CardField = NamedField[Card]
 func ListCardFields() []CardField { return slices.Clone(cardFields) }
 
 // cardFields is the order of a card's fields and which of them are concealed.
-var cardFields = []CardField{
-	{FieldCardholder, false, func(card *Card) *string { return &card.Cardholder }},
-	{FieldCardType, false, func(card *Card) *string { return &card.Type }},
-	{FieldCardNumber, true, func(card *Card) *string { return &card.Number }},
-	{FieldExpiry, false, func(card *Card) *string { return &card.Expiry }},
-	{FieldSecurityCode, true, func(card *Card) *string { return &card.SecurityCode }},
-	{FieldPIN, true, func(card *Card) *string { return &card.PIN }},
-	{FieldBillingAddress, false, func(card *Card) *string { return &card.BillingAddress }},
-}
+var cardFields = slices.Concat(
+	[]CardField{
+		{FieldCardholder, false, func(card *Card) *string { return &card.Cardholder }},
+		{FieldCardType, false, func(card *Card) *string { return &card.Type }},
+		{FieldCardNumber, true, func(card *Card) *string { return &card.Number }},
+		{FieldExpiry, false, func(card *Card) *string { return &card.Expiry }},
+		{FieldSecurityCode, true, func(card *Card) *string { return &card.SecurityCode }},
+		{FieldPIN, true, func(card *Card) *string { return &card.PIN }},
+	},
+	addressFields(func(card *Card) *Address { return &card.BillingAddress }),
+	[]CardField{
+		{FieldBillingAddress, false, func(card *Card) *string { return &card.BillingAddressText }},
+	},
+)
 
 // ReadCard returns the card's values and the item's other custom fields. Names match ignoring case; when a name repeats,
 // the first one is the card's and the rest stay other fields.
@@ -78,6 +86,7 @@ func NormalizeCard(vaultItem *Item) {
 	if expiry, isValid := NormalizeExpiry(card.Expiry); isValid {
 		card.Expiry = expiry
 	}
+	card.BillingAddress = card.BillingAddress.Normalize()
 	WriteCard(vaultItem, card, otherFields)
 }
 

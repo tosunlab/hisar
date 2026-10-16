@@ -23,7 +23,8 @@ const (
 	FieldNationalIDNumber     = "National ID number"
 )
 
-// Identity is what an identity item holds; the document numbers are optional.
+// Identity is what an identity item holds; the document numbers are optional. Address is kept in the fields an address
+// item has; AddressText is a one-line address saved before that, stored as "Address", which stays as it is.
 type Identity struct {
 	FirstName            string
 	MiddleName           string
@@ -31,7 +32,8 @@ type Identity struct {
 	BirthDate            string
 	Email                string
 	Phone                string
-	Address              string
+	Address              Address
+	AddressText          string
 	PassportNumber       string
 	DriversLicenseNumber string
 	NationalIDNumber     string
@@ -44,18 +46,23 @@ type IdentityField = NamedField[Identity]
 func ListIdentityFields() []IdentityField { return slices.Clone(identityFields) }
 
 // identityFields is the order of an identity's fields; the document numbers are concealed.
-var identityFields = []IdentityField{
-	{FieldFirstName, false, func(identity *Identity) *string { return &identity.FirstName }},
-	{FieldMiddleName, false, func(identity *Identity) *string { return &identity.MiddleName }},
-	{FieldLastName, false, func(identity *Identity) *string { return &identity.LastName }},
-	{FieldBirthDate, false, func(identity *Identity) *string { return &identity.BirthDate }},
-	{FieldEmail, false, func(identity *Identity) *string { return &identity.Email }},
-	{FieldPhone, false, func(identity *Identity) *string { return &identity.Phone }},
-	{FieldAddress, false, func(identity *Identity) *string { return &identity.Address }},
-	{FieldPassportNumber, true, func(identity *Identity) *string { return &identity.PassportNumber }},
-	{FieldDriversLicenseNumber, true, func(identity *Identity) *string { return &identity.DriversLicenseNumber }},
-	{FieldNationalIDNumber, true, func(identity *Identity) *string { return &identity.NationalIDNumber }},
-}
+var identityFields = slices.Concat(
+	[]IdentityField{
+		{FieldFirstName, false, func(identity *Identity) *string { return &identity.FirstName }},
+		{FieldMiddleName, false, func(identity *Identity) *string { return &identity.MiddleName }},
+		{FieldLastName, false, func(identity *Identity) *string { return &identity.LastName }},
+		{FieldBirthDate, false, func(identity *Identity) *string { return &identity.BirthDate }},
+		{FieldEmail, false, func(identity *Identity) *string { return &identity.Email }},
+		{FieldPhone, false, func(identity *Identity) *string { return &identity.Phone }},
+	},
+	addressFields(func(identity *Identity) *Address { return &identity.Address }),
+	[]IdentityField{
+		{FieldAddress, false, func(identity *Identity) *string { return &identity.AddressText }},
+		{FieldPassportNumber, true, func(identity *Identity) *string { return &identity.PassportNumber }},
+		{FieldDriversLicenseNumber, true, func(identity *Identity) *string { return &identity.DriversLicenseNumber }},
+		{FieldNationalIDNumber, true, func(identity *Identity) *string { return &identity.NationalIDNumber }},
+	},
+)
 
 // ReadIdentity returns the identity's values and the item's other custom fields, matching names ignoring case.
 func ReadIdentity(vaultItem *Item) (Identity, []Field) { return readRecord(vaultItem, identityFields) }
@@ -71,8 +78,8 @@ func (identity Identity) FullName() string {
 	return strings.Join(slices.DeleteFunc([]string{identity.FirstName, identity.MiddleName, identity.LastName}, func(part string) bool { return part == "" }), " ")
 }
 
-// NormalizeIdentity trims an identity item's values, writes its birth date as YYYY-MM-DD when it is given year first and
-// puts its fields in order; other items are left alone.
+// NormalizeIdentity trims an identity item's values, writes its birth date as YYYY-MM-DD when it is given year first,
+// tidies its address as NormalizeAddress does and puts its fields in order; other items are left alone.
 func NormalizeIdentity(vaultItem *Item) {
 	if !vaultItem.IsCategory(CategoryIdentity) {
 		return
@@ -80,5 +87,6 @@ func NormalizeIdentity(vaultItem *Item) {
 	identity, otherFields := ReadIdentity(vaultItem)
 	trimRecord(&identity, identityFields)
 	identity.BirthDate = NormalizeDate(identity.BirthDate)
+	identity.Address = identity.Address.Normalize()
 	WriteIdentity(vaultItem, identity, otherFields)
 }
