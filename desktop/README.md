@@ -154,6 +154,16 @@ Design: `docs/DESIGN.md` §4.5 (categories).
 - 1Password Software Licenses import as software licenses, with the title as the product; company, publisher and order details stay custom fields.
 - Preview: `&vault=work&item=sketch`, `&editor=software-license`.
 
+## Servers
+
+Design: `docs/DESIGN.md` §4.5 (categories) and §9.2 (browser extension).
+
+- **+** → **Server** opens an editor for the host and port (warning about a port that is not 1–65535), the username, password and one-time password, the admin console URL and an SSH key from the same vault; then notes and custom fields. A host typed as `ssh://host:2222` or `host:2222` is split into host and port.
+- The view lists the host and port with **Copy** and a secret reference, the login fields as for a login, the admin console with **Open in browser**, and the linked SSH key, which opens; a key that was deleted shows as missing. The item list shows the host, port and username, and search matches the host.
+- The browser extension offers a server's username and password on its admin console, as it does a login's.
+- 1Password Servers import as servers; the admin console credentials and hosting details stay custom fields.
+- Preview: `&vault=team&item=build-server`, `&editor=server`.
+
 ## Import from other password managers
 
 Settings → General → **Import…**, or **+** → **Import…** in a vault. The parsing is `core/importer` (design: `docs/DESIGN.md` §9.7).
