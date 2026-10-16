@@ -339,12 +339,15 @@ export interface ItemPasskey {
 
 /**
  * ItemServer is a server's values besides its login data. SSHKeyID names an ssh-key item in the same vault, or is "";
- * PortWarning says when the port is not a number from 1 to 65535.
+ * SSHKeyTitle and SSHKeyFingerprint describe that key, and are "" when it is gone. PortWarning says when the port is not a
+ * number from 1 to 65535. SaveItem reads only Host, Port and SSHKeyID.
  */
 export interface ItemServer {
     "host": string;
     "port": string;
     "sshKeyId": string;
+    "sshKeyTitle": string;
+    "sshKeyFingerprint": string;
     "portWarning": string;
 }
 

@@ -81,6 +81,16 @@ func summarizeAddress(address ItemAddress) ItemAddress {
 func (s *Service) describeItem(vaultItem *item.Item) ItemDetail {
 	detail := convertToItemDetail(vaultItem, s.config.Now())
 	detail.IsFavorite = s.favorites.IsFavorite(vaultItem.ID)
+	if server := detail.Server; server != nil && server.SSHKeyID != "" {
+		// The linked key is in the server's vault; item IDs are unique, so any loaded vault will do.
+		for _, items := range s.itemsByVaultID {
+			for index := range items {
+				if key := &items[index]; key.ID == server.SSHKeyID && key.IsCategory(item.CategorySSHKey) {
+					server.SSHKeyTitle, server.SSHKeyFingerprint = key.Overview.Title, key.Overview.Fingerprint
+				}
+			}
+		}
+	}
 	return detail
 }
 

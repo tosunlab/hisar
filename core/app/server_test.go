@@ -40,7 +40,8 @@ func TestServerKeepsItsLoginDataAndNamedFields(t *testing.T) {
 		!reflect.DeepEqual(stored.Overview.URLs, []string{"https://console.example.com"}) {
 		t.Errorf("stored server = %+v %+v", stored.Overview, stored.Details)
 	}
-	if saved.Server == nil || *saved.Server != (ItemServer{Host: "build.example.com", Port: "2222", SSHKeyID: key.ID}) || len(saved.Fields) != 1 {
+	wantServer := ItemServer{Host: "build.example.com", Port: "2222", SSHKeyID: key.ID, SSHKeyTitle: "Deploy key", SSHKeyFingerprint: key.Fingerprint}
+	if saved.Server == nil || *saved.Server != wantServer || key.Fingerprint == "" || len(saved.Fields) != 1 {
 		t.Errorf("saved server = %+v, fields %+v", saved.Server, saved.Fields)
 	}
 
@@ -93,7 +94,7 @@ func TestServerLinksOnlyToAnSSHKeyOfItsVault(t *testing.T) {
 	}
 	// The link to the deleted key stays, so the server can still be edited; a new link to it cannot be made.
 	saved.Title = "Build server"
-	if edited, err := service.SaveItem(personalID, saved); err != nil || edited.Server.SSHKeyID != key.ID {
+	if edited, err := service.SaveItem(personalID, saved); err != nil || edited.Server.SSHKeyID != key.ID || edited.Server.SSHKeyTitle != "" {
 		t.Errorf("editing a server whose key was deleted = %+v, %v", edited.Server, err)
 	}
 	if _, err := service.SaveItem(personalID, ItemDetail{Category: item.CategoryServer, Title: "Other", Server: &ItemServer{SSHKeyID: key.ID}}); err == nil {

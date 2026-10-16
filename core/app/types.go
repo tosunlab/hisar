@@ -181,12 +181,15 @@ type ItemDetail struct {
 }
 
 // ItemServer is a server's values besides its login data. SSHKeyID names an ssh-key item in the same vault, or is "";
-// PortWarning says when the port is not a number from 1 to 65535.
+// SSHKeyTitle and SSHKeyFingerprint describe that key, and are "" when it is gone. PortWarning says when the port is not a
+// number from 1 to 65535. SaveItem reads only Host, Port and SSHKeyID.
 type ItemServer struct {
-	Host        string `json:"host"`
-	Port        string `json:"port"`
-	SSHKeyID    string `json:"sshKeyId"`
-	PortWarning string `json:"portWarning"`
+	Host              string `json:"host"`
+	Port              string `json:"port"`
+	SSHKeyID          string `json:"sshKeyId"`
+	SSHKeyTitle       string `json:"sshKeyTitle"`
+	SSHKeyFingerprint string `json:"sshKeyFingerprint"`
+	PortWarning       string `json:"portWarning"`
 }
 
 // ItemSoftwareLicense is a software license; the license key is concealed. DownloadURL is a field, not the item's
