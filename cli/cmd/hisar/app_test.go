@@ -401,10 +401,41 @@ func TestIdentitiesThroughTheApp(t *testing.T) {
 	}
 }
 
+func TestAPICredentialsThroughTheApp(t *testing.T) {
+	app := startFakeApp(t)
+	input := "Stripe\nStripe\nkey_1\nsk_live_123\napi.stripe.com\n2031/1/5\n"
+	_, stderr, err := runCapturingOutput(t, false, input, "add", "--type", "api-credential")
+	if err != nil || !strings.Contains(stderr, `Saved "Stripe" to Personal.`) {
+		t.Fatalf("add --type api-credential: %q %v", stderr, err)
+	}
+	if !strings.Contains(stderr, "Expiry (YYYY-MM-DD): ") || strings.Contains(stderr, "sk_live_123") {
+		t.Errorf("prompts: %q", stderr)
+	}
+	added := app.findRequest(cliprotocol.TypeSaveItem)[0].Item
+	wantFields := []cliprotocol.Field{
+		{Name: item.FieldService, Value: "Stripe"},
+		{Name: item.FieldKeyID, Value: "key_1"},
+		{Name: item.FieldSecret, Value: "sk_live_123", Concealed: true},
+		{Name: item.FieldHost, Value: "api.stripe.com"},
+		{Name: item.FieldExpiry, Value: "2031-01-05"},
+	}
+	if added.Category != item.CategoryAPICredential || added.Fields == nil || !reflect.DeepEqual(*added.Fields, wantFields) {
+		t.Errorf("add request %+v %+v", added, added.Fields)
+	}
+
+	app.mutex.Lock()
+	app.hello.Features = []string{cliprotocol.FeatureSecureNotes, cliprotocol.FeatureCreditCards, cliprotocol.FeatureIdentities}
+	app.mutex.Unlock()
+	_, stderr, err = runCapturingOutput(t, false, input, "add", "--type", "api-credential")
+	if err == nil || !strings.Contains(err.Error(), "cannot save api-credential items") || strings.Contains(stderr, "Service") {
+		t.Errorf("add an API credential through an older app: %q %v", stderr, err)
+	}
+}
+
 func TestAddAndEditFollowTheItemType(t *testing.T) {
 	app := startFakeApp(t)
 	_, stderr, err := runCapturingOutput(t, false, "Router\n", "add", "--type", "wireless-router")
-	if err == nil || !strings.Contains(err.Error(), `unknown item type "wireless-router"; use one of login, secure-note, credit-card, identity`) {
+	if err == nil || !strings.Contains(err.Error(), `unknown item type "wireless-router"; use one of login, secure-note, credit-card, identity, api-credential`) {
 		t.Errorf("add an unknown type: %v", err)
 	}
 	if strings.Contains(stderr, "Title") {

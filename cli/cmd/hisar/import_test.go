@@ -29,12 +29,12 @@ func TestPrintImportPreview(t *testing.T) {
 	printImportPreview(&buffer, "export.csv", result, "Personal", []int{0})
 	output := buffer.String()
 	for _, want := range []string{
-		"File:          export.csv",
-		"Format:        CSV (Chrome, Firefox, Safari, Edge and others)",
-		"Vault:         Personal",
-		"Logins:        2",
-		"Secure notes:  1",
-		"SSH keys:      0",
+		"File:            export.csv",
+		"Format:          CSV (Chrome, Firefox, Safari, Edge and others)",
+		"Vault:           Personal",
+		"Logins:          2",
+		"Secure notes:    1",
+		"SSH keys:        0",
 		"Already in Personal (same title, username and website): 1\n  - GitHub, alice, https://github.com\n",
 		"Not imported: 1\n  - GitHub: the same entry appears earlier in this file\n",
 	} {

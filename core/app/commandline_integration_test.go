@@ -147,6 +147,7 @@ func TestIntegrationCommandLineThroughApp(t *testing.T) {
 	}
 
 	checkSecretReferenceThroughApp(t, service, approver, binaryPath, socketPath, statePath)
+	checkAPICredentialThroughApp(t, binaryPath, socketPath, statePath)
 	checkShareLinkThroughApp(t, approver, binaryPath, socketPath, statePath)
 
 	runner.Stop()

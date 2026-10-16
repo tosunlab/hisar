@@ -182,8 +182,8 @@ func convertToItemChange(vaultItem *item.Item) *cliprotocol.ItemChange {
 		ID: vaultItem.ID, Revision: vaultItem.Revision, Title: vaultItem.Overview.Title, Username: vaultItem.Overview.Username,
 		URLs: vaultItem.Overview.URLs, Password: vaultItem.Details.Password, Notes: vaultItem.Details.Notes, Category: vaultItem.Overview.Category,
 	}
-	// A card's or identity's values are its named fields, so the fields travel with it.
-	if vaultItem.IsCategory(item.CategoryCreditCard) || vaultItem.IsCategory(item.CategoryIdentity) {
+	// A card's, identity's or API credential's values are its named fields, so the fields travel with it.
+	if vaultItem.IsCategory(item.CategoryCreditCard) || vaultItem.IsCategory(item.CategoryIdentity) || vaultItem.IsCategory(item.CategoryAPICredential) {
 		fields := []cliprotocol.Field{}
 		for _, field := range vaultItem.Details.Fields {
 			fields = append(fields, cliprotocol.Field{Name: field.Name, Value: field.Value, Concealed: field.Concealed})

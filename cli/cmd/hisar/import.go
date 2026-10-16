@@ -65,14 +65,15 @@ func describeDuplicate(vaultItem item.Item) string {
 
 func printImportPreview(writer io.Writer, fileName string, result *importer.Result, vaultName string, duplicateIndexes []int) {
 	summary := importer.Summarize(result.Items)
-	fmt.Fprintf(writer, "File:          %s\n", fileName)
-	fmt.Fprintf(writer, "Format:        %s\n", importer.GetFormatName(result.Format))
-	fmt.Fprintf(writer, "Vault:         %s\n", vaultName)
-	fmt.Fprintf(writer, "Logins:        %d\n", summary.LoginCount)
-	fmt.Fprintf(writer, "Secure notes:  %d\n", summary.SecureNoteCount)
-	fmt.Fprintf(writer, "SSH keys:      %d\n", summary.SSHKeyCount)
-	fmt.Fprintf(writer, "Credit cards:  %d\n", summary.CreditCardCount)
-	fmt.Fprintf(writer, "Identities:    %d\n", summary.IdentityCount)
+	fmt.Fprintf(writer, "File:            %s\n", fileName)
+	fmt.Fprintf(writer, "Format:          %s\n", importer.GetFormatName(result.Format))
+	fmt.Fprintf(writer, "Vault:           %s\n", vaultName)
+	fmt.Fprintf(writer, "Logins:          %d\n", summary.LoginCount)
+	fmt.Fprintf(writer, "Secure notes:    %d\n", summary.SecureNoteCount)
+	fmt.Fprintf(writer, "SSH keys:        %d\n", summary.SSHKeyCount)
+	fmt.Fprintf(writer, "Credit cards:    %d\n", summary.CreditCardCount)
+	fmt.Fprintf(writer, "Identities:      %d\n", summary.IdentityCount)
+	fmt.Fprintf(writer, "API credentials: %d\n", summary.APICredentialCount)
 	if len(duplicateIndexes) > 0 {
 		fmt.Fprintf(writer, "Already in %s (same title, username and website): %d\n", vaultName, len(duplicateIndexes))
 		for _, index := range duplicateIndexes {
