@@ -57,7 +57,7 @@ func TestIdentityDocumentNumbersAreConcealed(t *testing.T) {
 	}
 }
 
-func TestNormalizeBirthDate(t *testing.T) {
+func TestNormalizeDate(t *testing.T) {
 	for date, want := range map[string]string{
 		"1990-04-12":    "1990-04-12",
 		"1990/4/2":      "1990-04-02",
@@ -71,8 +71,8 @@ func TestNormalizeBirthDate(t *testing.T) {
 		"1990-04-31":    "1990-04-31",
 		"":              "",
 	} {
-		if got := NormalizeBirthDate(date); got != want {
-			t.Errorf("NormalizeBirthDate(%q) = %q, want %q", date, got, want)
+		if got := NormalizeDate(date); got != want {
+			t.Errorf("NormalizeDate(%q) = %q, want %q", date, got, want)
 		}
 	}
 }

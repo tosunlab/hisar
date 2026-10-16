@@ -1,11 +1,8 @@
 package item
 
 import (
-	"regexp"
 	"slices"
-	"strconv"
 	"strings"
-	"time"
 )
 
 // CategoryIdentity items keep a person's details in custom fields with the names below, as cards do, so an app that does
@@ -82,27 +79,6 @@ func NormalizeIdentity(vaultItem *Item) {
 	}
 	identity, otherFields := ReadIdentity(vaultItem)
 	trimRecord(&identity, identityFields)
-	identity.BirthDate = NormalizeBirthDate(identity.BirthDate)
+	identity.BirthDate = NormalizeDate(identity.BirthDate)
 	WriteIdentity(vaultItem, identity, otherFields)
-}
-
-var yearFirstDate = regexp.MustCompile(`^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$`)
-
-// NormalizeBirthDate writes a date given year first, such as 1990/4/12, as 1990-04-12. Any other date, or one with no
-// such month or day, is kept as typed: 04/12/1990 may mean April or December.
-func NormalizeBirthDate(date string) string {
-	date = strings.TrimSpace(date)
-	match := yearFirstDate.FindStringSubmatch(date)
-	if match == nil {
-		return date
-	}
-	year, _ := strconv.Atoi(match[1])
-	month, _ := strconv.Atoi(match[2])
-	day, _ := strconv.Atoi(match[3])
-	// time.Date carries an impossible day, such as February 31, into the next month.
-	parsed := time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.UTC)
-	if parsed.Year() != year || int(parsed.Month()) != month || parsed.Day() != day {
-		return date
-	}
-	return parsed.Format(time.DateOnly)
 }
