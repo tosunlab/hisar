@@ -39,9 +39,7 @@ final class HisarUITests: HisarUITestCase {
         goBack()
         waitFor(app.buttons["vault-Personal"])
 
-        app.buttons["new-menu"].tap()
-        waitFor(app.buttons["new-secure-note"])
-        app.buttons["new-secure-note"].tap()
+        choose("new-secure-note", from: "new-menu")
         type("Recovery codes", into: app.textFields["editor-title"])
         XCTAssertFalse(app.textFields["editor-username"].exists, "a secure note asks for a username")
         let notesField = app.textViews["editor-notes"].exists ? app.textViews["editor-notes"] : app.textFields["editor-notes"]
@@ -55,9 +53,7 @@ final class HisarUITests: HisarUITestCase {
         goBack()
         waitFor(app.buttons["vault-Personal"])
 
-        app.buttons["new-menu"].tap()
-        waitFor(app.buttons["new-credit-card"])
-        app.buttons["new-credit-card"].tap()
+        choose("new-credit-card", from: "new-menu")
         type("Visa", into: app.textFields["editor-title"])
         XCTAssertFalse(app.textFields["editor-username"].exists, "a credit card asks for a username")
         type("4111111111111111", into: app.secureTextFields["editor-card-number"])
@@ -72,9 +68,7 @@ final class HisarUITests: HisarUITestCase {
         goBack()
         waitFor(app.buttons["vault-Personal"])
 
-        app.buttons["new-menu"].tap()
-        waitFor(app.buttons["new-identity"])
-        app.buttons["new-identity"].tap()
+        choose("new-identity", from: "new-menu")
         type("Passport", into: app.textFields["editor-title"])
         XCTAssertFalse(app.textFields["editor-username"].exists, "an identity asks for a username")
         type("Alice", into: app.textFields["editor-identity-first-name"])
