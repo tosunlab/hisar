@@ -922,6 +922,62 @@ export async function deleteItem(itemID: string, vaultID = store.selectedVaultID
   return true;
 }
 
+// reloadSelectedVaultItems lists the vault on screen again, as summaries without secrets.
+async function reloadSelectedVaultItems(): Promise<void> {
+  const allItem = await runAction(() => api.listAllItem(store.selectedVaultID));
+  if (allItem) {
+    store.allItem = sortAllItem(allItem);
+  }
+}
+
+// moveItem moves an item of vaultID to targetVaultID; it keeps its ID, so it stays a favorite.
+export async function moveItem(vaultID: string, itemID: string, targetVaultID: string): Promise<boolean> {
+  const moved = await runAction(() => api.moveItem(vaultID, itemID, targetVaultID));
+  if (!moved) {
+    return false;
+  }
+  if (vaultID === store.selectedVaultID) {
+    store.allItem = store.allItem.filter((vaultItem) => vaultItem.id !== itemID);
+    dropMissingTagFilter();
+  } else if (targetVaultID === store.selectedVaultID) {
+    await reloadSelectedVaultItems();
+  }
+  for (const vault of store.allVault) {
+    if (vault.id === vaultID) {
+      vault.itemCount = Math.max(0, vault.itemCount - 1);
+    } else if (vault.id === targetVaultID) {
+      vault.itemCount += 1;
+    }
+  }
+  if (store.selectedItem?.id === itemID) {
+    store.selectedItem = null;
+    store.editorMode = "view";
+  }
+  await loadAllFavoriteQuietly();
+  const targetName = store.allVault.find((vault) => vault.id === targetVaultID)?.name ?? "the vault";
+  showNotice(`Moved ${moved.title} to ${targetName}`);
+  return true;
+}
+
+// duplicateItem saves a copy of the item in its vault and opens the copy when that vault is on screen.
+export async function duplicateItem(vaultID: string, itemID: string): Promise<boolean> {
+  const copied = await runAction(() => api.duplicateItem(vaultID, itemID));
+  if (!copied) {
+    return false;
+  }
+  const vault = store.allVault.find((candidate) => candidate.id === vaultID);
+  if (vault) {
+    vault.itemCount += 1;
+  }
+  if (vaultID === store.selectedVaultID && !store.isFavoritesSelected) {
+    await reloadSelectedVaultItems();
+    store.selectedItem = copied;
+    store.editorMode = "view";
+  }
+  showNotice(`Duplicated as ${copied.title}`);
+  return true;
+}
+
 export async function deletePasskey(credentialID: string): Promise<void> {
   if (!store.selectedItem) {
     return;

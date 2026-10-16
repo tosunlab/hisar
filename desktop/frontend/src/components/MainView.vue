@@ -3,11 +3,14 @@ import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import {
   copyItemField,
   createVault,
+  duplicateItem,
+  hasShareableField,
   filterAllFavorite,
   filterAllItem,
   listAllTag,
   lock,
   openImport,
+  openItemShareLinkDialog,
   openShareLinks,
   openWebsite,
   openSharing,
@@ -67,6 +70,7 @@ import ItemDetailPanel from "./ItemDetailPanel.vue";
 import ItemEditor from "./ItemEditor.vue";
 import ConfirmDeleteDialog from "./ConfirmDeleteDialog.vue";
 import ContextMenu, { type ContextMenuAction } from "./ContextMenu.vue";
+import MoveItemDialog from "./MoveItemDialog.vue";
 import ImportPanel from "./ImportPanel.vue";
 import ItemTile from "./ItemTile.vue";
 import SettingsPanel from "./SettingsPanel.vue";
@@ -104,6 +108,7 @@ const canCreate = computed(() => canEdit.value && !store.isFavoritesSelected);
 // or fields, so the copy actions appear once it has loaded. favorite is set when the item was right-clicked in Favorites.
 const itemMenu = ref<{ vaultID: string; vaultItem: ItemDetail; favorite?: FavoriteItem; detail: ItemDetail | null; x: number; y: number } | null>(null);
 const itemToDelete = ref<{ vaultID: string; itemID: string; title: string } | null>(null);
+const itemToMove = ref<{ vaultID: string; itemID: string; title: string } | null>(null);
 
 async function openItemMenu(vaultID: string, vaultItem: ItemDetail, event: MouseEvent, favorite?: FavoriteItem): Promise<void> {
   itemMenu.value = { vaultID, vaultItem, favorite, detail: null, x: event.clientX, y: event.clientY };
@@ -118,7 +123,7 @@ async function openItemMenu(vaultID: string, vaultItem: ItemDetail, event: Mouse
 }
 
 // buildItemMenuActions lists what applies to the item, in groups split by separators: open, copy and open the website;
-// favorite; edit and delete where its vault is writable.
+// favorite and share link; edit, duplicate, move and delete where its vault is writable.
 function buildItemMenuActions(): (ContextMenuAction | null)[] {
   const menu = itemMenu.value;
   if (!menu) {
@@ -144,32 +149,52 @@ function buildItemMenuActions(): (ContextMenuAction | null)[] {
       ? { id: "open-website", label: vaultItem.category === serverCategory ? "Open admin console" : "Open website", icon: "globe" as const, run: () => openWebsite(link) }
       : null,
   ];
-  const favoriteGroup: ContextMenuAction[] = [
+  // A share link needs the item's values, so it is offered once the details have loaded.
+  const shareAction: ContextMenuAction | null =
+    menu.detail && hasShareableField(menu.detail)
+      ? {
+          id: "share-link",
+          label: "Share link…",
+          icon: "link",
+          run: async () => {
+            await open();
+            if (store.selectedItem?.id === vaultItem.id) {
+              await openItemShareLinkDialog();
+            }
+          },
+        }
+      : null;
+  const favoriteGroup = [
     {
       id: "favorite",
       label: vaultItem.isFavorite ? "Remove from Favorites" : "Add to Favorites",
-      icon: vaultItem.isFavorite ? "starFilled" : "star",
+      icon: vaultItem.isFavorite ? ("starFilled" as const) : ("star" as const),
       run: () => setItemFavorite(vaultID, vaultItem.id, !vaultItem.isFavorite),
     },
+    shareAction,
   ];
   const vault = store.allVault.find((candidate) => candidate.id === vaultID);
-  const editGroup: ContextMenuAction[] =
-    vault && vault.role !== "reader"
-      ? [
-          {
-            id: "edit",
-            label: "Edit",
-            icon: "edit",
-            run: async () => {
-              await open();
-              if (store.selectedItem?.id === vaultItem.id) {
-                startEditingItem();
-              }
-            },
+  const isWritable = vault !== undefined && vault.role !== "reader";
+  const hasMoveTarget = store.allVault.some((candidate) => candidate.id !== vaultID && candidate.role !== "reader");
+  const target = { vaultID, itemID: vaultItem.id, title: vaultItem.title };
+  const editGroup = isWritable
+    ? [
+        {
+          id: "edit",
+          label: "Edit",
+          icon: "edit" as const,
+          run: async () => {
+            await open();
+            if (store.selectedItem?.id === vaultItem.id) {
+              startEditingItem();
+            }
           },
-          { id: "delete", label: "Delete…", icon: "trash", isDanger: true, run: () => (itemToDelete.value = { vaultID, itemID: vaultItem.id, title: vaultItem.title }) },
-        ]
-      : [];
+        },
+        vaultItem.category !== sshKeyCategory ? { id: "duplicate", label: "Duplicate", icon: "duplicate" as const, run: () => duplicateItem(vaultID, vaultItem.id) } : null,
+        hasMoveTarget ? { id: "move", label: "Move to…", icon: "move" as const, run: () => (itemToMove.value = target) } : null,
+        { id: "delete", label: "Delete…", icon: "trash" as const, isDanger: true, run: () => (itemToDelete.value = target) },
+      ]
+    : [];
   return [firstGroup, favoriteGroup, editGroup]
     .map((group) => group.filter((action): action is ContextMenuAction => action !== null))
     .filter((group) => group.length > 0)
@@ -562,6 +587,7 @@ onBeforeUnmount(() => {
       :all-action="allItemMenuAction"
       @close="itemMenu = null"
     />
+    <MoveItemDialog v-if="itemToMove" :vault-i-d="itemToMove.vaultID" :item-i-d="itemToMove.itemID" :title="itemToMove.title" @close="itemToMove = null" />
     <ConfirmDeleteDialog v-if="itemToDelete" :vault-i-d="itemToDelete.vaultID" :item-i-d="itemToDelete.itemID" :title="itemToDelete.title" @close="itemToDelete = null" />
     <ShareLinkDialog v-if="store.shareLinkDialog" :key="`${store.shareLinkDialog.mode}-${store.shareLinkDialog.itemID}`" />
   </div>

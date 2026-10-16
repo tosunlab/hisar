@@ -86,7 +86,7 @@ The app keeps its session in `~/Library/Application Support/hisar/desktop.json` 
 
 Design: `docs/DESIGN.md` §9.1 (desktop: item menu).
 
-- **An item in the list** (a vault's or Favorites): **Open**; **Copy** for its username, password, one-time code and main value (card number, license key, API secret, connection string, public key), each once the item's details have loaded; **Open website** (**Open admin console** for a server); **Add to Favorites** or **Remove from Favorites**; and, in a vault the user can edit, **Edit** and **Delete…**, which asks first. Arrow keys move through the menu and Escape closes it.
+- **An item in the list** (a vault's or Favorites): **Open**; **Copy** for its username, password, one-time code and main value (card number, license key, API secret, connection string, public key), each once the item's details have loaded; **Open website** (**Open admin console** for a server); **Add to Favorites** or **Remove from Favorites**; **Share link…**; and, in a vault the user can edit, **Edit**, **Duplicate** ("GitHub copy", without passkeys), **Move to…** (another vault the user can edit; the item keeps its ID) and **Delete…**, which asks first. Arrow keys move through the menu and Escape closes it.
 - **A field row in the detail panel** offers the row's own buttons by name, such as **Reveal password**, **Copy password** and **Copy secret reference for password**, or **Open website**. With text selected in the row, the system's menu appears instead, with its Copy.
 
 ## Sharing, people and devices

@@ -66,7 +66,19 @@ describe("The item list's context menu", () => {
   it("lists what applies to a login once its details load, and copies without selecting it", async () => {
     const wrapper = mount(MainView, { attachTo: document.body });
     const allLabel = await openItemMenu(wrapper, "GitHub");
-    expect(allLabel).toEqual(["Open", "Copy username", "Copy password", "Copy one-time code", "Open website", "Add to Favorites", "Edit", "Delete…"]);
+    expect(allLabel).toEqual([
+      "Open",
+      "Copy username",
+      "Copy password",
+      "Copy one-time code",
+      "Open website",
+      "Add to Favorites",
+      "Share link…",
+      "Edit",
+      "Duplicate",
+      "Move to…",
+      "Delete…",
+    ]);
     expect(wrapper.findAll('[data-testid="context-menu"] hr')).toHaveLength(2);
     expect(api.getItem).toHaveBeenCalledWith("personal", "github");
 
@@ -98,8 +110,10 @@ describe("The item list's context menu", () => {
     store.selectedVaultID = "work";
     const wrapper = mount(MainView, { attachTo: document.body });
     const allLabel = await openItemMenu(wrapper, "GitHub");
-    expect(allLabel).not.toContain("Edit");
-    expect(allLabel).not.toContain("Delete…");
+    for (const label of ["Edit", "Duplicate", "Move to…", "Delete…"]) {
+      expect(allLabel).not.toContain(label);
+    }
+    expect(allLabel).toContain("Share link…");
     wrapper.unmount();
   });
 
@@ -110,7 +124,7 @@ describe("The item list's context menu", () => {
     api.getItem.mockResolvedValue({ ...vpn, password: "vpn-password" });
     const wrapper = mount(MainView, { attachTo: document.body });
     const allLabel = await openItemMenu(wrapper, "Office VPN");
-    expect(allLabel).toEqual(["Open", "Copy username", "Copy password", "Remove from Favorites", "Edit", "Delete…"]);
+    expect(allLabel).toEqual(["Open", "Copy username", "Copy password", "Remove from Favorites", "Share link…", "Edit", "Duplicate", "Move to…", "Delete…"]);
     await wrapper.find('[data-testid="context-menu-copy-username"]').trigger("click");
     await flushPromises();
     expect(api.copyField).toHaveBeenCalledWith("team", "vpn", "username");
@@ -147,6 +161,55 @@ describe("The item list's context menu", () => {
     expect(store.allItem.map((vaultItem) => vaultItem.id)).toEqual(["bank"]);
     expect(store.selectedItem?.id).toBe("bank");
     expect(dialog().exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("duplicates an item and opens the copy", async () => {
+    const copy = createItem({ id: "github-copy", title: "GitHub copy" });
+    api.duplicateItem.mockResolvedValue(copy);
+    api.listAllItem.mockResolvedValue([bank, github, copy]);
+    const wrapper = mount(MainView, { attachTo: document.body });
+    await openItemMenu(wrapper, "GitHub");
+    await wrapper.find('[data-testid="context-menu-duplicate"]').trigger("click");
+    await flushPromises();
+    expect(api.duplicateItem).toHaveBeenCalledWith("personal", "github");
+    expect(store.selectedItem?.id).toBe("github-copy");
+    expect(store.allItem.map((vaultItem) => vaultItem.title)).toEqual(["Bank", "GitHub", "GitHub copy"]);
+    expect(store.noticeMessage).toBe("Duplicated as GitHub copy");
+    expect(store.allVault.find((vault) => vault.id === "personal")?.itemCount).toBe(3);
+    wrapper.unmount();
+  });
+
+  it("moves an item to a vault the user may add items to", async () => {
+    store.selectedItem = github;
+    api.moveItem.mockResolvedValue({ ...github });
+    const wrapper = mount(MainView, { attachTo: document.body });
+    await openItemMenu(wrapper, "GitHub");
+    await wrapper.find('[data-testid="context-menu-move"]').trigger("click");
+    const dialog = wrapper.find('[data-testid="move-item-dialog"]');
+    expect(dialog.text()).toContain("Move “GitHub”");
+    // Work is read-only for this user, and Personal is where the item already is.
+    expect(dialog.findAll('[data-testid="move-item-target"] option').map((option) => option.text())).toEqual(["Team"]);
+    await wrapper.find('[data-testid="move-item-confirm"]').trigger("submit");
+    await flushPromises();
+    expect(api.moveItem).toHaveBeenCalledWith("personal", "github", "team");
+    expect(store.allItem.map((vaultItem) => vaultItem.id)).toEqual(["bank"]);
+    expect(store.selectedItem).toBeNull();
+    expect(store.allVault.find((vault) => vault.id === "team")?.itemCount).toBe(2);
+    expect(store.noticeMessage).toBe("Moved GitHub to Team");
+    expect(wrapper.find('[data-testid="move-item-dialog"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("opens the share link dialog for the item", async () => {
+    api.listAllShareLinkField.mockResolvedValue([{ key: "password", label: "password", isDefault: true, isConcealed: true }]);
+    const wrapper = mount(MainView, { attachTo: document.body });
+    await openItemMenu(wrapper, "GitHub");
+    await wrapper.find('[data-testid="context-menu-share-link"]').trigger("click");
+    await flushPromises();
+    expect(store.selectedItem?.id).toBe("github");
+    expect(api.listAllShareLinkField).toHaveBeenCalledWith("personal", "github");
+    expect(store.shareLinkDialog?.itemID).toBe("github");
     wrapper.unmount();
   });
 
