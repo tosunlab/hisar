@@ -16,7 +16,7 @@ Status: **Draft, Phase 0**. This document is the source of truth for the securit
 
 **Non-goals (for now)**
 
-- Teams and organizations, billing, SSO/SCIM, enterprise policy.
+- Billing, SSO/SCIM, enterprise policy. Organizations and teams exist (§5.11), without any of these.
 - Open registration: sign-up stays invite-only (§5.1).
 - Protecting an unlocked device from local malware (out of scope for every password manager).
 - Hiding metadata from the server completely (see §2.3).
@@ -33,15 +33,15 @@ Item contents (passwords, notes, TOTP seeds, passkeys, attachments), item metada
 |---|---|---|
 | Network attacker | Reads/modifies traffic | TLS + OPAQUE: learns nothing, cannot impersonate either side |
 | Server breach (DB dump) | Full copy of DB and backups | Ciphertext only. Offline guessing impossible without the Secret Key (128-bit) |
-| Malicious/compromised server (live) | Arbitrary responses | Cannot read data or forge items (AEAD + AAD). Can withhold or roll back data (detected, §7.5). Can substitute public keys during sharing (mitigated by fingerprint verification, §5.6) |
+| Malicious/compromised server (live) | Arbitrary responses | Cannot read data or forge items (AEAD + AAD). Can withhold or roll back data (detected, §7.5). Can substitute public keys during sharing (mitigated by fingerprint verification, §5.6). Can claim an invitation was accepted (§5.8) or an account is in a team (§5.11), so that owners' apps wrap vault keys to an account it controls: apps trust the server's records of who accepted and who is in which team, and only pin and show the keys they wrap to |
 | Stolen locked device | Disk image | Needs master password; Secret Key on disk alone is not enough |
 | Stolen unlocked device / local malware | Memory, keystrokes | Out of scope. Minimised by auto-lock and short key lifetime |
 | Phishing site | Lures user to wrong origin | Extension autofills only on exact origin match (§9.2) |
-| Another user | Legit account | Sees only vaults shared with them, and only the people they share a vault with or who invited them (§5.8). Cannot learn whether an email has an account |
+| Another user | Legit account | Sees only vaults shared with them or given to their teams, and only the people they share a vault with, who invited them, or who are in an organization with them (§5.8, §5.11). Cannot learn whether an email has an account. An organization admin manages its rosters and gets no vault key for that; an admin who adds themselves to a team gets its vaults like any member, a roster change every member of the organization sees and the audit log records |
 
 ### 2.3 Accepted metadata leakage
 
-The server sees: account emails, the emails people invite or share with, which users can access which vaults, number of items per vault, ciphertext sizes, timestamps, device list, IPs. Item titles, URLs and vault names are encrypted. For favorites (§4.7) it sees that an account saved its preferences record, when and how large it is, never which items are starred. For share links (§5.9) it sees who created a link, its size, expiry, view limit and views, whether it needs a passphrase, and the IP addresses that open it; never what was shared or the key.
+The server sees: account emails, the emails people invite or share with, which users can access which vaults, number of items per vault, ciphertext sizes, timestamps, device list, IPs. Item titles, URLs and vault names are encrypted. For organizations (§5.11) it sees their names, team names, who is a member of which organization and team with which role, the emails invited to them, and which teams were given which vaults with which role. For favorites (§4.7) it sees that an account saved its preferences record, when and how large it is, never which items are starred. For share links (§5.9) it sees who created a link, its size, expiry, view limit and views, whether it needs a passphrase, and the IP addresses that open it; never what was shared or the key.
 
 ## 3. Cryptographic primitives
 
@@ -124,6 +124,7 @@ The server stores `encKeyset`, the KEM public key, the Ed25519 public key and th
   - The server applies it in one transaction. It returns 409 unless the submitted items match the stored items and revisions exactly, so concurrent edits are never lost; the client then retries, up to 3 times. It replaces all access grants, gives every item a new seq so all devices resync, and drops the vault's item history, because that history is encrypted with the old key.
   - The rotating owner must keep owner access. Rotation requests may be up to 32 MiB; every other endpoint is limited to 2 MiB.
   - Copies the removed member downloaded before the rotation stay readable to them; that is unavoidable.
+- Organization vaults (§5.11) use the same per-member wrapping: a team is a roster on the server, never a key. The server decides who is entitled to an organization vault from its teams; an owner's app wraps `K_vault` for each entitled account that has no wrapped key yet, and when an account loses its entitlement the server deletes its wrapped key at once and marks the vault for rotation, which an owner's app then performs as above, keeping every remaining member and role.
 
 ### 4.5 Items
 
@@ -400,6 +401,52 @@ Then it deletes the vault row; access grants, wrapped keys, items, tombstones, i
 
 **CLI.** `hisar vault rename <vault> [name]`, `hisar vault delete <vault> [--move-to <vault> | --delete-items --confirm <vault name>] [-y]`, `hisar vault leave <vault> [-y]` and `hisar vault create <name>` (`vault-create` stays). In a terminal they ask what is missing: the new name; for a delete, the item count, "These people lose access:" with each member's name, email and role, then "What happens to its items?" with one "Move them to <vault>" line per writable vault (1, the default) and "Delete them with the vault", which asks "Type Work to delete it and its N items"; a move or an empty vault asks "(y/N)". Without a terminal nothing is asked: a vault with items needs `--move-to` or `--delete-items --confirm <name>`, and a move, an empty vault or a leave needs `-y`. A name typed or passed that is not the vault's exact name deletes nothing. Through the app the commands use `vaults.actions`, `vaults.rename`, `vaults.delete` and `vaults.leave` (§9.4); standalone they run the same session code.
 
+**Organization vaults.** Members get an organization vault through their teams (§5.11), so it cannot be left, and nobody is removed from it directly: `DELETE /vaults/{id}/access/{accountID}` answers 400 "access to an organization vault comes from its teams" for it, and `GetVaultActions` says to ask an organization admin instead. Owners rename and delete it as any other vault; a delete that moves items may move them into, or out of, an organization vault.
+
+### 5.11 Organizations, teams and organization vaults
+
+An organization is a group of accounts, for example a company, that shares vaults through teams instead of person by person. Its admins manage who is in it, its teams and which teams get which vaults; they never get a vault key by being admins. An admin who adds themselves to a team gets its vaults from an owner's app like any other member, which every member sees in the team and the audit log records. Owners' apps deliver keys to whoever the server says is in a team (§2.2), verifying and pinning each recipient's keys as for a share. There is no admin recovery (§6) and no billing, SSO or policy.
+
+**Model.**
+
+- **Organization:** a name (server-visible, §2.3) and members, each `admin` or `member`. Any signed-in user creates one with `POST /organizations {name}` and is its first admin. An organization always keeps at least one admin.
+- **Team:** a name, unique in its organization regardless of case, and a subset of the organization's members. Only admins create, rename and delete teams and add or remove their members.
+- **Organization vault:** a vault of type `organization` with `organizationId`. It is given to one or more teams of that organization, each with a vault role (`owner`, `editor`, `reader`). Organization and team names are 1 to 100 characters without control characters (`apitypes.CleanOrganizationName`).
+- **Entitlement:** an account is entitled to an organization vault while it is in at least one team given that vault; its role is the strongest of those teams' roles (`apitypes.RankVaultRole`). Every `vault_access` row of an organization vault belongs to an entitled account and has its entitled role; an entitled account without a row has no wrapped key yet and is a **key request**. One store function (`reconcileOrganizationVaults`) keeps this true: it runs at the end of every transaction that changes organization members, team members, team vaults or teams, deletes the rows of accounts that are no longer entitled and marks those vaults `needs_rotation`, and sets every other row's role to the entitled role.
+- **Invariants**, checked by the reconciliation: every vault keeps at least one `vault_access` row with role `owner`, so somebody can always deliver keys and rotate; a change that would leave an organization vault without one is refused with 409 "Nobody who can open this vault would be its owner. Give owner access to a team whose members already have the vault first." (Account deletion is the exception and follows §5.7.1.) An organization vault has at most 1000 entitled accounts, the most one rotation carries (409 otherwise).
+- **Serialization.** Every transaction that changes an organization, or the access of one of its vaults (key delivery, rotation, creating or deleting an organization vault), first locks the organization's row (`SELECT … FOR UPDATE`), then the vault rows it touches in ID order, and only then checks rights, invariants and entitlements. Concurrent changes to one organization therefore run one after the other, and no check is made against a state another transaction is changing.
+- **Key generation.** Each vault has `key_generation`, 1 at creation, incremented by every rotation, and listed as the vault's `keyGeneration`, so a key wrapped before a rotation is never delivered after it.
+
+**Organization vaults and keys.**
+
+1. **Create.** A member of a team creates a vault for it: `POST /vaults {id, type: "organization", organizationId, teamId, encName, wrappedKey}`, with the key wrapped to the creator as for any vault (§4.4). The team is given the vault as `owner` and the creator gets an owner row (403 when the caller is not in the team, 404 for a team of another organization). The other members of the team are key requests.
+2. **Give a vault to a team.** Admins: `PUT /organizations/{org}/teams/{team}/vaults/{vault} {role}` gives or changes, `DELETE` takes it back; the vault must belong to the organization (404 otherwise). Roles change at once on the server; nothing is re-wrapped for a role change.
+3. **Deliver keys.** `GET /vault-key-requests` returns `pending`: the key requests of the organization vaults the caller owns, each with the vault's `keyGeneration` and the recipient's account ID, name, email and signed public keys, and `waiting`: the organization vaults the caller is entitled to and has no key for, so the app can say it waits for an owner. On every sync, and at once on `vaults-changed` or `organizations-changed`, an owner's app (`session.CompleteVaultKeyRequests`) verifies each recipient's signed KEM key, pins their signing key (§5.6), wraps `K_vault` to them and calls `PUT /vaults/{id}/access/{accountID} {wrappedKey, role, keyGeneration}` with the generation of the key it wrapped. For an organization vault, in one transaction under the organization lock, the server accepts a new member only while the account is entitled, `role` is its entitled role and `keyGeneration` is the vault's current one (409 otherwise: the app syncs and tries again on its next sync), and for an existing member only a new wrapped key with the same role and the current generation (400 "roles in an organization vault come from its teams" for a different role). A shared vault checks `keyGeneration` too when the request carries it. Until an owner's app is unlocked and online the recipient waits, as for an accepted share (§5.8).
+4. **Rotate.** A vault marked `needs_rotation` (the vault list's `needsRotation`) is rotated by the next owner's app that syncs (`session.RotatePendingVaults`), with every current member and role, exactly as §4.4. For an organization vault the submitted members must be exactly the current `vault_access` rows with their current roles (400 otherwise), not a subset as when an owner removes someone from a shared vault. The rotation increments `key_generation` and clears `needs_rotation`. Until then the server already refuses everything to the removed account: it has no access row.
+
+**Invitations.** Joining an organization needs no key, so it is one step:
+
+- `POST /organizations/{org}/invitations {email, role}` (admins) answers `202 {"message": "Invitation sent"}` whether or not the email has an account, and works like a share invitation (§5.8): one per organization and email (a repeat replaces the role and expiry), 7 days, `organizations-changed` and an email to an existing account, a sign-up invite (§5.1) for any other address. Only the admin's own data is reported: their own email (400) or an existing member (409). It shares the share-invitation rate limits (50 per account and 100 per IP address per day).
+- `GET /organizations` returns the caller's organizations (`id`, `name`, `role`, `memberCount`) and `invitations`: the unexpired invitations to the caller's email, with the organization's name, the inviter's name and email and the role. `POST /organization-invitations/{id}/accept` makes the caller a member at once and deletes the invitation; `/decline` deletes it. `DELETE /organizations/{org}/invitations/{id}` (admins) withdraws one.
+
+**Members and teams.** `GET /organizations/{org}` (members only; 404 for anyone else) returns the organization, the caller's role, every member (account ID, name, email, role, signed public keys), every team with its member IDs and vaults (`vaultId`, `role`) and, for admins only, the pending invitations. Members of an organization see each other this way; nobody else does, and there is still no list of every account (§5.8).
+
+| Change | Endpoint | Who |
+|---|---|---|
+| Rename, delete organization | `PUT /organizations/{org}/name {name}`, `DELETE /organizations/{org}` | admins; delete is refused (400) while the organization has vaults |
+| Change a member's role | `PUT /organizations/{org}/members/{accountID} {role}` | admins; never the last admin (400) |
+| Remove a member, leave | `DELETE /organizations/{org}/members/{accountID}` | admins remove others; anyone removes themselves, except the last admin while others remain and the last member (400: delete the organization instead) |
+| Teams | `POST /organizations/{org}/teams {name}`, `PUT …/teams/{team}/name {name}`, `DELETE …/teams/{team}` | admins |
+| Team members | `PUT`, `DELETE /organizations/{org}/teams/{team}/members/{accountID}` | admins; the account must be a member of the organization (404) |
+
+Removing someone from the organization removes them from its teams. Every change that touches entitlements runs the reconciliation in the same transaction, under the organization lock, so it can be refused by the invariants (409).
+
+**Events and audit.** Every change sends `organizations-changed` to the organization's members (and to the invited account for invitations); a change to entitlements also sends `vaults-changed` to the accounts whose access changed and to the owners of each affected vault, whose apps then deliver keys or rotate. The audit log records `organization_created`, `organization_renamed`, `organization_deleted`, `organization_invitation_sent|accepted|declined|cancelled`, `organization_member_role_changed`, `organization_member_removed`, `organization_left`, `team_created`, `team_renamed`, `team_deleted`, `team_member_added`, `team_member_removed`, `team_vault_granted` and `team_vault_revoked`.
+
+**Account deletion (§5.7.1).** The account's vaults follow §5.7.1 unchanged, organization vaults included: one with no other owner is deleted with the account. Its memberships and team memberships go; when it was an organization's last admin, the remaining member who joined earliest becomes admin, and an organization left with no members is deleted with its teams and invitations. The organization invitations it sent are withdrawn (their recipients get `organizations-changed`), and those to its email are deleted. `created_by`, `added_by` and `granted_by` keep the deleted account's ID, without a foreign key, as `vaults.created_by` does (§5.7.1). No vault is marked for rotation, as in §5.7.1. The deletion preview lists the organizations (`organizations`: ID, name, `deleted` for those that go with the account, and `newAdminName` when another member becomes admin).
+
+**Apps.** `core/app` completes key requests and pending rotations on every sync, next to accepted shares (§5.8), and has the organization calls for the UI. **CLI:** `hisar orgs` lists organizations and invitations; `hisar org create|show|rename|delete|invite|cancel|accept|decline|role|remove|leave`; `hisar team create|rename|delete|add|remove`; `hisar vault create <name> --org <org> --team <team>`; `hisar vault give|take <vault> --org <org> --team <team> [-r role]`. `hisar orgs` and `hisar org show` also deliver pending keys and rotate pending vaults, and say so. The Mac and iPhone screens come later.
+
 ## 6. Account recovery
 
 Recovery is only through the Emergency Kit (§4.1). With the email, server and Secret Key printed on it, plus their master password, a user signs in on any device (§5.3). There is no other path: no admin recovery, no recovery links, no trusted contacts.
@@ -432,6 +479,7 @@ The client applies changes to its local SQLite cache and stores `nextSeq`. Chang
 - `event: vault-changed` with `{"vaultID", "seq"}` goes to every member of a vault after an item is written (with the new `seq`) or the key is rotated (`seq` 0).
 - `event: vaults-changed` with `{}` tells an account that its list of vaults changed: it was given or lost access, created a vault, or was part of a vault before a rotation, a rename or a deletion, or that someone left it (§5.10).
 - `event: share-invitations-changed` with `{}` tells an account that its received or sent share invitations changed (§5.8): one was sent to it or withdrawn, or one it can complete was accepted or declined. The desktop backend then completes accepted shares and refreshes the UI.
+- `event: organizations-changed` with `{}` tells an account that an organization it belongs to changed (members, roles, teams, team vaults, name) or that an invitation to one was sent to it or withdrawn (§5.11).
 - `event: share-links-changed` with `{}` tells an account that one of its share links was created, viewed, used up or revoked (§5.9).
 - `event: account-preferences-changed` with `{}` tells an account that one of its devices saved the preferences record, such as a new favorite (§4.7).
 - `event: approval-requested`, `approval-answered` and `approval-resolved` with `{"requestId"}` go to every stream of the account for phone approvals (§9.9). They carry no request or answer, only the ID.
@@ -481,8 +529,14 @@ share_links    (id, account_id, ciphertext, encrypted_label, passphrase_salt, pa
                 max_views, view_count, created_at, expires_at)
 share_invitations (id, vault_id, email, role, invited_by, state[pending|accepted], accepted_by,
                 created_at, expires_at, accepted_at)   -- unique (vault_id, email)
-vaults         (id, type[personal|shared], enc_name, seq, created_at)
+vaults         (id, type[personal|shared|organization], organization_id, enc_name, seq, key_generation, needs_rotation, created_at)
 vault_access   (vault_id, account_id, wrapped_key, role[owner|editor|reader], granted_by)
+organizations  (id, name, created_by, created_at)
+organization_members (organization_id, account_id, role[admin|member], added_by, added_at)
+organization_invitations (id, organization_id, email, role, invited_by, created_at, expires_at)   -- unique (organization_id, email)
+teams          (id, organization_id, name, created_by, created_at)   -- unique (organization_id, lower(name))
+team_members   (team_id, organization_id, account_id, added_by, added_at)   -- the account is a member of the organization
+team_vaults    (team_id, vault_id, organization_id, role[owner|editor|reader], granted_by, granted_at)   -- the vault is the organization's
 items          (vault_id, id, revision, seq, deleted, overview_ct, details_ct, updated_at, updated_by)
 item_history   (vault_id, id, revision, overview_ct, details_ct, updated_at, updated_by)
 attachments    (id, vault_id, item_id, size, chunk_count, storage_path)
@@ -503,6 +557,7 @@ Phone approvals (§9.9) are not in Postgres: they live in the server process's m
 | Devices | `GET /devices`, `DELETE /devices/{id}` |
 | People | `GET /members` (the caller and the people they share a vault with; public keys, signatures), `POST /invites` (any user; emailed) |
 | Share invitations | `POST /vaults/{id}/share-invitations` (owner), `GET /share-invitations` (`received`, `sent`, `waiting`), `POST /share-invitations/{id}/accept`, `POST /share-invitations/{id}/decline` (recipient), `DELETE /share-invitations/{id}` (owner) |
+| Organizations (§5.11) | `GET /organizations`, `POST /organizations`, `GET /organizations/{org}`, `PUT /organizations/{org}/name`, `DELETE /organizations/{org}`, `POST /organizations/{org}/invitations`, `DELETE /organizations/{org}/invitations/{id}`, `POST /organization-invitations/{id}/accept`, `POST /organization-invitations/{id}/decline`, `PUT`/`DELETE /organizations/{org}/members/{accountID}`, `POST /organizations/{org}/teams`, `PUT /organizations/{org}/teams/{team}/name`, `DELETE /organizations/{org}/teams/{team}`, `PUT`/`DELETE /organizations/{org}/teams/{team}/members/{accountID}`, `PUT`/`DELETE /organizations/{org}/teams/{team}/vaults/{vaultID}`, `GET /vault-key-requests` (`pending`, `waiting`) |
 | Vaults | `GET /vaults`, `POST /vaults`, `GET /vaults/{id}/members`, `PUT /vaults/{id}/access/{accountID}`, `DELETE /vaults/{id}/access/{accountID}` (an owner removes someone, or a member leaves with their own ID), `POST /vaults/{id}/rotate` (Phase 2), `PUT /vaults/{id}/name` and `POST /vaults/{id}/delete` (owner, §5.10) |
 | Items | `GET /vaults/{id}/changes`, `PUT /vaults/{id}/items/{itemID}`, `GET /vaults/{id}/items/{itemID}/history` |
 | Attachments | `PUT/GET /vaults/{id}/attachments/{attID}/chunks/{n}` |
@@ -520,7 +575,7 @@ All under `/api/v1`. JSON bodies, base64url for binary fields. There is no recov
 - No account enumeration: `POST /invites` and `POST /vaults/{id}/share-invitations` answer the same whether or not the email has an account, and do the account-dependent work (events, invites, email) after answering. Both are rate-limited per account and per IP (§5.1, §5.8).
 - Request size limits. Strict JSON decoding (unknown fields rejected).
 - Security headers on the invite page and the share link page (CSP, HSTS, no framing, §5.1, §5.9).
-- Audit log for logins, device changes, invites, share invitations, sharing changes, credential changes, failed re-authentications, account deletions, and renaming, deleting and leaving vaults (`vault_renamed`, `vault_deleted` with the member count and the target vault and item count of a move, `vault_left`; IDs only), kept 1 year (§8.6).
+- Audit log for logins, device changes, invites, share invitations, sharing changes, credential changes, failed re-authentications, account deletions, renaming, deleting and leaving vaults (`vault_renamed`, `vault_deleted` with the member count and the target vault and item count of a move, `vault_left`; IDs only), and organization changes (§5.11), kept 1 year (§8.6).
 
 ### 8.4 Deployment
 
@@ -1308,6 +1363,7 @@ go.work     Ties the Go modules together for local development
 | 6 | Person-to-person sharing by email (§5.8), emailed invites (§5.1, §8.5), Settings → People | No list of all accounts anywhere |
 | 7 | Secret references, `hisar read` and `hisar run` (§9.4.1), "Copy secret reference" in the desktop app, `hisar mcp` for coding agents with per-vault agent visibility (§9.4.2), end-to-end encrypted share links for people without a Hisar account (§5.9; iPhone later) | Developers and coding agents run commands with secrets they never see |
 | 9 | Rename, delete and leave vaults on the Mac, the iPhone and the CLI (§5.10); encrypted and plain JSON export and their import (§9.11, §9.7); `.env` import that leaves secret references behind (§9.7) | Users can take all their data out at any time and bring it back; a `.env` file holds only references |
+| 10 | Organizations, teams and organization vaults on the server, in `core` and in the CLI (§5.11); the Mac and iPhone screens follow | A team member added on the server gets the team's vaults from an owner's app, and one removed loses them at once and gets a rotated key |
 
 ## 12. Decisions
 
@@ -1320,5 +1376,6 @@ go.work     Ties the Go modules together for local development
 | 5 | Item history retention | 90 days |
 | 6 | Fingerprint check (§5.6) | Optional: a 16-hex-digit security code per person, shown in the desktop app's sharing panel and Settings → People. Key pinning and key-change refusals are always on |
 | 7 | Apple Developer Program membership (code signing and notarization; required for biometric Keychain items and Gatekeeper) | **Open**: needed before Touch ID can ship. During development, local signing with a free Apple ID team works on your own Mac |
-| 8 | Product model | A hosted service, not one family per server: person-to-person sharing by email that the recipient accepts, no account enumeration, invites emailed by the server over SMTP, sign-up stays invite-only, no teams or organizations yet. Account recovery is only through the Emergency Kit (§6) |
+| 8 | Product model | A hosted service, not one family per server: person-to-person sharing by email that the recipient accepts, no account enumeration, invites emailed by the server over SMTP, sign-up stays invite-only. Any user may create an organization and share vaults through its teams (§5.11); organization and team names are visible to the server. Account recovery is only through the Emergency Kit (§6) |
 | 9 | Favorites: per item for everyone in the vault, or per user | Per user, synced across the user's devices and end-to-end encrypted in the account preferences record (§4.7): starring a shared item must not change other people's sidebars, and a device-only list would not carry from the Mac to the iPhone |
+| 10 | Organization vault keys: a team keypair (wrapped to each member, vault keys wrapped to the team) or per-member wraps | Per-member wraps, as for every vault (§4.4, §5.11): no new primitive, label or trust root, unlock and sync unchanged; adding a member needs an owner's app to wrap each vault key, removing one rotates each vault. Admins manage rosters only and get no key by being admins |

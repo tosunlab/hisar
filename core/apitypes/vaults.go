@@ -7,13 +7,23 @@ type Vault struct {
 	Seq        int64  `json:"seq"`
 	Role       string `json:"role"`
 	WrappedKey []byte `json:"wrappedKey"`
+	// OrganizationID is set for organization vaults only.
+	OrganizationID string `json:"organizationId,omitempty"`
+	// NeedsRotation is set when someone lost access through a team and an owner's app has not rotated the key since.
+	NeedsRotation bool `json:"needsRotation,omitempty"`
+	// KeyGeneration counts the vault's keys: 1 at creation, one more after every rotation. Missing from older servers.
+	KeyGeneration int64 `json:"keyGeneration,omitempty"`
 }
 
+// CreateVaultRequest: an organization vault names its organization and the team that is given it as owner;
+// the caller must be a member of that team.
 type CreateVaultRequest struct {
-	ID         string `json:"id"`
-	Type       string `json:"type"`
-	EncName    []byte `json:"encName"`
-	WrappedKey []byte `json:"wrappedKey"`
+	ID             string `json:"id"`
+	Type           string `json:"type"`
+	EncName        []byte `json:"encName"`
+	WrappedKey     []byte `json:"wrappedKey"`
+	OrganizationID string `json:"organizationId,omitempty"`
+	TeamID         string `json:"teamId,omitempty"`
 }
 
 type VaultMember struct {
@@ -22,9 +32,12 @@ type VaultMember struct {
 	GrantedBy string `json:"grantedBy"`
 }
 
+// SetAccessRequest: KeyGeneration is the generation of the key WrappedKey holds. It is required for organization
+// vaults and checked for any vault when set, so a key wrapped before a rotation is refused (409).
 type SetAccessRequest struct {
-	WrappedKey []byte `json:"wrappedKey"`
-	Role       string `json:"role"`
+	WrappedKey    []byte `json:"wrappedKey"`
+	Role          string `json:"role"`
+	KeyGeneration int64  `json:"keyGeneration,omitempty"`
 }
 
 type RotatedAccess struct {
