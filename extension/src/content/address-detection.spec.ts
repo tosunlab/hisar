@@ -45,6 +45,28 @@ describe("finding address fields", () => {
     expect(findAddressScopeOf(document, getElement("#newsletter-email"))).toBeUndefined();
   });
 
+  it("groups fields outside a form that each sit in their own label or row, and keeps two such sections apart", () => {
+    document.body.innerHTML = `
+      <main>
+        <section id="delivery">
+          <label>Street <input id="d-street" autocomplete="street-address" /></label>
+          <div class="row">
+            <label>City <input id="d-city" autocomplete="address-level2" /></label>
+            <label>Postal code <input id="d-postal" autocomplete="postal-code" /></label>
+          </div>
+          <div><label>Country <input id="d-country" autocomplete="country" /></label></div>
+        </section>
+        <section id="pickup">
+          <div><label>Address <input id="p-street" /></label></div>
+          <div><label>Town <input id="p-city" /></label></div>
+        </section>
+      </main>`;
+    expect(describeScope("#d-city").map((field) => field.id)).toEqual(["d-street", "d-city", "d-postal", "d-country"]);
+    expect(findAddressScopeOf(document, getElement("#d-street"))?.root).toBe(getElement("#delivery"));
+    expect(describeScope("#p-city").map((field) => field.id)).toEqual(["p-street", "p-city"]);
+    expect(findAllAddressScope(document)).toHaveLength(2);
+  });
+
   it("takes country and region lists, and a list of saved addresses is no street", () => {
     document.body.innerHTML = selectsPage;
     expect(describeScope("#street").map((field) => field.kind)).toEqual(["street", "region", "country", "country"]);

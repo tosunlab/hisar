@@ -1,5 +1,5 @@
-import { getScopeRoot } from "./detection";
-import { collectAllDeepElement, containsAcrossShadow, isVisible } from "./dom";
+import { isSubmitLikeButton } from "./detection";
+import { collectAllDeepElement, containsAcrossShadow, getParentAcrossShadow, isVisible } from "./dom";
 
 // AddressKind is what an address field holds. A street-address field takes the whole street; address-line fields take a
 // line each.
@@ -113,13 +113,46 @@ function isAddressScope(allField: AddressField[]): boolean {
   return allField.some((field) => field.isByAutocomplete) || new Set(allField.map((field) => field.kind)).size >= 2;
 }
 
-// findAllAddressScope groups the page's address fields by their form, or the container of a form without one.
+const maximumFormlessDepth = 8;
+
+function containsOrIs(ancestor: Element, element: Element): boolean {
+  return ancestor === element || containsAcrossShadow(ancestor, element);
+}
+
+// findFormlessRoot is the nearest container of a field outside any form that holds another such address field or a submit
+// button, or else the body. Unlike a login's scope, the field's own wrapper, such as its <label>, does not count, so the
+// street, city and postal code of a page that wraps each field get one scope.
+function findFormlessRoot(field: AddressField, allFormless: AddressField[]): Element {
+  let current = getParentAcrossShadow(field.element);
+  for (let depth = 0; current && depth < maximumFormlessDepth; depth += 1) {
+    const ancestor = current;
+    if (allFormless.some((other) => other !== field && containsAcrossShadow(ancestor, other.element))) return ancestor;
+    if (collectAllDeepElement(ancestor, (element): element is Element => isSubmitLikeButton(element)).length > 0) return ancestor;
+    if (ancestor.tagName === "BODY") break;
+    current = getParentAcrossShadow(ancestor);
+  }
+  return field.element.ownerDocument.body;
+}
+
+// findAllAddressScope groups the page's address fields by their form, or for fields outside any form by the container they
+// share: when one field's container holds another's, as a row with the city and postal code inside the address section,
+// the outer one is the scope.
 export function findAllAddressScope(document: Document): AddressScope[] {
+  const allField = collectAllDeepElement(document, isAddressElement)
+    .map(classifyAddressField)
+    .filter((field): field is AddressField => field !== undefined);
+  const allFormless = allField.filter((field) => !field.element.form);
+  const formlessRoots = new Map(allFormless.map((field) => [field, findFormlessRoot(field, allFormless)]));
+  const allFormlessRoot = [...new Set(formlessRoots.values())];
+  const getRoot = (field: AddressField): Element => {
+    const root = formlessRoots.get(field);
+    if (!root) return field.element.form as HTMLFormElement;
+    const allContaining = allFormlessRoot.filter((candidate) => containsOrIs(candidate, root));
+    return allContaining.find((candidate) => !allContaining.some((other) => other !== candidate && containsAcrossShadow(other, candidate))) ?? root;
+  };
   const allScope: AddressScope[] = [];
-  for (const element of collectAllDeepElement(document, isAddressElement)) {
-    const field = classifyAddressField(element);
-    if (!field) continue;
-    const root = getScopeRoot(element);
+  for (const field of allField) {
+    const root = getRoot(field);
     const scope = allScope.find((candidate) => candidate.root === root);
     if (scope) scope.allField.push(field);
     else allScope.push({ root, allField: [field] });
