@@ -109,7 +109,7 @@ describe("Viewing a server", () => {
   it("shows the host, port, login data, admin console and the linked key, which opens", async () => {
     store.selectedItem = createServerItem();
     api.getItem.mockResolvedValue(deployKey);
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false } });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" } });
     expect(wrapper.find('[data-testid="server-summary"]').text()).toBe("build.example.com:2222 · deploy");
     expect(wrapper.find('[data-testid="server-host"]').text()).toBe("build.example.com:2222");
     expect(wrapper.find('[data-testid="server-port"]').text()).toBe("2222");
@@ -130,7 +130,7 @@ describe("Viewing a server", () => {
 
   it("says when the linked key is gone", () => {
     store.selectedItem = createServerItem({ server: { ...createServerItem().server!, sshKeyTitle: "", sshKeyFingerprint: "" } });
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false } });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" } });
     expect(wrapper.find('[data-testid="server-ssh-key"]').text()).toContain("Missing SSH key");
     expect(wrapper.find('button[aria-label="Open SSH key"]').exists()).toBe(false);
   });
