@@ -273,7 +273,8 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 	var license item.SoftwareLicense
 	var server item.Server
 	var serverURL string
-	var adminConsoleURLs []string
+	// consoleFieldIndexes holds where a server's admin console URL, username and password landed among the custom fields.
+	consoleFieldIndexes := map[string]int{}
 	var fullName item.Field
 	isIdentity := isOnePasswordIdentityCategory(category)
 	if entry.Overview.URL != "" {
@@ -307,14 +308,11 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 			}
 			value, isConcealed := convertOnePasswordFieldValue(sectionField.Value)
 			if category == onePasswordServer {
-				// A server's URL is its host, which NormalizeServer splits into host and port; its admin console is its
-				// website, and its username and password are its own.
+				// A server's URL is its host, which NormalizeServer splits into host and port, and its username and password
+				// are its own. Its admin console stays a custom field until promoteOnePasswordAdminConsole decides.
 				switch {
 				case sectionField.ID == "url" && server.Host == "":
 					server.Host, serverURL = value, value
-					continue
-				case sectionField.ID == "admin_console_url" && strings.TrimSpace(value) != "":
-					adminConsoleURLs = append(adminConsoleURLs, value)
 					continue
 				case sectionField.ID != "url" && promoteOnePasswordField(&vaultItem, sectionField.ID, value):
 					continue
@@ -356,6 +354,9 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 				addOneTimePassword(&vaultItem, name, value)
 				continue
 			}
+			if _, isSeen := consoleFieldIndexes[sectionField.ID]; category == onePasswordServer && strings.HasPrefix(sectionField.ID, "admin_console_") && !isSeen {
+				consoleFieldIndexes[sectionField.ID] = len(vaultItem.Details.Fields)
+			}
 			vaultItem.Details.Fields = append(vaultItem.Details.Fields, item.Field{Name: name, Value: value, Concealed: isConcealed})
 		}
 	}
@@ -386,7 +387,7 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 		websites := slices.DeleteFunc(vaultItem.Overview.URLs, func(link string) bool {
 			return serverURL != "" && strings.TrimSpace(link) == strings.TrimSpace(serverURL)
 		})
-		vaultItem.Overview.URLs = append(adminConsoleURLs, websites...)
+		vaultItem.Overview.URLs = append(promoteOnePasswordAdminConsole(&vaultItem, consoleFieldIndexes), websites...)
 		vaultItem.Overview.Category = item.CategoryServer
 		item.WriteServer(&vaultItem, server, vaultItem.Details.Fields)
 	}
@@ -404,6 +405,39 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 		item.WriteIdentity(&vaultItem, identity, otherFields)
 	}
 	return vaultItem, ""
+}
+
+// promoteOnePasswordAdminConsole moves a server's admin console URL out of its custom fields and returns it as the server's
+// website, along with console credentials that repeat the server's own. A console with a username or password of its own
+// stays custom fields: as the website, the extension would fill the server's password on the console and a browser save
+// there would overwrite it.
+func promoteOnePasswordAdminConsole(vaultItem *item.Item, consoleFieldIndexes map[string]int) []string {
+	fields := vaultItem.Details.Fields
+	urlIndex, hasURL := consoleFieldIndexes["admin_console_url"]
+	if !hasURL || strings.TrimSpace(fields[urlIndex].Value) == "" {
+		return nil
+	}
+	ownValuesByID := map[string]string{"admin_console_username": vaultItem.Overview.Username, "admin_console_password": vaultItem.Details.Password}
+	droppedIndexes := map[int]bool{urlIndex: true}
+	for fieldID, ownValue := range ownValuesByID {
+		index, found := consoleFieldIndexes[fieldID]
+		if !found {
+			continue
+		}
+		if value := fields[index].Value; value != "" && value != ownValue {
+			return nil
+		}
+		droppedIndexes[index] = true
+	}
+	consoleURL := fields[urlIndex].Value
+	keptFields := []item.Field{}
+	for index, field := range fields {
+		if !droppedIndexes[index] {
+			keptFields = append(keptFields, field)
+		}
+	}
+	vaultItem.Details.Fields = keptFields
+	return []string{consoleURL}
 }
 
 // foldOnePasswordLoginValue moves a login value into an empty credential value, and drops it when the credential has the

@@ -131,6 +131,43 @@ func TestBrowserOffersAServerOnItsAdminConsole(t *testing.T) {
 	}
 }
 
+func TestImportedServerKeepsItsPasswordOffAConsoleWithItsOwnLogin(t *testing.T) {
+	testBridge := createBrowserTestBridge(t)
+	service, vaultID := testBridge.testService.service, testBridge.testService.personalID
+	token := testBridge.pair(t, "chrome-1")
+	importOnePasswordExport(t, service, vaultID, `{"accounts":[{"vaults":[{"items":[{"categoryUuid":"110","overview":{"title":"Build server"},"details":{"sections":[
+		{"title":"","fields":[
+			{"title":"URL","id":"url","value":{"string":"build.example.com"}},
+			{"title":"username","id":"username","value":{"string":"admin"}},
+			{"title":"password","id":"password","value":{"concealed":"server-password"}}]},
+		{"title":"Admin Console","fields":[
+			{"title":"console URL","id":"admin_console_url","value":{"string":"https://console.example.com"}},
+			{"title":"console username","id":"admin_console_username","value":{"string":"admin"}},
+			{"title":"console password","id":"admin_console_password","value":{"concealed":"console-password"}}]}]}}]}]}]}`)
+	server := listItemsByTitle(t, service, vaultID)["Build server"]
+	if server.Category != item.CategoryServer {
+		t.Fatalf("imported %+v", server)
+	}
+
+	const consoleURL = "https://console.example.com/login"
+	match, code := testBridge.sendRequest(browserprotocol.Request{Type: "logins.match", Token: token, URL: consoleURL})
+	if logins := match.(browserprotocol.MatchResult).Logins; code != "" || len(logins) != 0 {
+		t.Errorf("the console is offered %+v %s", logins, code)
+	}
+	fill, code := testBridge.sendRequest(browserprotocol.Request{Type: "logins.fill", Token: token, VaultID: vaultID, ItemID: server.ID, URL: consoleURL})
+	if code == "" {
+		t.Errorf("the console is filled with %+v", fill)
+	}
+	// Saving the console's login offers a new login, not an update that would overwrite the server's password.
+	check, code := testBridge.sendRequest(browserprotocol.Request{Type: "logins.check", Token: token, URL: consoleURL, Username: "admin", Password: "console-password"})
+	if result := check.(browserprotocol.CheckResult); code != "" || result.ItemID == server.ID {
+		t.Errorf("check = %+v %s", result, code)
+	}
+	if kept, err := service.GetItem(vaultID, server.ID); err != nil || kept.Password != "server-password" {
+		t.Errorf("server = %+v %v", kept, err)
+	}
+}
+
 func TestCommandLineServerTravelsAsNamedFieldsAndResolves(t *testing.T) {
 	test := createCommandLineTest(t)
 	vaultID := test.testService.personalID
