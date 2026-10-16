@@ -109,18 +109,32 @@ struct VaultStatus: Codable, Equatable {
 }
 
 struct VaultSummary: Codable, Identifiable, Hashable {
+    static let typePersonal = "personal"
+    static let typeShared = "shared"
+    static let typeOrganization = "organization"
+
     var id: String
     var name: String
     var type: String
     var role: String
     var itemCount: Int
+    /// Set for organization vaults only.
+    var organizationID: String
 
-    init(id: String, name: String, type: String, role: String, itemCount: Int) {
+    var isOrganization: Bool { type == Self.typeOrganization }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, type, role, itemCount
+        case organizationID = "organizationId"
+    }
+
+    init(id: String, name: String, type: String, role: String, itemCount: Int, organizationID: String = "") {
         self.id = id
         self.name = name
         self.type = type
         self.role = role
         self.itemCount = itemCount
+        self.organizationID = organizationID
     }
 
     init(from decoder: Decoder) throws {
@@ -130,6 +144,7 @@ struct VaultSummary: Codable, Identifiable, Hashable {
         type = try container.decodeIfPresent(String.self, forKey: .type) ?? ""
         role = try container.decodeIfPresent(String.self, forKey: .role) ?? ""
         itemCount = try container.decodeIfPresent(Int.self, forKey: .itemCount) ?? 0
+        organizationID = try container.decodeIfPresent(String.self, forKey: .organizationID) ?? ""
     }
 }
 
@@ -886,7 +901,8 @@ struct PasskeyRegistrationCredential: Equatable {
     }
 }
 
-// Member is a person you share a vault with (role admin or member on the server) or someone with access to a vault (role owner, editor or reader).
+// Member is a person you share a vault with (role admin or member on the server), someone with access to a vault (role
+// owner, editor or reader) or a member of an organization (role admin or member of the organization).
 struct Member: Codable, Identifiable, Hashable {
     static let roleAdmin = "admin"
     static let roleMember = "member"
@@ -1280,15 +1296,17 @@ struct AccountDeletionPreview: Codable, Equatable {
     var sentInvitationCount: Int
     var receivedInvitationCount: Int
     var deviceCount: Int
+    var allOrganization: [DeletionOrganization]
 
     enum CodingKeys: String, CodingKey {
         case email
         case allOwnedVault = "ownedVaults"
         case allMemberVault = "memberVaults"
         case shareLinkCount, sentInvitationCount, receivedInvitationCount, deviceCount
+        case allOrganization = "organizations"
     }
 
-    init(email: String, allOwnedVault: [DeletionVault] = [], allMemberVault: [DeletionVault] = [], shareLinkCount: Int = 0, sentInvitationCount: Int = 0, receivedInvitationCount: Int = 0, deviceCount: Int = 1) {
+    init(email: String, allOwnedVault: [DeletionVault] = [], allMemberVault: [DeletionVault] = [], shareLinkCount: Int = 0, sentInvitationCount: Int = 0, receivedInvitationCount: Int = 0, deviceCount: Int = 1, allOrganization: [DeletionOrganization] = []) {
         self.email = email
         self.allOwnedVault = allOwnedVault
         self.allMemberVault = allMemberVault
@@ -1296,6 +1314,7 @@ struct AccountDeletionPreview: Codable, Equatable {
         self.sentInvitationCount = sentInvitationCount
         self.receivedInvitationCount = receivedInvitationCount
         self.deviceCount = deviceCount
+        self.allOrganization = allOrganization
     }
 
     init(from decoder: Decoder) throws {
@@ -1307,7 +1326,300 @@ struct AccountDeletionPreview: Codable, Equatable {
         sentInvitationCount = try container.decodeIfPresent(Int.self, forKey: .sentInvitationCount) ?? 0
         receivedInvitationCount = try container.decodeIfPresent(Int.self, forKey: .receivedInvitationCount) ?? 0
         deviceCount = try container.decodeIfPresent(Int.self, forKey: .deviceCount) ?? 0
+        allOrganization = try container.decodeIfPresent([DeletionOrganization].self, forKey: .allOrganization) ?? []
     }
 
     var peopleLosingAccessCount: Int { allOwnedVault.reduce(0) { $0 + $1.otherMemberCount } }
+}
+
+// DeletionOrganization: isDeleted when the user is its last member; newAdminName is who becomes admin when the user is its
+// last admin.
+struct DeletionOrganization: Codable, Equatable, Identifiable {
+    var id: String
+    var name: String
+    var isDeleted: Bool
+    var newAdminName: String
+
+    init(id: String, name: String, isDeleted: Bool = false, newAdminName: String = "") {
+        self.id = id
+        self.name = name
+        self.isDeleted = isDeleted
+        self.newAdminName = newAdminName
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(String.self, forKey: .id) ?? ""
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        isDeleted = try container.decodeIfPresent(Bool.self, forKey: .isDeleted) ?? false
+        newAdminName = try container.decodeIfPresent(String.self, forKey: .newAdminName) ?? ""
+    }
+}
+
+// The organization models mirror core/app's Organizations, Organization and WaitingVaultKeys (§5.11). Organization members
+// are Members: they carry the same fields, security code included.
+enum OrganizationRole {
+    static let admin = "admin"
+    static let member = "member"
+    static let all = [member, admin]
+
+    static func describe(_ role: String) -> String {
+        role == admin ? "Admin" : "Member"
+    }
+
+    /// "an admin" or "a member", as in "Ada invited you to Acme as a member".
+    static func describeWithArticle(_ role: String) -> String {
+        role == admin ? "an admin" : "a member"
+    }
+}
+
+struct OrganizationSummary: Codable, Identifiable, Hashable {
+    var id: String
+    var name: String
+    var role: String
+    var memberCount: Int
+
+    var isAdmin: Bool { role == OrganizationRole.admin }
+
+    init(id: String, name: String, role: String, memberCount: Int) {
+        self.id = id
+        self.name = name
+        self.role = role
+        self.memberCount = memberCount
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        role = try container.decodeIfPresent(String.self, forKey: .role) ?? ""
+        memberCount = try container.decodeIfPresent(Int.self, forKey: .memberCount) ?? 0
+    }
+}
+
+// OrganizationInvitation is an invitation to this user's email to join an organization; expiresAt is RFC 3339.
+struct OrganizationInvitation: Codable, Identifiable, Hashable {
+    var id: String
+    var organizationID: String
+    var organizationName: String
+    var role: String
+    var invitedByName: String
+    var invitedByEmail: String
+    var expiresAt: String
+
+    var inviterName: String { invitedByName.isEmpty ? invitedByEmail : invitedByName }
+    var message: String { "\(inviterName) invited you to \(organizationName) as \(OrganizationRole.describeWithArticle(role))" }
+
+    enum CodingKeys: String, CodingKey {
+        case id, organizationName, role, invitedByName, invitedByEmail, expiresAt
+        case organizationID = "organizationId"
+    }
+}
+
+struct Organizations: Codable, Hashable {
+    var allOrganization: [OrganizationSummary]
+    var allInvitation: [OrganizationInvitation]
+
+    enum CodingKeys: String, CodingKey {
+        case allOrganization = "organizations"
+        case allInvitation = "invitations"
+    }
+
+    init(allOrganization: [OrganizationSummary] = [], allInvitation: [OrganizationInvitation] = []) {
+        self.allOrganization = allOrganization
+        self.allInvitation = allInvitation
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        allOrganization = try container.decodeIfPresent([OrganizationSummary].self, forKey: .allOrganization) ?? []
+        allInvitation = try container.decodeIfPresent([OrganizationInvitation].self, forKey: .allInvitation) ?? []
+    }
+}
+
+struct TeamMember: Codable, Identifiable, Hashable {
+    var accountID: String
+    var name: String
+    var email: String
+    var isCurrentUser: Bool
+
+    var id: String { accountID }
+    var displayName: String {
+        let name = name.isEmpty ? email : name
+        return isCurrentUser ? "\(name) (you)" : name
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case accountID = "accountId"
+        case name, email, isCurrentUser
+    }
+
+    init(accountID: String, name: String, email: String, isCurrentUser: Bool = false) {
+        self.accountID = accountID
+        self.name = name
+        self.email = email
+        self.isCurrentUser = isCurrentUser
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        accountID = try container.decodeIfPresent(String.self, forKey: .accountID) ?? ""
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        email = try container.decodeIfPresent(String.self, forKey: .email) ?? ""
+        isCurrentUser = try container.decodeIfPresent(Bool.self, forKey: .isCurrentUser) ?? false
+    }
+}
+
+// TeamVault is a vault the team was given. Vault names are encrypted, so name is empty when canOpen is false: this device
+// has no key for it (yet).
+struct TeamVault: Codable, Identifiable, Hashable {
+    static let unopenableName = "A vault you can't open"
+
+    var vaultID: String
+    var name: String
+    var role: String
+    var canOpen: Bool
+
+    var id: String { vaultID }
+    var displayName: String { canOpen ? name : Self.unopenableName }
+
+    enum CodingKeys: String, CodingKey {
+        case vaultID = "vaultId"
+        case name, role, canOpen
+    }
+
+    init(vaultID: String, name: String, role: String, canOpen: Bool) {
+        self.vaultID = vaultID
+        self.name = name
+        self.role = role
+        self.canOpen = canOpen
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        vaultID = try container.decodeIfPresent(String.self, forKey: .vaultID) ?? ""
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        role = try container.decodeIfPresent(String.self, forKey: .role) ?? ""
+        canOpen = try container.decodeIfPresent(Bool.self, forKey: .canOpen) ?? false
+    }
+}
+
+struct Team: Codable, Identifiable, Hashable {
+    var id: String
+    var name: String
+    var allMember: [TeamMember]
+    var allVault: [TeamVault]
+
+    var hasCurrentUser: Bool { allMember.contains { $0.isCurrentUser } }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name
+        case allMember = "members"
+        case allVault = "vaults"
+    }
+
+    init(id: String, name: String, allMember: [TeamMember] = [], allVault: [TeamVault] = []) {
+        self.id = id
+        self.name = name
+        self.allMember = allMember
+        self.allVault = allVault
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        allMember = try container.decodeIfPresent([TeamMember].self, forKey: .allMember) ?? []
+        allVault = try container.decodeIfPresent([TeamVault].self, forKey: .allVault) ?? []
+    }
+}
+
+// SentOrganizationInvitation is a pending invitation to the organization; only admins see them. Times are RFC 3339.
+struct SentOrganizationInvitation: Codable, Identifiable, Hashable {
+    var id: String
+    var email: String
+    var role: String
+    var createdAt: String
+    var expiresAt: String
+}
+
+struct Organization: Codable, Identifiable, Hashable {
+    var id: String
+    var name: String
+    var role: String
+    var isAdmin: Bool
+    var allMember: [Member]
+    var allTeam: [Team]
+    /// Empty unless isAdmin.
+    var allInvitation: [SentOrganizationInvitation]
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, role, isAdmin
+        case allMember = "members"
+        case allTeam = "teams"
+        case allInvitation = "invitations"
+    }
+
+    init(id: String, name: String, role: String, isAdmin: Bool, allMember: [Member] = [], allTeam: [Team] = [], allInvitation: [SentOrganizationInvitation] = []) {
+        self.id = id
+        self.name = name
+        self.role = role
+        self.isAdmin = isAdmin
+        self.allMember = allMember
+        self.allTeam = allTeam
+        self.allInvitation = allInvitation
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        role = try container.decodeIfPresent(String.self, forKey: .role) ?? ""
+        isAdmin = try container.decodeIfPresent(Bool.self, forKey: .isAdmin) ?? false
+        allMember = try container.decodeIfPresent([Member].self, forKey: .allMember) ?? []
+        allTeam = try container.decodeIfPresent([Team].self, forKey: .allTeam) ?? []
+        allInvitation = try container.decodeIfPresent([SentOrganizationInvitation].self, forKey: .allInvitation) ?? []
+    }
+}
+
+// WaitingVaultKey is an organization vault this user's teams give them that no owner's Hisar has delivered yet.
+struct WaitingVaultKey: Codable, Identifiable, Hashable {
+    var vaultID: String
+    var organizationID: String
+    var organizationName: String
+    var role: String
+
+    var id: String { vaultID }
+
+    enum CodingKeys: String, CodingKey {
+        case vaultID = "vaultId"
+        case organizationID = "organizationId"
+        case organizationName, role
+    }
+}
+
+// WaitingVaultKeys: deliveryError and rotationError say why this app could not give someone a vault key or rotate a vault
+// it owns, e.g. a changed signing key.
+struct WaitingVaultKeys: Codable, Hashable {
+    var allWaiting: [WaitingVaultKey]
+    var deliveryError: String
+    var rotationError: String
+
+    enum CodingKeys: String, CodingKey {
+        case allWaiting = "waiting"
+        case deliveryError, rotationError
+    }
+
+    init(allWaiting: [WaitingVaultKey] = [], deliveryError: String = "", rotationError: String = "") {
+        self.allWaiting = allWaiting
+        self.deliveryError = deliveryError
+        self.rotationError = rotationError
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        allWaiting = try container.decodeIfPresent([WaitingVaultKey].self, forKey: .allWaiting) ?? []
+        deliveryError = try container.decodeIfPresent(String.self, forKey: .deliveryError) ?? ""
+        rotationError = try container.decodeIfPresent(String.self, forKey: .rotationError) ?? ""
+    }
 }
