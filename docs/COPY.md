@@ -47,11 +47,15 @@ One name for each thing, the same on the Mac, the iPhone, the browser extension,
 | organization vault | A vault that belongs to an organization and reaches people through its teams. |
 | Create organization…, New team…, Invite by email, Send invitation, Give a vault…, Give to a team…, Take back, Add member, Remove, Make admin, Make member | Actions (Settings → Organizations, the organization screen, an organization vault's sharing panel). |
 | "Ada invited you to Acme as a member" · Accept · Decline | A received organization invitation (Settings → Organizations and the banner above the vaults). |
-| Remove from Acme…, Leave Acme…, Rename organization…, Delete organization…, Rename…, Delete team… | Confirmed actions; the confirmation names what goes: "Bob loses the vaults he has through Acme's teams." |
+| Remove from Acme…, Leave Acme…, Rename organization…, Delete organization…, Rename…, Delete team… | Confirmed actions; each confirmation names what goes: "Bob loses the vaults they have through Acme's teams." · "Its members lose the vaults they have only through Platform." · "Leave Acme?" / "You lose the vaults you have through Acme's teams." · "Delete Acme?" / "Its teams and pending invitations are deleted with it." · "Everyone in Acme sees the new name." |
+| "You joined Acme. Its vaults appear once an admin adds you to a team." | After accepting an organization invitation. |
+| "Platform's members get this vault. Manage it in Settings → Organizations." | The new-vault Where footer for a team. |
+| Admin · 3 members · Organization · Editor | An organization's row; an organization vault's row (iPhone). |
+| "Hisar couldn't give every vault key: …" · "Hisar couldn't re-encrypt every vault that needs a new key: …" | Warnings above the vaults when a key delivery or a rotation failed. |
 | Shared through teams in Acme · Ask an admin of Acme to change who has this vault. | An organization vault's sharing panel. |
 | A vault you can't open | An organization's vault this device has no key for. |
 | Waiting for an owner of a vault in Acme to give you its key · Waiting for the owners of N vaults in Acme to give you their keys | One line per organization above the vaults: a vault a team gives you that no owner's Hisar has delivered yet. |
-| Acme is deleted with your account · Ada becomes an admin of Acme | Account deletion. |
+| Acme is deleted with your account · Ada becomes an admin of Acme · You leave Acme | Account deletion. |
 
 ## Items
 
