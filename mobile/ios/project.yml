@@ -17,6 +17,23 @@ settings:
     DEAD_CODE_STRIPPING: true
 
 targetTemplates:
+  # The team is an individual developer account, so other members cannot get its certificates through automatic signing:
+  # Hisar and its extension sign manually with the team's profiles, named after the target ("Hisar Development",
+  # "HisarAutoFill App Store"). Simulator builds sign to run locally, with no certificate or profile, as on CI.
+  TeamSigning:
+    settings:
+      base:
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "-"
+        PROVISIONING_PROFILE_SPECIFIER: ""
+      configs:
+        Debug:
+          CODE_SIGN_IDENTITY[sdk=iphoneos*]: Apple Development
+          PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]: ${target_name} Development
+        Release:
+          CODE_SIGN_IDENTITY[sdk=iphoneos*]: Apple Distribution
+          PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]: ${target_name} App Store
+
   HisarApplication:
     type: application
     platform: iOS
@@ -55,7 +72,7 @@ targetTemplates:
 
 targets:
   Hisar:
-    templates: [HisarApplication]
+    templates: [HisarApplication, TeamSigning]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(HISAR_APP_BUNDLE_IDENTIFIER)
@@ -79,6 +96,7 @@ targets:
         HISAR_KEYCHAIN_ACCESS_GROUP: ""
 
   HisarAutoFill:
+    templates: [TeamSigning]
     type: app-extension
     platform: iOS
     sources:
