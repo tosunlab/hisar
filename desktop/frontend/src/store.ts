@@ -1081,6 +1081,11 @@ export async function setSigningRemember(seconds: number): Promise<void> {
   await changeSSHConfig(() => api.setSigningRemember(seconds), notice);
 }
 
+export async function setSSHRemember(seconds: number): Promise<void> {
+  const notice = seconds < 0 ? "Remembered SSH approvals now last until Hisar locks" : "Remembered SSH approvals now last 1 hour";
+  await changeSSHConfig(() => api.setSSHRemember(seconds), notice);
+}
+
 export function showBrowserPairing(request: BrowserPairingRequest | null): void {
   store.browserPairing = request;
   loadBrowserStatus();

@@ -80,6 +80,7 @@ type Approver interface {
 }
 
 // DefaultApprovalLifetime is how long an approved key and app pair is used without asking again; locking clears it sooner.
+// SetApprovalLifetime changes it, and a lifetime of 0 keeps approvals until ClearApprovals.
 const DefaultApprovalLifetime = time.Hour
 
 type approvalCacheKey struct {
@@ -140,6 +141,19 @@ func (s *Server) ClearApprovals() {
 	defer s.mutex.Unlock()
 	s.approvedAt = map[approvalCacheKey]time.Time{}
 	s.approvalEpoch++
+}
+
+// SetApprovalLifetime is how long remembered approvals last; 0 or less keeps them until ClearApprovals.
+func (s *Server) SetApprovalLifetime(lifetime time.Duration) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.approvalLifetime = lifetime
+}
+
+func (s *Server) GetApprovalLifetime() time.Duration {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	return s.approvalLifetime
 }
 
 func (s *Server) CreateAgent(ctx context.Context, peer localsocket.PeerInfo) agent.ExtendedAgent {
@@ -213,7 +227,7 @@ func (s *Server) requestApproval(ctx context.Context, request ApprovalRequest) e
 
 func (s *Server) isApprovalCurrent(cacheKey approvalCacheKey) bool {
 	approvedAt, isFound := s.approvedAt[cacheKey]
-	return isFound && s.getNow().Sub(approvedAt) < s.approvalLifetime
+	return isFound && (s.approvalLifetime <= 0 || s.getNow().Sub(approvedAt) < s.approvalLifetime)
 }
 
 type sessionBinding struct {

@@ -270,6 +270,19 @@ describe("SSHApprovalWindow", () => {
     wrapper.unmount();
   });
 
+  it("says the remembered approval lasts until Hisar locks", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createApprovalEvent({ rememberPeriod: "until Hisar locks" }));
+    await flushPromises();
+    expect(wrapper.find(".remember").text()).toBe("Don’t ask again for Terminal until Hisar locks");
+    expect(api.respondSSHApproval).toHaveBeenCalledWith("request-1", true, true);
+    sendEvent("ssh-approval-closed", "request-1");
+    sendEvent("ssh-approval", createApprovalEvent({ requestID: "request-2", isCompact: true, rememberPeriod: "until Hisar locks" }));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="approval-touch-id"]').text()).toBe("Touch ID to allow until Hisar locks");
+    wrapper.unmount();
+  });
+
   it("shows the compact card and expands it to the full dialog", async () => {
     const wrapper = mount(SSHApprovalWindow);
     sendEvent("ssh-approval", createApprovalEvent({ isCompact: true }));

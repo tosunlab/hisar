@@ -132,6 +132,7 @@ export function createSSHAgentStatus(overrides: Partial<SSHAgentStatus> = {}): S
     isCompactApproval: false,
     isPhoneApproval: true,
     signingRememberSeconds: 0,
+    sshRememberSeconds: 3600,
     backupPath: "",
     ...overrides,
   };
@@ -183,6 +184,7 @@ export function createApprovalEvent(overrides: Partial<ApprovalEvent> = {}): App
     workingDirectory: "",
     rememberLabel: "",
     isRememberedByDefault: true,
+    rememberPeriod: "for 1 hour",
     isConnectionApproval: false,
     warning: "",
     ...overrides,
@@ -482,6 +484,7 @@ export function createApiMock() {
     setCompactSSHApproval: vi.fn().mockResolvedValue(createSSHAgentStatus({ isCompactApproval: true })),
     setPhoneApproval: vi.fn().mockResolvedValue(createSSHAgentStatus({ isPhoneApproval: false })),
     setSigningRemember: vi.fn().mockResolvedValue(createSSHAgentStatus({ signingRememberSeconds: 600 })),
+    setSSHRemember: vi.fn().mockResolvedValue(createSSHAgentStatus({ sshRememberSeconds: -1 })),
     fitSSHApprovalWindow: vi.fn().mockResolvedValue(undefined),
     cancelApprovalTouchID: vi.fn().mockResolvedValue(undefined),
     setApprovalTouchIDFrame: vi.fn().mockResolvedValue(undefined),

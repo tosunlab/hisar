@@ -141,6 +141,18 @@ final class PhoneApprovalTests: XCTestCase {
         XCTAssertFalse(allApproval[2].resolveRememberChoice(true), "a request without the switch is never remembered")
     }
 
+    func testCardApprovesWithTheRequestsDefault() async {
+        let model = await createUnlockedModel(allApproval: [
+            createRememberingApproval(requestID: "ssh"),
+            createRememberingApproval(requestID: "signing", isRememberedByDefault: false),
+            createApproval(requestID: "once"),
+        ])
+        await model.approve(model.allPendingApproval[0])
+        await model.approve(model.allPendingApproval[0])
+        await model.approve(model.allPendingApproval[0])
+        XCTAssertEqual(backend.allApprovalAnswer, ["approve remembered ssh", "approve signing", "approve once"])
+    }
+
     func testSheetSwitchIsSentWithTheApproval() async {
         let model = await createReviewingModel(allApproval: [createRememberingApproval(requestID: "remembered"), createRememberingApproval(requestID: "once")])
         await model.approvePendingApproval(isRemembered: true)

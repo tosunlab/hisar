@@ -268,6 +268,7 @@ const wailsApi = {
   setCompactSSHApproval: (isCompact: boolean): Promise<SSHAgentStatus> => AgentService.SetCompactSSHApproval(isCompact),
   setPhoneApproval: (isEnabled: boolean): Promise<SSHAgentStatus> => AgentService.SetPhoneApproval(isEnabled),
   setSigningRemember: (seconds: number): Promise<SSHAgentStatus> => AgentService.SetSigningRemember(seconds),
+  setSSHRemember: (seconds: number): Promise<SSHAgentStatus> => AgentService.SetSSHRemember(seconds),
   fitSSHApprovalWindow: (isCompact: boolean, height: number): Promise<void> => AgentService.FitSSHApprovalWindow(isCompact, height),
   setApprovalTouchIDFrame: (x: number, y: number, width: number, height: number): Promise<void> =>
     ApprovalTouchIDService.SetApprovalPromptFrame(x, y, width, height),

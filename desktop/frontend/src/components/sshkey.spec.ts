@@ -324,6 +324,27 @@ describe("Settings SSH agent section", () => {
     expect(store.noticeMessage).toBe("Your iPhone can now approve requests");
   });
 
+  it("lets SSH approvals be remembered until Hisar locks", async () => {
+    const wrapper = mount(SettingsPanel);
+    await flushPromises();
+    const sshRemember = wrapper.find('[data-testid="ssh-remember"]');
+    expect((sshRemember.element as HTMLSelectElement).value).toBe("3600");
+    expect(sshRemember.findAll("option").map((option) => option.text())).toEqual(["Up to 1 hour", "Until Hisar locks"]);
+    expect(wrapper.find('[data-testid="ssh-remember-setting"]').text()).toContain("Locking Hisar always forgets it");
+    expect(wrapper.find('[data-testid="ssh-agent-section"]').text()).toContain("skip asking for an hour");
+    await sshRemember.setValue("-1");
+    await flushPromises();
+    expect(api.setSSHRemember).toHaveBeenCalledWith(-1);
+    expect((wrapper.find('[data-testid="ssh-remember"]').element as HTMLSelectElement).value).toBe("-1");
+    expect(store.noticeMessage).toBe("Remembered SSH approvals now last until Hisar locks");
+    expect(wrapper.find('[data-testid="ssh-agent-section"]').text()).toContain("skip asking until Hisar locks");
+    api.setSSHRemember.mockResolvedValueOnce(createSSHAgentStatus({ sshRememberSeconds: 3600 }));
+    await wrapper.find('[data-testid="ssh-remember"]').setValue("3600");
+    await flushPromises();
+    expect(api.setSSHRemember).toHaveBeenLastCalledWith(3600);
+    expect(store.noticeMessage).toBe("Remembered SSH approvals now last 1 hour");
+  });
+
   it("lets commit signing be remembered only after choosing a duration", async () => {
     const wrapper = mount(SettingsPanel);
     await flushPromises();

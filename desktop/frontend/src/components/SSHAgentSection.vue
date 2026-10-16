@@ -1,8 +1,14 @@
 <script setup lang="ts">
-import { configureSSHConfig, removeSSHConfig, setCompactSSHApproval, setPhoneApproval, setSigningRemember, store } from "../store";
+import { computed } from "vue";
+import { configureSSHConfig, removeSSHConfig, setCompactSSHApproval, setPhoneApproval, setSigningRemember, setSSHRemember, store } from "../store";
 import { useSettingsRowVisibility } from "../settingsSections";
 
 const isRowVisible = useSettingsRowVisibility();
+const allSSHRememberOption = [
+  { seconds: 3600, label: "Up to 1 hour" },
+  { seconds: -1, label: "Until Hisar locks" },
+];
+const sshRememberPeriod = computed(() => ((store.sshAgentStatus?.sshRememberSeconds ?? 3600) < 0 ? "until Hisar locks" : "for an hour"));
 const allSigningRememberOption = [
   { seconds: 0, label: "Always ask" },
   { seconds: 600, label: "Up to 10 minutes" },
@@ -47,8 +53,8 @@ const allSigningRememberOption = [
           <p class="muted">
             {{
               store.sshAgentStatus.isTouchIDApproval
-                ? "Each use of a key asks for Touch ID, unless you let the app skip asking for an hour."
-                : "Each use of a key asks for your approval in Hisar, unless you let the app skip asking for an hour."
+                ? `Each use of a key asks for Touch ID, unless you let the app skip asking ${sshRememberPeriod}.`
+                : `Each use of a key asks for your approval in Hisar, unless you let the app skip asking ${sshRememberPeriod}.`
             }}
           </p>
         </div>
@@ -56,9 +62,32 @@ const allSigningRememberOption = [
       <p v-if="store.sshAgentErrorMessage" class="error settings-note" role="alert">{{ store.sshAgentErrorMessage }}</p>
     </div>
 
-    <div v-if="store.sshAgentStatus" v-show="isRowVisible('compact-ssh-approvals') || isRowVisible('phone-approval')" class="settings-block">
+    <div
+      v-if="store.sshAgentStatus"
+      v-show="isRowVisible('ssh-remember') || isRowVisible('compact-ssh-approvals') || isRowVisible('phone-approval')"
+      class="settings-block"
+    >
       <p class="section-label">Approvals</p>
       <div class="settings-group">
+        <div v-show="isRowVisible('ssh-remember')" class="setting" data-testid="ssh-remember-setting">
+          <div class="setting-text">
+            <strong>Remember SSH approvals</strong>
+            <p class="muted">
+              How long “Don’t ask again” in the SSH dialog covers the same key for the same app. Locking Hisar always forgets it; commit signing
+              has its own setting below.
+            </p>
+          </div>
+          <select
+            class="signing-remember"
+            aria-label="Remember SSH approvals"
+            data-testid="ssh-remember"
+            :value="store.sshAgentStatus.sshRememberSeconds"
+            :disabled="store.isBusy"
+            @change="setSSHRemember(Number(($event.target as HTMLSelectElement).value))"
+          >
+            <option v-for="option in allSSHRememberOption" :key="option.seconds" :value="option.seconds">{{ option.label }}</option>
+          </select>
+        </div>
         <label v-show="isRowVisible('compact-ssh-approvals')" class="setting">
           <div class="setting-text">
             <strong>Compact SSH approvals</strong>

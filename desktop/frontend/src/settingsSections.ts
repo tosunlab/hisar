@@ -48,6 +48,7 @@ export const allSettingsSection: SettingsSection[] = [
     icon: "key",
     allRow: [
       { id: "ssh-agent", title: "Hisar SSH agent", keywords: "ssh config use hisar for ssh identityagent socket keys" },
+      { id: "ssh-remember", title: "Remember SSH approvals", keywords: "don't ask again hour until locks remember ssh approval duration" },
       { id: "compact-ssh-approvals", title: "Compact SSH approvals", keywords: "approval card notification dialog" },
       { id: "phone-approval", title: "Approve requests on my iPhone", keywords: "phone iphone allow approvals approve requests" },
       { id: "commit-signing", title: "Remember commit signing", keywords: "git signature sign gpg always asks rebase remember commit tag" },
