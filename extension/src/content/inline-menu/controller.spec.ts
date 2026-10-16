@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ContentToBackgroundMessage } from "../../shared/messages";
+import addressAutocompletePage from "../fixtures/address-autocomplete.html?raw";
 import signUpPage from "../fixtures/sign-up.html?raw";
 import simpleLoginPage from "../fixtures/simple-login.html?raw";
 import { InlineMenuController, type InlineMenuDependencies } from "./controller";
@@ -76,6 +77,22 @@ afterEach(() => {
 });
 
 describe("InlineMenuController", () => {
+  it("offers addresses only when the app fills them", async () => {
+    document.body.innerHTML = addressAutocompletePage;
+    getInput("#ship-city").focus();
+    expect(controller.getIconElement()).toBeUndefined();
+    expect(allSent).toEqual([]);
+
+    getInput("#ship-city").blur();
+    controller.setAddressFillAvailable(true);
+    getInput("#ship-city").focus();
+    await vi.waitFor(() => expect(allSent).toContainEqual({ type: "content.openInlineMenu", purpose: "address" }));
+    expect(controller.getIconElement()).toBeDefined();
+
+    controller.setAddressFillAvailable(false);
+    expect(controller.getIconElement()).toBeUndefined();
+  });
+
   it("shows the icon in a focused login field and opens the menu from the service worker's URL", async () => {
     getInput("#password").focus();
     expect(controller.getIconElement()).toBeDefined();

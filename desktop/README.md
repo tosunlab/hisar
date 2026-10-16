@@ -112,7 +112,7 @@ Design: `docs/DESIGN.md` §4.5 (categories).
 
 Design: `docs/DESIGN.md` §4.5 (categories).
 
-- **+** → **Credit card** opens a card editor: cardholder, number, type, expiry, security code, PIN and billing address, then notes and custom fields. The number and expiry are formatted as you type (`4444 5555 5555 5555`, `01/30`). The type (Visa, Mastercard, American Express…) follows the number until you pick another, with a hint when they disagree. The editor warns about a number that fails its checksum, an expiry it cannot read or an expired card, but saves anyway.
+- **+** → **Credit card** opens a card editor: cardholder, number, type, expiry, security code, PIN and the billing address's street, city, region, postal code and country, then notes and custom fields. The number and expiry are formatted as you type (`4444 5555 5555 5555`, `01/30`). The type (Visa, Mastercard, American Express…) follows the number until you pick another, with a hint when they disagree. The editor warns about a number that fails its checksum, an expiry it cannot read or an expired card, but saves anyway.
 - A card's view shows "Visa •••• 4242" and keeps the number, security code and PIN masked until revealed; each value has **Copy** and a secret reference. The item list shows the type and last four digits only.
 - Cards import from 1Password (`.1pux`) and Bitwarden JSON; a Bitwarden CSV leaves them out.
 - Preview: `&item=visa` (an expired card), `&editor=credit-card`.
@@ -121,7 +121,7 @@ Design: `docs/DESIGN.md` §4.5 (categories).
 
 Design: `docs/DESIGN.md` §4.5 (categories).
 
-- **+** → **Identity** opens an editor for the first, middle and last name, birth date (a date picker; an imported date that is not year first stays text), email, phone, address and the passport, driver's license and national ID numbers, which are masked until shown; then notes and custom fields.
+- **+** → **Identity** opens an editor for the first, middle and last name, birth date (a date picker; an imported date that is not year first stays text), email, phone, the address's street, city, region, postal code and country, and the passport, driver's license and national ID numbers, which are masked until shown; then notes and custom fields.
 - An identity's view shows the full name and lists each value with **Copy** and a secret reference; the document numbers are masked until revealed. The item list shows the name, or the email.
 - Identities import from 1Password (Identity, Passport, Driver License, Social Security Number) and Bitwarden JSON; a Bitwarden CSV leaves them out.
 - Preview: `&item=passport`, `&editor=identity`.
@@ -135,12 +135,31 @@ Design: `docs/DESIGN.md` §4.5 (categories) and §9.4.1 (secret references).
 - 1Password API Credentials import as API credentials; their type, filename and valid-from date stay custom fields.
 - Preview: `&vault=work&item=stripe`, `&editor=api-credential`.
 
+## Addresses
+
+Design: `docs/DESIGN.md` §4.5 (categories) and §9.2 (address autofill in the extension).
+
+- **+** → **Address** opens an editor for the street (more than one line, such as an apartment on the second), city, region, postal code and country; then notes and custom fields. Identities and cards edit their address with the same fields.
+- An identity or card saved before it had these fields keeps its one-line address as "Address (old format)" or "Billing address (old format)" while it is set; **Use as street** moves it into the street.
+- The view lists each value with **Copy** and a secret reference. The item list shows the city and country, and search matches them and the street's first line.
+- The browser extension fills address forms from addresses and from identities with an address, in the inline menu on an address field and in the popup's **Addresses** tab.
+- Preview: `&vault=work&item=office`, `&editor=address`.
+
+## Software licenses
+
+Design: `docs/DESIGN.md` §4.5 (categories).
+
+- **+** → **Software license** opens an editor for the product, version, license key (masked until shown), licensed-to name and email, purchase date (a date picker; an imported date in another form stays text) and download URL; then notes and custom fields.
+- The view lists each value with **Copy** and a secret reference (`hisar://Personal/Sketch/license%20key`). The key is masked until revealed, and the download URL opens in the browser. The item list shows the version and licensed-to name, and search matches the product, version, name and email.
+- 1Password Software Licenses import as software licenses, with the title as the product; company, publisher and order details stay custom fields.
+- Preview: `&vault=work&item=sketch`, `&editor=software-license`.
+
 ## Import from other password managers
 
 Settings → General → **Import…**, or **+** → **Import…** in a vault. The parsing is `core/importer` (design: `docs/DESIGN.md` §9.7).
 
 1. Choose the vault (only vaults you can edit) and the format, or let Hisar detect it, then pick the file in the open dialog: a 1Password `.1pux` or CSV export, an unencrypted Bitwarden `.json` or CSV export, or a CSV export from Chrome, Edge, Firefox, Safari or another manager (header row with columns such as title, username, password, url, notes).
-2. The preview counts logins, secure notes, SSH keys, credit cards, identities and API credentials, lists what is not imported and why (documents, archived items, passphrase-protected SSH keys), and lists items already in the vault, which are skipped unless you untick the box. A login matches on its title, username and website, a card on its title and last four digits, an identity on its title, name, email and first document number, and an API credential on its title and key ID (or host, or secret when it has neither). Nothing is saved before **Import**.
+2. The preview counts logins, secure notes, SSH keys, credit cards, identities, API credentials and addresses, lists what is not imported and why (documents, archived items, passphrase-protected SSH keys), and lists items already in the vault, which are skipped unless you untick the box. A login matches on its title, username and website, a card on its title and last four digits, an identity on its title, name, email and first document number, an API credential on its title and key ID (or host, or secret when it has neither), and an address on its title, street, postal code and country. Nothing is saved before **Import**.
 3. Items are saved in batches of 10 with a progress bar; if the connection drops, **Try again** continues where it stopped. Locking Hisar discards the parsed file.
 4. The export holds every password in plain text, so Hisar offers to delete it (**Delete file** removes it directly, not through the Trash).
 

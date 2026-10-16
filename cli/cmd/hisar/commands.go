@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -308,6 +309,8 @@ var itemTypes = []itemType{
 	{category: item.CategoryCreditCard, prompt: promptCard},
 	{category: item.CategoryIdentity, prompt: promptIdentity},
 	{category: item.CategoryAPICredential, prompt: promptAPICredential},
+	{category: item.CategoryAddress, prompt: promptAddress},
+	{category: item.CategorySoftwareLicense, prompt: promptSoftwareLicense},
 }
 
 func findItemType(category string) (itemType, bool) {
@@ -347,12 +350,26 @@ func promptNote(vaultItem *item.Item) error {
 	return nil
 }
 
+// oldAddressFieldNames are the one-line addresses identities and cards had before they kept an address in fields; they are
+// asked for only when the item has one.
+var oldAddressFieldNames = []string{item.FieldAddress, item.FieldBillingAddress}
+
 // promptNamedFields asks for each value of a record kept in named fields, such as a card; secret ones are read without
-// echo, and an empty answer keeps the current value. hint adds to a field's prompt.
+// echo, a street may take several lines, and an empty answer keeps the current value. hint adds to a field's prompt.
 func promptNamedFields[T any](record *T, namedFields []item.NamedField[T], hint func(field item.NamedField[T], value string) string) error {
 	for _, field := range namedFields {
 		value := field.Value(record)
+		if *value == "" && slices.Contains(oldAddressFieldNames, field.Name) {
+			continue
+		}
 		label := field.Name + hint(field, *value)
+		if field.Name == item.FieldStreet {
+			var err error
+			if *value, err = promptStreet(label, *value); err != nil {
+				return err
+			}
+			continue
+		}
 		if !field.Concealed {
 			var err error
 			if *value, err = prompt(label, *value); err != nil {
@@ -442,6 +459,42 @@ func promptAPICredential(vaultItem *item.Item) error {
 	}
 	item.WriteAPICredential(vaultItem, credential, otherFields)
 	item.NormalizeAPICredential(vaultItem)
+	return nil
+}
+
+// promptAddress asks for an address's title and each of its values; the street may take several lines.
+func promptAddress(vaultItem *item.Item) error {
+	var err error
+	if vaultItem.Overview.Title, err = promptRequired("Title", vaultItem.Overview.Title); err != nil {
+		return err
+	}
+	address, otherFields := item.ReadAddress(vaultItem)
+	if err := promptNamedFields(&address, item.ListAddressFields(), func(item.AddressField, string) string { return "" }); err != nil {
+		return err
+	}
+	item.WriteAddress(vaultItem, address, otherFields)
+	item.NormalizeAddress(vaultItem)
+	return nil
+}
+
+// promptSoftwareLicense asks for a software license's title and each of its values; the license key is read without echo.
+func promptSoftwareLicense(vaultItem *item.Item) error {
+	var err error
+	if vaultItem.Overview.Title, err = promptRequired("Title", vaultItem.Overview.Title); err != nil {
+		return err
+	}
+	license, otherFields := item.ReadSoftwareLicense(vaultItem)
+	err = promptNamedFields(&license, item.ListSoftwareLicenseFields(), func(field item.SoftwareLicenseField, value string) string {
+		if field.Name == item.FieldPurchaseDate && value == "" {
+			return " (YYYY-MM-DD)"
+		}
+		return ""
+	})
+	if err != nil {
+		return err
+	}
+	item.WriteSoftwareLicense(vaultItem, license, otherFields)
+	item.NormalizeSoftwareLicense(vaultItem)
 	return nil
 }
 

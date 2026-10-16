@@ -19,6 +19,8 @@ enum ItemCategoryDestination: String, Hashable, CaseIterable {
     case creditCards
     case identities
     case apiCredentials
+    case addresses
+    case softwareLicenses
     case sshKeys
 
     var title: String {
@@ -28,6 +30,8 @@ enum ItemCategoryDestination: String, Hashable, CaseIterable {
         case .creditCards: "Credit cards"
         case .identities: "Identities"
         case .apiCredentials: "API credentials"
+        case .addresses: "Addresses"
+        case .softwareLicenses: "Software licenses"
         case .sshKeys: "SSH keys"
         }
     }
@@ -39,6 +43,8 @@ enum ItemCategoryDestination: String, Hashable, CaseIterable {
         case .creditCards: "creditcard"
         case .identities: "person.text.rectangle"
         case .apiCredentials: "curlybraces.square"
+        case .addresses: "mappin.and.ellipse"
+        case .softwareLicenses: "checkmark.seal"
         case .sshKeys: "key.horizontal"
         }
     }
@@ -52,6 +58,8 @@ enum ItemCategoryDestination: String, Hashable, CaseIterable {
         case .creditCards: item.isCreditCard
         case .identities: item.isIdentity
         case .apiCredentials: item.isAPICredential
+        case .addresses: item.isAddress
+        case .softwareLicenses: item.isSoftwareLicense
         case .sshKeys: item.isSSHKey
         }
     }
@@ -66,6 +74,8 @@ struct VaultsView: View {
     @State private var isNewCreditCardShown = false
     @State private var isNewIdentityShown = false
     @State private var isNewAPICredentialShown = false
+    @State private var isNewAddressShown = false
+    @State private var isNewSoftwareLicenseShown = false
 
     private var personalVault: VaultSummary? { model.allVault.first { $0.type == "personal" } }
 
@@ -170,6 +180,20 @@ struct VaultsView: View {
                         .disabled(personalVault == nil)
                         .accessibilityIdentifier("new-api-credential")
                         Button {
+                            isNewAddressShown = true
+                        } label: {
+                            Label("New address", systemImage: "mappin.and.ellipse")
+                        }
+                        .disabled(personalVault == nil)
+                        .accessibilityIdentifier("new-address")
+                        Button {
+                            isNewSoftwareLicenseShown = true
+                        } label: {
+                            Label("New software license", systemImage: "checkmark.seal")
+                        }
+                        .disabled(personalVault == nil)
+                        .accessibilityIdentifier("new-software-license")
+                        Button {
                             isNewVaultShown = true
                         } label: {
                             Label("New vault", systemImage: "square.stack.3d.up.badge.plus")
@@ -209,6 +233,26 @@ struct VaultsView: View {
         .sheet(isPresented: $isNewLoginShown) {
             if let personalVault {
                 ItemEditorView(vaultID: personalVault.id, originalItem: nil) { savedItem in
+                    if let savedItem {
+                        navigationPath.append(ItemDestination(vaultID: personalVault.id, itemID: savedItem.id))
+                    }
+                }
+                .environmentObject(model)
+            }
+        }
+        .sheet(isPresented: $isNewAddressShown) {
+            if let personalVault {
+                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categoryAddress) { savedItem in
+                    if let savedItem {
+                        navigationPath.append(ItemDestination(vaultID: personalVault.id, itemID: savedItem.id))
+                    }
+                }
+                .environmentObject(model)
+            }
+        }
+        .sheet(isPresented: $isNewSoftwareLicenseShown) {
+            if let personalVault {
+                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categorySoftwareLicense) { savedItem in
                     if let savedItem {
                         navigationPath.append(ItemDestination(vaultID: personalVault.id, itemID: savedItem.id))
                     }
@@ -418,6 +462,10 @@ struct ItemRow: View {
             detail = (item.identity ?? ItemIdentity()).summary
         } else if item.isAPICredential {
             detail = (item.apiCredential ?? ItemAPICredential()).summary
+        } else if item.isAddress {
+            detail = (item.address ?? ItemAddress()).summary
+        } else if item.isSoftwareLicense {
+            detail = (item.softwareLicense ?? ItemSoftwareLicense()).summary
         } else {
             detail = item.username
         }

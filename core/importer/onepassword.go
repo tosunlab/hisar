@@ -17,16 +17,17 @@ import (
 const maxOnePasswordDataSize = 64 << 20
 
 const (
-	onePasswordLogin         = "001"
-	onePasswordCreditCard    = "002"
-	onePasswordSecureNote    = "003"
-	onePasswordIdentity      = "004"
-	onePasswordPassword      = "005"
-	onePasswordLicense       = "103"
-	onePasswordPassport      = "106"
-	onePasswordSSN           = "108"
-	onePasswordAPICredential = "112"
-	onePasswordSSHKey        = "114"
+	onePasswordLogin           = "001"
+	onePasswordCreditCard      = "002"
+	onePasswordSecureNote      = "003"
+	onePasswordIdentity        = "004"
+	onePasswordPassword        = "005"
+	onePasswordSoftwareLicense = "100"
+	onePasswordLicense         = "103"
+	onePasswordPassport        = "106"
+	onePasswordSSN             = "108"
+	onePasswordAPICredential   = "112"
+	onePasswordSSHKey          = "114"
 )
 
 var onePasswordCategoryNames = map[string]string{
@@ -37,7 +38,7 @@ var onePasswordCategoryNames = map[string]string{
 }
 
 // onePasswordCredentialCategories become logins with their fields; other categories hold personal records Hisar has no type for yet.
-var onePasswordCredentialCategories = map[string]bool{"100": true, "102": true, "109": true, "110": true, "111": true}
+var onePasswordCredentialCategories = map[string]bool{"102": true, "109": true, "110": true, "111": true}
 
 type onePasswordExport struct {
 	Accounts []struct {
@@ -146,7 +147,7 @@ var onePasswordCardFields = map[string]func(*item.Card) *string{
 	"expiry":     func(card *item.Card) *string { return &card.Expiry },
 	"cvv":        func(card *item.Card) *string { return &card.SecurityCode },
 	"pin":        func(card *item.Card) *string { return &card.PIN },
-	"address":    func(card *item.Card) *string { return &card.BillingAddress },
+	"address":    func(card *item.Card) *string { return &card.BillingAddressText },
 }
 
 // onePasswordAPICredentialFields maps the ids of a 1Password API Credential's fields to the credential's values; its other
@@ -172,7 +173,43 @@ var onePasswordIdentityFields = map[string]func(*item.Identity) *string{
 	"cellphone": func(identity *item.Identity) *string { return &identity.Phone },
 	"homephone": func(identity *item.Identity) *string { return &identity.Phone },
 	"busphone":  func(identity *item.Identity) *string { return &identity.Phone },
-	"address":   func(identity *item.Identity) *string { return &identity.Address },
+	"address":   func(identity *item.Identity) *string { return &identity.AddressText },
+}
+
+// onePasswordLicenseFieldNames renames the fields of a 1Password Driver License that name where it was issued, which would
+// otherwise be read as the identity's address, such as "country".
+var onePasswordLicenseFieldNames = map[string]string{"country": "Issuing country", "state": "Issuing state"}
+
+// getOnePasswordAddress points at the address an "address" field of a card or identity fills, or returns nil.
+func getOnePasswordAddress(card *item.Card, identity *item.Identity, category, fieldID string) *item.Address {
+	switch {
+	case fieldID != "address":
+		return nil
+	case category == onePasswordCreditCard:
+		return &card.BillingAddress
+	case isOnePasswordIdentityCategory(category):
+		return &identity.Address
+	}
+	return nil
+}
+
+// readOnePasswordAddress reads a typed address value; 1Password calls the region "state" and the postal code "zip".
+func readOnePasswordAddress(valuesByType map[string]json.RawMessage) (item.Address, bool) {
+	rawAddress, found := valuesByType["address"]
+	if !found {
+		return item.Address{}, false
+	}
+	var address struct {
+		Street  string `json:"street"`
+		City    string `json:"city"`
+		State   string `json:"state"`
+		Zip     string `json:"zip"`
+		Country string `json:"country"`
+	}
+	if json.Unmarshal(rawAddress, &address) != nil {
+		return item.Address{}, false
+	}
+	return item.Address{Street: address.Street, City: address.City, Region: address.State, PostalCode: address.Zip, Country: address.Country}, true
 }
 
 // getOnePasswordIdentityValue points at the identity value a field fills, or returns nil for a field that stays a custom
@@ -192,6 +229,18 @@ func getOnePasswordIdentityValue(identity *item.Identity, category, fieldID stri
 	return nil
 }
 
+// onePasswordSoftwareLicenseFields maps the ids of a 1Password Software License's fields to the license's values; its other
+// fields (company, publisher, retail price, order number…) stay custom fields. It has no product field: the title names the
+// product.
+var onePasswordSoftwareLicenseFields = map[string]func(*item.SoftwareLicense) *string{
+	"product_version": func(license *item.SoftwareLicense) *string { return &license.Version },
+	"reg_code":        func(license *item.SoftwareLicense) *string { return &license.LicenseKey },
+	"reg_name":        func(license *item.SoftwareLicense) *string { return &license.LicensedTo },
+	"reg_email":       func(license *item.SoftwareLicense) *string { return &license.Email },
+	"order_date":      func(license *item.SoftwareLicense) *string { return &license.PurchaseDate },
+	"download_link":   func(license *item.SoftwareLicense) *string { return &license.DownloadURL },
+}
+
 func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 	if entry.State == "archived" {
 		return item.Item{}, "archived in 1Password"
@@ -201,7 +250,7 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 	case category == onePasswordSSHKey:
 		return convertOnePasswordSSHKey(entry)
 	case category == onePasswordLogin, category == onePasswordPassword, category == onePasswordSecureNote, category == onePasswordCreditCard,
-		category == onePasswordAPICredential, isOnePasswordIdentityCategory(category), onePasswordCredentialCategories[category]:
+		category == onePasswordAPICredential, category == onePasswordSoftwareLicense, isOnePasswordIdentityCategory(category), onePasswordCredentialCategories[category]:
 	default:
 		categoryName, found := onePasswordCategoryNames[category]
 		if !found {
@@ -219,6 +268,7 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 	var card item.Card
 	var identity item.Identity
 	var credential item.APICredential
+	var license item.SoftwareLicense
 	var fullName item.Field
 	isIdentity := isOnePasswordIdentityCategory(category)
 	if entry.Overview.URL != "" {
@@ -243,6 +293,13 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 			if _, isFile := sectionField.Value["file"]; isFile {
 				continue
 			}
+			if address := getOnePasswordAddress(&card, &identity, category, sectionField.ID); address != nil && address.IsEmpty() {
+				// A typed address fills the card's or identity's address fields; a plain one is kept as one line below.
+				if typed, isTyped := readOnePasswordAddress(sectionField.Value); isTyped {
+					*address = typed
+					continue
+				}
+			}
 			value, isConcealed := convertOnePasswordFieldValue(sectionField.Value)
 			if onePasswordCredentialCategories[category] && promoteOnePasswordField(&vaultItem, sectionField.ID, value) {
 				continue
@@ -255,6 +312,10 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 				*credentialValue(&credential) = value
 				continue
 			}
+			if licenseValue, isLicenseField := onePasswordSoftwareLicenseFields[sectionField.ID]; category == onePasswordSoftwareLicense && isLicenseField && *licenseValue(&license) == "" {
+				*licenseValue(&license) = value
+				continue
+			}
 			if identityValue := getOnePasswordIdentityValue(&identity, category, sectionField.ID); isIdentity && identityValue != nil && *identityValue == "" {
 				*identityValue = value
 				continue
@@ -262,6 +323,9 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 			name := sectionField.Title
 			if name == "" {
 				name = getFirstNonEmpty(section.Title, sectionField.ID)
+			}
+			if issuingName, isRenamed := onePasswordLicenseFieldNames[sectionField.ID]; category == onePasswordLicense && isRenamed {
+				name = issuingName
 			}
 			// A Social Security Number calls its full name "name".
 			isFullName := sectionField.ID == "fullname" || category == onePasswordSSN && sectionField.ID == "name"
@@ -287,6 +351,16 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 		foldOnePasswordLoginValue(&credential.Secret, &vaultItem.Details.Password)
 		vaultItem.Overview.Category = item.CategoryAPICredential
 		item.WriteAPICredential(&vaultItem, credential, vaultItem.Details.Fields)
+	}
+	if category == onePasswordSoftwareLicense {
+		license.Product = strings.TrimSpace(entry.Overview.Title)
+		// A license saved with a website but no download link keeps the website as its download URL; any other website
+		// becomes a custom field.
+		if strings.TrimSpace(license.DownloadURL) == "" && len(vaultItem.Overview.URLs) > 0 {
+			license.DownloadURL, vaultItem.Overview.URLs = vaultItem.Overview.URLs[0], vaultItem.Overview.URLs[1:]
+		}
+		vaultItem.Overview.Category = item.CategorySoftwareLicense
+		item.WriteSoftwareLicense(&vaultItem, license, vaultItem.Details.Fields)
 	}
 	if isIdentity {
 		vaultItem.Overview.Category = item.CategoryIdentity

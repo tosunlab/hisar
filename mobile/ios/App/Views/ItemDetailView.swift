@@ -144,6 +144,10 @@ struct ItemDetailView: View {
                 buildIdentitySection(identity: item.identity ?? ItemIdentity())
             } else if item.isAPICredential {
                 buildAPICredentialSection(credential: item.apiCredential ?? ItemAPICredential())
+            } else if item.isAddress {
+                buildNamedSection(title: "Address", emptyText: "This address has no details yet.", allRow: buildAddressRows(item.address ?? ItemAddress()))
+            } else if item.isSoftwareLicense {
+                buildSoftwareLicenseSection(license: item.softwareLicense ?? ItemSoftwareLicense())
             } else {
                 buildLoginSection(item: item)
             }
@@ -278,20 +282,30 @@ struct ItemDetailView: View {
         if item.isCreditCard { return (item.card?.number ?? "").isEmpty ? nil : CardFieldName.number }
         if item.isIdentity { return nil }
         if item.isAPICredential { return (item.apiCredential?.secret ?? "").isEmpty ? nil : APICredentialFieldName.secret }
+        if item.isAddress { return nil }
+        if item.isSoftwareLicense { return (item.softwareLicense?.licenseKey ?? "").isEmpty ? nil : SoftwareLicenseFieldName.licenseKey }
         return item.password.isEmpty ? nil : "password"
     }
 
-    /// The line under the title: the category, or a card's, identity's or API credential's summary.
+    /// The line under the title: the category, or a card's, identity's, API credential's, address's or software license's
+    /// summary.
     private func describeCategory(item: ItemDetail) -> String {
         if item.isSSHKey { return "SSH key" }
         if item.isSecureNote { return "Secure note" }
         if item.isCreditCard { return (item.card ?? ItemCard()).summary }
         if item.isIdentity { return (item.identity ?? ItemIdentity()).summary }
         if item.isAPICredential { return (item.apiCredential ?? ItemAPICredential()).summary }
+        if item.isAddress { return (item.address ?? ItemAddress()).summary }
+        if item.isSoftwareLicense { return (item.softwareLicense ?? ItemSoftwareLicense()).summary }
         return "Login"
     }
 
     private typealias NamedRow = (label: String, value: String, isConcealed: Bool, warning: String)
+
+    /// An address's values as rows, as an address item, an identity and a card keep them.
+    private func buildAddressRows(_ address: ItemAddress) -> [NamedRow] {
+        address.allNamedValue.map { ($0.name, $0.value, false, "") }
+    }
 
     private func buildCardSection(card: ItemCard) -> some View {
         let allRow: [NamedRow] = [
@@ -301,6 +315,7 @@ struct ItemDetailView: View {
             (CardFieldName.expiry, card.expiry, false, card.expiryWarning),
             (CardFieldName.securityCode, card.securityCode, true, ""),
             (CardFieldName.pin, card.pin, true, ""),
+        ] + buildAddressRows(card.postalAddress) + [
             (CardFieldName.billingAddress, card.billingAddress, false, ""),
         ]
         return buildNamedSection(title: "Card", emptyText: "This card has no details yet.", allRow: allRow)
@@ -314,6 +329,7 @@ struct ItemDetailView: View {
             (IdentityFieldName.birthDate, identity.birthDate, false, ""),
             (IdentityFieldName.email, identity.email, false, ""),
             (IdentityFieldName.phone, identity.phone, false, ""),
+        ] + buildAddressRows(identity.postalAddress) + [
             (IdentityFieldName.address, identity.address, false, ""),
             (IdentityFieldName.passportNumber, identity.passportNumber, true, ""),
             (IdentityFieldName.driversLicenseNumber, identity.driversLicenseNumber, true, ""),
@@ -333,8 +349,32 @@ struct ItemDetailView: View {
         return buildNamedSection(title: "Credential", emptyText: "This API credential has no details yet.", allRow: allRow)
     }
 
-    /// The values of a type kept in named fields, a card's, an identity's or an API credential's, with copy and copy reference; secret ones are
-    /// masked until revealed.
+    /// A software license's values with the license key masked until revealed, and a link that opens an http or https
+    /// download URL in the browser.
+    @ViewBuilder
+    private func buildSoftwareLicenseSection(license: ItemSoftwareLicense) -> some View {
+        let allRow: [NamedRow] = [
+            (SoftwareLicenseFieldName.product, license.product, false, ""),
+            (SoftwareLicenseFieldName.version, license.version, false, ""),
+            (SoftwareLicenseFieldName.licenseKey, license.licenseKey, true, ""),
+            (SoftwareLicenseFieldName.licensedTo, license.licensedTo, false, ""),
+            (SoftwareLicenseFieldName.email, license.email, false, ""),
+            (SoftwareLicenseFieldName.purchaseDate, license.purchaseDate, false, ""),
+            (SoftwareLicenseFieldName.downloadURL, license.downloadURL, false, ""),
+        ]
+        buildNamedSection(title: "License", emptyText: "This software license has no details yet.", allRow: allRow)
+        if let downloadURL = VaultLogic.convertToOpenableURL(license.downloadURL) {
+            Section {
+                Link(destination: downloadURL) {
+                    Label("Open download page", systemImage: "safari")
+                }
+                .accessibilityIdentifier("open-download-url")
+            }
+        }
+    }
+
+    /// The values of a type kept in named fields, a card's, an identity's, an API credential's, an address's or a software
+    /// license's, with copy and copy reference; secret ones are masked until revealed.
     @ViewBuilder
     private func buildNamedSection(title: String, emptyText: String, allRow: [NamedRow]) -> some View {
         let allShownRow = allRow.filter { !$0.value.isEmpty }

@@ -20,6 +20,8 @@ import {
   startCreatingCard,
   startCreatingIdentity,
   startCreatingAPICredential,
+  startCreatingSoftwareLicense,
+  startCreatingAddress,
   startCreatingSecureNote,
   startCreatingSSHKey,
   store,
@@ -28,7 +30,25 @@ import {
   toggleSelectedItemFavorite,
 } from "../store";
 import type { FavoriteItem, ItemDetail } from "../api";
-import { apiCredentialCategory, creditCardCategory, formatAPICredentialSummary, formatCardSummary, formatIdentitySummary, formatKeyType, getDomain, getInitials, getItemIcon, identityCategory, isMacPlatform, secureNoteCategory, sshKeyCategory } from "../util";
+import {
+  addressCategory,
+  apiCredentialCategory,
+  creditCardCategory,
+  formatAddressSummary,
+  formatAPICredentialSummary,
+  formatCardSummary,
+  formatIdentitySummary,
+  formatKeyType,
+  formatSoftwareLicenseSummary,
+  getDomain,
+  getInitials,
+  getItemIcon,
+  identityCategory,
+  isMacPlatform,
+  secureNoteCategory,
+  softwareLicenseCategory,
+  sshKeyCategory,
+} from "../util";
 import AppIcon from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
 import ItemDetailPanel from "./ItemDetailPanel.vue";
@@ -95,6 +115,12 @@ function getItemSubtitle(vaultItem: ItemDetail): string {
   }
   if (vaultItem.category === apiCredentialCategory) {
     return formatAPICredentialSummary(vaultItem.apiCredential);
+  }
+  if (vaultItem.category === addressCategory) {
+    return formatAddressSummary(vaultItem.address);
+  }
+  if (vaultItem.category === softwareLicenseCategory) {
+    return formatSoftwareLicenseSummary(vaultItem.softwareLicense);
   }
   return vaultItem.username || (vaultItem.urls[0] ? getDomain(vaultItem.urls[0]) : "");
 }
@@ -327,6 +353,12 @@ onBeforeUnmount(() => {
             </button>
             <button class="ghost" role="menuitem" data-testid="new-api-credential" @click="chooseNewItem(startCreatingAPICredential)">
               <AppIcon name="apiKey" /> API credential
+            </button>
+            <button class="ghost" role="menuitem" data-testid="new-address" @click="chooseNewItem(startCreatingAddress)">
+              <AppIcon name="address" /> Address
+            </button>
+            <button class="ghost" role="menuitem" data-testid="new-software-license" @click="chooseNewItem(startCreatingSoftwareLicense)">
+              <AppIcon name="license" /> Software license
             </button>
             <button class="ghost" role="menuitem" data-testid="new-ssh-key" @click="chooseNewItem(startCreatingSSHKey)">
               <AppIcon name="key" /> SSH key

@@ -1,4 +1,5 @@
 import type { FillOutcome, FrameProbe } from "../shared/messages";
+import { hasAddressForm, isFocusedAddressField } from "./address-fill";
 import { findAllLoginScope, getAutocompleteTokens, isTextField, type LoginScope } from "./detection";
 import { containsAcrossShadow, getDeepActiveElement, isInputElement } from "./dom";
 import { findFirstOneTimeCodeTarget, fillOneTimeCodeIntoTarget, findOneTimeCodeTarget } from "./one-time-code";
@@ -97,6 +98,8 @@ export function probeFrame(document: Document): FrameProbe {
     hasFocusedField: focusedField !== undefined,
     hasFocusedLoginField: focusedScope?.kind === "login" || focusedScope?.kind === "username-only",
     hasOneTimeCodeField: findFirstOneTimeCodeTarget(document) !== undefined,
+    hasAddressForm: hasAddressForm(document),
+    hasFocusedAddressField: isFocusedAddressField(document),
   };
 }
 

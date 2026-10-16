@@ -11,7 +11,7 @@ vi.mock("../api", async () => {
     api: apiMock.current,
     getErrorMessage: (error: unknown) => (error instanceof Error ? error.message : String(error)),
     createEmptyItem: () => createEmpty({ id: "", revision: "", title: "", username: "", urls: [], fields: [] }),
-    createEmptyCard: () => ({ cardholder: "", type: "", number: "", expiry: "", securityCode: "", pin: "", billingAddress: "", brand: "", last4: "", numberWarning: "", expiryWarning: "" }),
+    createEmptyCard: () => ({ cardholder: "", type: "", number: "", expiry: "", securityCode: "", pin: "", street: "", city: "", region: "", postalCode: "", country: "", billingAddress: "", brand: "", last4: "", numberWarning: "", expiryWarning: "" }),
   };
 });
 
@@ -160,7 +160,7 @@ describe("Viewing a credit card", () => {
     const wrapper = mount(ItemDetailPanel, { props: { canEdit: false, vaultName: "Personal", isShared: false } });
     expect(wrapper.find('[data-testid="share-link"]').exists()).toBe(true);
 
-    store.selectedItem = createCardItem({ notes: "", fields: [], card: { ...createCardItem().card!, cardholder: "", type: "", number: "", expiry: "", securityCode: "", pin: "", billingAddress: "" } });
+    store.selectedItem = createCardItem({ notes: "", fields: [], card: { ...createCardItem().card!, cardholder: "", type: "", number: "", expiry: "", securityCode: "", pin: "", street: "", city: "", region: "", postalCode: "", country: "", billingAddress: "" } });
     const empty = mount(ItemDetailPanel, { props: { canEdit: false, vaultName: "Personal", isShared: false } });
     expect(empty.find('[data-testid="share-link"]').exists()).toBe(false);
   });
@@ -181,7 +181,7 @@ describe("Viewing a credit card", () => {
 
 describe("Importing credit cards", () => {
   it("counts them in the preview", () => {
-    store.importPreview = { fileName: "export.json", filePath: "/tmp/export.json", format: "bitwarden-json", formatName: "Bitwarden JSON", vaultId: "personal", vaultName: "Personal", itemCount: 2, loginCount: 1, secureNoteCount: 0, sshKeyCount: 0, creditCardCount: 1, identityCount: 0, apiCredentialCount: 0, allSkipped: [], allDuplicate: [] };
+    store.importPreview = { fileName: "export.json", filePath: "/tmp/export.json", format: "bitwarden-json", formatName: "Bitwarden JSON", vaultId: "personal", vaultName: "Personal", itemCount: 2, loginCount: 1, secureNoteCount: 0, sshKeyCount: 0, creditCardCount: 1, identityCount: 0, apiCredentialCount: 0, addressCount: 0, softwareLicenseCount: 0, allSkipped: [], allDuplicate: [] };
     store.importStep = "preview";
     const wrapper = mount(ImportPanel);
     const count = wrapper.find('[data-testid="import-count-credit-card"]');

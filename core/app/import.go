@@ -61,9 +61,13 @@ type ImportPreview struct {
 	CreditCardCount int    `json:"creditCardCount"`
 	IdentityCount   int    `json:"identityCount"`
 	// APICredentialCount counts the api-credential items among ItemCount.
-	APICredentialCount int                  `json:"apiCredentialCount"`
-	Skipped            []ImportSkippedEntry `json:"allSkipped"`
-	Duplicates         []ImportDuplicate    `json:"allDuplicate"`
+	APICredentialCount int `json:"apiCredentialCount"`
+	// AddressCount counts the address items among ItemCount.
+	AddressCount int `json:"addressCount"`
+	// SoftwareLicenseCount counts the software-license items among ItemCount.
+	SoftwareLicenseCount int                  `json:"softwareLicenseCount"`
+	Skipped              []ImportSkippedEntry `json:"allSkipped"`
+	Duplicates           []ImportDuplicate    `json:"allDuplicate"`
 }
 
 type ImportProgress struct {
@@ -206,21 +210,23 @@ func (s *Service) buildImportPreview(vaultID string) (ImportPreview, error) {
 	pending := s.pendingImport
 	summary := importer.Summarize(pending.items)
 	preview := ImportPreview{
-		FileName:           filepath.Base(pending.filePath),
-		FilePath:           pending.filePath,
-		Format:             pending.format,
-		FormatName:         importer.GetFormatName(pending.format),
-		VaultID:            vault.ID,
-		VaultName:          vault.Name,
-		ItemCount:          len(pending.items),
-		LoginCount:         summary.LoginCount,
-		SecureNoteCount:    summary.SecureNoteCount,
-		SSHKeyCount:        summary.SSHKeyCount,
-		CreditCardCount:    summary.CreditCardCount,
-		IdentityCount:      summary.IdentityCount,
-		APICredentialCount: summary.APICredentialCount,
-		Skipped:            []ImportSkippedEntry{},
-		Duplicates:         []ImportDuplicate{},
+		FileName:             filepath.Base(pending.filePath),
+		FilePath:             pending.filePath,
+		Format:               pending.format,
+		FormatName:           importer.GetFormatName(pending.format),
+		VaultID:              vault.ID,
+		VaultName:            vault.Name,
+		ItemCount:            len(pending.items),
+		LoginCount:           summary.LoginCount,
+		SecureNoteCount:      summary.SecureNoteCount,
+		SSHKeyCount:          summary.SSHKeyCount,
+		CreditCardCount:      summary.CreditCardCount,
+		IdentityCount:        summary.IdentityCount,
+		APICredentialCount:   summary.APICredentialCount,
+		AddressCount:         summary.AddressCount,
+		SoftwareLicenseCount: summary.SoftwareLicenseCount,
+		Skipped:              []ImportSkippedEntry{},
+		Duplicates:           []ImportDuplicate{},
 	}
 	for _, skipped := range pending.skipped {
 		preview.Skipped = append(preview.Skipped, ImportSkippedEntry{Title: skipped.Title, Reason: skipped.Reason})

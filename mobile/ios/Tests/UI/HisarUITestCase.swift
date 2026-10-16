@@ -103,7 +103,9 @@ class HisarUITestCase: XCTestCase {
         XCTFail("the \(menu) menu stayed open after choosing \(item)", file: file, line: line)
     }
 
-    // A SwiftUI Form creates only the rows on screen, so a row further down does not exist until the form scrolls to it.
+    // A SwiftUI Form creates only the rows on screen, so a row further down does not exist until the form scrolls to it. The
+    // drag stays in the top part of the form: lower down, the keyboard of the field being typed in covers it, and a swipe
+    // there does not scroll the form in a sheet.
     func scrollTo(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
         let list = app.collectionViews.firstMatch
         for _ in 0..<8 {
@@ -111,7 +113,8 @@ class HisarUITestCase: XCTestCase {
                 return
             }
             guard list.exists else { break }
-            list.swipeUp()
+            let start = list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            start.press(forDuration: 0.05, thenDragTo: list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15)))
         }
         waitFor(element, file: file, line: line)
     }

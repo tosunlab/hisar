@@ -31,6 +31,10 @@ export class ExtensionStorage {
     await this.area.remove("token");
   }
 
+  async setAppFeatures(allFeature: string[]): Promise<void> {
+    await this.area.set({ appFeatures: allFeature });
+  }
+
   async getAllNeverOrigin(): Promise<string[]> {
     const stored = await this.area.get(["allNeverOrigin"]);
     return Array.isArray(stored.allNeverOrigin) ? stored.allNeverOrigin.filter((origin) => typeof origin === "string") : [];

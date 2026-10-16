@@ -45,6 +45,8 @@ interface OpenMenu {
 
 export class InlineMenuController {
   private settings: InlineMenuSettings = { ...defaultInlineMenuSettings };
+  // isAddressFillAvailable: the paired app fills addresses; an older one does not, so address fields get no icon.
+  private isAddressFillAvailable = false;
   private field: HTMLInputElement | undefined;
   private allGroupField: HTMLInputElement[] = [];
   private purpose: InlineMenuPurpose | undefined;
@@ -86,6 +88,11 @@ export class InlineMenuController {
   updateSettings(settings: InlineMenuSettings): void {
     this.settings = settings;
     if (!settings.isInlineMenuEnabled) this.hide();
+  }
+
+  setAddressFillAvailable(isAvailable: boolean): void {
+    this.isAddressFillAvailable = isAvailable;
+    if (!isAvailable && this.purpose === "address") this.hide();
   }
 
   getAnchoredField(sessionID: string): HTMLInputElement | undefined {
@@ -176,7 +183,7 @@ export class InlineMenuController {
     if (this.host && (target === this.host || this.host.contains(target))) return;
     if (this.isFieldOfMenu(target)) return;
     const purpose = findInlineMenuPurpose(this.document, target, this.dependencies.getRect);
-    if (!purpose) {
+    if (!purpose || (purpose === "address" && !this.isAddressFillAvailable)) {
       this.hide();
       return;
     }

@@ -24,11 +24,13 @@ import type {
   ImportProgress as BoundImportProgress,
   ImportSkippedEntry,
   ItemAPICredential,
+  ItemAddress,
   ItemCard,
   ItemDetail as BoundItemDetail,
   ItemIdentity,
   ItemField,
   ItemPasskey,
+  ItemSoftwareLicense,
   OneTimeCode,
   PasswordConfig,
   ReceivedShareInvitation,
@@ -73,10 +75,12 @@ export type {
   ImportFormat,
   ImportSkippedEntry,
   ItemAPICredential,
+  ItemAddress,
   ItemCard,
   ItemField,
   ItemIdentity,
   ItemPasskey,
+  ItemSoftwareLicense,
   LoginItemStatus,
   OneTimeCode,
   PasswordConfig,
@@ -347,16 +351,49 @@ export function getErrorMessage(error: unknown): string {
   return "Something went wrong";
 }
 
+export function createEmptyAddress(): ItemAddress {
+  return { street: "", city: "", region: "", postalCode: "", country: "" };
+}
+
 export function createEmptyCard(): ItemCard {
-  return { cardholder: "", type: "", number: "", expiry: "", securityCode: "", pin: "", billingAddress: "", brand: "", last4: "", numberWarning: "", expiryWarning: "" };
+  return {
+    cardholder: "",
+    type: "",
+    number: "",
+    expiry: "",
+    securityCode: "",
+    pin: "",
+    ...createEmptyAddress(),
+    billingAddress: "",
+    brand: "",
+    last4: "",
+    numberWarning: "",
+    expiryWarning: "",
+  };
 }
 
 export function createEmptyIdentity(): ItemIdentity {
-  return { firstName: "", middleName: "", lastName: "", birthDate: "", email: "", phone: "", address: "", passportNumber: "", driversLicenseNumber: "", nationalIdNumber: "" };
+  return {
+    firstName: "",
+    middleName: "",
+    lastName: "",
+    birthDate: "",
+    email: "",
+    phone: "",
+    ...createEmptyAddress(),
+    address: "",
+    passportNumber: "",
+    driversLicenseNumber: "",
+    nationalIdNumber: "",
+  };
 }
 
 export function createEmptyAPICredential(): ItemAPICredential {
   return { service: "", keyId: "", secret: "", host: "", expiry: "", expiryWarning: "" };
+}
+
+export function createEmptySoftwareLicense(): ItemSoftwareLicense {
+  return { product: "", version: "", licenseKey: "", licensedTo: "", email: "", purchaseDate: "", downloadUrl: "" };
 }
 
 export function createEmptyItem(): ItemDetail {

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { InlineMenuService } from "./inline-menu";
 import { InlineMenuSessionStore } from "./inline-menu-sessions";
-import { createHarness, expectHisarError, type HarnessOptions } from "./testing";
+import { createHarness, emptyProbe, expectHisarError, type HarnessOptions } from "./testing";
 
 const pageUrl = "https://example.com/login";
 const pageFrame = { tabId: 1, frameId: 0 };
@@ -132,6 +132,71 @@ describe("InlineMenuService", () => {
     await expectHisarError(harness.service.fillLogin(menuFrame, sessionID, "vault-personal", "item-example"), "invalid-request");
     expect(harness.getRequestTypes()).not.toContain("logins.fill");
     expect(harness.allFrameMessage.some((entry) => entry.message.type === "content.fillLogin")).toBe(false);
+  });
+
+  it("lists addresses on an address field and fills the chosen one after checking that the menu is visible", async () => {
+    const harness = createService();
+    await harness.pair();
+    const { sessionID } = harness.service.openSession(pageFrame, pageUrl, pageUrl, "address");
+    const state = await harness.service.getState(menuFrame, sessionID);
+    expect(state).toMatchObject({ view: "logins", purpose: "address", allLogin: [], hasMoreAddress: false });
+    expect(state.allAddress).toEqual([{ vaultID: "vault-personal", itemID: "item-home", title: "Home", summary: "Springfield, US", source: "address", vaultName: "Personal" }]);
+    expect(harness.getRequestTypes()).not.toContain("addresses.fill");
+
+    await harness.service.fillAddress(menuFrame, sessionID, "vault-personal", "item-home");
+    const allType = harness.allFrameMessage.map((entry) => entry.message.type);
+    expect(allType.indexOf("content.isInlineMenuVisible")).toBeLessThan(allType.indexOf("content.fillAddress"));
+    expect(harness.allFrameMessage.find((entry) => entry.message.type === "content.fillAddress")?.message).toEqual({
+      type: "content.fillAddress",
+      expectedOrigin: "https://example.com",
+      address: { street: "1 Main St\nApt 4", city: "Springfield", region: "IL", postalCode: "62704", country: "US" },
+      sessionID,
+    });
+    await expectHisarError(harness.service.getState(menuFrame, sessionID), "invalid-request");
+  });
+
+  it("does not ask for an address when the menu was not visible, or on a login field", async () => {
+    const hidden = createService({ isMenuVisible: false });
+    await hidden.pair();
+    const first = hidden.service.openSession(pageFrame, pageUrl, pageUrl, "address");
+    await expectHisarError(hidden.service.fillAddress(menuFrame, first.sessionID, "vault-personal", "item-home"), "invalid-request");
+    const login = hidden.service.openSession(pageFrame, pageUrl, pageUrl, "login");
+    await expectHisarError(hidden.service.fillAddress(menuFrame, login.sessionID, "vault-personal", "item-home"), "invalid-request");
+    expect(hidden.getRequestTypes()).not.toContain("addresses.fill");
+  });
+
+  it("opens no address menu with an app that does not fill addresses", async () => {
+    const harness = createService({ state: { features: [] } });
+    await harness.pair();
+    expect(() => harness.service.openSession(pageFrame, pageUrl, pageUrl, "address")).toThrow("Update the Hisar app to fill addresses");
+    expect(harness.area.data.appFeatures).toEqual([]);
+  });
+
+  it("opens an address menu after the browser restarted the service worker, saying hello before it decides", async () => {
+    const harness = createService();
+    await harness.pair();
+    const service = new InlineMenuService(harness.restartServiceWorker(), harness.bridge);
+    const { sessionID } = service.openSession(pageFrame, pageUrl, pageUrl, "address");
+    expect((await service.getState(menuFrame, sessionID)).allAddress).toHaveLength(1);
+    await service.fillAddress(menuFrame, sessionID, "vault-personal", "item-home");
+    expect(harness.getRequestTypes()).toContain("addresses.fill");
+
+    const outdated = createService({ state: { features: [] } });
+    await outdated.pair();
+    const controller = outdated.restartServiceWorker();
+    const restarted = new InlineMenuService(controller, outdated.bridge);
+    const opened = restarted.openSession(pageFrame, pageUrl, pageUrl, "address");
+    expect((await restarted.getState(menuFrame, opened.sessionID)).errorMessage).toBe("Update the Hisar app to fill addresses");
+    expect(() => restarted.openSession(pageFrame, pageUrl, pageUrl, "address")).toThrow("Update the Hisar app to fill addresses");
+    await expectHisarError(controller.fillAddress(1, "vault-personal", "item-home"), "invalid-request");
+    expect(outdated.getRequestTypes().filter((type) => String(type).startsWith("addresses."))).toEqual([]);
+  });
+
+  it("asks the app for its features before filling an address from a restarted service worker", async () => {
+    const harness = createService({ allProbe: { 0: { ...emptyProbe, hasAddressForm: true } } });
+    await harness.pair();
+    await harness.restartServiceWorker().fillAddress(1, "vault-personal", "item-home");
+    expect(harness.getRequestTypes().filter((type) => type === "hello" || type === "addresses.fill").slice(-2)).toEqual(["hello", "addresses.fill"]);
   });
 
   it("relays keys from the page's frame to the menu, and only from that frame", async () => {

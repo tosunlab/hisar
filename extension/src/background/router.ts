@@ -46,6 +46,10 @@ async function routePopupMessage(controller: BackgroundController, message: Popu
       return controller.generatePassword(message.options);
     case "popup.fillPassword":
       return controller.fillPassword(message.tabId, message.password);
+    case "popup.listAddresses":
+      return controller.listAddresses();
+    case "popup.fillAddress":
+      return controller.fillAddress(message.tabId, message.vaultID, message.itemID);
   }
 }
 
@@ -85,6 +89,8 @@ async function routeInlineMenuMessage(inlineMenu: InlineMenuService, message: In
       return inlineMenu.fillLogin(sender, message.sessionID, message.vaultID, message.itemID);
     case "inlineMenu.fillOneTimeCode":
       return inlineMenu.fillOneTimeCode(sender, message.sessionID, message.vaultID, message.itemID);
+    case "inlineMenu.fillAddress":
+      return inlineMenu.fillAddress(sender, message.sessionID, message.vaultID, message.itemID);
     case "inlineMenu.useSuggestedPassword":
       return inlineMenu.useSuggestedPassword(sender, message.sessionID);
     case "inlineMenu.unlock":

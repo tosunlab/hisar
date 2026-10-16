@@ -18,6 +18,11 @@ vi.mock("../api", async () => {
       birthDate: "",
       email: "",
       phone: "",
+      street: "",
+      city: "",
+      region: "",
+      postalCode: "",
+      country: "",
       address: "",
       passportNumber: "",
       driversLicenseNumber: "",
@@ -151,7 +156,7 @@ describe("Viewing an identity", () => {
   });
 
   it("lists identities with their name, or the email without one", () => {
-    const summary = { ...createIdentityItem().identity!, phone: "", address: "", passportNumber: "", birthDate: "" };
+    const summary = { ...createIdentityItem().identity!, phone: "", street: "", city: "", region: "", postalCode: "", country: "", address: "", passportNumber: "", birthDate: "" };
     store.allItem = [
       createIdentityItem({ identity: summary }),
       createIdentityItem({ id: "identity-2", title: "Work", identity: { ...summary, firstName: "", lastName: "" } }),
@@ -181,6 +186,8 @@ describe("Importing identities", () => {
       creditCardCount: 0,
       identityCount: 2,
       apiCredentialCount: 0,
+      addressCount: 0,
+      softwareLicenseCount: 0,
       allSkipped: [],
       allDuplicate: [],
     };

@@ -1,4 +1,4 @@
-import type { ErrorCode, GenerateOptions, LoginSummary, UpdateRequirement } from "./protocol";
+import type { AddressSummary, AddressValues, ErrorCode, GenerateOptions, LoginSummary, UpdateRequirement } from "./protocol";
 
 export type PopupView = "not-paired" | "desktop-unavailable" | "signed-out" | "locked" | "unlocked" | "update-required";
 
@@ -8,6 +8,8 @@ export interface PopupState {
   isOffline?: boolean;
   errorMessage?: string;
   updateRequired?: UpdateRequirement;
+  // isAddressFillAvailable: the app fills addresses, so the popup offers its Addresses tab.
+  isAddressFillAvailable?: boolean;
 }
 
 export interface MatchResult {
@@ -38,9 +40,11 @@ export interface FrameProbe {
   hasFocusedField: boolean;
   hasFocusedLoginField: boolean;
   hasOneTimeCodeField?: boolean;
+  hasAddressForm?: boolean;
+  hasFocusedAddressField?: boolean;
 }
 
-export type InlineMenuPurpose = "login" | "new-password" | "one-time-code";
+export type InlineMenuPurpose = "login" | "new-password" | "one-time-code" | "address";
 export type InlineMenuKey = "ArrowDown" | "ArrowUp" | "Enter";
 export type InlineMenuView = PopupView | "logins";
 
@@ -50,6 +54,9 @@ export interface InlineMenuState {
   host: string;
   allLogin: LoginSummary[];
   hasMoreLogin: boolean;
+  // allAddress holds the addresses offered on an address field, in place of logins.
+  allAddress?: AddressSummary[];
+  hasMoreAddress?: boolean;
   suggestedPassword?: string;
   errorMessage?: string;
   updateRequired?: UpdateRequirement;
@@ -65,7 +72,9 @@ export type PopupMessage =
   | { type: "popup.getPassword"; tabId: number; vaultID: string; itemID: string }
   | { type: "popup.getOneTimeCode"; tabId: number; vaultID: string; itemID: string }
   | { type: "popup.generatePassword"; options: GenerateOptions }
-  | { type: "popup.fillPassword"; tabId: number; password: string };
+  | { type: "popup.fillPassword"; tabId: number; password: string }
+  | { type: "popup.listAddresses" }
+  | { type: "popup.fillAddress"; tabId: number; vaultID: string; itemID: string };
 
 export type ContentToBackgroundMessage =
   | { type: "content.loginSubmitted"; username: string; password: string }
@@ -80,6 +89,7 @@ export type InlineMenuMessage =
   | { type: "inlineMenu.getState"; sessionID: string }
   | { type: "inlineMenu.fillLogin"; sessionID: string; vaultID: string; itemID: string }
   | { type: "inlineMenu.fillOneTimeCode"; sessionID: string; vaultID: string; itemID: string }
+  | { type: "inlineMenu.fillAddress"; sessionID: string; vaultID: string; itemID: string }
   | { type: "inlineMenu.useSuggestedPassword"; sessionID: string }
   | { type: "inlineMenu.unlock"; sessionID: string }
   | { type: "inlineMenu.openHisar"; sessionID: string }
@@ -99,6 +109,7 @@ export type BackgroundToContentMessage =
   | { type: "content.fillLogin"; expectedOrigin: string; username: string; password: string; sessionID?: string }
   | { type: "content.fillPassword"; expectedOrigin: string; password: string; sessionID?: string }
   | { type: "content.fillOneTimeCode"; expectedOrigin: string; code: string; sessionID?: string }
+  | { type: "content.fillAddress"; expectedOrigin: string; address: AddressValues; sessionID?: string }
   | { type: "content.showSaveOffer"; offer: SaveOfferView }
   | { type: "content.isInlineMenuVisible"; sessionID: string }
   | { type: "content.resizeInlineMenu"; sessionID: string; height: number }

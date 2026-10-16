@@ -372,3 +372,54 @@ describe("update required", () => {
     expect(panel.text()).toContain("the server requires version 0.1.6 or later");
   });
 });
+
+describe("addresses", () => {
+  const allAddress = [
+    { vaultID: "v1", itemID: "home", title: "Home", summary: "Springfield, US", source: "address", vaultName: "Personal" },
+    { vaultID: "v1", itemID: "alice", title: "Alice", summary: "Chicago", source: "identity", vaultName: "Personal" },
+  ];
+
+  it("offers the Addresses tab only when the app fills addresses", async () => {
+    respondWithState({ view: "unlocked", email: "alex@example.com" });
+    const older = await mountApp();
+    expect(older.find('[data-testid="section-addresses"]').exists()).toBe(false);
+    older.unmount();
+
+    respondWithState({ view: "unlocked", email: "alex@example.com", isAddressFillAvailable: true });
+    const wrapper = await mountApp();
+    expect(wrapper.find('[data-testid="section-addresses"]').exists()).toBe(true);
+  });
+
+  it("lists addresses and identities and fills the chosen one into the page", async () => {
+    respondWithState({ view: "unlocked", email: "alex@example.com", isAddressFillAvailable: true }, { "popup.listAddresses": () => allAddress });
+    const wrapper = await mountApp();
+    await wrapper.find('[data-testid="section-addresses"]').trigger("click");
+    await flushPromises();
+    const allRow = wrapper.findAll('[data-testid="address-row"]');
+    expect(allRow.map((row) => row.text())).toEqual([expect.stringContaining("Springfield, US"), expect.stringContaining("Chicago · Identity")]);
+    expect(allMessage.some((message) => message.type === "popup.fillAddress")).toBe(false);
+    await allRow[1].find('[data-testid="fill-address"]').trigger("click");
+    await flushPromises();
+    expect(allMessage).toContainEqual({ type: "popup.fillAddress", tabId: 42, vaultID: "v1", itemID: "alice" });
+    expect(closeWindow).toHaveBeenCalled();
+  });
+
+  it("shows why an address was not filled and stays open", async () => {
+    respondWithState(
+      { view: "unlocked", email: "alex@example.com", isAddressFillAvailable: true },
+      {
+        "popup.listAddresses": () => allAddress,
+        "popup.fillAddress": () => {
+          throw Object.assign(new Error("No address form found on this page"), { code: "not-found" });
+        },
+      },
+    );
+    const wrapper = await mountApp();
+    await wrapper.find('[data-testid="section-addresses"]').trigger("click");
+    await flushPromises();
+    await wrapper.find('[data-testid="fill-address"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="address-error"]').text()).toContain("No address form found on this page");
+    expect(closeWindow).not.toHaveBeenCalled();
+  });
+});

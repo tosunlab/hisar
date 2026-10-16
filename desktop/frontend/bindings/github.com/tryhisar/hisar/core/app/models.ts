@@ -143,6 +143,16 @@ export interface ImportPreview {
      * APICredentialCount counts the api-credential items among ItemCount.
      */
     "apiCredentialCount": number;
+
+    /**
+     * AddressCount counts the address items among ItemCount.
+     */
+    "addressCount": number;
+
+    /**
+     * SoftwareLicenseCount counts the software-license items among ItemCount.
+     */
+    "softwareLicenseCount": number;
     "allSkipped": ImportSkippedEntry[] | null;
     "allDuplicate": ImportDuplicate[] | null;
 }
@@ -176,8 +186,21 @@ export interface ItemAPICredential {
 }
 
 /**
+ * ItemAddress is a postal address; Street may hold several lines. Identities and cards hold one too.
+ */
+export interface ItemAddress {
+    "street": string;
+    "city": string;
+    "region": string;
+    "postalCode": string;
+    "country": string;
+}
+
+/**
  * ItemCard is a card's values. Type is the brand saved with the card, which the user may choose; Brand is the one its
  * number points to. Lists show Type, or Brand when the card has no type.
+ * Its billing address is in the embedded ItemAddress; BillingAddress is a one-line address saved before cards had one, kept
+ * as it is.
  */
 export interface ItemCard {
     "cardholder": string;
@@ -186,6 +209,11 @@ export interface ItemCard {
     "expiry": string;
     "securityCode": string;
     "pin": string;
+    "street": string;
+    "city": string;
+    "region": string;
+    "postalCode": string;
+    "country": string;
     "billingAddress": string;
     "brand": string;
     "last4": string;
@@ -245,6 +273,18 @@ export interface ItemDetail {
      * only the service and host.
      */
     "apiCredential"?: ItemAPICredential | null;
+
+    /**
+     * Address holds an address item's values, stored as named custom fields like an identity's; summaries keep only the
+     * city, country and the first line of the street.
+     */
+    "address"?: ItemAddress | null;
+
+    /**
+     * SoftwareLicense holds a software license's values, stored as named custom fields like an API credential's; summaries
+     * keep only the product, version, licensed-to name and email.
+     */
+    "softwareLicense"?: ItemSoftwareLicense | null;
 }
 
 export interface ItemField {
@@ -254,7 +294,8 @@ export interface ItemField {
 }
 
 /**
- * ItemIdentity is a person's details; the document numbers are optional and concealed.
+ * ItemIdentity is a person's details; the document numbers are optional and concealed. Its address is in the embedded
+ * ItemAddress; Address is a one-line address saved before identities had one, kept as it is.
  */
 export interface ItemIdentity {
     "firstName": string;
@@ -263,6 +304,11 @@ export interface ItemIdentity {
     "birthDate": string;
     "email": string;
     "phone": string;
+    "street": string;
+    "city": string;
+    "region": string;
+    "postalCode": string;
+    "country": string;
     "address": string;
     "passportNumber": string;
     "driversLicenseNumber": string;
@@ -278,6 +324,20 @@ export interface ItemPasskey {
     "userName": string;
     "userDisplayName": string;
     "createdAt": string;
+}
+
+/**
+ * ItemSoftwareLicense is a software license; the license key is concealed. DownloadURL is a field, not the item's
+ * website.
+ */
+export interface ItemSoftwareLicense {
+    "product": string;
+    "version": string;
+    "licenseKey": string;
+    "licensedTo": string;
+    "email": string;
+    "purchaseDate": string;
+    "downloadUrl": string;
 }
 
 /**

@@ -1,6 +1,6 @@
 # Hisar Browser Extension
 
-MV3 extension for Chromium browsers that fills and saves logins through the Hisar desktop app over native messaging. The protocol, matching and frame rules are in [docs/DESIGN.md §9.2](../docs/DESIGN.md#92-browser-extension--typescript-mv3). The extension holds no keys and does no crypto.
+MV3 extension for Chromium browsers that fills and saves logins, and fills addresses, through the Hisar desktop app over native messaging. The protocol, matching and frame rules are in [docs/DESIGN.md §9.2](../docs/DESIGN.md#92-browser-extension--typescript-mv3). The extension holds no keys and does no crypto.
 
 The manifest's `key` gives the fixed ID `mmipiffoogblblocokimpemdopmdjghf`, both unpacked and from the store. The native host `com.tryhisar.hisar` allows only that ID.
 
@@ -68,6 +68,12 @@ npm run test:end-to-end     # builds, then runs the Playwright tests with the fa
 - `signalUnknownCredential` with an `rpId` of another site rejects with `SecurityError`; with the site's `rpId` it removes the passkey (the login stays), and signing in no longer offers it;
 - `getClientCapabilities()` answers without starting the native host, and reports Hisar's capabilities once it is connected.
 
+`end-to-end/address.spec.ts` uses a checkout page with an address form, a same-origin frame and a cross-origin frame:
+
+- the inline menu on an address field lists the address and fills the form, with the street split into its lines and the country list chosen;
+- the popup's Addresses tab fills the focused same-origin frame, and the cross-origin frame stays empty;
+- with an app that does not announce addresses, neither the tab nor the icon appears.
+
 To watch it run, use `HISAR_HEADED=1 npm run test:end-to-end`.
 
 `HISAR_SCREENSHOT_DIRECTORY=/tmp/shots npm run screenshots` saves the popup states, the save bar and the inline menu states as PNGs. Add `HISAR_CHROME_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"` to use the installed Chrome. Branded Chrome ignores `--load-extension`, so the script loads the build over the DevTools protocol (`Extensions.loadUnpacked`) instead.
@@ -111,6 +117,7 @@ Then load `dist` unpacked in that profile. The host's log goes to Chrome's stder
 When a username or password field of a login form gets the focus, a Hisar icon appears inside the field's right edge, and a menu opens under the field.
 
 - **Menu contents:** matching logins, a suggested password on sign-up forms, or what to do when Hisar is not paired, locked or not running.
+- **Addresses:** in a field of an address form (by its `autocomplete` token, or two address fields found by their labels), the menu offers Hisar's addresses and identities with an address, and fills the empty fields of that form's shipping or billing group. Only with a Hisar app that announces addresses.
 - **One-time codes:** in a two-factor field (`autocomplete="one-time-code"`, or a field named or labelled like otp, 2fa or verification code), and in a code split into one-character boxes, the menu offers the codes of the matching logins and fills the chosen one.
 - **Settings:** the popup's settings (the sliders button in the header) turn the icon off, or open the menu only on a click on the icon or the down arrow.
 - **Isolation:** the menu is an extension page in an iframe, so the page never sees login titles or usernames.

@@ -63,6 +63,17 @@ final class VaultLogicTests: XCTestCase {
         XCTAssertEqual(VaultLogic.filterAllItem(allItem, searchText: "bob@example").map(\.item.title), ["Work"])
     }
 
+    func testFilterFindsAnIdentityByItsAddress() {
+        var alice = makeReference("Alice", category: ItemDetail.categoryIdentity)
+        var identity = ItemIdentity()
+        identity.firstName = "Alice"
+        identity.postalAddress = ItemAddress(street: "1 Main St", city: "Springfield", country: "US")
+        alice.item.identity = identity
+        let allItem = [alice, makeReference("GitHub")]
+        XCTAssertEqual(VaultLogic.filterAllItem(allItem, searchText: "springfield").map(\.item.title), ["Alice"])
+        XCTAssertEqual(VaultLogic.filterAllItem(allItem, searchText: "main st").map(\.item.title), ["Alice"])
+    }
+
     func testFilterFindsAnAPICredentialByItsServiceKeyIDAndHost() {
         var stripe = makeReference("Billing key", category: ItemDetail.categoryAPICredential)
         var credential = ItemAPICredential()
@@ -74,6 +85,26 @@ final class VaultLogicTests: XCTestCase {
         XCTAssertEqual(VaultLogic.filterAllItem(allItem, searchText: "stripe").map(\.item.title), ["Billing key"])
         XCTAssertEqual(VaultLogic.filterAllItem(allItem, searchText: "api.stripe").map(\.item.title), ["Billing key"])
         XCTAssertEqual(VaultLogic.filterAllItem(allItem, searchText: "key_live").map(\.item.title), ["Billing key"])
+    }
+
+    func testFilterFindsASoftwareLicenseByItsProductVersionAndOwnerButNotItsKey() {
+        var sketch = makeReference("Design app", category: ItemDetail.categorySoftwareLicense)
+        sketch.item.softwareLicense = ItemSoftwareLicense(product: "Sketch", version: "v100", licenseKey: "TEST-LICENSE-KEY", licensedTo: "Alice Example", email: "alice@example.com")
+        let allItem = [sketch, makeReference("GitHub")]
+        for searchText in ["sketch", "v100", "alice example", "alice@"] {
+            XCTAssertEqual(VaultLogic.filterAllItem(allItem, searchText: searchText).map(\.item.title), ["Design app"], searchText)
+        }
+        XCTAssertTrue(VaultLogic.filterAllItem(allItem, searchText: "test-license").isEmpty)
+        XCTAssertTrue(ItemCategoryDestination.softwareLicenses.includes(sketch.item))
+    }
+
+    func testFilterFindsAnAddressByItsStreetCityAndCountry() {
+        var home = makeReference("Home", category: ItemDetail.categoryAddress)
+        home.item.address = ItemAddress(street: "1 Main St", city: "Springfield", country: "US")
+        let allItem = [home, makeReference("GitHub")]
+        XCTAssertEqual(VaultLogic.filterAllItem(allItem, searchText: "springfield").map(\.item.title), ["Home"])
+        XCTAssertEqual(VaultLogic.filterAllItem(allItem, searchText: "main st").map(\.item.title), ["Home"])
+        XCTAssertEqual(ItemCategoryDestination.addresses.includes(home.item), true)
     }
 
     func testSortByTitleThenUsername() {

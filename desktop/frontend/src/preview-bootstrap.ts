@@ -15,6 +15,8 @@ import {
   startCreatingCard,
   startCreatingIdentity,
   startCreatingAPICredential,
+  startCreatingAddress,
+  startCreatingSoftwareLicense,
   startCreatingSecureNote,
   startCreatingSSHKey,
   startEditingItem,
@@ -262,6 +264,10 @@ export async function applyPreviewParameter(): Promise<void> {
     startCreatingIdentity();
   } else if (parameter.get("editor") === "api-credential") {
     startCreatingAPICredential();
+  } else if (parameter.get("editor") === "address") {
+    startCreatingAddress();
+  } else if (parameter.get("editor") === "software-license") {
+    startCreatingSoftwareLicense();
   } else if (parameter.get("editor") === "ssh-key") {
     startCreatingSSHKey();
   } else if (parameter.get("editor") === "edit") {

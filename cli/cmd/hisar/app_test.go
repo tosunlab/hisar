@@ -381,7 +381,7 @@ func TestAddNoteRefusesAnAppWithoutSecureNotes(t *testing.T) {
 
 func TestCreditCardsThroughTheApp(t *testing.T) {
 	app := startFakeApp(t)
-	input := "Visa\nAlice Smith\n\n4111111111111112\n13/27\n123\n\n1 Main St\n"
+	input := "Visa\nAlice Smith\n\n4111111111111112\n13/27\n123\n\n1 Main St\nApt 4\n\nSpringfield\n\n12345\nus\n"
 	_, stderr, err := runCapturingOutput(t, false, input, "add", "--type", "credit-card")
 	if err != nil || !strings.Contains(stderr, `Saved "Visa" to Personal.`) {
 		t.Fatalf("add --type credit-card: %q %v", stderr, err)
@@ -396,7 +396,10 @@ func TestCreditCardsThroughTheApp(t *testing.T) {
 		{Name: item.FieldCardNumber, Value: "4111 1111 1111 1112", Concealed: true},
 		{Name: item.FieldExpiry, Value: "13/27"},
 		{Name: item.FieldSecurityCode, Value: "123", Concealed: true},
-		{Name: item.FieldBillingAddress, Value: "1 Main St"},
+		{Name: item.FieldStreet, Value: "1 Main St\nApt 4"},
+		{Name: item.FieldCity, Value: "Springfield"},
+		{Name: item.FieldPostalCode, Value: "12345"},
+		{Name: item.FieldCountry, Value: "US"},
 	}
 	if added.Category != item.CategoryCreditCard || added.Fields == nil || !reflect.DeepEqual(*added.Fields, wantFields) {
 		t.Errorf("add request %+v %+v", added, added.Fields)
@@ -418,7 +421,7 @@ func TestCreditCardsThroughTheApp(t *testing.T) {
 
 func TestIdentitiesThroughTheApp(t *testing.T) {
 	app := startFakeApp(t)
-	input := "Alice\nAlice\n\nExample\n1990/4/12\nalice@example.com\n\n1 Main St\nU1234567\n\n\n"
+	input := "Alice\nAlice\n\nExample\n1990/4/12\nalice@example.com\n\n1 Main St\n\n\n\n\n\nU1234567\n\n\n"
 	_, stderr, err := runCapturingOutput(t, false, input, "add", "--type", "identity")
 	if err != nil || !strings.Contains(stderr, `Saved "Alice" to Personal.`) {
 		t.Fatalf("add --type identity: %q %v", stderr, err)
@@ -432,7 +435,7 @@ func TestIdentitiesThroughTheApp(t *testing.T) {
 		{Name: item.FieldLastName, Value: "Example"},
 		{Name: item.FieldBirthDate, Value: "1990-04-12"},
 		{Name: item.FieldEmail, Value: "alice@example.com"},
-		{Name: item.FieldAddress, Value: "1 Main St"},
+		{Name: item.FieldStreet, Value: "1 Main St"},
 		{Name: item.FieldPassportNumber, Value: "U1234567", Concealed: true},
 	}
 	if added.Category != item.CategoryIdentity || added.Fields == nil || !reflect.DeepEqual(*added.Fields, wantFields) {
@@ -479,10 +482,89 @@ func TestAPICredentialsThroughTheApp(t *testing.T) {
 	}
 }
 
+func TestAddressesThroughTheApp(t *testing.T) {
+	app := startFakeApp(t)
+	input := "Home\n1 Main St\nApt 4\n\nSpringfield\nIL\n12345\nus\n"
+	_, stderr, err := runCapturingOutput(t, false, input, "add", "--type", "address")
+	if err != nil || !strings.Contains(stderr, `Saved "Home" to Personal.`) {
+		t.Fatalf("add --type address: %q %v", stderr, err)
+	}
+	if !strings.Contains(stderr, "Street (a line at a time, then an empty line): ") {
+		t.Errorf("no street hint: %q", stderr)
+	}
+	added := app.findRequest(cliprotocol.TypeSaveItem)[0].Item
+	wantFields := []cliprotocol.Field{
+		{Name: item.FieldStreet, Value: "1 Main St\nApt 4"},
+		{Name: item.FieldCity, Value: "Springfield"},
+		{Name: item.FieldRegion, Value: "IL"},
+		{Name: item.FieldPostalCode, Value: "12345"},
+		{Name: item.FieldCountry, Value: "US"},
+	}
+	if added.Category != item.CategoryAddress || added.Fields == nil || !reflect.DeepEqual(*added.Fields, wantFields) {
+		t.Errorf("add request %+v %+v", added, added.Fields)
+	}
+
+	app.mutex.Lock()
+	app.hello.Features = []string{cliprotocol.FeatureSecureNotes, cliprotocol.FeatureCreditCards, cliprotocol.FeatureIdentities, cliprotocol.FeatureAPICredentials}
+	app.mutex.Unlock()
+	_, stderr, err = runCapturingOutput(t, false, input, "add", "--type", "address")
+	if err == nil || !strings.Contains(err.Error(), "cannot save address items") || strings.Contains(stderr, "Street") {
+		t.Errorf("add an address through an older app: %q %v", stderr, err)
+	}
+}
+
+func TestSoftwareLicensesThroughTheApp(t *testing.T) {
+	app := startFakeApp(t)
+	input := "Sketch\nSketch\n100\nTEST-LICENSE-KEY\nAlice Example\nalice@example.com\n2024/3/9\nhttps://www.sketch.com/download\n"
+	_, stderr, err := runCapturingOutput(t, false, input, "add", "--type", "software-license")
+	if err != nil || !strings.Contains(stderr, `Saved "Sketch" to Personal.`) {
+		t.Fatalf("add --type software-license: %q %v", stderr, err)
+	}
+	if !strings.Contains(stderr, "Purchase date (YYYY-MM-DD): ") || strings.Contains(stderr, "TEST-LICENSE-KEY") {
+		t.Errorf("prompts: %q", stderr)
+	}
+	added := app.findRequest(cliprotocol.TypeSaveItem)[0].Item
+	wantFields := []cliprotocol.Field{
+		{Name: item.FieldProduct, Value: "Sketch"},
+		{Name: item.FieldVersion, Value: "100"},
+		{Name: item.FieldLicenseKey, Value: "TEST-LICENSE-KEY", Concealed: true},
+		{Name: item.FieldLicensedTo, Value: "Alice Example"},
+		{Name: item.FieldEmail, Value: "alice@example.com"},
+		{Name: item.FieldPurchaseDate, Value: "2024-03-09"},
+		{Name: item.FieldDownloadURL, Value: "https://www.sketch.com/download"},
+	}
+	if added.Category != item.CategorySoftwareLicense || added.Fields == nil || !reflect.DeepEqual(*added.Fields, wantFields) {
+		t.Errorf("add request %+v %+v", added, added.Fields)
+	}
+
+	app.mutex.Lock()
+	app.hello.Features = []string{cliprotocol.FeatureSecureNotes, cliprotocol.FeatureCreditCards, cliprotocol.FeatureIdentities, cliprotocol.FeatureAPICredentials, cliprotocol.FeatureAddresses}
+	app.mutex.Unlock()
+	_, stderr, err = runCapturingOutput(t, false, input, "add", "--type", "software-license")
+	if err == nil || !strings.Contains(err.Error(), "cannot save software-license items") || strings.Contains(stderr, "Product") {
+		t.Errorf("add a software license through an older app: %q %v", stderr, err)
+	}
+}
+
+func TestEditingAnAddressKeepsItsStreetOnAnEmptyLine(t *testing.T) {
+	originalReader := stdinReader
+	defer func() { stdinReader = originalReader }()
+	stdinReader = bufio.NewReader(strings.NewReader("\n\nChicago\n\n\n\n"))
+	vaultItem := item.Item{Overview: item.Overview{Title: "Home", Category: item.CategoryAddress}}
+	item.WriteAddress(&vaultItem, item.Address{Street: "1 Main St\nApt 4", City: "Springfield"}, []item.Field{{Name: "Gate code", Value: "1234"}})
+	if err := promptAddress(&vaultItem); err != nil {
+		t.Fatal(err)
+	}
+	address, otherFields := item.ReadAddress(&vaultItem)
+	if address != (item.Address{Street: "1 Main St\nApt 4", City: "Chicago"}) || len(otherFields) != 1 {
+		t.Errorf("edited address = %+v, other fields %+v", address, otherFields)
+	}
+}
+
 func TestAddAndEditFollowTheItemType(t *testing.T) {
 	app := startFakeApp(t)
 	_, stderr, err := runCapturingOutput(t, false, "Router\n", "add", "--type", "wireless-router")
-	if err == nil || !strings.Contains(err.Error(), `unknown item type "wireless-router"; use one of login, secure-note, credit-card, identity, api-credential`) {
+	if err == nil || !strings.Contains(err.Error(), `unknown item type "wireless-router"; use one of login, secure-note, credit-card, identity, api-credential, address, software-license`) {
 		t.Errorf("add an unknown type: %v", err)
 	}
 	if strings.Contains(stderr, "Title") {

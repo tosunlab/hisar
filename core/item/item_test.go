@@ -185,7 +185,7 @@ func TestCategory(t *testing.T) {
 }
 
 func TestOmitsLoginData(t *testing.T) {
-	for category, want := range map[string]bool{"": false, CategoryLogin: false, CategorySSHKey: false, CategorySecureNote: true, CategoryCreditCard: true, CategoryIdentity: true, CategoryAPICredential: true, "passport": false} {
+	for category, want := range map[string]bool{"": false, CategoryLogin: false, CategorySSHKey: false, CategorySecureNote: true, CategoryCreditCard: true, CategoryIdentity: true, CategoryAPICredential: true, CategoryAddress: true, CategorySoftwareLicense: true, "passport": false} {
 		vaultItem := Item{Overview: Overview{Category: category}}
 		if got := vaultItem.OmitsLoginData(); got != want {
 			t.Errorf("OmitsLoginData for %q = %v, want %v", category, got, want)
