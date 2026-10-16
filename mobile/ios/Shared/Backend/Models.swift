@@ -145,6 +145,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     static let categorySecureNote = "secure-note"
     static let categoryCreditCard = "credit-card"
     static let categoryIdentity = "identity"
+    static let categoryAPICredential = "api-credential"
 
     var id: String
     var revision: String
@@ -170,15 +171,18 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     var identity: ItemIdentity?
     /// The user starred the item. Favorites belong to the user's account, not the item, so people sharing the vault don't see them.
     var isFavorite: Bool
+    /// An API credential's values, stored as named custom fields like an identity's. Summaries keep only the service and
+    /// host.
+    var apiCredential: ItemAPICredential?
 
     enum CodingKeys: String, CodingKey {
-        case id, revision, category, title, username, password, notes, publicKey, fingerprint, keyType, oneTimePassword, hasOneTimePassword, canConvertToSecureNote, card, identity, isFavorite
+        case id, revision, category, title, username, password, notes, publicKey, fingerprint, keyType, oneTimePassword, hasOneTimePassword, canConvertToSecureNote, card, identity, isFavorite, apiCredential
         case allURL = "urls"
         case allField = "fields"
         case allPasskey = "passkeys"
     }
 
-    init(id: String = "", revision: String = "", category: String = ItemDetail.categoryLogin, title: String = "", username: String = "", allURL: [String] = [], password: String = "", notes: String = "", allField: [ItemField] = [], publicKey: String = "", fingerprint: String = "", keyType: String = "", oneTimePassword: String = "", hasOneTimePassword: Bool = false, allPasskey: [ItemPasskey] = [], canConvertToSecureNote: Bool = false, card: ItemCard? = nil, identity: ItemIdentity? = nil, isFavorite: Bool = false) {
+    init(id: String = "", revision: String = "", category: String = ItemDetail.categoryLogin, title: String = "", username: String = "", allURL: [String] = [], password: String = "", notes: String = "", allField: [ItemField] = [], publicKey: String = "", fingerprint: String = "", keyType: String = "", oneTimePassword: String = "", hasOneTimePassword: Bool = false, allPasskey: [ItemPasskey] = [], canConvertToSecureNote: Bool = false, card: ItemCard? = nil, identity: ItemIdentity? = nil, isFavorite: Bool = false, apiCredential: ItemAPICredential? = nil) {
         self.id = id
         self.revision = revision
         self.category = category
@@ -198,6 +202,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         self.card = card
         self.identity = identity
         self.isFavorite = isFavorite
+        self.apiCredential = apiCredential
     }
 
     init(from decoder: Decoder) throws {
@@ -221,6 +226,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         card = try container.decodeIfPresent(ItemCard.self, forKey: .card)
         identity = try container.decodeIfPresent(ItemIdentity.self, forKey: .identity)
         isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
+        apiCredential = try container.decodeIfPresent(ItemAPICredential.self, forKey: .apiCredential)
     }
 
     var isLogin: Bool { category.isEmpty || category == Self.categoryLogin }
@@ -228,6 +234,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     var isSecureNote: Bool { category == Self.categorySecureNote }
     var isCreditCard: Bool { category == Self.categoryCreditCard }
     var isIdentity: Bool { category == Self.categoryIdentity }
+    var isAPICredential: Bool { category == Self.categoryAPICredential }
 }
 
 /// The names core/item stores an identity's values under; copying and secret references use them.
@@ -283,9 +290,11 @@ struct ItemIdentity: Codable, Hashable {
 
     /// The identity's line in lists: the full name, or the email when it has no name.
     var summary: String { fullName.isEmpty ? (email.isEmpty ? "Identity" : email) : fullName }
+}
 
-    /// Birth dates are stored as YYYY-MM-DD, a day without a time or time zone.
-    private static let birthDateFormatter: DateFormatter = {
+/// A day without a time or time zone, stored as YYYY-MM-DD: an identity's birth date or an API credential's expiry.
+enum CalendarDate {
+    private static let formatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -294,28 +303,92 @@ struct ItemIdentity: Codable, Hashable {
         return formatter
     }()
 
-    /// The day a stored YYYY-MM-DD birth date names, or nil for any other text. A day that does not exist, such as
-    /// 2023-02-31, is nil too: the formatter would roll it over into March.
-    static func parseBirthDate(_ birthDate: String) -> Date? {
-        guard let date = birthDateFormatter.date(from: birthDate), birthDateFormatter.string(from: date) == birthDate else {
+    /// The day a stored YYYY-MM-DD date names, as midnight UTC, or nil for any other text. A day that does not exist, such
+    /// as 2023-02-31, is nil too: the formatter would roll it over into March.
+    static func parse(_ text: String) -> Date? {
+        guard let date = formatter.date(from: text), formatter.string(from: date) == text else {
             return nil
         }
         return date
     }
 
-    /// The birth date as it is stored, YYYY-MM-DD.
-    static func formatBirthDate(_ date: Date) -> String { birthDateFormatter.string(from: date) }
+    /// The day as it is stored, YYYY-MM-DD; a date picker in UTC gives midnight UTC of the picked day.
+    static func format(_ date: Date) -> String { formatter.string(from: date) }
 
-    /// Today on the device's calendar as a stored birth date. The formatter works in UTC, which is a day ahead or behind
-    /// near midnight: at 20:00 on October 15 in Los Angeles it is already October 16 in UTC.
+    /// Today on the device's calendar, as stored. The formatter works in UTC, which is a day ahead or behind near midnight:
+    /// at 20:00 on October 15 in Los Angeles it is already October 16 in UTC.
     static func formatToday(now: Date = Date(), calendar: Calendar = .current) -> String {
         let parts = calendar.dateComponents([.year, .month, .day], from: now)
         return String(format: "%04d-%02d-%02d", parts.year ?? 1970, parts.month ?? 1, parts.day ?? 1)
     }
 
-    /// The latest day a birth date picker offers: today on the device's calendar, as the UTC day the picker shows.
-    static func getLatestBirthDate(now: Date = Date(), calendar: Calendar = .current) -> Date {
-        parseBirthDate(formatToday(now: now, calendar: calendar)) ?? now
+    /// Today on the device's calendar as the UTC day a date picker shows, such as the latest birth date it offers.
+    static func getToday(now: Date = Date(), calendar: Calendar = .current) -> Date {
+        parse(formatToday(now: now, calendar: calendar)) ?? now
+    }
+}
+
+/// The names core/item stores an API credential's values under; copying and hisar:// references use them.
+enum APICredentialFieldName {
+    static let service = "Service"
+    static let keyID = "Key ID"
+    static let secret = "Secret"
+    static let host = "Host"
+    static let expiry = "Expiry"
+}
+
+/// An API key; the secret is concealed. `expiryWarning` comes from the backend once the expiry has passed.
+struct ItemAPICredential: Codable, Hashable {
+    var service = ""
+    var keyID = ""
+    var secret = ""
+    var host = ""
+    var expiry = ""
+    var expiryWarning = ""
+
+    enum CodingKeys: String, CodingKey {
+        case service, secret, host, expiry, expiryWarning
+        case keyID = "keyId"
+    }
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        service = try container.decodeIfPresent(String.self, forKey: .service) ?? ""
+        keyID = try container.decodeIfPresent(String.self, forKey: .keyID) ?? ""
+        secret = try container.decodeIfPresent(String.self, forKey: .secret) ?? ""
+        host = try container.decodeIfPresent(String.self, forKey: .host) ?? ""
+        expiry = try container.decodeIfPresent(String.self, forKey: .expiry) ?? ""
+        expiryWarning = try container.decodeIfPresent(String.self, forKey: .expiryWarning) ?? ""
+    }
+
+    static let expiredWarning = "This credential has expired"
+
+    /// The warning for a YYYY-MM-DD expiry once its day has passed on the device's calendar, as core/item
+    /// DescribeAPICredentialExpiry gives it; "" for any other value.
+    static func describeExpiry(_ expiry: String, now: Date = Date(), calendar: Calendar = .current) -> String {
+        guard CalendarDate.parse(expiry) != nil else {
+            return ""
+        }
+        // YYYY-MM-DD dates sort as text.
+        return expiry < CalendarDate.formatToday(now: now, calendar: calendar) ? expiredWarning : ""
+    }
+
+    /// The editor's warning, which follows the expiry as it is edited rather than the one the backend gave for the saved
+    /// value. A saved value in another form that the backend still reads as a date, such as 2020/01/01, keeps the
+    /// backend's warning until it changes.
+    static func describeEditedExpiry(_ expiry: String, saved: ItemAPICredential?, now: Date = Date(), calendar: Calendar = .current) -> String {
+        if let saved, CalendarDate.parse(expiry) == nil, expiry == saved.expiry {
+            return saved.expiryWarning
+        }
+        return describeExpiry(expiry, now: now, calendar: calendar)
+    }
+
+    /// The credential's line in lists: its service and host, such as "Stripe · api.stripe.com".
+    var summary: String {
+        let parts = [service, host].filter { !$0.isEmpty }
+        return parts.isEmpty ? "API credential" : parts.joined(separator: " · ")
     }
 }
 

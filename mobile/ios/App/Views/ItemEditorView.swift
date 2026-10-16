@@ -18,10 +18,15 @@ struct ItemEditorView: View {
     @State private var isCardSecretRevealed = false
     @State private var cardDescription = CardDescription()
     @State private var isDocumentNumberRevealed = false
+    @State private var isCredentialSecretRevealed = false
     /// The brand of the number last checked: the type follows it until the user picks a different one.
     @State private var numberBrand = ""
 
     private var isNew: Bool { originalItem == nil }
+
+    private var credentialExpiryWarning: String {
+        ItemAPICredential.describeEditedExpiry(draft.apiCredential?.expiry ?? "", saved: originalItem?.apiCredential)
+    }
 
     var body: some View {
         NavigationStack {
@@ -47,6 +52,9 @@ struct ItemEditorView: View {
                     buildFieldSection()
                 } else if draft.isIdentity {
                     buildIdentitySections()
+                    buildFieldSection()
+                } else if draft.isAPICredential {
+                    buildAPICredentialSections()
                     buildFieldSection()
                 } else if !draft.isSSHKey {
                     Section("Login") {
@@ -179,6 +187,9 @@ struct ItemEditorView: View {
         if draft.isIdentity, draft.identity == nil {
             draft.identity = ItemIdentity()
         }
+        if draft.isAPICredential, draft.apiCredential == nil {
+            draft.apiCredential = ItemAPICredential()
+        }
         if draft.isCreditCard {
             let card = draft.card ?? ItemCard()
             draft.card = card
@@ -290,6 +301,7 @@ struct ItemEditorView: View {
         if draft.isSecureNote { return "New secure note" }
         if draft.isCreditCard { return "New credit card" }
         if draft.isIdentity { return "New identity" }
+        if draft.isAPICredential { return "New API credential" }
         return "New login"
     }
 
@@ -305,39 +317,40 @@ struct ItemEditorView: View {
         )
     }
 
-    /// A date picker for a stored YYYY-MM-DD birth date; an imported date in another form, such as 04/12/1990, or a day that
-    /// does not exist, such as 2023-02-31, stays text.
+    /// A date picker for a stored YYYY-MM-DD date, such as a birth date or an expiry; an imported date in another form, such
+    /// as 04/12/1990, or a day that does not exist, such as 2023-02-31, stays text. A birth date cannot be in the future.
     @ViewBuilder
-    private func buildBirthDateRow() -> some View {
-        let birthDate = bindIdentity(\.birthDate)
-        if birthDate.wrappedValue.isEmpty {
+    private func buildDateRow(_ title: String, _ value: Binding<String>, identifier: String, isFutureAllowed: Bool) -> some View {
+        if value.wrappedValue.isEmpty {
             Button {
-                birthDate.wrappedValue = ItemIdentity.formatToday()
+                value.wrappedValue = CalendarDate.formatToday()
             } label: {
-                Label("Add birth date", systemImage: "calendar.badge.plus")
+                Label("Add \(title.lowercased())", systemImage: "calendar.badge.plus")
             }
-            .accessibilityIdentifier("editor-identity-add-birth-date")
-        } else if let date = ItemIdentity.parseBirthDate(birthDate.wrappedValue) {
+            .accessibilityIdentifier("\(identifier)-add")
+        } else if let date = CalendarDate.parse(value.wrappedValue) {
             HStack {
-                DatePicker(
-                    "Birth date",
-                    selection: Binding(get: { date }, set: { birthDate.wrappedValue = ItemIdentity.formatBirthDate($0) }),
-                    in: ...ItemIdentity.getLatestBirthDate(),
-                    displayedComponents: .date
-                )
+                let selection = Binding(get: { date }, set: { value.wrappedValue = CalendarDate.format($0) })
+                Group {
+                    if isFutureAllowed {
+                        DatePicker(title, selection: selection, displayedComponents: .date)
+                    } else {
+                        DatePicker(title, selection: selection, in: ...CalendarDate.getToday(), displayedComponents: .date)
+                    }
+                }
                 .environment(\.timeZone, TimeZone(identifier: "UTC") ?? .current)
-                .accessibilityIdentifier("editor-identity-birth-date")
+                .accessibilityIdentifier(identifier)
                 Button(role: .destructive) {
-                    birthDate.wrappedValue = ""
+                    value.wrappedValue = ""
                 } label: {
                     Image(systemName: "minus.circle")
                 }
                 .buttonStyle(.borderless)
-                .accessibilityLabel("Remove birth date")
+                .accessibilityLabel("Remove \(title.lowercased())")
             }
         } else {
-            TextField("Birth date", text: birthDate)
-                .accessibilityIdentifier("editor-identity-birth-date")
+            TextField(title, text: value)
+                .accessibilityIdentifier(identifier)
         }
     }
 
@@ -373,7 +386,7 @@ struct ItemEditorView: View {
                 .accessibilityIdentifier("editor-identity-last-name")
         }
         Section("Details") {
-            buildBirthDateRow()
+            buildDateRow("Birth date", bindIdentity(\.birthDate), identifier: "editor-identity-birth-date", isFutureAllowed: false)
             TextField("Email", text: bindIdentity(\.email))
                 .keyboardType(.emailAddress)
                 .textContentType(.emailAddress)
@@ -397,6 +410,68 @@ struct ItemEditorView: View {
                 isDocumentNumberRevealed.toggle()
             } label: {
                 Label(isDocumentNumberRevealed ? "Hide document numbers" : "Show document numbers", systemImage: isDocumentNumberRevealed ? "eye.slash" : "eye")
+            }
+        }
+    }
+
+    /// A binding to one of the API credential's values, creating the credential on first write.
+    private func bindAPICredential(_ keyPath: WritableKeyPath<ItemAPICredential, String>) -> Binding<String> {
+        Binding(
+            get: { draft.apiCredential?[keyPath: keyPath] ?? "" },
+            set: { value in
+                var credential = draft.apiCredential ?? ItemAPICredential()
+                credential[keyPath: keyPath] = value
+                draft.apiCredential = credential
+            }
+        )
+    }
+
+    @ViewBuilder
+    private func buildAPICredentialSections() -> some View {
+        Section {
+            TextField("Service", text: bindAPICredential(\.service))
+                .accessibilityIdentifier("editor-api-credential-service")
+            TextField("Key ID", text: bindAPICredential(\.keyID))
+                .font(.system(.body, design: .monospaced))
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .accessibilityIdentifier("editor-api-credential-key-id")
+            HStack {
+                Group {
+                    if isCredentialSecretRevealed {
+                        TextField("Secret", text: bindAPICredential(\.secret))
+                    } else {
+                        SecureField("Secret", text: bindAPICredential(\.secret), prompt: Text("Secret").foregroundStyle(.themeSecondary))
+                    }
+                }
+                .font(.system(.body, design: .monospaced))
+                // As for document numbers: without a content type iOS may fill a secure field with a strong password.
+                .textContentType(.oneTimeCode)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .accessibilityIdentifier("editor-api-credential-secret")
+                Button {
+                    isCredentialSecretRevealed.toggle()
+                } label: {
+                    Image(systemName: isCredentialSecretRevealed ? "eye.slash" : "eye")
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.themeSecondary)
+                .accessibilityLabel(isCredentialSecretRevealed ? "Hide secret" : "Reveal secret")
+            }
+            TextField("Host", text: bindAPICredential(\.host), prompt: Text(verbatim: "api.example.com"))
+                .keyboardType(.URL)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .accessibilityIdentifier("editor-api-credential-host")
+            buildDateRow("Expiry", bindAPICredential(\.expiry), identifier: "editor-api-credential-expiry", isFutureAllowed: true)
+        } header: {
+            Text("Credential")
+        } footer: {
+            if !credentialExpiryWarning.isEmpty {
+                Text(credentialExpiryWarning)
+                    .foregroundStyle(.orange)
+                    .accessibilityIdentifier("editor-api-credential-warning")
             }
         }
     }

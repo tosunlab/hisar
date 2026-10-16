@@ -32,6 +32,7 @@ struct ItemIcon: View {
         if item.isSecureNote { return "note.text" }
         if item.isCreditCard { return "creditcard" }
         if item.isIdentity { return "person.text.rectangle" }
+        if item.isAPICredential { return "curlybraces.square" }
         return nil
     }
 }

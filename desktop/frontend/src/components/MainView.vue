@@ -17,6 +17,7 @@ import {
   startCreatingItem,
   startCreatingCard,
   startCreatingIdentity,
+  startCreatingAPICredential,
   startCreatingSecureNote,
   startCreatingSSHKey,
   store,
@@ -25,7 +26,7 @@ import {
   toggleSelectedItemFavorite,
 } from "../store";
 import type { FavoriteItem, ItemDetail } from "../api";
-import { creditCardCategory, formatCardSummary, formatIdentitySummary, formatKeyType, getDomain, getInitials, getItemIcon, identityCategory, isMacPlatform, secureNoteCategory, sshKeyCategory } from "../util";
+import { apiCredentialCategory, creditCardCategory, formatAPICredentialSummary, formatCardSummary, formatIdentitySummary, formatKeyType, getDomain, getInitials, getItemIcon, identityCategory, isMacPlatform, secureNoteCategory, sshKeyCategory } from "../util";
 import AppIcon from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
 import ItemDetailPanel from "./ItemDetailPanel.vue";
@@ -82,6 +83,9 @@ function getItemSubtitle(vaultItem: ItemDetail): string {
   }
   if (vaultItem.category === identityCategory) {
     return formatIdentitySummary(vaultItem.identity);
+  }
+  if (vaultItem.category === apiCredentialCategory) {
+    return formatAPICredentialSummary(vaultItem.apiCredential);
   }
   return vaultItem.username || (vaultItem.urls[0] ? getDomain(vaultItem.urls[0]) : "");
 }
@@ -294,6 +298,9 @@ onBeforeUnmount(() => {
             </button>
             <button class="ghost" role="menuitem" data-testid="new-identity" @click="chooseNewItem(startCreatingIdentity)">
               <AppIcon name="identity" /> Identity
+            </button>
+            <button class="ghost" role="menuitem" data-testid="new-api-credential" @click="chooseNewItem(startCreatingAPICredential)">
+              <AppIcon name="apiKey" /> API credential
             </button>
             <button class="ghost" role="menuitem" data-testid="new-ssh-key" @click="chooseNewItem(startCreatingSSHKey)">
               <AppIcon name="key" /> SSH key

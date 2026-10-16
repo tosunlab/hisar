@@ -16,6 +16,8 @@ final class AccountLifecycleTests: XCTestCase {
         let model = AppModel(credentialIdentityStore: identityStore)
         model.start { self.backend }
         await model.refreshAll()
+        // start() refreshes in a Task of its own; a test that counts AutoFill publishes starts once both have published.
+        await waitUntil({ identityStore.replaceCount >= 2 }, "the refresh start() began did not publish AutoFill")
         return model
     }
 

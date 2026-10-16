@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { changeImportVault, chooseImportFile, closeImport, continueImport, deleteImportFile, getAllEditableVault, startImport, store } from "../store";
-import { getDomain } from "../util";
 import AppIcon from "./AppIcon.vue";
 
 const allEditableVault = computed(() => getAllEditableVault());
@@ -26,6 +25,12 @@ const allCount = computed(() => {
     { label: preview.sshKeyCount === 1 ? "SSH key" : "SSH keys", count: preview.sshKeyCount, icon: "key" as const, testID: "ssh-key" },
     { label: preview.creditCardCount === 1 ? "Credit card" : "Credit cards", count: preview.creditCardCount, icon: "card" as const, testID: "credit-card" },
     { label: preview.identityCount === 1 ? "Identity" : "Identities", count: preview.identityCount, icon: "identity" as const, testID: "identity" },
+    {
+      label: preview.apiCredentialCount === 1 ? "API credential" : "API credentials",
+      count: preview.apiCredentialCount,
+      icon: "apiKey" as const,
+      testID: "api-credential",
+    },
   ];
 });
 const importCount = computed(() => {
@@ -141,12 +146,12 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
           <ul class="entry-list">
             <li v-for="(duplicate, index) in store.importPreview.allDuplicate" :key="index">
               <strong>{{ duplicate.title }}</strong>
-              <span class="muted">{{ [duplicate.username, duplicate.url ? getDomain(duplicate.url) : ""].filter(Boolean).join(" · ") }}</span>
+              <span class="muted">{{ duplicate.detail }}</span>
             </li>
           </ul>
           <label class="checkbox-row">
             <input v-model="isSkippingDuplicate" type="checkbox" name="skipDuplicates" data-testid="skip-duplicates" />
-            <span>Skip items with the same title, username and website</span>
+            <span>Skip items that are already in the vault</span>
           </label>
         </section>
 

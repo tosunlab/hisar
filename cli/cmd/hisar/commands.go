@@ -304,6 +304,7 @@ var itemTypes = []itemType{
 	{category: item.CategorySecureNote, prompt: promptNote},
 	{category: item.CategoryCreditCard, prompt: promptCard},
 	{category: item.CategoryIdentity, prompt: promptIdentity},
+	{category: item.CategoryAPICredential, prompt: promptAPICredential},
 }
 
 func findItemType(category string) (itemType, bool) {
@@ -417,6 +418,27 @@ func promptIdentity(vaultItem *item.Item) error {
 	}
 	item.WriteIdentity(vaultItem, identity, otherFields)
 	item.NormalizeIdentity(vaultItem)
+	return nil
+}
+
+// promptAPICredential asks for an API credential's title and each of its values; the secret is read without echo.
+func promptAPICredential(vaultItem *item.Item) error {
+	var err error
+	if vaultItem.Overview.Title, err = promptRequired("Title", vaultItem.Overview.Title); err != nil {
+		return err
+	}
+	credential, otherFields := item.ReadAPICredential(vaultItem)
+	err = promptNamedFields(&credential, item.ListAPICredentialFields(), func(field item.APICredentialField, value string) string {
+		if field.Name == item.FieldExpiry && value == "" {
+			return " (YYYY-MM-DD)"
+		}
+		return ""
+	})
+	if err != nil {
+		return err
+	}
+	item.WriteAPICredential(vaultItem, credential, otherFields)
+	item.NormalizeAPICredential(vaultItem)
 	return nil
 }
 

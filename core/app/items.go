@@ -47,6 +47,10 @@ func (s *Service) summarizeItem(vaultItem *item.Item) ItemDetail {
 	if identity := summary.Identity; identity != nil {
 		summary.Identity = &ItemIdentity{FirstName: identity.FirstName, MiddleName: identity.MiddleName, LastName: identity.LastName, Email: identity.Email}
 	}
+	if credential := summary.APICredential; credential != nil {
+		// The key ID is not shown in lists, but search finds a credential by it.
+		summary.APICredential = &ItemAPICredential{Service: credential.Service, KeyID: credential.KeyID, Host: credential.Host}
+	}
 	return summary
 }
 
@@ -141,6 +145,14 @@ func convertToItemDetail(vaultItem *item.Item, now time.Time) ItemDetail {
 		identity, fields = item.ReadIdentity(vaultItem)
 		detail.Identity = convertToItemIdentity(identity)
 	}
+	if vaultItem.IsCategory(item.CategoryAPICredential) {
+		var credential item.APICredential
+		credential, fields = item.ReadAPICredential(vaultItem)
+		detail.APICredential = &ItemAPICredential{
+			Service: credential.Service, KeyID: credential.KeyID, Secret: credential.Secret, Host: credential.Host, Expiry: credential.Expiry,
+			ExpiryWarning: item.DescribeAPICredentialExpiry(credential.Expiry, now),
+		}
+	}
 	for _, field := range fields {
 		detail.Fields = append(detail.Fields, ItemField{Name: field.Name, Value: field.Value, Concealed: field.Concealed})
 	}
@@ -157,8 +169,8 @@ func (s *Service) DescribeCard(number, expiry string) CardDescription {
 	return convertToCardDescription(item.DescribeCard(number, expiry, s.config.Now()))
 }
 
-// getStoredFields returns an item's custom fields as they are stored: a card's or identity's values first, as named
-// fields.
+// getStoredFields returns an item's custom fields as they are stored: a card's, identity's or API credential's values
+// first, as named fields.
 func getStoredFields(detail ItemDetail) []ItemField {
 	var vaultItem item.Item
 	switch {
@@ -166,6 +178,8 @@ func getStoredFields(detail ItemDetail) []ItemField {
 		item.WriteCard(&vaultItem, convertFromItemCard(detail.Card), nil)
 	case detail.Identity != nil:
 		item.WriteIdentity(&vaultItem, convertFromItemIdentity(detail.Identity), nil)
+	case detail.APICredential != nil:
+		item.WriteAPICredential(&vaultItem, convertFromItemAPICredential(detail.APICredential), nil)
 	default:
 		return detail.Fields
 	}
@@ -194,6 +208,10 @@ func convertFromItemIdentity(identity *ItemIdentity) item.Identity {
 		Email: identity.Email, Phone: identity.Phone, Address: identity.Address,
 		PassportNumber: identity.PassportNumber, DriversLicenseNumber: identity.DriversLicenseNumber, NationalIDNumber: identity.NationalIDNumber,
 	}
+}
+
+func convertFromItemAPICredential(credential *ItemAPICredential) item.APICredential {
+	return item.APICredential{Service: credential.Service, KeyID: credential.KeyID, Secret: credential.Secret, Host: credential.Host, Expiry: credential.Expiry}
 }
 
 func convertFromItemDetail(detail ItemDetail) item.Item {
@@ -262,7 +280,7 @@ func (s *Service) buildSavedItem(vaultID string, detail ItemDetail) (item.Item, 
 	}
 	if cachedItem == nil {
 		switch detail.Category {
-		case "", item.CategoryLogin, item.CategorySecureNote, item.CategoryCreditCard, item.CategoryIdentity:
+		case "", item.CategoryLogin, item.CategorySecureNote, item.CategoryCreditCard, item.CategoryIdentity, item.CategoryAPICredential:
 		case item.CategorySSHKey:
 			if detail.ID == "" {
 				return item.Item{}, errors.New("generate or import an SSH key instead")
@@ -296,22 +314,25 @@ func (s *Service) buildSavedItem(vaultID string, detail ItemDetail) (item.Item, 
 	return vaultItem, nil
 }
 
-// applyCategory shapes a saved item to its category: a secure note, card or identity moves login data into custom fields,
-// and a card's or identity's values from detail become its named fields. A category from a newer app keeps everything,
-// since the editors show it as a login. Without detail.Card or detail.Identity (the CLI), the named fields come in
-// detail.Fields.
+// applyCategory shapes a saved item to its category: a secure note, card, identity or API credential moves login data into
+// custom fields, and a card's, identity's or API credential's values from detail become its named fields. A category from
+// a newer app keeps everything, since the editors show it as a login. Without detail.Card, detail.Identity or
+// detail.APICredential (the CLI), the named fields come in detail.Fields.
 func applyCategory(vaultItem *item.Item, detail ItemDetail) {
 	switch {
 	case vaultItem.IsCategory(item.CategoryCreditCard) && detail.Card != nil:
 		item.WriteCard(vaultItem, convertFromItemCard(detail.Card), vaultItem.Details.Fields)
 	case vaultItem.IsCategory(item.CategoryIdentity) && detail.Identity != nil:
 		item.WriteIdentity(vaultItem, convertFromItemIdentity(detail.Identity), vaultItem.Details.Fields)
+	case vaultItem.IsCategory(item.CategoryAPICredential) && detail.APICredential != nil:
+		item.WriteAPICredential(vaultItem, convertFromItemAPICredential(detail.APICredential), vaultItem.Details.Fields)
 	}
 	if vaultItem.OmitsLoginData() {
 		vaultItem.MoveLoginDataToFields()
 	}
 	item.NormalizeCard(vaultItem)
 	item.NormalizeIdentity(vaultItem)
+	item.NormalizeAPICredential(vaultItem)
 }
 
 // ConvertToSecureNote turns a login with only notes and custom fields, such as one imported before Hisar had secure notes,
