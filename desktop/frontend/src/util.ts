@@ -138,9 +138,16 @@ export const sshKeyCategory = "ssh-key";
 export const secureNoteCategory = "secure-note";
 export const creditCardCategory = "credit-card";
 export const identityCategory = "identity";
+export const apiCredentialCategory = "api-credential";
 
-type CategoryIcon = "key" | "note" | "card" | "identity";
-const allCategoryIcon: Record<string, CategoryIcon> = { [sshKeyCategory]: "key", [secureNoteCategory]: "note", [creditCardCategory]: "card", [identityCategory]: "identity" };
+type CategoryIcon = "key" | "note" | "card" | "identity" | "apiKey";
+const allCategoryIcon: Record<string, CategoryIcon> = {
+  [sshKeyCategory]: "key",
+  [secureNoteCategory]: "note",
+  [creditCardCategory]: "card",
+  [identityCategory]: "identity",
+  [apiCredentialCategory]: "apiKey",
+};
 
 // getItemIcon is the tile icon of an item's category; logins show their initials instead.
 export function getItemIcon(category: string): CategoryIcon | undefined {
@@ -172,6 +179,20 @@ export const identityFieldName = {
   nationalIdNumber: "National ID number",
 } as const;
 
+// The names of an API credential's custom fields, as core/item stores them; a hisar:// reference names them too.
+export const apiCredentialFieldName = {
+  service: "Service",
+  keyId: "Key ID",
+  secret: "Secret",
+  host: "Host",
+  expiry: "Expiry",
+} as const;
+
+// formatAPICredentialSummary is an API credential's line in lists: its service and host, such as "Stripe · api.stripe.com".
+export function formatAPICredentialSummary(credential: { service: string; host: string } | null | undefined): string {
+  return [credential?.service, credential?.host].filter((part) => part).join(" · ") || "API credential";
+}
+
 type IdentityName = { firstName: string; middleName: string; lastName: string; email?: string };
 
 // formatFullName joins the name parts that are set, such as "Alice M. Example".
@@ -193,6 +214,16 @@ export function isCalendarDate(date: string): boolean {
   const [year, month, day] = date.split("-").map(Number);
   const parsed = new Date(Date.UTC(year, month - 1, day));
   return parsed.getUTCFullYear() === year && parsed.getUTCMonth() === month - 1 && parsed.getUTCDate() === day;
+}
+
+// describeAPICredentialExpiry warns once a YYYY-MM-DD expiry has passed in the local time zone, as core/item
+// DescribeAPICredentialExpiry does; it returns "" for any other value.
+export function describeAPICredentialExpiry(expiry: string, now = new Date()): string {
+  if (!isCalendarDate(expiry)) {
+    return "";
+  }
+  const [year, month, day] = expiry.split("-").map(Number);
+  return now >= new Date(year, month - 1, day + 1) ? "This credential has expired" : "";
 }
 
 // The brands an editor offers as a card's type, in the order of core/item ListCardBrands.

@@ -6,15 +6,18 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"text/tabwriter"
 
+	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/item"
 )
 
 func runListItems(ctx context.Context, access backend, flags *flag.FlagSet, args []string) error {
 	vaultName := addVaultFlag(flags)
 	tag := flags.String("tag", "", "only items with this tag (case does not matter)")
+	isListingFavorites := flags.Bool("favorites", false, "list your favorites in every vault, or only in the vault -v names")
 	if _, err := parse(flags, args); err != nil {
 		return err
 	}
@@ -22,6 +25,14 @@ func runListItems(ctx context.Context, access backend, flags *flag.FlagSet, args
 		if err := access.checkTags(); err != nil {
 			return err
 		}
+	}
+	if *isListingFavorites {
+		isVaultChosen := false
+		flags.Visit(func(chosen *flag.Flag) { isVaultChosen = isVaultChosen || chosen.Name == "v" })
+		if !isVaultChosen {
+			*vaultName = ""
+		}
+		return listFavoriteItems(ctx, access, *vaultName)
 	}
 	vault, err := findVaultByNameOrID(ctx, access, *vaultName)
 	if err != nil {
@@ -40,6 +51,104 @@ func runListItems(ctx context.Context, access backend, flags *flag.FlagSet, args
 		fmt.Fprintf(writer, "%s\t%s\t%s\t%s\t%s\t%s\n", vaultItem.Overview.Title, vaultItem.Overview.Username, strings.Join(vaultItem.Overview.URLs, " "), vaultItem.Category(), strings.Join(vaultItem.Overview.Tags, ","), vaultItem.ID)
 	}
 	return writer.Flush()
+}
+
+// listFavoriteItems prints the user's favorites with their vaults, sorted by title; vaultName "" means every vault.
+func listFavoriteItems(ctx context.Context, access backend, vaultName string) error {
+	vaults, err := access.listVaults(ctx)
+	if err != nil {
+		return err
+	}
+	if vaultName != "" {
+		vault, err := findVaultByNameOrID(ctx, access, vaultName)
+		if err != nil {
+			return err
+		}
+		vaults = []cliprotocol.Vault{vault}
+	}
+	favorites, err := access.listFavorites(ctx)
+	if err != nil {
+		return err
+	}
+	type favoriteRow struct {
+		vaultName string
+		vaultItem item.Item
+	}
+	rows := []favoriteRow{}
+	for _, vault := range vaults {
+		favoriteItemIDs := map[string]bool{}
+		for _, favorite := range favorites {
+			if favorite.VaultID == vault.ID {
+				favoriteItemIDs[favorite.ItemID] = true
+			}
+		}
+		if len(favoriteItemIDs) == 0 {
+			continue
+		}
+		items, err := access.listItems(ctx, vault.ID)
+		if err != nil {
+			return err
+		}
+		for _, vaultItem := range items {
+			if favoriteItemIDs[vaultItem.ID] {
+				rows = append(rows, favoriteRow{vaultName: vault.Name, vaultItem: vaultItem})
+			}
+		}
+	}
+	if len(rows) == 0 {
+		fmt.Fprintln(os.Stderr, "No favorites yet. Add one with: hisar favorite <item> [-v vault]")
+		return nil
+	}
+	slices.SortStableFunc(rows, func(first, second favoriteRow) int {
+		return strings.Compare(strings.ToLower(first.vaultItem.Overview.Title), strings.ToLower(second.vaultItem.Overview.Title))
+	})
+	writer := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+	fmt.Fprintln(writer, "TITLE\tUSERNAME\tURL\tTYPE\tVAULT\tID")
+	for _, row := range rows {
+		vaultItem := row.vaultItem
+		fmt.Fprintf(writer, "%s\t%s\t%s\t%s\t%s\t%s\n", vaultItem.Overview.Title, vaultItem.Overview.Username, strings.Join(vaultItem.Overview.URLs, " "), vaultItem.Category(), row.vaultName, vaultItem.ID)
+	}
+	return writer.Flush()
+}
+
+func runFavorite(ctx context.Context, access backend, flags *flag.FlagSet, args []string) error {
+	return setFavoriteFromCommandLine(ctx, access, flags, args, true)
+}
+
+func runUnfavorite(ctx context.Context, access backend, flags *flag.FlagSet, args []string) error {
+	return setFavoriteFromCommandLine(ctx, access, flags, args, false)
+}
+
+func setFavoriteFromCommandLine(ctx context.Context, access backend, flags *flag.FlagSet, args []string, isFavorite bool) error {
+	vaultName := addVaultFlag(flags)
+	positionals, err := parse(flags, args)
+	if err != nil {
+		return err
+	}
+	if len(positionals) != 1 {
+		return errUsage
+	}
+	vault, err := findVaultByNameOrID(ctx, access, *vaultName)
+	if err != nil {
+		return err
+	}
+	items, err := access.listItems(ctx, vault.ID)
+	if err != nil {
+		return err
+	}
+	vaultItem, err := findItem(items, positionals[0])
+	if err != nil {
+		return err
+	}
+	if err := access.setItemFavorite(ctx, vault.ID, vaultItem.ID, isFavorite); err != nil {
+		return err
+	}
+	if isFavorite {
+		fmt.Fprintf(os.Stderr, "Added %q (%s) to Favorites.\n", vaultItem.Overview.Title, vault.Name)
+	} else {
+		fmt.Fprintf(os.Stderr, "Removed %q (%s) from Favorites.\n", vaultItem.Overview.Title, vault.Name)
+	}
+	return nil
 }
 
 func runGet(ctx context.Context, access backend, flags *flag.FlagSet, args []string) error {

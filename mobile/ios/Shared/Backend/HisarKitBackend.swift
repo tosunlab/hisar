@@ -215,6 +215,14 @@ final class HisarKitBackend: VaultBackend {
         try callReturningNothing { try hisar.deleteItem(vaultID, itemID: itemID) }
     }
 
+    func listAllFavoriteItem() throws -> [FavoriteItem] {
+        try decode([FavoriteItem]?.self, from: callReturningText { hisar.listAllFavoriteItem($0) }) ?? []
+    }
+
+    func setItemFavorite(vaultID: String, itemID: String, isFavorite: Bool) throws {
+        try callReturningNothing { try hisar.setItemFavorite(vaultID, itemID: itemID, isFavorite: isFavorite) }
+    }
+
     func describeCard(number: String, expiry: String) throws -> CardDescription {
         try decode(CardDescription.self, from: callReturningText { hisar.describeCard(number, expiry: expiry, error: $0) })
     }

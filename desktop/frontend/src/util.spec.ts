@@ -14,7 +14,16 @@ import {
   getPlatformIcon,
   getTileColor,
 } from "./util";
-import { describePerson, formatCardNumberInput, formatCardSummary, formatExpiryInput, formatInputAsTyped, formatTimeAgo, isCalendarDate } from "./util";
+import {
+  describeAPICredentialExpiry,
+  describePerson,
+  formatCardNumberInput,
+  formatCardSummary,
+  formatExpiryInput,
+  formatInputAsTyped,
+  formatTimeAgo,
+  isCalendarDate,
+} from "./util";
 
 describe("computePasswordStrength", () => {
   it("rates random passwords by length and character classes", () => {
@@ -210,5 +219,21 @@ describe("isCalendarDate", () => {
     expect(isCalendarDate("1990-13-01")).toBe(false);
     expect(isCalendarDate("1990-4-12")).toBe(false);
     expect(isCalendarDate("04/12/1990")).toBe(false);
+  });
+});
+
+describe("describeAPICredentialExpiry", () => {
+  it("warns from the day after the expiry, in local time", () => {
+    const evening = new Date(2030, 0, 15, 23, 30);
+    expect(describeAPICredentialExpiry("2030-01-14", evening)).toBe("This credential has expired");
+    expect(describeAPICredentialExpiry("2030-01-15", evening)).toBe("");
+    expect(describeAPICredentialExpiry("2030-01-14", new Date(2030, 0, 15))).toBe("This credential has expired");
+    expect(describeAPICredentialExpiry("2030-01-14", new Date(2030, 0, 14, 23, 59))).toBe("");
+  });
+
+  it("does not warn for a value that is not a date", () => {
+    expect(describeAPICredentialExpiry("", new Date(2030, 0, 15))).toBe("");
+    expect(describeAPICredentialExpiry("never", new Date(2030, 0, 15))).toBe("");
+    expect(describeAPICredentialExpiry("2020-02-31", new Date(2030, 0, 15))).toBe("");
   });
 });

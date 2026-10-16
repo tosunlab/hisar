@@ -7,11 +7,14 @@ import {
   openImport,
   openSharing,
   openVaultDialog,
+  selectFavoriteItem,
+  selectFavorites,
   selectItem,
   selectVault,
   startCreatingItem,
   startCreatingCard,
   startCreatingIdentity,
+  startCreatingAPICredential,
   startCreatingSecureNote,
   startCreatingSSHKey,
   startEditingItem,
@@ -221,6 +224,19 @@ export async function applyPreviewParameter(): Promise<void> {
   if (parameter.get("error")) {
     store.errorMessage = parameter.get("error") ?? "";
   }
+  if (parameter.get("favorites") === "1") {
+    await waitForUnlocked();
+    await waitForElement('[data-testid="open-favorites"]');
+    while (!store.selectedVaultID || store.isBusy) {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+    await selectFavorites();
+    const favorite = store.allFavorite.find((candidate) => candidate.item.id === parameter.get("item"));
+    if (favorite) {
+      await selectFavoriteItem(favorite);
+    }
+    return;
+  }
   if (!parameter.get("vault") && !parameter.get("item") && !parameter.get("editor") && parameter.get("sharing") !== "1" && !parameter.get("shareLink") && parameter.get("sharedLinks") !== "1") {
     return;
   }
@@ -244,6 +260,8 @@ export async function applyPreviewParameter(): Promise<void> {
     startCreatingCard();
   } else if (parameter.get("editor") === "identity") {
     startCreatingIdentity();
+  } else if (parameter.get("editor") === "api-credential") {
+    startCreatingAPICredential();
   } else if (parameter.get("editor") === "ssh-key") {
     startCreatingSSHKey();
   } else if (parameter.get("editor") === "edit") {

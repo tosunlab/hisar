@@ -145,6 +145,8 @@ func (s *Server) CreateApp() *fiber.App {
 	apiGroup.Put("/account/credentials", s.requireSession, s.handleChangeCredentials)
 	apiGroup.Get("/account/deletion-preview", s.requireSession, s.handleGetAccountDeletionPreview)
 	apiGroup.Post("/account/delete", s.requireSession, s.handleDeleteAccount)
+	apiGroup.Get("/account/preferences", s.requireSession, s.handleGetAccountPreferences)
+	apiGroup.Put("/account/preferences", s.requireSession, s.handlePutAccountPreferences)
 	apiGroup.Get("/members", s.requireSession, s.handleListMembers)
 	apiGroup.Post("/invites", s.requireSession, s.handleCreateInvite)
 	apiGroup.Get("/devices", s.requireSession, s.handleListDevices)

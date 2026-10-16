@@ -21,6 +21,7 @@ const allPath = {
   note: "M6 3h9l4 4v14H6zM9 12h6M9 16h6",
   card: "M3 6h18v12H3zM3 10h18M7 15h3",
   identity: "M3 5h18v14H3zM9 8.5a2 2 0 1 1 0 4 2 2 0 0 1 0-4zM5.5 16.5c.6-1.6 1.9-2.3 3.5-2.3s2.9.7 3.5 2.3M15 10h4M15 14h4",
+  apiKey: "M15 7a3 3 0 1 1 0 6 3 3 0 0 1 0-6zM12.9 11.1 7 17M9 15l2 2M3 4h2v16H3M21 4h-2v16h2",
   field: "M4 6h16M4 12h16M4 18h10",
   close: "M6 6l12 12M18 6L6 18",
   signOut: "M15 4h4v16h-4M10 8l-4 4 4 4M6 12h11",
@@ -41,6 +42,8 @@ const allPath = {
   export: "M12 15V4M7.5 8.5L12 4l4.5 4.5M5 20h14",
   more: "M5 12h.01M12 12h.01M19 12h.01",
   tag: "M4 4h7l9 9-7 7-9-9zM8.5 8.5h.01",
+  star: "M12 3.5l2.6 5.3 5.9.9-4.25 4.1 1 5.8L12 16.9l-5.25 2.7 1-5.8L3.5 9.7l5.9-.9z",
+  starFilled: "M12 3.5l2.6 5.3 5.9.9-4.25 4.1 1 5.8L12 16.9l-5.25 2.7 1-5.8L3.5 9.7l5.9-.9z",
   link: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1",
 } as const;
 
@@ -55,7 +58,7 @@ defineProps<{ name: IconName; size?: number }>();
     :width="size ?? 16"
     :height="size ?? 16"
     viewBox="0 0 24 24"
-    fill="none"
+    :fill="name === 'starFilled' ? 'currentColor' : 'none'"
     stroke="currentColor"
     stroke-width="1.8"
     stroke-linecap="round"

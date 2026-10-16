@@ -36,7 +36,8 @@ Set `HISAR_UI_TEST_SCREENSHOT_DIRECTORY` to save a PNG of each screen.
 After editing `project.yml` (adding files is enough, sources are folders), run `make generate-ios-project` and commit
 the project; CI fails if the committed project differs.
 
-What the UI tests cover: create an account from an invite and read the new Secret Key, add a login, item detail
+What the UI tests cover: create an account from an invite and read the new Secret Key, add a login, Favorites (the star in an item,
+the swipe actions and the Favorites section at the top of Vaults), item detail
 (reveal, copy), editing with the password generator, search, lock and unlock with the master password, Settings (the empty Approvals tab, auto-lock, devices, the Secret Key behind the master
 password with the Emergency Kit share), sign out and sign in with the Secret Key, creating a shared vault and seeing its members, inviting someone from Settings → People, the privacy cover, Face ID (the test enrolls a face in the simulator and posts the
 simulator's "matching face" notification), the AutoFill screens, and passkeys: register a passkey into a login, sign in
@@ -95,17 +96,34 @@ identifier means the free team never registers `com.tryhisar.hisar`, which the p
 Face ID should work with a personal team, because the biometric key is a normal Keychain item with an access
 control and needs no entitlement. It is tested in the simulator, not yet on a device.
 
-## When the paid Apple Developer membership is active
+## The paid team (589NVZWDWZ)
 
-1. Put the team ID in `Configuration/Signing.xcconfig` (`DEVELOPMENT_TEAM`) or `Local.xcconfig`.
-2. Register in the developer portal (Xcode's automatic signing does this): the app `com.tryhisar.hisar`, the extension
-   `com.tryhisar.hisar.autofill`, the app group `group.com.tryhisar.hisar`, and the AutoFill Credential Provider
-   capability for the extension.
-3. Use the **Hisar** scheme on the iPhone. AutoFill then works on the device: Settings → General → AutoFill &
+The team is an individual Apple Developer account, so other members cannot get its certificates through Xcode's
+automatic signing. The **Hisar** app and its AutoFill extension therefore sign manually (`TeamSigning` in
+`project.yml`); the personal team build keeps automatic signing. Simulator builds sign to run locally and need none of
+this.
+
+1. The team ID is in `Configuration/Signing.xcconfig` (`DEVELOPMENT_TEAM`).
+2. The developer portal has the app `com.tryhisar.hisar`, the extension `com.tryhisar.hisar.autofill`, the app group
+   `group.com.tryhisar.hisar` and the AutoFill Credential Provider capability for the extension, and four profiles
+   named after the target:
+
+   | Target | Debug (a device from Xcode) | Release (archive) |
+   |---|---|---|
+   | Hisar | `Hisar Development` | `Hisar App Store` |
+   | HisarAutoFill | `HisarAutoFill Development` | `HisarAutoFill App Store` |
+
+3. To build for an iPhone, install the team's Apple Development certificate (with its private key) in your keychain and
+   the two Development profiles (double-click them, or Xcode → Settings → Accounts → Download Manual Profiles). Your
+   iPhone's UDID must be in the Development profiles. Archiving needs the Apple Distribution certificate and the App
+   Store profiles.
+4. Use the **Hisar** scheme on the iPhone. AutoFill then works on the device: Settings → General → AutoFill &
    Passwords → turn on Hisar, or the button in Hisar's Settings.
-4. Data from the personal team build does not carry over (different bundle identifier and keychain). Sign in again
+5. Data from the personal team build does not carry over (different bundle identifier and keychain). Sign in again
    and delete the old app.
-5. TestFlight and App Store distribution can follow (archive with the **Hisar** scheme).
+6. A Release build signs with the App Store profiles, so it reaches a device through TestFlight or the App Store, not
+   by running it from Xcode.
 
-To use another bundle identifier prefix (for example a fork), change `HISAR_BUNDLE_IDENTIFIER_PREFIX` in
-`Configuration/Signing.xcconfig`. The extension, app group and keychain group are derived from it.
+To use another bundle identifier prefix (for example a fork), change `HISAR_BUNDLE_IDENTIFIER_PREFIX` and
+`DEVELOPMENT_TEAM` in `Configuration/Signing.xcconfig`, and create the four profiles above in your team under the same
+names. The extension, app group and keychain group are derived from the prefix.

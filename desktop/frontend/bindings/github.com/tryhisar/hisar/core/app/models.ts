@@ -96,10 +96,25 @@ export interface ExportResult {
     "itemCount": number;
 }
 
+/**
+ * FavoriteItem is a starred item with the vault it is in; Item is a summary without secrets, as ListItems returns.
+ */
+export interface FavoriteItem {
+    "vaultId": string;
+    "vaultName": string;
+    "vaultType": string;
+    "item": ItemDetail;
+}
+
+/**
+ * ImportDuplicate: Detail is what matched besides the title, such as a login's username and website or an API
+ * credential's key ID; see importer.DescribeDuplicate.
+ */
 export interface ImportDuplicate {
     "title": string;
     "username": string;
     "url": string;
+    "detail": string;
 }
 
 export interface ImportFormat {
@@ -123,6 +138,11 @@ export interface ImportPreview {
     "sshKeyCount": number;
     "creditCardCount": number;
     "identityCount": number;
+
+    /**
+     * APICredentialCount counts the api-credential items among ItemCount.
+     */
+    "apiCredentialCount": number;
     "allSkipped": ImportSkippedEntry[] | null;
     "allDuplicate": ImportDuplicate[] | null;
 }
@@ -141,6 +161,18 @@ export interface ImportProgress {
 export interface ImportSkippedEntry {
     "title": string;
     "reason": string;
+}
+
+/**
+ * ItemAPICredential is an API key; the secret is concealed. ExpiryWarning says when the expiry has passed.
+ */
+export interface ItemAPICredential {
+    "service": string;
+    "keyId": string;
+    "secret": string;
+    "host": string;
+    "expiry": string;
+    "expiryWarning": string;
 }
 
 /**
@@ -202,6 +234,17 @@ export interface ItemDetail {
      * email.
      */
     "identity"?: ItemIdentity | null;
+
+    /**
+     * IsFavorite: this user starred the item. Favorites belong to the user, not the item; SaveItem ignores it.
+     */
+    "isFavorite": boolean;
+
+    /**
+     * APICredential holds an API credential's values, stored as named custom fields like an identity's; summaries keep
+     * only the service and host.
+     */
+    "apiCredential"?: ItemAPICredential | null;
 }
 
 export interface ItemField {

@@ -333,6 +333,8 @@ final class AppModel: ObservableObject {
             let shareInvitations = try? backend.listAllShareInvitation()
             let allVault = try backend.listAllVault()
             let allRemovedVault = (try? backend.listAllRemovedVault()) ?? []
+            // Reads the favorites again, so the lists below mark them even when the event stream missed a change.
+            _ = try? backend.listAllFavoriteItem()
             var allItemByVaultID: [String: [ItemDetail]] = [:]
             for vault in allVault {
                 allItemByVaultID[vault.id] = try backend.listAllItem(vaultID: vault.id)
@@ -342,6 +344,10 @@ final class AppModel: ObservableObject {
             refreshStatus()
             return
         }
+        // Locked or signed out while listing: locking and signing out cleared the items, so the listing must not bring
+        // them back, nor put a signed-out account's logins back into AutoFill. A lock keeps what AutoFill already has.
+        refreshStatus()
+        guard status.isUnlocked else { return }
         allVault = result.0.sorted { Self.sortVault($0, $1) }
         allItemByVaultID = result.1
         allPasskey = result.2
@@ -349,7 +355,6 @@ final class AppModel: ObservableObject {
             applyShareInvitations(shareInvitations)
         }
         addAllRemovedVaultNotice(result.4)
-        refreshStatus()
         await publishAllCredentialIdentity()
     }
 
@@ -384,8 +389,9 @@ final class AppModel: ObservableObject {
             refreshStatus()
             return
         }
-        allItemByVaultID[vaultID] = allItem
         refreshStatus()
+        guard status.isUnlocked else { return }
+        allItemByVaultID[vaultID] = allItem
     }
 
     func findVault(vaultID: String) -> VaultSummary? {
@@ -398,6 +404,21 @@ final class AppModel: ObservableObject {
             (allItemByVaultID[vault.id] ?? []).map { VaultItemReference(vaultID: vault.id, vaultName: vault.name, item: $0) }
         }
         return VaultLogic.sortAllItem(allReference)
+    }
+
+    /// The starred items of every vault, sorted by title; favorites of deleted items are already gone from the lists.
+    func listAllFavoriteReference() -> [VaultItemReference] {
+        listAllItemReference().filter { $0.item.isFavorite }
+    }
+
+    @discardableResult
+    func setItemFavorite(vaultID: String, itemID: String, isFavorite: Bool) async -> Bool {
+        guard await perform(isBusyShown: false, { try $0.setItemFavorite(vaultID: vaultID, itemID: itemID, isFavorite: isFavorite) }) != nil else { return false }
+        if let index = allItemByVaultID[vaultID]?.firstIndex(where: { $0.id == itemID }) {
+            allItemByVaultID[vaultID]?[index].isFavorite = isFavorite
+        }
+        showNotice(isFavorite ? "Added to Favorites." : "Removed from Favorites.")
+        return true
     }
 
     func countItem(vaultID: String) -> Int {
@@ -579,6 +600,13 @@ final class AppModel: ObservableObject {
             identitySummary.lastName = identity.lastName
             identitySummary.email = identity.email
             summary.identity = identitySummary
+        }
+        if let credential = savedItem.apiCredential {
+            var credentialSummary = ItemAPICredential()
+            credentialSummary.service = credential.service
+            credentialSummary.keyID = credential.keyID
+            credentialSummary.host = credential.host
+            summary.apiCredential = credentialSummary
         }
         if let index = allItem.firstIndex(where: { $0.id == savedItem.id }) {
             allItem[index] = summary

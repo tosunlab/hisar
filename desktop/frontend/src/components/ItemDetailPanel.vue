@@ -11,10 +11,14 @@ import {
   selectTag,
   startEditingItem,
   store,
+  toggleSelectedItemFavorite,
 } from "../store";
 import {
+  apiCredentialCategory,
+  apiCredentialFieldName,
   cardFieldName,
   creditCardCategory,
+  formatAPICredentialSummary,
   formatCardSummary,
   formatIdentitySummary,
   formatKeyType,
@@ -22,6 +26,7 @@ import {
   getItemIcon,
   identityCategory,
   identityFieldName,
+  isMacPlatform,
   secureNoteCategory,
   sshKeyCategory,
 } from "../util";
@@ -36,6 +41,7 @@ import StrengthMeter from "./StrengthMeter.vue";
 
 defineProps<{ canEdit: boolean; vaultName: string; isShared: boolean }>();
 
+const shortcutModifier = isMacPlatform() ? "⌘" : "Ctrl+";
 const isPasswordRevealed = ref(false);
 const allRevealedFieldName = ref<string[]>([]);
 const isConfirmingDelete = ref(false);
@@ -43,6 +49,7 @@ const isSSHKey = computed(() => store.selectedItem?.category === sshKeyCategory)
 const isSecureNote = computed(() => store.selectedItem?.category === secureNoteCategory);
 const isCreditCard = computed(() => store.selectedItem?.category === creditCardCategory);
 const isIdentity = computed(() => store.selectedItem?.category === identityCategory);
+const isAPICredential = computed(() => store.selectedItem?.category === apiCredentialCategory);
 
 // The card's values as rows; the number shows only its last four digits until revealed.
 const allCardRow = computed(() => {
@@ -76,8 +83,25 @@ const allIdentityRow = computed(() => {
     }))
     .filter((row) => row.value !== "");
 });
-// The rows of a type whose values are named fields: a card's or an identity's.
-const allNamedRow = computed(() => (isIdentity.value ? allIdentityRow.value : allCardRow.value));
+// An API credential's values as rows; the secret is masked until revealed and the expiry warns once it has passed.
+const allAPICredentialRow = computed(() => {
+  const credential = store.selectedItem?.apiCredential;
+  if (!credential) {
+    return [];
+  }
+  return [
+    { name: apiCredentialFieldName.service, value: credential.service, concealed: false, masked: "", warning: "" },
+    { name: apiCredentialFieldName.keyId, value: credential.keyId, concealed: false, masked: "", warning: "" },
+    { name: apiCredentialFieldName.secret, value: credential.secret, concealed: true, masked: "", warning: "" },
+    { name: apiCredentialFieldName.host, value: credential.host, concealed: false, masked: "", warning: "" },
+    { name: apiCredentialFieldName.expiry, value: credential.expiry, concealed: false, masked: "", warning: credential.expiryWarning },
+  ].filter((row) => row.value !== "");
+});
+// The rows of a type whose values are named fields: a card's, an identity's or an API credential's.
+const allNamedRow = computed(() => (isIdentity.value ? allIdentityRow.value : isAPICredential.value ? allAPICredentialRow.value : allCardRow.value));
+// What the named-field section calls this item when it has no values.
+const namedTypeName = computed(() => (isIdentity.value ? "identity" : isAPICredential.value ? "API credential" : "card"));
+const namedSectionTestID = computed(() => (isIdentity.value ? "identity-fields" : isAPICredential.value ? "api-credential-fields" : "credit-card-fields"));
 const isShareable = computed(() => store.selectedItem !== null && hasShareableField(store.selectedItem));
 const allItemShareLink = computed(() => (store.selectedItem ? getAllShareLinkForItem(store.selectedVaultID, store.selectedItem.id) : []));
 
@@ -114,6 +138,7 @@ function maskSecret(secret: string): string {
           <span v-else-if="isSecureNote" class="muted">Secure note</span>
           <span v-else-if="isCreditCard" class="muted" data-testid="card-summary">{{ formatCardSummary(store.selectedItem.card) }}</span>
           <span v-else-if="isIdentity" class="muted" data-testid="identity-summary">{{ formatIdentitySummary(store.selectedItem.identity) }}</span>
+          <span v-else-if="isAPICredential" class="muted" data-testid="api-credential-summary">{{ formatAPICredentialSummary(store.selectedItem.apiCredential) }}</span>
           <span v-else-if="store.selectedItem.urls[0]" class="muted">{{ getDomain(store.selectedItem.urls[0]) }}</span>
         </div>
         <div v-if="(store.selectedItem.tags ?? []).length > 0" class="tags" data-testid="item-tags">
@@ -129,7 +154,18 @@ function maskSecret(secret: string): string {
           </button>
         </div>
       </div>
-      <div v-if="canEdit || isShareable" class="header-actions">
+      <div class="header-actions">
+        <button
+          class="ghost icon-button favorite-button"
+          :class="{ 'is-favorite': store.selectedItem.isFavorite }"
+          :aria-label="store.selectedItem.isFavorite ? 'Remove from Favorites' : 'Add to Favorites'"
+          :aria-pressed="store.selectedItem.isFavorite"
+          :title="`${store.selectedItem.isFavorite ? 'Remove from Favorites' : 'Add to Favorites'} (${shortcutModifier}D)`"
+          data-testid="favorite-toggle"
+          @click="toggleSelectedItemFavorite"
+        >
+          <AppIcon :name="store.selectedItem.isFavorite ? 'starFilled' : 'star'" />
+        </button>
         <button v-if="isShareable" title="Share with anyone through an end-to-end encrypted link" data-testid="share-link" @click="openItemShareLinkDialog">
           <AppIcon name="link" /> Share link…
         </button>
@@ -184,7 +220,7 @@ function maskSecret(secret: string): string {
       <CommitSigningPanel v-if="store.selectedItem.publicKey" :public-key="store.selectedItem.publicKey" />
     </template>
 
-    <section v-else-if="isCreditCard || isIdentity" class="card field-card" :data-testid="isIdentity ? 'identity-fields' : 'credit-card-fields'">
+    <section v-else-if="isCreditCard || isIdentity || isAPICredential" class="card field-card" :data-testid="namedSectionTestID">
       <div v-for="row in allNamedRow" :key="row.name" class="field">
         <span class="field-label">{{ row.name }}</span>
         <span class="field-value">
@@ -228,7 +264,7 @@ function maskSecret(secret: string): string {
         </span>
       </div>
       <p v-if="allNamedRow.length === 0 && store.selectedItem.fields.length === 0" class="muted no-fields">
-        {{ isIdentity ? "This identity has no details yet." : "This card has no details yet." }}
+        This {{ namedTypeName }} has no details yet.
       </p>
     </section>
 
@@ -425,6 +461,10 @@ h2 {
 .header-actions {
   display: flex;
   gap: 4px;
+}
+
+.favorite-button.is-favorite {
+  color: var(--color-warning);
 }
 
 .delete-confirm {

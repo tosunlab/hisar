@@ -8,7 +8,6 @@ import (
 
 	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/apitypes"
-	"github.com/tryhisar/hisar/core/item"
 )
 
 const (
@@ -38,7 +37,7 @@ func (s *Service) watchEvents(ctx context.Context, apiClient *apiclient.Client, 
 		}()
 		err := apiClient.StreamEvents(streamContext, func(event apiclient.Event) {
 			switch event.Name {
-			case apitypes.EventVaultChanged, apitypes.EventVaultsChanged, apitypes.EventShareInvitationsChanged:
+			case apitypes.EventVaultChanged, apitypes.EventVaultsChanged, apitypes.EventShareInvitationsChanged, apitypes.EventAccountPreferencesChanged:
 				select {
 				case pendingSyncs <- struct{}{}:
 				default:
@@ -114,14 +113,9 @@ func (s *Service) syncVaults(ctx context.Context) bool {
 		return false
 	}
 	s.completeAcceptedShares(ctx)
-	if err := s.loadVaults(ctx); err != nil {
+	if !s.reloadAllVaultItem(ctx) {
 		return false
 	}
-	previousItems := s.itemsByVaultID
-	s.itemsByVaultID = map[string][]item.Item{}
-	if err := s.loadItemsOfAllVault(ctx); err != nil {
-		s.itemsByVaultID = previousItems
-		return false
-	}
+	s.loadFavorites(ctx)
 	return true
 }

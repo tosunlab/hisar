@@ -1,6 +1,11 @@
 package item
 
-import "strings"
+import (
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
+)
 
 // NamedField is one value of an item type that keeps its values as custom fields with fixed names, such as a card's
 // number: its field name, whether it is concealed, and where it lives in the type's record T. A new type of this kind is
@@ -59,4 +64,34 @@ func trimRecord[T any](record *T, namedFields []NamedField[T]) {
 		value := namedField.value(record)
 		*value = strings.TrimSpace(*value)
 	}
+}
+
+var yearFirstDate = regexp.MustCompile(`^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})$`)
+
+// NormalizeDate writes a date given year first, such as 1990/4/12, as 1990-04-12: an identity's birth date or an API
+// credential's expiry. Any other date, or one with no such month or day, is kept as typed: 04/12/1990 may mean April or
+// December.
+func NormalizeDate(date string) string {
+	date = strings.TrimSpace(date)
+	if parsed, isDate := parseYearFirstDate(date); isDate {
+		return parsed.Format(time.DateOnly)
+	}
+	return date
+}
+
+// parseYearFirstDate reads a year-first date as midnight UTC of that day; a day that does not exist is no date.
+func parseYearFirstDate(date string) (time.Time, bool) {
+	match := yearFirstDate.FindStringSubmatch(date)
+	if match == nil {
+		return time.Time{}, false
+	}
+	year, _ := strconv.Atoi(match[1])
+	month, _ := strconv.Atoi(match[2])
+	day, _ := strconv.Atoi(match[3])
+	// time.Date carries an impossible day, such as February 31, into the next month.
+	parsed := time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.UTC)
+	if parsed.Year() != year || int(parsed.Month()) != month || parsed.Day() != day {
+		return time.Time{}, false
+	}
+	return parsed, true
 }

@@ -33,10 +33,11 @@ import {
   type VaultDeletionRequest,
   type ExportRequest,
   type ExportResult,
+  type FavoriteItem,
 } from "./api";
 import { formatFullName } from "./util";
 
-export type EditorMode = "view" | "edit" | "create" | "create-secure-note" | "create-credit-card" | "create-identity" | "create-ssh-key";
+export type EditorMode = "view" | "edit" | "create" | "create-secure-note" | "create-credit-card" | "create-identity" | "create-api-credential" | "create-ssh-key";
 export type ImportStep = "choose" | "preview" | "saving" | "done";
 
 export interface ShareLinkDialog {
@@ -73,6 +74,9 @@ export const store = reactive({
   selectedVaultID: "",
   allItem: [] as ItemDetail[],
   selectedItem: null as ItemDetail | null,
+  // allFavorite holds the user's starred items of every vault; isFavoritesSelected shows them in the list instead of a vault.
+  allFavorite: [] as FavoriteItem[],
+  isFavoritesSelected: false,
   editorMode: "view" as EditorMode,
   searchQuery: "",
   // selectedTag narrows the list to the items carrying it; "" shows every item.
@@ -161,6 +165,8 @@ function clearAllVaultData(): void {
   store.selectedVaultID = "";
   store.allItem = [];
   store.selectedItem = null;
+  store.allFavorite = [];
+  store.isFavoritesSelected = false;
   store.editorMode = "view";
   store.searchQuery = "";
   store.selectedTag = "";
@@ -418,6 +424,7 @@ export async function loadAllVault(): Promise<void> {
   }
   await loadShareInvitationsQuietly();
   await loadAllShareLinkQuietly();
+  await loadAllFavoriteQuietly();
 }
 
 function findPersonalVaultID(allVault: VaultSummary[]): string {
@@ -564,6 +571,7 @@ export async function syncInBackground(): Promise<void> {
     await loadRemovedVaultNoticeQuietly();
     await loadShareInvitationsQuietly();
     await loadAllShareLinkQuietly();
+    await loadAllFavoriteQuietly();
     if (!allVault.some((vault) => vault.id === store.selectedVaultID)) {
       if (allVault.length > 0) {
         await selectVault(findPersonalVaultID(allVault));
@@ -585,6 +593,7 @@ export async function syncInBackground(): Promise<void> {
 }
 
 export async function selectVault(vaultID: string): Promise<void> {
+  store.isFavoritesSelected = false;
   store.selectedVaultID = vaultID;
   store.selectedItem = null;
   store.editorMode = "view";
@@ -605,6 +614,68 @@ export async function createVault(name: string): Promise<boolean> {
   return true;
 }
 
+export async function loadAllFavoriteQuietly(): Promise<void> {
+  try {
+    store.allFavorite = await api.listAllFavoriteItem();
+  } catch {
+    return;
+  }
+}
+
+// selectFavorites lists the starred items of every vault; picking one makes its vault the one item actions use.
+export async function selectFavorites(): Promise<void> {
+  store.isFavoritesSelected = true;
+  store.selectedItem = null;
+  store.editorMode = "view";
+  store.searchQuery = "";
+  const allFavorite = await runAction(() => api.listAllFavoriteItem());
+  if (allFavorite) {
+    store.allFavorite = allFavorite;
+  }
+}
+
+export async function selectFavoriteItem(favorite: FavoriteItem): Promise<void> {
+  const detail = await runAction(() => api.getItem(favorite.vaultId, favorite.item.id));
+  if (detail) {
+    store.selectedVaultID = favorite.vaultId;
+    store.selectedItem = detail;
+    store.editorMode = "view";
+  }
+}
+
+export function filterAllFavorite(allFavorite: FavoriteItem[], query: string): FavoriteItem[] {
+  const allVisibleItem = filterAllItem(
+    allFavorite.map((favorite) => favorite.item),
+    query,
+  );
+  return allFavorite.filter((favorite) => allVisibleItem.includes(favorite.item));
+}
+
+// setItemFavorite stars or unstars an item of vaultID for this user; the people they share the vault with don't see it.
+export async function setItemFavorite(vaultID: string, itemID: string, isFavorite: boolean): Promise<void> {
+  const isSaved = await runAction(async () => {
+    await api.setItemFavorite(vaultID, itemID, isFavorite);
+    return true;
+  });
+  if (!isSaved) {
+    return;
+  }
+  if (store.selectedItem?.id === itemID) {
+    store.selectedItem = { ...store.selectedItem, isFavorite };
+  }
+  if (vaultID === store.selectedVaultID) {
+    store.allItem = store.allItem.map((vaultItem) => (vaultItem.id === itemID ? { ...vaultItem, isFavorite } : vaultItem));
+  }
+  await loadAllFavoriteQuietly();
+  showNotice(isFavorite ? "Added to Favorites" : "Removed from Favorites");
+}
+
+export async function toggleSelectedItemFavorite(): Promise<void> {
+  if (store.selectedItem && store.editorMode === "view") {
+    await setItemFavorite(store.selectedVaultID, store.selectedItem.id, !store.selectedItem.isFavorite);
+  }
+}
+
 export function sortAllItem(allItem: ItemDetail[]): ItemDetail[] {
   return [...allItem].sort((first, second) => first.title.localeCompare(second.title, undefined, { sensitivity: "base" }));
 }
@@ -615,11 +686,15 @@ export function filterAllItem(allItem: ItemDetail[], query: string, tag = ""): I
   const normalizedQuery = query.trim().toLowerCase();
   return allItem.filter((vaultItem) => {
     const allTag = vaultItem.tags ?? [];
-    // An identity's list summary keeps its name and email, which the list shows under the title.
+    // An identity's list summary keeps its name and email, an API credential's its service, key ID and host; the list
+    // shows them under the title, except the key ID.
     const identityText = vaultItem.identity ? [formatFullName(vaultItem.identity), vaultItem.identity.email] : [];
+    const credential = vaultItem.apiCredential;
+    const credentialText = credential ? [credential.service, credential.keyId, credential.host] : [];
     return (
       (tag === "" || allTag.includes(tag)) &&
-      (normalizedQuery === "" || [vaultItem.title, vaultItem.username, ...vaultItem.urls, ...allTag, ...identityText].some((text) => text.toLowerCase().includes(normalizedQuery)))
+      (normalizedQuery === "" ||
+        [vaultItem.title, vaultItem.username, ...vaultItem.urls, ...allTag, ...identityText, ...credentialText].some((text) => text.toLowerCase().includes(normalizedQuery)))
     );
   });
 }
@@ -645,6 +720,12 @@ export function listAllTag(allItem: ItemDetail[]): TagSummary[] {
 // selectTag filters the list by the tag, and clears the filter when the tag is already selected.
 export function selectTag(tag: string): void {
   store.selectedTag = store.selectedTag === tag ? "" : tag;
+  // The filter narrows the selected vault's list, so choosing a tag from Favorites returns to that list.
+  if (store.isFavoritesSelected) {
+    store.isFavoritesSelected = false;
+    store.selectedItem = null;
+    store.editorMode = "view";
+  }
 }
 
 function updateSelectedVaultItemCount(): void {
@@ -680,6 +761,11 @@ export function startCreatingCard(): void {
 export function startCreatingIdentity(): void {
   store.selectedItem = null;
   store.editorMode = "create-identity";
+}
+
+export function startCreatingAPICredential(): void {
+  store.selectedItem = null;
+  store.editorMode = "create-api-credential";
 }
 
 export function startCreatingSSHKey(): void {
@@ -740,6 +826,9 @@ export async function saveItem(detail: ItemDetail): Promise<boolean> {
   }
   store.selectedItem = saved;
   store.editorMode = "view";
+  if (saved.isFavorite) {
+    await loadAllFavoriteQuietly();
+  }
   showNotice("Saved");
   return true;
 }
@@ -764,6 +853,9 @@ export async function convertToSecureNote(): Promise<void> {
   if (store.selectedItem?.id === converted.id) {
     store.selectedItem = converted;
   }
+  if (converted.isFavorite) {
+    await loadAllFavoriteQuietly();
+  }
   showNotice("Converted to a secure note");
 }
 
@@ -774,6 +866,7 @@ export async function deleteItem(itemID: string): Promise<void> {
   });
   if (deleted) {
     store.allItem = store.allItem.filter((vaultItem) => vaultItem.id !== itemID);
+    store.allFavorite = store.allFavorite.filter((favorite) => favorite.item.id !== itemID);
     updateSelectedVaultItemCount();
     dropMissingTagFilter();
     store.selectedItem = null;
@@ -1281,6 +1374,7 @@ async function finishImport(progress: ImportProgress): Promise<void> {
       store.allItem = sortAllItem(allItem);
     }
   }
+  await loadAllFavoriteQuietly();
   showNotice(`Imported ${progress.savedCount} ${progress.savedCount === 1 ? "item" : "items"} into ${progress.vaultName}`);
 }
 
@@ -1313,12 +1407,21 @@ export function getAllShareLinkForItem(vaultID: string, itemID: string): ShareLi
 }
 
 export function hasShareableField(detail: ItemDetail): boolean {
-  // A card's and an identity's values come in card and identity, not in fields.
+  // A card's, an identity's and an API credential's values come in card, identity and apiCredential, not in fields.
   const card = detail.card;
   const hasCardValue = card ? [card.cardholder, card.type, card.number, card.expiry, card.securityCode, card.pin, card.billingAddress].some((value) => value) : false;
   const hasIdentityValue = detail.identity ? Object.values(detail.identity).some((value) => value) : false;
+  const credential = detail.apiCredential;
+  const hasCredentialValue = credential ? [credential.service, credential.keyId, credential.secret, credential.host, credential.expiry].some((value) => value) : false;
   return Boolean(
-    detail.username || detail.password || detail.notes || detail.urls.length > 0 || detail.fields.some((field) => field.value) || hasCardValue || hasIdentityValue,
+    detail.username ||
+      detail.password ||
+      detail.notes ||
+      detail.urls.length > 0 ||
+      detail.fields.some((field) => field.value) ||
+      hasCardValue ||
+      hasIdentityValue ||
+      hasCredentialValue,
   );
 }
 

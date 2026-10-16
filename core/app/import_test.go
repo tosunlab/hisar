@@ -86,7 +86,7 @@ func TestImportPreviewSaveAndDeleteFile(t *testing.T) {
 	if preview.VaultName != "Personal" || preview.ItemCount != 14 || preview.LoginCount != 13 || preview.SecureNoteCount != 1 || preview.SSHKeyCount != 0 {
 		t.Errorf("preview counts = %+v", preview)
 	}
-	if len(preview.Duplicates) != 1 || preview.Duplicates[0] != (ImportDuplicate{Title: "GitHub", Username: "alice", URL: "https://github.com"}) {
+	if len(preview.Duplicates) != 1 || preview.Duplicates[0] != (ImportDuplicate{Title: "GitHub", Username: "alice", URL: "https://github.com", Detail: "alice · github.com"}) {
 		t.Errorf("duplicates = %+v", preview.Duplicates)
 	}
 	if len(preview.Skipped) != 0 {
@@ -291,5 +291,36 @@ func TestListAllImportFormat(t *testing.T) {
 	formats := test.service.ListImportFormats()
 	if len(formats) != 5 || formats[0].ID != "1pux" || formats[4].ID != "csv" {
 		t.Errorf("formats = %+v", formats)
+	}
+}
+
+func TestImportStarsTheFavoritesOfTheExport(t *testing.T) {
+	test := createUnlockedTestService(t)
+	service := test.service
+	var builder strings.Builder
+	builder.WriteString("Title,Url,Username,Password,OTPAuth,Favorite,Archived,Tags,Notes\n")
+	builder.WriteString("GitHub,https://github.com,alice,gh-pass,,true,false,,\n")
+	for index := 1; index <= 12; index++ {
+		fmt.Fprintf(&builder, "Site %02d,https://site%02d.example.com,alice,pass-%02d,,false,false,,\n", index, index, index)
+	}
+	builder.WriteString("Bank,https://bank.example.com,alice,bank-pass,,true,false,,\n")
+	setImportPath(service, writeImportFile(t, "1PasswordExport.csv", builder.String()))
+	if _, err := service.ChooseImportFile(test.familyID, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.StartImport(test.familyID, false); err != nil {
+		t.Fatal(err)
+	}
+	if finished, callCount := runImportToEnd(t, service); finished.SavedCount != 14 || callCount != 2 {
+		t.Fatalf("finished = %+v after %d calls", finished, callCount)
+	}
+	if titles := listFavoriteTitles(t, service); strings.Join(titles, ", ") != "Bank · Family, GitHub · Family" {
+		t.Errorf("favorites after the import: %v", titles)
+	}
+	test.apiServer.mutex.Lock()
+	revision := test.apiServer.preferences.Revision
+	test.apiServer.mutex.Unlock()
+	if revision != 1 {
+		t.Errorf("the import saved the favorites %d times, want once", revision)
 	}
 }

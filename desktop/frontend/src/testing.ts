@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import type { ApprovalEvent, ShareLink, ShareLinkField, BrowserStatus, CommandLineStatus, Device, ImportPreview, ImportProgress, ItemDetail, LoginItemStatus, Person, ReceivedShareInvitation, SentShareInvitation, SSHAgentStatus, Status, UpdateStatus, VaultActions, VaultMember, VaultSummary } from "./api";
+import type { ApprovalEvent, FavoriteItem, ShareLink, ShareLinkField, BrowserStatus, CommandLineStatus, Device, ImportPreview, ImportProgress, ItemDetail, LoginItemStatus, Person, ReceivedShareInvitation, SentShareInvitation, SSHAgentStatus, Status, UpdateStatus, VaultActions, VaultMember, VaultSummary } from "./api";
 
 export function createStatus(state: string): Status {
   return { state, server: "https://hisar.test", email: "alice@example.com", name: "Alice", biometricAvailable: false, biometricEnabled: false, biometricReady: false, isOffline: false, autoLockSeconds: 600, signedOutReason: "", updateRequired: null };
@@ -24,8 +24,13 @@ export function createItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
     hasOneTimePassword: false,
     passkeys: [],
     canConvertToSecureNote: false,
+    isFavorite: false,
     ...overrides,
   };
+}
+
+export function createFavoriteItem(overrides: Partial<FavoriteItem> = {}): FavoriteItem {
+  return { vaultId: "personal", vaultName: "Personal", vaultType: "personal", item: createItem({ isFavorite: true }), ...overrides };
 }
 
 export function createCardItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
@@ -73,6 +78,19 @@ export function createIdentityItem(overrides: Partial<ItemDetail> = {}): ItemDet
       driversLicenseNumber: "",
       nationalIdNumber: "",
     },
+    ...overrides,
+  });
+}
+
+export function createAPICredentialItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
+  return createItem({
+    id: "stripe-1",
+    category: "api-credential",
+    title: "Stripe",
+    username: "",
+    urls: [],
+    fields: [{ name: "Scope", value: "read", concealed: false }],
+    apiCredential: { service: "Stripe", keyId: "key_1", secret: "sk_live_123", host: "api.stripe.com", expiry: "2031-01-01", expiryWarning: "" },
     ...overrides,
   });
 }
@@ -414,6 +432,8 @@ export function createApiMock() {
     getItem: vi.fn(),
     saveItem: vi.fn(),
     deleteItem: vi.fn(),
+    listAllFavoriteItem: vi.fn().mockResolvedValue([]),
+    setItemFavorite: vi.fn().mockResolvedValue(undefined),
     convertToSecureNote: vi.fn(),
     describeCard: vi.fn().mockResolvedValue({ brand: "", last4: "", numberWarning: "", expiryWarning: "" }),
     deletePasskey: vi.fn(),
@@ -527,8 +547,9 @@ export function createImportPreview(overrides: Partial<ImportPreview> = {}): Imp
     sshKeyCount: 1,
     creditCardCount: 0,
     identityCount: 0,
+    apiCredentialCount: 0,
     allSkipped: [{ title: "Visa", reason: "Bitwarden cards are not supported in Hisar yet" }],
-    allDuplicate: [{ title: "GitHub", username: "alice", url: "https://github.com" }],
+    allDuplicate: [{ title: "GitHub", username: "alice", url: "https://github.com", detail: "alice · github.com" }],
     ...overrides,
   };
 }

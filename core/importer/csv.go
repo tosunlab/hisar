@@ -22,6 +22,7 @@ const (
 	columnFields   = "fields"
 	columnType     = "type"
 	columnArchived = "archived"
+	columnFavorite = "favorite"
 )
 
 var columnAliases = map[string]string{
@@ -37,11 +38,12 @@ var columnAliases = map[string]string{
 	"fields":   columnFields,
 	"type":     columnType,
 	"archived": columnArchived,
+	"favorite": columnFavorite, "fav": columnFavorite,
 }
 
 // ignoredColumns holds export metadata that is not worth keeping as a field.
 var ignoredColumns = map[string]bool{
-	"favorite": true, "fav": true, "reprompt": true, "httprealm": true, "formactionorigin": true, "guid": true,
+	"reprompt": true, "httprealm": true, "formactionorigin": true, "guid": true,
 	"timecreated": true, "timelastused": true, "timepasswordchanged": true, "created": true, "modified": true, "last modified": true,
 }
 
@@ -206,6 +208,7 @@ func convertCSVRecord(layout *csvLayout, values []string, format string) (item.I
 	if (format == FormatBitwardenCSV && entryType == "note") || isLastPassSecureNoteURL(getValue(columnURL)) {
 		vaultItem.Overview.Category = item.CategorySecureNote
 	}
+	vaultItem.IsFavorite = isCSVTrue(getValue(columnFavorite))
 	vaultItem.Overview.URLs = splitURLs(getValue(columnURL), format)
 	addOneTimePassword(&vaultItem, "One-time password", strings.TrimSpace(getValue(columnOTP)))
 	if tagText := getValue(columnTags); tagText != "" {
@@ -224,6 +227,15 @@ func convertCSVRecord(layout *csvLayout, values []string, format string) (item.I
 		}
 	}
 	return vaultItem, ""
+}
+
+// isCSVTrue reads a flag column: 1Password writes true, Bitwarden and LastPass 1.
+func isCSVTrue(text string) bool {
+	switch strings.ToLower(strings.TrimSpace(text)) {
+	case "true", "1", "yes":
+		return true
+	}
+	return false
 }
 
 // isLastPassSecureNoteURL: LastPass marks secure notes with the URL http://sn.

@@ -53,28 +53,25 @@ func formatItemCount(count int) string {
 }
 
 func describeDuplicate(vaultItem item.Item) string {
-	parts := []string{vaultItem.Overview.Title}
-	if vaultItem.Overview.Username != "" {
-		parts = append(parts, vaultItem.Overview.Username)
+	if detail := importer.DescribeDuplicate(vaultItem); detail != "" {
+		return vaultItem.Overview.Title + " · " + detail
 	}
-	if len(vaultItem.Overview.URLs) > 0 {
-		parts = append(parts, vaultItem.Overview.URLs[0])
-	}
-	return strings.Join(parts, ", ")
+	return vaultItem.Overview.Title
 }
 
 func printImportPreview(writer io.Writer, fileName string, result *importer.Result, vaultName string, duplicateIndexes []int) {
 	summary := importer.Summarize(result.Items)
-	fmt.Fprintf(writer, "File:          %s\n", fileName)
-	fmt.Fprintf(writer, "Format:        %s\n", importer.GetFormatName(result.Format))
-	fmt.Fprintf(writer, "Vault:         %s\n", vaultName)
-	fmt.Fprintf(writer, "Logins:        %d\n", summary.LoginCount)
-	fmt.Fprintf(writer, "Secure notes:  %d\n", summary.SecureNoteCount)
-	fmt.Fprintf(writer, "SSH keys:      %d\n", summary.SSHKeyCount)
-	fmt.Fprintf(writer, "Credit cards:  %d\n", summary.CreditCardCount)
-	fmt.Fprintf(writer, "Identities:    %d\n", summary.IdentityCount)
+	fmt.Fprintf(writer, "File:            %s\n", fileName)
+	fmt.Fprintf(writer, "Format:          %s\n", importer.GetFormatName(result.Format))
+	fmt.Fprintf(writer, "Vault:           %s\n", vaultName)
+	fmt.Fprintf(writer, "Logins:          %d\n", summary.LoginCount)
+	fmt.Fprintf(writer, "Secure notes:    %d\n", summary.SecureNoteCount)
+	fmt.Fprintf(writer, "SSH keys:        %d\n", summary.SSHKeyCount)
+	fmt.Fprintf(writer, "Credit cards:    %d\n", summary.CreditCardCount)
+	fmt.Fprintf(writer, "Identities:      %d\n", summary.IdentityCount)
+	fmt.Fprintf(writer, "API credentials: %d\n", summary.APICredentialCount)
 	if len(duplicateIndexes) > 0 {
-		fmt.Fprintf(writer, "Already in %s (same title, username and website): %d\n", vaultName, len(duplicateIndexes))
+		fmt.Fprintf(writer, "Already in %s: %d\n", vaultName, len(duplicateIndexes))
 		for _, index := range duplicateIndexes {
 			fmt.Fprintf(writer, "  - %s\n", describeDuplicate(result.Items[index]))
 		}
@@ -106,6 +103,8 @@ func isImportStoppingError(err error) bool {
 
 func saveImportedItems(ctx context.Context, unlockedSession *session.Session, vault *session.Vault, queuedItems []item.Item) (int, error) {
 	savedCount := 0
+	favoriteItemIDs := []string{}
+	defer func() { addImportedFavorites(ctx, unlockedSession, favoriteItemIDs) }()
 	for index := range queuedItems {
 		vaultItem := queuedItems[index]
 		_, err := unlockedSession.SaveItem(ctx, vault, &vaultItem)
@@ -118,12 +117,25 @@ func saveImportedItems(ctx context.Context, unlockedSession *session.Session, va
 			continue
 		}
 		savedCount++
+		if vaultItem.IsFavorite {
+			favoriteItemIDs = append(favoriteItemIDs, vaultItem.ID)
+		}
 		fmt.Fprintf(os.Stderr, "\rImported %d of %d", savedCount, len(queuedItems))
 	}
 	if len(queuedItems) > 0 {
 		fmt.Fprintln(os.Stderr)
 	}
 	return savedCount, nil
+}
+
+// addImportedFavorites stars the imported items the other password manager starred; the import stands without them.
+func addImportedFavorites(ctx context.Context, unlockedSession *session.Session, itemIDs []string) {
+	if len(itemIDs) == 0 {
+		return
+	}
+	if _, err := unlockedSession.UpdateFavorites(ctx, nil, session.FavoriteChange{AddItemIDs: itemIDs}); err != nil {
+		fmt.Fprintf(os.Stderr, "Could not add %d imported items to Favorites: %v\n", len(itemIDs), err)
+	}
 }
 
 type importOption struct {

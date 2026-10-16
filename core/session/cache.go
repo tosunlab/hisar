@@ -17,6 +17,8 @@ type Cache interface {
 	ApplyChanges(vaultID string, items []apitypes.Item, nextSeq int64) error
 	ListItems(vaultID string) ([]apitypes.Item, error)
 	ResetVault(vaultID string) error
+	SaveAccountPreferences(accountID string, preferences *apitypes.AccountPreferences) error
+	LoadAccountPreferences(accountID string) (*apitypes.AccountPreferences, error)
 }
 
 // IsOffline reports whether the last read was served from the cache because the server was unreachable.

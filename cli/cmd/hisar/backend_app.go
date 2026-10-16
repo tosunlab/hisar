@@ -55,6 +55,28 @@ func (access appBackend) importItems(ctx context.Context, vaultID string, items 
 	return importThroughApp(ctx, access.client, vaultID, items)
 }
 
+var errFavoritesNeedNewerApp = errors.New("this version of the Hisar app cannot keep favorites; update the Hisar app, or run hisar with --standalone")
+
+func (access appBackend) listFavorites(ctx context.Context) ([]cliprotocol.Favorite, error) {
+	if !access.client.hello.HasFeature(cliprotocol.FeatureFavorites) {
+		return nil, errFavoritesNeedNewerApp
+	}
+	var result cliprotocol.FavoriteListResult
+	err := access.client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeListFavorite}, &result)
+	return result.Favorites, err
+}
+
+func (access appBackend) setItemFavorite(ctx context.Context, vaultID, itemID string, isFavorite bool) error {
+	if !access.client.hello.HasFeature(cliprotocol.FeatureFavorites) {
+		return errFavoritesNeedNewerApp
+	}
+	requestType := cliprotocol.TypeRemoveFavorite
+	if isFavorite {
+		requestType = cliprotocol.TypeAddFavorite
+	}
+	return access.client.call(ctx, cliprotocol.Request{Type: requestType, VaultID: vaultID, ItemID: itemID}, nil)
+}
+
 func (access appBackend) getVaultActions(ctx context.Context, vaultID string) (cliprotocol.VaultActionsResult, error) {
 	var actions cliprotocol.VaultActionsResult
 	err := access.client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeGetVaultActions, VaultID: vaultID}, &actions)

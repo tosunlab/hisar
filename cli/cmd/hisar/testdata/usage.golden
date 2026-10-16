@@ -9,14 +9,16 @@ commands:
   vaults                                                 list vaults
   vault-create       <name>                              create a shared vault
   vault              rename|delete|leave|create <vault>  rename, delete or leave a vault, or create one (rename <vault> [name] | delete <vault> [--move-to v | --delete-items --confirm <name>] [-y] | leave <vault> [-y] | create <name>)
-  ls                 [-v vault] [--tag tag]              list items, or only those with a tag
+  ls                 [-v vault] [--tag tag] [--favorites] list items; --tag keeps those with a tag, --favorites lists your favorites in every vault
   get                <item> [-f field] [-v vault]        show an item, or one field of it (e.g. -f password, -f code)
   read               <hisar://vault/item/field> [--no-newline] print one secret, for scripts
   run                [--env-file f]... [--no-masking] -- <cmd> run a command with the secrets its hisar:// references name, masked in its output
   mcp                                                    serve coding agents over MCP (stdio): they use secrets without seeing them, after you approve in the Hisar app
-  add                [-v vault] [--type t]               add an item; --type is one of login, secure-note, credit-card, identity (default login)
+  add                [-v vault] [--type t]               add an item; --type is one of login, secure-note, credit-card, identity, api-credential (default login)
   edit               <item> [-v vault]                   edit an item
   rm                 <item> [-v vault]                   delete an item
+  favorite           <item> [-v vault]                   add an item to your Favorites, on all your devices (only you see them)
+  unfavorite         <item> [-v vault]                   remove an item from your Favorites
   import             <file> [-v vault] [-format f] [-y]  import a Hisar export, a 1Password, Bitwarden or browser CSV export, or a .env file (--item, --keys, --dry-run)
   export             [-o file] [--format encrypted|plain] export every vault you can open, encrypted with a passphrase you choose or as plain JSON
   generate           [-n length] [-no-symbols]           generate a password

@@ -37,28 +37,33 @@ type ImportSkippedEntry struct {
 	Reason string `json:"reason"`
 }
 
+// ImportDuplicate: Detail is what matched besides the title, such as a login's username and website or an API
+// credential's key ID; see importer.DescribeDuplicate.
 type ImportDuplicate struct {
 	Title    string `json:"title"`
 	Username string `json:"username"`
 	URL      string `json:"url"`
+	Detail   string `json:"detail"`
 }
 
 // ImportPreview: an empty FileName means the user cancelled the file dialog.
 type ImportPreview struct {
-	FileName        string               `json:"fileName"`
-	FilePath        string               `json:"filePath"`
-	Format          string               `json:"format"`
-	FormatName      string               `json:"formatName"`
-	VaultID         string               `json:"vaultId"`
-	VaultName       string               `json:"vaultName"`
-	ItemCount       int                  `json:"itemCount"`
-	LoginCount      int                  `json:"loginCount"`
-	SecureNoteCount int                  `json:"secureNoteCount"`
-	SSHKeyCount     int                  `json:"sshKeyCount"`
-	CreditCardCount int                  `json:"creditCardCount"`
-	IdentityCount   int                  `json:"identityCount"`
-	Skipped         []ImportSkippedEntry `json:"allSkipped"`
-	Duplicates      []ImportDuplicate    `json:"allDuplicate"`
+	FileName        string `json:"fileName"`
+	FilePath        string `json:"filePath"`
+	Format          string `json:"format"`
+	FormatName      string `json:"formatName"`
+	VaultID         string `json:"vaultId"`
+	VaultName       string `json:"vaultName"`
+	ItemCount       int    `json:"itemCount"`
+	LoginCount      int    `json:"loginCount"`
+	SecureNoteCount int    `json:"secureNoteCount"`
+	SSHKeyCount     int    `json:"sshKeyCount"`
+	CreditCardCount int    `json:"creditCardCount"`
+	IdentityCount   int    `json:"identityCount"`
+	// APICredentialCount counts the api-credential items among ItemCount.
+	APICredentialCount int                  `json:"apiCredentialCount"`
+	Skipped            []ImportSkippedEntry `json:"allSkipped"`
+	Duplicates         []ImportDuplicate    `json:"allDuplicate"`
 }
 
 type ImportProgress struct {
@@ -83,6 +88,8 @@ type pendingImport struct {
 	queuedItems []item.Item
 	savedCount  int
 	failed      []ImportSkippedEntry
+	// favoriteItemIDs are saved items the other password manager starred; they become favorites when the import ends.
+	favoriteItemIDs []string
 }
 
 func (s *Service) ListImportFormats() []ImportFormat {
@@ -199,20 +206,21 @@ func (s *Service) buildImportPreview(vaultID string) (ImportPreview, error) {
 	pending := s.pendingImport
 	summary := importer.Summarize(pending.items)
 	preview := ImportPreview{
-		FileName:        filepath.Base(pending.filePath),
-		FilePath:        pending.filePath,
-		Format:          pending.format,
-		FormatName:      importer.GetFormatName(pending.format),
-		VaultID:         vault.ID,
-		VaultName:       vault.Name,
-		ItemCount:       len(pending.items),
-		LoginCount:      summary.LoginCount,
-		SecureNoteCount: summary.SecureNoteCount,
-		SSHKeyCount:     summary.SSHKeyCount,
-		CreditCardCount: summary.CreditCardCount,
-		IdentityCount:   summary.IdentityCount,
-		Skipped:         []ImportSkippedEntry{},
-		Duplicates:      []ImportDuplicate{},
+		FileName:           filepath.Base(pending.filePath),
+		FilePath:           pending.filePath,
+		Format:             pending.format,
+		FormatName:         importer.GetFormatName(pending.format),
+		VaultID:            vault.ID,
+		VaultName:          vault.Name,
+		ItemCount:          len(pending.items),
+		LoginCount:         summary.LoginCount,
+		SecureNoteCount:    summary.SecureNoteCount,
+		SSHKeyCount:        summary.SSHKeyCount,
+		CreditCardCount:    summary.CreditCardCount,
+		IdentityCount:      summary.IdentityCount,
+		APICredentialCount: summary.APICredentialCount,
+		Skipped:            []ImportSkippedEntry{},
+		Duplicates:         []ImportDuplicate{},
 	}
 	for _, skipped := range pending.skipped {
 		preview.Skipped = append(preview.Skipped, ImportSkippedEntry{Title: skipped.Title, Reason: skipped.Reason})
@@ -223,7 +231,9 @@ func (s *Service) buildImportPreview(vaultID string) (ImportPreview, error) {
 		if len(duplicate.Overview.URLs) > 0 {
 			firstURL = duplicate.Overview.URLs[0]
 		}
-		preview.Duplicates = append(preview.Duplicates, ImportDuplicate{Title: duplicate.Overview.Title, Username: duplicate.Overview.Username, URL: firstURL})
+		preview.Duplicates = append(preview.Duplicates, ImportDuplicate{
+			Title: duplicate.Overview.Title, Username: duplicate.Overview.Username, URL: firstURL, Detail: importer.DescribeDuplicate(duplicate),
+		})
 	}
 	return preview, nil
 }
@@ -289,6 +299,13 @@ func (s *Service) ContinueImport() (ImportProgress, error) {
 		}
 		pending.savedCount++
 		s.replaceCachedItem(vault.ID, vaultItem)
+		if vaultItem.IsFavorite {
+			pending.favoriteItemIDs = append(pending.favoriteItemIDs, vaultItem.ID)
+		}
+	}
+	if len(pending.queuedItems) == 0 {
+		s.addImportedFavorites(ctx, pending.favoriteItemIDs)
+		pending.favoriteItemIDs = nil
 	}
 	return s.buildImportProgress(), nil
 }

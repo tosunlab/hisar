@@ -138,6 +138,16 @@ func checkSkipped(t *testing.T, result *Result, wants map[string]string) {
 	}
 }
 
+func getFavoriteTitles(items []item.Item) []string {
+	titles := []string{}
+	for _, vaultItem := range items {
+		if vaultItem.IsFavorite {
+			titles = append(titles, vaultItem.Overview.Title)
+		}
+	}
+	return titles
+}
+
 func TestParseOnePasswordExport(t *testing.T) {
 	keySet := createTestKeySet(t)
 	content := buildOnePasswordExport(t, readFixture(t, "1password-export.data", keySet))
@@ -169,6 +179,7 @@ func TestParseOnePasswordExport(t *testing.T) {
 			},
 			OneTimePassword: "otpauth://totp/GitHub:alice?issuer=GitHub&secret=JBSWY3DPEHPK3PXP",
 		},
+		IsFavorite: true,
 	}
 	if !reflect.DeepEqual(github, wantGitHub) {
 		t.Errorf("GitHub =\n%+v\nwant\n%+v", github, wantGitHub)
@@ -226,6 +237,9 @@ func TestParseOnePasswordExport(t *testing.T) {
 	if alice := findTestItem(t, result, "Alice Example"); alice.Overview.Category != item.CategoryIdentity || !reflect.DeepEqual(alice.Details.Fields, wantAlice) {
 		t.Errorf("1Password identity =\n%+v\nwant fields\n%+v", alice.Details.Fields, wantAlice)
 	}
+	if favorites := getFavoriteTitles(result.Items); !reflect.DeepEqual(favorites, []string{"GitHub"}) {
+		t.Errorf("favorites = %q", favorites)
+	}
 	if summary := Summarize(result.Items); summary != (Summary{LoginCount: 5, SecureNoteCount: 1, SSHKeyCount: 1, CreditCardCount: 1, IdentityCount: 1}) {
 		t.Errorf("summary = %+v", summary)
 	}
@@ -257,9 +271,13 @@ func TestParseBitwardenJSON(t *testing.T) {
 			},
 			OneTimePassword: "otpauth://totp/?secret=JBSWY3DPEHPK3PXP",
 		},
+		IsFavorite: true,
 	}
 	if github := findTestItem(t, result, "GitHub"); !reflect.DeepEqual(github, wantGitHub) {
 		t.Errorf("GitHub =\n%+v\nwant\n%+v", github, wantGitHub)
+	}
+	if favorites := getFavoriteTitles(result.Items); !reflect.DeepEqual(favorites, []string{"GitHub"}) {
+		t.Errorf("favorites = %q", favorites)
 	}
 	if laptop := findTestItem(t, result, "Laptop"); laptop.Overview.Fingerprint != keySet.opensshFingerprint || laptop.Details.Notes != "Main key" {
 		t.Errorf("ssh key = %+v", laptop.Overview)
@@ -324,12 +342,16 @@ func TestParseBitwardenCSV(t *testing.T) {
 			},
 			OneTimePassword: "otpauth://totp/?secret=JBSWY3DPEHPK3PXP",
 		},
+		IsFavorite: true,
 	}
 	if github := findTestItem(t, result, "GitHub"); !reflect.DeepEqual(github, wantGitHub) {
 		t.Errorf("GitHub =\n%+v\nwant\n%+v", github, wantGitHub)
 	}
 	if bank := findTestItem(t, result, "Bank"); bank.Details.Password != "" || bank.Overview.Username != "alice" {
 		t.Errorf("empty password = %+v", bank)
+	}
+	if favorites := getFavoriteTitles(result.Items); !reflect.DeepEqual(favorites, []string{"GitHub"}) {
+		t.Errorf("favorites = %q", favorites)
 	}
 	if summary := Summarize(result.Items); summary != (Summary{LoginCount: 2, SecureNoteCount: 1}) {
 		t.Errorf("summary = %+v", summary)
@@ -351,6 +373,30 @@ func TestParseOnePasswordCSV(t *testing.T) {
 	}
 	if recipe := findTestItem(t, result, "Recipe"); GetKind(recipe) != KindSecureNote {
 		t.Errorf("note-only row = %+v", recipe)
+	}
+	if favorites := getFavoriteTitles(result.Items); !reflect.DeepEqual(favorites, []string{"GitHub"}) {
+		t.Errorf("favorites = %q", favorites)
+	}
+}
+
+func TestParseKeepsTheFavoriteOfARepeatedEntry(t *testing.T) {
+	content := []byte("Title,Url,Username,Password,OTPAuth,Favorite,Archived,Tags,Notes\nGitHub,https://github.com,alice,pw,,false,false,,\nGitHub,https://github.com,alice,pw,,true,false,,\n")
+	result := parseFixture(t, "1PasswordExport.csv", content, FormatAutomatic)
+	if len(result.Items) != 1 || !result.Items[0].IsFavorite {
+		t.Errorf("items = %+v", result.Items)
+	}
+}
+
+func TestParseLastPassFavoriteColumn(t *testing.T) {
+	content := []byte("url,username,password,totp,extra,name,grouping,fav\nhttps://a.example,alice,pw-a,,,A,,1\nhttps://b.example,alice,pw-b,,,B,,0\n")
+	result := parseFixture(t, "lastpass.csv", content, FormatAutomatic)
+	if favorites := getFavoriteTitles(result.Items); !reflect.DeepEqual(favorites, []string{"A"}) {
+		t.Errorf("favorites = %q", favorites)
+	}
+	for _, vaultItem := range result.Items {
+		if len(vaultItem.Details.Fields) != 0 {
+			t.Errorf("%s kept the fav column as a field: %+v", vaultItem.Overview.Title, vaultItem.Details.Fields)
+		}
 	}
 }
 
@@ -732,6 +778,130 @@ func TestParseOnePasswordIdentityPhone(t *testing.T) {
 	wantHome := []item.Field{{Name: item.FieldPhone, Value: "+1 555 0199"}, {Name: "business", Value: "+1 555 0100"}}
 	if home := findTestItem(t, result, "Home"); !reflect.DeepEqual(home.Details.Fields, wantHome) {
 		t.Errorf("an identity with two phones =\n%+v\nwant\n%+v", home.Details.Fields, wantHome)
+	}
+}
+
+func TestParseOnePasswordAPICredential(t *testing.T) {
+	data := `{"accounts":[{"vaults":[{"items":[
+		{"categoryUuid":"112","overview":{"title":"Stripe","url":"https://dashboard.stripe.com"},"details":{"notesPlain":"Live key","sections":[{"title":"","fields":[
+			{"title":"username","id":"username","value":{"string":"key_1"}},
+			{"title":"credential","id":"credential","value":{"concealed":"sk_live_123"}},
+			{"title":"type","id":"type","value":{"menu":"bearer"}},
+			{"title":"hostname","id":"hostname","value":{"string":"api.stripe.com"}},
+			{"title":"expires","id":"expires","value":{"date":1893456000}}]}]}},
+		{"categoryUuid":"110","overview":{"title":"Build server"},"details":{"sections":[{"title":"","fields":[
+			{"title":"URL","id":"url","value":{"string":"ssh://build.example.com"}},
+			{"title":"username","id":"username","value":{"string":"deploy"}},
+			{"title":"password","id":"password","value":{"concealed":"server-password"}}]}]}}]}]}]}`
+	result := parseFixture(t, "export.1pux", buildOnePasswordExport(t, []byte(data)), FormatAutomatic)
+	if len(result.Skipped) != 0 {
+		t.Errorf("skipped %+v", result.Skipped)
+	}
+	stripe := findTestItem(t, result, "Stripe")
+	wantFields := []item.Field{
+		{Name: item.FieldKeyID, Value: "key_1"},
+		{Name: item.FieldSecret, Value: "sk_live_123", Concealed: true},
+		{Name: item.FieldHost, Value: "api.stripe.com"},
+		{Name: item.FieldExpiry, Value: "2030-01-01"},
+		{Name: "type", Value: "bearer"},
+		{Name: "Website", Value: "https://dashboard.stripe.com"},
+	}
+	if stripe.Overview.Category != item.CategoryAPICredential || !reflect.DeepEqual(stripe.Details.Fields, wantFields) || stripe.Details.Notes != "Live key" {
+		t.Errorf("API credential = %+v\nfields\n%+v\nwant\n%+v", stripe.Overview, stripe.Details.Fields, wantFields)
+	}
+	if server := findTestItem(t, result, "Build server"); server.Overview.Category != item.CategoryLogin || server.Overview.Username != "deploy" || server.Details.Password != "server-password" {
+		t.Errorf("a 1Password Server is no longer a login: %+v", server)
+	}
+	if summary := Summarize(result.Items); summary.APICredentialCount != 1 || summary.LoginCount != 1 {
+		t.Errorf("summary = %+v", summary)
+	}
+}
+
+func TestParseOnePasswordAPICredentialFromLoginFields(t *testing.T) {
+	data := `{"accounts":[{"vaults":[{"items":[
+		{"categoryUuid":"112","overview":{"title":"Only login fields"},"details":{"loginFields":[
+			{"designation":"username","name":"username","value":"key_1"},
+			{"designation":"password","name":"password","fieldType":"P","value":"secret-1"}]}},
+		{"categoryUuid":"112","overview":{"title":"Both"},"details":{"loginFields":[
+			{"designation":"username","name":"username","value":"key_2"},
+			{"designation":"password","name":"password","fieldType":"P","value":"secret-2"}],
+			"sections":[{"title":"","fields":[
+				{"title":"username","id":"username","value":{"string":"key_2"}},
+				{"title":"credential","id":"credential","value":{"concealed":"secret-2"}}]}]}},
+		{"categoryUuid":"112","overview":{"title":"Different"},"details":{"password":"old-secret","sections":[{"title":"","fields":[
+			{"title":"credential","id":"credential","value":{"concealed":"new-secret"}}]}]}}]}]}]}`
+	result := parseFixture(t, "export.1pux", buildOnePasswordExport(t, []byte(data)), FormatAutomatic)
+	for title, wantFields := range map[string][]item.Field{
+		"Only login fields": {{Name: item.FieldKeyID, Value: "key_1"}, {Name: item.FieldSecret, Value: "secret-1", Concealed: true}},
+		"Both":              {{Name: item.FieldKeyID, Value: "key_2"}, {Name: item.FieldSecret, Value: "secret-2", Concealed: true}},
+		// A password that is not the secret is kept, not lost.
+		"Different": {{Name: item.FieldSecret, Value: "new-secret", Concealed: true}, {Name: "Password", Value: "old-secret", Concealed: true}},
+	} {
+		credential := findTestItem(t, result, title)
+		if credential.Overview.Category != item.CategoryAPICredential || !reflect.DeepEqual(credential.Details.Fields, wantFields) ||
+			credential.Overview.Username != "" || credential.Details.Password != "" {
+			t.Errorf("%s = %+v\nfields\n%+v\nwant\n%+v", title, credential.Overview, credential.Details.Fields, wantFields)
+		}
+	}
+}
+
+func TestDescribeDuplicateShowsWhatMatchedWithoutSecrets(t *testing.T) {
+	credential := func(keyID, host string) item.Item {
+		var vaultItem item.Item
+		vaultItem.Overview = item.Overview{Title: "Stripe", Category: item.CategoryAPICredential}
+		item.WriteAPICredential(&vaultItem, item.APICredential{KeyID: keyID, Secret: "sk-secret", Host: host}, nil)
+		return vaultItem
+	}
+	var card item.Item
+	card.Overview = item.Overview{Title: "Visa", Category: item.CategoryCreditCard}
+	item.WriteCard(&card, item.Card{Number: "4111 1111 1111 1111", SecurityCode: "123"}, nil)
+	var identity item.Item
+	identity.Overview = item.Overview{Title: "Passport", Category: item.CategoryIdentity}
+	item.WriteIdentity(&identity, item.Identity{FirstName: "Alice", LastName: "Example", Email: "alice@example.com", PassportNumber: "U1"}, nil)
+	login := item.Item{Overview: item.Overview{Title: "GitHub", Username: "alice", URLs: []string{"https://github.com"}}, Details: item.Details{Password: "hunter2"}}
+
+	for _, test := range []struct {
+		vaultItem item.Item
+		want      string
+	}{
+		{credential("key_1", "api.stripe.com"), "key_1"},
+		{credential("", "api.stripe.com"), "api.stripe.com"},
+		{credential("", ""), ""},
+		{card, "•••• 1111"},
+		{identity, "Alice Example · alice@example.com"},
+		{login, "alice · github.com"},
+	} {
+		if got := DescribeDuplicate(test.vaultItem); got != test.want {
+			t.Errorf("DescribeDuplicate(%s) = %q, want %q", test.vaultItem.Overview.Title, got, test.want)
+		}
+	}
+}
+
+func TestAPICredentialsWithTheSameTitleAreNotDuplicates(t *testing.T) {
+	withSecret := func(keyID, host, secret string) item.Item {
+		var vaultItem item.Item
+		vaultItem.Overview = item.Overview{Title: "Stripe", Category: item.CategoryAPICredential}
+		item.WriteAPICredential(&vaultItem, item.APICredential{KeyID: keyID, Secret: secret, Host: host}, nil)
+		return vaultItem
+	}
+	credential := func(keyID, host string) item.Item { return withSecret(keyID, host, "sk") }
+	if BuildDuplicateKey(credential("key_1", "")) == BuildDuplicateKey(credential("key_2", "")) {
+		t.Error("two keys of one service match")
+	}
+	if BuildDuplicateKey(credential("", "api.stripe.com")) == BuildDuplicateKey(credential("", "test.stripe.com")) {
+		t.Error("two hosts' keys without key IDs match")
+	}
+	if BuildDuplicateKey(credential("key_1", "")) != BuildDuplicateKey(credential("KEY_1", "api.stripe.com")) {
+		t.Error("a credential does not match itself with its key ID in another case")
+	}
+	if BuildDuplicateKey(withSecret("", "", "token-a")) == BuildDuplicateKey(withSecret("", "", "token-b")) {
+		t.Error("two bare tokens with one title match")
+	}
+	if BuildDuplicateKey(withSecret("", "", "token-a")) == BuildDuplicateKey(withSecret("", "", "TOKEN-A")) {
+		t.Error("two bare tokens that differ only in case match")
+	}
+	if BuildDuplicateKey(withSecret("", "", "token-a")) != BuildDuplicateKey(withSecret("", "", "token-a")) {
+		t.Error("a bare token does not match itself")
 	}
 }
 

@@ -37,6 +37,17 @@ struct ItemDetailView: View {
         .navigationTitle(item?.title ?? "")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            if let item {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        Task { await toggleFavorite(item) }
+                    } label: {
+                        Label(item.isFavorite ? "Remove from Favorites" : "Add to Favorites", systemImage: item.isFavorite ? "star.fill" : "star")
+                    }
+                    .accessibilityIdentifier("favorite-item")
+                    .accessibilityValue(item.isFavorite ? "Favorite" : "")
+                }
+            }
             if isWritable, item != nil {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Edit") { isEditorShown = true }
@@ -73,6 +84,12 @@ struct ItemDetailView: View {
         .onDisappear {
             item = nil
             isPasswordRevealed = false
+        }
+    }
+
+    private func toggleFavorite(_ shownItem: ItemDetail) async {
+        if await model.setItemFavorite(vaultID: vaultID, itemID: shownItem.id, isFavorite: !shownItem.isFavorite) {
+            item?.isFavorite = !shownItem.isFavorite
         }
     }
 
@@ -125,6 +142,8 @@ struct ItemDetailView: View {
                 buildCardSection(card: item.card ?? ItemCard())
             } else if item.isIdentity {
                 buildIdentitySection(identity: item.identity ?? ItemIdentity())
+            } else if item.isAPICredential {
+                buildAPICredentialSection(credential: item.apiCredential ?? ItemAPICredential())
             } else {
                 buildLoginSection(item: item)
             }
@@ -258,15 +277,17 @@ struct ItemDetailView: View {
         if item.isSecureNote { return item.notes.isEmpty ? nil : "notes" }
         if item.isCreditCard { return (item.card?.number ?? "").isEmpty ? nil : CardFieldName.number }
         if item.isIdentity { return nil }
+        if item.isAPICredential { return (item.apiCredential?.secret ?? "").isEmpty ? nil : APICredentialFieldName.secret }
         return item.password.isEmpty ? nil : "password"
     }
 
-    /// The line under the title: the category, or a card's or identity's summary.
+    /// The line under the title: the category, or a card's, identity's or API credential's summary.
     private func describeCategory(item: ItemDetail) -> String {
         if item.isSSHKey { return "SSH key" }
         if item.isSecureNote { return "Secure note" }
         if item.isCreditCard { return (item.card ?? ItemCard()).summary }
         if item.isIdentity { return (item.identity ?? ItemIdentity()).summary }
+        if item.isAPICredential { return (item.apiCredential ?? ItemAPICredential()).summary }
         return "Login"
     }
 
@@ -301,7 +322,18 @@ struct ItemDetailView: View {
         return buildNamedSection(title: "Identity", emptyText: "This identity has no details yet.", allRow: allRow)
     }
 
-    /// The values of a type kept in named fields, a card's or an identity's, with copy and copy reference; secret ones are
+    private func buildAPICredentialSection(credential: ItemAPICredential) -> some View {
+        let allRow: [NamedRow] = [
+            (APICredentialFieldName.service, credential.service, false, ""),
+            (APICredentialFieldName.keyID, credential.keyID, false, ""),
+            (APICredentialFieldName.secret, credential.secret, true, ""),
+            (APICredentialFieldName.host, credential.host, false, ""),
+            (APICredentialFieldName.expiry, credential.expiry, false, credential.expiryWarning),
+        ]
+        return buildNamedSection(title: "Credential", emptyText: "This API credential has no details yet.", allRow: allRow)
+    }
+
+    /// The values of a type kept in named fields, a card's, an identity's or an API credential's, with copy and copy reference; secret ones are
     /// masked until revealed.
     @ViewBuilder
     private func buildNamedSection(title: String, emptyText: String, allRow: [NamedRow]) -> some View {

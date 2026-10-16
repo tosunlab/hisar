@@ -64,6 +64,9 @@ type Item struct {
 	Revision string
 	Overview Overview
 	Details  Details
+	// IsFavorite is set by importers for an item the other password manager starred. It is never sealed into the item:
+	// favorites belong to the user's account.
+	IsFavorite bool `json:",omitempty"`
 }
 
 // Category returns the item's category; an item saved without one is a login.
@@ -90,7 +93,7 @@ func HasLoginData(vaultItem *Item) bool {
 // credit card or an identity. A login keeps its login data, and so does a category from a newer app, which this app edits
 // as a login.
 func (vaultItem *Item) OmitsLoginData() bool {
-	return slices.Contains([]string{CategorySecureNote, CategoryCreditCard, CategoryIdentity}, vaultItem.Category())
+	return slices.Contains([]string{CategorySecureNote, CategoryCreditCard, CategoryIdentity, CategoryAPICredential}, vaultItem.Category())
 }
 
 // MoveLoginDataToFields turns what only a login shows (username, password, websites and one-time password) into custom

@@ -144,6 +144,11 @@ describe("store", () => {
     expect(store.selectedTag).toBe("work");
     storeModule.selectTag("work");
     expect(store.selectedTag).toBe("");
+
+    store.isFavoritesSelected = true;
+    storeModule.selectTag("dev");
+    expect(store.selectedTag).toBe("dev");
+    expect(store.isFavoritesSelected).toBe(false);
   });
 
   it("clears the tag filter when a vault is selected or the last tagged item is deleted", async () => {

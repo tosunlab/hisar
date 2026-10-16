@@ -23,6 +23,7 @@ import type {
   ImportPreview as BoundImportPreview,
   ImportProgress as BoundImportProgress,
   ImportSkippedEntry,
+  ItemAPICredential,
   ItemCard,
   ItemDetail as BoundItemDetail,
   ItemIdentity,
@@ -36,6 +37,7 @@ import type {
   ExportOptions,
   ExportRequest,
   ExportResult,
+  FavoriteItem as BoundFavoriteItem,
   RemovedVaultNotice,
   VaultActions as BoundVaultActions,
   VaultDeletionRequest,
@@ -70,6 +72,7 @@ export type {
   ImportDuplicate,
   ImportFormat,
   ImportSkippedEntry,
+  ItemAPICredential,
   ItemCard,
   ItemField,
   ItemIdentity,
@@ -140,6 +143,15 @@ export interface ItemDetail extends Omit<BoundItemDetail, "urls" | "tags" | "fie
 
 function normalizeItem(boundItem: BoundItemDetail): ItemDetail {
   return { ...boundItem, urls: boundItem.urls ?? [], tags: boundItem.tags ?? [], fields: boundItem.fields ?? [], passkeys: boundItem.passkeys ?? [] };
+}
+
+// FavoriteItem is one of the user's starred items with the vault it is in; item has no secrets.
+export interface FavoriteItem extends Omit<BoundFavoriteItem, "item"> {
+  item: ItemDetail;
+}
+
+function normalizeFavoriteItem(boundFavorite: BoundFavoriteItem): FavoriteItem {
+  return { ...boundFavorite, item: normalizeItem(boundFavorite.item) };
 }
 
 export type { BrowserInstallation, BrowserPairingRequest, CommandLineInstallation, PairedBrowser };
@@ -214,6 +226,8 @@ const wailsApi = {
   saveItem: async (vaultID: string, detail: ItemDetail): Promise<ItemDetail> =>
     normalizeItem(await Service.SaveItem(vaultID, detail)),
   deleteItem: (vaultID: string, itemID: string): Promise<void> => Service.DeleteItem(vaultID, itemID),
+  listAllFavoriteItem: async (): Promise<FavoriteItem[]> => ((await Service.ListFavoriteItems()) ?? []).map(normalizeFavoriteItem),
+  setItemFavorite: (vaultID: string, itemID: string, isFavorite: boolean): Promise<void> => Service.SetItemFavorite(vaultID, itemID, isFavorite),
   describeCard: (number: string, expiry: string): Promise<CardDescription> => Service.DescribeCard(number, expiry),
   convertToSecureNote: async (vaultID: string, itemID: string): Promise<ItemDetail> =>
     normalizeItem(await Service.ConvertToSecureNote(vaultID, itemID)),
@@ -340,6 +354,10 @@ export function createEmptyIdentity(): ItemIdentity {
   return { firstName: "", middleName: "", lastName: "", birthDate: "", email: "", phone: "", address: "", passportNumber: "", driversLicenseNumber: "", nationalIdNumber: "" };
 }
 
+export function createEmptyAPICredential(): ItemAPICredential {
+  return { service: "", keyId: "", secret: "", host: "", expiry: "", expiryWarning: "" };
+}
+
 export function createEmptyItem(): ItemDetail {
   return {
     id: "",
@@ -359,5 +377,6 @@ export function createEmptyItem(): ItemDetail {
     hasOneTimePassword: false,
     passkeys: [],
     canConvertToSecureNote: false,
+    isFavorite: false,
   };
 }

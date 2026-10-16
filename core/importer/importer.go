@@ -25,11 +25,12 @@ const (
 )
 
 const (
-	KindLogin      = "login"
-	KindSecureNote = "secure-note"
-	KindSSHKey     = "ssh-key"
-	KindCreditCard = "credit-card"
-	KindIdentity   = "identity"
+	KindLogin         = "login"
+	KindSecureNote    = "secure-note"
+	KindSSHKey        = "ssh-key"
+	KindCreditCard    = "credit-card"
+	KindIdentity      = "identity"
+	KindAPICredential = "api-credential"
 )
 
 type FormatInfo struct {
@@ -74,6 +75,8 @@ type Summary struct {
 	SSHKeyCount     int `json:"sshKeyCount"`
 	CreditCardCount int `json:"creditCardCount"`
 	IdentityCount   int `json:"identityCount"`
+	// APICredentialCount counts api-credential items.
+	APICredentialCount int `json:"apiCredentialCount"`
 }
 
 func GetFormatName(format string) string {
@@ -159,6 +162,8 @@ func GetKind(vaultItem item.Item) string {
 		return KindCreditCard
 	case item.CategoryIdentity:
 		return KindIdentity
+	case item.CategoryAPICredential:
+		return KindAPICredential
 	}
 	return KindLogin
 }
@@ -175,6 +180,8 @@ func Summarize(items []item.Item) Summary {
 			summary.CreditCardCount++
 		case KindIdentity:
 			summary.IdentityCount++
+		case KindAPICredential:
+			summary.APICredentialCount++
 		default:
 			summary.LoginCount++
 		}
@@ -185,7 +192,7 @@ func Summarize(items []item.Item) Summary {
 // BuildDuplicateKey matches items by title, username and first website; SSH keys match by fingerprint, cards by title and
 // last four digits, or by the whole number when it has no four digits to go by, such as a store card's "STORE-12A", and
 // identities by title, full name, email and first document number, so a home and a work identity with no documents stay
-// apart.
+// apart, and API credentials by title and key ID, or host when there is no key ID, or secret when there is neither.
 func BuildDuplicateKey(vaultItem item.Item) string {
 	if vaultItem.IsCategory(item.CategorySSHKey) && vaultItem.Overview.Fingerprint != "" {
 		return "ssh-key\x00" + vaultItem.Overview.Fingerprint
@@ -205,6 +212,18 @@ func BuildDuplicateKey(vaultItem item.Item) string {
 			"identity", strings.TrimSpace(vaultItem.Overview.Title), identity.FullName(), strings.TrimSpace(identity.Email), strings.TrimSpace(documentNumber),
 		}, "\x00"))
 	}
+	if vaultItem.IsCategory(item.CategoryAPICredential) {
+		credential, _ := item.ReadAPICredential(&vaultItem)
+		key := "api-credential\x00" + strings.ToLower(strings.TrimSpace(vaultItem.Overview.Title)) + "\x00"
+		switch keyID, host := strings.TrimSpace(credential.KeyID), strings.TrimSpace(credential.Host); {
+		case keyID != "":
+			return key + "key\x00" + strings.ToLower(keyID)
+		case host != "":
+			return key + "host\x00" + strings.ToLower(host)
+		}
+		// A bare token is told apart by itself, in its own case.
+		return key + "secret\x00" + strings.TrimSpace(credential.Secret)
+	}
 	firstURL := ""
 	if len(vaultItem.Overview.URLs) > 0 {
 		firstURL = normalizeURL(vaultItem.Overview.URLs[0])
@@ -214,6 +233,36 @@ func BuildDuplicateKey(vaultItem item.Item) string {
 		strings.ToLower(strings.TrimSpace(vaultItem.Overview.Username)),
 		firstURL,
 	}, "\x00")
+}
+
+// DescribeDuplicate is what BuildDuplicateKey matched besides the title, to show next to it, never a secret: a login's
+// username and website's host, an SSH key's fingerprint, a card's last four digits, an identity's name and email, and an API
+// credential's key ID or host. It is "" for a card with no last four digits and a credential with neither, which match on
+// a value that stays hidden.
+func DescribeDuplicate(vaultItem item.Item) string {
+	parts := []string{}
+	switch {
+	case vaultItem.IsCategory(item.CategorySSHKey) && vaultItem.Overview.Fingerprint != "":
+		parts = append(parts, vaultItem.Overview.Fingerprint)
+	case vaultItem.IsCategory(item.CategoryCreditCard):
+		card, _ := item.ReadCard(&vaultItem)
+		if last4 := item.GetCardLast4(card.Number); last4 != "" {
+			parts = append(parts, "•••• "+last4)
+		}
+	case vaultItem.IsCategory(item.CategoryIdentity):
+		identity, _ := item.ReadIdentity(&vaultItem)
+		parts = append(parts, identity.FullName(), strings.TrimSpace(identity.Email))
+	case vaultItem.IsCategory(item.CategoryAPICredential):
+		credential, _ := item.ReadAPICredential(&vaultItem)
+		parts = append(parts, getFirstNonEmpty(strings.TrimSpace(credential.KeyID), strings.TrimSpace(credential.Host)))
+	default:
+		parts = append(parts, strings.TrimSpace(vaultItem.Overview.Username))
+		if len(vaultItem.Overview.URLs) > 0 {
+			link := strings.TrimSpace(vaultItem.Overview.URLs[0])
+			parts = append(parts, getFirstNonEmpty(getHostName(link), link))
+		}
+	}
+	return joinNonEmpties(parts, " · ")
 }
 
 // FindDuplicateIndexes returns the positions in importedItems of items that existingItems already has.
@@ -310,6 +359,7 @@ func finishItem(vaultItem *item.Item) bool {
 	}
 	item.NormalizeCard(vaultItem)
 	item.NormalizeIdentity(vaultItem)
+	item.NormalizeAPICredential(vaultItem)
 	return true
 }
 
@@ -340,17 +390,18 @@ func getFallbackTitle(vaultItem *item.Item) string {
 }
 
 func removeRepeatedItems(result *Result) {
-	seen := map[string]bool{}
+	indexesByKey := map[string]int{}
 	unique := make([]item.Item, 0, len(result.Items))
 	for _, vaultItem := range result.Items {
 		encoded, _ := json.Marshal([]any{vaultItem.Overview, vaultItem.Details})
 		key := string(encoded)
 		clear(encoded)
-		if seen[key] {
+		if index, isSeen := indexesByKey[key]; isSeen {
+			unique[index].IsFavorite = unique[index].IsFavorite || vaultItem.IsFavorite
 			result.Skipped = append(result.Skipped, SkippedEntry{Title: vaultItem.Overview.Title, Reason: reasonRepeated})
 			continue
 		}
-		seen[key] = true
+		indexesByKey[key] = len(unique)
 		unique = append(unique, vaultItem)
 	}
 	result.Items = unique

@@ -17,15 +17,16 @@ import (
 const maxOnePasswordDataSize = 64 << 20
 
 const (
-	onePasswordLogin      = "001"
-	onePasswordCreditCard = "002"
-	onePasswordSecureNote = "003"
-	onePasswordIdentity   = "004"
-	onePasswordPassword   = "005"
-	onePasswordLicense    = "103"
-	onePasswordPassport   = "106"
-	onePasswordSSN        = "108"
-	onePasswordSSHKey     = "114"
+	onePasswordLogin         = "001"
+	onePasswordCreditCard    = "002"
+	onePasswordSecureNote    = "003"
+	onePasswordIdentity      = "004"
+	onePasswordPassword      = "005"
+	onePasswordLicense       = "103"
+	onePasswordPassport      = "106"
+	onePasswordSSN           = "108"
+	onePasswordAPICredential = "112"
+	onePasswordSSHKey        = "114"
 )
 
 var onePasswordCategoryNames = map[string]string{
@@ -36,7 +37,7 @@ var onePasswordCategoryNames = map[string]string{
 }
 
 // onePasswordCredentialCategories become logins with their fields; other categories hold personal records Hisar has no type for yet.
-var onePasswordCredentialCategories = map[string]bool{"100": true, "102": true, "109": true, "110": true, "111": true, "112": true}
+var onePasswordCredentialCategories = map[string]bool{"100": true, "102": true, "109": true, "110": true, "111": true}
 
 type onePasswordExport struct {
 	Accounts []struct {
@@ -47,8 +48,10 @@ type onePasswordExport struct {
 }
 
 type onePasswordItem struct {
-	State        string `json:"state"`
-	CategoryUUID string `json:"categoryUuid"`
+	State string `json:"state"`
+	// FavIndex is the item's place in 1Password's Favorites; 0 means it is not a favorite.
+	FavIndex     float64 `json:"favIndex"`
+	CategoryUUID string  `json:"categoryUuid"`
 	Details      struct {
 		LoginFields []struct {
 			Value       string `json:"value"`
@@ -124,6 +127,7 @@ func parseOnePasswordExport(content []byte) (*Result, error) {
 					result.Skipped = append(result.Skipped, SkippedEntry{Title: describeEntry(onePasswordEntry.Overview.Title), Reason: reason})
 					continue
 				}
+				vaultItem.IsFavorite = onePasswordEntry.FavIndex > 0
 				if finishItem(&vaultItem) {
 					result.Items = append(result.Items, vaultItem)
 				}
@@ -143,6 +147,15 @@ var onePasswordCardFields = map[string]func(*item.Card) *string{
 	"cvv":        func(card *item.Card) *string { return &card.SecurityCode },
 	"pin":        func(card *item.Card) *string { return &card.PIN },
 	"address":    func(card *item.Card) *string { return &card.BillingAddress },
+}
+
+// onePasswordAPICredentialFields maps the ids of a 1Password API Credential's fields to the credential's values; its other
+// fields (type, filename, valid from…) stay custom fields. It has no service field: the title names the service.
+var onePasswordAPICredentialFields = map[string]func(*item.APICredential) *string{
+	"username":   func(credential *item.APICredential) *string { return &credential.KeyID },
+	"credential": func(credential *item.APICredential) *string { return &credential.Secret },
+	"hostname":   func(credential *item.APICredential) *string { return &credential.Host },
+	"expires":    func(credential *item.APICredential) *string { return &credential.Expiry },
 }
 
 // onePasswordIdentityFields maps the ids of the fields of a 1Password Identity, Passport, Driver License or Social
@@ -188,7 +201,7 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 	case category == onePasswordSSHKey:
 		return convertOnePasswordSSHKey(entry)
 	case category == onePasswordLogin, category == onePasswordPassword, category == onePasswordSecureNote, category == onePasswordCreditCard,
-		isOnePasswordIdentityCategory(category), onePasswordCredentialCategories[category]:
+		category == onePasswordAPICredential, isOnePasswordIdentityCategory(category), onePasswordCredentialCategories[category]:
 	default:
 		categoryName, found := onePasswordCategoryNames[category]
 		if !found {
@@ -205,6 +218,7 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 	}
 	var card item.Card
 	var identity item.Identity
+	var credential item.APICredential
 	var fullName item.Field
 	isIdentity := isOnePasswordIdentityCategory(category)
 	if entry.Overview.URL != "" {
@@ -237,6 +251,10 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 				*cardValue(&card) = value
 				continue
 			}
+			if credentialValue, isCredentialField := onePasswordAPICredentialFields[sectionField.ID]; category == onePasswordAPICredential && isCredentialField && *credentialValue(&credential) == "" {
+				*credentialValue(&credential) = value
+				continue
+			}
 			if identityValue := getOnePasswordIdentityValue(&identity, category, sectionField.ID); isIdentity && identityValue != nil && *identityValue == "" {
 				*identityValue = value
 				continue
@@ -262,6 +280,14 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 		vaultItem.Overview.Category = item.CategoryCreditCard
 		item.WriteCard(&vaultItem, card, vaultItem.Details.Fields)
 	}
+	if category == onePasswordAPICredential {
+		// Some exports keep the key ID and secret in login fields instead of the section; those fill the credential. A
+		// different value stays, as a custom field.
+		foldOnePasswordLoginValue(&credential.KeyID, &vaultItem.Overview.Username)
+		foldOnePasswordLoginValue(&credential.Secret, &vaultItem.Details.Password)
+		vaultItem.Overview.Category = item.CategoryAPICredential
+		item.WriteAPICredential(&vaultItem, credential, vaultItem.Details.Fields)
+	}
 	if isIdentity {
 		vaultItem.Overview.Category = item.CategoryIdentity
 		otherFields := vaultItem.Details.Fields
@@ -276,6 +302,17 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 		item.WriteIdentity(&vaultItem, identity, otherFields)
 	}
 	return vaultItem, ""
+}
+
+// foldOnePasswordLoginValue moves a login value into an empty credential value, and drops it when the credential has the
+// same value already.
+func foldOnePasswordLoginValue(credentialValue, loginValue *string) {
+	switch {
+	case strings.TrimSpace(*credentialValue) == "":
+		*credentialValue, *loginValue = *loginValue, ""
+	case *loginValue == *credentialValue:
+		*loginValue = ""
+	}
 }
 
 // isOnePasswordIdentityCategory tells whether items of a 1Password category become identities.
