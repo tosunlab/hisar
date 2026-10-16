@@ -209,6 +209,57 @@ expect "carol accepts the organization invitation" "$(printf '\n' | C org accept
 expect "alice adds carol to the team" "$(A team add Acme Eng carol@example.com 2>&1)" 'Added carol@example.com to team "Eng".'
 expect "alice's hisar gives carol the rotated key" "$(printf '%s\n' "$PW" | A orgs 2>&1)" "Gave 1 vault key to a team member."
 expect "carol reads the organization vault's item" "$(printf '%s\n' "$PW" | C get pipeline -v EngVault -f password 2>/dev/null)" "eng-pass-1"
+expect "alice renames the organization" "$(A org rename Acme AcmeCorp 2>&1)" 'Renamed organization "Acme" to "AcmeCorp".'
+expect "bob lists the organization by its new name" "$(printf '%s\n' "$PW" | B orgs 2>/dev/null)" "AcmeCorp"
+expect "alice makes carol an admin" "$(A org role AcmeCorp carol@example.com admin 2>&1)" "carol@example.com is now an admin of AcmeCorp."
+expect "carol is an admin" "$(printf '%s\n' "$PW" | C org show AcmeCorp 2>/dev/null)" "AcmeCorp (you are an admin)"
+expect "alice makes carol a member again" "$(A org role AcmeCorp carol@example.com member 2>&1)" "carol@example.com is now a member of AcmeCorp."
+expect "carol is a member again" "$(printf '%s\n' "$PW" | C org show AcmeCorp 2>/dev/null)" "AcmeCorp (you are a member)"
+expect "alice invites dave to the organization" "$(A org invite AcmeCorp dave@example.com 2>&1)" "Invitation sent to dave@example.com to join AcmeCorp as member."
+expect "the organization lists dave's invitation" "$(printf '%s\n' "$PW" | A org show AcmeCorp 2>/dev/null)" "dave@example.com"
+expect "alice cancels dave's invitation" "$(A org cancel AcmeCorp dave@example.com 2>&1)" "Cancelled the invitation of dave@example.com to AcmeCorp."
+[[ "$(printf '%s\n' "$PW" | A org show AcmeCorp 2>&1)" != *dave@example.com* ]] || fail "the organization still lists dave's cancelled invitation"
+echo "ok   the cancelled invitation is gone from the organization"
+expect "alice creates a second organization" "$(A org create Beta 2>&1)" 'Created organization "Beta".'
+expect "alice invites carol to the second organization" "$(A org invite Beta carol@example.com 2>&1)" "Invitation sent to carol@example.com to join Beta as member."
+expect "carol sees the invitation to the second organization" "$(printf '%s\n' "$PW" | C orgs 2>/dev/null)" "Beta"
+expect "carol declines the invitation" "$(printf '\n' | C org decline 2>&1)" "Declined the invitation to Beta."
+CAROL_ORGS=$(printf '%s\n' "$PW" | C orgs 2>/dev/null)
+[[ "$CAROL_ORGS" == *AcmeCorp* && "$CAROL_ORGS" != *Beta* ]] || fail "carol's organizations after declining: $CAROL_ORGS"
+echo "ok   carol does not list the organization she declined"
+expect "alice creates a second team" "$(A team create AcmeCorp Ops 2>&1)" 'Created team "Ops" in AcmeCorp.'
+expect "alice renames the second team" "$(A team rename AcmeCorp Ops Operations 2>&1)" 'Renamed team "Ops" to "Operations".'
+expect "the organization shows the renamed team" "$(printf '%s\n' "$PW" | A org show AcmeCorp 2>/dev/null)" "Team Operations"
+expect "alice adds bob to the second team" "$(A team add AcmeCorp Operations bob@example.com 2>&1)" 'Added bob@example.com to team "Operations".'
+expect "alice gives the organization vault to the second team as reader" "$(printf '%s\n' "$PW" | A vault give EngVault --org AcmeCorp --team Operations -r reader 2>&1)" 'Gave "EngVault" to team "Operations" as reader.'
+expect "alice's hisar gives bob the key through the second team" "$(printf '%s\n' "$PW" | A orgs 2>&1)" "Gave 1 vault key to a team member."
+printf '%s\n' "$PW" | B vaults 2>/dev/null | grep -qE '^EngVault +organization +reader ' || fail "bob does not list EngVault as reader: $(printf '%s\n' "$PW" | B vaults 2>&1)"
+echo "ok   bob lists the organization vault as reader"
+expect "bob reads the item through the second team" "$(printf '%s\n' "$PW" | B get pipeline -v EngVault -f password 2>/dev/null)" "eng-pass-1"
+expect "alice takes the vault back from the second team" "$(printf '%s\n' "$PW" | A vault take EngVault --org AcmeCorp --team Operations 2>&1)" 'Took "EngVault" from team "Operations".'
+BOB_VAULTS_AFTER_TAKE=$(printf '%s\n' "$PW" | B vaults 2>&1)
+[[ "$BOB_VAULTS_AFTER_TAKE" == *Personal* && "$BOB_VAULTS_AFTER_TAKE" != *EngVault* ]] || fail "bob's vaults after the vault was taken from his team: $BOB_VAULTS_AFTER_TAKE"
+echo "ok   bob loses the vault taken from his team"
+[[ "$(printf '%s\n' "$PW" | B get pipeline -v EngVault -f password 2>&1)" != *eng-pass-1* ]] || fail "bob still reads EngVault after it was taken from his team"
+echo "ok   bob can no longer read the item of the vault taken from his team"
+expect "alice's hisar rotates the vault taken from the second team" "$(printf '%s\n' "$PW" | A orgs 2>&1)" "Rotated the key of 1 vault someone lost access to."
+expect "carol still reads the item after the rotation" "$(printf '%s\n' "$PW" | C get pipeline -v EngVault -f password 2>/dev/null)" "eng-pass-1"
+expect "alice deletes the second team" "$(A team delete AcmeCorp Operations -y 2>&1)" 'Deleted team "Operations".'
+[[ "$(printf '%s\n' "$PW" | A org show AcmeCorp 2>&1)" != *"Team Operations"* ]] || fail "the organization still shows the deleted team"
+echo "ok   the deleted team is gone from the organization"
+expect "alice removes bob from the organization" "$(A org remove AcmeCorp bob@example.com -y 2>&1)" "Removed bob@example.com from AcmeCorp."
+expect "bob is in no organization" "$(printf '%s\n' "$PW" | B orgs 2>&1)" "You are in no organization."
+expect "carol leaves the organization" "$(C org leave AcmeCorp -y 2>&1)" "You left AcmeCorp."
+expect "carol is in no organization" "$(printf '%s\n' "$PW" | C orgs 2>&1)" "You are in no organization."
+CAROL_VAULTS_AFTER_LEAVING=$(printf '%s\n' "$PW" | C vaults 2>&1)
+[[ "$CAROL_VAULTS_AFTER_LEAVING" == *Personal* && "$CAROL_VAULTS_AFTER_LEAVING" != *EngVault* ]] || fail "carol's vaults after leaving the organization: $CAROL_VAULTS_AFTER_LEAVING"
+echo "ok   carol loses the organization vault when she leaves"
+expect "alice's hisar rotates the vault carol lost" "$(printf '%s\n' "$PW" | A orgs 2>&1)" "Rotated the key of 1 vault someone lost access to."
+expect "alice reads the item after carol left" "$(printf '%s\n' "$PW" | A get pipeline -v EngVault -f password 2>/dev/null)" "eng-pass-1"
+expect "alice deletes the organization without vaults" "$(A org delete Beta -y 2>&1)" "Deleted the organization Beta."
+ALICE_ORGS=$(printf '%s\n' "$PW" | A orgs 2>/dev/null)
+[[ "$ALICE_ORGS" == *AcmeCorp* && "$ALICE_ORGS" != *Beta* ]] || fail "alice's organizations after deleting Beta: $ALICE_ORGS"
+echo "ok   the deleted organization is gone"
 
 expect "second device login" "$(printf 'http://127.0.0.1:%s\nalice@example.com\n%s\n%s\n' "$PORT" "$ALICE_SK" "$PW" | HISAR_STATE=$T/alice2.json HISAR_SECRET_KEY=- hisar login 2>&1)" "Signed in as Alice"
 expect "wrong password" "$(printf 'nope\n' | A ls 2>&1 || true)" "incorrect email, password or Secret Key"
