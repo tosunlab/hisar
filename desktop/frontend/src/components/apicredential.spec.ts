@@ -86,6 +86,33 @@ describe("Creating an API credential", () => {
     expect(store.editorMode).toBe("view");
   });
 
+  it("updates the expired warning as the expiry is edited", async () => {
+    store.selectedItem = createAPICredentialItem({
+      apiCredential: { ...createAPICredentialItem().apiCredential!, expiry: "2020-01-01", expiryWarning: "This credential has expired" },
+    });
+    store.editorMode = "edit";
+    const wrapper = mount(ItemEditor);
+    const warning = () => wrapper.find('[data-testid="api-credential-expiry-warning"]');
+    expect(warning().text()).toBe("This credential has expired");
+    await wrapper.find('input[name="expiry"]').setValue("2999-01-01");
+    expect(warning().exists()).toBe(false);
+    await wrapper.find('input[name="expiry"]').setValue("2020-06-01");
+    expect(warning().text()).toBe("This credential has expired");
+    await wrapper.find('input[name="expiry"]').setValue("");
+    expect(warning().exists()).toBe(false);
+  });
+
+  it("keeps the saved warning for an expiry in another form until it changes", async () => {
+    store.selectedItem = createAPICredentialItem({
+      apiCredential: { ...createAPICredentialItem().apiCredential!, expiry: "2020/01/01", expiryWarning: "This credential has expired" },
+    });
+    store.editorMode = "edit";
+    const wrapper = mount(ItemEditor);
+    expect(wrapper.find('[data-testid="api-credential-expiry-warning"]').text()).toBe("This credential has expired");
+    await wrapper.find('input[name="expiry"]').setValue("never");
+    expect(wrapper.find('[data-testid="api-credential-expiry-warning"]').exists()).toBe(false);
+  });
+
   it("keeps an imported expiry that is not a date editable as text", () => {
     store.selectedItem = createAPICredentialItem({ apiCredential: { ...createAPICredentialItem().apiCredential!, expiry: "never" } });
     store.editorMode = "edit";

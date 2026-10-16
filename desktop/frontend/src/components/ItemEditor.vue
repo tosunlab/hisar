@@ -1,7 +1,20 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
 import { api, createEmptyAPICredential, createEmptyCard, createEmptyIdentity, createEmptyItem, type CardDescription, type ItemDetail } from "../api";
-import { allCardBrand, apiCredentialCategory, creditCardCategory, identityCategory, formatCardNumberInput, formatExpiryInput, formatInputAsTyped, getItemIcon, isCalendarDate, secureNoteCategory, sshKeyCategory } from "../util";
+import {
+  allCardBrand,
+  apiCredentialCategory,
+  creditCardCategory,
+  describeAPICredentialExpiry,
+  identityCategory,
+  formatCardNumberInput,
+  formatExpiryInput,
+  formatInputAsTyped,
+  getItemIcon,
+  isCalendarDate,
+  secureNoteCategory,
+  sshKeyCategory,
+} from "../util";
 import { cancelEditing, saveItem, store } from "../store";
 import AppIcon from "./AppIcon.vue";
 import ItemTile from "./ItemTile.vue";
@@ -54,6 +67,17 @@ const isDocumentNumberVisible = ref(false);
 const isCredentialSecretVisible = ref(false);
 // An expiry in another form, such as "never", stays editable as text, as a birth date does.
 const isExpiryText = Boolean(draft.apiCredential?.expiry) && !isCalendarDate(draft.apiCredential?.expiry ?? "");
+// The warning follows the expiry as it is edited. A saved value in another form that the backend still reads as a date,
+// such as 2020/01/01, keeps the backend's warning until it changes.
+const savedExpiry = draft.apiCredential?.expiry ?? "";
+const savedExpiryWarning = draft.apiCredential?.expiryWarning ?? "";
+const credentialExpiryWarning = computed(() => {
+  const expiry = draft.apiCredential?.expiry ?? "";
+  if (!isCalendarDate(expiry) && expiry === savedExpiry) {
+    return savedExpiryWarning;
+  }
+  return describeAPICredentialExpiry(expiry);
+});
 // A birth date imported in another form, such as 04/12/1990, or with no such day, such as 2023-02-31, stays editable as
 // text; a date picker would show it empty.
 const isBirthDateText = Boolean(draft.identity?.birthDate) && !isCalendarDate(draft.identity?.birthDate ?? "");
@@ -290,7 +314,7 @@ async function submitItem(): Promise<void> {
         <label class="last">
           <span>Expiry</span>
           <input v-model="draft.apiCredential.expiry" name="expiry" :type="isExpiryText ? 'text' : 'date'" autocomplete="off" />
-          <small v-if="draft.apiCredential.expiryWarning" class="hint warning-text" data-testid="api-credential-expiry-warning">{{ draft.apiCredential.expiryWarning }}</small>
+          <small v-if="credentialExpiryWarning" class="hint warning-text" data-testid="api-credential-expiry-warning">{{ credentialExpiryWarning }}</small>
         </label>
       </div>
     </section>

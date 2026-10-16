@@ -363,6 +363,18 @@ struct ItemAPICredential: Codable, Hashable {
         expiryWarning = try container.decodeIfPresent(String.self, forKey: .expiryWarning) ?? ""
     }
 
+    static let expiredWarning = "This credential has expired"
+
+    /// The warning for a YYYY-MM-DD expiry once its day has passed on the device's calendar, as core/item
+    /// DescribeAPICredentialExpiry gives it; "" for any other value.
+    static func describeExpiry(_ expiry: String, now: Date = Date(), calendar: Calendar = .current) -> String {
+        guard CalendarDate.parse(expiry) != nil else {
+            return ""
+        }
+        // YYYY-MM-DD dates sort as text.
+        return expiry < CalendarDate.formatToday(now: now, calendar: calendar) ? expiredWarning : ""
+    }
+
     /// The credential's line in lists: its service and host, such as "Stripe · api.stripe.com".
     var summary: String {
         let parts = [service, host].filter { !$0.isEmpty }

@@ -216,6 +216,16 @@ export function isCalendarDate(date: string): boolean {
   return parsed.getUTCFullYear() === year && parsed.getUTCMonth() === month - 1 && parsed.getUTCDate() === day;
 }
 
+// describeAPICredentialExpiry warns once a YYYY-MM-DD expiry has passed in the local time zone, as core/item
+// DescribeAPICredentialExpiry does; it returns "" for any other value.
+export function describeAPICredentialExpiry(expiry: string, now = new Date()): string {
+  if (!isCalendarDate(expiry)) {
+    return "";
+  }
+  const [year, month, day] = expiry.split("-").map(Number);
+  return now >= new Date(year, month - 1, day + 1) ? "This credential has expired" : "";
+}
+
 // The brands an editor offers as a card's type, in the order of core/item ListCardBrands.
 export const allCardBrand = ["Visa", "Mastercard", "American Express", "Discover", "Diners Club", "JCB", "UnionPay", "Maestro", "Troy"];
 

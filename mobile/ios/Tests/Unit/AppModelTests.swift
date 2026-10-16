@@ -402,6 +402,20 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(CalendarDate.format(CalendarDate.getToday(now: morning, calendar: tokyo)), "2026-10-16")
     }
 
+    func testAPICredentialExpiryWarnsFromTheDayAfterOnTheDevicesCalendar() throws {
+        var losAngeles = Calendar(identifier: .gregorian)
+        losAngeles.timeZone = try XCTUnwrap(TimeZone(identifier: "America/Los_Angeles"))
+        // October 16 in UTC, still October 15 in Los Angeles.
+        let evening = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-10-15T20:00:00-07:00"))
+
+        XCTAssertEqual(ItemAPICredential.describeExpiry("2026-10-14", now: evening, calendar: losAngeles), ItemAPICredential.expiredWarning)
+        XCTAssertEqual(ItemAPICredential.describeExpiry("2026-10-15", now: evening, calendar: losAngeles), "")
+        XCTAssertEqual(ItemAPICredential.describeExpiry("2031-01-01", now: evening, calendar: losAngeles), "")
+        XCTAssertEqual(ItemAPICredential.describeExpiry("never", now: evening, calendar: losAngeles), "")
+        XCTAssertEqual(ItemAPICredential.describeExpiry("", now: evening, calendar: losAngeles), "")
+        XCTAssertEqual(ItemAPICredential.describeExpiry("2020-02-31", now: evening, calendar: losAngeles), "")
+    }
+
     func testIdentityDecodesFromTheBackendAndSummarizes() throws {
         let json = #"{"category":"identity","title":"Work","identity":{"firstName":"","lastName":"","email":"alice@example.com","nationalIdNumber":"N1"}}"#
         let item = try JSONDecoder().decode(ItemDetail.self, from: Data(json.utf8))
