@@ -33,7 +33,7 @@ opens at login (Settings → General → **Open Hisar at login**, on by default)
 for it, and otherwise says "Hisar isn't running. Open the Hisar app and try again."; `HISAR_NO_LAUNCH=1` turns that off for scripts and CI.
 
 **Anywhere else** (Linux, Windows, servers, or without the app), download the standalone `hisar` from the published GitHub Release of a `cli-<version>` tag
-(github.com/hisarapp/core → Releases): `hisar-<version>-<os>-<arch>.tar.gz` for Linux and macOS,
+(github.com/tosunlab/hisarapp-core → Releases): `hisar-<version>-<os>-<arch>.tar.gz` for Linux and macOS,
 `.zip` for Windows, and `SHA256SUMS`. Check the download before you run it, then put `hisar` on your `PATH`:
 
 ```sh
@@ -175,7 +175,7 @@ workflow, which builds it into a GitHub prerelease (or, for the server, pushes t
 `desktop-1.0.0-alpha-test` is built the same way and marked "(custom build)", and can never be published. Publishing is a separate,
 deliberate step: Actions → Publish → Run workflow with the app and the tag. It refuses anything but a plain `<app>-X.Y.Z` tag, then
 
-- server: points `ghcr.io/hisarapp/server:latest` and `:X.Y` at `:X.Y.Z`;
+- server: points `ghcr.io/tosunlab/hisar-server:latest` and `:X.Y` at `:X.Y.Z`;
 - desktop: renames the release's `update-unpublished.json` to `update.json`, which offers the version to every app as an automatic update;
 - cli, extension (and desktop): turns the prerelease into a release and marks it latest.
 
@@ -183,6 +183,6 @@ A tag pushed without the workflows in its tree (one from before the move to GitH
 with the tag as input: the workflow comes from `main`, the code from the tag.
 
 Repository secrets: `SPARKLE_PRIVATE_KEY`, the Sparkle EdDSA private key file's content (`gh secret set SPARKLE_PRIVATE_KEY --repo
-hisarapp/core < <key file>`). Images go to the GitHub Container Registry with the workflow's own `GITHUB_TOKEN`.
+tosunlab/hisarapp-core < <key file>`). Images go to the GitHub Container Registry with the workflow's own `GITHUB_TOKEN`.
 
 Deployment: see [deploy/README.md](deploy/README.md).
