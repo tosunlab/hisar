@@ -136,14 +136,15 @@ function normalizeShareLink(boundShareLink: BoundShareLink): ShareLink {
 }
 
 // ItemDetail mirrors the Go type with nil slices normalized to empty arrays.
-export interface ItemDetail extends Omit<BoundItemDetail, "urls" | "fields" | "passkeys"> {
+export interface ItemDetail extends Omit<BoundItemDetail, "urls" | "tags" | "fields" | "passkeys"> {
   urls: string[];
+  tags: string[];
   fields: ItemField[];
   passkeys: ItemPasskey[];
 }
 
 function normalizeItem(boundItem: BoundItemDetail): ItemDetail {
-  return { ...boundItem, urls: boundItem.urls ?? [], fields: boundItem.fields ?? [], passkeys: boundItem.passkeys ?? [] };
+  return { ...boundItem, urls: boundItem.urls ?? [], tags: boundItem.tags ?? [], fields: boundItem.fields ?? [], passkeys: boundItem.passkeys ?? [] };
 }
 
 // FavoriteItem is one of the user's starred items with the vault it is in; item has no secrets.
@@ -396,6 +397,7 @@ export function createEmptyItem(): ItemDetail {
     title: "",
     username: "",
     urls: [],
+    tags: [],
     password: "",
     notes: "",
     fields: [],

@@ -222,6 +222,31 @@ struct ItemCategoryListView: View {
     }
 }
 
+struct ItemTagListView: View {
+    var tag: String
+
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        let allReference = VaultLogic.filterAllItem(model.listAllItemReference(), tag: tag)
+        List {
+            ForEach(allReference) { reference in
+                NavigationLink(value: ItemDestination(vaultID: reference.vaultID, itemID: reference.item.id)) {
+                    ItemRow(item: reference.item, vaultName: reference.vaultName)
+                }
+            }
+        }
+        .applyThemedListStyle()
+        .overlay {
+            if allReference.isEmpty {
+                ContentUnavailableView("No items are tagged \(tag)", systemImage: "tag")
+            }
+        }
+        .refreshable { await model.refreshAll() }
+        .navigationTitle(tag)
+    }
+}
+
 struct SearchView: View {
     @EnvironmentObject private var model: AppModel
     @State private var searchText = ""

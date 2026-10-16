@@ -165,7 +165,7 @@ func convertFromAppItem(appItem cliprotocol.Item) item.Item {
 	vaultItem := item.Item{
 		ID:       appItem.ID,
 		Revision: appItem.Revision,
-		Overview: item.Overview{Category: appItem.Category, Title: appItem.Title, Username: appItem.Username, URLs: appItem.URLs, PublicKey: appItem.PublicKey, Fingerprint: appItem.Fingerprint},
+		Overview: item.Overview{Category: appItem.Category, Title: appItem.Title, Username: appItem.Username, URLs: appItem.URLs, Tags: appItem.Tags, PublicKey: appItem.PublicKey, Fingerprint: appItem.Fingerprint},
 		Details:  item.Details{Password: appItem.Password, Notes: appItem.Notes},
 	}
 	for _, field := range appItem.Fields {
@@ -181,6 +181,12 @@ func convertToItemChange(vaultItem *item.Item) *cliprotocol.ItemChange {
 	change := &cliprotocol.ItemChange{
 		ID: vaultItem.ID, Revision: vaultItem.Revision, Title: vaultItem.Overview.Title, Username: vaultItem.Overview.Username,
 		URLs: vaultItem.Overview.URLs, Password: vaultItem.Details.Password, Notes: vaultItem.Details.Notes, Category: vaultItem.Overview.Category,
+	}
+	// An item read from an app that announces tags sends them back; one read from an older app has none and keeps the
+	// app's, since the app ignores the field.
+	if vaultItem.Overview.Tags != nil {
+		tags := append([]string{}, vaultItem.Overview.Tags...)
+		change.Tags = &tags
 	}
 	// A card's, identity's, API credential's or address's values are its named fields, so the fields travel with it.
 	if vaultItem.IsCategory(item.CategoryCreditCard) || vaultItem.IsCategory(item.CategoryIdentity) || vaultItem.IsCategory(item.CategoryAPICredential) ||

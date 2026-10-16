@@ -25,6 +25,7 @@ type AgentItem struct {
 	Type               string       `json:"type"`
 	Username           string       `json:"username"`
 	URLs               []string     `json:"urls"`
+	Tags               []string     `json:"tags,omitempty"`
 	HasNotes           bool         `json:"hasNotes"`
 	HasOneTimePassword bool         `json:"hasOneTimeCode"`
 	Fields             []AgentField `json:"fields"`

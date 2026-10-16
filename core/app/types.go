@@ -144,6 +144,7 @@ type ItemDetail struct {
 	Title       string      `json:"title"`
 	Username    string      `json:"username"`
 	URLs        []string    `json:"urls"`
+	Tags        []string    `json:"tags"`
 	Password    string      `json:"password"`
 	Notes       string      `json:"notes"`
 	Fields      []ItemField `json:"fields"`

@@ -4,6 +4,7 @@ import {
   createVault,
   filterAllFavorite,
   filterAllItem,
+  listAllTag,
   lock,
   openImport,
   openShareLinks,
@@ -12,6 +13,7 @@ import {
   selectFavoriteItem,
   selectFavorites,
   selectItem,
+  selectTag,
   selectVault,
   setItemFavorite,
   startCreatingItem,
@@ -54,8 +56,15 @@ const isNewItemMenuOpen = ref(false);
 const newItemMenu = ref<HTMLElement | null>(null);
 const shortcutModifier = isMacPlatform() ? "⌘" : "Ctrl+";
 
-const allVisibleItem = computed(() => filterAllItem(store.allItem, store.searchQuery));
+const allVisibleItem = computed(() => filterAllItem(store.allItem, store.searchQuery, store.selectedTag));
 const allVisibleFavorite = computed(() => filterAllFavorite(store.allFavorite, store.searchQuery));
+const allTag = computed(() => listAllTag(store.allItem));
+const emptyListMessage = computed(() => {
+  if (store.searchQuery) {
+    return "No items match your search.";
+  }
+  return store.selectedTag ? `No items are tagged ${store.selectedTag}.` : "This vault is empty.";
+});
 const selectedVault = computed(() => store.allVault.find((vault) => vault.id === store.selectedVaultID));
 const canEdit = computed(() => selectedVault.value !== undefined && selectedVault.value.role !== "reader");
 const canCreate = computed(() => canEdit.value && !store.isFavoritesSelected);
@@ -215,6 +224,23 @@ onBeforeUnmount(() => {
         <button v-else class="ghost new-vault-button" @click="isCreatingVault = true"><AppIcon name="plus" /> New vault</button>
       </nav>
 
+      <nav v-if="allTag.length > 0" aria-label="Tags" class="tags-nav" data-testid="tag-list">
+        <p class="section-label">Tags</p>
+        <button
+          v-for="tag in allTag"
+          :key="tag.name"
+          class="vault"
+          :class="{ selected: tag.name === store.selectedTag }"
+          :aria-pressed="tag.name === store.selectedTag"
+          :data-testid="`tag-${tag.name}`"
+          @click="selectTag(tag.name)"
+        >
+          <AppIcon name="tag" />
+          <span class="vault-name">{{ tag.name }}</span>
+          <span class="vault-count">{{ tag.itemCount }}</span>
+        </button>
+      </nav>
+
       <nav aria-label="Sharing" class="sharing-nav">
         <button class="vault" :class="{ selected: store.isShareLinksOpen }" data-testid="open-shared-links" @click="openShareLinks">
           <AppIcon name="link" />
@@ -326,6 +352,11 @@ onBeforeUnmount(() => {
         <input ref="searchInput" v-model="store.searchQuery" name="search" type="search" placeholder="Search" aria-label="Search items" />
         <kbd>{{ shortcutModifier }}F</kbd>
       </div>
+      <div v-if="store.selectedTag && !store.isFavoritesSelected" class="tag-filter" data-testid="tag-filter">
+        <AppIcon name="tag" :size="13" />
+        <span class="tag-filter-name">{{ store.selectedTag }}</span>
+        <button class="ghost icon-button" aria-label="Show all items" title="Show all items" @click="selectTag(store.selectedTag)"><AppIcon name="close" :size="13" /></button>
+      </div>
 
       <template v-if="store.isFavoritesSelected">
         <div v-if="allVisibleFavorite.length === 0" class="list-empty" data-testid="favorites-empty">
@@ -359,9 +390,9 @@ onBeforeUnmount(() => {
         </ul>
       </template>
       <div v-else-if="allVisibleItem.length === 0" class="list-empty">
-        <AppIcon :name="store.searchQuery ? 'search' : 'key'" :size="26" />
-        <p>{{ store.searchQuery ? "No items match your search." : "This vault is empty." }}</p>
-        <button v-if="!store.searchQuery && canEdit" @click="startCreatingItem"><AppIcon name="plus" /> Add the first item</button>
+        <AppIcon :name="store.searchQuery ? 'search' : store.selectedTag ? 'tag' : 'key'" :size="26" />
+        <p>{{ emptyListMessage }}</p>
+        <button v-if="!store.searchQuery && !store.selectedTag && canEdit" @click="startCreatingItem"><AppIcon name="plus" /> Add the first item</button>
       </div>
       <ul v-else>
         <li v-for="vaultItem in allVisibleItem" :key="vaultItem.id">
@@ -501,8 +532,33 @@ onBeforeUnmount(() => {
   margin: 6px 0;
 }
 
-.sharing-nav {
+.sharing-nav,
+.tags-nav {
   margin-top: 14px;
+}
+
+.tag-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: -4px 14px 10px;
+  padding: 3px 4px 3px 10px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 14px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.tag-filter-name {
+  flex: 1;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tag-filter .icon-button {
+  padding: 2px;
 }
 
 .favorites-nav {

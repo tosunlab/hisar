@@ -132,6 +132,23 @@ func UpdatePasskeyOverview(vaultItem *Item) {
 	vaultItem.Overview.PasskeyRelyingPartyIDs = relyingPartyIDs
 }
 
+// NormalizeTags trims the tags, drops empty ones and repeats, and returns nil when none is left, so an item without
+// tags stores no tags field.
+func NormalizeTags(tags []string) []string {
+	var normalized []string
+	for _, tag := range tags {
+		if tag = strings.TrimSpace(tag); tag != "" && !slices.Contains(normalized, tag) {
+			normalized = append(normalized, tag)
+		}
+	}
+	return normalized
+}
+
+// HasTag reports whether the item carries tag, ignoring case.
+func (vaultItem *Item) HasTag(tag string) bool {
+	return slices.ContainsFunc(vaultItem.Overview.Tags, func(candidate string) bool { return strings.EqualFold(candidate, tag) })
+}
+
 const (
 	lowerClass  = "abcdefghijkmnopqrstuvwxyz"
 	upperClass  = "ABCDEFGHJKLMNPQRSTUVWXYZ"
