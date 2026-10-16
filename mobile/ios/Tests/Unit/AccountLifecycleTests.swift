@@ -111,8 +111,8 @@ final class AccountLifecycleTests: XCTestCase {
         XCTAssertEqual(model.noticeMessage, "Your Hisar account was deleted.")
     }
 
-    func testRefreshFinishingAfterSignOutLeavesAutoFillEmpty() async {
-        let model = await createUnlockedModel()
+    /// Holds a refresh at its last listing while change runs, as when the device is signed out or locks meanwhile.
+    private func finishRefresh(of model: AppModel, after change: () async -> Void) async {
         let isListing = DispatchSemaphore(value: 0)
         let mayFinish = DispatchSemaphore(value: 0)
         backend.onListAllPasskey = {
@@ -123,13 +123,32 @@ final class AccountLifecycleTests: XCTestCase {
         while isListing.wait(timeout: .now()) == .timedOut {
             try? await Task.sleep(nanoseconds: 10_000_000)
         }
-        backend.status = .signedOut
-        model.handleLockedEvent()
-        await waitUntil({ identityStore.allIdentity.isEmpty }, "signing out did not clear AutoFill")
+        await change()
         backend.onListAllPasskey = nil
         mayFinish.signal()
         await refresh.value
+    }
+
+    func testRefreshFinishingAfterSignOutBringsNothingBack() async {
+        let model = await createUnlockedModel()
+        await finishRefresh(of: model) {
+            backend.status = .signedOut
+            model.handleLockedEvent()
+            await waitUntil({ identityStore.allIdentity.isEmpty }, "signing out did not clear AutoFill")
+        }
         XCTAssertTrue(identityStore.allIdentity.isEmpty, "the refresh put the signed-out account's logins back into AutoFill")
+        XCTAssertTrue(model.allVault.isEmpty && model.allItemByVaultID.isEmpty, "the refresh put the items back after signing out")
+    }
+
+    func testRefreshFinishingAfterLockingBringsNothingBackAndKeepsAutoFill() async {
+        let model = await createUnlockedModel()
+        let allPublishedIdentity = identityStore.allIdentity
+        let replaceCount = identityStore.replaceCount
+        await finishRefresh(of: model) { model.lock() }
+        XCTAssertEqual(model.screen, .locked)
+        XCTAssertTrue(model.allVault.isEmpty && model.allItemByVaultID.isEmpty, "the refresh put the items back behind the lock screen")
+        XCTAssertEqual(identityStore.allIdentity, allPublishedIdentity, "a lock keeps the AutoFill identities")
+        XCTAssertEqual(identityStore.replaceCount, replaceCount)
     }
 
     func testSignedOutByServerShowsReasonAndClearsAutoFill() async throws {
