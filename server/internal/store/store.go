@@ -90,6 +90,12 @@ func (s *Store) runInTransaction(ctx context.Context, run func(pgx.Tx) error) er
 	return transaction.Commit(ctx)
 }
 
+// queryer is the pool or a transaction.
+type queryer interface {
+	Query(ctx context.Context, sql string, arguments ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, arguments ...any) pgx.Row
+}
+
 func isUniqueViolation(err error) bool {
 	var postgresError *pgconn.PgError
 	return errors.As(err, &postgresError) && postgresError.Code == "23505"

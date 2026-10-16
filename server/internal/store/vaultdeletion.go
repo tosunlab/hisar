@@ -47,11 +47,21 @@ func (s *Store) RenameVault(ctx context.Context, vaultID string, encName []byte)
 	return nil
 }
 
-// DeleteVault deletes the vault, its access grants, items, history and invitations in one transaction, after moving
-// its live items into another vault when asked. It returns the accounts that had access to the deleted vault.
+// DeleteVault deletes the vault, its access grants, items, history, invitations and team grants in one transaction,
+// after moving its live items into another vault when asked. It returns the accounts that had access to the deleted
+// vault. An organization vault's organization is locked first (§5.11).
 func (s *Store) DeleteVault(ctx context.Context, deletion VaultDeletion) ([]string, error) {
 	var formerMemberIDs []string
 	err := s.runInTransaction(ctx, func(transaction pgx.Tx) error {
+		var organizationID string
+		if err := transaction.QueryRow(ctx, `SELECT coalesce(organization_id::text, '') FROM vaults WHERE id = $1`, deletion.VaultID).Scan(&organizationID); err != nil {
+			return convertNoRowsToNotFound(err)
+		}
+		if organizationID != "" {
+			if err := lockOrganization(ctx, transaction, organizationID); err != nil {
+				return err
+			}
+		}
 		lockedVaultIDs := []string{deletion.VaultID}
 		if deletion.MoveToVaultID != "" {
 			lockedVaultIDs = append(lockedVaultIDs, deletion.MoveToVaultID)
@@ -198,15 +208,20 @@ func moveItems(ctx context.Context, transaction pgx.Tx, deletion VaultDeletion, 
 }
 
 // LeaveVault removes the account's access and wrapped key; an owner may leave only while another owner remains.
+// Access to an organization vault comes from its teams (ErrOrganizationVault).
 func (s *Store) LeaveVault(ctx context.Context, vaultID, accountID string) error {
 	return s.runInTransaction(ctx, func(transaction pgx.Tx) error {
-		if _, err := transaction.Exec(ctx, `SELECT 1 FROM vaults WHERE id = $1 FOR UPDATE`, vaultID); err != nil {
+		vault, err := lockVault(ctx, transaction, vaultID)
+		if err != nil {
 			return err
 		}
 		var role string
 		if err := transaction.QueryRow(ctx, `SELECT role FROM vault_access WHERE vault_id = $1 AND account_id = $2`,
 			vaultID, accountID).Scan(&role); err != nil {
 			return convertNoRowsToNotFound(err)
+		}
+		if vault.organizationID != "" {
+			return ErrOrganizationVault
 		}
 		if role == "owner" {
 			var ownerCount int
@@ -217,7 +232,7 @@ func (s *Store) LeaveVault(ctx context.Context, vaultID, accountID string) error
 				return ErrOnlyOwner
 			}
 		}
-		_, err := transaction.Exec(ctx, `DELETE FROM vault_access WHERE vault_id = $1 AND account_id = $2`, vaultID, accountID)
+		_, err = transaction.Exec(ctx, `DELETE FROM vault_access WHERE vault_id = $1 AND account_id = $2`, vaultID, accountID)
 		return err
 	})
 }

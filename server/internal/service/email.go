@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/server/internal/mail"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
@@ -112,6 +113,50 @@ and gives them access. Until then they are waiting and cannot see anything in th
 
 If you no longer want to share it, cancel the invitation under Settings → People.
 `, describeInviter(recipient)),
+	}
+}
+
+func describeOrganizationRole(role string) string {
+	if role == apitypes.OrganizationRoleAdmin {
+		return "an admin"
+	}
+	return "a member"
+}
+
+// Organization names are not encrypted (§2.3), so the organization invitation emails name the organization.
+func composeOrganizationInvitationEmail(inviter *store.Account, recipient, organizationName, role string) mail.Message {
+	organizationName = mail.RemoveControlCharacter(organizationName)
+	return mail.Message{
+		To:      recipient,
+		Subject: getInviterName(inviter) + " invited you to " + organizationName + " in Hisar",
+		Body: fmt.Sprintf(`%s invited you to join the organization “%s” in Hisar as %s.
+Its members share vaults through teams: once an admin adds you to a team, you get the team's vaults.
+
+See the invitation with `+"`hisar orgs`"+`, then accept it with `+"`hisar org accept`"+` or decline it
+with `+"`hisar org decline`"+`.
+
+If you were not expecting it, decline it or ignore this email.
+`, describeInviter(inviter), organizationName, describeOrganizationRole(role)),
+	}
+}
+
+func composeOrganizationSignUpEmail(inviter *store.Account, recipient, organizationName, role, link, code string, expiresAt time.Time) mail.Message {
+	organizationName = mail.RemoveControlCharacter(organizationName)
+	return mail.Message{
+		To:      recipient,
+		Subject: getInviterName(inviter) + " invited you to " + organizationName + " in Hisar",
+		Body: fmt.Sprintf(`%s invited you to join the organization “%s” in Hisar as %s.
+Hisar is the end-to-end encrypted password, SSH key and secrets manager for developers; its organizations share vaults through teams.
+
+Get Hisar and create your account to accept it:
+%s
+
+Or paste this invite code under Create account in Hisar:
+%s
+
+Then accept the invitation with `+"`hisar org accept`"+` (`+"`hisar orgs`"+` lists it). The invite expires on %s.
+If you were not expecting it, ignore this email.
+`, describeInviter(inviter), organizationName, describeOrganizationRole(role), link, code, FormatExpiry(expiresAt)),
 	}
 }
 
