@@ -197,8 +197,11 @@ expect "alice's hisar gives bob the key" "$(printf '%s\n' "$PW" | A orgs 2>&1)" 
 expect "bob lists the organization vault" "$(printf '%s\n' "$PW" | B vaults 2>/dev/null)" "organization"
 expect "bob reads the organization vault's item" "$(printf '%s\n' "$PW" | B get pipeline -v EngVault -f password 2>/dev/null)" "eng-pass-1"
 expect "alice removes bob from the team" "$(A team remove Acme Eng bob@example.com 2>&1)" 'Removed bob@example.com from team "Eng".'
-[[ "$(printf '%s\n' "$PW" | B vaults 2>/dev/null)" != *EngVault* ]] || fail "bob still lists EngVault after leaving its only team"
+BOB_VAULTS_AFTER_REMOVAL=$(printf '%s\n' "$PW" | B vaults 2>&1)
+[[ "$BOB_VAULTS_AFTER_REMOVAL" == *Personal* && "$BOB_VAULTS_AFTER_REMOVAL" != *EngVault* ]] || fail "bob's vaults after leaving the team: $BOB_VAULTS_AFTER_REMOVAL"
 echo "ok   bob loses the organization vault with the team"
+[[ "$(printf '%s\n' "$PW" | B get pipeline -v EngVault -f password 2>&1)" != *eng-pass-1* ]] || fail "bob still reads EngVault after leaving its only team"
+echo "ok   bob can no longer read the organization vault's item"
 expect "alice's hisar rotates the vault bob lost" "$(printf '%s\n' "$PW" | A org show Acme 2>&1)" "Rotated the key of 1 vault someone lost access to."
 expect "alice reads the item after the rotation" "$(printf '%s\n' "$PW" | A get pipeline -v EngVault -f password 2>/dev/null)" "eng-pass-1"
 expect "alice invites carol to the organization" "$(A org invite Acme carol@example.com 2>&1)" "Invitation sent to carol@example.com to join Acme as member."

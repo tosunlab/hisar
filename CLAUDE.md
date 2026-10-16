@@ -63,7 +63,7 @@ Shared test fixtures are in `helpers_test.go`, the in-memory API in `fakeapi_tes
 |---|---|
 | `cmd/hisar-server` | `serve`, `migrate`, `invite`; `setup.go` reads `HISAR_*` and wires everything |
 | `internal/api` | HTTP only: routes, sessions, per-IP limits, event stream, invite and share-link pages; handlers parse and call the service |
-| `internal/service` | The rules: rights, validation, store calls, audit, events, email. One `Service` type, a file per domain (`vaults`, `auth`, `accounts`, `lifecycle`, `invitations`, `sharelinks`, `approvals`, `preferences`) |
+| `internal/service` | The rules: rights, validation, store calls, audit, events, email. One `Service` type, a file per domain (`vaults`, `auth`, `accounts`, `lifecycle`, `invitations`, `sharelinks`, `approvals`, `preferences`, `organizations`) |
 | `internal/store` | Postgres with raw SQL (pgx) and embedded goose migrations |
 | `internal/realtime` | The per-account event broker behind `GET /api/v1/events` |
 | `internal/ratelimit` | Per-key token buckets |
