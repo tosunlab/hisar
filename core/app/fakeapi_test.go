@@ -35,6 +35,7 @@ type fakeAPIServer struct {
 	approvalsByRequestID     map[string]*fakeApproval
 	failingApprovalPostCount int
 	deviceListHangingChannel chan struct{}
+	preferences              apitypes.AccountPreferences
 }
 
 func (server *fakeAPIServer) setUnreachable(isUnreachable bool) {
@@ -55,6 +56,23 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
 		writeJSON(writer, http.StatusOK, apitypes.Account{AccountID: server.accountID, Role: server.role})
+	})
+	mux.HandleFunc("GET /api/v1/account/preferences", func(writer http.ResponseWriter, request *http.Request) {
+		server.mutex.Lock()
+		defer server.mutex.Unlock()
+		writeJSON(writer, http.StatusOK, server.preferences)
+	})
+	mux.HandleFunc("PUT /api/v1/account/preferences", func(writer http.ResponseWriter, request *http.Request) {
+		var putRequest apitypes.PutAccountPreferencesRequest
+		json.NewDecoder(request.Body).Decode(&putRequest)
+		server.mutex.Lock()
+		defer server.mutex.Unlock()
+		if putRequest.BaseRevision != server.preferences.Revision {
+			writeJSON(writer, http.StatusConflict, apitypes.Error{Error: "conflict"})
+			return
+		}
+		server.preferences = apitypes.AccountPreferences{Revision: server.preferences.Revision + 1, Ciphertext: putRequest.Ciphertext}
+		writeJSON(writer, http.StatusOK, apitypes.PutAccountPreferencesResponse{Revision: server.preferences.Revision})
 	})
 	mux.HandleFunc("GET /api/v1/vaults", func(writer http.ResponseWriter, request *http.Request) {
 		server.mutex.Lock()

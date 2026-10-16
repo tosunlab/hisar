@@ -78,6 +78,7 @@ struct VaultsView: View {
                 )
                 RemovedVaultNoticeSection(allNotice: model.allRemovedVaultNotice) { model.dismissRemovedVaultNotice($0) }
                 receivedInvitationSection
+                favoriteSection
                 vaultSection
                 if !model.allVault.isEmpty {
                     Section {
@@ -246,6 +247,33 @@ struct VaultsView: View {
     }
 
     @ViewBuilder
+    private var favoriteSection: some View {
+        if !model.allVault.isEmpty {
+            let allFavorite = model.listAllFavoriteReference()
+            Section {
+                if allFavorite.isEmpty {
+                    Label("Star an item to keep it here, on all your devices. Only you see your favorites.", systemImage: "star")
+                        .font(.subheadline)
+                        .foregroundStyle(.themeSecondary)
+                        .accessibilityIdentifier("favorites-empty")
+                }
+                ForEach(allFavorite) { reference in
+                    NavigationLink(value: ItemDestination(vaultID: reference.vaultID, itemID: reference.item.id)) {
+                        ItemRow(item: reference.item, vaultName: reference.vaultName)
+                    }
+                    .swipeActions(edge: .trailing) {
+                        FavoriteSwipeButton(vaultID: reference.vaultID, item: reference.item)
+                    }
+                    .accessibilityIdentifier("favorite-\(reference.item.title)")
+                }
+            } header: {
+                Text("Favorites")
+                    .foregroundStyle(.themeSecondary)
+            }
+        }
+    }
+
+    @ViewBuilder
     private var vaultSection: some View {
         Section {
             if model.allVault.isEmpty {
@@ -290,6 +318,24 @@ struct VaultRow: View {
             Image(systemName: vault.type == "personal" ? "person.crop.square" : "person.2.square.stack")
         }
         .badge(itemCount)
+    }
+}
+
+/// Stars or unstars an item from a list row's swipe actions.
+struct FavoriteSwipeButton: View {
+    var vaultID: String
+    var item: ItemDetail
+
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        Button {
+            Task { await model.setItemFavorite(vaultID: vaultID, itemID: item.id, isFavorite: !item.isFavorite) }
+        } label: {
+            Label(item.isFavorite ? "Remove from Favorites" : "Add to Favorites", systemImage: item.isFavorite ? "star.slash" : "star")
+        }
+        .tint(.orange)
+        .accessibilityIdentifier(item.isFavorite ? "unfavorite-\(item.title)" : "favorite-swipe-\(item.title)")
     }
 }
 

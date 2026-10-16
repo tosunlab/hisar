@@ -163,6 +163,8 @@ type ItemDetail struct {
 	// Identity holds an identity's values, stored as named custom fields like a card's; summaries keep only the name and
 	// email.
 	Identity *ItemIdentity `json:"identity,omitempty"`
+	// IsFavorite: this user starred the item. Favorites belong to the user, not the item; SaveItem ignores it.
+	IsFavorite bool `json:"isFavorite"`
 }
 
 // ItemIdentity is a person's details; the document numbers are optional and concealed.

@@ -23,6 +23,7 @@ export type {
     ExportOptions,
     ExportRequest,
     ExportResult,
+    FavoriteItem,
     ImportDuplicate,
     ImportFormat,
     ImportPreview,

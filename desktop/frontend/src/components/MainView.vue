@@ -2,14 +2,18 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import {
   createVault,
+  filterAllFavorite,
   filterAllItem,
   lock,
   openImport,
   openShareLinks,
   openSharing,
   openTextShareLinkDialog,
+  selectFavoriteItem,
+  selectFavorites,
   selectItem,
   selectVault,
+  setItemFavorite,
   startCreatingItem,
   startCreatingCard,
   startCreatingIdentity,
@@ -18,12 +22,15 @@ import {
   store,
   syncInBackground,
   syncInterval,
+  toggleSelectedItemFavorite,
 } from "../store";
+import type { FavoriteItem, ItemDetail } from "../api";
 import { creditCardCategory, formatCardSummary, formatIdentitySummary, formatKeyType, getDomain, getInitials, getItemIcon, identityCategory, isMacPlatform, secureNoteCategory, sshKeyCategory } from "../util";
 import AppIcon from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
 import ItemDetailPanel from "./ItemDetailPanel.vue";
 import ItemEditor from "./ItemEditor.vue";
+import ItemMenu from "./ItemMenu.vue";
 import ImportPanel from "./ImportPanel.vue";
 import ItemTile from "./ItemTile.vue";
 import SettingsPanel from "./SettingsPanel.vue";
@@ -46,8 +53,42 @@ const newItemMenu = ref<HTMLElement | null>(null);
 const shortcutModifier = isMacPlatform() ? "⌘" : "Ctrl+";
 
 const allVisibleItem = computed(() => filterAllItem(store.allItem, store.searchQuery));
+const allVisibleFavorite = computed(() => filterAllFavorite(store.allFavorite, store.searchQuery));
 const selectedVault = computed(() => store.allVault.find((vault) => vault.id === store.selectedVaultID));
 const canEdit = computed(() => selectedVault.value !== undefined && selectedVault.value.role !== "reader");
+const canCreate = computed(() => canEdit.value && !store.isFavoritesSelected);
+const itemMenu = ref<{ vaultID: string; vaultItem: ItemDetail; x: number; y: number } | null>(null);
+
+function openItemMenu(vaultID: string, vaultItem: ItemDetail, event: MouseEvent): void {
+  itemMenu.value = { vaultID, vaultItem, x: event.clientX, y: event.clientY };
+}
+
+function toggleItemMenuFavorite(): void {
+  if (itemMenu.value) {
+    const { vaultID, vaultItem } = itemMenu.value;
+    setItemFavorite(vaultID, vaultItem.id, !vaultItem.isFavorite);
+  }
+}
+
+function getItemSubtitle(vaultItem: ItemDetail): string {
+  if (vaultItem.category === sshKeyCategory) {
+    return `${formatKeyType(vaultItem.keyType)} SSH key`;
+  }
+  if (vaultItem.category === secureNoteCategory) {
+    return "Secure note";
+  }
+  if (vaultItem.category === creditCardCategory) {
+    return formatCardSummary(vaultItem.card);
+  }
+  if (vaultItem.category === identityCategory) {
+    return formatIdentitySummary(vaultItem.identity);
+  }
+  return vaultItem.username || (vaultItem.urls[0] ? getDomain(vaultItem.urls[0]) : "");
+}
+
+function isSelectedFavorite(favorite: FavoriteItem): boolean {
+  return store.selectedItem?.id === favorite.item.id && store.selectedVaultID === favorite.vaultId;
+}
 const vaultMenu = ref<{ vaultID: string; x: number; y: number } | null>(null);
 const vaultMenuVault = computed(() => store.allVault.find((vault) => vault.id === vaultMenu.value?.vaultID));
 
@@ -92,9 +133,12 @@ function handleShortcut(event: KeyboardEvent): void {
   if (key === "f") {
     event.preventDefault();
     searchInput.value?.focus();
-  } else if (key === "n" && canEdit.value) {
+  } else if (key === "n" && canCreate.value) {
     event.preventDefault();
     startCreatingItem();
+  } else if (key === "d" && store.selectedItem && store.editorMode === "view" && !store.isSettingsOpen) {
+    event.preventDefault();
+    toggleSelectedItemFavorite();
   } else if (key === "l") {
     event.preventDefault();
     lock();
@@ -130,13 +174,21 @@ onBeforeUnmount(() => {
       <ShareInvitationBanner />
       <RemovedVaultBanner />
 
+      <nav aria-label="Favorites" class="favorites-nav">
+        <button class="vault" :class="{ selected: store.isFavoritesSelected }" data-testid="open-favorites" @click="selectFavorites">
+          <AppIcon name="star" />
+          <span class="vault-name">Favorites</span>
+          <span v-if="store.allFavorite.length > 0" class="vault-count" data-testid="favorites-count">{{ store.allFavorite.length }}</span>
+        </button>
+      </nav>
+
       <nav aria-label="Vaults">
         <p class="section-label">Vaults</p>
         <button
           v-for="vault in store.allVault"
           :key="vault.id"
           class="vault"
-          :class="{ selected: vault.id === store.selectedVaultID }"
+          :class="{ selected: !store.isFavoritesSelected && vault.id === store.selectedVaultID }"
           :data-testid="`vault-${vault.id}`"
           @click="selectVault(vault.id)"
           @contextmenu.prevent="openVaultMenuAtPointer(vault.id, $event)"
@@ -183,7 +235,13 @@ onBeforeUnmount(() => {
     </aside>
 
     <section class="list">
-      <div class="title-bar list-title">
+      <div v-if="store.isFavoritesSelected" class="title-bar list-title">
+        <div>
+          <h2>Favorites</h2>
+          <span class="muted">{{ store.allFavorite.length }} {{ store.allFavorite.length === 1 ? "item" : "items" }} · only you see them</span>
+        </div>
+      </div>
+      <div v-else class="title-bar list-title">
         <div>
           <h2>{{ selectedVault?.name ?? "" }}</h2>
           <span class="muted">{{ store.allItem.length }} {{ store.allItem.length === 1 ? "item" : "items" }}</span>
@@ -255,23 +313,56 @@ onBeforeUnmount(() => {
         <kbd>{{ shortcutModifier }}F</kbd>
       </div>
 
-      <div v-if="allVisibleItem.length === 0" class="list-empty">
+      <template v-if="store.isFavoritesSelected">
+        <div v-if="allVisibleFavorite.length === 0" class="list-empty" data-testid="favorites-empty">
+          <AppIcon :name="store.searchQuery ? 'search' : 'star'" :size="26" />
+          <template v-if="store.searchQuery">
+            <p>No favorites match your search.</p>
+          </template>
+          <template v-else>
+            <p><strong>No favorites yet</strong></p>
+            <p class="muted">Star an item with <AppIcon name="star" :size="12" /> or {{ shortcutModifier }}D to keep it here, across all your vaults and devices. Only you see your favorites.</p>
+          </template>
+        </div>
+        <ul v-else data-testid="favorites-list">
+          <li v-for="favorite in allVisibleFavorite" :key="`${favorite.vaultId}/${favorite.item.id}`">
+            <button
+              class="item"
+              :class="{ selected: isSelectedFavorite(favorite) }"
+              @click="selectFavoriteItem(favorite)"
+              @contextmenu.prevent="openItemMenu(favorite.vaultId, favorite.item, $event)"
+            >
+              <ItemTile :title="favorite.item.title" :icon="getItemIcon(favorite.item.category)" />
+              <span class="item-text">
+                <span class="item-title">{{ favorite.item.title }}</span>
+                <span class="item-subtitle">{{ getItemSubtitle(favorite.item) }}</span>
+              </span>
+              <span class="item-vault" :title="`In ${favorite.vaultName}`" data-testid="favorite-vault">
+                <AppIcon :name="favorite.vaultType === 'personal' ? 'user' : 'users'" :size="11" /> {{ favorite.vaultName }}
+              </span>
+            </button>
+          </li>
+        </ul>
+      </template>
+      <div v-else-if="allVisibleItem.length === 0" class="list-empty">
         <AppIcon :name="store.searchQuery ? 'search' : 'key'" :size="26" />
         <p>{{ store.searchQuery ? "No items match your search." : "This vault is empty." }}</p>
         <button v-if="!store.searchQuery && canEdit" @click="startCreatingItem"><AppIcon name="plus" /> Add the first item</button>
       </div>
       <ul v-else>
         <li v-for="vaultItem in allVisibleItem" :key="vaultItem.id">
-          <button class="item" :class="{ selected: store.selectedItem?.id === vaultItem.id }" @click="selectItem(vaultItem.id)">
+          <button
+            class="item"
+            :class="{ selected: store.selectedItem?.id === vaultItem.id }"
+            @click="selectItem(vaultItem.id)"
+            @contextmenu.prevent="openItemMenu(store.selectedVaultID, vaultItem, $event)"
+          >
             <ItemTile :title="vaultItem.title" :icon="getItemIcon(vaultItem.category)" />
             <span class="item-text">
               <span class="item-title">{{ vaultItem.title }}</span>
-              <span v-if="vaultItem.category === sshKeyCategory" class="item-subtitle">{{ formatKeyType(vaultItem.keyType) }} SSH key</span>
-              <span v-else-if="vaultItem.category === secureNoteCategory" class="item-subtitle">Secure note</span>
-              <span v-else-if="vaultItem.category === creditCardCategory" class="item-subtitle">{{ formatCardSummary(vaultItem.card) }}</span>
-              <span v-else-if="vaultItem.category === identityCategory" class="item-subtitle">{{ formatIdentitySummary(vaultItem.identity) }}</span>
-              <span v-else class="item-subtitle">{{ vaultItem.username || (vaultItem.urls[0] ? getDomain(vaultItem.urls[0]) : "") }}</span>
+              <span class="item-subtitle">{{ getItemSubtitle(vaultItem) }}</span>
             </span>
+            <AppIcon v-if="vaultItem.isFavorite" name="starFilled" :size="12" class="item-star" aria-label="Favorite" />
           </button>
         </li>
       </ul>
@@ -286,11 +377,12 @@ onBeforeUnmount(() => {
         <ItemDetailPanel v-else-if="store.selectedItem" :can-edit="canEdit" :vault-name="selectedVault?.name ?? ''" :is-shared="selectedVault?.type === 'shared'" />
         <div v-else class="detail-empty">
           <span class="detail-empty-icon"><AppIcon name="vault" :size="28" /></span>
-          <h3>{{ selectedVault ? selectedVault.name : "Hisar" }}</h3>
+          <h3>{{ store.isFavoritesSelected ? "Favorites" : selectedVault ? selectedVault.name : "Hisar" }}</h3>
           <p class="muted">Select an item to see its details.</p>
           <dl class="shortcut-list">
             <div><dt><kbd>{{ shortcutModifier }}N</kbd></dt><dd>New item</dd></div>
             <div><dt><kbd>{{ shortcutModifier }}F</kbd></dt><dd>Search</dd></div>
+            <div><dt><kbd>{{ shortcutModifier }}D</kbd></dt><dd>Add to Favorites</dd></div>
             <div><dt><kbd>{{ shortcutModifier }}L</kbd></dt><dd>Lock Hisar</dd></div>
           </dl>
         </div>
@@ -302,6 +394,15 @@ onBeforeUnmount(() => {
     <SharedLinksPanel v-if="store.isShareLinksOpen" />
     <VaultDialog v-if="store.vaultDialog" :key="`${store.vaultDialog.mode}-${store.vaultDialog.actions.vault.id}`" :dialog="store.vaultDialog" />
     <VaultMenu v-if="vaultMenu && vaultMenuVault" :vault="vaultMenuVault" :x="vaultMenu.x" :y="vaultMenu.y" @close="vaultMenu = null" />
+    <ItemMenu
+      v-if="itemMenu"
+      :title="itemMenu.vaultItem.title"
+      :is-favorite="itemMenu.vaultItem.isFavorite"
+      :x="itemMenu.x"
+      :y="itemMenu.y"
+      @toggle-favorite="toggleItemMenuFavorite"
+      @close="itemMenu = null"
+    />
     <ShareLinkDialog v-if="store.shareLinkDialog" :key="`${store.shareLinkDialog.mode}-${store.shareLinkDialog.itemID}`" />
   </div>
 </template>
@@ -388,6 +489,32 @@ onBeforeUnmount(() => {
 
 .sharing-nav {
   margin-top: 14px;
+}
+
+.favorites-nav {
+  margin-bottom: 14px;
+}
+
+.item-star {
+  margin-left: auto;
+  color: var(--color-warning);
+}
+
+.item-vault {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  max-width: 96px;
+  margin-left: auto;
+  padding: 1px 6px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: var(--color-surface-raised);
+  font-size: 11px;
+  color: var(--color-text-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .new-vault input {

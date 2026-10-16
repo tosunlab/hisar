@@ -25,11 +25,13 @@ const (
 	FeatureCreditCards = "credit-cards"
 	// FeatureIdentities: items.save creates identity items from their named fields.
 	FeatureIdentities = "identities"
+	// FeatureFavorites: favorites.list, favorites.add and favorites.remove; items.import stars Item.IsFavorite items.
+	FeatureFavorites = "favorites"
 )
 
 // ListFeatures returns the features this build of the app announces in hello.
 func ListFeatures() []string {
-	return []string{FeatureSecureNotes, FeatureCreditCards, FeatureIdentities}
+	return []string{FeatureSecureNotes, FeatureCreditCards, FeatureIdentities, FeatureFavorites}
 }
 
 // GetCategoryFeature returns the feature an app must announce before items.save may create an item of category, or ""
@@ -86,6 +88,10 @@ const (
 	TypeAcceptInvitation  = "invitations.accept"
 	TypeDeclineInvitation = "invitations.decline"
 	TypeCancelInvitation  = "invitations.cancel"
+
+	TypeListFavorite   = "favorites.list"
+	TypeAddFavorite    = "favorites.add"
+	TypeRemoveFavorite = "favorites.remove"
 )
 
 const (

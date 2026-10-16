@@ -168,15 +168,17 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     var card: ItemCard?
     /// An identity's values, stored as named custom fields like a card's. Summaries keep only the name and email.
     var identity: ItemIdentity?
+    /// The user starred the item. Favorites belong to the user's account, not the item, so people sharing the vault don't see them.
+    var isFavorite: Bool
 
     enum CodingKeys: String, CodingKey {
-        case id, revision, category, title, username, password, notes, publicKey, fingerprint, keyType, oneTimePassword, hasOneTimePassword, canConvertToSecureNote, card, identity
+        case id, revision, category, title, username, password, notes, publicKey, fingerprint, keyType, oneTimePassword, hasOneTimePassword, canConvertToSecureNote, card, identity, isFavorite
         case allURL = "urls"
         case allField = "fields"
         case allPasskey = "passkeys"
     }
 
-    init(id: String = "", revision: String = "", category: String = ItemDetail.categoryLogin, title: String = "", username: String = "", allURL: [String] = [], password: String = "", notes: String = "", allField: [ItemField] = [], publicKey: String = "", fingerprint: String = "", keyType: String = "", oneTimePassword: String = "", hasOneTimePassword: Bool = false, allPasskey: [ItemPasskey] = [], canConvertToSecureNote: Bool = false, card: ItemCard? = nil, identity: ItemIdentity? = nil) {
+    init(id: String = "", revision: String = "", category: String = ItemDetail.categoryLogin, title: String = "", username: String = "", allURL: [String] = [], password: String = "", notes: String = "", allField: [ItemField] = [], publicKey: String = "", fingerprint: String = "", keyType: String = "", oneTimePassword: String = "", hasOneTimePassword: Bool = false, allPasskey: [ItemPasskey] = [], canConvertToSecureNote: Bool = false, card: ItemCard? = nil, identity: ItemIdentity? = nil, isFavorite: Bool = false) {
         self.id = id
         self.revision = revision
         self.category = category
@@ -195,6 +197,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         self.canConvertToSecureNote = canConvertToSecureNote
         self.card = card
         self.identity = identity
+        self.isFavorite = isFavorite
     }
 
     init(from decoder: Decoder) throws {
@@ -217,6 +220,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         canConvertToSecureNote = try container.decodeIfPresent(Bool.self, forKey: .canConvertToSecureNote) ?? false
         card = try container.decodeIfPresent(ItemCard.self, forKey: .card)
         identity = try container.decodeIfPresent(ItemIdentity.self, forKey: .identity)
+        isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
     }
 
     var isLogin: Bool { category.isEmpty || category == Self.categoryLogin }
@@ -312,6 +316,21 @@ struct ItemIdentity: Codable, Hashable {
     /// The latest day a birth date picker offers: today on the device's calendar, as the UTC day the picker shows.
     static func getLatestBirthDate(now: Date = Date(), calendar: Calendar = .current) -> Date {
         parseBirthDate(formatToday(now: now, calendar: calendar)) ?? now
+    }
+}
+
+/// One of the user's starred items with the vault it is in; the item carries no secrets, as in a vault's list.
+struct FavoriteItem: Codable, Hashable, Identifiable {
+    var vaultID: String
+    var vaultName: String
+    var vaultType: String
+    var item: ItemDetail
+
+    var id: String { LoginMatch.buildRecordIdentifier(vaultID: vaultID, itemID: item.id) }
+
+    enum CodingKeys: String, CodingKey {
+        case vaultName, vaultType, item
+        case vaultID = "vaultId"
     }
 }
 

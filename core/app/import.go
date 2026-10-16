@@ -83,6 +83,8 @@ type pendingImport struct {
 	queuedItems []item.Item
 	savedCount  int
 	failed      []ImportSkippedEntry
+	// favoriteItemIDs are saved items the other password manager starred; they become favorites when the import ends.
+	favoriteItemIDs []string
 }
 
 func (s *Service) ListImportFormats() []ImportFormat {
@@ -289,6 +291,13 @@ func (s *Service) ContinueImport() (ImportProgress, error) {
 		}
 		pending.savedCount++
 		s.replaceCachedItem(vault.ID, vaultItem)
+		if vaultItem.IsFavorite {
+			pending.favoriteItemIDs = append(pending.favoriteItemIDs, vaultItem.ID)
+		}
+	}
+	if len(pending.queuedItems) == 0 {
+		s.addImportedFavorites(ctx, pending.favoriteItemIDs)
+		pending.favoriteItemIDs = nil
 	}
 	return s.buildImportProgress(), nil
 }

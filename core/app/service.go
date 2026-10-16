@@ -20,6 +20,7 @@ type Service struct {
 	unlockedSession              *session.Session
 	vaultsByID                   map[string]*session.Vault
 	itemsByVaultID               map[string][]item.Item
+	favorites                    *session.Preferences
 	lockTimer                    *time.Timer
 	clipboardClearTimer          *time.Timer
 	name                         string

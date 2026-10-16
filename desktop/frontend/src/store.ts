@@ -33,6 +33,7 @@ import {
   type VaultDeletionRequest,
   type ExportRequest,
   type ExportResult,
+  type FavoriteItem,
 } from "./api";
 import { formatFullName } from "./util";
 
@@ -73,6 +74,9 @@ export const store = reactive({
   selectedVaultID: "",
   allItem: [] as ItemDetail[],
   selectedItem: null as ItemDetail | null,
+  // allFavorite holds the user's starred items of every vault; isFavoritesSelected shows them in the list instead of a vault.
+  allFavorite: [] as FavoriteItem[],
+  isFavoritesSelected: false,
   editorMode: "view" as EditorMode,
   searchQuery: "",
   pendingSecretKey: "",
@@ -159,6 +163,8 @@ function clearAllVaultData(): void {
   store.selectedVaultID = "";
   store.allItem = [];
   store.selectedItem = null;
+  store.allFavorite = [];
+  store.isFavoritesSelected = false;
   store.editorMode = "view";
   store.searchQuery = "";
 }
@@ -415,6 +421,7 @@ export async function loadAllVault(): Promise<void> {
   }
   await loadShareInvitationsQuietly();
   await loadAllShareLinkQuietly();
+  await loadAllFavoriteQuietly();
 }
 
 function findPersonalVaultID(allVault: VaultSummary[]): string {
@@ -561,6 +568,7 @@ export async function syncInBackground(): Promise<void> {
     await loadRemovedVaultNoticeQuietly();
     await loadShareInvitationsQuietly();
     await loadAllShareLinkQuietly();
+    await loadAllFavoriteQuietly();
     if (!allVault.some((vault) => vault.id === store.selectedVaultID)) {
       if (allVault.length > 0) {
         await selectVault(findPersonalVaultID(allVault));
@@ -582,6 +590,7 @@ export async function syncInBackground(): Promise<void> {
 }
 
 export async function selectVault(vaultID: string): Promise<void> {
+  store.isFavoritesSelected = false;
   store.selectedVaultID = vaultID;
   store.selectedItem = null;
   store.editorMode = "view";
@@ -599,6 +608,68 @@ export async function createVault(name: string): Promise<boolean> {
   await loadAllVault();
   await selectVault(vault.id);
   return true;
+}
+
+export async function loadAllFavoriteQuietly(): Promise<void> {
+  try {
+    store.allFavorite = await api.listAllFavoriteItem();
+  } catch {
+    return;
+  }
+}
+
+// selectFavorites lists the starred items of every vault; picking one makes its vault the one item actions use.
+export async function selectFavorites(): Promise<void> {
+  store.isFavoritesSelected = true;
+  store.selectedItem = null;
+  store.editorMode = "view";
+  store.searchQuery = "";
+  const allFavorite = await runAction(() => api.listAllFavoriteItem());
+  if (allFavorite) {
+    store.allFavorite = allFavorite;
+  }
+}
+
+export async function selectFavoriteItem(favorite: FavoriteItem): Promise<void> {
+  const detail = await runAction(() => api.getItem(favorite.vaultId, favorite.item.id));
+  if (detail) {
+    store.selectedVaultID = favorite.vaultId;
+    store.selectedItem = detail;
+    store.editorMode = "view";
+  }
+}
+
+export function filterAllFavorite(allFavorite: FavoriteItem[], query: string): FavoriteItem[] {
+  const allVisibleItem = filterAllItem(
+    allFavorite.map((favorite) => favorite.item),
+    query,
+  );
+  return allFavorite.filter((favorite) => allVisibleItem.includes(favorite.item));
+}
+
+// setItemFavorite stars or unstars an item of vaultID for this user; the people they share the vault with don't see it.
+export async function setItemFavorite(vaultID: string, itemID: string, isFavorite: boolean): Promise<void> {
+  const isSaved = await runAction(async () => {
+    await api.setItemFavorite(vaultID, itemID, isFavorite);
+    return true;
+  });
+  if (!isSaved) {
+    return;
+  }
+  if (store.selectedItem?.id === itemID) {
+    store.selectedItem = { ...store.selectedItem, isFavorite };
+  }
+  if (vaultID === store.selectedVaultID) {
+    store.allItem = store.allItem.map((vaultItem) => (vaultItem.id === itemID ? { ...vaultItem, isFavorite } : vaultItem));
+  }
+  await loadAllFavoriteQuietly();
+  showNotice(isFavorite ? "Added to Favorites" : "Removed from Favorites");
+}
+
+export async function toggleSelectedItemFavorite(): Promise<void> {
+  if (store.selectedItem && store.editorMode === "view") {
+    await setItemFavorite(store.selectedVaultID, store.selectedItem.id, !store.selectedItem.isFavorite);
+  }
 }
 
 export function sortAllItem(allItem: ItemDetail[]): ItemDetail[] {
@@ -709,6 +780,9 @@ export async function saveItem(detail: ItemDetail): Promise<boolean> {
   }
   store.selectedItem = saved;
   store.editorMode = "view";
+  if (saved.isFavorite) {
+    await loadAllFavoriteQuietly();
+  }
   showNotice("Saved");
   return true;
 }
@@ -725,6 +799,9 @@ export async function convertToSecureNote(): Promise<void> {
   if (store.selectedItem?.id === converted.id) {
     store.selectedItem = converted;
   }
+  if (converted.isFavorite) {
+    await loadAllFavoriteQuietly();
+  }
   showNotice("Converted to a secure note");
 }
 
@@ -735,6 +812,7 @@ export async function deleteItem(itemID: string): Promise<void> {
   });
   if (deleted) {
     store.allItem = store.allItem.filter((vaultItem) => vaultItem.id !== itemID);
+    store.allFavorite = store.allFavorite.filter((favorite) => favorite.item.id !== itemID);
     updateSelectedVaultItemCount();
     store.selectedItem = null;
     store.editorMode = "view";
@@ -1241,6 +1319,7 @@ async function finishImport(progress: ImportProgress): Promise<void> {
       store.allItem = sortAllItem(allItem);
     }
   }
+  await loadAllFavoriteQuietly();
   showNotice(`Imported ${progress.savedCount} ${progress.savedCount === 1 ? "item" : "items"} into ${progress.vaultName}`);
 }
 

@@ -36,7 +36,8 @@ Set `HISAR_UI_TEST_SCREENSHOT_DIRECTORY` to save a PNG of each screen.
 After editing `project.yml` (adding files is enough, sources are folders), run `make generate-ios-project` and commit
 the project; CI fails if the committed project differs.
 
-What the UI tests cover: create an account from an invite and read the new Secret Key, add a login, item detail
+What the UI tests cover: create an account from an invite and read the new Secret Key, add a login, Favorites (the star in an item,
+the swipe actions and the Favorites section at the top of Vaults), item detail
 (reveal, copy), editing with the password generator, search, lock and unlock with the master password, Settings (the empty Approvals tab, auto-lock, devices, the Secret Key behind the master
 password with the Emergency Kit share), sign out and sign in with the Secret Key, creating a shared vault and seeing its members, inviting someone from Settings → People, the privacy cover, Face ID (the test enrolls a face in the simulator and posts the
 simulator's "matching face" notification), the AutoFill screens, and passkeys: register a passkey into a login, sign in

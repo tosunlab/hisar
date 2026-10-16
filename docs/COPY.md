@@ -48,6 +48,10 @@ One name for each thing, the same on the Mac, the iPhone, the browser extension,
 | Other fields (custom fields below username and password) | Fields, Custom fields, Extra fields |
 | Secret (a field hidden until revealed) | Concealed, Hidden |
 | secret reference | secret URI, reference link |
+| Favorites (the list at the top of the sidebar and of Vaults), favorite, star (the icon) | Starred, Pinned, Bookmarks |
+| Add to Favorites, Remove from Favorites (the star's label, the context menu, swipe actions; ⌘D on the Mac) | Favorite, Unfavorite, Star (as a button label) |
+| Added to Favorites · Removed from Favorites (notices; the iPhone ends them with a period) · `Added "GitHub" (Personal) to Favorites.` (`hisar favorite`) | Starred!, Pinned |
+| "No favorites yet" · "Star an item with ★ or ⌘D to keep it here, across all your vaults and devices. Only you see your favorites." (Mac) · "Star an item to keep it here, on all your devices. Only you see your favorites." (iPhone) · "No favorites yet. Add one with: hisar favorite <item> [-v vault]" (CLI) | Shared favorites, favorites for the vault |
 
 ## Vaults and your data
 

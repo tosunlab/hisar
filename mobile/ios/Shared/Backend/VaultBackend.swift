@@ -39,6 +39,8 @@ protocol VaultBackend: AnyObject {
     func getItem(vaultID: String, itemID: String) throws -> ItemDetail
     func saveItem(vaultID: String, item: ItemDetail) throws -> ItemDetail
     func deleteItem(vaultID: String, itemID: String) throws
+    func listAllFavoriteItem() throws -> [FavoriteItem]
+    func setItemFavorite(vaultID: String, itemID: String, isFavorite: Bool) throws
     func convertToSecureNote(vaultID: String, itemID: String) throws -> ItemDetail
     func describeCard(number: String, expiry: String) throws -> CardDescription
     func getOneTimeCode(vaultID: String, itemID: String) throws -> OneTimeCode

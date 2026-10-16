@@ -149,6 +149,16 @@ type ImportFailure struct {
 	Message string `json:"message"`
 }
 
+// Favorite is one of the user's starred items, in a vault they can open.
+type Favorite struct {
+	VaultID string `json:"vaultID"`
+	ItemID  string `json:"itemID"`
+}
+
+type FavoriteListResult struct {
+	Favorites []Favorite `json:"favorites"`
+}
+
 type ImportResult struct {
 	SavedCount int             `json:"savedCount"`
 	Failures   []ImportFailure `json:"failures"`

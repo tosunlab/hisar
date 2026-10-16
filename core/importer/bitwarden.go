@@ -36,6 +36,7 @@ type bitwardenItem struct {
 	Name     string `json:"name"`
 	Notes    string `json:"notes"`
 	FolderID string `json:"folderId"`
+	Favorite bool   `json:"favorite"`
 	Fields   []struct {
 		Name  string `json:"name"`
 		Value string `json:"value"`
@@ -110,6 +111,7 @@ func parseBitwardenJSON(content []byte) (*Result, error) {
 		if folderName := folderNames[entry.FolderID]; folderName != "" {
 			vaultItem.Overview.Tags = []string{folderName}
 		}
+		vaultItem.IsFavorite = entry.Favorite
 		if finishItem(&vaultItem) {
 			result.Items = append(result.Items, vaultItem)
 		}

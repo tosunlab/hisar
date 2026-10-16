@@ -106,6 +106,8 @@ func isImportStoppingError(err error) bool {
 
 func saveImportedItems(ctx context.Context, unlockedSession *session.Session, vault *session.Vault, queuedItems []item.Item) (int, error) {
 	savedCount := 0
+	favoriteItemIDs := []string{}
+	defer func() { addImportedFavorites(ctx, unlockedSession, favoriteItemIDs) }()
 	for index := range queuedItems {
 		vaultItem := queuedItems[index]
 		_, err := unlockedSession.SaveItem(ctx, vault, &vaultItem)
@@ -118,12 +120,25 @@ func saveImportedItems(ctx context.Context, unlockedSession *session.Session, va
 			continue
 		}
 		savedCount++
+		if vaultItem.IsFavorite {
+			favoriteItemIDs = append(favoriteItemIDs, vaultItem.ID)
+		}
 		fmt.Fprintf(os.Stderr, "\rImported %d of %d", savedCount, len(queuedItems))
 	}
 	if len(queuedItems) > 0 {
 		fmt.Fprintln(os.Stderr)
 	}
 	return savedCount, nil
+}
+
+// addImportedFavorites stars the imported items the other password manager starred; the import stands without them.
+func addImportedFavorites(ctx context.Context, unlockedSession *session.Session, itemIDs []string) {
+	if len(itemIDs) == 0 {
+		return
+	}
+	if _, err := unlockedSession.UpdateFavorites(ctx, nil, session.FavoriteChange{AddItemIDs: itemIDs}); err != nil {
+		fmt.Fprintf(os.Stderr, "Could not add %d imported items to Favorites: %v\n", len(itemIDs), err)
+	}
 }
 
 type importOption struct {
