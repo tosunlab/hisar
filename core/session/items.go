@@ -82,10 +82,40 @@ func (s *Session) DeleteItem(ctx context.Context, vault *Vault, vaultItem *item.
 	return s.putItem(ctx, vault, &item.Item{ID: vaultItem.ID, Revision: vaultItem.Revision}, true)
 }
 
-func (s *Session) putItem(ctx context.Context, vault *Vault, vaultItem *item.Item, deleted bool) (*item.Item, error) {
-	if vaultItem.ID == "" {
-		vaultItem.ID = uuid.NewString()
+// MoveItem moves vaultItem from source to target in one request, keeping its ID: the item is sealed again under the
+// target vault's key and a tombstone takes its place in source. vaultItem.Revision is the base revision and is replaced by
+// the new one in target on success. On ErrConflict, current holds the item as it now is in source.
+func (s *Session) MoveItem(ctx context.Context, source, target *Vault, vaultItem *item.Item) (current *item.Item, err error) {
+	if target.ID == source.ID || !apitypes.CanWriteItems(target.Role) {
+		return nil, ErrTargetNotWritable
 	}
+	tombstone, err := s.sealItem(source, &item.Item{ID: vaultItem.ID}, true)
+	if err != nil {
+		return nil, err
+	}
+	moved, err := s.sealItem(target, vaultItem, false)
+	if err != nil {
+		return nil, err
+	}
+	_, serverItem, err := s.Client.MoveItem(ctx, source.ID, vaultItem.ID, &apitypes.MoveItemRequest{
+		TargetVaultID: target.ID, BaseRevision: vaultItem.Revision, Tombstone: *tombstone, Moved: *moved,
+	})
+	if apiclient.IsStatus(err, http.StatusConflict) && serverItem != nil && !serverItem.Deleted {
+		current, decryptErr := decryptItem(source, serverItem)
+		if decryptErr != nil {
+			return nil, decryptErr
+		}
+		return current, ErrConflict
+	}
+	if err != nil {
+		return nil, err
+	}
+	vaultItem.Revision = moved.Revision
+	return nil, nil
+}
+
+// sealItem encrypts vaultItem under the vault's key as a new revision, ready to send.
+func (s *Session) sealItem(vault *Vault, vaultItem *item.Item, deleted bool) (*apitypes.PutItemRequest, error) {
 	revision, err := uuid.NewV7()
 	if err != nil {
 		return nil, err
@@ -99,14 +129,22 @@ func (s *Session) putItem(ctx context.Context, vault *Vault, vaultItem *item.Ite
 		return nil, err
 	}
 	defer clear(details)
-	encryptedOverview, encryptedDetails, err := sealItemParts(vault.Key, vault.ID, vaultItem.ID, revision.String(), overview, details)
+	sealedOverview, sealedDetails, err := sealItemParts(vault.Key, vault.ID, vaultItem.ID, revision.String(), overview, details)
 	if err != nil {
 		return nil, err
 	}
+	return &apitypes.PutItemRequest{Revision: revision.String(), Deleted: deleted, Overview: sealedOverview, Details: sealedDetails}, nil
+}
 
-	_, serverItem, err := s.Client.PutItem(ctx, vault.ID, vaultItem.ID, vaultItem.Revision, &apitypes.PutItemRequest{
-		Revision: revision.String(), Deleted: deleted, Overview: encryptedOverview, Details: encryptedDetails,
-	})
+func (s *Session) putItem(ctx context.Context, vault *Vault, vaultItem *item.Item, deleted bool) (*item.Item, error) {
+	if vaultItem.ID == "" {
+		vaultItem.ID = uuid.NewString()
+	}
+	request, err := s.sealItem(vault, vaultItem, deleted)
+	if err != nil {
+		return nil, err
+	}
+	_, serverItem, err := s.Client.PutItem(ctx, vault.ID, vaultItem.ID, vaultItem.Revision, request)
 	if apiclient.IsStatus(err, http.StatusConflict) {
 		if serverItem == nil || serverItem.Deleted {
 			return nil, ErrConflict
@@ -120,6 +158,6 @@ func (s *Session) putItem(ctx context.Context, vault *Vault, vaultItem *item.Ite
 	if err != nil {
 		return nil, err
 	}
-	vaultItem.Revision = revision.String()
+	vaultItem.Revision = request.Revision
 	return nil, nil
 }

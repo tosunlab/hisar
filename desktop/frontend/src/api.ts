@@ -304,6 +304,9 @@ const wailsApi = {
   saveItem: async (vaultID: string, detail: ItemDetail): Promise<ItemDetail> =>
     normalizeItem(await Service.SaveItem(vaultID, detail)),
   deleteItem: (vaultID: string, itemID: string): Promise<void> => Service.DeleteItem(vaultID, itemID),
+  moveItem: async (vaultID: string, itemID: string, targetVaultID: string): Promise<ItemDetail> =>
+    normalizeItem(await Service.MoveItem(vaultID, itemID, targetVaultID)),
+  duplicateItem: async (vaultID: string, itemID: string): Promise<ItemDetail> => normalizeItem(await Service.DuplicateItem(vaultID, itemID)),
   listAllFavoriteItem: async (): Promise<FavoriteItem[]> => ((await Service.ListFavoriteItems()) ?? []).map(normalizeFavoriteItem),
   setItemFavorite: (vaultID: string, itemID: string, isFavorite: boolean): Promise<void> => Service.SetItemFavorite(vaultID, itemID, isFavorite),
   describeCard: (number: string, expiry: string): Promise<CardDescription> => Service.DescribeCard(number, expiry),

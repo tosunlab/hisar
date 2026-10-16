@@ -136,6 +136,36 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 		items[itemID] = apitypes.Item{ID: itemID, Revision: putRequest.Revision, Seq: server.seq, Deleted: putRequest.Deleted, Overview: putRequest.Overview, Details: putRequest.Details}
 		writeJSON(writer, http.StatusOK, apitypes.PutItemResponse{Seq: server.seq})
 	})
+	mux.HandleFunc("POST /api/v1/vaults/{vaultID}/items/{itemID}/move", func(writer http.ResponseWriter, request *http.Request) {
+		var moveRequest apitypes.MoveItemRequest
+		if err := json.NewDecoder(request.Body).Decode(&moveRequest); err != nil {
+			writeJSON(writer, http.StatusBadRequest, apitypes.Error{Error: err.Error()})
+			return
+		}
+		server.mutex.Lock()
+		defer server.mutex.Unlock()
+		sourceItems, isSourceFound := server.itemsByVaultID[request.PathValue("vaultID")]
+		targetItems, isTargetFound := server.itemsByVaultID[moveRequest.TargetVaultID]
+		if !isSourceFound || !isTargetFound {
+			writeJSON(writer, http.StatusNotFound, apitypes.Error{Error: "vault not found"})
+			return
+		}
+		itemID := request.PathValue("itemID")
+		current, exists := sourceItems[itemID]
+		if !exists || current.Deleted || current.Revision != moveRequest.BaseRevision {
+			conflict := apitypes.ConflictResponse{}
+			if exists {
+				conflict.Current = &current
+			}
+			writeJSON(writer, http.StatusConflict, conflict)
+			return
+		}
+		server.seq++
+		sourceItems[itemID] = apitypes.Item{ID: itemID, Revision: moveRequest.Tombstone.Revision, Seq: server.seq, Deleted: true, Overview: moveRequest.Tombstone.Overview, Details: moveRequest.Tombstone.Details}
+		server.seq++
+		targetItems[itemID] = apitypes.Item{ID: itemID, Revision: moveRequest.Moved.Revision, Seq: server.seq, Overview: moveRequest.Moved.Overview, Details: moveRequest.Moved.Details}
+		writeJSON(writer, http.StatusOK, apitypes.MoveItemResponse{SourceSeq: server.seq - 1, TargetSeq: server.seq})
+	})
 	mux.HandleFunc("GET /api/v1/events", func(writer http.ResponseWriter, request *http.Request) {
 		server.mutex.Lock()
 		eventChannel := server.eventChannel

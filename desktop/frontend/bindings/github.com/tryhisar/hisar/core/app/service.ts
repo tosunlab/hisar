@@ -216,6 +216,14 @@ export function DismissSignedOutReason(): $CancellablePromise<$models.Status> {
 }
 
 /**
+ * DuplicateItem saves a copy of an item in its vault, titled "<title> copy", with everything but its passkeys: one
+ * passkey can't live in two items. An SSH key is not duplicated; a key is generated or imported.
+ */
+export function DuplicateItem(vaultID: string, itemID: string): $CancellablePromise<$models.ItemDetail> {
+    return $Call.ByID(4159498617, vaultID, itemID);
+}
+
+/**
  * EnableBiometricUnlock seals the account unlock key with a new key stored in the OS keychain.
  */
 export function EnableBiometricUnlock(password: string): $CancellablePromise<$models.Status> {
@@ -428,6 +436,15 @@ export function ListWaitingVaultKeys(): $CancellablePromise<$models.WaitingVault
 
 export function Lock(): $CancellablePromise<$models.Status> {
     return $Call.ByID(1856014238);
+}
+
+/**
+ * MoveItem moves an item to another vault the user may add items to, in one request that keeps its ID, so favorites and
+ * references by ID still find it. A server keeps its SSH key link, which the apps then show as missing until a key from
+ * the new vault is chosen.
+ */
+export function MoveItem(vaultID: string, itemID: string, targetVaultID: string): $CancellablePromise<$models.ItemDetail> {
+    return $Call.ByID(4162304767, vaultID, itemID, targetVaultID);
 }
 
 export function PreviewAccountDeletion(): $CancellablePromise<$models.AccountDeletionPreview> {

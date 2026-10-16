@@ -33,6 +33,22 @@ type PutItemResponse struct {
 	Seq int64 `json:"seq"`
 }
 
+// MoveItemRequest moves a live item to another vault in one step, keeping its ID. BaseRevision is its current revision in
+// the source vault; Tombstone is the deleted revision left there (Deleted true) and Moved the item re-encrypted under the
+// target vault's key (Deleted false), each with its own new revision.
+type MoveItemRequest struct {
+	TargetVaultID string         `json:"targetVaultId"`
+	BaseRevision  string         `json:"baseRevision"`
+	Tombstone     PutItemRequest `json:"tombstone"`
+	Moved         PutItemRequest `json:"moved"`
+}
+
+// MoveItemResponse holds the new change sequence numbers of the source and target vaults.
+type MoveItemResponse struct {
+	SourceSeq int64 `json:"sourceSeq"`
+	TargetSeq int64 `json:"targetSeq"`
+}
+
 type ConflictResponse struct {
 	Current *Item `json:"current"`
 }
