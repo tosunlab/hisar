@@ -281,6 +281,10 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 		item.WriteCard(&vaultItem, card, vaultItem.Details.Fields)
 	}
 	if category == onePasswordAPICredential {
+		// Some exports keep the key ID and secret in login fields instead of the section; those fill the credential. A
+		// different value stays, as a custom field.
+		foldOnePasswordLoginValue(&credential.KeyID, &vaultItem.Overview.Username)
+		foldOnePasswordLoginValue(&credential.Secret, &vaultItem.Details.Password)
 		vaultItem.Overview.Category = item.CategoryAPICredential
 		item.WriteAPICredential(&vaultItem, credential, vaultItem.Details.Fields)
 	}
@@ -298,6 +302,17 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 		item.WriteIdentity(&vaultItem, identity, otherFields)
 	}
 	return vaultItem, ""
+}
+
+// foldOnePasswordLoginValue moves a login value into an empty credential value, and drops it when the credential has the
+// same value already.
+func foldOnePasswordLoginValue(credentialValue, loginValue *string) {
+	switch {
+	case strings.TrimSpace(*credentialValue) == "":
+		*credentialValue, *loginValue = *loginValue, ""
+	case *loginValue == *credentialValue:
+		*loginValue = ""
+	}
 }
 
 // isOnePasswordIdentityCategory tells whether items of a 1Password category become identities.

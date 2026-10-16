@@ -817,6 +817,34 @@ func TestParseOnePasswordAPICredential(t *testing.T) {
 	}
 }
 
+func TestParseOnePasswordAPICredentialFromLoginFields(t *testing.T) {
+	data := `{"accounts":[{"vaults":[{"items":[
+		{"categoryUuid":"112","overview":{"title":"Only login fields"},"details":{"loginFields":[
+			{"designation":"username","name":"username","value":"key_1"},
+			{"designation":"password","name":"password","fieldType":"P","value":"secret-1"}]}},
+		{"categoryUuid":"112","overview":{"title":"Both"},"details":{"loginFields":[
+			{"designation":"username","name":"username","value":"key_2"},
+			{"designation":"password","name":"password","fieldType":"P","value":"secret-2"}],
+			"sections":[{"title":"","fields":[
+				{"title":"username","id":"username","value":{"string":"key_2"}},
+				{"title":"credential","id":"credential","value":{"concealed":"secret-2"}}]}]}},
+		{"categoryUuid":"112","overview":{"title":"Different"},"details":{"password":"old-secret","sections":[{"title":"","fields":[
+			{"title":"credential","id":"credential","value":{"concealed":"new-secret"}}]}]}}]}]}]}`
+	result := parseFixture(t, "export.1pux", buildOnePasswordExport(t, []byte(data)), FormatAutomatic)
+	for title, wantFields := range map[string][]item.Field{
+		"Only login fields": {{Name: item.FieldKeyID, Value: "key_1"}, {Name: item.FieldSecret, Value: "secret-1", Concealed: true}},
+		"Both":              {{Name: item.FieldKeyID, Value: "key_2"}, {Name: item.FieldSecret, Value: "secret-2", Concealed: true}},
+		// A password that is not the secret is kept, not lost.
+		"Different": {{Name: item.FieldSecret, Value: "new-secret", Concealed: true}, {Name: "Password", Value: "old-secret", Concealed: true}},
+	} {
+		credential := findTestItem(t, result, title)
+		if credential.Overview.Category != item.CategoryAPICredential || !reflect.DeepEqual(credential.Details.Fields, wantFields) ||
+			credential.Overview.Username != "" || credential.Details.Password != "" {
+			t.Errorf("%s = %+v\nfields\n%+v\nwant\n%+v", title, credential.Overview, credential.Details.Fields, wantFields)
+		}
+	}
+}
+
 func TestAPICredentialsWithTheSameTitleAreNotDuplicates(t *testing.T) {
 	withSecret := func(keyID, host, secret string) item.Item {
 		var vaultItem item.Item
