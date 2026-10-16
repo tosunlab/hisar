@@ -105,8 +105,9 @@ this.
 
 1. The team ID is in `Configuration/Signing.xcconfig` (`DEVELOPMENT_TEAM`).
 2. The developer portal has the app `com.tryhisar.hisar`, the extension `com.tryhisar.hisar.autofill`, the app group
-   `group.com.tryhisar.hisar` and the AutoFill Credential Provider capability for the extension, and four profiles
-   named after the target:
+   `group.com.tryhisar.hisar` and the AutoFill Credential Provider capability on both the app and the extension (App
+   Store Connect rejects an upload whose app lacks its extension's entitlement), and four profiles named after the
+   target:
 
    | Target | Debug (a device from Xcode) | Release (archive) |
    |---|---|---|
