@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -26,6 +27,7 @@ const (
 	onePasswordLicense         = "103"
 	onePasswordPassport        = "106"
 	onePasswordSSN             = "108"
+	onePasswordServer          = "110"
 	onePasswordAPICredential   = "112"
 	onePasswordSSHKey          = "114"
 )
@@ -38,7 +40,7 @@ var onePasswordCategoryNames = map[string]string{
 }
 
 // onePasswordCredentialCategories become logins with their fields; other categories hold personal records Hisar has no type for yet.
-var onePasswordCredentialCategories = map[string]bool{"102": true, "109": true, "110": true, "111": true}
+var onePasswordCredentialCategories = map[string]bool{"102": true, "109": true, "111": true}
 
 type onePasswordExport struct {
 	Accounts []struct {
@@ -250,7 +252,7 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 	case category == onePasswordSSHKey:
 		return convertOnePasswordSSHKey(entry)
 	case category == onePasswordLogin, category == onePasswordPassword, category == onePasswordSecureNote, category == onePasswordCreditCard,
-		category == onePasswordAPICredential, category == onePasswordSoftwareLicense, isOnePasswordIdentityCategory(category), onePasswordCredentialCategories[category]:
+		category == onePasswordAPICredential, category == onePasswordSoftwareLicense, category == onePasswordServer, isOnePasswordIdentityCategory(category), onePasswordCredentialCategories[category]:
 	default:
 		categoryName, found := onePasswordCategoryNames[category]
 		if !found {
@@ -269,6 +271,9 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 	var identity item.Identity
 	var credential item.APICredential
 	var license item.SoftwareLicense
+	var server item.Server
+	var serverURL string
+	var adminConsoleURLs []string
 	var fullName item.Field
 	isIdentity := isOnePasswordIdentityCategory(category)
 	if entry.Overview.URL != "" {
@@ -301,6 +306,20 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 				}
 			}
 			value, isConcealed := convertOnePasswordFieldValue(sectionField.Value)
+			if category == onePasswordServer {
+				// A server's URL is its host, which NormalizeServer splits into host and port; its admin console is its
+				// website, and its username and password are its own.
+				switch {
+				case sectionField.ID == "url" && server.Host == "":
+					server.Host, serverURL = value, value
+					continue
+				case sectionField.ID == "admin_console_url" && strings.TrimSpace(value) != "":
+					adminConsoleURLs = append(adminConsoleURLs, value)
+					continue
+				case sectionField.ID != "url" && promoteOnePasswordField(&vaultItem, sectionField.ID, value):
+					continue
+				}
+			}
 			if onePasswordCredentialCategories[category] && promoteOnePasswordField(&vaultItem, sectionField.ID, value) {
 				continue
 			}
@@ -361,6 +380,15 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 		}
 		vaultItem.Overview.Category = item.CategorySoftwareLicense
 		item.WriteSoftwareLicense(&vaultItem, license, vaultItem.Details.Fields)
+	}
+	if category == onePasswordServer {
+		// 1Password repeats the server's URL as the item's website; the host keeps it.
+		websites := slices.DeleteFunc(vaultItem.Overview.URLs, func(link string) bool {
+			return serverURL != "" && strings.TrimSpace(link) == strings.TrimSpace(serverURL)
+		})
+		vaultItem.Overview.URLs = append(adminConsoleURLs, websites...)
+		vaultItem.Overview.Category = item.CategoryServer
+		item.WriteServer(&vaultItem, server, vaultItem.Details.Fields)
 	}
 	if isIdentity {
 		vaultItem.Overview.Category = item.CategoryIdentity

@@ -936,6 +936,7 @@ function buildPreviewImportPreview(vaultID: string): ImportPreview {
     apiCredentialCount: allPreviewImportItem.filter((detail) => detail.category === "api-credential").length,
     addressCount: allPreviewImportItem.filter((detail) => detail.category === "address").length,
     softwareLicenseCount: allPreviewImportItem.filter((detail) => detail.category === "software-license").length,
+    serverCount: allPreviewImportItem.filter((detail) => detail.category === "server").length,
     allSkipped: allPreviewImportSkipped,
     allDuplicate: findAllPreviewImportDuplicate(vaultID).map((detail) => ({
       title: detail.title,

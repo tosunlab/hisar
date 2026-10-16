@@ -153,6 +153,11 @@ export interface ImportPreview {
      * SoftwareLicenseCount counts the software-license items among ItemCount.
      */
     "softwareLicenseCount": number;
+
+    /**
+     * ServerCount counts the server items among ItemCount.
+     */
+    "serverCount": number;
     "allSkipped": ImportSkippedEntry[] | null;
     "allDuplicate": ImportDuplicate[] | null;
 }
