@@ -197,4 +197,35 @@ describe("Importing API credentials", () => {
     expect(count.text()).toContain("1");
     expect(count.text()).toContain("API credential");
   });
+
+  it("tells duplicates with the same title apart by their key IDs", () => {
+    store.importPreview = {
+      fileName: "export.1pux",
+      filePath: "/tmp/export.1pux",
+      format: "1pux",
+      formatName: "1Password export (.1pux)",
+      vaultId: "personal",
+      vaultName: "Personal",
+      itemCount: 2,
+      loginCount: 0,
+      secureNoteCount: 0,
+      sshKeyCount: 0,
+      creditCardCount: 0,
+      identityCount: 0,
+      apiCredentialCount: 2,
+      allSkipped: [],
+      allDuplicate: [
+        { title: "Stripe", username: "", url: "", detail: "key_1" },
+        { title: "Stripe", username: "", url: "", detail: "key_2" },
+      ],
+    };
+    store.importStep = "preview";
+    const wrapper = mount(ImportPanel);
+    const allLine = wrapper.findAll('[data-testid="import-duplicates"] li').map((line) => [line.find("strong").text(), line.find(".muted").text()]);
+    expect(allLine).toEqual([
+      ["Stripe", "key_1"],
+      ["Stripe", "key_2"],
+    ]);
+    expect(wrapper.find('[data-testid="import-duplicates"]').text()).toContain("Skip items that are already in the vault");
+  });
 });

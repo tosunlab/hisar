@@ -33,6 +33,7 @@ import type {
   VaultRole,
   VaultSummary,
 } from "./api";
+import { getDomain } from "./util";
 
 const previewParameter = new URLSearchParams(window.location.search);
 
@@ -905,7 +906,12 @@ function buildPreviewImportPreview(vaultID: string): ImportPreview {
     identityCount: allPreviewImportItem.filter((detail) => detail.category === "identity").length,
     apiCredentialCount: allPreviewImportItem.filter((detail) => detail.category === "api-credential").length,
     allSkipped: allPreviewImportSkipped,
-    allDuplicate: findAllPreviewImportDuplicate(vaultID).map((detail) => ({ title: detail.title, username: detail.username, url: detail.urls[0] ?? "" })),
+    allDuplicate: findAllPreviewImportDuplicate(vaultID).map((detail) => ({
+      title: detail.title,
+      username: detail.username,
+      url: detail.urls[0] ?? "",
+      detail: [detail.username, detail.urls[0] ? getDomain(detail.urls[0]) : ""].filter(Boolean).join(" · "),
+    })),
   };
 }
 

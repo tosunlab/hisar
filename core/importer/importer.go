@@ -235,6 +235,36 @@ func BuildDuplicateKey(vaultItem item.Item) string {
 	}, "\x00")
 }
 
+// DescribeDuplicate is what BuildDuplicateKey matched besides the title, to show next to it, never a secret: a login's
+// username and website's host, an SSH key's fingerprint, a card's last four digits, an identity's name and email, and an API
+// credential's key ID or host. It is "" for a card with no last four digits and a credential with neither, which match on
+// a value that stays hidden.
+func DescribeDuplicate(vaultItem item.Item) string {
+	parts := []string{}
+	switch {
+	case vaultItem.IsCategory(item.CategorySSHKey) && vaultItem.Overview.Fingerprint != "":
+		parts = append(parts, vaultItem.Overview.Fingerprint)
+	case vaultItem.IsCategory(item.CategoryCreditCard):
+		card, _ := item.ReadCard(&vaultItem)
+		if last4 := item.GetCardLast4(card.Number); last4 != "" {
+			parts = append(parts, "•••• "+last4)
+		}
+	case vaultItem.IsCategory(item.CategoryIdentity):
+		identity, _ := item.ReadIdentity(&vaultItem)
+		parts = append(parts, identity.FullName(), strings.TrimSpace(identity.Email))
+	case vaultItem.IsCategory(item.CategoryAPICredential):
+		credential, _ := item.ReadAPICredential(&vaultItem)
+		parts = append(parts, getFirstNonEmpty(strings.TrimSpace(credential.KeyID), strings.TrimSpace(credential.Host)))
+	default:
+		parts = append(parts, strings.TrimSpace(vaultItem.Overview.Username))
+		if len(vaultItem.Overview.URLs) > 0 {
+			link := strings.TrimSpace(vaultItem.Overview.URLs[0])
+			parts = append(parts, getFirstNonEmpty(getHostName(link), link))
+		}
+	}
+	return joinNonEmpties(parts, " · ")
+}
+
 // FindDuplicateIndexes returns the positions in importedItems of items that existingItems already has.
 func FindDuplicateIndexes(importedItems, existingItems []item.Item) []int {
 	existingKeys := map[string]bool{}

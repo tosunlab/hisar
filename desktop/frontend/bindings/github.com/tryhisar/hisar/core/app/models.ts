@@ -106,10 +106,15 @@ export interface FavoriteItem {
     "item": ItemDetail;
 }
 
+/**
+ * ImportDuplicate: Detail is what matched besides the title, such as a login's username and website or an API
+ * credential's key ID; see importer.DescribeDuplicate.
+ */
 export interface ImportDuplicate {
     "title": string;
     "username": string;
     "url": string;
+    "detail": string;
 }
 
 export interface ImportFormat {

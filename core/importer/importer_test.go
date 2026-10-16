@@ -845,6 +845,38 @@ func TestParseOnePasswordAPICredentialFromLoginFields(t *testing.T) {
 	}
 }
 
+func TestDescribeDuplicateShowsWhatMatchedWithoutSecrets(t *testing.T) {
+	credential := func(keyID, host string) item.Item {
+		var vaultItem item.Item
+		vaultItem.Overview = item.Overview{Title: "Stripe", Category: item.CategoryAPICredential}
+		item.WriteAPICredential(&vaultItem, item.APICredential{KeyID: keyID, Secret: "sk-secret", Host: host}, nil)
+		return vaultItem
+	}
+	var card item.Item
+	card.Overview = item.Overview{Title: "Visa", Category: item.CategoryCreditCard}
+	item.WriteCard(&card, item.Card{Number: "4111 1111 1111 1111", SecurityCode: "123"}, nil)
+	var identity item.Item
+	identity.Overview = item.Overview{Title: "Passport", Category: item.CategoryIdentity}
+	item.WriteIdentity(&identity, item.Identity{FirstName: "Alice", LastName: "Example", Email: "alice@example.com", PassportNumber: "U1"}, nil)
+	login := item.Item{Overview: item.Overview{Title: "GitHub", Username: "alice", URLs: []string{"https://github.com"}}, Details: item.Details{Password: "hunter2"}}
+
+	for _, test := range []struct {
+		vaultItem item.Item
+		want      string
+	}{
+		{credential("key_1", "api.stripe.com"), "key_1"},
+		{credential("", "api.stripe.com"), "api.stripe.com"},
+		{credential("", ""), ""},
+		{card, "•••• 1111"},
+		{identity, "Alice Example · alice@example.com"},
+		{login, "alice · github.com"},
+	} {
+		if got := DescribeDuplicate(test.vaultItem); got != test.want {
+			t.Errorf("DescribeDuplicate(%s) = %q, want %q", test.vaultItem.Overview.Title, got, test.want)
+		}
+	}
+}
+
 func TestAPICredentialsWithTheSameTitleAreNotDuplicates(t *testing.T) {
 	withSecret := func(keyID, host, secret string) item.Item {
 		var vaultItem item.Item

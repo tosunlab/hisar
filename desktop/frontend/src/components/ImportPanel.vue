@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { changeImportVault, chooseImportFile, closeImport, continueImport, deleteImportFile, getAllEditableVault, startImport, store } from "../store";
-import { getDomain } from "../util";
 import AppIcon from "./AppIcon.vue";
 
 const allEditableVault = computed(() => getAllEditableVault());
@@ -147,12 +146,12 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
           <ul class="entry-list">
             <li v-for="(duplicate, index) in store.importPreview.allDuplicate" :key="index">
               <strong>{{ duplicate.title }}</strong>
-              <span class="muted">{{ [duplicate.username, duplicate.url ? getDomain(duplicate.url) : ""].filter(Boolean).join(" · ") }}</span>
+              <span class="muted">{{ duplicate.detail }}</span>
             </li>
           </ul>
           <label class="checkbox-row">
             <input v-model="isSkippingDuplicate" type="checkbox" name="skipDuplicates" data-testid="skip-duplicates" />
-            <span>Skip items with the same title, username and website</span>
+            <span>Skip items that are already in the vault</span>
           </label>
         </section>
 

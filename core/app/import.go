@@ -37,10 +37,13 @@ type ImportSkippedEntry struct {
 	Reason string `json:"reason"`
 }
 
+// ImportDuplicate: Detail is what matched besides the title, such as a login's username and website or an API
+// credential's key ID; see importer.DescribeDuplicate.
 type ImportDuplicate struct {
 	Title    string `json:"title"`
 	Username string `json:"username"`
 	URL      string `json:"url"`
+	Detail   string `json:"detail"`
 }
 
 // ImportPreview: an empty FileName means the user cancelled the file dialog.
@@ -228,7 +231,9 @@ func (s *Service) buildImportPreview(vaultID string) (ImportPreview, error) {
 		if len(duplicate.Overview.URLs) > 0 {
 			firstURL = duplicate.Overview.URLs[0]
 		}
-		preview.Duplicates = append(preview.Duplicates, ImportDuplicate{Title: duplicate.Overview.Title, Username: duplicate.Overview.Username, URL: firstURL})
+		preview.Duplicates = append(preview.Duplicates, ImportDuplicate{
+			Title: duplicate.Overview.Title, Username: duplicate.Overview.Username, URL: firstURL, Detail: importer.DescribeDuplicate(duplicate),
+		})
 	}
 	return preview, nil
 }

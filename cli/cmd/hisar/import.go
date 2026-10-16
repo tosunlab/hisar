@@ -53,14 +53,10 @@ func formatItemCount(count int) string {
 }
 
 func describeDuplicate(vaultItem item.Item) string {
-	parts := []string{vaultItem.Overview.Title}
-	if vaultItem.Overview.Username != "" {
-		parts = append(parts, vaultItem.Overview.Username)
+	if detail := importer.DescribeDuplicate(vaultItem); detail != "" {
+		return vaultItem.Overview.Title + " · " + detail
 	}
-	if len(vaultItem.Overview.URLs) > 0 {
-		parts = append(parts, vaultItem.Overview.URLs[0])
-	}
-	return strings.Join(parts, ", ")
+	return vaultItem.Overview.Title
 }
 
 func printImportPreview(writer io.Writer, fileName string, result *importer.Result, vaultName string, duplicateIndexes []int) {
@@ -75,7 +71,7 @@ func printImportPreview(writer io.Writer, fileName string, result *importer.Resu
 	fmt.Fprintf(writer, "Identities:      %d\n", summary.IdentityCount)
 	fmt.Fprintf(writer, "API credentials: %d\n", summary.APICredentialCount)
 	if len(duplicateIndexes) > 0 {
-		fmt.Fprintf(writer, "Already in %s (same title, username and website): %d\n", vaultName, len(duplicateIndexes))
+		fmt.Fprintf(writer, "Already in %s: %d\n", vaultName, len(duplicateIndexes))
 		for _, index := range duplicateIndexes {
 			fmt.Fprintf(writer, "  - %s\n", describeDuplicate(result.Items[index]))
 		}

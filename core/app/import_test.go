@@ -86,7 +86,7 @@ func TestImportPreviewSaveAndDeleteFile(t *testing.T) {
 	if preview.VaultName != "Personal" || preview.ItemCount != 14 || preview.LoginCount != 13 || preview.SecureNoteCount != 1 || preview.SSHKeyCount != 0 {
 		t.Errorf("preview counts = %+v", preview)
 	}
-	if len(preview.Duplicates) != 1 || preview.Duplicates[0] != (ImportDuplicate{Title: "GitHub", Username: "alice", URL: "https://github.com"}) {
+	if len(preview.Duplicates) != 1 || preview.Duplicates[0] != (ImportDuplicate{Title: "GitHub", Username: "alice", URL: "https://github.com", Detail: "alice · github.com"}) {
 		t.Errorf("duplicates = %+v", preview.Duplicates)
 	}
 	if len(preview.Skipped) != 0 {
