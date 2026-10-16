@@ -57,38 +57,46 @@ func NormalizeServer(vaultItem *Item) {
 	WriteServer(vaultItem, server.Normalize(), otherFields)
 }
 
-// Normalize trims the server's values and splits a host typed with a scheme or port, such as ssh://build.example.com:2222
-// or db.example.com:5432, into the host and an empty port. A link with a path, a bare IPv6 address and a port that is
-// already set stay as typed.
+// Normalize trims the server's values and splits a host typed with a scheme or port, as splitHostAndPort does.
 func (server Server) Normalize() Server {
-	server.Host, server.Port, server.SSHKeyID = strings.TrimSpace(server.Host), strings.TrimSpace(server.Port), strings.TrimSpace(server.SSHKeyID)
-	if _, _, hasScheme := strings.Cut(server.Host, "://"); hasScheme {
-		parsed, err := url.Parse(server.Host)
-		if err != nil || parsed.Hostname() == "" || strings.Trim(parsed.Path, "/") != "" || parsed.RawQuery != "" {
-			return server
-		}
-		server.Host = parsed.Hostname()
-		if server.Port == "" {
-			server.Port = parsed.Port()
-		}
-		return server
-	}
-	if server.Port != "" {
-		return server
-	}
-	if host, port, err := net.SplitHostPort(server.Host); err == nil && host != "" && port != "" {
-		server.Host, server.Port = host, port
-	}
+	server.Host, server.Port = splitHostAndPort(strings.TrimSpace(server.Host), strings.TrimSpace(server.Port))
+	server.SSHKeyID = strings.TrimSpace(server.SSHKeyID)
 	return server
+}
+
+// splitHostAndPort splits a host typed with a scheme or port, such as ssh://build.example.com:2222 or
+// db.example.com:5432, into the host and an empty port. A link with a path, a bare IPv6 address and a port that is already
+// set stay as typed.
+func splitHostAndPort(host, port string) (string, string) {
+	if _, _, hasScheme := strings.Cut(host, "://"); hasScheme {
+		parsed, err := url.Parse(host)
+		if err != nil || parsed.Hostname() == "" || strings.Trim(parsed.Path, "/") != "" || parsed.RawQuery != "" {
+			return host, port
+		}
+		if port == "" {
+			port = parsed.Port()
+		}
+		return parsed.Hostname(), port
+	}
+	if port != "" {
+		return host, port
+	}
+	if splitHost, splitPort, err := net.SplitHostPort(host); err == nil && splitHost != "" && splitPort != "" {
+		return splitHost, splitPort
+	}
+	return host, port
 }
 
 // PortWarning is what the editors show under a port that is not a number from 1 to 65535; it is "" for an empty port. The
 // server saves anyway.
-func (server Server) PortWarning() string {
-	if server.Port == "" {
+func (server Server) PortWarning() string { return describePort(server.Port) }
+
+// describePort warns about a port that is not a number from 1 to 65535, and returns "" for an empty or valid one.
+func describePort(port string) string {
+	if port == "" {
 		return ""
 	}
-	if port, err := strconv.Atoi(server.Port); err != nil || port < 1 || port > 65535 {
+	if number, err := strconv.Atoi(port); err != nil || number < 1 || number > 65535 {
 		return "The port is not a number from 1 to 65535"
 	}
 	return ""
