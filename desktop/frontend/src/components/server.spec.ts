@@ -135,7 +135,7 @@ describe("Viewing a server", () => {
     expect(wrapper.find('button[aria-label="Open SSH key"]').exists()).toBe(false);
   });
 
-  it("lists servers with their host and username and finds them by host", () => {
+  it("lists servers with their address and username and finds them by any part of the address", () => {
     const allItem = [
       createServerItem({ title: "Build", server: { ...createServerItem().server!, sshKeyId: "", sshKeyTitle: "" } }),
       createServerItem({ id: "db-1", title: "Database", username: "", server: { ...createServerItem().server!, host: "2001:db8::1", port: "5432" } }),
@@ -149,6 +149,9 @@ describe("Viewing a server", () => {
     wrapper.unmount();
     expect(filterAllItem(allItem, "build.example").map((vaultItem) => vaultItem.title)).toEqual(["Build"]);
     expect(filterAllItem(allItem, "2001:db8").map((vaultItem) => vaultItem.title)).toEqual(["Database"]);
+    expect(filterAllItem(allItem, "2222").map((vaultItem) => vaultItem.title)).toEqual(["Build"]);
+    expect(filterAllItem(allItem, "build.example.com:2222").map((vaultItem) => vaultItem.title)).toEqual(["Build"]);
+    expect(filterAllItem(allItem, "[2001:db8::1]:5432").map((vaultItem) => vaultItem.title)).toEqual(["Database"]);
     expect(formatServerSummary(null, "")).toBe("Server");
   });
 

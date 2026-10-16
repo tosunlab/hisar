@@ -35,7 +35,7 @@ import {
   type ExportResult,
   type FavoriteItem,
 } from "./api";
-import { allAddressKey, formatFullName } from "./util";
+import { allAddressKey, formatFullName, formatServerAddress } from "./util";
 
 export type EditorMode = "view" | "edit" | "create" | "create-secure-note" | "create-credit-card" | "create-identity" | "create-api-credential" | "create-address" | "create-software-license" | "create-server" | "create-ssh-key";
 export type ImportStep = "choose" | "preview" | "saving" | "done";
@@ -698,8 +698,9 @@ export function filterAllItem(allItem: ItemDetail[], query: string, tag = ""): I
     // A software license's summary keeps its product, version, licensed-to name and email, never the key.
     const license = vaultItem.softwareLicense;
     const licenseText = license ? [license.product, license.version, license.licensedTo, license.email] : [];
-    // A server's summary keeps its host; its username is the item's own.
-    const serverText = vaultItem.server ? [vaultItem.server.host] : [];
+    // A server's summary keeps its host and port, which lists show as one address; its username is the item's own.
+    const server = vaultItem.server;
+    const serverText = server ? [formatServerAddress(server), server.host, server.port] : [];
     return (
       (tag === "" || allTag.includes(tag)) &&
       (normalizedQuery === "" ||

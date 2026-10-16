@@ -142,6 +142,11 @@ final class VaultLogicTests: XCTestCase {
             CredentialIdentityRecord(host: "console.example.com", username: "admin", recordIdentifier: "personal/build server"),
         ])
         XCTAssertEqual(VaultLogic.filterAllItem([server, note], searchText: "build.example").map(\.item.title), ["Build server"])
+        XCTAssertEqual(VaultLogic.filterAllItem([server, note], searchText: "2222").map(\.item.title), ["Build server"])
+        XCTAssertEqual(VaultLogic.filterAllItem([server, note], searchText: "build.example.com:2222").map(\.item.title), ["Build server"])
+        var database = makeReference("Database", category: ItemDetail.categoryServer)
+        database.item.server = ItemServer(host: "2001:db8::1", port: "5432")
+        XCTAssertEqual(VaultLogic.filterAllItem([server, database], searchText: "[2001:db8::1]:5432").map(\.item.title), ["Database"])
         XCTAssertTrue(ItemCategoryDestination.servers.includes(server.item))
         XCTAssertFalse(ItemCategoryDestination.logins.includes(server.item))
     }
