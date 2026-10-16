@@ -17,7 +17,7 @@ import (
 	"time"
 )
 
-const DefaultRepository = "hisarapp/core"
+const DefaultRepository = "tosunlab/hisarapp-core"
 
 type Asset struct {
 	Name    string

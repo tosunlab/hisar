@@ -106,7 +106,7 @@ struct ItemDetailView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(item.title)
                             .font(.title2.weight(.bold))
-                        Text("\(vault?.name ?? "") · \(item.isSSHKey ? "SSH key" : (item.isSecureNote ? "Secure note" : (item.isCreditCard ? (item.card ?? ItemCard()).summary : "Login")))")
+                        Text("\(vault?.name ?? "") · \(describeCategory(item: item))")
                             .font(.subheadline)
                             .foregroundStyle(.themeSecondary)
                     }
@@ -120,6 +120,8 @@ struct ItemDetailView: View {
                 buildSecureNoteSection(item: item)
             } else if item.isCreditCard {
                 buildCardSection(card: item.card ?? ItemCard())
+            } else if item.isIdentity {
+                buildIdentitySection(identity: item.identity ?? ItemIdentity())
             } else {
                 buildLoginSection(item: item)
             }
@@ -252,12 +254,23 @@ struct ItemDetailView: View {
         if item.isSSHKey { return "public key" }
         if item.isSecureNote { return item.notes.isEmpty ? nil : "notes" }
         if item.isCreditCard { return (item.card?.number ?? "").isEmpty ? nil : CardFieldName.number }
+        if item.isIdentity { return nil }
         return item.password.isEmpty ? nil : "password"
     }
 
-    @ViewBuilder
+    /// The line under the title: the category, or a card's or identity's summary.
+    private func describeCategory(item: ItemDetail) -> String {
+        if item.isSSHKey { return "SSH key" }
+        if item.isSecureNote { return "Secure note" }
+        if item.isCreditCard { return (item.card ?? ItemCard()).summary }
+        if item.isIdentity { return (item.identity ?? ItemIdentity()).summary }
+        return "Login"
+    }
+
+    private typealias NamedRow = (label: String, value: String, isConcealed: Bool, warning: String)
+
     private func buildCardSection(card: ItemCard) -> some View {
-        let allRow: [(label: String, value: String, isConcealed: Bool, warning: String)] = [
+        let allRow: [NamedRow] = [
             (CardFieldName.cardholder, card.cardholder, false, ""),
             (CardFieldName.type, card.type, false, ""),
             (CardFieldName.number, card.number, true, card.numberWarning),
@@ -265,13 +278,37 @@ struct ItemDetailView: View {
             (CardFieldName.securityCode, card.securityCode, true, ""),
             (CardFieldName.pin, card.pin, true, ""),
             (CardFieldName.billingAddress, card.billingAddress, false, ""),
-        ].filter { !$0.value.isEmpty }
+        ]
+        return buildNamedSection(title: "Card", emptyText: "This card has no details yet.", allRow: allRow)
+    }
+
+    private func buildIdentitySection(identity: ItemIdentity) -> some View {
+        let allRow: [NamedRow] = [
+            (IdentityFieldName.firstName, identity.firstName, false, ""),
+            (IdentityFieldName.middleName, identity.middleName, false, ""),
+            (IdentityFieldName.lastName, identity.lastName, false, ""),
+            (IdentityFieldName.birthDate, identity.birthDate, false, ""),
+            (IdentityFieldName.email, identity.email, false, ""),
+            (IdentityFieldName.phone, identity.phone, false, ""),
+            (IdentityFieldName.address, identity.address, false, ""),
+            (IdentityFieldName.passportNumber, identity.passportNumber, true, ""),
+            (IdentityFieldName.driversLicenseNumber, identity.driversLicenseNumber, true, ""),
+            (IdentityFieldName.nationalIDNumber, identity.nationalIDNumber, true, ""),
+        ]
+        return buildNamedSection(title: "Identity", emptyText: "This identity has no details yet.", allRow: allRow)
+    }
+
+    /// The values of a type kept in named fields, a card's or an identity's, with copy and copy reference; secret ones are
+    /// masked until revealed.
+    @ViewBuilder
+    private func buildNamedSection(title: String, emptyText: String, allRow: [NamedRow]) -> some View {
+        let allShownRow = allRow.filter { !$0.value.isEmpty }
         Section {
-            if allRow.isEmpty {
-                Text("This card has no details yet.")
+            if allShownRow.isEmpty {
+                Text(emptyText)
                     .foregroundStyle(.themeSecondary)
             }
-            ForEach(allRow, id: \.label) { row in
+            ForEach(allShownRow, id: \.label) { row in
                 VStack(alignment: .leading, spacing: 4) {
                     SecretFieldRow(
                         label: row.label, value: row.value, isConcealed: row.isConcealed,
@@ -289,7 +326,7 @@ struct ItemDetailView: View {
                 }
             }
         } header: {
-            Text("Card")
+            Text(title)
         }
     }
 

@@ -25,7 +25,7 @@ env:
   TAG: ${{ inputs.tag }}
   GH_TOKEN: ${{ github.token }}
   GH_REPO: ${{ github.repository }}
-  SERVER_IMAGE: ghcr.io/hisarapp/server
+  SERVER_IMAGE: ghcr.io/tosunlab/hisar-server
 
 jobs:
   publish:

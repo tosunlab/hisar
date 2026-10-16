@@ -49,9 +49,7 @@ final class SharingUITests: HisarUITestCase {
         personalAlert.buttons["OK"].tap()
         goBack()
 
-        app.buttons["new-menu"].tap()
-        waitFor(app.buttons["new-vault"])
-        app.buttons["new-vault"].tap()
+        choose("new-vault", from: "new-menu")
         type("Deploy keys", into: app.textFields["new-vault-name"])
         app.buttons["new-vault-create"].tap()
         waitFor(app.buttons["add-item"], timeout: 60)

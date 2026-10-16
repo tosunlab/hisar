@@ -589,6 +589,14 @@ final class AppModel: ObservableObject {
             cardSummary.last4 = card.last4
             summary.card = cardSummary
         }
+        if let identity = savedItem.identity {
+            var identitySummary = ItemIdentity()
+            identitySummary.firstName = identity.firstName
+            identitySummary.middleName = identity.middleName
+            identitySummary.lastName = identity.lastName
+            identitySummary.email = identity.email
+            summary.identity = identitySummary
+        }
         if let index = allItem.firstIndex(where: { $0.id == savedItem.id }) {
             allItem[index] = summary
         } else {

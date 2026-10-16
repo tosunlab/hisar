@@ -12,7 +12,20 @@ import {
   store,
   toggleSelectedItemFavorite,
 } from "../store";
-import { cardFieldName, creditCardCategory, formatCardSummary, formatKeyType, getDomain, getItemIcon, isMacPlatform, secureNoteCategory, sshKeyCategory } from "../util";
+import {
+  cardFieldName,
+  creditCardCategory,
+  formatCardSummary,
+  formatIdentitySummary,
+  formatKeyType,
+  getDomain,
+  getItemIcon,
+  identityCategory,
+  identityFieldName,
+  isMacPlatform,
+  secureNoteCategory,
+  sshKeyCategory,
+} from "../util";
 import AppIcon from "./AppIcon.vue";
 import CommitSigningPanel from "./CommitSigningPanel.vue";
 import ItemTile from "./ItemTile.vue";
@@ -31,6 +44,7 @@ const isConfirmingDelete = ref(false);
 const isSSHKey = computed(() => store.selectedItem?.category === sshKeyCategory);
 const isSecureNote = computed(() => store.selectedItem?.category === secureNoteCategory);
 const isCreditCard = computed(() => store.selectedItem?.category === creditCardCategory);
+const isIdentity = computed(() => store.selectedItem?.category === identityCategory);
 
 // The card's values as rows; the number shows only its last four digits until revealed.
 const allCardRow = computed(() => {
@@ -48,6 +62,24 @@ const allCardRow = computed(() => {
     { name: cardFieldName.billingAddress, value: card.billingAddress, concealed: false, masked: "", warning: "" },
   ].filter((row) => row.value !== "");
 });
+// An identity's values as rows; the document numbers are masked until revealed.
+const allIdentityRow = computed(() => {
+  const identity = store.selectedItem?.identity;
+  if (!identity) {
+    return [];
+  }
+  return (Object.keys(identityFieldName) as (keyof typeof identityFieldName)[])
+    .map((key) => ({
+      name: identityFieldName[key],
+      value: identity[key],
+      concealed: key === "passportNumber" || key === "driversLicenseNumber" || key === "nationalIdNumber",
+      masked: "",
+      warning: "",
+    }))
+    .filter((row) => row.value !== "");
+});
+// The rows of a type whose values are named fields: a card's or an identity's.
+const allNamedRow = computed(() => (isIdentity.value ? allIdentityRow.value : allCardRow.value));
 const isShareable = computed(() => store.selectedItem !== null && hasShareableField(store.selectedItem));
 const allItemShareLink = computed(() => (store.selectedItem ? getAllShareLinkForItem(store.selectedVaultID, store.selectedItem.id) : []));
 
@@ -83,6 +115,7 @@ function maskSecret(secret: string): string {
           <span v-if="isSSHKey" class="muted">SSH key</span>
           <span v-else-if="isSecureNote" class="muted">Secure note</span>
           <span v-else-if="isCreditCard" class="muted" data-testid="card-summary">{{ formatCardSummary(store.selectedItem.card) }}</span>
+          <span v-else-if="isIdentity" class="muted" data-testid="identity-summary">{{ formatIdentitySummary(store.selectedItem.identity) }}</span>
           <span v-else-if="store.selectedItem.urls[0]" class="muted">{{ getDomain(store.selectedItem.urls[0]) }}</span>
         </div>
       </div>
@@ -152,11 +185,14 @@ function maskSecret(secret: string): string {
       <CommitSigningPanel v-if="store.selectedItem.publicKey" :public-key="store.selectedItem.publicKey" />
     </template>
 
-    <section v-else-if="isCreditCard" class="card field-card" data-testid="credit-card-fields">
-      <div v-for="row in allCardRow" :key="row.name" class="field">
+    <section v-else-if="isCreditCard || isIdentity" class="card field-card" :data-testid="isIdentity ? 'identity-fields' : 'credit-card-fields'">
+      <div v-for="row in allNamedRow" :key="row.name" class="field">
         <span class="field-label">{{ row.name }}</span>
         <span class="field-value">
-          <span :class="{ monospace: row.concealed, 'multiline-value': row.name === cardFieldName.billingAddress }" :data-testid="`card-${row.name}`">
+          <span
+            :class="{ monospace: row.concealed, 'multiline-value': row.name === cardFieldName.billingAddress || row.name === identityFieldName.address }"
+            :data-testid="`card-${row.name}`"
+          >
             {{ row.concealed && !allRevealedFieldName.includes(row.name) ? row.masked || maskSecret(row.value) : row.value }}
           </span>
           <small v-if="row.warning" class="field-warning" :data-testid="`card-warning-${row.name}`">{{ row.warning }}</small>
@@ -192,7 +228,9 @@ function maskSecret(secret: string): string {
           <SecretReferenceButton :field-name="field.name" :label="field.name" />
         </span>
       </div>
-      <p v-if="allCardRow.length === 0 && store.selectedItem.fields.length === 0" class="muted no-fields">This card has no details yet.</p>
+      <p v-if="allNamedRow.length === 0 && store.selectedItem.fields.length === 0" class="muted no-fields">
+        {{ isIdentity ? "This identity has no details yet." : "This card has no details yet." }}
+      </p>
     </section>
 
     <template v-else-if="isSecureNote">

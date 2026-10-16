@@ -1,6 +1,6 @@
 // Change the team and the bundle identifiers here only.
 // Empty team: simulator builds sign locally. For a device, set your team ID, or pick it in Xcode's Signing & Capabilities.
-DEVELOPMENT_TEAM =
+DEVELOPMENT_TEAM = 589NVZWDWZ
 HISAR_BUNDLE_IDENTIFIER_PREFIX = com.tryhisar.hisar
 
 // The free personal team build gets its own bundle identifier, so registering it never takes com.tryhisar.hisar from the paid team.

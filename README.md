@@ -33,7 +33,7 @@ opens at login (Settings → General → **Open Hisar at login**, on by default)
 for it, and otherwise says "Hisar isn't running. Open the Hisar app and try again."; `HISAR_NO_LAUNCH=1` turns that off for scripts and CI.
 
 **Anywhere else** (Linux, Windows, servers, or without the app), download the standalone `hisar` from the published GitHub Release of a `cli-<version>` tag
-(github.com/hisarapp/core → Releases): `hisar-<version>-<os>-<arch>.tar.gz` for Linux and macOS,
+(github.com/tosunlab/hisarapp-core → Releases): `hisar-<version>-<os>-<arch>.tar.gz` for Linux and macOS,
 `.zip` for Windows, and `SHA256SUMS`. Check the download before you run it, then put `hisar` on your `PATH`:
 
 ```sh
@@ -154,16 +154,16 @@ tested as its pull request. A new push to a pull request cancels its running CI.
 `.github/workflows/ci.yml` (Linux runners): gofmt, vet, all Go tests against Postgres (failing on any skipped test except the
 `TestIntegration…` tests and `TestRecordOpenSSHFixture`), the CLI for every release platform, the end-to-end test of the built
 binaries, the server Docker image for amd64 and arm64 (built into a throwaway registry and booted, never pushed), the desktop frontend
-(typecheck, tests, bundle check) and the desktop app's Linux build (both only when the pushed commits change `desktop/`, as below), the extension (tests, Chromium end-to-end tests, zip) and the
+(typecheck, tests, bundle check) and the desktop app's Linux build (both only when the pull request changes the desktop app or what it builds from, as below), the extension (tests, Chromium end-to-end tests, zip) and the
 share link page in Chromium against the server.
 
 `.github/workflows/macos.yml` builds the Mac app (Touch ID and Sparkle tests, bundle and signature checks) and the iPhone app
 (HisarKit, Xcode project check, unit tests, UI tests against a local server) on GitHub's `macos-26` runners with Xcode 26.6. macOS
-minutes count ten times against the plan's included minutes, so each job runs only when the commits just pushed change what it builds
-(`scripts/detect-app-changes.sh`; a newly opened pull request, or a force push, is compared with the base branch instead):
+minutes count ten times against the plan's included minutes, so each job runs only when the pull request, compared with its base
+branch on every push, changes what it builds (`scripts/detect-app-changes.sh`):
 
-- the Mac app when `desktop/` or the workflow changes;
-- the iPhone app when `mobile/` or the workflow changes;
+- the Mac app when `desktop/`, `cli/` (the app bundles `hisar`), `core/`, `go.work` or the workflow changes;
+- the iPhone app when `mobile/`, `core/`, `go.work` or the workflow changes;
 - both, whatever changed, while the pull request has the label `run-macos`;
 - or by hand: Actions → macOS and iOS → Run workflow, on a branch (tick "Build and test the iPhone app" to add the iPhone job).
 
@@ -175,7 +175,7 @@ workflow, which builds it into a GitHub prerelease (or, for the server, pushes t
 `desktop-1.0.0-alpha-test` is built the same way and marked "(custom build)", and can never be published. Publishing is a separate,
 deliberate step: Actions → Publish → Run workflow with the app and the tag. It refuses anything but a plain `<app>-X.Y.Z` tag, then
 
-- server: points `ghcr.io/hisarapp/server:latest` and `:X.Y` at `:X.Y.Z`;
+- server: points `ghcr.io/tosunlab/hisar-server:latest` and `:X.Y` at `:X.Y.Z`;
 - desktop: renames the release's `update-unpublished.json` to `update.json`, which offers the version to every app as an automatic update;
 - cli, extension (and desktop): turns the prerelease into a release and marks it latest.
 
@@ -183,6 +183,6 @@ A tag pushed without the workflows in its tree (one from before the move to GitH
 with the tag as input: the workflow comes from `main`, the code from the tag.
 
 Repository secrets: `SPARKLE_PRIVATE_KEY`, the Sparkle EdDSA private key file's content (`gh secret set SPARKLE_PRIVATE_KEY --repo
-hisarapp/core < <key file>`). Images go to the GitHub Container Registry with the workflow's own `GITHUB_TOKEN`.
+tosunlab/hisarapp-core < <key file>`). Images go to the GitHub Container Registry with the workflow's own `GITHUB_TOKEN`.
 
 Deployment: see [deploy/README.md](deploy/README.md).

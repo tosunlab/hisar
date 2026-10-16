@@ -158,13 +158,13 @@ func TestIsValidFileName(t *testing.T) {
 
 func TestCreateGitHubValidatesConfig(t *testing.T) {
 	configs := []desktopupdate.GitHubConfig{
-		{APIURL: "api.github.com", Repository: "hisarapp/core"},
-		{APIURL: "ftp://api.github.com", Repository: "hisarapp/core"},
+		{APIURL: "api.github.com", Repository: "tosunlab/hisarapp-core"},
+		{APIURL: "ftp://api.github.com", Repository: "tosunlab/hisarapp-core"},
 		{Repository: "hisarapp"},
-		{Repository: "hisarapp/core/releases"},
+		{Repository: "tosunlab/hisarapp-core/releases"},
 		{Repository: "hisarapp/.."},
 		{Repository: "../core"},
-		{Repository: "hisarapp/core?x=1"},
+		{Repository: "tosunlab/hisarapp-core?x=1"},
 		{Repository: ""},
 	}
 	for _, config := range configs {
@@ -172,7 +172,7 @@ func TestCreateGitHubValidatesConfig(t *testing.T) {
 			t.Errorf("%+v accepted", config)
 		}
 	}
-	for _, config := range []desktopupdate.GitHubConfig{{Repository: "hisarapp/core"}, {APIURL: "https://github.example.com/api/v3/", Repository: " Owner-1/repo.name_2 ", Token: "t"}} {
+	for _, config := range []desktopupdate.GitHubConfig{{Repository: "tosunlab/hisarapp-core"}, {APIURL: "https://github.example.com/api/v3/", Repository: " Owner-1/repo.name_2 ", Token: "t"}} {
 		if _, err := desktopupdate.NewGitHub(config); err != nil {
 			t.Errorf("%+v refused: %v", config, err)
 		}
@@ -359,7 +359,7 @@ func TestAppcastSurvivesGitHubOutage(t *testing.T) {
 	}
 
 	_, err = createSource(t, fake.URL, "", clock).GetAppcast(context.Background())
-	if err == nil || !strings.Contains(err.Error(), "no repository hisarapp/core (a private repository needs a token)") {
+	if err == nil || !strings.Contains(err.Error(), "no repository tosunlab/hisarapp-core (a private repository needs a token)") {
 		t.Errorf("private repository without a token: %v", err)
 	}
 }

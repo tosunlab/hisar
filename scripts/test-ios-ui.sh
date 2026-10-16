@@ -2,6 +2,11 @@
 # Runs the iOS XCUITests in the simulator against a freshly started hisar-server.
 # Requires HISAR_DATABASE_URL pointing at an empty, disposable database, bin/hisar-server and bin/hisar (make build)
 # and mobile/build/HisarKit.xcframework (make build-ios-framework).
+#
+# The test classes run one after another on the simulator by default. IOS_UI_TEST_WORKERS=2 (or more) runs them on that many
+# clones of the simulator at once, each class signing up its own account; that is a loss on the GitHub macOS runners, where two
+# clones starve each other and tests time out, but can be quicker on a Mac with cores to spare. IOS_TESTS_PREBUILT=1 runs the
+# tests make build-ios built instead of building them again.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -62,6 +67,11 @@ answer_as_partner >"$T/partner.log" 2>&1 &
 PARTNER_LOOP=$!
 
 SIMULATOR_ID=${IOS_SIMULATOR_ID:-$("$ROOT/mobile/ios/scripts/find-simulator.sh")}
+ACTION=test
+if [ -n "${IOS_TESTS_PREBUILT:-}" ]; then ACTION=test-without-building; fi
+WORKERS=${IOS_UI_TEST_WORKERS:-1}
+PARALLEL=(-parallel-testing-enabled NO)
+if [ "$WORKERS" -gt 1 ]; then PARALLEL=(-parallel-testing-enabled YES -parallel-testing-worker-count "$WORKERS"); fi
 
 if ! TEST_RUNNER_HISAR_UI_TEST_SERVER="$HISAR_PUBLIC_URL" \
   TEST_RUNNER_HISAR_UI_TEST_INVITE_LINK="$INVITE_LINK" \
@@ -78,8 +88,8 @@ if ! TEST_RUNNER_HISAR_UI_TEST_SERVER="$HISAR_PUBLIC_URL" \
   TEST_RUNNER_HISAR_UI_TEST_LIFECYCLE_INVITE_LINK="$LIFECYCLE_INVITE_LINK" \
   TEST_RUNNER_HISAR_UI_TEST_LIFECYCLE_EMAIL="$LIFECYCLE_EMAIL" \
   TEST_RUNNER_HISAR_UI_TEST_SCREENSHOT_DIRECTORY="${HISAR_UI_TEST_SCREENSHOT_DIRECTORY:-}" \
-  xcodebuild test -project "$ROOT/mobile/ios/Hisar.xcodeproj" -scheme Hisar -only-testing:"${IOS_UI_TESTS:-HisarUITests}" \
-  -destination "id=$SIMULATOR_ID" ${IOS_DERIVED_DATA:+-derivedDataPath "$IOS_DERIVED_DATA"} ${IOS_RESULT_BUNDLE:+-resultBundlePath "$IOS_RESULT_BUNDLE"}; then
+  xcodebuild "$ACTION" -project "$ROOT/mobile/ios/Hisar.xcodeproj" -scheme Hisar -only-testing:"${IOS_UI_TESTS:-HisarUITests}" \
+  -destination "id=$SIMULATOR_ID" "${PARALLEL[@]}" ${IOS_DERIVED_DATA:+-derivedDataPath "$IOS_DERIVED_DATA"} ${IOS_RESULT_BUNDLE:+-resultBundlePath "$IOS_RESULT_BUNDLE"}; then
   echo "server log:" >&2
   cat "$T/server.log" >&2
   exit 1

@@ -20,7 +20,11 @@ const (
 	onePasswordLogin      = "001"
 	onePasswordCreditCard = "002"
 	onePasswordSecureNote = "003"
+	onePasswordIdentity   = "004"
 	onePasswordPassword   = "005"
+	onePasswordLicense    = "103"
+	onePasswordPassport   = "106"
+	onePasswordSSN        = "108"
 	onePasswordSSHKey     = "114"
 )
 
@@ -144,6 +148,40 @@ var onePasswordCardFields = map[string]func(*item.Card) *string{
 	"address":    func(card *item.Card) *string { return &card.BillingAddress },
 }
 
+// onePasswordIdentityFields maps the ids of the fields of a 1Password Identity, Passport, Driver License or Social
+// Security Number to an identity's values; their other fields (sex, occupation, expiry date, issuing country…) stay
+// custom fields. The first of the phone numbers becomes the phone, and a document's "number" is its passport, license or
+// national ID number.
+var onePasswordIdentityFields = map[string]func(*item.Identity) *string{
+	"firstname": func(identity *item.Identity) *string { return &identity.FirstName },
+	"initial":   func(identity *item.Identity) *string { return &identity.MiddleName },
+	"lastname":  func(identity *item.Identity) *string { return &identity.LastName },
+	"birthdate": func(identity *item.Identity) *string { return &identity.BirthDate },
+	"email":     func(identity *item.Identity) *string { return &identity.Email },
+	"defphone":  func(identity *item.Identity) *string { return &identity.Phone },
+	"cellphone": func(identity *item.Identity) *string { return &identity.Phone },
+	"homephone": func(identity *item.Identity) *string { return &identity.Phone },
+	"busphone":  func(identity *item.Identity) *string { return &identity.Phone },
+	"address":   func(identity *item.Identity) *string { return &identity.Address },
+}
+
+// getOnePasswordIdentityValue points at the identity value a field fills, or returns nil for a field that stays a custom
+// field.
+func getOnePasswordIdentityValue(identity *item.Identity, category, fieldID string) *string {
+	switch {
+	case fieldID == "number" && category == onePasswordPassport:
+		return &identity.PassportNumber
+	case fieldID == "number" && category == onePasswordLicense:
+		return &identity.DriversLicenseNumber
+	case fieldID == "number" && category == onePasswordSSN:
+		return &identity.NationalIDNumber
+	}
+	if value, found := onePasswordIdentityFields[fieldID]; found {
+		return value(identity)
+	}
+	return nil
+}
+
 func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 	if entry.State == "archived" {
 		return item.Item{}, "archived in 1Password"
@@ -153,7 +191,7 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 	case category == onePasswordSSHKey:
 		return convertOnePasswordSSHKey(entry)
 	case category == onePasswordLogin, category == onePasswordPassword, category == onePasswordSecureNote, category == onePasswordCreditCard,
-		onePasswordCredentialCategories[category]:
+		isOnePasswordIdentityCategory(category), onePasswordCredentialCategories[category]:
 	default:
 		categoryName, found := onePasswordCategoryNames[category]
 		if !found {
@@ -169,6 +207,9 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 		vaultItem.Overview.Category = item.CategorySecureNote
 	}
 	var card item.Card
+	var identity item.Identity
+	var fullName item.Field
+	isIdentity := isOnePasswordIdentityCategory(category)
 	if entry.Overview.URL != "" {
 		vaultItem.Overview.URLs = append(vaultItem.Overview.URLs, entry.Overview.URL)
 	}
@@ -199,9 +240,19 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 				*cardValue(&card) = value
 				continue
 			}
+			if identityValue := getOnePasswordIdentityValue(&identity, category, sectionField.ID); isIdentity && identityValue != nil && *identityValue == "" {
+				*identityValue = value
+				continue
+			}
 			name := sectionField.Title
 			if name == "" {
 				name = getFirstNonEmpty(section.Title, sectionField.ID)
+			}
+			// A Social Security Number calls its full name "name".
+			isFullName := sectionField.ID == "fullname" || category == onePasswordSSN && sectionField.ID == "name"
+			if isIdentity && isFullName && fullName.Value == "" {
+				fullName = item.Field{Name: name, Value: value}
+				continue
 			}
 			if isOnePasswordOneTimePassword(sectionField, value) {
 				addOneTimePassword(&vaultItem, name, value)
@@ -214,7 +265,34 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 		vaultItem.Overview.Category = item.CategoryCreditCard
 		item.WriteCard(&vaultItem, card, vaultItem.Details.Fields)
 	}
+	if isIdentity {
+		vaultItem.Overview.Category = item.CategoryIdentity
+		otherFields := vaultItem.Details.Fields
+		// A Passport, Driver License or Social Security Number has one full name; it fills the name unless the item has name parts already.
+		if fullName.Value != "" {
+			if identity.FirstName == "" && identity.LastName == "" {
+				identity.FirstName, identity.LastName = splitFullName(fullName.Value)
+			} else {
+				otherFields = append([]item.Field{fullName}, otherFields...)
+			}
+		}
+		item.WriteIdentity(&vaultItem, identity, otherFields)
+	}
 	return vaultItem, ""
+}
+
+// isOnePasswordIdentityCategory tells whether items of a 1Password category become identities.
+func isOnePasswordIdentityCategory(category string) bool {
+	return category == onePasswordIdentity || category == onePasswordPassport || category == onePasswordLicense || category == onePasswordSSN
+}
+
+// splitFullName takes the last word of a full name as the last name and the rest as the first name.
+func splitFullName(fullName string) (firstName, lastName string) {
+	words := strings.Fields(fullName)
+	if len(words) < 2 {
+		return strings.Join(words, " "), ""
+	}
+	return strings.Join(words[:len(words)-1], " "), words[len(words)-1]
 }
 
 func isOnePasswordOneTimePassword(sectionField onePasswordField, value string) bool {

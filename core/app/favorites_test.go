@@ -103,6 +103,43 @@ func TestFavoritesAcrossVaults(t *testing.T) {
 	}
 }
 
+func TestFavoritesOfEveryItemType(t *testing.T) {
+	test := createUnlockedTestService(t)
+	service := test.service
+	allSaved := []ItemDetail{}
+	for _, detail := range []ItemDetail{
+		{Category: item.CategorySecureNote, Title: "Recovery codes", Notes: "1. 4821-9930"},
+		{Category: item.CategoryCreditCard, Title: "Visa", Card: &ItemCard{Cardholder: "Alice", Number: "4111 1111 1111 1111", Expiry: "12/29", SecurityCode: "123"}},
+		{Category: item.CategoryIdentity, Title: "Alice", Identity: &ItemIdentity{FirstName: "Alice", LastName: "Example", Email: "alice@example.com", PassportNumber: "P1234567"}},
+	} {
+		saved, err := service.SaveItem(test.personalID, detail)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := service.SetItemFavorite(test.personalID, saved.ID, true); err != nil {
+			t.Fatal(err)
+		}
+		allSaved = append(allSaved, saved)
+	}
+	favorites, err := service.ListFavoriteItems()
+	if err != nil || len(favorites) != len(allSaved) {
+		t.Fatalf("favorites: %+v %v", favorites, err)
+	}
+	for _, favorite := range favorites {
+		summary := favorite.Item
+		if summary.Notes != "" || (summary.Card != nil && (summary.Card.Number != "" || summary.Card.SecurityCode != "")) ||
+			(summary.Identity != nil && summary.Identity.PassportNumber != "") {
+			t.Errorf("a favorite carries secrets: %+v %+v %+v", summary, summary.Card, summary.Identity)
+		}
+	}
+	if identity := favorites[0].Item.Identity; favorites[0].Item.Title != "Alice" || identity == nil || identity.Email != "alice@example.com" {
+		t.Errorf("the identity favorite: %+v", favorites[0].Item)
+	}
+	if card := favorites[2].Item.Card; card == nil || card.Last4 != "1111" {
+		t.Errorf("the card favorite: %+v", favorites[2].Item)
+	}
+}
+
 func TestFavoritesOfGoneItemsAreDroppedQuietly(t *testing.T) {
 	test := createUnlockedTestService(t)
 	service := test.service

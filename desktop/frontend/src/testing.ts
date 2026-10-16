@@ -57,6 +57,30 @@ export function createCardItem(overrides: Partial<ItemDetail> = {}): ItemDetail 
   });
 }
 
+export function createIdentityItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
+  return createItem({
+    id: "identity-1",
+    category: "identity",
+    title: "Alice",
+    username: "",
+    urls: [],
+    fields: [{ name: "Employer", value: "Hisar", concealed: false }],
+    identity: {
+      firstName: "Alice",
+      middleName: "",
+      lastName: "Example",
+      birthDate: "1990-04-12",
+      email: "alice@example.com",
+      phone: "+1 555 0100",
+      address: "1 Main St\nSpringfield",
+      passportNumber: "U1234567",
+      driversLicenseNumber: "",
+      nationalIdNumber: "",
+    },
+    ...overrides,
+  });
+}
+
 export function createSecureNoteItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
   return createItem({
     id: "note-1",
@@ -508,6 +532,7 @@ export function createImportPreview(overrides: Partial<ImportPreview> = {}): Imp
     secureNoteCount: 2,
     sshKeyCount: 1,
     creditCardCount: 0,
+    identityCount: 0,
     allSkipped: [{ title: "Visa", reason: "Bitwarden cards are not supported in Hisar yet" }],
     allDuplicate: [{ title: "GitHub", username: "alice", url: "https://github.com" }],
     ...overrides,

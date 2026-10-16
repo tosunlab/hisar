@@ -16,6 +16,7 @@ import {
   setItemFavorite,
   startCreatingItem,
   startCreatingCard,
+  startCreatingIdentity,
   startCreatingSecureNote,
   startCreatingSSHKey,
   store,
@@ -24,7 +25,7 @@ import {
   toggleSelectedItemFavorite,
 } from "../store";
 import type { FavoriteItem, ItemDetail } from "../api";
-import { creditCardCategory, formatCardSummary, formatKeyType, getDomain, getInitials, getItemIcon, isMacPlatform, secureNoteCategory, sshKeyCategory } from "../util";
+import { creditCardCategory, formatCardSummary, formatIdentitySummary, formatKeyType, getDomain, getInitials, getItemIcon, identityCategory, isMacPlatform, secureNoteCategory, sshKeyCategory } from "../util";
 import AppIcon from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
 import ItemDetailPanel from "./ItemDetailPanel.vue";
@@ -78,6 +79,9 @@ function getItemSubtitle(vaultItem: ItemDetail): string {
   }
   if (vaultItem.category === creditCardCategory) {
     return formatCardSummary(vaultItem.card);
+  }
+  if (vaultItem.category === identityCategory) {
+    return formatIdentitySummary(vaultItem.identity);
   }
   return vaultItem.username || (vaultItem.urls[0] ? getDomain(vaultItem.urls[0]) : "");
 }
@@ -287,6 +291,9 @@ onBeforeUnmount(() => {
             </button>
             <button class="ghost" role="menuitem" data-testid="new-credit-card" @click="chooseNewItem(startCreatingCard)">
               <AppIcon name="card" /> Credit card
+            </button>
+            <button class="ghost" role="menuitem" data-testid="new-identity" @click="chooseNewItem(startCreatingIdentity)">
+              <AppIcon name="identity" /> Identity
             </button>
             <button class="ghost" role="menuitem" data-testid="new-ssh-key" @click="chooseNewItem(startCreatingSSHKey)">
               <AppIcon name="key" /> SSH key

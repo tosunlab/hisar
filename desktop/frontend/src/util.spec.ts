@@ -14,7 +14,7 @@ import {
   getPlatformIcon,
   getTileColor,
 } from "./util";
-import { describePerson, formatCardNumberInput, formatCardSummary, formatExpiryInput, formatInputAsTyped, formatTimeAgo } from "./util";
+import { describePerson, formatCardNumberInput, formatCardSummary, formatExpiryInput, formatInputAsTyped, formatTimeAgo, isCalendarDate } from "./util";
 
 describe("computePasswordStrength", () => {
   it("rates random passwords by length and character classes", () => {
@@ -198,5 +198,17 @@ describe("card input formatting", () => {
     input.setSelectionRange(4, 4);
     expect(formatInputAsTyped(input, formatCardNumberInput, "4111 1111", "deleteContentBackward")).toBe("4111 111");
     expect(input.selectionStart).toBe(3);
+  });
+});
+
+describe("isCalendarDate", () => {
+  it("accepts only days that exist, written YYYY-MM-DD", () => {
+    expect(isCalendarDate("1990-04-12")).toBe(true);
+    expect(isCalendarDate("2024-02-29")).toBe(true);
+    expect(isCalendarDate("2023-02-29")).toBe(false);
+    expect(isCalendarDate("2023-02-31")).toBe(false);
+    expect(isCalendarDate("1990-13-01")).toBe(false);
+    expect(isCalendarDate("1990-4-12")).toBe(false);
+    expect(isCalendarDate("04/12/1990")).toBe(false);
   });
 });

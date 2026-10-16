@@ -106,6 +106,12 @@ struct ItemListView: View {
                             Label("Credit card", systemImage: "creditcard")
                         }
                         .accessibilityIdentifier("add-credit-card")
+                        Button {
+                            newItemCategory = ItemDetail.categoryIdentity
+                        } label: {
+                            Label("Identity", systemImage: "person.text.rectangle")
+                        }
+                        .accessibilityIdentifier("add-identity")
                     } label: {
                         Label("Add item", systemImage: "plus")
                     }

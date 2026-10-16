@@ -24,11 +24,11 @@ func TestCreateDesktopUpdateSource(t *testing.T) {
 	if source, err := createDesktopUpdateSource("https://hisar.test"); source == nil || err != nil {
 		t.Errorf("configured: %v %v", source, err)
 	}
-	setUpdateEnvironment(t, "https://github.com/hisarapp/core", "", "")
+	setUpdateEnvironment(t, "https://github.com/tosunlab/hisarapp-core", "", "")
 	if _, err := createDesktopUpdateSource("https://hisar.test"); err == nil || !strings.Contains(err.Error(), "owner/name") {
 		t.Errorf("repository URL accepted: %v", err)
 	}
-	setUpdateEnvironment(t, "hisarapp/core", "", "api.github.com")
+	setUpdateEnvironment(t, "tosunlab/hisarapp-core", "", "api.github.com")
 	if _, err := createDesktopUpdateSource("https://hisar.test"); err == nil {
 		t.Error("API URL without a scheme accepted")
 	}
