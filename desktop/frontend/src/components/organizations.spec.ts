@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
-import type { Organizations, VaultSummary } from "../api";
+import { nextTick } from "vue";
+import type { Organization, Organizations, VaultSummary, WaitingVaultKey } from "../api";
 import {
   createApiMock,
   createItem,
@@ -45,6 +46,34 @@ const globexSummary = { id: "globex", name: "Globex", role: "member", memberCoun
 
 function listOrganizations(overrides: Partial<Organizations> = {}): Organizations {
   return { organizations: [acmeSummary, globexSummary], invitations: [], ...overrides };
+}
+
+// globexDetail is Globex as its member Alice sees it: she is in Research, which has no vaults yet.
+const globexDetail: Organization = createOrganizationDetail({
+  id: "globex",
+  name: "Globex",
+  role: "member",
+  isAdmin: false,
+  teams: [createOrganizationTeam({ id: "research", name: "Research", vaults: [] })],
+});
+
+function getOrganizationDetail(organizationID: string, acme: Organization = createOrganizationDetail()): Organization {
+  return organizationID === "acme" ? acme : globexDetail;
+}
+
+async function openNewVaultForm(): Promise<VueWrapper> {
+  const wrapper = mount(MainView, { attachTo: document.body });
+  await wrapper.find('[data-testid="new-vault"]').trigger("click");
+  await flushPromises();
+  return wrapper;
+}
+
+function listAllWhereChoice(wrapper: VueWrapper): string[] {
+  return wrapper.findAll('[data-testid="new-vault-where"] option').map((option) => option.text());
+}
+
+function isCreateDisabled(wrapper: VueWrapper): boolean {
+  return wrapper.find('[data-testid="create-vault"]').attributes("disabled") !== undefined;
 }
 
 function resetStore(allVault: VaultSummary[] = [personalVault, familyVault, deployVault, docsVault, labVault], selectedVaultID = "personal"): void {
@@ -306,23 +335,119 @@ describe("Organization vaults in the vault list", () => {
     wrapper.unmount();
   });
 
-  it("says it waits for a key until the vault arrives, and shows what Hisar could not do", async () => {
-    const waitingVault: VaultSummary = { id: "metrics", name: "Metrics", type: "organization", role: "editor", itemCount: 0, organizationId: "acme" };
-    store.waitingVaultKeys = {
-      waiting: [{ vaultId: "metrics", organizationId: "acme", organizationName: "Acme", role: "editor" }],
-      deliveryError: "dave@example.com: their signing key changed",
-      rotationError: "",
-    };
-    const wrapper = mount(MainView, { attachTo: document.body });
-    expect(wrapper.find('[data-testid="organization-banner-waiting-acme"]').text()).toBe("Waiting for an owner of a vault in Acme to give you its key");
-    expect(wrapper.find('[data-testid="organization-banner-delivery-error"]').text()).toContain("dave@example.com: their signing key changed");
+  it("never turns a team Where no longer lists into a shared vault", async () => {
+    api.getOrganization.mockImplementation((organizationID: string) => Promise.resolve(getOrganizationDetail(organizationID)));
+    const wrapper = await openNewVaultForm();
+    await wrapper.find('input[name="vaultName"]').setValue("Release");
+    await wrapper.find('[data-testid="new-vault-where"]').setValue("acme/platform");
+    expect(isCreateDisabled(wrapper)).toBe(false);
 
-    api.listAllVault.mockResolvedValue([...store.allVault, waitingVault]);
+    api.listAllOrganization.mockResolvedValue(listOrganizations({ organizations: [globexSummary] }));
+    await syncInBackground();
+    await flushPromises();
+    const where = wrapper.find('[data-testid="new-vault-where"]');
+    expect(listAllWhereChoice(wrapper)).toEqual(["Shared vault", "Globex › Research"]);
+    expect((where.element as HTMLSelectElement).selectedIndex).toBe(-1);
+    expect(wrapper.find('[data-testid="new-vault-where-note"]').exists()).toBe(false);
+    expect(isCreateDisabled(wrapper)).toBe(true);
+    await wrapper.find('[data-testid="new-vault-form"]').trigger("submit");
+    await flushPromises();
+    expect(api.createVault).not.toHaveBeenCalled();
+    expect(api.createOrganizationVault).not.toHaveBeenCalled();
+
+    api.createVault.mockResolvedValue({ ...familyVault, id: "release", name: "Release" });
+    await where.setValue("");
+    expect(isCreateDisabled(wrapper)).toBe(false);
+    await wrapper.find('[data-testid="new-vault-form"]').trigger("submit");
+    await flushPromises();
+    expect(api.createVault).toHaveBeenCalledWith("Release");
+    expect(api.createOrganizationVault).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("keeps Create off while Where loads the teams, and reloads them on a remote change", async () => {
+    let finishLoading = (): void => undefined;
+    const loading = new Promise<void>((resolve) => (finishLoading = resolve));
+    api.getOrganization.mockImplementation(async (organizationID: string) => {
+      await loading;
+      return getOrganizationDetail(organizationID);
+    });
+    const wrapper = await openNewVaultForm();
+    await wrapper.find('input[name="vaultName"]').setValue("Release");
+    expect(wrapper.find('[data-testid="new-vault-where"]').exists()).toBe(false);
+    expect(isCreateDisabled(wrapper)).toBe(true);
+    await wrapper.find('[data-testid="new-vault-form"]').trigger("submit");
+    await flushPromises();
+    expect(api.createVault).not.toHaveBeenCalled();
+
+    finishLoading();
+    await flushPromises();
+    expect(listAllWhereChoice(wrapper)).toEqual(["Shared vault", "Acme › Platform", "Globex › Research"]);
+    expect(isCreateDisabled(wrapper)).toBe(false);
+    await wrapper.find('[data-testid="new-vault-where"]').setValue("acme/platform");
+
+    // On another Mac an admin moves Alice from Platform to the new team Ops; Settings and the sharing panel stay closed.
+    const platformWithoutAlice = createOrganizationTeam({ members: [{ accountId: testBob.accountId, name: testBob.name, email: testBob.email, isCurrentUser: false }] });
+    const ops = createOrganizationTeam({ id: "ops", name: "Ops", vaults: [] });
+    api.getOrganization.mockImplementation((organizationID: string) => Promise.resolve(getOrganizationDetail(organizationID, createOrganizationDetail({ teams: [platformWithoutAlice, ops] }))));
+    await syncInBackground();
+    await flushPromises();
+    expect(store.isSettingsOpen || store.isSharingOpen).toBe(false);
+    expect(listAllWhereChoice(wrapper)).toEqual(["Shared vault", "Acme › Ops", "Globex › Research"]);
+    expect(isCreateDisabled(wrapper)).toBe(true);
+    await wrapper.find('[data-testid="new-vault-form"]').trigger("submit");
+    await flushPromises();
+    expect(api.createVault).not.toHaveBeenCalled();
+    expect(api.createOrganizationVault).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("keeps Share on an organization vault without calling its items shared", async () => {
+    resetStore(undefined, "deploy");
+    store.selectedItem = createItem();
+    const wrapper = mount(MainView, { attachTo: document.body });
+    expect(wrapper.find('[data-testid="share-vault"]').exists()).toBe(true);
+    const vaultBadge = wrapper.find('[data-testid="item-vault"]');
+    expect(vaultBadge.text()).toBe("Deploy");
+    expect(vaultBadge.findComponent({ name: "AppIcon" }).props("name")).toBe("users");
+    expect(wrapper.find('[data-testid="item-shared"]').exists()).toBe(false);
+
+    store.selectedVaultID = "family";
+    await nextTick();
+    expect(wrapper.find('[data-testid="share-vault"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="item-shared"]').text()).toBe("shared");
+    wrapper.unmount();
+  });
+
+  it("says per organization which vaults wait for a key, and what Hisar could not do", async () => {
+    const metrics: WaitingVaultKey = { vaultId: "metrics", organizationId: "acme", organizationName: "Acme", role: "editor" };
+    const billing: WaitingVaultKey = { vaultId: "billing", organizationId: "acme", organizationName: "Acme", role: "reader" };
+    const notes: WaitingVaultKey = { vaultId: "notes", organizationId: "globex", organizationName: "Globex", role: "editor" };
+    const deliveryError = "dave@example.com: their signing key changed";
+    const rotationError = "Deploy: the signing key of bob@example.com changed since you last shared with them; stopping";
+    api.listAllWaitingVaultKey.mockResolvedValue({ waiting: [metrics, billing, notes], deliveryError, rotationError });
+    const wrapper = mount(MainView, { attachTo: document.body });
+    expect(wrapper.find('[data-testid="organization-banner"]').exists()).toBe(false);
+
+    await syncInBackground();
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid^="organization-banner-waiting-"]').map((line) => line.text())).toEqual([
+      "Waiting for the owners of 2 vaults in Acme to give you their keys",
+      "Waiting for an owner of a vault in Globex to give you its key",
+    ]);
+    expect(wrapper.find('[data-testid="organization-banner-delivery-error"]').text()).toBe(`Hisar couldn't give every vault key: ${deliveryError}`);
+    expect(wrapper.find('[data-testid="organization-banner-rotation-error"]').text()).toBe(`Hisar couldn't re-encrypt every vault that needs a new key: ${rotationError}`);
+
+    // Metrics arrives though the response still lists it, Billing still waits, Globex's vault waits no more, and the rotation is done.
+    const metricsVault: VaultSummary = { id: "metrics", name: "Metrics", type: "organization", role: "editor", itemCount: 0, organizationId: "acme" };
+    api.listAllVault.mockResolvedValue([...store.allVault, metricsVault]);
+    api.listAllWaitingVaultKey.mockResolvedValue({ waiting: [metrics, billing], deliveryError: "", rotationError: "" });
     await syncInBackground();
     await flushPromises();
     expect(wrapper.find('[data-testid="vault-metrics"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="organization-banner-waiting-acme"]').exists()).toBe(false);
+    expect(wrapper.findAll('[data-testid^="organization-banner-waiting-"]').map((line) => line.text())).toEqual(["Waiting for an owner of a vault in Acme to give you its key"]);
     expect(wrapper.find('[data-testid="organization-banner-delivery-error"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="organization-banner-rotation-error"]').exists()).toBe(false);
     wrapper.unmount();
   });
 });

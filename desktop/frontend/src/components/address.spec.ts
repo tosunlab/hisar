@@ -182,7 +182,7 @@ describe("Addresses on identities and cards", () => {
   it("shows an identity's address after its phone and a card's billing address in the address fields", () => {
     store.selectedItem = createIdentityItem();
     const identity = mount(ItemDetailPanel, {
-      props: { canEdit: true, vaultName: "Personal", isShared: false },
+      props: { canEdit: true, vaultName: "Personal", vaultType: "personal" },
     });
     const allLabel = identity
       .findAll('[data-testid="identity-fields"] .field-label')
@@ -206,7 +206,7 @@ describe("Addresses on identities and cards", () => {
 
     store.selectedItem = createCardItem();
     const card = mount(ItemDetailPanel, {
-      props: { canEdit: true, vaultName: "Personal", isShared: false },
+      props: { canEdit: true, vaultName: "Personal", vaultType: "personal" },
     });
     expect(card.find('[data-testid="card-City"]').text()).toBe("Springfield");
     expect(card.find('[data-testid="card-Billing address"]').exists()).toBe(
@@ -219,7 +219,7 @@ describe("Viewing an address", () => {
   it("shows its values with copy and secret reference buttons", async () => {
     store.selectedItem = createAddressItem();
     const wrapper = mount(ItemDetailPanel, {
-      props: { canEdit: true, vaultName: "Personal", isShared: false },
+      props: { canEdit: true, vaultName: "Personal", vaultType: "personal" },
     });
     expect(wrapper.find('[data-testid="address-summary"]').text()).toBe(
       "Springfield, US",
@@ -246,7 +246,7 @@ describe("Viewing an address", () => {
   it("offers a share link for an address with only its values", () => {
     store.selectedItem = createAddressItem({ notes: "", fields: [] });
     const wrapper = mount(ItemDetailPanel, {
-      props: { canEdit: false, vaultName: "Personal", isShared: false },
+      props: { canEdit: false, vaultName: "Personal", vaultType: "personal" },
     });
     expect(wrapper.find('[data-testid="share-link"]').exists()).toBe(true);
   });

@@ -1134,7 +1134,8 @@ async function loadOrganizationQuietly(organizationID: string): Promise<void> {
 }
 
 // refreshOrganizationsQuietly reloads the organizations with the invitations to them, the vaults waiting for a key (the
-// backend first gives and re-encrypts what this app can) and the organizations on screen.
+// backend first gives and re-encrypts what this app can), every organization this window loaded (Settings, a sharing
+// panel, the new-vault form's Where) and the organizations on screen.
 export async function refreshOrganizationsQuietly(): Promise<void> {
   try {
     const organizations = await api.listAllOrganization();
@@ -1150,15 +1151,15 @@ export async function refreshOrganizationsQuietly(): Promise<void> {
   } catch {
     return;
   }
-  const allShownOrganizationID = new Set<string>();
+  const allReloadedOrganizationID = new Set(Object.keys(store.organizationByID));
   if (store.isSettingsOpen && store.selectedOrganizationID) {
-    allShownOrganizationID.add(store.selectedOrganizationID);
+    allReloadedOrganizationID.add(store.selectedOrganizationID);
   }
   const sharedOrganizationID = getSelectedVault()?.organizationId;
   if (store.isSharingOpen && sharedOrganizationID && store.organizations.organizations.some((organization) => organization.id === sharedOrganizationID)) {
-    allShownOrganizationID.add(sharedOrganizationID);
+    allReloadedOrganizationID.add(sharedOrganizationID);
   }
-  for (const organizationID of allShownOrganizationID) {
+  for (const organizationID of allReloadedOrganizationID) {
     await loadOrganizationQuietly(organizationID);
   }
 }

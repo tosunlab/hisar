@@ -71,6 +71,10 @@ const isCreatingVault = ref(false);
 const newVaultName = ref("");
 // newVaultWhere is "" for a shared vault, or the key of the team that gets the new organization vault.
 const newVaultWhere = ref("");
+// isLoadingTeams is true while the new-vault form loads the teams for Where; newVaultTeamLoad counts the loads so only the
+// latest one ends it.
+const isLoadingTeams = ref(false);
+let newVaultTeamLoad = 0;
 const searchInput = ref<HTMLInputElement | null>(null);
 const isNewItemMenuOpen = ref(false);
 const newItemMenu = ref<HTMLElement | null>(null);
@@ -86,7 +90,8 @@ const emptyListMessage = computed(() => {
   return store.selectedTag ? `No items are tagged ${store.selectedTag}.` : "This vault is empty.";
 });
 const selectedVault = computed(() => store.allVault.find((vault) => vault.id === store.selectedVaultID));
-const isSharedVault = computed(() => selectedVault.value !== undefined && selectedVault.value.type !== "personal");
+// canShareVault: shared and organization vaults have a sharing panel, personal vaults the Private badge.
+const canShareVault = computed(() => selectedVault.value !== undefined && selectedVault.value.type !== "personal");
 const canEdit = computed(() => selectedVault.value !== undefined && selectedVault.value.role !== "reader");
 const canCreate = computed(() => canEdit.value && !store.isFavoritesSelected);
 // allVaultGroup is the sidebar's vaults: the user's own and shared vaults, then a group per organization by name.
@@ -118,6 +123,11 @@ const allTeamChoice = computed<TeamChoice[]>(() =>
   ),
 );
 const selectedTeamChoice = computed(() => allTeamChoice.value.find((choice) => choice.key === newVaultWhere.value));
+// canSubmitNewVault: Create needs a name, the loaded teams, and a Where the form lists: Shared vault or one of the teams.
+// A team that is no longer listed (its organization or the user's place in it changed) never falls back to a shared vault.
+const canSubmitNewVault = computed(
+  () => newVaultName.value.trim() !== "" && !isLoadingTeams.value && (newVaultWhere.value === "" || selectedTeamChoice.value !== undefined),
+);
 const itemMenu = ref<{ vaultID: string; vaultItem: ItemDetail; x: number; y: number } | null>(null);
 
 function openItemMenu(vaultID: string, vaultItem: ItemDetail, event: MouseEvent): void {
@@ -168,13 +178,21 @@ function openVaultMenuBelow(event: MouseEvent): void {
   vaultMenu.value = { vaultID: store.selectedVaultID, x: Math.max(8, bounds.right - 168), y: bounds.bottom + 6 };
 }
 
-function startCreatingVault(): void {
+async function startCreatingVault(): Promise<void> {
   newVaultWhere.value = "";
   isCreatingVault.value = true;
-  loadAllOrganizationQuietly();
+  isLoadingTeams.value = true;
+  const load = ++newVaultTeamLoad;
+  await loadAllOrganizationQuietly();
+  if (load === newVaultTeamLoad) {
+    isLoadingTeams.value = false;
+  }
 }
 
 async function submitNewVault(): Promise<void> {
+  if (!canSubmitNewVault.value) {
+    return;
+  }
   const team = selectedTeamChoice.value;
   const isCreated = team ? await createOrganizationVault(team.organizationID, team.teamID, newVaultName.value) : await createVault(newVaultName.value);
   if (isCreated) {
@@ -284,7 +302,7 @@ onBeforeUnmount(() => {
         </div>
         <form v-if="isCreatingVault" class="new-vault" data-testid="new-vault-form" @submit.prevent="submitNewVault">
           <input v-model="newVaultName" name="vaultName" placeholder="Vault name" autofocus />
-          <label v-if="allTeamChoice.length > 0" class="new-vault-where">
+          <label v-if="allTeamChoice.length > 0 || newVaultWhere !== ''" class="new-vault-where">
             <span>Where</span>
             <select v-model="newVaultWhere" name="vaultWhere" data-testid="new-vault-where">
               <option value="">Shared vault</option>
@@ -296,7 +314,7 @@ onBeforeUnmount(() => {
           </p>
           <div class="row">
             <button type="button" class="ghost" @click="isCreatingVault = false">Cancel</button>
-            <button class="primary" type="submit" data-testid="create-vault" :disabled="store.isBusy || !newVaultName.trim()">Create</button>
+            <button class="primary" type="submit" data-testid="create-vault" :disabled="store.isBusy || !canSubmitNewVault">Create</button>
           </div>
         </form>
         <button v-else class="ghost new-vault-button" data-testid="new-vault" @click="startCreatingVault"><AppIcon name="plus" /> New vault</button>
@@ -360,7 +378,7 @@ onBeforeUnmount(() => {
         </div>
         <div ref="newItemMenu" class="new-item">
           <button
-            v-if="isSharedVault"
+            v-if="canShareVault"
             class="share-button"
             title="Share this vault"
             data-testid="share-vault"
@@ -497,7 +515,7 @@ onBeforeUnmount(() => {
         <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
         <SSHKeyForm v-if="store.editorMode === 'create-ssh-key'" />
         <ItemEditor v-else-if="store.editorMode !== 'view'" :key="store.editorMode + (store.selectedItem?.id ?? '')" />
-        <ItemDetailPanel v-else-if="store.selectedItem" :can-edit="canEdit" :vault-name="selectedVault?.name ?? ''" :is-shared="isSharedVault" />
+        <ItemDetailPanel v-else-if="store.selectedItem" :can-edit="canEdit" :vault-name="selectedVault?.name ?? ''" :vault-type="selectedVault?.type ?? ''" />
         <div v-else class="detail-empty">
           <span class="detail-empty-icon"><AppIcon name="vault" :size="28" /></span>
           <h3>{{ store.isFavoritesSelected ? "Favorites" : selectedVault ? selectedVault.name : "Hisar" }}</h3>

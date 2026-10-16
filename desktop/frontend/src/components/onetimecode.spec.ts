@@ -83,7 +83,7 @@ describe("OneTimeCodeField", () => {
 describe("one-time password in items", () => {
   it("appears in the item detail only when the item has one", async () => {
     api.getOneTimeCode.mockResolvedValue({ code: "482913", expiresAt: "2026-10-09T12:00:30Z", period: 30 });
-    const props = { canEdit: true, vaultName: "Personal", isShared: false };
+    const props = { canEdit: true, vaultName: "Personal", vaultType: "personal" };
     const wrapper = mount(ItemDetailPanel, { props });
     await flushPromises();
     expect(wrapper.find('[data-testid="one-time-code"]').exists()).toBe(true);

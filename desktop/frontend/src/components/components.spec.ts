@@ -335,7 +335,7 @@ describe("ItemDetailPanel", () => {
   });
 
   it("masks the password until revealed", async () => {
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false } });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" } });
     expect(wrapper.text()).not.toContain("hunter2hunter2");
     expect(wrapper.text()).not.toContain("1234");
     await wrapper.find('button[aria-label="Reveal password"]').trigger("click");
@@ -344,7 +344,7 @@ describe("ItemDetailPanel", () => {
 
   it("copies through the backend instead of exposing the clipboard to the page", async () => {
     api.copyField.mockResolvedValue(undefined);
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false } });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" } });
     await wrapper.find('button[aria-label="Copy password"]').trigger("click");
     await flushPromises();
     expect(api.copyField).toHaveBeenCalledWith("personal", "item-1", "password");
@@ -352,7 +352,7 @@ describe("ItemDetailPanel", () => {
 
   it("asks for confirmation before deleting", async () => {
     api.deleteItem.mockResolvedValue(undefined);
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false } });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" } });
     await wrapper.find('button[aria-label="Delete item"]').trigger("click");
     expect(api.deleteItem).not.toHaveBeenCalled();
     await wrapper.find('[data-testid="confirm-delete"]').trigger("click");
@@ -361,7 +361,7 @@ describe("ItemDetailPanel", () => {
   });
 
   it("hides edit and delete for read-only vaults", () => {
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: false, vaultName: "Work", isShared: true } });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: false, vaultName: "Work", vaultType: "shared" } });
     expect(wrapper.findAll("button").map((button) => button.text())).not.toContain("Edit");
     expect(wrapper.find('button[aria-label="Delete item"]').exists()).toBe(false);
   });
