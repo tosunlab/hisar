@@ -40,6 +40,26 @@ function hasLayout(document: Document): boolean {
   return document.documentElement.getClientRects().length > 0;
 }
 
+// isTransparent reports whether the element or a container of it is drawn fully, or almost fully, transparent.
+export function isTransparent(element: Element): boolean {
+  const view = element.ownerDocument.defaultView;
+  if (!view) return false;
+  for (let current: Element | null = element; current; current = getParentAcrossShadow(current)) {
+    const opacity = Number.parseFloat(view.getComputedStyle(current).opacity);
+    if (!Number.isNaN(opacity) && opacity < 0.05) return true;
+  }
+  return false;
+}
+
+// isOffPage reports whether the element lies wholly above or left of the page, as a field moved to left: -9999px does,
+// where no scrolling shows it. Without layout, as in tests, nothing is.
+export function isOffPage(element: Element): boolean {
+  const view = element.ownerDocument.defaultView;
+  if (!view || !hasLayout(element.ownerDocument)) return false;
+  const rect = element.getBoundingClientRect();
+  return rect.right + view.scrollX <= 0 || rect.bottom + view.scrollY <= 0;
+}
+
 export function isVisible(element: Element): boolean {
   if (!element.isConnected) return false;
   const view = element.ownerDocument.defaultView;

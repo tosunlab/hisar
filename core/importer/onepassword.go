@@ -146,7 +146,7 @@ var onePasswordCardFields = map[string]func(*item.Card) *string{
 	"expiry":     func(card *item.Card) *string { return &card.Expiry },
 	"cvv":        func(card *item.Card) *string { return &card.SecurityCode },
 	"pin":        func(card *item.Card) *string { return &card.PIN },
-	"address":    func(card *item.Card) *string { return &card.BillingAddress },
+	"address":    func(card *item.Card) *string { return &card.BillingAddressText },
 }
 
 // onePasswordAPICredentialFields maps the ids of a 1Password API Credential's fields to the credential's values; its other
@@ -172,7 +172,43 @@ var onePasswordIdentityFields = map[string]func(*item.Identity) *string{
 	"cellphone": func(identity *item.Identity) *string { return &identity.Phone },
 	"homephone": func(identity *item.Identity) *string { return &identity.Phone },
 	"busphone":  func(identity *item.Identity) *string { return &identity.Phone },
-	"address":   func(identity *item.Identity) *string { return &identity.Address },
+	"address":   func(identity *item.Identity) *string { return &identity.AddressText },
+}
+
+// onePasswordLicenseFieldNames renames the fields of a 1Password Driver License that name where it was issued, which would
+// otherwise be read as the identity's address, such as "country".
+var onePasswordLicenseFieldNames = map[string]string{"country": "Issuing country", "state": "Issuing state"}
+
+// getOnePasswordAddress points at the address an "address" field of a card or identity fills, or returns nil.
+func getOnePasswordAddress(card *item.Card, identity *item.Identity, category, fieldID string) *item.Address {
+	switch {
+	case fieldID != "address":
+		return nil
+	case category == onePasswordCreditCard:
+		return &card.BillingAddress
+	case isOnePasswordIdentityCategory(category):
+		return &identity.Address
+	}
+	return nil
+}
+
+// readOnePasswordAddress reads a typed address value; 1Password calls the region "state" and the postal code "zip".
+func readOnePasswordAddress(valuesByType map[string]json.RawMessage) (item.Address, bool) {
+	rawAddress, found := valuesByType["address"]
+	if !found {
+		return item.Address{}, false
+	}
+	var address struct {
+		Street  string `json:"street"`
+		City    string `json:"city"`
+		State   string `json:"state"`
+		Zip     string `json:"zip"`
+		Country string `json:"country"`
+	}
+	if json.Unmarshal(rawAddress, &address) != nil {
+		return item.Address{}, false
+	}
+	return item.Address{Street: address.Street, City: address.City, Region: address.State, PostalCode: address.Zip, Country: address.Country}, true
 }
 
 // getOnePasswordIdentityValue points at the identity value a field fills, or returns nil for a field that stays a custom
@@ -243,6 +279,13 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 			if _, isFile := sectionField.Value["file"]; isFile {
 				continue
 			}
+			if address := getOnePasswordAddress(&card, &identity, category, sectionField.ID); address != nil && address.IsEmpty() {
+				// A typed address fills the card's or identity's address fields; a plain one is kept as one line below.
+				if typed, isTyped := readOnePasswordAddress(sectionField.Value); isTyped {
+					*address = typed
+					continue
+				}
+			}
 			value, isConcealed := convertOnePasswordFieldValue(sectionField.Value)
 			if onePasswordCredentialCategories[category] && promoteOnePasswordField(&vaultItem, sectionField.ID, value) {
 				continue
@@ -262,6 +305,9 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 			name := sectionField.Title
 			if name == "" {
 				name = getFirstNonEmpty(section.Title, sectionField.ID)
+			}
+			if issuingName, isRenamed := onePasswordLicenseFieldNames[sectionField.ID]; category == onePasswordLicense && isRenamed {
+				name = issuingName
 			}
 			// A Social Security Number calls its full name "name".
 			isFullName := sectionField.ID == "fullname" || category == onePasswordSSN && sectionField.ID == "name"

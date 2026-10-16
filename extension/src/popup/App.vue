@@ -2,6 +2,7 @@
 import { onBeforeUnmount, onMounted, ref } from "vue";
 import type { PopupState } from "../shared/messages";
 import { describeError, getTargetTabId, openUpdatePage, sendToBackground } from "./api";
+import AddressList from "./components/AddressList.vue";
 import HisarLogo from "./components/HisarLogo.vue";
 import LoginList from "./components/LoginList.vue";
 import PairingView from "./components/PairingView.vue";
@@ -19,7 +20,7 @@ const popupState = ref<PopupState>();
 const tabId = ref<number>();
 const isWaiting = ref(false);
 const errorMessage = ref("");
-const activeSection = ref<"logins" | "generator">("logins");
+const activeSection = ref<"logins" | "addresses" | "generator">("logins");
 const noticeMessage = ref("");
 const isSettingsOpen = ref(false);
 let noticeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -130,6 +131,17 @@ onBeforeUnmount(() => {
           Logins
         </button>
         <button
+          v-if="popupState.isAddressFillAvailable"
+          type="button"
+          role="tab"
+          :class="{ active: activeSection === 'addresses' }"
+          :aria-selected="activeSection === 'addresses'"
+          data-testid="section-addresses"
+          @click="activeSection = 'addresses'"
+        >
+          Addresses
+        </button>
+        <button
           type="button"
           role="tab"
           :class="{ active: activeSection === 'generator' }"
@@ -141,6 +153,7 @@ onBeforeUnmount(() => {
         </button>
       </div>
       <LoginList v-if="activeSection === 'logins'" :tab-id="tabId" @notice="showNotice" />
+      <AddressList v-else-if="activeSection === 'addresses'" :tab-id="tabId" />
       <PasswordGenerator v-else :tab-id="tabId" @notice="showNotice" />
     </section>
     <StatusView

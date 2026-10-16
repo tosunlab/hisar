@@ -139,6 +139,12 @@ func (bridge *BrowserBridge) handleRequest(ctx context.Context, request *browser
 	case "logins.save":
 		result, err := bridge.service.saveLogin(ctx, request)
 		return result, convertBrowserError(err)
+	case "addresses.list":
+		addresses, _, err := bridge.service.listAddressSources(ctx)
+		return browserprotocol.AddressListResult{Addresses: addresses}, convertBrowserError(err)
+	case "addresses.fill":
+		result, err := bridge.service.getAddressForFill(ctx, request.VaultID, request.ItemID)
+		return result, convertBrowserError(err)
 	case "password.generate":
 		config := item.DefaultGeneratorConfig()
 		if request.Length > 0 {
@@ -170,7 +176,10 @@ func (bridge *BrowserBridge) answerHello(request *browserprotocol.Request) brows
 	isPaired := slices.ContainsFunc(s.state.PairedBrowsers, func(paired localstate.PairedBrowser) bool {
 		return request.InstanceID != "" && paired.InstanceID == request.InstanceID
 	})
-	return browserprotocol.HelloResult{ProtocolVersion: browserprotocol.ProtocolVersion, IsPaired: isPaired, State: s.buildStatus().State, UpdateRequired: updateRequired}
+	return browserprotocol.HelloResult{
+		ProtocolVersion: browserprotocol.ProtocolVersion, IsPaired: isPaired, State: s.buildStatus().State, UpdateRequired: updateRequired,
+		Features: browserprotocol.ListFeatures(),
+	}
 }
 
 func (bridge *BrowserBridge) findUpdateRequired(extensionVersion string) *browserprotocol.UpdateRequirement {

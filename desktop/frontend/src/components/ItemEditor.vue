@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
-import { api, createEmptyAPICredential, createEmptyCard, createEmptyIdentity, createEmptyItem, type CardDescription, type ItemDetail } from "../api";
+import { api, createEmptyAddress, createEmptyAPICredential, createEmptyCard, createEmptyIdentity, createEmptyItem, type CardDescription, type ItemDetail } from "../api";
 import {
+  addressCategory,
   allCardBrand,
   apiCredentialCategory,
   creditCardCategory,
@@ -16,6 +17,7 @@ import {
   sshKeyCategory,
 } from "../util";
 import { cancelEditing, saveItem, store } from "../store";
+import AddressFields from "./AddressFields.vue";
 import AppIcon from "./AppIcon.vue";
 import ItemTile from "./ItemTile.vue";
 import PasswordGenerator from "./PasswordGenerator.vue";
@@ -37,6 +39,7 @@ function createDraft(): ItemDetail {
         : selected.category === apiCredentialCategory
           ? createEmptyAPICredential()
           : selected.apiCredential,
+      address: selected.address ? { ...selected.address } : selected.category === addressCategory ? createEmptyAddress() : selected.address,
     };
   }
   const empty = createEmptyItem();
@@ -52,6 +55,9 @@ function createDraft(): ItemDetail {
   } else if (store.editorMode === "create-api-credential") {
     empty.category = apiCredentialCategory;
     empty.apiCredential = createEmptyAPICredential();
+  } else if (store.editorMode === "create-address") {
+    empty.category = addressCategory;
+    empty.address = createEmptyAddress();
   }
   return empty;
 }
@@ -65,6 +71,7 @@ const isSecureNote = draft.category === secureNoteCategory;
 const isCreditCard = draft.category === creditCardCategory;
 const isIdentity = draft.category === identityCategory;
 const isAPICredential = draft.category === apiCredentialCategory;
+const isAddress = draft.category === addressCategory;
 const isDocumentNumberVisible = ref(false);
 const isCredentialSecretVisible = ref(false);
 // An expiry in another form, such as "never", stays editable as text, as a birth date does.
@@ -246,10 +253,8 @@ async function submitItem(): Promise<void> {
       <button type="button" class="ghost reveal-card" @click="isCardSecretVisible = !isCardSecretVisible">
         <AppIcon :name="isCardSecretVisible ? 'eyeOff' : 'eye'" /> {{ isCardSecretVisible ? "Hide number and codes" : "Show number and codes" }}
       </button>
-      <label class="last">
-        <span>Billing address</span>
-        <textarea v-model="draft.card.billingAddress" name="billingAddress" rows="2"></textarea>
-      </label>
+      <p class="section-label">Billing address</p>
+      <AddressFields v-model:old-text="draft.card.billingAddress" :address="draft.card" old-label="Billing address" />
     </section>
 
     <section v-if="isIdentity && draft.identity" class="card editor-card" data-testid="identity-editor">
@@ -283,10 +288,8 @@ async function submitItem(): Promise<void> {
           <input v-model="draft.identity.phone" name="phone" type="tel" autocomplete="off" />
         </label>
       </div>
-      <label>
-        <span>Address</span>
-        <textarea v-model="draft.identity.address" name="address" rows="2"></textarea>
-      </label>
+      <p class="section-label">Address</p>
+      <AddressFields v-model:old-text="draft.identity.address" :address="draft.identity" class="identity-address" />
       <div class="row card-row">
         <label>
           <span>Passport number</span>
@@ -351,11 +354,15 @@ async function submitItem(): Promise<void> {
       </div>
     </section>
 
+    <section v-if="isAddress && draft.address" class="card editor-card" data-testid="address-editor">
+      <AddressFields :address="draft.address" />
+    </section>
+
     <p v-if="isSSHKey" class="card ssh-key-note muted" data-testid="ssh-key-note">
       <AppIcon name="key" :size="14" /> The key itself cannot be changed. To replace it, add a new SSH key.
     </p>
 
-    <section v-if="!isSSHKey && !isSecureNote && !isCreditCard && !isIdentity && !isAPICredential" class="card editor-card">
+    <section v-if="!isSSHKey && !isSecureNote && !isCreditCard && !isIdentity && !isAPICredential && !isAddress" class="card editor-card">
       <label>
         <span>Username</span>
         <input v-model="draft.username" name="username" autocomplete="off" placeholder="Username or email" />
@@ -516,6 +523,10 @@ label.last {
 
 .card-row label {
   flex: 1;
+}
+
+.identity-address {
+  margin-bottom: 12px;
 }
 
 .reveal-card {

@@ -38,6 +38,31 @@ func prompt(label, defaultValue string) (string, error) {
 	return answer, nil
 }
 
+// promptStreet reads a street a line at a time until an empty line, such as a second line for an apartment. An empty first
+// line keeps the current street.
+func promptStreet(label, current string) (string, error) {
+	if current != "" {
+		fmt.Fprintf(os.Stderr, "%s [%s] (a line at a time, then an empty line; empty to keep): ", label, strings.ReplaceAll(current, "\n", " / "))
+	} else {
+		fmt.Fprintf(os.Stderr, "%s (a line at a time, then an empty line): ", label)
+	}
+	var lines []string
+	for {
+		line, err := readLine()
+		if err != nil && !errors.Is(err, io.EOF) {
+			return "", err
+		}
+		if line = strings.TrimSpace(line); line == "" {
+			break
+		}
+		lines = append(lines, line)
+	}
+	if len(lines) == 0 {
+		return current, nil
+	}
+	return strings.Join(lines, "\n"), nil
+}
+
 // promptLines reads lines until one that is only "." or the end of the input, so blank lines stay in the text. Blank
 // lines at the start and end are dropped.
 func promptLines(label string) (string, error) {

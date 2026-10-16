@@ -30,6 +30,7 @@ export type {
     ImportProgress,
     ImportSkippedEntry,
     ItemAPICredential,
+    ItemAddress,
     ItemCard,
     ItemDetail,
     ItemField,

@@ -77,12 +77,21 @@ type ConnectMessage struct {
 	ExtensionOrigin string `json:"extensionOrigin"`
 }
 
+// HelloResult: Features lists what this app answers beyond the first version of the protocol, so the extension offers it
+// only to an app that has it; an older app sends none.
 type HelloResult struct {
 	ProtocolVersion int                `json:"protocolVersion"`
 	IsPaired        bool               `json:"isPaired"`
 	State           string             `json:"state"`
 	UpdateRequired  *UpdateRequirement `json:"updateRequired,omitempty"`
+	Features        []string           `json:"features,omitempty"`
 }
+
+// FeatureAddresses: addresses.list and addresses.fill fill a page's address form from address items and identities.
+const FeatureAddresses = "addresses"
+
+// ListFeatures returns the features this app announces in hello.
+func ListFeatures() []string { return []string{FeatureAddresses} }
 
 const (
 	UpdateTargetApp       = "app"
@@ -131,6 +140,36 @@ type CheckResult struct {
 	VaultID string `json:"vaultID,omitempty"`
 	ItemID  string `json:"itemID,omitempty"`
 	Title   string `json:"title,omitempty"`
+}
+
+// AddressSource tells where an address offered for filling comes from.
+const (
+	AddressSourceAddress  = "address"
+	AddressSourceIdentity = "identity"
+)
+
+// AddressSummary is an address offered for filling: Summary is only its city and country, never the street or postal
+// code, which leave the app only in addresses.fill.
+type AddressSummary struct {
+	VaultID   string `json:"vaultID"`
+	ItemID    string `json:"itemID"`
+	Title     string `json:"title"`
+	Summary   string `json:"summary"`
+	Source    string `json:"source"`
+	VaultName string `json:"vaultName"`
+}
+
+type AddressListResult struct {
+	Addresses []AddressSummary `json:"addresses"`
+}
+
+// AddressFillResult is the address to fill a form with; Street may hold several lines.
+type AddressFillResult struct {
+	Street     string `json:"street"`
+	City       string `json:"city"`
+	Region     string `json:"region"`
+	PostalCode string `json:"postalCode"`
+	Country    string `json:"country"`
 }
 
 type SaveResult struct {

@@ -180,3 +180,27 @@ func TestReadAndWriteCard(t *testing.T) {
 		t.Errorf("NormalizeCard changed a login: %+v", login.Details.Fields)
 	}
 }
+
+func TestCardKeepsItsBillingAddressInTheAddressFields(t *testing.T) {
+	vaultItem := Item{Overview: Overview{Category: CategoryCreditCard}, Details: Details{Fields: []Field{
+		{Name: "Billing address", Value: "1 Main St, Springfield"},
+		{Name: "Postal code", Value: " 12345 "},
+		{Name: "Card number", Value: "4111111111111111"},
+		{Name: "street", Value: "1 Main St"},
+	}}}
+	card, _ := ReadCard(&vaultItem)
+	if card.BillingAddressText != "1 Main St, Springfield" || card.BillingAddress.Street != "1 Main St" {
+		t.Errorf("card = %+v", card)
+	}
+	NormalizeCard(&vaultItem)
+	wantFields := []Field{
+		{Name: FieldCardType, Value: "Visa"},
+		{Name: FieldCardNumber, Value: "4111 1111 1111 1111", Concealed: true},
+		{Name: FieldStreet, Value: "1 Main St"},
+		{Name: FieldPostalCode, Value: "12345"},
+		{Name: FieldBillingAddress, Value: "1 Main St, Springfield"},
+	}
+	if !reflect.DeepEqual(vaultItem.Details.Fields, wantFields) {
+		t.Errorf("normalized fields =\n%+v\nwant\n%+v", vaultItem.Details.Fields, wantFields)
+	}
+}

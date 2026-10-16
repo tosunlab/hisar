@@ -35,11 +35,36 @@ export interface UpdateRequirement {
   updateURL: string;
 }
 
+// HelloResult: features lists what the app answers beyond the first version of the protocol; an older app sends none.
 export interface HelloResult {
   protocolVersion: number;
   isPaired: boolean;
   state: DesktopState;
   updateRequired?: UpdateRequirement;
+  features?: string[];
+}
+
+// featureAddresses: the app answers addresses.list and addresses.fill.
+export const featureAddresses = "addresses";
+
+// AddressSummary is an address offered for filling: its summary is only the city and country; the rest comes in
+// addresses.fill.
+export interface AddressSummary {
+  vaultID: string;
+  itemID: string;
+  title: string;
+  summary: string;
+  source: "address" | "identity";
+  vaultName: string;
+}
+
+// AddressValues is the address to fill a form with; street may hold several lines.
+export interface AddressValues {
+  street: string;
+  city: string;
+  region: string;
+  postalCode: string;
+  country: string;
 }
 
 export interface StatusResult {
@@ -90,6 +115,8 @@ export interface RequestMap {
     result: { vaultID: string; itemID: string };
   };
   "password.generate": { parameters: GenerateOptions; result: { password: string } };
+  "addresses.list": { parameters: Record<string, never>; result: { addresses: AddressSummary[] } };
+  "addresses.fill": { parameters: { vaultID: string; itemID: string }; result: AddressValues };
 }
 
 export type RequestType = keyof RequestMap;

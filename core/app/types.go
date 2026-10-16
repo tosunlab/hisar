@@ -169,6 +169,18 @@ type ItemDetail struct {
 	// APICredential holds an API credential's values, stored as named custom fields like an identity's; summaries keep
 	// only the service and host.
 	APICredential *ItemAPICredential `json:"apiCredential,omitempty"`
+	// Address holds an address item's values, stored as named custom fields like an identity's; summaries keep only the
+	// city, country and the first line of the street.
+	Address *ItemAddress `json:"address,omitempty"`
+}
+
+// ItemAddress is a postal address; Street may hold several lines. Identities and cards hold one too.
+type ItemAddress struct {
+	Street     string `json:"street"`
+	City       string `json:"city"`
+	Region     string `json:"region"`
+	PostalCode string `json:"postalCode"`
+	Country    string `json:"country"`
 }
 
 // ItemAPICredential is an API key; the secret is concealed. ExpiryWarning says when the expiry has passed.
@@ -181,14 +193,16 @@ type ItemAPICredential struct {
 	ExpiryWarning string `json:"expiryWarning"`
 }
 
-// ItemIdentity is a person's details; the document numbers are optional and concealed.
+// ItemIdentity is a person's details; the document numbers are optional and concealed. Its address is in the embedded
+// ItemAddress; Address is a one-line address saved before identities had one, kept as it is.
 type ItemIdentity struct {
-	FirstName            string `json:"firstName"`
-	MiddleName           string `json:"middleName"`
-	LastName             string `json:"lastName"`
-	BirthDate            string `json:"birthDate"`
-	Email                string `json:"email"`
-	Phone                string `json:"phone"`
+	FirstName  string `json:"firstName"`
+	MiddleName string `json:"middleName"`
+	LastName   string `json:"lastName"`
+	BirthDate  string `json:"birthDate"`
+	Email      string `json:"email"`
+	Phone      string `json:"phone"`
+	ItemAddress
 	Address              string `json:"address"`
 	PassportNumber       string `json:"passportNumber"`
 	DriversLicenseNumber string `json:"driversLicenseNumber"`
@@ -197,13 +211,16 @@ type ItemIdentity struct {
 
 // ItemCard is a card's values. Type is the brand saved with the card, which the user may choose; Brand is the one its
 // number points to. Lists show Type, or Brand when the card has no type.
+// Its billing address is in the embedded ItemAddress; BillingAddress is a one-line address saved before cards had one, kept
+// as it is.
 type ItemCard struct {
-	Cardholder     string `json:"cardholder"`
-	Type           string `json:"type"`
-	Number         string `json:"number"`
-	Expiry         string `json:"expiry"`
-	SecurityCode   string `json:"securityCode"`
-	PIN            string `json:"pin"`
+	Cardholder   string `json:"cardholder"`
+	Type         string `json:"type"`
+	Number       string `json:"number"`
+	Expiry       string `json:"expiry"`
+	SecurityCode string `json:"securityCode"`
+	PIN          string `json:"pin"`
+	ItemAddress
 	BillingAddress string `json:"billingAddress"`
 	CardDescription
 }

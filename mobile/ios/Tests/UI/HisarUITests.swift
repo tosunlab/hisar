@@ -103,6 +103,21 @@ final class HisarUITests: HisarUITestCase {
         waitFor(app.staticTexts["sk_live_from_the_phone"], timeout: 5)
         goBack()
         waitFor(app.buttons["vault-Personal"])
+
+        choose("new-address", from: "new-menu")
+        type("Home", into: app.textFields["editor-title"])
+        XCTAssertFalse(app.textFields["editor-username"].exists, "an address asks for a username")
+        // A street may take several lines, so it is a text view rather than a text field.
+        type("1 Main St", into: app.descendants(matching: .any)["editor-address-street"].firstMatch)
+        type("Springfield", into: app.textFields["editor-address-city"])
+        type("US", into: app.textFields["editor-address-country"])
+        saveScreenshot("add-address")
+        app.buttons["editor-save"].tap()
+        waitFor(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Springfield, US")).firstMatch)
+        XCTAssertTrue(app.staticTexts["1 Main St"].exists, "the street is not shown")
+        saveScreenshot("address")
+        goBack()
+        waitFor(app.buttons["vault-Personal"])
         openTab("Search")
         let searchField = app.searchFields.firstMatch
         type("git", into: searchField)

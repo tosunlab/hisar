@@ -1,0 +1,39 @@
+<main>
+  <h1>Checkout</h1>
+  <form id="checkout" action="/order" method="post">
+    <fieldset>
+      <legend>Shipping address</legend>
+      <label for="ship-name">Full name</label>
+      <input id="ship-name" name="ship-name" autocomplete="shipping name" />
+      <label for="ship-email">Email</label>
+      <input id="ship-email" type="email" name="email" autocomplete="email" />
+      <label for="ship-line1">Address</label>
+      <input id="ship-line1" name="ship-address1" autocomplete="shipping address-line1" />
+      <label for="ship-line2">Apartment, suite</label>
+      <input id="ship-line2" name="ship-address2" autocomplete="shipping address-line2" />
+      <label for="ship-city">City</label>
+      <input id="ship-city" name="ship-city" autocomplete="shipping address-level2" />
+      <label for="ship-region">State</label>
+      <input id="ship-region" name="ship-state" autocomplete="shipping address-level1" />
+      <label for="ship-postal">ZIP code</label>
+      <input id="ship-postal" name="ship-zip" autocomplete="shipping postal-code" />
+      <label for="ship-country">Country</label>
+      <select id="ship-country" name="ship-country" autocomplete="shipping country">
+        <option value="">Choose a country</option>
+        <option value="DE">Germany</option>
+        <option value="TR">Türkiye</option>
+        <option value="US">United States</option>
+      </select>
+    </fieldset>
+    <fieldset>
+      <legend>Billing address</legend>
+      <label for="bill-street">Street address</label>
+      <textarea id="bill-street" name="bill-street" autocomplete="billing street-address"></textarea>
+      <label for="bill-city">City</label>
+      <input id="bill-city" name="bill-city" autocomplete="billing address-level2" />
+      <label for="bill-postal">Postal code</label>
+      <input id="bill-postal" name="bill-postal" autocomplete="billing postal-code" />
+    </fieldset>
+    <button type="submit">Place order</button>
+  </form>
+</main>

@@ -31,6 +31,7 @@ const (
 	KindCreditCard    = "credit-card"
 	KindIdentity      = "identity"
 	KindAPICredential = "api-credential"
+	KindAddress       = "address"
 )
 
 type FormatInfo struct {
@@ -77,6 +78,8 @@ type Summary struct {
 	IdentityCount   int `json:"identityCount"`
 	// APICredentialCount counts api-credential items.
 	APICredentialCount int `json:"apiCredentialCount"`
+	// AddressCount counts address items.
+	AddressCount int `json:"addressCount"`
 }
 
 func GetFormatName(format string) string {
@@ -164,6 +167,8 @@ func GetKind(vaultItem item.Item) string {
 		return KindIdentity
 	case item.CategoryAPICredential:
 		return KindAPICredential
+	case item.CategoryAddress:
+		return KindAddress
 	}
 	return KindLogin
 }
@@ -182,6 +187,8 @@ func Summarize(items []item.Item) Summary {
 			summary.IdentityCount++
 		case KindAPICredential:
 			summary.APICredentialCount++
+		case KindAddress:
+			summary.AddressCount++
 		default:
 			summary.LoginCount++
 		}
@@ -192,7 +199,8 @@ func Summarize(items []item.Item) Summary {
 // BuildDuplicateKey matches items by title, username and first website; SSH keys match by fingerprint, cards by title and
 // last four digits, or by the whole number when it has no four digits to go by, such as a store card's "STORE-12A", and
 // identities by title, full name, email and first document number, so a home and a work identity with no documents stay
-// apart, and API credentials by title and key ID, or host when there is no key ID, or secret when there is neither.
+// apart, API credentials by title and key ID, or host when there is no key ID, or secret when there is neither, and
+// addresses by title, street, postal code and country.
 func BuildDuplicateKey(vaultItem item.Item) string {
 	if vaultItem.IsCategory(item.CategorySSHKey) && vaultItem.Overview.Fingerprint != "" {
 		return "ssh-key\x00" + vaultItem.Overview.Fingerprint
@@ -224,6 +232,13 @@ func BuildDuplicateKey(vaultItem item.Item) string {
 		// A bare token is told apart by itself, in its own case.
 		return key + "secret\x00" + strings.TrimSpace(credential.Secret)
 	}
+	if vaultItem.IsCategory(item.CategoryAddress) {
+		address, _ := item.ReadAddress(&vaultItem)
+		return strings.ToLower(strings.Join([]string{
+			"address", strings.TrimSpace(vaultItem.Overview.Title), strings.Join(strings.Fields(address.Street), " "), strings.TrimSpace(address.PostalCode),
+			strings.TrimSpace(address.Country),
+		}, "\x00"))
+	}
 	firstURL := ""
 	if len(vaultItem.Overview.URLs) > 0 {
 		firstURL = normalizeURL(vaultItem.Overview.URLs[0])
@@ -236,9 +251,9 @@ func BuildDuplicateKey(vaultItem item.Item) string {
 }
 
 // DescribeDuplicate is what BuildDuplicateKey matched besides the title, to show next to it, never a secret: a login's
-// username and website's host, an SSH key's fingerprint, a card's last four digits, an identity's name and email, and an API
-// credential's key ID or host. It is "" for a card with no last four digits and a credential with neither, which match on
-// a value that stays hidden.
+// username and website's host, an SSH key's fingerprint, a card's last four digits, an identity's name and email, an API
+// credential's key ID or host, and an address's city and country. It is "" for a card with no last four digits and a
+// credential with neither, which match on a value that stays hidden.
 func DescribeDuplicate(vaultItem item.Item) string {
 	parts := []string{}
 	switch {
@@ -255,6 +270,9 @@ func DescribeDuplicate(vaultItem item.Item) string {
 	case vaultItem.IsCategory(item.CategoryAPICredential):
 		credential, _ := item.ReadAPICredential(&vaultItem)
 		parts = append(parts, getFirstNonEmpty(strings.TrimSpace(credential.KeyID), strings.TrimSpace(credential.Host)))
+	case vaultItem.IsCategory(item.CategoryAddress):
+		address, _ := item.ReadAddress(&vaultItem)
+		parts = append(parts, address.Summary())
 	default:
 		parts = append(parts, strings.TrimSpace(vaultItem.Overview.Username))
 		if len(vaultItem.Overview.URLs) > 0 {
@@ -360,6 +378,7 @@ func finishItem(vaultItem *item.Item) bool {
 	item.NormalizeCard(vaultItem)
 	item.NormalizeIdentity(vaultItem)
 	item.NormalizeAPICredential(vaultItem)
+	item.NormalizeAddress(vaultItem)
 	return true
 }
 

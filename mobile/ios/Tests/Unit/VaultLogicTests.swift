@@ -63,6 +63,17 @@ final class VaultLogicTests: XCTestCase {
         XCTAssertEqual(VaultLogic.filterAllItem(allItem, searchText: "bob@example").map(\.item.title), ["Work"])
     }
 
+    func testFilterFindsAnIdentityByItsAddress() {
+        var alice = makeReference("Alice", category: ItemDetail.categoryIdentity)
+        var identity = ItemIdentity()
+        identity.firstName = "Alice"
+        identity.postalAddress = ItemAddress(street: "1 Main St", city: "Springfield", country: "US")
+        alice.item.identity = identity
+        let allItem = [alice, makeReference("GitHub")]
+        XCTAssertEqual(VaultLogic.filterAllItem(allItem, searchText: "springfield").map(\.item.title), ["Alice"])
+        XCTAssertEqual(VaultLogic.filterAllItem(allItem, searchText: "main st").map(\.item.title), ["Alice"])
+    }
+
     func testFilterFindsAnAPICredentialByItsServiceKeyIDAndHost() {
         var stripe = makeReference("Billing key", category: ItemDetail.categoryAPICredential)
         var credential = ItemAPICredential()
@@ -74,6 +85,15 @@ final class VaultLogicTests: XCTestCase {
         XCTAssertEqual(VaultLogic.filterAllItem(allItem, searchText: "stripe").map(\.item.title), ["Billing key"])
         XCTAssertEqual(VaultLogic.filterAllItem(allItem, searchText: "api.stripe").map(\.item.title), ["Billing key"])
         XCTAssertEqual(VaultLogic.filterAllItem(allItem, searchText: "key_live").map(\.item.title), ["Billing key"])
+    }
+
+    func testFilterFindsAnAddressByItsStreetCityAndCountry() {
+        var home = makeReference("Home", category: ItemDetail.categoryAddress)
+        home.item.address = ItemAddress(street: "1 Main St", city: "Springfield", country: "US")
+        let allItem = [home, makeReference("GitHub")]
+        XCTAssertEqual(VaultLogic.filterAllItem(allItem, searchText: "springfield").map(\.item.title), ["Home"])
+        XCTAssertEqual(VaultLogic.filterAllItem(allItem, searchText: "main st").map(\.item.title), ["Home"])
+        XCTAssertEqual(ItemCategoryDestination.addresses.includes(home.item), true)
     }
 
     func testSortByTitleThenUsername() {

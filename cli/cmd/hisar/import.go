@@ -70,6 +70,7 @@ func printImportPreview(writer io.Writer, fileName string, result *importer.Resu
 	fmt.Fprintf(writer, "Credit cards:    %d\n", summary.CreditCardCount)
 	fmt.Fprintf(writer, "Identities:      %d\n", summary.IdentityCount)
 	fmt.Fprintf(writer, "API credentials: %d\n", summary.APICredentialCount)
+	fmt.Fprintf(writer, "Addresses:       %d\n", summary.AddressCount)
 	if len(duplicateIndexes) > 0 {
 		fmt.Fprintf(writer, "Already in %s: %d\n", vaultName, len(duplicateIndexes))
 		for _, index := range duplicateIndexes {

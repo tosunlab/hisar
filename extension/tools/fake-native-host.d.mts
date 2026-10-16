@@ -9,6 +9,19 @@ export interface FakeLogin {
   oneTimePassword?: string;
 }
 
+export interface FakeAddress {
+  vaultID: string;
+  vaultName: string;
+  itemID: string;
+  title: string;
+  source: "address" | "identity";
+  street: string;
+  city: string;
+  region: string;
+  postalCode: string;
+  country: string;
+}
+
 export interface FakeHostState {
   state: "signed-out" | "locked" | "unlocked";
   email: string;
@@ -21,6 +34,9 @@ export interface FakeHostState {
   allPairing: { instanceID: string; browser: string; tokenHash: string; pairedAt: number }[];
   exactHostOnly: boolean;
   allLogin: FakeLogin[];
+  features?: string[];
+  allAddress?: FakeAddress[];
+  allAddressRequest?: string[];
   allCodeRequest?: { itemID: string; url: string }[];
   allPasskey?: FakePasskey[];
   updateRequired?: { target: "app" | "extension"; currentVersion: string; minimumVersion: string; updateURL: string } | null;

@@ -228,7 +228,11 @@ func TestParseOnePasswordExport(t *testing.T) {
 		{Name: item.FieldBirthDate, Value: "1990-04-12"},
 		{Name: item.FieldEmail, Value: "alice@example.com"},
 		{Name: item.FieldPhone, Value: "+1 555 0100"},
-		{Name: item.FieldAddress, Value: "1 Main St, Springfield, IL, 12345, us"},
+		{Name: item.FieldStreet, Value: "1 Main St"},
+		{Name: item.FieldCity, Value: "Springfield"},
+		{Name: item.FieldRegion, Value: "IL"},
+		{Name: item.FieldPostalCode, Value: "12345"},
+		{Name: item.FieldCountry, Value: "US"},
 		{Name: "sex", Value: "female"},
 		{Name: "occupation", Value: "Engineer"},
 		{Name: "mobile", Value: "+1 555 0199"},
@@ -300,7 +304,11 @@ func TestParseBitwardenJSON(t *testing.T) {
 		{Name: item.FieldLastName, Value: "Example"},
 		{Name: item.FieldEmail, Value: "alice@example.com"},
 		{Name: item.FieldPhone, Value: "+1 555 0100"},
-		{Name: item.FieldAddress, Value: "1 Main St\nApt 4\nSpringfield, IL, 12345\nUS"},
+		{Name: item.FieldStreet, Value: "1 Main St\nApt 4"},
+		{Name: item.FieldCity, Value: "Springfield"},
+		{Name: item.FieldRegion, Value: "IL"},
+		{Name: item.FieldPostalCode, Value: "12345"},
+		{Name: item.FieldCountry, Value: "US"},
 		{Name: item.FieldPassportNumber, Value: "U1234567", Concealed: true},
 		{Name: item.FieldNationalIDNumber, Value: "123-45-6789", Concealed: true},
 		{Name: "Title", Value: "Ms"},
@@ -698,7 +706,10 @@ func TestParseOnePasswordCreditCard(t *testing.T) {
 		{Name: item.FieldExpiry, Value: "12/29"},
 		{Name: item.FieldSecurityCode, Value: "1234", Concealed: true},
 		{Name: item.FieldPIN, Value: "9876", Concealed: true},
-		{Name: item.FieldBillingAddress, Value: "1 Main St, Springfield, 12345, us"},
+		{Name: item.FieldStreet, Value: "1 Main St"},
+		{Name: item.FieldCity, Value: "Springfield"},
+		{Name: item.FieldPostalCode, Value: "12345"},
+		{Name: item.FieldCountry, Value: "US"},
 		{Name: "issuing bank", Value: "Bank of Hisar"},
 		{Name: "Website", Value: "https://americanexpress.com"},
 	}
@@ -723,7 +734,9 @@ func TestParseOnePasswordIdentityDocuments(t *testing.T) {
 			{"title":"full name","id":"fullname","value":{"string":"Alice Example"}},
 			{"title":"address","id":"address","value":{"string":"1 Main St"}},
 			{"title":"number","id":"number","value":{"string":"D-998877"}},
-			{"title":"license class","id":"class","value":{"string":"B"}}]}]}},
+			{"title":"license class","id":"class","value":{"string":"B"}},
+			{"title":"state","id":"state","value":{"string":"IL"}},
+			{"title":"country","id":"country","value":{"string":"US"}}]}]}},
 		{"categoryUuid":"108","overview":{"title":"Social Security"},"details":{"sections":[{"title":"","fields":[
 			{"title":"name","id":"name","value":{"string":"Alice Example"}},
 			{"title":"number","id":"number","value":{"concealed":"123-45-6789"}}]}]}}]}]}]}`
@@ -746,6 +759,9 @@ func TestParseOnePasswordIdentityDocuments(t *testing.T) {
 		{Name: item.FieldAddress, Value: "1 Main St"},
 		{Name: item.FieldDriversLicenseNumber, Value: "D-998877", Concealed: true},
 		{Name: "license class", Value: "B"},
+		// Where the license was issued, not the person's address.
+		{Name: "Issuing state", Value: "IL"},
+		{Name: "Issuing country", Value: "US"},
 	}
 	if license := findTestItem(t, result, "Driver License"); license.Overview.Category != item.CategoryIdentity || !reflect.DeepEqual(license.Details.Fields, wantLicense) {
 		t.Errorf("driver license =\n%+v\nwant\n%+v", license.Details.Fields, wantLicense)
@@ -874,6 +890,27 @@ func TestDescribeDuplicateShowsWhatMatchedWithoutSecrets(t *testing.T) {
 		if got := DescribeDuplicate(test.vaultItem); got != test.want {
 			t.Errorf("DescribeDuplicate(%s) = %q, want %q", test.vaultItem.Overview.Title, got, test.want)
 		}
+	}
+}
+
+func TestAddressDuplicatesMatchOnTheirStreetPostalCodeAndCountry(t *testing.T) {
+	address := func(title string, value item.Address) item.Item {
+		vaultItem := item.Item{Overview: item.Overview{Title: title, Category: item.CategoryAddress}}
+		item.WriteAddress(&vaultItem, value, nil)
+		return vaultItem
+	}
+	home := address("Home", item.Address{Street: "1 Main St\nApt 4", City: "Springfield", PostalCode: "12345", Country: "US"})
+	if BuildDuplicateKey(home) != BuildDuplicateKey(address("home", item.Address{Street: "1 main st  apt 4", City: "Chicago", PostalCode: "12345", Country: "us"})) {
+		t.Error("an address does not match itself written in another case and spacing")
+	}
+	if BuildDuplicateKey(home) == BuildDuplicateKey(address("Home", item.Address{Street: "2 Main St", PostalCode: "12345", Country: "US"})) {
+		t.Error("two streets with one title match")
+	}
+	if got := DescribeDuplicate(home); got != "Springfield, US" {
+		t.Errorf("DescribeDuplicate = %q", got)
+	}
+	if summary := Summarize([]item.Item{home}); summary.AddressCount != 1 || summary.LoginCount != 0 {
+		t.Errorf("summary = %+v", summary)
 	}
 }
 

@@ -34,6 +34,14 @@ export function chooseFocusedFrame(allProbed: ProbedFrame[]): ProbedFrame | unde
   return allProbed.find((frame) => frame.probe.hasFocusedField);
 }
 
+export function chooseAddressFrame(allProbed: ProbedFrame[]): ProbedFrame | undefined {
+  return (
+    allProbed.find((frame) => frame.probe.hasFocusedAddressField) ??
+    allProbed.find((frame) => frame.frameId === 0 && frame.probe.hasAddressForm) ??
+    allProbed.find((frame) => frame.probe.hasAddressForm)
+  );
+}
+
 export function chooseOneTimeCodeFrame(allProbed: ProbedFrame[]): ProbedFrame | undefined {
   return allProbed.find((frame) => frame.frameId === 0 && frame.probe.hasOneTimeCodeField) ?? allProbed.find((frame) => frame.probe.hasOneTimeCodeField);
 }

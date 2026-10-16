@@ -61,9 +61,11 @@ type ImportPreview struct {
 	CreditCardCount int    `json:"creditCardCount"`
 	IdentityCount   int    `json:"identityCount"`
 	// APICredentialCount counts the api-credential items among ItemCount.
-	APICredentialCount int                  `json:"apiCredentialCount"`
-	Skipped            []ImportSkippedEntry `json:"allSkipped"`
-	Duplicates         []ImportDuplicate    `json:"allDuplicate"`
+	APICredentialCount int `json:"apiCredentialCount"`
+	// AddressCount counts the address items among ItemCount.
+	AddressCount int                  `json:"addressCount"`
+	Skipped      []ImportSkippedEntry `json:"allSkipped"`
+	Duplicates   []ImportDuplicate    `json:"allDuplicate"`
 }
 
 type ImportProgress struct {
@@ -219,6 +221,7 @@ func (s *Service) buildImportPreview(vaultID string) (ImportPreview, error) {
 		CreditCardCount:    summary.CreditCardCount,
 		IdentityCount:      summary.IdentityCount,
 		APICredentialCount: summary.APICredentialCount,
+		AddressCount:       summary.AddressCount,
 		Skipped:            []ImportSkippedEntry{},
 		Duplicates:         []ImportDuplicate{},
 	}

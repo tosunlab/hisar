@@ -25,6 +25,22 @@ export function createInitialState() {
     pendingPairing: null,
     allPairing: [],
     exactHostOnly: false,
+    // features: what the app announces in hello; an older app announces none.
+    features: ["addresses"],
+    allAddress: [
+      {
+        vaultID: "vault-personal",
+        vaultName: "Personal",
+        itemID: "item-home",
+        title: "Home",
+        source: "address",
+        street: "1 Main St\nApt 4",
+        city: "Springfield",
+        region: "IL",
+        postalCode: "62704",
+        country: "US",
+      },
+    ],
     allLogin: [
       {
         vaultID: "vault-personal",
@@ -177,6 +193,7 @@ export function handleRequest(state, request, now = Date.now(), log = () => unde
         isPaired: state.allPairing.some((pairing) => pairing.instanceID === instanceID),
         state: state.state,
         ...(state.updateRequired ? { updateRequired: state.updateRequired } : {}),
+        ...(state.features?.length ? { features: state.features } : {}),
       };
     }
     case "pair.start": {
@@ -284,6 +301,28 @@ export function handleRequest(state, request, now = Date.now(), log = () => unde
       };
       state.allLogin.push(login);
       return { vaultID: login.vaultID, itemID: login.itemID };
+    }
+    case "addresses.list": {
+      if (!state.features?.includes("addresses")) throw new ProtocolError("invalid-request", `Unknown type ${String(type)}`);
+      requireUnlocked(state);
+      const allAddress = (state.allAddress ?? []).map(({ vaultID, itemID, title, source, vaultName, city, country }) => ({
+        vaultID,
+        itemID,
+        title,
+        summary: [city, country].filter(Boolean).join(", "),
+        source,
+        vaultName,
+      }));
+      return { addresses: allAddress };
+    }
+    case "addresses.fill": {
+      if (!state.features?.includes("addresses")) throw new ProtocolError("invalid-request", `Unknown type ${String(type)}`);
+      requireUnlocked(state);
+      const address = (state.allAddress ?? []).find((candidate) => candidate.vaultID === request.vaultID && candidate.itemID === request.itemID);
+      if (!address) throw new ProtocolError("not-found", "No such address");
+      state.allAddressRequest = [...(state.allAddressRequest ?? []), address.itemID];
+      const { street, city, region, postalCode, country } = address;
+      return { street, city, region, postalCode, country };
     }
     case "password.generate":
       if (state.state === "signed-out") throw new ProtocolError("signed-out", "Hisar is signed out");

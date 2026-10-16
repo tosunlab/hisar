@@ -1,4 +1,5 @@
 import type { InlineMenuPurpose } from "../../shared/messages";
+import { findAddressScopeOf } from "../address-detection";
 import { getAutocompleteTokens } from "../detection";
 import { isInputElement, isVisible } from "../dom";
 import { findScopeOfField } from "../fill";
@@ -29,7 +30,8 @@ export function findInlineMenuPurpose(document: Document, element: Element, getR
   }
   if (hasLayout && !isFieldLargeEnough(getRect(element))) return undefined;
   const scope = findScopeOfField(document, element);
-  if (!scope) return undefined;
+  // A field that is not part of a login takes an address when it belongs to an address form.
+  if (!scope) return findAddressScopeOf(document, element) ? "address" : undefined;
   if (scope.kind === "login" || scope.kind === "username-only") return "login";
   const isPassword = scope.allPasswordField.includes(element);
   if (isPassword && !getAutocompleteTokens(element).includes("current-password")) {
