@@ -251,6 +251,23 @@ describe("The item list's context menu", () => {
     wrapper.unmount();
   });
 
+  it("moves into organization vaults by the role the user's teams give", async () => {
+    const deployVault: VaultSummary = { id: "deploy", name: "Deploy", type: "organization", role: "editor", itemCount: 0, organizationId: "acme" };
+    const auditVault: VaultSummary = { id: "audit", name: "Audit", type: "organization", role: "reader", itemCount: 0, organizationId: "acme" };
+    store.allVault.push({ ...deployVault }, { ...auditVault });
+    const wrapper = mount(MainView, { attachTo: document.body });
+    await openItemMenu(wrapper, "GitHub");
+    await wrapper.find('[data-testid="context-menu-move"]').trigger("click");
+    expect(wrapper.findAll('[data-testid="move-item-target"] option').map((option) => option.text())).toEqual(["Team", "Deploy"]);
+    wrapper.unmount();
+
+    // A reader organization vault is no target, so with nothing else writable the menu has no Move to….
+    store.allVault = [{ ...personalVault }, { ...auditVault }];
+    const onlyReader = mount(MainView, { attachTo: document.body });
+    expect(await openItemMenu(onlyReader, "GitHub")).not.toContain("Move to…");
+    onlyReader.unmount();
+  });
+
   it("opens the share link dialog for the item", async () => {
     api.listAllShareLinkField.mockResolvedValue([{ key: "password", label: "password", isDefault: true, isConcealed: true }]);
     const wrapper = mount(MainView, { attachTo: document.body });

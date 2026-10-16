@@ -437,6 +437,64 @@ func TestOrganizationVaultAccessRules(t *testing.T) {
 	}
 }
 
+// TestMoveItemWithOrganizationVaultRoles: the roles an organization vault's teams give decide who may move items into
+// and out of it, as members' roles do in a shared vault.
+func TestMoveItemWithOrganizationVaultRoles(t *testing.T) {
+	baseURL, server, _ := setupServer(t)
+	ctx := context.Background()
+	caller := apiCaller{t: t, baseURL: baseURL}
+	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", apitypes.RoleMember)
+	bob := signUpTestAccount(t, ctx, server, baseURL, "bob@example.com", apitypes.RoleMember)
+	carol := signUpTestAccount(t, ctx, server, baseURL, "carol@example.com", apitypes.RoleMember)
+	acme := caller.createOrganization(alice, "Acme")
+	for _, member := range []*session.Session{bob, carol} {
+		caller.joinOrganization(alice, member, acme.ID, apitypes.OrganizationRoleMember)
+	}
+	platform := caller.createTeam(alice, acme.ID, "Platform", alice)
+	developers := caller.createTeam(alice, acme.ID, "Developers", bob)
+	auditors := caller.createTeam(alice, acme.ID, "Auditors", carol)
+	production := createOrganizationVault(t, alice, acme.ID, platform.ID, "Production")
+	caller.call(alice, "PUT", organizationPath(acme.ID, "teams", developers.ID, "vaults", production.ID), apitypes.GrantTeamVaultRequest{Role: apitypes.VaultEditor},
+		http.StatusNoContent, nil)
+	caller.call(alice, "PUT", organizationPath(acme.ID, "teams", auditors.ID, "vaults", production.ID), apitypes.GrantTeamVaultRequest{Role: apitypes.VaultReader},
+		http.StatusNoContent, nil)
+	caller.deliverVaultKeys(alice, production)
+
+	bobProduction, isFound := findTestVault(t, bob, production.ID)
+	if !isFound || bobProduction.Role != apitypes.VaultEditor {
+		t.Fatalf("Bob's Production: %+v", bobProduction)
+	}
+	bobPersonal := findPersonalVault(t, bob)
+	token := &item.Item{Overview: item.Overview{Title: "Deploy token"}, Details: item.Details{Password: "deploy-password"}}
+	if _, err := bob.SaveItem(ctx, bobPersonal, token); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := bob.MoveItem(ctx, bobPersonal, bobProduction, token); err != nil {
+		t.Fatalf("an editor through a team moves an item in: %v", err)
+	}
+	carolProduction, isFound := findTestVault(t, carol, production.ID)
+	if !isFound || carolProduction.Role != apitypes.VaultReader {
+		t.Fatalf("Carol's Production: %+v", carolProduction)
+	}
+	moved, isFound := findTestItem(t, carol, carolProduction, token.ID)
+	if !isFound || moved.Details.Password != "deploy-password" {
+		t.Fatalf("Carol sees %+v in Production", moved)
+	}
+
+	carolPersonal := findPersonalVault(t, carol)
+	expectStatus(t, "a reader through a team moves an item out", ignoreItem(carol.MoveItem(ctx, carolProduction, carolPersonal, moved)), http.StatusForbidden)
+	note := &item.Item{Overview: item.Overview{Title: "Audit note"}, Details: item.Details{Notes: "third quarter"}}
+	if _, err := carol.SaveItem(ctx, carolPersonal, note); err != nil {
+		t.Fatal(err)
+	}
+	// The session refuses a vault it lists as read only, so the server's own check is reached by claiming more.
+	carolProduction.Role = apitypes.VaultEditor
+	expectStatus(t, "a reader through a team moves an item in", ignoreItem(carol.MoveItem(ctx, carolPersonal, carolProduction, note)), http.StatusForbidden)
+	if _, isFound := findTestItem(t, carol, carolPersonal, note.ID); !isFound {
+		t.Error("a refused move took the note out of Carol's Personal vault")
+	}
+}
+
 func TestOrganizationVaultRotationFromAStaleKey(t *testing.T) {
 	baseURL, server, _ := setupServer(t)
 	ctx := context.Background()
