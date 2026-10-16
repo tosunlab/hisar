@@ -161,6 +161,21 @@ export interface ImportPreview {
      * AddressCount counts the address items among ItemCount.
      */
     "addressCount": number;
+
+    /**
+     * SoftwareLicenseCount counts the software-license items among ItemCount.
+     */
+    "softwareLicenseCount": number;
+
+    /**
+     * ServerCount counts the server items among ItemCount.
+     */
+    "serverCount": number;
+
+    /**
+     * DatabaseCount counts the database items among ItemCount.
+     */
+    "databaseCount": number;
     "allSkipped": ImportSkippedEntry[] | null;
     "allDuplicate": ImportDuplicate[] | null;
 }
@@ -230,6 +245,23 @@ export interface ItemCard {
 }
 
 /**
+ * ItemDatabase is a database's values besides its login data. Engine is the ID of a known engine (postgresql, mysql,
+ * mariadb, sqlserver, oracle, mongodb, redis) or any other engine as typed; EngineName names it. ConnectionString is built
+ * from the values and the item's login data, and is "" for another engine or without a host. PortWarning says when the
+ * port is not a number from 1 to 65535. SaveItem reads only Engine, Host, Port, Name and Options.
+ */
+export interface ItemDatabase {
+    "engine": string;
+    "engineName": string;
+    "host": string;
+    "port": string;
+    "name": string;
+    "options": string;
+    "connectionString": string;
+    "portWarning": string;
+}
+
+/**
  * ItemDetail never carries an SSH private key; the agent reads it from the cached item.
  */
 export interface ItemDetail {
@@ -287,6 +319,24 @@ export interface ItemDetail {
      * city, country and the first line of the street.
      */
     "address"?: ItemAddress | null;
+
+    /**
+     * SoftwareLicense holds a software license's values, stored as named custom fields like an API credential's; summaries
+     * keep only the product, version, licensed-to name and email.
+     */
+    "softwareLicense"?: ItemSoftwareLicense | null;
+
+    /**
+     * Server holds a server's host, port and linked SSH key, stored as named custom fields; its username, password and
+     * admin console are the item's own Username, Password and URLs. Summaries keep only the host and port.
+     */
+    "server"?: ItemServer | null;
+
+    /**
+     * Database holds a database's engine, host, port, name and options, stored as named custom fields; its username and
+     * password are the item's own. Summaries keep only the engine, host, port and name.
+     */
+    "database"?: ItemDatabase | null;
 }
 
 export interface ItemField {
@@ -326,6 +376,34 @@ export interface ItemPasskey {
     "userName": string;
     "userDisplayName": string;
     "createdAt": string;
+}
+
+/**
+ * ItemServer is a server's values besides its login data. SSHKeyID names an ssh-key item in the same vault, or is "";
+ * SSHKeyTitle and SSHKeyFingerprint describe that key, and are "" when it is gone. PortWarning says when the port is not a
+ * number from 1 to 65535. SaveItem reads only Host, Port and SSHKeyID.
+ */
+export interface ItemServer {
+    "host": string;
+    "port": string;
+    "sshKeyId": string;
+    "sshKeyTitle": string;
+    "sshKeyFingerprint": string;
+    "portWarning": string;
+}
+
+/**
+ * ItemSoftwareLicense is a software license; the license key is concealed. DownloadURL is a field, not the item's
+ * website.
+ */
+export interface ItemSoftwareLicense {
+    "product": string;
+    "version": string;
+    "licenseKey": string;
+    "licensedTo": string;
+    "email": string;
+    "purchaseDate": string;
+    "downloadUrl": string;
 }
 
 /**

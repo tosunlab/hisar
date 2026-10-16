@@ -162,6 +162,9 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     static let categoryIdentity = "identity"
     static let categoryAPICredential = "api-credential"
     static let categoryAddress = "address"
+    static let categorySoftwareLicense = "software-license"
+    static let categoryServer = "server"
+    static let categoryDatabase = "database"
 
     var id: String
     var revision: String
@@ -194,16 +197,25 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     /// An address's values, stored as named custom fields like an identity's. Summaries keep only the first line of the
     /// street, the city and the country.
     var address: ItemAddress?
+    /// A software license's values, stored as named custom fields like an API credential's. Summaries keep only the
+    /// product, version, licensed-to name and email.
+    var softwareLicense: ItemSoftwareLicense?
+    /// A server's host, port and linked SSH key; its username, password and admin console are the item's own. Summaries
+    /// keep only the host and port.
+    var server: ItemServer?
+    /// A database's engine, host, port, name and options; its username and password are the item's own. The backend builds
+    /// its connection string. Summaries keep only the engine, host, port and name.
+    var database: ItemDatabase?
 
     enum CodingKeys: String, CodingKey {
-        case id, revision, category, title, username, password, notes, publicKey, fingerprint, keyType, oneTimePassword, hasOneTimePassword, canConvertToSecureNote, card, identity, isFavorite, apiCredential, address
+        case id, revision, category, title, username, password, notes, publicKey, fingerprint, keyType, oneTimePassword, hasOneTimePassword, canConvertToSecureNote, card, identity, isFavorite, apiCredential, address, softwareLicense, server, database
         case allURL = "urls"
         case allTag = "tags"
         case allField = "fields"
         case allPasskey = "passkeys"
     }
 
-    init(id: String = "", revision: String = "", category: String = ItemDetail.categoryLogin, title: String = "", username: String = "", allURL: [String] = [], allTag: [String] = [], password: String = "", notes: String = "", allField: [ItemField] = [], publicKey: String = "", fingerprint: String = "", keyType: String = "", oneTimePassword: String = "", hasOneTimePassword: Bool = false, allPasskey: [ItemPasskey] = [], canConvertToSecureNote: Bool = false, card: ItemCard? = nil, identity: ItemIdentity? = nil, isFavorite: Bool = false, apiCredential: ItemAPICredential? = nil, address: ItemAddress? = nil) {
+    init(id: String = "", revision: String = "", category: String = ItemDetail.categoryLogin, title: String = "", username: String = "", allURL: [String] = [], allTag: [String] = [], password: String = "", notes: String = "", allField: [ItemField] = [], publicKey: String = "", fingerprint: String = "", keyType: String = "", oneTimePassword: String = "", hasOneTimePassword: Bool = false, allPasskey: [ItemPasskey] = [], canConvertToSecureNote: Bool = false, card: ItemCard? = nil, identity: ItemIdentity? = nil, isFavorite: Bool = false, apiCredential: ItemAPICredential? = nil, address: ItemAddress? = nil, softwareLicense: ItemSoftwareLicense? = nil, server: ItemServer? = nil, database: ItemDatabase? = nil) {
         self.id = id
         self.revision = revision
         self.category = category
@@ -226,6 +238,9 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         self.isFavorite = isFavorite
         self.apiCredential = apiCredential
         self.address = address
+        self.softwareLicense = softwareLicense
+        self.server = server
+        self.database = database
     }
 
     init(from decoder: Decoder) throws {
@@ -252,6 +267,9 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
         apiCredential = try container.decodeIfPresent(ItemAPICredential.self, forKey: .apiCredential)
         address = try container.decodeIfPresent(ItemAddress.self, forKey: .address)
+        softwareLicense = try container.decodeIfPresent(ItemSoftwareLicense.self, forKey: .softwareLicense)
+        server = try container.decodeIfPresent(ItemServer.self, forKey: .server)
+        database = try container.decodeIfPresent(ItemDatabase.self, forKey: .database)
     }
 
     /// The tags typed into one field, separated by commas, without blanks or repeats.
@@ -270,6 +288,11 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     var isIdentity: Bool { category == Self.categoryIdentity }
     var isAPICredential: Bool { category == Self.categoryAPICredential }
     var isAddress: Bool { category == Self.categoryAddress }
+    var isSoftwareLicense: Bool { category == Self.categorySoftwareLicense }
+    var isServer: Bool { category == Self.categoryServer }
+    var isDatabase: Bool { category == Self.categoryDatabase }
+    /// AutoFill offers the item's username and password on its websites: a login's, and a server's admin console.
+    var offersLoginFill: Bool { isLogin || isServer }
 }
 
 /// The names core/item stores an address's values under; identities and cards keep their address under the same names, and
@@ -488,6 +511,211 @@ struct ItemAPICredential: Codable, Hashable {
     var summary: String {
         let parts = [service, host].filter { !$0.isEmpty }
         return parts.isEmpty ? "API credential" : parts.joined(separator: " · ")
+    }
+}
+
+/// The names core/item stores a server's values under; its username, password and admin console are the item's own.
+enum ServerFieldName {
+    static let host = "Host"
+    static let port = "Port"
+    static let sshKey = "SSH key"
+}
+
+/// A server's values besides its login data. `sshKeyID` names an SSH key item in the same vault; the backend fills in its
+/// title and fingerprint, which are empty when the key is gone.
+struct ItemServer: Codable, Hashable {
+    var host = ""
+    var port = ""
+    var sshKeyID = ""
+    var sshKeyTitle = ""
+    var sshKeyFingerprint = ""
+    var portWarning = ""
+
+    enum CodingKeys: String, CodingKey {
+        case host, port, sshKeyTitle, sshKeyFingerprint, portWarning
+        case sshKeyID = "sshKeyId"
+    }
+
+    init(host: String = "", port: String = "", sshKeyID: String = "", sshKeyTitle: String = "", sshKeyFingerprint: String = "", portWarning: String = "") {
+        self.host = host
+        self.port = port
+        self.sshKeyID = sshKeyID
+        self.sshKeyTitle = sshKeyTitle
+        self.sshKeyFingerprint = sshKeyFingerprint
+        self.portWarning = portWarning
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        host = try container.decodeIfPresent(String.self, forKey: .host) ?? ""
+        port = try container.decodeIfPresent(String.self, forKey: .port) ?? ""
+        sshKeyID = try container.decodeIfPresent(String.self, forKey: .sshKeyID) ?? ""
+        sshKeyTitle = try container.decodeIfPresent(String.self, forKey: .sshKeyTitle) ?? ""
+        sshKeyFingerprint = try container.decodeIfPresent(String.self, forKey: .sshKeyFingerprint) ?? ""
+        portWarning = try container.decodeIfPresent(String.self, forKey: .portWarning) ?? ""
+    }
+
+    static let portWarningText = "The port is not a number from 1 to 65535"
+
+    /// The editor's warning for a port that is not a number from 1 to 65535, as core/item gives it; "" for an empty port.
+    static func describePort(_ port: String) -> String {
+        let trimmedPort = port.trimmingCharacters(in: .whitespaces)
+        guard !trimmedPort.isEmpty else { return "" }
+        guard trimmedPort.allSatisfy(\.isASCII), trimmedPort.allSatisfy(\.isNumber), let number = Int(trimmedPort), (1...65535).contains(number) else {
+            return portWarningText
+        }
+        return ""
+    }
+
+    /// The host and port, such as "build.example.com:2222", with brackets around an IPv6 host.
+    var address: String {
+        guard !host.isEmpty, !port.isEmpty else { return host }
+        return host.contains(":") ? "[\(host)]:\(port)" : "\(host):\(port)"
+    }
+
+    /// The server's line in lists: its address and username, as the Mac app shows it.
+    func summary(username: String) -> String {
+        let parts = [address, username].filter { !$0.isEmpty }
+        return parts.isEmpty ? "Server" : parts.joined(separator: " · ")
+    }
+}
+
+/// The names core/item stores a database's values under; its username and password are the item's own. "connection string"
+/// names the connection string the backend builds, for copying and hisar:// references.
+enum DatabaseFieldName {
+    static let engine = "Engine"
+    static let host = "Host"
+    static let port = "Port"
+    static let name = "Database"
+    static let options = "Options"
+    static let connectionString = "connection string"
+}
+
+/// A database engine the editor offers and Hisar builds connection strings for, as core/item lists them.
+struct DatabaseEngine: Hashable {
+    let id: String
+    let name: String
+
+    static let allKnown = [
+        DatabaseEngine(id: "postgresql", name: "PostgreSQL"),
+        DatabaseEngine(id: "mysql", name: "MySQL"),
+        DatabaseEngine(id: "mariadb", name: "MariaDB"),
+        DatabaseEngine(id: "sqlserver", name: "SQL Server"),
+        DatabaseEngine(id: "oracle", name: "Oracle"),
+        DatabaseEngine(id: "mongodb", name: "MongoDB"),
+        DatabaseEngine(id: "redis", name: "Redis"),
+    ]
+
+    static func isKnown(_ engine: String) -> Bool { allKnown.contains { $0.id == engine } }
+}
+
+/// A database's values besides its login data. `engine` is a known engine's ID or any other engine as typed, which
+/// `engineName` names; `connectionString` is "" for another engine or without a host. The backend reads only engine, host,
+/// port, name and options.
+struct ItemDatabase: Codable, Hashable {
+    var engine = ""
+    var engineName = ""
+    var host = ""
+    var port = ""
+    var name = ""
+    var options = ""
+    var connectionString = ""
+    var portWarning = ""
+
+    init(engine: String = "", engineName: String = "", host: String = "", port: String = "", name: String = "", options: String = "", connectionString: String = "", portWarning: String = "") {
+        self.engine = engine
+        self.engineName = engineName
+        self.host = host
+        self.port = port
+        self.name = name
+        self.options = options
+        self.connectionString = connectionString
+        self.portWarning = portWarning
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        engine = try container.decodeIfPresent(String.self, forKey: .engine) ?? ""
+        engineName = try container.decodeIfPresent(String.self, forKey: .engineName) ?? ""
+        host = try container.decodeIfPresent(String.self, forKey: .host) ?? ""
+        port = try container.decodeIfPresent(String.self, forKey: .port) ?? ""
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        options = try container.decodeIfPresent(String.self, forKey: .options) ?? ""
+        connectionString = try container.decodeIfPresent(String.self, forKey: .connectionString) ?? ""
+        portWarning = try container.decodeIfPresent(String.self, forKey: .portWarning) ?? ""
+    }
+
+    /// The host and port, such as "db.example.com:5432", with brackets around an IPv6 host, as a server's.
+    var address: String { ItemServer(host: host, port: port).address }
+
+    /// The address and database name, such as "db.example.com:5432/app".
+    var location: String {
+        guard !name.isEmpty else { return address }
+        return address.isEmpty ? name : "\(address)/\(name)"
+    }
+
+    /// The database's line in lists: its engine, address and name, as the Mac app shows it.
+    var summary: String {
+        let parts = [engineName, location].filter { !$0.isEmpty }
+        return parts.isEmpty ? "Database" : parts.joined(separator: " · ")
+    }
+}
+
+/// The names core/item stores a software license's values under; copying and hisar:// references use them.
+enum SoftwareLicenseFieldName {
+    static let product = "Product"
+    static let version = "Version"
+    static let licenseKey = "License key"
+    static let licensedTo = "Licensed to"
+    static let email = "Email"
+    static let purchaseDate = "Purchase date"
+    static let downloadURL = "Download URL"
+}
+
+/// A software license; the license key is concealed. The download URL is a field, not the item's website, so AutoFill
+/// never offers the license on that site.
+struct ItemSoftwareLicense: Codable, Hashable {
+    var product = ""
+    var version = ""
+    var licenseKey = ""
+    var licensedTo = ""
+    var email = ""
+    var purchaseDate = ""
+    var downloadURL = ""
+
+    enum CodingKeys: String, CodingKey {
+        case product, version, licenseKey, licensedTo, email, purchaseDate
+        case downloadURL = "downloadUrl"
+    }
+
+    init(product: String = "", version: String = "", licenseKey: String = "", licensedTo: String = "", email: String = "", purchaseDate: String = "", downloadURL: String = "") {
+        self.product = product
+        self.version = version
+        self.licenseKey = licenseKey
+        self.licensedTo = licensedTo
+        self.email = email
+        self.purchaseDate = purchaseDate
+        self.downloadURL = downloadURL
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        product = try container.decodeIfPresent(String.self, forKey: .product) ?? ""
+        version = try container.decodeIfPresent(String.self, forKey: .version) ?? ""
+        licenseKey = try container.decodeIfPresent(String.self, forKey: .licenseKey) ?? ""
+        licensedTo = try container.decodeIfPresent(String.self, forKey: .licensedTo) ?? ""
+        email = try container.decodeIfPresent(String.self, forKey: .email) ?? ""
+        purchaseDate = try container.decodeIfPresent(String.self, forKey: .purchaseDate) ?? ""
+        downloadURL = try container.decodeIfPresent(String.self, forKey: .downloadURL) ?? ""
+    }
+
+    /// The license's line in lists: its version and who it is licensed to, such as "Version 100 · Alice Example", or its
+    /// email or product when it has neither, as the Mac app shows it.
+    var summary: String {
+        let versionText = version.first?.isNumber == true ? "Version \(version)" : version
+        let parts = [versionText, licensedTo.isEmpty ? email : licensedTo].filter { !$0.isEmpty }
+        if !parts.isEmpty { return parts.joined(separator: " · ") }
+        return product.isEmpty ? "Software license" : product
     }
 }
 

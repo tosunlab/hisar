@@ -20,6 +20,9 @@ enum ItemCategoryDestination: String, Hashable, CaseIterable {
     case identities
     case apiCredentials
     case addresses
+    case softwareLicenses
+    case servers
+    case databases
     case sshKeys
 
     var title: String {
@@ -30,6 +33,9 @@ enum ItemCategoryDestination: String, Hashable, CaseIterable {
         case .identities: "Identities"
         case .apiCredentials: "API credentials"
         case .addresses: "Addresses"
+        case .softwareLicenses: "Software licenses"
+        case .servers: "Servers"
+        case .databases: "Databases"
         case .sshKeys: "SSH keys"
         }
     }
@@ -42,6 +48,9 @@ enum ItemCategoryDestination: String, Hashable, CaseIterable {
         case .identities: "person.text.rectangle"
         case .apiCredentials: "curlybraces.square"
         case .addresses: "mappin.and.ellipse"
+        case .softwareLicenses: "checkmark.seal"
+        case .servers: "server.rack"
+        case .databases: "cylinder.split.1x2"
         case .sshKeys: "key.horizontal"
         }
     }
@@ -56,6 +65,9 @@ enum ItemCategoryDestination: String, Hashable, CaseIterable {
         case .identities: item.isIdentity
         case .apiCredentials: item.isAPICredential
         case .addresses: item.isAddress
+        case .softwareLicenses: item.isSoftwareLicense
+        case .servers: item.isServer
+        case .databases: item.isDatabase
         case .sshKeys: item.isSSHKey
         }
     }
@@ -71,6 +83,9 @@ struct VaultsView: View {
     @State private var isNewIdentityShown = false
     @State private var isNewAPICredentialShown = false
     @State private var isNewAddressShown = false
+    @State private var isNewSoftwareLicenseShown = false
+    @State private var isNewServerShown = false
+    @State private var isNewDatabaseShown = false
     @State private var refusal: Refusal?
 
     private var personalVault: VaultSummary? { model.allVault.first { $0.type == "personal" } }
@@ -190,6 +205,27 @@ struct VaultsView: View {
                         .disabled(personalVault == nil)
                         .accessibilityIdentifier("new-address")
                         Button {
+                            isNewSoftwareLicenseShown = true
+                        } label: {
+                            Label("New software license", systemImage: "checkmark.seal")
+                        }
+                        .disabled(personalVault == nil)
+                        .accessibilityIdentifier("new-software-license")
+                        Button {
+                            isNewServerShown = true
+                        } label: {
+                            Label("New server", systemImage: "server.rack")
+                        }
+                        .disabled(personalVault == nil)
+                        .accessibilityIdentifier("new-server")
+                        Button {
+                            isNewDatabaseShown = true
+                        } label: {
+                            Label("New database", systemImage: "cylinder.split.1x2")
+                        }
+                        .disabled(personalVault == nil)
+                        .accessibilityIdentifier("new-database")
+                        Button {
                             isNewVaultShown = true
                         } label: {
                             Label("New vault", systemImage: "square.stack.3d.up.badge.plus")
@@ -239,6 +275,36 @@ struct VaultsView: View {
         .sheet(isPresented: $isNewAddressShown) {
             if let personalVault {
                 ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categoryAddress) { savedItem in
+                    if let savedItem {
+                        navigationPath.append(ItemDestination(vaultID: personalVault.id, itemID: savedItem.id))
+                    }
+                }
+                .environmentObject(model)
+            }
+        }
+        .sheet(isPresented: $isNewDatabaseShown) {
+            if let personalVault {
+                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categoryDatabase) { savedItem in
+                    if let savedItem {
+                        navigationPath.append(ItemDestination(vaultID: personalVault.id, itemID: savedItem.id))
+                    }
+                }
+                .environmentObject(model)
+            }
+        }
+        .sheet(isPresented: $isNewServerShown) {
+            if let personalVault {
+                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categoryServer) { savedItem in
+                    if let savedItem {
+                        navigationPath.append(ItemDestination(vaultID: personalVault.id, itemID: savedItem.id))
+                    }
+                }
+                .environmentObject(model)
+            }
+        }
+        .sheet(isPresented: $isNewSoftwareLicenseShown) {
+            if let personalVault {
+                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categorySoftwareLicense) { savedItem in
                     if let savedItem {
                         navigationPath.append(ItemDestination(vaultID: personalVault.id, itemID: savedItem.id))
                     }
@@ -539,6 +605,12 @@ struct ItemRow: View {
             detail = (item.apiCredential ?? ItemAPICredential()).summary
         } else if item.isAddress {
             detail = (item.address ?? ItemAddress()).summary
+        } else if item.isSoftwareLicense {
+            detail = (item.softwareLicense ?? ItemSoftwareLicense()).summary
+        } else if item.isServer {
+            detail = (item.server ?? ItemServer()).summary(username: item.username)
+        } else if item.isDatabase {
+            detail = (item.database ?? ItemDatabase()).summary
         } else {
             detail = item.username
         }

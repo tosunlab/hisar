@@ -277,6 +277,9 @@ func writeItem(output io.Writer, vaultItem *item.Item) error {
 	for _, field := range vaultItem.Details.Fields {
 		fmt.Fprintf(writer, "%s:\t%s\n", field.Name, field.Value)
 	}
+	if connectionString := vaultItem.ConnectionString(); connectionString != "" {
+		fmt.Fprintf(writer, "connection string:\t%s\n", connectionString)
+	}
 	for _, passkey := range vaultItem.Details.Passkeys {
 		fmt.Fprintf(writer, "passkey:\t%s (%s)\n", passkey.RelyingPartyID, passkey.UserName)
 	}
@@ -290,6 +293,7 @@ func writeItem(output io.Writer, vaultItem *item.Item) error {
 var fieldNames = item.FieldNames{
 	"title": item.FieldTitle, "username": item.FieldUsername, "url": item.FieldURL, "password": item.FieldPassword,
 	"notes": item.FieldNotes, "code": item.FieldOneTimeCode, "one-time code": item.FieldOneTimeCode,
+	"connection string": item.FieldConnectionString,
 }
 
 func getFieldValue(vaultItem *item.Item, name string) (string, bool) {
@@ -297,9 +301,11 @@ func getFieldValue(vaultItem *item.Item, name string) (string, bool) {
 }
 
 // itemType is a category hisar can add and edit, with the prompts that fill an item of it in.
+// itemType: promptInVault, when set instead of prompt, also gets the vault's items, for a server's SSH key.
 type itemType struct {
-	category string
-	prompt   func(*item.Item) error
+	category      string
+	prompt        func(*item.Item) error
+	promptInVault func(vaultItem *item.Item, vaultItems []item.Item) error
 }
 
 // itemTypes are the categories add --type takes and edit understands; a new category is one more row.
@@ -310,6 +316,21 @@ var itemTypes = []itemType{
 	{category: item.CategoryIdentity, prompt: promptIdentity},
 	{category: item.CategoryAPICredential, prompt: promptAPICredential},
 	{category: item.CategoryAddress, prompt: promptAddress},
+	{category: item.CategorySoftwareLicense, prompt: promptSoftwareLicense},
+	{category: item.CategoryServer, promptInVault: promptServer},
+	{category: item.CategoryDatabase, prompt: promptDatabase},
+}
+
+// promptItemOfType asks for the item's values as its type does.
+func promptItemOfType(ctx context.Context, access backend, vaultID string, selectedType itemType, vaultItem *item.Item) error {
+	if selectedType.promptInVault == nil {
+		return selectedType.prompt(vaultItem)
+	}
+	vaultItems, err := access.listItems(ctx, vaultID)
+	if err != nil {
+		return err
+	}
+	return selectedType.promptInVault(vaultItem, vaultItems)
 }
 
 func findItemType(category string) (itemType, bool) {
@@ -474,6 +495,168 @@ func promptAddress(vaultItem *item.Item) error {
 	item.WriteAddress(vaultItem, address, otherFields)
 	item.NormalizeAddress(vaultItem)
 	return nil
+}
+
+// promptSoftwareLicense asks for a software license's title and each of its values; the license key is read without echo.
+func promptSoftwareLicense(vaultItem *item.Item) error {
+	var err error
+	if vaultItem.Overview.Title, err = promptRequired("Title", vaultItem.Overview.Title); err != nil {
+		return err
+	}
+	license, otherFields := item.ReadSoftwareLicense(vaultItem)
+	err = promptNamedFields(&license, item.ListSoftwareLicenseFields(), func(field item.SoftwareLicenseField, value string) string {
+		if field.Name == item.FieldPurchaseDate && value == "" {
+			return " (YYYY-MM-DD)"
+		}
+		return ""
+	})
+	if err != nil {
+		return err
+	}
+	item.WriteSoftwareLicense(vaultItem, license, otherFields)
+	item.NormalizeSoftwareLicense(vaultItem)
+	return nil
+}
+
+// promptServer asks for a server's title, host, port, username, password (read without echo), admin console and the
+// title of the vault's SSH key it uses, which it links by ID.
+func promptServer(vaultItem *item.Item, vaultItems []item.Item) error {
+	var err error
+	if vaultItem.Overview.Title, err = promptRequired("Title", vaultItem.Overview.Title); err != nil {
+		return err
+	}
+	server, otherFields := item.ReadServer(vaultItem)
+	if server.Host, err = prompt("Host", server.Host); err != nil {
+		return err
+	}
+	if server.Port, err = prompt("Port", server.Port); err != nil {
+		return err
+	}
+	if vaultItem.Overview.Username, err = prompt("Username", vaultItem.Overview.Username); err != nil {
+		return err
+	}
+	label := "Password"
+	if vaultItem.Details.Password != "" {
+		label += " (empty to keep)"
+	}
+	password, err := promptSecret(label)
+	if err != nil {
+		return err
+	}
+	if len(password) > 0 {
+		vaultItem.Details.Password = string(password)
+	}
+	urlText, err := prompt("Admin console URL", strings.Join(vaultItem.Overview.URLs, " "))
+	if err != nil {
+		return err
+	}
+	vaultItem.Overview.URLs = strings.Fields(urlText)
+	if server.SSHKeyID, err = promptSSHKey(server.SSHKeyID, vaultItems); err != nil {
+		return err
+	}
+	item.WriteServer(vaultItem, server, otherFields)
+	item.NormalizeServer(vaultItem)
+	if warning := server.Normalize().PortWarning(); warning != "" {
+		fmt.Fprintln(os.Stderr, warning+".")
+	}
+	return nil
+}
+
+// promptDatabase asks for a database's title, engine, host, port, database name, username, password (read without echo)
+// and connection options.
+func promptDatabase(vaultItem *item.Item) error {
+	var err error
+	if vaultItem.Overview.Title, err = promptRequired("Title", vaultItem.Overview.Title); err != nil {
+		return err
+	}
+	database, otherFields := item.ReadDatabase(vaultItem)
+	engineIDs := []string{}
+	for _, engine := range item.ListDatabaseEngines() {
+		engineIDs = append(engineIDs, engine.ID)
+	}
+	if database.Engine, err = prompt("Engine ("+strings.Join(engineIDs, ", ")+" or another)", database.Engine); err != nil {
+		return err
+	}
+	if database.Host, err = prompt("Host", database.Host); err != nil {
+		return err
+	}
+	if database.Port, err = prompt("Port", database.Port); err != nil {
+		return err
+	}
+	if database.Name, err = prompt("Database", database.Name); err != nil {
+		return err
+	}
+	if vaultItem.Overview.Username, err = prompt("Username", vaultItem.Overview.Username); err != nil {
+		return err
+	}
+	label := "Password"
+	if vaultItem.Details.Password != "" {
+		label += " (empty to keep)"
+	}
+	password, err := promptSecret(label)
+	if err != nil {
+		return err
+	}
+	if len(password) > 0 {
+		vaultItem.Details.Password = string(password)
+	}
+	if database.Options, err = prompt("Options (such as sslmode=require)", database.Options); err != nil {
+		return err
+	}
+	item.WriteDatabase(vaultItem, database, otherFields)
+	item.NormalizeDatabase(vaultItem)
+	if warning := database.Normalize().PortWarning(); warning != "" {
+		fmt.Fprintln(os.Stderr, warning+".")
+	}
+	return nil
+}
+
+// promptSSHKey asks for the title of one of the vault's SSH keys and returns its ID; "none" removes the link, and an empty
+// answer keeps the current one.
+func promptSSHKey(currentID string, vaultItems []item.Item) (string, error) {
+	var allKey []item.Item
+	currentTitle := ""
+	for _, vaultItem := range vaultItems {
+		if vaultItem.IsCategory(item.CategorySSHKey) {
+			allKey = append(allKey, vaultItem)
+			if vaultItem.ID == currentID {
+				currentTitle = vaultItem.Overview.Title
+			}
+		}
+	}
+	if currentID != "" && currentTitle == "" {
+		currentTitle = "missing key " + currentID
+	}
+	label := "SSH key (the title of an SSH key in this vault, empty for none)"
+	if currentID != "" {
+		label = "SSH key (empty to keep, 'none' to remove)"
+	}
+	for {
+		answer, err := prompt(label, currentTitle)
+		if err != nil {
+			return "", err
+		}
+		switch {
+		case answer == currentTitle:
+			return currentID, nil
+		case strings.EqualFold(answer, "none"):
+			return "", nil
+		}
+		var matches []item.Item
+		for _, key := range allKey {
+			if strings.EqualFold(strings.TrimSpace(key.Overview.Title), answer) || key.ID == answer {
+				matches = append(matches, key)
+			}
+		}
+		switch len(matches) {
+		case 1:
+			return matches[0].ID, nil
+		case 0:
+			fmt.Fprintf(os.Stderr, "This vault has no SSH key called %q.\n", answer)
+		default:
+			fmt.Fprintf(os.Stderr, "%d SSH keys are called %q; enter one's ID instead.\n", len(matches), answer)
+		}
+	}
 }
 
 func promptItem(vaultItem *item.Item) error {

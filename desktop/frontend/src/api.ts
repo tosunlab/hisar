@@ -31,6 +31,9 @@ import type {
   ItemIdentity,
   ItemField,
   ItemPasskey,
+  ItemServer,
+  ItemDatabase,
+  ItemSoftwareLicense,
   OneTimeCode,
   Organization as BoundOrganization,
   OrganizationInvitation,
@@ -92,6 +95,9 @@ export type {
   ItemField,
   ItemIdentity,
   ItemPasskey,
+  ItemServer,
+  ItemDatabase,
+  ItemSoftwareLicense,
   LoginItemStatus,
   OneTimeCode,
   OrganizationInvitation,
@@ -485,6 +491,18 @@ export function createEmptyIdentity(): ItemIdentity {
 
 export function createEmptyAPICredential(): ItemAPICredential {
   return { service: "", keyId: "", secret: "", host: "", expiry: "", expiryWarning: "" };
+}
+
+export function createEmptyServer(): ItemServer {
+  return { host: "", port: "", sshKeyId: "", sshKeyTitle: "", sshKeyFingerprint: "", portWarning: "" };
+}
+
+export function createEmptyDatabase(): ItemDatabase {
+  return { engine: "postgresql", engineName: "PostgreSQL", host: "", port: "", name: "", options: "", connectionString: "", portWarning: "" };
+}
+
+export function createEmptySoftwareLicense(): ItemSoftwareLicense {
+  return { product: "", version: "", licenseKey: "", licensedTo: "", email: "", purchaseDate: "", downloadUrl: "" };
 }
 
 export function createEmptyItem(): ItemDetail {

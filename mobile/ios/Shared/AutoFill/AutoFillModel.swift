@@ -400,7 +400,7 @@ final class AutoFillModel: ObservableObject {
         guard let allLogin = await perform({ backend -> [LoginMatch] in
             var allLogin: [LoginMatch] = []
             for vault in try backend.listAllVault() {
-                for item in try backend.listAllItem(vaultID: vault.id) where item.isLogin {
+                for item in try backend.listAllItem(vaultID: vault.id) where item.offersLoginFill {
                     allLogin.append(LoginMatch(vaultID: vault.id, itemID: item.id, title: item.title, username: item.username, vaultName: vault.name, hasOneTimePassword: item.hasOneTimePassword))
                 }
             }

@@ -8,6 +8,7 @@ import {
   hasShareableField,
   openItemShareLinkDialog,
   openWebsite,
+  selectItem,
   selectTag,
   startEditingItem,
   store,
@@ -21,17 +22,27 @@ import {
   apiCredentialFieldName,
   cardFieldName,
   creditCardCategory,
+  databaseCategory,
+  databaseFieldName,
   formatAddressSummary,
   formatAPICredentialSummary,
   formatCardSummary,
+  formatDatabaseSummary,
   formatIdentitySummary,
   formatKeyType,
+  formatServerAddress,
+  formatServerSummary,
+  formatSoftwareLicenseSummary,
   getDomain,
   getItemIcon,
   identityCategory,
   identityFieldName,
   isMacPlatform,
   secureNoteCategory,
+  serverCategory,
+  serverFieldName,
+  softwareLicenseCategory,
+  softwareLicenseFieldName,
   sshKeyCategory,
 } from "../util";
 import AppIcon from "./AppIcon.vue";
@@ -56,8 +67,28 @@ const isCreditCard = computed(() => store.selectedItem?.category === creditCardC
 const isIdentity = computed(() => store.selectedItem?.category === identityCategory);
 const isAPICredential = computed(() => store.selectedItem?.category === apiCredentialCategory);
 const isAddress = computed(() => store.selectedItem?.category === addressCategory);
+const isSoftwareLicense = computed(() => store.selectedItem?.category === softwareLicenseCategory);
+const isServer = computed(() => store.selectedItem?.category === serverCategory);
+const server = computed(() => (isServer.value ? store.selectedItem?.server : undefined));
+const isDatabase = computed(() => store.selectedItem?.category === databaseCategory);
+const database = computed(() => (isDatabase.value ? store.selectedItem?.database : undefined));
+const isConnectionStringRevealed = ref(false);
+// A database's values before its login data: the engine by its name, the host, port and database name.
+const allDatabaseRow = computed(() => {
+  const value = database.value;
+  if (!value) {
+    return [];
+  }
+  return [
+    { name: databaseFieldName.engine, value: value.engineName, warning: "" },
+    { name: databaseFieldName.host, value: value.host, warning: "" },
+    { name: databaseFieldName.port, value: value.port, warning: value.portWarning },
+    { name: databaseFieldName.name, value: value.name, warning: "" },
+  ].filter((row) => row.value !== "");
+});
 
-type NamedRow = { name: string; value: string; concealed: boolean; masked: string; warning: string };
+// NamedRow: isLink rows open in the browser, as websites do.
+type NamedRow = { name: string; value: string; concealed: boolean; masked: string; warning: string; isLink?: boolean };
 
 // buildAddressRows lists an address's values as rows, as an address item, an identity and a card keep them.
 function buildAddressRows(address: Record<(typeof allAddressKey)[number], string>): NamedRow[] {
@@ -117,9 +148,29 @@ const allAPICredentialRow = computed(() => {
   ].filter((row) => row.value !== "");
 });
 const allAddressRow = computed(() => (store.selectedItem?.address ? buildAddressRows(store.selectedItem.address).filter((row) => row.value !== "") : []));
+// A software license's values as rows; the license key is masked until revealed and the download URL opens.
+const allSoftwareLicenseRow = computed(() => {
+  const license = store.selectedItem?.softwareLicense;
+  if (!license) {
+    return [];
+  }
+  const rows: NamedRow[] = [
+    { name: softwareLicenseFieldName.product, value: license.product, concealed: false, masked: "", warning: "" },
+    { name: softwareLicenseFieldName.version, value: license.version, concealed: false, masked: "", warning: "" },
+    { name: softwareLicenseFieldName.licenseKey, value: license.licenseKey, concealed: true, masked: "", warning: "" },
+    { name: softwareLicenseFieldName.licensedTo, value: license.licensedTo, concealed: false, masked: "", warning: "" },
+    { name: softwareLicenseFieldName.email, value: license.email, concealed: false, masked: "", warning: "" },
+    { name: softwareLicenseFieldName.purchaseDate, value: license.purchaseDate, concealed: false, masked: "", warning: "" },
+    { name: softwareLicenseFieldName.downloadUrl, value: license.downloadUrl, concealed: false, masked: "", warning: "", isLink: true },
+  ];
+  return rows.filter((row) => row.value !== "");
+});
 // The rows of a type whose values are named fields, what its section calls it when it has none, and the section's test
-// id: a card's, an identity's, an API credential's or an address's.
+// id: a card's, an identity's, an API credential's, an address's or a software license's.
 const namedType = computed(() => {
+  if (isSoftwareLicense.value) {
+    return { allRow: allSoftwareLicenseRow.value, name: "software license", testID: "software-license-fields" };
+  }
   if (isIdentity.value) {
     return { allRow: allIdentityRow.value, name: "identity", testID: "identity-fields" };
   }
@@ -131,7 +182,7 @@ const namedType = computed(() => {
   }
   return { allRow: allCardRow.value, name: "card", testID: "credit-card-fields" };
 });
-const allNamedRow = computed(() => namedType.value.allRow);
+const allNamedRow = computed((): NamedRow[] => namedType.value.allRow);
 const allMultilineName: string[] = [addressFieldName.street, cardFieldName.billingAddress, identityFieldName.address];
 const isShareable = computed(() => store.selectedItem !== null && hasShareableField(store.selectedItem));
 const allItemShareLink = computed(() => (store.selectedItem ? getAllShareLinkForItem(store.selectedVaultID, store.selectedItem.id) : []));
@@ -140,6 +191,7 @@ watch(
   () => store.selectedItem?.id,
   () => {
     isPasswordRevealed.value = false;
+    isConnectionStringRevealed.value = false;
     allRevealedFieldName.value = [];
     isConfirmingDelete.value = false;
   },
@@ -171,6 +223,13 @@ function maskSecret(secret: string): string {
           <span v-else-if="isIdentity" class="muted" data-testid="identity-summary">{{ formatIdentitySummary(store.selectedItem.identity) }}</span>
           <span v-else-if="isAPICredential" class="muted" data-testid="api-credential-summary">{{ formatAPICredentialSummary(store.selectedItem.apiCredential) }}</span>
           <span v-else-if="isAddress" class="muted" data-testid="address-summary">{{ formatAddressSummary(store.selectedItem.address) }}</span>
+          <span v-else-if="isSoftwareLicense" class="muted" data-testid="software-license-summary">{{
+            formatSoftwareLicenseSummary(store.selectedItem.softwareLicense)
+          }}</span>
+          <span v-else-if="isServer" class="muted" data-testid="server-summary">{{
+            formatServerSummary(store.selectedItem.server, store.selectedItem.username)
+          }}</span>
+          <span v-else-if="isDatabase" class="muted" data-testid="database-summary">{{ formatDatabaseSummary(store.selectedItem.database) }}</span>
           <span v-else-if="store.selectedItem.urls[0]" class="muted">{{ getDomain(store.selectedItem.urls[0]) }}</span>
         </div>
         <div v-if="(store.selectedItem.tags ?? []).length > 0" class="tags" data-testid="item-tags">
@@ -252,7 +311,11 @@ function maskSecret(secret: string): string {
       <CommitSigningPanel v-if="store.selectedItem.publicKey" :public-key="store.selectedItem.publicKey" />
     </template>
 
-    <section v-else-if="isCreditCard || isIdentity || isAPICredential || isAddress" class="card field-card" :data-testid="namedType.testID">
+    <section
+      v-else-if="isCreditCard || isIdentity || isAPICredential || isAddress || isSoftwareLicense"
+      class="card field-card"
+      :data-testid="namedType.testID"
+    >
       <div v-for="row in allNamedRow" :key="row.name" class="field">
         <span class="field-label">{{ row.name }}</span>
         <span class="field-value">
@@ -272,6 +335,9 @@ function maskSecret(secret: string): string {
             @click="toggleFieldReveal(row.name)"
           >
             <AppIcon :name="allRevealedFieldName.includes(row.name) ? 'eyeOff' : 'eye'" />
+          </button>
+          <button v-if="row.isLink" class="ghost icon-button" :aria-label="`Open ${row.name}`" title="Open in browser" @click="openWebsite(row.value)">
+            <AppIcon name="external" />
           </button>
           <button class="ghost icon-button" :aria-label="`Copy ${row.name}`" title="Copy" @click="copyField(row.name, row.name)"><AppIcon name="copy" /></button>
           <SecretReferenceButton :field-name="row.name" :label="row.name" />
@@ -336,6 +402,53 @@ function maskSecret(secret: string): string {
     </template>
 
     <section v-else class="card field-card">
+      <template v-if="server">
+        <div v-if="server.host" class="field">
+          <span class="field-label">{{ serverFieldName.host }}</span>
+          <span class="field-value monospace" data-testid="server-host">{{ formatServerAddress(server) }}</span>
+          <span class="field-actions">
+            <button class="ghost icon-button" aria-label="Copy Host" title="Copy" @click="copyField(serverFieldName.host, serverFieldName.host)"><AppIcon name="copy" /></button>
+            <SecretReferenceButton :field-name="serverFieldName.host" :label="serverFieldName.host" />
+          </span>
+        </div>
+        <div v-if="server.port" class="field">
+          <span class="field-label">{{ serverFieldName.port }}</span>
+          <span class="field-value">
+            <span data-testid="server-port">{{ server.port }}</span>
+            <small v-if="server.portWarning" class="field-warning" data-testid="server-port-warning">{{ server.portWarning }}</small>
+          </span>
+          <span class="field-actions">
+            <button class="ghost icon-button" aria-label="Copy Port" title="Copy" @click="copyField(serverFieldName.port, serverFieldName.port)"><AppIcon name="copy" /></button>
+            <SecretReferenceButton :field-name="serverFieldName.port" :label="serverFieldName.port" />
+          </span>
+        </div>
+        <div v-if="server.sshKeyId" class="field" data-testid="server-ssh-key">
+          <span class="field-label">{{ serverFieldName.sshKey }}</span>
+          <span v-if="server.sshKeyTitle" class="field-value">
+            <span>{{ server.sshKeyTitle }}</span>
+            <small class="muted monospace">{{ server.sshKeyFingerprint }}</small>
+          </span>
+          <span v-else class="field-value muted">Missing SSH key</span>
+          <span class="field-actions">
+            <button v-if="server.sshKeyTitle" class="ghost icon-button" aria-label="Open SSH key" title="Open" @click="selectItem(server.sshKeyId)">
+              <AppIcon name="key" />
+            </button>
+          </span>
+        </div>
+      </template>
+
+      <div v-for="row in allDatabaseRow" :key="row.name" class="field">
+        <span class="field-label">{{ row.name }}</span>
+        <span class="field-value">
+          <span :data-testid="`database-${row.name}`">{{ row.value }}</span>
+          <small v-if="row.warning" class="field-warning" data-testid="database-port-warning">{{ row.warning }}</small>
+        </span>
+        <span class="field-actions">
+          <button class="ghost icon-button" :aria-label="`Copy ${row.name}`" title="Copy" @click="copyField(row.name, row.name)"><AppIcon name="copy" /></button>
+          <SecretReferenceButton :field-name="row.name" :label="row.name" />
+        </span>
+      </div>
+
       <div v-if="store.selectedItem.username" class="field">
         <span class="field-label">Username</span>
         <span class="field-value">{{ store.selectedItem.username }}</span>
@@ -367,10 +480,41 @@ function maskSecret(secret: string): string {
         </span>
       </div>
 
+      <template v-if="database">
+        <div v-if="database.options" class="field">
+          <span class="field-label">{{ databaseFieldName.options }}</span>
+          <span class="field-value monospace" data-testid="database-options">{{ database.options }}</span>
+          <span class="field-actions">
+            <button class="ghost icon-button" aria-label="Copy Options" title="Copy" @click="copyField(databaseFieldName.options, databaseFieldName.options)"><AppIcon name="copy" /></button>
+            <SecretReferenceButton :field-name="databaseFieldName.options" :label="databaseFieldName.options" />
+          </span>
+        </div>
+        <div v-if="database.connectionString" class="field" data-testid="database-connection-string">
+          <span class="field-label">Connection string</span>
+          <span class="field-value monospace secret" data-testid="connection-string-value">
+            {{ isConnectionStringRevealed ? database.connectionString : maskSecret(database.connectionString) }}
+          </span>
+          <span class="field-actions">
+            <button
+              class="ghost icon-button"
+              :aria-label="isConnectionStringRevealed ? 'Hide connection string' : 'Reveal connection string'"
+              :title="isConnectionStringRevealed ? 'Hide' : 'Reveal'"
+              @click="isConnectionStringRevealed = !isConnectionStringRevealed"
+            >
+              <AppIcon :name="isConnectionStringRevealed ? 'eyeOff' : 'eye'" />
+            </button>
+            <button class="ghost icon-button" aria-label="Copy connection string" title="Copy" @click="copyField('connection string', 'Connection string')">
+              <AppIcon name="copy" />
+            </button>
+            <SecretReferenceButton field-name="connection string" label="connection string" />
+          </span>
+        </div>
+      </template>
+
       <OneTimeCodeField v-if="store.selectedItem.hasOneTimePassword" :vault-i-d="store.selectedVaultID" :item-i-d="store.selectedItem.id" />
 
       <div v-for="link in store.selectedItem.urls" :key="link" class="field">
-        <span class="field-label">Website</span>
+        <span class="field-label">{{ isServer ? "Admin console" : "Website" }}</span>
         <span class="field-value">{{ link }}</span>
         <span class="field-actions">
           <button class="ghost icon-button" aria-label="Open website" title="Open in browser" @click="openWebsite(link)"><AppIcon name="external" /></button>
@@ -397,7 +541,18 @@ function maskSecret(secret: string): string {
       </div>
 
       <p
-        v-if="!store.selectedItem.username && !store.selectedItem.password && store.selectedItem.urls.length === 0 && store.selectedItem.fields.length === 0 && (store.selectedItem.passkeys ?? []).length === 0"
+        v-if="
+          !store.selectedItem.username &&
+          !store.selectedItem.password &&
+          store.selectedItem.urls.length === 0 &&
+          store.selectedItem.fields.length === 0 &&
+          (store.selectedItem.passkeys ?? []).length === 0 &&
+          !server?.host &&
+          !server?.port &&
+          !server?.sshKeyId &&
+          allDatabaseRow.length === 0 &&
+          !database?.options
+        "
         class="muted no-fields"
       >
         This item has no fields yet.

@@ -124,6 +124,24 @@ struct ItemListView: View {
                             Label("Address", systemImage: "mappin.and.ellipse")
                         }
                         .accessibilityIdentifier("add-address")
+                        Button {
+                            newItemCategory = ItemDetail.categorySoftwareLicense
+                        } label: {
+                            Label("Software license", systemImage: "checkmark.seal")
+                        }
+                        .accessibilityIdentifier("add-software-license")
+                        Button {
+                            newItemCategory = ItemDetail.categoryServer
+                        } label: {
+                            Label("Server", systemImage: "server.rack")
+                        }
+                        .accessibilityIdentifier("add-server")
+                        Button {
+                            newItemCategory = ItemDetail.categoryDatabase
+                        } label: {
+                            Label("Database", systemImage: "cylinder.split.1x2")
+                        }
+                        .accessibilityIdentifier("add-database")
                     } label: {
                         Label("Add item", systemImage: "plus")
                     }

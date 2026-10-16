@@ -267,6 +267,54 @@ type ItemDetail struct {
 	// Address holds an address item's values, stored as named custom fields like an identity's; summaries keep only the
 	// city, country and the first line of the street.
 	Address *ItemAddress `json:"address,omitempty"`
+	// SoftwareLicense holds a software license's values, stored as named custom fields like an API credential's; summaries
+	// keep only the product, version, licensed-to name and email.
+	SoftwareLicense *ItemSoftwareLicense `json:"softwareLicense,omitempty"`
+	// Server holds a server's host, port and linked SSH key, stored as named custom fields; its username, password and
+	// admin console are the item's own Username, Password and URLs. Summaries keep only the host and port.
+	Server *ItemServer `json:"server,omitempty"`
+	// Database holds a database's engine, host, port, name and options, stored as named custom fields; its username and
+	// password are the item's own. Summaries keep only the engine, host, port and name.
+	Database *ItemDatabase `json:"database,omitempty"`
+}
+
+// ItemDatabase is a database's values besides its login data. Engine is the ID of a known engine (postgresql, mysql,
+// mariadb, sqlserver, oracle, mongodb, redis) or any other engine as typed; EngineName names it. ConnectionString is built
+// from the values and the item's login data, and is "" for another engine or without a host. PortWarning says when the
+// port is not a number from 1 to 65535. SaveItem reads only Engine, Host, Port, Name and Options.
+type ItemDatabase struct {
+	Engine           string `json:"engine"`
+	EngineName       string `json:"engineName"`
+	Host             string `json:"host"`
+	Port             string `json:"port"`
+	Name             string `json:"name"`
+	Options          string `json:"options"`
+	ConnectionString string `json:"connectionString"`
+	PortWarning      string `json:"portWarning"`
+}
+
+// ItemServer is a server's values besides its login data. SSHKeyID names an ssh-key item in the same vault, or is "";
+// SSHKeyTitle and SSHKeyFingerprint describe that key, and are "" when it is gone. PortWarning says when the port is not a
+// number from 1 to 65535. SaveItem reads only Host, Port and SSHKeyID.
+type ItemServer struct {
+	Host              string `json:"host"`
+	Port              string `json:"port"`
+	SSHKeyID          string `json:"sshKeyId"`
+	SSHKeyTitle       string `json:"sshKeyTitle"`
+	SSHKeyFingerprint string `json:"sshKeyFingerprint"`
+	PortWarning       string `json:"portWarning"`
+}
+
+// ItemSoftwareLicense is a software license; the license key is concealed. DownloadURL is a field, not the item's
+// website.
+type ItemSoftwareLicense struct {
+	Product      string `json:"product"`
+	Version      string `json:"version"`
+	LicenseKey   string `json:"licenseKey"`
+	LicensedTo   string `json:"licensedTo"`
+	Email        string `json:"email"`
+	PurchaseDate string `json:"purchaseDate"`
+	DownloadURL  string `json:"downloadUrl"`
 }
 
 // ItemAddress is a postal address; Street may hold several lines. Identities and cards hold one too.

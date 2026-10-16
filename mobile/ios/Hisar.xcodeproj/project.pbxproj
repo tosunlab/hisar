@@ -907,7 +907,7 @@
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "HisarAutoFill Development";
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -923,7 +923,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "$(HISAR_BUNDLE_IDENTIFIER_PREFIX).tests";
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Hisar.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Hisar";
 			};
 			name = Release;
@@ -984,7 +984,6 @@
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
@@ -1011,7 +1010,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = "$(HISAR_PERSONAL_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = HisarPersonal;
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -1027,7 +1026,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "$(HISAR_BUNDLE_IDENTIFIER_PREFIX).tests";
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Hisar.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Hisar";
 			};
 			name = Debug;
@@ -1057,7 +1056,7 @@
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "Hisar Development";
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -1084,7 +1083,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = "$(HISAR_PERSONAL_BUNDLE_IDENTIFIER)";
 				PRODUCT_NAME = HisarPersonal;
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
@@ -1113,7 +1112,7 @@
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "HisarAutoFill App Store";
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
@@ -1180,7 +1179,6 @@
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};
@@ -1196,7 +1194,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "$(HISAR_BUNDLE_IDENTIFIER_PREFIX).ui-tests";
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 				TEST_TARGET_NAME = Hisar;
 			};
 			name = Debug;
@@ -1226,7 +1224,7 @@
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "Hisar App Store";
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
@@ -1242,7 +1240,7 @@
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "$(HISAR_BUNDLE_IDENTIFIER_PREFIX).ui-tests";
 				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 				TEST_TARGET_NAME = Hisar;
 			};
 			name = Release;

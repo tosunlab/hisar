@@ -143,6 +143,71 @@ export function createAddressItem(overrides: Partial<ItemDetail> = {}): ItemDeta
   });
 }
 
+export function createSoftwareLicenseItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
+  return createItem({
+    id: "sketch-1",
+    category: "software-license",
+    title: "Sketch",
+    username: "",
+    urls: [],
+    fields: [{ name: "Seats", value: "5", concealed: false }],
+    softwareLicense: {
+      product: "Sketch",
+      version: "100",
+      licenseKey: "TEST-LICENSE-KEY",
+      licensedTo: "Alice Example",
+      email: "alice@example.com",
+      purchaseDate: "2024-03-09",
+      downloadUrl: "https://www.sketch.com/download",
+    },
+    ...overrides,
+  });
+}
+
+export function createServerItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
+  return createItem({
+    id: "build-1",
+    category: "server",
+    title: "Build server",
+    username: "deploy",
+    password: "server-password",
+    urls: ["https://console.example.com"],
+    fields: [{ name: "Provider", value: "Example Cloud", concealed: false }],
+    server: {
+      host: "build.example.com",
+      port: "2222",
+      sshKeyId: "key-1",
+      sshKeyTitle: "Deploy key",
+      sshKeyFingerprint: "SHA256:abc",
+      portWarning: "",
+    },
+    ...overrides,
+  });
+}
+
+export function createDatabaseItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
+  return createItem({
+    id: "db-1",
+    category: "database",
+    title: "Prod db",
+    username: "app",
+    password: "db-password",
+    urls: [],
+    fields: [{ name: "SID", value: "ORCL", concealed: false }],
+    database: {
+      engine: "postgresql",
+      engineName: "PostgreSQL",
+      host: "db.example.com",
+      port: "5432",
+      name: "app",
+      options: "sslmode=require",
+      connectionString: "postgresql://app:db-password@db.example.com:5432/app?sslmode=require",
+      portWarning: "",
+    },
+    ...overrides,
+  });
+}
+
 export function createSecureNoteItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
   return createItem({
     id: "note-1",
@@ -662,6 +727,9 @@ export function createImportPreview(overrides: Partial<ImportPreview> = {}): Imp
     identityCount: 0,
     apiCredentialCount: 0,
     addressCount: 0,
+    softwareLicenseCount: 0,
+    serverCount: 0,
+    databaseCount: 0,
     allSkipped: [{ title: "Visa", reason: "Bitwarden cards are not supported in Hisar yet" }],
     allDuplicate: [{ title: "GitHub", username: "alice", url: "https://github.com", detail: "alice · github.com" }],
     ...overrides,

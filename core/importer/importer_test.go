@@ -198,10 +198,11 @@ func TestParseOnePasswordExport(t *testing.T) {
 		t.Errorf("ssh key material: %q", sshKey.Overview.PublicKey)
 	}
 	server := findTestItem(t, result, "Build server")
-	if server.Overview.Username != "deploy" || server.Details.Password != "build-pass-9" || !reflect.DeepEqual(server.Overview.URLs, []string{"https://ci.example.com"}) {
+	if server.Overview.Category != item.CategoryServer || server.Overview.Username != "deploy" || server.Details.Password != "build-pass-9" ||
+		!reflect.DeepEqual(server.Overview.URLs, []string{"https://ci.example.com/admin"}) {
 		t.Errorf("server = %+v", server)
 	}
-	if !reflect.DeepEqual(server.Details.Fields, []item.Field{{Name: "console URL", Value: "https://ci.example.com/admin"}}) {
+	if !reflect.DeepEqual(server.Details.Fields, []item.Field{{Name: item.FieldHost, Value: "ci.example.com"}}) {
 		t.Errorf("server fields = %+v", server.Details.Fields)
 	}
 	if newsletter := findTestItem(t, result, "Newsletter"); newsletter.Details.Password != "" || newsletter.Overview.Username != "alice@example.com" {
@@ -244,7 +245,7 @@ func TestParseOnePasswordExport(t *testing.T) {
 	if favorites := getFavoriteTitles(result.Items); !reflect.DeepEqual(favorites, []string{"GitHub"}) {
 		t.Errorf("favorites = %q", favorites)
 	}
-	if summary := Summarize(result.Items); summary != (Summary{LoginCount: 5, SecureNoteCount: 1, SSHKeyCount: 1, CreditCardCount: 1, IdentityCount: 1}) {
+	if summary := Summarize(result.Items); summary != (Summary{LoginCount: 4, SecureNoteCount: 1, SSHKeyCount: 1, CreditCardCount: 1, IdentityCount: 1, ServerCount: 1}) {
 		t.Errorf("summary = %+v", summary)
 	}
 }
@@ -825,11 +826,261 @@ func TestParseOnePasswordAPICredential(t *testing.T) {
 	if stripe.Overview.Category != item.CategoryAPICredential || !reflect.DeepEqual(stripe.Details.Fields, wantFields) || stripe.Details.Notes != "Live key" {
 		t.Errorf("API credential = %+v\nfields\n%+v\nwant\n%+v", stripe.Overview, stripe.Details.Fields, wantFields)
 	}
-	if server := findTestItem(t, result, "Build server"); server.Overview.Category != item.CategoryLogin || server.Overview.Username != "deploy" || server.Details.Password != "server-password" {
-		t.Errorf("a 1Password Server is no longer a login: %+v", server)
+	if server := findTestItem(t, result, "Build server"); server.Overview.Category != item.CategoryServer || server.Overview.Username != "deploy" || server.Details.Password != "server-password" {
+		t.Errorf("a 1Password Server is not a server: %+v", server)
 	}
-	if summary := Summarize(result.Items); summary.APICredentialCount != 1 || summary.LoginCount != 1 {
+	if summary := Summarize(result.Items); summary.APICredentialCount != 1 || summary.ServerCount != 1 {
 		t.Errorf("summary = %+v", summary)
+	}
+}
+
+func TestParseOnePasswordSoftwareLicense(t *testing.T) {
+	data := `{"accounts":[{"vaults":[{"items":[
+		{"categoryUuid":"100","overview":{"title":" Sketch "},"details":{"notesPlain":"Team plan","sections":[
+			{"title":"","fields":[
+				{"title":"version","id":"product_version","value":{"string":"100"}},
+				{"title":"license key","id":"reg_code","value":{"string":"TEST-LICENSE-KEY"}}]},
+			{"title":"Customer","name":"customer","fields":[
+				{"title":"licensed to","id":"reg_name","value":{"string":"Alice Example"}},
+				{"title":"registered email","id":"reg_email","value":{"email":{"email_address":"alice@example.com"}}},
+				{"title":"company","id":"company","value":{"string":"Example Inc."}}]},
+			{"title":"Publisher","name":"publisher","fields":[
+				{"title":"download page","id":"download_link","value":{"url":"https://www.sketch.com/download"}},
+				{"title":"publisher","id":"publisher_name","value":{"string":"Sketch B.V."}}]},
+			{"title":"Order","name":"order","fields":[
+				{"title":"purchase date","id":"order_date","value":{"date":1709942400}},
+				{"title":"order number","id":"order_number","value":{"string":"A-1"}}]}]}},
+		{"categoryUuid":"100","overview":{"title":"Old app","url":"https://example.com/download"},"details":{"loginFields":[
+			{"designation":"username","name":"username","value":"alice"}],
+			"sections":[{"title":"","fields":[{"title":"license key","id":"reg_code","value":{"concealed":"OLD-KEY"}}]}]}},
+		{"categoryUuid":"109","overview":{"title":"Router"},"details":{"sections":[{"title":"","fields":[
+			{"title":"username","id":"username","value":{"string":"admin"}}]}]}}]}]}]}`
+	result := parseFixture(t, "export.1pux", buildOnePasswordExport(t, []byte(data)), FormatAutomatic)
+	if len(result.Skipped) != 0 {
+		t.Errorf("skipped %+v", result.Skipped)
+	}
+	sketch := findTestItem(t, result, "Sketch")
+	wantFields := []item.Field{
+		{Name: item.FieldProduct, Value: "Sketch"},
+		{Name: item.FieldVersion, Value: "100"},
+		{Name: item.FieldLicenseKey, Value: "TEST-LICENSE-KEY", Concealed: true},
+		{Name: item.FieldLicensedTo, Value: "Alice Example"},
+		{Name: item.FieldEmail, Value: "alice@example.com"},
+		{Name: item.FieldPurchaseDate, Value: "2024-03-09"},
+		{Name: item.FieldDownloadURL, Value: "https://www.sketch.com/download"},
+		{Name: "company", Value: "Example Inc."},
+		{Name: "publisher", Value: "Sketch B.V."},
+		{Name: "order number", Value: "A-1"},
+	}
+	if sketch.Overview.Category != item.CategorySoftwareLicense || !reflect.DeepEqual(sketch.Details.Fields, wantFields) || sketch.Details.Notes != "Team plan" {
+		t.Errorf("software license = %+v\nfields\n%+v\nwant\n%+v", sketch.Overview, sketch.Details.Fields, wantFields)
+	}
+
+	// A website with no download link becomes the download URL, and login data moves to custom fields.
+	oldApp := findTestItem(t, result, "Old app")
+	wantOldFields := []item.Field{
+		{Name: item.FieldProduct, Value: "Old app"},
+		{Name: item.FieldLicenseKey, Value: "OLD-KEY", Concealed: true},
+		{Name: item.FieldDownloadURL, Value: "https://example.com/download"},
+		{Name: "Username", Value: "alice"},
+	}
+	if oldApp.Overview.Category != item.CategorySoftwareLicense || !reflect.DeepEqual(oldApp.Details.Fields, wantOldFields) ||
+		oldApp.Overview.Username != "" || len(oldApp.Overview.URLs) != 0 {
+		t.Errorf("license with login data = %+v\nfields\n%+v\nwant\n%+v", oldApp.Overview, oldApp.Details.Fields, wantOldFields)
+	}
+	if router := findTestItem(t, result, "Router"); router.Overview.Category != item.CategoryLogin || router.Overview.Username != "admin" {
+		t.Errorf("a 1Password Wireless Router is no longer a login: %+v", router)
+	}
+	if summary := Summarize(result.Items); summary.SoftwareLicenseCount != 2 || summary.LoginCount != 1 {
+		t.Errorf("summary = %+v", summary)
+	}
+}
+
+func TestParseOnePasswordServer(t *testing.T) {
+	data := `{"accounts":[{"vaults":[{"items":[
+		{"categoryUuid":"110","overview":{"title":"Build server","url":"ssh://build.example.com:2222"},"details":{"notesPlain":"Rack 4","sections":[
+			{"title":"","fields":[
+				{"title":"URL","id":"url","value":{"string":"ssh://build.example.com:2222"}},
+				{"title":"username","id":"username","value":{"string":"deploy"}},
+				{"title":"password","id":"password","value":{"concealed":"server-password"}}]},
+			{"title":"Admin Console","name":"admin_console","fields":[
+				{"title":"console URL","id":"admin_console_url","value":{"string":"https://console.example.com"}},
+				{"title":"console username","id":"admin_console_username","value":{"string":"admin"}},
+				{"title":"console password","id":"admin_console_password","value":{"concealed":"console-password"}}]},
+			{"title":"Hosting Provider","name":"hosting_provider_details","fields":[
+				{"title":"name","id":"name","value":{"string":"Example Cloud"}},
+				{"title":"website","id":"website","value":{"string":"https://cloud.example.com"}}]}]}},
+		{"categoryUuid":"110","overview":{"title":"Panel server"},"details":{"sections":[
+			{"title":"","fields":[
+				{"title":"URL","id":"url","value":{"string":"panel.example.com"}},
+				{"title":"username","id":"username","value":{"string":"admin"}},
+				{"title":"password","id":"password","value":{"concealed":"panel-password"}}]},
+			{"title":"Admin Console","name":"admin_console","fields":[
+				{"title":"console URL","id":"admin_console_url","value":{"string":"https://panel.example.com:8443"}},
+				{"title":"console username","id":"admin_console_username","value":{"string":"admin"}},
+				{"title":"console password","id":"admin_console_password","value":{"concealed":""}}]}]}},
+		{"categoryUuid":"109","overview":{"title":"Router"},"details":{"sections":[{"title":"","fields":[
+			{"title":"username","id":"username","value":{"string":"admin"}}]}]}}]}]}]}`
+	result := parseFixture(t, "export.1pux", buildOnePasswordExport(t, []byte(data)), FormatAutomatic)
+	if len(result.Skipped) != 0 {
+		t.Errorf("skipped %+v", result.Skipped)
+	}
+	server := findTestItem(t, result, "Build server")
+	wantFields := []item.Field{
+		{Name: item.FieldHost, Value: "build.example.com"},
+		{Name: item.FieldPort, Value: "2222"},
+		{Name: "console URL", Value: "https://console.example.com"},
+		{Name: "console username", Value: "admin"},
+		{Name: "console password", Value: "console-password", Concealed: true},
+		{Name: "name", Value: "Example Cloud"},
+		{Name: "website", Value: "https://cloud.example.com"},
+	}
+	if server.Overview.Category != item.CategoryServer || !reflect.DeepEqual(server.Details.Fields, wantFields) || server.Details.Notes != "Rack 4" {
+		t.Errorf("server = %+v\nfields\n%+v\nwant\n%+v", server.Overview, server.Details.Fields, wantFields)
+	}
+	// The console has credentials of its own, so it is no website: AutoFill would offer the server's password there.
+	if server.Overview.Username != "deploy" || server.Details.Password != "server-password" || len(server.Overview.URLs) != 0 {
+		t.Errorf("server login data = %+v %+v", server.Overview, server.Details)
+	}
+	// A console signed in with the server's own credentials is the server's website, and its repeated username is dropped.
+	panel := findTestItem(t, result, "Panel server")
+	wantPanelFields := []item.Field{{Name: item.FieldHost, Value: "panel.example.com"}}
+	if !reflect.DeepEqual(panel.Details.Fields, wantPanelFields) || !reflect.DeepEqual(panel.Overview.URLs, []string{"https://panel.example.com:8443"}) ||
+		panel.Overview.Username != "admin" || panel.Details.Password != "panel-password" {
+		t.Errorf("panel server = %+v\nfields\n%+v\nwant\n%+v", panel.Overview, panel.Details.Fields, wantPanelFields)
+	}
+	if router := findTestItem(t, result, "Router"); router.Overview.Category != item.CategoryLogin {
+		t.Errorf("a 1Password Wireless Router is no longer a login: %+v", router)
+	}
+	if summary := Summarize(result.Items); summary.ServerCount != 2 || summary.LoginCount != 1 {
+		t.Errorf("summary = %+v", summary)
+	}
+
+	// Before Hisar had servers, this item became a login with the server's URL as its website.
+	oldLogin := item.Item{Overview: item.Overview{Title: "Build server", Category: item.CategoryLogin, Username: "deploy", URLs: []string{"ssh://build.example.com:2222"}}}
+	if indexes := FindDuplicateIndexes([]item.Item{server}, []item.Item{oldLogin}); !reflect.DeepEqual(indexes, []int{0}) {
+		t.Errorf("a server imported earlier as a login is not a duplicate: %v", indexes)
+	}
+	otherUser := oldLogin
+	otherUser.Overview.Username = "root"
+	if indexes := FindDuplicateIndexes([]item.Item{server}, []item.Item{otherUser}); len(indexes) != 0 {
+		t.Errorf("a server matches a login with another username: %v", indexes)
+	}
+	if got := DescribeDuplicate(server); got != "build.example.com:2222 · deploy" {
+		t.Errorf("DescribeDuplicate = %q", got)
+	}
+}
+
+func TestParseOnePasswordDatabase(t *testing.T) {
+	data := `{"accounts":[{"vaults":[{"items":[
+		{"categoryUuid":"102","overview":{"title":"Sales db"},"details":{"notesPlain":"Replica","sections":[
+			{"title":"","fields":[
+				{"title":"type","id":"database_type","value":{"menu":"mssql"}},
+				{"title":"server","id":"hostname","value":{"string":"sql.example.com:1433"}},
+				{"title":"database","id":"database","value":{"string":"Sales"}},
+				{"title":"username","id":"username","value":{"string":"sa"}},
+				{"title":"password","id":"password","value":{"concealed":"db-password"}},
+				{"title":"SID","id":"sid","value":{"string":"SALES1"}},
+				{"title":"alias","id":"alias","value":{"string":"sales"}},
+				{"title":"connection options","id":"options","value":{"string":"encrypt=true"}}]}]}},
+		{"categoryUuid":"102","overview":{"title":"Oracle db"},"details":{"sections":[{"title":"","fields":[
+			{"title":"type","id":"database_type","value":{"menu":"oracle"}},
+			{"title":"server","id":"hostname","value":{"string":"oracle.example.com"}},
+			{"title":"port","id":"port","value":{"string":"1521"}},
+			{"title":"SID","id":"sid","value":{"string":"ORCL"}},
+			{"title":"database","id":"database","value":{"string":""}},
+			{"title":"username","id":"username","value":{"string":"scott"}},
+			{"title":"password","id":"password","value":{"concealed":"tiger"}}]}]}},
+		{"categoryUuid":"102","overview":{"title":"Mainframe"},"details":{"sections":[{"title":"","fields":[
+			{"title":"type","id":"database_type","value":{"menu":"db2"}},
+			{"title":"server","id":"hostname","value":{"string":"db2.example.com"}},
+			{"title":"port","id":"port","value":{"string":"50000"}}]}]}}]}]}]}`
+	result := parseFixture(t, "export.1pux", buildOnePasswordExport(t, []byte(data)), FormatAutomatic)
+	if len(result.Skipped) != 0 {
+		t.Errorf("skipped %+v", result.Skipped)
+	}
+	sales := findTestItem(t, result, "Sales db")
+	wantFields := []item.Field{
+		{Name: item.FieldEngine, Value: "sqlserver"},
+		{Name: item.FieldHost, Value: "sql.example.com"},
+		{Name: item.FieldPort, Value: "1433"},
+		{Name: item.FieldDatabaseName, Value: "Sales"},
+		{Name: item.FieldOptions, Value: "encrypt=true"},
+		{Name: "SID", Value: "SALES1"},
+		{Name: "alias", Value: "sales"},
+	}
+	if sales.Overview.Category != item.CategoryDatabase || !reflect.DeepEqual(sales.Details.Fields, wantFields) || sales.Details.Notes != "Replica" ||
+		sales.Overview.Username != "sa" || sales.Details.Password != "db-password" || len(sales.Overview.URLs) != 0 {
+		t.Errorf("database = %+v %+v\nfields\n%+v\nwant\n%+v", sales.Overview, sales.Details, sales.Details.Fields, wantFields)
+	}
+	if got := sales.ConnectionString(); got != "sqlserver://sa:db-password@sql.example.com:1433?database=Sales&encrypt=true" {
+		t.Errorf("connection string = %q", got)
+	}
+	mainframe := findTestItem(t, result, "Mainframe")
+	if database, _ := item.ReadDatabase(&mainframe); database.Engine != "db2" || database.Port != "50000" || mainframe.ConnectionString() != "" {
+		t.Errorf("an engine Hisar does not know = %+v", database)
+	}
+	// Oracle names its database by the SID; with no database name, the SID is the name.
+	oracle := findTestItem(t, result, "Oracle db")
+	if got := oracle.ConnectionString(); got != "oracle://scott:tiger@oracle.example.com:1521/ORCL" || len(oracle.Details.Fields) != 4 {
+		t.Errorf("Oracle connection string = %q, fields %+v", got, oracle.Details.Fields)
+	}
+	if summary := Summarize(result.Items); summary.DatabaseCount != 3 || summary.LoginCount != 0 {
+		t.Errorf("summary = %+v", summary)
+	}
+	if got := DescribeDuplicate(sales); got != "SQL Server · sql.example.com:1433/Sales · sa" {
+		t.Errorf("DescribeDuplicate = %q", got)
+	}
+
+	// Before Hisar had databases, this item became a login with the same title and username.
+	oldLogin := item.Item{Overview: item.Overview{Title: "Sales db", Category: item.CategoryLogin, Username: "sa"}}
+	if indexes := FindDuplicateIndexes([]item.Item{sales}, []item.Item{oldLogin}); !reflect.DeepEqual(indexes, []int{0}) {
+		t.Errorf("a database imported earlier as a login is not a duplicate: %v", indexes)
+	}
+	otherUser := oldLogin
+	otherUser.Overview.Username = "reporting"
+	if indexes := FindDuplicateIndexes([]item.Item{sales}, []item.Item{otherUser}); len(indexes) != 0 {
+		t.Errorf("a database matches a login with another username: %v", indexes)
+	}
+}
+
+func TestSoftwareLicensesMatchByTitleAndLicenseKey(t *testing.T) {
+	license := func(title string, license item.SoftwareLicense) item.Item {
+		var vaultItem item.Item
+		vaultItem.Overview = item.Overview{Title: title, Category: item.CategorySoftwareLicense}
+		item.WriteSoftwareLicense(&vaultItem, license, nil)
+		return vaultItem
+	}
+	sketch := license("Sketch", item.SoftwareLicense{Product: "Sketch", Version: "100", LicenseKey: "KEY-1", LicensedTo: "Alice"})
+	if BuildDuplicateKey(sketch) != BuildDuplicateKey(license(" sketch ", item.SoftwareLicense{LicenseKey: "KEY-1"})) {
+		t.Error("the same title and license key do not match")
+	}
+	if BuildDuplicateKey(sketch) == BuildDuplicateKey(license("Sketch", item.SoftwareLicense{Product: "Sketch", Version: "100", LicenseKey: "KEY-2"})) {
+		t.Error("two license keys of one product match")
+	}
+	withoutKey := license("Sketch", item.SoftwareLicense{Product: "Sketch", Version: "100"})
+	if BuildDuplicateKey(withoutKey) != BuildDuplicateKey(license("Sketch", item.SoftwareLicense{Product: "SKETCH", Version: "100"})) ||
+		BuildDuplicateKey(withoutKey) == BuildDuplicateKey(license("Sketch", item.SoftwareLicense{Product: "Sketch", Version: "101"})) {
+		t.Error("licenses without a key do not match by product and version")
+	}
+	// 1Password licenses imported before Hisar had the type are logins with a "license key" field.
+	oldLogin := item.Item{Overview: item.Overview{Title: "Sketch", Category: item.CategoryLogin}, Details: item.Details{Fields: []item.Field{
+		{Name: "license key", Value: "KEY-1"}, {Name: "company", Value: "Example Inc."},
+	}}}
+	if indexes := FindDuplicateIndexes([]item.Item{sketch}, []item.Item{oldLogin}); !reflect.DeepEqual(indexes, []int{0}) {
+		t.Errorf("a license imported earlier as a login is not a duplicate: %v", indexes)
+	}
+	otherKey := oldLogin
+	otherKey.Details.Fields = []item.Field{{Name: "license key", Value: "KEY-2"}}
+	plainLogin := item.Item{Overview: item.Overview{Title: "Sketch", Username: "alice"}}
+	if indexes := FindDuplicateIndexes([]item.Item{sketch}, []item.Item{otherKey, plainLogin}); len(indexes) != 0 {
+		t.Errorf("a login with another key or no key matches the license: %v", indexes)
+	}
+	if BuildDuplicateKey(plainLogin) != "sketch\x00alice\x00" {
+		t.Errorf("a login without a license key no longer matches by title, username and website: %q", BuildDuplicateKey(plainLogin))
+	}
+	if got := DescribeDuplicate(sketch); got != "100 · Alice" {
+		t.Errorf("DescribeDuplicate = %q", got)
 	}
 }
 

@@ -96,7 +96,13 @@ enum VaultLogic {
             let identityText = reference.item.identity.map { [$0.fullName, $0.email, $0.street, $0.city, $0.country] } ?? []
             let credentialText = reference.item.apiCredential.map { [$0.service, $0.keyID, $0.host] } ?? []
             let addressText = reference.item.address.map { [$0.street, $0.city, $0.country] } ?? []
-            let searchable = ([reference.item.title, reference.item.username, reference.vaultName] + reference.item.allURL + reference.item.allTag + identityText + credentialText + addressText)
+            // A software license's summary keeps its product, version, licensed-to name and email, never the key.
+            let licenseText = reference.item.softwareLicense.map { [$0.product, $0.version, $0.licensedTo, $0.email] } ?? []
+            // A server's summary keeps its host and port, which lists show as one address.
+            let serverText = reference.item.server.map { [$0.address, $0.host, $0.port] } ?? []
+            // A database's summary keeps its engine, address and name; never the connection string.
+            let databaseText = reference.item.database.map { [$0.engineName, $0.location, $0.host, $0.port, $0.name] } ?? []
+            let searchable = ([reference.item.title, reference.item.username, reference.vaultName] + reference.item.allURL + reference.item.allTag + identityText + credentialText + addressText + licenseText + serverText + databaseText)
                 .joined(separator: " ").lowercased()
             return allWord.allSatisfy { searchable.contains($0) }
         }
@@ -144,7 +150,7 @@ enum VaultLogic {
     static func buildAllCredentialIdentity(_ allItem: [VaultItemReference], allPasskey: [StoredPasskey] = []) -> [CredentialIdentityRecord] {
         var allIdentity: [CredentialIdentityRecord] = []
         var allSeen = Set<CredentialIdentityRecord>()
-        for reference in allItem where reference.item.isLogin {
+        for reference in allItem where reference.item.offersLoginFill {
             let username = reference.item.username.trimmingCharacters(in: .whitespaces)
             for url in reference.item.allURL {
                 guard let host = extractHost(url) else { continue }
@@ -161,6 +167,7 @@ enum VaultLogic {
                 }
             }
         }
+        // Passkeys belong to logins only.
         let allLoginID = Set(allItem.filter(\.item.isLogin).map(\.id))
         for passkey in allPasskey where allLoginID.contains(passkey.recordIdentifier) {
             guard let credentialID = Base64URL.decode(passkey.credentialID), let userHandle = Base64URL.decode(passkey.userHandle),

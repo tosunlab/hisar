@@ -10,6 +10,7 @@ import (
 	"github.com/go-webauthn/webauthn/protocol"
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/tryhisar/hisar/core/browserprotocol"
+	"github.com/tryhisar/hisar/core/item"
 )
 
 type passkeyTestUser struct {
@@ -116,6 +117,10 @@ func TestPasskeyCreateAndSignIn(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := service.SaveItem(testBridge.testService.familyID, ItemDetail{Title: "Other site", Username: "x", URLs: []string{"https://other.example.net"}}); err != nil {
+		t.Fatal(err)
+	}
+	// A server on the same site is offered for filling but never takes a passkey, which is read from logins only.
+	if _, err := service.SaveItem(personalID, ItemDetail{Category: item.CategoryServer, Title: "Example console", Username: "alex@example.com", URLs: []string{"https://example.com"}}); err != nil {
 		t.Fatal(err)
 	}
 

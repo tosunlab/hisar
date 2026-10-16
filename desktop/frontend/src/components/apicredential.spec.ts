@@ -189,6 +189,9 @@ describe("Importing API credentials", () => {
       identityCount: 0,
       apiCredentialCount: 1,
       addressCount: 0,
+      softwareLicenseCount: 0,
+      serverCount: 0,
+      databaseCount: 0,
       allSkipped: [],
       allDuplicate: [],
     };
@@ -215,6 +218,9 @@ describe("Importing API credentials", () => {
       identityCount: 0,
       apiCredentialCount: 2,
       addressCount: 0,
+      softwareLicenseCount: 0,
+      serverCount: 0,
+      databaseCount: 0,
       allSkipped: [],
       allDuplicate: [
         { title: "Stripe", username: "", url: "", detail: "key_1" },

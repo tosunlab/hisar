@@ -186,3 +186,19 @@ func TestLabelRoundTrip(t *testing.T) {
 		t.Fatal("another user key opened the label")
 	}
 }
+
+func TestServerSSHKeyLinkIsNotShareable(t *testing.T) {
+	server := item.Item{
+		Overview: item.Overview{Category: item.CategoryServer, Username: "deploy"},
+		Details: item.Details{Password: "pw", Fields: []item.Field{
+			{Name: item.FieldHost, Value: "build.example.com"}, {Name: item.FieldSSHKey, Value: "key-item-1"},
+		}},
+	}
+	if keys := ListAvailableFieldKeys(&server); !slices.Equal(keys, []string{FieldUsername, FieldPassword, GetCustomFieldKey(0)}) {
+		t.Errorf("available keys = %q", keys)
+	}
+	login := item.Item{Details: item.Details{Fields: []item.Field{{Name: item.FieldSSHKey, Value: "a note"}}}}
+	if keys := ListAvailableFieldKeys(&login); !slices.Equal(keys, []string{GetCustomFieldKey(0)}) {
+		t.Errorf("a login's SSH key field is not shareable: %q", keys)
+	}
+}

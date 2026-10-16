@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -17,16 +18,19 @@ import (
 const maxOnePasswordDataSize = 64 << 20
 
 const (
-	onePasswordLogin         = "001"
-	onePasswordCreditCard    = "002"
-	onePasswordSecureNote    = "003"
-	onePasswordIdentity      = "004"
-	onePasswordPassword      = "005"
-	onePasswordLicense       = "103"
-	onePasswordPassport      = "106"
-	onePasswordSSN           = "108"
-	onePasswordAPICredential = "112"
-	onePasswordSSHKey        = "114"
+	onePasswordLogin           = "001"
+	onePasswordCreditCard      = "002"
+	onePasswordSecureNote      = "003"
+	onePasswordIdentity        = "004"
+	onePasswordPassword        = "005"
+	onePasswordSoftwareLicense = "100"
+	onePasswordDatabase        = "102"
+	onePasswordLicense         = "103"
+	onePasswordPassport        = "106"
+	onePasswordSSN             = "108"
+	onePasswordServer          = "110"
+	onePasswordAPICredential   = "112"
+	onePasswordSSHKey          = "114"
 )
 
 var onePasswordCategoryNames = map[string]string{
@@ -37,7 +41,7 @@ var onePasswordCategoryNames = map[string]string{
 }
 
 // onePasswordCredentialCategories become logins with their fields; other categories hold personal records Hisar has no type for yet.
-var onePasswordCredentialCategories = map[string]bool{"100": true, "102": true, "109": true, "110": true, "111": true}
+var onePasswordCredentialCategories = map[string]bool{"109": true, "111": true}
 
 type onePasswordExport struct {
 	Accounts []struct {
@@ -228,6 +232,30 @@ func getOnePasswordIdentityValue(identity *item.Identity, category, fieldID stri
 	return nil
 }
 
+// onePasswordSoftwareLicenseFields maps the ids of a 1Password Software License's fields to the license's values; its other
+// fields (company, publisher, retail price, order number…) stay custom fields. It has no product field: the title names the
+// product.
+var onePasswordSoftwareLicenseFields = map[string]func(*item.SoftwareLicense) *string{
+	"product_version": func(license *item.SoftwareLicense) *string { return &license.Version },
+	"reg_code":        func(license *item.SoftwareLicense) *string { return &license.LicenseKey },
+	"reg_name":        func(license *item.SoftwareLicense) *string { return &license.LicensedTo },
+	"reg_email":       func(license *item.SoftwareLicense) *string { return &license.Email },
+	"order_date":      func(license *item.SoftwareLicense) *string { return &license.PurchaseDate },
+	"download_link":   func(license *item.SoftwareLicense) *string { return &license.DownloadURL },
+}
+
+// onePasswordDatabaseFields maps the ids of a 1Password Database's fields to the database's values; its username and
+// password are the item's own, and its other fields (alias…) stay custom fields. Its SID, which is how Oracle names a
+// database, is the database name when the item has none, and otherwise a custom field. NormalizeDatabase turns the type,
+// such as "mssql", into an engine ID and splits a hostname typed with its port.
+var onePasswordDatabaseFields = map[string]func(*item.Database) *string{
+	"database_type": func(database *item.Database) *string { return &database.Engine },
+	"hostname":      func(database *item.Database) *string { return &database.Host },
+	"port":          func(database *item.Database) *string { return &database.Port },
+	"database":      func(database *item.Database) *string { return &database.Name },
+	"options":       func(database *item.Database) *string { return &database.Options },
+}
+
 func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 	if entry.State == "archived" {
 		return item.Item{}, "archived in 1Password"
@@ -237,7 +265,7 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 	case category == onePasswordSSHKey:
 		return convertOnePasswordSSHKey(entry)
 	case category == onePasswordLogin, category == onePasswordPassword, category == onePasswordSecureNote, category == onePasswordCreditCard,
-		category == onePasswordAPICredential, isOnePasswordIdentityCategory(category), onePasswordCredentialCategories[category]:
+		category == onePasswordAPICredential, category == onePasswordSoftwareLicense, category == onePasswordServer, category == onePasswordDatabase, isOnePasswordIdentityCategory(category), onePasswordCredentialCategories[category]:
 	default:
 		categoryName, found := onePasswordCategoryNames[category]
 		if !found {
@@ -255,6 +283,14 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 	var card item.Card
 	var identity item.Identity
 	var credential item.APICredential
+	var license item.SoftwareLicense
+	var server item.Server
+	var database item.Database
+	var serverURL string
+	// consoleFieldIndexes holds where a server's admin console URL, username and password landed among the custom fields.
+	consoleFieldIndexes := map[string]int{}
+	// sidFieldIndex is where a database's SID landed among the custom fields, or -1.
+	sidFieldIndex := -1
 	var fullName item.Field
 	isIdentity := isOnePasswordIdentityCategory(category)
 	if entry.Overview.URL != "" {
@@ -287,8 +323,28 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 				}
 			}
 			value, isConcealed := convertOnePasswordFieldValue(sectionField.Value)
+			if category == onePasswordServer {
+				// A server's URL is its host, which NormalizeServer splits into host and port, and its username and password
+				// are its own. Its admin console stays a custom field until promoteOnePasswordAdminConsole decides.
+				switch {
+				case sectionField.ID == "url" && server.Host == "":
+					server.Host, serverURL = value, value
+					continue
+				case sectionField.ID != "url" && promoteOnePasswordField(&vaultItem, sectionField.ID, value):
+					continue
+				}
+			}
 			if onePasswordCredentialCategories[category] && promoteOnePasswordField(&vaultItem, sectionField.ID, value) {
 				continue
+			}
+			if category == onePasswordDatabase {
+				if databaseValue, isDatabaseField := onePasswordDatabaseFields[sectionField.ID]; isDatabaseField && *databaseValue(&database) == "" {
+					*databaseValue(&database) = value
+					continue
+				}
+				if sectionField.ID != "url" && promoteOnePasswordField(&vaultItem, sectionField.ID, value) {
+					continue
+				}
 			}
 			if cardValue, isCardField := onePasswordCardFields[sectionField.ID]; category == onePasswordCreditCard && isCardField && *cardValue(&card) == "" {
 				*cardValue(&card) = value
@@ -296,6 +352,10 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 			}
 			if credentialValue, isCredentialField := onePasswordAPICredentialFields[sectionField.ID]; category == onePasswordAPICredential && isCredentialField && *credentialValue(&credential) == "" {
 				*credentialValue(&credential) = value
+				continue
+			}
+			if licenseValue, isLicenseField := onePasswordSoftwareLicenseFields[sectionField.ID]; category == onePasswordSoftwareLicense && isLicenseField && *licenseValue(&license) == "" {
+				*licenseValue(&license) = value
 				continue
 			}
 			if identityValue := getOnePasswordIdentityValue(&identity, category, sectionField.ID); isIdentity && identityValue != nil && *identityValue == "" {
@@ -319,6 +379,12 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 				addOneTimePassword(&vaultItem, name, value)
 				continue
 			}
+			if _, isSeen := consoleFieldIndexes[sectionField.ID]; category == onePasswordServer && strings.HasPrefix(sectionField.ID, "admin_console_") && !isSeen {
+				consoleFieldIndexes[sectionField.ID] = len(vaultItem.Details.Fields)
+			}
+			if category == onePasswordDatabase && sectionField.ID == "sid" && sidFieldIndex < 0 && strings.TrimSpace(value) != "" {
+				sidFieldIndex = len(vaultItem.Details.Fields)
+			}
 			vaultItem.Details.Fields = append(vaultItem.Details.Fields, item.Field{Name: name, Value: value, Concealed: isConcealed})
 		}
 	}
@@ -334,6 +400,35 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 		vaultItem.Overview.Category = item.CategoryAPICredential
 		item.WriteAPICredential(&vaultItem, credential, vaultItem.Details.Fields)
 	}
+	if category == onePasswordSoftwareLicense {
+		license.Product = strings.TrimSpace(entry.Overview.Title)
+		// A license saved with a website but no download link keeps the website as its download URL; any other website
+		// becomes a custom field.
+		if strings.TrimSpace(license.DownloadURL) == "" && len(vaultItem.Overview.URLs) > 0 {
+			license.DownloadURL, vaultItem.Overview.URLs = vaultItem.Overview.URLs[0], vaultItem.Overview.URLs[1:]
+		}
+		vaultItem.Overview.Category = item.CategorySoftwareLicense
+		item.WriteSoftwareLicense(&vaultItem, license, vaultItem.Details.Fields)
+	}
+	if category == onePasswordServer {
+		// 1Password repeats the server's URL as the item's website; the host keeps it.
+		websites := slices.DeleteFunc(vaultItem.Overview.URLs, func(link string) bool {
+			return serverURL != "" && strings.TrimSpace(link) == strings.TrimSpace(serverURL)
+		})
+		vaultItem.Overview.URLs = append(promoteOnePasswordAdminConsole(&vaultItem, consoleFieldIndexes), websites...)
+		vaultItem.Overview.Category = item.CategoryServer
+		item.WriteServer(&vaultItem, server, vaultItem.Details.Fields)
+	}
+	if category == onePasswordDatabase {
+		// The SID is read only now, so a database field after it in the export still wins.
+		if strings.TrimSpace(database.Name) == "" && sidFieldIndex >= 0 {
+			fields := vaultItem.Details.Fields
+			database.Name = fields[sidFieldIndex].Value
+			vaultItem.Details.Fields = slices.Delete(slices.Clone(fields), sidFieldIndex, sidFieldIndex+1)
+		}
+		vaultItem.Overview.Category = item.CategoryDatabase
+		item.WriteDatabase(&vaultItem, database, vaultItem.Details.Fields)
+	}
 	if isIdentity {
 		vaultItem.Overview.Category = item.CategoryIdentity
 		otherFields := vaultItem.Details.Fields
@@ -348,6 +443,39 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 		item.WriteIdentity(&vaultItem, identity, otherFields)
 	}
 	return vaultItem, ""
+}
+
+// promoteOnePasswordAdminConsole moves a server's admin console URL out of its custom fields and returns it as the server's
+// website, along with console credentials that repeat the server's own. A console with a username or password of its own
+// stays custom fields: as the website, the extension would fill the server's password on the console and a browser save
+// there would overwrite it.
+func promoteOnePasswordAdminConsole(vaultItem *item.Item, consoleFieldIndexes map[string]int) []string {
+	fields := vaultItem.Details.Fields
+	urlIndex, hasURL := consoleFieldIndexes["admin_console_url"]
+	if !hasURL || strings.TrimSpace(fields[urlIndex].Value) == "" {
+		return nil
+	}
+	ownValuesByID := map[string]string{"admin_console_username": vaultItem.Overview.Username, "admin_console_password": vaultItem.Details.Password}
+	droppedIndexes := map[int]bool{urlIndex: true}
+	for fieldID, ownValue := range ownValuesByID {
+		index, found := consoleFieldIndexes[fieldID]
+		if !found {
+			continue
+		}
+		if value := fields[index].Value; value != "" && value != ownValue {
+			return nil
+		}
+		droppedIndexes[index] = true
+	}
+	consoleURL := fields[urlIndex].Value
+	keptFields := []item.Field{}
+	for index, field := range fields {
+		if !droppedIndexes[index] {
+			keptFields = append(keptFields, field)
+		}
+	}
+	vaultItem.Details.Fields = keptFields
+	return []string{consoleURL}
 }
 
 // foldOnePasswordLoginValue moves a login value into an empty credential value, and drops it when the credential has the

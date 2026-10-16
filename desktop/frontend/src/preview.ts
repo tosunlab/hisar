@@ -181,8 +181,33 @@ const allPreviewItemByVaultID: Record<string, ItemDetail[]> = {
   team: [
     createPreviewItem("sentry", "Sentry", "team@example.com", "https://sentry.io", "sentry-team-pass", { notes: "Shared team account" }),
     createPreviewItem("wifi", "Office Wi-Fi", "", "", "wifi-password-123", { fields: [{ name: "Network", value: "Hisar-Office", concealed: false }] }),
-    createPreviewItem("staging-database", "Staging database", "deploy", "https://db.staging.example.com", "Tg5!kP9#vL2@"),
+    createPreviewItem("staging-database", "Staging database", "deploy", "", "Tg5!kP9#vL2@", {
+      category: "database",
+      fields: [{ name: "Region", value: "eu-central", concealed: false }],
+      database: {
+        engine: "postgresql",
+        engineName: "PostgreSQL",
+        host: "db.staging.example.com",
+        port: "5432",
+        name: "app",
+        options: "sslmode=require",
+        connectionString: "postgresql://deploy:Tg5%21kP9%23vL2%40@db.staging.example.com:5432/app?sslmode=require",
+        portWarning: "",
+      },
+    }),
     createPreviewSSHKey("deploy-server", "Deploy server", "ssh-ed25519"),
+    createPreviewItem("build-server", "Build server", "deploy", "https://console.build.example.com", "Wq4!sN8#pD2@", {
+      category: "server",
+      fields: [{ name: "Provider", value: "Hetzner", concealed: false }],
+      server: {
+        host: "build.example.com",
+        port: "2222",
+        sshKeyId: "deploy-server",
+        sshKeyTitle: "Deploy server",
+        sshKeyFingerprint: "SHA256:preview-deploy-server",
+        portWarning: "",
+      },
+    }),
   ],
   work: [
     createPreviewItem("vpn", "Office VPN", "alper", "https://vpn.example.com", "Vq8@Lm3!Zr6#"),
@@ -203,6 +228,19 @@ const allPreviewItemByVaultID: Record<string, ItemDetail[]> = {
       category: "address",
       fields: [{ name: "Reception", value: "Floor 3", concealed: false }],
       address: { street: "Büyükdere Cd. 185\nKat 3", city: "İstanbul", region: "Şişli", postalCode: "34394", country: "TR" },
+    }),
+    createPreviewItem("sketch", "Sketch", "", "", "", {
+      category: "software-license",
+      fields: [{ name: "Seats", value: "5", concealed: false }],
+      softwareLicense: {
+        product: "Sketch",
+        version: "100",
+        licenseKey: "PREVIEW-LICENSE-KEY",
+        licensedTo: "Alper Yılmaz",
+        email: "alper@tryhisar.com",
+        purchaseDate: "2024-03-09",
+        downloadUrl: "https://www.sketch.com/download",
+      },
     }),
   ],
   deploy: [
@@ -1087,6 +1125,9 @@ function buildPreviewImportPreview(vaultID: string): ImportPreview {
     identityCount: allPreviewImportItem.filter((detail) => detail.category === "identity").length,
     apiCredentialCount: allPreviewImportItem.filter((detail) => detail.category === "api-credential").length,
     addressCount: allPreviewImportItem.filter((detail) => detail.category === "address").length,
+    softwareLicenseCount: allPreviewImportItem.filter((detail) => detail.category === "software-license").length,
+    serverCount: allPreviewImportItem.filter((detail) => detail.category === "server").length,
+    databaseCount: allPreviewImportItem.filter((detail) => detail.category === "database").length,
     allSkipped: allPreviewImportSkipped,
     allDuplicate: findAllPreviewImportDuplicate(vaultID).map((detail) => ({
       title: detail.title,

@@ -87,6 +87,17 @@ final class VaultLogicTests: XCTestCase {
         XCTAssertEqual(VaultLogic.filterAllItem(allItem, searchText: "key_live").map(\.item.title), ["Billing key"])
     }
 
+    func testFilterFindsASoftwareLicenseByItsProductVersionAndOwnerButNotItsKey() {
+        var sketch = makeReference("Design app", category: ItemDetail.categorySoftwareLicense)
+        sketch.item.softwareLicense = ItemSoftwareLicense(product: "Sketch", version: "v100", licenseKey: "TEST-LICENSE-KEY", licensedTo: "Alice Example", email: "alice@example.com")
+        let allItem = [sketch, makeReference("GitHub")]
+        for searchText in ["sketch", "v100", "alice example", "alice@"] {
+            XCTAssertEqual(VaultLogic.filterAllItem(allItem, searchText: searchText).map(\.item.title), ["Design app"], searchText)
+        }
+        XCTAssertTrue(VaultLogic.filterAllItem(allItem, searchText: "test-license").isEmpty)
+        XCTAssertTrue(ItemCategoryDestination.softwareLicenses.includes(sketch.item))
+    }
+
     func testFilterFindsAnAddressByItsStreetCityAndCountry() {
         var home = makeReference("Home", category: ItemDetail.categoryAddress)
         home.item.address = ItemAddress(street: "1 Main St", city: "Springfield", country: "US")
@@ -121,6 +132,35 @@ final class VaultLogicTests: XCTestCase {
             CredentialIdentityRecord(host: "github.com", username: "alice", recordIdentifier: "personal/github"),
             CredentialIdentityRecord(host: "gist.github.com", username: "alice", recordIdentifier: "personal/github"),
         ])
+    }
+
+    func testCredentialIdentitiesOfferAServerOnItsAdminConsole() {
+        var server = makeReference("Build server", username: "admin", allURL: ["https://console.example.com"], category: ItemDetail.categoryServer)
+        server.item.server = ItemServer(host: "build.example.com", port: "2222")
+        let note = makeReference("Notes", username: "admin", allURL: ["https://notes.example.com"], category: ItemDetail.categorySecureNote)
+        XCTAssertEqual(VaultLogic.buildAllCredentialIdentity([server, note]), [
+            CredentialIdentityRecord(host: "console.example.com", username: "admin", recordIdentifier: "personal/build server"),
+        ])
+        XCTAssertEqual(VaultLogic.filterAllItem([server, note], searchText: "build.example").map(\.item.title), ["Build server"])
+        XCTAssertEqual(VaultLogic.filterAllItem([server, note], searchText: "2222").map(\.item.title), ["Build server"])
+        XCTAssertEqual(VaultLogic.filterAllItem([server, note], searchText: "build.example.com:2222").map(\.item.title), ["Build server"])
+        var database = makeReference("Database", category: ItemDetail.categoryServer)
+        database.item.server = ItemServer(host: "2001:db8::1", port: "5432")
+        XCTAssertEqual(VaultLogic.filterAllItem([server, database], searchText: "[2001:db8::1]:5432").map(\.item.title), ["Database"])
+        XCTAssertTrue(ItemCategoryDestination.servers.includes(server.item))
+        XCTAssertFalse(ItemCategoryDestination.logins.includes(server.item))
+    }
+
+    func testDatabasesAreFoundByTheirEngineAddressAndName() {
+        var database = makeReference("Prod db", username: "app", category: ItemDetail.categoryDatabase)
+        database.item.database = ItemDatabase(engine: "postgresql", engineName: "PostgreSQL", host: "db.example.com", port: "5432", name: "orders")
+        let note = makeReference("Notes", category: ItemDetail.categorySecureNote)
+        for searchText in ["postgres", "db.example.com:5432/orders", "5432", "orders"] {
+            XCTAssertEqual(VaultLogic.filterAllItem([database, note], searchText: searchText).map(\.item.title), ["Prod db"], searchText)
+        }
+        XCTAssertTrue(VaultLogic.buildAllCredentialIdentity([database]).isEmpty)
+        XCTAssertTrue(ItemCategoryDestination.databases.includes(database.item))
+        XCTAssertFalse(ItemCategoryDestination.logins.includes(database.item))
     }
 
     func testOneTimeCodeIdentitiesForLoginsWithACode() {

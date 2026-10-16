@@ -29,6 +29,12 @@ const (
 	FeatureAPICredentials = "api-credentials"
 	// FeatureAddresses: items.save creates address items from their named fields.
 	FeatureAddresses = "addresses"
+	// FeatureSoftwareLicenses: items.save creates software license items from their named fields.
+	FeatureSoftwareLicenses = "software-licenses"
+	// FeatureServers: items.save creates server items from their named fields and login data.
+	FeatureServers = "servers"
+	// FeatureDatabases: items.save creates database items from their named fields and login data.
+	FeatureDatabases = "databases"
 	// FeatureFavorites: favorites.list, favorites.add and favorites.remove; items.import stars Item.IsFavorite items.
 	FeatureFavorites = "favorites"
 	// FeatureTags: items.list and items.get return each item's tags, and items.save takes ItemChange.Tags.
@@ -40,7 +46,7 @@ const (
 
 // ListFeatures returns the features this build of the app announces in hello.
 func ListFeatures() []string {
-	return []string{FeatureSecureNotes, FeatureCreditCards, FeatureIdentities, FeatureFavorites, FeatureAPICredentials, FeatureTags, FeatureAddresses, FeatureOrganizations}
+	return []string{FeatureSecureNotes, FeatureCreditCards, FeatureIdentities, FeatureFavorites, FeatureAPICredentials, FeatureTags, FeatureAddresses, FeatureSoftwareLicenses, FeatureServers, FeatureDatabases, FeatureOrganizations}
 }
 
 // GetCategoryFeature returns the feature an app must announce before items.save may create an item of category, or ""
@@ -48,8 +54,11 @@ func ListFeatures() []string {
 func GetCategoryFeature(category string) string {
 	return map[string]string{
 		item.CategorySecureNote: FeatureSecureNotes, item.CategoryCreditCard: FeatureCreditCards, item.CategoryIdentity: FeatureIdentities,
-		item.CategoryAPICredential: FeatureAPICredentials,
-		item.CategoryAddress:       FeatureAddresses,
+		item.CategoryAPICredential:   FeatureAPICredentials,
+		item.CategoryAddress:         FeatureAddresses,
+		item.CategorySoftwareLicense: FeatureSoftwareLicenses,
+		item.CategoryServer:          FeatureServers,
+		item.CategoryDatabase:        FeatureDatabases,
 	}[category]
 }
 

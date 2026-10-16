@@ -32,6 +32,14 @@ const allCount = computed(() => {
       testID: "api-credential",
     },
     { label: preview.addressCount === 1 ? "Address" : "Addresses", count: preview.addressCount, icon: "address" as const, testID: "address" },
+    {
+      label: preview.softwareLicenseCount === 1 ? "Software license" : "Software licenses",
+      count: preview.softwareLicenseCount,
+      icon: "license" as const,
+      testID: "software-license",
+    },
+    { label: preview.serverCount === 1 ? "Server" : "Servers", count: preview.serverCount, icon: "server" as const, testID: "server" },
+    { label: preview.databaseCount === 1 ? "Database" : "Databases", count: preview.databaseCount, icon: "database" as const, testID: "database" },
   ];
 });
 const importCount = computed(() => {

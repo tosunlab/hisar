@@ -14,7 +14,7 @@ commands:
   read               <hisar://vault/item/field> [--no-newline] print one secret, for scripts
   run                [--env-file f]... [--no-masking] -- <cmd> run a command with the secrets its hisar:// references name, masked in its output
   mcp                                                    serve coding agents over MCP (stdio): they use secrets without seeing them, after you approve in the Hisar app
-  add                [-v vault] [--type t]               add an item; --type is one of login, secure-note, credit-card, identity, api-credential, address (default login)
+  add                [-v vault] [--type t]               add an item; --type is one of login, secure-note, credit-card, identity, api-credential, address, software-license, server, database (default login)
   edit               <item> [-v vault]                   edit an item
   rm                 <item> [-v vault]                   delete an item
   favorite           <item> [-v vault]                   add an item to your Favorites, on all your devices (only you see them)

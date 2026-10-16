@@ -31,7 +31,7 @@ Five Go modules joined by `go.work`, plus two non-Go apps.
 | `apitypes` | JSON wire types of `/api/v1`, event names, roles, platform headers, share-link limits, `IsValidVaultRole`, `NormalizeEmail` |
 | `apiclient` | Typed HTTP client of `/api/v1` and its event stream |
 | `session` | A signed-in account: sign-up, login, unlock, item sync and encryption, rotation, sharing, share links, organization vaults (`CompleteVaultKeyRequests`, `RotatePendingVaults`), account changes, the account preferences record with the favorites, `GetVaultPermissions` |
-| `item` | The plaintext item model and its categories (`schema.go`: types kept as named fields; `card.go`, `identity.go`, `apicredential.go`, `address.go`, whose fields identities and cards share), `LookupField`, the password generator |
+| `item` | The plaintext item model and its categories (`schema.go`: types kept as named fields; `card.go`, `identity.go`, `apicredential.go`, `license.go`, `server.go`, `database.go`, `address.go`, whose fields identities and cards share), `LookupField`, the password generator |
 | `cache` | The offline SQLite copy of the server's encrypted records |
 | `localstate` | `state.json` (session state plus embedded device `Settings`) and the Secret Key in the keychain |
 | `app` | The backend of the Mac and iPhone apps, bound to the UI (see below) |

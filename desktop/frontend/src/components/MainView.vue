@@ -22,6 +22,9 @@ import {
   startCreatingCard,
   startCreatingIdentity,
   startCreatingAPICredential,
+  startCreatingSoftwareLicense,
+  startCreatingServer,
+  startCreatingDatabase,
   startCreatingAddress,
   startCreatingSecureNote,
   startCreatingSSHKey,
@@ -31,7 +34,29 @@ import {
   toggleSelectedItemFavorite,
 } from "../store";
 import type { FavoriteItem, ItemDetail, VaultSummary } from "../api";
-import { addressCategory, apiCredentialCategory, creditCardCategory, formatAddressSummary, formatAPICredentialSummary, formatCardSummary, formatIdentitySummary, formatKeyType, getDomain, getInitials, getItemIcon, identityCategory, isMacPlatform, secureNoteCategory, sshKeyCategory } from "../util";
+import {
+  addressCategory,
+  apiCredentialCategory,
+  creditCardCategory,
+  databaseCategory,
+  formatAddressSummary,
+  formatAPICredentialSummary,
+  formatCardSummary,
+  formatDatabaseSummary,
+  formatIdentitySummary,
+  formatKeyType,
+  formatServerSummary,
+  formatSoftwareLicenseSummary,
+  getDomain,
+  getInitials,
+  getItemIcon,
+  identityCategory,
+  isMacPlatform,
+  secureNoteCategory,
+  serverCategory,
+  softwareLicenseCategory,
+  sshKeyCategory,
+} from "../util";
 import AppIcon from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
 import ItemDetailPanel from "./ItemDetailPanel.vue";
@@ -159,6 +184,15 @@ function getItemSubtitle(vaultItem: ItemDetail): string {
   }
   if (vaultItem.category === addressCategory) {
     return formatAddressSummary(vaultItem.address);
+  }
+  if (vaultItem.category === softwareLicenseCategory) {
+    return formatSoftwareLicenseSummary(vaultItem.softwareLicense);
+  }
+  if (vaultItem.category === serverCategory) {
+    return formatServerSummary(vaultItem.server, vaultItem.username);
+  }
+  if (vaultItem.category === databaseCategory) {
+    return formatDatabaseSummary(vaultItem.database);
   }
   return vaultItem.username || (vaultItem.urls[0] ? getDomain(vaultItem.urls[0]) : "");
 }
@@ -430,6 +464,15 @@ onBeforeUnmount(() => {
             </button>
             <button class="ghost" role="menuitem" data-testid="new-address" @click="chooseNewItem(startCreatingAddress)">
               <AppIcon name="address" /> Address
+            </button>
+            <button class="ghost" role="menuitem" data-testid="new-software-license" @click="chooseNewItem(startCreatingSoftwareLicense)">
+              <AppIcon name="license" /> Software license
+            </button>
+            <button class="ghost" role="menuitem" data-testid="new-server" @click="chooseNewItem(startCreatingServer)">
+              <AppIcon name="server" /> Server
+            </button>
+            <button class="ghost" role="menuitem" data-testid="new-database" @click="chooseNewItem(startCreatingDatabase)">
+              <AppIcon name="database" /> Database
             </button>
             <button class="ghost" role="menuitem" data-testid="new-ssh-key" @click="chooseNewItem(startCreatingSSHKey)">
               <AppIcon name="key" /> SSH key
