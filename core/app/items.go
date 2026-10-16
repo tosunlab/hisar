@@ -60,6 +60,10 @@ func (s *Service) summarizeItem(vaultItem *item.Item) ItemDetail {
 		addressSummary := summarizeAddress(*address)
 		summary.Address = &addressSummary
 	}
+	if license := summary.SoftwareLicense; license != nil {
+		// Lists show the version and licensed-to name; search also finds a license by its product and email.
+		summary.SoftwareLicense = &ItemSoftwareLicense{Product: license.Product, Version: license.Version, LicensedTo: license.LicensedTo, Email: license.Email}
+	}
 	return summary
 }
 
@@ -176,6 +180,11 @@ func convertToItemDetail(vaultItem *item.Item, now time.Time) ItemDetail {
 		itemAddress := convertToItemAddress(address)
 		detail.Address = &itemAddress
 	}
+	if vaultItem.IsCategory(item.CategorySoftwareLicense) {
+		var license item.SoftwareLicense
+		license, fields = item.ReadSoftwareLicense(vaultItem)
+		detail.SoftwareLicense = convertToItemSoftwareLicense(license)
+	}
 	for _, field := range fields {
 		detail.Fields = append(detail.Fields, ItemField{Name: field.Name, Value: field.Value, Concealed: field.Concealed})
 	}
@@ -192,8 +201,8 @@ func (s *Service) DescribeCard(number, expiry string) CardDescription {
 	return convertToCardDescription(item.DescribeCard(number, expiry, s.config.Now()))
 }
 
-// getStoredFields returns an item's custom fields as they are stored: a card's, identity's, API credential's or address's
-// values first, as named fields.
+// getStoredFields returns an item's custom fields as they are stored: a card's, identity's, API credential's, address's or
+// software license's values first, as named fields.
 func getStoredFields(detail ItemDetail) []ItemField {
 	var vaultItem item.Item
 	switch {
@@ -205,6 +214,8 @@ func getStoredFields(detail ItemDetail) []ItemField {
 		item.WriteAPICredential(&vaultItem, convertFromItemAPICredential(detail.APICredential), nil)
 	case detail.Address != nil:
 		item.WriteAddress(&vaultItem, convertFromItemAddress(*detail.Address), nil)
+	case detail.SoftwareLicense != nil:
+		item.WriteSoftwareLicense(&vaultItem, convertFromItemSoftwareLicense(detail.SoftwareLicense), nil)
 	default:
 		return detail.Fields
 	}
@@ -243,6 +254,20 @@ func convertFromItemIdentity(identity *ItemIdentity) item.Identity {
 		FirstName: identity.FirstName, MiddleName: identity.MiddleName, LastName: identity.LastName, BirthDate: identity.BirthDate,
 		Email: identity.Email, Phone: identity.Phone, Address: convertFromItemAddress(identity.ItemAddress), AddressText: identity.Address,
 		PassportNumber: identity.PassportNumber, DriversLicenseNumber: identity.DriversLicenseNumber, NationalIDNumber: identity.NationalIDNumber,
+	}
+}
+
+func convertToItemSoftwareLicense(license item.SoftwareLicense) *ItemSoftwareLicense {
+	return &ItemSoftwareLicense{
+		Product: license.Product, Version: license.Version, LicenseKey: license.LicenseKey, LicensedTo: license.LicensedTo, Email: license.Email,
+		PurchaseDate: license.PurchaseDate, DownloadURL: license.DownloadURL,
+	}
+}
+
+func convertFromItemSoftwareLicense(license *ItemSoftwareLicense) item.SoftwareLicense {
+	return item.SoftwareLicense{
+		Product: license.Product, Version: license.Version, LicenseKey: license.LicenseKey, LicensedTo: license.LicensedTo, Email: license.Email,
+		PurchaseDate: license.PurchaseDate, DownloadURL: license.DownloadURL,
 	}
 }
 
@@ -316,7 +341,8 @@ func (s *Service) buildSavedItem(vaultID string, detail ItemDetail) (item.Item, 
 	}
 	if cachedItem == nil {
 		switch detail.Category {
-		case "", item.CategoryLogin, item.CategorySecureNote, item.CategoryCreditCard, item.CategoryIdentity, item.CategoryAPICredential, item.CategoryAddress:
+		case "", item.CategoryLogin, item.CategorySecureNote, item.CategoryCreditCard, item.CategoryIdentity, item.CategoryAPICredential, item.CategoryAddress,
+			item.CategorySoftwareLicense:
 		case item.CategorySSHKey:
 			if detail.ID == "" {
 				return item.Item{}, errors.New("generate or import an SSH key instead")
@@ -365,6 +391,8 @@ func applyCategory(vaultItem *item.Item, detail ItemDetail) {
 		item.WriteAPICredential(vaultItem, convertFromItemAPICredential(detail.APICredential), vaultItem.Details.Fields)
 	case vaultItem.IsCategory(item.CategoryAddress) && detail.Address != nil:
 		item.WriteAddress(vaultItem, convertFromItemAddress(*detail.Address), vaultItem.Details.Fields)
+	case vaultItem.IsCategory(item.CategorySoftwareLicense) && detail.SoftwareLicense != nil:
+		item.WriteSoftwareLicense(vaultItem, convertFromItemSoftwareLicense(detail.SoftwareLicense), vaultItem.Details.Fields)
 	}
 	if vaultItem.OmitsLoginData() {
 		vaultItem.MoveLoginDataToFields()
@@ -373,6 +401,7 @@ func applyCategory(vaultItem *item.Item, detail ItemDetail) {
 	item.NormalizeIdentity(vaultItem)
 	item.NormalizeAPICredential(vaultItem)
 	item.NormalizeAddress(vaultItem)
+	item.NormalizeSoftwareLicense(vaultItem)
 }
 
 // ConvertToSecureNote turns a login with only notes and custom fields, such as one imported before Hisar had secure notes,

@@ -616,6 +616,10 @@ final class AppModel: ObservableObject {
             // As core/app's list summary: the first line of the street, the city and the country.
             summary.address = ItemAddress(street: address.street.split(separator: "\n", maxSplits: 1).first.map(String.init) ?? "", city: address.city, country: address.country)
         }
+        if let license = savedItem.softwareLicense {
+            // As core/app's list summary: never the license key, purchase date or download URL.
+            summary.softwareLicense = ItemSoftwareLicense(product: license.product, version: license.version, licensedTo: license.licensedTo, email: license.email)
+        }
         if let index = allItem.firstIndex(where: { $0.id == savedItem.id }) {
             allItem[index] = summary
         } else {

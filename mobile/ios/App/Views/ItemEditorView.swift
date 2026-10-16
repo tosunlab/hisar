@@ -20,6 +20,7 @@ struct ItemEditorView: View {
     @State private var cardDescription = CardDescription()
     @State private var isDocumentNumberRevealed = false
     @State private var isCredentialSecretRevealed = false
+    @State private var isLicenseKeyRevealed = false
     /// An identity's or card's one-line address saved before it had address fields stays on screen, even when emptied,
     /// until the item is saved.
     @State private var isOldAddressShown = false
@@ -62,6 +63,9 @@ struct ItemEditorView: View {
                     buildFieldSection()
                 } else if draft.isAddress {
                     buildAddressSection("Address", bindAddress)
+                    buildFieldSection()
+                } else if draft.isSoftwareLicense {
+                    buildSoftwareLicenseSection()
                     buildFieldSection()
                 } else if !draft.isSSHKey {
                     Section("Login") {
@@ -201,6 +205,9 @@ struct ItemEditorView: View {
         if draft.isAddress, draft.address == nil {
             draft.address = ItemAddress()
         }
+        if draft.isSoftwareLicense, draft.softwareLicense == nil {
+            draft.softwareLicense = ItemSoftwareLicense()
+        }
         isOldAddressShown = !(draft.identity?.address ?? "").isEmpty || !(draft.card?.billingAddress ?? "").isEmpty
         if draft.isCreditCard {
             let card = draft.card ?? ItemCard()
@@ -310,6 +317,7 @@ struct ItemEditorView: View {
         if draft.isIdentity { return "New identity" }
         if draft.isAPICredential { return "New API credential" }
         if draft.isAddress { return "New address" }
+        if draft.isSoftwareLicense { return "New software license" }
         return "New login"
     }
 
@@ -537,6 +545,69 @@ struct ItemEditorView: View {
                     .foregroundStyle(.orange)
                     .accessibilityIdentifier("editor-api-credential-warning")
             }
+        }
+    }
+
+    /// A binding to one of the software license's values, creating the license on first write.
+    private func bindSoftwareLicense(_ keyPath: WritableKeyPath<ItemSoftwareLicense, String>) -> Binding<String> {
+        Binding(
+            get: { draft.softwareLicense?[keyPath: keyPath] ?? "" },
+            set: { value in
+                var license = draft.softwareLicense ?? ItemSoftwareLicense()
+                license[keyPath: keyPath] = value
+                draft.softwareLicense = license
+            }
+        )
+    }
+
+    @ViewBuilder
+    private func buildSoftwareLicenseSection() -> some View {
+        Section("License") {
+            TextField("Product", text: bindSoftwareLicense(\.product))
+                .accessibilityIdentifier("editor-license-product")
+            TextField("Version", text: bindSoftwareLicense(\.version))
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .accessibilityIdentifier("editor-license-version")
+            HStack {
+                Group {
+                    if isLicenseKeyRevealed {
+                        TextField("License key", text: bindSoftwareLicense(\.licenseKey))
+                    } else {
+                        SecureField("License key", text: bindSoftwareLicense(\.licenseKey), prompt: Text("License key").foregroundStyle(.themeSecondary))
+                    }
+                }
+                .font(.system(.body, design: .monospaced))
+                // As for an API credential's secret: without a content type iOS may fill a secure field with a strong password.
+                .textContentType(.oneTimeCode)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .accessibilityIdentifier("editor-license-key")
+                Button {
+                    isLicenseKeyRevealed.toggle()
+                } label: {
+                    Image(systemName: isLicenseKeyRevealed ? "eye.slash" : "eye")
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(.themeSecondary)
+                .accessibilityLabel(isLicenseKeyRevealed ? "Hide license key" : "Reveal license key")
+            }
+            TextField("Licensed to", text: bindSoftwareLicense(\.licensedTo))
+                .textContentType(.name)
+                .accessibilityIdentifier("editor-license-licensed-to")
+            TextField("Email", text: bindSoftwareLicense(\.email))
+                .keyboardType(.emailAddress)
+                .textContentType(.emailAddress)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .accessibilityIdentifier("editor-license-email")
+            buildDateRow("Purchase date", bindSoftwareLicense(\.purchaseDate), identifier: "editor-license-purchase-date", isFutureAllowed: false)
+            TextField("Download URL", text: bindSoftwareLicense(\.downloadURL), prompt: Text(verbatim: "https://example.com/download"))
+                .keyboardType(.URL)
+                .textContentType(.URL)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .accessibilityIdentifier("editor-license-download-url")
         }
     }
 

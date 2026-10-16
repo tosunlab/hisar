@@ -187,6 +187,7 @@ describe("Importing identities", () => {
       identityCount: 2,
       apiCredentialCount: 0,
       addressCount: 0,
+      softwareLicenseCount: 0,
       allSkipped: [],
       allDuplicate: [],
     };

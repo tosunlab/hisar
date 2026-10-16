@@ -369,6 +369,33 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(model.listAllItemReference().contains { ItemCategoryDestination.logins.includes($0.item) && $0.item.id == savedItem.id })
     }
 
+    func testSaveSoftwareLicenseKeepsOnlyItsSummaryInTheList() async {
+        let model = await createUnlockedModel()
+        let license = ItemSoftwareLicense(product: "Sketch", version: "100", licenseKey: "TEST-LICENSE-KEY", licensedTo: "Alice Example", email: "alice@example.com", purchaseDate: "2024-03-09", downloadURL: "https://www.sketch.com/download")
+        guard let savedItem = await model.saveItem(vaultID: "personal", item: ItemDetail(category: ItemDetail.categorySoftwareLicense, title: "Sketch", softwareLicense: license)) else {
+            return XCTFail("software license not saved")
+        }
+        XCTAssertTrue(savedItem.isSoftwareLicense)
+        XCTAssertEqual(savedItem.softwareLicense, license)
+        let reference = model.listAllItemReference(vaultID: "personal").first { $0.item.id == savedItem.id }
+        XCTAssertEqual(reference?.item.softwareLicense, ItemSoftwareLicense(product: "Sketch", version: "100", licensedTo: "Alice Example", email: "alice@example.com"))
+        XCTAssertEqual(reference?.item.softwareLicense?.summary, "Version 100 · Alice Example")
+        XCTAssertEqual(model.listAllItemReference().filter { ItemCategoryDestination.softwareLicenses.includes($0.item) }.map(\.item.title), ["Sketch"])
+        XCTAssertFalse(model.listAllItemReference().contains { ItemCategoryDestination.logins.includes($0.item) && $0.item.id == savedItem.id })
+    }
+
+    func testSoftwareLicenseDecodesFromTheBackendAndSummarizes() throws {
+        let json = #"{"category":"software-license","title":"Nova","softwareLicense":{"product":"Nova","version":"v11","licenseKey":"K","licensedTo":"","email":"bob@example.com","purchaseDate":"2024-03-09","downloadUrl":"https://nova.app"}}"#
+        let item = try JSONDecoder().decode(ItemDetail.self, from: Data(json.utf8))
+        XCTAssertTrue(item.isSoftwareLicense)
+        XCTAssertEqual(item.softwareLicense?.downloadURL, "https://nova.app")
+        XCTAssertEqual(item.softwareLicense?.summary, "v11 · bob@example.com")
+        XCTAssertEqual(ItemSoftwareLicense(product: "Nova").summary, "Nova")
+        XCTAssertEqual(ItemSoftwareLicense().summary, "Software license")
+        let encoded = try XCTUnwrap(String(data: JSONEncoder().encode(item), encoding: .utf8))
+        XCTAssertTrue(encoded.contains(#""downloadUrl":"https:\/\/nova.app""#) && encoded.contains(#""softwareLicense""#), encoded)
+    }
+
     func testAPICredentialDecodesFromTheBackendAndSummarizes() throws {
         let json = #"{"category":"api-credential","title":"GitHub token","apiCredential":{"service":"","keyId":"ghp_key","secret":"s","host":"api.github.com","expiry":"2020-01-01","expiryWarning":"This credential has expired"}}"#
         let item = try JSONDecoder().decode(ItemDetail.self, from: Data(json.utf8))

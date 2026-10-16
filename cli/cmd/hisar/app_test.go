@@ -513,6 +513,39 @@ func TestAddressesThroughTheApp(t *testing.T) {
 	}
 }
 
+func TestSoftwareLicensesThroughTheApp(t *testing.T) {
+	app := startFakeApp(t)
+	input := "Sketch\nSketch\n100\nTEST-LICENSE-KEY\nAlice Example\nalice@example.com\n2024/3/9\nhttps://www.sketch.com/download\n"
+	_, stderr, err := runCapturingOutput(t, false, input, "add", "--type", "software-license")
+	if err != nil || !strings.Contains(stderr, `Saved "Sketch" to Personal.`) {
+		t.Fatalf("add --type software-license: %q %v", stderr, err)
+	}
+	if !strings.Contains(stderr, "Purchase date (YYYY-MM-DD): ") || strings.Contains(stderr, "TEST-LICENSE-KEY") {
+		t.Errorf("prompts: %q", stderr)
+	}
+	added := app.findRequest(cliprotocol.TypeSaveItem)[0].Item
+	wantFields := []cliprotocol.Field{
+		{Name: item.FieldProduct, Value: "Sketch"},
+		{Name: item.FieldVersion, Value: "100"},
+		{Name: item.FieldLicenseKey, Value: "TEST-LICENSE-KEY", Concealed: true},
+		{Name: item.FieldLicensedTo, Value: "Alice Example"},
+		{Name: item.FieldEmail, Value: "alice@example.com"},
+		{Name: item.FieldPurchaseDate, Value: "2024-03-09"},
+		{Name: item.FieldDownloadURL, Value: "https://www.sketch.com/download"},
+	}
+	if added.Category != item.CategorySoftwareLicense || added.Fields == nil || !reflect.DeepEqual(*added.Fields, wantFields) {
+		t.Errorf("add request %+v %+v", added, added.Fields)
+	}
+
+	app.mutex.Lock()
+	app.hello.Features = []string{cliprotocol.FeatureSecureNotes, cliprotocol.FeatureCreditCards, cliprotocol.FeatureIdentities, cliprotocol.FeatureAPICredentials, cliprotocol.FeatureAddresses}
+	app.mutex.Unlock()
+	_, stderr, err = runCapturingOutput(t, false, input, "add", "--type", "software-license")
+	if err == nil || !strings.Contains(err.Error(), "cannot save software-license items") || strings.Contains(stderr, "Product") {
+		t.Errorf("add a software license through an older app: %q %v", stderr, err)
+	}
+}
+
 func TestEditingAnAddressKeepsItsStreetOnAnEmptyLine(t *testing.T) {
 	originalReader := stdinReader
 	defer func() { stdinReader = originalReader }()
@@ -531,7 +564,7 @@ func TestEditingAnAddressKeepsItsStreetOnAnEmptyLine(t *testing.T) {
 func TestAddAndEditFollowTheItemType(t *testing.T) {
 	app := startFakeApp(t)
 	_, stderr, err := runCapturingOutput(t, false, "Router\n", "add", "--type", "wireless-router")
-	if err == nil || !strings.Contains(err.Error(), `unknown item type "wireless-router"; use one of login, secure-note, credit-card, identity, api-credential, address`) {
+	if err == nil || !strings.Contains(err.Error(), `unknown item type "wireless-router"; use one of login, secure-note, credit-card, identity, api-credential, address, software-license`) {
 		t.Errorf("add an unknown type: %v", err)
 	}
 	if strings.Contains(stderr, "Title") {

@@ -147,6 +147,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     static let categoryIdentity = "identity"
     static let categoryAPICredential = "api-credential"
     static let categoryAddress = "address"
+    static let categorySoftwareLicense = "software-license"
 
     var id: String
     var revision: String
@@ -179,16 +180,19 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     /// An address's values, stored as named custom fields like an identity's. Summaries keep only the first line of the
     /// street, the city and the country.
     var address: ItemAddress?
+    /// A software license's values, stored as named custom fields like an API credential's. Summaries keep only the
+    /// product, version, licensed-to name and email.
+    var softwareLicense: ItemSoftwareLicense?
 
     enum CodingKeys: String, CodingKey {
-        case id, revision, category, title, username, password, notes, publicKey, fingerprint, keyType, oneTimePassword, hasOneTimePassword, canConvertToSecureNote, card, identity, isFavorite, apiCredential, address
+        case id, revision, category, title, username, password, notes, publicKey, fingerprint, keyType, oneTimePassword, hasOneTimePassword, canConvertToSecureNote, card, identity, isFavorite, apiCredential, address, softwareLicense
         case allURL = "urls"
         case allTag = "tags"
         case allField = "fields"
         case allPasskey = "passkeys"
     }
 
-    init(id: String = "", revision: String = "", category: String = ItemDetail.categoryLogin, title: String = "", username: String = "", allURL: [String] = [], allTag: [String] = [], password: String = "", notes: String = "", allField: [ItemField] = [], publicKey: String = "", fingerprint: String = "", keyType: String = "", oneTimePassword: String = "", hasOneTimePassword: Bool = false, allPasskey: [ItemPasskey] = [], canConvertToSecureNote: Bool = false, card: ItemCard? = nil, identity: ItemIdentity? = nil, isFavorite: Bool = false, apiCredential: ItemAPICredential? = nil, address: ItemAddress? = nil) {
+    init(id: String = "", revision: String = "", category: String = ItemDetail.categoryLogin, title: String = "", username: String = "", allURL: [String] = [], allTag: [String] = [], password: String = "", notes: String = "", allField: [ItemField] = [], publicKey: String = "", fingerprint: String = "", keyType: String = "", oneTimePassword: String = "", hasOneTimePassword: Bool = false, allPasskey: [ItemPasskey] = [], canConvertToSecureNote: Bool = false, card: ItemCard? = nil, identity: ItemIdentity? = nil, isFavorite: Bool = false, apiCredential: ItemAPICredential? = nil, address: ItemAddress? = nil, softwareLicense: ItemSoftwareLicense? = nil) {
         self.id = id
         self.revision = revision
         self.category = category
@@ -211,6 +215,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         self.isFavorite = isFavorite
         self.apiCredential = apiCredential
         self.address = address
+        self.softwareLicense = softwareLicense
     }
 
     init(from decoder: Decoder) throws {
@@ -237,6 +242,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
         apiCredential = try container.decodeIfPresent(ItemAPICredential.self, forKey: .apiCredential)
         address = try container.decodeIfPresent(ItemAddress.self, forKey: .address)
+        softwareLicense = try container.decodeIfPresent(ItemSoftwareLicense.self, forKey: .softwareLicense)
     }
 
     /// The tags typed into one field, separated by commas, without blanks or repeats.
@@ -255,6 +261,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     var isIdentity: Bool { category == Self.categoryIdentity }
     var isAPICredential: Bool { category == Self.categoryAPICredential }
     var isAddress: Bool { category == Self.categoryAddress }
+    var isSoftwareLicense: Bool { category == Self.categorySoftwareLicense }
 }
 
 /// The names core/item stores an address's values under; identities and cards keep their address under the same names, and
@@ -473,6 +480,64 @@ struct ItemAPICredential: Codable, Hashable {
     var summary: String {
         let parts = [service, host].filter { !$0.isEmpty }
         return parts.isEmpty ? "API credential" : parts.joined(separator: " · ")
+    }
+}
+
+/// The names core/item stores a software license's values under; copying and hisar:// references use them.
+enum SoftwareLicenseFieldName {
+    static let product = "Product"
+    static let version = "Version"
+    static let licenseKey = "License key"
+    static let licensedTo = "Licensed to"
+    static let email = "Email"
+    static let purchaseDate = "Purchase date"
+    static let downloadURL = "Download URL"
+}
+
+/// A software license; the license key is concealed. The download URL is a field, not the item's website, so AutoFill
+/// never offers the license on that site.
+struct ItemSoftwareLicense: Codable, Hashable {
+    var product = ""
+    var version = ""
+    var licenseKey = ""
+    var licensedTo = ""
+    var email = ""
+    var purchaseDate = ""
+    var downloadURL = ""
+
+    enum CodingKeys: String, CodingKey {
+        case product, version, licenseKey, licensedTo, email, purchaseDate
+        case downloadURL = "downloadUrl"
+    }
+
+    init(product: String = "", version: String = "", licenseKey: String = "", licensedTo: String = "", email: String = "", purchaseDate: String = "", downloadURL: String = "") {
+        self.product = product
+        self.version = version
+        self.licenseKey = licenseKey
+        self.licensedTo = licensedTo
+        self.email = email
+        self.purchaseDate = purchaseDate
+        self.downloadURL = downloadURL
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        product = try container.decodeIfPresent(String.self, forKey: .product) ?? ""
+        version = try container.decodeIfPresent(String.self, forKey: .version) ?? ""
+        licenseKey = try container.decodeIfPresent(String.self, forKey: .licenseKey) ?? ""
+        licensedTo = try container.decodeIfPresent(String.self, forKey: .licensedTo) ?? ""
+        email = try container.decodeIfPresent(String.self, forKey: .email) ?? ""
+        purchaseDate = try container.decodeIfPresent(String.self, forKey: .purchaseDate) ?? ""
+        downloadURL = try container.decodeIfPresent(String.self, forKey: .downloadURL) ?? ""
+    }
+
+    /// The license's line in lists: its version and who it is licensed to, such as "Version 100 · Alice Example", or its
+    /// email or product when it has neither, as the Mac app shows it.
+    var summary: String {
+        let versionText = version.first?.isNumber == true ? "Version \(version)" : version
+        let parts = [versionText, licensedTo.isEmpty ? email : licensedTo].filter { !$0.isEmpty }
+        if !parts.isEmpty { return parts.joined(separator: " · ") }
+        return product.isEmpty ? "Software license" : product
     }
 }
 

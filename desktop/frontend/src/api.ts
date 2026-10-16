@@ -30,6 +30,7 @@ import type {
   ItemIdentity,
   ItemField,
   ItemPasskey,
+  ItemSoftwareLicense,
   OneTimeCode,
   PasswordConfig,
   ReceivedShareInvitation,
@@ -79,6 +80,7 @@ export type {
   ItemField,
   ItemIdentity,
   ItemPasskey,
+  ItemSoftwareLicense,
   LoginItemStatus,
   OneTimeCode,
   PasswordConfig,
@@ -387,6 +389,10 @@ export function createEmptyIdentity(): ItemIdentity {
 
 export function createEmptyAPICredential(): ItemAPICredential {
   return { service: "", keyId: "", secret: "", host: "", expiry: "", expiryWarning: "" };
+}
+
+export function createEmptySoftwareLicense(): ItemSoftwareLicense {
+  return { product: "", version: "", licenseKey: "", licensedTo: "", email: "", purchaseDate: "", downloadUrl: "" };
 }
 
 export function createEmptyItem(): ItemDetail {

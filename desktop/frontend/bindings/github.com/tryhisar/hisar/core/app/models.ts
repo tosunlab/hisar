@@ -148,6 +148,11 @@ export interface ImportPreview {
      * AddressCount counts the address items among ItemCount.
      */
     "addressCount": number;
+
+    /**
+     * SoftwareLicenseCount counts the software-license items among ItemCount.
+     */
+    "softwareLicenseCount": number;
     "allSkipped": ImportSkippedEntry[] | null;
     "allDuplicate": ImportDuplicate[] | null;
 }
@@ -274,6 +279,12 @@ export interface ItemDetail {
      * city, country and the first line of the street.
      */
     "address"?: ItemAddress | null;
+
+    /**
+     * SoftwareLicense holds a software license's values, stored as named custom fields like an API credential's; summaries
+     * keep only the product, version, licensed-to name and email.
+     */
+    "softwareLicense"?: ItemSoftwareLicense | null;
 }
 
 export interface ItemField {
@@ -313,6 +324,20 @@ export interface ItemPasskey {
     "userName": string;
     "userDisplayName": string;
     "createdAt": string;
+}
+
+/**
+ * ItemSoftwareLicense is a software license; the license key is concealed. DownloadURL is a field, not the item's
+ * website.
+ */
+export interface ItemSoftwareLicense {
+    "product": string;
+    "version": string;
+    "licenseKey": string;
+    "licensedTo": string;
+    "email": string;
+    "purchaseDate": string;
+    "downloadUrl": string;
 }
 
 /**

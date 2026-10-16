@@ -145,6 +145,15 @@ Design: `docs/DESIGN.md` §4.5 (categories) and §9.2 (address autofill in the e
 - The browser extension fills address forms from addresses and from identities with an address, in the inline menu on an address field and in the popup's **Addresses** tab.
 - Preview: `&vault=work&item=office`, `&editor=address`.
 
+## Software licenses
+
+Design: `docs/DESIGN.md` §4.5 (categories).
+
+- **+** → **Software license** opens an editor for the product, version, license key (masked until shown), licensed-to name and email, purchase date (a date picker; an imported date in another form stays text) and download URL; then notes and custom fields.
+- The view lists each value with **Copy** and a secret reference (`hisar://Personal/Sketch/license%20key`). The key is masked until revealed, and the download URL opens in the browser. The item list shows the version and licensed-to name, and search matches the product, version, name and email.
+- 1Password Software Licenses import as software licenses, with the title as the product; company, publisher and order details stay custom fields.
+- Preview: `&vault=work&item=sketch`, `&editor=software-license`.
+
 ## Import from other password managers
 
 Settings → General → **Import…**, or **+** → **Import…** in a vault. The parsing is `core/importer` (design: `docs/DESIGN.md` §9.7).
