@@ -23,7 +23,7 @@ describe("popup state", () => {
   it("follows the desktop state after pairing", async () => {
     const harness = createHarness({ state: { isOffline: true } });
     await harness.pair();
-    expect(await harness.controller.getPopupState()).toEqual({ view: "unlocked", email: "alex@example.com", isOffline: true });
+    expect(await harness.controller.getPopupState()).toEqual({ view: "unlocked", email: "alex@example.com", isOffline: true, isAddressFillAvailable: true });
     harness.state.state = "locked";
     expect((await harness.controller.getPopupState()).view).toBe("locked");
   });
@@ -220,6 +220,50 @@ describe("fill and the frame rule", () => {
     const harness = createHarness();
     await harness.pair();
     await expectHisarError(harness.controller.fillPassword(1, "generated"), "not-found");
+  });
+});
+
+describe("addresses", () => {
+  const top = { frameId: 0, url: "https://shop.example.com/checkout", origin: "https://shop.example.com", allAncestorOrigin: [] };
+  const sameOriginFrame = { frameId: 4, url: "https://shop.example.com/address", origin: "https://shop.example.com", allAncestorOrigin: ["https://shop.example.com"] };
+  const crossOriginFrame = { frameId: 7, url: "https://pay.example.net/address", origin: "https://pay.example.net", allAncestorOrigin: ["https://shop.example.com"] };
+
+  it("lists addresses and fills the frame with the focused address field", async () => {
+    const harness = createHarness({
+      tabUrl: top.url,
+      allFrame: [top, sameOriginFrame, crossOriginFrame],
+      allProbe: { 0: { ...emptyProbe, hasAddressForm: true }, 4: { ...emptyProbe, hasAddressForm: true, hasFocusedAddressField: true }, 7: { ...emptyProbe, hasAddressForm: true, hasFocusedAddressField: true } },
+    });
+    await harness.pair();
+    expect((await harness.controller.listAddresses()).map((address) => address.title)).toEqual(["Home"]);
+    expect(await harness.controller.fillAddress(1, "vault-personal", "item-home")).toBe(true);
+    expect(harness.allFrameMessage.filter((entry) => entry.message.type === "content.fillAddress")).toEqual([
+      {
+        frameId: 4,
+        message: {
+          type: "content.fillAddress",
+          expectedOrigin: "https://shop.example.com",
+          address: { street: "1 Main St\nApt 4", city: "Springfield", region: "IL", postalCode: "62704", country: "US" },
+        },
+      },
+    ]);
+    expect(harness.allFrameMessage.some((entry) => entry.frameId === 7 && entry.message.type !== "content.probe")).toBe(false);
+  });
+
+  it("does not ask Hisar for the address when the page has no address form", async () => {
+    const harness = createHarness({ allProbe: { 0: { ...emptyProbe, hasLoginForm: true } } });
+    await harness.pair();
+    await expectHisarError(harness.controller.fillAddress(1, "vault-personal", "item-home"), "not-found");
+    expect(harness.getRequestTypes()).not.toContain("addresses.fill");
+  });
+
+  it("offers no addresses with an app that does not fill them", async () => {
+    const harness = createHarness({ state: { features: [] }, allProbe: { 0: { ...emptyProbe, hasAddressForm: true } } });
+    await harness.pair();
+    expect((await harness.controller.getPopupState()).isAddressFillAvailable).toBe(false);
+    await expectHisarError(harness.controller.listAddresses(), "invalid-request");
+    await expectHisarError(harness.controller.fillAddress(1, "vault-personal", "item-home"), "invalid-request");
+    expect(harness.getRequestTypes().filter((type) => String(type).startsWith("addresses."))).toEqual([]);
   });
 });
 

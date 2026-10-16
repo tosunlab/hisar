@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import addressAutocompletePage from "../fixtures/address-autocomplete.html?raw";
 import changePasswordPage from "../fixtures/change-password.html?raw";
+import checkoutLoginMixedPage from "../fixtures/checkout-login-mixed.html?raw";
 import emailFirstStepOnePage from "../fixtures/email-first-step-one.html?raw";
 import signUpPage from "../fixtures/sign-up.html?raw";
 import simpleLoginPage from "../fixtures/simple-login.html?raw";
@@ -104,6 +106,18 @@ describe("findInlineMenuPurpose", () => {
     vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ left: 0, top: 0, width: 40, height: 40 } as DOMRect);
     const getBoxRect = (element: Element): Rect => ({ left: Number(element.id.slice(4)) * 48, top: 0, width: 40, height: 40 });
     expect(findInlineMenuPurpose(document, getInput("#box-2"), getBoxRect)).toBe("one-time-code");
+  });
+
+  it("offers addresses on the text fields of an address form, and logins still win on a login form", () => {
+    document.body.innerHTML = addressAutocompletePage;
+    expect(findInlineMenuPurpose(document, getInput("#ship-line1"), wideRect)).toBe("address");
+    expect(findInlineMenuPurpose(document, getInput("#ship-postal"), wideRect)).toBe("address");
+    expect(findInlineMenuPurpose(document, getInput("#ship-email"), wideRect)).toBeUndefined();
+    expect(findInlineMenuPurpose(document, document.querySelector("#bill-street")!, wideRect)).toBeUndefined();
+    document.body.innerHTML = checkoutLoginMixedPage;
+    expect(findInlineMenuPurpose(document, getInput("#login-email"), wideRect)).toBe("login");
+    expect(findInlineMenuPurpose(document, getInput("#city"), wideRect)).toBe("address");
+    expect(findInlineMenuPurpose(document, getInput("#promo"), wideRect)).toBeUndefined();
   });
 
   it("ignores elements that are not inputs", () => {

@@ -276,3 +276,33 @@ describe("inline menu page", () => {
     expect(wrapper.find('[data-testid="inline-error"]').text()).toBe("The menu was not fully visible. Try again");
   });
 });
+
+describe("addresses", () => {
+  const allAddress = [
+    { vaultID: "v1", itemID: "home", title: "Home", summary: "Springfield, US", source: "address" as const, vaultName: "Personal" },
+    { vaultID: "v1", itemID: "alice", title: "Alice", summary: "", source: "identity" as const, vaultName: "Personal" },
+  ];
+
+  it("lists addresses on an address field and fills the one chosen by click or keyboard", async () => {
+    respondWith(createState({ purpose: "address", allLogin: [], allAddress, hasMoreAddress: false }));
+    const wrapper = await mountMenu();
+    const allRow = wrapper.findAll('[data-testid="inline-address"]');
+    expect(allRow.map((row) => row.text())).toEqual(["HomeSpringfield, US", "AliceIdentity"]);
+    await allRow[0].trigger("click");
+    await flushPromises();
+    expect(allMessage).toContainEqual({ type: "inlineMenu.fillAddress", sessionID: "session-1", vaultID: "v1", itemID: "home" });
+
+    broadcast("ArrowDown");
+    broadcast("ArrowDown");
+    broadcast("Enter");
+    await flushPromises();
+    expect(allMessage).toContainEqual({ type: "inlineMenu.fillAddress", sessionID: "session-1", vaultID: "v1", itemID: "alice" });
+  });
+
+  it("says when Hisar has no addresses", async () => {
+    respondWith(createState({ purpose: "address", allLogin: [], allAddress: [] }));
+    const wrapper = await mountMenu();
+    expect(wrapper.find('[data-testid="inline-no-addresses"]').text()).toContain("No addresses in Hisar");
+    expect(wrapper.find('[data-testid="inline-no-logins"]').exists()).toBe(false);
+  });
+});

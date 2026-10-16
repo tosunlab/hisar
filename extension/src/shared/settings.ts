@@ -27,6 +27,15 @@ export async function readInlineMenuSettings(area: SettingsArea): Promise<Inline
   return parseInlineMenuSettings(await area.get(allInlineMenuSettingKey));
 }
 
+// appFeaturesKey holds the features the paired app announced in its last hello, so a page knows whether to offer what
+// only a newer app fills, such as addresses, before it asks.
+export const appFeaturesKey = "appFeatures";
+
+export async function readAppFeatures(area: SettingsArea): Promise<string[]> {
+  const stored = (await area.get([appFeaturesKey]))[appFeaturesKey];
+  return Array.isArray(stored) ? stored.filter((feature): feature is string => typeof feature === "string") : [];
+}
+
 export async function writeInlineMenuSetting(area: SettingsArea, key: keyof InlineMenuSettings, value: boolean): Promise<void> {
   await area.set({ [key]: value });
 }

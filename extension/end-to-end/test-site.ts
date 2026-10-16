@@ -14,6 +14,31 @@ const loginPage = (frameUrl: string) => `<!doctype html>
 <iframe id="other-origin" src="${frameUrl}"></iframe>
 </body></html>`;
 
+const addressForm = (prefix: string) => `<form id="${prefix}address" method="post" action="/welcome">
+  <input id="${prefix}line1" autocomplete="shipping address-line1" placeholder="Address">
+  <input id="${prefix}line2" autocomplete="shipping address-line2" placeholder="Apartment, suite">
+  <input id="${prefix}city" autocomplete="shipping address-level2" placeholder="City">
+  <input id="${prefix}region" autocomplete="shipping address-level1" placeholder="State">
+  <input id="${prefix}postal" autocomplete="shipping postal-code" placeholder="ZIP code">
+  <select id="${prefix}country" autocomplete="shipping country"><option value="">Country</option><option>Germany</option><option>United States</option></select>
+  <button type="submit">Ship here</button>
+</form>`;
+
+const addressPage = (sameOriginFrameUrl: string, crossOriginFrameUrl: string) => `<!doctype html>
+<html><head><meta charset="utf-8"><title>Checkout</title>
+<style>body{font-family:sans-serif;background:#f4f4f5;margin:40px} form{display:grid;gap:8px;width:280px} input,select{padding:8px;font-size:14px} iframe{margin-top:24px;width:340px;height:360px;border:1px dashed #999}</style>
+</head><body>
+<h1>Where should we send it?</h1>
+${addressForm("")}
+<iframe id="same-origin" src="${sameOriginFrameUrl}"></iframe>
+<iframe id="other-origin" src="${crossOriginFrameUrl}"></iframe>
+</body></html>`;
+
+const addressFramePage = `<!doctype html>
+<html><head><meta charset="utf-8"><style>form{display:grid;gap:8px;width:280px} input,select{padding:8px;font-size:14px}</style></head><body>
+${addressForm("frame-")}
+</body></html>`;
+
 const framePage = `<!doctype html>
 <html><head><meta charset="utf-8"></head><body>
 <form><input id="frame-username" autocomplete="username"><input id="frame-password" type="password"><button>Sign in</button></form>
@@ -79,6 +104,8 @@ export async function startTestSite(): Promise<TestSite> {
       request.on("end", () => response.end(welcomePage));
       return;
     }
+    if (request.url?.startsWith("/address-frame")) return response.end(addressFramePage);
+    if (request.url?.startsWith("/address")) return response.end(addressPage(`http://127.0.0.1:${port}/address-frame`, `http://localhost:${port}/address-frame`));
     if (request.url?.startsWith("/frame")) return response.end(framePage);
     if (request.url?.startsWith("/sign-up")) return response.end(signUpPage);
     if (request.url?.startsWith("/two-factor-split")) return response.end(splitTwoFactorPage);

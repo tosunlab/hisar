@@ -99,7 +99,7 @@ function isSubmitLikeElement(element: Element): boolean {
   return element.getAttribute("role") === "button";
 }
 
-function findFormlessScope(field: HTMLInputElement): Element {
+function findFormlessScope(field: Element): Element {
   let firstWithOtherInput: Element | undefined;
   let current: Element | null = getParentAcrossShadow(field);
   for (let depth = 0; current && depth < 8; depth += 1) {
@@ -111,7 +111,9 @@ function findFormlessScope(field: HTMLInputElement): Element {
   return firstWithOtherInput ?? field.ownerDocument.body;
 }
 
-export function getScopeRoot(field: HTMLInputElement): Element {
+// getScopeRoot is the form a field belongs to, or for a field outside any form the nearest container with a submit button or
+// another text field.
+export function getScopeRoot(field: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement): Element {
   return field.form ?? findFormlessScope(field);
 }
 

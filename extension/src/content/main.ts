@@ -1,6 +1,8 @@
 import type { BackgroundToContentMessage, ContentToBackgroundMessage, MessageResponse, SaveOfferView } from "../shared/messages";
 import { attachSubmissionCapture } from "./capture";
-import { readInlineMenuSettings, parseInlineMenuSettings, allInlineMenuSettingKey } from "../shared/settings";
+import { readInlineMenuSettings, parseInlineMenuSettings, allInlineMenuSettingKey, appFeaturesKey, readAppFeatures } from "../shared/settings";
+import { featureAddresses } from "../shared/protocol";
+import { fillAddressIntoPage, fillAddressIntoScopeOf } from "./address-fill";
 import {
   fillLogin,
   fillLoginIntoScopeOf,
@@ -54,6 +56,14 @@ export function handleBackgroundMessage(message: BackgroundToContentMessage, inl
       inlineMenu.dismissMenu(message.sessionID);
       return fillOneTimeCodeIntoField(field, message.code);
     }
+    case "content.fillAddress": {
+      if (!isFrameFillable(window, message.expectedOrigin)) return 0;
+      if (message.sessionID === undefined) return fillAddressIntoPage(document, message.address);
+      const field = inlineMenu.getAnchoredField(message.sessionID);
+      if (!field) return 0;
+      inlineMenu.dismissMenu(message.sessionID);
+      return fillAddressIntoScopeOf(document, field, message.address);
+    }
     case "content.showSaveOffer":
       if (window.top !== window) return false;
       presentSaveOffer(message.offer);
@@ -81,7 +91,14 @@ function startInlineMenu(): InlineMenuController {
   readInlineMenuSettings(chrome.storage.local)
     .then((settings) => inlineMenu.updateSettings(settings))
     .catch(() => undefined);
+  const updateAppFeatures = (): void => {
+    readAppFeatures(chrome.storage.local)
+      .then((allFeature) => inlineMenu.setAddressFillAvailable(allFeature.includes(featureAddresses)))
+      .catch(() => inlineMenu.setAddressFillAvailable(false));
+  };
+  updateAppFeatures();
   chrome.storage.onChanged.addListener((allChange, areaName) => {
+    if (areaName === "local" && appFeaturesKey in allChange) updateAppFeatures();
     if (areaName !== "local" || !allInlineMenuSettingKey.some((key) => key in allChange)) return;
     readInlineMenuSettings(chrome.storage.local)
       .then((settings) => inlineMenu.updateSettings(settings))

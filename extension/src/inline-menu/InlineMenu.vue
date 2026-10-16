@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { VisibilityGuard } from "../shared/click-guard";
 import type { InlineMenuBroadcast, InlineMenuState } from "../shared/messages";
-import type { LoginSummary } from "../shared/protocol";
+import type { AddressSummary, LoginSummary } from "../shared/protocol";
 import { sendToBackground } from "./api";
 
 const props = withDefaults(
@@ -26,6 +26,7 @@ const props = withDefaults(
 type MenuAction =
   | { kind: "login"; login: LoginSummary }
   | { kind: "code"; login: LoginSummary }
+  | { kind: "address"; address: AddressSummary }
   | { kind: "more" }
   | { kind: "suggest" }
   | { kind: "pair" }
@@ -43,6 +44,7 @@ let pollTimer: ReturnType<typeof setTimeout> | undefined;
 let lastReportedHeight = 0;
 
 const isOneTimeCodeMenu = computed(() => menuState.value?.purpose === "one-time-code");
+const allAddress = computed(() => menuState.value?.allAddress ?? []);
 
 const allAction = computed<MenuAction[]>(() => {
   const state = menuState.value;
@@ -50,6 +52,12 @@ const allAction = computed<MenuAction[]>(() => {
   switch (state.view) {
     case "logins":
       if (state.purpose === "new-password") return state.suggestedPassword ? [{ kind: "suggest" }] : [];
+      if (state.purpose === "address") {
+        return [
+          ...(state.allAddress ?? []).map((address): MenuAction => ({ kind: "address", address })),
+          ...(state.hasMoreAddress ? [{ kind: "more" } as MenuAction] : []),
+        ];
+      }
       return [
         ...state.allLogin.map((login): MenuAction => ({ kind: state.purpose === "one-time-code" ? "code" : "login", login })),
         ...(state.hasMoreLogin ? [{ kind: "more" } as MenuAction] : []),
@@ -107,6 +115,9 @@ async function runAction(action: MenuAction): Promise<void> {
         return;
       case "code":
         await sendToBackground({ type: "inlineMenu.fillOneTimeCode", sessionID: props.sessionID, vaultID: action.login.vaultID, itemID: action.login.itemID });
+        return;
+      case "address":
+        await sendToBackground({ type: "inlineMenu.fillAddress", sessionID: props.sessionID, vaultID: action.address.vaultID, itemID: action.address.itemID });
         return;
       case "suggest":
         await sendToBackground({ type: "inlineMenu.useSuggestedPassword", sessionID: props.sessionID });
@@ -223,6 +234,40 @@ defineExpose({ pressKey });
           <span class="subtitle monospace">{{ menuState.suggestedPassword }}</span>
         </span>
       </button>
+    </template>
+    <template v-else-if="menuState?.view === 'logins' && menuState.purpose === 'address'">
+      <button
+        v-for="(address, index) in allAddress"
+        :key="address.vaultID + address.itemID"
+        type="button"
+        class="item"
+        :class="{ selected: selectedIndex === index }"
+        data-testid="inline-address"
+        @click="chooseAction({ kind: 'address', address }, $event)"
+      >
+        <span class="avatar key" aria-hidden="true">
+          <svg v-if="address.source === 'identity'" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 5h18v14H3zM9 8.5a2 2 0 1 1 0 4 2 2 0 0 1 0-4zM5.5 16.5c.6-1.6 1.9-2.3 3.5-2.3s2.9.7 3.5 2.3M15 10h4M15 14h4" /></svg>
+          <svg v-else width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 21s-7-6.1-7-11.5a7 7 0 0 1 14 0C19 14.9 12 21 12 21zM12 7.5a2 2 0 1 1 0 4 2 2 0 0 1 0-4z" /></svg>
+        </span>
+        <span class="text">
+          <span class="title">{{ address.title }}</span>
+          <span class="subtitle">{{ [address.summary, address.source === "identity" ? "Identity" : ""].filter(Boolean).join(" · ") || "Address" }}</span>
+        </span>
+      </button>
+      <button
+        v-if="menuState.hasMoreAddress"
+        type="button"
+        class="item more"
+        :class="{ selected: selectedIndex === allAddress.length }"
+        data-testid="inline-more"
+        @click="chooseAction({ kind: 'more' }, $event)"
+      >
+        More in Hisar…
+      </button>
+      <div v-if="allAddress.length === 0" class="message" data-testid="inline-no-addresses">
+        <p class="title">No addresses in Hisar</p>
+        <p class="muted">Add an address, or one to an identity, in Hisar.</p>
+      </div>
     </template>
     <template v-else-if="menuState?.view === 'logins'">
       <button
