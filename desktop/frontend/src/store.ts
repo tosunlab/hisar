@@ -79,6 +79,8 @@ export const store = reactive({
   isFavoritesSelected: false,
   editorMode: "view" as EditorMode,
   searchQuery: "",
+  // selectedTag narrows the list to the items carrying it; "" shows every item.
+  selectedTag: "",
   pendingSecretKey: "",
   isTouchIDOfferShown: false,
   pendingInvite: "",
@@ -167,6 +169,7 @@ function clearAllVaultData(): void {
   store.isFavoritesSelected = false;
   store.editorMode = "view";
   store.searchQuery = "";
+  store.selectedTag = "";
 }
 
 async function applyStatus(status: Status): Promise<void> {
@@ -595,6 +598,7 @@ export async function selectVault(vaultID: string): Promise<void> {
   store.selectedItem = null;
   store.editorMode = "view";
   store.searchQuery = "";
+  store.selectedTag = "";
   const allItem = await runAction(() => api.listAllItem(vaultID));
   store.allItem = allItem ? sortAllItem(allItem) : [];
   updateSelectedVaultItemCount();
@@ -676,19 +680,52 @@ export function sortAllItem(allItem: ItemDetail[]): ItemDetail[] {
   return [...allItem].sort((first, second) => first.title.localeCompare(second.title, undefined, { sensitivity: "base" }));
 }
 
-export function filterAllItem(allItem: ItemDetail[], query: string): ItemDetail[] {
+// filterAllItem keeps the items matching the search in their title, username, websites, tags or identity name and email,
+// and carrying tag when one is selected.
+export function filterAllItem(allItem: ItemDetail[], query: string, tag = ""): ItemDetail[] {
   const normalizedQuery = query.trim().toLowerCase();
-  if (!normalizedQuery) {
-    return allItem;
-  }
   return allItem.filter((vaultItem) => {
+    const allTag = vaultItem.tags ?? [];
     // An identity's list summary keeps its name and email, an API credential's its service, key ID and host; the list
     // shows them under the title, except the key ID.
     const identityText = vaultItem.identity ? [formatFullName(vaultItem.identity), vaultItem.identity.email] : [];
     const credential = vaultItem.apiCredential;
     const credentialText = credential ? [credential.service, credential.keyId, credential.host] : [];
-    return [vaultItem.title, vaultItem.username, ...vaultItem.urls, ...identityText, ...credentialText].some((text) => text.toLowerCase().includes(normalizedQuery));
+    return (
+      (tag === "" || allTag.includes(tag)) &&
+      (normalizedQuery === "" ||
+        [vaultItem.title, vaultItem.username, ...vaultItem.urls, ...allTag, ...identityText, ...credentialText].some((text) => text.toLowerCase().includes(normalizedQuery)))
+    );
   });
+}
+
+export interface TagSummary {
+  name: string;
+  itemCount: number;
+}
+
+// listAllTag returns every tag of the items with how many carry it, sorted by name.
+export function listAllTag(allItem: ItemDetail[]): TagSummary[] {
+  const countByTag = new Map<string, number>();
+  for (const vaultItem of allItem) {
+    for (const tag of vaultItem.tags ?? []) {
+      countByTag.set(tag, (countByTag.get(tag) ?? 0) + 1);
+    }
+  }
+  return [...countByTag]
+    .map(([name, itemCount]) => ({ name, itemCount }))
+    .sort((first, second) => first.name.localeCompare(second.name, undefined, { sensitivity: "base" }));
+}
+
+// selectTag filters the list by the tag, and clears the filter when the tag is already selected.
+export function selectTag(tag: string): void {
+  store.selectedTag = store.selectedTag === tag ? "" : tag;
+  // The filter narrows the selected vault's list, so choosing a tag from Favorites returns to that list.
+  if (store.isFavoritesSelected) {
+    store.isFavoritesSelected = false;
+    store.selectedItem = null;
+    store.editorMode = "view";
+  }
 }
 
 function updateSelectedVaultItemCount(): void {
@@ -785,6 +822,7 @@ export async function saveItem(detail: ItemDetail): Promise<boolean> {
   if (allItem) {
     store.allItem = sortAllItem(allItem);
     updateSelectedVaultItemCount();
+    dropMissingTagFilter();
   }
   store.selectedItem = saved;
   store.editorMode = "view";
@@ -793,6 +831,14 @@ export async function saveItem(detail: ItemDetail): Promise<boolean> {
   }
   showNotice("Saved");
   return true;
+}
+
+// dropMissingTagFilter clears the tag filter once no item carries the tag any more, so the list never stays empty behind
+// a tag the sidebar no longer shows.
+function dropMissingTagFilter(): void {
+  if (store.selectedTag !== "" && !store.allItem.some((vaultItem) => (vaultItem.tags ?? []).includes(store.selectedTag))) {
+    store.selectedTag = "";
+  }
 }
 
 export async function convertToSecureNote(): Promise<void> {
@@ -822,6 +868,7 @@ export async function deleteItem(itemID: string): Promise<void> {
     store.allItem = store.allItem.filter((vaultItem) => vaultItem.id !== itemID);
     store.allFavorite = store.allFavorite.filter((favorite) => favorite.item.id !== itemID);
     updateSelectedVaultItemCount();
+    dropMissingTagFilter();
     store.selectedItem = null;
     store.editorMode = "view";
     showNotice("Deleted");

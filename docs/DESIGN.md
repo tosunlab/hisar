@@ -767,14 +767,14 @@ It then dials the socket and sends `hello` every 200 ms for up to 10 s. Once the
 
 | Type | Parameters | Result |
 |---|---|---|
-| `hello` | — | `protocolVersion` (1), `state` (`signed-out`, `locked`, `unlocked`), `email`, `server`, `isApproved` (for this terminal session), `features` (what the app understands beyond the protocol version: `secure-notes`, `credit-cards`, `identities`, `favorites`, `api-credentials`; an older app sends none); never needs an approval |
+| `hello` | — | `protocolVersion` (1), `state` (`signed-out`, `locked`, `unlocked`), `email`, `server`, `isApproved` (for this terminal session), `features` (what the app understands beyond the protocol version: `secure-notes`, `credit-cards`, `identities`, `favorites`, `api-credentials`, `tags`; an older app sends none); never needs an approval |
 | `account` | — | `accountID`, `name`, `email`, `role`, `server` |
 | `vaults.list` | — | `vaults`: `[{id, name, type, role, itemCount}]` |
 | `vaults.create` | `name` | `vault` |
-| `items.list` | `vaultID` | `items`: summaries `{id, revision, category, title, username, urls, hasOneTimePassword}` |
+| `items.list` | `vaultID` | `items`: summaries `{id, revision, category, title, username, urls, tags, hasOneTimePassword}` (`tags` only from an app whose `hello` lists `tags`, so `hisar ls --tag` refuses an older app rather than matching nothing) |
 | `items.get` | `vaultID`, `itemID` | `item`: the summary plus `password`, `notes`, `fields`, `passkeys` (`relyingPartyID`, `userName`), `publicKey`, `fingerprint` |
 | `items.code` | `vaultID`, `itemID` | `code`, `expiresAt` (RFC 3339), `period` |
-| `items.save` | `vaultID`, `item` (`id` and `revision` for an update; `title`, `username`, `urls`, `password`, `notes`, optional `fields`, optional `category` of a new item: `login` or `secure-note`, sent only to an app whose `hello` lists `secure-notes`, since an older app ignores it and saves a login) | `item`. An update keeps everything else of the item: category, one-time password, passkeys, SSH key, and the fields unless `fields` is sent (`.env` import) |
+| `items.save` | `vaultID`, `item` (`id` and `revision` for an update; `title`, `username`, `urls`, `password`, `notes`, optional `fields`, optional `tags` (`hisar` sends back the tags it read), optional `category` of a new item: `login` or `secure-note`, sent only to an app whose `hello` lists `secure-notes`, since an older app ignores it and saves a login) | `item`. An update keeps everything else of the item: category, one-time password, passkeys, SSH key, the fields unless `fields` is sent (`.env` import) and the tags unless `tags` is sent |
 | `vaults.actions` | `vaultID` | `vault`, `canRename`, `canDelete`, `deleteBlockedReason`, `canLeave`, `leaveBlockedReason`, `membersLosingAccess` (`name`, `email`, `role`), `targetVaults` (§5.10) |
 | `vaults.rename` | `vaultID`, `name` | `vault` |
 | `vaults.delete` | `vaultID`, `vaultDeletion` (`moveToVaultID`, or `isDeletingItems` with `confirmedName`, the vault's name as typed) | `movedCount` |

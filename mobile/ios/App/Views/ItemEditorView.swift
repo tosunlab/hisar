@@ -15,6 +15,7 @@ struct ItemEditorView: View {
     @State private var isGeneratorShown = false
     @State private var isDeleteConfirmationShown = false
     @State private var hasLoadedDraft = false
+    @State private var newTagText = ""
     @State private var isCardSecretRevealed = false
     @State private var cardDescription = CardDescription()
     @State private var isDocumentNumberRevealed = false
@@ -128,6 +129,7 @@ struct ItemEditorView: View {
                             .accessibilityIdentifier("editor-notes")
                     }
                 }
+                buildTagSection()
                 if !isNew {
                     Section {
                         Button("Delete item", role: .destructive) {
@@ -501,7 +503,38 @@ struct ItemEditorView: View {
         }
     }
 
+    /// One row per tag, removed by swiping, and a field that adds what is typed on return; commas separate several tags.
+    private func buildTagSection() -> some View {
+        Section {
+            ForEach(draft.allTag, id: \.self) { tag in
+                Label(tag, systemImage: "tag")
+                    .accessibilityIdentifier("editor-tag-\(tag)")
+            }
+            .onDelete { draft.allTag.remove(atOffsets: $0) }
+            TextField("Add a tag", text: $newTagText)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.done)
+                .onSubmit(addTags)
+                .accessibilityIdentifier("editor-new-tag")
+        } header: {
+            Text("Tags")
+        } footer: {
+            if draft.allTag.isEmpty {
+                Text("Tags group items across vaults; the Vaults screen lists them.")
+            }
+        }
+    }
+
+    private func addTags() {
+        for tag in ItemDetail.splitTags(newTagText) where !draft.allTag.contains(tag) {
+            draft.allTag.append(tag)
+        }
+        newTagText = ""
+    }
+
     private func save() {
+        addTags()
         var item = draft
         item.allURL = allURLText.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
         Task {

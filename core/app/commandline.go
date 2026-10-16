@@ -274,6 +274,9 @@ func (bridge *CommandLineBridge) saveItem(vaultID string, change *cliprotocol.It
 		}
 	}
 	detail.Title, detail.Username, detail.URLs, detail.Password, detail.Notes = change.Title, change.Username, change.URLs, change.Password, change.Notes
+	if change.Tags != nil {
+		detail.Tags = *change.Tags
+	}
 	if change.Fields != nil {
 		// The CLI sends a card's, identity's or API credential's values as named fields, which replace the ones it read.
 		detail.Card, detail.Identity, detail.APICredential = nil, nil, nil
@@ -364,7 +367,7 @@ func convertToCommandLineVault(summary VaultSummary) cliprotocol.Vault {
 func convertToCommandLineSummary(detail ItemDetail) cliprotocol.Item {
 	return cliprotocol.Item{
 		ID: detail.ID, Revision: detail.Revision, Category: detail.Category, Title: detail.Title, Username: detail.Username,
-		URLs: append([]string{}, detail.URLs...), HasOneTimePassword: detail.HasOneTimePassword,
+		URLs: append([]string{}, detail.URLs...), Tags: append([]string{}, detail.Tags...), HasOneTimePassword: detail.HasOneTimePassword,
 	}
 }
 

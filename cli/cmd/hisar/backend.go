@@ -26,6 +26,8 @@ type backend interface {
 	savePromptedItem(ctx context.Context, vaultID string, vaultItem *item.Item) error
 	// checkNewItemCategory refuses a category the backend would not save as asked; add calls it before prompting.
 	checkNewItemCategory(category string) error
+	// checkTags refuses when the backend lists items without their tags, so ls --tag would quietly match nothing.
+	checkTags() error
 	deleteItem(ctx context.Context, vaultID, itemID string) error
 	// getOneTimeCode returns errNoOneTimeCode for an item without a one-time password.
 	getOneTimeCode(ctx context.Context, vaultID, itemID string) (string, error)

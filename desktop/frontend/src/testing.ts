@@ -13,6 +13,7 @@ export function createItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
     title: "GitHub",
     username: "alice",
     urls: ["https://github.com"],
+    tags: [],
     password: "",
     notes: "",
     fields: [],
