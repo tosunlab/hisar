@@ -153,7 +153,8 @@ type VaultDeletion struct {
 	IsDeletingItems bool
 }
 
-// RenameVault re-encrypts the vault name under the vault key; the server only stores the new ciphertext.
+// RenameVault re-encrypts the vault name under the vault key; the server only stores the new ciphertext, and refuses it
+// (409) when the vault's key was rotated since this copy was listed.
 func (s *Session) RenameVault(ctx context.Context, vault *Vault, name string) error {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -166,7 +167,8 @@ func (s *Session) RenameVault(ctx context.Context, vault *Vault, name string) er
 	if err != nil {
 		return err
 	}
-	if err := s.Client.RenameVault(ctx, vault.ID, &apitypes.RenameVaultRequest{EncName: encryptedName}); err != nil {
+	request := &apitypes.RenameVaultRequest{EncName: encryptedName, KeyGeneration: vault.KeyGeneration}
+	if err := s.Client.RenameVault(ctx, vault.ID, request); err != nil {
 		return err
 	}
 	vault.Name = name

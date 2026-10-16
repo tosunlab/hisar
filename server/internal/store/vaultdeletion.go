@@ -36,15 +36,21 @@ type VaultDeletion struct {
 	IsDeletingItems bool
 }
 
-func (s *Store) RenameVault(ctx context.Context, vaultID string, encName []byte) error {
-	commandTag, err := s.pool.Exec(ctx, `UPDATE vaults SET enc_name = $2 WHERE id = $1`, vaultID, encName)
-	if err != nil {
+// RenameVault stores the vault's new sealed name. It locks like every change to an organization vault (§5.11) and
+// returns ErrConflict unless keyGeneration is the vault's current one (required for organization vaults, checked for any
+// vault when nonzero), so a name sealed with a key a rotation replaced is never stored.
+func (s *Store) RenameVault(ctx context.Context, vaultID string, encName []byte, keyGeneration int64) error {
+	return s.runInTransaction(ctx, func(transaction pgx.Tx) error {
+		vault, err := lockVault(ctx, transaction, vaultID)
+		if err != nil {
+			return err
+		}
+		if keyGeneration != vault.keyGeneration && (keyGeneration != 0 || vault.organizationID != "") {
+			return ErrConflict
+		}
+		_, err = transaction.Exec(ctx, `UPDATE vaults SET enc_name = $2 WHERE id = $1`, vaultID, encName)
 		return err
-	}
-	if commandTag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return nil
+	})
 }
 
 // DeleteVault deletes the vault, its access grants, items, history, invitations and team grants in one transaction,

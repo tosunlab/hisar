@@ -65,8 +65,11 @@ type RotateVaultRequest struct {
 	KeyGeneration int64           `json:"keyGeneration,omitempty"`
 }
 
+// RenameVaultRequest: KeyGeneration is the generation of the key EncName is sealed with. It is required for organization
+// vaults and checked for any vault when set, so a name sealed with a key a rotation replaced is refused (409).
 type RenameVaultRequest struct {
-	EncName []byte `json:"encName"`
+	EncName       []byte `json:"encName"`
+	KeyGeneration int64  `json:"keyGeneration,omitempty"`
 }
 
 // MovedItem is a live item re-encrypted under the target vault's key; BaseRevision is its revision in the deleted vault.

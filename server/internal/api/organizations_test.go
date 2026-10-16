@@ -473,6 +473,50 @@ func TestOrganizationVaultRotationFromAStaleKey(t *testing.T) {
 	}
 }
 
+func TestRenameWithARotatedAwayKey(t *testing.T) {
+	baseURL, server, databaseURL := setupServer(t)
+	ctx := context.Background()
+	caller := apiCaller{t: t, baseURL: baseURL}
+	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", apitypes.RoleMember)
+	bob := signUpTestAccount(t, ctx, server, baseURL, "bob@example.com", apitypes.RoleMember)
+	acme := caller.createOrganization(alice, "Acme")
+	caller.joinOrganization(alice, bob, acme.ID, apitypes.OrganizationRoleMember)
+	platform := caller.createTeam(alice, acme.ID, "Platform", alice, bob)
+	production := createOrganizationVault(t, alice, acme.ID, platform.ID, "Production")
+	caller.deliverVaultKeys(alice, production)
+	bobProduction := requireValue[*session.Vault](t)(bob.FindVault(ctx, production.ID))
+	grants := []session.AccessGrant{{AccountID: alice.AccountID, Role: apitypes.VaultOwner}, {AccountID: bob.AccountID, Role: apitypes.VaultOwner}}
+	if err := alice.RotateVaultKey(ctx, production, grants); err != nil {
+		t.Fatal(err)
+	}
+	rotated, _ := findListedVault(t, alice, production.ID)
+	if rotated.KeyGeneration != 2 || production.KeyGeneration != 2 || bobProduction.KeyGeneration != 1 {
+		t.Fatalf("generations after the rotation: listed %d, Alice's %d, Bob's %d", rotated.KeyGeneration, production.KeyGeneration, bobProduction.KeyGeneration)
+	}
+
+	expectStatus(t, "a rename sealed with the replaced key", bob.RenameVault(ctx, bobProduction, "Stale"), http.StatusConflict)
+	staleName := requireValue[[]byte](t)(crypt.SealVaultName(bobProduction.Key, production.ID, []byte("Stale")))
+	expectStatus(t, "a rename of an organization vault without its key generation",
+		bob.Client.RenameVault(ctx, production.ID, &apitypes.RenameVaultRequest{EncName: staleName}), http.StatusConflict)
+	if countDatabaseRows(t, databaseURL, `SELECT count(*) FROM vaults WHERE id = $1 AND enc_name = $2`, production.ID, rotated.EncName) != 1 {
+		t.Error("a refused rename replaced the stored name")
+	}
+	if err := alice.RenameVault(ctx, production, "Production 2026"); err != nil {
+		t.Fatalf("a rename with the current key: %v", err)
+	}
+	if listed, _ := findTestVault(t, bob, production.ID); listed == nil || listed.Name != "Production 2026" {
+		t.Errorf("Bob's vault list after the rename: %+v", listed)
+	}
+
+	family := requireValue[*session.Vault](t)(alice.CreateVault(ctx, "Family", apitypes.VaultShared))
+	familyName := requireValue[[]byte](t)(crypt.SealVaultName(family.Key, family.ID, []byte("Home")))
+	expectStatus(t, "a shared vault renamed with another key generation",
+		alice.Client.RenameVault(ctx, family.ID, &apitypes.RenameVaultRequest{EncName: familyName, KeyGeneration: 7}), http.StatusConflict)
+	if err := alice.Client.RenameVault(ctx, family.ID, &apitypes.RenameVaultRequest{EncName: familyName}); err != nil {
+		t.Errorf("a shared vault renamed without a key generation: %v", err)
+	}
+}
+
 func TestOrganizationRights(t *testing.T) {
 	baseURL, server, _ := setupServer(t)
 	ctx := context.Background()

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -28,9 +29,15 @@ func (server *fakeAPIServer) addVaultManagementRoutes(mux *http.ServeMux) {
 			return
 		}
 		for index := range server.vaults {
-			if server.vaults[index].ID == vaultID {
-				server.vaults[index].EncName = renameRequest.EncName
+			vault := &server.vaults[index]
+			if vault.ID != vaultID {
+				continue
 			}
+			if renameRequest.KeyGeneration != vault.KeyGeneration && (renameRequest.KeyGeneration != 0 || vault.OrganizationID != "") {
+				writeJSON(writer, http.StatusConflict, apitypes.Error{Error: "the vault key changed since the name was encrypted"})
+				return
+			}
+			vault.EncName = renameRequest.EncName
 		}
 		writer.WriteHeader(http.StatusNoContent)
 	})
@@ -154,6 +161,40 @@ func TestRenameVault(t *testing.T) {
 	service.ListVaults()
 	if _, err := service.RenameVault(test.familyID, "Mine"); err == nil || !strings.Contains(err.Error(), "only an owner") {
 		t.Errorf("reader renames: %v", err)
+	}
+}
+
+func TestRenameVaultAfterAnotherOwnerRotated(t *testing.T) {
+	test := createUnlockedTestService(t)
+	service := test.service
+	vaultID := createOrganizationTestVault(t, service)
+	if _, err := service.ListVaults(); err != nil {
+		t.Fatal(err)
+	}
+	// Another owner's app rotates the key; this app still holds the vault under the replaced one.
+	service.mutex.Lock()
+	unlockedSession := service.unlockedSession
+	service.mutex.Unlock()
+	otherOwnersVault, err := unlockedSession.FindVault(context.Background(), vaultID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := unlockedSession.RotateVaultKey(context.Background(), otherOwnersVault, []session.AccessGrant{{AccountID: test.accountID, Role: apitypes.VaultOwner}}); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := service.RenameVault(vaultID, "Platform"); err == nil || err.Error() != "the vault changed on another device; try again" {
+		t.Fatalf("rename with the replaced key: %v", err)
+	}
+	if listed, err := unlockedSession.FindVault(context.Background(), vaultID); err != nil || listed.Name != "Engineering" {
+		t.Fatalf("the vault list after the refused rename: %+v %v", listed, err)
+	}
+	// The refusal reloaded the vaults, so trying again seals the name with the current key.
+	if renamed, err := service.RenameVault(vaultID, "Platform"); err != nil || renamed.Name != "Platform" {
+		t.Fatalf("rename after the reload: %+v %v", renamed, err)
+	}
+	if vaults, err := service.ListVaults(); err != nil || !slices.ContainsFunc(vaults, func(vault VaultSummary) bool { return vault.ID == vaultID && vault.Name == "Platform" }) {
+		t.Errorf("vaults after the rename: %+v %v", vaults, err)
 	}
 }
 

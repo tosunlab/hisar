@@ -322,12 +322,14 @@ func (s *Service) RenameVault(ctx context.Context, actor Actor, vaultID string, 
 	if err := s.requireVaultOwner(ctx, actor, vaultID); err != nil {
 		return err
 	}
-	if len(request.EncName) == 0 || len(request.EncName) > maxEncName {
+	if len(request.EncName) == 0 || len(request.EncName) > maxEncName || request.KeyGeneration < 0 {
 		return newError(KindInvalid, "invalid vault name")
 	}
-	switch err := s.store.RenameVault(ctx, vaultID, request.EncName); {
+	switch err := s.store.RenameVault(ctx, vaultID, request.EncName, request.KeyGeneration); {
 	case errors.Is(err, store.ErrNotFound):
 		return ErrNotFound
+	case errors.Is(err, store.ErrConflict):
+		return newError(KindConflict, "the vault key changed since the name was encrypted; sync and try again")
 	case err != nil:
 		return err
 	}

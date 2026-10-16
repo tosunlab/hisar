@@ -137,7 +137,12 @@ func (s *Service) RenameVault(vaultID, name string) (VaultSummary, error) {
 	if err != nil {
 		return VaultSummary{}, err
 	}
-	if err := s.unlockedSession.RenameVault(ctx, vault, name); err != nil {
+	err = s.unlockedSession.RenameVault(ctx, vault, name)
+	if apiclient.IsStatus(err, http.StatusConflict) {
+		// The vault was rotated since this app listed it, so the name was sealed with a key it no longer has.
+		s.loadVaults(ctx)
+	}
+	if err != nil {
 		return VaultSummary{}, convertVaultError(err)
 	}
 	return convertToVaultSummary(vault, len(s.itemsByVaultID[vault.ID])), nil
