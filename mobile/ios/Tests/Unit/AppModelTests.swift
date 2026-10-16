@@ -385,6 +385,37 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.listAllItemReference().filter { ItemCategoryDestination.servers.includes($0.item) }.map(\.item.title), ["Build server"])
     }
 
+    func testSaveDatabaseKeepsItsLoginDataAndNoConnectionStringInTheList() async {
+        let model = await createUnlockedModel()
+        let database = ItemDatabase(engine: "postgresql", engineName: "PostgreSQL", host: "db.example.com", port: "5432", name: "app", options: "sslmode=require", connectionString: "postgresql://app:db-password@db.example.com:5432/app?sslmode=require")
+        let item = ItemDetail(category: ItemDetail.categoryDatabase, title: "Prod db", username: "app", password: "db-password", database: database)
+        guard let savedItem = await model.saveItem(vaultID: "personal", item: item) else {
+            return XCTFail("database not saved")
+        }
+        XCTAssertTrue(savedItem.isDatabase)
+        XCTAssertFalse(savedItem.offersLoginFill)
+        XCTAssertEqual(savedItem.database, database)
+        let reference = model.listAllItemReference(vaultID: "personal").first { $0.item.id == savedItem.id }
+        XCTAssertEqual(reference?.item.database, ItemDatabase(engine: "postgresql", engineName: "PostgreSQL", host: "db.example.com", port: "5432", name: "app"))
+        XCTAssertEqual(reference?.item.database?.summary, "PostgreSQL · db.example.com:5432/app")
+        XCTAssertEqual(model.listAllItemReference().filter { ItemCategoryDestination.databases.includes($0.item) }.map(\.item.title), ["Prod db"])
+        XCTAssertFalse(model.listAllItemReference().contains { ItemCategoryDestination.logins.includes($0.item) && $0.item.id == savedItem.id })
+    }
+
+    func testDatabaseDecodesFromTheBackend() throws {
+        let json = #"{"category":"database","title":"Cache","username":"","database":{"engine":"redis","engineName":"Redis","host":"2001:db8::1","port":"6379","name":"","options":"","connectionString":"redis://[2001:db8::1]:6379","portWarning":""}}"#
+        let item = try JSONDecoder().decode(ItemDetail.self, from: Data(json.utf8))
+        XCTAssertTrue(item.isDatabase)
+        XCTAssertEqual(item.database?.connectionString, "redis://[2001:db8::1]:6379")
+        XCTAssertEqual(item.database?.summary, "Redis · [2001:db8::1]:6379")
+        XCTAssertEqual(ItemDatabase().summary, "Database")
+        XCTAssertEqual(ItemDatabase(engineName: "DB2", name: "app").summary, "DB2 · app")
+        XCTAssertTrue(DatabaseEngine.isKnown("sqlserver"))
+        XCTAssertFalse(DatabaseEngine.isKnown("db2"))
+        let encoded = try XCTUnwrap(String(data: JSONEncoder().encode(item), encoding: .utf8))
+        XCTAssertTrue(encoded.contains(#""database""#) && encoded.contains(#""engine":"redis""#), encoded)
+    }
+
     func testServerDecodesFromTheBackendAndWarnsAboutItsPort() throws {
         let json = #"{"category":"server","title":"Database","username":"","server":{"host":"2001:db8::1","port":"5432","sshKeyId":"key-1","sshKeyTitle":"Deploy key","sshKeyFingerprint":"SHA256:abc","portWarning":""}}"#
         let item = try JSONDecoder().decode(ItemDetail.self, from: Data(json.utf8))

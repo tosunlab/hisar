@@ -620,6 +620,10 @@ final class AppModel: ObservableObject {
             // As core/app's list summary: the host and port.
             summary.server = ItemServer(host: server.host, port: server.port)
         }
+        if let database = savedItem.database {
+            // As core/app's list summary: never the connection string or options.
+            summary.database = ItemDatabase(engine: database.engine, engineName: database.engineName, host: database.host, port: database.port, name: database.name)
+        }
         if let license = savedItem.softwareLicense {
             // As core/app's list summary: never the license key, purchase date or download URL.
             summary.softwareLicense = ItemSoftwareLicense(product: license.product, version: license.version, licensedTo: license.licensedTo, email: license.email)

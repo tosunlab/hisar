@@ -149,6 +149,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     static let categoryAddress = "address"
     static let categorySoftwareLicense = "software-license"
     static let categoryServer = "server"
+    static let categoryDatabase = "database"
 
     var id: String
     var revision: String
@@ -187,16 +188,19 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     /// A server's host, port and linked SSH key; its username, password and admin console are the item's own. Summaries
     /// keep only the host and port.
     var server: ItemServer?
+    /// A database's engine, host, port, name and options; its username and password are the item's own. The backend builds
+    /// its connection string. Summaries keep only the engine, host, port and name.
+    var database: ItemDatabase?
 
     enum CodingKeys: String, CodingKey {
-        case id, revision, category, title, username, password, notes, publicKey, fingerprint, keyType, oneTimePassword, hasOneTimePassword, canConvertToSecureNote, card, identity, isFavorite, apiCredential, address, softwareLicense, server
+        case id, revision, category, title, username, password, notes, publicKey, fingerprint, keyType, oneTimePassword, hasOneTimePassword, canConvertToSecureNote, card, identity, isFavorite, apiCredential, address, softwareLicense, server, database
         case allURL = "urls"
         case allTag = "tags"
         case allField = "fields"
         case allPasskey = "passkeys"
     }
 
-    init(id: String = "", revision: String = "", category: String = ItemDetail.categoryLogin, title: String = "", username: String = "", allURL: [String] = [], allTag: [String] = [], password: String = "", notes: String = "", allField: [ItemField] = [], publicKey: String = "", fingerprint: String = "", keyType: String = "", oneTimePassword: String = "", hasOneTimePassword: Bool = false, allPasskey: [ItemPasskey] = [], canConvertToSecureNote: Bool = false, card: ItemCard? = nil, identity: ItemIdentity? = nil, isFavorite: Bool = false, apiCredential: ItemAPICredential? = nil, address: ItemAddress? = nil, softwareLicense: ItemSoftwareLicense? = nil, server: ItemServer? = nil) {
+    init(id: String = "", revision: String = "", category: String = ItemDetail.categoryLogin, title: String = "", username: String = "", allURL: [String] = [], allTag: [String] = [], password: String = "", notes: String = "", allField: [ItemField] = [], publicKey: String = "", fingerprint: String = "", keyType: String = "", oneTimePassword: String = "", hasOneTimePassword: Bool = false, allPasskey: [ItemPasskey] = [], canConvertToSecureNote: Bool = false, card: ItemCard? = nil, identity: ItemIdentity? = nil, isFavorite: Bool = false, apiCredential: ItemAPICredential? = nil, address: ItemAddress? = nil, softwareLicense: ItemSoftwareLicense? = nil, server: ItemServer? = nil, database: ItemDatabase? = nil) {
         self.id = id
         self.revision = revision
         self.category = category
@@ -221,6 +225,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         self.address = address
         self.softwareLicense = softwareLicense
         self.server = server
+        self.database = database
     }
 
     init(from decoder: Decoder) throws {
@@ -249,6 +254,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         address = try container.decodeIfPresent(ItemAddress.self, forKey: .address)
         softwareLicense = try container.decodeIfPresent(ItemSoftwareLicense.self, forKey: .softwareLicense)
         server = try container.decodeIfPresent(ItemServer.self, forKey: .server)
+        database = try container.decodeIfPresent(ItemDatabase.self, forKey: .database)
     }
 
     /// The tags typed into one field, separated by commas, without blanks or repeats.
@@ -269,6 +275,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     var isAddress: Bool { category == Self.categoryAddress }
     var isSoftwareLicense: Bool { category == Self.categorySoftwareLicense }
     var isServer: Bool { category == Self.categoryServer }
+    var isDatabase: Bool { category == Self.categoryDatabase }
     /// AutoFill offers the item's username and password on its websites: a login's, and a server's admin console.
     var offersLoginFill: Bool { isLogin || isServer }
 }
@@ -555,6 +562,87 @@ struct ItemServer: Codable, Hashable {
     func summary(username: String) -> String {
         let parts = [address, username].filter { !$0.isEmpty }
         return parts.isEmpty ? "Server" : parts.joined(separator: " · ")
+    }
+}
+
+/// The names core/item stores a database's values under; its username and password are the item's own. "connection string"
+/// names the connection string the backend builds, for copying and hisar:// references.
+enum DatabaseFieldName {
+    static let engine = "Engine"
+    static let host = "Host"
+    static let port = "Port"
+    static let name = "Database"
+    static let options = "Options"
+    static let connectionString = "connection string"
+}
+
+/// A database engine the editor offers and Hisar builds connection strings for, as core/item lists them.
+struct DatabaseEngine: Hashable {
+    let id: String
+    let name: String
+
+    static let allKnown = [
+        DatabaseEngine(id: "postgresql", name: "PostgreSQL"),
+        DatabaseEngine(id: "mysql", name: "MySQL"),
+        DatabaseEngine(id: "mariadb", name: "MariaDB"),
+        DatabaseEngine(id: "sqlserver", name: "SQL Server"),
+        DatabaseEngine(id: "oracle", name: "Oracle"),
+        DatabaseEngine(id: "mongodb", name: "MongoDB"),
+        DatabaseEngine(id: "redis", name: "Redis"),
+    ]
+
+    static func isKnown(_ engine: String) -> Bool { allKnown.contains { $0.id == engine } }
+}
+
+/// A database's values besides its login data. `engine` is a known engine's ID or any other engine as typed, which
+/// `engineName` names; `connectionString` is "" for another engine or without a host. The backend reads only engine, host,
+/// port, name and options.
+struct ItemDatabase: Codable, Hashable {
+    var engine = ""
+    var engineName = ""
+    var host = ""
+    var port = ""
+    var name = ""
+    var options = ""
+    var connectionString = ""
+    var portWarning = ""
+
+    init(engine: String = "", engineName: String = "", host: String = "", port: String = "", name: String = "", options: String = "", connectionString: String = "", portWarning: String = "") {
+        self.engine = engine
+        self.engineName = engineName
+        self.host = host
+        self.port = port
+        self.name = name
+        self.options = options
+        self.connectionString = connectionString
+        self.portWarning = portWarning
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        engine = try container.decodeIfPresent(String.self, forKey: .engine) ?? ""
+        engineName = try container.decodeIfPresent(String.self, forKey: .engineName) ?? ""
+        host = try container.decodeIfPresent(String.self, forKey: .host) ?? ""
+        port = try container.decodeIfPresent(String.self, forKey: .port) ?? ""
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        options = try container.decodeIfPresent(String.self, forKey: .options) ?? ""
+        connectionString = try container.decodeIfPresent(String.self, forKey: .connectionString) ?? ""
+        portWarning = try container.decodeIfPresent(String.self, forKey: .portWarning) ?? ""
+    }
+
+    /// The host and port, such as "db.example.com:5432", with brackets around an IPv6 host, as a server's.
+    var address: String { ItemServer(host: host, port: port).address }
+
+    /// The address and database name, such as "db.example.com:5432/app".
+    var location: String {
+        guard !name.isEmpty else { return address }
+        return address.isEmpty ? name : "\(address)/\(name)"
+    }
+
+    /// The database's line in lists: its engine, address and name, as the Mac app shows it.
+    var summary: String {
+        let parts = [engineName, location].filter { !$0.isEmpty }
+        return parts.isEmpty ? "Database" : parts.joined(separator: " · ")
     }
 }
 

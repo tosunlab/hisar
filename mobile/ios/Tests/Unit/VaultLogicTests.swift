@@ -151,6 +151,18 @@ final class VaultLogicTests: XCTestCase {
         XCTAssertFalse(ItemCategoryDestination.logins.includes(server.item))
     }
 
+    func testDatabasesAreFoundByTheirEngineAddressAndName() {
+        var database = makeReference("Prod db", username: "app", category: ItemDetail.categoryDatabase)
+        database.item.database = ItemDatabase(engine: "postgresql", engineName: "PostgreSQL", host: "db.example.com", port: "5432", name: "orders")
+        let note = makeReference("Notes", category: ItemDetail.categorySecureNote)
+        for searchText in ["postgres", "db.example.com:5432/orders", "5432", "orders"] {
+            XCTAssertEqual(VaultLogic.filterAllItem([database, note], searchText: searchText).map(\.item.title), ["Prod db"], searchText)
+        }
+        XCTAssertTrue(VaultLogic.buildAllCredentialIdentity([database]).isEmpty)
+        XCTAssertTrue(ItemCategoryDestination.databases.includes(database.item))
+        XCTAssertFalse(ItemCategoryDestination.logins.includes(database.item))
+    }
+
     func testOneTimeCodeIdentitiesForLoginsWithACode() {
         var withCode = makeReference("GitHub", username: "alice", allURL: ["https://github.com", "github.com/login"])
         withCode.item.hasOneTimePassword = true

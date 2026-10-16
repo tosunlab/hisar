@@ -136,6 +136,12 @@ struct ItemListView: View {
                             Label("Server", systemImage: "server.rack")
                         }
                         .accessibilityIdentifier("add-server")
+                        Button {
+                            newItemCategory = ItemDetail.categoryDatabase
+                        } label: {
+                            Label("Database", systemImage: "cylinder.split.1x2")
+                        }
+                        .accessibilityIdentifier("add-database")
                     } label: {
                         Label("Add item", systemImage: "plus")
                     }
