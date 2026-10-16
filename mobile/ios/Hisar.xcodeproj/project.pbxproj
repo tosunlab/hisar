@@ -606,25 +606,25 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					450842A21E2C437565C96DF0 = {
-						DevelopmentTeam = "";
+						DevelopmentTeam = 589NVZWDWZ;
 						ProvisioningStyle = Automatic;
 					};
 					4A2D090AE9B9EF2FA49E5D28 = {
-						DevelopmentTeam = "";
+						DevelopmentTeam = 589NVZWDWZ;
 						ProvisioningStyle = Automatic;
 						TestTargetID = B555FAB9B81DA5077D2F789A;
 					};
 					4FE52CB921DE322A3DEEE476 = {
-						DevelopmentTeam = "";
+						DevelopmentTeam = 589NVZWDWZ;
 						ProvisioningStyle = Automatic;
 					};
 					708AE130EA6721ADE65864B2 = {
-						DevelopmentTeam = "";
-						ProvisioningStyle = Automatic;
+						DevelopmentTeam = 589NVZWDWZ;
+						ProvisioningStyle = Manual;
 					};
 					B555FAB9B81DA5077D2F789A = {
-						DevelopmentTeam = "";
-						ProvisioningStyle = Automatic;
+						DevelopmentTeam = 589NVZWDWZ;
+						ProvisioningStyle = Manual;
 					};
 				};
 			};
@@ -867,6 +867,9 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = Configuration/HisarAutoFill.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
+				CODE_SIGN_STYLE = Manual;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"\"../build\"",
@@ -881,6 +884,8 @@
 					"-lresolv",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "$(HISAR_AUTOFILL_BUNDLE_IDENTIFIER)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "HisarAutoFill Development";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -1013,7 +1018,9 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Configuration/Hisar.entitlements;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_IDENTITY = "-";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Development";
+				CODE_SIGN_STYLE = Manual;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"\"../build\"",
@@ -1027,6 +1034,8 @@
 					"-lresolv",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "$(HISAR_APP_BUNDLE_IDENTIFIER)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "Hisar Development";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -1064,6 +1073,9 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = Configuration/HisarAutoFill.entitlements;
+				CODE_SIGN_IDENTITY = "-";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
+				CODE_SIGN_STYLE = Manual;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"\"../build\"",
@@ -1078,6 +1090,8 @@
 					"-lresolv",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "$(HISAR_AUTOFILL_BUNDLE_IDENTIFIER)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "HisarAutoFill App Store";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
@@ -1173,7 +1187,9 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Configuration/Hisar.entitlements;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_IDENTITY = "-";
+				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "Apple Distribution";
+				CODE_SIGN_STYLE = Manual;
 				FRAMEWORK_SEARCH_PATHS = (
 					"$(inherited)",
 					"\"../build\"",
@@ -1187,6 +1203,8 @@
 					"-lresolv",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = "$(HISAR_APP_BUNDLE_IDENTIFIER)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]" = "Hisar App Store";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};

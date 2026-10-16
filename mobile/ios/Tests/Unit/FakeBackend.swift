@@ -25,6 +25,9 @@ class FakeBackend: VaultBackend {
     var allCallName: [String] = []
     var nextItemNumber = 1
     var allPasskey: [StoredPasskey] = []
+    /// Runs when a refresh lists the passkeys, its last call, after the unlock check: a test can sign out or lock while a
+    /// refresh that listed everything is still in flight.
+    var onListAllPasskey: (() -> Void)?
     var allMember: [Member] = []
     var allVaultMemberByVaultID: [String: [Member]] = [:]
     var allInvitedEmail: [String] = []
@@ -487,6 +490,7 @@ extension FakeBackend {
     func listAllPasskey() throws -> [StoredPasskey] {
         record("listAllPasskey")
         try requireUnlocked()
+        onListAllPasskey?()
         return allPasskey
     }
 

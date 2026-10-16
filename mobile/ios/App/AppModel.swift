@@ -344,6 +344,10 @@ final class AppModel: ObservableObject {
             refreshStatus()
             return
         }
+        // Locked or signed out while listing: locking and signing out cleared the items, so the listing must not bring
+        // them back, nor put a signed-out account's logins back into AutoFill. A lock keeps what AutoFill already has.
+        refreshStatus()
+        guard status.isUnlocked else { return }
         allVault = result.0.sorted { Self.sortVault($0, $1) }
         allItemByVaultID = result.1
         allPasskey = result.2
@@ -351,7 +355,6 @@ final class AppModel: ObservableObject {
             applyShareInvitations(shareInvitations)
         }
         addAllRemovedVaultNotice(result.4)
-        refreshStatus()
         await publishAllCredentialIdentity()
     }
 
@@ -386,8 +389,9 @@ final class AppModel: ObservableObject {
             refreshStatus()
             return
         }
-        allItemByVaultID[vaultID] = allItem
         refreshStatus()
+        guard status.isUnlocked else { return }
+        allItemByVaultID[vaultID] = allItem
     }
 
     func findVault(vaultID: String) -> VaultSummary? {
