@@ -19,22 +19,26 @@ const (
 	FieldPublicKey   = "public key"
 	FieldPrivateKey  = "private key"
 	FieldFingerprint = "fingerprint"
+	// FieldConnectionString is a database's connection string, built from its values; on other items the label names a
+	// custom field, as it did before databases existed.
+	FieldConnectionString = "connection string"
 )
 
 // ErrPrivateKeyRefused keeps SSH private keys inside the app; the label stays reserved so no custom field can stand in for it.
 var ErrPrivateKeyRefused = errors.New("SSH private keys never leave Hisar; use the Hisar SSH agent instead")
 
 var builtInFieldsByLabel = map[string]string{
-	"password":      FieldPassword,
-	"username":      FieldUsername,
-	"notes":         FieldNotes,
-	"url":           FieldURL,
-	"otp":           FieldOneTimeCode,
-	"one-time code": FieldOneTimeCode,
-	"code":          FieldOneTimeCode,
-	"public key":    FieldPublicKey,
-	"private key":   FieldPrivateKey,
-	"fingerprint":   FieldFingerprint,
+	"password":          FieldPassword,
+	"username":          FieldUsername,
+	"notes":             FieldNotes,
+	"url":               FieldURL,
+	"otp":               FieldOneTimeCode,
+	"one-time code":     FieldOneTimeCode,
+	"code":              FieldOneTimeCode,
+	"public key":        FieldPublicKey,
+	"private key":       FieldPrivateKey,
+	"fingerprint":       FieldFingerprint,
+	"connection string": FieldConnectionString,
 }
 
 type Vault struct {
@@ -201,7 +205,7 @@ func findItem(items []item.Item, vaultName, query string) (*item.Item, error) {
 func ReadField(vaultItem *item.Item, label string, now time.Time) (string, string, error) {
 	title := vaultItem.Overview.Title
 	builtInField, isBuiltIn := GetBuiltInField(label)
-	if !isBuiltIn {
+	if !isBuiltIn || builtInField == FieldConnectionString && !vaultItem.IsCategory(item.CategoryDatabase) {
 		return readCustomField(vaultItem, label)
 	}
 	var value string
@@ -222,6 +226,10 @@ func ReadField(vaultItem *item.Item, label string, now time.Time) (string, strin
 		return "", "", ErrPrivateKeyRefused
 	case FieldFingerprint:
 		value = vaultItem.Overview.Fingerprint
+	case FieldConnectionString:
+		if value = vaultItem.ConnectionString(); value == "" {
+			return "", "", fmt.Errorf("item %q has no connection string; it needs a host and an engine Hisar knows", title)
+		}
 	case FieldOneTimeCode:
 		if vaultItem.Details.OneTimePassword == "" {
 			return "", "", fmt.Errorf("item %q has no one-time password", title)
