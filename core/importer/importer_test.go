@@ -735,6 +735,60 @@ func TestParseOnePasswordIdentityPhone(t *testing.T) {
 	}
 }
 
+func TestParseOnePasswordAPICredential(t *testing.T) {
+	data := `{"accounts":[{"vaults":[{"items":[
+		{"categoryUuid":"112","overview":{"title":"Stripe","url":"https://dashboard.stripe.com"},"details":{"notesPlain":"Live key","sections":[{"title":"","fields":[
+			{"title":"username","id":"username","value":{"string":"key_1"}},
+			{"title":"credential","id":"credential","value":{"concealed":"sk_live_123"}},
+			{"title":"type","id":"type","value":{"menu":"bearer"}},
+			{"title":"hostname","id":"hostname","value":{"string":"api.stripe.com"}},
+			{"title":"expires","id":"expires","value":{"date":1893456000}}]}]}},
+		{"categoryUuid":"110","overview":{"title":"Build server"},"details":{"sections":[{"title":"","fields":[
+			{"title":"URL","id":"url","value":{"string":"ssh://build.example.com"}},
+			{"title":"username","id":"username","value":{"string":"deploy"}},
+			{"title":"password","id":"password","value":{"concealed":"server-password"}}]}]}}]}]}]}`
+	result := parseFixture(t, "export.1pux", buildOnePasswordExport(t, []byte(data)), FormatAutomatic)
+	if len(result.Skipped) != 0 {
+		t.Errorf("skipped %+v", result.Skipped)
+	}
+	stripe := findTestItem(t, result, "Stripe")
+	wantFields := []item.Field{
+		{Name: item.FieldKeyID, Value: "key_1"},
+		{Name: item.FieldSecret, Value: "sk_live_123", Concealed: true},
+		{Name: item.FieldHost, Value: "api.stripe.com"},
+		{Name: item.FieldExpiry, Value: "2030-01-01"},
+		{Name: "type", Value: "bearer"},
+		{Name: "Website", Value: "https://dashboard.stripe.com"},
+	}
+	if stripe.Overview.Category != item.CategoryAPICredential || !reflect.DeepEqual(stripe.Details.Fields, wantFields) || stripe.Details.Notes != "Live key" {
+		t.Errorf("API credential = %+v\nfields\n%+v\nwant\n%+v", stripe.Overview, stripe.Details.Fields, wantFields)
+	}
+	if server := findTestItem(t, result, "Build server"); server.Overview.Category != item.CategoryLogin || server.Overview.Username != "deploy" || server.Details.Password != "server-password" {
+		t.Errorf("a 1Password Server is no longer a login: %+v", server)
+	}
+	if summary := Summarize(result.Items); summary.APICredentialCount != 1 || summary.LoginCount != 1 {
+		t.Errorf("summary = %+v", summary)
+	}
+}
+
+func TestAPICredentialsWithTheSameTitleAreNotDuplicates(t *testing.T) {
+	credential := func(keyID, host string) item.Item {
+		var vaultItem item.Item
+		vaultItem.Overview = item.Overview{Title: "Stripe", Category: item.CategoryAPICredential}
+		item.WriteAPICredential(&vaultItem, item.APICredential{KeyID: keyID, Secret: "sk", Host: host}, nil)
+		return vaultItem
+	}
+	if BuildDuplicateKey(credential("key_1", "")) == BuildDuplicateKey(credential("key_2", "")) {
+		t.Error("two keys of one service match")
+	}
+	if BuildDuplicateKey(credential("", "api.stripe.com")) == BuildDuplicateKey(credential("", "test.stripe.com")) {
+		t.Error("two hosts' keys without key IDs match")
+	}
+	if BuildDuplicateKey(credential("key_1", "")) != BuildDuplicateKey(credential("KEY_1", "api.stripe.com")) {
+		t.Error("a credential does not match itself with its key ID in another case")
+	}
+}
+
 func TestIdentitiesWithTheSameTitleAreNotDuplicates(t *testing.T) {
 	identity := func(firstName, passportNumber string) item.Item {
 		var vaultItem item.Item

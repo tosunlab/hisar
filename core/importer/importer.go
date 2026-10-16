@@ -25,11 +25,12 @@ const (
 )
 
 const (
-	KindLogin      = "login"
-	KindSecureNote = "secure-note"
-	KindSSHKey     = "ssh-key"
-	KindCreditCard = "credit-card"
-	KindIdentity   = "identity"
+	KindLogin         = "login"
+	KindSecureNote    = "secure-note"
+	KindSSHKey        = "ssh-key"
+	KindCreditCard    = "credit-card"
+	KindIdentity      = "identity"
+	KindAPICredential = "api-credential"
 )
 
 type FormatInfo struct {
@@ -74,6 +75,8 @@ type Summary struct {
 	SSHKeyCount     int `json:"sshKeyCount"`
 	CreditCardCount int `json:"creditCardCount"`
 	IdentityCount   int `json:"identityCount"`
+	// APICredentialCount counts api-credential items.
+	APICredentialCount int `json:"apiCredentialCount"`
 }
 
 func GetFormatName(format string) string {
@@ -159,6 +162,8 @@ func GetKind(vaultItem item.Item) string {
 		return KindCreditCard
 	case item.CategoryIdentity:
 		return KindIdentity
+	case item.CategoryAPICredential:
+		return KindAPICredential
 	}
 	return KindLogin
 }
@@ -175,6 +180,8 @@ func Summarize(items []item.Item) Summary {
 			summary.CreditCardCount++
 		case KindIdentity:
 			summary.IdentityCount++
+		case KindAPICredential:
+			summary.APICredentialCount++
 		default:
 			summary.LoginCount++
 		}
@@ -185,7 +192,7 @@ func Summarize(items []item.Item) Summary {
 // BuildDuplicateKey matches items by title, username and first website; SSH keys match by fingerprint, cards by title and
 // last four digits, or by the whole number when it has no four digits to go by, such as a store card's "STORE-12A", and
 // identities by title, full name, email and first document number, so a home and a work identity with no documents stay
-// apart.
+// apart, and API credentials by title and key ID, or host when there is no key ID.
 func BuildDuplicateKey(vaultItem item.Item) string {
 	if vaultItem.IsCategory(item.CategorySSHKey) && vaultItem.Overview.Fingerprint != "" {
 		return "ssh-key\x00" + vaultItem.Overview.Fingerprint
@@ -204,6 +211,14 @@ func BuildDuplicateKey(vaultItem item.Item) string {
 		return strings.ToLower(strings.Join([]string{
 			"identity", strings.TrimSpace(vaultItem.Overview.Title), identity.FullName(), strings.TrimSpace(identity.Email), strings.TrimSpace(documentNumber),
 		}, "\x00"))
+	}
+	if vaultItem.IsCategory(item.CategoryAPICredential) {
+		credential, _ := item.ReadAPICredential(&vaultItem)
+		keyPart := "key\x00" + strings.TrimSpace(credential.KeyID)
+		if strings.TrimSpace(credential.KeyID) == "" {
+			keyPart = "host\x00" + strings.TrimSpace(credential.Host)
+		}
+		return strings.ToLower("api-credential\x00" + strings.TrimSpace(vaultItem.Overview.Title) + "\x00" + keyPart)
 	}
 	firstURL := ""
 	if len(vaultItem.Overview.URLs) > 0 {
@@ -319,6 +334,7 @@ func finishItem(vaultItem *item.Item) bool {
 	}
 	item.NormalizeCard(vaultItem)
 	item.NormalizeIdentity(vaultItem)
+	item.NormalizeAPICredential(vaultItem)
 	return true
 }
 

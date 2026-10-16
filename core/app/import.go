@@ -45,20 +45,22 @@ type ImportDuplicate struct {
 
 // ImportPreview: an empty FileName means the user cancelled the file dialog.
 type ImportPreview struct {
-	FileName        string               `json:"fileName"`
-	FilePath        string               `json:"filePath"`
-	Format          string               `json:"format"`
-	FormatName      string               `json:"formatName"`
-	VaultID         string               `json:"vaultId"`
-	VaultName       string               `json:"vaultName"`
-	ItemCount       int                  `json:"itemCount"`
-	LoginCount      int                  `json:"loginCount"`
-	SecureNoteCount int                  `json:"secureNoteCount"`
-	SSHKeyCount     int                  `json:"sshKeyCount"`
-	CreditCardCount int                  `json:"creditCardCount"`
-	IdentityCount   int                  `json:"identityCount"`
-	Skipped         []ImportSkippedEntry `json:"allSkipped"`
-	Duplicates      []ImportDuplicate    `json:"allDuplicate"`
+	FileName        string `json:"fileName"`
+	FilePath        string `json:"filePath"`
+	Format          string `json:"format"`
+	FormatName      string `json:"formatName"`
+	VaultID         string `json:"vaultId"`
+	VaultName       string `json:"vaultName"`
+	ItemCount       int    `json:"itemCount"`
+	LoginCount      int    `json:"loginCount"`
+	SecureNoteCount int    `json:"secureNoteCount"`
+	SSHKeyCount     int    `json:"sshKeyCount"`
+	CreditCardCount int    `json:"creditCardCount"`
+	IdentityCount   int    `json:"identityCount"`
+	// APICredentialCount counts the api-credential items among ItemCount.
+	APICredentialCount int                  `json:"apiCredentialCount"`
+	Skipped            []ImportSkippedEntry `json:"allSkipped"`
+	Duplicates         []ImportDuplicate    `json:"allDuplicate"`
 }
 
 type ImportProgress struct {
@@ -199,20 +201,21 @@ func (s *Service) buildImportPreview(vaultID string) (ImportPreview, error) {
 	pending := s.pendingImport
 	summary := importer.Summarize(pending.items)
 	preview := ImportPreview{
-		FileName:        filepath.Base(pending.filePath),
-		FilePath:        pending.filePath,
-		Format:          pending.format,
-		FormatName:      importer.GetFormatName(pending.format),
-		VaultID:         vault.ID,
-		VaultName:       vault.Name,
-		ItemCount:       len(pending.items),
-		LoginCount:      summary.LoginCount,
-		SecureNoteCount: summary.SecureNoteCount,
-		SSHKeyCount:     summary.SSHKeyCount,
-		CreditCardCount: summary.CreditCardCount,
-		IdentityCount:   summary.IdentityCount,
-		Skipped:         []ImportSkippedEntry{},
-		Duplicates:      []ImportDuplicate{},
+		FileName:           filepath.Base(pending.filePath),
+		FilePath:           pending.filePath,
+		Format:             pending.format,
+		FormatName:         importer.GetFormatName(pending.format),
+		VaultID:            vault.ID,
+		VaultName:          vault.Name,
+		ItemCount:          len(pending.items),
+		LoginCount:         summary.LoginCount,
+		SecureNoteCount:    summary.SecureNoteCount,
+		SSHKeyCount:        summary.SSHKeyCount,
+		CreditCardCount:    summary.CreditCardCount,
+		IdentityCount:      summary.IdentityCount,
+		APICredentialCount: summary.APICredentialCount,
+		Skipped:            []ImportSkippedEntry{},
+		Duplicates:         []ImportDuplicate{},
 	}
 	for _, skipped := range pending.skipped {
 		preview.Skipped = append(preview.Skipped, ImportSkippedEntry{Title: skipped.Title, Reason: skipped.Reason})
