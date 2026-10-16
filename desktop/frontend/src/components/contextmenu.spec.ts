@@ -294,7 +294,7 @@ describe("The item list's context menu", () => {
 describe("A detail field's context menu", () => {
   it("offers the row's own actions: reveal, copy and copy the secret reference", async () => {
     store.selectedItem = githubDetail;
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false }, attachTo: document.body });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" }, attachTo: document.body });
     const passwordRow = wrapper.find('[data-testid="password-value"]');
     await passwordRow.trigger("contextmenu");
     const allLabel = wrapper.findAll('[data-testid="context-menu"] button').map((button) => button.text());
@@ -312,7 +312,7 @@ describe("A detail field's context menu", () => {
 
   it("opens a website from its row and reveals a concealed custom field", async () => {
     store.selectedItem = githubDetail;
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false }, attachTo: document.body });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" }, attachTo: document.body });
     const websiteRow = wrapper.findAll(".field").find((row) => row.text().includes("https://github.com"));
     await websiteRow!.trigger("contextmenu");
     expect(wrapper.findAll('[data-testid="context-menu"] button').map((button) => button.text())).toEqual(["Open website"]);
@@ -328,7 +328,7 @@ describe("A detail field's context menu", () => {
 
   it("offers the buttons of an SSH key's public key and a secure note's notes", async () => {
     store.selectedItem = createSSHKeyItem({ id: "key", title: "Deploy key", publicKey: "ssh-ed25519 AAAA deploy" });
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false }, attachTo: document.body });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" }, attachTo: document.body });
     await wrapper.find('[data-testid="public-key"]').trigger("contextmenu");
     expect(wrapper.find('[data-testid="context-menu"]').attributes("aria-label")).toBe("Public key");
     expect(wrapper.findAll('[data-testid="context-menu"] button').map((button) => button.text())).toEqual(["Copy public key", "Copy secret reference for public key"]);
@@ -337,7 +337,7 @@ describe("A detail field's context menu", () => {
     wrapper.unmount();
 
     store.selectedItem = createSecureNoteItem({ id: "note", title: "Door code", notes: "4321" });
-    const noteWrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false }, attachTo: document.body });
+    const noteWrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" }, attachTo: document.body });
     await noteWrapper.find(".notes").trigger("contextmenu");
     expect(noteWrapper.findAll('[data-testid="context-menu"] button').map((button) => button.text())).toEqual(["Copy notes", "Copy secret reference for notes"]);
     await noteWrapper.find('[data-testid="context-menu-copy-notes"]').trigger("click");
@@ -347,7 +347,7 @@ describe("A detail field's context menu", () => {
 
   it("keeps the system menu for selected text", async () => {
     store.selectedItem = githubDetail;
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false }, attachTo: document.body });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" }, attachTo: document.body });
     const usernameRow = wrapper.findAll(".field").find((row) => row.text().includes("alice"))!;
     window.getSelection()!.selectAllChildren(usernameRow.element);
     const event = new MouseEvent("contextmenu", { bubbles: true, cancelable: true });
