@@ -584,6 +584,12 @@ final class AppModel: ObservableObject {
             identitySummary.email = identity.email
             summary.identity = identitySummary
         }
+        if let credential = savedItem.apiCredential {
+            var credentialSummary = ItemAPICredential()
+            credentialSummary.service = credential.service
+            credentialSummary.host = credential.host
+            summary.apiCredential = credentialSummary
+        }
         if let index = allItem.firstIndex(where: { $0.id == savedItem.id }) {
             allItem[index] = summary
         } else {

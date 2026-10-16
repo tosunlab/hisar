@@ -347,12 +347,45 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(model.listAllItemReference().contains { ItemCategoryDestination.logins.includes($0.item) && $0.item.id == savedItem.id })
     }
 
+    func testSaveAPICredentialKeepsOnlyTheServiceAndHostInTheList() async {
+        let model = await createUnlockedModel()
+        var credential = ItemAPICredential()
+        credential.service = "Stripe"
+        credential.keyID = "key_1"
+        credential.secret = "sk_live_123"
+        credential.host = "api.stripe.com"
+        credential.expiry = "2031-01-01"
+        guard let savedItem = await model.saveItem(vaultID: "personal", item: ItemDetail(category: ItemDetail.categoryAPICredential, title: "Billing key", apiCredential: credential)) else {
+            return XCTFail("API credential not saved")
+        }
+        XCTAssertTrue(savedItem.isAPICredential)
+        XCTAssertEqual(savedItem.apiCredential?.secret, "sk_live_123")
+        let reference = model.listAllItemReference(vaultID: "personal").first { $0.item.id == savedItem.id }
+        XCTAssertEqual(reference?.item.apiCredential?.summary, "Stripe · api.stripe.com")
+        XCTAssertEqual(reference?.item.apiCredential?.secret, "")
+        XCTAssertEqual(reference?.item.apiCredential?.keyID, "")
+        XCTAssertEqual(model.listAllItemReference().filter { ItemCategoryDestination.apiCredentials.includes($0.item) }.map(\.item.title), ["Billing key"])
+        XCTAssertFalse(model.listAllItemReference().contains { ItemCategoryDestination.logins.includes($0.item) && $0.item.id == savedItem.id })
+    }
+
+    func testAPICredentialDecodesFromTheBackendAndSummarizes() throws {
+        let json = #"{"category":"api-credential","title":"GitHub token","apiCredential":{"service":"","keyId":"ghp_key","secret":"s","host":"api.github.com","expiry":"2020-01-01","expiryWarning":"This credential has expired"}}"#
+        let item = try JSONDecoder().decode(ItemDetail.self, from: Data(json.utf8))
+        XCTAssertTrue(item.isAPICredential)
+        XCTAssertEqual(item.apiCredential?.keyID, "ghp_key")
+        XCTAssertEqual(item.apiCredential?.expiryWarning, "This credential has expired")
+        XCTAssertEqual(item.apiCredential?.summary, "api.github.com")
+        XCTAssertEqual(ItemAPICredential().summary, "API credential")
+        let encoded = try XCTUnwrap(String(data: JSONEncoder().encode(item.apiCredential), encoding: .utf8))
+        XCTAssertTrue(encoded.contains(#""keyId":"ghp_key""#), encoded)
+    }
+
     func testBirthDatePickerTakesOnlyDaysThatExist() {
-        XCTAssertEqual(ItemIdentity.parseBirthDate("1990-04-12").map(ItemIdentity.formatBirthDate), "1990-04-12")
-        XCTAssertNotNil(ItemIdentity.parseBirthDate("2024-02-29"))
-        XCTAssertNil(ItemIdentity.parseBirthDate("2023-02-31"))
-        XCTAssertNil(ItemIdentity.parseBirthDate("2023-02-29"))
-        XCTAssertNil(ItemIdentity.parseBirthDate("04/12/1990"))
+        XCTAssertEqual(CalendarDate.parse("1990-04-12").map(CalendarDate.format), "1990-04-12")
+        XCTAssertNotNil(CalendarDate.parse("2024-02-29"))
+        XCTAssertNil(CalendarDate.parse("2023-02-31"))
+        XCTAssertNil(CalendarDate.parse("2023-02-29"))
+        XCTAssertNil(CalendarDate.parse("04/12/1990"))
     }
 
     func testBirthDateTodayFollowsTheDevicesCalendarDay() throws {
@@ -363,10 +396,10 @@ final class AppModelTests: XCTestCase {
         let evening = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-10-15T20:00:00-07:00"))
         let morning = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-10-16T08:00:00+09:00"))
 
-        XCTAssertEqual(ItemIdentity.formatToday(now: evening, calendar: losAngeles), "2026-10-15")
-        XCTAssertEqual(ItemIdentity.formatBirthDate(ItemIdentity.getLatestBirthDate(now: evening, calendar: losAngeles)), "2026-10-15")
-        XCTAssertEqual(ItemIdentity.formatToday(now: morning, calendar: tokyo), "2026-10-16")
-        XCTAssertEqual(ItemIdentity.formatBirthDate(ItemIdentity.getLatestBirthDate(now: morning, calendar: tokyo)), "2026-10-16")
+        XCTAssertEqual(CalendarDate.formatToday(now: evening, calendar: losAngeles), "2026-10-15")
+        XCTAssertEqual(CalendarDate.format(CalendarDate.getToday(now: evening, calendar: losAngeles)), "2026-10-15")
+        XCTAssertEqual(CalendarDate.formatToday(now: morning, calendar: tokyo), "2026-10-16")
+        XCTAssertEqual(CalendarDate.format(CalendarDate.getToday(now: morning, calendar: tokyo)), "2026-10-16")
     }
 
     func testIdentityDecodesFromTheBackendAndSummarizes() throws {

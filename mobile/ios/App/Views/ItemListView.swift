@@ -109,6 +109,12 @@ struct ItemListView: View {
                             Label("Identity", systemImage: "person.text.rectangle")
                         }
                         .accessibilityIdentifier("add-identity")
+                        Button {
+                            newItemCategory = ItemDetail.categoryAPICredential
+                        } label: {
+                            Label("API credential", systemImage: "curlybraces.square")
+                        }
+                        .accessibilityIdentifier("add-api-credential")
                     } label: {
                         Label("Add item", systemImage: "plus")
                     }
