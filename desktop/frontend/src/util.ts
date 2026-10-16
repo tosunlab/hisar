@@ -140,8 +140,9 @@ export const creditCardCategory = "credit-card";
 export const identityCategory = "identity";
 export const apiCredentialCategory = "api-credential";
 export const addressCategory = "address";
+export const softwareLicenseCategory = "software-license";
 
-type CategoryIcon = "key" | "note" | "card" | "identity" | "apiKey" | "address";
+type CategoryIcon = "key" | "note" | "card" | "identity" | "apiKey" | "address" | "license";
 const allCategoryIcon: Record<string, CategoryIcon> = {
   [sshKeyCategory]: "key",
   [secureNoteCategory]: "note",
@@ -149,6 +150,7 @@ const allCategoryIcon: Record<string, CategoryIcon> = {
   [identityCategory]: "identity",
   [apiCredentialCategory]: "apiKey",
   [addressCategory]: "address",
+  [softwareLicenseCategory]: "license",
 };
 
 // getItemIcon is the tile icon of an item's category; logins show their initials instead.
@@ -215,6 +217,25 @@ export const apiCredentialFieldName = {
 // formatAPICredentialSummary is an API credential's line in lists: its service and host, such as "Stripe · api.stripe.com".
 export function formatAPICredentialSummary(credential: { service: string; host: string } | null | undefined): string {
   return [credential?.service, credential?.host].filter((part) => part).join(" · ") || "API credential";
+}
+
+// The names of a software license's custom fields, as core/item stores them; a hisar:// reference names them too.
+export const softwareLicenseFieldName = {
+  product: "Product",
+  version: "Version",
+  licenseKey: "License key",
+  licensedTo: "Licensed to",
+  email: "Email",
+  purchaseDate: "Purchase date",
+  downloadUrl: "Download URL",
+} as const;
+
+// formatSoftwareLicenseSummary is a software license's line in lists: its version and who it is licensed to, such as
+// "Version 100 · Alice Example", or its email or product when it has neither.
+export function formatSoftwareLicenseSummary(license: { product: string; version: string; licensedTo: string; email: string } | null | undefined): string {
+  const version = license?.version ? (/^\d/.test(license.version) ? `Version ${license.version}` : license.version) : "";
+  const summary = [version, license?.licensedTo || license?.email || ""].filter((part) => part).join(" · ");
+  return summary || license?.product || "Software license";
 }
 
 type IdentityName = { firstName: string; middleName: string; lastName: string; email?: string };

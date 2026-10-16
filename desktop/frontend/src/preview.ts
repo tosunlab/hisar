@@ -187,6 +187,19 @@ const allPreviewItemByVaultID: Record<string, ItemDetail[]> = {
       fields: [{ name: "Reception", value: "Floor 3", concealed: false }],
       address: { street: "Büyükdere Cd. 185\nKat 3", city: "İstanbul", region: "Şişli", postalCode: "34394", country: "TR" },
     }),
+    createPreviewItem("sketch", "Sketch", "", "", "", {
+      category: "software-license",
+      fields: [{ name: "Seats", value: "5", concealed: false }],
+      softwareLicense: {
+        product: "Sketch",
+        version: "100",
+        licenseKey: "PREVIEW-LICENSE-KEY",
+        licensedTo: "Alper Yılmaz",
+        email: "alper@tryhisar.com",
+        purchaseDate: "2024-03-09",
+        downloadUrl: "https://www.sketch.com/download",
+      },
+    }),
   ],
 };
 

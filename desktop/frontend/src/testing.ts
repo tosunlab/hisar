@@ -118,6 +118,27 @@ export function createAddressItem(overrides: Partial<ItemDetail> = {}): ItemDeta
   });
 }
 
+export function createSoftwareLicenseItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
+  return createItem({
+    id: "sketch-1",
+    category: "software-license",
+    title: "Sketch",
+    username: "",
+    urls: [],
+    fields: [{ name: "Seats", value: "5", concealed: false }],
+    softwareLicense: {
+      product: "Sketch",
+      version: "100",
+      licenseKey: "TEST-LICENSE-KEY",
+      licensedTo: "Alice Example",
+      email: "alice@example.com",
+      purchaseDate: "2024-03-09",
+      downloadUrl: "https://www.sketch.com/download",
+    },
+    ...overrides,
+  });
+}
+
 export function createSecureNoteItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
   return createItem({
     id: "note-1",

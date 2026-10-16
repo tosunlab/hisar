@@ -32,6 +32,12 @@ const allCount = computed(() => {
       testID: "api-credential",
     },
     { label: preview.addressCount === 1 ? "Address" : "Addresses", count: preview.addressCount, icon: "address" as const, testID: "address" },
+    {
+      label: preview.softwareLicenseCount === 1 ? "Software license" : "Software licenses",
+      count: preview.softwareLicenseCount,
+      icon: "license" as const,
+      testID: "software-license",
+    },
   ];
 });
 const importCount = computed(() => {

@@ -37,7 +37,7 @@ import {
 } from "./api";
 import { allAddressKey, formatFullName } from "./util";
 
-export type EditorMode = "view" | "edit" | "create" | "create-secure-note" | "create-credit-card" | "create-identity" | "create-api-credential" | "create-address" | "create-ssh-key";
+export type EditorMode = "view" | "edit" | "create" | "create-secure-note" | "create-credit-card" | "create-identity" | "create-api-credential" | "create-address" | "create-software-license" | "create-ssh-key";
 export type ImportStep = "choose" | "preview" | "saving" | "done";
 
 export interface ShareLinkDialog {
@@ -680,8 +680,8 @@ export function sortAllItem(allItem: ItemDetail[]): ItemDetail[] {
   return [...allItem].sort((first, second) => first.title.localeCompare(second.title, undefined, { sensitivity: "base" }));
 }
 
-// filterAllItem keeps the items matching the search in their title, username, websites, tags, identity, API credential or
-// address summary, and carrying tag when one is selected.
+// filterAllItem keeps the items matching the search in their title, username, websites, tags, identity, API credential,
+// address or software license summary, and carrying tag when one is selected.
 export function filterAllItem(allItem: ItemDetail[], query: string, tag = ""): ItemDetail[] {
   const normalizedQuery = query.trim().toLowerCase();
   return allItem.filter((vaultItem) => {
@@ -695,10 +695,13 @@ export function filterAllItem(allItem: ItemDetail[], query: string, tag = ""): I
     const credentialText = credential ? [credential.service, credential.keyId, credential.host] : [];
     const address = vaultItem.address;
     const addressText = address ? [address.street, address.city, address.country] : [];
+    // A software license's summary keeps its product, version, licensed-to name and email, never the key.
+    const license = vaultItem.softwareLicense;
+    const licenseText = license ? [license.product, license.version, license.licensedTo, license.email] : [];
     return (
       (tag === "" || allTag.includes(tag)) &&
       (normalizedQuery === "" ||
-        [vaultItem.title, vaultItem.username, ...vaultItem.urls, ...allTag, ...identityText, ...credentialText, ...addressText].some((text) =>
+        [vaultItem.title, vaultItem.username, ...vaultItem.urls, ...allTag, ...identityText, ...credentialText, ...addressText, ...licenseText].some((text) =>
           text.toLowerCase().includes(normalizedQuery),
         ))
     );
@@ -777,6 +780,11 @@ export function startCreatingAPICredential(): void {
 export function startCreatingAddress(): void {
   store.selectedItem = null;
   store.editorMode = "create-address";
+}
+
+export function startCreatingSoftwareLicense(): void {
+  store.selectedItem = null;
+  store.editorMode = "create-software-license";
 }
 
 export function startCreatingSSHKey(): void {
@@ -1418,12 +1426,13 @@ export function getAllShareLinkForItem(vaultID: string, itemID: string): ShareLi
 }
 
 export function hasShareableField(detail: ItemDetail): boolean {
-  // A card's, an identity's, an API credential's and an address's values come in card, identity, apiCredential and
-  // address, not in fields.
+  // A card's, an identity's, an API credential's, an address's and a software license's values come in card, identity,
+  // apiCredential, address and softwareLicense, not in fields.
   const card = detail.card;
   const allCardValue = card ? [card.cardholder, card.type, card.number, card.expiry, card.securityCode, card.pin, card.billingAddress] : [];
   const hasCardValue = card ? [...allCardValue, ...allAddressKey.map((key) => card[key])].some((value) => value) : false;
   const hasAddressValue = detail.address ? Object.values(detail.address).some((value) => value) : false;
+  const hasLicenseValue = detail.softwareLicense ? Object.values(detail.softwareLicense).some((value) => value) : false;
   const hasIdentityValue = detail.identity ? Object.values(detail.identity).some((value) => value) : false;
   const credential = detail.apiCredential;
   const hasCredentialValue = credential ? [credential.service, credential.keyId, credential.secret, credential.host, credential.expiry].some((value) => value) : false;
@@ -1436,7 +1445,8 @@ export function hasShareableField(detail: ItemDetail): boolean {
       hasCardValue ||
       hasIdentityValue ||
       hasCredentialValue ||
-      hasAddressValue,
+      hasAddressValue ||
+      hasLicenseValue,
   );
 }
 

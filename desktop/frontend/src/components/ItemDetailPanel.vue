@@ -26,12 +26,15 @@ import {
   formatCardSummary,
   formatIdentitySummary,
   formatKeyType,
+  formatSoftwareLicenseSummary,
   getDomain,
   getItemIcon,
   identityCategory,
   identityFieldName,
   isMacPlatform,
   secureNoteCategory,
+  softwareLicenseCategory,
+  softwareLicenseFieldName,
   sshKeyCategory,
 } from "../util";
 import AppIcon from "./AppIcon.vue";
@@ -55,8 +58,10 @@ const isCreditCard = computed(() => store.selectedItem?.category === creditCardC
 const isIdentity = computed(() => store.selectedItem?.category === identityCategory);
 const isAPICredential = computed(() => store.selectedItem?.category === apiCredentialCategory);
 const isAddress = computed(() => store.selectedItem?.category === addressCategory);
+const isSoftwareLicense = computed(() => store.selectedItem?.category === softwareLicenseCategory);
 
-type NamedRow = { name: string; value: string; concealed: boolean; masked: string; warning: string };
+// NamedRow: isLink rows open in the browser, as websites do.
+type NamedRow = { name: string; value: string; concealed: boolean; masked: string; warning: string; isLink?: boolean };
 
 // buildAddressRows lists an address's values as rows, as an address item, an identity and a card keep them.
 function buildAddressRows(address: Record<(typeof allAddressKey)[number], string>): NamedRow[] {
@@ -116,9 +121,29 @@ const allAPICredentialRow = computed(() => {
   ].filter((row) => row.value !== "");
 });
 const allAddressRow = computed(() => (store.selectedItem?.address ? buildAddressRows(store.selectedItem.address).filter((row) => row.value !== "") : []));
+// A software license's values as rows; the license key is masked until revealed and the download URL opens.
+const allSoftwareLicenseRow = computed(() => {
+  const license = store.selectedItem?.softwareLicense;
+  if (!license) {
+    return [];
+  }
+  const rows: NamedRow[] = [
+    { name: softwareLicenseFieldName.product, value: license.product, concealed: false, masked: "", warning: "" },
+    { name: softwareLicenseFieldName.version, value: license.version, concealed: false, masked: "", warning: "" },
+    { name: softwareLicenseFieldName.licenseKey, value: license.licenseKey, concealed: true, masked: "", warning: "" },
+    { name: softwareLicenseFieldName.licensedTo, value: license.licensedTo, concealed: false, masked: "", warning: "" },
+    { name: softwareLicenseFieldName.email, value: license.email, concealed: false, masked: "", warning: "" },
+    { name: softwareLicenseFieldName.purchaseDate, value: license.purchaseDate, concealed: false, masked: "", warning: "" },
+    { name: softwareLicenseFieldName.downloadUrl, value: license.downloadUrl, concealed: false, masked: "", warning: "", isLink: true },
+  ];
+  return rows.filter((row) => row.value !== "");
+});
 // The rows of a type whose values are named fields, what its section calls it when it has none, and the section's test
-// id: a card's, an identity's, an API credential's or an address's.
+// id: a card's, an identity's, an API credential's, an address's or a software license's.
 const namedType = computed(() => {
+  if (isSoftwareLicense.value) {
+    return { allRow: allSoftwareLicenseRow.value, name: "software license", testID: "software-license-fields" };
+  }
   if (isIdentity.value) {
     return { allRow: allIdentityRow.value, name: "identity", testID: "identity-fields" };
   }
@@ -130,7 +155,7 @@ const namedType = computed(() => {
   }
   return { allRow: allCardRow.value, name: "card", testID: "credit-card-fields" };
 });
-const allNamedRow = computed(() => namedType.value.allRow);
+const allNamedRow = computed((): NamedRow[] => namedType.value.allRow);
 const allMultilineName: string[] = [addressFieldName.street, cardFieldName.billingAddress, identityFieldName.address];
 const isShareable = computed(() => store.selectedItem !== null && hasShareableField(store.selectedItem));
 const allItemShareLink = computed(() => (store.selectedItem ? getAllShareLinkForItem(store.selectedVaultID, store.selectedItem.id) : []));
@@ -170,6 +195,9 @@ function maskSecret(secret: string): string {
           <span v-else-if="isIdentity" class="muted" data-testid="identity-summary">{{ formatIdentitySummary(store.selectedItem.identity) }}</span>
           <span v-else-if="isAPICredential" class="muted" data-testid="api-credential-summary">{{ formatAPICredentialSummary(store.selectedItem.apiCredential) }}</span>
           <span v-else-if="isAddress" class="muted" data-testid="address-summary">{{ formatAddressSummary(store.selectedItem.address) }}</span>
+          <span v-else-if="isSoftwareLicense" class="muted" data-testid="software-license-summary">{{
+            formatSoftwareLicenseSummary(store.selectedItem.softwareLicense)
+          }}</span>
           <span v-else-if="store.selectedItem.urls[0]" class="muted">{{ getDomain(store.selectedItem.urls[0]) }}</span>
         </div>
         <div v-if="(store.selectedItem.tags ?? []).length > 0" class="tags" data-testid="item-tags">
@@ -251,7 +279,11 @@ function maskSecret(secret: string): string {
       <CommitSigningPanel v-if="store.selectedItem.publicKey" :public-key="store.selectedItem.publicKey" />
     </template>
 
-    <section v-else-if="isCreditCard || isIdentity || isAPICredential || isAddress" class="card field-card" :data-testid="namedType.testID">
+    <section
+      v-else-if="isCreditCard || isIdentity || isAPICredential || isAddress || isSoftwareLicense"
+      class="card field-card"
+      :data-testid="namedType.testID"
+    >
       <div v-for="row in allNamedRow" :key="row.name" class="field">
         <span class="field-label">{{ row.name }}</span>
         <span class="field-value">
@@ -271,6 +303,9 @@ function maskSecret(secret: string): string {
             @click="toggleFieldReveal(row.name)"
           >
             <AppIcon :name="allRevealedFieldName.includes(row.name) ? 'eyeOff' : 'eye'" />
+          </button>
+          <button v-if="row.isLink" class="ghost icon-button" :aria-label="`Open ${row.name}`" title="Open in browser" @click="openWebsite(row.value)">
+            <AppIcon name="external" />
           </button>
           <button class="ghost icon-button" :aria-label="`Copy ${row.name}`" title="Copy" @click="copyField(row.name, row.name)"><AppIcon name="copy" /></button>
           <SecretReferenceButton :field-name="row.name" :label="row.name" />

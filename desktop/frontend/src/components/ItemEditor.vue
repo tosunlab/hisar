@@ -1,6 +1,16 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
-import { api, createEmptyAddress, createEmptyAPICredential, createEmptyCard, createEmptyIdentity, createEmptyItem, type CardDescription, type ItemDetail } from "../api";
+import {
+  api,
+  createEmptyAddress,
+  createEmptyAPICredential,
+  createEmptyCard,
+  createEmptyIdentity,
+  createEmptyItem,
+  createEmptySoftwareLicense,
+  type CardDescription,
+  type ItemDetail,
+} from "../api";
 import {
   addressCategory,
   allCardBrand,
@@ -14,6 +24,7 @@ import {
   getItemIcon,
   isCalendarDate,
   secureNoteCategory,
+  softwareLicenseCategory,
   sshKeyCategory,
 } from "../util";
 import { cancelEditing, saveItem, store } from "../store";
@@ -40,6 +51,11 @@ function createDraft(): ItemDetail {
           ? createEmptyAPICredential()
           : selected.apiCredential,
       address: selected.address ? { ...selected.address } : selected.category === addressCategory ? createEmptyAddress() : selected.address,
+      softwareLicense: selected.softwareLicense
+        ? { ...selected.softwareLicense }
+        : selected.category === softwareLicenseCategory
+          ? createEmptySoftwareLicense()
+          : selected.softwareLicense,
     };
   }
   const empty = createEmptyItem();
@@ -58,6 +74,9 @@ function createDraft(): ItemDetail {
   } else if (store.editorMode === "create-address") {
     empty.category = addressCategory;
     empty.address = createEmptyAddress();
+  } else if (store.editorMode === "create-software-license") {
+    empty.category = softwareLicenseCategory;
+    empty.softwareLicense = createEmptySoftwareLicense();
   }
   return empty;
 }
@@ -72,6 +91,10 @@ const isCreditCard = draft.category === creditCardCategory;
 const isIdentity = draft.category === identityCategory;
 const isAPICredential = draft.category === apiCredentialCategory;
 const isAddress = draft.category === addressCategory;
+const isSoftwareLicense = draft.category === softwareLicenseCategory;
+const isLicenseKeyVisible = ref(false);
+// A purchase date imported in another form, such as 03/09/2024, stays editable as text, as a birth date does.
+const isPurchaseDateText = Boolean(draft.softwareLicense?.purchaseDate) && !isCalendarDate(draft.softwareLicense?.purchaseDate ?? "");
 const isDocumentNumberVisible = ref(false);
 const isCredentialSecretVisible = ref(false);
 // An expiry in another form, such as "never", stays editable as text, as a birth date does.
@@ -358,11 +381,68 @@ async function submitItem(): Promise<void> {
       <AddressFields :address="draft.address" />
     </section>
 
+    <section v-if="isSoftwareLicense && draft.softwareLicense" class="card editor-card" data-testid="software-license-editor">
+      <div class="row card-row">
+        <label>
+          <span>Product</span>
+          <input v-model="draft.softwareLicense.product" name="product" autocomplete="off" />
+        </label>
+        <label>
+          <span>Version</span>
+          <input v-model="draft.softwareLicense.version" name="version" autocomplete="off" spellcheck="false" />
+        </label>
+      </div>
+      <label>
+        <span>License key</span>
+        <span class="row">
+          <input
+            v-model="draft.softwareLicense.licenseKey"
+            name="licenseKey"
+            class="monospace"
+            :type="isLicenseKeyVisible ? 'text' : 'password'"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <button
+            type="button"
+            class="icon-button"
+            :aria-label="isLicenseKeyVisible ? 'Hide license key' : 'Show license key'"
+            @click="isLicenseKeyVisible = !isLicenseKeyVisible"
+          >
+            <AppIcon :name="isLicenseKeyVisible ? 'eyeOff' : 'eye'" />
+          </button>
+        </span>
+      </label>
+      <div class="row card-row">
+        <label>
+          <span>Licensed to</span>
+          <input v-model="draft.softwareLicense.licensedTo" name="licensedTo" autocomplete="off" />
+        </label>
+        <label>
+          <span>Email</span>
+          <!-- Not type="email", as an identity's: the browser would refuse a value it does not take for one address. -->
+          <input v-model="draft.softwareLicense.email" name="licenseEmail" autocomplete="off" spellcheck="false" />
+        </label>
+      </div>
+      <div class="row card-row">
+        <label class="last">
+          <span>Purchase date</span>
+          <input v-model="draft.softwareLicense.purchaseDate" name="purchaseDate" :type="isPurchaseDateText ? 'text' : 'date'" autocomplete="off" />
+        </label>
+        <label class="last">
+          <span>Download URL</span>
+          <input v-model="draft.softwareLicense.downloadUrl" name="downloadUrl" autocomplete="off" spellcheck="false" placeholder="https://example.com/download" />
+        </label>
+      </div>
+    </section>
+
     <p v-if="isSSHKey" class="card ssh-key-note muted" data-testid="ssh-key-note">
       <AppIcon name="key" :size="14" /> The key itself cannot be changed. To replace it, add a new SSH key.
     </p>
 
-    <section v-if="!isSSHKey && !isSecureNote && !isCreditCard && !isIdentity && !isAPICredential && !isAddress" class="card editor-card">
+    <section v-if="!isSSHKey && !isSecureNote && !isCreditCard && !isIdentity && !isAPICredential && !isAddress && !isSoftwareLicense"
+      class="card editor-card"
+    >
       <label>
         <span>Username</span>
         <input v-model="draft.username" name="username" autocomplete="off" placeholder="Username or email" />
