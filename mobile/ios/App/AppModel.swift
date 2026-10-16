@@ -350,6 +350,8 @@ final class AppModel: ObservableObject {
         }
         addAllRemovedVaultNotice(result.4)
         refreshStatus()
+        // Signed out while listing: AutoFill must not get the account's logins back. A locked Hisar keeps them.
+        guard status.isSignedIn else { return }
         await publishAllCredentialIdentity()
     }
 
