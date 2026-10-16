@@ -164,6 +164,15 @@ Design: `docs/DESIGN.md` §4.5 (categories) and §9.2 (browser extension).
 - 1Password Servers import as servers. The admin console becomes the website only when it has no username or password of its own; otherwise the console URL and credentials stay custom fields, so the browser never fills the server's password on the console. Hosting details stay custom fields.
 - Preview: `&vault=team&item=build-server`, `&editor=server`.
 
+## Databases
+
+Design: `docs/DESIGN.md` §4.5 (categories) and §9.4.1 (secret references).
+
+- **+** → **Database** opens an editor for the engine (PostgreSQL, MySQL, MariaDB, SQL Server, Oracle, MongoDB, Redis, or Other with any name), the host and port (warning about a port that is not 1–65535), the database name, the username and password, and connection options such as `sslmode=require`; then notes and custom fields.
+- The view lists each value with **Copy** and a secret reference, then the **Connection string**, masked until revealed, with **Copy** and a secret reference (`hisar://Personal/Prod%20db/connection%20string`). It is built from the fields, so it follows a new password; an Other engine has none. The item list shows the engine, address and database name, and search matches any of them.
+- 1Password Databases import as databases; SID and alias stay custom fields.
+- Preview: `&vault=team&item=staging-database`, `&editor=database`.
+
 ## Import from other password managers
 
 Settings → General → **Import…**, or **+** → **Import…** in a vault. The parsing is `core/importer` (design: `docs/DESIGN.md` §9.7).
