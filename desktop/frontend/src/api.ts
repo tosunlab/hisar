@@ -31,6 +31,7 @@ import type {
   ItemField,
   ItemPasskey,
   ItemServer,
+  ItemDatabase,
   ItemSoftwareLicense,
   OneTimeCode,
   PasswordConfig,
@@ -82,6 +83,7 @@ export type {
   ItemIdentity,
   ItemPasskey,
   ItemServer,
+  ItemDatabase,
   ItemSoftwareLicense,
   LoginItemStatus,
   OneTimeCode,
@@ -395,6 +397,10 @@ export function createEmptyAPICredential(): ItemAPICredential {
 
 export function createEmptyServer(): ItemServer {
   return { host: "", port: "", sshKeyId: "", sshKeyTitle: "", sshKeyFingerprint: "", portWarning: "" };
+}
+
+export function createEmptyDatabase(): ItemDatabase {
+  return { engine: "postgresql", engineName: "PostgreSQL", host: "", port: "", name: "", options: "", connectionString: "", portWarning: "" };
 }
 
 export function createEmptySoftwareLicense(): ItemSoftwareLicense {

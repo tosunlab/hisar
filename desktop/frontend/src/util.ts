@@ -142,8 +142,9 @@ export const apiCredentialCategory = "api-credential";
 export const addressCategory = "address";
 export const softwareLicenseCategory = "software-license";
 export const serverCategory = "server";
+export const databaseCategory = "database";
 
-type CategoryIcon = "key" | "note" | "card" | "identity" | "apiKey" | "address" | "license" | "server";
+type CategoryIcon = "key" | "note" | "card" | "identity" | "apiKey" | "address" | "license" | "server" | "database";
 const allCategoryIcon: Record<string, CategoryIcon> = {
   [sshKeyCategory]: "key",
   [secureNoteCategory]: "note",
@@ -153,6 +154,7 @@ const allCategoryIcon: Record<string, CategoryIcon> = {
   [addressCategory]: "address",
   [softwareLicenseCategory]: "license",
   [serverCategory]: "server",
+  [databaseCategory]: "database",
 };
 
 // getItemIcon is the tile icon of an item's category; logins show their initials instead.
@@ -270,6 +272,47 @@ export function describeServerPort(port: string): string {
   }
   const number = Number(port);
   return /^\d+$/.test(port) && number >= 1 && number <= 65535 ? "" : "The port is not a number from 1 to 65535";
+}
+
+// The names of a database's custom fields, as core/item stores them; its username and password are the item's own.
+export const databaseFieldName = {
+  engine: "Engine",
+  host: "Host",
+  port: "Port",
+  name: "Database",
+  options: "Options",
+} as const;
+
+// allDatabaseEngine are the engines the editor offers and Hisar builds connection strings for, as core/item lists them; any
+// other engine is stored as typed.
+export const allDatabaseEngine = [
+  { id: "postgresql", name: "PostgreSQL" },
+  { id: "mysql", name: "MySQL" },
+  { id: "mariadb", name: "MariaDB" },
+  { id: "sqlserver", name: "SQL Server" },
+  { id: "oracle", name: "Oracle" },
+  { id: "mongodb", name: "MongoDB" },
+  { id: "redis", name: "Redis" },
+] as const;
+
+// isKnownDatabaseEngine tells whether an engine is one of allDatabaseEngine by its ID.
+export function isKnownDatabaseEngine(engine: string): boolean {
+  return allDatabaseEngine.some((known) => known.id === engine);
+}
+
+// formatDatabaseLocation is a database's address and name, such as "db.example.com:5432/app".
+export function formatDatabaseLocation(database: { host: string; port: string; name: string } | null | undefined): string {
+  const address = formatServerAddress(database);
+  if (!database?.name) {
+    return address;
+  }
+  return address ? `${address}/${database.name}` : database.name;
+}
+
+// formatDatabaseSummary is a database's line in lists: its engine, address and name, such as
+// "PostgreSQL · db.example.com:5432/app".
+export function formatDatabaseSummary(database: { engineName: string; host: string; port: string; name: string } | null | undefined): string {
+  return [database?.engineName ?? "", formatDatabaseLocation(database)].filter((part) => part).join(" · ") || "Database";
 }
 
 type IdentityName = { firstName: string; middleName: string; lastName: string; email?: string };
