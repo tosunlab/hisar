@@ -21,6 +21,7 @@ import ExportSection from "./ExportSection.vue";
 import HelpSection from "./HelpSection.vue";
 import ImportSection from "./ImportSection.vue";
 import OpenAtLoginSection from "./OpenAtLoginSection.vue";
+import OrganizationsSection from "./OrganizationsSection.vue";
 import PeopleSection from "./PeopleSection.vue";
 import SecuritySection from "./SecuritySection.vue";
 import SSHAgentSection from "./SSHAgentSection.vue";
@@ -35,7 +36,13 @@ const sectionContent = ref<HTMLElement | null>(null);
 
 const isSearching = computed(() => searchQuery.value.trim() !== "");
 const allMatchingRowID = computed(() => findAllMatchingRowID(searchQuery.value));
-const pendingInvitationCount = computed(() => store.shareInvitations.received.length);
+
+function countPendingInvitations(sectionID: SettingsSectionID): number {
+  if (sectionID === "people") {
+    return store.shareInvitations.received.length;
+  }
+  return sectionID === "organizations" ? store.organizations.invitations.length : 0;
+}
 
 function isRowAvailable(rowID: string): boolean {
   if (rowID === "received-invitations") {
@@ -43,6 +50,9 @@ function isRowAvailable(rowID: string): boolean {
   }
   if (rowID === "sent-invitations") {
     return store.shareInvitations.sent.length > 0;
+  }
+  if (rowID === "organization-invitations") {
+    return store.organizations.invitations.length > 0;
   }
   return true;
 }
@@ -107,6 +117,7 @@ function startInvitingPerson(): void {
 
 function closeSettings(): void {
   store.isSettingsOpen = false;
+  store.selectedOrganizationID = "";
   store.errorMessage = "";
 }
 
@@ -165,11 +176,11 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleKeydown));
             <AppIcon :name="section.icon" :size="16" />
             <span class="section-name">{{ section.label }}</span>
             <span
-              v-if="section.id === 'people' && pendingInvitationCount > 0"
+              v-if="countPendingInvitations(section.id) > 0"
               class="badge"
-              data-testid="people-invitation-badge"
-              :aria-label="pendingInvitationCount === 1 ? '1 invitation' : `${pendingInvitationCount} invitations`"
-              >{{ pendingInvitationCount }}</span
+              :data-testid="`${section.id}-invitation-badge`"
+              :aria-label="countPendingInvitations(section.id) === 1 ? '1 invitation' : `${countPendingInvitations(section.id)} invitations`"
+              >{{ countPendingInvitations(section.id) }}</span
             >
           </button>
           <p v-if="allVisibleSection.length === 0" class="muted no-section">No results</p>
@@ -214,6 +225,9 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleKeydown));
           </div>
           <div v-show="displayedSection?.id === 'people'" data-testid="settings-page-people">
             <PeopleSection v-model:is-inviting="isInvitingPerson" />
+          </div>
+          <div v-show="displayedSection?.id === 'organizations'" data-testid="settings-page-organizations">
+            <OrganizationsSection />
           </div>
           <div v-show="displayedSection?.id === 'devices'" data-testid="settings-page-devices">
             <DevicesSection />
