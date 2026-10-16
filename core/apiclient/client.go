@@ -181,6 +181,18 @@ func (c *Client) GetAccount(ctx context.Context) (*apitypes.Account, error) {
 	return &account, c.sendRequest(ctx, "GET", "/api/v1/account", nil, nil, &account, nil)
 }
 
+func (c *Client) GetAccountPreferences(ctx context.Context) (*apitypes.AccountPreferences, error) {
+	var preferences apitypes.AccountPreferences
+	return &preferences, c.sendRequest(ctx, "GET", "/api/v1/account/preferences", nil, nil, &preferences, nil)
+}
+
+// PutAccountPreferences answers 409 when another device saved the record after request.BaseRevision.
+func (c *Client) PutAccountPreferences(ctx context.Context, request *apitypes.PutAccountPreferencesRequest) (int64, error) {
+	var response apitypes.PutAccountPreferencesResponse
+	err := c.sendRequest(ctx, "PUT", "/api/v1/account/preferences", nil, request, &response, nil)
+	return response.Revision, err
+}
+
 func (c *Client) ListMembers(ctx context.Context) ([]apitypes.Member, error) {
 	var members []apitypes.Member
 	return members, c.sendRequest(ctx, "GET", "/api/v1/members", nil, nil, &members, nil)

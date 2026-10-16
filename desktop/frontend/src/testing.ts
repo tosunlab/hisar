@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import type { ApprovalEvent, ShareLink, ShareLinkField, BrowserStatus, CommandLineStatus, Device, ImportPreview, ImportProgress, ItemDetail, LoginItemStatus, Person, ReceivedShareInvitation, SentShareInvitation, SSHAgentStatus, Status, UpdateStatus, VaultActions, VaultMember, VaultSummary } from "./api";
+import type { ApprovalEvent, FavoriteItem, ShareLink, ShareLinkField, BrowserStatus, CommandLineStatus, Device, ImportPreview, ImportProgress, ItemDetail, LoginItemStatus, Person, ReceivedShareInvitation, SentShareInvitation, SSHAgentStatus, Status, UpdateStatus, VaultActions, VaultMember, VaultSummary } from "./api";
 
 export function createStatus(state: string): Status {
   return { state, server: "https://hisar.test", email: "alice@example.com", name: "Alice", biometricAvailable: false, biometricEnabled: false, biometricReady: false, isOffline: false, autoLockSeconds: 600, signedOutReason: "", updateRequired: null };
@@ -23,8 +23,13 @@ export function createItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
     hasOneTimePassword: false,
     passkeys: [],
     canConvertToSecureNote: false,
+    isFavorite: false,
     ...overrides,
   };
+}
+
+export function createFavoriteItem(overrides: Partial<FavoriteItem> = {}): FavoriteItem {
+  return { vaultId: "personal", vaultName: "Personal", vaultType: "personal", item: createItem({ isFavorite: true }), ...overrides };
 }
 
 export function createCardItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
@@ -426,6 +431,8 @@ export function createApiMock() {
     getItem: vi.fn(),
     saveItem: vi.fn(),
     deleteItem: vi.fn(),
+    listAllFavoriteItem: vi.fn().mockResolvedValue([]),
+    setItemFavorite: vi.fn().mockResolvedValue(undefined),
     convertToSecureNote: vi.fn(),
     describeCard: vi.fn().mockResolvedValue({ brand: "", last4: "", numberWarning: "", expiryWarning: "" }),
     deletePasskey: vi.fn(),

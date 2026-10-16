@@ -27,11 +27,13 @@ const (
 	FeatureIdentities = "identities"
 	// FeatureAPICredentials: items.save creates api-credential items from their named fields.
 	FeatureAPICredentials = "api-credentials"
+	// FeatureFavorites: favorites.list, favorites.add and favorites.remove; items.import stars Item.IsFavorite items.
+	FeatureFavorites = "favorites"
 )
 
 // ListFeatures returns the features this build of the app announces in hello.
 func ListFeatures() []string {
-	return []string{FeatureSecureNotes, FeatureCreditCards, FeatureIdentities, FeatureAPICredentials}
+	return []string{FeatureSecureNotes, FeatureCreditCards, FeatureIdentities, FeatureFavorites, FeatureAPICredentials}
 }
 
 // GetCategoryFeature returns the feature an app must announce before items.save may create an item of category, or ""
@@ -89,6 +91,10 @@ const (
 	TypeAcceptInvitation  = "invitations.accept"
 	TypeDeclineInvitation = "invitations.decline"
 	TypeCancelInvitation  = "invitations.cancel"
+
+	TypeListFavorite   = "favorites.list"
+	TypeAddFavorite    = "favorites.add"
+	TypeRemoveFavorite = "favorites.remove"
 )
 
 const (

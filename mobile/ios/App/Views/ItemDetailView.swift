@@ -37,6 +37,17 @@ struct ItemDetailView: View {
         .navigationTitle(item?.title ?? "")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            if let item {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        Task { await toggleFavorite(item) }
+                    } label: {
+                        Label(item.isFavorite ? "Remove from Favorites" : "Add to Favorites", systemImage: item.isFavorite ? "star.fill" : "star")
+                    }
+                    .accessibilityIdentifier("favorite-item")
+                    .accessibilityValue(item.isFavorite ? "Favorite" : "")
+                }
+            }
             if isWritable, item != nil {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Edit") { isEditorShown = true }
@@ -73,6 +84,12 @@ struct ItemDetailView: View {
         .onDisappear {
             item = nil
             isPasswordRevealed = false
+        }
+    }
+
+    private func toggleFavorite(_ shownItem: ItemDetail) async {
+        if await model.setItemFavorite(vaultID: vaultID, itemID: shownItem.id, isFavorite: !shownItem.isFavorite) {
+            item?.isFavorite = !shownItem.isFavorite
         }
     }
 

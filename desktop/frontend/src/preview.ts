@@ -8,6 +8,7 @@ import type {
   ExportOptions,
   ExportRequest,
   ExportResult,
+  FavoriteItem,
   RemovedVaultNotice,
   VaultActions,
   VaultDeletionRequest,
@@ -59,8 +60,16 @@ function createPreviewItem(id: string, title: string, username: string, link: st
     hasOneTimePassword: false,
     passkeys: [],
     canConvertToSecureNote: false,
+    isFavorite: false,
     ...extra,
   };
+}
+
+// ?favorites=none starts without any; otherwise a few items in different vaults are starred.
+const allPreviewFavoriteItemID = new Set<string>(previewParameter.get("favorites") === "none" ? [] : ["github", "aws", "staging-database", "vpn"]);
+
+function markPreviewFavorite(vaultItem: ItemDetail): ItemDetail {
+  return { ...vaultItem, isFavorite: allPreviewFavoriteItemID.has(vaultItem.id) };
 }
 
 function createRandomText(length: number): string {
@@ -1019,9 +1028,27 @@ export const previewApi = {
     resolveAfterDelay({ isBiometricAvailable: previewParameter.get("noTouchID") !== "1", minPassphraseLength: 10 }),
   exportAllData: exportPreviewData,
   listAllItem: (vaultID: string) =>
-    resolveAfterDelay((allPreviewItemByVaultID[vaultID] ?? []).map((vaultItem) => ({ ...vaultItem, password: "", notes: "", fields: [] }))),
+    resolveAfterDelay((allPreviewItemByVaultID[vaultID] ?? []).map((vaultItem) => markPreviewFavorite({ ...vaultItem, password: "", notes: "", fields: [] }))),
   getItem: (vaultID: string, itemID: string) =>
-    resolveAfterDelay(structuredClone(allPreviewItemByVaultID[vaultID].find((vaultItem) => vaultItem.id === itemID)!)),
+    resolveAfterDelay(markPreviewFavorite(structuredClone(allPreviewItemByVaultID[vaultID].find((vaultItem) => vaultItem.id === itemID)!))),
+  listAllFavoriteItem: (): Promise<FavoriteItem[]> =>
+    resolveAfterDelay(
+      allPreviewVault
+        .flatMap((vault) =>
+          (allPreviewItemByVaultID[vault.id] ?? [])
+            .filter((vaultItem) => allPreviewFavoriteItemID.has(vaultItem.id))
+            .map((vaultItem) => ({ vaultId: vault.id, vaultName: vault.name, vaultType: vault.type, item: markPreviewFavorite({ ...vaultItem, password: "", notes: "", fields: [] }) })),
+        )
+        .sort((first, second) => first.item.title.localeCompare(second.item.title, undefined, { sensitivity: "base" })),
+    ),
+  setItemFavorite: (_vaultID: string, itemID: string, isFavorite: boolean) => {
+    if (isFavorite) {
+      allPreviewFavoriteItemID.add(itemID);
+    } else {
+      allPreviewFavoriteItemID.delete(itemID);
+    }
+    return resolveAfterDelay(undefined);
+  },
   saveItem: (vaultID: string, detail: ItemDetail) => {
     const saved = { ...detail, id: detail.id || `item-${Date.now()}` };
     const allItem = allPreviewItemByVaultID[vaultID];

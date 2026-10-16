@@ -365,17 +365,18 @@ func getFallbackTitle(vaultItem *item.Item) string {
 }
 
 func removeRepeatedItems(result *Result) {
-	seen := map[string]bool{}
+	indexesByKey := map[string]int{}
 	unique := make([]item.Item, 0, len(result.Items))
 	for _, vaultItem := range result.Items {
 		encoded, _ := json.Marshal([]any{vaultItem.Overview, vaultItem.Details})
 		key := string(encoded)
 		clear(encoded)
-		if seen[key] {
+		if index, isSeen := indexesByKey[key]; isSeen {
+			unique[index].IsFavorite = unique[index].IsFavorite || vaultItem.IsFavorite
 			result.Skipped = append(result.Skipped, SkippedEntry{Title: vaultItem.Overview.Title, Reason: reasonRepeated})
 			continue
 		}
-		seen[key] = true
+		indexesByKey[key] = len(unique)
 		unique = append(unique, vaultItem)
 	}
 	result.Items = unique

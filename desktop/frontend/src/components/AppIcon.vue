@@ -41,6 +41,8 @@ const allPath = {
   help: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6v.4M12 17h.01",
   export: "M12 15V4M7.5 8.5L12 4l4.5 4.5M5 20h14",
   more: "M5 12h.01M12 12h.01M19 12h.01",
+  star: "M12 3.5l2.6 5.3 5.9.9-4.25 4.1 1 5.8L12 16.9l-5.25 2.7 1-5.8L3.5 9.7l5.9-.9z",
+  starFilled: "M12 3.5l2.6 5.3 5.9.9-4.25 4.1 1 5.8L12 16.9l-5.25 2.7 1-5.8L3.5 9.7l5.9-.9z",
   link: "M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1",
 } as const;
 
@@ -55,7 +57,7 @@ defineProps<{ name: IconName; size?: number }>();
     :width="size ?? 16"
     :height="size ?? 16"
     viewBox="0 0 24 24"
-    fill="none"
+    :fill="name === 'starFilled' ? 'currentColor' : 'none'"
     stroke="currentColor"
     stroke-width="1.8"
     stroke-linecap="round"

@@ -163,6 +163,8 @@ type ItemDetail struct {
 	// Identity holds an identity's values, stored as named custom fields like a card's; summaries keep only the name and
 	// email.
 	Identity *ItemIdentity `json:"identity,omitempty"`
+	// IsFavorite: this user starred the item. Favorites belong to the user, not the item; SaveItem ignores it.
+	IsFavorite bool `json:"isFavorite"`
 	// APICredential holds an API credential's values, stored as named custom fields like an identity's; summaries keep
 	// only the service and host.
 	APICredential *ItemAPICredential `json:"apiCredential,omitempty"`

@@ -15,6 +15,9 @@ class FakeBackend: VaultBackend {
     var status = VaultStatus.signedOut
     var allVault: [VaultSummary] = []
     var allItemByVaultID: [String: [ItemDetail]] = [:]
+    /// Starred items as "vaultID/itemID"; the account keeps them apart from the items.
+    var allFavoriteRecordID: Set<String> = []
+    var favoriteErrorMessage: String?
     var isBiometricAvailable = true
     var isBiometricSucceeding = true
     var isOffline = false
@@ -328,6 +331,7 @@ class FakeBackend: VaultBackend {
         try requireUnlocked()
         return (allItemByVaultID[vaultID] ?? []).map { item in
             var summary = item
+            summary.isFavorite = allFavoriteRecordID.contains(LoginMatch.buildRecordIdentifier(vaultID: vaultID, itemID: item.id))
             summary.password = ""
             summary.notes = ""
             summary.allField = []
@@ -339,7 +343,8 @@ class FakeBackend: VaultBackend {
     func getItem(vaultID: String, itemID: String) throws -> ItemDetail {
         record("getItem")
         try requireUnlocked()
-        guard let item = allItemByVaultID[vaultID]?.first(where: { $0.id == itemID }) else { throw BackendError(message: "Item not found") }
+        guard var item = allItemByVaultID[vaultID]?.first(where: { $0.id == itemID }) else { throw BackendError(message: "Item not found") }
+        item.isFavorite = allFavoriteRecordID.contains(LoginMatch.buildRecordIdentifier(vaultID: vaultID, itemID: itemID))
         return item
     }
 
@@ -404,6 +409,26 @@ class FakeBackend: VaultBackend {
         item.revision = UUID().uuidString
         replaceItem(vaultID: vaultID, item: item)
         return item
+    }
+
+    func listAllFavoriteItem() throws -> [FavoriteItem] {
+        record("listAllFavoriteItem")
+        try requireUnlocked()
+        return allVault.flatMap { vault in
+            ((try? listAllItem(vaultID: vault.id)) ?? []).filter(\.isFavorite).map { FavoriteItem(vaultID: vault.id, vaultName: vault.name, vaultType: vault.type, item: $0) }
+        }
+    }
+
+    func setItemFavorite(vaultID: String, itemID: String, isFavorite: Bool) throws {
+        record("setItemFavorite")
+        try requireUnlocked()
+        if let favoriteErrorMessage { throw BackendError(message: favoriteErrorMessage) }
+        let recordID = LoginMatch.buildRecordIdentifier(vaultID: vaultID, itemID: itemID)
+        if isFavorite {
+            allFavoriteRecordID.insert(recordID)
+        } else {
+            allFavoriteRecordID.remove(recordID)
+        }
     }
 
     func deleteItem(vaultID: String, itemID: String) throws {

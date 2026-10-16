@@ -29,22 +29,34 @@ func (s *Service) ListItems(vaultID string) ([]ItemDetail, error) {
 		return nil, convertError(err)
 	}
 	s.itemsByVaultID[vaultID] = items
+	s.loadFavoritesOnce(ctx)
 	summaries := make([]ItemDetail, 0, len(items))
 	for index := range items {
-		summary := convertToItemDetail(&items[index], s.config.Now())
-		summary.Password, summary.Notes, summary.Fields, summary.OneTimePassword = "", "", nil, ""
-		if summary.Card != nil {
-			summary.Card = &ItemCard{Type: summary.Card.Type, CardDescription: CardDescription{Brand: summary.Card.Brand, Last4: summary.Card.Last4}}
-		}
-		if identity := summary.Identity; identity != nil {
-			summary.Identity = &ItemIdentity{FirstName: identity.FirstName, MiddleName: identity.MiddleName, LastName: identity.LastName, Email: identity.Email}
-		}
-		if credential := summary.APICredential; credential != nil {
-			summary.APICredential = &ItemAPICredential{Service: credential.Service, Host: credential.Host}
-		}
-		summaries = append(summaries, summary)
+		summaries = append(summaries, s.summarizeItem(&items[index]))
 	}
 	return summaries, nil
+}
+
+// summarizeItem is what lists show: no password, notes, fields or one-time password secret.
+func (s *Service) summarizeItem(vaultItem *item.Item) ItemDetail {
+	summary := s.describeItem(vaultItem)
+	summary.Password, summary.Notes, summary.Fields, summary.OneTimePassword = "", "", nil, ""
+	if summary.Card != nil {
+		summary.Card = &ItemCard{Type: summary.Card.Type, CardDescription: CardDescription{Brand: summary.Card.Brand, Last4: summary.Card.Last4}}
+	}
+	if identity := summary.Identity; identity != nil {
+		summary.Identity = &ItemIdentity{FirstName: identity.FirstName, MiddleName: identity.MiddleName, LastName: identity.LastName, Email: identity.Email}
+	}
+	if credential := summary.APICredential; credential != nil {
+		summary.APICredential = &ItemAPICredential{Service: credential.Service, Host: credential.Host}
+	}
+	return summary
+}
+
+func (s *Service) describeItem(vaultItem *item.Item) ItemDetail {
+	detail := convertToItemDetail(vaultItem, s.config.Now())
+	detail.IsFavorite = s.favorites.IsFavorite(vaultItem.ID)
+	return detail
 }
 
 func (s *Service) findItem(vaultID, itemID string) (*item.Item, error) {
@@ -66,7 +78,10 @@ func (s *Service) GetItem(vaultID, itemID string) (ItemDetail, error) {
 	if err != nil {
 		return ItemDetail{}, err
 	}
-	return convertToItemDetail(vaultItem, s.config.Now()), nil
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	s.loadFavoritesOnce(ctx)
+	return s.describeItem(vaultItem), nil
 }
 
 // GetOneTimeCode returns the item's current one-time code; the UI asks again once ExpiresAt passes.
@@ -251,7 +266,7 @@ func (s *Service) SaveItem(vaultID string, detail ItemDetail) (ItemDetail, error
 		return ItemDetail{}, convertError(err)
 	}
 	s.replaceCachedItem(vaultID, vaultItem)
-	return convertToItemDetail(&vaultItem, s.config.Now()), nil
+	return s.describeItem(&vaultItem), nil
 }
 
 // buildSavedItem keeps the category and passkeys of an existing item; an ssh-key item only takes the title and notes from
@@ -346,7 +361,7 @@ func (s *Service) ConvertToSecureNote(vaultID, itemID string) (ItemDetail, error
 		return ItemDetail{}, convertError(err)
 	}
 	s.replaceCachedItem(vaultID, vaultItem)
-	return convertToItemDetail(&vaultItem, s.config.Now()), nil
+	return s.describeItem(&vaultItem), nil
 }
 
 func (s *Service) replaceCachedItem(vaultID string, vaultItem item.Item) {

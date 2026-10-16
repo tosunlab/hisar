@@ -293,3 +293,34 @@ func TestListAllImportFormat(t *testing.T) {
 		t.Errorf("formats = %+v", formats)
 	}
 }
+
+func TestImportStarsTheFavoritesOfTheExport(t *testing.T) {
+	test := createUnlockedTestService(t)
+	service := test.service
+	var builder strings.Builder
+	builder.WriteString("Title,Url,Username,Password,OTPAuth,Favorite,Archived,Tags,Notes\n")
+	builder.WriteString("GitHub,https://github.com,alice,gh-pass,,true,false,,\n")
+	for index := 1; index <= 12; index++ {
+		fmt.Fprintf(&builder, "Site %02d,https://site%02d.example.com,alice,pass-%02d,,false,false,,\n", index, index, index)
+	}
+	builder.WriteString("Bank,https://bank.example.com,alice,bank-pass,,true,false,,\n")
+	setImportPath(service, writeImportFile(t, "1PasswordExport.csv", builder.String()))
+	if _, err := service.ChooseImportFile(test.familyID, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.StartImport(test.familyID, false); err != nil {
+		t.Fatal(err)
+	}
+	if finished, callCount := runImportToEnd(t, service); finished.SavedCount != 14 || callCount != 2 {
+		t.Fatalf("finished = %+v after %d calls", finished, callCount)
+	}
+	if titles := listFavoriteTitles(t, service); strings.Join(titles, ", ") != "Bank · Family, GitHub · Family" {
+		t.Errorf("favorites after the import: %v", titles)
+	}
+	test.apiServer.mutex.Lock()
+	revision := test.apiServer.preferences.Revision
+	test.apiServer.mutex.Unlock()
+	if revision != 1 {
+		t.Errorf("the import saved the favorites %d times, want once", revision)
+	}
+}
