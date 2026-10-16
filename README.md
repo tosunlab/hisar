@@ -165,6 +165,9 @@ branch on every push, changes what it builds (`scripts/detect-app-changes.sh`):
 - the Mac app when `desktop/`, `cli/` (the app bundles `hisar`), `core/`, `go.work` or the workflow changes;
 - the iPhone app when `mobile/`, `core/`, `go.work` or the workflow changes;
 - both, whatever changed, while the pull request has the label `run-macos`;
+- not the iPhone app while the pull request has the label `skip-ios`, for changes whose iPhone build, unit tests and UI tests
+  already passed locally (`make build-ios-framework build-ios test-ios test-ios-ui`). Add the label before pushing: a run
+  reads the labels the pull request has when it starts. The job then reports as skipped;
 - or by hand: Actions → macOS and iOS → Run workflow, on a branch (tick "Build and test the iPhone app" to add the iPhone job).
 
 A run takes roughly 15–25 minutes for the Mac app and 40–60 minutes for the iPhone app, so about 150–250 included minutes for the Mac
