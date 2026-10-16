@@ -25,6 +25,7 @@ const allCount = computed(() => {
     { label: preview.secureNoteCount === 1 ? "Secure note" : "Secure notes", count: preview.secureNoteCount, icon: "note" as const, testID: "secure-note" },
     { label: preview.sshKeyCount === 1 ? "SSH key" : "SSH keys", count: preview.sshKeyCount, icon: "key" as const, testID: "ssh-key" },
     { label: preview.creditCardCount === 1 ? "Credit card" : "Credit cards", count: preview.creditCardCount, icon: "card" as const, testID: "credit-card" },
+    { label: preview.identityCount === 1 ? "Identity" : "Identities", count: preview.identityCount, icon: "identity" as const, testID: "identity" },
   ];
 });
 const importCount = computed(() => {

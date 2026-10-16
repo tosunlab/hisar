@@ -36,15 +36,8 @@ type Card struct {
 	BillingAddress string
 }
 
-// CardField is one of a card's values: its field name, whether it is concealed, and where it lives in a Card.
-type CardField struct {
-	Name      string
-	Concealed bool
-	value     func(*Card) *string
-}
-
-// Value points at the field's value in card.
-func (field CardField) Value(card *Card) *string { return field.value(card) }
+// CardField is one of a card's values.
+type CardField = NamedField[Card]
 
 // ListCardFields returns a card's fields in the order they are stored and asked for.
 func ListCardFields() []CardField { return slices.Clone(cardFields) }
@@ -62,40 +55,12 @@ var cardFields = []CardField{
 
 // ReadCard returns the card's values and the item's other custom fields. Names match ignoring case; when a name repeats,
 // the first one is the card's and the rest stay other fields.
-func ReadCard(vaultItem *Item) (Card, []Field) {
-	var card Card
-	isRead := map[string]bool{}
-	otherFields := []Field{}
-	for _, field := range vaultItem.Details.Fields {
-		isCardField := false
-		for _, cardField := range cardFields {
-			if strings.EqualFold(field.Name, cardField.Name) && !isRead[cardField.Name] {
-				*cardField.value(&card) = field.Value
-				isRead[cardField.Name], isCardField = true, true
-				break
-			}
-		}
-		if !isCardField {
-			otherFields = append(otherFields, field)
-		}
-	}
-	return card, otherFields
-}
+func ReadCard(vaultItem *Item) (Card, []Field) { return readRecord(vaultItem, cardFields) }
 
 // WriteCard stores card as the item's first custom fields, in a fixed order with the secret ones concealed, followed by
 // otherFields; an empty value is left out.
 func WriteCard(vaultItem *Item, card Card, otherFields []Field) {
-	fields := []Field{}
-	for _, cardField := range cardFields {
-		if value := *cardField.value(&card); value != "" {
-			fields = append(fields, Field{Name: cardField.Name, Value: value, Concealed: cardField.Concealed})
-		}
-	}
-	fields = append(fields, otherFields...)
-	vaultItem.Details.Fields = nil
-	if len(fields) > 0 {
-		vaultItem.Details.Fields = fields
-	}
+	writeRecord(vaultItem, card, cardFields, otherFields)
 }
 
 // NormalizeCard tidies a credit-card item's number, type and expiry and puts its fields in order; other items are left
@@ -105,18 +70,14 @@ func NormalizeCard(vaultItem *Item) {
 		return
 	}
 	card, otherFields := ReadCard(vaultItem)
-	card.Cardholder = strings.TrimSpace(card.Cardholder)
+	trimRecord(&card, cardFields)
 	card.Number = FormatCardNumber(card.Number)
 	if card.Type = NormalizeCardType(card.Type); card.Type == "" {
 		card.Type = GetCardBrand(card.Number)
 	}
 	if expiry, isValid := NormalizeExpiry(card.Expiry); isValid {
 		card.Expiry = expiry
-	} else {
-		card.Expiry = strings.TrimSpace(card.Expiry)
 	}
-	card.SecurityCode, card.PIN = strings.TrimSpace(card.SecurityCode), strings.TrimSpace(card.PIN)
-	card.BillingAddress = strings.TrimSpace(card.BillingAddress)
 	WriteCard(vaultItem, card, otherFields)
 }
 

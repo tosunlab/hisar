@@ -34,8 +34,9 @@ import {
   type ExportRequest,
   type ExportResult,
 } from "./api";
+import { formatFullName } from "./util";
 
-export type EditorMode = "view" | "edit" | "create" | "create-secure-note" | "create-credit-card" | "create-ssh-key";
+export type EditorMode = "view" | "edit" | "create" | "create-secure-note" | "create-credit-card" | "create-identity" | "create-ssh-key";
 export type ImportStep = "choose" | "preview" | "saving" | "done";
 
 export interface ShareLinkDialog {
@@ -609,9 +610,11 @@ export function filterAllItem(allItem: ItemDetail[], query: string): ItemDetail[
   if (!normalizedQuery) {
     return allItem;
   }
-  return allItem.filter((vaultItem) =>
-    [vaultItem.title, vaultItem.username, ...vaultItem.urls].some((text) => text.toLowerCase().includes(normalizedQuery)),
-  );
+  return allItem.filter((vaultItem) => {
+    // An identity's list summary keeps its name and email, which the list shows under the title.
+    const identityText = vaultItem.identity ? [formatFullName(vaultItem.identity), vaultItem.identity.email] : [];
+    return [vaultItem.title, vaultItem.username, ...vaultItem.urls, ...identityText].some((text) => text.toLowerCase().includes(normalizedQuery));
+  });
 }
 
 function updateSelectedVaultItemCount(): void {
@@ -642,6 +645,11 @@ export function startCreatingSecureNote(): void {
 export function startCreatingCard(): void {
   store.selectedItem = null;
   store.editorMode = "create-credit-card";
+}
+
+export function startCreatingIdentity(): void {
+  store.selectedItem = null;
+  store.editorMode = "create-identity";
 }
 
 export function startCreatingSSHKey(): void {
@@ -1265,10 +1273,13 @@ export function getAllShareLinkForItem(vaultID: string, itemID: string): ShareLi
 }
 
 export function hasShareableField(detail: ItemDetail): boolean {
-  // A card's values come in card, not in fields.
+  // A card's and an identity's values come in card and identity, not in fields.
   const card = detail.card;
   const hasCardValue = card ? [card.cardholder, card.type, card.number, card.expiry, card.securityCode, card.pin, card.billingAddress].some((value) => value) : false;
-  return Boolean(detail.username || detail.password || detail.notes || detail.urls.length > 0 || detail.fields.some((field) => field.value) || hasCardValue);
+  const hasIdentityValue = detail.identity ? Object.values(detail.identity).some((value) => value) : false;
+  return Boolean(
+    detail.username || detail.password || detail.notes || detail.urls.length > 0 || detail.fields.some((field) => field.value) || hasCardValue || hasIdentityValue,
+  );
 }
 
 export async function openShareLinks(): Promise<void> {

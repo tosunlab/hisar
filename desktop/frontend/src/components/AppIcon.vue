@@ -20,6 +20,7 @@ const allPath = {
   check: "M5 12l5 5L20 7",
   note: "M6 3h9l4 4v14H6zM9 12h6M9 16h6",
   card: "M3 6h18v12H3zM3 10h18M7 15h3",
+  identity: "M3 5h18v14H3zM9 8.5a2 2 0 1 1 0 4 2 2 0 0 1 0-4zM5.5 16.5c.6-1.6 1.9-2.3 3.5-2.3s2.9.7 3.5 2.3M15 10h4M15 14h4",
   field: "M4 6h16M4 12h16M4 18h10",
   close: "M6 6l12 12M18 6L6 18",
   signOut: "M15 4h4v16h-4M10 8l-4 4 4 4M6 12h11",

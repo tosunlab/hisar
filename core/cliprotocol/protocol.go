@@ -23,17 +23,21 @@ const (
 	FeatureSecureNotes = "secure-notes"
 	// FeatureCreditCards: items.save creates credit-card items from their named fields.
 	FeatureCreditCards = "credit-cards"
+	// FeatureIdentities: items.save creates identity items from their named fields.
+	FeatureIdentities = "identities"
 )
 
 // ListFeatures returns the features this build of the app announces in hello.
 func ListFeatures() []string {
-	return []string{FeatureSecureNotes, FeatureCreditCards}
+	return []string{FeatureSecureNotes, FeatureCreditCards, FeatureIdentities}
 }
 
 // GetCategoryFeature returns the feature an app must announce before items.save may create an item of category, or ""
 // when every app can (logins).
 func GetCategoryFeature(category string) string {
-	return map[string]string{item.CategorySecureNote: FeatureSecureNotes, item.CategoryCreditCard: FeatureCreditCards}[category]
+	return map[string]string{
+		item.CategorySecureNote: FeatureSecureNotes, item.CategoryCreditCard: FeatureCreditCards, item.CategoryIdentity: FeatureIdentities,
+	}[category]
 }
 
 const (

@@ -117,12 +117,21 @@ Design: `docs/DESIGN.md` §4.5 (categories).
 - Cards import from 1Password (`.1pux`) and Bitwarden JSON; a Bitwarden CSV leaves them out.
 - Preview: `&item=visa` (an expired card), `&editor=credit-card`.
 
+## Identities
+
+Design: `docs/DESIGN.md` §4.5 (categories).
+
+- **+** → **Identity** opens an editor for the first, middle and last name, birth date (a date picker; an imported date that is not year first stays text), email, phone, address and the passport, driver's license and national ID numbers, which are masked until shown; then notes and custom fields.
+- An identity's view shows the full name and lists each value with **Copy** and a secret reference; the document numbers are masked until revealed. The item list shows the name, or the email.
+- Identities import from 1Password (Identity, Passport, Driver License, Social Security Number) and Bitwarden JSON; a Bitwarden CSV leaves them out.
+- Preview: `&item=passport`, `&editor=identity`.
+
 ## Import from other password managers
 
 Settings → General → **Import…**, or **+** → **Import…** in a vault. The parsing is `core/importer` (design: `docs/DESIGN.md` §9.7).
 
 1. Choose the vault (only vaults you can edit) and the format, or let Hisar detect it, then pick the file in the open dialog: a 1Password `.1pux` or CSV export, an unencrypted Bitwarden `.json` or CSV export, or a CSV export from Chrome, Edge, Firefox, Safari or another manager (header row with columns such as title, username, password, url, notes).
-2. The preview counts logins, secure notes and SSH keys, lists what is not imported and why (cards, identities, documents, archived items, passphrase-protected SSH keys), and lists items already in the vault with the same title, username and website, which are skipped unless you untick the box. Nothing is saved before **Import**.
+2. The preview counts logins, secure notes, SSH keys, credit cards and identities, lists what is not imported and why (documents, archived items, passphrase-protected SSH keys), and lists items already in the vault with the same title, username and website, which are skipped unless you untick the box. Nothing is saved before **Import**.
 3. Items are saved in batches of 10 with a progress bar; if the connection drops, **Try again** continues where it stopped. Locking Hisar discards the parsed file.
 4. The export holds every password in plain text, so Hisar offers to delete it (**Delete file** removes it directly, not through the Trash).
 
