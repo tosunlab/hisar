@@ -576,6 +576,38 @@ func TestServersThroughTheApp(t *testing.T) {
 	}
 }
 
+func TestDatabasesThroughTheApp(t *testing.T) {
+	app := startFakeApp(t)
+	input := "Prod db\nPostgres\ndb.example.com:5432\n\napp\napp\ndb-password\nsslmode=require\n"
+	_, stderr, err := runCapturingOutput(t, false, input, "add", "--type", "database")
+	if err != nil || !strings.Contains(stderr, `Saved "Prod db" to Personal.`) {
+		t.Fatalf("add --type database: %q %v", stderr, err)
+	}
+	if !strings.Contains(stderr, "Engine (postgresql, mysql, mariadb, sqlserver, oracle, mongodb, redis or another): ") || strings.Contains(stderr, "db-password") {
+		t.Errorf("prompts: %q", stderr)
+	}
+	added := app.findRequest(cliprotocol.TypeSaveItem)[0].Item
+	wantFields := []cliprotocol.Field{
+		{Name: item.FieldEngine, Value: "postgresql"},
+		{Name: item.FieldHost, Value: "db.example.com"},
+		{Name: item.FieldPort, Value: "5432"},
+		{Name: item.FieldDatabaseName, Value: "app"},
+		{Name: item.FieldOptions, Value: "sslmode=require"},
+	}
+	if added.Category != item.CategoryDatabase || added.Fields == nil || !reflect.DeepEqual(*added.Fields, wantFields) || added.Username != "app" ||
+		added.Password != "db-password" || len(added.URLs) != 0 {
+		t.Errorf("add request %+v %+v", added, added.Fields)
+	}
+
+	app.mutex.Lock()
+	app.hello.Features = []string{cliprotocol.FeatureSecureNotes, cliprotocol.FeatureCreditCards, cliprotocol.FeatureIdentities, cliprotocol.FeatureAPICredentials, cliprotocol.FeatureAddresses, cliprotocol.FeatureSoftwareLicenses, cliprotocol.FeatureServers}
+	app.mutex.Unlock()
+	_, stderr, err = runCapturingOutput(t, false, input, "add", "--type", "database")
+	if err == nil || !strings.Contains(err.Error(), "cannot save database items") || strings.Contains(stderr, "Engine") {
+		t.Errorf("add a database through an older app: %q %v", stderr, err)
+	}
+}
+
 func TestEditingAServerKeepsOrRemovesItsSSHKey(t *testing.T) {
 	originalReader := stdinReader
 	defer func() { stdinReader = originalReader }()
@@ -611,7 +643,7 @@ func TestEditingAnAddressKeepsItsStreetOnAnEmptyLine(t *testing.T) {
 func TestAddAndEditFollowTheItemType(t *testing.T) {
 	app := startFakeApp(t)
 	_, stderr, err := runCapturingOutput(t, false, "Router\n", "add", "--type", "wireless-router")
-	if err == nil || !strings.Contains(err.Error(), `unknown item type "wireless-router"; use one of login, secure-note, credit-card, identity, api-credential, address, software-license, server`) {
+	if err == nil || !strings.Contains(err.Error(), `unknown item type "wireless-router"; use one of login, secure-note, credit-card, identity, api-credential, address, software-license, server, database`) {
 		t.Errorf("add an unknown type: %v", err)
 	}
 	if strings.Contains(stderr, "Title") {

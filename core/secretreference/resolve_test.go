@@ -175,6 +175,51 @@ func TestBuiltInFieldWinsOverCustomField(t *testing.T) {
 	}
 }
 
+func TestDatabaseFieldsResolve(t *testing.T) {
+	database := item.Item{ID: "item-prod-db", Overview: item.Overview{Title: "Prod db", Category: item.CategoryDatabase, Username: "app"}, Details: item.Details{Password: "db-password"}}
+	item.WriteDatabase(&database, item.Database{Engine: "postgresql", Host: "db.example.com", Port: "5432", Name: "app"}, nil)
+	other := item.Item{ID: "item-db2", Overview: item.Overview{Title: "Mainframe", Category: item.CategoryDatabase}}
+	item.WriteDatabase(&other, item.Database{Engine: "db2", Host: "db2.example.com"}, nil)
+	// A login imported with a custom field of that name keeps resolving it.
+	login := item.Item{ID: "item-jdbc", Overview: item.Overview{Title: "Legacy"}, Details: item.Details{Fields: []item.Field{{Name: "Connection string", Value: "jdbc:db2://db2.example.com/app"}}}}
+	source := &memorySource{vaults: []Vault{{ID: "vault-work", Name: "Work"}}, itemsByVault: map[string][]item.Item{"vault-work": {database, other, login}}}
+	references := []string{
+		"hisar://Work/Prod db/connection string", "hisar://Work/Prod db/host", "hisar://Work/Prod db/port", "hisar://Work/Prod db/database",
+		"hisar://Work/Prod db/engine", "hisar://Work/Prod db/username", "hisar://Work/Prod db/password", "hisar://Work/Legacy/connection string",
+	}
+	resolved, err := ResolveAll(source, references, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"postgresql://app:db-password@db.example.com:5432/app", "db.example.com", "5432", "app", "postgresql", "app", "db-password", "jdbc:db2://db2.example.com/app"}
+	for index, value := range want {
+		if resolved[index].Value != value {
+			t.Errorf("%s = %q, want %q", references[index], resolved[index].Value, value)
+		}
+	}
+	if _, err := ResolveAll(source, []string{"hisar://Work/Mainframe/connection string"}, time.Now()); err == nil || !strings.Contains(err.Error(), "has no connection string") {
+		t.Errorf("an engine Hisar does not know: %v", err)
+	}
+
+	// Where no string is built, a custom field of that name is the connection string; a built one wins over it.
+	jdbcField := []item.Field{{Name: "Connection string", Value: "jdbc:db2://db2.example.com:50000/app"}}
+	item.WriteDatabase(&other, item.Database{Engine: "db2", Host: "db2.example.com"}, jdbcField)
+	item.WriteDatabase(&database, item.Database{Engine: "postgresql", Host: "db.example.com", Port: "5432", Name: "app"}, jdbcField)
+	source.itemsByVault["vault-work"] = []item.Item{database, other, login}
+	resolved, err = ResolveAll(source, []string{"hisar://Work/Mainframe/connection string", "hisar://Work/Prod db/connection string"}, time.Now())
+	if err != nil || resolved[0].Value != "jdbc:db2://db2.example.com:50000/app" || resolved[1].Value != "postgresql://app:db-password@db.example.com:5432/app" {
+		t.Errorf("resolved = %+v, %v", resolved, err)
+	}
+	for _, unbuilt := range []item.Item{other, login} {
+		if err := CheckCustomFieldLabel(&unbuilt, "Connection string"); err != nil {
+			t.Errorf("%s: %v", unbuilt.Overview.Title, err)
+		}
+	}
+	if err := CheckCustomFieldLabel(&database, "Connection string"); err == nil {
+		t.Error("a custom field can stand in for a built connection string")
+	}
+}
+
 func TestPrivateKeyIsNeverResolved(t *testing.T) {
 	vaultItem := item.Item{Overview: item.Overview{Title: "Deploy key", Category: item.CategorySSHKey},
 		Details: item.Details{PrivateKey: "-----BEGIN OPENSSH PRIVATE KEY-----", Fields: []item.Field{{Name: "private key", Value: "custom"}, {Name: "PRIVATE KEY", Value: "custom"}}}}

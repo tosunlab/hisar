@@ -17,6 +17,9 @@ const (
 	FieldPublicKey   = "public key"
 	FieldFingerprint = "fingerprint"
 	FieldOneTimeCode = "one-time code"
+	// FieldConnectionString is a database's connection string, built from its values. Where none is built (another item,
+	// or a database with an engine Hisar does not know or no host), the name is an ordinary custom field label.
+	FieldConnectionString = "connection string"
 )
 
 // FieldNames maps lower-case names to built-in fields. Each app keeps its own table, so the names it has always offered
@@ -24,10 +27,13 @@ const (
 type FieldNames map[string]string
 
 // LookupField returns the value of the built-in field name maps to in names, or else of the first custom field with
-// that label, ignoring case. The first URL stands for the URLs; the one-time code is generated for now.
+// that label, ignoring case. The first URL stands for the URLs; the one-time code is generated for now. A connection
+// string that is not built falls back to the custom field, so a DB2 item can keep its JDBC URL in one.
 func LookupField(vaultItem *Item, name string, names FieldNames, now time.Time) (string, bool) {
 	if field, isBuiltIn := names[strings.ToLower(name)]; isBuiltIn {
-		return getBuiltInField(vaultItem, field, now)
+		if value, found := getBuiltInField(vaultItem, field, now); found || field != FieldConnectionString {
+			return value, found
+		}
 	}
 	for _, field := range vaultItem.Details.Fields {
 		if strings.EqualFold(field.Name, name) {
@@ -56,6 +62,9 @@ func getBuiltInField(vaultItem *Item, field string, now time.Time) (string, bool
 		return vaultItem.Overview.PublicKey, true
 	case FieldFingerprint:
 		return vaultItem.Overview.Fingerprint, true
+	case FieldConnectionString:
+		connectionString := vaultItem.ConnectionString()
+		return connectionString, connectionString != ""
 	case FieldOneTimeCode:
 		config, err := totp.Parse(vaultItem.Details.OneTimePassword)
 		if err != nil {

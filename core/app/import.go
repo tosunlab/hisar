@@ -67,9 +67,11 @@ type ImportPreview struct {
 	// SoftwareLicenseCount counts the software-license items among ItemCount.
 	SoftwareLicenseCount int `json:"softwareLicenseCount"`
 	// ServerCount counts the server items among ItemCount.
-	ServerCount int                  `json:"serverCount"`
-	Skipped     []ImportSkippedEntry `json:"allSkipped"`
-	Duplicates  []ImportDuplicate    `json:"allDuplicate"`
+	ServerCount int `json:"serverCount"`
+	// DatabaseCount counts the database items among ItemCount.
+	DatabaseCount int                  `json:"databaseCount"`
+	Skipped       []ImportSkippedEntry `json:"allSkipped"`
+	Duplicates    []ImportDuplicate    `json:"allDuplicate"`
 }
 
 type ImportProgress struct {
@@ -228,6 +230,7 @@ func (s *Service) buildImportPreview(vaultID string) (ImportPreview, error) {
 		AddressCount:         summary.AddressCount,
 		SoftwareLicenseCount: summary.SoftwareLicenseCount,
 		ServerCount:          summary.ServerCount,
+		DatabaseCount:        summary.DatabaseCount,
 		Skipped:              []ImportSkippedEntry{},
 		Duplicates:           []ImportDuplicate{},
 	}

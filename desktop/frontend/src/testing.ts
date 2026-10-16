@@ -160,6 +160,29 @@ export function createServerItem(overrides: Partial<ItemDetail> = {}): ItemDetai
   });
 }
 
+export function createDatabaseItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
+  return createItem({
+    id: "db-1",
+    category: "database",
+    title: "Prod db",
+    username: "app",
+    password: "db-password",
+    urls: [],
+    fields: [{ name: "SID", value: "ORCL", concealed: false }],
+    database: {
+      engine: "postgresql",
+      engineName: "PostgreSQL",
+      host: "db.example.com",
+      port: "5432",
+      name: "app",
+      options: "sslmode=require",
+      connectionString: "postgresql://app:db-password@db.example.com:5432/app?sslmode=require",
+      portWarning: "",
+    },
+    ...overrides,
+  });
+}
+
 export function createSecureNoteItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
   return createItem({
     id: "note-1",
@@ -616,6 +639,7 @@ export function createImportPreview(overrides: Partial<ImportPreview> = {}): Imp
     addressCount: 0,
     softwareLicenseCount: 0,
     serverCount: 0,
+    databaseCount: 0,
     allSkipped: [{ title: "Visa", reason: "Bitwarden cards are not supported in Hisar yet" }],
     allDuplicate: [{ title: "GitHub", username: "alice", url: "https://github.com", detail: "alice · github.com" }],
     ...overrides,

@@ -158,6 +158,11 @@ export interface ImportPreview {
      * ServerCount counts the server items among ItemCount.
      */
     "serverCount": number;
+
+    /**
+     * DatabaseCount counts the database items among ItemCount.
+     */
+    "databaseCount": number;
     "allSkipped": ImportSkippedEntry[] | null;
     "allDuplicate": ImportDuplicate[] | null;
 }
@@ -224,6 +229,23 @@ export interface ItemCard {
     "last4": string;
     "numberWarning": string;
     "expiryWarning": string;
+}
+
+/**
+ * ItemDatabase is a database's values besides its login data. Engine is the ID of a known engine (postgresql, mysql,
+ * mariadb, sqlserver, oracle, mongodb, redis) or any other engine as typed; EngineName names it. ConnectionString is built
+ * from the values and the item's login data, and is "" for another engine or without a host. PortWarning says when the
+ * port is not a number from 1 to 65535. SaveItem reads only Engine, Host, Port, Name and Options.
+ */
+export interface ItemDatabase {
+    "engine": string;
+    "engineName": string;
+    "host": string;
+    "port": string;
+    "name": string;
+    "options": string;
+    "connectionString": string;
+    "portWarning": string;
 }
 
 /**
@@ -296,6 +318,12 @@ export interface ItemDetail {
      * admin console are the item's own Username, Password and URLs. Summaries keep only the host and port.
      */
     "server"?: ItemServer | null;
+
+    /**
+     * Database holds a database's engine, host, port, name and options, stored as named custom fields; its username and
+     * password are the item's own. Summaries keep only the engine, host, port and name.
+     */
+    "database"?: ItemDatabase | null;
 }
 
 export interface ItemField {

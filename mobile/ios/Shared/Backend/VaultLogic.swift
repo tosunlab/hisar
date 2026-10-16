@@ -100,7 +100,9 @@ enum VaultLogic {
             let licenseText = reference.item.softwareLicense.map { [$0.product, $0.version, $0.licensedTo, $0.email] } ?? []
             // A server's summary keeps its host and port, which lists show as one address.
             let serverText = reference.item.server.map { [$0.address, $0.host, $0.port] } ?? []
-            let searchable = ([reference.item.title, reference.item.username, reference.vaultName] + reference.item.allURL + reference.item.allTag + identityText + credentialText + addressText + licenseText + serverText)
+            // A database's summary keeps its engine, address and name; never the connection string.
+            let databaseText = reference.item.database.map { [$0.engineName, $0.location, $0.host, $0.port, $0.name] } ?? []
+            let searchable = ([reference.item.title, reference.item.username, reference.vaultName] + reference.item.allURL + reference.item.allTag + identityText + credentialText + addressText + licenseText + serverText + databaseText)
                 .joined(separator: " ").lowercased()
             return allWord.allSatisfy { searchable.contains($0) }
         }

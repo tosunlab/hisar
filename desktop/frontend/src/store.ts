@@ -35,9 +35,9 @@ import {
   type ExportResult,
   type FavoriteItem,
 } from "./api";
-import { allAddressKey, formatFullName, formatServerAddress } from "./util";
+import { allAddressKey, formatDatabaseLocation, formatFullName, formatServerAddress } from "./util";
 
-export type EditorMode = "view" | "edit" | "create" | "create-secure-note" | "create-credit-card" | "create-identity" | "create-api-credential" | "create-address" | "create-software-license" | "create-server" | "create-ssh-key";
+export type EditorMode = "view" | "edit" | "create" | "create-secure-note" | "create-credit-card" | "create-identity" | "create-api-credential" | "create-address" | "create-software-license" | "create-server" | "create-database" | "create-ssh-key";
 export type ImportStep = "choose" | "preview" | "saving" | "done";
 
 export interface ShareLinkDialog {
@@ -681,7 +681,7 @@ export function sortAllItem(allItem: ItemDetail[]): ItemDetail[] {
 }
 
 // filterAllItem keeps the items matching the search in their title, username, websites, tags, identity, API credential,
-// address, software license or server summary, and carrying tag when one is selected.
+// address, software license, server or database summary, and carrying tag when one is selected.
 export function filterAllItem(allItem: ItemDetail[], query: string, tag = ""): ItemDetail[] {
   const normalizedQuery = query.trim().toLowerCase();
   return allItem.filter((vaultItem) => {
@@ -701,10 +701,13 @@ export function filterAllItem(allItem: ItemDetail[], query: string, tag = ""): I
     // A server's summary keeps its host and port, which lists show as one address; its username is the item's own.
     const server = vaultItem.server;
     const serverText = server ? [formatServerAddress(server), server.host, server.port] : [];
+    // A database's summary keeps its engine, address and name; never the connection string, which holds the password.
+    const database = vaultItem.database;
+    const databaseText = database ? [database.engineName, formatDatabaseLocation(database), database.host, database.port, database.name] : [];
     return (
       (tag === "" || allTag.includes(tag)) &&
       (normalizedQuery === "" ||
-        [vaultItem.title, vaultItem.username, ...vaultItem.urls, ...allTag, ...identityText, ...credentialText, ...addressText, ...licenseText, ...serverText].some((text) =>
+        [vaultItem.title, vaultItem.username, ...vaultItem.urls, ...allTag, ...identityText, ...credentialText, ...addressText, ...licenseText, ...serverText, ...databaseText].some((text) =>
           text.toLowerCase().includes(normalizedQuery),
         ))
     );
@@ -793,6 +796,11 @@ export function startCreatingSoftwareLicense(): void {
 export function startCreatingServer(): void {
   store.selectedItem = null;
   store.editorMode = "create-server";
+}
+
+export function startCreatingDatabase(): void {
+  store.selectedItem = null;
+  store.editorMode = "create-database";
 }
 
 export function startCreatingSSHKey(): void {
@@ -1443,6 +1451,8 @@ export function hasShareableField(detail: ItemDetail): boolean {
   const hasLicenseValue = detail.softwareLicense ? Object.values(detail.softwareLicense).some((value) => value) : false;
   // A server's linked SSH key is not shared: the link names an item the recipient cannot open.
   const hasServerValue = detail.server ? Boolean(detail.server.host || detail.server.port) : false;
+  const database = detail.database;
+  const hasDatabaseValue = database ? [database.engine, database.host, database.port, database.name, database.options].some((value) => value) : false;
   const hasIdentityValue = detail.identity ? Object.values(detail.identity).some((value) => value) : false;
   const credential = detail.apiCredential;
   const hasCredentialValue = credential ? [credential.service, credential.keyId, credential.secret, credential.host, credential.expiry].some((value) => value) : false;
@@ -1457,7 +1467,8 @@ export function hasShareableField(detail: ItemDetail): boolean {
       hasCredentialValue ||
       hasAddressValue ||
       hasLicenseValue ||
-      hasServerValue,
+      hasServerValue ||
+      hasDatabaseValue,
   );
 }
 

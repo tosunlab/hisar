@@ -22,9 +22,12 @@ import {
   apiCredentialFieldName,
   cardFieldName,
   creditCardCategory,
+  databaseCategory,
+  databaseFieldName,
   formatAddressSummary,
   formatAPICredentialSummary,
   formatCardSummary,
+  formatDatabaseSummary,
   formatIdentitySummary,
   formatKeyType,
   formatServerAddress,
@@ -66,6 +69,22 @@ const isAddress = computed(() => store.selectedItem?.category === addressCategor
 const isSoftwareLicense = computed(() => store.selectedItem?.category === softwareLicenseCategory);
 const isServer = computed(() => store.selectedItem?.category === serverCategory);
 const server = computed(() => (isServer.value ? store.selectedItem?.server : undefined));
+const isDatabase = computed(() => store.selectedItem?.category === databaseCategory);
+const database = computed(() => (isDatabase.value ? store.selectedItem?.database : undefined));
+const isConnectionStringRevealed = ref(false);
+// A database's values before its login data: the engine by its name, the host, port and database name.
+const allDatabaseRow = computed(() => {
+  const value = database.value;
+  if (!value) {
+    return [];
+  }
+  return [
+    { name: databaseFieldName.engine, value: value.engineName, warning: "" },
+    { name: databaseFieldName.host, value: value.host, warning: "" },
+    { name: databaseFieldName.port, value: value.port, warning: value.portWarning },
+    { name: databaseFieldName.name, value: value.name, warning: "" },
+  ].filter((row) => row.value !== "");
+});
 
 // NamedRow: isLink rows open in the browser, as websites do.
 type NamedRow = { name: string; value: string; concealed: boolean; masked: string; warning: string; isLink?: boolean };
@@ -171,6 +190,7 @@ watch(
   () => store.selectedItem?.id,
   () => {
     isPasswordRevealed.value = false;
+    isConnectionStringRevealed.value = false;
     allRevealedFieldName.value = [];
     isConfirmingDelete.value = false;
   },
@@ -208,6 +228,7 @@ function maskSecret(secret: string): string {
           <span v-else-if="isServer" class="muted" data-testid="server-summary">{{
             formatServerSummary(store.selectedItem.server, store.selectedItem.username)
           }}</span>
+          <span v-else-if="isDatabase" class="muted" data-testid="database-summary">{{ formatDatabaseSummary(store.selectedItem.database) }}</span>
           <span v-else-if="store.selectedItem.urls[0]" class="muted">{{ getDomain(store.selectedItem.urls[0]) }}</span>
         </div>
         <div v-if="(store.selectedItem.tags ?? []).length > 0" class="tags" data-testid="item-tags">
@@ -415,6 +436,18 @@ function maskSecret(secret: string): string {
         </div>
       </template>
 
+      <div v-for="row in allDatabaseRow" :key="row.name" class="field">
+        <span class="field-label">{{ row.name }}</span>
+        <span class="field-value">
+          <span :data-testid="`database-${row.name}`">{{ row.value }}</span>
+          <small v-if="row.warning" class="field-warning" data-testid="database-port-warning">{{ row.warning }}</small>
+        </span>
+        <span class="field-actions">
+          <button class="ghost icon-button" :aria-label="`Copy ${row.name}`" title="Copy" @click="copyField(row.name, row.name)"><AppIcon name="copy" /></button>
+          <SecretReferenceButton :field-name="row.name" :label="row.name" />
+        </span>
+      </div>
+
       <div v-if="store.selectedItem.username" class="field">
         <span class="field-label">Username</span>
         <span class="field-value">{{ store.selectedItem.username }}</span>
@@ -445,6 +478,37 @@ function maskSecret(secret: string): string {
           <SecretReferenceButton field-name="password" label="password" />
         </span>
       </div>
+
+      <template v-if="database">
+        <div v-if="database.options" class="field">
+          <span class="field-label">{{ databaseFieldName.options }}</span>
+          <span class="field-value monospace" data-testid="database-options">{{ database.options }}</span>
+          <span class="field-actions">
+            <button class="ghost icon-button" aria-label="Copy Options" title="Copy" @click="copyField(databaseFieldName.options, databaseFieldName.options)"><AppIcon name="copy" /></button>
+            <SecretReferenceButton :field-name="databaseFieldName.options" :label="databaseFieldName.options" />
+          </span>
+        </div>
+        <div v-if="database.connectionString" class="field" data-testid="database-connection-string">
+          <span class="field-label">Connection string</span>
+          <span class="field-value monospace secret" data-testid="connection-string-value">
+            {{ isConnectionStringRevealed ? database.connectionString : maskSecret(database.connectionString) }}
+          </span>
+          <span class="field-actions">
+            <button
+              class="ghost icon-button"
+              :aria-label="isConnectionStringRevealed ? 'Hide connection string' : 'Reveal connection string'"
+              :title="isConnectionStringRevealed ? 'Hide' : 'Reveal'"
+              @click="isConnectionStringRevealed = !isConnectionStringRevealed"
+            >
+              <AppIcon :name="isConnectionStringRevealed ? 'eyeOff' : 'eye'" />
+            </button>
+            <button class="ghost icon-button" aria-label="Copy connection string" title="Copy" @click="copyField('connection string', 'Connection string')">
+              <AppIcon name="copy" />
+            </button>
+            <SecretReferenceButton field-name="connection string" label="connection string" />
+          </span>
+        </div>
+      </template>
 
       <OneTimeCodeField v-if="store.selectedItem.hasOneTimePassword" :vault-i-d="store.selectedVaultID" :item-i-d="store.selectedItem.id" />
 
@@ -484,7 +548,9 @@ function maskSecret(secret: string): string {
           (store.selectedItem.passkeys ?? []).length === 0 &&
           !server?.host &&
           !server?.port &&
-          !server?.sshKeyId
+          !server?.sshKeyId &&
+          allDatabaseRow.length === 0 &&
+          !database?.options
         "
         class="muted no-fields"
       >

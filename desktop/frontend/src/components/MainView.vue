@@ -22,6 +22,7 @@ import {
   startCreatingAPICredential,
   startCreatingSoftwareLicense,
   startCreatingServer,
+  startCreatingDatabase,
   startCreatingAddress,
   startCreatingSecureNote,
   startCreatingSSHKey,
@@ -35,9 +36,11 @@ import {
   addressCategory,
   apiCredentialCategory,
   creditCardCategory,
+  databaseCategory,
   formatAddressSummary,
   formatAPICredentialSummary,
   formatCardSummary,
+  formatDatabaseSummary,
   formatIdentitySummary,
   formatKeyType,
   formatServerSummary,
@@ -127,6 +130,9 @@ function getItemSubtitle(vaultItem: ItemDetail): string {
   }
   if (vaultItem.category === serverCategory) {
     return formatServerSummary(vaultItem.server, vaultItem.username);
+  }
+  if (vaultItem.category === databaseCategory) {
+    return formatDatabaseSummary(vaultItem.database);
   }
   return vaultItem.username || (vaultItem.urls[0] ? getDomain(vaultItem.urls[0]) : "");
 }
@@ -368,6 +374,9 @@ onBeforeUnmount(() => {
             </button>
             <button class="ghost" role="menuitem" data-testid="new-server" @click="chooseNewItem(startCreatingServer)">
               <AppIcon name="server" /> Server
+            </button>
+            <button class="ghost" role="menuitem" data-testid="new-database" @click="chooseNewItem(startCreatingDatabase)">
+              <AppIcon name="database" /> Database
             </button>
             <button class="ghost" role="menuitem" data-testid="new-ssh-key" @click="chooseNewItem(startCreatingSSHKey)">
               <AppIcon name="key" /> SSH key
