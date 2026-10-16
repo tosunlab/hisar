@@ -47,7 +47,12 @@ export function createCardItem(overrides: Partial<ItemDetail> = {}): ItemDetail 
       expiry: "12/29",
       securityCode: "123",
       pin: "0000",
-      billingAddress: "1 Main St",
+      street: "1 Main St",
+      city: "Springfield",
+      region: "IL",
+      postalCode: "12345",
+      country: "US",
+      billingAddress: "",
       brand: "Visa",
       last4: "1111",
       numberWarning: "",
@@ -72,7 +77,12 @@ export function createIdentityItem(overrides: Partial<ItemDetail> = {}): ItemDet
       birthDate: "1990-04-12",
       email: "alice@example.com",
       phone: "+1 555 0100",
-      address: "1 Main St\nSpringfield",
+      street: "1 Main St\nApt 4",
+      city: "Springfield",
+      region: "IL",
+      postalCode: "12345",
+      country: "US",
+      address: "",
       passportNumber: "U1234567",
       driversLicenseNumber: "",
       nationalIdNumber: "",
@@ -90,6 +100,19 @@ export function createAPICredentialItem(overrides: Partial<ItemDetail> = {}): It
     urls: [],
     fields: [{ name: "Scope", value: "read", concealed: false }],
     apiCredential: { service: "Stripe", keyId: "key_1", secret: "sk_live_123", host: "api.stripe.com", expiry: "2031-01-01", expiryWarning: "" },
+    ...overrides,
+  });
+}
+
+export function createAddressItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
+  return createItem({
+    id: "home-1",
+    category: "address",
+    title: "Home",
+    username: "",
+    urls: [],
+    fields: [{ name: "Gate code", value: "1234", concealed: true }],
+    address: { street: "1 Main St\nApt 4", city: "Springfield", region: "IL", postalCode: "12345", country: "US" },
     ...overrides,
   });
 }
@@ -547,6 +570,7 @@ export function createImportPreview(overrides: Partial<ImportPreview> = {}): Imp
     creditCardCount: 0,
     identityCount: 0,
     apiCredentialCount: 0,
+    addressCount: 0,
     allSkipped: [{ title: "Visa", reason: "Bitwarden cards are not supported in Hisar yet" }],
     allDuplicate: [{ title: "GitHub", username: "alice", url: "https://github.com", detail: "alice · github.com" }],
     ...overrides,

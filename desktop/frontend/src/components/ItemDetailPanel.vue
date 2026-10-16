@@ -13,10 +13,14 @@ import {
   toggleSelectedItemFavorite,
 } from "../store";
 import {
+  addressCategory,
+  addressFieldName,
+  allAddressKey,
   apiCredentialCategory,
   apiCredentialFieldName,
   cardFieldName,
   creditCardCategory,
+  formatAddressSummary,
   formatAPICredentialSummary,
   formatCardSummary,
   formatIdentitySummary,
@@ -49,6 +53,14 @@ const isSecureNote = computed(() => store.selectedItem?.category === secureNoteC
 const isCreditCard = computed(() => store.selectedItem?.category === creditCardCategory);
 const isIdentity = computed(() => store.selectedItem?.category === identityCategory);
 const isAPICredential = computed(() => store.selectedItem?.category === apiCredentialCategory);
+const isAddress = computed(() => store.selectedItem?.category === addressCategory);
+
+type NamedRow = { name: string; value: string; concealed: boolean; masked: string; warning: string };
+
+// buildAddressRows lists an address's values as rows, as an address item, an identity and a card keep them.
+function buildAddressRows(address: Record<(typeof allAddressKey)[number], string>): NamedRow[] {
+  return allAddressKey.map((key) => ({ name: addressFieldName[key], value: address[key], concealed: false, masked: "", warning: "" }));
+}
 
 // The card's values as rows; the number shows only its last four digits until revealed.
 const allCardRow = computed(() => {
@@ -63,6 +75,7 @@ const allCardRow = computed(() => {
     { name: cardFieldName.expiry, value: card.expiry, concealed: false, masked: "", warning: card.expiryWarning },
     { name: cardFieldName.securityCode, value: card.securityCode, concealed: true, masked: "", warning: "" },
     { name: cardFieldName.pin, value: card.pin, concealed: true, masked: "", warning: "" },
+    ...buildAddressRows(card),
     { name: cardFieldName.billingAddress, value: card.billingAddress, concealed: false, masked: "", warning: "" },
   ].filter((row) => row.value !== "");
 });
@@ -72,15 +85,20 @@ const allIdentityRow = computed(() => {
   if (!identity) {
     return [];
   }
-  return (Object.keys(identityFieldName) as (keyof typeof identityFieldName)[])
-    .map((key) => ({
+  const buildRows = (allKey: (keyof typeof identityFieldName)[]): NamedRow[] =>
+    allKey.map((key) => ({
       name: identityFieldName[key],
       value: identity[key],
       concealed: key === "passportNumber" || key === "driversLicenseNumber" || key === "nationalIdNumber",
       masked: "",
       warning: "",
-    }))
-    .filter((row) => row.value !== "");
+    }));
+  // The address comes after the phone, as core/item stores it.
+  return [
+    ...buildRows(["firstName", "middleName", "lastName", "birthDate", "email", "phone"]),
+    ...buildAddressRows(identity),
+    ...buildRows(["address", "passportNumber", "driversLicenseNumber", "nationalIdNumber"]),
+  ].filter((row) => row.value !== "");
 });
 // An API credential's values as rows; the secret is masked until revealed and the expiry warns once it has passed.
 const allAPICredentialRow = computed(() => {
@@ -96,11 +114,23 @@ const allAPICredentialRow = computed(() => {
     { name: apiCredentialFieldName.expiry, value: credential.expiry, concealed: false, masked: "", warning: credential.expiryWarning },
   ].filter((row) => row.value !== "");
 });
-// The rows of a type whose values are named fields: a card's, an identity's or an API credential's.
-const allNamedRow = computed(() => (isIdentity.value ? allIdentityRow.value : isAPICredential.value ? allAPICredentialRow.value : allCardRow.value));
-// What the named-field section calls this item when it has no values.
-const namedTypeName = computed(() => (isIdentity.value ? "identity" : isAPICredential.value ? "API credential" : "card"));
-const namedSectionTestID = computed(() => (isIdentity.value ? "identity-fields" : isAPICredential.value ? "api-credential-fields" : "credit-card-fields"));
+const allAddressRow = computed(() => (store.selectedItem?.address ? buildAddressRows(store.selectedItem.address).filter((row) => row.value !== "") : []));
+// The rows of a type whose values are named fields, what its section calls it when it has none, and the section's test
+// id: a card's, an identity's, an API credential's or an address's.
+const namedType = computed(() => {
+  if (isIdentity.value) {
+    return { allRow: allIdentityRow.value, name: "identity", testID: "identity-fields" };
+  }
+  if (isAPICredential.value) {
+    return { allRow: allAPICredentialRow.value, name: "API credential", testID: "api-credential-fields" };
+  }
+  if (isAddress.value) {
+    return { allRow: allAddressRow.value, name: "address", testID: "address-fields" };
+  }
+  return { allRow: allCardRow.value, name: "card", testID: "credit-card-fields" };
+});
+const allNamedRow = computed(() => namedType.value.allRow);
+const allMultilineName: string[] = [addressFieldName.street, cardFieldName.billingAddress, identityFieldName.address];
 const isShareable = computed(() => store.selectedItem !== null && hasShareableField(store.selectedItem));
 const allItemShareLink = computed(() => (store.selectedItem ? getAllShareLinkForItem(store.selectedVaultID, store.selectedItem.id) : []));
 
@@ -138,6 +168,7 @@ function maskSecret(secret: string): string {
           <span v-else-if="isCreditCard" class="muted" data-testid="card-summary">{{ formatCardSummary(store.selectedItem.card) }}</span>
           <span v-else-if="isIdentity" class="muted" data-testid="identity-summary">{{ formatIdentitySummary(store.selectedItem.identity) }}</span>
           <span v-else-if="isAPICredential" class="muted" data-testid="api-credential-summary">{{ formatAPICredentialSummary(store.selectedItem.apiCredential) }}</span>
+          <span v-else-if="isAddress" class="muted" data-testid="address-summary">{{ formatAddressSummary(store.selectedItem.address) }}</span>
           <span v-else-if="store.selectedItem.urls[0]" class="muted">{{ getDomain(store.selectedItem.urls[0]) }}</span>
         </div>
       </div>
@@ -207,12 +238,12 @@ function maskSecret(secret: string): string {
       <CommitSigningPanel v-if="store.selectedItem.publicKey" :public-key="store.selectedItem.publicKey" />
     </template>
 
-    <section v-else-if="isCreditCard || isIdentity || isAPICredential" class="card field-card" :data-testid="namedSectionTestID">
+    <section v-else-if="isCreditCard || isIdentity || isAPICredential || isAddress" class="card field-card" :data-testid="namedType.testID">
       <div v-for="row in allNamedRow" :key="row.name" class="field">
         <span class="field-label">{{ row.name }}</span>
         <span class="field-value">
           <span
-            :class="{ monospace: row.concealed, 'multiline-value': row.name === cardFieldName.billingAddress || row.name === identityFieldName.address }"
+            :class="{ monospace: row.concealed, 'multiline-value': allMultilineName.includes(row.name) }"
             :data-testid="`card-${row.name}`"
           >
             {{ row.concealed && !allRevealedFieldName.includes(row.name) ? row.masked || maskSecret(row.value) : row.value }}
@@ -251,7 +282,7 @@ function maskSecret(secret: string): string {
         </span>
       </div>
       <p v-if="allNamedRow.length === 0 && store.selectedItem.fields.length === 0" class="muted no-fields">
-        This {{ namedTypeName }} has no details yet.
+        This {{ namedType.name }} has no details yet.
       </p>
     </section>
 

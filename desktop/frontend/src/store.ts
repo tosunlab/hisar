@@ -35,9 +35,9 @@ import {
   type ExportResult,
   type FavoriteItem,
 } from "./api";
-import { formatFullName } from "./util";
+import { allAddressKey, formatFullName } from "./util";
 
-export type EditorMode = "view" | "edit" | "create" | "create-secure-note" | "create-credit-card" | "create-identity" | "create-api-credential" | "create-ssh-key";
+export type EditorMode = "view" | "edit" | "create" | "create-secure-note" | "create-credit-card" | "create-identity" | "create-api-credential" | "create-address" | "create-ssh-key";
 export type ImportStep = "choose" | "preview" | "saving" | "done";
 
 export interface ShareLinkDialog {
@@ -682,12 +682,16 @@ export function filterAllItem(allItem: ItemDetail[], query: string): ItemDetail[
     return allItem;
   }
   return allItem.filter((vaultItem) => {
-    // An identity's list summary keeps its name and email, an API credential's its service, key ID and host; the list
-    // shows them under the title, except the key ID.
+    // An identity's list summary keeps its name and email, an API credential's its service, key ID and host, an address's
+    // first street line, city and country; the list shows them under the title, except the key ID and street.
     const identityText = vaultItem.identity ? [formatFullName(vaultItem.identity), vaultItem.identity.email] : [];
     const credential = vaultItem.apiCredential;
     const credentialText = credential ? [credential.service, credential.keyId, credential.host] : [];
-    return [vaultItem.title, vaultItem.username, ...vaultItem.urls, ...identityText, ...credentialText].some((text) => text.toLowerCase().includes(normalizedQuery));
+    const address = vaultItem.address;
+    const addressText = address ? [address.street, address.city, address.country] : [];
+    return [vaultItem.title, vaultItem.username, ...vaultItem.urls, ...identityText, ...credentialText, ...addressText].some((text) =>
+      text.toLowerCase().includes(normalizedQuery),
+    );
   });
 }
 
@@ -729,6 +733,11 @@ export function startCreatingIdentity(): void {
 export function startCreatingAPICredential(): void {
   store.selectedItem = null;
   store.editorMode = "create-api-credential";
+}
+
+export function startCreatingAddress(): void {
+  store.selectedItem = null;
+  store.editorMode = "create-address";
 }
 
 export function startCreatingSSHKey(): void {
@@ -1360,9 +1369,12 @@ export function getAllShareLinkForItem(vaultID: string, itemID: string): ShareLi
 }
 
 export function hasShareableField(detail: ItemDetail): boolean {
-  // A card's, an identity's and an API credential's values come in card, identity and apiCredential, not in fields.
+  // A card's, an identity's, an API credential's and an address's values come in card, identity, apiCredential and
+  // address, not in fields.
   const card = detail.card;
-  const hasCardValue = card ? [card.cardholder, card.type, card.number, card.expiry, card.securityCode, card.pin, card.billingAddress].some((value) => value) : false;
+  const allCardValue = card ? [card.cardholder, card.type, card.number, card.expiry, card.securityCode, card.pin, card.billingAddress] : [];
+  const hasCardValue = card ? [...allCardValue, ...allAddressKey.map((key) => card[key])].some((value) => value) : false;
+  const hasAddressValue = detail.address ? Object.values(detail.address).some((value) => value) : false;
   const hasIdentityValue = detail.identity ? Object.values(detail.identity).some((value) => value) : false;
   const credential = detail.apiCredential;
   const hasCredentialValue = credential ? [credential.service, credential.keyId, credential.secret, credential.host, credential.expiry].some((value) => value) : false;
@@ -1374,7 +1386,8 @@ export function hasShareableField(detail: ItemDetail): boolean {
       detail.fields.some((field) => field.value) ||
       hasCardValue ||
       hasIdentityValue ||
-      hasCredentialValue,
+      hasCredentialValue ||
+      hasAddressValue,
   );
 }
 

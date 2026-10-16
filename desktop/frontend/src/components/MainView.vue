@@ -18,6 +18,7 @@ import {
   startCreatingCard,
   startCreatingIdentity,
   startCreatingAPICredential,
+  startCreatingAddress,
   startCreatingSecureNote,
   startCreatingSSHKey,
   store,
@@ -26,7 +27,7 @@ import {
   toggleSelectedItemFavorite,
 } from "../store";
 import type { FavoriteItem, ItemDetail } from "../api";
-import { apiCredentialCategory, creditCardCategory, formatAPICredentialSummary, formatCardSummary, formatIdentitySummary, formatKeyType, getDomain, getInitials, getItemIcon, identityCategory, isMacPlatform, secureNoteCategory, sshKeyCategory } from "../util";
+import { addressCategory, apiCredentialCategory, creditCardCategory, formatAddressSummary, formatAPICredentialSummary, formatCardSummary, formatIdentitySummary, formatKeyType, getDomain, getInitials, getItemIcon, identityCategory, isMacPlatform, secureNoteCategory, sshKeyCategory } from "../util";
 import AppIcon from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
 import ItemDetailPanel from "./ItemDetailPanel.vue";
@@ -86,6 +87,9 @@ function getItemSubtitle(vaultItem: ItemDetail): string {
   }
   if (vaultItem.category === apiCredentialCategory) {
     return formatAPICredentialSummary(vaultItem.apiCredential);
+  }
+  if (vaultItem.category === addressCategory) {
+    return formatAddressSummary(vaultItem.address);
   }
   return vaultItem.username || (vaultItem.urls[0] ? getDomain(vaultItem.urls[0]) : "");
 }
@@ -301,6 +305,9 @@ onBeforeUnmount(() => {
             </button>
             <button class="ghost" role="menuitem" data-testid="new-api-credential" @click="chooseNewItem(startCreatingAPICredential)">
               <AppIcon name="apiKey" /> API credential
+            </button>
+            <button class="ghost" role="menuitem" data-testid="new-address" @click="chooseNewItem(startCreatingAddress)">
+              <AppIcon name="address" /> Address
             </button>
             <button class="ghost" role="menuitem" data-testid="new-ssh-key" @click="chooseNewItem(startCreatingSSHKey)">
               <AppIcon name="key" /> SSH key

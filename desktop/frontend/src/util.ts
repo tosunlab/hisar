@@ -139,14 +139,16 @@ export const secureNoteCategory = "secure-note";
 export const creditCardCategory = "credit-card";
 export const identityCategory = "identity";
 export const apiCredentialCategory = "api-credential";
+export const addressCategory = "address";
 
-type CategoryIcon = "key" | "note" | "card" | "identity" | "apiKey";
+type CategoryIcon = "key" | "note" | "card" | "identity" | "apiKey" | "address";
 const allCategoryIcon: Record<string, CategoryIcon> = {
   [sshKeyCategory]: "key",
   [secureNoteCategory]: "note",
   [creditCardCategory]: "card",
   [identityCategory]: "identity",
   [apiCredentialCategory]: "apiKey",
+  [addressCategory]: "address",
 };
 
 // getItemIcon is the tile icon of an item's category; logins show their initials instead.
@@ -162,8 +164,29 @@ export const cardFieldName = {
   expiry: "Expiry",
   securityCode: "Security code",
   pin: "PIN",
+  // billingAddress is the one-line address a card had before it kept one in the address fields.
   billingAddress: "Billing address",
 } as const;
+
+// The names of an address's custom fields, as core/item stores them; identities and cards keep their address in the same
+// fields, and a hisar:// reference names them too.
+export const addressFieldName = {
+  street: "Street",
+  city: "City",
+  region: "Region",
+  postalCode: "Postal code",
+  country: "Country",
+} as const;
+
+export type AddressKey = keyof typeof addressFieldName;
+export const allAddressKey = Object.keys(addressFieldName) as AddressKey[];
+
+// formatAddressSummary is an address's line in lists: its city and country, or the first line of its street, such as
+// "Springfield, US".
+export function formatAddressSummary(address: { street: string; city: string; country: string } | null | undefined): string {
+  const cityAndCountry = [address?.city, address?.country].filter((part) => part).join(", ");
+  return cityAndCountry || (address?.street ?? "").split("\n")[0] || "Address";
+}
 
 // The names of an identity's custom fields, as core/item stores them.
 export const identityFieldName = {
@@ -173,6 +196,7 @@ export const identityFieldName = {
   birthDate: "Birth date",
   email: "Email",
   phone: "Phone",
+  // address is the one-line address an identity had before it kept one in the address fields.
   address: "Address",
   passportNumber: "Passport number",
   driversLicenseNumber: "Driver's license number",
