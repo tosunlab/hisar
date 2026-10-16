@@ -845,7 +845,7 @@ It then dials the socket and sends `hello` every 200 ms for up to 10 s. Once the
 
 | Type | Parameters | Result |
 |---|---|---|
-| `hello` | — | `protocolVersion` (1), `state` (`signed-out`, `locked`, `unlocked`), `email`, `server`, `isApproved` (for this terminal session), `features` (what the app understands beyond the protocol version: `secure-notes`, `credit-cards`, `identities`, `favorites`, `api-credentials`, `tags`, `addresses`, `software-licenses`, `servers`, `databases`; an older app sends none); never needs an approval |
+| `hello` | — | `protocolVersion` (1), `state` (`signed-out`, `locked`, `unlocked`), `email`, `server`, `isApproved` (for this terminal session), `features` (what the app understands beyond the protocol version: `secure-notes`, `credit-cards`, `identities`, `favorites`, `api-credentials`, `tags`, `addresses`, `software-licenses`, `servers`, `databases`, `organizations`; an older app sends none); never needs an approval |
 | `account` | — | `accountID`, `name`, `email`, `role`, `server` |
 | `vaults.list` | — | `vaults`: `[{id, name, type, role, itemCount}]` |
 | `vaults.create` | `name` | `vault` |
