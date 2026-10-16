@@ -2,6 +2,8 @@ package app
 
 import (
 	"reflect"
+	"slices"
+	"strings"
 	"testing"
 
 	"github.com/tryhisar/hisar/core/cliprotocol"
@@ -138,5 +140,54 @@ func TestCodingAgentsFindDatabasesByHostAndName(t *testing.T) {
 	}
 	if result, err := service.searchAgentItems("db-password", ""); err != nil || result.TotalCount != 0 {
 		t.Errorf("a search for the password found %+v, %v", result, err)
+	}
+}
+
+func TestCodingAgentsGetTheConnectionStringReference(t *testing.T) {
+	testService := createUnlockedTestService(t)
+	service, vaultID := testService.service, testService.personalID
+	if _, err := service.SetVaultAvailableToAgents(vaultID, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.SaveItem(vaultID, ItemDetail{
+		Category: item.CategoryDatabase, Title: "Prod", Username: "app", Password: "p@ss",
+		Database: &ItemDatabase{Engine: "sqlserver", Host: "sql.example.com", Port: "1433", Name: "Sales"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	jdbcField := []ItemField{{Name: "Connection string", Value: "jdbc:db2://db2.example.com:50000/app"}}
+	if _, err := service.SaveItem(vaultID, ItemDetail{Category: item.CategoryDatabase, Title: "Mainframe", Database: &ItemDatabase{Engine: "DB2", Host: "db2.example.com"}, Fields: jdbcField}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.SaveItem(vaultID, ItemDetail{Category: item.CategoryLogin, Title: "Legacy", Fields: jdbcField}); err != nil {
+		t.Fatal(err)
+	}
+	referencesByTitle := map[string][]string{}
+	result, err := service.searchAgentItems("", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, agentItem := range result.Items {
+		for _, field := range agentItem.Fields {
+			referencesByTitle[agentItem.Title] = append(referencesByTitle[agentItem.Title], field.Reference)
+		}
+	}
+	for _, title := range []string{"Prod", "Mainframe", "Legacy"} {
+		// A custom field keeps its own spelling; references match labels ignoring case.
+		want := "hisar://personal/" + strings.ToLower(title) + "/connection%20string"
+		if !slices.ContainsFunc(referencesByTitle[title], func(reference string) bool { return strings.EqualFold(reference, want) }) {
+			t.Errorf("%s fields = %v, want %s", title, referencesByTitle[title], want)
+		}
+	}
+	resolved, err := service.resolveSecrets([]string{"hisar://Personal/Prod/connection%20string", "hisar://Personal/Mainframe/connection%20string"})
+	if err != nil || !reflect.DeepEqual(resolved.Values, []string{"sqlserver://app:p%40ss@sql.example.com:1433?database=Sales", "jdbc:db2://db2.example.com:50000/app"}) {
+		t.Errorf("resolved = %q, %v", resolved.Values, err)
+	}
+	mainframeID := listItemsByTitle(t, service, vaultID)["Mainframe"].ID
+	if err := service.CopyField(vaultID, mainframeID, "connection string"); err != nil {
+		t.Fatal(err)
+	}
+	if copied, _ := testService.clipboard.GetText(); copied != "jdbc:db2://db2.example.com:50000/app" {
+		t.Errorf("copied %q", copied)
 	}
 }

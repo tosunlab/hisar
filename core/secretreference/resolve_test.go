@@ -200,6 +200,24 @@ func TestDatabaseFieldsResolve(t *testing.T) {
 	if _, err := ResolveAll(source, []string{"hisar://Work/Mainframe/connection string"}, time.Now()); err == nil || !strings.Contains(err.Error(), "has no connection string") {
 		t.Errorf("an engine Hisar does not know: %v", err)
 	}
+
+	// Where no string is built, a custom field of that name is the connection string; a built one wins over it.
+	jdbcField := []item.Field{{Name: "Connection string", Value: "jdbc:db2://db2.example.com:50000/app"}}
+	item.WriteDatabase(&other, item.Database{Engine: "db2", Host: "db2.example.com"}, jdbcField)
+	item.WriteDatabase(&database, item.Database{Engine: "postgresql", Host: "db.example.com", Port: "5432", Name: "app"}, jdbcField)
+	source.itemsByVault["vault-work"] = []item.Item{database, other, login}
+	resolved, err = ResolveAll(source, []string{"hisar://Work/Mainframe/connection string", "hisar://Work/Prod db/connection string"}, time.Now())
+	if err != nil || resolved[0].Value != "jdbc:db2://db2.example.com:50000/app" || resolved[1].Value != "postgresql://app:db-password@db.example.com:5432/app" {
+		t.Errorf("resolved = %+v, %v", resolved, err)
+	}
+	for _, unbuilt := range []item.Item{other, login} {
+		if err := CheckCustomFieldLabel(&unbuilt, "Connection string"); err != nil {
+			t.Errorf("%s: %v", unbuilt.Overview.Title, err)
+		}
+	}
+	if err := CheckCustomFieldLabel(&database, "Connection string"); err == nil {
+		t.Error("a custom field can stand in for a built connection string")
+	}
 }
 
 func TestPrivateKeyIsNeverResolved(t *testing.T) {

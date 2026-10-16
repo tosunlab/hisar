@@ -120,4 +120,14 @@ func TestLookupConnectionString(t *testing.T) {
 	if login.ConnectionString() != "" {
 		t.Error("a login builds a connection string")
 	}
+	// A database with no built string keeps its own in a custom field, such as a JDBC URL for DB2; a built one wins.
+	mainframe := Item{Overview: Overview{Category: CategoryDatabase}, Details: Details{Fields: login.Details.Fields}}
+	WriteDatabase(&mainframe, Database{Engine: "DB2", Host: "db2.example.com"}, login.Details.Fields)
+	if value, found := LookupField(&mainframe, "connection string", names, time.Now()); !found || value != "jdbc:db2://db.example.com:50000/app" {
+		t.Errorf("DB2 connection string = %q, %v", value, found)
+	}
+	WriteDatabase(&database, Database{Engine: "postgresql", Host: "db.example.com", Name: "app"}, login.Details.Fields)
+	if value, _ := LookupField(&database, "connection string", names, time.Now()); value != "postgresql://app:secret@db.example.com/app" {
+		t.Errorf("a custom field won over the built connection string: %q", value)
+	}
 }

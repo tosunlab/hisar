@@ -3,6 +3,7 @@ package secretreference
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -19,8 +20,9 @@ const (
 	FieldPublicKey   = "public key"
 	FieldPrivateKey  = "private key"
 	FieldFingerprint = "fingerprint"
-	// FieldConnectionString is a database's connection string, built from its values; on other items the label names a
-	// custom field, as it did before databases existed.
+	// FieldConnectionString is a database's connection string, built from its values. Where none is built (another item,
+	// or a database with an engine Hisar does not know or no host), the label names a custom field, as it did before
+	// databases existed; a built string always wins over such a field.
 	FieldConnectionString = "connection string"
 )
 
@@ -208,6 +210,9 @@ func ReadField(vaultItem *item.Item, label string, now time.Time) (string, strin
 	if !isBuiltIn || builtInField == FieldConnectionString && !vaultItem.IsCategory(item.CategoryDatabase) {
 		return readCustomField(vaultItem, label)
 	}
+	if builtInField == FieldConnectionString && vaultItem.ConnectionString() == "" && hasCustomField(vaultItem, label) {
+		return readCustomField(vaultItem, label)
+	}
 	var value string
 	switch builtInField {
 	case FieldPassword:
@@ -266,9 +271,15 @@ func readCustomField(vaultItem *item.Item, label string) (string, string, error)
 	return matches[0].Value, matches[0].Name, nil
 }
 
-// CheckCustomFieldLabel tells whether a reference can name the item's custom field with this label.
+// hasCustomField tells whether the item has a custom field with this label, ignoring case.
+func hasCustomField(vaultItem *item.Item, label string) bool {
+	return slices.ContainsFunc(vaultItem.Details.Fields, func(field item.Field) bool { return strings.EqualFold(field.Name, label) })
+}
+
+// CheckCustomFieldLabel tells whether a reference can name the item's custom field with this label. A "Connection
+// string" field can be named wherever no connection string is built, which is where ReadField reads it.
 func CheckCustomFieldLabel(vaultItem *item.Item, label string) error {
-	if _, isBuiltIn := GetBuiltInField(label); isBuiltIn {
+	if builtInField, isBuiltIn := GetBuiltInField(label); isBuiltIn && (builtInField != FieldConnectionString || vaultItem.ConnectionString() != "") {
 		return fmt.Errorf("%q is also the name of a built-in field; rename the custom field to reference it", label)
 	}
 	count := 0

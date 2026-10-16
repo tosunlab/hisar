@@ -17,8 +17,8 @@ const (
 	FieldPublicKey   = "public key"
 	FieldFingerprint = "fingerprint"
 	FieldOneTimeCode = "one-time code"
-	// FieldConnectionString is a database's connection string, built from its values; on other items the name is an
-	// ordinary custom field label.
+	// FieldConnectionString is a database's connection string, built from its values. Where none is built (another item,
+	// or a database with an engine Hisar does not know or no host), the name is an ordinary custom field label.
 	FieldConnectionString = "connection string"
 )
 
@@ -27,10 +27,13 @@ const (
 type FieldNames map[string]string
 
 // LookupField returns the value of the built-in field name maps to in names, or else of the first custom field with
-// that label, ignoring case. The first URL stands for the URLs; the one-time code is generated for now.
+// that label, ignoring case. The first URL stands for the URLs; the one-time code is generated for now. A connection
+// string that is not built falls back to the custom field, so a DB2 item can keep its JDBC URL in one.
 func LookupField(vaultItem *Item, name string, names FieldNames, now time.Time) (string, bool) {
-	if field, isBuiltIn := names[strings.ToLower(name)]; isBuiltIn && (field != FieldConnectionString || vaultItem.IsCategory(CategoryDatabase)) {
-		return getBuiltInField(vaultItem, field, now)
+	if field, isBuiltIn := names[strings.ToLower(name)]; isBuiltIn {
+		if value, found := getBuiltInField(vaultItem, field, now); found || field != FieldConnectionString {
+			return value, found
+		}
 	}
 	for _, field := range vaultItem.Details.Fields {
 		if strings.EqualFold(field.Name, name) {
