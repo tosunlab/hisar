@@ -153,6 +153,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     var title: String
     var username: String
     var allURL: [String]
+    var allTag: [String]
     var password: String
     var notes: String
     var allField: [ItemField]
@@ -178,17 +179,19 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     enum CodingKeys: String, CodingKey {
         case id, revision, category, title, username, password, notes, publicKey, fingerprint, keyType, oneTimePassword, hasOneTimePassword, canConvertToSecureNote, card, identity, isFavorite, apiCredential
         case allURL = "urls"
+        case allTag = "tags"
         case allField = "fields"
         case allPasskey = "passkeys"
     }
 
-    init(id: String = "", revision: String = "", category: String = ItemDetail.categoryLogin, title: String = "", username: String = "", allURL: [String] = [], password: String = "", notes: String = "", allField: [ItemField] = [], publicKey: String = "", fingerprint: String = "", keyType: String = "", oneTimePassword: String = "", hasOneTimePassword: Bool = false, allPasskey: [ItemPasskey] = [], canConvertToSecureNote: Bool = false, card: ItemCard? = nil, identity: ItemIdentity? = nil, isFavorite: Bool = false, apiCredential: ItemAPICredential? = nil) {
+    init(id: String = "", revision: String = "", category: String = ItemDetail.categoryLogin, title: String = "", username: String = "", allURL: [String] = [], allTag: [String] = [], password: String = "", notes: String = "", allField: [ItemField] = [], publicKey: String = "", fingerprint: String = "", keyType: String = "", oneTimePassword: String = "", hasOneTimePassword: Bool = false, allPasskey: [ItemPasskey] = [], canConvertToSecureNote: Bool = false, card: ItemCard? = nil, identity: ItemIdentity? = nil, isFavorite: Bool = false, apiCredential: ItemAPICredential? = nil) {
         self.id = id
         self.revision = revision
         self.category = category
         self.title = title
         self.username = username
         self.allURL = allURL
+        self.allTag = allTag
         self.password = password
         self.notes = notes
         self.allField = allField
@@ -213,6 +216,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
         username = try container.decodeIfPresent(String.self, forKey: .username) ?? ""
         allURL = try container.decodeIfPresent([String].self, forKey: .allURL) ?? []
+        allTag = try container.decodeIfPresent([String].self, forKey: .allTag) ?? []
         password = try container.decodeIfPresent(String.self, forKey: .password) ?? ""
         notes = try container.decodeIfPresent(String.self, forKey: .notes) ?? ""
         allField = try container.decodeIfPresent([ItemField].self, forKey: .allField) ?? []
@@ -227,6 +231,15 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         identity = try container.decodeIfPresent(ItemIdentity.self, forKey: .identity)
         isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
         apiCredential = try container.decodeIfPresent(ItemAPICredential.self, forKey: .apiCredential)
+    }
+
+    /// The tags typed into one field, separated by commas, without blanks or repeats.
+    static func splitTags(_ text: String) -> [String] {
+        var allTag: [String] = []
+        for tag in text.split(separator: ",").map({ $0.trimmingCharacters(in: .whitespacesAndNewlines) }) where !tag.isEmpty && !allTag.contains(tag) {
+            allTag.append(tag)
+        }
+        return allTag
     }
 
     var isLogin: Bool { category.isEmpty || category == Self.categoryLogin }

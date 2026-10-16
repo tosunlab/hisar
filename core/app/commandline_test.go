@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -221,6 +222,53 @@ func TestCommandLineSaveKeepsWhatTheCommandLineDoesNotEdit(t *testing.T) {
 	}
 	if failure := test.send(t, cliprotocol.Request{Type: cliprotocol.TypeSaveItem, VaultID: vaultID}, nil); !strings.HasPrefix(failure, cliprotocol.ErrorInvalidRequest) {
 		t.Errorf("save without item: %q", failure)
+	}
+}
+
+func TestCommandLineListsTagsAndKeepsThemUnlessSent(t *testing.T) {
+	test := createCommandLineTest(t)
+	service := test.testService.service
+	vaultID := test.testService.personalID
+	saved, err := service.SaveItem(vaultID, ItemDetail{Title: "GitHub", Username: "alice", Tags: []string{"work", "dev"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hello cliprotocol.HelloResult
+	test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeHello}, &hello)
+	if !hello.HasFeature(cliprotocol.FeatureTags) {
+		t.Errorf("hello does not announce tags: %+v", hello.Features)
+	}
+	var itemList cliprotocol.ItemListResult
+	test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeListItem, VaultID: vaultID}, &itemList)
+	if len(itemList.Items) != 1 || !slices.Equal(itemList.Items[0].Tags, []string{"work", "dev"}) {
+		t.Errorf("items %+v", itemList)
+	}
+	var itemResult cliprotocol.ItemResult
+	test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeGetItem, VaultID: vaultID, ItemID: saved.ID}, &itemResult)
+	if !slices.Equal(itemResult.Item.Tags, []string{"work", "dev"}) {
+		t.Errorf("item %+v", itemResult.Item)
+	}
+
+	test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeSaveItem, VaultID: vaultID, Item: &cliprotocol.ItemChange{
+		ID: saved.ID, Revision: saved.Revision, Title: "GitHub", Username: "alice", Notes: "edited by an older hisar",
+	}}, &itemResult)
+	if !slices.Equal(itemResult.Item.Tags, []string{"work", "dev"}) {
+		t.Errorf("a save without tags dropped them: %+v", itemResult.Item)
+	}
+	tags := []string{"personal"}
+	test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeSaveItem, VaultID: vaultID, Item: &cliprotocol.ItemChange{
+		ID: saved.ID, Revision: itemResult.Item.Revision, Title: "GitHub", Username: "alice", Tags: &tags,
+	}}, &itemResult)
+	if !slices.Equal(itemResult.Item.Tags, []string{"personal"}) {
+		t.Errorf("a save with tags did not replace them: %+v", itemResult.Item)
+	}
+	tags = []string{}
+	var cleared cliprotocol.ItemResult
+	test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeSaveItem, VaultID: vaultID, Item: &cliprotocol.ItemChange{
+		ID: saved.ID, Revision: itemResult.Item.Revision, Title: "GitHub", Username: "alice", Tags: &tags,
+	}}, &cleared)
+	if len(cleared.Item.Tags) != 0 {
+		t.Errorf("a save with no tags kept them: %+v", cleared.Item)
 	}
 }
 

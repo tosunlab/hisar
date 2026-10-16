@@ -43,7 +43,7 @@ var commands = []command{
 	{name: "vaults", summary: "list vaults", withBackend: runListVaults},
 	{name: "vault-create", argumentUsage: "<name>", summary: "create a shared vault", withBackend: runCreateVault},
 	{name: "vault", argumentUsage: "rename|delete|leave|create <vault>", summary: "rename, delete or leave a vault, or create one (" + vaultUsage + ")", withBackend: runVault},
-	{name: "ls", argumentUsage: "[-v vault] [--favorites]", summary: "list items; --favorites lists your favorites in every vault", withBackend: runListItems},
+	{name: "ls", argumentUsage: "[-v vault] [--tag tag] [--favorites]", summary: "list items; --tag keeps those with a tag, --favorites lists your favorites in every vault", withBackend: runListItems},
 	{name: "get", argumentUsage: "<item> [-f field] [-v vault]", summary: "show an item, or one field of it (e.g. -f password, -f code)", withBackend: runGet},
 	{name: "read", argumentUsage: "<hisar://vault/item/field> [--no-newline]", summary: "print one secret, for scripts", run: runRead, isLocal: true},
 	{name: "run", argumentUsage: "[--env-file f]... [--no-masking] -- <cmd>", summary: "run a command with the secrets its hisar:// references name, masked in its output", run: runRun, isLocal: true},

@@ -29,11 +29,13 @@ const (
 	FeatureAPICredentials = "api-credentials"
 	// FeatureFavorites: favorites.list, favorites.add and favorites.remove; items.import stars Item.IsFavorite items.
 	FeatureFavorites = "favorites"
+	// FeatureTags: items.list and items.get return each item's tags, and items.save takes ItemChange.Tags.
+	FeatureTags = "tags"
 )
 
 // ListFeatures returns the features this build of the app announces in hello.
 func ListFeatures() []string {
-	return []string{FeatureSecureNotes, FeatureCreditCards, FeatureIdentities, FeatureFavorites, FeatureAPICredentials}
+	return []string{FeatureSecureNotes, FeatureCreditCards, FeatureIdentities, FeatureFavorites, FeatureAPICredentials, FeatureTags}
 }
 
 // GetCategoryFeature returns the feature an app must announce before items.save may create an item of category, or ""

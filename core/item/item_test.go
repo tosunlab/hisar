@@ -72,6 +72,20 @@ func TestGenerateDistribution(t *testing.T) {
 	}
 }
 
+func TestNormalizeTagsAndHasTag(t *testing.T) {
+	normalized := NormalizeTags([]string{" work ", "", "Work", "work", "  ", "finance"})
+	if len(normalized) != 3 || normalized[0] != "work" || normalized[1] != "Work" || normalized[2] != "finance" {
+		t.Errorf("normalized = %q", normalized)
+	}
+	if NormalizeTags([]string{"", " "}) != nil || NormalizeTags(nil) != nil {
+		t.Error("tags left for an item without any")
+	}
+	vaultItem := Item{Overview: Overview{Tags: normalized}}
+	if !vaultItem.HasTag("FINANCE") || vaultItem.HasTag("fin") || (&Item{}).HasTag("work") {
+		t.Error("HasTag does not match whole tags ignoring case")
+	}
+}
+
 func TestOverviewCategoryJSON(t *testing.T) {
 	encoded, err := json.Marshal(Overview{Title: "GitHub"})
 	if err != nil {

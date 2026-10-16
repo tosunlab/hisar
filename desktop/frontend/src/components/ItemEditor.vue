@@ -27,6 +27,7 @@ function createDraft(): ItemDetail {
     return {
       ...selected,
       urls: [...selected.urls],
+      tags: [...(selected.tags ?? [])],
       fields: selected.fields.map((field) => ({ ...field })),
       passkeys: [...(selected.passkeys ?? [])],
       card: selected.card ? { ...selected.card } : selected.category === creditCardCategory ? createEmptyCard() : selected.card,
@@ -39,6 +40,7 @@ function createDraft(): ItemDetail {
     };
   }
   const empty = createEmptyItem();
+  empty.tags = empty.tags ?? [];
   if (store.editorMode === "create-secure-note") {
     empty.category = secureNoteCategory;
   } else if (store.editorMode === "create-credit-card") {
@@ -146,7 +148,37 @@ function removeField(index: number): void {
   draft.fields.splice(index, 1);
 }
 
+const tagText = ref("");
+const tagInput = ref<HTMLInputElement | null>(null);
+
+// addTag turns what was typed into tags, one per comma, skipping blanks and tags the item already has.
+function addTag(): void {
+  for (const tag of tagText.value.split(",")) {
+    const trimmedTag = tag.trim();
+    if (trimmedTag !== "" && !draft.tags.includes(trimmedTag)) {
+      draft.tags.push(trimmedTag);
+    }
+  }
+  tagText.value = "";
+}
+
+function removeTag(tag: string): void {
+  draft.tags = draft.tags.filter((candidate) => candidate !== tag);
+}
+
+// A comma adds the tag like Enter does; Backspace in the empty field removes the last tag.
+function handleTagKey(event: KeyboardEvent): void {
+  if (event.key === "," || event.key === "Enter") {
+    event.preventDefault();
+    addTag();
+  } else if (event.key === "Backspace" && tagText.value === "" && draft.tags.length > 0) {
+    event.preventDefault();
+    draft.tags.pop();
+  }
+}
+
 async function submitItem(): Promise<void> {
+  addTag();
   draft.urls = urlText.value
     .split("\n")
     .map((link) => link.trim())
@@ -404,6 +436,27 @@ async function submitItem(): Promise<void> {
       </label>
     </section>
 
+    <section class="card editor-card" data-testid="tag-editor">
+      <label class="last" for="tagInput"><span>Tags</span></label>
+      <div class="tag-field" @click="tagInput?.focus()">
+        <span v-for="tag in draft.tags" :key="tag" class="tag-chip" :data-testid="`draft-tag-${tag}`">
+          <AppIcon name="tag" :size="11" /> {{ tag }}
+          <button type="button" class="ghost icon-button" :aria-label="`Remove tag ${tag}`" @click.stop="removeTag(tag)"><AppIcon name="close" :size="11" /></button>
+        </span>
+        <input
+          id="tagInput"
+          ref="tagInput"
+          v-model="tagText"
+          name="tags"
+          autocomplete="off"
+          spellcheck="false"
+          :placeholder="draft.tags.length === 0 ? 'Add tags, separated by commas' : 'Add a tag'"
+          @keydown="handleTagKey"
+          @blur="addTag"
+        />
+      </div>
+    </section>
+
     <div class="row footer">
       <span class="muted"><AppIcon name="shield" :size="12" /> Encrypted on this device before saving</span>
       <div class="spacer"></div>
@@ -516,6 +569,46 @@ button.active {
 .add-field {
   padding-left: 0;
   color: var(--color-text-muted);
+}
+
+.tag-field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  cursor: text;
+}
+
+.tag-field:focus-within {
+  border-color: var(--color-focus);
+  box-shadow: 0 0 0 3px var(--color-focus-ring);
+}
+
+.tag-field input {
+  flex: 1;
+  min-width: 140px;
+  padding: 3px 4px;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+}
+
+.tag-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 2px 1px 8px;
+  border-radius: 10px;
+  background: var(--color-selected);
+  font-size: 12px;
+}
+
+.tag-chip .icon-button {
+  padding: 2px;
 }
 
 .footer {

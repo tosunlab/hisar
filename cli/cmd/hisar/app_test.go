@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -127,8 +128,8 @@ func answerFakeVaultRequest(request cliprotocol.Request) (any, *cliprotocol.Resp
 		return cliprotocol.VaultListResult{Vaults: []cliprotocol.Vault{{ID: "personal-id", Name: "Personal", Type: "personal", Role: "owner"}, {ID: "family-id", Name: "Family", Type: "shared", Role: "reader"}}}, nil
 	case cliprotocol.TypeListItem:
 		return cliprotocol.ItemListResult{Items: []cliprotocol.Item{
-			{ID: "github-id", Revision: "r1", Title: "GitHub", Username: "alice", URLs: []string{"https://github.com"}, HasOneTimePassword: true},
-			{ID: "bank-id", Revision: "r2", Title: "Bank", Username: "alice"},
+			{ID: "github-id", Revision: "r1", Title: "GitHub", Username: "alice", URLs: []string{"https://github.com"}, Tags: []string{"work", "dev"}, HasOneTimePassword: true},
+			{ID: "bank-id", Revision: "r2", Title: "Bank", Username: "alice", Tags: []string{"Finance"}},
 			{ID: "note-id", Revision: "r3", Category: item.CategorySecureNote, Title: "Recovery codes"},
 			{ID: "key-id", Revision: "r4", Category: item.CategorySSHKey, Title: "Deploy key", PublicKey: "ssh-ed25519 AAAA deploy"},
 			{ID: "card-id", Revision: "r5", Category: item.CategoryCreditCard, Title: "Visa"},
@@ -136,7 +137,7 @@ func answerFakeVaultRequest(request cliprotocol.Request) (any, *cliprotocol.Resp
 	case cliprotocol.TypeGetItem:
 		if request.ItemID == "github-id" {
 			return cliprotocol.ItemResult{Item: cliprotocol.Item{
-				ID: "github-id", Revision: "r1", Title: "GitHub", Username: "alice", URLs: []string{"https://github.com"}, Password: "github-password",
+				ID: "github-id", Revision: "r1", Title: "GitHub", Username: "alice", URLs: []string{"https://github.com"}, Tags: []string{"work", "dev"}, Password: "github-password",
 				Notes: "work", Fields: []cliprotocol.Field{{Name: "PIN", Value: "1234"}}, Passkeys: []cliprotocol.Passkey{{RelyingPartyID: "github.com", UserName: "alice"}}, HasOneTimePassword: true,
 			}}, nil
 		}
@@ -309,6 +310,52 @@ func TestCommandsRunThroughTheApp(t *testing.T) {
 		if request.VaultID != "personal-id" {
 			t.Errorf("code request %+v", request)
 		}
+	}
+}
+
+func TestListItemsByTagThroughTheApp(t *testing.T) {
+	app := startFakeApp(t)
+	stdout, _, err := runCapturingOutput(t, false, "", "ls")
+	if err != nil || strings.Fields(strings.Split(stdout, "\n")[0])[4] != "TAGS" || !strings.Contains(stdout, " work,dev ") {
+		t.Fatalf("ls: %q %v", stdout, err)
+	}
+	stdout, _, err = runCapturingOutput(t, false, "", "ls", "--tag", "work")
+	if err != nil || !strings.Contains(stdout, "GitHub") || strings.Contains(stdout, "Bank") || strings.Contains(stdout, "Recovery") {
+		t.Errorf("ls --tag work: %q %v", stdout, err)
+	}
+	stdout, _, err = runCapturingOutput(t, false, "", "ls", "--tag", "finance")
+	if err != nil || !strings.Contains(stdout, "Bank") || strings.Contains(stdout, "GitHub") {
+		t.Errorf("ls --tag finance ignoring case: %q %v", stdout, err)
+	}
+	stdout, _, err = runCapturingOutput(t, false, "", "ls", "--tag", "nothing")
+	if err != nil || strings.Count(stdout, "\n") != 1 {
+		t.Errorf("ls --tag without a match: %q %v", stdout, err)
+	}
+	stdout, _, err = runCapturingOutput(t, false, "", "get", "github")
+	if err != nil || !strings.Contains(stdout, "tags:      work, dev\n") {
+		t.Errorf("get: %q %v", stdout, err)
+	}
+	stdout, _, err = runCapturingOutput(t, false, "", "get", "recovery")
+	if err != nil || strings.Contains(stdout, "tags:") {
+		t.Errorf("get an item without tags: %q %v", stdout, err)
+	}
+
+	if _, _, err := runCapturingOutput(t, false, "\n\n\n\nedited\n", "edit", "github"); err != nil {
+		t.Fatal(err)
+	}
+	edited := app.findRequest(cliprotocol.TypeSaveItem)[0]
+	if edited.Item.Tags == nil || !slices.Equal(*edited.Item.Tags, []string{"work", "dev"}) {
+		t.Errorf("edit sent the tags %+v", edited.Item.Tags)
+	}
+
+	app.mutex.Lock()
+	app.hello.Features = []string{cliprotocol.FeatureSecureNotes, cliprotocol.FeatureCreditCards}
+	app.mutex.Unlock()
+	if _, _, err := runCapturingOutput(t, false, "", "ls", "--tag", "work"); err == nil || !strings.Contains(err.Error(), "does not list tags") {
+		t.Errorf("ls --tag through an older app: %v", err)
+	}
+	if _, _, err := runCapturingOutput(t, false, "", "ls"); err != nil {
+		t.Errorf("ls through an older app: %v", err)
 	}
 }
 

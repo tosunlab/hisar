@@ -267,6 +267,9 @@ func writeItem(output io.Writer, vaultItem *item.Item) error {
 	for _, link := range vaultItem.Overview.URLs {
 		fmt.Fprintf(writer, "url:\t%s\n", link)
 	}
+	if len(vaultItem.Overview.Tags) > 0 {
+		fmt.Fprintf(writer, "tags:\t%s\n", strings.Join(vaultItem.Overview.Tags, ", "))
+	}
 	if vaultItem.Details.Password != "" {
 		fmt.Fprintf(writer, "password:\t%s\n", vaultItem.Details.Password)
 	}
