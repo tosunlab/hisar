@@ -1,8 +1,8 @@
 name: macOS and iOS
 
-# macOS minutes are expensive, so each job runs only when the pushed commits change desktop/ (the Mac app) or mobile/ (the
-# iPhone app), or this workflow; scripts/detect-app-changes.sh decides. The Go tests in ci.yml cover core/ for both. The
-# run-macos label, or a manual run, runs both anyway.
+# macOS minutes are expensive, so each job runs only when the pull request changes what it builds: desktop/ and cli/ (the
+# Mac app), mobile/ (the iPhone app), core/ and go.work (both), or this workflow; scripts/detect-app-changes.sh decides.
+# The run-macos label, or a manual run, runs both anyway.
 on:
   pull_request:
     types: [opened, reopened, synchronize, labeled]
@@ -28,7 +28,7 @@ env:
 
 jobs:
   changes:
-    name: Check what the push changes
+    name: Check what the pull request changes
     # Adding another label changes no file, so it runs nothing.
     if: github.event.action != 'labeled' || github.event.label.name == 'run-macos'
     runs-on: ubuntu-latest
@@ -40,12 +40,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      - name: Compare with the commit before the push
+      - name: Compare the pull request with its base
         id: changes
         env:
-          EVENT_ACTION: ${{ github.event.action }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          BEFORE_SHA: ${{ github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           IS_FORCED: ${{ contains(github.event.pull_request.labels.*.name, 'run-macos') }}
           WORKFLOW_FILE: .github/workflows/macos.yml
@@ -116,6 +114,8 @@ jobs:
     timeout-minutes: 90
     env:
       DATABASE_NAME: hisar_ios_${{ github.run_id }}_${{ github.run_attempt }}
+      # make build-ios builds the app and the tests once; the test steps run what it built.
+      IOS_TESTS_PREBUILT: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -124,6 +124,12 @@ jobs:
           cache-dependency-path: "**/go.sum"
       - name: Select Xcode
         run: sudo xcode-select -s "$XCODE_PATH" && xcodebuild -version
+      # Booting takes a minute; it happens while HisarKit and the app build, and the tests then run on it as it is.
+      - name: Choose and boot the simulator
+        run: |
+          IOS_SIMULATOR_ID=$(mobile/ios/scripts/find-simulator.sh)
+          echo "IOS_SIMULATOR_ID=$IOS_SIMULATOR_ID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$IOS_SIMULATOR_ID"
       - name: Install XcodeGen
         run: |
           curl -fsSL -o "$RUNNER_TEMP/xcodegen.zip" "https://github.com/yonaskolb/XcodeGen/releases/download/$XCODEGEN_VERSION/xcodegen.zip"

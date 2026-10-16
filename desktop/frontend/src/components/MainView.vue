@@ -14,13 +14,14 @@ import {
   selectVault,
   startCreatingItem,
   startCreatingCard,
+  startCreatingIdentity,
   startCreatingSecureNote,
   startCreatingSSHKey,
   store,
   syncInBackground,
   syncInterval,
 } from "../store";
-import { creditCardCategory, formatCardSummary, formatKeyType, getDomain, getInitials, getItemIcon, isMacPlatform, secureNoteCategory, sshKeyCategory } from "../util";
+import { creditCardCategory, formatCardSummary, formatIdentitySummary, formatKeyType, getDomain, getInitials, getItemIcon, identityCategory, isMacPlatform, secureNoteCategory, sshKeyCategory } from "../util";
 import AppIcon from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
 import ItemDetailPanel from "./ItemDetailPanel.vue";
@@ -259,6 +260,9 @@ onBeforeUnmount(() => {
             <button class="ghost" role="menuitem" data-testid="new-credit-card" @click="chooseNewItem(startCreatingCard)">
               <AppIcon name="card" /> Credit card
             </button>
+            <button class="ghost" role="menuitem" data-testid="new-identity" @click="chooseNewItem(startCreatingIdentity)">
+              <AppIcon name="identity" /> Identity
+            </button>
             <button class="ghost" role="menuitem" data-testid="new-ssh-key" @click="chooseNewItem(startCreatingSSHKey)">
               <AppIcon name="key" /> SSH key
             </button>
@@ -296,6 +300,7 @@ onBeforeUnmount(() => {
               <span v-if="vaultItem.category === sshKeyCategory" class="item-subtitle">{{ formatKeyType(vaultItem.keyType) }} SSH key</span>
               <span v-else-if="vaultItem.category === secureNoteCategory" class="item-subtitle">Secure note</span>
               <span v-else-if="vaultItem.category === creditCardCategory" class="item-subtitle">{{ formatCardSummary(vaultItem.card) }}</span>
+              <span v-else-if="vaultItem.category === identityCategory" class="item-subtitle">{{ formatIdentitySummary(vaultItem.identity) }}</span>
               <span v-else class="item-subtitle">{{ vaultItem.username || (vaultItem.urls[0] ? getDomain(vaultItem.urls[0]) : "") }}</span>
             </span>
           </button>

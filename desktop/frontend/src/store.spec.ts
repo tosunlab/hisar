@@ -3,6 +3,7 @@ import {
   allTestVault,
   createApiMock,
   createDevice,
+  createIdentityItem,
   createItem,
   createPerson,
   createReceivedShareInvitation,
@@ -157,6 +158,18 @@ describe("store", () => {
     api.listAllItem.mockResolvedValue([]);
     await storeModule.selectVault("family");
     expect(store.selectedTag).toBe("");
+  });
+
+  it("finds an identity by the name and email the list shows", () => {
+    const identity = { ...createIdentityItem().identity!, middleName: "M.", email: "" };
+    const allItem = [
+      createIdentityItem({ id: "passport", title: "Passport", identity }),
+      createIdentityItem({ id: "work", title: "Work", identity: { ...identity, firstName: "", middleName: "", lastName: "", email: "bob@example.com" } }),
+      createItem({ id: "login", title: "GitHub", username: "carol" }),
+    ];
+    expect(storeModule.filterAllItem(allItem, "alice").map((vaultItem) => vaultItem.id)).toEqual(["passport"]);
+    expect(storeModule.filterAllItem(allItem, "Alice M. Example").map((vaultItem) => vaultItem.id)).toEqual(["passport"]);
+    expect(storeModule.filterAllItem(allItem, "bob@example").map((vaultItem) => vaultItem.id)).toEqual(["work"]);
   });
 
   it("saves an item, reloads the list and shows it", async () => {

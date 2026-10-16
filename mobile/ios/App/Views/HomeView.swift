@@ -17,6 +17,7 @@ enum ItemCategoryDestination: String, Hashable, CaseIterable {
     case logins
     case secureNotes
     case creditCards
+    case identities
     case sshKeys
 
     var title: String {
@@ -24,6 +25,7 @@ enum ItemCategoryDestination: String, Hashable, CaseIterable {
         case .logins: "Logins"
         case .secureNotes: "Secure notes"
         case .creditCards: "Credit cards"
+        case .identities: "Identities"
         case .sshKeys: "SSH keys"
         }
     }
@@ -33,6 +35,7 @@ enum ItemCategoryDestination: String, Hashable, CaseIterable {
         case .logins: "globe"
         case .secureNotes: "note.text"
         case .creditCards: "creditcard"
+        case .identities: "person.text.rectangle"
         case .sshKeys: "key.horizontal"
         }
     }
@@ -44,6 +47,7 @@ enum ItemCategoryDestination: String, Hashable, CaseIterable {
         case .logins: item.isLogin
         case .secureNotes: item.isSecureNote
         case .creditCards: item.isCreditCard
+        case .identities: item.isIdentity
         case .sshKeys: item.isSSHKey
         }
     }
@@ -56,6 +60,7 @@ struct VaultsView: View {
     @State private var isNewLoginShown = false
     @State private var isNewSecureNoteShown = false
     @State private var isNewCreditCardShown = false
+    @State private var isNewIdentityShown = false
 
     private var personalVault: VaultSummary? { model.allVault.first { $0.type == "personal" } }
 
@@ -145,6 +150,13 @@ struct VaultsView: View {
                         .disabled(personalVault == nil)
                         .accessibilityIdentifier("new-credit-card")
                         Button {
+                            isNewIdentityShown = true
+                        } label: {
+                            Label("New identity", systemImage: "person.text.rectangle")
+                        }
+                        .disabled(personalVault == nil)
+                        .accessibilityIdentifier("new-identity")
+                        Button {
                             isNewVaultShown = true
                         } label: {
                             Label("New vault", systemImage: "square.stack.3d.up.badge.plus")
@@ -184,6 +196,16 @@ struct VaultsView: View {
         .sheet(isPresented: $isNewLoginShown) {
             if let personalVault {
                 ItemEditorView(vaultID: personalVault.id, originalItem: nil) { savedItem in
+                    if let savedItem {
+                        navigationPath.append(ItemDestination(vaultID: personalVault.id, itemID: savedItem.id))
+                    }
+                }
+                .environmentObject(model)
+            }
+        }
+        .sheet(isPresented: $isNewIdentityShown) {
+            if let personalVault {
+                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categoryIdentity) { savedItem in
                     if let savedItem {
                         navigationPath.append(ItemDestination(vaultID: personalVault.id, itemID: savedItem.id))
                     }
@@ -324,6 +346,8 @@ struct ItemRow: View {
             detail = "Secure note"
         } else if item.isCreditCard {
             detail = (item.card ?? ItemCard()).summary
+        } else if item.isIdentity {
+            detail = (item.identity ?? ItemIdentity()).summary
         } else {
             detail = item.username
         }

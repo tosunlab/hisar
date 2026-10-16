@@ -35,7 +35,7 @@ email for invites and share invitations (optional; all five or none):
   HISAR_SMTP_FROM      sender, e.g. "Hisar <noreply@tryhisar.com>"
 
 desktop updates (the Mac app's Sparkle feed, read from GitHub Releases):
-  HISAR_DESKTOP_UPDATE_GITHUB_REPOSITORY  owner/name with the desktop-<version> releases (default hisarapp/core); off disables updates
+  HISAR_DESKTOP_UPDATE_GITHUB_REPOSITORY  owner/name with the desktop-<version> releases (default tosunlab/hisarapp-core); off disables updates
   HISAR_DESKTOP_UPDATE_GITHUB_TOKEN       optional read-only token (Contents: read), needed while the repository is private
   HISAR_DESKTOP_UPDATE_GITHUB_API_URL     GitHub API base URL (default https://api.github.com)
 

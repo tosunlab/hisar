@@ -188,8 +188,8 @@ func convertToItemChange(vaultItem *item.Item) *cliprotocol.ItemChange {
 		tags := append([]string{}, vaultItem.Overview.Tags...)
 		change.Tags = &tags
 	}
-	// A card's values are its named fields, so the fields travel with it.
-	if vaultItem.IsCategory(item.CategoryCreditCard) {
+	// A card's or identity's values are its named fields, so the fields travel with it.
+	if vaultItem.IsCategory(item.CategoryCreditCard) || vaultItem.IsCategory(item.CategoryIdentity) {
 		fields := []cliprotocol.Field{}
 		for _, field := range vaultItem.Details.Fields {
 			fields = append(fields, cliprotocol.Field{Name: field.Name, Value: field.Value, Concealed: field.Concealed})

@@ -74,13 +74,18 @@ generate-ios-project:
 IOS_PROJECT := mobile/ios/Hisar.xcodeproj
 IOS_SIMULATOR_ID ?= $(shell mobile/ios/scripts/find-simulator.sh)
 
+IOS_DERIVED_DATA_FLAG = $(if $(IOS_DERIVED_DATA),-derivedDataPath "$(IOS_DERIVED_DATA)")
+
+# The app with its extension and both test bundles, for the simulator the tests run on, and the personal team variant.
 # Needs mobile/build/HisarKit.xcframework (make build-ios-framework).
 build-ios:
-	xcodebuild build -project $(IOS_PROJECT) -scheme Hisar -destination "generic/platform=iOS Simulator" -quiet
-	xcodebuild build -project $(IOS_PROJECT) -scheme "Hisar Personal Team" -destination "generic/platform=iOS Simulator" -quiet
+	xcodebuild build-for-testing -project $(IOS_PROJECT) -scheme Hisar -destination "id=$(IOS_SIMULATOR_ID)" $(IOS_DERIVED_DATA_FLAG) -quiet
+	xcodebuild build -project $(IOS_PROJECT) -scheme "Hisar Personal Team" -destination "id=$(IOS_SIMULATOR_ID)" $(IOS_DERIVED_DATA_FLAG) -quiet
 
+# IOS_TESTS_PREBUILT=1 runs the tests make build-ios built, as CI does, instead of building them again.
 test-ios:
-	xcodebuild test -project $(IOS_PROJECT) -scheme HisarUnitTests -destination "id=$(IOS_SIMULATOR_ID)"
+	xcodebuild $(if $(IOS_TESTS_PREBUILT),test-without-building -scheme Hisar,test -scheme HisarUnitTests) -only-testing:HisarTests \
+		-project $(IOS_PROJECT) -destination "id=$(IOS_SIMULATOR_ID)" $(IOS_DERIVED_DATA_FLAG)
 
 # Needs bin/hisar-server and bin/hisar (make build) and HISAR_DATABASE_URL pointing at an empty database.
 test-ios-ui:

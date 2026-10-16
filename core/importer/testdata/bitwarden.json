@@ -103,7 +103,24 @@
       "notes": null,
       "favorite": false,
       "identity": {
-        "firstName": "Alice"
+        "title": "Ms",
+        "firstName": "Alice",
+        "middleName": null,
+        "lastName": "Example",
+        "address1": "1 Main St",
+        "address2": "Apt 4",
+        "address3": null,
+        "city": "Springfield",
+        "state": "IL",
+        "postalCode": "12345",
+        "country": "US",
+        "company": "Hisar",
+        "email": "alice@example.com",
+        "phone": "+1 555 0100",
+        "ssn": "123-45-6789",
+        "username": "alice",
+        "passportNumber": "U1234567",
+        "licenseNumber": null
       },
       "collectionIds": null
     },

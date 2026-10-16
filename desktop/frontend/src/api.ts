@@ -25,6 +25,7 @@ import type {
   ImportSkippedEntry,
   ItemCard,
   ItemDetail as BoundItemDetail,
+  ItemIdentity,
   ItemField,
   ItemPasskey,
   OneTimeCode,
@@ -71,6 +72,7 @@ export type {
   ImportSkippedEntry,
   ItemCard,
   ItemField,
+  ItemIdentity,
   ItemPasskey,
   LoginItemStatus,
   OneTimeCode,
@@ -332,6 +334,10 @@ export function getErrorMessage(error: unknown): string {
 
 export function createEmptyCard(): ItemCard {
   return { cardholder: "", type: "", number: "", expiry: "", securityCode: "", pin: "", billingAddress: "", brand: "", last4: "", numberWarning: "", expiryWarning: "" };
+}
+
+export function createEmptyIdentity(): ItemIdentity {
+  return { firstName: "", middleName: "", lastName: "", birthDate: "", email: "", phone: "", address: "", passportNumber: "", driversLicenseNumber: "", nationalIdNumber: "" };
 }
 
 export function createEmptyItem(): ItemDetail {

@@ -122,6 +122,7 @@ export interface ImportPreview {
     "secureNoteCount": number;
     "sshKeyCount": number;
     "creditCardCount": number;
+    "identityCount": number;
     "allSkipped": ImportSkippedEntry[] | null;
     "allDuplicate": ImportDuplicate[] | null;
 }
@@ -195,12 +196,34 @@ export interface ItemDetail {
      * Summaries keep only the type, brand and last four digits.
      */
     "card"?: ItemCard | null;
+
+    /**
+     * Identity holds an identity's values, stored as named custom fields like a card's; summaries keep only the name and
+     * email.
+     */
+    "identity"?: ItemIdentity | null;
 }
 
 export interface ItemField {
     "name": string;
     "value": string;
     "concealed": boolean;
+}
+
+/**
+ * ItemIdentity is a person's details; the document numbers are optional and concealed.
+ */
+export interface ItemIdentity {
+    "firstName": string;
+    "middleName": string;
+    "lastName": string;
+    "birthDate": string;
+    "email": string;
+    "phone": string;
+    "address": string;
+    "passportNumber": string;
+    "driversLicenseNumber": string;
+    "nationalIdNumber": string;
 }
 
 /**

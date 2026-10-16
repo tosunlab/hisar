@@ -145,12 +145,11 @@ func TestParseOnePasswordExport(t *testing.T) {
 	if result.Format != FormatOnePasswordExport {
 		t.Errorf("format = %q", result.Format)
 	}
-	wantTitles := []string{"GitHub", "Router admin", "Wi-Fi at the cabin", "Visa", "Deploy key", "Build server", "Newsletter", "Car rental"}
+	wantTitles := []string{"GitHub", "Router admin", "Wi-Fi at the cabin", "Visa", "Alice Example", "Deploy key", "Build server", "Newsletter", "Car rental"}
 	if titles := getTitles(result.Items); !reflect.DeepEqual(titles, wantTitles) {
 		t.Errorf("titles = %q, want %q", titles, wantTitles)
 	}
 	checkSkipped(t, result, map[string]string{
-		"Alice Example": "Identity items are not supported",
 		"Public only":   "no private key",
 		"Old forum":     "archived",
 		"Passport scan": "Document items are not supported",
@@ -211,7 +210,23 @@ func TestParseOnePasswordExport(t *testing.T) {
 		!reflect.DeepEqual(visa.Details.Fields, []item.Field{{Name: item.FieldCardType, Value: "Visa"}, {Name: item.FieldCardNumber, Value: "4111 1111 1111 1111", Concealed: true}}) {
 		t.Errorf("1Password card = %+v", visa)
 	}
-	if summary := Summarize(result.Items); summary != (Summary{LoginCount: 5, SecureNoteCount: 1, SSHKeyCount: 1, CreditCardCount: 1}) {
+	wantAlice := []item.Field{
+		{Name: item.FieldFirstName, Value: "Alice"},
+		{Name: item.FieldMiddleName, Value: "M"},
+		{Name: item.FieldLastName, Value: "Example"},
+		{Name: item.FieldBirthDate, Value: "1990-04-12"},
+		{Name: item.FieldEmail, Value: "alice@example.com"},
+		{Name: item.FieldPhone, Value: "+1 555 0100"},
+		{Name: item.FieldAddress, Value: "1 Main St, Springfield, IL, 12345, us"},
+		{Name: "sex", Value: "female"},
+		{Name: "occupation", Value: "Engineer"},
+		{Name: "mobile", Value: "+1 555 0199"},
+		{Name: "username", Value: "alice"},
+	}
+	if alice := findTestItem(t, result, "Alice Example"); alice.Overview.Category != item.CategoryIdentity || !reflect.DeepEqual(alice.Details.Fields, wantAlice) {
+		t.Errorf("1Password identity =\n%+v\nwant fields\n%+v", alice.Details.Fields, wantAlice)
+	}
+	if summary := Summarize(result.Items); summary != (Summary{LoginCount: 5, SecureNoteCount: 1, SSHKeyCount: 1, CreditCardCount: 1, IdentityCount: 1}) {
 		t.Errorf("summary = %+v", summary)
 	}
 }
@@ -222,12 +237,11 @@ func TestParseBitwardenJSON(t *testing.T) {
 	if result.Format != FormatBitwardenJSON {
 		t.Errorf("format = %q", result.Format)
 	}
-	wantTitles := []string{"GitHub", "Server notes", "Visa", "Laptop", "Empty password", "example.org"}
+	wantTitles := []string{"GitHub", "Server notes", "Visa", "Alice Example", "Laptop", "Empty password", "example.org"}
 	if titles := getTitles(result.Items); !reflect.DeepEqual(titles, wantTitles) {
 		t.Errorf("titles = %q, want %q", titles, wantTitles)
 	}
 	checkSkipped(t, result, map[string]string{
-		"Alice Example":  "identities are not supported",
 		"Protected key":  "protected by a passphrase",
 		"Empty password": reasonRepeated,
 	})
@@ -263,7 +277,22 @@ func TestParseBitwardenJSON(t *testing.T) {
 	if visa := findTestItem(t, result, "Visa"); visa.Overview.Category != item.CategoryCreditCard || !reflect.DeepEqual(visa.Details.Fields, wantVisa) {
 		t.Errorf("Bitwarden card = %+v", visa)
 	}
-	if summary := Summarize(result.Items); summary != (Summary{LoginCount: 3, SecureNoteCount: 1, SSHKeyCount: 1, CreditCardCount: 1}) {
+	wantAlice := []item.Field{
+		{Name: item.FieldFirstName, Value: "Alice"},
+		{Name: item.FieldLastName, Value: "Example"},
+		{Name: item.FieldEmail, Value: "alice@example.com"},
+		{Name: item.FieldPhone, Value: "+1 555 0100"},
+		{Name: item.FieldAddress, Value: "1 Main St\nApt 4\nSpringfield, IL, 12345\nUS"},
+		{Name: item.FieldPassportNumber, Value: "U1234567", Concealed: true},
+		{Name: item.FieldNationalIDNumber, Value: "123-45-6789", Concealed: true},
+		{Name: "Title", Value: "Ms"},
+		{Name: "Company", Value: "Hisar"},
+		{Name: "Username", Value: "alice"},
+	}
+	if alice := findTestItem(t, result, "Alice Example"); alice.Overview.Category != item.CategoryIdentity || alice.Overview.Username != "" || !reflect.DeepEqual(alice.Details.Fields, wantAlice) {
+		t.Errorf("Bitwarden identity =\n%+v\nwant fields\n%+v", alice.Details.Fields, wantAlice)
+	}
+	if summary := Summarize(result.Items); summary != (Summary{LoginCount: 3, SecureNoteCount: 1, SSHKeyCount: 1, CreditCardCount: 1, IdentityCount: 1}) {
 		t.Errorf("summary = %+v", summary)
 	}
 }
@@ -283,7 +312,7 @@ func TestParseBitwardenCSV(t *testing.T) {
 	if titles := getTitles(result.Items); !reflect.DeepEqual(titles, []string{"GitHub", "Recipe", "Bank"}) {
 		t.Errorf("titles = %q", titles)
 	}
-	checkSkipped(t, result, map[string]string{"Visa": "export as JSON to import cards"})
+	checkSkipped(t, result, map[string]string{"Visa": "export as JSON to import cards", "Alice Example": "export as JSON to import identities"})
 	wantGitHub := item.Item{
 		Overview: item.Overview{Title: "GitHub", Category: item.CategoryLogin, Username: "alice", URLs: []string{"https://github.com", "https://gist.github.com"}, Tags: []string{"Work"}},
 		Details: item.Details{
@@ -632,6 +661,108 @@ func TestParseOnePasswordCreditCard(t *testing.T) {
 	}
 	if amex.Overview.Category != item.CategoryCreditCard || amex.Details.Notes != "Travel card" || !reflect.DeepEqual(amex.Details.Fields, wantFields) {
 		t.Errorf("1Password card =\n%+v\nwant fields\n%+v", amex, wantFields)
+	}
+}
+
+func TestParseOnePasswordIdentityDocuments(t *testing.T) {
+	data := `{"accounts":[{"vaults":[{"items":[
+		{"categoryUuid":"106","overview":{"title":"Passport"},"details":{"sections":[{"title":"","fields":[
+			{"title":"type","id":"type","value":{"string":"P"}},
+			{"title":"issuing country","id":"issuing_country","value":{"string":"Türkiye"}},
+			{"title":"number","id":"number","value":{"string":"U1234567"}},
+			{"title":"full name","id":"fullname","value":{"string":"Alice Maria Example"}},
+			{"title":"date of birth","id":"birthdate","value":{"date":639878400}},
+			{"title":"expiry date","id":"expiry_date","value":{"date":1893456000}}]}]}},
+		{"categoryUuid":"103","overview":{"title":"Driver License"},"details":{"sections":[{"title":"","fields":[
+			{"title":"full name","id":"fullname","value":{"string":"Alice Example"}},
+			{"title":"address","id":"address","value":{"string":"1 Main St"}},
+			{"title":"number","id":"number","value":{"string":"D-998877"}},
+			{"title":"license class","id":"class","value":{"string":"B"}}]}]}},
+		{"categoryUuid":"108","overview":{"title":"Social Security"},"details":{"sections":[{"title":"","fields":[
+			{"title":"name","id":"name","value":{"string":"Alice Example"}},
+			{"title":"number","id":"number","value":{"concealed":"123-45-6789"}}]}]}}]}]}]}`
+	result := parseFixture(t, "export.1pux", buildOnePasswordExport(t, []byte(data)), FormatAutomatic)
+	wantPassport := []item.Field{
+		{Name: item.FieldFirstName, Value: "Alice Maria"},
+		{Name: item.FieldLastName, Value: "Example"},
+		{Name: item.FieldBirthDate, Value: "1990-04-12"},
+		{Name: item.FieldPassportNumber, Value: "U1234567", Concealed: true},
+		{Name: "type", Value: "P"},
+		{Name: "issuing country", Value: "Türkiye"},
+		{Name: "expiry date", Value: "2030-01-01"},
+	}
+	if passport := findTestItem(t, result, "Passport"); passport.Overview.Category != item.CategoryIdentity || !reflect.DeepEqual(passport.Details.Fields, wantPassport) {
+		t.Errorf("passport =\n%+v\nwant\n%+v", passport.Details.Fields, wantPassport)
+	}
+	wantLicense := []item.Field{
+		{Name: item.FieldFirstName, Value: "Alice"},
+		{Name: item.FieldLastName, Value: "Example"},
+		{Name: item.FieldAddress, Value: "1 Main St"},
+		{Name: item.FieldDriversLicenseNumber, Value: "D-998877", Concealed: true},
+		{Name: "license class", Value: "B"},
+	}
+	if license := findTestItem(t, result, "Driver License"); license.Overview.Category != item.CategoryIdentity || !reflect.DeepEqual(license.Details.Fields, wantLicense) {
+		t.Errorf("driver license =\n%+v\nwant\n%+v", license.Details.Fields, wantLicense)
+	}
+	wantSSN := []item.Field{
+		{Name: item.FieldFirstName, Value: "Alice"},
+		{Name: item.FieldLastName, Value: "Example"},
+		{Name: item.FieldNationalIDNumber, Value: "123-45-6789", Concealed: true},
+	}
+	if ssn := findTestItem(t, result, "Social Security"); ssn.Overview.Category != item.CategoryIdentity || !reflect.DeepEqual(ssn.Details.Fields, wantSSN) {
+		t.Errorf("social security number =\n%+v\nwant\n%+v", ssn.Details.Fields, wantSSN)
+	}
+	if summary := Summarize(result.Items); summary.IdentityCount != 3 || len(result.Skipped) != 0 {
+		t.Errorf("summary = %+v, skipped %+v", summary, result.Skipped)
+	}
+}
+
+func TestParseOnePasswordIdentityPhone(t *testing.T) {
+	data := `{"accounts":[{"vaults":[{"items":[
+		{"categoryUuid":"004","overview":{"title":"Work"},"details":{"sections":[{"title":"Contact","fields":[
+			{"title":"business","id":"busphone","value":{"phone":"+1 555 0100"}}]}]}},
+		{"categoryUuid":"004","overview":{"title":"Home"},"details":{"sections":[{"title":"Contact","fields":[
+			{"title":"mobile","id":"cellphone","value":{"phone":"+1 555 0199"}},
+			{"title":"business","id":"busphone","value":{"phone":"+1 555 0100"}}]}]}}]}]}]}`
+	result := parseFixture(t, "export.1pux", buildOnePasswordExport(t, []byte(data)), FormatAutomatic)
+	wantWork := []item.Field{{Name: item.FieldPhone, Value: "+1 555 0100"}}
+	if work := findTestItem(t, result, "Work"); !reflect.DeepEqual(work.Details.Fields, wantWork) {
+		t.Errorf("an identity with only a business phone =\n%+v\nwant\n%+v", work.Details.Fields, wantWork)
+	}
+	wantHome := []item.Field{{Name: item.FieldPhone, Value: "+1 555 0199"}, {Name: "business", Value: "+1 555 0100"}}
+	if home := findTestItem(t, result, "Home"); !reflect.DeepEqual(home.Details.Fields, wantHome) {
+		t.Errorf("an identity with two phones =\n%+v\nwant\n%+v", home.Details.Fields, wantHome)
+	}
+}
+
+func TestIdentitiesWithTheSameTitleAreNotDuplicates(t *testing.T) {
+	identity := func(firstName, passportNumber string) item.Item {
+		var vaultItem item.Item
+		vaultItem.Overview = item.Overview{Title: "Passport", Category: item.CategoryIdentity}
+		item.WriteIdentity(&vaultItem, item.Identity{FirstName: firstName, PassportNumber: passportNumber}, nil)
+		return vaultItem
+	}
+	if BuildDuplicateKey(identity("Alice", "U1")) == BuildDuplicateKey(identity("Bob", "U2")) {
+		t.Error("two people's passports match")
+	}
+	if BuildDuplicateKey(identity("Alice", "U1")) == BuildDuplicateKey(identity("Alice", "U2")) {
+		t.Error("two passports of one person match")
+	}
+	if BuildDuplicateKey(identity("Alice", "U1")) != BuildDuplicateKey(identity("alice", "u1")) {
+		t.Error("an identity does not match itself written in another case")
+	}
+
+	withEmail := func(email string) item.Item {
+		var vaultItem item.Item
+		vaultItem.Overview = item.Overview{Title: "Identity", Category: item.CategoryIdentity}
+		item.WriteIdentity(&vaultItem, item.Identity{FirstName: "Alice", LastName: "Example", Email: email}, nil)
+		return vaultItem
+	}
+	if BuildDuplicateKey(withEmail("alice@home.example")) == BuildDuplicateKey(withEmail("alice@work.example")) {
+		t.Error("a home and a work identity with no documents match")
+	}
+	if BuildDuplicateKey(withEmail("alice@home.example")) != BuildDuplicateKey(withEmail("Alice@Home.example")) {
+		t.Error("an identity does not match itself with its email in another case")
 	}
 }
 

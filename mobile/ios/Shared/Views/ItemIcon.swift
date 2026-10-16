@@ -12,7 +12,7 @@ struct ItemIcon: View {
         ZStack {
             RoundedRectangle(cornerRadius: scaledSize * 0.25, style: .continuous)
                 .fill(.fill.tertiary)
-            if let symbol = item.isSSHKey ? "key.horizontal" : (item.isSecureNote ? "note.text" : (item.isCreditCard ? "creditcard" : nil)) {
+            if let symbol = categorySymbol {
                 Image(systemName: symbol)
                     .font(size > 40 ? .title2 : .footnote)
                     .fontWeight(.semibold)
@@ -24,5 +24,14 @@ struct ItemIcon: View {
         .foregroundStyle(.themeSecondary)
         .frame(width: scaledSize, height: scaledSize)
         .accessibilityHidden(true)
+    }
+
+    /// The symbol of a category that shows one; a login shows its initial.
+    private var categorySymbol: String? {
+        if item.isSSHKey { return "key.horizontal" }
+        if item.isSecureNote { return "note.text" }
+        if item.isCreditCard { return "creditcard" }
+        if item.isIdentity { return "person.text.rectangle" }
+        return nil
     }
 }

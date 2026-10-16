@@ -416,10 +416,42 @@ func TestCreditCardsThroughTheApp(t *testing.T) {
 	}
 }
 
+func TestIdentitiesThroughTheApp(t *testing.T) {
+	app := startFakeApp(t)
+	input := "Alice\nAlice\n\nExample\n1990/4/12\nalice@example.com\n\n1 Main St\nU1234567\n\n\n"
+	_, stderr, err := runCapturingOutput(t, false, input, "add", "--type", "identity")
+	if err != nil || !strings.Contains(stderr, `Saved "Alice" to Personal.`) {
+		t.Fatalf("add --type identity: %q %v", stderr, err)
+	}
+	if !strings.Contains(stderr, "Birth date (YYYY-MM-DD): ") {
+		t.Errorf("no birth date hint: %q", stderr)
+	}
+	added := app.findRequest(cliprotocol.TypeSaveItem)[0].Item
+	wantFields := []cliprotocol.Field{
+		{Name: item.FieldFirstName, Value: "Alice"},
+		{Name: item.FieldLastName, Value: "Example"},
+		{Name: item.FieldBirthDate, Value: "1990-04-12"},
+		{Name: item.FieldEmail, Value: "alice@example.com"},
+		{Name: item.FieldAddress, Value: "1 Main St"},
+		{Name: item.FieldPassportNumber, Value: "U1234567", Concealed: true},
+	}
+	if added.Category != item.CategoryIdentity || added.Fields == nil || !reflect.DeepEqual(*added.Fields, wantFields) {
+		t.Errorf("add request %+v %+v", added, added.Fields)
+	}
+
+	app.mutex.Lock()
+	app.hello.Features = []string{cliprotocol.FeatureSecureNotes, cliprotocol.FeatureCreditCards}
+	app.mutex.Unlock()
+	_, stderr, err = runCapturingOutput(t, false, input, "add", "--type", "identity")
+	if err == nil || !strings.Contains(err.Error(), "cannot save identity items") || strings.Contains(stderr, "First name") {
+		t.Errorf("add an identity through an older app: %q %v", stderr, err)
+	}
+}
+
 func TestAddAndEditFollowTheItemType(t *testing.T) {
 	app := startFakeApp(t)
-	_, stderr, err := runCapturingOutput(t, false, "Passport\n", "add", "--type", "identity")
-	if err == nil || !strings.Contains(err.Error(), `unknown item type "identity"; use one of login, secure-note, credit-card`) {
+	_, stderr, err := runCapturingOutput(t, false, "Router\n", "add", "--type", "wireless-router")
+	if err == nil || !strings.Contains(err.Error(), `unknown item type "wireless-router"; use one of login, secure-note, credit-card, identity`) {
 		t.Errorf("add an unknown type: %v", err)
 	}
 	if strings.Contains(stderr, "Title") {

@@ -86,6 +86,23 @@ class HisarUITestCase: XCTestCase {
         button.tap()
     }
 
+    // On a slow machine a tap on an item of a Menu still animating in is ignored and the menu stays open, where the swipe
+    // `type` makes to find the editor presses whichever item it crosses. So the item is tapped until the menu is gone.
+    func choose(_ item: String, from menu: String, file: StaticString = #filePath, line: UInt = #line) {
+        let menuButton = app.buttons[menu]
+        waitFor(menuButton, file: file, line: line)
+        menuButton.tap()
+        let itemButton = app.buttons[item]
+        waitFor(itemButton, file: file, line: line)
+        for _ in 0..<5 {
+            itemButton.tap()
+            if itemButton.waitForNonExistence(timeout: 5) {
+                return
+            }
+        }
+        XCTFail("the \(menu) menu stayed open after choosing \(item)", file: file, line: line)
+    }
+
     // A SwiftUI Form creates only the rows on screen, so a row further down does not exist until the form scrolls to it.
     func scrollTo(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
         let list = app.collectionViews.firstMatch
@@ -155,9 +172,7 @@ class HisarUITestCase: XCTestCase {
     func addLogin(title: String, username: String, password: String, website: String, oneTimePassword: String = "") {
         app.buttons["vault-Personal"].tap()
         waitFor(app.buttons["add-item"])
-        app.buttons["add-item"].tap()
-        waitFor(app.buttons["add-login"])
-        app.buttons["add-login"].tap()
+        choose("add-login", from: "add-item")
         type(title, into: app.textFields["editor-title"])
         type(username, into: app.textFields["editor-username"])
         type(password, into: app.secureTextFields["editor-password"])

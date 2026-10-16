@@ -48,6 +48,21 @@ final class VaultLogicTests: XCTestCase {
         XCTAssertEqual(encoded?["tags"] as? [String], ["work"])
     }
 
+    func testFilterFindsAnIdentityByItsNameAndEmail() {
+        var passport = makeReference("Passport", category: ItemDetail.categoryIdentity)
+        var identity = ItemIdentity()
+        identity.firstName = "Alice"
+        identity.lastName = "Example"
+        passport.item.identity = identity
+        var work = makeReference("Work", category: ItemDetail.categoryIdentity)
+        identity = ItemIdentity()
+        identity.email = "bob@example.com"
+        work.item.identity = identity
+        let allItem = [passport, work, makeReference("GitHub")]
+        XCTAssertEqual(VaultLogic.filterAllItem(allItem, searchText: "alice example").map(\.item.title), ["Passport"])
+        XCTAssertEqual(VaultLogic.filterAllItem(allItem, searchText: "bob@example").map(\.item.title), ["Work"])
+    }
+
     func testSortByTitleThenUsername() {
         let allItem = [makeReference("b"), makeReference("A", username: "zed"), makeReference("a", username: "amy")]
         XCTAssertEqual(VaultLogic.sortAllItem(allItem).map(\.item.username), ["amy", "zed", ""])

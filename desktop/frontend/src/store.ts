@@ -34,8 +34,9 @@ import {
   type ExportRequest,
   type ExportResult,
 } from "./api";
+import { formatFullName } from "./util";
 
-export type EditorMode = "view" | "edit" | "create" | "create-secure-note" | "create-credit-card" | "create-ssh-key";
+export type EditorMode = "view" | "edit" | "create" | "create-secure-note" | "create-credit-card" | "create-identity" | "create-ssh-key";
 export type ImportStep = "choose" | "preview" | "saving" | "done";
 
 export interface ShareLinkDialog {
@@ -608,15 +609,17 @@ export function sortAllItem(allItem: ItemDetail[]): ItemDetail[] {
   return [...allItem].sort((first, second) => first.title.localeCompare(second.title, undefined, { sensitivity: "base" }));
 }
 
-// filterAllItem keeps the items matching the search in their title, username, websites or tags, and carrying tag when
-// one is selected.
+// filterAllItem keeps the items matching the search in their title, username, websites, tags or identity name and email,
+// and carrying tag when one is selected.
 export function filterAllItem(allItem: ItemDetail[], query: string, tag = ""): ItemDetail[] {
   const normalizedQuery = query.trim().toLowerCase();
   return allItem.filter((vaultItem) => {
     const allTag = vaultItem.tags ?? [];
+    // An identity's list summary keeps its name and email, which the list shows under the title.
+    const identityText = vaultItem.identity ? [formatFullName(vaultItem.identity), vaultItem.identity.email] : [];
     return (
       (tag === "" || allTag.includes(tag)) &&
-      (normalizedQuery === "" || [vaultItem.title, vaultItem.username, ...vaultItem.urls, ...allTag].some((text) => text.toLowerCase().includes(normalizedQuery)))
+      (normalizedQuery === "" || [vaultItem.title, vaultItem.username, ...vaultItem.urls, ...allTag, ...identityText].some((text) => text.toLowerCase().includes(normalizedQuery)))
     );
   });
 }
@@ -672,6 +675,11 @@ export function startCreatingSecureNote(): void {
 export function startCreatingCard(): void {
   store.selectedItem = null;
   store.editorMode = "create-credit-card";
+}
+
+export function startCreatingIdentity(): void {
+  store.selectedItem = null;
+  store.editorMode = "create-identity";
 }
 
 export function startCreatingSSHKey(): void {
@@ -1305,10 +1313,13 @@ export function getAllShareLinkForItem(vaultID: string, itemID: string): ShareLi
 }
 
 export function hasShareableField(detail: ItemDetail): boolean {
-  // A card's values come in card, not in fields.
+  // A card's and an identity's values come in card and identity, not in fields.
   const card = detail.card;
   const hasCardValue = card ? [card.cardholder, card.type, card.number, card.expiry, card.securityCode, card.pin, card.billingAddress].some((value) => value) : false;
-  return Boolean(detail.username || detail.password || detail.notes || detail.urls.length > 0 || detail.fields.some((field) => field.value) || hasCardValue);
+  const hasIdentityValue = detail.identity ? Object.values(detail.identity).some((value) => value) : false;
+  return Boolean(
+    detail.username || detail.password || detail.notes || detail.urls.length > 0 || detail.fields.some((field) => field.value) || hasCardValue || hasIdentityValue,
+  );
 }
 
 export async function openShareLinks(): Promise<void> {

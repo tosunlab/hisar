@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
-import { api, createEmptyCard, createEmptyItem, type CardDescription, type ItemDetail } from "../api";
-import { allCardBrand, creditCardCategory, formatCardNumberInput, formatExpiryInput, formatInputAsTyped, getItemIcon, secureNoteCategory, sshKeyCategory } from "../util";
+import { api, createEmptyCard, createEmptyIdentity, createEmptyItem, type CardDescription, type ItemDetail } from "../api";
+import { allCardBrand, creditCardCategory, identityCategory, formatCardNumberInput, formatExpiryInput, formatInputAsTyped, getItemIcon, isCalendarDate, secureNoteCategory, sshKeyCategory } from "../util";
 import { cancelEditing, saveItem, store } from "../store";
 import AppIcon from "./AppIcon.vue";
 import ItemTile from "./ItemTile.vue";
@@ -18,6 +18,7 @@ function createDraft(): ItemDetail {
       fields: selected.fields.map((field) => ({ ...field })),
       passkeys: [...(selected.passkeys ?? [])],
       card: selected.card ? { ...selected.card } : selected.category === creditCardCategory ? createEmptyCard() : selected.card,
+      identity: selected.identity ? { ...selected.identity } : selected.category === identityCategory ? createEmptyIdentity() : selected.identity,
     };
   }
   const empty = createEmptyItem();
@@ -27,6 +28,9 @@ function createDraft(): ItemDetail {
   } else if (store.editorMode === "create-credit-card") {
     empty.category = creditCardCategory;
     empty.card = createEmptyCard();
+  } else if (store.editorMode === "create-identity") {
+    empty.category = identityCategory;
+    empty.identity = createEmptyIdentity();
   }
   return empty;
 }
@@ -38,6 +42,11 @@ const isGeneratorOpen = ref(store.editorMode === "create");
 const isSSHKey = draft.category === sshKeyCategory;
 const isSecureNote = draft.category === secureNoteCategory;
 const isCreditCard = draft.category === creditCardCategory;
+const isIdentity = draft.category === identityCategory;
+const isDocumentNumberVisible = ref(false);
+// A birth date imported in another form, such as 04/12/1990, or with no such day, such as 2023-02-31, stays editable as
+// text; a date picker would show it empty.
+const isBirthDateText = Boolean(draft.identity?.birthDate) && !isCalendarDate(draft.identity?.birthDate ?? "");
 const isCreating = store.editorMode.startsWith("create");
 const isCardSecretVisible = ref(false);
 const cardDescription = ref<CardDescription>({
@@ -207,11 +216,65 @@ async function submitItem(): Promise<void> {
       </label>
     </section>
 
+    <section v-if="isIdentity && draft.identity" class="card editor-card" data-testid="identity-editor">
+      <div class="row card-row">
+        <label>
+          <span>First name</span>
+          <input v-model="draft.identity.firstName" name="firstName" autocomplete="off" />
+        </label>
+        <label>
+          <span>Middle name</span>
+          <input v-model="draft.identity.middleName" name="middleName" autocomplete="off" />
+        </label>
+        <label>
+          <span>Last name</span>
+          <input v-model="draft.identity.lastName" name="lastName" autocomplete="off" />
+        </label>
+      </div>
+      <div class="row card-row">
+        <label>
+          <span>Birth date</span>
+          <input v-model="draft.identity.birthDate" name="birthDate" :type="isBirthDateText ? 'text' : 'date'" autocomplete="off" />
+        </label>
+        <label>
+          <span>Email</span>
+          <!-- Not type="email": the browser would refuse to save a value it does not take for one address, such as one saved
+               on the iPhone or imported. -->
+          <input v-model="draft.identity.email" name="email" inputmode="email" autocomplete="off" spellcheck="false" />
+        </label>
+        <label>
+          <span>Phone</span>
+          <input v-model="draft.identity.phone" name="phone" type="tel" autocomplete="off" />
+        </label>
+      </div>
+      <label>
+        <span>Address</span>
+        <textarea v-model="draft.identity.address" name="address" rows="2"></textarea>
+      </label>
+      <div class="row card-row">
+        <label>
+          <span>Passport number</span>
+          <input v-model="draft.identity.passportNumber" name="passportNumber" class="monospace" :type="isDocumentNumberVisible ? 'text' : 'password'" autocomplete="off" />
+        </label>
+        <label>
+          <span>Driver's license number</span>
+          <input v-model="draft.identity.driversLicenseNumber" name="driversLicenseNumber" class="monospace" :type="isDocumentNumberVisible ? 'text' : 'password'" autocomplete="off" />
+        </label>
+        <label>
+          <span>National ID number</span>
+          <input v-model="draft.identity.nationalIdNumber" name="nationalIdNumber" class="monospace" :type="isDocumentNumberVisible ? 'text' : 'password'" autocomplete="off" />
+        </label>
+      </div>
+      <button type="button" class="ghost reveal-card last" @click="isDocumentNumberVisible = !isDocumentNumberVisible">
+        <AppIcon :name="isDocumentNumberVisible ? 'eyeOff' : 'eye'" /> {{ isDocumentNumberVisible ? "Hide document numbers" : "Show document numbers" }}
+      </button>
+    </section>
+
     <p v-if="isSSHKey" class="card ssh-key-note muted" data-testid="ssh-key-note">
       <AppIcon name="key" :size="14" /> The key itself cannot be changed. To replace it, add a new SSH key.
     </p>
 
-    <section v-if="!isSSHKey && !isSecureNote && !isCreditCard" class="card editor-card">
+    <section v-if="!isSSHKey && !isSecureNote && !isCreditCard && !isIdentity" class="card editor-card">
       <label>
         <span>Username</span>
         <input v-model="draft.username" name="username" autocomplete="off" placeholder="Username or email" />
@@ -376,6 +439,10 @@ label.last {
 
 .reveal-card {
   margin: -4px 0 12px;
+}
+
+.reveal-card.last {
+  margin-bottom: 0;
 }
 
 .ssh-key-note {
