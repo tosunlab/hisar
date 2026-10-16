@@ -608,6 +608,10 @@ final class AppModel: ObservableObject {
             credentialSummary.host = credential.host
             summary.apiCredential = credentialSummary
         }
+        if let address = savedItem.address {
+            // As core/app's list summary: the first line of the street, the city and the country.
+            summary.address = ItemAddress(street: address.street.split(separator: "\n", maxSplits: 1).first.map(String.init) ?? "", city: address.city, country: address.country)
+        }
         if let index = allItem.firstIndex(where: { $0.id == savedItem.id }) {
             allItem[index] = summary
         } else {

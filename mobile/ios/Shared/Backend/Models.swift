@@ -146,6 +146,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     static let categoryCreditCard = "credit-card"
     static let categoryIdentity = "identity"
     static let categoryAPICredential = "api-credential"
+    static let categoryAddress = "address"
 
     var id: String
     var revision: String
@@ -174,15 +175,18 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     /// An API credential's values, stored as named custom fields like an identity's. Summaries keep only the service and
     /// host.
     var apiCredential: ItemAPICredential?
+    /// An address's values, stored as named custom fields like an identity's. Summaries keep only the first line of the
+    /// street, the city and the country.
+    var address: ItemAddress?
 
     enum CodingKeys: String, CodingKey {
-        case id, revision, category, title, username, password, notes, publicKey, fingerprint, keyType, oneTimePassword, hasOneTimePassword, canConvertToSecureNote, card, identity, isFavorite, apiCredential
+        case id, revision, category, title, username, password, notes, publicKey, fingerprint, keyType, oneTimePassword, hasOneTimePassword, canConvertToSecureNote, card, identity, isFavorite, apiCredential, address
         case allURL = "urls"
         case allField = "fields"
         case allPasskey = "passkeys"
     }
 
-    init(id: String = "", revision: String = "", category: String = ItemDetail.categoryLogin, title: String = "", username: String = "", allURL: [String] = [], password: String = "", notes: String = "", allField: [ItemField] = [], publicKey: String = "", fingerprint: String = "", keyType: String = "", oneTimePassword: String = "", hasOneTimePassword: Bool = false, allPasskey: [ItemPasskey] = [], canConvertToSecureNote: Bool = false, card: ItemCard? = nil, identity: ItemIdentity? = nil, isFavorite: Bool = false, apiCredential: ItemAPICredential? = nil) {
+    init(id: String = "", revision: String = "", category: String = ItemDetail.categoryLogin, title: String = "", username: String = "", allURL: [String] = [], password: String = "", notes: String = "", allField: [ItemField] = [], publicKey: String = "", fingerprint: String = "", keyType: String = "", oneTimePassword: String = "", hasOneTimePassword: Bool = false, allPasskey: [ItemPasskey] = [], canConvertToSecureNote: Bool = false, card: ItemCard? = nil, identity: ItemIdentity? = nil, isFavorite: Bool = false, apiCredential: ItemAPICredential? = nil, address: ItemAddress? = nil) {
         self.id = id
         self.revision = revision
         self.category = category
@@ -203,6 +207,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         self.identity = identity
         self.isFavorite = isFavorite
         self.apiCredential = apiCredential
+        self.address = address
     }
 
     init(from decoder: Decoder) throws {
@@ -227,6 +232,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         identity = try container.decodeIfPresent(ItemIdentity.self, forKey: .identity)
         isFavorite = try container.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
         apiCredential = try container.decodeIfPresent(ItemAPICredential.self, forKey: .apiCredential)
+        address = try container.decodeIfPresent(ItemAddress.self, forKey: .address)
     }
 
     var isLogin: Bool { category.isEmpty || category == Self.categoryLogin }
@@ -235,6 +241,57 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     var isCreditCard: Bool { category == Self.categoryCreditCard }
     var isIdentity: Bool { category == Self.categoryIdentity }
     var isAPICredential: Bool { category == Self.categoryAPICredential }
+    var isAddress: Bool { category == Self.categoryAddress }
+}
+
+/// The names core/item stores an address's values under; identities and cards keep their address under the same names, and
+/// copying and secret references use them.
+enum AddressFieldName {
+    static let street = "Street"
+    static let city = "City"
+    static let region = "Region"
+    static let postalCode = "Postal code"
+    static let country = "Country"
+}
+
+/// A postal address; `street` may hold several lines, such as an apartment on its second line. Identities and cards keep
+/// one in the same keys.
+struct ItemAddress: Codable, Hashable {
+    var street = ""
+    var city = ""
+    var region = ""
+    var postalCode = ""
+    var country = ""
+
+    init(street: String = "", city: String = "", region: String = "", postalCode: String = "", country: String = "") {
+        self.street = street
+        self.city = city
+        self.region = region
+        self.postalCode = postalCode
+        self.country = country
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        street = try container.decodeIfPresent(String.self, forKey: .street) ?? ""
+        city = try container.decodeIfPresent(String.self, forKey: .city) ?? ""
+        region = try container.decodeIfPresent(String.self, forKey: .region) ?? ""
+        postalCode = try container.decodeIfPresent(String.self, forKey: .postalCode) ?? ""
+        country = try container.decodeIfPresent(String.self, forKey: .country) ?? ""
+    }
+
+    /// The address's line in lists: its city and country, or the first line of its street, such as "Springfield, US".
+    var summary: String {
+        let cityAndCountry = [city, country].filter { !$0.isEmpty }.joined(separator: ", ")
+        if !cityAndCountry.isEmpty { return cityAndCountry }
+        let firstLine = street.split(separator: "\n", maxSplits: 1).first.map(String.init) ?? ""
+        return firstLine.isEmpty ? "Address" : firstLine
+    }
+
+    /// The values as named rows, in the order core/item stores them.
+    var allNamedValue: [(name: String, value: String)] {
+        [(AddressFieldName.street, street), (AddressFieldName.city, city), (AddressFieldName.region, region), (AddressFieldName.postalCode, postalCode), (AddressFieldName.country, country)]
+    }
 }
 
 /// The names core/item stores an identity's values under; copying and secret references use them.
@@ -245,13 +302,15 @@ enum IdentityFieldName {
     static let birthDate = "Birth date"
     static let email = "Email"
     static let phone = "Phone"
+    /// The one-line address an identity had before it kept one in the address fields.
     static let address = "Address"
     static let passportNumber = "Passport number"
     static let driversLicenseNumber = "Driver's license number"
     static let nationalIDNumber = "National ID number"
 }
 
-/// A person's details; the document numbers are optional and concealed.
+/// A person's details; the document numbers are optional and concealed. The address is in `street` to `country`;
+/// `address` is a one-line address saved before identities had those, kept as it is.
 struct ItemIdentity: Codable, Hashable {
     var firstName = ""
     var middleName = ""
@@ -259,14 +318,25 @@ struct ItemIdentity: Codable, Hashable {
     var birthDate = ""
     var email = ""
     var phone = ""
+    var street = ""
+    var city = ""
+    var region = ""
+    var postalCode = ""
+    var country = ""
     var address = ""
     var passportNumber = ""
     var driversLicenseNumber = ""
     var nationalIDNumber = ""
 
     enum CodingKeys: String, CodingKey {
-        case firstName, middleName, lastName, birthDate, email, phone, address, passportNumber, driversLicenseNumber
+        case firstName, middleName, lastName, birthDate, email, phone, street, city, region, postalCode, country, address, passportNumber, driversLicenseNumber
         case nationalIDNumber = "nationalIdNumber"
+    }
+
+    /// The identity's address, for the editor and detail view an address item uses.
+    var postalAddress: ItemAddress {
+        get { ItemAddress(street: street, city: city, region: region, postalCode: postalCode, country: country) }
+        set { (street, city, region, postalCode, country) = (newValue.street, newValue.city, newValue.region, newValue.postalCode, newValue.country) }
     }
 
     init() {}
@@ -279,6 +349,7 @@ struct ItemIdentity: Codable, Hashable {
         birthDate = try container.decodeIfPresent(String.self, forKey: .birthDate) ?? ""
         email = try container.decodeIfPresent(String.self, forKey: .email) ?? ""
         phone = try container.decodeIfPresent(String.self, forKey: .phone) ?? ""
+        postalAddress = try ItemAddress(from: decoder)
         address = try container.decodeIfPresent(String.self, forKey: .address) ?? ""
         passportNumber = try container.decodeIfPresent(String.self, forKey: .passportNumber) ?? ""
         driversLicenseNumber = try container.decodeIfPresent(String.self, forKey: .driversLicenseNumber) ?? ""
@@ -415,6 +486,7 @@ enum CardFieldName {
     static let expiry = "Expiry"
     static let securityCode = "Security code"
     static let pin = "PIN"
+    /// The one-line address a card had before it kept one in the address fields.
     static let billingAddress = "Billing address"
 }
 
@@ -427,6 +499,12 @@ struct ItemCard: Codable, Hashable {
     var expiry = ""
     var securityCode = ""
     var pin = ""
+    var street = ""
+    var city = ""
+    var region = ""
+    var postalCode = ""
+    var country = ""
+    /// A one-line address saved before cards kept one in `street` to `country`, kept as it is.
     var billingAddress = ""
     var brand = ""
     var last4 = ""
@@ -434,7 +512,13 @@ struct ItemCard: Codable, Hashable {
     var expiryWarning = ""
 
     enum CodingKeys: String, CodingKey {
-        case cardholder, type, number, expiry, securityCode, pin, billingAddress, brand, last4, numberWarning, expiryWarning
+        case cardholder, type, number, expiry, securityCode, pin, street, city, region, postalCode, country, billingAddress, brand, last4, numberWarning, expiryWarning
+    }
+
+    /// The card's billing address, for the editor and detail view an address item uses.
+    var postalAddress: ItemAddress {
+        get { ItemAddress(street: street, city: city, region: region, postalCode: postalCode, country: country) }
+        set { (street, city, region, postalCode, country) = (newValue.street, newValue.city, newValue.region, newValue.postalCode, newValue.country) }
     }
 
     init() {}
@@ -447,6 +531,7 @@ struct ItemCard: Codable, Hashable {
         expiry = try container.decodeIfPresent(String.self, forKey: .expiry) ?? ""
         securityCode = try container.decodeIfPresent(String.self, forKey: .securityCode) ?? ""
         pin = try container.decodeIfPresent(String.self, forKey: .pin) ?? ""
+        postalAddress = try ItemAddress(from: decoder)
         billingAddress = try container.decodeIfPresent(String.self, forKey: .billingAddress) ?? ""
         brand = try container.decodeIfPresent(String.self, forKey: .brand) ?? ""
         last4 = try container.decodeIfPresent(String.self, forKey: .last4) ?? ""

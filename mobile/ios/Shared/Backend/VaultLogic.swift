@@ -83,11 +83,13 @@ enum VaultLogic {
         let allWord = searchText.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
         guard !allWord.isEmpty else { return allItem }
         return allItem.filter { reference in
-            // An identity's list summary keeps its name and email, an API credential's its service, key ID and host; the
-            // list shows them under the title, except the key ID.
+            // An identity's list summary keeps its name and email, an API credential's its service, key ID and host, an
+            // address's first street line, city and country; the list shows them under the title, except the key ID and
+            // street.
             let identityText = reference.item.identity.map { [$0.fullName, $0.email] } ?? []
             let credentialText = reference.item.apiCredential.map { [$0.service, $0.keyID, $0.host] } ?? []
-            let searchable = ([reference.item.title, reference.item.username, reference.vaultName] + reference.item.allURL + identityText + credentialText)
+            let addressText = reference.item.address.map { [$0.street, $0.city, $0.country] } ?? []
+            let searchable = ([reference.item.title, reference.item.username, reference.vaultName] + reference.item.allURL + identityText + credentialText + addressText)
                 .joined(separator: " ").lowercased()
             return allWord.allSatisfy { searchable.contains($0) }
         }

@@ -47,6 +47,15 @@ final class VaultLogicTests: XCTestCase {
         XCTAssertEqual(VaultLogic.filterAllItem(allItem, searchText: "key_live").map(\.item.title), ["Billing key"])
     }
 
+    func testFilterFindsAnAddressByItsStreetCityAndCountry() {
+        var home = makeReference("Home", category: ItemDetail.categoryAddress)
+        home.item.address = ItemAddress(street: "1 Main St", city: "Springfield", country: "US")
+        let allItem = [home, makeReference("GitHub")]
+        XCTAssertEqual(VaultLogic.filterAllItem(allItem, searchText: "springfield").map(\.item.title), ["Home"])
+        XCTAssertEqual(VaultLogic.filterAllItem(allItem, searchText: "main st").map(\.item.title), ["Home"])
+        XCTAssertEqual(ItemCategoryDestination.addresses.includes(home.item), true)
+    }
+
     func testSortByTitleThenUsername() {
         let allItem = [makeReference("b"), makeReference("A", username: "zed"), makeReference("a", username: "amy")]
         XCTAssertEqual(VaultLogic.sortAllItem(allItem).map(\.item.username), ["amy", "zed", ""])

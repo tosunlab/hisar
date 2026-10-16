@@ -443,6 +443,36 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(describe("never", saved: imported), "")
     }
 
+    func testSaveAddressKeepsOnlyItsFirstStreetLineCityAndCountryInTheList() async {
+        let model = await createUnlockedModel()
+        let address = ItemAddress(street: "1 Main St\nApt 4", city: "Springfield", region: "IL", postalCode: "12345", country: "US")
+        guard let savedItem = await model.saveItem(vaultID: "personal", item: ItemDetail(category: ItemDetail.categoryAddress, title: "Home", address: address)) else {
+            return XCTFail("address not saved")
+        }
+        XCTAssertTrue(savedItem.isAddress)
+        XCTAssertEqual(savedItem.address, ItemAddress(street: "1 Main St\nApt 4", city: "Springfield", region: "IL", postalCode: "12345", country: "US"))
+        let reference = model.listAllItemReference(vaultID: "personal").first { $0.item.id == savedItem.id }
+        XCTAssertEqual(reference?.item.address, ItemAddress(street: "1 Main St", city: "Springfield", country: "US"))
+        XCTAssertEqual(reference?.item.address?.summary, "Springfield, US")
+        XCTAssertEqual(model.listAllItemReference().filter { ItemCategoryDestination.addresses.includes($0.item) }.map(\.item.title), ["Home"])
+    }
+
+    func testIdentityAndCardCarryTheirAddressAndOldOneLineAddress() throws {
+        let json = #"{"category":"identity","title":"Alice","identity":{"firstName":"Alice","street":"1 Main St","city":"Springfield","postalCode":"12345","country":"US","address":"1 Main St, Springfield"}}"#
+        let item = try JSONDecoder().decode(ItemDetail.self, from: Data(json.utf8))
+        XCTAssertEqual(item.identity?.postalAddress, ItemAddress(street: "1 Main St", city: "Springfield", postalCode: "12345", country: "US"))
+        XCTAssertEqual(item.identity?.address, "1 Main St, Springfield")
+        let encoded = try XCTUnwrap(String(data: JSONEncoder().encode(item.identity), encoding: .utf8))
+        XCTAssertTrue(encoded.contains(#""postalCode":"12345""#) && encoded.contains(#""address":"1 Main St, Springfield""#), encoded)
+
+        var card = ItemCard()
+        card.postalAddress = ItemAddress(street: "1 Main St", city: "Springfield")
+        XCTAssertEqual(card.street, "1 Main St")
+        XCTAssertEqual(card.city, "Springfield")
+        XCTAssertEqual(ItemAddress(street: "1 Main St\nApt 4").summary, "1 Main St")
+        XCTAssertEqual(ItemAddress().summary, "Address")
+    }
+
     func testIdentityDecodesFromTheBackendAndSummarizes() throws {
         let json = #"{"category":"identity","title":"Work","identity":{"firstName":"","lastName":"","email":"alice@example.com","nationalIdNumber":"N1"}}"#
         let item = try JSONDecoder().decode(ItemDetail.self, from: Data(json.utf8))

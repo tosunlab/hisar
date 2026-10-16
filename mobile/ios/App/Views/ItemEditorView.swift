@@ -19,6 +19,9 @@ struct ItemEditorView: View {
     @State private var cardDescription = CardDescription()
     @State private var isDocumentNumberRevealed = false
     @State private var isCredentialSecretRevealed = false
+    /// An identity's or card's one-line address saved before it had address fields stays on screen, even when emptied,
+    /// until the item is saved.
+    @State private var isOldAddressShown = false
     /// The brand of the number last checked: the type follows it until the user picks a different one.
     @State private var numberBrand = ""
 
@@ -55,6 +58,9 @@ struct ItemEditorView: View {
                     buildFieldSection()
                 } else if draft.isAPICredential {
                     buildAPICredentialSections()
+                    buildFieldSection()
+                } else if draft.isAddress {
+                    buildAddressSection("Address", bindAddress)
                     buildFieldSection()
                 } else if !draft.isSSHKey {
                     Section("Login") {
@@ -190,6 +196,10 @@ struct ItemEditorView: View {
         if draft.isAPICredential, draft.apiCredential == nil {
             draft.apiCredential = ItemAPICredential()
         }
+        if draft.isAddress, draft.address == nil {
+            draft.address = ItemAddress()
+        }
+        isOldAddressShown = !(draft.identity?.address ?? "").isEmpty || !(draft.card?.billingAddress ?? "").isEmpty
         if draft.isCreditCard {
             let card = draft.card ?? ItemCard()
             draft.card = card
@@ -288,12 +298,7 @@ struct ItemEditorView: View {
             }
             numberBrand = description.brand
         }
-        Section("Billing address") {
-            TextField("Billing address", text: bindCard(\.billingAddress), axis: .vertical)
-                .lineLimit(2...5)
-                .textContentType(.fullStreetAddress)
-                .accessibilityIdentifier("editor-card-billing-address")
-        }
+        buildAddressSection("Billing address", { bindCard((\ItemCard.postalAddress).appending(path: $0)) }, oldText: bindCard(\.billingAddress))
     }
 
     private var navigationTitle: String {
@@ -302,6 +307,7 @@ struct ItemEditorView: View {
         if draft.isCreditCard { return "New credit card" }
         if draft.isIdentity { return "New identity" }
         if draft.isAPICredential { return "New API credential" }
+        if draft.isAddress { return "New address" }
         return "New login"
     }
 
@@ -397,11 +403,8 @@ struct ItemEditorView: View {
                 .keyboardType(.phonePad)
                 .textContentType(.telephoneNumber)
                 .accessibilityIdentifier("editor-identity-phone")
-            TextField("Address", text: bindIdentity(\.address), axis: .vertical)
-                .lineLimit(2...5)
-                .textContentType(.fullStreetAddress)
-                .accessibilityIdentifier("editor-identity-address")
         }
+        buildAddressSection("Address", { bindIdentity((\ItemIdentity.postalAddress).appending(path: $0)) }, oldText: bindIdentity(\.address))
         Section("Documents") {
             buildDocumentField("Passport number", \.passportNumber, identifier: "editor-identity-passport-number")
             buildDocumentField("Driver's license number", \.driversLicenseNumber, identifier: "editor-identity-drivers-license-number")
@@ -410,6 +413,65 @@ struct ItemEditorView: View {
                 isDocumentNumberRevealed.toggle()
             } label: {
                 Label(isDocumentNumberRevealed ? "Hide document numbers" : "Show document numbers", systemImage: isDocumentNumberRevealed ? "eye.slash" : "eye")
+            }
+        }
+    }
+
+    /// A binding to one of the address item's values, creating the address on first write.
+    private func bindAddress(_ keyPath: WritableKeyPath<ItemAddress, String>) -> Binding<String> {
+        Binding(
+            get: { draft.address?[keyPath: keyPath] ?? "" },
+            set: { value in
+                var address = draft.address ?? ItemAddress()
+                address[keyPath: keyPath] = value
+                draft.address = address
+            }
+        )
+    }
+
+    /// The address fields of an address item, an identity or a card; bind gives each value's binding. oldText is the
+    /// one-line address an identity or card saved before it had these fields, shown only when the item has one, with a
+    /// button that moves it into the street.
+    @ViewBuilder
+    private func buildAddressSection(_ title: String, _ bind: @escaping (WritableKeyPath<ItemAddress, String>) -> Binding<String>, oldText: Binding<String>? = nil) -> some View {
+        Section(title) {
+            TextField("Street", text: bind(\.street), axis: .vertical)
+                .lineLimit(1...4)
+                .textContentType(.fullStreetAddress)
+                .accessibilityIdentifier("editor-address-street")
+            TextField("City", text: bind(\.city))
+                .textContentType(.addressCity)
+                .accessibilityIdentifier("editor-address-city")
+            TextField("Region", text: bind(\.region), prompt: Text("State or province").foregroundStyle(.themeSecondary))
+                .textContentType(.addressState)
+                .accessibilityIdentifier("editor-address-region")
+            TextField("Postal code", text: bind(\.postalCode))
+                .textContentType(.postalCode)
+                .textInputAutocapitalization(.characters)
+                .accessibilityIdentifier("editor-address-postal-code")
+            TextField("Country", text: bind(\.country))
+                .textContentType(.countryName)
+                .accessibilityIdentifier("editor-address-country")
+            if let oldText, isOldAddressShown {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("\(title) (old format)")
+                        .font(.caption)
+                        .foregroundStyle(.themeSecondary)
+                    TextField("\(title) (old format)", text: oldText, axis: .vertical)
+                        .lineLimit(2...5)
+                        .accessibilityIdentifier("editor-old-address")
+                    Button {
+                        let street = bind(\.street)
+                        street.wrappedValue = [street.wrappedValue, oldText.wrappedValue].filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.joined(separator: "\n")
+                        oldText.wrappedValue = ""
+                        isOldAddressShown = false
+                    } label: {
+                        Label("Use as street", systemImage: "arrow.up.doc")
+                    }
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+                    .accessibilityIdentifier("editor-use-as-street")
+                }
             }
         }
     }
