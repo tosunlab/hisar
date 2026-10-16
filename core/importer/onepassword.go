@@ -24,6 +24,7 @@ const (
 	onePasswordIdentity        = "004"
 	onePasswordPassword        = "005"
 	onePasswordSoftwareLicense = "100"
+	onePasswordDatabase        = "102"
 	onePasswordLicense         = "103"
 	onePasswordPassport        = "106"
 	onePasswordSSN             = "108"
@@ -40,7 +41,7 @@ var onePasswordCategoryNames = map[string]string{
 }
 
 // onePasswordCredentialCategories become logins with their fields; other categories hold personal records Hisar has no type for yet.
-var onePasswordCredentialCategories = map[string]bool{"102": true, "109": true, "111": true}
+var onePasswordCredentialCategories = map[string]bool{"109": true, "111": true}
 
 type onePasswordExport struct {
 	Accounts []struct {
@@ -243,6 +244,17 @@ var onePasswordSoftwareLicenseFields = map[string]func(*item.SoftwareLicense) *s
 	"download_link":   func(license *item.SoftwareLicense) *string { return &license.DownloadURL },
 }
 
+// onePasswordDatabaseFields maps the ids of a 1Password Database's fields to the database's values; its username and
+// password are the item's own, and its other fields (SID, alias…) stay custom fields. NormalizeDatabase turns the type,
+// such as "mssql", into an engine ID and splits a hostname typed with its port.
+var onePasswordDatabaseFields = map[string]func(*item.Database) *string{
+	"database_type": func(database *item.Database) *string { return &database.Engine },
+	"hostname":      func(database *item.Database) *string { return &database.Host },
+	"port":          func(database *item.Database) *string { return &database.Port },
+	"database":      func(database *item.Database) *string { return &database.Name },
+	"options":       func(database *item.Database) *string { return &database.Options },
+}
+
 func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 	if entry.State == "archived" {
 		return item.Item{}, "archived in 1Password"
@@ -252,7 +264,7 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 	case category == onePasswordSSHKey:
 		return convertOnePasswordSSHKey(entry)
 	case category == onePasswordLogin, category == onePasswordPassword, category == onePasswordSecureNote, category == onePasswordCreditCard,
-		category == onePasswordAPICredential, category == onePasswordSoftwareLicense, category == onePasswordServer, isOnePasswordIdentityCategory(category), onePasswordCredentialCategories[category]:
+		category == onePasswordAPICredential, category == onePasswordSoftwareLicense, category == onePasswordServer, category == onePasswordDatabase, isOnePasswordIdentityCategory(category), onePasswordCredentialCategories[category]:
 	default:
 		categoryName, found := onePasswordCategoryNames[category]
 		if !found {
@@ -272,6 +284,7 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 	var credential item.APICredential
 	var license item.SoftwareLicense
 	var server item.Server
+	var database item.Database
 	var serverURL string
 	// consoleFieldIndexes holds where a server's admin console URL, username and password landed among the custom fields.
 	consoleFieldIndexes := map[string]int{}
@@ -320,6 +333,15 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 			}
 			if onePasswordCredentialCategories[category] && promoteOnePasswordField(&vaultItem, sectionField.ID, value) {
 				continue
+			}
+			if category == onePasswordDatabase {
+				if databaseValue, isDatabaseField := onePasswordDatabaseFields[sectionField.ID]; isDatabaseField && *databaseValue(&database) == "" {
+					*databaseValue(&database) = value
+					continue
+				}
+				if sectionField.ID != "url" && promoteOnePasswordField(&vaultItem, sectionField.ID, value) {
+					continue
+				}
 			}
 			if cardValue, isCardField := onePasswordCardFields[sectionField.ID]; category == onePasswordCreditCard && isCardField && *cardValue(&card) == "" {
 				*cardValue(&card) = value
@@ -390,6 +412,10 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 		vaultItem.Overview.URLs = append(promoteOnePasswordAdminConsole(&vaultItem, consoleFieldIndexes), websites...)
 		vaultItem.Overview.Category = item.CategoryServer
 		item.WriteServer(&vaultItem, server, vaultItem.Details.Fields)
+	}
+	if category == onePasswordDatabase {
+		vaultItem.Overview.Category = item.CategoryDatabase
+		item.WriteDatabase(&vaultItem, database, vaultItem.Details.Fields)
 	}
 	if isIdentity {
 		vaultItem.Overview.Category = item.CategoryIdentity

@@ -158,6 +158,11 @@ export interface ImportPreview {
      * ServerCount counts the server items among ItemCount.
      */
     "serverCount": number;
+
+    /**
+     * DatabaseCount counts the database items among ItemCount.
+     */
+    "databaseCount": number;
     "allSkipped": ImportSkippedEntry[] | null;
     "allDuplicate": ImportDuplicate[] | null;
 }
