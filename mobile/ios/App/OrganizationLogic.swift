@@ -48,6 +48,15 @@ enum OrganizationMemberAction: Equatable {
     case remove
 }
 
+/// What the organization screen does after loading the organization.
+enum OrganizationLoad: Equatable {
+    case loaded(Organization)
+    /// The organizations no longer list it: it was deleted, or the user is no longer in it.
+    case gone
+    /// It could not be loaded, and the user may still be in it; AppModel.errorMessage says why.
+    case failed
+}
+
 enum OrganizationLogic {
     static let maxNameLength = 100
 
@@ -118,6 +127,12 @@ enum OrganizationLogic {
             }
         }
         return [.sharedVault] + allTeamLocation.sorted { $0.label.localizedCaseInsensitiveCompare($1.label) == .orderedAscending }
+    }
+
+    /// The Where a new vault is created in. Nil, so Create waits, until the choices are loaded, after they failed to load,
+    /// and when the chosen team is no longer listed: a failed lookup never falls back to a shared vault.
+    static func findVaultLocation(id: String, in allLocation: [VaultLocation]?) -> VaultLocation? {
+        allLocation?.first { $0.id == id }
     }
 
     static func describeVaultSharing(organization: Organization, vaultID: String) -> OrganizationVaultSharing {

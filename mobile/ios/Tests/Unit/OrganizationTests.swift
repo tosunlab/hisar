@@ -199,7 +199,7 @@ final class OrganizationTests: XCTestCase {
         backend.allOrganization = [Self.buildAcme(isAdmin: false)]
         let model = await createUnlockedModel()
         let allLocation = await model.loadVaultLocations()
-        XCTAssertEqual(allLocation.map(\.label), ["Shared vault", "Acme › Platform"])
+        XCTAssertEqual(allLocation?.map(\.label), ["Shared vault", "Acme › Platform"])
 
         let vault = await model.createOrganizationVault(organizationID: "acme", teamID: "platform", name: "Runbooks")
         XCTAssertEqual(vault?.organizationID, "acme")
@@ -210,6 +210,61 @@ final class OrganizationTests: XCTestCase {
         let refused = await model.createOrganizationVault(organizationID: "acme", teamID: "audit", name: "Elsewhere")
         XCTAssertNil(refused, "only members of a team create its vaults")
         XCTAssertEqual(model.errorMessage, "Only members of the team can create a vault for it")
+    }
+
+    func testANewVaultWaitsForWhereAndNeverTakesAFailedLookupForASharedVault() async {
+        backend.allOrganization = [Self.buildAcme(isAdmin: false)]
+        let model = await createUnlockedModel()
+        XCTAssertNil(OrganizationLogic.findVaultLocation(id: VaultLocation.sharedVault.id, in: nil), "Create waits until Where is loaded")
+
+        let sentence = "cannot reach the Hisar server"
+        backend.getOrganizationErrorMessage = sentence
+        let failed = await model.loadVaultLocations()
+        XCTAssertNil(failed, "a failed team lookup offers no shared vault in its place")
+        XCTAssertNil(OrganizationLogic.findVaultLocation(id: VaultLocation.sharedVault.id, in: failed), "Create stays disabled")
+        XCTAssertEqual(model.errorMessage, sentence, "the new vault screen's banner says why")
+
+        backend.getOrganizationErrorMessage = nil
+        backend.listAllOrganizationErrorMessage = sentence
+        let unlisted = await model.loadVaultLocations()
+        XCTAssertNil(unlisted, "nor does a failed list of the organizations")
+        XCTAssertEqual(model.errorMessage, sentence)
+
+        backend.listAllOrganizationErrorMessage = nil
+        let allLocation = await model.loadVaultLocations()
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(OrganizationLogic.findVaultLocation(id: VaultLocation.sharedVault.id, in: allLocation), .sharedVault)
+        XCTAssertEqual(OrganizationLogic.findVaultLocation(id: "acme/platform", in: allLocation)?.label, "Acme › Platform")
+        XCTAssertNil(OrganizationLogic.findVaultLocation(id: "acme/audit", in: allLocation), "Alice is not in Audit")
+    }
+
+    func testTheOrganizationScreenGoesBackOnlyWhenTheOrganizationIsGone() async {
+        backend.allOrganization = [Self.buildAcme(isAdmin: true)]
+        let model = await createUnlockedModel()
+        let loaded = await model.loadOrganizationScreen(organizationID: "acme")
+        guard case .loaded(let organization) = loaded else { return XCTFail("\(loaded)") }
+        XCTAssertEqual(organization.name, "Acme")
+
+        let sentence = "Hisar could not read a vault of Acme"
+        backend.getOrganizationErrorMessage = sentence
+        let unread = await model.loadOrganizationScreen(organizationID: "acme")
+        XCTAssertEqual(unread, .failed, "Alice is still in Acme, so the screen stays")
+        XCTAssertEqual(model.takeRefusal(title: "Acme")?.message, sentence, "the alert says why")
+        XCTAssertNil(model.errorMessage)
+
+        backend.listAllOrganizationErrorMessage = "cannot reach the Hisar server"
+        let unlisted = await model.loadOrganizationScreen(organizationID: "acme")
+        XCTAssertEqual(unlisted, .failed, "a failed list does not say Alice left")
+        XCTAssertEqual(model.takeRefusal(title: "Acme")?.message, sentence, "the alert gives the organization's sentence, not the list's")
+        XCTAssertEqual(model.allOrganization.map(\.id), ["acme"])
+
+        backend.getOrganizationErrorMessage = nil
+        backend.listAllOrganizationErrorMessage = nil
+        backend.allOrganization = []
+        let gone = await model.loadOrganizationScreen(organizationID: "acme")
+        XCTAssertEqual(gone, .gone, "deleted, or Alice was removed: the screen goes back")
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(model.allOrganization, [])
     }
 
     func testARefusalKeepsTheServersSentenceForTheAlert() async {

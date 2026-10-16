@@ -613,6 +613,20 @@ final class AppModel: ObservableObject {
         await perform(isBusyShown: false) { try $0.getOrganization(organizationID: organizationID) }
     }
 
+    /// The organization screen's load. Gone only when the organizations no longer list it; otherwise a failure, also of
+    /// that list, leaves GetOrganization's sentence in errorMessage for the screen's alert.
+    func loadOrganizationScreen(organizationID: String) async -> OrganizationLoad {
+        if let organization = await loadOrganization(organizationID: organizationID) {
+            return .loaded(organization)
+        }
+        let sentence = errorMessage
+        if let organizations = await loadOrganizations(), !organizations.allOrganization.contains(where: { $0.id == organizationID }) {
+            return .gone
+        }
+        errorMessage = sentence
+        return .failed
+    }
+
     func createOrganization(name: String) async -> OrganizationSummary? {
         let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let organization = await perform({ try $0.createOrganization(name: name) }) else { return nil }
@@ -728,15 +742,13 @@ final class AppModel: ObservableObject {
         return vault
     }
 
-    /// The new vault's Where choices; offline, or without organizations, only a shared vault.
-    func loadVaultLocations() async -> [VaultLocation] {
-        guard let allOrganization = await perform(isBusyShown: false, { backend -> [Organization] in
-            try backend.listAllOrganization().allOrganization.map { try backend.getOrganization(organizationID: $0.id) }
-        }) else {
-            errorMessage = nil
-            return [.sharedVault]
+    /// The new vault's Where choices: a shared vault and each team the user is in. Nil, with the sentence in errorMessage,
+    /// when the teams could not be listed: a failed lookup never stands for having no teams.
+    func loadVaultLocations() async -> [VaultLocation]? {
+        await perform(isBusyShown: false) { backend -> [VaultLocation] in
+            let allOrganization = try backend.listAllOrganization().allOrganization.map { try backend.getOrganization(organizationID: $0.id) }
+            return OrganizationLogic.listAllVaultLocation(allOrganization)
         }
-        return OrganizationLogic.listAllVaultLocation(allOrganization)
     }
 
     func loadExportOptions() async -> ExportOptions? {

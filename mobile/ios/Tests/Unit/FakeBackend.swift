@@ -54,6 +54,9 @@ class FakeBackend: VaultBackend {
     var allOrganizationInvitation: [OrganizationInvitation] = []
     var waitingVaultKeys = WaitingVaultKeys()
     var organizationRefusal: String?
+    /// While set, listing the organizations or reading one fails with this sentence.
+    var listAllOrganizationErrorMessage: String?
+    var getOrganizationErrorMessage: String?
     private let approvalLock = NSLock()
 
     func withApprovalLock<Value>(_ operation: () throws -> Value) rethrows -> Value {
@@ -826,6 +829,7 @@ extension FakeBackend {
     func listAllOrganization() throws -> Organizations {
         record("listAllOrganization")
         try requireUnlocked()
+        if let listAllOrganizationErrorMessage { throw BackendError(message: listAllOrganizationErrorMessage) }
         return Organizations(
             allOrganization: allOrganization.map { OrganizationSummary(id: $0.id, name: $0.name, role: $0.role, memberCount: $0.allMember.count) },
             allInvitation: allOrganizationInvitation
@@ -835,6 +839,7 @@ extension FakeBackend {
     func getOrganization(organizationID: String) throws -> Organization {
         record("getOrganization")
         try requireUnlocked()
+        if let getOrganizationErrorMessage { throw BackendError(message: getOrganizationErrorMessage) }
         guard var organization = allOrganization.first(where: { $0.id == organizationID }) else {
             throw BackendError(message: "That organization, team, person or vault was not found, or you are no longer in the organization")
         }

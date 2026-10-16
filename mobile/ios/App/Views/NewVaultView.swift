@@ -6,12 +6,12 @@ struct NewVaultView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
-    @State private var allLocation = [VaultLocation.sharedVault]
+    /// Nil until Where is loaded, and while it could not be: the teams are unknown then, so Create waits.
+    @State private var allLocation: [VaultLocation]?
     @State private var locationID = VaultLocation.sharedVault.id
     @FocusState private var isNameFocused: Bool
 
-    /// Nil when the chosen team is no longer listed: Create then waits for another choice instead of making a shared vault.
-    private var location: VaultLocation? { allLocation.first { $0.id == locationID } }
+    private var location: VaultLocation? { OrganizationLogic.findVaultLocation(id: locationID, in: allLocation) }
     private var canCreate: Bool { !name.trimmingCharacters(in: .whitespaces).isEmpty && location != nil }
 
     var body: some View {
@@ -28,7 +28,7 @@ struct NewVaultView: View {
                         .submitLabel(.done)
                         .onSubmit(create)
                         .accessibilityIdentifier("new-vault-name")
-                    if allLocation.count > 1 || location == nil {
+                    if let allLocation, allLocation.count > 1 || location == nil {
                         Picker("Where", selection: $locationID) {
                             ForEach(allLocation) { location in
                                 Text(location.label).tag(location.id)
@@ -70,11 +70,16 @@ struct NewVaultView: View {
             isNameFocused = true
         }
         .task {
-            allLocation = await model.loadVaultLocations()
+            await loadLocations()
         }
         .onChange(of: model.remoteChangeCount) { _, _ in
-            Task { allLocation = await model.loadVaultLocations() }
+            Task { await loadLocations() }
         }
+    }
+
+    // A failed reload keeps the choices already loaded; without any, Create stays disabled and the banner says why.
+    private func loadLocations() async {
+        allLocation = await model.loadVaultLocations() ?? allLocation
     }
 
     private func create() {

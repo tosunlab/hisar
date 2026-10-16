@@ -659,17 +659,17 @@ struct OrganizationView: View {
         }
     }
 
+    // The screen goes back only when the user is no longer in the organization (removed, or it was deleted elsewhere);
+    // any other failure keeps it and says why.
     private func load() async {
-        if let loaded = await model.loadOrganization(organizationID: organizationID) {
+        switch await model.loadOrganizationScreen(organizationID: organizationID) {
+        case .loaded(let loaded):
             organization = loaded
-            return
-        }
-        model.clearError()
-        // Removed from the organization, or it was deleted elsewhere: the screen has nothing left to show.
-        if let organizations = await model.loadOrganizations(), !organizations.allOrganization.contains(where: { $0.id == organizationID }) {
+        case .gone:
             dismiss()
+        case .failed:
+            refusal = model.takeRefusal(title: name)
         }
-        model.clearError()
     }
 
     @discardableResult
