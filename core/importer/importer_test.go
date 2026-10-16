@@ -198,10 +198,11 @@ func TestParseOnePasswordExport(t *testing.T) {
 		t.Errorf("ssh key material: %q", sshKey.Overview.PublicKey)
 	}
 	server := findTestItem(t, result, "Build server")
-	if server.Overview.Username != "deploy" || server.Details.Password != "build-pass-9" || !reflect.DeepEqual(server.Overview.URLs, []string{"https://ci.example.com"}) {
+	if server.Overview.Category != item.CategoryServer || server.Overview.Username != "deploy" || server.Details.Password != "build-pass-9" ||
+		!reflect.DeepEqual(server.Overview.URLs, []string{"https://ci.example.com/admin"}) {
 		t.Errorf("server = %+v", server)
 	}
-	if !reflect.DeepEqual(server.Details.Fields, []item.Field{{Name: "console URL", Value: "https://ci.example.com/admin"}}) {
+	if !reflect.DeepEqual(server.Details.Fields, []item.Field{{Name: item.FieldHost, Value: "ci.example.com"}}) {
 		t.Errorf("server fields = %+v", server.Details.Fields)
 	}
 	if newsletter := findTestItem(t, result, "Newsletter"); newsletter.Details.Password != "" || newsletter.Overview.Username != "alice@example.com" {
@@ -244,7 +245,7 @@ func TestParseOnePasswordExport(t *testing.T) {
 	if favorites := getFavoriteTitles(result.Items); !reflect.DeepEqual(favorites, []string{"GitHub"}) {
 		t.Errorf("favorites = %q", favorites)
 	}
-	if summary := Summarize(result.Items); summary != (Summary{LoginCount: 5, SecureNoteCount: 1, SSHKeyCount: 1, CreditCardCount: 1, IdentityCount: 1}) {
+	if summary := Summarize(result.Items); summary != (Summary{LoginCount: 4, SecureNoteCount: 1, SSHKeyCount: 1, CreditCardCount: 1, IdentityCount: 1, ServerCount: 1}) {
 		t.Errorf("summary = %+v", summary)
 	}
 }
@@ -825,10 +826,10 @@ func TestParseOnePasswordAPICredential(t *testing.T) {
 	if stripe.Overview.Category != item.CategoryAPICredential || !reflect.DeepEqual(stripe.Details.Fields, wantFields) || stripe.Details.Notes != "Live key" {
 		t.Errorf("API credential = %+v\nfields\n%+v\nwant\n%+v", stripe.Overview, stripe.Details.Fields, wantFields)
 	}
-	if server := findTestItem(t, result, "Build server"); server.Overview.Category != item.CategoryLogin || server.Overview.Username != "deploy" || server.Details.Password != "server-password" {
-		t.Errorf("a 1Password Server is no longer a login: %+v", server)
+	if server := findTestItem(t, result, "Build server"); server.Overview.Category != item.CategoryServer || server.Overview.Username != "deploy" || server.Details.Password != "server-password" {
+		t.Errorf("a 1Password Server is not a server: %+v", server)
 	}
-	if summary := Summarize(result.Items); summary.APICredentialCount != 1 || summary.LoginCount != 1 {
+	if summary := Summarize(result.Items); summary.APICredentialCount != 1 || summary.ServerCount != 1 {
 		t.Errorf("summary = %+v", summary)
 	}
 }
@@ -892,6 +893,81 @@ func TestParseOnePasswordSoftwareLicense(t *testing.T) {
 	}
 	if summary := Summarize(result.Items); summary.SoftwareLicenseCount != 2 || summary.LoginCount != 1 {
 		t.Errorf("summary = %+v", summary)
+	}
+}
+
+func TestParseOnePasswordServer(t *testing.T) {
+	data := `{"accounts":[{"vaults":[{"items":[
+		{"categoryUuid":"110","overview":{"title":"Build server","url":"ssh://build.example.com:2222"},"details":{"notesPlain":"Rack 4","sections":[
+			{"title":"","fields":[
+				{"title":"URL","id":"url","value":{"string":"ssh://build.example.com:2222"}},
+				{"title":"username","id":"username","value":{"string":"deploy"}},
+				{"title":"password","id":"password","value":{"concealed":"server-password"}}]},
+			{"title":"Admin Console","name":"admin_console","fields":[
+				{"title":"console URL","id":"admin_console_url","value":{"string":"https://console.example.com"}},
+				{"title":"console username","id":"admin_console_username","value":{"string":"admin"}},
+				{"title":"console password","id":"admin_console_password","value":{"concealed":"console-password"}}]},
+			{"title":"Hosting Provider","name":"hosting_provider_details","fields":[
+				{"title":"name","id":"name","value":{"string":"Example Cloud"}},
+				{"title":"website","id":"website","value":{"string":"https://cloud.example.com"}}]}]}},
+		{"categoryUuid":"110","overview":{"title":"Panel server"},"details":{"sections":[
+			{"title":"","fields":[
+				{"title":"URL","id":"url","value":{"string":"panel.example.com"}},
+				{"title":"username","id":"username","value":{"string":"admin"}},
+				{"title":"password","id":"password","value":{"concealed":"panel-password"}}]},
+			{"title":"Admin Console","name":"admin_console","fields":[
+				{"title":"console URL","id":"admin_console_url","value":{"string":"https://panel.example.com:8443"}},
+				{"title":"console username","id":"admin_console_username","value":{"string":"admin"}},
+				{"title":"console password","id":"admin_console_password","value":{"concealed":""}}]}]}},
+		{"categoryUuid":"102","overview":{"title":"Database"},"details":{"sections":[{"title":"","fields":[
+			{"title":"username","id":"username","value":{"string":"admin"}}]}]}}]}]}]}`
+	result := parseFixture(t, "export.1pux", buildOnePasswordExport(t, []byte(data)), FormatAutomatic)
+	if len(result.Skipped) != 0 {
+		t.Errorf("skipped %+v", result.Skipped)
+	}
+	server := findTestItem(t, result, "Build server")
+	wantFields := []item.Field{
+		{Name: item.FieldHost, Value: "build.example.com"},
+		{Name: item.FieldPort, Value: "2222"},
+		{Name: "console URL", Value: "https://console.example.com"},
+		{Name: "console username", Value: "admin"},
+		{Name: "console password", Value: "console-password", Concealed: true},
+		{Name: "name", Value: "Example Cloud"},
+		{Name: "website", Value: "https://cloud.example.com"},
+	}
+	if server.Overview.Category != item.CategoryServer || !reflect.DeepEqual(server.Details.Fields, wantFields) || server.Details.Notes != "Rack 4" {
+		t.Errorf("server = %+v\nfields\n%+v\nwant\n%+v", server.Overview, server.Details.Fields, wantFields)
+	}
+	// The console has credentials of its own, so it is no website: AutoFill would offer the server's password there.
+	if server.Overview.Username != "deploy" || server.Details.Password != "server-password" || len(server.Overview.URLs) != 0 {
+		t.Errorf("server login data = %+v %+v", server.Overview, server.Details)
+	}
+	// A console signed in with the server's own credentials is the server's website, and its repeated username is dropped.
+	panel := findTestItem(t, result, "Panel server")
+	wantPanelFields := []item.Field{{Name: item.FieldHost, Value: "panel.example.com"}}
+	if !reflect.DeepEqual(panel.Details.Fields, wantPanelFields) || !reflect.DeepEqual(panel.Overview.URLs, []string{"https://panel.example.com:8443"}) ||
+		panel.Overview.Username != "admin" || panel.Details.Password != "panel-password" {
+		t.Errorf("panel server = %+v\nfields\n%+v\nwant\n%+v", panel.Overview, panel.Details.Fields, wantPanelFields)
+	}
+	if database := findTestItem(t, result, "Database"); database.Overview.Category != item.CategoryLogin {
+		t.Errorf("a 1Password Database is no longer a login: %+v", database)
+	}
+	if summary := Summarize(result.Items); summary.ServerCount != 2 || summary.LoginCount != 1 {
+		t.Errorf("summary = %+v", summary)
+	}
+
+	// Before Hisar had servers, this item became a login with the server's URL as its website.
+	oldLogin := item.Item{Overview: item.Overview{Title: "Build server", Category: item.CategoryLogin, Username: "deploy", URLs: []string{"ssh://build.example.com:2222"}}}
+	if indexes := FindDuplicateIndexes([]item.Item{server}, []item.Item{oldLogin}); !reflect.DeepEqual(indexes, []int{0}) {
+		t.Errorf("a server imported earlier as a login is not a duplicate: %v", indexes)
+	}
+	otherUser := oldLogin
+	otherUser.Overview.Username = "root"
+	if indexes := FindDuplicateIndexes([]item.Item{server}, []item.Item{otherUser}); len(indexes) != 0 {
+		t.Errorf("a server matches a login with another username: %v", indexes)
+	}
+	if got := DescribeDuplicate(server); got != "build.example.com:2222 · deploy" {
+		t.Errorf("DescribeDuplicate = %q", got)
 	}
 }
 

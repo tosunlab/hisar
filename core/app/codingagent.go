@@ -135,6 +135,11 @@ func isAgentSearchMatch(vaultName string, vaultItem *item.Item, query string) bo
 		identity, _ := item.ReadIdentity(vaultItem)
 		texts = append(texts, identity.Address.City, identity.Address.Country)
 	}
+	if vaultItem.IsCategory(item.CategoryServer) {
+		// A server's host is a named field; its username and admin console are the item's own.
+		server, _ := item.ReadServer(vaultItem)
+		texts = append(texts, server.Host)
+	}
 	if vaultItem.IsCategory(item.CategorySoftwareLicense) {
 		// What the apps' search reads; never the license key.
 		license, _ := item.ReadSoftwareLicense(vaultItem)

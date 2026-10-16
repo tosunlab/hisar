@@ -35,9 +35,9 @@ import {
   type ExportResult,
   type FavoriteItem,
 } from "./api";
-import { allAddressKey, formatFullName } from "./util";
+import { allAddressKey, formatFullName, formatServerAddress } from "./util";
 
-export type EditorMode = "view" | "edit" | "create" | "create-secure-note" | "create-credit-card" | "create-identity" | "create-api-credential" | "create-address" | "create-software-license" | "create-ssh-key";
+export type EditorMode = "view" | "edit" | "create" | "create-secure-note" | "create-credit-card" | "create-identity" | "create-api-credential" | "create-address" | "create-software-license" | "create-server" | "create-ssh-key";
 export type ImportStep = "choose" | "preview" | "saving" | "done";
 
 export interface ShareLinkDialog {
@@ -681,7 +681,7 @@ export function sortAllItem(allItem: ItemDetail[]): ItemDetail[] {
 }
 
 // filterAllItem keeps the items matching the search in their title, username, websites, tags, identity, API credential,
-// address or software license summary, and carrying tag when one is selected.
+// address, software license or server summary, and carrying tag when one is selected.
 export function filterAllItem(allItem: ItemDetail[], query: string, tag = ""): ItemDetail[] {
   const normalizedQuery = query.trim().toLowerCase();
   return allItem.filter((vaultItem) => {
@@ -698,10 +698,13 @@ export function filterAllItem(allItem: ItemDetail[], query: string, tag = ""): I
     // A software license's summary keeps its product, version, licensed-to name and email, never the key.
     const license = vaultItem.softwareLicense;
     const licenseText = license ? [license.product, license.version, license.licensedTo, license.email] : [];
+    // A server's summary keeps its host and port, which lists show as one address; its username is the item's own.
+    const server = vaultItem.server;
+    const serverText = server ? [formatServerAddress(server), server.host, server.port] : [];
     return (
       (tag === "" || allTag.includes(tag)) &&
       (normalizedQuery === "" ||
-        [vaultItem.title, vaultItem.username, ...vaultItem.urls, ...allTag, ...identityText, ...credentialText, ...addressText, ...licenseText].some((text) =>
+        [vaultItem.title, vaultItem.username, ...vaultItem.urls, ...allTag, ...identityText, ...credentialText, ...addressText, ...licenseText, ...serverText].some((text) =>
           text.toLowerCase().includes(normalizedQuery),
         ))
     );
@@ -785,6 +788,11 @@ export function startCreatingAddress(): void {
 export function startCreatingSoftwareLicense(): void {
   store.selectedItem = null;
   store.editorMode = "create-software-license";
+}
+
+export function startCreatingServer(): void {
+  store.selectedItem = null;
+  store.editorMode = "create-server";
 }
 
 export function startCreatingSSHKey(): void {
@@ -1433,6 +1441,8 @@ export function hasShareableField(detail: ItemDetail): boolean {
   const hasCardValue = card ? [...allCardValue, ...allAddressKey.map((key) => card[key])].some((value) => value) : false;
   const hasAddressValue = detail.address ? Object.values(detail.address).some((value) => value) : false;
   const hasLicenseValue = detail.softwareLicense ? Object.values(detail.softwareLicense).some((value) => value) : false;
+  // A server's linked SSH key is not shared: the link names an item the recipient cannot open.
+  const hasServerValue = detail.server ? Boolean(detail.server.host || detail.server.port) : false;
   const hasIdentityValue = detail.identity ? Object.values(detail.identity).some((value) => value) : false;
   const credential = detail.apiCredential;
   const hasCredentialValue = credential ? [credential.service, credential.keyId, credential.secret, credential.host, credential.expiry].some((value) => value) : false;
@@ -1446,7 +1456,8 @@ export function hasShareableField(detail: ItemDetail): boolean {
       hasIdentityValue ||
       hasCredentialValue ||
       hasAddressValue ||
-      hasLicenseValue,
+      hasLicenseValue ||
+      hasServerValue,
   );
 }
 

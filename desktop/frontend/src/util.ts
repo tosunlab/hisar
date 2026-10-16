@@ -141,8 +141,9 @@ export const identityCategory = "identity";
 export const apiCredentialCategory = "api-credential";
 export const addressCategory = "address";
 export const softwareLicenseCategory = "software-license";
+export const serverCategory = "server";
 
-type CategoryIcon = "key" | "note" | "card" | "identity" | "apiKey" | "address" | "license";
+type CategoryIcon = "key" | "note" | "card" | "identity" | "apiKey" | "address" | "license" | "server";
 const allCategoryIcon: Record<string, CategoryIcon> = {
   [sshKeyCategory]: "key",
   [secureNoteCategory]: "note",
@@ -151,6 +152,7 @@ const allCategoryIcon: Record<string, CategoryIcon> = {
   [apiCredentialCategory]: "apiKey",
   [addressCategory]: "address",
   [softwareLicenseCategory]: "license",
+  [serverCategory]: "server",
 };
 
 // getItemIcon is the tile icon of an item's category; logins show their initials instead.
@@ -236,6 +238,38 @@ export function formatSoftwareLicenseSummary(license: { product: string; version
   const version = license?.version ? (/^\d/.test(license.version) ? `Version ${license.version}` : license.version) : "";
   const summary = [version, license?.licensedTo || license?.email || ""].filter((part) => part).join(" · ");
   return summary || license?.product || "Software license";
+}
+
+// The names of a server's custom fields, as core/item stores them; its username, password and admin console are the
+// item's own.
+export const serverFieldName = {
+  host: "Host",
+  port: "Port",
+  sshKey: "SSH key",
+} as const;
+
+// formatServerAddress joins a server's host and port as core/item does, with brackets around an IPv6 host.
+export function formatServerAddress(server: { host: string; port: string } | null | undefined): string {
+  const host = server?.host ?? "";
+  if (!host || !server?.port) {
+    return host;
+  }
+  return `${host.includes(":") ? `[${host}]` : host}:${server.port}`;
+}
+
+// formatServerSummary is a server's line in lists: its host and port and its username, such as
+// "build.example.com:2222 · deploy".
+export function formatServerSummary(server: { host: string; port: string } | null | undefined, username: string): string {
+  return [formatServerAddress(server), username].filter((part) => part).join(" · ") || "Server";
+}
+
+// describeServerPort warns about a port that is not a number from 1 to 65535, as core/item does; "" for an empty port.
+export function describeServerPort(port: string): string {
+  if (port === "") {
+    return "";
+  }
+  const number = Number(port);
+  return /^\d+$/.test(port) && number >= 1 && number <= 65535 ? "" : "The port is not a number from 1 to 65535";
 }
 
 type IdentityName = { firstName: string; middleName: string; lastName: string; email?: string };

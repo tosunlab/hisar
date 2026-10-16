@@ -21,6 +21,7 @@ enum ItemCategoryDestination: String, Hashable, CaseIterable {
     case apiCredentials
     case addresses
     case softwareLicenses
+    case servers
     case sshKeys
 
     var title: String {
@@ -32,6 +33,7 @@ enum ItemCategoryDestination: String, Hashable, CaseIterable {
         case .apiCredentials: "API credentials"
         case .addresses: "Addresses"
         case .softwareLicenses: "Software licenses"
+        case .servers: "Servers"
         case .sshKeys: "SSH keys"
         }
     }
@@ -45,6 +47,7 @@ enum ItemCategoryDestination: String, Hashable, CaseIterable {
         case .apiCredentials: "curlybraces.square"
         case .addresses: "mappin.and.ellipse"
         case .softwareLicenses: "checkmark.seal"
+        case .servers: "server.rack"
         case .sshKeys: "key.horizontal"
         }
     }
@@ -60,6 +63,7 @@ enum ItemCategoryDestination: String, Hashable, CaseIterable {
         case .apiCredentials: item.isAPICredential
         case .addresses: item.isAddress
         case .softwareLicenses: item.isSoftwareLicense
+        case .servers: item.isServer
         case .sshKeys: item.isSSHKey
         }
     }
@@ -76,6 +80,7 @@ struct VaultsView: View {
     @State private var isNewAPICredentialShown = false
     @State private var isNewAddressShown = false
     @State private var isNewSoftwareLicenseShown = false
+    @State private var isNewServerShown = false
 
     private var personalVault: VaultSummary? { model.allVault.first { $0.type == "personal" } }
 
@@ -194,6 +199,13 @@ struct VaultsView: View {
                         .disabled(personalVault == nil)
                         .accessibilityIdentifier("new-software-license")
                         Button {
+                            isNewServerShown = true
+                        } label: {
+                            Label("New server", systemImage: "server.rack")
+                        }
+                        .disabled(personalVault == nil)
+                        .accessibilityIdentifier("new-server")
+                        Button {
                             isNewVaultShown = true
                         } label: {
                             Label("New vault", systemImage: "square.stack.3d.up.badge.plus")
@@ -243,6 +255,16 @@ struct VaultsView: View {
         .sheet(isPresented: $isNewAddressShown) {
             if let personalVault {
                 ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categoryAddress) { savedItem in
+                    if let savedItem {
+                        navigationPath.append(ItemDestination(vaultID: personalVault.id, itemID: savedItem.id))
+                    }
+                }
+                .environmentObject(model)
+            }
+        }
+        .sheet(isPresented: $isNewServerShown) {
+            if let personalVault {
+                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categoryServer) { savedItem in
                     if let savedItem {
                         navigationPath.append(ItemDestination(vaultID: personalVault.id, itemID: savedItem.id))
                     }
@@ -466,6 +488,8 @@ struct ItemRow: View {
             detail = (item.address ?? ItemAddress()).summary
         } else if item.isSoftwareLicense {
             detail = (item.softwareLicense ?? ItemSoftwareLicense()).summary
+        } else if item.isServer {
+            detail = (item.server ?? ItemServer()).summary(username: item.username)
         } else {
             detail = item.username
         }

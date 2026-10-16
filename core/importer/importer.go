@@ -33,6 +33,7 @@ const (
 	KindAPICredential   = "api-credential"
 	KindAddress         = "address"
 	KindSoftwareLicense = "software-license"
+	KindServer          = "server"
 )
 
 type FormatInfo struct {
@@ -83,6 +84,8 @@ type Summary struct {
 	AddressCount int `json:"addressCount"`
 	// SoftwareLicenseCount counts software-license items.
 	SoftwareLicenseCount int `json:"softwareLicenseCount"`
+	// ServerCount counts server items.
+	ServerCount int `json:"serverCount"`
 }
 
 func GetFormatName(format string) string {
@@ -174,6 +177,8 @@ func GetKind(vaultItem item.Item) string {
 		return KindAddress
 	case item.CategorySoftwareLicense:
 		return KindSoftwareLicense
+	case item.CategoryServer:
+		return KindServer
 	}
 	return KindLogin
 }
@@ -196,6 +201,8 @@ func Summarize(items []item.Item) Summary {
 			summary.AddressCount++
 		case KindSoftwareLicense:
 			summary.SoftwareLicenseCount++
+		case KindServer:
+			summary.ServerCount++
 		default:
 			summary.LoginCount++
 		}
@@ -209,7 +216,8 @@ func Summarize(items []item.Item) Summary {
 // apart, API credentials by title and key ID, or host when there is no key ID, or secret when there is neither,
 // addresses by title, street, postal code and country, and software licenses by title and license key, or product and
 // version when there is no key. A login with a "License key" field, as 1Password licenses were imported before Hisar had
-// software licenses, matches like a software license with that key, so importing the same file again skips it.
+// software licenses, matches like a software license with that key, so importing the same file again skips it. A server
+// matches like a login whose website is its host and port, as 1Password servers were imported before Hisar had servers.
 func BuildDuplicateKey(vaultItem item.Item) string {
 	if vaultItem.IsCategory(item.CategorySSHKey) && vaultItem.Overview.Fingerprint != "" {
 		return "ssh-key\x00" + vaultItem.Overview.Fingerprint
@@ -259,7 +267,10 @@ func BuildDuplicateKey(vaultItem item.Item) string {
 		}
 	}
 	firstURL := ""
-	if len(vaultItem.Overview.URLs) > 0 {
+	if vaultItem.IsCategory(item.CategoryServer) {
+		server, _ := item.ReadServer(&vaultItem)
+		firstURL = normalizeURL(server.Normalize().Summary())
+	} else if len(vaultItem.Overview.URLs) > 0 {
 		firstURL = normalizeURL(vaultItem.Overview.URLs[0])
 	}
 	return strings.Join([]string{
@@ -271,7 +282,8 @@ func BuildDuplicateKey(vaultItem item.Item) string {
 
 // DescribeDuplicate is what BuildDuplicateKey matched besides the title, to show next to it, never a secret: a login's
 // username and website's host, an SSH key's fingerprint, a card's last four digits, an identity's name and email, an API
-// credential's key ID or host, an address's city and country, and a software license's version and licensed-to name. It is
+// credential's key ID or host, an address's city and country, a software license's version and licensed-to name, and a
+// server's host and username. It is
 // "" for a card with no last four digits and a credential with neither, which match on a value that stays hidden.
 func DescribeDuplicate(vaultItem item.Item) string {
 	parts := []string{}
@@ -295,6 +307,9 @@ func DescribeDuplicate(vaultItem item.Item) string {
 	case vaultItem.IsCategory(item.CategorySoftwareLicense):
 		license, _ := item.ReadSoftwareLicense(&vaultItem)
 		parts = append(parts, strings.TrimSpace(license.Version), strings.TrimSpace(license.LicensedTo))
+	case vaultItem.IsCategory(item.CategoryServer):
+		server, _ := item.ReadServer(&vaultItem)
+		parts = append(parts, server.Normalize().Summary(), strings.TrimSpace(vaultItem.Overview.Username))
 	default:
 		parts = append(parts, strings.TrimSpace(vaultItem.Overview.Username))
 		if len(vaultItem.Overview.URLs) > 0 {
@@ -401,6 +416,7 @@ func finishItem(vaultItem *item.Item) bool {
 	item.NormalizeIdentity(vaultItem)
 	item.NormalizeAPICredential(vaultItem)
 	item.NormalizeSoftwareLicense(vaultItem)
+	item.NormalizeServer(vaultItem)
 	item.NormalizeAddress(vaultItem)
 	return true
 }

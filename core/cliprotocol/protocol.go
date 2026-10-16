@@ -31,6 +31,8 @@ const (
 	FeatureAddresses = "addresses"
 	// FeatureSoftwareLicenses: items.save creates software license items from their named fields.
 	FeatureSoftwareLicenses = "software-licenses"
+	// FeatureServers: items.save creates server items from their named fields and login data.
+	FeatureServers = "servers"
 	// FeatureFavorites: favorites.list, favorites.add and favorites.remove; items.import stars Item.IsFavorite items.
 	FeatureFavorites = "favorites"
 	// FeatureTags: items.list and items.get return each item's tags, and items.save takes ItemChange.Tags.
@@ -39,7 +41,7 @@ const (
 
 // ListFeatures returns the features this build of the app announces in hello.
 func ListFeatures() []string {
-	return []string{FeatureSecureNotes, FeatureCreditCards, FeatureIdentities, FeatureFavorites, FeatureAPICredentials, FeatureTags, FeatureAddresses, FeatureSoftwareLicenses}
+	return []string{FeatureSecureNotes, FeatureCreditCards, FeatureIdentities, FeatureFavorites, FeatureAPICredentials, FeatureTags, FeatureAddresses, FeatureSoftwareLicenses, FeatureServers}
 }
 
 // GetCategoryFeature returns the feature an app must announce before items.save may create an item of category, or ""
@@ -50,6 +52,7 @@ func GetCategoryFeature(category string) string {
 		item.CategoryAPICredential:   FeatureAPICredentials,
 		item.CategoryAddress:         FeatureAddresses,
 		item.CategorySoftwareLicense: FeatureSoftwareLicenses,
+		item.CategoryServer:          FeatureServers,
 	}[category]
 }
 

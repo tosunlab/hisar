@@ -200,8 +200,10 @@ func isAnyPasskeyExcluded(matches []passkeyMatch, excludedIDs [][]byte) bool {
 	return slices.ContainsFunc(matches, func(match passkeyMatch) bool { return containsCredentialID(excludedIDs, match.passkey.CredentialID) })
 }
 
+// listWritableLogins returns the logins matching origin that a passkey may be saved in: logins only, not servers, since
+// passkeys are read from logins.
 func (s *Service) listWritableLogins(ctx context.Context, origin string) ([]browserprotocol.Login, error) {
-	logins, _, err := s.listLoginsForURL(ctx, origin)
+	logins, itemsByKey, err := s.listLoginsForURL(ctx, origin)
 	if err != nil {
 		return nil, err
 	}
@@ -209,7 +211,8 @@ func (s *Service) listWritableLogins(ctx context.Context, origin string) ([]brow
 	defer s.mutex.Unlock()
 	return slices.DeleteFunc(logins, func(login browserprotocol.Login) bool {
 		vault := s.vaultsByID[login.VaultID]
-		return vault == nil || vault.Role == apitypes.VaultReader
+		loginItem := itemsByKey[login.VaultID+"/"+login.ItemID]
+		return vault == nil || vault.Role == apitypes.VaultReader || !loginItem.IsCategory(item.CategoryLogin)
 	}), nil
 }
 

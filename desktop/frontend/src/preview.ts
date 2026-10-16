@@ -166,6 +166,18 @@ const allPreviewItemByVaultID: Record<string, ItemDetail[]> = {
     createPreviewItem("wifi", "Office Wi-Fi", "", "", "wifi-password-123", { fields: [{ name: "Network", value: "Hisar-Office", concealed: false }] }),
     createPreviewItem("staging-database", "Staging database", "deploy", "https://db.staging.example.com", "Tg5!kP9#vL2@"),
     createPreviewSSHKey("deploy-server", "Deploy server", "ssh-ed25519"),
+    createPreviewItem("build-server", "Build server", "deploy", "https://console.build.example.com", "Wq4!sN8#pD2@", {
+      category: "server",
+      fields: [{ name: "Provider", value: "Hetzner", concealed: false }],
+      server: {
+        host: "build.example.com",
+        port: "2222",
+        sshKeyId: "deploy-server",
+        sshKeyTitle: "Deploy server",
+        sshKeyFingerprint: "SHA256:preview-deploy-server",
+        portWarning: "",
+      },
+    }),
   ],
   work: [
     createPreviewItem("vpn", "Office VPN", "alper", "https://vpn.example.com", "Vq8@Lm3!Zr6#"),
@@ -936,6 +948,7 @@ function buildPreviewImportPreview(vaultID: string): ImportPreview {
     apiCredentialCount: allPreviewImportItem.filter((detail) => detail.category === "api-credential").length,
     addressCount: allPreviewImportItem.filter((detail) => detail.category === "address").length,
     softwareLicenseCount: allPreviewImportItem.filter((detail) => detail.category === "software-license").length,
+    serverCount: allPreviewImportItem.filter((detail) => detail.category === "server").length,
     allSkipped: allPreviewImportSkipped,
     allDuplicate: findAllPreviewImportDuplicate(vaultID).map((detail) => ({
       title: detail.title,

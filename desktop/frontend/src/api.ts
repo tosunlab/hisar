@@ -30,6 +30,7 @@ import type {
   ItemIdentity,
   ItemField,
   ItemPasskey,
+  ItemServer,
   ItemSoftwareLicense,
   OneTimeCode,
   PasswordConfig,
@@ -80,6 +81,7 @@ export type {
   ItemField,
   ItemIdentity,
   ItemPasskey,
+  ItemServer,
   ItemSoftwareLicense,
   LoginItemStatus,
   OneTimeCode,
@@ -389,6 +391,10 @@ export function createEmptyIdentity(): ItemIdentity {
 
 export function createEmptyAPICredential(): ItemAPICredential {
   return { service: "", keyId: "", secret: "", host: "", expiry: "", expiryWarning: "" };
+}
+
+export function createEmptyServer(): ItemServer {
+  return { host: "", port: "", sshKeyId: "", sshKeyTitle: "", sshKeyFingerprint: "", portWarning: "" };
 }
 
 export function createEmptySoftwareLicense(): ItemSoftwareLicense {

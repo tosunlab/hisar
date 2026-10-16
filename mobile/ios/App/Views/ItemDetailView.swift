@@ -149,6 +149,9 @@ struct ItemDetailView: View {
             } else if item.isSoftwareLicense {
                 buildSoftwareLicenseSection(license: item.softwareLicense ?? ItemSoftwareLicense())
             } else {
+                if item.isServer {
+                    buildServerSection(server: item.server ?? ItemServer())
+                }
                 buildLoginSection(item: item)
             }
             if !item.allField.isEmpty {
@@ -165,7 +168,7 @@ struct ItemDetailView: View {
                 }
             }
             if !item.allURL.isEmpty {
-                Section(item.allURL.count == 1 ? "Website" : "Websites") {
+                Section(item.isServer ? "Admin console" : item.allURL.count == 1 ? "Website" : "Websites") {
                     ForEach(Array(item.allURL.enumerated()), id: \.offset) { _, url in
                         if let openableURL = VaultLogic.convertToOpenableURL(url) {
                             Link(destination: openableURL) {
@@ -245,6 +248,56 @@ struct ItemDetailView: View {
         .refreshable { await loadItem() }
     }
 
+    /// A server's host and port with copy and copy reference, and its SSH key, which opens the key item.
+    @ViewBuilder
+    private func buildServerSection(server: ItemServer) -> some View {
+        if !server.host.isEmpty || !server.port.isEmpty || !server.sshKeyID.isEmpty {
+            Section("Server") {
+                if !server.host.isEmpty {
+                    SecretFieldRow(
+                        label: ServerFieldName.host, value: server.address, isConcealed: false, isRevealed: true, toggleReveal: nil,
+                        copy: { copy(fieldName: ServerFieldName.host, label: ServerFieldName.host) },
+                        copyReference: { copyReference(fieldName: ServerFieldName.host) }
+                    )
+                }
+                if !server.port.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        SecretFieldRow(
+                            label: ServerFieldName.port, value: server.port, isConcealed: false, isRevealed: true, toggleReveal: nil,
+                            copy: { copy(fieldName: ServerFieldName.port, label: ServerFieldName.port) },
+                            copyReference: { copyReference(fieldName: ServerFieldName.port) }
+                        )
+                        if !server.portWarning.isEmpty {
+                            Text(server.portWarning)
+                                .font(.footnote)
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                }
+                if !server.sshKeyID.isEmpty {
+                    if server.sshKeyTitle.isEmpty {
+                        LabeledContent(ServerFieldName.sshKey, value: "Missing SSH key")
+                            .accessibilityIdentifier("server-ssh-key")
+                    } else {
+                        NavigationLink(value: ItemDestination(vaultID: vaultID, itemID: server.sshKeyID)) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(ServerFieldName.sshKey)
+                                    .font(.caption)
+                                    .foregroundStyle(.themeSecondary)
+                                Label(server.sshKeyTitle, systemImage: "key.horizontal")
+                                Text(server.sshKeyFingerprint)
+                                    .font(.caption.monospaced())
+                                    .foregroundStyle(.themeSecondary)
+                                    .lineLimit(1)
+                            }
+                        }
+                        .accessibilityIdentifier("server-ssh-key")
+                    }
+                }
+            }
+        }
+    }
+
     @ViewBuilder
     private func buildLoginSection(item: ItemDetail) -> some View {
         if !item.username.isEmpty || !item.password.isEmpty || item.hasOneTimePassword {
@@ -297,6 +350,7 @@ struct ItemDetailView: View {
         if item.isAPICredential { return (item.apiCredential ?? ItemAPICredential()).summary }
         if item.isAddress { return (item.address ?? ItemAddress()).summary }
         if item.isSoftwareLicense { return (item.softwareLicense ?? ItemSoftwareLicense()).summary }
+        if item.isServer { return (item.server ?? ItemServer()).summary(username: item.username) }
         return "Login"
     }
 

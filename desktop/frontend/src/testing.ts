@@ -139,6 +139,27 @@ export function createSoftwareLicenseItem(overrides: Partial<ItemDetail> = {}): 
   });
 }
 
+export function createServerItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
+  return createItem({
+    id: "build-1",
+    category: "server",
+    title: "Build server",
+    username: "deploy",
+    password: "server-password",
+    urls: ["https://console.example.com"],
+    fields: [{ name: "Provider", value: "Example Cloud", concealed: false }],
+    server: {
+      host: "build.example.com",
+      port: "2222",
+      sshKeyId: "key-1",
+      sshKeyTitle: "Deploy key",
+      sshKeyFingerprint: "SHA256:abc",
+      portWarning: "",
+    },
+    ...overrides,
+  });
+}
+
 export function createSecureNoteItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
   return createItem({
     id: "note-1",
@@ -594,6 +615,7 @@ export function createImportPreview(overrides: Partial<ImportPreview> = {}): Imp
     apiCredentialCount: 0,
     addressCount: 0,
     softwareLicenseCount: 0,
+    serverCount: 0,
     allSkipped: [{ title: "Visa", reason: "Bitwarden cards are not supported in Hisar yet" }],
     allDuplicate: [{ title: "GitHub", username: "alice", url: "https://github.com", detail: "alice · github.com" }],
     ...overrides,

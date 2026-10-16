@@ -38,6 +38,7 @@ const allCount = computed(() => {
       icon: "license" as const,
       testID: "software-license",
     },
+    { label: preview.serverCount === 1 ? "Server" : "Servers", count: preview.serverCount, icon: "server" as const, testID: "server" },
   ];
 });
 const importCount = computed(() => {

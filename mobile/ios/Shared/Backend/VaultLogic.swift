@@ -98,7 +98,9 @@ enum VaultLogic {
             let addressText = reference.item.address.map { [$0.street, $0.city, $0.country] } ?? []
             // A software license's summary keeps its product, version, licensed-to name and email, never the key.
             let licenseText = reference.item.softwareLicense.map { [$0.product, $0.version, $0.licensedTo, $0.email] } ?? []
-            let searchable = ([reference.item.title, reference.item.username, reference.vaultName] + reference.item.allURL + reference.item.allTag + identityText + credentialText + addressText + licenseText)
+            // A server's summary keeps its host and port, which lists show as one address.
+            let serverText = reference.item.server.map { [$0.address, $0.host, $0.port] } ?? []
+            let searchable = ([reference.item.title, reference.item.username, reference.vaultName] + reference.item.allURL + reference.item.allTag + identityText + credentialText + addressText + licenseText + serverText)
                 .joined(separator: " ").lowercased()
             return allWord.allSatisfy { searchable.contains($0) }
         }
@@ -146,7 +148,7 @@ enum VaultLogic {
     static func buildAllCredentialIdentity(_ allItem: [VaultItemReference], allPasskey: [StoredPasskey] = []) -> [CredentialIdentityRecord] {
         var allIdentity: [CredentialIdentityRecord] = []
         var allSeen = Set<CredentialIdentityRecord>()
-        for reference in allItem where reference.item.isLogin {
+        for reference in allItem where reference.item.offersLoginFill {
             let username = reference.item.username.trimmingCharacters(in: .whitespaces)
             for url in reference.item.allURL {
                 guard let host = extractHost(url) else { continue }
@@ -163,6 +165,7 @@ enum VaultLogic {
                 }
             }
         }
+        // Passkeys belong to logins only.
         let allLoginID = Set(allItem.filter(\.item.isLogin).map(\.id))
         for passkey in allPasskey where allLoginID.contains(passkey.recordIdentifier) {
             guard let credentialID = Base64URL.decode(passkey.credentialID), let userHandle = Base64URL.decode(passkey.userHandle),

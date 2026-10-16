@@ -8,6 +8,7 @@ import {
   hasShareableField,
   openItemShareLinkDialog,
   openWebsite,
+  selectItem,
   selectTag,
   startEditingItem,
   store,
@@ -26,6 +27,8 @@ import {
   formatCardSummary,
   formatIdentitySummary,
   formatKeyType,
+  formatServerAddress,
+  formatServerSummary,
   formatSoftwareLicenseSummary,
   getDomain,
   getItemIcon,
@@ -33,6 +36,8 @@ import {
   identityFieldName,
   isMacPlatform,
   secureNoteCategory,
+  serverCategory,
+  serverFieldName,
   softwareLicenseCategory,
   softwareLicenseFieldName,
   sshKeyCategory,
@@ -59,6 +64,8 @@ const isIdentity = computed(() => store.selectedItem?.category === identityCateg
 const isAPICredential = computed(() => store.selectedItem?.category === apiCredentialCategory);
 const isAddress = computed(() => store.selectedItem?.category === addressCategory);
 const isSoftwareLicense = computed(() => store.selectedItem?.category === softwareLicenseCategory);
+const isServer = computed(() => store.selectedItem?.category === serverCategory);
+const server = computed(() => (isServer.value ? store.selectedItem?.server : undefined));
 
 // NamedRow: isLink rows open in the browser, as websites do.
 type NamedRow = { name: string; value: string; concealed: boolean; masked: string; warning: string; isLink?: boolean };
@@ -197,6 +204,9 @@ function maskSecret(secret: string): string {
           <span v-else-if="isAddress" class="muted" data-testid="address-summary">{{ formatAddressSummary(store.selectedItem.address) }}</span>
           <span v-else-if="isSoftwareLicense" class="muted" data-testid="software-license-summary">{{
             formatSoftwareLicenseSummary(store.selectedItem.softwareLicense)
+          }}</span>
+          <span v-else-if="isServer" class="muted" data-testid="server-summary">{{
+            formatServerSummary(store.selectedItem.server, store.selectedItem.username)
           }}</span>
           <span v-else-if="store.selectedItem.urls[0]" class="muted">{{ getDomain(store.selectedItem.urls[0]) }}</span>
         </div>
@@ -370,6 +380,41 @@ function maskSecret(secret: string): string {
     </template>
 
     <section v-else class="card field-card">
+      <template v-if="server">
+        <div v-if="server.host" class="field">
+          <span class="field-label">{{ serverFieldName.host }}</span>
+          <span class="field-value monospace" data-testid="server-host">{{ formatServerAddress(server) }}</span>
+          <span class="field-actions">
+            <button class="ghost icon-button" aria-label="Copy Host" title="Copy" @click="copyField(serverFieldName.host, serverFieldName.host)"><AppIcon name="copy" /></button>
+            <SecretReferenceButton :field-name="serverFieldName.host" :label="serverFieldName.host" />
+          </span>
+        </div>
+        <div v-if="server.port" class="field">
+          <span class="field-label">{{ serverFieldName.port }}</span>
+          <span class="field-value">
+            <span data-testid="server-port">{{ server.port }}</span>
+            <small v-if="server.portWarning" class="field-warning" data-testid="server-port-warning">{{ server.portWarning }}</small>
+          </span>
+          <span class="field-actions">
+            <button class="ghost icon-button" aria-label="Copy Port" title="Copy" @click="copyField(serverFieldName.port, serverFieldName.port)"><AppIcon name="copy" /></button>
+            <SecretReferenceButton :field-name="serverFieldName.port" :label="serverFieldName.port" />
+          </span>
+        </div>
+        <div v-if="server.sshKeyId" class="field" data-testid="server-ssh-key">
+          <span class="field-label">{{ serverFieldName.sshKey }}</span>
+          <span v-if="server.sshKeyTitle" class="field-value">
+            <span>{{ server.sshKeyTitle }}</span>
+            <small class="muted monospace">{{ server.sshKeyFingerprint }}</small>
+          </span>
+          <span v-else class="field-value muted">Missing SSH key</span>
+          <span class="field-actions">
+            <button v-if="server.sshKeyTitle" class="ghost icon-button" aria-label="Open SSH key" title="Open" @click="selectItem(server.sshKeyId)">
+              <AppIcon name="key" />
+            </button>
+          </span>
+        </div>
+      </template>
+
       <div v-if="store.selectedItem.username" class="field">
         <span class="field-label">Username</span>
         <span class="field-value">{{ store.selectedItem.username }}</span>
@@ -404,7 +449,7 @@ function maskSecret(secret: string): string {
       <OneTimeCodeField v-if="store.selectedItem.hasOneTimePassword" :vault-i-d="store.selectedVaultID" :item-i-d="store.selectedItem.id" />
 
       <div v-for="link in store.selectedItem.urls" :key="link" class="field">
-        <span class="field-label">Website</span>
+        <span class="field-label">{{ isServer ? "Admin console" : "Website" }}</span>
         <span class="field-value">{{ link }}</span>
         <span class="field-actions">
           <button class="ghost icon-button" aria-label="Open website" title="Open in browser" @click="openWebsite(link)"><AppIcon name="external" /></button>
@@ -431,7 +476,16 @@ function maskSecret(secret: string): string {
       </div>
 
       <p
-        v-if="!store.selectedItem.username && !store.selectedItem.password && store.selectedItem.urls.length === 0 && store.selectedItem.fields.length === 0 && (store.selectedItem.passkeys ?? []).length === 0"
+        v-if="
+          !store.selectedItem.username &&
+          !store.selectedItem.password &&
+          store.selectedItem.urls.length === 0 &&
+          store.selectedItem.fields.length === 0 &&
+          (store.selectedItem.passkeys ?? []).length === 0 &&
+          !server?.host &&
+          !server?.port &&
+          !server?.sshKeyId
+        "
         class="muted no-fields"
       >
         This item has no fields yet.

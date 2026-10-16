@@ -134,6 +134,23 @@ final class VaultLogicTests: XCTestCase {
         ])
     }
 
+    func testCredentialIdentitiesOfferAServerOnItsAdminConsole() {
+        var server = makeReference("Build server", username: "admin", allURL: ["https://console.example.com"], category: ItemDetail.categoryServer)
+        server.item.server = ItemServer(host: "build.example.com", port: "2222")
+        let note = makeReference("Notes", username: "admin", allURL: ["https://notes.example.com"], category: ItemDetail.categorySecureNote)
+        XCTAssertEqual(VaultLogic.buildAllCredentialIdentity([server, note]), [
+            CredentialIdentityRecord(host: "console.example.com", username: "admin", recordIdentifier: "personal/build server"),
+        ])
+        XCTAssertEqual(VaultLogic.filterAllItem([server, note], searchText: "build.example").map(\.item.title), ["Build server"])
+        XCTAssertEqual(VaultLogic.filterAllItem([server, note], searchText: "2222").map(\.item.title), ["Build server"])
+        XCTAssertEqual(VaultLogic.filterAllItem([server, note], searchText: "build.example.com:2222").map(\.item.title), ["Build server"])
+        var database = makeReference("Database", category: ItemDetail.categoryServer)
+        database.item.server = ItemServer(host: "2001:db8::1", port: "5432")
+        XCTAssertEqual(VaultLogic.filterAllItem([server, database], searchText: "[2001:db8::1]:5432").map(\.item.title), ["Database"])
+        XCTAssertTrue(ItemCategoryDestination.servers.includes(server.item))
+        XCTAssertFalse(ItemCategoryDestination.logins.includes(server.item))
+    }
+
     func testOneTimeCodeIdentitiesForLoginsWithACode() {
         var withCode = makeReference("GitHub", username: "alice", allURL: ["https://github.com", "github.com/login"])
         withCode.item.hasOneTimePassword = true

@@ -35,6 +35,7 @@ struct ItemIcon: View {
         if item.isAPICredential { return "curlybraces.square" }
         if item.isAddress { return "mappin.and.ellipse" }
         if item.isSoftwareLicense { return "checkmark.seal" }
+        if item.isServer { return "server.rack" }
         return nil
     }
 }
