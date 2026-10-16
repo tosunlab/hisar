@@ -45,7 +45,11 @@ func (s *Service) summarizeItem(vaultItem *item.Item) ItemDetail {
 		summary.Card = &ItemCard{Type: summary.Card.Type, CardDescription: CardDescription{Brand: summary.Card.Brand, Last4: summary.Card.Last4}}
 	}
 	if identity := summary.Identity; identity != nil {
-		summary.Identity = &ItemIdentity{FirstName: identity.FirstName, MiddleName: identity.MiddleName, LastName: identity.LastName, Email: identity.Email}
+		// Lists show the name; search also finds an identity by its address, where imports put a person's address.
+		summary.Identity = &ItemIdentity{
+			FirstName: identity.FirstName, MiddleName: identity.MiddleName, LastName: identity.LastName, Email: identity.Email,
+			ItemAddress: summarizeAddress(identity.ItemAddress),
+		}
 	}
 	if credential := summary.APICredential; credential != nil {
 		// The key ID is not shown in lists, but search finds a credential by it.
@@ -53,10 +57,16 @@ func (s *Service) summarizeItem(vaultItem *item.Item) ItemDetail {
 	}
 	if address := summary.Address; address != nil {
 		// The first line of the street is a list's subtitle when the address has no city or country.
-		firstLine, _, _ := strings.Cut(address.Street, "\n")
-		summary.Address = &ItemAddress{Street: firstLine, City: address.City, Country: address.Country}
+		addressSummary := summarizeAddress(*address)
+		summary.Address = &addressSummary
 	}
 	return summary
+}
+
+// summarizeAddress keeps what lists show and search reads: the first line of the street, the city and the country.
+func summarizeAddress(address ItemAddress) ItemAddress {
+	firstLine, _, _ := strings.Cut(address.Street, "\n")
+	return ItemAddress{Street: firstLine, City: address.City, Country: address.Country}
 }
 
 func (s *Service) describeItem(vaultItem *item.Item) ItemDetail {

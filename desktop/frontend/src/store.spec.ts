@@ -177,6 +177,17 @@ describe("store", () => {
     expect(storeModule.filterAllItem(allItem, "bob@example").map((vaultItem) => vaultItem.id)).toEqual(["work"]);
   });
 
+  it("finds an identity by its address, where imports put a person's address", () => {
+    const identity = createIdentityItem().identity!;
+    const allItem = [
+      createIdentityItem({ id: "alice", identity: { ...identity, street: "1 Main St", city: "Springfield", country: "US" } }),
+      createIdentityItem({ id: "bob", title: "Bob", identity: { ...identity, firstName: "Bob", street: "", city: "Shelbyville", country: "TR" } }),
+    ];
+    expect(storeModule.filterAllItem(allItem, "springfield").map((vaultItem) => vaultItem.id)).toEqual(["alice"]);
+    expect(storeModule.filterAllItem(allItem, "main st").map((vaultItem) => vaultItem.id)).toEqual(["alice"]);
+    expect(storeModule.filterAllItem(allItem, "tr").map((vaultItem) => vaultItem.id)).toEqual(["bob"]);
+  });
+
   it("saves an item, reloads the list and shows it", async () => {
     store.selectedVaultID = "personal";
     store.editorMode = "create";

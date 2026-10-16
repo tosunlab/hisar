@@ -126,6 +126,15 @@ func isAgentSearchMatch(vaultName string, vaultItem *item.Item, query string) bo
 		credential, _ := item.ReadAPICredential(vaultItem)
 		texts = append(texts, credential.Service, credential.KeyID, credential.Host)
 	}
+	// An address item's and an identity's city and country, as lists show them; not the street or postal code.
+	if vaultItem.IsCategory(item.CategoryAddress) {
+		address, _ := item.ReadAddress(vaultItem)
+		texts = append(texts, address.City, address.Country)
+	}
+	if vaultItem.IsCategory(item.CategoryIdentity) {
+		identity, _ := item.ReadIdentity(vaultItem)
+		texts = append(texts, identity.Address.City, identity.Address.Country)
+	}
 	return slices.ContainsFunc(texts, func(text string) bool { return strings.Contains(strings.ToLower(text), query) })
 }
 

@@ -599,6 +599,10 @@ final class AppModel: ObservableObject {
             identitySummary.middleName = identity.middleName
             identitySummary.lastName = identity.lastName
             identitySummary.email = identity.email
+            // As core/app's list summary: search also finds an identity by its address.
+            identitySummary.street = identity.street.split(separator: "\n", maxSplits: 1).first.map(String.init) ?? ""
+            identitySummary.city = identity.city
+            identitySummary.country = identity.country
             summary.identity = identitySummary
         }
         if let credential = savedItem.apiCredential {

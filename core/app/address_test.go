@@ -105,3 +105,46 @@ func TestCommandLineAddressTravelsAsNamedFields(t *testing.T) {
 		t.Errorf("hisar://Personal/Home/city = %q", result.Values)
 	}
 }
+
+func TestSearchFindsAnIdentityByItsAddress(t *testing.T) {
+	testService := createUnlockedTestService(t)
+	service, vaultID := testService.service, testService.personalID
+	if _, err := service.SaveItem(vaultID, ItemDetail{
+		Category: item.CategoryIdentity, Title: "Alice",
+		Identity: &ItemIdentity{FirstName: "Alice", ItemAddress: ItemAddress{Street: "1 Main St\nApt 4", City: "Springfield", Region: "IL", PostalCode: "62704", Country: "US"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	summaries, err := service.ListItems(vaultID)
+	if err != nil || len(summaries) != 1 || summaries[0].Identity == nil {
+		t.Fatalf("summaries = %+v, %v", summaries, err)
+	}
+	if got, want := summaries[0].Identity.ItemAddress, (ItemAddress{Street: "1 Main St", City: "Springfield", Country: "US"}); got != want {
+		t.Errorf("summary address = %+v, want %+v", got, want)
+	}
+}
+
+func TestCodingAgentsFindAddressesByCityAndCountry(t *testing.T) {
+	testService := createUnlockedTestService(t)
+	service, vaultID := testService.service, testService.personalID
+	if _, err := service.SetVaultAvailableToAgents(vaultID, true); err != nil {
+		t.Fatal(err)
+	}
+	address := ItemAddress{Street: "1 Main St", City: "Springfield", PostalCode: "62704", Country: "US"}
+	for _, detail := range []ItemDetail{
+		{Category: item.CategoryAddress, Title: "Home", Address: &address},
+		{Category: item.CategoryIdentity, Title: "Alice", Identity: &ItemIdentity{FirstName: "Alice", ItemAddress: address}},
+	} {
+		if _, err := service.SaveItem(vaultID, detail); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if result, err := service.searchAgentItems("springfield", ""); err != nil || result.TotalCount != 2 {
+		t.Errorf("search by city = %+v, %v", result, err)
+	}
+	for _, query := range []string{"main st", "62704"} {
+		if result, err := service.searchAgentItems(query, ""); err != nil || result.TotalCount != 0 {
+			t.Errorf("search %q found %+v, %v", query, result, err)
+		}
+	}
+}

@@ -457,6 +457,19 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.listAllItemReference().filter { ItemCategoryDestination.addresses.includes($0.item) }.map(\.item.title), ["Home"])
     }
 
+    func testSaveIdentityKeepsItsAddressInTheListForSearch() async {
+        let model = await createUnlockedModel()
+        var identity = ItemIdentity()
+        identity.firstName = "Alice"
+        identity.postalAddress = ItemAddress(street: "1 Main St\nApt 4", city: "Springfield", region: "IL", postalCode: "12345", country: "US")
+        guard let savedItem = await model.saveItem(vaultID: "personal", item: ItemDetail(category: ItemDetail.categoryIdentity, title: "Alice", identity: identity)) else {
+            return XCTFail("identity not saved")
+        }
+        let reference = model.listAllItemReference(vaultID: "personal").first { $0.item.id == savedItem.id }
+        XCTAssertEqual(reference?.item.identity?.postalAddress, ItemAddress(street: "1 Main St", city: "Springfield", country: "US"))
+        XCTAssertEqual(reference?.item.identity?.summary, "Alice")
+    }
+
     func testIdentityAndCardCarryTheirAddressAndOldOneLineAddress() throws {
         let json = #"{"category":"identity","title":"Alice","identity":{"firstName":"Alice","street":"1 Main St","city":"Springfield","postalCode":"12345","country":"US","address":"1 Main St, Springfield"}}"#
         let item = try JSONDecoder().decode(ItemDetail.self, from: Data(json.utf8))

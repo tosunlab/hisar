@@ -680,15 +680,17 @@ export function sortAllItem(allItem: ItemDetail[]): ItemDetail[] {
   return [...allItem].sort((first, second) => first.title.localeCompare(second.title, undefined, { sensitivity: "base" }));
 }
 
-// filterAllItem keeps the items matching the search in their title, username, websites, tags, identity name and email, API
-// credential or address summary, and carrying tag when one is selected.
+// filterAllItem keeps the items matching the search in their title, username, websites, tags, identity, API credential or
+// address summary, and carrying tag when one is selected.
 export function filterAllItem(allItem: ItemDetail[], query: string, tag = ""): ItemDetail[] {
   const normalizedQuery = query.trim().toLowerCase();
   return allItem.filter((vaultItem) => {
     const allTag = vaultItem.tags ?? [];
-    // An identity's list summary keeps its name and email, an API credential's its service, key ID and host, an address's
-    // first street line, city and country; the list shows them under the title, except the key ID and street.
-    const identityText = vaultItem.identity ? [formatFullName(vaultItem.identity), vaultItem.identity.email] : [];
+    // An identity's list summary keeps its name, email and address, an API credential's its service, key ID and host, an
+    // address's first street line, city and country. Lists show some of them under the title; search reads them all, so an
+    // identity imported with an address is found by its city.
+    const identity = vaultItem.identity;
+    const identityText = identity ? [formatFullName(identity), identity.email, identity.street, identity.city, identity.country] : [];
     const credential = vaultItem.apiCredential;
     const credentialText = credential ? [credential.service, credential.keyId, credential.host] : [];
     const address = vaultItem.address;
