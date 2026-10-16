@@ -192,7 +192,7 @@ func Summarize(items []item.Item) Summary {
 // BuildDuplicateKey matches items by title, username and first website; SSH keys match by fingerprint, cards by title and
 // last four digits, or by the whole number when it has no four digits to go by, such as a store card's "STORE-12A", and
 // identities by title, full name, email and first document number, so a home and a work identity with no documents stay
-// apart, and API credentials by title and key ID, or host when there is no key ID.
+// apart, and API credentials by title and key ID, or host when there is no key ID, or secret when there is neither.
 func BuildDuplicateKey(vaultItem item.Item) string {
 	if vaultItem.IsCategory(item.CategorySSHKey) && vaultItem.Overview.Fingerprint != "" {
 		return "ssh-key\x00" + vaultItem.Overview.Fingerprint
@@ -214,11 +214,15 @@ func BuildDuplicateKey(vaultItem item.Item) string {
 	}
 	if vaultItem.IsCategory(item.CategoryAPICredential) {
 		credential, _ := item.ReadAPICredential(&vaultItem)
-		keyPart := "key\x00" + strings.TrimSpace(credential.KeyID)
-		if strings.TrimSpace(credential.KeyID) == "" {
-			keyPart = "host\x00" + strings.TrimSpace(credential.Host)
+		key := "api-credential\x00" + strings.ToLower(strings.TrimSpace(vaultItem.Overview.Title)) + "\x00"
+		switch keyID, host := strings.TrimSpace(credential.KeyID), strings.TrimSpace(credential.Host); {
+		case keyID != "":
+			return key + "key\x00" + strings.ToLower(keyID)
+		case host != "":
+			return key + "host\x00" + strings.ToLower(host)
 		}
-		return strings.ToLower("api-credential\x00" + strings.TrimSpace(vaultItem.Overview.Title) + "\x00" + keyPart)
+		// A bare token is told apart by itself, in its own case.
+		return key + "secret\x00" + strings.TrimSpace(credential.Secret)
 	}
 	firstURL := ""
 	if len(vaultItem.Overview.URLs) > 0 {

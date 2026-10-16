@@ -818,12 +818,13 @@ func TestParseOnePasswordAPICredential(t *testing.T) {
 }
 
 func TestAPICredentialsWithTheSameTitleAreNotDuplicates(t *testing.T) {
-	credential := func(keyID, host string) item.Item {
+	withSecret := func(keyID, host, secret string) item.Item {
 		var vaultItem item.Item
 		vaultItem.Overview = item.Overview{Title: "Stripe", Category: item.CategoryAPICredential}
-		item.WriteAPICredential(&vaultItem, item.APICredential{KeyID: keyID, Secret: "sk", Host: host}, nil)
+		item.WriteAPICredential(&vaultItem, item.APICredential{KeyID: keyID, Secret: secret, Host: host}, nil)
 		return vaultItem
 	}
+	credential := func(keyID, host string) item.Item { return withSecret(keyID, host, "sk") }
 	if BuildDuplicateKey(credential("key_1", "")) == BuildDuplicateKey(credential("key_2", "")) {
 		t.Error("two keys of one service match")
 	}
@@ -832,6 +833,15 @@ func TestAPICredentialsWithTheSameTitleAreNotDuplicates(t *testing.T) {
 	}
 	if BuildDuplicateKey(credential("key_1", "")) != BuildDuplicateKey(credential("KEY_1", "api.stripe.com")) {
 		t.Error("a credential does not match itself with its key ID in another case")
+	}
+	if BuildDuplicateKey(withSecret("", "", "token-a")) == BuildDuplicateKey(withSecret("", "", "token-b")) {
+		t.Error("two bare tokens with one title match")
+	}
+	if BuildDuplicateKey(withSecret("", "", "token-a")) == BuildDuplicateKey(withSecret("", "", "TOKEN-A")) {
+		t.Error("two bare tokens that differ only in case match")
+	}
+	if BuildDuplicateKey(withSecret("", "", "token-a")) != BuildDuplicateKey(withSecret("", "", "token-a")) {
+		t.Error("a bare token does not match itself")
 	}
 }
 
