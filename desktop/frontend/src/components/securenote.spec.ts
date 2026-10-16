@@ -39,7 +39,7 @@ function resetStore(): void {
 }
 
 function mountDetail(canEdit = true) {
-  return mount(ItemDetailPanel, { props: { canEdit, vaultName: "Personal", isShared: false } });
+  return mount(ItemDetailPanel, { props: { canEdit, vaultName: "Personal", vaultType: "personal" } });
 }
 
 beforeEach(() => {

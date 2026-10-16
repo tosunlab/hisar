@@ -43,7 +43,8 @@ import SecretReferenceButton from "./SecretReferenceButton.vue";
 import SharedLinksList from "./SharedLinksList.vue";
 import StrengthMeter from "./StrengthMeter.vue";
 
-defineProps<{ canEdit: boolean; vaultName: string; isShared: boolean }>();
+// vaultType is the vault's type: personal, shared or organization. Only a shared vault's items say "shared".
+defineProps<{ canEdit: boolean; vaultName: string; vaultType: string }>();
 
 const shortcutModifier = isMacPlatform() ? "⌘" : "Ctrl+";
 const isPasswordRevealed = ref(false);
@@ -162,8 +163,8 @@ function maskSecret(secret: string): string {
       <div class="heading">
         <h2>{{ store.selectedItem.title }}</h2>
         <div class="meta">
-          <span class="badge"><AppIcon :name="isShared ? 'users' : 'user'" :size="12" /> {{ vaultName }}</span>
-          <span v-if="isShared" class="badge">shared</span>
+          <span class="badge" data-testid="item-vault"><AppIcon :name="vaultType === 'personal' ? 'user' : 'users'" :size="12" /> {{ vaultName }}</span>
+          <span v-if="vaultType === 'shared'" class="badge" data-testid="item-shared">shared</span>
           <span v-if="isSSHKey" class="muted">SSH key</span>
           <span v-else-if="isSecureNote" class="muted">Secure note</span>
           <span v-else-if="isCreditCard" class="muted" data-testid="card-summary">{{ formatCardSummary(store.selectedItem.card) }}</span>

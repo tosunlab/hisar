@@ -32,15 +32,32 @@ import type {
   VaultMember,
   VaultRole,
   VaultSummary,
+  Organization,
+  OrganizationInvitation,
+  OrganizationRole,
+  OrganizationSummary,
+  Team,
+  TeamVault,
+  WaitingVaultKeys,
 } from "./api";
 import { getDomain } from "./util";
 
 const previewParameter = new URLSearchParams(window.location.search);
 
+// &organizations=none starts outside any organization: no organization vaults, invitations or waiting keys.
+const hasPreviewOrganizations = previewParameter.get("organizations") !== "none";
+
 const allPreviewVault: VaultSummary[] = [
   { id: "personal", name: "Personal", type: "personal", role: "owner", itemCount: 0 },
   { id: "team", name: "Team", type: "shared", role: "owner", itemCount: 0 },
   { id: "work", name: "Work", type: "shared", role: "reader", itemCount: 0 },
+  ...(hasPreviewOrganizations
+    ? [
+        { id: "deploy", name: "Deploy keys", type: "organization", role: "owner", itemCount: 0, organizationId: "acme" },
+        { id: "staging", name: "Staging", type: "organization", role: "editor", itemCount: 0, organizationId: "acme" },
+        { id: "research", name: "Research notes", type: "organization", role: "reader", itemCount: 0, organizationId: "globex" },
+      ]
+    : []),
 ];
 
 function createPreviewItem(id: string, title: string, username: string, link: string, password: string, extra: Partial<ItemDetail> = {}): ItemDetail {
@@ -188,6 +205,12 @@ const allPreviewItemByVaultID: Record<string, ItemDetail[]> = {
       address: { street: "Büyükdere Cd. 185\nKat 3", city: "İstanbul", region: "Şişli", postalCode: "34394", country: "TR" },
     }),
   ],
+  deploy: [
+    createPreviewSSHKey("deploy-bot", "deploy-bot", "ssh-ed25519", "Pushes release tags from CI."),
+    createPreviewItem("registry", "Container registry", "ci-bot", "https://ghcr.io", "registry-pass-7Kq2Lm9X"),
+  ],
+  staging: [createPreviewItem("staging-postgres", "Staging Postgres", "app", "https://staging.tryhisar.com", "St4g!ng-Pg-2026")],
+  research: [createPreviewItem("arxiv", "arXiv", "alper@tryhisar.com", "https://arxiv.org", "Q9!pL2x#vR4m")],
 };
 
 function getInitialState(): string {
@@ -315,6 +338,146 @@ const previewShareInvitations: ShareInvitations =
         completionError: "",
       };
 
+function findPreviewPerson(accountID: string): Person {
+  return allPreviewPerson.find((person) => person.accountId === accountID)!;
+}
+
+function createPreviewTeam(id: string, name: string, allMemberID: string[], allVault: TeamVault[]): Team {
+  return {
+    id,
+    name,
+    members: allMemberID.map((accountID) => {
+      const { accountId, name: personName, email, isCurrentUser } = findPreviewPerson(accountID);
+      return { accountId, name: personName, email, isCurrentUser };
+    }),
+    vaults: allVault,
+  };
+}
+
+// Acme: Alper and Elif are admins; Platform has Deploy keys and Staging, Ops has Deploy keys and a vault Alper has no key for.
+// Globex: Alper is a member of Research, which reads Research notes. &orgMember=1 makes Alper a member of Acme too.
+const allPreviewOrganization: Organization[] = hasPreviewOrganizations
+  ? [
+      {
+        id: "acme",
+        name: "Acme",
+        role: previewParameter.get("orgMember") === "1" ? "member" : "admin",
+        isAdmin: previewParameter.get("orgMember") !== "1",
+        members: [
+          { ...findPreviewPerson("alper"), role: previewParameter.get("orgMember") === "1" ? "member" : "admin" },
+          { ...findPreviewPerson("elif"), role: "admin" },
+          { ...findPreviewPerson("deniz"), role: "member" },
+          { ...findPreviewPerson("murat"), role: "member", isKeyChanged: true },
+          { ...findPreviewPerson("zeynep"), role: "member" },
+        ],
+        teams: [
+          createPreviewTeam("ops", "Ops", ["elif", "murat"], [
+            { vaultId: "deploy", name: "Deploy keys", role: "reader", canOpen: true },
+            { vaultId: "production", name: "", role: "owner", canOpen: false },
+          ]),
+          createPreviewTeam("platform", "Platform", ["alper", "deniz", "elif"], [
+            { vaultId: "deploy", name: "Deploy keys", role: "owner", canOpen: true },
+            { vaultId: "staging", name: "Staging", role: "editor", canOpen: true },
+          ]),
+        ],
+        invitations: [
+          {
+            id: "to-can",
+            email: "can@ozturk.dev",
+            role: "member",
+            createdAt: new Date(Date.now() - 26 * hourInMilliseconds).toISOString(),
+            expiresAt: new Date(Date.now() + 6 * 24 * hourInMilliseconds).toISOString(),
+          },
+        ],
+      },
+      {
+        id: "globex",
+        name: "Globex",
+        role: "member",
+        isAdmin: false,
+        members: [
+          { ...findPreviewPerson("alper"), role: "member" },
+          { ...findPreviewPerson("zeynep"), role: "admin" },
+        ],
+        teams: [createPreviewTeam("research", "Research", ["alper", "zeynep"], [{ vaultId: "research", name: "Research notes", role: "reader", canOpen: true }])],
+        invitations: [],
+      },
+    ]
+  : [];
+
+// &orgInvitation=none hides the invitation to Initech.
+let allPreviewOrganizationInvitation: OrganizationInvitation[] =
+  hasPreviewOrganizations && previewParameter.get("orgInvitation") !== "none"
+    ? [
+        {
+          id: "to-initech",
+          organizationId: "initech",
+          organizationName: "Initech",
+          role: "member",
+          invitedByName: "Ada Kaya",
+          invitedByEmail: "ada@initech.dev",
+          expiresAt: new Date(Date.now() + 6 * 24 * hourInMilliseconds).toISOString(),
+        },
+      ]
+    : [];
+
+// &waitingKeys=none hides the Globex vault waiting for its key; &keyErrors=1 shows a key Hisar could not give and a
+// vault it could not re-encrypt.
+const previewWaitingVaultKeys: WaitingVaultKeys = {
+  waiting:
+    hasPreviewOrganizations && previewParameter.get("waitingKeys") !== "none"
+      ? [{ vaultId: "lab", organizationId: "globex", organizationName: "Globex", role: "editor" }]
+      : [],
+  deliveryError: previewParameter.get("keyErrors") === "1" ? "murat@tryhisar.com: their signing key changed since you last shared with them" : "",
+  rotationError: previewParameter.get("keyErrors") === "1" ? "Production: the server refused the new key: the vault changed meanwhile" : "",
+};
+
+function findPreviewOrganization(organizationID: string): Organization {
+  return allPreviewOrganization.find((organization) => organization.id === organizationID)!;
+}
+
+function findPreviewTeam(organizationID: string, teamID: string): Team {
+  return findPreviewOrganization(organizationID).teams.find((team) => team.id === teamID)!;
+}
+
+function listAllPreviewOrganizationSummary(): OrganizationSummary[] {
+  return allPreviewOrganization
+    .map((organization) => ({ id: organization.id, name: organization.name, role: organization.role, memberCount: organization.members.length }))
+    .sort((first, second) => first.name.localeCompare(second.name));
+}
+
+// buildPreviewOrganization names only the team vaults Alper has, as core does.
+function buildPreviewOrganization(organizationID: string): Organization {
+  const organization = structuredClone(findPreviewOrganization(organizationID));
+  for (const team of organization.teams) {
+    team.vaults = team.vaults.map((teamVault) => {
+      const vault = allPreviewVault.find((candidate) => candidate.id === teamVault.vaultId);
+      return { ...teamVault, name: vault?.name ?? "", canOpen: vault !== undefined };
+    });
+  }
+  return organization;
+}
+
+// changePreviewOrganization refuses like the server: the owner invariant for a vault left without an owning team.
+function changePreviewOrganization(change: () => void): Promise<void> {
+  const before = structuredClone(allPreviewOrganization);
+  change();
+  const isOwnerless = allPreviewOrganization.some((organization) =>
+    before
+      .find((candidate) => candidate.id === organization.id)
+      ?.teams.flatMap((team) => team.vaults)
+      .some(
+        (teamVault) =>
+          teamVault.role === "owner" && !organization.teams.some((team) => team.members.length > 0 && team.vaults.some((candidate) => candidate.vaultId === teamVault.vaultId && candidate.role === "owner")),
+      ),
+  );
+  if (isOwnerless) {
+    allPreviewOrganization.splice(0, allPreviewOrganization.length, ...before);
+    return Promise.reject(new Error("Nobody who can open this vault would be its owner. Give owner access to a team whose members already have the vault first."));
+  }
+  return resolveAfterDelay(undefined);
+}
+
 function listAllPreviewPerson(): Person[] {
   const allSharedAccountID = new Set(
     Object.values(allPreviewAccessByVaultID)
@@ -369,6 +532,8 @@ function buildPreviewVaultActions(vaultID: string): VaultActions {
   let leaveBlockedReason = "";
   if (vault.type === "personal") {
     leaveBlockedReason = "You can't leave your Personal vault.";
+  } else if (vault.organizationId) {
+    leaveBlockedReason = "You have this vault through your teams in its organization. To give up access, ask an organization admin to change them.";
   } else if (isOwner && ownerCount <= 1) {
     leaveBlockedReason = "You are its only owner. Delete the vault, or make someone else an owner first.";
   }
@@ -1189,6 +1354,148 @@ export const previewApi = {
     previewShareInvitations.sent = previewShareInvitations.sent.filter((invitation) => invitation.id !== invitationID);
     return resolveAfterDelay(undefined);
   },
+  listAllOrganization: () => resolveAfterDelay({ organizations: listAllPreviewOrganizationSummary(), invitations: structuredClone(allPreviewOrganizationInvitation) }),
+  getOrganization: (organizationID: string) =>
+    allPreviewOrganization.some((organization) => organization.id === organizationID)
+      ? resolveAfterDelay(buildPreviewOrganization(organizationID))
+      : Promise.reject(new Error("that organization, team, person or vault was not found, or you are no longer in the organization")),
+  createOrganization: (name: string): Promise<OrganizationSummary> => {
+    const cleanName = name.trim();
+    if (cleanName === "" || cleanName.length > 100) {
+      return Promise.reject(new Error("enter a name of 1 to 100 characters"));
+    }
+    const id = `organization-${Date.now()}`;
+    allPreviewOrganization.push({ id, name: cleanName, role: "admin", isAdmin: true, members: [{ ...findPreviewPerson("alper"), role: "admin" }], teams: [], invitations: [] });
+    return resolveAfterDelay({ id, name: cleanName, role: "admin", memberCount: 1 });
+  },
+  renameOrganization: (organizationID: string, name: string) => changePreviewOrganization(() => (findPreviewOrganization(organizationID).name = name.trim())),
+  deleteOrganization: (organizationID: string) => {
+    if (allPreviewVault.some((vault) => vault.organizationId === organizationID) || findPreviewOrganization(organizationID).teams.some((team) => team.vaults.length > 0)) {
+      return Promise.reject(new Error("the organization still has vaults; delete them first"));
+    }
+    allPreviewOrganization.splice(allPreviewOrganization.indexOf(findPreviewOrganization(organizationID)), 1);
+    return resolveAfterDelay(undefined);
+  },
+  leaveOrganization: (organizationID: string) => {
+    const organization = findPreviewOrganization(organizationID);
+    if (organization.members.length === 1) {
+      return Promise.reject(new Error("you are the organization's only member; delete the organization instead"));
+    }
+    if (organization.isAdmin && organization.members.filter((member) => member.role === "admin").length === 1) {
+      return Promise.reject(new Error("an organization needs an admin; make someone else an admin first"));
+    }
+    allPreviewOrganization.splice(allPreviewOrganization.indexOf(organization), 1);
+    for (const vault of allPreviewVault.filter((candidate) => candidate.organizationId === organizationID)) {
+      removePreviewVault(vault.id);
+    }
+    return resolveAfterDelay(undefined);
+  },
+  inviteToOrganization: (organizationID: string, email: string, role: OrganizationRole) => {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+$/.test(normalizedEmail)) {
+      return Promise.reject(new Error("enter the email address of the person"));
+    }
+    const organization = findPreviewOrganization(organizationID);
+    if (normalizedEmail === "alper@tryhisar.com") {
+      return Promise.reject(new Error("that is your own email; you are already in the organization"));
+    }
+    if (organization.members.some((member) => member.email === normalizedEmail)) {
+      return Promise.reject(new Error("this person is already a member of the organization"));
+    }
+    organization.invitations = [
+      ...organization.invitations.filter((invitation) => invitation.email !== normalizedEmail),
+      { id: `to-${Date.now()}`, email: normalizedEmail, role, createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 7 * 24 * hourInMilliseconds).toISOString() },
+    ];
+    return resolveAfterDelay(undefined);
+  },
+  cancelOrganizationInvitation: (organizationID: string, invitationID: string) => {
+    const organization = findPreviewOrganization(organizationID);
+    organization.invitations = organization.invitations.filter((invitation) => invitation.id !== invitationID);
+    return resolveAfterDelay(undefined);
+  },
+  acceptOrganizationInvitation: (invitationID: string) => {
+    const invitation = allPreviewOrganizationInvitation.find((candidate) => candidate.id === invitationID)!;
+    allPreviewOrganizationInvitation = allPreviewOrganizationInvitation.filter((candidate) => candidate.id !== invitationID);
+    allPreviewOrganization.push({
+      id: invitation.organizationId,
+      name: invitation.organizationName,
+      role: invitation.role,
+      isAdmin: invitation.role === "admin",
+      members: [
+        { ...findPreviewPerson("alper"), role: invitation.role },
+        { accountId: "ada", name: invitation.invitedByName, email: invitation.invitedByEmail, role: "admin", securityCode: "5C1E 0B7A 93F2 D468", isCurrentUser: false, isKeyChanged: false },
+      ],
+      teams: [],
+      invitations: [],
+    });
+    return resolveAfterDelay(undefined);
+  },
+  declineOrganizationInvitation: (invitationID: string) => {
+    allPreviewOrganizationInvitation = allPreviewOrganizationInvitation.filter((invitation) => invitation.id !== invitationID);
+    return resolveAfterDelay(undefined);
+  },
+  setOrganizationMemberRole: (organizationID: string, accountID: string, role: OrganizationRole) => {
+    const organization = findPreviewOrganization(organizationID);
+    if (role === "member" && organization.members.filter((member) => member.role === "admin" && member.accountId !== accountID).length === 0) {
+      return Promise.reject(new Error("an organization needs an admin; make someone else an admin first"));
+    }
+    organization.members.find((member) => member.accountId === accountID)!.role = role;
+    if (accountID === "alper") {
+      Object.assign(organization, { role, isAdmin: role === "admin", invitations: role === "admin" ? organization.invitations : [] });
+    }
+    return resolveAfterDelay(undefined);
+  },
+  removeOrganizationMember: (organizationID: string, accountID: string) =>
+    changePreviewOrganization(() => {
+      const organization = findPreviewOrganization(organizationID);
+      organization.members = organization.members.filter((member) => member.accountId !== accountID);
+      for (const team of organization.teams) {
+        team.members = team.members.filter((member) => member.accountId !== accountID);
+      }
+    }),
+  createTeam: (organizationID: string, name: string): Promise<Team> => {
+    const organization = findPreviewOrganization(organizationID);
+    if (organization.teams.some((team) => team.name.toLowerCase() === name.trim().toLowerCase())) {
+      return Promise.reject(new Error("the organization already has a team with this name"));
+    }
+    const team: Team = { id: `team-${Date.now()}`, name: name.trim(), members: [], vaults: [] };
+    organization.teams = [...organization.teams, team].sort((first, second) => first.name.localeCompare(second.name));
+    return resolveAfterDelay(structuredClone(team));
+  },
+  renameTeam: (organizationID: string, teamID: string, name: string) => changePreviewOrganization(() => (findPreviewTeam(organizationID, teamID).name = name.trim())),
+  deleteTeam: (organizationID: string, teamID: string) =>
+    changePreviewOrganization(() => {
+      const organization = findPreviewOrganization(organizationID);
+      organization.teams = organization.teams.filter((team) => team.id !== teamID);
+    }),
+  addTeamMember: (organizationID: string, teamID: string, accountID: string) => {
+    const { name, email, isCurrentUser } = findPreviewOrganization(organizationID).members.find((member) => member.accountId === accountID)!;
+    findPreviewTeam(organizationID, teamID).members.push({ accountId: accountID, name, email, isCurrentUser });
+    return resolveAfterDelay(undefined);
+  },
+  removeTeamMember: (organizationID: string, teamID: string, accountID: string) =>
+    changePreviewOrganization(() => {
+      const team = findPreviewTeam(organizationID, teamID);
+      team.members = team.members.filter((member) => member.accountId !== accountID);
+    }),
+  giveVaultToTeam: (organizationID: string, teamID: string, vaultID: string, role: VaultRole) =>
+    changePreviewOrganization(() => {
+      const team = findPreviewTeam(organizationID, teamID);
+      team.vaults = [...team.vaults.filter((teamVault) => teamVault.vaultId !== vaultID), { vaultId: vaultID, name: "", role, canOpen: false }];
+    }),
+  takeVaultFromTeam: (organizationID: string, teamID: string, vaultID: string) =>
+    changePreviewOrganization(() => {
+      const team = findPreviewTeam(organizationID, teamID);
+      team.vaults = team.vaults.filter((teamVault) => teamVault.vaultId !== vaultID);
+    }),
+  createOrganizationVault: (organizationID: string, teamID: string, name: string): Promise<VaultSummary> => {
+    const vault = { id: `${name.trim().toLowerCase().replace(/\s+/g, "-")}-${Date.now()}`, name: name.trim(), type: "organization", role: "owner", itemCount: 0, organizationId: organizationID };
+    allPreviewVault.push(vault);
+    allPreviewItemByVaultID[vault.id] = [];
+    findPreviewTeam(organizationID, teamID).vaults.push({ vaultId: vault.id, name: vault.name, role: "owner", canOpen: true });
+    return resolveAfterDelay(vault);
+  },
+  listAllWaitingVaultKey: () => resolveAfterDelay(structuredClone(previewWaitingVaultKeys)),
   changeVaultMemberRole: (vaultID: string, accountID: string, role: VaultRole) => {
     const access = findPreviewAccess(vaultID, accountID);
     if (access) {
@@ -1366,6 +1673,13 @@ export const previewApi = {
       sentInvitationCount: 1,
       receivedInvitationCount: 0,
       deviceCount: 3,
+      organizations: hasPreviewOrganizations
+        ? [
+            { id: "acme", name: "Acme", isDeleted: false, newAdminName: "Elif Yılmaz" },
+            { id: "globex", name: "Globex", isDeleted: false, newAdminName: "" },
+            { id: "side-project", name: "Side project", isDeleted: true, newAdminName: "" },
+          ]
+        : [],
     }),
   deleteAccount: (password: string) => {
     if (password.length < 4) {

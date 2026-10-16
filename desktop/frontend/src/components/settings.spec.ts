@@ -69,7 +69,7 @@ afterEach(() => {
 describe("Settings sidebar", () => {
   it("lists the sections in order and opens on General", async () => {
     const settings = await mountSettings();
-    expect(readAllSectionLabel(settings)).toEqual(["General", "Security", "SSH & Git", "Developer tools", "Browser", "People", "Devices", "Export", "Account", "Help"]);
+    expect(readAllSectionLabel(settings)).toEqual(["General", "Security", "SSH & Git", "Developer tools", "Browser", "People", "Organizations", "Devices", "Export", "Account", "Help"]);
     expect(settings.find("#settings-title").text()).toBe("General");
     expect(findPage(settings, "general").isVisible()).toBe(true);
     expect(findPage(settings, "security").isVisible()).toBe(false);
@@ -211,7 +211,7 @@ describe("Settings search", () => {
     expect(findPage(settings, "general").isVisible()).toBe(false);
 
     await search(settings, "");
-    expect(readAllSectionLabel(settings)).toHaveLength(10);
+    expect(readAllSectionLabel(settings)).toHaveLength(11);
     expect(settings.find('[data-testid="settings-no-results"]').exists()).toBe(false);
     expect(findPage(settings, "general").isVisible()).toBe(true);
     expect(findPage(settings, "general").find('[data-testid="import-section"]').isVisible()).toBe(true);
