@@ -90,10 +90,10 @@ func HasLoginData(vaultItem *Item) bool {
 }
 
 // OmitsLoginData reports whether the item's category is one Hisar knows has no place for login data: a secure note, a
-// credit card, an identity, an API credential or an address. A login keeps its login data, and so does a category from a
+// credit card, an identity, an API credential, an address or a software license. A login keeps its login data, and so does a category from a
 // newer app, which this app edits as a login.
 func (vaultItem *Item) OmitsLoginData() bool {
-	return slices.Contains([]string{CategorySecureNote, CategoryCreditCard, CategoryIdentity, CategoryAPICredential, CategoryAddress}, vaultItem.Category())
+	return slices.Contains([]string{CategorySecureNote, CategoryCreditCard, CategoryIdentity, CategoryAPICredential, CategoryAddress, CategorySoftwareLicense}, vaultItem.Category())
 }
 
 // MoveLoginDataToFields turns what only a login shows (username, password, websites and one-time password) into custom
