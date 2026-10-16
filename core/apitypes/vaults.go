@@ -55,11 +55,14 @@ type RotatedItem struct {
 	Details      []byte `json:"details"`
 }
 
-// RotateVaultRequest replaces the vault key: every member's wrapped key and every item, re-encrypted.
+// RotateVaultRequest replaces the vault key: every member's wrapped key and every item, re-encrypted. KeyGeneration is
+// the generation of the key being replaced; it is required for organization vaults and checked for any vault when set,
+// so a second rotation from the same key is refused (409).
 type RotateVaultRequest struct {
-	EncName  []byte          `json:"encName"`
-	Accesses []RotatedAccess `json:"access"`
-	Items    []RotatedItem   `json:"items"`
+	EncName       []byte          `json:"encName"`
+	Accesses      []RotatedAccess `json:"access"`
+	Items         []RotatedItem   `json:"items"`
+	KeyGeneration int64           `json:"keyGeneration,omitempty"`
 }
 
 type RenameVaultRequest struct {

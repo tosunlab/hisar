@@ -465,22 +465,50 @@ func (s *Service) completeAndListVaultKeys(ctx context.Context) (WaitingVaultKey
 
 // completeOrganizationKeys wraps vault keys for the team members waiting for organization vaults this user owns,
 // pinning their signing keys, and rotates the vaults someone lost access to. Failures are kept for
-// ListWaitingVaultKeys to show; an unreachable server, or one without organizations, changes nothing.
+// ListWaitingVaultKeys to show, including a failure to save the pins or to load the rotated vaults' new keys; an
+// unreachable server, or one without organizations, changes nothing.
 func (s *Service) completeOrganizationKeys(ctx context.Context) organizationKeyCompletion {
+	pinCount := len(s.state.Pins)
 	deliveredKeys, deliveryErr := s.unlockedSession.CompleteVaultKeyRequests(ctx)
-	if !apiclient.IsUnreachable(deliveryErr) && !apiclient.IsStatus(deliveryErr, http.StatusNotFound) {
-		s.vaultKeyDeliveryError = describeError(deliveryErr)
-	}
+	isDeliveryChangingState := len(deliveredKeys) > 0 || len(s.state.Pins) != pinCount
+	isDeliveryErrorShown := !apiclient.IsUnreachable(deliveryErr) && !apiclient.IsStatus(deliveryErr, http.StatusNotFound)
+	pinCount = len(s.state.Pins)
 	rotatedVaults, rotationErr := s.unlockedSession.RotatePendingVaults(ctx)
-	if !apiclient.IsUnreachable(rotationErr) {
-		s.vaultRotationError = describeError(rotationErr)
+	isRotationChangingState := len(rotatedVaults) > 0 || len(s.state.Pins) != pinCount
+	isRotationErrorShown := !apiclient.IsUnreachable(rotationErr)
+
+	// The verifier pins signing keys whatever the server answers afterwards, so they are saved after every attempt
+	// that added one.
+	if isDeliveryChangingState || isRotationChangingState {
+		if err := s.state.Save(); err != nil {
+			saveErr := fmt.Errorf("could not save the pinned signing keys: %w", err)
+			if isDeliveryChangingState {
+				deliveryErr, isDeliveryErrorShown = errors.Join(deliveryErr, saveErr), true
+			}
+			if isRotationChangingState {
+				rotationErr, isRotationErrorShown = errors.Join(rotationErr, saveErr), true
+			}
+		}
 	}
 	if len(deliveredKeys) > 0 || len(rotatedVaults) > 0 {
-		s.state.Save()
-		s.loadVaults(ctx)
+		// A rotated vault's old key must not be used again, so its copy goes first; when the reload fails, the next
+		// lookup or sync loads it again.
+		for _, rotatedVault := range rotatedVaults {
+			if vault, found := s.vaultsByID[rotatedVault.ID]; found {
+				clear(vault.Key)
+				delete(s.vaultsByID, rotatedVault.ID)
+			}
+			delete(s.itemsByVaultID, rotatedVault.ID)
+		}
+		if err := s.loadVaults(ctx); err != nil && len(rotatedVaults) > 0 {
+			rotationErr, isRotationErrorShown = errors.Join(rotationErr, fmt.Errorf("could not load the rotated vaults' new keys: %w", err)), true
+		}
 	}
-	for _, rotatedVault := range rotatedVaults {
-		delete(s.itemsByVaultID, rotatedVault.ID)
+	if isDeliveryErrorShown {
+		s.vaultKeyDeliveryError = describeError(deliveryErr)
+	}
+	if isRotationErrorShown {
+		s.vaultRotationError = describeError(rotationErr)
 	}
 	return organizationKeyCompletion{deliveredCount: len(deliveredKeys), rotatedCount: len(rotatedVaults)}
 }

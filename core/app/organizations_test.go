@@ -13,6 +13,7 @@ import (
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/crypt"
+	"github.com/tryhisar/hisar/core/localstate"
 	"github.com/tryhisar/hisar/core/session"
 )
 
@@ -165,6 +166,28 @@ func TestVaultKeyRequestRefusesUnverifiedAndChangedKeys(t *testing.T) {
 	}
 	if test.apiServer.countVaultKeyRequest() != 2 {
 		t.Error("a refused key request was dropped")
+	}
+}
+
+func TestVaultKeyRequestSavesThePinWhenTheDeliveryFails(t *testing.T) {
+	test := createUnlockedTestService(t)
+	bob, _ := test.apiServer.addMember(t, "Bob", "b@example.com")
+	vaultID := createOrganizationTestVault(t, test.service)
+	test.apiServer.requestVaultKey(vaultID, apitypes.VaultEditor, 1, bob)
+	test.apiServer.mutex.Lock()
+	test.apiServer.isSetAccessFailing = true
+	test.apiServer.mutex.Unlock()
+
+	keys, err := test.service.ListWaitingVaultKeys()
+	if err != nil || !strings.Contains(keys.DeliveryError, "b@example.com") {
+		t.Fatalf("a delivery the server refused: %+v %v", keys, err)
+	}
+	saved, err := localstate.Load(test.service.config.StatePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(saved.Pins[bob.AccountID], bob.PublicKeys.Sign) {
+		t.Errorf("state.json pins %x for Bob, want his signing key", saved.Pins[bob.AccountID])
 	}
 }
 

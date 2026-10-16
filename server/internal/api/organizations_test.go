@@ -113,7 +113,10 @@ func (caller apiCaller) deliverVaultKeys(owner *session.Session, vault *session.
 // createOrganizationVault creates a vault for the team as an app does: the key and the name are sealed on the device.
 func createOrganizationVault(t *testing.T, creator *session.Session, organizationID, teamID, name string) *session.Vault {
 	t.Helper()
-	vault := &session.Vault{ID: uuid.NewString(), Type: apitypes.VaultOrganization, Name: name, Role: apitypes.VaultOwner, Key: crypt.GenerateKey()}
+	vault := &session.Vault{
+		ID: uuid.NewString(), Type: apitypes.VaultOrganization, Name: name, Role: apitypes.VaultOwner, Key: crypt.GenerateKey(),
+		OrganizationID: organizationID, KeyGeneration: 1,
+	}
 	encName := requireValue[[]byte](t)(crypt.SealVaultName(vault.Key, vault.ID, []byte(name)))
 	wrappedKey := requireValue[[]byte](t)(crypt.WrapVaultKey(creator.Keyset.GetPublicKeys(creator.AccountID).KEM, vault.ID, creator.AccountID, vault.Key))
 	request := &apitypes.CreateVaultRequest{
@@ -434,6 +437,42 @@ func TestOrganizationVaultAccessRules(t *testing.T) {
 	}
 }
 
+func TestOrganizationVaultRotationFromAStaleKey(t *testing.T) {
+	baseURL, server, _ := setupServer(t)
+	ctx := context.Background()
+	caller := apiCaller{t: t, baseURL: baseURL}
+	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", apitypes.RoleMember)
+	bob := signUpTestAccount(t, ctx, server, baseURL, "bob@example.com", apitypes.RoleMember)
+	acme := caller.createOrganization(alice, "Acme")
+	caller.joinOrganization(alice, bob, acme.ID, apitypes.OrganizationRoleMember)
+	platform := caller.createTeam(alice, acme.ID, "Platform", alice, bob)
+	production := createOrganizationVault(t, alice, acme.ID, platform.ID, "Production")
+	caller.deliverVaultKeys(alice, production)
+	bobProduction := requireValue[*session.Vault](t)(bob.FindVault(ctx, production.ID))
+	if bobProduction.KeyGeneration != 1 {
+		t.Fatalf("Bob's copy: generation %d", bobProduction.KeyGeneration)
+	}
+	grants := []session.AccessGrant{{AccountID: alice.AccountID, Role: apitypes.VaultOwner}, {AccountID: bob.AccountID, Role: apitypes.VaultOwner}}
+
+	withoutGeneration := *production
+	withoutGeneration.KeyGeneration = 0
+	expectStatus(t, "a rotation without the key generation", alice.RotateVaultKey(ctx, &withoutGeneration, grants), http.StatusConflict)
+	if err := alice.RotateVaultKey(ctx, production, grants); err != nil {
+		t.Fatalf("the first rotation: %v", err)
+	}
+	expectStatus(t, "a second rotation from the same key", bob.RotateVaultKey(ctx, bobProduction, grants), http.StatusConflict)
+
+	if listed, _ := findListedVault(t, alice, production.ID); listed.KeyGeneration != 2 {
+		t.Errorf("the vault after the rotations: %+v", listed)
+	}
+	for _, member := range []*session.Session{alice, bob} {
+		stored := requireValue[*session.Vault](t)(member.FindVault(ctx, production.ID))
+		if !bytes.Equal(stored.Key, production.Key) || stored.KeyGeneration != 2 {
+			t.Errorf("%s's stored key is not the first rotation's (generation %d)", member.Email, stored.KeyGeneration)
+		}
+	}
+}
+
 func TestOrganizationRights(t *testing.T) {
 	baseURL, server, _ := setupServer(t)
 	ctx := context.Background()
@@ -560,6 +599,10 @@ func TestDeleteAccountInOrganizations(t *testing.T) {
 	solo := caller.createOrganization(alice.session, "Solo")
 	soloTeam := caller.createTeam(alice.session, solo.ID, "Me", alice.session)
 	createOrganizationVault(t, alice.session, solo.ID, soloTeam.ID, "Solo vault")
+	dave := signUpLifecycleAccount(t, server, baseURL, "dave@example.com").session
+	initech := caller.createOrganization(dave, "Initech")
+	caller.call(dave, "POST", organizationPath(initech.ID, "invitations"), apitypes.OrganizationInvitationRequest{Email: "alice@example.com", Role: apitypes.OrganizationRoleMember},
+		http.StatusAccepted, nil)
 
 	preview := requireValue[*apitypes.AccountDeletionPreview](t)(alice.session.Client.GetAccountDeletionPreview(ctx))
 	slices.SortFunc(preview.Organizations, func(first, second apitypes.DeletionOrganization) int { return strings.Compare(first.Name, second.Name) })
@@ -573,12 +616,17 @@ func TestDeleteAccountInOrganizations(t *testing.T) {
 		t.Errorf("sent invitations in the preview: %d", preview.SentInvitationCount)
 	}
 
+	server.WaitForBackgroundWork()
 	carolEvents := openEventStream(t, carol.Client)
 	waitForSubscriber(t, server, carol.AccountID, 1)
+	daveEvents := openEventStream(t, dave.Client)
+	waitForSubscriber(t, server, dave.AccountID, 1)
 	if err := alice.session.DeleteAccount(ctx, alice.password, alice.secretKey, "alice@example.com"); err != nil {
 		t.Fatal(err)
 	}
 	carolEvents.waitForEvent(t, apitypes.EventOrganizationsChanged)
+	// Dave only invited Alice, so the invitation he sees under Initech is all that changed for him.
+	daveEvents.waitForEvent(t, apitypes.EventOrganizationsChanged)
 	var organization apitypes.Organization
 	caller.call(carol, "GET", organizationPath(acme.ID), nil, http.StatusOK, &organization)
 	memberRoles := map[string]string{}
@@ -602,6 +650,7 @@ func TestDeleteAccountInOrganizations(t *testing.T) {
 	for name, query := range map[string]string{
 		"the organization Alice was alone in": `SELECT count(*) FROM organizations WHERE id = '` + solo.ID + `'`,
 		"Alice's organization invitations":    `SELECT count(*) FROM organization_invitations WHERE email = 'erin@example.com'`,
+		"the invitation to Alice":             `SELECT count(*) FROM organization_invitations WHERE organization_id = '` + initech.ID + `'`,
 		"Alice's memberships":                 `SELECT count(*) FROM organization_members WHERE account_id = '` + alice.session.AccountID + `'`,
 	} {
 		if rowCount := countDatabaseRows(t, databaseURL, query); rowCount != 0 {

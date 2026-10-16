@@ -39,6 +39,7 @@ type fakeAPIServer struct {
 	vaultKeyRequests         []apitypes.VaultKeyRequest
 	waitingVaultKeys         []apitypes.WaitingVaultKey
 	setAccessRequests        []apitypes.SetAccessRequest
+	isSetAccessFailing       bool
 }
 
 func (server *fakeAPIServer) setUnreachable(isUnreachable bool) {

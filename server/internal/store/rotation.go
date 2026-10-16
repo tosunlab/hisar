@@ -19,18 +19,22 @@ type RotatedItem struct {
 	Details      []byte
 }
 
+// VaultRotation: KeyGeneration is the generation of the key being replaced; organization vaults require it.
 type VaultRotation struct {
-	VaultID   string
-	EncName   []byte
-	Accesses  []Member
-	Items     []RotatedItem
-	RotatedBy string
+	VaultID       string
+	EncName       []byte
+	Accesses      []Member
+	Items         []RotatedItem
+	RotatedBy     string
+	KeyGeneration int64
 }
 
 // RotateVault replaces the vault name, all access grants and all items in one transaction, increments the vault's key
 // generation and clears needs_rotation. RotatedBy must be an owner (ErrNotOwner). It returns ErrConflict unless
-// rotation.Items matches the stored items and revisions exactly, and ErrNotMember when it would add an account; an
-// organization vault must keep exactly its members with their roles (ErrRotationMembers), since its teams decide them.
+// rotation.Items matches the stored items and revisions exactly, and unless rotation.KeyGeneration is the vault's
+// current one (required for organization vaults, checked for any vault when nonzero), so two owners rotating from the
+// same key cannot both succeed. It returns ErrNotMember when it would add an account; an organization vault must keep
+// exactly its members with their roles (ErrRotationMembers), since its teams decide them.
 // Item history is dropped because it is encrypted with the previous key.
 func (s *Store) RotateVault(ctx context.Context, rotation VaultRotation) error {
 	return s.runInTransaction(ctx, func(transaction pgx.Tx) error {
@@ -40,6 +44,9 @@ func (s *Store) RotateVault(ctx context.Context, rotation VaultRotation) error {
 		}
 		if err := requireVaultOwner(ctx, transaction, rotation.VaultID, rotation.RotatedBy); err != nil {
 			return err
+		}
+		if rotation.KeyGeneration != vault.keyGeneration && (rotation.KeyGeneration != 0 || vault.organizationID != "") {
+			return ErrConflict
 		}
 
 		rows, err := transaction.Query(ctx, `SELECT id, revision FROM items WHERE vault_id = $1`, rotation.VaultID)

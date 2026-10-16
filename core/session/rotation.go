@@ -32,7 +32,7 @@ func (s *Session) RotateVaultKey(ctx context.Context, vault *Vault, accessGrants
 	}
 
 	newVaultKey := crypt.GenerateKey()
-	request := &apitypes.RotateVaultRequest{}
+	request := &apitypes.RotateVaultRequest{KeyGeneration: vault.KeyGeneration}
 	if request.EncName, err = crypt.SealVaultName(newVaultKey, vault.ID, []byte(vault.Name)); err != nil {
 		return err
 	}

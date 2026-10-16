@@ -128,6 +128,10 @@ func (server *fakeAPIServer) addSharingRoutes(mux *http.ServeMux) {
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
 		vaultID, accountID := request.PathValue("vaultID"), request.PathValue("accountID")
+		if server.isSetAccessFailing {
+			writeJSON(writer, http.StatusInternalServerError, apitypes.Error{Error: "internal error"})
+			return
+		}
 		if server.getVaultRole(vaultID) != apitypes.VaultOwner {
 			writeJSON(writer, http.StatusForbidden, apitypes.Error{Error: "owner only"})
 			return
@@ -168,6 +172,10 @@ func (server *fakeAPIServer) addSharingRoutes(mux *http.ServeMux) {
 		vaultID := request.PathValue("vaultID")
 		if server.getVaultRole(vaultID) != apitypes.VaultOwner {
 			writeJSON(writer, http.StatusForbidden, apitypes.Error{Error: "owner only"})
+			return
+		}
+		if rotateRequest.KeyGeneration != 0 && rotateRequest.KeyGeneration != server.getKeyGeneration(vaultID) {
+			writeJSON(writer, http.StatusConflict, apitypes.Error{Error: "the vault key was rotated since"})
 			return
 		}
 		items := server.itemsByVaultID[vaultID]

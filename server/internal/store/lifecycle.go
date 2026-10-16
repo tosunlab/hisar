@@ -58,7 +58,8 @@ type DeletedAccount struct {
 	VaultMemberAccountIDs []string
 	// InvitationAccountIDs had a share invitation from or to the deleted account.
 	InvitationAccountIDs []string
-	// OrganizationAccountIDs remain in an organization with the deleted account, or had an organization invitation from it.
+	// OrganizationAccountIDs remain in an organization with the deleted account, had an organization invitation from it,
+	// or are in an organization that had an invitation from or to it.
 	OrganizationAccountIDs []string
 	DeletedVaultCount      int
 }
@@ -279,12 +280,17 @@ func (s *Store) DeleteAccount(ctx context.Context, accountID string, tokenHash, 
 			WHERE (i.invited_by = $1 OR i.vault_id = ANY($3::uuid[])) AND a.id <> $1`, accountID, email, deletedVaultIDs); err != nil {
 			return err
 		}
+		// Everyone in an organization whose invitations change hears of it: the members of the account's organizations,
+		// the recipients of its invitations, and the members of every organization with an invitation from or to it.
 		if deleted.OrganizationAccountIDs, err = collectAccountIDs(ctx, transaction, `
 			SELECT other.account_id FROM organization_members mine JOIN organization_members other ON other.organization_id = mine.organization_id
 			WHERE mine.account_id = $1 AND other.account_id <> $1
 			UNION
 			SELECT a.id FROM organization_invitations i JOIN accounts a ON a.email = i.email
-			WHERE i.invited_by = $1 AND a.id <> $1`, accountID); err != nil {
+			WHERE i.invited_by = $1 AND a.id <> $1
+			UNION
+			SELECT m.account_id FROM organization_invitations i JOIN organization_members m ON m.organization_id = i.organization_id
+			WHERE (i.invited_by = $1 OR i.email = $2) AND m.account_id <> $1`, accountID, email); err != nil {
 			return err
 		}
 		memberships, err := listAccountMemberships(ctx, transaction, accountID)

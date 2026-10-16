@@ -415,7 +415,7 @@ func (s *Service) RotateVault(ctx context.Context, actor Actor, vaultID string, 
 	errInvalidRotation := newError(KindInvalid, "invalid rotation")
 	if len(request.EncName) == 0 || len(request.EncName) > maxEncName ||
 		len(request.Accesses) == 0 || len(request.Accesses) > maxRotatedAccessCount ||
-		len(request.Items) > maxRotatedItemCount {
+		len(request.Items) > maxRotatedItemCount || request.KeyGeneration < 0 {
 		return errInvalidRotation
 	}
 
@@ -464,6 +464,7 @@ func (s *Service) RotateVault(ctx context.Context, actor Actor, vaultID string, 
 	}
 	err = s.store.RotateVault(ctx, store.VaultRotation{
 		VaultID: vaultID, EncName: request.EncName, Accesses: members, Items: rotatedItems, RotatedBy: actor.AccountID,
+		KeyGeneration: request.KeyGeneration,
 	})
 	switch {
 	case errors.Is(err, store.ErrConflict):
