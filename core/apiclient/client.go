@@ -292,6 +292,18 @@ func (c *Client) PutItem(ctx context.Context, vaultID, itemID, baseRevision stri
 	return response.Seq, nil, err
 }
 
+// MoveItem moves an item to another vault, keeping its ID. On a 409 the current item is returned when the item changed in
+// the source vault; it is nil when the item is gone or the target vault already has it.
+func (c *Client) MoveItem(ctx context.Context, vaultID, itemID string, request *apitypes.MoveItemRequest) (*apitypes.MoveItemResponse, *apitypes.Item, error) {
+	var response apitypes.MoveItemResponse
+	var conflict apitypes.ConflictResponse
+	err := c.sendRequest(ctx, "POST", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/items/"+url.PathEscape(itemID)+"/move", nil, request, &response, &conflict)
+	if IsStatus(err, http.StatusConflict) {
+		return nil, conflict.Current, err
+	}
+	return &response, nil, err
+}
+
 func (c *Client) CreateShareLink(ctx context.Context, request *apitypes.CreateShareLinkRequest) (*apitypes.ShareLink, error) {
 	var response apitypes.ShareLink
 	return &response, c.sendRequest(ctx, "POST", "/api/v1/share-links", nil, request, &response, nil)
