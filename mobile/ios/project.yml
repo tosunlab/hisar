@@ -19,12 +19,12 @@ settings:
 targetTemplates:
   # The team is an individual developer account, so other members cannot get its certificates through automatic signing:
   # Hisar and its extension sign manually with the team's profiles, named after the target ("Hisar Development",
-  # "HisarAutoFill App Store"). Simulator builds need no profile.
+  # "HisarAutoFill App Store"). Simulator builds sign to run locally, with no certificate or profile, as on CI.
   TeamSigning:
     settings:
       base:
         CODE_SIGN_STYLE: Manual
-        CODE_SIGN_IDENTITY: Apple Development
+        CODE_SIGN_IDENTITY: "-"
         PROVISIONING_PROFILE_SPECIFIER: ""
       configs:
         Debug:
