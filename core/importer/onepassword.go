@@ -245,7 +245,8 @@ var onePasswordSoftwareLicenseFields = map[string]func(*item.SoftwareLicense) *s
 }
 
 // onePasswordDatabaseFields maps the ids of a 1Password Database's fields to the database's values; its username and
-// password are the item's own, and its other fields (SID, alias…) stay custom fields. NormalizeDatabase turns the type,
+// password are the item's own, and its other fields (alias…) stay custom fields. Its SID, which is how Oracle names a
+// database, is the database name when the item has none, and otherwise a custom field. NormalizeDatabase turns the type,
 // such as "mssql", into an engine ID and splits a hostname typed with its port.
 var onePasswordDatabaseFields = map[string]func(*item.Database) *string{
 	"database_type": func(database *item.Database) *string { return &database.Engine },
@@ -288,6 +289,8 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 	var serverURL string
 	// consoleFieldIndexes holds where a server's admin console URL, username and password landed among the custom fields.
 	consoleFieldIndexes := map[string]int{}
+	// sidFieldIndex is where a database's SID landed among the custom fields, or -1.
+	sidFieldIndex := -1
 	var fullName item.Field
 	isIdentity := isOnePasswordIdentityCategory(category)
 	if entry.Overview.URL != "" {
@@ -379,6 +382,9 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 			if _, isSeen := consoleFieldIndexes[sectionField.ID]; category == onePasswordServer && strings.HasPrefix(sectionField.ID, "admin_console_") && !isSeen {
 				consoleFieldIndexes[sectionField.ID] = len(vaultItem.Details.Fields)
 			}
+			if category == onePasswordDatabase && sectionField.ID == "sid" && sidFieldIndex < 0 && strings.TrimSpace(value) != "" {
+				sidFieldIndex = len(vaultItem.Details.Fields)
+			}
 			vaultItem.Details.Fields = append(vaultItem.Details.Fields, item.Field{Name: name, Value: value, Concealed: isConcealed})
 		}
 	}
@@ -414,6 +420,12 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 		item.WriteServer(&vaultItem, server, vaultItem.Details.Fields)
 	}
 	if category == onePasswordDatabase {
+		// The SID is read only now, so a database field after it in the export still wins.
+		if strings.TrimSpace(database.Name) == "" && sidFieldIndex >= 0 {
+			fields := vaultItem.Details.Fields
+			database.Name = fields[sidFieldIndex].Value
+			vaultItem.Details.Fields = slices.Delete(slices.Clone(fields), sidFieldIndex, sidFieldIndex+1)
+		}
 		vaultItem.Overview.Category = item.CategoryDatabase
 		item.WriteDatabase(&vaultItem, database, vaultItem.Details.Fields)
 	}

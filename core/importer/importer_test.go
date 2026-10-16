@@ -983,6 +983,14 @@ func TestParseOnePasswordDatabase(t *testing.T) {
 				{"title":"SID","id":"sid","value":{"string":"SALES1"}},
 				{"title":"alias","id":"alias","value":{"string":"sales"}},
 				{"title":"connection options","id":"options","value":{"string":"encrypt=true"}}]}]}},
+		{"categoryUuid":"102","overview":{"title":"Oracle db"},"details":{"sections":[{"title":"","fields":[
+			{"title":"type","id":"database_type","value":{"menu":"oracle"}},
+			{"title":"server","id":"hostname","value":{"string":"oracle.example.com"}},
+			{"title":"port","id":"port","value":{"string":"1521"}},
+			{"title":"SID","id":"sid","value":{"string":"ORCL"}},
+			{"title":"database","id":"database","value":{"string":""}},
+			{"title":"username","id":"username","value":{"string":"scott"}},
+			{"title":"password","id":"password","value":{"concealed":"tiger"}}]}]}},
 		{"categoryUuid":"102","overview":{"title":"Mainframe"},"details":{"sections":[{"title":"","fields":[
 			{"title":"type","id":"database_type","value":{"menu":"db2"}},
 			{"title":"server","id":"hostname","value":{"string":"db2.example.com"}},
@@ -1012,7 +1020,12 @@ func TestParseOnePasswordDatabase(t *testing.T) {
 	if database, _ := item.ReadDatabase(&mainframe); database.Engine != "db2" || database.Port != "50000" || mainframe.ConnectionString() != "" {
 		t.Errorf("an engine Hisar does not know = %+v", database)
 	}
-	if summary := Summarize(result.Items); summary.DatabaseCount != 2 || summary.LoginCount != 0 {
+	// Oracle names its database by the SID; with no database name, the SID is the name.
+	oracle := findTestItem(t, result, "Oracle db")
+	if got := oracle.ConnectionString(); got != "oracle://scott:tiger@oracle.example.com:1521/ORCL" || len(oracle.Details.Fields) != 4 {
+		t.Errorf("Oracle connection string = %q, fields %+v", got, oracle.Details.Fields)
+	}
+	if summary := Summarize(result.Items); summary.DatabaseCount != 3 || summary.LoginCount != 0 {
 		t.Errorf("summary = %+v", summary)
 	}
 	if got := DescribeDuplicate(sales); got != "SQL Server · sql.example.com:1433/Sales · sa" {
