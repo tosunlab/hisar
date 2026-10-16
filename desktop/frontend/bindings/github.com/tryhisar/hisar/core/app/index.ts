@@ -36,6 +36,7 @@ export type {
     ItemField,
     ItemIdentity,
     ItemPasskey,
+    ItemSoftwareLicense,
     OneTimeCode,
     PairedBrowser,
     PasswordConfig,

@@ -172,6 +172,21 @@ type ItemDetail struct {
 	// Address holds an address item's values, stored as named custom fields like an identity's; summaries keep only the
 	// city, country and the first line of the street.
 	Address *ItemAddress `json:"address,omitempty"`
+	// SoftwareLicense holds a software license's values, stored as named custom fields like an API credential's; summaries
+	// keep only the product, version, licensed-to name and email.
+	SoftwareLicense *ItemSoftwareLicense `json:"softwareLicense,omitempty"`
+}
+
+// ItemSoftwareLicense is a software license; the license key is concealed. DownloadURL is a field, not the item's
+// website.
+type ItemSoftwareLicense struct {
+	Product      string `json:"product"`
+	Version      string `json:"version"`
+	LicenseKey   string `json:"licenseKey"`
+	LicensedTo   string `json:"licensedTo"`
+	Email        string `json:"email"`
+	PurchaseDate string `json:"purchaseDate"`
+	DownloadURL  string `json:"downloadUrl"`
 }
 
 // ItemAddress is a postal address; Street may hold several lines. Identities and cards hold one too.
