@@ -277,6 +277,9 @@ func writeItem(output io.Writer, vaultItem *item.Item) error {
 	for _, field := range vaultItem.Details.Fields {
 		fmt.Fprintf(writer, "%s:\t%s\n", field.Name, field.Value)
 	}
+	if connectionString := vaultItem.ConnectionString(); connectionString != "" {
+		fmt.Fprintf(writer, "connection string:\t%s\n", connectionString)
+	}
 	for _, passkey := range vaultItem.Details.Passkeys {
 		fmt.Fprintf(writer, "passkey:\t%s (%s)\n", passkey.RelyingPartyID, passkey.UserName)
 	}
@@ -290,6 +293,7 @@ func writeItem(output io.Writer, vaultItem *item.Item) error {
 var fieldNames = item.FieldNames{
 	"title": item.FieldTitle, "username": item.FieldUsername, "url": item.FieldURL, "password": item.FieldPassword,
 	"notes": item.FieldNotes, "code": item.FieldOneTimeCode, "one-time code": item.FieldOneTimeCode,
+	"connection string": item.FieldConnectionString,
 }
 
 func getFieldValue(vaultItem *item.Item, name string) (string, bool) {
@@ -314,6 +318,7 @@ var itemTypes = []itemType{
 	{category: item.CategoryAddress, prompt: promptAddress},
 	{category: item.CategorySoftwareLicense, prompt: promptSoftwareLicense},
 	{category: item.CategoryServer, promptInVault: promptServer},
+	{category: item.CategoryDatabase, prompt: promptDatabase},
 }
 
 // promptItemOfType asks for the item's values as its type does.
@@ -552,6 +557,55 @@ func promptServer(vaultItem *item.Item, vaultItems []item.Item) error {
 	item.WriteServer(vaultItem, server, otherFields)
 	item.NormalizeServer(vaultItem)
 	if warning := server.Normalize().PortWarning(); warning != "" {
+		fmt.Fprintln(os.Stderr, warning+".")
+	}
+	return nil
+}
+
+// promptDatabase asks for a database's title, engine, host, port, database name, username, password (read without echo)
+// and connection options.
+func promptDatabase(vaultItem *item.Item) error {
+	var err error
+	if vaultItem.Overview.Title, err = promptRequired("Title", vaultItem.Overview.Title); err != nil {
+		return err
+	}
+	database, otherFields := item.ReadDatabase(vaultItem)
+	engineIDs := []string{}
+	for _, engine := range item.ListDatabaseEngines() {
+		engineIDs = append(engineIDs, engine.ID)
+	}
+	if database.Engine, err = prompt("Engine ("+strings.Join(engineIDs, ", ")+" or another)", database.Engine); err != nil {
+		return err
+	}
+	if database.Host, err = prompt("Host", database.Host); err != nil {
+		return err
+	}
+	if database.Port, err = prompt("Port", database.Port); err != nil {
+		return err
+	}
+	if database.Name, err = prompt("Database", database.Name); err != nil {
+		return err
+	}
+	if vaultItem.Overview.Username, err = prompt("Username", vaultItem.Overview.Username); err != nil {
+		return err
+	}
+	label := "Password"
+	if vaultItem.Details.Password != "" {
+		label += " (empty to keep)"
+	}
+	password, err := promptSecret(label)
+	if err != nil {
+		return err
+	}
+	if len(password) > 0 {
+		vaultItem.Details.Password = string(password)
+	}
+	if database.Options, err = prompt("Options (such as sslmode=require)", database.Options); err != nil {
+		return err
+	}
+	item.WriteDatabase(vaultItem, database, otherFields)
+	item.NormalizeDatabase(vaultItem)
+	if warning := database.Normalize().PortWarning(); warning != "" {
 		fmt.Fprintln(os.Stderr, warning+".")
 	}
 	return nil
