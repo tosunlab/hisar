@@ -1,5 +1,5 @@
 import { isSubmitLikeButton } from "./detection";
-import { collectAllDeepElement, containsAcrossShadow, getParentAcrossShadow, isVisible } from "./dom";
+import { collectAllDeepElement, containsAcrossShadow, getParentAcrossShadow, isOffPage, isTransparent, isVisible } from "./dom";
 
 // AddressKind is what an address field holds. A street-address field takes the whole street; address-line fields take a
 // line each.
@@ -82,10 +82,11 @@ function isAddressElement(element: Element): element is AddressElement {
 }
 
 // isFillable is a field Hisar may fill: shown, enabled and writable. A hidden field is never filled, so a page cannot collect
-// an address the user does not see.
+// an address the user does not see. Filling an address writes every empty field of its group, not only the one the user
+// chose, so a transparent field or one moved off the page counts as hidden too.
 function isFillable(element: AddressElement): boolean {
   if (element.disabled || ("readOnly" in element && element.readOnly)) return false;
-  return isVisible(element);
+  return isVisible(element) && !isTransparent(element) && !isOffPage(element);
 }
 
 // classifyAddressField says what address value a field takes, by its autocomplete attribute or else its name, id,

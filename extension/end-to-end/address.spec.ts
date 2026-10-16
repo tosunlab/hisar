@@ -53,6 +53,9 @@ test("lists addresses under an address field and fills the form", async () => {
   await expect(page.locator("#region")).toHaveValue("IL");
   await expect(page.locator("#postal")).toHaveValue("62704");
   await expect(page.locator("#country")).toHaveValue("United States");
+  // Fields the user cannot see get nothing, though they sit in the same shipping group.
+  await expect(page.locator("#off-page-street")).toHaveValue("");
+  await expect(page.locator("#transparent-street")).toHaveValue("");
   expect(await page.frameLocator("#same-origin").locator("#frame-city").inputValue()).toBe("");
   await page.close();
 });

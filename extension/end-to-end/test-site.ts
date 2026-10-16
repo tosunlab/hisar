@@ -20,6 +20,8 @@ const addressForm = (prefix: string) => `<form id="${prefix}address" method="pos
   <input id="${prefix}city" autocomplete="shipping address-level2" placeholder="City">
   <input id="${prefix}region" autocomplete="shipping address-level1" placeholder="State">
   <input id="${prefix}postal" autocomplete="shipping postal-code" placeholder="ZIP code">
+  <input id="${prefix}off-page-street" autocomplete="shipping street-address" style="position:absolute;left:-9999px;top:0">
+  <input id="${prefix}transparent-street" autocomplete="shipping street-address" style="opacity:0;position:absolute">
   <select id="${prefix}country" autocomplete="shipping country"><option value="">Country</option><option>Germany</option><option>United States</option></select>
   <button type="submit">Ship here</button>
 </form>`;

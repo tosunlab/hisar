@@ -77,7 +77,7 @@ describe("finding address fields", () => {
   it("never counts a hidden, disabled or read-only field", () => {
     document.body.innerHTML = hiddenTrapPage;
     expect(describeScope("#visible-postal").map((field) => field.id)).toEqual(["visible-postal"]);
-    for (const id of ["hidden-street", "hidden-city", "disabled-city", "readonly-country"]) {
+    for (const id of ["hidden-street", "hidden-city", "transparent-street", "faded-region", "disabled-city", "readonly-country"]) {
       expect(classifyAddressField(getElement(`#${id}`))).toBeUndefined();
     }
   });

@@ -74,6 +74,8 @@ describe("filling an address", () => {
     expect(fillAddressIntoScopeOf(document, getElement("#visible-postal"), home)).toBe(1);
     expect(getValue("#hidden-street")).toBe("");
     expect(getValue("#hidden-city")).toBe("");
+    expect(getValue("#transparent-street")).toBe("");
+    expect(getValue("#faded-region")).toBe("");
     expect(getValue("#disabled-city")).toBe("");
 
     document.body.innerHTML = unhintedPage;
