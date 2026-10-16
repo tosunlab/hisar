@@ -233,7 +233,8 @@ expect "the organization shows the renamed team" "$(printf '%s\n' "$PW" | A org 
 expect "alice adds bob to the second team" "$(A team add AcmeCorp Operations bob@example.com 2>&1)" 'Added bob@example.com to team "Operations".'
 expect "alice gives the organization vault to the second team as reader" "$(printf '%s\n' "$PW" | A vault give EngVault --org AcmeCorp --team Operations -r reader 2>&1)" 'Gave "EngVault" to team "Operations" as reader.'
 expect "alice's hisar gives bob the key through the second team" "$(printf '%s\n' "$PW" | A orgs 2>&1)" "Gave 1 vault key to a team member."
-printf '%s\n' "$PW" | B vaults 2>/dev/null | grep -qE '^EngVault +organization +reader ' || fail "bob does not list EngVault as reader: $(printf '%s\n' "$PW" | B vaults 2>&1)"
+BOB_VAULTS=$(printf '%s\n' "$PW" | B vaults 2>/dev/null || true)
+printf '%s\n' "$BOB_VAULTS" | grep -qE '^EngVault +organization +reader ' || fail "bob does not list EngVault as reader: $BOB_VAULTS"
 echo "ok   bob lists the organization vault as reader"
 expect "bob reads the item through the second team" "$(printf '%s\n' "$PW" | B get pipeline -v EngVault -f password 2>/dev/null)" "eng-pass-1"
 expect "alice takes the vault back from the second team" "$(printf '%s\n' "$PW" | A vault take EngVault --org AcmeCorp --team Operations 2>&1)" 'Took "EngVault" from team "Operations".'
