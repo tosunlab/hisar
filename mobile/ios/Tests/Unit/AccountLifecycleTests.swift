@@ -137,7 +137,8 @@ final class AccountLifecycleTests: XCTestCase {
             await waitUntil({ identityStore.allIdentity.isEmpty }, "signing out did not clear AutoFill")
         }
         XCTAssertTrue(identityStore.allIdentity.isEmpty, "the refresh put the signed-out account's logins back into AutoFill")
-        XCTAssertTrue(model.allVault.isEmpty && model.allItemByVaultID.isEmpty, "the refresh put the items back after signing out")
+        XCTAssertTrue(model.allVault.isEmpty, "the refresh restored the signed-out account's vaults")
+        XCTAssertTrue(model.allItemByVaultID.isEmpty, "the refresh restored the signed-out account's items")
     }
 
     func testRefreshFinishingAfterLockingBringsNothingBackAndKeepsAutoFill() async {
@@ -146,7 +147,8 @@ final class AccountLifecycleTests: XCTestCase {
         let replaceCount = identityStore.replaceCount
         await finishRefresh(of: model) { model.lock() }
         XCTAssertEqual(model.screen, .locked)
-        XCTAssertTrue(model.allVault.isEmpty && model.allItemByVaultID.isEmpty, "the refresh put the items back behind the lock screen")
+        XCTAssertTrue(model.allVault.isEmpty, "the refresh restored the vaults behind the lock screen")
+        XCTAssertTrue(model.allItemByVaultID.isEmpty, "the refresh restored the items behind the lock screen")
         XCTAssertEqual(identityStore.allIdentity, allPublishedIdentity, "a lock keeps the AutoFill identities")
         XCTAssertEqual(identityStore.replaceCount, replaceCount)
     }
