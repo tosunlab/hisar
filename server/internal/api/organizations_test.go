@@ -638,6 +638,14 @@ func TestDeleteAccountInOrganizations(t *testing.T) {
 	if delivered := caller.deliverVaultKeys(alice.session, production); !slices.Equal(delivered, []string{carol.AccountID}) {
 		t.Fatalf("delivered to %v", delivered)
 	}
+	// Alice and Carol own Staging through Leads, so it outlives Alice; Carol's shared Family has Alice as an editor.
+	leads := caller.createTeam(alice.session, acme.ID, "Leads", alice.session, carol)
+	staging := createOrganizationVault(t, alice.session, acme.ID, leads.ID, "Staging")
+	if delivered := caller.deliverVaultKeys(alice.session, staging); !slices.Equal(delivered, []string{carol.AccountID}) {
+		t.Fatalf("delivered Staging to %v", delivered)
+	}
+	family := requireValue[*session.Vault](t)(carol.CreateVault(ctx, "Family", apitypes.VaultShared))
+	shareThroughInvitation(t, carol, alice.session, family, apitypes.VaultEditor)
 	caller.call(alice.session, "POST", organizationPath(acme.ID, "invitations"), apitypes.OrganizationInvitationRequest{Email: "erin@example.com", Role: apitypes.OrganizationRoleMember},
 		http.StatusAccepted, nil)
 	solo := caller.createOrganization(alice.session, "Solo")
@@ -680,16 +688,24 @@ func TestDeleteAccountInOrganizations(t *testing.T) {
 	teamMemberIDs := map[string][]string{}
 	for _, team := range organization.Teams {
 		teamMemberIDs[team.Name] = team.MemberIDs
-		if len(team.Vaults) != 0 {
+		if slices.ContainsFunc(team.Vaults, func(teamVault apitypes.TeamVault) bool { return teamVault.VaultID == production.ID }) {
 			t.Errorf("%s keeps the deleted vault: %+v", team.Name, team.Vaults)
 		}
 	}
 	if organization.Role != apitypes.OrganizationRoleAdmin || len(memberRoles) != 2 || memberRoles["bob@example.com"] != apitypes.OrganizationRoleMember ||
-		len(organization.Invitations) != 0 || len(teamMemberIDs["Owners"]) != 0 || !slices.Equal(teamMemberIDs["Platform"], []string{carol.AccountID}) {
+		len(organization.Invitations) != 0 || len(teamMemberIDs["Owners"]) != 0 || !slices.Equal(teamMemberIDs["Platform"], []string{carol.AccountID}) ||
+		!slices.Equal(teamMemberIDs["Leads"], []string{carol.AccountID}) {
 		t.Errorf("Acme after Alice's deletion: %+v", organization)
 	}
 	if _, isListed := findListedVault(t, carol, production.ID); isListed {
 		t.Error("the vault Alice owned alone outlived her")
+	}
+	// Alice held Staging's key, so its remaining owner's app rotates it, as after a team removal; Family is not marked (§5.7.1).
+	if listedStaging, isListed := findListedVault(t, carol, staging.ID); !isListed || !listedStaging.NeedsRotation {
+		t.Errorf("the organization vault Alice had a key to: listed %v, needs rotation %v", isListed, listedStaging.NeedsRotation)
+	}
+	if listedFamily, isListed := findListedVault(t, carol, family.ID); !isListed || listedFamily.NeedsRotation {
+		t.Errorf("the shared vault Alice was in: listed %v, needs rotation %v", isListed, listedFamily.NeedsRotation)
 	}
 	for name, query := range map[string]string{
 		"the organization Alice was alone in": `SELECT count(*) FROM organizations WHERE id = '` + solo.ID + `'`,

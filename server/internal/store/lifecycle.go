@@ -236,8 +236,9 @@ func collectAccountIDs(ctx context.Context, transaction pgx.Tx, query string, ar
 }
 
 // DeleteAccount deletes the account and everything that is only its own in one transaction.
-// Vaults with another owner stay with them; only this account's access is removed. In its organizations the remaining
-// member who joined earliest becomes admin after their last admin, and an organization left without members is deleted.
+// Vaults with another owner stay with them; only this account's access is removed, and an organization vault it held a
+// key to is marked for rotation, as after a team removal (§5.11). In its organizations the remaining member who joined
+// earliest becomes admin after their last admin, and an organization left without members is deleted.
 func (s *Store) DeleteAccount(ctx context.Context, accountID string, tokenHash, provenRecordHash []byte) (*DeletedAccount, error) {
 	deleted := &DeletedAccount{}
 	err := s.runInTransaction(ctx, func(transaction pgx.Tx) error {
@@ -316,6 +317,9 @@ func (s *Store) DeleteAccount(ctx context.Context, accountID string, tokenHash, 
 			{`DELETE FROM vaults WHERE id = ANY($1::uuid[])`, []any{deletedVaultIDs}},
 			{`DELETE FROM vaults WHERE organization_id = ANY($1::uuid[])`, []any{deletedOrganizationIDs}},
 			{`DELETE FROM organizations WHERE id = ANY($1::uuid[])`, []any{deletedOrganizationIDs}},
+			// The vaults deleted above are gone, so this marks the organization vaults that stay.
+			{`UPDATE vaults SET needs_rotation = true WHERE type = 'organization' AND id IN (SELECT vault_id FROM vault_access WHERE account_id = $1)`,
+				[]any{accountID}},
 			{`DELETE FROM organization_invitations WHERE invited_by = $1 OR email = $2`, []any{accountID, email}},
 			{`DELETE FROM share_invitations WHERE invited_by = $1 OR accepted_by = $1 OR email = $2`, []any{accountID, email}},
 			{`DELETE FROM invites WHERE email = $2 OR (created_by = $1 AND used_at IS NULL)`, []any{accountID, email}},
