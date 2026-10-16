@@ -148,6 +148,11 @@ export interface ImportPreview {
      * AddressCount counts the address items among ItemCount.
      */
     "addressCount": number;
+
+    /**
+     * SoftwareLicenseCount counts the software-license items among ItemCount.
+     */
+    "softwareLicenseCount": number;
     "allSkipped": ImportSkippedEntry[] | null;
     "allDuplicate": ImportDuplicate[] | null;
 }

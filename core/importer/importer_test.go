@@ -833,6 +833,92 @@ func TestParseOnePasswordAPICredential(t *testing.T) {
 	}
 }
 
+func TestParseOnePasswordSoftwareLicense(t *testing.T) {
+	data := `{"accounts":[{"vaults":[{"items":[
+		{"categoryUuid":"100","overview":{"title":" Sketch "},"details":{"notesPlain":"Team plan","sections":[
+			{"title":"","fields":[
+				{"title":"version","id":"product_version","value":{"string":"100"}},
+				{"title":"license key","id":"reg_code","value":{"string":"TEST-LICENSE-KEY"}}]},
+			{"title":"Customer","name":"customer","fields":[
+				{"title":"licensed to","id":"reg_name","value":{"string":"Alice Example"}},
+				{"title":"registered email","id":"reg_email","value":{"email":{"email_address":"alice@example.com"}}},
+				{"title":"company","id":"company","value":{"string":"Example Inc."}}]},
+			{"title":"Publisher","name":"publisher","fields":[
+				{"title":"download page","id":"download_link","value":{"url":"https://www.sketch.com/download"}},
+				{"title":"publisher","id":"publisher_name","value":{"string":"Sketch B.V."}}]},
+			{"title":"Order","name":"order","fields":[
+				{"title":"purchase date","id":"order_date","value":{"date":1709942400}},
+				{"title":"order number","id":"order_number","value":{"string":"A-1"}}]}]}},
+		{"categoryUuid":"100","overview":{"title":"Old app","url":"https://example.com/download"},"details":{"loginFields":[
+			{"designation":"username","name":"username","value":"alice"}],
+			"sections":[{"title":"","fields":[{"title":"license key","id":"reg_code","value":{"concealed":"OLD-KEY"}}]}]}},
+		{"categoryUuid":"102","overview":{"title":"Database"},"details":{"sections":[{"title":"","fields":[
+			{"title":"username","id":"username","value":{"string":"admin"}}]}]}}]}]}]}`
+	result := parseFixture(t, "export.1pux", buildOnePasswordExport(t, []byte(data)), FormatAutomatic)
+	if len(result.Skipped) != 0 {
+		t.Errorf("skipped %+v", result.Skipped)
+	}
+	sketch := findTestItem(t, result, "Sketch")
+	wantFields := []item.Field{
+		{Name: item.FieldProduct, Value: "Sketch"},
+		{Name: item.FieldVersion, Value: "100"},
+		{Name: item.FieldLicenseKey, Value: "TEST-LICENSE-KEY", Concealed: true},
+		{Name: item.FieldLicensedTo, Value: "Alice Example"},
+		{Name: item.FieldEmail, Value: "alice@example.com"},
+		{Name: item.FieldPurchaseDate, Value: "2024-03-09"},
+		{Name: item.FieldDownloadURL, Value: "https://www.sketch.com/download"},
+		{Name: "company", Value: "Example Inc."},
+		{Name: "publisher", Value: "Sketch B.V."},
+		{Name: "order number", Value: "A-1"},
+	}
+	if sketch.Overview.Category != item.CategorySoftwareLicense || !reflect.DeepEqual(sketch.Details.Fields, wantFields) || sketch.Details.Notes != "Team plan" {
+		t.Errorf("software license = %+v\nfields\n%+v\nwant\n%+v", sketch.Overview, sketch.Details.Fields, wantFields)
+	}
+
+	// A website with no download link becomes the download URL, and login data moves to custom fields.
+	oldApp := findTestItem(t, result, "Old app")
+	wantOldFields := []item.Field{
+		{Name: item.FieldProduct, Value: "Old app"},
+		{Name: item.FieldLicenseKey, Value: "OLD-KEY", Concealed: true},
+		{Name: item.FieldDownloadURL, Value: "https://example.com/download"},
+		{Name: "Username", Value: "alice"},
+	}
+	if oldApp.Overview.Category != item.CategorySoftwareLicense || !reflect.DeepEqual(oldApp.Details.Fields, wantOldFields) ||
+		oldApp.Overview.Username != "" || len(oldApp.Overview.URLs) != 0 {
+		t.Errorf("license with login data = %+v\nfields\n%+v\nwant\n%+v", oldApp.Overview, oldApp.Details.Fields, wantOldFields)
+	}
+	if database := findTestItem(t, result, "Database"); database.Overview.Category != item.CategoryLogin || database.Overview.Username != "admin" {
+		t.Errorf("a 1Password Database is no longer a login: %+v", database)
+	}
+	if summary := Summarize(result.Items); summary.SoftwareLicenseCount != 2 || summary.LoginCount != 1 {
+		t.Errorf("summary = %+v", summary)
+	}
+}
+
+func TestSoftwareLicensesMatchByTitleAndLicenseKey(t *testing.T) {
+	license := func(title string, license item.SoftwareLicense) item.Item {
+		var vaultItem item.Item
+		vaultItem.Overview = item.Overview{Title: title, Category: item.CategorySoftwareLicense}
+		item.WriteSoftwareLicense(&vaultItem, license, nil)
+		return vaultItem
+	}
+	sketch := license("Sketch", item.SoftwareLicense{Product: "Sketch", Version: "100", LicenseKey: "KEY-1", LicensedTo: "Alice"})
+	if BuildDuplicateKey(sketch) != BuildDuplicateKey(license(" sketch ", item.SoftwareLicense{LicenseKey: "KEY-1"})) {
+		t.Error("the same title and license key do not match")
+	}
+	if BuildDuplicateKey(sketch) == BuildDuplicateKey(license("Sketch", item.SoftwareLicense{Product: "Sketch", Version: "100", LicenseKey: "KEY-2"})) {
+		t.Error("two license keys of one product match")
+	}
+	withoutKey := license("Sketch", item.SoftwareLicense{Product: "Sketch", Version: "100"})
+	if BuildDuplicateKey(withoutKey) != BuildDuplicateKey(license("Sketch", item.SoftwareLicense{Product: "SKETCH", Version: "100"})) ||
+		BuildDuplicateKey(withoutKey) == BuildDuplicateKey(license("Sketch", item.SoftwareLicense{Product: "Sketch", Version: "101"})) {
+		t.Error("licenses without a key do not match by product and version")
+	}
+	if got := DescribeDuplicate(sketch); got != "100 · Alice" {
+		t.Errorf("DescribeDuplicate = %q", got)
+	}
+}
+
 func TestParseOnePasswordAPICredentialFromLoginFields(t *testing.T) {
 	data := `{"accounts":[{"vaults":[{"items":[
 		{"categoryUuid":"112","overview":{"title":"Only login fields"},"details":{"loginFields":[

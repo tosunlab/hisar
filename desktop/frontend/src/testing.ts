@@ -572,6 +572,7 @@ export function createImportPreview(overrides: Partial<ImportPreview> = {}): Imp
     identityCount: 0,
     apiCredentialCount: 0,
     addressCount: 0,
+    softwareLicenseCount: 0,
     allSkipped: [{ title: "Visa", reason: "Bitwarden cards are not supported in Hisar yet" }],
     allDuplicate: [{ title: "GitHub", username: "alice", url: "https://github.com", detail: "alice · github.com" }],
     ...overrides,
