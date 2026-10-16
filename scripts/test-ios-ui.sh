@@ -87,7 +87,9 @@ check_partner "giving Audit to Platform" 'Gave "Audit" to team "Platform" as rea
 check_partner "inviting the joining account to Northwind" "Invitation sent to $ORGANIZATION_JOIN_EMAIL to join Northwind as member." \
   "$(partner org invite Northwind "$ORGANIZATION_JOIN_EMAIL" 2>&1)"
 
-# Each organization step of the loop runs once, after the app did what it waits for; the files in $T record what is done.
+# Each organization step of the loop runs once the app did what it waits for, and again on every pass until its check
+# passes; the files in $T record the steps done. Every `orgs` gives team members the keys of the vaults the partner owns and
+# gives the vaults people lost a new key, so a change runs it again at once and the key steps check the latest one.
 answer_as_partner() {
   while true; do
     for INVITATION_ID in $(printf '%s\n' "$PARTNER_PASSWORD" | partner invitations 2>/dev/null | awk '/^RECEIVED/{isReceived=1; next} /^(SENT|$)/{isReceived=0} isReceived{print $1}'); do
@@ -99,25 +101,33 @@ answer_as_partner() {
       check_partner "accepting an organization invitation" "You joined" "$(partner org accept "$INVITATION_ID" </dev/null 2>&1)" || true
     done
     # The joining account accepted: Northwind has two members. It joins Platform and gets the keys of Deploy and Audit.
-    if [ ! -e "$T/joined-platform" ] && printf '%s\n' "$ORGANIZATIONS" | awk '$1 == "Northwind" && $3 >= 2 {isFound=1} END {exit !isFound}'; then
-      touch "$T/joined-platform"
+    if [ ! -e "$T/joined-platform" ] && printf '%s\n' "$ORGANIZATIONS" | awk '$1 == "Northwind" && $3 >= 2 {isFound=1} END {exit !isFound}' &&
       check_partner "adding the joining account to Platform" "Added $ORGANIZATION_JOIN_EMAIL to team \"Platform\"." \
-        "$(partner team add Northwind Platform "$ORGANIZATION_JOIN_EMAIL" 2>&1)" || true
-      check_partner "giving the joining account the keys of Deploy and Audit" "Gave 2 vault keys to team members." "$(partner_unlocked orgs 2>&1)" || true
+        "$(partner team add Northwind Platform "$ORGANIZATION_JOIN_EMAIL" 2>&1)"; then
+      touch "$T/joined-platform"
+      ORGANIZATIONS=$(partner_unlocked orgs 2>&1 || true)
+    fi
+    if [ -e "$T/joined-platform" ] && [ ! -e "$T/gave-platform-keys" ] &&
+      check_partner "giving the joining account the keys of Deploy and Audit" "Gave 2 vault keys to team members." "$ORGANIZATIONS"; then
+      touch "$T/gave-platform-keys"
     fi
     # The joining account saved "Remove me" in Deploy: it leaves Platform, and both vaults get a new key.
-    if [ -e "$T/joined-platform" ] && [ ! -e "$T/left-platform" ] && [[ "$(partner_unlocked ls -v Deploy 2>/dev/null || true)" == *"Remove me"* ]]; then
-      touch "$T/left-platform"
+    if [ -e "$T/joined-platform" ] && [ ! -e "$T/left-platform" ] && [[ "$(partner_unlocked ls -v Deploy 2>/dev/null || true)" == *"Remove me"* ]] &&
       check_partner "removing the joining account from Platform" "Removed $ORGANIZATION_JOIN_EMAIL from team \"Platform\"." \
-        "$(partner team remove Northwind Platform "$ORGANIZATION_JOIN_EMAIL" 2>&1)" || true
-      check_partner "rotating Deploy and Audit" "Rotated the keys of 2 vaults people lost access to." "$(partner_unlocked orgs 2>&1)" || true
+        "$(partner team remove Northwind Platform "$ORGANIZATION_JOIN_EMAIL" 2>&1)"; then
+      touch "$T/left-platform"
+      ORGANIZATIONS=$(partner_unlocked orgs 2>&1 || true)
+    fi
+    if [ -e "$T/left-platform" ] && [ ! -e "$T/rotated-platform-vaults" ] &&
+      check_partner "rotating Deploy and Audit" "Rotated the keys of 2 vaults people lost access to." "$ORGANIZATIONS"; then
+      touch "$T/rotated-platform-vaults"
     fi
     # The admin account made the partner a member of Contoso's team Ops and created Runbooks for it with Pager in it.
     if [ ! -e "$T/saw-runbooks" ] && printf '%s\n' "$ORGANIZATIONS" | awk '$1 == "Contoso" {isFound=1} END {exit !isFound}' &&
-      [ "$(partner_unlocked get Pager -v Runbooks -f username 2>/dev/null || true)" = "pager-oncall" ]; then
-      touch "$T/saw-runbooks"
+      [ "$(partner_unlocked get Pager -v Runbooks -f username 2>/dev/null || true)" = "pager-oncall" ] &&
       check_partner "writing into Runbooks" 'Saved "Seen by partner" to Runbooks.' \
-        "$(printf '%s\nSeen by partner\npartner\nhttps://runbooks.example.com\nseen-by-partner-password\n\n' "$PARTNER_PASSWORD" | partner add -v Runbooks 2>&1)" || true
+        "$(printf '%s\nSeen by partner\npartner\nhttps://runbooks.example.com\nseen-by-partner-password\n\n' "$PARTNER_PASSWORD" | partner add -v Runbooks 2>&1)"; then
+      touch "$T/saw-runbooks"
     fi
     sleep 2
   done
