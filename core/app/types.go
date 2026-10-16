@@ -178,6 +178,24 @@ type ItemDetail struct {
 	// Server holds a server's host, port and linked SSH key, stored as named custom fields; its username, password and
 	// admin console are the item's own Username, Password and URLs. Summaries keep only the host and port.
 	Server *ItemServer `json:"server,omitempty"`
+	// Database holds a database's engine, host, port, name and options, stored as named custom fields; its username and
+	// password are the item's own. Summaries keep only the engine, host, port and name.
+	Database *ItemDatabase `json:"database,omitempty"`
+}
+
+// ItemDatabase is a database's values besides its login data. Engine is the ID of a known engine (postgresql, mysql,
+// mariadb, sqlserver, oracle, mongodb, redis) or any other engine as typed; EngineName names it. ConnectionString is built
+// from the values and the item's login data, and is "" for another engine or without a host. PortWarning says when the
+// port is not a number from 1 to 65535. SaveItem reads only Engine, Host, Port, Name and Options.
+type ItemDatabase struct {
+	Engine           string `json:"engine"`
+	EngineName       string `json:"engineName"`
+	Host             string `json:"host"`
+	Port             string `json:"port"`
+	Name             string `json:"name"`
+	Options          string `json:"options"`
+	ConnectionString string `json:"connectionString"`
+	PortWarning      string `json:"portWarning"`
 }
 
 // ItemServer is a server's values besides its login data. SSHKeyID names an ssh-key item in the same vault, or is "";

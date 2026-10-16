@@ -278,9 +278,9 @@ func (bridge *CommandLineBridge) saveItem(vaultID string, change *cliprotocol.It
 		detail.Tags = *change.Tags
 	}
 	if change.Fields != nil {
-		// The CLI sends a card's, identity's, API credential's, address's, software license's or server's values as named fields,
+		// The CLI sends a card's, identity's, API credential's, address's, software license's, server's or database's values as named fields,
 		// which replace the ones it read.
-		detail.Card, detail.Identity, detail.APICredential, detail.Address, detail.SoftwareLicense, detail.Server = nil, nil, nil, nil, nil, nil
+		detail.Card, detail.Identity, detail.APICredential, detail.Address, detail.SoftwareLicense, detail.Server, detail.Database = nil, nil, nil, nil, nil, nil, nil
 		detail.Fields = []ItemField{}
 		for _, field := range *change.Fields {
 			detail.Fields = append(detail.Fields, ItemField{Name: field.Name, Value: field.Value, Concealed: field.Concealed})

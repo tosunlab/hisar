@@ -69,6 +69,10 @@ func (s *Service) summarizeItem(vaultItem *item.Item) ItemDetail {
 		// Lists show the host and port; the linked key is looked up only in the item.
 		summary.Server = &ItemServer{Host: server.Host, Port: server.Port}
 	}
+	if database := summary.Database; database != nil {
+		// Lists show the engine, host, port and name; the connection string carries the password.
+		summary.Database = &ItemDatabase{Engine: database.Engine, EngineName: database.EngineName, Host: database.Host, Port: database.Port, Name: database.Name}
+	}
 	return summary
 }
 
@@ -205,6 +209,14 @@ func convertToItemDetail(vaultItem *item.Item, now time.Time) ItemDetail {
 		server, fields = item.ReadServer(vaultItem)
 		detail.Server = &ItemServer{Host: server.Host, Port: server.Port, SSHKeyID: server.SSHKeyID, PortWarning: server.PortWarning()}
 	}
+	if vaultItem.IsCategory(item.CategoryDatabase) {
+		var database item.Database
+		database, fields = item.ReadDatabase(vaultItem)
+		detail.Database = &ItemDatabase{
+			Engine: database.Engine, EngineName: database.EngineName(), Host: database.Host, Port: database.Port, Name: database.Name,
+			Options: database.Options, ConnectionString: vaultItem.ConnectionString(), PortWarning: database.PortWarning(),
+		}
+	}
 	for _, field := range fields {
 		detail.Fields = append(detail.Fields, ItemField{Name: field.Name, Value: field.Value, Concealed: field.Concealed})
 	}
@@ -222,7 +234,7 @@ func (s *Service) DescribeCard(number, expiry string) CardDescription {
 }
 
 // getStoredFields returns an item's custom fields as they are stored: a card's, identity's, API credential's, address's or
-// software license's values first, as named fields.
+// software license's, server's or database's values first, as named fields.
 func getStoredFields(detail ItemDetail) []ItemField {
 	var vaultItem item.Item
 	switch {
@@ -238,6 +250,8 @@ func getStoredFields(detail ItemDetail) []ItemField {
 		item.WriteSoftwareLicense(&vaultItem, convertFromItemSoftwareLicense(detail.SoftwareLicense), nil)
 	case detail.Server != nil:
 		item.WriteServer(&vaultItem, convertFromItemServer(detail.Server), nil)
+	case detail.Database != nil:
+		item.WriteDatabase(&vaultItem, convertFromItemDatabase(detail.Database), nil)
 	default:
 		return detail.Fields
 	}
@@ -281,6 +295,10 @@ func convertFromItemIdentity(identity *ItemIdentity) item.Identity {
 
 func convertFromItemServer(server *ItemServer) item.Server {
 	return item.Server{Host: server.Host, Port: server.Port, SSHKeyID: server.SSHKeyID}
+}
+
+func convertFromItemDatabase(database *ItemDatabase) item.Database {
+	return item.Database{Engine: database.Engine, Host: database.Host, Port: database.Port, Name: database.Name, Options: database.Options}
 }
 
 func convertToItemSoftwareLicense(license item.SoftwareLicense) *ItemSoftwareLicense {
@@ -371,7 +389,7 @@ func (s *Service) buildSavedItem(vaultID string, detail ItemDetail) (item.Item, 
 	if cachedItem == nil {
 		switch detail.Category {
 		case "", item.CategoryLogin, item.CategorySecureNote, item.CategoryCreditCard, item.CategoryIdentity, item.CategoryAPICredential, item.CategoryAddress,
-			item.CategorySoftwareLicense, item.CategoryServer:
+			item.CategorySoftwareLicense, item.CategoryServer, item.CategoryDatabase:
 		case item.CategorySSHKey:
 			if detail.ID == "" {
 				return item.Item{}, errors.New("generate or import an SSH key instead")
@@ -424,6 +442,8 @@ func applyCategory(vaultItem *item.Item, detail ItemDetail) {
 		item.WriteSoftwareLicense(vaultItem, convertFromItemSoftwareLicense(detail.SoftwareLicense), vaultItem.Details.Fields)
 	case vaultItem.IsCategory(item.CategoryServer) && detail.Server != nil:
 		item.WriteServer(vaultItem, convertFromItemServer(detail.Server), vaultItem.Details.Fields)
+	case vaultItem.IsCategory(item.CategoryDatabase) && detail.Database != nil:
+		item.WriteDatabase(vaultItem, convertFromItemDatabase(detail.Database), vaultItem.Details.Fields)
 	}
 	if vaultItem.OmitsLoginData() {
 		vaultItem.MoveLoginDataToFields()
@@ -434,6 +454,7 @@ func applyCategory(vaultItem *item.Item, detail ItemDetail) {
 	item.NormalizeAddress(vaultItem)
 	item.NormalizeSoftwareLicense(vaultItem)
 	item.NormalizeServer(vaultItem)
+	item.NormalizeDatabase(vaultItem)
 }
 
 // checkServerSSHKey refuses a server linked to anything but an SSH key of its own vault, so everyone who sees the server
@@ -548,6 +569,7 @@ func (s *Service) GeneratePassword(config PasswordConfig) (string, error) {
 var fieldNames = item.FieldNames{
 	"username": item.FieldUsername, "password": item.FieldPassword, "url": item.FieldURL, "notes": item.FieldNotes,
 	"public key": item.FieldPublicKey, "fingerprint": item.FieldFingerprint, "one-time code": item.FieldOneTimeCode,
+	"connection string": item.FieldConnectionString,
 }
 
 func getFieldValue(vaultItem *item.Item, fieldName string) (string, bool) {

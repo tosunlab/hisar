@@ -140,6 +140,11 @@ func isAgentSearchMatch(vaultName string, vaultItem *item.Item, query string) bo
 		server, _ := item.ReadServer(vaultItem)
 		texts = append(texts, server.Host)
 	}
+	if vaultItem.IsCategory(item.CategoryDatabase) {
+		// A database's host and name are named fields; its username is the item's own.
+		database, _ := item.ReadDatabase(vaultItem)
+		texts = append(texts, database.Host, database.Name)
+	}
 	if vaultItem.IsCategory(item.CategorySoftwareLicense) {
 		// What the apps' search reads; never the license key.
 		license, _ := item.ReadSoftwareLicense(vaultItem)

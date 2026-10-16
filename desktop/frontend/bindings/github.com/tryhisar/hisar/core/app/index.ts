@@ -32,6 +32,7 @@ export type {
     ItemAPICredential,
     ItemAddress,
     ItemCard,
+    ItemDatabase,
     ItemDetail,
     ItemField,
     ItemIdentity,
