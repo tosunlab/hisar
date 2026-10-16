@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -470,6 +471,51 @@ func TestCompletingAShareRefusesAChangedKey(t *testing.T) {
 	}
 	if _, found := test.apiServer.getAccess(travelID, bob.AccountID); found {
 		t.Error("the vault key was wrapped to a substituted key")
+	}
+}
+
+func TestCompletingAShareSavesThePinWhenTheAccessFails(t *testing.T) {
+	test := createUnlockedTestService(t)
+	bob, _ := test.apiServer.addMember(t, "Bob", "b@example.com")
+	if err := test.service.ShareVault(test.familyID, "b@example.com", apitypes.VaultEditor); err != nil {
+		t.Fatal(err)
+	}
+	test.apiServer.acceptShareInvitation(t, bob)
+	test.apiServer.mutex.Lock()
+	test.apiServer.isSetAccessFailing = true
+	test.apiServer.mutex.Unlock()
+
+	invitations, err := test.service.ListShareInvitations()
+	if err != nil || !strings.Contains(invitations.CompletionError, "b@example.com") {
+		t.Fatalf("a share the server refused: %+v %v", invitations, err)
+	}
+	saved, err := localstate.Load(test.service.config.StatePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(saved.Pins[bob.AccountID], bob.PublicKeys.Sign) {
+		t.Errorf("state.json pins %x for Bob, want his signing key", saved.Pins[bob.AccountID])
+	}
+}
+
+func TestCompletingAShareReportsPinsThatCouldNotBeSaved(t *testing.T) {
+	test := createUnlockedTestService(t)
+	bob, _ := test.apiServer.addMember(t, "Bob", "b@example.com")
+	if err := test.service.ShareVault(test.familyID, "b@example.com", apitypes.VaultEditor); err != nil {
+		t.Fatal(err)
+	}
+	test.apiServer.acceptShareInvitation(t, bob)
+	// State.Save writes a temporary file next to state.json first; a directory in its place makes the save fail.
+	if err := os.Mkdir(test.service.config.StatePath+".tmp", 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	invitations, err := test.service.ListShareInvitations()
+	if err != nil || invitations.CompletionError == "" {
+		t.Fatalf("a pin that could not be saved was not reported: %+v %v", invitations, err)
+	}
+	if _, found := test.apiServer.getAccess(test.familyID, bob.AccountID); !found {
+		t.Error("the share was not completed")
 	}
 }
 
