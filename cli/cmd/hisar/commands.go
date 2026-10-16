@@ -310,6 +310,7 @@ var itemTypes = []itemType{
 	{category: item.CategoryIdentity, prompt: promptIdentity},
 	{category: item.CategoryAPICredential, prompt: promptAPICredential},
 	{category: item.CategoryAddress, prompt: promptAddress},
+	{category: item.CategorySoftwareLicense, prompt: promptSoftwareLicense},
 }
 
 func findItemType(category string) (itemType, bool) {
@@ -473,6 +474,27 @@ func promptAddress(vaultItem *item.Item) error {
 	}
 	item.WriteAddress(vaultItem, address, otherFields)
 	item.NormalizeAddress(vaultItem)
+	return nil
+}
+
+// promptSoftwareLicense asks for a software license's title and each of its values; the license key is read without echo.
+func promptSoftwareLicense(vaultItem *item.Item) error {
+	var err error
+	if vaultItem.Overview.Title, err = promptRequired("Title", vaultItem.Overview.Title); err != nil {
+		return err
+	}
+	license, otherFields := item.ReadSoftwareLicense(vaultItem)
+	err = promptNamedFields(&license, item.ListSoftwareLicenseFields(), func(field item.SoftwareLicenseField, value string) string {
+		if field.Name == item.FieldPurchaseDate && value == "" {
+			return " (YYYY-MM-DD)"
+		}
+		return ""
+	})
+	if err != nil {
+		return err
+	}
+	item.WriteSoftwareLicense(vaultItem, license, otherFields)
+	item.NormalizeSoftwareLicense(vaultItem)
 	return nil
 }
 
