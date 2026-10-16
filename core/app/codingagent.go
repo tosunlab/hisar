@@ -136,9 +136,9 @@ func isAgentSearchMatch(vaultName string, vaultItem *item.Item, query string) bo
 		texts = append(texts, identity.Address.City, identity.Address.Country)
 	}
 	if vaultItem.IsCategory(item.CategorySoftwareLicense) {
-		// Never the license key.
+		// What the apps' search reads; never the license key.
 		license, _ := item.ReadSoftwareLicense(vaultItem)
-		texts = append(texts, license.Product, license.Version)
+		texts = append(texts, license.Product, license.Version, license.LicensedTo, license.Email)
 	}
 	return slices.ContainsFunc(texts, func(text string) bool { return strings.Contains(strings.ToLower(text), query) })
 }

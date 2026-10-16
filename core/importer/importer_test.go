@@ -914,6 +914,22 @@ func TestSoftwareLicensesMatchByTitleAndLicenseKey(t *testing.T) {
 		BuildDuplicateKey(withoutKey) == BuildDuplicateKey(license("Sketch", item.SoftwareLicense{Product: "Sketch", Version: "101"})) {
 		t.Error("licenses without a key do not match by product and version")
 	}
+	// 1Password licenses imported before Hisar had the type are logins with a "license key" field.
+	oldLogin := item.Item{Overview: item.Overview{Title: "Sketch", Category: item.CategoryLogin}, Details: item.Details{Fields: []item.Field{
+		{Name: "license key", Value: "KEY-1"}, {Name: "company", Value: "Example Inc."},
+	}}}
+	if indexes := FindDuplicateIndexes([]item.Item{sketch}, []item.Item{oldLogin}); !reflect.DeepEqual(indexes, []int{0}) {
+		t.Errorf("a license imported earlier as a login is not a duplicate: %v", indexes)
+	}
+	otherKey := oldLogin
+	otherKey.Details.Fields = []item.Field{{Name: "license key", Value: "KEY-2"}}
+	plainLogin := item.Item{Overview: item.Overview{Title: "Sketch", Username: "alice"}}
+	if indexes := FindDuplicateIndexes([]item.Item{sketch}, []item.Item{otherKey, plainLogin}); len(indexes) != 0 {
+		t.Errorf("a login with another key or no key matches the license: %v", indexes)
+	}
+	if BuildDuplicateKey(plainLogin) != "sketch\x00alice\x00" {
+		t.Errorf("a login without a license key no longer matches by title, username and website: %q", BuildDuplicateKey(plainLogin))
+	}
 	if got := DescribeDuplicate(sketch); got != "100 · Alice" {
 		t.Errorf("DescribeDuplicate = %q", got)
 	}

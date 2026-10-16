@@ -87,7 +87,7 @@ func TestCommandLineSoftwareLicenseTravelsAsNamedFieldsAndResolves(t *testing.T)
 	}
 }
 
-func TestCodingAgentsFindSoftwareLicensesByProductAndVersion(t *testing.T) {
+func TestCodingAgentsFindSoftwareLicensesAsTheAppsDo(t *testing.T) {
 	testService := createUnlockedTestService(t)
 	service, vaultID := testService.service, testService.personalID
 	if _, err := service.SetVaultAvailableToAgents(vaultID, true); err != nil {
@@ -95,11 +95,11 @@ func TestCodingAgentsFindSoftwareLicensesByProductAndVersion(t *testing.T) {
 	}
 	if _, err := service.SaveItem(vaultID, ItemDetail{
 		Category: item.CategorySoftwareLicense, Title: "Design app",
-		SoftwareLicense: &ItemSoftwareLicense{Product: "Sketch", Version: "v100", LicenseKey: "TEST-LICENSE-KEY"},
+		SoftwareLicense: &ItemSoftwareLicense{Product: "Sketch", Version: "v100", LicenseKey: "TEST-LICENSE-KEY", LicensedTo: "Alice Example", Email: "bob@example.com"},
 	}); err != nil {
 		t.Fatal(err)
 	}
-	for _, query := range []string{"sketch", "v100"} {
+	for _, query := range []string{"sketch", "v100", "alice", "bob@"} {
 		if result, err := service.searchAgentItems(query, ""); err != nil || result.TotalCount != 1 {
 			t.Errorf("search %q = %+v, %v", query, result, err)
 		}

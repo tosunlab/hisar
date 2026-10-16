@@ -208,7 +208,8 @@ func Summarize(items []item.Item) Summary {
 // identities by title, full name, email and first document number, so a home and a work identity with no documents stay
 // apart, API credentials by title and key ID, or host when there is no key ID, or secret when there is neither,
 // addresses by title, street, postal code and country, and software licenses by title and license key, or product and
-// version when there is no key.
+// version when there is no key. A login with a "License key" field, as 1Password licenses were imported before Hisar had
+// software licenses, matches like a software license with that key, so importing the same file again skips it.
 func BuildDuplicateKey(vaultItem item.Item) string {
 	if vaultItem.IsCategory(item.CategorySSHKey) && vaultItem.Overview.Fingerprint != "" {
 		return "ssh-key\x00" + vaultItem.Overview.Fingerprint
@@ -247,13 +248,15 @@ func BuildDuplicateKey(vaultItem item.Item) string {
 			strings.TrimSpace(address.Country),
 		}, "\x00"))
 	}
-	if vaultItem.IsCategory(item.CategorySoftwareLicense) {
+	if isLicense := vaultItem.IsCategory(item.CategorySoftwareLicense); isLicense || vaultItem.IsCategory(item.CategoryLogin) {
 		license, _ := item.ReadSoftwareLicense(&vaultItem)
 		key := "software-license\x00" + strings.ToLower(strings.TrimSpace(vaultItem.Overview.Title)) + "\x00"
 		if licenseKey := strings.TrimSpace(license.LicenseKey); licenseKey != "" {
 			return key + "key\x00" + licenseKey
 		}
-		return key + "product\x00" + strings.ToLower(strings.TrimSpace(license.Product)+"\x00"+strings.TrimSpace(license.Version))
+		if isLicense {
+			return key + "product\x00" + strings.ToLower(strings.TrimSpace(license.Product)+"\x00"+strings.TrimSpace(license.Version))
+		}
 	}
 	firstURL := ""
 	if len(vaultItem.Overview.URLs) > 0 {
