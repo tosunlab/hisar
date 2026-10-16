@@ -30,7 +30,7 @@
 <h2>Summary</h2>
 <ul>
   <li>Hisar is an end-to-end encrypted password, SSH key and secrets manager for developers. Your passwords, notes, keys and other items are encrypted on your devices before they are sent to our server. We cannot read them.</li>
-  <li>To run the service, the server does store some things it can read: your email address and name, your devices' names, who you share vaults with, timestamps, sizes, and IP addresses in a security log kept for one year. This page lists all of it.</li>
+  <li>To run the service, the server does store some things it can read: your email address and name, your devices' names, who you share vaults with, the organizations and teams you are in, timestamps, sizes, and IP addresses in a security log kept for one year. This page lists all of it.</li>
   <li>There is no analytics, advertising, tracking or selling of data. Our pages and emails contain no trackers and the service sets no cookies.</li>
 </ul>
 
@@ -42,7 +42,7 @@
 <ul>
   <li>your master password and your Secret Key (signing in uses a protocol, OPAQUE, in which the server never receives the password);</li>
   <li>the contents of your items: titles, usernames, passwords, websites, notes, custom fields, one-time-password secrets, passkeys and SSH private keys;</li>
-  <li>vault names;</li>
+  <li>vault names, including those of organization vaults;</li>
   <li>what a share link contains, and the key or passphrase that opens it;</li>
   <li>what an approval request from your Mac to your iPhone describes, and your answer.</li>
 </ul>
@@ -52,12 +52,13 @@
 <table>
   <thead><tr><th>Data</th><th>Why</th><th>How long</th></tr></thead>
   <tbody>
-    <tr><td>Your account: email address, name, the date you signed up, and cryptographic material that does not reveal your password (password-check record, key-derivation salt and settings, your encrypted keyset, your public keys and their signatures)</td><td>To sign you in, to let people share with you, and to show your name to the people you share with</td><td>While your account exists</td></tr>
+    <tr><td>Your account: email address, name, the date you signed up, and cryptographic material that does not reveal your password (password-check record, key-derivation salt and settings, your encrypted keyset, your public keys and their signatures)</td><td>To sign you in, to let people share with you, and to show your name to the people you share with and the people in your organizations</td><td>While your account exists</td></tr>
     <tr><td>Your devices: the name you or your computer gave it (for example "Ada's MacBook Pro"), the platform (for example "macOS app"), when it signed in and when it was last seen; a hash of each session token</td><td>To list your devices so you can sign one out, and to keep you signed in (sessions expire after 30 days without use)</td><td>While your account exists; sessions until they expire or you sign out</td></tr>
-    <tr><td>Your vaults and items, encrypted: the ciphertext, its size, when it changed and which account changed it; how many items each vault has; who has access to each vault and with which role</td><td>To sync your data between your devices and the people you share with</td><td>While the vault exists; earlier versions of an item for 90 days</td></tr>
-    <tr><td>Invitations: the email address you invite, who invited them, when, and whether it was used; for sharing a vault, also the vault, the role and whether they accepted</td><td>To send the invitation and let the other person accept it</td><td>A vault invitation until the share is finished, declined or cancelled; any invitation at most 30 days after it expires (invitations expire 7 days after they are sent)</td></tr>
+    <tr><td>Your vaults and items, encrypted: the ciphertext, its size, when it changed and which account changed it; how many items each vault has; who has access to each vault and with which role; which organization an organization vault belongs to</td><td>To sync your data between your devices and the people you share with</td><td>While the vault exists; earlier versions of an item for 90 days</td></tr>
+    <tr><td>Organizations: the name of each organization and of its teams; who is a member, with which role (admin or member), and who is in which team; which teams were given which vaults, with which role; and who created, added or gave each of these, and when. The vaults' names and items stay end-to-end encrypted, as above</td><td>To let admins manage an organization's members, teams and vaults, to show the members of an organization to each other, and to give a team's members its vaults</td><td>While the organization exists (admins can delete it once it has no vaults; it is deleted with the account of its last member); your membership until you leave, an admin removes you or you delete your account</td></tr>
+    <tr><td>Invitations: the email address you invite, who invited them, when, and whether it was used; for sharing a vault, also the vault, the role and whether they accepted; for an organization, also the organization and the role</td><td>To send the invitation and let the other person accept it</td><td>A vault invitation until the share is finished, declined or cancelled; an organization invitation until it is accepted, declined or cancelled; any invitation at most 30 days after it expires (invitations expire 7 days after they are sent)</td></tr>
     <tr><td>Share links: which account created the link, the encrypted contents and an encrypted label only your devices can read, its size, expiry, view limit and number of views, and whether it needs a passphrase</td><td>To serve the link to the person you send it to</td><td>Deleted when the link expires, is revoked, or reaches its view limit</td></tr>
-    <tr><td>Security log: sign-ins and failed sign-ins, sign-ups, devices signed out, master password and Secret Key changes, failed master password checks, account deletions, invitations, sharing changes, and share links created or revoked, each with the account, the device, the time and the IP address it came from; for sign-ins also the device's name and platform, and for invitations the invited email address</td><td>To detect and investigate abuse and attacks on accounts</td><td>1 year, then deleted automatically</td></tr>
+    <tr><td>Security log: sign-ins and failed sign-ins, sign-ups, devices signed out, master password and Secret Key changes, failed master password checks, account deletions, invitations, sharing changes, organization changes (organizations and teams created, renamed or deleted; members' roles changed; people added to or removed from a team; people removed from or leaving an organization; vaults given to or taken back from a team), and share links created or revoked, each with the account, the device, the time and the IP address it came from; for sign-ins also the device's name and platform, and for invitations the invited email address</td><td>To detect and investigate abuse and attacks on accounts</td><td>1 year, then deleted automatically</td></tr>
   </tbody>
 </table>
 
@@ -75,11 +76,12 @@
 </ul>
 
 <h2>Email</h2>
-<p>The server sends a few plain-text emails, with no images or tracking: an invitation when someone invites you to Hisar or shares a vault with you, and a note to you when someone accepted your invitation to a vault but your Hisar has not finished sharing it yet. Emails contain the names and email addresses of the people involved and, for invitations, a sign-up link; they never contain vault names or items. Email is not end-to-end encrypted. We send these transactional emails through Google (Google Workspace SMTP), which processes the recipient's address and the message to deliver it. Google is a US company; transfers of this data to the US are covered by the EU–US Data Privacy Framework and Google's standard contractual clauses.</p>
+<p>The server sends a few plain-text emails, with no images or tracking: an invitation when someone invites you to Hisar or to an organization or shares a vault with you, and a note to you when someone accepted your invitation to a vault but your Hisar has not finished sharing it yet. Emails contain the names and email addresses of the people involved, the organization's name in an invitation to an organization, and, in an invitation to someone without an account, a sign-up link; they never contain vault names or items. Email is not end-to-end encrypted. We send these transactional emails through Google (Google Workspace SMTP), which processes the recipient's address and the message to deliver it. Google is a US company; transfers of this data to the US are covered by the EU–US Data Privacy Framework and Google's standard contractual clauses.</p>
 
 <h2>Who else receives data</h2>
 <ul>
   <li><strong>The people you share with</strong> see your name, your email address and your security code, and the vaults you share with them. Nobody else can look up whether an email address has a Hisar account; the service never lists its users.</li>
+  <li><strong>The people in your organizations</strong> see your name, your email address, your role, your security code and the teams you are in. An organization's admins see the email addresses invited to it, and whoever you invite sees your name and email address with the invitation. Admins choose who is in each team, and so who gets its vaults. Being an admin gives no vault: an admin who joins a team gets its vaults like any member, and every member sees that. People outside an organization cannot see who is in it.</li>
   <li><strong>Service providers</strong> that process data on our behalf: Hetzner Online GmbH runs the server and stores the database and backups, on servers in Helsinki, Finland (EU); Google delivers email (below).</li>
   <li><strong>Authorities</strong>, only when the law requires it. What we could hand over is what this page lists; we cannot decrypt your vaults.</li>
 </ul>
@@ -95,8 +97,9 @@
 <h2>Security, and its limits</h2>
 <p>Traffic is encrypted with TLS. Items are encrypted with keys derived from your master password and your 128-bit Secret Key, so a copy of our database is not enough to guess your password offline. We work to keep the service secure, but please know the limits of any server-based design:</p>
 <ul>
-  <li>The server sees the metadata listed above: who you share with, how many items you have, how big they are and when they change.</li>
+  <li>The server sees the metadata listed above: who you share with, which organizations and teams you are in, how many items you have, how big they are and when they change.</li>
   <li>A compromised server could try to hand you someone else's public key when you share a vault. Comparing security codes with the other person once (Settings → People) detects that.</li>
+  <li>When you own a vault, your app gives its key to the people the server says accepted your invitation to it or are in a team that has it, so a compromised server could have your app give the key to an account the server controls.</li>
   <li>The web page that opens a share link is served by our server, so a compromised server could change it. People who use the <code>hisar</code> command-line tool can open share links without the page.</li>
 </ul>
 <p>If we learn of a breach that affects your personal data, we will tell you and the relevant authorities as the law requires.</p>
@@ -104,14 +107,14 @@
 <h2>Legal bases</h2>
 <p>Under the GDPR we rely on:</p>
 <ul>
-  <li><strong>Contract</strong> (Art. 6(1)(b)): account, device, vault, sharing and share-link data, and the emails about your own account, to provide the service you signed up for.</li>
+  <li><strong>Contract</strong> (Art. 6(1)(b)): account, device, vault, sharing, organization and share-link data, and the emails about your own account, to provide the service you signed up for.</li>
   <li><strong>Legitimate interests</strong> (Art. 6(1)(f)): the security log, rate limits and web server logs, to keep the service secure and prevent abuse; and invitation emails to people who do not have an account yet, sent because a user asked us to.</li>
 </ul>
 
 <h2>Your choices and rights</h2>
 <ul>
-  <li>You can see and change your vaults, devices and sharing in the apps at any time, and sign out any device.</li>
-  <li>You can delete your account yourself in the Hisar apps (Settings → Account → Delete account) or with <code>hisar account delete</code>, after confirming your master password and your email address. You can also email <a href="mailto:support@tryhisar.com">support@tryhisar.com</a> from the address on the account and we will delete it for you. Deleting the account deletes everything tied to it at once: devices, sessions, the vaults you own with no other owner and their items (the people you shared them with lose access), your access to vaults that have another owner (those vaults stay with them), your share links, and the invitations you sent or received. We email you a confirmation. Security log entries and backups are deleted on the schedules above.</li>
+  <li>You can see and change your vaults, devices, sharing and organizations in the apps at any time, and sign out any device.</li>
+  <li>You can delete your account yourself in the Hisar apps (Settings → Account → Delete account) or with <code>hisar account delete</code>, after confirming your master password and your email address. You can also email <a href="mailto:support@tryhisar.com">support@tryhisar.com</a> from the address on the account and we will delete it for you. Deleting the account deletes everything tied to it at once: devices, sessions, the vaults you own with no other owner and their items (the people you shared them with lose access), your access to vaults that have another owner (those vaults stay with them), your membership of organizations and their teams (if you were an organization's last admin, the member who joined earliest becomes its admin, and an organization left with no members is deleted with its teams and invitations), your share links, and the invitations you sent or received. An organization's records of who created it or its teams, added someone to it or gave a team a vault keep only your account's ID. We email you a confirmation. Security log entries and backups are deleted on the schedules above.</li>
   <li>Under the GDPR you have the right to access your personal data, to have it corrected (rectification) or erased, to restrict its processing, to receive it in a portable format, and to object to processing based on legitimate interests. Write to <a href="mailto:support@tryhisar.com">support@tryhisar.com</a> and we will answer within one month.</li>
   <li>You may also lodge a complaint with a data protection supervisory authority. We are based in the Netherlands, so the lead authority is the Dutch Autoriteit Persoonsgegevens (<a href="https://autoriteitpersoonsgegevens.nl">autoriteitpersoonsgegevens.nl</a>); you can also complain to the authority in the EU country where you live or work.</li>
 </ul>
