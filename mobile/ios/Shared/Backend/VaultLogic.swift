@@ -96,7 +96,9 @@ enum VaultLogic {
             let identityText = reference.item.identity.map { [$0.fullName, $0.email, $0.street, $0.city, $0.country] } ?? []
             let credentialText = reference.item.apiCredential.map { [$0.service, $0.keyID, $0.host] } ?? []
             let addressText = reference.item.address.map { [$0.street, $0.city, $0.country] } ?? []
-            let searchable = ([reference.item.title, reference.item.username, reference.vaultName] + reference.item.allURL + reference.item.allTag + identityText + credentialText + addressText)
+            // A software license's summary keeps its product, version, licensed-to name and email, never the key.
+            let licenseText = reference.item.softwareLicense.map { [$0.product, $0.version, $0.licensedTo, $0.email] } ?? []
+            let searchable = ([reference.item.title, reference.item.username, reference.vaultName] + reference.item.allURL + reference.item.allTag + identityText + credentialText + addressText + licenseText)
                 .joined(separator: " ").lowercased()
             return allWord.allSatisfy { searchable.contains($0) }
         }

@@ -124,6 +124,12 @@ struct ItemListView: View {
                             Label("Address", systemImage: "mappin.and.ellipse")
                         }
                         .accessibilityIdentifier("add-address")
+                        Button {
+                            newItemCategory = ItemDetail.categorySoftwareLicense
+                        } label: {
+                            Label("Software license", systemImage: "checkmark.seal")
+                        }
+                        .accessibilityIdentifier("add-software-license")
                     } label: {
                         Label("Add item", systemImage: "plus")
                     }
