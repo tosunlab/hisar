@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -181,6 +182,44 @@ func TestVaultKeyRequestSavesThePinWhenTheDeliveryFails(t *testing.T) {
 	keys, err := test.service.ListWaitingVaultKeys()
 	if err != nil || !strings.Contains(keys.DeliveryError, "b@example.com") {
 		t.Fatalf("a delivery the server refused: %+v %v", keys, err)
+	}
+	saved, err := localstate.Load(test.service.config.StatePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(saved.Pins[bob.AccountID], bob.PublicKeys.Sign) {
+		t.Errorf("state.json pins %x for Bob, want his signing key", saved.Pins[bob.AccountID])
+	}
+}
+
+func TestVaultKeyRequestReportsPinsThatCouldNotBeSaved(t *testing.T) {
+	test := createUnlockedTestService(t)
+	bob, _ := test.apiServer.addMember(t, "Bob", "b@example.com")
+	vaultID := createOrganizationTestVault(t, test.service)
+	test.apiServer.requestVaultKey(vaultID, apitypes.VaultEditor, 1, bob)
+	// State.Save writes a temporary file next to state.json first; a directory in its place makes the save fail.
+	temporaryStatePath := test.service.config.StatePath + ".tmp"
+	if err := os.Mkdir(temporaryStatePath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	keys, err := test.service.ListWaitingVaultKeys()
+	if err != nil || !strings.Contains(keys.DeliveryError, "could not save the pinned signing keys") || keys.RotationError != "" {
+		t.Fatalf("a pin that could not be saved was not reported: %+v %v", keys, err)
+	}
+	if _, found := test.apiServer.getAccess(vaultID, bob.AccountID); !found {
+		t.Error("the vault key was not delivered")
+	}
+	// The key is delivered, so the next pass pins nothing new; Bob's pin is still unsaved.
+	if keys, err := test.service.ListWaitingVaultKeys(); err != nil || !strings.Contains(keys.DeliveryError, "could not save the pinned signing keys") || keys.RotationError != "" {
+		t.Fatalf("a pass that pinned nothing forgot the unsaved pin: %+v %v", keys, err)
+	}
+
+	if err := os.Remove(temporaryStatePath); err != nil {
+		t.Fatal(err)
+	}
+	if keys, err := test.service.ListWaitingVaultKeys(); err != nil || keys.DeliveryError != "" || keys.RotationError != "" {
+		t.Fatalf("after a save that works: %+v %v", keys, err)
 	}
 	saved, err := localstate.Load(test.service.config.StatePath)
 	if err != nil {
