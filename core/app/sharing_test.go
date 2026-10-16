@@ -132,10 +132,18 @@ func (server *fakeAPIServer) addSharingRoutes(mux *http.ServeMux) {
 			writeJSON(writer, http.StatusForbidden, apitypes.Error{Error: "owner only"})
 			return
 		}
+		if setRequest.KeyGeneration != 0 && setRequest.KeyGeneration != server.getKeyGeneration(vaultID) {
+			writeJSON(writer, http.StatusConflict, apitypes.Error{Error: "the vault key was rotated since"})
+			return
+		}
+		server.setAccessRequests = append(server.setAccessRequests, setRequest)
 		accesses := server.accessesByVaultID[vaultID]
 		access := apitypes.RotatedAccess{AccountID: accountID, Role: setRequest.Role, WrappedKey: setRequest.WrappedKey}
 		if index := slices.IndexFunc(accesses, func(existing apitypes.RotatedAccess) bool { return existing.AccountID == accountID }); index >= 0 {
 			accesses[index] = access
+		} else if keyRequestIndex := server.findVaultKeyRequest(vaultID, accountID); keyRequestIndex >= 0 {
+			server.vaultKeyRequests = slices.Delete(server.vaultKeyRequests, keyRequestIndex, keyRequestIndex+1)
+			server.accessesByVaultID[vaultID] = append(accesses, access)
 		} else {
 			invitationIndex := slices.IndexFunc(server.shareInvitations, func(invitation apitypes.SentShareInvitation) bool {
 				return invitation.VaultID == vaultID && invitation.State == apitypes.ShareInvitationAccepted && invitation.Recipient != nil && invitation.Recipient.AccountID == accountID
@@ -183,6 +191,10 @@ func (server *fakeAPIServer) addSharingRoutes(mux *http.ServeMux) {
 				continue
 			}
 			server.vaults[index].EncName = rotateRequest.EncName
+			server.vaults[index].NeedsRotation = false
+			if server.vaults[index].KeyGeneration > 0 {
+				server.vaults[index].KeyGeneration++
+			}
 			for _, access := range rotateRequest.Accesses {
 				if access.AccountID == server.accountID {
 					server.vaults[index].WrappedKey = access.WrappedKey

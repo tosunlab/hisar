@@ -36,6 +36,9 @@ type fakeAPIServer struct {
 	failingApprovalPostCount int
 	deviceListHangingChannel chan struct{}
 	preferences              apitypes.AccountPreferences
+	vaultKeyRequests         []apitypes.VaultKeyRequest
+	waitingVaultKeys         []apitypes.WaitingVaultKey
+	setAccessRequests        []apitypes.SetAccessRequest
 }
 
 func (server *fakeAPIServer) setUnreachable(isUnreachable bool) {
@@ -87,7 +90,10 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 		}
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
-		server.vaults = append(server.vaults, apitypes.Vault{ID: createRequest.ID, Type: createRequest.Type, EncName: createRequest.EncName, Role: apitypes.VaultOwner, WrappedKey: createRequest.WrappedKey})
+		server.vaults = append(server.vaults, apitypes.Vault{
+			ID: createRequest.ID, Type: createRequest.Type, EncName: createRequest.EncName, Role: apitypes.VaultOwner, WrappedKey: createRequest.WrappedKey,
+			OrganizationID: createRequest.OrganizationID, KeyGeneration: 1,
+		})
 		server.itemsByVaultID[createRequest.ID] = map[string]apitypes.Item{}
 		server.accessesByVaultID[createRequest.ID] = []apitypes.RotatedAccess{{AccountID: server.accountID, Role: apitypes.VaultOwner, WrappedKey: createRequest.WrappedKey}}
 		writer.WriteHeader(http.StatusCreated)
@@ -160,6 +166,7 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 	server.addSharingRoutes(mux)
 	server.addApprovalRoutes(mux)
 	server.addVaultManagementRoutes(mux)
+	server.addOrganizationRoutes(mux)
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		server.mutex.Lock()
 		isUnreachable := server.isUnreachable

@@ -85,6 +85,9 @@ func (bridge *CommandLineBridge) answer(request *cliprotocol.Request) (any, erro
 	if cliprotocol.IsAgentRequest(request.Type) {
 		return bridge.answerAgentRequest(request)
 	}
+	if result, isHandled, err := bridge.answerOrganizationRequest(request); isHandled {
+		return result, err
+	}
 	s := bridge.service
 	switch request.Type {
 	case cliprotocol.TypeAccount:
@@ -362,7 +365,7 @@ func (s *Service) getCommandLineVaultActions(vaultID string) (cliprotocol.VaultA
 }
 
 func convertToCommandLineVault(summary VaultSummary) cliprotocol.Vault {
-	return cliprotocol.Vault{ID: summary.ID, Name: summary.Name, Type: summary.Type, Role: summary.Role, ItemCount: summary.ItemCount}
+	return cliprotocol.Vault{ID: summary.ID, Name: summary.Name, Type: summary.Type, Role: summary.Role, ItemCount: summary.ItemCount, OrganizationID: summary.OrganizationID}
 }
 
 func convertToCommandLineSummary(detail ItemDetail) cliprotocol.Item {

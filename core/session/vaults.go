@@ -21,9 +21,21 @@ var (
 	ErrVaultNameEmpty     = errors.New("enter a vault name")
 	ErrVaultNotEmpty      = errors.New("the vault has items; move them to another vault or delete them with the vault")
 	ErrLeavePersonalVault = errors.New("you can't leave your Personal vault")
+	// ErrOrganizationVaultAccess refuses leaving an organization vault or removing someone from it.
+	ErrOrganizationVaultAccess = errors.New("access to an organization vault comes from its teams; ask an organization admin to change them")
 )
 
 func (s *Session) CreateVault(ctx context.Context, name, vaultType string) (*Vault, error) {
+	return s.createVault(ctx, name, &apitypes.CreateVaultRequest{Type: vaultType})
+}
+
+// CreateOrganizationVault creates a vault of the organization and gives it to the team as owner;
+// the caller must be in the team. The team's other members get the key from an owner's app (CompleteVaultKeyRequests).
+func (s *Session) CreateOrganizationVault(ctx context.Context, name, organizationID, teamID string) (*Vault, error) {
+	return s.createVault(ctx, name, &apitypes.CreateVaultRequest{Type: apitypes.VaultOrganization, OrganizationID: organizationID, TeamID: teamID})
+}
+
+func (s *Session) createVault(ctx context.Context, name string, request *apitypes.CreateVaultRequest) (*Vault, error) {
 	vaultID := uuid.NewString()
 	vaultKey := crypt.GenerateKey()
 	encryptedName, err := crypt.SealVaultName(vaultKey, vaultID, []byte(name))
@@ -34,11 +46,15 @@ func (s *Session) CreateVault(ctx context.Context, name, vaultType string) (*Vau
 	if err != nil {
 		return nil, err
 	}
-	request := &apitypes.CreateVaultRequest{ID: vaultID, Type: vaultType, EncName: encryptedName, WrappedKey: wrappedKey}
+	request.ID, request.EncName, request.WrappedKey = vaultID, encryptedName, wrappedKey
 	if err := s.Client.CreateVault(ctx, request); err != nil {
 		return nil, err
 	}
-	return &Vault{ID: vaultID, Type: vaultType, Name: name, Role: apitypes.VaultOwner, Key: vaultKey}, nil
+	vault := &Vault{ID: vaultID, Type: request.Type, Name: name, Role: apitypes.VaultOwner, Key: vaultKey, OrganizationID: request.OrganizationID}
+	if request.OrganizationID != "" {
+		vault.KeyGeneration = 1
+	}
+	return vault, nil
 }
 
 func (s *Session) ListVaults(ctx context.Context) ([]Vault, error) {
@@ -58,6 +74,7 @@ func (s *Session) ListVaults(ctx context.Context) ([]Vault, error) {
 		}
 		vaults = append(vaults, Vault{
 			ID: protoVault.ID, Type: protoVault.Type, Name: string(name), Role: protoVault.Role, Key: vaultKey,
+			OrganizationID: protoVault.OrganizationID, KeyGeneration: protoVault.KeyGeneration, NeedsRotation: protoVault.NeedsRotation,
 		})
 	}
 	return vaults, nil
@@ -160,6 +177,9 @@ func (s *Session) RenameVault(ctx context.Context, vault *Vault, name string) er
 func (s *Session) LeaveVault(ctx context.Context, vault *Vault) error {
 	if vault.Type == apitypes.VaultPersonal {
 		return ErrLeavePersonalVault
+	}
+	if vault.Type == apitypes.VaultOrganization {
+		return ErrOrganizationVaultAccess
 	}
 	if err := s.Client.RemoveAccess(ctx, vault.ID, s.AccountID); err != nil {
 		return err

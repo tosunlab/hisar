@@ -42,6 +42,8 @@ type AccountDeletionPreview struct {
 	SentInvitationCount     int
 	ReceivedInvitationCount int
 	DeviceCount             int
+	// Organizations is empty for servers older than organizations.
+	Organizations []apitypes.DeletionOrganization
 }
 
 // ChangeMasterPassword keeps the Secret Key and the keyset; only the keyset's encryption and the OPAQUE record change.
@@ -204,6 +206,7 @@ func (s *Session) PreviewAccountDeletion(ctx context.Context) (*AccountDeletionP
 		SentInvitationCount:     response.SentInvitationCount,
 		ReceivedInvitationCount: response.ReceivedInvitationCount,
 		DeviceCount:             response.DeviceCount,
+		Organizations:           append([]apitypes.DeletionOrganization{}, response.Organizations...),
 	}
 	for _, ownedVault := range response.OwnedVaults {
 		preview.OwnedVaults = append(preview.OwnedVaults, DeletionVault{

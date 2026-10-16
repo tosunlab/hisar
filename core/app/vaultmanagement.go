@@ -244,7 +244,7 @@ func (s *Service) ListRemovedVaults() []RemovedVaultNotice {
 func convertVaultError(err error) error {
 	switch {
 	case errors.Is(err, session.ErrNotVaultOwner), errors.Is(err, session.ErrPersonalVault), errors.Is(err, session.ErrTargetNotWritable),
-		errors.Is(err, session.ErrVaultNameEmpty), errors.Is(err, session.ErrLeavePersonalVault):
+		errors.Is(err, session.ErrVaultNameEmpty), errors.Is(err, session.ErrLeavePersonalVault), errors.Is(err, session.ErrOrganizationVaultAccess):
 		return err
 	case apiclient.IsStatus(err, http.StatusForbidden):
 		return errors.New("only an owner of this vault can do that")

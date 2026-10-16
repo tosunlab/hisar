@@ -13,6 +13,12 @@ export interface AccountDeletionPreview {
     "sentInvitationCount": number;
     "receivedInvitationCount": number;
     "deviceCount": number;
+
+    /**
+     * Organizations: IsDeleted when the user is its last member; NewAdminName is who becomes admin when the user is its
+     * last admin. Omitted when the user is in none.
+     */
+    "organizations"?: DeletionOrganization[] | null;
 }
 
 export interface BrowserPairingRequest {
@@ -51,6 +57,13 @@ export interface CredentialChangeResult {
      * KeychainError is set when the new Secret Key could not be saved to the keychain; the user must write it down.
      */
     "keychainError": string;
+}
+
+export interface DeletionOrganization {
+    "id": string;
+    "name": string;
+    "isDeleted": boolean;
+    "newAdminName": string;
 }
 
 export interface DeletionVault {
@@ -324,6 +337,57 @@ export interface OneTimeCode {
     "period": number;
 }
 
+/**
+ * Organization is what its members see of it; Invitations is empty unless IsAdmin.
+ */
+export interface Organization {
+    "id": string;
+    "name": string;
+    "role": string;
+    "isAdmin": boolean;
+    "members": OrganizationMember[] | null;
+    "teams": Team[] | null;
+    "invitations": SentOrganizationInvitation[] | null;
+}
+
+/**
+ * OrganizationInvitation is an invitation to this user's email; ExpiresAt is RFC 3339.
+ */
+export interface OrganizationInvitation {
+    "id": string;
+    "organizationId": string;
+    "organizationName": string;
+    "role": string;
+    "invitedByName": string;
+    "invitedByEmail": string;
+    "expiresAt": string;
+}
+
+/**
+ * OrganizationMember: SecurityCode and IsKeyChanged as for Person.
+ */
+export interface OrganizationMember {
+    "accountId": string;
+    "name": string;
+    "email": string;
+    "role": string;
+    "securityCode": string;
+    "isCurrentUser": boolean;
+    "isKeyChanged": boolean;
+}
+
+export interface OrganizationSummary {
+    "id": string;
+    "name": string;
+    "role": string;
+    "memberCount": number;
+}
+
+export interface Organizations {
+    "organizations": OrganizationSummary[] | null;
+    "invitations": OrganizationInvitation[] | null;
+}
+
 export interface PairedBrowser {
     "instanceID": string;
     "browser": string;
@@ -367,6 +431,17 @@ export interface RemovedVaultNotice {
     "id": string;
     "name": string;
     "message": string;
+}
+
+/**
+ * SentOrganizationInvitation is a pending invitation to the organization; only admins see them. Times are RFC 3339.
+ */
+export interface SentOrganizationInvitation {
+    "id": string;
+    "email": string;
+    "role": string;
+    "createdAt": string;
+    "expiresAt": string;
 }
 
 /**
@@ -483,6 +558,31 @@ export interface Status {
     "updateRequired": UpdateRequirement | null;
 }
 
+export interface Team {
+    "id": string;
+    "name": string;
+    "members": TeamMember[] | null;
+    "vaults": TeamVault[] | null;
+}
+
+export interface TeamMember {
+    "accountId": string;
+    "name": string;
+    "email": string;
+    "isCurrentUser": boolean;
+}
+
+/**
+ * TeamVault is a vault the team was given. Vault names are encrypted, so Name is empty when CanOpen is false:
+ * this user has no key for it (yet).
+ */
+export interface TeamVault {
+    "vaultId": string;
+    "name": string;
+    "role": string;
+    "canOpen": boolean;
+}
+
 /**
  * Theme is this device's look: Appearance follows the system or picks light or dark, Color tints the chrome and accent.
  */
@@ -554,6 +654,11 @@ export interface VaultSummary {
     "type": string;
     "role": string;
     "itemCount": number;
+
+    /**
+     * OrganizationID is set for organization vaults only.
+     */
+    "organizationId"?: string;
 }
 
 /**
@@ -566,4 +671,24 @@ export interface WaitingShareInvitation {
     "invitedByName": string;
     "invitedByEmail": string;
     "acceptedAt": string;
+}
+
+/**
+ * WaitingVaultKey is an organization vault this user's teams give them that no owner's app has delivered yet.
+ */
+export interface WaitingVaultKey {
+    "vaultId": string;
+    "organizationId": string;
+    "organizationName": string;
+    "role": string;
+}
+
+/**
+ * WaitingVaultKeys: DeliveryError and RotationError say why this app could not deliver a key to someone or rotate a
+ * vault it owns, e.g. a changed signing key.
+ */
+export interface WaitingVaultKeys {
+    "waiting": WaitingVaultKey[] | null;
+    "deliveryError": string;
+    "rotationError": string;
 }

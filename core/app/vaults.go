@@ -53,11 +53,12 @@ func (s *Service) ListVaults() ([]VaultSummary, error) {
 
 func convertToVaultSummary(vault *session.Vault, itemCount int) VaultSummary {
 	return VaultSummary{
-		ID:        vault.ID,
-		Name:      vault.Name,
-		Type:      vault.Type,
-		Role:      vault.Role,
-		ItemCount: itemCount,
+		ID:             vault.ID,
+		Name:           vault.Name,
+		Type:           vault.Type,
+		Role:           vault.Role,
+		ItemCount:      itemCount,
+		OrganizationID: vault.OrganizationID,
 	}
 }
 

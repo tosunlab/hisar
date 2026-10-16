@@ -18,6 +18,8 @@ func TestGetVaultPermissions(t *testing.T) {
 		{"one of two owners", apitypes.VaultShared, apitypes.VaultOwner, 3, 2, VaultPermissions{CanRename: true, CanDelete: true, CanLeave: true}},
 		{"only vault", apitypes.VaultShared, apitypes.VaultOwner, 1, 2, VaultPermissions{CanRename: true, DeleteBlockedReason: OnlyVaultDeleteReason, CanLeave: true}},
 		{"editor", apitypes.VaultShared, apitypes.VaultEditor, 3, 1, VaultPermissions{DeleteBlockedReason: NotOwnerDeleteReason, CanLeave: true}},
+		{"organization owner", apitypes.VaultOrganization, apitypes.VaultOwner, 3, 2, VaultPermissions{CanRename: true, CanDelete: true, LeaveBlockedReason: OrganizationVaultLeaveReason}},
+		{"organization editor", apitypes.VaultOrganization, apitypes.VaultEditor, 3, 1, VaultPermissions{DeleteBlockedReason: NotOrganizationVaultOwnerDeleteReason, LeaveBlockedReason: OrganizationVaultLeaveReason}},
 	}
 	for _, testCase := range cases {
 		if got := GetVaultPermissions(testCase.vaultType, testCase.role, testCase.vaultCount, testCase.ownerCount); got != testCase.want {

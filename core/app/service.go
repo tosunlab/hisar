@@ -33,6 +33,8 @@ type Service struct {
 	reconnectEvents              chan struct{}
 	onSessionChange              func(server, token string, isSignedIn bool)
 	shareCompletionError         string
+	vaultKeyDeliveryError        string
+	vaultRotationError           string
 	lockListeners                []func()
 	statusListeners              []func()
 	phoneApprovals               *phoneApprovalRelay
