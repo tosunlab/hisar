@@ -1,7 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import type { ItemDetail, VaultSummary } from "../api";
-import { createApiMock, createCardItem, createDatabaseItem, createFavoriteItem, createItem, createSecureNoteItem, createSSHKeyItem, createStatus } from "../testing";
+import {
+  createAPICredentialItem,
+  createApiMock,
+  createCardItem,
+  createDatabaseItem,
+  createFavoriteItem,
+  createItem,
+  createSecureNoteItem,
+  createSoftwareLicenseItem,
+  createSSHKeyItem,
+  createStatus,
+} from "../testing";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
 
@@ -106,6 +117,20 @@ describe("The item list's context menu", () => {
     wrapper.unmount();
   });
 
+  it("copies a license key and an API secret once the details load", async () => {
+    resetStore([createSoftwareLicenseItem({ id: "sketch", title: "Sketch" }), createAPICredentialItem({ id: "stripe", title: "Stripe" })]);
+    const wrapper = mount(MainView, { attachTo: document.body });
+    expect(await openItemMenu(wrapper, "Sketch")).toContain("Copy license key");
+    await wrapper.find('[data-testid="context-menu-copy-license-key"]').trigger("click");
+    await flushPromises();
+    expect(api.copyField).toHaveBeenCalledWith("personal", "sketch", "License key");
+    expect(await openItemMenu(wrapper, "Stripe")).toContain("Copy secret");
+    await wrapper.find('[data-testid="context-menu-copy-secret"]').trigger("click");
+    await flushPromises();
+    expect(api.copyField).toHaveBeenCalledWith("personal", "stripe", "Secret");
+    wrapper.unmount();
+  });
+
   it("leaves out Edit and Delete in a vault the user can only read", async () => {
     store.selectedVaultID = "work";
     const wrapper = mount(MainView, { attachTo: document.body });
@@ -161,6 +186,31 @@ describe("The item list's context menu", () => {
     expect(store.allItem.map((vaultItem) => vaultItem.id)).toEqual(["bank"]);
     expect(store.selectedItem?.id).toBe("bank");
     expect(dialog().exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("keeps the vault counts right when a favorite opened from Favorites is deleted", async () => {
+    const vpn = createItem({ id: "vpn", title: "Office VPN", urls: [], isFavorite: true });
+    const vpnFavorite = createFavoriteItem({ vaultId: "team", vaultName: "Team", vaultType: "shared", item: vpn });
+    store.allFavorite = [vpnFavorite];
+    store.isFavoritesSelected = true;
+    api.getItem.mockResolvedValue(vpn);
+    const wrapper = mount(MainView, { attachTo: document.body });
+    // Opening the favorite makes Team the selected vault while allItem still lists Personal.
+    await wrapper.findAll(".list .item").find((row) => row.text().includes("Office VPN"))!.trigger("click");
+    await flushPromises();
+    expect(store.selectedVaultID).toBe("team");
+    await openItemMenu(wrapper, "Office VPN");
+    await wrapper.find('[data-testid="context-menu-delete"]').trigger("click");
+    expect(wrapper.find('[data-testid="confirm-delete-dialog"]').text()).toContain("It is removed from Team for everyone with access to the vault.");
+    await wrapper.find('[data-testid="confirm-delete-item"]').trigger("click");
+    await flushPromises();
+    expect(api.deleteItem).toHaveBeenCalledWith("team", "vpn");
+    expect(store.allVault.find((vault) => vault.id === "team")?.itemCount).toBe(0);
+    expect(store.allVault.find((vault) => vault.id === "personal")?.itemCount).toBe(2);
+    expect(store.allItem.map((vaultItem) => vaultItem.id)).toEqual(["github", "bank"]);
+    expect(store.allFavorite).toEqual([]);
+    expect(store.selectedItem).toBeNull();
     wrapper.unmount();
   });
 
@@ -274,6 +324,25 @@ describe("A detail field's context menu", () => {
     await wrapper.find('[data-testid="context-menu-reveal-recovery-code"]').trigger("click");
     expect(recoveryRow!.text()).toContain("abcd");
     wrapper.unmount();
+  });
+
+  it("offers the buttons of an SSH key's public key and a secure note's notes", async () => {
+    store.selectedItem = createSSHKeyItem({ id: "key", title: "Deploy key", publicKey: "ssh-ed25519 AAAA deploy" });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false }, attachTo: document.body });
+    await wrapper.find('[data-testid="public-key"]').trigger("contextmenu");
+    expect(wrapper.find('[data-testid="context-menu"]').attributes("aria-label")).toBe("Public key");
+    expect(wrapper.findAll('[data-testid="context-menu"] button').map((button) => button.text())).toEqual(["Copy public key", "Copy secret reference for public key"]);
+    await wrapper.find('[data-testid="context-menu-copy-public-key"]').trigger("click");
+    expect(api.copyField).toHaveBeenCalledWith("personal", "key", "public key");
+    wrapper.unmount();
+
+    store.selectedItem = createSecureNoteItem({ id: "note", title: "Door code", notes: "4321" });
+    const noteWrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false }, attachTo: document.body });
+    await noteWrapper.find(".notes").trigger("contextmenu");
+    expect(noteWrapper.findAll('[data-testid="context-menu"] button').map((button) => button.text())).toEqual(["Copy notes", "Copy secret reference for notes"]);
+    await noteWrapper.find('[data-testid="context-menu-copy-notes"]').trigger("click");
+    expect(api.copyField).toHaveBeenCalledWith("personal", "note", "notes");
+    noteWrapper.unmount();
   });
 
   it("keeps the system menu for selected text", async () => {

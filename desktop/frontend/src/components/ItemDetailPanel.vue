@@ -205,7 +205,8 @@ function toggleFieldReveal(fieldName: string): void {
 }
 
 // fieldMenu is the right-click menu of a field row. It offers the row's own buttons, by their labels, so it always matches
-// what the row can do: copy, reveal or hide, copy the secret reference, open.
+// what the row can do: copy, reveal or hide, copy the secret reference, open. A row is a .field with its .field-actions, or
+// a block marked data-field-menu-row, such as an SSH key's public key or a note, whose buttons sit in data-field-menu-actions.
 const fieldMenu = ref<{ label: string; x: number; y: number; allAction: ContextMenuAction[] } | null>(null);
 
 function chooseFieldMenuIcon(label: string): ContextMenuAction["icon"] {
@@ -225,13 +226,15 @@ function chooseFieldMenuIcon(label: string): ContextMenuAction["icon"] {
 }
 
 function openFieldMenu(event: MouseEvent): void {
-  const row = (event.target as HTMLElement).closest<HTMLElement>(".field");
+  const row = (event.target as HTMLElement).closest<HTMLElement>(".field, [data-field-menu-row]");
   // Text selected in the row keeps the system's menu, with its Copy.
   const selection = window.getSelection();
   if (!row || (selection && !selection.isCollapsed && row.contains(selection.anchorNode))) {
     return;
   }
-  const allButton = [...row.querySelectorAll<HTMLButtonElement>(".field-actions button")].filter((button) => !button.disabled && button.getAttribute("aria-label"));
+  const allButton = [...row.querySelectorAll<HTMLButtonElement>(".field-actions button, [data-field-menu-actions] button")].filter(
+    (button) => !button.disabled && button.getAttribute("aria-label"),
+  );
   if (allButton.length === 0) {
     return;
   }
@@ -240,7 +243,8 @@ function openFieldMenu(event: MouseEvent): void {
     const label = button.getAttribute("aria-label") ?? "";
     return { id: label.toLowerCase().replace(/[^a-z0-9]+/g, "-"), label, icon: chooseFieldMenuIcon(label), run: () => button.click() };
   });
-  fieldMenu.value = { label: row.querySelector(".field-label")?.textContent?.trim() || "Field", x: event.clientX, y: event.clientY, allAction };
+  const label = row.querySelector(".field-label, .section-label")?.textContent?.trim() || "Field";
+  fieldMenu.value = { label, x: event.clientX, y: event.clientY, allAction };
 }
 
 function maskSecret(secret: string): string {
@@ -337,11 +341,11 @@ function maskSecret(secret: string): string {
           <span class="field-value muted">Never leaves Hisar; the SSH agent uses it</span>
           <span class="field-actions"></span>
         </div>
-        <div class="public-key-field">
-          <div class="row">
+        <div class="public-key-field" data-field-menu-row>
+          <div class="row" data-field-menu-actions>
             <span class="field-label">Public key</span>
             <div class="spacer"></div>
-            <button data-testid="copy-public-key" @click="copyField('public key', 'Public key')"><AppIcon name="copy" /> Copy public key</button>
+            <button data-testid="copy-public-key" aria-label="Copy public key" @click="copyField('public key', 'Public key')"><AppIcon name="copy" /> Copy public key</button>
             <SecretReferenceButton field-name="public key" label="public key" />
           </div>
           <p class="public-key monospace" data-testid="public-key">{{ store.selectedItem.publicKey }}</p>
@@ -407,12 +411,12 @@ function maskSecret(secret: string): string {
     </section>
 
     <template v-else-if="isSecureNote">
-      <section class="card notes-card secure-note" data-testid="secure-note-notes">
-        <div class="row">
+      <section class="card notes-card secure-note" data-testid="secure-note-notes" data-field-menu-row>
+        <div class="row" data-field-menu-actions>
           <p class="section-label">Notes</p>
           <div class="spacer"></div>
           <template v-if="store.selectedItem.notes">
-            <button data-testid="copy-notes" @click="copyField('notes', 'Notes')"><AppIcon name="copy" /> Copy</button>
+            <button data-testid="copy-notes" aria-label="Copy notes" @click="copyField('notes', 'Notes')"><AppIcon name="copy" /> Copy</button>
             <SecretReferenceButton field-name="notes" label="notes" />
           </template>
         </div>

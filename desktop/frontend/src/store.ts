@@ -903,8 +903,10 @@ export async function deleteItem(itemID: string, vaultID = store.selectedVaultID
   if (!deleted) {
     return false;
   }
-  if (vaultID === store.selectedVaultID) {
-    store.allItem = store.allItem.filter((vaultItem) => vaultItem.id !== itemID);
+  store.allItem = store.allItem.filter((vaultItem) => vaultItem.id !== itemID);
+  // Opening a favorite makes its vault the selected one but leaves allItem as the vault last listed, so allItem counts the
+  // selected vault only outside Favorites.
+  if (vaultID === store.selectedVaultID && !store.isFavoritesSelected) {
     updateSelectedVaultItemCount();
     dropMissingTagFilter();
   } else {
