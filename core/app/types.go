@@ -175,6 +175,18 @@ type ItemDetail struct {
 	// SoftwareLicense holds a software license's values, stored as named custom fields like an API credential's; summaries
 	// keep only the product, version, licensed-to name and email.
 	SoftwareLicense *ItemSoftwareLicense `json:"softwareLicense,omitempty"`
+	// Server holds a server's host, port and linked SSH key, stored as named custom fields; its username, password and
+	// admin console are the item's own Username, Password and URLs. Summaries keep only the host and port.
+	Server *ItemServer `json:"server,omitempty"`
+}
+
+// ItemServer is a server's values besides its login data. SSHKeyID names an ssh-key item in the same vault, or is "";
+// PortWarning says when the port is not a number from 1 to 65535.
+type ItemServer struct {
+	Host        string `json:"host"`
+	Port        string `json:"port"`
+	SSHKeyID    string `json:"sshKeyId"`
+	PortWarning string `json:"portWarning"`
 }
 
 // ItemSoftwareLicense is a software license; the license key is concealed. DownloadURL is a field, not the item's
