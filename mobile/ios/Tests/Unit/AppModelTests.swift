@@ -347,7 +347,7 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(model.listAllItemReference().contains { ItemCategoryDestination.logins.includes($0.item) && $0.item.id == savedItem.id })
     }
 
-    func testSaveAPICredentialKeepsOnlyTheServiceAndHostInTheList() async {
+    func testSaveAPICredentialKeepsOnlyTheServiceKeyIDAndHostInTheList() async {
         let model = await createUnlockedModel()
         var credential = ItemAPICredential()
         credential.service = "Stripe"
@@ -363,7 +363,8 @@ final class AppModelTests: XCTestCase {
         let reference = model.listAllItemReference(vaultID: "personal").first { $0.item.id == savedItem.id }
         XCTAssertEqual(reference?.item.apiCredential?.summary, "Stripe · api.stripe.com")
         XCTAssertEqual(reference?.item.apiCredential?.secret, "")
-        XCTAssertEqual(reference?.item.apiCredential?.keyID, "")
+        XCTAssertEqual(reference?.item.apiCredential?.keyID, "key_1")
+        XCTAssertEqual(reference?.item.apiCredential?.expiry, "")
         XCTAssertEqual(model.listAllItemReference().filter { ItemCategoryDestination.apiCredentials.includes($0.item) }.map(\.item.title), ["Billing key"])
         XCTAssertFalse(model.listAllItemReference().contains { ItemCategoryDestination.logins.includes($0.item) && $0.item.id == savedItem.id })
     }

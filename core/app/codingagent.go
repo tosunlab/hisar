@@ -120,6 +120,11 @@ func isAgentSearchMatch(vaultName string, vaultItem *item.Item, query string) bo
 		return true
 	}
 	texts := append([]string{vaultName, vaultItem.Overview.Title, vaultItem.Overview.Username}, vaultItem.Overview.URLs...)
+	if vaultItem.IsCategory(item.CategoryAPICredential) {
+		// An API credential keeps these in named fields, not the username and websites; never the secret.
+		credential, _ := item.ReadAPICredential(vaultItem)
+		texts = append(texts, credential.Service, credential.KeyID, credential.Host)
+	}
 	return slices.ContainsFunc(texts, func(text string) bool { return strings.Contains(strings.ToLower(text), query) })
 }
 

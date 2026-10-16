@@ -56,7 +56,7 @@ func TestAPICredentialIsStoredAsNamedFields(t *testing.T) {
 	if err != nil || len(summaries) != 1 || summaries[0].APICredential == nil {
 		t.Fatalf("summaries = %+v, %v", summaries, err)
 	}
-	if *summaries[0].APICredential != (ItemAPICredential{Service: "Stripe", Host: "api.stripe.com"}) || summaries[0].Fields != nil {
+	if *summaries[0].APICredential != (ItemAPICredential{Service: "Stripe", KeyID: "key_1", Host: "api.stripe.com"}) || summaries[0].Fields != nil {
 		t.Errorf("summary credential = %+v", summaries[0].APICredential)
 	}
 }
@@ -89,6 +89,29 @@ func TestCommandLineAPICredentialTravelsAsNamedFields(t *testing.T) {
 	}
 	if cliprotocol.GetCategoryFeature(item.CategoryAPICredential) != cliprotocol.FeatureAPICredentials {
 		t.Error("an API credential needs no feature")
+	}
+}
+
+func TestCodingAgentsFindAPICredentialsByServiceKeyIDAndHost(t *testing.T) {
+	testService := createUnlockedTestService(t)
+	service, vaultID := testService.service, testService.personalID
+	if _, err := service.SetVaultAvailableToAgents(vaultID, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.SaveItem(vaultID, ItemDetail{
+		Category: item.CategoryAPICredential, Title: "Billing key",
+		APICredential: &ItemAPICredential{Service: "Stripe", KeyID: "key_live_1", Secret: "sk-secret-value", Host: "api.stripe.com"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, query := range []string{"stripe", "API.STRIPE", "key_live"} {
+		result, err := service.searchAgentItems(query, "")
+		if err != nil || result.TotalCount != 1 || result.Items[0].Title != "Billing key" {
+			t.Errorf("search %q = %+v, %v", query, result, err)
+		}
+	}
+	if result, err := service.searchAgentItems("sk-secret", ""); err != nil || result.TotalCount != 0 {
+		t.Errorf("a search for the secret found %+v, %v", result, err)
 	}
 }
 

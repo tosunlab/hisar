@@ -604,6 +604,7 @@ final class AppModel: ObservableObject {
         if let credential = savedItem.apiCredential {
             var credentialSummary = ItemAPICredential()
             credentialSummary.service = credential.service
+            credentialSummary.keyID = credential.keyID
             credentialSummary.host = credential.host
             summary.apiCredential = credentialSummary
         }

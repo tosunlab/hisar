@@ -682,10 +682,11 @@ export function filterAllItem(allItem: ItemDetail[], query: string): ItemDetail[
     return allItem;
   }
   return allItem.filter((vaultItem) => {
-    // An identity's list summary keeps its name and email, an API credential's its service and host: the list shows them
-    // under the title.
+    // An identity's list summary keeps its name and email, an API credential's its service, key ID and host; the list
+    // shows them under the title, except the key ID.
     const identityText = vaultItem.identity ? [formatFullName(vaultItem.identity), vaultItem.identity.email] : [];
-    const credentialText = vaultItem.apiCredential ? [vaultItem.apiCredential.service, vaultItem.apiCredential.host] : [];
+    const credential = vaultItem.apiCredential;
+    const credentialText = credential ? [credential.service, credential.keyId, credential.host] : [];
     return [vaultItem.title, vaultItem.username, ...vaultItem.urls, ...identityText, ...credentialText].some((text) => text.toLowerCase().includes(normalizedQuery));
   });
 }

@@ -34,15 +34,17 @@ final class VaultLogicTests: XCTestCase {
         XCTAssertEqual(VaultLogic.filterAllItem(allItem, searchText: "bob@example").map(\.item.title), ["Work"])
     }
 
-    func testFilterFindsAnAPICredentialByItsServiceAndHost() {
+    func testFilterFindsAnAPICredentialByItsServiceKeyIDAndHost() {
         var stripe = makeReference("Billing key", category: ItemDetail.categoryAPICredential)
         var credential = ItemAPICredential()
         credential.service = "Stripe"
+        credential.keyID = "key_live_1"
         credential.host = "api.stripe.com"
         stripe.item.apiCredential = credential
         let allItem = [stripe, makeReference("GitHub")]
         XCTAssertEqual(VaultLogic.filterAllItem(allItem, searchText: "stripe").map(\.item.title), ["Billing key"])
         XCTAssertEqual(VaultLogic.filterAllItem(allItem, searchText: "api.stripe").map(\.item.title), ["Billing key"])
+        XCTAssertEqual(VaultLogic.filterAllItem(allItem, searchText: "key_live").map(\.item.title), ["Billing key"])
     }
 
     func testSortByTitleThenUsername() {

@@ -157,7 +157,7 @@ describe("Viewing an API credential", () => {
     const summary = { service: "Stripe", keyId: "", secret: "", host: "api.stripe.com", expiry: "", expiryWarning: "" };
     const allItem = [
       createAPICredentialItem({ title: "Billing key", apiCredential: summary }),
-      createAPICredentialItem({ id: "github-1", title: "GitHub token", apiCredential: { ...summary, service: "", host: "api.github.com" } }),
+      createAPICredentialItem({ id: "github-1", title: "GitHub token", apiCredential: { ...summary, service: "", keyId: "ghp_key_1", host: "api.github.com" } }),
       createItem({ username: "carol" }),
     ];
     store.allItem = allItem;
@@ -168,6 +168,7 @@ describe("Viewing an API credential", () => {
     wrapper.unmount();
     expect(filterAllItem(allItem, "stripe").map((vaultItem) => vaultItem.title)).toEqual(["Billing key"]);
     expect(filterAllItem(allItem, "api.github").map((vaultItem) => vaultItem.title)).toEqual(["GitHub token"]);
+    expect(filterAllItem(allItem, "ghp_key").map((vaultItem) => vaultItem.title)).toEqual(["GitHub token"]);
   });
 });
 

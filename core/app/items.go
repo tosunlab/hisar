@@ -48,7 +48,8 @@ func (s *Service) summarizeItem(vaultItem *item.Item) ItemDetail {
 		summary.Identity = &ItemIdentity{FirstName: identity.FirstName, MiddleName: identity.MiddleName, LastName: identity.LastName, Email: identity.Email}
 	}
 	if credential := summary.APICredential; credential != nil {
-		summary.APICredential = &ItemAPICredential{Service: credential.Service, Host: credential.Host}
+		// The key ID is not shown in lists, but search finds a credential by it.
+		summary.APICredential = &ItemAPICredential{Service: credential.Service, KeyID: credential.KeyID, Host: credential.Host}
 	}
 	return summary
 }
