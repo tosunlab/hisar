@@ -26,8 +26,9 @@ func (s *Service) loadFavorites(ctx context.Context) {
 	}
 }
 
+// loadFavoritesOnce reads the favorites unless they were read from the server already.
 func (s *Service) loadFavoritesOnce(ctx context.Context) {
-	if s.favorites == nil {
+	if s.favorites == nil || s.favorites.IsFromCache {
 		s.loadFavorites(ctx)
 	}
 }
@@ -42,8 +43,10 @@ func (s *Service) ListFavoriteItems() ([]FavoriteItem, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	if err := s.loadItemsOfAllVault(ctx); err != nil {
-		return nil, err
+	if !s.reloadAllVaultItem(ctx) {
+		if err := s.loadItemsOfAllVault(ctx); err != nil {
+			return nil, err
+		}
 	}
 	s.loadFavorites(ctx)
 	return s.collectFavoriteItems(), nil

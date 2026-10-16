@@ -72,6 +72,9 @@ func (s *Service) GetItem(vaultID, itemID string) (ItemDetail, error) {
 	if err != nil {
 		return ItemDetail{}, err
 	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	s.loadFavoritesOnce(ctx)
 	return s.describeItem(vaultItem), nil
 }
 

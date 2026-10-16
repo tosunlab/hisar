@@ -140,6 +140,49 @@ func TestFavoritesOfGoneItemsAreDroppedQuietly(t *testing.T) {
 	}
 }
 
+func TestFavoritesFollowTheServerWithoutALocalChange(t *testing.T) {
+	test := createUnlockedTestService(t)
+	service := test.service
+	router := saveFavoriteTestItem(t, service, test.familyID, "Router")
+	wifi := saveFavoriteTestItem(t, service, test.familyID, "Wi-Fi")
+	github := saveFavoriteTestItem(t, service, test.personalID, "GitHub")
+	for _, itemID := range []string{router.ID, wifi.ID} {
+		if err := service.SetItemFavorite(test.familyID, itemID, true); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := service.ListItems(test.familyID); err != nil {
+		t.Fatal(err)
+	}
+
+	test.apiServer.mutex.Lock()
+	routerRecord := test.apiServer.itemsByVaultID[test.familyID][router.ID]
+	routerRecord.Deleted, test.apiServer.seq = true, test.apiServer.seq+1
+	routerRecord.Seq = test.apiServer.seq
+	test.apiServer.itemsByVaultID[test.familyID][router.ID] = routerRecord
+	test.apiServer.mutex.Unlock()
+	if titles := listFavoriteTitles(t, service); !reflect.DeepEqual(titles, []string{"Wi-Fi · Family"}) {
+		t.Errorf("after another device deleted Router: %v", titles)
+	}
+	test.apiServer.mutex.Lock()
+	test.apiServer.removeVault(test.familyID)
+	test.apiServer.mutex.Unlock()
+	if titles := listFavoriteTitles(t, service); len(titles) != 0 {
+		t.Errorf("after losing Family: %v", titles)
+	}
+
+	service.mutex.Lock()
+	otherDevice := &session.Session{Client: service.unlockedSession.Client, AccountID: test.accountID, Keyset: service.unlockedSession.Keyset}
+	service.favorites = &session.Preferences{FavoriteItemIDs: []string{}, IsFromCache: true}
+	service.mutex.Unlock()
+	if _, err := otherDevice.UpdateFavorites(context.Background(), nil, session.FavoriteChange{AddItemIDs: []string{github.ID}}); err != nil {
+		t.Fatal(err)
+	}
+	if detail, err := service.GetItem(test.personalID, github.ID); err != nil || !detail.IsFavorite {
+		t.Errorf("an item after favorites read offline: %v %v", detail.IsFavorite, err)
+	}
+}
+
 func TestFavoriteStaysWhenItsVaultIsDeletedAndItemsMove(t *testing.T) {
 	test := createUnlockedTestService(t)
 	service := test.service

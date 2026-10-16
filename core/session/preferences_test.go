@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
 )
@@ -162,10 +163,23 @@ func TestFavoritesOffline(t *testing.T) {
 		t.Fatal(err)
 	}
 	account.server.setUnreachable(true)
-	if preferences := requirePreferences(t, device); !preferences.IsFavorite("item-a") {
+	if preferences := requirePreferences(t, device); !preferences.IsFavorite("item-a") || !preferences.IsFromCache {
 		t.Errorf("offline, from the cache: %+v", preferences)
 	}
 	if _, err := device.UpdateFavorites(ctx, nil, FavoriteChange{AddItemIDs: []string{"item-b"}}); err == nil || errors.Is(err, ErrPreferencesConflict) {
 		t.Errorf("starring offline: %v", err)
+	}
+}
+
+func TestFavoritesOfflineWithNothingCachedAreUnknown(t *testing.T) {
+	account := createOfflineTestAccount(t)
+	device := unlockTestDevice(t, account)
+	account.server.setUnreachable(true)
+	if preferences, err := device.LoadPreferences(context.Background()); !apiclient.IsUnreachable(err) || preferences != nil {
+		t.Errorf("an empty cache passed for an empty record: %+v %v", preferences, err)
+	}
+	account.server.setUnreachable(false)
+	if preferences := requirePreferences(t, device); preferences.IsFromCache {
+		t.Errorf("online: %+v", preferences)
 	}
 }

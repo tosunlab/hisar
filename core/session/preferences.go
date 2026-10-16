@@ -24,7 +24,9 @@ var ErrPreferencesConflict = errors.New("your favorites were changed on another 
 type Preferences struct {
 	Revision        int64
 	FavoriteItemIDs []string
-	otherFields     map[string]json.RawMessage
+	// IsFromCache: the server could not be reached, so this is the copy cached on this device and may be old.
+	IsFromCache bool
+	otherFields map[string]json.RawMessage
 }
 
 // FavoriteChange stars and unstars items; it is applied to the newest record, so another device's changes stay.
@@ -103,7 +105,8 @@ func (s *Session) fetchPreferences(ctx context.Context) (*Preferences, error) {
 	return s.openPreferences(record)
 }
 
-// LoadPreferences reads the record from the server, or from the cache while the server is unreachable.
+// LoadPreferences reads the record from the server, or from the cache while the server is unreachable; with nothing
+// cached it returns the unreachable error, so callers read it again once the server is back.
 func (s *Session) LoadPreferences(ctx context.Context) (*Preferences, error) {
 	preferences, err := s.fetchPreferences(ctx)
 	if err == nil || s.Cache == nil || !apiclient.IsUnreachable(err) {
@@ -111,9 +114,14 @@ func (s *Session) LoadPreferences(ctx context.Context) (*Preferences, error) {
 	}
 	record, cacheErr := s.Cache.LoadAccountPreferences(s.AccountID)
 	if cacheErr != nil || record == nil {
-		return &Preferences{FavoriteItemIDs: []string{}, otherFields: map[string]json.RawMessage{}}, nil
+		return nil, err
 	}
-	return s.openPreferences(record)
+	preferences, openErr := s.openPreferences(record)
+	if openErr != nil {
+		return nil, openErr
+	}
+	preferences.IsFromCache = true
+	return preferences, nil
 }
 
 // UpdateFavorites saves change on top of known, the record this device last read (nil to read it first). When another
