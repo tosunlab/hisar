@@ -26,7 +26,7 @@ export class InlineMenuService {
     if (!isWebUrl(frameUrl) || !tabUrl || getOrigin(frameUrl) !== getOrigin(tabUrl)) {
       throw new HisarError("invalid-request", "Hisar does not fill this frame");
     }
-    if (purpose === "address" && !this.controller.isAddressFillAvailable()) throw new HisarError("invalid-request", "Update the Hisar app to fill addresses");
+    if (purpose === "address" && this.controller.isAddressFillRefused()) throw new HisarError("invalid-request", "Update the Hisar app to fill addresses");
     const session = this.allSession.create({ sessionID: this.browser.createID(), tabId: sender.tabId, frameId: sender.frameId, frameUrl, purpose });
     return { sessionID: session.sessionID, menuUrl: `${this.browser.getInlineMenuUrl()}#${session.sessionID}` };
   }

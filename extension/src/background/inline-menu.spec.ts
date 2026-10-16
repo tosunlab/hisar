@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { InlineMenuService } from "./inline-menu";
 import { InlineMenuSessionStore } from "./inline-menu-sessions";
-import { createHarness, expectHisarError, type HarnessOptions } from "./testing";
+import { createHarness, emptyProbe, expectHisarError, type HarnessOptions } from "./testing";
 
 const pageUrl = "https://example.com/login";
 const pageFrame = { tabId: 1, frameId: 0 };
@@ -170,6 +170,33 @@ describe("InlineMenuService", () => {
     await harness.pair();
     expect(() => harness.service.openSession(pageFrame, pageUrl, pageUrl, "address")).toThrow("Update the Hisar app to fill addresses");
     expect(harness.area.data.appFeatures).toEqual([]);
+  });
+
+  it("opens an address menu after the browser restarted the service worker, saying hello before it decides", async () => {
+    const harness = createService();
+    await harness.pair();
+    const service = new InlineMenuService(harness.restartServiceWorker(), harness.bridge);
+    const { sessionID } = service.openSession(pageFrame, pageUrl, pageUrl, "address");
+    expect((await service.getState(menuFrame, sessionID)).allAddress).toHaveLength(1);
+    await service.fillAddress(menuFrame, sessionID, "vault-personal", "item-home");
+    expect(harness.getRequestTypes()).toContain("addresses.fill");
+
+    const outdated = createService({ state: { features: [] } });
+    await outdated.pair();
+    const controller = outdated.restartServiceWorker();
+    const restarted = new InlineMenuService(controller, outdated.bridge);
+    const opened = restarted.openSession(pageFrame, pageUrl, pageUrl, "address");
+    expect((await restarted.getState(menuFrame, opened.sessionID)).errorMessage).toBe("Update the Hisar app to fill addresses");
+    expect(() => restarted.openSession(pageFrame, pageUrl, pageUrl, "address")).toThrow("Update the Hisar app to fill addresses");
+    await expectHisarError(controller.fillAddress(1, "vault-personal", "item-home"), "invalid-request");
+    expect(outdated.getRequestTypes().filter((type) => String(type).startsWith("addresses."))).toEqual([]);
+  });
+
+  it("asks the app for its features before filling an address from a restarted service worker", async () => {
+    const harness = createService({ allProbe: { 0: { ...emptyProbe, hasAddressForm: true } } });
+    await harness.pair();
+    await harness.restartServiceWorker().fillAddress(1, "vault-personal", "item-home");
+    expect(harness.getRequestTypes().filter((type) => type === "hello" || type === "addresses.fill").slice(-2)).toEqual(["hello", "addresses.fill"]);
   });
 
   it("relays keys from the page's frame to the menu, and only from that frame", async () => {

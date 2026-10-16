@@ -146,7 +146,9 @@ export function createHarness(options: HarnessOptions = {}) {
 
   return {
     state,
-    controller,
+    get controller() {
+      return controller;
+    },
     storage,
     area,
     allRequest,
@@ -158,6 +160,13 @@ export function createHarness(options: HarnessOptions = {}) {
     getInjectionCount: () => injectionCount,
     advanceTime: (milliseconds: number) => (currentTime += milliseconds),
     getRequestTypes: () => allRequest.map((request) => request.type),
+    // restartServiceWorker drops the connection and the controller, as the browser does when it stops an idle worker; the
+    // storage, and so the token and the features pages read, stays.
+    restartServiceWorker() {
+      client.disconnect();
+      controller = new BackgroundController(client, storage, bridge);
+      return controller;
+    },
     async pair() {
       await controller.startPairing();
       await controller.finishPairing("123456");

@@ -47,6 +47,9 @@ export class BackgroundController {
   readonly allRememberedUsername: RememberedUsernameStore;
   private updateRequirement: UpdateRequirement | undefined;
   private allAppFeature: string[] = [];
+  // hasHello: this service worker has said hello to the app, so allAppFeature is the app's. The browser stops an idle
+  // worker, and pages keep the features of an earlier hello, so a page may ask for an address menu before the first one.
+  private hasHello = false;
 
   constructor(
     private readonly client: NativeClient,
@@ -60,6 +63,7 @@ export class BackgroundController {
   async handleHello(result: HelloResult): Promise<void> {
     this.updateRequirement = result.updateRequired;
     this.allAppFeature = result.features ?? [];
+    this.hasHello = true;
     // Pages read the features to offer address filling only with an app that does it.
     await this.storage.setAppFeatures(this.allAppFeature);
     if (!result.isPaired) await this.storage.removeToken();
@@ -67,6 +71,12 @@ export class BackgroundController {
 
   isAddressFillAvailable(): boolean {
     return this.allAppFeature.includes(featureAddresses);
+  }
+
+  // isAddressFillRefused reports whether the app said it does not fill addresses. Before this worker's first hello it does
+  // not know, so the inline menu opens and its first request connects; requireAddressFill then decides.
+  isAddressFillRefused(): boolean {
+    return this.hasHello && !this.isAddressFillAvailable();
   }
 
   async getPopupState(shouldReconnect = false): Promise<PopupState> {
@@ -201,20 +211,20 @@ export class BackgroundController {
   }
 
   async listAddresses(): Promise<AddressSummary[]> {
-    this.requireAddressFill();
+    await this.requireAddressFill();
     const result = await this.request(() => this.client.request("addresses.list", {}));
     return result.addresses ?? [];
   }
 
   async getAddress(vaultID: string, itemID: string): Promise<AddressValues> {
-    this.requireAddressFill();
+    await this.requireAddressFill();
     return this.request(() => this.client.request("addresses.fill", { vaultID, itemID }));
   }
 
   // fillAddress fills the address form with the focused field, or else the page's first one. It looks for the form before
   // it asks Hisar for the address, so a page without one never receives it.
   async fillAddress(tabId: number, vaultID: string, itemID: string): Promise<number> {
-    this.requireAddressFill();
+    await this.requireAddressFill();
     const target = chooseAddressFrame(await this.probeFillableFrames(tabId));
     if (!target) throw new HisarError("not-found", "No address form found on this page");
     const address = await this.getAddress(vaultID, itemID);
@@ -223,7 +233,8 @@ export class BackgroundController {
     return filledCount;
   }
 
-  private requireAddressFill(): void {
+  private async requireAddressFill(): Promise<void> {
+    if (!this.hasHello) await this.request(() => this.client.connect());
     if (!this.isAddressFillAvailable()) throw new HisarError("invalid-request", "Update the Hisar app to fill addresses");
   }
 
