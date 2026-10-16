@@ -130,6 +130,12 @@ struct ItemListView: View {
                             Label("Software license", systemImage: "checkmark.seal")
                         }
                         .accessibilityIdentifier("add-software-license")
+                        Button {
+                            newItemCategory = ItemDetail.categoryServer
+                        } label: {
+                            Label("Server", systemImage: "server.rack")
+                        }
+                        .accessibilityIdentifier("add-server")
                     } label: {
                         Label("Add item", systemImage: "plus")
                     }

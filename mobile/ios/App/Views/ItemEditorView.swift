@@ -68,6 +68,9 @@ struct ItemEditorView: View {
                     buildSoftwareLicenseSection()
                     buildFieldSection()
                 } else if !draft.isSSHKey {
+                    if draft.isServer {
+                        buildServerSection()
+                    }
                     Section("Login") {
                         TextField("Username or email", text: $draft.username)
                             .textInputAutocapitalization(.never)
@@ -115,9 +118,9 @@ struct ItemEditorView: View {
                     } footer: {
                         Text("The setup key or link from the site's two-factor setup. Hisar then shows the current code.")
                     }
-                    Section("Websites") {
+                    Section(draft.isServer ? "Admin console" : "Websites") {
                         ForEach(allURLText.indices, id: \.self) { index in
-                            TextField("Website", text: $allURLText[index], prompt: Text(verbatim: "https://example.com"))
+                            TextField(draft.isServer ? "Admin console URL" : "Website", text: $allURLText[index], prompt: Text(verbatim: draft.isServer ? "https://console.example.com" : "https://example.com"))
                                 .keyboardType(.URL)
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
@@ -207,6 +210,9 @@ struct ItemEditorView: View {
         }
         if draft.isSoftwareLicense, draft.softwareLicense == nil {
             draft.softwareLicense = ItemSoftwareLicense()
+        }
+        if draft.isServer, draft.server == nil {
+            draft.server = ItemServer()
         }
         isOldAddressShown = !(draft.identity?.address ?? "").isEmpty || !(draft.card?.billingAddress ?? "").isEmpty
         if draft.isCreditCard {
@@ -318,6 +324,7 @@ struct ItemEditorView: View {
         if draft.isAPICredential { return "New API credential" }
         if draft.isAddress { return "New address" }
         if draft.isSoftwareLicense { return "New software license" }
+        if draft.isServer { return "New server" }
         return "New login"
     }
 
@@ -544,6 +551,57 @@ struct ItemEditorView: View {
                 Text(credentialExpiryWarning)
                     .foregroundStyle(.orange)
                     .accessibilityIdentifier("editor-api-credential-warning")
+            }
+        }
+    }
+
+    /// A binding to one of the server's values, creating the server on first write.
+    private func bindServer(_ keyPath: WritableKeyPath<ItemServer, String>) -> Binding<String> {
+        Binding(
+            get: { draft.server?[keyPath: keyPath] ?? "" },
+            set: { value in
+                var server = draft.server ?? ItemServer()
+                server[keyPath: keyPath] = value
+                draft.server = server
+            }
+        )
+    }
+
+    /// The SSH keys a server may use: its vault's, so everyone who sees the server can use the key.
+    private var allVaultSSHKey: [ItemDetail] {
+        model.listAllItemReference(vaultID: vaultID).map(\.item).filter(\.isSSHKey)
+    }
+
+    @ViewBuilder
+    private func buildServerSection() -> some View {
+        let sshKeyID = draft.server?.sshKeyID ?? ""
+        let portWarning = ItemServer.describePort(draft.server?.port ?? "")
+        Section {
+            TextField("Host", text: bindServer(\.host), prompt: Text(verbatim: "server.example.com"))
+                .keyboardType(.URL)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .accessibilityIdentifier("editor-server-host")
+            TextField("Port", text: bindServer(\.port), prompt: Text(verbatim: "22"))
+                .keyboardType(.numberPad)
+                .accessibilityIdentifier("editor-server-port")
+            Picker("SSH key", selection: bindServer(\.sshKeyID)) {
+                Text("None").tag("")
+                if !sshKeyID.isEmpty && !allVaultSSHKey.contains(where: { $0.id == sshKeyID }) {
+                    Text("Missing SSH key").tag(sshKeyID)
+                }
+                ForEach(allVaultSSHKey) { key in
+                    Text(key.title).tag(key.id)
+                }
+            }
+            .accessibilityIdentifier("editor-server-ssh-key")
+        } header: {
+            Text("Server")
+        } footer: {
+            if !portWarning.isEmpty {
+                Text(portWarning)
+                    .foregroundStyle(.orange)
+                    .accessibilityIdentifier("editor-server-port-warning")
             }
         }
     }

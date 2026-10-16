@@ -148,6 +148,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     static let categoryAPICredential = "api-credential"
     static let categoryAddress = "address"
     static let categorySoftwareLicense = "software-license"
+    static let categoryServer = "server"
 
     var id: String
     var revision: String
@@ -183,16 +184,19 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     /// A software license's values, stored as named custom fields like an API credential's. Summaries keep only the
     /// product, version, licensed-to name and email.
     var softwareLicense: ItemSoftwareLicense?
+    /// A server's host, port and linked SSH key; its username, password and admin console are the item's own. Summaries
+    /// keep only the host and port.
+    var server: ItemServer?
 
     enum CodingKeys: String, CodingKey {
-        case id, revision, category, title, username, password, notes, publicKey, fingerprint, keyType, oneTimePassword, hasOneTimePassword, canConvertToSecureNote, card, identity, isFavorite, apiCredential, address, softwareLicense
+        case id, revision, category, title, username, password, notes, publicKey, fingerprint, keyType, oneTimePassword, hasOneTimePassword, canConvertToSecureNote, card, identity, isFavorite, apiCredential, address, softwareLicense, server
         case allURL = "urls"
         case allTag = "tags"
         case allField = "fields"
         case allPasskey = "passkeys"
     }
 
-    init(id: String = "", revision: String = "", category: String = ItemDetail.categoryLogin, title: String = "", username: String = "", allURL: [String] = [], allTag: [String] = [], password: String = "", notes: String = "", allField: [ItemField] = [], publicKey: String = "", fingerprint: String = "", keyType: String = "", oneTimePassword: String = "", hasOneTimePassword: Bool = false, allPasskey: [ItemPasskey] = [], canConvertToSecureNote: Bool = false, card: ItemCard? = nil, identity: ItemIdentity? = nil, isFavorite: Bool = false, apiCredential: ItemAPICredential? = nil, address: ItemAddress? = nil, softwareLicense: ItemSoftwareLicense? = nil) {
+    init(id: String = "", revision: String = "", category: String = ItemDetail.categoryLogin, title: String = "", username: String = "", allURL: [String] = [], allTag: [String] = [], password: String = "", notes: String = "", allField: [ItemField] = [], publicKey: String = "", fingerprint: String = "", keyType: String = "", oneTimePassword: String = "", hasOneTimePassword: Bool = false, allPasskey: [ItemPasskey] = [], canConvertToSecureNote: Bool = false, card: ItemCard? = nil, identity: ItemIdentity? = nil, isFavorite: Bool = false, apiCredential: ItemAPICredential? = nil, address: ItemAddress? = nil, softwareLicense: ItemSoftwareLicense? = nil, server: ItemServer? = nil) {
         self.id = id
         self.revision = revision
         self.category = category
@@ -216,6 +220,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         self.apiCredential = apiCredential
         self.address = address
         self.softwareLicense = softwareLicense
+        self.server = server
     }
 
     init(from decoder: Decoder) throws {
@@ -243,6 +248,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         apiCredential = try container.decodeIfPresent(ItemAPICredential.self, forKey: .apiCredential)
         address = try container.decodeIfPresent(ItemAddress.self, forKey: .address)
         softwareLicense = try container.decodeIfPresent(ItemSoftwareLicense.self, forKey: .softwareLicense)
+        server = try container.decodeIfPresent(ItemServer.self, forKey: .server)
     }
 
     /// The tags typed into one field, separated by commas, without blanks or repeats.
@@ -262,6 +268,9 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     var isAPICredential: Bool { category == Self.categoryAPICredential }
     var isAddress: Bool { category == Self.categoryAddress }
     var isSoftwareLicense: Bool { category == Self.categorySoftwareLicense }
+    var isServer: Bool { category == Self.categoryServer }
+    /// AutoFill offers the item's username and password on its websites: a login's, and a server's admin console.
+    var offersLoginFill: Bool { isLogin || isServer }
 }
 
 /// The names core/item stores an address's values under; identities and cards keep their address under the same names, and
@@ -480,6 +489,72 @@ struct ItemAPICredential: Codable, Hashable {
     var summary: String {
         let parts = [service, host].filter { !$0.isEmpty }
         return parts.isEmpty ? "API credential" : parts.joined(separator: " · ")
+    }
+}
+
+/// The names core/item stores a server's values under; its username, password and admin console are the item's own.
+enum ServerFieldName {
+    static let host = "Host"
+    static let port = "Port"
+    static let sshKey = "SSH key"
+}
+
+/// A server's values besides its login data. `sshKeyID` names an SSH key item in the same vault; the backend fills in its
+/// title and fingerprint, which are empty when the key is gone.
+struct ItemServer: Codable, Hashable {
+    var host = ""
+    var port = ""
+    var sshKeyID = ""
+    var sshKeyTitle = ""
+    var sshKeyFingerprint = ""
+    var portWarning = ""
+
+    enum CodingKeys: String, CodingKey {
+        case host, port, sshKeyTitle, sshKeyFingerprint, portWarning
+        case sshKeyID = "sshKeyId"
+    }
+
+    init(host: String = "", port: String = "", sshKeyID: String = "", sshKeyTitle: String = "", sshKeyFingerprint: String = "", portWarning: String = "") {
+        self.host = host
+        self.port = port
+        self.sshKeyID = sshKeyID
+        self.sshKeyTitle = sshKeyTitle
+        self.sshKeyFingerprint = sshKeyFingerprint
+        self.portWarning = portWarning
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        host = try container.decodeIfPresent(String.self, forKey: .host) ?? ""
+        port = try container.decodeIfPresent(String.self, forKey: .port) ?? ""
+        sshKeyID = try container.decodeIfPresent(String.self, forKey: .sshKeyID) ?? ""
+        sshKeyTitle = try container.decodeIfPresent(String.self, forKey: .sshKeyTitle) ?? ""
+        sshKeyFingerprint = try container.decodeIfPresent(String.self, forKey: .sshKeyFingerprint) ?? ""
+        portWarning = try container.decodeIfPresent(String.self, forKey: .portWarning) ?? ""
+    }
+
+    static let portWarningText = "The port is not a number from 1 to 65535"
+
+    /// The editor's warning for a port that is not a number from 1 to 65535, as core/item gives it; "" for an empty port.
+    static func describePort(_ port: String) -> String {
+        let trimmedPort = port.trimmingCharacters(in: .whitespaces)
+        guard !trimmedPort.isEmpty else { return "" }
+        guard trimmedPort.allSatisfy(\.isASCII), trimmedPort.allSatisfy(\.isNumber), let number = Int(trimmedPort), (1...65535).contains(number) else {
+            return portWarningText
+        }
+        return ""
+    }
+
+    /// The host and port, such as "build.example.com:2222", with brackets around an IPv6 host.
+    var address: String {
+        guard !host.isEmpty, !port.isEmpty else { return host }
+        return host.contains(":") ? "[\(host)]:\(port)" : "\(host):\(port)"
+    }
+
+    /// The server's line in lists: its address and username, as the Mac app shows it.
+    func summary(username: String) -> String {
+        let parts = [address, username].filter { !$0.isEmpty }
+        return parts.isEmpty ? "Server" : parts.joined(separator: " · ")
     }
 }
 
