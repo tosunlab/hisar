@@ -35,6 +35,7 @@ type Service struct {
 	shareCompletionError         string
 	vaultKeyDeliveryError        string
 	vaultRotationError           string
+	unsavedPinPasses             completionPasses
 	lockListeners                []func()
 	statusListeners              []func()
 	phoneApprovals               *phoneApprovalRelay

@@ -468,27 +468,26 @@ func (s *Service) completeAndListVaultKeys(ctx context.Context) (WaitingVaultKey
 // ListWaitingVaultKeys to show, including a failure to save the pins or to load the rotated vaults' new keys; an
 // unreachable server, or one without organizations, changes nothing.
 func (s *Service) completeOrganizationKeys(ctx context.Context) organizationKeyCompletion {
+	var pinningPasses completionPasses
 	pinCount := len(s.state.Pins)
 	deliveredKeys, deliveryErr := s.unlockedSession.CompleteVaultKeyRequests(ctx)
-	isDeliveryChangingState := len(deliveredKeys) > 0 || len(s.state.Pins) != pinCount
+	if len(deliveredKeys) > 0 || len(s.state.Pins) != pinCount {
+		pinningPasses |= vaultKeyDeliveryPass
+	}
 	isDeliveryErrorShown := !apiclient.IsUnreachable(deliveryErr) && !apiclient.IsStatus(deliveryErr, http.StatusNotFound)
 	pinCount = len(s.state.Pins)
 	rotatedVaults, rotationErr := s.unlockedSession.RotatePendingVaults(ctx)
-	isRotationChangingState := len(rotatedVaults) > 0 || len(s.state.Pins) != pinCount
+	if len(rotatedVaults) > 0 || len(s.state.Pins) != pinCount {
+		pinningPasses |= vaultRotationPass
+	}
 	isRotationErrorShown := !apiclient.IsUnreachable(rotationErr)
 
-	// The verifier pins signing keys whatever the server answers afterwards, so they are saved after every attempt
-	// that added one.
-	if isDeliveryChangingState || isRotationChangingState {
-		if err := s.state.Save(); err != nil {
-			saveErr := fmt.Errorf("could not save the pinned signing keys: %w", err)
-			if isDeliveryChangingState {
-				deliveryErr, isDeliveryErrorShown = errors.Join(deliveryErr, saveErr), true
-			}
-			if isRotationChangingState {
-				rotationErr, isRotationErrorShown = errors.Join(rotationErr, saveErr), true
-			}
-		}
+	unsavedPasses, saveErr := s.savePins(pinningPasses)
+	if unsavedPasses&vaultKeyDeliveryPass != 0 {
+		deliveryErr, isDeliveryErrorShown = errors.Join(deliveryErr, saveErr), true
+	}
+	if unsavedPasses&vaultRotationPass != 0 {
+		rotationErr, isRotationErrorShown = errors.Join(rotationErr, saveErr), true
 	}
 	if len(deliveredKeys) > 0 || len(rotatedVaults) > 0 {
 		// A rotated vault's old key must not be used again, so its copy goes first; when the reload fails, the next
@@ -511,6 +510,32 @@ func (s *Service) completeOrganizationKeys(ctx context.Context) organizationKeyC
 		s.vaultRotationError = describeError(rotationErr)
 	}
 	return organizationKeyCompletion{deliveredCount: len(deliveredKeys), rotatedCount: len(rotatedVaults)}
+}
+
+// completionPasses is a set of the passes that pin signing keys: completing accepted shares, delivering organization
+// vault keys and rotating organization vaults.
+type completionPasses uint8
+
+const (
+	shareCompletionPass completionPasses = 1 << iota
+	vaultKeyDeliveryPass
+	vaultRotationPass
+)
+
+// savePins saves the state after a completion pass. The verifier pins signing keys whatever the server answers
+// afterwards, so the state is saved when the passes in pinningPasses added a pin, and again after every later pass
+// until a save works: a pin kept only in memory is lost on restart. It returns the passes whose pins are still
+// unsaved, which show the returned error meanwhile.
+func (s *Service) savePins(pinningPasses completionPasses) (completionPasses, error) {
+	s.unsavedPinPasses |= pinningPasses
+	if s.unsavedPinPasses == 0 {
+		return 0, nil
+	}
+	if err := s.state.Save(); err != nil {
+		return s.unsavedPinPasses, fmt.Errorf("could not save the pinned signing keys: %w", err)
+	}
+	s.unsavedPinPasses = 0
+	return 0, nil
 }
 
 func describeError(err error) string {

@@ -3,7 +3,6 @@ package app
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -19,12 +18,12 @@ func (s *Service) completeAcceptedShares(ctx context.Context) bool {
 	pinCount := len(s.state.Pins)
 	completedShares, completeErr := s.unlockedSession.CompleteAcceptedShares(ctx)
 	isErrorShown := !apiclient.IsUnreachable(completeErr) && !apiclient.IsStatus(completeErr, http.StatusNotFound)
-	// The verifier pins signing keys whatever the server answers afterwards, so they are saved after every attempt
-	// that added one.
+	var pinningPasses completionPasses
 	if len(completedShares) > 0 || len(s.state.Pins) != pinCount {
-		if err := s.state.Save(); err != nil {
-			completeErr, isErrorShown = errors.Join(completeErr, fmt.Errorf("could not save the pinned signing keys: %w", err)), true
-		}
+		pinningPasses = shareCompletionPass
+	}
+	if unsavedPasses, err := s.savePins(pinningPasses); unsavedPasses&shareCompletionPass != 0 {
+		completeErr, isErrorShown = errors.Join(completeErr, err), true
 	}
 	if len(completedShares) > 0 {
 		s.loadVaults(ctx)

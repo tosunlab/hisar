@@ -506,16 +506,35 @@ func TestCompletingAShareReportsPinsThatCouldNotBeSaved(t *testing.T) {
 	}
 	test.apiServer.acceptShareInvitation(t, bob)
 	// State.Save writes a temporary file next to state.json first; a directory in its place makes the save fail.
-	if err := os.Mkdir(test.service.config.StatePath+".tmp", 0o700); err != nil {
+	temporaryStatePath := test.service.config.StatePath + ".tmp"
+	if err := os.Mkdir(temporaryStatePath, 0o700); err != nil {
 		t.Fatal(err)
 	}
 
 	invitations, err := test.service.ListShareInvitations()
-	if err != nil || invitations.CompletionError == "" {
+	if err != nil || !strings.Contains(invitations.CompletionError, "could not save the pinned signing keys") {
 		t.Fatalf("a pin that could not be saved was not reported: %+v %v", invitations, err)
 	}
 	if _, found := test.apiServer.getAccess(test.familyID, bob.AccountID); !found {
 		t.Error("the share was not completed")
+	}
+	// The share is complete, so the next pass pins nothing new; Bob's pin is still unsaved.
+	if invitations, err := test.service.ListShareInvitations(); err != nil || !strings.Contains(invitations.CompletionError, "could not save the pinned signing keys") {
+		t.Fatalf("a pass that pinned nothing forgot the unsaved pin: %+v %v", invitations, err)
+	}
+
+	if err := os.Remove(temporaryStatePath); err != nil {
+		t.Fatal(err)
+	}
+	if invitations, err := test.service.ListShareInvitations(); err != nil || invitations.CompletionError != "" {
+		t.Fatalf("after a save that works: %+v %v", invitations, err)
+	}
+	saved, err := localstate.Load(test.service.config.StatePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(saved.Pins[bob.AccountID], bob.PublicKeys.Sign) {
+		t.Errorf("state.json pins %x for Bob, want his signing key", saved.Pins[bob.AccountID])
 	}
 }
 
