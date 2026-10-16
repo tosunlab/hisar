@@ -106,6 +106,7 @@ describe("Tags in the item view", () => {
 describe("Tags in the editor", () => {
   it("adds tags on Enter and comma, removes them, and saves them with the item", async () => {
     store.editorMode = "create";
+    api.generatePassword.mockResolvedValue("generated-password");
     const saved = createItem({ id: "new", title: "Router", tags: ["home", "network"] });
     api.saveItem.mockResolvedValue(saved);
     api.listAllItem.mockResolvedValue([saved]);
