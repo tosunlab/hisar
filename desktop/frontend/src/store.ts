@@ -894,20 +894,32 @@ export async function convertToSecureNote(): Promise<void> {
   showNotice("Converted to a secure note");
 }
 
-export async function deleteItem(itemID: string): Promise<void> {
+// deleteItem deletes an item of vaultID, the selected vault unless the item comes from another vault's favorite.
+export async function deleteItem(itemID: string, vaultID = store.selectedVaultID): Promise<boolean> {
   const deleted = await runAction(async () => {
-    await api.deleteItem(store.selectedVaultID, itemID);
+    await api.deleteItem(vaultID, itemID);
     return true;
   });
-  if (deleted) {
+  if (!deleted) {
+    return false;
+  }
+  if (vaultID === store.selectedVaultID) {
     store.allItem = store.allItem.filter((vaultItem) => vaultItem.id !== itemID);
-    store.allFavorite = store.allFavorite.filter((favorite) => favorite.item.id !== itemID);
     updateSelectedVaultItemCount();
     dropMissingTagFilter();
+  } else {
+    const vault = store.allVault.find((candidate) => candidate.id === vaultID);
+    if (vault) {
+      vault.itemCount = Math.max(0, vault.itemCount - 1);
+    }
+  }
+  store.allFavorite = store.allFavorite.filter((favorite) => !(favorite.item.id === itemID && favorite.vaultId === vaultID));
+  if (store.selectedItem?.id === itemID) {
     store.selectedItem = null;
     store.editorMode = "view";
-    showNotice("Deleted");
   }
+  showNotice("Deleted");
+  return true;
 }
 
 export async function deletePasskey(credentialID: string): Promise<void> {
@@ -926,12 +938,15 @@ export async function deletePasskey(credentialID: string): Promise<void> {
 }
 
 export async function copyField(fieldName: string, label: string): Promise<void> {
-  if (!store.selectedItem) {
-    return;
+  if (store.selectedItem) {
+    await copyItemField(store.selectedVaultID, store.selectedItem.id, fieldName, label);
   }
-  const itemID = store.selectedItem.id;
+}
+
+// copyItemField copies a field of any vault's item, such as a favorite's from another vault, without selecting it.
+export async function copyItemField(vaultID: string, itemID: string, fieldName: string, label: string): Promise<void> {
   const copied = await runAction(async () => {
-    await api.copyField(store.selectedVaultID, itemID, fieldName);
+    await api.copyField(vaultID, itemID, fieldName);
     return true;
   });
   if (copied) {
