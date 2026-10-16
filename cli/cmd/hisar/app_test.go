@@ -546,6 +546,53 @@ func TestSoftwareLicensesThroughTheApp(t *testing.T) {
 	}
 }
 
+func TestServersThroughTheApp(t *testing.T) {
+	app := startFakeApp(t)
+	input := "Build server\nbuild.example.com:2222\n\ndeploy\nserver-password\nhttps://console.example.com\nNo such key\ndeploy KEY\n"
+	_, stderr, err := runCapturingOutput(t, false, input, "add", "--type", "server")
+	if err != nil || !strings.Contains(stderr, `Saved "Build server" to Personal.`) {
+		t.Fatalf("add --type server: %q %v", stderr, err)
+	}
+	if !strings.Contains(stderr, `This vault has no SSH key called "No such key".`) || strings.Contains(stderr, "server-password") {
+		t.Errorf("prompts: %q", stderr)
+	}
+	added := app.findRequest(cliprotocol.TypeSaveItem)[0].Item
+	wantFields := []cliprotocol.Field{
+		{Name: item.FieldHost, Value: "build.example.com"},
+		{Name: item.FieldPort, Value: "2222"},
+		{Name: item.FieldSSHKey, Value: "key-id"},
+	}
+	if added.Category != item.CategoryServer || added.Fields == nil || !reflect.DeepEqual(*added.Fields, wantFields) || added.Username != "deploy" ||
+		added.Password != "server-password" || !reflect.DeepEqual(added.URLs, []string{"https://console.example.com"}) {
+		t.Errorf("add request %+v %+v", added, added.Fields)
+	}
+
+	app.mutex.Lock()
+	app.hello.Features = []string{cliprotocol.FeatureSecureNotes, cliprotocol.FeatureCreditCards, cliprotocol.FeatureIdentities, cliprotocol.FeatureAPICredentials, cliprotocol.FeatureAddresses, cliprotocol.FeatureSoftwareLicenses}
+	app.mutex.Unlock()
+	_, stderr, err = runCapturingOutput(t, false, input, "add", "--type", "server")
+	if err == nil || !strings.Contains(err.Error(), "cannot save server items") || strings.Contains(stderr, "Host") {
+		t.Errorf("add a server through an older app: %q %v", stderr, err)
+	}
+}
+
+func TestEditingAServerKeepsOrRemovesItsSSHKey(t *testing.T) {
+	originalReader := stdinReader
+	defer func() { stdinReader = originalReader }()
+	vaultItems := []item.Item{{ID: "key-id", Overview: item.Overview{Title: "Deploy key", Category: item.CategorySSHKey}}}
+	for input, wantID := range map[string]string{"\n\n\n\n\n\n\n": "key-id", "\n\n\n\n\n\nnone\n": ""} {
+		stdinReader = bufio.NewReader(strings.NewReader(input))
+		vaultItem := item.Item{Overview: item.Overview{Title: "Build", Category: item.CategoryServer, Username: "deploy"}, Details: item.Details{Password: "pw"}}
+		item.WriteServer(&vaultItem, item.Server{Host: "build.example.com", SSHKeyID: "key-id"}, nil)
+		if err := promptServer(&vaultItem, vaultItems); err != nil {
+			t.Fatal(err)
+		}
+		if server, _ := item.ReadServer(&vaultItem); server.SSHKeyID != wantID || vaultItem.Details.Password != "pw" {
+			t.Errorf("input %q: SSH key %q, password %q", input, server.SSHKeyID, vaultItem.Details.Password)
+		}
+	}
+}
+
 func TestEditingAnAddressKeepsItsStreetOnAnEmptyLine(t *testing.T) {
 	originalReader := stdinReader
 	defer func() { stdinReader = originalReader }()
@@ -564,7 +611,7 @@ func TestEditingAnAddressKeepsItsStreetOnAnEmptyLine(t *testing.T) {
 func TestAddAndEditFollowTheItemType(t *testing.T) {
 	app := startFakeApp(t)
 	_, stderr, err := runCapturingOutput(t, false, "Router\n", "add", "--type", "wireless-router")
-	if err == nil || !strings.Contains(err.Error(), `unknown item type "wireless-router"; use one of login, secure-note, credit-card, identity, api-credential, address, software-license`) {
+	if err == nil || !strings.Contains(err.Error(), `unknown item type "wireless-router"; use one of login, secure-note, credit-card, identity, api-credential, address, software-license, server`) {
 		t.Errorf("add an unknown type: %v", err)
 	}
 	if strings.Contains(stderr, "Title") {
