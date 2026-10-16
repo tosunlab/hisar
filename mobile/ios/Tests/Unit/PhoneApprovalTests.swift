@@ -170,12 +170,11 @@ final class PhoneApprovalTests: XCTestCase {
         XCTAssertEqual(backend.allApprovalAnswer, ["approve remembered 0123456789abcdef0123456789abcdef"])
     }
 
-    func testCardAndOldRequestsApproveOnce() async {
-        let model = await createUnlockedModel(allApproval: [createRememberingApproval(requestID: "card"), createApproval(requestID: "old")])
-        await model.approve(model.allPendingApproval[0])
+    func testOldRequestsApproveOnce() async {
+        let model = await createUnlockedModel(allApproval: [createApproval(requestID: "old")])
         model.reviewApproval(model.allPendingApproval[0])
         await model.approvePendingApproval(isRemembered: true)
-        XCTAssertEqual(backend.allApprovalAnswer, ["approve card", "approve old"])
+        XCTAssertEqual(backend.allApprovalAnswer, ["approve old"], "a request without the switch is never remembered")
     }
 
     func testApproveWithFaceID() async {
