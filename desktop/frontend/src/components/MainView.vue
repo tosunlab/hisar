@@ -21,6 +21,7 @@ import {
   startCreatingIdentity,
   startCreatingAPICredential,
   startCreatingSoftwareLicense,
+  startCreatingServer,
   startCreatingAddress,
   startCreatingSecureNote,
   startCreatingSSHKey,
@@ -39,6 +40,7 @@ import {
   formatCardSummary,
   formatIdentitySummary,
   formatKeyType,
+  formatServerSummary,
   formatSoftwareLicenseSummary,
   getDomain,
   getInitials,
@@ -46,6 +48,7 @@ import {
   identityCategory,
   isMacPlatform,
   secureNoteCategory,
+  serverCategory,
   softwareLicenseCategory,
   sshKeyCategory,
 } from "../util";
@@ -121,6 +124,9 @@ function getItemSubtitle(vaultItem: ItemDetail): string {
   }
   if (vaultItem.category === softwareLicenseCategory) {
     return formatSoftwareLicenseSummary(vaultItem.softwareLicense);
+  }
+  if (vaultItem.category === serverCategory) {
+    return formatServerSummary(vaultItem.server, vaultItem.username);
   }
   return vaultItem.username || (vaultItem.urls[0] ? getDomain(vaultItem.urls[0]) : "");
 }
@@ -359,6 +365,9 @@ onBeforeUnmount(() => {
             </button>
             <button class="ghost" role="menuitem" data-testid="new-software-license" @click="chooseNewItem(startCreatingSoftwareLicense)">
               <AppIcon name="license" /> Software license
+            </button>
+            <button class="ghost" role="menuitem" data-testid="new-server" @click="chooseNewItem(startCreatingServer)">
+              <AppIcon name="server" /> Server
             </button>
             <button class="ghost" role="menuitem" data-testid="new-ssh-key" @click="chooseNewItem(startCreatingSSHKey)">
               <AppIcon name="key" /> SSH key

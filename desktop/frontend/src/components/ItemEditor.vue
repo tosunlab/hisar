@@ -7,6 +7,7 @@ import {
   createEmptyCard,
   createEmptyIdentity,
   createEmptyItem,
+  createEmptyServer,
   createEmptySoftwareLicense,
   type CardDescription,
   type ItemDetail,
@@ -17,6 +18,7 @@ import {
   apiCredentialCategory,
   creditCardCategory,
   describeAPICredentialExpiry,
+  describeServerPort,
   identityCategory,
   formatCardNumberInput,
   formatExpiryInput,
@@ -24,6 +26,7 @@ import {
   getItemIcon,
   isCalendarDate,
   secureNoteCategory,
+  serverCategory,
   softwareLicenseCategory,
   sshKeyCategory,
 } from "../util";
@@ -56,6 +59,7 @@ function createDraft(): ItemDetail {
         : selected.category === softwareLicenseCategory
           ? createEmptySoftwareLicense()
           : selected.softwareLicense,
+      server: selected.server ? { ...selected.server } : selected.category === serverCategory ? createEmptyServer() : selected.server,
     };
   }
   const empty = createEmptyItem();
@@ -77,6 +81,9 @@ function createDraft(): ItemDetail {
   } else if (store.editorMode === "create-software-license") {
     empty.category = softwareLicenseCategory;
     empty.softwareLicense = createEmptySoftwareLicense();
+  } else if (store.editorMode === "create-server") {
+    empty.category = serverCategory;
+    empty.server = createEmptyServer();
   }
   return empty;
 }
@@ -92,6 +99,12 @@ const isIdentity = draft.category === identityCategory;
 const isAPICredential = draft.category === apiCredentialCategory;
 const isAddress = draft.category === addressCategory;
 const isSoftwareLicense = draft.category === softwareLicenseCategory;
+const isServer = draft.category === serverCategory;
+const serverPortWarning = computed(() => describeServerPort(draft.server?.port.trim() ?? ""));
+// The SSH keys a server may use: the vault's, which the list shows. A linked key that is gone stays chosen as "Missing SSH
+// key" until another is picked.
+const allSSHKey = computed(() => store.allItem.filter((vaultItem) => vaultItem.category === sshKeyCategory));
+const isSSHKeyMissing = computed(() => Boolean(draft.server?.sshKeyId) && !allSSHKey.value.some((key) => key.id === draft.server?.sshKeyId));
 const isLicenseKeyVisible = ref(false);
 // A purchase date imported in another form, such as 03/09/2024, stays editable as text, as a birth date does.
 const isPurchaseDateText = Boolean(draft.softwareLicense?.purchaseDate) && !isCalendarDate(draft.softwareLicense?.purchaseDate ?? "");
@@ -436,6 +449,29 @@ async function submitItem(): Promise<void> {
       </div>
     </section>
 
+    <section v-if="isServer && draft.server" class="card editor-card" data-testid="server-editor">
+      <div class="row card-row">
+        <label>
+          <span>Host</span>
+          <input v-model="draft.server.host" name="host" autocomplete="off" spellcheck="false" placeholder="server.example.com" />
+        </label>
+        <label>
+          <span>Port</span>
+          <input v-model="draft.server.port" name="port" inputmode="numeric" autocomplete="off" placeholder="22" />
+          <small v-if="serverPortWarning" class="hint warning-text" data-testid="server-port-warning">{{ serverPortWarning }}</small>
+        </label>
+      </div>
+      <label class="last">
+        <span>SSH key</span>
+        <select v-model="draft.server.sshKeyId" name="sshKey">
+          <option value="">None</option>
+          <option v-if="isSSHKeyMissing" :value="draft.server.sshKeyId">Missing SSH key</option>
+          <option v-for="key in allSSHKey" :key="key.id" :value="key.id">{{ key.title }}</option>
+        </select>
+        <small class="hint muted">An SSH key from this vault, so everyone who sees the server can use it.</small>
+      </label>
+    </section>
+
     <p v-if="isSSHKey" class="card ssh-key-note muted" data-testid="ssh-key-note">
       <AppIcon name="key" :size="14" /> The key itself cannot be changed. To replace it, add a new SSH key.
     </p>
@@ -473,8 +509,13 @@ async function submitItem(): Promise<void> {
       </label>
       <PasswordGenerator v-if="isGeneratorOpen" @use="usePassword" @close="isGeneratorOpen = false" />
       <label>
-        <span>Websites</span>
-        <textarea v-model="urlText" name="urls" rows="2" placeholder="https://example.com (one per line)"></textarea>
+        <span>{{ isServer ? "Admin console URL" : "Websites" }}</span>
+        <textarea
+          v-model="urlText"
+          name="urls"
+          rows="2"
+          :placeholder="isServer ? 'https://console.example.com' : 'https://example.com (one per line)'"
+        ></textarea>
       </label>
       <label class="last">
         <span>One-time password</span>
