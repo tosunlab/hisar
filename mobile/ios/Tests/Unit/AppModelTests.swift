@@ -416,6 +416,32 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(ItemAPICredential.describeExpiry("2020-02-31", now: evening, calendar: losAngeles), "")
     }
 
+    func testAPICredentialEditorWarningFollowsTheEditedExpiry() throws {
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-10-15T12:00:00Z"))
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        func describe(_ expiry: String, saved: ItemAPICredential?) -> String {
+            ItemAPICredential.describeEditedExpiry(expiry, saved: saved, now: now, calendar: utc)
+        }
+        var expired = ItemAPICredential()
+        expired.expiry = "2020-01-01"
+        expired.expiryWarning = ItemAPICredential.expiredWarning
+        var current = ItemAPICredential()
+        current.expiry = "2031-01-01"
+
+        XCTAssertEqual(describe("2020-01-01", saved: expired), ItemAPICredential.expiredWarning)
+        XCTAssertEqual(describe("2031-01-01", saved: expired), "", "a future date clears the saved warning")
+        XCTAssertEqual(describe("", saved: expired), "", "removing the expiry clears the saved warning")
+        XCTAssertEqual(describe("2026-10-14", saved: current), ItemAPICredential.expiredWarning, "a past date warns before saving")
+        XCTAssertEqual(describe("2026-10-14", saved: nil), ItemAPICredential.expiredWarning, "a new credential warns too")
+
+        var imported = ItemAPICredential()
+        imported.expiry = "2020/01/01"
+        imported.expiryWarning = ItemAPICredential.expiredWarning
+        XCTAssertEqual(describe("2020/01/01", saved: imported), ItemAPICredential.expiredWarning)
+        XCTAssertEqual(describe("never", saved: imported), "")
+    }
+
     func testIdentityDecodesFromTheBackendAndSummarizes() throws {
         let json = #"{"category":"identity","title":"Work","identity":{"firstName":"","lastName":"","email":"alice@example.com","nationalIdNumber":"N1"}}"#
         let item = try JSONDecoder().decode(ItemDetail.self, from: Data(json.utf8))

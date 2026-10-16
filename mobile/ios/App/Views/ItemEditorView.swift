@@ -24,14 +24,8 @@ struct ItemEditorView: View {
 
     private var isNew: Bool { originalItem == nil }
 
-    /// The warning follows the expiry as it is edited. A saved value in another form that the backend still reads as a
-    /// date, such as 2020/01/01, keeps the backend's warning until it changes.
     private var credentialExpiryWarning: String {
-        let expiry = draft.apiCredential?.expiry ?? ""
-        if let saved = originalItem?.apiCredential, CalendarDate.parse(expiry) == nil, expiry == saved.expiry {
-            return saved.expiryWarning
-        }
-        return ItemAPICredential.describeExpiry(expiry)
+        ItemAPICredential.describeEditedExpiry(draft.apiCredential?.expiry ?? "", saved: originalItem?.apiCredential)
     }
 
     var body: some View {

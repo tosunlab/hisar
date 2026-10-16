@@ -375,6 +375,16 @@ struct ItemAPICredential: Codable, Hashable {
         return expiry < CalendarDate.formatToday(now: now, calendar: calendar) ? expiredWarning : ""
     }
 
+    /// The editor's warning, which follows the expiry as it is edited rather than the one the backend gave for the saved
+    /// value. A saved value in another form that the backend still reads as a date, such as 2020/01/01, keeps the
+    /// backend's warning until it changes.
+    static func describeEditedExpiry(_ expiry: String, saved: ItemAPICredential?, now: Date = Date(), calendar: Calendar = .current) -> String {
+        if let saved, CalendarDate.parse(expiry) == nil, expiry == saved.expiry {
+            return saved.expiryWarning
+        }
+        return describeExpiry(expiry, now: now, calendar: calendar)
+    }
+
     /// The credential's line in lists: its service and host, such as "Stripe · api.stripe.com".
     var summary: String {
         let parts = [service, host].filter { !$0.isEmpty }
