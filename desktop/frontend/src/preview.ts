@@ -146,7 +146,22 @@ const allPreviewItemByVaultID: Record<string, ItemDetail[]> = {
     createPreviewItem("staging-database", "Staging database", "deploy", "https://db.staging.example.com", "Tg5!kP9#vL2@"),
     createPreviewSSHKey("deploy-server", "Deploy server", "ssh-ed25519"),
   ],
-  work: [createPreviewItem("vpn", "Office VPN", "alper", "https://vpn.example.com", "Vq8@Lm3!Zr6#")],
+  work: [
+    createPreviewItem("vpn", "Office VPN", "alper", "https://vpn.example.com", "Vq8@Lm3!Zr6#"),
+    createPreviewItem("stripe", "Stripe", "", "", "", {
+      category: "api-credential",
+      notes: "Live key for the billing service",
+      fields: [{ name: "Scope", value: "charges:write", concealed: false }],
+      apiCredential: {
+        service: "Stripe",
+        keyId: "key_preview_51H8",
+        secret: "preview-secret-not-a-real-key",
+        host: "api.stripe.com",
+        expiry: "2027-03-31",
+        expiryWarning: "",
+      },
+    }),
+  ],
 };
 
 function getInitialState(): string {
@@ -879,6 +894,7 @@ function buildPreviewImportPreview(vaultID: string): ImportPreview {
     sshKeyCount: allPreviewImportItem.filter((detail) => detail.category === "ssh-key").length,
     creditCardCount: allPreviewImportItem.filter((detail) => detail.category === "credit-card").length,
     identityCount: allPreviewImportItem.filter((detail) => detail.category === "identity").length,
+    apiCredentialCount: allPreviewImportItem.filter((detail) => detail.category === "api-credential").length,
     allSkipped: allPreviewImportSkipped,
     allDuplicate: findAllPreviewImportDuplicate(vaultID).map((detail) => ({ title: detail.title, username: detail.username, url: detail.urls[0] ?? "" })),
   };

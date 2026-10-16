@@ -36,7 +36,7 @@ import {
 } from "./api";
 import { formatFullName } from "./util";
 
-export type EditorMode = "view" | "edit" | "create" | "create-secure-note" | "create-credit-card" | "create-identity" | "create-ssh-key";
+export type EditorMode = "view" | "edit" | "create" | "create-secure-note" | "create-credit-card" | "create-identity" | "create-api-credential" | "create-ssh-key";
 export type ImportStep = "choose" | "preview" | "saving" | "done";
 
 export interface ShareLinkDialog {
@@ -611,9 +611,11 @@ export function filterAllItem(allItem: ItemDetail[], query: string): ItemDetail[
     return allItem;
   }
   return allItem.filter((vaultItem) => {
-    // An identity's list summary keeps its name and email, which the list shows under the title.
+    // An identity's list summary keeps its name and email, an API credential's its service and host: the list shows them
+    // under the title.
     const identityText = vaultItem.identity ? [formatFullName(vaultItem.identity), vaultItem.identity.email] : [];
-    return [vaultItem.title, vaultItem.username, ...vaultItem.urls, ...identityText].some((text) => text.toLowerCase().includes(normalizedQuery));
+    const credentialText = vaultItem.apiCredential ? [vaultItem.apiCredential.service, vaultItem.apiCredential.host] : [];
+    return [vaultItem.title, vaultItem.username, ...vaultItem.urls, ...identityText, ...credentialText].some((text) => text.toLowerCase().includes(normalizedQuery));
   });
 }
 
@@ -650,6 +652,11 @@ export function startCreatingCard(): void {
 export function startCreatingIdentity(): void {
   store.selectedItem = null;
   store.editorMode = "create-identity";
+}
+
+export function startCreatingAPICredential(): void {
+  store.selectedItem = null;
+  store.editorMode = "create-api-credential";
 }
 
 export function startCreatingSSHKey(): void {
@@ -1273,12 +1280,21 @@ export function getAllShareLinkForItem(vaultID: string, itemID: string): ShareLi
 }
 
 export function hasShareableField(detail: ItemDetail): boolean {
-  // A card's and an identity's values come in card and identity, not in fields.
+  // A card's, an identity's and an API credential's values come in card, identity and apiCredential, not in fields.
   const card = detail.card;
   const hasCardValue = card ? [card.cardholder, card.type, card.number, card.expiry, card.securityCode, card.pin, card.billingAddress].some((value) => value) : false;
   const hasIdentityValue = detail.identity ? Object.values(detail.identity).some((value) => value) : false;
+  const credential = detail.apiCredential;
+  const hasCredentialValue = credential ? [credential.service, credential.keyId, credential.secret, credential.host, credential.expiry].some((value) => value) : false;
   return Boolean(
-    detail.username || detail.password || detail.notes || detail.urls.length > 0 || detail.fields.some((field) => field.value) || hasCardValue || hasIdentityValue,
+    detail.username ||
+      detail.password ||
+      detail.notes ||
+      detail.urls.length > 0 ||
+      detail.fields.some((field) => field.value) ||
+      hasCardValue ||
+      hasIdentityValue ||
+      hasCredentialValue,
   );
 }
 

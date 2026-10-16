@@ -180,6 +180,7 @@ describe("Importing identities", () => {
       sshKeyCount: 0,
       creditCardCount: 0,
       identityCount: 2,
+      apiCredentialCount: 0,
       allSkipped: [],
       allDuplicate: [],
     };

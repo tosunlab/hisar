@@ -26,6 +26,12 @@ const allCount = computed(() => {
     { label: preview.sshKeyCount === 1 ? "SSH key" : "SSH keys", count: preview.sshKeyCount, icon: "key" as const, testID: "ssh-key" },
     { label: preview.creditCardCount === 1 ? "Credit card" : "Credit cards", count: preview.creditCardCount, icon: "card" as const, testID: "credit-card" },
     { label: preview.identityCount === 1 ? "Identity" : "Identities", count: preview.identityCount, icon: "identity" as const, testID: "identity" },
+    {
+      label: preview.apiCredentialCount === 1 ? "API credential" : "API credentials",
+      count: preview.apiCredentialCount,
+      icon: "apiKey" as const,
+      testID: "api-credential",
+    },
   ];
 });
 const importCount = computed(() => {

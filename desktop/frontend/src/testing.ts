@@ -76,6 +76,19 @@ export function createIdentityItem(overrides: Partial<ItemDetail> = {}): ItemDet
   });
 }
 
+export function createAPICredentialItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
+  return createItem({
+    id: "stripe-1",
+    category: "api-credential",
+    title: "Stripe",
+    username: "",
+    urls: [],
+    fields: [{ name: "Scope", value: "read", concealed: false }],
+    apiCredential: { service: "Stripe", keyId: "key_1", secret: "sk_live_123", host: "api.stripe.com", expiry: "2031-01-01", expiryWarning: "" },
+    ...overrides,
+  });
+}
+
 export function createSecureNoteItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
   return createItem({
     id: "note-1",
@@ -526,6 +539,7 @@ export function createImportPreview(overrides: Partial<ImportPreview> = {}): Imp
     sshKeyCount: 1,
     creditCardCount: 0,
     identityCount: 0,
+    apiCredentialCount: 0,
     allSkipped: [{ title: "Visa", reason: "Bitwarden cards are not supported in Hisar yet" }],
     allDuplicate: [{ title: "GitHub", username: "alice", url: "https://github.com" }],
     ...overrides,

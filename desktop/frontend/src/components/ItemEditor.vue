@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
-import { api, createEmptyCard, createEmptyIdentity, createEmptyItem, type CardDescription, type ItemDetail } from "../api";
-import { allCardBrand, creditCardCategory, identityCategory, formatCardNumberInput, formatExpiryInput, formatInputAsTyped, getItemIcon, isCalendarDate, secureNoteCategory, sshKeyCategory } from "../util";
+import { api, createEmptyAPICredential, createEmptyCard, createEmptyIdentity, createEmptyItem, type CardDescription, type ItemDetail } from "../api";
+import { allCardBrand, apiCredentialCategory, creditCardCategory, identityCategory, formatCardNumberInput, formatExpiryInput, formatInputAsTyped, getItemIcon, isCalendarDate, secureNoteCategory, sshKeyCategory } from "../util";
 import { cancelEditing, saveItem, store } from "../store";
 import AppIcon from "./AppIcon.vue";
 import ItemTile from "./ItemTile.vue";
@@ -18,6 +18,11 @@ function createDraft(): ItemDetail {
       passkeys: [...(selected.passkeys ?? [])],
       card: selected.card ? { ...selected.card } : selected.category === creditCardCategory ? createEmptyCard() : selected.card,
       identity: selected.identity ? { ...selected.identity } : selected.category === identityCategory ? createEmptyIdentity() : selected.identity,
+      apiCredential: selected.apiCredential
+        ? { ...selected.apiCredential }
+        : selected.category === apiCredentialCategory
+          ? createEmptyAPICredential()
+          : selected.apiCredential,
     };
   }
   const empty = createEmptyItem();
@@ -29,6 +34,9 @@ function createDraft(): ItemDetail {
   } else if (store.editorMode === "create-identity") {
     empty.category = identityCategory;
     empty.identity = createEmptyIdentity();
+  } else if (store.editorMode === "create-api-credential") {
+    empty.category = apiCredentialCategory;
+    empty.apiCredential = createEmptyAPICredential();
   }
   return empty;
 }
@@ -41,7 +49,11 @@ const isSSHKey = draft.category === sshKeyCategory;
 const isSecureNote = draft.category === secureNoteCategory;
 const isCreditCard = draft.category === creditCardCategory;
 const isIdentity = draft.category === identityCategory;
+const isAPICredential = draft.category === apiCredentialCategory;
 const isDocumentNumberVisible = ref(false);
+const isCredentialSecretVisible = ref(false);
+// An expiry in another form, such as "never", stays editable as text, as a birth date does.
+const isExpiryText = Boolean(draft.apiCredential?.expiry) && !isCalendarDate(draft.apiCredential?.expiry ?? "");
 // A birth date imported in another form, such as 04/12/1990, or with no such day, such as 2023-02-31, stays editable as
 // text; a date picker would show it empty.
 const isBirthDateText = Boolean(draft.identity?.birthDate) && !isCalendarDate(draft.identity?.birthDate ?? "");
@@ -238,11 +250,56 @@ async function submitItem(): Promise<void> {
       </button>
     </section>
 
+    <section v-if="isAPICredential && draft.apiCredential" class="card editor-card" data-testid="api-credential-editor">
+      <div class="row card-row">
+        <label>
+          <span>Service</span>
+          <input v-model="draft.apiCredential.service" name="service" autocomplete="off" placeholder="Stripe" />
+        </label>
+        <label>
+          <span>Key ID</span>
+          <input v-model="draft.apiCredential.keyId" name="keyId" class="monospace" autocomplete="off" spellcheck="false" />
+        </label>
+      </div>
+      <label>
+        <span>Secret</span>
+        <span class="row">
+          <input
+            v-model="draft.apiCredential.secret"
+            name="secret"
+            class="monospace"
+            :type="isCredentialSecretVisible ? 'text' : 'password'"
+            autocomplete="off"
+            spellcheck="false"
+          />
+          <button
+            type="button"
+            class="icon-button"
+            :aria-label="isCredentialSecretVisible ? 'Hide secret' : 'Show secret'"
+            @click="isCredentialSecretVisible = !isCredentialSecretVisible"
+          >
+            <AppIcon :name="isCredentialSecretVisible ? 'eyeOff' : 'eye'" />
+          </button>
+        </span>
+      </label>
+      <div class="row card-row">
+        <label class="last">
+          <span>Host</span>
+          <input v-model="draft.apiCredential.host" name="host" autocomplete="off" spellcheck="false" placeholder="api.example.com" />
+        </label>
+        <label class="last">
+          <span>Expiry</span>
+          <input v-model="draft.apiCredential.expiry" name="expiry" :type="isExpiryText ? 'text' : 'date'" autocomplete="off" />
+          <small v-if="draft.apiCredential.expiryWarning" class="hint warning-text" data-testid="api-credential-expiry-warning">{{ draft.apiCredential.expiryWarning }}</small>
+        </label>
+      </div>
+    </section>
+
     <p v-if="isSSHKey" class="card ssh-key-note muted" data-testid="ssh-key-note">
       <AppIcon name="key" :size="14" /> The key itself cannot be changed. To replace it, add a new SSH key.
     </p>
 
-    <section v-if="!isSSHKey && !isSecureNote && !isCreditCard && !isIdentity" class="card editor-card">
+    <section v-if="!isSSHKey && !isSecureNote && !isCreditCard && !isIdentity && !isAPICredential" class="card editor-card">
       <label>
         <span>Username</span>
         <input v-model="draft.username" name="username" autocomplete="off" placeholder="Username or email" />

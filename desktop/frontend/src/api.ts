@@ -23,6 +23,7 @@ import type {
   ImportPreview as BoundImportPreview,
   ImportProgress as BoundImportProgress,
   ImportSkippedEntry,
+  ItemAPICredential,
   ItemCard,
   ItemDetail as BoundItemDetail,
   ItemIdentity,
@@ -70,6 +71,7 @@ export type {
   ImportDuplicate,
   ImportFormat,
   ImportSkippedEntry,
+  ItemAPICredential,
   ItemCard,
   ItemField,
   ItemIdentity,
@@ -337,6 +339,10 @@ export function createEmptyCard(): ItemCard {
 
 export function createEmptyIdentity(): ItemIdentity {
   return { firstName: "", middleName: "", lastName: "", birthDate: "", email: "", phone: "", address: "", passportNumber: "", driversLicenseNumber: "", nationalIdNumber: "" };
+}
+
+export function createEmptyAPICredential(): ItemAPICredential {
+  return { service: "", keyId: "", secret: "", host: "", expiry: "", expiryWarning: "" };
 }
 
 export function createEmptyItem(): ItemDetail {

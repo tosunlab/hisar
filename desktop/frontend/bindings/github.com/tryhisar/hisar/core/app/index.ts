@@ -28,6 +28,7 @@ export type {
     ImportPreview,
     ImportProgress,
     ImportSkippedEntry,
+    ItemAPICredential,
     ItemCard,
     ItemDetail,
     ItemField,

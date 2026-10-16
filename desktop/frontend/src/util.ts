@@ -138,9 +138,16 @@ export const sshKeyCategory = "ssh-key";
 export const secureNoteCategory = "secure-note";
 export const creditCardCategory = "credit-card";
 export const identityCategory = "identity";
+export const apiCredentialCategory = "api-credential";
 
-type CategoryIcon = "key" | "note" | "card" | "identity";
-const allCategoryIcon: Record<string, CategoryIcon> = { [sshKeyCategory]: "key", [secureNoteCategory]: "note", [creditCardCategory]: "card", [identityCategory]: "identity" };
+type CategoryIcon = "key" | "note" | "card" | "identity" | "apiKey";
+const allCategoryIcon: Record<string, CategoryIcon> = {
+  [sshKeyCategory]: "key",
+  [secureNoteCategory]: "note",
+  [creditCardCategory]: "card",
+  [identityCategory]: "identity",
+  [apiCredentialCategory]: "apiKey",
+};
 
 // getItemIcon is the tile icon of an item's category; logins show their initials instead.
 export function getItemIcon(category: string): CategoryIcon | undefined {
@@ -171,6 +178,20 @@ export const identityFieldName = {
   driversLicenseNumber: "Driver's license number",
   nationalIdNumber: "National ID number",
 } as const;
+
+// The names of an API credential's custom fields, as core/item stores them; a hisar:// reference names them too.
+export const apiCredentialFieldName = {
+  service: "Service",
+  keyId: "Key ID",
+  secret: "Secret",
+  host: "Host",
+  expiry: "Expiry",
+} as const;
+
+// formatAPICredentialSummary is an API credential's line in lists: its service and host, such as "Stripe · api.stripe.com".
+export function formatAPICredentialSummary(credential: { service: string; host: string } | null | undefined): string {
+  return [credential?.service, credential?.host].filter((part) => part).join(" · ") || "API credential";
+}
 
 type IdentityName = { firstName: string; middleName: string; lastName: string; email?: string };
 

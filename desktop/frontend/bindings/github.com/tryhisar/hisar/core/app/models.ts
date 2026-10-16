@@ -123,6 +123,11 @@ export interface ImportPreview {
     "sshKeyCount": number;
     "creditCardCount": number;
     "identityCount": number;
+
+    /**
+     * APICredentialCount counts the api-credential items among ItemCount.
+     */
+    "apiCredentialCount": number;
     "allSkipped": ImportSkippedEntry[] | null;
     "allDuplicate": ImportDuplicate[] | null;
 }
@@ -141,6 +146,18 @@ export interface ImportProgress {
 export interface ImportSkippedEntry {
     "title": string;
     "reason": string;
+}
+
+/**
+ * ItemAPICredential is an API key; the secret is concealed. ExpiryWarning says when the expiry has passed.
+ */
+export interface ItemAPICredential {
+    "service": string;
+    "keyId": string;
+    "secret": string;
+    "host": string;
+    "expiry": string;
+    "expiryWarning": string;
 }
 
 /**
@@ -201,6 +218,12 @@ export interface ItemDetail {
      * email.
      */
     "identity"?: ItemIdentity | null;
+
+    /**
+     * APICredential holds an API credential's values, stored as named custom fields like an identity's; summaries keep
+     * only the service and host.
+     */
+    "apiCredential"?: ItemAPICredential | null;
 }
 
 export interface ItemField {
