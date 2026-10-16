@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/session"
 )
 
@@ -75,6 +76,11 @@ func TestPrintAccountDeletionPreview(t *testing.T) {
 		ShareLinkCount:      3,
 		SentInvitationCount: 1,
 		DeviceCount:         2,
+		Organizations: []apitypes.DeletionOrganization{
+			{OrganizationID: "acme-id", Name: "Acme", NewAdminName: "Bob"},
+			{OrganizationID: "solo-id", Name: "Solo", IsDeleted: true},
+			{OrganizationID: "globex-id", Name: "Globex"},
+		},
 	})
 	for _, expected := range []string{
 		`Deleted with its items: "Personal"` + "\n",
@@ -83,6 +89,9 @@ func TestPrintAccountDeletionPreview(t *testing.T) {
 		"Share links revoked: 3",
 		"Invitations you sent withdrawn: 1",
 		"Devices signed out: 2, including this one",
+		`You leave the organization "Acme"; Bob becomes its admin`,
+		`Organization deleted with its teams, as you are its last member: "Solo"`,
+		`You leave the organization "Globex"` + "\n",
 		"Export your items first with `hisar export`",
 	} {
 		if !strings.Contains(output.String(), expected) {

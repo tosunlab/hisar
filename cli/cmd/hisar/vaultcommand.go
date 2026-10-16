@@ -12,10 +12,12 @@ import (
 
 	"golang.org/x/term"
 
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 )
 
-const vaultUsage = "rename <vault> [name] | delete <vault> [--move-to v | --delete-items --confirm <name>] [-y] | leave <vault> [-y] | create <name>"
+const vaultUsage = "rename <vault> [name] | delete <vault> [--move-to v | --delete-items --confirm <name>] [-y] | leave <vault> [-y] | create <name> [--org <org> --team <team>] | " +
+	"give <vault> --org <org> --team <team> [-r owner|editor|reader] | take <vault> --org <org> --team <team>"
 
 // isInteractiveTerminal: wizards and typed confirmations need a person at a terminal; scripts pass flags instead.
 var isInteractiveTerminal = func() bool {
@@ -29,6 +31,9 @@ type vaultOption struct {
 	isDeletingItems bool
 	confirmedName   string
 	isConfirmed     bool
+	organization    string
+	team            string
+	role            string
 }
 
 func addVaultCommandFlag(flags *flag.FlagSet) *vaultOption {
@@ -37,6 +42,9 @@ func addVaultCommandFlag(flags *flag.FlagSet) *vaultOption {
 	flags.BoolVar(&option.isDeletingItems, "delete-items", false, "delete: delete the vault's items with it; needs --confirm")
 	flags.StringVar(&option.confirmedName, "confirm", "", "delete: the vault's name, typed out, to delete it with its items")
 	flags.BoolVar(&option.isConfirmed, "y", false, "do not ask before deleting, moving or leaving")
+	flags.StringVar(&option.organization, "org", "", "create, give, take: the organization (name or ID)")
+	flags.StringVar(&option.team, "team", "", "create, give, take: the organization's team (name or ID)")
+	flags.StringVar(&option.role, "r", apitypes.VaultEditor, "give: the team's role: owner, editor or reader")
 	return option
 }
 
@@ -55,11 +63,19 @@ func runVault(ctx context.Context, access backend, flags *flag.FlagSet, args []s
 		if len(positionals) != 1 {
 			return errUsage
 		}
+		if option.organization != "" || option.team != "" {
+			return createOrganizationVault(ctx, access, positionals[0], *option)
+		}
 		vault, err := access.createVault(ctx, positionals[0])
 		if err == nil {
 			fmt.Fprintf(os.Stderr, "Created vault %q. Share it with `hisar share %q <email>`.\n", vault.Name, vault.Name)
 		}
 		return err
+	case "give", "take":
+		if len(positionals) != 1 {
+			return errUsage
+		}
+		return changeTeamVault(ctx, access, positionals[0], subcommand == "give", *option)
 	case "rename":
 		if len(positionals) < 1 || len(positionals) > 2 {
 			return errUsage
@@ -290,5 +306,103 @@ func runCreateVault(ctx context.Context, access backend, flags *flag.FlagSet, ar
 		return err
 	}
 	fmt.Fprintf(os.Stderr, "Created vault %q. Share it with `hisar share %q <email>`.\n", vault.Name, vault.Name)
+	return nil
+}
+
+var errOrganizationVaultNeedsTeam = errors.New("name both the organization and its team: --org <org> --team <team>")
+
+func findOrganizationTeam(ctx context.Context, access backend, option vaultOption) (cliprotocol.Organization, cliprotocol.Team, error) {
+	if option.organization == "" || option.team == "" {
+		return cliprotocol.Organization{}, cliprotocol.Team{}, errOrganizationVaultNeedsTeam
+	}
+	organization, err := loadOrganization(ctx, access, option.organization)
+	if err != nil {
+		return cliprotocol.Organization{}, cliprotocol.Team{}, err
+	}
+	team, err := findTeam(organization, option.team)
+	return organization, team, err
+}
+
+func createOrganizationVault(ctx context.Context, access backend, name string, option vaultOption) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return errors.New("enter a vault name")
+	}
+	organization, team, err := findOrganizationTeam(ctx, access, option)
+	if err != nil {
+		return err
+	}
+	vault, err := access.createOrganizationVault(ctx, organization.ID, team.ID, name)
+	if err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "Created vault %q in %s for team %q. The team's other members get its key from an owner's Hisar, as `hisar orgs` does.\n",
+		vault.Name, organization.Name, team.Name)
+	return nil
+}
+
+// findOrganizationVault matches a vault of the organization this user can open, by ID or name, or else the ID of any
+// vault its teams were given, so an admin without the vault's key can still give or take it. It returns the ID and how
+// to name the vault in messages.
+func findOrganizationVault(ctx context.Context, access backend, organization cliprotocol.Organization, nameOrID string) (string, string, error) {
+	vaults, err := access.listVaults(ctx)
+	if err != nil {
+		return "", "", err
+	}
+	for _, vault := range vaults {
+		if vault.OrganizationID == organization.ID && vault.ID == nameOrID {
+			return vault.ID, strconv.Quote(vault.Name), nil
+		}
+	}
+	for _, team := range organization.Teams {
+		for _, teamVault := range team.Vaults {
+			if teamVault.VaultID == nameOrID {
+				return teamVault.VaultID, "the vault " + teamVault.VaultID, nil
+			}
+		}
+	}
+	matches := []cliprotocol.Vault{}
+	for _, vault := range vaults {
+		if vault.OrganizationID == organization.ID && strings.EqualFold(vault.Name, strings.TrimSpace(nameOrID)) {
+			matches = append(matches, vault)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return "", "", fmt.Errorf("vault %q: not found in %s; name one of its vaults you can open, or use an ID from `hisar org show %q`", nameOrID, organization.Name, organization.Name)
+	case 1:
+		return matches[0].ID, strconv.Quote(matches[0].Name), nil
+	}
+	iDs := []string{}
+	for _, vault := range matches {
+		iDs = append(iDs, vault.ID)
+	}
+	return "", "", fmt.Errorf("%d vaults of %s are named %q; use an ID instead: %s", len(matches), organization.Name, nameOrID, strings.Join(iDs, ", "))
+}
+
+func changeTeamVault(ctx context.Context, access backend, nameOrID string, isGiving bool, option vaultOption) error {
+	if isGiving && !apitypes.IsValidVaultRole(option.role) {
+		return fmt.Errorf("invalid role %q: use owner, editor or reader", option.role)
+	}
+	organization, team, err := findOrganizationTeam(ctx, access, option)
+	if err != nil {
+		return err
+	}
+	vaultID, vaultLabel, err := findOrganizationVault(ctx, access, organization, nameOrID)
+	if err != nil {
+		return err
+	}
+	if !isGiving {
+		if err := access.changeOrganization(ctx, cliprotocol.Request{Type: cliprotocol.TypeTakeVaultFromTeam, OrganizationID: organization.ID, TeamID: team.ID, VaultID: vaultID}); err != nil {
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "Took %s from team %q.\n", vaultLabel, team.Name)
+		return nil
+	}
+	change := cliprotocol.Request{Type: cliprotocol.TypeGiveVaultToTeam, OrganizationID: organization.ID, TeamID: team.ID, VaultID: vaultID, Role: option.role}
+	if err := access.changeOrganization(ctx, change); err != nil {
+		return err
+	}
+	fmt.Fprintf(os.Stderr, "Gave %s to team %q as %s.\n", vaultLabel, team.Name, option.role)
 	return nil
 }

@@ -176,6 +176,37 @@ BOB_TOKEN=$(sed -n 's/.*"token": *"\([^"]*\)".*/\1/p' "$T/bob.json")
 echo "ok   GET /members only lists people who share a vault"
 expect "bob cannot read alice personal" "$(printf '%s\n' "$PW" | B ls -v "$(printf '%s\n' "$PW" | A vaults 2>/dev/null | awk '/Personal/{print $4}')" 2>&1 || true)" "not found"
 
+# Organizations (§5.11): teams get vaults, and an owner's hisar delivers their keys and rotates them.
+expect "alice creates an organization" "$(A org create Acme 2>&1)" 'Created organization "Acme".'
+BOB_MAIL_COUNT=$(count_mail bob@example.com)
+ORG_INVITE_OUTPUT=$(A org invite Acme bob@example.com 2>&1)
+expect "alice invites bob to the organization" "$ORG_INVITE_OUTPUT" "Invitation sent to bob@example.com to join Acme as member."
+UNKNOWN_ORG_INVITE_OUTPUT=$(A org invite Acme stranger@example.com 2>&1)
+[[ "${UNKNOWN_ORG_INVITE_OUTPUT//stranger@example.com/someone}" == "${ORG_INVITE_OUTPUT//bob@example.com/someone}" ]] || fail "an organization invitation to an unknown email answered differently: $UNKNOWN_ORG_INVITE_OUTPUT"
+echo "ok   an organization invitation to an email without an account gives the same response"
+expect "the organization invitation email to bob" "$(wait_for_mail bob@example.com "$BOB_MAIL_COUNT")" "Acme"
+expect "bob sees the organization invitation" "$(printf '%s\n' "$PW" | B orgs 2>/dev/null)" "Acme"
+expect "bob accepts the organization invitation" "$(printf '\n' | B org accept 2>&1)" "You joined Acme as a member."
+expect "alice creates a team" "$(A team create Acme Eng 2>&1)" 'Created team "Eng" in Acme.'
+expect "alice adds herself to the team" "$(A team add Acme Eng alice@example.com 2>&1)" 'Added alice@example.com to team "Eng".'
+expect "alice adds bob to the team" "$(A team add acme eng bob@example.com 2>&1)" 'Added bob@example.com to team "Eng".'
+expect "alice creates an organization vault for the team" "$(printf '%s\n' "$PW" | A vault create EngVault --org Acme --team Eng 2>&1)" 'Created vault "EngVault" in Acme for team "Eng".'
+printf '%s\nPipeline\nci\nhttps://ci.example.com\neng-pass-1\n\n' "$PW" | A add -v EngVault 2>/dev/null
+expect "bob waits for an owner to give him the key" "$(printf '%s\n' "$PW" | B orgs 2>&1)" "Waiting for an owner of a vault in Acme to give you its key."
+expect "alice's hisar gives bob the key" "$(printf '%s\n' "$PW" | A orgs 2>&1)" "Gave 1 vault key to a team member."
+expect "bob lists the organization vault" "$(printf '%s\n' "$PW" | B vaults 2>/dev/null)" "organization"
+expect "bob reads the organization vault's item" "$(printf '%s\n' "$PW" | B get pipeline -v EngVault -f password 2>/dev/null)" "eng-pass-1"
+expect "alice removes bob from the team" "$(A team remove Acme Eng bob@example.com 2>&1)" 'Removed bob@example.com from team "Eng".'
+[[ "$(printf '%s\n' "$PW" | B vaults 2>/dev/null)" != *EngVault* ]] || fail "bob still lists EngVault after leaving its only team"
+echo "ok   bob loses the organization vault with the team"
+expect "alice's hisar rotates the vault bob lost" "$(printf '%s\n' "$PW" | A org show Acme 2>&1)" "Rotated the key of 1 vault someone lost access to."
+expect "alice reads the item after the rotation" "$(printf '%s\n' "$PW" | A get pipeline -v EngVault -f password 2>/dev/null)" "eng-pass-1"
+expect "alice invites carol to the organization" "$(A org invite Acme carol@example.com 2>&1)" "Invitation sent to carol@example.com to join Acme as member."
+expect "carol accepts the organization invitation" "$(printf '\n' | C org accept 2>&1)" "You joined Acme as a member."
+expect "alice adds carol to the team" "$(A team add Acme Eng carol@example.com 2>&1)" 'Added carol@example.com to team "Eng".'
+expect "alice's hisar gives carol the rotated key" "$(printf '%s\n' "$PW" | A orgs 2>&1)" "Gave 1 vault key to a team member."
+expect "carol reads the organization vault's item" "$(printf '%s\n' "$PW" | C get pipeline -v EngVault -f password 2>/dev/null)" "eng-pass-1"
+
 expect "second device login" "$(printf 'http://127.0.0.1:%s\nalice@example.com\n%s\n%s\n' "$PORT" "$ALICE_SK" "$PW" | HISAR_STATE=$T/alice2.json HISAR_SECRET_KEY=- hisar login 2>&1)" "Signed in as Alice"
 expect "wrong password" "$(printf 'nope\n' | A ls 2>&1 || true)" "incorrect email, password or Secret Key"
 expect "devices" "$(A devices)" "(this device)"
