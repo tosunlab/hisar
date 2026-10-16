@@ -445,6 +445,12 @@ MOBILE_SHARING_RESULT=$(HISAR_TEST_MOBILE_SHARING_OWNER_INVITE_LINK="$MOBILE_SHA
   go -C "$ROOT/mobile" test -count=1 -v -run TestIntegrationMobileSharing ./hisarkit/ 2>&1 || true)
 expect "the iPhone shares a vault, completes the accepted share on its own, and the recipient reads the item" "$MOBILE_SHARING_RESULT" "--- PASS: TestIntegrationMobileSharing"
 
+MOBILE_ORGANIZATIONS_ADMIN_INVITE=$("$BIN/hisar-server" invite --email mobile-organizations-admin@example.com </dev/null | tail -1)
+MOBILE_ORGANIZATIONS_MEMBER_INVITE=$("$BIN/hisar-server" invite --email mobile-organizations-member@example.com </dev/null | tail -1)
+MOBILE_ORGANIZATIONS_RESULT=$(HISAR_TEST_MOBILE_ORGANIZATIONS_ADMIN_INVITE_LINK="$MOBILE_ORGANIZATIONS_ADMIN_INVITE" HISAR_TEST_MOBILE_ORGANIZATIONS_MEMBER_INVITE_LINK="$MOBILE_ORGANIZATIONS_MEMBER_INVITE" \
+  go -C "$ROOT/mobile" test -count=1 -v -run TestIntegrationMobileOrganizations ./hisarkit/ 2>&1 || true)
+expect "the iPhone creates an organization and a team vault, the member reads it through the team and loses it when removed, and the admin's iPhone rotates the key" "$MOBILE_ORGANIZATIONS_RESULT" "--- PASS: TestIntegrationMobileOrganizations"
+
 PHONE_APPROVAL_INVITE=$("$BIN/hisar-server" invite --email phone-approval@example.com </dev/null | tail -1)
 PHONE_APPROVAL_RESULT=$(HISAR_TEST_PHONE_APPROVAL_INVITE_LINK="$PHONE_APPROVAL_INVITE" go -C "$ROOT/mobile" test -count=1 -v -run TestIntegrationPhoneApproval ./hisarkit/ 2>&1 || true)
 expect "the iPhone approves and denies the Mac's SSH requests, refuses a forged answer, and approves after opening late" "$PHONE_APPROVAL_RESULT" "--- PASS: TestIntegrationPhoneApproval"
