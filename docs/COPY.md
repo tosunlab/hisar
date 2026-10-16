@@ -35,8 +35,23 @@ One name for each thing, the same on the Mac, the iPhone, the browser extension,
 | Share, Invite by email | Gives someone a vault. The vault's Share panel (Mac) or sheet (iPhone). |
 | invitation | A pending vault share ("Invitations for you", "Invitations you sent"). |
 | share link | An end-to-end encrypted link for anyone, with expiry and view limits. |
-| Owner, Editor, Reader | Vault roles. Never "admin" in the apps. |
+| Owner, Editor, Reader | Vault roles. Never "admin" for a vault role. |
 | security code | The 16-digit code to compare a person's keys. Not fingerprint. |
+
+## Organizations
+
+| Use | Meaning |
+|---|---|
+| organization, team | A group of accounts, and a group inside it. Not company, workspace, group. |
+| Admin, Member | Organization roles. Admins manage members, teams and which teams have which vaults; being an admin gives no vault. |
+| organization vault | A vault that belongs to an organization and reaches people through its teams. |
+| Create organization…, New team…, Invite by email, Send invitation, Give a vault…, Give to a team…, Take back, Add member, Remove, Make admin, Make member | Actions (Settings → Organizations, the organization screen, an organization vault's sharing panel). |
+| "Ada invited you to Acme as a member" · Accept · Decline | A received organization invitation (Settings → Organizations and the banner above the vaults). |
+| Remove from Acme…, Leave Acme…, Rename organization…, Delete organization…, Rename…, Delete team… | Confirmed actions; the confirmation names what goes: "Bob loses the vaults he has through Acme's teams." |
+| Shared through teams in Acme · Ask an admin of Acme to change who has this vault. | An organization vault's sharing panel. |
+| A vault you can't open | An organization's vault this device has no key for. |
+| Waiting for an owner of a vault in Acme to give you its key | A vault a team gives you that no owner's Hisar has delivered yet. |
+| Acme is deleted with your account · Ada becomes an admin of Acme | Account deletion. |
 
 ## Items
 
