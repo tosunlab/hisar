@@ -163,6 +163,19 @@ type ItemDetail struct {
 	// Identity holds an identity's values, stored as named custom fields like a card's; summaries keep only the name and
 	// email.
 	Identity *ItemIdentity `json:"identity,omitempty"`
+	// APICredential holds an API credential's values, stored as named custom fields like an identity's; summaries keep
+	// only the service and host.
+	APICredential *ItemAPICredential `json:"apiCredential,omitempty"`
+}
+
+// ItemAPICredential is an API key; the secret is concealed. ExpiryWarning says when the expiry has passed.
+type ItemAPICredential struct {
+	Service       string `json:"service"`
+	KeyID         string `json:"keyId"`
+	Secret        string `json:"secret"`
+	Host          string `json:"host"`
+	Expiry        string `json:"expiry"`
+	ExpiryWarning string `json:"expiryWarning"`
 }
 
 // ItemIdentity is a person's details; the document numbers are optional and concealed.
