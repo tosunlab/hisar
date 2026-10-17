@@ -43,9 +43,10 @@ password with the Emergency Kit share), sign out and sign in with the Secret Key
 simulator's "matching face" notification), the AutoFill screens, and passkeys: register a passkey into a login, sign in
 with it, check the attestation and the ES256 signature with CryptoKit, then see and delete it in the item.
 
-**Approving the Mac's requests.** The approval sheet (a Mac's SSH or command-line request, approved with Face ID or
-the master password, or denied) is driven through a debug-only preview with a made-up request: launch with
-`-HisarApprovalPreview ssh` (or `cli`, `forwarded`, `signing`), plus `-HisarApprovalPreviewPassword` to act as if Face ID
+**Approving the Mac's requests.** The approval sheet (a Mac's SSH or command-line request, or an app such as Raycast
+asking to use Hisar until it locks, approved with Face ID or the master password, or denied) is driven through a
+debug-only preview with a made-up request: launch with `-HisarApprovalPreview ssh` (or `cli`, `forwarded`, `signing`,
+`launcher`), plus `-HisarApprovalPreviewPassword` to act as if Face ID
 were unavailable, and `-HisarApprovalBannerPreview` shows the tabs with the waiting requests as a card on Vaults and in the Approvals tab. The simulator cannot run the Mac side; `TestIntegrationPhoneApproval` in `mobile/hisarkit` runs the
 whole flow between a desktop backend and a HisarKit backend in `make test-end-to-end`.
 
