@@ -19,13 +19,21 @@ import (
 
 func TestInstallAllHostManifest(t *testing.T) {
 	homeDirectory := t.TempDir()
-	chromeDirectory := filepath.Join(homeDirectory, "Library", "Application Support", "Google", "Chrome")
-	braveDirectory := filepath.Join(homeDirectory, "Library", "Application Support", "BraveSoftware", "Brave-Browser")
-	diaDirectory := filepath.Join(homeDirectory, "Library", "Application Support", "Dia", "User Data")
+	support := filepath.Join(homeDirectory, "Library", "Application Support")
+	chromeDirectory := filepath.Join(support, "Google", "Chrome")
+	braveDirectory := filepath.Join(support, "BraveSoftware", "Brave-Browser")
+	diaDirectory := filepath.Join(support, "Dia", "User Data")
 	for _, directory := range []string{chromeDirectory, braveDirectory, diaDirectory} {
 		if err := os.MkdirAll(directory, 0o755); err != nil {
 			t.Fatal(err)
 		}
+		if err := os.WriteFile(filepath.Join(directory, "Local State"), []byte("{}"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Another password manager's registration leaves a browser directory without Local State: that browser has not run.
+	if err := os.MkdirAll(filepath.Join(support, "Microsoft Edge", "NativeMessagingHosts"), 0o755); err != nil {
+		t.Fatal(err)
 	}
 	installations := installHostManifests(homeDirectory, "/Applications/Hisar.app/Contents/MacOS/hisar-browser-host", "darwin")
 	if len(installations) != 3 || !installations[0].IsInstalled || installations[0].Name != "Google Chrome" || installations[1].Name != "Brave" || installations[2].Name != "Dia" ||
@@ -48,6 +56,12 @@ func TestInstallAllHostManifest(t *testing.T) {
 	if manifest.Name != browserprotocol.HostName || manifest.Type != "stdio" || manifest.Path != "/Applications/Hisar.app/Contents/MacOS/hisar-browser-host" ||
 		len(manifest.AllowedOrigins) != 1 || manifest.AllowedOrigins[0] != "chrome-extension://mmipiffoogblblocokimpemdopmdjghf/" {
 		t.Errorf("manifest = %+v", manifest)
+	}
+	// Browsers that have not run, or are not installed at all, get the manifest too, so they find it at their first launch.
+	for _, directory := range []string{filepath.Join(support, "Microsoft Edge"), filepath.Join(support, "Arc", "User Data"), filepath.Join(support, "com.operasoftware.Opera")} {
+		if prepared, err := os.ReadFile(filepath.Join(directory, "NativeMessagingHosts", "com.tryhisar.hisar.json")); err != nil || !bytes.Equal(prepared, content) {
+			t.Errorf("%s: manifest not prepared: %v", directory, err)
+		}
 	}
 	manifestPath := installations[0].ManifestPath
 	before, _ := os.Stat(manifestPath)
