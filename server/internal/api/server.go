@@ -206,6 +206,9 @@ func (s *Server) CreateApp() *fiber.App {
 	apiGroup.Get("/desktop/updates/appcast.xml", s.limitUpdateRate, s.requireSession, s.handleGetDesktopAppcast)
 	apiGroup.Get("/desktop/updates/:version/:file", s.limitUpdateRate, s.requireSession, s.handleDownloadDesktopUpdate)
 
+	adminGroup := apiGroup.Group("/admin")
+	adminGroup.Get("/server", s.requireSession, requireAdmin, s.handleGetAdminServer)
+
 	return app
 }
 
@@ -310,6 +313,17 @@ func (s *Server) requireSession(c fiber.Ctx) error {
 	}
 	c.Locals(ctxKey{}, currentSession)
 	return c.Next()
+}
+
+func requireAdmin(c fiber.Ctx) error {
+	if getSession(c).Role != apitypes.RoleAdmin {
+		return service.ErrAdminOnly
+	}
+	return c.Next()
+}
+
+func (s *Server) handleGetAdminServer(c fiber.Ctx) error {
+	return c.JSON(s.service.GetAdminServer())
 }
 
 func (s *Server) limitRate(c fiber.Ctx) error {
