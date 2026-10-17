@@ -1021,9 +1021,34 @@ final class AppModel: ObservableObject {
         forgetWebsiteIcons()
     }
 
-    /// prepareItemIcon turns a chosen photo into the icon image an item keeps, or shows why it can't.
-    func prepareItemIcon(_ image: Data) async -> Data? {
-        await perform { try $0.prepareItemIcon(image) }
+    static let unreadablePhotoMessage = "Hisar can't read this photo. Choose another one."
+
+    /// prepareItemIcon turns a chosen photo into the icon image an item keeps, or shows why it can't. Photos come as the
+    /// library keeps them (HEIC from the camera, TIFF, PNG…), which the backend does not all read, so the phone decodes
+    /// and shrinks the photo first and hands it a PNG or JPEG.
+    func prepareItemIcon(_ photo: Data) async -> Data? {
+        guard let upload = Self.convertPhotoForIcon(photo) else {
+            errorMessage = Self.unreadablePhotoMessage
+            return nil
+        }
+        return await perform { try $0.prepareItemIcon(upload) }
+    }
+
+    /// convertPhotoForIcon decodes any image UIKit reads, applies its orientation, scales it down to maxSide and encodes
+    /// it as PNG when it has transparency, else as JPEG. It returns nil for data that is no image.
+    nonisolated static func convertPhotoForIcon(_ photo: Data, maxSide: CGFloat = 512) -> Data? {
+        guard let image = UIImage(data: photo), image.size.width > 0, image.size.height > 0 else { return nil }
+        let scale = min(1, maxSide / max(image.size.width, image.size.height))
+        let size = CGSize(width: max(1, (image.size.width * scale).rounded()), height: max(1, (image.size.height * scale).rounded()))
+        let alphaInfo = image.cgImage?.alphaInfo
+        let hasAlpha = [.first, .last, .premultipliedFirst, .premultipliedLast].contains(alphaInfo)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = !hasAlpha
+        let resized = UIGraphicsImageRenderer(size: size, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+        return hasAlpha ? resized.pngData() : resized.jpegData(compressionQuality: 0.9)
     }
 
     @discardableResult

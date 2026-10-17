@@ -118,10 +118,28 @@ func refusePrivateAddress(_, address string, _ syscall.RawConn) error {
 	return nil
 }
 
-var sharedAddressSpace = netip.MustParsePrefix("100.64.0.0/10")
+var (
+	sharedAddressSpace = netip.MustParsePrefix("100.64.0.0/10")
+	// IPv6 ranges that carry an IPv4 address: NAT64's well-known prefix ends in it and 6to4 starts with it, so they are
+	// judged by that address. Local-use NAT64 and Teredo (whose address is obfuscated) are refused outright.
+	nat64WellKnown = netip.MustParsePrefix("64:ff9b::/96")
+	nat64LocalUse  = netip.MustParsePrefix("64:ff9b:1::/48")
+	sixToFour      = netip.MustParsePrefix("2002::/16")
+	teredo         = netip.MustParsePrefix("2001::/32")
+)
 
 func isPublicAddress(address netip.Addr) bool {
 	address = address.Unmap()
+	switch {
+	case nat64WellKnown.Contains(address):
+		bytes := address.As16()
+		return isPublicAddress(netip.AddrFrom4([4]byte(bytes[12:16])))
+	case sixToFour.Contains(address):
+		bytes := address.As16()
+		return isPublicAddress(netip.AddrFrom4([4]byte(bytes[2:6])))
+	case nat64LocalUse.Contains(address), teredo.Contains(address):
+		return false
+	}
 	return address.IsGlobalUnicast() && !address.IsPrivate() && !sharedAddressSpace.Contains(address)
 }
 

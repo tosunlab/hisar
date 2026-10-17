@@ -153,13 +153,42 @@ func TestIsPublicAddress(t *testing.T) {
 		"140.82.112.3": true, "2606:4700::6810:84e5": true, "127.0.0.1": false, "10.0.0.1": false, "192.168.1.1": false,
 		"172.16.5.4": false, "169.254.169.254": false, "100.64.1.1": false, "::1": false, "fe80::1": false, "fd00::1": false,
 		"0.0.0.0": false, "::ffff:127.0.0.1": false, "224.0.0.1": false,
+		// NAT64 and 6to4 carry an IPv4 address, which decides.
+		"64:ff9b::a00:1": false, "64:ff9b::7f00:1": false, "64:ff9b::8c52:7003": true,
+		"2002:c0a8:1::": false, "2002:a9fe:a9fe::1": false, "2002:8c52:7003::1": true,
+		"64:ff9b:1::8c52:7003": false, "2001:0:4136:e378:8000:63bf:3fff:fdd2": false,
 	} {
 		if got := isPublicAddress(netip.MustParseAddr(address)); got != want {
 			t.Errorf("isPublicAddress(%s) = %v", address, got)
 		}
 	}
-	if err := refusePrivateAddress("tcp4", "127.0.0.1:443", nil); !errors.Is(err, ErrRefusedURL) {
-		t.Errorf("dialing loopback: %v", err)
+	for _, address := range []string{"127.0.0.1:443", "[64:ff9b::a00:1]:443", "[2002:c0a8:1::]:443"} {
+		if err := refusePrivateAddress("tcp", address, nil); !errors.Is(err, ErrRefusedURL) {
+			t.Errorf("dialing %s: %v", address, err)
+		}
+	}
+}
+
+// TestFetchRefusesAPublicNameThatResolvesToALocalAddress dials with the real address check: the name passes, but the
+// address it reaches is loopback, so no request gets through.
+func TestFetchRefusesAPublicNameThatResolvesToALocalAddress(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		requests.Add(1)
+		writer.Write(encodeTestPNG(t, createTestImage(32, 32)))
+	}))
+	t.Cleanup(server.Close)
+	transport := server.Client().Transport.(*http.Transport).Clone()
+	dialer := &net.Dialer{Control: refusePrivateAddress}
+	transport.DialContext = func(ctx context.Context, network, _ string) (net.Conn, error) {
+		// What a rebound DNS name would do: example.com resolves to the loopback test server.
+		return dialer.DialContext(ctx, network, server.Listener.Addr().String())
+	}
+	if _, err := newFetcher(transport).Fetch(context.Background(), "https://example.com/"); !errors.Is(err, ErrNoIcon) {
+		t.Errorf("Fetch = %v", err)
+	}
+	if got := requests.Load(); got != 0 {
+		t.Errorf("%d requests reached a loopback address", got)
 	}
 }
 

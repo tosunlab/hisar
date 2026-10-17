@@ -140,6 +140,7 @@ struct IconPickerView: View {
             photo = nil
         }
         guard let data = try? await newPhoto.loadTransferable(type: Data.self) else {
+            model.errorMessage = AppModel.unreadablePhotoMessage
             return
         }
         if let image = await model.prepareItemIcon(data) {

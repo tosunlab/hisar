@@ -15,6 +15,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/itemicon"
 )
@@ -217,5 +218,29 @@ func TestPrepareItemIconRefusesOtherFiles(t *testing.T) {
 	prepared, err := test.service.PrepareItemIcon(encodeTestIconPNG(t, 300))
 	if err != nil || !item.IsIconImage(prepared) {
 		t.Errorf("prepared %d bytes, %v", len(prepared), err)
+	}
+}
+
+func TestCommandLineEditKeepsTheChosenIcon(t *testing.T) {
+	test := createCommandLineTest(t)
+	service := test.testService.service
+	vaultID := test.testService.personalID
+	upload, err := service.PrepareItemIcon(encodeTestIconPNG(t, 200))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, icon := range []*ItemIcon{{Preset: "bank", Color: "green"}, {Image: upload}} {
+		saved, err := service.SaveItem(vaultID, ItemDetail{Title: "Bank", Password: "bank-password", Icon: icon})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var edited cliprotocol.ItemResult
+		test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeSaveItem, VaultID: vaultID, Item: &cliprotocol.ItemChange{
+			ID: saved.ID, Revision: saved.Revision, Title: "Bank", Password: "new-bank-password",
+		}}, &edited)
+		if stored := getCachedItem(t, service, vaultID, saved.ID); !reflect.DeepEqual(stored.Overview.Icon, convertFromItemIcon(icon)) ||
+			stored.Details.Password != "new-bank-password" {
+			t.Errorf("after hisar edit: icon %+v, password %q", stored.Overview.Icon, stored.Details.Password)
+		}
 	}
 }
