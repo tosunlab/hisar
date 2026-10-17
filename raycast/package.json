@@ -1,0 +1,39 @@
+{
+  "$schema": "https://www.raycast.com/schemas/extension.json",
+  "name": "hisar",
+  "title": "Hisar",
+  "description": "Search Hisar, copy and paste passwords and one-time codes, generate passwords and lock Hisar.",
+  "icon": "hisar.png",
+  "author": "tryhisar",
+  "license": "MIT",
+  "version": "0.1.0",
+  "private": true,
+  "categories": [
+    "Security"
+  ],
+  "platforms": [
+    "macOS"
+  ],
+  "commands": [],
+  "preferences": [],
+  "scripts": {
+    "build": "ray build -e dist",
+    "dev": "ray develop",
+    "lint": "ray lint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@raycast/api": "2.8.2",
+    "@raycast/utils": "2.3.2"
+  },
+  "devDependencies": {
+    "@raycast/eslint-config": "2.2.0",
+    "@types/node": "22.19.17",
+    "@types/react": "19.0.10",
+    "eslint": "10.13.0",
+    "prettier": "3.9.10",
+    "typescript": "6.0.3",
+    "vitest": "5.0.1"
+  }
+}
