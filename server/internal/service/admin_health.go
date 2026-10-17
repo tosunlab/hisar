@@ -213,21 +213,12 @@ func (s *Service) newCheckSources(getMigrationStatuses func(ctx context.Context)
 // ConfirmSecretsBackup records in the instance settings that an admin backed up hisar-secrets.json and returns the
 // secrets-backup check, now ok. It does not check the role: the route requires an admin.
 func (s *Service) ConfirmSecretsBackup(ctx context.Context, actor Actor) (apitypes.InstanceCheck, error) {
-	s.settingsMutex.Lock()
-	defer s.settingsMutex.Unlock()
-	var effective settings.Settings
-	err := s.store.UpdateInstanceSettings(ctx, actor.AccountID, func(stored []byte) ([]byte, error) {
-		updated, err := settings.SetStored(stored, "secretsBackupConfirmedAt", time.Now().UTC())
-		if err != nil {
-			return nil, err
-		}
-		effective, _, err = settings.Resolve(s.instanceSettings.Defaults, updated, s.instanceSettings.Environment)
-		return updated, err
+	effective, _, err := s.updateStoredSettings(ctx, actor.AccountID, func(stored []byte) ([]byte, error) {
+		return settings.SetStored(stored, "secretsBackupConfirmedAt", time.Now().UTC())
 	})
 	if err != nil {
 		return apitypes.InstanceCheck{}, err
 	}
-	s.applySettings(effective)
 	s.recordAudit(ctx, actor, "admin_secrets_backup_confirmed", nil)
 	check := newSecretsBackupCheck(func() time.Time { return effective.SecretsBackupConfirmedAt })
 	return describeCheck(check, check.run(ctx, CheckRequest{})), nil
