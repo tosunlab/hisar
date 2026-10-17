@@ -107,6 +107,10 @@ export function getHealth(): Promise<AdminHealth> {
   return request("GET", "/admin/health");
 }
 
+export function confirmSecretsBackup(): Promise<InstanceCheck> {
+  return request("POST", "/admin/health/secrets-backup");
+}
+
 export function getErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }

@@ -97,4 +97,50 @@ describe("Overview", () => {
     const root = await mountOverview((path) => (path === "/api/v1/admin/server" ? answer(200, { publicUrl: "" }) : answer(200, { ...health, database: pending })));
     expect(readText(root, "database")).toBe("48.2 MB · 1 of 2 migrations applied");
   });
+
+  it("records the secrets backup with I have a backup and shows the check ok", async () => {
+    const backupCheck = { id: "secrets-backup", title: "Secrets backup", status: "warning", message: "Back up hisar-secrets.json. Nobody can sign in without it." };
+    const confirmedCheck = { ...backupCheck, status: "ok", message: "An admin confirmed a backup of hisar-secrets.json on 2026-10-17." };
+    const allRequest: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (path: string, init?: RequestInit) => {
+        allRequest.push(`${init?.method ?? "GET"} ${path}`);
+        if (path === "/api/v1/admin/server") {
+          return answer(200, { publicUrl: "" });
+        }
+        return path === "/api/v1/admin/health/secrets-backup" ? answer(200, confirmedCheck) : answer(200, { ...health, checks: [health.checks[0], backupCheck] });
+      }),
+    );
+    const root = document.createElement("div");
+    createApp(OverviewView).mount(root);
+    await vi.waitFor(() => expect(root.querySelector("[data-testid=check-secrets-backup] button")?.textContent?.trim()).toBe("I have a backup"));
+    root.querySelector<HTMLButtonElement>("[data-testid=check-secrets-backup] button")!.click();
+    await vi.waitFor(() => expect(root.querySelector("[data-testid=check-secrets-backup]")?.getAttribute("data-status")).toBe("ok"));
+    expect(root.querySelector("[data-testid=check-secrets-backup] button")).toBeNull();
+    expect(readText(root, "check-secrets-backup")).toContain("confirmed a backup");
+    expect(root.querySelector("[data-testid=check-public-url]")?.getAttribute("data-status")).toBe("failed");
+    expect(allRequest.filter((request) => request.endsWith("/admin/health"))).toHaveLength(1);
+    expect(allRequest).toContain("POST /api/v1/admin/health/secrets-backup");
+  });
+
+  it("keeps I have a backup and shows the error when the server refuses it", async () => {
+    const backupCheck = { id: "secrets-backup", title: "Secrets backup", status: "warning", message: "Back up hisar-secrets.json. Nobody can sign in without it." };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (path: string) => {
+        if (path === "/api/v1/admin/health/secrets-backup") {
+          return answer(503, { error: "the server cannot reach its database" });
+        }
+        return path === "/api/v1/admin/server" ? answer(200, { publicUrl: "" }) : answer(200, { ...health, checks: [backupCheck] });
+      }),
+    );
+    const root = document.createElement("div");
+    createApp(OverviewView).mount(root);
+    await vi.waitFor(() => expect(root.querySelector("[data-testid=check-secrets-backup] button")).not.toBeNull());
+    root.querySelector<HTMLButtonElement>("[data-testid=check-secrets-backup] button")!.click();
+    await vi.waitFor(() => expect(root.querySelector("[data-testid=check-secrets-backup] [role=alert]")?.textContent).toBe("the server cannot reach its database"));
+    expect(root.querySelector("[data-testid=check-secrets-backup]")?.getAttribute("data-status")).toBe("warning");
+    expect(root.querySelector<HTMLButtonElement>("[data-testid=check-secrets-backup] button")?.disabled).toBe(false);
+  });
 });

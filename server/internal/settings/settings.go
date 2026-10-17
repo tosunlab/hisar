@@ -27,6 +27,9 @@ type Settings struct {
 	// AuthBurst is how many sign-in requests one IP address may make before it is limited to one every 6 seconds.
 	AuthBurst int       `json:"authBurst"`
 	Retention Retention `json:"retention"`
+	// SecretsBackupConfirmedAt is when an admin confirmed on Overview that hisar-secrets.json is backed up; zero until
+	// then. It is not in ListFields: the server records it, and Settings neither shows nor edits it.
+	SecretsBackupConfirmedAt time.Time `json:"secretsBackupConfirmedAt,omitzero"`
 }
 
 // SMTP is how the server sends email; an empty Host turns email off.
@@ -338,6 +341,17 @@ func getSMTPServer(tree, defaultTree map[string]any) []any {
 		server = append(server, value)
 	}
 	return server
+}
+
+// SetStored sets one top-level key of a stored document, for a value the server records itself rather than one from
+// ListFields, and returns the new document.
+func SetStored(stored []byte, name string, value any) ([]byte, error) {
+	storedTree, err := decodeDocument(stored)
+	if err != nil {
+		return nil, err
+	}
+	storedTree[name] = value
+	return json.Marshal(storedTree)
 }
 
 func checkValueType(name string, defaultValue, value any) error {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/tryhisar/hisar/core/apiclient"
@@ -93,5 +94,63 @@ func TestAdminHealth(t *testing.T) {
 	}
 	if status, _ := getHealth("not a token", ""); status != http.StatusUnauthorized {
 		t.Errorf("no session: %d", status)
+	}
+}
+
+func readCheck(t *testing.T, baseURL, token, checkID string) apitypes.InstanceCheck {
+	t.Helper()
+	status, body := sendRawRequest(t, baseURL, token, "GET", "/api/v1/admin/health", nil)
+	if status != http.StatusOK {
+		t.Fatalf("read health: %d %s", status, body)
+	}
+	var health apitypes.AdminHealth
+	if err := json.Unmarshal([]byte(body), &health); err != nil {
+		t.Fatal(err)
+	}
+	for _, check := range health.Checks {
+		if check.ID == checkID {
+			return check
+		}
+	}
+	t.Fatalf("no check %s", checkID)
+	return apitypes.InstanceCheck{}
+}
+
+func TestAdminHealthSecretsBackupStaysConfirmedAfterARestart(t *testing.T) {
+	baseURL, server, databaseURL := setupServer(t)
+	ctx := context.Background()
+	admin := signUpTestAccount(t, ctx, server, baseURL, "admin@example.com", apitypes.RoleAdmin)
+	member := signUpTestAccount(t, ctx, server, baseURL, "member@example.com", apitypes.RoleMember)
+	if check := readCheck(t, baseURL, admin.Client.Token, "secrets-backup"); check.Status != apitypes.CheckStatusWarning {
+		t.Fatalf("before: %+v", check)
+	}
+
+	if status, body := sendRawRequest(t, baseURL, member.Client.Token, "POST", "/api/v1/admin/health/secrets-backup", nil); status != http.StatusForbidden {
+		t.Errorf("member: %d %s", status, body)
+	}
+	status, body := sendRawRequest(t, baseURL, admin.Client.Token, "POST", "/api/v1/admin/health/secrets-backup", nil)
+	var confirmed apitypes.InstanceCheck
+	if err := json.Unmarshal([]byte(body), &confirmed); status != http.StatusOK || err != nil || confirmed.ID != "secrets-backup" || confirmed.Status != apitypes.CheckStatusOK {
+		t.Fatalf("confirm: %d %s", status, body)
+	}
+	if check := readCheck(t, baseURL, admin.Client.Token, "secrets-backup"); check.Status != apitypes.CheckStatusOK || !strings.Contains(check.Message, "confirmed a backup of hisar-secrets.json") {
+		t.Errorf("after: %+v", check)
+	}
+	if count := queryValue[int](t, databaseURL, `SELECT count(*) FROM audit_events WHERE type = 'admin_secrets_backup_confirmed'`); count != 1 {
+		t.Errorf("%d audit records", count)
+	}
+	if _, isListed := readSettings(t, baseURL, admin.Client.Token).Settings["secretsBackupConfirmedAt"]; isListed {
+		t.Error("Settings lists the backup confirmation")
+	}
+	if status, body := saveSettings(t, baseURL, admin.Client.Token, map[string]any{"secretsBackupConfirmedAt": ""}); status != http.StatusBadRequest {
+		t.Errorf("saved the backup confirmation as a setting: %d %s", status, body)
+	}
+	if status, body := saveSettings(t, baseURL, admin.Client.Token, map[string]any{"retention.auditDays": 30}); status != http.StatusOK {
+		t.Fatalf("save: %d %s", status, body)
+	}
+
+	restartedURL, _ := startServerOnDatabase(t, databaseURL, nil)
+	if check := readCheck(t, restartedURL, admin.Client.Token, "secrets-backup"); check.Status != apitypes.CheckStatusOK {
+		t.Errorf("after a restart: %+v", check)
 	}
 }

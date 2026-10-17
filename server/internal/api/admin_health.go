@@ -17,6 +17,7 @@ func (s *Server) RunServerUpdates(ctx context.Context) {
 
 func (s *Server) registerAdminHealthRoutes(adminGroup fiber.Router) {
 	adminGroup.Get("/health", s.requireSession, requireAdmin, s.handleGetAdminHealth)
+	adminGroup.Post("/health/secrets-backup", s.requireSession, requireAdmin, s.handleConfirmSecretsBackup)
 }
 
 func (s *Server) handleGetAdminHealth(c fiber.Ctx) error {
@@ -29,4 +30,12 @@ func (s *Server) handleGetAdminHealth(c fiber.Ctx) error {
 		health.LatestVersion = s.config.ServerUpdates.GetNewerVersion(s.config.Version)
 	}
 	return c.JSON(health)
+}
+
+func (s *Server) handleConfirmSecretsBackup(c fiber.Ctx) error {
+	check, err := s.service.ConfirmSecretsBackup(c.Context(), s.getActor(c))
+	if err != nil {
+		return err
+	}
+	return c.JSON(check)
 }

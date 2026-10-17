@@ -149,6 +149,11 @@ test("shows the server's version, usage and checks on Overview", async ({ page }
   }
   await expect(page.getByTestId("check-email")).toContainText("Email is not set up. Invites from the apps will fail.");
   await saveScreenshot(page, "overview-health");
+  await page.getByRole("button", { name: "I have a backup" }).click();
+  await expect(page.getByTestId("check-secrets-backup")).toHaveAttribute("data-status", "ok");
+  await expect(page.getByRole("button", { name: "I have a backup" })).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByTestId("check-secrets-backup")).toHaveAttribute("data-status", "ok");
   await page.getByRole("button", { name: "Sign out" }).click();
   expect(allPageError).toEqual([]);
 });

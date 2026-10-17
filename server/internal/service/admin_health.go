@@ -16,6 +16,7 @@ import (
 
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/server/internal/mail"
+	"github.com/tryhisar/hisar/server/internal/settings"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
@@ -51,10 +52,11 @@ type instanceCheck struct {
 
 // checkSources are what the instance checks read; tests replace each one.
 type checkSources struct {
-	publicURL            string
-	httpClient           *http.Client
-	getMigrationStatuses func(ctx context.Context) ([]*goose.MigrationStatus, error)
-	isEmailConfigured    func() bool
+	publicURL                   string
+	httpClient                  *http.Client
+	getMigrationStatuses        func(ctx context.Context) ([]*goose.MigrationStatus, error)
+	isEmailConfigured           func() bool
+	getSecretsBackupConfirmedAt func() time.Time
 }
 
 var publicURLClient = &http.Client{
@@ -74,9 +76,7 @@ func newInstanceChecks(sources checkSources) []instanceCheck {
 		{id: "migrations", title: "Database migrations", run: func(ctx context.Context, _ CheckRequest) checkResult {
 			return checkMigrations(sources.getMigrationStatuses(ctx))
 		}},
-		{id: "secrets-backup", title: "Secrets backup", run: func(context.Context, CheckRequest) checkResult {
-			return checkResult{status: apitypes.CheckStatusWarning, message: secretsBackupMessage}
-		}},
+		newSecretsBackupCheck(sources.getSecretsBackupConfirmedAt),
 		{id: "email", title: "Email", run: func(context.Context, CheckRequest) checkResult { return checkEmail(sources.isEmailConfigured()) }},
 	}
 }
@@ -158,6 +158,19 @@ func checkMigrations(statuses []*goose.MigrationStatus, err error) checkResult {
 	return checkResult{status: apitypes.CheckStatusFailed, message: fmt.Sprintf("Migrations %s are not applied. Run hisar-server migrate up.", strings.Join(pendingNames, ", "))}
 }
 
+func newSecretsBackupCheck(getConfirmedAt func() time.Time) instanceCheck {
+	return instanceCheck{id: "secrets-backup", title: "Secrets backup", run: func(context.Context, CheckRequest) checkResult {
+		return checkSecretsBackup(getConfirmedAt())
+	}}
+}
+
+func checkSecretsBackup(confirmedAt time.Time) checkResult {
+	if confirmedAt.IsZero() {
+		return checkResult{status: apitypes.CheckStatusWarning, message: secretsBackupMessage}
+	}
+	return checkResult{status: apitypes.CheckStatusOK, message: fmt.Sprintf("An admin confirmed a backup of hisar-secrets.json on %s.", confirmedAt.UTC().Format(time.DateOnly))}
+}
+
 func checkEmail(isEmailConfigured bool) checkResult {
 	if !isEmailConfigured {
 		return checkResult{status: apitypes.CheckStatusWarning, message: emailMissingMessage}
@@ -171,12 +184,15 @@ func runInstanceChecks(ctx context.Context, checks []instanceCheck, request Chec
 	var running sync.WaitGroup
 	for index, check := range checks {
 		running.Go(func() {
-			result := check.run(ctx, request)
-			outcomes[index] = apitypes.InstanceCheck{ID: check.id, Title: check.title, Status: result.status, Message: result.message}
+			outcomes[index] = describeCheck(check, check.run(ctx, request))
 		})
 	}
 	running.Wait()
 	return outcomes
+}
+
+func describeCheck(check instanceCheck, result checkResult) apitypes.InstanceCheck {
+	return apitypes.InstanceCheck{ID: check.id, Title: check.title, Status: result.status, Message: result.message}
 }
 
 // RunInstanceChecks runs the instance checks for an admin's request. It does not check the role.
@@ -186,11 +202,35 @@ func (s *Service) RunInstanceChecks(ctx context.Context, request CheckRequest) [
 
 func (s *Service) newCheckSources(getMigrationStatuses func(ctx context.Context) ([]*goose.MigrationStatus, error)) checkSources {
 	return checkSources{
-		publicURL:            s.config.PublicURL,
-		httpClient:           publicURLClient,
-		getMigrationStatuses: getMigrationStatuses,
-		isEmailConfigured:    s.isEmailConfigured,
+		publicURL:                   s.config.PublicURL,
+		httpClient:                  publicURLClient,
+		getMigrationStatuses:        getMigrationStatuses,
+		isEmailConfigured:           s.isEmailConfigured,
+		getSecretsBackupConfirmedAt: func() time.Time { return s.currentSettings().SecretsBackupConfirmedAt },
 	}
+}
+
+// ConfirmSecretsBackup records in the instance settings that an admin backed up hisar-secrets.json and returns the
+// secrets-backup check, now ok. It does not check the role: the route requires an admin.
+func (s *Service) ConfirmSecretsBackup(ctx context.Context, actor Actor) (apitypes.InstanceCheck, error) {
+	s.settingsMutex.Lock()
+	defer s.settingsMutex.Unlock()
+	var effective settings.Settings
+	err := s.store.UpdateInstanceSettings(ctx, actor.AccountID, func(stored []byte) ([]byte, error) {
+		updated, err := settings.SetStored(stored, "secretsBackupConfirmedAt", time.Now().UTC())
+		if err != nil {
+			return nil, err
+		}
+		effective, _, err = settings.Resolve(s.instanceSettings.Defaults, updated, s.instanceSettings.Environment)
+		return updated, err
+	})
+	if err != nil {
+		return apitypes.InstanceCheck{}, err
+	}
+	s.applySettings(effective)
+	s.recordAudit(ctx, actor, "admin_secrets_backup_confirmed", nil)
+	check := newSecretsBackupCheck(func() time.Time { return effective.SecretsBackupConfirmedAt })
+	return describeCheck(check, check.run(ctx, CheckRequest{})), nil
 }
 
 // GetAdminHealth returns the health without Version and LatestVersion, which internal/api fills in. It does not check

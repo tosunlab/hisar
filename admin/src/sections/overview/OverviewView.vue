@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { auth, getErrorMessage, getHealth, getServer, type AdminHealth, type AdminServer, type CheckStatus } from "../../api";
+import { auth, confirmSecretsBackup, getErrorMessage, getHealth, getServer, type AdminHealth, type AdminServer, type CheckStatus } from "../../api";
 
 const server = ref<AdminServer | null>(null);
 const health = ref<AdminHealth | null>(null);
 const errorMessage = ref("");
+const isConfirmingBackup = ref(false);
+const backupError = ref("");
 
 const statusMarks: Record<CheckStatus, { mark: string; label: string }> = {
   ok: { mark: "✓", label: "OK" },
@@ -48,6 +50,21 @@ const migrationSummary = computed(() => {
 
 function showError(error: unknown): void {
   errorMessage.value = getErrorMessage(error);
+}
+
+async function confirmBackup(): Promise<void> {
+  isConfirmingBackup.value = true;
+  backupError.value = "";
+  try {
+    const confirmed = await confirmSecretsBackup();
+    if (health.value) {
+      health.value.checks = health.value.checks.map((check) => (check.id === confirmed.id ? confirmed : check));
+    }
+  } catch (error) {
+    backupError.value = getErrorMessage(error);
+  } finally {
+    isConfirmingBackup.value = false;
+  }
 }
 
 onMounted(() => {
@@ -104,7 +121,11 @@ onMounted(() => {
           <span class="check-text">
             <span class="check-title">{{ check.title }}</span>
             <span class="check-message">{{ check.message }}</span>
+            <span v-if="check.id === 'secrets-backup' && backupError" class="error" role="alert">{{ backupError }}</span>
           </span>
+          <button v-if="check.id === 'secrets-backup' && check.status !== 'ok'" type="button" :disabled="isConfirmingBackup" @click="confirmBackup">
+            {{ isConfirmingBackup ? "Saving…" : "I have a backup" }}
+          </button>
         </li>
       </ul>
     </template>
@@ -124,9 +145,13 @@ h2 {
   font-weight: 650;
 }
 
-.error {
+section > .error {
   max-width: 720px;
   margin-bottom: 16px;
+}
+
+.check-text .error {
+  margin-top: 6px;
 }
 
 .facts,
@@ -213,8 +238,9 @@ dd {
 
 .checks li {
   display: grid;
-  grid-template-columns: 22px 1fr;
+  grid-template-columns: 22px 1fr auto;
   gap: 12px;
+  align-items: start;
   padding: 12px 16px;
   background: var(--color-surface);
 }

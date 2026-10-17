@@ -38,6 +38,9 @@ func runHealthCheck(t *testing.T, checkID string, sources checkSources, request 
 	if sources.isEmailConfigured == nil {
 		sources.isEmailConfigured = func() bool { return false }
 	}
+	if sources.getSecretsBackupConfirmedAt == nil {
+		sources.getSecretsBackupConfirmedAt = func() time.Time { return time.Time{} }
+	}
 	checks := newInstanceChecks(sources)
 	index := slices.IndexFunc(checks, func(check instanceCheck) bool { return check.id == checkID })
 	if index < 0 {
@@ -55,10 +58,11 @@ func expectCheckResult(t *testing.T, name string, result checkResult, status, me
 
 func TestHealthCheckTable(t *testing.T) {
 	sources := checkSources{
-		publicURL:            "http://127.0.0.1:1",
-		httpClient:           publicURLClient,
-		getMigrationStatuses: func(context.Context) ([]*goose.MigrationStatus, error) { return nil, nil },
-		isEmailConfigured:    func() bool { return true },
+		publicURL:                   "http://127.0.0.1:1",
+		httpClient:                  publicURLClient,
+		getMigrationStatuses:        func(context.Context) ([]*goose.MigrationStatus, error) { return nil, nil },
+		isEmailConfigured:           func() bool { return true },
+		getSecretsBackupConfirmedAt: func() time.Time { return time.Time{} },
 	}
 	outcomes := runInstanceChecks(context.Background(), newInstanceChecks(sources), CheckRequest{})
 	allID := []string{}
@@ -169,7 +173,9 @@ func TestHealthMigrations(t *testing.T) {
 }
 
 func TestHealthSecretsBackup(t *testing.T) {
-	expectCheckResult(t, "secrets backup", runHealthCheck(t, "secrets-backup", checkSources{}, CheckRequest{}), apitypes.CheckStatusWarning, secretsBackupMessage)
+	expectCheckResult(t, "no backup", runHealthCheck(t, "secrets-backup", checkSources{}, CheckRequest{}), apitypes.CheckStatusWarning, secretsBackupMessage)
+	confirmed := checkSources{getSecretsBackupConfirmedAt: func() time.Time { return time.Date(2026, 10, 17, 23, 30, 0, 0, time.FixedZone("CEST", 2*60*60)) }}
+	expectCheckResult(t, "backup confirmed", runHealthCheck(t, "secrets-backup", confirmed, CheckRequest{}), apitypes.CheckStatusOK, "confirmed a backup of hisar-secrets.json on 2026-10-17.")
 }
 
 func TestHealthEmail(t *testing.T) {
