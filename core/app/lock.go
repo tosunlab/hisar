@@ -113,6 +113,7 @@ func (s *Service) lockSession() {
 	s.itemsByVaultID = nil
 	s.favorites = nil
 	s.pendingImport = nil
+	s.forgetWebsiteIconKeys()
 	if wasUnlocked && s.config.OnLock != nil {
 		s.config.OnLock()
 	}

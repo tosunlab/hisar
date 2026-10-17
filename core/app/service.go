@@ -41,6 +41,8 @@ type Service struct {
 	phoneApprovals               *phoneApprovalRelay
 	signedOutReason              string
 	updateRequirement            updateRequirementState
+	websiteIcons                 websiteIcons
+	defaultWebsiteIconFetcher    WebsiteIconFetcher
 }
 
 // getCache opens the offline cache on first use; if it cannot be opened, even after starting it over, Hisar stays online-only.

@@ -69,6 +69,8 @@ type Settings struct {
 	// empty means the defaults.
 	Appearance string `json:"appearance,omitempty"`
 	Color      string `json:"color,omitempty"`
+	// IsWebsiteIconsDisabled stops this device from fetching website icons for logins.
+	IsWebsiteIconsDisabled bool `json:"websiteIconsDisabled,omitempty"`
 }
 
 type PairedBrowser struct {

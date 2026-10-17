@@ -13,6 +13,7 @@ import (
 	"github.com/tryhisar/hisar/core/app"
 	"github.com/tryhisar/hisar/core/browserprotocol"
 	"github.com/tryhisar/hisar/core/crypt"
+	"github.com/tryhisar/hisar/core/item"
 )
 
 // SecretKeyStore keeps the Secret Key in the iOS Keychain, shared with the AutoFill extension.
@@ -408,4 +409,35 @@ func encodePasskeyJSON(value any, err error) (string, error) {
 		err = errors.New(strings.TrimPrefix(responseError.Message, "passkey: "))
 	}
 	return encodeJSON(value, err)
+}
+
+// PrepareItemIcon turns a photo or image into the PNG an item's icon keeps (icon.image in the item JSON).
+func (hisar *Hisar) PrepareItemIcon(image []byte) ([]byte, error) {
+	return hisar.service.PrepareItemIcon(image)
+}
+
+// GetWebsiteIcon returns a login website's icon as a PNG, or nil when there is none, website icons are off or the app is
+// locked. It may ask the website, so the app calls it off the main thread.
+func (hisar *Hisar) GetWebsiteIcon(rawURL string) ([]byte, error) {
+	return hisar.service.GetWebsiteIcon(rawURL)
+}
+
+// IsWebsiteIconsEnabled reports whether logins show their website's icon.
+func (hisar *Hisar) IsWebsiteIconsEnabled() bool {
+	return hisar.service.IsWebsiteIconsEnabled()
+}
+
+// SetWebsiteIconsEnabled turns website icons on or off; off forgets the icons this iPhone cached.
+func (hisar *Hisar) SetWebsiteIconsEnabled(isEnabled bool) error {
+	return hisar.service.SetWebsiteIconsEnabled(isEnabled)
+}
+
+// ListAllIconPreset returns the preset icon IDs ([]string) as JSON, in the order the picker shows them.
+func (hisar *Hisar) ListAllIconPreset() (string, error) {
+	return encodeJSON(item.IconPresets(), nil)
+}
+
+// ListAllIconColor returns the preset icon color IDs ([]string) as JSON.
+func (hisar *Hisar) ListAllIconColor() (string, error) {
+	return encodeJSON(item.IconColors(), nil)
 }
