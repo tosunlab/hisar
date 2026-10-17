@@ -12,6 +12,25 @@ export interface AdminServer {
   publicUrl: string;
 }
 
+export type CheckStatus = "ok" | "warning" | "failed";
+
+export interface InstanceCheck {
+  id: string;
+  title: string;
+  status: CheckStatus;
+  message: string;
+}
+
+export interface AdminHealth {
+  version: string;
+  // latestVersion is empty unless a newer server release exists.
+  latestVersion: string;
+  database: { ok: boolean; migrations: { name: string; appliedAt: string | null }[] };
+  counts: { accounts: number; vaults: number; items: number; shareLinks: number; pendingInvites: number };
+  storageBytes: number;
+  checks: InstanceCheck[];
+}
+
 export const notAdminMessage = "This account is not an admin on the Hisar server.";
 
 const sessionStorageKey = "hisar.admin.session";
@@ -82,6 +101,10 @@ export async function signOut(): Promise<void> {
 
 export function getServer(): Promise<AdminServer> {
   return request("GET", "/admin/server");
+}
+
+export function getHealth(): Promise<AdminHealth> {
+  return request("GET", "/admin/health");
 }
 
 export function getErrorMessage(error: unknown): string {
