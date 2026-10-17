@@ -23,3 +23,8 @@ xcuserdata/
 deploy/.env
 /.dmgbuild/
 /desktop/build/sparkle/
+/admin/wasm/
+/admin/test-results/
+/admin/playwright-report/
+/server/internal/api/adminpage/dist/*
+!/server/internal/api/adminpage/dist/.gitkeep
