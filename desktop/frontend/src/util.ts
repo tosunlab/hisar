@@ -478,6 +478,16 @@ export function formatRole(role: string): string {
   return role ? role[0].toUpperCase() + role.slice(1) : "";
 }
 
+// formatRoleWithArticle is a vault or organization role inside a sentence: "an owner", "an editor", "a reader", "an admin", "a member".
+export function formatRoleWithArticle(role: string): string {
+  return `${/^[aeiou]/.test(role) ? "an" : "a"} ${role}`;
+}
+
+// formatCount is a count with its noun: "1 member", "3 members".
+export function formatCount(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+
 const allOperatingSystemLabel: Record<string, string> = { darwin: "macOS", linux: "Linux", windows: "Windows", ios: "iOS", android: "Android" };
 const allAppLabel: Record<string, string> = { desktop: "app", cli: "command line", extension: "browser extension", mobile: "app" };
 

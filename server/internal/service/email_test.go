@@ -59,3 +59,22 @@ func TestComposeEmails(t *testing.T) {
 		}
 	}
 }
+
+func TestComposeOrganizationInvitationEmails(t *testing.T) {
+	inviter := &store.Account{Name: "Alice", Email: "alice@example.com"}
+	expiresAt := time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)
+
+	invitation := composeOrganizationInvitationEmail(inviter, "bob@example.com", "Acme\r\nBcc: eve@example.com", "admin")
+	if invitation.To != "bob@example.com" || invitation.Subject != "Alice invited you to AcmeBcc: eve@example.com in Hisar" ||
+		!strings.Contains(invitation.Body, "Alice (alice@example.com) invited you to join the organization “AcmeBcc: eve@example.com” in Hisar as an admin") ||
+		!strings.Contains(invitation.Body, "`hisar orgs`") || !strings.Contains(invitation.Body, "`hisar org accept`") || strings.Contains(invitation.Body, "http") {
+		t.Errorf("organization invitation: %+v", invitation)
+	}
+
+	signUp := composeOrganizationSignUpEmail(inviter, "ghost@example.com", "Acme", "member", "https://api.tryhisar.com/invite/xyz", "xyz", expiresAt)
+	if signUp.To != "ghost@example.com" || signUp.Subject != "Alice invited you to Acme in Hisar" || !strings.Contains(signUp.Body, "“Acme” in Hisar as a member") ||
+		!strings.Contains(signUp.Body, "https://api.tryhisar.com/invite/xyz\n") || !strings.Contains(signUp.Body, "\nxyz\n") ||
+		!strings.Contains(signUp.Body, "`hisar org accept`") || !strings.Contains(signUp.Body, "18 October 2026") {
+		t.Errorf("organization sign-up: %+v", signUp)
+	}
+}

@@ -20,7 +20,7 @@ func TestRotateVault(t *testing.T) {
 	firstItem := &Item{ID: uuid.NewString(), Revision: uuid.NewString(), Overview: []byte("o1"), Details: []byte("d1"), UpdatedBy: "AAAAAA"}
 	secondItem := &Item{ID: uuid.NewString(), Revision: uuid.NewString(), Overview: []byte("o2"), Details: []byte("d2"), UpdatedBy: "BBBBBB"}
 	for _, vaultItem := range []*Item{firstItem, secondItem} {
-		if _, err := database.PutItem(ctx, vaultID, "", vaultItem); err != nil {
+		if _, err := database.PutItem(ctx, vaultID, "", 0, vaultItem); err != nil {
 			t.Fatal(err)
 		}
 	}

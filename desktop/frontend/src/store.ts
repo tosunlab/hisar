@@ -8,7 +8,17 @@ import {
   type BrowserStatus,
   type CommandLineStatus,
   type Device,
+  type Organization,
+  type OrganizationInvitation,
+  type OrganizationMember,
+  type OrganizationRole,
+  type Organizations,
+  type OrganizationSummary,
   type Person,
+  type SentOrganizationInvitation,
+  type Team,
+  type TeamMember,
+  type TeamVault,
   type ReceivedShareInvitation,
   type SentShareInvitation,
   type ShareAwaitingUnlock,
@@ -34,8 +44,9 @@ import {
   type ExportRequest,
   type ExportResult,
   type FavoriteItem,
+  type WaitingVaultKeys,
 } from "./api";
-import { allAddressKey, formatDatabaseLocation, formatFullName, formatServerAddress } from "./util";
+import { allAddressKey, formatDatabaseLocation, formatFullName, formatRoleWithArticle, formatServerAddress } from "./util";
 
 export type EditorMode = "view" | "edit" | "create" | "create-secure-note" | "create-credit-card" | "create-identity" | "create-api-credential" | "create-address" | "create-software-license" | "create-server" | "create-database" | "create-ssh-key";
 export type ImportStep = "choose" | "preview" | "saving" | "done";
@@ -55,6 +66,12 @@ export interface VaultDialog {
   mode: VaultDialogMode;
   actions: VaultActions;
   blockedReason: string;
+}
+
+// OrganizationAlert: title names the refused action, message is the server's sentence.
+export interface OrganizationAlert {
+  title: string;
+  message: string;
 }
 
 export const store = reactive({
@@ -114,6 +131,15 @@ export const store = reactive({
   shareLinkDialog: null as ShareLinkDialog | null,
   vaultDialog: null as VaultDialog | null,
   allRemovedVaultNotice: [] as RemovedVaultNotice[],
+  organizations: { organizations: [], invitations: [] } as Organizations,
+  // organizationByID holds the organizations this window opened: in Settings, an organization vault's sharing panel and Where.
+  organizationByID: {} as Record<string, Organization>,
+  // selectedOrganizationID is the organization Settings → Organizations shows; "" shows the list.
+  selectedOrganizationID: "",
+  organizationsErrorMessage: "",
+  waitingVaultKeys: { waiting: [], deliveryError: "", rotationError: "" } as WaitingVaultKeys,
+  // organizationAlert is a refused organization change: the action and the server's sentence.
+  organizationAlert: null as OrganizationAlert | null,
 });
 
 let noticeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -161,6 +187,12 @@ function clearAllVaultData(): void {
   store.shareLinkDialog = null;
   store.vaultDialog = null;
   store.allRemovedVaultNotice = [];
+  store.organizations = { organizations: [], invitations: [] };
+  store.organizationByID = {};
+  store.selectedOrganizationID = "";
+  store.organizationsErrorMessage = "";
+  store.waitingVaultKeys = { waiting: [], deliveryError: "", rotationError: "" };
+  store.organizationAlert = null;
   store.allVault = [];
   store.selectedVaultID = "";
   store.allItem = [];
@@ -425,6 +457,7 @@ export async function loadAllVault(): Promise<void> {
   await loadShareInvitationsQuietly();
   await loadAllShareLinkQuietly();
   await loadAllFavoriteQuietly();
+  await refreshOrganizationsQuietly();
 }
 
 function findPersonalVaultID(allVault: VaultSummary[]): string {
@@ -572,6 +605,7 @@ export async function syncInBackground(): Promise<void> {
     await loadShareInvitationsQuietly();
     await loadAllShareLinkQuietly();
     await loadAllFavoriteQuietly();
+    await refreshOrganizationsQuietly();
     if (!allVault.some((vault) => vault.id === store.selectedVaultID)) {
       if (allVault.length > 0) {
         await selectVault(findPersonalVaultID(allVault));
@@ -606,6 +640,17 @@ export async function selectVault(vaultID: string): Promise<void> {
 
 export async function createVault(name: string): Promise<boolean> {
   const vault = await runAction(() => api.createVault(name));
+  if (!vault) {
+    return false;
+  }
+  await loadAllVault();
+  await selectVault(vault.id);
+  return true;
+}
+
+// createOrganizationVault creates a vault the team owns; this app gives the team's other members its key.
+export async function createOrganizationVault(organizationID: string, teamID: string, name: string): Promise<boolean> {
+  const vault = await runAction(() => api.createOrganizationVault(organizationID, teamID, name));
   if (!vault) {
     return false;
   }
@@ -1049,6 +1094,14 @@ export function getFirstName(member: { name: string; email: string }): string {
 
 export async function loadSharing(): Promise<void> {
   const vaultID = store.selectedVaultID;
+  const organizationID = getSelectedVault()?.organizationId;
+  if (organizationID) {
+    const organization = await runAction(() => api.getOrganization(organizationID));
+    if (organization) {
+      store.organizationByID = { ...store.organizationByID, [organizationID]: organization };
+    }
+    return;
+  }
   const result = await runAction(() => Promise.all([api.listAllVaultMember(vaultID), api.listAllShareInvitation()]));
   if (result && vaultID === store.selectedVaultID) {
     [store.allVaultMember, store.shareInvitations] = result;
@@ -1152,6 +1205,278 @@ export async function removeVaultMember(member: VaultMember): Promise<boolean> {
   }
   showNotice(`Removed ${getFirstName(member)} and re-encrypted the vault`);
   return true;
+}
+
+// Organizations load quietly for the vault list and its banners; Settings → Organizations says why its list could not
+// load, like the SSH agent section. A refused change shows the server's sentence in an alert named after the action.
+
+function applyOrganizations(organizations: Organizations): void {
+  store.organizations = organizations;
+  const allOrganizationID = new Set(organizations.organizations.map((organization) => organization.id));
+  store.organizationByID = Object.fromEntries(Object.entries(store.organizationByID).filter(([organizationID]) => allOrganizationID.has(organizationID)));
+  if (!allOrganizationID.has(store.selectedOrganizationID)) {
+    store.selectedOrganizationID = "";
+  }
+}
+
+async function loadOrganizationQuietly(organizationID: string): Promise<void> {
+  try {
+    const organization = await api.getOrganization(organizationID);
+    if (store.status.state === "unlocked") {
+      store.organizationByID = { ...store.organizationByID, [organizationID]: organization };
+    }
+  } catch {
+    return;
+  }
+}
+
+// refreshOrganizationsQuietly reloads the organizations with the invitations to them, the vaults waiting for a key (the
+// backend first gives and re-encrypts what this app can), every organization this window loaded (Settings, a sharing
+// panel, the new-vault form's Where) and the organizations on screen.
+export async function refreshOrganizationsQuietly(): Promise<void> {
+  try {
+    const organizations = await api.listAllOrganization();
+    if (store.status.state !== "unlocked") {
+      return;
+    }
+    applyOrganizations(organizations);
+    const waitingVaultKeys = await api.listAllWaitingVaultKey();
+    if (store.status.state !== "unlocked") {
+      return;
+    }
+    store.waitingVaultKeys = waitingVaultKeys;
+  } catch {
+    return;
+  }
+  const allReloadedOrganizationID = new Set(Object.keys(store.organizationByID));
+  if (store.isSettingsOpen && store.selectedOrganizationID) {
+    allReloadedOrganizationID.add(store.selectedOrganizationID);
+  }
+  const sharedOrganizationID = getSelectedVault()?.organizationId;
+  if (store.isSharingOpen && sharedOrganizationID && store.organizations.organizations.some((organization) => organization.id === sharedOrganizationID)) {
+    allReloadedOrganizationID.add(sharedOrganizationID);
+  }
+  for (const organizationID of allReloadedOrganizationID) {
+    await loadOrganizationQuietly(organizationID);
+  }
+}
+
+// loadOrganizations fills Settings → Organizations and keeps the reason there when the list could not load.
+export async function loadOrganizations(): Promise<void> {
+  try {
+    const organizations = await api.listAllOrganization();
+    if (store.status.state === "unlocked") {
+      applyOrganizations(organizations);
+      store.organizationsErrorMessage = "";
+    }
+  } catch (error) {
+    store.organizationsErrorMessage = getErrorMessage(error);
+  }
+}
+
+// loadAllOrganizationQuietly loads every organization with its teams, for the new-vault form's Where.
+export async function loadAllOrganizationQuietly(): Promise<void> {
+  try {
+    const organizations = await api.listAllOrganization();
+    if (store.status.state !== "unlocked") {
+      return;
+    }
+    applyOrganizations(organizations);
+  } catch {
+    return;
+  }
+  for (const organization of store.organizations.organizations) {
+    await loadOrganizationQuietly(organization.id);
+  }
+}
+
+export async function openOrganization(organizationID: string): Promise<void> {
+  store.selectedOrganizationID = organizationID;
+  const organization = await runAction(() => api.getOrganization(organizationID));
+  if (organization) {
+    store.organizationByID = { ...store.organizationByID, [organizationID]: organization };
+  }
+}
+
+async function reloadAllVaultQuietly(): Promise<void> {
+  try {
+    const allVault = await api.listAllVault();
+    if (store.status.state !== "unlocked") {
+      return;
+    }
+    store.allVault = allVault;
+    if (allVault.length > 0 && !allVault.some((vault) => vault.id === store.selectedVaultID)) {
+      await selectVault(findPersonalVaultID(allVault));
+    }
+  } catch {
+    return;
+  }
+}
+
+// changeOrganization runs one change and refreshes the organizations on screen; isChangingAccess also reloads the vault
+// list, as the change can give or take vaults and roles.
+async function changeOrganization(title: string, change: () => Promise<unknown>, notice: string, isChangingAccess = false): Promise<boolean> {
+  const isChanged = await runAction(async () => {
+    await change();
+    return true;
+  });
+  if (!isChanged && store.status.state === "unlocked") {
+    store.organizationAlert = { title, message: store.errorMessage };
+    store.errorMessage = "";
+  }
+  await refreshOrganizationsQuietly();
+  if (isChanged && isChangingAccess) {
+    await reloadAllVaultQuietly();
+  }
+  if (isChanged && notice) {
+    showNotice(notice);
+  }
+  return isChanged === true;
+}
+
+export async function createOrganization(name: string): Promise<boolean> {
+  let created: OrganizationSummary | undefined;
+  const isCreated = await changeOrganization("Create organization", async () => (created = await api.createOrganization(name)), "");
+  if (created) {
+    await openOrganization(created.id);
+  }
+  return isCreated;
+}
+
+export async function renameOrganization(organization: Organization, name: string): Promise<boolean> {
+  return changeOrganization("Rename organization", () => api.renameOrganization(organization.id, name), `Renamed the organization to ${name.trim()}`);
+}
+
+export async function deleteOrganization(organization: Organization): Promise<boolean> {
+  return changeOrganization("Delete organization", () => api.deleteOrganization(organization.id), `Deleted ${organization.name}.`);
+}
+
+export async function leaveOrganization(organization: Organization): Promise<boolean> {
+  return changeOrganization(`Leave ${organization.name}`, () => api.leaveOrganization(organization.id), `You left ${organization.name}.`, true);
+}
+
+// inviteToOrganization: the server answers the same whether or not the email has an account.
+export async function inviteToOrganization(organization: Organization, email: string, role: OrganizationRole): Promise<boolean> {
+  return changeOrganization("Send invitation", () => api.inviteToOrganization(organization.id, email, role), `Invitation sent to ${email.trim().toLowerCase()}`);
+}
+
+export async function cancelOrganizationInvitation(organization: Organization, invitation: SentOrganizationInvitation): Promise<boolean> {
+  return changeOrganization("Cancel invitation", () => api.cancelOrganizationInvitation(organization.id, invitation.id), `Invitation to ${invitation.email} cancelled`);
+}
+
+export async function setOrganizationMemberRole(organization: Organization, member: OrganizationMember, role: OrganizationRole): Promise<boolean> {
+  return changeOrganization(
+    role === "admin" ? "Make admin" : "Make member",
+    () => api.setOrganizationMemberRole(organization.id, member.accountId, role),
+    `${getFirstName(member)} is now ${formatRoleWithArticle(role)}`,
+  );
+}
+
+export async function removeOrganizationMember(organization: Organization, member: OrganizationMember): Promise<boolean> {
+  return changeOrganization(
+    `Remove from ${organization.name}`,
+    () => api.removeOrganizationMember(organization.id, member.accountId),
+    `Removed ${getFirstName(member)} from ${organization.name}`,
+    true,
+  );
+}
+
+export async function createTeam(organization: Organization, name: string): Promise<boolean> {
+  return changeOrganization("New team", () => api.createTeam(organization.id, name), "");
+}
+
+export async function renameTeam(organization: Organization, team: Team, name: string): Promise<boolean> {
+  return changeOrganization("Rename team", () => api.renameTeam(organization.id, team.id, name), `Renamed the team to ${name.trim()}`);
+}
+
+export async function deleteTeam(organization: Organization, team: Team): Promise<boolean> {
+  return changeOrganization("Delete team", () => api.deleteTeam(organization.id, team.id), `Deleted ${team.name}.`, true);
+}
+
+export async function addTeamMember(organization: Organization, team: Team, member: OrganizationMember): Promise<boolean> {
+  return changeOrganization("Add member", () => api.addTeamMember(organization.id, team.id, member.accountId), `Added ${getFirstName(member)} to ${team.name}`, true);
+}
+
+export async function removeTeamMember(organization: Organization, team: Team, member: TeamMember): Promise<boolean> {
+  return changeOrganization("Remove", () => api.removeTeamMember(organization.id, team.id, member.accountId), `Removed ${getFirstName(member)} from ${team.name}`, true);
+}
+
+// giveVaultToTeam gives an organization vault to a team, or changes the role the team has it with.
+export async function giveVaultToTeam(organization: Organization, team: Team, vaultID: string, role: VaultRole): Promise<boolean> {
+  const isChange = team.vaults.some((teamVault) => teamVault.vaultId === vaultID);
+  return changeOrganization(
+    isChange ? "Change role" : "Give",
+    () => api.giveVaultToTeam(organization.id, team.id, vaultID, role),
+    isChange ? `${team.name} is now ${formatRoleWithArticle(role)} of the vault` : `Gave the vault to ${team.name}`,
+    true,
+  );
+}
+
+export async function takeVaultFromTeam(organization: Organization, team: Team, teamVault: TeamVault): Promise<boolean> {
+  return changeOrganization(
+    "Take back",
+    () => api.takeVaultFromTeam(organization.id, team.id, teamVault.vaultId),
+    `Took ${teamVault.canOpen ? teamVault.name : "the vault"} back from ${team.name}`,
+    true,
+  );
+}
+
+export async function acceptOrganizationInvitation(invitation: OrganizationInvitation): Promise<boolean> {
+  const accepted = await runAction(async () => {
+    await api.acceptOrganizationInvitation(invitation.id);
+    return true;
+  });
+  await refreshOrganizationsQuietly();
+  if (accepted) {
+    showNotice(`You joined ${invitation.organizationName}. Its vaults appear once an admin adds you to a team.`);
+  }
+  return accepted === true;
+}
+
+export async function declineOrganizationInvitation(invitation: OrganizationInvitation): Promise<boolean> {
+  const declined = await runAction(async () => {
+    await api.declineOrganizationInvitation(invitation.id);
+    return true;
+  });
+  await refreshOrganizationsQuietly();
+  if (declined) {
+    showNotice("Invitation declined");
+  }
+  return declined === true;
+}
+
+// describeTeamVault names a team's vault, or says this device has no key for it.
+export function describeTeamVault(teamVault: TeamVault): string {
+  return teamVault.canOpen ? teamVault.name : "A vault you can't open";
+}
+
+// OrganizationVault is a vault of an organization with the names of the teams that have it; name is "" when this
+// device has no key for it.
+export interface OrganizationVault {
+  vaultId: string;
+  name: string;
+  canOpen: boolean;
+  allTeamName: string[];
+}
+
+// listAllOrganizationVault lists the vaults the organization's teams have and those this device opens, named first.
+export function listAllOrganizationVault(organization: Organization): OrganizationVault[] {
+  const vaultByID = new Map<string, OrganizationVault>();
+  for (const team of organization.teams) {
+    for (const teamVault of team.vaults) {
+      const organizationVault = vaultByID.get(teamVault.vaultId) ?? { vaultId: teamVault.vaultId, name: teamVault.name, canOpen: teamVault.canOpen, allTeamName: [] };
+      organizationVault.allTeamName.push(team.name);
+      vaultByID.set(teamVault.vaultId, organizationVault);
+    }
+  }
+  for (const vault of store.allVault) {
+    if (vault.organizationId === organization.id && !vaultByID.has(vault.id)) {
+      vaultByID.set(vault.id, { vaultId: vault.id, name: vault.name, canOpen: true, allTeamName: [] });
+    }
+  }
+  return [...vaultByID.values()].sort(
+    (first, second) => Number(second.canOpen) - Number(first.canOpen) || first.name.localeCompare(second.name, undefined, { sensitivity: "base" }),
+  );
 }
 
 export async function loadSettingsData(): Promise<void> {

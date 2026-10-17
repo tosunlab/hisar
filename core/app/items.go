@@ -372,11 +372,25 @@ func (s *Service) SaveItem(vaultID string, detail ItemDetail) (ItemDetail, error
 	if err := s.checkServerSSHKey(ctx, vault, &vaultItem); err != nil {
 		return ItemDetail{}, err
 	}
-	if _, err := s.unlockedSession.SaveItem(ctx, vault, &vaultItem); err != nil {
+	if err := s.saveSessionItem(ctx, vault, &vaultItem); err != nil {
 		return ItemDetail{}, convertError(err)
 	}
 	s.replaceCachedItem(vaultID, vaultItem)
 	return s.describeItem(&vaultItem), nil
+}
+
+// saveSessionItem writes vaultItem. An update passes the cached plaintext it started from, so a key rotation can
+// be told from a change someone else made.
+func (s *Service) saveSessionItem(ctx context.Context, vault *session.Vault, vaultItem *item.Item) error {
+	var base *item.Item
+	if vaultItem.ID != "" && vaultItem.Revision != "" {
+		if cached, err := s.findItem(vault.ID, vaultItem.ID); err == nil && cached != vaultItem {
+			copied := *cached
+			base = &copied
+		}
+	}
+	_, err := s.unlockedSession.SaveItem(ctx, vault, vaultItem, base)
+	return err
 }
 
 // buildSavedItem keeps the category and passkeys of an existing item; an ssh-key item only takes the title, tags and notes
@@ -512,7 +526,7 @@ func (s *Service) ConvertToSecureNote(vaultID, itemID string) (ItemDetail, error
 	}
 	vaultItem := *cachedItem
 	vaultItem.Overview.Category = item.CategorySecureNote
-	if _, err := s.unlockedSession.SaveItem(ctx, vault, &vaultItem); err != nil {
+	if err := s.saveSessionItem(ctx, vault, &vaultItem); err != nil {
 		return ItemDetail{}, convertError(err)
 	}
 	s.replaceCachedItem(vaultID, vaultItem)
@@ -623,7 +637,7 @@ func (s *Service) DuplicateItem(vaultID, itemID string) (ItemDetail, error) {
 	copiedItem.Details.Fields = slices.Clone(cachedItem.Details.Fields)
 	copiedItem.Details.Passkeys = nil
 	item.UpdatePasskeyOverview(&copiedItem)
-	if _, err := s.unlockedSession.SaveItem(ctx, vault, &copiedItem); err != nil {
+	if err := s.saveSessionItem(ctx, vault, &copiedItem); err != nil {
 		return ItemDetail{}, convertError(err)
 	}
 	s.replaceCachedItem(vaultID, copiedItem)

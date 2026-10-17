@@ -113,5 +113,5 @@ func (s *Session) ShareVault(ctx context.Context, vault *Vault, member *apitypes
 	if err != nil {
 		return err
 	}
-	return s.Client.SetAccess(ctx, vault.ID, member.AccountID, &apitypes.SetAccessRequest{WrappedKey: wrappedKey, Role: role})
+	return s.Client.SetAccess(ctx, vault.ID, member.AccountID, &apitypes.SetAccessRequest{WrappedKey: wrappedKey, Role: role, KeyGeneration: vault.KeyGeneration})
 }

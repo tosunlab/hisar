@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -11,19 +12,24 @@ import (
 )
 
 // completeAcceptedShares wraps vault keys for people who accepted this user's share invitations, pinning their
-// signing keys. It returns whether a share was completed; a failure is kept for ListShareInvitations to show.
+// signing keys. It returns whether a share was completed. A failure is kept for ListShareInvitations to show; an
+// unreachable server, or one without share invitations, keeps the previous one unless the pins could not be saved.
 func (s *Service) completeAcceptedShares(ctx context.Context) bool {
+	pinCount := len(s.state.Pins)
 	completedShares, completeErr := s.unlockedSession.CompleteAcceptedShares(ctx)
-	if apiclient.IsUnreachable(completeErr) || apiclient.IsStatus(completeErr, http.StatusNotFound) {
-		return false
+	isErrorShown := !apiclient.IsUnreachable(completeErr) && !apiclient.IsStatus(completeErr, http.StatusNotFound)
+	var pinningPasses completionPasses
+	if len(completedShares) > 0 || len(s.state.Pins) != pinCount {
+		pinningPasses = shareCompletionPass
 	}
-	s.shareCompletionError = ""
-	if completeErr != nil {
-		s.shareCompletionError = completeErr.Error()
+	if unsavedPasses, err := s.savePins(pinningPasses); unsavedPasses&shareCompletionPass != 0 {
+		completeErr, isErrorShown = errors.Join(completeErr, err), true
 	}
 	if len(completedShares) > 0 {
-		s.state.Save()
 		s.loadVaults(ctx)
+	}
+	if isErrorShown {
+		s.shareCompletionError = describeError(completeErr)
 	}
 	return len(completedShares) > 0
 }

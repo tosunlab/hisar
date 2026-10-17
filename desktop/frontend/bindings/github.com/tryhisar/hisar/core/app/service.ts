@@ -10,14 +10,35 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
+ * AcceptOrganizationInvitation makes this user a member at once; vaults come later, through teams.
+ */
+export function AcceptOrganizationInvitation(invitationID: string): $CancellablePromise<void> {
+    return $Call.ByID(3504686473, invitationID);
+}
+
+/**
  * AcceptShareInvitation tells the owner's app it may share the vault; nothing secret is sent.
  */
 export function AcceptShareInvitation(invitationID: string): $CancellablePromise<void> {
     return $Call.ByID(3210650703, invitationID);
 }
 
+/**
+ * AddTeamMember gives a member of the organization the team's vaults; an owner's app delivers their keys.
+ */
+export function AddTeamMember(organizationID: string, teamID: string, accountID: string): $CancellablePromise<void> {
+    return $Call.ByID(619500911, organizationID, teamID, accountID);
+}
+
 export function CancelImport(): $CancellablePromise<void> {
     return $Call.ByID(368535262);
+}
+
+/**
+ * CancelOrganizationInvitation withdraws a pending invitation; admins only.
+ */
+export function CancelOrganizationInvitation(organizationID: string, invitationID: string): $CancellablePromise<void> {
+    return $Call.ByID(1413646519, organizationID, invitationID);
 }
 
 /**
@@ -94,12 +115,38 @@ export function CopyText(text: string): $CancellablePromise<void> {
     return $Call.ByID(530120863, text);
 }
 
+/**
+ * CreateOrganization makes this user the first admin of a new organization.
+ */
+export function CreateOrganization(name: string): $CancellablePromise<$models.OrganizationSummary> {
+    return $Call.ByID(1248045462, name);
+}
+
+/**
+ * CreateOrganizationVault creates a vault of the organization owned by the team, which this user must be in; the
+ * team's other members get its key from this app at once.
+ */
+export function CreateOrganizationVault(organizationID: string, teamID: string, name: string): $CancellablePromise<$models.VaultSummary> {
+    return $Call.ByID(2815985738, organizationID, teamID, name);
+}
+
 export function CreateShareLink(request: $models.ShareLinkRequest): $CancellablePromise<$models.ShareLink> {
     return $Call.ByID(1085352404, request);
 }
 
+/**
+ * CreateTeam is for admins; team names are unique in the organization regardless of case.
+ */
+export function CreateTeam(organizationID: string, name: string): $CancellablePromise<$models.Team> {
+    return $Call.ByID(1914375328, organizationID, name);
+}
+
 export function CreateVault(name: string): $CancellablePromise<$models.VaultSummary> {
     return $Call.ByID(4398659, name);
+}
+
+export function DeclineOrganizationInvitation(invitationID: string): $CancellablePromise<void> {
+    return $Call.ByID(3978987369, invitationID);
 }
 
 export function DeclineShareInvitation(invitationID: string): $CancellablePromise<void> {
@@ -125,10 +172,24 @@ export function DeleteItem(vaultID: string, itemID: string): $CancellablePromise
 }
 
 /**
+ * DeleteOrganization is for admins, and refused while the organization has vaults.
+ */
+export function DeleteOrganization(organizationID: string): $CancellablePromise<void> {
+    return $Call.ByID(3169116585, organizationID);
+}
+
+/**
  * DeletePasskey removes one passkey from an item; credentialID is base64url.
  */
 export function DeletePasskey(vaultID: string, itemID: string, credentialID: string): $CancellablePromise<$models.ItemDetail> {
     return $Call.ByID(4035618670, vaultID, itemID, credentialID);
+}
+
+/**
+ * DeleteTeam takes the team's vaults from its members unless another team gives them.
+ */
+export function DeleteTeam(organizationID: string, teamID: string): $CancellablePromise<void> {
+    return $Call.ByID(3347983567, organizationID, teamID);
 }
 
 export function DeleteVault(vaultID: string, request: $models.VaultDeletionRequest): $CancellablePromise<$models.VaultDeletionResult> {
@@ -217,6 +278,14 @@ export function GetOneTimeCode(vaultID: string, itemID: string): $CancellablePro
     return $Call.ByID(1005440637, vaultID, itemID);
 }
 
+/**
+ * GetOrganization returns an organization's members with their security codes, its teams with their members and
+ * vaults, and for admins its pending invitations. Vaults this user cannot open are listed without a name.
+ */
+export function GetOrganization(organizationID: string): $CancellablePromise<$models.Organization> {
+    return $Call.ByID(3339834708, organizationID);
+}
+
 export function GetStatus(): $CancellablePromise<$models.Status> {
     return $Call.ByID(3860301781);
 }
@@ -227,6 +296,13 @@ export function GetTheme(): $CancellablePromise<$models.Theme> {
 
 export function GetVaultActions(vaultID: string): $CancellablePromise<$models.VaultActions> {
     return $Call.ByID(3367099460, vaultID);
+}
+
+/**
+ * GiveVaultToTeam gives an organization vault to a team with role, or changes the team's role.
+ */
+export function GiveVaultToTeam(organizationID: string, teamID: string, vaultID: string, role: string): $CancellablePromise<void> {
+    return $Call.ByID(408941764, organizationID, teamID, vaultID, role);
 }
 
 /**
@@ -241,6 +317,20 @@ export function ImportSSHKey(vaultID: string, title: string, privateKeyText: str
  */
 export function InvitePerson(email: string): $CancellablePromise<void> {
     return $Call.ByID(240457833, email);
+}
+
+/**
+ * InviteToOrganization emails an invitation; the answer is the same whether or not the email has an account.
+ */
+export function InviteToOrganization(organizationID: string, email: string, role: string): $CancellablePromise<void> {
+    return $Call.ByID(1200749882, organizationID, email, role);
+}
+
+/**
+ * LeaveOrganization removes this user from the organization and its teams, and so from its vaults.
+ */
+export function LeaveOrganization(organizationID: string): $CancellablePromise<void> {
+    return $Call.ByID(1713270019, organizationID);
 }
 
 export function LeaveVault(vaultID: string): $CancellablePromise<void> {
@@ -278,6 +368,13 @@ export function ListImportFormats(): $CancellablePromise<$models.ImportFormat[] 
  */
 export function ListItems(vaultID: string): $CancellablePromise<$models.ItemDetail[] | null> {
     return $Call.ByID(3836872759, vaultID);
+}
+
+/**
+ * ListOrganizations returns the organizations this user is in and the invitations to their email.
+ */
+export function ListOrganizations(): $CancellablePromise<$models.Organizations> {
+    return $Call.ByID(869031763);
 }
 
 /**
@@ -329,6 +426,14 @@ export function ListVaults(): $CancellablePromise<$models.VaultSummary[] | null>
     return $Call.ByID(65661788);
 }
 
+/**
+ * ListWaitingVaultKeys delivers and rotates what this app can first, then lists the organization vaults this user
+ * waits for an owner's app to deliver, with why this app could not deliver or rotate.
+ */
+export function ListWaitingVaultKeys(): $CancellablePromise<$models.WaitingVaultKeys> {
+    return $Call.ByID(1166404848);
+}
+
 export function Lock(): $CancellablePromise<$models.Status> {
     return $Call.ByID(1856014238);
 }
@@ -354,10 +459,33 @@ export function PreviewImport(vaultID: string): $CancellablePromise<$models.Impo
 }
 
 /**
+ * RemoveOrganizationMember removes someone from the organization and its teams; they lose its vaults, which the
+ * owners' apps then rotate.
+ */
+export function RemoveOrganizationMember(organizationID: string, accountID: string): $CancellablePromise<void> {
+    return $Call.ByID(3225292736, organizationID, accountID);
+}
+
+export function RemoveTeamMember(organizationID: string, teamID: string, accountID: string): $CancellablePromise<void> {
+    return $Call.ByID(1622936434, organizationID, teamID, accountID);
+}
+
+/**
  * RemoveVaultMember removes a member and re-encrypts the vault with a new key that only the remaining members get.
  */
 export function RemoveVaultMember(vaultID: string, accountID: string): $CancellablePromise<void> {
     return $Call.ByID(561864929, vaultID, accountID);
+}
+
+/**
+ * RenameOrganization is for admins; the name is visible to the server.
+ */
+export function RenameOrganization(organizationID: string, name: string): $CancellablePromise<void> {
+    return $Call.ByID(442293424, organizationID, name);
+}
+
+export function RenameTeam(organizationID: string, teamID: string, name: string): $CancellablePromise<void> {
+    return $Call.ByID(2441931278, organizationID, teamID, name);
 }
 
 export function RenameVault(vaultID: string, name: string): $CancellablePromise<$models.VaultSummary> {
@@ -425,6 +553,13 @@ export function SetItemFavorite(vaultID: string, itemID: string, isFavorite: boo
 }
 
 /**
+ * SetOrganizationMemberRole makes a member an admin or a member; an organization always keeps one admin.
+ */
+export function SetOrganizationMemberRole(organizationID: string, accountID: string, role: string): $CancellablePromise<void> {
+    return $Call.ByID(524823226, organizationID, accountID, role);
+}
+
+/**
  * SetTheme saves the theme for this device; it is kept when signing out.
  */
 export function SetTheme(appearance: string, color: string): $CancellablePromise<$models.Theme> {
@@ -462,6 +597,10 @@ export function SignUp(invite: string, email: string, name: string, password: st
  */
 export function StartImport(vaultID: string, isSkippingDuplicate: boolean): $CancellablePromise<$models.ImportProgress> {
     return $Call.ByID(2540519962, vaultID, isSkippingDuplicate);
+}
+
+export function TakeVaultFromTeam(organizationID: string, teamID: string, vaultID: string): $CancellablePromise<void> {
+    return $Call.ByID(3625032219, organizationID, teamID, vaultID);
 }
 
 export function Unlock(password: string): $CancellablePromise<$models.Status> {
