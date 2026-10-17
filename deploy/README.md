@@ -67,7 +67,15 @@ with someone who already has an account still works, and they see the invitation
 
 1. Get SMTP credentials from your mail provider for a sending address such as `noreply@<domain>`, and set up SPF and
    DKIM for that domain so the emails are delivered.
-2. In `.env` on the server, uncomment and fill in all five (the server refuses to start with only some of them):
+2. Sign in to the admin dashboard at `https://<domain>/admin`, open **Settings → Email**, fill in the host, port,
+   username, password and sender, click **Save**, then **Send test email…** to check them. The change applies at once.
+   The SMTP password is then stored in the database in plain text, not encrypted: anyone who can read the database or
+   its backups can read it. Changing the host, port or username later clears it, so enter it again in the same save.
+
+Or set them in `.env` on the server, which keeps the SMTP password out of the database. Any `HISAR_SMTP_*` variable
+there sets all of Email: the values saved in the dashboard are ignored, a variable left empty gives its default (port
+587), and the dashboard shows every Email field read-only with "Email is set by HISAR_SMTP_* variables on the server."
+With a host, the server needs a port, a sender and, with a username, a password, and refuses to start without them:
 
    ```sh
    HISAR_SMTP_HOST=smtp.example.com
@@ -77,10 +85,27 @@ with someone who already has an account still works, and they see the invitation
    HISAR_SMTP_FROM=Hisar <noreply@example.com>
    ```
 
-3. `chmod 600 .env && docker compose up -d`. The log says `email through smtp.example.com port 587`.
+Then `chmod 600 .env && docker compose up -d`. The log says `email through smtp.example.com port 587`.
 
 The server never sends credentials without TLS. The emails are plain text without tracking; failures are logged as
 `email not sent: …`, without the recipient's address.
+
+## Instance settings
+
+Admins change the server's settings in the admin dashboard under **Settings**, without a restart: **Email** (above),
+**Sign-up** (who can invite people: anyone with an account, or admins only), **App versions** (the minimum app versions
+of `docs/DESIGN.md` §8.7) and **Security** (session lifetime, auth burst, and how long item history, the audit log and
+expired invitations are kept; the audit log at least 30 days). They are stored in the `instance_settings` table. These
+variables in `.env` override a field and lock it in the dashboard (any of the Email variables locks all of Email);
+`compose.yaml` passes each of them to the server, and an empty value leaves the field to the dashboard:
+
+| Setting | Variable |
+|---|---|
+| Email | `HISAR_SMTP_HOST`, `HISAR_SMTP_PORT`, `HISAR_SMTP_USERNAME`, `HISAR_SMTP_PASSWORD`, `HISAR_SMTP_FROM` |
+| App versions | `HISAR_MINIMUM_VERSION_DESKTOP_MACOS`, `HISAR_MINIMUM_VERSION_IOS`, `HISAR_MINIMUM_VERSION_CLI`, `HISAR_MINIMUM_VERSION_EXTENSION` |
+| Auth burst | `HISAR_AUTH_BURST` |
+
+Run one server process per database: each process reads the settings at start and after its own saves.
 
 ## Desktop app updates
 

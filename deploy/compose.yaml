@@ -27,12 +27,17 @@ services:
       # Desktop app updates from GitHub Releases; empty means tosunlab/hisar without a token, "off" disables them.
       HISAR_DESKTOP_UPDATE_GITHUB_REPOSITORY: ${HISAR_DESKTOP_UPDATE_GITHUB_REPOSITORY:-}
       HISAR_DESKTOP_UPDATE_GITHUB_TOKEN: ${HISAR_DESKTOP_UPDATE_GITHUB_TOKEN:-}
-      # Optional email for invites and share invitations; empty disables it.
+      # Instance settings from .env; empty leaves them to the admin dashboard. Any HISAR_SMTP_* value sets all of Email.
       HISAR_SMTP_HOST: ${HISAR_SMTP_HOST:-}
       HISAR_SMTP_PORT: ${HISAR_SMTP_PORT:-}
       HISAR_SMTP_USERNAME: ${HISAR_SMTP_USERNAME:-}
       HISAR_SMTP_PASSWORD: ${HISAR_SMTP_PASSWORD:-}
       HISAR_SMTP_FROM: ${HISAR_SMTP_FROM:-}
+      HISAR_MINIMUM_VERSION_DESKTOP_MACOS: ${HISAR_MINIMUM_VERSION_DESKTOP_MACOS:-}
+      HISAR_MINIMUM_VERSION_IOS: ${HISAR_MINIMUM_VERSION_IOS:-}
+      HISAR_MINIMUM_VERSION_CLI: ${HISAR_MINIMUM_VERSION_CLI:-}
+      HISAR_MINIMUM_VERSION_EXTENSION: ${HISAR_MINIMUM_VERSION_EXTENSION:-}
+      HISAR_AUTH_BURST: ${HISAR_AUTH_BURST:-}
     volumes:
       - hisar-data:/data
     ports:
