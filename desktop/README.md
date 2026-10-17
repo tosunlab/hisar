@@ -200,7 +200,7 @@ Settings → General → **Import…**, or **+** → **Import…** in a vault. T
 
 The Hisar extension (`extension/`) fills and saves logins through the desktop app (design: `docs/DESIGN.md` §9.2).
 
-- `Hisar.app/Contents/MacOS/hisar-browser-host` is the native messaging host. At launch the app writes `com.tryhisar.hisar.json` into `NativeMessagingHosts` of every installed Chromium browser (Chrome, Chrome Beta/Canary, Chromium, Brave, Edge, Arc, Vivaldi), allowing only the extension `mmipiffoogblblocokimpemdopmdjghf`. Settings → Browser shows where it is registered. A development build (`wails3 dev`) has no host next to its binary and registers nothing.
+- `Hisar.app/Contents/MacOS/hisar-browser-host` is the native messaging host. At launch the app writes `com.tryhisar.hisar.json` into `NativeMessagingHosts` of every installed Chromium browser (Chrome, Chrome Beta/Canary, Chromium, Brave, Edge, Arc, Dia, Vivaldi), allowing only the extension `mmipiffoogblblocokimpemdopmdjghf`. Settings → Browser shows where it is registered. A development build (`wails3 dev`) has no host next to its binary and registers nothing.
 - The host relays to the app on `~/.hisar/browser.sock` (`HISAR_BROWSER_SOCKET` overrides it for both). In the packaged app only that host binary may connect. If the app is not running, the host opens it in the background.
 - Pairing: clicking the extension's icon the first time makes Hisar show a 6-digit code (2 minutes, 5 attempts) to type into the extension. Settings → Browser lists paired browsers with Remove and has "Only fill on the exact host".
 - Preview: `&settings=1&settingsSection=browser` (registered and paired browsers), `&browsers=none` (nothing found), `&browserPairing=1` (pairing code).

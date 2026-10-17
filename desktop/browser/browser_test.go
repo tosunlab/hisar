@@ -21,13 +21,15 @@ func TestInstallAllHostManifest(t *testing.T) {
 	homeDirectory := t.TempDir()
 	chromeDirectory := filepath.Join(homeDirectory, "Library", "Application Support", "Google", "Chrome")
 	braveDirectory := filepath.Join(homeDirectory, "Library", "Application Support", "BraveSoftware", "Brave-Browser")
-	for _, directory := range []string{chromeDirectory, braveDirectory} {
+	diaDirectory := filepath.Join(homeDirectory, "Library", "Application Support", "Dia", "User Data")
+	for _, directory := range []string{chromeDirectory, braveDirectory, diaDirectory} {
 		if err := os.MkdirAll(directory, 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
 	installations := installHostManifests(homeDirectory, "/Applications/Hisar.app/Contents/MacOS/hisar-browser-host", "darwin")
-	if len(installations) != 2 || !installations[0].IsInstalled || installations[0].Name != "Google Chrome" || installations[1].Name != "Brave" {
+	if len(installations) != 3 || !installations[0].IsInstalled || installations[0].Name != "Google Chrome" || installations[1].Name != "Brave" || installations[2].Name != "Dia" ||
+		installations[2].ManifestPath != filepath.Join(diaDirectory, "NativeMessagingHosts", "com.tryhisar.hisar.json") {
 		t.Fatalf("installations: %+v", installations)
 	}
 	content, err := os.ReadFile(filepath.Join(chromeDirectory, "NativeMessagingHosts", "com.tryhisar.hisar.json"))

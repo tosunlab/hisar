@@ -33,7 +33,7 @@ onMounted(loadBrowserStatus);
       <div class="settings-group">
         <div v-show="isRowVisible('browser-extension')" class="setting">
           <div class="setting-text">
-            <strong>Hisar for Chrome, Brave, Edge, Arc and Vivaldi</strong>
+            <strong>Hisar for Chrome, Brave, Edge, Arc, Dia and Vivaldi</strong>
             <div v-if="allRegisteredBrowser.length > 0" class="registered-browsers" data-testid="registered-browsers">
               <span class="muted">Ready in</span>
               <ul class="browser-list">

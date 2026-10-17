@@ -29,6 +29,7 @@ func getKnownBrowsers(homeDirectory, operatingSystem string) []knownBrowser {
 			{"Brave", filepath.Join(support, "BraveSoftware", "Brave-Browser")},
 			{"Microsoft Edge", filepath.Join(support, "Microsoft Edge")},
 			{"Arc", filepath.Join(support, "Arc", "User Data")},
+			{"Dia", filepath.Join(support, "Dia", "User Data")},
 			{"Vivaldi", filepath.Join(support, "Vivaldi")},
 		}
 	}
