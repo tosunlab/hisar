@@ -1,4 +1,5 @@
 import type { Component } from "vue";
+import SettingsView from "./sections/settings/SettingsView.vue";
 import HomeView from "./views/HomeView.vue";
 
 export interface Section {
@@ -10,7 +11,7 @@ export interface Section {
 
 const overview: Section = { id: "overview", title: "Overview", path: "/admin", component: HomeView };
 
-export const sections: readonly Section[] = [overview];
+export const sections: readonly Section[] = [overview, { id: "settings", title: "Settings", path: "/admin/settings", component: SettingsView }];
 
 export function findSection(pathname: string): Section {
   const path = pathname.replace(/\/+$/, "");
