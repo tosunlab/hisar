@@ -16,7 +16,7 @@ const testPassphrase = "correct horse battery staple"
 
 func buildTestDocument() *Document {
 	items := []item.Item{
-		{ID: "11111111-1111-1111-1111-111111111111", Overview: item.Overview{Title: "GitHub", Username: "alice", URLs: []string{"https://github.com"}, Tags: []string{"work"}}, Details: item.Details{
+		{ID: "11111111-1111-1111-1111-111111111111", Overview: item.Overview{Title: "GitHub", Username: "alice", URLs: []string{"https://github.com"}, Tags: []string{"work"}, Icon: &item.Icon{Preset: "code", Color: "purple"}}, Details: item.Details{
 			Password:        "hunter2",
 			Notes:           "first line\nsecond line",
 			OneTimePassword: "otpauth://totp/GitHub:alice?secret=JBSWY3DPEHPK3PXP&issuer=GitHub",
@@ -29,7 +29,7 @@ func buildTestDocument() *Document {
 		{ID: "22222222-2222-2222-2222-222222222222", Overview: item.Overview{Title: "Deploy key", Category: item.CategorySSHKey, PublicKey: "ssh-ed25519 AAAA deploy", Fingerprint: "SHA256:abc", KeyType: "ssh-ed25519"}, Details: item.Details{
 			PrivateKey: "-----BEGIN OPENSSH PRIVATE KEY-----\nkey\n-----END OPENSSH PRIVATE KEY-----\n",
 		}},
-		{ID: "33333333-3333-3333-3333-333333333333", Overview: item.Overview{Title: "Wi-Fi"}, Details: item.Details{Notes: "ünïcödé ✓"}},
+		{ID: "33333333-3333-3333-3333-333333333333", Overview: item.Overview{Title: "Wi-Fi", Icon: &item.Icon{Image: []byte("\x89PNG icon")}}, Details: item.Details{Notes: "ünïcödé ✓"}},
 	}
 	for index := range items {
 		item.UpdatePasskeyOverview(&items[index])

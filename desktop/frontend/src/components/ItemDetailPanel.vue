@@ -35,6 +35,7 @@ import {
   formatSoftwareLicenseSummary,
   getDomain,
   getItemIcon,
+  getWebsiteIconURL,
   identityCategory,
   identityFieldName,
   isMacPlatform,
@@ -256,7 +257,13 @@ function maskSecret(secret: string): string {
 <template>
   <article v-if="store.selectedItem" class="item-detail" @contextmenu="openFieldMenu">
     <header>
-      <ItemTile :title="store.selectedItem.title" :size="52" :icon="getItemIcon(store.selectedItem.category)" />
+      <ItemTile
+        :title="store.selectedItem.title"
+        :size="52"
+        :icon="getItemIcon(store.selectedItem.category)"
+        :item-icon="store.selectedItem.icon"
+        :websiteURL="getWebsiteIconURL(store.selectedItem)"
+      />
       <div class="heading">
         <h2>{{ store.selectedItem.title }}</h2>
         <div class="meta">

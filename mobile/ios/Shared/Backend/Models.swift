@@ -206,16 +206,19 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     /// A database's engine, host, port, name and options; its username and password are the item's own. The backend builds
     /// its connection string. Summaries keep only the engine, host, port and name.
     var database: ItemDatabase?
+    /// The icon the user chose, or nil for the automatic one: a login's website icon, else the category's symbol or the
+    /// initial.
+    var icon: ChosenIcon?
 
     enum CodingKeys: String, CodingKey {
-        case id, revision, category, title, username, password, notes, publicKey, fingerprint, keyType, oneTimePassword, hasOneTimePassword, canConvertToSecureNote, card, identity, isFavorite, apiCredential, address, softwareLicense, server, database
+        case id, revision, category, title, username, password, notes, publicKey, fingerprint, keyType, oneTimePassword, hasOneTimePassword, canConvertToSecureNote, card, identity, isFavorite, apiCredential, address, softwareLicense, server, database, icon
         case allURL = "urls"
         case allTag = "tags"
         case allField = "fields"
         case allPasskey = "passkeys"
     }
 
-    init(id: String = "", revision: String = "", category: String = ItemDetail.categoryLogin, title: String = "", username: String = "", allURL: [String] = [], allTag: [String] = [], password: String = "", notes: String = "", allField: [ItemField] = [], publicKey: String = "", fingerprint: String = "", keyType: String = "", oneTimePassword: String = "", hasOneTimePassword: Bool = false, allPasskey: [ItemPasskey] = [], canConvertToSecureNote: Bool = false, card: ItemCard? = nil, identity: ItemIdentity? = nil, isFavorite: Bool = false, apiCredential: ItemAPICredential? = nil, address: ItemAddress? = nil, softwareLicense: ItemSoftwareLicense? = nil, server: ItemServer? = nil, database: ItemDatabase? = nil) {
+    init(id: String = "", revision: String = "", category: String = ItemDetail.categoryLogin, title: String = "", username: String = "", allURL: [String] = [], allTag: [String] = [], password: String = "", notes: String = "", allField: [ItemField] = [], publicKey: String = "", fingerprint: String = "", keyType: String = "", oneTimePassword: String = "", hasOneTimePassword: Bool = false, allPasskey: [ItemPasskey] = [], canConvertToSecureNote: Bool = false, card: ItemCard? = nil, identity: ItemIdentity? = nil, isFavorite: Bool = false, apiCredential: ItemAPICredential? = nil, address: ItemAddress? = nil, softwareLicense: ItemSoftwareLicense? = nil, server: ItemServer? = nil, database: ItemDatabase? = nil, icon: ChosenIcon? = nil) {
         self.id = id
         self.revision = revision
         self.category = category
@@ -241,6 +244,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         self.softwareLicense = softwareLicense
         self.server = server
         self.database = database
+        self.icon = icon
     }
 
     init(from decoder: Decoder) throws {
@@ -270,6 +274,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         softwareLicense = try container.decodeIfPresent(ItemSoftwareLicense.self, forKey: .softwareLicense)
         server = try container.decodeIfPresent(ItemServer.self, forKey: .server)
         database = try container.decodeIfPresent(ItemDatabase.self, forKey: .database)
+        icon = try container.decodeIfPresent(ChosenIcon.self, forKey: .icon)
     }
 
     /// The tags typed into one field, separated by commas, without blanks or repeats.
@@ -293,6 +298,60 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     var isDatabase: Bool { category == Self.categoryDatabase }
     /// AutoFill offers the item's username and password on its websites: a login's, and a server's admin console.
     var offersLoginFill: Bool { isLogin || isServer }
+    /// The website whose icon a login shows when it has no icon of its own: its first https URL. Other types keep their
+    /// symbol.
+    var websiteIconURL: String? {
+        guard isLogin, icon == nil else { return nil }
+        return allURL.map { $0.trimmingCharacters(in: .whitespaces) }.first { $0.lowercased().hasPrefix("https://") }
+    }
+}
+
+/// An item's chosen icon: a preset (core/item IconPresets) in one of the icon colors, or a PNG image, which wins. The
+/// backend makes the image (prepareItemIcon) and refuses any other.
+struct ChosenIcon: Codable, Hashable {
+    var preset = ""
+    var color = ""
+    var image: Data?
+
+    enum CodingKeys: String, CodingKey {
+        case preset, color, image
+    }
+
+    init(preset: String = "", color: String = "", image: Data? = nil) {
+        self.preset = preset
+        self.color = color
+        self.image = image
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        preset = try container.decodeIfPresent(String.self, forKey: .preset) ?? ""
+        color = try container.decodeIfPresent(String.self, forKey: .color) ?? ""
+        image = try container.decodeIfPresent(Data.self, forKey: .image)
+    }
+
+    /// The preset icon IDs of core/item, in the picker's order.
+    static let allPreset = [
+        "bank", "card", "wallet", "crypto", "cart", "gift", "mail", "chat", "social", "work", "home", "school",
+        "cloud", "server", "database", "code", "terminal", "wifi", "globe", "game", "music", "video", "health",
+        "travel", "car", "key", "lock", "shield", "star", "heart",
+    ]
+
+    /// The icon color IDs of core/item; "" is the neutral tile.
+    static let allColor = ["red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink", "gray"]
+
+    /// The SF Symbol of each preset.
+    static let symbolByPreset: [String: String] = [
+        "bank": "building.columns", "card": "creditcard", "wallet": "wallet.bifold", "crypto": "bitcoinsign.circle",
+        "cart": "cart", "gift": "gift", "mail": "envelope", "chat": "bubble.left", "social": "at", "work": "briefcase",
+        "home": "house", "school": "graduationcap", "cloud": "cloud", "server": "server.rack", "database": "cylinder.split.1x2",
+        "code": "chevron.left.forwardslash.chevron.right", "terminal": "terminal", "wifi": "wifi", "globe": "globe",
+        "game": "gamecontroller", "music": "music.note", "video": "play.rectangle", "health": "heart.text.square",
+        "travel": "airplane", "car": "car", "key": "key", "lock": "lock", "shield": "shield", "star": "star", "heart": "heart",
+    ]
+
+    /// The symbol to draw, or nil for an image or a preset from a newer app, which draws the category's symbol.
+    var symbol: String? { image == nil ? Self.symbolByPreset[preset] : nil }
 }
 
 /// The names core/item stores an address's values under; identities and cards keep their address under the same names, and

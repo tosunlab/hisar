@@ -42,6 +42,11 @@ final class AppModel: ObservableObject {
     @Published var selectedTab: Tab = .vaults
     @Published private(set) var copyCount = 0
     @Published private(set) var isMacApprovalAllowed = true
+    @Published private(set) var isWebsiteIconsEnabled = true
+    /// Website icons by domain for this unlock; nil while one loads or when the website has none.
+    @Published private(set) var websiteIconByDomain: [String: Data] = [:]
+    /// The domains asked during this unlock, finished or not, so a website without an icon is asked once.
+    private var websiteIconTaskByDomain: [String: Task<Void, Never>] = [:]
     @Published private(set) var theme = VaultTheme.standard
     @Published private(set) var allReceivedInvitation: [ReceivedShareInvitation] = []
     @Published private(set) var allWaitingInvitation: [WaitingShareInvitation] = []
@@ -81,6 +86,7 @@ final class AppModel: ObservableObject {
             let backend = try createBackend()
             self.backend = backend
             isMacApprovalAllowed = backend.isMacApprovalAllowed()
+            isWebsiteIconsEnabled = backend.isWebsiteIconsEnabled()
             theme = backend.getTheme()
             applyStatus(backend.getStatus())
             if status.isUnlocked {
@@ -145,6 +151,7 @@ final class AppModel: ObservableObject {
             waitingVaultKeys = WaitingVaultKeys()
             selectedTab = .vaults
             clearAllApproval()
+            forgetWebsiteIcons()
         }
         if newStatus.state != VaultStatus.stateLocked {
             allShareAwaitingUnlock = []
@@ -977,6 +984,71 @@ final class AppModel: ObservableObject {
             return
         }
         theme = savedTheme
+    }
+
+    /// loadWebsiteIcon asks the backend once per domain for the icon of a login's website; tiles read websiteIconByDomain.
+    func loadWebsiteIcon(url: String) {
+        guard isWebsiteIconsEnabled, let backend, let domain = Self.getWebsiteIconDomain(url),
+              websiteIconByDomain[domain] == nil, websiteIconTaskByDomain[domain] == nil else { return }
+        websiteIconTaskByDomain[domain] = Task { [weak self] in
+            let icon = try? await runInBackground { try backend.getWebsiteIcon(url: url) }
+            guard let self, !Task.isCancelled else { return }
+            if let icon {
+                self.websiteIconByDomain[domain] = icon
+            }
+        }
+    }
+
+    func getWebsiteIcon(url: String) -> Data? {
+        Self.getWebsiteIconDomain(url).flatMap { websiteIconByDomain[$0] }
+    }
+
+    nonisolated static func getWebsiteIconDomain(_ url: String) -> String? {
+        guard let components = URLComponents(string: url.trimmingCharacters(in: .whitespaces)), components.scheme?.lowercased() == "https",
+              let host = components.host?.lowercased(), !host.isEmpty else { return nil }
+        return host
+    }
+
+    private func forgetWebsiteIcons() {
+        websiteIconTaskByDomain.values.forEach { $0.cancel() }
+        websiteIconTaskByDomain = [:]
+        websiteIconByDomain = [:]
+    }
+
+    func setWebsiteIconsEnabled(_ isEnabled: Bool) async {
+        guard await perform(isBusyShown: false, { try $0.setWebsiteIconsEnabled(isEnabled) }) != nil else { return }
+        isWebsiteIconsEnabled = isEnabled
+        forgetWebsiteIcons()
+    }
+
+    static let unreadablePhotoMessage = "Hisar can't read this photo. Choose another one."
+
+    /// prepareItemIcon turns a chosen photo into the icon image an item keeps, or shows why it can't. Photos come as the
+    /// library keeps them (HEIC from the camera, TIFF, PNG…), which the backend does not all read, so the phone decodes
+    /// and shrinks the photo first and hands it a PNG or JPEG.
+    func prepareItemIcon(_ photo: Data) async -> Data? {
+        guard let upload = Self.convertPhotoForIcon(photo) else {
+            errorMessage = Self.unreadablePhotoMessage
+            return nil
+        }
+        return await perform { try $0.prepareItemIcon(upload) }
+    }
+
+    /// convertPhotoForIcon decodes any image UIKit reads, applies its orientation, scales it down to maxSide and encodes
+    /// it as PNG when it has transparency, else as JPEG. It returns nil for data that is no image.
+    nonisolated static func convertPhotoForIcon(_ photo: Data, maxSide: CGFloat = 512) -> Data? {
+        guard let image = UIImage(data: photo), image.size.width > 0, image.size.height > 0 else { return nil }
+        let scale = min(1, maxSide / max(image.size.width, image.size.height))
+        let size = CGSize(width: max(1, (image.size.width * scale).rounded()), height: max(1, (image.size.height * scale).rounded()))
+        let alphaInfo = image.cgImage?.alphaInfo
+        let hasAlpha = [.first, .last, .premultipliedFirst, .premultipliedLast].contains(alphaInfo)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = !hasAlpha
+        let resized = UIGraphicsImageRenderer(size: size, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+        return hasAlpha ? resized.pngData() : resized.jpegData(compressionQuality: 0.9)
     }
 
     @discardableResult

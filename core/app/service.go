@@ -41,6 +41,8 @@ type Service struct {
 	phoneApprovals               *phoneApprovalRelay
 	signedOutReason              string
 	updateRequirement            updateRequirementState
+	websiteIcons                 websiteIcons
+	defaultWebsiteIconFetcher    WebsiteIconFetcher
 }
 
 // getCache opens the offline cache on first use; if it cannot be opened, even after starting it over, Hisar stays online-only.
@@ -114,6 +116,10 @@ func (s *Service) buildStatus() Status {
 	status := Status{State: StateSignedOut, Server: s.state.Server, Email: s.state.Email, Name: s.name}
 	if !s.state.IsLoggedIn() {
 		status.SignedOutReason = s.signedOutReason
+		if status.Server == "" {
+			// Signed out, the sign-in form starts from the server this device last used, never only the default one.
+			status.Server = s.state.LastServer
+		}
 	}
 	switch {
 	case s.unlockedSession != nil:

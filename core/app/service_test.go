@@ -472,9 +472,20 @@ func TestIntegrationDesktopFlow(t *testing.T) {
 	if len(biometric.keys) != 0 || service.GetStatus().BiometricEnabled {
 		t.Error("Touch ID key kept after sign out")
 	}
+	// The sign-in form opens on the server this device used, without the account's email.
+	if status := service.GetStatus(); status.Server != serverURL || status.Email != "" {
+		t.Errorf("signed-out status: server %q, email %q", status.Server, status.Email)
+	}
+	if signedOut, _ := localstate.Load(statePath); signedOut.LastServer != serverURL || signedOut.IsLoggedIn() || signedOut.Email != "" {
+		t.Errorf("state file after sign out: %+v", signedOut)
+	}
+	if _, err := service.SignIn(serverURL, email, signUpResult.SecretKey, "not the master password"); err == nil ||
+		!strings.Contains(err.Error(), "Secret Key for "+describeServer(serverURL)+"; check that this is your account's server") {
+		t.Errorf("wrong password: %v", err)
+	}
 
-	if _, err := service.SignIn(serverURL, email, signUpResult.SecretKey, password); err != nil {
-		t.Fatalf("sign in: %v", err)
+	if _, err := service.SignIn(service.GetStatus().Server, email, signUpResult.SecretKey, password); err != nil {
+		t.Fatalf("sign in again on the remembered server: %v", err)
 	}
 	if _, err := service.EnableBiometricUnlock(password); err != nil {
 		t.Fatal(err)

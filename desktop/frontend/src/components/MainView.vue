@@ -58,6 +58,7 @@ import {
   getDomain,
   getInitials,
   getItemIcon,
+  getWebsiteIconURL,
   identityCategory,
   isMacPlatform,
   secureNoteCategory,
@@ -612,7 +613,12 @@ onBeforeUnmount(() => {
               @click="selectFavoriteItem(favorite)"
               @contextmenu.prevent="openItemMenu(favorite.vaultId, favorite.item, $event, favorite)"
             >
-              <ItemTile :title="favorite.item.title" :icon="getItemIcon(favorite.item.category)" />
+              <ItemTile
+                :title="favorite.item.title"
+                :icon="getItemIcon(favorite.item.category)"
+                :item-icon="favorite.item.icon"
+                :websiteURL="getWebsiteIconURL(favorite.item)"
+              />
               <span class="item-text">
                 <span class="item-title">{{ favorite.item.title }}</span>
                 <span class="item-subtitle">{{ getItemSubtitle(favorite.item) }}</span>
@@ -637,7 +643,7 @@ onBeforeUnmount(() => {
             @click="selectItem(vaultItem.id)"
             @contextmenu.prevent="openItemMenu(store.selectedVaultID, vaultItem, $event)"
           >
-            <ItemTile :title="vaultItem.title" :icon="getItemIcon(vaultItem.category)" />
+            <ItemTile :title="vaultItem.title" :icon="getItemIcon(vaultItem.category)" :item-icon="vaultItem.icon" :websiteURL="getWebsiteIconURL(vaultItem)" />
             <span class="item-text">
               <span class="item-title">{{ vaultItem.title }}</span>
               <span class="item-subtitle">{{ getItemSubtitle(vaultItem) }}</span>

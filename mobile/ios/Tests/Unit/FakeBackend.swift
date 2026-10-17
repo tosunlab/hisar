@@ -39,6 +39,9 @@ class FakeBackend: VaultBackend {
     var allApprovalAnswer: [String] = []
     var allDevice: [Device] = []
     var isMacApprovalAllowedValue = true
+    var isWebsiteIconsEnabledValue = true
+    var websiteIconByURL: [String: Data] = [:]
+    var preparedIcon: Data?
     var theme = VaultTheme.standard
     var isThemeSaveFailing = false
     var allCopiedReference: [String] = []
@@ -320,7 +323,10 @@ class FakeBackend: VaultBackend {
 
     func signOut() throws -> VaultStatus {
         record("signOut")
+        // As the backend does, signing out keeps only the server, so the sign-in form opens on it.
+        let lastServer = status.server
         status = .signedOut
+        status.server = lastServer
         return status
     }
 
@@ -810,6 +816,26 @@ extension FakeBackend {
     func setMacApprovalAllowed(_ isAllowed: Bool) throws {
         record("setMacApprovalAllowed")
         isMacApprovalAllowedValue = isAllowed
+    }
+
+    func prepareItemIcon(_ image: Data) throws -> Data {
+        record("prepareItemIcon")
+        guard let preparedIcon else { throw BackendError(message: "choose a PNG, JPEG, GIF or WebP image") }
+        return preparedIcon
+    }
+
+    func getWebsiteIcon(url: String) throws -> Data? {
+        record("getWebsiteIcon")
+        return isWebsiteIconsEnabledValue ? websiteIconByURL[url] : nil
+    }
+
+    func isWebsiteIconsEnabled() -> Bool {
+        isWebsiteIconsEnabledValue
+    }
+
+    func setWebsiteIconsEnabled(_ isEnabled: Bool) throws {
+        record("setWebsiteIconsEnabled")
+        isWebsiteIconsEnabledValue = isEnabled
     }
 
     func getTheme() -> VaultTheme {

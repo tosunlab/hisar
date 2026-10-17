@@ -456,6 +456,27 @@ final class HisarKitBackend: VaultBackend {
         try callReturningNothing { try hisar.setMacApprovalAllowed(isAllowed) }
     }
 
+    func prepareItemIcon(_ image: Data) throws -> Data {
+        let encoded = try callReturningText { hisar.prepareItemIcon(image, error: $0) }
+        guard let prepared = Data(base64Encoded: encoded) else {
+            throw BackendError(message: "Hisar could not read the answer from its backend.")
+        }
+        return prepared
+    }
+
+    func getWebsiteIcon(url: String) throws -> Data? {
+        let encoded = try callReturningText { hisar.getWebsiteIcon(url, error: $0) }
+        return encoded.isEmpty ? nil : Data(base64Encoded: encoded)
+    }
+
+    func isWebsiteIconsEnabled() -> Bool {
+        hisar.isWebsiteIconsEnabled()
+    }
+
+    func setWebsiteIconsEnabled(_ isEnabled: Bool) throws {
+        try callReturningNothing { try hisar.setWebsiteIconsEnabled(isEnabled) }
+    }
+
     func getTheme() -> VaultTheme {
         (try? decode(VaultTheme.self, from: hisar.getTheme())) ?? .standard
     }

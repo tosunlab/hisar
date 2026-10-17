@@ -52,6 +52,27 @@ const allPath = {
   building: "M4 21V4h10v17M14 9h6v12M2 21h20M7.5 8h3M7.5 12h3M7.5 16h3M17 13h.01M17 17h.01",
   duplicate: "M9 9h11v11H9zM5 15V4h11M14.5 12v5M12 14.5h5",
   move: "M3 12h13M12 7l5 5-5 5M20 4v16",
+  // Preset item icons (core/item IconPresets); the others reuse the icons above.
+  bank: "M3 10l9-6 9 6M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 20h18",
+  wallet: "M4 7h15a1 1 0 0 1 1 1v11H4zM4 7V5h12v2M15 13h2",
+  crypto: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM9.5 8h3.5a2 2 0 0 1 0 4H9.5zM9.5 12H14a2 2 0 0 1 0 4H9.5zM9.5 8v8M11 6.5V8M11 16v1.5",
+  cart: "M3 4h2l2.4 11h10.2L20 8H6.2M9 20h.01M17 20h.01",
+  gift: "M4 10h16v10H4zM3 7h18v3H3zM12 7v13M12 7C10.5 4 7 4 7 6s3.5 1 5 1zM12 7c1.5-3 5-3 5-1s-3.5 1-5 1z",
+  chat: "M4 5h16v11H9l-5 4z",
+  social: "M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM16 12v1.5a2.5 2.5 0 0 0 5 0V12a9 9 0 1 0-3.5 7.1",
+  work: "M3 8h18v12H3zM8 8V5h8v3M3 13h18",
+  home: "M3 11l9-7 9 7M5 9.5V20h14V9.5M10 20v-6h4v6",
+  school: "M2 9l10-5 10 5-10 5zM6 11v5c0 1.5 2.7 3 6 3s6-1.5 6-3v-5M22 9v5",
+  cloud: "M7 18h10a4 4 0 0 0 .5-8A6 6 0 0 0 6 9a4.5 4.5 0 0 0 1 9z",
+  code: "M8 7l-5 5 5 5M16 7l5 5-5 5M14 4l-4 16",
+  wifi: "M2 9a15 15 0 0 1 20 0M5 12.5a10 10 0 0 1 14 0M8.5 16a5 5 0 0 1 7 0M12 19.5h.01",
+  game: "M6 8h12a4 4 0 0 1 3.9 4.9l-.9 3.6a2.5 2.5 0 0 1-4.4 1L15 16H9l-1.6 1.5a2.5 2.5 0 0 1-4.4-1L2.1 12.9A4 4 0 0 1 6 8zM6.5 12h3M8 10.5v3M15 12h.01M17 11h.01",
+  music: "M9 18V5l11-2v13M9 18a3 3 0 1 1-6 0 3 3 0 0 1 6 0zM20 16a3 3 0 1 1-6 0 3 3 0 0 1 6 0z",
+  video: "M3 6h13v12H3zM16 10l5-3v10l-5-3",
+  health: "M3 12h4l2-5 4 10 2-5h6",
+  travel: "M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z",
+  car: "M5 11l1.5-4.5A2 2 0 0 1 8.4 5h7.2a2 2 0 0 1 1.9 1.5L19 11M3 11h18v6H3zM6 17v2M18 17v2M7 14h.01M17 14h.01",
+  heart: "M12 20s-8-4.6-8-10.5A4.5 4.5 0 0 1 12 7a4.5 4.5 0 0 1 8 2.5C20 15.4 12 20 12 20z",
 } as const;
 
 export type IconName = keyof typeof allPath;

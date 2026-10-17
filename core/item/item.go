@@ -28,6 +28,8 @@ type Overview struct {
 	KeyType     string `json:"keyType,omitempty"`
 	// PasskeyRelyingPartyIDs marks an item with passkeys without the details; UpdatePasskeyOverview keeps it in step.
 	PasskeyRelyingPartyIDs []string `json:"passkeyRelyingPartyIds,omitempty"`
+	// Icon is the icon the user chose; nil shows the automatic one. NormalizeIcon keeps it valid.
+	Icon *Icon `json:"icon,omitempty"`
 }
 
 type Field struct {

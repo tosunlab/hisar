@@ -584,3 +584,15 @@ a[target="_blank"] {
   color: inherit;
   text-underline-offset: 2px;
 }
+
+/* The hues of preset item icons (core/item IconColors); ItemTile tints its background with them. */
+[data-icon-color="red"] { --icon-hue: #e5484d; }
+[data-icon-color="orange"] { --icon-hue: #f76b15; }
+[data-icon-color="yellow"] { --icon-hue: #d9a400; }
+[data-icon-color="green"] { --icon-hue: #30a46c; }
+[data-icon-color="teal"] { --icon-hue: #12a594; }
+[data-icon-color="blue"] { --icon-hue: #0090ff; }
+[data-icon-color="indigo"] { --icon-hue: #3e63dd; }
+[data-icon-color="purple"] { --icon-hue: #8e4ec6; }
+[data-icon-color="pink"] { --icon-hue: #d6409f; }
+[data-icon-color="gray"] { --icon-hue: #8b8d98; }

@@ -47,6 +47,7 @@ import {
   type WaitingVaultKeys,
 } from "./api";
 import { allAddressKey, formatDatabaseLocation, formatFullName, formatRoleWithArticle, formatServerAddress } from "./util";
+import { forgetWebsiteIcons } from "./websiteicons";
 
 export type EditorMode = "view" | "edit" | "create" | "create-secure-note" | "create-credit-card" | "create-identity" | "create-api-credential" | "create-address" | "create-software-license" | "create-server" | "create-database" | "create-ssh-key";
 export type ImportStep = "choose" | "preview" | "saving" | "done";
@@ -174,6 +175,7 @@ async function runAction<Result>(action: () => Promise<Result>): Promise<Result 
 
 function clearAllVaultData(): void {
   resetImport();
+  forgetWebsiteIcons();
   store.isTouchIDOfferShown = false;
   store.isSettingsOpen = false;
   store.isSharingOpen = false;

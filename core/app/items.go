@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/tryhisar/hisar/core/item"
+	"github.com/tryhisar/hisar/core/itemicon"
 	"github.com/tryhisar/hisar/core/session"
 	"github.com/tryhisar/hisar/core/totp"
 )
@@ -171,6 +172,9 @@ func convertToItemDetail(vaultItem *item.Item, now time.Time) ItemDetail {
 
 		CanConvertToSecureNote: vaultItem.IsCategory(item.CategoryLogin) && item.HasOnlyNotes(vaultItem),
 	}
+	if icon := vaultItem.Overview.Icon; icon != nil {
+		detail.Icon = &ItemIcon{Preset: icon.Preset, Color: icon.Color, Image: icon.Image}
+	}
 	fields := vaultItem.Details.Fields
 	if vaultItem.IsCategory(item.CategoryCreditCard) {
 		var card item.Card
@@ -327,6 +331,7 @@ func convertFromItemDetail(detail ItemDetail) item.Item {
 		Overview: item.Overview{Title: strings.TrimSpace(detail.Title), Username: strings.TrimSpace(detail.Username), Tags: item.NormalizeTags(detail.Tags)},
 		Details:  item.Details{Password: detail.Password, Notes: detail.Notes, OneTimePassword: detail.OneTimePassword},
 	}
+	vaultItem.Overview.Icon = convertFromItemIcon(detail.Icon)
 	for _, link := range detail.URLs {
 		if link = strings.TrimSpace(link); link != "" {
 			vaultItem.Overview.URLs = append(vaultItem.Overview.URLs, link)
@@ -340,6 +345,13 @@ func convertFromItemDetail(detail ItemDetail) item.Item {
 	return vaultItem
 }
 
+func convertFromItemIcon(icon *ItemIcon) *item.Icon {
+	if icon == nil {
+		return nil
+	}
+	return item.NormalizeIcon(&item.Icon{Preset: icon.Preset, Color: icon.Color, Image: icon.Image})
+}
+
 // SaveItem creates the item when detail.ID is empty, otherwise updates it based on detail.Revision.
 func (s *Service) SaveItem(vaultID string, detail ItemDetail) (ItemDetail, error) {
 	s.mutex.Lock()
@@ -349,6 +361,9 @@ func (s *Service) SaveItem(vaultID string, detail ItemDetail) (ItemDetail, error
 	}
 	if strings.TrimSpace(detail.Title) == "" {
 		return ItemDetail{}, errors.New("enter a title")
+	}
+	if detail.Icon != nil && len(detail.Icon.Image) > 0 && !item.IsIconImage(detail.Icon.Image) {
+		return ItemDetail{}, itemicon.ErrUnsupportedImage
 	}
 	if strings.TrimSpace(detail.OneTimePassword) != "" {
 		normalized, err := totp.Normalize(detail.OneTimePassword)
@@ -393,7 +408,7 @@ func (s *Service) saveSessionItem(ctx context.Context, vault *session.Vault, vau
 	return err
 }
 
-// buildSavedItem keeps the category and passkeys of an existing item; an ssh-key item only takes the title, tags and notes
+// buildSavedItem keeps the category and passkeys of an existing item; an ssh-key item only takes the title, tags, icon and notes
 // from the editor. A secure note or a card keeps no login data, and a card's values become its named fields. Login data an
 // existing one already has, which its editor does not show, is taken from the stored item, not from detail.
 func (s *Service) buildSavedItem(vaultID string, detail ItemDetail) (item.Item, error) {
@@ -434,6 +449,7 @@ func (s *Service) buildSavedItem(vaultID string, detail ItemDetail) (item.Item, 
 	vaultItem.Revision = detail.Revision
 	vaultItem.Overview.Title = strings.TrimSpace(detail.Title)
 	vaultItem.Overview.Tags = item.NormalizeTags(detail.Tags)
+	vaultItem.Overview.Icon = convertFromItemIcon(detail.Icon)
 	vaultItem.Details.Notes = detail.Notes
 	vaultItem.Details.OneTimePassword = detail.OneTimePassword
 	return vaultItem, nil

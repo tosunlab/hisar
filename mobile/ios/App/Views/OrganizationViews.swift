@@ -263,52 +263,62 @@ struct OrganizationView: View {
     private var name: String {
         organization?.name ?? model.allOrganization.first { $0.id == organizationID }?.name ?? "Organization"
     }
+
     private var isAdmin: Bool { organization?.isAdmin ?? false }
     private var trimmedEmail: String { inviteEmail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
     private var canSend: Bool { trimmedEmail.contains("@") && !isSending }
 
-    var body: some View {
+    // buildContent is the loaded organization's sections, apart from the body so Swift type-checks it in time.
+    @ViewBuilder
+    private func buildContent(_ organization: Organization) -> some View {
+        Section {
+            LabeledContent("Your role", value: OrganizationRole.describe(organization.role))
+                .accessibilityIdentifier("organization-role")
+        } footer: {
+            Text(organization.isAdmin
+                 ? "Admins manage members, teams and which teams have which vaults; being an admin gives no vault."
+                 : "Members get the vaults of the teams they are in. Admins of \(organization.name) manage its teams.")
+        }
+        if organization.isAdmin {
+            inviteSection
+        }
+        memberSection(organization)
+        if organization.isAdmin && !organization.allInvitation.isEmpty {
+            invitedSection(organization)
+        }
+        ForEach(organization.allTeam) { team in
+            teamSection(team, organization: organization)
+        }
+        if organization.isAdmin {
+            Section {
+                Button {
+                    enteredName = ""
+                    isNewTeamShown = true
+                } label: {
+                    Label("New team…", systemImage: "person.3")
+                }
+                .accessibilityIdentifier("new-team")
+            } footer: {
+                if organization.allTeam.isEmpty {
+                    Text("Teams get the organization's vaults. Create one, add members and give it a vault.")
+                }
+            }
+        }
+        Section {
+            Button(role: .destructive) {
+                isLeaveShown = true
+            } label: {
+                Label("Leave \(organization.name)…", systemImage: "rectangle.portrait.and.arrow.right")
+            }
+            .accessibilityIdentifier("leave-organization")
+        }
+    }
+
+    // The body is split into steps, each a chain Swift type-checks in time.
+    private var organizationList: some View {
         List {
             if let organization {
-                Section {
-                    LabeledContent("Your role", value: OrganizationRole.describe(organization.role))
-                        .accessibilityIdentifier("organization-role")
-                } footer: {
-                    Text(organization.isAdmin
-                         ? "Admins manage members, teams and which teams have which vaults; being an admin gives no vault."
-                         : "Members get the vaults of the teams they are in. Admins of \(organization.name) manage its teams.")
-                }
-                if organization.isAdmin {
-                    inviteSection
-                }
-                memberSection(organization)
-                if organization.isAdmin && !organization.allInvitation.isEmpty {
-                    invitedSection(organization)
-                }
-                ForEach(organization.allTeam) { team in
-                    teamSection(team, organization: organization)
-                }
-                if organization.isAdmin {
-                    Section {
-                        Button {
-                            enteredName = ""
-                            isNewTeamShown = true
-                        } label: {
-                            Label("New team…", systemImage: "person.3")
-                        }
-                        .accessibilityIdentifier("new-team")
-                    } footer: {
-                        if organization.allTeam.isEmpty {
-                            Text("Teams get the organization's vaults. Create one, add members and give it a vault.")
-                        }
-                    }
-                }
-                Section {
-                    Button("Leave \(organization.name)…", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) {
-                        isLeaveShown = true
-                    }
-                    .accessibilityIdentifier("leave-organization")
-                }
+                buildContent(organization)
             } else {
                 Label {
                     Text("Loading \(name)…")
@@ -346,6 +356,10 @@ struct OrganizationView: View {
                 }
             }
         }
+    }
+
+    private var organizationListWithAlerts: some View {
+        organizationList
         .alert("New team", isPresented: $isNewTeamShown) {
             TextField("Team name", text: $enteredName)
                 .accessibilityIdentifier("new-team-name")
@@ -380,6 +394,10 @@ struct OrganizationView: View {
         } message: {
             Text("Everyone in \(name) sees the new name.")
         }
+    }
+
+    private var organizationListWithConfirmations: some View {
+        organizationListWithAlerts
         .confirmationDialog(
             "Cancel the invitation to \(invitationToCancel?.email ?? "")?",
             isPresented: Binding(get: { invitationToCancel != nil }, set: { if !$0 { invitationToCancel = nil } }),
@@ -418,6 +436,10 @@ struct OrganizationView: View {
         } message: { team in
             Text("Its members lose the vaults they have only through \(team.name).")
         }
+    }
+
+    var body: some View {
+        organizationListWithConfirmations
         .confirmationDialog("Delete \(name)?", isPresented: $isDeleteShown, titleVisibility: .visible) {
             Button("Delete organization", role: .destructive) {
                 Task { await finishRemoval("Delete organization") { await model.deleteOrganization(organizationID: organizationID) } }
