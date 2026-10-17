@@ -134,7 +134,7 @@ onBeforeUnmount(() => window.removeEventListener("pointerdown", closeOnOutside))
         :data-testid="`icon-preset-${preset}`"
         @click="choosePreset(preset)"
       >
-        <ItemTile :title="preset" :size="30" :item-icon="{ preset, color }" />
+        <ItemTile :title="preset" :size="28" :item-icon="{ preset, color }" />
       </button>
     </div>
     <p class="section-label">Color</p>
@@ -171,7 +171,8 @@ onBeforeUnmount(() => window.removeEventListener("pointerdown", closeOnOutside))
   z-index: 30;
   top: 60px;
   left: 0;
-  width: 336px;
+  width: 352px;
+  max-width: calc(100vw - 32px);
   padding: 12px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-large);
@@ -202,6 +203,12 @@ onBeforeUnmount(() => window.removeEventListener("pointerdown", closeOnOutside))
   font-size: 12px;
 }
 
+.automatic .muted {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .upload {
   display: inline-flex;
   flex: none;
@@ -216,12 +223,15 @@ onBeforeUnmount(() => window.removeEventListener("pointerdown", closeOnOutside))
 
 .preset-grid {
   display: grid;
-  grid-template-columns: repeat(8, 1fr);
+  grid-template-columns: repeat(8, minmax(0, 1fr));
   gap: 4px;
 }
 
 .preset {
   display: inline-flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
   align-items: center;
   justify-content: center;
   padding: 3px;
