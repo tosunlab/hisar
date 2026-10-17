@@ -6,14 +6,17 @@ import (
 	"net"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/tryhisar/hisar/core/localsocket"
+	"github.com/tryhisar/hisar/core/sshagent"
 )
 
 type fakeApprovalPreference struct {
 	isCompact              bool
 	isPhoneApprovalOff     bool
 	signingRememberSeconds int
+	sshRememberSeconds     int
 	saveError              error
 }
 
@@ -49,6 +52,59 @@ func (preference *fakeApprovalPreference) SetSigningRememberSeconds(seconds int)
 	}
 	preference.signingRememberSeconds = seconds
 	return nil
+}
+
+func (preference *fakeApprovalPreference) GetSSHRememberSeconds() int {
+	if preference.sshRememberSeconds == 0 {
+		return 3600
+	}
+	return preference.sshRememberSeconds
+}
+
+func (preference *fakeApprovalPreference) SetSSHRememberSeconds(seconds int) error {
+	if preference.saveError != nil {
+		return preference.saveError
+	}
+	preference.sshRememberSeconds = seconds
+	return nil
+}
+
+func TestGetSSHRememberDuration(t *testing.T) {
+	if duration := GetSSHRememberDuration(3600); duration != time.Hour {
+		t.Errorf("3600 = %v", duration)
+	}
+	if duration := GetSSHRememberDuration(0); duration != sshagent.DefaultApprovalLifetime {
+		t.Errorf("unset = %v", duration)
+	}
+	if duration := GetSSHRememberDuration(-1); duration != 0 {
+		t.Errorf("until lock = %v", duration)
+	}
+}
+
+func TestServiceSSHRememberSetsTheAgentLifetime(t *testing.T) {
+	preference := &fakeApprovalPreference{sshRememberSeconds: -1}
+	server := sshagent.NewServer(nil, nil, nil)
+	service := NewService(Config{HomeDirectory: t.TempDir(), ApprovalPreference: preference, Server: server})
+	if status := service.GetStatus(); status.SSHRememberSeconds != -1 {
+		t.Errorf("status = %+v", status)
+	}
+	if lifetime := server.GetApprovalLifetime(); lifetime != 0 {
+		t.Errorf("the stored setting was not applied at start: %v", lifetime)
+	}
+	if status, err := service.SetSSHRemember(3600); err != nil || status.SSHRememberSeconds != 3600 {
+		t.Errorf("set: %+v %v", status, err)
+	}
+	if lifetime := server.GetApprovalLifetime(); lifetime != time.Hour {
+		t.Errorf("lifetime = %v", lifetime)
+	}
+	preference.saveError = errors.New("disk full")
+	if status, err := service.SetSSHRemember(-1); err == nil || status.SSHRememberSeconds != 3600 {
+		t.Errorf("failed save: %+v %v", status, err)
+	}
+	withoutPreference := NewService(Config{HomeDirectory: t.TempDir(), Server: server})
+	if _, err := withoutPreference.SetSSHRemember(-1); err == nil {
+		t.Error("the setting changed without a preference store")
+	}
 }
 
 func TestServiceSigningRememberClearsRememberedSigning(t *testing.T) {

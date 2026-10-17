@@ -285,6 +285,8 @@ let isPreviewSSHConfigured = new URLSearchParams(window.location.search).get("ss
 let isPreviewCompactApproval = new URLSearchParams(window.location.search).get("compact") === "1";
 let isPreviewPhoneApproval = new URLSearchParams(window.location.search).get("phoneApprovalOff") !== "1";
 let previewSigningRememberSeconds = Number(new URLSearchParams(window.location.search).get("signingRemember") ?? 0);
+let previewSSHRememberSeconds = Number(new URLSearchParams(window.location.search).get("sshRemember") ?? 3600);
+const describePreviewSSHRememberPeriod = (): string => (previewSSHRememberSeconds < 0 ? "until Hisar locks" : "for 1 hour");
 const previewAgentStatus = (backupPath = ""): SSHAgentStatus => {
   const hasError = new URLSearchParams(window.location.search).get("agent") === "error";
   return {
@@ -298,6 +300,7 @@ const previewAgentStatus = (backupPath = ""): SSHAgentStatus => {
     isCompactApproval: isPreviewCompactApproval,
     isPhoneApproval: isPreviewPhoneApproval,
     signingRememberSeconds: previewSigningRememberSeconds,
+    sshRememberSeconds: previewSSHRememberSeconds,
     backupPath,
   };
 };
@@ -808,6 +811,7 @@ function createPreviewCommandLineApproval(): ApprovalEvent {
     workingDirectory: "",
     rememberLabel: "",
     isRememberedByDefault: true,
+    rememberPeriod: describePreviewSSHRememberPeriod(),
     isConnectionApproval: false,
     warning: "",
   };
@@ -852,6 +856,7 @@ function createPreviewSSHApproval(): ApprovalEvent {
     workingDirectory: "",
     rememberLabel: "",
     isRememberedByDefault: true,
+    rememberPeriod: describePreviewSSHRememberPeriod(),
     isConnectionApproval: false,
     warning: "",
   };
@@ -872,6 +877,7 @@ function createPreviewAgentApproval(kind: string): ApprovalEvent {
     action: "use Hisar",
     isConnectionApproval: true,
     isRememberedByDefault: false,
+    rememberPeriod: describePreviewSSHRememberPeriod(),
     isUnlockRequired: isLocked,
     isPasswordUnlock: isLocked,
     isPhoneApproval: previewParameter.get("phone") === "1" && !isLocked,
@@ -1683,6 +1689,10 @@ export const previewApi = {
   },
   setSigningRemember: (seconds: number) => {
     previewSigningRememberSeconds = seconds;
+    return resolveAfterDelay(previewAgentStatus());
+  },
+  setSSHRemember: (seconds: number) => {
+    previewSSHRememberSeconds = seconds;
     return resolveAfterDelay(previewAgentStatus());
   },
   fitSSHApprovalWindow: () => Promise.resolve(),

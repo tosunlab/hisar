@@ -73,6 +73,35 @@ func (preference *ApprovalPreference) SetSigningRememberSeconds(seconds int) err
 	return s.state.Save()
 }
 
+// SSHRememberUntilLock is the SSHRememberSeconds choice that keeps a remembered SSH approval until Hisar locks.
+const SSHRememberUntilLock = -1
+
+const defaultSSHRememberSeconds = 3600
+
+var sshRememberSeconds = []int{defaultSSHRememberSeconds, SSHRememberUntilLock}
+
+// GetSSHRememberSeconds is how long a remembered SSH approval lasts: 3600 by default, or SSHRememberUntilLock.
+func (preference *ApprovalPreference) GetSSHRememberSeconds() int {
+	s := preference.service
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if !slices.Contains(sshRememberSeconds, s.state.SSHRememberSeconds) {
+		return defaultSSHRememberSeconds
+	}
+	return s.state.SSHRememberSeconds
+}
+
+func (preference *ApprovalPreference) SetSSHRememberSeconds(seconds int) error {
+	if !slices.Contains(sshRememberSeconds, seconds) {
+		return errors.New("choose 1 hour or until Hisar locks")
+	}
+	s := preference.service
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.state.SSHRememberSeconds = seconds
+	return s.state.Save()
+}
+
 // ApprovalUnlocker lets the approval window unlock Hisar, or check the master password, for an SSH or command-line request (agent.Unlocker).
 type ApprovalUnlocker struct {
 	service  *Service

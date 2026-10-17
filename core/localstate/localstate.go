@@ -61,6 +61,8 @@ type Settings struct {
 	IsPhoneApprovalDisabled bool `json:"phoneApprovalDisabled,omitempty"`
 	// SigningRememberSeconds is how long an approved commit signature may be remembered (0: always ask).
 	SigningRememberSeconds int `json:"signingRememberSeconds,omitempty"`
+	// SSHRememberSeconds is how long a remembered SSH approval lasts (0: the default, 1 hour; -1: until Hisar locks).
+	SSHRememberSeconds int `json:"sshRememberSeconds,omitempty"`
 	// IsOpenAtLoginConfigured records that the desktop app registered its login item once.
 	IsOpenAtLoginConfigured bool `json:"openAtLoginConfigured,omitempty"`
 	// IsOpenAtLoginDisabled is set when the user turned "Open Hisar at login" off.

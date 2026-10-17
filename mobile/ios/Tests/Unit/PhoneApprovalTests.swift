@@ -141,6 +141,24 @@ final class PhoneApprovalTests: XCTestCase {
         XCTAssertFalse(allApproval[2].resolveRememberChoice(true), "a request without the switch is never remembered")
     }
 
+    func testCardApprovesWithTheRequestsDefault() async {
+        let model = await createUnlockedModel(allApproval: [
+            createRememberingApproval(requestID: "ssh"),
+            createRememberingApproval(requestID: "signing", isRememberedByDefault: false),
+            createApproval(requestID: "once"),
+        ])
+        await model.approve(model.allPendingApproval[0])
+        await model.approve(model.allPendingApproval[0])
+        await model.approve(model.allPendingApproval[0])
+        XCTAssertEqual(backend.allApprovalAnswer, ["approve remembered ssh", "approve signing", "approve once"])
+    }
+
+    func testCardFooterNamesWhatApproveSends() {
+        XCTAssertEqual(createRememberingApproval(requestID: "ssh").cardApprovalNote, "Also allows Terminal for 1 hour. Tap the request to approve it once. It never unlocks Hisar on your Mac.")
+        XCTAssertEqual(createRememberingApproval(requestID: "signing", isRememberedByDefault: false).cardApprovalNote, "Approving answers this one request. It never unlocks Hisar on your Mac.")
+        XCTAssertEqual(createApproval(requestID: "once").cardApprovalNote, "Approving answers this one request. It never unlocks Hisar on your Mac.")
+    }
+
     func testSheetSwitchIsSentWithTheApproval() async {
         let model = await createReviewingModel(allApproval: [createRememberingApproval(requestID: "remembered"), createRememberingApproval(requestID: "once")])
         await model.approvePendingApproval(isRemembered: true)
@@ -158,12 +176,11 @@ final class PhoneApprovalTests: XCTestCase {
         XCTAssertEqual(backend.allApprovalAnswer, ["approve remembered 0123456789abcdef0123456789abcdef"])
     }
 
-    func testCardAndOldRequestsApproveOnce() async {
-        let model = await createUnlockedModel(allApproval: [createRememberingApproval(requestID: "card"), createApproval(requestID: "old")])
-        await model.approve(model.allPendingApproval[0])
+    func testOldRequestsApproveOnce() async {
+        let model = await createUnlockedModel(allApproval: [createApproval(requestID: "old")])
         model.reviewApproval(model.allPendingApproval[0])
         await model.approvePendingApproval(isRemembered: true)
-        XCTAssertEqual(backend.allApprovalAnswer, ["approve card", "approve old"])
+        XCTAssertEqual(backend.allApprovalAnswer, ["approve old"], "a request without the switch is never remembered")
     }
 
     func testApproveWithFaceID() async {
