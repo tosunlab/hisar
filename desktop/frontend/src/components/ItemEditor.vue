@@ -27,6 +27,7 @@ import {
   formatExpiryInput,
   formatInputAsTyped,
   getItemIcon,
+  getWebsiteIconURL,
   isCalendarDate,
   isKnownDatabaseEngine,
   secureNoteCategory,
@@ -37,6 +38,7 @@ import {
 import { cancelEditing, saveItem, store } from "../store";
 import AddressFields from "./AddressFields.vue";
 import AppIcon from "./AppIcon.vue";
+import IconPicker from "./IconPicker.vue";
 import ItemTile from "./ItemTile.vue";
 import PasswordGenerator from "./PasswordGenerator.vue";
 import StrengthMeter from "./StrengthMeter.vue";
@@ -100,6 +102,9 @@ const draft = reactive<ItemDetail>(createDraft());
 const urlText = ref(draft.urls.join("\n"));
 const isPasswordVisible = ref(false);
 const isGeneratorOpen = ref(store.editorMode === "create");
+const isIconPickerOpen = ref(false);
+// websiteIconURL is the website whose icon Automatic shows, from the URLs as typed.
+const websiteIconURL = computed(() => getWebsiteIconURL({ category: draft.category, urls: urlText.value.split("\n") }));
 const isSSHKey = draft.category === sshKeyCategory;
 const isSecureNote = draft.category === secureNoteCategory;
 const isCreditCard = draft.category === creditCardCategory;
@@ -255,7 +260,28 @@ async function submitItem(): Promise<void> {
 <template>
   <form class="item-editor" @submit.prevent="submitItem">
     <header>
-      <ItemTile :title="draft.title || '?'" :size="52" :icon="getItemIcon(draft.category)" />
+      <div class="icon-anchor">
+        <button
+          type="button"
+          class="icon-button"
+          aria-label="Change icon"
+          title="Change icon"
+          :aria-expanded="isIconPickerOpen"
+          data-icon-picker-anchor
+          data-testid="item-icon-button"
+          @click="isIconPickerOpen = !isIconPickerOpen"
+        >
+          <ItemTile :title="draft.title || '?'" :size="52" :icon="getItemIcon(draft.category)" :item-icon="draft.icon" :websiteURL="websiteIconURL" />
+          <span class="icon-badge"><AppIcon name="edit" :size="10" /></span>
+        </button>
+        <IconPicker
+          v-if="isIconPickerOpen"
+          v-model="draft.icon"
+          :title="draft.title"
+          :websiteURL="websiteIconURL"
+          @close="isIconPickerOpen = false"
+        />
+      </div>
       <input v-model="draft.title" class="title-input" name="title" :placeholder="isSecureNote ? 'Note title' : 'Item title'" aria-label="Title" required autofocus />
     </header>
 
@@ -662,6 +688,35 @@ header {
   align-items: center;
   gap: 16px;
   margin-bottom: 18px;
+}
+
+.icon-anchor {
+  position: relative;
+  flex: none;
+}
+
+.icon-button {
+  position: relative;
+  display: inline-flex;
+  padding: 0;
+  border: none;
+  border-radius: 25%;
+  background: none;
+}
+
+.icon-badge {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 50%;
+  background: var(--color-surface-raised);
+  color: var(--color-text-secondary);
 }
 
 .title-input {

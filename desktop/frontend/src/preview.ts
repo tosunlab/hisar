@@ -1195,6 +1195,10 @@ export const previewApi = {
     return resolveAfterDelay(previewStatus());
   },
   getTheme: () => Promise.resolve(previewTheme),
+  getWebsiteIcon: () => Promise.resolve(""),
+  isWebsiteIconsEnabled: () => Promise.resolve(true),
+  setWebsiteIconsEnabled: () => Promise.resolve(),
+  prepareItemIcon: () => Promise.reject(new Error("uploading icons needs the app")),
   setTheme: (appearance: string, color: string) => {
     previewTheme = { appearance, color };
     return Promise.resolve(previewTheme);

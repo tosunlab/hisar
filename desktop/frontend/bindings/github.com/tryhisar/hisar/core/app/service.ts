@@ -299,6 +299,15 @@ export function GetVaultActions(vaultID: string): $CancellablePromise<$models.Va
 }
 
 /**
+ * GetWebsiteIcon returns the icon of the website rawURL names, as a PNG, from this device's sealed cache or fetched
+ * from the website itself. It returns nil without an error when the website has none, when website icons are off,
+ * while locked, and for anything but a public https website.
+ */
+export function GetWebsiteIcon(rawURL: string): $CancellablePromise<string | null> {
+    return $Call.ByID(1989230097, rawURL);
+}
+
+/**
  * GiveVaultToTeam gives an organization vault to a team with role, or changes the team's role.
  */
 export function GiveVaultToTeam(organizationID: string, teamID: string, vaultID: string, role: string): $CancellablePromise<void> {
@@ -324,6 +333,13 @@ export function InvitePerson(email: string): $CancellablePromise<void> {
  */
 export function InviteToOrganization(organizationID: string, email: string, role: string): $CancellablePromise<void> {
     return $Call.ByID(1200749882, organizationID, email, role);
+}
+
+/**
+ * IsWebsiteIconsEnabled reports whether logins show their website's icon, which the app fetches from the website itself.
+ */
+export function IsWebsiteIconsEnabled(): $CancellablePromise<boolean> {
+    return $Call.ByID(1699886713);
 }
 
 /**
@@ -445,6 +461,14 @@ export function Lock(): $CancellablePromise<$models.Status> {
  */
 export function MoveItem(vaultID: string, itemID: string, targetVaultID: string): $CancellablePromise<$models.ItemDetail> {
     return $Call.ByID(4162304767, vaultID, itemID, targetVaultID);
+}
+
+/**
+ * PrepareItemIcon turns an image the user chose into the PNG an item's icon keeps: cropped to a square and scaled down
+ * to at most 128 pixels. SaveItem refuses an icon image that did not come from here.
+ */
+export function PrepareItemIcon(image: string | null): $CancellablePromise<string | null> {
+    return $Call.ByID(3482792702, image);
 }
 
 export function PreviewAccountDeletion(): $CancellablePromise<$models.AccountDeletionPreview> {
@@ -571,6 +595,13 @@ export function SetTheme(appearance: string, color: string): $CancellablePromise
  */
 export function SetVaultAvailableToAgents(vaultID: string, isAvailable: boolean): $CancellablePromise<string[] | null> {
     return $Call.ByID(4293153903, vaultID, isAvailable);
+}
+
+/**
+ * SetWebsiteIconsEnabled turns website icons on or off for this device; turning them off forgets the cached icons.
+ */
+export function SetWebsiteIconsEnabled(isEnabled: boolean): $CancellablePromise<void> {
+    return $Call.ByID(294098535, isEnabled);
 }
 
 /**

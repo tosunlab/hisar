@@ -41,6 +41,7 @@
 		385610A06FAE72AFC83F4F07 /* HisarUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13B49F20D7B3678555E885AD /* HisarUITests.swift */; };
 		3A0A7510FED0E3EC64017E68 /* AuthenticationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 749D535C9C6B489F37C5F4C6 /* AuthenticationServices.framework */; };
 		3AE35B263BFA9835802F1A1B /* OrganizationViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01A3E7E65ACA85444F2E4830 /* OrganizationViews.swift */; };
+		3E22B7C06A9CE05131DA05E4 /* ItemIconTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 583B03B9AF903A2AFD45D820 /* ItemIconTests.swift */; };
 		3E6F84E78D992221EBE8A95A /* ApprovalsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D229776194136FF1A6650A2D /* ApprovalsView.swift */; };
 		3EBAE6DB6C2C6ADBAED50A08 /* ItemDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 104F8941A233F623CBF1EB40 /* ItemDetailView.swift */; };
 		3EC79E5E6E77169906986CDC /* ThemePalettes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B69EA63E2A0AF80C7AEF3D7 /* ThemePalettes.swift */; };
@@ -60,6 +61,7 @@
 		5807CCBF70BA02987A3B8671 /* UnlockPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F56BEC5782A64AB5EE308FF /* UnlockPanel.swift */; };
 		5A3A46DF41106F4DFB78C295 /* ItemIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47989259B86D2ABA32773725 /* ItemIcon.swift */; };
 		5F2B5FFC40071F1CAA638654 /* EmergencyKitScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFB5B60894F52BB5DA1D9AA /* EmergencyKitScanner.swift */; };
+		5FAD076390F8BED3236B811C /* AppItemIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5CAE9257D26523B30362ACC /* AppItemIcon.swift */; };
 		6384BDCCFB9C112662CE3350 /* NewSecretKeyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0912D6FEC796C6B4E10A87 /* NewSecretKeyView.swift */; };
 		641117B1BC86ED26F0DAF500 /* AppModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D54C09BE6FCF29F969C4E18 /* AppModelTests.swift */; };
 		65FDAEF0EF071906451A6DBC /* BiometricKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC328A5FA6A28DF1ACC5DC64 /* BiometricKeychain.swift */; };
@@ -97,6 +99,7 @@
 		944EF0E34DA8F818A4F0700F /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 477BEA6CA38721F987A7FA77 /* AppModel.swift */; };
 		94B0407C5D16051E5B18A33D /* PhoneApprovalPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 932FFDDB9DA6FFA0375B3041 /* PhoneApprovalPreviewView.swift */; };
 		950D694E8B93B33771BC2C7B /* OrganizationLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F212ED91E908E08BA7BE7C2 /* OrganizationLogic.swift */; };
+		9BDEC98BE1BF0C9E7E125BA9 /* AppItemIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5CAE9257D26523B30362ACC /* AppItemIcon.swift */; };
 		9C287B952870C5A23543D04D /* AutoFillPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22698CECCF02525330145455 /* AutoFillPreviewView.swift */; };
 		9C438376F2EE0D0B6481F189 /* LogoMark.swift in Sources */ = {isa = PBXBuildFile; fileRef = A238D14B92DA27E1CCAE99DA /* LogoMark.swift */; };
 		9F882321D31A78F3C1903304 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = F067661397CABF889DA6CF7C /* Theme.swift */; };
@@ -144,6 +147,7 @@
 		E13D73A18E4FF3B92CC31E2A /* SharingUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3BABA9BC4C53A440760BE78 /* SharingUITests.swift */; };
 		E2C2706032DD836C7339850B /* UpdateRequiredView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F297FE1735F4AB352B1A037C /* UpdateRequiredView.swift */; };
 		E67F2A28F8A2CB7524435DE9 /* OrganizationLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F212ED91E908E08BA7BE7C2 /* OrganizationLogic.swift */; };
+		E880D80D7D6F8765D3E15B0F /* IconPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 170839CF56DF8848503FCD67 /* IconPickerView.swift */; };
 		E888ABF479A27FE128F20BD2 /* VaultBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3573A4BEA82AFBD320C27A14 /* VaultBackend.swift */; };
 		E8C11A58A19298A04B15CA33 /* PeopleView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95EF6040E7BF9F0A901826B0 /* PeopleView.swift */; };
 		EA403583ED6D74A774246CAD /* ItemDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 104F8941A233F623CBF1EB40 /* ItemDetailView.swift */; };
@@ -155,6 +159,7 @@
 		F351B9DFAD04210C125CB4A4 /* HisarConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1B3B016888438454F145B24 /* HisarConfiguration.swift */; };
 		F356AB3E0A6D6C3696AF12BF /* PlatformAdapterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F87494AA5EEAF759118A7882 /* PlatformAdapterTests.swift */; };
 		FACA3B7B115CEC55B066CA73 /* ItemListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41FBB5DC69E33D5A27FE6041 /* ItemListView.swift */; };
+		FBAAABA2E41B51B57EA5BA70 /* IconPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 170839CF56DF8848503FCD67 /* IconPickerView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -208,6 +213,7 @@
 		13B49F20D7B3678555E885AD /* HisarUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HisarUITests.swift; sourceTree = "<group>"; };
 		14136704A8F8FCE442B63B00 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		15377A521C283EA5723954C2 /* HisarKit.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = HisarKit.xcframework; path = ../build/HisarKit.xcframework; sourceTree = "<group>"; };
+		170839CF56DF8848503FCD67 /* IconPickerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IconPickerView.swift; sourceTree = "<group>"; };
 		1F212ED91E908E08BA7BE7C2 /* OrganizationLogic.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrganizationLogic.swift; sourceTree = "<group>"; };
 		1F31820CE1E2F645F505502A /* CredentialProviderViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialProviderViewController.swift; sourceTree = "<group>"; };
 		22698CECCF02525330145455 /* AutoFillPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoFillPreviewView.swift; sourceTree = "<group>"; };
@@ -230,6 +236,7 @@
 		51DDBE193CE96E78C6788441 /* PhoneApprovalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneApprovalTests.swift; sourceTree = "<group>"; };
 		52CA41C98B20CCCC570ECDA2 /* OneTimeCodeRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OneTimeCodeRow.swift; sourceTree = "<group>"; };
 		56632F6C54EBD5227BCBED2E /* LockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockView.swift; sourceTree = "<group>"; };
+		583B03B9AF903A2AFD45D820 /* ItemIconTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemIconTests.swift; sourceTree = "<group>"; };
 		58725D5CFD94EED72E93193F /* ItemEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemEditorView.swift; sourceTree = "<group>"; };
 		5C081C11B996ABE21B047D8D /* HisarUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HisarUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		5DC7E3215A9069C2945F866D /* AutoFillModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoFillModelTests.swift; sourceTree = "<group>"; };
@@ -257,6 +264,7 @@
 		AA05D6AEDA2B1F45CB3B9F26 /* KeychainSecretKeyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainSecretKeyStore.swift; sourceTree = "<group>"; };
 		B033299FD6E753ABEC665FC2 /* VaultManagementPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultManagementPreviewView.swift; sourceTree = "<group>"; };
 		B51FF15EEA140A6C2E2C7D49 /* DevicesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicesView.swift; sourceTree = "<group>"; };
+		B5CAE9257D26523B30362ACC /* AppItemIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppItemIcon.swift; sourceTree = "<group>"; };
 		B7689BDDB94FD64917944388 /* OneTimeCodeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OneTimeCodeUITests.swift; sourceTree = "<group>"; };
 		BADDC2475A604991BB81DEE6 /* Hisar.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Hisar.xcconfig; sourceTree = "<group>"; };
 		BC328A5FA6A28DF1ACC5DC64 /* BiometricKeychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiometricKeychain.swift; sourceTree = "<group>"; };
@@ -430,11 +438,13 @@
 			isa = PBXGroup;
 			children = (
 				0BAE818AB33EBE7BEE32E52C /* AccountLifecycleViews.swift */,
+				B5CAE9257D26523B30362ACC /* AppItemIcon.swift */,
 				D229776194136FF1A6650A2D /* ApprovalsView.swift */,
 				22698CECCF02525330145455 /* AutoFillPreviewView.swift */,
 				B51FF15EEA140A6C2E2C7D49 /* DevicesView.swift */,
 				CAFB5B60894F52BB5DA1D9AA /* EmergencyKitScanner.swift */,
 				51192750875FAC5488F2567C /* HomeView.swift */,
+				170839CF56DF8848503FCD67 /* IconPickerView.swift */,
 				104F8941A233F623CBF1EB40 /* ItemDetailView.swift */,
 				58725D5CFD94EED72E93193F /* ItemEditorView.swift */,
 				41FBB5DC69E33D5A27FE6041 /* ItemListView.swift */,
@@ -468,6 +478,7 @@
 				5DC7E3215A9069C2945F866D /* AutoFillModelTests.swift */,
 				7B2774C869B2E88A54905C78 /* FakeBackend.swift */,
 				D4E0374FBF44BF5778ED2846 /* FavoritesTests.swift */,
+				583B03B9AF903A2AFD45D820 /* ItemIconTests.swift */,
 				4BA436DB6EF0A7095AE9DFCE /* OrganizationTests.swift */,
 				26730576FD34B49781786827 /* PasskeyTests.swift */,
 				51DDBE193CE96E78C6788441 /* PhoneApprovalTests.swift */,
@@ -739,6 +750,7 @@
 				343CD1DE10EC8C27BD57EFD5 /* AutoFillModelTests.swift in Sources */,
 				BDD67F160CD76BD42407E230 /* FakeBackend.swift in Sources */,
 				3322F7AF5EC4923637DF5F93 /* FavoritesTests.swift in Sources */,
+				3E22B7C06A9CE05131DA05E4 /* ItemIconTests.swift in Sources */,
 				7D7F5244A288FE09E3811E48 /* OrganizationTests.swift in Sources */,
 				7C37DDDE1C919F61B2B5D932 /* PasskeyTests.swift in Sources */,
 				37B8625077147FD073CDEB86 /* PhoneApprovalTests.swift in Sources */,
@@ -755,6 +767,7 @@
 			files = (
 				A1965D590E1A381C0813289A /* AccountLifecycleLogic.swift in Sources */,
 				14374DD058E143DF2B26B1C3 /* AccountLifecycleViews.swift in Sources */,
+				5FAD076390F8BED3236B811C /* AppItemIcon.swift in Sources */,
 				BAF1C19FBEBFD77B4E6D5B1E /* AppModel.swift in Sources */,
 				3E6F84E78D992221EBE8A95A /* ApprovalsView.swift in Sources */,
 				BDC26D31EA21F003B2F989F6 /* AutoFillModel.swift in Sources */,
@@ -768,6 +781,7 @@
 				AB104BE13CBC26D3CD81A1F6 /* HisarConfiguration.swift in Sources */,
 				32E0A462D6387F2868226186 /* HisarKitBackend.swift in Sources */,
 				85F534F34BF749F3E116E188 /* HomeView.swift in Sources */,
+				FBAAABA2E41B51B57EA5BA70 /* IconPickerView.swift in Sources */,
 				3EBAE6DB6C2C6ADBAED50A08 /* ItemDetailView.swift in Sources */,
 				1F28B9CCD36BFB98A0F6A64F /* ItemEditorView.swift in Sources */,
 				5A3A46DF41106F4DFB78C295 /* ItemIcon.swift in Sources */,
@@ -811,6 +825,7 @@
 			files = (
 				C9B332C8EDAC479E1EC33EC5 /* AccountLifecycleLogic.swift in Sources */,
 				F25607D6F2F0D4C5EB519890 /* AccountLifecycleViews.swift in Sources */,
+				9BDEC98BE1BF0C9E7E125BA9 /* AppItemIcon.swift in Sources */,
 				944EF0E34DA8F818A4F0700F /* AppModel.swift in Sources */,
 				1BDECDA716425CA17E65D9B5 /* ApprovalsView.swift in Sources */,
 				DCAC536617685C2305C80C97 /* AutoFillModel.swift in Sources */,
@@ -824,6 +839,7 @@
 				F351B9DFAD04210C125CB4A4 /* HisarConfiguration.swift in Sources */,
 				6B73DB90468A4C6048929D5D /* HisarKitBackend.swift in Sources */,
 				3FF22DE6C9994E474007BA0E /* HomeView.swift in Sources */,
+				E880D80D7D6F8765D3E15B0F /* IconPickerView.swift in Sources */,
 				EA403583ED6D74A774246CAD /* ItemDetailView.swift in Sources */,
 				7B2A4476D3BEE2DAE66AE1BC /* ItemEditorView.swift in Sources */,
 				7960514E951A2A90C671BA9C /* ItemIcon.swift in Sources */,

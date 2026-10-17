@@ -95,6 +95,12 @@ protocol VaultBackend: AnyObject {
     func setMacApprovalAllowed(_ isAllowed: Bool) throws
     func getTheme() -> VaultTheme
     func setTheme(_ theme: VaultTheme) throws -> VaultTheme
+    /// prepareItemIcon turns a photo into the PNG an item's icon keeps.
+    func prepareItemIcon(_ image: Data) throws -> Data
+    /// getWebsiteIcon returns a login website's icon, or nil; it may ask the website, so it runs in the background.
+    func getWebsiteIcon(url: String) throws -> Data?
+    func isWebsiteIconsEnabled() -> Bool
+    func setWebsiteIconsEnabled(_ isEnabled: Bool) throws
 }
 
 struct BackendError: LocalizedError, Equatable {

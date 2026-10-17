@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"time"
 
 	"github.com/tryhisar/hisar/core/crypt"
@@ -276,6 +277,17 @@ type ItemDetail struct {
 	// Database holds a database's engine, host, port, name and options, stored as named custom fields; its username and
 	// password are the item's own. Summaries keep only the engine, host, port and name.
 	Database *ItemDatabase `json:"database,omitempty"`
+	// Icon is the icon the user chose, or nil for the automatic one: a login's website icon (GetWebsiteIcon), else the
+	// category's icon or the initials.
+	Icon *ItemIcon `json:"icon,omitempty"`
+}
+
+// ItemIcon is a preset glyph (an item.IconPresets ID) in one of item.IconColors, or a PNG image (PrepareItemIcon),
+// which wins.
+type ItemIcon struct {
+	Preset string `json:"preset,omitempty"`
+	Color  string `json:"color,omitempty"`
+	Image  []byte `json:"image,omitempty"`
 }
 
 // ItemDatabase is a database's values besides its login data. Engine is the ID of a known engine (postgresql, mysql,
@@ -461,8 +473,14 @@ type Config struct {
 	FileSaver FileSaver
 	// FileOpener asks which file to open; it returns "" when the user cancels.
 	FileOpener FileOpener
+	// WebsiteIconFetcher fetches website icons; nil uses itemicon.NewFetcher, which asks the websites themselves.
+	WebsiteIconFetcher WebsiteIconFetcher
 	// OnUpdateRequired runs on its own goroutine when the server starts refusing this version.
 	OnUpdateRequired func(requirement UpdateRequirement)
+}
+
+type WebsiteIconFetcher interface {
+	Fetch(ctx context.Context, rawURL string) ([]byte, error)
 }
 
 type FileSaver interface {

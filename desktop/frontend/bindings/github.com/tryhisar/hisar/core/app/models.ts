@@ -337,12 +337,28 @@ export interface ItemDetail {
      * password are the item's own. Summaries keep only the engine, host, port and name.
      */
     "database"?: ItemDatabase | null;
+
+    /**
+     * Icon is the icon the user chose, or nil for the automatic one: a login's website icon (GetWebsiteIcon), else the
+     * category's icon or the initials.
+     */
+    "icon"?: ItemIcon | null;
 }
 
 export interface ItemField {
     "name": string;
     "value": string;
     "concealed": boolean;
+}
+
+/**
+ * ItemIcon is a preset glyph (an item.IconPresets ID) in one of item.IconColors, or a PNG image (PrepareItemIcon),
+ * which wins.
+ */
+export interface ItemIcon {
+    "preset"?: string;
+    "color"?: string;
+    "image"?: string | null;
 }
 
 /**

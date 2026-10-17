@@ -36,6 +36,7 @@ export type {
     ItemDatabase,
     ItemDetail,
     ItemField,
+    ItemIcon,
     ItemIdentity,
     ItemPasskey,
     ItemServer,

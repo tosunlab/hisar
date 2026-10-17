@@ -28,6 +28,7 @@ import type {
   ItemAddress,
   ItemCard,
   ItemDetail as BoundItemDetail,
+  ItemIcon,
   ItemIdentity,
   ItemField,
   ItemPasskey,
@@ -93,6 +94,7 @@ export type {
   ItemAddress,
   ItemCard,
   ItemField,
+  ItemIcon,
   ItemIdentity,
   ItemPasskey,
   ItemServer,
@@ -307,6 +309,12 @@ const wailsApi = {
   moveItem: async (vaultID: string, itemID: string, targetVaultID: string): Promise<ItemDetail> =>
     normalizeItem(await Service.MoveItem(vaultID, itemID, targetVaultID)),
   duplicateItem: async (vaultID: string, itemID: string): Promise<ItemDetail> => normalizeItem(await Service.DuplicateItem(vaultID, itemID)),
+  // Images cross as base64: prepareItemIcon takes a file's bytes and returns the PNG an item's icon keeps.
+  prepareItemIcon: async (imageBase64: string): Promise<string> => (await Service.PrepareItemIcon(imageBase64)) ?? "",
+  // getWebsiteIcon returns a login website's icon as base64 PNG, or "" when there is none.
+  getWebsiteIcon: async (url: string): Promise<string> => (await Service.GetWebsiteIcon(url)) ?? "",
+  isWebsiteIconsEnabled: (): Promise<boolean> => Service.IsWebsiteIconsEnabled(),
+  setWebsiteIconsEnabled: (isEnabled: boolean): Promise<void> => Service.SetWebsiteIconsEnabled(isEnabled),
   listAllFavoriteItem: async (): Promise<FavoriteItem[]> => ((await Service.ListFavoriteItems()) ?? []).map(normalizeFavoriteItem),
   setItemFavorite: (vaultID: string, itemID: string, isFavorite: boolean): Promise<void> => Service.SetItemFavorite(vaultID, itemID, isFavorite),
   describeCard: (number: string, expiry: string): Promise<CardDescription> => Service.DescribeCard(number, expiry),

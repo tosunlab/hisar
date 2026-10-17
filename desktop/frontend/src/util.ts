@@ -1,3 +1,5 @@
+import type { IconName } from "./components/AppIcon.vue";
+
 // themes.json defines tile0 to tile9 with their text colours for every theme.
 const tileColorCount = 10;
 
@@ -602,4 +604,28 @@ export function describeShareLinkContent(shareLink: { isText: boolean; fieldLabe
   }
   const description = shareLink.fieldLabels.join(", ");
   return description.charAt(0).toUpperCase() + description.slice(1);
+}
+
+// allIconPreset is core/item's IconPresets, in the picker's order; each preset is drawn with the AppIcon of its name.
+export const allIconPreset = [
+  "bank", "card", "wallet", "crypto", "cart", "gift", "mail", "chat", "social", "work", "home", "school",
+  "cloud", "server", "database", "code", "terminal", "wifi", "globe", "game", "music", "video", "health",
+  "travel", "car", "key", "lock", "shield", "star", "heart",
+] as const satisfies readonly IconName[];
+
+// allIconColor is core/item's IconColors; "" is the neutral tile.
+export const allIconColor = ["red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink", "gray"] as const;
+
+// getPresetGlyph returns the icon of a preset, or undefined for one from a newer app, which draws the category icon.
+export function getPresetGlyph(preset: string | undefined): IconName | undefined {
+  return (allIconPreset as readonly string[]).includes(preset ?? "") ? (preset as IconName) : undefined;
+}
+
+// getWebsiteIconURL is the website whose icon a login shows when it has no icon of its own: its first https URL.
+// Other item types keep their category icon.
+export function getWebsiteIconURL(vaultItem: { category: string; urls?: string[]; icon?: unknown }): string {
+  if ((vaultItem.category !== "" && vaultItem.category !== "login") || vaultItem.icon) {
+    return "";
+  }
+  return (vaultItem.urls ?? []).find((link) => /^https:\/\//i.test(link.trim()))?.trim() ?? "";
 }
