@@ -153,6 +153,12 @@ final class PhoneApprovalTests: XCTestCase {
         XCTAssertEqual(backend.allApprovalAnswer, ["approve remembered ssh", "approve signing", "approve once"])
     }
 
+    func testCardFooterNamesWhatApproveSends() {
+        XCTAssertEqual(createRememberingApproval(requestID: "ssh").cardApprovalNote, "Also allows Terminal for 1 hour. Tap the request to approve it once. It never unlocks Hisar on your Mac.")
+        XCTAssertEqual(createRememberingApproval(requestID: "signing", isRememberedByDefault: false).cardApprovalNote, "Approving answers this one request. It never unlocks Hisar on your Mac.")
+        XCTAssertEqual(createApproval(requestID: "once").cardApprovalNote, "Approving answers this one request. It never unlocks Hisar on your Mac.")
+    }
+
     func testSheetSwitchIsSentWithTheApproval() async {
         let model = await createReviewingModel(allApproval: [createRememberingApproval(requestID: "remembered"), createRememberingApproval(requestID: "once")])
         await model.approvePendingApproval(isRemembered: true)

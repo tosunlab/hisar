@@ -495,6 +495,47 @@ func TestApprovalWithoutLifetimeLastsUntilCleared(t *testing.T) {
 	connect(3)
 }
 
+func TestExpiredApprovalStaysExpiredWhenLifetimeIsRemoved(t *testing.T) {
+	key := createTestKey(t, "id", "Work", getTestMaterials()["ed25519"])
+	fixture := startAgent(t, []Key{key})
+	address := startSSHServer(t, getPublicKey(t, key))
+	var clockMutex sync.Mutex
+	currentTime := time.Date(2026, 10, 9, 12, 0, 0, 0, time.UTC)
+	fixture.server.mutex.Lock()
+	fixture.server.getNow = func() time.Time {
+		clockMutex.Lock()
+		defer clockMutex.Unlock()
+		return currentTime
+	}
+	fixture.server.mutex.Unlock()
+	fixture.server.SetApprovalLifetime(time.Hour)
+	advance := func(d time.Duration) {
+		clockMutex.Lock()
+		currentTime = currentTime.Add(d)
+		clockMutex.Unlock()
+	}
+	connect := func(wantCount int) {
+		t.Helper()
+		if err := fixture.connectSSH(t, address); err != nil {
+			t.Fatalf("ssh auth failed: %v", err)
+		}
+		if count := fixture.approver.countRequest(); count != wantCount {
+			t.Fatalf("approval count = %d, want %d", count, wantCount)
+		}
+	}
+	connect(1)
+	advance(30 * time.Minute)
+	fixture.server.SetApprovalLifetime(0)
+	advance(24 * time.Hour)
+	connect(1)
+	fixture.server.ClearApprovals()
+	fixture.server.SetApprovalLifetime(time.Hour)
+	connect(2)
+	advance(2 * time.Hour)
+	fixture.server.SetApprovalLifetime(0)
+	connect(3)
+}
+
 func TestAlwaysAskKeyPromptsEveryTime(t *testing.T) {
 	materials := getTestMaterials()
 	alwaysAskKey := createTestKey(t, "always", "Production", materials["ed25519"])

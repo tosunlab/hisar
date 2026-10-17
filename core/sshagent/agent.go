@@ -147,6 +147,12 @@ func (s *Server) ClearApprovals() {
 func (s *Server) SetApprovalLifetime(lifetime time.Duration) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
+	// Approvals already expired under the old lifetime must not come back under a longer one.
+	for cacheKey, approvedAt := range s.approvedAt {
+		if s.hasApprovalExpired(approvedAt) {
+			delete(s.approvedAt, cacheKey)
+		}
+	}
 	s.approvalLifetime = lifetime
 }
 
@@ -227,7 +233,18 @@ func (s *Server) requestApproval(ctx context.Context, request ApprovalRequest) e
 
 func (s *Server) isApprovalCurrent(cacheKey approvalCacheKey) bool {
 	approvedAt, isFound := s.approvedAt[cacheKey]
-	return isFound && (s.approvalLifetime <= 0 || s.getNow().Sub(approvedAt) < s.approvalLifetime)
+	if !isFound {
+		return false
+	}
+	if s.hasApprovalExpired(approvedAt) {
+		delete(s.approvedAt, cacheKey)
+		return false
+	}
+	return true
+}
+
+func (s *Server) hasApprovalExpired(approvedAt time.Time) bool {
+	return s.approvalLifetime > 0 && s.getNow().Sub(approvedAt) >= s.approvalLifetime
 }
 
 type sessionBinding struct {

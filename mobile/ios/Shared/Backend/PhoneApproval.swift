@@ -45,6 +45,14 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
         isRememberable && (chosenValue ?? isRememberedByDefault)
     }
 
+    // cardApprovalNote is the Vaults card's footer: the card has no switch, so it says what its Approve sends.
+    var cardApprovalNote: String {
+        if resolveRememberChoice(nil) {
+            return "\(rememberLabel). Tap the request to approve it once. It never unlocks Hisar on your Mac."
+        }
+        return "Approving answers this one request. It never unlocks Hisar on your Mac."
+    }
+
     enum CodingKeys: String, CodingKey {
         case requestID = "requestId"
         case requesterDeviceName, createdAt, expiresAt, kind, appName, purpose, host, commandLine, repositoryPath, keyName, isForwarded, forwardedFromHost, terminalName, secrets, appIcon, appWarning, rememberLabel, isRememberedByDefault
