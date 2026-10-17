@@ -326,11 +326,13 @@ func (s *Server) requireSession(c fiber.Ctx) error {
 		return createAPIError(fiber.StatusUnauthorized, "unauthorized")
 	}
 	currentSession, err := s.service.Authenticate(c.Context(), token)
-	if err != nil {
-		if !errors.Is(err, store.ErrNotFound) {
-			log.Printf("session lookup: %v", err)
-		}
+	if errors.Is(err, store.ErrNotFound) {
 		return createAPIError(fiber.StatusUnauthorized, "unauthorized")
+	}
+	// A database that does not answer is not a signed-out session: apps keep their session and treat 503 as unreachable.
+	if err != nil {
+		log.Printf("session lookup: %v", err)
+		return service.ErrDatabaseUnavailable
 	}
 	c.Locals(ctxKey{}, currentSession)
 	return c.Next()
