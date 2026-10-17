@@ -208,7 +208,8 @@ func TestLastServerIsSavedAndKeptOnReset(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	state.Server, state.Email, state.Token, state.AccountID, state.LastServer = "https://hisar.example.com", "a@example.com", "tok", "account", "https://hisar.example.com"
+	// A state saved before LastServer existed: signed in, with no last server.
+	state.Server, state.Email, state.Token, state.AccountID = "https://hisar.example.com", "a@example.com", "tok", "account"
 	if err := state.Save(); err != nil {
 		t.Fatal(err)
 	}
@@ -219,5 +220,14 @@ func TestLastServerIsSavedAndKeptOnReset(t *testing.T) {
 	reloadedState.Reset()
 	if reloadedState.IsLoggedIn() || reloadedState.Server != "" || reloadedState.Email != "" || reloadedState.LastServer != "https://hisar.example.com" {
 		t.Errorf("reset state: %+v", reloadedState)
+	}
+	reloadedState.Reset()
+	if reloadedState.LastServer != "https://hisar.example.com" {
+		t.Errorf("a second reset forgot the last server: %q", reloadedState.LastServer)
+	}
+	reloadedState.Server = "https://other.example.com"
+	reloadedState.Reset()
+	if reloadedState.LastServer != "https://other.example.com" {
+		t.Errorf("after another server: %q", reloadedState.LastServer)
 	}
 }

@@ -135,8 +135,14 @@ func (s *State) Save() error {
 }
 
 // Reset forgets the account, session, pins and seqs but keeps the file location and the device preferences.
+// Reset forgets the account and keeps the device settings, remembering the server the account was on as LastServer
+// (a state already signed out keeps the one it has).
 func (s *State) Reset() {
-	*s = State{path: s.path, Pins: map[string][]byte{}, Seqs: map[string]int64{}, Settings: s.Settings}
+	settings := s.Settings
+	if s.Server != "" {
+		settings.LastServer = s.Server
+	}
+	*s = State{path: s.path, Pins: map[string][]byte{}, Seqs: map[string]int64{}, Settings: settings}
 }
 
 // IsMemberKeyChanged reports whether a signing key differs from the one pinned for the account.

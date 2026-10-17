@@ -41,7 +41,6 @@ func TestSignedOutByServerWipesThisDevice(t *testing.T) {
 	state, _ := localstate.Load(statePath)
 	state.Server, state.Email, state.AccountID, state.Token = "https://hisar.test", "a@example.com", "ABC123", "token"
 	state.BiometricUnlock = []byte("sealed")
-	state.LastServer = "https://hisar.test"
 	if err := state.Save(); err != nil {
 		t.Fatal(err)
 	}
@@ -69,19 +68,22 @@ func TestSignedOutByServerWipesThisDevice(t *testing.T) {
 		t.Error("the Touch ID key stayed in the keychain")
 	}
 	reloaded, _ := localstate.Load(statePath)
-	if reloaded.IsLoggedIn() || reloaded.Email != "" {
-		t.Errorf("state file still holds the account: %+v", reloaded)
+	if reloaded.IsLoggedIn() || reloaded.Email != "" || reloaded.LastServer != "https://hisar.test" {
+		t.Errorf("state file after the server signed this device out: %+v", reloaded)
+	}
+	if restarted, _, _ := createTestService(t, statePath, secretKeyStore); restarted.GetStatus().Server != "https://hisar.test" {
+		t.Errorf("after a restart the sign-in form opens on %q", restarted.GetStatus().Server)
 	}
 	if status := service.DismissSignedOutReason(); status.SignedOutReason != "" {
 		t.Errorf("after dismissing: %+v", status)
 	}
 }
 
-func TestSignOutKeepsOnlyTheServer(t *testing.T) {
+func TestSignOutKeepsOnlyTheServerOfASessionFromBeforeLastServer(t *testing.T) {
 	statePath := filepath.Join(t.TempDir(), "desktop.json")
 	state, _ := localstate.Load(statePath)
+	// Signed in before LastServer existed: the state file has the server but no last server.
 	state.Server, state.Email, state.AccountID, state.Token = "http://127.0.0.1:1", "a@example.com", "ABC123", "token"
-	state.LastServer = state.Server
 	if err := state.Save(); err != nil {
 		t.Fatal(err)
 	}

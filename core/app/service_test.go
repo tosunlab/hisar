@@ -479,9 +479,8 @@ func TestIntegrationDesktopFlow(t *testing.T) {
 	if signedOut, _ := localstate.Load(statePath); signedOut.LastServer != serverURL || signedOut.IsLoggedIn() || signedOut.Email != "" {
 		t.Errorf("state file after sign out: %+v", signedOut)
 	}
-	host := strings.TrimPrefix(strings.TrimPrefix(serverURL, "http://"), "https://")
 	if _, err := service.SignIn(serverURL, email, signUpResult.SecretKey, "not the master password"); err == nil ||
-		!strings.Contains(err.Error(), "Secret Key for "+host+"; check that this is your account's server") {
+		!strings.Contains(err.Error(), "Secret Key for "+describeServer(serverURL)+"; check that this is your account's server") {
 		t.Errorf("wrong password: %v", err)
 	}
 
