@@ -1,5 +1,27 @@
 import { vi } from "vitest";
-import type { ApprovalEvent, FavoriteItem, ShareLink, ShareLinkField, BrowserStatus, CommandLineStatus, Device, ImportPreview, ImportProgress, ItemDetail, LoginItemStatus, Person, ReceivedShareInvitation, SentShareInvitation, SSHAgentStatus, Status, UpdateStatus, VaultActions, VaultMember, VaultSummary } from "./api";
+import type {
+  ApprovalEvent,
+  FavoriteItem,
+  ShareLink,
+  ShareLinkField,
+  BrowserStatus,
+  CommandLineStatus,
+  Device,
+  ImportPreview,
+  ImportProgress,
+  ItemDetail,
+  LauncherApp,
+  LoginItemStatus,
+  Person,
+  ReceivedShareInvitation,
+  SentShareInvitation,
+  SSHAgentStatus,
+  Status,
+  UpdateStatus,
+  VaultActions,
+  VaultMember,
+  VaultSummary,
+} from "./api";
 
 export function createStatus(state: string): Status {
   return { state, server: "https://hisar.test", email: "alice@example.com", name: "Alice", biometricAvailable: false, biometricEnabled: false, biometricReady: false, isOffline: false, autoLockSeconds: 600, signedOutReason: "", updateRequired: null };
@@ -231,6 +253,7 @@ export function createApprovalEvent(overrides: Partial<ApprovalEvent> = {}): App
     requestID: "request-1",
     kind: "ssh-key",
     terminalName: "",
+    coverage: "",
     isUnlockRequired: false,
     isPasswordUnlock: false,
     requesterKind: "app",
@@ -386,8 +409,41 @@ export function createCommandLineApprovalEvent(overrides: Partial<ApprovalEvent>
     hostAndPort: "",
     isRememberable: false,
     terminalName: "ttys003",
+    coverage: "terminal-session",
     ...overrides,
   });
+}
+
+export function createLauncherApprovalEvent(overrides: Partial<ApprovalEvent> = {}): ApprovalEvent {
+  return createApprovalEvent({
+    requestID: "launcher-1",
+    kind: "launcher",
+    appName: "Raycast",
+    appIconURL: "data:image/png;base64,Raycast",
+    appPath: "/Applications/Raycast.app",
+    appSignature: "developer",
+    appSigner: "Signed by Raycast Technologies Inc (A1B2C3D4E5)",
+    allChainProcess: [{ name: "node", commandLine: "node --max-old-space-size=4096" }],
+    clientName: "",
+    clientPath: "/Users/alice/Library/Application Support/com.raycast.macos/node/bin/node",
+    keyTitle: "",
+    fingerprint: "",
+    destinationHost: "",
+    destinationFingerprint: "",
+    purpose: "",
+    action: "search Hisar and copy or paste passwords and one-time codes",
+    target: "",
+    commandLine: "",
+    repositoryPath: "",
+    hostAndPort: "",
+    isRememberable: false,
+    coverage: "app",
+    ...overrides,
+  });
+}
+
+export function createLauncherApp(overrides: Partial<LauncherApp> = {}): LauncherApp {
+  return { name: "Raycast", path: "/Applications/Raycast.app", iconURL: "data:image/png;base64,Raycast", lastUsedAt: "2026-10-09T11:59:30Z", ...overrides };
 }
 
 export function createCommandLineStatus(overrides: Partial<CommandLineStatus> = {}): CommandLineStatus {
@@ -558,6 +614,8 @@ export function createApiMock() {
     installCommandLineTool: vi.fn(),
     uninstallCommandLineTool: vi.fn(),
     setCommandLineIntegration: vi.fn(),
+    listAllLauncherApp: vi.fn().mockResolvedValue([]),
+    revokeLauncherApp: vi.fn(),
     copyField: vi.fn(),
     getOneTimeCode: vi.fn(),
     copyText: vi.fn(),

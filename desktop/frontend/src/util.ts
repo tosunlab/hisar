@@ -518,6 +518,12 @@ export function formatLastSeen(timestamp: string, now = new Date()): string {
   return seenAt.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
+// formatLastUse is "Last used just now" or "Last used 3 hours ago", for paired browsers and launcher apps.
+export function formatLastUse(timestamp: string, now = new Date()): string {
+  const lastSeen = formatLastSeen(timestamp, now);
+  return lastSeen ? `Last used ${lastSeen === "Active now" ? "just now" : lastSeen.toLowerCase()}` : "";
+}
+
 // formatTimeAgo is a short "since" for banners: "just now", "5 min ago", "2 h ago", "yesterday", "3 days ago".
 export function formatTimeAgo(timestamp: string, now = new Date()): string {
   const minuteCount = Math.floor((now.getTime() - new Date(timestamp).getTime()) / 60000);
