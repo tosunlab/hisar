@@ -70,6 +70,24 @@ final class PhoneApprovalTests: XCTestCase {
         XCTAssertEqual(approval.allDetailRow[2].value, "Personal › GitHub › password\nWork › AWS › access key\nand 3 more")
     }
 
+    func testLauncherRequestNamesTheAppAndHowLongItLasts() throws {
+        let json = """
+        [{"requestId":"0123456789abcdef0123456789abcdef","requesterDeviceName":"MacBook Pro","createdAt":"2027-01-15T08:00:00.123Z","expiresAt":"2027-01-15T08:01:00.123Z",
+          "kind":"launcher","appName":"Raycast","purpose":"search Hisar and copy or paste passwords and one-time codes","host":"","commandLine":"",
+          "repositoryPath":"","keyName":"","isForwarded":false,"forwardedFromHost":"","terminalName":"",
+          "appIcon":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="}]
+        """
+        let approval = try XCTUnwrap(try JSONDecoder().decode([PhoneApproval].self, from: Data(json.utf8)).first)
+        XCTAssertEqual(approval.title, "Approve on MacBook Pro?")
+        XCTAssertEqual(approval.summary, "Raycast wants to search Hisar and copy or paste passwords and one-time codes")
+        XCTAssertEqual(approval.bannerTitle, "MacBook Pro is asking to let Raycast use Hisar")
+        XCTAssertEqual(approval.systemImage, "magnifyingglass")
+        XCTAssertEqual(approval.allDetailRow.map(\.label), ["App", "Lasts"])
+        XCTAssertEqual(approval.allDetailRow.map(\.value), ["Raycast", "Until Hisar locks on MacBook Pro"])
+        XCTAssertEqual(approval.detailLine, "Until Hisar locks on MacBook Pro", "the card says how long approving lasts, as there is no command")
+        XCTAssertFalse(approval.isRememberable)
+    }
+
     func testDecodesTheAppIconAndSignatureWarning() throws {
         let json = """
         [{"requestId":"0123456789abcdef0123456789abcdef","requesterDeviceName":"MacBook Pro","expiresAt":"2027-01-15T08:01:00.123Z",

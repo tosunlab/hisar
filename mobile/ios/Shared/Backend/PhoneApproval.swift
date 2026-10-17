@@ -1,9 +1,11 @@
 import Foundation
 
-// A request the user's Mac is waiting on: approve or deny one SSH or command-line use.
+// A request the user's Mac is waiting on: approve or deny one SSH or command-line use, or an app such as Raycast using
+// Hisar until it locks on the Mac.
 struct PhoneApproval: Codable, Equatable, Identifiable {
     static let kindSSH = "ssh"
     static let kindCommandLine = "cli"
+    static let kindLauncher = "launcher"
     static let eventRequested = "approval-requested"
     static let eventAnswered = "approval-answered"
     static let eventResolved = "approval-resolved"
@@ -107,10 +109,24 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
     }
 
     var bannerTitle: String {
-        if kind == Self.kindCommandLine {
+        switch kind {
+        case Self.kindCommandLine:
             return "\(macName) is asking to use Hisar from the command line"
+        case Self.kindLauncher:
+            return "\(macName) is asking to let \(appName) use Hisar"
+        default:
+            return "\(macName) is asking to use \(keyName.isEmpty ? "your SSH key" : "“\(keyName)”")"
         }
-        return "\(macName) is asking to use \(keyName.isEmpty ? "your SSH key" : "“\(keyName)”")"
+    }
+
+    // lifetime is set for an approval that outlasts the request: a launcher keeps its approval until Hisar locks on the Mac.
+    var lifetime: String { kind == Self.kindLauncher ? "Until Hisar locks on \(macName)" : "" }
+
+    var approvalNote: String {
+        if kind == Self.kindLauncher {
+            return "Approving lets \(appName) use Hisar until it locks on your Mac; it does not unlock Hisar there."
+        }
+        return "Approving lets this one request continue; it does not unlock Hisar on your Mac."
     }
 
     var detailLine: String {
@@ -119,6 +135,9 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
         }
         if !secrets.isEmpty {
             return secrets.joined(separator: ", ")
+        }
+        if !lifetime.isEmpty {
+            return lifetime
         }
         return commandLine
     }
@@ -131,7 +150,16 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
         return String(format: "Expires in %d:%02d", secondCount / 60, secondCount % 60)
     }
 
-    var systemImage: String { kind == Self.kindCommandLine ? "apple.terminal" : "key.horizontal" }
+    var systemImage: String {
+        switch kind {
+        case Self.kindCommandLine:
+            return "apple.terminal"
+        case Self.kindLauncher:
+            return "magnifyingglass"
+        default:
+            return "key.horizontal"
+        }
+    }
 
     var allDetailRow: [DetailRow] {
         let allCandidate = [
@@ -144,6 +172,7 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
             DetailRow(label: "Secrets", value: secrets.joined(separator: "\n"), isMonospaced: false),
             DetailRow(label: "Forwarded from", value: isForwarded ? forwardedFromHost : "", isMonospaced: true),
             DetailRow(label: "Terminal", value: terminalName.isEmpty ? "" : "/dev/\(terminalName)", isMonospaced: true),
+            DetailRow(label: "Lasts", value: lifetime, isMonospaced: false),
         ]
         return allCandidate.filter { !$0.value.isEmpty }
     }
