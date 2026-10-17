@@ -20,6 +20,7 @@ import (
 	"github.com/tryhisar/hisar/server/internal/desktopupdate"
 	"github.com/tryhisar/hisar/server/internal/ratelimit"
 	"github.com/tryhisar/hisar/server/internal/realtime"
+	"github.com/tryhisar/hisar/server/internal/serverupdate"
 	"github.com/tryhisar/hisar/server/internal/service"
 	"github.com/tryhisar/hisar/server/internal/settings"
 	"github.com/tryhisar/hisar/server/internal/store"
@@ -47,6 +48,10 @@ type Config struct {
 	WriteTimeout time.Duration
 	// DesktopUpdates is nil when the server has no update source.
 	DesktopUpdates *desktopupdate.Source
+	// Version is hisar-server's release version, for Overview.
+	Version string
+	// ServerUpdates is nil when update checks are off.
+	ServerUpdates *serverupdate.Source
 }
 
 // Server answers HTTP: it parses requests, limits them per IP and hands them to the service.
@@ -229,6 +234,7 @@ func (s *Server) CreateApp() *fiber.App {
 	adminGroup := apiGroup.Group("/admin")
 	adminGroup.Get("/server", s.requireSession, requireAdmin, s.handleGetAdminServer)
 	s.registerAdminSettingsRoutes(adminGroup)
+	s.registerAdminHealthRoutes(adminGroup)
 
 	return app
 }

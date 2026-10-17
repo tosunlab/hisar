@@ -39,8 +39,8 @@ keeps the SMTP password in the database in plain text otherwise; with a host, a 
   HISAR_SMTP_PASSWORD  SMTP password
   HISAR_SMTP_FROM      sender, e.g. "Hisar <noreply@tryhisar.com>"
 
-desktop updates (the Mac app's Sparkle feed, read from GitHub Releases):
-  HISAR_DESKTOP_UPDATE_GITHUB_REPOSITORY  owner/name with the desktop-<version> releases (default %s); off disables updates
+desktop updates (the Mac app's Sparkle feed) and the newest server release for the admin dashboard, read from GitHub Releases:
+  HISAR_DESKTOP_UPDATE_GITHUB_REPOSITORY  owner/name with the desktop-<version> and server-<version> releases (default %s); off disables both
   HISAR_DESKTOP_UPDATE_GITHUB_TOKEN       optional read-only token (Contents: read), needed while the repository is private
   HISAR_DESKTOP_UPDATE_GITHUB_API_URL     GitHub API base URL (default https://api.github.com)
 

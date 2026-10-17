@@ -26,6 +26,7 @@ func serve(ctx context.Context, args []string) error {
 
 	go pruneOldRecords(ctx, database, server)
 	go deleteExpiredShareLinks(ctx, database, shareLinkSweepInterval)
+	go server.RunServerUpdates(ctx)
 
 	app := server.CreateApp()
 	log.Printf("hisar-server %s listening on %s", version, *address)

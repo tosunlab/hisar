@@ -10,6 +10,7 @@ import (
 
 	"github.com/tryhisar/hisar/server/internal/api"
 	"github.com/tryhisar/hisar/server/internal/desktopupdate"
+	"github.com/tryhisar/hisar/server/internal/serverupdate"
 	"github.com/tryhisar/hisar/server/internal/service"
 	"github.com/tryhisar/hisar/server/internal/settings"
 	"github.com/tryhisar/hisar/server/internal/store"
@@ -45,11 +46,18 @@ func setup(ctx context.Context) (*store.Store, *api.Server, error) {
 		database.Close()
 		return nil, nil, err
 	}
+	serverUpdates, err := serverupdate.New(readUpdateGitHubConfig())
+	if err != nil {
+		database.Close()
+		return nil, nil, fmt.Errorf("server updates: %w", err)
+	}
 	server, err := api.NewServer(database, secrets, api.Config{
 		Config:         service.Config{PublicURL: publicURL},
 		Environment:    os.Getenv,
 		TrustProxy:     getEnv("HISAR_TRUST_PROXY", "false") == "true",
 		DesktopUpdates: desktopUpdates,
+		Version:        version,
+		ServerUpdates:  serverUpdates,
 	})
 	if err != nil {
 		database.Close()
@@ -68,18 +76,24 @@ func logSettings(effective settings.Settings) {
 	}
 }
 
+// readUpdateGitHubConfig reads the HISAR_DESKTOP_UPDATE_GITHUB_* variables, which configure desktop updates and the
+// server release check.
+func readUpdateGitHubConfig() desktopupdate.GitHubConfig {
+	return desktopupdate.GitHubConfig{
+		APIURL:     getEnv("HISAR_DESKTOP_UPDATE_GITHUB_API_URL", desktopupdate.DefaultGitHubAPIURL),
+		Repository: strings.TrimSpace(getEnv("HISAR_DESKTOP_UPDATE_GITHUB_REPOSITORY", desktopupdate.DefaultGitHubRepository)),
+		Token:      strings.TrimSpace(os.Getenv("HISAR_DESKTOP_UPDATE_GITHUB_TOKEN")),
+	}
+}
+
 func createDesktopUpdateSource(publicURL string) (*desktopupdate.Source, error) {
-	repository := strings.TrimSpace(getEnv("HISAR_DESKTOP_UPDATE_GITHUB_REPOSITORY", desktopupdate.DefaultGitHubRepository))
-	if repository == "off" {
-		log.Printf("desktop updates are off")
+	gitHubConfig := readUpdateGitHubConfig()
+	repository, token := gitHubConfig.Repository, gitHubConfig.Token
+	if repository == desktopupdate.Off {
+		log.Printf("desktop and server updates are off")
 		return nil, nil
 	}
-	token := strings.TrimSpace(os.Getenv("HISAR_DESKTOP_UPDATE_GITHUB_TOKEN"))
-	gitHub, err := desktopupdate.NewGitHub(desktopupdate.GitHubConfig{
-		APIURL:     getEnv("HISAR_DESKTOP_UPDATE_GITHUB_API_URL", desktopupdate.DefaultGitHubAPIURL),
-		Repository: repository,
-		Token:      token,
-	})
+	gitHub, err := desktopupdate.NewGitHub(gitHubConfig)
 	if err != nil {
 		return nil, fmt.Errorf("desktop updates: %w", err)
 	}
