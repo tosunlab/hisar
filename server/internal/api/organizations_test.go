@@ -575,6 +575,116 @@ func TestRenameWithARotatedAwayKey(t *testing.T) {
 	}
 }
 
+// TestItemWritesWithARotatedAwayKey: a new item, a tombstone, an item move and a vault deletion that moves items are
+// refused with the key-changed 409, storing nothing, unless their items are sealed with the key generation the vault has
+// now, which organization vaults require.
+func TestItemWritesWithARotatedAwayKey(t *testing.T) {
+	baseURL, server, databaseURL := setupServer(t)
+	ctx := context.Background()
+	caller := apiCaller{t: t, baseURL: baseURL}
+	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", apitypes.RoleMember)
+	bob := signUpTestAccount(t, ctx, server, baseURL, "bob@example.com", apitypes.RoleMember)
+	acme := caller.createOrganization(alice, "Acme")
+	caller.joinOrganization(alice, bob, acme.ID, apitypes.OrganizationRoleMember)
+	platform := caller.createTeam(alice, acme.ID, "Platform", alice, bob)
+	production := createOrganizationVault(t, alice, acme.ID, platform.ID, "Production")
+	caller.deliverVaultKeys(alice, production)
+	bobProduction := requireValue[*session.Vault](t)(bob.FindVault(ctx, production.ID))
+	bobPersonal := findPersonalVault(t, bob)
+	token := createTestItem(t, bob, bobPersonal, item.Item{Overview: item.Overview{Title: "Deploy token"}, Details: item.Details{Password: "deploy-password"}})
+	scratch := requireValue[*session.Vault](t)(bob.CreateVault(ctx, "Scratch", apitypes.VaultShared))
+	runbook := createTestItem(t, bob, scratch, item.Item{Overview: item.Overview{Title: "Runbook"}, Details: item.Details{Notes: "restart the workers"}})
+	grants := []session.AccessGrant{{AccountID: alice.AccountID, Role: apitypes.VaultOwner}, {AccountID: bob.AccountID, Role: apitypes.VaultOwner}}
+	if err := alice.RotateVaultKey(ctx, production, grants); err != nil {
+		t.Fatal(err)
+	}
+	if production.KeyGeneration != 2 || bobProduction.KeyGeneration != 1 {
+		t.Fatalf("generations after the rotation: Alice's %d, Bob's %d", production.KeyGeneration, bobProduction.KeyGeneration)
+	}
+	seal := func(key []byte, vaultID, itemID string, isDeleted bool, keyGeneration int64) apitypes.PutItemRequest {
+		t.Helper()
+		revision := uuid.NewString()
+		overview := requireValue[[]byte](t)(json.Marshal(item.Overview{Title: "Sealed by hand"}))
+		details := requireValue[[]byte](t)(json.Marshal(item.Details{}))
+		return apitypes.PutItemRequest{
+			Revision: revision, Deleted: isDeleted, KeyGeneration: keyGeneration,
+			Overview: requireValue[[]byte](t)(crypt.SealItemPart(key, vaultID, itemID, revision, crypt.Overview, overview)),
+			Details:  requireValue[[]byte](t)(crypt.SealItemPart(key, vaultID, itemID, revision, crypt.Details, details)),
+		}
+	}
+	countItems := func(vaultID, itemID string) int {
+		t.Helper()
+		return countDatabaseRows(t, databaseURL, `SELECT count(*) FROM items WHERE vault_id = $1 AND id = $2`, vaultID, itemID)
+	}
+
+	for _, keyGeneration := range []int64{1, 0} {
+		itemID := uuid.NewString()
+		request := seal(bobProduction.Key, production.ID, itemID, false, keyGeneration)
+		if _, current, err := bob.Client.PutItem(ctx, production.ID, itemID, "", &request); !apiclient.IsKeyChanged(err) || current != nil ||
+			!strings.Contains(err.Error(), "vault key changed") {
+			t.Errorf("a new item sealed with generation %d: %+v %v", keyGeneration, current, err)
+		}
+		if countItems(production.ID, itemID) != 0 {
+			t.Errorf("a new item sealed with generation %d was stored", keyGeneration)
+		}
+	}
+	itemID := uuid.NewString()
+	created := seal(production.Key, production.ID, itemID, false, 2)
+	if _, _, err := alice.Client.PutItem(ctx, production.ID, itemID, "", &created); err != nil {
+		t.Fatalf("a new item sealed with the current key: %v", err)
+	}
+	staleTombstone := seal(bobProduction.Key, production.ID, itemID, true, 1)
+	if _, current, err := bob.Client.PutItem(ctx, production.ID, itemID, created.Revision, &staleTombstone); !apiclient.IsKeyChanged(err) || current != nil {
+		t.Errorf("a tombstone sealed with the replaced key: %+v %v", current, err)
+	}
+	if countDatabaseRows(t, databaseURL, `SELECT count(*) FROM items WHERE id = $1 AND revision = $2 AND NOT deleted`, itemID, created.Revision) != 1 {
+		t.Error("a refused tombstone replaced the item")
+	}
+	staleBase := seal(production.Key, production.ID, itemID, false, 2)
+	if _, current, err := bob.Client.PutItem(ctx, production.ID, itemID, uuid.NewString(), &staleBase); !apiclient.IsStatus(err, http.StatusConflict) ||
+		apiclient.IsKeyChanged(err) || current == nil || current.Revision != created.Revision {
+		t.Errorf("an edit of another revision: %+v %v", current, err)
+	}
+	family := requireValue[*session.Vault](t)(alice.CreateVault(ctx, "Family", apitypes.VaultShared))
+	familyItemID := uuid.NewString()
+	withAnotherGeneration := seal(family.Key, family.ID, familyItemID, false, 7)
+	if _, _, err := alice.Client.PutItem(ctx, family.ID, familyItemID, "", &withAnotherGeneration); !apiclient.IsKeyChanged(err) {
+		t.Errorf("a new item in a shared vault with another key generation: %v", err)
+	}
+	withoutGeneration := seal(family.Key, family.ID, familyItemID, false, 0)
+	if _, _, err := alice.Client.PutItem(ctx, family.ID, familyItemID, "", &withoutGeneration); err != nil {
+		t.Errorf("a new item in a shared vault without a key generation: %v", err)
+	}
+
+	staleMove := &apitypes.MoveItemRequest{
+		TargetVaultID: production.ID, BaseRevision: token.Revision,
+		Tombstone: seal(bobPersonal.Key, bobPersonal.ID, token.ID, true, bobPersonal.KeyGeneration),
+		Moved:     seal(bobProduction.Key, production.ID, token.ID, false, 1),
+	}
+	if _, current, err := bob.Client.MoveItem(ctx, bobPersonal.ID, token.ID, staleMove); !apiclient.IsKeyChanged(err) || current != nil {
+		t.Errorf("a move sealed with the replaced key: %+v %v", current, err)
+	}
+	if stayed, isFound := findTestItem(t, bob, bobPersonal, token.ID); !isFound || stayed.Revision != token.Revision || countItems(production.ID, token.ID) != 0 {
+		t.Errorf("a refused move took the item out of Bob's Personal vault: %+v", stayed)
+	}
+
+	movedRunbook := seal(bobProduction.Key, production.ID, runbook.ID, false, 0)
+	for _, keyGeneration := range []int64{1, 0} {
+		deletion := &apitypes.DeleteVaultRequest{MoveToVaultID: production.ID, MoveToKeyGeneration: keyGeneration, MovedItems: []apitypes.MovedItem{
+			{ID: runbook.ID, BaseRevision: runbook.Revision, Revision: movedRunbook.Revision, Overview: movedRunbook.Overview, Details: movedRunbook.Details},
+		}}
+		if err := bob.Client.DeleteVault(ctx, scratch.ID, deletion); !apiclient.IsKeyChanged(err) {
+			t.Errorf("a deletion moving items sealed with generation %d: %v", keyGeneration, err)
+		}
+	}
+	if _, isFound := findTestVault(t, bob, scratch.ID); !isFound {
+		t.Fatal("a refused deletion deleted the vault")
+	}
+	if _, isFound := findTestItem(t, bob, scratch, runbook.ID); !isFound || countItems(production.ID, runbook.ID) != 0 {
+		t.Error("a refused deletion moved the runbook")
+	}
+}
+
 func TestOrganizationRights(t *testing.T) {
 	baseURL, server, _ := setupServer(t)
 	ctx := context.Background()

@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"errors"
-	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -44,12 +43,17 @@ func (s *Store) ListChanges(ctx context.Context, vaultID string, since int64, li
 // PutItem writes a new revision if baseRevision matches the stored one ("" for a new item).
 // On ErrConflict the current item is returned; it is nil when the item does not exist.
 // Re-sending an already stored revision is a no-op so that clients can retry safely.
-func (s *Store) PutItem(ctx context.Context, vaultID, baseRevision string, item *Item) (*Item, error) {
+// It locks like every change to an organization vault (§5.11) and returns ErrStaleKeyGeneration, before any revision
+// check, unless the vault accepts keyGeneration, so an item sealed with a key a rotation replaced is never stored.
+func (s *Store) PutItem(ctx context.Context, vaultID, baseRevision string, keyGeneration int64, item *Item) (*Item, error) {
 	var current *Item
 	err := s.runInTransaction(ctx, func(transaction pgx.Tx) error {
-		var vaultSeq int64
-		if err := transaction.QueryRow(ctx, `SELECT seq FROM vaults WHERE id = $1 FOR UPDATE`, vaultID).Scan(&vaultSeq); err != nil {
-			return convertNoRowsToNotFound(err)
+		vault, err := lockVault(ctx, transaction, vaultID)
+		if err != nil {
+			return err
+		}
+		if !vault.acceptsKeyGeneration(keyGeneration) {
+			return ErrStaleKeyGeneration
 		}
 
 		rows, err := transaction.Query(ctx, `
@@ -99,35 +103,34 @@ func (s *Store) PruneHistory(ctx context.Context, maxAge time.Duration) (int64, 
 }
 
 // ItemMove moves one live item between vaults: Tombstone replaces it in the source vault and Moved, with the same ID,
-// is written to the target vault.
+// is written to the target vault. SourceKeyGeneration and TargetKeyGeneration are the generations of the vault keys they
+// are sealed with.
 type ItemMove struct {
-	SourceVaultID string
-	TargetVaultID string
-	AccountID     string
-	BaseRevision  string
-	Tombstone     Item
-	Moved         Item
+	SourceVaultID       string
+	TargetVaultID       string
+	AccountID           string
+	BaseRevision        string
+	Tombstone           Item
+	Moved               Item
+	SourceKeyGeneration int64
+	TargetKeyGeneration int64
 }
 
-// MoveItem moves the item in one transaction, so it is never in both vaults or in neither. It refuses with ErrConflict,
-// returning the current item, unless BaseRevision is the item's live revision in the source vault; with ErrExists when
-// the target vault has a live item with the same ID; and with ErrTargetNotWritable unless the account may write the target
-// vault. On success Tombstone.Seq and Moved.Seq hold the vaults' new sequence numbers.
+// MoveItem moves the item in one transaction, so it is never in both vaults or in neither. It locks both vaults' organizations
+// and then the vaults (§5.11). It refuses with ErrConflict, returning the current item, unless BaseRevision is the item's
+// live revision in the source vault; with ErrExists when the target vault has a live item with the same ID; with
+// ErrTargetNotWritable unless the account may write the target vault; and with ErrStaleKeyGeneration unless both vaults
+// accept the key generations the item is sealed with. On success Tombstone.Seq and Moved.Seq hold the vaults' new
+// sequence numbers.
 func (s *Store) MoveItem(ctx context.Context, move *ItemMove) (*Item, error) {
 	var current *Item
 	err := s.runInTransaction(ctx, func(transaction pgx.Tx) error {
-		// Locking in ID order keeps two concurrent moves between the same vaults from deadlocking.
-		lockedVaultIDs := []string{move.SourceVaultID, move.TargetVaultID}
-		slices.Sort(lockedVaultIDs)
-		rows, err := transaction.Query(ctx, `SELECT id::text FROM vaults WHERE id = ANY($1::uuid[]) ORDER BY id FOR UPDATE`, lockedVaultIDs)
+		vaultsByID, err := lockVaults(ctx, transaction, []string{move.SourceVaultID, move.TargetVaultID})
 		if err != nil {
 			return err
 		}
-		lockedIDs, err := pgx.CollectRows(rows, pgx.RowTo[string])
-		if err != nil {
-			return err
-		}
-		if len(lockedIDs) != 2 {
+		source, target := vaultsByID[move.SourceVaultID], vaultsByID[move.TargetVaultID]
+		if source == nil || target == nil {
 			return ErrNotFound
 		}
 		var targetRole string
@@ -138,9 +141,11 @@ func (s *Store) MoveItem(ctx context.Context, move *ItemMove) (*Item, error) {
 		if targetRole != "owner" && targetRole != "editor" {
 			return ErrTargetNotWritable
 		}
-
+		if !source.acceptsKeyGeneration(move.SourceKeyGeneration) || !target.acceptsKeyGeneration(move.TargetKeyGeneration) {
+			return ErrStaleKeyGeneration
+		}
 		itemID := move.Moved.ID
-		rows, err = transaction.Query(ctx, `
+		rows, err := transaction.Query(ctx, `
 			SELECT id, revision, seq, deleted, overview, details, updated_at, updated_by
 			FROM items WHERE vault_id = $1 AND id = $2`, move.SourceVaultID, itemID)
 		if err != nil {

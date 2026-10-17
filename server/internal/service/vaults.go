@@ -273,19 +273,22 @@ func (s *Service) CheckItemWrite(ctx context.Context, actor Actor, vaultID strin
 	return nil
 }
 
-// PutItem saves a new revision of an item, refusing it with *ItemConflictError unless baseRevision is the current one.
+// PutItem saves a new revision of an item, refusing it with *ItemConflictError unless baseRevision is the current one,
+// and with ErrKeyChanged when it is sealed with a key a rotation replaced.
 func (s *Service) PutItem(ctx context.Context, actor Actor, vaultID, itemID, baseRevision string, request *apitypes.PutItemRequest) (int64, error) {
 	if err := s.CheckItemWrite(ctx, actor, vaultID); err != nil {
 		return 0, err
 	}
 	if !IsValidUUID(itemID) || !IsValidUUID(request.Revision) || (baseRevision != "" && !IsValidUUID(baseRevision)) ||
 		len(request.Overview) == 0 || len(request.Overview) > maxOverview ||
-		len(request.Details) == 0 || len(request.Details) > maxDetails {
+		len(request.Details) == 0 || len(request.Details) > maxDetails || request.KeyGeneration < 0 {
 		return 0, newError(KindInvalid, "invalid item")
 	}
 	storeItem := &store.Item{ID: itemID, Revision: request.Revision, Deleted: request.Deleted, Overview: request.Overview, Details: request.Details, UpdatedBy: actor.AccountID}
-	currentStoreItem, err := s.store.PutItem(ctx, vaultID, baseRevision, storeItem)
+	currentStoreItem, err := s.store.PutItem(ctx, vaultID, baseRevision, request.KeyGeneration, storeItem)
 	switch {
+	case errors.Is(err, store.ErrStaleKeyGeneration):
+		return 0, ErrKeyChanged
 	case errors.Is(err, store.ErrConflict):
 		conflict := &ItemConflictError{}
 		if currentStoreItem != nil {
@@ -308,7 +311,7 @@ func (s *Service) MoveItem(ctx context.Context, actor Actor, vaultID, itemID str
 	}
 	isValidPart := func(part apitypes.PutItemRequest, isDeleted bool) bool {
 		return part.Deleted == isDeleted && IsValidUUID(part.Revision) && len(part.Overview) > 0 && len(part.Overview) <= maxOverview &&
-			len(part.Details) > 0 && len(part.Details) <= maxDetails
+			len(part.Details) > 0 && len(part.Details) <= maxDetails && part.KeyGeneration >= 0
 	}
 	if !IsValidUUID(itemID) || !IsValidUUID(request.TargetVaultID) || request.TargetVaultID == vaultID || !IsValidUUID(request.BaseRevision) ||
 		!isValidPart(request.Tombstone, true) || !isValidPart(request.Moved, false) || request.Tombstone.Revision == request.Moved.Revision {
@@ -322,11 +325,14 @@ func (s *Service) MoveItem(ctx context.Context, actor Actor, vaultID, itemID str
 	}
 	move := &store.ItemMove{
 		SourceVaultID: vaultID, TargetVaultID: request.TargetVaultID, AccountID: actor.AccountID, BaseRevision: request.BaseRevision,
+		SourceKeyGeneration: request.Tombstone.KeyGeneration, TargetKeyGeneration: request.Moved.KeyGeneration,
 		Tombstone: store.Item{Revision: request.Tombstone.Revision, Deleted: true, Overview: request.Tombstone.Overview, Details: request.Tombstone.Details},
 		Moved:     store.Item{ID: itemID, Revision: request.Moved.Revision, Overview: request.Moved.Overview, Details: request.Moved.Details},
 	}
 	currentStoreItem, err := s.store.MoveItem(ctx, move)
 	switch {
+	case errors.Is(err, store.ErrStaleKeyGeneration):
+		return apitypes.MoveItemResponse{}, ErrKeyChanged
 	case errors.Is(err, store.ErrConflict):
 		conflict := &ItemConflictError{}
 		if currentStoreItem != nil {
@@ -395,7 +401,7 @@ func (s *Service) DeleteVault(ctx context.Context, actor Actor, vaultID string, 
 	errInvalidDeletion := newError(KindInvalid, "invalid vault deletion")
 	if request.MoveToVaultID == "" && len(request.MovedItems) > 0 ||
 		request.MoveToVaultID != "" && (!IsValidUUID(request.MoveToVaultID) || request.MoveToVaultID == vaultID || request.IsDeletingItems) ||
-		len(request.MovedItems) > maxRotatedItemCount {
+		len(request.MovedItems) > maxRotatedItemCount || request.MoveToKeyGeneration < 0 {
 		return errInvalidDeletion
 	}
 	seenItemIDs := map[string]bool{}
@@ -419,7 +425,7 @@ func (s *Service) DeleteVault(ctx context.Context, actor Actor, vaultID string, 
 	}
 	formerMemberIDs, err := s.store.DeleteVault(ctx, store.VaultDeletion{
 		VaultID: vaultID, AccountID: actor.AccountID, MoveToVaultID: request.MoveToVaultID,
-		MovedItems: movedItems, IsDeletingItems: request.IsDeletingItems,
+		MovedItems: movedItems, IsDeletingItems: request.IsDeletingItems, MoveToKeyGeneration: request.MoveToKeyGeneration,
 	})
 	switch {
 	case errors.Is(err, store.ErrNotOwner):
@@ -430,6 +436,8 @@ func (s *Service) DeleteVault(ctx context.Context, actor Actor, vaultID string, 
 		return newError(KindInvalid, "your only vault can't be deleted")
 	case errors.Is(err, store.ErrVaultNotEmpty):
 		return newError(KindConflict, "the vault has items; move them or delete them with the vault")
+	case errors.Is(err, store.ErrStaleKeyGeneration):
+		return ErrKeyChanged
 	case errors.Is(err, store.ErrConflict):
 		return newError(KindConflict, "the vault changed while its items were moved; try again")
 	case errors.Is(err, store.ErrExists):

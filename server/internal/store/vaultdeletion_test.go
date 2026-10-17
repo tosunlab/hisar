@@ -28,7 +28,7 @@ func TestDeleteVaultRules(t *testing.T) {
 	liveItem := &Item{ID: uuid.NewString(), Revision: uuid.NewString(), Overview: []byte("o"), Details: []byte("d"), UpdatedBy: "AAAAAA"}
 	deletedItem := &Item{ID: uuid.NewString(), Revision: uuid.NewString(), Deleted: true, Overview: []byte("o"), Details: []byte("d"), UpdatedBy: "AAAAAA"}
 	for _, vaultItem := range []*Item{liveItem, deletedItem} {
-		if _, err := database.PutItem(ctx, onlyVaultID, "", vaultItem); err != nil {
+		if _, err := database.PutItem(ctx, onlyVaultID, "", 0, vaultItem); err != nil {
 			t.Fatal(err)
 		}
 	}

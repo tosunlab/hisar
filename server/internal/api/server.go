@@ -251,11 +251,15 @@ var statusByKind = map[service.Kind]int{
 }
 
 // handleError renders refusals (*service.Error, *fiber.Error) as JSON and hides all other errors behind a 500. An item
-// conflict answers 409 with the current item, which the client needs to merge.
+// conflict answers 409 with the current item, which the client needs to merge; items sealed with a key a rotation
+// replaced answer 409 with apitypes.KeyChangedResponse.
 func handleError(c fiber.Ctx, err error) error {
 	var conflict *service.ItemConflictError
 	if errors.As(err, &conflict) {
 		return c.Status(fiber.StatusConflict).JSON(apitypes.ConflictResponse{Current: conflict.Current})
+	}
+	if errors.Is(err, service.ErrKeyChanged) {
+		return c.Status(fiber.StatusConflict).JSON(apitypes.KeyChangedResponse{Error: service.ErrKeyChanged.Message, IsKeyChanged: true})
 	}
 	var serviceError *service.Error
 	if errors.As(err, &serviceError) {

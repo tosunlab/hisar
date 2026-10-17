@@ -12,7 +12,7 @@ var (
 	ErrOrganizationVault  = errors.New("store: access to an organization vault comes from its teams")
 	ErrNotEntitled        = errors.New("store: the account's teams do not give it the vault with this role")
 	ErrRoleFromTeams      = errors.New("store: roles in an organization vault come from its teams")
-	ErrStaleKeyGeneration = errors.New("store: the key was wrapped for another key generation")
+	ErrStaleKeyGeneration = errors.New("store: not the vault's current key generation")
 )
 
 type Vault struct {
@@ -127,24 +127,59 @@ type lockedVault struct {
 }
 
 // lockVault locks the vault's organization, when it has one, and then the vault: the order of every change to an
-// organization (§5.11), so that access is never checked against a state another transaction is changing. A vault's
-// organization never changes, so it is read before the locks.
+// organization (§5.11), so that access is never checked against a state another transaction is changing.
 func lockVault(ctx context.Context, transaction pgx.Tx, vaultID string) (*lockedVault, error) {
-	vault := &lockedVault{}
-	if err := transaction.QueryRow(ctx, `SELECT coalesce(organization_id::text, '') FROM vaults WHERE id = $1`, vaultID).Scan(&vault.organizationID); err != nil {
-		return nil, convertNoRowsToNotFound(err)
+	vaultsByID, err := lockVaults(ctx, transaction, []string{vaultID})
+	if err != nil {
+		return nil, err
 	}
-	if vault.organizationID != "" {
-		if err := lockOrganization(ctx, transaction, vault.organizationID); err != nil {
+	vault, isFound := vaultsByID[vaultID]
+	if !isFound {
+		return nil, ErrNotFound
+	}
+	return vault, nil
+}
+
+// lockVaults locks the organizations of the vaults and then the vaults, each in ID order, as lockVault does for one. A
+// vault's organization never changes, so it is read before the locks. A vault that does not exist is not in the result.
+func lockVaults(ctx context.Context, transaction pgx.Tx, vaultIDs []string) (map[string]*lockedVault, error) {
+	rows, err := transaction.Query(ctx, `
+		SELECT organization_id::text FROM vaults WHERE id = ANY($1::uuid[]) AND organization_id IS NOT NULL
+		GROUP BY organization_id ORDER BY organization_id`, vaultIDs)
+	if err != nil {
+		return nil, err
+	}
+	organizationIDs, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return nil, err
+	}
+	for _, organizationID := range organizationIDs {
+		if err := lockOrganization(ctx, transaction, organizationID); err != nil {
 			return nil, err
 		}
 	}
-	err := transaction.QueryRow(ctx, `SELECT type, seq, key_generation FROM vaults WHERE id = $1 FOR UPDATE`, vaultID).Scan(
-		&vault.vaultType, &vault.seq, &vault.keyGeneration)
+	rows, err = transaction.Query(ctx, `
+		SELECT id::text, type, coalesce(organization_id::text, ''), seq, key_generation FROM vaults
+		WHERE id = ANY($1::uuid[]) ORDER BY id FOR UPDATE`, vaultIDs)
 	if err != nil {
-		return nil, convertNoRowsToNotFound(err)
+		return nil, err
 	}
-	return vault, nil
+	vaultsByID := map[string]*lockedVault{}
+	var vaultID string
+	var scanned lockedVault
+	_, err = pgx.ForEachRow(rows, []any{&vaultID, &scanned.vaultType, &scanned.organizationID, &scanned.seq, &scanned.keyGeneration}, func() error {
+		vault := scanned
+		vaultsByID[vaultID] = &vault
+		return nil
+	})
+	return vaultsByID, err
+}
+
+// acceptsKeyGeneration reports whether something sealed with the vault key of keyGeneration may be stored: the vault's
+// current generation is required for organization vaults and checked for any vault when nonzero, so older clients keep
+// working with personal and shared vaults, and nothing sealed with a key a rotation replaced is stored.
+func (vault *lockedVault) acceptsKeyGeneration(keyGeneration int64) bool {
+	return keyGeneration == vault.keyGeneration || keyGeneration == 0 && vault.organizationID == ""
 }
 
 func (s *Store) ListMembers(ctx context.Context, vaultID string) ([]Member, error) {
@@ -182,7 +217,7 @@ func (s *Store) GrantAccess(ctx context.Context, vaultID string, member Member, 
 		if err := requireVaultOwner(ctx, transaction, vaultID, member.GrantedBy); err != nil {
 			return err
 		}
-		if keyGeneration != vault.keyGeneration && (keyGeneration != 0 || vault.organizationID != "") {
+		if !vault.acceptsKeyGeneration(keyGeneration) {
 			return ErrStaleKeyGeneration
 		}
 		currentRole, err := queryVaultRole(ctx, transaction, vaultID, member.AccountID)

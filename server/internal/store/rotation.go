@@ -45,7 +45,7 @@ func (s *Store) RotateVault(ctx context.Context, rotation VaultRotation) error {
 		if err := requireVaultOwner(ctx, transaction, rotation.VaultID, rotation.RotatedBy); err != nil {
 			return err
 		}
-		if rotation.KeyGeneration != vault.keyGeneration && (rotation.KeyGeneration != 0 || vault.organizationID != "") {
+		if !vault.acceptsKeyGeneration(rotation.KeyGeneration) {
 			return ErrConflict
 		}
 
