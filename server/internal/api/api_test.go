@@ -294,12 +294,17 @@ func TestEndToEnd(t *testing.T) {
 		laptop := requireValue[*session.Session](t)(session.LogIn(ctx, apiclient.New(baseURL), "alice@example.com", alicePassword, aliceSecretKey, apitypes.DeviceInfo{Name: "laptop", Platform: "go"}))
 		devices := requireValue[[]apitypes.Device](t)(alice.Client.ListDevices(ctx))
 		var laptopID string
+		isSignUpDeviceListed := false
 		for _, device := range devices {
 			if device.Name == "laptop" {
 				laptopID = device.ID
 			}
+			isSignUpDeviceListed = isSignUpDeviceListed || (device.Current && device.ID == alice.DeviceID)
 		}
-		if err := alice.Client.RevokeDevice(ctx, laptopID); err != nil {
+		if laptopID == "" || laptop.DeviceID != laptopID || !isSignUpDeviceListed {
+			t.Fatalf("log-in device %q, listed laptop %q; sign-up device %q listed as current: %t", laptop.DeviceID, laptopID, alice.DeviceID, isSignUpDeviceListed)
+		}
+		if err := alice.Client.RevokeDevice(ctx, laptop.DeviceID); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := laptop.Client.ListVaults(ctx); !apiclient.IsStatus(err, http.StatusUnauthorized) {

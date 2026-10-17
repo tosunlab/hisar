@@ -70,7 +70,57 @@ func TestWrongCurrentPasswordSendsNothing(t *testing.T) {
 	if _, err := signedIn.ReplaceSecretKey(ctx, password, otherSecretKey); !errors.Is(err, ErrBadCredentials) {
 		t.Errorf("another account's Secret Key: %v", err)
 	}
+	if _, err := Reauthenticate(ctx, signedIn.Client, "a@example.com", []byte("wrong master password"), secretKey); !errors.Is(err, ErrBadCredentials) {
+		t.Errorf("reauthenticate with a wrong password: %v", err)
+	}
+	if _, err := Reauthenticate(ctx, signedIn.Client, "b@example.com", password, secretKey); !errors.Is(err, ErrEmailMismatch) {
+		t.Errorf("reauthenticate with another email: %v", err)
+	}
+	if _, err := Reauthenticate(ctx, signedIn.Client, "a@example.com", password, otherSecretKey); !errors.Is(err, ErrBadCredentials) {
+		t.Errorf("reauthenticate with another account's Secret Key: %v", err)
+	}
 	if count := reauthenticationCount.Load(); count != 0 {
 		t.Errorf("%d requests reached the server after a failed local check", count)
+	}
+}
+
+func TestAccountChangesRefuseAServerKeysetThatIsNotTheSessions(t *testing.T) {
+	password := []byte("current master password")
+	secretKey, _ := crypt.GenerateSecretKey("ABC123")
+	salt := crypt.GenerateSalt()
+	derivedKeys, err := crypt.DeriveKeys(password, salt, crypt.MinArgon2Params(), secretKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	serverKeyset, _ := crypt.GenerateKeyset()
+	encryptedKeyset, _ := serverKeyset.Encrypt(derivedKeys.AccountUnlockKey, "ABC123")
+	account := apitypes.Account{AccountID: "ABC123", Email: "a@example.com", Argon2: crypt.MinArgon2Params(), Salt: salt, EncKeyset: encryptedKeyset, PublicKeys: serverKeyset.GetPublicKeys("ABC123")}
+	var reauthenticationCount atomic.Int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /api/v1/account", func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(writer).Encode(account)
+	})
+	mux.HandleFunc("/api/v1/account/", func(writer http.ResponseWriter, request *http.Request) {
+		reauthenticationCount.Add(1)
+		writer.WriteHeader(http.StatusInternalServerError)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	sessionKeyset, _ := crypt.GenerateKeyset()
+	signedIn := &Session{Client: apiclient.New(server.URL), AccountID: "ABC123", Email: "a@example.com", Keyset: sessionKeyset}
+	ctx := context.Background()
+
+	if err := signedIn.DeleteAccount(ctx, password, secretKey, "a@example.com"); !errors.Is(err, ErrKeyMismatch) {
+		t.Errorf("delete with the server's keyset swapped: %v", err)
+	}
+	if _, err := signedIn.ChangeMasterPassword(ctx, password, []byte("a new master password"), secretKey); !errors.Is(err, ErrKeyMismatch) {
+		t.Errorf("change the master password with the server's keyset swapped: %v", err)
+	}
+	if _, err := signedIn.ReplaceSecretKey(ctx, password, secretKey); !errors.Is(err, ErrKeyMismatch) {
+		t.Errorf("replace the Secret Key with the server's keyset swapped: %v", err)
+	}
+	if count := reauthenticationCount.Load(); count != 0 {
+		t.Errorf("%d requests reached the server after the keyset check failed", count)
 	}
 }

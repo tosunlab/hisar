@@ -82,11 +82,16 @@ func (s *Session) verifyCurrentCredentials(ctx context.Context, password []byte,
 	if secretKey.AccountID != s.AccountID {
 		return nil, ErrBadCredentials
 	}
-	account, err := s.Client.GetAccount(ctx)
+	return verifyCredentials(ctx, s.Client, password, secretKey, s.Keyset)
+}
+
+// verifyCredentials opens the keyset the server holds for the signed-in account; a non-nil sessionKeyset must be that same keyset.
+func verifyCredentials(ctx context.Context, client *apiclient.Client, password []byte, secretKey crypt.SecretKey, sessionKeyset *crypt.Keyset) (*verifiedAccount, error) {
+	account, err := client.GetAccount(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if account.AccountID != s.AccountID {
+	if account.AccountID != secretKey.AccountID {
 		return nil, ErrBadCredentials
 	}
 	currentKeys, err := crypt.DeriveKeys(password, account.Salt, account.Argon2, secretKey)
@@ -99,13 +104,33 @@ func (s *Session) verifyCurrentCredentials(ctx context.Context, password []byte,
 		return nil, ErrBadCredentials
 	}
 	publicKeys := keyset.GetPublicKeys(account.AccountID)
-	isSessionKeyset := s.Keyset == nil || bytes.Equal(s.Keyset.GetPublicKeys(s.AccountID).Sign, publicKeys.Sign)
+	isSessionKeyset := sessionKeyset == nil || bytes.Equal(sessionKeyset.GetPublicKeys(account.AccountID).Sign, publicKeys.Sign)
 	if !bytes.Equal(publicKeys.KEM, account.PublicKeys.KEM) || !bytes.Equal(publicKeys.Sign, account.PublicKeys.Sign) || !isSessionKeyset {
 		currentKeys.Wipe()
 		keyset.Wipe()
 		return nil, ErrKeyMismatch
 	}
 	return &verifiedAccount{account: account, currentKeys: currentKeys, keyset: keyset}, nil
+}
+
+// Reauthenticate proves to the server, with OPAQUE, that the signed-in client knows the account's email, master password
+// and Secret Key; neither secret leaves the device. Changes such as deleting the account carry the proof.
+func Reauthenticate(ctx context.Context, client *apiclient.Client, email string, password []byte, secretKey crypt.SecretKey) (apitypes.ReauthenticationProof, error) {
+	return reauthenticate(ctx, client, email, password, secretKey, nil)
+}
+
+// reauthenticate is Reauthenticate for a caller that holds the account's keyset, which the server's keyset must match.
+func reauthenticate(ctx context.Context, client *apiclient.Client, email string, password []byte, secretKey crypt.SecretKey, sessionKeyset *crypt.Keyset) (apitypes.ReauthenticationProof, error) {
+	verified, err := verifyCredentials(ctx, client, password, secretKey, sessionKeyset)
+	if err != nil {
+		return apitypes.ReauthenticationProof{}, err
+	}
+	defer verified.wipe()
+	if !strings.EqualFold(verified.account.Email, strings.TrimSpace(email)) {
+		return apitypes.ReauthenticationProof{}, ErrEmailMismatch
+	}
+	proof, _, err := proveCredentials(ctx, client, verified.currentKeys.AuthKey, verified.account.AccountID, nil)
+	return proof, err
 }
 
 // strongerArgon2Params never lowers a cost the account already uses.
@@ -134,30 +159,19 @@ func (s *Session) changeCredentials(ctx context.Context, change string, currentP
 	}
 	defer newKeys.Wipe()
 
-	login, keyExchange1, err := startOpaqueLogin(verified.currentKeys.AuthKey)
-	if err != nil {
-		return nil, err
-	}
-	defer login.clear()
-	var reauthentication *apitypes.ReauthenticateResponse
+	var proof apitypes.ReauthenticationProof
 	err = credential.registerOpaque(newKeys, s.AccountID, func(registrationRequest []byte) ([]byte, error) {
-		var requestErr error
-		reauthentication, requestErr = s.Client.Reauthenticate(ctx, &apitypes.ReauthenticateRequest{KE1: keyExchange1, RegistrationRequest: registrationRequest})
-		if requestErr != nil {
-			return nil, requestErr
-		}
-		return reauthentication.RegistrationResponse, nil
+		var registrationResponse []byte
+		var proveErr error
+		proof, registrationResponse, proveErr = proveCredentials(ctx, s.Client, verified.currentKeys.AuthKey, s.AccountID, registrationRequest)
+		return registrationResponse, proveErr
 	})
 	if err != nil {
 		return nil, err
 	}
-	keyExchange3, err := login.finish(reauthentication.KE2, s.AccountID)
-	if err != nil {
-		return nil, err
-	}
 	response, err := s.Client.ChangeCredentials(ctx, &apitypes.ChangeCredentialsRequest{
-		ReauthenticationID: reauthentication.ReauthenticationID,
-		KE3:                keyExchange3,
+		ReauthenticationID: proof.ReauthenticationID,
+		KE3:                proof.KE3,
 		Change:             change,
 		Record:             credential.record,
 		Salt:               credential.salt,
@@ -226,27 +240,13 @@ func (s *Session) DeleteAccount(ctx context.Context, password []byte, secretKey 
 	if !strings.EqualFold(strings.TrimSpace(email), s.Email) {
 		return ErrEmailMismatch
 	}
-	verified, err := s.verifyCurrentCredentials(ctx, password, secretKey)
+	if secretKey.AccountID != s.AccountID {
+		return ErrBadCredentials
+	}
+	proof, err := reauthenticate(ctx, s.Client, email, password, secretKey, s.Keyset)
 	if err != nil {
 		return err
 	}
-	defer verified.wipe()
-	if !strings.EqualFold(verified.account.Email, strings.TrimSpace(email)) {
-		return ErrEmailMismatch
-	}
-	login, keyExchange1, err := startOpaqueLogin(verified.currentKeys.AuthKey)
-	if err != nil {
-		return err
-	}
-	defer login.clear()
-	reauthentication, err := s.Client.Reauthenticate(ctx, &apitypes.ReauthenticateRequest{KE1: keyExchange1})
-	if err != nil {
-		return err
-	}
-	keyExchange3, err := login.finish(reauthentication.KE2, s.AccountID)
-	if err != nil {
-		return err
-	}
-	err = s.Client.DeleteAccount(ctx, &apitypes.DeleteAccountRequest{ReauthenticationID: reauthentication.ReauthenticationID, KE3: keyExchange3, Email: strings.TrimSpace(email)})
+	err = s.Client.DeleteAccount(ctx, &apitypes.DeleteAccountRequest{ReauthenticationID: proof.ReauthenticationID, KE3: proof.KE3, Email: strings.TrimSpace(email)})
 	return convertReauthenticationError(err)
 }
