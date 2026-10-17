@@ -1,7 +1,9 @@
 // Command hisar-admin-page-fixture runs the API server with the built admin dashboard and an SMTP sink, and signs up one
 // admin and two members with the Go client, for the dashboard's browser tests. It prints one JSON line with the server's
 // URL, the sink's address and the accounts' credentials and session tokens, then one JSON line per email the sink
-// receives. HISAR_* variables override the instance settings as they do for hisar-server; it also reads
+// receives. With --fresh it empties the database (it drops the public schema), signs up nobody and starts setup as
+// hisar-server serve does on an empty database: the first line holds the setup page's URL, and stderr has the setup
+// log line. HISAR_* variables override the instance settings as they do for hisar-server; it also reads
 // HISAR_PUBLIC_URL (default: its own URL), HISAR_TRUST_PROXY and, for the server release check only, the
 // HISAR_DESKTOP_UPDATE_GITHUB_* variables (repository default off).
 package main
@@ -23,6 +25,7 @@ import (
 	"syscall"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/apitypes"
@@ -51,6 +54,12 @@ type fixture struct {
 	Members []account `json:"members"`
 }
 
+type freshFixture struct {
+	BaseURL  string `json:"baseURL"`
+	SMTPSink string `json:"smtpSink"`
+	SetupURL string `json:"setupURL"`
+}
+
 type receivedEmail struct {
 	Recipients []string `json:"recipients"`
 	Data       string   `json:"data"`
@@ -59,6 +68,7 @@ type receivedEmail struct {
 func main() {
 	address := flag.String("addr", "127.0.0.1:0", "address to listen on")
 	version := flag.String("version", "dev", "the server version Overview shows")
+	isFresh := flag.Bool("fresh", false, "empty the database and start setup instead of signing up accounts")
 	flag.Parse()
 	databaseURL := os.Getenv("HISAR_DATABASE_URL")
 	if databaseURL == "" {
@@ -67,6 +77,11 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	if *isFresh {
+		if err := emptyDatabase(ctx, databaseURL); err != nil {
+			log.Fatal(err)
+		}
+	}
 	database, err := store.Open(ctx, databaseURL)
 	if err != nil {
 		log.Fatal(err)
@@ -126,13 +141,44 @@ func main() {
 	app := server.CreateApp()
 	go app.Listener(listener, fiber.ListenConfig{DisableStartupMessage: true, GracefulContext: ctx})
 
-	created := fixture{BaseURL: baseURL, SMTPSink: sink.Address()}
+	var firstLine any
+	if *isFresh {
+		setupURL, err := server.PrepareSetup(ctx)
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Printf("Open %s to create the first admin.", setupURL)
+		firstLine = freshFixture{BaseURL: baseURL, SMTPSink: sink.Address(), SetupURL: setupURL}
+	} else if firstLine, err = seedAccounts(ctx, server, baseURL, sink.Address()); err != nil {
+		log.Fatal(err)
+	}
+	outputMutex.Lock()
+	err = output.Encode(firstLine)
+	outputMutex.Unlock()
+	if err != nil {
+		log.Fatal(err)
+	}
+	<-ctx.Done()
+}
+
+func emptyDatabase(ctx context.Context, databaseURL string) error {
+	connection, err := pgx.Connect(ctx, databaseURL)
+	if err != nil {
+		return err
+	}
+	defer connection.Close(ctx)
+	_, err = connection.Exec(ctx, `DROP SCHEMA public CASCADE; CREATE SCHEMA public`)
+	return err
+}
+
+func seedAccounts(ctx context.Context, server *api.Server, baseURL, smtpSink string) (fixture, error) {
+	created := fixture{BaseURL: baseURL, SMTPSink: smtpSink}
 	suffix := make([]byte, 4)
 	rand.Read(suffix)
 	for _, seed := range []struct{ name, role string }{{"Ada Admin", apitypes.RoleAdmin}, {"Mira Member", apitypes.RoleMember}, {"Milo Member", apitypes.RoleMember}} {
 		signedUp, err := signUp(ctx, server, baseURL, seed.name, seed.role, hex.EncodeToString(suffix))
 		if err != nil {
-			log.Fatal(err)
+			return fixture{}, err
 		}
 		if seed.role == apitypes.RoleAdmin {
 			created.account = signedUp
@@ -140,13 +186,7 @@ func main() {
 			created.Members = append(created.Members, signedUp)
 		}
 	}
-	outputMutex.Lock()
-	err = output.Encode(created)
-	outputMutex.Unlock()
-	if err != nil {
-		log.Fatal(err)
-	}
-	<-ctx.Done()
+	return created, nil
 }
 
 func signUp(ctx context.Context, server *api.Server, baseURL, name, role, suffix string) (account, error) {
