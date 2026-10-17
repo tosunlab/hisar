@@ -55,6 +55,7 @@ type Limiters struct {
 	ShareAcceptedEmail     *ratelimit.Limiter
 	ShareLinkAccount       *ratelimit.Limiter
 	Reauthentication       *ratelimit.Limiter
+	TestEmail              *ratelimit.Limiter
 }
 
 const (
@@ -64,6 +65,7 @@ const (
 	shareInvitationPerIPPerDay         = 100
 	shareAcceptedEmailPerInviterPerDay = 50
 	shareLinkPerAccountPerDay          = 100
+	testEmailPerAccountBurst           = 5
 	defaultInviteTTL                   = 7 * 24 * time.Hour
 	defaultShareAcceptedEmailDelay     = 2 * time.Minute
 )
@@ -77,6 +79,8 @@ func newLimiters() Limiters {
 		ShareAcceptedEmail:     ratelimit.NewDaily(shareAcceptedEmailPerInviterPerDay),
 		ShareLinkAccount:       ratelimit.NewDaily(shareLinkPerAccountPerDay),
 		Reauthentication:       NewReauthenticationLimiter(),
+		// An admin's test emails: a few at once, then five a minute, since each one connects to a host the admin chose.
+		TestEmail: ratelimit.New(rate.Every(time.Minute/testEmailPerAccountBurst), testEmailPerAccountBurst),
 	}
 }
 

@@ -228,6 +228,7 @@ func (s *Server) CreateApp() *fiber.App {
 
 	adminGroup := apiGroup.Group("/admin")
 	adminGroup.Get("/server", s.requireSession, requireAdmin, s.handleGetAdminServer)
+	s.registerAdminSettingsRoutes(adminGroup)
 
 	return app
 }
