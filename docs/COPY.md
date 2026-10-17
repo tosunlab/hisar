@@ -110,6 +110,20 @@ One name for each thing, the same on the Mac, the iPhone, the browser extension,
 | Hisar needs an update | update required error, 426 | What the SSH agent, the command-line tool, coding agents and the extension are told |
 | Update the Hisar extension | | Extension popup when the extension itself is too old |
 
+## Admin dashboard
+
+The web page at `/admin` where admins of the Hisar server manage it. The apps never show it or link to it.
+
+| Use | Not | Where |
+|---|---|---|
+| Admin dashboard; "Hisar · Admin dashboard"; Hisar admin dashboard (the page title) | admin panel, console, back office | Page title, sign-in screen, sidebar |
+| Sign in to the admin dashboard · "Use the email, Secret Key and master password of an admin account on the Hisar server." · Sign in, Signing in… · Show, Hide (the Secret Key) | Log in, admin login | Sign-in screen |
+| "This account is not an admin on the Hisar server." | Access denied, Forbidden, Unauthorized | Sign-in screen, for an account whose role is member |
+| incorrect email, master password or Secret Key | wrong password, login failed | Sign-in screen; the same message as the Mac |
+| Overview · Signed in as · Server | Home, Dashboard, Status | The first section |
+| Sign out, Signing out… | Log out | Sidebar |
+| an admin on the Hisar server, admin, member (account roles) | administrator, superuser, root | Copy about server roles; say "on the Hisar server" where an organization admin could be meant |
+
 ## Help
 
 | Use | Not |

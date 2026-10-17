@@ -124,6 +124,12 @@ jobs:
         with:
           go-version-file: go.work
           cache-dependency-path: "**/go.sum"
+      - name: Set up Node for make build, which builds the admin dashboard
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: admin/package-lock.json
       - name: Select Xcode
         run: sudo xcode-select -s "$XCODE_PATH" && xcodebuild -version
       # Booting takes a minute; it happens while HisarKit and the app build, and the tests then run on it as it is.

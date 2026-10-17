@@ -11,6 +11,7 @@ Status: **Draft, Phase 0**. This document is the source of truth for the securit
 - Zero-knowledge server: the server never sees the master password, the Secret Key, any decryption key or any plaintext item data.
 - Offline-first clients: every client keeps a full encrypted copy and works with no network.
 - Shared vaults between people. Account recovery only through the Emergency Kit (§6): a forgotten master password cannot be recovered by anyone.
+- An admin dashboard on every server at `/admin` (§5.1): admins sign in with their Hisar account, and the browser runs the same Go crypto compiled to WebAssembly. It can never read vault contents, reset a master password or recover a vault, because the server holds none of those keys.
 - Clients: desktop (first), browser extension, mobile, CLI.
 - One implementation of the crypto, written in Go, shared by all clients.
 
@@ -244,7 +245,12 @@ Sign-up is invite-only: there is no open registration. An invite is an email add
 - **Rate limit:** 30 page loads per IP address, refilled at one every 2 seconds (429 with a plain-text page), like the public share link reads. Codes are 256 random bits, so the limit protects the server, not the codes.
 - **Opening the apps.** The Mac (`CFBundleURLTypes` in `Info.plist`, Wails' `ApplicationLaunchedWithUrl` event) and the iPhone (the `hisar` scheme it already registers for the Emergency Kit's `hisar://sign-in`) handle `hisar://invite/<code>?server=<origin>`: signed out, they open Create account with the invite filled in, as the bare code for `api.tryhisar.com` or as `<server>/invite/<code>` for another server, which the form then shows ("Server: hisar.example.com"). Signed in or locked, they say to sign out first instead. Universal links (`https://…/invite/…` opening the app directly) wait for the Apple Developer membership (§12 #7).
 
-**Roles.** `accounts.role` (`admin` or `member`) stays in the data model, but no app feature depends on it: any user invites, shares and manages their own devices, and the apps neither show the role nor offer admin screens. The operator's `hisar-server` command (`invite`, `migrate`) on the server is the only admin surface.
+**Roles.** `accounts.role` is `admin` or `member`. In the apps both are the same: any user invites, shares and manages their own devices, and the apps neither show the role nor offer admin screens. Admins manage the server from the admin dashboard at `/admin`, and the operator's `hisar-server` command (`invite`, `migrate`) stays available on the server.
+
+**Admin dashboard.** `hisar-server` embeds and serves a Vue app (`admin/`). An admin signs in with their email, Secret Key and master password: a Web Worker runs `hisar-admin-wasm`, `core/session` compiled to WebAssembly, so neither secret leaves the tab and the two-second key derivation never blocks the page. The sign-in creates a device named "Admin dashboard" (platform `web/admin`); the tab keeps only its session token, account ID, device ID and the admin's name in `sessionStorage`, so a reload stays signed in and a new tab asks again, and **Sign out** revokes that device. An account that is not an admin has its new device revoked at once and sees "This account is not an admin on the Hisar server." The server decides, never the dashboard: every `/api/v1/admin` route runs `requireSession` and then `requireAdmin`, and answers 403 `admin only` to any account that is not an admin (§8.2). An admin path with no route is 404 for everyone, like any other unknown path. Changes an admin makes to other accounts carry a fresh proof of the admin's own master password (`session.Reauthenticate`, §5.7.1).
+
+- **Page:** `GET /admin` and every path below it answer `index.html` with `Cache-Control: no-store`. The hashed files under `/admin/assets/` are cached for a year (`immutable`) and sent as the brotli or gzip copy the build wrote when the browser accepts it; the WebAssembly is `application/wasm`. A server built without the dashboard (a plain `go build`) answers 404 "The admin dashboard was not built into this server."; `make build` and the Docker image build it.
+- **Headers:** `Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; connect-src 'self'; img-src 'self' data:; worker-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'` (`'wasm-unsafe-eval'` compiles the WebAssembly and allows no `eval`), `Referrer-Policy: no-referrer`, `X-Robots-Tag: noindex, nofollow` and `Cross-Origin-Opener-Policy: same-origin`.
 
 ### 5.2 Signup (new user, first device)
 
@@ -600,8 +606,9 @@ Phone approvals (§9.9) are not in Postgres: they live in the server process's m
 | Desktop updates | `GET /desktop/updates/appcast.xml` (Sparkle appcast), `GET /desktop/updates/{version}/{file}` (streams a release file); any signed-in session, 404 when desktop updates are off (§9.1.1) |
 
 | App versions (§8.7) | `GET /version-check` (no session): 204 when the server accepts the caller's version, 426 otherwise |
+| Admin (§5.1) | `GET /admin/server` (the public URL, for Overview). Every route under `/admin` needs a session of an `admin` account and answers 403 `admin only` to any other |
 
-All under `/api/v1`. JSON bodies, base64url for binary fields. There is no recovery API (§6) and no admin API. Outside `/api/v1` the server serves the pages `GET /s/{id}` (§5.9), `GET /invite/{code}` (§5.1), `GET /privacy` and `GET /terms` (§8.6).
+All under `/api/v1`. JSON bodies, base64url for binary fields. There is no recovery API (§6). Outside `/api/v1` the server serves the pages `GET /s/{id}` (§5.9), `GET /invite/{code}` (§5.1), the admin dashboard `GET /admin` (§5.1), `GET /privacy` and `GET /terms` (§8.6).
 
 ### 8.3 Hardening
 
@@ -614,6 +621,7 @@ All under `/api/v1`. JSON bodies, base64url for binary fields. There is no recov
 ### 8.4 Deployment
 
 - Single static binary `hisar-server` in a Docker image, with Postgres 17 alongside it in Docker Compose.
+- The image builds the admin dashboard (§5.1) before `go build` embeds it: `hisar-admin-wasm` with `GOOS=js GOARCH=wasm`, then the Vite build in a `node:24` stage.
 - Schema migrations: goose (`pressly/goose`), SQL files embedded in the binary, up and down sections, applied on start under a Postgres advisory lock or explicitly with `hisar-server migrate up|down|status`.
 - HTTP framework: Fiber v3 (fasthttp). It serves plain HTTP behind the reverse proxy; HTTP/2 and TLS are handled by the reverse proxy (nginx in the reference deployment).
 - Served publicly over https behind nginx, which terminates TLS. The GitHub Actions workflow "Release server image" builds `deploy/Dockerfile` for amd64 and arm64 and pushes it to the GitHub Container Registry as `ghcr.io/tosunlab/hisar-server:<version>` and `:sha-<commit>` on every `server-<version>` tag; the manual Publish workflow then points `:latest` and `:<major>.<minor>` at it. A custom build (`server-1.2.3-label`) can't be published.
@@ -1379,6 +1387,7 @@ The package map, the rules for where new code goes and the build commands are in
 ```
 core/       Go module: crypto, wire types, the API client, sessions, the app backend shared by macOS and iOS (core/app)
 server/     Go module: hisar-server (internal/api speaks HTTP, internal/service holds the rules, internal/store is Postgres)
+admin/      The admin dashboard (Vue, TypeScript), served by hisar-server at /admin; its crypto is server/cmd/hisar-admin-wasm
 cli/        Go module: hisar, standalone or through the desktop app; mcpserver/ hisar mcp
 desktop/    Wails v3 app: the Wails main package and OS integration (SSH agent approvals, browser host, login item, Touch ID, updates), frontend/ UI
 mobile/     hisarkit, the gomobile framework of the iOS app, on top of core/app; ios/ the Swift app
@@ -1416,6 +1425,6 @@ go.work     Ties the Go modules together for local development
 | 5 | Item history retention | 90 days |
 | 6 | Fingerprint check (§5.6) | Optional: a 16-hex-digit security code per person, shown in the desktop app's sharing panel and Settings → People. Key pinning and key-change refusals are always on |
 | 7 | Apple Developer Program membership (code signing and notarization; required for biometric Keychain items and Gatekeeper) | **Open**: needed before Touch ID can ship. During development, local signing with a free Apple ID team works on your own Mac |
-| 8 | Product model | A hosted service, not one family per server: person-to-person sharing by email that the recipient accepts, no account enumeration, invites emailed by the server over SMTP, sign-up stays invite-only. Any user may create an organization and share vaults through its teams (§5.11); organization and team names are visible to the server. Account recovery is only through the Emergency Kit (§6) |
+| 8 | Product model | A hosted service, not one family per server: person-to-person sharing by email that the recipient accepts, no account enumeration, invites emailed by the server over SMTP, sign-up stays invite-only. Any user may create an organization and share vaults through its teams (§5.11); organization and team names are visible to the server. Admins manage the server from the admin dashboard at `/admin` (§5.1), never from the apps. Account recovery is only through the Emergency Kit (§6) |
 | 9 | Favorites: per item for everyone in the vault, or per user | Per user, synced across the user's devices and end-to-end encrypted in the account preferences record (§4.7): starring a shared item must not change other people's sidebars, and a device-only list would not carry from the Mac to the iPhone |
 | 10 | Organization vault keys: a team keypair (wrapped to each member, vault keys wrapped to the team) or per-member wraps | Per-member wraps, as for every vault (§4.4, §5.11): no new primitive, label or trust root, unlock and sync unchanged; adding a member needs an owner's app to wrap each vault key, removing one rotates each vault. Admins manage rosters only and get no key by being admins |

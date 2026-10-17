@@ -35,6 +35,8 @@ type Session struct {
 	Role      string
 	Keyset    *crypt.Keyset
 	SeqStore  SeqStore
+	// DeviceID is the device LogIn or SignUp signed in; Unlock leaves it empty.
+	DeviceID string
 	// MemberVerifier, when set, is asked to accept each member a vault key is wrapped for (e.g. key pinning).
 	MemberVerifier func(member *apitypes.Member) error
 	// Cache, when set, stores the server's encrypted records; reads fall back to it while the server is unreachable.

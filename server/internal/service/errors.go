@@ -28,6 +28,7 @@ func newError(kind Kind, message string) *Error { return &Error{Kind: kind, Mess
 var (
 	ErrNotFound  = newError(KindNotFound, "not found")
 	ErrOwnerOnly = newError(KindForbidden, "owner only")
+	ErrAdminOnly = newError(KindForbidden, "admin only")
 	// ErrKeyChanged refuses items sealed with a key generation other than the vault's current one (§5.11). The API answers
 	// it with apitypes.KeyChangedResponse, so the client tells it from an item conflict and seals the items again.
 	ErrKeyChanged = newError(KindConflict, "the vault key changed since the items were encrypted; sync and try again")
