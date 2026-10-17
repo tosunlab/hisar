@@ -21,6 +21,8 @@ import (
 const (
 	DefaultGitHubAPIURL     = "https://api.github.com"
 	DefaultGitHubRepository = project.GitHubRepository
+	// Off is the repository setting that turns off desktop updates and the server release check.
+	Off                     = "off"
 	releaseTagPrefix        = "desktop-"
 	releasePageSize         = 100
 	maximumReleasePageCount = 10
@@ -226,6 +228,21 @@ func (gitHub *GitHub) listReleases(ctx context.Context) ([]gitHubRelease, error)
 		}
 	}
 	return releases, nil
+}
+
+// ListPublishedTags returns the tag of every release that is neither a draft nor a prerelease.
+func (gitHub *GitHub) ListPublishedTags(ctx context.Context) ([]string, error) {
+	releases, err := gitHub.listReleases(ctx)
+	if err != nil {
+		return nil, err
+	}
+	tags := []string{}
+	for _, release := range releases {
+		if !release.IsDraft && !release.IsPrerelease {
+			tags = append(tags, release.TagName)
+		}
+	}
+	return tags, nil
 }
 
 // openAsset returns the asset's body unread; the caller closes it.

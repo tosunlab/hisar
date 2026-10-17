@@ -1,4 +1,5 @@
-// Command hisar-fake-github serves GitHub Releases with one published and one unpublished desktop release, for the end-to-end test.
+// Command hisar-fake-github serves GitHub Releases with a cli release, one published and one unpublished desktop release
+// for the end-to-end test, and a server-10.0.0 release for Overview's update notice (hisar-admin-page-fixture -version).
 package main
 
 import (
@@ -22,6 +23,7 @@ func main() {
 	fake.StorageURL = "http://" + *address + "/storage"
 	publishedAt := time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
 	fake.AddRelease(fakegithub.Release{TagName: "cli-1.0.0", Assets: []fakegithub.Asset{{Name: "SHA256SUMS", Content: []byte("sums")}}})
+	fake.AddRelease(fakegithub.Release{TagName: "server-10.0.0"})
 	fake.AddRelease(fakegithub.NewDesktopRelease(fakegithub.ReleaseConfig{
 		Version: "0.2.0", BuildNumber: 2000, Archive: []byte("end-to-end archive of 0.2.0"), ReleaseNotes: "Published release", PublishedAt: publishedAt,
 	}))
