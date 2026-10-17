@@ -114,7 +114,7 @@ func (s *Session) MoveItem(ctx context.Context, source, target *Vault, vaultItem
 	return nil, nil
 }
 
-// sealItem encrypts vaultItem under the vault's key as a new revision, ready to send.
+// sealItem encrypts vaultItem under the vault's key as a new revision, ready to send with the key's generation.
 func (s *Session) sealItem(vault *Vault, vaultItem *item.Item, deleted bool) (*apitypes.PutItemRequest, error) {
 	revision, err := uuid.NewV7()
 	if err != nil {
@@ -133,7 +133,9 @@ func (s *Session) sealItem(vault *Vault, vaultItem *item.Item, deleted bool) (*a
 	if err != nil {
 		return nil, err
 	}
-	return &apitypes.PutItemRequest{Revision: revision.String(), Deleted: deleted, Overview: sealedOverview, Details: sealedDetails}, nil
+	return &apitypes.PutItemRequest{
+		Revision: revision.String(), Deleted: deleted, Overview: sealedOverview, Details: sealedDetails, KeyGeneration: vault.KeyGeneration,
+	}, nil
 }
 
 func (s *Session) putItem(ctx context.Context, vault *Vault, vaultItem *item.Item, deleted bool) (*item.Item, error) {

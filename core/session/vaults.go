@@ -236,7 +236,7 @@ func (s *Session) buildVaultMove(ctx context.Context, vault, target *Vault) (*ap
 	if err != nil {
 		return nil, err
 	}
-	request := &apitypes.DeleteVaultRequest{MoveToVaultID: target.ID, MovedItems: []apitypes.MovedItem{}}
+	request := &apitypes.DeleteVaultRequest{MoveToVaultID: target.ID, MoveToKeyGeneration: target.KeyGeneration, MovedItems: []apitypes.MovedItem{}}
 	for index := range protoItems {
 		protoItem := &protoItems[index]
 		if protoItem.Deleted {

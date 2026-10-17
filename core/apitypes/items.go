@@ -21,12 +21,15 @@ type ChangesResponse struct {
 	More    bool   `json:"more"`
 }
 
-// PutItemRequest is sent with an If-Match header carrying the base revision (absent for new items).
+// PutItemRequest is sent with an If-Match header carrying the base revision (absent for new items). KeyGeneration is the
+// generation of the vault key the item is sealed with: required for organization vaults and checked for any vault when
+// set, so an item sealed with a key a rotation replaced is refused with a KeyChangedResponse.
 type PutItemRequest struct {
-	Revision string `json:"revision"`
-	Deleted  bool   `json:"deleted"`
-	Overview []byte `json:"overview"`
-	Details  []byte `json:"details"`
+	Revision      string `json:"revision"`
+	Deleted       bool   `json:"deleted"`
+	Overview      []byte `json:"overview"`
+	Details       []byte `json:"details"`
+	KeyGeneration int64  `json:"keyGeneration,omitempty"`
 }
 
 type PutItemResponse struct {
@@ -35,7 +38,7 @@ type PutItemResponse struct {
 
 // MoveItemRequest moves a live item to another vault in one step, keeping its ID. BaseRevision is its current revision in
 // the source vault; Tombstone is the deleted revision left there (Deleted true) and Moved the item re-encrypted under the
-// target vault's key (Deleted false), each with its own new revision.
+// target vault's key (Deleted false), each with its own new revision and the key generation of its vault.
 type MoveItemRequest struct {
 	TargetVaultID string         `json:"targetVaultId"`
 	BaseRevision  string         `json:"baseRevision"`
@@ -51,4 +54,12 @@ type MoveItemResponse struct {
 
 type ConflictResponse struct {
 	Current *Item `json:"current"`
+}
+
+// KeyChangedResponse is the 409 that refuses items sealed with a key generation other than the vault's current one: an
+// item write, an item move or a vault deletion that moves items. Unlike ConflictResponse it holds no item; the client
+// reloads the vault, seals the items again with the current key and retries.
+type KeyChangedResponse struct {
+	Error        string `json:"error"`
+	IsKeyChanged bool   `json:"keyChanged"`
 }

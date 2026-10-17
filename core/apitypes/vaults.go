@@ -82,9 +82,11 @@ type MovedItem struct {
 }
 
 // DeleteVaultRequest: a vault with live items needs either MoveToVaultID with every live item in MovedItems,
-// or IsDeletingItems.
+// or IsDeletingItems. MoveToKeyGeneration is the generation of the target vault's key the moved items are sealed with:
+// required when the target is an organization vault and checked for any target when set (KeyChangedResponse).
 type DeleteVaultRequest struct {
-	MoveToVaultID   string      `json:"moveToVaultId,omitempty"`
-	MovedItems      []MovedItem `json:"movedItems,omitempty"`
-	IsDeletingItems bool        `json:"deleteItems,omitempty"`
+	MoveToVaultID       string      `json:"moveToVaultId,omitempty"`
+	MovedItems          []MovedItem `json:"movedItems,omitempty"`
+	IsDeletingItems     bool        `json:"deleteItems,omitempty"`
+	MoveToKeyGeneration int64       `json:"moveToKeyGeneration,omitempty"`
 }
