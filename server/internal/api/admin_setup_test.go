@@ -4,6 +4,9 @@ import (
 	"context"
 	"net"
 	"net/http"
+	"net/http/httptest"
+	"net/http/httputil"
+	"net/url"
 	"strings"
 	"testing"
 
@@ -110,6 +113,38 @@ func TestAdminSetupMovesOnWhenTheFirstAccountComesFromTheCommandLine(t *testing.
 	}
 	if status, body := sendRawRequest(t, baseURL, admin.Client.Token, "POST", "/api/v1/admin/setup/invite-policy", apitypes.SetupInvitePolicyRequest{InvitePolicy: "admins"}); status != http.StatusConflict {
 		t.Errorf("invite policy step before the checks: %d %s", status, body)
+	}
+}
+
+// The admin dashboard's sign-up shows the Secret Key from what session.SignUp answers when the account exists but its
+// Personal vault does not, because the setup invite is used by then.
+func TestAdminSetupKeepsTheSecretKeyWhenThePersonalVaultFails(t *testing.T) {
+	baseURL, server, _ := setupServer(t)
+	ctx := context.Background()
+	setupToken := startSetup(t, server)
+	proxy := httputil.NewSingleHostReverseProxy(requireValue[*url.URL](t)(url.Parse(baseURL)))
+	failingVaults := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method == http.MethodPost && request.URL.Path == "/api/v1/vaults" {
+			http.Error(writer, `{"error":"internal error"}`, http.StatusInternalServerError)
+			return
+		}
+		proxy.ServeHTTP(writer, request)
+	}))
+	t.Cleanup(failingVaults.Close)
+
+	client := apiclient.New(failingVaults.URL)
+	password := []byte("first admin master password")
+	admin, secretKey, err := session.SignUp(ctx, client, setupToken, "ada@example.com", "Ada", password, testDevice)
+	if !apiclient.IsStatus(err, http.StatusInternalServerError) || admin == nil || client.Token == "" || admin.DeviceID == "" {
+		t.Fatalf("sign-up with a failing Personal vault: %v, session %v, token set %t", err, admin, client.Token != "")
+	}
+	expectSetupAnswer(t, baseURL, "needsChecks")
+	signedIn, err := session.LogIn(ctx, apiclient.New(baseURL), "ada@example.com", password, secretKey, testDevice)
+	if err != nil {
+		t.Fatalf("sign-in with the Secret Key sign-up answered: %v", err)
+	}
+	if signedIn.AccountID != admin.AccountID || signedIn.Role != apitypes.RoleAdmin {
+		t.Errorf("signed in as %s (%s), expected the admin %s", signedIn.AccountID, signedIn.Role, admin.AccountID)
 	}
 }
 

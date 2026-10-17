@@ -46,6 +46,9 @@ func createAccountCredential(accountID string, password []byte, register func(re
 	return credential, nil
 }
 
+// SignUp creates the account and its Personal vault. When the account exists but the Personal vault could not be
+// created, it returns the signed-in session and the Secret Key together with the error, because nobody can sign in
+// without that key; apiClient.Token is set from then on.
 func SignUp(ctx context.Context, apiClient *apiclient.Client, invite, email, name string, password []byte, device apitypes.DeviceInfo) (*Session, crypt.SecretKey, error) {
 	newSession, secretKey, accountUnlockKey, err := SignUpKeepingAccountUnlockKey(ctx, apiClient, invite, email, name, password, device)
 	clear(accountUnlockKey)
@@ -89,7 +92,7 @@ func SignUpKeepingAccountUnlockKey(ctx context.Context, apiClient *apiclient.Cli
 	newSession := &Session{Client: apiClient, AccountID: accountID, DeviceID: sessionResponse.DeviceID, Email: email, Name: name, Keyset: credential.keyset}
 	if _, err := newSession.CreateVault(ctx, "Personal", apitypes.VaultPersonal); err != nil {
 		clear(credential.accountUnlockKey)
-		return nil, secretKey, nil, fmt.Errorf("create personal vault: %w", err)
+		return newSession, secretKey, nil, fmt.Errorf("create personal vault: %w", err)
 	}
 	return newSession, secretKey, credential.accountUnlockKey, nil
 }
