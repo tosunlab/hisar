@@ -53,7 +53,7 @@ var commands = []command{
 	{name: "rm", argumentUsage: "<item> [-v vault]", summary: "delete an item", withBackend: runRemove},
 	{name: "favorite", argumentUsage: "<item> [-v vault]", summary: "add an item to your Favorites, on all your devices (only you see them)", withBackend: runFavorite},
 	{name: "unfavorite", argumentUsage: "<item> [-v vault]", summary: "remove an item from your Favorites", withBackend: runUnfavorite},
-	{name: "import", argumentUsage: "<file> [-v vault] [-format f] [-y]", summary: "import a Hisar export, a 1Password, Bitwarden or browser CSV export, or a .env file (--item, --keys, --dry-run)", withBackend: runImport},
+	{name: "import", argumentUsage: "<file> [-v vault] [-format f] [-y]", summary: "import a Hisar export, a 1Password, Bitwarden, LastPass or browser CSV export, or a .env file (--item, --keys, --dry-run)", withBackend: runImport},
 	{name: "export", argumentUsage: "[-o file] [--format encrypted|plain]", summary: "export every vault you can open, encrypted with a passphrase you choose or as plain JSON", withBackend: runExport},
 	{name: "generate", argumentUsage: "[-n length] [-no-symbols]", summary: "generate a password", run: runGenerate, isLocal: true},
 	{name: "people", summary: "list the people you share vaults with, with their security codes", withBackend: runListPeople},
