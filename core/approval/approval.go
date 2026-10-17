@@ -17,6 +17,9 @@ import (
 const (
 	KindSSH         = "ssh"
 	KindCommandLine = "cli"
+	// KindLauncher is an app such as Raycast asking to search Hisar until it locks. A phone older than this kind cannot
+	// open the request and skips it.
+	KindLauncher = "launcher"
 
 	DecisionApprove = "approve"
 	DecisionDeny    = "deny"
@@ -141,7 +144,7 @@ func checkRequest(request Request) error {
 	if !request.ExpiresAt.After(request.CreatedAt) || request.ExpiresAt.Sub(request.CreatedAt) > MaximumLifetime {
 		return ErrLifetimeTooLong
 	}
-	if request.Kind != KindSSH && request.Kind != KindCommandLine {
+	if request.Kind != KindSSH && request.Kind != KindCommandLine && request.Kind != KindLauncher {
 		return ErrInvalidRequest
 	}
 	return nil

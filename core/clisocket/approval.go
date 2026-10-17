@@ -30,10 +30,12 @@ func (TimeoutError) Is(target error) bool { return target == ErrDenied }
 // ApprovalRequest is what the approval window shows about a terminal session; a secrets.resolve request also
 // names its secrets and, for hisar run, the command it starts. A share link request names its item and fields.
 type ApprovalRequest struct {
-	ClientPID       int
-	ClientPath      string
-	ParentPID       int
-	TerminalName    string
+	ClientPID    int
+	ClientPath   string
+	ParentPID    int
+	TerminalName string
+	// Coverage says what approving covers: the terminal session, the app (callers without a terminal), or this connection.
+	Coverage        ApprovalCoverage
 	IsSecretRequest bool
 	SecretNames     []string
 	CommandLine     []string

@@ -39,8 +39,13 @@ type ServerConfig struct {
 	Approver Approver
 	// AgentApprover asks about the requests of hisar mcp; nil denies them.
 	AgentApprover AgentApprover
-	PeerResolver  PeerResolver
-	Approvals     *SessionApprovals
+	// LauncherApprover asks about launchers such as Raycast; nil denies them.
+	LauncherApprover LauncherApprover
+	// IdentifyApp names the verified app a caller without a terminal runs in. nil, or false, approves such a caller for
+	// its own connection only, and refuses it as a launcher.
+	IdentifyApp  func(pid int) (AppIdentity, bool)
+	PeerResolver PeerResolver
+	Approvals    *SessionApprovals
 	// IsEnabled follows the "Let the command-line tool use Hisar" switch.
 	IsEnabled func() bool
 	// CheckUpdateRequired refuses every request but hello while Hisar or this hisar is below the server's minimum version.

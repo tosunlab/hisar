@@ -41,9 +41,11 @@ const (
 	FeatureTags = "tags"
 )
 
-// ListFeatures returns the features this build of the app announces in hello.
+// ListFeatures returns the features this build of the app announces in hello, then every launcher request type, so a
+// launcher checks the exact request it is about to send.
 func ListFeatures() []string {
-	return []string{FeatureSecureNotes, FeatureCreditCards, FeatureIdentities, FeatureFavorites, FeatureAPICredentials, FeatureTags, FeatureAddresses, FeatureSoftwareLicenses, FeatureServers, FeatureDatabases}
+	features := []string{FeatureSecureNotes, FeatureCreditCards, FeatureIdentities, FeatureFavorites, FeatureAPICredentials, FeatureTags, FeatureAddresses, FeatureSoftwareLicenses, FeatureServers, FeatureDatabases}
+	return append(features, ListLauncherRequestTypes()...)
 }
 
 // GetCategoryFeature returns the feature an app must announce before items.save may create an item of category, or ""
