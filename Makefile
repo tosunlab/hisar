@@ -2,11 +2,25 @@ MODULES := core server cli mobile
 CLI_TARGETS := linux/amd64 linux/arm64 darwin/arm64 darwin/amd64 windows/amd64 windows/arm64
 WAILS_VERSION := v3.0.0-beta.23
 
-.PHONY: build build-cli-all package-cli-release test vet test-end-to-end docker install-wails test-desktop-frontend build-desktop package-desktop package-desktop-dmg package-desktop-update test-extension test-extension-end-to-end build-extension test-share-link-page build-ios-framework generate-ios-project build-ios test-ios test-ios-ui generate-themes
+.PHONY: build build-admin test-admin test-admin-end-to-end build-cli-all package-cli-release test vet test-end-to-end docker install-wails test-desktop-frontend build-desktop package-desktop package-desktop-dmg package-desktop-update test-extension test-extension-end-to-end build-extension test-share-link-page build-ios-framework generate-ios-project build-ios test-ios test-ios-ui generate-themes
 
-build:
+build: build-admin
 	go build -o bin/hisar-server ./server/cmd/hisar-server
 	go build -o bin/hisar ./cli/cmd/hisar
+
+build-admin:
+	mkdir -p admin/wasm
+	cd server && GOOS=js GOARCH=wasm go build -trimpath -ldflags="-s -w" -o ../admin/wasm/hisar.wasm ./cmd/hisar-admin-wasm
+	cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" admin/wasm/
+	cd admin && npm ci --no-audit --no-fund && npm run build
+
+test-admin:
+	cd admin && npm ci --no-audit --no-fund && npm run typecheck && npm test
+
+# Needs Playwright's Chromium: cd admin && npx playwright install chromium
+test-admin-end-to-end: build-admin
+	go build -o bin/hisar-admin-page-fixture ./server/cmd/hisar-admin-page-fixture
+	cd admin && npm run test:end-to-end
 
 build-cli-all:
 	@for t in $(CLI_TARGETS); do \
@@ -41,7 +55,7 @@ docker:
 install-wails:
 	go install github.com/wailsapp/wails/v3/cmd/wails3@$(WAILS_VERSION)
 
-# Writes desktop/frontend/src/themes.css and mobile/ios/Shared/Views/ThemePalettes.swift from assets/themes/themes.json (Node 22.6 or later).
+# Writes desktop/frontend/src/themes.css, admin/src/themes.css and mobile/ios/Shared/Views/ThemePalettes.swift from assets/themes/themes.json (Node 22.6 or later).
 generate-themes:
 	node scripts/themes/generate.ts
 
