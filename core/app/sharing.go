@@ -26,6 +26,7 @@ var (
 	errInvitationNotFound  = errors.New("this invitation no longer exists")
 	errAlreadyHasAccess    = errors.New("this person already has access to the vault")
 	errShareWithOwnAccount = errors.New("that is your own email; you already have access")
+	errInviteAdminsOnly    = errors.New("Only admins can invite people to the Hisar server.")
 )
 
 func convertSharingError(err error) error {
@@ -308,6 +309,9 @@ func (s *Service) InvitePerson(email string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	_, err = s.unlockedSession.Client.Invite(ctx, &apitypes.InviteRequest{Email: email})
+	if apiclient.IsStatus(err, http.StatusForbidden) {
+		return errInviteAdminsOnly
+	}
 	return convertInvitationError(err)
 }
 

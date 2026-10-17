@@ -240,7 +240,7 @@ func (s *Service) CreateOrganizationInvitation(ctx context.Context, actor Actor,
 		return errTooManyInvitation
 	}
 	invitationID, change, err := s.store.UpsertOrganizationInvitation(ctx,
-		&store.OrganizationInvitation{OrganizationID: organizationID, Email: email, Role: request.Role, InvitedBy: inviter.ID}, s.config.InviteTTL)
+		&store.OrganizationInvitation{OrganizationID: organizationID, Email: email, Role: request.Role, InvitedBy: inviter.ID}, s.InviteTTL)
 	if errors.Is(err, store.ErrExists) {
 		return errAlreadyOrganizationMember
 	}
@@ -266,7 +266,7 @@ func (s *Service) notifyOrganizationInvitation(ctx context.Context, inviter *sto
 			s.sendEmail(ctx, composeOrganizationInvitationEmail(inviter, email, organizationName, role))
 		}
 	case errors.Is(err, store.ErrNotFound):
-		if !s.isEmailConfigured() {
+		if !s.mayCreateSignUpInvite(inviter) {
 			return
 		}
 		token, expiresAt, err := s.newInviteToken(ctx, email, apitypes.RoleMember, &inviter.ID)

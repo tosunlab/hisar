@@ -22,9 +22,11 @@ import (
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/session"
+	"github.com/tryhisar/hisar/server/internal/mail"
 	"github.com/tryhisar/hisar/server/internal/mail/mailtest"
 	"github.com/tryhisar/hisar/server/internal/ratelimit"
 	"github.com/tryhisar/hisar/server/internal/service"
+	"github.com/tryhisar/hisar/server/internal/settings"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
@@ -73,7 +75,7 @@ func setupServer(t *testing.T) (baseURL string, server *Server, databaseURL stri
 
 func attachMailRecorder(server *Server) *mailtest.Recorder {
 	recorder := mailtest.NewRecorder()
-	server.config.Mailer = recorder
+	server.service.NewMailer = func(settings.SMTP) mail.Mailer { return recorder }
 	return recorder
 }
 

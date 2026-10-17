@@ -50,7 +50,7 @@ type Session struct {
 
 // Authenticate returns the session of a bearer token, or ErrUnauthorized.
 func (s *Service) Authenticate(ctx context.Context, token string) (*Session, error) {
-	stored, err := s.store.GetSessionByHash(ctx, hashToken(token), s.config.SessionTTL)
+	stored, err := s.store.GetSessionByHash(ctx, hashToken(token), s.currentSettings().SessionLifetime.Duration())
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +59,7 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*Session, err
 
 // IsSessionValid reports whether a session is still signed in, so a long event stream can end when it is not.
 func (s *Service) IsSessionValid(ctx context.Context, tokenHash []byte) bool {
-	_, err := s.store.GetSessionByHash(ctx, tokenHash, s.config.SessionTTL)
+	_, err := s.store.GetSessionByHash(ctx, tokenHash, s.currentSettings().SessionLifetime.Duration())
 	return err == nil
 }
 
@@ -156,7 +156,7 @@ func (s *Service) RegisterFinish(ctx context.Context, actor Actor, request *apit
 func (s *Service) newSession(accountID string, deviceInfo apitypes.DeviceInfo) (string, *store.Device, *store.Session) {
 	token := generateToken()
 	device := &store.Device{ID: uuid.NewString(), AccountID: accountID, Name: deviceInfo.Name, Platform: deviceInfo.Platform}
-	newSession := &store.Session{TokenHash: hashToken(token), AccountID: accountID, DeviceID: device.ID, ExpiresAt: time.Now().Add(s.config.SessionTTL)}
+	newSession := &store.Session{TokenHash: hashToken(token), AccountID: accountID, DeviceID: device.ID, ExpiresAt: time.Now().Add(s.currentSettings().SessionLifetime.Duration())}
 	return token, device, newSession
 }
 

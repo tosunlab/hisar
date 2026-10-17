@@ -1,6 +1,7 @@
-// Command hisar-admin-page-fixture runs the API server with the built admin dashboard and signs up one admin and two
-// members with the Go client, for the dashboard's browser tests. It prints one JSON line with the server's URL and the
-// accounts' credentials.
+// Command hisar-admin-page-fixture runs the API server with the built admin dashboard and an SMTP sink, and signs up one
+// admin and two members with the Go client, for the dashboard's browser tests. It prints one JSON line with the server's
+// URL, the sink's address and the accounts' credentials and session tokens, then one JSON line per email the sink
+// receives. HISAR_* variables override the instance settings as they do for hisar-server.
 package main
 
 import (
@@ -15,6 +16,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 
 	"github.com/gofiber/fiber/v3"
@@ -23,7 +25,9 @@ import (
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/session"
 	"github.com/tryhisar/hisar/server/internal/api"
+	"github.com/tryhisar/hisar/server/internal/mail/mailtest"
 	"github.com/tryhisar/hisar/server/internal/service"
+	"github.com/tryhisar/hisar/server/internal/settings"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
@@ -32,12 +36,19 @@ type account struct {
 	Email     string `json:"email"`
 	Password  string `json:"password"`
 	SecretKey string `json:"secretKey"`
+	Token     string `json:"token"`
 }
 
 type fixture struct {
-	BaseURL string `json:"baseURL"`
+	BaseURL  string `json:"baseURL"`
+	SMTPSink string `json:"smtpSink"`
 	account
 	Members []account `json:"members"`
+}
+
+type receivedEmail struct {
+	Recipients []string `json:"recipients"`
+	Data       string   `json:"data"`
 }
 
 func main() {
@@ -72,14 +83,27 @@ func main() {
 		log.Fatal(err)
 	}
 	baseURL := "http://" + listener.Addr().String()
-	server, err := api.NewServer(database, secrets, api.Config{Config: service.Config{PublicURL: baseURL}, AuthBurst: 1000})
+	defaultSettings := settings.Defaults()
+	defaultSettings.AuthBurst = 1000
+	server, err := api.NewServer(database, secrets, api.Config{Config: service.Config{PublicURL: baseURL}, DefaultSettings: &defaultSettings, Environment: os.Getenv})
 	if err != nil {
 		log.Fatal(err)
 	}
+	var outputMutex sync.Mutex
+	output := json.NewEncoder(os.Stdout)
+	sink, err := mailtest.StartSink("127.0.0.1:0", mailtest.SinkConfig{OnMessage: func(received mailtest.ReceivedMessage) {
+		outputMutex.Lock()
+		defer outputMutex.Unlock()
+		output.Encode(map[string]receivedEmail{"receivedEmail": {Recipients: received.Recipients, Data: received.Data}})
+	}})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer sink.Close()
 	app := server.CreateApp()
 	go app.Listener(listener, fiber.ListenConfig{DisableStartupMessage: true, GracefulContext: ctx})
 
-	created := fixture{BaseURL: baseURL}
+	created := fixture{BaseURL: baseURL, SMTPSink: sink.Address()}
 	suffix := make([]byte, 4)
 	rand.Read(suffix)
 	for _, seed := range []struct{ name, role string }{{"Ada Admin", apitypes.RoleAdmin}, {"Mira Member", apitypes.RoleMember}, {"Milo Member", apitypes.RoleMember}} {
@@ -93,7 +117,10 @@ func main() {
 			created.Members = append(created.Members, signedUp)
 		}
 	}
-	if err := json.NewEncoder(os.Stdout).Encode(created); err != nil {
+	outputMutex.Lock()
+	err = output.Encode(created)
+	outputMutex.Unlock()
+	if err != nil {
 		log.Fatal(err)
 	}
 	<-ctx.Done()
@@ -111,6 +138,6 @@ func signUp(ctx context.Context, server *api.Server, baseURL, name, role, suffix
 		return account{}, err
 	}
 	signedUp.Lock()
-	created.SecretKey = secretKey.Encode()
+	created.SecretKey, created.Token = secretKey.Encode(), signedUp.Client.Token
 	return created, nil
 }

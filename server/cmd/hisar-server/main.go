@@ -27,11 +27,14 @@ environment:
   HISAR_SECRETS_FILE   server secrets file, created on first start (default hisar-secrets.json)
   HISAR_TRUST_PROXY    trust X-Forwarded-For from the reverse proxy (default false)
   HISAR_AUTO_MIGRATE   apply pending migrations on start (default true)
+
+instance settings, usually edited in the admin dashboard at /admin; a value here overrides it and locks the field:
   HISAR_AUTH_BURST     auth requests per IP before limiting to one per 6 seconds (default 10)
 
-email for invites and share invitations (optional; all five or none):
+email for invites and share invitations (optional; any of these sets all of Email and locks it in the dashboard, which
+keeps the SMTP password in the database in plain text otherwise; with a host, a sender is needed):
   HISAR_SMTP_HOST      SMTP server, e.g. smtp.example.com
-  HISAR_SMTP_PORT      465 for implicit TLS; any other port must offer STARTTLS
+  HISAR_SMTP_PORT      465 for implicit TLS; any other port must offer STARTTLS (default 587)
   HISAR_SMTP_USERNAME  SMTP user name
   HISAR_SMTP_PASSWORD  SMTP password
   HISAR_SMTP_FROM      sender, e.g. "Hisar <noreply@tryhisar.com>"
@@ -41,7 +44,7 @@ desktop updates (the Mac app's Sparkle feed, read from GitHub Releases):
   HISAR_DESKTOP_UPDATE_GITHUB_TOKEN       optional read-only token (Contents: read), needed while the repository is private
   HISAR_DESKTOP_UPDATE_GITHUB_API_URL     GitHub API base URL (default https://api.github.com)
 
-minimum app versions (optional; empty means no minimum, older apps get 426 Upgrade Required):
+minimum app versions (optional; empty leaves the dashboard's value, older apps get 426 Upgrade Required):
   HISAR_MINIMUM_VERSION_DESKTOP_MACOS  e.g. 0.1.6
   HISAR_MINIMUM_VERSION_IOS
   HISAR_MINIMUM_VERSION_CLI

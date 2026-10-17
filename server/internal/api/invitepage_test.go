@@ -88,7 +88,7 @@ func TestInvitePage(t *testing.T) {
 		`href="https://tryhisar.com/download" rel="noopener noreferrer" data-testid="download">Download for Mac</a>`,
 		`data-copy="invite-code" aria-label="Copy invite code" hidden>Copy</button>`,
 		"Install command-line tool",
-		service.FormatExpiry(time.Now().Add(server.config.InviteTTL)),
+		service.FormatExpiry(time.Now().Add(server.service.InviteTTL)),
 	} {
 		if !strings.Contains(body, expected) {
 			t.Errorf("valid page lacks %q", expected)
@@ -122,7 +122,7 @@ func TestInvitePage(t *testing.T) {
 		t.Error("the inviter's name was not escaped")
 	}
 
-	server.config.InviteTTL = -time.Minute
+	server.service.InviteTTL = -time.Minute
 	expiredInvite := requireValue[*apitypes.InviteResponse](t)(server.CreateInvite(ctx, "late@example.com", apitypes.RoleMember, &ada.AccountID))
 	response, invalidBody := fetchInvitePage(t, baseURL, "never-issued-token")
 	if response.StatusCode != http.StatusNotFound {

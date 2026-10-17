@@ -11,11 +11,14 @@ import (
 
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/server/internal/ratelimit"
+	"github.com/tryhisar/hisar/server/internal/settings"
 )
 
-func createMinimumVersionApp(t *testing.T, minimumVersions MinimumVersions) *fiber.App {
+func createMinimumVersionApp(t *testing.T, minimumVersions settings.MinimumVersions) *fiber.App {
 	t.Helper()
-	server, err := NewServer(nil, generateSecrets(), Config{MinimumVersions: minimumVersions})
+	defaultSettings := settings.Defaults()
+	defaultSettings.MinimumVersions = minimumVersions
+	server, err := NewServer(nil, generateSecrets(), Config{DefaultSettings: &defaultSettings})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +49,7 @@ func sendVersionedRequest(t *testing.T, app *fiber.App, method, path, platform, 
 }
 
 func TestMinimumVersionPerPlatform(t *testing.T) {
-	app := createMinimumVersionApp(t, MinimumVersions{DesktopMacOS: "0.1.6", IOS: "1.0.0", CLI: "1.0.0", Extension: "0.3.0"})
+	app := createMinimumVersionApp(t, settings.MinimumVersions{DesktopMacOS: "0.1.6", IOS: "1.0.0", CLI: "1.0.0", Extension: "0.3.0"})
 	for _, testCase := range []struct {
 		platform, oldVersion, currentVersion, updateURL string
 	}{
@@ -76,7 +79,7 @@ func TestMinimumVersionPerPlatform(t *testing.T) {
 }
 
 func TestMinimumVersionRunsBeforeEverythingElse(t *testing.T) {
-	app := createMinimumVersionApp(t, MinimumVersions{CLI: "1.0.0"})
+	app := createMinimumVersionApp(t, settings.MinimumVersions{CLI: "1.0.0"})
 	for _, route := range []struct{ method, path string }{
 		{"GET", "/api/v1/auth/prelogin?email=a@example.com"},
 		{"POST", "/api/v1/auth/login/start"},
@@ -96,7 +99,7 @@ func TestMinimumVersionRunsBeforeEverythingElse(t *testing.T) {
 }
 
 func TestMinimumVersionLetsOtherRequestsThrough(t *testing.T) {
-	app := createMinimumVersionApp(t, MinimumVersions{DesktopMacOS: "0.1.6", CLI: "1.0.0"})
+	app := createMinimumVersionApp(t, settings.MinimumVersions{DesktopMacOS: "0.1.6", CLI: "1.0.0"})
 	for name, request := range map[string]struct{ platform, version string }{
 		"no headers":               {"", ""},
 		"platform without version": {apitypes.PlatformDesktopMacOS, ""},
@@ -119,7 +122,7 @@ func TestMinimumVersionLetsOtherRequestsThrough(t *testing.T) {
 			t.Errorf("%s: %d", path, status)
 		}
 	}
-	noMinimumApp := createMinimumVersionApp(t, MinimumVersions{})
+	noMinimumApp := createMinimumVersionApp(t, settings.MinimumVersions{})
 	if status, _ := sendVersionedRequest(t, noMinimumApp, "GET", "/api/v1/version-check", apitypes.PlatformDesktopMacOS, "0.0.1"); status != http.StatusNoContent {
 		t.Errorf("without a minimum: %d", status)
 	}
@@ -139,16 +142,5 @@ func TestVersionCheckRateLimit(t *testing.T) {
 	}
 	if statuses[0] != http.StatusNoContent || statuses[1] != http.StatusTooManyRequests {
 		t.Errorf("statuses %v", statuses)
-	}
-}
-
-func TestMinimumVersionsValidate(t *testing.T) {
-	if err := (MinimumVersions{DesktopMacOS: "0.1.6", Extension: "1.0.0-alpha-test"}).Validate(); err != nil {
-		t.Error(err)
-	}
-	for _, invalid := range []MinimumVersions{{DesktopMacOS: "0.1"}, {IOS: "latest"}, {CLI: "v1.0.0"}, {Extension: "1.0.0-"}} {
-		if err := invalid.Validate(); err == nil {
-			t.Errorf("%+v accepted", invalid)
-		}
 	}
 }

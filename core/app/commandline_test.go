@@ -308,6 +308,15 @@ func TestCommandLineSharingAndDevices(t *testing.T) {
 	if invited := test.testService.apiServer.invitedEmails; len(invited) != 1 || invited[0] != "new@example.com" {
 		t.Errorf("invited %v", invited)
 	}
+	test.testService.apiServer.mutex.Lock()
+	test.testService.apiServer.role, test.testService.apiServer.isInviteAdminsOnly = apitypes.RoleMember, true
+	test.testService.apiServer.mutex.Unlock()
+	if failure := test.send(t, cliprotocol.Request{Type: cliprotocol.TypeInvite, Email: "refused@example.com"}, nil); !strings.HasSuffix(failure, ": Only admins can invite people to the Hisar server.") {
+		t.Errorf("a member's invite under admins only: %q", failure)
+	}
+	test.testService.apiServer.mutex.Lock()
+	test.testService.apiServer.isInviteAdminsOnly = false
+	test.testService.apiServer.mutex.Unlock()
 	test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeShareVault, VaultID: test.testService.familyID, Email: "bob@example.com", Role: "reader"}, nil)
 	test.testService.apiServer.mutex.Lock()
 	test.testService.apiServer.receivedShareInvitations = []apitypes.ReceivedShareInvitation{{ID: "from-carol", VaultID: "vault-2", Role: "editor", InvitedByName: "Carol", InvitedByEmail: "c@example.com"}}
