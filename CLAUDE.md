@@ -72,7 +72,7 @@ Shared test fixtures are in `helpers_test.go`, the in-memory API in `fakeapi_tes
 | `internal/realtime` | The per-account event broker behind `GET /api/v1/events` |
 | `internal/ratelimit` | Per-key token buckets |
 | `internal/settings` | The instance settings admins edit: defaults, the stored document, `HISAR_*` overrides, `Validate` |
-| `internal/mail`, `internal/desktopupdate` | SMTP; the Sparkle appcast from GitHub Releases |
+| `internal/mail`, `internal/desktopupdate`, `internal/serverupdate` | SMTP; the Sparkle appcast from GitHub Releases; the newest server release for Overview |
 | `cmd/hisar-fake-github`, `cmd/hisar-smtp-sink`, `cmd/hisar-share-link-page-fixture`, `cmd/hisar-admin-page-fixture`, `internal/desktopupdate/fakegithub`, `internal/mail/mailtest` | Fakes and fixtures for the end-to-end and browser tests |
 
 ### cli
@@ -109,7 +109,7 @@ so rich values are JSON strings.
 | `src/sections.ts` | The navigation table: one `Section` (`id`, `title`, `path`, `component`) per screen |
 | `src/api.ts` | The session token in `sessionStorage`, `fetch` to the same server's `/api/v1`, sign-in and sign-out |
 | `src/bridge/` | `bridge.ts` posts typed messages to `worker.ts`, the Web Worker that runs `hisar-admin-wasm` |
-| `src/views/`, `src/sections/<area>/` | The sign-in screen and Overview; one directory per later screen |
+| `src/views/`, `src/sections/<area>/` | The sign-in screen; one directory per section (`overview`, `settings`) |
 | `end-to-end/` | Playwright tests against `hisar-admin-page-fixture`; `perf.spec.ts` checks the size and sign-in time budget |
 
 ## Where new code goes
