@@ -232,7 +232,7 @@ func (s *Server) CreateApp() *fiber.App {
 	apiGroup.Get("/desktop/updates/:version/:file", s.limitUpdateRate, s.requireSession, s.handleDownloadDesktopUpdate)
 
 	adminGroup := apiGroup.Group("/admin")
-	s.registerAdminServerRoutes(apiGroup)
+	s.registerAdminServerRoutes(adminGroup)
 	s.registerAdminSettingsRoutes(adminGroup)
 	s.registerAdminHealthRoutes(adminGroup)
 	s.registerSetupRoutes(apiGroup, adminGroup)
