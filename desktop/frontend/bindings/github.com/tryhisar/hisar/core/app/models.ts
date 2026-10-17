@@ -13,6 +13,12 @@ export interface AccountDeletionPreview {
     "sentInvitationCount": number;
     "receivedInvitationCount": number;
     "deviceCount": number;
+
+    /**
+     * Organizations: IsDeleted when the user is its last member; NewAdminName is who becomes admin when the user is its
+     * last admin. Omitted when the user is in none.
+     */
+    "organizations"?: DeletionOrganization[] | null;
 }
 
 export interface BrowserPairingRequest {
@@ -51,6 +57,13 @@ export interface CredentialChangeResult {
      * KeychainError is set when the new Secret Key could not be saved to the keychain; the user must write it down.
      */
     "keychainError": string;
+}
+
+export interface DeletionOrganization {
+    "id": string;
+    "name": string;
+    "isDeleted": boolean;
+    "newAdminName": string;
 }
 
 export interface DeletionVault {
@@ -153,6 +166,16 @@ export interface ImportPreview {
      * SoftwareLicenseCount counts the software-license items among ItemCount.
      */
     "softwareLicenseCount": number;
+
+    /**
+     * ServerCount counts the server items among ItemCount.
+     */
+    "serverCount": number;
+
+    /**
+     * DatabaseCount counts the database items among ItemCount.
+     */
+    "databaseCount": number;
     "allSkipped": ImportSkippedEntry[] | null;
     "allDuplicate": ImportDuplicate[] | null;
 }
@@ -222,6 +245,23 @@ export interface ItemCard {
 }
 
 /**
+ * ItemDatabase is a database's values besides its login data. Engine is the ID of a known engine (postgresql, mysql,
+ * mariadb, sqlserver, oracle, mongodb, redis) or any other engine as typed; EngineName names it. ConnectionString is built
+ * from the values and the item's login data, and is "" for another engine or without a host. PortWarning says when the
+ * port is not a number from 1 to 65535. SaveItem reads only Engine, Host, Port, Name and Options.
+ */
+export interface ItemDatabase {
+    "engine": string;
+    "engineName": string;
+    "host": string;
+    "port": string;
+    "name": string;
+    "options": string;
+    "connectionString": string;
+    "portWarning": string;
+}
+
+/**
  * ItemDetail never carries an SSH private key; the agent reads it from the cached item.
  */
 export interface ItemDetail {
@@ -285,6 +325,18 @@ export interface ItemDetail {
      * keep only the product, version, licensed-to name and email.
      */
     "softwareLicense"?: ItemSoftwareLicense | null;
+
+    /**
+     * Server holds a server's host, port and linked SSH key, stored as named custom fields; its username, password and
+     * admin console are the item's own Username, Password and URLs. Summaries keep only the host and port.
+     */
+    "server"?: ItemServer | null;
+
+    /**
+     * Database holds a database's engine, host, port, name and options, stored as named custom fields; its username and
+     * password are the item's own. Summaries keep only the engine, host, port and name.
+     */
+    "database"?: ItemDatabase | null;
 }
 
 export interface ItemField {
@@ -327,6 +379,20 @@ export interface ItemPasskey {
 }
 
 /**
+ * ItemServer is a server's values besides its login data. SSHKeyID names an ssh-key item in the same vault, or is "";
+ * SSHKeyTitle and SSHKeyFingerprint describe that key, and are "" when it is gone. PortWarning says when the port is not a
+ * number from 1 to 65535. SaveItem reads only Host, Port and SSHKeyID.
+ */
+export interface ItemServer {
+    "host": string;
+    "port": string;
+    "sshKeyId": string;
+    "sshKeyTitle": string;
+    "sshKeyFingerprint": string;
+    "portWarning": string;
+}
+
+/**
  * ItemSoftwareLicense is a software license; the license key is concealed. DownloadURL is a field, not the item's
  * website.
  */
@@ -347,6 +413,57 @@ export interface OneTimeCode {
     "code": string;
     "expiresAt": string;
     "period": number;
+}
+
+/**
+ * Organization is what its members see of it; Invitations is empty unless IsAdmin.
+ */
+export interface Organization {
+    "id": string;
+    "name": string;
+    "role": string;
+    "isAdmin": boolean;
+    "members": OrganizationMember[] | null;
+    "teams": Team[] | null;
+    "invitations": SentOrganizationInvitation[] | null;
+}
+
+/**
+ * OrganizationInvitation is an invitation to this user's email; ExpiresAt is RFC 3339.
+ */
+export interface OrganizationInvitation {
+    "id": string;
+    "organizationId": string;
+    "organizationName": string;
+    "role": string;
+    "invitedByName": string;
+    "invitedByEmail": string;
+    "expiresAt": string;
+}
+
+/**
+ * OrganizationMember: SecurityCode and IsKeyChanged as for Person.
+ */
+export interface OrganizationMember {
+    "accountId": string;
+    "name": string;
+    "email": string;
+    "role": string;
+    "securityCode": string;
+    "isCurrentUser": boolean;
+    "isKeyChanged": boolean;
+}
+
+export interface OrganizationSummary {
+    "id": string;
+    "name": string;
+    "role": string;
+    "memberCount": number;
+}
+
+export interface Organizations {
+    "organizations": OrganizationSummary[] | null;
+    "invitations": OrganizationInvitation[] | null;
 }
 
 export interface PairedBrowser {
@@ -392,6 +509,17 @@ export interface RemovedVaultNotice {
     "id": string;
     "name": string;
     "message": string;
+}
+
+/**
+ * SentOrganizationInvitation is a pending invitation to the organization; only admins see them. Times are RFC 3339.
+ */
+export interface SentOrganizationInvitation {
+    "id": string;
+    "email": string;
+    "role": string;
+    "createdAt": string;
+    "expiresAt": string;
 }
 
 /**
@@ -508,6 +636,31 @@ export interface Status {
     "updateRequired": UpdateRequirement | null;
 }
 
+export interface Team {
+    "id": string;
+    "name": string;
+    "members": TeamMember[] | null;
+    "vaults": TeamVault[] | null;
+}
+
+export interface TeamMember {
+    "accountId": string;
+    "name": string;
+    "email": string;
+    "isCurrentUser": boolean;
+}
+
+/**
+ * TeamVault is a vault the team was given. Vault names are encrypted, so Name is empty when CanOpen is false:
+ * this user has no key for it (yet).
+ */
+export interface TeamVault {
+    "vaultId": string;
+    "name": string;
+    "role": string;
+    "canOpen": boolean;
+}
+
 /**
  * Theme is this device's look: Appearance follows the system or picks light or dark, Color tints the chrome and accent.
  */
@@ -579,6 +732,11 @@ export interface VaultSummary {
     "type": string;
     "role": string;
     "itemCount": number;
+
+    /**
+     * OrganizationID is set for organization vaults only.
+     */
+    "organizationId"?: string;
 }
 
 /**
@@ -591,4 +749,24 @@ export interface WaitingShareInvitation {
     "invitedByName": string;
     "invitedByEmail": string;
     "acceptedAt": string;
+}
+
+/**
+ * WaitingVaultKey is an organization vault this user's teams give them that no owner's app has delivered yet.
+ */
+export interface WaitingVaultKey {
+    "vaultId": string;
+    "organizationId": string;
+    "organizationName": string;
+    "role": string;
+}
+
+/**
+ * WaitingVaultKeys: DeliveryError and RotationError say why this app could not deliver a key to someone or rotate a
+ * vault it owns, e.g. a changed signing key.
+ */
+export interface WaitingVaultKeys {
+    "waiting": WaitingVaultKey[] | null;
+    "deliveryError": string;
+    "rotationError": string;
 }

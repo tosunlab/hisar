@@ -82,6 +82,27 @@ func TestGetFieldValue(t *testing.T) {
 	}
 }
 
+func TestGetShowsADatabasesConnectionString(t *testing.T) {
+	vaultItem := &item.Item{Overview: item.Overview{Title: "Prod db", Category: item.CategoryDatabase, Username: "app"}, Details: item.Details{Password: "pw"}}
+	item.WriteDatabase(vaultItem, item.Database{Engine: "postgresql", Host: "db.example.com", Name: "app"}, nil)
+	want := "postgresql://app:pw@db.example.com/app"
+	if got, ok := getFieldValue(vaultItem, "Connection string"); !ok || got != want {
+		t.Errorf("connection string = %q, %v", got, ok)
+	}
+	var output strings.Builder
+	if err := writeItem(&output, vaultItem); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output.String(), "connection string:  "+want) {
+		t.Errorf("output:\n%s", output.String())
+	}
+	// A login keeps a custom field of that name.
+	login := &item.Item{Details: item.Details{Fields: []item.Field{{Name: "Connection string", Value: "jdbc:db2://db2.example.com/app"}}}}
+	if got, ok := getFieldValue(login, "connection string"); !ok || got != "jdbc:db2://db2.example.com/app" {
+		t.Errorf("login's connection string = %q, %v", got, ok)
+	}
+}
+
 func TestLoadStateUsesEnvironmentPath(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.json")
 	t.Setenv("HISAR_STATE", path)

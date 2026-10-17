@@ -5,8 +5,10 @@ import {
   createEmptyAddress,
   createEmptyAPICredential,
   createEmptyCard,
+  createEmptyDatabase,
   createEmptyIdentity,
   createEmptyItem,
+  createEmptyServer,
   createEmptySoftwareLicense,
   type CardDescription,
   type ItemDetail,
@@ -14,16 +16,21 @@ import {
 import {
   addressCategory,
   allCardBrand,
+  allDatabaseEngine,
   apiCredentialCategory,
   creditCardCategory,
+  databaseCategory,
   describeAPICredentialExpiry,
+  describeServerPort,
   identityCategory,
   formatCardNumberInput,
   formatExpiryInput,
   formatInputAsTyped,
   getItemIcon,
   isCalendarDate,
+  isKnownDatabaseEngine,
   secureNoteCategory,
+  serverCategory,
   softwareLicenseCategory,
   sshKeyCategory,
 } from "../util";
@@ -56,6 +63,8 @@ function createDraft(): ItemDetail {
         : selected.category === softwareLicenseCategory
           ? createEmptySoftwareLicense()
           : selected.softwareLicense,
+      server: selected.server ? { ...selected.server } : selected.category === serverCategory ? createEmptyServer() : selected.server,
+      database: selected.database ? { ...selected.database } : selected.category === databaseCategory ? createEmptyDatabase() : selected.database,
     };
   }
   const empty = createEmptyItem();
@@ -77,6 +86,12 @@ function createDraft(): ItemDetail {
   } else if (store.editorMode === "create-software-license") {
     empty.category = softwareLicenseCategory;
     empty.softwareLicense = createEmptySoftwareLicense();
+  } else if (store.editorMode === "create-server") {
+    empty.category = serverCategory;
+    empty.server = createEmptyServer();
+  } else if (store.editorMode === "create-database") {
+    empty.category = databaseCategory;
+    empty.database = createEmptyDatabase();
   }
   return empty;
 }
@@ -92,6 +107,26 @@ const isIdentity = draft.category === identityCategory;
 const isAPICredential = draft.category === apiCredentialCategory;
 const isAddress = draft.category === addressCategory;
 const isSoftwareLicense = draft.category === softwareLicenseCategory;
+const isServer = draft.category === serverCategory;
+const serverPortWarning = computed(() => describeServerPort(draft.server?.port.trim() ?? ""));
+// The SSH keys a server may use: the vault's, which the list shows. A linked key that is gone stays chosen as "Missing SSH
+// key" until another is picked.
+const allSSHKey = computed(() => store.allItem.filter((vaultItem) => vaultItem.category === sshKeyCategory));
+const isSSHKeyMissing = computed(() => Boolean(draft.server?.sshKeyId) && !allSSHKey.value.some((key) => key.id === draft.server?.sshKeyId));
+const isDatabase = draft.category === databaseCategory;
+const databasePortWarning = computed(() => describeServerPort(draft.database?.port.trim() ?? ""));
+// The engine select shows a known engine by its name; any other, such as an imported DB2, is Other with its text editable.
+const engineChoice = ref(isKnownDatabaseEngine(draft.database?.engine ?? "") ? (draft.database?.engine ?? "") : "other");
+watch(engineChoice, (choice) => {
+  if (!draft.database) {
+    return;
+  }
+  if (choice !== "other") {
+    draft.database.engine = choice;
+  } else if (isKnownDatabaseEngine(draft.database.engine)) {
+    draft.database.engine = "";
+  }
+});
 const isLicenseKeyVisible = ref(false);
 // A purchase date imported in another form, such as 03/09/2024, stays editable as text, as a birth date does.
 const isPurchaseDateText = Boolean(draft.softwareLicense?.purchaseDate) && !isCalendarDate(draft.softwareLicense?.purchaseDate ?? "");
@@ -436,6 +471,65 @@ async function submitItem(): Promise<void> {
       </div>
     </section>
 
+    <section v-if="isServer && draft.server" class="card editor-card" data-testid="server-editor">
+      <div class="row card-row">
+        <label>
+          <span>Host</span>
+          <input v-model="draft.server.host" name="host" autocomplete="off" spellcheck="false" placeholder="server.example.com" />
+        </label>
+        <label>
+          <span>Port</span>
+          <input v-model="draft.server.port" name="port" inputmode="numeric" autocomplete="off" placeholder="22" />
+          <small v-if="serverPortWarning" class="hint warning-text" data-testid="server-port-warning">{{ serverPortWarning }}</small>
+        </label>
+      </div>
+      <label class="last">
+        <span>SSH key</span>
+        <select v-model="draft.server.sshKeyId" name="sshKey">
+          <option value="">None</option>
+          <option v-if="isSSHKeyMissing" :value="draft.server.sshKeyId">Missing SSH key</option>
+          <option v-for="key in allSSHKey" :key="key.id" :value="key.id">{{ key.title }}</option>
+        </select>
+        <small class="hint muted">An SSH key from this vault, so everyone who sees the server can use it.</small>
+      </label>
+    </section>
+
+    <section v-if="isDatabase && draft.database" class="card editor-card" data-testid="database-editor">
+      <div class="row card-row">
+        <label>
+          <span>Engine</span>
+          <select v-model="engineChoice" name="engine">
+            <option v-for="engine in allDatabaseEngine" :key="engine.id" :value="engine.id">{{ engine.name }}</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+        <label v-if="engineChoice === 'other'">
+          <span>Other engine</span>
+          <input v-model="draft.database.engine" name="otherEngine" autocomplete="off" spellcheck="false" placeholder="DB2" />
+        </label>
+      </div>
+      <div class="row card-row">
+        <label>
+          <span>Host</span>
+          <input v-model="draft.database.host" name="host" autocomplete="off" spellcheck="false" placeholder="db.example.com" />
+        </label>
+        <label>
+          <span>Port</span>
+          <input v-model="draft.database.port" name="port" inputmode="numeric" autocomplete="off" placeholder="5432" />
+          <small v-if="databasePortWarning" class="hint warning-text" data-testid="database-port-warning">{{ databasePortWarning }}</small>
+        </label>
+      </div>
+      <label>
+        <span>Database</span>
+        <input v-model="draft.database.name" name="databaseName" autocomplete="off" spellcheck="false" placeholder="app" />
+      </label>
+      <label class="last">
+        <span>Options</span>
+        <input v-model="draft.database.options" name="options" autocomplete="off" spellcheck="false" placeholder="sslmode=require" />
+        <small v-if="engineChoice === 'other'" class="hint muted">Hisar builds connection strings only for the engines listed.</small>
+      </label>
+    </section>
+
     <p v-if="isSSHKey" class="card ssh-key-note muted" data-testid="ssh-key-note">
       <AppIcon name="key" :size="14" /> The key itself cannot be changed. To replace it, add a new SSH key.
     </p>
@@ -472,11 +566,16 @@ async function submitItem(): Promise<void> {
         <StrengthMeter :password="draft.password" />
       </label>
       <PasswordGenerator v-if="isGeneratorOpen" @use="usePassword" @close="isGeneratorOpen = false" />
-      <label>
-        <span>Websites</span>
-        <textarea v-model="urlText" name="urls" rows="2" placeholder="https://example.com (one per line)"></textarea>
+      <label v-if="!isDatabase">
+        <span>{{ isServer ? "Admin console URL" : "Websites" }}</span>
+        <textarea
+          v-model="urlText"
+          name="urls"
+          rows="2"
+          :placeholder="isServer ? 'https://console.example.com' : 'https://example.com (one per line)'"
+        ></textarea>
       </label>
-      <label class="last">
+      <label v-if="!isDatabase" class="last">
         <span>One-time password</span>
         <input
           v-model="draft.oneTimePassword"

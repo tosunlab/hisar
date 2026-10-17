@@ -88,7 +88,7 @@ describe("Tags in the sidebar", () => {
 describe("Tags in the item view", () => {
   it("shows the tags as chips that filter the list", async () => {
     store.selectedItem = gitHub;
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false } });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" } });
     const chips = wrapper.findAll('[data-testid="item-tags"] button');
     expect(chips.map((chip) => chip.text())).toEqual(["work", "dev"]);
     await chips[1].trigger("click");
@@ -98,7 +98,7 @@ describe("Tags in the item view", () => {
 
   it("shows no tag row for an item without tags", () => {
     store.selectedItem = untagged;
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false } });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" } });
     expect(wrapper.find('[data-testid="item-tags"]').exists()).toBe(false);
   });
 });

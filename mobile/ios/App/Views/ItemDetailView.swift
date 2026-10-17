@@ -149,7 +149,16 @@ struct ItemDetailView: View {
             } else if item.isSoftwareLicense {
                 buildSoftwareLicenseSection(license: item.softwareLicense ?? ItemSoftwareLicense())
             } else {
+                if item.isServer {
+                    buildServerSection(server: item.server ?? ItemServer())
+                }
+                if item.isDatabase {
+                    buildDatabaseSection(database: item.database ?? ItemDatabase())
+                }
                 buildLoginSection(item: item)
+                if let connectionString = item.database?.connectionString, item.isDatabase, !connectionString.isEmpty {
+                    buildConnectionStringSection(connectionString: connectionString)
+                }
             }
             if !item.allField.isEmpty {
                 Section("Other fields") {
@@ -165,7 +174,7 @@ struct ItemDetailView: View {
                 }
             }
             if !item.allURL.isEmpty {
-                Section(item.allURL.count == 1 ? "Website" : "Websites") {
+                Section(item.isServer ? "Admin console" : item.allURL.count == 1 ? "Website" : "Websites") {
                     ForEach(Array(item.allURL.enumerated()), id: \.offset) { _, url in
                         if let openableURL = VaultLogic.convertToOpenableURL(url) {
                             Link(destination: openableURL) {
@@ -245,6 +254,56 @@ struct ItemDetailView: View {
         .refreshable { await loadItem() }
     }
 
+    /// A server's host and port with copy and copy reference, and its SSH key, which opens the key item.
+    @ViewBuilder
+    private func buildServerSection(server: ItemServer) -> some View {
+        if !server.host.isEmpty || !server.port.isEmpty || !server.sshKeyID.isEmpty {
+            Section("Server") {
+                if !server.host.isEmpty {
+                    SecretFieldRow(
+                        label: ServerFieldName.host, value: server.address, isConcealed: false, isRevealed: true, toggleReveal: nil,
+                        copy: { copy(fieldName: ServerFieldName.host, label: ServerFieldName.host) },
+                        copyReference: { copyReference(fieldName: ServerFieldName.host) }
+                    )
+                }
+                if !server.port.isEmpty {
+                    VStack(alignment: .leading, spacing: 4) {
+                        SecretFieldRow(
+                            label: ServerFieldName.port, value: server.port, isConcealed: false, isRevealed: true, toggleReveal: nil,
+                            copy: { copy(fieldName: ServerFieldName.port, label: ServerFieldName.port) },
+                            copyReference: { copyReference(fieldName: ServerFieldName.port) }
+                        )
+                        if !server.portWarning.isEmpty {
+                            Text(server.portWarning)
+                                .font(.footnote)
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                }
+                if !server.sshKeyID.isEmpty {
+                    if server.sshKeyTitle.isEmpty {
+                        LabeledContent(ServerFieldName.sshKey, value: "Missing SSH key")
+                            .accessibilityIdentifier("server-ssh-key")
+                    } else {
+                        NavigationLink(value: ItemDestination(vaultID: vaultID, itemID: server.sshKeyID)) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(ServerFieldName.sshKey)
+                                    .font(.caption)
+                                    .foregroundStyle(.themeSecondary)
+                                Label(server.sshKeyTitle, systemImage: "key.horizontal")
+                                Text(server.sshKeyFingerprint)
+                                    .font(.caption.monospaced())
+                                    .foregroundStyle(.themeSecondary)
+                                    .lineLimit(1)
+                            }
+                        }
+                        .accessibilityIdentifier("server-ssh-key")
+                    }
+                }
+            }
+        }
+    }
+
     @ViewBuilder
     private func buildLoginSection(item: ItemDetail) -> some View {
         if !item.username.isEmpty || !item.password.isEmpty || item.hasOneTimePassword {
@@ -289,6 +348,33 @@ struct ItemDetailView: View {
 
     /// The line under the title: the category, or a card's, identity's, API credential's, address's or software license's
     /// summary.
+    /// A database's engine, by its name, host, port, name and options, each with copy and copy reference.
+    private func buildDatabaseSection(database: ItemDatabase) -> some View {
+        buildNamedSection(title: "Database", emptyText: "This database has no details yet.", allRow: [
+            (DatabaseFieldName.engine, database.engineName, false, ""),
+            (DatabaseFieldName.host, database.host, false, ""),
+            (DatabaseFieldName.port, database.port, false, database.portWarning),
+            (DatabaseFieldName.name, database.name, false, ""),
+            (DatabaseFieldName.options, database.options, false, ""),
+        ])
+    }
+
+    /// The connection string the backend builds from the database's values and password, hidden until revealed.
+    private func buildConnectionStringSection(connectionString: String) -> some View {
+        Section {
+            SecretFieldRow(
+                label: "Connection string", value: connectionString, isConcealed: true,
+                isRevealed: allRevealedFieldName.contains(DatabaseFieldName.connectionString),
+                toggleReveal: { toggleReveal(fieldName: DatabaseFieldName.connectionString) },
+                copy: { copy(fieldName: DatabaseFieldName.connectionString, label: "Connection string") },
+                copyReference: { copyReference(fieldName: DatabaseFieldName.connectionString) }
+            )
+            .accessibilityIdentifier("database-connection-string")
+        } footer: {
+            Text("Built from the fields above, so it always has the current password.")
+        }
+    }
+
     private func describeCategory(item: ItemDetail) -> String {
         if item.isSSHKey { return "SSH key" }
         if item.isSecureNote { return "Secure note" }
@@ -297,6 +383,8 @@ struct ItemDetailView: View {
         if item.isAPICredential { return (item.apiCredential ?? ItemAPICredential()).summary }
         if item.isAddress { return (item.address ?? ItemAddress()).summary }
         if item.isSoftwareLicense { return (item.softwareLicense ?? ItemSoftwareLicense()).summary }
+        if item.isServer { return (item.server ?? ItemServer()).summary(username: item.username) }
+        if item.isDatabase { return (item.database ?? ItemDatabase()).summary }
         return "Login"
     }
 

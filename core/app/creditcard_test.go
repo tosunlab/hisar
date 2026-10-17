@@ -1,10 +1,6 @@
 package app
 
 import (
-	"archive/zip"
-	"bytes"
-	"os"
-	"path/filepath"
 	"reflect"
 	"slices"
 	"testing"
@@ -116,29 +112,8 @@ func TestCommandLineCreditCardTravelsAsNamedFields(t *testing.T) {
 func TestImportedCardKeepsItsWebsiteThroughAnEdit(t *testing.T) {
 	test := createUnlockedTestService(t)
 	service := test.service
-	var buffer bytes.Buffer
-	writer := zip.NewWriter(&buffer)
-	fileWriter, err := writer.Create("export.data")
-	if err != nil {
-		t.Fatal(err)
-	}
-	fileWriter.Write([]byte(`{"accounts":[{"vaults":[{"items":[{"categoryUuid":"002","overview":{"title":"Amex","url":"https://americanexpress.com"},
-		"details":{"sections":[{"fields":[{"id":"ccnum","value":{"creditCardNumber":"378282246310005"}}]}]}}]}]}]}`))
-	if err := writer.Close(); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(t.TempDir(), "export.1pux")
-	if err := os.WriteFile(path, buffer.Bytes(), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	setImportPath(service, path)
-	if _, err := service.ChooseImportFile(test.personalID, ""); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := service.StartImport(test.personalID, false); err != nil {
-		t.Fatal(err)
-	}
-	runImportToEnd(t, service)
+	importOnePasswordExport(t, service, test.personalID, `{"accounts":[{"vaults":[{"items":[{"categoryUuid":"002","overview":{"title":"Amex","url":"https://americanexpress.com"},
+		"details":{"sections":[{"fields":[{"id":"ccnum","value":{"creditCardNumber":"378282246310005"}}]}]}}]}]}]}`)
 
 	website := ItemField{Name: "Website", Value: "https://americanexpress.com"}
 	imported, err := service.GetItem(test.personalID, listItemsByTitle(t, service, test.personalID)["Amex"].ID)

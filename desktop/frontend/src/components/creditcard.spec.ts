@@ -142,7 +142,7 @@ describe("Creating a credit card", () => {
 describe("Viewing a credit card", () => {
   it("shows the brand and last four digits and masks the secrets until revealed", async () => {
     store.selectedItem = createCardItem();
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false } });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" } });
     expect(wrapper.find('[data-testid="card-summary"]').text()).toBe("Visa •••• 1111");
     expect(wrapper.find('[data-testid="card-Card number"]').text()).toBe("•••• •••• •••• 1111");
     expect(wrapper.find('[data-testid="card-Security code"]').text()).not.toContain("123");
@@ -157,17 +157,17 @@ describe("Viewing a credit card", () => {
 
   it("offers a share link for a card with only card values", () => {
     store.selectedItem = createCardItem({ notes: "", fields: [] });
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: false, vaultName: "Personal", isShared: false } });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: false, vaultName: "Personal", vaultType: "personal" } });
     expect(wrapper.find('[data-testid="share-link"]').exists()).toBe(true);
 
     store.selectedItem = createCardItem({ notes: "", fields: [], card: { ...createCardItem().card!, cardholder: "", type: "", number: "", expiry: "", securityCode: "", pin: "", street: "", city: "", region: "", postalCode: "", country: "", billingAddress: "" } });
-    const empty = mount(ItemDetailPanel, { props: { canEdit: false, vaultName: "Personal", isShared: false } });
+    const empty = mount(ItemDetailPanel, { props: { canEdit: false, vaultName: "Personal", vaultType: "personal" } });
     expect(empty.find('[data-testid="share-link"]').exists()).toBe(false);
   });
 
   it("shows an expired card's warning", () => {
     store.selectedItem = createCardItem({ card: { ...createCardItem().card!, expiry: "09/20", expiryWarning: "This card has expired" } });
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false } });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" } });
     expect(wrapper.find('[data-testid="card-warning-Expiry"]').text()).toBe("This card has expired");
   });
 
@@ -181,7 +181,7 @@ describe("Viewing a credit card", () => {
 
 describe("Importing credit cards", () => {
   it("counts them in the preview", () => {
-    store.importPreview = { fileName: "export.json", filePath: "/tmp/export.json", format: "bitwarden-json", formatName: "Bitwarden JSON", vaultId: "personal", vaultName: "Personal", itemCount: 2, loginCount: 1, secureNoteCount: 0, sshKeyCount: 0, creditCardCount: 1, identityCount: 0, apiCredentialCount: 0, addressCount: 0, softwareLicenseCount: 0, allSkipped: [], allDuplicate: [] };
+    store.importPreview = { fileName: "export.json", filePath: "/tmp/export.json", format: "bitwarden-json", formatName: "Bitwarden JSON", vaultId: "personal", vaultName: "Personal", itemCount: 2, loginCount: 1, secureNoteCount: 0, sshKeyCount: 0, creditCardCount: 1, identityCount: 0, apiCredentialCount: 0, addressCount: 0, softwareLicenseCount: 0, serverCount: 0, databaseCount: 0, allSkipped: [], allDuplicate: [] };
     store.importStep = "preview";
     const wrapper = mount(ImportPanel);
     const count = wrapper.find('[data-testid="import-count-credit-card"]');

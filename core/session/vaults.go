@@ -21,9 +21,21 @@ var (
 	ErrVaultNameEmpty     = errors.New("enter a vault name")
 	ErrVaultNotEmpty      = errors.New("the vault has items; move them to another vault or delete them with the vault")
 	ErrLeavePersonalVault = errors.New("you can't leave your Personal vault")
+	// ErrOrganizationVaultAccess refuses leaving an organization vault or removing someone from it.
+	ErrOrganizationVaultAccess = errors.New("access to an organization vault comes from its teams; ask an organization admin to change them")
 )
 
 func (s *Session) CreateVault(ctx context.Context, name, vaultType string) (*Vault, error) {
+	return s.createVault(ctx, name, &apitypes.CreateVaultRequest{Type: vaultType})
+}
+
+// CreateOrganizationVault creates a vault of the organization and gives it to the team as owner;
+// the caller must be in the team. The team's other members get the key from an owner's app (CompleteVaultKeyRequests).
+func (s *Session) CreateOrganizationVault(ctx context.Context, name, organizationID, teamID string) (*Vault, error) {
+	return s.createVault(ctx, name, &apitypes.CreateVaultRequest{Type: apitypes.VaultOrganization, OrganizationID: organizationID, TeamID: teamID})
+}
+
+func (s *Session) createVault(ctx context.Context, name string, request *apitypes.CreateVaultRequest) (*Vault, error) {
 	vaultID := uuid.NewString()
 	vaultKey := crypt.GenerateKey()
 	encryptedName, err := crypt.SealVaultName(vaultKey, vaultID, []byte(name))
@@ -34,11 +46,14 @@ func (s *Session) CreateVault(ctx context.Context, name, vaultType string) (*Vau
 	if err != nil {
 		return nil, err
 	}
-	request := &apitypes.CreateVaultRequest{ID: vaultID, Type: vaultType, EncName: encryptedName, WrappedKey: wrappedKey}
+	request.ID, request.EncName, request.WrappedKey = vaultID, encryptedName, wrappedKey
 	if err := s.Client.CreateVault(ctx, request); err != nil {
 		return nil, err
 	}
-	return &Vault{ID: vaultID, Type: vaultType, Name: name, Role: apitypes.VaultOwner, Key: vaultKey}, nil
+	return &Vault{
+		ID: vaultID, Type: request.Type, Name: name, Role: apitypes.VaultOwner, Key: vaultKey,
+		OrganizationID: request.OrganizationID, KeyGeneration: 1,
+	}, nil
 }
 
 func (s *Session) ListVaults(ctx context.Context) ([]Vault, error) {
@@ -58,6 +73,7 @@ func (s *Session) ListVaults(ctx context.Context) ([]Vault, error) {
 		}
 		vaults = append(vaults, Vault{
 			ID: protoVault.ID, Type: protoVault.Type, Name: string(name), Role: protoVault.Role, Key: vaultKey,
+			OrganizationID: protoVault.OrganizationID, KeyGeneration: protoVault.KeyGeneration, NeedsRotation: protoVault.NeedsRotation,
 		})
 	}
 	return vaults, nil
@@ -136,7 +152,8 @@ type VaultDeletion struct {
 	IsDeletingItems bool
 }
 
-// RenameVault re-encrypts the vault name under the vault key; the server only stores the new ciphertext.
+// RenameVault re-encrypts the vault name under the vault key; the server only stores the new ciphertext, and refuses it
+// (409) when the vault's key was rotated since this copy was listed.
 func (s *Session) RenameVault(ctx context.Context, vault *Vault, name string) error {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -149,7 +166,8 @@ func (s *Session) RenameVault(ctx context.Context, vault *Vault, name string) er
 	if err != nil {
 		return err
 	}
-	if err := s.Client.RenameVault(ctx, vault.ID, &apitypes.RenameVaultRequest{EncName: encryptedName}); err != nil {
+	request := &apitypes.RenameVaultRequest{EncName: encryptedName, KeyGeneration: vault.KeyGeneration}
+	if err := s.Client.RenameVault(ctx, vault.ID, request); err != nil {
 		return err
 	}
 	vault.Name = name
@@ -161,6 +179,9 @@ func (s *Session) LeaveVault(ctx context.Context, vault *Vault) error {
 	if vault.Type == apitypes.VaultPersonal {
 		return ErrLeavePersonalVault
 	}
+	if vault.Type == apitypes.VaultOrganization {
+		return ErrOrganizationVaultAccess
+	}
 	if err := s.Client.RemoveAccess(ctx, vault.ID, s.AccountID); err != nil {
 		return err
 	}
@@ -170,7 +191,8 @@ func (s *Session) LeaveVault(ctx context.Context, vault *Vault) error {
 
 // DeleteVault deletes a vault the caller owns. Moving re-encrypts every live item under the target vault's key here,
 // so the server never sees plaintext, and the server moves them and deletes the vault in one transaction.
-// It returns how many items were moved, and retries when the vault changes during the move.
+// It returns how many items were moved, and retries when the vault changes during the move. When another device rotated
+// the target's key since it was listed, the target is reloaded and the items sealed again.
 func (s *Session) DeleteVault(ctx context.Context, vault *Vault, deletion VaultDeletion) (int, error) {
 	if vault.Role != apitypes.VaultOwner {
 		return 0, ErrNotVaultOwner
@@ -193,11 +215,14 @@ func (s *Session) DeleteVault(ctx context.Context, vault *Vault, deletion VaultD
 		return 0, ErrTargetNotWritable
 	}
 	for attempt := 1; ; attempt++ {
-		request, err := s.buildVaultMove(ctx, vault, target)
-		if err != nil {
-			return 0, err
-		}
-		err = s.Client.DeleteVault(ctx, vault.ID, request)
+		var request *apitypes.DeleteVaultRequest
+		err := s.sendSealed(ctx, func() error {
+			var err error
+			if request, err = s.buildVaultMove(ctx, vault, target); err != nil {
+				return err
+			}
+			return s.Client.DeleteVault(ctx, vault.ID, request)
+		}, target)
 		if apiclient.IsStatus(err, http.StatusConflict) && attempt < maxRotationAttemptCount {
 			continue
 		}
@@ -214,7 +239,7 @@ func (s *Session) buildVaultMove(ctx context.Context, vault, target *Vault) (*ap
 	if err != nil {
 		return nil, err
 	}
-	request := &apitypes.DeleteVaultRequest{MoveToVaultID: target.ID, MovedItems: []apitypes.MovedItem{}}
+	request := &apitypes.DeleteVaultRequest{MoveToVaultID: target.ID, MoveToKeyGeneration: target.KeyGeneration, MovedItems: []apitypes.MovedItem{}}
 	for index := range protoItems {
 		protoItem := &protoItems[index]
 		if protoItem.Deleted {

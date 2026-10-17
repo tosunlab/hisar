@@ -40,7 +40,7 @@ beforeEach(() => {
 
 describe("passkeys in the item view", () => {
   it("lists each passkey with its site, user name and creation date", () => {
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false } });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" } });
     const allRow = wrapper.findAll('[data-testid="passkey-row"]');
     expect(allRow).toHaveLength(2);
     expect(allRow[0].get('[data-testid="passkey-site"]').text()).toBe("github.com");
@@ -52,7 +52,7 @@ describe("passkeys in the item view", () => {
 
   it("deletes a passkey after confirmation and shows the updated item", async () => {
     api.deletePasskey.mockResolvedValue(createItem({ id: "github", passkeys: [workPasskey] }));
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false } });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" } });
     await wrapper.findAll('[data-testid="delete-passkey"]')[0].trigger("click");
     expect(api.deletePasskey).not.toHaveBeenCalled();
     await wrapper.get('[data-testid="confirm-delete-passkey"]').trigger("click");
@@ -64,11 +64,11 @@ describe("passkeys in the item view", () => {
   });
 
   it("offers no delete in read-only vaults and hides the section without passkeys", () => {
-    const readOnly = mount(ItemDetailPanel, { props: { canEdit: false, vaultName: "Work", isShared: true } });
+    const readOnly = mount(ItemDetailPanel, { props: { canEdit: false, vaultName: "Work", vaultType: "shared" } });
     expect(readOnly.findAll('[data-testid="passkey-row"]')).toHaveLength(2);
     expect(readOnly.find('[data-testid="delete-passkey"]').exists()).toBe(false);
     store.selectedItem = createItem({ id: "plain" });
-    const plain = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false } });
+    const plain = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" } });
     expect(plain.find('[data-testid="passkey-section"]').exists()).toBe(false);
   });
 });

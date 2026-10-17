@@ -26,6 +26,8 @@ import (
 const (
 	maxBody         = 2 << 20
 	maxRotationBody = 32 << 20
+	// maxMoveBody holds a moved item of the largest size, base64-encoded, and its small tombstone.
+	maxMoveBody = 4 << 20
 )
 
 type Config struct {
@@ -168,6 +170,27 @@ func (s *Server) CreateApp() *fiber.App {
 	apiGroup.Get("/vaults/:vault/changes", s.requireSession, s.handleListChanges)
 	apiGroup.Put("/vaults/:vault/items/:item", s.requireSession, s.handlePutItem)
 	apiGroup.Get("/vaults/:vault/items/:item/history", s.requireSession, s.handleGetItemHistory)
+	apiGroup.Post("/vaults/:vault/items/:item/move", s.requireSession, s.handleMoveItem)
+
+	apiGroup.Get("/organizations", s.requireSession, s.handleListOrganizations)
+	apiGroup.Post("/organizations", s.requireSession, s.handleCreateOrganization)
+	apiGroup.Get("/organizations/:organization", s.requireSession, s.handleGetOrganization)
+	apiGroup.Put("/organizations/:organization/name", s.requireSession, s.handleRenameOrganization)
+	apiGroup.Delete("/organizations/:organization", s.requireSession, s.handleDeleteOrganization)
+	apiGroup.Post("/organizations/:organization/invitations", s.requireSession, s.handleCreateOrganizationInvitation)
+	apiGroup.Delete("/organizations/:organization/invitations/:invitation", s.requireSession, s.handleCancelOrganizationInvitation)
+	apiGroup.Post("/organization-invitations/:invitation/accept", s.requireSession, s.handleAcceptOrganizationInvitation)
+	apiGroup.Post("/organization-invitations/:invitation/decline", s.requireSession, s.handleDeclineOrganizationInvitation)
+	apiGroup.Put("/organizations/:organization/members/:account", s.requireSession, s.handleSetOrganizationRole)
+	apiGroup.Delete("/organizations/:organization/members/:account", s.requireSession, s.handleRemoveOrganizationMember)
+	apiGroup.Post("/organizations/:organization/teams", s.requireSession, s.handleCreateTeam)
+	apiGroup.Put("/organizations/:organization/teams/:team/name", s.requireSession, s.handleRenameTeam)
+	apiGroup.Delete("/organizations/:organization/teams/:team", s.requireSession, s.handleDeleteTeam)
+	apiGroup.Put("/organizations/:organization/teams/:team/members/:account", s.requireSession, s.handleAddTeamMember)
+	apiGroup.Delete("/organizations/:organization/teams/:team/members/:account", s.requireSession, s.handleRemoveTeamMember)
+	apiGroup.Put("/organizations/:organization/teams/:team/vaults/:vault", s.requireSession, s.handleGrantTeamVault)
+	apiGroup.Delete("/organizations/:organization/teams/:team/vaults/:vault", s.requireSession, s.handleRevokeTeamVault)
+	apiGroup.Get("/vault-key-requests", s.requireSession, s.handleListVaultKeyRequests)
 
 	apiGroup.Post("/share-links", s.requireSession, s.handleCreateShareLink)
 	apiGroup.Get("/share-links", s.requireSession, s.handleListShareLinks)
@@ -228,11 +251,15 @@ var statusByKind = map[service.Kind]int{
 }
 
 // handleError renders refusals (*service.Error, *fiber.Error) as JSON and hides all other errors behind a 500. An item
-// conflict answers 409 with the current item, which the client needs to merge.
+// conflict answers 409 with the current item, which the client needs to merge; items sealed with a key a rotation
+// replaced answer 409 with apitypes.KeyChangedResponse.
 func handleError(c fiber.Ctx, err error) error {
 	var conflict *service.ItemConflictError
 	if errors.As(err, &conflict) {
 		return c.Status(fiber.StatusConflict).JSON(apitypes.ConflictResponse{Current: conflict.Current})
+	}
+	if errors.Is(err, service.ErrKeyChanged) {
+		return c.Status(fiber.StatusConflict).JSON(apitypes.KeyChangedResponse{Error: service.ErrKeyChanged.Message, IsKeyChanged: true})
 	}
 	var serviceError *service.Error
 	if errors.As(err, &serviceError) {

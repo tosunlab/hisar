@@ -141,8 +141,10 @@ export const identityCategory = "identity";
 export const apiCredentialCategory = "api-credential";
 export const addressCategory = "address";
 export const softwareLicenseCategory = "software-license";
+export const serverCategory = "server";
+export const databaseCategory = "database";
 
-type CategoryIcon = "key" | "note" | "card" | "identity" | "apiKey" | "address" | "license";
+type CategoryIcon = "key" | "note" | "card" | "identity" | "apiKey" | "address" | "license" | "server" | "database";
 const allCategoryIcon: Record<string, CategoryIcon> = {
   [sshKeyCategory]: "key",
   [secureNoteCategory]: "note",
@@ -151,6 +153,8 @@ const allCategoryIcon: Record<string, CategoryIcon> = {
   [apiCredentialCategory]: "apiKey",
   [addressCategory]: "address",
   [softwareLicenseCategory]: "license",
+  [serverCategory]: "server",
+  [databaseCategory]: "database",
 };
 
 // getItemIcon is the tile icon of an item's category; logins show their initials instead.
@@ -236,6 +240,79 @@ export function formatSoftwareLicenseSummary(license: { product: string; version
   const version = license?.version ? (/^\d/.test(license.version) ? `Version ${license.version}` : license.version) : "";
   const summary = [version, license?.licensedTo || license?.email || ""].filter((part) => part).join(" · ");
   return summary || license?.product || "Software license";
+}
+
+// The names of a server's custom fields, as core/item stores them; its username, password and admin console are the
+// item's own.
+export const serverFieldName = {
+  host: "Host",
+  port: "Port",
+  sshKey: "SSH key",
+} as const;
+
+// formatServerAddress joins a server's host and port as core/item does, with brackets around an IPv6 host.
+export function formatServerAddress(server: { host: string; port: string } | null | undefined): string {
+  const host = server?.host ?? "";
+  if (!host || !server?.port) {
+    return host;
+  }
+  return `${host.includes(":") ? `[${host}]` : host}:${server.port}`;
+}
+
+// formatServerSummary is a server's line in lists: its host and port and its username, such as
+// "build.example.com:2222 · deploy".
+export function formatServerSummary(server: { host: string; port: string } | null | undefined, username: string): string {
+  return [formatServerAddress(server), username].filter((part) => part).join(" · ") || "Server";
+}
+
+// describeServerPort warns about a port that is not a number from 1 to 65535, as core/item does; "" for an empty port.
+export function describeServerPort(port: string): string {
+  if (port === "") {
+    return "";
+  }
+  const number = Number(port);
+  return /^\d+$/.test(port) && number >= 1 && number <= 65535 ? "" : "The port is not a number from 1 to 65535";
+}
+
+// The names of a database's custom fields, as core/item stores them; its username and password are the item's own.
+export const databaseFieldName = {
+  engine: "Engine",
+  host: "Host",
+  port: "Port",
+  name: "Database",
+  options: "Options",
+} as const;
+
+// allDatabaseEngine are the engines the editor offers and Hisar builds connection strings for, as core/item lists them; any
+// other engine is stored as typed.
+export const allDatabaseEngine = [
+  { id: "postgresql", name: "PostgreSQL" },
+  { id: "mysql", name: "MySQL" },
+  { id: "mariadb", name: "MariaDB" },
+  { id: "sqlserver", name: "SQL Server" },
+  { id: "oracle", name: "Oracle" },
+  { id: "mongodb", name: "MongoDB" },
+  { id: "redis", name: "Redis" },
+] as const;
+
+// isKnownDatabaseEngine tells whether an engine is one of allDatabaseEngine by its ID.
+export function isKnownDatabaseEngine(engine: string): boolean {
+  return allDatabaseEngine.some((known) => known.id === engine);
+}
+
+// formatDatabaseLocation is a database's address and name, such as "db.example.com:5432/app".
+export function formatDatabaseLocation(database: { host: string; port: string; name: string } | null | undefined): string {
+  const address = formatServerAddress(database);
+  if (!database?.name) {
+    return address;
+  }
+  return address ? `${address}/${database.name}` : database.name;
+}
+
+// formatDatabaseSummary is a database's line in lists: its engine, address and name, such as
+// "PostgreSQL · db.example.com:5432/app".
+export function formatDatabaseSummary(database: { engineName: string; host: string; port: string; name: string } | null | undefined): string {
+  return [database?.engineName ?? "", formatDatabaseLocation(database)].filter((part) => part).join(" · ") || "Database";
 }
 
 type IdentityName = { firstName: string; middleName: string; lastName: string; email?: string };
@@ -399,6 +476,16 @@ export function buildCommitSigningCommandList(publicKey: string): CommitSigningC
 
 export function formatRole(role: string): string {
   return role ? role[0].toUpperCase() + role.slice(1) : "";
+}
+
+// formatRoleWithArticle is a vault or organization role inside a sentence: "an owner", "an editor", "a reader", "an admin", "a member".
+export function formatRoleWithArticle(role: string): string {
+  return `${/^[aeiou]/.test(role) ? "an" : "a"} ${role}`;
+}
+
+// formatCount is a count with its noun: "1 member", "3 members".
+export function formatCount(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`;
 }
 
 const allOperatingSystemLabel: Record<string, string> = { darwin: "macOS", linux: "Linux", windows: "Windows", ios: "iOS", android: "Android" };

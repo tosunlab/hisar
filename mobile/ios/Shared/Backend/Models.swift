@@ -109,18 +109,32 @@ struct VaultStatus: Codable, Equatable {
 }
 
 struct VaultSummary: Codable, Identifiable, Hashable {
+    static let typePersonal = "personal"
+    static let typeShared = "shared"
+    static let typeOrganization = "organization"
+
     var id: String
     var name: String
     var type: String
     var role: String
     var itemCount: Int
+    /// Set for organization vaults only.
+    var organizationID: String
 
-    init(id: String, name: String, type: String, role: String, itemCount: Int) {
+    var isOrganization: Bool { type == Self.typeOrganization }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, type, role, itemCount
+        case organizationID = "organizationId"
+    }
+
+    init(id: String, name: String, type: String, role: String, itemCount: Int, organizationID: String = "") {
         self.id = id
         self.name = name
         self.type = type
         self.role = role
         self.itemCount = itemCount
+        self.organizationID = organizationID
     }
 
     init(from decoder: Decoder) throws {
@@ -130,6 +144,7 @@ struct VaultSummary: Codable, Identifiable, Hashable {
         type = try container.decodeIfPresent(String.self, forKey: .type) ?? ""
         role = try container.decodeIfPresent(String.self, forKey: .role) ?? ""
         itemCount = try container.decodeIfPresent(Int.self, forKey: .itemCount) ?? 0
+        organizationID = try container.decodeIfPresent(String.self, forKey: .organizationID) ?? ""
     }
 }
 
@@ -148,6 +163,8 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     static let categoryAPICredential = "api-credential"
     static let categoryAddress = "address"
     static let categorySoftwareLicense = "software-license"
+    static let categoryServer = "server"
+    static let categoryDatabase = "database"
 
     var id: String
     var revision: String
@@ -183,16 +200,22 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     /// A software license's values, stored as named custom fields like an API credential's. Summaries keep only the
     /// product, version, licensed-to name and email.
     var softwareLicense: ItemSoftwareLicense?
+    /// A server's host, port and linked SSH key; its username, password and admin console are the item's own. Summaries
+    /// keep only the host and port.
+    var server: ItemServer?
+    /// A database's engine, host, port, name and options; its username and password are the item's own. The backend builds
+    /// its connection string. Summaries keep only the engine, host, port and name.
+    var database: ItemDatabase?
 
     enum CodingKeys: String, CodingKey {
-        case id, revision, category, title, username, password, notes, publicKey, fingerprint, keyType, oneTimePassword, hasOneTimePassword, canConvertToSecureNote, card, identity, isFavorite, apiCredential, address, softwareLicense
+        case id, revision, category, title, username, password, notes, publicKey, fingerprint, keyType, oneTimePassword, hasOneTimePassword, canConvertToSecureNote, card, identity, isFavorite, apiCredential, address, softwareLicense, server, database
         case allURL = "urls"
         case allTag = "tags"
         case allField = "fields"
         case allPasskey = "passkeys"
     }
 
-    init(id: String = "", revision: String = "", category: String = ItemDetail.categoryLogin, title: String = "", username: String = "", allURL: [String] = [], allTag: [String] = [], password: String = "", notes: String = "", allField: [ItemField] = [], publicKey: String = "", fingerprint: String = "", keyType: String = "", oneTimePassword: String = "", hasOneTimePassword: Bool = false, allPasskey: [ItemPasskey] = [], canConvertToSecureNote: Bool = false, card: ItemCard? = nil, identity: ItemIdentity? = nil, isFavorite: Bool = false, apiCredential: ItemAPICredential? = nil, address: ItemAddress? = nil, softwareLicense: ItemSoftwareLicense? = nil) {
+    init(id: String = "", revision: String = "", category: String = ItemDetail.categoryLogin, title: String = "", username: String = "", allURL: [String] = [], allTag: [String] = [], password: String = "", notes: String = "", allField: [ItemField] = [], publicKey: String = "", fingerprint: String = "", keyType: String = "", oneTimePassword: String = "", hasOneTimePassword: Bool = false, allPasskey: [ItemPasskey] = [], canConvertToSecureNote: Bool = false, card: ItemCard? = nil, identity: ItemIdentity? = nil, isFavorite: Bool = false, apiCredential: ItemAPICredential? = nil, address: ItemAddress? = nil, softwareLicense: ItemSoftwareLicense? = nil, server: ItemServer? = nil, database: ItemDatabase? = nil) {
         self.id = id
         self.revision = revision
         self.category = category
@@ -216,6 +239,8 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         self.apiCredential = apiCredential
         self.address = address
         self.softwareLicense = softwareLicense
+        self.server = server
+        self.database = database
     }
 
     init(from decoder: Decoder) throws {
@@ -243,6 +268,8 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         apiCredential = try container.decodeIfPresent(ItemAPICredential.self, forKey: .apiCredential)
         address = try container.decodeIfPresent(ItemAddress.self, forKey: .address)
         softwareLicense = try container.decodeIfPresent(ItemSoftwareLicense.self, forKey: .softwareLicense)
+        server = try container.decodeIfPresent(ItemServer.self, forKey: .server)
+        database = try container.decodeIfPresent(ItemDatabase.self, forKey: .database)
     }
 
     /// The tags typed into one field, separated by commas, without blanks or repeats.
@@ -262,6 +289,10 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     var isAPICredential: Bool { category == Self.categoryAPICredential }
     var isAddress: Bool { category == Self.categoryAddress }
     var isSoftwareLicense: Bool { category == Self.categorySoftwareLicense }
+    var isServer: Bool { category == Self.categoryServer }
+    var isDatabase: Bool { category == Self.categoryDatabase }
+    /// AutoFill offers the item's username and password on its websites: a login's, and a server's admin console.
+    var offersLoginFill: Bool { isLogin || isServer }
 }
 
 /// The names core/item stores an address's values under; identities and cards keep their address under the same names, and
@@ -480,6 +511,153 @@ struct ItemAPICredential: Codable, Hashable {
     var summary: String {
         let parts = [service, host].filter { !$0.isEmpty }
         return parts.isEmpty ? "API credential" : parts.joined(separator: " · ")
+    }
+}
+
+/// The names core/item stores a server's values under; its username, password and admin console are the item's own.
+enum ServerFieldName {
+    static let host = "Host"
+    static let port = "Port"
+    static let sshKey = "SSH key"
+}
+
+/// A server's values besides its login data. `sshKeyID` names an SSH key item in the same vault; the backend fills in its
+/// title and fingerprint, which are empty when the key is gone.
+struct ItemServer: Codable, Hashable {
+    var host = ""
+    var port = ""
+    var sshKeyID = ""
+    var sshKeyTitle = ""
+    var sshKeyFingerprint = ""
+    var portWarning = ""
+
+    enum CodingKeys: String, CodingKey {
+        case host, port, sshKeyTitle, sshKeyFingerprint, portWarning
+        case sshKeyID = "sshKeyId"
+    }
+
+    init(host: String = "", port: String = "", sshKeyID: String = "", sshKeyTitle: String = "", sshKeyFingerprint: String = "", portWarning: String = "") {
+        self.host = host
+        self.port = port
+        self.sshKeyID = sshKeyID
+        self.sshKeyTitle = sshKeyTitle
+        self.sshKeyFingerprint = sshKeyFingerprint
+        self.portWarning = portWarning
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        host = try container.decodeIfPresent(String.self, forKey: .host) ?? ""
+        port = try container.decodeIfPresent(String.self, forKey: .port) ?? ""
+        sshKeyID = try container.decodeIfPresent(String.self, forKey: .sshKeyID) ?? ""
+        sshKeyTitle = try container.decodeIfPresent(String.self, forKey: .sshKeyTitle) ?? ""
+        sshKeyFingerprint = try container.decodeIfPresent(String.self, forKey: .sshKeyFingerprint) ?? ""
+        portWarning = try container.decodeIfPresent(String.self, forKey: .portWarning) ?? ""
+    }
+
+    static let portWarningText = "The port is not a number from 1 to 65535"
+
+    /// The editor's warning for a port that is not a number from 1 to 65535, as core/item gives it; "" for an empty port.
+    static func describePort(_ port: String) -> String {
+        let trimmedPort = port.trimmingCharacters(in: .whitespaces)
+        guard !trimmedPort.isEmpty else { return "" }
+        guard trimmedPort.allSatisfy(\.isASCII), trimmedPort.allSatisfy(\.isNumber), let number = Int(trimmedPort), (1...65535).contains(number) else {
+            return portWarningText
+        }
+        return ""
+    }
+
+    /// The host and port, such as "build.example.com:2222", with brackets around an IPv6 host.
+    var address: String {
+        guard !host.isEmpty, !port.isEmpty else { return host }
+        return host.contains(":") ? "[\(host)]:\(port)" : "\(host):\(port)"
+    }
+
+    /// The server's line in lists: its address and username, as the Mac app shows it.
+    func summary(username: String) -> String {
+        let parts = [address, username].filter { !$0.isEmpty }
+        return parts.isEmpty ? "Server" : parts.joined(separator: " · ")
+    }
+}
+
+/// The names core/item stores a database's values under; its username and password are the item's own. "connection string"
+/// names the connection string the backend builds, for copying and hisar:// references.
+enum DatabaseFieldName {
+    static let engine = "Engine"
+    static let host = "Host"
+    static let port = "Port"
+    static let name = "Database"
+    static let options = "Options"
+    static let connectionString = "connection string"
+}
+
+/// A database engine the editor offers and Hisar builds connection strings for, as core/item lists them.
+struct DatabaseEngine: Hashable {
+    let id: String
+    let name: String
+
+    static let allKnown = [
+        DatabaseEngine(id: "postgresql", name: "PostgreSQL"),
+        DatabaseEngine(id: "mysql", name: "MySQL"),
+        DatabaseEngine(id: "mariadb", name: "MariaDB"),
+        DatabaseEngine(id: "sqlserver", name: "SQL Server"),
+        DatabaseEngine(id: "oracle", name: "Oracle"),
+        DatabaseEngine(id: "mongodb", name: "MongoDB"),
+        DatabaseEngine(id: "redis", name: "Redis"),
+    ]
+
+    static func isKnown(_ engine: String) -> Bool { allKnown.contains { $0.id == engine } }
+}
+
+/// A database's values besides its login data. `engine` is a known engine's ID or any other engine as typed, which
+/// `engineName` names; `connectionString` is "" for another engine or without a host. The backend reads only engine, host,
+/// port, name and options.
+struct ItemDatabase: Codable, Hashable {
+    var engine = ""
+    var engineName = ""
+    var host = ""
+    var port = ""
+    var name = ""
+    var options = ""
+    var connectionString = ""
+    var portWarning = ""
+
+    init(engine: String = "", engineName: String = "", host: String = "", port: String = "", name: String = "", options: String = "", connectionString: String = "", portWarning: String = "") {
+        self.engine = engine
+        self.engineName = engineName
+        self.host = host
+        self.port = port
+        self.name = name
+        self.options = options
+        self.connectionString = connectionString
+        self.portWarning = portWarning
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        engine = try container.decodeIfPresent(String.self, forKey: .engine) ?? ""
+        engineName = try container.decodeIfPresent(String.self, forKey: .engineName) ?? ""
+        host = try container.decodeIfPresent(String.self, forKey: .host) ?? ""
+        port = try container.decodeIfPresent(String.self, forKey: .port) ?? ""
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        options = try container.decodeIfPresent(String.self, forKey: .options) ?? ""
+        connectionString = try container.decodeIfPresent(String.self, forKey: .connectionString) ?? ""
+        portWarning = try container.decodeIfPresent(String.self, forKey: .portWarning) ?? ""
+    }
+
+    /// The host and port, such as "db.example.com:5432", with brackets around an IPv6 host, as a server's.
+    var address: String { ItemServer(host: host, port: port).address }
+
+    /// The address and database name, such as "db.example.com:5432/app".
+    var location: String {
+        guard !name.isEmpty else { return address }
+        return address.isEmpty ? name : "\(address)/\(name)"
+    }
+
+    /// The database's line in lists: its engine, address and name, as the Mac app shows it.
+    var summary: String {
+        let parts = [engineName, location].filter { !$0.isEmpty }
+        return parts.isEmpty ? "Database" : parts.joined(separator: " · ")
     }
 }
 
@@ -951,7 +1129,8 @@ struct PasskeyRegistrationCredential: Equatable {
     }
 }
 
-// Member is a person you share a vault with (role admin or member on the server) or someone with access to a vault (role owner, editor or reader).
+// Member is a person you share a vault with (role admin or member on the server), someone with access to a vault (role
+// owner, editor or reader) or a member of an organization (role admin or member of the organization).
 struct Member: Codable, Identifiable, Hashable {
     static let roleAdmin = "admin"
     static let roleMember = "member"
@@ -1345,15 +1524,17 @@ struct AccountDeletionPreview: Codable, Equatable {
     var sentInvitationCount: Int
     var receivedInvitationCount: Int
     var deviceCount: Int
+    var allOrganization: [DeletionOrganization]
 
     enum CodingKeys: String, CodingKey {
         case email
         case allOwnedVault = "ownedVaults"
         case allMemberVault = "memberVaults"
         case shareLinkCount, sentInvitationCount, receivedInvitationCount, deviceCount
+        case allOrganization = "organizations"
     }
 
-    init(email: String, allOwnedVault: [DeletionVault] = [], allMemberVault: [DeletionVault] = [], shareLinkCount: Int = 0, sentInvitationCount: Int = 0, receivedInvitationCount: Int = 0, deviceCount: Int = 1) {
+    init(email: String, allOwnedVault: [DeletionVault] = [], allMemberVault: [DeletionVault] = [], shareLinkCount: Int = 0, sentInvitationCount: Int = 0, receivedInvitationCount: Int = 0, deviceCount: Int = 1, allOrganization: [DeletionOrganization] = []) {
         self.email = email
         self.allOwnedVault = allOwnedVault
         self.allMemberVault = allMemberVault
@@ -1361,6 +1542,7 @@ struct AccountDeletionPreview: Codable, Equatable {
         self.sentInvitationCount = sentInvitationCount
         self.receivedInvitationCount = receivedInvitationCount
         self.deviceCount = deviceCount
+        self.allOrganization = allOrganization
     }
 
     init(from decoder: Decoder) throws {
@@ -1372,7 +1554,300 @@ struct AccountDeletionPreview: Codable, Equatable {
         sentInvitationCount = try container.decodeIfPresent(Int.self, forKey: .sentInvitationCount) ?? 0
         receivedInvitationCount = try container.decodeIfPresent(Int.self, forKey: .receivedInvitationCount) ?? 0
         deviceCount = try container.decodeIfPresent(Int.self, forKey: .deviceCount) ?? 0
+        allOrganization = try container.decodeIfPresent([DeletionOrganization].self, forKey: .allOrganization) ?? []
     }
 
     var peopleLosingAccessCount: Int { allOwnedVault.reduce(0) { $0 + $1.otherMemberCount } }
+}
+
+// DeletionOrganization: isDeleted when the user is its last member; newAdminName is who becomes admin when the user is its
+// last admin.
+struct DeletionOrganization: Codable, Equatable, Identifiable {
+    var id: String
+    var name: String
+    var isDeleted: Bool
+    var newAdminName: String
+
+    init(id: String, name: String, isDeleted: Bool = false, newAdminName: String = "") {
+        self.id = id
+        self.name = name
+        self.isDeleted = isDeleted
+        self.newAdminName = newAdminName
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(String.self, forKey: .id) ?? ""
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        isDeleted = try container.decodeIfPresent(Bool.self, forKey: .isDeleted) ?? false
+        newAdminName = try container.decodeIfPresent(String.self, forKey: .newAdminName) ?? ""
+    }
+}
+
+// The organization models mirror core/app's Organizations, Organization and WaitingVaultKeys (§5.11). Organization members
+// are Members: they carry the same fields, security code included.
+enum OrganizationRole {
+    static let admin = "admin"
+    static let member = "member"
+    static let all = [member, admin]
+
+    static func describe(_ role: String) -> String {
+        role == admin ? "Admin" : "Member"
+    }
+
+    /// "an admin" or "a member", as in "Ada invited you to Acme as a member".
+    static func describeWithArticle(_ role: String) -> String {
+        role == admin ? "an admin" : "a member"
+    }
+}
+
+struct OrganizationSummary: Codable, Identifiable, Hashable {
+    var id: String
+    var name: String
+    var role: String
+    var memberCount: Int
+
+    var isAdmin: Bool { role == OrganizationRole.admin }
+
+    init(id: String, name: String, role: String, memberCount: Int) {
+        self.id = id
+        self.name = name
+        self.role = role
+        self.memberCount = memberCount
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        role = try container.decodeIfPresent(String.self, forKey: .role) ?? ""
+        memberCount = try container.decodeIfPresent(Int.self, forKey: .memberCount) ?? 0
+    }
+}
+
+// OrganizationInvitation is an invitation to this user's email to join an organization; expiresAt is RFC 3339.
+struct OrganizationInvitation: Codable, Identifiable, Hashable {
+    var id: String
+    var organizationID: String
+    var organizationName: String
+    var role: String
+    var invitedByName: String
+    var invitedByEmail: String
+    var expiresAt: String
+
+    var inviterName: String { invitedByName.isEmpty ? invitedByEmail : invitedByName }
+    var message: String { "\(inviterName) invited you to \(organizationName) as \(OrganizationRole.describeWithArticle(role))" }
+
+    enum CodingKeys: String, CodingKey {
+        case id, organizationName, role, invitedByName, invitedByEmail, expiresAt
+        case organizationID = "organizationId"
+    }
+}
+
+struct Organizations: Codable, Hashable {
+    var allOrganization: [OrganizationSummary]
+    var allInvitation: [OrganizationInvitation]
+
+    enum CodingKeys: String, CodingKey {
+        case allOrganization = "organizations"
+        case allInvitation = "invitations"
+    }
+
+    init(allOrganization: [OrganizationSummary] = [], allInvitation: [OrganizationInvitation] = []) {
+        self.allOrganization = allOrganization
+        self.allInvitation = allInvitation
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        allOrganization = try container.decodeIfPresent([OrganizationSummary].self, forKey: .allOrganization) ?? []
+        allInvitation = try container.decodeIfPresent([OrganizationInvitation].self, forKey: .allInvitation) ?? []
+    }
+}
+
+struct TeamMember: Codable, Identifiable, Hashable {
+    var accountID: String
+    var name: String
+    var email: String
+    var isCurrentUser: Bool
+
+    var id: String { accountID }
+    var displayName: String {
+        let name = name.isEmpty ? email : name
+        return isCurrentUser ? "\(name) (you)" : name
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case accountID = "accountId"
+        case name, email, isCurrentUser
+    }
+
+    init(accountID: String, name: String, email: String, isCurrentUser: Bool = false) {
+        self.accountID = accountID
+        self.name = name
+        self.email = email
+        self.isCurrentUser = isCurrentUser
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        accountID = try container.decodeIfPresent(String.self, forKey: .accountID) ?? ""
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        email = try container.decodeIfPresent(String.self, forKey: .email) ?? ""
+        isCurrentUser = try container.decodeIfPresent(Bool.self, forKey: .isCurrentUser) ?? false
+    }
+}
+
+// TeamVault is a vault the team was given. Vault names are encrypted, so name is empty when canOpen is false: this device
+// has no key for it (yet).
+struct TeamVault: Codable, Identifiable, Hashable {
+    static let unopenableName = "A vault you can't open"
+
+    var vaultID: String
+    var name: String
+    var role: String
+    var canOpen: Bool
+
+    var id: String { vaultID }
+    var displayName: String { canOpen ? name : Self.unopenableName }
+
+    enum CodingKeys: String, CodingKey {
+        case vaultID = "vaultId"
+        case name, role, canOpen
+    }
+
+    init(vaultID: String, name: String, role: String, canOpen: Bool) {
+        self.vaultID = vaultID
+        self.name = name
+        self.role = role
+        self.canOpen = canOpen
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        vaultID = try container.decodeIfPresent(String.self, forKey: .vaultID) ?? ""
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        role = try container.decodeIfPresent(String.self, forKey: .role) ?? ""
+        canOpen = try container.decodeIfPresent(Bool.self, forKey: .canOpen) ?? false
+    }
+}
+
+struct Team: Codable, Identifiable, Hashable {
+    var id: String
+    var name: String
+    var allMember: [TeamMember]
+    var allVault: [TeamVault]
+
+    var hasCurrentUser: Bool { allMember.contains { $0.isCurrentUser } }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name
+        case allMember = "members"
+        case allVault = "vaults"
+    }
+
+    init(id: String, name: String, allMember: [TeamMember] = [], allVault: [TeamVault] = []) {
+        self.id = id
+        self.name = name
+        self.allMember = allMember
+        self.allVault = allVault
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        allMember = try container.decodeIfPresent([TeamMember].self, forKey: .allMember) ?? []
+        allVault = try container.decodeIfPresent([TeamVault].self, forKey: .allVault) ?? []
+    }
+}
+
+// SentOrganizationInvitation is a pending invitation to the organization; only admins see them. Times are RFC 3339.
+struct SentOrganizationInvitation: Codable, Identifiable, Hashable {
+    var id: String
+    var email: String
+    var role: String
+    var createdAt: String
+    var expiresAt: String
+}
+
+struct Organization: Codable, Identifiable, Hashable {
+    var id: String
+    var name: String
+    var role: String
+    var isAdmin: Bool
+    var allMember: [Member]
+    var allTeam: [Team]
+    /// Empty unless isAdmin.
+    var allInvitation: [SentOrganizationInvitation]
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, role, isAdmin
+        case allMember = "members"
+        case allTeam = "teams"
+        case allInvitation = "invitations"
+    }
+
+    init(id: String, name: String, role: String, isAdmin: Bool, allMember: [Member] = [], allTeam: [Team] = [], allInvitation: [SentOrganizationInvitation] = []) {
+        self.id = id
+        self.name = name
+        self.role = role
+        self.isAdmin = isAdmin
+        self.allMember = allMember
+        self.allTeam = allTeam
+        self.allInvitation = allInvitation
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        role = try container.decodeIfPresent(String.self, forKey: .role) ?? ""
+        isAdmin = try container.decodeIfPresent(Bool.self, forKey: .isAdmin) ?? false
+        allMember = try container.decodeIfPresent([Member].self, forKey: .allMember) ?? []
+        allTeam = try container.decodeIfPresent([Team].self, forKey: .allTeam) ?? []
+        allInvitation = try container.decodeIfPresent([SentOrganizationInvitation].self, forKey: .allInvitation) ?? []
+    }
+}
+
+// WaitingVaultKey is an organization vault this user's teams give them that no owner's Hisar has delivered yet.
+struct WaitingVaultKey: Codable, Identifiable, Hashable {
+    var vaultID: String
+    var organizationID: String
+    var organizationName: String
+    var role: String
+
+    var id: String { vaultID }
+
+    enum CodingKeys: String, CodingKey {
+        case vaultID = "vaultId"
+        case organizationID = "organizationId"
+        case organizationName, role
+    }
+}
+
+// WaitingVaultKeys: deliveryError and rotationError say why this app could not give someone a vault key or rotate a vault
+// it owns, e.g. a changed signing key.
+struct WaitingVaultKeys: Codable, Hashable {
+    var allWaiting: [WaitingVaultKey]
+    var deliveryError: String
+    var rotationError: String
+
+    enum CodingKeys: String, CodingKey {
+        case allWaiting = "waiting"
+        case deliveryError, rotationError
+    }
+
+    init(allWaiting: [WaitingVaultKey] = [], deliveryError: String = "", rotationError: String = "") {
+        self.allWaiting = allWaiting
+        self.deliveryError = deliveryError
+        self.rotationError = rotationError
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        allWaiting = try container.decodeIfPresent([WaitingVaultKey].self, forKey: .allWaiting) ?? []
+        deliveryError = try container.decodeIfPresent(String.self, forKey: .deliveryError) ?? ""
+        rotationError = try container.decodeIfPresent(String.self, forKey: .rotationError) ?? ""
+    }
 }

@@ -93,7 +93,7 @@ func TestDeleteAccount(t *testing.T) {
 		}
 	}
 	for _, vaultID := range []string{soleVault, coOwnedVault} {
-		if _, err := database.PutItem(ctx, vaultID, "", &Item{ID: uuid.NewString(), Revision: uuid.NewString(), Overview: []byte{1}, Details: []byte{1}, UpdatedBy: aliceID}); err != nil {
+		if _, err := database.PutItem(ctx, vaultID, "", 0, &Item{ID: uuid.NewString(), Revision: uuid.NewString(), Overview: []byte{1}, Details: []byte{1}, UpdatedBy: aliceID}); err != nil {
 			t.Fatal(err)
 		}
 	}

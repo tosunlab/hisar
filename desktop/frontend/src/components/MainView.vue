@@ -1,13 +1,20 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import {
+  copyItemField,
+  createOrganizationVault,
   createVault,
+  duplicateItem,
+  hasShareableField,
   filterAllFavorite,
   filterAllItem,
   listAllTag,
+  loadAllOrganizationQuietly,
   lock,
   openImport,
+  openItemShareLinkDialog,
   openShareLinks,
+  openWebsite,
   openSharing,
   openTextShareLinkDialog,
   selectFavoriteItem,
@@ -21,24 +28,32 @@ import {
   startCreatingIdentity,
   startCreatingAPICredential,
   startCreatingSoftwareLicense,
+  startCreatingServer,
+  startCreatingDatabase,
   startCreatingAddress,
   startCreatingSecureNote,
   startCreatingSSHKey,
+  startEditingItem,
   store,
   syncInBackground,
   syncInterval,
   toggleSelectedItemFavorite,
 } from "../store";
-import type { FavoriteItem, ItemDetail } from "../api";
+import { api, type FavoriteItem, type ItemDetail, type VaultSummary } from "../api";
 import {
   addressCategory,
   apiCredentialCategory,
+  apiCredentialFieldName,
+  cardFieldName,
   creditCardCategory,
+  databaseCategory,
   formatAddressSummary,
   formatAPICredentialSummary,
   formatCardSummary,
+  formatDatabaseSummary,
   formatIdentitySummary,
   formatKeyType,
+  formatServerSummary,
   formatSoftwareLicenseSummary,
   getDomain,
   getInitials,
@@ -46,17 +61,23 @@ import {
   identityCategory,
   isMacPlatform,
   secureNoteCategory,
+  serverCategory,
   softwareLicenseCategory,
+  softwareLicenseFieldName,
   sshKeyCategory,
 } from "../util";
 import AppIcon from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
 import ItemDetailPanel from "./ItemDetailPanel.vue";
 import ItemEditor from "./ItemEditor.vue";
-import ItemMenu from "./ItemMenu.vue";
+import ConfirmDeleteDialog from "./ConfirmDeleteDialog.vue";
+import ContextMenu, { type ContextMenuAction } from "./ContextMenu.vue";
+import MoveItemDialog from "./MoveItemDialog.vue";
 import ImportPanel from "./ImportPanel.vue";
 import ItemTile from "./ItemTile.vue";
 import SettingsPanel from "./SettingsPanel.vue";
+import OrganizationAlert from "./OrganizationAlert.vue";
+import OrganizationBanner from "./OrganizationBanner.vue";
 import RemovedVaultBanner from "./RemovedVaultBanner.vue";
 import ShareInvitationBanner from "./ShareInvitationBanner.vue";
 import SharedLinksPanel from "./SharedLinksPanel.vue";
@@ -68,8 +89,28 @@ import VaultSharingPanel from "./VaultSharingPanel.vue";
 
 const personalVaultNotice = "Personal vaults are private. Create a shared vault to share items with other people.";
 
+interface TeamChoice {
+  key: string;
+  organizationID: string;
+  teamID: string;
+  teamName: string;
+  label: string;
+}
+
+interface VaultGroup {
+  organizationID: string;
+  name: string;
+  allVault: VaultSummary[];
+}
+
 const isCreatingVault = ref(false);
 const newVaultName = ref("");
+// newVaultWhere is "" for a shared vault, or the key of the team that gets the new organization vault.
+const newVaultWhere = ref("");
+// isLoadingTeams is true while the new-vault form loads the teams for Where; newVaultTeamLoad counts the loads so only the
+// latest one ends it.
+const isLoadingTeams = ref(false);
+let newVaultTeamLoad = 0;
 const searchInput = ref<HTMLInputElement | null>(null);
 const isNewItemMenuOpen = ref(false);
 const newItemMenu = ref<HTMLElement | null>(null);
@@ -85,20 +126,141 @@ const emptyListMessage = computed(() => {
   return store.selectedTag ? `No items are tagged ${store.selectedTag}.` : "This vault is empty.";
 });
 const selectedVault = computed(() => store.allVault.find((vault) => vault.id === store.selectedVaultID));
+// canShareVault: shared and organization vaults have a sharing panel, personal vaults the Private badge.
+const canShareVault = computed(() => selectedVault.value !== undefined && selectedVault.value.type !== "personal");
 const canEdit = computed(() => selectedVault.value !== undefined && selectedVault.value.role !== "reader");
 const canCreate = computed(() => canEdit.value && !store.isFavoritesSelected);
-const itemMenu = ref<{ vaultID: string; vaultItem: ItemDetail; x: number; y: number } | null>(null);
+// allVaultGroup is the sidebar's vaults: the user's own and shared vaults, then a group per organization by name.
+const allVaultGroup = computed(() => {
+  const groupByID = new Map<string, VaultGroup>();
+  for (const vault of store.allVault) {
+    if (!vault.organizationId) {
+      continue;
+    }
+    const name = store.organizations.organizations.find((organization) => organization.id === vault.organizationId)?.name ?? "Organization";
+    const group = groupByID.get(vault.organizationId) ?? { organizationID: vault.organizationId, name, allVault: [] };
+    group.allVault.push(vault);
+    groupByID.set(vault.organizationId, group);
+  }
+  const allOrganizationGroup = [...groupByID.values()].sort((first, second) => first.name.localeCompare(second.name, undefined, { sensitivity: "base" }));
+  return [{ organizationID: "", name: "Vaults", allVault: store.allVault.filter((vault) => !vault.organizationId) }, ...allOrganizationGroup];
+});
+const allTeamChoice = computed<TeamChoice[]>(() =>
+  store.organizations.organizations.flatMap((organization) =>
+    (store.organizationByID[organization.id]?.teams ?? [])
+      .filter((team) => team.members.some((member) => member.isCurrentUser))
+      .map((team) => ({
+        key: `${organization.id}/${team.id}`,
+        organizationID: organization.id,
+        teamID: team.id,
+        teamName: team.name,
+        label: `${organization.name} › ${team.name}`,
+      })),
+  ),
+);
+const selectedTeamChoice = computed(() => allTeamChoice.value.find((choice) => choice.key === newVaultWhere.value));
+// canSubmitNewVault: Create needs a name, the loaded teams, and a Where the form lists: Shared vault or one of the teams.
+// A team that is no longer listed (its organization or the user's place in it changed) never falls back to a shared vault.
+const canSubmitNewVault = computed(
+  () => newVaultName.value.trim() !== "" && !isLoadingTeams.value && (newVaultWhere.value === "" || selectedTeamChoice.value !== undefined),
+);
+// itemMenu is the right-click menu of a list item. detail arrives after the menu opens: list summaries carry no password
+// or fields, so the copy actions appear once it has loaded. favorite is set when the item was right-clicked in Favorites.
+const itemMenu = ref<{ vaultID: string; vaultItem: ItemDetail; favorite?: FavoriteItem; detail: ItemDetail | null; x: number; y: number } | null>(null);
+const itemToDelete = ref<{ vaultID: string; itemID: string; title: string } | null>(null);
+const itemToMove = ref<{ vaultID: string; itemID: string; title: string } | null>(null);
 
-function openItemMenu(vaultID: string, vaultItem: ItemDetail, event: MouseEvent): void {
-  itemMenu.value = { vaultID, vaultItem, x: event.clientX, y: event.clientY };
-}
-
-function toggleItemMenuFavorite(): void {
-  if (itemMenu.value) {
-    const { vaultID, vaultItem } = itemMenu.value;
-    setItemFavorite(vaultID, vaultItem.id, !vaultItem.isFavorite);
+async function openItemMenu(vaultID: string, vaultItem: ItemDetail, event: MouseEvent, favorite?: FavoriteItem): Promise<void> {
+  itemMenu.value = { vaultID, vaultItem, favorite, detail: null, x: event.clientX, y: event.clientY };
+  try {
+    const detail = await api.getItem(vaultID, vaultItem.id);
+    if (itemMenu.value?.vaultID === vaultID && itemMenu.value.vaultItem.id === vaultItem.id) {
+      itemMenu.value = { ...itemMenu.value, detail };
+    }
+  } catch {
+    return;
   }
 }
+
+// buildItemMenuActions lists what applies to the item, in groups split by separators: open, copy and open the website;
+// favorite and share link; edit, duplicate, move and delete where its vault is writable.
+function buildItemMenuActions(): (ContextMenuAction | null)[] {
+  const menu = itemMenu.value;
+  if (!menu) {
+    return [];
+  }
+  const { vaultID, vaultItem, favorite } = menu;
+  const detail = menu.detail ?? vaultItem;
+  const open = async (): Promise<void> => (favorite ? selectFavoriteItem(favorite) : selectItem(vaultItem.id));
+  const copy = (id: string, label: string, fieldName: string, value: string | undefined | boolean): ContextMenuAction | null =>
+    value ? { id, label: `Copy ${label.toLowerCase()}`, icon: "copy", run: () => copyItemField(vaultID, vaultItem.id, fieldName, label) } : null;
+  const link = vaultItem.urls[0];
+  const firstGroup = [
+    { id: "open", label: "Open", icon: "external" as const, run: open },
+    copy("copy-username", "Username", "username", detail.username),
+    copy("copy-password", "Password", "password", detail.password),
+    copy("copy-one-time-code", "One-time code", "one-time code", detail.hasOneTimePassword),
+    copy("copy-card-number", cardFieldName.number, cardFieldName.number, detail.card?.number),
+    copy("copy-license-key", softwareLicenseFieldName.licenseKey, softwareLicenseFieldName.licenseKey, detail.softwareLicense?.licenseKey),
+    copy("copy-secret", apiCredentialFieldName.secret, apiCredentialFieldName.secret, detail.apiCredential?.secret),
+    copy("copy-connection-string", "Connection string", "connection string", detail.database?.connectionString),
+    copy("copy-public-key", "Public key", "public key", detail.publicKey),
+    link
+      ? { id: "open-website", label: vaultItem.category === serverCategory ? "Open admin console" : "Open website", icon: "globe" as const, run: () => openWebsite(link) }
+      : null,
+  ];
+  // A share link needs the item's values, so it is offered once the details have loaded.
+  const shareAction: ContextMenuAction | null =
+    menu.detail && hasShareableField(menu.detail)
+      ? {
+          id: "share-link",
+          label: "Share link…",
+          icon: "link",
+          run: async () => {
+            await open();
+            if (store.selectedItem?.id === vaultItem.id) {
+              await openItemShareLinkDialog();
+            }
+          },
+        }
+      : null;
+  const favoriteGroup = [
+    {
+      id: "favorite",
+      label: vaultItem.isFavorite ? "Remove from Favorites" : "Add to Favorites",
+      icon: vaultItem.isFavorite ? ("starFilled" as const) : ("star" as const),
+      run: () => setItemFavorite(vaultID, vaultItem.id, !vaultItem.isFavorite),
+    },
+    shareAction,
+  ];
+  const vault = store.allVault.find((candidate) => candidate.id === vaultID);
+  const isWritable = vault !== undefined && vault.role !== "reader";
+  const hasMoveTarget = store.allVault.some((candidate) => candidate.id !== vaultID && candidate.role !== "reader");
+  const target = { vaultID, itemID: vaultItem.id, title: vaultItem.title };
+  const editGroup = isWritable
+    ? [
+        {
+          id: "edit",
+          label: "Edit",
+          icon: "edit" as const,
+          run: async () => {
+            await open();
+            if (store.selectedItem?.id === vaultItem.id) {
+              startEditingItem();
+            }
+          },
+        },
+        vaultItem.category !== sshKeyCategory ? { id: "duplicate", label: "Duplicate", icon: "duplicate" as const, run: () => duplicateItem(vaultID, vaultItem.id) } : null,
+        hasMoveTarget ? { id: "move", label: "Move to…", icon: "move" as const, run: () => (itemToMove.value = target) } : null,
+        { id: "delete", label: "Delete…", icon: "trash" as const, isDanger: true, run: () => (itemToDelete.value = target) },
+      ]
+    : [];
+  return [firstGroup, favoriteGroup, editGroup]
+    .map((group) => group.filter((action): action is ContextMenuAction => action !== null))
+    .filter((group) => group.length > 0)
+    .flatMap((group, index) => (index === 0 ? group : [null, ...group]));
+}
+const allItemMenuAction = computed(buildItemMenuActions);
 
 function getItemSubtitle(vaultItem: ItemDetail): string {
   if (vaultItem.category === sshKeyCategory) {
@@ -122,6 +284,12 @@ function getItemSubtitle(vaultItem: ItemDetail): string {
   if (vaultItem.category === softwareLicenseCategory) {
     return formatSoftwareLicenseSummary(vaultItem.softwareLicense);
   }
+  if (vaultItem.category === serverCategory) {
+    return formatServerSummary(vaultItem.server, vaultItem.username);
+  }
+  if (vaultItem.category === databaseCategory) {
+    return formatDatabaseSummary(vaultItem.database);
+  }
   return vaultItem.username || (vaultItem.urls[0] ? getDomain(vaultItem.urls[0]) : "");
 }
 
@@ -140,8 +308,24 @@ function openVaultMenuBelow(event: MouseEvent): void {
   vaultMenu.value = { vaultID: store.selectedVaultID, x: Math.max(8, bounds.right - 168), y: bounds.bottom + 6 };
 }
 
+async function startCreatingVault(): Promise<void> {
+  newVaultWhere.value = "";
+  isCreatingVault.value = true;
+  isLoadingTeams.value = true;
+  const load = ++newVaultTeamLoad;
+  await loadAllOrganizationQuietly();
+  if (load === newVaultTeamLoad) {
+    isLoadingTeams.value = false;
+  }
+}
+
 async function submitNewVault(): Promise<void> {
-  if (await createVault(newVaultName.value)) {
+  if (!canSubmitNewVault.value) {
+    return;
+  }
+  const team = selectedTeamChoice.value;
+  const isCreated = team ? await createOrganizationVault(team.organizationID, team.teamID, newVaultName.value) : await createVault(newVaultName.value);
+  if (isCreated) {
     newVaultName.value = "";
     isCreatingVault.value = false;
   }
@@ -211,6 +395,7 @@ onBeforeUnmount(() => {
       <div class="title-bar"></div>
       <div class="sidebar-brand"><HisarLogo :size="24" show-wordmark /></div>
       <ShareInvitationBanner />
+      <OrganizationBanner />
       <RemovedVaultBanner />
 
       <nav aria-label="Favorites" class="favorites-nav">
@@ -222,28 +407,47 @@ onBeforeUnmount(() => {
       </nav>
 
       <nav aria-label="Vaults">
-        <p class="section-label">Vaults</p>
-        <button
-          v-for="vault in store.allVault"
-          :key="vault.id"
-          class="vault"
-          :class="{ selected: !store.isFavoritesSelected && vault.id === store.selectedVaultID }"
-          :data-testid="`vault-${vault.id}`"
-          @click="selectVault(vault.id)"
-          @contextmenu.prevent="openVaultMenuAtPointer(vault.id, $event)"
+        <div
+          v-for="group in allVaultGroup"
+          :key="group.organizationID"
+          class="vault-group"
+          :role="group.organizationID ? 'group' : undefined"
+          :aria-label="group.organizationID ? group.name : undefined"
+          :data-testid="group.organizationID ? `organization-vaults-${group.organizationID}` : 'own-vaults'"
         >
-          <AppIcon :name="vault.type === 'personal' ? 'user' : 'users'" />
-          <span class="vault-name">{{ vault.name }}</span>
-          <span class="vault-count">{{ vault.itemCount }}</span>
-        </button>
-        <form v-if="isCreatingVault" class="new-vault" @submit.prevent="submitNewVault">
+          <p class="section-label">{{ group.name }}</p>
+          <button
+            v-for="vault in group.allVault"
+            :key="vault.id"
+            class="vault"
+            :class="{ selected: !store.isFavoritesSelected && vault.id === store.selectedVaultID }"
+            :data-testid="`vault-${vault.id}`"
+            @click="selectVault(vault.id)"
+            @contextmenu.prevent="openVaultMenuAtPointer(vault.id, $event)"
+          >
+            <AppIcon :name="vault.type === 'personal' ? 'user' : 'users'" />
+            <span class="vault-name">{{ vault.name }}</span>
+            <span class="vault-count">{{ vault.itemCount }}</span>
+          </button>
+        </div>
+        <form v-if="isCreatingVault" class="new-vault" data-testid="new-vault-form" @submit.prevent="submitNewVault">
           <input v-model="newVaultName" name="vaultName" placeholder="Vault name" autofocus />
+          <label v-if="allTeamChoice.length > 0 || newVaultWhere !== ''" class="new-vault-where">
+            <span>Where</span>
+            <select v-model="newVaultWhere" name="vaultWhere" data-testid="new-vault-where">
+              <option value="">Shared vault</option>
+              <option v-for="choice in allTeamChoice" :key="choice.key" :value="choice.key">{{ choice.label }}</option>
+            </select>
+          </label>
+          <p v-if="selectedTeamChoice" class="muted new-vault-note" data-testid="new-vault-where-note">
+            {{ selectedTeamChoice.teamName }}'s members get this vault. Manage it in Settings → Organizations.
+          </p>
           <div class="row">
             <button type="button" class="ghost" @click="isCreatingVault = false">Cancel</button>
-            <button class="primary" type="submit" :disabled="store.isBusy || !newVaultName.trim()">Create</button>
+            <button class="primary" type="submit" data-testid="create-vault" :disabled="store.isBusy || !canSubmitNewVault">Create</button>
           </div>
         </form>
-        <button v-else class="ghost new-vault-button" @click="isCreatingVault = true"><AppIcon name="plus" /> New vault</button>
+        <button v-else class="ghost new-vault-button" data-testid="new-vault" @click="startCreatingVault"><AppIcon name="plus" /> New vault</button>
       </nav>
 
       <nav v-if="allTag.length > 0" aria-label="Tags" class="tags-nav" data-testid="tag-list">
@@ -304,7 +508,7 @@ onBeforeUnmount(() => {
         </div>
         <div ref="newItemMenu" class="new-item">
           <button
-            v-if="selectedVault?.type === 'shared'"
+            v-if="canShareVault"
             class="share-button"
             title="Share this vault"
             data-testid="share-vault"
@@ -360,6 +564,12 @@ onBeforeUnmount(() => {
             <button class="ghost" role="menuitem" data-testid="new-software-license" @click="chooseNewItem(startCreatingSoftwareLicense)">
               <AppIcon name="license" /> Software license
             </button>
+            <button class="ghost" role="menuitem" data-testid="new-server" @click="chooseNewItem(startCreatingServer)">
+              <AppIcon name="server" /> Server
+            </button>
+            <button class="ghost" role="menuitem" data-testid="new-database" @click="chooseNewItem(startCreatingDatabase)">
+              <AppIcon name="database" /> Database
+            </button>
             <button class="ghost" role="menuitem" data-testid="new-ssh-key" @click="chooseNewItem(startCreatingSSHKey)">
               <AppIcon name="key" /> SSH key
             </button>
@@ -400,7 +610,7 @@ onBeforeUnmount(() => {
               class="item"
               :class="{ selected: isSelectedFavorite(favorite) }"
               @click="selectFavoriteItem(favorite)"
-              @contextmenu.prevent="openItemMenu(favorite.vaultId, favorite.item, $event)"
+              @contextmenu.prevent="openItemMenu(favorite.vaultId, favorite.item, $event, favorite)"
             >
               <ItemTile :title="favorite.item.title" :icon="getItemIcon(favorite.item.category)" />
               <span class="item-text">
@@ -444,7 +654,7 @@ onBeforeUnmount(() => {
         <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
         <SSHKeyForm v-if="store.editorMode === 'create-ssh-key'" />
         <ItemEditor v-else-if="store.editorMode !== 'view'" :key="store.editorMode + (store.selectedItem?.id ?? '')" />
-        <ItemDetailPanel v-else-if="store.selectedItem" :can-edit="canEdit" :vault-name="selectedVault?.name ?? ''" :is-shared="selectedVault?.type === 'shared'" />
+        <ItemDetailPanel v-else-if="store.selectedItem" :can-edit="canEdit" :vault-name="selectedVault?.name ?? ''" :vault-type="selectedVault?.type ?? ''" />
         <div v-else class="detail-empty">
           <span class="detail-empty-icon"><AppIcon name="vault" :size="28" /></span>
           <h3>{{ store.isFavoritesSelected ? "Favorites" : selectedVault ? selectedVault.name : "Hisar" }}</h3>
@@ -464,16 +674,19 @@ onBeforeUnmount(() => {
     <SharedLinksPanel v-if="store.isShareLinksOpen" />
     <VaultDialog v-if="store.vaultDialog" :key="`${store.vaultDialog.mode}-${store.vaultDialog.actions.vault.id}`" :dialog="store.vaultDialog" />
     <VaultMenu v-if="vaultMenu && vaultMenuVault" :vault="vaultMenuVault" :x="vaultMenu.x" :y="vaultMenu.y" @close="vaultMenu = null" />
-    <ItemMenu
+    <ContextMenu
       v-if="itemMenu"
-      :title="itemMenu.vaultItem.title"
-      :is-favorite="itemMenu.vaultItem.isFavorite"
+      :key="`${itemMenu.vaultID}/${itemMenu.vaultItem.id}`"
+      :label="itemMenu.vaultItem.title"
       :x="itemMenu.x"
       :y="itemMenu.y"
-      @toggle-favorite="toggleItemMenuFavorite"
+      :all-action="allItemMenuAction"
       @close="itemMenu = null"
     />
+    <MoveItemDialog v-if="itemToMove" :vault-i-d="itemToMove.vaultID" :item-i-d="itemToMove.itemID" :title="itemToMove.title" @close="itemToMove = null" />
+    <ConfirmDeleteDialog v-if="itemToDelete" :vault-i-d="itemToDelete.vaultID" :item-i-d="itemToDelete.itemID" :title="itemToDelete.title" @close="itemToDelete = null" />
     <ShareLinkDialog v-if="store.shareLinkDialog" :key="`${store.shareLinkDialog.mode}-${store.shareLinkDialog.itemID}`" />
+    <OrganizationAlert />
   </div>
 </template>
 
@@ -616,8 +829,30 @@ onBeforeUnmount(() => {
   margin-bottom: 6px;
 }
 
+.new-vault-where {
+  margin-bottom: 6px;
+}
+
+.new-vault-where span {
+  padding: 0 2px;
+}
+
+.new-vault-where select {
+  width: 100%;
+}
+
+.new-vault-note {
+  margin: 0 2px 8px;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
 .new-vault .row {
   justify-content: flex-end;
+}
+
+.vault-group + .vault-group {
+  margin-top: 14px;
 }
 
 .offline {

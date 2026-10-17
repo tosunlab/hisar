@@ -135,6 +135,16 @@ func isAgentSearchMatch(vaultName string, vaultItem *item.Item, query string) bo
 		identity, _ := item.ReadIdentity(vaultItem)
 		texts = append(texts, identity.Address.City, identity.Address.Country)
 	}
+	if vaultItem.IsCategory(item.CategoryServer) {
+		// A server's host is a named field; its username and admin console are the item's own.
+		server, _ := item.ReadServer(vaultItem)
+		texts = append(texts, server.Host)
+	}
+	if vaultItem.IsCategory(item.CategoryDatabase) {
+		// A database's host and name are named fields; its username is the item's own.
+		database, _ := item.ReadDatabase(vaultItem)
+		texts = append(texts, database.Host, database.Name)
+	}
 	if vaultItem.IsCategory(item.CategorySoftwareLicense) {
 		// What the apps' search reads; never the license key.
 		license, _ := item.ReadSoftwareLicense(vaultItem)
@@ -220,6 +230,8 @@ func convertToAgentItem(vault *session.Vault, vaultItem *item.Item, isVaultNameS
 	addField("one-time code", secretreference.FieldOneTimeCode, vaultItem.Details.OneTimePassword)
 	addField(secretreference.FieldPublicKey, secretreference.FieldPublicKey, vaultItem.Overview.PublicKey)
 	addField(secretreference.FieldFingerprint, secretreference.FieldFingerprint, vaultItem.Overview.Fingerprint)
+	// A database's connection string is built, not stored, so agents get its reference instead of assembling one.
+	addField(secretreference.FieldConnectionString, secretreference.FieldConnectionString, vaultItem.ConnectionString())
 	for _, field := range vaultItem.Details.Fields {
 		if secretreference.CheckCustomFieldLabel(vaultItem, field.Name) == nil {
 			addField(field.Name, field.Name, field.Value)

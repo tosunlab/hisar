@@ -82,6 +82,13 @@ The preview backend (`src/preview.ts`) is loaded with a dynamic import behind a 
 
 The app keeps its session in `~/Library/Application Support/hisar/desktop.json` (override with `HISAR_DESKTOP_STATE`), the encrypted offline cache in `desktop-cache.db` next to it (override with `HISAR_DESKTOP_CACHE`), and the Secret Key in the macOS Keychain under the service `hisar`.
 
+## Right-click menus
+
+Design: `docs/DESIGN.md` §9.1 (desktop: item menu).
+
+- **An item in the list** (a vault's or Favorites): **Open**; **Copy** for its username, password, one-time code and main value (card number, license key, API secret, connection string, public key), each once the item's details have loaded; **Open website** (**Open admin console** for a server); **Add to Favorites** or **Remove from Favorites**; **Share link…**; and, in a vault the user can edit, **Edit**, **Duplicate** ("GitHub copy", without passkeys), **Move to…** (another vault the user can edit; the item keeps its ID) and **Delete…**, which asks first. Arrow keys move through the menu and Escape closes it.
+- **A field row in the detail panel** offers the row's own buttons by name, such as **Reveal password**, **Copy password** and **Copy secret reference for password**, or **Open website**. With text selected in the row, the system's menu appears instead, with its Copy.
+
 ## Sharing, people and devices
 
 Design: `docs/DESIGN.md` §4.4 (vault keys and rotation), §5.1 (invites) and §5.6 (public key pinning).
@@ -153,6 +160,25 @@ Design: `docs/DESIGN.md` §4.5 (categories).
 - The view lists each value with **Copy** and a secret reference (`hisar://Personal/Sketch/license%20key`). The key is masked until revealed, and the download URL opens in the browser. The item list shows the version and licensed-to name, and search matches the product, version, name and email.
 - 1Password Software Licenses import as software licenses, with the title as the product; company, publisher and order details stay custom fields.
 - Preview: `&vault=work&item=sketch`, `&editor=software-license`.
+
+## Servers
+
+Design: `docs/DESIGN.md` §4.5 (categories) and §9.2 (browser extension).
+
+- **+** → **Server** opens an editor for the host and port (warning about a port that is not 1–65535), the username, password and one-time password, the admin console URL and an SSH key from the same vault; then notes and custom fields. A host typed as `ssh://host:2222` or `host:2222` is split into host and port.
+- The view lists the host and port with **Copy** and a secret reference, the login fields as for a login, the admin console with **Open in browser**, and the linked SSH key, which opens; a key that was deleted shows as missing. The item list shows the host, port and username, and search matches the host and port, alone or as `host:port`.
+- The browser extension offers a server's username and password on its admin console, as it does a login's.
+- 1Password Servers import as servers. The admin console becomes the website only when it has no username or password of its own; otherwise the console URL and credentials stay custom fields, so the browser never fills the server's password on the console. Hosting details stay custom fields.
+- Preview: `&vault=team&item=build-server`, `&editor=server`.
+
+## Databases
+
+Design: `docs/DESIGN.md` §4.5 (categories) and §9.4.1 (secret references).
+
+- **+** → **Database** opens an editor for the engine (PostgreSQL, MySQL, MariaDB, SQL Server, Oracle, MongoDB, Redis, or Other with any name), the host and port (warning about a port that is not 1–65535), the database name, the username and password, and connection options such as `sslmode=require`; then notes and custom fields.
+- The view lists each value with **Copy** and a secret reference, then the **Connection string**, masked until revealed, with **Copy** and a secret reference (`hisar://Personal/Prod%20db/connection%20string`). It is built from the fields, so it follows a new password. An Other engine has none; a custom field named "Connection string", such as a JDBC URL, then serves for Copy and `hisar://…/connection string`. The item list shows the engine, address and database name, and search matches any of them.
+- 1Password Databases import as databases. The SID becomes the database name when there is none, as for Oracle; otherwise it stays a custom field, like the alias.
+- Preview: `&vault=team&item=staging-database`, `&editor=database`.
 
 ## Import from other password managers
 

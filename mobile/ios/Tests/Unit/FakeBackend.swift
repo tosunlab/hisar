@@ -49,6 +49,14 @@ class FakeBackend: VaultBackend {
     var currentSecretKey = FakeBackend.secretKey
     var deletionPreview = AccountDeletionPreview(email: "alice@example.com")
     var isAccountDeleted = false
+    /// The organizations the user is in, as GetOrganization answers for each; a refusal is the server's next sentence.
+    var allOrganization: [Organization] = []
+    var allOrganizationInvitation: [OrganizationInvitation] = []
+    var waitingVaultKeys = WaitingVaultKeys()
+    var organizationRefusal: String?
+    /// While set, listing the organizations or reading one fails with this sentence.
+    var listAllOrganizationErrorMessage: String?
+    var getOrganizationErrorMessage: String?
     private let approvalLock = NSLock()
 
     func withApprovalLock<Value>(_ operation: () throws -> Value) rethrows -> Value {
@@ -813,6 +821,201 @@ extension FakeBackend {
         guard !isThemeSaveFailing else { throw BackendError(message: "Could not save hisar.json") }
         self.theme = theme
         return theme
+    }
+}
+
+// Organizations (§5.11): the user's organizations with their members and teams; admins change them, members only read.
+extension FakeBackend {
+    func listAllOrganization() throws -> Organizations {
+        record("listAllOrganization")
+        try requireUnlocked()
+        if let listAllOrganizationErrorMessage { throw BackendError(message: listAllOrganizationErrorMessage) }
+        return Organizations(
+            allOrganization: allOrganization.map { OrganizationSummary(id: $0.id, name: $0.name, role: $0.role, memberCount: $0.allMember.count) },
+            allInvitation: allOrganizationInvitation
+        )
+    }
+
+    func getOrganization(organizationID: String) throws -> Organization {
+        record("getOrganization")
+        try requireUnlocked()
+        if let getOrganizationErrorMessage { throw BackendError(message: getOrganizationErrorMessage) }
+        guard var organization = allOrganization.first(where: { $0.id == organizationID }) else {
+            throw BackendError(message: "That organization, team, person or vault was not found, or you are no longer in the organization")
+        }
+        for teamIndex in organization.allTeam.indices {
+            for vaultIndex in organization.allTeam[teamIndex].allVault.indices {
+                let vaultID = organization.allTeam[teamIndex].allVault[vaultIndex].vaultID
+                let vault = allVault.first { $0.id == vaultID }
+                organization.allTeam[teamIndex].allVault[vaultIndex].name = vault?.name ?? ""
+                organization.allTeam[teamIndex].allVault[vaultIndex].canOpen = vault != nil
+            }
+        }
+        if !organization.isAdmin {
+            organization.allInvitation = []
+        }
+        return organization
+    }
+
+    func createOrganization(name: String) throws -> OrganizationSummary {
+        record("createOrganization")
+        try requireUnlocked()
+        guard OrganizationLogic.isValidName(name), let currentMember else { throw BackendError(message: "Enter a name of 1 to 100 characters") }
+        var admin = currentMember
+        admin.role = OrganizationRole.admin
+        let organization = Organization(id: "organization-\(allOrganization.count + 1)", name: name, role: OrganizationRole.admin, isAdmin: true, allMember: [admin])
+        allOrganization.append(organization)
+        return OrganizationSummary(id: organization.id, name: name, role: organization.role, memberCount: 1)
+    }
+
+    func renameOrganization(organizationID: String, name: String) throws {
+        record("renameOrganization")
+        try changeOrganizationAsAdmin(organizationID) { $0.name = name }
+    }
+
+    func deleteOrganization(organizationID: String) throws {
+        record("deleteOrganization")
+        try changeOrganizationAsAdmin(organizationID) { _ in }
+        guard !allVault.contains(where: { $0.organizationID == organizationID }) else { throw BackendError(message: "The organization still has vaults; delete them first") }
+        allOrganization.removeAll { $0.id == organizationID }
+    }
+
+    func inviteToOrganization(organizationID: String, email: String, role: String) throws {
+        record("inviteToOrganization")
+        try changeOrganizationAsAdmin(organizationID) { organization in
+            organization.allInvitation.append(SentOrganizationInvitation(id: "organization-invitation-\(organization.allInvitation.count + 1)", email: email, role: role, createdAt: "2027-01-15T08:00:00Z", expiresAt: "2027-01-22T08:00:00Z"))
+        }
+    }
+
+    func cancelOrganizationInvitation(organizationID: String, invitationID: String) throws {
+        record("cancelOrganizationInvitation")
+        try changeOrganizationAsAdmin(organizationID) { $0.allInvitation.removeAll { $0.id == invitationID } }
+    }
+
+    func acceptOrganizationInvitation(invitationID: String) throws {
+        record("acceptOrganizationInvitation")
+        try requireUnlocked()
+        guard let invitation = allOrganizationInvitation.first(where: { $0.id == invitationID }), let currentMember else { throw BackendError(message: "This invitation no longer exists") }
+        allOrganizationInvitation.removeAll { $0.id == invitationID }
+        var member = currentMember
+        member.role = invitation.role
+        allOrganization.append(Organization(id: invitation.organizationID, name: invitation.organizationName, role: invitation.role, isAdmin: invitation.role == OrganizationRole.admin, allMember: [member]))
+    }
+
+    func declineOrganizationInvitation(invitationID: String) throws {
+        record("declineOrganizationInvitation")
+        try requireUnlocked()
+        guard allOrganizationInvitation.contains(where: { $0.id == invitationID }) else { throw BackendError(message: "This invitation no longer exists") }
+        allOrganizationInvitation.removeAll { $0.id == invitationID }
+    }
+
+    func setOrganizationMemberRole(organizationID: String, accountID: String, role: String) throws {
+        record("setOrganizationMemberRole")
+        try changeOrganizationAsAdmin(organizationID) { organization in
+            guard let index = organization.allMember.firstIndex(where: { $0.accountID == accountID }) else { return }
+            organization.allMember[index].role = role
+        }
+    }
+
+    func removeOrganizationMember(organizationID: String, accountID: String) throws {
+        record("removeOrganizationMember")
+        try changeOrganizationAsAdmin(organizationID) { organization in
+            organization.allMember.removeAll { $0.accountID == accountID }
+            for index in organization.allTeam.indices {
+                organization.allTeam[index].allMember.removeAll { $0.accountID == accountID }
+            }
+        }
+    }
+
+    func leaveOrganization(organizationID: String) throws {
+        record("leaveOrganization")
+        try requireUnlocked()
+        allOrganization.removeAll { $0.id == organizationID }
+        allVault.removeAll { $0.organizationID == organizationID }
+    }
+
+    func createTeam(organizationID: String, name: String) throws -> Team {
+        record("createTeam")
+        let team = Team(id: "team-\(name.lowercased())", name: name)
+        try changeOrganizationAsAdmin(organizationID) { organization in
+            organization.allTeam.append(team)
+        }
+        return team
+    }
+
+    func renameTeam(organizationID: String, teamID: String, name: String) throws {
+        record("renameTeam")
+        try changeTeam(organizationID, teamID) { $0.name = name }
+    }
+
+    func deleteTeam(organizationID: String, teamID: String) throws {
+        record("deleteTeam")
+        try changeOrganizationAsAdmin(organizationID) { $0.allTeam.removeAll { $0.id == teamID } }
+    }
+
+    func addTeamMember(organizationID: String, teamID: String, accountID: String) throws {
+        record("addTeamMember")
+        guard let member = allOrganization.first(where: { $0.id == organizationID })?.allMember.first(where: { $0.accountID == accountID }) else {
+            throw BackendError(message: "That organization, team, person or vault was not found, or you are no longer in the organization")
+        }
+        try changeTeam(organizationID, teamID) { $0.allMember.append(TeamMember(accountID: accountID, name: member.name, email: member.email, isCurrentUser: member.isCurrentUser)) }
+    }
+
+    func removeTeamMember(organizationID: String, teamID: String, accountID: String) throws {
+        record("removeTeamMember")
+        try changeTeam(organizationID, teamID) { $0.allMember.removeAll { $0.accountID == accountID } }
+    }
+
+    func giveVaultToTeam(organizationID: String, teamID: String, vaultID: String, role: String) throws {
+        record("giveVaultToTeam")
+        try changeTeam(organizationID, teamID) { team in
+            team.allVault.removeAll { $0.vaultID == vaultID }
+            team.allVault.append(TeamVault(vaultID: vaultID, name: "", role: role, canOpen: false))
+        }
+    }
+
+    func takeVaultFromTeam(organizationID: String, teamID: String, vaultID: String) throws {
+        record("takeVaultFromTeam")
+        try changeTeam(organizationID, teamID) { $0.allVault.removeAll { $0.vaultID == vaultID } }
+    }
+
+    func createOrganizationVault(organizationID: String, teamID: String, name: String) throws -> VaultSummary {
+        record("createOrganizationVault")
+        try requireUnlocked()
+        guard let team = allOrganization.first(where: { $0.id == organizationID })?.allTeam.first(where: { $0.id == teamID }), team.hasCurrentUser else {
+            throw BackendError(message: "Only members of the team can create a vault for it")
+        }
+        let vault = VaultSummary(id: "vault-\(allVault.count + 1)", name: name, type: VaultSummary.typeOrganization, role: Member.vaultRoleOwner, itemCount: 0, organizationID: organizationID)
+        allVault.append(vault)
+        allItemByVaultID[vault.id] = []
+        try changeTeam(organizationID, teamID, isAdminRequired: false) { $0.allVault.append(TeamVault(vaultID: vault.id, name: "", role: Member.vaultRoleOwner, canOpen: false)) }
+        return vault
+    }
+
+    func listAllWaitingVaultKey() throws -> WaitingVaultKeys {
+        record("listAllWaitingVaultKey")
+        try requireUnlocked()
+        return waitingVaultKeys
+    }
+
+    private func changeOrganizationAsAdmin(_ organizationID: String, isAdminRequired: Bool = true, _ change: (inout Organization) -> Void) throws {
+        try requireUnlocked()
+        if let organizationRefusal {
+            self.organizationRefusal = nil
+            throw BackendError(message: organizationRefusal)
+        }
+        guard let index = allOrganization.firstIndex(where: { $0.id == organizationID }) else {
+            throw BackendError(message: "That organization, team, person or vault was not found, or you are no longer in the organization")
+        }
+        guard allOrganization[index].isAdmin || !isAdminRequired else { throw BackendError(message: "Only an admin of this organization can do that") }
+        change(&allOrganization[index])
+    }
+
+    private func changeTeam(_ organizationID: String, _ teamID: String, isAdminRequired: Bool = true, _ change: (inout Team) -> Void) throws {
+        try changeOrganizationAsAdmin(organizationID, isAdminRequired: isAdminRequired) { organization in
+            guard let index = organization.allTeam.firstIndex(where: { $0.id == teamID }) else { return }
+            change(&organization.allTeam[index])
+        }
     }
 }
 

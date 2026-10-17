@@ -52,6 +52,17 @@ type backend interface {
 	listShareLinks(ctx context.Context) ([]cliprotocol.ShareLink, error)
 	listDevices(ctx context.Context) ([]cliprotocol.Device, error)
 	revokeDevice(ctx context.Context, deviceID string) error
+	listOrganizations(ctx context.Context) (cliprotocol.OrganizationListResult, error)
+	getOrganization(ctx context.Context, organizationID string) (cliprotocol.Organization, error)
+	createOrganization(ctx context.Context, name string) (cliprotocol.OrganizationSummary, error)
+	createTeam(ctx context.Context, organizationID, name string) (cliprotocol.Team, error)
+	createOrganizationVault(ctx context.Context, organizationID, teamID, name string) (cliprotocol.Vault, error)
+	// changeOrganization sends one of the organization, team and team-vault requests that return nothing, described
+	// as the cliprotocol request the app answers.
+	changeOrganization(ctx context.Context, change cliprotocol.Request) error
+	// completeOrganizationKeys delivers the vault keys team members wait for and rotates the vaults someone lost, then
+	// lists the organization vaults this user waits for.
+	completeOrganizationKeys(ctx context.Context) (cliprotocol.OrganizationKeysResult, error)
 	finish(err error) error
 }
 

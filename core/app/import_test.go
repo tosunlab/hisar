@@ -1,6 +1,8 @@
 package app
 
 import (
+	"archive/zip"
+	"bytes"
 	"errors"
 	"fmt"
 	"os"
@@ -19,6 +21,31 @@ func writeImportFile(t *testing.T, fileName, content string) string {
 		t.Fatal(err)
 	}
 	return path
+}
+
+// importOnePasswordExport imports a .1pux whose export.data is exportData into the vault.
+func importOnePasswordExport(t *testing.T, service *Service, vaultID, exportData string) {
+	t.Helper()
+	var buffer bytes.Buffer
+	writer := zip.NewWriter(&buffer)
+	fileWriter, err := writer.Create("export.data")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fileWriter.Write([]byte(exportData)); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	setImportPath(service, writeImportFile(t, "export.1pux", buffer.String()))
+	if _, err := service.ChooseImportFile(vaultID, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.StartImport(vaultID, false); err != nil {
+		t.Fatal(err)
+	}
+	runImportToEnd(t, service)
 }
 
 func buildImportCSV(loginCount int) string {

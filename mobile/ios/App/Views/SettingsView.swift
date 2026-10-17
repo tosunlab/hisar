@@ -7,6 +7,7 @@ enum SettingsDestination: Hashable {
     case appearance
     case macApprovals
     case people
+    case organizations
     case devices
     case autoFill
     case passwordGenerator
@@ -99,6 +100,11 @@ struct SettingsView: View {
                             .badge(model.receivedInvitationCount)
                     }
                     .accessibilityIdentifier("open-people")
+                    NavigationLink(value: SettingsDestination.organizations) {
+                        Label("Organizations", systemImage: "building.2")
+                            .badge(model.organizationInvitationCount)
+                    }
+                    .accessibilityIdentifier("open-organizations")
                     NavigationLink(value: SettingsDestination.devices) {
                         Label("Devices", systemImage: "iphone.and.arrow.forward")
                     }
@@ -148,6 +154,7 @@ struct SettingsView: View {
                 case .appearance: AppearanceView()
                 case .macApprovals: MacApprovalsView()
                 case .people: PeopleView()
+                case .organizations: OrganizationsView()
                 case .devices: DevicesView()
                 case .autoFill: AutoFillSettingsView(isEnabled: $isAutoFillEnabled)
                 case .passwordGenerator: StandalonePasswordGeneratorView()

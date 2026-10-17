@@ -56,6 +56,17 @@ type AccountDeletionPreview struct {
 	SentInvitationCount     int                   `json:"sentInvitationCount"`
 	ReceivedInvitationCount int                   `json:"receivedInvitationCount"`
 	DeviceCount             int                   `json:"deviceCount"`
+	// Organizations is missing from servers older than organizations.
+	Organizations []DeletionOrganization `json:"organizations,omitempty"`
+}
+
+// DeletionOrganization is an organization the account is a member of. IsDeleted: the account is its last member.
+// NewAdminName names the member who becomes admin when the account is its last admin.
+type DeletionOrganization struct {
+	OrganizationID string `json:"organizationId"`
+	Name           string `json:"name"`
+	IsDeleted      bool   `json:"deleted"`
+	NewAdminName   string `json:"newAdminName,omitempty"`
 }
 
 // DeletionOwnedVault has no other owner, so it is deleted with the account.

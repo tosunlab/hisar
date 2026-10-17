@@ -8,6 +8,7 @@ import {
   hasShareableField,
   openItemShareLinkDialog,
   openWebsite,
+  selectItem,
   selectTag,
   startEditingItem,
   store,
@@ -21,11 +22,16 @@ import {
   apiCredentialFieldName,
   cardFieldName,
   creditCardCategory,
+  databaseCategory,
+  databaseFieldName,
   formatAddressSummary,
   formatAPICredentialSummary,
   formatCardSummary,
+  formatDatabaseSummary,
   formatIdentitySummary,
   formatKeyType,
+  formatServerAddress,
+  formatServerSummary,
   formatSoftwareLicenseSummary,
   getDomain,
   getItemIcon,
@@ -33,12 +39,15 @@ import {
   identityFieldName,
   isMacPlatform,
   secureNoteCategory,
+  serverCategory,
+  serverFieldName,
   softwareLicenseCategory,
   softwareLicenseFieldName,
   sshKeyCategory,
 } from "../util";
 import AppIcon from "./AppIcon.vue";
 import CommitSigningPanel from "./CommitSigningPanel.vue";
+import ContextMenu, { type ContextMenuAction } from "./ContextMenu.vue";
 import ItemTile from "./ItemTile.vue";
 import OneTimeCodeField from "./OneTimeCodeField.vue";
 import PasskeyList from "./PasskeyList.vue";
@@ -46,7 +55,8 @@ import SecretReferenceButton from "./SecretReferenceButton.vue";
 import SharedLinksList from "./SharedLinksList.vue";
 import StrengthMeter from "./StrengthMeter.vue";
 
-defineProps<{ canEdit: boolean; vaultName: string; isShared: boolean }>();
+// vaultType is the vault's type: personal, shared or organization. Only a shared vault's items say "shared".
+defineProps<{ canEdit: boolean; vaultName: string; vaultType: string }>();
 
 const shortcutModifier = isMacPlatform() ? "⌘" : "Ctrl+";
 const isPasswordRevealed = ref(false);
@@ -59,6 +69,24 @@ const isIdentity = computed(() => store.selectedItem?.category === identityCateg
 const isAPICredential = computed(() => store.selectedItem?.category === apiCredentialCategory);
 const isAddress = computed(() => store.selectedItem?.category === addressCategory);
 const isSoftwareLicense = computed(() => store.selectedItem?.category === softwareLicenseCategory);
+const isServer = computed(() => store.selectedItem?.category === serverCategory);
+const server = computed(() => (isServer.value ? store.selectedItem?.server : undefined));
+const isDatabase = computed(() => store.selectedItem?.category === databaseCategory);
+const database = computed(() => (isDatabase.value ? store.selectedItem?.database : undefined));
+const isConnectionStringRevealed = ref(false);
+// A database's values before its login data: the engine by its name, the host, port and database name.
+const allDatabaseRow = computed(() => {
+  const value = database.value;
+  if (!value) {
+    return [];
+  }
+  return [
+    { name: databaseFieldName.engine, value: value.engineName, warning: "" },
+    { name: databaseFieldName.host, value: value.host, warning: "" },
+    { name: databaseFieldName.port, value: value.port, warning: value.portWarning },
+    { name: databaseFieldName.name, value: value.name, warning: "" },
+  ].filter((row) => row.value !== "");
+});
 
 // NamedRow: isLink rows open in the browser, as websites do.
 type NamedRow = { name: string; value: string; concealed: boolean; masked: string; warning: string; isLink?: boolean };
@@ -164,8 +192,10 @@ watch(
   () => store.selectedItem?.id,
   () => {
     isPasswordRevealed.value = false;
+    isConnectionStringRevealed.value = false;
     allRevealedFieldName.value = [];
     isConfirmingDelete.value = false;
+    fieldMenu.value = null;
   },
 );
 
@@ -175,20 +205,63 @@ function toggleFieldReveal(fieldName: string): void {
     : [...allRevealedFieldName.value, fieldName];
 }
 
+// fieldMenu is the right-click menu of a field row. It offers the row's own buttons, by their labels, so it always matches
+// what the row can do: copy, reveal or hide, copy the secret reference, open. A row is a .field with its .field-actions, or
+// a block marked data-field-menu-row, such as an SSH key's public key or a note, whose buttons sit in data-field-menu-actions.
+const fieldMenu = ref<{ label: string; x: number; y: number; allAction: ContextMenuAction[] } | null>(null);
+
+function chooseFieldMenuIcon(label: string): ContextMenuAction["icon"] {
+  if (label.startsWith("Copy secret reference")) {
+    return "terminal";
+  }
+  if (label.startsWith("Copy")) {
+    return "copy";
+  }
+  if (label.startsWith("Reveal")) {
+    return "eye";
+  }
+  if (label.startsWith("Hide")) {
+    return "eyeOff";
+  }
+  return label.startsWith("Open") ? "external" : "field";
+}
+
+function openFieldMenu(event: MouseEvent): void {
+  const row = (event.target as HTMLElement).closest<HTMLElement>(".field, [data-field-menu-row]");
+  // Text selected in the row keeps the system's menu, with its Copy.
+  const selection = window.getSelection();
+  if (!row || (selection && !selection.isCollapsed && row.contains(selection.anchorNode))) {
+    return;
+  }
+  const allButton = [...row.querySelectorAll<HTMLButtonElement>(".field-actions button, [data-field-menu-actions] button")].filter(
+    (button) => !button.disabled && button.getAttribute("aria-label"),
+  );
+  if (allButton.length === 0) {
+    return;
+  }
+  event.preventDefault();
+  const allAction = allButton.map((button) => {
+    const label = button.getAttribute("aria-label") ?? "";
+    return { id: label.toLowerCase().replace(/[^a-z0-9]+/g, "-"), label, icon: chooseFieldMenuIcon(label), run: () => button.click() };
+  });
+  const label = row.querySelector(".field-label, .section-label")?.textContent?.trim() || "Field";
+  fieldMenu.value = { label, x: event.clientX, y: event.clientY, allAction };
+}
+
 function maskSecret(secret: string): string {
   return "•".repeat(Math.min(Math.max(secret.length, 10), 20));
 }
 </script>
 
 <template>
-  <article v-if="store.selectedItem" class="item-detail">
+  <article v-if="store.selectedItem" class="item-detail" @contextmenu="openFieldMenu">
     <header>
       <ItemTile :title="store.selectedItem.title" :size="52" :icon="getItemIcon(store.selectedItem.category)" />
       <div class="heading">
         <h2>{{ store.selectedItem.title }}</h2>
         <div class="meta">
-          <span class="badge"><AppIcon :name="isShared ? 'users' : 'user'" :size="12" /> {{ vaultName }}</span>
-          <span v-if="isShared" class="badge">shared</span>
+          <span class="badge" data-testid="item-vault"><AppIcon :name="vaultType === 'personal' ? 'user' : 'users'" :size="12" /> {{ vaultName }}</span>
+          <span v-if="vaultType === 'shared'" class="badge" data-testid="item-shared">shared</span>
           <span v-if="isSSHKey" class="muted">SSH key</span>
           <span v-else-if="isSecureNote" class="muted">Secure note</span>
           <span v-else-if="isCreditCard" class="muted" data-testid="card-summary">{{ formatCardSummary(store.selectedItem.card) }}</span>
@@ -198,6 +271,10 @@ function maskSecret(secret: string): string {
           <span v-else-if="isSoftwareLicense" class="muted" data-testid="software-license-summary">{{
             formatSoftwareLicenseSummary(store.selectedItem.softwareLicense)
           }}</span>
+          <span v-else-if="isServer" class="muted" data-testid="server-summary">{{
+            formatServerSummary(store.selectedItem.server, store.selectedItem.username)
+          }}</span>
+          <span v-else-if="isDatabase" class="muted" data-testid="database-summary">{{ formatDatabaseSummary(store.selectedItem.database) }}</span>
           <span v-else-if="store.selectedItem.urls[0]" class="muted">{{ getDomain(store.selectedItem.urls[0]) }}</span>
         </div>
         <div v-if="(store.selectedItem.tags ?? []).length > 0" class="tags" data-testid="item-tags">
@@ -265,11 +342,11 @@ function maskSecret(secret: string): string {
           <span class="field-value muted">Never leaves Hisar; the SSH agent uses it</span>
           <span class="field-actions"></span>
         </div>
-        <div class="public-key-field">
-          <div class="row">
+        <div class="public-key-field" data-field-menu-row>
+          <div class="row" data-field-menu-actions>
             <span class="field-label">Public key</span>
             <div class="spacer"></div>
-            <button data-testid="copy-public-key" @click="copyField('public key', 'Public key')"><AppIcon name="copy" /> Copy public key</button>
+            <button data-testid="copy-public-key" aria-label="Copy public key" @click="copyField('public key', 'Public key')"><AppIcon name="copy" /> Copy public key</button>
             <SecretReferenceButton field-name="public key" label="public key" />
           </div>
           <p class="public-key monospace" data-testid="public-key">{{ store.selectedItem.publicKey }}</p>
@@ -335,12 +412,12 @@ function maskSecret(secret: string): string {
     </section>
 
     <template v-else-if="isSecureNote">
-      <section class="card notes-card secure-note" data-testid="secure-note-notes">
-        <div class="row">
+      <section class="card notes-card secure-note" data-testid="secure-note-notes" data-field-menu-row>
+        <div class="row" data-field-menu-actions>
           <p class="section-label">Notes</p>
           <div class="spacer"></div>
           <template v-if="store.selectedItem.notes">
-            <button data-testid="copy-notes" @click="copyField('notes', 'Notes')"><AppIcon name="copy" /> Copy</button>
+            <button data-testid="copy-notes" aria-label="Copy notes" @click="copyField('notes', 'Notes')"><AppIcon name="copy" /> Copy</button>
             <SecretReferenceButton field-name="notes" label="notes" />
           </template>
         </div>
@@ -370,6 +447,53 @@ function maskSecret(secret: string): string {
     </template>
 
     <section v-else class="card field-card">
+      <template v-if="server">
+        <div v-if="server.host" class="field">
+          <span class="field-label">{{ serverFieldName.host }}</span>
+          <span class="field-value monospace" data-testid="server-host">{{ formatServerAddress(server) }}</span>
+          <span class="field-actions">
+            <button class="ghost icon-button" aria-label="Copy Host" title="Copy" @click="copyField(serverFieldName.host, serverFieldName.host)"><AppIcon name="copy" /></button>
+            <SecretReferenceButton :field-name="serverFieldName.host" :label="serverFieldName.host" />
+          </span>
+        </div>
+        <div v-if="server.port" class="field">
+          <span class="field-label">{{ serverFieldName.port }}</span>
+          <span class="field-value">
+            <span data-testid="server-port">{{ server.port }}</span>
+            <small v-if="server.portWarning" class="field-warning" data-testid="server-port-warning">{{ server.portWarning }}</small>
+          </span>
+          <span class="field-actions">
+            <button class="ghost icon-button" aria-label="Copy Port" title="Copy" @click="copyField(serverFieldName.port, serverFieldName.port)"><AppIcon name="copy" /></button>
+            <SecretReferenceButton :field-name="serverFieldName.port" :label="serverFieldName.port" />
+          </span>
+        </div>
+        <div v-if="server.sshKeyId" class="field" data-testid="server-ssh-key">
+          <span class="field-label">{{ serverFieldName.sshKey }}</span>
+          <span v-if="server.sshKeyTitle" class="field-value">
+            <span>{{ server.sshKeyTitle }}</span>
+            <small class="muted monospace">{{ server.sshKeyFingerprint }}</small>
+          </span>
+          <span v-else class="field-value muted">Missing SSH key</span>
+          <span class="field-actions">
+            <button v-if="server.sshKeyTitle" class="ghost icon-button" aria-label="Open SSH key" title="Open" @click="selectItem(server.sshKeyId)">
+              <AppIcon name="key" />
+            </button>
+          </span>
+        </div>
+      </template>
+
+      <div v-for="row in allDatabaseRow" :key="row.name" class="field">
+        <span class="field-label">{{ row.name }}</span>
+        <span class="field-value">
+          <span :data-testid="`database-${row.name}`">{{ row.value }}</span>
+          <small v-if="row.warning" class="field-warning" data-testid="database-port-warning">{{ row.warning }}</small>
+        </span>
+        <span class="field-actions">
+          <button class="ghost icon-button" :aria-label="`Copy ${row.name}`" title="Copy" @click="copyField(row.name, row.name)"><AppIcon name="copy" /></button>
+          <SecretReferenceButton :field-name="row.name" :label="row.name" />
+        </span>
+      </div>
+
       <div v-if="store.selectedItem.username" class="field">
         <span class="field-label">Username</span>
         <span class="field-value">{{ store.selectedItem.username }}</span>
@@ -401,10 +525,41 @@ function maskSecret(secret: string): string {
         </span>
       </div>
 
+      <template v-if="database">
+        <div v-if="database.options" class="field">
+          <span class="field-label">{{ databaseFieldName.options }}</span>
+          <span class="field-value monospace" data-testid="database-options">{{ database.options }}</span>
+          <span class="field-actions">
+            <button class="ghost icon-button" aria-label="Copy Options" title="Copy" @click="copyField(databaseFieldName.options, databaseFieldName.options)"><AppIcon name="copy" /></button>
+            <SecretReferenceButton :field-name="databaseFieldName.options" :label="databaseFieldName.options" />
+          </span>
+        </div>
+        <div v-if="database.connectionString" class="field" data-testid="database-connection-string">
+          <span class="field-label">Connection string</span>
+          <span class="field-value monospace secret" data-testid="connection-string-value">
+            {{ isConnectionStringRevealed ? database.connectionString : maskSecret(database.connectionString) }}
+          </span>
+          <span class="field-actions">
+            <button
+              class="ghost icon-button"
+              :aria-label="isConnectionStringRevealed ? 'Hide connection string' : 'Reveal connection string'"
+              :title="isConnectionStringRevealed ? 'Hide' : 'Reveal'"
+              @click="isConnectionStringRevealed = !isConnectionStringRevealed"
+            >
+              <AppIcon :name="isConnectionStringRevealed ? 'eyeOff' : 'eye'" />
+            </button>
+            <button class="ghost icon-button" aria-label="Copy connection string" title="Copy" @click="copyField('connection string', 'Connection string')">
+              <AppIcon name="copy" />
+            </button>
+            <SecretReferenceButton field-name="connection string" label="connection string" />
+          </span>
+        </div>
+      </template>
+
       <OneTimeCodeField v-if="store.selectedItem.hasOneTimePassword" :vault-i-d="store.selectedVaultID" :item-i-d="store.selectedItem.id" />
 
       <div v-for="link in store.selectedItem.urls" :key="link" class="field">
-        <span class="field-label">Website</span>
+        <span class="field-label">{{ isServer ? "Admin console" : "Website" }}</span>
         <span class="field-value">{{ link }}</span>
         <span class="field-actions">
           <button class="ghost icon-button" aria-label="Open website" title="Open in browser" @click="openWebsite(link)"><AppIcon name="external" /></button>
@@ -431,7 +586,18 @@ function maskSecret(secret: string): string {
       </div>
 
       <p
-        v-if="!store.selectedItem.username && !store.selectedItem.password && store.selectedItem.urls.length === 0 && store.selectedItem.fields.length === 0 && (store.selectedItem.passkeys ?? []).length === 0"
+        v-if="
+          !store.selectedItem.username &&
+          !store.selectedItem.password &&
+          store.selectedItem.urls.length === 0 &&
+          store.selectedItem.fields.length === 0 &&
+          (store.selectedItem.passkeys ?? []).length === 0 &&
+          !server?.host &&
+          !server?.port &&
+          !server?.sshKeyId &&
+          allDatabaseRow.length === 0 &&
+          !database?.options
+        "
         class="muted no-fields"
       >
         This item has no fields yet.
@@ -456,6 +622,7 @@ function maskSecret(secret: string): string {
     </section>
 
     <p class="footer muted"><AppIcon name="shield" :size="12" /> End-to-end encrypted with the {{ vaultName }} vault key</p>
+    <ContextMenu v-if="fieldMenu" :label="fieldMenu.label" :x="fieldMenu.x" :y="fieldMenu.y" :all-action="fieldMenu.allAction" @close="fieldMenu = null" />
   </article>
 </template>
 

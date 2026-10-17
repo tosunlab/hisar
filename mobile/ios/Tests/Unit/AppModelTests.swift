@@ -369,6 +369,68 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(model.listAllItemReference().contains { ItemCategoryDestination.logins.includes($0.item) && $0.item.id == savedItem.id })
     }
 
+    func testSaveServerKeepsItsLoginDataAndOnlyHostAndPortInTheList() async {
+        let model = await createUnlockedModel()
+        let server = ItemServer(host: "build.example.com", port: "2222", sshKeyID: "key-1")
+        let item = ItemDetail(category: ItemDetail.categoryServer, title: "Build server", username: "deploy", allURL: ["https://console.example.com"], password: "server-password", server: server)
+        guard let savedItem = await model.saveItem(vaultID: "personal", item: item) else {
+            return XCTFail("server not saved")
+        }
+        XCTAssertTrue(savedItem.isServer)
+        XCTAssertTrue(savedItem.offersLoginFill)
+        XCTAssertEqual(savedItem.server, server)
+        let reference = model.listAllItemReference(vaultID: "personal").first { $0.item.id == savedItem.id }
+        XCTAssertEqual(reference?.item.server, ItemServer(host: "build.example.com", port: "2222"))
+        XCTAssertEqual(reference?.item.server?.summary(username: reference?.item.username ?? ""), "build.example.com:2222 · deploy")
+        XCTAssertEqual(model.listAllItemReference().filter { ItemCategoryDestination.servers.includes($0.item) }.map(\.item.title), ["Build server"])
+    }
+
+    func testSaveDatabaseKeepsItsLoginDataAndNoConnectionStringInTheList() async {
+        let model = await createUnlockedModel()
+        let database = ItemDatabase(engine: "postgresql", engineName: "PostgreSQL", host: "db.example.com", port: "5432", name: "app", options: "sslmode=require", connectionString: "postgresql://app:db-password@db.example.com:5432/app?sslmode=require")
+        let item = ItemDetail(category: ItemDetail.categoryDatabase, title: "Prod db", username: "app", password: "db-password", database: database)
+        guard let savedItem = await model.saveItem(vaultID: "personal", item: item) else {
+            return XCTFail("database not saved")
+        }
+        XCTAssertTrue(savedItem.isDatabase)
+        XCTAssertFalse(savedItem.offersLoginFill)
+        XCTAssertEqual(savedItem.database, database)
+        let reference = model.listAllItemReference(vaultID: "personal").first { $0.item.id == savedItem.id }
+        XCTAssertEqual(reference?.item.database, ItemDatabase(engine: "postgresql", engineName: "PostgreSQL", host: "db.example.com", port: "5432", name: "app"))
+        XCTAssertEqual(reference?.item.database?.summary, "PostgreSQL · db.example.com:5432/app")
+        XCTAssertEqual(model.listAllItemReference().filter { ItemCategoryDestination.databases.includes($0.item) }.map(\.item.title), ["Prod db"])
+        XCTAssertFalse(model.listAllItemReference().contains { ItemCategoryDestination.logins.includes($0.item) && $0.item.id == savedItem.id })
+    }
+
+    func testDatabaseDecodesFromTheBackend() throws {
+        let json = #"{"category":"database","title":"Cache","username":"","database":{"engine":"redis","engineName":"Redis","host":"2001:db8::1","port":"6379","name":"","options":"","connectionString":"redis://[2001:db8::1]:6379","portWarning":""}}"#
+        let item = try JSONDecoder().decode(ItemDetail.self, from: Data(json.utf8))
+        XCTAssertTrue(item.isDatabase)
+        XCTAssertEqual(item.database?.connectionString, "redis://[2001:db8::1]:6379")
+        XCTAssertEqual(item.database?.summary, "Redis · [2001:db8::1]:6379")
+        XCTAssertEqual(ItemDatabase().summary, "Database")
+        XCTAssertEqual(ItemDatabase(engineName: "DB2", name: "app").summary, "DB2 · app")
+        XCTAssertTrue(DatabaseEngine.isKnown("sqlserver"))
+        XCTAssertFalse(DatabaseEngine.isKnown("db2"))
+        let encoded = try XCTUnwrap(String(data: JSONEncoder().encode(item), encoding: .utf8))
+        XCTAssertTrue(encoded.contains(#""database""#) && encoded.contains(#""engine":"redis""#), encoded)
+    }
+
+    func testServerDecodesFromTheBackendAndWarnsAboutItsPort() throws {
+        let json = #"{"category":"server","title":"Database","username":"","server":{"host":"2001:db8::1","port":"5432","sshKeyId":"key-1","sshKeyTitle":"Deploy key","sshKeyFingerprint":"SHA256:abc","portWarning":""}}"#
+        let item = try JSONDecoder().decode(ItemDetail.self, from: Data(json.utf8))
+        XCTAssertTrue(item.isServer)
+        XCTAssertEqual(item.server?.sshKeyTitle, "Deploy key")
+        XCTAssertEqual(item.server?.address, "[2001:db8::1]:5432")
+        XCTAssertEqual(item.server?.summary(username: ""), "[2001:db8::1]:5432")
+        XCTAssertEqual(ItemServer().summary(username: ""), "Server")
+        let encoded = try XCTUnwrap(String(data: JSONEncoder().encode(item), encoding: .utf8))
+        XCTAssertTrue(encoded.contains(#""sshKeyId":"key-1""#) && encoded.contains(#""server""#), encoded)
+        for (port, warning) in ["": "", "22": "", "65535": "", "0": ItemServer.portWarningText, "70000": ItemServer.portWarningText, "ssh": ItemServer.portWarningText, "２２": ItemServer.portWarningText] {
+            XCTAssertEqual(ItemServer.describePort(port), warning, port)
+        }
+    }
+
     func testSaveSoftwareLicenseKeepsOnlyItsSummaryInTheList() async {
         let model = await createUnlockedModel()
         let license = ItemSoftwareLicense(product: "Sketch", version: "100", licenseKey: "TEST-LICENSE-KEY", licensedTo: "Alice Example", email: "alice@example.com", purchaseDate: "2024-03-09", downloadURL: "https://www.sketch.com/download")

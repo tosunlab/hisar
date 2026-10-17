@@ -97,6 +97,22 @@ func (s *Server) handlePutItem(c fiber.Ctx) error {
 	return c.JSON(apitypes.PutItemResponse{Seq: seq})
 }
 
+func (s *Server) handleMoveItem(c fiber.Ctx) error {
+	// A reader is refused before the body is read; MoveItem checks again.
+	if err := s.service.CheckItemWrite(c.Context(), s.getActor(c), c.Params("vault")); err != nil {
+		return err
+	}
+	var request apitypes.MoveItemRequest
+	if err := decodeBodyWithLimit(c, &request, maxMoveBody); err != nil {
+		return err
+	}
+	response, err := s.service.MoveItem(c.Context(), s.getActor(c), c.Params("vault"), c.Params("item"), &request)
+	if err != nil {
+		return err
+	}
+	return c.JSON(response)
+}
+
 func (s *Server) handleGetItemHistory(c fiber.Ctx) error {
 	items, err := s.service.GetItemHistory(c.Context(), s.getActor(c), c.Params("vault"), c.Params("item"))
 	if err != nil {

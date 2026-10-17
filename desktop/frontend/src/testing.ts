@@ -1,5 +1,30 @@
 import { vi } from "vitest";
-import type { ApprovalEvent, FavoriteItem, ShareLink, ShareLinkField, BrowserStatus, CommandLineStatus, Device, ImportPreview, ImportProgress, ItemDetail, LoginItemStatus, Person, ReceivedShareInvitation, SentShareInvitation, SSHAgentStatus, Status, UpdateStatus, VaultActions, VaultMember, VaultSummary } from "./api";
+import type {
+  ApprovalEvent,
+  FavoriteItem,
+  ShareLink,
+  ShareLinkField,
+  BrowserStatus,
+  CommandLineStatus,
+  Device,
+  ImportPreview,
+  ImportProgress,
+  ItemDetail,
+  LoginItemStatus,
+  Organization,
+  OrganizationInvitation,
+  OrganizationMember,
+  Person,
+  ReceivedShareInvitation,
+  SentShareInvitation,
+  SSHAgentStatus,
+  Status,
+  Team,
+  UpdateStatus,
+  VaultActions,
+  VaultMember,
+  VaultSummary,
+} from "./api";
 
 export function createStatus(state: string): Status {
   return { state, server: "https://hisar.test", email: "alice@example.com", name: "Alice", biometricAvailable: false, biometricEnabled: false, biometricReady: false, isOffline: false, autoLockSeconds: 600, signedOutReason: "", updateRequired: null };
@@ -134,6 +159,50 @@ export function createSoftwareLicenseItem(overrides: Partial<ItemDetail> = {}): 
       email: "alice@example.com",
       purchaseDate: "2024-03-09",
       downloadUrl: "https://www.sketch.com/download",
+    },
+    ...overrides,
+  });
+}
+
+export function createServerItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
+  return createItem({
+    id: "build-1",
+    category: "server",
+    title: "Build server",
+    username: "deploy",
+    password: "server-password",
+    urls: ["https://console.example.com"],
+    fields: [{ name: "Provider", value: "Example Cloud", concealed: false }],
+    server: {
+      host: "build.example.com",
+      port: "2222",
+      sshKeyId: "key-1",
+      sshKeyTitle: "Deploy key",
+      sshKeyFingerprint: "SHA256:abc",
+      portWarning: "",
+    },
+    ...overrides,
+  });
+}
+
+export function createDatabaseItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
+  return createItem({
+    id: "db-1",
+    category: "database",
+    title: "Prod db",
+    username: "app",
+    password: "db-password",
+    urls: [],
+    fields: [{ name: "SID", value: "ORCL", concealed: false }],
+    database: {
+      engine: "postgresql",
+      engineName: "PostgreSQL",
+      host: "db.example.com",
+      port: "5432",
+      name: "app",
+      options: "sslmode=require",
+      connectionString: "postgresql://app:db-password@db.example.com:5432/app?sslmode=require",
+      portWarning: "",
     },
     ...overrides,
   });
@@ -422,6 +491,50 @@ export function createVaultMember(overrides: Partial<VaultMember> = {}): VaultMe
 export const testBob = { accountId: "BOB222", name: "Bob Stone", email: "bob@example.com", securityCode: "C0FF EE12 3456 789A", isCurrentUser: false };
 export const testCarol = { accountId: "CAROL3", name: "Carol", email: "carol@example.com", securityCode: "0A1B 2C3D 4E5F 6071", isCurrentUser: false };
 
+export function createOrganizationMember(overrides: Partial<OrganizationMember> = {}): OrganizationMember {
+  return { accountId: "ALICE1", name: "Alice", email: "alice@example.com", role: "admin", securityCode: "3F2A 91C0 7B44 E1D8", isCurrentUser: true, isKeyChanged: false, ...overrides };
+}
+
+export function createOrganizationTeam(overrides: Partial<Team> = {}): Team {
+  return {
+    id: "platform",
+    name: "Platform",
+    members: [
+      { accountId: "ALICE1", name: "Alice", email: "alice@example.com", isCurrentUser: true },
+      { accountId: testBob.accountId, name: testBob.name, email: testBob.email, isCurrentUser: false },
+    ],
+    vaults: [{ vaultId: "deploy", name: "Deploy", role: "owner", canOpen: true }],
+    ...overrides,
+  };
+}
+
+// createOrganizationDetail is Acme as its admin Alice sees it: Bob is a member, both are in Platform, which owns Deploy.
+export function createOrganizationDetail(overrides: Partial<Organization> = {}): Organization {
+  return {
+    id: "acme",
+    name: "Acme",
+    role: "admin",
+    isAdmin: true,
+    members: [createOrganizationMember(), createOrganizationMember({ ...testBob, role: "member" })],
+    teams: [createOrganizationTeam()],
+    invitations: [],
+    ...overrides,
+  };
+}
+
+export function createOrganizationInvitation(overrides: Partial<OrganizationInvitation> = {}): OrganizationInvitation {
+  return {
+    id: "invitation-to-globex",
+    organizationId: "globex",
+    organizationName: "Globex",
+    role: "member",
+    invitedByName: "Ada",
+    invitedByEmail: "ada@example.com",
+    expiresAt: "2026-10-18T09:00:00Z",
+    ...overrides,
+  };
+}
+
 export function createDevice(overrides: Partial<Device> = {}): Device {
   return {
     id: "device-1",
@@ -478,6 +591,8 @@ export function createApiMock() {
     getItem: vi.fn(),
     saveItem: vi.fn(),
     deleteItem: vi.fn(),
+    moveItem: vi.fn(),
+    duplicateItem: vi.fn(),
     listAllFavoriteItem: vi.fn().mockResolvedValue([]),
     setItemFavorite: vi.fn().mockResolvedValue(undefined),
     convertToSecureNote: vi.fn(),
@@ -496,6 +611,27 @@ export function createApiMock() {
     acceptShareInvitation: vi.fn(),
     declineShareInvitation: vi.fn(),
     cancelShareInvitation: vi.fn(),
+    listAllOrganization: vi.fn().mockResolvedValue({ organizations: [], invitations: [] }),
+    getOrganization: vi.fn(),
+    createOrganization: vi.fn(),
+    renameOrganization: vi.fn().mockResolvedValue(undefined),
+    deleteOrganization: vi.fn().mockResolvedValue(undefined),
+    leaveOrganization: vi.fn().mockResolvedValue(undefined),
+    inviteToOrganization: vi.fn().mockResolvedValue(undefined),
+    cancelOrganizationInvitation: vi.fn().mockResolvedValue(undefined),
+    acceptOrganizationInvitation: vi.fn().mockResolvedValue(undefined),
+    declineOrganizationInvitation: vi.fn().mockResolvedValue(undefined),
+    setOrganizationMemberRole: vi.fn().mockResolvedValue(undefined),
+    removeOrganizationMember: vi.fn().mockResolvedValue(undefined),
+    createTeam: vi.fn(),
+    renameTeam: vi.fn().mockResolvedValue(undefined),
+    deleteTeam: vi.fn().mockResolvedValue(undefined),
+    addTeamMember: vi.fn().mockResolvedValue(undefined),
+    removeTeamMember: vi.fn().mockResolvedValue(undefined),
+    giveVaultToTeam: vi.fn().mockResolvedValue(undefined),
+    takeVaultFromTeam: vi.fn().mockResolvedValue(undefined),
+    createOrganizationVault: vi.fn(),
+    listAllWaitingVaultKey: vi.fn().mockResolvedValue({ waiting: [], deliveryError: "", rotationError: "" }),
     listAllShareAwaitingUnlock: vi.fn().mockResolvedValue([]),
     listAllDevice: vi.fn().mockResolvedValue([]),
     revokeDevice: vi.fn(),
@@ -597,6 +733,8 @@ export function createImportPreview(overrides: Partial<ImportPreview> = {}): Imp
     apiCredentialCount: 0,
     addressCount: 0,
     softwareLicenseCount: 0,
+    serverCount: 0,
+    databaseCount: 0,
     allSkipped: [{ title: "Visa", reason: "Bitwarden cards are not supported in Hisar yet" }],
     allDuplicate: [{ title: "GitHub", username: "alice", url: "https://github.com", detail: "alice · github.com" }],
     ...overrides,

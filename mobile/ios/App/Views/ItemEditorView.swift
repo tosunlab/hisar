@@ -68,6 +68,12 @@ struct ItemEditorView: View {
                     buildSoftwareLicenseSection()
                     buildFieldSection()
                 } else if !draft.isSSHKey {
+                    if draft.isServer {
+                        buildServerSection()
+                    }
+                    if draft.isDatabase {
+                        buildDatabaseSection()
+                    }
                     Section("Login") {
                         TextField("Username or email", text: $draft.username)
                             .textInputAutocapitalization(.never)
@@ -104,30 +110,32 @@ struct ItemEditorView: View {
                             .accessibilityIdentifier("editor-generate-password")
                         }
                     }
-                    Section {
-                        TextField("Setup key or otpauth:// link", text: $draft.oneTimePassword)
-                            .font(.system(.body, design: .monospaced))
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .accessibilityIdentifier("editor-one-time-password")
-                    } header: {
-                        Text("One-time password")
-                    } footer: {
-                        Text("The setup key or link from the site's two-factor setup. Hisar then shows the current code.")
-                    }
-                    Section("Websites") {
-                        ForEach(allURLText.indices, id: \.self) { index in
-                            TextField("Website", text: $allURLText[index], prompt: Text(verbatim: "https://example.com"))
-                                .keyboardType(.URL)
+                    if !draft.isDatabase {
+                        Section {
+                            TextField("Setup key or otpauth:// link", text: $draft.oneTimePassword)
+                                .font(.system(.body, design: .monospaced))
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
-                                .accessibilityIdentifier("editor-website-\(index)")
+                                .accessibilityIdentifier("editor-one-time-password")
+                        } header: {
+                            Text("One-time password")
+                        } footer: {
+                            Text("The setup key or link from the site's two-factor setup. Hisar then shows the current code.")
                         }
-                        .onDelete { allURLText.remove(atOffsets: $0) }
-                        Button {
-                            allURLText.append("")
-                        } label: {
-                            Label("Add website", systemImage: "plus")
+                        Section(draft.isServer ? "Admin console" : "Websites") {
+                            ForEach(allURLText.indices, id: \.self) { index in
+                                TextField(draft.isServer ? "Admin console URL" : "Website", text: $allURLText[index], prompt: Text(verbatim: draft.isServer ? "https://console.example.com" : "https://example.com"))
+                                    .keyboardType(.URL)
+                                    .textInputAutocapitalization(.never)
+                                    .autocorrectionDisabled()
+                                    .accessibilityIdentifier("editor-website-\(index)")
+                            }
+                            .onDelete { allURLText.remove(atOffsets: $0) }
+                            Button {
+                                allURLText.append("")
+                            } label: {
+                                Label("Add website", systemImage: "plus")
+                            }
                         }
                     }
                     buildFieldSection()
@@ -207,6 +215,12 @@ struct ItemEditorView: View {
         }
         if draft.isSoftwareLicense, draft.softwareLicense == nil {
             draft.softwareLicense = ItemSoftwareLicense()
+        }
+        if draft.isServer, draft.server == nil {
+            draft.server = ItemServer()
+        }
+        if draft.isDatabase, draft.database == nil {
+            draft.database = ItemDatabase(engine: "postgresql", engineName: "PostgreSQL")
         }
         isOldAddressShown = !(draft.identity?.address ?? "").isEmpty || !(draft.card?.billingAddress ?? "").isEmpty
         if draft.isCreditCard {
@@ -318,6 +332,8 @@ struct ItemEditorView: View {
         if draft.isAPICredential { return "New API credential" }
         if draft.isAddress { return "New address" }
         if draft.isSoftwareLicense { return "New software license" }
+        if draft.isServer { return "New server" }
+        if draft.isDatabase { return "New database" }
         return "New login"
     }
 
@@ -544,6 +560,135 @@ struct ItemEditorView: View {
                 Text(credentialExpiryWarning)
                     .foregroundStyle(.orange)
                     .accessibilityIdentifier("editor-api-credential-warning")
+            }
+        }
+    }
+
+    /// A binding to one of the server's values, creating the server on first write.
+    private func bindServer(_ keyPath: WritableKeyPath<ItemServer, String>) -> Binding<String> {
+        Binding(
+            get: { draft.server?[keyPath: keyPath] ?? "" },
+            set: { value in
+                var server = draft.server ?? ItemServer()
+                server[keyPath: keyPath] = value
+                draft.server = server
+            }
+        )
+    }
+
+    /// The SSH keys a server may use: its vault's, so everyone who sees the server can use the key.
+    private var allVaultSSHKey: [ItemDetail] {
+        model.listAllItemReference(vaultID: vaultID).map(\.item).filter(\.isSSHKey)
+    }
+
+    @ViewBuilder
+    private func buildServerSection() -> some View {
+        let sshKeyID = draft.server?.sshKeyID ?? ""
+        let portWarning = ItemServer.describePort(draft.server?.port ?? "")
+        Section {
+            TextField("Host", text: bindServer(\.host), prompt: Text(verbatim: "server.example.com"))
+                .keyboardType(.URL)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .accessibilityIdentifier("editor-server-host")
+            TextField("Port", text: bindServer(\.port), prompt: Text(verbatim: "22"))
+                .keyboardType(.numberPad)
+                .accessibilityIdentifier("editor-server-port")
+            Picker("SSH key", selection: bindServer(\.sshKeyID)) {
+                Text("None").tag("")
+                if !sshKeyID.isEmpty && !allVaultSSHKey.contains(where: { $0.id == sshKeyID }) {
+                    Text("Missing SSH key").tag(sshKeyID)
+                }
+                ForEach(allVaultSSHKey) { key in
+                    Text(key.title).tag(key.id)
+                }
+            }
+            .accessibilityIdentifier("editor-server-ssh-key")
+        } header: {
+            Text("Server")
+        } footer: {
+            if !portWarning.isEmpty {
+                Text(portWarning)
+                    .foregroundStyle(.orange)
+                    .accessibilityIdentifier("editor-server-port-warning")
+            }
+        }
+    }
+
+    /// A binding to one of the database's values, creating the database on first write.
+    private func bindDatabase(_ keyPath: WritableKeyPath<ItemDatabase, String>) -> Binding<String> {
+        Binding(
+            get: { draft.database?[keyPath: keyPath] ?? "" },
+            set: { value in
+                var database = draft.database ?? ItemDatabase()
+                database[keyPath: keyPath] = value
+                draft.database = database
+            }
+        )
+    }
+
+    /// The engine picker's choice: a known engine's ID, or "other" for any other engine, whose text is edited below it.
+    private var databaseEngineChoice: Binding<String> {
+        Binding(
+            get: {
+                let engine = draft.database?.engine ?? ""
+                return DatabaseEngine.isKnown(engine) ? engine : "other"
+            },
+            set: { choice in
+                let engine = draft.database?.engine ?? ""
+                if choice != "other" {
+                    bindDatabase(\.engine).wrappedValue = choice
+                } else if DatabaseEngine.isKnown(engine) {
+                    bindDatabase(\.engine).wrappedValue = ""
+                }
+            }
+        )
+    }
+
+    @ViewBuilder
+    private func buildDatabaseSection() -> some View {
+        let isOtherEngine = !DatabaseEngine.isKnown(draft.database?.engine ?? "")
+        let portWarning = ItemServer.describePort(draft.database?.port ?? "")
+        Section {
+            Picker("Engine", selection: databaseEngineChoice) {
+                ForEach(DatabaseEngine.allKnown, id: \.id) { engine in
+                    Text(engine.name).tag(engine.id)
+                }
+                Text("Other").tag("other")
+            }
+            .accessibilityIdentifier("editor-database-engine")
+            if isOtherEngine {
+                TextField("Other engine", text: bindDatabase(\.engine), prompt: Text(verbatim: "DB2"))
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .accessibilityIdentifier("editor-database-other-engine")
+            }
+            TextField("Host", text: bindDatabase(\.host), prompt: Text(verbatim: "db.example.com"))
+                .keyboardType(.URL)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .accessibilityIdentifier("editor-database-host")
+            TextField("Port", text: bindDatabase(\.port), prompt: Text(verbatim: "5432"))
+                .keyboardType(.numberPad)
+                .accessibilityIdentifier("editor-database-port")
+            TextField("Database", text: bindDatabase(\.name), prompt: Text(verbatim: "app"))
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .accessibilityIdentifier("editor-database-name")
+            TextField("Options", text: bindDatabase(\.options), prompt: Text(verbatim: "sslmode=require"))
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .accessibilityIdentifier("editor-database-options")
+        } header: {
+            Text("Database")
+        } footer: {
+            if !portWarning.isEmpty {
+                Text(portWarning)
+                    .foregroundStyle(.orange)
+                    .accessibilityIdentifier("editor-database-port-warning")
+            }
+            if isOtherEngine {
+                Text("Hisar builds connection strings only for the engines listed.")
             }
         }
     }

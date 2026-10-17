@@ -31,15 +31,22 @@ const (
 	FeatureAddresses = "addresses"
 	// FeatureSoftwareLicenses: items.save creates software license items from their named fields.
 	FeatureSoftwareLicenses = "software-licenses"
+	// FeatureServers: items.save creates server items from their named fields and login data.
+	FeatureServers = "servers"
+	// FeatureDatabases: items.save creates database items from their named fields and login data.
+	FeatureDatabases = "databases"
 	// FeatureFavorites: favorites.list, favorites.add and favorites.remove; items.import stars Item.IsFavorite items.
 	FeatureFavorites = "favorites"
 	// FeatureTags: items.list and items.get return each item's tags, and items.save takes ItemChange.Tags.
 	FeatureTags = "tags"
+	// FeatureOrganizations: the organizations.*, teams.* requests, vaults.give-to-team, vaults.take-from-team and
+	// vaults.create-organization-vault, and Vault.OrganizationID.
+	FeatureOrganizations = "organizations"
 )
 
 // ListFeatures returns the features this build of the app announces in hello.
 func ListFeatures() []string {
-	return []string{FeatureSecureNotes, FeatureCreditCards, FeatureIdentities, FeatureFavorites, FeatureAPICredentials, FeatureTags, FeatureAddresses, FeatureSoftwareLicenses}
+	return []string{FeatureSecureNotes, FeatureCreditCards, FeatureIdentities, FeatureFavorites, FeatureAPICredentials, FeatureTags, FeatureAddresses, FeatureSoftwareLicenses, FeatureServers, FeatureDatabases, FeatureOrganizations}
 }
 
 // GetCategoryFeature returns the feature an app must announce before items.save may create an item of category, or ""
@@ -50,6 +57,8 @@ func GetCategoryFeature(category string) string {
 		item.CategoryAPICredential:   FeatureAPICredentials,
 		item.CategoryAddress:         FeatureAddresses,
 		item.CategorySoftwareLicense: FeatureSoftwareLicenses,
+		item.CategoryServer:          FeatureServers,
+		item.CategoryDatabase:        FeatureDatabases,
 	}[category]
 }
 
@@ -103,6 +112,29 @@ const (
 	TypeListFavorite   = "favorites.list"
 	TypeAddFavorite    = "favorites.add"
 	TypeRemoveFavorite = "favorites.remove"
+
+	// The organization requests need FeatureOrganizations.
+	TypeListOrganization              = "organizations.list"
+	TypeGetOrganization               = "organizations.get"
+	TypeCreateOrganization            = "organizations.create"
+	TypeRenameOrganization            = "organizations.rename"
+	TypeDeleteOrganization            = "organizations.delete"
+	TypeInviteToOrganization          = "organizations.invite"
+	TypeCancelOrganizationInvitation  = "organizations.cancel-invitation"
+	TypeAcceptOrganizationInvitation  = "organizations.accept"
+	TypeDeclineOrganizationInvitation = "organizations.decline"
+	TypeSetOrganizationRole           = "organizations.set-role"
+	TypeRemoveOrganizationMember      = "organizations.remove-member"
+	TypeLeaveOrganization             = "organizations.leave"
+	TypeCompleteOrganizationKeys      = "organizations.complete-keys"
+	TypeCreateTeam                    = "teams.create"
+	TypeRenameTeam                    = "teams.rename"
+	TypeDeleteTeam                    = "teams.delete"
+	TypeAddTeamMember                 = "teams.add-member"
+	TypeRemoveTeamMember              = "teams.remove-member"
+	TypeGiveVaultToTeam               = "vaults.give-to-team"
+	TypeTakeVaultFromTeam             = "vaults.take-from-team"
+	TypeCreateOrganizationVault       = "vaults.create-organization-vault"
 )
 
 const (

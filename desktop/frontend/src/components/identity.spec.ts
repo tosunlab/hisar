@@ -130,7 +130,7 @@ describe("Creating an identity", () => {
 describe("Viewing an identity", () => {
   it("shows the name and masks the document numbers until revealed", async () => {
     store.selectedItem = createIdentityItem();
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false } });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" } });
     expect(wrapper.find('[data-testid="identity-summary"]').text()).toBe("Alice Example");
     expect(wrapper.find('[data-testid="card-First name"]').text()).toBe("Alice");
     expect(wrapper.find('[data-testid="card-Birth date"]').text()).toBe("1990-04-12");
@@ -145,13 +145,13 @@ describe("Viewing an identity", () => {
 
   it("heads an identity with no name with its email, as the list does", () => {
     store.selectedItem = createIdentityItem({ identity: { ...createIdentityItem().identity!, firstName: "", lastName: "" } });
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false } });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" } });
     expect(wrapper.find('[data-testid="identity-summary"]').text()).toBe("alice@example.com");
   });
 
   it("offers a share link for an identity with only identity values", () => {
     store.selectedItem = createIdentityItem({ notes: "", fields: [] });
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: false, vaultName: "Personal", isShared: false } });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: false, vaultName: "Personal", vaultType: "personal" } });
     expect(wrapper.find('[data-testid="share-link"]').exists()).toBe(true);
   });
 
@@ -188,6 +188,8 @@ describe("Importing identities", () => {
       apiCredentialCount: 0,
       addressCount: 0,
       softwareLicenseCount: 0,
+      serverCount: 0,
+      databaseCount: 0,
       allSkipped: [],
       allDuplicate: [],
     };

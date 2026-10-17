@@ -1,7 +1,7 @@
 import { inject, type InjectionKey } from "vue";
 import type { IconName } from "./components/AppIcon.vue";
 
-export type SettingsSectionID = "general" | "security" | "ssh" | "developer" | "browser" | "people" | "devices" | "export" | "account" | "help";
+export type SettingsSectionID = "general" | "security" | "ssh" | "developer" | "browser" | "people" | "organizations" | "devices" | "export" | "account" | "help";
 
 export interface SettingsRow {
   id: string;
@@ -83,6 +83,16 @@ export const allSettingsSection: SettingsSection[] = [
       { id: "people", title: "People you share with", keywords: "security code fingerprint share" },
       { id: "sent-invitations", title: "Invitations you sent", keywords: "cancel pending share" },
       { id: "invite", title: "Invite to Hisar", keywords: "invite someone email invitation new account sign up" },
+    ],
+  },
+  {
+    id: "organizations",
+    label: "Organizations",
+    icon: "building",
+    allRow: [
+      { id: "organization-invitations", title: "Invitations to organizations", keywords: "accept decline join organization invite" },
+      { id: "organizations", title: "Your organizations", keywords: "organization team teams company members admin vaults security code" },
+      { id: "create-organization", title: "Create organization", keywords: "new organization team company" },
     ],
   },
   {

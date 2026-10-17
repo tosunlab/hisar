@@ -205,7 +205,7 @@ func runAdd(ctx context.Context, access backend, flags *flag.FlagSet, args []str
 	if err := access.checkNewItemCategory(selectedType.category); err != nil {
 		return err
 	}
-	if err := selectedType.prompt(vaultItem); err != nil {
+	if err := promptItemOfType(ctx, access, vault.ID, selectedType, vaultItem); err != nil {
 		return err
 	}
 	if err := access.savePromptedItem(ctx, vault.ID, vaultItem); err != nil {
@@ -232,7 +232,7 @@ func runEdit(ctx context.Context, access backend, flags *flag.FlagSet, args []st
 	if !isFound {
 		return fmt.Errorf("hisar cannot edit %s items; edit it in the Hisar app", vaultItem.Category())
 	}
-	if err := selectedType.prompt(vaultItem); err != nil {
+	if err := promptItemOfType(ctx, access, vault.ID, selectedType, vaultItem); err != nil {
 		return err
 	}
 	if err := access.savePromptedItem(ctx, vault.ID, vaultItem); err != nil {

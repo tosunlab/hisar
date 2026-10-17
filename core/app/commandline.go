@@ -85,6 +85,9 @@ func (bridge *CommandLineBridge) answer(request *cliprotocol.Request) (any, erro
 	if cliprotocol.IsAgentRequest(request.Type) {
 		return bridge.answerAgentRequest(request)
 	}
+	if result, isHandled, err := bridge.answerOrganizationRequest(request); isHandled {
+		return result, err
+	}
 	s := bridge.service
 	switch request.Type {
 	case cliprotocol.TypeAccount:
@@ -278,9 +281,9 @@ func (bridge *CommandLineBridge) saveItem(vaultID string, change *cliprotocol.It
 		detail.Tags = *change.Tags
 	}
 	if change.Fields != nil {
-		// The CLI sends a card's, identity's, API credential's, address's or software license's values as named fields,
+		// The CLI sends a card's, identity's, API credential's, address's, software license's, server's or database's values as named fields,
 		// which replace the ones it read.
-		detail.Card, detail.Identity, detail.APICredential, detail.Address, detail.SoftwareLicense = nil, nil, nil, nil, nil
+		detail.Card, detail.Identity, detail.APICredential, detail.Address, detail.SoftwareLicense, detail.Server, detail.Database = nil, nil, nil, nil, nil, nil, nil
 		detail.Fields = []ItemField{}
 		for _, field := range *change.Fields {
 			detail.Fields = append(detail.Fields, ItemField{Name: field.Name, Value: field.Value, Concealed: field.Concealed})
@@ -323,7 +326,7 @@ func (s *Service) saveCommandLineImports(vaultID string, importedItems []item.It
 	favoriteItemIDs := []string{}
 	for _, vaultItem := range importedItems {
 		vaultItem.ID, vaultItem.Revision = "", ""
-		_, err := s.unlockedSession.SaveItem(ctx, vault, &vaultItem)
+		err := s.saveSessionItem(ctx, vault, &vaultItem)
 		if isImportStoppingError(err) {
 			return result, convertError(err)
 		}
@@ -362,7 +365,7 @@ func (s *Service) getCommandLineVaultActions(vaultID string) (cliprotocol.VaultA
 }
 
 func convertToCommandLineVault(summary VaultSummary) cliprotocol.Vault {
-	return cliprotocol.Vault{ID: summary.ID, Name: summary.Name, Type: summary.Type, Role: summary.Role, ItemCount: summary.ItemCount}
+	return cliprotocol.Vault{ID: summary.ID, Name: summary.Name, Type: summary.Type, Role: summary.Role, ItemCount: summary.ItemCount, OrganizationID: summary.OrganizationID}
 }
 
 func convertToCommandLineSummary(detail ItemDetail) cliprotocol.Item {

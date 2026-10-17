@@ -134,6 +134,35 @@ final class VaultLogicTests: XCTestCase {
         ])
     }
 
+    func testCredentialIdentitiesOfferAServerOnItsAdminConsole() {
+        var server = makeReference("Build server", username: "admin", allURL: ["https://console.example.com"], category: ItemDetail.categoryServer)
+        server.item.server = ItemServer(host: "build.example.com", port: "2222")
+        let note = makeReference("Notes", username: "admin", allURL: ["https://notes.example.com"], category: ItemDetail.categorySecureNote)
+        XCTAssertEqual(VaultLogic.buildAllCredentialIdentity([server, note]), [
+            CredentialIdentityRecord(host: "console.example.com", username: "admin", recordIdentifier: "personal/build server"),
+        ])
+        XCTAssertEqual(VaultLogic.filterAllItem([server, note], searchText: "build.example").map(\.item.title), ["Build server"])
+        XCTAssertEqual(VaultLogic.filterAllItem([server, note], searchText: "2222").map(\.item.title), ["Build server"])
+        XCTAssertEqual(VaultLogic.filterAllItem([server, note], searchText: "build.example.com:2222").map(\.item.title), ["Build server"])
+        var database = makeReference("Database", category: ItemDetail.categoryServer)
+        database.item.server = ItemServer(host: "2001:db8::1", port: "5432")
+        XCTAssertEqual(VaultLogic.filterAllItem([server, database], searchText: "[2001:db8::1]:5432").map(\.item.title), ["Database"])
+        XCTAssertTrue(ItemCategoryDestination.servers.includes(server.item))
+        XCTAssertFalse(ItemCategoryDestination.logins.includes(server.item))
+    }
+
+    func testDatabasesAreFoundByTheirEngineAddressAndName() {
+        var database = makeReference("Prod db", username: "app", category: ItemDetail.categoryDatabase)
+        database.item.database = ItemDatabase(engine: "postgresql", engineName: "PostgreSQL", host: "db.example.com", port: "5432", name: "orders")
+        let note = makeReference("Notes", category: ItemDetail.categorySecureNote)
+        for searchText in ["postgres", "db.example.com:5432/orders", "5432", "orders"] {
+            XCTAssertEqual(VaultLogic.filterAllItem([database, note], searchText: searchText).map(\.item.title), ["Prod db"], searchText)
+        }
+        XCTAssertTrue(VaultLogic.buildAllCredentialIdentity([database]).isEmpty)
+        XCTAssertTrue(ItemCategoryDestination.databases.includes(database.item))
+        XCTAssertFalse(ItemCategoryDestination.logins.includes(database.item))
+    }
+
     func testOneTimeCodeIdentitiesForLoginsWithACode() {
         var withCode = makeReference("GitHub", username: "alice", allURL: ["https://github.com", "github.com/login"])
         withCode.item.hasOneTimePassword = true

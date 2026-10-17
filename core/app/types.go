@@ -47,6 +47,101 @@ type VaultSummary struct {
 	Type      string `json:"type"`
 	Role      string `json:"role"`
 	ItemCount int    `json:"itemCount"`
+	// OrganizationID is set for organization vaults only.
+	OrganizationID string `json:"organizationId,omitempty"`
+}
+
+type OrganizationSummary struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Role        string `json:"role"`
+	MemberCount int    `json:"memberCount"`
+}
+
+// OrganizationInvitation is an invitation to this user's email; ExpiresAt is RFC 3339.
+type OrganizationInvitation struct {
+	ID               string `json:"id"`
+	OrganizationID   string `json:"organizationId"`
+	OrganizationName string `json:"organizationName"`
+	Role             string `json:"role"`
+	InvitedByName    string `json:"invitedByName"`
+	InvitedByEmail   string `json:"invitedByEmail"`
+	ExpiresAt        string `json:"expiresAt"`
+}
+
+type Organizations struct {
+	Organizations []OrganizationSummary    `json:"organizations"`
+	Invitations   []OrganizationInvitation `json:"invitations"`
+}
+
+// OrganizationMember: SecurityCode and IsKeyChanged as for Person.
+type OrganizationMember struct {
+	AccountID     string `json:"accountId"`
+	Name          string `json:"name"`
+	Email         string `json:"email"`
+	Role          string `json:"role"`
+	SecurityCode  string `json:"securityCode"`
+	IsCurrentUser bool   `json:"isCurrentUser"`
+	IsKeyChanged  bool   `json:"isKeyChanged"`
+}
+
+type TeamMember struct {
+	AccountID     string `json:"accountId"`
+	Name          string `json:"name"`
+	Email         string `json:"email"`
+	IsCurrentUser bool   `json:"isCurrentUser"`
+}
+
+// TeamVault is a vault the team was given. Vault names are encrypted, so Name is empty when CanOpen is false:
+// this user has no key for it (yet).
+type TeamVault struct {
+	VaultID string `json:"vaultId"`
+	Name    string `json:"name"`
+	Role    string `json:"role"`
+	CanOpen bool   `json:"canOpen"`
+}
+
+type Team struct {
+	ID      string       `json:"id"`
+	Name    string       `json:"name"`
+	Members []TeamMember `json:"members"`
+	Vaults  []TeamVault  `json:"vaults"`
+}
+
+// SentOrganizationInvitation is a pending invitation to the organization; only admins see them. Times are RFC 3339.
+type SentOrganizationInvitation struct {
+	ID        string `json:"id"`
+	Email     string `json:"email"`
+	Role      string `json:"role"`
+	CreatedAt string `json:"createdAt"`
+	ExpiresAt string `json:"expiresAt"`
+}
+
+// Organization is what its members see of it; Invitations is empty unless IsAdmin.
+type Organization struct {
+	ID          string                       `json:"id"`
+	Name        string                       `json:"name"`
+	Role        string                       `json:"role"`
+	IsAdmin     bool                         `json:"isAdmin"`
+	Members     []OrganizationMember         `json:"members"`
+	Teams       []Team                       `json:"teams"`
+	Invitations []SentOrganizationInvitation `json:"invitations"`
+}
+
+// WaitingVaultKey is an organization vault this user's teams give them that no owner's app has delivered yet.
+type WaitingVaultKey struct {
+	VaultID          string `json:"vaultId"`
+	OrganizationID   string `json:"organizationId"`
+	OrganizationName string `json:"organizationName"`
+	Role             string `json:"role"`
+}
+
+// WaitingVaultKeys: DeliveryError and RotationError say why this app could not deliver a key to someone or rotate a
+// vault it owns, e.g. a changed signing key.
+type WaitingVaultKeys struct {
+	Waiting       []WaitingVaultKey `json:"waiting"`
+	DeliveryError string            `json:"deliveryError"`
+	RotationError string            `json:"rotationError"`
 }
 
 // Person is the user or someone they share a vault with. SecurityCode is derived from their signing key; IsKeyChanged
@@ -175,6 +270,39 @@ type ItemDetail struct {
 	// SoftwareLicense holds a software license's values, stored as named custom fields like an API credential's; summaries
 	// keep only the product, version, licensed-to name and email.
 	SoftwareLicense *ItemSoftwareLicense `json:"softwareLicense,omitempty"`
+	// Server holds a server's host, port and linked SSH key, stored as named custom fields; its username, password and
+	// admin console are the item's own Username, Password and URLs. Summaries keep only the host and port.
+	Server *ItemServer `json:"server,omitempty"`
+	// Database holds a database's engine, host, port, name and options, stored as named custom fields; its username and
+	// password are the item's own. Summaries keep only the engine, host, port and name.
+	Database *ItemDatabase `json:"database,omitempty"`
+}
+
+// ItemDatabase is a database's values besides its login data. Engine is the ID of a known engine (postgresql, mysql,
+// mariadb, sqlserver, oracle, mongodb, redis) or any other engine as typed; EngineName names it. ConnectionString is built
+// from the values and the item's login data, and is "" for another engine or without a host. PortWarning says when the
+// port is not a number from 1 to 65535. SaveItem reads only Engine, Host, Port, Name and Options.
+type ItemDatabase struct {
+	Engine           string `json:"engine"`
+	EngineName       string `json:"engineName"`
+	Host             string `json:"host"`
+	Port             string `json:"port"`
+	Name             string `json:"name"`
+	Options          string `json:"options"`
+	ConnectionString string `json:"connectionString"`
+	PortWarning      string `json:"portWarning"`
+}
+
+// ItemServer is a server's values besides its login data. SSHKeyID names an ssh-key item in the same vault, or is "";
+// SSHKeyTitle and SSHKeyFingerprint describe that key, and are "" when it is gone. PortWarning says when the port is not a
+// number from 1 to 65535. SaveItem reads only Host, Port and SSHKeyID.
+type ItemServer struct {
+	Host              string `json:"host"`
+	Port              string `json:"port"`
+	SSHKeyID          string `json:"sshKeyId"`
+	SSHKeyTitle       string `json:"sshKeyTitle"`
+	SSHKeyFingerprint string `json:"sshKeyFingerprint"`
+	PortWarning       string `json:"portWarning"`
 }
 
 // ItemSoftwareLicense is a software license; the license key is concealed. DownloadURL is a field, not the item's

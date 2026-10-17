@@ -3,6 +3,7 @@ package secretreference
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -19,22 +20,27 @@ const (
 	FieldPublicKey   = "public key"
 	FieldPrivateKey  = "private key"
 	FieldFingerprint = "fingerprint"
+	// FieldConnectionString is a database's connection string, built from its values. Where none is built (another item,
+	// or a database with an engine Hisar does not know or no host), the label names a custom field, as it did before
+	// databases existed; a built string always wins over such a field.
+	FieldConnectionString = "connection string"
 )
 
 // ErrPrivateKeyRefused keeps SSH private keys inside the app; the label stays reserved so no custom field can stand in for it.
 var ErrPrivateKeyRefused = errors.New("SSH private keys never leave Hisar; use the Hisar SSH agent instead")
 
 var builtInFieldsByLabel = map[string]string{
-	"password":      FieldPassword,
-	"username":      FieldUsername,
-	"notes":         FieldNotes,
-	"url":           FieldURL,
-	"otp":           FieldOneTimeCode,
-	"one-time code": FieldOneTimeCode,
-	"code":          FieldOneTimeCode,
-	"public key":    FieldPublicKey,
-	"private key":   FieldPrivateKey,
-	"fingerprint":   FieldFingerprint,
+	"password":          FieldPassword,
+	"username":          FieldUsername,
+	"notes":             FieldNotes,
+	"url":               FieldURL,
+	"otp":               FieldOneTimeCode,
+	"one-time code":     FieldOneTimeCode,
+	"code":              FieldOneTimeCode,
+	"public key":        FieldPublicKey,
+	"private key":       FieldPrivateKey,
+	"fingerprint":       FieldFingerprint,
+	"connection string": FieldConnectionString,
 }
 
 type Vault struct {
@@ -201,7 +207,10 @@ func findItem(items []item.Item, vaultName, query string) (*item.Item, error) {
 func ReadField(vaultItem *item.Item, label string, now time.Time) (string, string, error) {
 	title := vaultItem.Overview.Title
 	builtInField, isBuiltIn := GetBuiltInField(label)
-	if !isBuiltIn {
+	if !isBuiltIn || builtInField == FieldConnectionString && !vaultItem.IsCategory(item.CategoryDatabase) {
+		return readCustomField(vaultItem, label)
+	}
+	if builtInField == FieldConnectionString && vaultItem.ConnectionString() == "" && hasCustomField(vaultItem, label) {
 		return readCustomField(vaultItem, label)
 	}
 	var value string
@@ -222,6 +231,10 @@ func ReadField(vaultItem *item.Item, label string, now time.Time) (string, strin
 		return "", "", ErrPrivateKeyRefused
 	case FieldFingerprint:
 		value = vaultItem.Overview.Fingerprint
+	case FieldConnectionString:
+		if value = vaultItem.ConnectionString(); value == "" {
+			return "", "", fmt.Errorf("item %q has no connection string; it needs a host and an engine Hisar knows", title)
+		}
 	case FieldOneTimeCode:
 		if vaultItem.Details.OneTimePassword == "" {
 			return "", "", fmt.Errorf("item %q has no one-time password", title)
@@ -258,9 +271,15 @@ func readCustomField(vaultItem *item.Item, label string) (string, string, error)
 	return matches[0].Value, matches[0].Name, nil
 }
 
-// CheckCustomFieldLabel tells whether a reference can name the item's custom field with this label.
+// hasCustomField tells whether the item has a custom field with this label, ignoring case.
+func hasCustomField(vaultItem *item.Item, label string) bool {
+	return slices.ContainsFunc(vaultItem.Details.Fields, func(field item.Field) bool { return strings.EqualFold(field.Name, label) })
+}
+
+// CheckCustomFieldLabel tells whether a reference can name the item's custom field with this label. A "Connection
+// string" field can be named wherever no connection string is built, which is where ReadField reads it.
 func CheckCustomFieldLabel(vaultItem *item.Item, label string) error {
-	if _, isBuiltIn := GetBuiltInField(label); isBuiltIn {
+	if builtInField, isBuiltIn := GetBuiltInField(label); isBuiltIn && (builtInField != FieldConnectionString || vaultItem.ConnectionString() != "") {
 		return fmt.Errorf("%q is also the name of a built-in field; rename the custom field to reference it", label)
 	}
 	count := 0

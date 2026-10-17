@@ -34,6 +34,8 @@ func New(baseURL string) *Client {
 type APIError struct {
 	Status  int
 	Message string
+	// IsKeyChanged marks the 409 that refused items sealed with a key a rotation replaced (apitypes.KeyChangedResponse).
+	IsKeyChanged bool
 }
 
 func (e *APIError) Error() string { return fmt.Sprintf("server: %s (%d)", e.Message, e.Status) }
@@ -77,6 +79,13 @@ func IsStatus(err error, status int) bool {
 	return errors.As(err, &apiError) && apiError.Status == status
 }
 
+// IsKeyChanged reports whether err is, or wraps, the server refusing items sealed with a key a rotation replaced: the
+// vault must be reloaded and the items sealed again with its current key.
+func IsKeyChanged(err error) bool {
+	var apiError *APIError
+	return errors.As(err, &apiError) && apiError.IsKeyChanged
+}
+
 // IsUnreachable reports a failed connection or a reverse proxy that cannot reach the server.
 func IsUnreachable(err error) bool {
 	var urlError *url.Error
@@ -86,7 +95,8 @@ func IsUnreachable(err error) bool {
 	return IsStatus(err, http.StatusBadGateway) || IsStatus(err, http.StatusServiceUnavailable) || IsStatus(err, http.StatusGatewayTimeout)
 }
 
-// sendRequest sends a JSON request; for a 409 the body is decoded into conflict when non-nil.
+// sendRequest sends a JSON request; for a 409 that is not an apitypes.KeyChangedResponse the body is decoded into conflict
+// when non-nil.
 func (c *Client) sendRequest(ctx context.Context, method, path string, header http.Header, input, output, conflict any) error {
 	var body io.Reader
 	if input != nil {
@@ -122,6 +132,12 @@ func (c *Client) sendRequest(ctx context.Context, method, path string, header ht
 
 	if response.StatusCode == http.StatusUpgradeRequired {
 		return c.readUpgradeRequired(data)
+	}
+	if response.StatusCode == http.StatusConflict {
+		var keyChanged apitypes.KeyChangedResponse
+		if json.Unmarshal(data, &keyChanged) == nil && keyChanged.IsKeyChanged {
+			return &APIError{Status: response.StatusCode, Message: keyChanged.Error, IsKeyChanged: true}
+		}
 	}
 	if response.StatusCode == http.StatusConflict && conflict != nil {
 		if err := json.Unmarshal(data, conflict); err != nil {
@@ -277,7 +293,7 @@ func (c *Client) ListChanges(ctx context.Context, vaultID string, since int64, l
 	return &response, c.sendRequest(ctx, "GET", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/changes?"+query.Encode(), nil, nil, &response, nil)
 }
 
-// PutItem returns the server's current item on a 409 (nil if the item does not exist).
+// PutItem returns the server's current item on a 409 (nil if the item does not exist, or for IsKeyChanged).
 func (c *Client) PutItem(ctx context.Context, vaultID, itemID, baseRevision string, request *apitypes.PutItemRequest) (int64, *apitypes.Item, error) {
 	header := http.Header{}
 	if baseRevision != "" {
@@ -290,6 +306,18 @@ func (c *Client) PutItem(ctx context.Context, vaultID, itemID, baseRevision stri
 		return 0, conflict.Current, err
 	}
 	return response.Seq, nil, err
+}
+
+// MoveItem moves an item to another vault, keeping its ID. On a 409 the current item is returned when the item changed in
+// the source vault; it is nil when the item is gone, the target vault already has it, or for IsKeyChanged.
+func (c *Client) MoveItem(ctx context.Context, vaultID, itemID string, request *apitypes.MoveItemRequest) (*apitypes.MoveItemResponse, *apitypes.Item, error) {
+	var response apitypes.MoveItemResponse
+	var conflict apitypes.ConflictResponse
+	err := c.sendRequest(ctx, "POST", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/items/"+url.PathEscape(itemID)+"/move", nil, request, &response, &conflict)
+	if IsStatus(err, http.StatusConflict) {
+		return nil, conflict.Current, err
+	}
+	return &response, nil, err
 }
 
 func (c *Client) CreateShareLink(ctx context.Context, request *apitypes.CreateShareLinkRequest) (*apitypes.ShareLink, error) {

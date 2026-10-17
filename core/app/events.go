@@ -37,7 +37,8 @@ func (s *Service) watchEvents(ctx context.Context, apiClient *apiclient.Client, 
 		}()
 		err := apiClient.StreamEvents(streamContext, func(event apiclient.Event) {
 			switch event.Name {
-			case apitypes.EventVaultChanged, apitypes.EventVaultsChanged, apitypes.EventShareInvitationsChanged, apitypes.EventAccountPreferencesChanged:
+			case apitypes.EventVaultChanged, apitypes.EventVaultsChanged, apitypes.EventShareInvitationsChanged, apitypes.EventAccountPreferencesChanged,
+				apitypes.EventOrganizationsChanged:
 				select {
 				case pendingSyncs <- struct{}{}:
 				default:
@@ -113,6 +114,7 @@ func (s *Service) syncVaults(ctx context.Context) bool {
 		return false
 	}
 	s.completeAcceptedShares(ctx)
+	s.completeOrganizationKeys(ctx)
 	if !s.reloadAllVaultItem(ctx) {
 		return false
 	}

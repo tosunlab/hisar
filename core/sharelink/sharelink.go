@@ -89,7 +89,8 @@ func ListAvailableFieldKeys(vaultItem *item.Item) []string {
 		keys = append(keys, FieldURLs)
 	}
 	for index, field := range vaultItem.Details.Fields {
-		if field.Value != "" {
+		// A server's SSH key field holds the ID of an item the recipient cannot open.
+		if field.Value != "" && !(vaultItem.IsCategory(item.CategoryServer) && strings.EqualFold(field.Name, item.FieldSSHKey)) {
 			keys = append(keys, GetCustomFieldKey(index))
 		}
 	}
