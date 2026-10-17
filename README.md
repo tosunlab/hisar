@@ -127,7 +127,8 @@ command with them for that hour. A value from `get_secret` is in the agent's tra
 
 ## Development
 
-Requires Go 1.26+ and Docker (for Postgres).
+Requires Go 1.26+, Docker (for Postgres) and Node 24 (`make build` runs `npm ci` and Vite to build the admin dashboard into
+`hisar-server`).
 
 ```sh
 docker run -d --name hisar-pg -e POSTGRES_PASSWORD=hisar -e POSTGRES_DB=hisar -p 127.0.0.1:55432:5432 postgres:18
@@ -154,8 +155,10 @@ tested as its pull request. A new push to a pull request cancels its running CI.
 `.github/workflows/ci.yml` (Linux runners): gofmt, vet, all Go tests against Postgres (failing on any skipped test except the
 `TestIntegration…` tests and `TestRecordOpenSSHFixture`), the CLI for every release platform, the end-to-end test of the built
 binaries, the server Docker image for amd64 and arm64 (built into a throwaway registry and booted, never pushed), the desktop frontend
-(typecheck, tests, bundle check) and the desktop app's Linux build (both only when the pull request changes the desktop app or what it builds from, as below), the extension (tests, Chromium end-to-end tests, zip) and the
-share link page in Chromium against the server.
+(typecheck, tests, bundle check) and the desktop app's Linux build (both only when the pull request changes the desktop app or what it builds from, as below), the extension (tests, Chromium end-to-end tests, zip),
+the share link page in Chromium against the server, and the admin dashboard (typecheck, tests, the `admin/src/themes.css`
+freshness check and Chromium end-to-end tests against the server; only when the pull request changes `admin/`, `server/`,
+`core/`, `go.work` or the workflow).
 
 `.github/workflows/macos.yml` builds the Mac app (Touch ID and Sparkle tests, bundle and signature checks) and the iPhone app
 (HisarKit, Xcode project check, unit tests, UI tests against a local server) on GitHub's `macos-26` runners with Xcode 26.6. macOS
