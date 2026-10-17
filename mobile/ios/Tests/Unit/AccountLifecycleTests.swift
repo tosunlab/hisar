@@ -82,7 +82,6 @@ final class AccountLifecycleTests: XCTestCase {
         XCTAssertEqual(model.screen, .signedOut)
         XCTAssertEqual(model.status.server, server, "the sign-in form opens on the server this iPhone used")
         XCTAssertEqual(model.status.email, "")
-        XCTAssertFalse(SignInView.isDefaultServer(server), "a self-hosted server shows the Server field filled in")
     }
 
     func testChangeMasterPassword() async {

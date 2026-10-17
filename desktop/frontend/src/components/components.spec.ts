@@ -172,10 +172,12 @@ describe("SignInView", () => {
     expect(wrapper.find('[data-testid="use-different-server"]').exists()).toBe(false);
   });
 
-  it("shows the server field right away for a server other than the hosted one", () => {
+  it("keeps another server behind the disclosure too, naming it", async () => {
     const wrapper = mount(SignInView);
+    expect(wrapper.find('input[name="server"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="sign-in-server"]').text()).toBe("Signs in to hisar.test.");
+    await wrapper.find('[data-testid="use-different-server"]').trigger("click");
     expect((wrapper.find('input[name="server"]').element as HTMLInputElement).value).toBe("hisar.test");
-    expect(wrapper.find('[data-testid="use-different-server"]').exists()).toBe(false);
   });
 
   it("signs back in to the server the Mac used before signing out", async () => {
@@ -184,7 +186,8 @@ describe("SignInView", () => {
     api.signIn.mockResolvedValue(createStatus("unlocked"));
     api.listAllVault.mockResolvedValue([]);
     const wrapper = mount(SignInView);
-    expect((wrapper.find('input[name="server"]').element as HTMLInputElement).value).toBe("http://127.0.0.1:8080");
+    expect(wrapper.find('input[name="server"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="sign-in-server"]').text()).toBe("Signs in to http://127.0.0.1:8080.");
     expect((wrapper.find('input[name="email"]').element as HTMLInputElement).value).toBe("");
     await wrapper.find('input[name="email"]').setValue("alice@example.com");
     await wrapper.find('input[name="secretKey"]').setValue("H1-KEY");
