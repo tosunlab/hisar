@@ -107,7 +107,7 @@ test("refuses a member on the sign-in screen and keeps no token", async ({ page 
   expect(allPageError).toEqual([]);
 });
 
-test("shows the desktop app's message for a wrong master password", async ({ page }) => {
+test("shows the wrong-credentials message without a server for a wrong master password", async ({ page }) => {
   await page.goto(`${fixture.baseURL}/admin`);
   await fillSignIn(page, fixture, "not the master password");
   await page.getByRole("button", { name: "Sign in" }).click();
