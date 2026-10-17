@@ -73,6 +73,17 @@ final class AccountLifecycleTests: XCTestCase {
         XCTAssertEqual(status.signedOutReason, "This device was signed out.")
     }
 
+    func testSigningOutKeepsTheServerForSigningBackIn() async {
+        let model = await createUnlockedModel()
+        let server = model.status.server
+        XCTAssertFalse(server.isEmpty)
+        let isSignedOut = await model.signOut()
+        XCTAssertTrue(isSignedOut)
+        XCTAssertEqual(model.screen, .signedOut)
+        XCTAssertEqual(model.status.server, server, "the sign-in form opens on the server this iPhone used")
+        XCTAssertEqual(model.status.email, "")
+    }
+
     func testChangeMasterPassword() async {
         let model = await createUnlockedModel()
         let refused = await model.changeMasterPassword(currentPassword: "wrong", newPassword: "a new master password")

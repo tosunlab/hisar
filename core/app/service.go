@@ -116,6 +116,10 @@ func (s *Service) buildStatus() Status {
 	status := Status{State: StateSignedOut, Server: s.state.Server, Email: s.state.Email, Name: s.name}
 	if !s.state.IsLoggedIn() {
 		status.SignedOutReason = s.signedOutReason
+		if status.Server == "" {
+			// Signed out, the sign-in form starts from the server this device last used, never only the default one.
+			status.Server = s.state.LastServer
+		}
 	}
 	switch {
 	case s.unlockedSession != nil:
