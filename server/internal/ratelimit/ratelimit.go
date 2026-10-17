@@ -55,3 +55,13 @@ func (limiter *Limiter) Allow(key string) bool {
 	entry.seen = now
 	return entry.limiter.Allow()
 }
+
+// SetBurst changes the burst of every key, the ones seen so far included, without forgetting what they have used.
+func (limiter *Limiter) SetBurst(burst int) {
+	limiter.mutex.Lock()
+	defer limiter.mutex.Unlock()
+	limiter.burst = burst
+	for _, entry := range limiter.buckets {
+		entry.limiter.SetBurst(burst)
+	}
+}
