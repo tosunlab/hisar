@@ -30,6 +30,7 @@ final class OrganizationUITests: HisarUITestCase {
         XCTAssertTrue(deployVault.label.contains("Organization · Editor"), deployVault.label)
         XCTAssertTrue(auditVault.label.contains("Organization · Reader"), auditVault.label)
         let northwindSection = findElement("organization-section-Northwind")
+        waitFor(northwindSection)
         XCTAssertLessThan(northwindSection.frame.minY, min(deployVault.frame.minY, auditVault.frame.minY), "both vaults are listed under Northwind")
         saveScreenshot("organization-vaults")
 

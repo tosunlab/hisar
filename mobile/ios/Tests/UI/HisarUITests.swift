@@ -145,6 +145,7 @@ final class HisarUITests: HisarUITestCase {
         goBack()
         openTab("Search")
         type("git", into: app.searchFields.firstMatch)
+        waitFor(app.buttons["item-GitHub"])
         saveScreenshot("search")
         let closeSearchButton = app.buttons["Close"].exists ? app.buttons["Close"] : app.buttons["Cancel"]
         closeSearchButton.firstMatch.tap()
@@ -227,13 +228,16 @@ final class HisarUITests: HisarUITestCase {
         waitFor(useDifferentServerButton)
         XCTAssertFalse(app.textFields["sign-in-server"].exists)
         useDifferentServerButton.tap()
-        XCTAssertEqual(app.textFields["sign-in-server"].value as? String, "https://api.tryhisar.com")
+        let serverField = app.textFields["sign-in-server"]
+        waitFor(serverField)
+        XCTAssertEqual(serverField.value as? String, "https://api.tryhisar.com")
     }
 
     func testPrivacyCoverHidesContentInTheBackground() throws {
         app.launch()
+        waitFor(app.segmentedControls["sign-in-mode"])
         XCUIDevice.shared.press(.home)
-        _ = app.wait(for: .runningBackground, timeout: 10) || app.wait(for: .runningBackgroundSuspended, timeout: 10)
+        XCTAssertTrue(app.wait(for: .runningBackground, timeout: 10) || app.wait(for: .runningBackgroundSuspended, timeout: 10))
         app.activate()
         waitFor(app.segmentedControls["sign-in-mode"])
         XCTAssertFalse(app.otherElements["privacy-cover"].exists, "the cover goes away once the app is active")
