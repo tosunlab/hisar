@@ -13,51 +13,64 @@ import (
 )
 
 type knownBrowser struct {
-	name              string
+	name string
+	// userDataDirectory holds Local State once the browser has run.
 	userDataDirectory string
+	// hostDirectory is where the browser looks for NativeMessagingHosts; empty means userDataDirectory, as in stock Chromium.
+	hostDirectory string
 }
 
-// getKnownBrowsers lists Chromium browsers by their user data directory: it holds NativeMessagingHosts, and Local State once the browser has run.
+// getKnownBrowsers lists Chromium browsers by their user data directory.
 func getKnownBrowsers(homeDirectory, operatingSystem string) []knownBrowser {
 	if operatingSystem == "darwin" {
 		support := filepath.Join(homeDirectory, "Library", "Application Support")
+		chrome := filepath.Join(support, "Google", "Chrome")
 		return []knownBrowser{
-			{"Google Chrome", filepath.Join(support, "Google", "Chrome")},
-			{"Google Chrome Beta", filepath.Join(support, "Google", "Chrome Beta")},
-			{"Google Chrome Dev", filepath.Join(support, "Google", "Chrome Dev")},
-			{"Google Chrome Canary", filepath.Join(support, "Google", "Chrome Canary")},
-			{"Chromium", filepath.Join(support, "Chromium")},
-			{"Brave", filepath.Join(support, "BraveSoftware", "Brave-Browser")},
-			{"Brave Beta", filepath.Join(support, "BraveSoftware", "Brave-Browser-Beta")},
-			{"Brave Nightly", filepath.Join(support, "BraveSoftware", "Brave-Browser-Nightly")},
-			{"Microsoft Edge", filepath.Join(support, "Microsoft Edge")},
-			{"Microsoft Edge Beta", filepath.Join(support, "Microsoft Edge Beta")},
-			{"Microsoft Edge Dev", filepath.Join(support, "Microsoft Edge Dev")},
-			{"Microsoft Edge Canary", filepath.Join(support, "Microsoft Edge Canary")},
-			{"Arc", filepath.Join(support, "Arc", "User Data")},
-			{"Dia", filepath.Join(support, "Dia", "User Data")},
-			{"Vivaldi", filepath.Join(support, "Vivaldi")},
-			{"Vivaldi Snapshot", filepath.Join(support, "Vivaldi Snapshot")},
-			{"Opera", filepath.Join(support, "com.operasoftware.Opera")},
-			{"Opera GX", filepath.Join(support, "com.operasoftware.OperaGX")},
+			{name: "Google Chrome", userDataDirectory: chrome},
+			{name: "Google Chrome Beta", userDataDirectory: filepath.Join(support, "Google", "Chrome Beta")},
+			{name: "Google Chrome Dev", userDataDirectory: filepath.Join(support, "Google", "Chrome Dev")},
+			{name: "Google Chrome Canary", userDataDirectory: filepath.Join(support, "Google", "Chrome Canary")},
+			{name: "Chromium", userDataDirectory: filepath.Join(support, "Chromium")},
+			{name: "Brave", userDataDirectory: filepath.Join(support, "BraveSoftware", "Brave-Browser")},
+			{name: "Brave Beta", userDataDirectory: filepath.Join(support, "BraveSoftware", "Brave-Browser-Beta")},
+			{name: "Brave Nightly", userDataDirectory: filepath.Join(support, "BraveSoftware", "Brave-Browser-Nightly")},
+			{name: "Microsoft Edge", userDataDirectory: filepath.Join(support, "Microsoft Edge")},
+			{name: "Microsoft Edge Beta", userDataDirectory: filepath.Join(support, "Microsoft Edge Beta")},
+			{name: "Microsoft Edge Dev", userDataDirectory: filepath.Join(support, "Microsoft Edge Dev")},
+			{name: "Microsoft Edge Canary", userDataDirectory: filepath.Join(support, "Microsoft Edge Canary")},
+			{name: "Arc", userDataDirectory: filepath.Join(support, "Arc", "User Data")},
+			// Dia (ArcCore 1.53) ignores NativeMessagingHosts in its own user data directory and reads Chrome's.
+			{name: "Dia", userDataDirectory: filepath.Join(support, "Dia", "User Data"), hostDirectory: chrome},
+			{name: "Vivaldi", userDataDirectory: filepath.Join(support, "Vivaldi")},
+			{name: "Vivaldi Snapshot", userDataDirectory: filepath.Join(support, "Vivaldi Snapshot")},
+			{name: "Opera", userDataDirectory: filepath.Join(support, "com.operasoftware.Opera")},
+			{name: "Opera GX", userDataDirectory: filepath.Join(support, "com.operasoftware.OperaGX")},
 		}
 	}
 	config := filepath.Join(homeDirectory, ".config")
 	return []knownBrowser{
-		{"Google Chrome", filepath.Join(config, "google-chrome")},
-		{"Google Chrome Beta", filepath.Join(config, "google-chrome-beta")},
-		{"Google Chrome Dev", filepath.Join(config, "google-chrome-unstable")},
-		{"Chromium", filepath.Join(config, "chromium")},
-		{"Brave", filepath.Join(config, "BraveSoftware", "Brave-Browser")},
-		{"Brave Beta", filepath.Join(config, "BraveSoftware", "Brave-Browser-Beta")},
-		{"Brave Nightly", filepath.Join(config, "BraveSoftware", "Brave-Browser-Nightly")},
-		{"Microsoft Edge", filepath.Join(config, "microsoft-edge")},
-		{"Microsoft Edge Beta", filepath.Join(config, "microsoft-edge-beta")},
-		{"Microsoft Edge Dev", filepath.Join(config, "microsoft-edge-dev")},
-		{"Vivaldi", filepath.Join(config, "vivaldi")},
-		{"Vivaldi Snapshot", filepath.Join(config, "vivaldi-snapshot")},
-		{"Opera", filepath.Join(config, "opera")},
+		{name: "Google Chrome", userDataDirectory: filepath.Join(config, "google-chrome")},
+		{name: "Google Chrome Beta", userDataDirectory: filepath.Join(config, "google-chrome-beta")},
+		{name: "Google Chrome Dev", userDataDirectory: filepath.Join(config, "google-chrome-unstable")},
+		{name: "Chromium", userDataDirectory: filepath.Join(config, "chromium")},
+		{name: "Brave", userDataDirectory: filepath.Join(config, "BraveSoftware", "Brave-Browser")},
+		{name: "Brave Beta", userDataDirectory: filepath.Join(config, "BraveSoftware", "Brave-Browser-Beta")},
+		{name: "Brave Nightly", userDataDirectory: filepath.Join(config, "BraveSoftware", "Brave-Browser-Nightly")},
+		{name: "Microsoft Edge", userDataDirectory: filepath.Join(config, "microsoft-edge")},
+		{name: "Microsoft Edge Beta", userDataDirectory: filepath.Join(config, "microsoft-edge-beta")},
+		{name: "Microsoft Edge Dev", userDataDirectory: filepath.Join(config, "microsoft-edge-dev")},
+		{name: "Vivaldi", userDataDirectory: filepath.Join(config, "vivaldi")},
+		{name: "Vivaldi Snapshot", userDataDirectory: filepath.Join(config, "vivaldi-snapshot")},
+		{name: "Opera", userDataDirectory: filepath.Join(config, "opera")},
 	}
+}
+
+func (browser knownBrowser) getManifestPath() string {
+	hostDirectory := browser.hostDirectory
+	if hostDirectory == "" {
+		hostDirectory = browser.userDataDirectory
+	}
+	return filepath.Join(hostDirectory, "NativeMessagingHosts", browserprotocol.HostName+".json")
 }
 
 func buildHostManifest(hostPath string) ([]byte, error) {
@@ -80,7 +93,7 @@ func installHostManifests(homeDirectory, hostPath, operatingSystem string) []bro
 	manifest, manifestErr := buildHostManifest(hostPath)
 	installations := []browserprotocol.BrowserInstallation{}
 	for _, browser := range getKnownBrowsers(homeDirectory, operatingSystem) {
-		installation := browserprotocol.BrowserInstallation{Name: browser.name, ManifestPath: filepath.Join(browser.userDataDirectory, "NativeMessagingHosts", browserprotocol.HostName+".json")}
+		installation := browserprotocol.BrowserInstallation{Name: browser.name, ManifestPath: browser.getManifestPath()}
 		err := manifestErr
 		if err == nil {
 			err = writeFileIfChanged(installation.ManifestPath, manifest)
