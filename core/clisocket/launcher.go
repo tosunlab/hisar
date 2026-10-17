@@ -1,8 +1,13 @@
 package clisocket
 
 import (
+	"cmp"
 	"context"
+	"fmt"
+	"slices"
 	"time"
+
+	"github.com/tryhisar/hisar/core/cliprotocol"
 )
 
 // AppIdentity is the signed app a caller without a terminal runs in, as macOS verified it: the bundle path and the
@@ -49,10 +54,113 @@ type LauncherApproval struct {
 
 // ListLaunchers returns the apps approved as launchers, most recently used first.
 func (approvals *SessionApprovals) ListLaunchers() []LauncherApproval {
-	panic("not implemented")
+	approvals.mutex.Lock()
+	defer approvals.mutex.Unlock()
+	launchers := make([]LauncherApproval, 0, len(approvals.launchers.lastUsedByScope))
+	for scope, lastUsedAt := range approvals.launchers.lastUsedByScope {
+		launchers = append(launchers, LauncherApproval{App: scope.app, LastUsedAt: lastUsedAt})
+	}
+	slices.SortFunc(launchers, func(first, second LauncherApproval) int {
+		return cmp.Or(second.LastUsedAt.Compare(first.LastUsedAt), cmp.Compare(first.App.Path, second.App.Path), cmp.Compare(first.App.TeamID, second.App.TeamID))
+	})
+	return launchers
 }
 
-// RevokeLauncher ends the launcher approval of every app at appPath, so its next request asks again. Idempotent.
+// RevokeLauncher ends the launcher approval of every app at appPath, so its next request asks again. A dialog already
+// open for it still counts when it is answered: the user approved after revoking. Idempotent.
 func (approvals *SessionApprovals) RevokeLauncher(appPath string) {
-	panic("not implemented")
+	approvals.mutex.Lock()
+	defer approvals.mutex.Unlock()
+	for scope := range approvals.launchers.lastUsedByScope {
+		if scope.app.Path == appPath {
+			delete(approvals.launchers.lastUsedByScope, scope)
+		}
+	}
+}
+
+// launcherRule is what the server checks before the handler answers a launcher request.
+type launcherRule struct {
+	// isApprovalNeeded: the request reads the vaults or writes the clipboard, so it needs a signed-in Hisar and the
+	// launcher's approval, whose dialog unlocks a locked Hisar. Generating a password and locking reveal nothing.
+	isApprovalNeeded bool
+	// check refuses a request of the wrong shape before any dialog opens; nil checks nothing.
+	check func(request *cliprotocol.Request) error
+}
+
+// getLauncherRule knows every launcher request but launcher.hello, which the server answers itself.
+func getLauncherRule(requestType string) (launcherRule, bool) {
+	switch requestType {
+	case cliprotocol.TypeLauncherListItem:
+		return launcherRule{isApprovalNeeded: true}, true
+	case cliprotocol.TypeLauncherGetCode, cliprotocol.TypeLauncherReadPassword:
+		return launcherRule{isApprovalNeeded: true, check: checkLauncherItem}, true
+	case cliprotocol.TypeLauncherCopyField:
+		return launcherRule{isApprovalNeeded: true, check: checkLauncherCopy}, true
+	case cliprotocol.TypeLauncherGeneratePassword, cliprotocol.TypeLauncherLock:
+		return launcherRule{}, true
+	}
+	return launcherRule{}, false
+}
+
+func checkLauncherItem(request *cliprotocol.Request) error {
+	if request.VaultID == "" || request.ItemID == "" {
+		return cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "name the vault and the item")
+	}
+	return nil
+}
+
+func checkLauncherCopy(request *cliprotocol.Request) error {
+	if err := checkLauncherItem(request); err != nil {
+		return err
+	}
+	if !cliprotocol.IsLauncherField(request.Field) {
+		return cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "copy the username, password or one-time code")
+	}
+	return nil
+}
+
+// startLauncherConnection turns a command-line connection into a launcher connection. A launcher is an app macOS
+// verified, running outside a terminal, so an approval that lasts until Hisar locks is never keyed by a terminal session
+// or shared by callers nobody can name.
+func (s *Server) startLauncherConnection(client *connectionPeer, hello cliprotocol.HelloResult) (any, error) {
+	if client.kind != connectionCommandLine {
+		return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "this connection already belongs to an agent or a launcher")
+	}
+	if client.scope.getCoverage() != CoverageApp {
+		return nil, cliprotocol.NewError(cliprotocol.ErrorDenied, "Hisar answers launchers only in an app macOS can verify, outside a terminal")
+	}
+	client.kind = connectionLauncher
+	return cliprotocol.LauncherHelloResult{IsApproved: s.isApproved(client, hello)}, nil
+}
+
+func (s *Server) answerLauncherRequest(ctx context.Context, client *connectionPeer, hello cliprotocol.HelloResult, request *cliprotocol.Request) (any, error) {
+	rule, isKnown := getLauncherRule(request.Type)
+	if !isKnown {
+		return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, fmt.Sprintf("unknown request type %q", request.Type))
+	}
+	if rule.check != nil {
+		if err := rule.check(request); err != nil {
+			return nil, err
+		}
+	}
+	if rule.isApprovalNeeded {
+		if hello.State == cliprotocol.StateSignedOut {
+			return nil, cliprotocol.NewError(cliprotocol.ErrorSignedOut, "the Hisar app is not signed in; sign in there")
+		}
+		approvals := s.config.Approvals
+		if err := approvals.require(&approvals.launchers, client.scope, func() error { return s.askLauncherApproval(ctx, client) }); err != nil {
+			return nil, convertDenial(err)
+		}
+	}
+	return s.config.Handler.HandleRequest(ctx, request)
+}
+
+func (s *Server) askLauncherApproval(ctx context.Context, client *connectionPeer) error {
+	if s.config.LauncherApprover == nil {
+		return ErrDenied
+	}
+	request := LauncherApprovalRequest{App: client.scope.app, ClientPID: client.peer.PID}
+	request.ClientPath, _ = s.config.PeerResolver.GetProcessPath(client.peer.PID)
+	request.ParentPID, _ = s.config.PeerResolver.GetParentPID(client.peer.PID)
+	return s.config.LauncherApprover.ApproveLauncher(ctx, request)
 }

@@ -178,10 +178,10 @@ func checkAgentRequest(kind string, request *cliprotocol.Request) error {
 }
 
 func (s *Server) startAgentConnection(client *connectionPeer, request *cliprotocol.Request) (any, error) {
-	if client.agent != nil {
-		return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "this connection already belongs to an agent")
+	if client.kind != connectionCommandLine {
+		return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "this connection already belongs to an agent or a launcher")
 	}
-	client.agent = &AgentIdentity{Name: request.AgentName, Title: request.AgentTitle, Version: request.AgentVersion}
+	client.kind, client.agent = connectionAgent, AgentIdentity{Name: request.AgentName, Title: request.AgentTitle, Version: request.AgentVersion}
 	return struct{}{}, nil
 }
 
@@ -258,7 +258,7 @@ func (s *Server) askAgentApproval(ctx context.Context, client *connectionPeer, k
 		return AgentApprovalResult{}, convertDenial(ErrDenied)
 	}
 	approvalRequest := AgentApprovalRequest{
-		ClientPID: client.peer.PID, TerminalName: client.session.TerminalName, Agent: *client.agent, Kind: kind,
+		ClientPID: client.peer.PID, TerminalName: client.session.TerminalName, Agent: client.agent, Kind: kind,
 		IsConnectionApproval: !s.config.Approvals.IsAgentConnectionApproved(client.connectionID),
 	}
 	approvalRequest.ClientPath, _ = s.config.PeerResolver.GetProcessPath(client.peer.PID)

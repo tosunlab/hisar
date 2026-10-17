@@ -77,7 +77,7 @@ type pendingApproval struct {
 
 // scopeApprovals is one memory of approved scopes: when each was last used, and the dialog open for each.
 type scopeApprovals struct {
-	// idleLifetime ends an approval that long after its last request; 0 keeps it until ClearAll.
+	// idleLifetime ends an approval that long after its last request; 0 keeps it until ClearAll or RevokeLauncher.
 	idleLifetime    time.Duration
 	lastUsedByScope map[approvalScope]time.Time
 	pendingByScope  map[approvalScope]*pendingApproval
@@ -87,14 +87,17 @@ func newScopeApprovals(idleLifetime time.Duration) scopeApprovals {
 	return scopeApprovals{idleLifetime: idleLifetime, lastUsedByScope: map[approvalScope]time.Time{}, pendingByScope: map[approvalScope]*pendingApproval{}}
 }
 
-// SessionApprovals remembers what the user approved on cli.sock: command-line callers until the lifetime passes after
-// their last request, and agents per connection. One mutex and one generation cover all of it, so ClearAll (lock,
-// sign-out, switch off) ends everything, a dialog still open too.
+// SessionApprovals remembers what the user approved on cli.sock. The command line and launchers have separate memories,
+// so approving one never approves the other, even for the same app; agents keep their per-connection state. One mutex
+// and one generation cover all of it, so ClearAll (lock, sign-out, switch off) ends everything, a dialog still open too.
 type SessionApprovals struct {
-	mutex                sync.Mutex
-	lifetime             time.Duration
-	now                  func() time.Time
-	commandLine          scopeApprovals
+	mutex    sync.Mutex
+	lifetime time.Duration
+	now      func() time.Time
+	// commandLine approvals end lifetime after their scope's last request.
+	commandLine scopeApprovals
+	// launchers last until Hisar locks, the switch goes off, or Settings revokes them; their scope is always an app.
+	launchers            scopeApprovals
 	agentConnectionsByID map[uint64]*agentConnectionState
 	generation           int
 }
@@ -110,6 +113,7 @@ func NewSessionApprovals(lifetime time.Duration, now func() time.Time) *SessionA
 		lifetime:             lifetime,
 		now:                  now,
 		commandLine:          newScopeApprovals(lifetime),
+		launchers:            newScopeApprovals(0),
 		agentConnectionsByID: map[uint64]*agentConnectionState{},
 	}
 }
@@ -183,17 +187,19 @@ func (approvals *SessionApprovals) requireAlways(memory *scopeApprovals, scope a
 	return nil
 }
 
-// ClearAll ends every approval and every agent's remembered secrets, e.g. when Hisar locks; an approval in progress is
-// not remembered either.
+// ClearAll ends every approval, launchers' too, and every agent's remembered secrets, e.g. when Hisar locks; an approval
+// in progress is not remembered either.
 func (approvals *SessionApprovals) ClearAll() {
 	approvals.mutex.Lock()
 	defer approvals.mutex.Unlock()
 	clear(approvals.commandLine.lastUsedByScope)
+	clear(approvals.launchers.lastUsedByScope)
 	clear(approvals.agentConnectionsByID)
 	approvals.generation++
 }
 
-// forgetConnection drops what only the closed connection could use: its agent state and its connection-scoped approval.
+// forgetConnection drops what only the closed connection could use: its agent state and its connection-scoped approval
+// (only the command line has those).
 func (approvals *SessionApprovals) forgetConnection(connectionID uint64) {
 	approvals.mutex.Lock()
 	defer approvals.mutex.Unlock()

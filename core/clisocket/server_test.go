@@ -116,14 +116,15 @@ func (handler *fakeHandler) setState(state string) {
 }
 
 type serverFixture struct {
-	server    *Server
-	resolver  *fakePeerResolver
-	approver  *fakeApprover
-	handler   *fakeHandler
-	approvals *SessionApprovals
-	now       time.Time
-	nowMutex  sync.Mutex
-	isEnabled atomic.Bool
+	server           *Server
+	resolver         *fakePeerResolver
+	approver         *fakeApprover
+	launcherApprover *fakeLauncherApprover
+	handler          *fakeHandler
+	approvals        *SessionApprovals
+	now              time.Time
+	nowMutex         sync.Mutex
+	isEnabled        atomic.Bool
 }
 
 func createServerFixture(t *testing.T) *serverFixture {
@@ -134,19 +135,21 @@ func createServerFixture(t *testing.T) *serverFixture {
 			session: TerminalSession{SessionID: 77, TerminalDevice: 5, LeaderStartTime: 99, TerminalName: "ttys003"},
 			app:     terminalApp,
 		},
-		approver: &fakeApprover{},
+		approver:         &fakeApprover{},
+		launcherApprover: &fakeLauncherApprover{},
 		handler:  &fakeHandler{state: cliprotocol.StateUnlocked, resultBy: map[string]any{cliprotocol.TypeListVault: cliprotocol.VaultListResult{Vaults: []cliprotocol.Vault{{ID: "v1", Name: "Personal"}}}}},
 		now:      time.Date(2026, 10, 11, 9, 0, 0, 0, time.UTC),
 	}
 	fixture.isEnabled.Store(true)
 	fixture.approvals = NewSessionApprovals(0, fixture.getNow)
 	fixture.server = NewServer(ServerConfig{
-		Handler:      fixture.handler,
-		Approver:     fixture.approver,
-		IdentifyApp:  fixture.resolver.identifyApp,
-		PeerResolver: fixture.resolver,
-		Approvals:    fixture.approvals,
-		IsEnabled:    fixture.isEnabled.Load,
+		Handler:          fixture.handler,
+		Approver:         fixture.approver,
+		LauncherApprover: fixture.launcherApprover,
+		IdentifyApp:      fixture.resolver.identifyApp,
+		PeerResolver:     fixture.resolver,
+		Approvals:        fixture.approvals,
+		IsEnabled:        fixture.isEnabled.Load,
 	})
 	return fixture
 }

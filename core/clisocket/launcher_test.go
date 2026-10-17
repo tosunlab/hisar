@@ -1,0 +1,325 @@
+package clisocket
+
+import (
+	"context"
+	"slices"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+
+	"github.com/tryhisar/hisar/core/cliprotocol"
+)
+
+type fakeLauncherApprover struct {
+	mutex        sync.Mutex
+	requests     []LauncherApprovalRequest
+	result       error
+	release      chan struct{}
+	requestCount atomic.Int32
+}
+
+func (approver *fakeLauncherApprover) ApproveLauncher(ctx context.Context, request LauncherApprovalRequest) error {
+	approver.requestCount.Add(1)
+	approver.mutex.Lock()
+	approver.requests = append(approver.requests, request)
+	release, result := approver.release, approver.result
+	approver.mutex.Unlock()
+	if release != nil {
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return ErrDenied
+		}
+	}
+	return result
+}
+
+func (approver *fakeLauncherApprover) setResult(result error) {
+	approver.mutex.Lock()
+	defer approver.mutex.Unlock()
+	approver.result = result
+}
+
+// connectLauncher connects from app outside a terminal, sends launcher.hello and returns its isApproved.
+func (fixture *serverFixture) connectLauncher(t *testing.T, app AppIdentity) (*testClient, bool) {
+	t.Helper()
+	fixture.resolver.setCaller(launchdSession, app)
+	client := fixture.connect(t)
+	var hello cliprotocol.LauncherHelloResult
+	readResult(t, client.send(t, cliprotocol.Request{Type: cliprotocol.TypeLauncherHello}), &hello)
+	return client, hello.IsApproved
+}
+
+func (client *testClient) mustSend(t *testing.T, request cliprotocol.Request) {
+	t.Helper()
+	if response := client.send(t, request); response.Error != nil {
+		t.Fatalf("%s: %+v", request.Type, response.Error)
+	}
+}
+
+var listLauncherItems = cliprotocol.Request{Type: cliprotocol.TypeLauncherListItem}
+
+func TestLauncherIsApprovedPerAppUntilHisarLocks(t *testing.T) {
+	fixture := createServerFixture(t)
+	launcher, _ := fixture.connectLauncher(t, raycastApp)
+	launcher.mustSend(t, listLauncherItems)
+	launcher.mustSend(t, listLauncherItems)
+	if count := fixture.launcherApprover.requestCount.Load(); count != 1 {
+		t.Fatalf("%d launcher approvals; want 1", count)
+	}
+	request := fixture.launcherApprover.requests[0]
+	if request.App != raycastApp || request.ClientPID != 1234 || request.ParentPID != 4321 || request.ClientPath != "/Applications/Hisar.app/Contents/Helpers/hisar" {
+		t.Errorf("launcher approval request: %+v", request)
+	}
+
+	fixture.advance(DefaultApprovalLifetime + time.Minute)
+	launcher.mustSend(t, listLauncherItems)
+	fixture.advance(8 * time.Hour)
+	other, isApproved := fixture.connectLauncher(t, raycastApp)
+	other.mustSend(t, listLauncherItems)
+	if count := fixture.launcherApprover.requestCount.Load(); count != 1 || !isApproved {
+		t.Errorf("the approval ended while Hisar stayed unlocked: %d approvals, launcher.hello isApproved %v", count, isApproved)
+	}
+
+	fixture.approvals.ClearAll()
+	launcher.mustSend(t, listLauncherItems)
+	if count := fixture.launcherApprover.requestCount.Load(); count != 2 {
+		t.Errorf("the approval outlived the lock: %d approvals", count)
+	}
+	if fixture.approver.requestCount.Load() != 0 {
+		t.Error("a launcher opened the command-line dialog")
+	}
+}
+
+func TestRevokedLauncherIsAskedAgain(t *testing.T) {
+	fixture := createServerFixture(t)
+	raycast, _ := fixture.connectLauncher(t, raycastApp)
+	raycast.mustSend(t, listLauncherItems)
+	approvedAt := fixture.getNow()
+	fixture.advance(time.Minute)
+	tower, _ := fixture.connectLauncher(t, towerApp)
+	tower.mustSend(t, listLauncherItems)
+	expected := []LauncherApproval{{App: towerApp, LastUsedAt: approvedAt.Add(time.Minute)}, {App: raycastApp, LastUsedAt: approvedAt}}
+	if launchers := fixture.approvals.ListLaunchers(); !slices.Equal(launchers, expected) {
+		t.Fatalf("launchers %+v", launchers)
+	}
+
+	fixture.approvals.RevokeLauncher(raycastApp.Path)
+	fixture.approvals.RevokeLauncher(raycastApp.Path)
+	if launchers := fixture.approvals.ListLaunchers(); !slices.Equal(launchers, expected[:1]) {
+		t.Errorf("launchers after revoking Raycast %+v", launchers)
+	}
+	raycast.mustSend(t, listLauncherItems)
+	tower.mustSend(t, listLauncherItems)
+	if count := fixture.launcherApprover.requestCount.Load(); count != 3 {
+		t.Errorf("%d launcher approvals; want Raycast asked again and Tower not", count)
+	}
+}
+
+func TestLauncherApprovalAnsweredAfterLockIsNotRemembered(t *testing.T) {
+	fixture := createServerFixture(t)
+	fixture.launcherApprover.release = make(chan struct{})
+	launcher, _ := fixture.connectLauncher(t, raycastApp)
+	done := make(chan cliprotocol.Response)
+	go func() { done <- launcher.send(t, listLauncherItems) }()
+	for fixture.launcherApprover.requestCount.Load() == 0 {
+		time.Sleep(time.Millisecond)
+	}
+	fixture.approvals.ClearAll()
+	close(fixture.launcherApprover.release)
+	<-done
+	if _, isApproved := fixture.connectLauncher(t, raycastApp); isApproved || len(fixture.approvals.ListLaunchers()) != 0 {
+		t.Error("an approval that finished after a lock was remembered")
+	}
+}
+
+func TestLauncherAndCommandLineApprovalsOfOneAppNeverCoverEachOther(t *testing.T) {
+	listVaults := cliprotocol.Request{Type: cliprotocol.TypeListVault}
+
+	launcherFirst := createServerFixture(t)
+	launcher, _ := launcherFirst.connectLauncher(t, raycastApp)
+	launcher.mustSend(t, listLauncherItems)
+	launcherFirst.resolver.setCaller(launchdSession, raycastApp)
+	commandLine := launcherFirst.connect(t)
+	if commandLine.isApproved(t) {
+		t.Error("hello says a command line in Raycast is approved by its launcher approval")
+	}
+	commandLine.mustSend(t, listVaults)
+	if count := launcherFirst.approver.requestCount.Load(); count != 1 {
+		t.Errorf("the launcher approval covered a command line in the same app (%d command-line approvals)", count)
+	}
+
+	commandLineFirst := createServerFixture(t)
+	commandLineFirst.resolver.setCaller(launchdSession, raycastApp)
+	commandLineFirst.connect(t).mustSend(t, listVaults)
+	launcher, isApproved := commandLineFirst.connectLauncher(t, raycastApp)
+	launcher.mustSend(t, listLauncherItems)
+	if count := commandLineFirst.launcherApprover.requestCount.Load(); count != 1 || isApproved {
+		t.Errorf("the command-line approval covered the launcher in the same app (%d launcher approvals, isApproved %v)", count, isApproved)
+	}
+}
+
+func TestLauncherHelloNeedsAVerifiedAppOutsideATerminal(t *testing.T) {
+	fixture := createServerFixture(t)
+	refused := []*testClient{fixture.connect(t)}
+	fixture.resolver.setCaller(launchdSession, AppIdentity{})
+	refused = append(refused, fixture.connect(t))
+	for index, client := range refused {
+		response := client.send(t, cliprotocol.Request{Type: cliprotocol.TypeLauncherHello})
+		if getErrorCode(response) != cliprotocol.ErrorDenied || response.Error.Message != "Hisar answers launchers only in an app macOS can verify, outside a terminal" {
+			t.Errorf("caller %d: launcher.hello %+v", index, response.Error)
+		}
+		if code := getErrorCode(client.send(t, listLauncherItems)); code != cliprotocol.ErrorInvalidRequest {
+			t.Errorf("caller %d: a refused launcher sent launcher.items.list: %q", index, code)
+		}
+	}
+
+	launcher, isApproved := fixture.connectLauncher(t, raycastApp)
+	if isApproved {
+		t.Error("launcher.hello says an app nobody approved is approved")
+	}
+	launcher.mustSend(t, listLauncherItems)
+	if _, isApproved := fixture.connectLauncher(t, raycastApp); !isApproved {
+		t.Error("launcher.hello does not report the approval")
+	}
+	fixture.handler.setState(cliprotocol.StateLocked)
+	if _, isApproved := fixture.connectLauncher(t, raycastApp); isApproved {
+		t.Error("launcher.hello says approved while Hisar is locked")
+	}
+	if count := fixture.launcherApprover.requestCount.Load(); count != 1 {
+		t.Errorf("%d launcher approvals; launcher.hello must never ask", count)
+	}
+}
+
+func TestLauncherConnectionSendsOnlyLauncherRequests(t *testing.T) {
+	fixture := createServerFixture(t)
+	launcher, _ := fixture.connectLauncher(t, raycastApp)
+	for _, request := range []cliprotocol.Request{
+		{Type: cliprotocol.TypeListVault},
+		{Type: cliprotocol.TypeGetItem, VaultID: "v1", ItemID: "i1"},
+		{Type: cliprotocol.TypeAgentListVault},
+		{Type: cliprotocol.TypeAgentHello, AgentName: "claude-code"},
+		{Type: cliprotocol.TypeLauncherHello},
+		{Type: "launcher.items.delete", VaultID: "v1", ItemID: "i1"},
+	} {
+		if code := getErrorCode(launcher.send(t, request)); code != cliprotocol.ErrorInvalidRequest {
+			t.Errorf("a launcher sent %s: %q", request.Type, code)
+		}
+	}
+
+	commandLine := fixture.connect(t)
+	agent := fixture.connect(t)
+	agent.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeAgentHello, AgentName: "claude-code"})
+	for name, client := range map[string]*testClient{"command line": commandLine, "agent": agent} {
+		for _, requestType := range []string{cliprotocol.TypeLauncherListItem, cliprotocol.TypeLauncherLock, cliprotocol.TypeLauncherHello} {
+			if code := getErrorCode(client.send(t, cliprotocol.Request{Type: requestType})); code != cliprotocol.ErrorInvalidRequest {
+				t.Errorf("a %s connection sent %s: %q", name, requestType, code)
+			}
+		}
+	}
+	if len(fixture.handler.types) != 0 || fixture.launcherApprover.requestCount.Load() != 0 || fixture.approver.requestCount.Load() != 0 {
+		t.Errorf("a crossed request asked or reached the handler: %q", fixture.handler.types)
+	}
+}
+
+func TestGenerateAndLockNeedNeitherApprovalNorSignIn(t *testing.T) {
+	fixture := createServerFixture(t)
+	fixture.handler.setState(cliprotocol.StateSignedOut)
+	launcher, _ := fixture.connectLauncher(t, raycastApp)
+	launcher.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeLauncherGeneratePassword, Generator: &cliprotocol.GeneratorChange{Length: 20, Digits: true}})
+	launcher.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeLauncherLock})
+	if code := getErrorCode(launcher.send(t, listLauncherItems)); code != cliprotocol.ErrorSignedOut {
+		t.Errorf("launcher.items.list signed out: %q", code)
+	}
+	if fixture.launcherApprover.requestCount.Load() != 0 {
+		t.Error("generating, locking or a signed-out list asked for an approval")
+	}
+	if !slices.Equal(fixture.handler.types, []string{cliprotocol.TypeLauncherGeneratePassword, cliprotocol.TypeLauncherLock}) {
+		t.Errorf("handled %q", fixture.handler.types)
+	}
+
+	fixture.handler.setState(cliprotocol.StateLocked)
+	launcher.mustSend(t, listLauncherItems)
+	if fixture.launcherApprover.requestCount.Load() != 1 {
+		t.Error("a locked Hisar did not open the approval window, which unlocks it")
+	}
+	fixture.isEnabled.Store(false)
+	if code := getErrorCode(launcher.send(t, cliprotocol.Request{Type: cliprotocol.TypeLauncherLock})); code != cliprotocol.ErrorIntegrationDisabled {
+		t.Errorf("launcher.lock with the switch off: %q", code)
+	}
+}
+
+func TestDeniedLauncherIsNotRemembered(t *testing.T) {
+	fixture := createServerFixture(t)
+	fixture.launcherApprover.setResult(TimeoutError{Timeout: time.Minute})
+	launcher, _ := fixture.connectLauncher(t, raycastApp)
+	response := launcher.send(t, listLauncherItems)
+	if getErrorCode(response) != cliprotocol.ErrorDenied || response.Error.Message != "Hisar denied the request (it was not answered within a minute)" {
+		t.Fatalf("unanswered: %+v", response.Error)
+	}
+	if len(fixture.handler.types) != 0 {
+		t.Errorf("the handler ran after a denial: %q", fixture.handler.types)
+	}
+	fixture.launcherApprover.setResult(nil)
+	launcher.mustSend(t, listLauncherItems)
+	if count := fixture.launcherApprover.requestCount.Load(); count != 2 {
+		t.Errorf("%d launcher approvals; a denial must not be remembered", count)
+	}
+}
+
+func TestLauncherRequestsAreCheckedBeforeAsking(t *testing.T) {
+	fixture := createServerFixture(t)
+	launcher, _ := fixture.connectLauncher(t, raycastApp)
+	for _, request := range []cliprotocol.Request{
+		{Type: cliprotocol.TypeLauncherGetCode, VaultID: "v1"},
+		{Type: cliprotocol.TypeLauncherReadPassword, ItemID: "i1"},
+		{Type: cliprotocol.TypeLauncherCopyField, VaultID: "v1", ItemID: "i1", Field: "notes"},
+		{Type: cliprotocol.TypeLauncherCopyField, VaultID: "v1", ItemID: "i1"},
+	} {
+		if code := getErrorCode(launcher.send(t, request)); code != cliprotocol.ErrorInvalidRequest {
+			t.Errorf("%s %+v: %q", request.Type, request, code)
+		}
+	}
+	if fixture.launcherApprover.requestCount.Load() != 0 || len(fixture.handler.types) != 0 {
+		t.Error("an invalid launcher request asked or reached the handler")
+	}
+}
+
+func TestEveryLauncherRequestReachesTheHandler(t *testing.T) {
+	fixture := createServerFixture(t)
+	launcher, _ := fixture.connectLauncher(t, raycastApp)
+	requestTypes := cliprotocol.ListLauncherRequestTypes()[1:]
+	for _, requestType := range requestTypes {
+		launcher.mustSend(t, cliprotocol.Request{Type: requestType, VaultID: "v1", ItemID: "i1", Field: cliprotocol.LauncherFieldOneTimeCode})
+	}
+	if !slices.Equal(fixture.handler.types, requestTypes) {
+		t.Errorf("handled %q", fixture.handler.types)
+	}
+}
+
+func TestConcurrentLauncherRequestsShareOnePrompt(t *testing.T) {
+	fixture := createServerFixture(t)
+	fixture.launcherApprover.release = make(chan struct{})
+	first, _ := fixture.connectLauncher(t, raycastApp)
+	second, _ := fixture.connectLauncher(t, raycastApp)
+	var waitGroup sync.WaitGroup
+	responses := make([]cliprotocol.Response, 2)
+	for index, client := range []*testClient{first, second} {
+		waitGroup.Go(func() { responses[index] = client.send(t, listLauncherItems) })
+	}
+	for fixture.launcherApprover.requestCount.Load() == 0 {
+		time.Sleep(time.Millisecond)
+	}
+	time.Sleep(20 * time.Millisecond)
+	close(fixture.launcherApprover.release)
+	waitGroup.Wait()
+	for index, response := range responses {
+		if !response.OK {
+			t.Errorf("request %d: %+v", index, response.Error)
+		}
+	}
+	if count := fixture.launcherApprover.requestCount.Load(); count != 1 {
+		t.Errorf("%d prompts for one app", count)
+	}
+}

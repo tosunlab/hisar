@@ -58,13 +58,37 @@ type Server struct {
 	lastConnectionID atomic.Uint64
 }
 
-// connectionPeer is one connection; scope is fixed when it connects, and agent is set once it sent agent.hello.
+// connectionKind is what a connection said it is; the request types of its namespace are the only ones it may send.
+type connectionKind int
+
+const (
+	connectionCommandLine connectionKind = iota
+	// connectionAgent: after agent.hello, agent.* only.
+	connectionAgent
+	// connectionLauncher: after launcher.hello, launcher.* only.
+	connectionLauncher
+)
+
+// getConnectionKind returns the only kind of connection that may send requestType.
+func getConnectionKind(requestType string) connectionKind {
+	switch {
+	case cliprotocol.IsAgentRequest(requestType):
+		return connectionAgent
+	case cliprotocol.IsLauncherRequest(requestType):
+		return connectionLauncher
+	}
+	return connectionCommandLine
+}
+
+// connectionPeer is one connection. Its scope is fixed when it connects; its kind changes once, on agent.hello or
+// launcher.hello, and agent is what an agent connection said about itself.
 type connectionPeer struct {
 	peer         Peer
 	session      TerminalSession
 	connectionID uint64
 	scope        approvalScope
-	agent        *AgentIdentity
+	kind         connectionKind
+	agent        AgentIdentity
 }
 
 func NewServer(config ServerConfig) *Server {
@@ -196,11 +220,7 @@ func (s *Server) answerRequest(ctx context.Context, client *connectionPeer, requ
 	if request.Type == cliprotocol.TypeHello {
 		hello.ProtocolVersion = cliprotocol.ProtocolVersion
 		hello.Features = cliprotocol.ListFeatures()
-		if client.agent != nil {
-			hello.IsApproved = hello.State == cliprotocol.StateUnlocked && s.config.Approvals.IsAgentConnectionApproved(client.connectionID)
-		} else {
-			hello.IsApproved = hello.State == cliprotocol.StateUnlocked && s.config.Approvals.isApproved(&s.config.Approvals.commandLine, client.scope)
-		}
+		hello.IsApproved = s.isApproved(client, hello)
 		return hello, nil
 	}
 	if s.config.CheckUpdateRequired != nil {
@@ -208,20 +228,26 @@ func (s *Server) answerRequest(ctx context.Context, client *connectionPeer, requ
 			return nil, err
 		}
 	}
-	if request.Type == cliprotocol.TypeAgentHello {
+	switch request.Type {
+	case cliprotocol.TypeAgentHello:
 		return s.startAgentConnection(client, request)
+	case cliprotocol.TypeLauncherHello:
+		return s.startLauncherConnection(client, hello)
 	}
-	if (client.agent != nil) != cliprotocol.IsAgentRequest(request.Type) {
-		return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "agent requests and other requests cannot share a connection")
+	if getConnectionKind(request.Type) != client.kind {
+		return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "launcher, agent and command-line requests cannot share a connection")
 	}
-	if hello.State == cliprotocol.StateSignedOut {
-		if client.agent != nil {
+	switch client.kind {
+	case connectionAgent:
+		if hello.State == cliprotocol.StateSignedOut {
 			return nil, cliprotocol.NewError(cliprotocol.ErrorSignedOut, "the Hisar app is not signed in; sign in there")
 		}
-		return nil, cliprotocol.NewError(cliprotocol.ErrorSignedOut, "the Hisar app is not signed in; sign in there, or run hisar --standalone")
-	}
-	if client.agent != nil {
 		return s.answerAgentRequest(ctx, client, request)
+	case connectionLauncher:
+		return s.answerLauncherRequest(ctx, client, hello, request)
+	}
+	if hello.State == cliprotocol.StateSignedOut {
+		return nil, cliprotocol.NewError(cliprotocol.ErrorSignedOut, "the Hisar app is not signed in; sign in there, or run hisar --standalone")
 	}
 	if request.Type == cliprotocol.TypeResolveSecret && (len(request.References) == 0 || len(request.References) > cliprotocol.MaxReferenceCount) {
 		return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, fmt.Sprintf("send between 1 and %d secret references", cliprotocol.MaxReferenceCount))
@@ -243,6 +269,22 @@ func (s *Server) answerRequest(ctx context.Context, client *connectionPeer, requ
 		return nil, convertDenial(err)
 	}
 	return s.config.Handler.HandleRequest(ctx, request)
+}
+
+// isApproved is what hello and launcher.hello report: Hisar is unlocked, and the memory of the connection's kind holds an
+// approval for it.
+func (s *Server) isApproved(client *connectionPeer, hello cliprotocol.HelloResult) bool {
+	if hello.State != cliprotocol.StateUnlocked {
+		return false
+	}
+	approvals := s.config.Approvals
+	switch client.kind {
+	case connectionAgent:
+		return approvals.IsAgentConnectionApproved(client.connectionID)
+	case connectionLauncher:
+		return approvals.isApproved(&approvals.launchers, client.scope)
+	}
+	return approvals.isApproved(&approvals.commandLine, client.scope)
 }
 
 func (s *Server) askApproval(ctx context.Context, client *connectionPeer, request *cliprotocol.Request) error {
