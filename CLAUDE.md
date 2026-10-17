@@ -31,8 +31,9 @@ Five Go modules joined by `go.work`, plus two non-Go apps.
 | `apitypes` | JSON wire types of `/api/v1`, event names, roles, platform headers, share-link limits, `IsValidVaultRole`, `NormalizeEmail` |
 | `apiclient` | Typed HTTP client of `/api/v1` and its event stream |
 | `session` | A signed-in account: sign-up, login, unlock, item sync and encryption, rotation, sharing, share links, organization vaults (`CompleteVaultKeyRequests`, `RotatePendingVaults`), account changes, the account preferences record with the favorites, `GetVaultPermissions` |
-| `item` | The plaintext item model and its categories (`schema.go`: types kept as named fields; `card.go`, `identity.go`, `apicredential.go`, `license.go`, `server.go`, `database.go`, `address.go`, whose fields identities and cards share), `LookupField`, the password generator |
-| `cache` | The offline SQLite copy of the server's encrypted records |
+| `item` | The plaintext item model and its categories (`schema.go`: types kept as named fields; `card.go`, `identity.go`, `apicredential.go`, `license.go`, `server.go`, `database.go`, `address.go`, whose fields identities and cards share), the chosen icon and its presets (`icon.go`), `LookupField`, the password generator |
+| `itemicon` | Icon images: normalizing uploads and website icons into small PNGs, and fetching website icons from public https sites only |
+| `cache` | The offline SQLite copy of the server's encrypted records, and the device's sealed website icons |
 | `localstate` | `state.json` (session state plus embedded device `Settings`) and the Secret Key in the keychain |
 | `app` | The backend of the Mac and iPhone apps, bound to the UI (see below) |
 | `app/apptest` | An unlocked `app.Service` on an in-memory API, for tests outside `core/app` |
@@ -53,7 +54,7 @@ Five Go modules joined by `go.work`, plus two non-Go apps.
 `service.go`, `auth.go`, `lock.go`, `vaults.go`, `items.go`, `clipboard.go`, `errors.go`, `account.go`, `sharing.go`,
 `invitations.go`, `sharelink.go`, `browser.go` (extension pairing), `logins.go` (login matching), `passkey*.go`,
 `platformpasskey.go` (iOS), `commandline*.go` and `codingagent.go` (the CLI socket handler), `approvals.go`,
-`phoneapproval.go` (Mac side), `phoneapproval_answer.go` (iPhone side), `import.go`, `export.go`, `settings.go`, `favorites.go`, `addresses.go` (addresses for the extension),
+`phoneapproval.go` (Mac side), `phoneapproval_answer.go` (iPhone side), `import.go`, `export.go`, `settings.go`, `favorites.go`, `websiteicons.go` (the sealed website icon cache and its setting), `addresses.go` (addresses for the extension),
 `organizations.go` (organizations, teams, organization vaults, and delivering and rotating their keys on every sync).
 Shared test fixtures are in `helpers_test.go`, the in-memory API in `fakeapi_test.go`.
 

@@ -89,6 +89,13 @@ Design: `docs/DESIGN.md` §9.1 (desktop: item menu).
 - **An item in the list** (a vault's or Favorites): **Open**; **Copy** for its username, password, one-time code and main value (card number, license key, API secret, connection string, public key), each once the item's details have loaded; **Open website** (**Open admin console** for a server); **Add to Favorites** or **Remove from Favorites**; **Share link…**; and, in a vault the user can edit, **Edit**, **Duplicate** ("GitHub copy", without passkeys), **Move to…** (another vault the user can edit; the item keeps its ID) and **Delete…**, which asks first. Arrow keys move through the menu and Escape closes it.
 - **A field row in the detail panel** offers the row's own buttons by name, such as **Reveal password**, **Copy password** and **Copy secret reference for password**, or **Open website**. With text selected in the row, the system's menu appears instead, with its Copy.
 
+## Item icons
+
+Design: `docs/DESIGN.md` §4.5 (icons and website icons).
+
+- **Choose one** in the editor: click the tile next to the title for **Automatic**, one of 30 presets in a color, or **Upload image…** (PNG, JPEG, GIF or WebP; Hisar crops and shrinks it to at most 128 pixels). The icon is saved in the encrypted item, so every device shows it.
+- **Website icons**: a login without an icon of its own shows its website's, which this Mac asks the website for directly and keeps sealed in the offline cache. **Settings → Appearance → Show website icons** turns that off. Servers, databases and other types keep their own icon.
+
 ## Sharing, people and devices
 
 Design: `docs/DESIGN.md` §4.4 (vault keys and rotation), §5.1 (invites) and §5.6 (public key pinning).
