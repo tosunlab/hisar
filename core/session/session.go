@@ -16,6 +16,9 @@ var (
 	ErrRollback       = errors.New("server returned older vault state than previously seen")
 	ErrKeyMismatch    = errors.New("server returned public keys that do not match the keyset")
 	ErrNotFound       = errors.New("not found")
+	// ErrKeyChanged: the server refused items sealed with a vault key another device's rotation replaced, again after the
+	// vault was reloaded and the items sealed with its current key.
+	ErrKeyChanged = errors.New("the vault's key changed on another device; try again")
 )
 
 // SeqStore remembers the highest vault seq seen, to detect server rollbacks.

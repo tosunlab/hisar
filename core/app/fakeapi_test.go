@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 
@@ -40,6 +41,8 @@ type fakeAPIServer struct {
 	waitingVaultKeys         []apitypes.WaitingVaultKey
 	setAccessRequests        []apitypes.SetAccessRequest
 	isSetAccessFailing       bool
+	// keyChangeRefusalCount refuses that many more items as sealed with a replaced key, as when rotations keep coming.
+	keyChangeRefusalCount int
 }
 
 func (server *fakeAPIServer) setUnreachable(isUnreachable bool) {
@@ -52,6 +55,21 @@ func writeJSON(writer http.ResponseWriter, status int, value any) {
 	writer.Header().Set("Content-Type", "application/json")
 	writer.WriteHeader(status)
 	json.NewEncoder(writer).Encode(value)
+}
+
+// refusesKeyGeneration plays the server refusing items sealed with a key generation other than the vault's current one:
+// required for organization vaults, checked for any vault when set. It needs server.mutex.
+func (server *fakeAPIServer) refusesKeyGeneration(writer http.ResponseWriter, vaultID string, keyGeneration int64) bool {
+	index := slices.IndexFunc(server.vaults, func(vault apitypes.Vault) bool { return vault.ID == vaultID })
+	isAccepted := index < 0 || keyGeneration == server.vaults[index].KeyGeneration || keyGeneration == 0 && server.vaults[index].OrganizationID == ""
+	if isAccepted && server.keyChangeRefusalCount == 0 {
+		return false
+	}
+	if isAccepted {
+		server.keyChangeRefusalCount--
+	}
+	writeJSON(writer, http.StatusConflict, apitypes.KeyChangedResponse{Error: "the vault key changed since the items were encrypted", IsKeyChanged: true})
+	return true
 }
 
 func (server *fakeAPIServer) createHandler() http.Handler {
@@ -124,6 +142,9 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 		itemID := request.PathValue("itemID")
 		current, exists := items[itemID]
 		baseRevision := strings.Trim(request.Header.Get("If-Match"), `"`)
+		if server.refusesKeyGeneration(writer, request.PathValue("vaultID"), putRequest.KeyGeneration) {
+			return
+		}
 		if (exists && current.Revision != baseRevision) || (!exists && baseRevision != "") {
 			conflict := apitypes.ConflictResponse{}
 			if exists {
@@ -151,6 +172,10 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 			return
 		}
 		itemID := request.PathValue("itemID")
+		if server.refusesKeyGeneration(writer, request.PathValue("vaultID"), moveRequest.Tombstone.KeyGeneration) ||
+			server.refusesKeyGeneration(writer, moveRequest.TargetVaultID, moveRequest.Moved.KeyGeneration) {
+			return
+		}
 		current, exists := sourceItems[itemID]
 		if !exists || current.Deleted || current.Revision != moveRequest.BaseRevision {
 			conflict := apitypes.ConflictResponse{}

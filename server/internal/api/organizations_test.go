@@ -577,7 +577,7 @@ func TestRenameWithARotatedAwayKey(t *testing.T) {
 
 // TestItemWritesWithARotatedAwayKey: a new item, a tombstone, an item move and a vault deletion that moves items are
 // refused with the key-changed 409, storing nothing, unless their items are sealed with the key generation the vault has
-// now, which organization vaults require.
+// now, which organization vaults require. An app holding the replaced key reloads the vault and seals them again.
 func TestItemWritesWithARotatedAwayKey(t *testing.T) {
 	baseURL, server, databaseURL := setupServer(t)
 	ctx := context.Background()
@@ -682,6 +682,29 @@ func TestItemWritesWithARotatedAwayKey(t *testing.T) {
 	}
 	if _, isFound := findTestItem(t, bob, scratch, runbook.ID); !isFound || countItems(production.ID, runbook.ID) != 0 {
 		t.Error("a refused deletion moved the runbook")
+	}
+
+	// Bob's app still holds the replaced key: each write is refused once and sealed again with the current key.
+	holdingReplacedKey := func() *session.Vault {
+		stale := *bobProduction
+		stale.Key = bytes.Clone(bobProduction.Key)
+		return &stale
+	}
+	staging := &item.Item{Overview: item.Overview{Title: "Staging database"}, Details: item.Details{Password: "staging-password"}}
+	if _, err := bob.SaveItem(ctx, holdingReplacedKey(), staging); err != nil {
+		t.Errorf("Bob saves a new item: %v", err)
+	}
+	movedToken := token
+	if _, err := bob.MoveItem(ctx, bobPersonal, holdingReplacedKey(), &movedToken); err != nil {
+		t.Errorf("Bob moves an item in: %v", err)
+	}
+	if movedCount, err := bob.DeleteVault(ctx, scratch, session.VaultDeletion{MoveTo: holdingReplacedKey()}); err != nil || movedCount != 1 {
+		t.Errorf("Bob deletes a vault into this one: %d moved, %v", movedCount, err)
+	}
+	for _, expected := range []item.Item{*staging, token, runbook} {
+		if found, isFound := findTestItem(t, alice, production, expected.ID); !isFound || found.Overview.Title != expected.Overview.Title {
+			t.Errorf("Alice opens %q: %+v", expected.Overview.Title, found)
+		}
 	}
 }
 

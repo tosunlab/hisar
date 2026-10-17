@@ -58,6 +58,9 @@ func (server *fakeAPIServer) addVaultManagementRoutes(mux *http.ServeMux) {
 			}
 		}
 		if deleteRequest.MoveToVaultID != "" {
+			if server.refusesKeyGeneration(writer, deleteRequest.MoveToVaultID, deleteRequest.MoveToKeyGeneration) {
+				return
+			}
 			if len(deleteRequest.MovedItems) != liveCount {
 				writeJSON(writer, http.StatusConflict, apitypes.Error{Error: "the vault changed"})
 				return

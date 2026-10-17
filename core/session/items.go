@@ -3,7 +3,9 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 	"strings"
 
@@ -74,6 +76,7 @@ func decryptItem(vault *Vault, protoItem *apitypes.Item) (*item.Item, error) {
 
 // SaveItem creates or updates an item. vaultItem.Revision is the base revision and is
 // replaced by the new one on success. On ErrConflict, current holds the server's version.
+// When another device rotated the vault's key since vault was listed, vault is reloaded and the item sealed again.
 func (s *Session) SaveItem(ctx context.Context, vault *Vault, vaultItem *item.Item) (current *item.Item, err error) {
 	return s.putItem(ctx, vault, vaultItem, false)
 }
@@ -84,22 +87,27 @@ func (s *Session) DeleteItem(ctx context.Context, vault *Vault, vaultItem *item.
 
 // MoveItem moves vaultItem from source to target in one request, keeping its ID: the item is sealed again under the
 // target vault's key and a tombstone takes its place in source. vaultItem.Revision is the base revision and is replaced by
-// the new one in target on success. On ErrConflict, current holds the item as it now is in source.
+// the new one in target on success. On ErrConflict, current holds the item as it now is in source. When another device
+// rotated either vault's key since it was listed, both are reloaded and the item sealed again.
 func (s *Session) MoveItem(ctx context.Context, source, target *Vault, vaultItem *item.Item) (current *item.Item, err error) {
 	if target.ID == source.ID || !apitypes.CanWriteItems(target.Role) {
 		return nil, ErrTargetNotWritable
 	}
-	tombstone, err := s.sealItem(source, &item.Item{ID: vaultItem.ID}, true)
-	if err != nil {
-		return nil, err
-	}
-	moved, err := s.sealItem(target, vaultItem, false)
-	if err != nil {
-		return nil, err
-	}
-	_, serverItem, err := s.Client.MoveItem(ctx, source.ID, vaultItem.ID, &apitypes.MoveItemRequest{
-		TargetVaultID: target.ID, BaseRevision: vaultItem.Revision, Tombstone: *tombstone, Moved: *moved,
-	})
+	var moved *apitypes.PutItemRequest
+	var serverItem *apitypes.Item
+	err = s.sendSealed(ctx, func() error {
+		tombstone, err := s.sealItem(source, &item.Item{ID: vaultItem.ID}, true)
+		if err != nil {
+			return err
+		}
+		if moved, err = s.sealItem(target, vaultItem, false); err != nil {
+			return err
+		}
+		_, serverItem, err = s.Client.MoveItem(ctx, source.ID, vaultItem.ID, &apitypes.MoveItemRequest{
+			TargetVaultID: target.ID, BaseRevision: vaultItem.Revision, Tombstone: *tombstone, Moved: *moved,
+		})
+		return err
+	}, source, target)
 	if apiclient.IsStatus(err, http.StatusConflict) && serverItem != nil && !serverItem.Deleted {
 		current, decryptErr := decryptItem(source, serverItem)
 		if decryptErr != nil {
@@ -142,11 +150,16 @@ func (s *Session) putItem(ctx context.Context, vault *Vault, vaultItem *item.Ite
 	if vaultItem.ID == "" {
 		vaultItem.ID = uuid.NewString()
 	}
-	request, err := s.sealItem(vault, vaultItem, deleted)
-	if err != nil {
-		return nil, err
-	}
-	_, serverItem, err := s.Client.PutItem(ctx, vault.ID, vaultItem.ID, vaultItem.Revision, request)
+	var request *apitypes.PutItemRequest
+	var serverItem *apitypes.Item
+	err := s.sendSealed(ctx, func() error {
+		var err error
+		if request, err = s.sealItem(vault, vaultItem, deleted); err != nil {
+			return err
+		}
+		_, serverItem, err = s.Client.PutItem(ctx, vault.ID, vaultItem.ID, vaultItem.Revision, request)
+		return err
+	}, vault)
 	if apiclient.IsStatus(err, http.StatusConflict) {
 		if serverItem == nil || serverItem.Deleted {
 			return nil, ErrConflict
@@ -162,4 +175,38 @@ func (s *Session) putItem(ctx context.Context, vault *Vault, vaultItem *item.Ite
 	}
 	vaultItem.Revision = request.Revision
 	return nil, nil
+}
+
+// sendSealed runs send, which seals items with the keys of vaults and sends them. When the server refuses them because
+// another device rotated a vault's key since this copy was listed, it reloads vaults and runs send once more, so the items
+// are sealed again with the current keys; ErrKeyChanged when that is refused too.
+func (s *Session) sendSealed(ctx context.Context, send func() error, vaults ...*Vault) error {
+	err := send()
+	if !apiclient.IsKeyChanged(err) {
+		return err
+	}
+	if err := s.reloadVaults(ctx, vaults...); err != nil {
+		return err
+	}
+	if err := send(); !apiclient.IsKeyChanged(err) {
+		return err
+	}
+	return ErrKeyChanged
+}
+
+// reloadVaults replaces each vault with the server's current copy, with the key and key generation of its latest rotation.
+func (s *Session) reloadVaults(ctx context.Context, vaults ...*Vault) error {
+	currentVaults, err := s.ListVaults(ctx)
+	if err != nil {
+		return err
+	}
+	for _, vault := range vaults {
+		index := slices.IndexFunc(currentVaults, func(current Vault) bool { return current.ID == vault.ID })
+		if index < 0 {
+			return fmt.Errorf("vault %q: %w", vault.Name, ErrNotFound)
+		}
+		clear(vault.Key)
+		*vault = currentVaults[index]
+	}
+	return nil
 }

@@ -192,7 +192,8 @@ func (s *Session) LeaveVault(ctx context.Context, vault *Vault) error {
 
 // DeleteVault deletes a vault the caller owns. Moving re-encrypts every live item under the target vault's key here,
 // so the server never sees plaintext, and the server moves them and deletes the vault in one transaction.
-// It returns how many items were moved, and retries when the vault changes during the move.
+// It returns how many items were moved, and retries when the vault changes during the move. When another device rotated
+// the target's key since it was listed, the target is reloaded and the items sealed again.
 func (s *Session) DeleteVault(ctx context.Context, vault *Vault, deletion VaultDeletion) (int, error) {
 	if vault.Role != apitypes.VaultOwner {
 		return 0, ErrNotVaultOwner
@@ -215,11 +216,14 @@ func (s *Session) DeleteVault(ctx context.Context, vault *Vault, deletion VaultD
 		return 0, ErrTargetNotWritable
 	}
 	for attempt := 1; ; attempt++ {
-		request, err := s.buildVaultMove(ctx, vault, target)
-		if err != nil {
-			return 0, err
-		}
-		err = s.Client.DeleteVault(ctx, vault.ID, request)
+		var request *apitypes.DeleteVaultRequest
+		err := s.sendSealed(ctx, func() error {
+			var err error
+			if request, err = s.buildVaultMove(ctx, vault, target); err != nil {
+				return err
+			}
+			return s.Client.DeleteVault(ctx, vault.ID, request)
+		}, target)
 		if apiclient.IsStatus(err, http.StatusConflict) && attempt < maxRotationAttemptCount {
 			continue
 		}

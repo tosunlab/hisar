@@ -14,6 +14,7 @@ import (
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/crypt"
+	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/localstate"
 	"github.com/tryhisar/hisar/core/session"
 )
@@ -406,5 +407,80 @@ func TestCommandLineCompletesOrganizationKeys(t *testing.T) {
 	}
 	if _, found := apiServer.getAccess(created.Vault.ID, bob.AccountID); !found {
 		t.Error("Bob has no key")
+	}
+}
+
+// TestItemWritesAfterAnotherOwnerRotated: the server refuses items sealed with a key another owner's rotation replaced,
+// so the app reloads the vault and seals them again with the current key, which every member opens.
+func TestItemWritesAfterAnotherOwnerRotated(t *testing.T) {
+	test := createUnlockedTestService(t)
+	service := test.service
+	ctx := context.Background()
+	bob, bobKeyset := test.apiServer.addMember(t, "Bob", "b@example.com")
+	vaultID := createOrganizationTestVault(t, service)
+	note, err := service.SaveItem(test.personalID, ItemDetail{Title: "Deploy note", Notes: "rotate quarterly"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	test.apiServer.addTeamAccess(t, vaultID, bob, apitypes.VaultEditor, getCachedVaultKey(t, service, vaultID))
+	service.mutex.Lock()
+	unlockedSession := service.unlockedSession
+	service.mutex.Unlock()
+	// Another owner's app rotates the key and gives Bob the new one; this app still holds the vault under the replaced key.
+	rotateAsAnotherOwner := func() {
+		t.Helper()
+		otherOwnersVault, err := unlockedSession.FindVault(ctx, vaultID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		grants := []session.AccessGrant{{AccountID: test.accountID, Role: apitypes.VaultOwner}, {AccountID: bob.AccountID, Role: apitypes.VaultEditor}}
+		if err := unlockedSession.RotateVaultKey(ctx, otherOwnersVault, grants); err != nil {
+			t.Fatal(err)
+		}
+	}
+	readAsBob := func() []item.Item {
+		t.Helper()
+		access, _ := test.apiServer.getAccess(vaultID, bob.AccountID)
+		bobKey, err := bobKeyset.UnwrapVaultKey(vaultID, bob.AccountID, access.WrappedKey)
+		if err != nil {
+			t.Fatal(err)
+		}
+		bobSession := &session.Session{Client: unlockedSession.Client, AccountID: bob.AccountID, Keyset: bobKeyset}
+		items, err := bobSession.ListItems(ctx, &session.Vault{ID: vaultID, Type: apitypes.VaultOrganization, Role: apitypes.VaultEditor, Key: bobKey})
+		if err != nil {
+			t.Fatalf("Bob opens the vault: %v", err)
+		}
+		return items
+	}
+
+	rotateAsAnotherOwner()
+	saved, err := service.SaveItem(vaultID, ItemDetail{Title: "Staging database", Password: "staging-password"})
+	if err != nil {
+		t.Fatalf("saving a new item after the rotation: %v", err)
+	}
+	if items := readAsBob(); len(items) != 1 || items[0].ID != saved.ID || items[0].Details.Password != "staging-password" {
+		t.Fatalf("Bob reads %+v", items)
+	}
+	rotateAsAnotherOwner()
+	if _, err := service.MoveItem(test.personalID, note.ID, vaultID); err != nil {
+		t.Fatalf("moving an item in after the rotation: %v", err)
+	}
+	if items := readAsBob(); len(items) != 2 || items[0].ID != note.ID || items[0].Details.Notes != "rotate quarterly" {
+		t.Fatalf("Bob reads %+v", items)
+	}
+
+	// While rotations keep coming, the save is refused with a sentence and nothing is lost: trying again saves the item.
+	test.apiServer.mutex.Lock()
+	test.apiServer.keyChangeRefusalCount = 2
+	test.apiServer.mutex.Unlock()
+	production := ItemDetail{Title: "Production database", Password: "production-password"}
+	if _, err := service.SaveItem(vaultID, production); err == nil || err.Error() != "the vault's key changed on another device; try again" {
+		t.Fatalf("saving while the key keeps changing: %v", err)
+	}
+	if items := readAsBob(); len(items) != 2 {
+		t.Errorf("the refused save stored %+v", items)
+	}
+	if retried, err := service.SaveItem(vaultID, production); err != nil || retried.Password != "production-password" {
+		t.Errorf("trying again: %+v %v", retried, err)
 	}
 }
