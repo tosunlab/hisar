@@ -27,6 +27,10 @@ const (
 var (
 	errReadOnly                = newError(KindForbidden, "read only")
 	errOrganizationVaultAccess = newError(KindInvalid, "access to an organization vault comes from its teams")
+	// errUpdateForOrganizationVaults refuses items for an organization vault that name no key generation: only apps
+	// older than key generations send them, and they read the key-changed 409 as an item conflict without a current
+	// item, so they would ask for a reload that never helps. They show this sentence as it is.
+	errUpdateForOrganizationVaults = newError(KindInvalid, "update Hisar to change items in organization vaults")
 )
 
 func IsValidUUID(value string) bool {
@@ -274,7 +278,8 @@ func (s *Service) CheckItemWrite(ctx context.Context, actor Actor, vaultID strin
 }
 
 // PutItem saves a new revision of an item, refusing it with *ItemConflictError unless baseRevision is the current one,
-// and with ErrKeyChanged when it is sealed with a key a rotation replaced.
+// with ErrKeyChanged when it is sealed with a key a rotation replaced, and with errUpdateForOrganizationVaults when it
+// names no key generation for an organization vault.
 func (s *Service) PutItem(ctx context.Context, actor Actor, vaultID, itemID, baseRevision string, request *apitypes.PutItemRequest) (int64, error) {
 	if err := s.CheckItemWrite(ctx, actor, vaultID); err != nil {
 		return 0, err
@@ -289,6 +294,8 @@ func (s *Service) PutItem(ctx context.Context, actor Actor, vaultID, itemID, bas
 	switch {
 	case errors.Is(err, store.ErrStaleKeyGeneration):
 		return 0, ErrKeyChanged
+	case errors.Is(err, store.ErrKeyGenerationMissing):
+		return 0, errUpdateForOrganizationVaults
 	case errors.Is(err, store.ErrConflict):
 		conflict := &ItemConflictError{}
 		if currentStoreItem != nil {
@@ -333,6 +340,8 @@ func (s *Service) MoveItem(ctx context.Context, actor Actor, vaultID, itemID str
 	switch {
 	case errors.Is(err, store.ErrStaleKeyGeneration):
 		return apitypes.MoveItemResponse{}, ErrKeyChanged
+	case errors.Is(err, store.ErrKeyGenerationMissing):
+		return apitypes.MoveItemResponse{}, errUpdateForOrganizationVaults
 	case errors.Is(err, store.ErrConflict):
 		conflict := &ItemConflictError{}
 		if currentStoreItem != nil {
@@ -438,6 +447,8 @@ func (s *Service) DeleteVault(ctx context.Context, actor Actor, vaultID string, 
 		return newError(KindConflict, "the vault has items; move them or delete them with the vault")
 	case errors.Is(err, store.ErrStaleKeyGeneration):
 		return ErrKeyChanged
+	case errors.Is(err, store.ErrKeyGenerationMissing):
+		return errUpdateForOrganizationVaults
 	case errors.Is(err, store.ErrConflict):
 		return newError(KindConflict, "the vault changed while its items were moved; try again")
 	case errors.Is(err, store.ErrExists):

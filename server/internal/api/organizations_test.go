@@ -577,7 +577,8 @@ func TestRenameWithARotatedAwayKey(t *testing.T) {
 
 // TestItemWritesWithARotatedAwayKey: a new item, a tombstone, an item move and a vault deletion that moves items are
 // refused with the key-changed 409, storing nothing, unless their items are sealed with the key generation the vault has
-// now, which organization vaults require. An app holding the replaced key reloads the vault and seals them again.
+// now, which organization vaults require: without one they are refused with a 400 that tells apps older than key
+// generations to update. An app holding the replaced key reloads the vault and seals them again.
 func TestItemWritesWithARotatedAwayKey(t *testing.T) {
 	baseURL, server, databaseURL := setupServer(t)
 	ctx := context.Background()
@@ -616,17 +617,25 @@ func TestItemWritesWithARotatedAwayKey(t *testing.T) {
 		t.Helper()
 		return countDatabaseRows(t, databaseURL, `SELECT count(*) FROM items WHERE vault_id = $1 AND id = $2`, vaultID, itemID)
 	}
+	// Apps older than key generations send none: they would read the key-changed 409 as an item conflict without a
+	// current item and ask for a reload that never helps, so they get a sentence they show as it is.
+	isUpdateRefusal := func(err error) bool {
+		return apiclient.IsStatus(err, http.StatusBadRequest) && !apiclient.IsKeyChanged(err) &&
+			strings.Contains(err.Error(), "update Hisar to change items in organization vaults")
+	}
 
-	for _, keyGeneration := range []int64{1, 0} {
-		itemID := uuid.NewString()
-		request := seal(bobProduction.Key, production.ID, itemID, false, keyGeneration)
-		if _, current, err := bob.Client.PutItem(ctx, production.ID, itemID, "", &request); !apiclient.IsKeyChanged(err) || current != nil ||
-			!strings.Contains(err.Error(), "vault key changed") {
-			t.Errorf("a new item sealed with generation %d: %+v %v", keyGeneration, current, err)
-		}
-		if countItems(production.ID, itemID) != 0 {
-			t.Errorf("a new item sealed with generation %d was stored", keyGeneration)
-		}
+	newItemID := uuid.NewString()
+	staleItem := seal(bobProduction.Key, production.ID, newItemID, false, 1)
+	if _, current, err := bob.Client.PutItem(ctx, production.ID, newItemID, "", &staleItem); !apiclient.IsKeyChanged(err) || current != nil ||
+		!strings.Contains(err.Error(), "vault key changed") {
+		t.Errorf("a new item sealed with the replaced key: %+v %v", current, err)
+	}
+	itemWithoutGeneration := seal(production.Key, production.ID, newItemID, false, 0)
+	if _, current, err := bob.Client.PutItem(ctx, production.ID, newItemID, "", &itemWithoutGeneration); !isUpdateRefusal(err) || current != nil {
+		t.Errorf("a new item without a key generation: %+v %v", current, err)
+	}
+	if countItems(production.ID, newItemID) != 0 {
+		t.Error("a refused new item was stored")
 	}
 	itemID := uuid.NewString()
 	created := seal(production.Key, production.ID, itemID, false, 2)
@@ -636,6 +645,10 @@ func TestItemWritesWithARotatedAwayKey(t *testing.T) {
 	staleTombstone := seal(bobProduction.Key, production.ID, itemID, true, 1)
 	if _, current, err := bob.Client.PutItem(ctx, production.ID, itemID, created.Revision, &staleTombstone); !apiclient.IsKeyChanged(err) || current != nil {
 		t.Errorf("a tombstone sealed with the replaced key: %+v %v", current, err)
+	}
+	tombstoneWithoutGeneration := seal(production.Key, production.ID, itemID, true, 0)
+	if _, current, err := bob.Client.PutItem(ctx, production.ID, itemID, created.Revision, &tombstoneWithoutGeneration); !isUpdateRefusal(err) || current != nil {
+		t.Errorf("a tombstone without a key generation: %+v %v", current, err)
 	}
 	if countDatabaseRows(t, databaseURL, `SELECT count(*) FROM items WHERE id = $1 AND revision = $2 AND NOT deleted`, itemID, created.Revision) != 1 {
 		t.Error("a refused tombstone replaced the item")
@@ -664,8 +677,26 @@ func TestItemWritesWithARotatedAwayKey(t *testing.T) {
 	if _, current, err := bob.Client.MoveItem(ctx, bobPersonal.ID, token.ID, staleMove); !apiclient.IsKeyChanged(err) || current != nil {
 		t.Errorf("a move sealed with the replaced key: %+v %v", current, err)
 	}
+	moveInWithoutGeneration := *staleMove
+	moveInWithoutGeneration.Moved = seal(production.Key, production.ID, token.ID, false, 0)
+	if _, current, err := bob.Client.MoveItem(ctx, bobPersonal.ID, token.ID, &moveInWithoutGeneration); !isUpdateRefusal(err) || current != nil {
+		t.Errorf("a move in without a key generation: %+v %v", current, err)
+	}
 	if stayed, isFound := findTestItem(t, bob, bobPersonal, token.ID); !isFound || stayed.Revision != token.Revision || countItems(production.ID, token.ID) != 0 {
 		t.Errorf("a refused move took the item out of Bob's Personal vault: %+v", stayed)
+	}
+	alicePersonal := findPersonalVault(t, alice)
+	moveOutWithoutGeneration := &apitypes.MoveItemRequest{
+		TargetVaultID: alicePersonal.ID, BaseRevision: created.Revision,
+		Tombstone: seal(production.Key, production.ID, itemID, true, 0),
+		Moved:     seal(alicePersonal.Key, alicePersonal.ID, itemID, false, alicePersonal.KeyGeneration),
+	}
+	if _, current, err := alice.Client.MoveItem(ctx, production.ID, itemID, moveOutWithoutGeneration); !isUpdateRefusal(err) || current != nil {
+		t.Errorf("a move out without a key generation: %+v %v", current, err)
+	}
+	if countItems(alicePersonal.ID, itemID) != 0 || countDatabaseRows(t, databaseURL, `SELECT count(*) FROM items WHERE id = $1 AND revision = $2 AND NOT deleted`,
+		itemID, created.Revision) != 1 {
+		t.Error("a refused move took the item out of the organization vault")
 	}
 
 	movedRunbook := seal(bobProduction.Key, production.ID, runbook.ID, false, 0)
@@ -673,7 +704,8 @@ func TestItemWritesWithARotatedAwayKey(t *testing.T) {
 		deletion := &apitypes.DeleteVaultRequest{MoveToVaultID: production.ID, MoveToKeyGeneration: keyGeneration, MovedItems: []apitypes.MovedItem{
 			{ID: runbook.ID, BaseRevision: runbook.Revision, Revision: movedRunbook.Revision, Overview: movedRunbook.Overview, Details: movedRunbook.Details},
 		}}
-		if err := bob.Client.DeleteVault(ctx, scratch.ID, deletion); !apiclient.IsKeyChanged(err) {
+		err := bob.Client.DeleteVault(ctx, scratch.ID, deletion)
+		if keyGeneration == 0 && !isUpdateRefusal(err) || keyGeneration != 0 && !apiclient.IsKeyChanged(err) {
 			t.Errorf("a deletion moving items sealed with generation %d: %v", keyGeneration, err)
 		}
 	}

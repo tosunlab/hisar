@@ -58,7 +58,7 @@ func (s *Store) RenameVault(ctx context.Context, vaultID string, encName []byte,
 // after moving its live items into another vault when asked. It returns the accounts that had access to the deleted
 // vault. Deleting an organization vault removes access, so its organization is locked first (§5.11); the target only
 // receives items, so only its row is locked. Moved items sealed with a target key a rotation replaced are refused
-// (ErrStaleKeyGeneration).
+// (ErrStaleKeyGeneration), as are items for an organization vault that name no key generation (ErrKeyGenerationMissing).
 func (s *Store) DeleteVault(ctx context.Context, deletion VaultDeletion) ([]string, error) {
 	var formerMemberIDs []string
 	err := s.runInTransaction(ctx, func(transaction pgx.Tx) error {
@@ -160,8 +160,8 @@ func moveItems(ctx context.Context, transaction pgx.Tx, deletion VaultDeletion, 
 	if targetRole != "owner" && targetRole != "editor" {
 		return ErrTargetNotWritable
 	}
-	if !target.acceptsKeyGeneration(deletion.MoveToKeyGeneration) {
-		return ErrStaleKeyGeneration
+	if err := target.checkItemKeyGeneration(deletion.MoveToKeyGeneration); err != nil {
+		return err
 	}
 	if len(deletion.MovedItems) != len(liveRevisionsByID) {
 		return ErrConflict

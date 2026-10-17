@@ -13,6 +13,9 @@ var (
 	ErrNotEntitled        = errors.New("store: the account's teams do not give it the vault with this role")
 	ErrRoleFromTeams      = errors.New("store: roles in an organization vault come from its teams")
 	ErrStaleKeyGeneration = errors.New("store: not the vault's current key generation")
+	// ErrKeyGenerationMissing refuses items for an organization vault that name no key generation, as apps older than
+	// key generations send them.
+	ErrKeyGenerationMissing = errors.New("store: organization vault items need the key generation")
 )
 
 type Vault struct {
@@ -189,6 +192,18 @@ func lockVaults(ctx context.Context, transaction pgx.Tx, vaultIDs []string) (map
 // working with personal and shared vaults, and nothing sealed with a key a rotation replaced is stored.
 func (vault *lockedVault) acceptsKeyGeneration(keyGeneration int64) bool {
 	return keyGeneration == vault.keyGeneration || keyGeneration == 0 && vault.organizationID == ""
+}
+
+// checkItemKeyGeneration refuses items sealed with the vault key of keyGeneration unless the vault accepts it:
+// ErrKeyGenerationMissing when an organization vault gets no generation, ErrStaleKeyGeneration for another one.
+func (vault *lockedVault) checkItemKeyGeneration(keyGeneration int64) error {
+	switch {
+	case vault.acceptsKeyGeneration(keyGeneration):
+		return nil
+	case keyGeneration == 0:
+		return ErrKeyGenerationMissing
+	}
+	return ErrStaleKeyGeneration
 }
 
 func (s *Store) ListMembers(ctx context.Context, vaultID string) ([]Member, error) {

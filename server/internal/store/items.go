@@ -43,9 +43,9 @@ func (s *Store) ListChanges(ctx context.Context, vaultID string, since int64, li
 // PutItem writes a new revision if baseRevision matches the stored one ("" for a new item).
 // On ErrConflict the current item is returned; it is nil when the item does not exist.
 // Re-sending an already stored revision is a no-op so that clients can retry safely.
-// It locks only the vault, since an item write changes no access (§5.11), and returns ErrStaleKeyGeneration, before
-// any revision check, unless the vault accepts keyGeneration, so an item sealed with a key a rotation replaced is never
-// stored.
+// It locks only the vault, since an item write changes no access (§5.11), and, before any revision check, returns
+// ErrStaleKeyGeneration or ErrKeyGenerationMissing unless the vault accepts keyGeneration, so an item sealed with a key a
+// rotation replaced is never stored.
 func (s *Store) PutItem(ctx context.Context, vaultID, baseRevision string, keyGeneration int64, item *Item) (*Item, error) {
 	var current *Item
 	err := s.runInTransaction(ctx, func(transaction pgx.Tx) (err error) {
@@ -61,8 +61,8 @@ func putItem(ctx context.Context, transaction pgx.Tx, vaultID, baseRevision stri
 	if err != nil {
 		return nil, err
 	}
-	if !vault.acceptsKeyGeneration(keyGeneration) {
-		return nil, ErrStaleKeyGeneration
+	if err := vault.checkItemKeyGeneration(keyGeneration); err != nil {
+		return nil, err
 	}
 
 	rows, err := transaction.Query(ctx, `
@@ -126,8 +126,8 @@ type ItemMove struct {
 // vaults, since a move changes no access (§5.11). It refuses with ErrConflict, returning the current item, unless
 // BaseRevision is the item's live revision in the source vault; with ErrExists when the target vault has a live item
 // with the same ID; with ErrTargetNotWritable unless the account may write the target vault; and with
-// ErrStaleKeyGeneration unless both vaults accept the key generations the item is sealed with. On success
-// Tombstone.Seq and Moved.Seq hold the vaults' new sequence numbers.
+// ErrStaleKeyGeneration or ErrKeyGenerationMissing unless both vaults accept the key generations the item is sealed
+// with. On success Tombstone.Seq and Moved.Seq hold the vaults' new sequence numbers.
 func (s *Store) MoveItem(ctx context.Context, move *ItemMove) (*Item, error) {
 	var current *Item
 	err := s.runInTransaction(ctx, func(transaction pgx.Tx) error {
@@ -147,8 +147,11 @@ func (s *Store) MoveItem(ctx context.Context, move *ItemMove) (*Item, error) {
 		if targetRole != "owner" && targetRole != "editor" {
 			return ErrTargetNotWritable
 		}
-		if !source.acceptsKeyGeneration(move.SourceKeyGeneration) || !target.acceptsKeyGeneration(move.TargetKeyGeneration) {
-			return ErrStaleKeyGeneration
+		if err := source.checkItemKeyGeneration(move.SourceKeyGeneration); err != nil {
+			return err
+		}
+		if err := target.checkItemKeyGeneration(move.TargetKeyGeneration); err != nil {
+			return err
 		}
 		itemID := move.Moved.ID
 		rows, err := transaction.Query(ctx, `
