@@ -75,9 +75,7 @@ func (s *Session) RotateVaultKey(ctx context.Context, vault *Vault, accessGrants
 	}
 	clear(vault.Key)
 	vault.Key = newVaultKey
-	if vault.KeyGeneration > 0 {
-		vault.KeyGeneration++
-	}
+	vault.KeyGeneration++
 	vault.NeedsRotation = false
 	return nil
 }

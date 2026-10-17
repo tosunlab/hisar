@@ -43,6 +43,8 @@ type fakeAPIServer struct {
 	isSetAccessFailing       bool
 	// keyChangeRefusalCount refuses that many more items as sealed with a replaced key, as when rotations keep coming.
 	keyChangeRefusalCount int
+	// keyGenerationsSent records the generation of every item write, in order.
+	keyGenerationsSent []int64
 }
 
 func (server *fakeAPIServer) setUnreachable(isUnreachable bool) {
@@ -142,6 +144,7 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 		itemID := request.PathValue("itemID")
 		current, exists := items[itemID]
 		baseRevision := strings.Trim(request.Header.Get("If-Match"), `"`)
+		server.keyGenerationsSent = append(server.keyGenerationsSent, putRequest.KeyGeneration)
 		if server.refusesKeyGeneration(writer, request.PathValue("vaultID"), putRequest.KeyGeneration) {
 			return
 		}

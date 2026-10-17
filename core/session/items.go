@@ -1,6 +1,7 @@
 package session
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -77,12 +78,18 @@ func decryptItem(vault *Vault, protoItem *apitypes.Item) (*item.Item, error) {
 // SaveItem creates or updates an item. vaultItem.Revision is the base revision and is
 // replaced by the new one on success. On ErrConflict, current holds the server's version.
 // When another device rotated the vault's key since vault was listed, vault is reloaded and the item sealed again.
-func (s *Session) SaveItem(ctx context.Context, vault *Vault, vaultItem *item.Item) (current *item.Item, err error) {
-	return s.putItem(ctx, vault, vaultItem, false)
+// base, when passed, is the plaintext at vaultItem.Revision: the retry then uses the revision the rotation wrote
+// when the item still has that plaintext, and a real change is a conflict, with the edit kept.
+func (s *Session) SaveItem(ctx context.Context, vault *Vault, vaultItem *item.Item, base ...*item.Item) (current *item.Item, err error) {
+	var baseItem *item.Item
+	if len(base) > 0 {
+		baseItem = base[0]
+	}
+	return s.putItem(ctx, vault, vaultItem, baseItem, false)
 }
 
 func (s *Session) DeleteItem(ctx context.Context, vault *Vault, vaultItem *item.Item) (current *item.Item, err error) {
-	return s.putItem(ctx, vault, &item.Item{ID: vaultItem.ID, Revision: vaultItem.Revision}, true)
+	return s.putItem(ctx, vault, &item.Item{ID: vaultItem.ID, Revision: vaultItem.Revision}, vaultItem, true)
 }
 
 // MoveItem moves vaultItem from source to target in one request, keeping its ID: the item is sealed again under the
@@ -95,7 +102,7 @@ func (s *Session) MoveItem(ctx context.Context, source, target *Vault, vaultItem
 	}
 	var moved *apitypes.PutItemRequest
 	var serverItem *apitypes.Item
-	err = s.sendSealed(ctx, func() error {
+	send := func() error {
 		tombstone, err := s.sealItem(source, &item.Item{ID: vaultItem.ID}, true)
 		if err != nil {
 			return err
@@ -107,7 +114,13 @@ func (s *Session) MoveItem(ctx context.Context, source, target *Vault, vaultItem
 			TargetVaultID: target.ID, BaseRevision: vaultItem.Revision, Tombstone: *tombstone, Moved: *moved,
 		})
 		return err
+	}
+	err = s.retrySealed(ctx, send, func() error {
+		return s.adoptRotationRevision(ctx, source, vaultItem, vaultItem)
 	}, source, target)
+	if conflict, ok := err.(*rotationConflict); ok {
+		return conflict.current, ErrConflict
+	}
 	if apiclient.IsStatus(err, http.StatusConflict) && serverItem != nil && !serverItem.Deleted {
 		current, decryptErr := decryptItem(source, serverItem)
 		if decryptErr != nil {
@@ -146,20 +159,29 @@ func (s *Session) sealItem(vault *Vault, vaultItem *item.Item, deleted bool) (*a
 	}, nil
 }
 
-func (s *Session) putItem(ctx context.Context, vault *Vault, vaultItem *item.Item, deleted bool) (*item.Item, error) {
+func (s *Session) putItem(ctx context.Context, vault *Vault, vaultItem, base *item.Item, deleted bool) (*item.Item, error) {
 	if vaultItem.ID == "" {
 		vaultItem.ID = uuid.NewString()
 	}
 	var request *apitypes.PutItemRequest
 	var serverItem *apitypes.Item
-	err := s.sendSealed(ctx, func() error {
+	send := func() error {
 		var err error
 		if request, err = s.sealItem(vault, vaultItem, deleted); err != nil {
 			return err
 		}
 		_, serverItem, err = s.Client.PutItem(ctx, vault.ID, vaultItem.ID, vaultItem.Revision, request)
 		return err
+	}
+	err := s.retrySealed(ctx, send, func() error {
+		if vaultItem.Revision == "" {
+			return nil
+		}
+		return s.adoptRotationRevision(ctx, vault, vaultItem, base)
 	}, vault)
+	if conflict, ok := err.(*rotationConflict); ok {
+		return conflict.current, ErrConflict
+	}
 	if apiclient.IsStatus(err, http.StatusConflict) {
 		if serverItem == nil || serverItem.Deleted {
 			return nil, ErrConflict
@@ -181,6 +203,20 @@ func (s *Session) putItem(ctx context.Context, vault *Vault, vaultItem *item.Ite
 // another device rotated a vault's key since this copy was listed, it reloads vaults and runs send once more, so the items
 // are sealed again with the current keys; ErrKeyChanged when that is refused too.
 func (s *Session) sendSealed(ctx context.Context, send func() error, vaults ...*Vault) error {
+	return s.retrySealed(ctx, send, func() error { return nil }, vaults...)
+}
+
+// rotationConflict is an edit someone else made before the vault key was rotated. current is that item when it
+// could be opened; it is nil when the item is gone or the plaintext it was edited from is not known.
+type rotationConflict struct{ current *item.Item }
+
+func (conflict *rotationConflict) Error() string { return ErrConflict.Error() }
+
+func (conflict *rotationConflict) Unwrap() error { return ErrConflict }
+
+// retrySealed is sendSealed that, after reloading, may adopt the revision a rotation wrote.
+// adopt returns *rotationConflict when the item no longer has the plaintext the edit started from.
+func (s *Session) retrySealed(ctx context.Context, send func() error, adopt func() error, vaults ...*Vault) error {
 	err := send()
 	if !apiclient.IsKeyChanged(err) {
 		return err
@@ -188,10 +224,62 @@ func (s *Session) sendSealed(ctx context.Context, send func() error, vaults ...*
 	if err := s.reloadVaults(ctx, vaults...); err != nil {
 		return err
 	}
+	if err := adopt(); err != nil {
+		return err
+	}
 	if err := send(); !apiclient.IsKeyChanged(err) {
 		return err
 	}
 	return ErrKeyChanged
+}
+
+// adoptRotationRevision points vaultItem.Revision at the revision a rotation wrote, when the item's content is still
+// base. A different content, a deletion, or an unknown base is a conflict and vaultItem is left unchanged.
+func (s *Session) adoptRotationRevision(ctx context.Context, vault *Vault, vaultItem, base *item.Item) error {
+	protoItems, err := s.listProtoItems(ctx, vault)
+	if err != nil {
+		return err
+	}
+	var protoItem *apitypes.Item
+	for index := range protoItems {
+		if protoItems[index].ID == vaultItem.ID {
+			protoItem = &protoItems[index]
+		}
+	}
+	if protoItem == nil || protoItem.Deleted || base == nil {
+		return &rotationConflict{}
+	}
+	current, err := decryptItem(vault, protoItem)
+	if err != nil {
+		return err
+	}
+	isSame, err := hasSameContent(current, base)
+	if err != nil {
+		return err
+	}
+	if !isSame {
+		return &rotationConflict{current: current}
+	}
+	vaultItem.Revision = current.Revision
+	return nil
+}
+
+// hasSameContent compares the sealed form of two items, so an empty list and a missing one are the same.
+func hasSameContent(first, second *item.Item) (bool, error) {
+	var encoded [4][]byte
+	for index, part := range []any{first.Overview, first.Details, second.Overview, second.Details} {
+		data, err := json.Marshal(part)
+		if err != nil {
+			return false, err
+		}
+		encoded[index] = data
+	}
+	defer func() {
+		for _, data := range encoded {
+			clear(data)
+		}
+	}()
+	return bytes.Equal(encoded[0], encoded[2]) && bytes.Equal(encoded[1], encoded[3]), nil
 }
 
 // reloadVaults replaces each vault with the server's current copy, with the key and key generation of its latest rotation.

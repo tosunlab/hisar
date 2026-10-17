@@ -162,8 +162,15 @@ func (access *standaloneBackend) saveItem(ctx context.Context, vaultID string, v
 	if err != nil {
 		return err
 	}
+	var base *item.Item
+	if vaultItem.Revision != "" {
+		if cached, cacheErr := access.getItem(ctx, vaultID, vaultItem.ID); cacheErr == nil && cached != vaultItem {
+			copied := *cached
+			base = &copied
+		}
+	}
 	delete(access.itemsByVaultID, vaultID)
-	_, err = access.unlockedSession.SaveItem(ctx, vault, vaultItem)
+	_, err = access.unlockedSession.SaveItem(ctx, vault, vaultItem, base)
 	return err
 }
 

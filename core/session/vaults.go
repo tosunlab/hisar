@@ -50,11 +50,10 @@ func (s *Session) createVault(ctx context.Context, name string, request *apitype
 	if err := s.Client.CreateVault(ctx, request); err != nil {
 		return nil, err
 	}
-	vault := &Vault{ID: vaultID, Type: request.Type, Name: name, Role: apitypes.VaultOwner, Key: vaultKey, OrganizationID: request.OrganizationID}
-	if request.OrganizationID != "" {
-		vault.KeyGeneration = 1
-	}
-	return vault, nil
+	return &Vault{
+		ID: vaultID, Type: request.Type, Name: name, Role: apitypes.VaultOwner, Key: vaultKey,
+		OrganizationID: request.OrganizationID, KeyGeneration: 1,
+	}, nil
 }
 
 func (s *Session) ListVaults(ctx context.Context) ([]Vault, error) {

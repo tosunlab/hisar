@@ -326,7 +326,7 @@ func (s *Service) saveCommandLineImports(vaultID string, importedItems []item.It
 	favoriteItemIDs := []string{}
 	for _, vaultItem := range importedItems {
 		vaultItem.ID, vaultItem.Revision = "", ""
-		_, err := s.unlockedSession.SaveItem(ctx, vault, &vaultItem)
+		err := s.saveSessionItem(ctx, vault, &vaultItem)
 		if isImportStoppingError(err) {
 			return result, convertError(err)
 		}

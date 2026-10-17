@@ -484,3 +484,133 @@ func TestItemWritesAfterAnotherOwnerRotated(t *testing.T) {
 		t.Errorf("trying again: %+v %v", retried, err)
 	}
 }
+
+// TestEditsAfterAnotherOwnerRotated: a rotation gives every item a new revision, so an edit, a deletion or a move out
+// made with the replaced key is retried on the rotation's revision when the item is unchanged, and is a conflict
+// when someone really changed it.
+func TestEditsAfterAnotherOwnerRotated(t *testing.T) {
+	test := createUnlockedTestService(t)
+	service := test.service
+	ctx := context.Background()
+	vaultID := createOrganizationTestVault(t, service)
+	service.mutex.Lock()
+	unlockedSession := service.unlockedSession
+	service.mutex.Unlock()
+	currentVault := func() *session.Vault {
+		t.Helper()
+		vault, err := unlockedSession.FindVault(ctx, vaultID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return vault
+	}
+	rotateAsAnotherOwner := func() {
+		t.Helper()
+		if err := unlockedSession.RotateVaultKey(ctx, currentVault(), []session.AccessGrant{{AccountID: test.accountID, Role: apitypes.VaultOwner}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	storedItems := func() map[string]item.Item {
+		t.Helper()
+		items, err := unlockedSession.ListItems(ctx, currentVault())
+		if err != nil {
+			t.Fatal(err)
+		}
+		itemsByID := map[string]item.Item{}
+		for _, vaultItem := range items {
+			itemsByID[vaultItem.ID] = vaultItem
+		}
+		return itemsByID
+	}
+	save := func(detail ItemDetail) ItemDetail {
+		t.Helper()
+		saved, err := service.SaveItem(vaultID, detail)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return saved
+	}
+	database := save(ItemDetail{Title: "Database", Password: "first-password", Tags: []string{"prod"}})
+	runbook := save(ItemDetail{Title: "Runbook", Notes: "restart the workers"})
+	token := save(ItemDetail{Title: "Token", Password: "token-password"})
+	shared := save(ItemDetail{Title: "Shared login", Password: "before"})
+
+	rotateAsAnotherOwner()
+	database.Password = "second-password"
+	if _, err := service.SaveItem(vaultID, database); err != nil {
+		t.Fatalf("editing after the rotation: %v", err)
+	}
+	if stored := storedItems()[database.ID]; stored.Details.Password != "second-password" || len(storedItems()) != 4 {
+		t.Fatalf("after the edit the vault holds %+v", storedItems())
+	}
+
+	rotateAsAnotherOwner()
+	if err := service.DeleteItem(vaultID, runbook.ID); err != nil {
+		t.Fatalf("deleting after the rotation: %v", err)
+	}
+	if _, isFound := storedItems()[runbook.ID]; isFound {
+		t.Fatal("the deleted runbook is still there")
+	}
+
+	rotateAsAnotherOwner()
+	if _, err := service.MoveItem(vaultID, token.ID, test.personalID); err != nil {
+		t.Fatalf("moving out after the rotation: %v", err)
+	}
+	if _, isFound := storedItems()[token.ID]; isFound {
+		t.Fatal("the moved token is still in the organization vault")
+	}
+
+	otherCopy, isFound := storedItems()[shared.ID]
+	if !isFound {
+		t.Fatal("the shared login is missing")
+	}
+	otherCopy.Details.Password = "changed elsewhere"
+	if _, err := unlockedSession.SaveItem(ctx, currentVault(), &otherCopy); err != nil {
+		t.Fatal(err)
+	}
+	rotateAsAnotherOwner()
+	shared.Password = "changed here"
+	if _, err := service.SaveItem(vaultID, shared); err == nil || !strings.Contains(err.Error(), "changed on another device") {
+		t.Fatalf("an edit of an item someone changed before the rotation: %v", err)
+	}
+	if stored := storedItems()[shared.ID]; stored.Details.Password != "changed elsewhere" {
+		t.Errorf("the other edit was replaced: %+v", stored)
+	}
+}
+
+// TestVaultsThisAppCreatesCountKeyGenerations: a shared vault starts at generation 1 and a rotation counts up, so a
+// save after it carries the current generation and the server checks it.
+func TestVaultsThisAppCreatesCountKeyGenerations(t *testing.T) {
+	test := createUnlockedTestService(t)
+	service := test.service
+	ctx := context.Background()
+	summary, err := service.CreateVault("Trip")
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.mutex.Lock()
+	vault := service.vaultsByID[summary.ID]
+	unlockedSession := service.unlockedSession
+	service.mutex.Unlock()
+	if vault.KeyGeneration != 1 {
+		t.Fatalf("a new shared vault has generation %d", vault.KeyGeneration)
+	}
+	if err := unlockedSession.RotateVaultKey(ctx, vault, []session.AccessGrant{{AccountID: test.accountID, Role: apitypes.VaultOwner}}); err != nil {
+		t.Fatal(err)
+	}
+	if vault.KeyGeneration != 2 || test.apiServer.getKeyGeneration(summary.ID) != 2 {
+		t.Fatalf("after a rotation: local generation %d, server %d", vault.KeyGeneration, test.apiServer.getKeyGeneration(summary.ID))
+	}
+	test.apiServer.mutex.Lock()
+	test.apiServer.keyGenerationsSent = nil
+	test.apiServer.mutex.Unlock()
+	if _, err := service.SaveItem(summary.ID, ItemDetail{Title: "Hotel", Password: "hotel-password"}); err != nil {
+		t.Fatal(err)
+	}
+	test.apiServer.mutex.Lock()
+	sent := slices.Clone(test.apiServer.keyGenerationsSent)
+	test.apiServer.mutex.Unlock()
+	if !slices.Equal(sent, []int64{2}) {
+		t.Errorf("the save sent generations %v", sent)
+	}
+}
