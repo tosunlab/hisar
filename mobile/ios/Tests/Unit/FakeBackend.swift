@@ -323,7 +323,10 @@ class FakeBackend: VaultBackend {
 
     func signOut() throws -> VaultStatus {
         record("signOut")
+        // As the backend does, signing out keeps only the server, so the sign-in form opens on it.
+        let lastServer = status.server
         status = .signedOut
+        status.server = lastServer
         return status
     }
 

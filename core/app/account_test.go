@@ -41,6 +41,7 @@ func TestSignedOutByServerWipesThisDevice(t *testing.T) {
 	state, _ := localstate.Load(statePath)
 	state.Server, state.Email, state.AccountID, state.Token = "https://hisar.test", "a@example.com", "ABC123", "token"
 	state.BiometricUnlock = []byte("sealed")
+	state.LastServer = "https://hisar.test"
 	if err := state.Save(); err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +58,8 @@ func TestSignedOutByServerWipesThisDevice(t *testing.T) {
 		t.Fatal("not signed out")
 	}
 	status := service.GetStatus()
-	if status.State != StateSignedOut || status.SignedOutReason != signedOutByServerReason || status.BiometricEnabled {
+	if status.State != StateSignedOut || status.SignedOutReason != signedOutByServerReason || status.BiometricEnabled ||
+		status.Server != "https://hisar.test" || status.Email != "" {
 		t.Errorf("status: %+v", status)
 	}
 	if _, err := secretKeyStore.LoadSecretKey("ABC123"); err == nil {
@@ -72,5 +74,45 @@ func TestSignedOutByServerWipesThisDevice(t *testing.T) {
 	}
 	if status := service.DismissSignedOutReason(); status.SignedOutReason != "" {
 		t.Errorf("after dismissing: %+v", status)
+	}
+}
+
+func TestSignOutKeepsOnlyTheServer(t *testing.T) {
+	statePath := filepath.Join(t.TempDir(), "desktop.json")
+	state, _ := localstate.Load(statePath)
+	state.Server, state.Email, state.AccountID, state.Token = "http://127.0.0.1:1", "a@example.com", "ABC123", "token"
+	state.LastServer = state.Server
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+	secretKeyStore := createMemorySecretKeyStore()
+	secretKey, _ := crypt.GenerateSecretKey("ABC123")
+	secretKeyStore.StoreSecretKey(secretKey)
+	service, _, _ := createTestService(t, statePath, secretKeyStore)
+
+	status, err := service.SignOut()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status.State != StateSignedOut || status.Server != "http://127.0.0.1:1" || status.Email != "" {
+		t.Errorf("signed-out status: %+v", status)
+	}
+	reloaded, _ := localstate.Load(statePath)
+	if reloaded.IsLoggedIn() || reloaded.Email != "" || reloaded.Server != "" || reloaded.LastServer != "http://127.0.0.1:1" {
+		t.Errorf("state file after sign out: %+v", reloaded)
+	}
+	restarted, _, _ := createTestService(t, statePath, secretKeyStore)
+	if got := restarted.GetStatus().Server; got != "http://127.0.0.1:1" {
+		t.Errorf("after a restart the sign-in form opens on %q", got)
+	}
+}
+
+func TestDescribeServer(t *testing.T) {
+	for server, want := range map[string]string{
+		"https://api.tryhisar.com": "api.tryhisar.com", "https://hisar.example.com/": "hisar.example.com", "http://127.0.0.1:8080": "http://127.0.0.1:8080",
+	} {
+		if got := describeServer(server); got != want {
+			t.Errorf("describeServer(%q) = %q", server, got)
+		}
 	}
 }

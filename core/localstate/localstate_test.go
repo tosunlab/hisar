@@ -201,3 +201,23 @@ func TestCheckMemberPin(t *testing.T) {
 		t.Errorf("pin overwritten: %v", pinned)
 	}
 }
+
+func TestLastServerIsSavedAndKeptOnReset(t *testing.T) {
+	statePath := filepath.Join(t.TempDir(), "desktop.json")
+	state, err := Load(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.Server, state.Email, state.Token, state.AccountID, state.LastServer = "https://hisar.example.com", "a@example.com", "tok", "account", "https://hisar.example.com"
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+	reloadedState, err := Load(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloadedState.Reset()
+	if reloadedState.IsLoggedIn() || reloadedState.Server != "" || reloadedState.Email != "" || reloadedState.LastServer != "https://hisar.example.com" {
+		t.Errorf("reset state: %+v", reloadedState)
+	}
+}

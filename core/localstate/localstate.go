@@ -71,6 +71,9 @@ type Settings struct {
 	Color      string `json:"color,omitempty"`
 	// IsWebsiteIconsDisabled stops this device from fetching website icons for logins.
 	IsWebsiteIconsDisabled bool `json:"websiteIconsDisabled,omitempty"`
+	// LastServer is the server this device last signed in to; signing out keeps it, so the sign-in form opens on it
+	// rather than the default server. No email or other account data is kept.
+	LastServer string `json:"lastServer,omitempty"`
 }
 
 type PairedBrowser struct {
