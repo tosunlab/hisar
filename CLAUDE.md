@@ -50,6 +50,7 @@ Five Go modules joined by `go.work`, plus three non-Go apps.
 | `secretreference` | `hisar://vault/item/field` references |
 | `export`, `importer` | Hisar's export format; importers for other password managers |
 | `invitelink`, `appversion`, `totp`, `emergencykit` | Invite links, app versions, one-time codes, the Emergency Kit PDF |
+| `project` | `GitHubRepository`, the one place that names the GitHub repository (releases, desktop update feed, docs quote it) |
 
 **`core/app`** is one package because every feature shares the unlocked session and its caches under one mutex. Files:
 `service.go`, `auth.go`, `lock.go`, `vaults.go`, `items.go`, `clipboard.go`, `errors.go`, `account.go`, `sharing.go`,
