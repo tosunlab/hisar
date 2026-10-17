@@ -28,7 +28,7 @@ func serve(ctx context.Context, args []string) error {
 	go deleteExpiredShareLinks(ctx, database, shareLinkSweepInterval)
 
 	app := server.CreateApp()
-	log.Printf("hisar-server listening on %s", *address)
+	log.Printf("hisar-server %s listening on %s", version, *address)
 	return app.Listen(*address, fiber.ListenConfig{
 		DisableStartupMessage: true,
 		GracefulContext:       ctx,
