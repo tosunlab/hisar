@@ -442,7 +442,13 @@ struct AppearanceView: View {
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
-        ThemePickerList(theme: model.theme, errorMessage: model.errorMessage) { theme in
+        ThemePickerList(
+            theme: model.theme,
+            errorMessage: model.errorMessage,
+            isWebsiteIconsEnabled: Binding(get: { model.isWebsiteIconsEnabled }, set: { isEnabled in
+                Task { await model.setWebsiteIconsEnabled(isEnabled) }
+            })
+        ) { theme in
             Task { await model.setTheme(theme) }
         }
         .onAppear { model.clearError() }
@@ -452,6 +458,8 @@ struct AppearanceView: View {
 struct ThemePickerList: View {
     var theme: VaultTheme
     var errorMessage: String?
+    /// The website icons switch; nil leaves it out (previews).
+    var isWebsiteIconsEnabled: Binding<Bool>?
     var choose: (VaultTheme) -> Void
 
     var body: some View {
@@ -484,6 +492,15 @@ struct ThemePickerList: View {
             } footer: {
                 Text("Blue, Purple and Green tint the background and the controls. Hisar on your Mac has its own theme setting.")
                     .foregroundStyle(.themeSecondary)
+            }
+            if let isWebsiteIconsEnabled {
+                Section {
+                    Toggle("Show website icons", isOn: isWebsiteIconsEnabled)
+                        .accessibilityIdentifier("website-icons-switch")
+                } footer: {
+                    Text("Logins without an icon of their own show their website's. This iPhone asks each website for it directly, never a third party.")
+                        .foregroundStyle(.themeSecondary)
+                }
             }
             if let errorMessage {
                 Section {

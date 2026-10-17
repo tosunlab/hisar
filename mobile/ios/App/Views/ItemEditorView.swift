@@ -13,6 +13,7 @@ struct ItemEditorView: View {
     @State private var allURLText: [String] = [""]
     @State private var isPasswordRevealed = false
     @State private var isGeneratorShown = false
+    @State private var isIconPickerShown = false
     @State private var isDeleteConfirmationShown = false
     @State private var hasLoadedDraft = false
     @State private var newTagText = ""
@@ -42,8 +43,27 @@ struct ItemEditorView: View {
                     }
                 }
                 Section {
-                    TextField("Title", text: $draft.title)
-                        .accessibilityIdentifier("editor-title")
+                    HStack(spacing: 12) {
+                        Button {
+                            isIconPickerShown = true
+                        } label: {
+                            AppItemIcon(item: buildIconPreviewItem(), size: 40)
+                                .overlay(alignment: .bottomTrailing) {
+                                    Image(systemName: "pencil.circle.fill")
+                                        .font(.caption)
+                                        .foregroundStyle(.themeSecondary, .background)
+                                        .offset(x: 4, y: 4)
+                                }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Change icon")
+                        .accessibilityIdentifier("editor-icon")
+                        TextField("Title", text: $draft.title)
+                            .accessibilityIdentifier("editor-title")
+                    }
+                }
+                .sheet(isPresented: $isIconPickerShown) {
+                    IconPickerView(icon: $draft.icon, item: buildIconPreviewItem())
                 }
                 if draft.isSecureNote {
                     Section("Note") {
@@ -809,6 +829,13 @@ struct ItemEditorView: View {
             draft.allTag.append(tag)
         }
         newTagText = ""
+    }
+
+    /// The draft with the websites as typed, for the icon's preview.
+    private func buildIconPreviewItem() -> ItemDetail {
+        var item = draft
+        item.allURL = allURLText.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        return item
     }
 
     private func save() {

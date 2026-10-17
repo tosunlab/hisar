@@ -3,6 +3,7 @@
 package hisarkit
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"path/filepath"
@@ -411,15 +412,24 @@ func encodePasskeyJSON(value any, err error) (string, error) {
 	return encodeJSON(value, err)
 }
 
-// PrepareItemIcon turns a photo or image into the PNG an item's icon keeps (icon.image in the item JSON).
-func (hisar *Hisar) PrepareItemIcon(image []byte) ([]byte, error) {
-	return hisar.service.PrepareItemIcon(image)
+// PrepareItemIcon turns a photo or image into the PNG an item's icon keeps and returns it as base64, as icon.image is in
+// the item JSON.
+func (hisar *Hisar) PrepareItemIcon(image []byte) (string, error) {
+	prepared, err := hisar.service.PrepareItemIcon(image)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(prepared), nil
 }
 
-// GetWebsiteIcon returns a login website's icon as a PNG, or nil when there is none, website icons are off or the app is
-// locked. It may ask the website, so the app calls it off the main thread.
-func (hisar *Hisar) GetWebsiteIcon(rawURL string) ([]byte, error) {
-	return hisar.service.GetWebsiteIcon(rawURL)
+// GetWebsiteIcon returns a login website's icon as a base64 PNG, or "" when there is none, website icons are off or the
+// app is locked. It may ask the website, so the app calls it off the main thread.
+func (hisar *Hisar) GetWebsiteIcon(rawURL string) (string, error) {
+	icon, err := hisar.service.GetWebsiteIcon(rawURL)
+	if err != nil || len(icon) == 0 {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(icon), nil
 }
 
 // IsWebsiteIconsEnabled reports whether logins show their website's icon.

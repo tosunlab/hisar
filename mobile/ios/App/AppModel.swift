@@ -42,6 +42,11 @@ final class AppModel: ObservableObject {
     @Published var selectedTab: Tab = .vaults
     @Published private(set) var copyCount = 0
     @Published private(set) var isMacApprovalAllowed = true
+    @Published private(set) var isWebsiteIconsEnabled = true
+    /// Website icons by domain for this unlock; nil while one loads or when the website has none.
+    @Published private(set) var websiteIconByDomain: [String: Data] = [:]
+    /// The domains asked during this unlock, finished or not, so a website without an icon is asked once.
+    private var websiteIconTaskByDomain: [String: Task<Void, Never>] = [:]
     @Published private(set) var theme = VaultTheme.standard
     @Published private(set) var allReceivedInvitation: [ReceivedShareInvitation] = []
     @Published private(set) var allWaitingInvitation: [WaitingShareInvitation] = []
@@ -81,6 +86,7 @@ final class AppModel: ObservableObject {
             let backend = try createBackend()
             self.backend = backend
             isMacApprovalAllowed = backend.isMacApprovalAllowed()
+            isWebsiteIconsEnabled = backend.isWebsiteIconsEnabled()
             theme = backend.getTheme()
             applyStatus(backend.getStatus())
             if status.isUnlocked {
@@ -145,6 +151,7 @@ final class AppModel: ObservableObject {
             waitingVaultKeys = WaitingVaultKeys()
             selectedTab = .vaults
             clearAllApproval()
+            forgetWebsiteIcons()
         }
         if newStatus.state != VaultStatus.stateLocked {
             allShareAwaitingUnlock = []
@@ -977,6 +984,46 @@ final class AppModel: ObservableObject {
             return
         }
         theme = savedTheme
+    }
+
+    /// loadWebsiteIcon asks the backend once per domain for the icon of a login's website; tiles read websiteIconByDomain.
+    func loadWebsiteIcon(url: String) {
+        guard isWebsiteIconsEnabled, let backend, let domain = Self.getWebsiteIconDomain(url),
+              websiteIconByDomain[domain] == nil, websiteIconTaskByDomain[domain] == nil else { return }
+        websiteIconTaskByDomain[domain] = Task { [weak self] in
+            let icon = try? await runInBackground { try backend.getWebsiteIcon(url: url) }
+            guard let self, !Task.isCancelled else { return }
+            if let icon {
+                self.websiteIconByDomain[domain] = icon
+            }
+        }
+    }
+
+    func getWebsiteIcon(url: String) -> Data? {
+        Self.getWebsiteIconDomain(url).flatMap { websiteIconByDomain[$0] }
+    }
+
+    nonisolated static func getWebsiteIconDomain(_ url: String) -> String? {
+        guard let components = URLComponents(string: url.trimmingCharacters(in: .whitespaces)), components.scheme?.lowercased() == "https",
+              let host = components.host?.lowercased(), !host.isEmpty else { return nil }
+        return host
+    }
+
+    private func forgetWebsiteIcons() {
+        websiteIconTaskByDomain.values.forEach { $0.cancel() }
+        websiteIconTaskByDomain = [:]
+        websiteIconByDomain = [:]
+    }
+
+    func setWebsiteIconsEnabled(_ isEnabled: Bool) async {
+        guard await perform(isBusyShown: false, { try $0.setWebsiteIconsEnabled(isEnabled) }) != nil else { return }
+        isWebsiteIconsEnabled = isEnabled
+        forgetWebsiteIcons()
+    }
+
+    /// prepareItemIcon turns a chosen photo into the icon image an item keeps, or shows why it can't.
+    func prepareItemIcon(_ image: Data) async -> Data? {
+        await perform { try $0.prepareItemIcon(image) }
     }
 
     @discardableResult
