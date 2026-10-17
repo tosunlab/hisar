@@ -128,7 +128,7 @@ func signIn(ctx context.Context, arguments []string) (js.Value, error) {
 	return toJavaScript(signInResult{Token: signedIn.Client.Token, AccountID: signedIn.AccountID, DeviceID: signedIn.DeviceID, Role: signedIn.Role, Name: signedIn.Name})
 }
 
-// reauthenticate(token, email, secretKey, password) returns the proof that admin changes to accounts carry.
+// reauthenticate(token, email, secretKey, password) returns a re-authentication proof for the signed-in account.
 func reauthenticate(ctx context.Context, arguments []string) (js.Value, error) {
 	secretKey, err := parseSecretKey(arguments[2])
 	if err != nil {
