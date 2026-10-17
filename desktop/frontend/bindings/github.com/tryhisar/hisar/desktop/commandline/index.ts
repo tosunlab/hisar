@@ -8,5 +8,6 @@ export {
 
 export type {
     Installation,
+    LauncherApp,
     Status
 } from "./models.js";
