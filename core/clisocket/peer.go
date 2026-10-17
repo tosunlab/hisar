@@ -32,6 +32,11 @@ func (session TerminalSession) getKey() sessionKey {
 	return sessionKey{sessionID: session.SessionID, terminalDevice: session.TerminalDevice, leaderStartTime: session.LeaderStartTime}
 }
 
+// hasTerminal: readProcessSession gives a process without a controlling terminal the terminal device 0.
+func (session TerminalSession) hasTerminal() bool {
+	return session.TerminalDevice != 0
+}
+
 type PeerResolver interface {
 	ResolvePeer(connection net.Conn) (Peer, error)
 	GetTerminalSession(pid int) (TerminalSession, error)

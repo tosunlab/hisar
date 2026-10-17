@@ -65,7 +65,7 @@ func TestDeniedShareLinkIsNotCreatedAndApprovesNothing(t *testing.T) {
 	if response := client.send(t, createShareLinkRequest()); getErrorCode(response) != cliprotocol.ErrorDenied {
 		t.Fatalf("denied share link: %+v", response)
 	}
-	if fixture.approvals.IsApproved(fixture.resolver.session) || slices.Contains(fixture.handler.types, cliprotocol.TypeCreateShareLink) {
+	if client.isApproved(t) || slices.Contains(fixture.handler.types, cliprotocol.TypeCreateShareLink) {
 		t.Error("a denied share link approved the session or reached the handler")
 	}
 	if response := client.send(t, cliprotocol.Request{Type: cliprotocol.TypeCreateShareLink}); getErrorCode(response) != cliprotocol.ErrorInvalidRequest {

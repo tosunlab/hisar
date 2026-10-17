@@ -58,11 +58,12 @@ type Server struct {
 	lastConnectionID atomic.Uint64
 }
 
-// connectionPeer is one connection; agent is set once it sent agent.hello.
+// connectionPeer is one connection; scope is fixed when it connects, and agent is set once it sent agent.hello.
 type connectionPeer struct {
 	peer         Peer
 	session      TerminalSession
 	connectionID uint64
+	scope        approvalScope
 	agent        *AgentIdentity
 }
 
@@ -108,7 +109,8 @@ func (s *Server) Serve(ctx context.Context, socketPath string) error {
 	}
 }
 
-func (s *Server) identifyPeer(connection net.Conn) (connectionPeer, bool) {
+// identifyPeer asks IdentifyApp only about callers without a terminal, so a terminal costs what it did before apps.
+func (s *Server) identifyPeer(connection net.Conn, connectionID uint64) (connectionPeer, bool) {
 	peer, err := s.config.PeerResolver.ResolvePeer(connection)
 	if err != nil {
 		log.Printf("commandline: refused a connection whose peer is unknown: %v", err)
@@ -123,7 +125,13 @@ func (s *Server) identifyPeer(connection net.Conn) (connectionPeer, bool) {
 		log.Printf("commandline: refused a connection without a known session: %v", err)
 		return connectionPeer{}, false
 	}
-	return connectionPeer{peer: peer, session: session}, true
+	var app AppIdentity
+	if !session.hasTerminal() && s.config.IdentifyApp != nil {
+		if identity, isVerified := s.config.IdentifyApp(peer.PID); isVerified {
+			app = identity
+		}
+	}
+	return connectionPeer{peer: peer, session: session, connectionID: connectionID, scope: getApprovalScope(session, app, connectionID)}, true
 }
 
 func (s *Server) ServeConnection(ctx context.Context, connection net.Conn) {
@@ -132,12 +140,11 @@ func (s *Server) ServeConnection(ctx context.Context, connection net.Conn) {
 	stopClosingConnection := context.AfterFunc(connectionContext, func() { connection.Close() })
 	defer stopClosingConnection()
 	defer connection.Close()
-	client, isAllowed := s.identifyPeer(connection)
+	client, isAllowed := s.identifyPeer(connection, s.lastConnectionID.Add(1))
 	if !isAllowed {
 		return
 	}
-	client.connectionID = s.lastConnectionID.Add(1)
-	defer s.config.Approvals.ForgetAgentConnection(client.connectionID)
+	defer s.config.Approvals.forgetConnection(client.connectionID)
 	reader := localsocket.WatchConnectionClose(connection, cancel)
 	for {
 		message, err := cliprotocol.ReadMessage(reader)
@@ -192,7 +199,7 @@ func (s *Server) answerRequest(ctx context.Context, client *connectionPeer, requ
 		if client.agent != nil {
 			hello.IsApproved = hello.State == cliprotocol.StateUnlocked && s.config.Approvals.IsAgentConnectionApproved(client.connectionID)
 		} else {
-			hello.IsApproved = hello.State == cliprotocol.StateUnlocked && s.config.Approvals.IsApproved(client.session)
+			hello.IsApproved = hello.State == cliprotocol.StateUnlocked && s.config.Approvals.isApproved(&s.config.Approvals.commandLine, client.scope)
 		}
 		return hello, nil
 	}
@@ -225,17 +232,15 @@ func (s *Server) answerRequest(ctx context.Context, client *connectionPeer, requ
 	if request.Type == cliprotocol.TypeExport && request.Export == nil {
 		return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "the export is missing")
 	}
-	require := s.config.Approvals.Require
+	approvals := s.config.Approvals
+	require := approvals.require
 	if request.Type == cliprotocol.TypeCreateShareLink || request.Type == cliprotocol.TypeExport {
 		// A share link hands secrets to people outside Hisar and an export writes every secret to a file, so both ask
 		// even in an approved session.
-		require = s.config.Approvals.RequireAlways
+		require = approvals.requireAlways
 	}
-	if err := require(client.session, func() error { return s.askApproval(ctx, client, request) }); err != nil {
-		if errors.Is(err, ErrDenied) {
-			return nil, cliprotocol.NewError(cliprotocol.ErrorDenied, err.Error())
-		}
-		return nil, err
+	if err := require(&approvals.commandLine, client.scope, func() error { return s.askApproval(ctx, client, request) }); err != nil {
+		return nil, convertDenial(err)
 	}
 	return s.config.Handler.HandleRequest(ctx, request)
 }
@@ -244,7 +249,7 @@ func (s *Server) askApproval(ctx context.Context, client *connectionPeer, reques
 	if s.config.Approver == nil {
 		return ErrDenied
 	}
-	approvalRequest := ApprovalRequest{ClientPID: client.peer.PID, TerminalName: client.session.TerminalName}
+	approvalRequest := ApprovalRequest{ClientPID: client.peer.PID, TerminalName: client.session.TerminalName, Coverage: client.scope.getCoverage()}
 	approvalRequest.ClientPath, _ = s.config.PeerResolver.GetProcessPath(client.peer.PID)
 	approvalRequest.ParentPID, _ = s.config.PeerResolver.GetParentPID(client.peer.PID)
 	if request.Type == cliprotocol.TypeResolveSecret {

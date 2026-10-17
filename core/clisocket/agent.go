@@ -151,12 +151,6 @@ func (approvals *SessionApprovals) isAgentGranted(connectionID uint64, grantKeys
 	return len(grantKeys) > 0
 }
 
-func (approvals *SessionApprovals) ForgetAgentConnection(connectionID uint64) {
-	approvals.mutex.Lock()
-	defer approvals.mutex.Unlock()
-	delete(approvals.agentConnectionsByID, connectionID)
-}
-
 func getAgentRequestKind(requestType string) (string, bool) {
 	switch requestType {
 	case cliprotocol.TypeAgentListVault, cliprotocol.TypeAgentSearchItem:
@@ -261,7 +255,7 @@ func buildGrantKeys(kind string, secrets []AgentSecret) []string {
 // askAgentApproval names the secrets as found, or as the references are written while Hisar is locked.
 func (s *Server) askAgentApproval(ctx context.Context, client *connectionPeer, kind string, request *cliprotocol.Request, secrets []AgentSecret) (AgentApprovalResult, error) {
 	if s.config.AgentApprover == nil {
-		return AgentApprovalResult{}, cliprotocol.NewError(cliprotocol.ErrorDenied, ErrDenied.Error())
+		return AgentApprovalResult{}, convertDenial(ErrDenied)
 	}
 	approvalRequest := AgentApprovalRequest{
 		ClientPID: client.peer.PID, TerminalName: client.session.TerminalName, Agent: *client.agent, Kind: kind,
@@ -276,10 +270,7 @@ func (s *Server) askAgentApproval(ctx context.Context, client *connectionPeer, k
 		approvalRequest.SecretNames, approvalRequest.RevealedName = describeAgentSecrets(request, secrets)
 	}
 	result, err := s.config.AgentApprover.ApproveAgent(ctx, approvalRequest)
-	if errors.Is(err, ErrDenied) {
-		return result, cliprotocol.NewError(cliprotocol.ErrorDenied, err.Error())
-	}
-	return result, err
+	return result, convertDenial(err)
 }
 
 func describeAgentSecrets(request *cliprotocol.Request, secrets []AgentSecret) ([]string, string) {
