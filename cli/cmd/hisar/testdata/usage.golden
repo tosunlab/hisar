@@ -19,7 +19,7 @@ commands:
   rm                 <item> [-v vault]                   delete an item
   favorite           <item> [-v vault]                   add an item to your Favorites, on all your devices (only you see them)
   unfavorite         <item> [-v vault]                   remove an item from your Favorites
-  import             <file> [-v vault] [-format f] [-y]  import a Hisar export, a 1Password, Bitwarden or browser CSV export, or a .env file (--item, --keys, --dry-run)
+  import             <file> [-v vault] [-format f] [-y]  import a Hisar export, a 1Password, Bitwarden, LastPass or browser CSV export, or a .env file (--item, --keys, --dry-run)
   export             [-o file] [--format encrypted|plain] export every vault you can open, encrypted with a passphrase you choose or as plain JSON
   generate           [-n length] [-no-symbols]           generate a password
   people                                                 list the people you share vaults with, with their security codes

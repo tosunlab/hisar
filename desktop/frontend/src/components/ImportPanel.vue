@@ -88,7 +88,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
         <span class="panel-icon"><AppIcon name="import" :size="18" /></span>
         <div class="panel-heading">
           <h2 id="import-title">Import passwords</h2>
-          <p class="muted">From 1Password, Bitwarden, or a CSV file from your browser</p>
+          <p class="muted">From 1Password, Bitwarden, LastPass, or a CSV file from your browser</p>
         </div>
         <button class="ghost icon-button" aria-label="Close" :disabled="store.importStep === 'saving'" @click="closeImport"><AppIcon name="close" /></button>
       </header>
@@ -114,6 +114,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
           <dl>
             <div><dt>1Password</dt><dd>File → Export → choose the account, then the 1PUX format.</dd></div>
             <div><dt>Bitwarden</dt><dd>Tools → Export vault → File format “.json”, not the encrypted one.</dd></div>
+            <div><dt>LastPass</dt><dd>Account options → Advanced → Export, then save the file as CSV.</dd></div>
             <div><dt>Chrome, Edge</dt><dd>Settings → Passwords → Export passwords.</dd></div>
             <div><dt>Firefox</dt><dd>Passwords (about:logins) → ⋯ → Export passwords.</dd></div>
             <div><dt>Safari</dt><dd>File → Export → Passwords.</dd></div>

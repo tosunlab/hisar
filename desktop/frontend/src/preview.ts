@@ -1183,6 +1183,7 @@ export const previewApi = {
       { id: "1password-csv", name: "1Password CSV" },
       { id: "bitwarden-json", name: "Bitwarden JSON (not encrypted)" },
       { id: "bitwarden-csv", name: "Bitwarden CSV" },
+      { id: "lastpass-csv", name: "LastPass CSV" },
       { id: "csv", name: "CSV (Chrome, Firefox, Safari, Edge and others)" },
     ]),
   chooseImportFile: (vaultID: string) => resolveAfterDelay(buildPreviewImportPreview(vaultID)),

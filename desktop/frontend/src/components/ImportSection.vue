@@ -12,7 +12,7 @@ const isRowVisible = useSettingsRowVisibility();
       <div class="setting">
         <div class="setting-text">
           <strong>Import from another password manager</strong>
-          <p class="muted">1Password (.1pux or CSV), Bitwarden (JSON or CSV), or a CSV export from Chrome, Firefox, Safari or Edge.</p>
+          <p class="muted">1Password (.1pux or CSV), Bitwarden (JSON or CSV), LastPass (CSV), or a CSV export from Chrome, Firefox, Safari or Edge.</p>
         </div>
         <button data-testid="open-import" @click="openImport">Import…</button>
       </div>

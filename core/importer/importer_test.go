@@ -456,8 +456,16 @@ func TestParseBrowserCSV(t *testing.T) {
 	}
 
 	lastPass := parseFixture(t, "lastpass_export.csv", readFixture(t, "lastpass.csv", testKeySet{}), FormatAutomatic)
-	if note := findTestItem(t, lastPass, "Database notes"); GetKind(note) != KindSecureNote || !reflect.DeepEqual(note.Overview.Tags, []string{"Servers"}) {
-		t.Errorf("lastpass note = %+v", note)
+	if lastPass.Format != FormatLastPassCSV {
+		t.Errorf("lastpass format = %q", lastPass.Format)
+	}
+	if note := findTestItem(t, lastPass, "Database notes"); GetKind(note) != KindServer || !reflect.DeepEqual(note.Overview.Tags, []string{"Servers"}) {
+		t.Errorf("lastpass server note = %+v", note)
+	}
+	// Forced to the generic CSV format, a LastPass file still imports as it did before LastPass had a format.
+	asCSV := parseFixture(t, "lastpass_export.csv", readFixture(t, "lastpass.csv", testKeySet{}), FormatCSV)
+	if note := findTestItem(t, asCSV, "Database notes"); GetKind(note) != KindSecureNote || note.Details.Notes != "NoteType:Server\nHostname:db.example.com" {
+		t.Errorf("lastpass note as CSV = %+v", note)
 	}
 }
 
@@ -549,15 +557,15 @@ func TestParseRejectsInvalidFile(t *testing.T) {
 	}{
 		{"empty file", "empty.csv", "", FormatAutomatic, "empty"},
 		{"only a BOM", "empty.csv", "\xef\xbb\xbf  \n", FormatAutomatic, "empty"},
-		{"unknown header", "data.csv", "foo,bar\n" + testSecretValue + ",2\n", FormatAutomatic, "not a 1Password, Bitwarden or CSV export"},
+		{"unknown header", "data.csv", "foo,bar\n" + testSecretValue + ",2\n", FormatAutomatic, "not a 1Password, Bitwarden, LastPass or CSV export"},
 		{"unknown header as CSV", "data.csv", "foo,bar\n" + testSecretValue + ",2\n", FormatCSV, "must name the columns"},
 		{"unterminated quote", "data.csv", "title,username,password\nGitHub,alice,\"" + testSecretValue + "\n", FormatAutomatic, "near line 2"},
 		{"bare quote", "data.csv", "title,username,password\nGitHub,alice,ab\"" + testSecretValue + "\n", FormatCSV, "near line 2"},
-		{"invalid JSON", "export.json", `{"items": [{"name": "` + testSecretValue + `"`, FormatAutomatic, "not a 1Password, Bitwarden or CSV export"},
+		{"invalid JSON", "export.json", `{"items": [{"name": "` + testSecretValue + `"`, FormatAutomatic, "not a 1Password, Bitwarden, LastPass or CSV export"},
 		{"invalid JSON as Bitwarden", "export.json", `{"items": [{"name": "` + testSecretValue + `" "x"}]}`, FormatBitwardenJSON, "not valid JSON near byte"},
 		{"wrong JSON type", "export.json", `{"items": {"name": "` + testSecretValue + `"}}`, FormatBitwardenJSON, "could not be read"},
-		{"other JSON", "export.json", `{"name": "` + testSecretValue + `"}`, FormatAutomatic, "not a 1Password, Bitwarden or CSV export"},
-		{"JSON array", "export.json", `["` + testSecretValue + `"]`, FormatAutomatic, "not a 1Password, Bitwarden or CSV export"},
+		{"other JSON", "export.json", `{"name": "` + testSecretValue + `"}`, FormatAutomatic, "not a 1Password, Bitwarden, LastPass or CSV export"},
+		{"JSON array", "export.json", `["` + testSecretValue + `"]`, FormatAutomatic, "not a 1Password, Bitwarden, LastPass or CSV export"},
 		{"damaged 1pux", "export.1pux", "PK\x03\x04" + testSecretValue, FormatAutomatic, "damaged"},
 		{"1pux that is not a zip", "export.1pux", testSecretValue, FormatAutomatic, "damaged"},
 		{"invalid export.data", "export.1pux", string(brokenZip), FormatAutomatic, "could not be read"},
@@ -666,7 +674,7 @@ func TestParseSavesSecureNotesAsSecureNotes(t *testing.T) {
 		{bitwarden, "GitHub", item.CategoryLogin},
 		{onePassword, "Recipe", item.CategorySecureNote},
 		{onePassword, "Mail", item.CategoryLogin},
-		{lastPass, "Database notes", item.CategorySecureNote},
+		{lastPass, "Database notes", item.CategoryServer},
 		{lastPass, "GitHub", item.CategoryLogin},
 		{bitwardenCSV, "Router", item.CategorySecureNote},
 		{bitwardenCSV, "CSV note with a login", item.CategoryLogin},
