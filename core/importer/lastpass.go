@@ -72,11 +72,16 @@ func cutLastPassLine(line string) (name, value string, isNamed bool) {
 	return name, value, true
 }
 
+// isLastPassEmpty reports whether a value is blank; LastPass writes an empty date as "," (month and year) or ",,".
+func isLastPassEmpty(text string) bool {
+	return strings.Trim(text, ", \t\n") == ""
+}
+
 // take returns the first of names with a value and marks it used.
 func (note *lastPassNote) take(names ...string) string {
 	for _, name := range names {
 		for _, value := range note.values {
-			if !value.isUsed && strings.EqualFold(value.name, name) && strings.TrimSpace(value.value) != "" {
+			if !value.isUsed && strings.EqualFold(value.name, name) && !isLastPassEmpty(value.value) {
 				value.isUsed = true
 				return strings.TrimSpace(value.value)
 			}
@@ -89,7 +94,7 @@ func (note *lastPassNote) take(names ...string) string {
 func (note *lastPassNote) has(names ...string) bool {
 	for _, name := range names {
 		for _, value := range note.values {
-			if !value.isUsed && strings.EqualFold(value.name, name) && strings.TrimSpace(value.value) != "" {
+			if !value.isUsed && strings.EqualFold(value.name, name) && !isLastPassEmpty(value.value) {
 				return true
 			}
 		}
@@ -101,7 +106,7 @@ func (note *lastPassNote) has(names ...string) bool {
 func (note *lastPassNote) remainingFields() []item.Field {
 	fields := []item.Field{}
 	for _, value := range note.values {
-		if value.isUsed || strings.TrimSpace(value.value) == "" {
+		if value.isUsed || isLastPassEmpty(value.value) {
 			continue
 		}
 		fields = append(fields, item.Field{Name: value.name, Value: formatLastPassValue(value.value), Concealed: isLastPassSecretName(value.name)})
@@ -144,8 +149,11 @@ func isLastPassSecretName(name string) bool {
 }
 
 // convertLastPassDate writes LastPass's "January,15,1990" as 1990-01-15 and "January,2027" as 01/2027; anything else
-// stays as it is.
+// stays as it is, except an empty date ("," or ",,"), which is blank.
 func convertLastPassDate(text string) string {
+	if isLastPassEmpty(text) {
+		return ""
+	}
 	parts := strings.Split(strings.TrimSpace(text), ",")
 	if len(parts) < 2 {
 		return strings.TrimSpace(text)

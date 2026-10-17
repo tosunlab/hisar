@@ -201,6 +201,10 @@ func convertCSVRecord(layout *csvLayout, values []string, format string) (item.I
 			return item.Item{}, fmt.Sprintf("Bitwarden %s items are not supported in Hisar yet", entryType)
 		}
 	}
+	// LastPass's vault export has an http://group row for each folder; it is not an entry, and an empty item is dropped.
+	if format == FormatLastPassCSV && strings.EqualFold(strings.TrimSpace(getValue(columnURL)), "http://group") {
+		return item.Item{}, ""
+	}
 	if format == FormatLastPassCSV && isLastPassSecureNoteURL(getValue(columnURL)) && isLastPassTypedNote(getValue(columnNotes)) {
 		vaultItem, reason := convertLastPassNote(getValue(columnTitle), getValue(columnNotes))
 		if reason == "" {
@@ -234,13 +238,16 @@ func convertCSVRecord(layout *csvLayout, values []string, format string) (item.I
 }
 
 // splitCSVTags reads the tags column. A Bitwarden folder is one tag, and so is a LastPass folder, whose nested folders
-// LastPass joins with backslashes (Work\Servers becomes Work/Servers); other exports list tags with commas or semicolons.
+// LastPass joins with backslashes (Work\Servers becomes Work/Servers) and older LastPass files name "(none)" for no folder;
+// other exports list tags with commas or semicolons.
 func splitCSVTags(text, format string) []string {
 	switch {
 	case strings.TrimSpace(text) == "":
 		return nil
 	case format == FormatBitwardenCSV:
 		return []string{text}
+	case format == FormatLastPassCSV && strings.EqualFold(strings.TrimSpace(text), "(none)"):
+		return nil
 	case format == FormatLastPassCSV:
 		return []string{strings.ReplaceAll(text, "\\", "/")}
 	}

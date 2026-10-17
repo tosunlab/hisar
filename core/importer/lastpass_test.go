@@ -62,14 +62,17 @@ func readFieldValues(fields []item.Field) map[string]string {
 func TestParseLastPassTypedNotes(t *testing.T) {
 	privateKey, fingerprint := createLastPassSSHKey(t, "key passphrase")
 	content := buildLastPassExport(t, [][]string{
+		{"http://group", "", "", "", "", "Work", "", "0"},
 		{"https://github.com", "alice", "lp-github-password", "", "Work account", "GitHub", "Work\\Code", "1"},
+		{"https://example.com", "bob", "lp-example-password", "", "", "Example", "(none)", "0"},
 		lastPassNoteRow("Visa", "Personal", "NoteType:Credit Card", "Language:en-US", "Name on Card:Alice Smith", "Type:Visa",
 			"Number:4111111111111111", "Security Code:123", "Start Date:January,2024", "Expiration Date:January,2027", "Notes:Travel card"),
 		lastPassNoteRow("Alice", "", "NoteType:Address", "Language:en-US", "Title:Dr", "First Name:Alice", "Middle Name:", "Last Name:Smith",
 			"Birthday:March,5,1990", "Company:Hisar", "Address 1:1 Main St", "Address 2:Apt 2", "City / Town:Springfield", "County:",
 			"State:IL", "Zip / Postal Code:62701", "Country:us", "Email Address:alice@example.com",
 			`Phone:{"num":"5551234","ext":"12","cc3l":"USA"}`, `Mobile Phone:{"num":"5559876","ext":"","cc3l":"USA"}`, "Notes:"),
-		lastPassNoteRow("Office", "", "NoteType:Address", "Address 1:2 Market St", "City / Town:Springfield", "Country:US", "Notes:"),
+		lastPassNoteRow("Spare card", "", "NoteType:Credit Card", "Number:4000056655665556", "Start Date:,", "Expiration Date:,", "Notes:"),
+		lastPassNoteRow("Office", "", "NoteType:Address", "Address 1:2 Market St", "City / Town:Springfield", "Country:US", "Birthday:,,", "Notes:"),
 		lastPassNoteRow("Build box", "Servers", "NoteType:Server", "Hostname:build.example.com:2222", "Username:deploy", "Password:lp-server-password",
 			"Notes:Restart weekly\nsecond line"),
 		lastPassNoteRow("Prod db", "", "NoteType:Database", "Type:Postgres", "Hostname:db.example.com", "Port:5432", "Database:", "Username:app",
@@ -93,11 +96,25 @@ func TestParseLastPassTypedNotes(t *testing.T) {
 		t.Errorf("login = %+v", github)
 	}
 
+	if example := findTestItem(t, result, "Example"); len(example.Overview.Tags) != 0 {
+		t.Errorf("(none) folder became tags %v", example.Overview.Tags)
+	}
+	for _, vaultItem := range result.Items {
+		if vaultItem.Overview.Title == "Work" {
+			t.Errorf("folder row became an item: %+v", vaultItem)
+		}
+	}
+
 	visa := findTestItem(t, result, "Visa")
 	card, cardFields := item.ReadCard(&visa)
 	if GetKind(visa) != KindCreditCard || card.Cardholder != "Alice Smith" || card.Number != "4111 1111 1111 1111" || card.Expiry != "01/27" ||
 		card.SecurityCode != "123" || visa.Details.Notes != "Travel card" || readFieldValues(cardFields)["Start Date"] != "01/2024" {
 		t.Errorf("card = %+v %+v, fields %+v", visa.Overview, card, cardFields)
+	}
+
+	spare := findTestItem(t, result, "Spare card")
+	if spareCard, spareFields := item.ReadCard(&spare); GetKind(spare) != KindCreditCard || spareCard.Expiry != "" || len(spareFields) != 0 {
+		t.Errorf("card without dates = %+v, fields %+v", spareCard, spareFields)
 	}
 
 	alice := findTestItem(t, result, "Alice")
@@ -112,8 +129,8 @@ func TestParseLastPassTypedNotes(t *testing.T) {
 	}
 
 	office := findTestItem(t, result, "Office")
-	if address, _ := item.ReadAddress(&office); GetKind(office) != KindAddress || address.Street != "2 Market St" || address.Country != "US" {
-		t.Errorf("address = %+v", address)
+	if address, addressFields := item.ReadAddress(&office); GetKind(office) != KindAddress || address.Street != "2 Market St" || address.Country != "US" || len(addressFields) != 0 {
+		t.Errorf("address = %+v, fields %+v", address, addressFields)
 	}
 
 	build := findTestItem(t, result, "Build box")
@@ -160,7 +177,7 @@ func TestParseLastPassTypedNotes(t *testing.T) {
 	}
 
 	summary := Summarize(result.Items)
-	wantSummary := Summary{LoginCount: 1, CreditCardCount: 1, IdentityCount: 1, AddressCount: 1, ServerCount: 1, DatabaseCount: 1, SoftwareLicenseCount: 1, SSHKeyCount: 1, SecureNoteCount: 3}
+	wantSummary := Summary{LoginCount: 2, CreditCardCount: 2, IdentityCount: 1, AddressCount: 1, ServerCount: 1, DatabaseCount: 1, SoftwareLicenseCount: 1, SSHKeyCount: 1, SecureNoteCount: 3}
 	if summary != wantSummary {
 		t.Errorf("summary = %+v", summary)
 	}
@@ -172,7 +189,7 @@ func TestParseLastPassNoteText(t *testing.T) {
 		note.values[1].value != "-----BEGIN KEY-----\nProc-Type: 4,ENCRYPTED\nAAAA\n-----END KEY-----" {
 		t.Errorf("note = %+v %+v", note, note.values)
 	}
-	for text, want := range map[string]string{"January,2027": "01/2027", "December,31,1999": "1999-12-31", "2024-01-02": "2024-01-02", "Smarch,2027": "Smarch,2027", "March,Inc": "March,Inc", "May,15": "May,15"} {
+	for text, want := range map[string]string{"January,2027": "01/2027", "December,31,1999": "1999-12-31", "2024-01-02": "2024-01-02", "Smarch,2027": "Smarch,2027", "March,Inc": "March,Inc", "May,15": "May,15", ",": "", ",,": ""} {
 		if got := convertLastPassDate(text); got != want {
 			t.Errorf("convertLastPassDate(%q) = %q", text, got)
 		}
