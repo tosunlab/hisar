@@ -193,8 +193,11 @@ func main() {
 		CheckUpdateRequired: commandLineBridge.CheckUpdateRequired,
 		Approver:            approver,
 		AgentApprover:       approver,
-		Approvals:           commandLineApprovals,
-		IsEnabled:           func() bool { return commandLineService.IsIntegrationEnabled() },
+		IdentifyApp: func(pid int) (clisocket.AppIdentity, bool) {
+			return commandline.IdentifyApp(requesterResolver.Resolve(pid))
+		},
+		Approvals: commandLineApprovals,
+		IsEnabled: func() bool { return commandLineService.IsIntegrationEnabled() },
 	})
 	commandLineSocketPath := os.Getenv(cliprotocol.SocketEnvironment)
 	if commandLineSocketPath == "" {
@@ -207,7 +210,7 @@ func main() {
 		HomeDirectory: homeDirectory,
 		GetUserPath:   userPathReader.Read,
 		Shell:         getLoginShell(),
-	}), commandLineRunner)
+	}), commandLineRunner, commandLineApprovals, requesterResolver.DescribeApp)
 
 	loginItemService := loginitem.NewService(vaultService, background.NewLoginItem(homeDirectory))
 	inviteLinkService := app.NewInviteLinkService()
