@@ -130,6 +130,7 @@ func (s *Server) CreateApp() *fiber.App {
 	app.Get("/terms", sendTermsOfService)
 	app.Get("/s/:id", sendShareLinkPage)
 	app.Get("/invite/:token", s.limitInvitePageRate, s.sendInvitePage)
+	newAdminPage(builtAdminPageFiles()).register(app)
 
 	apiGroup := app.Group("/api/v1")
 	apiGroup.Use(s.requireMinimumVersion)
