@@ -127,8 +127,30 @@ type lockedVault struct {
 }
 
 // lockVault locks the vault's organization, when it has one, and then the vault: the order of every change to an
-// organization (§5.11), so that access is never checked against a state another transaction is changing.
+// organization or to the access of one of its vaults (§5.11), so that access is never checked against a state another
+// transaction is changing.
 func lockVault(ctx context.Context, transaction pgx.Tx, vaultID string) (*lockedVault, error) {
+	if err := lockVaultOrganization(ctx, transaction, vaultID); err != nil {
+		return nil, err
+	}
+	return lockVaultRow(ctx, transaction, vaultID)
+}
+
+// lockVaultOrganization locks the vault's organization when it has one. A vault's organization never changes, so it is
+// read before the lock.
+func lockVaultOrganization(ctx context.Context, transaction pgx.Tx, vaultID string) error {
+	var organizationID string
+	if err := transaction.QueryRow(ctx, `SELECT coalesce(organization_id::text, '') FROM vaults WHERE id = $1`, vaultID).Scan(&organizationID); err != nil {
+		return convertNoRowsToNotFound(err)
+	}
+	if organizationID == "" {
+		return nil
+	}
+	return lockOrganization(ctx, transaction, organizationID)
+}
+
+// lockVaultRow locks the vault without its organization, as lockVaults does.
+func lockVaultRow(ctx context.Context, transaction pgx.Tx, vaultID string) (*lockedVault, error) {
 	vaultsByID, err := lockVaults(ctx, transaction, []string{vaultID})
 	if err != nil {
 		return nil, err
@@ -140,25 +162,12 @@ func lockVault(ctx context.Context, transaction pgx.Tx, vaultID string) (*locked
 	return vault, nil
 }
 
-// lockVaults locks the organizations of the vaults and then the vaults, each in ID order, as lockVault does for one. A
-// vault's organization never changes, so it is read before the locks. A vault that does not exist is not in the result.
+// lockVaults locks the vaults in ID order and not their organizations: item writes and moves change no access, so they
+// wait only for the changes that lock the same vaults, such as a rotation (§5.11). A caller that needs an organization
+// locks it first, since a transaction that holds a vault never waits for an organization. A vault that does not exist
+// is not in the result.
 func lockVaults(ctx context.Context, transaction pgx.Tx, vaultIDs []string) (map[string]*lockedVault, error) {
 	rows, err := transaction.Query(ctx, `
-		SELECT organization_id::text FROM vaults WHERE id = ANY($1::uuid[]) AND organization_id IS NOT NULL
-		GROUP BY organization_id ORDER BY organization_id`, vaultIDs)
-	if err != nil {
-		return nil, err
-	}
-	organizationIDs, err := pgx.CollectRows(rows, pgx.RowTo[string])
-	if err != nil {
-		return nil, err
-	}
-	for _, organizationID := range organizationIDs {
-		if err := lockOrganization(ctx, transaction, organizationID); err != nil {
-			return nil, err
-		}
-	}
-	rows, err = transaction.Query(ctx, `
 		SELECT id::text, type, coalesce(organization_id::text, ''), seq, key_generation FROM vaults
 		WHERE id = ANY($1::uuid[]) ORDER BY id FOR UPDATE`, vaultIDs)
 	if err != nil {

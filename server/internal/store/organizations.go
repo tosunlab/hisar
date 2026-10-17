@@ -162,12 +162,19 @@ func mergeAccountIDs(groups ...[]string) []string {
 
 // changeOrganization runs change in one transaction that first locks the organization, as every change to an
 // organization does (§5.11), and ends with reconcileOrganizationVaults when isReconciling. change may add the accounts
-// whose invitation it withdrew to the change's AccountIDs.
+// whose invitation it withdrew to the change's AccountIDs. A reconciling change also locks the organization's vaults,
+// in ID order, before change: a grant's foreign key would otherwise share-lock one vault ahead of the others and wait
+// for them while an item move holds one and waits for it.
 func (s *Store) changeOrganization(ctx context.Context, organizationID string, isReconciling bool, change func(pgx.Tx, *OrganizationChange) error) (*OrganizationChange, error) {
 	organizationChange := &OrganizationChange{}
 	err := s.runInTransaction(ctx, func(transaction pgx.Tx) error {
 		if err := lockOrganization(ctx, transaction, organizationID); err != nil {
 			return err
+		}
+		if isReconciling {
+			if _, err := transaction.Exec(ctx, `SELECT 1 FROM vaults WHERE organization_id = $1 ORDER BY id FOR UPDATE`, organizationID); err != nil {
+				return err
+			}
 		}
 		memberIDsBefore, err := listOrganizationMemberIDs(ctx, transaction, organizationID)
 		if err != nil {

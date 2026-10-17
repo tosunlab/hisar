@@ -43,44 +43,50 @@ func (s *Store) ListChanges(ctx context.Context, vaultID string, since int64, li
 // PutItem writes a new revision if baseRevision matches the stored one ("" for a new item).
 // On ErrConflict the current item is returned; it is nil when the item does not exist.
 // Re-sending an already stored revision is a no-op so that clients can retry safely.
-// It locks like every change to an organization vault (§5.11) and returns ErrStaleKeyGeneration, before any revision
-// check, unless the vault accepts keyGeneration, so an item sealed with a key a rotation replaced is never stored.
+// It locks only the vault, since an item write changes no access (§5.11), and returns ErrStaleKeyGeneration, before
+// any revision check, unless the vault accepts keyGeneration, so an item sealed with a key a rotation replaced is never
+// stored.
 func (s *Store) PutItem(ctx context.Context, vaultID, baseRevision string, keyGeneration int64, item *Item) (*Item, error) {
 	var current *Item
-	err := s.runInTransaction(ctx, func(transaction pgx.Tx) error {
-		vault, err := lockVault(ctx, transaction, vaultID)
-		if err != nil {
-			return err
-		}
-		if !vault.acceptsKeyGeneration(keyGeneration) {
-			return ErrStaleKeyGeneration
-		}
-
-		rows, err := transaction.Query(ctx, `
-			SELECT id, revision, seq, deleted, overview, details, updated_at, updated_by
-			FROM items WHERE vault_id = $1 AND id = $2`, vaultID, item.ID)
-		if err != nil {
-			return err
-		}
-		existingItems, err := pgx.CollectRows(rows, scanItem)
-		if err != nil {
-			return err
-		}
-
-		switch {
-		case len(existingItems) == 1 && existingItems[0].Revision == item.Revision:
-			*item = existingItems[0]
-			return nil
-		case len(existingItems) == 1 && existingItems[0].Revision != baseRevision:
-			current = &existingItems[0]
-			return ErrConflict
-		case len(existingItems) == 0 && baseRevision != "":
-			return ErrConflict
-		}
-
-		return writeItemRevision(ctx, transaction, vaultID, item)
+	err := s.runInTransaction(ctx, func(transaction pgx.Tx) (err error) {
+		current, err = putItem(ctx, transaction, vaultID, baseRevision, keyGeneration, item)
+		return err
 	})
 	return current, err
+}
+
+// putItem is PutItem in transaction.
+func putItem(ctx context.Context, transaction pgx.Tx, vaultID, baseRevision string, keyGeneration int64, item *Item) (*Item, error) {
+	vault, err := lockVaultRow(ctx, transaction, vaultID)
+	if err != nil {
+		return nil, err
+	}
+	if !vault.acceptsKeyGeneration(keyGeneration) {
+		return nil, ErrStaleKeyGeneration
+	}
+
+	rows, err := transaction.Query(ctx, `
+		SELECT id, revision, seq, deleted, overview, details, updated_at, updated_by
+		FROM items WHERE vault_id = $1 AND id = $2`, vaultID, item.ID)
+	if err != nil {
+		return nil, err
+	}
+	existingItems, err := pgx.CollectRows(rows, scanItem)
+	if err != nil {
+		return nil, err
+	}
+
+	switch {
+	case len(existingItems) == 1 && existingItems[0].Revision == item.Revision:
+		*item = existingItems[0]
+		return nil, nil
+	case len(existingItems) == 1 && existingItems[0].Revision != baseRevision:
+		return &existingItems[0], ErrConflict
+	case len(existingItems) == 0 && baseRevision != "":
+		return nil, ErrConflict
+	}
+
+	return nil, writeItemRevision(ctx, transaction, vaultID, item)
 }
 
 func (s *Store) GetItemHistory(ctx context.Context, vaultID, itemID string) ([]Item, error) {
@@ -116,12 +122,12 @@ type ItemMove struct {
 	TargetKeyGeneration int64
 }
 
-// MoveItem moves the item in one transaction, so it is never in both vaults or in neither. It locks both vaults' organizations
-// and then the vaults (§5.11). It refuses with ErrConflict, returning the current item, unless BaseRevision is the item's
-// live revision in the source vault; with ErrExists when the target vault has a live item with the same ID; with
-// ErrTargetNotWritable unless the account may write the target vault; and with ErrStaleKeyGeneration unless both vaults
-// accept the key generations the item is sealed with. On success Tombstone.Seq and Moved.Seq hold the vaults' new
-// sequence numbers.
+// MoveItem moves the item in one transaction, so it is never in both vaults or in neither. It locks only the two
+// vaults, since a move changes no access (§5.11). It refuses with ErrConflict, returning the current item, unless
+// BaseRevision is the item's live revision in the source vault; with ErrExists when the target vault has a live item
+// with the same ID; with ErrTargetNotWritable unless the account may write the target vault; and with
+// ErrStaleKeyGeneration unless both vaults accept the key generations the item is sealed with. On success
+// Tombstone.Seq and Moved.Seq hold the vaults' new sequence numbers.
 func (s *Store) MoveItem(ctx context.Context, move *ItemMove) (*Item, error) {
 	var current *Item
 	err := s.runInTransaction(ctx, func(transaction pgx.Tx) error {

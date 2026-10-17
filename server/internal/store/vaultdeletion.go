@@ -56,11 +56,15 @@ func (s *Store) RenameVault(ctx context.Context, vaultID string, encName []byte,
 
 // DeleteVault deletes the vault, its access grants, items, history, invitations and team grants in one transaction,
 // after moving its live items into another vault when asked. It returns the accounts that had access to the deleted
-// vault. The organizations of both vaults are locked first (§5.11), and moved items sealed with a target key a rotation
-// replaced are refused (ErrStaleKeyGeneration).
+// vault. Deleting an organization vault removes access, so its organization is locked first (§5.11); the target only
+// receives items, so only its row is locked. Moved items sealed with a target key a rotation replaced are refused
+// (ErrStaleKeyGeneration).
 func (s *Store) DeleteVault(ctx context.Context, deletion VaultDeletion) ([]string, error) {
 	var formerMemberIDs []string
 	err := s.runInTransaction(ctx, func(transaction pgx.Tx) error {
+		if err := lockVaultOrganization(ctx, transaction, deletion.VaultID); err != nil {
+			return err
+		}
 		lockedVaultIDs := []string{deletion.VaultID}
 		if deletion.MoveToVaultID != "" {
 			lockedVaultIDs = append(lockedVaultIDs, deletion.MoveToVaultID)

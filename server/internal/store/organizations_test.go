@@ -109,6 +109,38 @@ func TestReconcileGivesTheStrongestTeamRole(t *testing.T) {
 	}
 }
 
+// Item writes change no access, so they lock only their vault (§5.11): a write held open in one vault of an organization
+// does not hold up a write to another of its vaults.
+func TestItemWritesToOrganizationVaultsRunConcurrently(t *testing.T) {
+	database := createTestStore(t)
+	ctx := context.Background()
+	createTestAccount(t, database, "AAAAAA", "a@example.com")
+	organizationID := createTestOrganization(t, database)
+	teamID := createTestTeam(t, database, organizationID, "AAAAAA")
+	firstVaultID := createTestOrganizationVault(t, database, organizationID, teamID)
+	secondVaultID := createTestOrganizationVault(t, database, organizationID, teamID)
+	createItem := func() *Item {
+		return &Item{ID: uuid.NewString(), Revision: uuid.NewString(), Overview: []byte{1}, Details: []byte{1}, UpdatedBy: "AAAAAA"}
+	}
+
+	transaction, err := database.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer transaction.Rollback(ctx)
+	if _, err := putItem(ctx, transaction, firstVaultID, "", 1, createItem()); err != nil {
+		t.Fatal(err)
+	}
+	writeContext, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if _, err := database.PutItem(writeContext, secondVaultID, "", 1, createItem()); err != nil {
+		t.Fatalf("a write to another vault of the organization waited for the open one: %v", err)
+	}
+	if err := transaction.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestOrganizationVaultMemberLimit(t *testing.T) {
 	database := createTestStore(t)
 	ctx := context.Background()

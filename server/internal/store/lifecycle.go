@@ -314,6 +314,10 @@ func (s *Store) DeleteAccount(ctx context.Context, accountID string, tokenHash, 
 			query     string
 			arguments []any
 		}{
+			// The vaults deleted or marked below are locked first, in ID order, as item moves lock theirs (§5.11).
+			{`SELECT 1 FROM vaults WHERE id = ANY($1::uuid[]) OR organization_id = ANY($2::uuid[])
+				OR type = 'organization' AND id IN (SELECT vault_id FROM vault_access WHERE account_id = $3) ORDER BY id FOR UPDATE`,
+				[]any{deletedVaultIDs, deletedOrganizationIDs, accountID}},
 			{`DELETE FROM vaults WHERE id = ANY($1::uuid[])`, []any{deletedVaultIDs}},
 			{`DELETE FROM vaults WHERE organization_id = ANY($1::uuid[])`, []any{deletedOrganizationIDs}},
 			{`DELETE FROM organizations WHERE id = ANY($1::uuid[])`, []any{deletedOrganizationIDs}},
