@@ -193,6 +193,7 @@ func main() {
 		CheckUpdateRequired: commandLineBridge.CheckUpdateRequired,
 		Approver:            approver,
 		AgentApprover:       approver,
+		LauncherApprover:    approver,
 		IdentifyApp: func(pid int) (clisocket.AppIdentity, bool) {
 			return commandline.IdentifyApp(requesterResolver.Resolve(pid))
 		},

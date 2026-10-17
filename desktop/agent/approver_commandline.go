@@ -22,6 +22,7 @@ func (approver *Approver) buildCommandLineEvent(requestID string, request clisoc
 		ClientName:        commandLineClientName,
 		ClientPath:        request.ClientPath,
 		TerminalName:      request.TerminalName,
+		Coverage:          string(request.Coverage),
 		IsTouchIDApproval: approver.IsTouchIDApproval(),
 		TimeoutAt:         approver.config.Now().Add(approver.config.Timeout).UTC().Format(time.RFC3339),
 		SecretNames:       []string{},
@@ -85,7 +86,8 @@ func describeCommandLineClient(event ApprovalEvent) string {
 	return fmt.Sprintf("%q in %s", event.ClientName, describeInlineAppName(event))
 }
 
-// ApproveCommandLine asks to let a terminal session use Hisar; when Hisar is locked, approving also unlocks it.
+// ApproveCommandLine asks to let hisar use Hisar in what request.Coverage covers: a terminal session, an app, or one
+// connection. When Hisar is locked, approving also unlocks it.
 func (approver *Approver) ApproveCommandLine(ctx context.Context, request clisocket.ApprovalRequest) error {
 	if approver.config.Emit == nil {
 		return clisocket.ErrDenied
@@ -97,19 +99,12 @@ func (approver *Approver) ApproveCommandLine(ctx context.Context, request clisoc
 	if event.Action != "" {
 		action = event.Action
 	}
-	pending := &pendingApproval{
+	return approver.waitForSocketApproval(ctx, &pendingApproval{
 		event:           event,
 		responseChannel: make(chan approvalResponse, 1),
 		receivedAt:      receivedAt,
 		approveReason:   fmt.Sprintf("allow %s to %s", client, action),
 		unlockReason:    fmt.Sprintf("unlock Hisar for %s", client),
 		phoneRequest:    approver.buildCommandLinePhoneDescription(event),
-	}
-	if !approver.waitForApproval(ctx, pending) {
-		if pending.timedOutAfter > 0 {
-			return clisocket.TimeoutError{Timeout: pending.timedOutAfter}
-		}
-		return clisocket.ErrDenied
-	}
-	return nil
+	})
 }

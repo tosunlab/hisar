@@ -171,11 +171,8 @@ func (approver *Approver) ApproveAgent(ctx context.Context, request clisocket.Ag
 		unlockReason:    fmt.Sprintf("unlock Hisar for %s", requester),
 		phoneRequest:    approver.buildAgentPhoneDescription(event),
 	}
-	if !approver.waitForApproval(ctx, pending) {
-		if pending.timedOutAfter > 0 {
-			return clisocket.AgentApprovalResult{}, clisocket.TimeoutError{Timeout: pending.timedOutAfter}
-		}
-		return clisocket.AgentApprovalResult{}, clisocket.ErrDenied
+	if err := approver.waitForSocketApproval(ctx, pending); err != nil {
+		return clisocket.AgentApprovalResult{}, err
 	}
 	return clisocket.AgentApprovalResult{IsRemembered: event.IsRememberable && approver.isPendingRemembered(pending)}, nil
 }
