@@ -21,7 +21,7 @@ func (s *Server) registerAdminHealthRoutes(adminGroup fiber.Router) {
 }
 
 func (s *Server) handleGetAdminHealth(c fiber.Ctx) error {
-	health, err := s.service.GetAdminHealth(c.Context(), service.CheckRequest{ForwardedFor: c.Get(fiber.HeaderXForwardedFor), TrustsProxy: s.config.TrustProxy})
+	health, err := s.service.GetAdminHealth(c.Context(), s.getCheckRequest(c))
 	if err != nil {
 		return err
 	}
@@ -30,6 +30,11 @@ func (s *Server) handleGetAdminHealth(c fiber.Ctx) error {
 		health.LatestVersion = s.config.ServerUpdates.GetNewerVersion(s.config.Version)
 	}
 	return c.JSON(health)
+}
+
+// getCheckRequest is what the instance checks read from the admin's request.
+func (s *Server) getCheckRequest(c fiber.Ctx) service.CheckRequest {
+	return service.CheckRequest{ForwardedFor: c.Get(fiber.HeaderXForwardedFor), TrustsProxy: s.config.TrustProxy}
 }
 
 func (s *Server) handleConfirmSecretsBackup(c fiber.Ctx) error {
