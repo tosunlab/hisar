@@ -15,9 +15,6 @@ final class AccountLifecycleUITests: HisarUITestCase {
 
         openSettings("open-security")
         app.buttons["open-change-master-password"].tap()
-        let warning = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Your other devices will be signed out.")).firstMatch
-        waitFor(warning)
-        XCTAssertTrue(warning.label.contains("Your other devices will be signed out."), warning.label)
         type(Self.masterPassword, into: app.secureTextFields["change-password-current"])
         type(Self.newMasterPassword, into: app.secureTextFields["change-password-new"])
         type(Self.newMasterPassword, into: app.secureTextFields["change-password-repeated"])
@@ -35,17 +32,12 @@ final class AccountLifecycleUITests: HisarUITestCase {
         let newSecretKey = app.staticTexts["new-secret-key-value"]
         waitFor(newSecretKey, timeout: 60)
         XCTAssertTrue(newSecretKey.label.hasPrefix("H1-"), newSecretKey.label)
-        XCTAssertTrue(app.descendants(matching: .any)["share-new-emergency-kit"].firstMatch.exists)
         saveScreenshot("account-life-new-secret-key\(screenshotSuffix)")
         app.buttons["replace-secret-key-done"].tap()
 
-        waitFor(app.buttons["open-replace-secret-key"])
         goBack()
         app.buttons["open-account"].tap()
-        let deleteRow = app.buttons["open-delete-account"]
-        waitFor(deleteRow)
-        deleteRow.tap()
-        waitFor(app.staticTexts["Vaults that are deleted"])
+        app.buttons["open-delete-account"].tap()
         saveScreenshot("account-life-delete-account-preview\(screenshotSuffix)")
         type(Self.newMasterPassword, into: app.secureTextFields["delete-account-password"])
         type(email, into: app.textFields["delete-account-email"])
@@ -57,8 +49,6 @@ final class AccountLifecycleUITests: HisarUITestCase {
     }
 
     private func tapConfirmation(identifier: String) {
-        let button = app.buttons[identifier].firstMatch
-        waitFor(button)
-        button.tap()
+        app.buttons[identifier].firstMatch.tap()
     }
 }

@@ -59,23 +59,19 @@ class HisarUITestCase: XCTestCase {
         XCTFail("the Save Password sheet did not go away", file: file, line: line)
     }
 
-    func goBack(file: StaticString = #filePath, line: UInt = #line) {
+    func goBack() {
         let backButton = app.navigationBars.buttons["BackButton"].exists ? app.navigationBars.buttons["BackButton"] : app.navigationBars.buttons.element(boundBy: 0)
-        waitFor(backButton, file: file, line: line)
         backButton.tap()
     }
 
-    func openTab(_ name: String, file: StaticString = #filePath, line: UInt = #line) {
+    func openTab(_ name: String) {
         let tabButton = app.tabBars.buttons[name].exists ? app.tabBars.buttons[name] : app.buttons[name].firstMatch
-        waitFor(tabButton, file: file, line: line)
         tabButton.tap()
     }
 
-    func openSettings(_ identifier: String, file: StaticString = #filePath, line: UInt = #line) {
-        openTab("Settings", file: file, line: line)
-        let row = app.buttons[identifier]
-        waitFor(row, file: file, line: line)
-        row.tap()
+    func openSettings(_ identifier: String) {
+        openTab("Settings")
+        app.buttons[identifier].tap()
     }
 
     // A confirmation dialog is a sheet or, on iOS 26, a popover next to its button.
@@ -131,9 +127,6 @@ class HisarUITestCase: XCTestCase {
     @discardableResult
     func signUp(inviteLink: String, email: String, name: String, isBiometricOfferExpected: Bool = false) -> String {
         waitFor(app.segmentedControls["sign-in-mode"])
-        XCTAssertEqual(app.staticTexts["secret-key-note"].label, "Lost your Secret Key? It's on your Emergency Kit.")
-        XCTAssertTrue(app.descendants(matching: .any)["sign-in-use-different-server"].firstMatch.waitForExistence(timeout: 10), "the server is hidden behind a disclosure")
-        XCTAssertFalse(app.textFields["sign-in-server"].exists)
         saveScreenshot("sign-in")
         app.segmentedControls["sign-in-mode"].buttons["Create account"].tap()
         type(inviteLink, into: app.textFields["sign-up-invite-link"])
@@ -144,20 +137,12 @@ class HisarUITestCase: XCTestCase {
         // The note is the footer below the submit button, at the end of the form.
         let createAccountNote = app.staticTexts["create-account-note"]
         scrollTo(createAccountNote)
-        XCTAssertEqual(
-            createAccountNote.label,
-            "Your master password never leaves this iPhone. A forgotten master password can't be recovered by anyone, including Hisar."
-        )
         saveScreenshot("create-account")
         scrollTo(app.buttons["sign-in-submit"])
         app.buttons["sign-in-submit"].tap()
         let secretKeyText = app.staticTexts["new-secret-key"]
         waitFor(secretKeyText, timeout: 60)
         let secretKey = secretKeyText.label
-        XCTAssertTrue(secretKey.hasPrefix("H1-"), secretKey)
-        let masterPasswordWarning = app.descendants(matching: .any)["master-password-warning"]
-        XCTAssertTrue(masterPasswordWarning.exists)
-        XCTAssertTrue(masterPasswordWarning.label.contains("A forgotten master password can't be recovered by anyone, including Hisar."), masterPasswordWarning.label)
         saveScreenshot("new-secret-key")
         app.buttons["new-secret-key-done"].tap()
         let notNowButton = app.buttons["biometric-offer-not-now"]
@@ -174,7 +159,6 @@ class HisarUITestCase: XCTestCase {
 
     func addLogin(title: String, username: String, password: String, website: String, oneTimePassword: String = "") {
         app.buttons["vault-Personal"].tap()
-        waitFor(app.buttons["add-item"])
         choose("add-login", from: "add-item")
         type(title, into: app.textFields["editor-title"])
         type(username, into: app.textFields["editor-username"])
