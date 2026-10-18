@@ -60,6 +60,8 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -125,8 +127,8 @@ fun InlineTitleForm(
             Modifier
                 .fillMaxWidth()
                 .windowInsetsPadding(WindowInsets.statusBars)
-                .height(52.dp)
-                .padding(horizontal = 8.dp),
+                .height(60.dp)
+                .padding(horizontal = 16.dp),
         ) {
             Row(Modifier.align(Alignment.CenterStart), verticalAlignment = Alignment.CenterVertically, content = leading)
             Text(
@@ -168,6 +170,29 @@ fun ToolbarTextButton(text: String, onClick: () -> Unit, testTag: String, enable
             style = HisarType.body,
             fontWeight = if (isProminent) FontWeight.SemiBold else FontWeight.Normal,
             color = if (enabled) color else HisarTheme.colors.secondaryLabel,
+        )
+    }
+}
+
+/** A toolbar text button in a glass capsule, as the iPhone app's Cancel, Save and Done. */
+@Composable
+fun GlassTextButton(text: String, onClick: () -> Unit, testTag: String, enabled: Boolean = true, isProminent: Boolean = false) {
+    Box(
+        Modifier
+            .height(44.dp)
+            .shadow(6.dp, CircleShape)
+            .clip(CircleShape)
+            .background(HisarTheme.colors.cellBackground)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .testTag(testTag)
+            .padding(horizontal = 18.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text,
+            style = HisarType.body,
+            fontWeight = if (isProminent) FontWeight.SemiBold else FontWeight.Normal,
+            color = if (enabled) HisarTheme.colors.label else HisarTheme.colors.secondaryLabel,
         )
     }
 }

@@ -102,12 +102,12 @@ fun ItemEditorScreen(model: AppModel, request: EditorRequest, onDone: (savedItem
     val currentDraft = draft
     InlineTitleForm(
         title = currentDraft?.navigationTitle ?: "Edit item",
-        leading = { ToolbarTextButton("Cancel", onClick = ::requestClose, testTag = "editor-cancel", enabled = !isBusy) },
+        leading = { GlassTextButton("Cancel", onClick = ::requestClose, testTag = "editor-cancel", enabled = !isBusy) },
         trailing = {
             if (isBusy) {
                 ToolbarSpinner()
             } else {
-                ToolbarTextButton("Save", onClick = ::save, testTag = "editor-save", enabled = currentDraft?.canSave == true, isProminent = true)
+                GlassTextButton("Save", onClick = ::save, testTag = "editor-save", enabled = currentDraft?.canSave == true, isProminent = true)
             }
         },
     ) {

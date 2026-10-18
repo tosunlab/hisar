@@ -106,11 +106,11 @@ fun IconPickerSheet(model: AppModel, item: ItemDetail, onIconChange: (ChosenIcon
         Box(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 8.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
         ) {
             Text("Icon", style = HisarType.headline, color = HisarTheme.colors.label, textAlign = TextAlign.Center, modifier = Modifier.align(Alignment.Center))
             Row(Modifier.align(Alignment.CenterEnd)) {
-                ToolbarTextButton("Done", onClick = onDismiss, testTag = "icon-done", isProminent = true)
+                GlassTextButton("Done", onClick = onDismiss, testTag = "icon-done", isProminent = true)
             }
         }
         Column(

@@ -53,6 +53,7 @@ import com.tryhisar.hisar.ui.components.FormRow
 import com.tryhisar.hisar.ui.components.FormSection
 import com.tryhisar.hisar.ui.components.LargeTitle
 import com.tryhisar.hisar.ui.components.RowDivider
+import com.tryhisar.hisar.ui.components.ToolbarIconButton
 import com.tryhisar.hisar.ui.theme.HisarTheme
 import com.tryhisar.hisar.ui.theme.HisarType
 
@@ -73,12 +74,12 @@ fun PasswordGeneratorSheet(model: AppModel, onUse: (String) -> Unit, onDismiss: 
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp, vertical = 8.dp),
+                .padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            RowIconButton(Icons.Filled.Close, "Close", onClick = onDismiss, testTag = "generator-close", tint = HisarTheme.colors.label)
+            ToolbarIconButton(Icons.Filled.Close, "Close", testTag = "generator-close", onClick = onDismiss)
             Text("Password generator", style = HisarType.headline, color = HisarTheme.colors.label, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
-            ToolbarTextButton("Use", onClick = { onUse(password) }, testTag = "generator-use", enabled = password.isNotEmpty(), isProminent = true)
+            GlassTextButton("Use", onClick = { onUse(password) }, testTag = "generator-use", enabled = password.isNotEmpty(), isProminent = true)
         }
         Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 32.dp)) {
             PasswordGeneratorForm(model, password, onPasswordChange = { password = it })
@@ -93,7 +94,7 @@ fun StandalonePasswordGeneratorScreen(model: AppModel, onBack: () -> Unit) {
     BackHandler(onBack = onBack)
     InlineTitleForm(
         title = "",
-        leading = { RowIconButton(Icons.AutoMirrored.Filled.ArrowBack, "Back", onClick = onBack, testTag = "generator-back", tint = HisarTheme.colors.tint) },
+        leading = { ToolbarIconButton(Icons.AutoMirrored.Filled.ArrowBack, "Back", testTag = "generator-back", onClick = onBack) },
         trailing = {},
     ) {
         LargeTitle("Password generator", topPadding = 0.dp)
