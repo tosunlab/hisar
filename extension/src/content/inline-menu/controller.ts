@@ -59,6 +59,7 @@ export class InlineMenuController {
   private icon: HTMLButtonElement | undefined;
   private menu: OpenMenu | undefined;
   private isOpening = false;
+  private isOpeningOnFocusSuppressed = false;
   private trustedInputCount = 0;
   private frameHandle: number | undefined;
   private readonly guard = new VisibilityGuard();
@@ -107,6 +108,16 @@ export class InlineMenuController {
   setCardFillAvailable(isAvailable: boolean): void {
     this.isCardFillAvailable = isAvailable;
     if (!isAvailable && this.purpose === "card") this.hide();
+  }
+
+  // runWithoutOpeningOnFocus runs a fill, whose focus changes show the icon in a field but do not open the menu there.
+  runWithoutOpeningOnFocus<Result>(fill: () => Result): Result {
+    this.isOpeningOnFocusSuppressed = true;
+    try {
+      return fill();
+    } finally {
+      this.isOpeningOnFocusSuppressed = false;
+    }
   }
 
   getAnchoredField(sessionID: string): HTMLInputElement | undefined {
@@ -196,7 +207,7 @@ export class InlineMenuController {
     if (!(target instanceof Element)) return;
     if (this.host && (target === this.host || this.host.contains(target))) return;
     if (this.isFieldOfMenu(target)) return;
-    if (this.anchorTo(target) && this.settings.isInlineMenuOpenedOnFocus) void this.openMenu();
+    if (this.anchorTo(target) && this.settings.isInlineMenuOpenedOnFocus && !this.isOpeningOnFocusSuppressed) void this.openMenu();
   }
 
   // anchorTo shows the icon in a field the menu serves and reports whether it is one; any other field hides it.

@@ -197,7 +197,9 @@ function handleKeydown(event: KeyboardEvent): void {
 
 async function reportHeight(): Promise<void> {
   await nextTick();
-  const height = Math.ceil(root.value?.getBoundingClientRect().height ?? 0);
+  // The whole content's height, borders included, even while the frame is shorter and the menu scrolls.
+  const element = root.value;
+  const height = element ? Math.ceil(element.scrollHeight + element.offsetHeight - element.clientHeight) : 0;
   if (height <= 0 || height === lastReportedHeight) return;
   lastReportedHeight = height;
   await sendToBackground({ type: "inlineMenu.resize", sessionID: props.sessionID, height }).catch(() => undefined);
@@ -219,6 +221,10 @@ function trackVisibility(): void {
 
 watch([menuState, errorMessage], reportHeight);
 watch(allAction, () => (selectedIndex.value = -1));
+watch(selectedIndex, async () => {
+  await nextTick();
+  root.value?.querySelector(".selected")?.scrollIntoView({ block: "nearest" });
+});
 
 onMounted(async () => {
   chrome.runtime.onMessage.addListener(handleBroadcast);
@@ -459,11 +465,14 @@ body {
   user-select: none;
 }
 
+/* A menu cut to the room beside the field scrolls inside, so it stays wholly in its frame. */
 .menu {
   display: flex;
   flex-direction: column;
   gap: 2px;
   box-sizing: border-box;
+  max-height: 100vh;
+  overflow-y: auto;
   padding: 6px;
   border: 1px solid #30343a;
   border-radius: 10px;

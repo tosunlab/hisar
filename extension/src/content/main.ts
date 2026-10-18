@@ -30,6 +30,12 @@ function presentSaveOffer(offer: SaveOfferView): void {
 }
 
 export function handleBackgroundMessage(message: BackgroundToContentMessage, inlineMenu: InlineMenuController): unknown {
+  // A fill focuses the fields it writes; the menu must not open again on them.
+  if (message.type.startsWith("content.fill")) return inlineMenu.runWithoutOpeningOnFocus(() => answerBackgroundMessage(message, inlineMenu));
+  return answerBackgroundMessage(message, inlineMenu);
+}
+
+function answerBackgroundMessage(message: BackgroundToContentMessage, inlineMenu: InlineMenuController): unknown {
   switch (message.type) {
     case "content.probe":
       return probeFrame(document);

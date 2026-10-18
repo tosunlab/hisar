@@ -114,6 +114,15 @@ describe("InlineMenuController", () => {
     expect(controller.getMenuElement()?.src).toBe("chrome-extension://dynamic/inline-menu.html#session-1");
   });
 
+  it("does not open the menu on a field that a fill focuses", async () => {
+    controller.runWithoutOpeningOnFocus(() => getInput("#password").focus());
+    expect(controller.getIconElement()).toBeDefined();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(allSent).toEqual([]);
+    getInput("#login_field").focus();
+    await vi.waitFor(() => expect(controller.getMenuElement()).toBeDefined());
+  });
+
   it("places the icon at the right edge of the field and the menu under it", async () => {
     getInput("#login_field").focus();
     await vi.waitFor(() => expect(controller.getMenuElement()).toBeDefined());

@@ -56,6 +56,24 @@ test("lists matching logins under the focused field and fills the chosen one", a
   await page.close();
 });
 
+test("fills from a menu cut to fit a window too short for it, and opens no menu again after the fill", async () => {
+  await harness.pairWithoutPopup();
+  const page = await harness.context.newPage();
+  await page.setViewportSize({ width: 900, height: 130 });
+  await page.goto(`${harness.site.origin}/login`);
+  // The field near the top of a short window: the menu fits neither below nor above it.
+  await page.addStyleTag({ content: "body { margin-top: -45px !important; }" });
+  await page.locator("#username").click();
+  const menu = await waitForMenu(page);
+  await expect(menu.getByTestId("inline-login")).toHaveCount(1);
+  await waitForClickGuard(page);
+  await menu.getByTestId("inline-login").click();
+  await expect(page.locator("#username")).toHaveValue("alex@example.com");
+  await page.waitForTimeout(300);
+  expect(harness.findInlineMenuFrame(page)).toBeUndefined();
+  await page.close();
+});
+
 test("serves the menu from a dynamic extension URL", async () => {
   const page = await harness.context.newPage();
   await page.goto(`${harness.site.origin}/login`);
