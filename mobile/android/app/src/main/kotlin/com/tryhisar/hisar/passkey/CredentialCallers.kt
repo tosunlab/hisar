@@ -1,10 +1,13 @@
 package com.tryhisar.hisar.passkey
 
 import android.content.Context
+import android.os.Build
+import androidx.annotation.RequiresApi
 import androidx.credentials.provider.CallingAppInfo
 import com.tryhisar.hisar.autofill.InstalledApps
 
 /** Turns the platform's description of a Credential Manager caller into a [CredentialCaller], or refuses it. */
+@RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
 object CredentialCallers {
     @Volatile
     private var privilegedBrowsers: String? = null

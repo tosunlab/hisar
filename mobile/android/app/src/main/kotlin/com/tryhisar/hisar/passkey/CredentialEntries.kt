@@ -3,6 +3,8 @@ package com.tryhisar.hisar.passkey
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.os.Build
+import androidx.annotation.RequiresApi
 import androidx.credentials.provider.AuthenticationAction
 import androidx.credentials.provider.BeginGetCredentialOption
 import androidx.credentials.provider.BeginGetCredentialResponse
@@ -16,6 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.io.bytestring.ByteString
 
 /** What an entry of the system's sheet asks [CredentialActivity] to do, carried in the entry's pending intent. */
+@RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
 sealed interface CredentialPick {
     data object Unlock : CredentialPick
 
@@ -59,6 +62,7 @@ sealed interface CredentialPick {
 }
 
 /** Between the platform's request and response types and [CredentialAccess]. */
+@RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
 object CredentialEntries {
     /** The options Hisar answers, each with the platform option it came from; others are left to other providers. */
     fun readOptions(allOption: List<BeginGetCredentialOption>): List<Pair<BeginGetCredentialOption, CredentialOption>> = allOption.mapNotNull { option ->
