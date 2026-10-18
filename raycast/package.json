@@ -5,7 +5,7 @@
   "description": "Search Hisar, copy and paste passwords and one-time codes, generate passwords and lock Hisar.",
   "icon": "hisar.png",
   "author": "tryhisar",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "version": "0.1.0",
   "private": true,
   "categories": [
@@ -14,12 +14,72 @@
   "platforms": [
     "macOS"
   ],
-  "commands": [],
-  "preferences": [],
+  "commands": [
+    {
+      "name": "search-hisar",
+      "title": "Search Hisar",
+      "description": "Find an item, then copy or paste its password, username or one-time code.",
+      "mode": "view",
+      "preferences": [
+        {
+          "name": "primaryAction",
+          "type": "dropdown",
+          "required": false,
+          "title": "Primary Action",
+          "description": "What Return does on an item with a password.",
+          "default": "copy-password",
+          "data": [
+            {
+              "title": "Copy Password",
+              "value": "copy-password"
+            },
+            {
+              "title": "Paste Password",
+              "value": "paste-password"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "one-time-codes",
+      "title": "One-Time Codes",
+      "description": "Show live one-time codes, then copy or paste one.",
+      "mode": "view"
+    },
+    {
+      "name": "generate-password",
+      "title": "Generate Password",
+      "description": "Copy a new password from Hisar's generator: 24 characters with digits and symbols.",
+      "mode": "no-view"
+    },
+    {
+      "name": "generate-password-form",
+      "title": "Generate Password with Options",
+      "description": "Choose the length, digits and symbols of a new password, then copy or paste it.",
+      "mode": "view"
+    },
+    {
+      "name": "lock-hisar",
+      "title": "Lock Hisar",
+      "description": "Lock the Hisar app.",
+      "mode": "no-view"
+    }
+  ],
+  "preferences": [
+    {
+      "name": "socketPath",
+      "type": "textfield",
+      "required": false,
+      "title": "Socket",
+      "description": "Hisar's command-line socket. Change it only when Hisar runs with HISAR_CLI_SOCKET.",
+      "default": "~/.hisar/cli.sock"
+    }
+  ],
   "scripts": {
-    "build": "ray build -e dist",
+    "build": "ray build -e dist -o dist",
     "dev": "ray develop",
-    "lint": "ray lint",
+    "lint": "eslint . && prettier --check .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
