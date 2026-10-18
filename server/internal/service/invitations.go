@@ -18,6 +18,7 @@ var (
 	errShareInvitationGone  = newError(KindNotFound, "this invitation no longer exists")
 	errShareWithYourself    = newError(KindInvalid, "you already have access to this vault")
 	errAlreadyHasVaultShare = newError(KindConflict, "this person already has access to the vault")
+	errInviteAdminsOnly     = newError(KindForbidden, "Only admins can invite people to the Hisar server.")
 )
 
 func parseEmail(email string) (string, error) {
@@ -35,7 +36,11 @@ func (s *Service) allowInvitation(actor Actor, accountLimiter, ipLimiter interfa
 // CreateInvite emails a sign-up invite. Whether the email has an account is decided after the response, so the
 // response is the same either way.
 func (s *Service) CreateInvite(ctx context.Context, actor Actor, request *apitypes.InviteRequest) error {
-	if !s.isEmailConfigured() {
+	current := s.currentSettings()
+	if !current.InvitePolicy.AllowsInvite(actor.Role) {
+		return errInviteAdminsOnly
+	}
+	if s.NewMailer(current.SMTP) == nil {
 		return errEmailNotConfigured
 	}
 	email, err := parseEmail(request.Email)
@@ -69,10 +74,17 @@ func (s *Service) CreateInvite(ctx context.Context, actor Actor, request *apityp
 	return nil
 }
 
+// mayCreateSignUpInvite decides, after the response, whether an invitation to an email without an account also brings
+// a sign-up invite. Without one, the invitation waits until that person gets an account another way.
+func (s *Service) mayCreateSignUpInvite(inviter *store.Account) bool {
+	current := s.currentSettings()
+	return current.InvitePolicy.AllowsInvite(inviter.Role) && s.NewMailer(current.SMTP) != nil
+}
+
 func (s *Service) newInviteToken(ctx context.Context, email, role string, createdBy *string) (string, time.Time, error) {
 	token := generateToken()
-	expiresAt := time.Now().Add(s.config.InviteTTL)
-	return token, expiresAt, s.store.CreateInvite(ctx, hashToken(token), email, role, createdBy, s.config.InviteTTL)
+	expiresAt := time.Now().Add(s.InviteTTL)
+	return token, expiresAt, s.store.CreateInvite(ctx, hashToken(token), email, role, createdBy, s.InviteTTL)
 }
 
 // CreateOperatorInvite is the operator's invite: it returns the link instead of emailing it.
@@ -159,7 +171,7 @@ func (s *Service) CreateShareInvitation(ctx context.Context, actor Actor, vaultI
 	if !s.allowInvitation(actor, s.Limiters.ShareInvitationAccount, s.Limiters.ShareInvitationIP) {
 		return errTooManyInvitation
 	}
-	invitationID, err := s.store.UpsertShareInvitation(ctx, &store.ShareInvitation{VaultID: vaultID, Email: email, Role: request.Role, InvitedBy: inviter.ID}, s.config.InviteTTL)
+	invitationID, err := s.store.UpsertShareInvitation(ctx, &store.ShareInvitation{VaultID: vaultID, Email: email, Role: request.Role, InvitedBy: inviter.ID}, s.InviteTTL)
 	if err != nil {
 		return err
 	}
@@ -177,7 +189,7 @@ func (s *Service) notifyShareInvitation(ctx context.Context, inviter *store.Acco
 			s.sendEmail(ctx, composeShareInvitationEmail(inviter, email, role))
 		}
 	case errors.Is(err, store.ErrNotFound):
-		if !s.isEmailConfigured() {
+		if !s.mayCreateSignUpInvite(inviter) {
 			return
 		}
 		token, expiresAt, err := s.newInviteToken(ctx, email, apitypes.RoleMember, &inviter.ID)
@@ -277,7 +289,7 @@ func (s *Service) scheduleShareAcceptedEmail(invitationID string, acceptedAt tim
 	if !s.isEmailConfigured() {
 		return
 	}
-	time.AfterFunc(s.config.ShareAcceptedEmailDelay, func() {
+	time.AfterFunc(s.ShareAcceptedEmailDelay, func() {
 		s.runInBackground(func(ctx context.Context) { s.sendShareAcceptedEmail(ctx, invitationID, acceptedAt) })
 	})
 }

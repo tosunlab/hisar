@@ -92,8 +92,18 @@ func TestMigrations(t *testing.T) {
 	if countTable(t, database, "organizations") != 1 || countTable(t, database, "team_vaults") != 1 || countColumn(t, database, "vaults", "key_generation") != 1 {
 		t.Error("the organization tables are missing")
 	}
+	if countTable(t, database, "instance_settings") != 1 {
+		t.Error("instance_settings missing")
+	}
 	rolledBack, err := database.RollbackMigration(ctx)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if countTable(t, database, "instance_settings") != 0 || countTable(t, database, "organizations") != 1 {
+		t.Errorf("rolling back %s left the wrong schema", rolledBack.Source.Path)
+	}
+
+	if rolledBack, err = database.RollbackMigration(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if countTable(t, database, "organizations") != 0 || countTable(t, database, "team_vaults") != 0 || countColumn(t, database, "vaults", "organization_id") != 0 ||
@@ -160,7 +170,7 @@ func TestMigrations(t *testing.T) {
 		t.Errorf("accounts table still exists after rolling back %s", rolledBack.Source.Path)
 	}
 
-	if results, err = database.Migrate(ctx); err != nil || len(results) != 8 {
+	if results, err = database.Migrate(ctx); err != nil || len(results) != 9 {
 		t.Fatalf("re-apply: %d %v", len(results), err)
 	}
 	for _, tableName := range recoveryTables {
@@ -169,7 +179,7 @@ func TestMigrations(t *testing.T) {
 		}
 	}
 	if countColumn(t, database, "vaults", "recovery_opt_out") != 0 || countTable(t, database, "share_invitations") != 1 || countTable(t, database, "share_links") != 1 ||
-		countTable(t, database, "account_preferences") != 1 || countTable(t, database, "organizations") != 1 {
+		countTable(t, database, "account_preferences") != 1 || countTable(t, database, "organizations") != 1 || countTable(t, database, "instance_settings") != 1 {
 		t.Error("re-applying left the wrong schema")
 	}
 }
@@ -216,7 +226,7 @@ func TestRemoveRecoveryMigrationDeletesRecoveryData(t *testing.T) {
 	createTestAccount(t, database, "AAAAAA", "a@example.com")
 	createTestAccount(t, database, "BBBBBB", "b@example.com")
 	vaultID := createTestVault(t, database, "AAAAAA")
-	for range 5 {
+	for range 6 {
 		if _, err := database.RollbackMigration(ctx); err != nil {
 			t.Fatal(err)
 		}
@@ -235,7 +245,7 @@ func TestRemoveRecoveryMigrationDeletesRecoveryData(t *testing.T) {
 		}
 	}
 
-	if results, err := database.Migrate(ctx); err != nil || len(results) != 5 {
+	if results, err := database.Migrate(ctx); err != nil || len(results) != 6 {
 		t.Fatalf("applied %d: %v", len(results), err)
 	}
 	for _, tableName := range []string{"recovery_keyset", "vault_recovery", "recovery_tokens", "account_recovery"} {
@@ -254,7 +264,7 @@ func TestRemoveRecoveryMigrationDeletesRecoveryData(t *testing.T) {
 		t.Fatalf("vault after the migration: %+v %v", vaults, err)
 	}
 
-	for range 5 {
+	for range 6 {
 		if _, err := database.RollbackMigration(ctx); err != nil {
 			t.Fatal(err)
 		}

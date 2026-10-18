@@ -1,7 +1,6 @@
 package api
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
@@ -22,39 +21,6 @@ var updateURLsByClient = map[string]string{
 	apitypes.ClientExtension:    extensionStoreURL,
 }
 
-// MinimumVersions holds the lowest app version the server accepts per client; empty means no minimum.
-type MinimumVersions struct {
-	DesktopMacOS string
-	IOS          string
-	CLI          string
-	Extension    string
-}
-
-func (minimumVersions MinimumVersions) get(client string) string {
-	switch client {
-	case apitypes.ClientDesktopMacOS:
-		return minimumVersions.DesktopMacOS
-	case apitypes.ClientIOS:
-		return minimumVersions.IOS
-	case apitypes.ClientCLI:
-		return minimumVersions.CLI
-	case apitypes.ClientExtension:
-		return minimumVersions.Extension
-	}
-	return ""
-}
-
-func (minimumVersions MinimumVersions) Validate() error {
-	for _, client := range []string{apitypes.ClientDesktopMacOS, apitypes.ClientIOS, apitypes.ClientCLI, apitypes.ClientExtension} {
-		if minimumVersion := minimumVersions.get(client); minimumVersion != "" {
-			if _, err := appversion.Parse(minimumVersion); err != nil {
-				return fmt.Errorf("minimum version for %s: %w", client, err)
-			}
-		}
-	}
-	return nil
-}
-
 // requireMinimumVersion refuses only apps that say they are too old; callers without headers or with an unparsable version pass.
 // The desktop update feed stays open so a refused Mac app can still update itself.
 func (s *Server) requireMinimumVersion(c fiber.Ctx) error {
@@ -62,7 +28,7 @@ func (s *Server) requireMinimumVersion(c fiber.Ctx) error {
 		return c.Next()
 	}
 	client := apitypes.GetClient(c.Get(apitypes.PlatformHeader))
-	minimumVersion := s.config.MinimumVersions.get(client)
+	minimumVersion := s.instanceSettings.Load().MinimumVersions.Get(client)
 	version := c.Get(apitypes.VersionHeader)
 	if minimumVersion == "" || version == "" {
 		return c.Next()

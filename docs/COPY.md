@@ -122,6 +122,13 @@ The web page at `/admin` where admins of the Hisar server manage it. The apps ne
 | incorrect email, master password or Secret Key | wrong password, login failed | Sign-in screen; the same message as the Mac |
 | Overview · Signed in as · Server | Home, Dashboard, Status | The first section |
 | Sign out, Signing out… | Log out | Sidebar |
+| Settings · Email, Sign-up, App versions, Security (the groups) · Save, Saving…, Saved · Unsaved changes | Configuration, Preferences, Apply | The Settings section |
+| SMTP host, Port, Username, Password, Sender · "Saved; type to replace" (a saved password) · "Enter the password again: changing the host, port or username clears the saved one." (under Password) · Send test email…, Send to, Send, Sending…, Close · "Hisar sends one email with the saved settings." · "Test email sent to you@example.com." · "The test email was not sent: <the SMTP error>" · "Email is not set up. Save the SMTP settings first." · "Too many test emails. Wait a minute and try again." | Mail server, From address, Test connection | Settings → Email |
+| "Test email from Hisar" (subject) · "This is a test email from the Hisar server at <origin>. Email works: the server can send invites and sharing notifications." | — | The test email |
+| Who can invite people: Anyone with an account, Admins only · "Only admins can invite people to the Hisar server." (the apps show it when a member invites under Admins only) | Invite permission, Restrict invites | Settings → Sign-up; the apps' invite error |
+| Mac app, iPhone app, Command-line tool, Browser extension · No minimum | macOS client, CLI | Settings → App versions |
+| Session lifetime, Auth burst, Keep item history, Keep the audit log, Keep expired invitations · Days, "Days, at least 30" (the audit log) | Session TTL, Rate limit, Retention policy | Settings → Security |
+| Set by HISAR_SMTP_HOST (a field the server's environment sets; read-only) · "Email is set by HISAR_SMTP_* variables on the server. Change them there and restart the server." (all of Email) | Locked, Managed by environment | Under the field; under the Email description |
 | an admin on the Hisar server, admin, member (account roles) | administrator, superuser, root | Copy about server roles; say "on the Hisar server" where an organization admin could be meant |
 
 ## Help

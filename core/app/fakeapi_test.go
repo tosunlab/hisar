@@ -31,6 +31,7 @@ type fakeAPIServer struct {
 	answeredShareInvitations []string
 	invitedEmails            []string
 	isEmailUnavailable       bool
+	isInviteAdminsOnly       bool
 	approvalEventChannel     chan apiclient.Event
 	eventStreamCount         int
 	approvalsByRequestID     map[string]*fakeApproval

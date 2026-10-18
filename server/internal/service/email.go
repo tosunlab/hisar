@@ -10,12 +10,28 @@ import (
 
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/server/internal/mail"
+	"github.com/tryhisar/hisar/server/internal/settings"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
 const emailTimeout = time.Minute
 
-func (s *Service) isEmailConfigured() bool { return s.config.Mailer != nil }
+// mailer sends with the current SMTP settings; it is nil when email is off.
+func (s *Service) mailer() mail.Mailer { return s.NewMailer(s.currentSettings().SMTP) }
+
+func (s *Service) isEmailConfigured() bool { return s.mailer() != nil }
+
+func newSMTPMailer(smtp settings.SMTP) mail.Mailer {
+	if !smtp.IsSet() {
+		return nil
+	}
+	mailer, err := mail.NewSMTPMailer(mail.SMTPConfig{Host: smtp.Host, Port: smtp.Port, Username: smtp.Username, Password: smtp.Password, From: smtp.From})
+	if err != nil {
+		log.Printf("email: %v", err)
+		return nil
+	}
+	return mailer
+}
 
 func (s *Service) buildInviteLink(token string) string {
 	return BuildPublicOrigin(s.config.PublicURL) + "/invite/" + token
@@ -160,8 +176,13 @@ If you were not expecting it, ignore this email.
 	}
 }
 
+// sendEmail sends with the settings of the moment, so a message queued before email was turned off is dropped.
 func (s *Service) sendEmail(ctx context.Context, message mail.Message) {
-	if err := s.config.Mailer.Send(ctx, message); err != nil {
+	mailer := s.mailer()
+	if mailer == nil {
+		return
+	}
+	if err := mailer.Send(ctx, message); err != nil {
 		log.Printf("email not sent: %v", err)
 	}
 }

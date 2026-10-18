@@ -31,20 +31,33 @@ function saveSession(session: AdminSession | null): void {
   auth.session = session;
 }
 
-async function request<T>(method: string, path: string, token: string | undefined = auth.session?.token): Promise<T> {
-  const response = await fetch(`/api/v1${path}`, { method, headers: token ? { Authorization: `Bearer ${token}` } : {} });
+export class APIError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+export async function request<T>(method: string, path: string, { body, token = auth.session?.token }: { body?: unknown; token?: string } = {}): Promise<T> {
+  const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+  if (body !== undefined) {
+    headers["Content-Type"] = "application/json";
+  }
+  const response = await fetch(`/api/v1${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   if (response.status === 401 && token === auth.session?.token) {
     saveSession(null);
   }
   if (!response.ok) {
     const body = (await response.json().catch(() => ({}))) as { error?: string };
-    throw new Error(body.error ?? `The Hisar server answered ${response.status}.`);
+    throw new APIError(response.status, body.error ?? `The Hisar server answered ${response.status}.`);
   }
   return (response.status === 204 ? undefined : await response.json()) as T;
 }
 
 function revokeDevice(deviceId: string, token?: string): Promise<void> {
-  return request("DELETE", `/devices/${encodeURIComponent(deviceId)}`, token);
+  return request("DELETE", `/devices/${encodeURIComponent(deviceId)}`, { token });
 }
 
 async function revokeDeviceIgnoringFailure(deviceId: string, token: string): Promise<void> {

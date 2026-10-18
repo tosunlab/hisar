@@ -71,6 +71,7 @@ Shared test fixtures are in `helpers_test.go`, the in-memory API in `fakeapi_tes
 | `internal/store` | Postgres with raw SQL (pgx) and embedded goose migrations |
 | `internal/realtime` | The per-account event broker behind `GET /api/v1/events` |
 | `internal/ratelimit` | Per-key token buckets |
+| `internal/settings` | The instance settings admins edit: defaults, the stored document, `HISAR_*` overrides, `Validate` |
 | `internal/mail`, `internal/desktopupdate` | SMTP; the Sparkle appcast from GitHub Releases |
 | `cmd/hisar-fake-github`, `cmd/hisar-smtp-sink`, `cmd/hisar-share-link-page-fixture`, `cmd/hisar-admin-page-fixture`, `internal/desktopupdate/fakegithub`, `internal/mail/mailtest` | Fakes and fixtures for the end-to-end and browser tests |
 
