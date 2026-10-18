@@ -58,12 +58,37 @@ type Server struct {
 	lastConnectionID atomic.Uint64
 }
 
-// connectionPeer is one connection; agent is set once it sent agent.hello.
+// connectionKind is what a connection said it is; the request types of its namespace are the only ones it may send.
+type connectionKind int
+
+const (
+	connectionCommandLine connectionKind = iota
+	// connectionAgent: after agent.hello, agent.* only.
+	connectionAgent
+	// connectionLauncher: after launcher.hello, launcher.* only.
+	connectionLauncher
+)
+
+// getConnectionKind returns the only kind of connection that may send requestType.
+func getConnectionKind(requestType string) connectionKind {
+	switch {
+	case cliprotocol.IsAgentRequest(requestType):
+		return connectionAgent
+	case cliprotocol.IsLauncherRequest(requestType):
+		return connectionLauncher
+	}
+	return connectionCommandLine
+}
+
+// connectionPeer is one connection. Its scope is fixed when it connects; its kind changes once, on agent.hello or
+// launcher.hello, and agent is what an agent connection said about itself.
 type connectionPeer struct {
 	peer         Peer
 	session      TerminalSession
 	connectionID uint64
-	agent        *AgentIdentity
+	scope        approvalScope
+	kind         connectionKind
+	agent        AgentIdentity
 }
 
 func NewServer(config ServerConfig) *Server {
@@ -108,7 +133,8 @@ func (s *Server) Serve(ctx context.Context, socketPath string) error {
 	}
 }
 
-func (s *Server) identifyPeer(connection net.Conn) (connectionPeer, bool) {
+// identifyPeer asks IdentifyApp only about callers without a terminal, so a terminal costs what it did before apps.
+func (s *Server) identifyPeer(connection net.Conn, connectionID uint64) (connectionPeer, bool) {
 	peer, err := s.config.PeerResolver.ResolvePeer(connection)
 	if err != nil {
 		log.Printf("commandline: refused a connection whose peer is unknown: %v", err)
@@ -123,7 +149,13 @@ func (s *Server) identifyPeer(connection net.Conn) (connectionPeer, bool) {
 		log.Printf("commandline: refused a connection without a known session: %v", err)
 		return connectionPeer{}, false
 	}
-	return connectionPeer{peer: peer, session: session}, true
+	var app AppIdentity
+	if !session.hasTerminal() && s.config.IdentifyApp != nil {
+		if identity, isVerified := s.config.IdentifyApp(peer.PID); isVerified {
+			app = identity
+		}
+	}
+	return connectionPeer{peer: peer, session: session, connectionID: connectionID, scope: getApprovalScope(session, app, connectionID)}, true
 }
 
 func (s *Server) ServeConnection(ctx context.Context, connection net.Conn) {
@@ -132,12 +164,11 @@ func (s *Server) ServeConnection(ctx context.Context, connection net.Conn) {
 	stopClosingConnection := context.AfterFunc(connectionContext, func() { connection.Close() })
 	defer stopClosingConnection()
 	defer connection.Close()
-	client, isAllowed := s.identifyPeer(connection)
+	client, isAllowed := s.identifyPeer(connection, s.lastConnectionID.Add(1))
 	if !isAllowed {
 		return
 	}
-	client.connectionID = s.lastConnectionID.Add(1)
-	defer s.config.Approvals.ForgetAgentConnection(client.connectionID)
+	defer s.config.Approvals.forgetConnection(client.connectionID)
 	reader := localsocket.WatchConnectionClose(connection, cancel)
 	for {
 		message, err := cliprotocol.ReadMessage(reader)
@@ -189,11 +220,7 @@ func (s *Server) answerRequest(ctx context.Context, client *connectionPeer, requ
 	if request.Type == cliprotocol.TypeHello {
 		hello.ProtocolVersion = cliprotocol.ProtocolVersion
 		hello.Features = cliprotocol.ListFeatures()
-		if client.agent != nil {
-			hello.IsApproved = hello.State == cliprotocol.StateUnlocked && s.config.Approvals.IsAgentConnectionApproved(client.connectionID)
-		} else {
-			hello.IsApproved = hello.State == cliprotocol.StateUnlocked && s.config.Approvals.IsApproved(client.session)
-		}
+		hello.IsApproved = s.isApproved(client, hello)
 		return hello, nil
 	}
 	if s.config.CheckUpdateRequired != nil {
@@ -201,20 +228,26 @@ func (s *Server) answerRequest(ctx context.Context, client *connectionPeer, requ
 			return nil, err
 		}
 	}
-	if request.Type == cliprotocol.TypeAgentHello {
+	switch request.Type {
+	case cliprotocol.TypeAgentHello:
 		return s.startAgentConnection(client, request)
+	case cliprotocol.TypeLauncherHello:
+		return s.startLauncherConnection(client, hello)
 	}
-	if (client.agent != nil) != cliprotocol.IsAgentRequest(request.Type) {
-		return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "agent requests and other requests cannot share a connection")
+	if getConnectionKind(request.Type) != client.kind {
+		return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "launcher, agent and command-line requests cannot share a connection")
 	}
-	if hello.State == cliprotocol.StateSignedOut {
-		if client.agent != nil {
+	switch client.kind {
+	case connectionAgent:
+		if hello.State == cliprotocol.StateSignedOut {
 			return nil, cliprotocol.NewError(cliprotocol.ErrorSignedOut, "the Hisar app is not signed in; sign in there")
 		}
-		return nil, cliprotocol.NewError(cliprotocol.ErrorSignedOut, "the Hisar app is not signed in; sign in there, or run hisar --standalone")
-	}
-	if client.agent != nil {
 		return s.answerAgentRequest(ctx, client, request)
+	case connectionLauncher:
+		return s.answerLauncherRequest(ctx, client, hello, request)
+	}
+	if hello.State == cliprotocol.StateSignedOut {
+		return nil, cliprotocol.NewError(cliprotocol.ErrorSignedOut, "the Hisar app is not signed in; sign in there, or run hisar --standalone")
 	}
 	if request.Type == cliprotocol.TypeResolveSecret && (len(request.References) == 0 || len(request.References) > cliprotocol.MaxReferenceCount) {
 		return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, fmt.Sprintf("send between 1 and %d secret references", cliprotocol.MaxReferenceCount))
@@ -225,26 +258,40 @@ func (s *Server) answerRequest(ctx context.Context, client *connectionPeer, requ
 	if request.Type == cliprotocol.TypeExport && request.Export == nil {
 		return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "the export is missing")
 	}
-	require := s.config.Approvals.Require
+	approvals := s.config.Approvals
+	require := approvals.require
 	if request.Type == cliprotocol.TypeCreateShareLink || request.Type == cliprotocol.TypeExport {
 		// A share link hands secrets to people outside Hisar and an export writes every secret to a file, so both ask
 		// even in an approved session.
-		require = s.config.Approvals.RequireAlways
+		require = approvals.requireAlways
 	}
-	if err := require(client.session, func() error { return s.askApproval(ctx, client, request) }); err != nil {
-		if errors.Is(err, ErrDenied) {
-			return nil, cliprotocol.NewError(cliprotocol.ErrorDenied, err.Error())
-		}
-		return nil, err
+	if err := require(&approvals.commandLine, client.scope, func() error { return s.askApproval(ctx, client, request) }); err != nil {
+		return nil, convertDenial(err)
 	}
 	return s.config.Handler.HandleRequest(ctx, request)
+}
+
+// isApproved is what hello and launcher.hello report: Hisar is unlocked, and the memory of the connection's kind holds an
+// approval for it.
+func (s *Server) isApproved(client *connectionPeer, hello cliprotocol.HelloResult) bool {
+	if hello.State != cliprotocol.StateUnlocked {
+		return false
+	}
+	approvals := s.config.Approvals
+	switch client.kind {
+	case connectionAgent:
+		return approvals.IsAgentConnectionApproved(client.connectionID)
+	case connectionLauncher:
+		return approvals.isApproved(&approvals.launchers, client.scope)
+	}
+	return approvals.isApproved(&approvals.commandLine, client.scope)
 }
 
 func (s *Server) askApproval(ctx context.Context, client *connectionPeer, request *cliprotocol.Request) error {
 	if s.config.Approver == nil {
 		return ErrDenied
 	}
-	approvalRequest := ApprovalRequest{ClientPID: client.peer.PID, TerminalName: client.session.TerminalName}
+	approvalRequest := ApprovalRequest{ClientPID: client.peer.PID, TerminalName: client.session.TerminalName, Coverage: client.scope.getCoverage()}
 	approvalRequest.ClientPath, _ = s.config.PeerResolver.GetProcessPath(client.peer.PID)
 	approvalRequest.ParentPID, _ = s.config.PeerResolver.GetParentPID(client.peer.PID)
 	if request.Type == cliprotocol.TypeResolveSecret {
