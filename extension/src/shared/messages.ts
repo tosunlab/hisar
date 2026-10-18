@@ -1,4 +1,6 @@
-import type { AddressSummary, AddressValues, ErrorCode, GenerateOptions, LoginSummary, UpdateRequirement } from "./protocol";
+import type { AddressSummary, AddressValues, CardSummary, CardValues, ErrorCode, IdentitySummary, IdentityValues, GenerateOptions, ItemResult, ItemSummary, LoginSummary, NewItem, OneTimeCode, UpdateRequirement, VaultSummary } from "./protocol";
+
+export type { ItemResult, ItemSummary, OneTimeCode };
 
 export type PopupView = "not-paired" | "desktop-unavailable" | "signed-out" | "locked" | "unlocked" | "update-required";
 
@@ -10,6 +12,22 @@ export interface PopupState {
   updateRequired?: UpdateRequirement;
   // isAddressFillAvailable: the app fills addresses, so the popup offers its Addresses tab.
   isAddressFillAvailable?: boolean;
+  // isIdentityFillAvailable: the app fills identities, so the popup lists them above the addresses.
+  isIdentityFillAvailable?: boolean;
+  // isCardFillAvailable: the app fills cards, so the popup offers its Cards tab.
+  isCardFillAvailable?: boolean;
+  // isCreateAvailable: the app creates items, so the popup offers New item.
+  isCreateAvailable?: boolean;
+  // isVaultAvailable: the app lets the popup browse every vault, not only the logins of the current site.
+  isVaultAvailable?: boolean;
+  // isPasswordUnlockAvailable: the app unlocks with the master password typed in the popup.
+  isPasswordUnlockAvailable?: boolean;
+}
+
+export interface ItemQuery {
+  query?: string;
+  category?: string;
+  isFavoriteOnly?: boolean;
 }
 
 export interface MatchResult {
@@ -20,12 +38,23 @@ export interface MatchResult {
 export type SaveOfferKind = "save" | "update";
 export type SaveOfferAction = "save" | "not-now" | "never";
 
+// SaveOfferView: allVault and defaultTitle are set for a new login when the app takes a title and a vault, so the bar
+// lets the user change them, and the username, before saving.
 export interface SaveOfferView {
   offerID: string;
   kind: SaveOfferKind;
   host: string;
   username: string;
   title?: string;
+  defaultTitle?: string;
+  allVault?: Pick<VaultSummary, "vaultID" | "name">[];
+}
+
+// SaveOfferEdits is what the user changed in the save bar before saving a new login.
+export interface SaveOfferEdits {
+  title: string;
+  username: string;
+  vaultID?: string;
 }
 
 export interface FillOutcome {
@@ -42,9 +71,13 @@ export interface FrameProbe {
   hasOneTimeCodeField?: boolean;
   hasAddressForm?: boolean;
   hasFocusedAddressField?: boolean;
+  hasCardForm?: boolean;
+  hasFocusedCardField?: boolean;
+  hasIdentityForm?: boolean;
+  hasFocusedIdentityField?: boolean;
 }
 
-export type InlineMenuPurpose = "login" | "new-password" | "one-time-code" | "address";
+export type InlineMenuPurpose = "login" | "new-password" | "one-time-code" | "address" | "card" | "identity";
 export type InlineMenuKey = "ArrowDown" | "ArrowUp" | "Enter";
 export type InlineMenuView = PopupView | "logins";
 
@@ -57,6 +90,12 @@ export interface InlineMenuState {
   // allAddress holds the addresses offered on an address field, in place of logins.
   allAddress?: AddressSummary[];
   hasMoreAddress?: boolean;
+  // allCard holds the cards offered on a payment field.
+  allCard?: CardSummary[];
+  hasMoreCard?: boolean;
+  // allIdentity holds the identities offered on a name, email or phone field.
+  allIdentity?: IdentitySummary[];
+  hasMoreIdentity?: boolean;
   suggestedPassword?: string;
   errorMessage?: string;
   updateRequired?: UpdateRequirement;
@@ -67,6 +106,7 @@ export type PopupMessage =
   | { type: "popup.startPairing" }
   | { type: "popup.finishPairing"; code: string }
   | { type: "popup.unlock" }
+  | { type: "popup.unlockWithPassword"; password: string }
   | { type: "popup.matchLogins"; tabId: number }
   | { type: "popup.fillLogin"; tabId: number; vaultID: string; itemID: string }
   | { type: "popup.getPassword"; tabId: number; vaultID: string; itemID: string }
@@ -74,13 +114,26 @@ export type PopupMessage =
   | { type: "popup.generatePassword"; options: GenerateOptions }
   | { type: "popup.fillPassword"; tabId: number; password: string }
   | { type: "popup.listAddresses" }
-  | { type: "popup.fillAddress"; tabId: number; vaultID: string; itemID: string };
+  | { type: "popup.fillAddress"; tabId: number; vaultID: string; itemID: string }
+  | { type: "popup.listIdentities" }
+  | { type: "popup.fillIdentity"; tabId: number; vaultID: string; itemID: string }
+  | { type: "popup.listCards" }
+  | { type: "popup.fillCard"; tabId: number; vaultID: string; itemID: string }
+  | { type: "popup.getAllLastUsed" }
+  | { type: "popup.listVaults" }
+  | { type: "popup.createItem"; vaultID: string; item: NewItem }
+  | { type: "popup.listItems"; query: ItemQuery }
+  | { type: "popup.getItem"; vaultID: string; itemID: string }
+  | { type: "popup.revealField"; vaultID: string; itemID: string; fieldID: string }
+  | { type: "popup.getItemCode"; vaultID: string; itemID: string }
+  | { type: "popup.getIcon"; url: string }
+  | { type: "popup.setFavorite"; vaultID: string; itemID: string; isFavorite: boolean };
 
 export type ContentToBackgroundMessage =
   | { type: "content.loginSubmitted"; username: string; password: string }
   | { type: "content.usernameSubmitted"; username: string }
   | { type: "content.getPendingSaveOffer" }
-  | { type: "content.actOnSaveOffer"; offerID: string; action: SaveOfferAction }
+  | { type: "content.actOnSaveOffer"; offerID: string; action: SaveOfferAction; edits?: SaveOfferEdits }
   | { type: "content.openInlineMenu"; purpose: InlineMenuPurpose }
   | { type: "content.closeInlineMenu"; sessionID: string }
   | { type: "content.pressInlineMenuKey"; sessionID: string; key: InlineMenuKey };
@@ -90,6 +143,8 @@ export type InlineMenuMessage =
   | { type: "inlineMenu.fillLogin"; sessionID: string; vaultID: string; itemID: string }
   | { type: "inlineMenu.fillOneTimeCode"; sessionID: string; vaultID: string; itemID: string }
   | { type: "inlineMenu.fillAddress"; sessionID: string; vaultID: string; itemID: string }
+  | { type: "inlineMenu.fillCard"; sessionID: string; vaultID: string; itemID: string }
+  | { type: "inlineMenu.fillIdentity"; sessionID: string; vaultID: string; itemID: string }
   | { type: "inlineMenu.useSuggestedPassword"; sessionID: string }
   | { type: "inlineMenu.unlock"; sessionID: string }
   | { type: "inlineMenu.openHisar"; sessionID: string }
@@ -110,10 +165,13 @@ export type BackgroundToContentMessage =
   | { type: "content.fillPassword"; expectedOrigin: string; password: string; sessionID?: string }
   | { type: "content.fillOneTimeCode"; expectedOrigin: string; code: string; sessionID?: string }
   | { type: "content.fillAddress"; expectedOrigin: string; address: AddressValues; sessionID?: string }
+  | { type: "content.fillCard"; expectedOrigin: string; card: CardValues; sessionID?: string }
+  | { type: "content.fillIdentity"; expectedOrigin: string; identity: IdentityValues; sessionID?: string }
   | { type: "content.showSaveOffer"; offer: SaveOfferView }
   | { type: "content.isInlineMenuVisible"; sessionID: string }
   | { type: "content.resizeInlineMenu"; sessionID: string; height: number }
-  | { type: "content.dismissInlineMenu"; sessionID: string };
+  | { type: "content.dismissInlineMenu"; sessionID: string }
+  | { type: "content.openInlineMenuHere" };
 
 export interface OffscreenCopyMessage {
   target: "offscreen";

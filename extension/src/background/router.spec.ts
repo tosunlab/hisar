@@ -19,6 +19,8 @@ function createController(): BackgroundController {
       throw new HisarError("not-found", "This save offer has expired");
     }),
     unlock: vi.fn(async () => undefined),
+    listItems: vi.fn(async () => []),
+    revealItemField: vi.fn(async () => "secret"),
   } as unknown as BackgroundController;
 }
 
@@ -39,6 +41,22 @@ describe("routeMessage", () => {
     const response = await routeMessage(createServices(controller), { type: "popup.unlock" }, contentSender, context);
     expect(response).toMatchObject({ ok: false, error: { code: "invalid-request" } });
     expect(controller.unlock).not.toHaveBeenCalled();
+  });
+
+  it("answers the vault only to the extension's pages, never to a content script", async () => {
+    const controller = createController();
+    for (const message of [
+      { type: "popup.listItems", query: {} },
+      { type: "popup.revealField", vaultID: "v", itemID: "i", fieldID: "password" },
+    ]) {
+      expect(await routeMessage(createServices(controller), message, contentSender, context)).toMatchObject({ ok: false, error: { code: "invalid-request" } });
+    }
+    expect(controller.listItems).not.toHaveBeenCalled();
+    expect(controller.revealItemField).not.toHaveBeenCalled();
+    expect(await routeMessage(createServices(controller), { type: "popup.revealField", vaultID: "v", itemID: "i", fieldID: "password" } as never, popupSender, context)).toEqual({
+      ok: true,
+      result: "secret",
+    });
   });
 
   it("refuses messages from other extensions", async () => {

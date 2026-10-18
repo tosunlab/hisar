@@ -1,7 +1,7 @@
 import type { AddressValues } from "../shared/protocol";
 import { getCountryName, findCountryCode, listCountrySpellings, normalizeCountryText } from "../shared/countries";
 import { findAllAddressScope, findAddressScopeOf, type AddressField, type AddressScope } from "./address-detection";
-import { getDeepActiveElement } from "./dom";
+import { containsAcrossShadow, getDeepActiveElement } from "./dom";
 
 function dispatchFillEvents(element: HTMLElement, value: string): void {
   element.dispatchEvent(new InputEvent("input", { bubbles: true, composed: true, inputType: "insertReplacementText", data: value }));
@@ -134,6 +134,15 @@ export function fillAddressIntoPage(document: Document, address: AddressValues):
     scope.allField.find((field) => field.element === active),
     address,
   );
+}
+
+// fillAddressNear fills the address form that shares a container with root, as the address part of an identity next to
+// its name and email; it returns how many fields it filled.
+export function fillAddressNear(document: Document, root: Element, address: AddressValues): number {
+  const scope = findAllAddressScope(document).find(
+    (candidate) => candidate.root === root || containsAcrossShadow(candidate.root, root) || containsAcrossShadow(root, candidate.root),
+  );
+  return scope ? fillAddressIntoScope(scope, undefined, address) : 0;
 }
 
 export function hasAddressForm(document: Document): boolean {

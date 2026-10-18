@@ -23,8 +23,9 @@ describe("placement", () => {
     expect(computeMenuRect({ left: 100, top: 700, width: 300, height: 40 }, 150, viewport).top).toBe(700 - 4 - 150);
   });
 
-  it("stays below when there is no room above either", () => {
-    expect(computeMenuRect({ left: 100, top: 100, width: 300, height: 40 }, 700, viewport).top).toBe(144);
+  it("takes the side with more room when it fits neither, cut to that room so it stays in the window", () => {
+    expect(computeMenuRect({ left: 100, top: 100, width: 300, height: 40 }, 700, viewport)).toMatchObject({ top: 144, height: 800 - 8 - 144 });
+    expect(computeMenuRect({ left: 100, top: 600, width: 300, height: 40 }, 700, viewport)).toMatchObject({ top: 8, height: 600 - 4 - 8 });
   });
 
   it("keeps the menu inside the viewport horizontally", () => {

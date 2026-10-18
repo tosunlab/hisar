@@ -39,7 +39,12 @@ function broadcast(key: InlineMenuBroadcast["key"], sessionID = "session-1"): vo
   for (const listener of allBroadcastListener) listener({ target: "inline-menu", type: "inlineMenu.pressKey", sessionID, key });
 }
 
+let scrollIntoView: ReturnType<typeof vi.fn<Element["scrollIntoView"]>>;
+
 beforeEach(() => {
+  // jsdom does not lay out, so it has no scrollIntoView.
+  scrollIntoView = vi.fn<Element["scrollIntoView"]>();
+  Element.prototype.scrollIntoView = scrollIntoView;
   allMessage = [];
   allBroadcastListener = [];
   vi.stubGlobal("chrome", {
@@ -101,8 +106,11 @@ describe("inline menu page", () => {
     expect(wrapper.get('[data-testid="inline-no-codes"]').text()).toContain("No one-time codes for example.com");
   });
 
-  it("reports its height so the page can size the frame", async () => {
-    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ height: 96.4 } as DOMRect);
+  it("reports its whole height so the page can size the frame, even while it is cut and scrolls", async () => {
+    // 95 px of content and padding scrolled inside a 60 px menu, with a 1 px border above and below.
+    vi.spyOn(HTMLElement.prototype, "scrollHeight", "get").mockReturnValue(95);
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(60);
+    vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(58);
     respondWith(createState());
     await mountMenu();
     await flushPromises();
@@ -244,6 +252,8 @@ describe("inline menu page", () => {
     broadcast("ArrowDown");
     await flushPromises();
     expect(wrapper.findAll('[data-testid="inline-login"]')[1].classes()).toContain("selected");
+    // A menu cut to fit the window scrolls the chosen entry into view.
+    expect(scrollIntoView).toHaveBeenLastCalledWith({ block: "nearest" });
     broadcast("ArrowDown");
     broadcast("ArrowDown");
     broadcast("ArrowUp");

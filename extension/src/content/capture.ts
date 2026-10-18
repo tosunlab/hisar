@@ -1,3 +1,4 @@
+import { findAllCardScope } from "./card-detection";
 import { captureLogin, findAllLoginScope, isSubmitLikeButton, type LoginScope } from "./detection";
 import { containsAcrossShadow, isInputElement } from "./dom";
 
@@ -24,6 +25,14 @@ export function readSubmission(scope: LoginScope): Submission | undefined {
   return captured ? { kind: "login", ...captured } : undefined;
 }
 
+// isPaymentScope: the "password" is a card's security code, as on a payment form that conceals it, so there is no login to
+// save.
+function isPaymentScope(document: Document, scope: LoginScope): boolean {
+  if (scope.allPasswordField.length === 0) return false;
+  const allCardElement = new Set(findAllCardScope(document).flatMap((cardScope) => cardScope.allField.map((field) => field.element)));
+  return scope.allPasswordField.some((field) => allCardElement.has(field));
+}
+
 function findSubmitLikeTarget(event: Event): Element | undefined {
   for (const target of event.composedPath()) {
     if (!(target instanceof Element)) continue;
@@ -40,7 +49,7 @@ export function attachSubmissionCapture(document: Document, options: SubmissionC
   let lastTime = -Infinity;
 
   const report = (scope: LoginScope | undefined): void => {
-    if (!scope) return;
+    if (!scope || isPaymentScope(document, scope)) return;
     const submission = readSubmission(scope);
     if (!submission) return;
     const signature = JSON.stringify(submission);

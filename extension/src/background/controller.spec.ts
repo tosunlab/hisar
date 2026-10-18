@@ -23,7 +23,7 @@ describe("popup state", () => {
   it("follows the desktop state after pairing", async () => {
     const harness = createHarness({ state: { isOffline: true } });
     await harness.pair();
-    expect(await harness.controller.getPopupState()).toEqual({ view: "unlocked", email: "alex@example.com", isOffline: true, isAddressFillAvailable: true });
+    expect(await harness.controller.getPopupState()).toEqual({ view: "unlocked", email: "alex@example.com", isOffline: true, isAddressFillAvailable: true, isCardFillAvailable: true, isIdentityFillAvailable: true, isVaultAvailable: true, isCreateAvailable: true, isPasswordUnlockAvailable: true });
     harness.state.state = "locked";
     expect((await harness.controller.getPopupState()).view).toBe("locked");
   });
@@ -197,6 +197,18 @@ describe("fill and the frame rule", () => {
     expect(fillMessage).toMatchObject({ username: "first" });
   });
 
+  it("puts the login filled most recently first, for the popup, the inline menu and the shortcut", async () => {
+    const harness = createHarness();
+    harness.state.allLogin.push({ ...harness.state.allLogin[0], itemID: "item-aardvark", title: "Aardvark", username: "first" });
+    await harness.pair();
+    await harness.storage.recordUse("vault-personal/item-example", 5);
+    expect((await harness.controller.matchLogins(1)).allLogin.map((login) => login.itemID)).toEqual(["item-example", "item-aardvark"]);
+    expect((await harness.controller.matchLoginsForUrl("https://example.com/")).map((login) => login.itemID)).toEqual(["item-example", "item-aardvark"]);
+    await harness.controller.fillFirstLogin(1);
+    const fillMessage = harness.allFrameMessage.find((entry) => entry.message.type === "content.fillLogin")?.message;
+    expect(fillMessage).toMatchObject({ username: "alex@example.com" });
+  });
+
   it("reports no-match for the keyboard shortcut when nothing matches", async () => {
     const harness = createHarness({ tabUrl: "https://example.net/" });
     await harness.pair();
@@ -267,14 +279,174 @@ describe("addresses", () => {
   });
 });
 
+describe("toolbar badge and recently used logins", () => {
+  it("counts the tab's logins only over a connection that is already open", async () => {
+    const harness = createHarness();
+    expect(await harness.controller.getBadgeText(1)).toBe("");
+    expect(harness.allRequest).toEqual([]);
+    await harness.pair();
+    expect(await harness.controller.getBadgeText(1)).toBe("1");
+    harness.state.state = "locked";
+    expect(await harness.controller.getBadgeText(1)).toBe("");
+  });
+
+  it("remembers when a login was filled", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    await harness.controller.fillLogin(1, "vault-personal", "item-example");
+    expect(await harness.controller.getAllLastUsed()).toEqual({ "vault-personal/item-example": 1_000_000 });
+  });
+});
+
+describe("identities", () => {
+  it("lists identities by name and email and fills the form with the focused field", async () => {
+    const harness = createHarness({ allProbe: { 0: { ...emptyProbe, hasIdentityForm: true, hasFocusedIdentityField: true } } });
+    await harness.pair();
+    expect(await harness.controller.listIdentities()).toEqual([{ vaultID: "vault-personal", vaultName: "Personal", itemID: "item-alex", title: "Alex", summary: "Alex Example · alex@example.com" }]);
+    expect(await harness.controller.fillIdentity(1, "vault-personal", "item-alex")).toBe(true);
+    const fill = harness.allFrameMessage.find((entry) => entry.message.type === "content.fillIdentity");
+    expect(fill?.message).toMatchObject({ type: "content.fillIdentity", expectedOrigin: "https://example.com", identity: { firstName: "Alex", phone: "+1 555 0100", address: { city: "Springfield" } } });
+  });
+
+  it("does not ask for the identity on a page without a form for it", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    await expectHisarError(harness.controller.fillIdentity(1, "vault-personal", "item-alex"), "not-found");
+    expect(harness.state.allIdentityRequest ?? []).toEqual([]);
+  });
+});
+
+describe("cards", () => {
+  const top = { frameId: 0, url: "https://shop.example.com/checkout", origin: "https://shop.example.com", allAncestorOrigin: [] };
+  const paymentFrame = { frameId: 7, url: "https://pay.example.net/card", origin: "https://pay.example.net", allAncestorOrigin: ["https://shop.example.com"] };
+
+  it("lists cards without their numbers and fills the page's own payment form, never a cross-origin frame", async () => {
+    const harness = createHarness({
+      tabUrl: top.url,
+      allFrame: [top, paymentFrame],
+      allProbe: { 0: { ...emptyProbe, hasCardForm: true }, 7: { ...emptyProbe, hasCardForm: true, hasFocusedCardField: true } },
+    });
+    await harness.pair();
+    const allCard = await harness.controller.listCards();
+    expect(allCard).toEqual([{ vaultID: "vault-personal", vaultName: "Personal", itemID: "item-visa", title: "Visa", brand: "Visa", last4: "1111", expiry: "12/30" }]);
+    expect(await harness.controller.fillCard(1, "vault-personal", "item-visa")).toBe(true);
+    const allFill = harness.allFrameMessage.filter((entry) => entry.message.type === "content.fillCard");
+    expect(allFill).toEqual([
+      {
+        frameId: 0,
+        message: {
+          type: "content.fillCard",
+          expectedOrigin: "https://shop.example.com",
+          card: { cardholder: "Alex Example", number: "4111111111111111", expiryMonth: "12", expiryYear: "2030", securityCode: "123", brand: "Visa" },
+        },
+      },
+    ]);
+    expect(harness.allFrameMessage.some((entry) => entry.frameId === 7)).toBe(false);
+  });
+
+  it("does not ask for the card when the page has no payment form", async () => {
+    const harness = createHarness({ allProbe: { 0: { ...emptyProbe, hasLoginForm: true } } });
+    await harness.pair();
+    await expectHisarError(harness.controller.fillCard(1, "vault-personal", "item-visa"), "not-found");
+    expect(harness.state.allCardRequest ?? []).toEqual([]);
+  });
+
+  it("refuses cards with an app that does not fill them", async () => {
+    const harness = createHarness({ state: { features: ["addresses"] } });
+    await harness.pair();
+    await expectHisarError(harness.controller.listCards(), "invalid-request");
+    expect(harness.getRequestTypes().filter((type) => String(type).startsWith("cards."))).toEqual([]);
+  });
+});
+
+describe("unlocking with the master password", () => {
+  it("unlocks with the right password and says when it is wrong", async () => {
+    const harness = createHarness({ state: { state: "locked" } });
+    await harness.pair();
+    expect(await harness.controller.getPopupState()).toMatchObject({ view: "locked", isPasswordUnlockAvailable: true });
+    await expectHisarError(harness.controller.unlockWithPassword("guess"), "wrong-password");
+    await expectHisarError(harness.controller.unlockWithPassword(""), "invalid-request");
+    await harness.controller.unlockWithPassword("master password");
+    expect((await harness.controller.getPopupState()).view).toBe("unlocked");
+  });
+
+  it("does not send the password to an app that cannot take it", async () => {
+    const harness = createHarness({ state: { state: "locked", features: ["addresses"] } });
+    await harness.pair();
+    expect(await harness.controller.getPopupState()).toMatchObject({ view: "locked", isPasswordUnlockAvailable: false });
+    await expectHisarError(harness.controller.unlockWithPassword("master password"), "invalid-request");
+    expect(harness.allRequest.some((request) => request.type === "unlock.password")).toBe(false);
+  });
+});
+
+describe("vault", () => {
+  it("lists every vault's items, shows one without its secrets and reveals a field when asked", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    expect((await harness.controller.listItems({})).map((item) => item.title)).toEqual(["Example", "Visa", "Wi-Fi"]);
+    expect((await harness.controller.listItems({ query: "vis" })).map((item) => item.itemID)).toEqual(["item-visa"]);
+    expect((await harness.controller.listItems({ category: "secure-note" })).map((item) => item.itemID)).toEqual(["item-wifi"]);
+    const visa = await harness.controller.getItem("vault-personal", "item-visa");
+    expect(visa.fields.find((field) => field.label === "Card number")).toEqual({ id: "field:1", label: "Card number", kind: "secret" });
+    expect(await harness.controller.revealItemField("vault-personal", "item-visa", "field:1")).toBe("4111 1111 1111 1111");
+    expect(harness.state.allRevealRequest).toEqual(["item-visa/field:1"]);
+    await harness.controller.setItemFavorite("vault-personal", "item-wifi", true);
+    expect((await harness.controller.listItems({ isFavoriteOnly: true })).map((item) => [item.itemID, item.isFavorite])).toEqual([["item-wifi", true]]);
+    expect(await harness.controller.getItemIcon("https://example.com")).toBe("");
+    expect(await harness.controller.getItemIcon("chrome://settings")).toBe("");
+  });
+
+  it("refuses the vault with an app that does not announce it, without asking", async () => {
+    const harness = createHarness({ state: { features: ["addresses"] } });
+    await harness.pair();
+    await expectHisarError(harness.controller.listItems({}), "invalid-request");
+    await expectHisarError(harness.controller.revealItemField("vault-personal", "item-visa", "field:1"), "invalid-request");
+    expect(harness.getRequestTypes().filter((type) => String(type).startsWith("items."))).toEqual([]);
+  });
+});
+
 describe("save offers", () => {
   it("offers to save a new login and pushes the bar to the top frame", async () => {
     const harness = createHarness();
     await harness.pair();
     const offer = await harness.controller.handleLoginSubmitted(1, "https://example.com/login", "new-user", "pw");
-    expect(offer).toEqual({ offerID: expect.any(String), kind: "save", host: "example.com", username: "new-user", title: undefined });
+    expect(offer).toEqual({
+      offerID: expect.any(String),
+      kind: "save",
+      host: "example.com",
+      username: "new-user",
+      title: undefined,
+      defaultTitle: "example.com",
+      allVault: [
+        { vaultID: "vault-personal", name: "Personal" },
+        { vaultID: "vault-family", name: "Family" },
+      ],
+    });
     expect(harness.allFrameMessage.at(-1)).toEqual({ frameId: 0, message: { type: "content.showSaveOffer", offer } });
     expect(harness.controller.getPendingSaveOffer(1)).toEqual(offer);
+  });
+
+  it("saves a new login with the title, username and vault chosen in the bar", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    const offer = await harness.controller.handleLoginSubmitted(1, "https://www.shop.example/login", "new-user", "pw");
+    expect(offer?.defaultTitle).toBe("shop.example");
+    await harness.controller.actOnSaveOffer(1, offer!.offerID, "save", { title: " Shop ", username: "alex", vaultID: "vault-family" });
+    expect(harness.state.allLogin.at(-1)).toMatchObject({ vaultID: "vault-family", title: "Shop", username: "alex", password: "pw" });
+  });
+
+  it("ignores a vault the offer did not list, and asks no vault of an app without save options", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    const offer = await harness.controller.handleLoginSubmitted(1, "https://shop.example/login", "new-user", "pw");
+    await harness.controller.actOnSaveOffer(1, offer!.offerID, "save", { title: "Shop", username: "new-user", vaultID: "vault-elsewhere" });
+    expect(harness.state.allLogin.at(-1)).toMatchObject({ vaultID: "vault-personal", title: "Shop" });
+
+    const older = createHarness({ state: { features: ["addresses"] } });
+    await older.pair();
+    const olderOffer = await older.controller.handleLoginSubmitted(1, "https://shop.example/login", "new-user", "pw");
+    expect(olderOffer?.allVault).toBeUndefined();
+    expect(older.getRequestTypes()).not.toContain("vaults.list");
   });
 
   it("offers to update a changed password", async () => {

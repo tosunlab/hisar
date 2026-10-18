@@ -26,7 +26,45 @@ export function createInitialState() {
     allPairing: [],
     exactHostOnly: false,
     // features: what the app announces in hello; an older app announces none.
-    features: ["addresses"],
+    features: ["addresses", "vault", "unlock-password", "cards", "identities", "save-options", "create-items"],
+    allVault: [
+      { vaultID: "vault-personal", name: "Personal", isPersonal: true },
+      { vaultID: "vault-family", name: "Family", isPersonal: false },
+    ],
+    allIdentity: [
+      {
+        vaultID: "vault-personal",
+        vaultName: "Personal",
+        itemID: "item-alex",
+        title: "Alex",
+        summary: "Alex Example · alex@example.com",
+        firstName: "Alex",
+        middleName: "",
+        lastName: "Example",
+        email: "alex@example.com",
+        phone: "+1 555 0100",
+        birthDate: "1990-04-02",
+        address: { street: "1 Main St\nApt 4", city: "Springfield", region: "IL", postalCode: "62704", country: "US" },
+      },
+    ],
+    allCard: [
+      {
+        vaultID: "vault-personal",
+        vaultName: "Personal",
+        itemID: "item-visa",
+        title: "Visa",
+        brand: "Visa",
+        last4: "1111",
+        expiry: "12/30",
+        cardholder: "Alex Example",
+        number: "4111111111111111",
+        expiryMonth: "12",
+        expiryYear: "2030",
+        securityCode: "123",
+      },
+    ],
+    // masterPassword is what unlock.password accepts.
+    masterPassword: "master password",
     allAddress: [
       {
         vaultID: "vault-personal",
@@ -41,6 +79,32 @@ export function createInitialState() {
         country: "US",
       },
     ],
+    allItem: [
+      {
+        vaultID: "vault-personal",
+        vaultName: "Personal",
+        itemID: "item-visa",
+        category: "credit-card",
+        title: "Visa",
+        subtitle: "Visa •••• 1111",
+        fields: [
+          { id: "field:0", label: "Cardholder", kind: "text", value: "Alex Example" },
+          { id: "field:1", label: "Card number", kind: "secret", value: "4111 1111 1111 1111" },
+          { id: "field:2", label: "Expiry", kind: "text", value: "12/2030" },
+          { id: "field:3", label: "Security code", kind: "secret", value: "123" },
+        ],
+      },
+      {
+        vaultID: "vault-personal",
+        vaultName: "Personal",
+        itemID: "item-wifi",
+        category: "secure-note",
+        title: "Wi-Fi",
+        subtitle: "",
+        fields: [{ id: "notes", label: "Notes", kind: "notes", value: "Network: Example" }],
+      },
+    ],
+    allFavoriteItemID: [],
     allLogin: [
       {
         vaultID: "vault-personal",
@@ -168,6 +232,41 @@ function requireUnlocked(state) {
   if (state.state === "locked") throw new ProtocolError("locked", "Hisar is locked");
 }
 
+// listAllItem is every item as items.list and items.get see it: the logins, then the other items.
+function listAllItem(state) {
+  const allLoginItem = state.allLogin.map((login) => ({
+    vaultID: login.vaultID,
+    vaultName: login.vaultName,
+    itemID: login.itemID,
+    category: "login",
+    title: login.title,
+    subtitle: login.username,
+    url: login.url,
+    hasOneTimePassword: Boolean(login.oneTimePassword),
+    fields: [
+      ...(login.username ? [{ id: "username", label: "Username", kind: "text", value: login.username }] : []),
+      { id: "password", label: "Password", kind: "secret", value: login.password },
+      ...(login.oneTimePassword ? [{ id: "one-time-code", label: "One-time code", kind: "one-time-code" }] : []),
+      { id: "url:0", label: "Website", kind: "url", value: login.url },
+    ],
+    oneTimePassword: login.oneTimePassword,
+  }));
+  return [...allLoginItem, ...(state.allItem ?? []).map((item) => ({ hasOneTimePassword: false, ...item }))];
+}
+
+function summarizeItem(state, item) {
+  const { vaultID, vaultName, itemID, category, title, subtitle, url, hasOneTimePassword } = item;
+  return { vaultID, vaultName, itemID, category, title, subtitle, ...(url ? { url } : {}), hasOneTimePassword, isFavorite: (state.allFavoriteItemID ?? []).includes(itemID) };
+}
+
+function requireVaultItem(state, request) {
+  if (!state.features?.includes("vault")) throw new ProtocolError("invalid-request", `Unknown type ${String(request.type)}`);
+  requireUnlocked(state);
+  const item = listAllItem(state).find((candidate) => candidate.vaultID === request.vaultID && candidate.itemID === request.itemID);
+  if (!item) throw new ProtocolError("not-found", "No such item");
+  return item;
+}
+
 function findAllMatchingLogin(state, url) {
   return state.allLogin.filter((login) => doesUrlMatch(login.url, url, state.exactHostOnly));
 }
@@ -230,6 +329,14 @@ export function handleRequest(state, request, now = Date.now(), log = () => unde
       if (state.state === "signed-out") throw new ProtocolError("signed-out", "Hisar is signed out");
       if (state.state === "locked") state.unlockAt = now + state.unlockDelayMilliseconds;
       return {};
+    case "unlock.password": {
+      if (!state.features?.includes("unlock-password")) throw new ProtocolError("invalid-request", `Unknown type ${String(type)}`);
+      if (state.state === "signed-out") throw new ProtocolError("signed-out", "Hisar is signed out");
+      if (request.password !== state.masterPassword) throw new ProtocolError("wrong-password", "That master password is not right");
+      state.state = "unlocked";
+      state.unlockAt = null;
+      return { state: state.state, email: state.email, isOffline: state.isOffline };
+    }
     case "logins.match": {
       requireUnlocked(state);
       const url = requireString(request, "url");
@@ -282,7 +389,7 @@ export function handleRequest(state, request, now = Date.now(), log = () => unde
       const url = requireString(request, "url");
       const username = typeof request.username === "string" ? request.username : "";
       const password = requireString(request, "password");
-      if (request.vaultID || request.itemID) {
+      if (request.itemID) {
         const login = state.allLogin.find((candidate) => candidate.vaultID === request.vaultID && candidate.itemID === request.itemID);
         if (!login) throw new ProtocolError("not-found", "No such login");
         login.username = username;
@@ -290,11 +397,15 @@ export function handleRequest(state, request, now = Date.now(), log = () => unde
         return { vaultID: login.vaultID, itemID: login.itemID };
       }
       const host = new URL(url).host;
+      const vault = (state.allVault ?? []).find((candidate) => candidate.vaultID === (request.vaultID || "vault-personal")) ?? { vaultID: "vault-personal", name: "Personal" };
+      if (request.vaultID && !(state.allVault ?? []).some((candidate) => candidate.vaultID === request.vaultID)) {
+        throw new ProtocolError("invalid-request", "You cannot add items to that vault");
+      }
       const login = {
-        vaultID: "vault-personal",
-        vaultName: "Personal",
+        vaultID: vault.vaultID,
+        vaultName: vault.name,
         itemID: `item-${randomBytes(6).toString("hex")}`,
-        title: host,
+        title: typeof request.title === "string" && request.title.trim() ? request.title.trim() : host,
         username,
         password,
         url: new URL(url).origin,
@@ -323,6 +434,92 @@ export function handleRequest(state, request, now = Date.now(), log = () => unde
       state.allAddressRequest = [...(state.allAddressRequest ?? []), address.itemID];
       const { street, city, region, postalCode, country } = address;
       return { street, city, region, postalCode, country };
+    }
+    case "identities.list": {
+      if (!state.features?.includes("identities")) throw new ProtocolError("invalid-request", `Unknown type ${String(type)}`);
+      requireUnlocked(state);
+      return { identities: (state.allIdentity ?? []).map(({ vaultID, vaultName, itemID, title, summary }) => ({ vaultID, vaultName, itemID, title, summary })) };
+    }
+    case "identities.fill": {
+      if (!state.features?.includes("identities")) throw new ProtocolError("invalid-request", `Unknown type ${String(type)}`);
+      requireUnlocked(state);
+      const identity = (state.allIdentity ?? []).find((candidate) => candidate.vaultID === request.vaultID && candidate.itemID === request.itemID);
+      if (!identity) throw new ProtocolError("not-found", "No such identity");
+      state.allIdentityRequest = [...(state.allIdentityRequest ?? []), identity.itemID];
+      const { firstName, middleName, lastName, email, phone, birthDate, address } = identity;
+      return { firstName, middleName, lastName, email, phone, birthDate, ...(address ? { address } : {}) };
+    }
+    case "cards.list": {
+      if (!state.features?.includes("cards")) throw new ProtocolError("invalid-request", `Unknown type ${String(type)}`);
+      requireUnlocked(state);
+      const allCard = (state.allCard ?? []).map(({ vaultID, vaultName, itemID, title, brand, last4, expiry }) => ({ vaultID, vaultName, itemID, title, brand, last4, expiry }));
+      return { cards: allCard };
+    }
+    case "cards.fill": {
+      if (!state.features?.includes("cards")) throw new ProtocolError("invalid-request", `Unknown type ${String(type)}`);
+      requireUnlocked(state);
+      const card = (state.allCard ?? []).find((candidate) => candidate.vaultID === request.vaultID && candidate.itemID === request.itemID);
+      if (!card) throw new ProtocolError("not-found", "No such card");
+      state.allCardRequest = [...(state.allCardRequest ?? []), card.itemID];
+      const { cardholder, number, expiryMonth, expiryYear, securityCode, brand } = card;
+      return { cardholder, number, expiryMonth, expiryYear, securityCode, brand };
+    }
+    case "vaults.list":
+      if (!state.features?.includes("save-options") && !state.features?.includes("vault")) throw new ProtocolError("invalid-request", `Unknown type ${String(type)}`);
+      requireUnlocked(state);
+      return { vaults: state.allVault ?? [] };
+    case "items.create": {
+      if (!state.features?.includes("create-items")) throw new ProtocolError("invalid-request", `Unknown type ${String(type)}`);
+      requireUnlocked(state);
+      const vault = (state.allVault ?? []).find((candidate) => candidate.vaultID === request.vaultID);
+      if (!vault) throw new ProtocolError("invalid-request", "You cannot add items to that vault");
+      const item = /** @type {Record<string, string>} */ (request.item ?? {});
+      if (!item.title?.trim()) throw new ProtocolError("invalid-request", "enter a title");
+      const itemID = `item-${randomBytes(6).toString("hex")}`;
+      if (item.category === "login") {
+        state.allLogin.push({ vaultID: vault.vaultID, vaultName: vault.name, itemID, title: item.title, username: item.username ?? "", password: item.password ?? "", url: item.url ?? "" });
+      } else {
+        state.allItem = [...(state.allItem ?? []), { vaultID: vault.vaultID, vaultName: vault.name, itemID, category: item.category, title: item.title, subtitle: "", fields: [] }];
+      }
+      return summarizeItem(state, listAllItem(state).find((candidate) => candidate.itemID === itemID));
+    }
+    case "items.list": {
+      if (!state.features?.includes("vault")) throw new ProtocolError("invalid-request", `Unknown type ${String(type)}`);
+      requireUnlocked(state);
+      const query = typeof request.query === "string" ? request.query.toLowerCase() : "";
+      const allItem = listAllItem(state)
+        .filter((item) => !request.category || item.category === request.category)
+        .filter((item) => !request.isFavoriteOnly || (state.allFavoriteItemID ?? []).includes(item.itemID))
+        .filter((item) => !query || [item.title, item.subtitle, item.vaultName, item.url ?? ""].some((text) => text.toLowerCase().includes(query)))
+        .sort((first, second) => first.title.localeCompare(second.title));
+      return { items: allItem.map((item) => summarizeItem(state, item)) };
+    }
+    case "items.get": {
+      const item = requireVaultItem(state, request);
+      const fields = item.fields.map((field) => (field.kind === "secret" || field.kind === "one-time-code" ? { id: field.id, label: field.label, kind: field.kind } : field));
+      return { ...summarizeItem(state, item), fields };
+    }
+    case "items.reveal": {
+      const item = requireVaultItem(state, request);
+      const field = item.fields.find((candidate) => candidate.id === request.fieldID);
+      if (!field) throw new ProtocolError("not-found", "No such field");
+      state.allRevealRequest = [...(state.allRevealRequest ?? []), `${item.itemID}/${field.id}`];
+      if (field.kind === "one-time-code") return { value: generateOneTimeCode(item.oneTimePassword, now).code };
+      return { value: field.value ?? "" };
+    }
+    case "items.code": {
+      const item = requireVaultItem(state, request);
+      if (!item.oneTimePassword) throw new ProtocolError("not-found", "This item has no one-time password");
+      return generateOneTimeCode(item.oneTimePassword, now);
+    }
+    case "items.icon":
+      if (!state.features?.includes("vault")) throw new ProtocolError("invalid-request", `Unknown type ${String(type)}`);
+      return {};
+    case "items.favorite": {
+      const item = requireVaultItem(state, request);
+      const allOther = (state.allFavoriteItemID ?? []).filter((itemID) => itemID !== item.itemID);
+      state.allFavoriteItemID = request.isFavorite === true ? [...allOther, item.itemID] : allOther;
+      return {};
     }
     case "password.generate":
       if (state.state === "signed-out") throw new ProtocolError("signed-out", "Hisar is signed out");

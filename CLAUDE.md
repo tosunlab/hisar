@@ -57,7 +57,8 @@ Five Go modules joined by `go.work`, plus four non-Go apps.
 `service.go`, `auth.go`, `lock.go`, `vaults.go`, `items.go`, `clipboard.go`, `errors.go`, `account.go`, `sharing.go`,
 `invitations.go`, `sharelink.go`, `browser.go` (extension pairing), `logins.go` (login matching), `passkey*.go`,
 `platformpasskey.go` (iOS), `commandline*.go`, `codingagent.go` and `launcher.go` (the CLI socket handler), `approvals.go`,
-`phoneapproval.go` (Mac side), `phoneapproval_answer.go` (iPhone side), `import.go`, `export.go`, `settings.go`, `favorites.go`, `websiteicons.go` (the sealed website icon cache and its setting), `addresses.go` (addresses for the extension),
+`phoneapproval.go` (Mac side), `phoneapproval_answer.go` (iPhone side), `import.go`, `export.go`, `settings.go`, `favorites.go`, `websiteicons.go` (the sealed website icon cache and its setting), `addresses.go` (addresses and identities for the extension), `cards.go` (cards for the extension),
+`browseritems.go` (the extension popup's vault: items, vaults, new items), `browserunlock.go` (the popup's master password unlock),
 `organizations.go` (organizations, teams, organization vaults, and delivering and rotating their keys on every sync).
 Shared test fixtures are in `helpers_test.go`, the in-memory API in `fakeapi_test.go`.
 

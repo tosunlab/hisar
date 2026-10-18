@@ -47,6 +47,10 @@ export class InlineMenuController {
   private settings: InlineMenuSettings = { ...defaultInlineMenuSettings };
   // isAddressFillAvailable: the paired app fills addresses; an older one does not, so address fields get no icon.
   private isAddressFillAvailable = false;
+  // isCardFillAvailable: the paired app fills cards; with an older one, payment fields get no icon.
+  private isCardFillAvailable = false;
+  // isIdentityFillAvailable: the paired app fills identities; with an older one, name and email fields get no icon.
+  private isIdentityFillAvailable = false;
   private field: HTMLInputElement | undefined;
   private allGroupField: HTMLInputElement[] = [];
   private purpose: InlineMenuPurpose | undefined;
@@ -55,6 +59,7 @@ export class InlineMenuController {
   private icon: HTMLButtonElement | undefined;
   private menu: OpenMenu | undefined;
   private isOpening = false;
+  private isOpeningOnFocusSuppressed = false;
   private trustedInputCount = 0;
   private frameHandle: number | undefined;
   private readonly guard = new VisibilityGuard();
@@ -93,6 +98,26 @@ export class InlineMenuController {
   setAddressFillAvailable(isAvailable: boolean): void {
     this.isAddressFillAvailable = isAvailable;
     if (!isAvailable && this.purpose === "address") this.hide();
+  }
+
+  setIdentityFillAvailable(isAvailable: boolean): void {
+    this.isIdentityFillAvailable = isAvailable;
+    if (!isAvailable && this.purpose === "identity") this.hide();
+  }
+
+  setCardFillAvailable(isAvailable: boolean): void {
+    this.isCardFillAvailable = isAvailable;
+    if (!isAvailable && this.purpose === "card") this.hide();
+  }
+
+  // runWithoutOpeningOnFocus runs a fill, whose focus changes show the icon in a field but do not open the menu there.
+  runWithoutOpeningOnFocus<Result>(fill: () => Result): Result {
+    this.isOpeningOnFocusSuppressed = true;
+    try {
+      return fill();
+    } finally {
+      this.isOpeningOnFocusSuppressed = false;
+    }
   }
 
   getAnchoredField(sessionID: string): HTMLInputElement | undefined {
@@ -182,17 +207,33 @@ export class InlineMenuController {
     if (!(target instanceof Element)) return;
     if (this.host && (target === this.host || this.host.contains(target))) return;
     if (this.isFieldOfMenu(target)) return;
+    if (this.anchorTo(target) && this.settings.isInlineMenuOpenedOnFocus && !this.isOpeningOnFocusSuppressed) void this.openMenu();
+  }
+
+  // anchorTo shows the icon in a field the menu serves and reports whether it is one; any other field hides it.
+  private anchorTo(target: Element): boolean {
     const purpose = findInlineMenuPurpose(this.document, target, this.dependencies.getRect);
-    if (!purpose || (purpose === "address" && !this.isAddressFillAvailable)) {
+    if (!purpose || (purpose === "address" && !this.isAddressFillAvailable) || (purpose === "card" && !this.isCardFillAvailable) || (purpose === "identity" && !this.isIdentityFillAvailable)) {
       this.hide();
-      return;
+      return false;
     }
     this.hide();
     this.field = target as HTMLInputElement;
     this.allGroupField = purpose === "one-time-code" ? (findOneTimeCodeTarget(target) ?? [this.field]) : [this.field];
     this.purpose = purpose;
     this.showIcon();
-    if (this.settings.isInlineMenuOpenedOnFocus) void this.openMenu();
+    return true;
+  }
+
+  // openHere opens the menu at the focused field, for the right-click menu, even where it does not open on focus; it
+  // reports whether that field is one the menu serves.
+  openHere(): boolean {
+    if (!isFrameEligibleForInlineMenu(this.window)) return false;
+    let active: Element | null = this.document.activeElement;
+    while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement;
+    if (!active || !this.anchorTo(active)) return false;
+    void this.openMenu();
+    return true;
   }
 
   private handleFocusOut(): void {

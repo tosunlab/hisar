@@ -1,11 +1,31 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, onMounted, ref } from "vue";
 import type { PopupView } from "../../shared/messages";
 import type { UpdateRequirement } from "../../shared/protocol";
 import AppIcon from "./AppIcon.vue";
 
-const props = defineProps<{ view: PopupView; detail?: string; isWaiting?: boolean; updateRequired?: UpdateRequirement }>();
-const emit = defineEmits<{ openHisar: []; unlock: []; refresh: []; openUpdatePage: [url: string] }>();
+// isPasswordUnlockAvailable: the locked view asks for the master password, and still offers to unlock in the app.
+const props = defineProps<{
+  view: PopupView;
+  detail?: string;
+  isWaiting?: boolean;
+  updateRequired?: UpdateRequirement;
+  isPasswordUnlockAvailable?: boolean;
+  isUnlocking?: boolean;
+  unlockError?: string;
+}>();
+const emit = defineEmits<{ openHisar: []; unlock: []; unlockWithPassword: [password: string]; refresh: []; openUpdatePage: [url: string] }>();
+
+const password = ref("");
+const passwordInput = ref<HTMLInputElement>();
+
+function submitPassword(): void {
+  if (!password.value || props.isUnlocking) return;
+  emit("unlockWithPassword", password.value);
+  password.value = "";
+}
+
+onMounted(() => passwordInput.value?.focus());
 
 const isExtensionUpdate = computed(() => props.view === "update-required" && props.updateRequired?.target === "extension");
 
@@ -35,7 +55,10 @@ const content = computed(() => {
     case "signed-out":
       return { title: "Sign in to Hisar", subtitle: "Sign in to your account in the Hisar app on this computer, then try again." };
     default:
-      return { title: "Hisar is locked", subtitle: "Unlock Hisar to fill and save logins." };
+      return {
+        title: "Hisar is locked",
+        subtitle: props.isPasswordUnlockAvailable ? "Enter your master password to unlock Hisar." : "Unlock Hisar to fill and save logins.",
+      };
   }
 });
 </script>
@@ -46,8 +69,28 @@ const content = computed(() => {
     <h1>{{ content.title }}</h1>
     <p class="subtitle">{{ content.subtitle }}</p>
     <p v-if="detail && detail !== content.title" class="detail muted">{{ detail }}</p>
+    <form v-if="view === 'locked' && isPasswordUnlockAvailable" class="unlock-form" data-testid="unlock-form" @submit.prevent="submitPassword">
+      <input
+        ref="passwordInput"
+        v-model="password"
+        type="password"
+        class="password"
+        placeholder="Master password"
+        aria-label="Master password"
+        autocomplete="current-password"
+        :disabled="isUnlocking"
+        data-testid="master-password"
+      />
+      <p v-if="unlockError" class="error" role="alert" data-testid="unlock-error">{{ unlockError }}</p>
+      <button type="submit" class="primary full-width" :disabled="!password || isUnlocking" data-testid="unlock-with-password">
+        <AppIcon name="lock" /> {{ isUnlocking ? "Unlocking…" : "Unlock" }}
+      </button>
+      <button type="button" class="ghost full-width" :disabled="isWaiting || isUnlocking" data-testid="unlock" @click="emit('unlock')">
+        {{ isWaiting ? "Waiting for Hisar…" : "Unlock in the Hisar app" }}
+      </button>
+    </form>
     <button
-      v-if="view === 'locked'"
+      v-else-if="view === 'locked'"
       type="button"
       class="primary full-width"
       :disabled="isWaiting"
@@ -90,6 +133,31 @@ const content = computed(() => {
   border-radius: var(--radius);
   background: var(--color-surface);
   color: var(--color-text-secondary);
+}
+
+.unlock-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.unlock-form .error {
+  margin: 0;
+  text-align: left;
+}
+
+.password {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.password:focus {
+  outline: none;
+  border-color: var(--color-focus);
+  box-shadow: 0 0 0 3px rgb(138 149 165 / 18%);
 }
 
 .detail {

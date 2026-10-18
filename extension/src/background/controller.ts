@@ -3,26 +3,42 @@ import type {
   InlineMenuBroadcast,
   FillOutcome,
   FrameProbe,
+  ItemQuery,
   MatchResult,
   PopupState,
   SaveOfferAction,
+  SaveOfferEdits,
   SaveOfferView,
 } from "../shared/messages";
 import {
   featureAddresses,
+  featureCards,
+  featureCreateItems,
+  featureIdentities,
+  featureSaveOptions,
+  featureUnlockPassword,
+  featureVault,
   HisarError,
   toHisarError,
   type AddressSummary,
   type AddressValues,
+  type CardSummary,
+  type CardValues,
   type Credentials,
   type GenerateOptions,
   type HelloResult,
+  type IdentitySummary,
+  type IdentityValues,
+  type ItemResult,
+  type ItemSummary,
   type LoginSummary,
+  type NewItem,
+  type VaultSummary,
   type OneTimeCode,
   type UpdateRequirement,
 } from "../shared/protocol";
 import { getHost, getOrigin, isWebUrl } from "../shared/url";
-import { chooseAddressFrame, chooseFocusedFrame, chooseLoginFrame, chooseOneTimeCodeFrame, selectAllFillableFrame, type FrameInfo, type ProbedFrame } from "./frames";
+import { chooseAddressFrame, chooseCardFrame, chooseFocusedFrame, chooseIdentityFrame, chooseLoginFrame, chooseOneTimeCodeFrame, selectAllFillableFrame, type FrameInfo, type ProbedFrame } from "./frames";
 import type { NativeClient } from "./native-client";
 import { decideSaveOffer, RememberedUsernameStore, SaveOfferStore, toSaveOfferView } from "./save";
 import type { ExtensionStorage } from "./storage";
@@ -91,14 +107,25 @@ export class BackgroundController {
     if (!(await this.storage.getToken())) return { view: hello.state === "signed-out" ? "signed-out" : "not-paired" };
     try {
       const status = await this.client.request("status", {});
-      return { view: status.state, email: status.email, isOffline: status.isOffline, isAddressFillAvailable: this.isAddressFillAvailable() };
+      return {
+        view: status.state,
+        email: status.email,
+        isOffline: status.isOffline,
+        isAddressFillAvailable: this.isAddressFillAvailable(),
+        isCardFillAvailable: this.isCardFillAvailable(),
+        isIdentityFillAvailable: this.isIdentityFillAvailable(),
+        isVaultAvailable: this.isVaultAvailable(),
+        isCreateAvailable: this.allAppFeature.includes(featureCreateItems),
+        isPasswordUnlockAvailable: this.isPasswordUnlockAvailable(),
+      };
     } catch (error) {
       const hisarError = toHisarError(error);
       if (hisarError.code === "not-paired") {
         await this.storage.removeToken();
         return { view: "not-paired" };
       }
-      if (hisarError.code === "signed-out" || hisarError.code === "locked") return { view: hisarError.code };
+      if (hisarError.code === "signed-out") return { view: hisarError.code };
+      if (hisarError.code === "locked") return { view: hisarError.code, isPasswordUnlockAvailable: this.isPasswordUnlockAvailable() };
       if (hisarError.code === "desktop-unavailable") return { view: "desktop-unavailable", errorMessage: hisarError.message };
       if (hisarError.code === "update-required") return { view: "update-required", errorMessage: hisarError.message };
       throw hisarError;
@@ -123,14 +150,35 @@ export class BackgroundController {
     await this.request(() => this.client.request("unlock", {}));
   }
 
+  isPasswordUnlockAvailable(): boolean {
+    return this.allAppFeature.includes(featureUnlockPassword);
+  }
+
+  // unlockWithPassword passes the master password the user typed in the popup to the app, which derives the keys from
+  // it; the extension keeps no copy.
+  async unlockWithPassword(password: string): Promise<void> {
+    if (!this.hasHello) await this.request(() => this.client.connect());
+    if (!this.isPasswordUnlockAvailable()) throw new HisarError("invalid-request", "Update the Hisar app to unlock from the browser");
+    if (!password) throw new HisarError("invalid-request", "Enter your master password");
+    await this.request(() => this.client.request("unlock.password", { password }));
+  }
+
   async getTabUrl(tabId: number): Promise<string | undefined> {
     return this.browser.getTabUrl(tabId);
   }
 
+  // matchLoginsForUrl returns the logins for url with those filled most recently first; the rest keep Hisar's order. The
+  // popup, the inline menu and the fill shortcut all read this order, so the first login is the same in each.
   async matchLoginsForUrl(url: string): Promise<LoginSummary[]> {
     if (!isWebUrl(url)) return [];
     const result = await this.request(() => this.client.request("logins.match", { url }));
-    return result.logins ?? [];
+    return this.sortByLastUse(result.logins ?? []);
+  }
+
+  private async sortByLastUse(allLogin: LoginSummary[]): Promise<LoginSummary[]> {
+    const allLastUsed = await this.storage.getAllLastUsed().catch(() => ({}) as Record<string, number>);
+    const lastUsed = (login: LoginSummary): number => allLastUsed[`${login.vaultID}/${login.itemID}`] ?? 0;
+    return [...allLogin].sort((first, second) => lastUsed(second) - lastUsed(first));
   }
 
   async getCredentials(vaultID: string, itemID: string, url: string): Promise<Credentials> {
@@ -140,8 +188,7 @@ export class BackgroundController {
   async matchLogins(tabId: number): Promise<MatchResult> {
     const url = await this.browser.getTabUrl(tabId);
     if (!isWebUrl(url)) return { url: url ?? "", allLogin: [] };
-    const result = await this.request(() => this.client.request("logins.match", { url }));
-    return { url, allLogin: result.logins ?? [] };
+    return { url, allLogin: await this.matchLoginsForUrl(url) };
   }
 
   async getOneTimeCode(vaultID: string, itemID: string, url: string): Promise<OneTimeCode> {
@@ -182,8 +229,37 @@ export class BackgroundController {
       password: credentials.password,
     });
     if (!outcome?.filledUsername && !outcome?.filledPassword) throw new HisarError("not-found", "No login form found on this page");
+    await this.recordUse(vaultID, itemID);
     await this.copyOneTimeCodeAfterFill(credentials, vaultID, itemID, target.url);
     return outcome;
+  }
+
+  async recordUse(vaultID: string, itemID: string): Promise<void> {
+    await this.storage.recordUse(`${vaultID}/${itemID}`, this.browser.now()).catch(() => undefined);
+  }
+
+  getAllLastUsed(): Promise<Record<string, number>> {
+    return this.storage.getAllLastUsed();
+  }
+
+  // getBadgeText is the number of logins saved for the tab, for the toolbar icon. It asks only over a connection that is
+  // already open, so switching tabs never starts the native host, which would start Hisar.
+  async getBadgeText(tabId: number): Promise<string> {
+    if (!this.client.isConnected() || !(await this.storage.getToken())) return "";
+    try {
+      const url = await this.browser.getTabUrl(tabId);
+      if (!isWebUrl(url)) return "";
+      const allLogin = await this.matchLoginsForUrl(url);
+      if (allLogin.length === 0) return "";
+      return allLogin.length > 9 ? "9+" : String(allLogin.length);
+    } catch {
+      return "";
+    }
+  }
+
+  // fillSuggestedPassword generates a password and fills it into the focused field, for the right-click menu.
+  async fillSuggestedPassword(tabId: number): Promise<void> {
+    await this.fillPassword(tabId, await this.generatePassword({}));
   }
 
   private async fillOneTimeCodeIntoFrame(tabId: number, target: FrameInfo, vaultID: string, itemID: string): Promise<FillOutcome> {
@@ -238,6 +314,125 @@ export class BackgroundController {
     if (!this.isAddressFillAvailable()) throw new HisarError("invalid-request", "Update the Hisar app to fill addresses");
   }
 
+  isVaultAvailable(): boolean {
+    return this.allAppFeature.includes(featureVault);
+  }
+
+  // The vault requests are answered only to the extension's own pages (router.ts): a page's content script never sees
+  // titles of other sites, or a secret it did not ask to fill.
+  async listItems(query: ItemQuery): Promise<ItemSummary[]> {
+    await this.requireVault();
+    const result = await this.request(() => this.client.request("items.list", query));
+    return result.items ?? [];
+  }
+
+  async getItem(vaultID: string, itemID: string): Promise<ItemResult> {
+    await this.requireVault();
+    return this.request(() => this.client.request("items.get", { vaultID, itemID }));
+  }
+
+  async revealItemField(vaultID: string, itemID: string, fieldID: string): Promise<string> {
+    await this.requireVault();
+    const result = await this.request(() => this.client.request("items.reveal", { vaultID, itemID, fieldID }));
+    return result.value;
+  }
+
+  async getItemCode(vaultID: string, itemID: string): Promise<OneTimeCode> {
+    await this.requireVault();
+    return this.request(() => this.client.request("items.code", { vaultID, itemID }));
+  }
+
+  // getItemIcon returns the website's icon as a data: URL, or "" when there is none.
+  async getItemIcon(url: string): Promise<string> {
+    if (!isWebUrl(url)) return "";
+    await this.requireVault();
+    const result = await this.request(() => this.client.request("items.icon", { url }));
+    return result.png ? `data:image/png;base64,${result.png}` : "";
+  }
+
+  async setItemFavorite(vaultID: string, itemID: string, isFavorite: boolean): Promise<void> {
+    await this.requireVault();
+    await this.request(() => this.client.request("items.favorite", { vaultID, itemID, isFavorite }));
+  }
+
+  private async requireVault(): Promise<void> {
+    if (!this.hasHello) await this.request(() => this.client.connect());
+    if (!this.isVaultAvailable()) throw new HisarError("invalid-request", "Update the Hisar app to browse your vaults");
+  }
+
+  isIdentityFillAvailable(): boolean {
+    return this.allAppFeature.includes(featureIdentities);
+  }
+
+  isIdentityFillRefused(): boolean {
+    return this.hasHello && !this.isIdentityFillAvailable();
+  }
+
+  async listIdentities(): Promise<IdentitySummary[]> {
+    await this.requireIdentityFill();
+    const result = await this.request(() => this.client.request("identities.list", {}));
+    return result.identities ?? [];
+  }
+
+  async getIdentity(vaultID: string, itemID: string): Promise<IdentityValues> {
+    await this.requireIdentityFill();
+    return this.request(() => this.client.request("identities.fill", { vaultID, itemID }));
+  }
+
+  // fillIdentity fills the form of personal details with the focused field, or else the page's first one, and the address
+  // form beside it. It looks for the form before it asks Hisar for the identity.
+  async fillIdentity(tabId: number, vaultID: string, itemID: string): Promise<number> {
+    await this.requireIdentityFill();
+    const target = chooseIdentityFrame(await this.probeFillableFrames(tabId));
+    if (!target) throw new HisarError("not-found", "No name, email or phone field found on this page");
+    const identity = await this.getIdentity(vaultID, itemID);
+    const filledCount = await this.browser.sendToFrame<number>(tabId, target.frameId, { type: "content.fillIdentity", expectedOrigin: target.origin, identity });
+    if (!filledCount) throw new HisarError("not-found", "No empty field for this identity found on this page");
+    return filledCount;
+  }
+
+  private async requireIdentityFill(): Promise<void> {
+    if (!this.hasHello) await this.request(() => this.client.connect());
+    if (!this.isIdentityFillAvailable()) throw new HisarError("invalid-request", "Update the Hisar app to fill identities");
+  }
+
+  isCardFillAvailable(): boolean {
+    return this.allAppFeature.includes(featureCards);
+  }
+
+  // isCardFillRefused, like isAddressFillRefused, is known only after this worker's first hello.
+  isCardFillRefused(): boolean {
+    return this.hasHello && !this.isCardFillAvailable();
+  }
+
+  async listCards(): Promise<CardSummary[]> {
+    await this.requireCardFill();
+    const result = await this.request(() => this.client.request("cards.list", {}));
+    return result.cards ?? [];
+  }
+
+  async getCard(vaultID: string, itemID: string): Promise<CardValues> {
+    await this.requireCardFill();
+    return this.request(() => this.client.request("cards.fill", { vaultID, itemID }));
+  }
+
+  // fillCard fills the payment form with the focused field, or else the page's first one, in the tab's own frames only.
+  // It looks for the form before it asks Hisar for the card, so a page without one never receives it.
+  async fillCard(tabId: number, vaultID: string, itemID: string): Promise<number> {
+    await this.requireCardFill();
+    const target = chooseCardFrame(await this.probeFillableFrames(tabId));
+    if (!target) throw new HisarError("not-found", "No payment form found on this page");
+    const card = await this.getCard(vaultID, itemID);
+    const filledCount = await this.browser.sendToFrame<number>(tabId, target.frameId, { type: "content.fillCard", expectedOrigin: target.origin, card });
+    if (!filledCount) throw new HisarError("not-found", "No empty card field found on this page");
+    return filledCount;
+  }
+
+  private async requireCardFill(): Promise<void> {
+    if (!this.hasHello) await this.request(() => this.client.connect());
+    if (!this.isCardFillAvailable()) throw new HisarError("invalid-request", "Update the Hisar app to fill cards");
+  }
+
   async generatePassword(options: GenerateOptions): Promise<string> {
     const result = await this.request(() => this.client.request("password.generate", options));
     return result.password;
@@ -276,6 +471,13 @@ export class BackgroundController {
     }
     const kind = decideSaveOffer(checkResult, false);
     if (!kind) return undefined;
+    // A new login may get another title and go into another vault, when the app takes them.
+    let allVault: { vaultID: string; name: string }[] | undefined;
+    if (kind === "save" && this.allAppFeature.includes(featureSaveOptions)) {
+      allVault = await this.request(() => this.client.request("vaults.list", {}))
+        .then((result) => (result.vaults ?? []).map(({ vaultID, name }) => ({ vaultID, name })))
+        .catch(() => undefined);
+    }
     const offer = {
       offerID: this.browser.createID(),
       tabId,
@@ -287,6 +489,8 @@ export class BackgroundController {
       vaultID: kind === "update" ? checkResult.vaultID : undefined,
       itemID: kind === "update" ? checkResult.itemID : undefined,
       title: checkResult.title,
+      defaultTitle: allVault ? getHost(frameUrl).replace(/^www\./, "") : undefined,
+      allVault,
       createdAt: this.browser.now(),
     };
     this.allSaveOffer.put(offer);
@@ -300,7 +504,7 @@ export class BackgroundController {
     return offer ? toSaveOfferView(offer) : null;
   }
 
-  async actOnSaveOffer(tabId: number, offerID: string, action: SaveOfferAction): Promise<void> {
+  async actOnSaveOffer(tabId: number, offerID: string, action: SaveOfferAction, edits?: SaveOfferEdits): Promise<void> {
     const offer = this.allSaveOffer.getForTab(tabId);
     if (!offer || offer.offerID !== offerID) throw new HisarError("not-found", "This save offer has expired");
     if (action === "not-now") {
@@ -315,9 +519,31 @@ export class BackgroundController {
     const parameters =
       offer.kind === "update" && offer.vaultID && offer.itemID
         ? { url: offer.url, username: offer.username, password: offer.password, vaultID: offer.vaultID, itemID: offer.itemID }
-        : { url: offer.url, username: offer.username, password: offer.password };
+        : { url: offer.url, username: offer.username, password: offer.password, ...this.applySaveEdits(offer.allVault, edits) };
     await this.request(() => this.client.request("logins.save", parameters));
     this.allSaveOffer.take(tabId, offerID);
+  }
+
+  // applySaveEdits takes the bar's title, username and vault for a new login; a vault the offer did not list is ignored,
+  // and the app checks again that the user may write to it.
+  private applySaveEdits(allVault: { vaultID: string }[] | undefined, edits: SaveOfferEdits | undefined): { username?: string; title?: string; vaultID?: string } {
+    if (!allVault || !edits) return {};
+    const changes: { username?: string; title?: string; vaultID?: string } = { username: edits.username.trim() };
+    if (edits.title.trim()) changes.title = edits.title.trim();
+    if (edits.vaultID && allVault.some((vault) => vault.vaultID === edits.vaultID)) changes.vaultID = edits.vaultID;
+    return changes;
+  }
+
+  async listVaults(): Promise<VaultSummary[]> {
+    await this.requireVault();
+    const result = await this.request(() => this.client.request("vaults.list", {}));
+    return result.vaults ?? [];
+  }
+
+  async createItem(vaultID: string, item: NewItem): Promise<ItemSummary> {
+    if (!this.hasHello) await this.request(() => this.client.connect());
+    if (!this.allAppFeature.includes(featureCreateItems)) throw new HisarError("invalid-request", "Update the Hisar app to add items from the browser");
+    return this.request(() => this.client.request("items.create", { vaultID, item }));
   }
 
   handleTabRemoved(tabId: number): void {

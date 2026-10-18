@@ -19,11 +19,18 @@ export interface SaveOffer {
   vaultID?: string;
   itemID?: string;
   title?: string;
+  defaultTitle?: string;
+  allVault?: { vaultID: string; name: string }[];
   createdAt: number;
 }
 
 export function toSaveOfferView(offer: SaveOffer): SaveOfferView {
-  return { offerID: offer.offerID, kind: offer.kind, host: offer.host, username: offer.username, title: offer.title };
+  const view: SaveOfferView = { offerID: offer.offerID, kind: offer.kind, host: offer.host, username: offer.username, title: offer.title };
+  if (offer.allVault) {
+    view.defaultTitle = offer.defaultTitle;
+    view.allVault = offer.allVault;
+  }
+  return view;
 }
 
 export class SaveOfferStore {

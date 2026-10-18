@@ -202,6 +202,44 @@ describe("popup states", () => {
     expect(wrapper.find('[data-testid="unlocked-view"]').exists()).toBe(true);
   });
 
+  it("unlocks with the master password typed in the popup, and shows a wrong one", async () => {
+    let state: PopupState = { view: "locked", isPasswordUnlockAvailable: true };
+    handler = (message) => {
+      if (message.type === "popup.getState") return state;
+      if (message.type === "popup.matchLogins") return { url: "https://example.com/", allLogin };
+      if (message.type === "popup.unlockWithPassword") {
+        if (message.password !== "master password") throw Object.assign(new Error("That master password is not right"), { code: "wrong-password" });
+        state = { view: "unlocked", email: "alex@example.com" };
+      }
+      return null;
+    };
+    const wrapper = await mountApp();
+    const input = wrapper.find('[data-testid="master-password"]');
+    expect(document.activeElement).toBe(input.element);
+    expect(wrapper.find('[data-testid="unlock-with-password"]').attributes("disabled")).toBeDefined();
+    await input.setValue("guess");
+    await wrapper.find('[data-testid="unlock-form"]').trigger("submit");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="unlock-error"]').text()).toBe("That master password is not right");
+    expect((wrapper.find('[data-testid="master-password"]').element as HTMLInputElement).value).toBe("");
+
+    await wrapper.find('[data-testid="master-password"]').setValue("master password");
+    await wrapper.find('[data-testid="unlock-form"]').trigger("submit");
+    await flushPromises();
+    expect(allMessage).toContainEqual({ type: "popup.unlockWithPassword", password: "master password" });
+    expect(wrapper.find('[data-testid="unlocked-view"]').exists()).toBe(true);
+    // Unlocking in the app stays on offer.
+    expect(allMessage.some((message) => message.type === "popup.unlock")).toBe(false);
+  });
+
+  it("still offers to unlock in the app next to the password", async () => {
+    respondWithState({ view: "locked", isPasswordUnlockAvailable: true });
+    const wrapper = await mountApp();
+    await wrapper.find('[data-testid="unlock"]').trigger("click");
+    await flushPromises();
+    expect(allMessage.map((message) => message.type)).toContain("popup.unlock");
+  });
+
   it("stops polling after the limit", async () => {
     vi.useFakeTimers();
     respondWithState({ view: "locked" });
@@ -421,5 +459,215 @@ describe("addresses", () => {
     await flushPromises();
     expect(wrapper.find('[data-testid="address-error"]').text()).toContain("No address form found on this page");
     expect(closeWindow).not.toHaveBeenCalled();
+  });
+});
+
+describe("vault", () => {
+  const allItem = [
+    { vaultID: "v1", itemID: "i1", category: "login", title: "Example", subtitle: "alex@example.com", vaultName: "Personal", url: "https://example.com", isFavorite: false, hasOneTimePassword: false },
+    { vaultID: "v1", itemID: "github", category: "login", title: "GitHub", subtitle: "alex", vaultName: "Personal", url: "https://github.com", isFavorite: false, hasOneTimePassword: false },
+    { vaultID: "v1", itemID: "visa", category: "credit-card", title: "Visa", subtitle: "Visa •••• 1111", vaultName: "Personal", isFavorite: true, hasOneTimePassword: false },
+  ];
+  const visa = {
+    ...allItem[2],
+    fields: [
+      { id: "field:0", label: "Cardholder", kind: "text", value: "Alex Example" },
+      { id: "field:1", label: "Card number", kind: "secret" },
+    ],
+  };
+
+  let extraState: Partial<PopupState> = {};
+
+  function respondWithStateOverride(state: Partial<PopupState>): void {
+    extraState = state;
+    const previous = handler;
+    handler = (message) => (message.type === "popup.getState" ? { view: "unlocked", email: "alex@example.com", isVaultAvailable: true, ...extraState } : previous(message));
+  }
+
+  function respondWithVault(overrides: Partial<Record<PopupMessage["type"], Handler>> = {}): void {
+    respondWithState(
+      { view: "unlocked", email: "alex@example.com", isVaultAvailable: true },
+      {
+        "popup.listItems": (message) => {
+          const { query = {} } = message as Extract<PopupMessage, { type: "popup.listItems" }>;
+          return allItem
+            .filter((item) => !query.category || item.category === query.category)
+            .filter((item) => !query.query || item.title.toLowerCase().includes(query.query.toLowerCase()));
+        },
+        "popup.getItem": () => visa,
+        "popup.revealField": () => "4111 1111 1111 1111",
+        "popup.getIcon": () => "",
+        ...overrides,
+      },
+    );
+  }
+
+  it("opens a card or an identity from its tab, and fills it from there", async () => {
+    respondWithState(
+      { view: "unlocked", email: "alex@example.com", isVaultAvailable: true, isCardFillAvailable: true, isIdentityFillAvailable: true },
+      {
+        "popup.listItems": () => [
+          { vaultID: "v1", itemID: "card", category: "credit-card", title: "Visa", subtitle: "Visa •••• 1111", vaultName: "Personal", isFavorite: false, hasOneTimePassword: false },
+        ],
+        "popup.listCards": () => [{ vaultID: "v1", itemID: "card", title: "Visa", brand: "Visa", last4: "1111", expiry: "12/30", vaultName: "Personal" }],
+        "popup.listIdentities": () => [{ vaultID: "v1", itemID: "me", title: "Alex", summary: "Alex Example", vaultName: "Personal" }],
+        "popup.getItem": () => visa,
+        "popup.getIcon": () => "",
+      },
+    );
+    const wrapper = await mountApp();
+    await wrapper.find('[data-testid="section-cards"]').trigger("click");
+    await flushPromises();
+    await wrapper.find('[data-testid="open-card"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="item-title"]').text()).toBe("Visa");
+    await wrapper.find('[data-testid="item-fill"]').trigger("click");
+    await flushPromises();
+    expect(allMessage).toContainEqual({ type: "popup.fillCard", tabId: 42, vaultID: "v1", itemID: "card" });
+
+    await wrapper.find('[data-testid="section-addresses"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="item-detail"]').exists()).toBe(false);
+    await wrapper.find('[data-testid="open-identity"]').trigger("click");
+    await flushPromises();
+    await wrapper.find('[data-testid="item-fill"]').trigger("click");
+    await flushPromises();
+    expect(allMessage).toContainEqual({ type: "popup.fillIdentity", tabId: 42, vaultID: "v1", itemID: "me" });
+    await wrapper.find('[data-testid="item-back"]').trigger("click");
+    expect(wrapper.find('[data-testid="identity-list"]').exists()).toBe(true);
+
+    // A card opened from the vault fills too.
+    await wrapper.find('[data-testid="section-logins"]').trigger("click");
+    await flushPromises();
+    await wrapper.find('[data-testid="open-item"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="item-fill"]').exists()).toBe(true);
+  });
+
+  it("keeps the site's logins only with an app that cannot browse the vault", async () => {
+    respondWithState({ view: "unlocked", email: "alex@example.com" });
+    const wrapper = await mountApp();
+    expect(wrapper.find('[data-testid="vault-view"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="section-logins"]').text()).toBe("Logins");
+  });
+
+  it("suggests the page's logins above every other item, and searches the whole vault", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    respondWithVault();
+    const wrapper = await mountApp();
+    expect(wrapper.find('[data-testid="section-logins"]').text()).toBe("Vault");
+    expect(wrapper.findAll('[data-testid="login-row"]')).toHaveLength(2);
+    // The suggested logins are not listed again below.
+    expect(wrapper.findAll('[data-testid="item-row"]').map((row) => row.find(".title").text())).toEqual(["GitHub", "Visa"]);
+    expect(document.activeElement).toBe(wrapper.find('[data-testid="vault-search"]').element);
+
+    await wrapper.find('[data-testid="vault-search"]').setValue("git");
+    await vi.advanceTimersByTimeAsync(150);
+    await flushPromises();
+    expect(allMessage).toContainEqual({ type: "popup.listItems", query: { query: "git" } });
+    expect(wrapper.findAll('[data-testid="item-row"]').map((row) => row.find(".title").text())).toEqual(["GitHub"]);
+    expect(wrapper.findAll('[data-testid="login-row"]')).toHaveLength(0);
+
+    await wrapper.find('[data-testid="category-credit-card"]').trigger("click");
+    await flushPromises();
+    expect(allMessage).toContainEqual({ type: "popup.listItems", query: { query: "git", category: "credit-card" } });
+  });
+
+  it("opens an item without its secrets, reveals and copies one when asked, and stars it", async () => {
+    respondWithVault();
+    const wrapper = await mountApp();
+    await wrapper.findAll('[data-testid="open-item"]')[1].trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="item-title"]').text()).toBe("Visa");
+    // This app does not fill cards.
+    expect(wrapper.find('[data-testid="item-fill"]').exists()).toBe(false);
+    const number = wrapper.find('[data-testid="field-field:1"]');
+    expect(number.text()).not.toContain("4111");
+    expect(allMessage.some((message) => message.type === "popup.revealField")).toBe(false);
+
+    await number.find('[data-testid="reveal-field"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="field-field:1"]').text()).toContain("4111 1111 1111 1111");
+    expect(allMessage).toContainEqual({ type: "popup.revealField", vaultID: "v1", itemID: "visa", fieldID: "field:1" });
+
+    await wrapper.find('[data-testid="field-field:0"] [data-testid="copy-field"]').trigger("click");
+    await flushPromises();
+    expect(allClipboardText).toEqual(["Alex Example"]);
+
+    await wrapper.find('[data-testid="item-favorite"]').trigger("click");
+    await flushPromises();
+    expect(allMessage).toContainEqual({ type: "popup.setFavorite", vaultID: "v1", itemID: "visa", isFavorite: false });
+
+    await wrapper.find('[data-testid="item-back"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="vault-view"]').isVisible()).toBe(true);
+  });
+
+  it("fills a suggested login from its details", async () => {
+    respondWithVault({ "popup.getItem": () => ({ ...allItem[0], fields: [{ id: "username", label: "Username", kind: "text", value: "alex@example.com" }] }) });
+    const wrapper = await mountApp();
+    await wrapper.find('[data-testid="open-login"]').trigger("click");
+    await flushPromises();
+    await wrapper.find('[data-testid="item-fill"]').trigger("click");
+    await flushPromises();
+    expect(allMessage).toContainEqual({ type: "popup.fillLogin", tabId: 42, vaultID: "v1", itemID: "i1" });
+    expect(closeWindow).toHaveBeenCalled();
+  });
+
+  it("creates a login for the page with a generated password, into the chosen vault", async () => {
+    let created: unknown;
+    respondWithVault({
+      "popup.listVaults": () => [
+        { vaultID: "v1", name: "Personal", isPersonal: true },
+        { vaultID: "v2", name: "Family", isPersonal: false },
+      ],
+      "popup.createItem": (message) => {
+        created = message;
+        return { ...allItem[1], itemID: "new", title: "example.com" };
+      },
+    });
+    respondWithStateOverride({ isCreateAvailable: true });
+    const wrapper = await mountApp();
+    await wrapper.find('[data-testid="new-item-open"]').trigger("click");
+    await flushPromises();
+    expect((wrapper.find('[data-testid="new-title"]').element as HTMLInputElement).value).toBe("example.com");
+    expect((wrapper.find('[data-testid="new-url"]').element as HTMLInputElement).value).toBe("https://example.com");
+    expect((wrapper.find('[data-testid="new-password"]').element as HTMLInputElement).value).toBe("generated-undefined-undefined-undefined");
+    await wrapper.find('[data-testid="new-username"]').setValue("alex");
+    await wrapper.find('[data-testid="new-vault"]').setValue("v2");
+    await wrapper.find('[data-testid="new-item"]').trigger("submit");
+    await flushPromises();
+    expect(created).toEqual({
+      type: "popup.createItem",
+      vaultID: "v2",
+      item: { category: "login", title: "example.com", username: "alex", password: "generated-undefined-undefined-undefined", url: "https://example.com" },
+    });
+    expect(wrapper.find('[data-testid="item-detail"]').exists()).toBe(true);
+  });
+
+  it("moves between the search box and the rows with the arrow keys, and copies a login's password with Ctrl+C", async () => {
+    respondWithVault();
+    const wrapper = await mountApp();
+    const search = wrapper.find('[data-testid="vault-search"]');
+    await search.trigger("keydown", { key: "ArrowDown" });
+    const allRow = wrapper.findAll("[data-row]");
+    expect(document.activeElement).toBe(allRow[0].element);
+    await allRow[0].trigger("keydown", { key: "ArrowDown" });
+    expect(document.activeElement).toBe(allRow[1].element);
+    await allRow[1].trigger("keydown", { key: "c", ctrlKey: true });
+    await flushPromises();
+    expect(allClipboardText).toEqual(["password-of-i2"]);
+    await allRow[1].trigger("keydown", { key: "ArrowUp" });
+    await wrapper.findAll("[data-row]")[0].trigger("keydown", { key: "ArrowUp" });
+    expect(document.activeElement).toBe(search.element);
+  });
+
+  it("copies a login's password from the list", async () => {
+    respondWithVault({ "popup.revealField": () => "hunter2" });
+    const wrapper = await mountApp();
+    await wrapper.find('[data-testid="item-copy-password"]').trigger("click");
+    await flushPromises();
+    expect(allMessage).toContainEqual({ type: "popup.revealField", vaultID: "v1", itemID: "github", fieldID: "password" });
+    expect(allClipboardText).toEqual(["hunter2"]);
   });
 });
