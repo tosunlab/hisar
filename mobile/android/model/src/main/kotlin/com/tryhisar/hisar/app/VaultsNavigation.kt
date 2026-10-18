@@ -3,15 +3,19 @@ package com.tryhisar.hisar.app
 import com.tryhisar.hisar.model.ItemCategory
 import com.tryhisar.hisar.model.VaultActions
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/** A screen the Vaults or Search tab pushes; sheets on the iPhone are full screens here, pushed the same way. */
+/** A screen the Vaults or Search tab pushes; the iPhone's sheets are full screens here, which cover the tab bar. */
 sealed interface VaultsDestination {
+    val isSheet: Boolean get() = false
+
     data class Vault(val vaultID: String) : VaultsDestination
 
     data class Category(val category: ItemCategory) : VaultsDestination
@@ -21,11 +25,17 @@ sealed interface VaultsDestination {
     data class Item(val vaultID: String, val itemID: String) : VaultsDestination
 
     /** The editor; when [opensSavedItem], saving shows the new item in its place, as the Vaults screen's New menu does. */
-    data class Editor(val request: EditorRequest, val opensSavedItem: Boolean) : VaultsDestination
+    data class Editor(val request: EditorRequest, val opensSavedItem: Boolean) : VaultsDestination {
+        override val isSheet: Boolean get() = true
+    }
 
-    data object NewVault : VaultsDestination
+    data object NewVault : VaultsDestination {
+        override val isSheet: Boolean get() = true
+    }
 
-    data class DeleteVault(val actions: VaultActions) : VaultsDestination
+    data class DeleteVault(val actions: VaultActions) : VaultsDestination {
+        override val isSheet: Boolean get() = true
+    }
 }
 
 /** One tab's pushed screens, the last on top; empty shows the tab's root. */
@@ -56,6 +66,15 @@ class VaultsNavigation(
 ) {
     val vaults = NavigationStack()
     val search = NavigationStack()
+
+    /** The selected tab shows a sheet, which covers the tab bar as on the iPhone. */
+    val isSheetShown: StateFlow<Boolean> = combine(selectedTab, vaults.path, search.path) { tab, vaultsPath, searchPath ->
+        when (tab) {
+            Tab.VAULTS -> vaultsPath.lastOrNull()?.isSheet == true
+            Tab.SEARCH -> searchPath.lastOrNull()?.isSheet == true
+            else -> false
+        }
+    }.stateIn(context.scope, SharingStarted.Eagerly, false)
 
     init {
         context.addStatusListener { previous, current ->
