@@ -480,6 +480,14 @@ describe("SSHApprovalWindow", () => {
     wrapper.unmount();
   });
 
+  it("says that unlocking for a share link approves only that link", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createLauncherApprovalEvent({ purpose: "share-link", isUnlockRequired: true }));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="approval-unlock-note"]').text()).toBe("Hisar is locked; unlocking it also approves this request.");
+    wrapper.unmount();
+  });
+
   it("names the coding agent and where it runs when it connects", async () => {
     const wrapper = mount(SSHApprovalWindow);
     sendEvent("ssh-approval", createAgentApprovalEvent());

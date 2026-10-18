@@ -161,7 +161,7 @@ const commandLineCoverage = computed(() => {
 });
 
 const unlockNote = computed(() => {
-  if (isAgent.value) {
+  if (isAgent.value || isLauncherShare.value) {
     return "Hisar is locked; unlocking it also approves this request.";
   }
   if (isLauncher.value) {
