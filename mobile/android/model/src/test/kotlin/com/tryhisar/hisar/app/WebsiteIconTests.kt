@@ -10,7 +10,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.io.bytestring.ByteString
 
-class ItemIconTests {
+class WebsiteIconTests {
     @Test
     fun testOnlyLoginsWithAnHTTPSWebsiteAndNoIconShowAWebsiteIcon() {
         assertEquals("https://github.com/login", ItemDetail(allURL = listOf("github.com", " https://github.com/login ")).websiteIconURL)
