@@ -157,7 +157,9 @@ class SignInModelTests {
     @Test
     fun testScannedQRCodeFillsInSignInOrExplains() = runTest {
         val model = AppModelHarness(this).startModel()
+        model.signIn.isScannerShown.value = true
         model.signIn.openScannedEmergencyKit("hisar://invite/abc")
+        assertFalse(model.signIn.isScannerShown.value, "the first code closes the scanner")
         assertNull(model.signIn.pendingInviteLink.value, "an invite is no Emergency Kit")
         assertEquals("This QR code is not from a Hisar Emergency Kit.", model.signIn.scannerMessage.value)
         model.signIn.openScannedEmergencyKit("hisar://sign-in?server=https%3A%2F%2Fhisar.example.com&email=alice%40example.com&secretKey=H1-ABC123")

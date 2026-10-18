@@ -33,6 +33,9 @@ class SignInModel(private val context: ModelContext, private val isPlainHttpAllo
     /** Why an invite link was not used: someone is already signed in. */
     val inviteLinkMessage = MutableStateFlow<String?>(null)
 
+    /** Whether the sign-in screen shows the camera that scans an Emergency Kit's QR code. */
+    val isScannerShown = MutableStateFlow(false)
+
     /** Why a scanned QR code filled nothing in. */
     val scannerMessage = MutableStateFlow<String?>(null)
 
@@ -100,8 +103,12 @@ class SignInModel(private val context: ModelContext, private val isPlainHttpAllo
         InviteLink.parse(text)?.let(::openInviteLink)
     }
 
-    /** Takes the text of a QR code scanned on the sign-in screen, which only an Emergency Kit's sign-in link fills in. */
+    /**
+     * Takes the text of the first QR code the scanner read, and closes the scanner; only an Emergency Kit's sign-in
+     * link fills the form in.
+     */
     fun openScannedEmergencyKit(text: String) {
+        isScannerShown.value = false
         val link = SignInLink.parse(text)
         if (link == null) {
             scannerMessage.value = "This QR code is not from a Hisar Emergency Kit."

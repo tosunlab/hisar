@@ -10,6 +10,7 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -62,6 +63,7 @@ fun SignInScreen(model: AppModel) {
     val pendingSignInLink by signIn.pendingSignInLink.collectAsStateWithLifecycle()
     val pendingInviteLink by signIn.pendingInviteLink.collectAsStateWithLifecycle()
     val scannerMessage by signIn.scannerMessage.collectAsStateWithLifecycle()
+    val isScannerShown by signIn.isScannerShown.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
 
     var mode by rememberSaveable { mutableStateOf(SignInMode.SIGN_IN) }
@@ -148,6 +150,7 @@ fun SignInScreen(model: AppModel) {
         errorMessage?.let { message -> FormSection { ErrorBanner(message) } }
         when (mode) {
             SignInMode.SIGN_IN -> SignInSections(
+                scanEmergencyKit = { signIn.isScannerShown.value = true },
                 email = email, onEmailChange = { email = it },
                 server = server, onServerChange = { server = it },
                 isServerShown = isServerShown, showServer = { isServerShown = true },
@@ -180,6 +183,9 @@ fun SignInScreen(model: AppModel) {
         }
     }
 
+    if (isScannerShown) {
+        EmergencyKitScannerSheet(onScanned = signIn::openScannedEmergencyKit, onCancel = { signIn.isScannerShown.value = false })
+    }
     scannerMessage?.let { message ->
         AlertDialog(
             onDismissRequest = { signIn.scannerMessage.value = null },
@@ -192,6 +198,7 @@ fun SignInScreen(model: AppModel) {
 
 @Composable
 private fun SignInSections(
+    scanEmergencyKit: () -> Unit,
     email: String,
     onEmailChange: (String) -> Unit,
     server: String,
@@ -204,6 +211,9 @@ private fun SignInSections(
     onPasswordChange: (String) -> Unit,
     submit: () -> Unit,
 ) {
+    FormSection(footer = { Text("The QR code fills in your server, email and Secret Key.") }) {
+        FormButtonRow("Scan Emergency Kit QR code", scanEmergencyKit, testTag = "scan-emergency-kit", icon = Icons.Outlined.QrCodeScanner, color = HisarTheme.colors.tint)
+    }
     FormSection(
         header = "Account",
         footer = if (isServerShown) null else ({ Text("Signs in to ${SignInModel.describeServer(server)}.") }),

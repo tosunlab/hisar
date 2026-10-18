@@ -64,6 +64,10 @@ dependencies {
     implementation(libs.androidx.biometric)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.androidx.core.splashscreen)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.view)
+    implementation(libs.zxing.core)
     implementation(libs.androidx.autofill)
 
     testImplementation(testFixtures(project(":model")))
