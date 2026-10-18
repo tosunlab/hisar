@@ -95,7 +95,18 @@ func (s *Service) requireBiometricSetup() error {
 	if s.config.Biometric == nil || !s.config.Biometric.IsAvailable() {
 		return ErrBiometricUnavailable
 	}
-	return s.config.Biometric.Authenticate("turn on Touch ID unlock for Hisar")
+	return s.authenticateToStoreBiometricKey("turn on Touch ID unlock for Hisar")
+}
+
+// authenticateToStoreBiometricKey shows the prompt that guards StoreKey; a BiometricKeyPreparer first readies the store
+// that this prompt authorizes.
+func (s *Service) authenticateToStoreBiometricKey(reason string) error {
+	if preparer := s.config.BiometricKeyPreparer; preparer != nil {
+		if err := preparer.PrepareStoreKey(s.state.AccountID); err != nil {
+			return fmt.Errorf("could not create the biometric unlock key: %w", err)
+		}
+	}
+	return s.config.Biometric.Authenticate(reason)
 }
 
 func (s *Service) sealBiometricUnlock(accountUnlockKey []byte) (Status, error) {
@@ -137,8 +148,14 @@ func (s *Service) unlockWithBiometric(authenticate func() error) (Status, error)
 	}
 	server, token, accountID, sealedUnlockKey := s.state.Server, s.state.Token, s.state.AccountID, s.state.BiometricUnlock
 	accountCache := s.getCache()
+	preparer := s.config.BiometricKeyPreparer
 	s.mutex.Unlock()
 
+	if preparer != nil {
+		if err := preparer.PrepareLoadKey(accountID); err != nil {
+			return Status{}, s.resetBiometricAfterFailure(fmt.Errorf("the biometric unlock key can no longer be used: %w", err))
+		}
+	}
 	if err := authenticate(); err != nil {
 		return Status{}, err
 	}
@@ -182,4 +199,12 @@ func (s *Service) resetBiometricAfterFailure(cause error) error {
 	s.forgetBiometricUnlock()
 	s.state.Save()
 	return fmt.Errorf("%v; Touch ID unlock was turned off, unlock with your master password and turn it on again", cause)
+}
+
+// SetBiometricKeyPreparer is for apps that create the preparer after the service (hisarkit); it must run right after
+// NewService. Not a method, so the UI cannot call it.
+func SetBiometricKeyPreparer(s *Service, preparer BiometricKeyPreparer) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.config.BiometricKeyPreparer = preparer
 }

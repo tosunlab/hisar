@@ -2,6 +2,9 @@ package app
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
+	"net/http"
 	"sync"
 	"time"
 
@@ -9,6 +12,7 @@ import (
 	"github.com/tryhisar/hisar/core/cache"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/item"
+	"github.com/tryhisar/hisar/core/itemicon"
 	"github.com/tryhisar/hisar/core/localstate"
 	"github.com/tryhisar/hisar/core/session"
 )
@@ -43,6 +47,7 @@ type Service struct {
 	updateRequirement            updateRequirementState
 	websiteIcons                 websiteIcons
 	defaultWebsiteIconFetcher    WebsiteIconFetcher
+	serverTransport              http.RoundTripper
 }
 
 // getCache opens the offline cache on first use; if it cannot be opened, even after starting it over, Hisar stays online-only.
@@ -100,6 +105,19 @@ func NewService(config Config) (*Service, error) {
 		return nil, err
 	}
 	return &Service{config: config, state: state, phoneApprovals: createPhoneApprovalRelay()}, nil
+}
+
+// SetTrustedCertificates makes requests to the Hisar server and website icon fetches trust only roots, for platforms
+// whose trust store Go cannot read (Android). It must run right after NewService; not a method, so the UI cannot call it.
+func SetTrustedCertificates(s *Service, roots *x509.CertPool) {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.TLSClientConfig = &tls.Config{RootCAs: roots}
+	s.mutex.Lock()
+	s.serverTransport = transport
+	s.mutex.Unlock()
+	s.websiteIcons.mutex.Lock()
+	s.defaultWebsiteIconFetcher = itemicon.NewFetcher(roots)
+	s.websiteIcons.mutex.Unlock()
 }
 
 func (s *Service) notifySessionChange() {

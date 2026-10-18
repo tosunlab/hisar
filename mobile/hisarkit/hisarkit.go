@@ -3,6 +3,8 @@
 package hisarkit
 
 import (
+	"crypto/sha256"
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -15,6 +17,7 @@ import (
 	"github.com/tryhisar/hisar/core/browserprotocol"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/item"
+	"github.com/tryhisar/hisar/core/passkey"
 )
 
 // SecretKeyStore keeps the Secret Key in the iOS Keychain, shared with the AutoFill extension.
@@ -31,6 +34,14 @@ type Biometric interface {
 	StoreKey(accountID string, key []byte) error
 	LoadKey(accountID string) ([]byte, error)
 	DeleteKey(accountID string) error
+}
+
+// BiometricKeyPreparer is Android's: its biometric key is a per-use Keystore key, so each prompt must carry the cipher
+// of the StoreKey or LoadKey that follows it. Each Prepare builds that cipher; the next Authenticate puts it in the
+// prompt. It is apart from Biometric because a gomobile Biometric proxy implements no other interface.
+type BiometricKeyPreparer interface {
+	PrepareStoreKey(accountID string) error
+	PrepareLoadKey(accountID string) error
 }
 
 // Clipboard writes the general pasteboard; GetText returns "" when it holds no text.
@@ -146,6 +157,23 @@ func (hisar *Hisar) Status() string {
 // SetAppVersion must run right after New, before any request: the server compares it with its minimum for iOS.
 func (hisar *Hisar) SetAppVersion(version string) {
 	app.SetAppVersion(hisar.service, version)
+}
+
+// SetTrustedCertificates takes the PEM certificates of the device's trust store, the system's and the user's, and makes
+// Hisar trust only those for the server and website icons. Android calls it right after New: Go cannot read every
+// root there, nor any the user installed.
+func (hisar *Hisar) SetTrustedCertificates(pemCertificates string) error {
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM([]byte(pemCertificates)) {
+		return errors.New("hisarkit: no certificate in the trusted certificates")
+	}
+	app.SetTrustedCertificates(hisar.service, roots)
+	return nil
+}
+
+// SetBiometricKeyPreparer must run right after New, on Android, with the object that implements Biometric.
+func (hisar *Hisar) SetBiometricKeyPreparer(preparer BiometricKeyPreparer) {
+	app.SetBiometricKeyPreparer(hisar.service, preparer)
 }
 
 // CheckMinimumVersion asks the server whether it still accepts this version and returns app.Status as JSON.
@@ -385,6 +413,36 @@ func (hisar *Hisar) CreatePasskey(registrationJSON string) (string, error) {
 // AssertPasskey signs authenticatorData || clientDataHash and returns a app.PasskeyAssertion as JSON; IDs and the hash are base64url.
 func (hisar *Hisar) AssertPasskey(relyingPartyID, credentialID, clientDataHash string) (string, error) {
 	return encodePasskeyJSON(app.SignPasskeyForRelyingParty(hisar.service, relyingPartyID, credentialID, clientDataHash))
+}
+
+// BuildAndroidAppOrigin returns the passkey origin of a native Android app from the SHA-256 of its signing certificate.
+func BuildAndroidAppOrigin(signingCertificateSHA256 []byte) (string, error) {
+	return passkey.BuildAndroidAppOrigin(signingCertificateSHA256)
+}
+
+type passkeyClientData struct {
+	ClientDataJSON string `json:"clientDataJSON"`
+	ClientDataHash string `json:"clientDataHash"`
+}
+
+// BuildPasskeyClientData is for a caller that sends no client data hash: a native Android app, with the origin from
+// BuildAndroidAppOrigin and its package name, or a privileged browser's web origin without one. It takes
+// "webauthn.create" or "webauthn.get" and the request's base64url challenge, and returns {"clientDataJSON",
+// "clientDataHash"}, both base64url, as JSON.
+func BuildPasskeyClientData(clientDataType, challenge, origin, androidPackageName string) (string, error) {
+	challengeBytes, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(challenge, "="))
+	if err != nil {
+		return "", errors.New("hisarkit: the passkey challenge is not base64url")
+	}
+	clientDataJSON, err := passkey.BuildClientDataJSON(passkey.ClientData{Type: clientDataType, Challenge: challengeBytes, Origin: origin, AndroidPackageName: androidPackageName})
+	if err != nil {
+		return "", err
+	}
+	clientDataHash := sha256.Sum256(clientDataJSON)
+	return encodeJSON(passkeyClientData{
+		ClientDataJSON: base64.RawURLEncoding.EncodeToString(clientDataJSON),
+		ClientDataHash: base64.RawURLEncoding.EncodeToString(clientDataHash[:]),
+	}, nil)
 }
 
 // DeletePasskey returns the item without the passkey as app.ItemDetail JSON.

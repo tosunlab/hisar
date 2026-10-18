@@ -219,7 +219,7 @@ func (s *Service) getWebsiteIconFetcher() WebsiteIconFetcher {
 	s.websiteIcons.mutex.Lock()
 	defer s.websiteIcons.mutex.Unlock()
 	if s.defaultWebsiteIconFetcher == nil {
-		s.defaultWebsiteIconFetcher = itemicon.NewFetcher()
+		s.defaultWebsiteIconFetcher = itemicon.NewFetcher(nil)
 	}
 	return s.defaultWebsiteIconFetcher
 }

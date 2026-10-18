@@ -148,3 +148,42 @@ func TestPasskeyArgumentsAndErrors(t *testing.T) {
 		t.Errorf("plain error = %v", err)
 	}
 }
+
+func TestPasskeyClientDataForAnAndroidApp(t *testing.T) {
+	signingCertificateSHA256 := sha256.Sum256([]byte("an app's signing certificate"))
+	origin, err := BuildAndroidAppOrigin(signingCertificateSHA256[:])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if origin != "android:apk-key-hash:"+base64.RawURLEncoding.EncodeToString(signingCertificateSHA256[:]) {
+		t.Errorf("origin = %s", origin)
+	}
+	built := decodeJSON[struct {
+		ClientDataJSON string `json:"clientDataJSON"`
+		ClientDataHash string `json:"clientDataHash"`
+	}](t)(BuildPasskeyClientData("webauthn.get", "-_8B", origin, "com.example.app"))
+	clientDataJSON := decodeBase64URL(t, built.ClientDataJSON)
+	if hash := sha256.Sum256(clientDataJSON); built.ClientDataHash != base64.RawURLEncoding.EncodeToString(hash[:]) {
+		t.Errorf("hash %s is not the SHA-256 of %s", built.ClientDataHash, clientDataJSON)
+	}
+	var clientData map[string]any
+	if err := json.Unmarshal(clientDataJSON, &clientData); err != nil {
+		t.Fatal(err)
+	}
+	if clientData["type"] != "webauthn.get" || clientData["challenge"] != "-_8B" || clientData["origin"] != origin || clientData["androidPackageName"] != "com.example.app" {
+		t.Errorf("client data = %s", clientDataJSON)
+	}
+
+	if _, err := BuildPasskeyClientData("payment.get", "-_8B", origin, "com.example.app"); err == nil {
+		t.Error("a payment ceremony was accepted")
+	}
+	if _, err := BuildPasskeyClientData("webauthn.create", "not base64url!", origin, "com.example.app"); err == nil {
+		t.Error("a challenge that is not base64url was accepted")
+	}
+	if _, err := BuildPasskeyClientData("webauthn.create", "-_8B", origin, ""); err == nil {
+		t.Error("an Android app without its package name was accepted")
+	}
+	if _, err := BuildAndroidAppOrigin(signingCertificateSHA256[:20]); err == nil {
+		t.Error("a 20-byte digest was accepted")
+	}
+}
