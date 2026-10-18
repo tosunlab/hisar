@@ -9,7 +9,7 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | End-to-end encrypted password, SSH key and secrets manager for developers. | self-hosted, family password manager | App descriptions, Info.plist, Linux `.desktop`, store listing, share link page |
 | Passwords, SSH keys and secrets for developers, end-to-end encrypted. | Two taglines, exclamation marks | The one tagline: Mac sign-in, iPhone About |
 | `api.tryhisar.com` | `tryhisar.com` (serves no page yet), `hisar.example.com` as a suggestion | Default server, links, privacy policy URL (`https://api.tryhisar.com/privacy`) |
-| Use a different server… | A required Server field | Sign in, Mac and iPhone |
+| Use a different server… | A required Server field | Sign in, Mac, iPhone and Android |
 | the Hisar server | your Hisar server, your family's server | Explanations |
 
 ## Accounts and secrets
@@ -19,13 +19,13 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | master password | password (when the master password is meant), passphrase |
 | Secret Key | secret key, account key |
 | Emergency Kit: "The Emergency Kit holds your Secret Key and has a space to write your master password." | "has both places to keep them" |
-| Unlock with Touch ID / Unlock with Face ID; Turn on Touch ID, Not now | Biometrics, fingerprint unlock |
+| Unlock with Touch ID / Unlock with Face ID; Turn on Touch ID, Not now (Mac, iPhone) · Unlock with biometrics; Turn on biometrics, Not now (Android) | Biometrics (on the Mac or iPhone), fingerprint unlock |
 | Sign in, Sign out, Create account | Log in, Register |
 | Change master password…, Replace Secret Key… | Reset password, Rotate key, Regenerate Secret Key |
 | "Your other devices will be signed out. Sign in on them with the new master password." / "…with your master password and the new Secret Key from the new Emergency Kit." | Logged out, session invalidated |
 | "This device was signed out. If your master password or Secret Key was changed on another device, sign in with the new one." | Session expired, unauthorized |
 | Delete account…, Delete account (the confirm button, after typing the email) | Close account, Remove account, Deactivate |
-| "Export your items first in Settings → Export." (Mac), "… in Settings → Account → Export data." (iPhone), "… with `hisar export`" (CLI) | Back up your data |
+| "Export your items first in Settings → Export." (Mac), "… in Settings → Account → Export data." (iPhone, Android), "… with `hisar export`" (CLI) | Back up your data |
 
 ## People and sharing
 
@@ -82,10 +82,10 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | Your Personal vault can't be deleted. It is the vault Hisar keeps for you alone, and logins saved from the browser and your phone go there. | Cannot delete default vault |
 | “Work” is no longer available: it was deleted, or you no longer have access to it. | Vault removed by admin |
 | Moved N items to Personal and deleted Work. · Deleted Work. · You left Work. | — |
-| Export (Settings section on the Mac), Export data… (iPhone, Settings → Account), `hisar export` | Backup, Download my data, Takeout |
+| Export (Settings section on the Mac), Export data… (iPhone and Android, Settings → Account), `hisar export` | Backup, Download my data, Takeout |
 | encrypted export, export passphrase ("at least 10 characters"; Hisar can't recover it) | export password, backup key, master password (for the export's own passphrase) |
 | Plain JSON, with the warning "Plain JSON is not encrypted. Anyone who gets the file can read every password, one-time code secret and SSH private key in it. Delete it when you are done." | unencrypted backup, raw export |
-| Export with Touch ID… / Export with Face ID · Exported N items from M vaults to <path>. | — |
+| Export with Touch ID… / Export with Face ID / Export with biometrics (Android) · Exported N items from M vaults to <path>. | — |
 | that passphrase doesn't open this export | wrong password, decryption failed |
 | `.env` import: "Store N values in Personal › shop", "Kept as they are: PORT", "Run a command with them: hisar run --env-file .env -- <command>" | migrate, vault-ify |
 
@@ -105,8 +105,8 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 |---|---|---|
 | "Ada invited you to Hisar"; Download for Mac; Open in Hisar; invite code | sign-up token, registration link | Invite page and invite email |
 | This invite isn't valid | expired, already used, not found (never say which) | Invite page for any code that does not work |
-| Update required (screen title); This server needs Hisar 0.2.0 or later. This Mac has 0.1.0. | Your app is outdated, unsupported version | Mac and iPhone blocking screen |
-| Update now (Mac, Sparkle); Install the latest Hisar (iPhone, until TestFlight or the App Store); Check again | Upgrade | Blocking screen buttons |
+| Update required (screen title); This server needs Hisar 0.2.0 or later. This Mac has 0.1.0. (This device has 0.1.0. on Android) | Your app is outdated, unsupported version | Mac, iPhone and Android blocking screen |
+| Update now (Mac, Sparkle); Install the latest Hisar (iPhone and Android, until the stores have Hisar); Check again | Upgrade | Blocking screen buttons |
 | Hisar needs an update | update required error, 426 | What the SSH agent, the command-line tool, coding agents and the extension are told |
 | Update the Hisar extension | | Extension popup when the extension itself is too old |
 
@@ -162,6 +162,21 @@ The web page at `/admin` where admins of the Hisar server manage it. The apps ne
 | Help (Settings section on the Mac, row on the iPhone) | About & support, Feedback |
 | Contact support, `support@tryhisar.com` | — |
 | Copy diagnostics: app version and build, OS version, server URL, this device's ID | Anything secret, item names, other people's emails |
+
+## Android
+
+The Android app uses the iPhone's copy with these changes. Shared sentences from Go take the word "biometric" from the app (`BiometricName`), so Kotlin needs no table of replacements.
+
+| Use | Not | Where |
+|---|---|---|
+| this device ("Sign out of Hisar on this device?", "…while Hisar is open and unlocked on this device.") | this iPhone | Everywhere |
+| biometrics, biometric unlock ("Unlock with biometrics", "Approve with biometrics", "Biometric unlock is on", "Biometrics are not available, so Hisar checks your master password instead.") | Face ID, Touch ID, fingerprint | Lock screen, the offer after the new Secret Key, Settings → Security, the approval sheet, export |
+| "<Field> copied. It clears in about 2 minutes." · "Hisar locks after this long without activity. Copied values are cleared after about 2 minutes." · "One-time code copied. It clears in about 2 minutes." | "It clears in 90 seconds.", "…cleared after 90 seconds." (the iPhone's copy) | Copy notices, Settings → Security footer, AutoFill. Android's clear alarm is inexact: measured on emulators, it lands 90 to about 160 seconds after the copy (DESIGN.md §9.3), so the copy never promises 90 seconds |
+| Approve requests on my smart device (the Mac's setting, which the phones' Mac approvals footers quote; see Developer tools) | Approve requests on my iPhone | Mac Settings → SSH & Git; Settings → Mac approvals on the phones |
+| Save Emergency Kit · Print Emergency Kit · Save Export · Emergency Kit saved · Export saved | Save or Print Emergency Kit, Save or Share Export | Settings; Android saves through the system's file creator and prints through its print dialog |
+| Allow screenshots · "Off, screenshots, screen recordings and the app switcher show nothing of Hisar." | Block screenshots, Secure mode | Settings → Security (Android only) |
+| Unlock Hisar · Sign in to Hisar · Search Hisar · "Fill a login for <site>" · Always use for this app, Only this time · Turn on Hisar AutoFill | Unlock vault, Log in, Remember this app | AutoFill suggestions, the AutoFill screen, Settings → AutoFill |
+| Autofill using another service (Chrome's own label, quoted as Chrome writes it) | AutoFill using another service | Settings → AutoFill, Chrome section |
 
 ## Style
 
