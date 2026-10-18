@@ -31,6 +31,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -48,6 +49,8 @@ dependencies {
     implementation(libs.compose.material3)
     implementation(libs.compose.ui)
     implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.fragment.ktx)
+    implementation(libs.androidx.biometric)
     implementation(libs.kotlinx.coroutines.core)
 
     androidTestImplementation(platform(libs.compose.bom))
@@ -56,5 +59,8 @@ dependencies {
     androidTestImplementation(libs.androidx.test.runner)
     // Compose's ui-test brings Espresso 3.5, which calls InputManager.getInstance, gone on API 37.
     androidTestImplementation(libs.androidx.test.espresso.core)
+    androidTestImplementation(libs.androidx.test.uiautomator)
+    androidTestImplementation(libs.androidx.fragment.testing)
     debugImplementation(libs.compose.ui.test.manifest)
+    debugImplementation(libs.androidx.fragment.testing.manifest)
 }
