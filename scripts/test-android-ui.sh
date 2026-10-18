@@ -50,7 +50,7 @@ PHONE_APPROVAL_PASSWORD=phone-approval-master-password
 "$ROOT/bin/hisar-ui-test-mac" -invite "$(ui_test_create_invite "$PHONE_APPROVAL_EMAIL")" -email "$PHONE_APPROVAL_EMAIL" \
   -password "$PHONE_APPROVAL_PASSWORD" -state "$T/mac" -secret-key-file "$T/mac-secret-key" >"$T/mac.log" 2>&1 &
 UI_TEST_MAC=$!
-trap 'kill "$UI_TEST_MAC" 2>/dev/null || true; ui_test_stop' EXIT
+trap 'ui_test_stop "$UI_TEST_MAC"' EXIT
 for _ in $(seq 60); do [ -s "$T/mac-secret-key" ] || ! kill -0 "$UI_TEST_MAC" 2>/dev/null && break; sleep 1; done
 [ -s "$T/mac-secret-key" ] || { echo "hisar-ui-test-mac did not sign up:" >&2; cat "$T/mac.log" >&2; exit 1; }
 UI_TEST_VALUES+=(
@@ -102,7 +102,7 @@ answer_as_other_device() {
 }
 answer_as_other_device >"$T/other-device.log" 2>&1 &
 UI_TEST_OTHER_DEVICE=$!
-trap 'kill "$UI_TEST_MAC" "$UI_TEST_OTHER_DEVICE" 2>/dev/null || true; ui_test_stop' EXIT
+trap 'ui_test_stop "$UI_TEST_MAC" "$UI_TEST_OTHER_DEVICE"' EXIT
 CROSS_DEVICE_CLI_SYSTEM=$(uname -s)
 [ "$CROSS_DEVICE_CLI_SYSTEM" != Darwin ] || CROSS_DEVICE_CLI_SYSTEM=macOS
 UI_TEST_VALUES+=(
@@ -118,7 +118,7 @@ if [[ "$ANDROID_SERIAL" == emulator-* ]] && [ -r "$HOME/.emulator_console_auth_t
   UI_TEST_VALUES+=("HISAR_UI_TEST_EMULATOR_CONSOLE_PORT=${ANDROID_SERIAL#emulator-}" "HISAR_UI_TEST_EMULATOR_CONSOLE_TOKEN=$(cat "$HOME/.emulator_console_auth_token")")
 fi
 "$ADB" reverse "tcp:$UI_TEST_PORT" "tcp:$UI_TEST_PORT" >/dev/null
-trap '"$ADB" reverse --remove "tcp:$UI_TEST_PORT" >/dev/null 2>&1 || true; kill "$UI_TEST_MAC" "$UI_TEST_OTHER_DEVICE" 2>/dev/null || true; ui_test_stop' EXIT
+trap '"$ADB" reverse --remove "tcp:$UI_TEST_PORT" >/dev/null 2>&1 || true; ui_test_stop "$UI_TEST_MAC" "$UI_TEST_OTHER_DEVICE"' EXIT
 
 # TrustedCertificatesTests serves HTTPS on the device with a certificate for 127.0.0.1 from a private CA made for this run
 # alone, and reads both from the test storage's input files.

@@ -12,9 +12,20 @@ T=$(mktemp -d)
 UI_TEST_SERVER=
 UI_TEST_SINK=
 UI_TEST_PARTNER_LOOP=
+# Stops the server, the sink, the partner loop and any processes passed in, then deletes $T once they stopped writing.
 ui_test_stop() {
-  kill $UI_TEST_SERVER $UI_TEST_SINK $UI_TEST_PARTNER_LOOP 2>/dev/null || true
-  rm -rf "$T"
+  local allProcess
+  allProcess=$(echo "$@" $UI_TEST_SERVER $UI_TEST_SINK $UI_TEST_PARTNER_LOOP)
+  if [ -n "$allProcess" ]; then
+    kill $allProcess 2>/dev/null || true
+    wait $allProcess 2>/dev/null || true
+  fi
+  # A partner command started just before the kill can still be writing into $T for a moment.
+  for _ in 1 2 3 4 5; do
+    rm -rf "$T" 2>/dev/null && return 0
+    sleep 1
+  done
+  rm -rf "$T" || true
 }
 trap ui_test_stop EXIT
 ui_test_print_logs() {
