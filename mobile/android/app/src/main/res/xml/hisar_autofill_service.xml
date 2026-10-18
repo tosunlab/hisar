@@ -3,6 +3,7 @@
      "Autofill using another service" in their settings, so they are not listed. -->
 <autofill-service xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools"
+    android:settingsActivity="com.tryhisar.hisar.autofill.AutoFillSettingsActivity"
     android:supportsInlineSuggestions="true"
     tools:ignore="UnusedAttribute">
     <compatibility-package android:name="com.microsoft.emmx" android:maxLongVersionCode="10000000000" />

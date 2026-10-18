@@ -15,6 +15,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.tryhisar.hisar.app.Screen
+import com.tryhisar.hisar.app.Tab
 import com.tryhisar.hisar.autofill.SavedLoginInbox
 import com.tryhisar.hisar.ui.root.RootScreen
 import kotlinx.coroutines.flow.first
@@ -41,6 +42,7 @@ class MainActivity : FragmentActivity() {
         }
         if (savedInstanceState == null) {
             openLink(intent)
+            openAutoFillSettings(intent)
             SavedLoginInbox.open(intent, viewModel.model, lifecycleScope)
         }
         setContent { RootScreen(viewModel.model, viewModel::copySecret) }
@@ -49,6 +51,7 @@ class MainActivity : FragmentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         openLink(intent)
+        openAutoFillSettings(intent)
         SavedLoginInbox.open(intent, viewModel.model, lifecycleScope)
     }
 
@@ -64,5 +67,16 @@ class MainActivity : FragmentActivity() {
             model.screen.first { it != Screen.Starting }
             model.signIn.openLink(link)
         }
+    }
+
+    private fun openAutoFillSettings(intent: Intent) {
+        if (intent.component?.className != AUTOFILL_SETTINGS_ACTIVITY) return
+        viewModel.model.selectedTab.value = Tab.SETTINGS
+        viewModel.model.isAutoFillSettingsRequested.value = true
+    }
+
+    private companion object {
+        /** The alias of this activity that the system's Autofill service screen opens for Hisar's settings. */
+        const val AUTOFILL_SETTINGS_ACTIVITY = "com.tryhisar.hisar.autofill.AutoFillSettingsActivity"
     }
 }

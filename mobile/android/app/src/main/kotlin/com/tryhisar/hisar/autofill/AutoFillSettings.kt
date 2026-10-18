@@ -83,10 +83,11 @@ fun ColumnScope.AutoFillSettingsSections() {
             )
         }
     }
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+    val isCredentialProviderSettingsAvailable = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
+    if (isCredentialProviderSettingsAvailable || isEnabled) {
         FormSection {
             FormButtonRow(
-                "Open Passwords, passkeys & accounts",
+                if (isCredentialProviderSettingsAvailable) "Open Passwords, passkeys & accounts" else "Open Settings",
                 onClick = { openSystemSettings(context) },
                 testTag = "open-autofill-settings",
                 icon = Icons.Outlined.Settings,
@@ -117,10 +118,14 @@ private val systemSettingsFooter: String
         "You can also turn it on in the Settings app: System, Languages & input, Autofill service."
     }
 
-@SuppressLint("InlinedApi")
+// Settings answers ACTION_CREDENTIAL_PROVIDER only with a package: data URI; without one the intent finds no activity.
 private fun openSystemSettings(context: Context) {
-    val action = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) Settings.ACTION_CREDENTIAL_PROVIDER else Settings.ACTION_SETTINGS
-    context.startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    val intent = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+        Intent(Settings.ACTION_CREDENTIAL_PROVIDER, Uri.parse("package:${context.packageName}"))
+    } else {
+        Intent(Settings.ACTION_SETTINGS)
+    }
+    context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
 }
 
 // Chromium documents this intent for autofill services; each installed Chrome channel answers it, and a chooser picks one.

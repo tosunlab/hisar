@@ -78,6 +78,9 @@ class AppModel(
     /** An editor some other surface asks the app to open, such as AutoFill's save prompt; the Vaults tab shows it. */
     val requestedEditor = MutableStateFlow<EditorRequest?>(null)
 
+    /** Set when the system's Autofill service screen opens Hisar's settings; the Settings tab then shows AutoFill. */
+    val isAutoFillSettingsRequested = MutableStateFlow(false)
+
     /** Grows with every lock; the lock screen offers biometrics once per value. */
     val lockCount: StateFlow<Int> = mutableLockCount.asStateFlow()
 
