@@ -43,13 +43,13 @@ sets its version, and writes `desktop/bin/Hisar-0.1.0.dmg` with the usual drag-t
 Sparkle update: `Hisar-0.1.0.zip`, signed with the EdDSA private key, and `update.json` (signature, length, minimum macOS,
 release notes). The script refuses a key that does not belong to `SUPublicEDKey` in `build/darwin/Info.plist`.
 
-Pushing an annotated tag `desktop-<version>` (e.g. `git tag -a desktop-0.1.7 -m "release notes in markdown"`) runs the GitHub
-Actions workflow "Release desktop" on a GitHub-hosted macOS runner. It builds both and puts `Hisar-<version>.dmg`,
-`Hisar-<version>.zip` and `update-unpublished.json` on the GitHub prerelease `desktop-<version>`, a download for the team. Nobody
-gets it as an automatic update until you run the Publish workflow (app `desktop`, the tag), which renames the file to
-`update.json` and marks the release as the latest. The tag message becomes the release notes Sparkle shows. A custom build such
-as `desktop-1.0.0-alpha-test` is only the DMG and can't be published. The workflow needs the repository secret
-`SPARKLE_PRIVATE_KEY`. The app is
+A release is a run of Actions → Release with the app `desktop` (the root [README](../README.md#ci-and-releases) has the
+steps). It tags `desktop-<version>` with the changes as the message, which becomes the release notes Sparkle shows, and
+builds on a GitHub-hosted macOS runner and Linux runners. The GitHub prerelease `desktop-<version>` then has
+`Hisar-<version>.dmg`, `Hisar-<version>.zip`, `update-unpublished.json` and the Linux packages, a download for the team.
+Nobody gets it as an automatic update until the run's Publish job is approved, which renames the file to `update.json` and
+marks the release as the latest. A custom build such as `desktop-1.0.0-alpha-test` has no zip or update and can't be
+published. The build needs the repository secret `SPARKLE_PRIVATE_KEY`. The app is
 ad-hoc signed and not notarized until the Apple Developer membership is active, so the first launch needs right-click → Open
 (or `xattr -dr com.apple.quarantine /Applications/Hisar.app`).
 

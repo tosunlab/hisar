@@ -88,7 +88,7 @@ With Hisar.app installed and launched once, the extension talks to the real app:
 
 ## Releases
 
-Pushing a tag `extension-<version>` (e.g. `extension-0.2.0`, matching `version` in `public/manifest.json`) runs the GitHub Actions workflow "Release extension", which builds `hisar-extension-<version>.zip`, checks that its manifest still gives the fixed ID, and puts it on the GitHub prerelease `extension-<version>`; the Publish workflow (app `extension`, the tag) marks it as the latest release. To update an unpacked install, unzip it, remove the old Hisar extension in `chrome://extensions` and load the new folder: the `key` in the manifest keeps the ID, so pairing with the Mac app is kept. A custom build (`extension-0.2.0-test`) builds the same manifest version, because Chrome only accepts numeric versions.
+A release is a run of Actions → Release with the app `extension` (the root [README](../README.md#ci-and-releases) has the steps). The workflow "Release extension" writes the version of the tag `extension-<version>` into `public/manifest.json` and `package.json` for the build, so the committed version is not bumped by hand; it builds `hisar-extension-<version>.zip` and checks that its manifest still gives the fixed ID and has that version, and the release puts it on the GitHub prerelease `extension-<version>`; approving the run's Publish job marks it as the latest release. To update an unpacked install, unzip it, remove the old Hisar extension in `chrome://extensions` and load the new folder: the `key` in the manifest keeps the ID, so pairing with the Mac app is kept. A custom build (`extension-0.2.0-test`) has the manifest version `0.2.0`, because Chrome only accepts numeric versions.
 
 ## Fake native host
 

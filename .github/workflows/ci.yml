@@ -1,12 +1,21 @@
 name: CI
 
-# A merge to main was already tested as its pull request, so pushes to main do not run CI.
+# A merge to main was already tested as its pull request, so pushes to main do not run CI. The Release workflow calls it
+# for the commit it releases, with baseRef the previous release's tag: the jobs that run only for some changes compare the
+# commit with it, and without a baseRef everything runs.
 on:
   pull_request:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      baseRef:
+        description: The tag or commit to compare with; empty runs every job
+        type: string
+        default: ""
 
+# A release's CI runs in its own group, so it never cancels or is cancelled by another run.
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 permissions:
@@ -31,9 +40,9 @@ jobs:
       - name: Compare the pull request with its base
         id: changes
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || inputs.baseRef }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          IS_FORCED: ${{ github.event_name == 'workflow_dispatch' }}
+          IS_FORCED: ${{ github.event_name != 'pull_request' && inputs.baseRef == '' }}
           WORKFLOW_FILE: .github/workflows/ci.yml
         run: scripts/detect-app-changes.sh
 

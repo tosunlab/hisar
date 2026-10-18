@@ -1,22 +1,22 @@
 name: Release server image
 
-# Without a tag, a manual run pushes only :sha-<commit> of the chosen branch.
+# Called by the Release workflow with a server-<version> tag: builds and pushes the image as :<version> and :sha-<commit>.
+# The Release workflow creates the GitHub prerelease. Running it by hand on a branch pushes only :sha-<commit>.
 on:
-  push:
-    tags: ["server-[0-9]+.[0-9]+.[0-9]+*"]
-  workflow_dispatch:
+  workflow_call:
     inputs:
       tag:
-        description: Existing server-<version> tag to build (empty for :sha-<commit> of the chosen branch)
-        required: false
-        default: ""
+        description: The server-<version> tag to build
+        type: string
+        required: true
+  workflow_dispatch:
 
 concurrency:
   group: release-server-${{ inputs.tag || github.ref }}
   cancel-in-progress: false
 
 permissions:
-  contents: write
+  contents: read
   packages: write
 
 env:
@@ -28,7 +28,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      TAG: ${{ inputs.tag || (github.ref_type == 'tag' && github.ref_name) || '' }}
+      TAG: ${{ inputs.tag }}
     steps:
       - name: Check the tag
         run: |
@@ -80,20 +80,3 @@ jobs:
         run: |
           docker buildx imagetools inspect --raw "$SERVER_IMAGE:$SHA_TAG" | tee manifest.json
           grep -q '"architecture": *"amd64"' manifest.json && grep -q '"architecture": *"arm64"' manifest.json
-      # Publish turns the prerelease into a release; only then do admin dashboards offer the version (§8.8).
-      - name: Create the GitHub prerelease
-        if: env.TAG != ''
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
-          VERSION: ${{ steps.imageTag.outputs.version }}
-        run: |
-          if gh release view "$TAG" >/dev/null 2>&1; then
-            echo "the release $TAG already exists"; exit 0
-          fi
-          case "$VERSION" in
-            *-*) name="Hisar Server $VERSION (custom build)" ;;
-            *) name="Hisar Server $VERSION" ;;
-          esac
-          gh release create "$TAG" --verify-tag --prerelease --latest=false --title "$name" \
-            --notes "The hisar-server image $SERVER_IMAGE:$VERSION for linux/amd64 and linux/arm64. deploy/README.md says how to run it."

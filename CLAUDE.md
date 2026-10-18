@@ -191,6 +191,15 @@ make build-ios-framework test-ios
 gofmt -l $(git ls-files '*.go')
 ```
 
+## Releases
+
+One run of Actions → Release per release (`gh workflow run release.yml -f app=<server|cli|desktop|extension> -f type=<patch|minor|major|custom> [-f version=X.Y.Z]`):
+it plans the version (`scripts/plan-release.sh`), runs CI, pushes the `<app>-X.Y.Z` tag, builds through
+`release-<app>.yml` (only callable from Release), creates the GitHub prerelease and waits for approval in the environment
+`publish-<app>` before `publish.yml` publishes it. What an app is built from lives in `scripts/app-paths.sh`, shared with
+`scripts/detect-app-changes.sh`; a new build input of an app goes there. A release's install text is
+`.github/release-notes/<app>.md`, and `scripts/check-release-files.sh` lists the files each release must have.
+
 ## Tests
 
 - Database tests skip without `HISAR_TEST_DATABASE_URL` and drop the `public` schema of that database.

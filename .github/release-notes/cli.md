@@ -1,0 +1,1 @@
+The standalone `hisar` command-line tool for Linux, macOS and Windows. Download the archive for your platform and `SHA256SUMS`, check it with `sha256sum -c --ignore-missing SHA256SUMS` (`shasum -a 256 -c --ignore-missing SHA256SUMS` on macOS), and put `hisar` on your PATH. With the Hisar app on a Mac, install `hisar` from Settings → Command-line tool instead.
