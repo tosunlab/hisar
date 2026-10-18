@@ -40,10 +40,11 @@ func hashToken(token string) []byte {
 	return hash[:]
 }
 
-// Session is a signed-in device's session.
+// Session is a signed-in device's session and its account's role.
 type Session struct {
 	AccountID string
 	DeviceID  string
+	Role      string
 	TokenHash []byte
 }
 
@@ -53,7 +54,7 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*Session, err
 	if err != nil {
 		return nil, err
 	}
-	return &Session{AccountID: stored.AccountID, DeviceID: stored.DeviceID, TokenHash: stored.TokenHash}, nil
+	return &Session{AccountID: stored.AccountID, DeviceID: stored.DeviceID, Role: stored.Role, TokenHash: stored.TokenHash}, nil
 }
 
 // IsSessionValid reports whether a session is still signed in, so a long event stream can end when it is not.

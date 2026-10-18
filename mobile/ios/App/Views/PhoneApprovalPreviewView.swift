@@ -33,6 +33,11 @@ struct PhoneApprovalPreviewView: View {
                 appName: "Claude", purpose: "sign a commit", commandLine: "“Add phone approvals”", repositoryPath: "~/Documents/hisar/core · phase-6/phone-approvals",
                 keyName: "Signing key", rememberLabel: "Also allows Claude to sign commits in ~/Documents/hisar/core for 10 minutes"
             )
+        case "launcher":
+            return PhoneApproval(
+                requestID: "preview-launcher", requesterDeviceName: "Alper's MacBook Pro", expiresAt: expiresAt, kind: PhoneApproval.kindLauncher,
+                appName: "Raycast", purpose: "search Hisar and copy or paste passwords and one-time codes"
+            )
         default:
             return PhoneApproval(
                 requestID: "preview-ssh", requesterDeviceName: "Alper's MacBook Pro", expiresAt: expiresAt, kind: PhoneApproval.kindSSH,
@@ -94,7 +99,7 @@ struct PhoneApprovalPreviewView: View {
     }
 }
 
-// The Vaults card and the Approvals tab with a made-up SSH and command-line request from a Mac.
+// The Vaults card and the Approvals tab with made-up SSH, command-line and launcher requests from a Mac.
 struct PendingApprovalPreviewView: View {
     static let argument = "-HisarApprovalBannerPreview"
     // -HisarThemePreview <appearance> <color> <vaults|settings> themes the preview and picks its tab, for screenshots.
@@ -117,6 +122,7 @@ struct PendingApprovalPreviewView: View {
     @State private var allApproval = [
         PhoneApprovalPreviewView.createApproval(kind: "ssh", secondsLeft: 115),
         PhoneApprovalPreviewView.createApproval(kind: "cli", secondsLeft: 70),
+        PhoneApprovalPreviewView.createApproval(kind: "launcher", secondsLeft: 90),
     ]
     @State private var presentedApproval: PhoneApproval?
     @State private var resultMessage: String?

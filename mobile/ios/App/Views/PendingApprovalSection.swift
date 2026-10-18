@@ -26,8 +26,9 @@ struct PendingApprovalCardSection: View {
                     .foregroundStyle(.themeSecondary)
                     .accessibilityIdentifier("pending-approval-header")
             } footer: {
-                Text("Approving answers this one request. It never unlocks Hisar on your Mac.")
+                Text(approval.cardApprovalNote)
                     .foregroundStyle(.themeSecondary)
+                    .accessibilityIdentifier("pending-approval-footer")
             }
         }
     }

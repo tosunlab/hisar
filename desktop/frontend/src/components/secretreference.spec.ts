@@ -30,7 +30,7 @@ const ItemDetailPanel = (await import("./ItemDetailPanel.vue")).default;
 const SSHApprovalWindow = (await import("./SSHApprovalWindow.vue")).default;
 const api = apiMock.current;
 
-const detailProperties = { canEdit: true, vaultName: "Personal", isShared: false };
+const detailProperties = { canEdit: true, vaultName: "Personal", vaultType: "personal" };
 
 beforeEach(() => {
   vi.clearAllMocks();

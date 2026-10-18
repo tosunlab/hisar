@@ -6,7 +6,7 @@ derived on devices from the master password and a Secret Key. Cryptography, prot
 
 ## Modules
 
-Five Go modules joined by `go.work`, plus two non-Go apps.
+Five Go modules joined by `go.work`, plus three non-Go apps.
 
 | Module | Builds | May import |
 |---|---|---|
@@ -16,9 +16,10 @@ Five Go modules joined by `go.work`, plus two non-Go apps.
 | `desktop/` | The Wails app, `hisar-browser-host`, `hisar-update-key` | `core`; `cli/mcpserver` in tests only |
 | `mobile/` | `HisarKit.xcframework` (gomobile) for `mobile/ios` | `core`; `desktop` in one integration test only |
 | `extension/` | The browser extension (TypeScript, MV3) | none |
+| `admin/` | The admin dashboard (Vue, TypeScript) that `hisar-server` embeds and serves at `/admin` | none; its crypto is `server/cmd/hisar-admin-wasm` |
 | `mobile/ios/` | The iOS app (Swift), on top of HisarKit | none |
 
-`core` must never require `cli`, `desktop` or `server`: the server's Dockerfile copies only `core/` and `server/`.
+`core` must never require `cli`, `desktop` or `server`: the server's Dockerfile copies only `core/`, `server/` and `admin/`.
 
 ## Package map
 
@@ -30,9 +31,10 @@ Five Go modules joined by `go.work`, plus two non-Go apps.
 | `pake` | The OPAQUE configuration shared by apps and server |
 | `apitypes` | JSON wire types of `/api/v1`, event names, roles, platform headers, share-link limits, `IsValidVaultRole`, `NormalizeEmail` |
 | `apiclient` | Typed HTTP client of `/api/v1` and its event stream |
-| `session` | A signed-in account: sign-up, login, unlock, item sync and encryption, rotation, sharing, share links, account changes, the account preferences record with the favorites, `GetVaultPermissions` |
-| `item` | The plaintext item model and its categories (`schema.go`: types kept as named fields; `card.go`, `identity.go`, `apicredential.go`, `license.go`, `server.go`, `database.go`, `address.go`, whose fields identities and cards share), `LookupField`, the password generator |
-| `cache` | The offline SQLite copy of the server's encrypted records |
+| `session` | A signed-in account: sign-up, login, unlock, item sync and encryption, rotation, sharing, share links, organization vaults (`CompleteVaultKeyRequests`, `RotatePendingVaults`), account changes, `Reauthenticate` (the OPAQUE proof that account changes carry), the account preferences record with the favorites, `GetVaultPermissions` |
+| `item` | The plaintext item model and its categories (`schema.go`: types kept as named fields; `card.go`, `identity.go`, `apicredential.go`, `license.go`, `server.go`, `database.go`, `address.go`, whose fields identities and cards share), the chosen icon and its presets (`icon.go`), `LookupField`, the password generator |
+| `itemicon` | Icon images: normalizing uploads and website icons into small PNGs, and fetching website icons from public https sites only |
+| `cache` | The offline SQLite copy of the server's encrypted records, and the device's sealed website icons |
 | `localstate` | `state.json` (session state plus embedded device `Settings`) and the Secret Key in the keychain |
 | `app` | The backend of the Mac and iPhone apps, bound to the UI (see below) |
 | `app/apptest` | An unlocked `app.Service` on an in-memory API, for tests outside `core/app` |
@@ -48,12 +50,14 @@ Five Go modules joined by `go.work`, plus two non-Go apps.
 | `secretreference` | `hisar://vault/item/field` references |
 | `export`, `importer` | Hisar's export format; importers for other password managers |
 | `invitelink`, `appversion`, `totp`, `emergencykit` | Invite links, app versions, one-time codes, the Emergency Kit PDF |
+| `project` | `GitHubRepository`, the one place that names the GitHub repository (releases, desktop update feed, docs quote it) |
 
 **`core/app`** is one package because every feature shares the unlocked session and its caches under one mutex. Files:
 `service.go`, `auth.go`, `lock.go`, `vaults.go`, `items.go`, `clipboard.go`, `errors.go`, `account.go`, `sharing.go`,
 `invitations.go`, `sharelink.go`, `browser.go` (extension pairing), `logins.go` (login matching), `passkey*.go`,
 `platformpasskey.go` (iOS), `commandline*.go` and `codingagent.go` (the CLI socket handler), `approvals.go`,
-`phoneapproval.go` (Mac side), `phoneapproval_answer.go` (iPhone side), `import.go`, `export.go`, `settings.go`, `favorites.go`, `addresses.go` (addresses for the extension).
+`phoneapproval.go` (Mac side), `phoneapproval_answer.go` (iPhone side), `import.go`, `export.go`, `settings.go`, `favorites.go`, `websiteicons.go` (the sealed website icon cache and its setting), `addresses.go` (addresses for the extension),
+`organizations.go` (organizations, teams, organization vaults, and delivering and rotating their keys on every sync).
 Shared test fixtures are in `helpers_test.go`, the in-memory API in `fakeapi_test.go`.
 
 ### server
@@ -61,13 +65,14 @@ Shared test fixtures are in `helpers_test.go`, the in-memory API in `fakeapi_tes
 | Package | What it holds |
 |---|---|
 | `cmd/hisar-server` | `serve`, `migrate`, `invite`; `setup.go` reads `HISAR_*` and wires everything |
-| `internal/api` | HTTP only: routes, sessions, per-IP limits, event stream, invite and share-link pages; handlers parse and call the service |
-| `internal/service` | The rules: rights, validation, store calls, audit, events, email. One `Service` type, a file per domain (`vaults`, `auth`, `accounts`, `lifecycle`, `invitations`, `sharelinks`, `approvals`, `preferences`) |
+| `cmd/hisar-admin-wasm` | The admin dashboard's crypto (`js && wasm`, imports only `core`): `signIn` and `reauthenticate` on `globalThis.hisar` |
+| `internal/api` | HTTP only: routes, sessions, per-IP limits, event stream, invite and share-link pages, the admin dashboard (`adminpage.go` serves the embedded `adminpage/dist`) and the `/api/v1/admin` routes, each behind `requireSession` and `requireAdmin`; handlers parse and call the service |
+| `internal/service` | The rules: rights, validation, store calls, audit, events, email. One `Service` type, a file per domain (`vaults`, `auth`, `accounts`, `lifecycle`, `invitations`, `sharelinks`, `approvals`, `preferences`, `organizations`) |
 | `internal/store` | Postgres with raw SQL (pgx) and embedded goose migrations |
 | `internal/realtime` | The per-account event broker behind `GET /api/v1/events` |
 | `internal/ratelimit` | Per-key token buckets |
 | `internal/mail`, `internal/desktopupdate` | SMTP; the Sparkle appcast from GitHub Releases |
-| `cmd/hisar-fake-github`, `cmd/hisar-smtp-sink`, `cmd/hisar-share-link-page-fixture`, `internal/desktopupdate/fakegithub`, `internal/mail/mailtest` | Fakes and fixtures for the end-to-end and browser tests |
+| `cmd/hisar-fake-github`, `cmd/hisar-smtp-sink`, `cmd/hisar-share-link-page-fixture`, `cmd/hisar-admin-page-fixture`, `internal/desktopupdate/fakegithub`, `internal/mail/mailtest` | Fakes and fixtures for the end-to-end and browser tests |
 
 ### cli
 
@@ -96,6 +101,16 @@ Shared test fixtures are in `helpers_test.go`, the in-memory API in `fakeapi_tes
 `hisarkit` wraps `core/app` for gomobile: only strings, numbers, bools, `[]byte`, errors and interfaces cross into Swift,
 so rich values are JSON strings.
 
+### admin
+
+| Path | What it holds |
+|---|---|
+| `src/sections.ts` | The navigation table: one `Section` (`id`, `title`, `path`, `component`) per screen |
+| `src/api.ts` | The session token in `sessionStorage`, `fetch` to the same server's `/api/v1`, sign-in and sign-out |
+| `src/bridge/` | `bridge.ts` posts typed messages to `worker.ts`, the Web Worker that runs `hisar-admin-wasm` |
+| `src/views/`, `src/sections/<area>/` | The sign-in screen and Overview; one directory per later screen |
+| `end-to-end/` | Playwright tests against `hisar-admin-page-fixture`; `perf.spec.ts` checks the size and sign-in time budget |
+
 ## Where new code goes
 
 - **A new API endpoint:** the DTO in `core/apitypes`; the rule in a `server/internal/service` method that returns
@@ -112,6 +127,12 @@ so rich values are JSON strings.
 - **A new CLI ↔ app request:** the type string and result in `core/cliprotocol`, the answer in `core/app/commandline.go`.
 - **A new desktop OS integration:** its own `desktop/<name>` package with platform files; wire it in `desktop/main.go`.
 - **A new crypto primitive or AAD label:** `core/crypt` only, with a vector in `vectors_test.go`.
+- **A new admin dashboard screen:** wire types in `core/apitypes/admin_<area>.go`, the rules in
+  `server/internal/service/admin_<area>.go`, and routes in their own function in `server/internal/api/admin_<area>.go`
+  that `CreateApp` calls with the `/api/v1/admin` group; each route lists `s.requireSession, requireAdmin` before its
+  handler (`TestEveryAdminRouteNeedsAnAdmin` fails for one that does not). Then the screen under
+  `admin/src/sections/<area>/` and one row in `admin/src/sections.ts`. The server checks the role; the dashboard only
+  decides what to show.
 
 ## Conventions
 
@@ -137,7 +158,7 @@ so rich values are JSON strings.
 - **`core/crypt` formats**: `vectors_test.go` must pass unchanged.
 - **`main.version` in `cli/cmd/hisar`**: release scripts set it with `-X`.
 - **Embedded assets** move with the files that embed them (`server/internal/api/{invitepage,sharelinkpage}/`, legal pages,
-  `server/internal/store/migrations/`).
+  `server/internal/store/migrations/`, and `server/internal/api/adminpage/dist/`, which `admin/vite.config.ts` writes).
 
 ## Wails bindings
 
@@ -153,9 +174,11 @@ exported method is callable from the UI. After changing a bound type, run
 docker run -d --name hisar-pg -e POSTGRES_PASSWORD=hisar -e POSTGRES_DB=hisar -p 127.0.0.1:55432:5432 postgres:18
 export HISAR_TEST_DATABASE_URL="postgres://postgres:hisar@127.0.0.1:55432/hisar?sslmode=disable"
 make vet test            # every module; -p 1 because database tests share one schema
-make build build-cli-all # hisar-server and hisar; the CLI for every OS
+make build build-cli-all # hisar-server with the admin dashboard (needs Node 24), and hisar; the CLI for every OS
 make test-end-to-end     # needs HISAR_DATABASE_URL to an empty database
 make test-desktop-frontend
+make test-admin          # the admin dashboard's typecheck and unit tests; make build-admin builds it alone
+make test-admin-end-to-end # the dashboard in Chromium; needs HISAR_DATABASE_URL and Playwright's Chromium
 make build-desktop       # or package-desktop for Hisar.app
 make build-ios-framework test-ios
 gofmt -l $(git ls-files '*.go')

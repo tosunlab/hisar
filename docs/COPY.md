@@ -35,8 +35,27 @@ One name for each thing, the same on the Mac, the iPhone, the browser extension,
 | Share, Invite by email | Gives someone a vault. The vault's Share panel (Mac) or sheet (iPhone). |
 | invitation | A pending vault share ("Invitations for you", "Invitations you sent"). |
 | share link | An end-to-end encrypted link for anyone, with expiry and view limits. |
-| Owner, Editor, Reader | Vault roles. Never "admin" in the apps. |
+| Owner, Editor, Reader | Vault roles. Never "admin" for a vault role. |
 | security code | The 16-digit code to compare a person's keys. Not fingerprint. |
+
+## Organizations
+
+| Use | Meaning |
+|---|---|
+| organization, team | A group of accounts, and a group inside it. Not company, workspace, group. |
+| Admin, Member | Organization roles. Admins manage members, teams and which teams have which vaults; being an admin gives no vault. |
+| organization vault | A vault that belongs to an organization and reaches people through its teams. |
+| Create organization…, New team…, Invite by email, Send invitation, Give a vault…, Give to a team…, Take back, Add member, Remove, Make admin, Make member | Actions (Settings → Organizations, the organization screen, an organization vault's sharing panel). |
+| "Ada invited you to Acme as a member" · Accept · Decline | A received organization invitation (Settings → Organizations and the banner above the vaults). |
+| Remove from Acme…, Leave Acme…, Rename organization…, Delete organization…, Rename…, Delete team… | Confirmed actions; each confirmation names what goes: "Bob loses the vaults they have through Acme's teams." · "Its members lose the vaults they have only through Platform." · "Leave Acme?" / "You lose the vaults you have through Acme's teams." · "Delete Acme?" / "Its teams and pending invitations are deleted with it." · "Everyone in Acme sees the new name." |
+| "You joined Acme. Its vaults appear once an admin adds you to a team." | After accepting an organization invitation. |
+| "Platform's members get this vault. Manage it in Settings → Organizations." | The new-vault Where footer for a team. |
+| Admin · 3 members · Organization · Editor | An organization's row; an organization vault's row (iPhone). |
+| "Hisar couldn't give every vault key: …" · "Hisar couldn't re-encrypt every vault that needs a new key: …" | Warnings above the vaults when a key delivery or a rotation failed. |
+| Shared through teams in Acme · Ask an admin of Acme to change who has this vault. | An organization vault's sharing panel. |
+| A vault you can't open | An organization's vault this device has no key for. |
+| Waiting for an owner of a vault in Acme to give you its key · Waiting for the owners of N vaults in Acme to give you their keys | One line per organization above the vaults: a vault a team gives you that no owner's Hisar has delivered yet. |
+| Acme is deleted with your account · Ada becomes an admin of Acme · You leave Acme | Account deletion. |
 
 ## Items
 
@@ -90,6 +109,20 @@ One name for each thing, the same on the Mac, the iPhone, the browser extension,
 | Update now (Mac, Sparkle); Install the latest Hisar (iPhone, until TestFlight or the App Store); Check again | Upgrade | Blocking screen buttons |
 | Hisar needs an update | update required error, 426 | What the SSH agent, the command-line tool, coding agents and the extension are told |
 | Update the Hisar extension | | Extension popup when the extension itself is too old |
+
+## Admin dashboard
+
+The web page at `/admin` where admins of the Hisar server manage it. The apps never show it or link to it.
+
+| Use | Not | Where |
+|---|---|---|
+| Admin dashboard; "Hisar · Admin dashboard"; Hisar admin dashboard (the page title) | admin panel, console, back office | Page title, sign-in screen, sidebar |
+| Sign in to the admin dashboard · "Use the email, Secret Key and master password of an admin account on the Hisar server." · Sign in, Signing in… · Show, Hide (the Secret Key) | Log in, admin login | Sign-in screen |
+| "This account is not an admin on the Hisar server." | Access denied, Forbidden, Unauthorized | Sign-in screen, for an account whose role is member |
+| incorrect email, master password or Secret Key | wrong password, login failed | Sign-in screen; the same message as the Mac |
+| Overview · Signed in as · Server | Home, Dashboard, Status | The first section |
+| Sign out, Signing out… | Log out | Sidebar |
+| an admin on the Hisar server, admin, member (account roles) | administrator, superuser, root | Copy about server roles; say "on the Hisar server" where an organization admin could be meant |
 
 ## Help
 

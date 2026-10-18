@@ -201,3 +201,33 @@ func TestCheckMemberPin(t *testing.T) {
 		t.Errorf("pin overwritten: %v", pinned)
 	}
 }
+
+func TestLastServerIsSavedAndKeptOnReset(t *testing.T) {
+	statePath := filepath.Join(t.TempDir(), "desktop.json")
+	state, err := Load(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A state saved before LastServer existed: signed in, with no last server.
+	state.Server, state.Email, state.Token, state.AccountID = "https://hisar.example.com", "a@example.com", "tok", "account"
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+	reloadedState, err := Load(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reloadedState.Reset()
+	if reloadedState.IsLoggedIn() || reloadedState.Server != "" || reloadedState.Email != "" || reloadedState.LastServer != "https://hisar.example.com" {
+		t.Errorf("reset state: %+v", reloadedState)
+	}
+	reloadedState.Reset()
+	if reloadedState.LastServer != "https://hisar.example.com" {
+		t.Errorf("a second reset forgot the last server: %q", reloadedState.LastServer)
+	}
+	reloadedState.Server = "https://other.example.com"
+	reloadedState.Reset()
+	if reloadedState.LastServer != "https://other.example.com" {
+		t.Errorf("after another server: %q", reloadedState.LastServer)
+	}
+}

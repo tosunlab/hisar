@@ -119,10 +119,10 @@ func printInvitationList(invitationList cliprotocol.InvitationListResult) error 
 	return writer.Flush()
 }
 
-// findInvitationID resolves a full ID or a unique prefix of one, asking when none was given.
-func findInvitationID(invitationIDs []string, query string) (string, error) {
+// findInvitationID resolves a full ID or a unique prefix of one, asking when none was given; listCommand lists them.
+func findInvitationID(invitationIDs []string, query, listCommand string) (string, error) {
 	if len(invitationIDs) == 0 {
-		return "", errors.New("no invitations to answer; run `hisar invitations` to list them")
+		return "", fmt.Errorf("no invitations to answer; run `%s` to list them", listCommand)
 	}
 	if query == "" {
 		defaultValue := ""
@@ -142,7 +142,7 @@ func findInvitationID(invitationIDs []string, query string) (string, error) {
 	}
 	switch len(matches) {
 	case 0:
-		return "", fmt.Errorf("no invitation %q; run `hisar invitations` to list them", query)
+		return "", fmt.Errorf("no invitation %q; run `%s` to list them", query, listCommand)
 	case 1:
 		return matches[0], nil
 	}
@@ -297,7 +297,7 @@ func runInvitations(ctx context.Context, access backend, flags *flag.FlagSet, ar
 	if action == nil {
 		return printInvitationList(invitationList)
 	}
-	invitationID, err := findInvitationID(collectInvitationID(invitationList, action.isSent), query)
+	invitationID, err := findInvitationID(collectInvitationID(invitationList, action.isSent), query, "hisar invitations")
 	if err != nil {
 		return err
 	}

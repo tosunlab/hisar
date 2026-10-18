@@ -44,6 +44,22 @@ final class PhoneApprovalUITests: HisarUITestCase {
         checkResult("Denied preview-cli")
     }
 
+    func testApproveLauncherRequest() {
+        launchPreview("launcher")
+        waitFor(app.staticTexts["phone-approval-title"])
+        XCTAssertEqual(app.staticTexts["phone-approval-summary"].label, "Raycast wants to search Hisar and copy or paste passwords and one-time codes")
+        XCTAssertEqual(app.staticTexts["phone-approval-row-App"].label, "App, Raycast")
+        XCTAssertEqual(app.staticTexts["phone-approval-row-Lasts"].label, "Lasts, Until Hisar locks on Alper's MacBook Pro")
+        XCTAssertFalse(app.staticTexts["phone-approval-row-Program"].exists)
+        XCTAssertFalse(app.staticTexts["phone-approval-row-Terminal"].exists)
+        XCTAssertFalse(app.switches["phone-approval-remember"].exists, "a launcher's approval always lasts until Hisar locks")
+        let note = app.descendants(matching: .any)["phone-approval-encryption-note"].label
+        XCTAssertTrue(note.contains("Approving lets Raycast use Hisar until it locks on your Mac"), note)
+        saveScreenshot("phone-approval-launcher")
+        app.buttons["phone-approval-approve"].tap()
+        checkResult("Approved preview-launcher with Face ID")
+    }
+
     func testForwardedRequestWarns() {
         launchPreview("forwarded")
         let banner = app.descendants(matching: .any)["phone-approval-forwarded"]
@@ -80,7 +96,7 @@ final class PhoneApprovalUITests: HisarUITestCase {
         app.launch()
         let header = app.staticTexts["pending-approval-header"]
         waitFor(header)
-        XCTAssertEqual(header.label.uppercased(), "2 REQUESTS WAITING FOR YOUR APPROVAL")
+        XCTAssertEqual(header.label.uppercased(), "3 REQUESTS WAITING FOR YOUR APPROVAL")
         let sshSummary = app.buttons["pending-approval-preview-ssh"]
         XCTAssertTrue(sshSummary.exists)
         XCTAssertTrue(sshSummary.label.contains("Alper's MacBook Pro · expires in 1:"), sshSummary.label)
@@ -97,6 +113,9 @@ final class PhoneApprovalUITests: HisarUITestCase {
         waitFor(commandLineRow)
         XCTAssertTrue(app.buttons["approval-row-preview-ssh"].exists)
         XCTAssertTrue(commandLineRow.label.contains("hisar in Terminal wants to use Hisar"), commandLineRow.label)
+        let launcherRow = app.buttons["approval-row-preview-launcher"]
+        XCTAssertTrue(launcherRow.label.contains("Raycast wants to search Hisar and copy or paste passwords and one-time codes"), launcherRow.label)
+        XCTAssertTrue(launcherRow.label.contains("Until Hisar locks on Alper's MacBook Pro"), launcherRow.label)
         saveScreenshot("phone-approval-list")
         commandLineRow.tap()
         waitFor(app.staticTexts["phone-approval-title"])
@@ -104,12 +123,21 @@ final class PhoneApprovalUITests: HisarUITestCase {
         app.buttons["phone-approval-deny"].tap()
         waitFor(app.staticTexts["phone-approval-result"])
         XCTAssertEqual(app.staticTexts["phone-approval-result"].label, "Denied preview-cli")
-        XCTAssertEqual(app.staticTexts["pending-approval-header"].label.uppercased(), "WAITING FOR YOUR APPROVAL")
-        XCTAssertFalse(app.buttons["pending-approval-more"].exists, "one request left, nothing more to show")
+        XCTAssertEqual(app.staticTexts["pending-approval-header"].label.uppercased(), "2 REQUESTS WAITING FOR YOUR APPROVAL")
 
         app.buttons["pending-approval-approve-preview-ssh"].tap()
         waitFor(app.staticTexts["phone-approval-result"])
         XCTAssertEqual(app.staticTexts["phone-approval-result"].label, "Approved preview-ssh with Face ID")
+        XCTAssertEqual(app.staticTexts["pending-approval-header"].label.uppercased(), "WAITING FOR YOUR APPROVAL")
+        XCTAssertFalse(app.buttons["pending-approval-more"].exists, "one request left, nothing more to show")
+        let launcherSummary = app.buttons["pending-approval-preview-launcher"]
+        XCTAssertTrue(launcherSummary.label.contains("Raycast wants to search Hisar"), launcherSummary.label)
+        XCTAssertTrue(launcherSummary.label.contains("Until Hisar locks on Alper's MacBook Pro"), launcherSummary.label)
+        saveScreenshot("phone-approval-launcher-card")
+
+        app.buttons["pending-approval-approve-preview-launcher"].tap()
+        waitFor(app.staticTexts["phone-approval-result"])
+        XCTAssertEqual(app.staticTexts["phone-approval-result"].label, "Approved preview-launcher with Face ID")
         XCTAssertFalse(app.staticTexts["pending-approval-header"].exists, "no requests, no card")
         openTab("Approvals")
         waitFor(app.descendants(matching: .any)["approvals-empty"])

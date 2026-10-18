@@ -102,7 +102,7 @@ struct ItemDetailView: View {
         List {
             Section {
                 HStack(spacing: 14) {
-                    ItemIcon(item: item, size: 56)
+                    AppItemIcon(item: item, size: 56)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(item.title)
                             .font(.title2.weight(.bold))

@@ -12,6 +12,8 @@ const (
 
 	VaultPersonal = "personal"
 	VaultShared   = "shared"
+	// VaultOrganization belongs to an organization; its members get it through the teams it was given (§5.11).
+	VaultOrganization = "organization"
 )
 
 type Error struct {

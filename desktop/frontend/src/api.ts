@@ -13,6 +13,7 @@ import type {
   BrowserPairingRequest,
   CardDescription,
   CredentialChangeResult,
+  DeletionOrganization,
   DeletionVault,
   BrowserStatus as BoundBrowserStatus,
   Device,
@@ -27,6 +28,7 @@ import type {
   ItemAddress,
   ItemCard,
   ItemDetail as BoundItemDetail,
+  ItemIcon,
   ItemIdentity,
   ItemField,
   ItemPasskey,
@@ -34,8 +36,14 @@ import type {
   ItemDatabase,
   ItemSoftwareLicense,
   OneTimeCode,
+  Organization as BoundOrganization,
+  OrganizationInvitation,
+  OrganizationMember,
+  Organizations as BoundOrganizations,
+  OrganizationSummary,
   PasswordConfig,
   ReceivedShareInvitation,
+  SentOrganizationInvitation,
   SentShareInvitation,
   ShareAwaitingUnlock,
   ExportOptions,
@@ -52,18 +60,24 @@ import type {
   ShareLinkRequest,
   SignUpResult,
   Status,
+  Team as BoundTeam,
+  TeamMember,
+  TeamVault,
   Theme,
   UpdateRequirement,
   UpdateStatus,
   VaultMember,
   VaultSummary,
   WaitingShareInvitation,
+  WaitingVaultKey,
+  WaitingVaultKeys as BoundWaitingVaultKeys,
 } from "../bindings/github.com/tryhisar/hisar/core/app";
 
 export type {
   ApprovalEvent,
   CardDescription,
   CredentialChangeResult,
+  DeletionOrganization,
   DeletionVault,
   Device,
   ExportOptions,
@@ -80,6 +94,7 @@ export type {
   ItemAddress,
   ItemCard,
   ItemField,
+  ItemIcon,
   ItemIdentity,
   ItemPasskey,
   ItemServer,
@@ -87,8 +102,12 @@ export type {
   ItemSoftwareLicense,
   LoginItemStatus,
   OneTimeCode,
+  OrganizationInvitation,
+  OrganizationMember,
+  OrganizationSummary,
   PasswordConfig,
   ReceivedShareInvitation,
+  SentOrganizationInvitation,
   SentShareInvitation,
   ShareAwaitingUnlock,
   ShareLinkField,
@@ -96,16 +115,20 @@ export type {
   SignUpResult,
   SSHAgentStatus,
   Status,
+  TeamMember,
+  TeamVault,
   Theme,
   UpdateRequirement,
   UpdateStatus,
   VaultMember,
   VaultSummary,
   WaitingShareInvitation,
+  WaitingVaultKey,
 };
 
 export type SSHKeyType = "ed25519" | "rsa";
 export type VaultRole = "owner" | "editor" | "reader";
+export type OrganizationRole = "admin" | "member";
 
 // ShareInvitations: waiting lists the shares this user accepted that the owner's app has not finished yet.
 export interface ShareInvitations {
@@ -198,13 +221,62 @@ function normalizeImportProgress(boundProgress: BoundImportProgress): ImportProg
   return { ...boundProgress, allFailed: boundProgress.allFailed ?? [] };
 }
 
-export interface AccountDeletionPreview extends Omit<BoundAccountDeletionPreview, "ownedVaults" | "memberVaults"> {
+export interface AccountDeletionPreview extends Omit<BoundAccountDeletionPreview, "ownedVaults" | "memberVaults" | "organizations"> {
   ownedVaults: DeletionVault[];
   memberVaults: DeletionVault[];
+  organizations: DeletionOrganization[];
 }
 
 function normalizeAccountDeletionPreview(boundPreview: BoundAccountDeletionPreview): AccountDeletionPreview {
-  return { ...boundPreview, ownedVaults: boundPreview.ownedVaults ?? [], memberVaults: boundPreview.memberVaults ?? [] };
+  return {
+    ...boundPreview,
+    ownedVaults: boundPreview.ownedVaults ?? [],
+    memberVaults: boundPreview.memberVaults ?? [],
+    organizations: boundPreview.organizations ?? [],
+  };
+}
+
+export interface Organizations {
+  organizations: OrganizationSummary[];
+  invitations: OrganizationInvitation[];
+}
+
+function normalizeOrganizations(boundOrganizations: BoundOrganizations): Organizations {
+  return { organizations: boundOrganizations.organizations ?? [], invitations: boundOrganizations.invitations ?? [] };
+}
+
+export interface Team extends Omit<BoundTeam, "members" | "vaults"> {
+  members: TeamMember[];
+  vaults: TeamVault[];
+}
+
+function normalizeTeam(boundTeam: BoundTeam): Team {
+  return { ...boundTeam, members: boundTeam.members ?? [], vaults: boundTeam.vaults ?? [] };
+}
+
+// Organization: invitations is empty unless isAdmin; a team vault without canOpen has no name on this device.
+export interface Organization extends Omit<BoundOrganization, "members" | "teams" | "invitations"> {
+  members: OrganizationMember[];
+  teams: Team[];
+  invitations: SentOrganizationInvitation[];
+}
+
+function normalizeOrganization(boundOrganization: BoundOrganization): Organization {
+  return {
+    ...boundOrganization,
+    members: boundOrganization.members ?? [],
+    teams: (boundOrganization.teams ?? []).map(normalizeTeam),
+    invitations: boundOrganization.invitations ?? [],
+  };
+}
+
+// WaitingVaultKeys: deliveryError and rotationError say why this app could not give someone a vault key or re-encrypt a vault it owns.
+export interface WaitingVaultKeys extends Omit<BoundWaitingVaultKeys, "waiting"> {
+  waiting: WaitingVaultKey[];
+}
+
+function normalizeWaitingVaultKeys(boundWaiting: BoundWaitingVaultKeys): WaitingVaultKeys {
+  return { ...boundWaiting, waiting: boundWaiting.waiting ?? [] };
 }
 
 const wailsApi = {
@@ -237,6 +309,12 @@ const wailsApi = {
   moveItem: async (vaultID: string, itemID: string, targetVaultID: string): Promise<ItemDetail> =>
     normalizeItem(await Service.MoveItem(vaultID, itemID, targetVaultID)),
   duplicateItem: async (vaultID: string, itemID: string): Promise<ItemDetail> => normalizeItem(await Service.DuplicateItem(vaultID, itemID)),
+  // Images cross as base64: prepareItemIcon takes a file's bytes and returns the PNG an item's icon keeps.
+  prepareItemIcon: async (imageBase64: string): Promise<string> => (await Service.PrepareItemIcon(imageBase64)) ?? "",
+  // getWebsiteIcon returns a login website's icon as base64 PNG, or "" when there is none.
+  getWebsiteIcon: async (url: string): Promise<string> => (await Service.GetWebsiteIcon(url)) ?? "",
+  isWebsiteIconsEnabled: (): Promise<boolean> => Service.IsWebsiteIconsEnabled(),
+  setWebsiteIconsEnabled: (isEnabled: boolean): Promise<void> => Service.SetWebsiteIconsEnabled(isEnabled),
   listAllFavoriteItem: async (): Promise<FavoriteItem[]> => ((await Service.ListFavoriteItems()) ?? []).map(normalizeFavoriteItem),
   setItemFavorite: (vaultID: string, itemID: string, isFavorite: boolean): Promise<void> => Service.SetItemFavorite(vaultID, itemID, isFavorite),
   describeCard: (number: string, expiry: string): Promise<CardDescription> => Service.DescribeCard(number, expiry),
@@ -260,6 +338,34 @@ const wailsApi = {
   acceptShareInvitation: (invitationID: string): Promise<void> => Service.AcceptShareInvitation(invitationID),
   declineShareInvitation: (invitationID: string): Promise<void> => Service.DeclineShareInvitation(invitationID),
   cancelShareInvitation: (invitationID: string): Promise<void> => Service.CancelShareInvitation(invitationID),
+  listAllOrganization: async (): Promise<Organizations> => normalizeOrganizations(await Service.ListOrganizations()),
+  getOrganization: async (organizationID: string): Promise<Organization> => normalizeOrganization(await Service.GetOrganization(organizationID)),
+  createOrganization: (name: string): Promise<OrganizationSummary> => Service.CreateOrganization(name),
+  renameOrganization: (organizationID: string, name: string): Promise<void> => Service.RenameOrganization(organizationID, name),
+  deleteOrganization: (organizationID: string): Promise<void> => Service.DeleteOrganization(organizationID),
+  leaveOrganization: (organizationID: string): Promise<void> => Service.LeaveOrganization(organizationID),
+  inviteToOrganization: (organizationID: string, email: string, role: OrganizationRole): Promise<void> =>
+    Service.InviteToOrganization(organizationID, email, role),
+  cancelOrganizationInvitation: (organizationID: string, invitationID: string): Promise<void> =>
+    Service.CancelOrganizationInvitation(organizationID, invitationID),
+  acceptOrganizationInvitation: (invitationID: string): Promise<void> => Service.AcceptOrganizationInvitation(invitationID),
+  declineOrganizationInvitation: (invitationID: string): Promise<void> => Service.DeclineOrganizationInvitation(invitationID),
+  setOrganizationMemberRole: (organizationID: string, accountID: string, role: OrganizationRole): Promise<void> =>
+    Service.SetOrganizationMemberRole(organizationID, accountID, role),
+  removeOrganizationMember: (organizationID: string, accountID: string): Promise<void> => Service.RemoveOrganizationMember(organizationID, accountID),
+  createTeam: async (organizationID: string, name: string): Promise<Team> => normalizeTeam(await Service.CreateTeam(organizationID, name)),
+  renameTeam: (organizationID: string, teamID: string, name: string): Promise<void> => Service.RenameTeam(organizationID, teamID, name),
+  deleteTeam: (organizationID: string, teamID: string): Promise<void> => Service.DeleteTeam(organizationID, teamID),
+  addTeamMember: (organizationID: string, teamID: string, accountID: string): Promise<void> => Service.AddTeamMember(organizationID, teamID, accountID),
+  removeTeamMember: (organizationID: string, teamID: string, accountID: string): Promise<void> =>
+    Service.RemoveTeamMember(organizationID, teamID, accountID),
+  giveVaultToTeam: (organizationID: string, teamID: string, vaultID: string, role: VaultRole): Promise<void> =>
+    Service.GiveVaultToTeam(organizationID, teamID, vaultID, role),
+  takeVaultFromTeam: (organizationID: string, teamID: string, vaultID: string): Promise<void> =>
+    Service.TakeVaultFromTeam(organizationID, teamID, vaultID),
+  createOrganizationVault: (organizationID: string, teamID: string, name: string): Promise<VaultSummary> =>
+    Service.CreateOrganizationVault(organizationID, teamID, name),
+  listAllWaitingVaultKey: async (): Promise<WaitingVaultKeys> => normalizeWaitingVaultKeys(await Service.ListWaitingVaultKeys()),
   listAllShareAwaitingUnlock: async (): Promise<ShareAwaitingUnlock[]> => (await Service.ListSharesAwaitingUnlock()) ?? [],
   listAllShareLinkField: async (vaultID: string, itemID: string): Promise<ShareLinkField[]> => (await Service.ListShareLinkFields(vaultID, itemID)) ?? [],
   createShareLink: async (request: ShareLinkRequest): Promise<ShareLink> => normalizeShareLink(await Service.CreateShareLink(request)),
@@ -280,6 +386,7 @@ const wailsApi = {
   setCompactSSHApproval: (isCompact: boolean): Promise<SSHAgentStatus> => AgentService.SetCompactSSHApproval(isCompact),
   setPhoneApproval: (isEnabled: boolean): Promise<SSHAgentStatus> => AgentService.SetPhoneApproval(isEnabled),
   setSigningRemember: (seconds: number): Promise<SSHAgentStatus> => AgentService.SetSigningRemember(seconds),
+  setSSHRemember: (seconds: number): Promise<SSHAgentStatus> => AgentService.SetSSHRemember(seconds),
   fitSSHApprovalWindow: (isCompact: boolean, height: number): Promise<void> => AgentService.FitSSHApprovalWindow(isCompact, height),
   setApprovalTouchIDFrame: (x: number, y: number, width: number, height: number): Promise<void> =>
     ApprovalTouchIDService.SetApprovalPromptFrame(x, y, width, height),

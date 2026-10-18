@@ -31,6 +31,8 @@ type Vault struct {
 	Type      string `json:"type"`
 	Role      string `json:"role"`
 	ItemCount int    `json:"itemCount"`
+	// OrganizationID is set for organization vaults, by apps that announce FeatureOrganizations.
+	OrganizationID string `json:"organizationID,omitempty"`
 }
 
 type VaultListResult struct {
@@ -252,4 +254,105 @@ type ResolveSecretResult struct {
 
 type DeviceListResult struct {
 	Devices []Device `json:"devices"`
+}
+
+type OrganizationSummary struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Role        string `json:"role"`
+	MemberCount int    `json:"memberCount"`
+}
+
+// OrganizationInvitation is an invitation to the user's email; ExpiresAt is RFC 3339.
+type OrganizationInvitation struct {
+	ID               string `json:"id"`
+	OrganizationID   string `json:"organizationID"`
+	OrganizationName string `json:"organizationName"`
+	Role             string `json:"role"`
+	InvitedByName    string `json:"invitedByName"`
+	InvitedByEmail   string `json:"invitedByEmail"`
+	ExpiresAt        string `json:"expiresAt"`
+}
+
+type OrganizationListResult struct {
+	Organizations []OrganizationSummary    `json:"organizations"`
+	Invitations   []OrganizationInvitation `json:"invitations"`
+}
+
+type OrganizationSummaryResult struct {
+	Organization OrganizationSummary `json:"organization"`
+}
+
+type OrganizationMember struct {
+	AccountID     string `json:"accountID"`
+	Name          string `json:"name"`
+	Email         string `json:"email"`
+	Role          string `json:"role"`
+	SecurityCode  string `json:"securityCode"`
+	IsCurrentUser bool   `json:"isCurrentUser"`
+	IsKeyChanged  bool   `json:"isKeyChanged"`
+}
+
+type TeamMember struct {
+	AccountID string `json:"accountID"`
+	Name      string `json:"name"`
+	Email     string `json:"email"`
+}
+
+// TeamVault: Name is empty when CanOpen is false, because this user has no key to decrypt it.
+type TeamVault struct {
+	VaultID string `json:"vaultID"`
+	Name    string `json:"name,omitempty"`
+	Role    string `json:"role"`
+	CanOpen bool   `json:"canOpen"`
+}
+
+type Team struct {
+	ID      string       `json:"id"`
+	Name    string       `json:"name"`
+	Members []TeamMember `json:"members"`
+	Vaults  []TeamVault  `json:"vaults"`
+}
+
+// SentOrganizationInvitation is a pending invitation; only admins see them. ExpiresAt is RFC 3339.
+type SentOrganizationInvitation struct {
+	ID        string `json:"id"`
+	Email     string `json:"email"`
+	Role      string `json:"role"`
+	ExpiresAt string `json:"expiresAt"`
+}
+
+type Organization struct {
+	ID          string                       `json:"id"`
+	Name        string                       `json:"name"`
+	Role        string                       `json:"role"`
+	Members     []OrganizationMember         `json:"members"`
+	Teams       []Team                       `json:"teams"`
+	Invitations []SentOrganizationInvitation `json:"invitations"`
+}
+
+type OrganizationResult struct {
+	Organization Organization `json:"organization"`
+}
+
+type TeamResult struct {
+	Team Team `json:"team"`
+}
+
+// WaitingVaultKey is an organization vault the user's teams give them that no owner's app has delivered yet.
+type WaitingVaultKey struct {
+	VaultID          string `json:"vaultID"`
+	OrganizationID   string `json:"organizationID"`
+	OrganizationName string `json:"organizationName"`
+	Role             string `json:"role"`
+}
+
+// OrganizationKeysResult says how many vault keys the app delivered and how many vaults it rotated; the errors say why
+// some could not be, e.g. a changed signing key.
+type OrganizationKeysResult struct {
+	DeliveredCount int               `json:"deliveredCount"`
+	RotatedCount   int               `json:"rotatedCount"`
+	DeliveryError  string            `json:"deliveryError,omitempty"`
+	RotationError  string            `json:"rotationError,omitempty"`
+	Waiting        []WaitingVaultKey `json:"waiting"`
 }

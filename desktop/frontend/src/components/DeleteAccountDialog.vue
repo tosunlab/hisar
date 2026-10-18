@@ -75,6 +75,13 @@ function close(): void {
         <li v-for="vault in preview.memberVaults" :key="vault.id" data-testid="delete-account-member-vault">
           <strong>{{ vault.name }}</strong>: {{ describeMembership(vault) }}.
         </li>
+        <li v-for="organization in preview.organizations" :key="organization.id" data-testid="delete-account-organization">
+          <template v-if="organization.isDeleted"><strong>{{ organization.name }}</strong> is deleted with your account.</template>
+          <template v-else-if="organization.newAdminName">
+            <strong>{{ organization.newAdminName }}</strong> becomes an admin of <strong>{{ organization.name }}</strong>.
+          </template>
+          <template v-else>You leave <strong>{{ organization.name }}</strong>.</template>
+        </li>
         <li v-if="preview.shareLinkCount > 0">{{ countThing(preview.shareLinkCount, "share link stops", "share links stop") }} working.</li>
         <li v-if="preview.sentInvitationCount + preview.receivedInvitationCount > 0">
           {{ countThing(preview.sentInvitationCount + preview.receivedInvitationCount, "invitation is", "invitations are") }} removed.

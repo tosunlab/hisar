@@ -1,4 +1,5 @@
-// Package cache keeps the server's encrypted account, vault and item records in a local SQLite file for offline use.
+// Package cache keeps the server's encrypted account, vault and item records in a local SQLite file for offline use,
+// and the device's sealed website icons.
 package cache
 
 import (
@@ -20,9 +21,10 @@ var schemaStatements = []string{
 	`CREATE TABLE IF NOT EXISTS vaults (vault_id TEXT PRIMARY KEY, data BLOB, seq INTEGER NOT NULL DEFAULT 0)`,
 	`CREATE TABLE IF NOT EXISTS items (vault_id TEXT NOT NULL, item_id TEXT NOT NULL, data BLOB NOT NULL, PRIMARY KEY (vault_id, item_id))`,
 	`CREATE TABLE IF NOT EXISTS account_preferences (account_id TEXT PRIMARY KEY, data BLOB NOT NULL)`,
+	`CREATE TABLE IF NOT EXISTS website_icons (lookup TEXT PRIMARY KEY, data BLOB NOT NULL)`,
 }
 
-var dropStatements = []string{`DROP TABLE IF EXISTS accounts`, `DROP TABLE IF EXISTS vaults`, `DROP TABLE IF EXISTS items`, `DROP TABLE IF EXISTS account_preferences`}
+var dropStatements = []string{`DROP TABLE IF EXISTS accounts`, `DROP TABLE IF EXISTS vaults`, `DROP TABLE IF EXISTS items`, `DROP TABLE IF EXISTS account_preferences`, `DROP TABLE IF EXISTS website_icons`}
 
 type Cache struct {
 	database *sql.DB
@@ -113,6 +115,28 @@ func (c *Cache) SaveAccountPreferences(accountID string, preferences *apitypes.A
 		return err
 	}
 	_, err = c.database.Exec(`INSERT INTO account_preferences (account_id, data) VALUES (?, ?) ON CONFLICT (account_id) DO UPDATE SET data = excluded.data`, accountID, data)
+	return err
+}
+
+// SaveWebsiteIcon keeps a sealed website icon record under its lookup key (crypt.WebsiteIconKeys).
+func (c *Cache) SaveWebsiteIcon(lookup string, sealed []byte) error {
+	_, err := c.database.Exec(`INSERT INTO website_icons (lookup, data) VALUES (?, ?) ON CONFLICT (lookup) DO UPDATE SET data = excluded.data`, lookup, sealed)
+	return err
+}
+
+// LoadWebsiteIcon returns nil when no record is cached.
+func (c *Cache) LoadWebsiteIcon(lookup string) ([]byte, error) {
+	var data []byte
+	err := c.database.QueryRow(`SELECT data FROM website_icons WHERE lookup = ?`, lookup).Scan(&data)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	return data, err
+}
+
+// ClearWebsiteIcons drops every cached website icon.
+func (c *Cache) ClearWebsiteIcons() error {
+	_, err := c.database.Exec(`DELETE FROM website_icons`)
 	return err
 }
 

@@ -6,9 +6,13 @@ struct NewVaultView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var name = ""
+    /// Nil until Where is loaded, and while it could not be: the teams are unknown then, so Create waits.
+    @State private var allLocation: [VaultLocation]?
+    @State private var locationID = VaultLocation.sharedVault.id
     @FocusState private var isNameFocused: Bool
 
-    private var canCreate: Bool { !name.trimmingCharacters(in: .whitespaces).isEmpty }
+    private var location: VaultLocation? { OrganizationLogic.findVaultLocation(id: locationID, in: allLocation) }
+    private var canCreate: Bool { !name.trimmingCharacters(in: .whitespaces).isEmpty && location != nil }
 
     var body: some View {
         NavigationStack {
@@ -24,8 +28,20 @@ struct NewVaultView: View {
                         .submitLabel(.done)
                         .onSubmit(create)
                         .accessibilityIdentifier("new-vault-name")
+                    if let allLocation, allLocation.count > 1 || location == nil {
+                        Picker("Where", selection: $locationID) {
+                            ForEach(allLocation) { location in
+                                Text(location.label).tag(location.id)
+                            }
+                        }
+                        .accessibilityIdentifier("new-vault-where")
+                    }
                 } footer: {
-                    Text("A shared vault starts with only you. Share it by email with Share in the vault's toolbar; your Personal vault stays private.")
+                    if let location {
+                        Text(location.isSharedVault
+                             ? "A shared vault starts with only you. Share it by email with Share in the vault's toolbar; your Personal vault stays private."
+                             : "\(location.teamName)'s members get this vault. Manage it in Settings → Organizations.")
+                    }
                 }
             }
             .navigationTitle("New vault")
@@ -53,12 +69,26 @@ struct NewVaultView: View {
             model.clearError()
             isNameFocused = true
         }
+        .task {
+            await loadLocations()
+        }
+        .onChange(of: model.remoteChangeCount) { _, _ in
+            Task { await loadLocations() }
+        }
+    }
+
+    // A failed reload keeps the choices already loaded; without any, Create stays disabled and the banner says why.
+    private func loadLocations() async {
+        allLocation = await model.loadVaultLocations() ?? allLocation
     }
 
     private func create() {
-        guard canCreate, !model.isBusy else { return }
+        guard canCreate, !model.isBusy, let location else { return }
         Task {
-            if let vault = await model.createVault(name: name) {
+            let vault = location.isSharedVault
+                ? await model.createVault(name: name)
+                : await model.createOrganizationVault(organizationID: location.organizationID, teamID: location.teamID, name: name)
+            if let vault {
                 dismiss()
                 finish(vault)
             }

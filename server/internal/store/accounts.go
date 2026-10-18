@@ -232,20 +232,22 @@ func (s *Store) PruneAudit(ctx context.Context, maxAge time.Duration) (int64, er
 	return commandTag.RowsAffected(), err
 }
 
-// PruneExpiredInvitation deletes sign-up invites and pending share invitations that expired more than maxAge ago.
-// Accepted share invitations never expire: they wait for the owner's app.
+// PruneExpiredInvitation deletes sign-up invites, pending share invitations and organization invitations that expired
+// more than maxAge ago. Accepted share invitations never expire: they wait for the owner's app.
 func (s *Store) PruneExpiredInvitation(ctx context.Context, maxAge time.Duration) (int64, error) {
 	var prunedCount int64
 	err := pgx.BeginFunc(ctx, s.pool, func(transaction pgx.Tx) error {
-		inviteTag, err := transaction.Exec(ctx, `DELETE FROM invites WHERE expires_at < now() - $1::interval`, maxAge)
-		if err != nil {
-			return err
+		for _, query := range []string{
+			`DELETE FROM invites WHERE expires_at < now() - $1::interval`,
+			`DELETE FROM share_invitations WHERE state = 'pending' AND expires_at < now() - $1::interval`,
+			`DELETE FROM organization_invitations WHERE expires_at < now() - $1::interval`,
+		} {
+			commandTag, err := transaction.Exec(ctx, query, maxAge)
+			if err != nil {
+				return err
+			}
+			prunedCount += commandTag.RowsAffected()
 		}
-		shareInvitationTag, err := transaction.Exec(ctx, `DELETE FROM share_invitations WHERE state = 'pending' AND expires_at < now() - $1::interval`, maxAge)
-		if err != nil {
-			return err
-		}
-		prunedCount = inviteTag.RowsAffected() + shareInvitationTag.RowsAffected()
 		return nil
 	})
 	return prunedCount, err

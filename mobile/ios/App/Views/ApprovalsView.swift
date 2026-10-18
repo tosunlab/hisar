@@ -46,7 +46,7 @@ struct ApprovalList: View {
                     Text(allApproval.count == 1 ? "1 request waiting" : "\(allApproval.count) requests waiting")
                         .accessibilityIdentifier("approvals-header")
                 } footer: {
-                    Text("Tap a request to see what it runs. Approving answers that one request; it never unlocks Hisar on your Mac.")
+                    Text("Tap a request to see what it asks for. Approving answers that one request; it never unlocks Hisar on your Mac.")
                 }
             }
         }
@@ -67,7 +67,7 @@ struct ApprovalList: View {
                 ContentUnavailableView {
                     Label("No requests waiting", systemImage: "laptopcomputer.and.iphone")
                 } description: {
-                    Text("When Hisar on your Mac asks to use an SSH key or the command-line tool, the request appears here while Hisar is open and unlocked on this iPhone.")
+                    Text("When Hisar on your Mac asks to use an SSH key or the command-line tool, or to let an app like Raycast use Hisar, the request appears here while Hisar is open and unlocked on this iPhone.")
                 }
                 .accessibilityIdentifier("approvals-empty")
             }

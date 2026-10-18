@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"errors"
-	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -27,55 +26,54 @@ type MovedItem struct {
 	Details      []byte
 }
 
-// VaultDeletion: with MoveToVaultID, MovedItems must be exactly the vault's live items at their current revisions.
+// VaultDeletion: with MoveToVaultID, MovedItems must be exactly the vault's live items at their current revisions, sealed
+// with the target vault's key of MoveToKeyGeneration.
 type VaultDeletion struct {
-	VaultID         string
-	AccountID       string
-	MoveToVaultID   string
-	MovedItems      []MovedItem
-	IsDeletingItems bool
+	VaultID             string
+	AccountID           string
+	MoveToVaultID       string
+	MovedItems          []MovedItem
+	IsDeletingItems     bool
+	MoveToKeyGeneration int64
 }
 
-func (s *Store) RenameVault(ctx context.Context, vaultID string, encName []byte) error {
-	commandTag, err := s.pool.Exec(ctx, `UPDATE vaults SET enc_name = $2 WHERE id = $1`, vaultID, encName)
-	if err != nil {
+// RenameVault stores the vault's new sealed name. It locks like every change to an organization vault (§5.11) and
+// returns ErrConflict unless keyGeneration is the vault's current one (required for organization vaults, checked for any
+// vault when nonzero), so a name sealed with a key a rotation replaced is never stored.
+func (s *Store) RenameVault(ctx context.Context, vaultID string, encName []byte, keyGeneration int64) error {
+	return s.runInTransaction(ctx, func(transaction pgx.Tx) error {
+		vault, err := lockVault(ctx, transaction, vaultID)
+		if err != nil {
+			return err
+		}
+		if !vault.acceptsKeyGeneration(keyGeneration) {
+			return ErrConflict
+		}
+		_, err = transaction.Exec(ctx, `UPDATE vaults SET enc_name = $2 WHERE id = $1`, vaultID, encName)
 		return err
-	}
-	if commandTag.RowsAffected() == 0 {
-		return ErrNotFound
-	}
-	return nil
+	})
 }
 
-// DeleteVault deletes the vault, its access grants, items, history and invitations in one transaction, after moving
-// its live items into another vault when asked. It returns the accounts that had access to the deleted vault.
+// DeleteVault deletes the vault, its access grants, items, history, invitations and team grants in one transaction,
+// after moving its live items into another vault when asked. It returns the accounts that had access to the deleted
+// vault. Deleting an organization vault removes access, so its organization is locked first (§5.11); the target only
+// receives items, so only its row is locked. Moved items sealed with a target key a rotation replaced are refused
+// (ErrStaleKeyGeneration), as are items for an organization vault that name no key generation (ErrKeyGenerationMissing).
 func (s *Store) DeleteVault(ctx context.Context, deletion VaultDeletion) ([]string, error) {
 	var formerMemberIDs []string
 	err := s.runInTransaction(ctx, func(transaction pgx.Tx) error {
+		if err := lockVaultOrganization(ctx, transaction, deletion.VaultID); err != nil {
+			return err
+		}
 		lockedVaultIDs := []string{deletion.VaultID}
 		if deletion.MoveToVaultID != "" {
 			lockedVaultIDs = append(lockedVaultIDs, deletion.MoveToVaultID)
 		}
-		// Locking in ID order keeps two concurrent moves between the same vaults from deadlocking.
-		slices.Sort(lockedVaultIDs)
-		rows, err := transaction.Query(ctx, `SELECT id::text, type FROM vaults WHERE id = ANY($1::uuid[]) ORDER BY id FOR UPDATE`, lockedVaultIDs)
+		vaultsByID, err := lockVaults(ctx, transaction, lockedVaultIDs)
 		if err != nil {
 			return err
 		}
-		vaultTypesByID := map[string]string{}
-		for rows.Next() {
-			var vaultID, vaultType string
-			if err := rows.Scan(&vaultID, &vaultType); err != nil {
-				rows.Close()
-				return err
-			}
-			vaultTypesByID[vaultID] = vaultType
-		}
-		rows.Close()
-		if err := rows.Err(); err != nil {
-			return err
-		}
-		vaultType, isFound := vaultTypesByID[deletion.VaultID]
+		vault, isFound := vaultsByID[deletion.VaultID]
 		if !isFound {
 			return ErrNotFound
 		}
@@ -88,7 +86,7 @@ func (s *Store) DeleteVault(ctx context.Context, deletion VaultDeletion) ([]stri
 		if role != "owner" {
 			return ErrNotOwner
 		}
-		if vaultType == "personal" {
+		if vault.vaultType == "personal" {
 			return ErrPersonalVault
 		}
 		var vaultCount int
@@ -105,10 +103,11 @@ func (s *Store) DeleteVault(ctx context.Context, deletion VaultDeletion) ([]stri
 		}
 		switch {
 		case deletion.MoveToVaultID != "":
-			if _, isFound := vaultTypesByID[deletion.MoveToVaultID]; !isFound {
+			target, isFound := vaultsByID[deletion.MoveToVaultID]
+			if !isFound {
 				return ErrNotFound
 			}
-			if err := moveItems(ctx, transaction, deletion, liveRevisionsByID); err != nil {
+			if err := moveItems(ctx, transaction, deletion, target, liveRevisionsByID); err != nil {
 				return err
 			}
 		case len(liveRevisionsByID) > 0 && !deletion.IsDeletingItems:
@@ -145,7 +144,7 @@ func listLiveRevisions(ctx context.Context, transaction pgx.Tx, vaultID string) 
 	return revisionsByID, rows.Err()
 }
 
-func moveItems(ctx context.Context, transaction pgx.Tx, deletion VaultDeletion, liveRevisionsByID map[string]string) error {
+func moveItems(ctx context.Context, transaction pgx.Tx, deletion VaultDeletion, target *lockedVault, liveRevisionsByID map[string]string) error {
 	if deletion.MoveToVaultID == deletion.VaultID {
 		return ErrTargetNotWritable
 	}
@@ -160,6 +159,9 @@ func moveItems(ctx context.Context, transaction pgx.Tx, deletion VaultDeletion, 
 	}
 	if targetRole != "owner" && targetRole != "editor" {
 		return ErrTargetNotWritable
+	}
+	if err := target.checkItemKeyGeneration(deletion.MoveToKeyGeneration); err != nil {
+		return err
 	}
 	if len(deletion.MovedItems) != len(liveRevisionsByID) {
 		return ErrConflict
@@ -198,15 +200,20 @@ func moveItems(ctx context.Context, transaction pgx.Tx, deletion VaultDeletion, 
 }
 
 // LeaveVault removes the account's access and wrapped key; an owner may leave only while another owner remains.
+// Access to an organization vault comes from its teams (ErrOrganizationVault).
 func (s *Store) LeaveVault(ctx context.Context, vaultID, accountID string) error {
 	return s.runInTransaction(ctx, func(transaction pgx.Tx) error {
-		if _, err := transaction.Exec(ctx, `SELECT 1 FROM vaults WHERE id = $1 FOR UPDATE`, vaultID); err != nil {
+		vault, err := lockVault(ctx, transaction, vaultID)
+		if err != nil {
 			return err
 		}
 		var role string
 		if err := transaction.QueryRow(ctx, `SELECT role FROM vault_access WHERE vault_id = $1 AND account_id = $2`,
 			vaultID, accountID).Scan(&role); err != nil {
 			return convertNoRowsToNotFound(err)
+		}
+		if vault.organizationID != "" {
+			return ErrOrganizationVault
 		}
 		if role == "owner" {
 			var ownerCount int
@@ -217,7 +224,7 @@ func (s *Store) LeaveVault(ctx context.Context, vaultID, accountID string) error
 				return ErrOnlyOwner
 			}
 		}
-		_, err := transaction.Exec(ctx, `DELETE FROM vault_access WHERE vault_id = $1 AND account_id = $2`, vaultID, accountID)
+		_, err = transaction.Exec(ctx, `DELETE FROM vault_access WHERE vault_id = $1 AND account_id = $2`, vaultID, accountID)
 		return err
 	})
 }

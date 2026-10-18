@@ -306,6 +306,28 @@ func TestAccountPreferences(t *testing.T) {
 	}
 }
 
+func TestWebsiteIconKeys(t *testing.T) {
+	key := decodeHex(t, "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")
+	keys, err := DeriveWebsiteIconKeys(key, "ABC123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	lookup := keys.Lookup("github.com")
+	if lookup != vectorWebsiteIconLookup {
+		t.Fatalf("lookup = %s", lookup)
+	}
+	if plaintext, err := keys.Open(lookup, decodeHex(t, vectorWebsiteIconRecord)); err != nil || string(plaintext) != `{"image":"AQI="}` {
+		t.Fatalf("vector: %q, %v", plaintext, err)
+	}
+	if _, err := keys.Open(keys.Lookup("gitlab.com"), decodeHex(t, vectorWebsiteIconRecord)); err == nil {
+		t.Error("opened under another domain")
+	}
+	otherAccount, _ := DeriveWebsiteIconKeys(key, "XYZ789")
+	if otherAccount.Lookup("github.com") == lookup {
+		t.Error("another account has the same lookup key")
+	}
+}
+
 func BenchmarkDeriveAllKeyDefault(b *testing.B) {
 	secretKey, _ := GenerateSecretKey("ABC123")
 	salt := GenerateSalt()
