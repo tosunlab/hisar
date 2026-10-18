@@ -8,4 +8,7 @@ import kotlinx.coroutines.flow.SharedFlow
 interface BackendProvider {
     val backend: VaultBackend
     val events: SharedFlow<BackendEvent>
+
+    /** Copies a secret the UI shows, such as a new Secret Key, as Go copies fields: marked sensitive and cleared after about 90 seconds. */
+    fun copySecret(text: String): Boolean
 }

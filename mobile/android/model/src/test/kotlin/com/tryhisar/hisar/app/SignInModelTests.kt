@@ -148,11 +148,20 @@ class SignInModelTests {
     @Test
     fun testHisarLinksFillTheSignInOrCreateAccountForm() = runTest {
         val model = AppModelHarness(this).startModel()
-        assertTrue(model.signIn.openLink("hisar://sign-in?email=alice%40example.com&secretKey=H1-ABC123"))
+        model.signIn.openLink("hisar://sign-in?email=alice%40example.com&secretKey=H1-ABC123")
         assertEquals(SignInLink(server = "", email = "alice@example.com", secretKey = "H1-ABC123"), model.signIn.pendingSignInLink.value)
-        assertTrue(model.signIn.openLink("hisar://invite/abc"))
+        model.signIn.openLink("hisar://invite/abc")
         assertEquals(InviteLink("abc"), model.signIn.pendingInviteLink.value)
-        assertFalse(model.signIn.openLink("https://example.com/qr"), "a QR code from elsewhere is no Hisar link")
+    }
+
+    @Test
+    fun testScannedQRCodeFillsInSignInOrExplains() = runTest {
+        val model = AppModelHarness(this).startModel()
+        model.signIn.openScannedEmergencyKit("hisar://invite/abc")
+        assertNull(model.signIn.pendingInviteLink.value, "an invite is no Emergency Kit")
+        assertEquals("This QR code is not from a Hisar Emergency Kit.", model.signIn.scannerMessage.value)
+        model.signIn.openScannedEmergencyKit("hisar://sign-in?server=https%3A%2F%2Fhisar.example.com&email=alice%40example.com&secretKey=H1-ABC123")
+        assertEquals(SignInLink(server = "https://hisar.example.com", email = "alice@example.com", secretKey = "H1-ABC123"), model.signIn.pendingSignInLink.value)
     }
 
     @Test

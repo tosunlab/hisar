@@ -30,6 +30,9 @@ class SignInModel(private val context: ModelContext) {
     /** Why an invite link was not used: someone is already signed in. */
     val inviteLinkMessage = MutableStateFlow<String?>(null)
 
+    /** Why a scanned QR code filled nothing in. */
+    val scannerMessage = MutableStateFlow<String?>(null)
+
     suspend fun signIn(server: String, email: String, secretKey: String, password: String): Boolean {
         val formattedSecretKey = VaultLogic.formatSecretKey(secretKey)
         val trimmedServer = server.trimmingWhitespacesAndNewlines()
@@ -76,17 +79,24 @@ class SignInModel(private val context: ModelContext) {
         return true
     }
 
-    /** Opens a hisar:// link from outside the app, or the text of a scanned QR code; false when it is neither link. */
-    fun openLink(text: String): Boolean {
-        SignInLink.parse(text)?.let {
-            pendingSignInLink.value = it
-            return true
+    /** Opens a hisar://sign-in or hisar://invite link from outside the app; other links change nothing. */
+    fun openLink(text: String) {
+        val signInLink = SignInLink.parse(text)
+        if (signInLink != null) {
+            pendingSignInLink.value = signInLink
+            return
         }
-        InviteLink.parse(text)?.let {
-            openInviteLink(it)
-            return true
+        InviteLink.parse(text)?.let(::openInviteLink)
+    }
+
+    /** Takes the text of a QR code scanned on the sign-in screen, which only an Emergency Kit's sign-in link fills in. */
+    fun openScannedEmergencyKit(text: String) {
+        val link = SignInLink.parse(text)
+        if (link == null) {
+            scannerMessage.value = "This QR code is not from a Hisar Emergency Kit."
+            return
         }
-        return false
+        pendingSignInLink.value = link
     }
 
     fun openInviteLink(link: InviteLink) {

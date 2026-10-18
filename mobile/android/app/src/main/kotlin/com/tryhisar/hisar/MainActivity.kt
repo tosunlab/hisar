@@ -1,97 +1,61 @@
 package com.tryhisar.hisar
 
+import android.content.Intent
+import android.os.Build
 import android.os.Bundle
-import android.util.Log
-import androidx.activity.ComponentActivity
+import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.produceState
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
-import com.tryhisar.hisar.model.VaultStatus
-import com.tryhisar.hisar.model.backendJson
-import com.tryhisar.hisar.ui.theme.HisarTheme
-import com.tryhisar.hisarkit.Hisarkit
-import com.tryhisar.hisarkit.SecretKeyStore
-import java.io.File
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import androidx.activity.viewModels
+import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import com.tryhisar.hisar.app.Screen
+import com.tryhisar.hisar.ui.root.RootScreen
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
-class MainActivity : ComponentActivity() {
+/**
+ * The app's one activity. It is a FragmentActivity because biometric prompts need one, and it reads the backend only
+ * through the Application's [BackendProvider].
+ */
+class MainActivity : FragmentActivity() {
+    private val viewModel: AppViewModel by viewModels {
+        viewModelFactory { initializer { AppViewModel(application as BackendProvider) } }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        setContent {
-            HisarTheme {
-                val description by produceState<String?>(null) {
-                    value = withContext(Dispatchers.IO) { describeBackendStatus() }
-                }
-                StartingScreen(description)
-            }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) setRecentsScreenshotEnabled(false)
+        val screenshotSetting = ScreenshotSetting(this)
+        applyScreenshotSetting(screenshotSetting.isAllowed)
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.CREATED) { screenshotSetting.allowedChanges.collect(::applyScreenshotSetting) }
         }
+        if (savedInstanceState == null) openLink(intent)
+        setContent { RootScreen(viewModel.model, viewModel::copySecret) }
     }
 
-    // Go blocks on files and the network, so the backend is only ever called off the main thread.
-    private fun describeBackendStatus(): String = try {
-        val stateDirectory = File(noBackupFilesDir, "Hisar").apply { mkdirs() }
-        val hisar = Hisarkit.new_(stateDirectory.path, "Hisar on Android", UnavailableSecretKeyStore, null, null, null)
-        val status = backendJson.decodeFromString<VaultStatus>(hisar.status())
-        Log.i(LOG_TAG, "HisarKit status: state=${status.state}")
-        when {
-            status.isUnlocked -> "Unlocked"
-            status.isSignedIn -> "Locked"
-            else -> "Signed out"
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        openLink(intent)
+    }
+
+    private fun applyScreenshotSetting(isAllowed: Boolean) {
+        if (isAllowed) window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) else window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+    }
+
+    // A link answers differently signed in and signed out, so it waits until the backend has told which.
+    private fun openLink(intent: Intent) {
+        val link = intent.takeIf { it.action == Intent.ACTION_VIEW }?.dataString ?: return
+        val model = viewModel.model
+        lifecycleScope.launch {
+            model.screen.first { it != Screen.Starting }
+            model.signIn.openLink(link)
         }
-    } catch (error: Exception) {
-        Log.e(LOG_TAG, "HisarKit did not start", error)
-        "Hisar could not start: ${error.message}"
-    }
-
-    private companion object {
-        const val LOG_TAG = "Hisar"
-    }
-}
-
-// The Keystore-backed store replaces this; until then nothing signs in, so no Secret Key is ever stored or read.
-private object UnavailableSecretKeyStore : SecretKeyStore {
-    private const val MESSAGE = "This build of Hisar cannot keep a Secret Key yet."
-
-    override fun loadSecretKey(accountID: String): String = throw UnsupportedOperationException(MESSAGE)
-
-    override fun storeSecretKey(accountID: String, secretKey: String) = throw UnsupportedOperationException(MESSAGE)
-
-    override fun deleteSecretKey(accountID: String) = throw UnsupportedOperationException(MESSAGE)
-}
-
-@Composable
-private fun StartingScreen(description: String?) {
-    Column(
-        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background).safeDrawingPadding().padding(24.dp),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Text("Hisar", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-        Spacer(Modifier.height(8.dp))
-        Text(
-            description ?: "Starting…",
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-        )
     }
 }
