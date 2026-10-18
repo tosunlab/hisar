@@ -85,6 +85,9 @@ func (bridge *CommandLineBridge) answer(request *cliprotocol.Request) (any, erro
 	if cliprotocol.IsAgentRequest(request.Type) {
 		return bridge.answerAgentRequest(request)
 	}
+	if cliprotocol.IsLauncherRequest(request.Type) {
+		return bridge.answerLauncherRequest(request)
+	}
 	if result, isHandled, err := bridge.answerOrganizationRequest(request); isHandled {
 		return result, err
 	}
