@@ -88,6 +88,8 @@ class AppModel(
     val lock = LockModel(this)
     val favorites = FavoritesModel(this)
     val websiteIcons = WebsiteIconModel(this)
+    val vaults = VaultsModel(this)
+    val invitations = InvitationsModel(this)
 
     val autoLockInterval: Duration get() = Duration.ofSeconds(status.value.autoLockSeconds.toLong())
 
