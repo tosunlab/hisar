@@ -18,6 +18,11 @@ class IosTestParityTest {
         "testAppGroupContainerHoldsTheState" to "testNoBackupDirectoryHoldsTheState",
         "testPersonalTeamFallsBackToApplicationSupport" to "testBackupRulesExcludeTheState",
         "testAppPublishesPasskeyIdentitiesAndDeletesPasskeys" to "testAppDeletesPasskeys",
+        "testSecretKeyScreenOffersFaceIDAndTurnsItOnInOneTap" to "testSecretKeyScreenOffersBiometricsAndTurnsThemOnInOneTap",
+        "testFaceIDOfferFailureStaysOnTheOffer" to "testBiometricOfferFailureStaysOnTheOffer",
+        "testSecretKeyScreenSkipsTheOfferWithoutFaceID" to "testSecretKeyScreenSkipsTheOfferWithoutBiometrics",
+        "testRefreshFinishingAfterLockingBringsNothingBackAndKeepsAutoFill" to "testRefreshFinishingAfterLockingBringsNothingBack",
+        "testSignedOutByServerShowsReasonAndClearsAutoFill" to "testSignedOutByServerShowsReason",
     )
 
     private val notApplicable = run {

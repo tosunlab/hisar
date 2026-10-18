@@ -20,6 +20,8 @@ kotlin {
 dependencies {
     api(libs.kotlinx.serialization.json)
     api(libs.kotlinx.io.bytestring)
+    api(libs.kotlinx.coroutines.core)
+    testFixturesApi(libs.kotlinx.coroutines.test)
     testImplementation(libs.kotlin.test.junit)
 }
 
