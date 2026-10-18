@@ -18,28 +18,8 @@
     {
       "name": "search-hisar",
       "title": "Search Hisar",
-      "description": "Find an item, then copy or paste its password, username or one-time code.",
-      "mode": "view",
-      "preferences": [
-        {
-          "name": "primaryAction",
-          "type": "dropdown",
-          "required": false,
-          "title": "Primary Action",
-          "description": "What Return does on an item with a password.",
-          "default": "copy-password",
-          "data": [
-            {
-              "title": "Copy Password",
-              "value": "copy-password"
-            },
-            {
-              "title": "Paste Password",
-              "value": "paste-password"
-            }
-          ]
-        }
-      ]
+      "description": "Find an item, then copy or paste its password, username or one-time code, open it in Hisar or share it.",
+      "mode": "view"
     },
     {
       "name": "one-time-codes",
@@ -67,6 +47,99 @@
     }
   ],
   "preferences": [
+    {
+      "name": "primaryAction",
+      "type": "dropdown",
+      "required": false,
+      "title": "Primary Action",
+      "description": "What Return does on an item. An item without that value does the next action it has.",
+      "default": "copy-password",
+      "data": [
+        {
+          "title": "Open in Hisar",
+          "value": "open-in-hisar"
+        },
+        {
+          "title": "Open in Browser",
+          "value": "open-in-browser"
+        },
+        {
+          "title": "Copy Username",
+          "value": "copy-username"
+        },
+        {
+          "title": "Copy Password",
+          "value": "copy-password"
+        },
+        {
+          "title": "Copy One-Time Code",
+          "value": "copy-one-time-code"
+        },
+        {
+          "title": "Paste Username",
+          "value": "paste-username"
+        },
+        {
+          "title": "Paste Password",
+          "value": "paste-password"
+        },
+        {
+          "title": "Paste One-Time Code",
+          "value": "paste-one-time-code"
+        }
+      ]
+    },
+    {
+      "name": "secondaryAction",
+      "type": "dropdown",
+      "required": false,
+      "title": "Secondary Action",
+      "description": "What ⌘ Return does on an item. An item without that value does the next action it has.",
+      "default": "paste-password",
+      "data": [
+        {
+          "title": "Open in Hisar",
+          "value": "open-in-hisar"
+        },
+        {
+          "title": "Open in Browser",
+          "value": "open-in-browser"
+        },
+        {
+          "title": "Copy Username",
+          "value": "copy-username"
+        },
+        {
+          "title": "Copy Password",
+          "value": "copy-password"
+        },
+        {
+          "title": "Copy One-Time Code",
+          "value": "copy-one-time-code"
+        },
+        {
+          "title": "Paste Username",
+          "value": "paste-username"
+        },
+        {
+          "title": "Paste Password",
+          "value": "paste-password"
+        },
+        {
+          "title": "Paste One-Time Code",
+          "value": "paste-one-time-code"
+        }
+      ]
+    },
+    {
+      "name": "closeWindowAfterCopying",
+      "type": "checkbox",
+      "required": false,
+      "title": "Copying",
+      "label": "Close Raycast after copying",
+      "description": "Close Raycast after copying a password, username, one-time code or share link; otherwise a toast says it was copied.",
+      "default": true
+    },
     {
       "name": "socketPath",
       "type": "textfield",

@@ -1,8 +1,17 @@
 import { describe, expect, it } from "vitest";
 import type { Item, ItemList } from "../hisar";
-import { allVaults, groupItems, toWebsiteURL } from "./itemList";
+import {
+  allItemsFilterValue,
+  findItemFilter,
+  getItemKeywords,
+  groupItems,
+  listCategories,
+  toCategoryFilterValue,
+  toVaultFilterValue,
+  toWebsiteURL,
+} from "./itemList";
 
-function createItem(itemID: string, vaultID: string, title: string, isFavorite = false): Item {
+function createItem(itemID: string, vaultID: string, title: string, change: Partial<Item> = {}): Item {
   return {
     vaultID,
     itemID,
@@ -11,10 +20,11 @@ function createItem(itemID: string, vaultID: string, title: string, isFavorite =
     username: "",
     allURL: [],
     allTag: [],
-    isFavorite,
+    isFavorite: false,
     hasPassword: true,
     hasOneTimeCode: false,
     allReference: [],
+    ...change,
   };
 }
 
@@ -26,31 +36,88 @@ const itemList: ItemList = {
   ],
   allItem: [
     createItem("i-slack", "v-work", "Slack"),
-    createItem("i-github", "v-personal", "GitHub", true),
-    createItem("i-aws", "v-work", "AWS", true),
+    createItem("i-github", "v-personal", "GitHub", { isFavorite: true }),
+    createItem("i-aws", "v-work", "AWS", { isFavorite: true, category: "api-credential" }),
     createItem("i-bank", "v-personal", "Bank"),
     createItem("i-jira", "v-work", "Jira"),
+    createItem("i-deploy", "v-work", "Deploy key", { category: "ssh-key" }),
+    createItem("i-pin", "v-personal", "Recovery codes", { category: "secure-note" }),
   ],
 };
 
-function summarize(itemList: ItemList, vaultFilter: string): [string, string[]][] {
-  return groupItems(itemList, vaultFilter).map((section) => [section.title, section.allItem.map((item) => item.title)]);
+function summarize(filterValue: string): [string, string[]][] {
+  return groupItems(itemList, findItemFilter(itemList, filterValue)).map((section) => [
+    section.title,
+    section.allItem.map((item) => item.title),
+  ]);
 }
 
 describe("groupItems", () => {
   it("lists favorites of every vault first, then each vault by the app's order, every item once", () => {
-    expect(summarize(itemList, allVaults)).toEqual([
+    expect(summarize(allItemsFilterValue)).toEqual([
       ["Favorites", ["AWS", "GitHub"]],
-      ["Personal", ["Bank"]],
-      ["Work", ["Jira", "Slack"]],
+      ["Personal", ["Bank", "Recovery codes"]],
+      ["Work", ["Deploy key", "Jira", "Slack"]],
     ]);
   });
 
   it("keeps one vault's items, its favorites included", () => {
-    expect(summarize(itemList, "v-work")).toEqual([
+    expect(summarize(toVaultFilterValue("v-work"))).toEqual([
       ["Favorites", ["AWS"]],
+      ["Work", ["Deploy key", "Jira", "Slack"]],
+    ]);
+  });
+
+  it("keeps one category's items across vaults", () => {
+    expect(summarize(toCategoryFilterValue("login"))).toEqual([
+      ["Favorites", ["GitHub"]],
+      ["Personal", ["Bank"]],
       ["Work", ["Jira", "Slack"]],
     ]);
+    expect(summarize(toCategoryFilterValue("ssh-key"))).toEqual([["Work", ["Deploy key"]]]);
+  });
+});
+
+describe("findItemFilter", () => {
+  it("shows every item for a remembered vault or category that is gone, or a value it does not know", () => {
+    for (const value of [toVaultFilterValue("v-deleted"), toCategoryFilterValue("credit-card"), "v-work", ""]) {
+      expect(findItemFilter(itemList, value).value, value).toBe(allItemsFilterValue);
+      expect(summarize(value), value).toEqual(summarize(allItemsFilterValue));
+    }
+  });
+
+  it("keeps a vault that has no items, which shows nothing", () => {
+    expect(findItemFilter(itemList, toVaultFilterValue("v-empty")).value).toBe(toVaultFilterValue("v-empty"));
+    expect(summarize(toVaultFilterValue("v-empty"))).toEqual([]);
+  });
+});
+
+describe("listCategories", () => {
+  it("offers each category that has an item, once, in the order of their names", () => {
+    expect(listCategories(itemList)).toEqual(["api-credential", "login", "secure-note", "ssh-key"]);
+  });
+});
+
+describe("getItemKeywords", () => {
+  it("lets the search find an item by its username, vault, website hosts and tags", () => {
+    const github = createItem("i-github", "v-personal", "GitHub", {
+      username: "alice@example.com",
+      allURL: ["https://github.com/login", "gist.github.com", "ssh://git@ssh.github.com:443", "not a url"],
+      allTag: ["dev", "Personal"],
+    });
+
+    expect(getItemKeywords(github, "Personal")).toEqual([
+      "alice@example.com",
+      "Personal",
+      "github.com",
+      "gist.github.com",
+      "ssh.github.com",
+      "dev",
+    ]);
+  });
+
+  it("leaves out an empty username", () => {
+    expect(getItemKeywords(createItem("i-note", "v-work", "Note"), "Work")).toEqual(["Work"]);
   });
 });
 
