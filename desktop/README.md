@@ -261,9 +261,10 @@ app, updated with it by Sparkle). Not `Contents/MacOS/hisar`: on the default cas
 
 ## Raycast extension
 
-Design: `docs/DESIGN.md` §9.4.3. `raycast/` searches Hisar from Raycast and copies or pastes passwords, usernames and one-time codes,
-generates passwords and locks Hisar, through the running app on `~/.hisar/cli.sock`. It is not in the Raycast Store; install it in
-development mode:
+Design: `docs/DESIGN.md` §9.4.3. `raycast/` brings the 1Password Raycast extension's features to Hisar: Search Hisar, My Vaults,
+One-Time Codes, Generate Password (quick and with options) and Lock Hisar, with copy and paste of usernames, passwords and one-time
+codes, Open or Edit in Hisar and Share Item…, through the running app on `~/.hisar/cli.sock`. It is not in the Raycast Store;
+install it in development mode:
 
 ```sh
 cd raycast && npm ci && npm run dev   # registers "Hisar" in Raycast; it stays installed after you stop it with Ctrl-C
@@ -273,11 +274,12 @@ cd raycast && npm ci && npm run dev   # registers "Hisar" in Raycast; it stays i
   one-time codes" (Touch ID, the master password or the iPhone). The approval lasts until Hisar locks. Settings → Developer tools →
   Command-line tool → **Launchers** lists approved apps with **Revoke**. The command-line switch must be on.
 - Copies come from Hisar itself and are marked so clipboard managers skip them; they are cleared after 90 seconds. Paste reads the
-  value into Raycast for that one paste.
+  value into Raycast for that one paste. Share Item… asks in Hisar every time, and Open in Hisar brings the window forward on the item.
 - The extension's preferences set the socket (default `~/.hisar/cli.sock`, for a development copy of the app with its own
-  `HISAR_CLI_SOCKET`) and what Return does in Search Hisar (copy or paste the password).
-- Preview: `?window=ssh-approval&approval=launcher` (the launcher window), `&coverage=app` or `&coverage=connection` on the
-  `approval=cli` window, and `&settings=1&settingsSection=developer&launchers=1` for the Launchers row.
+  `HISAR_CLI_SOCKET`), the primary and secondary actions of Return and ⌘↩, and whether Raycast closes after a copy.
+- Preview: `?window=ssh-approval&approval=launcher` (the launcher window), `&approval=launcher-share` (a share link from Raycast),
+  `&coverage=app` or `&coverage=connection` on the `approval=cli` window, and `&settings=1&settingsSection=developer&launchers=1`
+  for the Launchers row.
 
 ## Tests
 

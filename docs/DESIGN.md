@@ -1013,14 +1013,16 @@ Developers, scripts and coding agents name secrets instead of copying them: `.en
 
 #### 9.4.3 Launchers: the Raycast extension
 
-`raycast/` is a Raycast extension, installed in Raycast's development mode and not published to the Raycast Store. It searches Hisar, copies and pastes passwords, usernames and one-time codes, generates passwords and locks Hisar. It talks to the desktop app on the CLI socket (§9.4) directly from Node, without `hisar`, and never keeps vault data on disk: items live in memory for as long as a command's view is open.
+`raycast/` is a Raycast extension, installed in Raycast's development mode and not published to the Raycast Store. It matches the 1Password extension's features: it searches Hisar, copies and pastes usernames, passwords and one-time codes, opens or edits an item in the app, shares an item through a share link (§5.9), generates passwords and locks Hisar. It talks to the desktop app on the CLI socket (§9.4) directly from Node, without `hisar`, and never keeps vault data on disk: items live in memory for as long as a command's view is open; only the filter selection and the details toggle are remembered.
 
 **Commands.**
 
-- **Search Hisar** lists every item of every vault the user can open, Favorites first, then a section per vault, with a vault filter. Return copies the password, or pastes it into the frontmost app when the primary-action preference says so. Other actions copy the username, copy or paste the one-time code (when the item has one), open the website and copy a `hisar://` reference of a field.
+- **Search Hisar** lists every item of every vault the user can open, Favorites first, then a section per vault, each row with a star for favorites and the vault's name. One dropdown filters by vault or by category; search also matches the username, the vault's name and the website's host. Return runs the primary action and ⌘↩ the secondary one (preferences, each one of: open in Hisar, open in browser, copy or paste the username, password or one-time code; an action the item lacks falls through to the next). The other actions, with 1Password's shortcuts: Open in Hisar ⌘⇧O, Edit in Hisar ⌘E, Open in Browser ⌥↩, Copy Username ⌘⇧C, Copy Password ⌘⌥C, Copy One-Time Code ⌘⌃C, Paste Username ⌘⇧V, Paste Password ⌘⌥V, Paste One-Time Code ⌘⌃V, Share Item… ⌘⇧S (fields, expiry and views, then the link is copied), Copy Reference ⌘⇧R (a `hisar://` reference of a field), Show Details ⌘Y and Reload ⌘R.
+- **My Vaults** lists the vaults with their item counts; Return opens a vault's items.
 - **One-Time Codes** lists the items with a one-time code and the current code with its countdown.
-- **Generate Password** copies a password from the app's generator (24 characters, digits and symbols); **Generate Password with Options** sets the length, digits and symbols.
+- **Generate Password** copies a password from the app's generator (24 characters, digits and symbols); **Generate Password with Options** shows the password, generates again when the length, digits or symbols change (⌘R), and copies (⌘⇧C) or pastes it.
 - **Lock Hisar** locks the app; it never starts the app to lock it.
+- The preference "Close Raycast after copying" (on by default) decides whether a copy closes Raycast or shows a toast. When a list command had to wait for the approval dialog, which takes the focus and so hides Raycast, the command opens itself again once, so the loaded list shows.
 
 **Protocol.** After `hello`, `launcher.hello` turns the connection into a launcher connection. It may then send only `launcher.*` requests, and other connections may not send them (`invalid-request`). The app announces every launcher request type in `hello`'s `features`, and the extension checks the exact type before sending it, so an older app turns off only the commands that need what it lacks ("Update Hisar").
 
@@ -1031,6 +1033,8 @@ Developers, scripts and coding agents name secrets instead of copying them: `.en
 | `launcher.items.code` | `vaultID`, `itemID` | `code`, `expiresAt`, `period` |
 | `launcher.items.password` | `vaultID`, `itemID` | `password`, for one paste |
 | `launcher.items.copy` | `vaultID`, `itemID`, `field` (`username`, `password` or `one-time code`) | `clearAfterSeconds`; the app copies the value, so it never crosses the socket |
+| `launcher.items.open` | `vaultID`, `itemID`, optional `isEditing` | `{}`; the app's window comes forward with the item selected, or its editor open in a vault the user can edit |
+| `launcher.items.share` | `vaultID`, `itemID`, `shareLink` (`fields`, `expiresInSeconds`, `maxViews`; no fields shares the username and password) | `shareLink` with its `url`, as `shareLinks.create` |
 | `launcher.passwords.generate` | optional `generator` (`length`, `digits`, `symbols`) | `password` |
 | `launcher.lock` | — | `{}` |
 
@@ -1039,7 +1043,8 @@ Developers, scripts and coding agents name secrets instead of copying them: `.en
 **Approval.**
 
 - A launcher is approved per app (§9.4: bundle path and Team ID of a verified signature), in a memory separate from the command line's, so approving Raycast as a launcher never approves `hisar` run from Raycast, or the reverse.
-- The first request that reads the vaults or copies opens the approval dialog: "Raycast wants to search Hisar and copy or paste passwords and one-time codes", with Raycast's icon and a note that it cannot change, share or export anything. Touch ID, the master password or the iPhone (§9.9, kind `launcher`) answer it, and a locked Hisar unlocks.
+- The first request that reads the vaults, copies or opens an item opens the approval dialog: "Raycast wants to search Hisar and copy or paste passwords and one-time codes", with Raycast's icon and a note that it cannot change or export anything and that every share link asks first. Touch ID, the master password or the iPhone (§9.9, kind `launcher`) answer it, and a locked Hisar unlocks.
+- `launcher.items.share` asks every time, even while Raycast is approved, like `hisar share-link`: "Raycast wants to create a share link for “GitHub”", with the fields, the expiry and views, and the warning that anyone with the link can read them. Approving it also approves Raycast, as an approved command-line share does for its terminal; a denial approves nothing. The iPhone shows it as one request, without the "until Hisar locks" line.
 - The approval lasts until Hisar locks, signs out or quits, or the command-line switch goes off. Settings → Developer tools → Command-line tool → Launchers lists the approved apps with Revoke.
 - `launcher.passwords.generate` and `launcher.lock` need neither an approval nor a sign-in: generating reads nothing, and asking before a lock would unlock Hisar.
 - Raycast runs every extension in one Node process without an OS sandbox, so once Raycast is approved any of its extensions can send these requests until Hisar locks. App identity rests on the bundle's static code signature, not on the running process's.
