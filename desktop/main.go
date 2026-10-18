@@ -27,6 +27,7 @@ import (
 	"github.com/tryhisar/hisar/desktop/browser"
 	"github.com/tryhisar/hisar/desktop/commandline"
 	"github.com/tryhisar/hisar/desktop/loginitem"
+	"github.com/tryhisar/hisar/desktop/pasteboard"
 	"github.com/tryhisar/hisar/desktop/systemidle"
 	"github.com/tryhisar/hisar/desktop/updater"
 )
@@ -47,7 +48,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	clipboard := &wailsClipboard{}
+	fallbackClipboard := &wailsClipboard{}
 	touchID := biometric.New("Hisar Touch ID")
 	notifier := &appNotifier{}
 	fileSaver := &wailsFileSaver{}
@@ -61,7 +62,7 @@ func main() {
 		DeviceName:            getDeviceName(),
 		Platform:              runtime.GOOS + "/desktop",
 		AppVersion:            getAppVersion(),
-		Clipboard:             clipboard,
+		Clipboard:             pasteboard.New(fallbackClipboard),
 		LockNotifier:          notifier,
 		GetSystemIdleDuration: systemidle.GetIdleDuration,
 		Biometric:             touchID,
@@ -263,7 +264,7 @@ func main() {
 			DisableQuitOnLastWindowClosed: true,
 		},
 	})
-	clipboard.app, notifier.app = wailsApp, wailsApp
+	fallbackClipboard.app, notifier.app = wailsApp, wailsApp
 
 	window = wailsApp.Window.NewWithOptions(mainWindowOptions())
 	fileSaver.chooseSavePath = func(defaultFileName string) (string, error) {
