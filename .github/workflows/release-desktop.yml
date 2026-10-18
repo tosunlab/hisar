@@ -113,9 +113,11 @@ jobs:
           security unlock-keychain -p "$keychainPassword" "$keychain"
           security import "$RUNNER_TEMP/signing.p12" -k "$keychain" -f pkcs12 -P "$MACOS_SIGNING_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           rm -f "$RUNNER_TEMP/signing.p12"
-          # The identity's issuer, so the chain verifies whether or not the .p12 export carried it.
-          curl -fsSL https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer -o "$RUNNER_TEMP/DeveloperIDG2CA.cer"
-          security import "$RUNNER_TEMP/DeveloperIDG2CA.cer" -k "$keychain"
+          # The identity's issuer, so the chain verifies when the .p12 export did not carry it.
+          if ! security find-certificate -c "Developer ID Certification Authority" "$keychain" >/dev/null 2>&1; then
+            curl -fsSL https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer -o "$RUNNER_TEMP/DeveloperIDG2CA.cer"
+            security import "$RUNNER_TEMP/DeveloperIDG2CA.cer" -k "$keychain"
+          fi
           security set-key-partition-list -S apple-tool:,apple: -s -k "$keychainPassword" "$keychain" >/dev/null
           # Keeps the runner's keychains searchable; their paths have no spaces. (macOS bash 3.2 has no mapfile.)
           # shellcheck disable=SC2046
