@@ -81,9 +81,9 @@ type vaultSharing struct {
 	CompletionError string `json:"completionError"`
 }
 
-func signUpMobile(t *testing.T, inviteLink, email, name string, listener EventListener) *Hisar {
+func signUpMobile(t *testing.T, stateDirectory, inviteLink, email, name string, listener EventListener) *Hisar {
 	t.Helper()
-	hisar, err := New(t.TempDir(), "Test iPhone", createMemorySecretKeyStore(), nil, &fakeClipboard{}, listener)
+	hisar, err := New(stateDirectory, "Test iPhone", createMemorySecretKeyStore(), nil, &fakeClipboard{}, listener)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,9 +117,9 @@ func TestIntegrationMobileSharing(t *testing.T) {
 	}
 	const ownerEmail, recipientEmail = "mobile-sharing-owner@example.com", "mobile-sharing-recipient@example.com"
 	ownerRecorder := createRemoteChangeRecorder()
-	owner := signUpMobile(t, ownerInviteLink, ownerEmail, "Mobile Owner", ownerRecorder)
+	owner := signUpMobile(t, t.TempDir(), ownerInviteLink, ownerEmail, "Mobile Owner", ownerRecorder)
 	recipientRecorder := createRemoteChangeRecorder()
-	recipient := signUpMobile(t, recipientInviteLink, recipientEmail, "Mobile Recipient", recipientRecorder)
+	recipient := signUpMobile(t, t.TempDir(), recipientInviteLink, recipientEmail, "Mobile Recipient", recipientRecorder)
 
 	personal := findVaultByName(t, owner, "Personal")
 	if personal == nil {

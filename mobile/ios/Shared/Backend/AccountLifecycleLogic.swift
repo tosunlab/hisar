@@ -47,6 +47,12 @@ enum AccountLifecycleLogic {
         vault.role == "owner" ? "Stays with its other owners. Your access is removed." : "Stays with its owners. Your access is removed."
     }
 
+    static func describeOrganization(_ organization: DeletionOrganization) -> String {
+        if organization.isDeleted { return "\(organization.name) is deleted with your account" }
+        if !organization.newAdminName.isEmpty { return "\(organization.newAdminName) becomes an admin of \(organization.name)" }
+        return "You leave \(organization.name)"
+    }
+
     static func describeAllOtherConsequence(_ preview: AccountDeletionPreview) -> [String] {
         var allConsequence: [String] = []
         if preview.shareLinkCount > 0 {

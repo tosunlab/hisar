@@ -23,8 +23,8 @@ import (
 const maxImportFileSize = 100 << 20
 
 func describeImportFormats() string {
-	return fmt.Sprintf("%s (1Password), %s, %s (Bitwarden, not encrypted), %s, or %s (Chrome, Firefox, Safari, Edge and others); detected from the file when empty",
-		importer.FormatOnePasswordExport, importer.FormatOnePasswordCSV, importer.FormatBitwardenJSON, importer.FormatBitwardenCSV, importer.FormatCSV)
+	return fmt.Sprintf("%s (1Password), %s, %s (Bitwarden, not encrypted), %s, %s (LastPass), or %s (Chrome, Firefox, Safari, Edge and others); detected from the file when empty",
+		importer.FormatOnePasswordExport, importer.FormatOnePasswordCSV, importer.FormatBitwardenJSON, importer.FormatBitwardenCSV, importer.FormatLastPassCSV, importer.FormatCSV)
 }
 
 func readImportFile(path string) ([]byte, error) {

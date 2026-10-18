@@ -141,6 +141,9 @@ func main() {
 		GetSigningRememberDuration: func() time.Duration {
 			return time.Duration(approvalPreference.GetSigningRememberSeconds()) * time.Second
 		},
+		GetSSHRememberDuration: func() time.Duration {
+			return agent.GetSSHRememberDuration(approvalPreference.GetSSHRememberSeconds())
+		},
 	})
 	peerResolver := agent.ApplicationPeerResolver{
 		Base: localsocket.SystemPeerResolver{},

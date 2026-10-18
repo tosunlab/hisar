@@ -249,6 +249,16 @@ func printAccountDeletionPreview(output io.Writer, preview *session.AccountDelet
 	for _, vault := range preview.MemberVaults {
 		fmt.Fprintf(output, "  Your access is removed: %s (%s; it stays with its other owners)\n", describeDeletionVault(vault), vault.Role)
 	}
+	for _, organization := range preview.Organizations {
+		switch {
+		case organization.IsDeleted:
+			fmt.Fprintf(output, "  Organization deleted with its teams, as you are its last member: %q\n", organization.Name)
+		case organization.NewAdminName != "":
+			fmt.Fprintf(output, "  You leave the organization %q; %s becomes its admin\n", organization.Name, organization.NewAdminName)
+		default:
+			fmt.Fprintf(output, "  You leave the organization %q\n", organization.Name)
+		}
+	}
 	if preview.ShareLinkCount > 0 {
 		fmt.Fprintf(output, "  Share links revoked: %d\n", preview.ShareLinkCount)
 	}

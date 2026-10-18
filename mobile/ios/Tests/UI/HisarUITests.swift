@@ -248,14 +248,9 @@ final class HisarUITests: HisarUITestCase {
         confirm("Sign out", excludingIdentifier: "sign-out")
         waitFor(app.textFields["sign-in-email"])
 
-        let useDifferentServerButton = app.descendants(matching: .any)["sign-in-use-different-server"].firstMatch
-        if useDifferentServerButton.exists {
-            useDifferentServerButton.tap()
-        }
-        let serverField = app.textFields["sign-in-server"]
-        waitFor(serverField)
-        serverField.tap()
-        serverField.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 40) + server)
+        // Signing out keeps the server, behind the disclosure: signing back in needs no server typed.
+        XCTAssertFalse(app.textFields["sign-in-server"].exists)
+        XCTAssertTrue(app.staticTexts["Signs in to \(server.replacingOccurrences(of: "https://", with: ""))."].exists)
         type(email, into: app.textFields["sign-in-email"])
         type(secretKey, into: app.textFields["sign-in-secret-key"])
         type(Self.masterPassword, into: app.secureTextFields["sign-in-password"])

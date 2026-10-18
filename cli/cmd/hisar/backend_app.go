@@ -215,6 +215,56 @@ func (access appBackend) revokeDevice(ctx context.Context, deviceID string) erro
 	return access.client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeRevokeDevice, DeviceID: deviceID}, nil)
 }
 
+var errOrganizationsNeedNewerApp = errors.New("this version of the Hisar app does not know organizations; update the Hisar app, or run hisar with --standalone")
+
+// callOrganization sends a request of FeatureOrganizations, which an older app would refuse as unknown.
+func (access appBackend) callOrganization(ctx context.Context, request cliprotocol.Request, result any) error {
+	if !access.client.hello.HasFeature(cliprotocol.FeatureOrganizations) {
+		return errOrganizationsNeedNewerApp
+	}
+	return access.client.call(ctx, request, result)
+}
+
+func (access appBackend) listOrganizations(ctx context.Context) (cliprotocol.OrganizationListResult, error) {
+	var result cliprotocol.OrganizationListResult
+	err := access.callOrganization(ctx, cliprotocol.Request{Type: cliprotocol.TypeListOrganization}, &result)
+	return result, err
+}
+
+func (access appBackend) getOrganization(ctx context.Context, organizationID string) (cliprotocol.Organization, error) {
+	var result cliprotocol.OrganizationResult
+	err := access.callOrganization(ctx, cliprotocol.Request{Type: cliprotocol.TypeGetOrganization, OrganizationID: organizationID}, &result)
+	return result.Organization, err
+}
+
+func (access appBackend) createOrganization(ctx context.Context, name string) (cliprotocol.OrganizationSummary, error) {
+	var result cliprotocol.OrganizationSummaryResult
+	err := access.callOrganization(ctx, cliprotocol.Request{Type: cliprotocol.TypeCreateOrganization, Name: name}, &result)
+	return result.Organization, err
+}
+
+func (access appBackend) createTeam(ctx context.Context, organizationID, name string) (cliprotocol.Team, error) {
+	var result cliprotocol.TeamResult
+	err := access.callOrganization(ctx, cliprotocol.Request{Type: cliprotocol.TypeCreateTeam, OrganizationID: organizationID, Name: name}, &result)
+	return result.Team, err
+}
+
+func (access appBackend) createOrganizationVault(ctx context.Context, organizationID, teamID, name string) (cliprotocol.Vault, error) {
+	var result cliprotocol.VaultResult
+	err := access.callOrganization(ctx, cliprotocol.Request{Type: cliprotocol.TypeCreateOrganizationVault, OrganizationID: organizationID, TeamID: teamID, Name: name}, &result)
+	return result.Vault, err
+}
+
+func (access appBackend) changeOrganization(ctx context.Context, change cliprotocol.Request) error {
+	return access.callOrganization(ctx, change, nil)
+}
+
+func (access appBackend) completeOrganizationKeys(ctx context.Context) (cliprotocol.OrganizationKeysResult, error) {
+	var result cliprotocol.OrganizationKeysResult
+	err := access.callOrganization(ctx, cliprotocol.Request{Type: cliprotocol.TypeCompleteOrganizationKeys}, &result)
+	return result, err
+}
+
 // importThroughApp sends the items in batches and reports the progress.
 func importThroughApp(ctx context.Context, client *appClient, vaultID string, queuedItems []item.Item) (int, error) {
 	savedCount := 0

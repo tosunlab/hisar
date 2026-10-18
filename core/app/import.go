@@ -300,7 +300,7 @@ func (s *Service) ContinueImport() (ImportProgress, error) {
 	}
 	for batchCount := 0; batchCount < importBatchSize && len(pending.queuedItems) > 0; batchCount++ {
 		vaultItem := pending.queuedItems[0]
-		_, err := s.unlockedSession.SaveItem(ctx, vault, &vaultItem)
+		err := s.saveSessionItem(ctx, vault, &vaultItem)
 		if isImportStoppingError(err) {
 			return ImportProgress{}, convertError(err)
 		}

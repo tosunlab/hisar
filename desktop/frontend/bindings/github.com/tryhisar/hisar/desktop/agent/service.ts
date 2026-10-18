@@ -70,6 +70,13 @@ export function SetSSHApprovalRemembered(requestID: string, isRemembered: boolea
 }
 
 /**
+ * SetSSHRemember stores "Remember SSH approvals" (3600 seconds, or -1 for until Hisar locks) and applies it to the agent's remembered approvals.
+ */
+export function SetSSHRemember(seconds: number): $CancellablePromise<$models.Status> {
+    return $Call.ByID(1942528653, seconds);
+}
+
+/**
  * SetSigningRemember stores "Remember commit signing" (0, 600 or 3600 seconds) and forgets every remembered signature.
  */
 export function SetSigningRemember(seconds: number): $CancellablePromise<$models.Status> {

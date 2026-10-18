@@ -71,6 +71,8 @@ func TestRunImportChecksTheFileBeforeUnlocking(t *testing.T) {
 	os.WriteFile(invalidPath, []byte("foo,bar\nHunter2-SecretValue,1\n"), 0o600)
 	validPath := filepath.Join(directory, "export.csv")
 	os.WriteFile(validPath, []byte(testImportCSV), 0o600)
+	lastPassPath := filepath.Join(directory, "lastpass_export.csv")
+	os.WriteFile(lastPassPath, []byte("url,username,password,totp,extra,name,grouping,fav\nhttps://github.com,alice,lp-pass,,,GitHub,,0\n"), 0o600)
 	cases := []struct {
 		name    string
 		args    []string
@@ -81,7 +83,8 @@ func TestRunImportChecksTheFileBeforeUnlocking(t *testing.T) {
 		{"missing file", []string{filepath.Join(directory, "missing.csv")}, "could not open"},
 		{"directory", []string{directory}, "is a directory"},
 		{"unknown format", []string{validPath, "-format", "keepass"}, "unknown format"},
-		{"invalid file", []string{invalidPath}, "not a 1Password, Bitwarden or CSV export"},
+		{"invalid file", []string{invalidPath}, "not a 1Password, Bitwarden, LastPass or CSV export"},
+		{"LastPass format is known", []string{lastPassPath, "-format", "lastpass-csv", "-y"}, "not logged in"},
 		{"wrong explicit format", []string{validPath, "-format", "bitwarden-json"}, "Bitwarden"},
 		{"valid file needs a login", []string{validPath, "-y"}, "not logged in"},
 	}

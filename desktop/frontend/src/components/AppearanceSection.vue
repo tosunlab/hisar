@@ -1,13 +1,17 @@
 <script setup lang="ts">
+import { onMounted } from "vue";
 import { useSettingsRowVisibility } from "../settingsSections";
 import { allAppearanceOption, allThemeColorOption, chooseTheme, themeStore } from "../theme";
+import { loadWebsiteIconSetting, setWebsiteIconsEnabled, websiteIconState } from "../websiteicons";
 import AppIcon from "./AppIcon.vue";
 
 const isRowVisible = useSettingsRowVisibility();
+
+onMounted(loadWebsiteIconSetting);
 </script>
 
 <template>
-  <section v-show="isRowVisible('appearance') || isRowVisible('theme-color')" class="settings-block" data-testid="appearance-section">
+  <section v-show="isRowVisible('appearance') || isRowVisible('theme-color') || isRowVisible('website-icons')" class="settings-block" data-testid="appearance-section">
     <p class="section-label">Appearance</p>
     <div class="settings-group">
       <div v-show="isRowVisible('appearance')" class="setting">
@@ -61,8 +65,23 @@ const isRowVisible = useSettingsRowVisibility();
           </button>
         </div>
       </div>
+      <label v-show="isRowVisible('website-icons')" class="setting">
+        <div class="setting-text">
+          <strong>Show website icons</strong>
+          <p class="muted">Logins without an icon of their own show their website's. This Mac asks each website for it directly, never a third party.</p>
+        </div>
+        <input
+          class="switch"
+          type="checkbox"
+          name="websiteIcons"
+          :checked="websiteIconState.isEnabled"
+          data-testid="website-icons-switch"
+          @change="setWebsiteIconsEnabled(($event.target as HTMLInputElement).checked)"
+        />
+      </label>
     </div>
     <p v-if="themeStore.errorMessage" class="error settings-note" role="alert" data-testid="theme-error">{{ themeStore.errorMessage }}</p>
+    <p v-if="websiteIconState.errorMessage" class="error settings-note" role="alert" data-testid="website-icons-error">{{ websiteIconState.errorMessage }}</p>
   </section>
 </template>
 

@@ -61,6 +61,8 @@ type Settings struct {
 	IsPhoneApprovalDisabled bool `json:"phoneApprovalDisabled,omitempty"`
 	// SigningRememberSeconds is how long an approved commit signature may be remembered (0: always ask).
 	SigningRememberSeconds int `json:"signingRememberSeconds,omitempty"`
+	// SSHRememberSeconds is how long a remembered SSH approval lasts (0: the default, 1 hour; -1: until Hisar locks).
+	SSHRememberSeconds int `json:"sshRememberSeconds,omitempty"`
 	// IsOpenAtLoginConfigured records that the desktop app registered its login item once.
 	IsOpenAtLoginConfigured bool `json:"openAtLoginConfigured,omitempty"`
 	// IsOpenAtLoginDisabled is set when the user turned "Open Hisar at login" off.
@@ -69,6 +71,11 @@ type Settings struct {
 	// empty means the defaults.
 	Appearance string `json:"appearance,omitempty"`
 	Color      string `json:"color,omitempty"`
+	// IsWebsiteIconsDisabled stops this device from fetching website icons for logins.
+	IsWebsiteIconsDisabled bool `json:"websiteIconsDisabled,omitempty"`
+	// LastServer is the server this device last signed in to; signing out keeps it, so the sign-in form opens on it
+	// rather than the default server. No email or other account data is kept.
+	LastServer string `json:"lastServer,omitempty"`
 }
 
 type PairedBrowser struct {
@@ -130,8 +137,14 @@ func (s *State) Save() error {
 }
 
 // Reset forgets the account, session, pins and seqs but keeps the file location and the device preferences.
+// Reset forgets the account and keeps the device settings, remembering the server the account was on as LastServer
+// (a state already signed out keeps the one it has).
 func (s *State) Reset() {
-	*s = State{path: s.path, Pins: map[string][]byte{}, Seqs: map[string]int64{}, Settings: s.Settings}
+	settings := s.Settings
+	if s.Server != "" {
+		settings.LastServer = s.Server
+	}
+	*s = State{path: s.path, Pins: map[string][]byte{}, Seqs: map[string]int64{}, Settings: settings}
 }
 
 // IsMemberKeyChanged reports whether a signing key differs from the one pinned for the account.

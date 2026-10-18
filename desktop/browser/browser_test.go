@@ -19,18 +19,82 @@ import (
 
 func TestInstallAllHostManifest(t *testing.T) {
 	homeDirectory := t.TempDir()
-	chromeDirectory := filepath.Join(homeDirectory, "Library", "Application Support", "Google", "Chrome")
-	braveDirectory := filepath.Join(homeDirectory, "Library", "Application Support", "BraveSoftware", "Brave-Browser")
-	for _, directory := range []string{chromeDirectory, braveDirectory} {
+	support := filepath.Join(homeDirectory, "Library", "Application Support")
+	chromeDirectory := filepath.Join(support, "Google", "Chrome")
+	braveDirectory := filepath.Join(support, "BraveSoftware", "Brave-Browser")
+	diaDirectory := filepath.Join(support, "Dia", "User Data")
+	for _, directory := range []string{chromeDirectory, braveDirectory, diaDirectory} {
 		if err := os.MkdirAll(directory, 0o755); err != nil {
 			t.Fatal(err)
 		}
+		if err := os.WriteFile(filepath.Join(directory, "Local State"), []byte("{}"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Another password manager's registration leaves a browser directory without Local State: that browser has not run.
+	if err := os.MkdirAll(filepath.Join(support, "Microsoft Edge", "NativeMessagingHosts"), 0o755); err != nil {
+		t.Fatal(err)
 	}
 	installations := installHostManifests(homeDirectory, "/Applications/Hisar.app/Contents/MacOS/hisar-browser-host", "darwin")
-	if len(installations) != 2 || !installations[0].IsInstalled || installations[0].Name != "Google Chrome" || installations[1].Name != "Brave" {
+	if len(installations) != 3 || installations[0].Name != "Google Chrome" || installations[1].Name != "Brave" || installations[2].Name != "Dia" {
 		t.Fatalf("installations: %+v", installations)
 	}
-	content, err := os.ReadFile(filepath.Join(chromeDirectory, "NativeMessagingHosts", "com.tryhisar.hisar.json"))
+	// Dia reads Chrome's NativeMessagingHosts, not its own.
+	expectedPaths := map[string]string{
+		"Google Chrome": filepath.Join(chromeDirectory, "NativeMessagingHosts", "com.tryhisar.hisar.json"),
+		"Brave":         filepath.Join(braveDirectory, "NativeMessagingHosts", "com.tryhisar.hisar.json"),
+		"Dia":           filepath.Join(chromeDirectory, "NativeMessagingHosts", "com.tryhisar.hisar.json"),
+	}
+	var content []byte
+	for _, installation := range installations {
+		if !installation.IsInstalled || installation.ErrorMessage != "" || installation.ManifestPath != expectedPaths[installation.Name] {
+			t.Errorf("%s: %+v", installation.Name, installation)
+		}
+		content = readHostManifest(t, installation.ManifestPath, "/Applications/Hisar.app/Contents/MacOS/hisar-browser-host")
+	}
+	// Browsers that have not run, or are not installed at all, get the manifest too, so they find it at their first launch.
+	for _, directory := range []string{filepath.Join(support, "Microsoft Edge"), filepath.Join(support, "Arc", "User Data"), filepath.Join(support, "com.operasoftware.Opera")} {
+		if prepared, err := os.ReadFile(filepath.Join(directory, "NativeMessagingHosts", "com.tryhisar.hisar.json")); err != nil || !bytes.Equal(prepared, content) {
+			t.Errorf("%s: manifest not prepared: %v", directory, err)
+		}
+	}
+	manifestPath := installations[0].ManifestPath
+	before, _ := os.Stat(manifestPath)
+	time.Sleep(20 * time.Millisecond)
+	installHostManifests(homeDirectory, "/Applications/Hisar.app/Contents/MacOS/hisar-browser-host", "darwin")
+	if after, _ := os.Stat(manifestPath); !after.ModTime().Equal(before.ModTime()) {
+		t.Error("an unchanged manifest was rewritten")
+	}
+	if linuxes := installHostManifests(homeDirectory, "/usr/bin/hisar-browser-host", "linux"); len(linuxes) != 0 {
+		t.Errorf("linux browsers found in a macOS home: %+v", linuxes)
+	}
+}
+
+func TestInstallHostManifestForDiaAlone(t *testing.T) {
+	homeDirectory := t.TempDir()
+	diaDirectory := filepath.Join(homeDirectory, "Library", "Application Support", "Dia", "User Data")
+	if err := os.MkdirAll(diaDirectory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(diaDirectory, "Local State"), []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	installations := installHostManifests(homeDirectory, "/Applications/Hisar.app/Contents/MacOS/hisar-browser-host", "darwin")
+	chromeManifestPath := filepath.Join(homeDirectory, "Library", "Application Support", "Google", "Chrome", "NativeMessagingHosts", "com.tryhisar.hisar.json")
+	if len(installations) != 1 || installations[0].Name != "Dia" || !installations[0].IsInstalled || installations[0].ErrorMessage != "" ||
+		installations[0].ManifestPath != chromeManifestPath {
+		t.Fatalf("installations: %+v", installations)
+	}
+	readHostManifest(t, chromeManifestPath, "/Applications/Hisar.app/Contents/MacOS/hisar-browser-host")
+	if _, err := os.Stat(filepath.Join(diaDirectory, "NativeMessagingHosts")); err == nil {
+		t.Error("a manifest was written into Dia's own user data directory, which Dia does not read")
+	}
+}
+
+// readHostManifest checks the manifest at path names the host at hostPath for the extension alone, and returns its bytes.
+func readHostManifest(t *testing.T, path, hostPath string) []byte {
+	t.Helper()
+	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,20 +107,11 @@ func TestInstallAllHostManifest(t *testing.T) {
 	if err := json.Unmarshal(content, &manifest); err != nil {
 		t.Fatal(err)
 	}
-	if manifest.Name != browserprotocol.HostName || manifest.Type != "stdio" || manifest.Path != "/Applications/Hisar.app/Contents/MacOS/hisar-browser-host" ||
+	if manifest.Name != browserprotocol.HostName || manifest.Type != "stdio" || manifest.Path != hostPath ||
 		len(manifest.AllowedOrigins) != 1 || manifest.AllowedOrigins[0] != "chrome-extension://mmipiffoogblblocokimpemdopmdjghf/" {
-		t.Errorf("manifest = %+v", manifest)
+		t.Errorf("%s: manifest = %+v", path, manifest)
 	}
-	manifestPath := installations[0].ManifestPath
-	before, _ := os.Stat(manifestPath)
-	time.Sleep(20 * time.Millisecond)
-	installHostManifests(homeDirectory, "/Applications/Hisar.app/Contents/MacOS/hisar-browser-host", "darwin")
-	if after, _ := os.Stat(manifestPath); !after.ModTime().Equal(before.ModTime()) {
-		t.Error("an unchanged manifest was rewritten")
-	}
-	if linuxes := installHostManifests(homeDirectory, "/usr/bin/hisar-browser-host", "linux"); len(linuxes) != 0 {
-		t.Errorf("linux browsers found in a macOS home: %+v", linuxes)
-	}
+	return content
 }
 
 type recordingHandler struct {

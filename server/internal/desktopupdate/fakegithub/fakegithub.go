@@ -15,9 +15,11 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/tryhisar/hisar/core/project"
 )
 
-const DefaultRepository = "tosunlab/hisarapp-core"
+const DefaultRepository = project.GitHubRepository
 
 type Asset struct {
 	Name    string

@@ -137,12 +137,18 @@ func (s *Service) PreviewAccountDeletion(ctx context.Context, actor Actor) (apit
 		SentInvitationCount:     preview.SentInvitationCount,
 		ReceivedInvitationCount: preview.ReceivedInvitationCount,
 		DeviceCount:             preview.DeviceCount,
+		Organizations:           make([]apitypes.DeletionOrganization, 0, len(preview.Organizations)),
 	}
 	for _, ownedVault := range preview.OwnedVaults {
 		response.OwnedVaults = append(response.OwnedVaults, apitypes.DeletionOwnedVault{VaultID: ownedVault.ID, Type: ownedVault.Type, OtherMemberCount: ownedVault.OtherMemberCount})
 	}
 	for _, memberVault := range preview.MemberVaults {
 		response.MemberVaults = append(response.MemberVaults, apitypes.DeletionMemberVault{VaultID: memberVault.ID, Type: memberVault.Type, Role: memberVault.Role})
+	}
+	for _, organization := range preview.Organizations {
+		response.Organizations = append(response.Organizations, apitypes.DeletionOrganization{
+			OrganizationID: organization.ID, Name: organization.Name, IsDeleted: organization.IsDeleted, NewAdminName: organization.NewAdminName,
+		})
 	}
 	return response, nil
 }
@@ -173,6 +179,7 @@ func (s *Service) DeleteAccount(ctx context.Context, actor Actor, request *apity
 	s.Approvals.removeForAccount(actor.AccountID)
 	s.publishVaultsChanged(deleted.VaultMemberAccountIDs...)
 	s.publishShareInvitationsChanged(deleted.InvitationAccountIDs...)
+	s.publishOrganizationsChanged(deleted.OrganizationAccountIDs...)
 	s.recordAudit(ctx, Actor{AccountID: actor.AccountID, IP: actor.IP}, "account_deleted", map[string]int{"deletedVaults": deleted.DeletedVaultCount})
 	if s.isEmailConfigured() {
 		message := composeAccountDeletedEmail(deleted.Email, time.Now())
@@ -221,8 +228,9 @@ func composeAccountDeletedEmail(recipient string, deletedAt time.Time) mail.Mess
 		Body: fmt.Sprintf(`Your Hisar account %s was deleted on %s.
 
 Deleted with it: your vaults that had no other owner and their items, your access to
-vaults other people own, your devices and sessions, your share links, and the
-invitations you sent or received. Vaults that have another owner stay with them.
+vaults other people own, your organization memberships and the organizations you were
+the last member of, your devices and sessions, your share links, and the invitations
+you sent or received. Vaults that have another owner stay with them.
 
 The encrypted backups of the server are kept for 30 days, and its audit log for up to
 a year, as the privacy policy says. Nobody, including Hisar, can read your items in them.

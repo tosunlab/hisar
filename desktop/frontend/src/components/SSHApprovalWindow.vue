@@ -138,7 +138,9 @@ const allDetailLine = computed(() => {
 
 const allSecretName = computed(() => approval.value?.allSecretName ?? []);
 const rememberLabel = computed(
-  () => approval.value?.rememberLabel || `Don’t ask again for ${isAppRequester.value ? approval.value?.appName : approval.value?.clientName} for 1 hour`,
+  () =>
+    approval.value?.rememberLabel ||
+    `Don’t ask again for ${isAppRequester.value ? approval.value?.appName : approval.value?.clientName} ${approval.value?.rememberPeriod || "for 1 hour"}`,
 );
 
 // commandLineCoverage is who approving a command-line request approves, and for how long, by ApprovalEvent.coverage.
@@ -368,7 +370,7 @@ onBeforeUnmount(() => {
                 <div ref="promptSlot" class="prompt-slot small">
                   <AppIcon v-if="!api.hasNativeTouchIDView" name="fingerprint" :size="20" />
                 </div>
-                <span>{{ isSigning ? "Touch ID to sign" : "Touch ID to allow for 1 hour" }}</span>
+                <span>{{ isSigning ? "Touch ID to sign" : `Touch ID to allow ${approval.rememberPeriod || "for 1 hour"}` }}</span>
               </div>
               <button v-else class="link" data-testid="authorize-approval" @click.stop="startAuthorizing">Try Touch ID again</button>
               <button class="compact-deny" data-testid="deny-approval" @click.stop="deny">Deny</button>

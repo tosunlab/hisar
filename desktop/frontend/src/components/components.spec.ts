@@ -172,10 +172,29 @@ describe("SignInView", () => {
     expect(wrapper.find('[data-testid="use-different-server"]').exists()).toBe(false);
   });
 
-  it("shows the server field right away for a server other than the hosted one", () => {
+  it("keeps another server behind the disclosure too, naming it", async () => {
     const wrapper = mount(SignInView);
+    expect(wrapper.find('input[name="server"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="sign-in-server"]').text()).toBe("Signs in to hisar.test.");
+    await wrapper.find('[data-testid="use-different-server"]').trigger("click");
     expect((wrapper.find('input[name="server"]').element as HTMLInputElement).value).toBe("hisar.test");
-    expect(wrapper.find('[data-testid="use-different-server"]').exists()).toBe(false);
+  });
+
+  it("signs back in to the server the Mac used before signing out", async () => {
+    // A signed-out backend reports the last server and no email (core/app buildStatus).
+    store.status = { ...createStatus("signed-out"), server: "http://127.0.0.1:8080", email: "" };
+    api.signIn.mockResolvedValue(createStatus("unlocked"));
+    api.listAllVault.mockResolvedValue([]);
+    const wrapper = mount(SignInView);
+    expect(wrapper.find('input[name="server"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="sign-in-server"]').text()).toBe("Signs in to http://127.0.0.1:8080.");
+    expect((wrapper.find('input[name="email"]').element as HTMLInputElement).value).toBe("");
+    await wrapper.find('input[name="email"]').setValue("alice@example.com");
+    await wrapper.find('input[name="secretKey"]').setValue("H1-KEY");
+    await wrapper.find('input[name="password"]').setValue("master password");
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(api.signIn).toHaveBeenCalledWith("http://127.0.0.1:8080", "alice@example.com", "H1-KEY", "master password");
   });
 
   it("rates the new master password and blocks only clearly weak ones", async () => {
@@ -335,7 +354,7 @@ describe("ItemDetailPanel", () => {
   });
 
   it("masks the password until revealed", async () => {
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false } });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" } });
     expect(wrapper.text()).not.toContain("hunter2hunter2");
     expect(wrapper.text()).not.toContain("1234");
     await wrapper.find('button[aria-label="Reveal password"]').trigger("click");
@@ -344,7 +363,7 @@ describe("ItemDetailPanel", () => {
 
   it("copies through the backend instead of exposing the clipboard to the page", async () => {
     api.copyField.mockResolvedValue(undefined);
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false } });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" } });
     await wrapper.find('button[aria-label="Copy password"]').trigger("click");
     await flushPromises();
     expect(api.copyField).toHaveBeenCalledWith("personal", "item-1", "password");
@@ -352,7 +371,7 @@ describe("ItemDetailPanel", () => {
 
   it("asks for confirmation before deleting", async () => {
     api.deleteItem.mockResolvedValue(undefined);
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false } });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" } });
     await wrapper.find('button[aria-label="Delete item"]').trigger("click");
     expect(api.deleteItem).not.toHaveBeenCalled();
     await wrapper.find('[data-testid="confirm-delete"]').trigger("click");
@@ -361,7 +380,7 @@ describe("ItemDetailPanel", () => {
   });
 
   it("hides edit and delete for read-only vaults", () => {
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: false, vaultName: "Work", isShared: true } });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: false, vaultName: "Work", vaultType: "shared" } });
     expect(wrapper.findAll("button").map((button) => button.text())).not.toContain("Edit");
     expect(wrapper.find('button[aria-label="Delete item"]').exists()).toBe(false);
   });

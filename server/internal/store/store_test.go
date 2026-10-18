@@ -89,8 +89,19 @@ func TestMigrations(t *testing.T) {
 	if countTable(t, database, "account_preferences") != 1 {
 		t.Error("account_preferences missing")
 	}
+	if countTable(t, database, "organizations") != 1 || countTable(t, database, "team_vaults") != 1 || countColumn(t, database, "vaults", "key_generation") != 1 {
+		t.Error("the organization tables are missing")
+	}
 	rolledBack, err := database.RollbackMigration(ctx)
 	if err != nil {
+		t.Fatal(err)
+	}
+	if countTable(t, database, "organizations") != 0 || countTable(t, database, "team_vaults") != 0 || countColumn(t, database, "vaults", "organization_id") != 0 ||
+		countColumn(t, database, "vaults", "needs_rotation") != 0 || countTable(t, database, "account_preferences") != 1 {
+		t.Errorf("rolling back %s left the wrong schema", rolledBack.Source.Path)
+	}
+
+	if rolledBack, err = database.RollbackMigration(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if countTable(t, database, "account_preferences") != 0 {
@@ -149,7 +160,7 @@ func TestMigrations(t *testing.T) {
 		t.Errorf("accounts table still exists after rolling back %s", rolledBack.Source.Path)
 	}
 
-	if results, err = database.Migrate(ctx); err != nil || len(results) != 7 {
+	if results, err = database.Migrate(ctx); err != nil || len(results) != 8 {
 		t.Fatalf("re-apply: %d %v", len(results), err)
 	}
 	for _, tableName := range recoveryTables {
@@ -157,7 +168,8 @@ func TestMigrations(t *testing.T) {
 			t.Errorf("%s exists after re-applying", tableName)
 		}
 	}
-	if countColumn(t, database, "vaults", "recovery_opt_out") != 0 || countTable(t, database, "share_invitations") != 1 || countTable(t, database, "share_links") != 1 || countTable(t, database, "account_preferences") != 1 {
+	if countColumn(t, database, "vaults", "recovery_opt_out") != 0 || countTable(t, database, "share_invitations") != 1 || countTable(t, database, "share_links") != 1 ||
+		countTable(t, database, "account_preferences") != 1 || countTable(t, database, "organizations") != 1 {
 		t.Error("re-applying left the wrong schema")
 	}
 }
@@ -204,7 +216,7 @@ func TestRemoveRecoveryMigrationDeletesRecoveryData(t *testing.T) {
 	createTestAccount(t, database, "AAAAAA", "a@example.com")
 	createTestAccount(t, database, "BBBBBB", "b@example.com")
 	vaultID := createTestVault(t, database, "AAAAAA")
-	for range 4 {
+	for range 5 {
 		if _, err := database.RollbackMigration(ctx); err != nil {
 			t.Fatal(err)
 		}
@@ -223,7 +235,7 @@ func TestRemoveRecoveryMigrationDeletesRecoveryData(t *testing.T) {
 		}
 	}
 
-	if results, err := database.Migrate(ctx); err != nil || len(results) != 4 {
+	if results, err := database.Migrate(ctx); err != nil || len(results) != 5 {
 		t.Fatalf("applied %d: %v", len(results), err)
 	}
 	for _, tableName := range []string{"recovery_keyset", "vault_recovery", "recovery_tokens", "account_recovery"} {
@@ -242,7 +254,7 @@ func TestRemoveRecoveryMigrationDeletesRecoveryData(t *testing.T) {
 		t.Fatalf("vault after the migration: %+v %v", vaults, err)
 	}
 
-	for range 4 {
+	for range 5 {
 		if _, err := database.RollbackMigration(ctx); err != nil {
 			t.Fatal(err)
 		}
@@ -359,26 +371,26 @@ func TestPutItem(t *testing.T) {
 		return &Item{ID: itemID, Revision: revision, Overview: []byte("o-" + revision), Details: []byte("d"), UpdatedBy: "AAAAAA"}
 	}
 
-	if _, err := database.PutItem(ctx, vaultID, revision1, createItem(revision2)); !errors.Is(err, ErrConflict) {
+	if _, err := database.PutItem(ctx, vaultID, revision1, 0, createItem(revision2)); !errors.Is(err, ErrConflict) {
 		t.Errorf("base for missing item: %v", err)
 	}
 	first := createItem(revision1)
-	if _, err := database.PutItem(ctx, vaultID, "", first); err != nil || first.Seq != 1 {
+	if _, err := database.PutItem(ctx, vaultID, "", 0, first); err != nil || first.Seq != 1 {
 		t.Fatalf("create: seq=%d %v", first.Seq, err)
 	}
 	retry := createItem(revision1)
-	if _, err := database.PutItem(ctx, vaultID, "", retry); err != nil || retry.Seq != 1 {
+	if _, err := database.PutItem(ctx, vaultID, "", 0, retry); err != nil || retry.Seq != 1 {
 		t.Errorf("retry: seq=%d %v", retry.Seq, err)
 	}
-	currentItem, err := database.PutItem(ctx, vaultID, "", createItem(revision2))
+	currentItem, err := database.PutItem(ctx, vaultID, "", 0, createItem(revision2))
 	if !errors.Is(err, ErrConflict) || currentItem == nil || currentItem.Revision != revision1 {
 		t.Errorf("create over existing: %v %+v", err, currentItem)
 	}
 	second := createItem(revision2)
-	if _, err := database.PutItem(ctx, vaultID, revision1, second); err != nil || second.Seq != 2 {
+	if _, err := database.PutItem(ctx, vaultID, revision1, 0, second); err != nil || second.Seq != 2 {
 		t.Fatalf("update: seq=%d %v", second.Seq, err)
 	}
-	currentItem, err = database.PutItem(ctx, vaultID, revision1, createItem(revision3))
+	currentItem, err = database.PutItem(ctx, vaultID, revision1, 0, createItem(revision3))
 	if !errors.Is(err, ErrConflict) || currentItem.Revision != revision2 || string(currentItem.Overview) != "o-"+revision2 {
 		t.Errorf("stale base: %v %+v", err, currentItem)
 	}
@@ -405,7 +417,7 @@ func TestChangesPaging(t *testing.T) {
 	vaultID := createTestVault(t, database, "AAAAAA")
 	for range 5 {
 		item := &Item{ID: uuid.NewString(), Revision: uuid.NewString(), Overview: []byte{1}, Details: []byte{1}, UpdatedBy: "AAAAAA"}
-		if _, err := database.PutItem(ctx, vaultID, "", item); err != nil {
+		if _, err := database.PutItem(ctx, vaultID, "", 0, item); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -433,8 +445,8 @@ func TestPruneHistory(t *testing.T) {
 	createTestAccount(t, database, "AAAAAA", "a@example.com")
 	vaultID := createTestVault(t, database, "AAAAAA")
 	itemID, revision1, revision2 := uuid.NewString(), uuid.NewString(), uuid.NewString()
-	database.PutItem(ctx, vaultID, "", &Item{ID: itemID, Revision: revision1, Overview: []byte{1}, Details: []byte{1}, UpdatedBy: "AAAAAA"})
-	database.PutItem(ctx, vaultID, revision1, &Item{ID: itemID, Revision: revision2, Overview: []byte{2}, Details: []byte{2}, UpdatedBy: "AAAAAA"})
+	database.PutItem(ctx, vaultID, "", 0, &Item{ID: itemID, Revision: revision1, Overview: []byte{1}, Details: []byte{1}, UpdatedBy: "AAAAAA"})
+	database.PutItem(ctx, vaultID, revision1, 0, &Item{ID: itemID, Revision: revision2, Overview: []byte{2}, Details: []byte{2}, UpdatedBy: "AAAAAA"})
 	if _, err := database.pool.Exec(ctx, `UPDATE item_history SET updated_at = now() - interval '100 days'`); err != nil {
 		t.Fatal(err)
 	}

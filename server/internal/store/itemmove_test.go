@@ -16,7 +16,7 @@ func TestMoveItemRules(t *testing.T) {
 	sourceID := createTestVault(t, database, "AAAAAA")
 	targetID := createTestVault(t, database, "AAAAAA")
 	liveItem := &Item{ID: uuid.NewString(), Revision: uuid.NewString(), Overview: []byte("o"), Details: []byte("d"), UpdatedBy: "AAAAAA"}
-	if _, err := database.PutItem(ctx, sourceID, "", liveItem); err != nil {
+	if _, err := database.PutItem(ctx, sourceID, "", 0, liveItem); err != nil {
 		t.Fatal(err)
 	}
 	buildMove := func(accountID, baseRevision string) *ItemMove {
@@ -42,13 +42,13 @@ func TestMoveItemRules(t *testing.T) {
 
 	// A live item with the same ID in the target stops the move.
 	clash := &Item{ID: liveItem.ID, Revision: uuid.NewString(), Overview: []byte("o"), Details: []byte("d"), UpdatedBy: "AAAAAA"}
-	if _, err := database.PutItem(ctx, targetID, "", clash); err != nil {
+	if _, err := database.PutItem(ctx, targetID, "", 0, clash); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := database.MoveItem(ctx, buildMove("AAAAAA", liveItem.Revision)); !errors.Is(err, ErrExists) {
 		t.Errorf("moving onto a live item: %v", err)
 	}
-	if _, err := database.PutItem(ctx, targetID, clash.Revision, &Item{ID: clash.ID, Revision: uuid.NewString(), Deleted: true, Overview: []byte("t"), Details: []byte("t"), UpdatedBy: "AAAAAA"}); err != nil {
+	if _, err := database.PutItem(ctx, targetID, clash.Revision, 0, &Item{ID: clash.ID, Revision: uuid.NewString(), Deleted: true, Overview: []byte("t"), Details: []byte("t"), UpdatedBy: "AAAAAA"}); err != nil {
 		t.Fatal(err)
 	}
 

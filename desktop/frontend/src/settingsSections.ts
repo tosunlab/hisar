@@ -1,7 +1,7 @@
 import { inject, type InjectionKey } from "vue";
 import type { IconName } from "./components/AppIcon.vue";
 
-export type SettingsSectionID = "general" | "security" | "ssh" | "developer" | "browser" | "people" | "devices" | "export" | "account" | "help";
+export type SettingsSectionID = "general" | "security" | "ssh" | "developer" | "browser" | "people" | "organizations" | "devices" | "export" | "account" | "help";
 
 export interface SettingsRow {
   id: string;
@@ -24,6 +24,7 @@ export const allSettingsSection: SettingsSection[] = [
     allRow: [
       { id: "appearance", title: "Appearance", keywords: "theme light dark system mode" },
       { id: "theme-color", title: "Color", keywords: "theme colour accent tint neutral blue purple green" },
+      { id: "website-icons", title: "Show website icons", keywords: "favicon logo item icon login privacy" },
       { id: "open-at-login", title: "Open Hisar at login", keywords: "startup login items menu bar launch" },
       { id: "version", title: "Check for updates", keywords: "version update release" },
       { id: "automatic-updates", title: "Automatically check for updates", keywords: "update daily" },
@@ -48,6 +49,7 @@ export const allSettingsSection: SettingsSection[] = [
     icon: "key",
     allRow: [
       { id: "ssh-agent", title: "Hisar SSH agent", keywords: "ssh config use hisar for ssh identityagent socket keys" },
+      { id: "ssh-remember", title: "Remember SSH approvals", keywords: "don't ask again hour until locks remember ssh approval duration" },
       { id: "compact-ssh-approvals", title: "Compact SSH approvals", keywords: "approval card notification dialog" },
       { id: "phone-approval", title: "Approve requests on my iPhone", keywords: "phone iphone allow approvals approve requests" },
       { id: "commit-signing", title: "Remember commit signing", keywords: "git signature sign gpg always asks rebase remember commit tag" },
@@ -83,6 +85,16 @@ export const allSettingsSection: SettingsSection[] = [
       { id: "people", title: "People you share with", keywords: "security code fingerprint share" },
       { id: "sent-invitations", title: "Invitations you sent", keywords: "cancel pending share" },
       { id: "invite", title: "Invite to Hisar", keywords: "invite someone email invitation new account sign up" },
+    ],
+  },
+  {
+    id: "organizations",
+    label: "Organizations",
+    icon: "building",
+    allRow: [
+      { id: "organization-invitations", title: "Invitations to organizations", keywords: "accept decline join organization invite" },
+      { id: "organizations", title: "Your organizations", keywords: "organization team teams company members admin vaults security code" },
+      { id: "create-organization", title: "Create organization", keywords: "new organization team company" },
     ],
   },
   {

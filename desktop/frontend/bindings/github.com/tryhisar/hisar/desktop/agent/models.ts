@@ -61,6 +61,11 @@ export interface ApprovalEvent {
     "workingDirectory": string;
     "rememberLabel": string;
     "isRememberedByDefault": boolean;
+
+    /**
+     * RememberPeriod says how long a remembered SSH approval lasts, as the checkbox ends: "for 1 hour" or "until Hisar locks".
+     */
+    "rememberPeriod": string;
     "isConnectionApproval": boolean;
     "warning": string;
 }
@@ -84,5 +89,6 @@ export interface Status {
     "isCompactApproval": boolean;
     "isPhoneApproval": boolean;
     "signingRememberSeconds": number;
+    "sshRememberSeconds": number;
     "backupPath": string;
 }

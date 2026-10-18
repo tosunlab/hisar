@@ -40,7 +40,7 @@ func TestShareInvitationLifecycle(t *testing.T) {
 		t.Errorf("a non-owner sees sent invitations: %+v", sent)
 	}
 
-	if _, err := database.GrantAccess(ctx, vaultID, Member{AccountID: "BBBBBB", Role: "reader", WrappedKey: []byte{1}, GrantedBy: "AAAAAA"}); !errors.Is(err, ErrNoInvitation) {
+	if _, err := database.GrantAccess(ctx, vaultID, Member{AccountID: "BBBBBB", Role: "reader", WrappedKey: []byte{1}, GrantedBy: "AAAAAA"}, 0); !errors.Is(err, ErrNoInvitation) {
 		t.Errorf("grant before acceptance: %v", err)
 	}
 	if _, _, err := database.AcceptShareInvitation(ctx, invitationID, "CCCCCC", "c@example.com"); !errors.Is(err, ErrNotFound) {
@@ -80,10 +80,10 @@ func TestShareInvitationLifecycle(t *testing.T) {
 		t.Errorf("acceptance from another accept: %v", err)
 	}
 
-	if _, err := database.GrantAccess(ctx, vaultID, Member{AccountID: "CCCCCC", Role: "reader", WrappedKey: []byte{1}, GrantedBy: "AAAAAA"}); !errors.Is(err, ErrNoInvitation) {
+	if _, err := database.GrantAccess(ctx, vaultID, Member{AccountID: "CCCCCC", Role: "reader", WrappedKey: []byte{1}, GrantedBy: "AAAAAA"}, 0); !errors.Is(err, ErrNoInvitation) {
 		t.Errorf("grant to an account without an invitation: %v", err)
 	}
-	isNewMember, err := database.GrantAccess(ctx, vaultID, Member{AccountID: "BBBBBB", Role: "reader", WrappedKey: []byte{1}, GrantedBy: "AAAAAA"})
+	isNewMember, err := database.GrantAccess(ctx, vaultID, Member{AccountID: "BBBBBB", Role: "reader", WrappedKey: []byte{1}, GrantedBy: "AAAAAA"}, 0)
 	if err != nil || !isNewMember {
 		t.Fatalf("grant after acceptance: %v %v", isNewMember, err)
 	}
@@ -96,7 +96,7 @@ func TestShareInvitationLifecycle(t *testing.T) {
 	if _, err := database.GetShareAcceptance(ctx, invitationID, acceptedAt); !errors.Is(err, ErrNotFound) {
 		t.Errorf("acceptance after completion: %v", err)
 	}
-	if isNewMember, err := database.GrantAccess(ctx, vaultID, Member{AccountID: "BBBBBB", Role: "editor", WrappedKey: []byte{2}, GrantedBy: "AAAAAA"}); err != nil || isNewMember {
+	if isNewMember, err := database.GrantAccess(ctx, vaultID, Member{AccountID: "BBBBBB", Role: "editor", WrappedKey: []byte{2}, GrantedBy: "AAAAAA"}, 0); err != nil || isNewMember {
 		t.Errorf("role change: %v %v", isNewMember, err)
 	}
 	if role, _ := database.GetVaultRole(ctx, vaultID, "BBBBBB"); role != "editor" {

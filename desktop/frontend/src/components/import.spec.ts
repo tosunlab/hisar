@@ -27,6 +27,7 @@ const allImportTestVault: VaultSummary[] = [
 ];
 const allTestFormat = [
   { id: "1pux", name: "1Password export (.1pux)" },
+  { id: "lastpass-csv", name: "LastPass CSV" },
   { id: "csv", name: "CSV (Chrome, Firefox, Safari, Edge and others)" },
 ];
 
@@ -193,8 +194,11 @@ describe("Import panel", () => {
     expect(wrapper.find('[data-testid="import-format"]').findAll("option").map((option) => option.text())).toEqual([
       "Detect from the file",
       "1Password export (.1pux)",
+      "LastPass CSV",
       "CSV (Chrome, Firefox, Safari, Edge and others)",
     ]);
+    expect(wrapper.text()).toContain("From 1Password, Bitwarden, LastPass, or a CSV file from your browser");
+    expect(wrapper.find(".how-to").text()).toContain("LastPassAccount options → Advanced → Export, then save the file as CSV.");
     await wrapper.find('[data-testid="import-format"]').setValue("csv");
     api.chooseImportFile.mockResolvedValue(createImportPreview({ fileName: "" }));
     await wrapper.find('[data-testid="import-choose"]').trigger("submit");

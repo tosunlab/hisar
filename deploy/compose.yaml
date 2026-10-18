@@ -24,7 +24,7 @@ services:
     environment:
       HISAR_PUBLIC_URL: https://${HISAR_DOMAIN:?set HISAR_DOMAIN in .env}
       HISAR_TRUST_PROXY: "true"
-      # Desktop app updates from GitHub Releases; empty means tosunlab/hisarapp-core without a token, "off" disables them.
+      # Desktop app updates from GitHub Releases; empty means tosunlab/hisar without a token, "off" disables them.
       HISAR_DESKTOP_UPDATE_GITHUB_REPOSITORY: ${HISAR_DESKTOP_UPDATE_GITHUB_REPOSITORY:-}
       HISAR_DESKTOP_UPDATE_GITHUB_TOKEN: ${HISAR_DESKTOP_UPDATE_GITHUB_TOKEN:-}
       # Optional email for invites and share invitations; empty disables it.

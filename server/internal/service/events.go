@@ -6,6 +6,7 @@ import (
 
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/server/internal/realtime"
+	"github.com/tryhisar/hisar/server/internal/store"
 )
 
 // publishVaultChanged tells every member of a vault that it reached seq.
@@ -42,6 +43,27 @@ func (s *Service) publishVaultsChangedToMembers(ctx context.Context, vaultID str
 
 func (s *Service) publishShareInvitationsChanged(accountIDs ...string) {
 	s.events.Publish(accountIDs, realtime.Event{Name: apitypes.EventShareInvitationsChanged, Data: struct{}{}})
+}
+
+// publishOrganizationsChanged tells accounts that an organization they belong to, or an invitation to one, changed.
+func (s *Service) publishOrganizationsChanged(accountIDs ...string) {
+	s.events.Publish(accountIDs, realtime.Event{Name: apitypes.EventOrganizationsChanged, Data: struct{}{}})
+}
+
+// publishOrganizationChange tells the organization's members, and the accounts whose invitation changed, that it
+// changed, and those whose vault access or key requests changed that their vaults did.
+func (s *Service) publishOrganizationChange(change *store.OrganizationChange) {
+	s.publishOrganizationsChanged(change.AccountIDs...)
+	s.publishVaultsChanged(change.VaultAccountIDs...)
+}
+
+// publishOrganizationsChangedToMembers tells the organization's members, and otherAccountIDs, that it changed.
+func (s *Service) publishOrganizationsChangedToMembers(ctx context.Context, organizationID string, otherAccountIDs ...string) {
+	memberIDs, err := s.store.ListOrganizationMemberIDs(ctx, organizationID)
+	if err != nil {
+		log.Printf("events: members of organization %s: %v", organizationID, err)
+	}
+	s.publishOrganizationsChanged(append(otherAccountIDs, memberIDs...)...)
 }
 
 // publishShareInvitationsChangedToOwner tells the vault's owners, who complete accepted shares, and otherAccountIDs.

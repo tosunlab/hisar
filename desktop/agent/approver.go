@@ -105,8 +105,10 @@ type ApprovalEvent struct {
 	WorkingDirectory      string `json:"workingDirectory"`
 	RememberLabel         string `json:"rememberLabel"`
 	IsRememberedByDefault bool   `json:"isRememberedByDefault"`
-	IsConnectionApproval  bool   `json:"isConnectionApproval"`
-	Warning               string `json:"warning"`
+	// RememberPeriod says how long a remembered SSH approval lasts, as the checkbox ends: "for 1 hour" or "until Hisar locks".
+	RememberPeriod       string `json:"rememberPeriod"`
+	IsConnectionApproval bool   `json:"isConnectionApproval"`
+	Warning              string `json:"warning"`
 }
 
 type ApprovalFailedEvent struct {
@@ -140,7 +142,10 @@ type ApproverConfig struct {
 	PhoneApprovalTimeout time.Duration
 	// GetSigningRememberDuration is the Settings choice for remembering commit signatures; 0 always asks.
 	GetSigningRememberDuration func() time.Duration
-	Now                        func() time.Time
+	// GetSSHRememberDuration is the Settings choice for how long a remembered SSH approval lasts; 0 means until Hisar locks,
+	// nil the agent's default.
+	GetSSHRememberDuration func() time.Duration
+	Now                    func() time.Time
 }
 
 type approvalResponse struct {

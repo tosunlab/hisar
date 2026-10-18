@@ -14,11 +14,13 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/tryhisar/hisar/core/project"
 )
 
 const (
 	DefaultGitHubAPIURL     = "https://api.github.com"
-	DefaultGitHubRepository = "tosunlab/hisarapp-core"
+	DefaultGitHubRepository = project.GitHubRepository
 	releaseTagPrefix        = "desktop-"
 	releasePageSize         = 100
 	maximumReleasePageCount = 10

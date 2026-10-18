@@ -110,7 +110,7 @@ describe("Creating a software license", () => {
 describe("Viewing a software license", () => {
   it("masks the license key until revealed, copies it and opens the download URL", async () => {
     store.selectedItem = createSoftwareLicenseItem();
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false } });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" } });
     expect(wrapper.find('[data-testid="software-license-summary"]').text()).toBe("Version 100 · Alice Example");
     expect(wrapper.find('[data-testid="card-Product"]').text()).toBe("Sketch");
     expect(wrapper.find('[data-testid="card-License key"]').text()).not.toContain("TEST-LICENSE-KEY");
@@ -129,7 +129,7 @@ describe("Viewing a software license", () => {
 
   it("opens only http and https download URLs", async () => {
     store.selectedItem = createSoftwareLicenseItem({ softwareLicense: { ...createSoftwareLicenseItem().softwareLicense!, downloadUrl: "file:///Applications" } });
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false } });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" } });
     await wrapper.find('button[aria-label="Open Download URL"]').trigger("click");
     expect(api.openURL).not.toHaveBeenCalled();
     expect(store.errorMessage).toBe("Only http and https websites can be opened");
@@ -139,7 +139,7 @@ describe("Viewing a software license", () => {
     const license = createSoftwareLicenseItem({ notes: "", fields: [] });
     expect(hasShareableField(license)).toBe(true);
     store.selectedItem = license;
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: false, vaultName: "Personal", isShared: false } });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: false, vaultName: "Personal", vaultType: "personal" } });
     expect(wrapper.find('[data-testid="share-link"]').exists()).toBe(true);
   });
 

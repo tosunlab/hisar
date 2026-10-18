@@ -8,7 +8,7 @@ commands:
   whoami                                                 show the signed-in account
   vaults                                                 list vaults
   vault-create       <name>                              create a shared vault
-  vault              rename|delete|leave|create <vault>  rename, delete or leave a vault, or create one (rename <vault> [name] | delete <vault> [--move-to v | --delete-items --confirm <name>] [-y] | leave <vault> [-y] | create <name>)
+  vault              rename|delete|leave|create|give|take <vault> rename, delete or leave a vault, create one, or give an organization vault to a team (rename <vault> [name] | delete <vault> [--move-to v | --delete-items --confirm <name>] [-y] | leave <vault> [-y] | create <name> [--org <org> --team <team>] | give <vault> --org <org> --team <team> [-r owner|editor|reader] | take <vault> --org <org> --team <team>)
   ls                 [-v vault] [--tag tag] [--favorites] list items; --tag keeps those with a tag, --favorites lists your favorites in every vault
   get                <item> [-f field] [-v vault]        show an item, or one field of it (e.g. -f password, -f code)
   read               <hisar://vault/item/field> [--no-newline] print one secret, for scripts
@@ -19,7 +19,7 @@ commands:
   rm                 <item> [-v vault]                   delete an item
   favorite           <item> [-v vault]                   add an item to your Favorites, on all your devices (only you see them)
   unfavorite         <item> [-v vault]                   remove an item from your Favorites
-  import             <file> [-v vault] [-format f] [-y]  import a Hisar export, a 1Password, Bitwarden or browser CSV export, or a .env file (--item, --keys, --dry-run)
+  import             <file> [-v vault] [-format f] [-y]  import a Hisar export, a 1Password, Bitwarden, LastPass or browser CSV export, or a .env file (--item, --keys, --dry-run)
   export             [-o file] [--format encrypted|plain] export every vault you can open, encrypted with a passphrase you choose or as plain JSON
   generate           [-n length] [-no-symbols]           generate a password
   people                                                 list the people you share vaults with, with their security codes
@@ -27,6 +27,9 @@ commands:
   unshare            <vault> <email>                     remove someone from a vault and rotate its key
   invitations        [accept|decline|cancel <id>]        list share invitations, answer them, and finish accepted shares
   invite             <email>                             email someone an invite to create a Hisar account
+  orgs                                                   list your organizations and invitations to them; gives team members the vault keys they wait for and rotates the vaults someone lost
+  org                <action> <org> [arguments]          manage an organization (create <name> | show <org> | rename <org> <name> | delete <org> [-y] | invite <org> <email> [-r admin|member] | cancel <org> <email> | accept [id] | decline [id] | role <org> <email> admin|member | remove <org> <email> [-y] | leave <org> [-y])
+  team               <action> <org> <team> [arguments]   manage an organization's teams (create <org> <team> | rename <org> <team> <name> | delete <org> <team> [-y] | add <org> <team> <email> | remove <org> <team> <email>)
   share-link         <item>|--text|open <url>|revoke <id> share an item or text with anyone through an end-to-end encrypted link (--field, --expires 1h|1d|7d|30d, --views, --passphrase)
   share-links                                            list your live share links
   account            change-password|replace-secret-key [-o file]|delete change your master password, replace your Secret Key (with a new Emergency Kit) or delete your account

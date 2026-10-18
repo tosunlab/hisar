@@ -12,11 +12,15 @@ import type {
   ItemDetail,
   LauncherApp,
   LoginItemStatus,
+  Organization,
+  OrganizationInvitation,
+  OrganizationMember,
   Person,
   ReceivedShareInvitation,
   SentShareInvitation,
   SSHAgentStatus,
   Status,
+  Team,
   UpdateStatus,
   VaultActions,
   VaultMember,
@@ -243,6 +247,7 @@ export function createSSHAgentStatus(overrides: Partial<SSHAgentStatus> = {}): S
     isCompactApproval: false,
     isPhoneApproval: true,
     signingRememberSeconds: 0,
+    sshRememberSeconds: 3600,
     backupPath: "",
     ...overrides,
   };
@@ -295,6 +300,7 @@ export function createApprovalEvent(overrides: Partial<ApprovalEvent> = {}): App
     workingDirectory: "",
     rememberLabel: "",
     isRememberedByDefault: true,
+    rememberPeriod: "for 1 hour",
     isConnectionApproval: false,
     warning: "",
     ...overrides,
@@ -520,6 +526,50 @@ export function createVaultMember(overrides: Partial<VaultMember> = {}): VaultMe
 export const testBob = { accountId: "BOB222", name: "Bob Stone", email: "bob@example.com", securityCode: "C0FF EE12 3456 789A", isCurrentUser: false };
 export const testCarol = { accountId: "CAROL3", name: "Carol", email: "carol@example.com", securityCode: "0A1B 2C3D 4E5F 6071", isCurrentUser: false };
 
+export function createOrganizationMember(overrides: Partial<OrganizationMember> = {}): OrganizationMember {
+  return { accountId: "ALICE1", name: "Alice", email: "alice@example.com", role: "admin", securityCode: "3F2A 91C0 7B44 E1D8", isCurrentUser: true, isKeyChanged: false, ...overrides };
+}
+
+export function createOrganizationTeam(overrides: Partial<Team> = {}): Team {
+  return {
+    id: "platform",
+    name: "Platform",
+    members: [
+      { accountId: "ALICE1", name: "Alice", email: "alice@example.com", isCurrentUser: true },
+      { accountId: testBob.accountId, name: testBob.name, email: testBob.email, isCurrentUser: false },
+    ],
+    vaults: [{ vaultId: "deploy", name: "Deploy", role: "owner", canOpen: true }],
+    ...overrides,
+  };
+}
+
+// createOrganizationDetail is Acme as its admin Alice sees it: Bob is a member, both are in Platform, which owns Deploy.
+export function createOrganizationDetail(overrides: Partial<Organization> = {}): Organization {
+  return {
+    id: "acme",
+    name: "Acme",
+    role: "admin",
+    isAdmin: true,
+    members: [createOrganizationMember(), createOrganizationMember({ ...testBob, role: "member" })],
+    teams: [createOrganizationTeam()],
+    invitations: [],
+    ...overrides,
+  };
+}
+
+export function createOrganizationInvitation(overrides: Partial<OrganizationInvitation> = {}): OrganizationInvitation {
+  return {
+    id: "invitation-to-globex",
+    organizationId: "globex",
+    organizationName: "Globex",
+    role: "member",
+    invitedByName: "Ada",
+    invitedByEmail: "ada@example.com",
+    expiresAt: "2026-10-18T09:00:00Z",
+    ...overrides,
+  };
+}
+
 export function createDevice(overrides: Partial<Device> = {}): Device {
   return {
     id: "device-1",
@@ -578,6 +628,10 @@ export function createApiMock() {
     deleteItem: vi.fn(),
     moveItem: vi.fn(),
     duplicateItem: vi.fn(),
+    prepareItemIcon: vi.fn(),
+    getWebsiteIcon: vi.fn().mockResolvedValue(""),
+    isWebsiteIconsEnabled: vi.fn().mockResolvedValue(true),
+    setWebsiteIconsEnabled: vi.fn().mockResolvedValue(undefined),
     listAllFavoriteItem: vi.fn().mockResolvedValue([]),
     setItemFavorite: vi.fn().mockResolvedValue(undefined),
     convertToSecureNote: vi.fn(),
@@ -596,6 +650,27 @@ export function createApiMock() {
     acceptShareInvitation: vi.fn(),
     declineShareInvitation: vi.fn(),
     cancelShareInvitation: vi.fn(),
+    listAllOrganization: vi.fn().mockResolvedValue({ organizations: [], invitations: [] }),
+    getOrganization: vi.fn(),
+    createOrganization: vi.fn(),
+    renameOrganization: vi.fn().mockResolvedValue(undefined),
+    deleteOrganization: vi.fn().mockResolvedValue(undefined),
+    leaveOrganization: vi.fn().mockResolvedValue(undefined),
+    inviteToOrganization: vi.fn().mockResolvedValue(undefined),
+    cancelOrganizationInvitation: vi.fn().mockResolvedValue(undefined),
+    acceptOrganizationInvitation: vi.fn().mockResolvedValue(undefined),
+    declineOrganizationInvitation: vi.fn().mockResolvedValue(undefined),
+    setOrganizationMemberRole: vi.fn().mockResolvedValue(undefined),
+    removeOrganizationMember: vi.fn().mockResolvedValue(undefined),
+    createTeam: vi.fn(),
+    renameTeam: vi.fn().mockResolvedValue(undefined),
+    deleteTeam: vi.fn().mockResolvedValue(undefined),
+    addTeamMember: vi.fn().mockResolvedValue(undefined),
+    removeTeamMember: vi.fn().mockResolvedValue(undefined),
+    giveVaultToTeam: vi.fn().mockResolvedValue(undefined),
+    takeVaultFromTeam: vi.fn().mockResolvedValue(undefined),
+    createOrganizationVault: vi.fn(),
+    listAllWaitingVaultKey: vi.fn().mockResolvedValue({ waiting: [], deliveryError: "", rotationError: "" }),
     listAllShareAwaitingUnlock: vi.fn().mockResolvedValue([]),
     listAllDevice: vi.fn().mockResolvedValue([]),
     revokeDevice: vi.fn(),
@@ -631,6 +706,7 @@ export function createApiMock() {
     setCompactSSHApproval: vi.fn().mockResolvedValue(createSSHAgentStatus({ isCompactApproval: true })),
     setPhoneApproval: vi.fn().mockResolvedValue(createSSHAgentStatus({ isPhoneApproval: false })),
     setSigningRemember: vi.fn().mockResolvedValue(createSSHAgentStatus({ signingRememberSeconds: 600 })),
+    setSSHRemember: vi.fn().mockResolvedValue(createSSHAgentStatus({ sshRememberSeconds: -1 })),
     fitSSHApprovalWindow: vi.fn().mockResolvedValue(undefined),
     cancelApprovalTouchID: vi.fn().mockResolvedValue(undefined),
     setApprovalTouchIDFrame: vi.fn().mockResolvedValue(undefined),
