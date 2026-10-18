@@ -78,13 +78,15 @@ func (s *Store) DeleteShareLink(ctx context.Context, accountID, linkID string) e
 	return nil
 }
 
-// ViewShareLink counts one view; the row lock serializes concurrent views and the last allowed one deletes the link.
+// ViewShareLink counts one view; the row lock serializes concurrent views and the last allowed one deletes the link. A
+// link of a suspended account is not found.
 func (s *Store) ViewShareLink(ctx context.Context, linkID string) (*ShareLink, error) {
 	var link ShareLink
 	err := s.runInTransaction(ctx, func(transaction pgx.Tx) error {
 		err := transaction.QueryRow(ctx, `
 			UPDATE share_links SET view_count = view_count + 1
 			WHERE id = $1 AND expires_at > now() AND (max_views = 0 OR view_count < max_views)
+			  AND account_id IN (SELECT id FROM accounts WHERE suspended_at IS NULL)
 			RETURNING id, account_id, ciphertext, passphrase_salt, coalesce(passphrase_iterations, 0), max_views, view_count, created_at, expires_at`,
 			linkID,
 		).Scan(&link.ID, &link.AccountID, &link.Ciphertext, &link.PassphraseSalt, &link.PassphraseIterations, &link.MaxViews, &link.ViewCount, &link.CreatedAt, &link.ExpiresAt)

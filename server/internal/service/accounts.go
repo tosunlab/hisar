@@ -68,7 +68,7 @@ func (s *Service) RevokeDevice(ctx context.Context, actor Actor, deviceID string
 	if !IsValidUUID(deviceID) {
 		return ErrNotFound
 	}
-	switch err := s.store.RevokeDevice(ctx, actor.AccountID, deviceID); {
+	switch _, err := s.store.RevokeDevice(ctx, actor.AccountID, deviceID); {
 	case errors.Is(err, store.ErrNotFound):
 		return ErrNotFound
 	case err != nil:

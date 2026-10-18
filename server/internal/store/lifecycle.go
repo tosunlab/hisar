@@ -72,7 +72,7 @@ func HashOpaqueRecord(opaqueRecord []byte) []byte {
 // lockProvenAccount fails with ErrConflict when the OPAQUE record changed after the proof, and ErrNotFound when the session ended.
 func lockProvenAccount(ctx context.Context, transaction pgx.Tx, accountID string, tokenHash, provenRecordHash []byte) (email, name, deviceID string, err error) {
 	var opaqueRecord []byte
-	err = transaction.QueryRow(ctx, `SELECT email, name, opaque_record FROM accounts WHERE id = $1 FOR UPDATE`, accountID).Scan(&email, &name, &opaqueRecord)
+	err = transaction.QueryRow(ctx, `SELECT email, name, opaque_record FROM accounts WHERE id = $1 FOR NO KEY UPDATE`, accountID).Scan(&email, &name, &opaqueRecord)
 	if err != nil {
 		return "", "", "", convertNoRowsToNotFound(err)
 	}
@@ -235,11 +235,20 @@ func collectAccountIDs(ctx context.Context, transaction pgx.Tx, query string, ar
 	return pgx.CollectRows(rows, pgx.RowTo[string])
 }
 
-// DeleteAccount deletes the account and everything that is only its own in one transaction.
+// DeleteAccount deletes the account and everything that is only its own in one transaction, after checking that the
+// session is live and the OPAQUE record is the one the proof was checked against.
+func (s *Store) DeleteAccount(ctx context.Context, accountID string, tokenHash, provenRecordHash []byte) (*DeletedAccount, error) {
+	return s.deleteAccount(ctx, accountID, func(transaction pgx.Tx) (email, name string, err error) {
+		email, name, _, err = lockProvenAccount(ctx, transaction, accountID, tokenHash, provenRecordHash)
+		return email, name, err
+	})
+}
+
+// deleteAccount runs the deletion steps after lockAccount locked the account row and returned its email and name.
 // Vaults with another owner stay with them; only this account's access is removed, and an organization vault it held a
 // key to is marked for rotation, as after a team removal (§5.11). In its organizations the remaining member who joined
 // earliest becomes admin after their last admin, and an organization left without members is deleted.
-func (s *Store) DeleteAccount(ctx context.Context, accountID string, tokenHash, provenRecordHash []byte) (*DeletedAccount, error) {
+func (s *Store) deleteAccount(ctx context.Context, accountID string, lockAccount func(transaction pgx.Tx) (email, name string, err error)) (*DeletedAccount, error) {
 	deleted := &DeletedAccount{}
 	err := s.runInTransaction(ctx, func(transaction pgx.Tx) error {
 		// Organizations are locked before the account, in ID order, like every other change to them (§5.11).
@@ -252,7 +261,7 @@ func (s *Store) DeleteAccount(ctx context.Context, accountID string, tokenHash, 
 		if _, err := pgx.CollectRows(organizationRows, pgx.RowTo[string]); err != nil {
 			return err
 		}
-		email, name, _, err := lockProvenAccount(ctx, transaction, accountID, tokenHash, provenRecordHash)
+		email, name, err := lockAccount(transaction)
 		if err != nil {
 			return err
 		}
