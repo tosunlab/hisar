@@ -112,6 +112,9 @@ final class SettingsModelTests: XCTestCase {
         XCTAssertNotNil(device.lastSeenDate)
         XCTAssertEqual(Device(id: "2", name: "Mac", platform: "darwin/desktop").platformDescription, "macOS app")
         XCTAssertEqual(Device(id: "3", name: "iPhone", platform: "ios/mobile").systemImage, "iphone")
+        let android = Device(id: "4", name: "Pixel", platform: "android/mobile")
+        XCTAssertEqual(android.platformDescription, "Android app")
+        XCTAssertEqual(android.systemImage, "smartphone")
     }
 
     func testEmergencyKitNeedsTheMasterPasswordAndIsRemoved() async throws {
