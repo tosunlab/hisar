@@ -2,7 +2,8 @@ package com.tryhisar.hisar.autofill
 
 /**
  * One view of a fill request's AssistStructure, as the parser reads it. [Id] is the platform's AutofillId, so the parser
- * runs on the JVM. Browsers and WebViews report a page's inputs as children of the node that carries [webDomain].
+ * runs on the JVM. Browsers and WebViews report a page's inputs at or below a node that carries [webDomain]: Chrome puts it
+ * on the page's container, while a WebView on API 37 leaves its own [webDomain] empty and puts it on each input.
  */
 data class FormNode<Id>(
     val autofillID: Id? = null,
@@ -48,25 +49,29 @@ data class LoginForm<Id>(val source: AutofillSource, val username: Id?, val pass
  */
 object FillRequestParser {
     fun <Id> parse(allRoot: List<FormNode<Id>>, packageName: String, allBrowserPackage: Set<String>): LoginForm<Id>? {
-        val webNode = allRoot.firstNotNullOfOrNull { findWebNode(it) }
-        val webFields = webNode?.let(::listAllField).orEmpty()
-        val allField = webFields.ifEmpty { allRoot.flatMap(::listAllField) }
+        val allWebField = allRoot.flatMap { listAllWebField(it, page = null) }
+        val webPage = allWebField.firstOrNull()?.second
+        val allField = allWebField.map { it.first }.ifEmpty { allRoot.flatMap(::listAllField) }
         val classified = allField.mapNotNull { node -> classify(node)?.let { node to it } }
         val password = classified.firstOrNull { it.second == FieldKind.PASSWORD }?.first
         val username = classified.firstOrNull { it.second == FieldKind.USERNAME }?.first ?: password?.let { findTextFieldBefore(allField, it) }
         val oneTimeCode = classified.firstOrNull { it.second == FieldKind.ONE_TIME_CODE }?.first
         if (username == null && password == null && oneTimeCode == null) return null
         val source = when {
-            webNode != null && packageName in allBrowserPackage ->
-                AutofillSource.Web(webNode.webScheme?.lowercase()?.ifEmpty { null } ?: "https", webNode.webDomain!!.lowercase())
+            webPage != null && packageName in allBrowserPackage ->
+                AutofillSource.Web(webPage.webScheme?.lowercase()?.ifEmpty { null } ?: "https", webPage.webDomain!!.lowercase())
             packageName in TrustedBrowsers.allPackageName -> AutofillSource.UnknownPage(packageName)
             else -> AutofillSource.App(packageName)
         }
         return LoginForm(source, username?.autofillID, password?.autofillID, oneTimeCode?.autofillID)
     }
 
-    private fun <Id> findWebNode(node: FormNode<Id>): FormNode<Id>? =
-        if (!node.webDomain.isNullOrEmpty()) node else node.children.firstNotNullOfOrNull { findWebNode(it) }
+    /** The text fields that are or lie below a node with a page address, each with the nearest such node. */
+    private fun <Id> listAllWebField(node: FormNode<Id>, page: FormNode<Id>?): List<Pair<FormNode<Id>, FormNode<Id>>> {
+        val nodePage = if (node.webDomain.isNullOrEmpty()) page else node
+        val field = if (nodePage != null && node.isTextField && node.autofillID != null) listOf(node to nodePage) else emptyList()
+        return field + node.children.flatMap { listAllWebField(it, nodePage) }
+    }
 
     private fun <Id> listAllField(node: FormNode<Id>): List<FormNode<Id>> =
         (if (node.isTextField && node.autofillID != null) listOf(node) else emptyList()) + node.children.flatMap(::listAllField)
