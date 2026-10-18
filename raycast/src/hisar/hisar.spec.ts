@@ -79,6 +79,21 @@ describe("features Hisar announces", () => {
     expect(fakeApp.getRequestTypes()).toEqual(["hello", "launcher.hello", "launcher.items.list"]);
   });
 
+  it("needs an update to open or share an item when Hisar announces neither, and sends neither", async () => {
+    const beforeOpenAndShare = allLauncherRequestType.filter(
+      (type) => type !== "launcher.items.open" && type !== "launcher.items.share",
+    );
+    const fakeApp = await startApp((request) => ({ id: request.id, ok: true, result: emptyList }), beforeOpenAndShare);
+    const client = connect();
+
+    expect((await catchError(client.open(github))).code).toBe("update-required");
+    expect((await catchError(client.open(github, { isEditing: true }))).code).toBe("update-required");
+    const sharing = client.share(github, { allField: ["password"], expiresInSeconds: 3_600, maxViews: 1 });
+    expect((await catchError(sharing)).code).toBe("update-required");
+    expect(await client.listItems()).toEqual({ allVault: [], allItem: [] });
+    expect(fakeApp.getRequestTypes()).toEqual(["hello", "launcher.hello", "launcher.items.list"]);
+  });
+
   it("needs an update of a Hisar that knows no launchers, and sends it nothing after hello", async () => {
     const fakeApp = await startApp(() => undefined, ["favorites"]);
 

@@ -1,57 +1,74 @@
-import { Action, ActionPanel, Form, Icon } from "@raycast/api";
+import { Action, ActionPanel, Form, Icon, Keyboard } from "@raycast/api";
+import { usePromise } from "@raycast/utils";
 import { useState } from "react";
-import type { PasswordOptions } from "./hisar";
+import { toHisarError } from "./hisar";
 import { copyGeneratedPassword, pasteValue } from "./raycast/actions";
+import { showHisarError } from "./raycast/feedback";
 import { useHisar } from "./raycast/hooks";
 
-interface FormValues {
-  length: string;
-  digits: boolean;
-  symbols: boolean;
-}
-
+/** GeneratePasswordForm shows a password from Hisar's generator and makes a new one whenever an option changes. */
 export default function GeneratePasswordForm() {
   const hisar = useHisar();
-  const [lengthError, setLengthError] = useState<string>();
-
-  // Hisar's generator checks the range; the form only makes sure the length is a number.
-  function readOptions(values: FormValues): PasswordOptions | undefined {
-    const length = values.length.trim();
-    if (!/^\d+$/.test(length)) {
-      setLengthError("Enter a whole number");
-      return undefined;
-    }
-    return { length: Number(length), digits: values.digits, symbols: values.symbols };
-  }
-
-  async function copy(values: FormValues): Promise<void> {
-    const options = readOptions(values);
-    if (options) await copyGeneratedPassword(() => hisar.generatePassword(options));
-  }
-
-  async function paste(values: FormValues): Promise<void> {
-    const options = readOptions(values);
-    if (options) await pasteValue(() => hisar.generatePassword(options));
-  }
+  const [length, setLength] = useState("24");
+  const [digits, setDigits] = useState(true);
+  const [symbols, setSymbols] = useState(true);
+  const isWholeNumber = /^\d+$/.test(length.trim());
+  const {
+    data: password,
+    isLoading,
+    error,
+    revalidate,
+  } = usePromise(
+    (length: number, digits: boolean, symbols: boolean) => hisar.generatePassword({ length, digits, symbols }),
+    [Number(length.trim()), digits, symbols],
+    {
+      execute: isWholeNumber,
+      onError: (error) => {
+        if (toHisarError(error).code !== "invalid-request") void showHisarError(error);
+      },
+    },
+  );
+  // Hisar's generator checks the range and says which lengths it accepts: "choose a length between 4 and 256".
+  const rangeError =
+    error && toHisarError(error).code === "invalid-request"
+      ? error.message.charAt(0).toUpperCase() + error.message.slice(1)
+      : undefined;
 
   return (
     <Form
+      isLoading={isLoading}
       actions={
         <ActionPanel>
-          <Action.SubmitForm title="Generate and Copy" icon={Icon.CopyClipboard} onSubmit={copy} />
-          <Action.SubmitForm title="Generate and Paste" icon={Icon.Clipboard} onSubmit={paste} />
+          {password && (
+            <Action
+              title="Copy Password"
+              icon={Icon.CopyClipboard}
+              shortcut={Keyboard.Shortcut.Common.Copy}
+              onAction={() => copyGeneratedPassword(async () => password)}
+            />
+          )}
+          {password && (
+            <Action title="Paste Password" icon={Icon.Clipboard} onAction={() => pasteValue(async () => password)} />
+          )}
+          <Action
+            title="Regenerate Password"
+            icon={Icon.ArrowClockwise}
+            shortcut={Keyboard.Shortcut.Common.Refresh}
+            onAction={revalidate}
+          />
         </ActionPanel>
       }
     >
+      <Form.Description title="Password" text={password ?? ""} />
       <Form.TextField
         id="length"
         title="Length"
-        defaultValue="24"
-        error={lengthError}
-        onChange={() => setLengthError(undefined)}
+        value={length}
+        error={isWholeNumber ? rangeError : "Enter a whole number"}
+        onChange={setLength}
       />
-      <Form.Checkbox id="digits" label="Digits" defaultValue={true} />
-      <Form.Checkbox id="symbols" label="Symbols" defaultValue={true} />
+      <Form.Checkbox id="digits" label="Digits" value={digits} onChange={setDigits} />
+      <Form.Checkbox id="symbols" label="Symbols" value={symbols} onChange={setSymbols} />
     </Form>
   );
 }

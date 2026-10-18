@@ -2,7 +2,7 @@
   "$schema": "https://www.raycast.com/schemas/extension.json",
   "name": "hisar",
   "title": "Hisar",
-  "description": "Search Hisar, copy and paste passwords and one-time codes, generate passwords and lock Hisar.",
+  "description": "Search Hisar, copy and paste passwords, usernames and one-time codes, open and share items, generate passwords and lock Hisar.",
   "icon": "hisar.png",
   "author": "tryhisar",
   "license": "UNLICENSED",
@@ -18,55 +18,172 @@
     {
       "name": "search-hisar",
       "title": "Search Hisar",
-      "description": "Find an item, then copy or paste its password, username or one-time code.",
-      "mode": "view",
-      "preferences": [
-        {
-          "name": "primaryAction",
-          "type": "dropdown",
-          "required": false,
-          "title": "Primary Action",
-          "description": "What Return does on an item with a password.",
-          "default": "copy-password",
-          "data": [
-            {
-              "title": "Copy Password",
-              "value": "copy-password"
-            },
-            {
-              "title": "Paste Password",
-              "value": "paste-password"
-            }
-          ]
-        }
-      ]
+      "subtitle": "Hisar",
+      "keywords": [
+        "hisar",
+        "password",
+        "login"
+      ],
+      "description": "Find an item, then copy or paste its password, username or one-time code, open it in Hisar or share it.",
+      "mode": "view"
+    },
+    {
+      "name": "my-vaults",
+      "title": "My Vaults",
+      "subtitle": "Hisar",
+      "keywords": [
+        "hisar",
+        "password",
+        "login"
+      ],
+      "description": "Browse your vaults, then the items in one.",
+      "mode": "view"
     },
     {
       "name": "one-time-codes",
       "title": "One-Time Codes",
+      "subtitle": "Hisar",
+      "keywords": [
+        "hisar",
+        "password",
+        "login"
+      ],
       "description": "Show live one-time codes, then copy or paste one.",
       "mode": "view"
     },
     {
       "name": "generate-password",
       "title": "Generate Password",
+      "subtitle": "Hisar",
+      "keywords": [
+        "hisar",
+        "password",
+        "login"
+      ],
       "description": "Copy a new password from Hisar's generator: 24 characters with digits and symbols.",
-      "mode": "no-view"
+      "mode": "no-view",
+      "icon": "hisar.png"
     },
     {
       "name": "generate-password-form",
       "title": "Generate Password with Options",
+      "subtitle": "Hisar",
+      "keywords": [
+        "hisar",
+        "password",
+        "login"
+      ],
       "description": "Choose the length, digits and symbols of a new password, then copy or paste it.",
-      "mode": "view"
+      "mode": "view",
+      "icon": "hisar.png"
     },
     {
       "name": "lock-hisar",
       "title": "Lock Hisar",
+      "subtitle": "Hisar",
+      "keywords": [
+        "hisar",
+        "password",
+        "login"
+      ],
       "description": "Lock the Hisar app.",
       "mode": "no-view"
     }
   ],
   "preferences": [
+    {
+      "name": "primaryAction",
+      "type": "dropdown",
+      "required": false,
+      "title": "Primary Action",
+      "description": "What Return does on an item. An item without that value does the next action it has.",
+      "default": "copy-password",
+      "data": [
+        {
+          "title": "Open in Hisar",
+          "value": "open-in-hisar"
+        },
+        {
+          "title": "Open in Browser",
+          "value": "open-in-browser"
+        },
+        {
+          "title": "Copy Username",
+          "value": "copy-username"
+        },
+        {
+          "title": "Copy Password",
+          "value": "copy-password"
+        },
+        {
+          "title": "Copy One-Time Code",
+          "value": "copy-one-time-code"
+        },
+        {
+          "title": "Paste Username",
+          "value": "paste-username"
+        },
+        {
+          "title": "Paste Password",
+          "value": "paste-password"
+        },
+        {
+          "title": "Paste One-Time Code",
+          "value": "paste-one-time-code"
+        }
+      ]
+    },
+    {
+      "name": "secondaryAction",
+      "type": "dropdown",
+      "required": false,
+      "title": "Secondary Action",
+      "description": "What ⌘ Return does on an item. An item without that value does the next action it has.",
+      "default": "paste-password",
+      "data": [
+        {
+          "title": "Open in Hisar",
+          "value": "open-in-hisar"
+        },
+        {
+          "title": "Open in Browser",
+          "value": "open-in-browser"
+        },
+        {
+          "title": "Copy Username",
+          "value": "copy-username"
+        },
+        {
+          "title": "Copy Password",
+          "value": "copy-password"
+        },
+        {
+          "title": "Copy One-Time Code",
+          "value": "copy-one-time-code"
+        },
+        {
+          "title": "Paste Username",
+          "value": "paste-username"
+        },
+        {
+          "title": "Paste Password",
+          "value": "paste-password"
+        },
+        {
+          "title": "Paste One-Time Code",
+          "value": "paste-one-time-code"
+        }
+      ]
+    },
+    {
+      "name": "closeWindowAfterCopying",
+      "type": "checkbox",
+      "required": false,
+      "title": "Copying",
+      "label": "Close Raycast after copying",
+      "description": "Close Raycast after copying a password, username, one-time code or share link; otherwise a toast says it was copied.",
+      "default": true
+    },
     {
       "name": "socketPath",
       "type": "textfield",

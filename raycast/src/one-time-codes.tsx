@@ -23,9 +23,16 @@ export default function OneTimeCodes() {
       {error ? (
         <ErrorView error={error} onRetry={revalidate} />
       ) : (
-        allItem.map((item) => (
-          <OneTimeCodeItem key={`${item.vaultID}/${item.itemID}`} hisar={hisar} item={item} now={now} />
-        ))
+        <>
+          <List.EmptyView
+            icon={Icon.Clock}
+            title="No items found"
+            description="Items with a one-time code in Hisar show up here."
+          />
+          {allItem.map((item) => (
+            <OneTimeCodeItem key={`${item.vaultID}/${item.itemID}`} hisar={hisar} item={item} now={now} />
+          ))}
+        </>
       )}
     </List>
   );

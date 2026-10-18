@@ -1,19 +1,28 @@
 import { getPreferenceValues } from "@raycast/api";
 import { version } from "../../package.json";
 import type { ConnectOptions } from "../hisar";
-
-/** PrimaryAction is what ↵ does on an item with a password in Search Hisar. */
-export type PrimaryAction = "copy-password" | "paste-password";
+import { parseItemAction, type ItemActionPreferences } from "./itemActions";
 
 interface Preferences {
   socketPath?: string;
   primaryAction?: string;
+  secondaryAction?: string;
+  closeWindowAfterCopying?: boolean;
 }
 
 export function getConnectOptions(): ConnectOptions {
   return { socketPath: getPreferenceValues<Preferences>().socketPath, clientVersion: version };
 }
 
-export function getPrimaryAction(): PrimaryAction {
-  return getPreferenceValues<Preferences>().primaryAction === "paste-password" ? "paste-password" : "copy-password";
+export function getItemActionPreferences(): ItemActionPreferences {
+  const { primaryAction, secondaryAction } = getPreferenceValues<Preferences>();
+  return {
+    primary: parseItemAction(primaryAction, "copy-password"),
+    secondary: parseItemAction(secondaryAction, "paste-password"),
+  };
+}
+
+/** isClosingWindowAfterCopy tells whether a copy closes Raycast with a HUD, or keeps it open with a toast. */
+export function isClosingWindowAfterCopy(): boolean {
+  return getPreferenceValues<Preferences>().closeWindowAfterCopying ?? true;
 }

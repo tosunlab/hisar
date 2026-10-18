@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { allAppErrorCode } from "./errors";
-import { answerHandshake, createSocketDirectory, startFakeApp, type FakeApp, type SocketDirectory } from "./fake-app";
+import { createSocketDirectory, startFakeApp, type FakeApp, type SocketDirectory } from "./fake-app";
 import { Hisar, HisarError } from "./index";
 import { allCopyableField } from "./model";
 import { allLauncherRequestType } from "./protocol";
@@ -19,6 +19,7 @@ const golden = JSON.parse(
 ) as Golden;
 
 const github = { vaultID: "v-personal", itemID: "i-github" };
+const wifi = { vaultID: "v-work", itemID: "i-wifi" };
 
 describe("the launcher contract (core/cliprotocol/testdata/launcher.json)", () => {
   it("lists the same request types, copyable fields and error codes as the app", () => {
@@ -42,13 +43,18 @@ describe("every exchange of the contract", () => {
     directory.remove();
   });
 
-  it("sends the contract's requests and reads its results through Hisar's methods", async () => {
-    const resultByID = new Map(golden.exchanges.map((exchange) => [exchange.request.id, exchange.result]));
-    app = await startFakeApp(directory.socketPath, (request) => ({
-      id: request.id,
-      ok: true,
-      result: resultByID.get(request.id),
-    }));
+  it("sends the contract's requests in order on one connection and reads its answers through Hisar's methods", async () => {
+    const responseByID = new Map<string, unknown>([
+      ...golden.exchanges.map(({ request, result }) => [request.id, { id: request.id, ok: true, result }] as const),
+      ...golden.errors.map((error) => [error.id, error] as const),
+    ]);
+    app = await startFakeApp(directory.socketPath, (request) => {
+      const response = responseByID.get(request.id) as { result: object };
+      // The contract's hello predates launcher.items.open and launcher.items.share; this app announces every type.
+      if (request.type === "hello")
+        return { ...response, result: { ...response.result, features: golden.requestTypes } };
+      return response;
+    });
     const hisar = new Hisar({ socketPath: directory.socketPath, clientVersion: "1.0.0" });
 
     expect(await hisar.isApproved()).toBe(true);
@@ -59,9 +65,22 @@ describe("every exchange of the contract", () => {
     const shaped = await hisar.generatePassword({ length: 20, digits: true, symbols: false });
     const generated = await hisar.generatePassword();
     await hisar.lock();
+    await hisar.open(github);
+    await hisar.open(github, { isEditing: true });
+    const shareLinkURL = await hisar.share(github, {
+      allField: ["username", "password"],
+      expiresInSeconds: 604_800,
+      maxViews: 1,
+    });
+    const denied = await hisar.listItems().catch((error: unknown) => error);
+    const missing = await hisar.readPassword(wifi).catch((error: unknown) => error);
     hisar.close();
 
-    expect(app.allRequest).toEqual(golden.exchanges.map((exchange) => exchange.request));
+    expect(app.allRequest).toEqual([
+      ...golden.exchanges.map((exchange) => exchange.request),
+      { id: golden.errors[0].id, type: "launcher.items.list" },
+      { id: golden.errors[1].id, type: "launcher.items.password", ...wifi },
+    ]);
     expect(itemList.allVault).toEqual([
       { id: "v-personal", name: "Personal" },
       { id: "v-work", name: "Work" },
@@ -103,20 +122,7 @@ describe("every exchange of the contract", () => {
     expect(receipt).toEqual({ clearAfterSeconds: 90 });
     expect(shaped).toBe("Wq7tLmZ3pK9bRx2cVh8n");
     expect(generated).toBe("k4!Rz9#pW2@mXq7&Lb5$Tn8^");
-  });
-
-  it("turns the contract's error answers into errors with their code and the app's sentence", async () => {
-    let errorIndex = 0;
-    app = await startFakeApp(
-      directory.socketPath,
-      answerHandshake((request) => ({ ...golden.errors[errorIndex++], id: request.id })),
-    );
-    const hisar = new Hisar({ socketPath: directory.socketPath, clientVersion: "1.0.0" });
-
-    const denied = await hisar.listItems().catch((error: unknown) => error);
-    const missing = await hisar.readPassword({ vaultID: "v-work", itemID: "i-wifi" }).catch((error: unknown) => error);
-    hisar.close();
-
+    expect(shareLinkURL).toBe("https://hisar.example.com/s/Rk3vQ9xT2mLp8sWz#key");
     expect(denied).toBeInstanceOf(HisarError);
     expect(denied).toMatchObject({ code: "denied", message: "Hisar denied the request (it was declined)" });
     expect(missing).toMatchObject({ code: "not-found", message: "“Office Wi-Fi” has no password" });
