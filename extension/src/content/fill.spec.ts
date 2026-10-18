@@ -158,6 +158,8 @@ describe("probeFrame", () => {
       hasFocusedAddressField: false,
       hasCardForm: false,
       hasFocusedCardField: false,
+      hasIdentityForm: false,
+      hasFocusedIdentityField: false,
     });
     getInput("#login_field").focus();
     expect(probeFrame(document)).toMatchObject({ hasFocusedField: true, hasFocusedLoginField: true });
@@ -176,6 +178,8 @@ describe("probeFrame", () => {
       hasFocusedAddressField: false,
       hasCardForm: false,
       hasFocusedCardField: false,
+      hasIdentityForm: true,
+      hasFocusedIdentityField: false,
     });
   });
 });

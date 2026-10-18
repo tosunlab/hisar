@@ -63,7 +63,8 @@ describe("findInlineMenuPurpose", () => {
     document.body.innerHTML = signUpPage;
     expect(findInlineMenuPurpose(document, getInput("#new-password"), wideRect)).toBe("new-password");
     expect(findInlineMenuPurpose(document, getInput("#confirm-password"), wideRect)).toBe("new-password");
-    expect(findInlineMenuPurpose(document, getInput("[name=email]"), wideRect)).toBeUndefined();
+    // A sign-up's email takes an identity.
+    expect(findInlineMenuPurpose(document, getInput("[name=email]"), wideRect)).toBe("identity");
     document.body.innerHTML = changePasswordPage;
     expect(findInlineMenuPurpose(document, getInput("#current"), wideRect)).toBeUndefined();
     expect(findInlineMenuPurpose(document, getInput("#next-password"), wideRect)).toBe("new-password");
@@ -112,7 +113,8 @@ describe("findInlineMenuPurpose", () => {
     document.body.innerHTML = addressAutocompletePage;
     expect(findInlineMenuPurpose(document, getInput("#ship-line1"), wideRect)).toBe("address");
     expect(findInlineMenuPurpose(document, getInput("#ship-postal"), wideRect)).toBe("address");
-    expect(findInlineMenuPurpose(document, getInput("#ship-email"), wideRect)).toBeUndefined();
+    // The email beside an address takes an identity, not an address.
+    expect(findInlineMenuPurpose(document, getInput("#ship-email"), wideRect)).toBe("identity");
     expect(findInlineMenuPurpose(document, document.querySelector("#bill-street")!, wideRect)).toBeUndefined();
     document.body.innerHTML = checkoutLoginMixedPage;
     expect(findInlineMenuPurpose(document, getInput("#login-email"), wideRect)).toBe("login");

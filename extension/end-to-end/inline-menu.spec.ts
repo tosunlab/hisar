@@ -162,9 +162,11 @@ test("suggests a password on a sign-up form and fills both fields", async () => 
   await suggestion.click();
   await expect(page.locator("#new-password")).toHaveValue(suggested);
   await expect(page.locator("#confirm-password")).toHaveValue(suggested);
+  // The sign-up's email offers identities, once the extension knows the app fills them.
+  await (await harness.context.newPage()).goto(`chrome-extension://${extensionID}/popup.html?tabId=${await harness.getTabId(page.url())}`);
+  await page.bringToFront();
   await page.locator("#email").focus();
-  await page.waitForTimeout(500);
-  expect(harness.findInlineMenuFrame(page)).toBeUndefined();
+  await expect((await waitForMenu(page)).getByTestId("inline-identity")).toContainText("Alex Example");
   await page.close();
 });
 

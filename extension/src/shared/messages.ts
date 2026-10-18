@@ -1,4 +1,4 @@
-import type { AddressSummary, AddressValues, CardSummary, CardValues, ErrorCode, GenerateOptions, ItemResult, ItemSummary, LoginSummary, OneTimeCode, UpdateRequirement } from "./protocol";
+import type { AddressSummary, AddressValues, CardSummary, CardValues, ErrorCode, IdentitySummary, IdentityValues, GenerateOptions, ItemResult, ItemSummary, LoginSummary, OneTimeCode, UpdateRequirement } from "./protocol";
 
 export type { ItemResult, ItemSummary, OneTimeCode };
 
@@ -12,6 +12,8 @@ export interface PopupState {
   updateRequired?: UpdateRequirement;
   // isAddressFillAvailable: the app fills addresses, so the popup offers its Addresses tab.
   isAddressFillAvailable?: boolean;
+  // isIdentityFillAvailable: the app fills identities, so the popup lists them above the addresses.
+  isIdentityFillAvailable?: boolean;
   // isCardFillAvailable: the app fills cards, so the popup offers its Cards tab.
   isCardFillAvailable?: boolean;
   // isVaultAvailable: the app lets the popup browse every vault, not only the logins of the current site.
@@ -58,9 +60,11 @@ export interface FrameProbe {
   hasFocusedAddressField?: boolean;
   hasCardForm?: boolean;
   hasFocusedCardField?: boolean;
+  hasIdentityForm?: boolean;
+  hasFocusedIdentityField?: boolean;
 }
 
-export type InlineMenuPurpose = "login" | "new-password" | "one-time-code" | "address" | "card";
+export type InlineMenuPurpose = "login" | "new-password" | "one-time-code" | "address" | "card" | "identity";
 export type InlineMenuKey = "ArrowDown" | "ArrowUp" | "Enter";
 export type InlineMenuView = PopupView | "logins";
 
@@ -76,6 +80,9 @@ export interface InlineMenuState {
   // allCard holds the cards offered on a payment field.
   allCard?: CardSummary[];
   hasMoreCard?: boolean;
+  // allIdentity holds the identities offered on a name, email or phone field.
+  allIdentity?: IdentitySummary[];
+  hasMoreIdentity?: boolean;
   suggestedPassword?: string;
   errorMessage?: string;
   updateRequired?: UpdateRequirement;
@@ -95,6 +102,8 @@ export type PopupMessage =
   | { type: "popup.fillPassword"; tabId: number; password: string }
   | { type: "popup.listAddresses" }
   | { type: "popup.fillAddress"; tabId: number; vaultID: string; itemID: string }
+  | { type: "popup.listIdentities" }
+  | { type: "popup.fillIdentity"; tabId: number; vaultID: string; itemID: string }
   | { type: "popup.listCards" }
   | { type: "popup.fillCard"; tabId: number; vaultID: string; itemID: string }
   | { type: "popup.listItems"; query: ItemQuery }
@@ -119,6 +128,7 @@ export type InlineMenuMessage =
   | { type: "inlineMenu.fillOneTimeCode"; sessionID: string; vaultID: string; itemID: string }
   | { type: "inlineMenu.fillAddress"; sessionID: string; vaultID: string; itemID: string }
   | { type: "inlineMenu.fillCard"; sessionID: string; vaultID: string; itemID: string }
+  | { type: "inlineMenu.fillIdentity"; sessionID: string; vaultID: string; itemID: string }
   | { type: "inlineMenu.useSuggestedPassword"; sessionID: string }
   | { type: "inlineMenu.unlock"; sessionID: string }
   | { type: "inlineMenu.openHisar"; sessionID: string }
@@ -140,6 +150,7 @@ export type BackgroundToContentMessage =
   | { type: "content.fillOneTimeCode"; expectedOrigin: string; code: string; sessionID?: string }
   | { type: "content.fillAddress"; expectedOrigin: string; address: AddressValues; sessionID?: string }
   | { type: "content.fillCard"; expectedOrigin: string; card: CardValues; sessionID?: string }
+  | { type: "content.fillIdentity"; expectedOrigin: string; identity: IdentityValues; sessionID?: string }
   | { type: "content.showSaveOffer"; offer: SaveOfferView }
   | { type: "content.isInlineMenuVisible"; sessionID: string }
   | { type: "content.resizeInlineMenu"; sessionID: string; height: number }

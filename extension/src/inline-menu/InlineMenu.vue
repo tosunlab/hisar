@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { VisibilityGuard } from "../shared/click-guard";
 import type { InlineMenuBroadcast, InlineMenuState } from "../shared/messages";
-import type { AddressSummary, CardSummary, LoginSummary } from "../shared/protocol";
+import type { AddressSummary, CardSummary, IdentitySummary, LoginSummary } from "../shared/protocol";
 import { sendToBackground } from "./api";
 
 const props = withDefaults(
@@ -28,6 +28,7 @@ type MenuAction =
   | { kind: "code"; login: LoginSummary }
   | { kind: "address"; address: AddressSummary }
   | { kind: "card"; card: CardSummary }
+  | { kind: "identity"; identity: IdentitySummary }
   | { kind: "more" }
   | { kind: "suggest" }
   | { kind: "pair" }
@@ -47,6 +48,7 @@ let lastReportedHeight = 0;
 const isOneTimeCodeMenu = computed(() => menuState.value?.purpose === "one-time-code");
 const allAddress = computed(() => menuState.value?.allAddress ?? []);
 const allCard = computed(() => menuState.value?.allCard ?? []);
+const allIdentity = computed(() => menuState.value?.allIdentity ?? []);
 
 function describeCard(card: CardSummary): string {
   return [card.brand, card.last4 ? `•••• ${card.last4}` : "", card.expiry ? `expires ${card.expiry}` : ""].filter(Boolean).join(" · ") || "Card";
@@ -58,6 +60,12 @@ const allAction = computed<MenuAction[]>(() => {
   switch (state.view) {
     case "logins":
       if (state.purpose === "new-password") return state.suggestedPassword ? [{ kind: "suggest" }] : [];
+      if (state.purpose === "identity") {
+        return [
+          ...(state.allIdentity ?? []).map((identity): MenuAction => ({ kind: "identity", identity })),
+          ...(state.hasMoreIdentity ? [{ kind: "more" } as MenuAction] : []),
+        ];
+      }
       if (state.purpose === "card") {
         return [...(state.allCard ?? []).map((card): MenuAction => ({ kind: "card", card })), ...(state.hasMoreCard ? [{ kind: "more" } as MenuAction] : [])];
       }
@@ -127,6 +135,9 @@ async function runAction(action: MenuAction): Promise<void> {
         return;
       case "address":
         await sendToBackground({ type: "inlineMenu.fillAddress", sessionID: props.sessionID, vaultID: action.address.vaultID, itemID: action.address.itemID });
+        return;
+      case "identity":
+        await sendToBackground({ type: "inlineMenu.fillIdentity", sessionID: props.sessionID, vaultID: action.identity.vaultID, itemID: action.identity.itemID });
         return;
       case "card":
         await sendToBackground({ type: "inlineMenu.fillCard", sessionID: props.sessionID, vaultID: action.card.vaultID, itemID: action.card.itemID });
@@ -246,6 +257,39 @@ defineExpose({ pressKey });
           <span class="subtitle monospace">{{ menuState.suggestedPassword }}</span>
         </span>
       </button>
+    </template>
+    <template v-else-if="menuState?.view === 'logins' && menuState.purpose === 'identity'">
+      <button
+        v-for="(identity, index) in allIdentity"
+        :key="identity.vaultID + identity.itemID"
+        type="button"
+        class="item"
+        :class="{ selected: selectedIndex === index }"
+        data-testid="inline-identity"
+        @click="chooseAction({ kind: 'identity', identity }, $event)"
+      >
+        <span class="avatar key" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 5h18v14H3zM9 8.5a2 2 0 1 1 0 4 2 2 0 0 1 0-4zM5.5 16.5c.6-1.6 1.9-2.3 3.5-2.3s2.9.7 3.5 2.3M15 10h4M15 14h4" /></svg>
+        </span>
+        <span class="text">
+          <span class="title">{{ identity.title }}</span>
+          <span class="subtitle">{{ identity.summary || "Identity" }}</span>
+        </span>
+      </button>
+      <button
+        v-if="menuState.hasMoreIdentity"
+        type="button"
+        class="item more"
+        :class="{ selected: selectedIndex === allIdentity.length }"
+        data-testid="inline-more"
+        @click="chooseAction({ kind: 'more' }, $event)"
+      >
+        More in Hisar…
+      </button>
+      <div v-if="allIdentity.length === 0" class="message" data-testid="inline-no-identities">
+        <p class="title">No identities in Hisar</p>
+        <p class="muted">Add an identity in Hisar to fill your name, email and address.</p>
+      </div>
     </template>
     <template v-else-if="menuState?.view === 'logins' && menuState.purpose === 'card'">
       <button

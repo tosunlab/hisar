@@ -149,6 +149,12 @@ func (bridge *BrowserBridge) handleRequest(ctx context.Context, request *browser
 	case "addresses.fill":
 		result, err := bridge.service.getAddressForFill(ctx, request.VaultID, request.ItemID)
 		return result, convertBrowserError(err)
+	case "identities.list":
+		identities, _, err := bridge.service.listIdentitySources(ctx)
+		return browserprotocol.IdentityListResult{Identities: identities}, convertBrowserError(err)
+	case "identities.fill":
+		result, err := bridge.service.getIdentityForFill(ctx, request.VaultID, request.ItemID)
+		return result, convertBrowserError(err)
 	case "cards.list":
 		cards, _, err := bridge.service.listCardSources(ctx)
 		return browserprotocol.CardListResult{Cards: cards}, convertBrowserError(err)

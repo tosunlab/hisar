@@ -76,6 +76,29 @@ export interface CardValues {
   brand: string;
 }
 
+// featureIdentities: the app answers identities.list and identities.fill.
+export const featureIdentities = "identities";
+
+// IdentitySummary is an identity offered for filling: its summary is only the name and email.
+export interface IdentitySummary {
+  vaultID: string;
+  itemID: string;
+  title: string;
+  summary: string;
+  vaultName: string;
+}
+
+// IdentityValues is the identity to fill a form with, and its address when it has one worth filling.
+export interface IdentityValues {
+  firstName: string;
+  middleName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  birthDate: string;
+  address?: AddressValues;
+}
+
 // featureUnlockPassword: the app answers unlock.password, so the popup unlocks Hisar with the master password.
 export const featureUnlockPassword = "unlock-password";
 
@@ -175,6 +198,8 @@ export interface RequestMap {
     parameters: { url: string; username: string; password: string; vaultID?: string; itemID?: string };
     result: { vaultID: string; itemID: string };
   };
+  "identities.list": { parameters: Record<string, never>; result: { identities: IdentitySummary[] } };
+  "identities.fill": { parameters: { vaultID: string; itemID: string }; result: IdentityValues };
   "cards.list": { parameters: Record<string, never>; result: { cards: CardSummary[] } };
   "cards.fill": { parameters: { vaultID: string; itemID: string }; result: CardValues };
   "items.list": {

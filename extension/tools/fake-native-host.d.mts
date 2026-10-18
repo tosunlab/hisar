@@ -50,6 +50,21 @@ export interface FakeCard {
   securityCode: string;
 }
 
+export interface FakeIdentity {
+  vaultID: string;
+  vaultName: string;
+  itemID: string;
+  title: string;
+  summary: string;
+  firstName: string;
+  middleName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  birthDate: string;
+  address?: { street: string; city: string; region: string; postalCode: string; country: string };
+}
+
 export interface FakeHostState {
   state: "signed-out" | "locked" | "unlocked";
   email: string;
@@ -67,6 +82,8 @@ export interface FakeHostState {
   allAddress?: FakeAddress[];
   allItem?: FakeItem[];
   allCard?: FakeCard[];
+  allIdentity?: FakeIdentity[];
+  allIdentityRequest?: string[];
   allCardRequest?: string[];
   allFavoriteItemID?: string[];
   allRevealRequest?: string[];

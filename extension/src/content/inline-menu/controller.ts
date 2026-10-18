@@ -49,6 +49,8 @@ export class InlineMenuController {
   private isAddressFillAvailable = false;
   // isCardFillAvailable: the paired app fills cards; with an older one, payment fields get no icon.
   private isCardFillAvailable = false;
+  // isIdentityFillAvailable: the paired app fills identities; with an older one, name and email fields get no icon.
+  private isIdentityFillAvailable = false;
   private field: HTMLInputElement | undefined;
   private allGroupField: HTMLInputElement[] = [];
   private purpose: InlineMenuPurpose | undefined;
@@ -95,6 +97,11 @@ export class InlineMenuController {
   setAddressFillAvailable(isAvailable: boolean): void {
     this.isAddressFillAvailable = isAvailable;
     if (!isAvailable && this.purpose === "address") this.hide();
+  }
+
+  setIdentityFillAvailable(isAvailable: boolean): void {
+    this.isIdentityFillAvailable = isAvailable;
+    if (!isAvailable && this.purpose === "identity") this.hide();
   }
 
   setCardFillAvailable(isAvailable: boolean): void {
@@ -190,7 +197,7 @@ export class InlineMenuController {
     if (this.host && (target === this.host || this.host.contains(target))) return;
     if (this.isFieldOfMenu(target)) return;
     const purpose = findInlineMenuPurpose(this.document, target, this.dependencies.getRect);
-    if (!purpose || (purpose === "address" && !this.isAddressFillAvailable) || (purpose === "card" && !this.isCardFillAvailable)) {
+    if (!purpose || (purpose === "address" && !this.isAddressFillAvailable) || (purpose === "card" && !this.isCardFillAvailable) || (purpose === "identity" && !this.isIdentityFillAvailable)) {
       this.hide();
       return;
     }

@@ -4,6 +4,7 @@ import type { PopupState } from "../shared/messages";
 import { describeError, getTargetTabId, openUpdatePage, sendToBackground } from "./api";
 import AddressList from "./components/AddressList.vue";
 import CardList from "./components/CardList.vue";
+import IdentityList from "./components/IdentityList.vue";
 import HisarLogo from "./components/HisarLogo.vue";
 import LoginList from "./components/LoginList.vue";
 import PairingView from "./components/PairingView.vue";
@@ -161,7 +162,7 @@ onBeforeUnmount(() => {
           Cards
         </button>
         <button
-          v-if="popupState.isAddressFillAvailable"
+          v-if="popupState.isAddressFillAvailable || popupState.isIdentityFillAvailable"
           type="button"
           role="tab"
           :class="{ active: activeSection === 'addresses' }"
@@ -169,7 +170,7 @@ onBeforeUnmount(() => {
           data-testid="section-addresses"
           @click="activeSection = 'addresses'"
         >
-          Addresses
+          {{ popupState.isIdentityFillAvailable ? "Identities" : "Addresses" }}
         </button>
         <button
           type="button"
@@ -185,7 +186,14 @@ onBeforeUnmount(() => {
       <VaultView v-if="activeSection === 'logins' && popupState.isVaultAvailable" :tab-id="tabId" @notice="showNotice" />
       <LoginList v-else-if="activeSection === 'logins'" :tab-id="tabId" @notice="showNotice" />
       <CardList v-else-if="activeSection === 'cards'" :tab-id="tabId" />
-      <AddressList v-else-if="activeSection === 'addresses'" :tab-id="tabId" />
+      <template v-else-if="activeSection === 'addresses'">
+        <template v-if="popupState.isIdentityFillAvailable">
+          <h2 class="group-title muted">Identities</h2>
+          <IdentityList :tab-id="tabId" />
+          <h2 v-if="popupState.isAddressFillAvailable" class="group-title muted">Addresses</h2>
+        </template>
+        <AddressList v-if="popupState.isAddressFillAvailable" :tab-id="tabId" />
+      </template>
       <PasswordGenerator v-else :tab-id="tabId" @notice="showNotice" />
     </section>
     <StatusView
@@ -273,6 +281,14 @@ onBeforeUnmount(() => {
 .segments button.active {
   background: var(--color-selected);
   color: var(--color-text);
+}
+
+.group-title {
+  margin: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .notice {

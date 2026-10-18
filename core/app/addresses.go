@@ -77,3 +77,62 @@ func (s *Service) getAddressForFill(ctx context.Context, vaultID, itemID string)
 	}
 	return browserprotocol.AddressFillResult{Street: address.Street, City: address.City, Region: address.Region, PostalCode: address.PostalCode, Country: address.Country}, nil
 }
+
+// listIdentitySources returns the identities the extension may fill a form's name, email, phone and birth date with,
+// sorted by title; the list carries only each one's name and email. Like addresses, identities belong to no website,
+// so the extension asks only when the user picks one.
+func (s *Service) listIdentitySources(ctx context.Context) ([]browserprotocol.IdentitySummary, map[string]item.Identity, error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if err := s.requireUnlockedWithoutActivity(); err != nil {
+		return nil, nil, err
+	}
+	if err := s.loadItemsOfAllVault(ctx); err != nil {
+		return nil, nil, err
+	}
+	summaries := []browserprotocol.IdentitySummary{}
+	identitiesByKey := map[string]item.Identity{}
+	for vaultID, items := range s.itemsByVaultID {
+		vault := s.vaultsByID[vaultID]
+		if vault == nil {
+			continue
+		}
+		for index := range items {
+			vaultItem := &items[index]
+			if !vaultItem.IsCategory(item.CategoryIdentity) {
+				continue
+			}
+			identity, _ := item.ReadIdentity(vaultItem)
+			if identity.FullName() == "" && identity.Email == "" && identity.Phone == "" {
+				continue
+			}
+			summary := strings.Join(slices.DeleteFunc([]string{identity.FullName(), identity.Email}, func(part string) bool { return part == "" }), " · ")
+			summaries = append(summaries, browserprotocol.IdentitySummary{VaultID: vaultID, ItemID: vaultItem.ID, Title: vaultItem.Overview.Title, Summary: summary, VaultName: vault.Name})
+			identitiesByKey[vaultID+"/"+vaultItem.ID] = identity
+		}
+	}
+	slices.SortFunc(summaries, func(first, second browserprotocol.IdentitySummary) int {
+		return cmp.Or(strings.Compare(strings.ToLower(first.Title), strings.ToLower(second.Title)), strings.Compare(first.ItemID, second.ItemID))
+	})
+	return summaries, identitiesByKey, nil
+}
+
+// getIdentityForFill returns an identity listIdentitySources offers, with its address when that is enough to fill one.
+func (s *Service) getIdentityForFill(ctx context.Context, vaultID, itemID string) (browserprotocol.IdentityFillResult, error) {
+	_, identitiesByKey, err := s.listIdentitySources(ctx)
+	if err != nil {
+		return browserprotocol.IdentityFillResult{}, err
+	}
+	identity, found := identitiesByKey[vaultID+"/"+itemID]
+	if !found {
+		return browserprotocol.IdentityFillResult{}, ErrNotFound
+	}
+	result := browserprotocol.IdentityFillResult{
+		FirstName: identity.FirstName, MiddleName: identity.MiddleName, LastName: identity.LastName, Email: identity.Email,
+		Phone: identity.Phone, BirthDate: identity.BirthDate,
+	}
+	if address := identity.Address.Normalize(); address.IsFillable() {
+		result.Address = &browserprotocol.AddressFillResult{Street: address.Street, City: address.City, Region: address.Region, PostalCode: address.PostalCode, Country: address.Country}
+	}
+	return result, nil
+}

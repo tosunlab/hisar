@@ -41,6 +41,22 @@ const addressFramePage = `<!doctype html>
 ${addressForm("frame-")}
 </body></html>`;
 
+const identityPage = `<!doctype html>
+<html><head><meta charset="utf-8"><title>Your details</title>
+<style>body{font-family:sans-serif;margin:40px} form{display:grid;gap:8px;width:280px} input,select{padding:8px;font-size:14px}</style>
+</head><body>
+<h1>Your details</h1>
+<form method="post" action="/welcome">
+  <input id="full-name" autocomplete="name" placeholder="Full name">
+  <input id="email" type="email" autocomplete="email" placeholder="Email">
+  <input id="phone" type="tel" autocomplete="tel" placeholder="Phone">
+  <input id="street" autocomplete="street-address" placeholder="Address">
+  <input id="city" autocomplete="address-level2" placeholder="City">
+  <input id="postal" autocomplete="postal-code" placeholder="ZIP code">
+  <button type="submit">Continue</button>
+</form>
+</body></html>`;
+
 const cardForm = (prefix: string) => `<form action="/paid" method="post">
 <input id="${prefix}card-number" name="cardnumber" autocomplete="cc-number" placeholder="Card number">
 <input id="${prefix}card-name" autocomplete="cc-name" placeholder="Name on card">
@@ -129,6 +145,7 @@ export async function startTestSite(): Promise<TestSite> {
       request.on("end", () => response.end(welcomePage));
       return;
     }
+    if (request.url?.startsWith("/identity")) return response.end(identityPage);
     if (request.url?.startsWith("/card-frame")) return response.end(cardFramePage);
     if (request.url?.startsWith("/card")) return response.end(cardPage(`http://localhost:${port}/card-frame`));
     if (request.url?.startsWith("/address-frame")) return response.end(addressFramePage);

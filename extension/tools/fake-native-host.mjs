@@ -26,7 +26,23 @@ export function createInitialState() {
     allPairing: [],
     exactHostOnly: false,
     // features: what the app announces in hello; an older app announces none.
-    features: ["addresses", "vault", "unlock-password", "cards"],
+    features: ["addresses", "vault", "unlock-password", "cards", "identities"],
+    allIdentity: [
+      {
+        vaultID: "vault-personal",
+        vaultName: "Personal",
+        itemID: "item-alex",
+        title: "Alex",
+        summary: "Alex Example · alex@example.com",
+        firstName: "Alex",
+        middleName: "",
+        lastName: "Example",
+        email: "alex@example.com",
+        phone: "+1 555 0100",
+        birthDate: "1990-04-02",
+        address: { street: "1 Main St\nApt 4", city: "Springfield", region: "IL", postalCode: "62704", country: "US" },
+      },
+    ],
     allCard: [
       {
         vaultID: "vault-personal",
@@ -410,6 +426,20 @@ export function handleRequest(state, request, now = Date.now(), log = () => unde
       state.allAddressRequest = [...(state.allAddressRequest ?? []), address.itemID];
       const { street, city, region, postalCode, country } = address;
       return { street, city, region, postalCode, country };
+    }
+    case "identities.list": {
+      if (!state.features?.includes("identities")) throw new ProtocolError("invalid-request", `Unknown type ${String(type)}`);
+      requireUnlocked(state);
+      return { identities: (state.allIdentity ?? []).map(({ vaultID, vaultName, itemID, title, summary }) => ({ vaultID, vaultName, itemID, title, summary })) };
+    }
+    case "identities.fill": {
+      if (!state.features?.includes("identities")) throw new ProtocolError("invalid-request", `Unknown type ${String(type)}`);
+      requireUnlocked(state);
+      const identity = (state.allIdentity ?? []).find((candidate) => candidate.vaultID === request.vaultID && candidate.itemID === request.itemID);
+      if (!identity) throw new ProtocolError("not-found", "No such identity");
+      state.allIdentityRequest = [...(state.allIdentityRequest ?? []), identity.itemID];
+      const { firstName, middleName, lastName, email, phone, birthDate, address } = identity;
+      return { firstName, middleName, lastName, email, phone, birthDate, ...(address ? { address } : {}) };
     }
     case "cards.list": {
       if (!state.features?.includes("cards")) throw new ProtocolError("invalid-request", `Unknown type ${String(type)}`);

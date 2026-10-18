@@ -105,12 +105,16 @@ const FeatureVault = "vault"
 // FeatureCards: cards.list and cards.fill fill a page's payment form from credit-card items.
 const FeatureCards = "cards"
 
+// FeatureIdentities: identities.list and identities.fill fill a page's name, email, phone and birth date fields, and
+// its address form, from identity items.
+const FeatureIdentities = "identities"
+
 // FeatureUnlockPassword: unlock.password unlocks Hisar with the master password typed in the popup.
 const FeatureUnlockPassword = "unlock-password"
 
 // ListFeatures returns the features this app announces in hello.
 func ListFeatures() []string {
-	return []string{FeatureAddresses, FeatureVault, FeatureUnlockPassword, FeatureCards}
+	return []string{FeatureAddresses, FeatureVault, FeatureUnlockPassword, FeatureCards, FeatureIdentities}
 }
 
 const (
@@ -266,6 +270,32 @@ type CardFillResult struct {
 	ExpiryYear   string `json:"expiryYear"`
 	SecurityCode string `json:"securityCode"`
 	Brand        string `json:"brand"`
+}
+
+// IdentitySummary is an identity offered for filling: its name and email, never its phone, birth date or address,
+// which leave the app only in identities.fill.
+type IdentitySummary struct {
+	VaultID   string `json:"vaultID"`
+	ItemID    string `json:"itemID"`
+	Title     string `json:"title"`
+	Summary   string `json:"summary"`
+	VaultName string `json:"vaultName"`
+}
+
+type IdentityListResult struct {
+	Identities []IdentitySummary `json:"identities"`
+}
+
+// IdentityFillResult is the identity to fill a form with; Address is nil when the identity has none worth filling.
+// BirthDate is YYYY-MM-DD when the identity's is written year first, else as saved.
+type IdentityFillResult struct {
+	FirstName  string             `json:"firstName"`
+	MiddleName string             `json:"middleName"`
+	LastName   string             `json:"lastName"`
+	Email      string             `json:"email"`
+	Phone      string             `json:"phone"`
+	BirthDate  string             `json:"birthDate"`
+	Address    *AddressFillResult `json:"address,omitempty"`
 }
 
 type SaveResult struct {

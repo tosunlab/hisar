@@ -12,6 +12,7 @@ import type {
 import {
   featureAddresses,
   featureCards,
+  featureIdentities,
   featureUnlockPassword,
   featureVault,
   HisarError,
@@ -23,6 +24,8 @@ import {
   type Credentials,
   type GenerateOptions,
   type HelloResult,
+  type IdentitySummary,
+  type IdentityValues,
   type ItemResult,
   type ItemSummary,
   type LoginSummary,
@@ -30,7 +33,7 @@ import {
   type UpdateRequirement,
 } from "../shared/protocol";
 import { getHost, getOrigin, isWebUrl } from "../shared/url";
-import { chooseAddressFrame, chooseCardFrame, chooseFocusedFrame, chooseLoginFrame, chooseOneTimeCodeFrame, selectAllFillableFrame, type FrameInfo, type ProbedFrame } from "./frames";
+import { chooseAddressFrame, chooseCardFrame, chooseFocusedFrame, chooseIdentityFrame, chooseLoginFrame, chooseOneTimeCodeFrame, selectAllFillableFrame, type FrameInfo, type ProbedFrame } from "./frames";
 import type { NativeClient } from "./native-client";
 import { decideSaveOffer, RememberedUsernameStore, SaveOfferStore, toSaveOfferView } from "./save";
 import type { ExtensionStorage } from "./storage";
@@ -105,6 +108,7 @@ export class BackgroundController {
         isOffline: status.isOffline,
         isAddressFillAvailable: this.isAddressFillAvailable(),
         isCardFillAvailable: this.isCardFillAvailable(),
+        isIdentityFillAvailable: this.isIdentityFillAvailable(),
         isVaultAvailable: this.isVaultAvailable(),
         isPasswordUnlockAvailable: this.isPasswordUnlockAvailable(),
       };
@@ -312,6 +316,42 @@ export class BackgroundController {
   private async requireVault(): Promise<void> {
     if (!this.hasHello) await this.request(() => this.client.connect());
     if (!this.isVaultAvailable()) throw new HisarError("invalid-request", "Update the Hisar app to browse your vaults");
+  }
+
+  isIdentityFillAvailable(): boolean {
+    return this.allAppFeature.includes(featureIdentities);
+  }
+
+  isIdentityFillRefused(): boolean {
+    return this.hasHello && !this.isIdentityFillAvailable();
+  }
+
+  async listIdentities(): Promise<IdentitySummary[]> {
+    await this.requireIdentityFill();
+    const result = await this.request(() => this.client.request("identities.list", {}));
+    return result.identities ?? [];
+  }
+
+  async getIdentity(vaultID: string, itemID: string): Promise<IdentityValues> {
+    await this.requireIdentityFill();
+    return this.request(() => this.client.request("identities.fill", { vaultID, itemID }));
+  }
+
+  // fillIdentity fills the form of personal details with the focused field, or else the page's first one, and the address
+  // form beside it. It looks for the form before it asks Hisar for the identity.
+  async fillIdentity(tabId: number, vaultID: string, itemID: string): Promise<number> {
+    await this.requireIdentityFill();
+    const target = chooseIdentityFrame(await this.probeFillableFrames(tabId));
+    if (!target) throw new HisarError("not-found", "No name, email or phone field found on this page");
+    const identity = await this.getIdentity(vaultID, itemID);
+    const filledCount = await this.browser.sendToFrame<number>(tabId, target.frameId, { type: "content.fillIdentity", expectedOrigin: target.origin, identity });
+    if (!filledCount) throw new HisarError("not-found", "No empty field for this identity found on this page");
+    return filledCount;
+  }
+
+  private async requireIdentityFill(): Promise<void> {
+    if (!this.hasHello) await this.request(() => this.client.connect());
+    if (!this.isIdentityFillAvailable()) throw new HisarError("invalid-request", "Update the Hisar app to fill identities");
   }
 
   isCardFillAvailable(): boolean {

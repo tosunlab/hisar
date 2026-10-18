@@ -1,9 +1,10 @@
 import type { BackgroundToContentMessage, ContentToBackgroundMessage, MessageResponse, SaveOfferView } from "../shared/messages";
 import { attachSubmissionCapture } from "./capture";
 import { readInlineMenuSettings, parseInlineMenuSettings, allInlineMenuSettingKey, appFeaturesKey, readAppFeatures } from "../shared/settings";
-import { featureAddresses, featureCards } from "../shared/protocol";
+import { featureAddresses, featureCards, featureIdentities } from "../shared/protocol";
 import { fillAddressIntoPage, fillAddressIntoScopeOf } from "./address-fill";
 import { fillCardIntoPage, fillCardIntoScopeOf } from "./card-fill";
+import { fillIdentityIntoPage, fillIdentityIntoScopeOf } from "./identity-fill";
 import {
   fillLogin,
   fillLoginIntoScopeOf,
@@ -73,6 +74,14 @@ export function handleBackgroundMessage(message: BackgroundToContentMessage, inl
       inlineMenu.dismissMenu(message.sessionID);
       return fillCardIntoScopeOf(document, field, message.card);
     }
+    case "content.fillIdentity": {
+      if (!isFrameFillable(window, message.expectedOrigin)) return 0;
+      if (message.sessionID === undefined) return fillIdentityIntoPage(document, message.identity);
+      const field = inlineMenu.getAnchoredField(message.sessionID);
+      if (!field) return 0;
+      inlineMenu.dismissMenu(message.sessionID);
+      return fillIdentityIntoScopeOf(document, field, message.identity);
+    }
     case "content.showSaveOffer":
       if (window.top !== window) return false;
       presentSaveOffer(message.offer);
@@ -105,10 +114,12 @@ function startInlineMenu(): InlineMenuController {
       .then((allFeature) => {
         inlineMenu.setAddressFillAvailable(allFeature.includes(featureAddresses));
         inlineMenu.setCardFillAvailable(allFeature.includes(featureCards));
+        inlineMenu.setIdentityFillAvailable(allFeature.includes(featureIdentities));
       })
       .catch(() => {
         inlineMenu.setAddressFillAvailable(false);
         inlineMenu.setCardFillAvailable(false);
+        inlineMenu.setIdentityFillAvailable(false);
       });
   };
   updateAppFeatures();

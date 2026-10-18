@@ -9,7 +9,7 @@
     "build": "vite build && vite build --config vite.content.config.ts && vite build --config vite.passkey.config.ts --mode main-world && vite build --config vite.passkey.config.ts --mode isolated-world",
     "package": "node tools/package-extension.mjs",
     "package:store": "node tools/package-store-extension.mjs",
-    "test:end-to-end": "npm run build && playwright test extension.spec inline-menu.spec one-time-code.spec passkey.spec passkey-extensions.spec address.spec vault.spec unlock.spec card.spec",
+    "test:end-to-end": "npm run build && playwright test extension.spec inline-menu.spec one-time-code.spec passkey.spec passkey-extensions.spec address.spec vault.spec unlock.spec card.spec identity.spec",
     "test:share-link-page": "playwright test share-link-page.spec",
     "screenshots:share-link-page": "playwright test share-link-page-screenshots.spec",
     "register-fake-host": "node tools/register-fake-host.mjs",

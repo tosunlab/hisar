@@ -23,7 +23,7 @@ describe("popup state", () => {
   it("follows the desktop state after pairing", async () => {
     const harness = createHarness({ state: { isOffline: true } });
     await harness.pair();
-    expect(await harness.controller.getPopupState()).toEqual({ view: "unlocked", email: "alex@example.com", isOffline: true, isAddressFillAvailable: true, isCardFillAvailable: true, isVaultAvailable: true, isPasswordUnlockAvailable: true });
+    expect(await harness.controller.getPopupState()).toEqual({ view: "unlocked", email: "alex@example.com", isOffline: true, isAddressFillAvailable: true, isCardFillAvailable: true, isIdentityFillAvailable: true, isVaultAvailable: true, isPasswordUnlockAvailable: true });
     harness.state.state = "locked";
     expect((await harness.controller.getPopupState()).view).toBe("locked");
   });
@@ -264,6 +264,24 @@ describe("addresses", () => {
     await expectHisarError(harness.controller.listAddresses(), "invalid-request");
     await expectHisarError(harness.controller.fillAddress(1, "vault-personal", "item-home"), "invalid-request");
     expect(harness.getRequestTypes().filter((type) => String(type).startsWith("addresses."))).toEqual([]);
+  });
+});
+
+describe("identities", () => {
+  it("lists identities by name and email and fills the form with the focused field", async () => {
+    const harness = createHarness({ allProbe: { 0: { ...emptyProbe, hasIdentityForm: true, hasFocusedIdentityField: true } } });
+    await harness.pair();
+    expect(await harness.controller.listIdentities()).toEqual([{ vaultID: "vault-personal", vaultName: "Personal", itemID: "item-alex", title: "Alex", summary: "Alex Example · alex@example.com" }]);
+    expect(await harness.controller.fillIdentity(1, "vault-personal", "item-alex")).toBe(true);
+    const fill = harness.allFrameMessage.find((entry) => entry.message.type === "content.fillIdentity");
+    expect(fill?.message).toMatchObject({ type: "content.fillIdentity", expectedOrigin: "https://example.com", identity: { firstName: "Alex", phone: "+1 555 0100", address: { city: "Springfield" } } });
+  });
+
+  it("does not ask for the identity on a page without a form for it", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    await expectHisarError(harness.controller.fillIdentity(1, "vault-personal", "item-alex"), "not-found");
+    expect(harness.state.allIdentityRequest ?? []).toEqual([]);
   });
 });
 
