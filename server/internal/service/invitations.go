@@ -93,6 +93,7 @@ func (s *Service) CreateOperatorInvite(ctx context.Context, email, role string, 
 	if err != nil {
 		return nil, err
 	}
+	s.recordAudit(ctx, Actor{}, "operator_invite", map[string]string{"email": email, "role": role})
 	return &apitypes.InviteResponse{Token: token, URL: s.buildInviteLink(token)}, nil
 }
 
