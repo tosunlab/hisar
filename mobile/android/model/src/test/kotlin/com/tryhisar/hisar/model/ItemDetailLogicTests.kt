@@ -1,7 +1,11 @@
 package com.tryhisar.hisar.model
 
+import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class ItemDetailLogicTests {
     @Test
@@ -12,5 +16,59 @@ class ItemDetailLogicTests {
         assertEquals(listOf("https://bank.example"), linked.allURL)
         val older = backendJson.decodeFromString<ItemDetail>("""{"id":"2","title":"Bank","androidApps":null}""")
         assertEquals(emptyList(), older.allAndroidApp)
+    }
+
+    @Test
+    fun testServerDecodesFromTheBackendAndWarnsAboutItsPort() {
+        val json = """{"category":"server","title":"Database","username":"","server":{"host":"2001:db8::1","port":"5432","sshKeyId":"key-1","sshKeyTitle":"Deploy key","sshKeyFingerprint":"SHA256:abc","portWarning":""}}"""
+        val item = backendJson.decodeFromString<ItemDetail>(json)
+        assertTrue(item.isServer)
+        assertEquals("Deploy key", item.server?.sshKeyTitle)
+        assertEquals("[2001:db8::1]:5432", item.server?.address)
+        assertEquals("[2001:db8::1]:5432", item.server?.summary(username = ""))
+        assertEquals("Server", ItemServer().summary(username = ""))
+        val encoded = backendJson.encodeToString(ItemDetail.serializer(), item)
+        assertTrue(""""sshKeyId":"key-1"""" in encoded && """"server"""" in encoded, encoded)
+        val warningByPort = mapOf(
+            "" to "", "22" to "", "65535" to "", "0" to ItemServer.PORT_WARNING_TEXT, "70000" to ItemServer.PORT_WARNING_TEXT,
+            "ssh" to ItemServer.PORT_WARNING_TEXT, "２２" to ItemServer.PORT_WARNING_TEXT,
+        )
+        for ((port, warning) in warningByPort) assertEquals(warning, ItemServer.describePort(port), port)
+    }
+
+    @Test
+    fun testDatabaseDecodesFromTheBackend() {
+        val json = """{"category":"database","title":"Cache","username":"","database":{"engine":"redis","engineName":"Redis","host":"2001:db8::1","port":"6379","name":"","options":"","connectionString":"redis://[2001:db8::1]:6379","portWarning":""}}"""
+        val item = backendJson.decodeFromString<ItemDetail>(json)
+        assertTrue(item.isDatabase)
+        assertEquals("redis://[2001:db8::1]:6379", item.database?.connectionString)
+        assertEquals("Redis · [2001:db8::1]:6379", item.database?.summary)
+        assertEquals("Database", ItemDatabase().summary)
+        assertEquals("DB2 · app", ItemDatabase(engineName = "DB2", name = "app").summary)
+        assertTrue(DatabaseEngine.isKnown("sqlserver"))
+        assertFalse(DatabaseEngine.isKnown("db2"))
+        val encoded = backendJson.encodeToString(ItemDetail.serializer(), item)
+        assertTrue(""""database"""" in encoded && """"engine":"redis"""" in encoded, encoded)
+    }
+
+    @Test
+    fun testOneTimeCodeFormattingAndCountdown() {
+        val code = OneTimeCode(code = "123456", expiresAt = "2026-10-09T12:00:30Z", period = 30)
+        assertEquals("123 456", code.formattedCode)
+        assertEquals("1234 5678", OneTimeCode(code = "12345678", expiresAt = "", period = 30).formattedCode)
+        assertEquals("1234 567", OneTimeCode(code = "1234567", expiresAt = "", period = 30).formattedCode)
+        val now = Instant.parse("2026-10-09T12:00:20Z")
+        assertEquals(10, code.countSecondsLeft(now.plusMillis(400)))
+        assertEquals(0, code.countSecondsLeft(now.plusSeconds(11)))
+        assertEquals(0, OneTimeCode(code = "1", expiresAt = "not a date", period = 30).countSecondsLeft(now))
+    }
+
+    @Test
+    fun testOpenableURLAddsHTTPSAndRejectsOtherSchemes() {
+        assertEquals("https://github.com", VaultLogic.convertToOpenableURL("github.com")?.toString())
+        assertEquals("http://router.local:8080/x", VaultLogic.convertToOpenableURL(" http://router.local:8080/x ")?.toString())
+        assertNull(VaultLogic.convertToOpenableURL("javascript://alert(1)"))
+        assertNull(VaultLogic.convertToOpenableURL(""))
+        assertEquals("accounts.google.com", VaultLogic.extractHost("HTTPS://Accounts.Google.com/signin"))
     }
 }
