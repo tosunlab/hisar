@@ -8,6 +8,7 @@ import {
   type BrowserStatus,
   type CommandLineStatus,
   type Device,
+  type LauncherApp,
   type Organization,
   type OrganizationInvitation,
   type OrganizationMember,
@@ -119,6 +120,7 @@ export const store = reactive({
   updateStatus: null as UpdateStatus | null,
   commandLineStatus: null as CommandLineStatus | null,
   commandLineErrorMessage: "",
+  allLauncherApp: [] as LauncherApp[],
   allAgentVaultID: [] as string[],
   agentErrorMessage: "",
   isImportOpen: false,
@@ -1649,11 +1651,34 @@ export async function uninstallCommandLineTool(): Promise<void> {
   await changeCommandLine(() => api.uninstallCommandLineTool(), "Removed the hisar command");
 }
 
+// setCommandLineIntegration reloads the launchers too: turning the integration off ends every approval.
 export async function setCommandLineIntegration(isEnabled: boolean): Promise<void> {
   await changeCommandLine(
     () => api.setCommandLineIntegration(isEnabled),
     isEnabled ? "hisar can use Hisar after you approve each terminal" : "hisar signs in on its own now",
   );
+  await loadLauncherApps();
+}
+
+export async function loadLauncherApps(): Promise<void> {
+  try {
+    store.allLauncherApp = await api.listAllLauncherApp();
+  } catch (error) {
+    store.commandLineErrorMessage = getErrorMessage(error);
+  }
+}
+
+export async function revokeLauncherApp(launcherApp: LauncherApp): Promise<void> {
+  store.isBusy = true;
+  try {
+    store.allLauncherApp = await api.revokeLauncherApp(launcherApp.path);
+    store.commandLineErrorMessage = "";
+    showNotice(`${launcherApp.name} asks again the next time it uses Hisar`);
+  } catch (error) {
+    store.commandLineErrorMessage = getErrorMessage(error);
+  } finally {
+    store.isBusy = false;
+  }
 }
 
 // Coding agent settings report errors inside their section, like the command-line tool's.

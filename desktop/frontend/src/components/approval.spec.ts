@@ -8,6 +8,7 @@ import {
   createApprovalEvent,
   createCommandLineApprovalEvent,
   createForwardedApprovalEvent,
+  createLauncherApprovalEvent,
   createSigningApprovalEvent,
 } from "../testing";
 
@@ -382,6 +383,74 @@ describe("SSHApprovalWindow", () => {
     sendEvent("ssh-approval-failed", { requestID: "command-line-1", message: "Incorrect master password." });
     await flushPromises();
     expect(wrapper.find('[role="alert"]').text()).toBe("Incorrect master password.");
+    wrapper.unmount();
+  });
+
+  it("says a command-line approval without a terminal covers its app", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent(
+      "ssh-approval",
+      createCommandLineApprovalEvent({ appName: "Visual Studio Code", appPath: "/Applications/Visual Studio Code.app", terminalName: "", coverage: "app", isUnlockRequired: true }),
+    );
+    await flushPromises();
+    expect(wrapper.find("#approval-title").text()).toBe("hisar in Visual Studio Code wants to use Hisar");
+    expect(wrapper.find(".subtitle").text()).toBe("from the command line");
+    expect(wrapper.findAll(".detail-line").map((line) => line.text())).toEqual(["/Applications/Hisar.app/Contents/Helpers/hisar"]);
+    expect(wrapper.find('[data-testid="approval-unlock-note"]').text()).toBe("Hisar is locked; unlocking it also approves hisar in Visual Studio Code.");
+    expect(wrapper.find('[data-testid="approval-duration"]').text()).toBe("Lasts until 10 minutes after the last request from Visual Studio Code, or until Hisar locks.");
+    wrapper.unmount();
+  });
+
+  it("says a command-line approval from no app Hisar can verify covers only its connection", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent(
+      "ssh-approval",
+      createCommandLineApprovalEvent({
+        requesterKind: "background",
+        appName: "A background process",
+        appPath: "",
+        appSignature: "",
+        appSigner: "",
+        terminalName: "",
+        coverage: "connection",
+        isUnlockRequired: true,
+      }),
+    );
+    await flushPromises();
+    expect(wrapper.find("#approval-title").text()).toBe("hisar in a background process wants to use Hisar");
+    expect(wrapper.find('[data-testid="approval-unlock-note"]').text()).toBe("Hisar is locked; unlocking it also approves this connection.");
+    expect(wrapper.find('[data-testid="approval-duration"]').text()).toBe("Lasts for this connection only; Hisar cannot verify the app it comes from.");
+    wrapper.unmount();
+  });
+
+  it("asks for Raycast as a launcher until Hisar locks, and starts Touch ID", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createLauncherApprovalEvent());
+    await flushPromises();
+    expect(wrapper.find("#approval-title").text()).toBe("Raycast wants to search Hisar and copy or paste passwords and one-time codes");
+    expect(wrapper.find(".subtitle").text()).toBe("until Hisar locks");
+    expect(wrapper.find('[data-testid="app-icon"]').attributes("src")).toBe("data:image/png;base64,Raycast");
+    expect(wrapper.find('[data-testid="approval-chain"]').text()).toBe("node");
+    expect(wrapper.find('[data-testid="approval-signer"]').text()).toBe("Signed by Raycast Technologies Inc (A1B2C3D4E5)");
+    expect(wrapper.find('[data-testid="approval-details"]').exists()).toBe(false);
+    expect(wrapper.findAll('[data-testid="approval-launcher-note"] li').map((line) => line.text())).toEqual([
+      "See the titles, usernames and websites of the items in every vault",
+      "Copy or paste their usernames, passwords and one-time codes",
+    ]);
+    expect(wrapper.find('[data-testid="approval-launcher-note"] p').text()).toBe("It cannot change, share or export anything.");
+    expect(wrapper.find('input[name="isRemembered"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="approval-duration"]').text()).toBe("You can revoke it sooner in Settings → Developer tools.");
+    expect(wrapper.find('[data-testid="approval-touch-id"]').text()).toContain("Touch ID to approve");
+    expect(api.respondSSHApproval).toHaveBeenCalledWith("launcher-1", true, false);
+    wrapper.unmount();
+  });
+
+  it("unlocks a locked Hisar for a launcher", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createLauncherApprovalEvent({ isUnlockRequired: true }));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="approval-unlock-note"]').text()).toBe("Hisar is locked; unlocking it also approves Raycast.");
+    expect(wrapper.find('[data-testid="approval-touch-id"]').text()).toContain("Touch ID to unlock and approve");
     wrapper.unmount();
   });
 

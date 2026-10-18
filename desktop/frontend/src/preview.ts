@@ -17,6 +17,7 @@ import type {
   ImportPreview,
   ImportProgress,
   ItemDetail,
+  LauncherApp,
   LoginItemStatus,
   PasswordConfig,
   ShareInvitations,
@@ -774,9 +775,11 @@ function createPreviewShareLinkFromRequest(request: ShareLinkRequest): ShareLink
   return createPreviewShareLink({ ...common, title: detail.title, vaultID: request.vaultID, itemID: request.itemID, fieldLabels });
 }
 
-// createPreviewCommandLineApproval: &approval=cli, plus &cliLocked=1 (Touch ID unlocks) or &cliPassword=1 (master password unlocks).
+// createPreviewCommandLineApproval: &approval=cli, plus &cliLocked=1 (Touch ID unlocks) or &cliPassword=1 (master password unlocks),
+// &coverage=app (hisar without a terminal in a signed app) or =connection (in no app Hisar can verify).
 function createPreviewCommandLineApproval(): ApprovalEvent {
   const isLocked = previewParameter.get("cliLocked") === "1" || previewParameter.get("cliPassword") === "1";
+  const coverage = previewParameter.get("coverage") ?? "terminal-session";
   return {
     requestID: "preview-command-line",
     kind: "command-line",
@@ -801,7 +804,8 @@ function createPreviewCommandLineApproval(): ApprovalEvent {
     isCompact: false,
     isTouchIDApproval: previewParameter.get("noTouchID") !== "1",
     timeoutAt: new Date(Date.now() + 60_000).toISOString(),
-    terminalName: "ttys003",
+    terminalName: coverage === "terminal-session" ? "ttys003" : "",
+    coverage,
     isUnlockRequired: isLocked,
     isPasswordUnlock: previewParameter.get("cliPassword") === "1",
     isPhoneApproval: previewParameter.get("phone") === "1" && !isLocked,
@@ -826,6 +830,7 @@ function createPreviewSSHApproval(): ApprovalEvent {
     requestID: "preview-request",
     kind: "ssh-key",
     terminalName: "",
+    coverage: "",
     isUnlockRequired: isLocked,
     isPasswordUnlock: previewParameter.get("approvalPassword") === "1",
     ...createPreviewTerminalRequester(),
@@ -922,7 +927,7 @@ function createPreviewAgentApproval(kind: string): ApprovalEvent {
 }
 
 // listAllPreviewApproval: ?window=ssh-approval&approval=1 (one request), =2 (two waiting), =signing (a commit signature), =cli (command-line tool),
-// =run (hisar run with secrets),
+// =run (hisar run with secrets), =launcher (Raycast as a launcher; &cliLocked=1 or &cliPassword=1 lock Hisar first),
 // plus &approvalLocked=1 (Touch ID unlocks), &approvalPassword=1 (master password unlocks), &compact=1, &forwarded=1, &noTouchID=1,
 // &phone=1 (the account's iPhone can approve too).
 function listAllPreviewApproval(): ApprovalEvent[] {
@@ -932,6 +937,28 @@ function listAllPreviewApproval(): ApprovalEvent[] {
 function listAllPreviewApprovalWithoutApp(): ApprovalEvent[] {
   if (previewParameter.get("approval") === "cli") {
     return [createPreviewCommandLineApproval()];
+  }
+  if (previewParameter.get("approval") === "launcher") {
+    return [
+      {
+        ...createPreviewCommandLineApproval(),
+        requestID: "preview-launcher",
+        kind: "launcher",
+        requesterKind: "app",
+        appName: "Raycast",
+        appIconURL: "",
+        appPath: "/Applications/Raycast.app",
+        appSignature: "developer",
+        appSigner: "Signed by Raycast Technologies Inc (A1B2C3D4E5)",
+        appWarning: "",
+        allChainProcess: [{ name: "node", commandLine: "node --max-old-space-size=4096 --expose-gc" }],
+        clientName: "",
+        clientPath: "/Users/alper/Library/Application Support/com.raycast.macos/node/bin/node",
+        action: "search Hisar and copy or paste passwords and one-time codes",
+        terminalName: "",
+        coverage: "app",
+      },
+    ];
   }
   const approvalParameter = previewParameter.get("approval") ?? "";
   if (approvalParameter === "agent" || approvalParameter.startsWith("agent-")) {
@@ -1073,6 +1100,15 @@ function buildPreviewCommandLineStatus(isInstalled: boolean): CommandLineStatus 
 
 let isPreviewCommandLineInstalled = previewCommandLineMode !== "not-installed";
 let previewCommandLineStatus = buildPreviewCommandLineStatus(isPreviewCommandLineInstalled);
+
+// launchers=1: Raycast and Alfred approved as launchers in Settings → Developer tools.
+let allPreviewLauncherApp: LauncherApp[] =
+  previewParameter.get("launchers") === "1"
+    ? [
+        { name: "Raycast", path: "/Applications/Raycast.app", iconURL: "", lastUsedAt: new Date(Date.now() - 30_000).toISOString() },
+        { name: "Alfred 5", path: "/Applications/Alfred 5.app", iconURL: "", lastUsedAt: new Date(Date.now() - 3 * 3600_000).toISOString() },
+      ]
+    : [];
 
 const previewImportFilePath = "/Users/alper/Downloads/1PasswordExport-AQ7X2LMK-20261009-101512.1pux";
 
@@ -1618,7 +1654,15 @@ export const previewApi = {
   },
   setCommandLineIntegration: (isEnabled: boolean) => {
     previewCommandLineStatus = { ...buildPreviewCommandLineStatus(isPreviewCommandLineInstalled), isIntegrationEnabled: isEnabled, isServing: isEnabled };
+    if (!isEnabled) {
+      allPreviewLauncherApp = [];
+    }
     return resolveAfterDelay({ ...previewCommandLineStatus });
+  },
+  listAllLauncherApp: () => resolveAfterDelay(structuredClone(allPreviewLauncherApp)),
+  revokeLauncherApp: (appPath: string) => {
+    allPreviewLauncherApp = allPreviewLauncherApp.filter((launcherApp) => launcherApp.path !== appPath);
+    return resolveAfterDelay(structuredClone(allPreviewLauncherApp));
   },
   copyField: () => resolveAfterDelay(undefined),
   getOneTimeCode: () => {

@@ -1,9 +1,13 @@
 package commandline
 
 import (
+	"slices"
+	"time"
+
 	"github.com/tryhisar/hisar/core/app"
 	"github.com/tryhisar/hisar/core/clisocket"
 	"github.com/tryhisar/hisar/core/localstate"
+	"github.com/tryhisar/hisar/desktop/appinfo"
 )
 
 // Runner serves the CLI socket while the integration is on.
@@ -29,15 +33,33 @@ type Status struct {
 	ErrorMessage             string         `json:"errorMessage"`
 }
 
-// Service is bound to the UI for Settings → Developer tools → Command-line tool.
-type Service struct {
-	appService *app.Service
-	installer  *Installer
-	runner     Runner
+// LauncherApprovals is the launcher memory of the CLI socket, clisocket.SessionApprovals.
+type LauncherApprovals interface {
+	ListLaunchers() []clisocket.LauncherApproval
+	RevokeLauncher(appPath string)
 }
 
-func NewService(appService *app.Service, installer *Installer, runner Runner) *Service {
-	return &Service{appService: appService, installer: installer, runner: runner}
+// LauncherApp is an app approved as a launcher, as Settings → Developer tools → Command-line tool lists it; LastUsedAt
+// is RFC 3339.
+type LauncherApp struct {
+	Name       string `json:"name"`
+	Path       string `json:"path"`
+	IconURL    string `json:"iconURL"`
+	LastUsedAt string `json:"lastUsedAt"`
+}
+
+// Service is bound to the UI for Settings → Developer tools → Command-line tool.
+type Service struct {
+	appService  *app.Service
+	installer   *Installer
+	runner      Runner
+	launchers   LauncherApprovals
+	describeApp func(bundlePath string) appinfo.App
+}
+
+// NewService takes the launcher memory, and appinfo's DescribeApp for the names and icons of the approved launchers.
+func NewService(appService *app.Service, installer *Installer, runner Runner, launchers LauncherApprovals, describeApp func(bundlePath string) appinfo.App) *Service {
+	return &Service{appService: appService, installer: installer, runner: runner, launchers: launchers, describeApp: describeApp}
 }
 
 // StartIntegration serves the socket at launch unless the switch is off; not a method, so the UI cannot call it.
@@ -92,4 +114,34 @@ func (service *Service) SetCommandLineIntegration(isEnabled bool) (Status, error
 		service.runner.Stop()
 	}
 	return service.GetCommandLineStatus(), err
+}
+
+// ListLauncherApps lists the apps approved as launchers, most recently used first, once per app path: revoking is by
+// path.
+func (service *Service) ListLauncherApps() []LauncherApp {
+	launchers := service.launchers.ListLaunchers()
+	slices.SortStableFunc(launchers, func(first, second clisocket.LauncherApproval) int { return second.LastUsedAt.Compare(first.LastUsedAt) })
+	launcherApps := []LauncherApp{}
+	isListedByPath := map[string]bool{}
+	for _, launcher := range launchers {
+		if isListedByPath[launcher.App.Path] {
+			continue
+		}
+		isListedByPath[launcher.App.Path] = true
+		describedApp := service.describeApp(launcher.App.Path)
+		launcherApps = append(launcherApps, LauncherApp{
+			Name:       describedApp.Name,
+			Path:       launcher.App.Path,
+			IconURL:    describedApp.IconURL,
+			LastUsedAt: launcher.LastUsedAt.UTC().Format(time.RFC3339),
+		})
+	}
+	return launcherApps
+}
+
+// RevokeLauncherApp ends the launcher approval of the app at appPath, so it asks again, and returns the apps still
+// approved.
+func (service *Service) RevokeLauncherApp(appPath string) []LauncherApp {
+	service.launchers.RevokeLauncher(appPath)
+	return service.ListLauncherApps()
 }

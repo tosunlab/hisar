@@ -1,8 +1,8 @@
 // Package agent runs the Hisar SSH agent inside the desktop app: approvals, the socket and ~/.ssh/config.
 //
-// The Approver asks the user about SSH, command-line and coding-agent requests in one queue: approver.go holds its
-// types, approver_ssh.go and approver_commandline.go build each kind of dialog, approver_waiting.go waits for the
-// answer and approver_respond.go takes it from the window or the phone.
+// The Approver asks the user about SSH, command-line, coding-agent and launcher requests in one queue: approver.go
+// holds its types, approver_ssh.go, approver_commandline.go, approver_agent.go and approver_launcher.go build each kind
+// of dialog, approver_waiting.go waits for the answer and approver_respond.go takes it from the window or the phone.
 package agent
 
 import (
@@ -91,9 +91,12 @@ type ApprovalEvent struct {
 	IsTouchIDApproval      bool           `json:"isTouchIDApproval"`
 	TimeoutAt              string         `json:"timeoutAt"`
 	TerminalName           string         `json:"terminalName"`
-	IsUnlockRequired       bool           `json:"isUnlockRequired"`
-	IsPasswordUnlock       bool           `json:"isPasswordUnlock"`
-	IsPhoneApproval        bool           `json:"isPhoneApproval"`
+	// Coverage is what approving a command-line or launcher request covers: clisocket's terminal-session, app or
+	// connection.
+	Coverage         string `json:"coverage"`
+	IsUnlockRequired bool   `json:"isUnlockRequired"`
+	IsPasswordUnlock bool   `json:"isPasswordUnlock"`
+	IsPhoneApproval  bool   `json:"isPhoneApproval"`
 	// SecretNames lists the first secrets of a secrets.resolve request; MoreSecretCount counts the rest.
 	SecretNames     []string `json:"allSecretName"`
 	MoreSecretCount int      `json:"moreSecretCount"`

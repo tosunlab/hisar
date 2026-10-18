@@ -38,6 +38,12 @@ export interface ApprovalEvent {
     "isTouchIDApproval": boolean;
     "timeoutAt": string;
     "terminalName": string;
+
+    /**
+     * Coverage is what approving a command-line or launcher request covers: clisocket's terminal-session, app or
+     * connection.
+     */
+    "coverage": string;
     "isUnlockRequired": boolean;
     "isPasswordUnlock": boolean;
     "isPhoneApproval": boolean;

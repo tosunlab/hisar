@@ -62,6 +62,7 @@ export const allSettingsSection: SettingsSection[] = [
     allRow: [
       { id: "command-line-tool", title: "hisar command-line tool", keywords: "cli install uninstall path terminal" },
       { id: "command-line-integration", title: "Let the command-line tool use Hisar", keywords: "cli terminal approve session" },
+      { id: "command-line-launchers", title: "Launchers", keywords: "raycast launcher approved apps revoke" },
       { id: "coding-agents", title: "Coding agents", keywords: "hisar mcp claude code cursor agent available to agents vaults" },
     ],
   },

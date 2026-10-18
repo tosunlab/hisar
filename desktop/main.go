@@ -27,6 +27,7 @@ import (
 	"github.com/tryhisar/hisar/desktop/browser"
 	"github.com/tryhisar/hisar/desktop/commandline"
 	"github.com/tryhisar/hisar/desktop/loginitem"
+	"github.com/tryhisar/hisar/desktop/pasteboard"
 	"github.com/tryhisar/hisar/desktop/systemidle"
 	"github.com/tryhisar/hisar/desktop/updater"
 )
@@ -47,7 +48,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	clipboard := &wailsClipboard{}
+	fallbackClipboard := &wailsClipboard{}
 	touchID := biometric.New("Hisar Touch ID")
 	notifier := &appNotifier{}
 	fileSaver := &wailsFileSaver{}
@@ -61,7 +62,7 @@ func main() {
 		DeviceName:            getDeviceName(),
 		Platform:              runtime.GOOS + "/desktop",
 		AppVersion:            getAppVersion(),
-		Clipboard:             clipboard,
+		Clipboard:             pasteboard.New(fallbackClipboard),
 		LockNotifier:          notifier,
 		GetSystemIdleDuration: systemidle.GetIdleDuration,
 		Biometric:             touchID,
@@ -196,8 +197,12 @@ func main() {
 		CheckUpdateRequired: commandLineBridge.CheckUpdateRequired,
 		Approver:            approver,
 		AgentApprover:       approver,
-		Approvals:           commandLineApprovals,
-		IsEnabled:           func() bool { return commandLineService.IsIntegrationEnabled() },
+		LauncherApprover:    approver,
+		IdentifyApp: func(pid int) (clisocket.AppIdentity, bool) {
+			return commandline.IdentifyApp(requesterResolver.Resolve(pid))
+		},
+		Approvals: commandLineApprovals,
+		IsEnabled: func() bool { return commandLineService.IsIntegrationEnabled() },
 	})
 	commandLineSocketPath := os.Getenv(cliprotocol.SocketEnvironment)
 	if commandLineSocketPath == "" {
@@ -210,7 +215,7 @@ func main() {
 		HomeDirectory: homeDirectory,
 		GetUserPath:   userPathReader.Read,
 		Shell:         getLoginShell(),
-	}), commandLineRunner)
+	}), commandLineRunner, commandLineApprovals, requesterResolver.DescribeApp)
 
 	loginItemService := loginitem.NewService(vaultService, background.NewLoginItem(homeDirectory))
 	inviteLinkService := app.NewInviteLinkService()
@@ -259,7 +264,7 @@ func main() {
 			DisableQuitOnLastWindowClosed: true,
 		},
 	})
-	clipboard.app, notifier.app = wailsApp, wailsApp
+	fallbackClipboard.app, notifier.app = wailsApp, wailsApp
 
 	window = wailsApp.Window.NewWithOptions(mainWindowOptions())
 	fileSaver.chooseSavePath = func(defaultFileName string) (string, error) {

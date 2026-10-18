@@ -5,7 +5,11 @@ import type { ApprovalEvent, Status as SSHAgentStatus } from "../bindings/github
 import { BrowserBridge, InviteLinkService, Service, UpdateService } from "../bindings/github.com/tryhisar/hisar/core/app";
 import type { BrowserInstallation } from "../bindings/github.com/tryhisar/hisar/core/browserprotocol";
 import { Service as CommandLineService } from "../bindings/github.com/tryhisar/hisar/desktop/commandline";
-import type { Installation as CommandLineInstallation, Status as BoundCommandLineStatus } from "../bindings/github.com/tryhisar/hisar/desktop/commandline";
+import type {
+  Installation as CommandLineInstallation,
+  LauncherApp,
+  Status as BoundCommandLineStatus,
+} from "../bindings/github.com/tryhisar/hisar/desktop/commandline";
 import { Service as LoginItemService } from "../bindings/github.com/tryhisar/hisar/desktop/loginitem";
 import type { Status as LoginItemStatus } from "../bindings/github.com/tryhisar/hisar/desktop/loginitem";
 import type {
@@ -185,7 +189,7 @@ function normalizeFavoriteItem(boundFavorite: BoundFavoriteItem): FavoriteItem {
   return { ...boundFavorite, item: normalizeItem(boundFavorite.item) };
 }
 
-export type { BrowserInstallation, BrowserPairingRequest, CommandLineInstallation, PairedBrowser };
+export type { BrowserInstallation, BrowserPairingRequest, CommandLineInstallation, LauncherApp, PairedBrowser };
 
 export interface CommandLineStatus extends Omit<BoundCommandLineStatus, "allInstallation"> {
   allInstallation: CommandLineInstallation[];
@@ -437,6 +441,8 @@ const wailsApi = {
   uninstallCommandLineTool: async (): Promise<CommandLineStatus> => normalizeCommandLineStatus(await CommandLineService.UninstallCommandLineTool()),
   setCommandLineIntegration: async (isEnabled: boolean): Promise<CommandLineStatus> =>
     normalizeCommandLineStatus(await CommandLineService.SetCommandLineIntegration(isEnabled)),
+  listAllLauncherApp: async (): Promise<LauncherApp[]> => (await CommandLineService.ListLauncherApps()) ?? [],
+  revokeLauncherApp: async (appPath: string): Promise<LauncherApp[]> => (await CommandLineService.RevokeLauncherApp(appPath)) ?? [],
   listAllAgentVaultID: async (): Promise<string[]> => (await Service.ListAgentVaultIDs()) ?? [],
   setVaultAvailableToAgents: async (vaultID: string, isAvailable: boolean): Promise<string[]> =>
     (await Service.SetVaultAvailableToAgents(vaultID, isAvailable)) ?? [],

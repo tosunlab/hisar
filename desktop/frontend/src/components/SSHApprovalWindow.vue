@@ -15,7 +15,7 @@ import {
   setRemembered,
 } from "../approval";
 import { startThemeSync } from "../theme";
-import AppIcon from "./AppIcon.vue";
+import AppIcon, { type IconName } from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
 
 const allCompactAction: Record<string, string> = {
@@ -29,6 +29,11 @@ const allCompactAction: Record<string, string> = {
   "use-key": "Use SSH key",
 };
 
+const allLauncherAllowance: { icon: IconName; text: string }[] = [
+  { icon: "search", text: "See the titles, usernames and websites of the items in every vault" },
+  { icon: "copy", text: "Copy or paste their usernames, passwords and one-time codes" },
+];
+
 const password = ref("");
 const promptSlot = ref<HTMLElement | null>(null);
 const passwordInput = ref<HTMLInputElement | null>(null);
@@ -37,6 +42,7 @@ const contentElement = ref<HTMLElement | null>(null);
 const approval = computed(() => approvalStore.allApproval[0]);
 const isCommandLine = computed(() => approval.value?.kind === "command-line");
 const isAgent = computed(() => approval.value?.kind === "agent");
+const isLauncher = computed(() => approval.value?.kind === "launcher");
 const isForwarded = computed(() => approval.value?.isForwarded === true);
 const isSigning = computed(() => approval.value?.purpose === "sign-commit" || approval.value?.purpose === "sign-tag");
 const isCompactShown = computed(() => approval.value?.isCompact === true && !approvalStore.isExpanded);
@@ -84,7 +90,7 @@ const purposeText = computed(() => {
   if (!current) {
     return "";
   }
-  if (current.kind === "command-line" || current.kind === "agent") {
+  if (current.kind === "command-line" || current.kind === "agent" || current.kind === "launcher") {
     return current.action || "use Hisar";
   }
   return [current.action || "use your SSH key", current.target].filter(Boolean).join(" ");
@@ -101,12 +107,15 @@ const subtitle = computed(() => {
   if (current.kind === "agent") {
     return current.appName ? `via ${current.clientName} in ${inlineAppName.value}` : `via ${current.clientName}`;
   }
+  if (current.kind === "launcher") {
+    return "until Hisar locks";
+  }
   return current.keyTitle ? `with your SSH key “${current.keyTitle}”` : "Unlock Hisar to use your SSH keys";
 });
 
 const allDetailLine = computed(() => {
   const current = approval.value;
-  if (!current) {
+  if (!current || current.kind === "launcher") {
     return [];
   }
   if (current.kind === "command-line") {
@@ -134,11 +143,33 @@ const rememberLabel = computed(
     `Don’t ask again for ${isAppRequester.value ? approval.value?.appName : approval.value?.clientName} ${approval.value?.rememberPeriod || "for 1 hour"}`,
 );
 
+// commandLineCoverage is who approving a command-line request approves, and for how long, by ApprovalEvent.coverage.
+const commandLineCoverage = computed(() => {
+  switch (approval.value?.coverage) {
+    case "app":
+      return { approved: `hisar in ${inlineAppName.value}`, note: `Lasts until 10 minutes after the last request from ${inlineAppName.value}, or until Hisar locks.` };
+    case "connection":
+      return { approved: "this connection", note: "Lasts for this connection only; Hisar cannot verify the app it comes from." };
+    default:
+      return { approved: "this terminal", note: "Lasts until 10 minutes after this terminal’s last command, or until Hisar locks." };
+  }
+});
+
 const unlockNote = computed(() => {
   if (isAgent.value) {
     return "Hisar is locked; unlocking it also approves this request.";
   }
-  return isCommandLine.value ? "Hisar is locked; unlocking it also approves this terminal." : "Hisar is locked; approving also unlocks it.";
+  if (isLauncher.value) {
+    return `Hisar is locked; unlocking it also approves ${approval.value?.appName}.`;
+  }
+  return isCommandLine.value ? `Hisar is locked; unlocking it also approves ${commandLineCoverage.value.approved}.` : "Hisar is locked; approving also unlocks it.";
+});
+
+const durationNote = computed(() => {
+  if (isLauncher.value) {
+    return "You can revoke it sooner in Settings → Developer tools.";
+  }
+  return isCommandLine.value ? commandLineCoverage.value.note : "";
 });
 
 const agentNote = computed(() => {
@@ -360,7 +391,7 @@ onBeforeUnmount(() => {
           <header class="request-header">
             <div class="requester-icon" aria-hidden="true">
               <img v-if="approval.appIconURL && !isForwarded" :src="approval.appIconURL" alt="" data-testid="app-icon" />
-              <span v-else class="icon-fallback"><AppIcon :name="isForwarded ? 'globe' : 'terminal'" :size="28" /></span>
+              <span v-else class="icon-fallback"><AppIcon :name="isForwarded ? 'globe' : isLauncher ? 'search' : 'terminal'" :size="28" /></span>
               <span class="hisar-badge"><HisarLogo :size="18" /></span>
             </div>
             <div class="request-text">
@@ -387,6 +418,13 @@ onBeforeUnmount(() => {
 
           <div v-if="allDetailLine.length > 0" class="detail-box" data-testid="approval-details">
             <code v-for="(line, index) in allDetailLine" :key="index" class="detail-line" :class="{ secondary: index > 0 }" :title="line">{{ line }}</code>
+          </div>
+
+          <div v-if="isLauncher" class="launcher-allowance" data-testid="approval-launcher-note">
+            <ul>
+              <li v-for="allowance in allLauncherAllowance" :key="allowance.text"><AppIcon :name="allowance.icon" :size="14" /> {{ allowance.text }}</li>
+            </ul>
+            <p class="muted">It cannot change, share or export anything.</p>
           </div>
 
           <div v-if="(isCommandLine || isAgent) && allSecretName.length > 0" class="secret-list" data-testid="approval-secrets">
@@ -432,7 +470,7 @@ onBeforeUnmount(() => {
             <button type="submit" class="primary" data-testid="submit-password" :disabled="approvalStore.isAuthorizing || !password">{{ passwordButtonLabel }}</button>
           </form>
 
-          <p v-if="isCommandLine" class="muted note">Lasts until 10 minutes after this terminal’s last command, or until Hisar locks.</p>
+          <p v-if="durationNote" class="muted note" data-testid="approval-duration">{{ durationNote }}</p>
           <p v-if="agentNote" class="muted note" data-testid="approval-agent-note">{{ agentNote }}</p>
 
           <footer class="footer-bar">
@@ -704,6 +742,42 @@ h1 {
 
 .detail-line.secondary {
   color: var(--color-text-muted);
+}
+
+.launcher-allowance {
+  margin-top: 22px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-background);
+  font-size: 13px;
+}
+
+.launcher-allowance ul {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.launcher-allowance li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  line-height: 1.4;
+}
+
+.launcher-allowance li .icon {
+  flex: none;
+  margin-top: 1px;
+  color: var(--color-text-secondary);
+}
+
+.launcher-allowance p {
+  margin: 8px 0 0 22px;
+  font-size: 12px;
 }
 
 .secret-list {
