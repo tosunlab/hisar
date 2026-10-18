@@ -37,7 +37,7 @@ Five Go modules joined by `go.work`, plus five non-Go apps.
 | `item` | The plaintext item model and its categories (`schema.go`: types kept as named fields; `card.go`, `identity.go`, `apicredential.go`, `license.go`, `server.go`, `database.go`, `address.go`, whose fields identities and cards share), the chosen icon and its presets (`icon.go`), the Android apps a login fills into, stored among its URLs as `androidapp://<package>?sha256=<certificate>` so older apps keep them (`androidapp.go`), `LookupField`, the password generator |
 | `itemicon` | Icon images: normalizing uploads and website icons into small PNGs, and fetching website icons from public https sites only |
 | `cache` | The offline SQLite copy of the server's encrypted records, and the device's sealed website icons |
-| `localstate` | `state.json` (session state plus embedded device `Settings`) and the Secret Key in the keychain |
+| `localstate` | `state.json` (session state plus embedded device `Settings`) and the Secret Key in the keychain (`ErrNoSecretService` when Linux has no keyring) |
 | `app` | The backend of the Mac, iPhone and Android apps, bound to the UI (see below) |
 | `app/apptest` | An unlocked `app.Service` on an in-memory API, for tests outside `core/app` |
 | `cliprotocol` | The CLI ↔ app protocol on `~/.hisar/cli.sock`: messages, results, framing, `Client` |
@@ -58,7 +58,8 @@ Five Go modules joined by `go.work`, plus five non-Go apps.
 `service.go`, `auth.go`, `lock.go`, `vaults.go`, `items.go`, `clipboard.go`, `errors.go`, `account.go`, `sharing.go`,
 `invitations.go`, `sharelink.go`, `browser.go` (extension pairing), `logins.go` (login matching, for pages and Android apps), `androidapps.go` (linking logins to Android apps), `passkey*.go`,
 `platformpasskey.go` (iOS), `commandline*.go`, `codingagent.go` and `launcher.go` (the CLI socket handler), `approvals.go`,
-`phoneapproval.go` (Mac side), `phoneapproval_answer.go` (phone side), `import.go`, `export.go`, `settings.go`, `favorites.go`, `websiteicons.go` (the sealed website icon cache and its setting), `addresses.go` (addresses for the extension),
+`phoneapproval.go` (Mac side), `phoneapproval_answer.go` (phone side), `import.go`, `export.go`, `settings.go`, `favorites.go`, `websiteicons.go` (the sealed website icon cache and its setting), `addresses.go` (addresses and identities for the extension), `cards.go` (cards for the extension),
+`browseritems.go` (the extension popup's vault: items, vaults, new items), `browserunlock.go` (the popup's master password unlock),
 `organizations.go` (organizations, teams, organization vaults, and delivering and rotating their keys on every sync).
 Shared test fixtures are in `helpers_test.go`, the in-memory API in `fakeapi_test.go`. `Config` (`types.go`) has
 `BiometricName`, the name Go's sentences give the biometric check: "Touch ID" on the Mac and in iOS hisarkit (Swift
@@ -97,8 +98,9 @@ replaces it with the device's Face ID or Touch ID), "biometric" on Android.
 | `appinfo` | The app behind a process (`resolver.go`, `chain.go`, `findapp.go`, `bundle.go`) |
 | `browser` | Native host, socket server and manifests for the extension |
 | `commandline` | Installing `hisar`, Settings → Command-line tool and its approved launchers, and the signed app behind a caller without a terminal (`identity.go`) |
+| `portable` | Running from an AppImage or a Flatpak: copies the browser host and `hisar` out, with the `hisar-app` launcher |
 | `loginitem`, `background` | Open at login; login item, Dock icon, appearance |
-| `biometric`, `systemidle`, `windowplacement`, `updater`, `pasteboard` | Touch ID and keychain, idle time, window placement, Sparkle, the clipboard (copies concealed from clipboard managers) |
+| `biometric`, `systemidle`, `windowplacement`, `updater`, `pasteboard` | Touch ID and keychain, idle time (D-Bus on Linux), window placement, Sparkle (`Notifier` announces versions on Linux), the clipboard (copies concealed from clipboard managers) |
 | `cmd/hisar-browser-host`, `cmd/hisar-update-key` | Helper binaries |
 
 ### mobile
@@ -228,7 +230,7 @@ make test-desktop-frontend
 make test-raycast        # the Raycast extension's typecheck, tests, lint and build; it never installs into Raycast
 make test-admin          # the admin dashboard's typecheck and unit tests; make build-admin builds it alone
 make test-admin-end-to-end # the dashboard in Chromium; needs HISAR_DATABASE_URL and Playwright's Chromium
-make build-desktop       # or package-desktop for Hisar.app; package-desktop-linux VERSION=… for the .deb and .rpm (on Linux)
+make build-desktop       # or package-desktop for Hisar.app; package-desktop-linux VERSION=… for the .deb, .rpm and AppImage (on Linux); package-desktop-flatpak VERSION=… for the Flatpak; scripts/test-desktop-linux-package.sh installs one and checks the app starts
 make build-ios-framework test-ios
 make install-android-sdk # the pinned SDK packages, NDK 30 and the emulators hisar-api29, hisar-api34, hisar-api37
 make build-android-aar build-android test-android # HisarKit.aar; the APKs, the test APK and lint; the JVM tests
@@ -240,6 +242,14 @@ The Android targets need `ANDROID_HOME` (the SDK, with the command-line tools in
 `ANDROID_NDK_HOME` (`$ANDROID_HOME/ndk/30.0.16248370`) and JDK 21 for the Gradle daemon
 (`gradle/gradle-daemon-jvm.properties`). `make generate-themes` writes `ThemePalettes.kt`, with the Swift palettes and
 the desktop and admin `themes.css`, from `assets/themes/themes.json`.
+## Releases
+
+One run of Actions → Release per release (`gh workflow run release.yml -f app=<server|cli|desktop|extension> -f type=<patch|minor|major|custom> [-f version=X.Y.Z]`):
+it plans the version (`scripts/plan-release.sh`), runs CI, pushes the `<app>-X.Y.Z` tag, builds through
+`release-<app>.yml` (only callable from Release), creates the GitHub prerelease and waits for approval in the environment
+`publish-<app>` before `publish.yml` publishes it. What an app is built from lives in `scripts/app-paths.sh`, shared with
+`scripts/detect-app-changes.sh`; a new build input of an app goes there. A release's install text is
+`.github/release-notes/<app>.md`, and `scripts/check-release-files.sh` lists the files each release must have.
 
 ## Tests
 

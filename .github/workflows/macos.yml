@@ -5,7 +5,8 @@ name: macOS and iOS
 # scripts/detect-app-changes.sh decides.
 # The run-macos label, or a manual run, runs both anyway. The skip-ios label skips the iPhone job, for a pull request whose
 # iPhone build and tests already passed on a Mac (make build-ios-framework build-ios test-ios test-ios-ui); add it before
-# pushing, since a run reads the labels the pull request has when it starts.
+# pushing, since a run reads the labels the pull request has when it starts. The Release workflow calls it for a desktop
+# release, which builds the Mac app and not the iPhone app.
 on:
   pull_request:
     types: [opened, reopened, synchronize, labeled]
@@ -15,10 +16,11 @@ on:
         description: Build and test the iPhone app even when nothing it builds from changed
         type: boolean
         default: false
+  workflow_call:
 
-# Adding an unrelated label gets its own group, so it never cancels a running build.
+# Adding an unrelated label gets its own group, so it never cancels a running build; a manual or release run is its own.
 concurrency:
-  group: macos-${{ github.event.pull_request.number || github.ref }}-${{ (github.event.action == 'labeled' && github.event.label.name != 'run-macos') && github.run_id || 'build' }}
+  group: macos-${{ github.event.pull_request.number || github.run_id }}-${{ (github.event.action == 'labeled' && github.event.label.name != 'run-macos') && github.run_id || 'build' }}
   cancel-in-progress: true
 
 permissions:
@@ -52,11 +54,11 @@ jobs:
           WORKFLOW_FILE: .github/workflows/macos.yml
         if: github.event_name == 'pull_request'
         run: scripts/detect-app-changes.sh
-      - name: Choose what a manual run builds
+      - name: Choose what a manual or release run builds
         id: manual
-        if: github.event_name == 'workflow_dispatch'
+        if: github.event_name != 'pull_request'
         env:
-          ALWAYS_RUN_IOS: ${{ inputs.alwaysRunIos }}
+          ALWAYS_RUN_IOS: ${{ inputs.alwaysRunIos || false }}
         run: |
           echo "isDesktopChanged=true" | tee -a "$GITHUB_OUTPUT"
           echo "isMobileChanged=$ALWAYS_RUN_IOS" | tee -a "$GITHUB_OUTPUT"

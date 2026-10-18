@@ -1,0 +1,43 @@
+#!/bin/sh
+# Starts Hisar from its AppImage. GTK 4 and WebKitGTK 6.0 come from the system, as for the .deb and .rpm: an AppImage
+# that bundled WebKitGTK would still start the system's WebKit processes, whose version need not match.
+here=$(dirname "$(readlink -f "$0")")
+
+# Without them the loader's error names one file and no package, so say which packages to install, in a dialog too
+# when started from the app menu. Without ldconfig there is nothing to check, and Hisar starts as it is.
+findMissingLibraries() {
+	ldconfig=$(command -v ldconfig || { [ -x /sbin/ldconfig ] && echo /sbin/ldconfig; })
+	[ -n "$ldconfig" ] || return 0
+	libraries=$("$ldconfig" -p 2>/dev/null) || return 0
+	for library in libgtk-4.so.1 libwebkitgtk-6.0.so.4; do
+		case "$libraries" in
+		*"$library "*) ;;
+		*) printf '%s ' "$library" ;;
+		esac
+	done
+}
+
+missing=$(findMissingLibraries)
+if [ -n "$missing" ]; then
+	message="Hisar needs GTK 4 and WebKitGTK 6.0 from your distribution (missing: ${missing% }). Install them, then start Hisar again:
+
+  Arch:            sudo pacman -S gtk4 webkitgtk-6.0
+  Debian, Ubuntu:  sudo apt install libgtk-4-1 libwebkitgtk-6.0-4
+  Fedora:          sudo dnf install gtk4 webkitgtk6.0
+  openSUSE:        sudo zypper install libgtk-4-1 libwebkitgtk-6_0-4
+
+Or install the Hisar Flatpak, which brings them with it."
+	echo "$message" >&2
+	if [ ! -t 2 ]; then
+		if command -v zenity >/dev/null 2>&1; then
+			zenity --error --title=Hisar --no-markup --text="$message" 2>/dev/null
+		elif command -v kdialog >/dev/null 2>&1; then
+			kdialog --title Hisar --error "$message" 2>/dev/null
+		elif command -v notify-send >/dev/null 2>&1; then
+			notify-send "Hisar can't start" "$message" 2>/dev/null
+		fi
+	fi
+	exit 1
+fi
+
+exec "$here/usr/bin/Hisar" "$@"

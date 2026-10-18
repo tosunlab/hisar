@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import type { AccountDeletionPreview, DeletionVault } from "../api";
 import { clearError, deleteAccount, loadAccountDeletionPreview, store } from "../store";
+import { getThisDeviceName } from "../util";
 import AccountDialog from "./AccountDialog.vue";
 
 const emit = defineEmits<{ close: [] }>();
@@ -86,7 +87,7 @@ function close(): void {
         <li v-if="preview.sentInvitationCount + preview.receivedInvitationCount > 0">
           {{ countThing(preview.sentInvitationCount + preview.receivedInvitationCount, "invitation is", "invitations are") }} removed.
         </li>
-        <li>{{ countThing(preview.deviceCount, "device is", "devices are") }} signed out, including this Mac.</li>
+        <li>{{ countThing(preview.deviceCount, "device is", "devices are") }} signed out, including {{ getThisDeviceName() }}.</li>
       </ul>
       <label>
         <span>Master password</span>

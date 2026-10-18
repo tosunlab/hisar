@@ -65,7 +65,12 @@ func (SystemPeerResolver) ResolvePeer(connection net.Conn) (Peer, error) {
 	return peer, peerError
 }
 
+// GetTerminalSession has nothing to read for PID 0: a peer in another PID namespace, as the terminal is to a Flatpak
+// Hisar. That connection has no terminal, so it is approved on its own (getApprovalScope).
 func (SystemPeerResolver) GetTerminalSession(pid int) (TerminalSession, error) {
+	if pid == 0 {
+		return TerminalSession{}, nil
+	}
 	session, err := readProcessSession(pid)
 	if err != nil {
 		return TerminalSession{}, err

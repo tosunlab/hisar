@@ -22,6 +22,49 @@ export interface FakeAddress {
   country: string;
 }
 
+// FakeItem is an item other than a login, which items.list and items.get show; fields carry every value, and items.get
+// leaves out a secret's as the app does.
+export interface FakeItem {
+  vaultID: string;
+  vaultName: string;
+  itemID: string;
+  category: string;
+  title: string;
+  subtitle: string;
+  url?: string;
+  fields: { id: string; label: string; kind: "text" | "secret" | "url" | "notes" | "one-time-code"; value?: string }[];
+}
+
+export interface FakeCard {
+  vaultID: string;
+  vaultName: string;
+  itemID: string;
+  title: string;
+  brand: string;
+  last4: string;
+  expiry: string;
+  cardholder: string;
+  number: string;
+  expiryMonth: string;
+  expiryYear: string;
+  securityCode: string;
+}
+
+export interface FakeIdentity {
+  vaultID: string;
+  vaultName: string;
+  itemID: string;
+  title: string;
+  summary: string;
+  firstName: string;
+  middleName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  birthDate: string;
+  address?: { street: string; city: string; region: string; postalCode: string; country: string };
+}
+
 export interface FakeHostState {
   state: "signed-out" | "locked" | "unlocked";
   email: string;
@@ -35,7 +78,16 @@ export interface FakeHostState {
   exactHostOnly: boolean;
   allLogin: FakeLogin[];
   features?: string[];
+  masterPassword?: string;
   allAddress?: FakeAddress[];
+  allItem?: FakeItem[];
+  allCard?: FakeCard[];
+  allVault?: { vaultID: string; name: string; isPersonal: boolean }[];
+  allIdentity?: FakeIdentity[];
+  allIdentityRequest?: string[];
+  allCardRequest?: string[];
+  allFavoriteItemID?: string[];
+  allRevealRequest?: string[];
   allAddressRequest?: string[];
   allCodeRequest?: { itemID: string; url: string }[];
   allPasskey?: FakePasskey[];

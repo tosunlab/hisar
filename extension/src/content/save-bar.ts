@@ -1,4 +1,4 @@
-import type { SaveOfferAction, SaveOfferView } from "../shared/messages";
+import type { SaveOfferAction, SaveOfferEdits, SaveOfferView } from "../shared/messages";
 
 export interface SaveBar {
   host: HTMLElement;
@@ -6,7 +6,7 @@ export interface SaveBar {
   remove: () => void;
 }
 
-export type SaveBarActionHandler = (action: SaveOfferAction) => Promise<{ ok: boolean; message?: string }>;
+export type SaveBarActionHandler = (action: SaveOfferAction, edits?: SaveOfferEdits) => Promise<{ ok: boolean; message?: string }>;
 
 const hostTagName = "hisar-save-bar";
 
@@ -39,6 +39,13 @@ button.ghost { border-color: transparent; background: transparent; color: #b4b9c
 button.ghost:hover:not(:disabled) { background: #1f2226; color: #e8eaed; }
 button.close { padding: 4px; }
 .message { margin: 10px 0 0 34px; font-size: 12px; color: #b4b9c0; }
+.fields { display: grid; gap: 8px; margin: 10px 0 0 34px; }
+.fields label { display: grid; gap: 3px; color: #7c838d; font-size: 11px; }
+.fields input, .fields select {
+  box-sizing: border-box; width: 100%; padding: 6px 8px; border: 1px solid #30343a; border-radius: 7px;
+  background: #16181b; color: #e8eaed; font: inherit; font-size: 13px;
+}
+.fields input:focus, .fields select:focus { outline: none; border-color: #8a95a5; }
 .message.error { color: #f2a7a9; }
 `;
 
@@ -89,12 +96,42 @@ export function showSaveBar(document: Document, offer: SaveOfferView, onAction: 
   closeButton.dataset.action = "not-now";
   header.append(logo, heading, closeButton);
 
-  const detail = createElement(document, "p", "detail");
-  if (offer.username) {
-    detail.append("Username ");
-    detail.append(createElement(document, "strong", undefined, offer.username));
+  // A new login, with an app that takes them, gets fields for its title, username and vault; otherwise the bar names the
+  // username it saves.
+  let detail: HTMLElement;
+  let readEdits: () => SaveOfferEdits | undefined = () => undefined;
+  if (offer.kind === "save" && offer.allVault) {
+    detail = createElement(document, "div", "fields");
+    const addField = <Field extends HTMLInputElement | HTMLSelectElement>(label: string, field: Field): Field => {
+      const wrapper = createElement(document, "label", undefined, label);
+      field.dataset.field = label.toLowerCase();
+      wrapper.append(field);
+      detail.append(wrapper);
+      return field;
+    };
+    const titleInput = addField("Title", createElement(document, "input"));
+    titleInput.value = offer.defaultTitle ?? offer.host;
+    const usernameInput = addField("Username", createElement(document, "input"));
+    usernameInput.value = offer.username;
+    usernameInput.autocomplete = "off";
+    let vaultSelect: HTMLSelectElement | undefined;
+    if (offer.allVault.length > 1) {
+      vaultSelect = addField("Vault", createElement(document, "select"));
+      for (const vault of offer.allVault) {
+        const option = createElement(document, "option", undefined, vault.name);
+        option.value = vault.vaultID;
+        vaultSelect.append(option);
+      }
+    }
+    readEdits = () => ({ title: titleInput.value, username: usernameInput.value, vaultID: vaultSelect?.value || offer.allVault?.[0]?.vaultID });
   } else {
-    detail.textContent = "No username";
+    detail = createElement(document, "p", "detail");
+    if (offer.username) {
+      detail.append("Username ");
+      detail.append(createElement(document, "strong", undefined, offer.username));
+    } else {
+      detail.textContent = "No username";
+    }
   }
 
   const message = createElement(document, "p", "message");
@@ -117,7 +154,8 @@ export function showSaveBar(document: Document, offer: SaveOfferView, onAction: 
   const allButton = [closeButton, neverButton, notNowButton, primaryButton];
   const act = async (action: SaveOfferAction): Promise<void> => {
     for (const button of allButton) button.disabled = true;
-    const outcome = await onAction(action).catch((error: unknown) => ({
+    const edits = action === "save" ? readEdits() : undefined;
+    const outcome = await (edits ? onAction(action, edits) : onAction(action)).catch((error: unknown) => ({
       ok: false,
       message: error instanceof Error ? error.message : String(error),
     }));
@@ -137,6 +175,9 @@ export function showSaveBar(document: Document, offer: SaveOfferView, onAction: 
     message.textContent = outcome.message || "Hisar could not save this login.";
     for (const button of allButton) button.disabled = false;
   };
+  // Keys typed in the fields stop at the bar, so the page's keyboard shortcuts do not act on them. A page listening in the
+  // capture phase still sees them; the title and username are not secrets.
+  for (const type of ["keydown", "keyup", "keypress", "input"]) detail.addEventListener(type, (event) => event.stopPropagation());
   for (const button of allButton) {
     button.addEventListener("click", (event) => {
       event.stopPropagation();

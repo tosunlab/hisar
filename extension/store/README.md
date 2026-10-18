@@ -48,16 +48,17 @@ The store rejects a manifest with a `key` field, so `package:store` removes it. 
 | Permission | Justification |
 |---|---|
 | `nativeMessaging` | The extension has no data of its own; it asks the Hisar desktop app on the same computer for matching logins, fills, saves and generated passwords. |
-| `storage` | Stores the extension's pairing with the Hisar app, its two settings and the sites the user chose "Never for this site" for. |
+| `storage` | Stores the extension's pairing with the Hisar app, its two settings, the sites the user chose "Never for this site" for, and when each item was last filled (IDs and times only), to list recently used logins first. |
 | `scripting` | Lists the frames of the current tab and fills a login into the page only after the user chooses it, respecting the same-site frame rule. |
 | `activeTab` | Reads the address of the tab the user opened the popup or pressed the fill shortcut on, to find matching logins. |
 | `tabs` | Finds the current tab's address for the popup and keeps save offers with their tab while the page navigates after signing in. |
+| `contextMenus` | Adds "Show Hisar here", "Fill login" and "Fill a suggested password" to the menu of editable fields. |
 | `offscreen` | Opens a hidden extension page whose only job is to put the current one-time code on the clipboard after the user fills a login that has one; a service worker cannot reach the clipboard itself. |
 | `clipboardWrite` | That hidden page copies without a user gesture of its own, which Chrome allows only with this permission. Only the code of the login the user just filled is copied. |
 | Host permission `<all_urls>` | The content script detects login forms on any site to show the Hisar icon and to offer saving a login after the user signs in; users keep logins for any website. |
 | Remote code | No: all code is in the package. |
 
-**Data usage:** the extension handles *authentication information* (usernames and passwords) and *website content* (the login forms on the current page). For each:
+**Data usage:** the extension handles *authentication information* (usernames, passwords and the master password typed to unlock Hisar), *personally identifiable information* (names, emails, phone numbers and addresses of the user's identities), *financial and payment information* (the user's credit cards) and *website content* (the forms on the current page). For each:
 - It is used only for the extension's single purpose.
 - It is not sold, and not transferred to third parties.
 - It is not used for creditworthiness or lending.

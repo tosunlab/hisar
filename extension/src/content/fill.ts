@@ -1,5 +1,7 @@
 import type { FillOutcome, FrameProbe } from "../shared/messages";
 import { hasAddressForm, isFocusedAddressField } from "./address-fill";
+import { hasCardForm, isFocusedCardField } from "./card-fill";
+import { hasIdentityForm, isFocusedIdentityField } from "./identity-fill";
 import { findAllLoginScope, getAutocompleteTokens, isTextField, type LoginScope } from "./detection";
 import { containsAcrossShadow, getDeepActiveElement, isInputElement } from "./dom";
 import { findFirstOneTimeCodeTarget, fillOneTimeCodeIntoTarget, findOneTimeCodeTarget } from "./one-time-code";
@@ -100,6 +102,10 @@ export function probeFrame(document: Document): FrameProbe {
     hasOneTimeCodeField: findFirstOneTimeCodeTarget(document) !== undefined,
     hasAddressForm: hasAddressForm(document),
     hasFocusedAddressField: isFocusedAddressField(document),
+    hasCardForm: hasCardForm(document),
+    hasFocusedCardField: isFocusedCardField(document),
+    hasIdentityForm: hasIdentityForm(document),
+    hasFocusedIdentityField: isFocusedIdentityField(document),
   };
 }
 

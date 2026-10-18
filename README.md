@@ -18,6 +18,23 @@ The server stores only ciphertext. Keys are derived on your devices from your ma
 
 Where each package is and where new code goes: [CLAUDE.md](CLAUDE.md).
 
+## Desktop app on Linux
+
+Each `desktop-<version>` GitHub Release has `Hisar-<version>-linux-<arch>.deb` and `.rpm` for amd64 and arm64, built for
+GTK 4 and WebKitGTK 6.0 (Ubuntu 24.04+, Debian 13+, Fedora 40+). Check them against `SHA256SUMS-linux-<arch>`, then:
+
+```sh
+sudo apt install ./Hisar-0.3.0-linux-amd64.deb     # Fedora: sudo dnf install ./Hisar-0.3.0-linux-amd64.rpm
+```
+
+The package installs the app (`/usr/bin/Hisar`, in the app menu), `hisar` at `/usr/bin/hisar`, and the browser
+extension's host. On other distributions, run `Hisar-<version>-linux-<arch>.AppImage` (it needs the system's GTK 4 and
+WebKitGTK 6.0, for example `sudo pacman -S gtk4 webkitgtk-6.0` on Arch; without them it says which packages to install), or install the Flatpak, which brings them with the GNOME runtime: `flatpak install --user
+Hisar-<version>-linux-<arch>.flatpak`. Both copy `hisar` to `~/.local/share/hisar/bin`; Settings → Command-line tool
+links it onto your `PATH`. The Secret Key goes into the desktop's keyring, so a Secret Service has to run (GNOME Keyring or
+KWallet); without one, set `HISAR_SECRET_KEY`. What works as on the Mac and what differs (no Touch ID, update notices
+instead of installing updates, no app names in approvals): [docs/DESIGN.md §9.1.3](docs/DESIGN.md).
+
 ## Command-line tool
 
 `hisar` lists, reads and edits your items from a terminal or a script (`hisar --help`).
@@ -152,8 +169,8 @@ on macOS or Linux (`make build-android-aar build-android test-android`). See [mo
 
 ### CI and releases
 
-GitHub Actions runs CI on pull requests and on manual runs (Actions → CI → Run workflow), never on pushes to `main`: a merge was already
-tested as its pull request. A new push to a pull request cancels its running CI.
+GitHub Actions runs CI on pull requests, on manual runs (Actions → CI → Run workflow) and for every release, never on pushes to
+`main`: a merge was already tested as its pull request. A new push to a pull request cancels its running CI.
 
 `.github/workflows/ci.yml` (Linux runners): gofmt, vet, all Go tests against Postgres (failing on any skipped test except the
 `TestIntegration…` tests and `TestRecordOpenSSHFixture`), the CLI for every release platform, the end-to-end test of the built
@@ -171,7 +188,8 @@ or the workflow).
 minutes count ten times against the plan's included minutes, so each job runs only when the pull request, compared with its base
 branch on every push, changes what it builds (`scripts/detect-app-changes.sh`):
 
-- the Mac app when `desktop/`, `cli/` (the app bundles `hisar`), `core/`, `go.work` or the workflow changes;
+- the Mac app when `desktop/`, `cli/` (the app bundles `hisar`), `core/`, `go.work`, its packaging scripts or the workflow
+  changes (`scripts/app-paths.sh` lists them);
 - the iPhone app when `mobile/ios/`, `mobile/hisarkit/`, `mobile/go.mod`, `mobile/build-framework.sh`, `core/`, `go.work` or the
   workflow changes; an Android-only change does not run it;
 - both, whatever changed, while the pull request has the label `run-macos`;
@@ -183,19 +201,45 @@ branch on every push, changes what it builds (`scripts/detect-app-changes.sh`):
 A run takes roughly 15–25 minutes for the Mac app and 40–60 minutes for the iPhone app, so about 150–250 included minutes for the Mac
 app alone and up to 850 with the iPhone app. A desktop release build costs about the same as the Mac app job.
 
-Releases are tags without a `v`: `server-X.Y.Z`, `cli-X.Y.Z`, `desktop-X.Y.Z` and `extension-X.Y.Z`. Pushing one runs its release
-workflow, which builds it into a GitHub prerelease (or, for the server, pushes the image) that nobody gets yet. A custom build such as
-`desktop-1.0.0-alpha-test` is built the same way and marked "(custom build)", and can never be published. Publishing is a separate,
-deliberate step: Actions → Publish → Run workflow with the app and the tag. It refuses anything but a plain `<app>-X.Y.Z` tag, then
+Releases are tags without a `v`: `server-X.Y.Z`, `cli-X.Y.Z`, `desktop-X.Y.Z` and `extension-X.Y.Z`. Each release is one run of
+Actions → Release → Run workflow (or `gh workflow run release.yml -f app=server -f type=minor`), on `main`:
 
-- server: points `ghcr.io/tosunlab/hisar-server:latest` and `:X.Y` at `:X.Y.Z`;
-- desktop: renames the release's `update-unpublished.json` to `update.json`, which offers the version to every app as an automatic update;
-- cli, extension (and desktop): turns the prerelease into a release and marks it latest.
+- **App**: `server`, `cli`, `desktop` or `extension`.
+- **Release type**: `patch`, `minor` or `major` bumps the app's newest `<app>-X.Y.Z` tag (`0.1.14` → `0.1.15`, `0.2.0`,
+  `1.0.0`; an app's first release is `0.1.0`), and `custom` takes **Version** as it is: `0.2.1`, or `0.3.0-rc1` for a custom
+  build that is built the same way, marked "(custom build)" and can never be published. A custom build may run on any branch.
+- **Dry run**: only the plan.
 
-A tag pushed without the workflows in its tree (one from before the move to GitHub) is built by running its release workflow by hand
-with the tag as input: the workflow comes from `main`, the code from the tag.
+The run then goes on by itself (`scripts/plan-release.sh` plans it):
+
+1. **Plan**: the next version, which must be newer than the previous release and not tagged yet, and the commits since the
+   previous release that change what the app is built from (`scripts/app-paths.sh`, without tests and docs). It refuses a
+   release without such commits, and warns about a patch release with a breaking change (`feat(core)!: …` or a
+   `BREAKING CHANGE:` footer). The run summary shows the plan.
+2. **CI**: `ci.yml` for the commit, plus `macos.yml` for the desktop app.
+3. **Tag**: the annotated tag on that commit; its message is the title and the changes, which the desktop app's Sparkle
+   update shows as release notes. The deploy key in `RELEASE_DEPLOY_KEY` pushes it, past the tag ruleset.
+4. **Build**: `release-<app>.yml`, which only the Release workflow calls. The desktop app builds the Mac DMG and Sparkle update
+   and the Linux packages and Flatpak (amd64 and arm64); the server pushes `ghcr.io/tosunlab/hisar-server:X.Y.Z`.
+5. **Prerelease**: the GitHub prerelease with every file at once (`scripts/check-release-files.sh` checks them first), its
+   changes and the app's install text from `.github/release-notes/<app>.md`. Nobody gets it yet.
+6. **Publish**: waits in the environment `publish-<app>` until a reviewer approves it (Review deployments on the run). A newer
+   release of the app that reaches this step replaces an older one still waiting. It refuses a version older than the app's
+   published release, then
+   - server: points `ghcr.io/tosunlab/hisar-server:latest` and `:X.Y` at `:X.Y.Z`;
+   - desktop: renames the release's `update-unpublished.json` to `update.json`, which offers the version to every Mac app as an
+     automatic update;
+   - all: rewrites the notes to cover every change since the published release, turns the prerelease into a release and marks
+     it latest.
+
+A failed run continues with Re-run failed jobs; a new run refuses the tag it already pushed. Actions → Publish → Run workflow
+publishes an existing prerelease by hand, through the same approval. Actions → Release server image → Run workflow on a branch
+pushes only `ghcr.io/tosunlab/hisar-server:sha-<commit>`, for testing.
 
 Repository secrets: `SPARKLE_PRIVATE_KEY`, the Sparkle EdDSA private key file's content (`gh secret set SPARKLE_PRIVATE_KEY --repo
-tosunlab/hisar < <key file>`). Images go to the GitHub Container Registry with the workflow's own `GITHUB_TOKEN`.
+tosunlab/hisar < <key file>`), and `RELEASE_DEPLOY_KEY`, the private half of the deploy key "Release workflow tags" (write
+access, a bypass actor of the ruleset "tags: only maintainers create"). Images go to the GitHub Container Registry with the
+workflow's own `GITHUB_TOKEN`. The environments `publish-server`, `publish-cli`, `publish-desktop` and `publish-extension` have
+the required reviewers and accept only `main`.
 
 Deployment: see [deploy/README.md](deploy/README.md).

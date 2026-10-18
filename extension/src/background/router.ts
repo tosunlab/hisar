@@ -34,6 +34,8 @@ async function routePopupMessage(controller: BackgroundController, message: Popu
       return controller.finishPairing(message.code);
     case "popup.unlock":
       return controller.unlock();
+    case "popup.unlockWithPassword":
+      return controller.unlockWithPassword(message.password);
     case "popup.matchLogins":
       return controller.matchLogins(message.tabId);
     case "popup.fillLogin":
@@ -50,6 +52,32 @@ async function routePopupMessage(controller: BackgroundController, message: Popu
       return controller.listAddresses();
     case "popup.fillAddress":
       return controller.fillAddress(message.tabId, message.vaultID, message.itemID);
+    case "popup.listIdentities":
+      return controller.listIdentities();
+    case "popup.fillIdentity":
+      return controller.fillIdentity(message.tabId, message.vaultID, message.itemID);
+    case "popup.listCards":
+      return controller.listCards();
+    case "popup.fillCard":
+      return controller.fillCard(message.tabId, message.vaultID, message.itemID);
+    case "popup.getAllLastUsed":
+      return controller.getAllLastUsed();
+    case "popup.listVaults":
+      return controller.listVaults();
+    case "popup.createItem":
+      return controller.createItem(message.vaultID, message.item);
+    case "popup.listItems":
+      return controller.listItems(message.query);
+    case "popup.getItem":
+      return controller.getItem(message.vaultID, message.itemID);
+    case "popup.revealField":
+      return controller.revealItemField(message.vaultID, message.itemID, message.fieldID);
+    case "popup.getItemCode":
+      return controller.getItemCode(message.vaultID, message.itemID);
+    case "popup.getIcon":
+      return controller.getItemIcon(message.url);
+    case "popup.setFavorite":
+      return controller.setItemFavorite(message.vaultID, message.itemID, message.isFavorite);
   }
 }
 
@@ -77,7 +105,7 @@ async function routeContentMessage(
     case "content.getPendingSaveOffer":
       return controller.getPendingSaveOffer(tabId);
     case "content.actOnSaveOffer":
-      return controller.actOnSaveOffer(tabId, message.offerID, message.action);
+      return controller.actOnSaveOffer(tabId, message.offerID, message.action, message.edits);
   }
 }
 
@@ -91,6 +119,10 @@ async function routeInlineMenuMessage(inlineMenu: InlineMenuService, message: In
       return inlineMenu.fillOneTimeCode(sender, message.sessionID, message.vaultID, message.itemID);
     case "inlineMenu.fillAddress":
       return inlineMenu.fillAddress(sender, message.sessionID, message.vaultID, message.itemID);
+    case "inlineMenu.fillIdentity":
+      return inlineMenu.fillIdentity(sender, message.sessionID, message.vaultID, message.itemID);
+    case "inlineMenu.fillCard":
+      return inlineMenu.fillCard(sender, message.sessionID, message.vaultID, message.itemID);
     case "inlineMenu.useSuggestedPassword":
       return inlineMenu.useSuggestedPassword(sender, message.sessionID);
     case "inlineMenu.unlock":

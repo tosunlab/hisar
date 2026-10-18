@@ -725,6 +725,14 @@ export interface UpdateStatus {
     "isAvailable": boolean;
     "isSignedIn": boolean;
     "isAutomaticCheckEnabled": boolean;
+
+    /**
+     * IsNotifyOnly: checking finds AvailableVersion and its DownloadURL, and the user installs it; otherwise the updater installs.
+     */
+    "isNotifyOnly": boolean;
+    "hasChecked": boolean;
+    "availableVersion": string;
+    "downloadURL": string;
 }
 
 /**

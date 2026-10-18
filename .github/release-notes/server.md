@@ -1,0 +1,1 @@
+The hisar-server image `ghcr.io/tosunlab/hisar-server:<version>` for linux/amd64 and linux/arm64. [deploy/README.md](https://github.com/tosunlab/hisar/blob/main/deploy/README.md) says how to run and upgrade it.

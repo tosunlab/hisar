@@ -47,12 +47,18 @@ export function computeIconRectBeside(fieldRect: Rect): Rect {
   return { left: fieldRect.left + fieldRect.width + menuGap * 2, top: fieldRect.top + (fieldRect.height - iconSize) / 2, width: iconSize, height: iconSize };
 }
 
+// computeMenuRect puts the menu below the field, or above it when only that fits. When neither fits, it takes the side with
+// more room and is cut to it, scrolling inside: a menu that runs past the window is not fully visible, and the visibility
+// guards would ignore every click on it.
 export function computeMenuRect(fieldRect: Rect, menuHeight: number, viewport: Viewport): Rect {
   const width = Math.min(Math.max(fieldRect.width, minimumMenuWidth), maximumMenuWidth, viewport.width - viewportMargin * 2);
   const left = Math.min(Math.max(fieldRect.left, viewportMargin), viewport.width - width - viewportMargin);
   const below = fieldRect.top + fieldRect.height + menuGap;
-  const above = fieldRect.top - menuGap - menuHeight;
-  const fitsBelow = below + menuHeight <= viewport.height - viewportMargin;
-  const top = fitsBelow || above < viewportMargin ? below : above;
-  return { left, top, width, height: menuHeight };
+  const spaceBelow = viewport.height - viewportMargin - below;
+  const spaceAbove = fieldRect.top - menuGap - viewportMargin;
+  if (menuHeight <= spaceBelow) return { left, top: below, width, height: menuHeight };
+  if (menuHeight <= spaceAbove) return { left, top: fieldRect.top - menuGap - menuHeight, width, height: menuHeight };
+  if (spaceBelow >= spaceAbove) return { left, top: below, width, height: Math.max(spaceBelow, 0) };
+  const height = Math.max(spaceAbove, 0);
+  return { left, top: fieldRect.top - menuGap - height, width, height };
 }

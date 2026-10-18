@@ -1,7 +1,18 @@
 name: Publish
 
-# The deliberate step after a release build: only plain <app>-MAJOR.MINOR.PATCH tags, never custom builds.
+# Publishes a prerelease that the Release workflow created: the last job of each Release run calls it, and it waits in the
+# environment publish-<app> until a reviewer approves. Running it by hand publishes an existing prerelease, through the
+# same approval. Only plain <app>-MAJOR.MINOR.PATCH tags are published, never custom builds, and never an older version
+# than the app's newest published release.
 on:
+  workflow_call:
+    inputs:
+      app:
+        type: string
+        required: true
+      tag:
+        type: string
+        required: true
   workflow_dispatch:
     inputs:
       app:
@@ -11,10 +22,6 @@ on:
       tag:
         description: Release tag, e.g. desktop-1.2.3
         required: true
-
-concurrency:
-  group: publish-${{ inputs.tag }}
-  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -32,12 +39,32 @@ jobs:
     name: Publish ${{ inputs.tag }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    environment: publish-${{ inputs.app }}
+    # A newer release of the app waiting here replaces an older one that is still waiting.
+    concurrency:
+      group: publish-${{ inputs.app }}
+      cancel-in-progress: false
     steps:
-      - name: Check the tag
+      # The default branch, for the scripts and install texts; the history and tags, for the release notes.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+      - name: Check the tag and that it is newer than the published release
         run: |
-          [[ "$TAG" =~ ^$APP-[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "$TAG is not a plain $APP-MAJOR.MINOR.PATCH tag; custom builds can't be published"; exit 1; }
-          gh api "repos/$GH_REPO/git/ref/tags/$TAG" >/dev/null || { echo "the tag $TAG does not exist"; exit 1; }
-          echo "VERSION=${TAG#"$APP"-}" >> "$GITHUB_ENV"
+          [[ "$TAG" =~ ^$APP-[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "::error::$TAG is not a plain $APP-MAJOR.MINOR.PATCH tag; custom builds can't be published"; exit 1; }
+          git rev-parse -q --verify "refs/tags/$TAG" >/dev/null || { echo "::error::the tag $TAG does not exist"; exit 1; }
+          [ "$(gh release view "$TAG" --json isPrerelease --jq .isPrerelease 2>/dev/null)" = true ] ||
+            { echo "::error::$TAG has no prerelease to publish (missing or already published); run Release for $APP"; exit 1; }
+          version=${TAG#"$APP"-}
+          publishedTag=$(gh release list --limit 1000 --exclude-drafts --exclude-pre-releases --json tagName --jq '.[].tagName' |
+            grep -E "^$APP-[0-9]+\.[0-9]+\.[0-9]+$" | sort -V | tail -n 1 || true)
+          publishedVersion=${publishedTag#"$APP"-}
+          if [ -n "$publishedTag" ] && [ "$(printf '%s\n%s\n' "$version" "$publishedVersion" | sort -V | tail -n 1)" != "$version" ]; then
+            echo "::error::$publishedTag is already published; publishing $TAG would go back to an older version"; exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+          echo "PUBLISHED_TAG=$publishedTag" >> "$GITHUB_ENV"
 
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         if: inputs.app == 'server'
@@ -50,8 +77,7 @@ jobs:
       - name: Point the latest and MAJOR.MINOR server image tags at the version
         if: inputs.app == 'server'
         run: |
-          docker buildx imagetools inspect "$SERVER_IMAGE:$VERSION" >/dev/null || { echo "$SERVER_IMAGE:$VERSION does not exist; run Release server image for $TAG first"; exit 1; }
-          gh release view "$TAG" >/dev/null || { echo "the release $TAG does not exist; run Release server image for $TAG first"; exit 1; }
+          docker buildx imagetools inspect "$SERVER_IMAGE:$VERSION" >/dev/null || { echo "::error::$SERVER_IMAGE:$VERSION does not exist; run Release for server"; exit 1; }
           docker buildx imagetools create -t "$SERVER_IMAGE:${VERSION%.*}" -t "$SERVER_IMAGE:latest" "$SERVER_IMAGE:$VERSION"
           echo "Published $SERVER_IMAGE:$VERSION as latest and ${VERSION%.*}"
 
@@ -59,33 +85,15 @@ jobs:
       - name: Offer the desktop version as an automatic update
         if: inputs.app == 'desktop'
         run: |
-          allAssetName=$(gh release view "$TAG" --json assets --jq '.assets[].name')
-          for fileName in "Hisar-$VERSION.dmg" "Hisar-$VERSION.zip"; do
-            grep -qx "$fileName" <<< "$allAssetName" || { echo "the release $TAG has no $fileName; run Release desktop for $TAG first"; exit 1; }
-          done
-          if ! grep -qx update.json <<< "$allAssetName"; then
+          if ! gh release view "$TAG" --json assets --jq '.assets[].name' | grep -qx update.json; then
             assetID=$(gh api "repos/$GH_REPO/releases/tags/$TAG" --jq '.assets[] | select(.name == "update-unpublished.json") | .id')
-            test -n "$assetID" || { echo "the release $TAG has no update-unpublished.json; run Release desktop for $TAG first"; exit 1; }
+            test -n "$assetID" || { echo "::error::the release $TAG has no update-unpublished.json; run Release for desktop"; exit 1; }
             gh api -X PATCH "repos/$GH_REPO/releases/assets/$assetID" -f name=update.json >/dev/null
           fi
-          gh release edit "$TAG" --notes "Universal (Apple silicon and Intel) build of Hisar $VERSION, offered to apps as an automatic update. Open the DMG and drag Hisar into Applications. The app is not notarized yet: on first launch, right-click Hisar → Open."
 
-      - name: Check the CLI release is complete
-        if: inputs.app == 'cli'
-        run: |
-          allAssetName=$(gh release view "$TAG" --json assets --jq '.assets[].name')
-          grep -qx SHA256SUMS <<< "$allAssetName" || { echo "the release $TAG has no SHA256SUMS; run Release CLI for $TAG first"; exit 1; }
-          gh release download "$TAG" --pattern SHA256SUMS --dir "$RUNNER_TEMP"
-          while read -r _ fileName; do
-            grep -qx "$fileName" <<< "$allAssetName" || { echo "the release $TAG has no $fileName"; exit 1; }
-          done < "$RUNNER_TEMP/SHA256SUMS"
-
-      - name: Check the extension release is complete
-        if: inputs.app == 'extension'
-        run: |
-          gh release view "$TAG" --json assets --jq '.assets[].name' | grep -qx "hisar-extension-$VERSION.zip" || { echo "the release $TAG has no hisar-extension-$VERSION.zip; run Release extension for $TAG first"; exit 1; }
-
+      # The notes cover every change since the published release, also those of prereleases that were never published.
       - name: Mark the release as published and latest
         run: |
-          gh release edit "$TAG" --prerelease=false --latest
-          echo "Published $TAG"
+          bash scripts/release-notes.sh "$APP" "$PUBLISHED_TAG" "$TAG" "$VERSION" > "$RUNNER_TEMP/notes.md"
+          gh release edit "$TAG" --notes-file "$RUNNER_TEMP/notes.md" --prerelease=false --latest
+          echo "Published [$TAG]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$TAG)" >> "$GITHUB_STEP_SUMMARY"

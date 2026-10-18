@@ -45,3 +45,19 @@ export function chooseAddressFrame(allProbed: ProbedFrame[]): ProbedFrame | unde
 export function chooseOneTimeCodeFrame(allProbed: ProbedFrame[]): ProbedFrame | undefined {
   return allProbed.find((frame) => frame.frameId === 0 && frame.probe.hasOneTimeCodeField) ?? allProbed.find((frame) => frame.probe.hasOneTimeCodeField);
 }
+
+export function chooseCardFrame(allProbed: ProbedFrame[]): ProbedFrame | undefined {
+  return (
+    allProbed.find((frame) => frame.probe.hasFocusedCardField) ??
+    allProbed.find((frame) => frame.frameId === 0 && frame.probe.hasCardForm) ??
+    allProbed.find((frame) => frame.probe.hasCardForm)
+  );
+}
+
+export function chooseIdentityFrame(allProbed: ProbedFrame[]): ProbedFrame | undefined {
+  return (
+    allProbed.find((frame) => frame.probe.hasFocusedIdentityField) ??
+    allProbed.find((frame) => frame.frameId === 0 && frame.probe.hasIdentityForm) ??
+    allProbed.find((frame) => frame.probe.hasIdentityForm)
+  );
+}

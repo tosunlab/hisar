@@ -49,4 +49,22 @@ export class ExtensionStorage {
   async isNeverOrigin(origin: string): Promise<boolean> {
     return (await this.getAllNeverOrigin()).includes(origin);
   }
+
+  // The extension remembers when each item was last filled, by its vault and item IDs only, to put recently used logins
+  // first; it keeps the latest maximumLastUsedCount.
+  async getAllLastUsed(): Promise<Record<string, number>> {
+    const stored = (await this.area.get(["allLastUsed"])).allLastUsed;
+    if (!stored || typeof stored !== "object") return {};
+    return Object.fromEntries(Object.entries(stored as Record<string, unknown>).filter((entry): entry is [string, number] => typeof entry[1] === "number"));
+  }
+
+  async recordUse(key: string, time: number): Promise<void> {
+    const allLastUsed = { ...(await this.getAllLastUsed()), [key]: time };
+    const allKept = Object.entries(allLastUsed)
+      .sort((first, second) => second[1] - first[1])
+      .slice(0, maximumLastUsedCount);
+    await this.area.set({ allLastUsed: Object.fromEntries(allKept) });
+  }
 }
+
+const maximumLastUsedCount = 200;

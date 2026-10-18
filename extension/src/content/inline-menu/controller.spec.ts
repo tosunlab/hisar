@@ -77,6 +77,17 @@ afterEach(() => {
 });
 
 describe("InlineMenuController", () => {
+  it("opens the menu at the focused field when asked from the right-click menu, even where it does not open on focus", async () => {
+    controller.updateSettings({ isInlineMenuEnabled: true, isInlineMenuOpenedOnFocus: false });
+    getInput("#login_field").focus();
+    expect(allSent).toEqual([]);
+    expect(controller.openHere()).toBe(true);
+    await vi.waitFor(() => expect(allSent).toContainEqual({ type: "content.openInlineMenu", purpose: "login" }));
+    document.body.innerHTML = "<input id='search' type='search'>";
+    getInput("#search").focus();
+    expect(controller.openHere()).toBe(false);
+  });
+
   it("offers addresses only when the app fills them", async () => {
     document.body.innerHTML = addressAutocompletePage;
     getInput("#ship-city").focus();
@@ -101,6 +112,15 @@ describe("InlineMenuController", () => {
     await vi.waitFor(() => expect(controller.getMenuElement()).toBeDefined());
     expect(allSent[0]).toEqual({ type: "content.openInlineMenu", purpose: "login" });
     expect(controller.getMenuElement()?.src).toBe("chrome-extension://dynamic/inline-menu.html#session-1");
+  });
+
+  it("does not open the menu on a field that a fill focuses", async () => {
+    controller.runWithoutOpeningOnFocus(() => getInput("#password").focus());
+    expect(controller.getIconElement()).toBeDefined();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(allSent).toEqual([]);
+    getInput("#login_field").focus();
+    await vi.waitFor(() => expect(controller.getMenuElement()).toBeDefined());
   });
 
   it("places the icon at the right edge of the field and the menu under it", async () => {

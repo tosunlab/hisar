@@ -1,14 +1,19 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from "vue";
+import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { PopupState } from "../shared/messages";
+import type { ItemSummary } from "../shared/protocol";
 import { describeError, getTargetTabId, openUpdatePage, sendToBackground } from "./api";
 import AddressList from "./components/AddressList.vue";
+import CardList from "./components/CardList.vue";
+import IdentityList from "./components/IdentityList.vue";
 import HisarLogo from "./components/HisarLogo.vue";
+import ItemDetail from "./components/ItemDetail.vue";
 import LoginList from "./components/LoginList.vue";
 import PairingView from "./components/PairingView.vue";
 import PasswordGenerator from "./components/PasswordGenerator.vue";
 import SettingsView from "./components/SettingsView.vue";
 import StatusView from "./components/StatusView.vue";
+import VaultView from "./components/VaultView.vue";
 import AppIcon from "./components/AppIcon.vue";
 
 const props = withDefaults(defineProps<{ pollIntervalMilliseconds?: number; pollLimit?: number }>(), {
@@ -20,7 +25,10 @@ const popupState = ref<PopupState>();
 const tabId = ref<number>();
 const isWaiting = ref(false);
 const errorMessage = ref("");
-const activeSection = ref<"logins" | "addresses" | "generator">("logins");
+const activeSection = ref<"logins" | "cards" | "addresses" | "generator">("logins");
+// openedItem is the card or identity opened from its tab; choosing a tab closes it.
+const openedItem = ref<ItemSummary>();
+watch(activeSection, () => (openedItem.value = undefined));
 const noticeMessage = ref("");
 const isSettingsOpen = ref(false);
 let noticeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -61,6 +69,23 @@ async function unlock(): Promise<void> {
   } catch (error) {
     errorMessage.value = describeError(error);
     isWaiting.value = false;
+  }
+}
+
+const isUnlocking = ref(false);
+const unlockError = ref("");
+
+// unlockWithPassword sends the master password once; the popup keeps no copy of it.
+async function unlockWithPassword(password: string): Promise<void> {
+  isUnlocking.value = true;
+  unlockError.value = "";
+  try {
+    await sendToBackground({ type: "popup.unlockWithPassword", password });
+    await refreshState();
+  } catch (error) {
+    unlockError.value = describeError(error);
+  } finally {
+    isUnlocking.value = false;
   }
 }
 
@@ -128,10 +153,21 @@ onBeforeUnmount(() => {
           data-testid="section-logins"
           @click="activeSection = 'logins'"
         >
-          Logins
+          {{ popupState.isVaultAvailable ? "Vault" : "Logins" }}
         </button>
         <button
-          v-if="popupState.isAddressFillAvailable"
+          v-if="popupState.isCardFillAvailable"
+          type="button"
+          role="tab"
+          :class="{ active: activeSection === 'cards' }"
+          :aria-selected="activeSection === 'cards'"
+          data-testid="section-cards"
+          @click="activeSection = 'cards'"
+        >
+          Cards
+        </button>
+        <button
+          v-if="popupState.isAddressFillAvailable || popupState.isIdentityFillAvailable"
           type="button"
           role="tab"
           :class="{ active: activeSection === 'addresses' }"
@@ -139,7 +175,7 @@ onBeforeUnmount(() => {
           data-testid="section-addresses"
           @click="activeSection = 'addresses'"
         >
-          Addresses
+          {{ popupState.isIdentityFillAvailable ? "Identities" : "Addresses" }}
         </button>
         <button
           type="button"
@@ -152,8 +188,32 @@ onBeforeUnmount(() => {
           Generator
         </button>
       </div>
-      <LoginList v-if="activeSection === 'logins'" :tab-id="tabId" @notice="showNotice" />
-      <AddressList v-else-if="activeSection === 'addresses'" :tab-id="tabId" />
+      <VaultView
+        v-if="activeSection === 'logins' && popupState.isVaultAvailable"
+        :tab-id="tabId"
+        :can-create="popupState.isCreateAvailable"
+        :can-fill-cards="popupState.isCardFillAvailable"
+        :can-fill-identities="popupState.isIdentityFillAvailable"
+        @notice="showNotice"
+      />
+      <LoginList v-else-if="activeSection === 'logins'" :tab-id="tabId" @notice="showNotice" />
+      <ItemDetail
+        v-else-if="openedItem"
+        :summary="openedItem"
+        :tab-id="tabId"
+        :can-fill="tabId !== undefined"
+        @back="openedItem = undefined"
+        @notice="showNotice"
+      />
+      <CardList v-else-if="activeSection === 'cards'" :tab-id="tabId" :can-open="popupState.isVaultAvailable" @open="openedItem = $event" />
+      <template v-else-if="activeSection === 'addresses'">
+        <template v-if="popupState.isIdentityFillAvailable">
+          <h2 class="group-title muted">Identities</h2>
+          <IdentityList :tab-id="tabId" :can-open="popupState.isVaultAvailable" @open="openedItem = $event" />
+          <h2 v-if="popupState.isAddressFillAvailable" class="group-title muted">Addresses</h2>
+        </template>
+        <AddressList v-if="popupState.isAddressFillAvailable" :tab-id="tabId" />
+      </template>
       <PasswordGenerator v-else :tab-id="tabId" @notice="showNotice" />
     </section>
     <StatusView
@@ -162,7 +222,11 @@ onBeforeUnmount(() => {
       :detail="popupState.errorMessage"
       :update-required="popupState.updateRequired"
       :is-waiting="isWaiting"
+      :is-password-unlock-available="popupState.isPasswordUnlockAvailable"
+      :is-unlocking="isUnlocking"
+      :unlock-error="unlockError"
       @unlock="unlock"
+      @unlock-with-password="unlockWithPassword"
       @open-hisar="openHisar"
       @refresh="retry"
       @open-update-page="openUpdatePage"
@@ -176,7 +240,7 @@ onBeforeUnmount(() => {
   position: relative;
   min-height: 200px;
   background:
-    radial-gradient(600px 240px at 50% -40%, #1a1d22 0%, transparent 70%),
+    radial-gradient(600px 240px at 50% -40%, var(--color-glow) 0%, transparent 70%),
     var(--color-background);
 }
 
@@ -239,6 +303,14 @@ onBeforeUnmount(() => {
   color: var(--color-text);
 }
 
+.group-title {
+  margin: 4px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .notice {
   position: fixed;
   bottom: 12px;
@@ -249,7 +321,7 @@ onBeforeUnmount(() => {
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius);
   background: var(--color-surface-raised);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 25%);
   font-size: 12px;
   white-space: nowrap;
 }

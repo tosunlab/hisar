@@ -69,6 +69,8 @@ type BrowserBridge struct {
 	mutex          sync.Mutex
 	pendingPairing *pendingBrowserPairing
 	installations  []browserprotocol.BrowserInstallation
+	// unlockFailures holds each paired browser's recent wrong master passwords (unlockWithPassword).
+	unlockFailures map[[sha256.Size]byte][]time.Time
 }
 
 func NewBrowserBridge(service *Service, config BrowserBridgeConfig) *BrowserBridge {
@@ -124,6 +126,8 @@ func (bridge *BrowserBridge) handleRequest(ctx context.Context, request *browser
 			bridge.config.ShowWindow()
 		}
 		return nil, nil
+	case "unlock.password":
+		return bridge.unlockWithPassword(request)
 	case "logins.match":
 		logins, err := bridge.service.listMatchingLogins(ctx, request.URL)
 		return browserprotocol.MatchResult{Logins: logins}, convertBrowserError(err)
@@ -145,6 +149,41 @@ func (bridge *BrowserBridge) handleRequest(ctx context.Context, request *browser
 	case "addresses.fill":
 		result, err := bridge.service.getAddressForFill(ctx, request.VaultID, request.ItemID)
 		return result, convertBrowserError(err)
+	case "identities.list":
+		identities, _, err := bridge.service.listIdentitySources(ctx)
+		return browserprotocol.IdentityListResult{Identities: identities}, convertBrowserError(err)
+	case "identities.fill":
+		result, err := bridge.service.getIdentityForFill(ctx, request.VaultID, request.ItemID)
+		return result, convertBrowserError(err)
+	case "cards.list":
+		cards, _, err := bridge.service.listCardSources(ctx)
+		return browserprotocol.CardListResult{Cards: cards}, convertBrowserError(err)
+	case "cards.fill":
+		result, err := bridge.service.getCardForFill(ctx, request.VaultID, request.ItemID)
+		return result, convertBrowserError(err)
+	case "vaults.list":
+		vaults, err := bridge.service.listWritableBrowserVaults(ctx)
+		return browserprotocol.VaultListResult{Vaults: vaults}, convertBrowserError(err)
+	case "items.create":
+		result, err := bridge.service.createBrowserItem(ctx, request.VaultID, request.Item)
+		return result, convertBrowserError(err)
+	case "items.list":
+		items, err := bridge.service.listBrowserItems(ctx, request.Query, request.Category, request.IsFavoriteOnly)
+		return browserprotocol.ItemListResult{Items: items}, convertBrowserError(err)
+	case "items.get":
+		result, err := bridge.service.getBrowserItem(ctx, request.VaultID, request.ItemID)
+		return result, convertBrowserError(err)
+	case "items.reveal":
+		result, err := bridge.service.revealBrowserItemField(ctx, request.VaultID, request.ItemID, request.FieldID)
+		return result, convertBrowserError(err)
+	case "items.code":
+		result, err := bridge.service.getBrowserItemCode(ctx, request.VaultID, request.ItemID)
+		return result, convertBrowserError(err)
+	case "items.icon":
+		image, err := bridge.service.GetWebsiteIcon(request.URL)
+		return browserprotocol.IconResult{PNG: image}, convertBrowserError(err)
+	case "items.favorite":
+		return nil, convertBrowserError(bridge.service.setBrowserItemFavorite(request.VaultID, request.ItemID, request.IsFavorite))
 	case "password.generate":
 		config := item.DefaultGeneratorConfig()
 		if request.Length > 0 {

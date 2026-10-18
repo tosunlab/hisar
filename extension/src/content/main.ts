@@ -1,8 +1,10 @@
 import type { BackgroundToContentMessage, ContentToBackgroundMessage, MessageResponse, SaveOfferView } from "../shared/messages";
 import { attachSubmissionCapture } from "./capture";
 import { readInlineMenuSettings, parseInlineMenuSettings, allInlineMenuSettingKey, appFeaturesKey, readAppFeatures } from "../shared/settings";
-import { featureAddresses } from "../shared/protocol";
+import { featureAddresses, featureCards, featureIdentities } from "../shared/protocol";
 import { fillAddressIntoPage, fillAddressIntoScopeOf } from "./address-fill";
+import { fillCardIntoPage, fillCardIntoScopeOf } from "./card-fill";
+import { fillIdentityIntoPage, fillIdentityIntoScopeOf } from "./identity-fill";
 import {
   fillLogin,
   fillLoginIntoScopeOf,
@@ -21,13 +23,19 @@ function sendToBackground<Result>(message: ContentToBackgroundMessage): Promise<
 }
 
 function presentSaveOffer(offer: SaveOfferView): void {
-  showSaveBar(document, offer, async (action) => {
-    const response = await sendToBackground<Record<string, never>>({ type: "content.actOnSaveOffer", offerID: offer.offerID, action });
+  showSaveBar(document, offer, async (action, edits) => {
+    const response = await sendToBackground<Record<string, never>>({ type: "content.actOnSaveOffer", offerID: offer.offerID, action, edits });
     return response.ok ? { ok: true } : { ok: false, message: response.error.message };
   });
 }
 
 export function handleBackgroundMessage(message: BackgroundToContentMessage, inlineMenu: InlineMenuController): unknown {
+  // A fill focuses the fields it writes; the menu must not open again on them.
+  if (message.type.startsWith("content.fill")) return inlineMenu.runWithoutOpeningOnFocus(() => answerBackgroundMessage(message, inlineMenu));
+  return answerBackgroundMessage(message, inlineMenu);
+}
+
+function answerBackgroundMessage(message: BackgroundToContentMessage, inlineMenu: InlineMenuController): unknown {
   switch (message.type) {
     case "content.probe":
       return probeFrame(document);
@@ -64,6 +72,22 @@ export function handleBackgroundMessage(message: BackgroundToContentMessage, inl
       inlineMenu.dismissMenu(message.sessionID);
       return fillAddressIntoScopeOf(document, field, message.address);
     }
+    case "content.fillCard": {
+      if (!isFrameFillable(window, message.expectedOrigin)) return 0;
+      if (message.sessionID === undefined) return fillCardIntoPage(document, message.card);
+      const field = inlineMenu.getAnchoredField(message.sessionID);
+      if (!field) return 0;
+      inlineMenu.dismissMenu(message.sessionID);
+      return fillCardIntoScopeOf(document, field, message.card);
+    }
+    case "content.fillIdentity": {
+      if (!isFrameFillable(window, message.expectedOrigin)) return 0;
+      if (message.sessionID === undefined) return fillIdentityIntoPage(document, message.identity);
+      const field = inlineMenu.getAnchoredField(message.sessionID);
+      if (!field) return 0;
+      inlineMenu.dismissMenu(message.sessionID);
+      return fillIdentityIntoScopeOf(document, field, message.identity);
+    }
     case "content.showSaveOffer":
       if (window.top !== window) return false;
       presentSaveOffer(message.offer);
@@ -76,6 +100,8 @@ export function handleBackgroundMessage(message: BackgroundToContentMessage, inl
     case "content.dismissInlineMenu":
       inlineMenu.dismissMenu(message.sessionID);
       return true;
+    case "content.openInlineMenuHere":
+      return inlineMenu.openHere();
   }
 }
 
@@ -93,8 +119,16 @@ function startInlineMenu(): InlineMenuController {
     .catch(() => undefined);
   const updateAppFeatures = (): void => {
     readAppFeatures(chrome.storage.local)
-      .then((allFeature) => inlineMenu.setAddressFillAvailable(allFeature.includes(featureAddresses)))
-      .catch(() => inlineMenu.setAddressFillAvailable(false));
+      .then((allFeature) => {
+        inlineMenu.setAddressFillAvailable(allFeature.includes(featureAddresses));
+        inlineMenu.setCardFillAvailable(allFeature.includes(featureCards));
+        inlineMenu.setIdentityFillAvailable(allFeature.includes(featureIdentities));
+      })
+      .catch(() => {
+        inlineMenu.setAddressFillAvailable(false);
+        inlineMenu.setCardFillAvailable(false);
+        inlineMenu.setIdentityFillAvailable(false);
+      });
   };
   updateAppFeatures();
   chrome.storage.onChanged.addListener((allChange, areaName) => {

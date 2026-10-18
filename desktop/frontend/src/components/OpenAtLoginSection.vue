@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { api, getErrorMessage, type LoginItemStatus } from "../api";
 import { useSettingsRowVisibility } from "../settingsSections";
+import { getTrayName } from "../util";
 
 const isRowVisible = useSettingsRowVisibility();
 
@@ -26,7 +27,7 @@ const stateDescription = computed(() => {
   if (status.systemState === "not-registered") {
     return { tone: "warning", text: "Hisar is no longer in your login items." };
   }
-  return { tone: "running", text: "Hisar opens locked at login, without a window, and stays in the menu bar." };
+  return { tone: "running", text: `Hisar opens locked at login, without a window, and stays in the ${getTrayName()}.` };
 });
 
 async function applyChange(change: () => Promise<LoginItemStatus>): Promise<void> {

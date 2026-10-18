@@ -120,6 +120,56 @@ chrome.commands.onCommand.addListener((command, tab) => {
     .catch(() => undefined);
 });
 
+// The toolbar icon shows how many logins are saved for the tab, while the native host is connected.
+async function updateBadge(tabId: number): Promise<void> {
+  const text = await getController().getBadgeText(tabId);
+  await chrome.action.setBadgeText({ tabId, text }).catch(() => undefined);
+}
+
+void chrome.action.setBadgeBackgroundColor({ color: "#30343a" }).catch(() => undefined);
+chrome.tabs.onUpdated.addListener((tabId, change) => {
+  if (change.status === "complete") void updateBadge(tabId);
+});
+chrome.tabs.onActivated.addListener(({ tabId }) => void updateBadge(tabId));
+
+const allContextMenu = [
+  { id: "hisar-open-menu", title: "Show Hisar here" },
+  { id: "hisar-fill-login", title: "Fill login" },
+  { id: "hisar-suggest-password", title: "Fill a suggested password" },
+] as const;
+
+chrome.runtime.onInstalled.addListener(() => {
+  chrome.contextMenus.removeAll(() => {
+    for (const item of allContextMenu) chrome.contextMenus.create({ id: item.id, title: item.title, contexts: ["editable"] });
+  });
+});
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  const tabId = tab?.id;
+  if (tabId === undefined) return;
+  let action: Promise<unknown>;
+  switch (info.menuItemId) {
+    case "hisar-open-menu":
+      action = chrome.tabs.sendMessage(tabId, { type: "content.openInlineMenuHere" } satisfies BackgroundToContentMessage, { frameId: info.frameId ?? 0 });
+      break;
+    case "hisar-fill-login":
+      action = getController().fillFirstLogin(tabId);
+      break;
+    case "hisar-suggest-password":
+      action = getController().fillSuggestedPassword(tabId);
+      break;
+    default:
+      return;
+  }
+  action
+    .catch((error: unknown) => {
+      // A locked Hisar asks to be unlocked; anything else, such as a page without a login form, is ignored, as with the
+      // keyboard shortcut.
+      if (toHisarError(error).code === "locked") return getController().unlock();
+    })
+    .catch(() => undefined);
+});
+
 chrome.tabs.onRemoved.addListener((tabId) => {
   getController().handleTabRemoved(tabId);
   getInlineMenu().handleTabRemoved(tabId);

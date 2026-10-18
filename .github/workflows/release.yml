@@ -1,0 +1,202 @@
+name: Release
+
+# One release per run: the app and how to choose its version. The run plans the version (scripts/plan-release.sh), runs
+# CI on the commit, pushes the annotated tag, builds the app, creates the GitHub prerelease with all its files at once, and
+# then waits in the environment publish-<app> until a reviewer approves publishing it (publish.yml). A custom build (a
+# version with a -label) stops at the prerelease. Re-run failed jobs to continue a run; a new run refuses a tag that exists.
+run-name: Release ${{ inputs.app }} (${{ inputs.type == 'custom' && inputs.version || inputs.type }})${{ inputs.dryRun && ', dry run' || '' }}
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: What to release
+        type: choice
+        options: [server, cli, desktop, extension]
+      type:
+        description: "Release type: patch, minor or major bumps the last version; custom takes the version below"
+        type: choice
+        options: [patch, minor, major, custom]
+        default: patch
+      version:
+        description: "Only for custom: MAJOR.MINOR.PATCH, or MAJOR.MINOR.PATCH-label for a custom build that can't be published"
+        type: string
+        default: ""
+      dryRun:
+        description: Only show the plan
+        type: boolean
+        default: false
+
+concurrency:
+  group: release-${{ inputs.app }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    name: Plan the version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.plan.outputs.tag }}
+      version: ${{ steps.plan.outputs.version }}
+      title: ${{ steps.plan.outputs.title }}
+      previousTag: ${{ steps.plan.outputs.previousTag }}
+      isCustomBuild: ${{ steps.plan.outputs.isCustomBuild }}
+      changes: ${{ steps.plan.outputs.changes }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - id: plan
+        env:
+          APP: ${{ inputs.app }}
+          RELEASE_TYPE: ${{ inputs.type }}
+          CUSTOM_VERSION: ${{ inputs.version }}
+        run: bash scripts/plan-release.sh
+
+  ci:
+    name: CI
+    needs: plan
+    if: ${{ !inputs.dryRun }}
+    uses: ./.github/workflows/ci.yml
+    with:
+      baseRef: ${{ needs.plan.outputs.previousTag }}
+
+  macos:
+    name: macOS
+    needs: plan
+    if: ${{ !inputs.dryRun && inputs.app == 'desktop' }}
+    uses: ./.github/workflows/macos.yml
+
+  # The deploy key in RELEASE_DEPLOY_KEY may create tags past the ruleset "tags: only maintainers create".
+  tag:
+    name: Push the tag
+    needs: [plan, ci, macos]
+    if: ${{ !cancelled() && needs.ci.result == 'success' && (needs.macos.result == 'success' || needs.macos.result == 'skipped') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Push the annotated tag
+        env:
+          TAG: ${{ needs.plan.outputs.tag }}
+          TITLE: ${{ needs.plan.outputs.title }}
+          CHANGES: ${{ needs.plan.outputs.changes }}
+          RELEASE_DEPLOY_KEY: ${{ secrets.RELEASE_DEPLOY_KEY }}
+          ACTOR: ${{ github.actor }}
+          ACTOR_ID: ${{ github.actor_id }}
+        run: |
+          test -n "$RELEASE_DEPLOY_KEY" || { echo "::error::set the repository secret RELEASE_DEPLOY_KEY (a deploy key with write access that may bypass the tag ruleset)"; exit 1; }
+          umask 077
+          printf '%s\n' "$RELEASE_DEPLOY_KEY" > "$RUNNER_TEMP/deploy-key"
+          echo "github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" > "$RUNNER_TEMP/known_hosts"
+          export GIT_SSH_COMMAND="ssh -i $RUNNER_TEMP/deploy-key -o IdentitiesOnly=yes -o UserKnownHostsFile=$RUNNER_TEMP/known_hosts"
+          remote="git@github.com:$GITHUB_REPOSITORY.git"
+          existingCommit=$(git ls-remote --tags "$remote" | awk -v ref="refs/tags/$TAG^{}" '$2 == ref { print $1 }')
+          if [ -n "$existingCommit" ]; then
+            [ "$existingCommit" = "$GITHUB_SHA" ] || { echo "::error::the tag $TAG exists on $existingCommit, not $GITHUB_SHA"; exit 1; }
+            echo "the tag $TAG is on $GITHUB_SHA already"
+            exit 0
+          fi
+          printf '%s\n\n%s\n' "$TITLE" "$CHANGES" |
+            git -c user.name="$ACTOR" -c user.email="$ACTOR_ID+$ACTOR@users.noreply.github.com" tag -a "$TAG" -F - "$GITHUB_SHA"
+          git push "$remote" "refs/tags/$TAG"
+      - name: Remove the deploy key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/deploy-key"
+
+  build-server:
+    name: Build
+    needs: [plan, tag]
+    if: inputs.app == 'server'
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/release-server.yml
+    with:
+      tag: ${{ needs.plan.outputs.tag }}
+
+  build-cli:
+    name: Build
+    needs: [plan, tag]
+    if: inputs.app == 'cli'
+    uses: ./.github/workflows/release-cli.yml
+    with:
+      tag: ${{ needs.plan.outputs.tag }}
+
+  build-desktop:
+    name: Build
+    needs: [plan, tag]
+    if: inputs.app == 'desktop'
+    uses: ./.github/workflows/release-desktop.yml
+    with:
+      tag: ${{ needs.plan.outputs.tag }}
+    secrets:
+      SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+
+  build-extension:
+    name: Build
+    needs: [plan, tag]
+    if: inputs.app == 'extension'
+    uses: ./.github/workflows/release-extension.yml
+    with:
+      tag: ${{ needs.plan.outputs.tag }}
+
+  release:
+    name: Create the GitHub prerelease
+    needs: [plan, build-server, build-cli, build-desktop, build-extension]
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && (needs.build-server.result == 'success' || needs.build-cli.result == 'success' || needs.build-desktop.result == 'success' || needs.build-extension.result == 'success') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    env:
+      APP: ${{ inputs.app }}
+      TAG: ${{ needs.plan.outputs.tag }}
+      VERSION: ${{ needs.plan.outputs.version }}
+      TITLE: ${{ needs.plan.outputs.title }}
+      PREVIOUS_TAG: ${{ needs.plan.outputs.previousTag }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        if: inputs.app != 'server'
+        with:
+          pattern: release-files-${{ inputs.app }}-*
+          path: release-files
+          merge-multiple: true
+      - name: Check the files
+        run: mkdir -p release-files && bash scripts/check-release-files.sh "$APP" "$VERSION" release-files
+      - name: Create the prerelease with its notes and files
+        run: |
+          shopt -s nullglob
+          allFile=(release-files/*)
+          bash scripts/release-notes.sh "$APP" "$PREVIOUS_TAG" "$TAG" "$VERSION" > "$RUNNER_TEMP/notes.md"
+          case "$(gh release view "$TAG" --json isPrerelease --jq .isPrerelease 2>/dev/null || echo missing)" in
+            false) echo "::error::the release $TAG is already published; refusing to replace its files"; exit 1 ;;
+            true)
+              gh release edit "$TAG" --title "$TITLE" --notes-file "$RUNNER_TEMP/notes.md" --prerelease
+              if [ ${#allFile[@]} -gt 0 ]; then gh release upload "$TAG" --clobber "${allFile[@]}"; fi
+              ;;
+            *) gh release create "$TAG" --verify-tag --prerelease --latest=false --title "$TITLE" --notes-file "$RUNNER_TEMP/notes.md" "${allFile[@]}" ;;
+          esac
+          echo "Created the prerelease [$TITLE]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$TAG)" >> "$GITHUB_STEP_SUMMARY"
+
+  publish:
+    name: Publish
+    needs: [plan, release]
+    if: needs.plan.outputs.isCustomBuild == 'false'
+    permissions:
+      contents: write
+      packages: write
+    uses: ./.github/workflows/publish.yml
+    with:
+      app: ${{ inputs.app }}
+      tag: ${{ needs.plan.outputs.tag }}

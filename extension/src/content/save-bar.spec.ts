@@ -70,6 +70,40 @@ describe("showSaveBar", () => {
     expect(onAction).toHaveBeenCalledWith(action);
   });
 
+  it("lets the user change the title, username and vault of a new login before saving", async () => {
+    const onAction = vi.fn(async () => ({ ok: true }));
+    const offer = {
+      ...newOffer,
+      defaultTitle: "example.com",
+      allVault: [
+        { vaultID: "vault-personal", name: "Personal" },
+        { vaultID: "vault-family", name: "Family" },
+      ],
+    };
+    const bar = showSaveBar(document, offer, onAction);
+    const title = bar.shadowRoot.querySelector<HTMLInputElement>('[data-field="title"]')!;
+    const username = bar.shadowRoot.querySelector<HTMLInputElement>('[data-field="username"]')!;
+    const vault = bar.shadowRoot.querySelector<HTMLSelectElement>('[data-field="vault"]')!;
+    expect([title.value, username.value, vault.value]).toEqual(["example.com", newOffer.username, "vault-personal"]);
+    expect(Array.from(vault.options).map((option) => option.text)).toEqual(["Personal", "Family"]);
+    title.value = "Example shop";
+    username.value = "alex";
+    vault.value = "vault-family";
+    findButton(bar.shadowRoot, "save").click();
+    await vi.waitFor(() => expect(onAction).toHaveBeenCalledWith("save", { title: "Example shop", username: "alex", vaultID: "vault-family" }));
+  });
+
+  it("keeps the page's shortcuts from acting on what is typed in the bar", () => {
+    const offer = { ...newOffer, defaultTitle: "example.com", allVault: [{ vaultID: "vault-personal", name: "Personal" }] };
+    const bar = showSaveBar(document, offer, async () => ({ ok: true }));
+    const pageListener = vi.fn();
+    document.addEventListener("keydown", pageListener);
+    bar.shadowRoot.querySelector('[data-field="title"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "s", bubbles: true, composed: true }));
+    expect(pageListener).not.toHaveBeenCalled();
+    expect(bar.shadowRoot.querySelector('[data-field="vault"]')).toBeNull();
+    document.removeEventListener("keydown", pageListener);
+  });
+
   it("closes with the close button as Not now", async () => {
     const onAction = vi.fn(async () => ({ ok: true }));
     const bar = showSaveBar(document, newOffer, onAction);

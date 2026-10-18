@@ -1,12 +1,21 @@
 name: CI
 
-# A merge to main was already tested as its pull request, so pushes to main do not run CI.
+# A merge to main was already tested as its pull request, so pushes to main do not run CI. The Release workflow calls it
+# for the commit it releases, with baseRef the previous release's tag: the jobs that run only for some changes compare the
+# commit with it, and without a baseRef everything runs.
 on:
   pull_request:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      baseRef:
+        description: The tag or commit to compare with; empty runs every job
+        type: string
+        default: ""
 
+# A release's CI runs in its own group, so it never cancels or is cancelled by another run.
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
+  group: ci-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: true
 
 permissions:
@@ -32,9 +41,9 @@ jobs:
       - name: Compare the pull request with its base
         id: changes
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || inputs.baseRef }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          IS_FORCED: ${{ github.event_name == 'workflow_dispatch' }}
+          IS_FORCED: ${{ github.event_name != 'pull_request' && inputs.baseRef == '' }}
           WORKFLOW_FILE: .github/workflows/ci.yml
         run: scripts/detect-app-changes.sh
 
@@ -183,7 +192,7 @@ jobs:
           cache-dependency-path: desktop/frontend/package-lock.json
       - run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH" && git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - run: make install-wails
-      - name: Build the .deb and .rpm and check their layout
+      - name: Build the .deb, .rpm and AppImage and check their layout
         shell: bash
         run: |
           bash scripts/package-desktop-linux.sh 0.0.0-ci
@@ -192,8 +201,31 @@ jobs:
             grep -q " $path\$" <<<"$contents" || { echo "the .deb has no $path"; exit 1; }
           done
           test -s desktop/bin/Hisar-0.0.0-ci-linux-amd64.rpm
+          test -x desktop/bin/Hisar-0.0.0-ci-linux-amd64.AppImage
+      - name: Install the .deb, start Hisar hidden and reach it from hisar and ssh-add
+        run: bash scripts/test-desktop-linux-package.sh desktop/bin/Hisar-0.0.0-ci-linux-amd64.deb
+      - name: Start the AppImage hidden and reach it from the hisar it copies out
+        run: bash scripts/test-desktop-linux-package.sh desktop/bin/Hisar-0.0.0-ci-linux-amd64.AppImage
       - name: Check that the generated bindings are committed
         run: git diff --exit-code -- desktop/frontend/bindings
+
+  desktop-flatpak:
+    name: Desktop app Flatpak build
+    needs: changes
+    if: needs.changes.outputs.isDesktopChanged == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    # Flathub's builder image has flatpak-builder, Node and the GNOME 51 runtime and SDK; building sandboxes needs privileges.
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
+      options: --privileged
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build the Flatpak and check what it installs
+        run: |
+          bash scripts/package-desktop-flatpak.sh 0.0.0-ci
+          flatpak install --user -y --noninteractive desktop/bin/Hisar-0.0.0-ci-linux-amd64.flatpak
+          flatpak run --command=sh com.tryhisar.hisar -c 'test -x /app/bin/Hisar && test -x /app/lib/hisar/hisar-browser-host && /app/bin/hisar --version'
 
   extension:
     name: Extension tests, Chromium end-to-end tests and zip

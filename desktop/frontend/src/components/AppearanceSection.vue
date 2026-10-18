@@ -4,6 +4,7 @@ import { useSettingsRowVisibility } from "../settingsSections";
 import { allAppearanceOption, allThemeColorOption, chooseTheme, themeStore } from "../theme";
 import { loadWebsiteIconSetting, setWebsiteIconsEnabled, websiteIconState } from "../websiteicons";
 import AppIcon from "./AppIcon.vue";
+import { getThisDeviceName } from "../util";
 
 const isRowVisible = useSettingsRowVisibility();
 
@@ -36,7 +37,7 @@ onMounted(loadWebsiteIconSetting);
       <div v-show="isRowVisible('theme-color')" class="setting color-setting">
         <div class="setting-text">
           <strong id="theme-color-label">Color</strong>
-          <p class="muted">Tints the sidebar, selection, buttons and approval dialogs on this Mac.</p>
+          <p class="muted">Tints the sidebar, selection, buttons and approval dialogs on {{ getThisDeviceName() }}.</p>
         </div>
         <div class="swatch-list" role="radiogroup" aria-labelledby="theme-color-label">
           <button
@@ -68,7 +69,7 @@ onMounted(loadWebsiteIconSetting);
       <label v-show="isRowVisible('website-icons')" class="setting">
         <div class="setting-text">
           <strong>Show website icons</strong>
-          <p class="muted">Logins without an icon of their own show their website's. This Mac asks each website for it directly, never a third party.</p>
+          <p class="muted">Logins without an icon of their own show their website's. Hisar on {{ getThisDeviceName() }} asks each website for it directly, never a third party.</p>
         </div>
         <input
           class="switch"

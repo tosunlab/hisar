@@ -132,14 +132,15 @@ func (handler *recordingHandler) HandleRequest(ctx context.Context, request *bro
 }
 
 type fakePeerResolver struct {
+	pid  int
 	path string
 }
 
 func (resolver fakePeerResolver) ResolvePeer(net.Conn) (localsocket.PeerInfo, error) {
-	return localsocket.PeerInfo{Path: resolver.path}, nil
+	return localsocket.PeerInfo{PID: resolver.pid, Path: resolver.path}, nil
 }
 
-func startTestServer(t *testing.T, handler browserprotocol.Handler, peerResolver localsocket.PeerResolver, allowedPeerPath string) string {
+func startTestServer(t *testing.T, handler browserprotocol.Handler, peerResolver localsocket.PeerResolver, allowedPeerPath string, configure ...func(*Server)) string {
 	t.Helper()
 	socketDirectory, err := os.MkdirTemp("/tmp", "hisar-browser-")
 	if err != nil {
@@ -150,6 +151,9 @@ func startTestServer(t *testing.T, handler browserprotocol.Handler, peerResolver
 	ctx, cancel := context.WithCancel(context.Background())
 	stopped := make(chan struct{})
 	server := NewServer(handler, peerResolver, allowedPeerPath)
+	for _, configureServer := range configure {
+		configureServer(server)
+	}
 	go func() {
 		server.Serve(ctx, socketPath)
 		close(stopped)
@@ -275,6 +279,35 @@ func TestServerRefusesUnknownPeer(t *testing.T) {
 	RunHost(bytes.NewReader(encodeFrames(t, `{"id":"1","type":"status"}`)), &output, HostConfig{SocketPath: allowedSocketPath, ExtensionOrigin: browserprotocol.AllowedOrigin})
 	if responses := decodeResponses(t, output.Bytes()); len(responses) != 1 || !responses[0].OK {
 		t.Errorf("the packaged host was refused: %+v", responses)
+	}
+}
+
+func TestServerServesAHostInAnotherPIDNamespace(t *testing.T) {
+	hostPath := filepath.Join(t.TempDir(), "hisar-browser-host")
+	if err := os.WriteFile(hostPath, []byte("binary"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	handler := &recordingHandler{}
+	// A Flatpak Hisar sees the host the browser started as PID 0, with no executable to read.
+	socketPath := startTestServer(t, handler, fakePeerResolver{}, hostPath, (*Server).AllowHostOutsideSandbox)
+	var output bytes.Buffer
+	RunHost(bytes.NewReader(encodeFrames(t, `{"id":"1","type":"status"}`)), &output, HostConfig{SocketPath: socketPath, ExtensionOrigin: browserprotocol.AllowedOrigin})
+	if responses := decodeResponses(t, output.Bytes()); len(responses) != 1 || !responses[0].OK {
+		t.Errorf("the host outside the sandbox was refused: %+v", responses)
+	}
+	// Outside a Flatpak, a peer in another PID namespace (a container, another sandbox) is refused.
+	unsandboxedSocketPath := startTestServer(t, &recordingHandler{}, fakePeerResolver{}, hostPath)
+	output.Reset()
+	RunHost(bytes.NewReader(encodeFrames(t, `{"id":"1","type":"status"}`)), &output, HostConfig{SocketPath: unsandboxedSocketPath, ExtensionOrigin: browserprotocol.AllowedOrigin})
+	if responses := decodeResponses(t, output.Bytes()); len(responses) == 1 && responses[0].OK {
+		t.Error("a peer in another PID namespace was served by a Hisar outside a sandbox")
+	}
+	// A process Hisar can see but whose executable it cannot read is still refused.
+	unreadableSocketPath := startTestServer(t, &recordingHandler{}, fakePeerResolver{pid: 4242}, hostPath, (*Server).AllowHostOutsideSandbox)
+	output.Reset()
+	RunHost(bytes.NewReader(encodeFrames(t, `{"id":"1","type":"status"}`)), &output, HostConfig{SocketPath: unreadableSocketPath, ExtensionOrigin: browserprotocol.AllowedOrigin})
+	if responses := decodeResponses(t, output.Bytes()); len(responses) == 1 && responses[0].OK {
+		t.Error("a process without a readable executable was served")
 	}
 }
 

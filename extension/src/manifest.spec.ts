@@ -27,15 +27,17 @@ describe("manifest.json", () => {
       "scripting",
       "activeTab",
       "tabs",
+      "contextMenus",
       "offscreen",
       "clipboardWrite",
     ]);
     expect(manifest.host_permissions).toEqual(["<all_urls>"]);
   });
 
-  it("runs the content script in all frames and offers the fill-login shortcut", () => {
+  it("runs the content script in all frames and offers the fill-login and open-popup shortcuts", () => {
     expect(manifest.content_scripts[0]).toMatchObject({ matches: ["<all_urls>"], all_frames: true, js: ["content.js"] });
     expect(manifest.commands["fill-login"].suggested_key).toEqual({ default: "Ctrl+Shift+L", mac: "Command+Shift+L" });
+    expect(manifest.commands._execute_action.suggested_key).toEqual({ default: "Ctrl+Shift+Space", mac: "Command+Shift+Space" });
   });
 
   it("exposes only the inline menu and passkey prompt pages to web pages, through a dynamic URL", () => {

@@ -56,6 +56,24 @@ test("lists matching logins under the focused field and fills the chosen one", a
   await page.close();
 });
 
+test("fills from a menu cut to fit a window too short for it, and opens no menu again after the fill", async () => {
+  await harness.pairWithoutPopup();
+  const page = await harness.context.newPage();
+  await page.setViewportSize({ width: 900, height: 130 });
+  await page.goto(`${harness.site.origin}/login`);
+  // The field near the top of a short window: the menu fits neither below nor above it.
+  await page.addStyleTag({ content: "body { margin-top: -45px !important; }" });
+  await page.locator("#username").click();
+  const menu = await waitForMenu(page);
+  await expect(menu.getByTestId("inline-login")).toHaveCount(1);
+  await waitForClickGuard(page);
+  await menu.getByTestId("inline-login").click();
+  await expect(page.locator("#username")).toHaveValue("alex@example.com");
+  await page.waitForTimeout(300);
+  expect(harness.findInlineMenuFrame(page)).toBeUndefined();
+  await page.close();
+});
+
 test("serves the menu from a dynamic extension URL", async () => {
   const page = await harness.context.newPage();
   await page.goto(`${harness.site.origin}/login`);
@@ -162,9 +180,11 @@ test("suggests a password on a sign-up form and fills both fields", async () => 
   await suggestion.click();
   await expect(page.locator("#new-password")).toHaveValue(suggested);
   await expect(page.locator("#confirm-password")).toHaveValue(suggested);
+  // The sign-up's email offers identities, once the extension knows the app fills them.
+  await (await harness.context.newPage()).goto(`chrome-extension://${extensionID}/popup.html?tabId=${await harness.getTabId(page.url())}`);
+  await page.bringToFront();
   await page.locator("#email").focus();
-  await page.waitForTimeout(500);
-  expect(harness.findInlineMenuFrame(page)).toBeUndefined();
+  await expect((await waitForMenu(page)).getByTestId("inline-identity")).toContainText("Alex Example");
   await page.close();
 });
 
