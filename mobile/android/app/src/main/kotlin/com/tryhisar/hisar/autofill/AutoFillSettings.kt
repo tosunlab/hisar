@@ -22,7 +22,6 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,8 +32,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.lifecycle.compose.currentStateAsState
+import androidx.lifecycle.compose.LifecycleEventEffect
 import com.tryhisar.hisar.ui.components.FormButtonRow
 import com.tryhisar.hisar.ui.components.FormRow
 import com.tryhisar.hisar.ui.components.FormSection
@@ -52,15 +50,12 @@ fun isAutoFillEnabled(context: Context): Boolean =
 @Composable
 fun ColumnScope.AutoFillSettingsSections() {
     val context = LocalContext.current
-    val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
     var isEnabled by remember { mutableStateOf(isAutoFillEnabled(context)) }
     val chromeSettingsIntent = remember { findChromeAutofillSettings(context) }
     val turnOn = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         isEnabled = isAutoFillEnabled(context)
     }
-    LaunchedEffect(lifecycleState) {
-        if (lifecycleState.isAtLeast(Lifecycle.State.RESUMED)) isEnabled = isAutoFillEnabled(context)
-    }
+    LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { isEnabled = isAutoFillEnabled(context) }
 
     FormSection(footer = { Text(systemSettingsFooter) }) {
         if (isEnabled) {
