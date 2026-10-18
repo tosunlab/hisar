@@ -33,25 +33,25 @@ class SignInModel(private val context: ModelContext) {
     /** Why a scanned QR code filled nothing in. */
     val scannerMessage = MutableStateFlow<String?>(null)
 
-    suspend fun signIn(server: String, email: String, secretKey: String, password: String): Boolean {
+    suspend fun signIn(server: String, email: String, secretKey: String, password: String): Boolean = context.runInModel {
         val formattedSecretKey = VaultLogic.formatSecretKey(secretKey)
         val trimmedServer = server.trimmingWhitespacesAndNewlines()
         val trimmedEmail = email.trimmingWhitespacesAndNewlines()
-        val newStatus = context.perform { it.signIn(trimmedServer, trimmedEmail, formattedSecretKey, password) } ?: return false
+        val newStatus = context.perform { it.signIn(trimmedServer, trimmedEmail, formattedSecretKey, password) } ?: return@runInModel false
         context.applyStatus(newStatus)
         context.refreshAll()
-        return true
+        true
     }
 
-    suspend fun signUp(inviteLink: String, email: String, name: String, password: String): Boolean {
+    suspend fun signUp(inviteLink: String, email: String, name: String, password: String): Boolean = context.runInModel {
         val trimmedInviteLink = inviteLink.trimmingWhitespacesAndNewlines()
         val trimmedEmail = email.trimmingWhitespacesAndNewlines()
         val trimmedName = name.trimmingWhitespacesAndNewlines()
-        val result = context.perform { it.signUp(trimmedInviteLink, trimmedEmail, trimmedName, password) } ?: return false
+        val result = context.perform { it.signUp(trimmedInviteLink, trimmedEmail, trimmedName, password) } ?: return@runInModel false
         mutableNewAccountStep.value = NewAccountStep.SaveSecretKey(result.secretKey)
         context.applyStatus(result.status)
         context.refreshAll()
-        return true
+        true
     }
 
     /** "I saved my Secret Key": offers biometric unlock when the device has it and it is off, else closes the cover. */
@@ -71,12 +71,12 @@ class SignInModel(private val context: ModelContext) {
         context.scope.launch { context.attempt { it.forgetNewAccountSecretKey() } }
     }
 
-    suspend fun turnOnBiometricUnlockFromOffer(): Boolean {
-        val newStatus = context.perform { it.enableNewAccountBiometricUnlock() } ?: return false
+    suspend fun turnOnBiometricUnlockFromOffer(): Boolean = context.runInModel {
+        val newStatus = context.perform { it.enableNewAccountBiometricUnlock() } ?: return@runInModel false
         context.applyStatus(newStatus)
         dismissNewSecretKey()
         context.showNotice("Biometric unlock is on")
-        return true
+        true
     }
 
     /** Opens a hisar://sign-in or hisar://invite link from outside the app; other links change nothing. */
