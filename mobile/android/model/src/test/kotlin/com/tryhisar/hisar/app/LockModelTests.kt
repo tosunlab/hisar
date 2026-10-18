@@ -11,7 +11,14 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
 
 /** Locking and unlocking, signing out from the lock screen, and the lock's settings. */
 class LockModelTests {
@@ -30,6 +37,23 @@ class LockModelTests {
         assertEquals(Screen.Unlocked, model.screen.value)
         assertNull(model.errorMessage.value)
         assertEquals(2, model.unlockedData.value.allVault.size)
+    }
+
+    @Test
+    fun testUnlockFinishesWhenTheLockScreenLeaves() = runTest {
+        val model = AppModelHarness(this).startUnlockedModel()
+        model.lock()
+        val lockScreenScope = CoroutineScope(coroutineContext + Job())
+        backgroundScope.launch {
+            model.screen.first { it == Screen.Unlocked }
+            lockScreenScope.cancel()
+        }
+        lockScreenScope.launch { model.lock.unlock(FakeBackend.PASSWORD) }
+        val unlockedData = withTimeout(5_000) { model.unlockedData.first { it.allVault.isNotEmpty() } }
+        assertEquals(2, unlockedData.allVault.size, "the refresh after unlocking still lands")
+        assertEquals(Screen.Unlocked, model.screen.value)
+        assertFalse(lockScreenScope.isActive, "the lock screen left while unlocking")
+        assertNull(model.errorMessage.value, "leaving the lock screen is not an error")
     }
 
     @Test

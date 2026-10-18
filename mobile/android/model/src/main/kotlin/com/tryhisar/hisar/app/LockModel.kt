@@ -19,28 +19,28 @@ class LockModel(private val context: ModelContext) {
         }
     }
 
-    suspend fun unlock(password: String): Boolean {
-        val newStatus = context.perform { it.unlock(password) } ?: return false
+    suspend fun unlock(password: String): Boolean = context.runInModel {
+        val newStatus = context.perform { it.unlock(password) } ?: return@runInModel false
         context.applyStatus(newStatus)
         context.refreshAll()
-        return true
+        true
     }
 
-    suspend fun unlockWithBiometric(): Boolean {
+    suspend fun unlockWithBiometric(): Boolean = context.runInModel {
         val newStatus = if (context.status.value.biometricReady) context.perform { it.unlockWithBiometric() } else null
         if (newStatus == null) {
             context.refreshStatus()
-            return false
+            return@runInModel false
         }
         context.applyStatus(newStatus)
         context.refreshAll()
-        return true
+        true
     }
 
-    suspend fun signOut(): Boolean {
-        val newStatus = context.perform { it.signOut() } ?: return false
+    suspend fun signOut(): Boolean = context.runInModel {
+        val newStatus = context.perform { it.signOut() } ?: return@runInModel false
         context.applyStatus(newStatus)
-        return true
+        true
     }
 
     /** Turning biometric unlock on needs the master password; turning it off does not. */
