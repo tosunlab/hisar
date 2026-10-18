@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Extra packages whose page addresses AutoFill trusts; the debug build adds its instrumented tests' web page. -->
+    <!-- Packages signed with Hisar's own certificate whose page addresses AutoFill trusts: the debug build's instrumented tests. -->
     <string-array name="autofill_test_browsers" tools:ignore="InconsistentArrays" />
 
     <style name="Theme.Hisar.AutoFill" parent="@android:style/Theme.Material.Light.NoActionBar">

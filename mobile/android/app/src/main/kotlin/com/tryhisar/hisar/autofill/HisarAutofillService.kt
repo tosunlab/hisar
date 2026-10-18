@@ -17,7 +17,6 @@ import android.view.autofill.AutofillId
 import androidx.core.os.BundleCompat
 import com.tryhisar.hisar.BackendProvider
 import com.tryhisar.hisar.MainActivity
-import com.tryhisar.hisar.R
 import com.tryhisar.hisar.model.LoginMatch
 import com.tryhisar.hisar.model.VaultStatus
 import java.util.concurrent.Executors
@@ -30,20 +29,21 @@ import java.util.concurrent.Executors
 class HisarAutofillService : AutofillService() {
     private val executor = Executors.newSingleThreadExecutor()
 
-    private val allBrowserPackage: Set<String> by lazy { TrustedBrowsers.allPackageName + resources.getStringArray(R.array.autofill_test_browsers) }
-
     override fun onFillRequest(request: FillRequest, cancellationSignal: CancellationSignal, callback: FillCallback) {
         val structure = request.fillContexts.last().structure
         val packageName = structure.activityComponent.packageName
-        val form = if (packageName == this.packageName) null else FillRequestParser.parse(structure.readFormNodes(), packageName, allBrowserPackage)
-        if (form == null) {
+        if (packageName == this.packageName) {
             callback.onSuccess(null)
             return
         }
+        val allRoot = structure.readFormNodes()
         val task = executor.submit {
             val response = try {
-                val inlineRequest = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) request.inlineSuggestionsRequest else null
-                buildResponse(form, Datasets(this, inlineRequest))
+                val app = InstalledApps.readAndroidApp(this, packageName)
+                FillRequestParser.parse(allRoot, packageName, app?.certificateSHA256, PrivilegedBrowserList.read(this))?.let { form ->
+                    val inlineRequest = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) request.inlineSuggestionsRequest else null
+                    buildResponse(form, app, Datasets(this, inlineRequest))
+                }
             } catch (error: Exception) {
                 Log.w("Hisar", "AutoFill could not answer", error)
                 null
@@ -53,13 +53,11 @@ class HisarAutofillService : AutofillService() {
         cancellationSignal.setOnCancelListener { task.cancel(true) }
     }
 
-    private fun buildResponse(form: LoginForm<AutofillId>, datasets: Datasets): FillResponse {
+    private fun buildResponse(form: LoginForm<AutofillId>, app: AndroidApp?, datasets: Datasets): FillResponse {
         val target = when (val source = form.source) {
             is AutofillSource.Web -> FillTarget.Websites(listOf(source.serviceIdentifier))
             is AutofillSource.UnknownPage -> FillTarget.Websites(emptyList())
-            is AutofillSource.App -> InstalledApps.readAndroidApp(this, source.packageName)
-                ?.let { FillTarget.App(it, InstalledApps.readLabel(this, source.packageName)) }
-                ?: FillTarget.Websites(emptyList())
+            is AutofillSource.App -> app?.let { FillTarget.App(it, InstalledApps.readLabel(this, source.packageName)) } ?: FillTarget.Websites(emptyList())
         }
         val request = AutofillRequest(form.username, form.password, form.oneTimeCode, form.kind, target)
         val response = FillResponse.Builder()

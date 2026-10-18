@@ -45,11 +45,13 @@ data class LoginForm<Id>(val source: AutofillSource, val username: Id?, val pass
 /**
  * Finds the username, password and one-time code fields of a fill request. A field's kind comes from, first match wins:
  * its autofill hints (which carry HTML `autocomplete` words from browsers), its HTML `type` and name, its input type,
- * then words in its view ID or hint text. A page's address counts only from a browser in [allBrowserPackage]: any app
- * can claim a web domain in its own views, so another app's page goes through the app's own checks instead.
+ * then words in its view ID or hint text. A page's address counts only from an app [PrivilegedBrowsers] names by package
+ * and signing certificate: any app can claim a web domain in its own views, and any app can take a browser's package name,
+ * so another app's page goes through the app's own checks instead.
  */
 object FillRequestParser {
-    fun <Id> parse(allRoot: List<FormNode<Id>>, packageName: String, allBrowserPackage: Set<String>): LoginForm<Id>? {
+    /** [certificateSHA256] is the caller's signing certificate, null when it has several signers or cannot be read. */
+    fun <Id> parse(allRoot: List<FormNode<Id>>, packageName: String, certificateSHA256: String?, browsers: PrivilegedBrowsers): LoginForm<Id>? {
         val allWebField = allRoot.flatMap { listAllWebField(it, page = null) }
         val webPage = allWebField.firstOrNull()?.second
         val allField = allWebField.map { it.first }.ifEmpty { allRoot.flatMap(::listAllField) }
@@ -58,10 +60,11 @@ object FillRequestParser {
         val username = classified.firstOrNull { it.second == FieldKind.USERNAME }?.first ?: password?.let { findTextFieldBefore(allField, it) }
         val oneTimeCode = classified.firstOrNull { it.second == FieldKind.ONE_TIME_CODE }?.first
         if (username == null && password == null && oneTimeCode == null) return null
+        val caller = certificateSHA256?.let { AndroidApp(packageName, it) }
         val source = when {
-            webPage != null && packageName in allBrowserPackage ->
+            webPage != null && browsers.isNamingPages(caller) ->
                 AutofillSource.Web(webPage.webScheme?.lowercase()?.ifEmpty { null } ?: "https", webPage.webDomain!!.lowercase())
-            packageName in TrustedBrowsers.allPackageName -> AutofillSource.UnknownPage(packageName)
+            browsers.isBrowser(caller) -> AutofillSource.UnknownPage(packageName)
             else -> AutofillSource.App(packageName)
         }
         return LoginForm(source, username?.autofillID, password?.autofillID, oneTimeCode?.autofillID)
@@ -144,17 +147,4 @@ object FillRequestParser {
     private const val VARIATION_WEB_EMAIL_ADDRESS = 0x000000d0
     private const val VARIATION_WEB_PASSWORD = 0x000000e0
     private const val NUMBER_VARIATION_PASSWORD = 0x00000010
-}
-
-/** The browsers whose reported page address Hisar trusts. The service's compatibility list is part of it. */
-object TrustedBrowsers {
-    val allPackageName: Set<String> = setOf(
-        "com.android.chrome", "com.chrome.beta", "com.chrome.dev", "com.chrome.canary", "com.google.android.apps.chrome", "org.chromium.chrome",
-        "org.mozilla.firefox", "org.mozilla.firefox_beta", "org.mozilla.fenix", "org.mozilla.focus", "org.torproject.torbrowser",
-        "com.microsoft.emmx", "com.microsoft.emmx.beta", "com.microsoft.emmx.dev", "com.microsoft.emmx.canary",
-        "com.brave.browser", "com.brave.browser_beta", "com.brave.browser_nightly",
-        "com.opera.browser", "com.opera.browser.beta", "com.opera.gx", "com.opera.mini.native", "com.opera.mini.native.beta",
-        "com.sec.android.app.sbrowser", "com.sec.android.app.sbrowser.beta",
-        "com.vivaldi.browser", "com.vivaldi.browser.snapshot", "com.duckduckgo.mobile.android", "com.ecosia.android", "com.kiwibrowser.browser",
-    )
 }
