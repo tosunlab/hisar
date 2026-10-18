@@ -15,6 +15,7 @@ import androidx.compose.material.icons.outlined.DataObject
 import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.Password
 import androidx.compose.material.icons.outlined.PersonAddAlt
@@ -95,6 +96,10 @@ fun VaultItemsScreen(model: AppModel, stack: NavigationStack, vaultID: String) {
     vault ?: return
 
     val isWritable = vault.type == VaultSummary.TYPE_PERSONAL || vault.role != Member.VAULT_ROLE_READER
+    val isShared = vault.type == VaultSummary.TYPE_SHARED || vault.isOrganization
+    val openSharing = {
+        stack.push(if (vault.isOrganization) VaultsDestination.OrganizationVaultSharing(vaultID, vault.organizationID) else VaultsDestination.VaultSharing(vaultID))
+    }
     val allMatch = VaultLogic.filterAllItem(data.listAllItemReference(vaultID), searchText)
 
     PushedListScaffold(
@@ -105,8 +110,12 @@ fun VaultItemsScreen(model: AppModel, stack: NavigationStack, vaultID: String) {
         emptyContent = { if (searchText.isEmpty()) NoItemsYet(isWritable) else NoSearchResults(searchText) },
         searchField = { SearchField(searchText, { searchText = it }, "Search ${vault.name}", testTag = "vault-search") },
         actions = {
-            if (vault.type == VaultSummary.TYPE_PERSONAL) {
-                ToolbarIconButton(Icons.Outlined.PersonAddAlt, "Share", testTag = "share-vault") { dialog = VaultDialog.PersonalVaultIsPrivate }
+            if (isShared && vault.role != Member.VAULT_ROLE_OWNER) {
+                ToolbarIconButton(Icons.Outlined.Group, "Members", testTag = "vault-members", onClick = openSharing)
+            } else {
+                ToolbarIconButton(Icons.Outlined.PersonAddAlt, "Share", testTag = "share-vault") {
+                    if (isShared) openSharing() else dialog = VaultDialog.PersonalVaultIsPrivate
+                }
             }
             if (isWritable) {
                 Box {

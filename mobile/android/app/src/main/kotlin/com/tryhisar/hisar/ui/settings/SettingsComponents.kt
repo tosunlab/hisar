@@ -233,23 +233,24 @@ fun DestructiveRow(text: String, onClick: () -> Unit, testTag: String, enabled: 
 }
 
 /**
- * A confirmationDialog: a title, a message, the action (red when [isDestructive]) and Cancel. [confirmTestTag] is the
- * iPhone's identifier for the action.
+ * A confirmationDialog: a title, an optional message, the action (red when [isDestructive]) and [dismissLabel].
+ * [confirmTestTag] is the iPhone's identifier for the action.
  */
 @Composable
 fun ConfirmationDialog(
     title: String,
-    message: String,
+    message: String?,
     confirmLabel: String,
     confirmTestTag: String,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
     isDestructive: Boolean = true,
+    dismissLabel: String = "Cancel",
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
-        text = { Text(message) },
+        text = message?.let { { Text(it) } },
         confirmButton = {
             PlainButton(
                 confirmLabel,
@@ -261,7 +262,7 @@ fun ConfirmationDialog(
                 color = if (isDestructive) HisarTheme.colors.destructive else HisarTheme.colors.tint,
             )
         },
-        dismissButton = { PlainButton("Cancel", onDismiss, testTag = "cancel-confirmation") },
+        dismissButton = { PlainButton(dismissLabel, onDismiss, testTag = "cancel-confirmation") },
         containerColor = HisarTheme.colors.cellBackground,
     )
 }

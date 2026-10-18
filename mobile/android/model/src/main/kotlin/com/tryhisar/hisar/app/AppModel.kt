@@ -96,6 +96,8 @@ class AppModel(
     val vaults = VaultsModel(this)
     val invitations = InvitationsModel(this)
     val navigation = VaultsNavigation(this, requestedEditor, selectedTab)
+    val sharing = SharingModel(this, vaults)
+    val organizations = OrganizationsModel(this, invitations)
     val approvals = ApprovalsModel(this, now)
 
     val autoLockInterval: Duration get() = Duration.ofSeconds(status.value.autoLockSeconds.toLong())
