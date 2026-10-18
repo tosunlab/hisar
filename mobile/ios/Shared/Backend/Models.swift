@@ -1435,6 +1435,7 @@ struct Device: Codable, Identifiable, Hashable {
         let system: String
         switch operatingSystem {
         case "ios": system = "iOS"
+        case "android": system = "Android"
         case "darwin", "macos": system = "macOS"
         case "linux": system = "Linux"
         case "windows": system = "Windows"
@@ -1454,6 +1455,7 @@ struct Device: Codable, Identifiable, Hashable {
         if client == "extension" || client == "browser" { return "puzzlepiece.extension" }
         switch operatingSystem {
         case "ios": return "iphone"
+        case "android": return "smartphone"
         case "darwin", "macos": return "laptopcomputer"
         default: return "desktopcomputer"
         }

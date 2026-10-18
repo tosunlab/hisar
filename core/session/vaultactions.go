@@ -4,7 +4,7 @@ import "github.com/tryhisar/hisar/core/apitypes"
 
 // Reasons a vault can't be deleted or left; the apps show them as they are.
 const (
-	PersonalVaultDeleteReason = "Your Personal vault can't be deleted. It is the vault Hisar keeps for you alone, and logins saved from the browser and the iPhone go there."
+	PersonalVaultDeleteReason = "Your Personal vault can't be deleted. It is the vault Hisar keeps for you alone, and logins saved from the browser and your phone go there."
 	OnlyVaultDeleteReason     = "Your only vault can't be deleted. Create another vault first."
 	NotOwnerDeleteReason      = "Only an owner of this vault can delete it. You can leave it instead."
 	PersonalVaultLeaveReason  = "You can't leave your Personal vault."

@@ -49,7 +49,7 @@ type Unlocker interface {
 	VerifyPassword(password string) error
 }
 
-// PhoneApprover sends an open dialog to the account's iPhones; decide gets a verified answer at most once,
+// PhoneApprover sends an open dialog to the account's phones; decide gets a verified answer at most once,
 // and finish withdraws the request when the dialog closes.
 type PhoneApprover interface {
 	IsPhoneApprovalAvailable() bool
@@ -139,7 +139,7 @@ type ApproverConfig struct {
 	// IsCompactApproval is the Settings switch for the compact layout.
 	IsCompactApproval func() bool
 	Unlocker          Unlocker
-	// PhoneApprover lets the account's iPhones answer while Hisar is unlocked; nil keeps approvals on this Mac.
+	// PhoneApprover lets the account's phones answer while Hisar is unlocked; nil keeps approvals on this Mac.
 	PhoneApprover PhoneApprover
 	Timeout       time.Duration
 	// PhoneApprovalTimeout is how long a dialog that the phone can answer waits, so there is time to reach for the phone.

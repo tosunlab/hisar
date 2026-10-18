@@ -27,7 +27,7 @@ type Status struct {
 	BackupPath             string `json:"backupPath"`
 }
 
-// ApprovalPreference stores the "Compact SSH approvals", "Allow approvals from my iPhone", "Remember commit signing"
+// ApprovalPreference stores the "Compact SSH approvals", "Approve requests on my smart device", "Remember commit signing"
 // and "Remember SSH approvals" settings; SSH remember seconds below 0 mean until Hisar locks.
 type ApprovalPreference interface {
 	IsCompactSSHApproval() bool
@@ -166,7 +166,7 @@ func (s *Service) SetCompactSSHApproval(isCompact bool) (Status, error) {
 	return s.buildStatus(), err
 }
 
-// SetPhoneApproval turns "Allow approvals from my iPhone" on or off for dialogs that open from now on.
+// SetPhoneApproval turns "Approve requests on my smart device" on or off for dialogs that open from now on.
 func (s *Service) SetPhoneApproval(isEnabled bool) (Status, error) {
 	if s.config.ApprovalPreference == nil {
 		return s.buildStatus(), errors.New("phone approvals cannot be changed here")

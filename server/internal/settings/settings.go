@@ -50,6 +50,7 @@ func (smtp SMTP) IsSet() bool { return smtp.Host != "" }
 type MinimumVersions struct {
 	DesktopMacOS string `json:"desktopMacOS"`
 	IOS          string `json:"iOS"`
+	Android      string `json:"android"`
 	CLI          string `json:"cli"`
 	Extension    string `json:"extension"`
 }
@@ -61,6 +62,8 @@ func (minimumVersions MinimumVersions) Get(client string) string {
 		return minimumVersions.DesktopMacOS
 	case apitypes.ClientIOS:
 		return minimumVersions.IOS
+	case apitypes.ClientAndroid:
+		return minimumVersions.Android
 	case apitypes.ClientCLI:
 		return minimumVersions.CLI
 	case apitypes.ClientExtension:
@@ -136,6 +139,7 @@ func (settings Settings) Validate() error {
 	}
 	for _, minimum := range []struct{ app, version string }{
 		{"the Mac app", settings.MinimumVersions.DesktopMacOS}, {"the iPhone app", settings.MinimumVersions.IOS},
+		{"the Android app", settings.MinimumVersions.Android},
 		{"the command-line tool", settings.MinimumVersions.CLI}, {"the browser extension", settings.MinimumVersions.Extension},
 	} {
 		if minimum.version == "" {
@@ -198,6 +202,7 @@ func ListFields() []Field {
 		{Name: "invitePolicy"},
 		{Name: "minimumVersions.desktopMacOS", Environment: "HISAR_MINIMUM_VERSION_DESKTOP_MACOS"},
 		{Name: "minimumVersions.iOS", Environment: "HISAR_MINIMUM_VERSION_IOS"},
+		{Name: "minimumVersions.android", Environment: "HISAR_MINIMUM_VERSION_ANDROID"},
 		{Name: "minimumVersions.cli", Environment: "HISAR_MINIMUM_VERSION_CLI"},
 		{Name: "minimumVersions.extension", Environment: "HISAR_MINIMUM_VERSION_EXTENSION"},
 		{Name: "sessionLifetimeDays"},

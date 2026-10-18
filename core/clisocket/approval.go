@@ -14,7 +14,7 @@ const DefaultApprovalLifetime = 10 * time.Minute
 
 var ErrDenied = errors.New("Hisar denied the request (it was declined)")
 
-// TimeoutError is a request nobody answered before the dialog's deadline, 1 minute or 2 when the iPhone can answer.
+// TimeoutError is a request nobody answered before the dialog's deadline, 1 minute or 2 when a phone can answer.
 type TimeoutError struct {
 	Timeout time.Duration
 }

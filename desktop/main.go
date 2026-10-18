@@ -67,6 +67,7 @@ func main() {
 		LockNotifier:          notifier,
 		GetSystemIdleDuration: systemidle.GetIdleDuration,
 		Biometric:             touchID,
+		BiometricName:         "Touch ID",
 		FileSaver:             fileSaver,
 		FileOpener:            fileOpener,
 		OnLock: func() {

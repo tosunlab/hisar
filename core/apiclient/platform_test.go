@@ -75,6 +75,7 @@ func TestGetClient(t *testing.T) {
 	for platform, expected := range map[string]string{
 		"darwin/desktop":    apitypes.ClientDesktopMacOS,
 		"ios/mobile":        apitypes.ClientIOS,
+		"android/mobile":    apitypes.ClientAndroid,
 		"darwin/cli":        apitypes.ClientCLI,
 		"linux/cli":         apitypes.ClientCLI,
 		"windows/cli":       apitypes.ClientCLI,
@@ -86,6 +87,22 @@ func TestGetClient(t *testing.T) {
 	} {
 		if client := apitypes.GetClient(platform); client != expected {
 			t.Errorf("GetClient(%q) = %q, want %q", platform, client, expected)
+		}
+	}
+}
+
+func TestIsPhonePlatform(t *testing.T) {
+	for platform, expected := range map[string]bool{
+		"ios/mobile":        true,
+		"android/mobile":    true,
+		"darwin/desktop":    false,
+		"linux/cli":         false,
+		"browser/extension": false,
+		"/mobile":           false,
+		"":                  false,
+	} {
+		if isPhone := apitypes.IsPhonePlatform(platform); isPhone != expected {
+			t.Errorf("IsPhonePlatform(%q) = %v, want %v", platform, isPhone, expected)
 		}
 	}
 }

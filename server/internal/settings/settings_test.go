@@ -88,7 +88,7 @@ func TestResolveReadsTheEnvironment(t *testing.T) {
 	effective, _, err := Resolve(Defaults(), nil, readEnvironment(map[string]string{
 		"HISAR_SMTP_HOST": "smtp.example.com", "HISAR_SMTP_PORT": "465", "HISAR_SMTP_USERNAME": "hisar", "HISAR_SMTP_PASSWORD": " secret ",
 		"HISAR_SMTP_FROM": "Hisar <noreply@tryhisar.com>", "HISAR_MINIMUM_VERSION_DESKTOP_MACOS": " 0.1.6 ", "HISAR_MINIMUM_VERSION_IOS": "",
-		"HISAR_MINIMUM_VERSION_CLI": "1.0.0-alpha-test", "HISAR_MINIMUM_VERSION_EXTENSION": "0.2.0",
+		"HISAR_MINIMUM_VERSION_CLI": "1.0.0-alpha-test", "HISAR_MINIMUM_VERSION_EXTENSION": "0.2.0", "HISAR_MINIMUM_VERSION_ANDROID": "1.1.0",
 	}))
 	if err != nil {
 		t.Fatal(err)
@@ -97,7 +97,7 @@ func TestResolveReadsTheEnvironment(t *testing.T) {
 	if effective.SMTP != expected {
 		t.Errorf("SMTP %+v", effective.SMTP)
 	}
-	if effective.MinimumVersions != (MinimumVersions{DesktopMacOS: "0.1.6", CLI: "1.0.0-alpha-test", Extension: "0.2.0"}) {
+	if effective.MinimumVersions != (MinimumVersions{DesktopMacOS: "0.1.6", Android: "1.1.0", CLI: "1.0.0-alpha-test", Extension: "0.2.0"}) {
 		t.Errorf("minimum versions %+v", effective.MinimumVersions)
 	}
 	if err := effective.Validate(); err != nil {
@@ -146,6 +146,7 @@ func TestValidateBounds(t *testing.T) {
 		}, true},
 		"minimum macOS 0.1":                 {func(settings *Settings) { settings.MinimumVersions.DesktopMacOS = "0.1" }, false},
 		"minimum iOS latest":                {func(settings *Settings) { settings.MinimumVersions.IOS = "latest" }, false},
+		"minimum Android 1":                 {func(settings *Settings) { settings.MinimumVersions.Android = "1" }, false},
 		"minimum CLI v1.0.0":                {func(settings *Settings) { settings.MinimumVersions.CLI = "v1.0.0" }, false},
 		"minimum extension 1.0.0-":          {func(settings *Settings) { settings.MinimumVersions.Extension = "1.0.0-" }, false},
 		"invite policy admins":              {func(settings *Settings) { settings.InvitePolicy = InvitePolicyAdmins }, true},

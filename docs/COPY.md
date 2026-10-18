@@ -1,6 +1,6 @@
 # Hisar copy glossary
 
-One name for each thing, the same on the Mac, the iPhone, the browser extension, the CLI and the server's pages and emails. Check here before adding or renaming user-facing text.
+One name for each thing, the same on the Mac, the iPhone, the Android app, the browser extension, the CLI and the server's pages and emails. Check here before adding or renaming user-facing text.
 
 ## Product
 
@@ -79,7 +79,7 @@ One name for each thing, the same on the Mac, the iPhone, the browser extension,
 | Rename…, Delete vault…, Leave vault… (the vault's menu; ⋯ is labelled "Vault actions") | Remove vault, Archive, Exit vault |
 | Delete “Work”? · These people lose access: · Move its N items to [vault] · Delete the vault and its N items · Type Work to confirm · Delete vault | Are you sure?, Destroy, Wipe |
 | Leave “Work”? · You lose access to its items on all your devices. An owner can invite you again. · Leave vault | Unsubscribe, Quit vault |
-| Your Personal vault can't be deleted. It is the vault Hisar keeps for you alone, and logins saved from the browser and the iPhone go there. | Cannot delete default vault |
+| Your Personal vault can't be deleted. It is the vault Hisar keeps for you alone, and logins saved from the browser and your phone go there. | Cannot delete default vault |
 | “Work” is no longer available: it was deleted, or you no longer have access to it. | Vault removed by admin |
 | Moved N items to Personal and deleted Work. · Deleted Work. · You left Work. | — |
 | Export (Settings section on the Mac), Export data… (iPhone, Settings → Account), `hisar export` | Backup, Download my data, Takeout |
@@ -95,7 +95,7 @@ One name for each thing, the same on the Mac, the iPhone, the browser extension,
 |---|---|
 | the hisar command-line tool (`hisar`) | the CLI (in app copy), the binary |
 | SSH agent, Use Hisar for SSH | key agent |
-| Approve requests on my iPhone (Mac) / Approve requests from my Mac (iPhone) | Allow approvals from my iPhone, Allow approving Mac requests |
+| Approve requests on my smart device (Mac) / Approve requests from my Mac (iPhone, Android) · or approve on your smart device (Mac approval window) · Your smart device can now approve requests | Approve requests on my iPhone, Allow approvals from my iPhone, Allow approving Mac requests |
 | Approve, Deny | Allow, Reject |
 | Coding agents, Available to agents | AI, MCP (except in the `hisar mcp` command) |
 
@@ -129,7 +129,7 @@ The web page at `/admin` where admins of the Hisar server manage it. The apps ne
 | SMTP host, Port, Username, Password, Sender · "Saved; type to replace" (a saved password) · "Enter the password again: changing the host, port or username clears the saved one." (under Password) · Send test email…, Send to, Send, Sending…, Close · "Hisar sends one email with the saved settings." · "Test email sent to you@example.com." · "The test email was not sent: <the SMTP error>" · "Email is not set up. Save the SMTP settings first." · "Too many test emails. Wait a minute and try again." | Mail server, From address, Test connection | Settings → Email |
 | "Test email from Hisar" (subject) · "This is a test email from the Hisar server at <origin>. Email works: the server can send invites and sharing notifications." | — | The test email |
 | Who can invite people: Anyone with an account, Admins only · "Only admins can invite people to the Hisar server." (the apps show it when a member invites under Admins only) | Invite permission, Restrict invites | Settings → Sign-up; the apps' invite error |
-| Mac app, iPhone app, Command-line tool, Browser extension · No minimum | macOS client, CLI | Settings → App versions |
+| Mac app, iPhone app, Android app, Command-line tool, Browser extension · No minimum | macOS client, CLI | Settings → App versions |
 | Audit log · Account ("Email or account ID"), Type, From, To (the filters) · All events, All <group> (All admin actions) · Load more · Export CSV, Exporting… · Time, Event, Account, Details, IP address (the columns) · Deleted account, No account · "No events match these filters." · Loading… · 120 events, 1 event (how many are shown) · "Filter by one type or one group, not both." · "The start of the date range must be before its end." · "This page of the audit log is no longer valid. Load the audit log again." | Activity, History, Logs, Download | The Audit log section |
 | Signed in, Account suspended, Settings changed … (one label per audit event type, from `auditTypes` in `server/internal/service/audit.go`) · Accounts and sign-in, Vaults and items, Sharing, Organizations and teams, Admin actions (the groups) | login, admin_account_suspended (the stored names) | Audit log, the Event column and the Type filter |
 | Session lifetime, Auth burst, Keep item history, Keep the audit log, Keep expired invitations · Days, "Days, at least 30" (the audit log) | Session TTL, Rate limit, Retention policy | Settings → Security |

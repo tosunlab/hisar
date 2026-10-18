@@ -57,7 +57,7 @@ type Settings struct {
 	IsCompactSSHApproval bool `json:"compactSSHApproval,omitempty"`
 	// AutoLockSeconds is the chosen auto-lock delay (0: the default).
 	AutoLockSeconds int `json:"autoLockSeconds,omitempty"`
-	// IsPhoneApprovalDisabled stops sending approval dialogs to the account's iPhones.
+	// IsPhoneApprovalDisabled stops sending approval dialogs to the account's phones.
 	IsPhoneApprovalDisabled bool `json:"phoneApprovalDisabled,omitempty"`
 	// SigningRememberSeconds is how long an approved commit signature may be remembered (0: always ask).
 	SigningRememberSeconds int `json:"signingRememberSeconds,omitempty"`
