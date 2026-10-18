@@ -346,6 +346,38 @@ func TestLauncherShareAsksEveryTimeAndNamesTheItem(t *testing.T) {
 	}
 }
 
+func TestLauncherShareDoesNotApproveLauncher(t *testing.T) {
+	fixture := createServerFixture(t)
+	launcher, _ := fixture.connectLauncher(t, raycastApp)
+	launcher.mustSend(t, shareLauncherItem())
+	if launcher.isApproved(t) || len(fixture.approvals.ListLaunchers()) != 0 {
+		t.Error("approving one share link approved the launcher")
+	}
+	launcher.mustSend(t, shareLauncherItem())
+	if count := fixture.launcherApprover.requestCount.Load(); count != 2 {
+		t.Errorf("%d approvals; each share link must ask", count)
+	}
+	launcher.mustSend(t, listLauncherItems)
+	if count := fixture.launcherApprover.requestCount.Load(); count != 3 {
+		t.Errorf("%d approvals; listing items must ask after approving only share links", count)
+	}
+	if !slices.Equal(fixture.handler.types, []string{cliprotocol.TypeLauncherShareItem, cliprotocol.TypeLauncherShareItem, cliprotocol.TypeLauncherListItem}) {
+		t.Errorf("handled %q", fixture.handler.types)
+	}
+}
+
+func TestLauncherShareDoesNotRefreshLauncherApproval(t *testing.T) {
+	fixture := createServerFixture(t)
+	launcher, _ := fixture.connectLauncher(t, raycastApp)
+	launcher.mustSend(t, listLauncherItems)
+	approved := fixture.approvals.ListLaunchers()
+	fixture.advance(time.Minute)
+	launcher.mustSend(t, shareLauncherItem())
+	if launchers := fixture.approvals.ListLaunchers(); !slices.Equal(launchers, approved) {
+		t.Errorf("approving a share link refreshed the launcher approval: %+v; want %+v", launchers, approved)
+	}
+}
+
 func TestDeniedLauncherShareCreatesNothing(t *testing.T) {
 	fixture := createServerFixture(t)
 	launcher, _ := fixture.connectLauncher(t, raycastApp)

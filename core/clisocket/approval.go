@@ -138,7 +138,7 @@ func (approvals *SessionApprovals) isApproved(memory *scopeApprovals, scope appr
 }
 
 // require refreshes a current approval, or runs ask once for the scope while concurrent requests for it wait; the
-// approval is remembered unless ClearAll ran while the dialog was open.
+// request is denied if ClearAll ran while the dialog was open.
 func (approvals *SessionApprovals) require(memory *scopeApprovals, scope approvalScope, ask func() error) error {
 	approvals.mutex.Lock()
 	if approvals.isCurrent(memory, scope) {
@@ -163,7 +163,9 @@ func (approvals *SessionApprovals) require(memory *scopeApprovals, scope approva
 
 	approvals.mutex.Lock()
 	delete(memory.pendingByScope, scope)
-	if pending.err == nil && generation == approvals.generation {
+	if generation != approvals.generation {
+		pending.err = ErrDenied
+	} else if pending.err == nil {
 		memory.lastUsedByScope[scope] = approvals.now()
 	}
 	approvals.mutex.Unlock()
@@ -171,24 +173,25 @@ func (approvals *SessionApprovals) require(memory *scopeApprovals, scope approva
 	return pending.err
 }
 
-// requireAlways asks even when the scope is approved; an approval then also approves the scope.
+// requireAlways asks even when the scope is approved; a nil memory approves only this request.
 func (approvals *SessionApprovals) requireAlways(memory *scopeApprovals, scope approvalScope, ask func() error) error {
 	approvals.mutex.Lock()
 	generation := approvals.generation
 	approvals.mutex.Unlock()
-	if err := ask(); err != nil {
-		return err
-	}
+	err := ask()
 	approvals.mutex.Lock()
-	if generation == approvals.generation {
+	defer approvals.mutex.Unlock()
+	if generation != approvals.generation {
+		return ErrDenied
+	}
+	if err == nil && memory != nil {
 		memory.lastUsedByScope[scope] = approvals.now()
 	}
-	approvals.mutex.Unlock()
-	return nil
+	return err
 }
 
 // ClearAll ends every approval, launchers' too, and every agent's remembered secrets, e.g. when Hisar locks; an approval
-// in progress is not remembered either.
+// in progress is denied too.
 func (approvals *SessionApprovals) ClearAll() {
 	approvals.mutex.Lock()
 	defer approvals.mutex.Unlock()

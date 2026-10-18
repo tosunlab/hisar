@@ -1,9 +1,74 @@
 package app
 
 import (
+	"context"
+	"net"
 	"path/filepath"
+	"sync/atomic"
 	"testing"
+
+	"github.com/tryhisar/hisar/core/cliprotocol"
+	"github.com/tryhisar/hisar/core/clisocket"
 )
+
+func TestSocketApprovalUnlocksHisar(t *testing.T) {
+	for _, isLauncher := range []bool{false, true} {
+		for _, method := range []string{"password", "Touch ID"} {
+			name := "command line/" + method
+			if isLauncher {
+				name = "launcher/" + method
+			}
+			t.Run(name, func(t *testing.T) {
+				const password = "approval test password"
+				fixture := createUnlockedTestService(t)
+				prepareTestApprovalUnlock(t, fixture, password)
+				service := fixture.service
+				approvals := clisocket.NewSessionApprovals(0, nil)
+				bridge := NewCommandLineBridge(service, approvals)
+				service.Lock()
+				var unlockCount, approvalCount atomic.Int32
+				unlocker := NewApprovalUnlocker(service, func() { unlockCount.Add(1) })
+				approver := socketApprover(func() error {
+					approvalCount.Add(1)
+					if method == "password" {
+						return unlocker.UnlockWithPassword(password)
+					}
+					return unlocker.UnlockWithTouchID(func(string) error { return nil })
+				})
+				config := clisocket.ServerConfig{
+					Handler: bridge, Approver: approver, LauncherApprover: approver,
+					PeerResolver: staticPeerResolver{}, Approvals: approvals,
+				}
+				request := cliprotocol.Request{Type: cliprotocol.TypeListVault}
+				if isLauncher {
+					config.PeerResolver = raycastPeerResolver{}
+					config.IdentifyApp = func(int) (clisocket.AppIdentity, bool) {
+						return clisocket.AppIdentity{Path: "/Applications/Raycast.app", TeamID: "RAYCAST123"}, true
+					}
+					request.Type = cliprotocol.TypeLauncherListItem
+				}
+				server := clisocket.NewServer(config)
+				serverSide, clientSide := net.Pipe()
+				go server.ServeConnection(context.Background(), serverSide)
+				t.Cleanup(func() { clientSide.Close() })
+				client := &commandLineTest{connection: clientSide}
+				if isLauncher {
+					client.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeLauncherHello}, nil)
+				}
+				client.mustSend(t, request, nil)
+				client.mustSend(t, request, nil)
+				var hello cliprotocol.HelloResult
+				client.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeHello}, &hello)
+				if hello.State != StateUnlocked || !hello.IsApproved {
+					t.Errorf("hello after approving while locked: %+v", hello)
+				}
+				if approvalCount.Load() != 1 || unlockCount.Load() != 1 {
+					t.Errorf("%d approvals, %d unlocks; want one of each", approvalCount.Load(), unlockCount.Load())
+				}
+			})
+		}
+	}
+}
 
 func TestCompactSSHApprovalIsSavedAndKeptOnSignOut(t *testing.T) {
 	statePath := filepath.Join(t.TempDir(), "desktop.json")

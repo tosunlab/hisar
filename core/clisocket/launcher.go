@@ -167,11 +167,13 @@ func (s *Server) answerLauncherRequest(ctx context.Context, client *connectionPe
 			return nil, cliprotocol.NewError(cliprotocol.ErrorSignedOut, "the Hisar app is not signed in; sign in there")
 		}
 		approvals := s.config.Approvals
+		memory := &approvals.launchers
 		require := approvals.require
 		if rule.isAskedEveryTime {
+			memory = nil
 			require = approvals.requireAlways
 		}
-		if err := require(&approvals.launchers, client.scope, func() error { return s.askLauncherApproval(ctx, client, request) }); err != nil {
+		if err := require(memory, client.scope, func() error { return s.askLauncherApproval(ctx, client, request) }); err != nil {
 			return nil, convertDenial(err)
 		}
 	}

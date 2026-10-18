@@ -11,6 +11,7 @@ import (
 
 	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/apitypes"
+	"github.com/tryhisar/hisar/core/clisocket"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/session"
@@ -230,6 +231,51 @@ func createUnlockedTestService(t *testing.T) unlockedTestService {
 	service.mutex.Unlock()
 	t.Cleanup(func() { service.Lock() })
 	return unlockedTestService{service: service, clipboard: clipboard, apiServer: apiServer, accountID: accountID, personalID: personal.ID, familyID: family.ID, lockedCount: &lockedCount}
+}
+
+func prepareTestApprovalUnlock(t *testing.T, fixture unlockedTestService, password string) {
+	t.Helper()
+	service := fixture.service
+	service.mutex.Lock()
+	defer service.mutex.Unlock()
+	secretKey, err := crypt.GenerateSecretKey(fixture.accountID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	salt := crypt.GenerateSalt()
+	derivedKeys, err := crypt.DeriveKeys([]byte(password), salt, crypt.MinArgon2Params(), secretKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer derivedKeys.Wipe()
+	keyset := service.unlockedSession.Keyset
+	encryptedKeyset, err := keyset.Encrypt(derivedKeys.AccountUnlockKey, fixture.accountID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fixture.apiServer.mutex.Lock()
+	fixture.apiServer.account = &apitypes.Account{
+		AccountID: fixture.accountID, Email: "a@example.com", Name: "Alice", Role: apitypes.RoleAdmin,
+		Salt: salt, Argon2: crypt.MinArgon2Params(), EncKeyset: encryptedKeyset, PublicKeys: keyset.GetPublicKeys(fixture.accountID),
+	}
+	fixture.apiServer.mutex.Unlock()
+	if err := service.config.SecretKeyStore.StoreSecretKey(secretKey); err != nil {
+		t.Fatal(err)
+	}
+	service.recordPasswordUnlock()
+	if _, err := service.sealBiometricUnlock(derivedKeys.AccountUnlockKey); err != nil {
+		t.Fatal(err)
+	}
+}
+
+type socketApprover func() error
+
+func (approve socketApprover) ApproveCommandLine(context.Context, clisocket.ApprovalRequest) error {
+	return approve()
+}
+
+func (approve socketApprover) ApproveLauncher(context.Context, clisocket.LauncherApprovalRequest) error {
+	return approve()
 }
 
 func getCachedItem(t *testing.T, service *Service, vaultID, itemID string) item.Item {

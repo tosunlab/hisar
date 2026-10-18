@@ -39,3 +39,16 @@ func TestExportAlwaysAsks(t *testing.T) {
 		t.Error("a denied export reached the handler")
 	}
 }
+
+func TestExportApprovalAlsoApprovesTheSession(t *testing.T) {
+	fixture := createServerFixture(t)
+	client := fixture.connect(t)
+	client.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeExport, Export: &cliprotocol.ExportChange{Format: cliprotocol.ExportFormatPlain, Path: "/tmp/hisar-export.json"}})
+	if !client.isApproved(t) {
+		t.Error("approving an export did not approve the terminal session")
+	}
+	client.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeListVault})
+	if count := fixture.approver.requestCount.Load(); count != 1 {
+		t.Errorf("%d approvals; the export's approval should cover the session", count)
+	}
+}
