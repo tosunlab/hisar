@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/tryhisar/hisar/core/apitypes"
+	"github.com/tryhisar/hisar/server/internal/store"
 )
 
 func TestLoginCache(t *testing.T) {
@@ -61,5 +62,25 @@ func TestComposeAccountDeletedEmail(t *testing.T) {
 	message := composeAccountDeletedEmail("alice@example.com", time.Date(2026, 10, 11, 9, 30, 0, 0, time.UTC))
 	if message.Subject != "Your Hisar account was deleted" || !strings.Contains(message.Body, "alice@example.com was deleted on 11 October 2026") || !strings.Contains(message.Body, "kept for 30 days") {
 		t.Errorf("email: %+v", message)
+	}
+}
+
+func TestInviteState(t *testing.T) {
+	expiresAt := time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)
+	usedAt := expiresAt.Add(-time.Hour)
+	for _, testCase := range []struct {
+		usedAt   *time.Time
+		now      time.Time
+		expected string
+	}{
+		{nil, expiresAt.Add(-time.Nanosecond), invitePending},
+		{nil, expiresAt, inviteExpired},
+		{nil, expiresAt.Add(time.Nanosecond), inviteExpired},
+		{&usedAt, expiresAt.Add(-time.Hour), inviteUsed},
+		{&usedAt, expiresAt.Add(time.Hour), inviteUsed},
+	} {
+		if state := inviteState(&store.AdminInvite{ExpiresAt: expiresAt, UsedAt: testCase.usedAt}, testCase.now); state != testCase.expected {
+			t.Errorf("used %v at %v: %s, want %s", testCase.usedAt != nil, testCase.now, state, testCase.expected)
+		}
 	}
 }
