@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -64,7 +65,8 @@ func (approver *Approver) buildLauncherPhoneDescription(event ApprovalEvent) app
 }
 
 // ApproveLauncher asks to let a launcher such as Raycast search Hisar and copy or paste passwords and one-time codes
-// until Hisar locks, or to create one share link; when Hisar is locked, approving also unlocks it.
+// until Hisar locks, or to create one share link; when Hisar is locked, approving also unlocks it. Once the user
+// answered, the launcher's app comes forward again to show the result; not after a timeout or a closed connection.
 func (approver *Approver) ApproveLauncher(ctx context.Context, request clisocket.LauncherApprovalRequest) error {
 	if approver.config.Emit == nil {
 		return clisocket.ErrDenied
@@ -72,7 +74,7 @@ func (approver *Approver) ApproveLauncher(ctx context.Context, request clisocket
 	receivedAt := approver.config.Now()
 	event := approver.buildLauncherEvent(generateRequestID(), request)
 	requester := fmt.Sprintf("%q", event.AppName)
-	return approver.waitForSocketApproval(ctx, &pendingApproval{
+	err := approver.waitForSocketApproval(ctx, &pendingApproval{
 		event:           event,
 		responseChannel: make(chan approvalResponse, 1),
 		receivedAt:      receivedAt,
@@ -80,4 +82,9 @@ func (approver *Approver) ApproveLauncher(ctx context.Context, request clisocket
 		unlockReason:    fmt.Sprintf("unlock Hisar for %s", requester),
 		phoneRequest:    approver.buildLauncherPhoneDescription(event),
 	})
+	var timeoutError clisocket.TimeoutError
+	if approver.config.ReturnToApp != nil && request.App.Path != "" && ctx.Err() == nil && !errors.As(err, &timeoutError) {
+		approver.config.ReturnToApp(request.App.Path)
+	}
+	return err
 }

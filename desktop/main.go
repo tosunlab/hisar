@@ -140,6 +140,7 @@ func main() {
 		},
 		HideApprovalWindow: func() { application.InvokeAsync(func() { approvalWindow.Hide() }) },
 		ResolveRequester:   requesterResolver.Resolve,
+		ReturnToApp:        reopenApp,
 		GetAppIconPNG:      requesterResolver.GetIconPNG,
 		HomeDirectory:      homeDirectory,
 		IsCompactApproval:  approvalPreference.IsCompactSSHApproval,

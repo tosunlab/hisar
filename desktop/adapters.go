@@ -1,10 +1,26 @@
 package main
 
 import (
+	"log"
+	"os/exec"
+	"runtime"
+
 	"github.com/tryhisar/hisar/core/app"
 	"github.com/tryhisar/hisar/desktop/background"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
+
+// reopenApp opens an app the way the Finder does, which also brings back a launcher's window such as Raycast's.
+func reopenApp(bundlePath string) {
+	if runtime.GOOS != "darwin" {
+		return
+	}
+	go func() {
+		if err := exec.Command("/usr/bin/open", "-a", bundlePath).Run(); err != nil {
+			log.Printf("reopen %s: %v", bundlePath, err)
+		}
+	}()
+}
 
 // The backend's interfaces implemented with Wails: clipboard, notifications and file dialogs.
 

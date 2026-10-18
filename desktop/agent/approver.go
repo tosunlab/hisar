@@ -129,6 +129,9 @@ type ApproverConfig struct {
 	CancelBiometric func()
 	// ResolveRequester finds the app responsible for a process and reads its process chain; nil shows only the program.
 	ResolveRequester func(pid int) appinfo.Requester
+	// ReturnToApp brings a launcher's app forward again once its approval was answered: the approval window took the
+	// focus, and a launcher such as Raycast hides its window when it loses it. nil leaves the focus where it is.
+	ReturnToApp func(bundlePath string)
 	// GetAppIconPNG renders an app's icon for the phone; nil sends the app's name only.
 	GetAppIconPNG func(bundlePath string, size int) ([]byte, error)
 	ReadFile      FileReader

@@ -156,6 +156,49 @@ func TestLauncherApprovalDenyTimeoutAndDisconnect(t *testing.T) {
 	}
 }
 
+// The approval window takes the focus and Raycast hides its window, so an answered request brings Raycast back.
+func TestLauncherApprovalReturnsToTheAppOnceAnswered(t *testing.T) {
+	answers := []struct {
+		name       string
+		timeout    time.Duration
+		answer     func(approver *Approver, emitter *fakeEmitter, cancel context.CancelFunc)
+		isReturned bool
+	}{
+		{"approved", 0, func(approver *Approver, emitter *fakeEmitter, _ context.CancelFunc) {
+			approver.Respond(waitForApprovalEvent(t, emitter).RequestID, true, false)
+		}, true},
+		{"denied", 0, func(approver *Approver, emitter *fakeEmitter, _ context.CancelFunc) {
+			approver.Respond(waitForApprovalEvent(t, emitter).RequestID, false, false)
+		}, true},
+		{"connection closed", 0, func(_ *Approver, emitter *fakeEmitter, cancel context.CancelFunc) {
+			waitForApprovalEvent(t, emitter)
+			cancel()
+		}, false},
+		{"not answered in time", 20 * time.Millisecond, func(*Approver, *fakeEmitter, context.CancelFunc) {}, false},
+	}
+	for _, testCase := range answers {
+		emitter := createFakeEmitter()
+		approver := createLauncherApprover(emitter, &fakeBiometric{isAvailable: true}, &fakeUnlocker{}, nil, testCase.timeout)
+		returnedApps := make(chan string, 1)
+		approver.config.ReturnToApp = func(bundlePath string) { returnedApps <- bundlePath }
+		ctx, cancel := context.WithCancel(context.Background())
+		resultChannel := startLauncherApproval(approver, ctx)
+		testCase.answer(approver, emitter, cancel)
+		waitForCommandLineResult(t, resultChannel)
+		cancel()
+		select {
+		case bundlePath := <-returnedApps:
+			if !testCase.isReturned || bundlePath != raycastBundlePath {
+				t.Errorf("%s: returned to %q", testCase.name, bundlePath)
+			}
+		default:
+			if testCase.isReturned {
+				t.Errorf("%s: Raycast did not come back", testCase.name)
+			}
+		}
+	}
+}
+
 func startLauncherShareApproval(approver *Approver, title string) chan error {
 	request := createLauncherRequest()
 	request.ShareLink = &clisocket.ShareLinkDescription{Title: title, FieldLabels: []string{"username", "password"}, Detail: "Expires in 7 days · 1 view"}

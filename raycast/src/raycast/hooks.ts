@@ -1,8 +1,7 @@
-import { environment, launchCommand, LaunchType, showToast, Toast } from "@raycast/api";
+import { showToast, Toast } from "@raycast/api";
 import { usePromise } from "@raycast/utils";
 import { useEffect, useState } from "react";
 import { Hisar, type ItemReference } from "../hisar";
-import { afterApprovalContext, isReopeningAfterApproval } from "./afterApproval";
 import { showHisarError } from "./feedback";
 import { getConnectOptions } from "./preferences";
 
@@ -15,35 +14,23 @@ export function useHisar(): Hisar {
 
 /**
  * useItemList loads every item's metadata into memory only (usePromise: Raycast's cache would write it to disk). While
- * Hisar asks whether Raycast may use it, a toast says so; that approval window hides Raycast, so once the list loaded
- * the command launches itself again to show it.
+ * Hisar asks whether Raycast may use it, a toast says so; once answered, Hisar opens Raycast again to show the list.
  */
 export function useItemList(hisar: Hisar) {
   return usePromise(
     async () => {
-      const wasApprovalNeeded = !(await hisar.isApproved());
-      const approvalToast = wasApprovalNeeded
-        ? await showToast({
+      const approvalToast = (await hisar.isApproved())
+        ? undefined
+        : await showToast({
             style: Toast.Style.Animated,
             title: "Approve Raycast in Hisar",
             message: "With Touch ID, your master password or your iPhone",
-          })
-        : undefined;
-      const loading = hisar.listItems();
-      const isLoaded = await loading.then(
-        () => true,
-        () => false,
-      );
-      await approvalToast?.hide();
-      if (isReopeningAfterApproval({ wasApprovalNeeded, isLoaded, launchContext: environment.launchContext })) {
-        const reopening = {
-          name: environment.commandName,
-          type: LaunchType.UserInitiated,
-          context: afterApprovalContext,
-        };
-        void launchCommand(reopening).catch(showHisarError);
+          });
+      try {
+        return await hisar.listItems();
+      } finally {
+        await approvalToast?.hide();
       }
-      return loading;
     },
     [],
     { onError: showHisarError },
