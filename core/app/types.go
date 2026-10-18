@@ -42,6 +42,13 @@ type Biometric interface {
 	DeleteKey(accountID string) error
 }
 
+// BiometricKeyPreparer is for platforms whose biometric prompt must carry the key operation itself (Android's per-use
+// Keystore key). Each Prepare readies one StoreKey or LoadKey for the account; the Authenticate after it authorizes it.
+type BiometricKeyPreparer interface {
+	PrepareStoreKey(accountID string) error
+	PrepareLoadKey(accountID string) error
+}
+
 type VaultSummary struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
@@ -456,7 +463,9 @@ type Config struct {
 	// IsBiometricAllowedAfterLaunch lets biometrics unlock before the first password unlock, for platforms whose
 	// keychain enforces the biometric check itself (iOS); the desktop keeps its launch rule.
 	IsBiometricAllowedAfterLaunch bool
-	Now                           func() time.Time
+	// BiometricKeyPreparer runs before each biometric prompt that guards StoreKey or LoadKey; nil where none is needed.
+	BiometricKeyPreparer BiometricKeyPreparer
+	Now                  func() time.Time
 	// OnLock runs under the service mutex whenever an unlocked session ends; it must not call the service.
 	OnLock func()
 	// OnRemoteChange runs after the backend synced a change another device made; the UI refreshes.

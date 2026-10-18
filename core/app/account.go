@@ -114,7 +114,10 @@ func (s *Service) changeCredentials(password string, change func(context.Context
 		}
 	}
 	if len(s.state.BiometricUnlock) > 0 {
+		// Only a platform with a BiometricKeyPreparer needs a prompt to store the key; a keychain stores it silently.
 		if s.config.Biometric == nil || !s.config.Biometric.IsAvailable() {
+			s.forgetBiometricUnlock()
+		} else if s.config.BiometricKeyPreparer != nil && s.authenticateToStoreBiometricKey("keep biometric unlock on for Hisar") != nil {
 			s.forgetBiometricUnlock()
 		} else if _, err := s.sealBiometricUnlock(credentialChange.AccountUnlockKey); err != nil {
 			s.forgetBiometricUnlock()

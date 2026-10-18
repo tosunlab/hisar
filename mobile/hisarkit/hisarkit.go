@@ -36,6 +36,14 @@ type Biometric interface {
 	DeleteKey(accountID string) error
 }
 
+// BiometricKeyPreparer is Android's: its biometric key is a per-use Keystore key, so each prompt must carry the cipher
+// of the StoreKey or LoadKey that follows it. Each Prepare builds that cipher; the next Authenticate puts it in the
+// prompt. It is apart from Biometric because a gomobile Biometric proxy implements no other interface.
+type BiometricKeyPreparer interface {
+	PrepareStoreKey(accountID string) error
+	PrepareLoadKey(accountID string) error
+}
+
 // Clipboard writes the general pasteboard; GetText returns "" when it holds no text.
 type Clipboard interface {
 	SetText(text string) bool
@@ -161,6 +169,11 @@ func (hisar *Hisar) SetTrustedCertificates(pemCertificates string) error {
 	}
 	app.SetTrustedCertificates(hisar.service, roots)
 	return nil
+}
+
+// SetBiometricKeyPreparer must run right after New, on Android, with the object that implements Biometric.
+func (hisar *Hisar) SetBiometricKeyPreparer(preparer BiometricKeyPreparer) {
+	app.SetBiometricKeyPreparer(hisar.service, preparer)
 }
 
 // CheckMinimumVersion asks the server whether it still accepts this version and returns app.Status as JSON.
