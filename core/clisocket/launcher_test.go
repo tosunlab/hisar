@@ -162,18 +162,19 @@ func TestLauncherAndCommandLineApprovalsOfOneAppNeverCoverEachOther(t *testing.T
 
 func TestLauncherHelloNeedsAVerifiedAppOutsideATerminal(t *testing.T) {
 	fixture := createServerFixture(t)
-	refused := []*testClient{fixture.connect(t)}
-	fixture.resolver.setCaller(launchdSession, AppIdentity{})
-	refused = append(refused, fixture.connect(t))
-	for index, client := range refused {
+	expectRefused := func(caller string, client *testClient) {
+		t.Helper()
 		response := client.send(t, cliprotocol.Request{Type: cliprotocol.TypeLauncherHello})
 		if getErrorCode(response) != cliprotocol.ErrorDenied || response.Error.Message != "Hisar answers launchers only in an app macOS can verify, outside a terminal" {
-			t.Errorf("caller %d: launcher.hello %+v", index, response.Error)
+			t.Errorf("%s: launcher.hello %+v", caller, response.Error)
 		}
 		if code := getErrorCode(client.send(t, listLauncherItems)); code != cliprotocol.ErrorInvalidRequest {
-			t.Errorf("caller %d: a refused launcher sent launcher.items.list: %q", index, code)
+			t.Errorf("%s: a refused launcher sent launcher.items.list: %q", caller, code)
 		}
 	}
+	expectRefused("a terminal in a verified app", fixture.connect(t))
+	fixture.resolver.setCaller(launchdSession, AppIdentity{})
+	expectRefused("no terminal and no verified app", fixture.connect(t))
 
 	launcher, isApproved := fixture.connectLauncher(t, raycastApp)
 	if isApproved {
@@ -211,10 +212,18 @@ func TestLauncherConnectionSendsOnlyLauncherRequests(t *testing.T) {
 	commandLine := fixture.connect(t)
 	agent := fixture.connect(t)
 	agent.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeAgentHello, AgentName: "claude-code"})
-	for name, client := range map[string]*testClient{"command line": commandLine, "agent": agent} {
-		for _, requestType := range []string{cliprotocol.TypeLauncherListItem, cliprotocol.TypeLauncherLock, cliprotocol.TypeLauncherHello} {
-			if code := getErrorCode(client.send(t, cliprotocol.Request{Type: requestType})); code != cliprotocol.ErrorInvalidRequest {
-				t.Errorf("a %s connection sent %s: %q", name, requestType, code)
+	// The command line runs in Raycast too, so launcher.hello would make it a launcher; an agent refuses it.
+	for _, crossed := range []struct {
+		name         string
+		client       *testClient
+		requestTypes []string
+	}{
+		{"command line", commandLine, []string{cliprotocol.TypeLauncherListItem, cliprotocol.TypeLauncherLock, "launcher.items.delete"}},
+		{"agent", agent, []string{cliprotocol.TypeLauncherListItem, cliprotocol.TypeLauncherLock, cliprotocol.TypeLauncherHello}},
+	} {
+		for _, requestType := range crossed.requestTypes {
+			if code := getErrorCode(crossed.client.send(t, cliprotocol.Request{Type: requestType})); code != cliprotocol.ErrorInvalidRequest {
+				t.Errorf("a %s connection sent %s: %q", crossed.name, requestType, code)
 			}
 		}
 	}

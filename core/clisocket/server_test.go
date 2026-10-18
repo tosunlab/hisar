@@ -137,8 +137,8 @@ func createServerFixture(t *testing.T) *serverFixture {
 		},
 		approver:         &fakeApprover{},
 		launcherApprover: &fakeLauncherApprover{},
-		handler:  &fakeHandler{state: cliprotocol.StateUnlocked, resultBy: map[string]any{cliprotocol.TypeListVault: cliprotocol.VaultListResult{Vaults: []cliprotocol.Vault{{ID: "v1", Name: "Personal"}}}}},
-		now:      time.Date(2026, 10, 11, 9, 0, 0, 0, time.UTC),
+		handler:          &fakeHandler{state: cliprotocol.StateUnlocked, resultBy: map[string]any{cliprotocol.TypeListVault: cliprotocol.VaultListResult{Vaults: []cliprotocol.Vault{{ID: "v1", Name: "Personal"}}}}},
+		now:              time.Date(2026, 10, 11, 9, 0, 0, 0, time.UTC),
 	}
 	fixture.isEnabled.Store(true)
 	fixture.approvals = NewSessionApprovals(0, fixture.getNow)
