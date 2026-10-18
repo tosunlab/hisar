@@ -55,3 +55,18 @@ export interface PasswordOptions {
   digits: boolean;
   symbols: boolean;
 }
+
+/** OpenOptions: isEditing opens the item's editor in Hisar instead of its details. */
+export interface OpenOptions {
+  isEditing?: boolean;
+}
+
+/** The fields Raycast offers to share; Hisar's share links can hold more (websites, notes, custom fields). */
+export type ShareableField = "username" | "password";
+
+/** ShareLinkOptions shape a share link: its fields, its lifetime (1 hour, 1 day, 7 or 30 days) and views (0: unlimited). */
+export interface ShareLinkOptions {
+  allField: ShareableField[];
+  expiresInSeconds: number;
+  maxViews: number;
+}

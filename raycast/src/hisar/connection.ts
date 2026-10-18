@@ -21,6 +21,8 @@ const timeoutMillisecondsByType: Record<RequestType, number> = {
   "launcher.items.code": approvalTimeoutMilliseconds,
   "launcher.items.password": approvalTimeoutMilliseconds,
   "launcher.items.copy": approvalTimeoutMilliseconds,
+  "launcher.items.open": approvalTimeoutMilliseconds,
+  "launcher.items.share": approvalTimeoutMilliseconds,
   "launcher.passwords.generate": 10_000,
   "launcher.lock": 10_000,
 };

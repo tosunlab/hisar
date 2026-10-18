@@ -1,7 +1,16 @@
 import { Connection } from "./connection";
 import { HisarError } from "./errors";
 import { dialHisar, resolveSocketPath, systemLaunch, type LaunchSystem } from "./launch";
-import type { CopyReceipt, CopyableField, ItemList, ItemReference, OneTimeCode, PasswordOptions } from "./model";
+import type {
+  CopyReceipt,
+  CopyableField,
+  ItemList,
+  ItemReference,
+  OneTimeCode,
+  OpenOptions,
+  PasswordOptions,
+  ShareLinkOptions,
+} from "./model";
 
 export { HisarError, toHisarError, type ErrorCode } from "./errors";
 export { openHisar, type LaunchSystem } from "./launch";
@@ -56,6 +65,28 @@ export class Hisar {
   copy(item: ItemReference, field: CopyableField): Promise<CopyReceipt> {
     return this.run(true, (connection) =>
       connection.call("launcher.items.copy", { vaultID: item.vaultID, itemID: item.itemID, field }),
+    );
+  }
+
+  /** open shows the item in Hisar's window, or its editor; it starts Hisar when it is not running. */
+  open(item: ItemReference, options: OpenOptions = {}): Promise<void> {
+    const parameters = {
+      vaultID: item.vaultID,
+      itemID: item.itemID,
+      ...(options.isEditing && { isEditing: true as const }),
+    };
+    return this.run(true, (connection) => connection.call("launcher.items.open", parameters));
+  }
+
+  /** share has Hisar create a share link of the item's fields, which it asks the user every time, and returns its URL. */
+  share(item: ItemReference, options: ShareLinkOptions): Promise<string> {
+    const shareLink = {
+      fields: options.allField,
+      expiresInSeconds: options.expiresInSeconds,
+      maxViews: options.maxViews,
+    };
+    return this.run(true, (connection) =>
+      connection.call("launcher.items.share", { vaultID: item.vaultID, itemID: item.itemID, shareLink }),
     );
   }
 

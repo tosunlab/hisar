@@ -1,5 +1,14 @@
 import { HisarError, isAppErrorCode } from "./errors";
-import type { CopyReceipt, CopyableField, Item, ItemList, ItemReference, OneTimeCode, PasswordOptions } from "./model";
+import type {
+  CopyReceipt,
+  CopyableField,
+  Item,
+  ItemList,
+  ItemReference,
+  OneTimeCode,
+  PasswordOptions,
+  ShareableField,
+} from "./model";
 
 export const protocolVersion = 1;
 export const clientPlatform = "darwin/raycast";
@@ -11,6 +20,8 @@ export const allLauncherRequestType = [
   "launcher.items.code",
   "launcher.items.password",
   "launcher.items.copy",
+  "launcher.items.open",
+  "launcher.items.share",
   "launcher.passwords.generate",
   "launcher.lock",
 ] as const satisfies readonly RequestType[];
@@ -32,6 +43,13 @@ export interface RequestMap {
   "launcher.items.code": { parameters: ItemReference; result: OneTimeCode };
   "launcher.items.password": { parameters: ItemReference; result: string };
   "launcher.items.copy": { parameters: ItemReference & { field: CopyableField }; result: CopyReceipt };
+  "launcher.items.open": { parameters: ItemReference & { isEditing?: true }; result: void };
+  "launcher.items.share": {
+    parameters: ItemReference & {
+      shareLink: { fields: ShareableField[]; expiresInSeconds: number; maxViews: number };
+    };
+    result: string;
+  };
   "launcher.passwords.generate": { parameters: { generator?: PasswordOptions }; result: string };
   "launcher.lock": { parameters: NoParameters; result: void };
 }
@@ -80,6 +98,11 @@ export const parseResultByType: { [Type in RequestType]: (result: unknown) => Re
   "launcher.items.copy": (result) => ({
     clearAfterSeconds: readNumber(readObject(result, "the copy"), "clearAfterSeconds"),
   }),
+  "launcher.items.open": (result) => {
+    readObject(result, "the opening");
+  },
+  "launcher.items.share": (result) =>
+    readString(readObject(readObject(result, "the share").shareLink, "the share link"), "url"),
   "launcher.passwords.generate": (result) => readString(readObject(result, "the generated password"), "password"),
   "launcher.lock": (result) => {
     readObject(result, "the lock");
