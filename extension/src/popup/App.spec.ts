@@ -602,12 +602,6 @@ describe("vault", () => {
     expect(wrapper.find('[data-testid="item-detail"]').exists()).toBe(true);
   });
 
-  it("puts the logins filled most recently first", async () => {
-    respondWithVault({ "popup.getAllLastUsed": () => ({ "v2/i2": 5 }) });
-    const wrapper = await mountApp();
-    expect(wrapper.findAll('[data-testid="login-row"]').map((row) => row.find(".title").text())).toEqual(["Example (work)", "Example"]);
-  });
-
   it("moves between the search box and the rows with the arrow keys, and copies a login's password with Ctrl+C", async () => {
     respondWithVault();
     const wrapper = await mountApp();

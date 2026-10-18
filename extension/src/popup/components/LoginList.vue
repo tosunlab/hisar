@@ -45,13 +45,9 @@ async function loadLogins(): Promise<void> {
     return;
   }
   try {
-    const [result, allLastUsed] = await Promise.all([
-      sendToBackground<MatchResult>({ type: "popup.matchLogins", tabId: props.tabId }),
-      sendToBackground<Record<string, number> | null>({ type: "popup.getAllLastUsed" }).catch(() => null),
-    ]);
-    // The logins filled most recently come first; the rest keep Hisar's order.
-    const lastUsed = (login: LoginSummary): number => allLastUsed?.[`${login.vaultID}/${login.itemID}`] ?? 0;
-    allLogin.value = [...result.allLogin].sort((first, second) => lastUsed(second) - lastUsed(first));
+    // The service worker puts the logins filled most recently first, as the inline menu and the fill shortcut show them.
+    const result = await sendToBackground<MatchResult>({ type: "popup.matchLogins", tabId: props.tabId });
+    allLogin.value = result.allLogin;
     pageUrl.value = result.url;
     pageHost.value = getHostFromUrl(result.url);
     emit("loaded", result.allLogin, result.url);

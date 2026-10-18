@@ -167,10 +167,18 @@ export class BackgroundController {
     return this.browser.getTabUrl(tabId);
   }
 
+  // matchLoginsForUrl returns the logins for url with those filled most recently first; the rest keep Hisar's order. The
+  // popup, the inline menu and the fill shortcut all read this order, so the first login is the same in each.
   async matchLoginsForUrl(url: string): Promise<LoginSummary[]> {
     if (!isWebUrl(url)) return [];
     const result = await this.request(() => this.client.request("logins.match", { url }));
-    return result.logins ?? [];
+    return this.sortByLastUse(result.logins ?? []);
+  }
+
+  private async sortByLastUse(allLogin: LoginSummary[]): Promise<LoginSummary[]> {
+    const allLastUsed = await this.storage.getAllLastUsed().catch(() => ({}) as Record<string, number>);
+    const lastUsed = (login: LoginSummary): number => allLastUsed[`${login.vaultID}/${login.itemID}`] ?? 0;
+    return [...allLogin].sort((first, second) => lastUsed(second) - lastUsed(first));
   }
 
   async getCredentials(vaultID: string, itemID: string, url: string): Promise<Credentials> {
@@ -180,8 +188,7 @@ export class BackgroundController {
   async matchLogins(tabId: number): Promise<MatchResult> {
     const url = await this.browser.getTabUrl(tabId);
     if (!isWebUrl(url)) return { url: url ?? "", allLogin: [] };
-    const result = await this.request(() => this.client.request("logins.match", { url }));
-    return { url, allLogin: result.logins ?? [] };
+    return { url, allLogin: await this.matchLoginsForUrl(url) };
   }
 
   async getOneTimeCode(vaultID: string, itemID: string, url: string): Promise<OneTimeCode> {

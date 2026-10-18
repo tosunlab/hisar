@@ -197,6 +197,18 @@ describe("fill and the frame rule", () => {
     expect(fillMessage).toMatchObject({ username: "first" });
   });
 
+  it("puts the login filled most recently first, for the popup, the inline menu and the shortcut", async () => {
+    const harness = createHarness();
+    harness.state.allLogin.push({ ...harness.state.allLogin[0], itemID: "item-aardvark", title: "Aardvark", username: "first" });
+    await harness.pair();
+    await harness.storage.recordUse("vault-personal/item-example", 5);
+    expect((await harness.controller.matchLogins(1)).allLogin.map((login) => login.itemID)).toEqual(["item-example", "item-aardvark"]);
+    expect((await harness.controller.matchLoginsForUrl("https://example.com/")).map((login) => login.itemID)).toEqual(["item-example", "item-aardvark"]);
+    await harness.controller.fillFirstLogin(1);
+    const fillMessage = harness.allFrameMessage.find((entry) => entry.message.type === "content.fillLogin")?.message;
+    expect(fillMessage).toMatchObject({ username: "alex@example.com" });
+  });
+
   it("reports no-match for the keyboard shortcut when nothing matches", async () => {
     const harness = createHarness({ tabUrl: "https://example.net/" });
     await harness.pair();
