@@ -20,6 +20,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.retain.retain
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,9 +54,9 @@ fun ItemEditorScreen(model: AppModel, request: EditorRequest, onDone: (savedItem
     val errorMessage by model.errorMessage.collectAsStateWithLifecycle()
     val unlockedData by model.unlockedData.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
-    // Secrets stay out of the saved instance state, which the system may write to disk.
-    var draft by remember(request) { mutableStateOf((request as? EditorRequest.New)?.let { ItemEditorDraft.open(it.draft, isNew = true) }) }
-    var revealed by remember(request) { mutableStateOf(RevealedSecrets()) }
+    // Secrets stay out of the saved instance state, which the system may write to disk; retained, they survive a rotation in memory.
+    var draft by retain(request) { mutableStateOf((request as? EditorRequest.New)?.let { ItemEditorDraft.open(it.draft, isNew = true) }) }
+    var revealed by retain(request) { mutableStateOf(RevealedSecrets()) }
     var isGeneratorShown by remember { mutableStateOf(false) }
     var isIconPickerShown by remember { mutableStateOf(false) }
     var isDeleteConfirmationShown by remember { mutableStateOf(false) }
@@ -63,7 +64,7 @@ fun ItemEditorScreen(model: AppModel, request: EditorRequest, onDone: (savedItem
 
     LaunchedEffect(request) {
         model.itemEditor.clearError()
-        if (request is EditorRequest.Edit) {
+        if (request is EditorRequest.Edit && draft == null) {
             model.itemEditor.loadItem(request.vaultID, request.itemID)?.let { draft = ItemEditorDraft.open(it, isNew = false) }
         }
     }

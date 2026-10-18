@@ -6,12 +6,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isEnabled
+import androidx.compose.ui.test.isSelected
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -97,8 +99,7 @@ class ItemEditorUITests {
         open(EditorRequest.New(vaultID, ItemDetail(category = category)))
         fill()
         saveScreenshot(screenshot)
-        tap("editor-save")
-        val savedItemID = waitForFinish()
+        val savedItemID = finishAfterTapping("editor-save")
         return backend.getItem(vaultID, checkNotNull(savedItemID) { "$category was not saved" })
     }
 
@@ -107,10 +108,29 @@ class ItemEditorUITests {
         composeRule.waitUntil(10_000) { exists("editor-title") }
     }
 
-    private fun waitForFinish(): String? {
+    /** Taps [tag] and gives what the editor finished with: the saved item's ID, or null. */
+    private fun finishAfterTapping(tag: String): String? {
         val count = allFinished.size
-        composeRule.waitUntil(30_000) { request == null && allFinished.size > count }
+        tap(tag)
+        try {
+            composeRule.waitUntil(30_000) { request == null && allFinished.size > count }
+        } catch (error: Throwable) {
+            saveScreenshot("failure-$tag")
+            throw error
+        }
         return allFinished.last()
+    }
+
+    /** Waits until the sheet or dialog holding [tag] has stopped moving, so a tap lands where the node is drawn. */
+    private fun waitUntilStill(tag: String) {
+        var lastBounds: Rect? = null
+        composeRule.waitUntil(10_000) {
+            val bounds = composeRule.onAllNodes(hasTestTag(tag)).fetchSemanticsNodes().firstOrNull()?.boundsInWindow
+            val isStill = bounds != null && bounds == lastBounds
+            lastBounds = bounds
+            if (!isStill) Thread.sleep(100)
+            isStill
+        }
     }
 
     private fun exists(tag: String) = composeRule.onAllNodes(hasTestTag(tag)).fetchSemanticsNodes().isNotEmpty()
@@ -146,8 +166,10 @@ class ItemEditorUITests {
             type("editor-username", "octo-alice")
             tap("editor-generate-password")
             composeRule.waitUntil(10_000) { composeRule.onAllNodes(hasTestTag("generator-use") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+            waitUntilStill("generator-use")
             saveScreenshot("editor-password-generator")
             tap("generator-use")
+            composeRule.waitUntil(10_000) { !exists("generator-use") }
             type("editor-website-0", "github.com")
             type("editor-one-time-password", "jbsw y3dp ehpk 3pxp")
             tap("editor-add-field")
@@ -157,10 +179,13 @@ class ItemEditorUITests {
             type("editor-new-tag", "work, code")
             composeRule.onNodeWithTag("editor-new-tag").performImeAction()
             tap("editor-icon")
+            waitUntilStill("icon-done")
             tap("icon-color-blue")
             tap("icon-preset-code")
+            composeRule.waitUntil(5_000) { composeRule.onAllNodes(hasTestTag("icon-preset-code") and isSelected()).fetchSemanticsNodes().isNotEmpty() }
             saveScreenshot("editor-icon-picker")
             tap("icon-done")
+            composeRule.waitUntil(10_000) { !exists("icon-done") }
         }
         assertEquals("GitHub", login.title)
         assertEquals("octo-alice", login.username)
@@ -274,7 +299,7 @@ class ItemEditorUITests {
     }
 
     @Test
-    fun testEditorEditsDiscardsAndDeletesOnTheServer() {
+    fun testEditorEditsDiscardsDeletesAndSavesAPrefilledLoginOnTheServer() {
         signUp("ITEM_EDITOR_EDIT_")
         val saved = backend.saveItem(vaultID, ItemDetail(title = "Bank", username = "alice", password = "bank-password", allURL = listOf("https://bank.example")))
         runBlocking(Dispatchers.Main) { model.refreshAll() }
@@ -286,11 +311,11 @@ class ItemEditorUITests {
         saveScreenshot("editor-edit")
         tap("editor-cancel")
         composeRule.waitUntil(5_000) { exists("editor-discard-confirmation") }
+        waitUntilStill("editor-discard-confirmation-dismiss")
         saveScreenshot("editor-discard")
         tap("editor-discard-confirmation-dismiss")
         assertTrue("Keep editing stays in the editor", exists("editor-title"))
-        tap("editor-save")
-        assertEquals(saved.id, waitForFinish())
+        assertEquals(saved.id, finishAfterTapping("editor-save"))
         assertEquals("Bank of Example", backend.getItem(vaultID, saved.id).title)
         assertEquals("bank-password", backend.getItem(vaultID, saved.id).password)
 
@@ -298,11 +323,24 @@ class ItemEditorUITests {
         composeRule.waitUntil(10_000) { exists("editor-delete") }
         tap("editor-delete")
         composeRule.waitUntil(5_000) { exists("editor-delete-confirmation") }
+        waitUntilStill("editor-delete-confirmation-confirm")
         saveScreenshot("editor-delete")
-        tap("editor-delete-confirmation-confirm")
-        assertEquals(null, waitForFinish())
+        assertEquals(null, finishAfterTapping("editor-delete-confirmation-confirm"))
         assertTrue(backend.listAllItem(vaultID).none { it.id == saved.id })
         assertTrue(model.unlockedData.value.listAllItemReference(vaultID).none { it.item.id == saved.id })
+
+        val allLinked = mutableListOf<ItemDetail>()
+        val typedLogin = ItemDetail(title = "example.com", username = "ada", password = "typed-in-a-form", allURL = listOf("https://example.com"))
+        open(EditorRequest.New(vaultID, typedLogin, onSaved = { allLinked += it }))
+        assertTrue("AutoFill's typed login opens as it was typed", exists("editor-title") && composeRule.onAllNodes(hasTestTag("editor-website-0") and hasText("https://example.com")).fetchSemanticsNodes().isNotEmpty())
+        saveScreenshot("editor-autofill-draft")
+        assertEquals("an untouched draft closes without asking", null, finishAfterTapping("editor-cancel"))
+        open(EditorRequest.New(vaultID, typedLogin, onSaved = { allLinked += it }))
+        val typedLoginID = checkNotNull(finishAfterTapping("editor-save"))
+        assertEquals(listOf(typedLoginID), allLinked.map { it.id })
+        val savedLogin = backend.getItem(vaultID, typedLoginID)
+        assertEquals(listOf("example.com", "ada", "typed-in-a-form"), listOf(savedLogin.title, savedLogin.username, savedLogin.password))
+        assertEquals(listOf("https://example.com"), savedLogin.allURL)
     }
 
     private fun describeCategory(category: String) = when (category) {
