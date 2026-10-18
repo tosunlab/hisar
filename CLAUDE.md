@@ -88,7 +88,7 @@ Shared test fixtures are in `helpers_test.go`, the in-memory API in `fakeapi_tes
 
 | Package | What it holds |
 |---|---|
-| root (`main`) | Wails wiring: `main.go`, `adapters.go`, `windows.go`, `events.go`, `tray.go`, `touchid.go` |
+| root (`main`) | Wails wiring: `main.go`, `adapters.go`, `windows.go`, `events.go`, `tray.go`, `touchid.go`, `helpers*.go` (where the browser host and `hisar` are: in Hisar.app, or at the Linux package's fixed paths) |
 | `agent` | SSH agent in the app and the approval queue (`approver*.go`, `presenter.go`, `purpose.go`, `sshconfig.go`) |
 | `appinfo` | The app behind a process (`resolver.go`, `chain.go`, `findapp.go`, `bundle.go`) |
 | `browser` | Native host, socket server and manifests for the extension |
@@ -180,7 +180,7 @@ make test-end-to-end     # needs HISAR_DATABASE_URL to an empty database
 make test-desktop-frontend
 make test-admin          # the admin dashboard's typecheck and unit tests; make build-admin builds it alone
 make test-admin-end-to-end # the dashboard in Chromium; needs HISAR_DATABASE_URL and Playwright's Chromium
-make build-desktop       # or package-desktop for Hisar.app
+make build-desktop       # or package-desktop for Hisar.app; package-desktop-linux VERSION=… for the .deb and .rpm (on Linux)
 make build-ios-framework test-ios
 gofmt -l $(git ls-files '*.go')
 ```

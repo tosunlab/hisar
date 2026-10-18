@@ -1044,6 +1044,7 @@ function buildPreviewCommandLineStatus(isInstalled: boolean): CommandLineStatus 
     pathCommandTarget: "",
     isPathCommandFromThisApp: false,
     pathHint: "",
+    isInstalledByPackage: false,
     isIntegrationEnabled: previewCommandLineMode !== "off",
     socketPath: "/Users/alper/.hisar/cli.sock",
     isServing: previewCommandLineMode !== "off",

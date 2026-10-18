@@ -93,7 +93,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	executableDirectory := filepath.Dir(executablePath)
+	helpers := getHelperPaths(filepath.Dir(executablePath))
 
 	var wailsApp *application.App
 	var window *application.WebviewWindow
@@ -171,7 +171,7 @@ func main() {
 	agentContext, stopAgent := context.WithCancel(context.Background())
 	agentStopped := make(chan struct{})
 
-	browserHostPath := filepath.Join(executableDirectory, "hisar-browser-host")
+	browserHostPath := helpers.browserHost
 	browserBridge := app.NewBrowserBridge(vaultService, app.BrowserBridgeConfig{
 		ShowPairing: func(request *app.BrowserPairingRequest) { wailsApp.Event.Emit(eventBrowserPairing, request) },
 		ShowWindow:  showWindow,
@@ -206,10 +206,11 @@ func main() {
 	commandLineRunner := clisocket.NewRunner(commandLineServer, commandLineSocketPath)
 	userPathReader := &commandline.UserPathReader{Shell: getLoginShell()}
 	commandLineService = commandline.NewService(vaultService, commandline.NewInstaller(commandline.InstallerConfig{
-		BundledPath:   filepath.Join(filepath.Dir(executableDirectory), "Helpers", "hisar"),
-		HomeDirectory: homeDirectory,
-		GetUserPath:   userPathReader.Read,
-		Shell:         getLoginShell(),
+		BundledPath:          helpers.commandLine,
+		IsInstalledByPackage: helpers.isCommandLineFromPackage,
+		HomeDirectory:        homeDirectory,
+		GetUserPath:          userPathReader.Read,
+		Shell:                getLoginShell(),
 	}), commandLineRunner)
 
 	loginItemService := loginitem.NewService(vaultService, background.NewLoginItem(homeDirectory))

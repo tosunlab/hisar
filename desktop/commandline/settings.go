@@ -23,6 +23,7 @@ type Status struct {
 	PathCommandTarget        string         `json:"pathCommandTarget"`
 	IsPathCommandFromThisApp bool           `json:"isPathCommandFromThisApp"`
 	PathHint                 string         `json:"pathHint"`
+	IsInstalledByPackage     bool           `json:"isInstalledByPackage"`
 	IsIntegrationEnabled     bool           `json:"isIntegrationEnabled"`
 	SocketPath               string         `json:"socketPath"`
 	IsServing                bool           `json:"isServing"`
@@ -62,6 +63,7 @@ func (service *Service) buildStatus(installStatus InstallStatus) Status {
 		PathCommandTarget:        installStatus.PathCommandTarget,
 		IsPathCommandFromThisApp: installStatus.IsPathCommandFromThisApp,
 		PathHint:                 installStatus.PathHint,
+		IsInstalledByPackage:     installStatus.IsInstalledByPackage,
 		IsIntegrationEnabled:     service.IsIntegrationEnabled(),
 		SocketPath:               runnerStatus.SocketPath,
 		IsServing:                runnerStatus.IsRunning,

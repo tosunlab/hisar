@@ -24,6 +24,7 @@ export interface Status {
     "pathCommandTarget": string;
     "isPathCommandFromThisApp": boolean;
     "pathHint": string;
+    "isInstalledByPackage": boolean;
     "isIntegrationEnabled": boolean;
     "socketPath": string;
     "isServing": boolean;
