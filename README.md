@@ -166,8 +166,8 @@ HISAR_DATABASE_URL="postgres://postgres:hisar@127.0.0.1:55432/hisar_end_to_end?s
 
 ### CI and releases
 
-GitHub Actions runs CI on pull requests, on manual runs (Actions → CI → Run workflow) and for every release, never on pushes to
-`main`: a merge was already tested as its pull request. A new push to a pull request cancels its running CI.
+GitHub Actions runs CI on pull requests, on manual runs (Actions → CI → Run workflow) and on a release that asks for it, never
+on pushes to `main`: a merge was already tested as its pull request. A new push to a pull request cancels its running CI.
 
 `.github/workflows/ci.yml` (Linux runners): gofmt, vet, all Go tests against Postgres (failing on any skipped test except the
 `TestIntegration…` tests and `TestRecordOpenSSHFixture`), the CLI for every release platform, the end-to-end test of the built
@@ -202,6 +202,8 @@ Actions → Release → Run workflow (or `gh workflow run release.yml -f app=ser
   `1.0.0`; an app's first release is `0.1.0`), and `custom` takes **Version** as it is: `0.2.1`, or `0.3.0-rc1` for a custom
   build that is built the same way, marked "(custom build)" and can never be published. A custom build may run on any branch.
 - **Dry run**: only the plan.
+- **Run tests**: also runs `ci.yml` on the commit, plus `macos.yml` for the desktop app, before tagging it. Off by default:
+  pull requests ran them already, and a release should be quick when a fix has to go out.
 
 The run then goes on by itself (`scripts/plan-release.sh` plans it):
 
@@ -209,7 +211,7 @@ The run then goes on by itself (`scripts/plan-release.sh` plans it):
    previous release that change what the app is built from (`scripts/app-paths.sh`, without tests and docs). It refuses a
    release without such commits, and warns about a patch release with a breaking change (`feat(core)!: …` or a
    `BREAKING CHANGE:` footer). The run summary shows the plan.
-2. **CI**: `ci.yml` for the commit, plus `macos.yml` for the desktop app.
+2. **CI**, only with **Run tests**: `ci.yml` for the commit, plus `macos.yml` for the desktop app.
 3. **Tag**: the annotated tag on that commit; its message is the title and the changes, which the desktop app's Sparkle
    update shows as release notes. The deploy key in `RELEASE_DEPLOY_KEY` pushes it, past the tag ruleset.
 4. **Build**: `release-<app>.yml`, which only the Release workflow calls. The desktop app builds the Mac DMG and Sparkle update
