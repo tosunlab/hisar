@@ -98,7 +98,7 @@ fun RootScreen(model: AppModel, copySecret: (String) -> Boolean) {
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .windowInsetsPadding(WindowInsets.navigationBars)
-                    .padding(bottom = if (screen == Screen.Unlocked) TabBarHeight else 24.dp),
+                    .padding(bottom = if (screen == Screen.Unlocked) FloatingTabBarHeight else 24.dp),
             ) {
                 NoticeToast(notice.orEmpty())
             }

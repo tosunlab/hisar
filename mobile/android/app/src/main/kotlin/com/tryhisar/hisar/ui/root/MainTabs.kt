@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -38,6 +39,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tryhisar.hisar.app.AppModel
@@ -49,8 +51,15 @@ import com.tryhisar.hisar.ui.theme.HisarTheme
 import com.tryhisar.hisar.ui.theme.HisarType
 import com.tryhisar.hisar.ui.vaults.VaultsTab
 
-/** The height the floating tab bar covers at the bottom of each tab, which lists leave free under their last row. */
-val TabBarHeight = 84.dp
+/** The floating tab bar's own height, above the system navigation bar. */
+val FloatingTabBarHeight = 84.dp
+
+/**
+ * What the floating tab bar covers at the bottom of each tab, which lists leave free under their last row: the bar and
+ * the system navigation bar under it, tall with three-button navigation.
+ */
+val TabBarHeight: Dp
+    @Composable get() = FloatingTabBarHeight + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
 
 /**
  * The unlocked app: four tabs, each keeping its own screens and scroll while another is shown, under the iPhone app's
