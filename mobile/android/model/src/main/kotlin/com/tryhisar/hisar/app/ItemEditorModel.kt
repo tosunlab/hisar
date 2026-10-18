@@ -18,9 +18,9 @@ class ItemEditorModel(private val context: ModelContext) {
     suspend fun loadItem(vaultID: String, itemID: String): ItemDetail? =
         context.perform(isBusyShown = false) { it.getItem(vaultID, itemID) }
 
-    /** Saves the item and lists it without its secrets, as the backend's list does. */
-    suspend fun saveItem(vaultID: String, item: ItemDetail): ItemDetail? {
-        val savedItem = context.perform { it.saveItem(vaultID, item) } ?: return null
+    /** Saves the item and lists it without its secrets, as the backend's list does. The editor closes once it is saved. */
+    suspend fun saveItem(vaultID: String, item: ItemDetail): ItemDetail? = context.runInModel {
+        val savedItem = context.perform { it.saveItem(vaultID, item) } ?: return@runInModel null
         val summary = summarize(savedItem)
         context.updateUnlockedData { data ->
             val allItem = data.allItemByVaultID[vaultID].orEmpty()
@@ -28,11 +28,12 @@ class ItemEditorModel(private val context: ModelContext) {
             val newAllItem = if (index >= 0) allItem.toMutableList().apply { set(index, summary) } else allItem + summary
             data.copy(allItemByVaultID = data.allItemByVaultID + (vaultID to newAllItem))
         }
-        return savedItem
+        savedItem
     }
 
-    suspend fun deleteItem(vaultID: String, itemID: String): Boolean {
-        context.perform { it.deleteItem(vaultID, itemID) } ?: return false
+    /** Deletes the item; the editor and the item's detail close once it is gone. */
+    suspend fun deleteItem(vaultID: String, itemID: String): Boolean = context.runInModel {
+        context.perform { it.deleteItem(vaultID, itemID) } ?: return@runInModel false
         context.updateUnlockedData { data ->
             val allItem = data.allItemByVaultID[vaultID]
             data.copy(
@@ -40,7 +41,7 @@ class ItemEditorModel(private val context: ModelContext) {
                 allPasskey = data.allPasskey.filterNot { it.vaultID == vaultID && it.itemID == itemID },
             )
         }
-        return true
+        true
     }
 
     /** The brand, last four digits and warnings for a card being typed; null when the backend cannot answer. */
