@@ -136,6 +136,16 @@ export function isMacPlatform(): boolean {
   return /Mac/i.test(navigator.platform || navigator.userAgent);
 }
 
+// thisDevice is how the UI names the computer it runs on: "this Mac", or "this computer" on Linux.
+export function getThisDeviceName(): string {
+  return isMacPlatform() ? "this Mac" : "this computer";
+}
+
+// getTrayName is where Hisar stays while its window is closed.
+export function getTrayName(): string {
+  return isMacPlatform() ? "menu bar" : "system tray";
+}
+
 export const sshKeyCategory = "ssh-key";
 export const secureNoteCategory = "secure-note";
 export const creditCardCategory = "credit-card";
