@@ -232,7 +232,7 @@ func (s *Server) CreateApp() *fiber.App {
 	apiGroup.Get("/desktop/updates/:version/:file", s.limitUpdateRate, s.requireSession, s.handleDownloadDesktopUpdate)
 
 	adminGroup := apiGroup.Group("/admin")
-	adminGroup.Get("/server", s.requireSession, requireAdmin, s.handleGetAdminServer)
+	s.registerAdminServerRoutes(adminGroup)
 	s.registerAdminSettingsRoutes(adminGroup)
 	s.registerAdminHealthRoutes(adminGroup)
 	s.registerSetupRoutes(apiGroup, adminGroup)
@@ -350,10 +350,6 @@ func requireAdmin(c fiber.Ctx) error {
 		return service.ErrAdminOnly
 	}
 	return c.Next()
-}
-
-func (s *Server) handleGetAdminServer(c fiber.Ctx) error {
-	return c.JSON(s.service.GetAdminServer())
 }
 
 func (s *Server) limitRate(c fiber.Ctx) error {
