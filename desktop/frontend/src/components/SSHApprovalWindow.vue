@@ -167,7 +167,7 @@ const unlockNote = computed(() => {
 
 const durationNote = computed(() => {
   if (isLauncher.value) {
-    return "Lasts until Hisar locks; you can revoke it sooner in Settings → Developer tools.";
+    return "You can revoke it sooner in Settings → Developer tools.";
   }
   return isCommandLine.value ? commandLineCoverage.value.note : "";
 });
