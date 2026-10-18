@@ -9,11 +9,14 @@ const (
 
 	PlatformDesktopMacOS = "darwin/desktop"
 	PlatformIOS          = "ios/mobile"
+	PlatformAndroid      = "android/mobile"
 	PlatformExtension    = "browser/extension"
 	cliPlatformSuffix    = "/cli"
+	phonePlatformSuffix  = "/mobile"
 
 	ClientDesktopMacOS = "desktop-macos"
 	ClientIOS          = "ios"
+	ClientAndroid      = "android"
 	ClientCLI          = "cli"
 	ClientExtension    = "extension"
 )
@@ -32,10 +35,17 @@ func GetClient(platform string) string {
 		return ClientDesktopMacOS
 	case platform == PlatformIOS:
 		return ClientIOS
+	case platform == PlatformAndroid:
+		return ClientAndroid
 	case platform == PlatformExtension:
 		return ClientExtension
 	case strings.HasSuffix(platform, cliPlatformSuffix) && len(platform) > len(cliPlatformSuffix):
 		return ClientCLI
 	}
 	return ""
+}
+
+// IsPhonePlatform reports whether a device's platform is a phone app, which can answer phone approvals.
+func IsPhonePlatform(platform string) bool {
+	return strings.HasSuffix(platform, phonePlatformSuffix) && len(platform) > len(phonePlatformSuffix)
 }
