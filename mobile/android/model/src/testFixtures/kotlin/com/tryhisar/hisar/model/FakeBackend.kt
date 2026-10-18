@@ -1042,6 +1042,24 @@ open class FakeBackend : VaultBackend {
         }
     }
 
+    override fun addAndroidApp(vaultID: String, itemID: String, packageName: String, certificateSHA256: String): ItemDetail {
+        record("addAndroidApp")
+        return changeAndroidApps(vaultID, itemID) { it + ItemAndroidApp(packageName, certificateSHA256) }
+    }
+
+    override fun removeAndroidApp(vaultID: String, itemID: String, packageName: String, certificateSHA256: String): ItemDetail {
+        record("removeAndroidApp")
+        return changeAndroidApps(vaultID, itemID) { it - ItemAndroidApp(packageName, certificateSHA256) }
+    }
+
+    private fun changeAndroidApps(vaultID: String, itemID: String, change: (List<ItemAndroidApp>) -> List<ItemAndroidApp>): ItemDetail {
+        val item = getItem(vaultID, itemID)
+        if (!item.offersLoginFill) throw BackendError("only a login or a server can be filled into an app")
+        val changed = item.copy(allAndroidApp = change(item.allAndroidApp).distinct())
+        if (changed.allAndroidApp != item.allAndroidApp) replaceItem(vaultID, changed)
+        return changed
+    }
+
     companion object {
         const val PASSWORD = "correct horse battery"
         const val SECRET_KEY = "H1-ABC123-AAAAA-BBBBB-CCCCC-DDDDD-EEEEEE"

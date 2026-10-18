@@ -111,6 +111,12 @@ interface VaultBackend {
     fun getWebsiteIcon(url: String): ByteString?
     fun isWebsiteIconsEnabled(): Boolean
     fun setWebsiteIconsEnabled(isEnabled: Boolean)
+
+    /** Links a login to an Android app, so AutoFill offers it there; linking it again changes nothing. */
+    fun addAndroidApp(vaultID: String, itemID: String, packageName: String, certificateSHA256: String): ItemDetail
+
+    /** Unlinks a login from an Android app; removing a link the login does not have changes nothing. */
+    fun removeAndroidApp(vaultID: String, itemID: String, packageName: String, certificateSHA256: String): ItemDetail
 }
 
 /** A failure of a backend call, with a sentence a user can read. */
