@@ -33,6 +33,8 @@ data class HisarColors(
     val separator: Color,
     val fill: Color,
     val warning: Color,
+    /** iOS's system orange, which the iPhone app gives a field's warning, such as a port out of range. */
+    val orange: Color,
     val destructive: Color,
     val systemBackground: Color,
     val isDark: Boolean,
@@ -72,6 +74,7 @@ private fun buildColors(theme: VaultTheme, isDark: Boolean): HisarColors {
         separator = pick(0xFFC6C6C8, 0xFF38383A),
         fill = pick(0x1F767680, 0x3D767680),
         warning = Color(palette.warning.resolve(isDark)),
+        orange = pick(0xFFFF9500, 0xFFFF9F0A),
         destructive = pick(0xFFFF3B30, 0xFFFF453A),
         systemBackground = pick(0xFFFFFFFF, 0xFF000000),
         isDark = isDark,

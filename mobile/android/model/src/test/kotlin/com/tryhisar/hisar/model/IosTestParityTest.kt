@@ -24,6 +24,7 @@ class IosTestParityTest {
         "testRefreshFinishingAfterLockingBringsNothingBackAndKeepsAutoFill" to "testRefreshFinishingAfterLockingBringsNothingBack",
         "testSignedOutByServerShowsReasonAndClearsAutoFill" to "testSignedOutByServerShowsReason",
         "testDeleteAccountSignsOutAndRemovesAutoFillIdentities" to "testDeleteAccountSignsOut",
+        "testSaveNewItemAddsItWithoutSecretsAndUpdatesIdentities" to "testSaveNewItemAddsItWithoutSecrets",
     )
 
     private val notApplicable = run {
