@@ -2,14 +2,15 @@ package cliprotocol
 
 import (
 	"os"
-	"path/filepath"
+
+	"github.com/tryhisar/hisar/core/localsocket"
 )
 
 func GetDefaultSocketPath(homeDirectory string) string {
-	return filepath.Join(homeDirectory, ".hisar", "cli.sock")
+	return localsocket.GetDefaultPath(homeDirectory, "cli")
 }
 
-// GetSocketPath returns HISAR_CLI_SOCKET when set, otherwise ~/.hisar/cli.sock.
+// GetSocketPath returns HISAR_CLI_SOCKET when set, otherwise ~/.hisar/cli.sock (a named pipe on Windows).
 func GetSocketPath() (string, error) {
 	if path := os.Getenv(SocketEnvironment); path != "" {
 		return path, nil

@@ -3,6 +3,7 @@ module github.com/tryhisar/hisar/core
 go 1.26.0
 
 require (
+	github.com/Microsoft/go-winio v0.6.2
 	github.com/bytemare/opaque v0.18.0
 	github.com/go-webauthn/webauthn v0.18.2
 	github.com/google/uuid v1.6.0

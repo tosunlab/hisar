@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net"
-	"path/filepath"
 	"sync"
 	"time"
 
@@ -88,7 +87,7 @@ type Service struct {
 }
 
 func GetDefaultSocketPath(homeDirectory string) string {
-	return filepath.Join(homeDirectory, ".hisar", "agent.sock")
+	return localsocket.GetDefaultPath(homeDirectory, "agent")
 }
 
 func NewService(config Config) *Service {
@@ -242,7 +241,7 @@ func Serve(ctx context.Context, service *Service) error {
 		service.setServing(false, err)
 		return err
 	}
-	listener, err := localsocket.ListenUnixSocket(service.config.SocketPath)
+	listener, err := localsocket.Listen(service.config.SocketPath)
 	if err != nil {
 		service.setServing(false, err)
 		return err

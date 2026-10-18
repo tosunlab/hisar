@@ -5,15 +5,18 @@ import (
 	"errors"
 	"io"
 	"net"
-	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/tryhisar/hisar/core/browserprotocol"
+	"github.com/tryhisar/hisar/core/localsocket"
 )
 
+// desktopDialTimeout bounds one attempt to reach the app; a local socket or pipe answers at once when the app is running.
+const desktopDialTimeout = time.Second
+
 func GetDefaultSocketPath(homeDirectory string) string {
-	return filepath.Join(homeDirectory, ".hisar", "browser.sock")
+	return localsocket.GetDefaultPath(homeDirectory, "browser")
 }
 
 type HostConfig struct {
@@ -47,15 +50,15 @@ func RunHost(input io.Reader, output io.Writer, config HostConfig) error {
 		relayMessages(connection, output)
 	}()
 	err = relayMessages(input, connection)
-	if unixConnection, ok := connection.(*net.UnixConn); ok {
-		unixConnection.CloseWrite()
+	if halfCloser, ok := connection.(interface{ CloseWrite() error }); ok {
+		halfCloser.CloseWrite()
 	}
 	waitGroup.Wait()
 	return err
 }
 
 func dialDesktop(config HostConfig) (net.Conn, error) {
-	connection, err := net.Dial("unix", config.SocketPath)
+	connection, err := localsocket.Dial(config.SocketPath, desktopDialTimeout)
 	if err == nil || config.LaunchApp == nil {
 		return connection, err
 	}
@@ -69,7 +72,7 @@ func dialDesktop(config HostConfig) (net.Conn, error) {
 	deadline := time.Now().Add(config.RetryFor)
 	for time.Now().Before(deadline) {
 		time.Sleep(retryEvery)
-		if connection, err = net.Dial("unix", config.SocketPath); err == nil {
+		if connection, err = localsocket.Dial(config.SocketPath, desktopDialTimeout); err == nil {
 			return connection, nil
 		}
 	}

@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/item"
+	"github.com/tryhisar/hisar/core/localsocket"
 )
 
 const (
@@ -63,7 +63,7 @@ func chooseModeWithLaunch(isStandaloneForced, isLaunchAllowed bool) commandMode 
 }
 
 func dialApp(socketPath string) (*appClient, error) {
-	connection, err := net.DialTimeout("unix", socketPath, appDialTimeout)
+	connection, err := localsocket.Dial(socketPath, appDialTimeout)
 	if err != nil {
 		return nil, &appUnreachableError{socketPath: socketPath}
 	}

@@ -28,7 +28,7 @@ func NewServer(handler browserprotocol.Handler, peerResolver localsocket.PeerRes
 }
 
 func (s *Server) Serve(ctx context.Context, socketPath string) error {
-	listener, err := localsocket.ListenUnixSocket(socketPath)
+	listener, err := localsocket.Listen(socketPath)
 	if err != nil {
 		return err
 	}

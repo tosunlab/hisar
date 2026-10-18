@@ -4,11 +4,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/tryhisar/hisar/core/localsocket"
 )
 
 const (
@@ -52,9 +53,9 @@ func isAppRunning() bool {
 		if err != nil {
 			return false
 		}
-		agentSocketPath = filepath.Join(homeDirectory, ".hisar", "agent.sock")
+		agentSocketPath = localsocket.GetDefaultPath(homeDirectory, "agent")
 	}
-	connection, err := net.DialTimeout("unix", agentSocketPath, 500*time.Millisecond)
+	connection, err := localsocket.Dial(agentSocketPath, 500*time.Millisecond)
 	if err != nil {
 		return false
 	}

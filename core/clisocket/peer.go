@@ -2,9 +2,7 @@
 package clisocket
 
 import (
-	"errors"
 	"net"
-	"syscall"
 
 	"github.com/tryhisar/hisar/core/localsocket"
 )
@@ -46,23 +44,9 @@ type PeerResolver interface {
 
 type SystemPeerResolver struct{}
 
+// ResolvePeer reads the peer's credentials: the socket's on macOS and Linux, the pipe client's on Windows.
 func (SystemPeerResolver) ResolvePeer(connection net.Conn) (Peer, error) {
-	syscallConnection, isSyscallConnection := connection.(syscall.Conn)
-	if !isSyscallConnection {
-		return Peer{}, errors.New("commandline: connection has no file descriptor")
-	}
-	rawConnection, err := syscallConnection.SyscallConn()
-	if err != nil {
-		return Peer{}, err
-	}
-	var peer Peer
-	var peerError error
-	if err := rawConnection.Control(func(descriptor uintptr) {
-		peer, peerError = getPeerCredential(int(descriptor))
-	}); err != nil {
-		return Peer{}, err
-	}
-	return peer, peerError
+	return resolvePeer(connection)
 }
 
 func (SystemPeerResolver) GetTerminalSession(pid int) (TerminalSession, error) {

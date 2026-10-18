@@ -42,7 +42,7 @@ Five Go modules joined by `go.work`, plus four non-Go apps.
 | `cliprotocol` | The CLI ↔ app protocol on `~/.hisar/cli.sock`: messages, results, framing, `Client` |
 | `clisocket` | The app side of that socket: server, approval scopes (terminal session, signed app, connection), coding-agent grants, launcher approvals, peer credentials |
 | `browserprotocol` | The extension ↔ app native-messaging protocol, `Handler`, `Answer`, URL matching |
-| `localsocket` | Unix sockets only the user can reach, and the process on the other end |
+| `localsocket` | Endpoints only the user can reach (`Listen`, `Dial`, `GetDefaultPath`: Unix sockets in `~/.hisar`, named pipes for the user's SID on Windows), and the process on the other end |
 | `sshagent` | The read-only SSH agent with approvals and session binding |
 | `sshkey` | SSH key generation, import and parsing |
 | `passkey` | The WebAuthn authenticator |

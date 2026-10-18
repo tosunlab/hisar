@@ -115,7 +115,7 @@ func (s *Server) ClearApprovals() {
 
 // Serve listens until ctx ends; closing the listener removes the socket.
 func (s *Server) Serve(ctx context.Context, socketPath string) error {
-	listener, err := localsocket.ListenUnixSocket(socketPath)
+	listener, err := localsocket.Listen(socketPath)
 	if err != nil {
 		return err
 	}
