@@ -11,7 +11,6 @@ import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -187,14 +186,7 @@ class PhoneApprovalUITests : HisarUITestCase() {
         val email = readArgument("HISAR_UI_TEST_PHONE_APPROVAL_EMAIL")
         val password = readArgument("HISAR_UI_TEST_PHONE_APPROVAL_PASSWORD")
         launch()
-        waitFor("sign-in-use-different-server")
-        tap("sign-in-use-different-server")
-        composeRule.onNode(hasTestTag("sign-in-server")).performTextReplacement(readArgument("HISAR_UI_TEST_SERVER"))
-        type(email, "sign-in-email")
-        type(readArgument("HISAR_UI_TEST_PHONE_APPROVAL_SECRET_KEY"), "sign-in-secret-key")
-        type(password, "sign-in-password")
-        tap("sign-in-submit")
-        waitFor("vault-Personal", 60_000)
+        signIn(email, readArgument("HISAR_UI_TEST_PHONE_APPROVAL_SECRET_KEY"), password)
 
         composeRule.waitUntil("the Mac's SSH request arrives", 120_000) { exists(hasTestTag("phone-approval")) || exists(hasTestTag("pending-approval-header")) }
         // An event and the poll can list the request together; the sheet's window composes a moment after the card.

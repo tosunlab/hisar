@@ -58,12 +58,67 @@ UI_TEST_VALUES+=(
   "HISAR_UI_TEST_PHONE_APPROVAL_PASSWORD=$PHONE_APPROVAL_PASSWORD"
   "HISAR_UI_TEST_PHONE_APPROVAL_SECRET_KEY=$(cat "$T/mac-secret-key")"
 )
+# The cross-device test signs in to an account whose other device is the command line, which signs up here.
+# answer_as_other_device then plays that device: each step runs once the phone did what the step waits for, through the
+# server. The phone saves the notes "Ready for a favorite" and "Ready to be signed out" once it watches for those steps.
+CROSS_DEVICE_EMAIL="android-cross-device-$(date +%s)-$RANDOM@example.com"
+CROSS_DEVICE_PASSWORD=cross-device-master-password
+CROSS_DEVICE_NEW_PASSWORD=cross-device-new-master-password
+printf '%s\nCommand Line\n%s\n%s\n' "$CROSS_DEVICE_EMAIL" "$CROSS_DEVICE_PASSWORD" "$CROSS_DEVICE_PASSWORD" |
+  HISAR_STATE=$T/other-device.json HISAR_SECRET_KEY=- "$ROOT/bin/hisar" signup "$(ui_test_create_invite "$CROSS_DEVICE_EMAIL")" 2>"$T/other-device-signup.txt"
+CROSS_DEVICE_SECRET_KEY=$(grep -oE 'H1-[0-9A-Z-]+' "$T/other-device-signup.txt")
+other_device() { HISAR_STATE=$T/other-device.json HISAR_SECRET_KEY=$CROSS_DEVICE_SECRET_KEY "$ROOT/bin/hisar" "$@"; }
+answer_as_other_device() {
+  local password=$CROSS_DEVICE_PASSWORD items devices
+  while sleep 1; do
+    # The phone's new master password signs this device out; it signs in again with it, as its user would.
+    if ! items=$(printf '%s\n' "$password" | other_device ls 2>&1); then
+      if [[ "$items" == *"this device was signed out"* ]] && printf '\n\n%s\n' "$CROSS_DEVICE_NEW_PASSWORD" | other_device login; then
+        password=$CROSS_DEVICE_NEW_PASSWORD
+        touch "$T/other-device-signed-out"
+      fi
+      continue
+    fi
+    devices=$(other_device devices 2>&1) || continue
+    # It edits the phone's login only after reading the password the phone gave it.
+    if [ ! -e "$T/other-device-edited" ] && [[ "$devices" == *" android/mobile "* ]] &&
+      [ "$(printf '%s\n' "$password" | other_device get "Cross-device login" -f password 2>/dev/null)" = android-login-password ] &&
+      { [[ "$items" == *"Server lists android/mobile"* ]] || printf '%s\nServer lists android/mobile\n.\n' "$password" | other_device add --type secure-note; } &&
+      printf '%s\n\ncli-user\n\ncli-login-password\n\n' "$password" | other_device edit "Cross-device login"; then
+      touch "$T/other-device-edited"
+    fi
+    if [ ! -e "$T/other-device-starred" ] && [[ "$items" == *"Ready for a favorite"* ]] &&
+      printf '%s\n' "$password" | other_device favorite "Cross-device login"; then
+      touch "$T/other-device-starred"
+    fi
+    if [ -e "$T/other-device-signed-out" ] && [[ "$items" != *"Signed out on the command line"* ]]; then
+      printf '%s\nSigned out on the command line\n.\n' "$password" | other_device add --type secure-note || true
+    fi
+    if [ ! -e "$T/other-device-revoked" ] && [[ "$items" == *"Ready to be signed out"* ]] &&
+      other_device revoke-device "$(printf '%s\n' "$devices" | awk '/ android\/mobile / {print $NF}')"; then
+      touch "$T/other-device-revoked"
+    fi
+  done
+}
+answer_as_other_device >"$T/other-device.log" 2>&1 &
+UI_TEST_OTHER_DEVICE=$!
+trap 'kill "$UI_TEST_MAC" "$UI_TEST_OTHER_DEVICE" 2>/dev/null || true; ui_test_stop' EXIT
+CROSS_DEVICE_CLI_SYSTEM=$(uname -s)
+[ "$CROSS_DEVICE_CLI_SYSTEM" != Darwin ] || CROSS_DEVICE_CLI_SYSTEM=macOS
+UI_TEST_VALUES+=(
+  "HISAR_UI_TEST_CROSS_DEVICE_EMAIL=$CROSS_DEVICE_EMAIL"
+  "HISAR_UI_TEST_CROSS_DEVICE_PASSWORD=$CROSS_DEVICE_PASSWORD"
+  "HISAR_UI_TEST_CROSS_DEVICE_NEW_PASSWORD=$CROSS_DEVICE_NEW_PASSWORD"
+  "HISAR_UI_TEST_CROSS_DEVICE_SECRET_KEY=$CROSS_DEVICE_SECRET_KEY"
+  "HISAR_UI_TEST_CROSS_DEVICE_CLI_NAME=$(other_device devices | awk '/\(this device\)/ {print $1}')"
+  "HISAR_UI_TEST_CROSS_DEVICE_CLI_SYSTEM=$CROSS_DEVICE_CLI_SYSTEM"
+)
 # The biometric tests enroll fingers and touch the sensor through the emulator's console.
 if [[ "$ANDROID_SERIAL" == emulator-* ]] && [ -r "$HOME/.emulator_console_auth_token" ]; then
   UI_TEST_VALUES+=("HISAR_UI_TEST_EMULATOR_CONSOLE_PORT=${ANDROID_SERIAL#emulator-}" "HISAR_UI_TEST_EMULATOR_CONSOLE_TOKEN=$(cat "$HOME/.emulator_console_auth_token")")
 fi
 "$ADB" reverse "tcp:$UI_TEST_PORT" "tcp:$UI_TEST_PORT" >/dev/null
-trap '"$ADB" reverse --remove "tcp:$UI_TEST_PORT" >/dev/null 2>&1 || true; kill "$UI_TEST_MAC" 2>/dev/null || true; ui_test_stop' EXIT
+trap '"$ADB" reverse --remove "tcp:$UI_TEST_PORT" >/dev/null 2>&1 || true; kill "$UI_TEST_MAC" "$UI_TEST_OTHER_DEVICE" 2>/dev/null || true; ui_test_stop' EXIT
 
 # The Android Gradle plugin cuts each value at its first comma and hands the rest to the device's shell unquoted, inside
 # `am instrument -e NAME value`.
@@ -125,5 +180,7 @@ if [ "$STATUS" != 0 ]; then
   ui_test_print_logs
   echo "--- hisar-ui-test-mac log" >&2
   cat "$T/mac.log" >&2
+  echo "--- other device (command line) log" >&2
+  cat "$T/other-device.log" >&2
   exit "$STATUS"
 fi
