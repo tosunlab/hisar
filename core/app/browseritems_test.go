@@ -120,3 +120,34 @@ func TestBrowserHelloAnnouncesVault(t *testing.T) {
 		t.Errorf("hello = %+v", hello)
 	}
 }
+
+// The popup's search reads what the app's list search reads, not only the coding agents' narrower fields.
+func TestBrowserItemSearchReadsWhatTheAppSearches(t *testing.T) {
+	testBridge := createBrowserTestBridge(t)
+	service, personalID := testBridge.testService.service, testBridge.testService.personalID
+	token := testBridge.pair(t, "chrome-1")
+	for _, detail := range []ItemDetail{
+		{Category: item.CategoryIdentity, Title: "Personal", Identity: &ItemIdentity{FirstName: "Alice", LastName: "Example", Email: "alice@example.com", ItemAddress: ItemAddress{Street: "1 Main St\nFlat 2"}}},
+		{Category: item.CategoryAddress, Title: "Home", Address: &ItemAddress{Street: "742 Evergreen Terrace", City: "Springfield"}},
+		{Category: item.CategoryServer, Title: "Web", Server: &ItemServer{Host: "web.example.com", Port: "2222"}},
+		{Category: item.CategoryDatabase, Title: "Main", Database: &ItemDatabase{Engine: "postgresql", Host: "db.example.com", Name: "app"}},
+		{Category: item.CategorySecureNote, Title: "Note", Notes: "alice@example.com evergreen"},
+	} {
+		if _, err := service.SaveItem(personalID, detail); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for query, want := range map[string][]string{
+		"alice example": {"Personal"}, "alice@example": {"Personal"}, "main st": {"Personal"}, "flat 2": nil,
+		"evergreen": {"Home"}, ":2222": {"Web"}, "postgresql": {"Main"}, "db.example.com/app": {"Main"},
+	} {
+		result, code := testBridge.sendRequest(browserprotocol.Request{Type: "items.list", Token: token, Query: query})
+		titles := []string{}
+		for _, summary := range result.(browserprotocol.ItemListResult).Items {
+			titles = append(titles, summary.Title)
+		}
+		if code != "" || !slices.Equal(titles, append([]string{}, want...)) {
+			t.Errorf("items.list for %q = %v %s, want %v", query, titles, code, want)
+		}
+	}
+}

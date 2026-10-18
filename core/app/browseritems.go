@@ -17,8 +17,8 @@ import (
 // secret field's value leaves the app only in items.reveal, one field at a time, when the user asks for it. The
 // extension answers these only to its own pages, never to a content script.
 
-// listBrowserItems returns the items of every vault that match query (titles, usernames, websites and what the app's
-// search reads), sorted by title.
+// listBrowserItems returns the items of every vault that match query (what the app's list search reads), sorted by
+// title.
 func (s *Service) listBrowserItems(ctx context.Context, query, category string, isFavoriteOnly bool) ([]browserprotocol.ItemSummary, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -44,7 +44,7 @@ func (s *Service) listBrowserItems(ctx context.Context, query, category string, 
 			if isFavoriteOnly && !s.favorites.IsFavorite(vaultItem.ID) {
 				continue
 			}
-			if !isAgentSearchMatch(vault.Name, vaultItem, query) {
+			if !isBrowserSearchMatch(vault.Name, vaultItem, query) {
 				continue
 			}
 			summaries = append(summaries, s.summarizeBrowserItem(vaultID, vault.Name, vaultItem))
@@ -54,6 +54,43 @@ func (s *Service) listBrowserItems(ctx context.Context, query, category string, 
 		return cmp.Or(strings.Compare(strings.ToLower(first.Title), strings.ToLower(second.Title)), strings.Compare(first.ItemID, second.ItemID))
 	})
 	return summaries, nil
+}
+
+// isBrowserSearchMatch reads what the app's list search reads (filterAllItem in the desktop UI), and the vault's name the
+// popup shows: an identity's name, email and address, an address's first street line, a server's and a database's
+// summary. The coding agents' search (isAgentSearchMatch) stays narrower. Never a secret or the notes.
+func isBrowserSearchMatch(vaultName string, vaultItem *item.Item, query string) bool {
+	if query == "" {
+		return true
+	}
+	texts := append([]string{vaultName, vaultItem.Overview.Title, vaultItem.Overview.Username}, vaultItem.Overview.URLs...)
+	texts = append(texts, vaultItem.Overview.Tags...)
+	firstStreetLine := func(address item.Address) string {
+		line, _, _ := strings.Cut(address.Street, "\n")
+		return line
+	}
+	switch {
+	case vaultItem.IsCategory(item.CategoryIdentity):
+		identity, _ := item.ReadIdentity(vaultItem)
+		fullName := strings.Join(strings.Fields(identity.FirstName+" "+identity.MiddleName+" "+identity.LastName), " ")
+		texts = append(texts, fullName, identity.Email, firstStreetLine(identity.Address), identity.Address.City, identity.Address.Country)
+	case vaultItem.IsCategory(item.CategoryAddress):
+		address, _ := item.ReadAddress(vaultItem)
+		texts = append(texts, firstStreetLine(address), address.City, address.Country)
+	case vaultItem.IsCategory(item.CategoryAPICredential):
+		credential, _ := item.ReadAPICredential(vaultItem)
+		texts = append(texts, credential.Service, credential.KeyID, credential.Host)
+	case vaultItem.IsCategory(item.CategorySoftwareLicense):
+		license, _ := item.ReadSoftwareLicense(vaultItem)
+		texts = append(texts, license.Product, license.Version, license.LicensedTo, license.Email)
+	case vaultItem.IsCategory(item.CategoryServer):
+		server, _ := item.ReadServer(vaultItem)
+		texts = append(texts, server.Summary(), server.Host, server.Port)
+	case vaultItem.IsCategory(item.CategoryDatabase):
+		database, _ := item.ReadDatabase(vaultItem)
+		texts = append(texts, database.Summary(), database.Host, database.Port, database.Name)
+	}
+	return slices.ContainsFunc(texts, func(text string) bool { return strings.Contains(strings.ToLower(text), query) })
 }
 
 func (s *Service) summarizeBrowserItem(vaultID, vaultName string, vaultItem *item.Item) browserprotocol.ItemSummary {
