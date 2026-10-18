@@ -26,7 +26,7 @@ export function createInitialState() {
     allPairing: [],
     exactHostOnly: false,
     // features: what the app announces in hello; an older app announces none.
-    features: ["addresses"],
+    features: ["addresses", "vault"],
     allAddress: [
       {
         vaultID: "vault-personal",
@@ -41,6 +41,32 @@ export function createInitialState() {
         country: "US",
       },
     ],
+    allItem: [
+      {
+        vaultID: "vault-personal",
+        vaultName: "Personal",
+        itemID: "item-visa",
+        category: "credit-card",
+        title: "Visa",
+        subtitle: "Visa •••• 1111",
+        fields: [
+          { id: "field:0", label: "Cardholder", kind: "text", value: "Alex Example" },
+          { id: "field:1", label: "Card number", kind: "secret", value: "4111 1111 1111 1111" },
+          { id: "field:2", label: "Expiry", kind: "text", value: "12/2030" },
+          { id: "field:3", label: "Security code", kind: "secret", value: "123" },
+        ],
+      },
+      {
+        vaultID: "vault-personal",
+        vaultName: "Personal",
+        itemID: "item-wifi",
+        category: "secure-note",
+        title: "Wi-Fi",
+        subtitle: "",
+        fields: [{ id: "notes", label: "Notes", kind: "notes", value: "Network: Example" }],
+      },
+    ],
+    allFavoriteItemID: [],
     allLogin: [
       {
         vaultID: "vault-personal",
@@ -166,6 +192,41 @@ function applyPendingUnlock(state, now) {
 function requireUnlocked(state) {
   if (state.state === "signed-out") throw new ProtocolError("signed-out", "Hisar is signed out");
   if (state.state === "locked") throw new ProtocolError("locked", "Hisar is locked");
+}
+
+// listAllItem is every item as items.list and items.get see it: the logins, then the other items.
+function listAllItem(state) {
+  const allLoginItem = state.allLogin.map((login) => ({
+    vaultID: login.vaultID,
+    vaultName: login.vaultName,
+    itemID: login.itemID,
+    category: "login",
+    title: login.title,
+    subtitle: login.username,
+    url: login.url,
+    hasOneTimePassword: Boolean(login.oneTimePassword),
+    fields: [
+      ...(login.username ? [{ id: "username", label: "Username", kind: "text", value: login.username }] : []),
+      { id: "password", label: "Password", kind: "secret", value: login.password },
+      ...(login.oneTimePassword ? [{ id: "one-time-code", label: "One-time code", kind: "one-time-code" }] : []),
+      { id: "url:0", label: "Website", kind: "url", value: login.url },
+    ],
+    oneTimePassword: login.oneTimePassword,
+  }));
+  return [...allLoginItem, ...(state.allItem ?? []).map((item) => ({ hasOneTimePassword: false, ...item }))];
+}
+
+function summarizeItem(state, item) {
+  const { vaultID, vaultName, itemID, category, title, subtitle, url, hasOneTimePassword } = item;
+  return { vaultID, vaultName, itemID, category, title, subtitle, ...(url ? { url } : {}), hasOneTimePassword, isFavorite: (state.allFavoriteItemID ?? []).includes(itemID) };
+}
+
+function requireVaultItem(state, request) {
+  if (!state.features?.includes("vault")) throw new ProtocolError("invalid-request", `Unknown type ${String(request.type)}`);
+  requireUnlocked(state);
+  const item = listAllItem(state).find((candidate) => candidate.vaultID === request.vaultID && candidate.itemID === request.itemID);
+  if (!item) throw new ProtocolError("not-found", "No such item");
+  return item;
 }
 
 function findAllMatchingLogin(state, url) {
@@ -323,6 +384,44 @@ export function handleRequest(state, request, now = Date.now(), log = () => unde
       state.allAddressRequest = [...(state.allAddressRequest ?? []), address.itemID];
       const { street, city, region, postalCode, country } = address;
       return { street, city, region, postalCode, country };
+    }
+    case "items.list": {
+      if (!state.features?.includes("vault")) throw new ProtocolError("invalid-request", `Unknown type ${String(type)}`);
+      requireUnlocked(state);
+      const query = typeof request.query === "string" ? request.query.toLowerCase() : "";
+      const allItem = listAllItem(state)
+        .filter((item) => !request.category || item.category === request.category)
+        .filter((item) => !request.isFavoriteOnly || (state.allFavoriteItemID ?? []).includes(item.itemID))
+        .filter((item) => !query || [item.title, item.subtitle, item.vaultName, item.url ?? ""].some((text) => text.toLowerCase().includes(query)))
+        .sort((first, second) => first.title.localeCompare(second.title));
+      return { items: allItem.map((item) => summarizeItem(state, item)) };
+    }
+    case "items.get": {
+      const item = requireVaultItem(state, request);
+      const fields = item.fields.map((field) => (field.kind === "secret" || field.kind === "one-time-code" ? { id: field.id, label: field.label, kind: field.kind } : field));
+      return { ...summarizeItem(state, item), fields };
+    }
+    case "items.reveal": {
+      const item = requireVaultItem(state, request);
+      const field = item.fields.find((candidate) => candidate.id === request.fieldID);
+      if (!field) throw new ProtocolError("not-found", "No such field");
+      state.allRevealRequest = [...(state.allRevealRequest ?? []), `${item.itemID}/${field.id}`];
+      if (field.kind === "one-time-code") return { value: generateOneTimeCode(item.oneTimePassword, now).code };
+      return { value: field.value ?? "" };
+    }
+    case "items.code": {
+      const item = requireVaultItem(state, request);
+      if (!item.oneTimePassword) throw new ProtocolError("not-found", "This item has no one-time password");
+      return generateOneTimeCode(item.oneTimePassword, now);
+    }
+    case "items.icon":
+      if (!state.features?.includes("vault")) throw new ProtocolError("invalid-request", `Unknown type ${String(type)}`);
+      return {};
+    case "items.favorite": {
+      const item = requireVaultItem(state, request);
+      const allOther = (state.allFavoriteItemID ?? []).filter((itemID) => itemID !== item.itemID);
+      state.allFavoriteItemID = request.isFavorite === true ? [...allOther, item.itemID] : allOther;
+      return {};
     }
     case "password.generate":
       if (state.state === "signed-out") throw new ProtocolError("signed-out", "Hisar is signed out");

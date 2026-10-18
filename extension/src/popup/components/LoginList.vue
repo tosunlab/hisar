@@ -5,10 +5,13 @@ import type { LoginSummary } from "../../shared/protocol";
 import { closePopup, describeError, sendToBackground } from "../api";
 import { writeToClipboard } from "../clipboard";
 import AppIcon from "./AppIcon.vue";
+import ItemIcon from "./ItemIcon.vue";
 import OneTimeCodeRow from "./OneTimeCodeRow.vue";
 
-const props = defineProps<{ tabId: number | undefined }>();
-const emit = defineEmits<{ notice: [message: string] }>();
+// In the vault view, query comes from its search box, which takes the place of this list's own; the list then also
+// reports what it found and opens a login's details.
+const props = defineProps<{ tabId: number | undefined; query?: string }>();
+const emit = defineEmits<{ notice: [message: string]; loaded: [allLogin: LoginSummary[], url: string]; open: [login: LoginSummary, url: string] }>();
 
 const allLogin = ref<LoginSummary[]>([]);
 const pageHost = ref("");
@@ -17,8 +20,11 @@ const isLoading = ref(true);
 const errorMessage = ref("");
 const busyItemID = ref("");
 
+const isEmbedded = computed(() => props.query !== undefined);
+const pageUrl = ref("");
+
 const allVisibleLogin = computed(() => {
-  const normalizedQuery = query.value.trim().toLowerCase();
+  const normalizedQuery = (props.query ?? query.value).trim().toLowerCase();
   if (!normalizedQuery) return allLogin.value;
   return allLogin.value.filter((login) =>
     [login.title, login.username, login.vaultName].some((text) => text.toLowerCase().includes(normalizedQuery)),
@@ -41,7 +47,9 @@ async function loadLogins(): Promise<void> {
   try {
     const result = await sendToBackground<MatchResult>({ type: "popup.matchLogins", tabId: props.tabId });
     allLogin.value = result.allLogin;
+    pageUrl.value = result.url;
     pageHost.value = getHostFromUrl(result.url);
+    emit("loaded", result.allLogin, result.url);
   } catch (error) {
     errorMessage.value = describeError(error);
   } finally {
@@ -90,21 +98,29 @@ onMounted(loadLogins);
 
 <template>
   <div class="logins" data-testid="login-list">
-    <div v-if="allLogin.length > 0" class="search">
+    <div v-if="allLogin.length > 0 && !isEmbedded" class="search">
       <AppIcon name="search" class="search-icon" />
       <input v-model="query" type="search" placeholder="Search logins for this site" aria-label="Search" data-testid="search" />
     </div>
     <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
     <p v-if="isLoading" class="muted empty">Looking for logins…</p>
-    <p v-else-if="allLogin.length === 0" class="muted empty" data-testid="no-logins">
+    <p v-else-if="allLogin.length === 0" class="muted empty" :class="{ compact: isEmbedded }" data-testid="no-logins">
       No saved logins for {{ pageHost || "this page" }}.
     </p>
-    <p v-else-if="allVisibleLogin.length === 0" class="muted empty">No logins match "{{ query }}".</p>
+    <p v-else-if="allVisibleLogin.length === 0" class="muted empty" :class="{ compact: isEmbedded }">No logins match "{{ props.query ?? query }}".</p>
     <ul v-else class="list">
       <li v-for="login in allVisibleLogin" :key="login.vaultID + login.itemID" class="entry" data-testid="login-row">
         <div class="login">
-          <div class="avatar" aria-hidden="true">{{ (login.title || "?").slice(0, 1).toUpperCase() }}</div>
-          <div class="text">
+          <ItemIcon category="login" :url="pageUrl" class="avatar" />
+          <div
+            class="text"
+            :class="{ openable: isEmbedded }"
+            :role="isEmbedded ? 'button' : undefined"
+            :tabindex="isEmbedded ? 0 : undefined"
+            data-testid="open-login"
+            @click="isEmbedded && emit('open', login, pageUrl)"
+            @keydown.enter="isEmbedded && emit('open', login, pageUrl)"
+          >
             <p class="title-row">
               <span class="title">{{ login.title }}</span>
               <span class="tag">{{ login.vaultName }}</span>
@@ -197,18 +213,16 @@ onMounted(loadLogins);
 }
 
 .avatar {
-  display: flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
   margin-right: 4px;
-  border: 1px solid var(--color-border-strong);
-  border-radius: var(--radius);
-  background: var(--color-surface-raised);
-  font-weight: 600;
-  color: var(--color-text-secondary);
+}
+
+.empty.compact {
+  margin: 6px 0 10px;
+  font-size: 12px;
+}
+
+.openable {
+  cursor: pointer;
 }
 
 .text {

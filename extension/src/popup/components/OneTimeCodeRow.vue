@@ -6,10 +6,20 @@ import { describeError, sendToBackground } from "../api";
 import { writeToClipboard } from "../clipboard";
 import AppIcon from "./AppIcon.vue";
 
-const props = withDefaults(defineProps<{ tabId: number; login: LoginSummary; now?: () => number; tickMilliseconds?: number }>(), {
-  now: () => Date.now(),
-  tickMilliseconds: 1000,
-});
+// requestCode, when given, reads the code in place of the tab's login (the item view, for an item of any site).
+const props = withDefaults(
+  defineProps<{
+    tabId?: number;
+    login: Pick<LoginSummary, "vaultID" | "itemID">;
+    requestCode?: () => Promise<OneTimeCode>;
+    now?: () => number;
+    tickMilliseconds?: number;
+  }>(),
+  {
+    now: () => Date.now(),
+    tickMilliseconds: 1000,
+  },
+);
 const emit = defineEmits<{ notice: [message: string] }>();
 
 const ringLength = 2 * Math.PI * 7;
@@ -26,12 +36,14 @@ async function loadCode(): Promise<void> {
   if (isLoading) return;
   isLoading = true;
   try {
-    oneTimeCode.value = await sendToBackground<OneTimeCode>({
-      type: "popup.getOneTimeCode",
-      tabId: props.tabId,
-      vaultID: props.login.vaultID,
-      itemID: props.login.itemID,
-    });
+    oneTimeCode.value = props.requestCode
+      ? await props.requestCode()
+      : await sendToBackground<OneTimeCode>({
+          type: "popup.getOneTimeCode",
+          tabId: props.tabId ?? -1,
+          vaultID: props.login.vaultID,
+          itemID: props.login.itemID,
+        });
     errorMessage.value = "";
   } catch (error) {
     errorMessage.value = describeError(error);

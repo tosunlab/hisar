@@ -145,6 +145,23 @@ func (bridge *BrowserBridge) handleRequest(ctx context.Context, request *browser
 	case "addresses.fill":
 		result, err := bridge.service.getAddressForFill(ctx, request.VaultID, request.ItemID)
 		return result, convertBrowserError(err)
+	case "items.list":
+		items, err := bridge.service.listBrowserItems(ctx, request.Query, request.Category, request.IsFavoriteOnly)
+		return browserprotocol.ItemListResult{Items: items}, convertBrowserError(err)
+	case "items.get":
+		result, err := bridge.service.getBrowserItem(ctx, request.VaultID, request.ItemID)
+		return result, convertBrowserError(err)
+	case "items.reveal":
+		result, err := bridge.service.revealBrowserItemField(ctx, request.VaultID, request.ItemID, request.FieldID)
+		return result, convertBrowserError(err)
+	case "items.code":
+		result, err := bridge.service.getBrowserItemCode(ctx, request.VaultID, request.ItemID)
+		return result, convertBrowserError(err)
+	case "items.icon":
+		image, err := bridge.service.GetWebsiteIcon(request.URL)
+		return browserprotocol.IconResult{PNG: image}, convertBrowserError(err)
+	case "items.favorite":
+		return nil, convertBrowserError(bridge.service.setBrowserItemFavorite(request.VaultID, request.ItemID, request.IsFavorite))
 	case "password.generate":
 		config := item.DefaultGeneratorConfig()
 		if request.Length > 0 {

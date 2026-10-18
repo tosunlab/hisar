@@ -1,4 +1,6 @@
-import type { AddressSummary, AddressValues, ErrorCode, GenerateOptions, LoginSummary, UpdateRequirement } from "./protocol";
+import type { AddressSummary, AddressValues, ErrorCode, GenerateOptions, ItemResult, ItemSummary, LoginSummary, OneTimeCode, UpdateRequirement } from "./protocol";
+
+export type { ItemResult, ItemSummary, OneTimeCode };
 
 export type PopupView = "not-paired" | "desktop-unavailable" | "signed-out" | "locked" | "unlocked" | "update-required";
 
@@ -10,6 +12,14 @@ export interface PopupState {
   updateRequired?: UpdateRequirement;
   // isAddressFillAvailable: the app fills addresses, so the popup offers its Addresses tab.
   isAddressFillAvailable?: boolean;
+  // isVaultAvailable: the app lets the popup browse every vault, not only the logins of the current site.
+  isVaultAvailable?: boolean;
+}
+
+export interface ItemQuery {
+  query?: string;
+  category?: string;
+  isFavoriteOnly?: boolean;
 }
 
 export interface MatchResult {
@@ -74,7 +84,13 @@ export type PopupMessage =
   | { type: "popup.generatePassword"; options: GenerateOptions }
   | { type: "popup.fillPassword"; tabId: number; password: string }
   | { type: "popup.listAddresses" }
-  | { type: "popup.fillAddress"; tabId: number; vaultID: string; itemID: string };
+  | { type: "popup.fillAddress"; tabId: number; vaultID: string; itemID: string }
+  | { type: "popup.listItems"; query: ItemQuery }
+  | { type: "popup.getItem"; vaultID: string; itemID: string }
+  | { type: "popup.revealField"; vaultID: string; itemID: string; fieldID: string }
+  | { type: "popup.getItemCode"; vaultID: string; itemID: string }
+  | { type: "popup.getIcon"; url: string }
+  | { type: "popup.setFavorite"; vaultID: string; itemID: string; isFavorite: boolean };
 
 export type ContentToBackgroundMessage =
   | { type: "content.loginSubmitted"; username: string; password: string }

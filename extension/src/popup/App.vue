@@ -9,6 +9,7 @@ import PairingView from "./components/PairingView.vue";
 import PasswordGenerator from "./components/PasswordGenerator.vue";
 import SettingsView from "./components/SettingsView.vue";
 import StatusView from "./components/StatusView.vue";
+import VaultView from "./components/VaultView.vue";
 import AppIcon from "./components/AppIcon.vue";
 
 const props = withDefaults(defineProps<{ pollIntervalMilliseconds?: number; pollLimit?: number }>(), {
@@ -128,7 +129,7 @@ onBeforeUnmount(() => {
           data-testid="section-logins"
           @click="activeSection = 'logins'"
         >
-          Logins
+          {{ popupState.isVaultAvailable ? "Vault" : "Logins" }}
         </button>
         <button
           v-if="popupState.isAddressFillAvailable"
@@ -152,7 +153,8 @@ onBeforeUnmount(() => {
           Generator
         </button>
       </div>
-      <LoginList v-if="activeSection === 'logins'" :tab-id="tabId" @notice="showNotice" />
+      <VaultView v-if="activeSection === 'logins' && popupState.isVaultAvailable" :tab-id="tabId" @notice="showNotice" />
+      <LoginList v-else-if="activeSection === 'logins'" :tab-id="tabId" @notice="showNotice" />
       <AddressList v-else-if="activeSection === 'addresses'" :tab-id="tabId" />
       <PasswordGenerator v-else :tab-id="tabId" @notice="showNotice" />
     </section>

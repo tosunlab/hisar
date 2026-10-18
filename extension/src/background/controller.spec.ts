@@ -23,7 +23,7 @@ describe("popup state", () => {
   it("follows the desktop state after pairing", async () => {
     const harness = createHarness({ state: { isOffline: true } });
     await harness.pair();
-    expect(await harness.controller.getPopupState()).toEqual({ view: "unlocked", email: "alex@example.com", isOffline: true, isAddressFillAvailable: true });
+    expect(await harness.controller.getPopupState()).toEqual({ view: "unlocked", email: "alex@example.com", isOffline: true, isAddressFillAvailable: true, isVaultAvailable: true });
     harness.state.state = "locked";
     expect((await harness.controller.getPopupState()).view).toBe("locked");
   });
@@ -264,6 +264,32 @@ describe("addresses", () => {
     await expectHisarError(harness.controller.listAddresses(), "invalid-request");
     await expectHisarError(harness.controller.fillAddress(1, "vault-personal", "item-home"), "invalid-request");
     expect(harness.getRequestTypes().filter((type) => String(type).startsWith("addresses."))).toEqual([]);
+  });
+});
+
+describe("vault", () => {
+  it("lists every vault's items, shows one without its secrets and reveals a field when asked", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    expect((await harness.controller.listItems({})).map((item) => item.title)).toEqual(["Example", "Visa", "Wi-Fi"]);
+    expect((await harness.controller.listItems({ query: "vis" })).map((item) => item.itemID)).toEqual(["item-visa"]);
+    expect((await harness.controller.listItems({ category: "secure-note" })).map((item) => item.itemID)).toEqual(["item-wifi"]);
+    const visa = await harness.controller.getItem("vault-personal", "item-visa");
+    expect(visa.fields.find((field) => field.label === "Card number")).toEqual({ id: "field:1", label: "Card number", kind: "secret" });
+    expect(await harness.controller.revealItemField("vault-personal", "item-visa", "field:1")).toBe("4111 1111 1111 1111");
+    expect(harness.state.allRevealRequest).toEqual(["item-visa/field:1"]);
+    await harness.controller.setItemFavorite("vault-personal", "item-wifi", true);
+    expect((await harness.controller.listItems({ isFavoriteOnly: true })).map((item) => [item.itemID, item.isFavorite])).toEqual([["item-wifi", true]]);
+    expect(await harness.controller.getItemIcon("https://example.com")).toBe("");
+    expect(await harness.controller.getItemIcon("chrome://settings")).toBe("");
+  });
+
+  it("refuses the vault with an app that does not announce it, without asking", async () => {
+    const harness = createHarness({ state: { features: ["addresses"] } });
+    await harness.pair();
+    await expectHisarError(harness.controller.listItems({}), "invalid-request");
+    await expectHisarError(harness.controller.revealItemField("vault-personal", "item-visa", "field:1"), "invalid-request");
+    expect(harness.getRequestTypes().filter((type) => String(type).startsWith("items."))).toEqual([]);
   });
 });
 

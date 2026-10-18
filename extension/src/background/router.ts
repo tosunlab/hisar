@@ -50,6 +50,18 @@ async function routePopupMessage(controller: BackgroundController, message: Popu
       return controller.listAddresses();
     case "popup.fillAddress":
       return controller.fillAddress(message.tabId, message.vaultID, message.itemID);
+    case "popup.listItems":
+      return controller.listItems(message.query);
+    case "popup.getItem":
+      return controller.getItem(message.vaultID, message.itemID);
+    case "popup.revealField":
+      return controller.revealItemField(message.vaultID, message.itemID, message.fieldID);
+    case "popup.getItemCode":
+      return controller.getItemCode(message.vaultID, message.itemID);
+    case "popup.getIcon":
+      return controller.getItemIcon(message.url);
+    case "popup.setFavorite":
+      return controller.setItemFavorite(message.vaultID, message.itemID, message.isFavorite);
   }
 }
 

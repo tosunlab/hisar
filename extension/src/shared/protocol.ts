@@ -47,6 +47,38 @@ export interface HelloResult {
 // featureAddresses: the app answers addresses.list and addresses.fill.
 export const featureAddresses = "addresses";
 
+// featureVault: the app answers items.list, items.get, items.reveal, items.code, items.icon and items.favorite, so the
+// popup browses every vault.
+export const featureVault = "vault";
+
+// ItemSummary is one row of the popup's item list: metadata only, never a secret.
+export interface ItemSummary {
+  vaultID: string;
+  itemID: string;
+  category: string;
+  title: string;
+  subtitle: string;
+  vaultName: string;
+  url?: string;
+  isFavorite: boolean;
+  hasOneTimePassword: boolean;
+}
+
+// ItemFieldKind: a secret's value is left out of items.get and read with items.reveal; a one-time code's comes from
+// items.code.
+export type ItemFieldKind = "text" | "secret" | "url" | "notes" | "one-time-code";
+
+export interface ItemField {
+  id: string;
+  label: string;
+  kind: ItemFieldKind;
+  value?: string;
+}
+
+export interface ItemResult extends ItemSummary {
+  fields: ItemField[];
+}
+
 // AddressSummary is an address offered for filling: its summary is only the city and country; the rest comes in
 // addresses.fill.
 export interface AddressSummary {
@@ -114,6 +146,15 @@ export interface RequestMap {
     parameters: { url: string; username: string; password: string; vaultID?: string; itemID?: string };
     result: { vaultID: string; itemID: string };
   };
+  "items.list": {
+    parameters: { query?: string; category?: string; isFavoriteOnly?: boolean };
+    result: { items: ItemSummary[] };
+  };
+  "items.get": { parameters: { vaultID: string; itemID: string }; result: ItemResult };
+  "items.reveal": { parameters: { vaultID: string; itemID: string; fieldID: string }; result: { value: string } };
+  "items.code": { parameters: { vaultID: string; itemID: string }; result: OneTimeCode };
+  "items.icon": { parameters: { url: string }; result: { png?: string } };
+  "items.favorite": { parameters: { vaultID: string; itemID: string; isFavorite: boolean }; result: Record<string, never> };
   "password.generate": { parameters: GenerateOptions; result: { password: string } };
   "addresses.list": { parameters: Record<string, never>; result: { addresses: AddressSummary[] } };
   "addresses.fill": { parameters: { vaultID: string; itemID: string }; result: AddressValues };

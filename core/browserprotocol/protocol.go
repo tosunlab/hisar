@@ -50,6 +50,12 @@ type Request struct {
 	Length           int    `json:"length,omitempty"`
 	Digits           *bool  `json:"digits,omitempty"`
 	Symbols          *bool  `json:"symbols,omitempty"`
+	// Query, Category and IsFavoriteOnly narrow items.list; FieldID names the field items.reveal returns.
+	Query          string `json:"query,omitempty"`
+	Category       string `json:"category,omitempty"`
+	IsFavoriteOnly bool   `json:"isFavoriteOnly,omitempty"`
+	FieldID        string `json:"fieldID,omitempty"`
+	IsFavorite     *bool  `json:"isFavorite,omitempty"`
 
 	Passkey json.RawMessage `json:"passkey,omitempty"`
 }
@@ -90,8 +96,12 @@ type HelloResult struct {
 // FeatureAddresses: addresses.list and addresses.fill fill a page's address form from address items and identities.
 const FeatureAddresses = "addresses"
 
+// FeatureVault: items.list, items.get, items.reveal, items.code, items.icon and items.favorite let the popup browse
+// every vault, not only the logins of the current site.
+const FeatureVault = "vault"
+
 // ListFeatures returns the features this app announces in hello.
-func ListFeatures() []string { return []string{FeatureAddresses} }
+func ListFeatures() []string { return []string{FeatureAddresses, FeatureVault} }
 
 const (
 	UpdateTargetApp       = "app"
@@ -170,6 +180,55 @@ type AddressFillResult struct {
 	Region     string `json:"region"`
 	PostalCode string `json:"postalCode"`
 	Country    string `json:"country"`
+}
+
+// ItemSummary is one row of the popup's item list: metadata only. Subtitle is what the app's lists show under the
+// title (a login's username, a card's brand and last four digits), never a secret.
+type ItemSummary struct {
+	VaultID            string `json:"vaultID"`
+	ItemID             string `json:"itemID"`
+	Category           string `json:"category"`
+	Title              string `json:"title"`
+	Subtitle           string `json:"subtitle"`
+	VaultName          string `json:"vaultName"`
+	URL                string `json:"url,omitempty"`
+	IsFavorite         bool   `json:"isFavorite"`
+	HasOneTimePassword bool   `json:"hasOneTimePassword"`
+}
+
+type ItemListResult struct {
+	Items []ItemSummary `json:"items"`
+}
+
+// The kinds of an item's fields in items.get: a secret's value is left out and read with items.reveal.
+const (
+	FieldKindText   = "text"
+	FieldKindSecret = "secret"
+	FieldKindURL    = "url"
+	FieldKindNotes  = "notes"
+	FieldKindCode   = "one-time-code"
+)
+
+// ItemField is one field of an item as the popup shows it. ID names it in items.reveal.
+type ItemField struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+	Kind  string `json:"kind"`
+	Value string `json:"value,omitempty"`
+}
+
+type ItemResult struct {
+	ItemSummary
+	Fields []ItemField `json:"fields"`
+}
+
+type RevealResult struct {
+	Value string `json:"value"`
+}
+
+// IconResult: PNG is empty when the website has no icon or website icons are off.
+type IconResult struct {
+	PNG []byte `json:"png,omitempty"`
 }
 
 type SaveResult struct {

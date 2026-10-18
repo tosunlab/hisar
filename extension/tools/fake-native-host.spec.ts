@@ -65,7 +65,7 @@ describe("respond", () => {
     expect(respond(state, { id: "1", type: "hello", instanceID: "i", browser: "Chrome", extensionVersion: "0.1.0" })).toEqual({
       id: "1",
       ok: true,
-      result: { protocolVersion: 1, isPaired: false, state: "unlocked", features: ["addresses"] },
+      result: { protocolVersion: 1, isPaired: false, state: "unlocked", features: ["addresses", "vault"] },
     });
     expect(respond(state, { id: "2", type: "status", token: "wrong" })).toMatchObject({ ok: false, error: { code: "not-paired" } });
   });
@@ -125,6 +125,6 @@ describe("registered launcher", () => {
       child.stdin.write(encodeFrame({ id: "1", type: "hello", instanceID: "i", browser: "Chrome", extensionVersion: "0.1.0" }));
     });
     child.stdin.end();
-    expect(response).toEqual({ id: "1", ok: true, result: { protocolVersion: 1, isPaired: false, state: "unlocked", features: ["addresses"] } });
+    expect(response).toEqual({ id: "1", ok: true, result: { protocolVersion: 1, isPaired: false, state: "unlocked", features: ["addresses", "vault"] } });
   });
 });

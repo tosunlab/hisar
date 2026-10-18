@@ -3,6 +3,7 @@ import type {
   InlineMenuBroadcast,
   FillOutcome,
   FrameProbe,
+  ItemQuery,
   MatchResult,
   PopupState,
   SaveOfferAction,
@@ -10,6 +11,7 @@ import type {
 } from "../shared/messages";
 import {
   featureAddresses,
+  featureVault,
   HisarError,
   toHisarError,
   type AddressSummary,
@@ -17,6 +19,8 @@ import {
   type Credentials,
   type GenerateOptions,
   type HelloResult,
+  type ItemResult,
+  type ItemSummary,
   type LoginSummary,
   type OneTimeCode,
   type UpdateRequirement,
@@ -91,7 +95,13 @@ export class BackgroundController {
     if (!(await this.storage.getToken())) return { view: hello.state === "signed-out" ? "signed-out" : "not-paired" };
     try {
       const status = await this.client.request("status", {});
-      return { view: status.state, email: status.email, isOffline: status.isOffline, isAddressFillAvailable: this.isAddressFillAvailable() };
+      return {
+        view: status.state,
+        email: status.email,
+        isOffline: status.isOffline,
+        isAddressFillAvailable: this.isAddressFillAvailable(),
+        isVaultAvailable: this.isVaultAvailable(),
+      };
     } catch (error) {
       const hisarError = toHisarError(error);
       if (hisarError.code === "not-paired") {
@@ -236,6 +246,52 @@ export class BackgroundController {
   private async requireAddressFill(): Promise<void> {
     if (!this.hasHello) await this.request(() => this.client.connect());
     if (!this.isAddressFillAvailable()) throw new HisarError("invalid-request", "Update the Hisar app to fill addresses");
+  }
+
+  isVaultAvailable(): boolean {
+    return this.allAppFeature.includes(featureVault);
+  }
+
+  // The vault requests are answered only to the extension's own pages (router.ts): a page's content script never sees
+  // titles of other sites, or a secret it did not ask to fill.
+  async listItems(query: ItemQuery): Promise<ItemSummary[]> {
+    await this.requireVault();
+    const result = await this.request(() => this.client.request("items.list", query));
+    return result.items ?? [];
+  }
+
+  async getItem(vaultID: string, itemID: string): Promise<ItemResult> {
+    await this.requireVault();
+    return this.request(() => this.client.request("items.get", { vaultID, itemID }));
+  }
+
+  async revealItemField(vaultID: string, itemID: string, fieldID: string): Promise<string> {
+    await this.requireVault();
+    const result = await this.request(() => this.client.request("items.reveal", { vaultID, itemID, fieldID }));
+    return result.value;
+  }
+
+  async getItemCode(vaultID: string, itemID: string): Promise<OneTimeCode> {
+    await this.requireVault();
+    return this.request(() => this.client.request("items.code", { vaultID, itemID }));
+  }
+
+  // getItemIcon returns the website's icon as a data: URL, or "" when there is none.
+  async getItemIcon(url: string): Promise<string> {
+    if (!isWebUrl(url)) return "";
+    await this.requireVault();
+    const result = await this.request(() => this.client.request("items.icon", { url }));
+    return result.png ? `data:image/png;base64,${result.png}` : "";
+  }
+
+  async setItemFavorite(vaultID: string, itemID: string, isFavorite: boolean): Promise<void> {
+    await this.requireVault();
+    await this.request(() => this.client.request("items.favorite", { vaultID, itemID, isFavorite }));
+  }
+
+  private async requireVault(): Promise<void> {
+    if (!this.hasHello) await this.request(() => this.client.connect());
+    if (!this.isVaultAvailable()) throw new HisarError("invalid-request", "Update the Hisar app to browse your vaults");
   }
 
   async generatePassword(options: GenerateOptions): Promise<string> {
