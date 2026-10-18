@@ -108,6 +108,13 @@ data class PhoneApproval(
         return "Expires in %d:%02d".format(secondCount / 60, secondCount % 60)
     }
 
+    val icon: PhoneApprovalIcon
+        get() = when (kind) {
+            KIND_COMMAND_LINE -> PhoneApprovalIcon.TERMINAL
+            KIND_LAUNCHER -> PhoneApprovalIcon.LAUNCHER
+            else -> PhoneApprovalIcon.KEY
+        }
+
     val allDetailRow: List<DetailRow>
         get() {
             val appRow = DetailRow("App", appName, false)
@@ -147,6 +154,9 @@ data class PhoneApproval(
         const val EVENT_RESOLVED = "approval-resolved"
     }
 }
+
+/** The symbol of a request's kind: an SSH key, the command line, or an app such as Raycast. */
+enum class PhoneApprovalIcon { KEY, TERMINAL, LAUNCHER }
 
 // An icon that is not base64 is dropped, as the request is still worth answering without it.
 @OptIn(ExperimentalSerializationApi::class)

@@ -75,6 +75,7 @@ import com.tryhisar.hisar.model.ReceivedShareInvitation
 import com.tryhisar.hisar.model.VaultLogic
 import com.tryhisar.hisar.model.VaultSummary
 import com.tryhisar.hisar.model.WaitingShareInvitation
+import com.tryhisar.hisar.ui.approvals.pendingApprovalCardSection
 import com.tryhisar.hisar.ui.components.GlassButton
 import com.tryhisar.hisar.ui.components.LargeTitle
 import com.tryhisar.hisar.ui.components.PlainButton
@@ -114,8 +115,9 @@ private val allNewItemChoice = listOf(
 )
 
 /**
- * The Vaults tab's root, in the iPhone's section order: offline note, removed-vault notices, key warnings, vaults shared
- * with the user, organization invitations, favorites, vaults, one section per organization, By type and Tags.
+ * The Vaults tab's root, in the iPhone's section order: offline note, the Mac's waiting request, removed-vault notices,
+ * key warnings, vaults shared with the user, organization invitations, favorites, vaults, one section per organization,
+ * By type and Tags.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -123,6 +125,8 @@ fun VaultsHomeScreen(model: AppModel) {
     val data by model.unlockedData.collectAsStateWithLifecycle()
     val status by model.status.collectAsStateWithLifecycle()
     val isRefreshing by model.isRefreshing.collectAsStateWithLifecycle()
+    val allPendingApproval by model.approvals.allPendingApproval.collectAsStateWithLifecycle()
+    val isAnsweringApproval by model.approvals.isAnsweringApproval.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val stack = model.navigation.vaults
     var isNewMenuShown by remember { mutableStateOf(false) }
@@ -190,6 +194,7 @@ fun VaultsHomeScreen(model: AppModel) {
             LazyColumn(Modifier.fillMaxSize().testTag("vaults-list")) {
                 item(key = "title") { Box(Modifier.padding(horizontal = ScreenMargin)) { LargeTitle("Vaults", topPadding = 0.dp) } }
                 if (status.isOffline) cardSection("offline", listOf(Unit), rowKey = { "offline" }) { OfflineNote() }
+                pendingApprovalCardSection(model, allPendingApproval, isAnsweringApproval)
                 cardSection("removed", data.allRemovedVaultNotice, rowKey = { it.id }) { notice ->
                     RemovedVaultNoticeRow(notice.id, notice.message) { model.vaults.dismissRemovedVaultNotice(notice) }
                 }

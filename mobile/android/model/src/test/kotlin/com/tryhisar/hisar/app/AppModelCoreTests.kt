@@ -4,6 +4,7 @@ import com.tryhisar.hisar.model.BackendError
 import com.tryhisar.hisar.model.BackendEvent
 import com.tryhisar.hisar.model.FakeBackend
 import com.tryhisar.hisar.model.Member
+import com.tryhisar.hisar.model.PhoneApproval
 import com.tryhisar.hisar.model.ReceivedShareInvitation
 import com.tryhisar.hisar.model.UpdateRequirement
 import com.tryhisar.hisar.model.VaultStatus
@@ -92,10 +93,18 @@ class AppModelCoreTests {
         model.handleDidEnterBackground()
         harness.backend.allVault += VaultSummary(id = "new", name = "Added on the Mac", type = VaultSummary.TYPE_SHARED, role = Member.VAULT_ROLE_OWNER)
         harness.backend.allItemByVaultID["new"] = mutableListOf()
+        harness.backend.allPendingApproval = mutableListOf(
+            PhoneApproval(requestID = "posted-while-away", requesterDeviceName = "MacBook Pro", expiresAt = harness.currentDate.plusSeconds(60).toString(), kind = PhoneApproval.KIND_SSH),
+        )
+        model.approvals.refreshPendingApproval()
+        assertTrue(model.approvals.allPendingApproval.value.isEmpty(), "nothing is listed in the background")
+        harness.events.emit(BackendEvent.Approval(PhoneApproval.EVENT_REQUESTED, "posted-while-away"))
         model.handleWillEnterForeground()
         runCurrent()
         assertTrue("reconnectEvents" in harness.backend.allCallName, "the event stream is reconnected")
         assertNotNull(model.unlockedData.value.findVault("new"), "the vaults are listed again")
+        assertEquals(listOf("posted-while-away"), model.approvals.allPendingApproval.value.map { it.requestID })
+        assertNull(model.approvals.presentedApproval.value, "a request found on returning is listed, not pushed into a sheet")
     }
 
     @Test
@@ -223,11 +232,17 @@ class AppModelCoreTests {
     @Test
     fun testUpdateRequiredBlocksTheAppUntilTheServerAcceptsIt() = runTest {
         val harness = AppModelHarness(this)
+        harness.backend.allPendingApproval = mutableListOf(
+            PhoneApproval(requestID = "waiting", requesterDeviceName = "MacBook Pro", expiresAt = harness.currentDate.plusSeconds(60).toString(), kind = PhoneApproval.KIND_SSH),
+        )
         val model = harness.startUnlockedModel()
+        runCurrent()
+        assertEquals(1, model.approvals.allPendingApproval.value.size)
         val requirement = UpdateRequirement(currentVersion = "0.1.0", minimumVersion = "0.2.0", updateURL = "https://tryhisar.com/download")
         harness.backend.serverUpdateRequirement = requirement
         model.checkMinimumVersion()
         assertEquals(Screen.UpdateRequired(requirement), model.screen.value)
+        assertTrue(model.approvals.allPendingApproval.value.isEmpty())
 
         harness.backend.serverUpdateRequirement = null
         model.checkMinimumVersion()

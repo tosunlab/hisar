@@ -27,6 +27,7 @@ deploy/hisar.env
 /mobile/android/**/*.jks
 /mobile/android/**/*.keystore
 *.iml
+bugreport-*.zip
 xcuserdata/
 *.xcresult
 deploy/.env
