@@ -3,9 +3,10 @@
 // URL, the sink's address and the accounts' credentials and session tokens, then one JSON line per email the sink
 // receives. With --fresh it empties the database (it drops the public schema), signs up nobody and starts setup as
 // hisar-server serve does on an empty database: the first line holds the setup page's URL, and stderr has the setup
-// log line. HISAR_* variables override the instance settings as they do for hisar-server; it also reads
-// HISAR_PUBLIC_URL (default: its own URL), HISAR_TRUST_PROXY and, for the server release check only, the
-// HISAR_DESKTOP_UPDATE_GITHUB_* variables (repository default off).
+// log line. --seed-accounts N also inserts N accounts nobody can sign in with, for the account list's performance.
+// HISAR_* variables override the instance settings as they do for hisar-server; it also reads HISAR_PUBLIC_URL
+// (default: its own URL), HISAR_TRUST_PROXY and, for the server release check only, the HISAR_DESKTOP_UPDATE_GITHUB_*
+// variables (repository default off).
 package main
 
 import (
@@ -15,6 +16,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"flag"
+	"fmt"
 	"log"
 	"net"
 	"os"
@@ -25,10 +27,12 @@ import (
 	"syscall"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/apitypes"
+	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/session"
 	"github.com/tryhisar/hisar/server/internal/api"
 	"github.com/tryhisar/hisar/server/internal/desktopupdate"
@@ -69,6 +73,7 @@ func main() {
 	address := flag.String("addr", "127.0.0.1:0", "address to listen on")
 	version := flag.String("version", "dev", "the server version Overview shows")
 	isFresh := flag.Bool("fresh", false, "empty the database and start setup instead of signing up accounts")
+	extraAccountCount := flag.Int("seed-accounts", 0, "also insert this many accounts that cannot sign in, each with one device, for the account list's performance")
 	flag.Parse()
 	databaseURL := os.Getenv("HISAR_DATABASE_URL")
 	if databaseURL == "" {
@@ -152,6 +157,9 @@ func main() {
 	} else if firstLine, err = seedAccounts(ctx, server, baseURL, sink.Address()); err != nil {
 		log.Fatal(err)
 	}
+	if err := insertExtraAccounts(ctx, databaseURL, *extraAccountCount); err != nil {
+		log.Fatal(err)
+	}
 	outputMutex.Lock()
 	err = output.Encode(firstLine)
 	outputMutex.Unlock()
@@ -168,6 +176,38 @@ func emptyDatabase(ctx context.Context, databaseURL string) error {
 	}
 	defer connection.Close(ctx)
 	_, err = connection.Exec(ctx, `DROP SCHEMA public CASCADE; CREATE SCHEMA public`)
+	return err
+}
+
+// insertExtraAccounts inserts accounts straight into the database, with placeholder credentials nobody can sign in with
+// and one device each.
+func insertExtraAccounts(ctx context.Context, databaseURL string, count int) error {
+	if count <= 0 {
+		return nil
+	}
+	connection, err := pgx.Connect(ctx, databaseURL)
+	if err != nil {
+		return err
+	}
+	defer connection.Close(ctx)
+	suffix := make([]byte, 4)
+	rand.Read(suffix)
+	accountIDs := map[string]bool{}
+	for len(accountIDs) < count {
+		accountIDs[crypt.GenerateAccountID()] = true
+	}
+	accountRows, deviceRows := make([][]any, 0, count), make([][]any, 0, count)
+	placeholder := []byte{0}
+	for accountID := range accountIDs {
+		email := fmt.Sprintf("seeded-%d-%s@example.com", len(accountRows), hex.EncodeToString(suffix))
+		accountRows = append(accountRows, []any{accountID, email, "Seeded " + accountID, apitypes.RoleMember, []byte(`{}`), placeholder, placeholder, placeholder, placeholder, placeholder, placeholder})
+		deviceRows = append(deviceRows, []any{uuid.NewString(), accountID, "fixture", "go"})
+	}
+	if _, err := connection.CopyFrom(ctx, pgx.Identifier{"accounts"},
+		[]string{"id", "email", "name", "role", "argon2_params", "salt", "opaque_record", "enc_keyset", "kem_pub", "sign_pub", "kem_sig"}, pgx.CopyFromRows(accountRows)); err != nil {
+		return err
+	}
+	_, err = connection.CopyFrom(ctx, pgx.Identifier{"devices"}, []string{"id", "account_id", "name", "platform"}, pgx.CopyFromRows(deviceRows))
 	return err
 }
 
