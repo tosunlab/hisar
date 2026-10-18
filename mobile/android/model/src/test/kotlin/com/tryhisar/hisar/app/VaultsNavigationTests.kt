@@ -26,11 +26,11 @@ class VaultsNavigationTests {
         runCurrent()
         assertEquals(Tab.VAULTS, model.selectedTab.value)
         assertEquals(listOf<VaultsDestination>(VaultsDestination.Editor(request, opensSavedItem = true)), model.navigation.vaults.path.value)
-        assertNull(model.requestedEditor.value)
 
         val editor = model.navigation.vaults.path.value.single() as VaultsDestination.Editor
         model.navigation.finishEditor(model.navigation.vaults, editor, savedItemID = "item-1")
         assertEquals(listOf<VaultsDestination>(VaultsDestination.Item("personal", "item-1")), model.navigation.vaults.path.value)
+        assertNull(model.requestedEditor.value, "a closed editor's request is done")
     }
 
     @Test

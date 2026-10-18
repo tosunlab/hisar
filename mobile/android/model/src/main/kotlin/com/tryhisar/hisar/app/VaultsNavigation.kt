@@ -96,14 +96,16 @@ class VaultsNavigation(
         }
     }
 
+    // The request stays in requestedEditor until its editor closes, so a lock while it is open brings it back on unlock.
     private fun openRequestedEditor(request: EditorRequest) {
-        requestedEditor.value = null
         selectedTab.value = Tab.VAULTS
+        if (vaults.path.value.any { it is VaultsDestination.Editor && it.request === request }) return
         vaults.push(VaultsDestination.Editor(request, opensSavedItem = true))
     }
 
     /** Closes the editor on [stack]; a saved item opens in its place when the editor was opened to show it. */
     fun finishEditor(stack: NavigationStack, editor: VaultsDestination.Editor, savedItemID: String?) {
+        if (requestedEditor.value === editor.request) requestedEditor.value = null
         if (savedItemID != null && editor.opensSavedItem) {
             stack.replaceTop(VaultsDestination.Item(editor.request.vaultID, savedItemID))
         } else {

@@ -17,16 +17,13 @@ class VaultsModel(private val context: ModelContext) {
         context.updateUnlockedData { it.copy(allItemByVaultID = it.allItemByVaultID + (vaultID to allItem)) }
     }
 
-    suspend fun createVault(name: String): VaultSummary? {
-        val vault = context.perform { it.createVault(name) } ?: return null
-        addVault(vault)
-        return vault
+    // Creating, deleting and leaving close the screen that asked, so they run in the model's scope, not the screen's.
+    suspend fun createVault(name: String): VaultSummary? = context.runInModel {
+        context.perform { it.createVault(name) }?.also(::addVault)
     }
 
-    suspend fun createOrganizationVault(organizationID: String, teamID: String, name: String): VaultSummary? {
-        val vault = context.perform { it.createOrganizationVault(organizationID, teamID, name) } ?: return null
-        addVault(vault)
-        return vault
+    suspend fun createOrganizationVault(organizationID: String, teamID: String, name: String): VaultSummary? = context.runInModel {
+        context.perform { it.createOrganizationVault(organizationID, teamID, name) }?.also(::addVault)
     }
 
     private fun addVault(vault: VaultSummary) {
@@ -54,9 +51,9 @@ class VaultsModel(private val context: ModelContext) {
         return true
     }
 
-    suspend fun deleteVault(vaultID: String, request: VaultDeletionRequest): Boolean {
+    suspend fun deleteVault(vaultID: String, request: VaultDeletionRequest): Boolean = context.runInModel {
         val vaultName = context.unlockedData.value.findVault(vaultID)?.name ?: "the vault"
-        val result = context.perform { it.deleteVault(vaultID, request) } ?: return false
+        val result = context.perform { it.deleteVault(vaultID, request) } ?: return@runInModel false
         removeVaultLocally(vaultID)
         context.refreshAll()
         if (result.movedCount > 0) {
@@ -64,16 +61,16 @@ class VaultsModel(private val context: ModelContext) {
         } else {
             context.showNotice("Deleted $vaultName.")
         }
-        return true
+        true
     }
 
-    suspend fun leaveVault(vaultID: String): Boolean {
+    suspend fun leaveVault(vaultID: String): Boolean = context.runInModel {
         val vaultName = context.unlockedData.value.findVault(vaultID)?.name ?: "the vault"
-        context.perform { it.leaveVault(vaultID) } ?: return false
+        context.perform { it.leaveVault(vaultID) } ?: return@runInModel false
         removeVaultLocally(vaultID)
         context.refreshAll()
         context.showNotice("You left $vaultName.")
-        return true
+        true
     }
 
     private fun removeVaultLocally(vaultID: String) {
