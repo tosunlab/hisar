@@ -2,6 +2,7 @@ package com.tryhisar.hisar.autofill
 
 import android.app.PendingIntent
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.os.CancellationSignal
 import android.service.autofill.AutofillService
@@ -41,7 +42,8 @@ class HisarAutofillService : AutofillService() {
         }
         val task = executor.submit {
             val response = try {
-                buildResponse(form, Datasets(this, request.inlineSuggestionsRequest))
+                val inlineRequest = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) request.inlineSuggestionsRequest else null
+                buildResponse(form, Datasets(this, inlineRequest))
             } catch (error: Exception) {
                 Log.w("Hisar", "AutoFill could not answer", error)
                 null
