@@ -39,6 +39,9 @@ ui_test_add_account ITEM_DETAIL_ "android-item-detail-$(date +%s)-$RANDOM@exampl
 ui_test_add_account ITEM_CATEGORIES_ "android-item-categories-$(date +%s)-$RANDOM@example.com"
 ui_test_add_account ITEM_APP_LINK_ "android-item-app-link-$(date +%s)-$RANDOM@example.com"
 ui_test_add_account QR_SCANNER_ "android-qr-scanner-$(date +%s)-$RANDOM@example.com"
+for account in WEB CODE APP SAVE; do
+  ui_test_add_account "AUTOFILL_SERVICE_${account}_" "android-autofill-service-$(echo "$account" | tr A-Z a-z)-$(date +%s)-$RANDOM@example.com"
+done
 # The phone approval test signs in to an account whose Mac is played by hisar-ui-test-mac: it signs up first, then sends
 # the phone its requests and saves each answer it verified in the Personal vault.
 PHONE_APPROVAL_EMAIL="android-phone-approval-$(date +%s)-$RANDOM@example.com"

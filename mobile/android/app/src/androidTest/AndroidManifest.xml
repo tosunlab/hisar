@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Sign-in forms in the test APK's own package, which Hisar's AutoFill service fills in AutofillServiceUITests. -->
+    <application>
+        <activity
+            android:name="com.tryhisar.hisar.autofill.AutofillTestPageActivity"
+            android:exported="true"
+            android:label="Test page"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+        <activity
+            android:name="com.tryhisar.hisar.autofill.AutofillTestFormActivity"
+            android:exported="true"
+            android:label="Test form"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+    </application>
+
+</manifest>

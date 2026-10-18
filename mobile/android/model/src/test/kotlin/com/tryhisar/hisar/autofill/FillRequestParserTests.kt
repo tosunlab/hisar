@@ -53,6 +53,17 @@ class FillRequestParserTests {
     }
 
     @Test
+    fun testWebViewWithoutItsOwnAddressFindsEveryInputOfThePage() {
+        val inputs = listOf(
+            input("u", "type" to "text", "name" to "username", hints = listOf("username")).copy(webDomain = "accounts.example.com", webScheme = null),
+            input("p", "type" to "password", "name" to "password", hints = listOf("current-password")).copy(webDomain = "accounts.example.com", webScheme = null),
+        )
+        val webView = FormNode(htmlTag = "form", webDomain = "", children = inputs)
+        val form = FillRequestParser.parse(listOf(FormNode(children = listOf(webView))), chrome, browsers)
+        assertEquals(LoginForm(AutofillSource.Web("https", "accounts.example.com"), "u", "p", null), form)
+    }
+
+    @Test
     fun testNativeFieldsUseTheirHintsAndInputTypes() {
         val form = FillRequestParser.parse(
             listOf(
