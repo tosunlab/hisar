@@ -1058,7 +1058,8 @@ Developers, scripts and coding agents name secrets instead of copying them: `.en
 - **One-Time Codes** lists the items with a one-time code and the current code with its countdown.
 - **Generate Password** copies a password from the app's generator (24 characters, digits and symbols); **Generate Password with Options** shows the password, generates again when the length, digits or symbols change (⌘R), and copies (⌘⇧C) or pastes it.
 - **Lock Hisar** locks the app; it never starts the app to lock it.
-- The preference "Close Raycast after copying" (on by default) decides whether a copy closes Raycast or shows a toast. When a list command had to wait for the approval dialog, which takes the focus and so hides Raycast, the command opens itself again once, so the loaded list shows.
+- The preference "Close Raycast after copying" (on by default) decides whether a copy closes Raycast or shows a toast.
+- The approval dialog takes the focus, so Raycast hides its window, and Raycast does not let a command launch itself again. Once the user answered a launcher's dialog (not after a timeout or a closed connection), Hisar opens the launcher's app again (`open -a <bundle>`), which brings back Raycast's window with the command and its loaded list. The approval window always opens on the Space the user is on (`NSWindowCollectionBehaviorMoveToActiveSpace`).
 
 **Protocol.** After `hello`, `launcher.hello` turns the connection into a launcher connection. It may then send only `launcher.*` requests, and other connections may not send them (`invalid-request`). The app announces every launcher request type in `hello`'s `features`, and the extension checks the exact type before sending it, so an older app turns off only the commands that need what it lacks ("Update Hisar").
 
