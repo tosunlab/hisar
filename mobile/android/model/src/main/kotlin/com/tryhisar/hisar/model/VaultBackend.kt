@@ -1,5 +1,6 @@
 package com.tryhisar.hisar.model
 
+import com.tryhisar.hisar.autofill.LoginWebsite
 import java.io.File
 import kotlinx.io.bytestring.ByteString
 
@@ -78,6 +79,15 @@ interface VaultBackend {
     fun generatePassword(length: Int, isDigitIncluded: Boolean, isSymbolIncluded: Boolean): String
     fun listAllLoginForService(serviceIdentifier: String): List<LoginMatch>
     fun getLoginForService(vaultID: String, itemID: String, serviceIdentifier: String): LoginCredential
+
+    /** The logins linked to an Android app; a login matches only both the package and the certificate's SHA-256. */
+    fun listAllLoginForAndroidApp(packageName: String, certificateSHA256: String): List<LoginMatch>
+    fun getLoginForAndroidApp(vaultID: String, itemID: String, packageName: String, certificateSHA256: String): LoginCredential
+    fun getOneTimeCodeForAndroidApp(vaultID: String, itemID: String, packageName: String, certificateSHA256: String): OneTimeCode
+
+    /** The hosts of the logins' websites, for asking which of them vouch for an app in their Digital Asset Links. */
+    fun listAllLoginWebsite(): List<LoginWebsite>
+
     fun listAllPasskey(): List<StoredPasskey>
     fun listAllPasskeyForRelyingParty(relyingPartyID: String, allAllowedCredentialID: List<ByteString>): List<StoredPasskey>
     fun preparePasskeyRegistration(relyingPartyID: String, allExcludedCredentialID: List<ByteString>): PasskeyRegistrationOptions
