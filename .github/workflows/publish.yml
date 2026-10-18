@@ -51,6 +51,7 @@ jobs:
         if: inputs.app == 'server'
         run: |
           docker buildx imagetools inspect "$SERVER_IMAGE:$VERSION" >/dev/null || { echo "$SERVER_IMAGE:$VERSION does not exist; run Release server image for $TAG first"; exit 1; }
+          gh release view "$TAG" >/dev/null || { echo "the release $TAG does not exist; run Release server image for $TAG first"; exit 1; }
           docker buildx imagetools create -t "$SERVER_IMAGE:${VERSION%.*}" -t "$SERVER_IMAGE:latest" "$SERVER_IMAGE:$VERSION"
           echo "Published $SERVER_IMAGE:$VERSION as latest and ${VERSION%.*}"
 
@@ -85,7 +86,6 @@ jobs:
           gh release view "$TAG" --json assets --jq '.assets[].name' | grep -qx "hisar-extension-$VERSION.zip" || { echo "the release $TAG has no hisar-extension-$VERSION.zip; run Release extension for $TAG first"; exit 1; }
 
       - name: Mark the release as published and latest
-        if: inputs.app != 'server'
         run: |
           gh release edit "$TAG" --prerelease=false --latest
           echo "Published $TAG"

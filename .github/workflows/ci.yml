@@ -276,4 +276,6 @@ jobs:
           cache: npm
           cache-dependency-path: admin/package-lock.json
       - run: make test-admin
+      - name: Check that admin/src/themes.css matches assets/themes/themes.json
+        run: node scripts/themes/generate.ts && git config --global --add safe.directory "$GITHUB_WORKSPACE" && git diff --exit-code -- admin/src/themes.css
       - run: HISAR_DATABASE_URL="postgres://postgres:hisar@postgres:5432/hisar?sslmode=disable" make test-admin-end-to-end

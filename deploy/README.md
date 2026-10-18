@@ -6,10 +6,13 @@ listens on `127.0.0.1:8080` only; your nginx terminates TLS and proxies to it.
 ## Images
 
 Pushing a tag `server-<version>` (e.g. `server-0.1.7`) runs the GitHub Actions workflow "Release server image", which publishes
-`ghcr.io/tosunlab/hisar-server` as `:<version>` and `:sha-<commit>`, for linux/amd64 and linux/arm64, built from `deploy/Dockerfile`.
-Running the Publish workflow (app `server`, the tag) then points `:<major>.<minor>` and `:latest` at it; a custom build
-(`server-1.0.0-alpha-test`) can't be published. Running "Release server image" by hand on a branch without a tag pushes
-`:sha-<commit>` only. Pull requests build the same image into a throwaway registry and boot it, without pushing.
+`ghcr.io/tosunlab/hisar-server` as `:<version>` and `:sha-<commit>`, for linux/amd64 and linux/arm64, built from `deploy/Dockerfile`,
+and creates the GitHub prerelease `server-<version>` when the tag has none. Running the Publish workflow (app `server`, the tag)
+then points `:<major>.<minor>` and `:latest` at it and turns the prerelease into a release; only published releases make the
+admin dashboard say "Version <version> is available". A custom build (`server-1.0.0-alpha-test`) can't be published. For a tag
+pushed before the workflow created releases, run "Release server image" by hand with that tag first. Running it by hand on a
+branch without a tag pushes `:sha-<commit>` only. Pull requests build the same image into a throwaway registry and boot it,
+without pushing.
 
 The workflows push with their own `GITHUB_TOKEN`, so the registry needs no secrets. While the package is private, the server
 must log in once with a GitHub personal access token (classic) that has only the `read:packages` scope:
@@ -50,14 +53,26 @@ sudo nginx -t && sudo systemctl reload nginx
 curl https://<domain>/healthz       # ok
 ```
 
-## Invite yourself (admin)
+## Open the setup URL from the log
+
+On an empty database, `hisar-server serve` logs one line with a one-time setup URL:
 
 ```sh
-docker compose exec hisar hisar-server invite
+docker compose logs hisar | grep 'to create the first admin'
+# Open https://<domain>/admin/setup#<token> to create the first admin.
 ```
 
-It asks for the email address; the first invite defaults to the admin role. Open the printed link in the desktop app,
-the iPhone app, or the CLI (`hisar signup https://<domain>/invite/<token>`). The operator command needs no email setup.
+Open it in a browser. The dashboard creates the first admin in the browser (name, email and master password), shows the
+Secret Key and the **Download Emergency Kit** button, runs the server's checks (it continues past warnings, never past a
+failed check), and asks who can invite people. It ends on **Overview**, signed in as the new admin. The token sits in the
+URL fragment, so it never reaches nginx's access log or a `Referer` header. Each restart replaces it with a new one until
+the first account exists; a link from an earlier start answers "This setup link is no longer valid. Use the link in the
+latest server log."
+
+To start from the command line instead, run `docker compose exec hisar hisar-server invite`. It asks for the email
+address; the first invite defaults to the admin role. Open the printed link in the desktop app, the iPhone app, or the
+CLI (`hisar signup https://<domain>/invite/<token>`). Once that account exists the setup URL stops working, and opening
+`/admin/setup` while signed in as that admin finishes the remaining steps. Neither way needs email setup.
 
 ## Email (invites and sharing)
 
@@ -67,7 +82,15 @@ with someone who already has an account still works, and they see the invitation
 
 1. Get SMTP credentials from your mail provider for a sending address such as `noreply@<domain>`, and set up SPF and
    DKIM for that domain so the emails are delivered.
-2. In `.env` on the server, uncomment and fill in all five (the server refuses to start with only some of them):
+2. Sign in to the admin dashboard at `https://<domain>/admin`, open **Settings → Email**, fill in the host, port,
+   username, password and sender, click **Save**, then **Send test email…** to check them. The change applies at once.
+   The SMTP password is then stored in the database in plain text, not encrypted: anyone who can read the database or
+   its backups can read it. Changing the host, port or username later clears it, so enter it again in the same save.
+
+Or set them in `.env` on the server, which keeps the SMTP password out of the database. Any `HISAR_SMTP_*` variable
+there sets all of Email: the values saved in the dashboard are ignored, a variable left empty gives its default (port
+587), and the dashboard shows every Email field read-only with "Email is set by HISAR_SMTP_* variables on the server."
+With a host, the server needs a port, a sender and, with a username, a password, and refuses to start without them:
 
    ```sh
    HISAR_SMTP_HOST=smtp.example.com
@@ -77,10 +100,27 @@ with someone who already has an account still works, and they see the invitation
    HISAR_SMTP_FROM=Hisar <noreply@example.com>
    ```
 
-3. `chmod 600 .env && docker compose up -d`. The log says `email through smtp.example.com port 587`.
+Then `chmod 600 .env && docker compose up -d`. The log says `email through smtp.example.com port 587`.
 
 The server never sends credentials without TLS. The emails are plain text without tracking; failures are logged as
 `email not sent: …`, without the recipient's address.
+
+## Instance settings
+
+Admins change the server's settings in the admin dashboard under **Settings**, without a restart: **Email** (above),
+**Sign-up** (who can invite people: anyone with an account, or admins only), **App versions** (the minimum app versions
+of `docs/DESIGN.md` §8.7) and **Security** (session lifetime, auth burst, and how long item history, the audit log and
+expired invitations are kept; the audit log at least 30 days). They are stored in the `instance_settings` table. These
+variables in `.env` override a field and lock it in the dashboard (any of the Email variables locks all of Email);
+`compose.yaml` passes each of them to the server, and an empty value leaves the field to the dashboard:
+
+| Setting | Variable |
+|---|---|
+| Email | `HISAR_SMTP_HOST`, `HISAR_SMTP_PORT`, `HISAR_SMTP_USERNAME`, `HISAR_SMTP_PASSWORD`, `HISAR_SMTP_FROM` |
+| App versions | `HISAR_MINIMUM_VERSION_DESKTOP_MACOS`, `HISAR_MINIMUM_VERSION_IOS`, `HISAR_MINIMUM_VERSION_CLI`, `HISAR_MINIMUM_VERSION_EXTENSION` |
+| Auth burst | `HISAR_AUTH_BURST` |
+
+Run one server process per database: each process reads the settings at start and after its own saves.
 
 ## Desktop app updates
 

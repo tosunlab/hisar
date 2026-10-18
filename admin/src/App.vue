@@ -2,16 +2,24 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { auth, getErrorMessage, signOut } from "./api";
 import { findSection, sections } from "./sections";
+import SetupView from "./views/SetupView.vue";
 import SignInView from "./views/SignInView.vue";
 
 const currentPath = ref(window.location.pathname);
 const currentSection = computed(() => findSection(currentPath.value));
+const isSetupPage = computed(() => currentPath.value.replace(/\/+$/, "") === "/admin/setup");
 const isSigningOut = ref(false);
 const signOutError = ref("");
 
 function navigate(path: string): void {
   window.history.pushState(null, "", path);
   currentPath.value = path;
+}
+
+// leaveSetup opens the dashboard, signed in or at sign-in, and drops the setup invite from the address bar.
+function leaveSetup(): void {
+  window.history.replaceState(null, "", "/admin");
+  currentPath.value = "/admin";
 }
 
 function followHistory(): void {
@@ -35,7 +43,8 @@ async function submitSignOut(): Promise<void> {
 </script>
 
 <template>
-  <SignInView v-if="!auth.session" />
+  <SetupView v-if="isSetupPage" @leave="leaveSetup" />
+  <SignInView v-else-if="!auth.session" />
   <div v-else class="shell">
     <aside class="sidebar">
       <p class="product">Hisar · Admin dashboard</p>

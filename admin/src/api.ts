@@ -1,5 +1,5 @@
 import { reactive } from "vue";
-import { bridge } from "./bridge/bridge";
+import { bridge, type SignUpResult } from "./bridge/bridge";
 
 export interface AdminSession {
   token: string;
@@ -10,6 +10,25 @@ export interface AdminSession {
 
 export interface AdminServer {
   publicUrl: string;
+}
+
+export type CheckStatus = "ok" | "warning" | "failed";
+
+export interface InstanceCheck {
+  id: string;
+  title: string;
+  status: CheckStatus;
+  message: string;
+}
+
+export interface AdminHealth {
+  version: string;
+  // latestVersion is empty unless a newer server release exists.
+  latestVersion: string;
+  database: { ok: boolean; migrations: { name: string; appliedAt: string | null }[] };
+  counts: { accounts: number; vaults: number; items: number; shareLinks: number; pendingInvites: number };
+  storageBytes: number;
+  checks: InstanceCheck[];
 }
 
 export const notAdminMessage = "This account is not an admin on the Hisar server.";
@@ -31,20 +50,33 @@ function saveSession(session: AdminSession | null): void {
   auth.session = session;
 }
 
-async function request<T>(method: string, path: string, token: string | undefined = auth.session?.token): Promise<T> {
-  const response = await fetch(`/api/v1${path}`, { method, headers: token ? { Authorization: `Bearer ${token}` } : {} });
+export class APIError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+  }
+}
+
+export async function request<T>(method: string, path: string, { body, token = auth.session?.token }: { body?: unknown; token?: string } = {}): Promise<T> {
+  const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+  if (body !== undefined) {
+    headers["Content-Type"] = "application/json";
+  }
+  const response = await fetch(`/api/v1${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   if (response.status === 401 && token === auth.session?.token) {
     saveSession(null);
   }
   if (!response.ok) {
     const body = (await response.json().catch(() => ({}))) as { error?: string };
-    throw new Error(body.error ?? `The Hisar server answered ${response.status}.`);
+    throw new APIError(response.status, body.error ?? `The Hisar server answered ${response.status}.`);
   }
   return (response.status === 204 ? undefined : await response.json()) as T;
 }
 
 function revokeDevice(deviceId: string, token?: string): Promise<void> {
-  return request("DELETE", `/devices/${encodeURIComponent(deviceId)}`, token);
+  return request("DELETE", `/devices/${encodeURIComponent(deviceId)}`, { token });
 }
 
 async function revokeDeviceIgnoringFailure(deviceId: string, token: string): Promise<void> {
@@ -60,6 +92,13 @@ export async function signIn(email: string, secretKey: string, password: string)
   saveSession({ token: signedIn.token, accountId: signedIn.accountId, deviceId: signedIn.deviceId, name: signedIn.name });
 }
 
+// signUp creates the first admin with the setup invite and signs the dashboard in as that admin.
+export async function signUp(inviteToken: string, email: string, name: string, password: string): Promise<SignUpResult> {
+  const signedUp = await bridge.signUp(inviteToken, email, name, password);
+  saveSession({ token: signedUp.token, accountId: signedUp.accountId, deviceId: signedUp.deviceId, name: name.trim() });
+  return signedUp;
+}
+
 export async function signOut(): Promise<void> {
   if (auth.session) {
     await revokeDevice(auth.session.deviceId);
@@ -69,6 +108,14 @@ export async function signOut(): Promise<void> {
 
 export function getServer(): Promise<AdminServer> {
   return request("GET", "/admin/server");
+}
+
+export function getHealth(): Promise<AdminHealth> {
+  return request("GET", "/admin/health");
+}
+
+export function confirmSecretsBackup(): Promise<InstanceCheck> {
+  return request("POST", "/admin/health/secrets-backup");
 }
 
 export function getErrorMessage(error: unknown): string {

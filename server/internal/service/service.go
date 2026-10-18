@@ -8,6 +8,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/bytemare/opaque"
@@ -16,6 +17,7 @@ import (
 	"github.com/tryhisar/hisar/server/internal/mail"
 	"github.com/tryhisar/hisar/server/internal/ratelimit"
 	"github.com/tryhisar/hisar/server/internal/realtime"
+	"github.com/tryhisar/hisar/server/internal/settings"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
@@ -23,21 +25,25 @@ import (
 type Actor struct {
 	AccountID string
 	DeviceID  string
+	Role      string
 	IP        string
 	// TokenHash is the hash of the session token; credential changes keep this session signed in.
 	TokenHash []byte
 }
 
-// Config is what the service reads on every request; the server may change it before it serves.
+// Config is what the service reads on every request and never changes while it serves.
 type Config struct {
 	// PublicURL is the origin of the links in emails.
-	PublicURL  string
-	SessionTTL time.Duration
-	InviteTTL  time.Duration
-	// Mailer is nil when email is not configured.
-	Mailer mail.Mailer
-	// ShareAcceptedEmailDelay is how long an accepted share may wait for the owner's app before the inviter gets an email.
-	ShareAcceptedEmailDelay time.Duration
+	PublicURL string
+}
+
+// InstanceSettings is where the service reads the settings an admin edits: Current is the snapshot a save replaces
+// whole; Defaults and Environment let a save resolve the next one, and OnSave applies it outside the service.
+type InstanceSettings struct {
+	Current     *atomic.Pointer[settings.Settings]
+	Defaults    settings.Settings
+	Environment settings.Environment
+	OnSave      func(settings.Settings)
 }
 
 // Limiters are the per-account and per-IP limits of what accounts may do; tests replace them.
@@ -49,6 +55,7 @@ type Limiters struct {
 	ShareAcceptedEmail     *ratelimit.Limiter
 	ShareLinkAccount       *ratelimit.Limiter
 	Reauthentication       *ratelimit.Limiter
+	TestEmail              *ratelimit.Limiter
 }
 
 const (
@@ -58,7 +65,9 @@ const (
 	shareInvitationPerIPPerDay         = 100
 	shareAcceptedEmailPerInviterPerDay = 50
 	shareLinkPerAccountPerDay          = 100
-	DefaultShareAcceptedEmailDelay     = 2 * time.Minute
+	testEmailPerAccountBurst           = 5
+	defaultInviteTTL                   = 7 * 24 * time.Hour
+	defaultShareAcceptedEmailDelay     = 2 * time.Minute
 )
 
 func newLimiters() Limiters {
@@ -70,6 +79,8 @@ func newLimiters() Limiters {
 		ShareAcceptedEmail:     ratelimit.NewDaily(shareAcceptedEmailPerInviterPerDay),
 		ShareLinkAccount:       ratelimit.NewDaily(shareLinkPerAccountPerDay),
 		Reauthentication:       NewReauthenticationLimiter(),
+		// An admin's test emails: a few at once, then five a minute, since each one connects to a host the admin chose.
+		TestEmail: ratelimit.New(rate.Every(time.Minute/testEmailPerAccountBurst), testEmailPerAccountBurst),
 	}
 }
 
@@ -86,30 +97,43 @@ type Keys struct {
 }
 
 type Service struct {
-	config     *Config
-	store      *store.Store
-	events     *realtime.Broker
-	keys       Keys
-	loginCache *loginCache
-	// Limiters may be replaced before the server serves.
-	Limiters Limiters
+	config           Config
+	instanceSettings InstanceSettings
+	// settingsMutex orders saves, so the snapshot always follows the last stored document.
+	settingsMutex sync.Mutex
+	store         *store.Store
+	events        *realtime.Broker
+	keys          Keys
+	loginCache    *loginCache
+	// Limiters, InviteTTL, ShareAcceptedEmailDelay and NewMailer may be replaced before the server serves.
+	Limiters  Limiters
+	InviteTTL time.Duration
+	// ShareAcceptedEmailDelay is how long an accepted share may wait for the owner's app before the inviter gets an email.
+	ShareAcceptedEmailDelay time.Duration
+	// NewMailer sends with the given SMTP settings; it returns nil when they turn email off.
+	NewMailer func(settings.SMTP) mail.Mailer
 	// Approvals relays phone approvals between the devices of an account.
 	Approvals      *ApprovalRelay
 	backgroundWork sync.WaitGroup
 }
 
-// New reads config on every request, so the caller can change it, e.g. a test that attaches a mailer.
-func New(database *store.Store, events *realtime.Broker, keys Keys, config *Config) *Service {
+func New(database *store.Store, events *realtime.Broker, keys Keys, config Config, instanceSettings InstanceSettings) *Service {
 	return &Service{
-		config:     config,
-		store:      database,
-		events:     events,
-		keys:       keys,
-		loginCache: newLoginCache(time.Minute),
-		Limiters:   newLimiters(),
-		Approvals:  newApprovalRelay(),
+		config:                  config,
+		instanceSettings:        instanceSettings,
+		store:                   database,
+		events:                  events,
+		keys:                    keys,
+		loginCache:              newLoginCache(time.Minute),
+		Limiters:                newLimiters(),
+		InviteTTL:               defaultInviteTTL,
+		ShareAcceptedEmailDelay: defaultShareAcceptedEmailDelay,
+		NewMailer:               newSMTPMailer,
+		Approvals:               newApprovalRelay(),
 	}
 }
+
+func (s *Service) currentSettings() *settings.Settings { return s.instanceSettings.Current.Load() }
 
 // recordAudit keeps the trail of who changed what; a failure to record does not fail the request.
 func (s *Service) recordAudit(ctx context.Context, actor Actor, eventType string, detail any) {

@@ -1,7 +1,8 @@
 //go:build js && wasm
 
-// Command hisar-admin-wasm is the admin dashboard's crypto: Hisar's own sign-in and re-authentication, compiled to
-// WebAssembly and run in the dashboard's Web Worker. It sets globalThis.hisar, whose calls each return a Promise.
+// Command hisar-admin-wasm is the admin dashboard's crypto: Hisar's own sign-in, re-authentication and the first admin's
+// sign-up, compiled to WebAssembly and run in the dashboard's Web Worker. It sets globalThis.hisar, whose calls each
+// return a Promise.
 package main
 
 import (
@@ -16,6 +17,7 @@ import (
 	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
+	"github.com/tryhisar/hisar/core/emergencykit"
 	"github.com/tryhisar/hisar/core/session"
 )
 
@@ -29,10 +31,24 @@ type signInResult struct {
 	Name      string `json:"name"`
 }
 
+// signUpResult carries the Secret Key even when the Personal vault or the Emergency Kit failed, because the account
+// exists by then and the page must show the key. The kit itself is set on the result as a Uint8Array.
+type signUpResult struct {
+	Token              string `json:"token"`
+	AccountID          string `json:"accountId"`
+	DeviceID           string `json:"deviceId"`
+	SecretKey          string `json:"secretKey"`
+	PersonalVaultError string `json:"personalVaultError,omitempty"`
+	EmergencyKitError  string `json:"emergencyKitError,omitempty"`
+}
+
+const invalidSetupLinkMessage = "This setup link is no longer valid. Use the link in the latest server log."
+
 func main() {
 	hisar := js.Global().Get("Object").New()
 	hisar.Set("signIn", exportCall(signIn))
 	hisar.Set("reauthenticate", exportCall(reauthenticate))
+	hisar.Set("signUp", exportCall(signUp))
 	js.Global().Set("hisar", hisar)
 	select {}
 }
@@ -112,7 +128,7 @@ func signIn(ctx context.Context, arguments []string) (js.Value, error) {
 	return toJavaScript(signInResult{Token: signedIn.Client.Token, AccountID: signedIn.AccountID, DeviceID: signedIn.DeviceID, Role: signedIn.Role, Name: signedIn.Name})
 }
 
-// reauthenticate(token, email, secretKey, password) returns the proof that admin changes to accounts carry.
+// reauthenticate(token, email, secretKey, password) returns a re-authentication proof for the signed-in account.
 func reauthenticate(ctx context.Context, arguments []string) (js.Value, error) {
 	secretKey, err := parseSecretKey(arguments[2])
 	if err != nil {
@@ -127,4 +143,41 @@ func reauthenticate(ctx context.Context, arguments []string) (js.Value, error) {
 		return js.Undefined(), err
 	}
 	return toJavaScript(proof)
+}
+
+// signUp(inviteToken, email, name, password) signs the first admin up with the setup invite as the dashboard device and
+// makes the Emergency Kit. Once the account exists, which the client's token shows, it always answers the Secret Key:
+// with personalVaultError when the Personal vault failed and emergencyKitError when the kit failed, because the page is
+// then the only place the key can be read.
+func signUp(ctx context.Context, arguments []string) (js.Value, error) {
+	inviteToken, email, name := arguments[0], strings.TrimSpace(arguments[1]), strings.TrimSpace(arguments[2])
+	password := []byte(arguments[3])
+	defer clear(password)
+	client := newClient()
+	signedUp, secretKey, err := session.SignUp(ctx, client, inviteToken, email, name, password, dashboardDevice)
+	if err != nil && client.Token == "" {
+		if apiclient.IsStatus(err, http.StatusForbidden) {
+			return js.Undefined(), errors.New(invalidSetupLinkMessage)
+		}
+		return js.Undefined(), err
+	}
+	signedUp.Lock()
+	created := signUpResult{Token: client.Token, AccountID: signedUp.AccountID, DeviceID: signedUp.DeviceID, SecretKey: secretKey.Encode()}
+	if err != nil {
+		created.PersonalVaultError = describeError(err)
+	}
+	document, err := emergencykit.Generate(emergencykit.Kit{Name: name, Email: email, Server: client.BaseURL, SecretKey: created.SecretKey, CreatedAt: time.Now()})
+	if err != nil {
+		created.EmergencyKitError = err.Error()
+	}
+	result, err := toJavaScript(created)
+	if err != nil {
+		return js.Undefined(), err
+	}
+	if document != nil {
+		emergencyKit := js.Global().Get("Uint8Array").New(len(document))
+		js.CopyBytesToJS(emergencyKit, document)
+		result.Set("emergencyKitPdf", emergencyKit)
+	}
+	return result, nil
 }

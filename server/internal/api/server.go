@@ -6,8 +6,10 @@ import (
 	_ "embed"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
@@ -18,7 +20,9 @@ import (
 	"github.com/tryhisar/hisar/server/internal/desktopupdate"
 	"github.com/tryhisar/hisar/server/internal/ratelimit"
 	"github.com/tryhisar/hisar/server/internal/realtime"
+	"github.com/tryhisar/hisar/server/internal/serverupdate"
 	"github.com/tryhisar/hisar/server/internal/service"
+	"github.com/tryhisar/hisar/server/internal/settings"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
@@ -31,19 +35,23 @@ const (
 )
 
 type Config struct {
-	// Config holds what the service reads: the public URL, session and invite lifetimes, the mailer.
+	// Config holds what the service reads: the public URL.
 	service.Config
 	TrustProxy bool
-	// AuthBurst is how many auth requests one IP may make before being limited to one per 6 seconds.
-	AuthBurst int
+	// DefaultSettings are the instance settings before the stored ones and the environment; nil means settings.Defaults.
+	DefaultSettings *settings.Settings
+	// Environment overrides the stored instance settings, field by field; nil reads no variables.
+	Environment settings.Environment
 	// EventHeartbeatInterval keeps event streams alive through proxies and rechecks their session.
 	EventHeartbeatInterval time.Duration
 	// WriteTimeout limits writing one response; event streams extend it with every write.
 	WriteTimeout time.Duration
 	// DesktopUpdates is nil when the server has no update source.
 	DesktopUpdates *desktopupdate.Source
-	// MinimumVersions refuses older apps with 426; independent of the latest version offered for updates.
-	MinimumVersions MinimumVersions
+	// Version is hisar-server's release version, for Overview.
+	Version string
+	// ServerUpdates is nil when update checks are off.
+	ServerUpdates *serverupdate.Source
 }
 
 // Server answers HTTP: it parses requests, limits them per IP and hands them to the service.
@@ -51,6 +59,8 @@ type Server struct {
 	config  Config
 	events  *realtime.Broker
 	service *service.Service
+	// instanceSettings is the snapshot of the effective settings; a save replaces it whole.
+	instanceSettings atomic.Pointer[settings.Settings]
 
 	limiter              *ratelimit.Limiter
 	updateLimiter        *ratelimit.Limiter
@@ -59,24 +69,31 @@ type Server struct {
 	versionCheckLimiter  *ratelimit.Limiter
 }
 
+// NewServer reads the stored instance settings, when it has a database, and refuses settings that fail Validate.
 func NewServer(database *store.Store, secrets *Secrets, config Config) (*Server, error) {
-	if config.SessionTTL == 0 {
-		config.SessionTTL = 30 * 24 * time.Hour
+	defaultSettings := settings.Defaults()
+	if config.DefaultSettings != nil {
+		defaultSettings = *config.DefaultSettings
 	}
-	if config.InviteTTL == 0 {
-		config.InviteTTL = 7 * 24 * time.Hour
+	var storedSettings []byte
+	if database != nil {
+		var err error
+		if storedSettings, err = database.GetInstanceSettings(context.Background()); err != nil {
+			return nil, fmt.Errorf("read instance settings: %w", err)
+		}
 	}
-	if config.AuthBurst == 0 {
-		config.AuthBurst = 10
+	effectiveSettings, _, err := settings.Resolve(defaultSettings, storedSettings, config.Environment)
+	if err != nil {
+		return nil, err
+	}
+	if err := effectiveSettings.Validate(); err != nil {
+		return nil, fmt.Errorf("instance settings: %w", err)
 	}
 	if config.EventHeartbeatInterval == 0 {
 		config.EventHeartbeatInterval = eventHeartbeatInterval
 	}
 	if config.WriteTimeout == 0 {
 		config.WriteTimeout = 30 * time.Second
-	}
-	if config.ShareAcceptedEmailDelay == 0 {
-		config.ShareAcceptedEmailDelay = service.DefaultShareAcceptedEmailDelay
 	}
 	opaqueConfiguration := pake.NewConfig()
 	serverKeyMaterial, err := opaqueConfiguration.DecodeServerKeyMaterial(secrets.OpaqueKeyMaterial)
@@ -93,17 +110,24 @@ func NewServer(database *store.Store, secrets *Secrets, config Config) (*Server,
 	server := &Server{
 		config:               config,
 		events:               realtime.NewBroker(),
-		limiter:              ratelimit.New(rate.Every(6*time.Second), config.AuthBurst),
+		limiter:              ratelimit.New(rate.Every(6*time.Second), effectiveSettings.AuthBurst),
 		updateLimiter:        ratelimit.New(rate.Every(10*time.Second), 20),
 		shareLinkReadLimiter: newShareLinkReadLimiter(),
 		invitePageLimiter:    newInvitePageLimiter(),
 		versionCheckLimiter:  newVersionCheckLimiter(),
 	}
+	server.instanceSettings.Store(&effectiveSettings)
 	keys := service.Keys{OpaqueConfiguration: opaqueConfiguration, OpaqueServer: opaqueServer, HMACKey: secrets.HMACKey}
-	// The service reads the server's config, so a change before serving reaches it.
-	server.service = service.New(database, server.events, keys, &server.config.Config)
+	server.service = service.New(database, server.events, keys, config.Config, service.InstanceSettings{
+		Current: &server.instanceSettings, Defaults: defaultSettings, Environment: config.Environment,
+		// A new auth burst applies to the limiter at once, in the order of the saves.
+		OnSave: func(saved settings.Settings) { server.limiter.SetBurst(saved.AuthBurst) },
+	})
 	return server, nil
 }
+
+// Settings returns the effective instance settings of the moment.
+func (s *Server) Settings() settings.Settings { return *s.instanceSettings.Load() }
 
 // CreateInvite is the operator's invite: it returns the link instead of emailing it.
 func (s *Server) CreateInvite(ctx context.Context, email, role string, createdBy *string) (*apitypes.InviteResponse, error) {
@@ -208,7 +232,10 @@ func (s *Server) CreateApp() *fiber.App {
 	apiGroup.Get("/desktop/updates/:version/:file", s.limitUpdateRate, s.requireSession, s.handleDownloadDesktopUpdate)
 
 	adminGroup := apiGroup.Group("/admin")
-	adminGroup.Get("/server", s.requireSession, requireAdmin, s.handleGetAdminServer)
+	s.registerAdminServerRoutes(adminGroup)
+	s.registerAdminSettingsRoutes(adminGroup)
+	s.registerAdminHealthRoutes(adminGroup)
+	s.registerSetupRoutes(apiGroup, adminGroup)
 
 	return app
 }
@@ -295,7 +322,7 @@ func getSession(c fiber.Ctx) *service.Session {
 func (s *Server) getActor(c fiber.Ctx) service.Actor {
 	actor := service.Actor{IP: s.getClientIP(c)}
 	if currentSession, isSignedIn := c.Locals(ctxKey{}).(*service.Session); isSignedIn {
-		actor.AccountID, actor.DeviceID, actor.TokenHash = currentSession.AccountID, currentSession.DeviceID, currentSession.TokenHash
+		actor.AccountID, actor.DeviceID, actor.TokenHash, actor.Role = currentSession.AccountID, currentSession.DeviceID, currentSession.TokenHash, currentSession.Role
 	}
 	return actor
 }
@@ -306,11 +333,13 @@ func (s *Server) requireSession(c fiber.Ctx) error {
 		return createAPIError(fiber.StatusUnauthorized, "unauthorized")
 	}
 	currentSession, err := s.service.Authenticate(c.Context(), token)
-	if err != nil {
-		if !errors.Is(err, store.ErrNotFound) {
-			log.Printf("session lookup: %v", err)
-		}
+	if errors.Is(err, store.ErrNotFound) {
 		return createAPIError(fiber.StatusUnauthorized, "unauthorized")
+	}
+	// A database that does not answer is not a signed-out session: apps keep their session and treat 503 as unreachable.
+	if err != nil {
+		log.Printf("session lookup: %v", err)
+		return service.ErrDatabaseUnavailable
 	}
 	c.Locals(ctxKey{}, currentSession)
 	return c.Next()
@@ -321,10 +350,6 @@ func requireAdmin(c fiber.Ctx) error {
 		return service.ErrAdminOnly
 	}
 	return c.Next()
-}
-
-func (s *Server) handleGetAdminServer(c fiber.Ctx) error {
-	return c.JSON(s.service.GetAdminServer())
 }
 
 func (s *Server) limitRate(c fiber.Ctx) error {

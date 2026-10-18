@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"log"
 	"strings"
 	"sync"
 	"time"
@@ -50,7 +51,7 @@ type Session struct {
 
 // Authenticate returns the session of a bearer token, or ErrUnauthorized.
 func (s *Service) Authenticate(ctx context.Context, token string) (*Session, error) {
-	stored, err := s.store.GetSessionByHash(ctx, hashToken(token), s.config.SessionTTL)
+	stored, err := s.store.GetSessionByHash(ctx, hashToken(token), s.currentSettings().SessionLifetime.Duration())
 	if err != nil {
 		return nil, err
 	}
@@ -59,7 +60,7 @@ func (s *Service) Authenticate(ctx context.Context, token string) (*Session, err
 
 // IsSessionValid reports whether a session is still signed in, so a long event stream can end when it is not.
 func (s *Service) IsSessionValid(ctx context.Context, tokenHash []byte) bool {
-	_, err := s.store.GetSessionByHash(ctx, tokenHash, s.config.SessionTTL)
+	_, err := s.store.GetSessionByHash(ctx, tokenHash, s.currentSettings().SessionLifetime.Duration())
 	return err == nil
 }
 
@@ -83,14 +84,25 @@ func (s *Service) Prelogin(ctx context.Context, email string) (apitypes.Prelogin
 	return apitypes.PreloginResponse{Salt: account.Salt, Argon2: argon2Params}, nil
 }
 
-func (s *Service) checkInvite(ctx context.Context, token, email string) bool {
+// checkInvite accepts a usable invite for the email, or a setup invite, which has no email, for any valid email.
+func (s *Service) checkInvite(ctx context.Context, token, email string) error {
 	invite, err := s.store.GetInviteByHash(ctx, hashToken(token))
-	return err == nil && invite.Email == apitypes.NormalizeEmail(email)
+	if err != nil {
+		return errInvalidInvite
+	}
+	if invite.Email == "" {
+		_, err := parseEmail(email)
+		return err
+	}
+	if invite.Email != apitypes.NormalizeEmail(email) {
+		return errInvalidInvite
+	}
+	return nil
 }
 
 func (s *Service) RegisterStart(ctx context.Context, request *apitypes.RegisterStartRequest) (apitypes.RegisterStartResponse, error) {
-	if !s.checkInvite(ctx, request.Invite, request.Email) {
-		return apitypes.RegisterStartResponse{}, errInvalidInvite
+	if err := s.checkInvite(ctx, request.Invite, request.Email); err != nil {
+		return apitypes.RegisterStartResponse{}, err
 	}
 	if !crypt.IsValidAccountID(request.AccountID) {
 		return apitypes.RegisterStartResponse{}, newError(KindInvalid, "invalid account ID")
@@ -111,8 +123,8 @@ func (s *Service) RegisterStart(ctx context.Context, request *apitypes.RegisterS
 
 func (s *Service) RegisterFinish(ctx context.Context, actor Actor, request *apitypes.RegisterFinishRequest) (apitypes.SessionResponse, error) {
 	email := apitypes.NormalizeEmail(request.Email)
-	if !s.checkInvite(ctx, request.Invite, email) {
-		return apitypes.SessionResponse{}, errInvalidInvite
+	if err := s.checkInvite(ctx, request.Invite, email); err != nil {
+		return apitypes.SessionResponse{}, err
 	}
 	switch {
 	case !crypt.IsValidAccountID(request.AccountID),
@@ -150,13 +162,16 @@ func (s *Service) RegisterFinish(ctx context.Context, actor Actor, request *apit
 		return apitypes.SessionResponse{}, err
 	}
 	s.recordAudit(ctx, Actor{AccountID: account.ID, DeviceID: device.ID, IP: actor.IP}, "signup", map[string]string{"email": email, "role": account.Role})
+	if err := s.finishAdminStep(ctx, account.ID); err != nil {
+		log.Printf("setup: %v", err)
+	}
 	return apitypes.SessionResponse{Token: token, AccountID: account.ID, DeviceID: device.ID}, nil
 }
 
 func (s *Service) newSession(accountID string, deviceInfo apitypes.DeviceInfo) (string, *store.Device, *store.Session) {
 	token := generateToken()
 	device := &store.Device{ID: uuid.NewString(), AccountID: accountID, Name: deviceInfo.Name, Platform: deviceInfo.Platform}
-	newSession := &store.Session{TokenHash: hashToken(token), AccountID: accountID, DeviceID: device.ID, ExpiresAt: time.Now().Add(s.config.SessionTTL)}
+	newSession := &store.Session{TokenHash: hashToken(token), AccountID: accountID, DeviceID: device.ID, ExpiresAt: time.Now().Add(s.currentSettings().SessionLifetime.Duration())}
 	return token, device, newSession
 }
 

@@ -12,13 +12,27 @@ export interface ReauthenticationProof {
   ke3: string;
 }
 
+// SignUpResult always holds the Secret Key once the account exists. personalVaultError says the Personal vault failed;
+// emergencyKitError replaces the kit when it failed.
+export interface SignUpResult {
+  token: string;
+  accountId: string;
+  deviceId: string;
+  secretKey: string;
+  personalVaultError?: string;
+  emergencyKitPdf?: Uint8Array<ArrayBuffer>;
+  emergencyKitError?: string;
+}
+
 export type BridgeRequest =
   | { type: "signIn"; email: string; secretKey: string; password: string }
-  | { type: "reauthenticate"; token: string; email: string; secretKey: string; password: string };
+  | { type: "reauthenticate"; token: string; email: string; secretKey: string; password: string }
+  | { type: "signUp"; inviteToken: string; email: string; name: string; password: string };
 
 export interface BridgeResult {
   signIn: SignInResult;
   reauthenticate: ReauthenticationProof;
+  signUp: SignUpResult;
 }
 
 export type WorkerRequest = BridgeRequest & { id: number };
@@ -64,6 +78,10 @@ export class Bridge {
 
   reauthenticate(token: string, email: string, secretKey: string, password: string): Promise<ReauthenticationProof> {
     return this.call({ type: "reauthenticate", token, email, secretKey, password });
+  }
+
+  signUp(inviteToken: string, email: string, name: string, password: string): Promise<SignUpResult> {
+    return this.call({ type: "signUp", inviteToken, email, name, password });
   }
 
   private call<Type extends BridgeRequest["type"]>(request: Extract<BridgeRequest, { type: Type }>): Promise<BridgeResult[Type]> {

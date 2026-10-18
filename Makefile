@@ -49,8 +49,9 @@ test-end-to-end: build
 	go build -o bin/hisar-fake-github ./server/cmd/hisar-fake-github
 	./scripts/test-end-to-end.sh
 
+# VERSION=1.2.3 builds hisar-server 1.2.3, as the server-<version> release workflow does; without it the version is dev.
 docker:
-	docker build -f deploy/Dockerfile -t hisar-server:dev .
+	docker build -f deploy/Dockerfile --build-arg VERSION=$(or $(VERSION),dev) -t hisar-server:$(or $(VERSION),dev) .
 
 install-wails:
 	go install github.com/wailsapp/wails/v3/cmd/wails3@$(WAILS_VERSION)

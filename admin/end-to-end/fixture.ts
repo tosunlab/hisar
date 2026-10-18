@@ -9,23 +9,64 @@ export interface FixtureAccount {
   email: string;
   password: string;
   secretKey: string;
+  token: string;
 }
+
 
 export interface AdminPageFixture extends FixtureAccount {
   baseURL: string;
+  smtpSink: string;
   members: FixtureAccount[];
+}
+
+// FreshAdminPageFixture is the first line of a fixture started with -fresh: an empty server that waits for setup.
+export interface FreshAdminPageFixture {
+  baseURL: string;
+  smtpSink: string;
+  setupURL: string;
+}
+
+// ReceivedEmail is a later line: one email the fixture's SMTP sink received.
+export interface ReceivedEmail {
+  recipients: string[];
+  data: string;
+}
+
+export interface RunningFixture<Fixture = AdminPageFixture> {
+  fixture: Fixture;
+  fixtureProcess: ChildProcess;
+  receivedEmails: ReceivedEmail[];
+  // logLines is the fixture's stderr so far, which it also passes through.
+  logLines: string[];
 }
 
 const fixtureBinary = process.env.HISAR_ADMIN_PAGE_FIXTURE ?? resolve(import.meta.dirname, "../../bin/hisar-admin-page-fixture");
 const screenshotDirectory = process.env.ADMIN_SCREENSHOT_DIRECTORY ?? "";
 
-export async function startAdminPageFixture(): Promise<{ fixture: AdminPageFixture; fixtureProcess: ChildProcess }> {
-  const fixtureProcess = spawn(fixtureBinary, ["-addr", process.env.ADMIN_PAGE_ADDRESS ?? "127.0.0.1:0"], { stdio: ["ignore", "pipe", "inherit"] });
-  const { promise, resolve: resolveFixture, reject } = Promise.withResolvers<AdminPageFixture>();
-  createInterface({ input: fixtureProcess.stdout! }).once("line", (line) => resolveFixture(JSON.parse(line) as AdminPageFixture));
+export async function startAdminPageFixture<Fixture = AdminPageFixture>(environment: Record<string, string> = {}, flags: string[] = []): Promise<RunningFixture<Fixture>> {
+  const fixtureProcess = spawn(fixtureBinary, ["-addr", process.env.ADMIN_PAGE_ADDRESS ?? "127.0.0.1:0", ...flags], {
+    stdio: ["ignore", "pipe", "pipe"],
+    env: { ...process.env, ...environment },
+  });
+  const { promise, resolve: resolveFixture, reject } = Promise.withResolvers<Fixture>();
+  const receivedEmails: ReceivedEmail[] = [];
+  const logLines: string[] = [];
+  let isFirstLine = true;
+  createInterface({ input: fixtureProcess.stdout! }).on("line", (line) => {
+    if (isFirstLine) {
+      isFirstLine = false;
+      resolveFixture(JSON.parse(line) as Fixture);
+      return;
+    }
+    receivedEmails.push((JSON.parse(line) as { receivedEmail: ReceivedEmail }).receivedEmail);
+  });
+  createInterface({ input: fixtureProcess.stderr! }).on("line", (line) => {
+    logLines.push(line);
+    process.stderr.write(`${line}\n`);
+  });
   fixtureProcess.once("exit", (code) => reject(new Error(`the fixture server exited with ${code}`)));
   fixtureProcess.once("error", reject);
-  return { fixture: await promise, fixtureProcess };
+  return { fixture: await promise, fixtureProcess, receivedEmails, logLines };
 }
 
 export async function fillSignIn(page: Page, account: FixtureAccount, password = account.password): Promise<void> {

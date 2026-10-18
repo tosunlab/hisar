@@ -224,6 +224,10 @@ func (server *fakeAPIServer) addSharingRoutes(mux *http.ServeMux) {
 			writeJSON(writer, http.StatusNotImplemented, apitypes.Error{Error: "email is not configured on this server"})
 			return
 		}
+		if server.isInviteAdminsOnly && server.role != apitypes.RoleAdmin {
+			writeJSON(writer, http.StatusForbidden, apitypes.Error{Error: "Only admins can invite people to the Hisar server."})
+			return
+		}
 		server.invitedEmails = append(server.invitedEmails, inviteRequest.Email)
 		writeJSON(writer, http.StatusAccepted, apitypes.InvitationSentResponse{Message: apitypes.InvitationSentMessage})
 	})
@@ -963,6 +967,15 @@ func TestInvitePerson(t *testing.T) {
 	if err := service.InvitePerson("other@example.com"); err != nil {
 		t.Errorf("a member's invite: %v", err)
 	}
+	test.apiServer.mutex.Lock()
+	test.apiServer.isInviteAdminsOnly = true
+	test.apiServer.mutex.Unlock()
+	if err := service.InvitePerson("refused@example.com"); !errors.Is(err, errInviteAdminsOnly) || err.Error() != "Only admins can invite people to the Hisar server." {
+		t.Errorf("a member's invite under admins only: %v", err)
+	}
+	test.apiServer.mutex.Lock()
+	test.apiServer.isInviteAdminsOnly = false
+	test.apiServer.mutex.Unlock()
 	test.apiServer.mutex.Lock()
 	test.apiServer.isEmailUnavailable = true
 	test.apiServer.mutex.Unlock()

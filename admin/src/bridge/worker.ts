@@ -10,6 +10,7 @@ declare class Go {
 declare const hisar: {
   signIn(email: string, secretKey: string, password: string): Promise<BridgeResult["signIn"]>;
   reauthenticate(token: string, email: string, secretKey: string, password: string): Promise<BridgeResult["reauthenticate"]>;
+  signUp(inviteToken: string, email: string, name: string, password: string): Promise<BridgeResult["signUp"]>;
 };
 
 // The Go program sets globalThis.hisar before it first blocks, so it is ready once run has started.
@@ -25,6 +26,8 @@ function callHisar(request: BridgeRequest): Promise<BridgeResult[keyof BridgeRes
       return hisar.signIn(request.email, request.secretKey, request.password);
     case "reauthenticate":
       return hisar.reauthenticate(request.token, request.email, request.secretKey, request.password);
+    case "signUp":
+      return hisar.signUp(request.inviteToken, request.email, request.name, request.password);
   }
 }
 

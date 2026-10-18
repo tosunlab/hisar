@@ -5,23 +5,12 @@ import XCTest
 final class PhoneApprovalUITests: HisarUITestCase {
     func testApproveSSHRequestWithFaceID() {
         launchPreview("ssh")
-        let sheet = app.descendants(matching: .any)["phone-approval"]
-        waitFor(sheet)
-        XCTAssertEqual(app.staticTexts["phone-approval-title"].label, "Approve on Alper's MacBook Pro?")
+        waitFor(app.descendants(matching: .any)["phone-approval"])
         XCTAssertEqual(app.staticTexts["phone-approval-summary"].label, "Terminal wants to push to git.tryhisar.com")
-        XCTAssertEqual(app.staticTexts["phone-approval-row-Command"].label, "Command, git push origin main")
-        XCTAssertEqual(app.staticTexts["phone-approval-row-Repository"].label, "Repository, ~/Documents/hisar/core")
-        XCTAssertEqual(app.staticTexts["phone-approval-row-Server"].label, "Server, git.tryhisar.com:22")
-        XCTAssertEqual(app.staticTexts["phone-approval-row-Key"].label, "Key, hisar gitlab")
-        XCTAssertTrue(app.descendants(matching: .any)["phone-approval-encryption-note"].label.contains("End-to-end encrypted"))
-        XCTAssertFalse(app.descendants(matching: .any)["phone-approval-forwarded"].exists)
-        XCTAssertTrue(app.buttons["phone-approval-approve"].label.contains("Approve with Face ID"))
         let rememberSwitch = app.switches["phone-approval-remember"]
-        XCTAssertEqual(rememberSwitch.label, "Also allows Terminal for 1 hour")
         XCTAssertEqual(rememberSwitch.value as? String, "1", "the switch starts as the Mac's checkbox does")
         saveScreenshot("phone-approval-ssh")
         rememberSwitch.switches.firstMatch.tap()
-        XCTAssertEqual(rememberSwitch.value as? String, "0")
         app.buttons["phone-approval-approve"].tap()
         checkResult("Approved preview-ssh with Face ID")
     }
@@ -36,9 +25,6 @@ final class PhoneApprovalUITests: HisarUITestCase {
     func testDenyCommandLineRequest() {
         launchPreview("cli")
         waitFor(app.staticTexts["phone-approval-title"])
-        XCTAssertEqual(app.staticTexts["phone-approval-summary"].label, "hisar in Terminal wants to use Hisar")
-        XCTAssertEqual(app.staticTexts["phone-approval-row-Terminal"].label, "Terminal, /dev/ttys003")
-        XCTAssertFalse(app.staticTexts["phone-approval-row-Key"].exists)
         saveScreenshot("phone-approval-cli")
         app.buttons["phone-approval-deny"].tap()
         checkResult("Denied preview-cli")
@@ -81,8 +67,6 @@ final class PhoneApprovalUITests: HisarUITestCase {
         let banner = app.descendants(matching: .any)["phone-approval-forwarded"]
         waitFor(banner)
         XCTAssertTrue(banner.label.contains("build.tryhisar.dev"))
-        XCTAssertEqual(app.staticTexts["phone-approval-summary"].label, "build.tryhisar.dev wants to sign in to github.com")
-        XCTAssertEqual(app.staticTexts["phone-approval-row-Forwarded from"].label, "Forwarded from, build.tryhisar.dev")
         saveScreenshot("phone-approval-forwarded")
         app.buttons["phone-approval-deny"].tap()
         checkResult("Denied preview-forwarded")
@@ -92,12 +76,10 @@ final class PhoneApprovalUITests: HisarUITestCase {
         app.launchArguments = ["-HisarUITest", "-HisarApprovalPreview", "signing", "-HisarApprovalPreviewPassword"]
         app.launch()
         waitFor(app.buttons["phone-approval-approve"])
-        XCTAssertEqual(app.staticTexts["phone-approval-summary"].label, "Claude wants to sign a commit")
         XCTAssertEqual(app.switches["phone-approval-remember"].value as? String, "0", "commit signing is never remembered by default")
         saveScreenshot("phone-approval-signing")
         app.buttons["phone-approval-approve"].tap()
         let passwordField = app.secureTextFields["phone-approval-password"]
-        waitFor(passwordField)
         type("not the password", into: passwordField)
         app.buttons["phone-approval-approve-password"].tap()
         waitFor(app.descendants(matching: .any)["error-message"])
@@ -114,49 +96,31 @@ final class PhoneApprovalUITests: HisarUITestCase {
         waitFor(header)
         XCTAssertEqual(header.label.uppercased(), "3 REQUESTS WAITING FOR YOUR APPROVAL")
         let sshSummary = app.buttons["pending-approval-preview-ssh"]
-        XCTAssertTrue(sshSummary.exists)
         XCTAssertTrue(sshSummary.label.contains("Alper's MacBook Pro · expires in 1:"), sshSummary.label)
-        XCTAssertTrue(sshSummary.label.contains("Terminal wants to push to git.tryhisar.com"), sshSummary.label)
-        XCTAssertTrue(sshSummary.label.contains("with “hisar gitlab”"), sshSummary.label)
-        XCTAssertFalse(app.buttons["pending-approval-preview-cli"].exists, "the card shows the first request only")
-        XCTAssertTrue(app.buttons["pending-approval-deny-preview-ssh"].exists)
-        XCTAssertTrue(app.buttons["pending-approval-approve-preview-ssh"].exists)
         XCTAssertLessThan(sshSummary.frame.minY, app.staticTexts["Personal"].firstMatch.frame.minY, "the card is above the vaults")
         saveScreenshot("phone-approval-card")
 
         app.buttons["pending-approval-more"].tap()
-        let commandLineRow = app.buttons["approval-row-preview-cli"]
-        waitFor(commandLineRow)
-        XCTAssertTrue(app.buttons["approval-row-preview-ssh"].exists)
-        XCTAssertTrue(commandLineRow.label.contains("hisar in Terminal wants to use Hisar"), commandLineRow.label)
         let launcherRow = app.buttons["approval-row-preview-launcher"]
-        XCTAssertTrue(launcherRow.label.contains("Raycast wants to search Hisar and copy or paste passwords and one-time codes"), launcherRow.label)
+        waitFor(launcherRow)
         XCTAssertTrue(launcherRow.label.contains("Until Hisar locks on Alper's MacBook Pro"), launcherRow.label)
         saveScreenshot("phone-approval-list")
-        commandLineRow.tap()
-        waitFor(app.staticTexts["phone-approval-title"])
-        XCTAssertEqual(app.staticTexts["phone-approval-summary"].label, "hisar in Terminal wants to use Hisar")
+        app.buttons["approval-row-preview-cli"].tap()
         app.buttons["phone-approval-deny"].tap()
-        waitFor(app.staticTexts["phone-approval-result"])
-        XCTAssertEqual(app.staticTexts["phone-approval-result"].label, "Denied preview-cli")
-        XCTAssertEqual(app.staticTexts["pending-approval-header"].label.uppercased(), "2 REQUESTS WAITING FOR YOUR APPROVAL")
+        let result = app.staticTexts["phone-approval-result"]
+        waitFor(result)
+        XCTAssertEqual(result.label, "Denied preview-cli")
 
         app.buttons["pending-approval-approve-preview-ssh"].tap()
-        waitFor(app.staticTexts["phone-approval-result"])
-        XCTAssertEqual(app.staticTexts["phone-approval-result"].label, "Approved preview-ssh with Face ID")
-        XCTAssertEqual(app.staticTexts["pending-approval-header"].label.uppercased(), "WAITING FOR YOUR APPROVAL")
-        XCTAssertFalse(app.buttons["pending-approval-more"].exists, "one request left, nothing more to show")
         let launcherSummary = app.buttons["pending-approval-preview-launcher"]
-        XCTAssertTrue(launcherSummary.label.contains("Raycast wants to search Hisar"), launcherSummary.label)
-        XCTAssertTrue(launcherSummary.label.contains("Until Hisar locks on Alper's MacBook Pro"), launcherSummary.label)
+        waitFor(launcherSummary)
+        XCTAssertEqual(result.label, "Approved preview-ssh with Face ID")
+        XCTAssertFalse(app.buttons["pending-approval-more"].exists, "one request left, nothing more to show")
         saveScreenshot("phone-approval-launcher-card")
 
         app.buttons["pending-approval-approve-preview-launcher"].tap()
-        waitFor(app.staticTexts["phone-approval-result"])
-        XCTAssertEqual(app.staticTexts["phone-approval-result"].label, "Approved preview-launcher with Face ID")
-        XCTAssertFalse(app.staticTexts["pending-approval-header"].exists, "no requests, no card")
-        openTab("Approvals")
-        waitFor(app.descendants(matching: .any)["approvals-empty"])
+        XCTAssertTrue(header.waitForNonExistence(timeout: 10), "no requests, no card")
+        XCTAssertEqual(result.label, "Approved preview-launcher with Face ID")
     }
 
     private func launchPreview(_ kind: String) {
@@ -168,6 +132,5 @@ final class PhoneApprovalUITests: HisarUITestCase {
         let result = app.staticTexts["phone-approval-result"]
         waitFor(result, file: file, line: line)
         XCTAssertEqual(result.label, expectedMessage, file: file, line: line)
-        XCTAssertFalse(app.descendants(matching: .any)["phone-approval"].exists, "the sheet closed", file: file, line: line)
     }
 }

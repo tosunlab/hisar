@@ -361,7 +361,7 @@ func TestAcceptedShareTellsInviterAndRecipient(t *testing.T) {
 	baseURL, server, _ := setupServer(t)
 	ctx := context.Background()
 	recorder := attachMailRecorder(server)
-	server.config.ShareAcceptedEmailDelay = 200 * time.Millisecond
+	server.service.ShareAcceptedEmailDelay = 200 * time.Millisecond
 	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", apitypes.RoleAdmin)
 	bob := signUpTestAccount(t, ctx, server, baseURL, "bob@example.com", apitypes.RoleMember)
 	carol := signUpTestAccount(t, ctx, server, baseURL, "carol@example.com", apitypes.RoleMember)
@@ -417,7 +417,7 @@ func TestAcceptedShareTellsInviterAndRecipient(t *testing.T) {
 	}
 
 	t.Run("no email when the owner's app completes in time", func(t *testing.T) {
-		server.config.ShareAcceptedEmailDelay = time.Second
+		server.service.ShareAcceptedEmailDelay = time.Second
 		emailCountBefore := acceptInvitation(carol)
 		if completedShares := requireValue[[]session.CompletedShare](t)(alice.CompleteAcceptedShares(ctx)); len(completedShares) != 1 {
 			t.Fatalf("completed: %+v", completedShares)
@@ -430,7 +430,7 @@ func TestAcceptedShareTellsInviterAndRecipient(t *testing.T) {
 	})
 
 	t.Run("accepted emails are rate limited per inviter", func(t *testing.T) {
-		server.config.ShareAcceptedEmailDelay = 50 * time.Millisecond
+		server.service.ShareAcceptedEmailDelay = 50 * time.Millisecond
 		server.service.Limiters.ShareAcceptedEmail = ratelimit.NewDaily(1)
 		server.service.Limiters.ShareAcceptedEmail.Allow(alice.AccountID)
 		dave := signUpTestAccount(t, ctx, server, baseURL, "dave@example.com", apitypes.RoleMember)

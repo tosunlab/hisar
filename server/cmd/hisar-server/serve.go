@@ -3,19 +3,16 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/tryhisar/hisar/server/internal/api"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
-const (
-	historyRetention       = 90 * 24 * time.Hour
-	auditRetention         = 365 * 24 * time.Hour
-	expiredInvitationAge   = 30 * 24 * time.Hour
-	shareLinkSweepInterval = 10 * time.Minute
-)
+const shareLinkSweepInterval = 10 * time.Minute
 
 func serve(ctx context.Context, args []string) error {
 	flagSet := flag.NewFlagSet("serve", flag.ExitOnError)
@@ -28,11 +25,20 @@ func serve(ctx context.Context, args []string) error {
 	}
 	defer database.Close()
 
-	go pruneOldRecords(ctx, database)
+	setupURL, err := server.PrepareSetup(ctx)
+	if err != nil {
+		return fmt.Errorf("setup: %w", err)
+	}
+	if setupURL != "" {
+		log.Printf("Open %s to create the first admin.", setupURL)
+	}
+
+	go pruneOldRecords(ctx, database, server)
 	go deleteExpiredShareLinks(ctx, database, shareLinkSweepInterval)
+	go server.RunServerUpdates(ctx)
 
 	app := server.CreateApp()
-	log.Printf("hisar-server listening on %s", *address)
+	log.Printf("hisar-server %s listening on %s", version, *address)
 	return app.Listen(*address, fiber.ListenConfig{
 		DisableStartupMessage: true,
 		GracefulContext:       ctx,
@@ -40,21 +46,23 @@ func serve(ctx context.Context, args []string) error {
 	})
 }
 
-func pruneOldRecords(ctx context.Context, database *store.Store) {
+// pruneOldRecords runs once a day with the retention of the moment, so a change from the dashboard applies at the next run.
+func pruneOldRecords(ctx context.Context, database *store.Store, server *api.Server) {
 	ticker := time.NewTicker(24 * time.Hour)
 	defer ticker.Stop()
 	for {
-		if pruned, err := database.PruneHistory(ctx, historyRetention); err != nil {
+		retention := server.Settings().Retention
+		if pruned, err := database.PruneHistory(ctx, retention.History.Duration()); err != nil {
 			log.Printf("prune history: %v", err)
 		} else if pruned > 0 {
 			log.Printf("pruned %d history entries", pruned)
 		}
-		if pruned, err := database.PruneAudit(ctx, auditRetention); err != nil {
+		if pruned, err := database.PruneAudit(ctx, retention.Audit.Duration()); err != nil {
 			log.Printf("prune audit log: %v", err)
 		} else if pruned > 0 {
 			log.Printf("pruned %d audit events", pruned)
 		}
-		if pruned, err := database.PruneExpiredInvitation(ctx, expiredInvitationAge); err != nil {
+		if pruned, err := database.PruneExpiredInvitation(ctx, retention.ExpiredInvites.Duration()); err != nil {
 			log.Printf("prune expired invitations: %v", err)
 		} else if pruned > 0 {
 			log.Printf("pruned %d expired invitations", pruned)

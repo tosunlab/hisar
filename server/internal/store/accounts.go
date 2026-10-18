@@ -89,6 +89,20 @@ func (s *Store) CreateInvite(ctx context.Context, tokenHash []byte, email, role 
 	return err
 }
 
+// HasAccounts reports whether any account exists.
+func (s *Store) HasAccounts(ctx context.Context) (bool, error) {
+	var hasAccounts bool
+	err := s.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM accounts)`).Scan(&hasAccounts)
+	return hasAccounts, err
+}
+
+// DeleteUnusedSetupInvites deletes the setup invites nobody signed up with. A setup invite is the one invite without an
+// email: whoever holds it signs up with the email they enter.
+func (s *Store) DeleteUnusedSetupInvites(ctx context.Context) error {
+	_, err := s.pool.Exec(ctx, `DELETE FROM invites WHERE email = '' AND used_at IS NULL`)
+	return err
+}
+
 func (s *Store) GetInviteByHash(ctx context.Context, tokenHash []byte) (*Invite, error) {
 	var invite Invite
 	err := s.pool.QueryRow(ctx,
@@ -131,7 +145,7 @@ func (s *Store) RedeemInvite(ctx context.Context, tokenHash []byte, account *Acc
 		if err != nil {
 			return convertNoRowsToNotFound(err)
 		}
-		if email != account.Email {
+		if email != "" && email != account.Email {
 			return ErrNotFound
 		}
 		account.Role = role

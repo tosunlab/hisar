@@ -22,7 +22,8 @@ WORKDIR /src
 COPY core core
 COPY server server
 COPY --from=admin /src/server/internal/api/adminpage/dist server/internal/api/adminpage/dist
-RUN cd server && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w" -o /hisar-server ./cmd/hisar-server
+ARG VERSION=dev
+RUN cd server && CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags="-s -w -X main.version=$VERSION" -o /hisar-server ./cmd/hisar-server
 RUN mkdir /data
 
 FROM gcr.io/distroless/static-debian12:nonroot

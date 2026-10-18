@@ -107,7 +107,7 @@ test("refuses a member on the sign-in screen and keeps no token", async ({ page 
   expect(allPageError).toEqual([]);
 });
 
-test("shows the desktop app's message for a wrong master password", async ({ page }) => {
+test("shows the wrong-credentials message without a server for a wrong master password", async ({ page }) => {
   await page.goto(`${fixture.baseURL}/admin`);
   await fillSignIn(page, fixture, "not the master password");
   await page.getByRole("button", { name: "Sign in" }).click();
@@ -124,4 +124,36 @@ test("opens Overview for any path under /admin once signed in", async ({ page })
   await expect(page.getByRole("link", { name: "Overview" })).toHaveAttribute("aria-current", "page");
   await page.getByRole("button", { name: "Sign out" }).click();
   await expect(page.getByRole("heading", { name: "Sign in to the admin dashboard" })).toBeVisible();
+});
+
+test("shows the server's version, usage and checks on Overview", async ({ page }) => {
+  const allPageError = collectConsoleErrorsAndDialogs(page);
+  await page.goto(`${fixture.baseURL}/admin`);
+  await fillSignIn(page, fixture);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByTestId("version")).toHaveText("dev");
+  await expect(page.getByTestId("update")).toHaveCount(0);
+  await expect(page.getByTestId("database")).toContainText("migrations applied");
+  await expect(page.getByTestId("count-accounts")).toContainText("Accounts");
+  const statusByCheck = {
+    "public-url": "ok",
+    https: "ok",
+    proxy: "ok",
+    migrations: "ok",
+    "secrets-backup": "warning",
+    email: "warning",
+  };
+  for (const [checkID, status] of Object.entries(statusByCheck)) {
+    await expect(page.getByTestId(`check-${checkID}`)).toHaveAttribute("data-status", status);
+  }
+  await expect(page.getByTestId("check-email")).toContainText("Email is not set up. Invites from the apps will fail.");
+  await saveScreenshot(page, "overview-health");
+  await page.getByRole("button", { name: "I have a backup" }).click();
+  await expect(page.getByTestId("check-secrets-backup")).toHaveAttribute("data-status", "ok");
+  await expect(page.getByRole("button", { name: "I have a backup" })).toHaveCount(0);
+  await page.reload();
+  await expect(page.getByTestId("check-secrets-backup")).toHaveAttribute("data-status", "ok");
+  await page.getByRole("button", { name: "Sign out" }).click();
+  expect(allPageError).toEqual([]);
 });
