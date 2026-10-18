@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/secretreference"
+	"github.com/tryhisar/hisar/core/session"
 )
 
 // serviceSecretSource lets references resolve against the unlocked vaults; the caller holds s.mutex.
@@ -102,14 +104,86 @@ func (bridge *CommandLineBridge) DescribeSecrets(references []string) []string {
 	return names
 }
 
-func isSharedName(names []string, name string) bool {
-	count := 0
-	for _, candidate := range names {
-		if strings.EqualFold(candidate, name) {
-			count++
+// nameCounts counts vault names or item titles as the resolver matches them (strings.EqualFold), so a reference can
+// tell a name that finds one vault or item from a name that finds several.
+type nameCounts map[string]int
+
+func countVaultNames(vaultsByID map[string]*session.Vault) nameCounts {
+	counts := nameCounts{}
+	for _, vault := range vaultsByID {
+		counts[foldName(vault.Name)]++
+	}
+	return counts
+}
+
+func countItemTitles(items []item.Item) nameCounts {
+	counts := nameCounts{}
+	for index := range items {
+		counts[foldName(items[index].Overview.Title)]++
+	}
+	return counts
+}
+
+// isUnique: a reference can use name, which is not blank and finds nothing else.
+func (counts nameCounts) isUnique(name string) bool {
+	return strings.TrimSpace(name) != "" && counts[foldName(name)] == 1
+}
+
+// foldName maps every rune to the smallest rune of its case-folding orbit, so two names have the same foldName exactly
+// when strings.EqualFold matches them.
+func foldName(name string) string {
+	return strings.Map(func(character rune) rune {
+		smallest := character
+		for folded := unicode.SimpleFold(character); folded != character; folded = unicode.SimpleFold(folded) {
+			smallest = min(smallest, folded)
+		}
+		return smallest
+	}, name)
+}
+
+// buildItemReference names the item's vault and the item by name, or by ID where the name is blank or also finds
+// another vault, or another item of the vault, so the reference finds this item only.
+func buildItemReference(vault *session.Vault, vaultItem *item.Item, vaultNames, itemTitles nameCounts) secretreference.Reference {
+	reference := secretreference.Reference{Vault: vault.ID, Item: vaultItem.ID}
+	if vaultNames.isUnique(vault.Name) {
+		reference.Vault = vault.Name
+	}
+	if itemTitles.isUnique(vaultItem.Overview.Title) {
+		reference.Item = vaultItem.Overview.Title
+	}
+	return reference
+}
+
+// fieldReference is a field an item has a value in: its label and its hisar:// reference.
+type fieldReference struct {
+	label     string
+	reference string
+}
+
+// listFieldReferences returns the reference of every field of the item that has a value, as agents and launchers list
+// them: never the notes, which may hold secrets an agent should not go looking for, or the private key.
+func listFieldReferences(reference secretreference.Reference, vaultItem *item.Item) []fieldReference {
+	references := []fieldReference{}
+	addField := func(label, field, value string) {
+		if value == "" {
+			return
+		}
+		reference.Field = field
+		references = append(references, fieldReference{label: label, reference: reference.String()})
+	}
+	addField(secretreference.FieldUsername, secretreference.FieldUsername, vaultItem.Overview.Username)
+	addField(secretreference.FieldPassword, secretreference.FieldPassword, vaultItem.Details.Password)
+	addField("one-time code", secretreference.FieldOneTimeCode, vaultItem.Details.OneTimePassword)
+	addField(secretreference.FieldPublicKey, secretreference.FieldPublicKey, vaultItem.Overview.PublicKey)
+	addField(secretreference.FieldFingerprint, secretreference.FieldFingerprint, vaultItem.Overview.Fingerprint)
+	// A database's connection string is built, not stored, so callers get its reference instead of assembling one.
+	addField(secretreference.FieldConnectionString, secretreference.FieldConnectionString, vaultItem.ConnectionString())
+	for _, field := range vaultItem.Details.Fields {
+		if secretreference.CheckCustomFieldLabel(vaultItem, field.Name) == nil {
+			addField(field.Name, field.Name, field.Value)
 		}
 	}
-	return count > 1
+	return references
 }
 
 // CopySecretReference copies hisar://<vault>/<item>/<field> for one of the item's fields and returns it.
@@ -139,21 +213,8 @@ func (s *Service) CopySecretReference(vaultID, itemID, fieldName string) (string
 	if _, _, err := secretreference.ReadField(vaultItem, label, time.Now()); err != nil {
 		return "", err
 	}
-	vaultNames := make([]string, 0, len(s.vaultsByID))
-	for _, candidate := range s.vaultsByID {
-		vaultNames = append(vaultNames, candidate.Name)
-	}
-	itemTitles := make([]string, 0, len(s.itemsByVaultID[vaultID]))
-	for _, candidate := range s.itemsByVaultID[vaultID] {
-		itemTitles = append(itemTitles, candidate.Overview.Title)
-	}
-	reference := secretreference.Reference{Vault: vault.Name, Item: vaultItem.Overview.Title, Field: label}
-	if strings.TrimSpace(vault.Name) == "" || isSharedName(vaultNames, vault.Name) {
-		reference.Vault = vault.ID
-	}
-	if strings.TrimSpace(vaultItem.Overview.Title) == "" || isSharedName(itemTitles, vaultItem.Overview.Title) {
-		reference.Item = vaultItem.ID
-	}
+	reference := buildItemReference(vault, vaultItem, countVaultNames(s.vaultsByID), countItemTitles(s.itemsByVaultID[vaultID]))
+	reference.Field = label
 	text := reference.String()
 	if s.config.Clipboard == nil || !s.config.Clipboard.SetText(text) {
 		return "", errors.New("could not copy to the clipboard")

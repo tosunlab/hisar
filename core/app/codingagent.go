@@ -175,10 +175,7 @@ func (s *Service) searchAgentItems(query, vaultQuery string) (cliprotocol.AgentI
 			return result, cliprotocol.NewError(cliprotocol.ErrorNotFound, fmt.Sprintf("no vault available to agents is named %q", vaultQuery))
 		}
 	}
-	vaultNames := make([]string, 0, len(s.vaultsByID))
-	for _, vault := range s.vaultsByID {
-		vaultNames = append(vaultNames, vault.Name)
-	}
+	vaultNames := countVaultNames(s.vaultsByID)
 	normalizedQuery := strings.ToLower(strings.TrimSpace(query))
 	for _, vault := range vaults {
 		items, err := s.unlockedSession.ListItems(ctx, vault)
@@ -186,10 +183,7 @@ func (s *Service) searchAgentItems(query, vaultQuery string) (cliprotocol.AgentI
 			return result, convertError(err)
 		}
 		s.itemsByVaultID[vault.ID] = items
-		itemTitles := make([]string, 0, len(items))
-		for _, vaultItem := range items {
-			itemTitles = append(itemTitles, vaultItem.Overview.Title)
-		}
+		itemTitles := countItemTitles(items)
 		for index := range items {
 			vaultItem := &items[index]
 			if !isAgentSearchMatch(vault.Name, vaultItem, normalizedQuery) {
@@ -197,45 +191,22 @@ func (s *Service) searchAgentItems(query, vaultQuery string) (cliprotocol.AgentI
 			}
 			result.TotalCount++
 			if len(result.Items) < maximumAgentSearchResultCount {
-				result.Items = append(result.Items, convertToAgentItem(vault, vaultItem, isSharedName(vaultNames, vault.Name), isSharedName(itemTitles, vaultItem.Overview.Title)))
+				result.Items = append(result.Items, convertToAgentItem(vault, vaultItem, buildItemReference(vault, vaultItem, vaultNames, itemTitles)))
 			}
 		}
 	}
 	return result, nil
 }
 
-func convertToAgentItem(vault *session.Vault, vaultItem *item.Item, isVaultNameShared, isItemTitleShared bool) cliprotocol.AgentItem {
+func convertToAgentItem(vault *session.Vault, vaultItem *item.Item, reference secretreference.Reference) cliprotocol.AgentItem {
 	agentItem := cliprotocol.AgentItem{
 		ID: vaultItem.ID, VaultID: vault.ID, VaultName: vault.Name, Title: vaultItem.Overview.Title, Type: vaultItem.Category(),
 		Username: vaultItem.Overview.Username, URLs: append([]string{}, vaultItem.Overview.URLs...), Tags: append([]string{}, vaultItem.Overview.Tags...),
 		HasNotes: strings.TrimSpace(vaultItem.Details.Notes) != "", HasOneTimePassword: vaultItem.Details.OneTimePassword != "",
 		Fields: []cliprotocol.AgentField{},
 	}
-	reference := secretreference.Reference{Vault: vault.Name, Item: vaultItem.Overview.Title}
-	if strings.TrimSpace(vault.Name) == "" || isVaultNameShared {
-		reference.Vault = vault.ID
-	}
-	if strings.TrimSpace(vaultItem.Overview.Title) == "" || isItemTitleShared {
-		reference.Item = vaultItem.ID
-	}
-	addField := func(label, field, value string) {
-		if value == "" {
-			return
-		}
-		reference.Field = field
-		agentItem.Fields = append(agentItem.Fields, cliprotocol.AgentField{Label: label, Reference: reference.String()})
-	}
-	addField(secretreference.FieldUsername, secretreference.FieldUsername, vaultItem.Overview.Username)
-	addField(secretreference.FieldPassword, secretreference.FieldPassword, vaultItem.Details.Password)
-	addField("one-time code", secretreference.FieldOneTimeCode, vaultItem.Details.OneTimePassword)
-	addField(secretreference.FieldPublicKey, secretreference.FieldPublicKey, vaultItem.Overview.PublicKey)
-	addField(secretreference.FieldFingerprint, secretreference.FieldFingerprint, vaultItem.Overview.Fingerprint)
-	// A database's connection string is built, not stored, so agents get its reference instead of assembling one.
-	addField(secretreference.FieldConnectionString, secretreference.FieldConnectionString, vaultItem.ConnectionString())
-	for _, field := range vaultItem.Details.Fields {
-		if secretreference.CheckCustomFieldLabel(vaultItem, field.Name) == nil {
-			addField(field.Name, field.Name, field.Value)
-		}
+	for _, field := range listFieldReferences(reference, vaultItem) {
+		agentItem.Fields = append(agentItem.Fields, cliprotocol.AgentField{Label: field.label, Reference: field.reference})
 	}
 	return agentItem
 }
