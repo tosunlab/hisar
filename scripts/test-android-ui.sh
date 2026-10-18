@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Runs the Android app's instrumented tests against a freshly started hisar-server (scripts/ui-test-partner.sh), on the one
 # connected emulator or device, or on ANDROID_SERIAL. Requires ANDROID_HOME, HISAR_DATABASE_URL pointing at an empty,
-# disposable database, and mobile/build/HisarKit.aar (make build-android-aar).
+# disposable database, mobile/build/HisarKit.aar (make build-android-aar) and openssl.
 #
 # ANDROID_UI_TESTS picks the tests: comma-separated names of classes (HisarKitBackendTests), tests
 # (testAccountItemLockAndSignInFlow) or both (HisarUITests#testAccountItemLockAndSignInFlow), or "smoke" for the set the
@@ -119,6 +119,21 @@ if [[ "$ANDROID_SERIAL" == emulator-* ]] && [ -r "$HOME/.emulator_console_auth_t
 fi
 "$ADB" reverse "tcp:$UI_TEST_PORT" "tcp:$UI_TEST_PORT" >/dev/null
 trap '"$ADB" reverse --remove "tcp:$UI_TEST_PORT" >/dev/null 2>&1 || true; kill "$UI_TEST_MAC" "$UI_TEST_OTHER_DEVICE" 2>/dev/null || true; ui_test_stop' EXIT
+
+# TrustedCertificatesTests serves HTTPS on the device with a certificate for 127.0.0.1 from a private CA made for this run
+# alone, and reads both from the test storage's input files.
+PRIVATE_CA=$T/private-ca
+mkdir -p "$PRIVATE_CA"
+EC_KEY=(-newkey ec -pkeyopt ec_paramgen_curve:P-256 -pkeyopt ec_param_enc:named_curve -nodes)
+{
+  openssl req -x509 "${EC_KEY[@]}" -sha256 -keyout "$PRIVATE_CA/ca-key.pem" -out "$PRIVATE_CA/ca.pem" -days 2 -subj "/CN=Hisar Test Private CA" \
+    -addext basicConstraints=critical,CA:TRUE -addext keyUsage=critical,keyCertSign,cRLSign &&
+    openssl req "${EC_KEY[@]}" -keyout "$PRIVATE_CA/server-key.pem" -subj /CN=127.0.0.1 |
+    openssl x509 -req -sha256 -CA "$PRIVATE_CA/ca.pem" -CAkey "$PRIVATE_CA/ca-key.pem" -set_serial 2 -days 2 -out "$PRIVATE_CA/server.pem" \
+      -extfile <(printf 'subjectAltName=IP:127.0.0.1\nbasicConstraints=CA:FALSE\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=serverAuth\n')
+} 2>"$PRIVATE_CA/openssl.log" || { cat "$PRIVATE_CA/openssl.log" >&2; exit 1; }
+"$ADB" shell mkdir -p /sdcard/googletest/test_runfiles/private-ca
+"$ADB" push "$PRIVATE_CA/ca.pem" "$PRIVATE_CA/server.pem" "$PRIVATE_CA/server-key.pem" /sdcard/googletest/test_runfiles/private-ca/ >/dev/null
 
 # The Android Gradle plugin cuts each value at its first comma and hands the rest to the device's shell unquoted, inside
 # `am instrument -e NAME value`.

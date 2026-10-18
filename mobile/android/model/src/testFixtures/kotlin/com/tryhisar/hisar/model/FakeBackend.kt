@@ -1125,7 +1125,7 @@ open class FakeBackend : VaultBackend {
     companion object {
         const val PASSWORD = "correct horse battery"
         const val SECRET_KEY = "H1-ABC123-AAAAA-BBBBB-CCCCC-DDDDD-EEEEEE"
-        const val ONE_TIME_PASSWORD = "otpauth://totp/GitHub:alice?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
+        const val ONE_TIME_PASSWORD = "otpauth://totp/GitHub:alice?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ" // gitleaks:allow, the RFC 6238 test secret
         private const val ORGANIZATION_NOT_FOUND =
             "That organization, team, person or vault was not found, or you are no longer in the organization"
         val oneTimeCode = OneTimeCode(code = "287082", expiresAt = "2027-01-15T08:00:30Z", period = 30)

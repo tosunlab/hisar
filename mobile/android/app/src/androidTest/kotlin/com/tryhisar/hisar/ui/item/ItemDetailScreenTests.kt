@@ -8,6 +8,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeLeft
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.tryhisar.hisar.app.FakeTextClipboard
 import com.tryhisar.hisar.model.FakeBackend
@@ -86,6 +87,19 @@ class ItemDetailScreenTests {
     }
 
     @Test
+    fun testSwipingAPasskeyLeftAsksFirstAndRemovesIt() {
+        val host = openHost()
+        host.show("personal", "github")
+        composeRule.waitForTag("passkey-github.com")
+        composeRule.onNodeWithTag("passkey-github.com").performScrollTo().performTouchInput { swipeLeft() }
+        composeRule.tap("swipe-delete-passkey-github.com")
+        composeRule.waitForTag("confirm-delete-passkey")
+        composeRule.onNodeWithTag("confirm-delete-passkey").performClick()
+        composeRule.waitForTagToGo("passkey-github.com")
+        assertEquals(emptyList<Any>(), backend.getItem("personal", "github").allPasskey)
+    }
+
+    @Test
     fun testAReaderSeesNoEditOrDeleteButtons() {
         backend.allVault = mutableListOf(VaultSummary(id = "personal", name = "Shared with me", type = VaultSummary.TYPE_SHARED, role = "reader", itemCount = 3))
         val host = openHost()
@@ -93,6 +107,7 @@ class ItemDetailScreenTests {
         composeRule.waitForTag("passkey-github.com")
         assertFalse(exists("edit-item"))
         assertFalse(exists("delete-passkey-github.com"))
+        assertFalse(exists("swipe-delete-passkey-github.com"))
         assertTrue("a reader still stars items, which belong to their account", exists("favorite-item"))
     }
 

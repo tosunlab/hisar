@@ -71,7 +71,7 @@ GITHUB_TOKEN=hisar://Personal/GitHub/API%20token hisar run -- gh release list
 hisar read hisar://Personal/GitHub/otp            # one value on stdout, for scripts
 ```
 
-`hisar run` resolves every reference in one request, so the app asks once (with Touch ID, or on your phone) and shows the command
+`hisar run` resolves every reference in one request, so the app asks once (with Touch ID, or on your smart device) and shows the command
 and the secrets it reads. The command gets the real values in its environment; nothing is written to disk. Every value it prints is
 replaced with `<concealed by hisar>`. That needs pipes, so use `--no-masking` for commands that need the terminal itself (colours,
 prompts, full-screen tools). Several `--env-file` options are applied in order; variables already in your environment win unless they
