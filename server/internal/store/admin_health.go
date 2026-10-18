@@ -10,11 +10,12 @@ const itemCountMaxAge = time.Minute
 
 // InstanceCounts is what the server holds, for the admin dashboard's Overview.
 type InstanceCounts struct {
-	Accounts       int64
-	Vaults         int64
-	Items          int64
-	ShareLinks     int64
-	PendingInvites int64
+	Accounts          int64
+	SuspendedAccounts int64
+	Vaults            int64
+	Items             int64
+	ShareLinks        int64
+	PendingInvites    int64
 	// StorageBytes is the size of the whole database on disk.
 	StorageBytes int64
 }
@@ -58,11 +59,12 @@ func (s *Store) GetInstanceCounts(ctx context.Context) (InstanceCounts, error) {
 	var counts InstanceCounts
 	err := s.pool.QueryRow(ctx, `
 		SELECT (SELECT count(*) FROM accounts),
+		       (SELECT count(*) FROM accounts WHERE suspended_at IS NOT NULL),
 		       (SELECT count(*) FROM vaults),
 		       (SELECT count(*) FROM share_links WHERE expires_at > now()),
 		       (SELECT count(*) FROM invites WHERE used_at IS NULL AND expires_at > now() AND email <> ''),
 		       pg_database_size(current_database())`).
-		Scan(&counts.Accounts, &counts.Vaults, &counts.ShareLinks, &counts.PendingInvites, &counts.StorageBytes)
+		Scan(&counts.Accounts, &counts.SuspendedAccounts, &counts.Vaults, &counts.ShareLinks, &counts.PendingInvites, &counts.StorageBytes)
 	if err != nil {
 		return InstanceCounts{}, err
 	}

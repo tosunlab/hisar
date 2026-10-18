@@ -175,17 +175,22 @@ func (s *Service) DeleteAccount(ctx context.Context, actor Actor, request *apity
 	case err != nil:
 		return err
 	}
-	s.events.EndStreams(actor.AccountID, nil)
-	s.Approvals.removeForAccount(actor.AccountID)
+	s.recordAudit(ctx, Actor{AccountID: actor.AccountID, IP: actor.IP}, "account_deleted", map[string]int{"deletedVaults": deleted.DeletedVaultCount})
+	s.announceAccountDeletion(actor.AccountID, deleted, false)
+	return nil
+}
+
+// announceAccountDeletion ends the deleted account's streams and approvals, tells the people whose vaults, invitations
+// or organizations changed, and emails the account.
+func (s *Service) announceAccountDeletion(accountID string, deleted *store.DeletedAccount, isDeletedByAdmin bool) {
+	s.endAccountSessions(accountID)
 	s.publishVaultsChanged(deleted.VaultMemberAccountIDs...)
 	s.publishShareInvitationsChanged(deleted.InvitationAccountIDs...)
 	s.publishOrganizationsChanged(deleted.OrganizationAccountIDs...)
-	s.recordAudit(ctx, Actor{AccountID: actor.AccountID, IP: actor.IP}, "account_deleted", map[string]int{"deletedVaults": deleted.DeletedVaultCount})
 	if s.isEmailConfigured() {
-		message := composeAccountDeletedEmail(deleted.Email, time.Now())
+		message := composeAccountDeletedEmail(deleted.Email, time.Now(), isDeletedByAdmin)
 		s.runInBackground(func(ctx context.Context) { s.sendEmail(ctx, message) })
 	}
-	return nil
 }
 
 func composeCredentialsChangedEmail(recipient, change string, signedOutDeviceCount int, changedAt time.Time) mail.Message {
@@ -221,11 +226,15 @@ If you did not do this, contact support@tryhisar.com.
 	}
 }
 
-func composeAccountDeletedEmail(recipient string, deletedAt time.Time) mail.Message {
+func composeAccountDeletedEmail(recipient string, deletedAt time.Time, isDeletedByAdmin bool) mail.Message {
+	deletedBy, ending := "", "If you did not do this, contact support@tryhisar.com."
+	if isDeletedByAdmin {
+		deletedBy, ending = " by an admin of the Hisar server", "If you have questions, contact the admin of the Hisar server."
+	}
 	return mail.Message{
 		To:      recipient,
 		Subject: "Your Hisar account was deleted",
-		Body: fmt.Sprintf(`Your Hisar account %s was deleted on %s.
+		Body: fmt.Sprintf(`Your Hisar account %s was deleted%s on %s.
 
 Deleted with it: your vaults that had no other owner and their items, your access to
 vaults other people own, your organization memberships and the organizations you were
@@ -235,8 +244,8 @@ you sent or received. Vaults that have another owner stay with them.
 The encrypted backups of the server are kept for 30 days, and its audit log for up to
 a year, as the privacy policy says. Nobody, including Hisar, can read your items in them.
 
-If you did not do this, contact support@tryhisar.com.
-`, recipient, formatChangeTime(deletedAt)),
+%s
+`, recipient, deletedBy, formatChangeTime(deletedAt), ending),
 	}
 }
 

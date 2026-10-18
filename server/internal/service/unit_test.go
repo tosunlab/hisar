@@ -59,9 +59,16 @@ func TestComposeCredentialsChangedEmail(t *testing.T) {
 }
 
 func TestComposeAccountDeletedEmail(t *testing.T) {
-	message := composeAccountDeletedEmail("alice@example.com", time.Date(2026, 10, 11, 9, 30, 0, 0, time.UTC))
-	if message.Subject != "Your Hisar account was deleted" || !strings.Contains(message.Body, "alice@example.com was deleted on 11 October 2026") || !strings.Contains(message.Body, "kept for 30 days") {
+	deletedAt := time.Date(2026, 10, 11, 9, 30, 0, 0, time.UTC)
+	message := composeAccountDeletedEmail("alice@example.com", deletedAt, false)
+	if message.Subject != "Your Hisar account was deleted" || !strings.Contains(message.Body, "alice@example.com was deleted on 11 October 2026") ||
+		!strings.Contains(message.Body, "kept for 30 days") || !strings.Contains(message.Body, "If you did not do this, contact support@tryhisar.com.") {
 		t.Errorf("email: %+v", message)
+	}
+	message = composeAccountDeletedEmail("alice@example.com", deletedAt, true)
+	if !strings.Contains(message.Body, "alice@example.com was deleted by an admin of the Hisar server on 11 October 2026") ||
+		!strings.Contains(message.Body, "contact the admin of the Hisar server.") || strings.Contains(message.Body, "If you did not do this") {
+		t.Errorf("email after an admin deletion: %+v", message)
 	}
 }
 

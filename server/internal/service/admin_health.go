@@ -244,8 +244,11 @@ func (s *Service) GetAdminHealth(ctx context.Context, request CheckRequest) (api
 		return apitypes.AdminHealth{}, ErrDatabaseUnavailable
 	}
 	return apitypes.AdminHealth{
-		Database:     buildHealthDatabase(statuses),
-		Counts:       apitypes.AdminHealthCounts{Accounts: counts.Accounts, Vaults: counts.Vaults, Items: counts.Items, ShareLinks: counts.ShareLinks, PendingInvites: counts.PendingInvites},
+		Database: buildHealthDatabase(statuses),
+		Counts: apitypes.AdminHealthCounts{
+			Accounts: counts.Accounts, SuspendedAccounts: counts.SuspendedAccounts, Vaults: counts.Vaults, Items: counts.Items,
+			ShareLinks: counts.ShareLinks, PendingInvites: counts.PendingInvites,
+		},
 		StorageBytes: counts.StorageBytes,
 		Checks:       checks,
 	}, nil

@@ -23,10 +23,11 @@ import (
 const maxKeysetSize = 1024
 
 var (
-	errInvalidInvite = newError(KindForbidden, "invalid invite")
-	errInvalidLogin  = newError(KindInvalid, "invalid login request")
-	errLoginFailed   = newError(KindUnauthorized, "login failed")
-	ErrUnauthorized  = newError(KindUnauthorized, "unauthorized")
+	errInvalidInvite    = newError(KindForbidden, "invalid invite")
+	errInvalidLogin     = newError(KindInvalid, "invalid login request")
+	errLoginFailed      = newError(KindUnauthorized, "login failed")
+	errAccountSuspended = newError(KindForbidden, apitypes.AccountSuspendedMessage)
+	ErrUnauthorized     = newError(KindUnauthorized, "unauthorized")
 )
 
 func generateToken() string {
@@ -49,16 +50,21 @@ type Session struct {
 	TokenHash []byte
 }
 
-// Authenticate returns the session of a bearer token, or ErrUnauthorized.
+// Authenticate returns the session of a bearer token. It fails with store.ErrNotFound for a session that is not live,
+// and with the 403 for a suspended account, whose devices keep their sessions until reactivation.
 func (s *Service) Authenticate(ctx context.Context, token string) (*Session, error) {
 	stored, err := s.store.GetSessionByHash(ctx, hashToken(token), s.currentSettings().SessionLifetime.Duration())
+	if errors.Is(err, store.ErrAccountSuspended) {
+		return nil, errAccountSuspended
+	}
 	if err != nil {
 		return nil, err
 	}
 	return &Session{AccountID: stored.AccountID, DeviceID: stored.DeviceID, Role: stored.Role, TokenHash: stored.TokenHash}, nil
 }
 
-// IsSessionValid reports whether a session is still signed in, so a long event stream can end when it is not.
+// IsSessionValid reports whether a session is still signed in and its account not suspended, so a long event stream can
+// end when it is not.
 func (s *Service) IsSessionValid(ctx context.Context, tokenHash []byte) bool {
 	_, err := s.store.GetSessionByHash(ctx, tokenHash, s.currentSettings().SessionLifetime.Duration())
 	return err == nil
@@ -228,8 +234,15 @@ func (s *Service) LoginFinish(ctx context.Context, actor Actor, request *apitype
 		s.recordAudit(ctx, Actor{AccountID: pending.accountID, IP: actor.IP}, "login_failed", nil)
 		return apitypes.SessionResponse{}, errLoginFailed
 	}
+	// Suspension is checked only now, after the proof, so the answer never tells someone without the password.
 	token, device, newSession := s.newSession(pending.accountID, request.Device)
-	if err := s.store.CreateDeviceSession(ctx, device, newSession); err != nil {
+	switch err := s.store.CreateDeviceSession(ctx, device, newSession); {
+	case errors.Is(err, store.ErrAccountSuspended):
+		s.recordAudit(ctx, Actor{AccountID: pending.accountID, IP: actor.IP}, "login_refused_suspended", nil)
+		return apitypes.SessionResponse{}, errAccountSuspended
+	case errors.Is(err, store.ErrNotFound):
+		return apitypes.SessionResponse{}, errLoginFailed
+	case err != nil:
 		return apitypes.SessionResponse{}, err
 	}
 	s.recordAudit(ctx, Actor{AccountID: pending.accountID, DeviceID: device.ID, IP: actor.IP}, "login", map[string]string{"device": device.Name, "platform": device.Platform})
