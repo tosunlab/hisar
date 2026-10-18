@@ -181,6 +181,8 @@ data class ItemDetail(
      * initial.
      */
     val icon: ChosenIcon? = null,
+    /** The Android apps a login fills into, which the user linked on an Android phone; saving the item keeps them. */
+    @SerialName("androidApps") val allAndroidApp: List<ItemAndroidApp> = emptyList(),
 ) {
     val isLogin: Boolean get() = category.isEmpty() || category == CATEGORY_LOGIN
     val isSSHKey: Boolean get() = category == CATEGORY_SSH_KEY
@@ -726,6 +728,13 @@ data class ItemPasskey(
     val id: String get() = credentialID
     val createdDate: Instant? get() = parseTimestamp(createdAt)
 }
+
+/** An Android app a login fills into: its package name and the SHA-256 of its signing certificate, in colon hex. */
+@Serializable
+data class ItemAndroidApp(
+    val packageName: String,
+    @SerialName("certificateSha256") val certificateSHA256: String,
+)
 
 @Serializable
 data class StoredPasskey(

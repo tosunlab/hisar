@@ -405,6 +405,12 @@ class HisarKitBackend(
 
     override fun setWebsiteIconsEnabled(isEnabled: Boolean) = call { setWebsiteIconsEnabled(isEnabled) }
 
+    override fun addAndroidApp(vaultID: String, itemID: String, packageName: String, certificateSHA256: String): ItemDetail =
+        decode(ItemDetail.serializer(), call { addAndroidApp(vaultID, itemID, packageName, certificateSHA256) })
+
+    override fun removeAndroidApp(vaultID: String, itemID: String, packageName: String, certificateSHA256: String): ItemDetail =
+        decode(ItemDetail.serializer(), call { removeAndroidApp(vaultID, itemID, packageName, certificateSHA256) })
+
     companion object {
         const val DEVICE_NAME = "Hisar on Android"
         private const val UNREADABLE_ANSWER = "Hisar could not read the answer from its backend."
