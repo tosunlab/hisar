@@ -102,11 +102,16 @@ const FeatureAddresses = "addresses"
 // every vault, not only the logins of the current site.
 const FeatureVault = "vault"
 
+// FeatureCards: cards.list and cards.fill fill a page's payment form from credit-card items.
+const FeatureCards = "cards"
+
 // FeatureUnlockPassword: unlock.password unlocks Hisar with the master password typed in the popup.
 const FeatureUnlockPassword = "unlock-password"
 
 // ListFeatures returns the features this app announces in hello.
-func ListFeatures() []string { return []string{FeatureAddresses, FeatureVault, FeatureUnlockPassword} }
+func ListFeatures() []string {
+	return []string{FeatureAddresses, FeatureVault, FeatureUnlockPassword, FeatureCards}
+}
 
 const (
 	UpdateTargetApp       = "app"
@@ -234,6 +239,33 @@ type RevealResult struct {
 // IconResult: PNG is empty when the website has no icon or website icons are off.
 type IconResult struct {
 	PNG []byte `json:"png,omitempty"`
+}
+
+// CardSummary is a card offered for filling: its brand, last four digits and expiry, never the number or security code,
+// which leave the app only in cards.fill.
+type CardSummary struct {
+	VaultID   string `json:"vaultID"`
+	ItemID    string `json:"itemID"`
+	Title     string `json:"title"`
+	Brand     string `json:"brand"`
+	Last4     string `json:"last4"`
+	Expiry    string `json:"expiry"`
+	VaultName string `json:"vaultName"`
+}
+
+type CardListResult struct {
+	Cards []CardSummary `json:"cards"`
+}
+
+// CardFillResult is the card to fill a payment form with: Number holds only digits, ExpiryMonth two digits and
+// ExpiryYear four, either empty when the card has no valid expiry.
+type CardFillResult struct {
+	Cardholder   string `json:"cardholder"`
+	Number       string `json:"number"`
+	ExpiryMonth  string `json:"expiryMonth"`
+	ExpiryYear   string `json:"expiryYear"`
+	SecurityCode string `json:"securityCode"`
+	Brand        string `json:"brand"`
 }
 
 type SaveResult struct {

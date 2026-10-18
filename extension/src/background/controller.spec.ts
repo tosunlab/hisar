@@ -23,7 +23,7 @@ describe("popup state", () => {
   it("follows the desktop state after pairing", async () => {
     const harness = createHarness({ state: { isOffline: true } });
     await harness.pair();
-    expect(await harness.controller.getPopupState()).toEqual({ view: "unlocked", email: "alex@example.com", isOffline: true, isAddressFillAvailable: true, isVaultAvailable: true, isPasswordUnlockAvailable: true });
+    expect(await harness.controller.getPopupState()).toEqual({ view: "unlocked", email: "alex@example.com", isOffline: true, isAddressFillAvailable: true, isCardFillAvailable: true, isVaultAvailable: true, isPasswordUnlockAvailable: true });
     harness.state.state = "locked";
     expect((await harness.controller.getPopupState()).view).toBe("locked");
   });
@@ -264,6 +264,49 @@ describe("addresses", () => {
     await expectHisarError(harness.controller.listAddresses(), "invalid-request");
     await expectHisarError(harness.controller.fillAddress(1, "vault-personal", "item-home"), "invalid-request");
     expect(harness.getRequestTypes().filter((type) => String(type).startsWith("addresses."))).toEqual([]);
+  });
+});
+
+describe("cards", () => {
+  const top = { frameId: 0, url: "https://shop.example.com/checkout", origin: "https://shop.example.com", allAncestorOrigin: [] };
+  const paymentFrame = { frameId: 7, url: "https://pay.example.net/card", origin: "https://pay.example.net", allAncestorOrigin: ["https://shop.example.com"] };
+
+  it("lists cards without their numbers and fills the page's own payment form, never a cross-origin frame", async () => {
+    const harness = createHarness({
+      tabUrl: top.url,
+      allFrame: [top, paymentFrame],
+      allProbe: { 0: { ...emptyProbe, hasCardForm: true }, 7: { ...emptyProbe, hasCardForm: true, hasFocusedCardField: true } },
+    });
+    await harness.pair();
+    const allCard = await harness.controller.listCards();
+    expect(allCard).toEqual([{ vaultID: "vault-personal", vaultName: "Personal", itemID: "item-visa", title: "Visa", brand: "Visa", last4: "1111", expiry: "12/30" }]);
+    expect(await harness.controller.fillCard(1, "vault-personal", "item-visa")).toBe(true);
+    const allFill = harness.allFrameMessage.filter((entry) => entry.message.type === "content.fillCard");
+    expect(allFill).toEqual([
+      {
+        frameId: 0,
+        message: {
+          type: "content.fillCard",
+          expectedOrigin: "https://shop.example.com",
+          card: { cardholder: "Alex Example", number: "4111111111111111", expiryMonth: "12", expiryYear: "2030", securityCode: "123", brand: "Visa" },
+        },
+      },
+    ]);
+    expect(harness.allFrameMessage.some((entry) => entry.frameId === 7)).toBe(false);
+  });
+
+  it("does not ask for the card when the page has no payment form", async () => {
+    const harness = createHarness({ allProbe: { 0: { ...emptyProbe, hasLoginForm: true } } });
+    await harness.pair();
+    await expectHisarError(harness.controller.fillCard(1, "vault-personal", "item-visa"), "not-found");
+    expect(harness.state.allCardRequest ?? []).toEqual([]);
+  });
+
+  it("refuses cards with an app that does not fill them", async () => {
+    const harness = createHarness({ state: { features: ["addresses"] } });
+    await harness.pair();
+    await expectHisarError(harness.controller.listCards(), "invalid-request");
+    expect(harness.getRequestTypes().filter((type) => String(type).startsWith("cards."))).toEqual([]);
   });
 });
 

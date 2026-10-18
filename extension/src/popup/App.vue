@@ -3,6 +3,7 @@ import { onBeforeUnmount, onMounted, ref } from "vue";
 import type { PopupState } from "../shared/messages";
 import { describeError, getTargetTabId, openUpdatePage, sendToBackground } from "./api";
 import AddressList from "./components/AddressList.vue";
+import CardList from "./components/CardList.vue";
 import HisarLogo from "./components/HisarLogo.vue";
 import LoginList from "./components/LoginList.vue";
 import PairingView from "./components/PairingView.vue";
@@ -21,7 +22,7 @@ const popupState = ref<PopupState>();
 const tabId = ref<number>();
 const isWaiting = ref(false);
 const errorMessage = ref("");
-const activeSection = ref<"logins" | "addresses" | "generator">("logins");
+const activeSection = ref<"logins" | "cards" | "addresses" | "generator">("logins");
 const noticeMessage = ref("");
 const isSettingsOpen = ref(false);
 let noticeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -149,6 +150,17 @@ onBeforeUnmount(() => {
           {{ popupState.isVaultAvailable ? "Vault" : "Logins" }}
         </button>
         <button
+          v-if="popupState.isCardFillAvailable"
+          type="button"
+          role="tab"
+          :class="{ active: activeSection === 'cards' }"
+          :aria-selected="activeSection === 'cards'"
+          data-testid="section-cards"
+          @click="activeSection = 'cards'"
+        >
+          Cards
+        </button>
+        <button
           v-if="popupState.isAddressFillAvailable"
           type="button"
           role="tab"
@@ -172,6 +184,7 @@ onBeforeUnmount(() => {
       </div>
       <VaultView v-if="activeSection === 'logins' && popupState.isVaultAvailable" :tab-id="tabId" @notice="showNotice" />
       <LoginList v-else-if="activeSection === 'logins'" :tab-id="tabId" @notice="showNotice" />
+      <CardList v-else-if="activeSection === 'cards'" :tab-id="tabId" />
       <AddressList v-else-if="activeSection === 'addresses'" :tab-id="tabId" />
       <PasswordGenerator v-else :tab-id="tabId" @notice="showNotice" />
     </section>

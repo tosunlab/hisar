@@ -11,12 +11,15 @@ import type {
 } from "../shared/messages";
 import {
   featureAddresses,
+  featureCards,
   featureUnlockPassword,
   featureVault,
   HisarError,
   toHisarError,
   type AddressSummary,
   type AddressValues,
+  type CardSummary,
+  type CardValues,
   type Credentials,
   type GenerateOptions,
   type HelloResult,
@@ -27,7 +30,7 @@ import {
   type UpdateRequirement,
 } from "../shared/protocol";
 import { getHost, getOrigin, isWebUrl } from "../shared/url";
-import { chooseAddressFrame, chooseFocusedFrame, chooseLoginFrame, chooseOneTimeCodeFrame, selectAllFillableFrame, type FrameInfo, type ProbedFrame } from "./frames";
+import { chooseAddressFrame, chooseCardFrame, chooseFocusedFrame, chooseLoginFrame, chooseOneTimeCodeFrame, selectAllFillableFrame, type FrameInfo, type ProbedFrame } from "./frames";
 import type { NativeClient } from "./native-client";
 import { decideSaveOffer, RememberedUsernameStore, SaveOfferStore, toSaveOfferView } from "./save";
 import type { ExtensionStorage } from "./storage";
@@ -101,6 +104,7 @@ export class BackgroundController {
         email: status.email,
         isOffline: status.isOffline,
         isAddressFillAvailable: this.isAddressFillAvailable(),
+        isCardFillAvailable: this.isCardFillAvailable(),
         isVaultAvailable: this.isVaultAvailable(),
         isPasswordUnlockAvailable: this.isPasswordUnlockAvailable(),
       };
@@ -308,6 +312,43 @@ export class BackgroundController {
   private async requireVault(): Promise<void> {
     if (!this.hasHello) await this.request(() => this.client.connect());
     if (!this.isVaultAvailable()) throw new HisarError("invalid-request", "Update the Hisar app to browse your vaults");
+  }
+
+  isCardFillAvailable(): boolean {
+    return this.allAppFeature.includes(featureCards);
+  }
+
+  // isCardFillRefused, like isAddressFillRefused, is known only after this worker's first hello.
+  isCardFillRefused(): boolean {
+    return this.hasHello && !this.isCardFillAvailable();
+  }
+
+  async listCards(): Promise<CardSummary[]> {
+    await this.requireCardFill();
+    const result = await this.request(() => this.client.request("cards.list", {}));
+    return result.cards ?? [];
+  }
+
+  async getCard(vaultID: string, itemID: string): Promise<CardValues> {
+    await this.requireCardFill();
+    return this.request(() => this.client.request("cards.fill", { vaultID, itemID }));
+  }
+
+  // fillCard fills the payment form with the focused field, or else the page's first one, in the tab's own frames only.
+  // It looks for the form before it asks Hisar for the card, so a page without one never receives it.
+  async fillCard(tabId: number, vaultID: string, itemID: string): Promise<number> {
+    await this.requireCardFill();
+    const target = chooseCardFrame(await this.probeFillableFrames(tabId));
+    if (!target) throw new HisarError("not-found", "No payment form found on this page");
+    const card = await this.getCard(vaultID, itemID);
+    const filledCount = await this.browser.sendToFrame<number>(tabId, target.frameId, { type: "content.fillCard", expectedOrigin: target.origin, card });
+    if (!filledCount) throw new HisarError("not-found", "No empty card field found on this page");
+    return filledCount;
+  }
+
+  private async requireCardFill(): Promise<void> {
+    if (!this.hasHello) await this.request(() => this.client.connect());
+    if (!this.isCardFillAvailable()) throw new HisarError("invalid-request", "Update the Hisar app to fill cards");
   }
 
   async generatePassword(options: GenerateOptions): Promise<string> {

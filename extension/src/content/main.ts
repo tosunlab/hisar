@@ -1,8 +1,9 @@
 import type { BackgroundToContentMessage, ContentToBackgroundMessage, MessageResponse, SaveOfferView } from "../shared/messages";
 import { attachSubmissionCapture } from "./capture";
 import { readInlineMenuSettings, parseInlineMenuSettings, allInlineMenuSettingKey, appFeaturesKey, readAppFeatures } from "../shared/settings";
-import { featureAddresses } from "../shared/protocol";
+import { featureAddresses, featureCards } from "../shared/protocol";
 import { fillAddressIntoPage, fillAddressIntoScopeOf } from "./address-fill";
+import { fillCardIntoPage, fillCardIntoScopeOf } from "./card-fill";
 import {
   fillLogin,
   fillLoginIntoScopeOf,
@@ -64,6 +65,14 @@ export function handleBackgroundMessage(message: BackgroundToContentMessage, inl
       inlineMenu.dismissMenu(message.sessionID);
       return fillAddressIntoScopeOf(document, field, message.address);
     }
+    case "content.fillCard": {
+      if (!isFrameFillable(window, message.expectedOrigin)) return 0;
+      if (message.sessionID === undefined) return fillCardIntoPage(document, message.card);
+      const field = inlineMenu.getAnchoredField(message.sessionID);
+      if (!field) return 0;
+      inlineMenu.dismissMenu(message.sessionID);
+      return fillCardIntoScopeOf(document, field, message.card);
+    }
     case "content.showSaveOffer":
       if (window.top !== window) return false;
       presentSaveOffer(message.offer);
@@ -93,8 +102,14 @@ function startInlineMenu(): InlineMenuController {
     .catch(() => undefined);
   const updateAppFeatures = (): void => {
     readAppFeatures(chrome.storage.local)
-      .then((allFeature) => inlineMenu.setAddressFillAvailable(allFeature.includes(featureAddresses)))
-      .catch(() => inlineMenu.setAddressFillAvailable(false));
+      .then((allFeature) => {
+        inlineMenu.setAddressFillAvailable(allFeature.includes(featureAddresses));
+        inlineMenu.setCardFillAvailable(allFeature.includes(featureCards));
+      })
+      .catch(() => {
+        inlineMenu.setAddressFillAvailable(false);
+        inlineMenu.setCardFillAvailable(false);
+      });
   };
   updateAppFeatures();
   chrome.storage.onChanged.addListener((allChange, areaName) => {

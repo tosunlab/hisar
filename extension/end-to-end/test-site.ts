@@ -41,6 +41,29 @@ const addressFramePage = `<!doctype html>
 ${addressForm("frame-")}
 </body></html>`;
 
+const cardForm = (prefix: string) => `<form action="/paid" method="post">
+<input id="${prefix}card-number" name="cardnumber" autocomplete="cc-number" placeholder="Card number">
+<input id="${prefix}card-name" autocomplete="cc-name" placeholder="Name on card">
+<select id="${prefix}card-month" name="exp_month"><option value="">MM</option><option value="11">11</option><option value="12">12</option></select>
+<select id="${prefix}card-year" name="exp_year"><option value="">YYYY</option><option value="2029">2029</option><option value="2030">2030</option></select>
+<input id="${prefix}card-code" name="cvc" type="password" placeholder="CVC">
+<button>Pay</button>
+</form>`;
+
+const cardPage = (crossOriginFrameUrl: string) => `<!doctype html>
+<html><head><meta charset="utf-8"><title>Pay</title>
+<style>body{font-family:sans-serif;margin:40px} form{display:grid;gap:8px;width:280px} input,select{padding:8px;font-size:14px} iframe{margin-top:24px;width:340px;height:320px;border:1px dashed #999}</style>
+</head><body>
+<h1>Pay for your order</h1>
+${cardForm("")}
+<iframe id="payment-frame" src="${crossOriginFrameUrl}"></iframe>
+</body></html>`;
+
+const cardFramePage = `<!doctype html>
+<html><head><meta charset="utf-8"><style>form{display:grid;gap:8px;width:280px} input,select{padding:8px;font-size:14px}</style></head><body>
+${cardForm("frame-")}
+</body></html>`;
+
 const framePage = `<!doctype html>
 <html><head><meta charset="utf-8"></head><body>
 <form><input id="frame-username" autocomplete="username"><input id="frame-password" type="password"><button>Sign in</button></form>
@@ -106,6 +129,8 @@ export async function startTestSite(): Promise<TestSite> {
       request.on("end", () => response.end(welcomePage));
       return;
     }
+    if (request.url?.startsWith("/card-frame")) return response.end(cardFramePage);
+    if (request.url?.startsWith("/card")) return response.end(cardPage(`http://localhost:${port}/card-frame`));
     if (request.url?.startsWith("/address-frame")) return response.end(addressFramePage);
     if (request.url?.startsWith("/address")) return response.end(addressPage(`http://127.0.0.1:${port}/address-frame`, `http://localhost:${port}/address-frame`));
     if (request.url?.startsWith("/frame")) return response.end(framePage);

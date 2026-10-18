@@ -52,6 +52,30 @@ export const featureAddresses = "addresses";
 // popup browses every vault.
 export const featureVault = "vault";
 
+// featureCards: the app answers cards.list and cards.fill.
+export const featureCards = "cards";
+
+// CardSummary is a card offered for filling: brand, last four digits and expiry; the rest comes in cards.fill.
+export interface CardSummary {
+  vaultID: string;
+  itemID: string;
+  title: string;
+  brand: string;
+  last4: string;
+  expiry: string;
+  vaultName: string;
+}
+
+// CardValues is the card to fill a payment form with: number holds only digits, expiryMonth two digits and expiryYear four.
+export interface CardValues {
+  cardholder: string;
+  number: string;
+  expiryMonth: string;
+  expiryYear: string;
+  securityCode: string;
+  brand: string;
+}
+
 // featureUnlockPassword: the app answers unlock.password, so the popup unlocks Hisar with the master password.
 export const featureUnlockPassword = "unlock-password";
 
@@ -151,6 +175,8 @@ export interface RequestMap {
     parameters: { url: string; username: string; password: string; vaultID?: string; itemID?: string };
     result: { vaultID: string; itemID: string };
   };
+  "cards.list": { parameters: Record<string, never>; result: { cards: CardSummary[] } };
+  "cards.fill": { parameters: { vaultID: string; itemID: string }; result: CardValues };
   "items.list": {
     parameters: { query?: string; category?: string; isFavoriteOnly?: boolean };
     result: { items: ItemSummary[] };

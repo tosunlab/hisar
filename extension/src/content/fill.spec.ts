@@ -156,6 +156,8 @@ describe("probeFrame", () => {
       hasOneTimeCodeField: false,
       hasAddressForm: false,
       hasFocusedAddressField: false,
+      hasCardForm: false,
+      hasFocusedCardField: false,
     });
     getInput("#login_field").focus();
     expect(probeFrame(document)).toMatchObject({ hasFocusedField: true, hasFocusedLoginField: true });
@@ -172,6 +174,8 @@ describe("probeFrame", () => {
       hasOneTimeCodeField: false,
       hasAddressForm: false,
       hasFocusedAddressField: false,
+      hasCardForm: false,
+      hasFocusedCardField: false,
     });
   });
 });

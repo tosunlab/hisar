@@ -35,6 +35,21 @@ export interface FakeItem {
   fields: { id: string; label: string; kind: "text" | "secret" | "url" | "notes" | "one-time-code"; value?: string }[];
 }
 
+export interface FakeCard {
+  vaultID: string;
+  vaultName: string;
+  itemID: string;
+  title: string;
+  brand: string;
+  last4: string;
+  expiry: string;
+  cardholder: string;
+  number: string;
+  expiryMonth: string;
+  expiryYear: string;
+  securityCode: string;
+}
+
 export interface FakeHostState {
   state: "signed-out" | "locked" | "unlocked";
   email: string;
@@ -51,6 +66,8 @@ export interface FakeHostState {
   masterPassword?: string;
   allAddress?: FakeAddress[];
   allItem?: FakeItem[];
+  allCard?: FakeCard[];
+  allCardRequest?: string[];
   allFavoriteItemID?: string[];
   allRevealRequest?: string[];
   allAddressRequest?: string[];

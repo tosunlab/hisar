@@ -1,5 +1,6 @@
 import type { InlineMenuPurpose } from "../../shared/messages";
 import { findAddressScopeOf } from "../address-detection";
+import { findCardScopeOf } from "../card-detection";
 import { getAutocompleteTokens } from "../detection";
 import { isInputElement, isVisible } from "../dom";
 import { findScopeOfField } from "../fill";
@@ -29,6 +30,8 @@ export function findInlineMenuPurpose(document: Document, element: Element, getR
     return "one-time-code";
   }
   if (hasLayout && !isFieldLargeEnough(getRect(element))) return undefined;
+  // A payment form is told apart first: its security code may be a password field, which would make it look like a login.
+  if (findCardScopeOf(document, element)) return "card";
   const scope = findScopeOfField(document, element);
   // A field that is not part of a login takes an address when it belongs to an address form.
   if (!scope) return findAddressScopeOf(document, element) ? "address" : undefined;

@@ -26,7 +26,23 @@ export function createInitialState() {
     allPairing: [],
     exactHostOnly: false,
     // features: what the app announces in hello; an older app announces none.
-    features: ["addresses", "vault", "unlock-password"],
+    features: ["addresses", "vault", "unlock-password", "cards"],
+    allCard: [
+      {
+        vaultID: "vault-personal",
+        vaultName: "Personal",
+        itemID: "item-visa",
+        title: "Visa",
+        brand: "Visa",
+        last4: "1111",
+        expiry: "12/30",
+        cardholder: "Alex Example",
+        number: "4111111111111111",
+        expiryMonth: "12",
+        expiryYear: "2030",
+        securityCode: "123",
+      },
+    ],
     // masterPassword is what unlock.password accepts.
     masterPassword: "master password",
     allAddress: [
@@ -394,6 +410,21 @@ export function handleRequest(state, request, now = Date.now(), log = () => unde
       state.allAddressRequest = [...(state.allAddressRequest ?? []), address.itemID];
       const { street, city, region, postalCode, country } = address;
       return { street, city, region, postalCode, country };
+    }
+    case "cards.list": {
+      if (!state.features?.includes("cards")) throw new ProtocolError("invalid-request", `Unknown type ${String(type)}`);
+      requireUnlocked(state);
+      const allCard = (state.allCard ?? []).map(({ vaultID, vaultName, itemID, title, brand, last4, expiry }) => ({ vaultID, vaultName, itemID, title, brand, last4, expiry }));
+      return { cards: allCard };
+    }
+    case "cards.fill": {
+      if (!state.features?.includes("cards")) throw new ProtocolError("invalid-request", `Unknown type ${String(type)}`);
+      requireUnlocked(state);
+      const card = (state.allCard ?? []).find((candidate) => candidate.vaultID === request.vaultID && candidate.itemID === request.itemID);
+      if (!card) throw new ProtocolError("not-found", "No such card");
+      state.allCardRequest = [...(state.allCardRequest ?? []), card.itemID];
+      const { cardholder, number, expiryMonth, expiryYear, securityCode, brand } = card;
+      return { cardholder, number, expiryMonth, expiryYear, securityCode, brand };
     }
     case "items.list": {
       if (!state.features?.includes("vault")) throw new ProtocolError("invalid-request", `Unknown type ${String(type)}`);

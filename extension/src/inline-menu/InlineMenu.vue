@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { VisibilityGuard } from "../shared/click-guard";
 import type { InlineMenuBroadcast, InlineMenuState } from "../shared/messages";
-import type { AddressSummary, LoginSummary } from "../shared/protocol";
+import type { AddressSummary, CardSummary, LoginSummary } from "../shared/protocol";
 import { sendToBackground } from "./api";
 
 const props = withDefaults(
@@ -27,6 +27,7 @@ type MenuAction =
   | { kind: "login"; login: LoginSummary }
   | { kind: "code"; login: LoginSummary }
   | { kind: "address"; address: AddressSummary }
+  | { kind: "card"; card: CardSummary }
   | { kind: "more" }
   | { kind: "suggest" }
   | { kind: "pair" }
@@ -45,6 +46,11 @@ let lastReportedHeight = 0;
 
 const isOneTimeCodeMenu = computed(() => menuState.value?.purpose === "one-time-code");
 const allAddress = computed(() => menuState.value?.allAddress ?? []);
+const allCard = computed(() => menuState.value?.allCard ?? []);
+
+function describeCard(card: CardSummary): string {
+  return [card.brand, card.last4 ? `•••• ${card.last4}` : "", card.expiry ? `expires ${card.expiry}` : ""].filter(Boolean).join(" · ") || "Card";
+}
 
 const allAction = computed<MenuAction[]>(() => {
   const state = menuState.value;
@@ -52,6 +58,9 @@ const allAction = computed<MenuAction[]>(() => {
   switch (state.view) {
     case "logins":
       if (state.purpose === "new-password") return state.suggestedPassword ? [{ kind: "suggest" }] : [];
+      if (state.purpose === "card") {
+        return [...(state.allCard ?? []).map((card): MenuAction => ({ kind: "card", card })), ...(state.hasMoreCard ? [{ kind: "more" } as MenuAction] : [])];
+      }
       if (state.purpose === "address") {
         return [
           ...(state.allAddress ?? []).map((address): MenuAction => ({ kind: "address", address })),
@@ -118,6 +127,9 @@ async function runAction(action: MenuAction): Promise<void> {
         return;
       case "address":
         await sendToBackground({ type: "inlineMenu.fillAddress", sessionID: props.sessionID, vaultID: action.address.vaultID, itemID: action.address.itemID });
+        return;
+      case "card":
+        await sendToBackground({ type: "inlineMenu.fillCard", sessionID: props.sessionID, vaultID: action.card.vaultID, itemID: action.card.itemID });
         return;
       case "suggest":
         await sendToBackground({ type: "inlineMenu.useSuggestedPassword", sessionID: props.sessionID });
@@ -234,6 +246,39 @@ defineExpose({ pressKey });
           <span class="subtitle monospace">{{ menuState.suggestedPassword }}</span>
         </span>
       </button>
+    </template>
+    <template v-else-if="menuState?.view === 'logins' && menuState.purpose === 'card'">
+      <button
+        v-for="(card, index) in allCard"
+        :key="card.vaultID + card.itemID"
+        type="button"
+        class="item"
+        :class="{ selected: selectedIndex === index }"
+        data-testid="inline-card"
+        @click="chooseAction({ kind: 'card', card }, $event)"
+      >
+        <span class="avatar key" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 6h18v12H3zM3 10h18M7 15h4" /></svg>
+        </span>
+        <span class="text">
+          <span class="title">{{ card.title }}</span>
+          <span class="subtitle">{{ describeCard(card) }}</span>
+        </span>
+      </button>
+      <button
+        v-if="menuState.hasMoreCard"
+        type="button"
+        class="item more"
+        :class="{ selected: selectedIndex === allCard.length }"
+        data-testid="inline-more"
+        @click="chooseAction({ kind: 'more' }, $event)"
+      >
+        More in Hisar…
+      </button>
+      <div v-if="allCard.length === 0" class="message" data-testid="inline-no-cards">
+        <p class="title">No cards in Hisar</p>
+        <p class="muted">Add a credit card in Hisar to fill payment forms.</p>
+      </div>
     </template>
     <template v-else-if="menuState?.view === 'logins' && menuState.purpose === 'address'">
       <button
