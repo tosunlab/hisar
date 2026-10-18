@@ -2,9 +2,11 @@ package com.tryhisar.hisar
 
 import android.app.Application
 import android.util.Log
+import com.tryhisar.hisar.autofill.HttpAssetLinksVerifier
 import com.tryhisar.hisar.backend.HisarKitBackend
 import com.tryhisar.hisar.model.BackendEvent
 import com.tryhisar.hisar.model.VaultBackend
+import com.tryhisar.hisar.passkey.RelyingPartyVerifier
 import com.tryhisar.hisar.platform.BiometricKeystore
 import com.tryhisar.hisar.platform.ClipboardAdapter
 import com.tryhisar.hisar.platform.EventRelay
@@ -33,6 +35,9 @@ open class HisarApplication : Application(), BackendProvider {
     override fun copySecret(text: String): Boolean = clipboard.setText(text)
 
     override fun copyPlain(text: String): Boolean = clipboard.setPlainText(text)
+
+    /** Asks a relying party whether an app may use its passkeys; instrumented tests answer for their own test domain. */
+    open val relyingPartyVerifier: RelyingPartyVerifier get() = HttpAssetLinksVerifier
 
     override fun onCreate() {
         super.onCreate()

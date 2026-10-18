@@ -778,10 +778,13 @@ data class PasskeyRegistrationRequest(
     val allSupportedAlgorithm: List<Int> = emptyList(),
     val allExcludedCredentialID: List<ByteString> = emptyList(),
 ) {
-    val isAlgorithmSupported: Boolean get() = allSupportedAlgorithm.isEmpty() || ALGORITHM_ES256 in allSupportedAlgorithm
+    val isAlgorithmSupported: Boolean get() = isAlgorithmSupported(allSupportedAlgorithm)
 
     companion object {
         const val ALGORITHM_ES256 = -7
+
+        /** Hisar's passkeys are ES256; an empty list leaves the choice to the authenticator. */
+        fun isAlgorithmSupported(allAlgorithm: List<Int>): Boolean = allAlgorithm.isEmpty() || ALGORITHM_ES256 in allAlgorithm
     }
 }
 
@@ -830,6 +833,7 @@ data class PasskeyRegistrationCredential(
     val clientDataHash: ByteString,
     val credentialID: ByteString,
     val attestationObject: ByteString,
+    val authenticatorData: ByteString,
 ) {
     companion object {
         /** The credential the system gets, or null when the backend's answer is not base64url. */
@@ -839,10 +843,14 @@ data class PasskeyRegistrationCredential(
                 clientDataHash = clientDataHash,
                 credentialID = Base64URL.decode(result.credentialID) ?: return null,
                 attestationObject = Base64URL.decode(result.attestationObject) ?: return null,
+                authenticatorData = Base64URL.decode(result.authenticatorData) ?: return null,
             )
         }
     }
 }
+
+/** Client data Hisar wrote for a caller that sends only a challenge, and the SHA-256 that the signature covers. */
+data class PasskeyClientData(val json: ByteString, val hash: ByteString)
 
 /**
  * A person you share a vault with (role admin or member on the server), someone with access to a vault (role owner, editor

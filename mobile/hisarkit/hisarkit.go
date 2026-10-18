@@ -421,6 +421,12 @@ func BuildAndroidAppOrigin(signingCertificateSHA256 []byte) (string, error) {
 	return passkey.BuildAndroidAppOrigin(signingCertificateSHA256)
 }
 
+// ResolvePasskeyRelyingPartyID returns the relying party ID a privileged browser's web origin may use: the requested
+// ID when it is the origin's host or a registrable suffix of it, or the host when none is requested.
+func ResolvePasskeyRelyingPartyID(origin, relyingPartyID string) (string, error) {
+	return passkey.ResolveRelyingPartyID(origin, relyingPartyID)
+}
+
 type passkeyClientData struct {
 	ClientDataJSON string `json:"clientDataJSON"`
 	ClientDataHash string `json:"clientDataHash"`

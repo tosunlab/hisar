@@ -1,10 +1,15 @@
 package com.tryhisar.hisar.autofill
 
+import com.tryhisar.hisar.model.Base64URL
 import com.tryhisar.hisar.model.FakeBackend
 import com.tryhisar.hisar.model.ItemAndroidApp
 import com.tryhisar.hisar.model.ItemDetail
 import com.tryhisar.hisar.model.LoginCredential
 import com.tryhisar.hisar.model.LoginMatch
+import com.tryhisar.hisar.model.PasskeyAssertionCredential
+import com.tryhisar.hisar.model.PasskeyAssertionRequest
+import com.tryhisar.hisar.model.PasskeyRegistrationCredential
+import com.tryhisar.hisar.model.PasskeyRegistrationRequest
 import com.tryhisar.hisar.model.ThemeAppearanceName
 import com.tryhisar.hisar.model.ThemeColorName
 import com.tryhisar.hisar.model.VaultStatus
@@ -21,8 +26,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
+import kotlinx.io.bytestring.ByteString
+import kotlinx.io.bytestring.encodeToByteString
 
-/** The AutoFill screens for passwords and one-time codes, on websites and in Android apps. */
+/** The AutoFill screens for passwords, one-time codes and passkeys, on websites and in Android apps. */
 class AutoFillModelTests {
     private val backend = FakeBackend()
     private val allCompletedCredential = mutableListOf<LoginCredential>()
@@ -31,6 +38,10 @@ class AutoFillModelTests {
     private var cancelCount = 0
     private val allVerifiedApp = mutableListOf<AndroidApp>()
     private var allVouchingWebsite = emptyList<String>()
+    private val allAssertion = mutableListOf<PasskeyAssertionCredential>()
+    private val allRegistration = mutableListOf<PasskeyRegistrationCredential>()
+    private var rejectedRegistrationCount = 0
+    private var unlockCompletionCount = 0
 
     private val bankApp = AndroidApp("com.example.bank", "AB:".repeat(31) + "AB")
     private val bankAppTarget = FillTarget.App(bankApp, "Example Bank")
@@ -47,6 +58,12 @@ class AutoFillModelTests {
         completeOneTimeCodeRequest = { allCompletedCode += it },
         copyOneTimeCode = { allCopiedCode += it },
         cancelRequest = { cancelCount += 1 },
+        passkeyCompletion = AutoFillModel.PasskeyCompletion(
+            completeAssertion = { allAssertion += it },
+            completeRegistration = { allRegistration += it },
+            rejectExcludedRegistration = { rejectedRegistrationCount += 1 },
+            completeUnlock = { unlockCompletionCount += 1 },
+        ),
     )
 
     private fun websites(vararg allServiceIdentifier: String) = FillTarget.Websites(allServiceIdentifier.toList())
@@ -314,6 +331,174 @@ class AutoFillModelTests {
         assertEquals("vault-1" to "item/with/slash", LoginMatch.parseRecordIdentifier(recordIdentifier))
         assertNull(LoginMatch.parseRecordIdentifier("nothing"))
         assertNull(LoginMatch.parseRecordIdentifier("/item"))
+    }
+
+    private val clientDataHash = ByteString(ByteArray(32) { it.toByte() })
+    private val noWebsite = FillTarget.Websites(emptyList())
+
+    @Test
+    fun testPasskeyListShowsPasskeysForTheRelyingPartyAndSigns() = runTest {
+        backend.seedSignedIn()
+        val model = createModel()
+        val request = PasskeyAssertionRequest("github.com", clientDataHash)
+        model.prepareCredentialList(websites("https://github.com"), passkeyRequest = request)
+        assertEquals(listOf("GitHub"), model.allVisibleMatchingPasskey.map { it.title })
+        assertEquals(listOf("GitHub"), model.allMatchingLogin.value.map { it.title }, "passwords are still offered")
+        model.selectPasskey(model.allVisibleMatchingPasskey[0])
+        assertEquals(1, allAssertion.size)
+        assertEquals("github.com", allAssertion.first().relyingPartyID)
+        assertEquals(clientDataHash, allAssertion.first().clientDataHash)
+        assertEquals(ByteString(1, 1, 1), allAssertion.first().credentialID)
+        assertEquals("alice-handle".encodeToByteString(), allAssertion.first().userHandle)
+        assertEquals(ByteString("signature over ".encodeToByteArray() + clientDataHash.toByteArray()), allAssertion.first().signature)
+        assertTrue(allCompletedCredential.isEmpty())
+    }
+
+    @Test
+    fun testPasskeyListAppliesAllowedCredentialsAndOtherRelyingParties() = runTest {
+        backend.seedSignedIn()
+        val model = createModel()
+        model.prepareCredentialList(websites("https://github.com"), passkeyRequest = PasskeyAssertionRequest("github.com", clientDataHash, listOf(ByteString(9))))
+        assertTrue(model.allVisibleMatchingPasskey.isEmpty())
+        model.prepareCredentialList(websites("https://gist.github.com"), passkeyRequest = PasskeyAssertionRequest("gist.github.com", clientDataHash))
+        assertTrue(model.allVisibleMatchingPasskey.isEmpty(), "only passkeys whose RP ID equals the request's")
+        model.prepareCredentialList(websites("github.com"))
+        assertNull(model.passkeyAssertionRequest.value)
+        assertTrue(model.allMatchingPasskey.value.isEmpty(), "a password-only request lists no passkeys")
+    }
+
+    @Test
+    fun testLockedPasskeyListUnlocksThenLists() = runTest {
+        backend.seedSignedIn(state = VaultStatus.STATE_LOCKED)
+        val model = createModel()
+        model.prepareCredentialList(noWebsite, passkeyRequest = PasskeyAssertionRequest("github.com", clientDataHash))
+        assertEquals(AutoFillModel.Screen.Locked, model.screen.value)
+        assertEquals("github.com", model.serviceName)
+        model.unlock(FakeBackend.PASSWORD)
+        assertEquals(AutoFillModel.Screen.List, model.screen.value)
+        assertEquals(1, model.allVisibleMatchingPasskey.size)
+        model.updateSearchText("nobody")
+        assertTrue(model.allVisibleMatchingPasskey.isEmpty())
+    }
+
+    @Test
+    fun testChosenPasskeyUnlocksThenSigns() = runTest {
+        backend.seedSignedIn(state = VaultStatus.STATE_LOCKED)
+        val model = createModel()
+        val request = PasskeyAssertionRequest("github.com", clientDataHash)
+        model.prepareInterfaceToProvidePasskey(request, ByteString(1, 1, 1))
+        assertEquals(AutoFillModel.Screen.Locked, model.screen.value)
+        assertTrue(allAssertion.isEmpty())
+        model.unlock(FakeBackend.PASSWORD)
+        assertEquals(listOf(ByteString(1, 1, 1)), allAssertion.map { it.credentialID })
+    }
+
+    @Test
+    fun testChosenPasskeyOfAnotherSiteFallsBackToTheList() = runTest {
+        backend.seedSignedIn()
+        val model = createModel()
+        model.prepareInterfaceToProvidePasskey(PasskeyAssertionRequest("evil.example", clientDataHash), ByteString(1, 1, 1))
+        assertTrue(allAssertion.isEmpty())
+        assertEquals(AutoFillModel.Screen.List, model.screen.value)
+        assertTrue(model.allMatchingPasskey.value.isEmpty())
+    }
+
+    @Test
+    fun testPasskeyWithoutInteractionNeedsAnUnlockedProcess() = runTest {
+        backend.seedSignedIn()
+        val model = createModel()
+        val request = PasskeyAssertionRequest("github.com", clientDataHash)
+        assertNull(model.providePasskeyWithoutUserInteraction(request, ByteString(1, 1, 1)), "no backend is prepared yet")
+        model.prepareCredentialList(websites("github.com"))
+        assertEquals("alice-handle".encodeToByteString(), model.providePasskeyWithoutUserInteraction(request, ByteString(1, 1, 1))?.userHandle)
+        backend.lock()
+        assertNull(model.providePasskeyWithoutUserInteraction(request, ByteString(1, 1, 1)))
+    }
+
+    @Test
+    fun testPasskeyRegistrationPreselectsTheMatchingLoginAndSaves() = runTest {
+        backend.seedSignedIn()
+        backend.allItemByVaultID["personal"]?.add(ItemDetail(id = "github-bob", category = "login", title = "GitHub Bob", username = "bob", allURL = listOf("github.com")))
+        val model = createModel()
+        val request = PasskeyRegistrationRequest("github.com", "Alice", "alice-handle".encodeToByteString(), clientDataHash, listOf(-8, -7))
+        model.prepareInterfaceForPasskeyRegistration(request)
+        assertEquals(AutoFillModel.Screen.PasskeyRegistration, model.screen.value)
+        assertEquals(listOf("GitHub", "GitHub Bob"), model.passkeyRegistrationOptions.value?.allLogin?.map { it.title })
+        assertEquals("personal/github", model.selectedRegistrationLoginID.value, "the login whose username equals the user name")
+        model.savePasskey()
+        assertEquals(1, allRegistration.size)
+        assertEquals("github.com", allRegistration.first().relyingPartyID)
+        assertEquals(clientDataHash, allRegistration.first().clientDataHash)
+        assertEquals("attestation for github.com".encodeToByteString(), allRegistration.first().attestationObject)
+        val savedItem = backend.getItem("personal", "github")
+        assertEquals(1, savedItem.allPasskey.size, "the passkey with the same user handle is replaced")
+        assertEquals(allRegistration.first().credentialID, Base64URL.decode(savedItem.allPasskey.first().credentialID))
+    }
+
+    @Test
+    fun testPasskeyRegistrationToANewLogin() = runTest {
+        backend.seedSignedIn(state = VaultStatus.STATE_LOCKED)
+        val model = createModel()
+        model.prepareInterfaceForPasskeyRegistration(PasskeyRegistrationRequest("shop.example", "buyer", ByteString(5), clientDataHash))
+        assertEquals(AutoFillModel.Screen.Locked, model.screen.value)
+        assertEquals("shop.example", model.serviceName)
+        model.unlock(FakeBackend.PASSWORD)
+        assertEquals(AutoFillModel.Screen.PasskeyRegistration, model.screen.value)
+        assertEquals(emptyList(), model.passkeyRegistrationOptions.value?.allLogin)
+        assertNull(model.selectedRegistrationLoginID.value, "New login is the only choice")
+        model.savePasskey()
+        assertEquals(1, allRegistration.size)
+        assertTrue(backend.allItemByVaultID["personal"].orEmpty().any { it.title == "shop.example" && it.allPasskey.size == 1 })
+    }
+
+    @Test
+    fun testExcludedPasskeyRegistrationIsRejected() = runTest {
+        backend.seedSignedIn()
+        val model = createModel()
+        model.prepareInterfaceForPasskeyRegistration(
+            PasskeyRegistrationRequest("github.com", "alice", ByteString(5), clientDataHash, allExcludedCredentialID = listOf(ByteString(1, 1, 1))),
+        )
+        assertEquals(true, model.passkeyRegistrationOptions.value?.isExcluded)
+        model.savePasskey()
+        assertTrue(allRegistration.isEmpty())
+        assertFalse("createPasskey" in backend.allCallName)
+        model.rejectExcludedPasskeyRegistration()
+        assertEquals(1, rejectedRegistrationCount)
+    }
+
+    @Test
+    fun testPasskeyRegistrationWithoutES256IsCancelled() = runTest {
+        backend.seedSignedIn()
+        val model = createModel()
+        model.prepareInterfaceForPasskeyRegistration(PasskeyRegistrationRequest("github.com", "alice", ByteString(5), clientDataHash, listOf(-8, -257)))
+        assertEquals(1, cancelCount)
+        assertFalse("preparePasskeyRegistration" in backend.allCallName)
+    }
+
+    @Test
+    fun testPasskeyRegistrationErrorIsShown() = runTest {
+        backend.seedSignedIn()
+        val model = createModel()
+        model.prepareInterfaceForPasskeyRegistration(PasskeyRegistrationRequest("github.com", "alice", ByteString(5), ByteString(1)))
+        model.savePasskey()
+        assertTrue(allRegistration.isEmpty())
+        assertEquals("the request is not valid", model.errorMessage.value)
+        assertEquals(AutoFillModel.Screen.PasskeyRegistration, model.screen.value)
+    }
+
+    @Test
+    fun testUnlockActionUnlocksThenHandsBackWithoutAList() = runTest {
+        backend.seedSignedIn(state = VaultStatus.STATE_LOCKED)
+        val model = createModel()
+        model.prepareUnlock(noWebsite, PasskeyAssertionRequest("github.com", clientDataHash))
+        assertEquals(AutoFillModel.Screen.Locked, model.screen.value)
+        assertEquals(0, unlockCompletionCount)
+        model.unlock(FakeBackend.PASSWORD)
+        assertEquals(1, unlockCompletionCount)
+        assertEquals(AutoFillModel.Screen.Starting, model.screen.value, "the sheet lists the credentials, not Hisar")
+        assertFalse("listAllPasskeyForRelyingParty" in backend.allCallName)
+        model.prepareUnlock(noWebsite, null)
+        assertEquals(2, unlockCompletionCount, "an unlocked Hisar hands back at once")
     }
 
     private fun linkBankLogin(app: AndroidApp) {

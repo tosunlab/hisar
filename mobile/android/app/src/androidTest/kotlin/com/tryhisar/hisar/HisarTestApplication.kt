@@ -1,8 +1,11 @@
 package com.tryhisar.hisar
 
+import com.tryhisar.hisar.autofill.AssetLinks
 import com.tryhisar.hisar.model.BackendEvent
 import com.tryhisar.hisar.model.FakeBackend
 import com.tryhisar.hisar.model.VaultBackend
+import com.tryhisar.hisar.passkey.RelyingPartyVerifier
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 
@@ -15,6 +18,13 @@ class HisarTestApplication : HisarApplication() {
     private val fakeEvents = MutableSharedFlow<BackendEvent>()
     val allCopiedSecret = mutableListOf<String>()
     val allCopiedPlain = mutableListOf<String>()
+
+    /** The assetlinks.json each test relying party serves; a relying party without one vouches for no app. */
+    val statementByRelyingParty = ConcurrentHashMap<String, String>()
+
+    override val relyingPartyVerifier = RelyingPartyVerifier { relyingPartyID, app ->
+        AssetLinks.isVouchingFor(statementByRelyingParty[relyingPartyID].orEmpty(), app)
+    }
 
     override val backend: VaultBackend
         get() = fakeBackend ?: super.backend

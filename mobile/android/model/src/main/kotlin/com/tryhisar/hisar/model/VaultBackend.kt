@@ -93,6 +93,16 @@ interface VaultBackend {
     fun preparePasskeyRegistration(relyingPartyID: String, allExcludedCredentialID: List<ByteString>): PasskeyRegistrationOptions
     fun createPasskey(request: PasskeyRegistrationRequest, vaultID: String, itemID: String): PasskeyRegistrationResult
     fun assertPasskey(relyingPartyID: String, credentialID: ByteString, clientDataHash: ByteString): PasskeyAssertionResult
+
+    /** The relying party ID that a privileged browser's page at [origin] may use; throws when the origin may not use it. */
+    fun resolvePasskeyRelyingPartyID(origin: String, relyingPartyID: String): String
+
+    /** The origin of a native app's client data: `android:apk-key-hash:` and the SHA-256 of its signing certificate. */
+    fun buildAndroidAppOrigin(certificateSHA256: ByteString): String
+
+    /** Client data for a caller that sends only a challenge: a native app, named by its origin and package. */
+    fun buildPasskeyClientData(clientDataType: String, challenge: String, origin: String, androidPackageName: String): PasskeyClientData
+
     fun deletePasskey(vaultID: String, itemID: String, credentialID: String): ItemDetail
     fun listAllPendingApproval(): List<PhoneApproval>
     fun approveApproval(requestID: String, isRemembered: Boolean)
