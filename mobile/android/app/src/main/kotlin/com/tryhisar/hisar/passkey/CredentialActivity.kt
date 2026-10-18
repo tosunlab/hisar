@@ -2,12 +2,14 @@ package com.tryhisar.hisar.passkey
 
 import android.app.Application
 import android.content.Intent
+import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.annotation.RequiresApi
 import androidx.credentials.CreatePublicKeyCredentialRequest
 import androidx.credentials.CreatePublicKeyCredentialResponse
 import androidx.credentials.GetCredentialResponse
@@ -56,6 +58,7 @@ import kotlinx.io.bytestring.ByteString
  * user picked is handed out without a screen while Hisar is unlocked; otherwise, and for the unlock action and saving a
  * passkey, [isContentShown] turns on the AutoFill screens.
  */
+@RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
 class CredentialViewModel(application: Application, private val intent: Intent) : AndroidViewModel(application) {
     private val hisar = application as HisarApplication
     private val pick = CredentialPick.read(intent)
@@ -242,6 +245,7 @@ class CredentialViewModel(application: Application, private val intent: Intent) 
 }
 
 /** Opened by an entry of Credential Manager's sheet: unlocks Hisar, saves or signs with a passkey, or hands out a password. */
+@RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
 class CredentialActivity : FragmentActivity() {
     private val viewModel: CredentialViewModel by viewModels {
         viewModelFactory { initializer { CredentialViewModel(application, intent) } }

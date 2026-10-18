@@ -1,8 +1,10 @@
 package com.tryhisar.hisar.passkey
 
+import android.os.Build
 import android.os.CancellationSignal
 import android.os.OutcomeReceiver
 import android.util.Log
+import androidx.annotation.RequiresApi
 import androidx.credentials.exceptions.ClearCredentialException
 import androidx.credentials.exceptions.CreateCredentialException
 import androidx.credentials.exceptions.CreateCredentialNoCreateOptionException
@@ -31,6 +33,7 @@ import kotlinx.coroutines.launch
  * answer from the vault without any screen: the passkeys and logins the caller may use, the "Unlock Hisar" action while
  * locked, or Hisar as a place to save a new passkey. Every entry opens [CredentialActivity].
  */
+@RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
 class HisarCredentialProviderService : CredentialProviderService() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val hisar get() = application as HisarApplication
