@@ -20,11 +20,21 @@ type Server struct {
 	allowedPeerPath string
 	mutex           sync.Mutex
 	listener        net.Listener
+	// isHostOutsideSandboxAllowed: Hisar runs in a Flatpak, where the browser's host is in another PID namespace.
+	isHostOutsideSandboxAllowed bool
 }
 
 // NewServer accepts only peers running allowedPeerPath when that file exists, i.e. in the packaged app.
 func NewServer(handler browserprotocol.Handler, peerResolver localsocket.PeerResolver, allowedPeerPath string) *Server {
 	return &Server{handler: handler, peerResolver: peerResolver, allowedPeerPath: allowedPeerPath}
+}
+
+// AllowHostOutsideSandbox is for a Hisar in a Flatpak, which sees the host the browser started as PID 0 with no
+// executable to read; outside a sandbox such a peer is a container or another sandbox, and is refused.
+func (s *Server) AllowHostOutsideSandbox() {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.isHostOutsideSandboxAllowed = true
 }
 
 func (s *Server) Serve(ctx context.Context, socketPath string) error {
@@ -62,9 +72,15 @@ func (s *Server) isPeerAllowed(connection net.Conn) bool {
 	if err != nil {
 		return false
 	}
-	// A Flatpak Hisar sees the browser's host in another PID namespace, as PID 0 without a path; the extension must
-	// still be paired before it gets anything.
-	return peer.Path == s.allowedPeerPath || (peer.PID == 0 && peer.Path == "")
+	if peer.Path == s.allowedPeerPath {
+		return true
+	}
+	// Any process of the user's outside the sandbox looks the same, so in a Flatpak the extension's pairing, which the
+	// user approves in Hisar, is what keeps other processes out.
+	s.mutex.Lock()
+	isHostOutsideSandboxAllowed := s.isHostOutsideSandboxAllowed
+	s.mutex.Unlock()
+	return isHostOutsideSandboxAllowed && peer.PID == 0 && peer.Path == ""
 }
 
 func (s *Server) serveConnection(ctx context.Context, connection net.Conn) {
