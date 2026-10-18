@@ -88,6 +88,7 @@ class AppModel(
     val signIn = SignInModel(this)
     val lock = LockModel(this)
     val itemEditor = ItemEditorModel(this)
+    val favorites = FavoritesModel(this)
 
     val autoLockInterval: Duration get() = Duration.ofSeconds(status.value.autoLockSeconds.toLong())
 

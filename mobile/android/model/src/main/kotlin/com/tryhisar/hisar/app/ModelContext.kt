@@ -41,6 +41,9 @@ data class UnlockedData(
         },
     )
 
+    /** The starred items of every vault, sorted by title; favorites of deleted items are already gone from the lists. */
+    fun listAllFavoriteReference(): List<VaultItemReference> = listAllItemReference().filter { it.item.isFavorite }
+
     fun countItem(vaultID: String): Int = allItemByVaultID[vaultID]?.size ?: findVault(vaultID)?.itemCount ?: 0
 }
 
