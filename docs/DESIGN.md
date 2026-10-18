@@ -792,7 +792,15 @@ The app updates itself with [Sparkle 2](https://sparkle-project.org) through the
 
 #### 9.1.3 Linux
 
-The Linux app is the same Wails app on GTK 4 and WebKitGTK 6.0, packaged as `.deb` and `.rpm` for amd64 and arm64 (`scripts/package-desktop-linux.sh`, `desktop/build/linux/nfpm/nfpm.yaml`; Ubuntu 24.04+, Debian 13+, Fedora 40+): `/usr/bin/Hisar`, `/usr/bin/hisar`, `/usr/lib/hisar/hisar-browser-host`, a desktop entry and its icon. CI installs the `.deb`, starts it hidden on Xvfb and checks that `hisar` and `ssh-add` reach it (`scripts/test-desktop-linux-package.sh`).
+The Linux app is the same Wails app on GTK 4 and WebKitGTK 6.0, for amd64 and arm64, in three forms:
+
+- **`.deb` and `.rpm`** (`scripts/package-desktop-linux.sh`, `desktop/build/linux/nfpm/nfpm.yaml`; Ubuntu 24.04+, Debian 13+, Fedora 40+): `/usr/bin/Hisar`, `/usr/bin/hisar`, `/usr/lib/hisar/hisar-browser-host`, a desktop entry and its icon.
+- **AppImage** (the same script): the three binaries and an `AppRun`, using the system's GTK 4 and WebKitGTK 6.0, for distributions with those but no `.deb` or `.rpm`. It does not bundle WebKitGTK: WebKit starts its processes from the path it was built with, so a bundled copy would run the system's processes against its own library. `appimagetool` 1.9.1 and the type-2 runtime 20251108 are pinned and checked by SHA-256.
+- **Flatpak** (`scripts/package-desktop-flatpak.sh`, `desktop/build/linux/flatpak/com.tryhisar.hisar.yml`): built in the GNOME 51 SDK, run on the GNOME 51 runtime from Flathub, and released as a single-file bundle (`flatpak install --user Hisar-….flatpak`). Its sandbox may use `~/.hisar`, `~/.ssh`, `~/.local/share/hisar`, `~/.local/bin`, `~/.config/autostart` and the Chromium browsers' directories under `~/.config`, and talk to the Secret Service, the idle monitors, the tray watcher and notifications.
+
+Neither an AppImage (mounted at a new path each launch) nor a Flatpak (inside its sandbox) has files the rest of the system can run, so at every start the app copies the browser host and `hisar` to `~/.local/share/hisar/bin` with a `hisar-app` launcher that starts the package again (`desktop/portable`). The browser manifests, Settings → Command-line tool (which links `~/.local/bin/hisar` to the copy), the login item (`Exec=…/hisar-app --hidden`), and `hisar` and the browser host when they start the app all use those copies. A Flatpak's login item goes into the user's own `~/.config/autostart`, not its sandbox's.
+
+CI installs the `.deb` and runs the AppImage, starts each hidden on Xvfb and checks that `hisar` and `ssh-add` reach it (`scripts/test-desktop-linux-package.sh`), and builds and installs the Flatpak in Flathub's builder image.
 
 Works as on the Mac: the vault, the SSH agent on `~/.hisar/agent.sock` with approvals, `hisar` through the app (peer credentials with `SO_PEERCRED`, terminal sessions from `/proc`), `hisar run` and `hisar mcp`, the browser extension in Chromium-based browsers (manifests under `~/.config`; the host starts the app when it is not running), passkeys through the extension, phone approvals, open at login (XDG autostart, §9.1.2) and auto-lock on the session's idle time (§9.1, from GNOME's or the freedesktop idle monitor over D-Bus).
 
@@ -804,7 +812,8 @@ Differs:
 - **Approvals name programs, not apps.** Linux has no Dock apps or code signatures, so an approval shows the process chain (`ssh ← zsh`), an SSH session or `tmux`, without an app name or icon (§9.6).
 - **The approval window is placed by the desktop**: GTK 4 has no way for an app to move its own window (and Wayland forbids it), so `windowplacement` does nothing on Linux.
 - **No tray icon on GNOME without the AppIndicator extension** (§9.1.2): Hisar keeps running, and starting it again shows the window.
-- **Not covered:** browsers installed as a Flatpak or a Snap (their sandbox cannot run a host from outside it), Firefox (the extension has no Firefox build), and AppImage or Flatpak packages of Hisar.
+- **The Flatpak sees other programs as PID 0**, in another PID namespace: it cannot read a caller's terminal session or executable. So `hisar` through a Flatpak Hisar is approved for each connection on its own (a terminal approval does not carry over), SSH approvals show no program, and the browser socket serves a host it cannot see; the extension must still be paired. The `.deb`, `.rpm` and AppImage have none of these limits.
+- **Not covered:** browsers installed as a Flatpak or a Snap (their sandbox cannot run a host from outside it) and Firefox (the extension has no Firefox build).
 - The UI says "this computer" and "system tray" where the Mac's says "this Mac" and "menu bar".
 
 ### 9.2 Browser extension — TypeScript, MV3

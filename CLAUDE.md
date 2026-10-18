@@ -94,6 +94,7 @@ Shared test fixtures are in `helpers_test.go`, the in-memory API in `fakeapi_tes
 | `appinfo` | The app behind a process (`resolver.go`, `chain.go`, `findapp.go`, `bundle.go`) |
 | `browser` | Native host, socket server and manifests for the extension |
 | `commandline` | Installing `hisar`, Settings → Command-line tool and its approved launchers, and the signed app behind a caller without a terminal (`identity.go`) |
+| `portable` | Running from an AppImage or a Flatpak: copies the browser host and `hisar` out, with the `hisar-app` launcher |
 | `loginitem`, `background` | Open at login; login item, Dock icon, appearance |
 | `biometric`, `systemidle`, `windowplacement`, `updater`, `pasteboard` | Touch ID and keychain, idle time (D-Bus on Linux), window placement, Sparkle (`Notifier` announces versions on Linux), the clipboard (copies concealed from clipboard managers) |
 | `cmd/hisar-browser-host`, `cmd/hisar-update-key` | Helper binaries |
@@ -185,7 +186,7 @@ make test-desktop-frontend
 make test-raycast        # the Raycast extension's typecheck, tests, lint and build; it never installs into Raycast
 make test-admin          # the admin dashboard's typecheck and unit tests; make build-admin builds it alone
 make test-admin-end-to-end # the dashboard in Chromium; needs HISAR_DATABASE_URL and Playwright's Chromium
-make build-desktop       # or package-desktop for Hisar.app; package-desktop-linux VERSION=… for the .deb and .rpm (on Linux); scripts/test-desktop-linux-package.sh installs one and checks the app starts
+make build-desktop       # or package-desktop for Hisar.app; package-desktop-linux VERSION=… for the .deb, .rpm and AppImage (on Linux); package-desktop-flatpak VERSION=… for the Flatpak; scripts/test-desktop-linux-package.sh installs one and checks the app starts
 make build-ios-framework test-ios
 gofmt -l $(git ls-files '*.go')
 ```

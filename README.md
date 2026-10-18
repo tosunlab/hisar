@@ -28,7 +28,10 @@ sudo apt install ./Hisar-0.3.0-linux-amd64.deb     # Fedora: sudo dnf install ./
 ```
 
 The package installs the app (`/usr/bin/Hisar`, in the app menu), `hisar` at `/usr/bin/hisar`, and the browser
-extension's host. The Secret Key goes into the desktop's keyring, so a Secret Service has to run (GNOME Keyring or
+extension's host. On other distributions, run `Hisar-<version>-linux-<arch>.AppImage` (it needs the system's GTK 4 and
+WebKitGTK 6.0), or install the Flatpak, which brings them with the GNOME runtime: `flatpak install --user
+Hisar-<version>-linux-<arch>.flatpak`. Both copy `hisar` to `~/.local/share/hisar/bin`; Settings → Command-line tool
+links it onto your `PATH`. The Secret Key goes into the desktop's keyring, so a Secret Service has to run (GNOME Keyring or
 KWallet); without one, set `HISAR_SECRET_KEY`. What works as on the Mac and what differs (no Touch ID, update notices
 instead of installing updates, no app names in approvals): [docs/DESIGN.md §9.1.3](docs/DESIGN.md).
 
