@@ -1,4 +1,4 @@
-//go:build !(darwin && !ios && cgo)
+//go:build !linux && !(darwin && !ios && cgo)
 
 package systemidle
 
