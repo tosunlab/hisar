@@ -156,9 +156,11 @@ tested as its pull request. A new push to a pull request cancels its running CI.
 `TestIntegration…` tests and `TestRecordOpenSSHFixture`), the CLI for every release platform, the end-to-end test of the built
 binaries, the server Docker image for amd64 and arm64 (built into a throwaway registry and booted, never pushed), the desktop frontend
 (typecheck, tests, bundle check) and the desktop app's Linux build (both only when the pull request changes the desktop app or what it builds from, as below), the extension (tests, Chromium end-to-end tests, zip),
-the share link page in Chromium against the server, and the admin dashboard (typecheck, tests, the `admin/src/themes.css`
+the share link page in Chromium against the server, the admin dashboard (typecheck, tests, the `admin/src/themes.css`
 freshness check and Chromium end-to-end tests against the server; only when the pull request changes `admin/`, `server/`,
-`core/`, `go.work` or the workflow).
+`core/`, `go.work` or the workflow), and the Android app (`HisarKit.aar`, the `ThemePalettes.kt` freshness check, the debug and
+release APKs, lint, the JVM tests and the instrumented tests on an x86_64 API 37 emulator; only when the pull request changes
+`mobile/android/`, `mobile/hisarkit/`, `mobile/go.mod`, the Android scripts, the themes, `core/`, `go.work` or the workflow).
 
 `.github/workflows/macos.yml` builds the Mac app (Touch ID and Sparkle tests, bundle and signature checks) and the iPhone app
 (HisarKit, Xcode project check, unit tests, UI tests against a local server) on GitHub's `macos-26` runners with Xcode 26.6. macOS
@@ -166,7 +168,8 @@ minutes count ten times against the plan's included minutes, so each job runs on
 branch on every push, changes what it builds (`scripts/detect-app-changes.sh`):
 
 - the Mac app when `desktop/`, `cli/` (the app bundles `hisar`), `core/`, `go.work` or the workflow changes;
-- the iPhone app when `mobile/`, `core/`, `go.work` or the workflow changes;
+- the iPhone app when `mobile/ios/`, `mobile/hisarkit/`, `mobile/go.mod`, `mobile/build-framework.sh`, `core/`, `go.work` or the
+  workflow changes; an Android-only change does not run it;
 - both, whatever changed, while the pull request has the label `run-macos`;
 - not the iPhone app while the pull request has the label `skip-ios`, for changes whose iPhone build, unit tests and UI tests
   already passed locally (`make build-ios-framework build-ios test-ios test-ios-ui`). Add the label before pushing: a run
