@@ -60,6 +60,22 @@ final class PhoneApprovalUITests: HisarUITestCase {
         checkResult("Approved preview-launcher with Face ID")
     }
 
+    func testApproveLauncherShareRequest() {
+        launchPreview("launcher-share")
+        waitFor(app.staticTexts["phone-approval-title"])
+        XCTAssertEqual(app.staticTexts["phone-approval-summary"].label, "Raycast wants to create a share link for “GitHub”")
+        let secrets = app.staticTexts["phone-approval-row-Secrets"].label
+        XCTAssertTrue(secrets.contains("username") && secrets.contains("password"), secrets)
+        XCTAssertEqual(app.staticTexts["phone-approval-row-Link"].label, "Link, Expires in 7 days · 1 view")
+        XCTAssertEqual(app.staticTexts["phone-approval-row-Warning"].label, "Warning, Anyone with the link can read these until it expires or its views run out.")
+        XCTAssertFalse(app.staticTexts["phone-approval-row-Lasts"].exists, "a share link is approved once")
+        let note = app.descendants(matching: .any)["phone-approval-encryption-note"].label
+        XCTAssertTrue(note.contains("Approving lets this one request continue"), note)
+        saveScreenshot("phone-approval-launcher-share")
+        app.buttons["phone-approval-approve"].tap()
+        checkResult("Approved preview-launcher-share with Face ID")
+    }
+
     func testForwardedRequestWarns() {
         launchPreview("forwarded")
         let banner = app.descendants(matching: .any)["phone-approval-forwarded"]

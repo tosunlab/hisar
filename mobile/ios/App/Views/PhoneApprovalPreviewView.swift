@@ -38,6 +38,12 @@ struct PhoneApprovalPreviewView: View {
                 requestID: "preview-launcher", requesterDeviceName: "Alper's MacBook Pro", expiresAt: expiresAt, kind: PhoneApproval.kindLauncher,
                 appName: "Raycast", purpose: "search Hisar and copy or paste passwords and one-time codes"
             )
+        case "launcher-share":
+            return PhoneApproval(
+                requestID: "preview-launcher-share", requesterDeviceName: "Alper's MacBook Pro", expiresAt: expiresAt, kind: PhoneApproval.kindLauncher,
+                appName: "Raycast", purpose: "create a share link for “GitHub”", commandLine: "Expires in 7 days · 1 view", secrets: ["username", "password"],
+                appWarning: "Anyone with the link can read these until it expires or its views run out."
+            )
         default:
             return PhoneApproval(
                 requestID: "preview-ssh", requesterDeviceName: "Alper's MacBook Pro", expiresAt: expiresAt, kind: PhoneApproval.kindSSH,
