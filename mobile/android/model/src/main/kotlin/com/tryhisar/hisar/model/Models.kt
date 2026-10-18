@@ -101,7 +101,7 @@ data class VaultStatus(
 
 // An auto-lock of zero or less means the backend has none set, which is the default.
 @OptIn(ExperimentalSerializationApi::class)
-private object VaultStatusSerializer : JsonTransformingSerializer<VaultStatus>(VaultStatus.generatedSerializer()) {
+object VaultStatusSerializer : JsonTransformingSerializer<VaultStatus>(VaultStatus.generatedSerializer()) {
     override fun transformDeserialize(element: JsonElement): JsonElement {
         if (element !is JsonObject) return element
         val seconds = element["autoLockSeconds"]?.let { runCatching { it.jsonPrimitive.intOrNull }.getOrNull() }

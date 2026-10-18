@@ -3,6 +3,8 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+val hisarKit = rootProject.layout.projectDirectory.file("../build/HisarKit.aar")
+
 android {
     namespace = "com.tryhisar.hisar"
     compileSdk = 37
@@ -32,10 +34,26 @@ android {
     }
 }
 
+tasks.named("preBuild") {
+    val hisarKitFile = hisarKit.asFile
+    doFirst {
+        check(hisarKitFile.exists()) { "$hisarKitFile is missing; build it with make build-android-aar" }
+    }
+}
+
 dependencies {
     implementation(project(":model"))
+    implementation(files(hisarKit))
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.material3)
     implementation(libs.compose.ui)
     implementation(libs.androidx.activity.compose)
+
+    androidTestImplementation(platform(libs.compose.bom))
+    androidTestImplementation(libs.compose.ui.test.junit4)
+    androidTestImplementation(libs.androidx.test.ext.junit)
+    androidTestImplementation(libs.androidx.test.runner)
+    // Compose's ui-test brings Espresso 3.5, which calls InputManager.getInstance, gone on API 37.
+    androidTestImplementation(libs.androidx.test.espresso.core)
+    debugImplementation(libs.compose.ui.test.manifest)
 }
