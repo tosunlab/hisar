@@ -25,6 +25,8 @@ class IosTestParityTest {
         "testSignedOutByServerShowsReasonAndClearsAutoFill" to "testSignedOutByServerShowsReason",
         "testDeleteAccountSignsOutAndRemovesAutoFillIdentities" to "testDeleteAccountSignsOut",
         "testSaveNewItemAddsItWithoutSecretsAndUpdatesIdentities" to "testSaveNewItemAddsItWithoutSecrets",
+        "testQuickTypeRequestUnlocksThenCompletes" to "testSuggestionRequestUnlocksThenCompletes",
+        "testOneTimeCodeQuickTypeRequestUnlocksThenCompletes" to "testOneTimeCodeSuggestionRequestUnlocksThenCompletes",
     )
 
     private val notApplicable = run {
