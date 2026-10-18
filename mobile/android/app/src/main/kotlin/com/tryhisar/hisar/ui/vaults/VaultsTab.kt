@@ -11,6 +11,8 @@ import com.tryhisar.hisar.app.NavigationStack
 import com.tryhisar.hisar.app.VaultsDestination
 import com.tryhisar.hisar.ui.item.ItemDetailScreen
 import com.tryhisar.hisar.ui.item.ItemEditorScreen
+import com.tryhisar.hisar.ui.organizations.OrganizationVaultSharingScreen
+import com.tryhisar.hisar.ui.sharing.VaultSharingScreen
 
 /** The Vaults tab: the vaults home, and the screens it pushes on [AppModel.navigation]'s Vaults stack. */
 @Composable
@@ -56,5 +58,7 @@ private fun DestinationScreen(model: AppModel, stack: NavigationStack, destinati
             stack.replaceTop(VaultsDestination.Vault(vault.id))
         }
         is VaultsDestination.DeleteVault -> VaultDeletionScreen(model, destination.actions, onClose = stack::pop)
+        is VaultsDestination.VaultSharing -> VaultSharingScreen(model, destination.vaultID, onDone = stack::pop)
+        is VaultsDestination.OrganizationVaultSharing -> OrganizationVaultSharingScreen(model, destination.vaultID, destination.organizationID, onDone = stack::pop)
     }
 }

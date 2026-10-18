@@ -19,8 +19,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
+import androidx.compose.material.icons.outlined.Business
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Devices
+import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.LaptopMac
 import androidx.compose.material.icons.outlined.Palette
@@ -56,7 +58,9 @@ import com.tryhisar.hisar.model.VaultStatus
 import com.tryhisar.hisar.ui.components.FormSection
 import com.tryhisar.hisar.ui.components.RowDivider
 import com.tryhisar.hisar.ui.components.TabScaffold
+import com.tryhisar.hisar.ui.organizations.OrganizationsScreen
 import com.tryhisar.hisar.ui.root.TabBarHeight
+import com.tryhisar.hisar.ui.sharing.PeopleScreen
 import com.tryhisar.hisar.ui.theme.HisarTheme
 import com.tryhisar.hisar.ui.theme.HisarType
 import kotlinx.coroutines.launch
@@ -69,6 +73,8 @@ enum class SettingsDestination {
     APPEARANCE,
     MAC_APPROVALS,
     AUTOFILL,
+    PEOPLE,
+    ORGANIZATIONS,
     DEVICES,
     HELP,
     ABOUT,
@@ -118,6 +124,8 @@ fun SettingsTab(model: AppModel) {
             SettingsDestination.DELETE_ACCOUNT -> DeleteAccountScreen(model, pop)
             SettingsDestination.EXPORT_DATA -> ExportDataScreen(model, pop)
             SettingsDestination.AUTOFILL -> SettingsScreen("AutoFill", onBack = pop) { AutoFillSettingsSections() }
+            SettingsDestination.PEOPLE -> PeopleScreen(model, pop)
+            SettingsDestination.ORGANIZATIONS -> OrganizationsScreen(model, pop)
         }
     }
 }
@@ -127,6 +135,7 @@ private fun SettingsRoot(model: AppModel, push: (SettingsDestination) -> Unit) {
     val status by model.status.collectAsStateWithLifecycle()
     val theme by model.theme.collectAsStateWithLifecycle()
     val isMacApprovalAllowed by model.isMacApprovalAllowed.collectAsStateWithLifecycle()
+    val data by model.unlockedData.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var isSignOutConfirmationShown by remember { mutableStateOf(false) }
@@ -135,6 +144,7 @@ private fun SettingsRoot(model: AppModel, push: (SettingsDestination) -> Unit) {
     LaunchedEffect(lifecycleState) {
         if (lifecycleState.isAtLeast(Lifecycle.State.RESUMED)) isAutoFillOn = isAutoFillEnabled(context)
     }
+    LaunchedEffect(Unit) { model.invitations.refreshInvitations() }
 
     TabScaffold(title = "Settings", bottomInset = TabBarHeight) {
         FormSection {
@@ -157,6 +167,16 @@ private fun SettingsRoot(model: AppModel, push: (SettingsDestination) -> Unit) {
             )
         }
         FormSection {
+            NavigationRow(
+                "People", "open-people", { push(SettingsDestination.PEOPLE) }, Icons.Outlined.Group,
+                value = data.allReceivedInvitation.size.takeIf { it > 0 }?.toString(),
+            )
+            RowDivider()
+            NavigationRow(
+                "Organizations", "open-organizations", { push(SettingsDestination.ORGANIZATIONS) }, Icons.Outlined.Business,
+                value = data.allOrganizationInvitation.size.takeIf { it > 0 }?.toString(),
+            )
+            RowDivider()
             NavigationRow("Devices", "open-devices", { push(SettingsDestination.DEVICES) }, Icons.Outlined.Devices)
         }
         FormSection {

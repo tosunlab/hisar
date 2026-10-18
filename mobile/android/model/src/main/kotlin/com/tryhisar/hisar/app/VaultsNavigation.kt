@@ -36,6 +36,16 @@ sealed interface VaultsDestination {
     data class DeleteVault(val actions: VaultActions) : VaultsDestination {
         override val isSheet: Boolean get() = true
     }
+
+    /** A shared vault's members and invitations, from Share or Members in the vault's toolbar. */
+    data class VaultSharing(val vaultID: String) : VaultsDestination {
+        override val isSheet: Boolean get() = true
+    }
+
+    /** The teams that have an organization vault, from the vault's toolbar. */
+    data class OrganizationVaultSharing(val vaultID: String, val organizationID: String) : VaultsDestination {
+        override val isSheet: Boolean get() = true
+    }
 }
 
 /** One tab's pushed screens, the last on top; empty shows the tab's root. */

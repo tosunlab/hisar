@@ -271,6 +271,7 @@ fun SwipeActionRow(
     actionTestTag: String,
     isLeading: Boolean,
     onAction: () -> Unit,
+    actionColor: Color = SwipeActionColor,
     content: @Composable () -> Unit,
 ) {
     val actionWidth = 96.dp
@@ -294,7 +295,7 @@ fun SwipeActionRow(
                 Modifier
                     .width(actionWidth)
                     .fillMaxHeight()
-                    .background(SwipeActionColor)
+                    .background(actionColor)
                     .clickable(role = Role.Button, onClickLabel = actionLabel) { runAction() }
                     .testTag(actionTestTag),
                 verticalArrangement = Arrangement.Center,

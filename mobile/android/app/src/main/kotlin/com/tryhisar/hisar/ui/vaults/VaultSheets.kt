@@ -87,19 +87,27 @@ fun SheetPage(bar: @Composable () -> Unit, content: @Composable ColumnScope.() -
 
 /** A row that picks one of [allOption] from a menu, as an inline-labelled Picker. */
 @Composable
-fun <Option> PickerRow(label: String, selected: Option?, allOption: List<Option>, optionLabel: (Option) -> String, onSelect: (Option) -> Unit, testTag: String) {
+fun <Option> PickerRow(
+    label: String,
+    selected: Option?,
+    allOption: List<Option>,
+    optionLabel: (Option) -> String,
+    onSelect: (Option) -> Unit,
+    testTag: String,
+    enabled: Boolean = true,
+) {
     var isExpanded by remember { mutableStateOf(false) }
     Box {
         Row(
             Modifier
                 .fillMaxWidth()
                 .heightIn(min = 52.dp)
-                .clickable(role = Role.DropdownList) { isExpanded = true }
+                .clickable(enabled = enabled, role = Role.DropdownList) { isExpanded = true }
                 .testTag(testTag)
                 .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(label, style = HisarType.body, color = HisarTheme.colors.label, modifier = Modifier.weight(1f))
+            Text(label, style = HisarType.body, color = if (enabled) HisarTheme.colors.label else HisarTheme.colors.secondaryLabel, modifier = Modifier.weight(1f))
             Text(selected?.let(optionLabel).orEmpty(), style = HisarType.body, color = HisarTheme.colors.secondaryLabel)
             Icon(Icons.Filled.UnfoldMore, contentDescription = null, tint = HisarTheme.colors.secondaryLabel, modifier = Modifier.size(18.dp))
         }
