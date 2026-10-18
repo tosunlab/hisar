@@ -222,8 +222,8 @@ func ReadField(vaultItem *item.Item, label string, now time.Time) (string, strin
 	case FieldNotes:
 		value = vaultItem.Details.Notes
 	case FieldURL:
-		if len(vaultItem.Overview.URLs) > 0 {
-			value = vaultItem.Overview.URLs[0]
+		if websites := vaultItem.Websites(); len(websites) > 0 {
+			value = websites[0]
 		}
 	case FieldPublicKey:
 		value = vaultItem.Overview.PublicKey

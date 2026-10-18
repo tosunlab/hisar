@@ -33,7 +33,7 @@ Five Go modules joined by `go.work`, plus four non-Go apps.
 | `apitypes` | JSON wire types of `/api/v1`, event names, roles, platform headers, share-link limits, `IsValidVaultRole`, `NormalizeEmail` |
 | `apiclient` | Typed HTTP client of `/api/v1` and its event stream |
 | `session` | A signed-in account: sign-up, login, unlock, item sync and encryption, rotation, sharing, share links, organization vaults (`CompleteVaultKeyRequests`, `RotatePendingVaults`), account changes, `Reauthenticate` (the OPAQUE proof that account changes carry), the account preferences record with the favorites, `GetVaultPermissions` |
-| `item` | The plaintext item model and its categories (`schema.go`: types kept as named fields; `card.go`, `identity.go`, `apicredential.go`, `license.go`, `server.go`, `database.go`, `address.go`, whose fields identities and cards share), the chosen icon and its presets (`icon.go`), `LookupField`, the password generator |
+| `item` | The plaintext item model and its categories (`schema.go`: types kept as named fields; `card.go`, `identity.go`, `apicredential.go`, `license.go`, `server.go`, `database.go`, `address.go`, whose fields identities and cards share), the chosen icon and its presets (`icon.go`), the Android apps a login fills into, stored among its URLs as `androidapp://<package>?sha256=<certificate>` so older apps keep them (`androidapp.go`), `LookupField`, the password generator |
 | `itemicon` | Icon images: normalizing uploads and website icons into small PNGs, and fetching website icons from public https sites only |
 | `cache` | The offline SQLite copy of the server's encrypted records, and the device's sealed website icons |
 | `localstate` | `state.json` (session state plus embedded device `Settings`) and the Secret Key in the keychain |
@@ -55,7 +55,7 @@ Five Go modules joined by `go.work`, plus four non-Go apps.
 
 **`core/app`** is one package because every feature shares the unlocked session and its caches under one mutex. Files:
 `service.go`, `auth.go`, `lock.go`, `vaults.go`, `items.go`, `clipboard.go`, `errors.go`, `account.go`, `sharing.go`,
-`invitations.go`, `sharelink.go`, `browser.go` (extension pairing), `logins.go` (login matching), `passkey*.go`,
+`invitations.go`, `sharelink.go`, `browser.go` (extension pairing), `logins.go` (login matching, for pages and Android apps), `androidapps.go` (linking logins to Android apps), `passkey*.go`,
 `platformpasskey.go` (iOS), `commandline*.go`, `codingagent.go` and `launcher.go` (the CLI socket handler), `approvals.go`,
 `phoneapproval.go` (Mac side), `phoneapproval_answer.go` (iPhone side), `import.go`, `export.go`, `settings.go`, `favorites.go`, `websiteicons.go` (the sealed website icon cache and its setting), `addresses.go` (addresses for the extension),
 `organizations.go` (organizations, teams, organization vaults, and delivering and rotating their keys on every sync).

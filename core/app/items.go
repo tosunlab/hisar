@@ -156,7 +156,7 @@ func convertToItemDetail(vaultItem *item.Item, now time.Time) ItemDetail {
 		Category:    vaultItem.Overview.Category,
 		Title:       vaultItem.Overview.Title,
 		Username:    vaultItem.Overview.Username,
-		URLs:        append([]string{}, vaultItem.Overview.URLs...),
+		URLs:        vaultItem.Websites(),
 		Tags:        append([]string{}, vaultItem.Overview.Tags...),
 		Password:    vaultItem.Details.Password,
 		Notes:       vaultItem.Details.Notes,
@@ -168,7 +168,8 @@ func convertToItemDetail(vaultItem *item.Item, now time.Time) ItemDetail {
 		OneTimePassword:    vaultItem.Details.OneTimePassword,
 		HasOneTimePassword: vaultItem.Details.OneTimePassword != "",
 
-		Passkeys: convertToItemPasskeys(vaultItem.Details.Passkeys),
+		Passkeys:    convertToItemPasskeys(vaultItem.Details.Passkeys),
+		AndroidApps: convertToItemAndroidApps(vaultItem.AndroidApps()),
 
 		CanConvertToSecureNote: vaultItem.IsCategory(item.CategoryLogin) && item.HasOnlyNotes(vaultItem),
 	}
@@ -408,7 +409,7 @@ func (s *Service) saveSessionItem(ctx context.Context, vault *session.Vault, vau
 	return err
 }
 
-// buildSavedItem keeps the category and passkeys of an existing item; an ssh-key item only takes the title, tags, icon and notes
+// buildSavedItem keeps the category, passkeys and Android apps of an existing item; an ssh-key item only takes the title, tags, icon and notes
 // from the editor. A secure note or a card keeps no login data, and a card's values become its named fields. Login data an
 // existing one already has, which its editor does not show, is taken from the stored item, not from detail.
 func (s *Service) buildSavedItem(vaultID string, detail ItemDetail) (item.Item, error) {
@@ -438,6 +439,9 @@ func (s *Service) buildSavedItem(vaultID string, detail ItemDetail) (item.Item, 
 		vaultItem.Overview.Category = cachedItem.Overview.Category
 		vaultItem.Details.Passkeys = cachedItem.Details.Passkeys
 		item.UpdatePasskeyOverview(&vaultItem)
+		for _, app := range cachedItem.AndroidApps() {
+			vaultItem.AddAndroidApp(app)
+		}
 		if cachedItem.OmitsLoginData() {
 			vaultItem.Overview.Username, vaultItem.Overview.URLs = cachedItem.Overview.Username, cachedItem.Overview.URLs
 			vaultItem.Details.Password, vaultItem.Details.OneTimePassword = cachedItem.Details.Password, cachedItem.Details.OneTimePassword

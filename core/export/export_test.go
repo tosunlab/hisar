@@ -184,3 +184,25 @@ func TestConvertToItemDropsIdentity(t *testing.T) {
 		t.Errorf("converted: %+v", converted)
 	}
 }
+
+func TestExportKeepsAndroidApps(t *testing.T) {
+	bankApp, err := item.ParseAndroidApp("com.bank.app", "146de983c5730650d8eeb9952f34fc6416a08342e61dbea88a0496b23fcf44e5")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bank := item.Item{ID: "33333333-3333-3333-3333-333333333333", Overview: item.Overview{Title: "Bank", URLs: []string{"https://bank.example"}}, Details: item.Details{Password: "p"}}
+	bank.AddAndroidApp(bankApp)
+	vaults := []Vault{ConvertVault("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "Personal", "personal", []item.Item{bank})}
+	encoded, err := EncodePlain(Build(Account{Email: "alice@example.com", Server: "https://api.tryhisar.com"}, vaults, time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := Decode(encoded, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	imported := decoded.Vaults[0].Items[0].ConvertToItem()
+	if !imported.IsForAndroidApp(bankApp) || !reflect.DeepEqual(imported.Websites(), []string{"https://bank.example"}) {
+		t.Errorf("imported URLs %q", imported.Overview.URLs)
+	}
+}

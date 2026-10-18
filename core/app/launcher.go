@@ -116,7 +116,7 @@ func (s *Service) listLauncherItems() (cliprotocol.LauncherItemListResult, error
 func convertToLauncherItem(vault *session.Vault, vaultItem *item.Item, isFavorite bool, reference secretreference.Reference) cliprotocol.LauncherItem {
 	launcherItem := cliprotocol.LauncherItem{
 		ID: vaultItem.ID, VaultID: vault.ID, Title: vaultItem.Overview.Title, Category: vaultItem.Category(), Username: vaultItem.Overview.Username,
-		URLs: append([]string{}, vaultItem.Overview.URLs...), Tags: append([]string{}, vaultItem.Overview.Tags...), IsFavorite: isFavorite,
+		URLs: vaultItem.Websites(), Tags: append([]string{}, vaultItem.Overview.Tags...), IsFavorite: isFavorite,
 		HasPassword: vaultItem.Details.Password != "", HasOneTimeCode: vaultItem.Details.OneTimePassword != "",
 		References: []cliprotocol.LauncherReference{},
 	}

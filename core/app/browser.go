@@ -360,8 +360,10 @@ func convertBrowserError(err error) error {
 		return browserprotocol.NewError(browserprotocol.ErrorOffline, err.Error())
 	case errors.Is(err, ErrNotFound):
 		return browserprotocol.NewError(browserprotocol.ErrorNotFound, err.Error())
-	case errors.Is(err, errNoURLMatch):
+	case errors.Is(err, errNoURLMatch), errors.Is(err, errNoAppMatch):
 		return browserprotocol.NewError(browserprotocol.ErrorNoMatch, err.Error())
+	case errors.Is(err, errInvalidAndroidApp):
+		return browserprotocol.NewError(browserprotocol.ErrorInvalidRequest, err.Error())
 	}
 	var responseError *browserprotocol.ResponseError
 	if errors.As(err, &responseError) {

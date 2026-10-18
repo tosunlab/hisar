@@ -85,7 +85,7 @@ func ListAvailableFieldKeys(vaultItem *item.Item) []string {
 	if vaultItem.Details.Password != "" {
 		keys = append(keys, FieldPassword)
 	}
-	if len(vaultItem.Overview.URLs) > 0 {
+	if len(vaultItem.Websites()) > 0 {
 		keys = append(keys, FieldURLs)
 	}
 	for index, field := range vaultItem.Details.Fields {
@@ -117,7 +117,7 @@ func DescribeFieldKey(vaultItem *item.Item, key string) string {
 	case FieldPassword:
 		return "password"
 	case FieldURLs:
-		if len(vaultItem.Overview.URLs) == 1 {
+		if len(vaultItem.Websites()) == 1 {
 			return "website"
 		}
 		return "websites"
@@ -163,7 +163,7 @@ func BuildItemPayload(vaultItem *item.Item, fieldKeys []string) (*Payload, error
 		payload.Fields = append(payload.Fields, Field{Kind: KindPassword, Label: "Password", Value: vaultItem.Details.Password, IsConcealed: true})
 	}
 	if isChosen[FieldURLs] {
-		for _, link := range vaultItem.Overview.URLs {
+		for _, link := range vaultItem.Websites() {
 			payload.Fields = append(payload.Fields, Field{Kind: KindURL, Label: "Website", Value: link})
 		}
 	}

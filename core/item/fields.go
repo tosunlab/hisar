@@ -27,7 +27,7 @@ const (
 type FieldNames map[string]string
 
 // LookupField returns the value of the built-in field name maps to in names, or else of the first custom field with
-// that label, ignoring case. The first URL stands for the URLs; the one-time code is generated for now. A connection
+// that label, ignoring case. The first website stands for the URLs; the one-time code is generated for now. A connection
 // string that is not built falls back to the custom field, so a DB2 item can keep its JDBC URL in one.
 func LookupField(vaultItem *Item, name string, names FieldNames, now time.Time) (string, bool) {
 	if field, isBuiltIn := names[strings.ToLower(name)]; isBuiltIn {
@@ -52,10 +52,11 @@ func getBuiltInField(vaultItem *Item, field string, now time.Time) (string, bool
 	case FieldPassword:
 		return vaultItem.Details.Password, true
 	case FieldURL:
-		if len(vaultItem.Overview.URLs) == 0 {
+		websites := vaultItem.Websites()
+		if len(websites) == 0 {
 			return "", false
 		}
-		return vaultItem.Overview.URLs[0], true
+		return websites[0], true
 	case FieldNotes:
 		return vaultItem.Details.Notes, true
 	case FieldPublicKey:
