@@ -42,7 +42,9 @@ const allHintKind: [CardKind, RegExp][] = [
 // A month or year field counts only next to a card number, since "month" alone is as likely a birth date.
 const allExpiryPartKind = new Set<CardKind>(["expiry-month", "expiry-year"]);
 
-const excludedHintPattern = /e-?mail|phone|\btel\b|search|coupon|promo|gift|captcha|birth|\bdob\b|\bzip\b|postal/i;
+// A birth date in the languages identity detection reads: "Geburtsmonat" and "Mes de nacimiento" hold the word for month
+// too, and must not take the card's expiry.
+const excludedHintPattern = /e-?mail|phone|\btel\b|search|coupon|promo|gift|captcha|birth|\bdob\b|bday|geburt|naissance|nacimiento|nascita|nascimento|do[gğ]um|\bzip\b|postal/i;
 
 function getAutocompleteTokens(element: CardElement): string[] {
   return (element.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/).filter(Boolean);

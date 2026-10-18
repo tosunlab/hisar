@@ -57,6 +57,20 @@ describe("finding a payment form", () => {
     expect(classifyCardField(getElement("[name=email]"))).toBeUndefined();
   });
 
+  it("leaves out a birth month or year in other languages, beside a card number", () => {
+    document.body.innerHTML = `
+      <form>
+        <input id="number" name="cardnumber">
+        <label>Geburtsmonat <select id="de-month"><option value="1">1</option><option value="3">3</option></select></label>
+        <label>Mes de nacimiento <input id="es-month"></label>
+        <label>Mois de naissance <input id="fr-month"></label>
+        <label>Doğum ayı <input id="tr-month"></label>
+        <label>Anno di nascita <input id="it-year"></label>
+        <input id="month" name="exp_month">
+      </form>`;
+    expect(findAllCardScope(document)[0].allField.map((field) => field.element.id)).toEqual(["number", "month"]);
+  });
+
   it("leaves out hidden fields, so a page cannot collect a card the user does not see", () => {
     document.body.innerHTML = `
       <form>
@@ -120,6 +134,40 @@ describe("filling a card", () => {
     expect(getValue("#month")).toBe("3");
     expect(getValue("#year")).toBe("30");
     expect(getValue("#named-month")).toBe("Mar");
+  });
+
+  it("chooses a month by its whole name in other languages", () => {
+    const allMonthList = (id: string, allName: string[]) => `<select id="${id}" name="exp_month_${id}">${allName.map((name) => `<option>${name}</option>`).join("")}</select>`;
+    const fillMonth = (expiryMonth: string) => {
+      document.body.innerHTML = `
+        <form>
+          <input id="number" name="cardnumber">
+          ${allMonthList("es", ["Marzo", "Abril", "Mayo", "Junio", "Julio"])}
+          ${allMonthList("pt", ["Março", "Abril", "Maio", "Junho", "Julho"])}
+          ${allMonthList("it", ["Marzo", "Aprile", "Maggio", "Giugno", "Luglio"])}
+          ${allMonthList("fr", ["Mars", "Avril", "Mai", "Juin", "Juillet"])}
+          ${allMonthList("fr-short", ["mars", "avr.", "mai", "juin", "juil."])}
+          ${allMonthList("de", ["März", "April", "Mai", "Juni", "Juli"])}
+        </form>`;
+      fillCardIntoPage(document, { ...visa, expiryMonth });
+      return ["es", "pt", "it", "fr", "fr-short", "de"].map((id) => getValue(`#${id}`));
+    };
+    expect(fillMonth("05")).toEqual(["Mayo", "Maio", "Maggio", "Mai", "mai", "Mai"]);
+    expect(fillMonth("07")).toEqual(["Julio", "Julho", "Luglio", "Juillet", "juil.", "Juli"]);
+    expect(fillMonth("03")).toEqual(["Marzo", "Março", "Marzo", "Mars", "mars", "März"]);
+  });
+
+  it("keeps a month or year the list already has", () => {
+    document.body.innerHTML = `
+      <form>
+        <input id="number" name="cardnumber">
+        <select id="chosen" name="exp_month"><option value="">Month</option><option value="1">01</option><option value="3">03</option></select>
+        <select id="preset" name="exp_year"><option value="2029">2029</option><option value="2030">2030</option><option value="2031" selected>2031</option></select>
+      </form>`;
+    getElement<HTMLSelectElement>("#chosen").value = "1";
+    expect(fillCardIntoPage(document, visa)).toBe(1);
+    expect(getValue("#chosen")).toBe("1");
+    expect(getValue("#preset")).toBe("2031");
   });
 
   it("splits the number across boxes", () => {

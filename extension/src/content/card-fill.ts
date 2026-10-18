@@ -2,19 +2,21 @@ import type { CardValues } from "../shared/protocol";
 import { findAllCardScope, findCardScopeOf, type CardField, type CardScope } from "./card-detection";
 import { getDeepActiveElement } from "./dom";
 
+// Each month's names and abbreviations in English, Turkish, German, French, Spanish, Italian and Portuguese. An option
+// matches a whole word of its text, so "Maggio" is not read as "Mar" and "Juillet" not as "Juin".
 const allMonthName = [
-  ["jan", "january", "ocak", "januar", "janvier", "enero"],
-  ["feb", "february", "şubat", "subat", "februar", "février", "fevrier", "febrero"],
-  ["mar", "march", "mart", "märz", "marz", "mars", "marzo"],
-  ["apr", "april", "nisan", "avril", "abril"],
-  ["may", "mayıs", "mayis", "mai", "mayo"],
-  ["jun", "june", "haziran", "juni", "juin", "junio"],
-  ["jul", "july", "temmuz", "juli", "juillet", "julio"],
-  ["aug", "august", "ağustos", "agustos", "août", "aout", "agosto"],
-  ["sep", "sept", "september", "eylül", "eylul", "septembre", "septiembre"],
-  ["oct", "october", "ekim", "oktober", "octobre", "octubre"],
-  ["nov", "november", "kasım", "kasim", "novembre", "noviembre"],
-  ["dec", "december", "aralık", "aralik", "dezember", "décembre", "decembre", "diciembre"],
+  ["jan", "january", "ocak", "januar", "janvier", "janv", "enero", "ene", "gennaio", "gen", "janeiro"],
+  ["feb", "february", "şubat", "subat", "februar", "février", "fevrier", "févr", "fevr", "febrero", "febbraio", "fevereiro", "fev"],
+  ["mar", "march", "mart", "märz", "marz", "mär", "mars", "marzo", "março", "marco"],
+  ["apr", "april", "nisan", "avril", "avr", "abril", "abr", "aprile"],
+  ["may", "mayıs", "mayis", "mai", "mayo", "maggio", "mag", "maio"],
+  ["jun", "june", "haziran", "juni", "juin", "junio", "giugno", "giu", "junho"],
+  ["jul", "july", "temmuz", "juli", "juillet", "juil", "julio", "luglio", "lug", "julho"],
+  ["aug", "august", "ağustos", "agustos", "août", "aout", "agosto", "ago"],
+  ["sep", "sept", "september", "eylül", "eylul", "septembre", "septiembre", "settembre", "set", "setembro"],
+  ["oct", "october", "ekim", "oktober", "okt", "octobre", "octubre", "ottobre", "ott", "outubro", "out"],
+  ["nov", "november", "kasım", "kasim", "novembre", "noviembre", "novembro"],
+  ["dec", "december", "aralık", "aralik", "dezember", "dez", "décembre", "decembre", "déc", "diciembre", "dic", "dicembre", "dezembro"],
 ];
 
 function dispatchFillEvents(element: HTMLElement, value: string): void {
@@ -46,9 +48,21 @@ function readOptionNumber(option: HTMLOptionElement, isMonth: boolean): number |
     if (match) return Number(match[0]);
   }
   if (!isMonth) return undefined;
-  const text = option.text.trim().toLowerCase();
-  const index = allMonthName.findIndex((allName) => allName.some((name) => text === name || text.startsWith(name)));
-  return index >= 0 ? index + 1 : undefined;
+  for (const text of [option.text, option.value]) {
+    const allWord = text.toLowerCase().match(/\p{L}+/gu) ?? [];
+    const index = allMonthName.findIndex((allName) => allWord.some((word) => allName.includes(word)));
+    if (index >= 0) return index + 1;
+  }
+  return undefined;
+}
+
+// hasChosenOption is a list the user or the page already set: on an option with a value other than its placeholder, or
+// on the option the page marked as chosen. A list with no placeholder that is still on its first option has no choice.
+function hasChosenOption(select: HTMLSelectElement): boolean {
+  const selected = select.options[select.selectedIndex];
+  if (!selected || selected.value === "") return false;
+  const allOption = Array.from(select.options);
+  return allOption.some((option) => option.value === "") || allOption.some((option) => option.defaultSelected) || select.selectedIndex !== 0;
 }
 
 // chooseOption selects the list's option for a month (1–12) or a year (2030 also matches a "30" option).
@@ -113,6 +127,7 @@ function fillCardIntoScope(scope: CardScope, anchor: CardField | undefined, card
     const element = field.element;
     if (element.tagName === "SELECT") {
       const select = element as HTMLSelectElement;
+      if (hasChosenOption(select)) continue;
       if (field.kind === "expiry-month" && card.expiryMonth && chooseOption(select, Number(card.expiryMonth), true)) filledCount += 1;
       if (field.kind === "expiry-year" && card.expiryYear && chooseOption(select, Number(card.expiryYear), false)) filledCount += 1;
       continue;
