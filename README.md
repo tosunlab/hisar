@@ -8,12 +8,12 @@ The server stores only ciphertext. Keys are derived on your devices from your ma
 
 | Path | What |
 |---|---|
-| `core/` | Shared Go library: crypto, item model, sessions and sync, and `core/app`, the app backend of the Mac and the iPhone |
+| `core/` | Shared Go library: crypto, item model, sessions and sync, and `core/app`, the app backend of the Mac, the iPhone and Android |
 | `server/` | `hisar-server` sync server (Go + Postgres) |
 | `cli/` | `hisar` command-line client |
 | `desktop/` | Desktop app (Wails v3 + Vue), see [desktop/README.md](desktop/README.md) |
 | `extension/` | Browser extension |
-| `mobile/` | iOS and Android apps |
+| `mobile/` | iOS and Android apps, see [mobile/README.md](mobile/README.md) |
 | `docs/` | Design docs |
 
 Where each package is and where new code goes: [CLAUDE.md](CLAUDE.md).
@@ -71,7 +71,7 @@ GITHUB_TOKEN=hisar://Personal/GitHub/API%20token hisar run -- gh release list
 hisar read hisar://Personal/GitHub/otp            # one value on stdout, for scripts
 ```
 
-`hisar run` resolves every reference in one request, so the app asks once (with Touch ID, or on your iPhone) and shows the command
+`hisar run` resolves every reference in one request, so the app asks once (with Touch ID, or on your phone) and shows the command
 and the secrets it reads. The command gets the real values in its environment; nothing is written to disk. Every value it prints is
 replaced with `<concealed by hisar>`. That needs pipes, so use `--no-masking` for commands that need the terminal itself (colours,
 prompts, full-screen tools). Several `--env-file` options are applied in order; variables already in your environment win unless they
@@ -147,6 +147,9 @@ docker exec hisar-pg createdb -U postgres hisar_end_to_end
 HISAR_DATABASE_URL="postgres://postgres:hisar@127.0.0.1:55432/hisar_end_to_end?sslmode=disable" make test-end-to-end
 ```
 
+The phone apps build from `mobile/`: the iPhone app with Xcode on a Mac, and the Android app with the Android SDK and JDK 21
+on macOS or Linux (`make build-android-aar build-android test-android`). See [mobile/README.md](mobile/README.md).
+
 ### CI and releases
 
 GitHub Actions runs CI on pull requests and on manual runs (Actions → CI → Run workflow), never on pushes to `main`: a merge was already
@@ -159,8 +162,9 @@ binaries, the server Docker image for amd64 and arm64 (built into a throwaway re
 the share link page in Chromium against the server, the admin dashboard (typecheck, tests, the `admin/src/themes.css`
 freshness check and Chromium end-to-end tests against the server; only when the pull request changes `admin/`, `server/`,
 `core/`, `go.work` or the workflow), and the Android app (`HisarKit.aar`, the `ThemePalettes.kt` freshness check, the debug and
-release APKs, lint, the JVM tests and the instrumented tests on an x86_64 API 37 emulator; only when the pull request changes
-`mobile/android/`, `mobile/hisarkit/`, `mobile/go.mod`, the Android scripts, the themes, `core/`, `go.work` or the workflow).
+release APKs, lint, the JVM tests and the instrumented tests on an x86_64 API 37 emulator against a local server; only when the
+pull request changes `mobile/android/`, `mobile/hisarkit/`, `mobile/go.mod`, the Android scripts, the themes, `core/`, `go.work`
+or the workflow).
 
 `.github/workflows/macos.yml` builds the Mac app (Touch ID and Sparkle tests, bundle and signature checks) and the iPhone app
 (HisarKit, Xcode project check, unit tests, UI tests against a local server) on GitHub's `macos-26` runners with Xcode 26.6. macOS
