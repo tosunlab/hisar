@@ -71,9 +71,11 @@ import com.tryhisar.hisar.ui.components.FormRow
 import com.tryhisar.hisar.ui.components.FormSection
 import com.tryhisar.hisar.ui.components.LabeledRow
 import com.tryhisar.hisar.ui.components.RowDivider
+import com.tryhisar.hisar.ui.sharing.SwipeableRows
 import com.tryhisar.hisar.ui.theme.HisarTheme
 import com.tryhisar.hisar.ui.theme.HisarType
 import com.tryhisar.hisar.ui.vaults.AppItemIcon
+import com.tryhisar.hisar.ui.vaults.SwipeActionRow
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -132,8 +134,13 @@ internal fun ItemDetailContent(
         }
     }
     if (item.allPasskey.isNotEmpty()) {
-        RowsSection(header = "Passkeys") {
-            item.allPasskey.forEach { passkey -> row { PasskeyRow(passkey, isWritable) { deletePasskey(passkey) } } }
+        FormSection(header = "Passkeys") {
+            SwipeableRows {
+                item.allPasskey.forEachIndexed { index, passkey ->
+                    if (index > 0) RowDivider()
+                    PasskeyRow(passkey, isWritable) { deletePasskey(passkey) }
+                }
+            }
         }
     }
     if (item.notes.isNotEmpty() && !item.isSecureNote) {
@@ -500,17 +507,27 @@ private fun AndroidAppRow(androidApp: ItemAndroidApp, isWritable: Boolean, remov
 
 @Composable
 private fun PasskeyRow(passkey: ItemPasskey, isWritable: Boolean, delete: () -> Unit) {
-    IconRow(Icons.Outlined.Key, "passkey-${passkey.relyingPartyID}", trailing = {
-        if (isWritable) {
-            FieldIconButton(Icons.Outlined.Delete, "Delete passkey for ${passkey.relyingPartyID}", "delete-passkey-${passkey.relyingPartyID}", delete, tint = HisarTheme.colors.destructive)
+    val row = @Composable {
+        IconRow(Icons.Outlined.Key, "passkey-${passkey.relyingPartyID}", trailing = {
+            if (isWritable) {
+                FieldIconButton(Icons.Outlined.Delete, "Delete passkey for ${passkey.relyingPartyID}", "delete-passkey-${passkey.relyingPartyID}", delete, tint = HisarTheme.colors.destructive)
+            }
+        }) {
+            Text(passkey.relyingPartyID, style = HisarType.body, color = HisarTheme.colors.label)
+            Text(passkey.userName.ifEmpty { passkey.userDisplayName }, style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel)
+            passkey.createdDate?.let { createdDate ->
+                val day = createdDate.atZone(ZoneId.systemDefault()).toLocalDate()
+                Text("Created ${DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).format(day)}", style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel)
+            }
         }
-    }) {
-        Text(passkey.relyingPartyID, style = HisarType.body, color = HisarTheme.colors.label)
-        Text(passkey.userName.ifEmpty { passkey.userDisplayName }, style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel)
-        passkey.createdDate?.let { createdDate ->
-            val day = createdDate.atZone(ZoneId.systemDefault()).toLocalDate()
-            Text("Created ${DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).format(day)}", style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel)
-        }
+    }
+    if (isWritable) {
+        SwipeActionRow(
+            "Delete", Icons.Outlined.Delete, "swipe-delete-passkey-${passkey.relyingPartyID}", isLeading = false,
+            onAction = delete, actionColor = HisarTheme.colors.destructive, content = row,
+        )
+    } else {
+        row()
     }
 }
 
@@ -520,6 +537,7 @@ private fun IconRow(icon: ImageVector, testTag: String, trailing: @Composable ()
     Row(
         Modifier
             .fillMaxWidth()
+            .background(HisarTheme.colors.cellBackground)
             .padding(start = 16.dp, end = 8.dp, top = 11.dp, bottom = 11.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
