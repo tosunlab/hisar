@@ -71,6 +71,9 @@ class AppModel(
     val isCheckingMinimumVersion: StateFlow<Boolean> = mutableIsCheckingMinimumVersion.asStateFlow()
     val notice: StateFlow<String?> = mutableNotice.asStateFlow()
 
+    /** An editor some other surface asks the app to open, such as AutoFill's save prompt; the Vaults tab shows it. */
+    val requestedEditor = MutableStateFlow<EditorRequest?>(null)
+
     /** Grows with every lock; the lock screen offers biometrics once per value. */
     val lockCount: StateFlow<Int> = mutableLockCount.asStateFlow()
 
