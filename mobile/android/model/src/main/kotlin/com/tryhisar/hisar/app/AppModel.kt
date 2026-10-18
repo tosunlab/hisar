@@ -92,6 +92,7 @@ class AppModel(
     val itemEditor = ItemEditorModel(this)
     val favorites = FavoritesModel(this)
     val websiteIcons = WebsiteIconModel(this)
+    val approvals = ApprovalsModel(this, now)
 
     val autoLockInterval: Duration get() = Duration.ofSeconds(status.value.autoLockSeconds.toLong())
 
