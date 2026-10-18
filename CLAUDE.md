@@ -6,7 +6,7 @@ derived on devices from the master password and a Secret Key. Cryptography, prot
 
 ## Modules
 
-Five Go modules joined by `go.work`, plus three non-Go apps.
+Five Go modules joined by `go.work`, plus four non-Go apps.
 
 | Module | Builds | May import |
 |---|---|---|
@@ -16,6 +16,7 @@ Five Go modules joined by `go.work`, plus three non-Go apps.
 | `desktop/` | The Wails app, `hisar-browser-host`, `hisar-update-key` | `core`; `cli/mcpserver` in tests only |
 | `mobile/` | `HisarKit.xcframework` (gomobile) for `mobile/ios` | `core`; `desktop` in one integration test only |
 | `extension/` | The browser extension (TypeScript, MV3) | none |
+| `raycast/` | The Raycast extension (TypeScript), installed in Raycast's development mode; it talks to the desktop app on `cli.sock` as a launcher | none |
 | `admin/` | The admin dashboard (Vue, TypeScript) that `hisar-server` embeds and serves at `/admin` | none; its crypto is `server/cmd/hisar-admin-wasm` |
 | `mobile/ios/` | The iOS app (Swift), on top of HisarKit | none |
 
@@ -39,7 +40,7 @@ Five Go modules joined by `go.work`, plus three non-Go apps.
 | `app` | The backend of the Mac and iPhone apps, bound to the UI (see below) |
 | `app/apptest` | An unlocked `app.Service` on an in-memory API, for tests outside `core/app` |
 | `cliprotocol` | The CLI ↔ app protocol on `~/.hisar/cli.sock`: messages, results, framing, `Client` |
-| `clisocket` | The app side of that socket: server, terminal-session approvals, coding-agent grants, peer credentials |
+| `clisocket` | The app side of that socket: server, approval scopes (terminal session, signed app, connection), coding-agent grants, launcher approvals, peer credentials |
 | `browserprotocol` | The extension ↔ app native-messaging protocol, `Handler`, `Answer`, URL matching |
 | `localsocket` | Unix sockets only the user can reach, and the process on the other end |
 | `sshagent` | The read-only SSH agent with approvals and session binding |
@@ -55,7 +56,7 @@ Five Go modules joined by `go.work`, plus three non-Go apps.
 **`core/app`** is one package because every feature shares the unlocked session and its caches under one mutex. Files:
 `service.go`, `auth.go`, `lock.go`, `vaults.go`, `items.go`, `clipboard.go`, `errors.go`, `account.go`, `sharing.go`,
 `invitations.go`, `sharelink.go`, `browser.go` (extension pairing), `logins.go` (login matching), `passkey*.go`,
-`platformpasskey.go` (iOS), `commandline*.go` and `codingagent.go` (the CLI socket handler), `approvals.go`,
+`platformpasskey.go` (iOS), `commandline*.go`, `codingagent.go` and `launcher.go` (the CLI socket handler), `approvals.go`,
 `phoneapproval.go` (Mac side), `phoneapproval_answer.go` (iPhone side), `import.go`, `export.go`, `settings.go`, `favorites.go`, `websiteicons.go` (the sealed website icon cache and its setting), `addresses.go` (addresses for the extension),
 `organizations.go` (organizations, teams, organization vaults, and delivering and rotating their keys on every sync).
 Shared test fixtures are in `helpers_test.go`, the in-memory API in `fakeapi_test.go`.
@@ -91,9 +92,9 @@ Shared test fixtures are in `helpers_test.go`, the in-memory API in `fakeapi_tes
 | `agent` | SSH agent in the app and the approval queue (`approver*.go`, `presenter.go`, `purpose.go`, `sshconfig.go`) |
 | `appinfo` | The app behind a process (`resolver.go`, `chain.go`, `findapp.go`, `bundle.go`) |
 | `browser` | Native host, socket server and manifests for the extension |
-| `commandline` | Installing `hisar` and Settings → Command-line tool |
+| `commandline` | Installing `hisar`, Settings → Command-line tool and its approved launchers, and the signed app behind a caller without a terminal (`identity.go`) |
 | `loginitem`, `background` | Open at login; login item, Dock icon, appearance |
-| `biometric`, `systemidle`, `windowplacement`, `updater` | Touch ID and keychain, idle time, window placement, Sparkle |
+| `biometric`, `systemidle`, `windowplacement`, `updater`, `pasteboard` | Touch ID and keychain, idle time, window placement, Sparkle, the clipboard (copies concealed from clipboard managers) |
 | `cmd/hisar-browser-host`, `cmd/hisar-update-key` | Helper binaries |
 
 ### mobile
@@ -177,6 +178,7 @@ make vet test            # every module; -p 1 because database tests share one s
 make build build-cli-all # hisar-server with the admin dashboard (needs Node 24), and hisar; the CLI for every OS
 make test-end-to-end     # needs HISAR_DATABASE_URL to an empty database
 make test-desktop-frontend
+make test-raycast        # the Raycast extension's typecheck, tests, lint and build; it never installs into Raycast
 make test-admin          # the admin dashboard's typecheck and unit tests; make build-admin builds it alone
 make test-admin-end-to-end # the dashboard in Chromium; needs HISAR_DATABASE_URL and Playwright's Chromium
 make build-desktop       # or package-desktop for Hisar.app

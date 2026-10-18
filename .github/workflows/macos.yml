@@ -85,6 +85,8 @@ jobs:
           make install-wails
       - name: Touch ID package tests
         run: go -C desktop test -count=1 -v ./biometric/
+      - name: Pasteboard tests
+        run: go -C desktop test -count=1 -v ./pasteboard/
       - name: Sparkle updater tests
         run: |
           bash scripts/download-sparkle.sh

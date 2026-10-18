@@ -874,7 +874,7 @@ It then dials the socket and sends `hello` every 200 ms for up to 10 s. Once the
 
 | Type | Parameters | Result |
 |---|---|---|
-| `hello` | — | `protocolVersion` (1), `state` (`signed-out`, `locked`, `unlocked`), `email`, `server`, `isApproved` (for this terminal session), `features` (what the app understands beyond the protocol version: `secure-notes`, `credit-cards`, `identities`, `favorites`, `api-credentials`, `tags`, `addresses`, `software-licenses`, `servers`, `databases`, `organizations`; an older app sends none); never needs an approval |
+| `hello` | — | `protocolVersion` (1), `state` (`signed-out`, `locked`, `unlocked`), `email`, `server`, `isApproved` (for this caller's approval scope, or for the agent or launcher connection), `features` (what the app understands beyond the protocol version: `secure-notes`, `credit-cards`, `identities`, `favorites`, `api-credentials`, `tags`, `addresses`, `software-licenses`, `servers`, `databases`, `organizations`, then every launcher request type, §9.4.3; an older app sends none); never needs an approval |
 | `account` | — | `accountID`, `name`, `email`, `role`, `server` |
 | `vaults.list` | — | `vaults`: `[{id, name, type, role, itemCount}]` |
 | `vaults.create` | `name` | `vault` |
@@ -904,18 +904,23 @@ It then dials the socket and sends `hello` every 200 ms for up to 10 s. Once the
 | `devices.revoke` | `deviceID` | `{}` |
 | `secrets.resolve` | `references` (at most 500 `hisar://` references), `commandLine` (the command `hisar run` starts, as its arguments; empty for `hisar read`) | `values`, in the order of `references`; fails as a whole with `not-found` or `invalid-request` and a message that names every reference that failed and why (§9.4.1) |
 | `agent.hello`, `agent.*` | — | requests of `hisar mcp`, only on an agent connection (§9.4.2) |
+| `launcher.hello`, `launcher.*` | — | requests of a launcher such as Raycast, only on a launcher connection (§9.4.3) |
 
 The app answers with the bound `app.Service` methods, so the CLI gets the same checks, offline behaviour and errors as the UI. It never sends the master password, the Secret Key, account or vault keys, SSH or passkey private keys, or one-time password secrets: items carry what `hisar get` prints, and `items.code` and `otp` references return only the current code. A `private key` reference is refused (§9.4.1); SSH keys are used through the SSH agent (§9.6). `hisar` parses import files itself and sends the parsed items in batches of 10.
 
 **Approval.**
 
-- Approvals are per terminal session. From the peer PID (`LOCAL_PEERPID`, `SO_PEERCRED`) the app reads the session ID (`getsid`), the controlling terminal device and the start time of the session leader, so a session ID that is reused after the terminal closed does not inherit an approval. The terminal app and its icon come from `desktop/appinfo`, starting from the parent of `hisar`, because the bundled `hisar` itself lives inside `Hisar.app`.
-- Every request except `hello` needs an approval for its session. The first one opens the approval dialog of the SSH agent (§9.6) in its full layout with "hisar in Terminal wants to use Hisar", Terminal's icon with the Hisar badge, and the program path and terminal device in the detail box; there is no "Don't ask again" checkbox and never the compact layout. On a Mac with Touch ID, Touch ID starts at once in the dialog; without it, Approve approves.
+- Approvals are per caller scope, worked out once when the connection opens. From the peer PID (`LOCAL_PEERPID`, `SO_PEERCRED`) the app reads the session ID (`getsid`), the controlling terminal device and the start time of the session leader.
+  - A caller with a controlling terminal is approved per terminal session, so a session ID that is reused after the terminal closed does not inherit an approval. The terminal app and its icon come from `desktop/appinfo`, starting from the parent of `hisar`, because the bundled `hisar` itself lives inside `Hisar.app`.
+  - A caller without a terminal (a GUI app, a launcher, a launchd job) is approved per app: the app its process chain resolves to (`desktop/appinfo`), keyed by bundle path and Team ID, and only when macOS verified the bundle's code signature (Apple's or a developer's). Every GUI process of the user shares launchd's session 1 and has no terminal, so keying them by session would let one approval cover all of them.
+  - Any other caller without a terminal (unsigned, a signature that does not verify, no app at all, Linux) is approved for its own connection only; the approval ends when the connection closes.
+  - The dialog says what an approval covers: "this terminal session", "<App> without a terminal, until 10 minutes after its last request", or "this connection only".
+- Every request except `hello` needs an approval for its scope. The first one opens the approval dialog of the SSH agent (§9.6) in its full layout with "hisar in Terminal wants to use Hisar", Terminal's icon with the Hisar badge, and the program path and terminal device in the detail box; there is no "Don't ask again" checkbox and never the compact layout. On a Mac with Touch ID, Touch ID starts at once in the dialog; without it, Approve approves.
 - If Hisar is locked, the same window unlocks it: with Touch ID when Touch ID unlock is ready (§5.4; the one Touch ID check approves and unlocks), otherwise with the master password typed into the window. A wrong password keeps the request open with a message. Signed out, requests fail with `signed-out` and no window.
-- Deny, Escape or closing the window fail the request with `denied`, and `hisar` prints "Hisar denied the request (it was declined)". No answer before the dialog's deadline, 60 s or 2 minutes when the iPhone can answer (§9.9), fails it the same way with "Hisar denied the request (it was not answered within a minute)" or "… within 2 minutes)". Requests from one session that arrive while its approval is open wait for that one window.
-- An approval lasts until 10 minutes after the session's last request, or until Hisar locks, signs out or quits.
+- Deny, Escape or closing the window fail the request with `denied`, and `hisar` prints "Hisar denied the request (it was declined)". No answer before the dialog's deadline, 60 s or 2 minutes when the iPhone can answer (§9.9), fails it the same way with "Hisar denied the request (it was not answered within a minute)" or "… within 2 minutes)". Requests from one scope that arrive while its approval is open wait for that one window.
+- An approval lasts until 10 minutes after the scope's last request (a connection's also ends when it closes), or until Hisar locks, signs out or quits.
 - `export` always opens the dialog, even in an approved session, like a share link (§5.9): "hisar in Terminal wants to export all your vaults", with "Encrypted with an export passphrase · <path>" or "Plain JSON, not encrypted · <path>" and, for plain JSON, the warning "The file will hold every password, one-time code secret and SSH private key in plain text." Touch ID, the master password or the iPhone (§9.9) answer it.
-- Same-user code that runs inside an approved terminal session can use Hisar through `hisar` until the approval ends, as with 1Password; code outside that session needs its own approval.
+- Same-user code that runs inside an approved terminal session, or in an approved app, can use Hisar through `hisar` until the approval ends, as with 1Password; code outside that scope needs its own approval.
 - When the request that opens the dialog is `secrets.resolve`, the dialog says what it is for: "hisar in Terminal wants to run a command with 3 secrets" (`hisar run`) or "wants to read 1 secret" (`hisar read`). The detail box shows the command `hisar run` starts (shell-quoted and shortened like the SSH dialog's command lines, §9.6), the secrets as "vault › item › field" (names when Hisar is unlocked, the reference as written while it is locked; the first 4, then "and N more"), and the terminal device. The approval still covers the whole terminal session: references that are read later in an approved session, by `hisar run`, `hisar read` or any other `hisar` command, do not ask again.
 
 **Standalone releases.** A `cli-<version>` tag runs the GitHub Actions workflow "Release CLI" on a Linux runner. It builds `hisar` for linux/amd64, linux/arm64, darwin/amd64, darwin/arm64, windows/amd64 and windows/arm64 (`CGO_ENABLED=0`, version from the tag), packs `hisar-<version>-<os>-<arch>.tar.gz` (`.zip` with `hisar.exe` for Windows) and `SHA256SUMS`, and uploads them to the GitHub prerelease `cli-<version>` (`scripts/package-cli-release.sh`), `SHA256SUMS` last, so a complete release is one that has it. The manual Publish workflow then checks that every file in `SHA256SUMS` is there and turns the prerelease into the latest release (not for a custom build `cli-1.2.3-label`).
@@ -1005,6 +1010,41 @@ Developers, scripts and coding agents name secrets instead of copying them: `.en
 **Activity log.** Hisar has no local activity or audit view yet, and the server's audit log (§8.3) must not learn which items an agent used, so agent requests are not recorded; an on-device activity log is a follow-up.
 
 **Limits.** "Use without seeing" holds only as far as the command allows: a command run with secrets has the real values and can write them to a file, send them over the network, or print them encoded, none of which masking catches. That is why every `run_with_secrets` dialog shows the command and its working directory: approve only commands you would run yourself. An agent with a shell can also run `hisar` itself in an approved terminal session (§9.4.1). Remembering secrets for an hour lets the agent run any command with them during that hour.
+
+#### 9.4.3 Launchers: the Raycast extension
+
+`raycast/` is a Raycast extension, installed in Raycast's development mode and not published to the Raycast Store. It searches Hisar, copies and pastes passwords, usernames and one-time codes, generates passwords and locks Hisar. It talks to the desktop app on the CLI socket (§9.4) directly from Node, without `hisar`, and never keeps vault data on disk: items live in memory for as long as a command's view is open.
+
+**Commands.**
+
+- **Search Hisar** lists every item of every vault the user can open, Favorites first, then a section per vault, with a vault filter. Return copies the password, or pastes it into the frontmost app when the primary-action preference says so. Other actions copy the username, copy or paste the one-time code (when the item has one), open the website and copy a `hisar://` reference of a field.
+- **One-Time Codes** lists the items with a one-time code and the current code with its countdown.
+- **Generate Password** copies a password from the app's generator (24 characters, digits and symbols); **Generate Password with Options** sets the length, digits and symbols.
+- **Lock Hisar** locks the app; it never starts the app to lock it.
+
+**Protocol.** After `hello`, `launcher.hello` turns the connection into a launcher connection. It may then send only `launcher.*` requests, and other connections may not send them (`invalid-request`). The app announces every launcher request type in `hello`'s `features`, and the extension checks the exact type before sending it, so an older app turns off only the commands that need what it lacks ("Update Hisar").
+
+| Type | Parameters | Result |
+|---|---|---|
+| `launcher.hello` | — | `isApproved`; refused with `denied` from a caller with a terminal or without an app macOS verified |
+| `launcher.items.list` | — | `vaults` `[{id, name}]` sorted by name, `items` `[{id, vaultID, title, category, username, urls, tags, isFavorite, hasPassword, hasOneTimeCode, references: [{field, reference}]}]`; no value and no notes |
+| `launcher.items.code` | `vaultID`, `itemID` | `code`, `expiresAt`, `period` |
+| `launcher.items.password` | `vaultID`, `itemID` | `password`, for one paste |
+| `launcher.items.copy` | `vaultID`, `itemID`, `field` (`username`, `password` or `one-time code`) | `clearAfterSeconds`; the app copies the value, so it never crosses the socket |
+| `launcher.passwords.generate` | optional `generator` (`length`, `digits`, `symbols`) | `password` |
+| `launcher.lock` | — | `{}` |
+
+`core/cliprotocol/testdata/launcher.json` holds an example of every exchange; the Go tests and the extension's tests both read it.
+
+**Approval.**
+
+- A launcher is approved per app (§9.4: bundle path and Team ID of a verified signature), in a memory separate from the command line's, so approving Raycast as a launcher never approves `hisar` run from Raycast, or the reverse.
+- The first request that reads the vaults or copies opens the approval dialog: "Raycast wants to search Hisar and copy or paste passwords and one-time codes", with Raycast's icon and a note that it cannot change, share or export anything. Touch ID, the master password or the iPhone (§9.9, kind `launcher`) answer it, and a locked Hisar unlocks.
+- The approval lasts until Hisar locks, signs out or quits, or the command-line switch goes off. Settings → Developer tools → Command-line tool → Launchers lists the approved apps with Revoke.
+- `launcher.passwords.generate` and `launcher.lock` need neither an approval nor a sign-in: generating reads nothing, and asking before a lock would unlock Hisar.
+- Raycast runs every extension in one Node process without an OS sandbox, so once Raycast is approved any of its extensions can send these requests until Hisar locks. App identity rests on the bundle's static code signature, not on the running process's.
+
+**Clipboard.** Every copy the Mac app makes, from its own windows and for launchers, is marked `org.nspasteboard.ConcealedType` and `org.nspasteboard.TransientType`, so clipboard managers skip it (`desktop/pasteboard`). The 90-second clear reads the pasteboard back only while it still holds Hisar's own copy (its change count), so it never reads or clears what another app copied since. A paste needs the value in Raycast: the extension reads one password or code, closes its window and pastes. Generated passwords are copied by Raycast itself with `concealed`.
 
 ### 9.5 Go memory handling
 
@@ -1262,7 +1302,7 @@ The Mac's approval dialog (SSH agent, §9.6, and command-line tool, §9.4) can a
 
 ```
 request       = JSON {requestId, requesterDeviceId, requesterDeviceName, createdAt, expiresAt,
-                      kind ("ssh" | "cli"), appName, purpose, host, commandLine, repositoryPath,
+                      kind ("ssh" | "cli" | "launcher"), appName, purpose, host, commandLine, repositoryPath,
                       keyName, isForwarded, forwardedFromHost, terminalName, secrets, appIcon, appWarning,
                       rememberLabel, isRememberedByDefault}
 sealedRequest = 0x01 || HPKE.Seal(accountKEMPub, info = "hisar/v1/approval-request" || accountID || requestId, request)
@@ -1328,6 +1368,7 @@ The concatenations are length-prefixed (§4.5). Before it shows a request, the p
 - Settings → Mac approvals → **Approve requests from my Mac** (on by default; `phoneApprovalDisabled` in the phone's `hisar.json`, kept on sign-out) turns this off for this iPhone: `ListAllPendingApproval` then returns nothing, `ApproveApproval` refuses, and the Mac's dialog decides on its own.
 - A request that arrives while the app is in the foreground also opens the sheet at once; requests found at unlock or on returning to the foreground are only listed. Closing the sheet keeps the request in the list.
 - The sheet shows an icon for the kind, "Approve on <Mac name>?", the description rows (app, action, command, repository, server, key, secrets, forwarded from, terminal), the note "End-to-end encrypted. Only your devices can read this request. Approving lets this one request continue; it does not unlock Hisar on your Mac.", **Approve with Face ID** and **Deny**. A request with a `rememberLabel` adds a switch with that sentence under the header, before the details, starting at `isRememberedByDefault`; its value when the user approves is signed into the answer. The Vaults card has no switch, so its Approve answers with the switch's starting value (`isRememberedByDefault`: remembered for an SSH request, once for commit signing and agent secrets); its footer says so ("Also allows Terminal for 1 hour. Tap the request to approve it once. It never unlocks Hisar on your Mac.", or "Approving answers this one request. …" when the default is once), and the sheet is where to change it.
+- A `launcher` request (§9.4.3) is titled "<Mac name> is asking to let <app> use Hisar", with a magnifying glass, the app and a "Lasts: Until Hisar locks on <Mac name>" row, and the note "Approving lets <app> use Hisar until it locks on your Mac; it does not unlock Hisar there." A phone older than this kind cannot open such a request and never shows it; the Mac's dialog still answers it.
 - Approve needs Face ID (or Touch ID) first; when biometrics are unavailable or the user picks the fallback, the sheet asks for the master password, which is checked like an unlock. Deny needs neither.
 - A request leaves the list, and its sheet closes, on `approval-answered` or `approval-resolved`, at `expiresAt`, and when the app locks. Expired, answered or withdrawn requests are never shown.
 - UI tests drive the sheet and the list through debug-only previews (`-HisarApprovalPreview`, `-HisarApprovalBannerPreview`), like the AutoFill preview (§9.3). The cross-device flow is tested end to end in Go: a desktop backend and a HisarKit backend signed in to the same account, where the phone approves an SSH signature, a denied one fails, a forged answer is refused, and a phone app that starts only after the Mac asked still finds and approves the request.
