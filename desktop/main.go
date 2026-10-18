@@ -206,7 +206,7 @@ func main() {
 		AgentApprover:       approver,
 		LauncherApprover:    approver,
 		IdentifyApp: func(pid int) (clisocket.AppIdentity, bool) {
-			return commandline.IdentifyApp(requesterResolver.Resolve(pid))
+			return commandline.IdentifyApp(requesterResolver.Resolve(pid), requesterResolver)
 		},
 		Approvals: commandLineApprovals,
 		IsEnabled: func() bool { return commandLineService.IsIntegrationEnabled() },

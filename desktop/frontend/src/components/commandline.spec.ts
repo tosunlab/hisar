@@ -1,8 +1,18 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { flushPromises, mount } from "@vue/test-utils";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { createApiMock, createCommandLineStatus, createLauncherApp, createStatus } from "../testing";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
+const allListener = vi.hoisted(() => new Map<string, () => void>());
+
+vi.mock("@wailsio/runtime", () => ({
+  Events: {
+    On: (name: string, listener: () => void) => {
+      allListener.set(name, listener);
+      return () => allListener.delete(name);
+    },
+  },
+}));
 
 vi.mock("../api", async () => {
   const { createApiMock: createMock } = await import("../testing");
@@ -18,6 +28,8 @@ const { store } = await import("../store");
 const CommandLineSection = (await import("./CommandLineSection.vue")).default;
 const api = apiMock.current;
 
+enableAutoUnmount(afterEach);
+
 const installedStatus = createCommandLineStatus({
   installedPath: "/opt/homebrew/bin/hisar",
   allInstallation: [{ path: "/opt/homebrew/bin/hisar", kind: "this-app", target: "/Applications/Hisar.app/Contents/Helpers/hisar", isSymlink: true, description: "this app's command-line tool" }],
@@ -28,6 +40,7 @@ const installedStatus = createCommandLineStatus({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  allListener.clear();
   Object.assign(store, {
     status: { ...createStatus("unlocked"), biometricAvailable: true },
     errorMessage: "",
@@ -150,6 +163,29 @@ describe("CommandLineSection", () => {
     await flushPromises();
     expect(wrapper.find('[data-testid="command-line-launchers"] strong').text()).toBe("Launchers");
     expect(wrapper.find('[data-testid="launcher-apps-empty"]').text()).toBe("No app is approved right now.");
+    expect(wrapper.findAll('[data-testid="launcher-app"]')).toHaveLength(0);
+  });
+
+  it("shows a launcher approved while the section is open", async () => {
+    const wrapper = mount(CommandLineSection);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="launcher-apps-empty"]').exists()).toBe(true);
+    api.listAllLauncherApp.mockResolvedValue([createLauncherApp()]);
+    allListener.get("ssh-approval-closed")?.();
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="launcher-app"] strong').map((name) => name.text())).toEqual(["Raycast"]);
+    expect(wrapper.find('[data-testid="launcher-apps-empty"]').exists()).toBe(false);
+  });
+
+  it("clears the launchers when Hisar locks", async () => {
+    api.listAllLauncherApp.mockResolvedValue([createLauncherApp()]);
+    const wrapper = mount(CommandLineSection);
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="launcher-app"]')).toHaveLength(1);
+    api.listAllLauncherApp.mockResolvedValue([]);
+    allListener.get("locked")?.();
+    await flushPromises();
+    expect(wrapper.find('[data-testid="launcher-apps-empty"]').exists()).toBe(true);
     expect(wrapper.findAll('[data-testid="launcher-app"]')).toHaveLength(0);
   });
 

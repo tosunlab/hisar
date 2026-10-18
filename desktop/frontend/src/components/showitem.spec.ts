@@ -1,8 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
-import { createItem, createStatus, type ApiMock } from "../testing";
+import { createFavoriteItem, createItem, createStatus, type ApiMock } from "../testing";
 import type { ItemDetail, VaultSummary } from "../api";
-import { store } from "../store";
+import { selectFavoriteItem, selectFavorites, selectItem, selectVault, store } from "../store";
 import App from "../App.vue";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ApiMock }));
@@ -99,6 +99,121 @@ describe("Open in Hisar from a launcher", () => {
     await flushPromises();
     expect(wrapper.find(".heading h2").text()).toBe("Wi-Fi");
     expect(wrapper.find(".item-editor").exists()).toBe(false);
+  });
+
+  it("keeps the second show-item when the first vault loads last", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const workItems = Promise.withResolvers<ItemDetail[]>();
+    api.listAllItem.mockImplementation((vaultID: string) => (vaultID === "work" ? workItems.promise : Promise.resolve(allItemByVaultID[vaultID])));
+    // The same item ID in another vault must not inherit Work's editing permission.
+    api.getItem.mockImplementation((vaultID: string, itemID: string) => Promise.resolve(
+      vaultID === "family" && itemID === "deploy" ? createItem({ id: "deploy", title: "Family deploy" }) : allItemByVaultID[vaultID].find((item) => item.id === itemID),
+    ));
+    sendEvent("show-item", { vaultID: "work", itemID: "deploy", isEditing: true });
+    sendEvent("show-item", { vaultID: "family", itemID: "wifi", isEditing: false });
+    await flushPromises();
+    workItems.resolve(allItemByVaultID.work);
+    await flushPromises();
+    expect(store.selectedVaultID).toBe("family");
+    expect(wrapper.find(".heading h2").text()).toBe("Wi-Fi");
+    expect(wrapper.find(".item-editor").exists()).toBe(false);
+  });
+
+  it("keeps the second show-item when the first item loads last in the same vault", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const deploy = Promise.withResolvers<ItemDetail>();
+    api.getItem.mockImplementation((_vaultID: string, itemID: string) => itemID === "deploy" ? deploy.promise : Promise.resolve(allItemByVaultID.work[1]));
+    sendEvent("show-item", { vaultID: "work", itemID: "deploy", isEditing: true });
+    await flushPromises();
+    sendEvent("show-item", { vaultID: "work", itemID: "grafana", isEditing: false });
+    await flushPromises();
+    deploy.resolve(allItemByVaultID.work[0]);
+    await flushPromises();
+    expect(wrapper.find(".heading h2").text()).toBe("Grafana");
+    expect(wrapper.find(".item-editor").exists()).toBe(false);
+  });
+
+  it.each(["vault", "item"])("keeps the user's vault selection while a launcher's %s loads", async (pendingStep) => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const workItems = Promise.withResolvers<ItemDetail[]>();
+    const deploy = Promise.withResolvers<ItemDetail>();
+    if (pendingStep === "vault") {
+      api.listAllItem.mockImplementation((vaultID: string) => vaultID === "work" ? workItems.promise : Promise.resolve(allItemByVaultID[vaultID]));
+    }
+    api.getItem.mockImplementation(() => deploy.promise);
+    sendEvent("show-item", { vaultID: "work", itemID: "deploy", isEditing: true });
+    await flushPromises();
+    await selectVault("family");
+    workItems.resolve(allItemByVaultID.work);
+    deploy.resolve(allItemByVaultID.work[0]);
+    await flushPromises();
+    expect(store.selectedVaultID).toBe("family");
+    expect(store.selectedItem).toBeNull();
+    expect(wrapper.find(".item-editor").exists()).toBe(false);
+  });
+
+  it("keeps the user's item selection while a launcher item loads", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const deploy = Promise.withResolvers<ItemDetail>();
+    api.getItem.mockImplementation((_vaultID: string, itemID: string) => itemID === "deploy" ? deploy.promise : Promise.resolve(allItemByVaultID.work[1]));
+    sendEvent("show-item", { vaultID: "work", itemID: "deploy", isEditing: true });
+    await flushPromises();
+    await selectItem("grafana");
+    deploy.resolve(allItemByVaultID.work[0]);
+    await flushPromises();
+    expect(wrapper.find(".heading h2").text()).toBe("Grafana");
+    expect(wrapper.find(".item-editor").exists()).toBe(false);
+  });
+
+  it.each([false, true])("keeps the user's Favorites navigation while a launcher item loads (item: %s)", async (isSelectingItem) => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const deploy = Promise.withResolvers<ItemDetail>();
+    api.getItem.mockImplementation((_vaultID: string, itemID: string) => itemID === "deploy" ? deploy.promise : Promise.resolve(allItemByVaultID.work[1]));
+    sendEvent("show-item", { vaultID: "work", itemID: "deploy", isEditing: true });
+    await flushPromises();
+    await selectFavorites();
+    if (isSelectingItem) {
+      await selectFavoriteItem(createFavoriteItem({ vaultId: "work", item: allItemByVaultID.work[1] }));
+    }
+    deploy.resolve(allItemByVaultID.work[0]);
+    await flushPromises();
+    expect(store.isFavoritesSelected).toBe(true);
+    expect(store.selectedItem?.id ?? null).toBe(isSelectingItem ? "grafana" : null);
+    expect(wrapper.find(".item-editor").exists()).toBe(false);
+  });
+
+  it("keeps a launcher selection when an earlier favorite loads last", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    const grafana = Promise.withResolvers<ItemDetail>();
+    api.getItem.mockImplementation((_vaultID: string, itemID: string) => itemID === "grafana" ? grafana.promise : Promise.resolve(allItemByVaultID.work[0]));
+    const favoriteSelection = selectFavoriteItem(createFavoriteItem({ vaultId: "work", item: allItemByVaultID.work[1] }));
+    sendEvent("show-item", { vaultID: "work", itemID: "deploy", isEditing: false });
+    await flushPromises();
+    grafana.resolve(allItemByVaultID.work[1]);
+    await favoriteSelection;
+    await flushPromises();
+    expect(wrapper.find(".heading h2").text()).toBe("Deploy");
+  });
+
+  it("discards an item still loading when Hisar locks", async () => {
+    mount(App);
+    await flushPromises();
+    const deploy = Promise.withResolvers<ItemDetail>();
+    api.getItem.mockImplementation(() => deploy.promise);
+    sendEvent("show-item", { vaultID: "work", itemID: "deploy", isEditing: true });
+    await flushPromises();
+    sendEvent("locked", "");
+    deploy.resolve(allItemByVaultID.work[0]);
+    await flushPromises();
+    expect(store.status.state).toBe("locked");
+    expect(store.selectedItem).toBeNull();
+    expect(store.selectedVaultID).toBe("");
   });
 
   it("shows the item after the unlock that came with the approval, even when Personal loads last", async () => {

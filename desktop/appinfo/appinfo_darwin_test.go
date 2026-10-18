@@ -54,6 +54,43 @@ func TestSignatureOnMacOS(t *testing.T) {
 	}
 }
 
+func TestStrictSignatureChecksResourcesAndInvalidatesItsCache(t *testing.T) {
+	for _, change := range []string{"edit", "add", "remove"} {
+		t.Run(change, func(t *testing.T) {
+			bundlePath, resourcePath := createSignedTestBundle(t)
+			resolver := NewSystemResolver()
+			// The fixture is ad-hoc signed, so an intact seal is unsigned rather than a trusted developer identity.
+			if signature := resolver.GetStrictSignature(bundlePath); signature.Status != SignatureStatusUnsigned {
+				t.Fatalf("intact fixture: %+v", signature)
+			}
+			information, err := os.Stat(resourcePath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			switch change {
+			case "edit":
+				err = os.WriteFile(resourcePath, []byte("modified"), 0o755)
+				if err == nil {
+					err = os.Chtimes(resourcePath, information.ModTime(), information.ModTime())
+				}
+			case "add":
+				err = os.WriteFile(filepath.Join(filepath.Dir(resourcePath), "injected"), []byte("#!/bin/sh\n"), 0o755)
+			case "remove":
+				err = os.Remove(resourcePath)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if signature := getSignature(bundlePath); signature.Status != SignatureStatusUnsigned {
+				t.Errorf("display check: %+v", signature)
+			}
+			if signature := resolver.GetStrictSignature(bundlePath); signature.Status != SignatureStatusInvalid {
+				t.Errorf("changed resources: %+v", signature)
+			}
+		})
+	}
+}
+
 func TestReadThisProcessOnMacOS(t *testing.T) {
 	arguments, err := ListProcessArguments(os.Getpid())
 	if err != nil || !slices.Equal(arguments, os.Args) {

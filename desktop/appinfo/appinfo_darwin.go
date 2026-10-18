@@ -12,7 +12,10 @@ import "C"
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
+	"time"
 	"unsafe"
 
 	"github.com/tryhisar/hisar/core/localsocket"
@@ -31,14 +34,16 @@ func NewSystemResolver() *Resolver {
 			ListArguments:       ListProcessArguments,
 			GetWorkingDirectory: GetProcessWorkingDirectory,
 		},
-		GetResponsiblePID:    getResponsiblePID,
-		ListProcessIDs:       listProcessIDs,
-		ListRunningApps:      listRunningApps,
-		GetSignature:         getSignature,
-		GetTeamID:            getTeamID,
-		GetBundleDisplayName: getBundleDisplayName,
-		GetBundleIconPNG:     getBundleIconPNG,
-		GetSSHRemoteHost:     getSSHRemoteHost,
+		GetResponsiblePID:         getResponsiblePID,
+		ListProcessIDs:            listProcessIDs,
+		ListRunningApps:           listRunningApps,
+		GetSignature:              getSignature,
+		GetStrictSignature:        getStrictSignature,
+		GetTeamID:                 getTeamID,
+		GetBundleDisplayName:      getBundleDisplayName,
+		GetBundleIconPNG:          getBundleIconPNG,
+		GetSSHRemoteHost:          getSSHRemoteHost,
+		GetBundleModificationTime: getBundleModificationTime,
 	})
 }
 
@@ -95,10 +100,46 @@ func cleanSignerName(signerName string) string {
 }
 
 func getSignature(path string) Signature {
+	return checkSignature(path, false)
+}
+
+func getStrictSignature(path string) Signature {
+	return checkSignature(path, true)
+}
+
+func checkSignature(path string, validateResources bool) Signature {
 	cPath := C.CString(path)
 	defer C.free(unsafe.Pointer(cPath))
-	info := C.checkSignature(cPath)
+	var strict C.int
+	if validateResources {
+		strict = 1
+	}
+	info := C.checkSignature(cPath, strict)
 	return Signature{Status: signatureStatuses[info.status], TeamID: takeCString(info.teamID), SignerName: cleanSignerName(takeCString(info.signerName))}
+}
+
+// Change times include nested resource edits, removals and replacements, even when a writer restores modification times.
+func getBundleModificationTime(bundlePath string) (time.Time, error) {
+	var latest time.Time
+	resolvedPath, err := filepath.EvalSymlinks(bundlePath)
+	if err != nil {
+		return latest, err
+	}
+	err = filepath.WalkDir(resolvedPath, func(path string, _ os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		var information unix.Stat_t
+		if err := unix.Lstat(path, &information); err != nil {
+			return err
+		}
+		changedAt := time.Unix(information.Ctim.Sec, information.Ctim.Nsec)
+		if changedAt.After(latest) {
+			latest = changedAt
+		}
+		return nil
+	})
+	return latest, err
 }
 
 func getTeamID(path string) string {

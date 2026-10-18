@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted } from "vue";
+import { computed, onBeforeUnmount, onMounted } from "vue";
+import { Events } from "@wailsio/runtime";
 import {
   installCommandLineTool,
   loadCommandLineStatus,
@@ -31,7 +32,17 @@ const otherCommandTarget = computed(() => {
   return status && status.pathCommandTarget && status.pathCommandTarget !== status.pathCommandPath ? status.pathCommandTarget : "";
 });
 
-onMounted(() => Promise.all([loadCommandLineStatus(), loadLauncherApps()]));
+let allRemoveListener: (() => void)[] = [];
+
+onMounted(() => {
+  allRemoveListener = [
+    Events.On("ssh-approval-closed", () => loadLauncherApps()),
+    Events.On("locked", () => loadLauncherApps()),
+  ];
+  return Promise.all([loadCommandLineStatus(), loadLauncherApps()]);
+});
+
+onBeforeUnmount(() => allRemoveListener.forEach((removeListener) => removeListener()));
 </script>
 
 <template>
