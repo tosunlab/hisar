@@ -95,7 +95,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	updateService := app.NewUpdateService(vaultService, updater.Updater{})
+	updateService := app.NewUpdateService(vaultService, newAppUpdater())
 	executablePath, err := os.Executable()
 	if err != nil {
 		log.Fatal(err)

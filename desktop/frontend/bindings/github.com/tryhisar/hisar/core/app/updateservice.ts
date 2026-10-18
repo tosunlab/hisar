@@ -15,7 +15,7 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 import * as $models from "./models.js";
 
 /**
- * CheckForUpdates starts a check; the updater shows its own windows for the result.
+ * CheckForUpdates starts a check; Sparkle shows its own windows for the result, and a notifier's is in the status.
  */
 export function CheckForUpdates(): $CancellablePromise<$models.UpdateStatus> {
     return $Call.ByID(1318198523);

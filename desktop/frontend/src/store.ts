@@ -1770,7 +1770,13 @@ export async function checkForUpdates(): Promise<void> {
   const updateStatus = await runAction(() => api.checkForUpdates());
   if (updateStatus) {
     store.updateStatus = updateStatus;
-    showNotice("Checking for updates…");
+    if (!updateStatus.isNotifyOnly) {
+      showNotice("Checking for updates…");
+    } else if (updateStatus.availableVersion) {
+      showNotice(`Hisar ${updateStatus.availableVersion} is available`);
+    } else {
+      showNotice("Hisar is up to date");
+    }
   }
 }
 

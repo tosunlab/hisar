@@ -102,3 +102,26 @@ func TestUpdateServiceWithoutUpdater(t *testing.T) {
 		t.Errorf("check without an updater: %+v %v", status, err)
 	}
 }
+
+type fakeUpdateNotifier struct {
+	fakeUpdater
+	available AvailableUpdate
+}
+
+func (notifier *fakeUpdateNotifier) GetAvailableUpdate() AvailableUpdate { return notifier.available }
+
+func TestUpdateStatusShowsWhatANotifierFound(t *testing.T) {
+	service, _, _ := createTestService(t, filepath.Join(t.TempDir(), "desktop.json"), createMemorySecretKeyStore())
+	notifier := &fakeUpdateNotifier{fakeUpdater: fakeUpdater{isAvailable: true}}
+	updateService := NewUpdateService(service, notifier)
+	if status := updateService.GetUpdateStatus(); !status.IsNotifyOnly || status.HasChecked || status.AvailableVersion != "" {
+		t.Fatalf("status before a check: %+v", status)
+	}
+	notifier.available = AvailableUpdate{Version: "0.3.0", DownloadURL: "https://github.com/tosunlab/hisar/releases/tag/desktop-0.3.0", HasChecked: true}
+	if status := updateService.GetUpdateStatus(); !status.HasChecked || status.AvailableVersion != "0.3.0" || status.DownloadURL != notifier.available.DownloadURL {
+		t.Fatalf("status after a check: %+v", status)
+	}
+	if status := NewUpdateService(service, &fakeUpdater{isAvailable: true}).GetUpdateStatus(); status.IsNotifyOnly {
+		t.Fatalf("Sparkle's status is notify-only: %+v", status)
+	}
+}
