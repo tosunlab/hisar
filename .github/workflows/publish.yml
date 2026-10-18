@@ -60,7 +60,10 @@ jobs:
         if: inputs.app == 'desktop'
         run: |
           allAssetName=$(gh release view "$TAG" --json assets --jq '.assets[].name')
-          for fileName in "Hisar-$VERSION.dmg" "Hisar-$VERSION.zip"; do
+          for fileName in "Hisar-$VERSION.dmg" "Hisar-$VERSION.zip" \
+            "Hisar-$VERSION-linux-amd64.deb" "Hisar-$VERSION-linux-amd64.rpm" "Hisar-$VERSION-linux-amd64.AppImage" \
+            "Hisar-$VERSION-linux-arm64.deb" "Hisar-$VERSION-linux-arm64.rpm" "Hisar-$VERSION-linux-arm64.AppImage" \
+            "Hisar-$VERSION-linux-amd64.flatpak" "Hisar-$VERSION-linux-arm64.flatpak"; do
             grep -qx "$fileName" <<< "$allAssetName" || { echo "the release $TAG has no $fileName; run Release desktop for $TAG first"; exit 1; }
           done
           if ! grep -qx update.json <<< "$allAssetName"; then
@@ -68,7 +71,8 @@ jobs:
             test -n "$assetID" || { echo "the release $TAG has no update-unpublished.json; run Release desktop for $TAG first"; exit 1; }
             gh api -X PATCH "repos/$GH_REPO/releases/assets/$assetID" -f name=update.json >/dev/null
           fi
-          gh release edit "$TAG" --notes "Universal (Apple silicon and Intel) build of Hisar $VERSION, offered to apps as an automatic update. Open the DMG and drag Hisar into Applications. The app is not notarized yet: on first launch, right-click Hisar → Open."
+          platformNotes=$(gh api "repos/$GH_REPO/contents/.github/release-desktop-notes.md?ref=$TAG" -H "Accept: application/vnd.github.raw" | sed "s/<version>/$VERSION/g")
+          gh release edit "$TAG" --notes "Hisar $VERSION, offered to Mac apps as an automatic update; Linux apps are told about it."$'\n\n'"$platformNotes"
 
       - name: Check the CLI release is complete
         if: inputs.app == 'cli'

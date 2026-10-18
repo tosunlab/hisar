@@ -1041,15 +1041,21 @@ const previewBrowserStatus: BrowserStatus = {
     previewParameter.get("browserPairing") === "1" ? { browser: "Arc", code: "482913", expiresAt: new Date(Date.now() + 110_000).toISOString() } : null,
 };
 
-// updates=development: a build without Sparkle; updates=signed-out: no session to check with.
+// updates=development: a build without Sparkle; updates=signed-out: no session to check with; updates=notify: a Linux
+// build that has not checked yet; updates=available: one that found a newer version.
 const previewUpdateMode = previewParameter.get("updates") ?? "";
+const isPreviewNotifyOnly = previewUpdateMode === "notify" || previewUpdateMode === "available";
 const previewUpdateStatus: UpdateStatus = {
   version: previewUpdateMode === "development" ? "development" : "0.2.1",
-  buildNumber: previewUpdateMode === "development" ? "" : "2001",
-  operatingSystem: "macOS 26.0.1",
+  buildNumber: previewUpdateMode === "development" || isPreviewNotifyOnly ? "" : "2001",
+  operatingSystem: isPreviewNotifyOnly ? "linux" : "macOS 26.0.1",
   isAvailable: previewUpdateMode !== "development",
   isSignedIn: previewUpdateMode !== "signed-out",
   isAutomaticCheckEnabled: true,
+  isNotifyOnly: isPreviewNotifyOnly,
+  hasChecked: previewUpdateMode === "available",
+  availableVersion: previewUpdateMode === "available" ? "0.3.0" : "",
+  downloadURL: previewUpdateMode === "available" ? "https://github.com/tosunlab/hisar/releases/tag/desktop-0.3.0" : "",
 };
 
 // loginItem=requires-approval | not-registered | off | development

@@ -1,0 +1,5 @@
+#!/bin/sh
+# Starts Hisar from its AppImage. GTK 4 and WebKitGTK 6.0 come from the system, as for the .deb and .rpm: an AppImage
+# that bundled WebKitGTK would still start the system's WebKit processes, whose version need not match.
+here=$(dirname "$(readlink -f "$0")")
+exec "$here/usr/bin/Hisar" "$@"

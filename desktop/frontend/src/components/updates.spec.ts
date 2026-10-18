@@ -90,3 +90,37 @@ describe("UpdatesSection", () => {
     expect(wrapper.find('[data-testid="check-for-updates"]').attributes("disabled")).toBeDefined();
   });
 });
+
+describe("UpdatesSection on Linux and Windows", () => {
+  it("finds a newer version and opens its download page", async () => {
+    api.getUpdateStatus.mockResolvedValue(createUpdateStatus({ isNotifyOnly: true, buildNumber: "" }));
+    const available = createUpdateStatus({
+      isNotifyOnly: true,
+      hasChecked: true,
+      availableVersion: "0.3.0",
+      downloadURL: "https://github.com/tosunlab/hisar/releases/tag/desktop-0.3.0",
+    });
+    api.checkForUpdates.mockResolvedValue(available);
+    const wrapper = mount(UpdatesSection);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="update-explanation"]').text()).toContain("you download and install them");
+    await wrapper.find('[data-testid="check-for-updates"]').trigger("click");
+    await flushPromises();
+    expect(store.noticeMessage).toBe("Hisar 0.3.0 is available");
+    expect(wrapper.find('[data-testid="update-explanation"]').text()).toContain("Hisar 0.3.0 is available");
+    await wrapper.find('[data-testid="download-update"]').trigger("click");
+    expect(api.openURL).toHaveBeenCalledWith("https://github.com/tosunlab/hisar/releases/tag/desktop-0.3.0");
+  });
+
+  it("says when this version is the newest", async () => {
+    api.getUpdateStatus.mockResolvedValue(createUpdateStatus({ isNotifyOnly: true }));
+    api.checkForUpdates.mockResolvedValue(createUpdateStatus({ isNotifyOnly: true, hasChecked: true }));
+    const wrapper = mount(UpdatesSection);
+    await flushPromises();
+    await wrapper.find('[data-testid="check-for-updates"]').trigger("click");
+    await flushPromises();
+    expect(store.noticeMessage).toBe("Hisar is up to date");
+    expect(wrapper.find('[data-testid="update-explanation"]').text()).toBe("Hisar is up to date.");
+    expect(wrapper.find('[data-testid="download-update"]').exists()).toBe(false);
+  });
+});

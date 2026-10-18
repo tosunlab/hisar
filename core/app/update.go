@@ -19,6 +19,18 @@ type Updater interface {
 	CheckForUpdates() error
 }
 
+// UpdateNotifier is an updater that finds a newer version without installing it, on Linux and Windows: the user downloads it.
+type UpdateNotifier interface {
+	GetAvailableUpdate() AvailableUpdate
+}
+
+// AvailableUpdate is what an UpdateNotifier found; Version is empty while this version is the newest.
+type AvailableUpdate struct {
+	Version     string
+	DownloadURL string
+	HasChecked  bool
+}
+
 type UpdateStatus struct {
 	Version                 string `json:"version"`
 	BuildNumber             string `json:"buildNumber"`
@@ -26,6 +38,11 @@ type UpdateStatus struct {
 	IsAvailable             bool   `json:"isAvailable"`
 	IsSignedIn              bool   `json:"isSignedIn"`
 	IsAutomaticCheckEnabled bool   `json:"isAutomaticCheckEnabled"`
+	// IsNotifyOnly: checking finds AvailableVersion and its DownloadURL, and the user installs it; otherwise the updater installs.
+	IsNotifyOnly     bool   `json:"isNotifyOnly"`
+	HasChecked       bool   `json:"hasChecked"`
+	AvailableVersion string `json:"availableVersion"`
+	DownloadURL      string `json:"downloadURL"`
 }
 
 // UpdateService is bound to the UI for Settings → General → Updates.
@@ -59,7 +76,7 @@ func (updateService *UpdateService) GetUpdateStatus() UpdateStatus {
 	s := updateService.service
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	return UpdateStatus{
+	status := UpdateStatus{
 		Version:                 version,
 		BuildNumber:             buildNumber,
 		OperatingSystem:         getOperatingSystem(),
@@ -67,9 +84,14 @@ func (updateService *UpdateService) GetUpdateStatus() UpdateStatus {
 		IsSignedIn:              s.state.IsLoggedIn(),
 		IsAutomaticCheckEnabled: !s.state.IsAutomaticUpdateCheckDisabled,
 	}
+	if notifier, isNotifier := updateService.updater.(UpdateNotifier); isNotifier {
+		available := notifier.GetAvailableUpdate()
+		status.IsNotifyOnly, status.HasChecked, status.AvailableVersion, status.DownloadURL = true, available.HasChecked, available.Version, available.DownloadURL
+	}
+	return status
 }
 
-// CheckForUpdates starts a check; the updater shows its own windows for the result.
+// CheckForUpdates starts a check; Sparkle shows its own windows for the result, and a notifier's is in the status.
 func (updateService *UpdateService) CheckForUpdates() (UpdateStatus, error) {
 	status := updateService.GetUpdateStatus()
 	if !status.IsAvailable {
@@ -78,7 +100,8 @@ func (updateService *UpdateService) CheckForUpdates() (UpdateStatus, error) {
 	if !status.IsSignedIn {
 		return status, errUpdateSignedOut
 	}
-	return status, updateService.updater.CheckForUpdates()
+	err := updateService.updater.CheckForUpdates()
+	return updateService.GetUpdateStatus(), err
 }
 
 func (updateService *UpdateService) SetAutomaticUpdateCheck(isEnabled bool) (UpdateStatus, error) {

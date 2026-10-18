@@ -7,14 +7,19 @@ import (
 	"syscall"
 )
 
-const linuxAppBinaryName = "Hisar"
+const (
+	linuxAppBinaryName = "Hisar"
+	// portableLauncherName is the script an AppImage or Flatpak Hisar writes next to the hisar it copies out.
+	portableLauncherName = "hisar-app"
+)
 
 type systemAppLauncher struct{}
 
 func (systemAppLauncher) LaunchApp() error {
 	var candidatePaths []string
 	if executablePath, err := os.Executable(); err == nil {
-		candidatePaths = append(candidatePaths, filepath.Join(filepath.Dir(executablePath), linuxAppBinaryName))
+		executableDirectory := filepath.Dir(executablePath)
+		candidatePaths = append(candidatePaths, filepath.Join(executableDirectory, linuxAppBinaryName), filepath.Join(executableDirectory, portableLauncherName))
 	}
 	if pathCommand, err := exec.LookPath(linuxAppBinaryName); err == nil {
 		candidatePaths = append(candidatePaths, pathCommand)

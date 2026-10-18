@@ -18,6 +18,23 @@ The server stores only ciphertext. Keys are derived on your devices from your ma
 
 Where each package is and where new code goes: [CLAUDE.md](CLAUDE.md).
 
+## Desktop app on Linux
+
+Each `desktop-<version>` GitHub Release has `Hisar-<version>-linux-<arch>.deb` and `.rpm` for amd64 and arm64, built for
+GTK 4 and WebKitGTK 6.0 (Ubuntu 24.04+, Debian 13+, Fedora 40+). Check them against `SHA256SUMS-linux-<arch>`, then:
+
+```sh
+sudo apt install ./Hisar-0.3.0-linux-amd64.deb     # Fedora: sudo dnf install ./Hisar-0.3.0-linux-amd64.rpm
+```
+
+The package installs the app (`/usr/bin/Hisar`, in the app menu), `hisar` at `/usr/bin/hisar`, and the browser
+extension's host. On other distributions, run `Hisar-<version>-linux-<arch>.AppImage` (it needs the system's GTK 4 and
+WebKitGTK 6.0), or install the Flatpak, which brings them with the GNOME runtime: `flatpak install --user
+Hisar-<version>-linux-<arch>.flatpak`. Both copy `hisar` to `~/.local/share/hisar/bin`; Settings → Command-line tool
+links it onto your `PATH`. The Secret Key goes into the desktop's keyring, so a Secret Service has to run (GNOME Keyring or
+KWallet); without one, set `HISAR_SECRET_KEY`. What works as on the Mac and what differs (no Touch ID, update notices
+instead of installing updates, no app names in approvals): [docs/DESIGN.md §9.1.3](docs/DESIGN.md).
+
 ## Command-line tool
 
 `hisar` lists, reads and edits your items from a terminal or a script (`hisar --help`).
@@ -177,12 +194,15 @@ A run takes roughly 15–25 minutes for the Mac app and 40–60 minutes for the 
 app alone and up to 850 with the iPhone app. A desktop release build costs about the same as the Mac app job.
 
 Releases are tags without a `v`: `server-X.Y.Z`, `cli-X.Y.Z`, `desktop-X.Y.Z` and `extension-X.Y.Z`. Pushing one runs its release
-workflow, which builds it into a GitHub prerelease (or, for the server, pushes the image) that nobody gets yet. A custom build such as
+workflow, which builds it into a GitHub prerelease (or, for the server, pushes the image) that nobody gets yet. A desktop tag
+builds the Mac DMG and Sparkle update and the Linux packages (amd64 and arm64), each job uploading its own files;
+[.github/release-desktop-notes.md](.github/release-desktop-notes.md) is the install text of the release. A custom build such as
 `desktop-1.0.0-alpha-test` is built the same way and marked "(custom build)", and can never be published. Publishing is a separate,
 deliberate step: Actions → Publish → Run workflow with the app and the tag. It refuses anything but a plain `<app>-X.Y.Z` tag, then
 
 - server: points `ghcr.io/tosunlab/hisar-server:latest` and `:X.Y` at `:X.Y.Z`;
-- desktop: renames the release's `update-unpublished.json` to `update.json`, which offers the version to every app as an automatic update;
+- desktop: checks that the Mac and Linux files are all there, then renames the release's `update-unpublished.json` to
+  `update.json`, which offers the version to every Mac app as an automatic update;
 - cli, extension (and desktop): turns the prerelease into a release and marks it latest.
 
 A tag pushed without the workflows in its tree (one from before the move to GitHub) is built by running its release workflow by hand

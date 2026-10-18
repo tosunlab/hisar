@@ -7,7 +7,6 @@ import (
 
 	"github.com/tryhisar/hisar/core/appversion"
 	"github.com/tryhisar/hisar/desktop/background"
-	"github.com/tryhisar/hisar/desktop/updater"
 )
 
 func getDeviceName() string {
@@ -30,9 +29,10 @@ func getSingleInstanceID(statePath string) string {
 	return background.BundleID + "." + hex.EncodeToString(statePathHash[:8])
 }
 
-// getAppVersion is the bundle's version; development builds send none, so no minimum refuses them.
+// getAppVersion is the bundle's version, or the one the Linux packaging stamped; development builds send none, so no
+// minimum refuses them.
 func getAppVersion() string {
-	version, _ := updater.Updater{}.GetVersion()
+	version, _ := newAppUpdater().GetVersion()
 	if _, err := appversion.Parse(version); err != nil {
 		return ""
 	}

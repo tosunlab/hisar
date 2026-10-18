@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { clearError, dismissSignedOutReason, signIn, signUp, store } from "../store";
-import { getMasterPasswordFeedback } from "../util";
+import { getMasterPasswordFeedback, getThisDeviceName, isMacPlatform } from "../util";
 import AppIcon, { type IconName } from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
 import StrengthMeter from "./StrengthMeter.vue";
@@ -32,7 +32,7 @@ const passwordMismatch = computed(
 );
 const passwordFeedback = computed(() => getMasterPasswordFeedback(mode.value === "sign-in" ? "" : password.value));
 const allHeading: Record<Mode, { title: string; subtitle: string }> = {
-  "sign-in": { title: "Welcome back", subtitle: "Sign in to Hisar on this Mac." },
+  "sign-in": { title: "Welcome back", subtitle: `Sign in to Hisar on ${getThisDeviceName()}.` },
   "create-account": { title: "Create your account", subtitle: "Enter the invite code you received. Pasting the whole invite link works too." },
 };
 
@@ -40,7 +40,7 @@ type Feature = { icon: IconName; title: string; text: string };
 const allSignInFeature: Feature[] = [
   {
     icon: "key",
-    title: "SSH agent with Touch ID",
+    title: isMacPlatform() ? "SSH agent with Touch ID" : "SSH agent with approvals",
     text: "SSH and commit signing use keys kept in Hisar, with your approval. Private keys never leave Hisar.",
   },
   {

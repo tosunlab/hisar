@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted } from "vue";
+import { api } from "../api";
 import { checkForUpdates, loadUpdateStatus, setAutomaticUpdateCheck, store } from "../store";
 import { useSettingsRowVisibility } from "../settingsSections";
 
@@ -30,8 +31,24 @@ const explanation = computed(() => {
   if (!status.isSignedIn) {
     return "Sign in to check for updates; they come from the Hisar server.";
   }
+  if (status.isNotifyOnly) {
+    if (status.availableVersion) {
+      return `Hisar ${status.availableVersion} is available. Download it from its release page and install it over this version.`;
+    }
+    if (status.hasChecked) {
+      return "Hisar is up to date.";
+    }
+    return `Hisar checks ${store.status.server || "the Hisar server"} for new versions; you download and install them.`;
+  }
   return `Updates come from ${store.status.server || "the Hisar server"} and are verified before they install.`;
 });
+
+function openDownload(): void {
+  const downloadURL = updateStatus.value?.downloadURL;
+  if (downloadURL) {
+    api.openURL(downloadURL);
+  }
+}
 
 onMounted(loadUpdateStatus);
 </script>
@@ -45,7 +62,8 @@ onMounted(loadUpdateStatus);
           <strong data-testid="installed-version">{{ versionLabel }}</strong>
           <p class="muted" data-testid="update-explanation">{{ explanation }}</p>
         </div>
-        <button data-testid="check-for-updates" :disabled="!canCheck" @click="checkForUpdates">Check for updates</button>
+        <button v-if="updateStatus?.availableVersion" class="primary" data-testid="download-update" @click="openDownload">Download</button>
+        <button v-else data-testid="check-for-updates" :disabled="!canCheck" @click="checkForUpdates">Check for updates</button>
       </div>
       <label v-show="isRowVisible('automatic-updates')" class="setting">
         <div class="setting-text">

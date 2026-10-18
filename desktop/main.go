@@ -28,6 +28,7 @@ import (
 	"github.com/tryhisar/hisar/desktop/commandline"
 	"github.com/tryhisar/hisar/desktop/loginitem"
 	"github.com/tryhisar/hisar/desktop/pasteboard"
+	"github.com/tryhisar/hisar/desktop/portable"
 	"github.com/tryhisar/hisar/desktop/systemidle"
 	"github.com/tryhisar/hisar/desktop/updater"
 )
@@ -95,7 +96,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	updateService := app.NewUpdateService(vaultService, updater.Updater{})
+	updateService := app.NewUpdateService(vaultService, newAppUpdater())
 	executablePath, err := os.Executable()
 	if err != nil {
 		log.Fatal(err)
@@ -195,6 +196,9 @@ func main() {
 		browserSocketPath = browser.GetDefaultSocketPath(homeDirectory)
 	}
 	browserServer := browser.NewServer(app.NewBrowserRequestHandler(browserBridge), localsocket.SystemPeerResolver{}, browserHostPath)
+	if portable.Detect(os.Getenv, homeDirectory).Kind == portable.KindFlatpak {
+		browserServer.AllowHostOutsideSandbox()
+	}
 
 	commandLineApprovals := clisocket.NewSessionApprovals(clisocket.DefaultApprovalLifetime, nil)
 	commandLineBridge := app.NewCommandLineBridge(vaultService, commandLineApprovals)

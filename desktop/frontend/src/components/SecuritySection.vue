@@ -2,6 +2,7 @@
 import { ref } from "vue";
 import { disableBiometricUnlock, enableBiometricUnlock, saveEmergencyKit, setAutoLock, store } from "../store";
 import { useSettingsRowVisibility } from "../settingsSections";
+import { isMacPlatform } from "../util";
 import ChangeMasterPasswordDialog from "./ChangeMasterPasswordDialog.vue";
 import ReplaceSecretKeyDialog from "./ReplaceSecretKeyDialog.vue";
 
@@ -47,7 +48,9 @@ async function submitSaveEmergencyKit(): Promise<void> {
               {{
                 store.status.biometricAvailable
                   ? "Touch ID unlocks Hisar after it locks. Your master password is still needed when Hisar starts and at least every 14 days."
-                  : "Touch ID is not available on this Mac."
+                  : isMacPlatform()
+                    ? "Touch ID is not available on this Mac."
+                    : "Unlocking with a fingerprint is not available on this computer yet; Hisar unlocks with your master password."
               }}
             </p>
           </div>
@@ -85,7 +88,8 @@ async function submitSaveEmergencyKit(): Promise<void> {
         <div v-show="isRowVisible('auto-lock')" class="setting">
           <div class="setting-text">
             <strong>Auto-lock</strong>
-            <p class="muted">Hisar locks once your Mac has had no keyboard, mouse or trackpad input for this long, and when the screen locks or the Mac sleeps. Typing in a terminal or editor keeps it unlocked; SSH, command-line and agent requests alone do not. Copied values are cleared after 90 seconds.</p>
+            <p v-if="isMacPlatform()" class="muted">Hisar locks once your Mac has had no keyboard, mouse or trackpad input for this long, and when the screen locks or the Mac sleeps. Typing in a terminal or editor keeps it unlocked; SSH, command-line and agent requests alone do not. Copied values are cleared after 90 seconds.</p>
+            <p v-else class="muted">Hisar locks once this computer has had no keyboard or mouse input for this long; on a desktop that does not report it, once Hisar itself has not been used for this long. Copied values are cleared after 90 seconds.</p>
           </div>
           <select
             class="auto-lock"

@@ -1,4 +1,4 @@
-// Package updater updates the app with Sparkle on macOS (build tag sparkle); other builds report updates as unavailable.
+// Package updater updates the app with Sparkle on macOS (build tag sparkle); on Linux, Notifier finds newer versions for the user to download.
 package updater
 
 import "errors"

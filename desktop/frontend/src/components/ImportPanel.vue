@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { changeImportVault, chooseImportFile, closeImport, continueImport, deleteImportFile, getAllEditableVault, startImport, store } from "../store";
 import AppIcon from "./AppIcon.vue";
+import { getThisDeviceName } from "../util";
 
 const allEditableVault = computed(() => getAllEditableVault());
 
@@ -120,7 +121,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
             <div><dt>Safari</dt><dd>File → Export → Passwords.</dd></div>
           </dl>
         </details>
-        <p class="muted hint">Hisar reads the file on this Mac and shows what it found before saving anything.</p>
+        <p class="muted hint">Hisar reads the file on {{ getThisDeviceName() }} and shows what it found before saving anything.</p>
         <div class="row actions">
           <button type="button" class="ghost" @click="closeImport">Cancel</button>
           <button class="primary" type="submit" data-testid="choose-import-file" :disabled="store.isBusy || !vaultID">
@@ -191,7 +192,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
         <div class="progress" role="progressbar" :aria-valuenow="progressPercent" aria-valuemin="0" aria-valuemax="100">
           <div class="progress-bar" :style="{ width: `${progressPercent}%` }"></div>
         </div>
-        <p class="muted hint">Each item is encrypted on this Mac before it is saved. Keep Hisar open until the import finishes.</p>
+        <p class="muted hint">Each item is encrypted on {{ getThisDeviceName() }} before it is saved. Keep Hisar open until the import finishes.</p>
         <div v-if="store.errorMessage && !store.isBusy" class="row actions">
           <button class="primary" data-testid="continue-import" @click="continueImport">Try again</button>
         </div>
