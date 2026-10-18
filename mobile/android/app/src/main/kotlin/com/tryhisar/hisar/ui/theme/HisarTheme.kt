@@ -14,7 +14,6 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
-import com.tryhisar.hisar.model.ThemeAppearanceName
 import com.tryhisar.hisar.model.VaultTheme
 import com.tryhisar.hisar.model.theme.ThemePalettes
 
@@ -85,11 +84,7 @@ private fun buildColors(theme: VaultTheme, isDark: Boolean): HisarColors {
 /** Hisar's palette from themes.json on Material 3's roles; never the device's dynamic colours. */
 @Composable
 fun HisarTheme(theme: VaultTheme = VaultTheme.standard, content: @Composable () -> Unit) {
-    val isDark = when (theme.appearance) {
-        ThemeAppearanceName.SYSTEM -> isSystemInDarkTheme()
-        ThemeAppearanceName.LIGHT -> false
-        ThemeAppearanceName.DARK -> true
-    }
+    val isDark = theme.isDark(isSystemInDarkTheme())
     val colors = buildColors(theme, isDark)
     val base = if (isDark) darkColorScheme() else lightColorScheme()
     val colorScheme = base.copy(

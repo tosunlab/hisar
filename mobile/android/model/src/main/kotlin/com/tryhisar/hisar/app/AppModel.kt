@@ -15,6 +15,7 @@ import com.tryhisar.hisar.model.WaitingVaultKeys
 import com.tryhisar.hisar.model.describeError
 import java.time.Duration
 import java.time.Instant
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -87,6 +88,7 @@ class AppModel(
 
     val signIn = SignInModel(this)
     val lock = LockModel(this)
+    val settings = SettingsModel(this)
     val favorites = FavoritesModel(this)
     val websiteIcons = WebsiteIconModel(this)
     val item = ItemModel(this)
@@ -174,6 +176,8 @@ class AppModel(
             val value = withContext(ioDispatcher) { operation(backend) }
             errorMessage.value = null
             return value
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: Exception) {
             errorMessage.value = describeError(error)
             return null
@@ -186,6 +190,8 @@ class AppModel(
         val backend = backend ?: return null
         return try {
             withContext(ioDispatcher) { operation(backend) }
+        } catch (error: CancellationException) {
+            throw error
         } catch (_: Exception) {
             null
         }
@@ -345,6 +351,8 @@ class AppModel(
 
 private inline fun <Value> attemptCall(call: () -> Value): Value? = try {
     call()
+} catch (error: CancellationException) {
+    throw error
 } catch (_: Exception) {
     null
 }
