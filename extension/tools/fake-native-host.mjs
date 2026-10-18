@@ -26,7 +26,9 @@ export function createInitialState() {
     allPairing: [],
     exactHostOnly: false,
     // features: what the app announces in hello; an older app announces none.
-    features: ["addresses", "vault"],
+    features: ["addresses", "vault", "unlock-password"],
+    // masterPassword is what unlock.password accepts.
+    masterPassword: "master password",
     allAddress: [
       {
         vaultID: "vault-personal",
@@ -291,6 +293,14 @@ export function handleRequest(state, request, now = Date.now(), log = () => unde
       if (state.state === "signed-out") throw new ProtocolError("signed-out", "Hisar is signed out");
       if (state.state === "locked") state.unlockAt = now + state.unlockDelayMilliseconds;
       return {};
+    case "unlock.password": {
+      if (!state.features?.includes("unlock-password")) throw new ProtocolError("invalid-request", `Unknown type ${String(type)}`);
+      if (state.state === "signed-out") throw new ProtocolError("signed-out", "Hisar is signed out");
+      if (request.password !== state.masterPassword) throw new ProtocolError("wrong-password", "That master password is not right");
+      state.state = "unlocked";
+      state.unlockAt = null;
+      return { state: state.state, email: state.email, isOffline: state.isOffline };
+    }
     case "logins.match": {
       requireUnlocked(state);
       const url = requireString(request, "url");

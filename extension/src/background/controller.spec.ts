@@ -23,7 +23,7 @@ describe("popup state", () => {
   it("follows the desktop state after pairing", async () => {
     const harness = createHarness({ state: { isOffline: true } });
     await harness.pair();
-    expect(await harness.controller.getPopupState()).toEqual({ view: "unlocked", email: "alex@example.com", isOffline: true, isAddressFillAvailable: true, isVaultAvailable: true });
+    expect(await harness.controller.getPopupState()).toEqual({ view: "unlocked", email: "alex@example.com", isOffline: true, isAddressFillAvailable: true, isVaultAvailable: true, isPasswordUnlockAvailable: true });
     harness.state.state = "locked";
     expect((await harness.controller.getPopupState()).view).toBe("locked");
   });
@@ -264,6 +264,26 @@ describe("addresses", () => {
     await expectHisarError(harness.controller.listAddresses(), "invalid-request");
     await expectHisarError(harness.controller.fillAddress(1, "vault-personal", "item-home"), "invalid-request");
     expect(harness.getRequestTypes().filter((type) => String(type).startsWith("addresses."))).toEqual([]);
+  });
+});
+
+describe("unlocking with the master password", () => {
+  it("unlocks with the right password and says when it is wrong", async () => {
+    const harness = createHarness({ state: { state: "locked" } });
+    await harness.pair();
+    expect(await harness.controller.getPopupState()).toMatchObject({ view: "locked", isPasswordUnlockAvailable: true });
+    await expectHisarError(harness.controller.unlockWithPassword("guess"), "wrong-password");
+    await expectHisarError(harness.controller.unlockWithPassword(""), "invalid-request");
+    await harness.controller.unlockWithPassword("master password");
+    expect((await harness.controller.getPopupState()).view).toBe("unlocked");
+  });
+
+  it("does not send the password to an app that cannot take it", async () => {
+    const harness = createHarness({ state: { state: "locked", features: ["addresses"] } });
+    await harness.pair();
+    expect(await harness.controller.getPopupState()).toMatchObject({ view: "locked", isPasswordUnlockAvailable: false });
+    await expectHisarError(harness.controller.unlockWithPassword("master password"), "invalid-request");
+    expect(harness.allRequest.some((request) => request.type === "unlock.password")).toBe(false);
   });
 });
 

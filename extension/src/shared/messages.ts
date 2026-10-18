@@ -14,6 +14,8 @@ export interface PopupState {
   isAddressFillAvailable?: boolean;
   // isVaultAvailable: the app lets the popup browse every vault, not only the logins of the current site.
   isVaultAvailable?: boolean;
+  // isPasswordUnlockAvailable: the app unlocks with the master password typed in the popup.
+  isPasswordUnlockAvailable?: boolean;
 }
 
 export interface ItemQuery {
@@ -77,6 +79,7 @@ export type PopupMessage =
   | { type: "popup.startPairing" }
   | { type: "popup.finishPairing"; code: string }
   | { type: "popup.unlock" }
+  | { type: "popup.unlockWithPassword"; password: string }
   | { type: "popup.matchLogins"; tabId: number }
   | { type: "popup.fillLogin"; tabId: number; vaultID: string; itemID: string }
   | { type: "popup.getPassword"; tabId: number; vaultID: string; itemID: string }

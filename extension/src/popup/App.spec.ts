@@ -202,6 +202,44 @@ describe("popup states", () => {
     expect(wrapper.find('[data-testid="unlocked-view"]').exists()).toBe(true);
   });
 
+  it("unlocks with the master password typed in the popup, and shows a wrong one", async () => {
+    let state: PopupState = { view: "locked", isPasswordUnlockAvailable: true };
+    handler = (message) => {
+      if (message.type === "popup.getState") return state;
+      if (message.type === "popup.matchLogins") return { url: "https://example.com/", allLogin };
+      if (message.type === "popup.unlockWithPassword") {
+        if (message.password !== "master password") throw Object.assign(new Error("That master password is not right"), { code: "wrong-password" });
+        state = { view: "unlocked", email: "alex@example.com" };
+      }
+      return null;
+    };
+    const wrapper = await mountApp();
+    const input = wrapper.find('[data-testid="master-password"]');
+    expect(document.activeElement).toBe(input.element);
+    expect(wrapper.find('[data-testid="unlock-with-password"]').attributes("disabled")).toBeDefined();
+    await input.setValue("guess");
+    await wrapper.find('[data-testid="unlock-form"]').trigger("submit");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="unlock-error"]').text()).toBe("That master password is not right");
+    expect((wrapper.find('[data-testid="master-password"]').element as HTMLInputElement).value).toBe("");
+
+    await wrapper.find('[data-testid="master-password"]').setValue("master password");
+    await wrapper.find('[data-testid="unlock-form"]').trigger("submit");
+    await flushPromises();
+    expect(allMessage).toContainEqual({ type: "popup.unlockWithPassword", password: "master password" });
+    expect(wrapper.find('[data-testid="unlocked-view"]').exists()).toBe(true);
+    // Unlocking in the app stays on offer.
+    expect(allMessage.some((message) => message.type === "popup.unlock")).toBe(false);
+  });
+
+  it("still offers to unlock in the app next to the password", async () => {
+    respondWithState({ view: "locked", isPasswordUnlockAvailable: true });
+    const wrapper = await mountApp();
+    await wrapper.find('[data-testid="unlock"]').trigger("click");
+    await flushPromises();
+    expect(allMessage.map((message) => message.type)).toContain("popup.unlock");
+  });
+
   it("stops polling after the limit", async () => {
     vi.useFakeTimers();
     respondWithState({ view: "locked" });

@@ -30,6 +30,8 @@ const (
 	ErrorDesktopUnavailable = "desktop-unavailable"
 	ErrorInternal           = "internal"
 	ErrorUpdateRequired     = "update-required"
+	// ErrorWrongPassword: unlock.password got a wrong master password, or too many wrong ones in a row.
+	ErrorWrongPassword = "wrong-password"
 )
 
 var ErrMessageTooLarge = errors.New("browser: message larger than 1 MiB")
@@ -100,8 +102,11 @@ const FeatureAddresses = "addresses"
 // every vault, not only the logins of the current site.
 const FeatureVault = "vault"
 
+// FeatureUnlockPassword: unlock.password unlocks Hisar with the master password typed in the popup.
+const FeatureUnlockPassword = "unlock-password"
+
 // ListFeatures returns the features this app announces in hello.
-func ListFeatures() []string { return []string{FeatureAddresses, FeatureVault} }
+func ListFeatures() []string { return []string{FeatureAddresses, FeatureVault, FeatureUnlockPassword} }
 
 const (
 	UpdateTargetApp       = "app"

@@ -15,10 +15,13 @@ var (
 	ErrOffline   = errors.New("cannot reach the Hisar server; changes can be saved once you are back online")
 )
 
+// errBadCredentials is a wrong master password, or email or Secret Key, as the user reads it.
+var errBadCredentials = errors.New("incorrect email, master password or Secret Key")
+
 func convertError(err error) error {
 	switch {
 	case errors.Is(err, session.ErrBadCredentials):
-		return errors.New("incorrect email, master password or Secret Key")
+		return errBadCredentials
 	case errors.Is(err, session.ErrConflict):
 		return errors.New("this item was changed on another device; reload it and try again")
 	case errors.Is(err, session.ErrRollback):

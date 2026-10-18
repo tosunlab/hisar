@@ -69,6 +69,8 @@ type BrowserBridge struct {
 	mutex          sync.Mutex
 	pendingPairing *pendingBrowserPairing
 	installations  []browserprotocol.BrowserInstallation
+	// unlockFailures holds each paired browser's recent wrong master passwords (unlockWithPassword).
+	unlockFailures map[[sha256.Size]byte][]time.Time
 }
 
 func NewBrowserBridge(service *Service, config BrowserBridgeConfig) *BrowserBridge {
@@ -124,6 +126,8 @@ func (bridge *BrowserBridge) handleRequest(ctx context.Context, request *browser
 			bridge.config.ShowWindow()
 		}
 		return nil, nil
+	case "unlock.password":
+		return bridge.unlockWithPassword(request)
 	case "logins.match":
 		logins, err := bridge.service.listMatchingLogins(ctx, request.URL)
 		return browserprotocol.MatchResult{Logins: logins}, convertBrowserError(err)

@@ -34,6 +34,8 @@ async function routePopupMessage(controller: BackgroundController, message: Popu
       return controller.finishPairing(message.code);
     case "popup.unlock":
       return controller.unlock();
+    case "popup.unlockWithPassword":
+      return controller.unlockWithPassword(message.password);
     case "popup.matchLogins":
       return controller.matchLogins(message.tabId);
     case "popup.fillLogin":

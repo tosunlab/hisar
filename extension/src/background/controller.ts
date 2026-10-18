@@ -11,6 +11,7 @@ import type {
 } from "../shared/messages";
 import {
   featureAddresses,
+  featureUnlockPassword,
   featureVault,
   HisarError,
   toHisarError,
@@ -101,6 +102,7 @@ export class BackgroundController {
         isOffline: status.isOffline,
         isAddressFillAvailable: this.isAddressFillAvailable(),
         isVaultAvailable: this.isVaultAvailable(),
+        isPasswordUnlockAvailable: this.isPasswordUnlockAvailable(),
       };
     } catch (error) {
       const hisarError = toHisarError(error);
@@ -108,7 +110,8 @@ export class BackgroundController {
         await this.storage.removeToken();
         return { view: "not-paired" };
       }
-      if (hisarError.code === "signed-out" || hisarError.code === "locked") return { view: hisarError.code };
+      if (hisarError.code === "signed-out") return { view: hisarError.code };
+      if (hisarError.code === "locked") return { view: hisarError.code, isPasswordUnlockAvailable: this.isPasswordUnlockAvailable() };
       if (hisarError.code === "desktop-unavailable") return { view: "desktop-unavailable", errorMessage: hisarError.message };
       if (hisarError.code === "update-required") return { view: "update-required", errorMessage: hisarError.message };
       throw hisarError;
@@ -131,6 +134,19 @@ export class BackgroundController {
 
   async unlock(): Promise<void> {
     await this.request(() => this.client.request("unlock", {}));
+  }
+
+  isPasswordUnlockAvailable(): boolean {
+    return this.allAppFeature.includes(featureUnlockPassword);
+  }
+
+  // unlockWithPassword passes the master password the user typed in the popup to the app, which derives the keys from
+  // it; the extension keeps no copy.
+  async unlockWithPassword(password: string): Promise<void> {
+    if (!this.hasHello) await this.request(() => this.client.connect());
+    if (!this.isPasswordUnlockAvailable()) throw new HisarError("invalid-request", "Update the Hisar app to unlock from the browser");
+    if (!password) throw new HisarError("invalid-request", "Enter your master password");
+    await this.request(() => this.client.request("unlock.password", { password }));
   }
 
   async getTabUrl(tabId: number): Promise<string | undefined> {

@@ -12,6 +12,7 @@ export const allErrorCode = [
   "no-match",
   "desktop-unavailable",
   "update-required",
+  "wrong-password",
   "internal",
 ] as const;
 
@@ -50,6 +51,9 @@ export const featureAddresses = "addresses";
 // featureVault: the app answers items.list, items.get, items.reveal, items.code, items.icon and items.favorite, so the
 // popup browses every vault.
 export const featureVault = "vault";
+
+// featureUnlockPassword: the app answers unlock.password, so the popup unlocks Hisar with the master password.
+export const featureUnlockPassword = "unlock-password";
 
 // ItemSummary is one row of the popup's item list: metadata only, never a secret.
 export interface ItemSummary {
@@ -138,6 +142,7 @@ export interface RequestMap {
   "pair.finish": { parameters: { instanceID: string; code: string }; result: { token: string } };
   status: { parameters: Record<string, never>; result: StatusResult };
   unlock: { parameters: Record<string, never>; result: Record<string, never> };
+  "unlock.password": { parameters: { password: string }; result: StatusResult };
   "logins.match": { parameters: { url: string }; result: { logins: LoginSummary[] } };
   "logins.fill": { parameters: { vaultID: string; itemID: string; url: string }; result: Credentials };
   "logins.code": { parameters: { vaultID: string; itemID: string; url: string }; result: OneTimeCode };

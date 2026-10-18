@@ -48,6 +48,7 @@ export interface FakeHostState {
   exactHostOnly: boolean;
   allLogin: FakeLogin[];
   features?: string[];
+  masterPassword?: string;
   allAddress?: FakeAddress[];
   allItem?: FakeItem[];
   allFavoriteItemID?: string[];

@@ -65,6 +65,23 @@ async function unlock(): Promise<void> {
   }
 }
 
+const isUnlocking = ref(false);
+const unlockError = ref("");
+
+// unlockWithPassword sends the master password once; the popup keeps no copy of it.
+async function unlockWithPassword(password: string): Promise<void> {
+  isUnlocking.value = true;
+  unlockError.value = "";
+  try {
+    await sendToBackground({ type: "popup.unlockWithPassword", password });
+    await refreshState();
+  } catch (error) {
+    unlockError.value = describeError(error);
+  } finally {
+    isUnlocking.value = false;
+  }
+}
+
 async function openHisar(): Promise<void> {
   isWaiting.value = true;
   await refreshState(true);
@@ -164,7 +181,11 @@ onBeforeUnmount(() => {
       :detail="popupState.errorMessage"
       :update-required="popupState.updateRequired"
       :is-waiting="isWaiting"
+      :is-password-unlock-available="popupState.isPasswordUnlockAvailable"
+      :is-unlocking="isUnlocking"
+      :unlock-error="unlockError"
       @unlock="unlock"
+      @unlock-with-password="unlockWithPassword"
       @open-hisar="openHisar"
       @refresh="retry"
       @open-update-page="openUpdatePage"
