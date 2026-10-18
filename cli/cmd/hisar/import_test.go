@@ -5,12 +5,14 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
 
+	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/importer"
 	"github.com/tryhisar/hisar/core/item"
 )
@@ -132,5 +134,16 @@ func TestDotenvFileNames(t *testing.T) {
 	}
 	if title := buildDefaultItemTitle("/work/shop/.env"); title != "shop" {
 		t.Errorf("default item name %q", title)
+	}
+}
+
+func TestImportStopsOnASuspendedAccount(t *testing.T) {
+	for _, err := range []error{apiclient.ErrAccountSuspended, fmt.Errorf("saving an item: %w", apiclient.ErrAccountSuspended)} {
+		if !isImportStoppingError(err) {
+			t.Errorf("%v does not stop the import", err)
+		}
+	}
+	if isImportStoppingError(errors.New("one item failed")) {
+		t.Error("an item's own failure stops the import")
 	}
 }

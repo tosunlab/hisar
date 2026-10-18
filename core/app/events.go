@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"sync/atomic"
 	"time"
@@ -58,6 +59,10 @@ func (s *Service) watchEvents(ctx context.Context, apiClient *apiclient.Client, 
 		}
 		if apiclient.IsStatus(err, http.StatusUnauthorized) {
 			go s.endSignedOutSession(apiClient.Token)
+			return
+		}
+		if errors.Is(err, apiclient.ErrAccountSuspended) {
+			go s.lockSuspendedSession(apiClient.Token)
 			return
 		}
 		if isReconnectRequested.Load() {

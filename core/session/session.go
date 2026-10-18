@@ -19,6 +19,9 @@ var (
 	// ErrKeyChanged: the server refused items sealed with a vault key another device's rotation replaced, again after the
 	// vault was reloaded and the items sealed with its current key.
 	ErrKeyChanged = errors.New("the vault's key changed on another device; try again")
+	// ErrAccountSuspended: an admin of the server suspended the account. Sign-in says so only after a correct proof; a
+	// device that was signed in keeps its session and gets it on every request until reactivation.
+	ErrAccountSuspended = apiclient.ErrAccountSuspended
 )
 
 // SeqStore remembers the highest vault seq seen, to detect server rollbacks.

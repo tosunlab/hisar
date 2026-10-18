@@ -210,6 +210,24 @@ func (s *Service) forgetLocalAccount() error {
 	return secretKeyErr
 }
 
+// lockSuspendedSession locks Hisar when the server refuses the session because an admin suspended the account. Unlike
+// endSignedOutSession it keeps the Secret Key, the state and the cache: the session works again after reactivation, and
+// until then unlocking answers the suspension sentence.
+func (s *Service) lockSuspendedSession(token string) {
+	s.mutex.Lock()
+	if token == "" || s.state.Token != token {
+		s.mutex.Unlock()
+		return
+	}
+	wasUnlocked := s.unlockedSession != nil
+	s.lockSession()
+	s.notifyStatusListener()
+	s.mutex.Unlock()
+	if wasUnlocked && s.config.LockNotifier != nil {
+		s.config.LockNotifier.NotifyLocked()
+	}
+}
+
 // endSignedOutSession runs when the server no longer accepts this device's session (revoked, or credentials changed elsewhere).
 func (s *Service) endSignedOutSession(token string) bool {
 	s.mutex.Lock()

@@ -40,6 +40,22 @@ type APIError struct {
 
 func (e *APIError) Error() string { return fmt.Sprintf("server: %s (%d)", e.Message, e.Status) }
 
+// ErrAccountSuspended is the server's 403 with apitypes.AccountSuspendedMessage: an admin suspended the account. It is
+// not an APIError, so no check for a plain 403 mistakes it for another refusal, and the device keeps its session.
+var ErrAccountSuspended = errors.New(apitypes.AccountSuspendedMessage)
+
+// readError returns the error of an answer that is not a success, from its status and JSON body.
+func readError(status int, data []byte) error {
+	var errorBody apitypes.Error
+	if json.Unmarshal(data, &errorBody) != nil || errorBody.Error == "" {
+		errorBody.Error = http.StatusText(status)
+	}
+	if status == http.StatusForbidden && errorBody.Error == apitypes.AccountSuspendedMessage {
+		return ErrAccountSuspended
+	}
+	return &APIError{Status: status, Message: errorBody.Error}
+}
+
 // UpgradeRequiredError is the server's 426: this app's version is below the minimum the server accepts.
 type UpgradeRequiredError struct {
 	MinimumVersion string
@@ -146,11 +162,7 @@ func (c *Client) sendRequest(ctx context.Context, method, path string, header ht
 		return &APIError{Status: response.StatusCode, Message: "conflict"}
 	}
 	if response.StatusCode >= 300 {
-		var errorBody apitypes.Error
-		if json.Unmarshal(data, &errorBody) != nil || errorBody.Error == "" {
-			errorBody.Error = http.StatusText(response.StatusCode)
-		}
-		return &APIError{Status: response.StatusCode, Message: errorBody.Error}
+		return readError(response.StatusCode, data)
 	}
 	if output != nil && len(data) > 0 {
 		return json.Unmarshal(data, output)
