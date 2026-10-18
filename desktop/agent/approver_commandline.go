@@ -22,6 +22,7 @@ func (approver *Approver) buildCommandLineEvent(requestID string, request clisoc
 		ClientName:        commandLineClientName,
 		ClientPath:        request.ClientPath,
 		TerminalName:      request.TerminalName,
+		Coverage:          string(request.Coverage),
 		IsTouchIDApproval: approver.IsTouchIDApproval(),
 		TimeoutAt:         approver.config.Now().Add(approver.config.Timeout).UTC().Format(time.RFC3339),
 		SecretNames:       []string{},
@@ -33,10 +34,7 @@ func (approver *Approver) buildCommandLineEvent(requestID string, request clisoc
 		event.SecretNames, event.MoreSecretCount = limitSecretName(request.SecretNames)
 	}
 	if request.ShareLink != nil {
-		event.Action = fmt.Sprintf("create a share link for “%s”", truncateText(request.ShareLink.Title, maximumSecretNameCount))
-		event.CommandLine = request.ShareLink.Detail
-		event.SecretNames, event.MoreSecretCount = limitSecretName(request.ShareLink.FieldLabels)
-		event.Warning = shareLinkWarning
+		applyShareLink(&event, request.ShareLink)
 	}
 	if request.Export != nil {
 		event.Action = "export all your vaults"
@@ -51,6 +49,27 @@ func (approver *Approver) buildCommandLineEvent(requestID string, request clisoc
 	}
 	approver.setUnlockState(&event)
 	return event
+}
+
+// applyShareLink shows what a share link hands out: the item, its fields, the link's limits, and that anyone with it
+// can read them. The title is empty when Hisar was locked and a launcher named the item by ID only.
+func applyShareLink(event *ApprovalEvent, shareLink *clisocket.ShareLinkDescription) {
+	event.Action = "create a share link for an item"
+	if shareLink.Title != "" {
+		event.Action = fmt.Sprintf("create a share link for “%s”", truncateText(shareLink.Title, maximumSecretNameCount))
+	}
+	event.CommandLine = shareLink.Detail
+	event.SecretNames, event.MoreSecretCount = limitSecretName(shareLink.FieldLabels)
+	event.Warning = shareLinkWarning
+}
+
+// listPhoneSecrets is the dialog's list of secrets as the phone shows it.
+func listPhoneSecrets(event ApprovalEvent) []string {
+	secrets := append([]string{}, event.SecretNames...)
+	if event.MoreSecretCount > 0 {
+		secrets = append(secrets, fmt.Sprintf("and %d more", event.MoreSecretCount))
+	}
+	return secrets
 }
 
 func (approver *Approver) buildCommandLinePhoneDescription(event ApprovalEvent) approval.Description {
@@ -70,10 +89,7 @@ func (approver *Approver) buildCommandLinePhoneDescription(event ApprovalEvent) 
 	if event.Action != "" {
 		description.Purpose = event.Action
 		description.CommandLine = event.CommandLine
-		description.Secrets = append([]string{}, event.SecretNames...)
-		if event.MoreSecretCount > 0 {
-			description.Secrets = append(description.Secrets, fmt.Sprintf("and %d more", event.MoreSecretCount))
-		}
+		description.Secrets = listPhoneSecrets(event)
 	}
 	return description
 }
@@ -85,7 +101,8 @@ func describeCommandLineClient(event ApprovalEvent) string {
 	return fmt.Sprintf("%q in %s", event.ClientName, describeInlineAppName(event))
 }
 
-// ApproveCommandLine asks to let a terminal session use Hisar; when Hisar is locked, approving also unlocks it.
+// ApproveCommandLine asks to let hisar use Hisar in what request.Coverage covers: a terminal session, an app, or one
+// connection. When Hisar is locked, approving also unlocks it.
 func (approver *Approver) ApproveCommandLine(ctx context.Context, request clisocket.ApprovalRequest) error {
 	if approver.config.Emit == nil {
 		return clisocket.ErrDenied
@@ -97,19 +114,12 @@ func (approver *Approver) ApproveCommandLine(ctx context.Context, request clisoc
 	if event.Action != "" {
 		action = event.Action
 	}
-	pending := &pendingApproval{
+	return approver.waitForSocketApproval(ctx, &pendingApproval{
 		event:           event,
 		responseChannel: make(chan approvalResponse, 1),
 		receivedAt:      receivedAt,
 		approveReason:   fmt.Sprintf("allow %s to %s", client, action),
 		unlockReason:    fmt.Sprintf("unlock Hisar for %s", client),
 		phoneRequest:    approver.buildCommandLinePhoneDescription(event),
-	}
-	if !approver.waitForApproval(ctx, pending) {
-		if pending.timedOutAfter > 0 {
-			return clisocket.TimeoutError{Timeout: pending.timedOutAfter}
-		}
-		return clisocket.ErrDenied
-	}
-	return nil
+	})
 }

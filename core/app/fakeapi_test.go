@@ -19,6 +19,7 @@ type fakeAPIServer struct {
 	itemsByVaultID           map[string]map[string]apitypes.Item
 	seq                      int64
 	accountID                string
+	account                  *apitypes.Account
 	role                     string
 	members                  []apitypes.Member
 	accessesByVaultID        map[string][]apitypes.RotatedAccess
@@ -80,6 +81,10 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 	mux.HandleFunc("GET /api/v1/account", func(writer http.ResponseWriter, request *http.Request) {
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
+		if server.account != nil {
+			writeJSON(writer, http.StatusOK, server.account)
+			return
+		}
 		writeJSON(writer, http.StatusOK, apitypes.Account{AccountID: server.accountID, Role: server.role})
 	})
 	mux.HandleFunc("GET /api/v1/account/preferences", func(writer http.ResponseWriter, request *http.Request) {

@@ -27,6 +27,7 @@ import (
 	"github.com/tryhisar/hisar/desktop/browser"
 	"github.com/tryhisar/hisar/desktop/commandline"
 	"github.com/tryhisar/hisar/desktop/loginitem"
+	"github.com/tryhisar/hisar/desktop/pasteboard"
 	"github.com/tryhisar/hisar/desktop/systemidle"
 	"github.com/tryhisar/hisar/desktop/updater"
 )
@@ -47,7 +48,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	clipboard := &wailsClipboard{}
+	fallbackClipboard := &wailsClipboard{}
 	touchID := biometric.New("Hisar Touch ID")
 	notifier := &appNotifier{}
 	fileSaver := &wailsFileSaver{}
@@ -55,13 +56,14 @@ func main() {
 	var agentServer *sshagent.Server
 	var approver *agent.Approver
 	var showUpdateRequired func(requirement app.UpdateRequirement)
+	var showItem func(location app.ItemLocation)
 	vaultConfig := app.Config{
 		StatePath:             statePath,
 		CachePath:             cachePath,
 		DeviceName:            getDeviceName(),
 		Platform:              runtime.GOOS + "/desktop",
 		AppVersion:            getAppVersion(),
-		Clipboard:             clipboard,
+		Clipboard:             pasteboard.New(fallbackClipboard),
 		LockNotifier:          notifier,
 		GetSystemIdleDuration: systemidle.GetIdleDuration,
 		Biometric:             touchID,
@@ -81,6 +83,11 @@ func main() {
 		OnUpdateRequired: func(requirement app.UpdateRequirement) {
 			if showUpdateRequired != nil {
 				showUpdateRequired(requirement)
+			}
+		},
+		ShowItem: func(location app.ItemLocation) {
+			if showItem != nil {
+				showItem(location)
 			}
 		},
 	}
@@ -133,6 +140,7 @@ func main() {
 		},
 		HideApprovalWindow: func() { application.InvokeAsync(func() { approvalWindow.Hide() }) },
 		ResolveRequester:   requesterResolver.Resolve,
+		ReturnToApp:        reopenApp,
 		GetAppIconPNG:      requesterResolver.GetIconPNG,
 		HomeDirectory:      homeDirectory,
 		IsCompactApproval:  approvalPreference.IsCompactSSHApproval,
@@ -196,8 +204,12 @@ func main() {
 		CheckUpdateRequired: commandLineBridge.CheckUpdateRequired,
 		Approver:            approver,
 		AgentApprover:       approver,
-		Approvals:           commandLineApprovals,
-		IsEnabled:           func() bool { return commandLineService.IsIntegrationEnabled() },
+		LauncherApprover:    approver,
+		IdentifyApp: func(pid int) (clisocket.AppIdentity, bool) {
+			return commandline.IdentifyApp(requesterResolver.Resolve(pid), requesterResolver)
+		},
+		Approvals: commandLineApprovals,
+		IsEnabled: func() bool { return commandLineService.IsIntegrationEnabled() },
 	})
 	commandLineSocketPath := os.Getenv(cliprotocol.SocketEnvironment)
 	if commandLineSocketPath == "" {
@@ -210,7 +222,7 @@ func main() {
 		HomeDirectory: homeDirectory,
 		GetUserPath:   userPathReader.Read,
 		Shell:         getLoginShell(),
-	}), commandLineRunner)
+	}), commandLineRunner, commandLineApprovals, requesterResolver.DescribeApp)
 
 	loginItemService := loginitem.NewService(vaultService, background.NewLoginItem(homeDirectory))
 	inviteLinkService := app.NewInviteLinkService()
@@ -259,7 +271,7 @@ func main() {
 			DisableQuitOnLastWindowClosed: true,
 		},
 	})
-	clipboard.app, notifier.app = wailsApp, wailsApp
+	fallbackClipboard.app, notifier.app = wailsApp, wailsApp
 
 	window = wailsApp.Window.NewWithOptions(mainWindowOptions())
 	fileSaver.chooseSavePath = func(defaultFileName string) (string, error) {
@@ -290,6 +302,10 @@ func main() {
 	})
 	showUpdateRequired = func(requirement app.UpdateRequirement) {
 		wailsApp.Event.Emit(eventUpdateRequired, requirement)
+		showWindow()
+	}
+	showItem = func(location app.ItemLocation) {
+		wailsApp.Event.Emit(eventShowItem, location)
 		showWindow()
 	}
 	wailsApp.Event.OnApplicationEvent(events.Common.ApplicationLaunchedWithUrl, func(event *application.ApplicationEvent) {

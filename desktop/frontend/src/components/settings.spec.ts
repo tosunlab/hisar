@@ -182,6 +182,17 @@ describe("Settings search", () => {
     expect(findPage(settings, "ssh").text()).toContain("Approve requests on my iPhone");
   });
 
+  it("finds the launchers row by searching raycast", async () => {
+    const settings = await mountSettings();
+    await search(settings, "raycast");
+    expect(readAllSectionLabel(settings)).toEqual(["Developer tools"]);
+    const developer = findPage(settings, "developer");
+    expect(developer.find('[data-testid="command-line-launchers"]').isVisible()).toBe(true);
+    expect(developer.find('[data-testid="launcher-apps-empty"]').isVisible()).toBe(true);
+    expect(developer.find('input[name="commandLineIntegration"]').isVisible()).toBe(false);
+    expect(developer.find('[data-testid="coding-agents-section"]').isVisible()).toBe(false);
+  });
+
   it("finds rows in several sections and moves the selection to the first one", async () => {
     const settings = await mountSettings();
     await settings.find('[data-testid="settings-section-account"]').trigger("click");

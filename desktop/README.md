@@ -247,7 +247,9 @@ app, updated with it by Sparkle). Not `Contents/MacOS/hisar`: on the default cas
 - **Let the command-line tool use Hisar** (on by default) serves `~/.hisar/cli.sock` (`HISAR_CLI_SOCKET` overrides it for the app and
   `hisar`). `hisar` then runs its commands through the app: the first command in a terminal opens the approval window ("hisar in Terminal
   wants to use Hisar") with Touch ID, which also unlocks a locked Hisar (or asks for the master password). The approval lasts until 10
-  minutes after that terminal's last command, or until Hisar locks or quits. `hisar status` shows which mode it uses.
+  minutes after that terminal's last command, or until Hisar locks or quits. A `hisar` without a terminal (run by a GUI app) is
+  approved per app whose code signature macOS verified, else for its one connection, and the window says which. `hisar status` shows
+  which mode it uses.
 - When the app is installed but not running, `hisar` starts it hidden (`open -g … --args --hidden` on macOS, the `Hisar` binary with
   `--hidden` on Linux), prints "Starting Hisar…" and waits up to 10 seconds for the socket. If it still does not answer, `hisar` uses
   its own sign-in when it has one, and otherwise stops with "Hisar isn't running. Open the Hisar app and try again."
@@ -256,6 +258,28 @@ app, updated with it by Sparkle). Not `Contents/MacOS/hisar`: on the default cas
 - Preview: `&settings=1&settingsSection=developer` plus `&commandLine=not-installed | conflict | path-hint | development | off`;
   the approval window with `?window=ssh-approval&approval=cli` (add `&cliLocked=1` for Touch ID unlock, `&cliPassword=1` for the
   master password, which is `correct horse battery` in the preview).
+
+## Raycast extension
+
+Design: `docs/DESIGN.md` §9.4.3. `raycast/` brings the 1Password Raycast extension's features to Hisar: Search Hisar, My Vaults,
+One-Time Codes, Generate Password (quick and with options) and Lock Hisar, with copy and paste of usernames, passwords and one-time
+codes, Open or Edit in Hisar and Share Item…, through the running app on `~/.hisar/cli.sock`. It is not in the Raycast Store;
+install it in development mode:
+
+```sh
+cd raycast && npm ci && npm run dev   # registers "Hisar" in Raycast; it stays installed after you stop it with Ctrl-C
+```
+
+- The first search after Hisar unlocks opens the approval window: "Raycast wants to search Hisar and copy or paste passwords and
+  one-time codes" (Touch ID, the master password or the iPhone). The approval lasts until Hisar locks. Settings → Developer tools →
+  Command-line tool → **Launchers** lists approved apps with **Revoke**. The command-line switch must be on.
+- Copies come from Hisar itself and are marked so clipboard managers skip them; they are cleared after 90 seconds. Paste reads the
+  value into Raycast for that one paste. Share Item… asks in Hisar every time, and Open in Hisar brings the window forward on the item.
+- The extension's preferences set the socket (default `~/.hisar/cli.sock`, for a development copy of the app with its own
+  `HISAR_CLI_SOCKET`), the primary and secondary actions of Return and ⌘↩, and whether Raycast closes after a copy.
+- Preview: `?window=ssh-approval&approval=launcher` (the launcher window), `&approval=launcher-share` (a share link from Raycast),
+  `&coverage=app` or `&coverage=connection` on the `approval=cli` window, and `&settings=1&settingsSection=developer&launchers=1`
+  for the Launchers row.
 
 ## Tests
 

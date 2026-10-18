@@ -11,9 +11,18 @@ import (
 	"github.com/tryhisar/hisar/core/app"
 	"github.com/tryhisar/hisar/core/clisocket"
 	"github.com/tryhisar/hisar/core/crypt"
+	"github.com/tryhisar/hisar/desktop/appinfo"
 )
 
 const testOneTimePassword = "otpauth://totp/Example:alice?secret=JBSWY3DPEHPK3PXP&issuer=Example"
+
+func createRaycastRequester(signature appinfo.Signature) appinfo.Requester {
+	return appinfo.Requester{
+		Kind: appinfo.RequesterKindApp,
+		Name: "Raycast",
+		App:  appinfo.App{Name: "Raycast", Path: testRaycastPath, Signature: signature},
+	}
+}
 
 type staticPeerResolver struct{}
 

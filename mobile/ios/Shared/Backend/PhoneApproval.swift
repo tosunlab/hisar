@@ -1,9 +1,11 @@
 import Foundation
 
-// A request the user's Mac is waiting on: approve or deny one SSH or command-line use.
+// A request the user's Mac is waiting on: approve or deny one SSH or command-line use, one share link an app such as
+// Raycast creates, or that app using Hisar until it locks on the Mac.
 struct PhoneApproval: Codable, Equatable, Identifiable {
     static let kindSSH = "ssh"
     static let kindCommandLine = "cli"
+    static let kindLauncher = "launcher"
     static let eventRequested = "approval-requested"
     static let eventAnswered = "approval-answered"
     static let eventResolved = "approval-resolved"
@@ -115,10 +117,25 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
     }
 
     var bannerTitle: String {
-        if kind == Self.kindCommandLine {
+        switch kind {
+        case Self.kindCommandLine:
             return "\(macName) is asking to use Hisar from the command line"
+        case Self.kindLauncher:
+            return "\(macName) is asking to let \(appName) use Hisar"
+        default:
+            return "\(macName) is asking to use \(keyName.isEmpty ? "your SSH key" : "“\(keyName)”")"
         }
-        return "\(macName) is asking to use \(keyName.isEmpty ? "your SSH key" : "“\(keyName)”")"
+    }
+
+    // lifetime is set for an approval that outlasts the request: a launcher keeps its approval until Hisar locks on the Mac.
+    // A launcher request that names secrets is a share link, which is approved once like any other request.
+    var lifetime: String { kind == Self.kindLauncher && secrets.isEmpty ? "Until Hisar locks on \(macName)" : "" }
+
+    var approvalNote: String {
+        if !lifetime.isEmpty {
+            return "Approving lets \(appName) use Hisar until it locks on your Mac; it does not unlock Hisar there."
+        }
+        return "Approving lets this one request continue; it does not unlock Hisar on your Mac."
     }
 
     var detailLine: String {
@@ -127,6 +144,9 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
         }
         if !secrets.isEmpty {
             return secrets.joined(separator: ", ")
+        }
+        if !lifetime.isEmpty {
+            return lifetime
         }
         return commandLine
     }
@@ -139,17 +159,37 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
         return String(format: "Expires in %d:%02d", secondCount / 60, secondCount % 60)
     }
 
-    var systemImage: String { kind == Self.kindCommandLine ? "apple.terminal" : "key.horizontal" }
+    var systemImage: String {
+        switch kind {
+        case Self.kindCommandLine:
+            return "apple.terminal"
+        case Self.kindLauncher:
+            return "magnifyingglass"
+        default:
+            return "key.horizontal"
+        }
+    }
 
     var allDetailRow: [DetailRow] {
-        let allCandidate = [
-            DetailRow(label: "App", value: appName, isMonospaced: false),
-            DetailRow(label: "Warning", value: appWarning, isMonospaced: false),
+        let appRow = DetailRow(label: "App", value: appName, isMonospaced: false)
+        let warningRow = DetailRow(label: "Warning", value: appWarning, isMonospaced: false)
+        let secretRow = DetailRow(label: "Secrets", value: secrets.joined(separator: "\n"), isMonospaced: false)
+        // A launcher's command line is its share link's limit, and its warning is about what the link shares, so the
+        // warning follows the secrets and the limit.
+        let allCandidate = kind == Self.kindLauncher ? [
+            appRow,
+            secretRow,
+            DetailRow(label: "Link", value: commandLine, isMonospaced: false),
+            warningRow,
+            DetailRow(label: "Lasts", value: lifetime, isMonospaced: false),
+        ] : [
+            appRow,
+            warningRow,
             DetailRow(label: kind == Self.kindCommandLine && secrets.isEmpty ? "Program" : "Command", value: commandLine, isMonospaced: true),
             DetailRow(label: "Repository", value: repositoryPath, isMonospaced: true),
             DetailRow(label: "Server", value: host, isMonospaced: true),
             DetailRow(label: "Key", value: keyName, isMonospaced: false),
-            DetailRow(label: "Secrets", value: secrets.joined(separator: "\n"), isMonospaced: false),
+            secretRow,
             DetailRow(label: "Forwarded from", value: isForwarded ? forwardedFromHost : "", isMonospaced: true),
             DetailRow(label: "Terminal", value: terminalName.isEmpty ? "" : "/dev/\(terminalName)", isMonospaced: true),
         ]

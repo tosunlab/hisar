@@ -12,6 +12,7 @@ import {
   restoreBrowserPairing,
   showBrowserPairing,
   showUpdateRequired,
+  showItem,
   store,
   syncInBackground,
   takePendingInviteQuietly,
@@ -49,6 +50,7 @@ onMounted(() => {
     Events.On("remote-change", () => syncInBackground()),
     Events.On("share-links-changed", () => loadAllShareLinkQuietly()),
     Events.On("browser-pairing", (event) => showBrowserPairing(event.data ?? null)),
+    Events.On("show-item", (event) => showItem(event.data)),
   ];
   restoreBrowserPairing();
   window.addEventListener("keydown", reportActivity);

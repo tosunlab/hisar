@@ -8,6 +8,7 @@ import {
   type BrowserStatus,
   type CommandLineStatus,
   type Device,
+  type LauncherApp,
   type Organization,
   type OrganizationInvitation,
   type OrganizationMember,
@@ -30,6 +31,7 @@ import {
   type ImportPreview,
   type ImportProgress,
   type ItemDetail,
+  type ItemLocation,
   type SSHAgentStatus,
   type SSHKeyType,
   type Status,
@@ -119,6 +121,7 @@ export const store = reactive({
   updateStatus: null as UpdateStatus | null,
   commandLineStatus: null as CommandLineStatus | null,
   commandLineErrorMessage: "",
+  allLauncherApp: [] as LauncherApp[],
   allAgentVaultID: [] as string[],
   agentErrorMessage: "",
   isImportOpen: false,
@@ -144,6 +147,7 @@ export const store = reactive({
 });
 
 let noticeTimer: ReturnType<typeof setTimeout> | undefined;
+let navigationVersion = 0;
 
 export function showNotice(message: string): void {
   store.noticeMessage = message;
@@ -174,6 +178,7 @@ async function runAction<Result>(action: () => Promise<Result>): Promise<Result 
 }
 
 function clearAllVaultData(): void {
+  navigationVersion++;
   resetImport();
   forgetWebsiteIcons();
   store.isTouchIDOfferShown = false;
@@ -454,7 +459,8 @@ export async function loadAllVault(): Promise<void> {
   await loadRemovedVaultNoticeQuietly();
   const stillExists = allVault.some((vault) => vault.id === store.selectedVaultID);
   if (!stillExists && allVault.length > 0) {
-    await selectVault(findPersonalVaultID(allVault));
+    // Opening the default vault must not supersede a launcher request waiting for this unlock.
+    await loadVaultItems(findPersonalVaultID(allVault), navigationVersion);
   }
   await loadShareInvitationsQuietly();
   await loadAllShareLinkQuietly();
@@ -629,6 +635,10 @@ export async function syncInBackground(): Promise<void> {
 }
 
 export async function selectVault(vaultID: string): Promise<void> {
+  await loadVaultItems(vaultID, ++navigationVersion);
+}
+
+async function loadVaultItems(vaultID: string, version: number): Promise<void> {
   store.isFavoritesSelected = false;
   store.selectedVaultID = vaultID;
   store.selectedItem = null;
@@ -636,6 +646,9 @@ export async function selectVault(vaultID: string): Promise<void> {
   store.searchQuery = "";
   store.selectedTag = "";
   const allItem = await runAction(() => api.listAllItem(vaultID));
+  if (version !== navigationVersion || store.selectedVaultID !== vaultID) {
+    return;
+  }
   store.allItem = allItem ? sortAllItem(allItem) : [];
   updateSelectedVaultItemCount();
 }
@@ -671,6 +684,7 @@ export async function loadAllFavoriteQuietly(): Promise<void> {
 
 // selectFavorites lists the starred items of every vault; picking one makes its vault the one item actions use.
 export async function selectFavorites(): Promise<void> {
+  navigationVersion++;
   store.isFavoritesSelected = true;
   store.selectedItem = null;
   store.editorMode = "view";
@@ -682,8 +696,9 @@ export async function selectFavorites(): Promise<void> {
 }
 
 export async function selectFavoriteItem(favorite: FavoriteItem): Promise<void> {
+  const version = ++navigationVersion;
   const detail = await runAction(() => api.getItem(favorite.vaultId, favorite.item.id));
-  if (detail) {
+  if (detail && version === navigationVersion) {
     store.selectedVaultID = favorite.vaultId;
     store.selectedItem = detail;
     store.editorMode = "view";
@@ -798,10 +813,42 @@ function updateSelectedVaultItemCount(): void {
 }
 
 export async function selectItem(itemID: string): Promise<void> {
-  const detail = await runAction(() => api.getItem(store.selectedVaultID, itemID));
-  if (detail) {
+  await loadSelectedItem(itemID, ++navigationVersion);
+}
+
+async function loadSelectedItem(itemID: string, version: number): Promise<void> {
+  const vaultID = store.selectedVaultID;
+  const detail = await runAction(() => api.getItem(vaultID, itemID));
+  if (detail && version === navigationVersion && store.selectedVaultID === vaultID) {
     store.selectedItem = detail;
     store.editorMode = "view";
+  }
+}
+
+// showItem follows a launcher's Open in Hisar: the item in its vault, in its editor when asked and the vault allows it.
+// The window may not have heard yet about the unlock that came with the launcher's approval.
+export async function showItem(location: ItemLocation): Promise<void> {
+  const version = ++navigationVersion;
+  if (store.status.state !== "unlocked") {
+    await loadStatus();
+  }
+  if (version !== navigationVersion || store.status.state !== "unlocked" || store.status.updateRequired) {
+    return;
+  }
+  store.isSettingsOpen = false;
+  store.isSharingOpen = false;
+  store.isShareLinksOpen = false;
+  await loadVaultItems(location.vaultID, version);
+  if (version !== navigationVersion || store.selectedVaultID !== location.vaultID) {
+    return;
+  }
+  await loadSelectedItem(location.itemID, version);
+  if (version !== navigationVersion || store.selectedVaultID !== location.vaultID) {
+    return;
+  }
+  const canEdit = store.allVault.some((vault) => vault.id === location.vaultID && vault.role !== "reader");
+  if (location.isEditing && canEdit && store.selectedItem?.id === location.itemID) {
+    startEditingItem();
   }
 }
 
@@ -1649,11 +1696,34 @@ export async function uninstallCommandLineTool(): Promise<void> {
   await changeCommandLine(() => api.uninstallCommandLineTool(), "Removed the hisar command");
 }
 
+// setCommandLineIntegration reloads the launchers too: turning the integration off ends every approval.
 export async function setCommandLineIntegration(isEnabled: boolean): Promise<void> {
   await changeCommandLine(
     () => api.setCommandLineIntegration(isEnabled),
     isEnabled ? "hisar can use Hisar after you approve each terminal" : "hisar signs in on its own now",
   );
+  await loadLauncherApps();
+}
+
+export async function loadLauncherApps(): Promise<void> {
+  try {
+    store.allLauncherApp = await api.listAllLauncherApp();
+  } catch (error) {
+    store.commandLineErrorMessage = getErrorMessage(error);
+  }
+}
+
+export async function revokeLauncherApp(launcherApp: LauncherApp): Promise<void> {
+  store.isBusy = true;
+  try {
+    store.allLauncherApp = await api.revokeLauncherApp(launcherApp.path);
+    store.commandLineErrorMessage = "";
+    showNotice(`${launcherApp.name} asks again the next time it uses Hisar`);
+  } catch (error) {
+    store.commandLineErrorMessage = getErrorMessage(error);
+  } finally {
+    store.isBusy = false;
+  }
 }
 
 // Coding agent settings report errors inside their section, like the command-line tool's.

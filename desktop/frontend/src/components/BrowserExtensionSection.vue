@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
 import { loadBrowserStatus, removePairedBrowser, setExactHostMatch, store } from "../store";
-import { formatLastSeen } from "../util";
+import { formatLastUse } from "../util";
 import { useSettingsRowVisibility } from "../settingsSections";
 import AppIcon from "./AppIcon.vue";
 
@@ -11,11 +11,6 @@ const removingInstanceID = ref("");
 
 const allRegisteredBrowser = computed(() => store.browserStatus?.allInstallation ?? []);
 const allPairedBrowser = computed(() => store.browserStatus?.allPairedBrowser ?? []);
-
-function describeUse(lastUsedAt: string): string {
-  const lastUsed = formatLastSeen(lastUsedAt);
-  return lastUsed ? `Last used ${lastUsed === "Active now" ? "just now" : lastUsed.toLowerCase()}` : "";
-}
 
 async function confirmRemove(instanceID: string): Promise<void> {
   if (await removePairedBrowser(instanceID)) {
@@ -52,7 +47,7 @@ onMounted(loadBrowserStatus);
           <span class="settings-row-icon"><AppIcon name="laptop" :size="14" /></span>
           <div class="setting-text">
             <strong>{{ pairedBrowser.browser }}</strong>
-            <p class="muted">{{ describeUse(pairedBrowser.lastUsedAt) }}</p>
+            <p class="muted">{{ formatLastUse(pairedBrowser.lastUsedAt) }}</p>
           </div>
           <template v-if="removingInstanceID === pairedBrowser.instanceID">
             <button class="ghost" @click="removingInstanceID = ''">Cancel</button>

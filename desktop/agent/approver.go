@@ -1,8 +1,8 @@
 // Package agent runs the Hisar SSH agent inside the desktop app: approvals, the socket and ~/.ssh/config.
 //
-// The Approver asks the user about SSH, command-line and coding-agent requests in one queue: approver.go holds its
-// types, approver_ssh.go and approver_commandline.go build each kind of dialog, approver_waiting.go waits for the
-// answer and approver_respond.go takes it from the window or the phone.
+// The Approver asks the user about SSH, command-line, coding-agent and launcher requests in one queue: approver.go
+// holds its types, approver_ssh.go, approver_commandline.go, approver_agent.go and approver_launcher.go build each kind
+// of dialog, approver_waiting.go waits for the answer and approver_respond.go takes it from the window or the phone.
 package agent
 
 import (
@@ -91,13 +91,17 @@ type ApprovalEvent struct {
 	IsTouchIDApproval      bool           `json:"isTouchIDApproval"`
 	TimeoutAt              string         `json:"timeoutAt"`
 	TerminalName           string         `json:"terminalName"`
-	IsUnlockRequired       bool           `json:"isUnlockRequired"`
-	IsPasswordUnlock       bool           `json:"isPasswordUnlock"`
-	IsPhoneApproval        bool           `json:"isPhoneApproval"`
+	// Coverage is what approving a command-line or launcher request covers: clisocket's terminal-session, app or
+	// connection.
+	Coverage         string `json:"coverage"`
+	IsUnlockRequired bool   `json:"isUnlockRequired"`
+	IsPasswordUnlock bool   `json:"isPasswordUnlock"`
+	IsPhoneApproval  bool   `json:"isPhoneApproval"`
 	// SecretNames lists the first secrets of a secrets.resolve request; MoreSecretCount counts the rest.
 	SecretNames     []string `json:"allSecretName"`
 	MoreSecretCount int      `json:"moreSecretCount"`
-	// Agent requests (Kind ApprovalKindAgent) name the agent; Purpose is connect, run, code or reveal.
+	// Agent requests (Kind ApprovalKindAgent) name the agent; Purpose is connect, run, code or reveal. A launcher's share
+	// link request has Purpose share-link.
 	AgentName             string `json:"agentName"`
 	WorkingDirectory      string `json:"workingDirectory"`
 	RememberLabel         string `json:"rememberLabel"`
@@ -125,6 +129,9 @@ type ApproverConfig struct {
 	CancelBiometric func()
 	// ResolveRequester finds the app responsible for a process and reads its process chain; nil shows only the program.
 	ResolveRequester func(pid int) appinfo.Requester
+	// ReturnToApp brings a launcher's app forward again once its approval was answered: the approval window took the
+	// focus, and a launcher such as Raycast hides its window when it loses it. nil leaves the focus where it is.
+	ReturnToApp func(bundlePath string)
 	// GetAppIconPNG renders an app's icon for the phone; nil sends the app's name only.
 	GetAppIconPNG func(bundlePath string, size int) ([]byte, error)
 	ReadFile      FileReader

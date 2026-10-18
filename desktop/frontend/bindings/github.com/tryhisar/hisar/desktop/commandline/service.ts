@@ -27,6 +27,22 @@ export function IsIntegrationEnabled(): $CancellablePromise<boolean> {
 }
 
 /**
+ * ListLauncherApps lists the apps approved as launchers, most recently used first, once per app path: revoking is by
+ * path.
+ */
+export function ListLauncherApps(): $CancellablePromise<$models.LauncherApp[] | null> {
+    return $Call.ByID(2072024418);
+}
+
+/**
+ * RevokeLauncherApp ends the launcher approval of the app at appPath, so it asks again, and returns the apps still
+ * approved.
+ */
+export function RevokeLauncherApp(appPath: string): $CancellablePromise<$models.LauncherApp[] | null> {
+    return $Call.ByID(87992527, appPath);
+}
+
+/**
  * SetCommandLineIntegration saves the switch, then opens or closes the socket; turning it off ends every approval.
  */
 export function SetCommandLineIntegration(isEnabled: boolean): $CancellablePromise<$models.Status> {

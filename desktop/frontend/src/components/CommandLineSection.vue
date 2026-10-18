@@ -1,7 +1,17 @@
 <script setup lang="ts">
-import { computed, onMounted } from "vue";
-import { installCommandLineTool, loadCommandLineStatus, setCommandLineIntegration, store, uninstallCommandLineTool } from "../store";
+import { computed, onBeforeUnmount, onMounted } from "vue";
+import { Events } from "@wailsio/runtime";
+import {
+  installCommandLineTool,
+  loadCommandLineStatus,
+  loadLauncherApps,
+  revokeLauncherApp,
+  setCommandLineIntegration,
+  store,
+  uninstallCommandLineTool,
+} from "../store";
 import { useSettingsRowVisibility } from "../settingsSections";
+import { formatLastUse } from "../util";
 import AppIcon from "./AppIcon.vue";
 
 const isRowVisible = useSettingsRowVisibility();
@@ -22,11 +32,25 @@ const otherCommandTarget = computed(() => {
   return status && status.pathCommandTarget && status.pathCommandTarget !== status.pathCommandPath ? status.pathCommandTarget : "";
 });
 
-onMounted(loadCommandLineStatus);
+let allRemoveListener: (() => void)[] = [];
+
+onMounted(() => {
+  allRemoveListener = [
+    Events.On("ssh-approval-closed", () => loadLauncherApps()),
+    Events.On("locked", () => loadLauncherApps()),
+  ];
+  return Promise.all([loadCommandLineStatus(), loadLauncherApps()]);
+});
+
+onBeforeUnmount(() => allRemoveListener.forEach((removeListener) => removeListener()));
 </script>
 
 <template>
-  <section v-show="isRowVisible('command-line-tool') || isRowVisible('command-line-integration')" class="settings-block" data-testid="command-line-section">
+  <section
+    v-show="isRowVisible('command-line-tool') || isRowVisible('command-line-integration') || isRowVisible('command-line-launchers')"
+    class="settings-block"
+    data-testid="command-line-section"
+  >
     <p class="section-label">Command-line tool</p>
     <div class="settings-group">
       <div v-show="isRowVisible('command-line-tool')" class="setting">
@@ -89,6 +113,22 @@ onMounted(loadCommandLineStatus);
           @change="setCommandLineIntegration(($event.target as HTMLInputElement).checked)"
         />
       </label>
+      <div v-show="isRowVisible('command-line-launchers')" class="setting" data-testid="command-line-launchers">
+        <div class="setting-text">
+          <strong>Launchers</strong>
+          <p class="muted">Apps such as Raycast that you let search Hisar and copy or paste passwords and one-time codes, each until Hisar locks.</p>
+          <p v-if="store.allLauncherApp.length === 0" class="muted" data-testid="launcher-apps-empty">No app is approved right now.</p>
+        </div>
+      </div>
+      <div v-for="launcherApp in store.allLauncherApp" v-show="isRowVisible('command-line-launchers')" :key="launcherApp.path" class="setting" data-testid="launcher-app">
+        <img v-if="launcherApp.iconURL" class="launcher-icon" :src="launcherApp.iconURL" alt="" />
+        <span v-else class="settings-row-icon"><AppIcon name="search" :size="14" /></span>
+        <div class="setting-text">
+          <strong>{{ launcherApp.name }}</strong>
+          <p class="muted" :title="launcherApp.path">{{ formatLastUse(launcherApp.lastUsedAt) }}</p>
+        </div>
+        <button :data-testid="`revoke-launcher-${launcherApp.name}`" :disabled="store.isBusy" @click="revokeLauncherApp(launcherApp)">Revoke</button>
+      </div>
     </div>
     <p v-if="store.commandLineErrorMessage" class="error settings-note" role="alert" data-testid="command-line-error">{{ store.commandLineErrorMessage }}</p>
   </section>
@@ -97,5 +137,12 @@ onMounted(loadCommandLineStatus);
 <style scoped>
 .setting-text .warning-text {
   margin-top: 2px;
+}
+
+.launcher-icon {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  object-fit: contain;
 }
 </style>

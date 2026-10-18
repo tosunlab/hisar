@@ -17,6 +17,7 @@ declare module "@wailsio/runtime" {
         interface CustomEvents {
             "invite-link": string;
             "locked": string;
+            "show-item": app$0.ItemLocation;
             "ssh-approval": agent$0.ApprovalEvent;
             "ssh-approval-closed": string;
             "theme-changed": app$0.Theme;
