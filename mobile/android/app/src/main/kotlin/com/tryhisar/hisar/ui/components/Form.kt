@@ -168,7 +168,10 @@ fun RowDivider() {
     HorizontalDivider(Modifier.padding(horizontal = RowInset), thickness = 0.5.dp, color = HisarTheme.colors.separator)
 }
 
-/** A text field filling one row, with a grey placeholder, as SwiftUI's TextField and SecureField in a Form. */
+/**
+ * A text field filling one row, with a grey placeholder, as SwiftUI's TextField and SecureField in a Form. A secure
+ * field hides its text; it and any other [isSecret] field keep their text from the keyboard's learning and autofill.
+ */
 @Composable
 fun FormTextField(
     value: String,
@@ -177,31 +180,35 @@ fun FormTextField(
     testTag: String,
     modifier: Modifier = Modifier,
     isSecure: Boolean = false,
+    isSecret: Boolean = isSecure,
     textStyle: TextStyle = HisarType.body,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
 ) {
     val color = HisarTheme.colors.label
-    BasicTextField(
-        value = value,
-        onValueChange = onValueChange,
-        singleLine = true,
-        textStyle = textStyle.copy(color = color),
-        cursorBrush = SolidColor(HisarTheme.colors.tint),
-        visualTransformation = if (isSecure) PasswordVisualTransformation() else VisualTransformation.None,
-        keyboardOptions = keyboardOptions,
-        keyboardActions = keyboardActions,
-        modifier = modifier
-            .fillMaxWidth()
-            .heightIn(min = RowMinHeight)
-            .testTag(testTag),
-        decorationBox = { innerTextField ->
-            Box(Modifier.padding(horizontal = RowInset, vertical = 14.dp), contentAlignment = Alignment.CenterStart) {
-                if (value.isEmpty()) Text(placeholder, style = textStyle, color = HisarTheme.colors.placeholder)
-                innerTextField()
-            }
-        },
-    )
+    SecretInput(isSecret) {
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            textStyle = textStyle.copy(color = color),
+            cursorBrush = SolidColor(HisarTheme.colors.tint),
+            visualTransformation = if (isSecure) PasswordVisualTransformation() else VisualTransformation.None,
+            keyboardOptions = keyboardOptions,
+            keyboardActions = keyboardActions,
+            modifier = modifier
+                .fillMaxWidth()
+                .heightIn(min = RowMinHeight)
+                .secretInput(isSecret)
+                .testTag(testTag),
+            decorationBox = { innerTextField ->
+                Box(Modifier.padding(horizontal = RowInset, vertical = 14.dp), contentAlignment = Alignment.CenterStart) {
+                    if (value.isEmpty()) Text(placeholder, style = textStyle, color = HisarTheme.colors.placeholder)
+                    innerTextField()
+                }
+            },
+        )
+    }
 }
 
 /** A tappable row, with an optional leading symbol, as a Button or NavigationLink row of a Form. */

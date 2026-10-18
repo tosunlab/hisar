@@ -224,7 +224,7 @@ private fun SignInSections(
     }
     FormSection(header = "Secret Key and master password") {
         FormTextField(
-            secretKey, onSecretKeyChange, placeholder = "H1-XXXXXX-XXXXX-…", testTag = "sign-in-secret-key",
+            secretKey, onSecretKeyChange, placeholder = "H1-XXXXXX-XXXXX-…", testTag = "sign-in-secret-key", isSecret = true,
             textStyle = HisarType.bodyMonospaced,
             keyboardOptions = KeyboardOptions(
                 capitalization = KeyboardCapitalization.Characters, autoCorrectEnabled = false, keyboardType = KeyboardType.Password, imeAction = ImeAction.Next,
