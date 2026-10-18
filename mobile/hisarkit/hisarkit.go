@@ -1,4 +1,4 @@
-// Package hisarkit is the iOS app's backend, compiled with gomobile into HisarKit.xcframework.
+// Package hisarkit is the backend of the iPhone and Android apps, compiled with gomobile into HisarKit.xcframework and HisarKit.aar.
 // gomobile passes only simple types, so lists and items cross the boundary as JSON strings.
 package hisarkit
 
@@ -17,14 +17,14 @@ import (
 	"github.com/tryhisar/hisar/core/item"
 )
 
-// SecretKeyStore keeps the Secret Key in the iOS Keychain, shared with the AutoFill extension.
+// SecretKeyStore keeps the Secret Key in the phone's keychain, shared with the AutoFill extension.
 type SecretKeyStore interface {
 	LoadSecretKey(accountID string) (string, error)
 	StoreSecretKey(accountID, secretKey string) error
 	DeleteSecretKey(accountID string) error
 }
 
-// Biometric checks Face ID or Touch ID and keeps the biometric unlock key in a Keychain item only biometrics open.
+// Biometric checks the phone's biometrics and keeps the biometric unlock key where only biometrics open it.
 type Biometric interface {
 	IsAvailable() bool
 	Authenticate(reason string) error
@@ -63,7 +63,8 @@ func New(stateDirectory, deviceName string, secretKeyStore SecretKeyStore, biome
 		StatePath:                     filepath.Join(stateDirectory, "hisar.json"),
 		CachePath:                     filepath.Join(stateDirectory, "hisar-cache.db"),
 		DeviceName:                    deviceName,
-		Platform:                      "ios/mobile",
+		Platform:                      platform,
+		BiometricName:                 biometricName,
 		SecretKeyStore:                secretKeyStoreAdapter{store: secretKeyStore},
 		IsBiometricAllowedAfterLaunch: true,
 		AutoLockAfter:                 5 * time.Minute,
@@ -132,7 +133,7 @@ func encodeJSON(value any, err error) (string, error) {
 	return string(encoded), err
 }
 
-// releaseMemory hands Argon2's 64 MiB back to iOS right after a key derivation; the AutoFill extension has a tight memory limit.
+// releaseMemory hands Argon2's 64 MiB back to the OS right after a key derivation; the AutoFill extension has a tight memory limit.
 func releaseMemory() {
 	debug.FreeOSMemory()
 }
@@ -143,7 +144,7 @@ func (hisar *Hisar) Status() string {
 	return encoded
 }
 
-// SetAppVersion must run right after New, before any request: the server compares it with its minimum for iOS.
+// SetAppVersion must run right after New, before any request: the server compares it with its minimum for this platform.
 func (hisar *Hisar) SetAppVersion(version string) {
 	app.SetAppVersion(hisar.service, version)
 }
@@ -437,7 +438,7 @@ func (hisar *Hisar) IsWebsiteIconsEnabled() bool {
 	return hisar.service.IsWebsiteIconsEnabled()
 }
 
-// SetWebsiteIconsEnabled turns website icons on or off; off forgets the icons this iPhone cached.
+// SetWebsiteIconsEnabled turns website icons on or off; off forgets the icons this phone cached.
 func (hisar *Hisar) SetWebsiteIconsEnabled(isEnabled bool) error {
 	return hisar.service.SetWebsiteIconsEnabled(isEnabled)
 }

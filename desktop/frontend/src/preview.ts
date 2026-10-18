@@ -567,7 +567,7 @@ function buildPreviewVaultActions(vaultID: string): VaultActions {
   const ownerCount = allMember.filter((member) => member.role === "owner").length;
   let deleteBlockedReason = "";
   if (vault.type === "personal") {
-    deleteBlockedReason = "Your Personal vault can't be deleted. It is the vault Hisar keeps for you alone, and logins saved from the browser and the iPhone go there.";
+    deleteBlockedReason = "Your Personal vault can't be deleted. It is the vault Hisar keeps for you alone, and logins saved from the browser and your phone go there.";
   } else if (!isOwner) {
     deleteBlockedReason = "Only an owner of this vault can delete it. You can leave it instead.";
   }

@@ -451,7 +451,9 @@ type Config struct {
 	GetSystemIdleDuration func() (time.Duration, bool)
 	ClipboardClearAfter   time.Duration
 	Biometric             Biometric
-	// BiometricPasswordInterval is how long Touch ID may unlock before the master password is required again.
+	// BiometricName names the biometric check in messages, as in "turn on Touch ID unlock" and "the Touch ID key".
+	BiometricName string
+	// BiometricPasswordInterval is how long biometrics may unlock before the master password is required again.
 	BiometricPasswordInterval time.Duration
 	// IsBiometricAllowedAfterLaunch lets biometrics unlock before the first password unlock, for platforms whose
 	// keychain enforces the biometric check itself (iOS); the desktop keeps its launch rule.
