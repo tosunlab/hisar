@@ -35,6 +35,18 @@ class ClipboardAdapter(private val context: Context, private val clearAfter: Dur
         false
     }
 
+    /** Copies text that is not secret: not marked sensitive, and it replaces any copy of Hisar's due to be cleared. */
+    fun setPlainText(text: String): Boolean = try {
+        runOnMain {
+            context.getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("Hisar", text))
+            context.getSystemService(AlarmManager::class.java).cancel(clearIntent(context))
+            HisarClip.forget(context)
+        }
+        true
+    } catch (_: RuntimeException) {
+        false
+    }
+
     /** Hisar's own copy while it is still on the clipboard, never what another app copied. */
     override fun getText(): String = runOnMain { if (HisarClip.isOnClipboard(context)) copiedText else "" }
 

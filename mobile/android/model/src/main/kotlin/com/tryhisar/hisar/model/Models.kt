@@ -42,6 +42,13 @@ data class VaultTheme(
     val appearance: ThemeAppearanceName = ThemeAppearanceName.SYSTEM,
     val color: ThemeColorName = ThemeColorName.NEUTRAL,
 ) {
+    /** Whether screens draw dark: System follows the device. */
+    fun isDark(isSystemDark: Boolean): Boolean = when (appearance) {
+        ThemeAppearanceName.SYSTEM -> isSystemDark
+        ThemeAppearanceName.LIGHT -> false
+        ThemeAppearanceName.DARK -> true
+    }
+
     companion object {
         val standard = VaultTheme()
     }
@@ -181,6 +188,8 @@ data class ItemDetail(
      * initial.
      */
     val icon: ChosenIcon? = null,
+    /** The Android apps a login fills into, which the user linked on an Android phone; saving the item keeps them. */
+    @SerialName("androidApps") val allAndroidApp: List<ItemAndroidApp> = emptyList(),
 ) {
     val isLogin: Boolean get() = category.isEmpty() || category == CATEGORY_LOGIN
     val isSSHKey: Boolean get() = category == CATEGORY_SSH_KEY
@@ -727,6 +736,13 @@ data class ItemPasskey(
     val createdDate: Instant? get() = parseTimestamp(createdAt)
 }
 
+/** An Android app a login fills into: its package name and the SHA-256 of its signing certificate, in colon hex. */
+@Serializable
+data class ItemAndroidApp(
+    val packageName: String,
+    @SerialName("certificateSha256") val certificateSHA256: String,
+)
+
 @Serializable
 data class StoredPasskey(
     @SerialName("credentialId") val credentialID: String,
@@ -976,7 +992,18 @@ data class Device(
                 else -> if (client.isEmpty()) system else "$system, $client"
             }
         }
+
+    val icon: DeviceIcon
+        get() = when {
+            client == "cli" -> DeviceIcon.TERMINAL
+            client == "extension" || client == "browser" -> DeviceIcon.EXTENSION
+            operatingSystem == "ios" || operatingSystem == "android" -> DeviceIcon.PHONE
+            operatingSystem == "darwin" || operatingSystem == "macos" -> DeviceIcon.LAPTOP
+            else -> DeviceIcon.DESKTOP
+        }
 }
+
+enum class DeviceIcon { PHONE, LAPTOP, DESKTOP, TERMINAL, EXTENSION }
 
 @Serializable
 data class EmergencyKitExport(val secretKey: String, val emergencyKitPath: String)

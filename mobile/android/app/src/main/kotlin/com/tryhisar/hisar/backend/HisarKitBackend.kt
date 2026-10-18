@@ -1,6 +1,7 @@
 package com.tryhisar.hisar.backend
 
 import android.os.Looper
+import com.tryhisar.hisar.autofill.LoginWebsite
 import com.tryhisar.hisar.model.AccountDeletionPreview
 import com.tryhisar.hisar.model.BackendError
 import com.tryhisar.hisar.model.Base64URL
@@ -303,6 +304,17 @@ class HisarKitBackend(
     override fun getLoginForService(vaultID: String, itemID: String, serviceIdentifier: String): LoginCredential =
         decode(LoginCredential.serializer(), call { getLoginForService(vaultID, itemID, serviceIdentifier) })
 
+    override fun listAllLoginForAndroidApp(packageName: String, certificateSHA256: String): List<LoginMatch> =
+        decodeList(LoginMatch.serializer(), call { listAllLoginForAndroidApp(packageName, certificateSHA256) })
+
+    override fun getLoginForAndroidApp(vaultID: String, itemID: String, packageName: String, certificateSHA256: String): LoginCredential =
+        decode(LoginCredential.serializer(), call { getLoginForAndroidApp(vaultID, itemID, packageName, certificateSHA256) })
+
+    override fun getOneTimeCodeForAndroidApp(vaultID: String, itemID: String, packageName: String, certificateSHA256: String): OneTimeCode =
+        decode(OneTimeCode.serializer(), call { getOneTimeCodeForAndroidApp(vaultID, itemID, packageName, certificateSHA256) })
+
+    override fun listAllLoginWebsite(): List<LoginWebsite> = decodeList(LoginWebsite.serializer(), call { listAllLoginWebsite() })
+
     override fun listAllPasskey(): List<StoredPasskey> = decodeList(StoredPasskey.serializer(), call { listAllPasskey() })
 
     override fun listAllPasskeyForRelyingParty(relyingPartyID: String, allAllowedCredentialID: List<ByteString>): List<StoredPasskey> {
@@ -404,6 +416,12 @@ class HisarKitBackend(
     override fun isWebsiteIconsEnabled(): Boolean = call { isWebsiteIconsEnabled() }
 
     override fun setWebsiteIconsEnabled(isEnabled: Boolean) = call { setWebsiteIconsEnabled(isEnabled) }
+
+    override fun addAndroidApp(vaultID: String, itemID: String, packageName: String, certificateSHA256: String): ItemDetail =
+        decode(ItemDetail.serializer(), call { addAndroidApp(vaultID, itemID, packageName, certificateSHA256) })
+
+    override fun removeAndroidApp(vaultID: String, itemID: String, packageName: String, certificateSHA256: String): ItemDetail =
+        decode(ItemDetail.serializer(), call { removeAndroidApp(vaultID, itemID, packageName, certificateSHA256) })
 
     companion object {
         const val DEVICE_NAME = "Hisar on Android"

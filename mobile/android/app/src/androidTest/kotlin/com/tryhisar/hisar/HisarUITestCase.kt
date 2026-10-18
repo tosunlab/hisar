@@ -2,9 +2,11 @@ package com.tryhisar.hisar
 
 import android.graphics.Bitmap
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasScrollToNodeAction
@@ -15,6 +17,7 @@ import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso
@@ -112,6 +115,23 @@ abstract class HisarUITestCase {
         waitFor(node)
         if (exists(node and hasAnyAncestor(hasScrollAction()))) {
             composeRule.onNode(node).performScrollTo()
+            scrollClearOfTabBar(node)
+        }
+    }
+
+    /**
+     * performScrollTo stops with the node at the list's bottom edge, which lies under the floating tab bar, where a tap
+     * lands on the bar. As XCUITest makes an element hittable, the list scrolls on until the node clears the bar.
+     */
+    private fun scrollClearOfTabBar(node: SemanticsMatcher) {
+        val tabBar = hasTestTag("tab-vaults")
+        if (!exists(tabBar)) return
+        val barTop = composeRule.onNode(tabBar).fetchSemanticsNode().boundsInRoot.top
+        val nodeBottom = composeRule.onNode(node).fetchSemanticsNode().boundsInRoot.bottom
+        val overlap = nodeBottom - barTop
+        if (overlap > 0) {
+            composeRule.onAllNodes(hasScrollAction() and hasAnyDescendant(node)).onLast()
+                .performSemanticsAction(SemanticsActions.ScrollBy) { scrollBy -> scrollBy(0f, overlap + TAB_BAR_CLEARANCE) }
         }
     }
 
@@ -168,5 +188,8 @@ abstract class HisarUITestCase {
 
     companion object {
         const val MASTER_PASSWORD = "ui test master password"
+
+        /** How far above the tab bar, in pixels, a tapped node ends up. */
+        private const val TAB_BAR_CLEARANCE = 48f
     }
 }

@@ -69,6 +69,18 @@ class ClipboardAdapterTests {
     }
 
     @Test
+    fun testPlainCopyIsNotSensitiveAndNeverCleared() {
+        val clipboard = ClipboardAdapter(targetContext, clearAfter = 10.seconds)
+        clipboard.setText("s3cret")
+        assertTrue(clipboard.setPlainText("support@tryhisar.com"))
+        assertEquals("support@tryhisar.com", clipboardText)
+        assertTrue(clipboardManager.primaryClipDescription?.extras?.getBoolean("android.content.extra.IS_SENSITIVE") != true)
+        assertEquals("Go never clears plain text", "", clipboard.getText())
+        Thread.sleep(45_000)
+        assertEquals("the secret's alarm no longer clears the clipboard", "support@tryhisar.com", clipboardText)
+    }
+
+    @Test
     fun testAlarmClearsHisarsCopy() {
         ClipboardAdapter(targetContext, clearAfter = 10.seconds).setText("s3cret")
         assertEquals("s3cret", clipboardText)

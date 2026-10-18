@@ -7,4 +7,10 @@
         <package android:name="androidx.test.services" />
     </queries>
 
+    <application>
+        <activity
+            android:name=".debug.PreviewActivity"
+            android:exported="false" />
+    </application>
+
 </manifest>

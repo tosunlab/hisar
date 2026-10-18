@@ -14,7 +14,6 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
-import com.tryhisar.hisar.model.ThemeAppearanceName
 import com.tryhisar.hisar.model.VaultTheme
 import com.tryhisar.hisar.model.theme.ThemePalettes
 
@@ -34,6 +33,8 @@ data class HisarColors(
     val separator: Color,
     val fill: Color,
     val warning: Color,
+    /** iOS's system orange, which the iPhone app gives a field's warning, such as a port out of range. */
+    val orange: Color,
     val destructive: Color,
     val systemBackground: Color,
     val isDark: Boolean,
@@ -73,6 +74,7 @@ private fun buildColors(theme: VaultTheme, isDark: Boolean): HisarColors {
         separator = pick(0xFFC6C6C8, 0xFF38383A),
         fill = pick(0x1F767680, 0x3D767680),
         warning = Color(palette.warning.resolve(isDark)),
+        orange = pick(0xFFFF9500, 0xFFFF9F0A),
         destructive = pick(0xFFFF3B30, 0xFFFF453A),
         systemBackground = pick(0xFFFFFFFF, 0xFF000000),
         isDark = isDark,
@@ -82,11 +84,7 @@ private fun buildColors(theme: VaultTheme, isDark: Boolean): HisarColors {
 /** Hisar's palette from themes.json on Material 3's roles; never the device's dynamic colours. */
 @Composable
 fun HisarTheme(theme: VaultTheme = VaultTheme.standard, content: @Composable () -> Unit) {
-    val isDark = when (theme.appearance) {
-        ThemeAppearanceName.SYSTEM -> isSystemInDarkTheme()
-        ThemeAppearanceName.LIGHT -> false
-        ThemeAppearanceName.DARK -> true
-    }
+    val isDark = theme.isDark(isSystemInDarkTheme())
     val colors = buildColors(theme, isDark)
     val base = if (isDark) darkColorScheme() else lightColorScheme()
     val colorScheme = base.copy(
