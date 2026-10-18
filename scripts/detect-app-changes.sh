@@ -25,7 +25,7 @@ if [ "${IS_FORCED:-false}" = true ]; then
   isAdminChanged=true
 else
   sharedPaths=(core/ go.work go.work.sum)
-  if isChanged desktop/ cli/ scripts/package-desktop-linux.sh "${sharedPaths[@]}"; then isDesktopChanged=true; fi
+  if isChanged desktop/ cli/ scripts/package-desktop-linux.sh scripts/test-desktop-linux-package.sh "${sharedPaths[@]}"; then isDesktopChanged=true; fi
   if isChanged mobile/ "${sharedPaths[@]}"; then isMobileChanged=true; fi
   if isChanged admin/ server/ "${sharedPaths[@]}"; then isAdminChanged=true; fi
 fi

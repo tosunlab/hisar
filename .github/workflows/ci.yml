@@ -191,6 +191,8 @@ jobs:
             grep -q " $path\$" <<<"$contents" || { echo "the .deb has no $path"; exit 1; }
           done
           test -s desktop/bin/Hisar-0.0.0-ci-linux-amd64.rpm
+      - name: Install the .deb, start Hisar hidden and reach it from hisar and ssh-add
+        run: bash scripts/test-desktop-linux-package.sh desktop/bin/Hisar-0.0.0-ci-linux-amd64.deb
       - name: Check that the generated bindings are committed
         run: git diff --exit-code -- desktop/frontend/bindings
 
