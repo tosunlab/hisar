@@ -123,16 +123,19 @@ private fun SecretKeyRow(secretKey: String, testTag: String) {
     }
 }
 
-/** Saving and printing an Emergency Kit PDF, the two things the iPhone's share sheet offers for it. */
+/** Saving, printing and sending an Emergency Kit PDF to another app, the things the iPhone's share sheet offers for it. */
 @Composable
-private fun EmergencyKitRows(model: AppModel, path: String, saveTestTag: String, printTestTag: String) {
+private fun EmergencyKitRows(model: AppModel, path: String, saveTestTag: String, printTestTag: String, shareTestTag: String) {
     val context = LocalContext.current
     val save = rememberFileSaver("application/pdf") { isSaved ->
         if (isSaved) model.showNotice("Emergency Kit saved") else model.errorMessage.value = SAVE_FAILED_MESSAGE
     }
+    val share = rememberFileSharer("application/pdf") { model.errorMessage.value = SHARE_FAILED_MESSAGE }
     FormButtonRow("Save Emergency Kit", { save(File(path)) }, testTag = saveTestTag, icon = Icons.Outlined.SaveAlt, color = HisarTheme.colors.tint)
     RowDivider()
     FormButtonRow("Print Emergency Kit", { printPdf(context, File(path), "Hisar Emergency Kit") }, testTag = printTestTag, icon = Icons.Outlined.Print, color = HisarTheme.colors.tint)
+    RowDivider()
+    FormButtonRow("Share Emergency Kit", { share(File(path)) }, testTag = shareTestTag, icon = Icons.Outlined.IosShare, color = HisarTheme.colors.tint)
 }
 
 @Composable
@@ -184,7 +187,7 @@ fun SecretKeyScreen(model: AppModel, onBack: () -> Unit) {
                     Text("A PDF with your server, email and Secret Key, and a space to write your master password. Print it or save it somewhere safe, away from your devices.")
                 },
             ) {
-                EmergencyKitRows(model, shown.emergencyKitPath, "save-emergency-kit", "print-emergency-kit")
+                EmergencyKitRows(model, shown.emergencyKitPath, "save-emergency-kit", "print-emergency-kit", "share-emergency-kit")
             }
             errorMessage?.let { FormSection { ErrorBanner(it) } }
         } else {
@@ -315,7 +318,7 @@ fun ReplaceSecretKeyScreen(model: AppModel, onBack: () -> Unit) {
                         Text("The Emergency Kit holds your Secret Key and has a space to write your master password. Save the new one now, and destroy the old one.")
                     },
                 ) {
-                    EmergencyKitRows(model, replaced.emergencyKitPath, "save-new-emergency-kit", "print-new-emergency-kit")
+                    EmergencyKitRows(model, replaced.emergencyKitPath, "save-new-emergency-kit", "print-new-emergency-kit", "share-new-emergency-kit")
                 }
             }
             errorMessage?.let { FormSection { ErrorBanner(it) } }

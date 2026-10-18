@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Only the copies made for a share are served: an Emergency Kit or an export sent to another app. -->
+<paths>
+    <cache-path name="shared" path="shared/" />
+</paths>

@@ -1,6 +1,8 @@
 package com.tryhisar.hisar.ui.settings
 
+import android.content.ClipData
 import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import android.os.CancellationSignal
 import android.os.ParcelFileDescriptor
@@ -12,15 +14,18 @@ import android.print.PrintManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.FileProvider
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
+import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -54,6 +59,45 @@ fun rememberFileSaver(mimeType: String, onFinish: (isSaved: Boolean) -> Unit): (
     return { file ->
         pendingFile = file
         launcher.launch(file.name)
+    }
+}
+
+const val SHARE_FAILED_MESSAGE = "Hisar could not prepare the file to share. Try again."
+
+/**
+ * Sends a file Hisar wrote to another app through the system's share sheet, as the iPhone's ShareLink. Only a copy in
+ * the folder Hisar's FileProvider serves goes out, made for the share; it is deleted when the screen leaves, as the
+ * iPhone deletes its file. [onFailure] runs when the copy cannot be made.
+ */
+@Composable
+fun rememberFileSharer(mimeType: String, onFailure: () -> Unit): (File) -> Unit {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val folder = remember { File(context.cacheDir, "shared/${UUID.randomUUID()}") }
+    DisposableEffect(folder) {
+        onDispose { folder.deleteRecursively() }
+    }
+    return { file ->
+        scope.launch {
+            val copy = withContext(Dispatchers.IO) {
+                try {
+                    file.copyTo(File(folder, file.name), overwrite = true)
+                } catch (_: IOException) {
+                    null
+                }
+            }
+            if (copy == null) {
+                onFailure()
+                return@launch
+            }
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", copy)
+            val intent = Intent(Intent.ACTION_SEND)
+                .setType(mimeType)
+                .putExtra(Intent.EXTRA_STREAM, uri)
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            intent.clipData = ClipData.newRawUri(file.name, uri)
+            context.startActivity(Intent.createChooser(intent, null))
+        }
     }
 }
 

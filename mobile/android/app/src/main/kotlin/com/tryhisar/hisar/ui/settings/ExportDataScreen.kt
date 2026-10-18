@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.outlined.IosShare
 import androidx.compose.material.icons.outlined.SaveAlt
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -44,7 +45,7 @@ import kotlinx.coroutines.launch
 
 /**
  * Settings → Account → Export data, the iPhone's sheet: an encrypted or plain export of every vault, which the user then
- * saves through the system's file creator. Closing the screen deletes the file from this device.
+ * saves through the system's file creator or sends to another app. Closing the screen deletes the file from this device.
  */
 @Composable
 fun ExportDataScreen(model: AppModel, onClose: () -> Unit) {
@@ -79,9 +80,11 @@ fun ExportDataScreen(model: AppModel, onClose: () -> Unit) {
         val exported = result
         if (exported != null) {
             val file = File(exported.path)
-            val save = rememberFileSaver(if (file.extension == "json") "application/json" else "application/octet-stream") { isSaved ->
+            val mimeType = if (file.extension == "json") "application/json" else "application/octet-stream"
+            val save = rememberFileSaver(mimeType) { isSaved ->
                 if (isSaved) model.showNotice("Export saved") else model.errorMessage.value = "Hisar could not save the file there. Choose another place."
             }
+            val share = rememberFileSharer(mimeType) { model.errorMessage.value = SHARE_FAILED_MESSAGE }
             FormSection(
                 header = "Export ready",
                 footer = {
@@ -91,6 +94,8 @@ fun ExportDataScreen(model: AppModel, onClose: () -> Unit) {
                 },
             ) {
                 FormButtonRow("Save Export", { save(file) }, testTag = "save-export", icon = Icons.Outlined.SaveAlt, color = HisarTheme.colors.tint)
+                RowDivider()
+                FormButtonRow("Share Export", { share(file) }, testTag = "share-export", icon = Icons.Outlined.IosShare, color = HisarTheme.colors.tint)
             }
             errorMessage?.let { FormSection { ErrorBanner(it) } }
         } else {
