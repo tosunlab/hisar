@@ -280,11 +280,16 @@ func TestDeniedLauncherIsNotRemembered(t *testing.T) {
 func TestLauncherRequestsAreCheckedBeforeAsking(t *testing.T) {
 	fixture := createServerFixture(t)
 	launcher, _ := fixture.connectLauncher(t, raycastApp)
+	shareLink := &cliprotocol.ShareLinkChange{ExpiresInSeconds: 3600, MaxViews: 1}
 	for _, request := range []cliprotocol.Request{
 		{Type: cliprotocol.TypeLauncherGetCode, VaultID: "v1"},
 		{Type: cliprotocol.TypeLauncherReadPassword, ItemID: "i1"},
 		{Type: cliprotocol.TypeLauncherCopyField, VaultID: "v1", ItemID: "i1", Field: "notes"},
 		{Type: cliprotocol.TypeLauncherCopyField, VaultID: "v1", ItemID: "i1"},
+		{Type: cliprotocol.TypeLauncherOpenItem, VaultID: "v1", IsEditing: true},
+		{Type: cliprotocol.TypeLauncherShareItem, ItemID: "i1", ShareLink: shareLink},
+		{Type: cliprotocol.TypeLauncherShareItem, VaultID: "v1", ItemID: "i1"},
+		{Type: cliprotocol.TypeLauncherShareItem, VaultID: "v1", ItemID: "i1", ShareLink: &cliprotocol.ShareLinkChange{Text: "hello", ExpiresInSeconds: 3600}},
 	} {
 		if code := getErrorCode(launcher.send(t, request)); code != cliprotocol.ErrorInvalidRequest {
 			t.Errorf("%s %+v: %q", request.Type, request, code)
@@ -300,10 +305,68 @@ func TestEveryLauncherRequestReachesTheHandler(t *testing.T) {
 	launcher, _ := fixture.connectLauncher(t, raycastApp)
 	requestTypes := cliprotocol.ListLauncherRequestTypes()[1:]
 	for _, requestType := range requestTypes {
-		launcher.mustSend(t, cliprotocol.Request{Type: requestType, VaultID: "v1", ItemID: "i1", Field: cliprotocol.LauncherFieldOneTimeCode})
+		launcher.mustSend(t, cliprotocol.Request{
+			Type: requestType, VaultID: "v1", ItemID: "i1", Field: cliprotocol.LauncherFieldOneTimeCode,
+			ShareLink: &cliprotocol.ShareLinkChange{ExpiresInSeconds: 604800, MaxViews: 1},
+		})
 	}
 	if !slices.Equal(fixture.handler.types, requestTypes) {
 		t.Errorf("handled %q", fixture.handler.types)
+	}
+}
+
+func shareLauncherItem() cliprotocol.Request {
+	return cliprotocol.Request{
+		Type: cliprotocol.TypeLauncherShareItem, VaultID: "v-personal", ItemID: "i-github",
+		ShareLink: &cliprotocol.ShareLinkChange{Fields: []string{"password", "recovery code"}, ExpiresInSeconds: 604800, MaxViews: 1},
+	}
+}
+
+func TestLauncherShareAsksEveryTimeAndNamesTheItem(t *testing.T) {
+	fixture := createServerFixture(t)
+	fixture.server.config.Handler = shareLinkDescribingHandler{fixture.handler}
+	launcher, _ := fixture.connectLauncher(t, raycastApp)
+	launcher.mustSend(t, listLauncherItems)
+	launcher.mustSend(t, shareLauncherItem())
+	launcher.mustSend(t, shareLauncherItem())
+	launcher.mustSend(t, listLauncherItems)
+	if count := fixture.launcherApprover.requestCount.Load(); count != 3 {
+		t.Fatalf("%d launcher approvals; want the launcher's and one per share link", count)
+	}
+	if request := fixture.launcherApprover.requests[0]; request.ShareLink != nil {
+		t.Errorf("the launcher approval described a share link: %+v", request.ShareLink)
+	}
+	request := fixture.launcherApprover.requests[1]
+	if request.App != raycastApp || request.ShareLink == nil || request.ShareLink.Title != "GitHub" ||
+		!slices.Equal(request.ShareLink.FieldLabels, []string{"password", "Recovery code"}) || request.ShareLink.Detail != "Expires in 7 days · 1 view" {
+		t.Errorf("share approval request %+v %+v", request, request.ShareLink)
+	}
+	if fixture.approver.requestCount.Load() != 0 {
+		t.Error("a launcher's share link opened the command-line dialog")
+	}
+}
+
+func TestDeniedLauncherShareCreatesNothing(t *testing.T) {
+	fixture := createServerFixture(t)
+	launcher, _ := fixture.connectLauncher(t, raycastApp)
+	launcher.mustSend(t, listLauncherItems)
+	fixture.launcherApprover.setResult(ErrDenied)
+	response := launcher.send(t, shareLauncherItem())
+	if getErrorCode(response) != cliprotocol.ErrorDenied || response.Error.Message != "Hisar denied the request (it was declined)" {
+		t.Fatalf("denied share link: %+v", response.Error)
+	}
+	if slices.Contains(fixture.handler.types, cliprotocol.TypeLauncherShareItem) {
+		t.Errorf("a denied share link reached the handler: %q", fixture.handler.types)
+	}
+	launcher.mustSend(t, listLauncherItems)
+	if count := fixture.launcherApprover.requestCount.Load(); count != 2 {
+		t.Errorf("%d launcher approvals; denying a share link must not end the launcher's approval", count)
+	}
+
+	unapproved, _ := fixture.connectLauncher(t, towerApp)
+	unapproved.send(t, shareLauncherItem())
+	if _, isApproved := fixture.connectLauncher(t, towerApp); isApproved {
+		t.Error("a denied share link approved the launcher")
 	}
 }
 

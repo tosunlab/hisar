@@ -1,6 +1,7 @@
 package clisocket
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"errors"
@@ -29,7 +30,8 @@ type SecretDescriber interface {
 	DescribeSecrets(references []string) []string
 }
 
-// ShareLinkDescriber names the item and fields of a shareLinks.create request for the approval window.
+// ShareLinkDescriber names the item and fields of a shareLinks.create or launcher.items.share request for the approval
+// window.
 type ShareLinkDescriber interface {
 	DescribeShareLink(request *cliprotocol.Request) (title string, fieldLabels []string)
 }
@@ -323,13 +325,12 @@ func (s *Server) describeSecrets(references []string) []string {
 	return names
 }
 
+// describeShareLink names what the handler will share: the item when the request names one, by ID for a launcher or by
+// query for hisar, even if it also carries text; the text otherwise.
 func (s *Server) describeShareLink(request *cliprotocol.Request) *ShareLinkDescription {
 	description := &ShareLinkDescription{Title: request.Query, FieldLabels: append([]string{}, request.ShareLink.Fields...), Detail: describeShareLinkLimit(request.ShareLink)}
-	if request.ShareLink.Text != "" || request.Query == "" {
-		description.Title, description.FieldLabels = request.ShareLink.Title, []string{"text"}
-		if description.Title == "" {
-			description.Title = "Shared text"
-		}
+	if request.Type == cliprotocol.TypeCreateShareLink && request.Query == "" {
+		description.Title, description.FieldLabels = cmp.Or(request.ShareLink.Title, "Shared text"), []string{"text"}
 	} else if describer, isDescriber := s.config.Handler.(ShareLinkDescriber); isDescriber {
 		description.Title, description.FieldLabels = describer.DescribeShareLink(request)
 	}
