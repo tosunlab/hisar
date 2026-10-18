@@ -40,6 +40,7 @@ abstract class HisarUITestCase {
     @After
     fun closeApp() {
         scenario?.close()
+        scenario = null
     }
 
     fun launch() {

@@ -2,17 +2,15 @@ package com.tryhisar.hisar.passkey
 
 import android.content.Intent
 import android.util.Base64
+import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.hasTestTag
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.filters.SdkSuppress
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.services.storage.TestStorage
 import androidx.test.uiautomator.By
-import androidx.test.uiautomator.BySelector
 import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.UiDevice
-import androidx.test.uiautomator.UiObject2
-import androidx.test.uiautomator.Until
 import com.tryhisar.hisar.HisarTestApplication
 import com.tryhisar.hisar.HisarUITestCase
 import com.tryhisar.hisar.autofill.AndroidApp
@@ -32,10 +30,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Registers a passkey and signs in with it through Credential Manager, the system's sheets and Hisar's provider, from a
- * native app in the test APK's package. It checks the answers as a relying party would: the client data names the app's
- * signing certificate, and the ES256 signature over authenticatorData || SHA-256(clientDataJSON) verifies with the
- * registered key. The relying party's Digital Asset Links come from [HisarTestApplication.statementByRelyingParty].
+ * Registers a passkey, signs in with it and fills a password through Credential Manager, the system's sheets and Hisar's
+ * provider, from a native app in the test APK's package. It checks the answers as a relying party would: the client data
+ * names the app's signing certificate, and the ES256 signature over authenticatorData || SHA-256(clientDataJSON)
+ * verifies with the registered key. The relying party's Digital Asset Links come from
+ * [HisarTestApplication.statementByRelyingParty].
+ *
+ * The compose rule runs every composition in this process on its own clock, Hisar's credential screens included, and
+ * advances it only while the rule waits. So every wait here goes through the rule, also for the sheet and the caller.
  */
 @SdkSuppress(minSdkVersion = 34)
 class PasskeyUITests : HisarUITestCase() {
@@ -44,24 +46,27 @@ class PasskeyUITests : HisarUITestCase() {
     private val application get() = ApplicationProvider.getApplicationContext<HisarTestApplication>()
     private val callerPackage get() = instrumentation.context.packageName
     private val callerApp: AndroidApp get() = checkNotNull(InstalledApps.readAndroidApp(application, callerPackage))
+    private val callerOutcome = By.desc("caller-result").text(Pattern.compile("(registered|signed-in|password|error) .*", Pattern.DOTALL))
 
     @Test
     fun testRegisterPasskeyThenSignInWithIt() {
         launch()
         signUp(readArgument("HISAR_UI_TEST_PASSKEY_INVITE_LINK"), readArgument("HISAR_UI_TEST_PASSKEY_EMAIL"), "Android Passkey")
         addLogin(title = "Example", username = "passkey-user", password = "passkey-password-1", website = "login.example.com")
+        // The app's lock screen would share its tags with the one Credential Manager opens.
+        closeApp()
         turnOnHisarForPasskeys()
         application.statementByRelyingParty[RELYING_PARTY_ID] = buildStatement(callerApp)
 
         val userHandle = "passkey-user-handle".toByteArray()
         val registration = callCredentialManager(
-            "create",
+            CredentialCallerActivity.MODE_CREATE_PASSKEY,
             """{"rp":{"id":"$RELYING_PARTY_ID","name":"Example"},"user":{"id":"${encode(userHandle)}","name":"passkey-user","displayName":"Passkey User"},"challenge":"$REGISTRATION_CHALLENGE","pubKeyCredParams":[{"type":"public-key","alg":-7}],"authenticatorSelection":{"residentKey":"required","userVerification":"preferred"}}""",
         ) {
-            chooseHisarInTheSheet("passkey-register-sheet")
-            waitForApp("autofill-save-passkey")
+            answerSheet("passkey-register-sheet", "Hisar") { device.hasObject(By.res("autofill-save-passkey")) }
+            tap("autofill-passkey-new-login")
             saveScreenshot("passkey-save")
-            device.findObject(By.res("autofill-save-passkey")).click()
+            tap("autofill-save-passkey")
         }
         assertTrue(registration, registration.startsWith("registered "))
         val registered = JSONObject(registration.removePrefix("registered "))
@@ -76,15 +81,14 @@ class PasskeyUITests : HisarUITestCase() {
 
         testBackend.lock()
         val assertion = callCredentialManager(
-            "get",
+            CredentialCallerActivity.MODE_GET_PASSKEY,
             """{"rpId":"$RELYING_PARTY_ID","challenge":"$ASSERTION_CHALLENGE","allowCredentials":[{"type":"public-key","id":"${encode(credentialID)}"}],"userVerification":"preferred"}""",
         ) {
-            tapInTheSheet("passkey-unlock-sheet", By.text(Pattern.compile("Unlock Hisar.*")))
-            waitForApp("unlock-password")
+            answerSheet("passkey-unlock-sheet", "Unlock Hisar.*") { device.hasObject(By.res("unlock-password")) }
             saveScreenshot("passkey-unlock")
-            device.findObject(By.res("unlock-password")).text = MASTER_PASSWORD
-            device.findObject(By.res("unlock-submit")).click()
-            tapInTheSheet("passkey-sign-in-sheet", By.text("passkey-user"))
+            type(MASTER_PASSWORD, "unlock-password")
+            tap("unlock-submit")
+            answerSheet("passkey-sign-in-sheet", "passkey-user") { device.hasObject(callerOutcome) }
         }
         assertTrue(assertion, assertion.startsWith("signed-in "))
         val signedIn = JSONObject(assertion.removePrefix("signed-in "))
@@ -95,15 +99,34 @@ class PasskeyUITests : HisarUITestCase() {
         val signedData = decode(assertionResponse.getString("authenticatorData")) + sha256(clientDataJSON)
         assertTrue("the signature verifies with the registered key", verify(publicKey, signedData, decode(assertionResponse.getString("signature"))))
 
+        val personal = testBackend.listAllVault().single { it.name == "Personal" }
+        val example = testBackend.listAllItem(personal.id).single { it.title == "Example" }
+        testBackend.addAndroidApp(personal.id, example.id, callerApp.packageName, callerApp.certificateSHA256)
+        val password = callCredentialManager(CredentialCallerActivity.MODE_GET_PASSWORD, "") {
+            answerSheet("password-sheet", "passkey-user") { device.hasObject(callerOutcome) }
+        }
+        assertEquals("the login linked to the app, not the passkey's new login", "password passkey-user passkey-password-1", password)
+
         application.statementByRelyingParty[RELYING_PARTY_ID] = buildStatement(AndroidApp("com.example.other", callerApp.certificateSHA256))
-        val refused = callCredentialManager("get", """{"rpId":"$RELYING_PARTY_ID","challenge":"$ASSERTION_CHALLENGE","userVerification":"preferred"}""") {
+        val refused = callCredentialManager(
+            CredentialCallerActivity.MODE_GET_PASSKEY,
+            """{"rpId":"$RELYING_PARTY_ID","challenge":"$ASSERTION_CHALLENGE","userVerification":"preferred"}""",
+        ) {
+            // With nothing to offer, Google Play services shows "Sign in another way"; dismissing it fails the request.
+            val offered = By.pkg(SHEET_PACKAGE).text("passkey-user")
+            val dismiss = By.pkg(SHEET_PACKAGE).desc("Dismiss")
+            check(waitUntil(30_000) { device.hasObject(callerOutcome) || device.hasObject(dismiss) || device.hasObject(offered) }) {
+                "neither a sheet nor an outcome; ${dumpWindow("passkey-unrelated-app")}"
+            }
             saveScreenshot("passkey-unrelated-app")
+            assertFalse("the sheet offers no passkey to an app the relying party does not name", device.hasObject(offered))
+            device.findObject(dismiss)?.click()
         }
         assertTrue("an app the relying party does not name gets no passkey: $refused", refused.startsWith("error "))
 
         launch()
         tap("vault-Personal")
-        tap("item-Example")
+        tap("item-$RELYING_PARTY_ID")
         waitFor("passkey-$RELYING_PARTY_ID")
         saveScreenshot("passkey-item-detail")
         tap("delete-passkey-$RELYING_PARTY_ID")
@@ -124,46 +147,49 @@ class PasskeyUITests : HisarUITestCase() {
 
     /** Starts the caller with a request, lets [answerSheets] drive the system's sheets, and returns the caller's outcome. */
     private fun callCredentialManager(mode: String, requestJSON: String, answerSheets: () -> Unit): String {
-        val intent = Intent().setClassName(callerPackage, PasskeyCallerActivity::class.java.name)
+        val intent = Intent().setClassName(callerPackage, CredentialCallerActivity::class.java.name)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
-            .putExtra(PasskeyCallerActivity.EXTRA_MODE, mode)
-            .putExtra(PasskeyCallerActivity.EXTRA_REQUEST_JSON, requestJSON)
-            .putExtra(PasskeyCallerActivity.EXTRA_USER_NAME, "passkey-user")
+            .putExtra(CredentialCallerActivity.EXTRA_MODE, mode)
+            .putExtra(CredentialCallerActivity.EXTRA_REQUEST_JSON, requestJSON)
+            .putExtra(CredentialCallerActivity.EXTRA_USER_NAME, "passkey-user")
         instrumentation.context.startActivity(intent)
+        check(waitUntil(10_000) { !device.hasObject(callerOutcome) }) { "the last outcome stays; ${dumpWindow("caller-start")}" }
         answerSheets()
-        val result = By.desc("caller-result").text(Pattern.compile("(registered|signed-in|error) .*", Pattern.DOTALL))
-        return checkNotNull(device.wait(Until.findObject(result), 60_000)) { "no outcome; ${dumpWindow("caller-outcome")}" }.text
+        check(waitUntil(60_000) { device.hasObject(callerOutcome) }) { "no outcome; ${dumpWindow("caller-outcome")}" }
+        return device.findObject(callerOutcome).text
     }
 
-    /** API 37 shows Google's sheet, API 34 the platform's; either way the user picks Hisar, and the sheet may ask again. */
-    private fun chooseHisarInTheSheet(screenshot: String) {
-        val hisarScreen = By.res("autofill-save-passkey")
-        val choices = By.text(Pattern.compile("Continue|Create|Hisar"))
+    /**
+     * Confirms the system's sheet, Google's on API 37 and the platform's on API 34, or taps the entry whose text matches
+     * [choice] when the sheet has nothing to confirm yet, until [isDone]. Each sheet asks differently, and some ask twice.
+     */
+    private fun answerSheet(screenshot: String, choice: String, isDone: () -> Boolean) {
+        val confirm = By.pkg(SHEET_PACKAGE).text(Pattern.compile("Continue|Create|Sign in"))
+        val entry = By.pkg(SHEET_PACKAGE).text(Pattern.compile(choice))
         var isScreenshotSaved = false
         val deadline = System.currentTimeMillis() + 60_000
-        while (System.currentTimeMillis() < deadline && !device.hasObject(hisarScreen)) {
-            val choice = device.wait(Until.findObject(choices), 2_000) ?: continue
+        while (!isDone()) {
+            check(System.currentTimeMillis() < deadline) { "the sheet did not lead on; ${dumpWindow(screenshot)}" }
+            if (!waitUntil(2_000) { isDone() || device.hasObject(confirm) || device.hasObject(entry) }) continue
+            val button = device.findObject(confirm) ?: device.findObject(entry) ?: continue
             if (!isScreenshotSaved) {
                 saveScreenshot(screenshot)
                 isScreenshotSaved = true
             }
-            dumpWindow("$screenshot-${System.currentTimeMillis()}")
             try {
-                choice.click()
-                device.wait(Until.gone(choices), 10_000)
+                button.click()
             } catch (_: StaleObjectException) {
+                continue
             }
+            waitUntil(5_000) { isDone() || !device.hasObject(confirm) && !device.hasObject(entry) }
         }
     }
 
-    private fun tapInTheSheet(screenshot: String, selector: BySelector) {
-        val target: UiObject2 = checkNotNull(device.wait(Until.findObject(selector), 30_000)) { "$selector is not in the sheet; ${dumpWindow(screenshot)}" }
-        saveScreenshot(screenshot)
-        target.click()
-    }
-
-    private fun waitForApp(tag: String) {
-        checkNotNull(device.wait(Until.findObject(By.res(tag)), 30_000)) { "$tag did not appear; ${dumpWindow(tag)}" }
+    private fun waitUntil(timeoutMillis: Long, condition: () -> Boolean): Boolean = try {
+        composeRule.waitUntil(timeoutMillis = timeoutMillis, condition = condition)
+        true
+    } catch (_: ComposeTimeoutException) {
+        false
     }
 
     private fun dumpWindow(name: String): String {
@@ -200,5 +226,8 @@ class PasskeyUITests : HisarUITestCase() {
         const val RELYING_PARTY_ID = "example.com"
         const val REGISTRATION_CHALLENGE = "cmVnaXN0ZXI"
         const val ASSERTION_CHALLENGE = "c2lnbiBpbg"
+
+        // Every package but Hisar and the caller, whose own screens show the same names.
+        val SHEET_PACKAGE: Pattern = Pattern.compile("(?!com\\.tryhisar\\.hisar).*")
     }
 }

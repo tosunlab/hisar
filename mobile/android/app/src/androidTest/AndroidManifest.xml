@@ -13,11 +13,11 @@
             android:exported="true"
             android:label="Test form"
             android:theme="@android:style/Theme.Material.Light.NoActionBar" />
-        <!-- A native app that asks Credential Manager for passkeys, in the test APK's package, for PasskeyUITests. -->
+        <!-- A native app that asks Credential Manager for passkeys and passwords, in the test APK's package, for PasskeyUITests. -->
         <activity
-            android:name="com.tryhisar.hisar.passkey.PasskeyCallerActivity"
+            android:name="com.tryhisar.hisar.passkey.CredentialCallerActivity"
             android:exported="true"
-            android:label="Passkey caller"
+            android:label="Credential caller"
             android:theme="@android:style/Theme.Material.Light.NoActionBar" />
     </application>
 
