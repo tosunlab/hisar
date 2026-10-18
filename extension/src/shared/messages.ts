@@ -119,6 +119,7 @@ export type PopupMessage =
   | { type: "popup.fillIdentity"; tabId: number; vaultID: string; itemID: string }
   | { type: "popup.listCards" }
   | { type: "popup.fillCard"; tabId: number; vaultID: string; itemID: string }
+  | { type: "popup.getAllLastUsed" }
   | { type: "popup.listVaults" }
   | { type: "popup.createItem"; vaultID: string; item: NewItem }
   | { type: "popup.listItems"; query: ItemQuery }
@@ -169,7 +170,8 @@ export type BackgroundToContentMessage =
   | { type: "content.showSaveOffer"; offer: SaveOfferView }
   | { type: "content.isInlineMenuVisible"; sessionID: string }
   | { type: "content.resizeInlineMenu"; sessionID: string; height: number }
-  | { type: "content.dismissInlineMenu"; sessionID: string };
+  | { type: "content.dismissInlineMenu"; sessionID: string }
+  | { type: "content.openInlineMenuHere" };
 
 export interface OffscreenCopyMessage {
   target: "offscreen";

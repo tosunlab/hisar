@@ -94,6 +94,8 @@ export function handleBackgroundMessage(message: BackgroundToContentMessage, inl
     case "content.dismissInlineMenu":
       inlineMenu.dismissMenu(message.sessionID);
       return true;
+    case "content.openInlineMenuHere":
+      return inlineMenu.openHere();
   }
 }
 

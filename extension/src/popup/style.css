@@ -17,6 +17,13 @@
   --color-danger-background: #2a1416;
   --color-warning: #d9a33c;
   --color-success: #3fa66b;
+  --color-selection: #3a4250;
+  --color-hover-border: #3b4047;
+  --color-primary-hover: #ffffff;
+  --color-error-border: #4a1f22;
+  --color-error-text: #f2a7a9;
+  --color-warning-border: #4a3a1a;
+  --color-glow: #1a1d22;
   --radius-small: 6px;
   --radius: 8px;
   --radius-large: 12px;
@@ -27,6 +34,38 @@
   color: var(--color-text);
   background: var(--color-background);
   -webkit-font-smoothing: antialiased;
+}
+
+/* The light theme follows the system's appearance. */
+@media (prefers-color-scheme: light) {
+  :root {
+    --color-background: #ffffff;
+    --color-panel: #f6f7f8;
+    --color-surface: #ffffff;
+    --color-surface-raised: #f1f2f4;
+    --color-hover: #eef0f2;
+    --color-selected: #e4e7eb;
+    --color-border: #e1e4e8;
+    --color-border-strong: #cfd4da;
+    --color-text: #16181b;
+    --color-text-secondary: #464c55;
+    --color-text-muted: #6b727c;
+    --color-primary: #16181b;
+    --color-primary-text: #ffffff;
+    --color-primary-hover: #000000;
+    --color-focus: #6b7685;
+    --color-danger: #c62a2f;
+    --color-danger-background: #fdecec;
+    --color-warning: #8a5a00;
+    --color-success: #1f7a45;
+    --color-selection: #cfd8e6;
+    --color-hover-border: #bfc5cc;
+    --color-error-border: #f3c3c5;
+    --color-error-text: #a3151b;
+    --color-warning-border: #e9d3a3;
+    --color-glow: #eef0f3;
+    color-scheme: light;
+  }
 }
 
 * {
@@ -47,7 +86,7 @@ body {
 }
 
 ::selection {
-  background: #3a4250;
+  background: var(--color-selection);
 }
 
 input,
@@ -110,7 +149,7 @@ button {
 
 button:hover:not(:disabled) {
   background: var(--color-hover);
-  border-color: #3b4047;
+  border-color: var(--color-hover-border);
 }
 
 button:focus-visible {
@@ -131,8 +170,8 @@ button.primary {
 }
 
 button.primary:hover:not(:disabled) {
-  background: #ffffff;
-  border-color: #ffffff;
+  background: var(--color-primary-hover);
+  border-color: var(--color-primary-hover);
 }
 
 button.ghost {
@@ -159,10 +198,10 @@ button.small {
 .error {
   margin: 0 0 12px;
   padding: 8px 11px;
-  border: 1px solid #4a1f22;
+  border: 1px solid var(--color-error-border);
   border-radius: var(--radius);
   background: var(--color-danger-background);
-  color: #f2a7a9;
+  color: var(--color-error-text);
   user-select: text;
 }
 
@@ -189,7 +228,7 @@ button.small {
 }
 
 .tag.warning {
-  border-color: #4a3a1a;
+  border-color: var(--color-warning-border);
   color: var(--color-warning);
 }
 

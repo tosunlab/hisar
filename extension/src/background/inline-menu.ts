@@ -101,6 +101,7 @@ export class InlineMenuService {
     });
     if (!outcome?.filledUsername && !outcome?.filledPassword) throw new HisarError("not-found", "The login field is gone");
     this.allSession.remove(sessionID);
+    await this.controller.recordUse(vaultID, itemID);
     await this.controller.copyOneTimeCodeAfterFill(credentials, vaultID, itemID, session.frameUrl);
   }
 

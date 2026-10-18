@@ -15,6 +15,7 @@ const item = ref<ItemResult>();
 const errorMessage = ref("");
 const isBusy = ref(false);
 const allRevealed = reactive(new Map<string, string>());
+const backButton = ref<HTMLButtonElement>();
 
 async function load(): Promise<void> {
   try {
@@ -96,13 +97,16 @@ function requestCode(): Promise<OneTimeCode> {
   return sendToBackground<OneTimeCode>({ type: "popup.getItemCode", vaultID: props.summary.vaultID, itemID: props.summary.itemID });
 }
 
-onMounted(load);
+onMounted(() => {
+  backButton.value?.focus();
+  void load();
+});
 </script>
 
 <template>
-  <div class="detail" data-testid="item-detail">
+  <div class="detail" data-testid="item-detail" @keydown.esc.prevent="emit('back')">
     <div class="top">
-      <button type="button" class="ghost icon-button" title="Back" aria-label="Back" data-testid="item-back" @click="emit('back')">
+      <button ref="backButton" type="button" class="ghost icon-button" title="Back" aria-label="Back" data-testid="item-back" @click="emit('back')">
         <AppIcon name="back" />
       </button>
       <ItemIcon :category="summary.category" :url="summary.url" :size="36" />

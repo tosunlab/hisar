@@ -222,8 +222,37 @@ export class BackgroundController {
       password: credentials.password,
     });
     if (!outcome?.filledUsername && !outcome?.filledPassword) throw new HisarError("not-found", "No login form found on this page");
+    await this.recordUse(vaultID, itemID);
     await this.copyOneTimeCodeAfterFill(credentials, vaultID, itemID, target.url);
     return outcome;
+  }
+
+  async recordUse(vaultID: string, itemID: string): Promise<void> {
+    await this.storage.recordUse(`${vaultID}/${itemID}`, this.browser.now()).catch(() => undefined);
+  }
+
+  getAllLastUsed(): Promise<Record<string, number>> {
+    return this.storage.getAllLastUsed();
+  }
+
+  // getBadgeText is the number of logins saved for the tab, for the toolbar icon. It asks only over a connection that is
+  // already open, so switching tabs never starts the native host, which would start Hisar.
+  async getBadgeText(tabId: number): Promise<string> {
+    if (!this.client.isConnected() || !(await this.storage.getToken())) return "";
+    try {
+      const url = await this.browser.getTabUrl(tabId);
+      if (!isWebUrl(url)) return "";
+      const allLogin = await this.matchLoginsForUrl(url);
+      if (allLogin.length === 0) return "";
+      return allLogin.length > 9 ? "9+" : String(allLogin.length);
+    } catch {
+      return "";
+    }
+  }
+
+  // fillSuggestedPassword generates a password and fills it into the focused field, for the right-click menu.
+  async fillSuggestedPassword(tabId: number): Promise<void> {
+    await this.fillPassword(tabId, await this.generatePassword({}));
   }
 
   private async fillOneTimeCodeIntoFrame(tabId: number, target: FrameInfo, vaultID: string, itemID: string): Promise<FillOutcome> {

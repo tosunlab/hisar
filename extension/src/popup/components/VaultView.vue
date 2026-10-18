@@ -45,12 +45,17 @@ let loadNumber = 0;
 // The suggestions for this tab are shown above the vault until the user searches another category.
 const isShowingSuggestions = computed(() => category.value === "all" || category.value === "login");
 
-const allListedItem = computed(() =>
-  // A login already suggested for this tab is not listed twice while nothing is searched.
-  query.value.trim() === "" && isShowingSuggestions.value
-    ? allItem.value.filter((item) => !allMatchingKey.value.has(getKey(item)))
-    : allItem.value,
-);
+const allLastUsed = ref<Record<string, number>>({});
+
+const allListedItem = computed(() => {
+  // A login already suggested for this tab is not listed twice while nothing is searched; search results put the items
+  // filled most recently first.
+  if (query.value.trim() === "") {
+    return isShowingSuggestions.value ? allItem.value.filter((item) => !allMatchingKey.value.has(getKey(item))) : allItem.value;
+  }
+  const lastUsed = (item: ItemSummary): number => allLastUsed.value[getKey(item)] ?? 0;
+  return [...allItem.value].sort((first, second) => lastUsed(second) - lastUsed(first));
+});
 
 function getKey(item: Pick<ItemSummary, "vaultID" | "itemID">): string {
   return `${item.vaultID}/${item.itemID}`;
@@ -149,9 +154,34 @@ async function copyPassword(item: ItemSummary): Promise<void> {
   }
 }
 
+// Keyboard: the arrow keys move between the search box and the rows, Enter opens a row, and Ctrl or Cmd+C on a login
+// row copies its password.
+function moveFocus(event: KeyboardEvent): void {
+  const container = event.currentTarget as HTMLElement;
+  const allRow = Array.from(container.querySelectorAll<HTMLElement>("[data-row]"));
+  const active = document.activeElement as HTMLElement | null;
+  const index = active ? allRow.indexOf(active) : -1;
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "c" && index >= 0) {
+    const copyButton = allRow[index].closest("li")?.querySelector<HTMLButtonElement>("[data-copy]");
+    if (copyButton && !window.getSelection()?.toString()) {
+      event.preventDefault();
+      copyButton.click();
+    }
+    return;
+  }
+  if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+  event.preventDefault();
+  if (event.key === "ArrowDown") allRow[index + 1]?.focus();
+  else if (index <= 0) searchInput.value?.focus();
+  else allRow[index - 1].focus();
+}
+
 onMounted(() => {
   void loadItems();
   searchInput.value?.focus();
+  sendToBackground<Record<string, number> | null>({ type: "popup.getAllLastUsed" })
+    .then((result) => (allLastUsed.value = result ?? {}))
+    .catch(() => undefined);
 });
 onBeforeUnmount(() => {
   if (searchTimer !== undefined) clearTimeout(searchTimer);
@@ -169,7 +199,7 @@ onBeforeUnmount(() => {
     @notice="emit('notice', $event)"
     @favorite="markFavorite"
   />
-  <div v-show="!selected && !isCreating" class="vault" data-testid="vault-view">
+  <div v-show="!selected && !isCreating" class="vault" data-testid="vault-view" @keydown="moveFocus">
     <div class="search-row">
       <div class="search">
         <AppIcon name="search" class="search-icon" />
@@ -206,7 +236,7 @@ onBeforeUnmount(() => {
     </p>
     <ul v-else class="list">
       <li v-for="item in allListedItem" :key="getKey(item)" class="entry" data-testid="item-row">
-        <div class="row-button" role="button" tabindex="0" data-testid="open-item" @click="selected = item" @keydown.enter="selected = item">
+        <div class="row-button" role="button" tabindex="0" data-row data-testid="open-item" @click="selected = item" @keydown.enter="selected = item">
           <ItemIcon :category="item.category" :url="item.url" />
           <div class="text">
             <p class="title-row">
@@ -225,6 +255,7 @@ onBeforeUnmount(() => {
           aria-label="Copy password"
           :disabled="busyItemID !== ''"
           data-testid="item-copy-password"
+          data-copy
           @click="copyPassword(item)"
         >
           <AppIcon name="key" />
@@ -260,10 +291,9 @@ onBeforeUnmount(() => {
 
 .chips {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   margin-bottom: 10px;
-  overflow-x: auto;
-  scrollbar-width: none;
 }
 
 .chip {
@@ -325,8 +355,14 @@ onBeforeUnmount(() => {
   cursor: pointer;
 }
 
-.row-button:focus-visible {
+.row-button:focus-visible,
+.vault :deep([data-row]:focus-visible) {
   outline: none;
+}
+
+.entry:has([data-row]:focus-visible),
+.vault :deep(.entry:has([data-row]:focus-visible)) {
+  box-shadow: inset 0 0 0 1px var(--color-focus);
 }
 
 .text {

@@ -602,6 +602,29 @@ describe("vault", () => {
     expect(wrapper.find('[data-testid="item-detail"]').exists()).toBe(true);
   });
 
+  it("puts the logins filled most recently first", async () => {
+    respondWithVault({ "popup.getAllLastUsed": () => ({ "v2/i2": 5 }) });
+    const wrapper = await mountApp();
+    expect(wrapper.findAll('[data-testid="login-row"]').map((row) => row.find(".title").text())).toEqual(["Example (work)", "Example"]);
+  });
+
+  it("moves between the search box and the rows with the arrow keys, and copies a login's password with Ctrl+C", async () => {
+    respondWithVault();
+    const wrapper = await mountApp();
+    const search = wrapper.find('[data-testid="vault-search"]');
+    await search.trigger("keydown", { key: "ArrowDown" });
+    const allRow = wrapper.findAll("[data-row]");
+    expect(document.activeElement).toBe(allRow[0].element);
+    await allRow[0].trigger("keydown", { key: "ArrowDown" });
+    expect(document.activeElement).toBe(allRow[1].element);
+    await allRow[1].trigger("keydown", { key: "c", ctrlKey: true });
+    await flushPromises();
+    expect(allClipboardText).toEqual(["password-of-i2"]);
+    await allRow[1].trigger("keydown", { key: "ArrowUp" });
+    await wrapper.findAll("[data-row]")[0].trigger("keydown", { key: "ArrowUp" });
+    expect(document.activeElement).toBe(search.element);
+  });
+
   it("copies a login's password from the list", async () => {
     respondWithVault({ "popup.revealField": () => "hunter2" });
     const wrapper = await mountApp();

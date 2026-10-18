@@ -77,6 +77,17 @@ afterEach(() => {
 });
 
 describe("InlineMenuController", () => {
+  it("opens the menu at the focused field when asked from the right-click menu, even where it does not open on focus", async () => {
+    controller.updateSettings({ isInlineMenuEnabled: true, isInlineMenuOpenedOnFocus: false });
+    getInput("#login_field").focus();
+    expect(allSent).toEqual([]);
+    expect(controller.openHere()).toBe(true);
+    await vi.waitFor(() => expect(allSent).toContainEqual({ type: "content.openInlineMenu", purpose: "login" }));
+    document.body.innerHTML = "<input id='search' type='search'>";
+    getInput("#search").focus();
+    expect(controller.openHere()).toBe(false);
+  });
+
   it("offers addresses only when the app fills them", async () => {
     document.body.innerHTML = addressAutocompletePage;
     getInput("#ship-city").focus();

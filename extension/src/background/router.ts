@@ -60,6 +60,8 @@ async function routePopupMessage(controller: BackgroundController, message: Popu
       return controller.listCards();
     case "popup.fillCard":
       return controller.fillCard(message.tabId, message.vaultID, message.itemID);
+    case "popup.getAllLastUsed":
+      return controller.getAllLastUsed();
     case "popup.listVaults":
       return controller.listVaults();
     case "popup.createItem":

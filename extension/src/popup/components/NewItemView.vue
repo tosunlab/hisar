@@ -96,7 +96,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <form class="new-item" data-testid="new-item" @submit.prevent="save">
+  <form class="new-item" data-testid="new-item" @submit.prevent="save" @keydown.esc.prevent="emit('cancel')">
     <div class="top">
       <button type="button" class="ghost icon-button" title="Back" aria-label="Back" data-testid="new-item-cancel" @click="emit('cancel')">
         <AppIcon name="back" />

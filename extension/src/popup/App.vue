@@ -225,7 +225,7 @@ onBeforeUnmount(() => {
   position: relative;
   min-height: 200px;
   background:
-    radial-gradient(600px 240px at 50% -40%, #1a1d22 0%, transparent 70%),
+    radial-gradient(600px 240px at 50% -40%, var(--color-glow) 0%, transparent 70%),
     var(--color-background);
 }
 
@@ -306,7 +306,7 @@ onBeforeUnmount(() => {
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius);
   background: var(--color-surface-raised);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 25%);
   font-size: 12px;
   white-space: nowrap;
 }

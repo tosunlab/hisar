@@ -196,17 +196,33 @@ export class InlineMenuController {
     if (!(target instanceof Element)) return;
     if (this.host && (target === this.host || this.host.contains(target))) return;
     if (this.isFieldOfMenu(target)) return;
+    if (this.anchorTo(target) && this.settings.isInlineMenuOpenedOnFocus) void this.openMenu();
+  }
+
+  // anchorTo shows the icon in a field the menu serves and reports whether it is one; any other field hides it.
+  private anchorTo(target: Element): boolean {
     const purpose = findInlineMenuPurpose(this.document, target, this.dependencies.getRect);
     if (!purpose || (purpose === "address" && !this.isAddressFillAvailable) || (purpose === "card" && !this.isCardFillAvailable) || (purpose === "identity" && !this.isIdentityFillAvailable)) {
       this.hide();
-      return;
+      return false;
     }
     this.hide();
     this.field = target as HTMLInputElement;
     this.allGroupField = purpose === "one-time-code" ? (findOneTimeCodeTarget(target) ?? [this.field]) : [this.field];
     this.purpose = purpose;
     this.showIcon();
-    if (this.settings.isInlineMenuOpenedOnFocus) void this.openMenu();
+    return true;
+  }
+
+  // openHere opens the menu at the focused field, for the right-click menu, even where it does not open on focus; it
+  // reports whether that field is one the menu serves.
+  openHere(): boolean {
+    if (!isFrameEligibleForInlineMenu(this.window)) return false;
+    let active: Element | null = this.document.activeElement;
+    while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement;
+    if (!active || !this.anchorTo(active)) return false;
+    void this.openMenu();
+    return true;
   }
 
   private handleFocusOut(): void {

@@ -267,6 +267,25 @@ describe("addresses", () => {
   });
 });
 
+describe("toolbar badge and recently used logins", () => {
+  it("counts the tab's logins only over a connection that is already open", async () => {
+    const harness = createHarness();
+    expect(await harness.controller.getBadgeText(1)).toBe("");
+    expect(harness.allRequest).toEqual([]);
+    await harness.pair();
+    expect(await harness.controller.getBadgeText(1)).toBe("1");
+    harness.state.state = "locked";
+    expect(await harness.controller.getBadgeText(1)).toBe("");
+  });
+
+  it("remembers when a login was filled", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    await harness.controller.fillLogin(1, "vault-personal", "item-example");
+    expect(await harness.controller.getAllLastUsed()).toEqual({ "vault-personal/item-example": 1_000_000 });
+  });
+});
+
 describe("identities", () => {
   it("lists identities by name and email and fills the form with the focused field", async () => {
     const harness = createHarness({ allProbe: { 0: { ...emptyProbe, hasIdentityForm: true, hasFocusedIdentityField: true } } });
