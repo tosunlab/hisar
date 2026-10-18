@@ -291,7 +291,7 @@ private fun SecureNoteSection(item: ItemDetail, actions: ItemFieldActions) {
         if (item.notes.isEmpty()) {
             FormRow { Text("This note is empty.", style = HisarType.body, color = HisarTheme.colors.secondaryLabel) }
         } else {
-            FormRow { SelectionContainer { Text(item.notes, style = HisarType.body, color = HisarTheme.colors.label, modifier = Modifier.testTag("secure-note-notes")) } }
+            FormRow { Text(item.notes, style = HisarType.body, color = HisarTheme.colors.label, modifier = Modifier.testTag("secure-note-notes")) }
             RowDivider()
             FormButtonRow("Copy notes", onClick = { actions.copy("notes", "Notes") }, testTag = "copy-notes", icon = Icons.Outlined.ContentCopy, color = HisarTheme.colors.tint)
         }
