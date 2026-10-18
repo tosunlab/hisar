@@ -108,7 +108,7 @@ test-ios:
 	xcodebuild $(if $(IOS_TESTS_PREBUILT),test-without-building -scheme Hisar,test -scheme HisarUnitTests) -only-testing:HisarTests \
 		-project $(IOS_PROJECT) -destination "id=$(IOS_SIMULATOR_ID)" $(IOS_DERIVED_DATA_FLAG)
 
-# Needs bin/hisar-server and bin/hisar (make build) and HISAR_DATABASE_URL pointing at an empty database.
+# Needs HISAR_DATABASE_URL pointing at an empty database; the script builds and starts the server (scripts/ui-test-partner.sh).
 test-ios-ui:
 	IOS_SIMULATOR_ID=$(IOS_SIMULATOR_ID) ./scripts/test-ios-ui.sh
 
