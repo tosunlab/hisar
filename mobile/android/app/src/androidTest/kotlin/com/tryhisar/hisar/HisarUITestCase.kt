@@ -8,6 +8,7 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasScrollToNodeAction
 import androidx.compose.ui.test.hasTestTag
@@ -82,7 +83,7 @@ abstract class HisarUITestCase {
     }
 
     fun openTab(name: String) {
-        val tab = hasText(name) and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab)
+        val tab = (hasText(name) or hasContentDescription(name)) and SemanticsMatcher.expectValue(SemanticsProperties.Role, Role.Tab)
         waitFor(tab)
         composeRule.onNode(tab).performClick()
     }
