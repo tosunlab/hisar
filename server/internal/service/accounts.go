@@ -68,12 +68,14 @@ func (s *Service) RevokeDevice(ctx context.Context, actor Actor, deviceID string
 	if !IsValidUUID(deviceID) {
 		return ErrNotFound
 	}
-	switch err := s.store.RevokeDevice(ctx, actor.AccountID, deviceID); {
+	endedTokenHashes, err := s.store.RevokeDevice(ctx, actor.AccountID, deviceID)
+	switch {
 	case errors.Is(err, store.ErrNotFound):
 		return ErrNotFound
 	case err != nil:
 		return err
 	}
+	s.events.EndSessionStreams(actor.AccountID, endedTokenHashes)
 	s.recordAudit(ctx, actor, "device_revoked", map[string]string{"device": deviceID})
 	return nil
 }

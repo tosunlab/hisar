@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/item"
 )
@@ -349,5 +350,16 @@ func TestImportStarsTheFavoritesOfTheExport(t *testing.T) {
 	test.apiServer.mutex.Unlock()
 	if revision != 1 {
 		t.Errorf("the import saved the favorites %d times, want once", revision)
+	}
+}
+
+func TestImportStopsOnASuspendedAccount(t *testing.T) {
+	for _, err := range []error{apiclient.ErrAccountSuspended, fmt.Errorf("saving an item: %w", apiclient.ErrAccountSuspended)} {
+		if !isImportStoppingError(err) {
+			t.Errorf("%v does not stop the import", err)
+		}
+	}
+	if isImportStoppingError(errors.New("one item failed")) {
+		t.Error("an item's own failure stops the import")
 	}
 }

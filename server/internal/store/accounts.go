@@ -166,8 +166,19 @@ func (s *Store) RedeemInvite(ctx context.Context, tokenHash []byte, account *Acc
 	})
 }
 
+// CreateDeviceSession signs a device in; it fails with ErrAccountSuspended for a suspended account. The account row is
+// read FOR SHARE, so a suspension that commits meanwhile waits for the new session, which GetSessionByHash then refuses.
 func (s *Store) CreateDeviceSession(ctx context.Context, device *Device, session *Session) error {
-	return s.runInTransaction(ctx, func(transaction pgx.Tx) error { return insertDeviceSession(ctx, transaction, device, session) })
+	return s.runInTransaction(ctx, func(transaction pgx.Tx) error {
+		var isSuspended bool
+		if err := transaction.QueryRow(ctx, `SELECT suspended_at IS NOT NULL FROM accounts WHERE id = $1 FOR SHARE`, device.AccountID).Scan(&isSuspended); err != nil {
+			return convertNoRowsToNotFound(err)
+		}
+		if isSuspended {
+			return ErrAccountSuspended
+		}
+		return insertDeviceSession(ctx, transaction, device, session)
+	})
 }
 
 func insertDeviceSession(ctx context.Context, transaction pgx.Tx, device *Device, session *Session) error {
@@ -182,18 +193,23 @@ func insertDeviceSession(ctx context.Context, transaction pgx.Tx, device *Device
 	return err
 }
 
-// GetSessionByHash returns a live session and slides its expiry forward.
+// GetSessionByHash returns a live session and slides its expiry forward. The session of a suspended account stays live,
+// so its device works again after reactivation, but is refused with ErrAccountSuspended until then.
 func (s *Store) GetSessionByHash(ctx context.Context, tokenHash []byte, ttl time.Duration) (*Session, error) {
 	var session Session
+	var isSuspended bool
 	err := s.pool.QueryRow(ctx, `
 		UPDATE sessions s SET expires_at = now() + $2::interval
 		FROM accounts a, devices d
 		WHERE s.token_hash = $1 AND s.expires_at > now()
 		  AND a.id = s.account_id AND d.id = s.device_id AND d.revoked_at IS NULL
-		RETURNING s.token_hash, s.account_id, s.device_id, a.role, s.expires_at`,
-		tokenHash, ttl).Scan(&session.TokenHash, &session.AccountID, &session.DeviceID, &session.Role, &session.ExpiresAt)
+		RETURNING s.token_hash, s.account_id, s.device_id, a.role, s.expires_at, a.suspended_at IS NOT NULL`,
+		tokenHash, ttl).Scan(&session.TokenHash, &session.AccountID, &session.DeviceID, &session.Role, &session.ExpiresAt, &isSuspended)
 	if err != nil {
 		return nil, convertNoRowsToNotFound(err)
+	}
+	if isSuspended {
+		return nil, ErrAccountSuspended
 	}
 	s.pool.Exec(ctx, `UPDATE devices SET last_seen_at = now() WHERE id = $1`, session.DeviceID)
 	return &session, nil
@@ -218,20 +234,34 @@ func (s *Store) ListDevices(ctx context.Context, accountID string) ([]Device, er
 	})
 }
 
-func (s *Store) RevokeDevice(ctx context.Context, accountID, deviceID string) error {
-	return s.runInTransaction(ctx, func(transaction pgx.Tx) error {
-		commandTag, err := transaction.Exec(ctx,
-			`UPDATE devices SET revoked_at = now() WHERE id = $1 AND account_id = $2 AND revoked_at IS NULL`,
-			deviceID, accountID)
-		if err != nil {
-			return err
-		}
-		if commandTag.RowsAffected() == 0 {
-			return ErrNotFound
-		}
-		_, err = transaction.Exec(ctx, `DELETE FROM sessions WHERE device_id = $1`, deviceID)
+// RevokeDevice revokes the account's device and deletes its sessions, whose token hashes it returns.
+func (s *Store) RevokeDevice(ctx context.Context, accountID, deviceID string) (endedTokenHashes [][]byte, err error) {
+	err = s.runInTransaction(ctx, func(transaction pgx.Tx) error {
+		endedTokenHashes, err = revokeDevice(ctx, transaction, accountID, deviceID)
 		return err
 	})
+	return endedTokenHashes, err
+}
+
+func revokeDevice(ctx context.Context, transaction pgx.Tx, accountID, deviceID string) ([][]byte, error) {
+	commandTag, err := transaction.Exec(ctx,
+		`UPDATE devices SET revoked_at = now() WHERE id = $1 AND account_id = $2 AND revoked_at IS NULL`,
+		deviceID, accountID)
+	if err != nil {
+		return nil, err
+	}
+	if commandTag.RowsAffected() == 0 {
+		return nil, ErrNotFound
+	}
+	return collectTokenHashes(ctx, transaction, `DELETE FROM sessions WHERE device_id = $1 RETURNING token_hash`, deviceID)
+}
+
+func collectTokenHashes(ctx context.Context, transaction pgx.Tx, query string, arguments ...any) ([][]byte, error) {
+	rows, err := transaction.Query(ctx, query, arguments...)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowTo[[]byte])
 }
 
 func (s *Store) RecordAudit(ctx context.Context, accountID, deviceID *string, eventType string, detail any, ip string) {

@@ -32,13 +32,7 @@ type lifecycleAccount struct {
 
 func signUpLifecycleAccount(t *testing.T, server *Server, baseURL, email string) *lifecycleAccount {
 	t.Helper()
-	invite := requireValue[*apitypes.InviteResponse](t)(server.CreateInvite(context.Background(), email, apitypes.RoleMember, nil))
-	password := []byte(email + " password")
-	signedUp, secretKey, err := session.SignUp(context.Background(), apiclient.New(baseURL), invite.Token, email, strings.Split(email, "@")[0], password, testDevice)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return &lifecycleAccount{session: signedUp, password: password, secretKey: secretKey}
+	return signUpAccountWithRole(t, server, baseURL, email, apitypes.RoleMember)
 }
 
 func setupLifecycleServer(t *testing.T) (string, *Server, string, *mailtest.Recorder) {

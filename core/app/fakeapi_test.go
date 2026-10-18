@@ -47,6 +47,18 @@ type fakeAPIServer struct {
 	keyChangeRefusalCount int
 	// keyGenerationsSent records the generation of every item write, in order.
 	keyGenerationsSent []int64
+	// isSuspended answers the account and the event stream as the server does for a suspended account's session.
+	isSuspended bool
+}
+
+// refusesSuspended answers 403 with the suspension sentence while the account is suspended.
+func (server *fakeAPIServer) refusesSuspended(writer http.ResponseWriter) bool {
+	server.mutex.Lock()
+	defer server.mutex.Unlock()
+	if server.isSuspended {
+		writeJSON(writer, http.StatusForbidden, apitypes.Error{Error: apitypes.AccountSuspendedMessage})
+	}
+	return server.isSuspended
 }
 
 func (server *fakeAPIServer) setUnreachable(isUnreachable bool) {
@@ -79,6 +91,9 @@ func (server *fakeAPIServer) refusesKeyGeneration(writer http.ResponseWriter, va
 func (server *fakeAPIServer) createHandler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/account", func(writer http.ResponseWriter, request *http.Request) {
+		if server.refusesSuspended(writer) {
+			return
+		}
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
 		if server.account != nil {
@@ -201,6 +216,9 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 		writeJSON(writer, http.StatusOK, apitypes.MoveItemResponse{SourceSeq: server.seq - 1, TargetSeq: server.seq})
 	})
 	mux.HandleFunc("GET /api/v1/events", func(writer http.ResponseWriter, request *http.Request) {
+		if server.refusesSuspended(writer) {
+			return
+		}
 		server.mutex.Lock()
 		eventChannel := server.eventChannel
 		server.mutex.Unlock()

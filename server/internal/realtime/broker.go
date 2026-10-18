@@ -3,6 +3,7 @@ package realtime
 
 import (
 	"bytes"
+	"slices"
 	"sync"
 )
 
@@ -74,12 +75,25 @@ func (broker *Broker) Publish(accountIDs []string, event Event) {
 	}
 }
 
-// endStreams closes the account's streams except the one of keptTokenHash, without waiting for the next heartbeat.
+// EndStreams closes the account's streams except the one of keptTokenHash, without waiting for the next heartbeat.
 func (broker *Broker) EndStreams(accountID string, keptTokenHash []byte) {
+	broker.endStreamsWhere(accountID, func(subscriber *Subscriber) bool {
+		return keptTokenHash == nil || !bytes.Equal(subscriber.TokenHash, keptTokenHash)
+	})
+}
+
+// EndSessionStreams closes the account's streams of the sessions with endedTokenHashes.
+func (broker *Broker) EndSessionStreams(accountID string, endedTokenHashes [][]byte) {
+	broker.endStreamsWhere(accountID, func(subscriber *Subscriber) bool {
+		return slices.ContainsFunc(endedTokenHashes, func(tokenHash []byte) bool { return bytes.Equal(subscriber.TokenHash, tokenHash) })
+	})
+}
+
+func (broker *Broker) endStreamsWhere(accountID string, shouldEnd func(subscriber *Subscriber) bool) {
 	broker.mutex.Lock()
 	defer broker.mutex.Unlock()
 	for subscriber := range broker.subscribersByAccount[accountID] {
-		if keptTokenHash != nil && bytes.Equal(subscriber.TokenHash, keptTokenHash) {
+		if !shouldEnd(subscriber) {
 			continue
 		}
 		subscriber.isEnded = true

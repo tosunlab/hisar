@@ -13,7 +13,7 @@ const health: AdminHealth = {
       { name: "00002_more.sql", appliedAt: "2026-10-17T12:00:00Z" },
     ],
   },
-  counts: { accounts: 3, vaults: 5, items: 1234, shareLinks: 1, pendingInvites: 2 },
+  counts: { accounts: 3, suspendedAccounts: 1, vaults: 5, items: 1234, shareLinks: 1, pendingInvites: 2 },
   storageBytes: 48_213_000,
   checks: [
     { id: "public-url", title: "Public URL", status: "failed", message: 'https://hisar.example.com/healthz answered "healthy" instead of ok, so it does not lead to this server.' },
@@ -55,6 +55,7 @@ describe("Overview", () => {
     expect(readText(root, "update")).toBe("Version 10.0.0 is available");
     expect(readText(root, "database")).toBe("48.2 MB · All 2 migrations applied");
     expect(readText(root, "count-items")).toBe("1,234Items");
+    expect(readText(root, "count-suspended-accounts")).toBe("1Suspended account");
     expect(readText(root, "count-share-links")).toBe("1Share link");
     expect(readText(root, "count-pending-invites")).toBe("2Pending invites");
     expect(readText(root, "counts-hint")).toBe("The item count may be up to a minute old.");

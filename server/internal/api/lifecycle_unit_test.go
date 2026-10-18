@@ -20,3 +20,18 @@ func TestEventBrokerEndsAllStreamExceptTheKeptOne(t *testing.T) {
 		t.Error("ending every stream kept one")
 	}
 }
+
+func TestEventBrokerEndsTheStreamsOfGivenSessions(t *testing.T) {
+	broker := realtime.NewBroker()
+	laptop, _ := broker.Subscribe("ALICE1", []byte("laptop"))
+	phone, _ := broker.Subscribe("ALICE1", []byte("phone"))
+	other, _ := broker.Subscribe("BOB111", []byte("laptop"))
+	broker.EndSessionStreams("ALICE1", [][]byte{[]byte("laptop")})
+	if !broker.IsEnded(laptop) || broker.IsEnded(phone) || broker.IsEnded(other) {
+		t.Errorf("ended: laptop %v, phone %v, other account %v", broker.IsEnded(laptop), broker.IsEnded(phone), broker.IsEnded(other))
+	}
+	broker.EndSessionStreams("ALICE1", nil)
+	if broker.IsEnded(phone) {
+		t.Error("no session ended a stream")
+	}
+}

@@ -26,13 +26,15 @@ type AdminMigration struct {
 	AppliedAt *time.Time `json:"appliedAt"`
 }
 
-// AdminHealthCounts counts live items, share links that have not expired and sign-up invites still waiting to be used.
+// AdminHealthCounts counts every account, the suspended ones among them, live items, share links that have not expired
+// and sign-up invites still waiting to be used.
 type AdminHealthCounts struct {
-	Accounts       int64 `json:"accounts"`
-	Vaults         int64 `json:"vaults"`
-	Items          int64 `json:"items"`
-	ShareLinks     int64 `json:"shareLinks"`
-	PendingInvites int64 `json:"pendingInvites"`
+	Accounts          int64 `json:"accounts"`
+	SuspendedAccounts int64 `json:"suspendedAccounts"`
+	Vaults            int64 `json:"vaults"`
+	Items             int64 `json:"items"`
+	ShareLinks        int64 `json:"shareLinks"`
+	PendingInvites    int64 `json:"pendingInvites"`
 }
 
 // The outcomes of an instance check.

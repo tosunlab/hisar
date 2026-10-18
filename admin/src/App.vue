@@ -1,20 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { auth, getErrorMessage, signOut } from "./api";
+import { currentPath, navigate } from "./navigation";
 import { findSection, sections } from "./sections";
 import SetupView from "./views/SetupView.vue";
 import SignInView from "./views/SignInView.vue";
 
-const currentPath = ref(window.location.pathname);
 const currentSection = computed(() => findSection(currentPath.value));
 const isSetupPage = computed(() => currentPath.value.replace(/\/+$/, "") === "/admin/setup");
 const isSigningOut = ref(false);
 const signOutError = ref("");
-
-function navigate(path: string): void {
-  window.history.pushState(null, "", path);
-  currentPath.value = path;
-}
 
 // leaveSetup opens the dashboard, signed in or at sign-in, and drops the setup invite from the address bar.
 function leaveSetup(): void {

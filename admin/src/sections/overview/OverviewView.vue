@@ -31,6 +31,7 @@ const counts = computed(() => {
   const current = health.value?.counts;
   return [
     { id: "accounts", labels: ["Account", "Accounts"], value: current?.accounts },
+    { id: "suspended-accounts", labels: ["Suspended account", "Suspended accounts"], value: current?.suspendedAccounts },
     { id: "vaults", labels: ["Vault", "Vaults"], value: current?.vaults },
     { id: "items", labels: ["Item", "Items"], value: current?.items },
     { id: "share-links", labels: ["Share link", "Share links"], value: current?.shareLinks },

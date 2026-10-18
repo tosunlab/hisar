@@ -11,7 +11,7 @@
     "build": "vue-tsc && vite build",
     "typecheck": "vue-tsc",
     "test": "vitest run",
-    "test:end-to-end": "playwright test admin.spec settings.spec setup.spec invites.spec",
+    "test:end-to-end": "playwright test accounts.spec admin.spec settings.spec setup.spec invites.spec",
     "test:perf": "playwright test perf.spec"
   },
   "dependencies": {

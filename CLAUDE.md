@@ -68,7 +68,7 @@ Shared test fixtures are in `helpers_test.go`, the in-memory API in `fakeapi_tes
 | `cmd/hisar-server` | `serve`, `migrate`, `invite`; `setup.go` reads `HISAR_*` and wires everything |
 | `cmd/hisar-admin-wasm` | The admin dashboard's crypto (`js && wasm`, imports only `core`): `signIn`, `reauthenticate` and the first admin's `signUp` on `globalThis.hisar` |
 | `internal/api` | HTTP only: routes, sessions, per-IP limits, event stream, invite and share-link pages, the admin dashboard (`adminpage.go` serves the embedded `adminpage/dist`) and the `/api/v1/admin` routes, each behind `requireSession` and `requireAdmin`; handlers parse and call the service |
-| `internal/service` | The rules: rights, validation, store calls, audit, events, email. One `Service` type, a file per domain (`vaults`, `auth`, `accounts`, `lifecycle`, `invitations`, `sharelinks`, `approvals`, `preferences`, `organizations`, `setup`, and `admin_server`, `admin_settings`, `admin_health`, `admin_invites` for the dashboard) |
+| `internal/service` | The rules: rights, validation, store calls, audit, events, email. One `Service` type, a file per domain (`vaults`, `auth`, `accounts`, `lifecycle`, `invitations`, `sharelinks`, `approvals`, `preferences`, `organizations`, `setup`, and `admin_server`, `admin_settings`, `admin_health`, `admin_accounts`, `admin_invites` for the dashboard) |
 | `internal/store` | Postgres with raw SQL (pgx) and embedded goose migrations |
 | `internal/realtime` | The per-account event broker behind `GET /api/v1/events` |
 | `internal/ratelimit` | Per-key token buckets |
@@ -108,9 +108,10 @@ so rich values are JSON strings.
 | Path | What it holds |
 |---|---|
 | `src/sections.ts` | The navigation table: one `Section` (`id`, `title`, `path`, `component`) per screen |
+| `src/navigation.ts` | The current path and `navigate`, for pages below a section such as `/admin/accounts/<id>` |
 | `src/api.ts` | The session token in `sessionStorage`, `fetch` to the same server's `/api/v1`, sign-in and sign-out |
 | `src/bridge/` | `bridge.ts` posts typed messages to `worker.ts`, the Web Worker that runs `hisar-admin-wasm` |
-| `src/views/`, `src/sections/<area>/` | The sign-in screen and `SetupView.vue`, the first-run setup at `/admin/setup` with its steps in `views/setup/`; one directory per section (`overview`, `invites`, `settings`) |
+| `src/views/`, `src/sections/<area>/` | The sign-in screen and `SetupView.vue`, the first-run setup at `/admin/setup` with its steps in `views/setup/`; one directory per section (`overview`, `accounts`, `invites`, `settings`) |
 | `end-to-end/` | Playwright tests against `hisar-admin-page-fixture`; `perf.spec.ts` checks the size and sign-in time budget |
 
 ## Where new code goes

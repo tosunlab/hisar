@@ -48,6 +48,9 @@ func (c *Client) StreamEvents(ctx context.Context, handleEvent func(Event)) erro
 		if response.StatusCode == http.StatusUpgradeRequired {
 			return c.readUpgradeRequired(data)
 		}
+		if response.StatusCode == http.StatusForbidden {
+			return readError(response.StatusCode, data)
+		}
 		return &APIError{Status: response.StatusCode, Message: strings.TrimSpace(string(data))}
 	}
 

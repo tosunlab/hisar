@@ -102,6 +102,7 @@ func selectQueuedItems(items []item.Item, duplicateIndexes []int, isSkippingDupl
 // isImportStoppingError: these failures would repeat for every item, so the import stops.
 func isImportStoppingError(err error) bool {
 	return apiclient.IsUnreachable(err) || apiclient.IsStatus(err, http.StatusUnauthorized) || apiclient.IsStatus(err, http.StatusForbidden) ||
+		errors.Is(err, apiclient.ErrAccountSuspended) ||
 		apiclient.IsStatus(err, http.StatusTooManyRequests) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 

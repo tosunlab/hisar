@@ -215,7 +215,8 @@ func TestLegalPagesLinkToEachOther(t *testing.T) {
 	if !strings.Contains(string(privacyPolicy), `href="/terms"`) || !strings.Contains(string(termsOfService), `href="/privacy"`) {
 		t.Error("the privacy policy and the terms do not link to each other")
 	}
-	for _, statement := range []string{"cannot read", "OPAQUE", "1 year", "90 days", "14 days", "30 days", "Google", "Data Privacy Framework", "Hetzner Online GmbH", "Helsinki, Finland", "IP address", "Autoriteit Persoonsgegevens", "https://autoriteitpersoonsgegevens.nl", "Art. 6(1)(b)", "Art. 6(1)(f)", "portable"} {
+	for _, statement := range []string{"cannot read", "OPAQUE", "1 year", "90 days", "14 days", "30 days", "Google", "Data Privacy Framework", "Hetzner Online GmbH", "Helsinki, Finland", "IP address", "Autoriteit Persoonsgegevens", "https://autoriteitpersoonsgegevens.nl", "Art. 6(1)(b)", "Art. 6(1)(f)", "portable",
+		"The admins of the Hisar server</strong>, from its admin dashboard, see each account's email address, name, role, whether it is suspended, sign-up date, last activity, and how many devices and vaults it has", "They never see vault names, items or keys", "keeps it and its devices from reaching the server and stops its share links from opening until they reactivate it"} {
 		if !strings.Contains(string(privacyPolicy), statement) {
 			t.Errorf("the privacy policy no longer mentions %q", statement)
 		}
