@@ -32,12 +32,12 @@ finish-args:
   - --filesystem=xdg-config/vivaldi:create
   - --filesystem=xdg-config/vivaldi-snapshot:create
   - --filesystem=xdg-config/opera:create
-  # The Secret Key in the keyring, idle time for auto-lock, the tray icon and notifications.
+  # The Secret Key in the keyring, idle time for auto-lock, the tray icon and notifications. The tray registers with
+  # the watcher under its unique bus name, so it needs no well-known name of its own (Wails asks for one and goes on).
   - --talk-name=org.freedesktop.secrets
   - --talk-name=org.gnome.Mutter.IdleMonitor
   - --talk-name=org.freedesktop.ScreenSaver
   - --talk-name=org.kde.StatusNotifierWatcher
-  - --own-name=org.kde.*
   - --talk-name=org.freedesktop.Notifications
 modules:
   - name: hisar
