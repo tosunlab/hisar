@@ -22,6 +22,7 @@ import com.tryhisar.hisar.model.Organization
 import com.tryhisar.hisar.model.OrganizationSummary
 import com.tryhisar.hisar.model.Organizations
 import com.tryhisar.hisar.model.PasskeyAssertionResult
+import com.tryhisar.hisar.model.PasskeyClientData
 import com.tryhisar.hisar.model.PasskeyRegistrationOptions
 import com.tryhisar.hisar.model.PasskeyRegistrationRequest
 import com.tryhisar.hisar.model.PasskeyRegistrationResult
@@ -60,6 +61,7 @@ import kotlinx.serialization.SerializationException
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.nullable
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -345,6 +347,27 @@ class HisarKitBackend(
             PasskeyAssertionResult.serializer(),
             call { assertPasskey(relyingPartyID, Base64URL.encode(credentialID), Base64URL.encode(clientDataHash)) },
         )
+
+    override fun resolvePasskeyRelyingPartyID(origin: String, relyingPartyID: String): String =
+        callPackage { Hisarkit.resolvePasskeyRelyingPartyID(origin, relyingPartyID) }
+
+    override fun buildAndroidAppOrigin(certificateSHA256: ByteString): String =
+        callPackage { Hisarkit.buildAndroidAppOrigin(certificateSHA256.toByteArray()) }
+
+    override fun buildPasskeyClientData(clientDataType: String, challenge: String, origin: String, androidPackageName: String): PasskeyClientData {
+        val answer = callPackage { Hisarkit.buildPasskeyClientData(clientDataType, challenge, origin, androidPackageName) }
+        val fields = decode(JsonObject.serializer(), answer)
+        return PasskeyClientData(
+            json = fields["clientDataJSON"]?.jsonPrimitive?.content?.let(Base64URL::decode) ?: throw BackendError(UNREADABLE_ANSWER),
+            hash = fields["clientDataHash"]?.jsonPrimitive?.content?.let(Base64URL::decode) ?: throw BackendError(UNREADABLE_ANSWER),
+        )
+    }
+
+    private fun <Value> callPackage(operation: () -> Value): Value = try {
+        operation()
+    } catch (error: Exception) {
+        throw convertError(error)
+    }
 
     override fun deletePasskey(vaultID: String, itemID: String, credentialID: String): ItemDetail =
         decode(ItemDetail.serializer(), call { deletePasskey(vaultID, itemID, credentialID) })

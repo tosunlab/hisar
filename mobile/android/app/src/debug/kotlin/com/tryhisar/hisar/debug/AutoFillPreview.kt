@@ -61,6 +61,7 @@ object AutoFillPreview {
                 provider.copySecret(code)
             },
             cancelRequest = { resultMessage.value = "Cancelled" },
+            passkeyCompletion = AutoFillModel.PasskeyCompletion({}, {}, {}, {}),
         )
         activity.lifecycleScope.launch { model.prepareCredentialList(FillTarget.Websites(listOf(serviceIdentifier)), kind) }
         return {

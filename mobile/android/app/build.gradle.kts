@@ -64,6 +64,7 @@ dependencies {
     implementation(libs.androidx.biometric)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.androidx.autofill)
+    implementation(libs.androidx.credentials)
 
     testImplementation(testFixtures(project(":model")))
     testImplementation(libs.kotlin.test.junit)

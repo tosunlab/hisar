@@ -2,6 +2,7 @@ package com.tryhisar.hisar.autofill
 
 import android.content.Context
 import android.content.pm.PackageManager
+import android.content.pm.SigningInfo
 import java.security.MessageDigest
 
 /** What the device says about the app asking to be filled. */
@@ -16,6 +17,10 @@ object InstalledApps {
         } catch (_: PackageManager.NameNotFoundException) {
             null
         } ?: return null
+        return readAndroidApp(packageName, signingInfo)
+    }
+
+    fun readAndroidApp(packageName: String, signingInfo: SigningInfo): AndroidApp? {
         if (signingInfo.hasMultipleSigners()) return null
         val certificate = signingInfo.apkContentsSigners.singleOrNull() ?: return null
         val digest = MessageDigest.getInstance("SHA-256").digest(certificate.toByteArray())

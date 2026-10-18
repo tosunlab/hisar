@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Credential Manager calls third-party providers from Android 14 (API 34). -->
+    <bool name="isCredentialProviderSupported">false</bool>
+</resources>

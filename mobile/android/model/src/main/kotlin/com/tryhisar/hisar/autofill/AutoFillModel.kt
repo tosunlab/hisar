@@ -1,11 +1,19 @@
 package com.tryhisar.hisar.autofill
 
+import com.tryhisar.hisar.model.Base64URL
 import com.tryhisar.hisar.model.LoginCredential
 import com.tryhisar.hisar.model.LoginMatch
+import com.tryhisar.hisar.model.PasskeyAssertionCredential
+import com.tryhisar.hisar.model.PasskeyAssertionRequest
+import com.tryhisar.hisar.model.PasskeyRegistrationCredential
+import com.tryhisar.hisar.model.PasskeyRegistrationOptions
+import com.tryhisar.hisar.model.PasskeyRegistrationRequest
+import com.tryhisar.hisar.model.StoredPasskey
 import com.tryhisar.hisar.model.VaultBackend
 import com.tryhisar.hisar.model.VaultStatus
 import com.tryhisar.hisar.model.VaultTheme
 import com.tryhisar.hisar.model.describeError
+import kotlinx.io.bytestring.ByteString
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -18,9 +26,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * The AutoFill screens' state, the port of the iPhone extension's AutoFillModel for passwords and one-time codes. It runs
- * on the app's one backend, so an unlock here unlocks the app. Call it from the main thread; backend calls run on
- * [ioDispatcher].
+ * The AutoFill screens' state, the port of the iPhone extension's AutoFillModel for passwords, one-time codes and
+ * passkeys. It runs on the app's one backend, so an unlock here unlocks the app. Call it from the main thread; backend
+ * calls run on [ioDispatcher].
  */
 class AutoFillModel(
     private val scope: CoroutineScope,
@@ -31,13 +39,23 @@ class AutoFillModel(
     private val completeOneTimeCodeRequest: (String) -> Unit,
     private val copyOneTimeCode: (String) -> Unit,
     private val cancelRequest: () -> Unit,
+    private val passkeyCompletion: PasskeyCompletion,
 ) {
+    /** How passkey requests end, and how the sheet's unlock action hands back once Hisar is unlocked. */
+    class PasskeyCompletion(
+        val completeAssertion: (PasskeyAssertionCredential) -> Unit,
+        val completeRegistration: (PasskeyRegistrationCredential) -> Unit,
+        val rejectExcludedRegistration: () -> Unit,
+        val completeUnlock: () -> Unit,
+    )
+
     sealed interface Screen {
         data object Starting : Screen
         data class Failed(val message: String) : Screen
         data object SignedOut : Screen
         data object Locked : Screen
         data object List : Screen
+        data object PasskeyRegistration : Screen
         data object UpdateRequired : Screen
     }
 
@@ -53,6 +71,10 @@ class AutoFillModel(
     private val mutableTheme = MutableStateFlow(VaultTheme.standard)
     private val mutableTarget = MutableStateFlow<FillTarget?>(null)
     private val mutableLoginToLink = MutableStateFlow<LoginMatch?>(null)
+    private val mutableAllMatchingPasskey = MutableStateFlow<List<StoredPasskey>>(emptyList())
+    private val mutablePasskeyAssertionRequest = MutableStateFlow<PasskeyAssertionRequest?>(null)
+    private val mutablePasskeyRegistrationRequest = MutableStateFlow<PasskeyRegistrationRequest?>(null)
+    private val mutablePasskeyRegistrationOptions = MutableStateFlow<PasskeyRegistrationOptions?>(null)
 
     val screen: StateFlow<Screen> = mutableScreen.asStateFlow()
     val status: StateFlow<VaultStatus> = mutableStatus.asStateFlow()
@@ -73,12 +95,34 @@ class AutoFillModel(
 
     /** A login found by search for an app it is not linked to, waiting for the user to link it or fill it once. */
     val loginToLink: StateFlow<LoginMatch?> = mutableLoginToLink.asStateFlow()
+    val allMatchingPasskey: StateFlow<List<StoredPasskey>> = mutableAllMatchingPasskey.asStateFlow()
+    val passkeyAssertionRequest: StateFlow<PasskeyAssertionRequest?> = mutablePasskeyAssertionRequest.asStateFlow()
+    val passkeyRegistrationRequest: StateFlow<PasskeyRegistrationRequest?> = mutablePasskeyRegistrationRequest.asStateFlow()
+    val passkeyRegistrationOptions: StateFlow<PasskeyRegistrationOptions?> = mutablePasskeyRegistrationOptions.asStateFlow()
+    val selectedRegistrationLoginID = MutableStateFlow<String?>(null)
 
     private var pendingRequest: PendingCredentialRequest? = null
+    private var pendingPasskeyCredentialID: ByteString? = null
+
+    // The sheet's "Unlock Hisar" action only unlocks; the sheet then asks again and lists the credentials itself.
+    private var isUnlockOnly = false
     private var sourceByLoginID: Map<String, LoginSource> = emptyMap()
     private var backend: VaultBackend? = null
 
-    val serviceName: String get() = mutableTarget.value?.name.orEmpty()
+    val serviceName: String
+        get() = mutableTarget.value?.name?.ifEmpty { null }
+            ?: mutablePasskeyAssertionRequest.value?.relyingPartyID
+            ?: mutablePasskeyRegistrationRequest.value?.relyingPartyID
+            ?: ""
+
+    val allVisibleMatchingPasskey: List<StoredPasskey>
+        get() {
+            val allWord = mutableSearchText.value.lowercase().split(Regex("\\s+")).filter { it.isNotEmpty() }
+            return mutableAllMatchingPasskey.value.filter { passkey ->
+                val searchable = "${passkey.title} ${passkey.userName} ${passkey.userDisplayName}".lowercase()
+                allWord.all { it in searchable }
+            }
+        }
 
     val allVisibleMatchingLogin: List<LoginMatch>
         get() = filterAllLogin(filterForRequest(mutableAllMatchingLogin.value), mutableSearchText.value)
@@ -142,7 +186,11 @@ class AutoFillModel(
         mutableStatus.value = newStatus
         mutableScreen.value = when {
             newStatus.updateRequired != null -> Screen.UpdateRequired
-            newStatus.state == VaultStatus.STATE_UNLOCKED -> Screen.List
+            newStatus.state == VaultStatus.STATE_UNLOCKED -> when {
+                isUnlockOnly -> Screen.Starting
+                mutablePasskeyRegistrationRequest.value != null -> Screen.PasskeyRegistration
+                else -> Screen.List
+            }
             newStatus.state == VaultStatus.STATE_LOCKED -> Screen.Locked
             else -> Screen.SignedOut
         }
@@ -150,17 +198,35 @@ class AutoFillModel(
 
     private fun resetRequest(target: FillTarget, kind: RequestKind) {
         pendingRequest = null
+        pendingPasskeyCredentialID = null
+        isUnlockOnly = false
         mutableLoginToLink.value = null
         mutableTarget.value = target
         mutableRequestKind.value = kind
+        mutablePasskeyAssertionRequest.value = null
+        mutablePasskeyRegistrationRequest.value = null
+        mutablePasskeyRegistrationOptions.value = null
+        selectedRegistrationLoginID.value = null
+        mutableAllMatchingPasskey.value = emptyList()
     }
 
-    /** The list of logins for a site or app, after an unlock when Hisar is locked. */
-    suspend fun prepareCredentialList(target: FillTarget, kind: RequestKind = RequestKind.PASSWORD) {
+    /** The list of logins for a site or app, and of passkeys for a passkey request, after an unlock when Hisar is locked. */
+    suspend fun prepareCredentialList(target: FillTarget, kind: RequestKind = RequestKind.PASSWORD, passkeyRequest: PasskeyAssertionRequest? = null) {
         resetRequest(target, kind)
+        mutablePasskeyAssertionRequest.value = passkeyRequest
         val backend = prepare() ?: return
         applyStatus(readStatus(backend))
-        if (mutableStatus.value.isUnlocked) loadAllMatchingLogin()
+        if (mutableStatus.value.isUnlocked) loadAllMatchingCredential()
+    }
+
+    /** The sheet's "Unlock Hisar" action: once Hisar is unlocked, hands back so the sheet can ask for the credentials again. */
+    suspend fun prepareUnlock(target: FillTarget, passkeyRequest: PasskeyAssertionRequest?) {
+        resetRequest(target, RequestKind.PASSWORD)
+        mutablePasskeyAssertionRequest.value = passkeyRequest
+        isUnlockOnly = true
+        val backend = prepare() ?: return
+        applyStatus(readStatus(backend))
+        if (mutableStatus.value.isUnlocked) passkeyCompletion.completeUnlock()
     }
 
     /** A suggestion the user picked: filled at once when unlocked, else after the unlock. */
@@ -226,11 +292,99 @@ class AutoFillModel(
     private suspend fun handleUnlocked(newStatus: VaultStatus) {
         applyStatus(newStatus)
         if (!newStatus.isUnlocked) return
-        if (pendingRequest != null) finishPendingRequest() else loadAllMatchingLogin()
+        when {
+            isUnlockOnly -> passkeyCompletion.completeUnlock()
+            mutablePasskeyRegistrationRequest.value != null -> loadPasskeyRegistrationOptions()
+            pendingRequest != null || pendingPasskeyCredentialID != null -> finishPendingRequest()
+            else -> loadAllMatchingCredential()
+        }
     }
 
-    // A suggestion that no longer matches, or whose login is gone, falls back to the list.
+    /** A passkey the user picked in the system's sheet: signed at once when unlocked, else after the unlock. */
+    suspend fun prepareInterfaceToProvidePasskey(request: PasskeyAssertionRequest, credentialID: ByteString) {
+        resetRequest(FillTarget.Websites(emptyList()), RequestKind.PASSWORD)
+        mutablePasskeyAssertionRequest.value = request
+        pendingPasskeyCredentialID = credentialID
+        val backend = prepare() ?: return
+        applyStatus(readStatus(backend))
+        if (mutableStatus.value.isUnlocked) finishPendingRequest()
+    }
+
+    // Like passwords, only a backend that is prepared and still unlocked signs without user interaction.
+    suspend fun providePasskeyWithoutUserInteraction(request: PasskeyAssertionRequest, credentialID: ByteString): PasskeyAssertionCredential? {
+        val backend = backend ?: return null
+        val result = withContext(ioDispatcher) {
+            val status = backend.getStatus()
+            if (!status.isUnlocked || status.updateRequired != null) return@withContext null
+            runCatching { backend.assertPasskey(request.relyingPartyID, credentialID, request.clientDataHash) }.getOrNull()
+        } ?: return null
+        return PasskeyAssertionCredential.create(request.relyingPartyID, request.clientDataHash, result)
+    }
+
+    /** A site asks to save a passkey; without ES256, which Hisar's passkeys use, the request is cancelled. */
+    suspend fun prepareInterfaceForPasskeyRegistration(request: PasskeyRegistrationRequest) {
+        resetRequest(FillTarget.Websites(emptyList()), RequestKind.PASSWORD)
+        if (!request.isAlgorithmSupported) return cancel()
+        mutablePasskeyRegistrationRequest.value = request
+        val backend = prepare() ?: return
+        applyStatus(readStatus(backend))
+        if (mutableStatus.value.isUnlocked) loadPasskeyRegistrationOptions()
+    }
+
+    /** The logins the passkey can join, with the one whose username is the account's user name chosen. */
+    suspend fun loadPasskeyRegistrationOptions() {
+        val request = mutablePasskeyRegistrationRequest.value ?: return
+        val options = perform { it.preparePasskeyRegistration(request.relyingPartyID, request.allExcludedCredentialID) } ?: return
+        mutablePasskeyRegistrationOptions.value = options
+        val userName = request.userName.trim()
+        selectedRegistrationLoginID.value = options.allLogin.firstOrNull { userName.isNotEmpty() && it.username.equals(userName, ignoreCase = true) }?.id
+    }
+
+    /** Saves the passkey to the chosen login, or to a new login in the Personal vault. */
+    suspend fun savePasskey() {
+        val request = mutablePasskeyRegistrationRequest.value ?: return
+        val options = mutablePasskeyRegistrationOptions.value?.takeIf { !it.isExcluded } ?: return
+        val login = options.allLogin.firstOrNull { it.id == selectedRegistrationLoginID.value }
+        val result = perform { it.createPasskey(request, login?.vaultID.orEmpty(), login?.itemID.orEmpty()) } ?: return
+        val credential = PasskeyRegistrationCredential.create(request.relyingPartyID, request.clientDataHash, result)
+        if (credential == null) {
+            errorMessage.value = "Hisar could not read the new passkey."
+            return
+        }
+        passkeyCompletion.completeRegistration(credential)
+    }
+
+    fun rejectExcludedPasskeyRegistration() {
+        passkeyCompletion.rejectExcludedRegistration()
+    }
+
+    suspend fun selectPasskey(passkey: StoredPasskey) {
+        val request = mutablePasskeyAssertionRequest.value ?: return
+        val credentialID = Base64URL.decode(passkey.credentialID) ?: return
+        assertPasskey(request, credentialID)
+    }
+
+    private suspend fun assertPasskey(request: PasskeyAssertionRequest, credentialID: ByteString): Boolean {
+        val result = perform { it.assertPasskey(request.relyingPartyID, credentialID, request.clientDataHash) } ?: return false
+        val credential = PasskeyAssertionCredential.create(request.relyingPartyID, request.clientDataHash, result)
+        if (credential == null) {
+            errorMessage.value = "Hisar could not read the passkey signature."
+            return false
+        }
+        passkeyCompletion.completeAssertion(credential)
+        return true
+    }
+
+    // A suggestion or passkey that no longer matches, or whose login is gone, falls back to the list.
     private suspend fun finishPendingRequest() {
+        val credentialID = pendingPasskeyCredentialID
+        val passkeyRequest = mutablePasskeyAssertionRequest.value
+        if (credentialID != null && passkeyRequest != null) {
+            if (assertPasskey(passkeyRequest, credentialID)) return
+            pendingPasskeyCredentialID = null
+            loadAllMatchingCredential()
+            return
+        }
         val request = pendingRequest ?: return
         val (vaultID, itemID) = LoginMatch.parseRecordIdentifier(request.recordIdentifier) ?: return cancel()
         if (request.kind == RequestKind.ONE_TIME_CODE) {
@@ -247,6 +401,16 @@ class AutoFillModel(
         }
         pendingRequest = null
         loadAllMatchingLogin()
+    }
+
+    suspend fun loadAllMatchingCredential() {
+        loadAllMatchingPasskey()
+        loadAllMatchingLogin()
+    }
+
+    suspend fun loadAllMatchingPasskey() {
+        val request = mutablePasskeyAssertionRequest.value ?: return run { mutableAllMatchingPasskey.value = emptyList() }
+        mutableAllMatchingPasskey.value = perform { it.listAllPasskeyForRelyingParty(request.relyingPartyID, request.allAllowedCredentialID) }.orEmpty()
     }
 
     suspend fun loadAllMatchingLogin() {

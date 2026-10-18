@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!-- A native app that asks Credential Manager for passkeys, in the test APK's package, for PasskeyUITests. -->
+        <activity
+            android:name="com.tryhisar.hisar.passkey.PasskeyCallerActivity"
+            android:exported="true"
+            android:label="Passkey caller"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+    </application>
+
+</manifest>

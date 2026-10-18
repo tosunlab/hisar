@@ -54,6 +54,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.currentStateAsState
 import com.tryhisar.hisar.model.ItemDetail
 import com.tryhisar.hisar.model.LoginMatch
+import com.tryhisar.hisar.passkey.PasskeyRegistrationView
+import com.tryhisar.hisar.passkey.PasskeySection
 import com.tryhisar.hisar.ui.components.ContentUnavailable
 import com.tryhisar.hisar.ui.components.ErrorBanner
 import com.tryhisar.hisar.ui.components.FormRow
@@ -89,7 +91,7 @@ fun AutoFillRoot(model: AutoFillModel) {
                 contentAlignment = Alignment.CenterStart,
             ) {
                 PlainButton("Cancel", model::cancel, testTag = "autofill-cancel")
-                if (screen == AutoFillModel.Screen.List) {
+                if (screen == AutoFillModel.Screen.List || screen == AutoFillModel.Screen.PasskeyRegistration) {
                     Text("Hisar", style = HisarType.headline, color = HisarTheme.colors.label, modifier = Modifier.align(Alignment.Center))
                 }
             }
@@ -105,6 +107,7 @@ fun AutoFillRoot(model: AutoFillModel) {
                         MessageView(Icons.Outlined.ArrowCircleDown, "Update required", "Hisar needs an update. Open Hisar to update it.")
                     AutoFillModel.Screen.Locked -> AutoFillLockView(model)
                     AutoFillModel.Screen.List -> AutoFillListView(model)
+                    AutoFillModel.Screen.PasskeyRegistration -> PasskeyRegistrationView(model)
                 }
             }
         }
@@ -123,6 +126,9 @@ private fun AutoFillLockView(model: AutoFillModel) {
     val errorMessage by model.errorMessage.collectAsStateWithLifecycle()
     val lockCount by model.lockCount.collectAsStateWithLifecycle()
     val requestKind by model.requestKind.collectAsStateWithLifecycle()
+    val passkeyRegistrationRequest by model.passkeyRegistrationRequest.collectAsStateWithLifecycle()
+    val passkeyAssertionRequest by model.passkeyAssertionRequest.collectAsStateWithLifecycle()
+    val target by model.target.collectAsStateWithLifecycle()
     val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
     val isResumed = lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
     val scope = rememberCoroutineScope()
@@ -142,7 +148,9 @@ private fun AutoFillLockView(model: AutoFillModel) {
         errorMessage = errorMessage,
         requestDescription = when {
             serviceName.isEmpty() -> ""
+            passkeyRegistrationRequest != null -> "Save a passkey for $serviceName"
             requestKind == RequestKind.ONE_TIME_CODE -> "Fill a one-time code for $serviceName"
+            passkeyAssertionRequest != null && target?.name.isNullOrEmpty() -> "Sign in with a passkey for $serviceName"
             else -> "Fill a login for $serviceName"
         },
         isOffline = status.isOffline,
@@ -161,6 +169,8 @@ private fun AutoFillListView(model: AutoFillModel) {
     val loginToLink by model.loginToLink.collectAsStateWithLifecycle()
     model.allMatchingLogin.collectAsStateWithLifecycle().value
     model.allOtherLogin.collectAsStateWithLifecycle().value
+    model.allMatchingPasskey.collectAsStateWithLifecycle().value
+    val passkeyAssertionRequest by model.passkeyAssertionRequest.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val serviceName = model.serviceName
     val select: (LoginMatch) -> Unit = { login -> if (!isBusy) scope.launch { model.select(login) } }
@@ -178,6 +188,10 @@ private fun AutoFillListView(model: AutoFillModel) {
                 .padding(horizontal = ScreenMargin),
         ) {
             errorMessage?.let { message -> FormSection { ErrorBanner(message) } }
+            val allPasskey = model.allVisibleMatchingPasskey
+            passkeyAssertionRequest?.takeIf { allPasskey.isNotEmpty() }?.let { request ->
+                PasskeySection(request.relyingPartyID, allPasskey) { passkey -> if (!isBusy) scope.launch { model.selectPasskey(passkey) } }
+            }
             val noun = if (requestKind == RequestKind.ONE_TIME_CODE) "One-time codes" else "Logins"
             val allMatching = model.allVisibleMatchingLogin
             FormSection(header = if (serviceName.isEmpty()) "Matching ${noun.lowercase()}" else "$noun for $serviceName") {

@@ -626,6 +626,25 @@ open class FakeBackend : VaultBackend {
         )
     }
 
+    // The host or a parent domain of it, as core/passkey accepts them; the public suffix check is Go's and is left out.
+    override fun resolvePasskeyRelyingPartyID(origin: String, relyingPartyID: String): String {
+        record("resolvePasskeyRelyingPartyID")
+        val host = Regex("^https://([^/:]+)/?$").find(origin)?.groupValues?.get(1) ?: throw BackendError("the origin is not https, localhost or an Android app")
+        if (relyingPartyID.isEmpty()) return host
+        if (relyingPartyID != host && !host.endsWith(".$relyingPartyID")) throw BackendError("the relying party ID does not belong to the origin")
+        return relyingPartyID
+    }
+
+    override fun buildAndroidAppOrigin(certificateSHA256: ByteString): String =
+        "android:apk-key-hash:" + Base64URL.encode(certificateSHA256)
+
+    override fun buildPasskeyClientData(clientDataType: String, challenge: String, origin: String, androidPackageName: String): PasskeyClientData {
+        record("buildPasskeyClientData")
+        val json = """{"type":"$clientDataType","challenge":"$challenge","origin":"$origin","crossOrigin":false,"androidPackageName":"$androidPackageName"}"""
+            .encodeToByteString()
+        return PasskeyClientData(json, ByteString(java.security.MessageDigest.getInstance("SHA-256").digest(json.toByteArray())))
+    }
+
     override fun deletePasskey(vaultID: String, itemID: String, credentialID: String): ItemDetail {
         record("deletePasskey")
         val item = getItem(vaultID, itemID)

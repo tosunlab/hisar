@@ -1,5 +1,6 @@
 package com.tryhisar.hisar.autofill
 
+import com.tryhisar.hisar.passkey.RelyingPartyVerifier
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
@@ -12,7 +13,7 @@ import java.util.concurrent.TimeUnit
  * request does not wait on the network each time, and every candidate is asked at once, since the system gives a fill
  * request about five seconds.
  */
-object HttpAssetLinksVerifier : AppWebsiteVerifier {
+object HttpAssetLinksVerifier : AppWebsiteVerifier, RelyingPartyVerifier {
     private const val CACHE_MILLISECONDS = 60 * 60 * 1000L
     private const val TIMEOUT_MILLISECONDS = 2_000
     private const val MAXIMUM_BYTES = 256 * 1024
@@ -30,6 +31,9 @@ object HttpAssetLinksVerifier : AppWebsiteVerifier {
             candidate.serviceIdentifier.takeIf { AssetLinks.isVouchingFor(statementJSON, app) }
         }
     }
+
+    override fun isVouchingFor(relyingPartyID: String, app: AndroidApp): Boolean =
+        AssetLinks.isVouchingFor(readStatements("https://$relyingPartyID/.well-known/assetlinks.json"), app)
 
     // The file must be served as is: no redirect, no error page, nothing larger than a statement list needs.
     private fun readStatements(url: String): String {
