@@ -43,6 +43,8 @@ type Request struct {
 	Field string `json:"field,omitempty"`
 	// Generator shapes launcher.passwords.generate; nil uses the app's defaults (24 characters, digits and symbols).
 	Generator *GeneratorChange `json:"generator,omitempty"`
+	// IsEditing makes launcher.items.open show the item's editor instead of its details.
+	IsEditing bool `json:"isEditing,omitempty"`
 }
 
 type Response struct {

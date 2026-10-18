@@ -5,6 +5,8 @@
     "launcher.items.code",
     "launcher.items.password",
     "launcher.items.copy",
+    "launcher.items.open",
+    "launcher.items.share",
     "launcher.passwords.generate",
     "launcher.lock"
   ],
@@ -106,10 +108,25 @@
       "request": {"id": "9", "type": "launcher.lock"},
       "resultType": "Empty",
       "result": {}
+    },
+    {
+      "request": {"id": "10", "type": "launcher.items.open", "vaultID": "v-personal", "itemID": "i-github"},
+      "resultType": "Empty",
+      "result": {}
+    },
+    {
+      "request": {"id": "11", "type": "launcher.items.open", "vaultID": "v-personal", "itemID": "i-github", "isEditing": true},
+      "resultType": "Empty",
+      "result": {}
+    },
+    {
+      "request": {"id": "12", "type": "launcher.items.share", "vaultID": "v-personal", "itemID": "i-github", "shareLink": {"fields": ["username", "password"], "expiresInSeconds": 604800, "maxViews": 1}},
+      "resultType": "ShareLinkResult",
+      "result": {"shareLink": {"id": "Rk3vQ9xT2mLp8sWz", "url": "https://hisar.example.com/s/Rk3vQ9xT2mLp8sWz#key", "title": "GitHub", "fieldLabels": ["username", "password"], "isText": false, "createdAt": "2026-10-17T09:00:00Z", "expiresAt": "2026-10-24T09:00:00Z", "maxViews": 1, "viewCount": 0, "hasPassphrase": false}}
     }
   ],
   "errors": [
-    {"id": "10", "ok": false, "error": {"code": "denied", "message": "Hisar denied the request (it was declined)"}},
-    {"id": "11", "ok": false, "error": {"code": "not-found", "message": "“Office Wi-Fi” has no password"}}
+    {"id": "13", "ok": false, "error": {"code": "denied", "message": "Hisar denied the request (it was declined)"}},
+    {"id": "14", "ok": false, "error": {"code": "not-found", "message": "“Office Wi-Fi” has no password"}}
   ]
 }

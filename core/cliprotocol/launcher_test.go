@@ -83,6 +83,7 @@ func TestLauncherWireMatchesTheContractTheExtensionReads(t *testing.T) {
 		"LauncherPasswordResult":  func() any { return &LauncherPasswordResult{} },
 		"LauncherCopyResult":      func() any { return &LauncherCopyResult{} },
 		"GeneratedPasswordResult": func() any { return &GeneratedPasswordResult{} },
+		"ShareLinkResult":         func() any { return &ShareLinkResult{} },
 		"Empty":                   func() any { return &struct{}{} },
 	}
 	for _, exchange := range golden.Exchanges {

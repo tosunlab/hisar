@@ -3,14 +3,17 @@ package cliprotocol
 import "strings"
 
 // A launcher such as Raycast sends launcher.hello after hello, and from then on only the types below. Launcher requests
-// are read-only: none edits, deletes, shares, exports, imports or resolves secrets for a command. Only
-// launcher.items.password and launcher.items.code return a value, one at a time; launcher.items.copy copies in the app.
+// never edit, delete, export, import or resolve secrets for a command. Only launcher.items.password and
+// launcher.items.code return a value, one at a time; launcher.items.copy copies in the app; launcher.items.open shows the
+// item in the app's window; launcher.items.share creates a share link and asks every time, like hisar share-link.
 const (
 	TypeLauncherHello            = "launcher.hello"
 	TypeLauncherListItem         = "launcher.items.list"
 	TypeLauncherGetCode          = "launcher.items.code"
 	TypeLauncherReadPassword     = "launcher.items.password"
 	TypeLauncherCopyField        = "launcher.items.copy"
+	TypeLauncherOpenItem         = "launcher.items.open"
+	TypeLauncherShareItem        = "launcher.items.share"
 	TypeLauncherGeneratePassword = "launcher.passwords.generate"
 	TypeLauncherLock             = "launcher.lock"
 )
@@ -27,7 +30,7 @@ const (
 func ListLauncherRequestTypes() []string {
 	return []string{
 		TypeLauncherHello, TypeLauncherListItem, TypeLauncherGetCode, TypeLauncherReadPassword,
-		TypeLauncherCopyField, TypeLauncherGeneratePassword, TypeLauncherLock,
+		TypeLauncherCopyField, TypeLauncherOpenItem, TypeLauncherShareItem, TypeLauncherGeneratePassword, TypeLauncherLock,
 	}
 }
 

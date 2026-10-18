@@ -32,12 +32,14 @@ const (
 )
 
 // LauncherApprovalRequest is what the approval window shows about a launcher such as Raycast: the app it is approved
-// as, and the process that asked, for the app's name, icon and process chain.
+// as, and the process that asked, for the app's name, icon and process chain. ShareLink is set for a
+// launcher.items.share request, which asks every time even while the launcher is approved.
 type LauncherApprovalRequest struct {
 	App        AppIdentity
 	ClientPID  int
 	ClientPath string
 	ParentPID  int
+	ShareLink  *ShareLinkDescription
 }
 
 // LauncherApprover asks the user to let a launcher search Hisar and copy and paste from it until Hisar locks; it
