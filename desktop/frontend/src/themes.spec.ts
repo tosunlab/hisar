@@ -3,7 +3,8 @@ import themeSource from "../../../assets/themes/themes.json";
 import generatedCSS from "./themes.css?raw";
 import generatedAdminCSS from "../../../admin/src/themes.css?raw";
 import generatedSwift from "../../../mobile/ios/Shared/Views/ThemePalettes.swift?raw";
-import { computeContrastRatio, renderThemeCSS, renderThemeSwift, resolveAllTheme, type ThemeSource } from "../../../scripts/themes/render";
+import generatedKotlin from "../../../mobile/android/model/src/main/kotlin/com/tryhisar/hisar/model/theme/ThemePalettes.kt?raw";
+import { computeContrastRatio, renderThemeCSS, renderThemeKotlin, renderThemeSwift, resolveAllTheme, type ThemeSource } from "../../../scripts/themes/render";
 
 const source = themeSource as ThemeSource;
 const allTheme = resolveAllTheme(source);
@@ -67,9 +68,10 @@ describe("themes", () => {
     expect(computeContrastRatio("#767676", "#ffffff")).toBeCloseTo(4.54, 2);
   });
 
-  it("keeps the generated CSS and Swift up to date with themes.json (run make generate-themes)", () => {
+  it("keeps the generated CSS, Swift and Kotlin up to date with themes.json (run make generate-themes)", () => {
     expect(generatedCSS).toBe(renderThemeCSS(source));
     expect(generatedAdminCSS).toBe(renderThemeCSS(source));
     expect(generatedSwift).toBe(renderThemeSwift(source));
+    expect(generatedKotlin).toBe(renderThemeKotlin(source));
   });
 });
