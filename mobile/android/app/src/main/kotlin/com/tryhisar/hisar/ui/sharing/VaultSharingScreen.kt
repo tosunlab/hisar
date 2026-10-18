@@ -220,7 +220,10 @@ fun VaultSharingScreen(model: AppModel, vaultID: String, onDone: () -> Unit) {
                             "Cancel", Icons.Outlined.Cancel, "cancel-invitation-${invitation.email}", isLeading = false,
                             onAction = { invitationToCancel = invitation }, actionColor = HisarTheme.colors.destructive,
                         ) {
-                            SentInvitationRow(invitation, isVaultNameShown = false, testTag = "vault-invitation-${invitation.email}")
+                            SentInvitationRow(
+                                invitation, isVaultNameShown = false, testTag = "vault-invitation-${invitation.email}",
+                                onCancel = { invitationToCancel = invitation },
+                            )
                         }
                     }
                 }

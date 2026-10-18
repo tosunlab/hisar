@@ -240,4 +240,21 @@ class VaultsScreenUITests : HisarUITestCase() {
             saveScreenshot("search-no-results")
         }
     }
+
+    @Test
+    fun testTypingASearchCountsAsActivity() {
+        val backend = buildBackend()
+        launchApp(backend).use {
+            waitFor("vaults-list")
+            val countBeforeTab = backend.countCall("reportActivity")
+            tap("tab-search")
+            waitFor("search-empty")
+            composeRule.waitUntil(5_000) { backend.countCall("reportActivity") > countBeforeTab }
+            val countBeforeTyping = backend.countCall("reportActivity")
+            for (letter in listOf("a", "l", "i")) type(letter, "search-field")
+            composeRule.waitUntil("every change to the search reports activity", 5_000) {
+                backend.countCall("reportActivity") >= countBeforeTyping + 3
+            }
+        }
+    }
 }

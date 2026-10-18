@@ -1,8 +1,14 @@
 package com.tryhisar.hisar.ui.item
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.StrokeCap
@@ -31,6 +38,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.text
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -82,12 +91,7 @@ internal fun OneTimeCodeRow(model: AppModel, vaultID: String, itemID: String, co
                 Text("One-time code", style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel)
                 val code = oneTimeCode
                 when {
-                    code != null -> Text(
-                        code.formattedCode,
-                        style = HisarType.title2.copy(fontWeight = FontWeight.SemiBold, fontFeatureSettings = "tnum"),
-                        color = HisarTheme.colors.label,
-                        modifier = Modifier.testTag("one-time-code-value"),
-                    )
+                    code != null -> RollingCode(code.formattedCode)
                     isUnavailable -> Text("The one-time password could not be read.", style = HisarType.body, color = HisarTheme.colors.secondaryLabel)
                     else -> CircularProgressIndicator(Modifier.size(20.dp), color = HisarTheme.colors.secondaryLabel, strokeWidth = 2.dp)
                 }
@@ -95,6 +99,31 @@ internal fun OneTimeCodeRow(model: AppModel, vaultID: String, itemID: String, co
             oneTimeCode?.let { code ->
                 CountdownRing(secondsLeft = code.countSecondsLeft(now), period = code.period)
                 FieldIconButton(Icons.Outlined.ContentCopy, "Copy one-time code", "copy-one-time-code", copy)
+            }
+        }
+    }
+}
+
+/** The code, each changed digit rolling up into place, as `.contentTransition(.numericText())` animates it. */
+@Composable
+private fun RollingCode(code: String) {
+    Row(
+        Modifier
+            .clipToBounds()
+            .testTag("one-time-code-value")
+            .clearAndSetSemantics { text = AnnotatedString(code) },
+    ) {
+        for (character in code) {
+            AnimatedContent(
+                targetState = character,
+                transitionSpec = { (slideInVertically { it } + fadeIn()) togetherWith (slideOutVertically { -it } + fadeOut()) },
+                label = "digit",
+            ) { shown ->
+                Text(
+                    shown.toString(),
+                    style = HisarType.title2.copy(fontWeight = FontWeight.SemiBold, fontFeatureSettings = "tnum"),
+                    color = HisarTheme.colors.label,
+                )
             }
         }
     }

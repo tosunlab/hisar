@@ -137,7 +137,10 @@ fun PeopleScreen(model: AppModel, onBack: () -> Unit) {
                             "Cancel", Icons.Outlined.Cancel, "cancel-sent-invitation-${invitation.email}", isLeading = false,
                             onAction = { invitationToCancel = invitation }, actionColor = HisarTheme.colors.destructive,
                         ) {
-                            SentInvitationRow(invitation, isVaultNameShown = true, testTag = "sent-invitation-${invitation.email}")
+                            SentInvitationRow(
+                                invitation, isVaultNameShown = true, testTag = "sent-invitation-${invitation.email}",
+                                onCancel = { invitationToCancel = invitation },
+                            )
                         }
                     }
                 }

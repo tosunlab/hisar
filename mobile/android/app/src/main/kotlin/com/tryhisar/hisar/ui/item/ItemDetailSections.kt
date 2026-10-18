@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Notes
 import androidx.compose.material.icons.outlined.ChevronRight
@@ -290,7 +291,7 @@ private fun SecureNoteSection(item: ItemDetail, actions: ItemFieldActions) {
         if (item.notes.isEmpty()) {
             FormRow { Text("This note is empty.", style = HisarType.body, color = HisarTheme.colors.secondaryLabel) }
         } else {
-            FormRow { Text(item.notes, style = HisarType.body, color = HisarTheme.colors.label, modifier = Modifier.testTag("secure-note-notes")) }
+            FormRow { SelectionContainer { Text(item.notes, style = HisarType.body, color = HisarTheme.colors.label, modifier = Modifier.testTag("secure-note-notes")) } }
             RowDivider()
             FormButtonRow("Copy notes", onClick = { actions.copy("notes", "Notes") }, testTag = "copy-notes", icon = Icons.Outlined.ContentCopy, color = HisarTheme.colors.tint)
         }
@@ -486,12 +487,14 @@ private fun AndroidAppRow(androidApp: ItemAndroidApp, isWritable: Boolean, remov
             FieldIconButton(Icons.Outlined.Delete, "Remove ${androidApp.packageName}", "remove-android-app-${androidApp.packageName}", remove, tint = HisarTheme.colors.destructive)
         }
     }) {
-        Text(androidApp.packageName, style = HisarType.body, color = HisarTheme.colors.label)
-        Text(
-            "Certificate SHA-256 ${androidApp.certificateSHA256}",
-            style = HisarType.footnote.copy(fontSize = HisarType.footnote.fontSize * 0.92f, fontFamily = HisarType.bodyMonospaced.fontFamily),
-            color = HisarTheme.colors.secondaryLabel,
-        )
+        SelectionContainer { Text(androidApp.packageName, style = HisarType.body, color = HisarTheme.colors.label) }
+        SelectionContainer {
+            Text(
+                "Certificate SHA-256 ${androidApp.certificateSHA256}",
+                style = HisarType.footnote.copy(fontSize = HisarType.footnote.fontSize * 0.92f, fontFamily = HisarType.bodyMonospaced.fontFamily),
+                color = HisarTheme.colors.secondaryLabel,
+            )
+        }
     }
 }
 

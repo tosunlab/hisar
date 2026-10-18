@@ -29,6 +29,7 @@ import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.Cancel
 import androidx.compose.material.icons.outlined.Drafts
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.IosShare
@@ -36,7 +37,11 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -62,6 +67,8 @@ import com.tryhisar.hisar.ui.components.ScreenMargin
 import com.tryhisar.hisar.ui.theme.HisarTheme
 import com.tryhisar.hisar.ui.theme.HisarType
 import com.tryhisar.hisar.ui.vaults.BarCapsuleButton
+import com.tryhisar.hisar.ui.vaults.HisarMenu
+import com.tryhisar.hisar.ui.vaults.HisarMenuItem
 
 private val CaptionStyle = HisarType.footnote.copy(fontSize = 12.sp, lineHeight = 16.sp)
 private val SecurityCodeCaptionStyle = HisarType.bodyMonospaced.copy(fontSize = 11.sp, lineHeight = 13.sp)
@@ -194,36 +201,58 @@ fun MemberRow(
     }
 }
 
-/** An invitation someone has not accepted yet: the email, where it stands, and its role on the right. */
+/**
+ * An invitation someone has not accepted yet: the email, where it stands, and its role on the right. With [onCancel],
+ * touch and hold offers "Cancel Invitation".
+ */
 @Composable
-fun SentInvitationRow(invitation: SentShareInvitation, isVaultNameShown: Boolean, testTag: String) {
+fun SentInvitationRow(invitation: SentShareInvitation, isVaultNameShown: Boolean, testTag: String, onCancel: (() -> Unit)? = null) {
     val isAccepted = invitation.state == SentShareInvitation.STATE_ACCEPTED
     val stateText = if (isAccepted) "Accepted, Hisar is finishing sharing" else "Waiting for them to accept"
     val detail = if (isVaultNameShown) "${invitation.vaultName.ifEmpty { "A vault you own" }} · $stateText" else stateText
-    InvitedRow(invitation.email, detail, VaultLogic.describeVaultRole(invitation.role), if (isAccepted) Icons.Outlined.Drafts else Icons.Outlined.Email, testTag)
+    InvitedRow(
+        invitation.email, detail, VaultLogic.describeVaultRole(invitation.role), if (isAccepted) Icons.Outlined.Drafts else Icons.Outlined.Email, testTag,
+        onCancel = onCancel,
+    )
 }
 
-/** An invited email with a line under it and a role badge, as a Label with a badge. */
+/**
+ * An invited email with a line under it and a role badge, as a Label with a badge. With [onCancel], touch and hold opens
+ * a menu whose one destructive entry, [cancelLabel], runs it, as the iPhone's contextMenu.
+ */
 @Composable
-fun InvitedRow(email: String, detail: String, roleText: String, icon: ImageVector, testTag: String) {
+fun InvitedRow(
+    email: String,
+    detail: String,
+    roleText: String,
+    icon: ImageVector,
+    testTag: String,
+    onCancel: (() -> Unit)? = null,
+    cancelLabel: String = "Cancel Invitation",
+) {
     val colors = HisarTheme.colors
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .heightIn(min = 52.dp)
-            .background(colors.cellBackground)
-            .semantics(mergeDescendants = true) {}
-            .testTag(testTag)
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
+    var isMenuShown by remember { mutableStateOf(false) }
+    LabelRow(
+        icon,
+        colors.tint,
+        testTag,
+        onLongClick = onCancel?.let { { isMenuShown = true } },
+        menu = {
+            if (onCancel != null) {
+                HisarMenu(isMenuShown, onDismiss = { isMenuShown = false }) {
+                    HisarMenuItem(cancelLabel, "invitation-menu-cancel", icon = Icons.Outlined.Cancel, isDestructive = true, onClick = {
+                        isMenuShown = false
+                        onCancel()
+                    })
+                }
+            }
+        },
+        trailing = { Text(roleText, style = HisarType.body, color = colors.secondaryLabel) },
     ) {
-        Icon(icon, contentDescription = null, tint = colors.tint, modifier = Modifier.size(22.dp))
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(email, style = HisarType.body, color = colors.label)
             Text(detail, style = HisarType.footnote, color = colors.secondaryLabel)
         }
-        Text(roleText, style = HisarType.body, color = colors.secondaryLabel)
     }
 }
 

@@ -99,6 +99,13 @@ fun SettingsTab(model: AppModel) {
     val push: (SettingsDestination) -> Unit = { stack = stack + it }
     val pop: () -> Unit = { stack = stack.dropLast(1) }
     BackHandler(enabled = stack.isNotEmpty() && stack.last() != SettingsDestination.REPLACE_SECRET_KEY, onBack = pop)
+    val isAutoFillSettingsRequested by model.isAutoFillSettingsRequested.collectAsStateWithLifecycle()
+    LaunchedEffect(isAutoFillSettingsRequested) {
+        if (!isAutoFillSettingsRequested) return@LaunchedEffect
+        model.isAutoFillSettingsRequested.value = false
+        // The new Secret Key is shown only once, so its screen stays until Done.
+        if (stack.lastOrNull() != SettingsDestination.REPLACE_SECRET_KEY) stack = listOf(SettingsDestination.AUTOFILL)
+    }
 
     AnimatedContent(
         targetState = stack,

@@ -58,7 +58,17 @@ private fun SearchScreen(model: AppModel) {
         Box(Modifier.weight(1f)) {
             LazyColumn(Modifier.fillMaxSize().testTag("search-results")) {
                 item(key = "title") { Box(Modifier.padding(horizontal = ScreenMargin)) { LargeTitle("Search", topPadding = 0.dp) } }
-                item(key = "search") { SearchField(searchText, { searchText = it }, "Logins, keys and notes", testTag = "search-field") }
+                item(key = "search") {
+                    SearchField(
+                        searchText,
+                        {
+                            searchText = it
+                            model.reportActivity()
+                        },
+                        "Logins, keys and notes",
+                        testTag = "search-field",
+                    )
+                }
                 crossVaultRows(model, model.navigation.search, allMatch)
                 item(key = "bottom") { Spacer(Modifier.height(TabBarHeight + 24.dp)) }
             }

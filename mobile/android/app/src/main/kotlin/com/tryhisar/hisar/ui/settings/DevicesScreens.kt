@@ -98,7 +98,7 @@ fun DevicesScreen(model: AppModel, onBack: () -> Unit) {
         return
     }
 
-    SettingsScreen("Devices", onBack) {
+    SettingsScreen("Devices", onBack, onRefresh = { load() }) {
         errorMessage?.let { FormSection { ErrorBanner(it) } }
         val shownDevices = allDevice
         if (shownDevices == null) {

@@ -41,6 +41,8 @@ open class FakeBackend : VaultBackend {
     var allPendingApproval: MutableList<PhoneApproval> = mutableListOf()
     val allApprovalAnswer = mutableListOf<String>()
     var allDevice: MutableList<Device> = mutableListOf()
+    /** While set, listing the devices fails with this sentence. */
+    var listAllDeviceErrorMessage: String? = null
     var isMacApprovalAllowedValue = true
     var isWebsiteIconsEnabledValue = true
     var websiteIconByURL: MutableMap<String, ByteString> = mutableMapOf()
@@ -73,6 +75,8 @@ open class FakeBackend : VaultBackend {
     private fun record(name: String) {
         synchronized(callLock) { allCallName += name }
     }
+
+    fun countCall(name: String): Int = synchronized(callLock) { allCallName.count { it == name } }
 
     fun seedSignedIn(state: String = VaultStatus.STATE_UNLOCKED) {
         status = VaultStatus(
@@ -702,6 +706,7 @@ open class FakeBackend : VaultBackend {
     override fun listAllDevice(): List<Device> {
         record("listAllDevice")
         requireUnlocked()
+        listAllDeviceErrorMessage?.let { throw BackendError(it) }
         return allDevice.toList()
     }
 
