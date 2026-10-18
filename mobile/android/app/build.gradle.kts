@@ -65,6 +65,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
 
     testImplementation(testFixtures(project(":model")))
+    testImplementation(libs.kotlin.test.junit)
     androidTestImplementation(testFixtures(project(":model")))
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.compose.ui.test.junit4)
