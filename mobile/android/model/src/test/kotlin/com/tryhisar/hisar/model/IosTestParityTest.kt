@@ -23,6 +23,7 @@ class IosTestParityTest {
         "testSecretKeyScreenSkipsTheOfferWithoutFaceID" to "testSecretKeyScreenSkipsTheOfferWithoutBiometrics",
         "testRefreshFinishingAfterLockingBringsNothingBackAndKeepsAutoFill" to "testRefreshFinishingAfterLockingBringsNothingBack",
         "testSignedOutByServerShowsReasonAndClearsAutoFill" to "testSignedOutByServerShowsReason",
+        "testSaveNewItemAddsItWithoutSecretsAndUpdatesIdentities" to "testSaveNewItemAddsItWithoutSecrets",
     )
 
     private val notApplicable = run {
