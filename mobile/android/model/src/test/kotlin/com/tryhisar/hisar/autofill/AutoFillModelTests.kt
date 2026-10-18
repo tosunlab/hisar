@@ -15,6 +15,9 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
@@ -287,6 +290,22 @@ class AutoFillModelTests {
         assertEquals(listOf("bank-password"), allCompletedCredential.map { it.password })
         assertFalse("addAndroidApp" in backend.allCallName)
         assertTrue(backend.getItem("personal", "bank").allAndroidApp.isEmpty())
+    }
+
+    @Test
+    fun testUnlockFinishesAfterTheLockScreenLeaves() = runTest {
+        backend.seedSignedIn(state = VaultStatus.STATE_LOCKED)
+        val model = createModel()
+        model.prepareCredentialList(websites("github.com"))
+        val lockScreen = launch { model.unlock(FakeBackend.PASSWORD) }
+        launch {
+            model.screen.first { it == AutoFillModel.Screen.List }
+            lockScreen.cancel()
+        }
+        lockScreen.join()
+        backgroundScope.coroutineContext.job.children.forEach { it.join() }
+        assertEquals(listOf("GitHub"), model.allMatchingLogin.value.map { it.title }, "the list loads though the screen that unlocked is gone")
+        assertNull(model.errorMessage.value)
     }
 
     @Test

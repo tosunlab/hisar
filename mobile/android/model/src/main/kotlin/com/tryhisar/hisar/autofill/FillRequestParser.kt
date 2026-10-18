@@ -57,9 +57,10 @@ object FillRequestParser {
         val oneTimeCode = classified.firstOrNull { it.second == FieldKind.ONE_TIME_CODE }?.first
         if (username == null && password == null && oneTimeCode == null) return null
         val source = when {
-            packageName !in allBrowserPackage -> AutofillSource.App(packageName)
-            webNode != null -> AutofillSource.Web(webNode.webScheme?.lowercase()?.ifEmpty { null } ?: "https", webNode.webDomain!!.lowercase())
-            else -> AutofillSource.UnknownPage(packageName)
+            webNode != null && packageName in allBrowserPackage ->
+                AutofillSource.Web(webNode.webScheme?.lowercase()?.ifEmpty { null } ?: "https", webNode.webDomain!!.lowercase())
+            packageName in TrustedBrowsers.allPackageName -> AutofillSource.UnknownPage(packageName)
+            else -> AutofillSource.App(packageName)
         }
         return LoginForm(source, username?.autofillID, password?.autofillID, oneTimeCode?.autofillID)
     }

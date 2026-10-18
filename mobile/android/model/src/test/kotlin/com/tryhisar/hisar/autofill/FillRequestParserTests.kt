@@ -99,6 +99,12 @@ class FillRequestParserTests {
     }
 
     @Test
+    fun testAPackageTrustedOnlyForPagesIsAnAppWithoutAPage() {
+        val nativeForm = listOf(FormNode(children = listOf(FormNode(autofillID = "p", isTextField = true, inputType = 0x81))))
+        assertEquals(AutofillSource.App("com.example.test"), FillRequestParser.parse(nativeForm, "com.example.test", browsers + "com.example.test")?.source)
+    }
+
+    @Test
     fun testOneTimeCodeFieldAloneAsksForACode() {
         val form = FillRequestParser.parse(listOf(page(input("code", "type" to "text", hints = listOf("one-time-code")))), chrome, browsers)
         assertEquals(LoginForm(AutofillSource.Web("http", "127.0.0.1"), null, null, "code"), form)

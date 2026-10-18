@@ -6,8 +6,10 @@ import com.tryhisar.hisar.model.VaultBackend
 import com.tryhisar.hisar.model.VaultStatus
 import com.tryhisar.hisar.model.VaultTheme
 import com.tryhisar.hisar.model.describeError
+import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -106,6 +108,8 @@ class AutoFillModel(
             this.backend = backend
             mutableTheme.value = theme
             backend
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: Exception) {
             mutableScreen.value = Screen.Failed(describeError(error))
             null
@@ -119,6 +123,8 @@ class AutoFillModel(
             val value = withContext(ioDispatcher) { operation(backend) }
             errorMessage.value = null
             value
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: Exception) {
             errorMessage.value = describeError(error)
             null
@@ -201,20 +207,21 @@ class AutoFillModel(
         if (code != null) copyOneTimeCode(code.code)
     }
 
-    suspend fun unlock(password: String): Boolean {
-        val newStatus = perform { it.unlock(password) } ?: return false
+    // Unlocking replaces the lock screen that called it, so the work runs in the model's scope, not the screen's.
+    suspend fun unlock(password: String): Boolean = scope.async {
+        val newStatus = perform { it.unlock(password) } ?: return@async false
         handleUnlocked(newStatus)
-        return true
-    }
+        true
+    }.await()
 
-    suspend fun unlockWithBiometric() {
+    suspend fun unlockWithBiometric() = scope.async {
         val newStatus = if (mutableStatus.value.biometricReady) perform { it.unlockWithBiometric() } else null
         if (newStatus == null) {
             backend?.let { mutableStatus.value = readStatus(it) }
-            return
+        } else {
+            handleUnlocked(newStatus)
         }
-        handleUnlocked(newStatus)
-    }
+    }.await()
 
     private suspend fun handleUnlocked(newStatus: VaultStatus) {
         applyStatus(newStatus)

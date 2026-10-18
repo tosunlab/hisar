@@ -14,6 +14,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.tryhisar.hisar.app.Screen
+import com.tryhisar.hisar.autofill.SavedLoginInbox
 import com.tryhisar.hisar.ui.root.RootScreen
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -36,13 +37,17 @@ class MainActivity : FragmentActivity() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.CREATED) { screenshotSetting.allowedChanges.collect(::applyScreenshotSetting) }
         }
-        if (savedInstanceState == null) openLink(intent)
+        if (savedInstanceState == null) {
+            openLink(intent)
+            SavedLoginInbox.open(intent, viewModel.model, lifecycleScope)
+        }
         setContent { RootScreen(viewModel.model, viewModel::copySecret) }
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         openLink(intent)
+        SavedLoginInbox.open(intent, viewModel.model, lifecycleScope)
     }
 
     private fun applyScreenshotSetting(isAllowed: Boolean) {
