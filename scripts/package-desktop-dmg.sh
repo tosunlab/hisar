@@ -2,7 +2,9 @@
 # Builds a universal (Apple silicon + Intel) Hisar.app with Sparkle and the hisar CLI, and wraps it in desktop/bin/Hisar-<version>.dmg.
 # Usage: package-desktop-dmg.sh [version]     (default: the version in desktop/build/darwin/Info.plist)
 # Needs macOS with Xcode command line tools, Go, Node, wails3 (make install-wails) and dmgbuild (pip install dmgbuild).
-# HISAR_SIGNING_IDENTITY signs with a Developer ID instead of ad-hoc (scripts/sign-desktop-app.sh).
+# HISAR_SIGNING_IDENTITY signs with a team identity instead of ad-hoc (scripts/sign-desktop-app.sh). With HISAR_NOTARY_KEY
+# as well (and HISAR_NOTARY_KEY_ID, HISAR_NOTARY_ISSUER_ID), the app is notarized and stapled before the DMG and the
+# Sparkle zip are made from it, and the DMG is signed, notarized and stapled too (scripts/notarize-desktop.sh).
 set -euo pipefail
 
 scriptDirectory="$(cd "$(dirname "$0")" && pwd)"
@@ -37,6 +39,12 @@ otool -l "$application/Contents/MacOS/Hisar" | grep "path @executable_path/../Fr
 for binary in MacOS/Hisar MacOS/hisar-browser-host Helpers/hisar Frameworks/Sparkle.framework/Versions/Current/Sparkle; do
   test "$(lipo -archs "$application/Contents/$binary")" = "x86_64 arm64"
 done
+isNotarizing=false
+if [ -n "${HISAR_NOTARY_KEY:-}" ]; then
+  test "${HISAR_SIGNING_IDENTITY:--}" != - || { echo "notarizing needs HISAR_SIGNING_IDENTITY (a Developer ID Application identity)" >&2; exit 1; }
+  isNotarizing=true
+  "$scriptDirectory/notarize-desktop.sh" "$application"
+fi
 
 output=bin/Hisar-$version.dmg
 rm -f "$output"
@@ -44,4 +52,8 @@ dmgbuild -s build/darwin/dmg-settings.py \
   -D application="$application" -D background=build/darwin/dmg-background.png -D volume_icon=build/darwin/icons.icns \
   "Hisar $version" "$output"
 hdiutil verify "$output" >/dev/null
+if $isNotarizing; then
+  codesign --force --sign "$HISAR_SIGNING_IDENTITY" --timestamp "$output"
+  "$scriptDirectory/notarize-desktop.sh" "$output"
+fi
 echo "$PWD/$output"
