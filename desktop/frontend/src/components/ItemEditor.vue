@@ -641,6 +641,14 @@ async function submitItem(): Promise<void> {
       <p class="muted passkey-note">Passkeys stay as they are when you save. Delete one from the item view.</p>
     </section>
 
+    <section v-if="(draft.androidApps ?? []).length > 0" class="card editor-card" data-testid="editor-android-apps">
+      <p class="section-label">Android apps</p>
+      <p v-for="androidApp in draft.androidApps" :key="`${androidApp.packageName} ${androidApp.certificateSha256}`" class="passkey-line">
+        <AppIcon name="phone" :size="14" /> {{ androidApp.packageName }}
+      </p>
+      <p class="muted passkey-note">Android apps stay as they are when you save. Link or unlink them on an Android phone.</p>
+    </section>
+
     <section v-if="!isSecureNote" class="card editor-card">
       <label class="last">
         <span>Notes</span>

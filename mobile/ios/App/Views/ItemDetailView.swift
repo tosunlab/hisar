@@ -196,6 +196,17 @@ struct ItemDetailView: View {
                     }
                 }
             }
+            if !item.allAndroidApp.isEmpty {
+                Section {
+                    ForEach(item.allAndroidApp) { androidApp in
+                        buildAndroidAppRow(androidApp)
+                    }
+                } header: {
+                    Text(item.allAndroidApp.count == 1 ? "Android app" : "Android apps")
+                } footer: {
+                    Text("Linked on an Android phone. AutoFill there offers this login in these apps.")
+                }
+            }
             if !item.allPasskey.isEmpty {
                 Section("Passkeys") {
                     ForEach(item.allPasskey) { passkey in
@@ -534,6 +545,23 @@ struct ItemDetailView: View {
                 copy: { copy(fieldName: "public key", label: "Public key") },
                 copyReference: { copyReference(fieldName: "public key") }
             )
+        }
+    }
+
+    private func buildAndroidAppRow(_ androidApp: ItemAndroidApp) -> some View {
+        Label {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(androidApp.packageName)
+                    .textSelection(.enabled)
+                Text("Certificate SHA-256 \(androidApp.certificateSHA256)")
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.themeSecondary)
+                    .textSelection(.enabled)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier("android-app-\(androidApp.packageName)")
+        } icon: {
+            Image(systemName: "apps.iphone")
         }
     }
 

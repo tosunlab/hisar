@@ -329,6 +329,7 @@ func TestIntegrationMobileFlow(t *testing.T) {
 	checkSecureNoteFlow(t, hisar, personalID)
 	checkCreditCardFlow(t, hisar, personalID)
 	checkPasskeyFlow(t, hisar, personalID, saved.ID)
+	checkAndroidAppFlow(t, hisar, personalID, saved.ID)
 	checkSharingFlow(t, hisar)
 	checkSettingsFlow(t, hisar, password, signUp.SecretKey, personalID, saved.ID)
 

@@ -259,6 +259,9 @@ type ItemDetail struct {
 	HasOneTimePassword bool   `json:"hasOneTimePassword"`
 
 	Passkeys []ItemPasskey `json:"passkeys"`
+	// AndroidApps are the Android apps a login fills into, which the item stores among its URLs; URLs holds only its
+	// websites. SaveItem keeps the stored ones; AddAndroidApp and RemoveAndroidApp change them.
+	AndroidApps []ItemAndroidApp `json:"androidApps"`
 	// CanConvertToSecureNote: a login with only notes and custom fields, which ConvertToSecureNote turns into a secure note.
 	CanConvertToSecureNote bool `json:"canConvertToSecureNote"`
 	// Card holds a credit card's values, which are stored as named custom fields; Fields then holds only the others.

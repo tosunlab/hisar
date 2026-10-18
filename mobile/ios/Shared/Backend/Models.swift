@@ -182,6 +182,8 @@ struct ItemDetail: Codable, Identifiable, Hashable {
     var oneTimePassword: String
     var hasOneTimePassword: Bool
     var allPasskey: [ItemPasskey]
+    /// The Android apps a login fills into, linked on an Android phone; the backend keeps them when the item is saved.
+    var allAndroidApp: [ItemAndroidApp]
     /// A login with nothing but notes and custom fields, which the backend can turn into a secure note.
     var canConvertToSecureNote: Bool
     /// A credit card's values, stored as named custom fields; allField then holds only the others. Summaries keep only the
@@ -216,9 +218,10 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         case allTag = "tags"
         case allField = "fields"
         case allPasskey = "passkeys"
+        case allAndroidApp = "androidApps"
     }
 
-    init(id: String = "", revision: String = "", category: String = ItemDetail.categoryLogin, title: String = "", username: String = "", allURL: [String] = [], allTag: [String] = [], password: String = "", notes: String = "", allField: [ItemField] = [], publicKey: String = "", fingerprint: String = "", keyType: String = "", oneTimePassword: String = "", hasOneTimePassword: Bool = false, allPasskey: [ItemPasskey] = [], canConvertToSecureNote: Bool = false, card: ItemCard? = nil, identity: ItemIdentity? = nil, isFavorite: Bool = false, apiCredential: ItemAPICredential? = nil, address: ItemAddress? = nil, softwareLicense: ItemSoftwareLicense? = nil, server: ItemServer? = nil, database: ItemDatabase? = nil, icon: ChosenIcon? = nil) {
+    init(id: String = "", revision: String = "", category: String = ItemDetail.categoryLogin, title: String = "", username: String = "", allURL: [String] = [], allTag: [String] = [], password: String = "", notes: String = "", allField: [ItemField] = [], publicKey: String = "", fingerprint: String = "", keyType: String = "", oneTimePassword: String = "", hasOneTimePassword: Bool = false, allPasskey: [ItemPasskey] = [], allAndroidApp: [ItemAndroidApp] = [], canConvertToSecureNote: Bool = false, card: ItemCard? = nil, identity: ItemIdentity? = nil, isFavorite: Bool = false, apiCredential: ItemAPICredential? = nil, address: ItemAddress? = nil, softwareLicense: ItemSoftwareLicense? = nil, server: ItemServer? = nil, database: ItemDatabase? = nil, icon: ChosenIcon? = nil) {
         self.id = id
         self.revision = revision
         self.category = category
@@ -235,6 +238,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         self.oneTimePassword = oneTimePassword
         self.hasOneTimePassword = hasOneTimePassword
         self.allPasskey = allPasskey
+        self.allAndroidApp = allAndroidApp
         self.canConvertToSecureNote = canConvertToSecureNote
         self.card = card
         self.identity = identity
@@ -265,6 +269,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         oneTimePassword = try container.decodeIfPresent(String.self, forKey: .oneTimePassword) ?? ""
         hasOneTimePassword = try container.decodeIfPresent(Bool.self, forKey: .hasOneTimePassword) ?? false
         allPasskey = try container.decodeIfPresent([ItemPasskey].self, forKey: .allPasskey) ?? []
+        allAndroidApp = try container.decodeIfPresent([ItemAndroidApp].self, forKey: .allAndroidApp) ?? []
         canConvertToSecureNote = try container.decodeIfPresent(Bool.self, forKey: .canConvertToSecureNote) ?? false
         card = try container.decodeIfPresent(ItemCard.self, forKey: .card)
         identity = try container.decodeIfPresent(ItemIdentity.self, forKey: .identity)
@@ -1041,6 +1046,19 @@ struct ItemPasskey: Codable, Hashable, Identifiable {
 
     var id: String { credentialID }
     var createdDate: Date? { ISO8601DateFormatter().date(from: createdAt) }
+}
+
+struct ItemAndroidApp: Codable, Hashable, Identifiable {
+    var packageName: String
+    /// The signing certificate's SHA-256 as upper-case hex bytes joined by colons.
+    var certificateSHA256: String
+
+    enum CodingKeys: String, CodingKey {
+        case packageName
+        case certificateSHA256 = "certificateSha256"
+    }
+
+    var id: String { packageName + " " + certificateSHA256 }
 }
 
 struct StoredPasskey: Codable, Hashable, Identifiable {

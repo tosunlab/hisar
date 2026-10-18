@@ -48,6 +48,15 @@ final class VaultLogicTests: XCTestCase {
         XCTAssertEqual(encoded?["tags"] as? [String], ["work"])
     }
 
+    func testItemDetailDecodesAndroidAppsAndDefaultsToNone() throws {
+        let json = #"{"id":"1","title":"Bank","urls":["https://bank.example"],"androidApps":[{"packageName":"com.bank.app","certificateSha256":"14:6D:E9"}]}"#
+        let linked = try JSONDecoder().decode(ItemDetail.self, from: Data(json.utf8))
+        XCTAssertEqual(linked.allAndroidApp, [ItemAndroidApp(packageName: "com.bank.app", certificateSHA256: "14:6D:E9")])
+        XCTAssertEqual(linked.allURL, ["https://bank.example"])
+        let older = try JSONDecoder().decode(ItemDetail.self, from: Data(#"{"id":"2","title":"Bank","androidApps":null}"#.utf8))
+        XCTAssertEqual(older.allAndroidApp, [])
+    }
+
     func testFilterFindsAnIdentityByItsNameAndEmail() {
         var passport = makeReference("Passport", category: ItemDetail.categoryIdentity)
         var identity = ItemIdentity()

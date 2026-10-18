@@ -63,10 +63,36 @@ func TestIsURLMatch(t *testing.T) {
 		{"https://example.com", "javascript:alert(1)", false, false},
 		{"", "https://example.com", false, false},
 		{"https://co.uk", "https://bank.co.uk", false, false},
+		{"androidapp://com.example.app?sha256=146de983c5730650d8eeb9952f34fc6416a08342e61dbea88a0496b23fcf44e5", "https://com.example.app", false, false},
+		{"androidapp://example.com", "https://example.com", false, false},
 	}
 	for _, testCase := range cases {
 		if got := IsURLMatch(testCase.itemURL, testCase.pageURL, testCase.isExactHost); got != testCase.want {
 			t.Errorf("IsURLMatch(%q, %q, exact=%v) = %v", testCase.itemURL, testCase.pageURL, testCase.isExactHost, got)
+		}
+	}
+}
+
+func TestGetWebsiteDomain(t *testing.T) {
+	for _, testCase := range []struct {
+		itemURL, host, registrableDomain string
+	}{
+		{"https://Login.Example.co.uk./path", "login.example.co.uk", "example.co.uk"},
+		{"example.com", "example.com", "example.com"},
+		{"http://example.com", "example.com", "example.com"},
+		{"https://example.com:443", "example.com", "example.com"},
+		{"https://alice.github.io", "alice.github.io", "alice.github.io"},
+		{"https://example.com:8443", "", ""},
+		{"https://192.168.1.1", "", ""},
+		{"http://localhost", "", ""},
+		{"https://printer.local", "", ""},
+		{"https://co.uk", "", ""},
+		{"androidapp://com.example.app?sha256=146de983c5730650d8eeb9952f34fc6416a08342e61dbea88a0496b23fcf44e5", "", ""},
+		{"ftp://example.com", "", ""},
+	} {
+		host, registrableDomain, ok := GetWebsiteDomain(testCase.itemURL)
+		if host != testCase.host || registrableDomain != testCase.registrableDomain || ok != (testCase.host != "") {
+			t.Errorf("GetWebsiteDomain(%q) = %q, %q, %v", testCase.itemURL, host, registrableDomain, ok)
 		}
 	}
 }

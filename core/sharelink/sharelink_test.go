@@ -202,3 +202,21 @@ func TestServerSSHKeyLinkIsNotShareable(t *testing.T) {
 		t.Errorf("a login's SSH key field is not shareable: %q", keys)
 	}
 }
+
+func TestAndroidAppsAreNotSharedAsWebsites(t *testing.T) {
+	bankApp, _ := item.ParseAndroidApp("com.bank.app", "146de983c5730650d8eeb9952f34fc6416a08342e61dbea88a0496b23fcf44e5")
+	appOnly := item.Item{Overview: item.Overview{Title: "Bank", Username: "alice"}}
+	appOnly.AddAndroidApp(bankApp)
+	if keys := ListAvailableFieldKeys(&appOnly); !slices.Equal(keys, []string{FieldUsername}) {
+		t.Errorf("available keys = %q", keys)
+	}
+	withWebsite := item.Item{Overview: item.Overview{Title: "Bank", URLs: []string{"https://bank.example"}}}
+	withWebsite.AddAndroidApp(bankApp)
+	payload, err := BuildItemPayload(&withWebsite, []string{FieldURLs})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []Field{{Kind: KindURL, Label: "Website", Value: "https://bank.example"}}; !slices.Equal(payload.Fields, want) || DescribeFieldKey(&withWebsite, FieldURLs) != "website" {
+		t.Errorf("payload %+v", payload.Fields)
+	}
+}

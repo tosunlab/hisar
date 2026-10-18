@@ -11,10 +11,23 @@ import (
 	"github.com/tryhisar/hisar/core/item"
 )
 
-var errNoURLMatch = errors.New("this login is not saved for this site")
+var (
+	errNoURLMatch = errors.New("this login is not saved for this site")
+	errNoAppMatch = errors.New("this login is not saved for this app")
+)
 
 // listLoginsForURL loads every vault's items if needed and returns the logins whose URLs match pageURL.
 func (s *Service) listLoginsForURL(ctx context.Context, pageURL string) ([]browserprotocol.Login, map[string]item.Item, error) {
+	return s.listLogins(ctx, func(vaultItem *item.Item) bool {
+		return slices.ContainsFunc(vaultItem.Overview.URLs, func(itemURL string) bool {
+			return browserprotocol.IsURLMatch(itemURL, pageURL, s.state.IsExactHostMatch)
+		})
+	})
+}
+
+// listLogins loads every vault's items if needed and returns the items that AutoFill may fill and isMatch accepts, as
+// sorted logins and by "vaultID/itemID". It calls isMatch with s.mutex held.
+func (s *Service) listLogins(ctx context.Context, isMatch func(*item.Item) bool) ([]browserprotocol.Login, map[string]item.Item, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if err := s.requireUnlockedWithoutActivity(); err != nil {
@@ -31,9 +44,7 @@ func (s *Service) listLoginsForURL(ctx context.Context, pageURL string) ([]brows
 			continue
 		}
 		for _, vaultItem := range items {
-			if !vaultItem.OffersLoginFill() || !slices.ContainsFunc(vaultItem.Overview.URLs, func(itemURL string) bool {
-				return browserprotocol.IsURLMatch(itemURL, pageURL, s.state.IsExactHostMatch)
-			}) {
+			if !vaultItem.OffersLoginFill() || !isMatch(&vaultItem) {
 				continue
 			}
 			logins = append(logins, browserprotocol.Login{
@@ -114,7 +125,11 @@ func (s *Service) getLoginForFill(ctx context.Context, vaultID, itemID, pageURL 
 	if !found {
 		return browserprotocol.FillResult{}, errNoURLMatch
 	}
-	return browserprotocol.FillResult{Username: vaultItem.Overview.Username, Password: vaultItem.Details.Password, HasOneTimePassword: vaultItem.Details.OneTimePassword != ""}, nil
+	return convertToFillResult(&vaultItem), nil
+}
+
+func convertToFillResult(vaultItem *item.Item) browserprotocol.FillResult {
+	return browserprotocol.FillResult{Username: vaultItem.Overview.Username, Password: vaultItem.Details.Password, HasOneTimePassword: vaultItem.Details.OneTimePassword != ""}
 }
 
 // getOneTimeCodeForFill applies the fill rule: the item must match pageURL. Only the code leaves, never the secret.
@@ -128,6 +143,84 @@ func (s *Service) getOneTimeCodeForFill(ctx context.Context, vaultID, itemID, pa
 		return OneTimeCode{}, errNoURLMatch
 	}
 	return generateOneTimeCode(&vaultItem, s.config.Now())
+}
+
+// ListLoginsForAndroidApp, GetLoginForAndroidApp and GetOneTimeCodeForAndroidApp serve Android AutoFill in an app,
+// which Android names by its package name and the SHA-256 of its signing certificate. A login matches only when it
+// holds both (AddAndroidApp): another app can take the package name, but not the certificate.
+func ListLoginsForAndroidApp(s *Service, packageName, certificateSHA256 string) ([]browserprotocol.Login, error) {
+	app, err := parseAndroidApp(packageName, certificateSHA256)
+	if err != nil {
+		return nil, convertBrowserError(err)
+	}
+	logins, _, err := s.listLoginsForAndroidApp(context.Background(), app)
+	return logins, convertBrowserError(err)
+}
+
+func GetLoginForAndroidApp(s *Service, vaultID, itemID, packageName, certificateSHA256 string) (browserprotocol.FillResult, error) {
+	vaultItem, err := s.findLoginForAndroidApp(context.Background(), vaultID, itemID, packageName, certificateSHA256)
+	if err != nil {
+		return browserprotocol.FillResult{}, convertBrowserError(err)
+	}
+	return convertToFillResult(&vaultItem), nil
+}
+
+func GetOneTimeCodeForAndroidApp(s *Service, vaultID, itemID, packageName, certificateSHA256 string) (OneTimeCode, error) {
+	vaultItem, err := s.findLoginForAndroidApp(context.Background(), vaultID, itemID, packageName, certificateSHA256)
+	if err != nil {
+		return OneTimeCode{}, convertBrowserError(err)
+	}
+	code, err := generateOneTimeCode(&vaultItem, s.config.Now())
+	return code, convertBrowserError(err)
+}
+
+func (s *Service) listLoginsForAndroidApp(ctx context.Context, app item.AndroidApp) ([]browserprotocol.Login, map[string]item.Item, error) {
+	return s.listLogins(ctx, func(vaultItem *item.Item) bool { return vaultItem.IsForAndroidApp(app) })
+}
+
+func (s *Service) findLoginForAndroidApp(ctx context.Context, vaultID, itemID, packageName, certificateSHA256 string) (item.Item, error) {
+	app, err := parseAndroidApp(packageName, certificateSHA256)
+	if err != nil {
+		return item.Item{}, err
+	}
+	_, itemsByKey, err := s.listLoginsForAndroidApp(ctx, app)
+	if err != nil {
+		return item.Item{}, err
+	}
+	vaultItem, found := itemsByKey[vaultID+"/"+itemID]
+	if !found {
+		return item.Item{}, errNoAppMatch
+	}
+	return vaultItem, nil
+}
+
+// LoginWebsite is a host of a login's websites and the registrable domain it is under, such as login.example.co.uk and
+// example.co.uk.
+type LoginWebsite struct {
+	Host              string `json:"host"`
+	RegistrableDomain string `json:"registrableDomain"`
+}
+
+// ListLoginWebsites returns, once each and sorted, the hosts of the websites of every login AutoFill may fill. Android
+// fetches a host's Digital Asset Links (https://host/.well-known/assetlinks.json) to learn which apps the site vouches
+// for, and then fills such an app with ListLoginsForURL("https://host"). Only hosts that can serve that file are listed.
+func ListLoginWebsites(s *Service) ([]LoginWebsite, error) {
+	_, itemsByKey, err := s.listLogins(context.Background(), func(*item.Item) bool { return true })
+	if err != nil {
+		return nil, convertBrowserError(err)
+	}
+	websites := []LoginWebsite{}
+	for _, vaultItem := range itemsByKey {
+		for _, link := range vaultItem.Websites() {
+			host, registrableDomain, ok := browserprotocol.GetWebsiteDomain(link)
+			website := LoginWebsite{Host: host, RegistrableDomain: registrableDomain}
+			if ok && !slices.Contains(websites, website) {
+				websites = append(websites, website)
+			}
+		}
+	}
+	slices.SortFunc(websites, func(first, second LoginWebsite) int { return strings.Compare(first.Host, second.Host) })
+	return websites, nil
 }
 
 func (s *Service) checkLogin(ctx context.Context, pageURL, username, password string) (browserprotocol.CheckResult, error) {
