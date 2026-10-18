@@ -59,7 +59,12 @@ func (s *Server) isPeerAllowed(connection net.Conn) bool {
 		return true
 	}
 	peer, err := s.peerResolver.ResolvePeer(connection)
-	return err == nil && peer.Path == s.allowedPeerPath
+	if err != nil {
+		return false
+	}
+	// A Flatpak Hisar sees the browser's host in another PID namespace, as PID 0 without a path; the extension must
+	// still be paired before it gets anything.
+	return peer.Path == s.allowedPeerPath || (peer.PID == 0 && peer.Path == "")
 }
 
 func (s *Server) serveConnection(ctx context.Context, connection net.Conn) {

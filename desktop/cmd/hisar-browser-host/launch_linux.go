@@ -8,7 +8,8 @@ import (
 	"syscall"
 )
 
-// packagedAppPath is where the .deb and .rpm install the app; a development build has it next to this host.
+// packagedAppPath is where the .deb and .rpm install the app; a development build has it next to this host, and an
+// AppImage or Flatpak Hisar writes the hisar-app launcher next to the copy of this host it runs.
 const packagedAppPath = "/usr/bin/Hisar"
 
 func getAppLauncher() func() error { return launchHisar }
@@ -17,7 +18,8 @@ func getAppLauncher() func() error { return launchHisar }
 func launchHisar() error {
 	candidatePaths := []string{packagedAppPath}
 	if executablePath, err := os.Executable(); err == nil {
-		candidatePaths = append([]string{filepath.Join(filepath.Dir(executablePath), "Hisar")}, candidatePaths...)
+		executableDirectory := filepath.Dir(executablePath)
+		candidatePaths = append([]string{filepath.Join(executableDirectory, "Hisar"), filepath.Join(executableDirectory, "hisar-app")}, candidatePaths...)
 	}
 	for _, candidatePath := range candidatePaths {
 		if fileInfo, err := os.Stat(candidatePath); err != nil || !fileInfo.Mode().IsRegular() {
