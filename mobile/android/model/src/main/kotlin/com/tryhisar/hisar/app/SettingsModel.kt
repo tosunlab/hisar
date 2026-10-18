@@ -44,10 +44,10 @@ class SettingsModel(private val context: ModelContext) {
 
     suspend fun loadAllDevice(): List<Device>? = context.perform(isBusyShown = false) { it.listAllDevice() }
 
-    suspend fun revokeDevice(device: Device): Boolean {
-        context.perform { it.revokeDevice(device.id) } ?: return false
+    suspend fun revokeDevice(device: Device): Boolean = context.runInModel {
+        context.perform { it.revokeDevice(device.id) } ?: return@runInModel false
         context.showNotice("${device.name} is signed out.")
-        return true
+        true
     }
 
     suspend fun exportEmergencyKit(password: String): EmergencyKitExport? =
@@ -55,11 +55,11 @@ class SettingsModel(private val context: ModelContext) {
 
     fun removeEmergencyKit(export: EmergencyKitExport) = removeFolder(export.emergencyKitPath)
 
-    suspend fun changeMasterPassword(currentPassword: String, newPassword: String): CredentialChangeResult? {
-        val result = context.perform { it.changeMasterPassword(currentPassword, newPassword) } ?: return null
+    suspend fun changeMasterPassword(currentPassword: String, newPassword: String): CredentialChangeResult? = context.runInModel {
+        val result = context.perform { it.changeMasterPassword(currentPassword, newPassword) } ?: return@runInModel null
         context.applyStatus(result.status)
         context.showNotice("Master password changed. ${AccountLifecycleLogic.describeSignedOutDevices(result.signedOutDeviceCount)}")
-        return result
+        result
     }
 
     suspend fun replaceSecretKey(password: String): CredentialChangeResult? {
@@ -76,11 +76,11 @@ class SettingsModel(private val context: ModelContext) {
 
     suspend fun loadAccountDeletionPreview(): AccountDeletionPreview? = context.perform(isBusyShown = false) { it.previewAccountDeletion() }
 
-    suspend fun deleteAccount(password: String, email: String): Boolean {
-        val newStatus = context.perform { it.deleteAccount(password, email) } ?: return false
+    suspend fun deleteAccount(password: String, email: String): Boolean = context.runInModel {
+        val newStatus = context.perform { it.deleteAccount(password, email) } ?: return@runInModel false
         context.applyStatus(newStatus)
         context.showNotice("Your Hisar account was deleted.")
-        return true
+        true
     }
 
     suspend fun loadExportOptions(): ExportOptions? = context.perform(isBusyShown = false) { it.getExportOptions() }
