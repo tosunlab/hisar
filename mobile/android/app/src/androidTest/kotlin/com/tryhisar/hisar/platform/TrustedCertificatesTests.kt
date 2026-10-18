@@ -1,7 +1,7 @@
 package com.tryhisar.hisar.platform
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.services.storage.TestStorage
 import com.tryhisar.hisar.backend.createTestBackend
 import com.tryhisar.hisar.model.BackendError
 import java.io.Closeable
@@ -48,14 +48,17 @@ class TrustedCertificatesTests {
             assertTrue(refused, refused.startsWith("handshake failed"))
             server.forgetConnections()
 
-            val withPrivateCA = createTestBackend(trustedCertificates = deviceRoots + readAsset("ca.pem"))
+            val withPrivateCA = createTestBackend(trustedCertificates = deviceRoots + readPrivateCAFile("ca.pem"))
             assertThrows(BackendError::class.java) { withPrivateCA.signUp(inviteLink, "tls@example.com", "TLS", "a long master password") }
             val reached = server.takeConnection()
             assertTrue(reached, reached.startsWith("request "))
         }
     }
 
-    /** An HTTPS server on the device whose certificate a private CA signed; it answers every request with 404. */
+    /**
+     * An HTTPS server on the device whose certificate a private CA signed; it answers every request with 404. The CA and
+     * the server's key and certificate are made for each run by scripts/test-android-ui.sh.
+     */
     private class PrivateCAServer : Closeable {
         private val socket: SSLServerSocket
         private val allConnection = LinkedBlockingQueue<String>()
@@ -63,8 +66,8 @@ class TrustedCertificatesTests {
 
         init {
             val factory = CertificateFactory.getInstance("X.509")
-            val chain = arrayOf(readAsset("server.pem"), readAsset("ca.pem")).map { factory.generateCertificate(it.byteInputStream()) as X509Certificate }
-            val keyDer = Base64.getMimeDecoder().decode(readAsset("server-key.pem").lines().filterNot { it.startsWith("-----") }.joinToString(""))
+            val chain = arrayOf(readPrivateCAFile("server.pem"), readPrivateCAFile("ca.pem")).map { factory.generateCertificate(it.byteInputStream()) as X509Certificate }
+            val keyDer = Base64.getMimeDecoder().decode(readPrivateCAFile("server-key.pem").lines().filterNot { it.startsWith("-----") }.joinToString(""))
             val key = KeyFactory.getInstance("EC").generatePrivate(PKCS8EncodedKeySpec(keyDer))
             val keyStore = KeyStore.getInstance(KeyStore.getDefaultType()).apply {
                 load(null)
@@ -107,7 +110,6 @@ class TrustedCertificatesTests {
     }
 
     private companion object {
-        fun readAsset(name: String): String =
-            InstrumentationRegistry.getInstrumentation().context.assets.open("private-ca/$name").bufferedReader().use { it.readText() }
+        fun readPrivateCAFile(name: String): String = TestStorage().openInputFile("private-ca/$name").bufferedReader().use { it.readText() }
     }
 }
