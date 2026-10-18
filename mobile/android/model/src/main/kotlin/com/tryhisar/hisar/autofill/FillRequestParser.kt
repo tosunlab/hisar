@@ -2,8 +2,9 @@ package com.tryhisar.hisar.autofill
 
 /**
  * One view of a fill request's AssistStructure, as the parser reads it. [Id] is the platform's AutofillId, so the parser
- * runs on the JVM. Browsers and WebViews report a page's inputs at or below a node that carries [webDomain]: Chrome puts it
- * on the page's container, while a WebView on API 37 leaves its own [webDomain] empty and puts it on each input.
+ * runs on the JVM. Browsers and WebViews report a page's inputs at or below a node that carries [webDomain]: the form's
+ * node, and on WebView 145 (API 37) each input too. For a page loaded with loadDataWithBaseURL the form's [webDomain] is
+ * empty, so WebView 145 names the page only on its inputs and WebView 91 and 113 (API 29 and 34) name no page at all.
  */
 data class FormNode<Id>(
     val autofillID: Id? = null,

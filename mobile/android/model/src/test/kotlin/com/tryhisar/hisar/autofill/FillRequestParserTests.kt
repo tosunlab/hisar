@@ -63,6 +63,38 @@ class FillRequestParserTests {
         assertEquals(LoginForm(AutofillSource.Web("https", "accounts.example.com"), "u", "p", null), form)
     }
 
+    // The structure WebView 113 on API 34 delivers for https://accounts.example.com/login, read in the service.
+    private fun webView113(formDomain: String, formScheme: String?) = FormNode(
+        autofillID = "webview",
+        children = listOf(
+            FormNode(
+                autofillID = "form", htmlTag = "form", htmlAttributes = mapOf("name" to ""), webDomain = formDomain, webScheme = formScheme,
+                children = listOf(
+                    FormNode(
+                        autofillID = "u", isTextField = true, autofillHints = listOf("username"), htmlTag = "input", hint = "Email",
+                        htmlAttributes = mapOf("name" to "username", "type" to "text", "label" to "Email", "id" to "username", "computed-autofill-hints" to "HTML_TYPE_EMAIL"),
+                    ),
+                    FormNode(
+                        autofillID = "p", isTextField = true, autofillHints = listOf("current-password"), htmlTag = "input", hint = "Password",
+                        htmlAttributes = mapOf("name" to "password", "type" to "password", "label" to "Password", "id" to "password", "computed-autofill-hints" to "UNKNOWN_TYPE"),
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    @Test
+    fun testWebViewOnAPI34PutsThePageAddressOnTheFormOnly() {
+        val form = FillRequestParser.parse(listOf(webView113("accounts.example.com", "https")), "com.example.browser", setOf("com.example.browser"))
+        assertEquals(LoginForm(AutofillSource.Web("https", "accounts.example.com"), "u", "p", null), form)
+    }
+
+    @Test
+    fun testWebViewOnAPI34PageLoadedFromDataHasNoAddressSoItIsTheApp() {
+        val form = FillRequestParser.parse(listOf(webView113("", null)), "com.example.browser", setOf("com.example.browser"))
+        assertEquals(LoginForm(AutofillSource.App("com.example.browser"), "u", "p", null), form, "loadDataWithBaseURL names no page on WebView 113")
+    }
+
     @Test
     fun testNativeFieldsUseTheirHintsAndInputTypes() {
         val form = FillRequestParser.parse(

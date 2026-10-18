@@ -12,8 +12,10 @@ import java.nio.charset.StandardCharsets;
 
 /**
  * A sign-in page the AutoFill service fills in the UI tests. It lives in the test APK, a package other than Hisar's, since
- * the service never fills Hisar itself; the debug build trusts that package's page addresses as a browser's. Signing in
- * navigates to a welcome page served from here, as a site would, which is what makes the system offer to save.
+ * the service never fills Hisar itself; the debug build trusts that package's page addresses as a browser's. Both pages
+ * are served from here at https://accounts.example.com, as a site would serve them: WebView 113 (API 34) reports no
+ * page address for a page loaded with loadDataWithBaseURL. Signing in navigates to the welcome page, which is what
+ * makes the system offer to save.
  *
  * <p>Java on framework classes only: this activity runs in the test APK's own process, whose dex has no Kotlin runtime.
  */
@@ -50,20 +52,23 @@ public class AutofillTestPageActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        String extra = getIntent().getStringExtra(EXTRA_PAGE);
+        String page = extra != null ? extra : LOGIN_PAGE;
         WebView webView = new WebView(this);
         webView.getSettings().setJavaScriptEnabled(true);
         webView.setWebViewClient(new WebViewClient() {
             @Override
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-                if (!"/welcome".equals(request.getUrl().getPath())) return null;
-                return new WebResourceResponse("text/html", "utf-8", new ByteArrayInputStream(WELCOME_PAGE.getBytes(StandardCharsets.UTF_8)));
+                String path = request.getUrl().getPath();
+                String html = "/welcome".equals(path) ? WELCOME_PAGE : "/login".equals(path) ? page : null;
+                if (html == null) return null;
+                return new WebResourceResponse("text/html", "utf-8", new ByteArrayInputStream(html.getBytes(StandardCharsets.UTF_8)));
             }
         });
         FrameLayout content = new FrameLayout(this);
         content.setFitsSystemWindows(true);
         content.addView(webView);
         setContentView(content);
-        String page = getIntent().getStringExtra(EXTRA_PAGE);
-        webView.loadDataWithBaseURL("https://accounts.example.com/login", page != null ? page : LOGIN_PAGE, "text/html", "utf-8", null);
+        webView.loadUrl("https://accounts.example.com/login");
     }
 }
