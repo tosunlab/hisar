@@ -20,6 +20,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso
 import androidx.test.platform.app.InstrumentationRegistry
@@ -170,6 +171,18 @@ abstract class HisarUITestCase {
         }
         waitFor("vault-Personal")
         return secretKey
+    }
+
+    /** Signs in to the harness server with an account another device created. */
+    fun signIn(email: String, secretKey: String, password: String) {
+        waitFor("sign-in-use-different-server")
+        tap("sign-in-use-different-server")
+        composeRule.onNode(hasTestTag("sign-in-server")).performTextReplacement(readArgument("HISAR_UI_TEST_SERVER"))
+        type(email, "sign-in-email")
+        type(secretKey, "sign-in-secret-key")
+        type(password, "sign-in-password")
+        tap("sign-in-submit")
+        waitFor("vault-Personal", 60_000)
     }
 
     fun addLogin(title: String, username: String, password: String, website: String, oneTimePassword: String = "") {
