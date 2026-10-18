@@ -1,4 +1,4 @@
-import { Action, ActionPanel, Icon, List, showToast, Toast } from "@raycast/api";
+import { Action, ActionPanel, Icon, Keyboard, List, showToast, Toast } from "@raycast/api";
 import { openHisar, toHisarError } from "../hisar";
 import { describeHisarError, type HisarAction } from "./errorDescription";
 
@@ -23,7 +23,8 @@ export async function showHisarError(error: unknown): Promise<void> {
 
 /** ErrorView takes the place of a list Hisar could not load. */
 export function ErrorView({ error, onRetry }: { error: unknown; onRetry: () => void }) {
-  const { title, message, action } = describeHisarError(toHisarError(error));
+  const hisarError = toHisarError(error);
+  const { title, message, action } = describeHisarError(hisarError);
   return (
     <List.EmptyView
       icon={Icon.Warning}
@@ -31,7 +32,16 @@ export function ErrorView({ error, onRetry }: { error: unknown; onRetry: () => v
       description={message}
       actions={
         <ActionPanel>
-          <Action title="Try Again" icon={Icon.ArrowClockwise} onAction={onRetry} />
+          <Action
+            title="Retry"
+            icon={Icon.ArrowClockwise}
+            shortcut={Keyboard.Shortcut.Common.Refresh}
+            onAction={onRetry}
+          />
+          <Action.CopyToClipboard
+            title="Copy Error Details"
+            content={`${title}\n${hisarError.code}: ${hisarError.message}`}
+          />
           {action && (
             <Action
               title={titleByAction[action]}
