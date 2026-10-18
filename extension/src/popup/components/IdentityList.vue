@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
-import type { IdentitySummary } from "../../shared/protocol";
+import type { IdentitySummary, ItemSummary } from "../../shared/protocol";
 import { closePopup, describeError, sendToBackground } from "../api";
 import AppIcon from "./AppIcon.vue";
 
 // IdentityList offers the identities Hisar can fill into the page: name, email, phone and birth date, and the address
-// form beside them. Only their name and email are known until one is filled.
-const props = defineProps<{ tabId: number | undefined }>();
+// form beside them. Only their name and email are known until one is filled. With canOpen (an app that lets the popup
+// browse the vault), a row opens the identity.
+const props = defineProps<{ tabId: number | undefined; canOpen?: boolean }>();
+const emit = defineEmits<{ open: [item: ItemSummary] }>();
 
 const allIdentity = ref<IdentitySummary[]>([]);
 const isLoading = ref(true);
@@ -37,6 +39,20 @@ async function fillIdentity(identity: IdentitySummary): Promise<void> {
   }
 }
 
+function openIdentity(identity: IdentitySummary): void {
+  if (!props.canOpen) return;
+  emit("open", {
+    vaultID: identity.vaultID,
+    itemID: identity.itemID,
+    category: "identity",
+    title: identity.title,
+    subtitle: identity.summary,
+    vaultName: identity.vaultName,
+    isFavorite: false,
+    hasOneTimePassword: false,
+  });
+}
+
 onMounted(loadIdentities);
 </script>
 
@@ -47,13 +63,23 @@ onMounted(loadIdentities);
     <p v-else-if="allIdentity.length === 0" class="muted empty" data-testid="no-identities">No identities in Hisar.</p>
     <ul v-else class="list">
       <li v-for="identity in allIdentity" :key="identity.vaultID + identity.itemID" class="entry" data-testid="identity-row">
-        <div class="avatar" aria-hidden="true"><AppIcon name="identity" /></div>
-        <div class="text">
-          <p class="title-row">
-            <span class="title">{{ identity.title }}</span>
-            <span class="tag">{{ identity.vaultName }}</span>
-          </p>
-          <p class="summary muted">{{ identity.summary || "Identity" }}</p>
+        <div
+          class="row-button"
+          :class="{ openable: canOpen }"
+          :role="canOpen ? 'button' : undefined"
+          :tabindex="canOpen ? 0 : undefined"
+          data-testid="open-identity"
+          @click="openIdentity(identity)"
+          @keydown.enter="openIdentity(identity)"
+        >
+          <div class="avatar" aria-hidden="true"><AppIcon name="identity" /></div>
+          <div class="text">
+            <p class="title-row">
+              <span class="title">{{ identity.title }}</span>
+              <span class="tag">{{ identity.vaultName }}</span>
+            </p>
+            <p class="summary muted">{{ identity.summary || "Identity" }}</p>
+          </div>
         </div>
         <button type="button" class="primary small" :disabled="busyItemID !== '' || tabId === undefined" data-testid="fill-identity" @click="fillIdentity(identity)">Fill</button>
       </li>
@@ -86,6 +112,26 @@ onMounted(loadIdentities);
 
 .entry:hover {
   background: var(--color-hover);
+}
+
+.row-button {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.row-button.openable {
+  cursor: pointer;
+}
+
+.row-button:focus-visible {
+  outline: none;
+}
+
+.entry:has(.row-button:focus-visible) {
+  box-shadow: inset 0 0 0 1px var(--color-focus);
 }
 
 .avatar {

@@ -7,7 +7,8 @@ import AppIcon from "./AppIcon.vue";
 import ItemIcon from "./ItemIcon.vue";
 import OneTimeCodeRow from "./OneTimeCodeRow.vue";
 
-// canFill: the item is a login saved for the current tab, so Fill can fill it (the app checks the site again).
+// canFill: Fill can put the item on the page: a login saved for the current tab (the app checks the site again), or a
+// card or an identity, which fill the page's payment or personal form.
 const props = defineProps<{ summary: ItemSummary; tabId: number | undefined; canFill: boolean }>();
 const emit = defineEmits<{ back: []; notice: [message: string]; favorite: [isFavorite: boolean]; filled: [] }>();
 
@@ -87,7 +88,10 @@ function toggleFavorite(): Promise<void> {
 function fill(): Promise<void> {
   return run(async () => {
     if (props.tabId === undefined) return;
-    await sendToBackground({ type: "popup.fillLogin", tabId: props.tabId, vaultID: props.summary.vaultID, itemID: props.summary.itemID });
+    const target = { tabId: props.tabId, vaultID: props.summary.vaultID, itemID: props.summary.itemID };
+    if (props.summary.category === "credit-card") await sendToBackground({ type: "popup.fillCard", ...target });
+    else if (props.summary.category === "identity") await sendToBackground({ type: "popup.fillIdentity", ...target });
+    else await sendToBackground({ type: "popup.fillLogin", ...target });
     emit("filled");
     closePopup();
   });

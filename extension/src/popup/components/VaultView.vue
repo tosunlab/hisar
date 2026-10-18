@@ -11,10 +11,23 @@ import LoginList from "./LoginList.vue";
 import NewItemView from "./NewItemView.vue";
 
 // canCreate: the app saves new items from the browser, so the view offers New item.
-const props = withDefaults(defineProps<{ tabId: number | undefined; canCreate?: boolean; searchDelayMilliseconds?: number }>(), {
-  canCreate: false,
-  searchDelayMilliseconds: 150,
-});
+// canFillCards and canFillIdentities: the app fills those, so an opened card or identity offers Fill on this page.
+const props = withDefaults(
+  defineProps<{ tabId: number | undefined; canCreate?: boolean; canFillCards?: boolean; canFillIdentities?: boolean; searchDelayMilliseconds?: number }>(),
+  {
+    canCreate: false,
+    canFillCards: false,
+    canFillIdentities: false,
+    searchDelayMilliseconds: 150,
+  },
+);
+
+// isFillable is an item Fill can put on the page: a login saved for the tab, or a card or an identity.
+function isFillable(item: ItemSummary): boolean {
+  if (allMatchingKey.value.has(getKey(item))) return true;
+  if (props.tabId === undefined) return false;
+  return (item.category === "credit-card" && props.canFillCards) || (item.category === "identity" && props.canFillIdentities);
+}
 const emit = defineEmits<{ notice: [message: string] }>();
 
 type CategoryChoice = "all" | "favorites" | "login" | "credit-card" | "identity" | "secure-note";
@@ -194,7 +207,7 @@ onBeforeUnmount(() => {
     v-else-if="selected"
     :summary="selected"
     :tab-id="tabId"
-    :can-fill="allMatchingKey.has(getKey(selected))"
+    :can-fill="isFillable(selected)"
     @back="closeDetail"
     @notice="emit('notice', $event)"
     @favorite="markFavorite"

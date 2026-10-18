@@ -502,6 +502,48 @@ describe("vault", () => {
     );
   }
 
+  it("opens a card or an identity from its tab, and fills it from there", async () => {
+    respondWithState(
+      { view: "unlocked", email: "alex@example.com", isVaultAvailable: true, isCardFillAvailable: true, isIdentityFillAvailable: true },
+      {
+        "popup.listItems": () => [
+          { vaultID: "v1", itemID: "card", category: "credit-card", title: "Visa", subtitle: "Visa •••• 1111", vaultName: "Personal", isFavorite: false, hasOneTimePassword: false },
+        ],
+        "popup.listCards": () => [{ vaultID: "v1", itemID: "card", title: "Visa", brand: "Visa", last4: "1111", expiry: "12/30", vaultName: "Personal" }],
+        "popup.listIdentities": () => [{ vaultID: "v1", itemID: "me", title: "Alex", summary: "Alex Example", vaultName: "Personal" }],
+        "popup.getItem": () => visa,
+        "popup.getIcon": () => "",
+      },
+    );
+    const wrapper = await mountApp();
+    await wrapper.find('[data-testid="section-cards"]').trigger("click");
+    await flushPromises();
+    await wrapper.find('[data-testid="open-card"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="item-title"]').text()).toBe("Visa");
+    await wrapper.find('[data-testid="item-fill"]').trigger("click");
+    await flushPromises();
+    expect(allMessage).toContainEqual({ type: "popup.fillCard", tabId: 42, vaultID: "v1", itemID: "card" });
+
+    await wrapper.find('[data-testid="section-addresses"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="item-detail"]').exists()).toBe(false);
+    await wrapper.find('[data-testid="open-identity"]').trigger("click");
+    await flushPromises();
+    await wrapper.find('[data-testid="item-fill"]').trigger("click");
+    await flushPromises();
+    expect(allMessage).toContainEqual({ type: "popup.fillIdentity", tabId: 42, vaultID: "v1", itemID: "me" });
+    await wrapper.find('[data-testid="item-back"]').trigger("click");
+    expect(wrapper.find('[data-testid="identity-list"]').exists()).toBe(true);
+
+    // A card opened from the vault fills too.
+    await wrapper.find('[data-testid="section-logins"]').trigger("click");
+    await flushPromises();
+    await wrapper.find('[data-testid="open-item"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="item-fill"]').exists()).toBe(true);
+  });
+
   it("keeps the site's logins only with an app that cannot browse the vault", async () => {
     respondWithState({ view: "unlocked", email: "alex@example.com" });
     const wrapper = await mountApp();
@@ -537,6 +579,7 @@ describe("vault", () => {
     await wrapper.findAll('[data-testid="open-item"]')[1].trigger("click");
     await flushPromises();
     expect(wrapper.find('[data-testid="item-title"]').text()).toBe("Visa");
+    // This app does not fill cards.
     expect(wrapper.find('[data-testid="item-fill"]').exists()).toBe(false);
     const number = wrapper.find('[data-testid="field-field:1"]');
     expect(number.text()).not.toContain("4111");

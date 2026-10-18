@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from "vue";
+import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { PopupState } from "../shared/messages";
+import type { ItemSummary } from "../shared/protocol";
 import { describeError, getTargetTabId, openUpdatePage, sendToBackground } from "./api";
 import AddressList from "./components/AddressList.vue";
 import CardList from "./components/CardList.vue";
 import IdentityList from "./components/IdentityList.vue";
 import HisarLogo from "./components/HisarLogo.vue";
+import ItemDetail from "./components/ItemDetail.vue";
 import LoginList from "./components/LoginList.vue";
 import PairingView from "./components/PairingView.vue";
 import PasswordGenerator from "./components/PasswordGenerator.vue";
@@ -24,6 +26,9 @@ const tabId = ref<number>();
 const isWaiting = ref(false);
 const errorMessage = ref("");
 const activeSection = ref<"logins" | "cards" | "addresses" | "generator">("logins");
+// openedItem is the card or identity opened from its tab; choosing a tab closes it.
+const openedItem = ref<ItemSummary>();
+watch(activeSection, () => (openedItem.value = undefined));
 const noticeMessage = ref("");
 const isSettingsOpen = ref(false);
 let noticeTimer: ReturnType<typeof setTimeout> | undefined;
@@ -187,14 +192,24 @@ onBeforeUnmount(() => {
         v-if="activeSection === 'logins' && popupState.isVaultAvailable"
         :tab-id="tabId"
         :can-create="popupState.isCreateAvailable"
+        :can-fill-cards="popupState.isCardFillAvailable"
+        :can-fill-identities="popupState.isIdentityFillAvailable"
         @notice="showNotice"
       />
       <LoginList v-else-if="activeSection === 'logins'" :tab-id="tabId" @notice="showNotice" />
-      <CardList v-else-if="activeSection === 'cards'" :tab-id="tabId" />
+      <ItemDetail
+        v-else-if="openedItem"
+        :summary="openedItem"
+        :tab-id="tabId"
+        :can-fill="tabId !== undefined"
+        @back="openedItem = undefined"
+        @notice="showNotice"
+      />
+      <CardList v-else-if="activeSection === 'cards'" :tab-id="tabId" :can-open="popupState.isVaultAvailable" @open="openedItem = $event" />
       <template v-else-if="activeSection === 'addresses'">
         <template v-if="popupState.isIdentityFillAvailable">
           <h2 class="group-title muted">Identities</h2>
-          <IdentityList :tab-id="tabId" />
+          <IdentityList :tab-id="tabId" :can-open="popupState.isVaultAvailable" @open="openedItem = $event" />
           <h2 v-if="popupState.isAddressFillAvailable" class="group-title muted">Addresses</h2>
         </template>
         <AddressList v-if="popupState.isAddressFillAvailable" :tab-id="tabId" />

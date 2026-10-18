@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import type { CardSummary } from "../../shared/protocol";
+import type { CardSummary, ItemSummary } from "../../shared/protocol";
 import { closePopup, describeError, sendToBackground } from "../api";
 import AppIcon from "./AppIcon.vue";
 
 // CardList offers the credit cards Hisar can fill into the page's payment form. Only their brand, last four digits and
-// expiry are known until one is filled.
-const props = defineProps<{ tabId: number | undefined }>();
+// expiry are known until one is filled. With canOpen (an app that lets the popup browse the vault), a row opens the card.
+const props = defineProps<{ tabId: number | undefined; canOpen?: boolean }>();
+const emit = defineEmits<{ open: [item: ItemSummary] }>();
 
 const allCard = ref<CardSummary[]>([]);
 const query = ref("");
@@ -44,6 +45,12 @@ async function fillCard(card: CardSummary): Promise<void> {
   }
 }
 
+function openCard(card: CardSummary): void {
+  if (!props.canOpen) return;
+  const subtitle = [card.brand, card.last4 ? `•••• ${card.last4}` : ""].filter(Boolean).join(" ");
+  emit("open", { vaultID: card.vaultID, itemID: card.itemID, category: "credit-card", title: card.title, subtitle, vaultName: card.vaultName, isFavorite: false, hasOneTimePassword: false });
+}
+
 onMounted(loadCards);
 </script>
 
@@ -59,13 +66,23 @@ onMounted(loadCards);
     <p v-else-if="allVisibleCard.length === 0" class="muted empty">No cards match "{{ query }}".</p>
     <ul v-else class="list">
       <li v-for="card in allVisibleCard" :key="card.vaultID + card.itemID" class="entry" data-testid="card-row">
-        <div class="avatar" aria-hidden="true"><AppIcon name="card" /></div>
-        <div class="text">
-          <p class="title-row">
-            <span class="title">{{ card.title }}</span>
-            <span class="tag">{{ card.vaultName }}</span>
-          </p>
-          <p class="summary muted">{{ [card.brand, card.last4 ? `•••• ${card.last4}` : "", card.expiry ? `expires ${card.expiry}` : ""].filter(Boolean).join(" · ") || "Card" }}</p>
+        <div
+          class="row-button"
+          :class="{ openable: canOpen }"
+          :role="canOpen ? 'button' : undefined"
+          :tabindex="canOpen ? 0 : undefined"
+          data-testid="open-card"
+          @click="openCard(card)"
+          @keydown.enter="openCard(card)"
+        >
+          <div class="avatar" aria-hidden="true"><AppIcon name="card" /></div>
+          <div class="text">
+            <p class="title-row">
+              <span class="title">{{ card.title }}</span>
+              <span class="tag">{{ card.vaultName }}</span>
+            </p>
+            <p class="summary muted">{{ [card.brand, card.last4 ? `•••• ${card.last4}` : "", card.expiry ? `expires ${card.expiry}` : ""].filter(Boolean).join(" · ") || "Card" }}</p>
+          </div>
         </div>
         <button type="button" class="primary small" :disabled="busyItemID !== '' || tabId === undefined" data-testid="fill-card" @click="fillCard(card)">Fill</button>
       </li>
@@ -115,6 +132,26 @@ onMounted(loadCards);
 
 .entry:hover {
   background: var(--color-hover);
+}
+
+.row-button {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.row-button.openable {
+  cursor: pointer;
+}
+
+.row-button:focus-visible {
+  outline: none;
+}
+
+.entry:has(.row-button:focus-visible) {
+  box-shadow: inset 0 0 0 1px var(--color-focus);
 }
 
 .avatar {
