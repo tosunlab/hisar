@@ -499,6 +499,8 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
                         InvitedRow(
                             invitation.email, "Waiting for them to accept", OrganizationRole.describe(invitation.role), Icons.Outlined.Email,
                             testTag = "organization-invitation-${invitation.email}",
+                            onCancel = { dialog = OrganizationDialog.CancelInvitation(invitation) },
+                            cancelLabel = "Cancel invitation",
                         )
                     }
                 }
