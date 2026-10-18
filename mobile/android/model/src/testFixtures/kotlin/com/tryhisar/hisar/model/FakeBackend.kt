@@ -41,6 +41,8 @@ open class FakeBackend : VaultBackend {
     var allPendingApproval: MutableList<PhoneApproval> = mutableListOf()
     val allApprovalAnswer = mutableListOf<String>()
     var allDevice: MutableList<Device> = mutableListOf()
+    /** While set, listing the devices fails with this sentence. */
+    var listAllDeviceErrorMessage: String? = null
     var isMacApprovalAllowedValue = true
     var isWebsiteIconsEnabledValue = true
     var websiteIconByURL: MutableMap<String, ByteString> = mutableMapOf()
@@ -702,6 +704,7 @@ open class FakeBackend : VaultBackend {
     override fun listAllDevice(): List<Device> {
         record("listAllDevice")
         requireUnlocked()
+        listAllDeviceErrorMessage?.let { throw BackendError(it) }
         return allDevice.toList()
     }
 
