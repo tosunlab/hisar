@@ -177,12 +177,22 @@ func (s *Service) saveLogin(ctx context.Context, request *browserprotocol.Reques
 		}
 		return browserprotocol.SaveResult{VaultID: request.VaultID, ItemID: saved.ID}, nil
 	}
-	vaultID, err := s.findPersonalVaultID(ctx)
-	if err != nil {
+	// A new login goes into the vault the user chose in the save bar, else the personal vault.
+	vaultID := request.VaultID
+	var err error
+	if vaultID != "" {
+		if err := s.requireWritableBrowserVault(ctx, vaultID); err != nil {
+			return browserprotocol.SaveResult{}, err
+		}
+	} else if vaultID, err = s.findPersonalVaultID(ctx); err != nil {
 		return browserprotocol.SaveResult{}, err
 	}
+	title := strings.TrimSpace(request.Title)
+	if title == "" {
+		title = browserprotocol.GetSiteName(request.URL)
+	}
 	saved, err := s.SaveItem(vaultID, ItemDetail{
-		Category: item.CategoryLogin, Title: browserprotocol.GetSiteName(request.URL), Username: request.Username, Password: request.Password,
+		Category: item.CategoryLogin, Title: title, Username: request.Username, Password: request.Password,
 		URLs: []string{browserprotocol.GetOrigin(request.URL)}, Fields: []ItemField{},
 	})
 	if err != nil {

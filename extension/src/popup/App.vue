@@ -183,7 +183,12 @@ onBeforeUnmount(() => {
           Generator
         </button>
       </div>
-      <VaultView v-if="activeSection === 'logins' && popupState.isVaultAvailable" :tab-id="tabId" @notice="showNotice" />
+      <VaultView
+        v-if="activeSection === 'logins' && popupState.isVaultAvailable"
+        :tab-id="tabId"
+        :can-create="popupState.isCreateAvailable"
+        @notice="showNotice"
+      />
       <LoginList v-else-if="activeSection === 'logins'" :tab-id="tabId" @notice="showNotice" />
       <CardList v-else-if="activeSection === 'cards'" :tab-id="tabId" />
       <template v-else-if="activeSection === 'addresses'">

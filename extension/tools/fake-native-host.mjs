@@ -26,7 +26,11 @@ export function createInitialState() {
     allPairing: [],
     exactHostOnly: false,
     // features: what the app announces in hello; an older app announces none.
-    features: ["addresses", "vault", "unlock-password", "cards", "identities"],
+    features: ["addresses", "vault", "unlock-password", "cards", "identities", "save-options", "create-items"],
+    allVault: [
+      { vaultID: "vault-personal", name: "Personal", isPersonal: true },
+      { vaultID: "vault-family", name: "Family", isPersonal: false },
+    ],
     allIdentity: [
       {
         vaultID: "vault-personal",
@@ -385,7 +389,7 @@ export function handleRequest(state, request, now = Date.now(), log = () => unde
       const url = requireString(request, "url");
       const username = typeof request.username === "string" ? request.username : "";
       const password = requireString(request, "password");
-      if (request.vaultID || request.itemID) {
+      if (request.itemID) {
         const login = state.allLogin.find((candidate) => candidate.vaultID === request.vaultID && candidate.itemID === request.itemID);
         if (!login) throw new ProtocolError("not-found", "No such login");
         login.username = username;
@@ -393,11 +397,15 @@ export function handleRequest(state, request, now = Date.now(), log = () => unde
         return { vaultID: login.vaultID, itemID: login.itemID };
       }
       const host = new URL(url).host;
+      const vault = (state.allVault ?? []).find((candidate) => candidate.vaultID === (request.vaultID || "vault-personal")) ?? { vaultID: "vault-personal", name: "Personal" };
+      if (request.vaultID && !(state.allVault ?? []).some((candidate) => candidate.vaultID === request.vaultID)) {
+        throw new ProtocolError("invalid-request", "You cannot add items to that vault");
+      }
       const login = {
-        vaultID: "vault-personal",
-        vaultName: "Personal",
+        vaultID: vault.vaultID,
+        vaultName: vault.name,
         itemID: `item-${randomBytes(6).toString("hex")}`,
-        title: host,
+        title: typeof request.title === "string" && request.title.trim() ? request.title.trim() : host,
         username,
         password,
         url: new URL(url).origin,
@@ -455,6 +463,25 @@ export function handleRequest(state, request, now = Date.now(), log = () => unde
       state.allCardRequest = [...(state.allCardRequest ?? []), card.itemID];
       const { cardholder, number, expiryMonth, expiryYear, securityCode, brand } = card;
       return { cardholder, number, expiryMonth, expiryYear, securityCode, brand };
+    }
+    case "vaults.list":
+      if (!state.features?.includes("save-options") && !state.features?.includes("vault")) throw new ProtocolError("invalid-request", `Unknown type ${String(type)}`);
+      requireUnlocked(state);
+      return { vaults: state.allVault ?? [] };
+    case "items.create": {
+      if (!state.features?.includes("create-items")) throw new ProtocolError("invalid-request", `Unknown type ${String(type)}`);
+      requireUnlocked(state);
+      const vault = (state.allVault ?? []).find((candidate) => candidate.vaultID === request.vaultID);
+      if (!vault) throw new ProtocolError("invalid-request", "You cannot add items to that vault");
+      const item = /** @type {Record<string, string>} */ (request.item ?? {});
+      if (!item.title?.trim()) throw new ProtocolError("invalid-request", "enter a title");
+      const itemID = `item-${randomBytes(6).toString("hex")}`;
+      if (item.category === "login") {
+        state.allLogin.push({ vaultID: vault.vaultID, vaultName: vault.name, itemID, title: item.title, username: item.username ?? "", password: item.password ?? "", url: item.url ?? "" });
+      } else {
+        state.allItem = [...(state.allItem ?? []), { vaultID: vault.vaultID, vaultName: vault.name, itemID, category: item.category, title: item.title, subtitle: "", fields: [] }];
+      }
+      return summarizeItem(state, listAllItem(state).find((candidate) => candidate.itemID === itemID));
     }
     case "items.list": {
       if (!state.features?.includes("vault")) throw new ProtocolError("invalid-request", `Unknown type ${String(type)}`);

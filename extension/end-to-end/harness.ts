@@ -47,7 +47,10 @@ export interface Harness {
   getTabId: (url: string) => Promise<number>;
   pair: (tabId: number) => Promise<Page>;
   pairWithoutPopup: () => Promise<void>;
-  readShadowHost: (page: Page, tagName: string) => Promise<{ text: string; clickButton: (label: string) => Promise<void> } | undefined>;
+  readShadowHost: (
+    page: Page,
+    tagName: string,
+  ) => Promise<{ text: string; clickButton: (label: string) => Promise<void>; typeInto: (field: string, text: string) => Promise<void> } | undefined>;
   findInlineMenuFrame: (page: Page) => Frame | undefined;
   readInlineMenuSource: (page: Page) => Promise<string | undefined>;
   close: () => Promise<void>;
@@ -103,18 +106,38 @@ export async function launchHarness(options: HarnessOptions = {}): Promise<Harne
       const [host] = findAllNode(root, (node) => node.nodeName === tagName.toUpperCase());
       if (!host) return undefined;
       const allButton = findAllNode(host, (node) => node.nodeName === "BUTTON");
+      const clickNode = async (node: CdpNode): Promise<void> => {
+        const clickSession = await context.newCDPSession(page);
+        const { model } = (await clickSession.send("DOM.getBoxModel", { backendNodeId: node.backendNodeId })) as {
+          model: { content: number[] };
+        };
+        const [left, top, , , right, bottom] = model.content;
+        await page.mouse.click((left + right) / 2, (top + bottom) / 2);
+        await clickSession.detach();
+      };
       return {
         text: collectText(host),
         clickButton: async (label) => {
           const button = allButton.find((candidate) => collectText(candidate).trim() === label || label === "*");
           if (!button) throw new Error(`no ${label} button in ${tagName}`);
-          const clickSession = await context.newCDPSession(page);
-          const { model } = (await clickSession.send("DOM.getBoxModel", { backendNodeId: button.backendNodeId })) as {
-            model: { content: number[] };
-          };
-          const [left, top, , , right, bottom] = model.content;
-          await page.mouse.click((left + right) / 2, (top + bottom) / 2);
-          await clickSession.detach();
+          await clickNode(button);
+        },
+        // typeInto clicks the field whose data-field is field and types text over its value; in a list, typing picks the
+        // option that starts with it.
+        typeInto: async (field, text) => {
+          const [node] = findAllNode(host, (candidate) => {
+            const attributes = candidate.attributes ?? [];
+            return attributes.some((value, index) => index % 2 === 0 && value === "data-field" && attributes[index + 1] === field);
+          });
+          if (!node) throw new Error(`no ${field} field in ${tagName}`);
+          await clickNode(node);
+          if (node.nodeName === "SELECT") {
+            await page.keyboard.press("Escape");
+            await page.keyboard.type(text);
+            return;
+          }
+          await page.keyboard.press("ControlOrMeta+A");
+          await page.keyboard.type(text);
         },
       };
     } finally {

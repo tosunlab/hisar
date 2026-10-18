@@ -82,6 +82,7 @@ export interface FakeHostState {
   allAddress?: FakeAddress[];
   allItem?: FakeItem[];
   allCard?: FakeCard[];
+  allVault?: { vaultID: string; name: string; isPersonal: boolean }[];
   allIdentity?: FakeIdentity[];
   allIdentityRequest?: string[];
   allCardRequest?: string[];

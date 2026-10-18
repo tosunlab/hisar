@@ -1,4 +1,4 @@
-import type { AddressSummary, AddressValues, CardSummary, CardValues, ErrorCode, IdentitySummary, IdentityValues, GenerateOptions, ItemResult, ItemSummary, LoginSummary, OneTimeCode, UpdateRequirement } from "./protocol";
+import type { AddressSummary, AddressValues, CardSummary, CardValues, ErrorCode, IdentitySummary, IdentityValues, GenerateOptions, ItemResult, ItemSummary, LoginSummary, NewItem, OneTimeCode, UpdateRequirement, VaultSummary } from "./protocol";
 
 export type { ItemResult, ItemSummary, OneTimeCode };
 
@@ -16,6 +16,8 @@ export interface PopupState {
   isIdentityFillAvailable?: boolean;
   // isCardFillAvailable: the app fills cards, so the popup offers its Cards tab.
   isCardFillAvailable?: boolean;
+  // isCreateAvailable: the app creates items, so the popup offers New item.
+  isCreateAvailable?: boolean;
   // isVaultAvailable: the app lets the popup browse every vault, not only the logins of the current site.
   isVaultAvailable?: boolean;
   // isPasswordUnlockAvailable: the app unlocks with the master password typed in the popup.
@@ -36,12 +38,23 @@ export interface MatchResult {
 export type SaveOfferKind = "save" | "update";
 export type SaveOfferAction = "save" | "not-now" | "never";
 
+// SaveOfferView: allVault and defaultTitle are set for a new login when the app takes a title and a vault, so the bar
+// lets the user change them, and the username, before saving.
 export interface SaveOfferView {
   offerID: string;
   kind: SaveOfferKind;
   host: string;
   username: string;
   title?: string;
+  defaultTitle?: string;
+  allVault?: Pick<VaultSummary, "vaultID" | "name">[];
+}
+
+// SaveOfferEdits is what the user changed in the save bar before saving a new login.
+export interface SaveOfferEdits {
+  title: string;
+  username: string;
+  vaultID?: string;
 }
 
 export interface FillOutcome {
@@ -106,6 +119,8 @@ export type PopupMessage =
   | { type: "popup.fillIdentity"; tabId: number; vaultID: string; itemID: string }
   | { type: "popup.listCards" }
   | { type: "popup.fillCard"; tabId: number; vaultID: string; itemID: string }
+  | { type: "popup.listVaults" }
+  | { type: "popup.createItem"; vaultID: string; item: NewItem }
   | { type: "popup.listItems"; query: ItemQuery }
   | { type: "popup.getItem"; vaultID: string; itemID: string }
   | { type: "popup.revealField"; vaultID: string; itemID: string; fieldID: string }
@@ -117,7 +132,7 @@ export type ContentToBackgroundMessage =
   | { type: "content.loginSubmitted"; username: string; password: string }
   | { type: "content.usernameSubmitted"; username: string }
   | { type: "content.getPendingSaveOffer" }
-  | { type: "content.actOnSaveOffer"; offerID: string; action: SaveOfferAction }
+  | { type: "content.actOnSaveOffer"; offerID: string; action: SaveOfferAction; edits?: SaveOfferEdits }
   | { type: "content.openInlineMenu"; purpose: InlineMenuPurpose }
   | { type: "content.closeInlineMenu"; sessionID: string }
   | { type: "content.pressInlineMenuKey"; sessionID: string; key: InlineMenuKey };

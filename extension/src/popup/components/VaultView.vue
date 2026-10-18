@@ -8,8 +8,13 @@ import AppIcon from "./AppIcon.vue";
 import ItemDetail from "./ItemDetail.vue";
 import ItemIcon from "./ItemIcon.vue";
 import LoginList from "./LoginList.vue";
+import NewItemView from "./NewItemView.vue";
 
-const props = withDefaults(defineProps<{ tabId: number | undefined; searchDelayMilliseconds?: number }>(), { searchDelayMilliseconds: 150 });
+// canCreate: the app saves new items from the browser, so the view offers New item.
+const props = withDefaults(defineProps<{ tabId: number | undefined; canCreate?: boolean; searchDelayMilliseconds?: number }>(), {
+  canCreate: false,
+  searchDelayMilliseconds: 150,
+});
 const emit = defineEmits<{ notice: [message: string] }>();
 
 type CategoryChoice = "all" | "favorites" | "login" | "credit-card" | "identity" | "secure-note";
@@ -30,6 +35,8 @@ const allMatchingKey = ref(new Set<string>());
 const isLoading = ref(true);
 const errorMessage = ref("");
 const selected = ref<ItemSummary>();
+const isCreating = ref(false);
+const pageUrl = ref("");
 const busyItemID = ref("");
 const searchInput = ref<HTMLInputElement>();
 let searchTimer: ReturnType<typeof setTimeout> | undefined;
@@ -82,8 +89,16 @@ watch(category, () => {
   void loadItems();
 });
 
-function rememberMatches(allLogin: LoginSummary[]): void {
+function rememberMatches(allLogin: LoginSummary[], url: string): void {
   allMatchingKey.value = new Set(allLogin.map(getKey));
+  pageUrl.value = url;
+}
+
+function showCreated(item: ItemSummary): void {
+  isCreating.value = false;
+  selected.value = item;
+  emit("notice", "Saved to Hisar");
+  void loadItems();
 }
 
 function openLogin(login: LoginSummary, url: string): void {
@@ -98,6 +113,12 @@ function openLogin(login: LoginSummary, url: string): void {
     isFavorite: allItem.value.find((item) => getKey(item) === getKey(login))?.isFavorite ?? false,
     hasOneTimePassword: login.hasOneTimePassword ?? false,
   };
+}
+
+async function closeCreate(): Promise<void> {
+  isCreating.value = false;
+  await nextTick();
+  searchInput.value?.focus();
 }
 
 async function closeDetail(): Promise<void> {
@@ -138,8 +159,9 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
+  <NewItemView v-if="isCreating" :page-url="pageUrl" @cancel="closeCreate" @created="showCreated" />
   <ItemDetail
-    v-if="selected"
+    v-else-if="selected"
     :summary="selected"
     :tab-id="tabId"
     :can-fill="allMatchingKey.has(getKey(selected))"
@@ -147,10 +169,15 @@ onBeforeUnmount(() => {
     @notice="emit('notice', $event)"
     @favorite="markFavorite"
   />
-  <div v-show="!selected" class="vault" data-testid="vault-view">
-    <div class="search">
-      <AppIcon name="search" class="search-icon" />
-      <input ref="searchInput" v-model="query" type="search" placeholder="Search all items" aria-label="Search all items" data-testid="vault-search" />
+  <div v-show="!selected && !isCreating" class="vault" data-testid="vault-view">
+    <div class="search-row">
+      <div class="search">
+        <AppIcon name="search" class="search-icon" />
+        <input ref="searchInput" v-model="query" type="search" placeholder="Search all items" aria-label="Search all items" data-testid="vault-search" />
+      </div>
+      <button v-if="canCreate" type="button" class="icon-button" title="New item" aria-label="New item" data-testid="new-item-open" @click="isCreating = true">
+        <AppIcon name="plus" />
+      </button>
     </div>
     <div class="chips" role="tablist" aria-label="Categories">
       <button
@@ -208,9 +235,15 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.search-row {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
 .search {
   position: relative;
-  margin-bottom: 8px;
+  flex: 1;
 }
 
 .search-icon {

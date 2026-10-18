@@ -60,6 +60,10 @@ async function routePopupMessage(controller: BackgroundController, message: Popu
       return controller.listCards();
     case "popup.fillCard":
       return controller.fillCard(message.tabId, message.vaultID, message.itemID);
+    case "popup.listVaults":
+      return controller.listVaults();
+    case "popup.createItem":
+      return controller.createItem(message.vaultID, message.item);
     case "popup.listItems":
       return controller.listItems(message.query);
     case "popup.getItem":
@@ -99,7 +103,7 @@ async function routeContentMessage(
     case "content.getPendingSaveOffer":
       return controller.getPendingSaveOffer(tabId);
     case "content.actOnSaveOffer":
-      return controller.actOnSaveOffer(tabId, message.offerID, message.action);
+      return controller.actOnSaveOffer(tabId, message.offerID, message.action, message.edits);
   }
 }
 

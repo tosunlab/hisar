@@ -3,10 +3,12 @@ package app
 import (
 	"cmp"
 	"context"
+	"errors"
 	"slices"
 	"strconv"
 	"strings"
 
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/browserprotocol"
 	"github.com/tryhisar/hisar/core/item"
 )
@@ -218,4 +220,87 @@ func (s *Service) setBrowserItemFavorite(vaultID, itemID string, isFavorite *boo
 		return browserprotocol.NewError(browserprotocol.ErrorInvalidRequest, "isFavorite is missing")
 	}
 	return s.SetItemFavorite(vaultID, itemID, *isFavorite)
+}
+
+// listWritableBrowserVaults lists the vaults a new item may go into: the personal vault first, then the others the user
+// may write to, by name.
+func (s *Service) listWritableBrowserVaults(ctx context.Context) ([]browserprotocol.VaultSummary, error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if err := s.requireUnlockedWithoutActivity(); err != nil {
+		return nil, err
+	}
+	if err := s.loadItemsOfAllVault(ctx); err != nil {
+		return nil, err
+	}
+	vaults := []browserprotocol.VaultSummary{}
+	for vaultID, vault := range s.vaultsByID {
+		if apitypes.CanWriteItems(vault.Role) {
+			vaults = append(vaults, browserprotocol.VaultSummary{VaultID: vaultID, Name: vault.Name, IsPersonal: vault.Type == apitypes.VaultPersonal})
+		}
+	}
+	slices.SortFunc(vaults, func(first, second browserprotocol.VaultSummary) int {
+		if first.IsPersonal != second.IsPersonal {
+			if first.IsPersonal {
+				return -1
+			}
+			return 1
+		}
+		return cmp.Or(strings.Compare(strings.ToLower(first.Name), strings.ToLower(second.Name)), strings.Compare(first.VaultID, second.VaultID))
+	})
+	return vaults, nil
+}
+
+// requireWritableBrowserVault refuses a vault the user may only read, or does not have.
+func (s *Service) requireWritableBrowserVault(ctx context.Context, vaultID string) error {
+	vaults, err := s.listWritableBrowserVaults(ctx)
+	if err != nil {
+		return err
+	}
+	if !slices.ContainsFunc(vaults, func(vault browserprotocol.VaultSummary) bool { return vault.VaultID == vaultID }) {
+		return browserprotocol.NewError(browserprotocol.ErrorInvalidRequest, "You cannot add items to that vault")
+	}
+	return nil
+}
+
+// createBrowserItem saves a new login, secure note, credit card or identity from the popup into a vault the user may
+// write to.
+func (s *Service) createBrowserItem(ctx context.Context, vaultID string, newItem *browserprotocol.NewItem) (browserprotocol.ItemSummary, error) {
+	if newItem == nil {
+		return browserprotocol.ItemSummary{}, browserprotocol.NewError(browserprotocol.ErrorInvalidRequest, "the item is missing")
+	}
+	if err := s.requireWritableBrowserVault(ctx, vaultID); err != nil {
+		return browserprotocol.ItemSummary{}, err
+	}
+	detail := ItemDetail{Category: newItem.Category, Title: strings.TrimSpace(newItem.Title), Notes: newItem.Notes, URLs: []string{}, Tags: []string{}, Fields: []ItemField{}}
+	switch newItem.Category {
+	case item.CategoryLogin:
+		detail.Username, detail.Password = newItem.Username, newItem.Password
+		if itemURL := strings.TrimSpace(newItem.URL); itemURL != "" {
+			detail.URLs = []string{itemURL}
+		}
+	case item.CategorySecureNote:
+	case item.CategoryCreditCard:
+		detail.Card = &ItemCard{Cardholder: newItem.Cardholder, Number: newItem.CardNumber, Expiry: newItem.Expiry, SecurityCode: newItem.SecurityCode}
+	case item.CategoryIdentity:
+		detail.Identity = &ItemIdentity{FirstName: newItem.FirstName, LastName: newItem.LastName, Email: newItem.Email, Phone: newItem.Phone}
+	default:
+		return browserprotocol.ItemSummary{}, browserprotocol.NewError(browserprotocol.ErrorInvalidRequest, "Hisar cannot create that kind of item from the browser")
+	}
+	saved, err := s.SaveItem(vaultID, detail)
+	if err != nil {
+		var responseError *browserprotocol.ResponseError
+		if errors.As(err, &responseError) || errors.Is(err, ErrLocked) || errors.Is(err, ErrSignedOut) || errors.Is(err, ErrOffline) {
+			return browserprotocol.ItemSummary{}, err
+		}
+		// SaveItem's refusals, such as a missing title, are sentences for the user.
+		return browserprotocol.ItemSummary{}, browserprotocol.NewError(browserprotocol.ErrorInvalidRequest, err.Error())
+	}
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	vaultItem, err := s.findItem(vaultID, saved.ID)
+	if err != nil {
+		return browserprotocol.ItemSummary{}, err
+	}
+	return s.summarizeBrowserItem(vaultID, s.vaultsByID[vaultID].Name, vaultItem), nil
 }

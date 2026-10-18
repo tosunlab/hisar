@@ -99,6 +99,37 @@ export interface IdentityValues {
   address?: AddressValues;
 }
 
+// featureSaveOptions: the app answers vaults.list, and logins.save takes a title and a vault for a new login.
+export const featureSaveOptions = "save-options";
+
+// featureCreateItems: the app answers items.create.
+export const featureCreateItems = "create-items";
+
+// VaultSummary is a vault a new item may be saved into; the personal vault comes first.
+export interface VaultSummary {
+  vaultID: string;
+  name: string;
+  isPersonal: boolean;
+}
+
+// NewItem is what items.create saves: a login, a secure note, a card or an identity, with that category's fields.
+export interface NewItem {
+  category: "login" | "secure-note" | "credit-card" | "identity";
+  title: string;
+  username?: string;
+  password?: string;
+  url?: string;
+  notes?: string;
+  cardholder?: string;
+  cardNumber?: string;
+  expiry?: string;
+  securityCode?: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+}
+
 // featureUnlockPassword: the app answers unlock.password, so the popup unlocks Hisar with the master password.
 export const featureUnlockPassword = "unlock-password";
 
@@ -195,13 +226,15 @@ export interface RequestMap {
   "logins.code": { parameters: { vaultID: string; itemID: string; url: string }; result: OneTimeCode };
   "logins.check": { parameters: { url: string; username: string; password: string }; result: CheckResult };
   "logins.save": {
-    parameters: { url: string; username: string; password: string; vaultID?: string; itemID?: string };
+    parameters: { url: string; username: string; password: string; vaultID?: string; itemID?: string; title?: string };
     result: { vaultID: string; itemID: string };
   };
   "identities.list": { parameters: Record<string, never>; result: { identities: IdentitySummary[] } };
   "identities.fill": { parameters: { vaultID: string; itemID: string }; result: IdentityValues };
   "cards.list": { parameters: Record<string, never>; result: { cards: CardSummary[] } };
   "cards.fill": { parameters: { vaultID: string; itemID: string }; result: CardValues };
+  "vaults.list": { parameters: Record<string, never>; result: { vaults: VaultSummary[] } };
+  "items.create": { parameters: { vaultID: string; item: NewItem }; result: ItemSummary };
   "items.list": {
     parameters: { query?: string; category?: string; isFavoriteOnly?: boolean };
     result: { items: ItemSummary[] };

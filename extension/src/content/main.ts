@@ -23,8 +23,8 @@ function sendToBackground<Result>(message: ContentToBackgroundMessage): Promise<
 }
 
 function presentSaveOffer(offer: SaveOfferView): void {
-  showSaveBar(document, offer, async (action) => {
-    const response = await sendToBackground<Record<string, never>>({ type: "content.actOnSaveOffer", offerID: offer.offerID, action });
+  showSaveBar(document, offer, async (action, edits) => {
+    const response = await sendToBackground<Record<string, never>>({ type: "content.actOnSaveOffer", offerID: offer.offerID, action, edits });
     return response.ok ? { ok: true } : { ok: false, message: response.error.message };
   });
 }

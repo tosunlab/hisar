@@ -23,7 +23,7 @@ describe("popup state", () => {
   it("follows the desktop state after pairing", async () => {
     const harness = createHarness({ state: { isOffline: true } });
     await harness.pair();
-    expect(await harness.controller.getPopupState()).toEqual({ view: "unlocked", email: "alex@example.com", isOffline: true, isAddressFillAvailable: true, isCardFillAvailable: true, isIdentityFillAvailable: true, isVaultAvailable: true, isPasswordUnlockAvailable: true });
+    expect(await harness.controller.getPopupState()).toEqual({ view: "unlocked", email: "alex@example.com", isOffline: true, isAddressFillAvailable: true, isCardFillAvailable: true, isIdentityFillAvailable: true, isVaultAvailable: true, isCreateAvailable: true, isPasswordUnlockAvailable: true });
     harness.state.state = "locked";
     expect((await harness.controller.getPopupState()).view).toBe("locked");
   });
@@ -379,9 +379,43 @@ describe("save offers", () => {
     const harness = createHarness();
     await harness.pair();
     const offer = await harness.controller.handleLoginSubmitted(1, "https://example.com/login", "new-user", "pw");
-    expect(offer).toEqual({ offerID: expect.any(String), kind: "save", host: "example.com", username: "new-user", title: undefined });
+    expect(offer).toEqual({
+      offerID: expect.any(String),
+      kind: "save",
+      host: "example.com",
+      username: "new-user",
+      title: undefined,
+      defaultTitle: "example.com",
+      allVault: [
+        { vaultID: "vault-personal", name: "Personal" },
+        { vaultID: "vault-family", name: "Family" },
+      ],
+    });
     expect(harness.allFrameMessage.at(-1)).toEqual({ frameId: 0, message: { type: "content.showSaveOffer", offer } });
     expect(harness.controller.getPendingSaveOffer(1)).toEqual(offer);
+  });
+
+  it("saves a new login with the title, username and vault chosen in the bar", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    const offer = await harness.controller.handleLoginSubmitted(1, "https://www.shop.example/login", "new-user", "pw");
+    expect(offer?.defaultTitle).toBe("shop.example");
+    await harness.controller.actOnSaveOffer(1, offer!.offerID, "save", { title: " Shop ", username: "alex", vaultID: "vault-family" });
+    expect(harness.state.allLogin.at(-1)).toMatchObject({ vaultID: "vault-family", title: "Shop", username: "alex", password: "pw" });
+  });
+
+  it("ignores a vault the offer did not list, and asks no vault of an app without save options", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    const offer = await harness.controller.handleLoginSubmitted(1, "https://shop.example/login", "new-user", "pw");
+    await harness.controller.actOnSaveOffer(1, offer!.offerID, "save", { title: "Shop", username: "new-user", vaultID: "vault-elsewhere" });
+    expect(harness.state.allLogin.at(-1)).toMatchObject({ vaultID: "vault-personal", title: "Shop" });
+
+    const older = createHarness({ state: { features: ["addresses"] } });
+    await older.pair();
+    const olderOffer = await older.controller.handleLoginSubmitted(1, "https://shop.example/login", "new-user", "pw");
+    expect(olderOffer?.allVault).toBeUndefined();
+    expect(older.getRequestTypes()).not.toContain("vaults.list");
   });
 
   it("offers to update a changed password", async () => {

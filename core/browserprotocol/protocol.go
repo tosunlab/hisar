@@ -58,6 +58,9 @@ type Request struct {
 	IsFavoriteOnly bool   `json:"isFavoriteOnly,omitempty"`
 	FieldID        string `json:"fieldID,omitempty"`
 	IsFavorite     *bool  `json:"isFavorite,omitempty"`
+	// Title names a login logins.save saves new (FeatureSaveOptions); Item is what items.create saves (FeatureCreateItems).
+	Title string   `json:"title,omitempty"`
+	Item  *NewItem `json:"item,omitempty"`
 
 	Passkey json.RawMessage `json:"passkey,omitempty"`
 }
@@ -109,12 +112,19 @@ const FeatureCards = "cards"
 // its address form, from identity items.
 const FeatureIdentities = "identities"
 
+// FeatureSaveOptions: vaults.list lists the vaults a new login may go into, and logins.save takes a title and a vault
+// for a new login.
+const FeatureSaveOptions = "save-options"
+
+// FeatureCreateItems: items.create saves a new login, secure note, card or identity from the popup.
+const FeatureCreateItems = "create-items"
+
 // FeatureUnlockPassword: unlock.password unlocks Hisar with the master password typed in the popup.
 const FeatureUnlockPassword = "unlock-password"
 
 // ListFeatures returns the features this app announces in hello.
 func ListFeatures() []string {
-	return []string{FeatureAddresses, FeatureVault, FeatureUnlockPassword, FeatureCards, FeatureIdentities}
+	return []string{FeatureAddresses, FeatureVault, FeatureUnlockPassword, FeatureCards, FeatureIdentities, FeatureSaveOptions, FeatureCreateItems}
 }
 
 const (
@@ -296,6 +306,38 @@ type IdentityFillResult struct {
 	Phone      string             `json:"phone"`
 	BirthDate  string             `json:"birthDate"`
 	Address    *AddressFillResult `json:"address,omitempty"`
+}
+
+// VaultSummary is a vault a new item may be saved into; IsPersonal marks the user's own vault, which comes first.
+type VaultSummary struct {
+	VaultID    string `json:"vaultID"`
+	Name       string `json:"name"`
+	IsPersonal bool   `json:"isPersonal"`
+}
+
+type VaultListResult struct {
+	Vaults []VaultSummary `json:"vaults"`
+}
+
+// NewItem is an item items.create saves: a login, a secure note, a credit card or an identity, with only the fields
+// that category has.
+type NewItem struct {
+	Category string `json:"category"`
+	Title    string `json:"title"`
+	Username string `json:"username,omitempty"`
+	Password string `json:"password,omitempty"`
+	URL      string `json:"url,omitempty"`
+	Notes    string `json:"notes,omitempty"`
+
+	Cardholder   string `json:"cardholder,omitempty"`
+	CardNumber   string `json:"cardNumber,omitempty"`
+	Expiry       string `json:"expiry,omitempty"`
+	SecurityCode string `json:"securityCode,omitempty"`
+
+	FirstName string `json:"firstName,omitempty"`
+	LastName  string `json:"lastName,omitempty"`
+	Email     string `json:"email,omitempty"`
+	Phone     string `json:"phone,omitempty"`
 }
 
 type SaveResult struct {

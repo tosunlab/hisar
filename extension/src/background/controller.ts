@@ -7,12 +7,15 @@ import type {
   MatchResult,
   PopupState,
   SaveOfferAction,
+  SaveOfferEdits,
   SaveOfferView,
 } from "../shared/messages";
 import {
   featureAddresses,
   featureCards,
+  featureCreateItems,
   featureIdentities,
+  featureSaveOptions,
   featureUnlockPassword,
   featureVault,
   HisarError,
@@ -29,6 +32,8 @@ import {
   type ItemResult,
   type ItemSummary,
   type LoginSummary,
+  type NewItem,
+  type VaultSummary,
   type OneTimeCode,
   type UpdateRequirement,
 } from "../shared/protocol";
@@ -110,6 +115,7 @@ export class BackgroundController {
         isCardFillAvailable: this.isCardFillAvailable(),
         isIdentityFillAvailable: this.isIdentityFillAvailable(),
         isVaultAvailable: this.isVaultAvailable(),
+        isCreateAvailable: this.allAppFeature.includes(featureCreateItems),
         isPasswordUnlockAvailable: this.isPasswordUnlockAvailable(),
       };
     } catch (error) {
@@ -429,6 +435,13 @@ export class BackgroundController {
     }
     const kind = decideSaveOffer(checkResult, false);
     if (!kind) return undefined;
+    // A new login may get another title and go into another vault, when the app takes them.
+    let allVault: { vaultID: string; name: string }[] | undefined;
+    if (kind === "save" && this.allAppFeature.includes(featureSaveOptions)) {
+      allVault = await this.request(() => this.client.request("vaults.list", {}))
+        .then((result) => (result.vaults ?? []).map(({ vaultID, name }) => ({ vaultID, name })))
+        .catch(() => undefined);
+    }
     const offer = {
       offerID: this.browser.createID(),
       tabId,
@@ -440,6 +453,8 @@ export class BackgroundController {
       vaultID: kind === "update" ? checkResult.vaultID : undefined,
       itemID: kind === "update" ? checkResult.itemID : undefined,
       title: checkResult.title,
+      defaultTitle: allVault ? getHost(frameUrl).replace(/^www\./, "") : undefined,
+      allVault,
       createdAt: this.browser.now(),
     };
     this.allSaveOffer.put(offer);
@@ -453,7 +468,7 @@ export class BackgroundController {
     return offer ? toSaveOfferView(offer) : null;
   }
 
-  async actOnSaveOffer(tabId: number, offerID: string, action: SaveOfferAction): Promise<void> {
+  async actOnSaveOffer(tabId: number, offerID: string, action: SaveOfferAction, edits?: SaveOfferEdits): Promise<void> {
     const offer = this.allSaveOffer.getForTab(tabId);
     if (!offer || offer.offerID !== offerID) throw new HisarError("not-found", "This save offer has expired");
     if (action === "not-now") {
@@ -468,9 +483,31 @@ export class BackgroundController {
     const parameters =
       offer.kind === "update" && offer.vaultID && offer.itemID
         ? { url: offer.url, username: offer.username, password: offer.password, vaultID: offer.vaultID, itemID: offer.itemID }
-        : { url: offer.url, username: offer.username, password: offer.password };
+        : { url: offer.url, username: offer.username, password: offer.password, ...this.applySaveEdits(offer.allVault, edits) };
     await this.request(() => this.client.request("logins.save", parameters));
     this.allSaveOffer.take(tabId, offerID);
+  }
+
+  // applySaveEdits takes the bar's title, username and vault for a new login; a vault the offer did not list is ignored,
+  // and the app checks again that the user may write to it.
+  private applySaveEdits(allVault: { vaultID: string }[] | undefined, edits: SaveOfferEdits | undefined): { username?: string; title?: string; vaultID?: string } {
+    if (!allVault || !edits) return {};
+    const changes: { username?: string; title?: string; vaultID?: string } = { username: edits.username.trim() };
+    if (edits.title.trim()) changes.title = edits.title.trim();
+    if (edits.vaultID && allVault.some((vault) => vault.vaultID === edits.vaultID)) changes.vaultID = edits.vaultID;
+    return changes;
+  }
+
+  async listVaults(): Promise<VaultSummary[]> {
+    await this.requireVault();
+    const result = await this.request(() => this.client.request("vaults.list", {}));
+    return result.vaults ?? [];
+  }
+
+  async createItem(vaultID: string, item: NewItem): Promise<ItemSummary> {
+    if (!this.hasHello) await this.request(() => this.client.connect());
+    if (!this.allAppFeature.includes(featureCreateItems)) throw new HisarError("invalid-request", "Update the Hisar app to add items from the browser");
+    return this.request(() => this.client.request("items.create", { vaultID, item }));
   }
 
   handleTabRemoved(tabId: number): void {

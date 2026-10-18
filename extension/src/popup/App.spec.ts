@@ -476,6 +476,14 @@ describe("vault", () => {
     ],
   };
 
+  let extraState: Partial<PopupState> = {};
+
+  function respondWithStateOverride(state: Partial<PopupState>): void {
+    extraState = state;
+    const previous = handler;
+    handler = (message) => (message.type === "popup.getState" ? { view: "unlocked", email: "alex@example.com", isVaultAvailable: true, ...extraState } : previous(message));
+  }
+
   function respondWithVault(overrides: Partial<Record<PopupMessage["type"], Handler>> = {}): void {
     respondWithState(
       { view: "unlocked", email: "alex@example.com", isVaultAvailable: true },
@@ -561,6 +569,37 @@ describe("vault", () => {
     await flushPromises();
     expect(allMessage).toContainEqual({ type: "popup.fillLogin", tabId: 42, vaultID: "v1", itemID: "i1" });
     expect(closeWindow).toHaveBeenCalled();
+  });
+
+  it("creates a login for the page with a generated password, into the chosen vault", async () => {
+    let created: unknown;
+    respondWithVault({
+      "popup.listVaults": () => [
+        { vaultID: "v1", name: "Personal", isPersonal: true },
+        { vaultID: "v2", name: "Family", isPersonal: false },
+      ],
+      "popup.createItem": (message) => {
+        created = message;
+        return { ...allItem[1], itemID: "new", title: "example.com" };
+      },
+    });
+    respondWithStateOverride({ isCreateAvailable: true });
+    const wrapper = await mountApp();
+    await wrapper.find('[data-testid="new-item-open"]').trigger("click");
+    await flushPromises();
+    expect((wrapper.find('[data-testid="new-title"]').element as HTMLInputElement).value).toBe("example.com");
+    expect((wrapper.find('[data-testid="new-url"]').element as HTMLInputElement).value).toBe("https://example.com");
+    expect((wrapper.find('[data-testid="new-password"]').element as HTMLInputElement).value).toBe("generated-undefined-undefined-undefined");
+    await wrapper.find('[data-testid="new-username"]').setValue("alex");
+    await wrapper.find('[data-testid="new-vault"]').setValue("v2");
+    await wrapper.find('[data-testid="new-item"]').trigger("submit");
+    await flushPromises();
+    expect(created).toEqual({
+      type: "popup.createItem",
+      vaultID: "v2",
+      item: { category: "login", title: "example.com", username: "alex", password: "generated-undefined-undefined-undefined", url: "https://example.com" },
+    });
+    expect(wrapper.find('[data-testid="item-detail"]').exists()).toBe(true);
   });
 
   it("copies a login's password from the list", async () => {
