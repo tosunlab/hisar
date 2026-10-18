@@ -19,6 +19,7 @@ import (
 
 const (
 	downloadURL       = "https://tryhisar.com/download"
+	linuxDownloadURL  = downloadURL + "#linux"
 	inviteDeepLinkURL = "hisar://invite/"
 )
 
@@ -44,6 +45,7 @@ type invitePageData struct {
 	InviteLink         string
 	DeepLink           template.URL
 	DownloadURL        string
+	LinuxDownloadURL   string
 }
 
 var builtInvitePage = buildInvitePage()
@@ -118,6 +120,7 @@ func (s *Server) sendInvitePage(c fiber.Ctx) error {
 				InviteLink:         invite.Link,
 				DeepLink:           template.URL(s.buildInviteDeepLink(token)),
 				DownloadURL:        downloadURL,
+				LinuxDownloadURL:   linuxDownloadURL,
 				InviterName:        invite.InviterName,
 				InviterDescription: invite.InviterDescription,
 			}
