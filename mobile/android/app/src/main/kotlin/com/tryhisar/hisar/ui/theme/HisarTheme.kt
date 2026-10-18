@@ -1,19 +1,25 @@
 package com.tryhisar.hisar.ui.theme
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
 import com.tryhisar.hisar.model.VaultTheme
 import com.tryhisar.hisar.model.theme.ThemePalettes
 
@@ -86,6 +92,15 @@ private fun buildColors(theme: VaultTheme, isDark: Boolean): HisarColors {
 fun HisarTheme(theme: VaultTheme = VaultTheme.standard, content: @Composable () -> Unit) {
     val isDark = theme.isDark(isSystemInDarkTheme())
     val colors = buildColors(theme, isDark)
+    val view = LocalView.current
+    // enableEdgeToEdge picks the bars' icons from the device's mode, and the chosen appearance may differ from it.
+    SideEffect {
+        val window = view.context.findActivity()?.window ?: return@SideEffect
+        WindowCompat.getInsetsController(window, view).apply {
+            isAppearanceLightStatusBars = !isDark
+            isAppearanceLightNavigationBars = !isDark
+        }
+    }
     val base = if (isDark) darkColorScheme() else lightColorScheme()
     val colorScheme = base.copy(
         primary = colors.tint,
@@ -105,4 +120,10 @@ fun HisarTheme(theme: VaultTheme = VaultTheme.standard, content: @Composable () 
     CompositionLocalProvider(LocalHisarColors provides colors) {
         MaterialTheme(colorScheme = colorScheme, typography = typography, content = content)
     }
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
