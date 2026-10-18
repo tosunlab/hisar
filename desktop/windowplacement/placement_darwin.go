@@ -51,12 +51,6 @@ static PlacementRectangle readWindowFrame(void* window) {
 static void setWindowFrame(void* window, PlacementRectangle frame) {
 	[(__bridge NSWindow*)window setFrame:NSMakeRect(frame.x, frame.y, frame.width, frame.height) display:YES animate:NO];
 }
-
-// joinActiveSpace makes the window show on the Space the user is on, not the one where it was last shown.
-static void joinActiveSpace(void* window) {
-	NSWindow* nativeWindow = (__bridge NSWindow*)window;
-	nativeWindow.collectionBehavior |= NSWindowCollectionBehaviorMoveToActiveSpace | NSWindowCollectionBehaviorFullScreenAuxiliary;
-}
 */
 import "C"
 
@@ -88,14 +82,10 @@ func ReadWindowFrame(nativeWindow unsafe.Pointer) Rectangle {
 	return convertCRectangle(C.readWindowFrame(nativeWindow))
 }
 
-// PlaceWindow sets the NSWindow's frame for the request; it must run on the main thread. A window being shown also
-// comes to the Space the user is on, so a request never waits on another desktop.
+// PlaceWindow sets the NSWindow's frame for the request; it must run on the main thread.
 func PlaceWindow(nativeWindow unsafe.Pointer, request Request) bool {
 	if nativeWindow == nil {
 		return false
-	}
-	if request.IsShowing {
-		C.joinActiveSpace(nativeWindow)
 	}
 	frame, isFound := CalculateWindowFrame(ReadDisplays(), ReadPointerLocation(), ReadWindowFrame(nativeWindow), request)
 	if !isFound {
