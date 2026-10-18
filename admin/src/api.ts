@@ -59,7 +59,8 @@ export class APIError extends Error {
   }
 }
 
-export async function request<T>(method: string, path: string, { body, token = auth.session?.token }: { body?: unknown; token?: string } = {}): Promise<T> {
+// send answers the server's response when it succeeds and throws APIError with the server's message otherwise.
+export async function send(method: string, path: string, { body, token = auth.session?.token }: { body?: unknown; token?: string } = {}): Promise<Response> {
   const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
   if (body !== undefined) {
     headers["Content-Type"] = "application/json";
@@ -72,6 +73,11 @@ export async function request<T>(method: string, path: string, { body, token = a
     const body = (await response.json().catch(() => ({}))) as { error?: string };
     throw new APIError(response.status, body.error ?? `The Hisar server answered ${response.status}.`);
   }
+  return response;
+}
+
+export async function request<T>(method: string, path: string, options: { body?: unknown; token?: string } = {}): Promise<T> {
+  const response = await send(method, path, options);
   return (response.status === 204 ? undefined : await response.json()) as T;
 }
 

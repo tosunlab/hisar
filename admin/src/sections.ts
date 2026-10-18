@@ -1,5 +1,6 @@
 import type { Component } from "vue";
 import AccountsView from "./sections/accounts/AccountsView.vue";
+import AuditView from "./sections/audit/AuditView.vue";
 import InvitesView from "./sections/invites/InvitesView.vue";
 import OverviewView from "./sections/overview/OverviewView.vue";
 import SettingsView from "./sections/settings/SettingsView.vue";
@@ -18,6 +19,7 @@ export const sections: readonly Section[] = [
   { id: "accounts", title: "Accounts", path: "/admin/accounts", component: AccountsView },
   { id: "invites", title: "Invites", path: "/admin/invites", component: InvitesView },
   { id: "settings", title: "Settings", path: "/admin/settings", component: SettingsView },
+  { id: "audit", title: "Audit log", path: "/admin/audit", component: AuditView },
 ];
 
 export function findSection(pathname: string): Section {
