@@ -1,6 +1,7 @@
 name: Release desktop
 
-# Builds the DMG and, for release versions, the Sparkle-signed update into a GitHub prerelease.
+# Builds the DMG and, for release versions, the Sparkle-signed update into a GitHub prerelease, plus the Linux .deb and
+# .rpm. Each job uploads its own files; whichever finishes first creates the prerelease.
 # update.json is uploaded as update-unpublished.json; the Publish workflow renames it, which offers the version to apps.
 on:
   push:
@@ -91,20 +92,68 @@ jobs:
         run: |
           allFile=("desktop/bin/Hisar-$VERSION.dmg")
           if $IS_CUSTOM_BUILD; then
-            name="Hisar for macOS $VERSION (custom build)"
+            name="Hisar $VERSION (custom build)"
             notes="Custom build $VERSION for testing. It is never offered as an automatic update; the next release updates it."
           else
             allFile+=("desktop/bin/Hisar-$VERSION.zip" desktop/bin/update-unpublished.json)
-            name="Hisar for macOS $VERSION"
-            notes="Universal (Apple silicon and Intel) build of Hisar $VERSION. Run the Publish workflow for $TAG to offer it as an automatic update."
+            name="Hisar $VERSION"
+            notes="Hisar $VERSION. Run the Publish workflow for $TAG to offer the Mac build as an automatic update."
           fi
-          notes="$notes Open the DMG and drag Hisar into Applications. The app is not notarized yet: on first launch, right-click Hisar → Open."
+          notes="$notes"$'\n\n'"$(sed "s/<version>/$VERSION/g" .github/release-desktop-notes.md)"
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release edit "$TAG" --title "$name" --notes "$notes" --prerelease
           else
-            gh release create "$TAG" --verify-tag --prerelease --latest=false --title "$name" --notes "$notes"
+            # A Linux job may create it first.
+            gh release create "$TAG" --verify-tag --prerelease --latest=false --title "$name" --notes "$notes" ||
+              gh release edit "$TAG" --title "$name" --notes "$notes" --prerelease
           fi
           gh release upload "$TAG" --clobber "${allFile[@]}"
       - name: Remove the Sparkle key
         if: always()
         run: rm -f "$RUNNER_TEMP/sparkle-private-key"
+
+  desktop-linux:
+    name: Build the Linux .deb and .rpm (${{ matrix.architecture }})
+    strategy:
+      matrix:
+        include:
+          - architecture: amd64
+            runner: ubuntu-24.04
+          - architecture: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    container: node:24-trixie
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Install git, gh, GTK 4 and WebKitGTK
+        run: apt-get update -qq && apt-get install -y -qq git gh libgtk-4-dev libwebkitgtk-6.0-dev >/dev/null
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ env.TAG }}
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.work
+          cache-dependency-path: "**/go.sum"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/frontend/package-lock.json
+      - run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH" && git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - run: make install-wails
+      - name: Build the packages
+        shell: bash
+        run: bash scripts/package-desktop-linux.sh "${TAG#desktop-}"
+      - name: Upload them to the GitHub prerelease
+        shell: bash
+        run: |
+          version=${TAG#desktop-}
+          cd desktop/bin
+          allFile=("Hisar-$version-linux-${{ matrix.architecture }}.deb" "Hisar-$version-linux-${{ matrix.architecture }}.rpm")
+          sha256sum "${allFile[@]}" > "SHA256SUMS-linux-${{ matrix.architecture }}"
+          bash "$GITHUB_WORKSPACE/scripts/upload-desktop-release.sh" "$TAG" "${allFile[@]}" "SHA256SUMS-linux-${{ matrix.architecture }}"
+

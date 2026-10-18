@@ -177,12 +177,15 @@ A run takes roughly 15–25 minutes for the Mac app and 40–60 minutes for the 
 app alone and up to 850 with the iPhone app. A desktop release build costs about the same as the Mac app job.
 
 Releases are tags without a `v`: `server-X.Y.Z`, `cli-X.Y.Z`, `desktop-X.Y.Z` and `extension-X.Y.Z`. Pushing one runs its release
-workflow, which builds it into a GitHub prerelease (or, for the server, pushes the image) that nobody gets yet. A custom build such as
+workflow, which builds it into a GitHub prerelease (or, for the server, pushes the image) that nobody gets yet. A desktop tag
+builds the Mac DMG and Sparkle update and the Linux packages (amd64 and arm64), each job uploading its own files;
+[.github/release-desktop-notes.md](.github/release-desktop-notes.md) is the install text of the release. A custom build such as
 `desktop-1.0.0-alpha-test` is built the same way and marked "(custom build)", and can never be published. Publishing is a separate,
 deliberate step: Actions → Publish → Run workflow with the app and the tag. It refuses anything but a plain `<app>-X.Y.Z` tag, then
 
 - server: points `ghcr.io/tosunlab/hisar-server:latest` and `:X.Y` at `:X.Y.Z`;
-- desktop: renames the release's `update-unpublished.json` to `update.json`, which offers the version to every app as an automatic update;
+- desktop: checks that the Mac and Linux files are all there, then renames the release's `update-unpublished.json` to
+  `update.json`, which offers the version to every Mac app as an automatic update;
 - cli, extension (and desktop): turns the prerelease into a release and marks it latest.
 
 A tag pushed without the workflows in its tree (one from before the move to GitHub) is built by running its release workflow by hand
