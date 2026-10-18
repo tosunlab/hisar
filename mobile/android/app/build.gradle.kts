@@ -63,6 +63,7 @@ dependencies {
     implementation(libs.compose.material.icons.extended)
     implementation(libs.androidx.biometric)
     implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.androidx.core.splashscreen)
     implementation(libs.androidx.autofill)
 
     testImplementation(testFixtures(project(":model")))
