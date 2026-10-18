@@ -179,7 +179,7 @@ func TestOrganizationMigrationRollbackKeepsOrganizationVaults(t *testing.T) {
 	createTestAccount(t, database, "AAAAAA", "a@example.com")
 	organizationID := createTestOrganization(t, database)
 	vaultID := createTestOrganizationVault(t, database, organizationID, createTestTeam(t, database, organizationID, "AAAAAA"))
-	for range 2 {
+	for range 3 {
 		if _, err := database.RollbackMigration(ctx); err != nil {
 			t.Fatal(err)
 		}
