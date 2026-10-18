@@ -28,7 +28,7 @@ if [ "${IS_FORCED:-false}" = true ]; then
   isAdminChanged=true
 else
   sharedPaths=(core/ go.work go.work.sum)
-  phonePaths=(mobile/hisarkit/ mobile/go.mod mobile/go.sum "${sharedPaths[@]}")
+  phonePaths=(mobile/hisarkit/ mobile/go.mod mobile/go.sum scripts/ui-test-partner.sh "${sharedPaths[@]}")
   if isChanged desktop/ cli/ scripts/package-desktop-linux.sh "${sharedPaths[@]}"; then isDesktopChanged=true; fi
   if isChanged mobile/ios/ mobile/build-framework.sh scripts/test-ios-ui.sh "${phonePaths[@]}"; then isMobileChanged=true; fi
   if isChanged mobile/android/ mobile/build-android-aar.sh scripts/install-android-sdk.sh scripts/test-android-ui.sh assets/themes/ scripts/themes/ "${phonePaths[@]}"; then isAndroidChanged=true; fi
