@@ -182,8 +182,15 @@ jobs:
           cache-dependency-path: desktop/frontend/package-lock.json
       - run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH" && git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - run: make install-wails
-      - run: make build-desktop
-      - run: test -x desktop/bin/Hisar
+      - name: Build the .deb and .rpm and check their layout
+        shell: bash
+        run: |
+          bash scripts/package-desktop-linux.sh 0.0.0-ci
+          contents=$(dpkg-deb -c desktop/bin/Hisar-0.0.0-ci-linux-amd64.deb)
+          for path in ./usr/bin/Hisar ./usr/bin/hisar ./usr/lib/hisar/hisar-browser-host ./usr/share/applications/com.tryhisar.hisar.desktop; do
+            grep -q " $path\$" <<<"$contents" || { echo "the .deb has no $path"; exit 1; }
+          done
+          test -s desktop/bin/Hisar-0.0.0-ci-linux-amd64.rpm
       - name: Check that the generated bindings are committed
         run: git diff --exit-code -- desktop/frontend/bindings
 

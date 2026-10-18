@@ -31,7 +31,10 @@ const (
 
 var DefaultSystemDirectories = []string{"/opt/homebrew/bin", "/usr/local/bin"}
 
-var errUnavailable = errors.New("the command-line tool is only bundled with the packaged Hisar app")
+var (
+	errUnavailable        = errors.New("the command-line tool is only bundled with the packaged Hisar app")
+	errInstalledByPackage = errors.New("hisar is installed by the Hisar package; your package manager adds and removes it")
+)
 
 // Installation is a hisar found in one of the install directories; Target is where a symlink points.
 type Installation struct {
@@ -52,12 +55,16 @@ type InstallStatus struct {
 	IsPathCommandFromThisApp bool           `json:"isPathCommandFromThisApp"`
 	// PathHint is the shell command that puts the install directory on the PATH, when it is not.
 	PathHint string `json:"pathHint"`
+	// IsInstalledByPackage means the package that installed the app put hisar at BundledPath, so there is nothing to link.
+	IsInstalledByPackage bool `json:"isInstalledByPackage"`
 }
 
 type InstallerConfig struct {
-	BundledPath       string
-	HomeDirectory     string
-	SystemDirectories []string
+	BundledPath string
+	// IsInstalledByPackage is set on Linux, where the .deb or .rpm installs hisar on the PATH itself.
+	IsInstalledByPackage bool
+	HomeDirectory        string
+	SystemDirectories    []string
 	// GetUserPath returns the directories of the user's PATH; ReadUserPath reads it from the login shell.
 	GetUserPath func() []string
 	Shell       string
@@ -165,6 +172,9 @@ func (installer *Installer) buildPathHint(directory string, userDirectories []st
 
 func (installer *Installer) GetStatus() InstallStatus {
 	status := InstallStatus{IsAvailable: installer.isAvailable(), BundledPath: installer.config.BundledPath, Installations: []Installation{}}
+	if installer.config.IsInstalledByPackage {
+		return installer.getPackageStatus(status)
+	}
 	for _, directory := range installer.getInstallDirectories() {
 		installation, isFound := installer.describe(filepath.Join(directory, commandName))
 		if !isFound {
@@ -187,6 +197,19 @@ func (installer *Installer) GetStatus() InstallStatus {
 	return status
 }
 
+func (installer *Installer) getPackageStatus(status InstallStatus) InstallStatus {
+	status.IsInstalledByPackage = true
+	if status.IsAvailable {
+		status.InstalledPath = installer.config.BundledPath
+	}
+	status.PathCommandPath = installer.findPathCommand(installer.config.GetUserPath())
+	if status.PathCommandPath != "" {
+		status.PathCommandTarget, _ = filepath.EvalSymlinks(status.PathCommandPath)
+		status.IsPathCommandFromThisApp = status.IsAvailable && isSamePath(status.PathCommandPath, installer.config.BundledPath)
+	}
+	return status
+}
+
 func (installer *Installer) chooseDirectory() (string, error) {
 	for _, directory := range installer.config.SystemDirectories {
 		if isWritableDirectory(directory) {
@@ -204,6 +227,9 @@ func (installer *Installer) chooseDirectory() (string, error) {
 func (installer *Installer) Install() (InstallStatus, error) {
 	if !installer.isAvailable() {
 		return installer.GetStatus(), errUnavailable
+	}
+	if installer.config.IsInstalledByPackage {
+		return installer.GetStatus(), errInstalledByPackage
 	}
 	directory, err := installer.chooseDirectory()
 	if err != nil {
@@ -229,6 +255,9 @@ func (installer *Installer) Install() (InstallStatus, error) {
 
 // Uninstall removes only hisar symlinks that point into a Hisar.app.
 func (installer *Installer) Uninstall() (InstallStatus, error) {
+	if installer.config.IsInstalledByPackage {
+		return installer.GetStatus(), errInstalledByPackage
+	}
 	var errs []error
 	for _, directory := range installer.getInstallDirectories() {
 		installation, isFound := installer.describe(filepath.Join(directory, commandName))

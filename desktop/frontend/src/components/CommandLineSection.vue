@@ -60,6 +60,10 @@ onBeforeUnmount(() => allRemoveListener.forEach((removeListener) => removeListen
           <p v-else-if="!commandLineStatus.isAvailable" class="muted" data-testid="command-line-state">
             The command-line tool comes with the packaged Hisar app; this development build has none.
           </p>
+          <p v-else-if="isInstalled && commandLineStatus.isInstalledByPackage" class="muted" data-testid="command-line-state">
+            <span class="state-dot running"></span>Installed with the Hisar package at
+            <span class="monospace">{{ commandLineStatus.installedPath }}</span>
+          </p>
           <p v-else-if="isInstalled" class="muted" data-testid="command-line-state">
             <span class="state-dot running"></span>Installed at <span class="monospace">{{ commandLineStatus.installedPath }}</span>
           </p>
@@ -80,7 +84,7 @@ onBeforeUnmount(() => allRemoveListener.forEach((removeListener) => removeListen
             </p>
           </template>
         </div>
-        <template v-if="commandLineStatus?.isAvailable">
+        <template v-if="commandLineStatus?.isAvailable && !commandLineStatus.isInstalledByPackage">
           <button v-if="isInstalled" data-testid="uninstall-command-line" :disabled="store.isBusy" @click="uninstallCommandLineTool">Uninstall</button>
           <button v-else class="primary" data-testid="install-command-line" :disabled="store.isBusy" @click="installCommandLineTool">
             Install command-line tool

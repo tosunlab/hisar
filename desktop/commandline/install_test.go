@@ -277,3 +277,29 @@ func TestUserPathReaderUsesLoginShell(t *testing.T) {
 		t.Errorf("shell PATH %v", directories)
 	}
 }
+
+func TestPackageInstallReportsThePackagedCommand(t *testing.T) {
+	fixture := createInstallFixture(t)
+	packagedPath := filepath.Join(fixture.root, "usr", "bin", "hisar")
+	writeExecutable(t, packagedPath)
+	installer := NewInstaller(InstallerConfig{
+		BundledPath:          packagedPath,
+		IsInstalledByPackage: true,
+		HomeDirectory:        fixture.homeDirectory,
+		SystemDirectories:    []string{fixture.usrLocalBin},
+		GetUserPath:          func() []string { return []string{fixture.usrLocalBin, filepath.Dir(packagedPath)} },
+	})
+	status := installer.GetStatus()
+	if !status.IsInstalledByPackage || status.InstalledPath != packagedPath || !status.IsPathCommandFromThisApp || status.PathHint != "" {
+		t.Fatalf("status = %+v", status)
+	}
+	if _, err := installer.Install(); err != errInstalledByPackage {
+		t.Fatalf("Install() error = %v, want errInstalledByPackage", err)
+	}
+	if _, err := installer.Uninstall(); err != errInstalledByPackage {
+		t.Fatalf("Uninstall() error = %v, want errInstalledByPackage", err)
+	}
+	if _, err := os.Lstat(filepath.Join(fixture.usrLocalBin, "hisar")); err == nil {
+		t.Fatal("a package install created a link")
+	}
+}

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Hisar
+GenericName=Password Manager
+Comment=End-to-end encrypted password, SSH key and secrets manager for developers
+Exec=/usr/bin/Hisar
+Icon=com.tryhisar.hisar
+Terminal=false
+Categories=Utility;Security;Development;
+Keywords=password;ssh;secrets;vault;

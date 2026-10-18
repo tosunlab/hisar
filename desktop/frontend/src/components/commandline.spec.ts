@@ -126,6 +126,25 @@ describe("CommandLineSection", () => {
     expect(wrapper.find('[data-testid="command-line-path-hint"]').exists()).toBe(false);
   });
 
+  it("shows the hisar the Linux package installed, with nothing to install or uninstall", async () => {
+    api.getCommandLineStatus.mockResolvedValue(
+      createCommandLineStatus({
+        bundledPath: "/usr/bin/hisar",
+        installedPath: "/usr/bin/hisar",
+        pathCommandPath: "/usr/bin/hisar",
+        pathCommandTarget: "/usr/bin/hisar",
+        isPathCommandFromThisApp: true,
+        isInstalledByPackage: true,
+      }),
+    );
+    const wrapper = mount(CommandLineSection);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="command-line-state"]').text()).toBe("Installed with the Hisar package at /usr/bin/hisar");
+    expect(wrapper.find('[data-testid="command-line-path"]').text()).toBe("hisar in your terminal is this app's.");
+    expect(wrapper.find('[data-testid="install-command-line"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="uninstall-command-line"]').exists()).toBe(false);
+  });
+
   it("has nothing to install in a development build", async () => {
     api.getCommandLineStatus.mockResolvedValue(createCommandLineStatus({ isAvailable: false }));
     const wrapper = mount(CommandLineSection);

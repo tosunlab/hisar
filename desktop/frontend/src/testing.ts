@@ -462,6 +462,7 @@ export function createCommandLineStatus(overrides: Partial<CommandLineStatus> = 
     pathCommandTarget: "",
     isPathCommandFromThisApp: false,
     pathHint: "",
+    isInstalledByPackage: false,
     isIntegrationEnabled: true,
     socketPath: "/Users/alice/.hisar/cli.sock",
     isServing: true,
