@@ -30,6 +30,7 @@ import androidx.lifecycle.compose.currentStateAsState
 import com.tryhisar.hisar.app.AppModel
 import com.tryhisar.hisar.app.NewAccountStep
 import com.tryhisar.hisar.app.Screen
+import com.tryhisar.hisar.ui.approvals.PhoneApprovalSheet
 import com.tryhisar.hisar.ui.components.LogoMark
 import com.tryhisar.hisar.ui.components.NoticeToast
 import com.tryhisar.hisar.ui.components.PlainButton
@@ -44,7 +45,8 @@ import kotlinx.coroutines.launch
 
 /**
  * The app's one window: the screen the model's state asks for, with the overlays that sit above any screen: the cover
- * after sign-up, the "Already signed in" alert, notices, and the privacy cover while the app is not in front.
+ * after sign-up, the open request from the Mac, the "Already signed in" alert, notices, and the privacy cover while the
+ * app is not in front.
  */
 @Composable
 fun RootScreen(model: AppModel, copySecret: (String) -> Boolean) {
@@ -57,6 +59,8 @@ fun RootScreen(model: AppModel, copySecret: (String) -> Boolean) {
         val notice by model.notice.collectAsStateWithLifecycle()
         val copyCount by model.copyCount.collectAsStateWithLifecycle()
         val isCheckingMinimumVersion by model.isCheckingMinimumVersion.collectAsStateWithLifecycle()
+        val allPendingApproval by model.approvals.allPendingApproval.collectAsStateWithLifecycle()
+        val presentedApproval by model.approvals.presentedApproval.collectAsStateWithLifecycle()
         val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
         val view = LocalView.current
         val scope = rememberCoroutineScope()
@@ -74,13 +78,17 @@ fun RootScreen(model: AppModel, copySecret: (String) -> Boolean) {
                 }
                 Screen.SignedOut -> SignInScreen(model)
                 Screen.Locked -> LockScreen(model)
-                Screen.Unlocked -> MainTabs(model)
+                Screen.Unlocked -> MainTabs(model, approvalBadgeCount = allPendingApproval.size)
             }
 
             when (val step = newAccountStep) {
                 is NewAccountStep.SaveSecretKey -> NewSecretKeyScreen(step.secretKey, status.email, status.server, copySecret, model.signIn::finishNewSecretKey)
                 NewAccountStep.BiometricOffer -> BiometricOfferScreen(model)
                 null -> Unit
+            }
+
+            presentedApproval?.let { approval ->
+                if (screen == Screen.Unlocked && newAccountStep == null) PhoneApprovalSheet(model, approval)
             }
 
             AnimatedVisibility(

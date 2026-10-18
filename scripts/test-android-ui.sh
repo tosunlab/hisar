@@ -39,12 +39,28 @@ ui_test_add_account ITEM_DETAIL_ "android-item-detail-$(date +%s)-$RANDOM@exampl
 ui_test_add_account ITEM_CATEGORIES_ "android-item-categories-$(date +%s)-$RANDOM@example.com"
 ui_test_add_account ITEM_APP_LINK_ "android-item-app-link-$(date +%s)-$RANDOM@example.com"
 ui_test_add_account QR_SCANNER_ "android-qr-scanner-$(date +%s)-$RANDOM@example.com"
+# The phone approval test signs in to an account whose Mac is played by hisar-ui-test-mac: it signs up first, then sends
+# the phone its requests and saves each answer it verified in the Personal vault.
+PHONE_APPROVAL_EMAIL="android-phone-approval-$(date +%s)-$RANDOM@example.com"
+PHONE_APPROVAL_PASSWORD=phone-approval-master-password
+(cd "$ROOT/mobile" && go build -o "$ROOT/bin/hisar-ui-test-mac" ./cmd/hisar-ui-test-mac)
+"$ROOT/bin/hisar-ui-test-mac" -invite "$(ui_test_create_invite "$PHONE_APPROVAL_EMAIL")" -email "$PHONE_APPROVAL_EMAIL" \
+  -password "$PHONE_APPROVAL_PASSWORD" -state "$T/mac" -secret-key-file "$T/mac-secret-key" >"$T/mac.log" 2>&1 &
+UI_TEST_MAC=$!
+trap 'kill "$UI_TEST_MAC" 2>/dev/null || true; ui_test_stop' EXIT
+for _ in $(seq 60); do [ -s "$T/mac-secret-key" ] || ! kill -0 "$UI_TEST_MAC" 2>/dev/null && break; sleep 1; done
+[ -s "$T/mac-secret-key" ] || { echo "hisar-ui-test-mac did not sign up:" >&2; cat "$T/mac.log" >&2; exit 1; }
+UI_TEST_VALUES+=(
+  "HISAR_UI_TEST_PHONE_APPROVAL_EMAIL=$PHONE_APPROVAL_EMAIL"
+  "HISAR_UI_TEST_PHONE_APPROVAL_PASSWORD=$PHONE_APPROVAL_PASSWORD"
+  "HISAR_UI_TEST_PHONE_APPROVAL_SECRET_KEY=$(cat "$T/mac-secret-key")"
+)
 # The biometric tests enroll fingers and touch the sensor through the emulator's console.
 if [[ "$ANDROID_SERIAL" == emulator-* ]] && [ -r "$HOME/.emulator_console_auth_token" ]; then
   UI_TEST_VALUES+=("HISAR_UI_TEST_EMULATOR_CONSOLE_PORT=${ANDROID_SERIAL#emulator-}" "HISAR_UI_TEST_EMULATOR_CONSOLE_TOKEN=$(cat "$HOME/.emulator_console_auth_token")")
 fi
 "$ADB" reverse "tcp:$UI_TEST_PORT" "tcp:$UI_TEST_PORT" >/dev/null
-trap '"$ADB" reverse --remove "tcp:$UI_TEST_PORT" >/dev/null 2>&1 || true; ui_test_stop' EXIT
+trap '"$ADB" reverse --remove "tcp:$UI_TEST_PORT" >/dev/null 2>&1 || true; kill "$UI_TEST_MAC" 2>/dev/null || true; ui_test_stop' EXIT
 
 # The Android Gradle plugin cuts each value at its first comma and hands the rest to the device's shell unquoted, inside
 # `am instrument -e NAME value`.
@@ -104,5 +120,7 @@ if [ -n "${HISAR_UI_TEST_SCREENSHOT_DIRECTORY:-}" ] && [ -d "$OUTPUT" ]; then
 fi
 if [ "$STATUS" != 0 ]; then
   ui_test_print_logs
+  echo "--- hisar-ui-test-mac log" >&2
+  cat "$T/mac.log" >&2
   exit "$STATUS"
 fi
