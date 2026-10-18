@@ -1,0 +1,1 @@
+The Hisar browser extension <version> for Chrome and other Chromium browsers. Unzip `hisar-extension-<version>.zip`, open `chrome://extensions`, turn on Developer mode, remove the old Hisar extension and choose Load unpacked. Pairing with the Mac app is kept, because the extension ID is fixed.
