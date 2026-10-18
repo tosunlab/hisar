@@ -32,6 +32,8 @@ open class HisarApplication : Application(), BackendProvider {
 
     override fun copySecret(text: String): Boolean = clipboard.setText(text)
 
+    override fun copyPlain(text: String): Boolean = clipboard.setPlainText(text)
+
     override fun onCreate() {
         super.onCreate()
         clipboard = ClipboardAdapter(this)

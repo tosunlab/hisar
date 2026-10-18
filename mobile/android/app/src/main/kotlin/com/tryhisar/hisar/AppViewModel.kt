@@ -14,7 +14,7 @@ import kotlinx.coroutines.launch
  * app goes to the background and comes back, which locks it after the auto-lock delay.
  */
 class AppViewModel(private val provider: BackendProvider) : ViewModel() {
-    val model = AppModel(viewModelScope, Dispatchers.IO, provider.events)
+    val model = AppModel(viewModelScope, Dispatchers.IO, provider, provider.events)
     private var hasEnteredBackground = false
 
     private val processObserver = object : DefaultLifecycleObserver {
