@@ -16,8 +16,11 @@ sealed interface NewAccountStep {
     data object BiometricOffer : NewAccountStep
 }
 
-/** Signing in, creating an account, the links that fill those forms in, and the screens right after sign-up. */
-class SignInModel(private val context: ModelContext) {
+/**
+ * Signing in, creating an account, the links that fill those forms in, and the screens right after sign-up. Unless
+ * [isPlainHttpAllowed], a server or invite link that starts with http:// is refused before the backend is asked.
+ */
+class SignInModel(private val context: ModelContext, private val isPlainHttpAllowed: Boolean) {
     private val mutableNewAccountStep = MutableStateFlow<NewAccountStep?>(null)
     val newAccountStep: StateFlow<NewAccountStep?> = mutableNewAccountStep.asStateFlow()
 
@@ -37,6 +40,10 @@ class SignInModel(private val context: ModelContext) {
         val formattedSecretKey = VaultLogic.formatSecretKey(secretKey)
         val trimmedServer = server.trimmingWhitespacesAndNewlines()
         val trimmedEmail = email.trimmingWhitespacesAndNewlines()
+        if (isRefusedAsPlainHttp(trimmedServer)) {
+            context.errorMessage.value = PLAIN_HTTP_SERVER_REFUSAL
+            return@runInModel false
+        }
         val newStatus = context.perform { it.signIn(trimmedServer, trimmedEmail, formattedSecretKey, password) } ?: return@runInModel false
         context.applyStatus(newStatus)
         context.refreshAll()
@@ -47,6 +54,10 @@ class SignInModel(private val context: ModelContext) {
         val trimmedInviteLink = inviteLink.trimmingWhitespacesAndNewlines()
         val trimmedEmail = email.trimmingWhitespacesAndNewlines()
         val trimmedName = name.trimmingWhitespacesAndNewlines()
+        if (isRefusedAsPlainHttp(trimmedInviteLink)) {
+            context.errorMessage.value = PLAIN_HTTP_INVITE_REFUSAL
+            return@runInModel false
+        }
         val result = context.perform { it.signUp(trimmedInviteLink, trimmedEmail, trimmedName, password) } ?: return@runInModel false
         mutableNewAccountStep.value = NewAccountStep.SaveSecretKey(result.secretKey)
         context.applyStatus(result.status)
@@ -112,8 +123,12 @@ class SignInModel(private val context: ModelContext) {
         context.attempt { it.dismissSignedOutReason() }?.let(context::applyStatus)
     }
 
+    private fun isRefusedAsPlainHttp(address: String): Boolean = !isPlainHttpAllowed && address.startsWith("http://", ignoreCase = true)
+
     companion object {
         const val DEFAULT_SERVER = "https://api.tryhisar.com"
+        const val PLAIN_HTTP_SERVER_REFUSAL = "This server's address starts with http://, so the connection would not be encrypted. Hisar signs in only over https://."
+        const val PLAIN_HTTP_INVITE_REFUSAL = "This invite link starts with http://, so the connection would not be encrypted. Hisar creates accounts only over https://."
 
         fun isDefaultServer(server: String): Boolean {
             val trimmedServer = server.trimmingWhitespacesAndNewlines()

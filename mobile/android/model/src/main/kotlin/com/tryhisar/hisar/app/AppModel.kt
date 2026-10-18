@@ -42,6 +42,8 @@ class AppModel(
     private val clipboard: TextClipboard,
     override val backendEvents: Flow<BackendEvent> = emptyFlow(),
     private val now: () -> Instant = Instant::now,
+    /** Whether sign-in and sign-up take an http:// server: only debug builds do, for a server on the developer's machine. */
+    isPlainHttpAllowed: Boolean = false,
 ) : ModelContext {
     private var backend: VaultBackend? = null
     private val mutableStatus = MutableStateFlow(VaultStatus.signedOut)
@@ -86,7 +88,7 @@ class AppModel(
     val remoteChangeCount: StateFlow<Int> = mutableRemoteChangeCount.asStateFlow()
     val selectedTab = MutableStateFlow(Tab.VAULTS)
 
-    val signIn = SignInModel(this)
+    val signIn = SignInModel(this, isPlainHttpAllowed)
     val lock = LockModel(this)
     val settings = SettingsModel(this)
     val itemEditor = ItemEditorModel(this)
