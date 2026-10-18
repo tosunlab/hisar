@@ -1,5 +1,6 @@
 package com.tryhisar.hisar.model
 
+import com.tryhisar.hisar.autofill.LoginWebsite
 import java.io.File
 import java.util.UUID
 import kotlinx.io.bytestring.ByteString
@@ -497,6 +498,43 @@ open class FakeBackend : VaultBackend {
         }
         val item = getItem(vaultID, itemID)
         return LoginCredential(item.username, item.password, item.hasOneTimePassword)
+    }
+
+    override fun listAllLoginForAndroidApp(packageName: String, certificateSHA256: String): List<LoginMatch> {
+        record("listAllLoginForAndroidApp")
+        requireUnlocked()
+        val certificate = certificateSHA256.replace(":", "").lowercase()
+        return allVault.flatMap { vault ->
+            allItemByVaultID[vault.id].orEmpty().filter { item ->
+                item.allAndroidApp.any { it.packageName == packageName && it.certificateSHA256.replace(":", "").lowercase() == certificate }
+            }.map { LoginMatch(vault.id, it.id, it.title, it.username, vault.name, it.hasOneTimePassword) }
+        }
+    }
+
+    override fun getLoginForAndroidApp(vaultID: String, itemID: String, packageName: String, certificateSHA256: String): LoginCredential {
+        record("getLoginForAndroidApp")
+        if (listAllLoginForAndroidApp(packageName, certificateSHA256).none { it.vaultID == vaultID && it.itemID == itemID }) {
+            throw BackendError("This login is not linked to this app")
+        }
+        val item = getItem(vaultID, itemID)
+        return LoginCredential(item.username, item.password, item.hasOneTimePassword)
+    }
+
+    override fun getOneTimeCodeForAndroidApp(vaultID: String, itemID: String, packageName: String, certificateSHA256: String): OneTimeCode {
+        record("getOneTimeCodeForAndroidApp")
+        if (listAllLoginForAndroidApp(packageName, certificateSHA256).none { it.vaultID == vaultID && it.itemID == itemID }) {
+            throw BackendError("This login is not linked to this app")
+        }
+        return getOneTimeCode(vaultID, itemID)
+    }
+
+    /** Every login website's host once, sorted; the registrable domain is its last two labels. */
+    override fun listAllLoginWebsite(): List<LoginWebsite> {
+        record("listAllLoginWebsite")
+        requireUnlocked()
+        return allItemByVaultID.values.flatten().filter { it.offersLoginFill }.flatMap { it.allURL }
+            .mapNotNull(VaultLogic::extractHost).distinct().sorted()
+            .map { LoginWebsite(it, it.split(".").takeLast(2).joinToString(".")) }
     }
 
     override fun listAllPasskey(): List<StoredPasskey> {
@@ -1040,6 +1078,24 @@ open class FakeBackend : VaultBackend {
         changeOrganizationAsAdmin(organizationID, isAdminRequired) { organization ->
             organization.copy(allTeam = organization.allTeam.map { if (it.id == teamID) change(it) else it })
         }
+    }
+
+    override fun addAndroidApp(vaultID: String, itemID: String, packageName: String, certificateSHA256: String): ItemDetail {
+        record("addAndroidApp")
+        return changeAndroidApps(vaultID, itemID) { it + ItemAndroidApp(packageName, certificateSHA256) }
+    }
+
+    override fun removeAndroidApp(vaultID: String, itemID: String, packageName: String, certificateSHA256: String): ItemDetail {
+        record("removeAndroidApp")
+        return changeAndroidApps(vaultID, itemID) { it - ItemAndroidApp(packageName, certificateSHA256) }
+    }
+
+    private fun changeAndroidApps(vaultID: String, itemID: String, change: (List<ItemAndroidApp>) -> List<ItemAndroidApp>): ItemDetail {
+        val item = getItem(vaultID, itemID)
+        if (!item.offersLoginFill) throw BackendError("only a login or a server can be filled into an app")
+        val changed = item.copy(allAndroidApp = change(item.allAndroidApp).distinct())
+        if (changed.allAndroidApp != item.allAndroidApp) replaceItem(vaultID, changed)
+        return changed
     }
 
     companion object {

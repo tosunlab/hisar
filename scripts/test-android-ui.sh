@@ -35,6 +35,9 @@ ui_test_add_account PLATFORM_TIME_ZONE_ "android-platform-time-zone-$(date +%s)-
 ui_test_add_account CREDENTIAL_CHANGE_ "android-credential-change-$(date +%s)-$RANDOM@example.com"
 ui_test_add_account ITEM_EDITOR_ "android-item-editor-$(date +%s)-$RANDOM@example.com"
 ui_test_add_account ITEM_EDITOR_EDIT_ "android-item-editor-edit-$(date +%s)-$RANDOM@example.com"
+ui_test_add_account ITEM_DETAIL_ "android-item-detail-$(date +%s)-$RANDOM@example.com"
+ui_test_add_account ITEM_CATEGORIES_ "android-item-categories-$(date +%s)-$RANDOM@example.com"
+ui_test_add_account ITEM_APP_LINK_ "android-item-app-link-$(date +%s)-$RANDOM@example.com"
 # The biometric tests enroll fingers and touch the sensor through the emulator's console.
 if [[ "$ANDROID_SERIAL" == emulator-* ]] && [ -r "$HOME/.emulator_console_auth_token" ]; then
   UI_TEST_VALUES+=("HISAR_UI_TEST_EMULATOR_CONSOLE_PORT=${ANDROID_SERIAL#emulator-}" "HISAR_UI_TEST_EMULATOR_CONSOLE_TOKEN=$(cat "$HOME/.emulator_console_auth_token")")
