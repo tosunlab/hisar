@@ -16,7 +16,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 env:
@@ -38,17 +38,22 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.tag && format('refs/tags/{0}', inputs.tag) || github.ref }}
-      - name: Choose image tags
+      - name: Choose image tags and the server version
         id: imageTag
         run: |
           commit=$(git rev-parse HEAD)
           shaTag="sha-$(git rev-parse --short=8 HEAD)"
           allImageTag="$SERVER_IMAGE:$shaTag"
-          if [ -n "$TAG" ]; then allImageTag="$allImageTag,$SERVER_IMAGE:${TAG#server-}"; fi
+          version="$shaTag"
+          if [ -n "$TAG" ]; then
+            version="${TAG#server-}"
+            allImageTag="$allImageTag,$SERVER_IMAGE:$version"
+          fi
           {
             echo "commit=$commit"
             echo "shaTag=$shaTag"
             echo "allImageTag=$allImageTag"
+            echo "version=$version"
           } >> "$GITHUB_OUTPUT"
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         with:
@@ -64,6 +69,7 @@ jobs:
           provenance: false
           push: true
           tags: ${{ steps.imageTag.outputs.allImageTag }}
+          build-args: VERSION=${{ steps.imageTag.outputs.version }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ steps.imageTag.outputs.commit }}
@@ -74,3 +80,20 @@ jobs:
         run: |
           docker buildx imagetools inspect --raw "$SERVER_IMAGE:$SHA_TAG" | tee manifest.json
           grep -q '"architecture": *"amd64"' manifest.json && grep -q '"architecture": *"arm64"' manifest.json
+      # Publish turns the prerelease into a release; only then do admin dashboards offer the version (§8.8).
+      - name: Create the GitHub prerelease
+        if: env.TAG != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ steps.imageTag.outputs.version }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "the release $TAG already exists"; exit 0
+          fi
+          case "$VERSION" in
+            *-*) name="Hisar Server $VERSION (custom build)" ;;
+            *) name="Hisar Server $VERSION" ;;
+          esac
+          gh release create "$TAG" --verify-tag --prerelease --latest=false --title "$name" \
+            --notes "The hisar-server image $SERVER_IMAGE:$VERSION for linux/amd64 and linux/arm64. deploy/README.md says how to run it."

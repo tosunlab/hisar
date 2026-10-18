@@ -74,14 +74,19 @@ func (s *Service) UpdateSettings(ctx context.Context, actor Actor, request *apit
 	if err != nil {
 		return apitypes.AdminSettings{}, err
 	}
-	s.instanceSettings.Current.Store(&effective)
-	if s.instanceSettings.OnSave != nil {
-		s.instanceSettings.OnSave(effective)
-	}
+	s.applySettings(effective)
 	if len(changedFields) > 0 {
 		s.recordAudit(ctx, actor, "admin_settings_changed", map[string][]string{"fields": changedFields})
 	}
 	return describeSettings(effective, sources)
+}
+
+// applySettings swaps the snapshot every request reads for newly stored settings.
+func (s *Service) applySettings(effective settings.Settings) {
+	s.instanceSettings.Current.Store(&effective)
+	if s.instanceSettings.OnSave != nil {
+		s.instanceSettings.OnSave(effective)
+	}
 }
 
 func describeSettings(effective settings.Settings, sources settings.Sources) (apitypes.AdminSettings, error) {

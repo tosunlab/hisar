@@ -6,10 +6,13 @@ listens on `127.0.0.1:8080` only; your nginx terminates TLS and proxies to it.
 ## Images
 
 Pushing a tag `server-<version>` (e.g. `server-0.1.7`) runs the GitHub Actions workflow "Release server image", which publishes
-`ghcr.io/tosunlab/hisar-server` as `:<version>` and `:sha-<commit>`, for linux/amd64 and linux/arm64, built from `deploy/Dockerfile`.
-Running the Publish workflow (app `server`, the tag) then points `:<major>.<minor>` and `:latest` at it; a custom build
-(`server-1.0.0-alpha-test`) can't be published. Running "Release server image" by hand on a branch without a tag pushes
-`:sha-<commit>` only. Pull requests build the same image into a throwaway registry and boot it, without pushing.
+`ghcr.io/tosunlab/hisar-server` as `:<version>` and `:sha-<commit>`, for linux/amd64 and linux/arm64, built from `deploy/Dockerfile`,
+and creates the GitHub prerelease `server-<version>` when the tag has none. Running the Publish workflow (app `server`, the tag)
+then points `:<major>.<minor>` and `:latest` at it and turns the prerelease into a release; only published releases make the
+admin dashboard say "Version <version> is available". A custom build (`server-1.0.0-alpha-test`) can't be published. For a tag
+pushed before the workflow created releases, run "Release server image" by hand with that tag first. Running it by hand on a
+branch without a tag pushes `:sha-<commit>` only. Pull requests build the same image into a throwaway registry and boot it,
+without pushing.
 
 The workflows push with their own `GITHUB_TOKEN`, so the registry needs no secrets. While the package is private, the server
 must log in once with a GitHub personal access token (classic) that has only the `read:packages` scope:

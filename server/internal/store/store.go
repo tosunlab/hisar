@@ -25,6 +25,8 @@ var (
 
 type Store struct {
 	pool *pgxpool.Pool
+	// liveItemCount is GetInstanceCounts' last count of live items.
+	liveItemCount *itemCountCache
 }
 
 func Open(ctx context.Context, databaseURL string) (*Store, error) {
@@ -36,45 +38,53 @@ func Open(ctx context.Context, databaseURL string) (*Store, error) {
 		pool.Close()
 		return nil, err
 	}
-	return &Store{pool: pool}, nil
+	return &Store{pool: pool, liveItemCount: newItemCountCache()}, nil
 }
 
 func (s *Store) Close() { s.pool.Close() }
 
-// createMigrator uses a Postgres advisory lock so concurrent server starts migrate only once.
-func (s *Store) createMigrator() (*goose.Provider, error) {
+// createMigrator takes a Postgres advisory lock when takesLock, so concurrent server starts migrate only once; reading
+// the status takes none, so the admin dashboard never waits behind a migration. Closing the migrator leaves the pool open.
+func (s *Store) createMigrator(takesLock bool) (*goose.Provider, error) {
 	migrationDirectory, err := fs.Sub(migrationFiles, "migrations")
 	if err != nil {
 		return nil, err
 	}
-	locker, err := lock.NewPostgresSessionLocker()
-	if err != nil {
-		return nil, err
+	var options []goose.ProviderOption
+	if takesLock {
+		locker, err := lock.NewPostgresSessionLocker()
+		if err != nil {
+			return nil, err
+		}
+		options = append(options, goose.WithSessionLocker(locker))
 	}
-	return goose.NewProvider(goose.DialectPostgres, stdlib.OpenDBFromPool(s.pool), migrationDirectory, goose.WithSessionLocker(locker))
+	return goose.NewProvider(goose.DialectPostgres, stdlib.OpenDBFromPool(s.pool), migrationDirectory, options...)
 }
 
 func (s *Store) Migrate(ctx context.Context) ([]*goose.MigrationResult, error) {
-	migrator, err := s.createMigrator()
+	migrator, err := s.createMigrator(true)
 	if err != nil {
 		return nil, err
 	}
+	defer migrator.Close()
 	return migrator.Up(ctx)
 }
 
 func (s *Store) RollbackMigration(ctx context.Context) (*goose.MigrationResult, error) {
-	migrator, err := s.createMigrator()
+	migrator, err := s.createMigrator(true)
 	if err != nil {
 		return nil, err
 	}
+	defer migrator.Close()
 	return migrator.Down(ctx)
 }
 
 func (s *Store) GetMigrationStatuses(ctx context.Context) ([]*goose.MigrationStatus, error) {
-	migrator, err := s.createMigrator()
+	migrator, err := s.createMigrator(false)
 	if err != nil {
 		return nil, err
 	}
+	defer migrator.Close()
 	return migrator.Status(ctx)
 }
 

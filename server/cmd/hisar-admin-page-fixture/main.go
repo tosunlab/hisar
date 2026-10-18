@@ -1,10 +1,13 @@
 // Command hisar-admin-page-fixture runs the API server with the built admin dashboard and an SMTP sink, and signs up one
 // admin and two members with the Go client, for the dashboard's browser tests. It prints one JSON line with the server's
 // URL, the sink's address and the accounts' credentials and session tokens, then one JSON line per email the sink
-// receives. HISAR_* variables override the instance settings as they do for hisar-server.
+// receives. HISAR_* variables override the instance settings as they do for hisar-server; it also reads
+// HISAR_PUBLIC_URL (default: its own URL), HISAR_TRUST_PROXY and, for the server release check only, the
+// HISAR_DESKTOP_UPDATE_GITHUB_* variables (repository default off).
 package main
 
 import (
+	"cmp"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -25,7 +28,9 @@ import (
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/session"
 	"github.com/tryhisar/hisar/server/internal/api"
+	"github.com/tryhisar/hisar/server/internal/desktopupdate"
 	"github.com/tryhisar/hisar/server/internal/mail/mailtest"
+	"github.com/tryhisar/hisar/server/internal/serverupdate"
 	"github.com/tryhisar/hisar/server/internal/service"
 	"github.com/tryhisar/hisar/server/internal/settings"
 	"github.com/tryhisar/hisar/server/internal/store"
@@ -53,6 +58,7 @@ type receivedEmail struct {
 
 func main() {
 	address := flag.String("addr", "127.0.0.1:0", "address to listen on")
+	version := flag.String("version", "dev", "the server version Overview shows")
 	flag.Parse()
 	databaseURL := os.Getenv("HISAR_DATABASE_URL")
 	if databaseURL == "" {
@@ -83,12 +89,29 @@ func main() {
 		log.Fatal(err)
 	}
 	baseURL := "http://" + listener.Addr().String()
-	defaultSettings := settings.Defaults()
-	defaultSettings.AuthBurst = 1000
-	server, err := api.NewServer(database, secrets, api.Config{Config: service.Config{PublicURL: baseURL}, DefaultSettings: &defaultSettings, Environment: os.Getenv})
+	publicURL := cmp.Or(os.Getenv("HISAR_PUBLIC_URL"), baseURL)
+	serverUpdates, err := serverupdate.New(desktopupdate.GitHubConfig{
+		APIURL:     os.Getenv("HISAR_DESKTOP_UPDATE_GITHUB_API_URL"),
+		Repository: cmp.Or(os.Getenv("HISAR_DESKTOP_UPDATE_GITHUB_REPOSITORY"), desktopupdate.Off),
+		Token:      os.Getenv("HISAR_DESKTOP_UPDATE_GITHUB_TOKEN"),
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
+	defaultSettings := settings.Defaults()
+	defaultSettings.AuthBurst = 1000
+	server, err := api.NewServer(database, secrets, api.Config{
+		Config:          service.Config{PublicURL: publicURL},
+		TrustProxy:      os.Getenv("HISAR_TRUST_PROXY") == "true",
+		DefaultSettings: &defaultSettings,
+		Environment:     os.Getenv,
+		Version:         *version,
+		ServerUpdates:   serverUpdates,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	go server.RunServerUpdates(ctx)
 	var outputMutex sync.Mutex
 	output := json.NewEncoder(os.Stdout)
 	sink, err := mailtest.StartSink("127.0.0.1:0", mailtest.SinkConfig{OnMessage: func(received mailtest.ReceivedMessage) {

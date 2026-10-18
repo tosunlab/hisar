@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func readEnvironment(variables map[string]string) Environment {
@@ -76,7 +77,7 @@ func TestResolveKeepsDefaultsForMissingFields(t *testing.T) {
 	if sources["retention.auditDays"] != SourceDatabase || sources["retention.historyDays"] != SourceDefault || sources["smtp.port"] != SourceDefault {
 		t.Errorf("sources %v", sources)
 	}
-	for _, stored := range [][]byte{nil, []byte(`{}`), []byte(`{"secretsBackupConfirmedAt":"2026-10-17T00:00:00Z"}`)} {
+	for _, stored := range [][]byte{nil, []byte(`{}`), []byte(`{"retiredSetting":true}`)} {
 		if effective, _, err := Resolve(Defaults(), stored, nil); err != nil || effective != Defaults() {
 			t.Errorf("%s: %+v %v", stored, effective, err)
 		}
@@ -254,6 +255,37 @@ func TestApplyClearsThePasswordWhenTheServerChanges(t *testing.T) {
 	}
 	if updated, err := Apply(nil, map[string]json.RawMessage{"smtp.host": json.RawMessage(`"smtp.example.com"`)}); err != nil || strings.Contains(string(updated), "password") {
 		t.Errorf("a password was stored where none was: %s %v", updated, err)
+	}
+}
+
+func TestSetStoredRecordsTheSecretsBackup(t *testing.T) {
+	confirmedAt := time.Date(2026, 10, 17, 12, 30, 0, 0, time.UTC)
+	stored := []byte(`{"smtp":{"host":"smtp.example.com"},"futureField":true}`)
+	updated, err := SetStored(stored, "secretsBackupConfirmedAt", confirmedAt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	effective, sources, err := Resolve(Defaults(), updated, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !effective.SecretsBackupConfirmedAt.Equal(confirmedAt) || effective.SMTP.Host != "smtp.example.com" || !strings.Contains(string(updated), `"futureField":true`) {
+		t.Errorf("effective %+v from %s", effective, updated)
+	}
+	if _, isListed := sources["secretsBackupConfirmedAt"]; isListed {
+		t.Error("the backup confirmation is listed as a setting")
+	}
+	if values, err := effective.ListValues(); err != nil || len(values) != len(ListFields()) {
+		t.Errorf("%d values: %v", len(values), err)
+	}
+	if changed, err := ListChangedFields(stored, updated); err != nil || len(changed) != 0 {
+		t.Errorf("changed %v %v", changed, err)
+	}
+	if _, err := Apply(updated, map[string]json.RawMessage{"secretsBackupConfirmedAt": json.RawMessage(`"2020-01-01T00:00:00Z"`)}); err == nil {
+		t.Error("Apply set the backup confirmation")
+	}
+	if defaults, err := json.Marshal(Defaults()); err != nil || strings.Contains(string(defaults), "secretsBackupConfirmedAt") {
+		t.Errorf("defaults %s %v", defaults, err)
 	}
 }
 

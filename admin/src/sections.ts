@@ -1,6 +1,6 @@
 import type { Component } from "vue";
+import OverviewView from "./sections/overview/OverviewView.vue";
 import SettingsView from "./sections/settings/SettingsView.vue";
-import HomeView from "./views/HomeView.vue";
 
 export interface Section {
   id: string;
@@ -9,7 +9,7 @@ export interface Section {
   component: Component;
 }
 
-const overview: Section = { id: "overview", title: "Overview", path: "/admin", component: HomeView };
+const overview: Section = { id: "overview", title: "Overview", path: "/admin", component: OverviewView };
 
 export const sections: readonly Section[] = [overview, { id: "settings", title: "Settings", path: "/admin/settings", component: SettingsView }];
 

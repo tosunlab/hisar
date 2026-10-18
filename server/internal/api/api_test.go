@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"regexp"
 	"slices"
@@ -432,6 +433,33 @@ func TestAdminAPINeedsAnAdminSession(t *testing.T) {
 	}
 	if status, _ := get("/api/v1/admin/server", admin.Client.Token); status != http.StatusOK {
 		t.Errorf("the admin's other device after the revoke: %d", status)
+	}
+}
+
+func TestSessionLookupAnswers503WhenTheDatabaseIsDown(t *testing.T) {
+	baseURL, server, databaseURL := setupServer(t)
+	ctx := context.Background()
+	invite := requireValue[*apitypes.InviteResponse](t)(server.CreateInvite(ctx, "ada@example.com", apitypes.RoleMember, nil))
+	signedUp, _, err := session.SignUp(ctx, apiclient.New(baseURL), invite.Token, "ada@example.com", "Ada", []byte("fixture master password"), testDevice)
+	if err != nil {
+		t.Fatal(err)
+	}
+	database := requireValue[*store.Store](t)(store.Open(ctx, databaseURL))
+	disconnected := requireValue[*Server](t)(NewServer(database, generateSecrets(), Config{Config: service.Config{PublicURL: "https://hisar.test"}}))
+	database.Close()
+	app := disconnected.CreateApp()
+	for _, path := range []string{"/api/v1/vaults", "/api/v1/admin/server"} {
+		request := httptest.NewRequest(http.MethodGet, path, nil)
+		request.Header.Set("Authorization", "Bearer "+signedUp.Client.Token)
+		response := requireValue[*http.Response](t)(app.Test(request))
+		body := requireValue[[]byte](t)(io.ReadAll(response.Body))
+		response.Body.Close()
+		if response.StatusCode != http.StatusServiceUnavailable || strings.TrimSpace(string(body)) != `{"error":"the server cannot reach its database"}` {
+			t.Errorf("%s: %d %s", path, response.StatusCode, body)
+		}
+	}
+	if _, err := signedUp.Client.ListVaults(ctx); err != nil {
+		t.Fatalf("the connected server: %v", err)
 	}
 }
 
