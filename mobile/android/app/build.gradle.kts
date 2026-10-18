@@ -15,7 +15,7 @@ android {
         targetSdk = 37
         versionCode = providers.gradleProperty("hisar.versionCode").get().toInt()
         versionName = providers.gradleProperty("hisar.versionName").get()
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner = "com.tryhisar.hisar.HisarTestRunner"
     }
 
     buildTypes {
@@ -48,8 +48,14 @@ dependencies {
     implementation(libs.compose.material3)
     implementation(libs.compose.ui)
     implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.fragment.ktx)
+    implementation(libs.androidx.lifecycle.process)
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    implementation(libs.compose.material.icons.extended)
     implementation(libs.kotlinx.coroutines.core)
 
+    testImplementation(testFixtures(project(":model")))
+    androidTestImplementation(testFixtures(project(":model")))
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.test.ext.junit)
