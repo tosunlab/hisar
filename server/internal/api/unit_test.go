@@ -174,14 +174,17 @@ func TestPrivacyPolicyAndTerms(t *testing.T) {
 		t.Fatal(err)
 	}
 	app := server.CreateApp()
-	for path, title := range map[string]string{"/privacy": "Hisar privacy policy", "/terms": "Hisar terms of service"} {
+	for path, page := range map[string]struct{ title, effectiveDate string }{
+		"/privacy": {"Hisar privacy policy", "Effective 18 October 2026."},
+		"/terms":   {"Hisar terms of service", "Effective 11 October 2026."},
+	} {
 		response, err := app.Test(httptest.NewRequest("GET", path, nil))
 		if err != nil {
 			t.Fatal(err)
 		}
 		bodyBytes, _ := io.ReadAll(response.Body)
 		body := string(bodyBytes)
-		if response.StatusCode != fiber.StatusOK || response.Header.Get("Content-Type") != fiber.MIMETextHTMLCharsetUTF8 || !strings.Contains(body, "<title>"+title+"</title>") {
+		if response.StatusCode != fiber.StatusOK || response.Header.Get("Content-Type") != fiber.MIMETextHTMLCharsetUTF8 || !strings.Contains(body, "<title>"+page.title+"</title>") {
 			t.Fatalf("%s: %d %q", path, response.StatusCode, response.Header.Get("Content-Type"))
 		}
 		if policy := response.Header.Get("Content-Security-Policy"); policy != "default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'" {
@@ -200,7 +203,7 @@ func TestPrivacyPolicyAndTerms(t *testing.T) {
 		if strings.Contains(lowerBody, "<script") || strings.Contains(lowerBody, "http://") {
 			t.Errorf("%s loads scripts or insecure links", path)
 		}
-		for _, fact := range []string{"Alper Berber", `<a href="mailto:support@tryhisar.com">support@tryhisar.com</a>`, "11 October 2026"} {
+		for _, fact := range []string{"Alper Berber", `<a href="mailto:support@tryhisar.com">support@tryhisar.com</a>`, page.effectiveDate} {
 			if !strings.Contains(body, fact) {
 				t.Errorf("%s lost %s", path, fact)
 			}
