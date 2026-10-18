@@ -31,6 +31,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     // Each test runs in its own process after its app data and Keystore keys are cleared, as -HisarResetState does on iOS.
@@ -60,6 +61,7 @@ dependencies {
     implementation(libs.androidx.lifecycle.process)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.compose.material.icons.extended)
+    implementation(libs.androidx.biometric)
     implementation(libs.kotlinx.coroutines.core)
 
     testImplementation(testFixtures(project(":model")))
@@ -73,5 +75,8 @@ dependencies {
     androidTestImplementation(libs.androidx.test.services.storage)
     androidTestUtil(libs.androidx.test.orchestrator)
     androidTestUtil(libs.androidx.test.services)
+    androidTestImplementation(libs.androidx.test.uiautomator)
+    androidTestImplementation(libs.androidx.fragment.testing)
     debugImplementation(libs.compose.ui.test.manifest)
+    debugImplementation(libs.androidx.fragment.testing.manifest)
 }

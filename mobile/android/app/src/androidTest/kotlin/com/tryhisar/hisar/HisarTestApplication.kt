@@ -1,28 +1,33 @@
 package com.tryhisar.hisar
 
-import android.app.Application
-import com.tryhisar.hisar.model.BackendError
 import com.tryhisar.hisar.model.BackendEvent
 import com.tryhisar.hisar.model.FakeBackend
 import com.tryhisar.hisar.model.VaultBackend
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 
 /**
  * The Application of instrumented tests. A test that drives the screens without a server installs a [FakeBackend]
- * before it launches an activity; the app then reads that backend through [BackendProvider] as it reads HisarKit.
+ * before it launches an activity; every other test, the end-to-end UI tests among them, gets the real HisarKit.
  */
-class HisarTestApplication : Application(), BackendProvider {
+class HisarTestApplication : HisarApplication() {
     private var fakeBackend: FakeBackend? = null
-    override val events = MutableSharedFlow<BackendEvent>()
+    private val fakeEvents = MutableSharedFlow<BackendEvent>()
     val allCopiedSecret = mutableListOf<String>()
 
     override val backend: VaultBackend
-        get() = fakeBackend ?: throw BackendError("This test installed no backend.")
+        get() = fakeBackend ?: super.backend
+
+    override val events: SharedFlow<BackendEvent>
+        get() = if (fakeBackend != null) fakeEvents else super.events
 
     override fun copySecret(text: String): Boolean {
+        if (fakeBackend == null) return super.copySecret(text)
         allCopiedSecret += text
         return true
     }
+
+    override fun startBackend() {}
 
     fun installFakeBackend(backend: FakeBackend) {
         fakeBackend = backend
