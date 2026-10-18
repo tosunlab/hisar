@@ -506,7 +506,29 @@ func (test *phoneApprovalTest) forgetDeviceList() {
 	relay := test.service.phoneApprovals
 	relay.mutex.Lock()
 	defer relay.mutex.Unlock()
-	relay.ownDeviceID, relay.hasIOSDevice, relay.deviceRefreshedAt = "", false, time.Time{}
+	relay.ownDeviceID, relay.hasPhoneDevice, relay.deviceRefreshedAt = "", false, time.Time{}
+}
+
+func TestPhoneApprovalIsOfferedForEveryPhonePlatform(t *testing.T) {
+	for platform, isOffered := range map[string]bool{
+		apitypes.PlatformIOS:     true,
+		apitypes.PlatformAndroid: true,
+		"linux/cli":              false,
+		"linux/desktop":          false,
+	} {
+		t.Run(platform, func(t *testing.T) {
+			test := createUnlockedTestService(t)
+			test.apiServer.mutex.Lock()
+			test.apiServer.devices = []apitypes.Device{
+				{ID: testMacDeviceID, Name: "MacBook Pro", Platform: "darwin/desktop", Current: true},
+				{ID: testPhoneDeviceID, Name: "Other device", Platform: platform},
+			}
+			test.apiServer.mutex.Unlock()
+			if isAvailable := NewPhoneApprover(test.service).IsPhoneApprovalAvailable(); isAvailable != isOffered {
+				t.Errorf("phone approval available = %v with another device on %q", isAvailable, platform)
+			}
+		})
+	}
 }
 
 func TestPhoneApprovalChecksAStaleDeviceListBeforeAnswering(t *testing.T) {

@@ -21,7 +21,6 @@ const (
 	phoneApprovalDeviceCheckTimeout    = 3 * time.Second
 	phoneApprovalPostAttemptCount      = 3
 	phoneApprovalPostRetryDelay        = 2 * time.Second
-	iosPlatformPrefix                  = "ios/"
 )
 
 var errPhoneApprovalGone = errors.New("this request is no longer waiting for an answer")
@@ -31,7 +30,7 @@ type phoneApprovalRelay struct {
 	mutex              sync.Mutex
 	isRequester        bool
 	ownDeviceID        string
-	hasIOSDevice       bool
+	hasPhoneDevice     bool
 	deviceRefreshedAt  time.Time
 	isRefreshing       bool
 	tracker            *approval.Tracker
@@ -42,7 +41,7 @@ func createPhoneApprovalRelay() *phoneApprovalRelay {
 	return &phoneApprovalRelay{tracker: approval.NewTracker(), decidesByRequestID: map[string]func(answer approval.AcceptedAnswer){}}
 }
 
-// PhoneApprover lets the approval window send its requests to the account's iPhones; it is not bound to the UI.
+// PhoneApprover lets the approval window send its requests to the account's phones; it is not bound to the UI.
 type PhoneApprover struct {
 	service *Service
 }
@@ -65,7 +64,7 @@ func (s *Service) forgetPhoneApprovalSession() {
 	}
 	clear(relay.decidesByRequestID)
 	relay.tracker.RemoveAll()
-	relay.ownDeviceID, relay.hasIOSDevice, relay.deviceRefreshedAt = "", false, time.Time{}
+	relay.ownDeviceID, relay.hasPhoneDevice, relay.deviceRefreshedAt = "", false, time.Time{}
 	relay.mutex.Unlock()
 	if len(requestIDs) == 0 || s.unlockedSession == nil {
 		return
@@ -92,7 +91,7 @@ func (s *Service) startPhoneApprovalDeviceRefresh(apiClient *apiclient.Client) {
 	go s.refreshPhoneApprovalDevice(apiClient)
 }
 
-// refreshPhoneApprovalDevice learns this device's ID and whether the account has an iPhone.
+// refreshPhoneApprovalDevice learns this device's ID and whether the account has a phone.
 func (s *Service) refreshPhoneApprovalDevice(apiClient *apiclient.Client) (string, error) {
 	return s.refreshPhoneApprovalDeviceWithin(apiClient, phoneApprovalRequestTimeout)
 }
@@ -113,13 +112,13 @@ func (s *Service) refreshPhoneApprovalDeviceWithin(apiClient *apiclient.Client, 
 	if s.unlockedSession == nil || s.unlockedSession.Client != apiClient {
 		return "", ErrLocked
 	}
-	relay.ownDeviceID, relay.hasIOSDevice = "", false
+	relay.ownDeviceID, relay.hasPhoneDevice = "", false
 	for _, device := range devices {
 		switch {
 		case device.Current:
 			relay.ownDeviceID = device.ID
-		case strings.HasPrefix(device.Platform, iosPlatformPrefix):
-			relay.hasIOSDevice = true
+		case apitypes.IsPhonePlatform(device.Platform):
+			relay.hasPhoneDevice = true
 		}
 	}
 	relay.deviceRefreshedAt = s.config.Now()
@@ -144,8 +143,8 @@ func (s *Service) getPhoneApprovalDeviceName() string {
 	return strings.TrimSuffix(s.config.DeviceName, ".local")
 }
 
-// IsPhoneApprovalAvailable is true while Hisar is unlocked, the switch is on and the account has an iPhone; a stale
-// "no iPhone" is checked again before answering, for at most phoneApprovalDeviceCheckTimeout.
+// IsPhoneApprovalAvailable is true while Hisar is unlocked, the switch is on and the account has a phone; a stale
+// "no phone" is checked again before answering, for at most phoneApprovalDeviceCheckTimeout.
 func (phoneApprover *PhoneApprover) IsPhoneApprovalAvailable() bool {
 	s := phoneApprover.service
 	s.mutex.Lock()
@@ -172,7 +171,7 @@ func (phoneApprover *PhoneApprover) IsPhoneApprovalAvailable() bool {
 func (relay *phoneApprovalRelay) getDeviceAvailability(now time.Time) (isAvailable, isStale bool) {
 	relay.mutex.Lock()
 	defer relay.mutex.Unlock()
-	return relay.hasIOSDevice && relay.ownDeviceID != "", now.Sub(relay.deviceRefreshedAt) > phoneApprovalDeviceRefreshInterval
+	return relay.hasPhoneDevice && relay.ownDeviceID != "", now.Sub(relay.deviceRefreshedAt) > phoneApprovalDeviceRefreshInterval
 }
 
 // StartPhoneApproval seals the dialog's request to the account and posts it; it stays answerable until the dialog's
