@@ -188,3 +188,24 @@ func TestOpenEmptiesOtherSchemaVersion(t *testing.T) {
 		t.Errorf("items after schema change: %v %v", items, err)
 	}
 }
+
+func TestWebsiteIconRoundTrip(t *testing.T) {
+	testCache, _ := openTestCache(t)
+	if data, err := testCache.LoadWebsiteIcon("lookup-1"); err != nil || data != nil {
+		t.Fatalf("empty cache: %v %v", data, err)
+	}
+	for _, sealed := range [][]byte{{1, 2}, {3}} {
+		if err := testCache.SaveWebsiteIcon("lookup-1", sealed); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if data, err := testCache.LoadWebsiteIcon("lookup-1"); err != nil || len(data) != 1 || data[0] != 3 {
+		t.Fatalf("loaded %v, %v", data, err)
+	}
+	if err := testCache.ClearWebsiteIcons(); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := testCache.LoadWebsiteIcon("lookup-1"); data != nil {
+		t.Errorf("after clearing: %v", data)
+	}
+}

@@ -1,0 +1,130 @@
+:root {
+  --radius: 8px;
+  --radius-large: 12px;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--color-text);
+  background: var(--color-background);
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+::selection {
+  background: var(--color-text-selection);
+}
+
+input,
+button {
+  font: inherit;
+  color: inherit;
+}
+
+label {
+  display: block;
+}
+
+label > span:first-child {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+input {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  transition: border-color 120ms;
+}
+
+input::placeholder {
+  color: var(--color-text-muted);
+}
+
+input:hover {
+  border-color: var(--color-border-strong);
+}
+
+input:focus {
+  outline: none;
+  border-color: var(--color-focus);
+  box-shadow: 0 0 0 3px var(--color-focus-ring);
+}
+
+button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 12px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius);
+  background: var(--color-surface-raised);
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background 120ms,
+    border-color 120ms;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--color-border-hover);
+  background: var(--color-hover);
+}
+
+button:focus-visible,
+a:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 1px;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+button.primary {
+  border-color: var(--color-primary);
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+  font-weight: 600;
+}
+
+button.primary:hover:not(:disabled) {
+  border-color: var(--color-primary-hover);
+  background: var(--color-primary-hover);
+}
+
+button.ghost {
+  border-color: transparent;
+  background: transparent;
+  color: var(--color-text-secondary);
+}
+
+.error {
+  margin: 0;
+  padding: 9px 12px;
+  border: 1px solid var(--color-danger-border);
+  border-radius: var(--radius);
+  background: var(--color-danger-background);
+  color: var(--color-danger-text);
+}
+
+.monospace {
+  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.01em;
+}

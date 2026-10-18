@@ -33,6 +33,27 @@ protocol VaultBackend: AnyObject {
     func deleteVault(vaultID: String, request: VaultDeletionRequest) throws -> VaultDeletionResult
     func leaveVault(vaultID: String) throws
     func listAllRemovedVault() throws -> [RemovedVaultNotice]
+    func listAllOrganization() throws -> Organizations
+    func getOrganization(organizationID: String) throws -> Organization
+    func createOrganization(name: String) throws -> OrganizationSummary
+    func renameOrganization(organizationID: String, name: String) throws
+    func deleteOrganization(organizationID: String) throws
+    func inviteToOrganization(organizationID: String, email: String, role: String) throws
+    func cancelOrganizationInvitation(organizationID: String, invitationID: String) throws
+    func acceptOrganizationInvitation(invitationID: String) throws
+    func declineOrganizationInvitation(invitationID: String) throws
+    func setOrganizationMemberRole(organizationID: String, accountID: String, role: String) throws
+    func removeOrganizationMember(organizationID: String, accountID: String) throws
+    func leaveOrganization(organizationID: String) throws
+    func createTeam(organizationID: String, name: String) throws -> Team
+    func renameTeam(organizationID: String, teamID: String, name: String) throws
+    func deleteTeam(organizationID: String, teamID: String) throws
+    func addTeamMember(organizationID: String, teamID: String, accountID: String) throws
+    func removeTeamMember(organizationID: String, teamID: String, accountID: String) throws
+    func giveVaultToTeam(organizationID: String, teamID: String, vaultID: String, role: String) throws
+    func takeVaultFromTeam(organizationID: String, teamID: String, vaultID: String) throws
+    func createOrganizationVault(organizationID: String, teamID: String, name: String) throws -> VaultSummary
+    func listAllWaitingVaultKey() throws -> WaitingVaultKeys
     func getExportOptions() throws -> ExportOptions
     func exportAllData(format: ExportFormat, passphrase: String, password: String, directory: URL) throws -> ExportResult
     func listAllItem(vaultID: String) throws -> [ItemDetail]
@@ -74,6 +95,12 @@ protocol VaultBackend: AnyObject {
     func setMacApprovalAllowed(_ isAllowed: Bool) throws
     func getTheme() -> VaultTheme
     func setTheme(_ theme: VaultTheme) throws -> VaultTheme
+    /// prepareItemIcon turns a photo into the PNG an item's icon keeps.
+    func prepareItemIcon(_ image: Data) throws -> Data
+    /// getWebsiteIcon returns a login website's icon, or nil; it may ask the website, so it runs in the background.
+    func getWebsiteIcon(url: String) throws -> Data?
+    func isWebsiteIconsEnabled() -> Bool
+    func setWebsiteIconsEnabled(_ isEnabled: Bool) throws
 }
 
 struct BackendError: LocalizedError, Equatable {

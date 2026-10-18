@@ -168,7 +168,7 @@ struct SignInView: View {
             Text("Account")
         } footer: {
             if !isServerShown {
-                Text(verbatim: "Signs in to \(SignInView.describeServer(SignInView.defaultServer)).")
+                Text(verbatim: "Signs in to \(SignInView.describeServer(server)).")
             }
         }
         Section("Secret Key and master password") {
@@ -233,11 +233,9 @@ struct SignInView: View {
         return trimmedServer.isEmpty || trimmedServer.trimmingCharacters(in: CharacterSet(charactersIn: "/")) == defaultServer
     }
 
+    /// applyServer fills in a remembered or scanned server; it stays behind "Use a different server…", and the footer names it.
     private func applyServer(_ newServer: String) {
         server = newServer
-        if !Self.isDefaultServer(newServer) {
-            isServerShown = true
-        }
     }
 
     private func applyPendingSignInLink() {

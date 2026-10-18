@@ -17,7 +17,8 @@ function getDisplayServer(serverURL: string): string {
 
 const mode = ref<Mode>("sign-in");
 const server = ref(getDisplayServer(store.status.server));
-const isServerShown = ref(server.value !== defaultServer);
+// The server stays behind "Use a different server…" even when it is a remembered self-hosted one; the hint names it.
+const isServerShown = ref(false);
 const email = ref(store.status.email);
 const secretKey = ref("");
 const password = ref("");
@@ -196,6 +197,7 @@ async function submitCreateAccount(): Promise<void> {
           <button class="primary full-width submit" type="submit" :disabled="store.isBusy">{{ store.isBusy ? "Signing in…" : "Sign in" }}</button>
           <p class="hint muted" data-testid="secret-key-note">Lost your Secret Key? It's on your Emergency Kit.</p>
           <p v-if="!isServerShown" class="hint">
+            <span class="muted" data-testid="sign-in-server">Signs in to {{ server }}.</span>
             <button type="button" class="link-button" data-testid="use-different-server" @click="isServerShown = true">Use a different server…</button>
           </p>
         </form>

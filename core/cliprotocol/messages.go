@@ -7,24 +7,27 @@ import (
 )
 
 type Request struct {
-	ID            string           `json:"id"`
-	Type          string           `json:"type"`
-	VaultID       string           `json:"vaultID,omitempty"`
-	ItemID        string           `json:"itemID,omitempty"`
-	Name          string           `json:"name,omitempty"`
-	Email         string           `json:"email,omitempty"`
-	Role          string           `json:"role,omitempty"`
-	AccountID     string           `json:"accountID,omitempty"`
-	DeviceID      string           `json:"deviceID,omitempty"`
-	InvitationID  string           `json:"invitationID,omitempty"`
-	Item          *ItemChange      `json:"item,omitempty"`
-	ImportedItems []item.Item      `json:"importedItems,omitempty"`
-	References    []string         `json:"references,omitempty"`
-	CommandLine   []string         `json:"commandLine,omitempty"`
-	ShareLink     *ShareLinkChange `json:"shareLink,omitempty"`
-	ShareLinkID   string           `json:"shareLinkID,omitempty"`
-	VaultDeletion *VaultDeletion   `json:"vaultDeletion,omitempty"`
-	Export        *ExportChange    `json:"export,omitempty"`
+	ID           string `json:"id"`
+	Type         string `json:"type"`
+	VaultID      string `json:"vaultID,omitempty"`
+	ItemID       string `json:"itemID,omitempty"`
+	Name         string `json:"name,omitempty"`
+	Email        string `json:"email,omitempty"`
+	Role         string `json:"role,omitempty"`
+	AccountID    string `json:"accountID,omitempty"`
+	DeviceID     string `json:"deviceID,omitempty"`
+	InvitationID string `json:"invitationID,omitempty"`
+	// OrganizationID and TeamID name an organization and one of its teams by ID; hisar resolves names first.
+	OrganizationID string           `json:"organizationID,omitempty"`
+	TeamID         string           `json:"teamID,omitempty"`
+	Item           *ItemChange      `json:"item,omitempty"`
+	ImportedItems  []item.Item      `json:"importedItems,omitempty"`
+	References     []string         `json:"references,omitempty"`
+	CommandLine    []string         `json:"commandLine,omitempty"`
+	ShareLink      *ShareLinkChange `json:"shareLink,omitempty"`
+	ShareLinkID    string           `json:"shareLinkID,omitempty"`
+	VaultDeletion  *VaultDeletion   `json:"vaultDeletion,omitempty"`
+	Export         *ExportChange    `json:"export,omitempty"`
 
 	AgentName        string `json:"agentName,omitempty"`
 	AgentTitle       string `json:"agentTitle,omitempty"`

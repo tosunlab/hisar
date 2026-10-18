@@ -21,6 +21,7 @@ const (
 	FormatOnePasswordCSV    = "1password-csv"
 	FormatBitwardenJSON     = "bitwarden-json"
 	FormatBitwardenCSV      = "bitwarden-csv"
+	FormatLastPassCSV       = "lastpass-csv"
 	FormatCSV               = "csv"
 )
 
@@ -47,6 +48,7 @@ var formats = []FormatInfo{
 	{FormatOnePasswordCSV, "1Password CSV"},
 	{FormatBitwardenJSON, "Bitwarden JSON (not encrypted)"},
 	{FormatBitwardenCSV, "Bitwarden CSV"},
+	{FormatLastPassCSV, "LastPass CSV"},
 	{FormatCSV, "CSV (Chrome, Firefox, Safari, Edge and others)"},
 }
 
@@ -54,7 +56,7 @@ var formats = []FormatInfo{
 func Formats() []FormatInfo { return slices.Clone(formats) }
 
 var (
-	ErrUnknownFormat   = errors.New("this file is not a 1Password, Bitwarden or CSV export that Hisar can read")
+	ErrUnknownFormat   = errors.New("this file is not a 1Password, Bitwarden, LastPass or CSV export that Hisar can read")
 	ErrEmptyFile       = errors.New("the file is empty")
 	ErrEncryptedExport = errors.New("this Bitwarden export is encrypted; export again with the format “.json” instead of “.json (Encrypted)”")
 	ErrOnePasswordPIF  = errors.New("1Password 7 .1pif files are not supported; export from 1Password 8 as .1pux or CSV")

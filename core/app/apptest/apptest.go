@@ -107,7 +107,10 @@ func (api *fakeAPI) handler() http.Handler {
 		}
 		api.mutex.Lock()
 		defer api.mutex.Unlock()
-		api.vaults = append(api.vaults, apitypes.Vault{ID: createRequest.ID, Type: createRequest.Type, EncName: createRequest.EncName, Role: apitypes.VaultOwner, WrappedKey: createRequest.WrappedKey})
+		api.vaults = append(api.vaults, apitypes.Vault{
+			ID: createRequest.ID, Type: createRequest.Type, EncName: createRequest.EncName, Role: apitypes.VaultOwner, WrappedKey: createRequest.WrappedKey,
+			OrganizationID: createRequest.OrganizationID, KeyGeneration: 1,
+		})
 		api.itemsByVaultID[createRequest.ID] = map[string]apitypes.Item{}
 		writer.WriteHeader(http.StatusCreated)
 	})

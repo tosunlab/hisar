@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -128,14 +129,26 @@ func (server *fakeAPIServer) addSharingRoutes(mux *http.ServeMux) {
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
 		vaultID, accountID := request.PathValue("vaultID"), request.PathValue("accountID")
+		if server.isSetAccessFailing {
+			writeJSON(writer, http.StatusInternalServerError, apitypes.Error{Error: "internal error"})
+			return
+		}
 		if server.getVaultRole(vaultID) != apitypes.VaultOwner {
 			writeJSON(writer, http.StatusForbidden, apitypes.Error{Error: "owner only"})
 			return
 		}
+		if setRequest.KeyGeneration != 0 && setRequest.KeyGeneration != server.getKeyGeneration(vaultID) {
+			writeJSON(writer, http.StatusConflict, apitypes.Error{Error: "the vault key was rotated since"})
+			return
+		}
+		server.setAccessRequests = append(server.setAccessRequests, setRequest)
 		accesses := server.accessesByVaultID[vaultID]
 		access := apitypes.RotatedAccess{AccountID: accountID, Role: setRequest.Role, WrappedKey: setRequest.WrappedKey}
 		if index := slices.IndexFunc(accesses, func(existing apitypes.RotatedAccess) bool { return existing.AccountID == accountID }); index >= 0 {
 			accesses[index] = access
+		} else if keyRequestIndex := server.findVaultKeyRequest(vaultID, accountID); keyRequestIndex >= 0 {
+			server.vaultKeyRequests = slices.Delete(server.vaultKeyRequests, keyRequestIndex, keyRequestIndex+1)
+			server.accessesByVaultID[vaultID] = append(accesses, access)
 		} else {
 			invitationIndex := slices.IndexFunc(server.shareInvitations, func(invitation apitypes.SentShareInvitation) bool {
 				return invitation.VaultID == vaultID && invitation.State == apitypes.ShareInvitationAccepted && invitation.Recipient != nil && invitation.Recipient.AccountID == accountID
@@ -162,6 +175,10 @@ func (server *fakeAPIServer) addSharingRoutes(mux *http.ServeMux) {
 			writeJSON(writer, http.StatusForbidden, apitypes.Error{Error: "owner only"})
 			return
 		}
+		if rotateRequest.KeyGeneration != 0 && rotateRequest.KeyGeneration != server.getKeyGeneration(vaultID) {
+			writeJSON(writer, http.StatusConflict, apitypes.Error{Error: "the vault key was rotated since"})
+			return
+		}
 		items := server.itemsByVaultID[vaultID]
 		if len(rotateRequest.Items) != len(items) {
 			writeJSON(writer, http.StatusConflict, apitypes.Error{Error: "items changed"})
@@ -183,6 +200,10 @@ func (server *fakeAPIServer) addSharingRoutes(mux *http.ServeMux) {
 				continue
 			}
 			server.vaults[index].EncName = rotateRequest.EncName
+			server.vaults[index].NeedsRotation = false
+			if server.vaults[index].KeyGeneration > 0 {
+				server.vaults[index].KeyGeneration++
+			}
 			for _, access := range rotateRequest.Accesses {
 				if access.AccountID == server.accountID {
 					server.vaults[index].WrappedKey = access.WrappedKey
@@ -450,6 +471,70 @@ func TestCompletingAShareRefusesAChangedKey(t *testing.T) {
 	}
 	if _, found := test.apiServer.getAccess(travelID, bob.AccountID); found {
 		t.Error("the vault key was wrapped to a substituted key")
+	}
+}
+
+func TestCompletingAShareSavesThePinWhenTheAccessFails(t *testing.T) {
+	test := createUnlockedTestService(t)
+	bob, _ := test.apiServer.addMember(t, "Bob", "b@example.com")
+	if err := test.service.ShareVault(test.familyID, "b@example.com", apitypes.VaultEditor); err != nil {
+		t.Fatal(err)
+	}
+	test.apiServer.acceptShareInvitation(t, bob)
+	test.apiServer.mutex.Lock()
+	test.apiServer.isSetAccessFailing = true
+	test.apiServer.mutex.Unlock()
+
+	invitations, err := test.service.ListShareInvitations()
+	if err != nil || !strings.Contains(invitations.CompletionError, "b@example.com") {
+		t.Fatalf("a share the server refused: %+v %v", invitations, err)
+	}
+	saved, err := localstate.Load(test.service.config.StatePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(saved.Pins[bob.AccountID], bob.PublicKeys.Sign) {
+		t.Errorf("state.json pins %x for Bob, want his signing key", saved.Pins[bob.AccountID])
+	}
+}
+
+func TestCompletingAShareReportsPinsThatCouldNotBeSaved(t *testing.T) {
+	test := createUnlockedTestService(t)
+	bob, _ := test.apiServer.addMember(t, "Bob", "b@example.com")
+	if err := test.service.ShareVault(test.familyID, "b@example.com", apitypes.VaultEditor); err != nil {
+		t.Fatal(err)
+	}
+	test.apiServer.acceptShareInvitation(t, bob)
+	// State.Save writes a temporary file next to state.json first; a directory in its place makes the save fail.
+	temporaryStatePath := test.service.config.StatePath + ".tmp"
+	if err := os.Mkdir(temporaryStatePath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	invitations, err := test.service.ListShareInvitations()
+	if err != nil || !strings.Contains(invitations.CompletionError, "could not save the pinned signing keys") {
+		t.Fatalf("a pin that could not be saved was not reported: %+v %v", invitations, err)
+	}
+	if _, found := test.apiServer.getAccess(test.familyID, bob.AccountID); !found {
+		t.Error("the share was not completed")
+	}
+	// The share is complete, so the next pass pins nothing new; Bob's pin is still unsaved.
+	if invitations, err := test.service.ListShareInvitations(); err != nil || !strings.Contains(invitations.CompletionError, "could not save the pinned signing keys") {
+		t.Fatalf("a pass that pinned nothing forgot the unsaved pin: %+v %v", invitations, err)
+	}
+
+	if err := os.Remove(temporaryStatePath); err != nil {
+		t.Fatal(err)
+	}
+	if invitations, err := test.service.ListShareInvitations(); err != nil || invitations.CompletionError != "" {
+		t.Fatalf("after a save that works: %+v %v", invitations, err)
+	}
+	saved, err := localstate.Load(test.service.config.StatePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(saved.Pins[bob.AccountID], bob.PublicKeys.Sign) {
+		t.Errorf("state.json pins %x for Bob, want his signing key", saved.Pins[bob.AccountID])
 	}
 }
 

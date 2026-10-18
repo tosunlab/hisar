@@ -16,6 +16,9 @@ var (
 	ErrRollback       = errors.New("server returned older vault state than previously seen")
 	ErrKeyMismatch    = errors.New("server returned public keys that do not match the keyset")
 	ErrNotFound       = errors.New("not found")
+	// ErrKeyChanged: the server refused items sealed with a vault key another device's rotation replaced, again after the
+	// vault was reloaded and the items sealed with its current key.
+	ErrKeyChanged = errors.New("the vault's key changed on another device; try again")
 )
 
 // SeqStore remembers the highest vault seq seen, to detect server rollbacks.
@@ -32,6 +35,8 @@ type Session struct {
 	Role      string
 	Keyset    *crypt.Keyset
 	SeqStore  SeqStore
+	// DeviceID is the device LogIn or SignUp signed in; Unlock leaves it empty.
+	DeviceID string
 	// MemberVerifier, when set, is asked to accept each member a vault key is wrapped for (e.g. key pinning).
 	MemberVerifier func(member *apitypes.Member) error
 	// Cache, when set, stores the server's encrypted records; reads fall back to it while the server is unreachable.
@@ -49,6 +54,12 @@ type Vault struct {
 	Name string
 	Role string
 	Key  []byte
+	// OrganizationID is set for organization vaults only.
+	OrganizationID string
+	// KeyGeneration is the generation of Key; 0 when the server does not count them.
+	KeyGeneration int64
+	// NeedsRotation: someone lost access through a team and no owner's app has rotated the key since.
+	NeedsRotation bool
 }
 
 func (s *Session) Lock() {

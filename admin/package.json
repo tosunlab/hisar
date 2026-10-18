@@ -1,0 +1,30 @@
+{
+  "name": "hisar-admin",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc && vite build",
+    "typecheck": "vue-tsc",
+    "test": "vitest run",
+    "test:end-to-end": "playwright test admin.spec",
+    "test:perf": "playwright test perf.spec"
+  },
+  "dependencies": {
+    "vue": "3.5.43"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "24.19.1",
+    "@vitejs/plugin-vue": "6.0.9",
+    "jsdom": "30.1.1",
+    "typescript": "6.0.3",
+    "vite": "8.3.0",
+    "vitest": "5.0.1",
+    "vue-tsc": "3.3.11"
+  }
+}

@@ -70,6 +70,24 @@ final class PhoneApprovalTests: XCTestCase {
         XCTAssertEqual(approval.allDetailRow[2].value, "Personal › GitHub › password\nWork › AWS › access key\nand 3 more")
     }
 
+    func testLauncherRequestNamesTheAppAndHowLongItLasts() throws {
+        let json = """
+        [{"requestId":"0123456789abcdef0123456789abcdef","requesterDeviceName":"MacBook Pro","createdAt":"2027-01-15T08:00:00.123Z","expiresAt":"2027-01-15T08:01:00.123Z",
+          "kind":"launcher","appName":"Raycast","purpose":"search Hisar and copy or paste passwords and one-time codes","host":"","commandLine":"",
+          "repositoryPath":"","keyName":"","isForwarded":false,"forwardedFromHost":"","terminalName":"",
+          "appIcon":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="}]
+        """
+        let approval = try XCTUnwrap(try JSONDecoder().decode([PhoneApproval].self, from: Data(json.utf8)).first)
+        XCTAssertEqual(approval.title, "Approve on MacBook Pro?")
+        XCTAssertEqual(approval.summary, "Raycast wants to search Hisar and copy or paste passwords and one-time codes")
+        XCTAssertEqual(approval.bannerTitle, "MacBook Pro is asking to let Raycast use Hisar")
+        XCTAssertEqual(approval.systemImage, "magnifyingglass")
+        XCTAssertEqual(approval.allDetailRow.map(\.label), ["App", "Lasts"])
+        XCTAssertEqual(approval.allDetailRow.map(\.value), ["Raycast", "Until Hisar locks on MacBook Pro"])
+        XCTAssertEqual(approval.detailLine, "Until Hisar locks on MacBook Pro", "the card says how long approving lasts, as there is no command")
+        XCTAssertFalse(approval.isRememberable)
+    }
+
     func testDecodesTheAppIconAndSignatureWarning() throws {
         let json = """
         [{"requestId":"0123456789abcdef0123456789abcdef","requesterDeviceName":"MacBook Pro","expiresAt":"2027-01-15T08:01:00.123Z",
@@ -141,6 +159,24 @@ final class PhoneApprovalTests: XCTestCase {
         XCTAssertFalse(allApproval[2].resolveRememberChoice(true), "a request without the switch is never remembered")
     }
 
+    func testCardApprovesWithTheRequestsDefault() async {
+        let model = await createUnlockedModel(allApproval: [
+            createRememberingApproval(requestID: "ssh"),
+            createRememberingApproval(requestID: "signing", isRememberedByDefault: false),
+            createApproval(requestID: "once"),
+        ])
+        await model.approve(model.allPendingApproval[0])
+        await model.approve(model.allPendingApproval[0])
+        await model.approve(model.allPendingApproval[0])
+        XCTAssertEqual(backend.allApprovalAnswer, ["approve remembered ssh", "approve signing", "approve once"])
+    }
+
+    func testCardFooterNamesWhatApproveSends() {
+        XCTAssertEqual(createRememberingApproval(requestID: "ssh").cardApprovalNote, "Also allows Terminal for 1 hour. Tap the request to approve it once. It never unlocks Hisar on your Mac.")
+        XCTAssertEqual(createRememberingApproval(requestID: "signing", isRememberedByDefault: false).cardApprovalNote, "Approving answers this one request. It never unlocks Hisar on your Mac.")
+        XCTAssertEqual(createApproval(requestID: "once").cardApprovalNote, "Approving answers this one request. It never unlocks Hisar on your Mac.")
+    }
+
     func testSheetSwitchIsSentWithTheApproval() async {
         let model = await createReviewingModel(allApproval: [createRememberingApproval(requestID: "remembered"), createRememberingApproval(requestID: "once")])
         await model.approvePendingApproval(isRemembered: true)
@@ -158,12 +194,11 @@ final class PhoneApprovalTests: XCTestCase {
         XCTAssertEqual(backend.allApprovalAnswer, ["approve remembered 0123456789abcdef0123456789abcdef"])
     }
 
-    func testCardAndOldRequestsApproveOnce() async {
-        let model = await createUnlockedModel(allApproval: [createRememberingApproval(requestID: "card"), createApproval(requestID: "old")])
-        await model.approve(model.allPendingApproval[0])
+    func testOldRequestsApproveOnce() async {
+        let model = await createUnlockedModel(allApproval: [createApproval(requestID: "old")])
         model.reviewApproval(model.allPendingApproval[0])
         await model.approvePendingApproval(isRemembered: true)
-        XCTAssertEqual(backend.allApprovalAnswer, ["approve card", "approve old"])
+        XCTAssertEqual(backend.allApprovalAnswer, ["approve old"], "a request without the switch is never remembered")
     }
 
     func testApproveWithFaceID() async {

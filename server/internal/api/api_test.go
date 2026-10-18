@@ -4,11 +4,13 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"os"
 	"regexp"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/gofiber/fiber/v3"
@@ -294,12 +296,17 @@ func TestEndToEnd(t *testing.T) {
 		laptop := requireValue[*session.Session](t)(session.LogIn(ctx, apiclient.New(baseURL), "alice@example.com", alicePassword, aliceSecretKey, apitypes.DeviceInfo{Name: "laptop", Platform: "go"}))
 		devices := requireValue[[]apitypes.Device](t)(alice.Client.ListDevices(ctx))
 		var laptopID string
+		isSignUpDeviceListed := false
 		for _, device := range devices {
 			if device.Name == "laptop" {
 				laptopID = device.ID
 			}
+			isSignUpDeviceListed = isSignUpDeviceListed || (device.Current && device.ID == alice.DeviceID)
 		}
-		if err := alice.Client.RevokeDevice(ctx, laptopID); err != nil {
+		if laptopID == "" || laptop.DeviceID != laptopID || !isSignUpDeviceListed {
+			t.Fatalf("log-in device %q, listed laptop %q; sign-up device %q listed as current: %t", laptop.DeviceID, laptopID, alice.DeviceID, isSignUpDeviceListed)
+		}
+		if err := alice.Client.RevokeDevice(ctx, laptop.DeviceID); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := laptop.Client.ListVaults(ctx); !apiclient.IsStatus(err, http.StatusUnauthorized) {
@@ -368,4 +375,89 @@ func TestEndToEnd(t *testing.T) {
 			t.Errorf("rotation without the vault's items: %v", err)
 		}
 	})
+}
+
+func TestAdminAPINeedsAnAdminSession(t *testing.T) {
+	baseURL, server, _ := setupServer(t)
+	ctx := context.Background()
+	password := []byte("fixture master password")
+	signUp := func(email, role string) (*session.Session, crypt.SecretKey) {
+		invite := requireValue[*apitypes.InviteResponse](t)(server.CreateInvite(ctx, email, role, nil))
+		signedUp, secretKey, err := session.SignUp(ctx, apiclient.New(baseURL), invite.Token, email, email, password, testDevice)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return signedUp, secretKey
+	}
+	admin, adminSecretKey := signUp("admin@example.com", apitypes.RoleAdmin)
+	member, _ := signUp("member@example.com", apitypes.RoleMember)
+	get := func(path, token string) (int, string) {
+		t.Helper()
+		request := requireValue[*http.Request](t)(http.NewRequestWithContext(ctx, http.MethodGet, baseURL+path, nil))
+		if token != "" {
+			request.Header.Set("Authorization", "Bearer "+token)
+		}
+		response := requireValue[*http.Response](t)(http.DefaultClient.Do(request))
+		defer response.Body.Close()
+		body := requireValue[[]byte](t)(io.ReadAll(response.Body))
+		return response.StatusCode, strings.TrimSpace(string(body))
+	}
+
+	if status, body := get("/api/v1/admin/server", admin.Client.Token); status != http.StatusOK || body != `{"publicUrl":"https://hisar.test"}` {
+		t.Errorf("admin: %d %s", status, body)
+	}
+	if status, body := get("/api/v1/admin/server", member.Client.Token); status != http.StatusForbidden || body != `{"error":"admin only"}` {
+		t.Errorf("member: %d %s", status, body)
+	}
+	if status, _ := get("/api/v1/admin/server", ""); status != http.StatusUnauthorized {
+		t.Errorf("no session: %d", status)
+	}
+	for name, token := range map[string]string{"signed out": "", "member": member.Client.Token, "admin": admin.Client.Token} {
+		if status, _ := get("/api/v1/admin/unknown", token); status != http.StatusNotFound {
+			t.Errorf("unknown admin path, %s: %d", name, status)
+		}
+	}
+
+	dashboard := requireValue[*session.Session](t)(session.LogIn(ctx, apiclient.New(baseURL), "admin@example.com", password, adminSecretKey, apitypes.DeviceInfo{Name: "Admin dashboard", Platform: "web/admin"}))
+	if status, _ := get("/api/v1/admin/server", dashboard.Client.Token); status != http.StatusOK {
+		t.Errorf("second admin device: %d", status)
+	}
+	if err := dashboard.Client.RevokeDevice(ctx, dashboard.DeviceID); err != nil {
+		t.Fatal(err)
+	}
+	if status, _ := get("/api/v1/admin/server", dashboard.Client.Token); status != http.StatusUnauthorized {
+		t.Errorf("revoked session: %d", status)
+	}
+	if status, _ := get("/api/v1/admin/server", admin.Client.Token); status != http.StatusOK {
+		t.Errorf("the admin's other device after the revoke: %d", status)
+	}
+}
+
+func TestEveryAdminRouteNeedsAnAdmin(t *testing.T) {
+	baseURL, server, _ := setupServer(t)
+	ctx := context.Background()
+	member := signUpTestAccount(t, ctx, server, baseURL, "member@example.com", apitypes.RoleMember)
+	parameter := regexp.MustCompile(`:[^/]+|\*`)
+	adminRouteCount := 0
+	for _, route := range server.CreateApp().GetRoutes(true) {
+		if !strings.HasPrefix(route.Path, "/api/v1/admin/") || route.Method == http.MethodHead {
+			continue
+		}
+		adminRouteCount++
+		path := parameter.ReplaceAllString(route.Path, "x")
+		for token, wantStatus := range map[string]int{"": http.StatusUnauthorized, member.Client.Token: http.StatusForbidden} {
+			request := requireValue[*http.Request](t)(http.NewRequestWithContext(ctx, route.Method, baseURL+path, nil))
+			if token != "" {
+				request.Header.Set("Authorization", "Bearer "+token)
+			}
+			response := requireValue[*http.Response](t)(http.DefaultClient.Do(request))
+			response.Body.Close()
+			if response.StatusCode != wantStatus {
+				t.Errorf("%s %s with token %t: %d, want %d", route.Method, route.Path, token != "", response.StatusCode, wantStatus)
+			}
+		}
+	}
+	if adminRouteCount == 0 {
+		t.Fatal("no /api/v1/admin routes registered")
+	}
 }

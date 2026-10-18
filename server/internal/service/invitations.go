@@ -111,7 +111,8 @@ func (s *Service) GetPendingInvite(ctx context.Context, token string) (*PendingI
 	return pending, nil
 }
 
-// CheckShareInvitation refuses a share of a vault the caller does not own, or a personal vault, before the request is read.
+// CheckShareInvitation refuses a share of a vault the caller does not own, or of any vault but a shared one, before the
+// request is read.
 func (s *Service) CheckShareInvitation(ctx context.Context, actor Actor, vaultID string) error {
 	if err := s.requireVaultOwner(ctx, actor, vaultID); err != nil {
 		return err
@@ -120,10 +121,13 @@ func (s *Service) CheckShareInvitation(ctx context.Context, actor Actor, vaultID
 	if err != nil {
 		return err
 	}
-	if vaultType != apitypes.VaultShared {
-		return newError(KindInvalid, "personal vaults cannot be shared")
+	switch vaultType {
+	case apitypes.VaultShared:
+		return nil
+	case apitypes.VaultOrganization:
+		return newError(KindInvalid, "organization vaults are shared through their teams; ask an organization admin")
 	}
-	return nil
+	return newError(KindInvalid, "personal vaults cannot be shared")
 }
 
 // CreateShareInvitation invites an email to a vault; the recipient learns about it after the response.

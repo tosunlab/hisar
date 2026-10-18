@@ -56,6 +56,11 @@ func resolveServer(server string) (string, error) {
 	return server, nil
 }
 
+// describeServer is a server as the sign-in forms show it: without https:// and a trailing slash.
+func describeServer(server string) string {
+	return strings.TrimSuffix(strings.TrimPrefix(server, "https://"), "/")
+}
+
 func (s *Service) SignIn(server, email, secretKeyText, password string) (Status, error) {
 	server, err := resolveServer(server)
 	if err != nil {
@@ -71,6 +76,11 @@ func (s *Service) SignIn(server, email, secretKeyText, password string) (Status,
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	loggedIn, err := session.LogIn(ctx, s.createClient(server), strings.TrimSpace(email), passwordBytes, secretKey, s.getDeviceInfo())
+	if errors.Is(err, session.ErrBadCredentials) {
+		// A server answers alike for accounts it does not have, so a wrong server looks like a wrong password: say which
+		// server was asked.
+		return Status{}, fmt.Errorf("incorrect email, master password or Secret Key for %s; check that this is your account's server", describeServer(server))
+	}
 	if err != nil {
 		return Status{}, convertError(err)
 	}
@@ -83,6 +93,7 @@ func (s *Service) SignIn(server, email, secretKeyText, password string) (Status,
 	s.state.Reset()
 	s.signedOutReason = ""
 	s.state.Server, s.state.Email, s.state.AccountID, s.state.Token = server, loggedIn.Email, loggedIn.AccountID, loggedIn.Client.Token
+	s.state.LastServer = server
 	if err := s.state.Save(); err != nil {
 		loggedIn.Lock()
 		return Status{}, err
@@ -149,6 +160,7 @@ func (s *Service) SignUp(invite, email, name, password string) (SignUpResult, er
 	s.state.Reset()
 	s.signedOutReason = ""
 	s.state.Server, s.state.Email, s.state.AccountID, s.state.Token = server, strings.ToLower(strings.TrimSpace(email)), signedUp.AccountID, signedUp.Client.Token
+	s.state.LastServer = server
 	if err := s.state.Save(); err != nil {
 		signedUp.Lock()
 		clear(accountUnlockKey)

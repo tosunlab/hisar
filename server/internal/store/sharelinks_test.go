@@ -90,7 +90,7 @@ func TestShareLinkStore(t *testing.T) {
 func TestShareLinkMigrationRollsBack(t *testing.T) {
 	database := createTestStore(t)
 	ctx := context.Background()
-	for range 2 {
+	for range 3 {
 		if _, err := database.RollbackMigration(ctx); err != nil {
 			t.Fatal(err)
 		}

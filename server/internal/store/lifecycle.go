@@ -32,9 +32,19 @@ type DeletionMemberVault struct {
 	Role string
 }
 
+// DeletionOrganization is an organization the account is a member of. IsDeleted: the account is its last member.
+// NewAdminName names the member who becomes admin because the account is its last admin.
+type DeletionOrganization struct {
+	ID           string
+	Name         string
+	IsDeleted    bool
+	NewAdminName string
+}
+
 type DeletionPreview struct {
 	OwnedVaults             []DeletionOwnedVault
 	MemberVaults            []DeletionMemberVault
+	Organizations           []DeletionOrganization
 	ShareLinkCount          int
 	SentInvitationCount     int
 	ReceivedInvitationCount int
@@ -48,7 +58,10 @@ type DeletedAccount struct {
 	VaultMemberAccountIDs []string
 	// InvitationAccountIDs had a share invitation from or to the deleted account.
 	InvitationAccountIDs []string
-	DeletedVaultCount    int
+	// OrganizationAccountIDs remain in an organization with the deleted account, had an organization invitation from it,
+	// or are in an organization that had an invitation from or to it.
+	OrganizationAccountIDs []string
+	DeletedVaultCount      int
 }
 
 func HashOpaqueRecord(opaqueRecord []byte) []byte {
@@ -108,10 +121,8 @@ type accountVaultAccess struct {
 	otherMemberCount int
 }
 
-func listAccountVaultAccesses(ctx context.Context, queryer interface {
-	Query(context.Context, string, ...any) (pgx.Rows, error)
-}, accountID string) ([]accountVaultAccess, error) {
-	rows, err := queryer.Query(ctx, `
+func listAccountVaultAccesses(ctx context.Context, database queryer, accountID string) ([]accountVaultAccess, error) {
+	rows, err := database.Query(ctx, `
 		SELECT v.id, v.type, a.role,
 			EXISTS (SELECT 1 FROM vault_access o WHERE o.vault_id = v.id AND o.role = 'owner' AND o.account_id <> $1),
 			(SELECT count(*) FROM vault_access m WHERE m.vault_id = v.id AND m.account_id <> $1)
@@ -131,6 +142,48 @@ func (access accountVaultAccess) isDeletedWithAccount() bool {
 	return access.role == "owner" && !access.hasOtherOwner
 }
 
+// accountMembership is an organization the account is a member of, as its deletion changes it (§5.11).
+type accountMembership struct {
+	organizationID   string
+	name             string
+	role             string
+	otherMemberCount int
+	otherAdminCount  int
+	// successorID is the remaining member who joined earliest, "" when there is none.
+	successorID   string
+	successorName string
+}
+
+func listAccountMemberships(ctx context.Context, database queryer, accountID string) ([]accountMembership, error) {
+	rows, err := database.Query(ctx, `
+		SELECT o.id::text, o.name, m.role,
+			(SELECT count(*) FROM organization_members x WHERE x.organization_id = o.id AND x.account_id <> $1),
+			(SELECT count(*) FROM organization_members x WHERE x.organization_id = o.id AND x.account_id <> $1 AND x.role = 'admin'),
+			coalesce(successor.account_id, ''), coalesce(successor.name, '')
+		FROM organization_members m JOIN organizations o ON o.id = m.organization_id
+		LEFT JOIN LATERAL (
+			SELECT x.account_id, a.name FROM organization_members x JOIN accounts a ON a.id = x.account_id
+			WHERE x.organization_id = o.id AND x.account_id <> $1 ORDER BY x.added_at, x.account_id LIMIT 1) successor ON true
+		WHERE m.account_id = $1 ORDER BY o.id`, accountID)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (accountMembership, error) {
+		var membership accountMembership
+		err := row.Scan(&membership.organizationID, &membership.name, &membership.role, &membership.otherMemberCount,
+			&membership.otherAdminCount, &membership.successorID, &membership.successorName)
+		return membership, err
+	})
+}
+
+func (membership accountMembership) isDeletedWithAccount() bool {
+	return membership.otherMemberCount == 0
+}
+
+func (membership accountMembership) needsNewAdmin() bool {
+	return membership.role == "admin" && membership.otherAdminCount == 0 && membership.otherMemberCount > 0
+}
+
 func (s *Store) PreviewAccountDeletion(ctx context.Context, accountID string) (*DeletionPreview, error) {
 	account, err := s.GetAccountByID(ctx, accountID)
 	if err != nil {
@@ -140,7 +193,11 @@ func (s *Store) PreviewAccountDeletion(ctx context.Context, accountID string) (*
 	if err != nil {
 		return nil, err
 	}
-	preview := &DeletionPreview{OwnedVaults: []DeletionOwnedVault{}, MemberVaults: []DeletionMemberVault{}}
+	memberships, err := listAccountMemberships(ctx, s.pool, accountID)
+	if err != nil {
+		return nil, err
+	}
+	preview := &DeletionPreview{OwnedVaults: []DeletionOwnedVault{}, MemberVaults: []DeletionMemberVault{}, Organizations: []DeletionOrganization{}}
 	for _, access := range accesses {
 		if access.isDeletedWithAccount() {
 			preview.OwnedVaults = append(preview.OwnedVaults, DeletionOwnedVault{ID: access.vaultID, Type: access.vaultType, OtherMemberCount: access.otherMemberCount})
@@ -148,13 +205,23 @@ func (s *Store) PreviewAccountDeletion(ctx context.Context, accountID string) (*
 			preview.MemberVaults = append(preview.MemberVaults, DeletionMemberVault{ID: access.vaultID, Type: access.vaultType, Role: access.role})
 		}
 	}
+	for _, membership := range memberships {
+		organization := DeletionOrganization{ID: membership.organizationID, Name: membership.name, IsDeleted: membership.isDeletedWithAccount()}
+		if membership.needsNewAdmin() {
+			organization.NewAdminName = membership.successorName
+		}
+		preview.Organizations = append(preview.Organizations, organization)
+	}
 	err = s.pool.QueryRow(ctx, `
 		SELECT
 			(SELECT count(*) FROM share_links WHERE account_id = $1 AND expires_at > now()),
 			(SELECT count(*) FROM share_invitations WHERE invited_by = $1)
+				+ (SELECT count(*) FROM organization_invitations WHERE invited_by = $1)
 				+ (SELECT count(*) FROM invites i WHERE i.created_by = $1 AND i.used_at IS NULL AND i.expires_at > now()
-					AND NOT EXISTS (SELECT 1 FROM share_invitations s WHERE s.invited_by = $1 AND s.email = i.email)),
-			(SELECT count(*) FROM share_invitations WHERE (email = $2 OR accepted_by = $1) AND invited_by <> $1),
+					AND NOT EXISTS (SELECT 1 FROM share_invitations s WHERE s.invited_by = $1 AND s.email = i.email)
+					AND NOT EXISTS (SELECT 1 FROM organization_invitations o WHERE o.invited_by = $1 AND o.email = i.email)),
+			(SELECT count(*) FROM share_invitations WHERE (email = $2 OR accepted_by = $1) AND invited_by <> $1)
+				+ (SELECT count(*) FROM organization_invitations WHERE email = $2),
 			(SELECT count(*) FROM devices WHERE account_id = $1 AND revoked_at IS NULL)`,
 		accountID, account.Email).Scan(&preview.ShareLinkCount, &preview.SentInvitationCount, &preview.ReceivedInvitationCount, &preview.DeviceCount)
 	return preview, err
@@ -169,10 +236,22 @@ func collectAccountIDs(ctx context.Context, transaction pgx.Tx, query string, ar
 }
 
 // DeleteAccount deletes the account and everything that is only its own in one transaction.
-// Vaults with another owner stay with them; only this account's access is removed.
+// Vaults with another owner stay with them; only this account's access is removed, and an organization vault it held a
+// key to is marked for rotation, as after a team removal (§5.11). In its organizations the remaining member who joined
+// earliest becomes admin after their last admin, and an organization left without members is deleted.
 func (s *Store) DeleteAccount(ctx context.Context, accountID string, tokenHash, provenRecordHash []byte) (*DeletedAccount, error) {
 	deleted := &DeletedAccount{}
 	err := s.runInTransaction(ctx, func(transaction pgx.Tx) error {
+		// Organizations are locked before the account, in ID order, like every other change to them (§5.11).
+		organizationRows, err := transaction.Query(ctx, `
+			SELECT o.id::text FROM organizations o JOIN organization_members m ON m.organization_id = o.id
+			WHERE m.account_id = $1 ORDER BY o.id FOR UPDATE OF o`, accountID)
+		if err != nil {
+			return err
+		}
+		if _, err := pgx.CollectRows(organizationRows, pgx.RowTo[string]); err != nil {
+			return err
+		}
 		email, name, _, err := lockProvenAccount(ctx, transaction, accountID, tokenHash, provenRecordHash)
 		if err != nil {
 			return err
@@ -202,11 +281,50 @@ func (s *Store) DeleteAccount(ctx context.Context, accountID string, tokenHash, 
 			WHERE (i.invited_by = $1 OR i.vault_id = ANY($3::uuid[])) AND a.id <> $1`, accountID, email, deletedVaultIDs); err != nil {
 			return err
 		}
+		// Everyone in an organization whose invitations change hears of it: the members of the account's organizations,
+		// the recipients of its invitations, and the members of every organization with an invitation from or to it.
+		if deleted.OrganizationAccountIDs, err = collectAccountIDs(ctx, transaction, `
+			SELECT other.account_id FROM organization_members mine JOIN organization_members other ON other.organization_id = mine.organization_id
+			WHERE mine.account_id = $1 AND other.account_id <> $1
+			UNION
+			SELECT a.id FROM organization_invitations i JOIN accounts a ON a.email = i.email
+			WHERE i.invited_by = $1 AND a.id <> $1
+			UNION
+			SELECT m.account_id FROM organization_invitations i JOIN organization_members m ON m.organization_id = i.organization_id
+			WHERE (i.invited_by = $1 OR i.email = $2) AND m.account_id <> $1`, accountID, email); err != nil {
+			return err
+		}
+		memberships, err := listAccountMemberships(ctx, transaction, accountID)
+		if err != nil {
+			return err
+		}
+		deletedOrganizationIDs := []string{}
+		for _, membership := range memberships {
+			switch {
+			case membership.isDeletedWithAccount():
+				deletedOrganizationIDs = append(deletedOrganizationIDs, membership.organizationID)
+			case membership.needsNewAdmin():
+				if _, err := transaction.Exec(ctx, `UPDATE organization_members SET role = 'admin' WHERE organization_id = $1 AND account_id = $2`,
+					membership.organizationID, membership.successorID); err != nil {
+					return err
+				}
+			}
+		}
 		for _, statement := range []struct {
 			query     string
 			arguments []any
 		}{
+			// The vaults deleted or marked below are locked first, in ID order, as item moves lock theirs (§5.11).
+			{`SELECT 1 FROM vaults WHERE id = ANY($1::uuid[]) OR organization_id = ANY($2::uuid[])
+				OR type = 'organization' AND id IN (SELECT vault_id FROM vault_access WHERE account_id = $3) ORDER BY id FOR UPDATE`,
+				[]any{deletedVaultIDs, deletedOrganizationIDs, accountID}},
 			{`DELETE FROM vaults WHERE id = ANY($1::uuid[])`, []any{deletedVaultIDs}},
+			{`DELETE FROM vaults WHERE organization_id = ANY($1::uuid[])`, []any{deletedOrganizationIDs}},
+			{`DELETE FROM organizations WHERE id = ANY($1::uuid[])`, []any{deletedOrganizationIDs}},
+			// The vaults deleted above are gone, so this marks the organization vaults that stay.
+			{`UPDATE vaults SET needs_rotation = true WHERE type = 'organization' AND id IN (SELECT vault_id FROM vault_access WHERE account_id = $1)`,
+				[]any{accountID}},
+			{`DELETE FROM organization_invitations WHERE invited_by = $1 OR email = $2`, []any{accountID, email}},
 			{`DELETE FROM share_invitations WHERE invited_by = $1 OR accepted_by = $1 OR email = $2`, []any{accountID, email}},
 			{`DELETE FROM invites WHERE email = $2 OR (created_by = $1 AND used_at IS NULL)`, []any{accountID, email}},
 			{`DELETE FROM share_links WHERE account_id = $1`, []any{accountID}},

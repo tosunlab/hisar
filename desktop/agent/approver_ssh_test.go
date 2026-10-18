@@ -4,17 +4,19 @@ import (
 	"context"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/tryhisar/hisar/core/sshagent"
 	"github.com/tryhisar/hisar/desktop/appinfo"
 )
 
 type sshApproverOption struct {
-	biometric  Biometric
-	unlocker   Unlocker
-	isCompact  bool
-	processes  []appinfo.Process
-	fileSystem fakeFileSystem
+	biometric              Biometric
+	unlocker               Unlocker
+	isCompact              bool
+	processes              []appinfo.Process
+	fileSystem             fakeFileSystem
+	getSSHRememberDuration func() time.Duration
 }
 
 func createSSHApprover(emitter *fakeEmitter, option sshApproverOption) *Approver {
@@ -30,6 +32,9 @@ func createSSHApprover(emitter *fakeEmitter, option sshApproverOption) *Approver
 	}
 	if option.unlocker != nil {
 		config.Unlocker = option.unlocker
+	}
+	if option.getSSHRememberDuration != nil {
+		config.GetSSHRememberDuration = option.getSSHRememberDuration
 	}
 	return NewApprover(config)
 }
@@ -65,6 +70,44 @@ func TestSSHApprovalDescribesThePush(t *testing.T) {
 	if result := waitForResult(t, resultChannel); !result.result.IsAllowed || result.result.IsRemembered {
 		t.Errorf("unchecked box remembered: %+v", result)
 	}
+}
+
+func TestSSHApprovalSaysHowLongItIsRemembered(t *testing.T) {
+	emitter := createFakeEmitter()
+	approver := createSSHApprover(emitter, sshApproverOption{processes: createPushChain()})
+	resultChannel := startApproval(approver, context.Background(), createTestRequest())
+	event := waitForApprovalEvent(t, emitter)
+	if event.RememberPeriod != "for 1 hour" || event.RememberLabel != "" {
+		t.Errorf("event = %+v", event)
+	}
+	if label := approver.buildSSHPhoneDescription(event, 0).RememberLabel; label != "Also allows Terminal for 1 hour" {
+		t.Errorf("phone label = %q", label)
+	}
+	approver.Respond(event.RequestID, false, false)
+	waitForResult(t, resultChannel)
+
+	untilLock := createSSHApprover(emitter, sshApproverOption{processes: createPushChain(), getSSHRememberDuration: func() time.Duration { return 0 }})
+	resultChannel = startApproval(untilLock, context.Background(), createTestRequest())
+	event = waitForApprovalEvent(t, emitter)
+	if event.RememberPeriod != "until Hisar locks" || !event.IsRememberedByDefault {
+		t.Errorf("event = %+v", event)
+	}
+	if label := untilLock.buildSSHPhoneDescription(event, 0).RememberLabel; label != "Also allows Terminal until Hisar locks" {
+		t.Errorf("phone label = %q", label)
+	}
+	untilLock.Respond(event.RequestID, true, true)
+	if result := waitForResult(t, resultChannel); !result.result.IsAllowed || !result.result.IsRemembered {
+		t.Errorf("result = %+v", result)
+	}
+
+	forwarded := createTestRequest()
+	forwarded.IsForwarded, forwarded.IsRememberable = true, false
+	resultChannel = startApproval(untilLock, context.Background(), forwarded)
+	if event = waitForApprovalEvent(t, emitter); event.RememberPeriod != "" {
+		t.Errorf("a request that is never remembered has a period: %+v", event)
+	}
+	untilLock.Respond(event.RequestID, false, false)
+	waitForResult(t, resultChannel)
 }
 
 func TestCommitSigningIsNeverRemembered(t *testing.T) {

@@ -153,6 +153,9 @@ func (s *Service) findSharableVault(ctx context.Context, vaultID string) (*sessi
 	if vault.Type == apitypes.VaultPersonal {
 		return nil, errPersonalVault
 	}
+	if vault.Type == apitypes.VaultOrganization {
+		return nil, session.ErrOrganizationVaultAccess
+	}
 	if vault.Role != apitypes.VaultOwner {
 		return nil, errOwnerOnly
 	}
@@ -168,7 +171,13 @@ func (s *Service) shareWithMember(ctx context.Context, vault *session.Vault, mem
 	if pinErr != nil {
 		return pinErr
 	}
-	return convertSharingError(s.unlockedSession.ShareVault(ctx, vault, member, role))
+	err := s.unlockedSession.ShareVault(ctx, vault, member, role)
+	if apiclient.IsStatus(err, http.StatusConflict) {
+		// The vault was rotated since this app listed it, so the key it wrapped is no longer the vault's key.
+		s.loadVaults(ctx)
+		return errors.New("the vault changed on another device; try again")
+	}
+	return convertSharingError(err)
 }
 
 func (s *Service) getVerifiedMember(ctx context.Context, emailOrID string) (*apitypes.Member, error) {

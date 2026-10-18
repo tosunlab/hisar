@@ -40,6 +40,7 @@ function createPreview(overrides: Partial<AccountDeletionPreview> = {}): Account
     sentInvitationCount: 2,
     receivedInvitationCount: 0,
     deviceCount: 3,
+    organizations: [],
     ...overrides,
   };
 }

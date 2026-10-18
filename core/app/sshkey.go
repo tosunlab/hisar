@@ -114,7 +114,7 @@ func (s *Service) saveSSHKey(vaultID, title string, material *sshkey.KeyMaterial
 		return ItemDetail{}, err
 	}
 	vaultItem := buildSSHKeyItem(title, material)
-	if _, err := s.unlockedSession.SaveItem(ctx, vault, &vaultItem); err != nil {
+	if err := s.saveSessionItem(ctx, vault, &vaultItem); err != nil {
 		return ItemDetail{}, convertError(err)
 	}
 	s.replaceCachedItem(vaultID, vaultItem)

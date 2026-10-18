@@ -126,7 +126,7 @@ describe("Creating an API credential", () => {
 describe("Viewing an API credential", () => {
   it("masks the secret until revealed and offers each field as a secret reference", async () => {
     store.selectedItem = createAPICredentialItem();
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false } });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" } });
     expect(wrapper.find('[data-testid="api-credential-summary"]').text()).toBe("Stripe · api.stripe.com");
     expect(wrapper.find('[data-testid="card-Key ID"]').text()).toBe("key_1");
     expect(wrapper.find('[data-testid="card-Secret"]').text()).not.toContain("sk_live_123");
@@ -143,13 +143,13 @@ describe("Viewing an API credential", () => {
     store.selectedItem = createAPICredentialItem({
       apiCredential: { ...createAPICredentialItem().apiCredential!, expiry: "2020-01-01", expiryWarning: "This credential has expired" },
     });
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false } });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" } });
     expect(wrapper.find('[data-testid="card-warning-Expiry"]').text()).toBe("This credential has expired");
   });
 
   it("offers a share link for a credential with only its values", () => {
     store.selectedItem = createAPICredentialItem({ notes: "", fields: [] });
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: false, vaultName: "Personal", isShared: false } });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: false, vaultName: "Personal", vaultType: "personal" } });
     expect(wrapper.find('[data-testid="share-link"]').exists()).toBe(true);
   });
 
