@@ -80,6 +80,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.tryhisar.hisar.model.CalendarDate
 import com.tryhisar.hisar.ui.components.ScreenMargin
+import com.tryhisar.hisar.ui.components.SecretInput
+import com.tryhisar.hisar.ui.components.secretInput
 import com.tryhisar.hisar.ui.theme.HisarTheme
 import com.tryhisar.hisar.ui.theme.HisarType
 import java.time.Instant
@@ -91,8 +93,11 @@ import java.time.format.FormatStyle
 private val RowInset = 16.dp
 private val RowMinHeight = 52.dp
 
-/** Typing options of a field: what keyboard, whether it corrects and capitalizes, as SwiftUI's modifiers set them. */
-enum class FieldKind(val keyboardOptions: KeyboardOptions) {
+/**
+ * Typing options of a field: what keyboard, whether it corrects and capitalizes, as SwiftUI's modifiers set them. A
+ * secret kind also keeps its text from the keyboard's learning and from autofill.
+ */
+enum class FieldKind(val keyboardOptions: KeyboardOptions, val isSecret: Boolean = false) {
     TEXT(KeyboardOptions(capitalization = KeyboardCapitalization.Sentences)),
     NAME(KeyboardOptions(capitalization = KeyboardCapitalization.Words)),
     PLAIN(KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false)),
@@ -100,9 +105,9 @@ enum class FieldKind(val keyboardOptions: KeyboardOptions) {
     EMAIL(KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false, keyboardType = KeyboardType.Email)),
     PHONE(KeyboardOptions(keyboardType = KeyboardType.Phone)),
     NUMBER(KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Number)),
-    SECRET(KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false, keyboardType = KeyboardType.Password)),
-    SECRET_NUMBER(KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.NumberPassword)),
-    SECRET_UPPERCASE(KeyboardOptions(capitalization = KeyboardCapitalization.Characters, autoCorrectEnabled = false, keyboardType = KeyboardType.Password)),
+    SECRET(KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false, keyboardType = KeyboardType.Password), isSecret = true),
+    SECRET_NUMBER(KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.NumberPassword), isSecret = true),
+    SECRET_UPPERCASE(KeyboardOptions(capitalization = KeyboardCapitalization.Characters, autoCorrectEnabled = false, keyboardType = KeyboardType.Password), isSecret = true),
     POSTAL_CODE(KeyboardOptions(capitalization = KeyboardCapitalization.Characters)),
 }
 
@@ -228,6 +233,7 @@ fun EditorField(
 ) {
     val style = if (isMonospaced) textStyle.copy(fontFamily = HisarType.bodyMonospaced.fontFamily) else textStyle
     val isHidden = isSecret && !isRevealed
+    val isSecretInput = isSecret || kind.isSecret
     Row(
         modifier
             .fillMaxWidth()
@@ -235,28 +241,31 @@ fun EditorField(
             .padding(start = RowInset, end = if (trailing == null) RowInset else 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        BasicTextField(
-            value = value,
-            onValueChange = onValueChange,
-            singleLine = maxLines == 1,
-            minLines = minLines,
-            maxLines = maxLines,
-            textStyle = style.copy(color = HisarTheme.colors.label),
-            cursorBrush = SolidColor(HisarTheme.colors.tint),
-            visualTransformation = if (isHidden) PasswordVisualTransformation() else VisualTransformation.None,
-            keyboardOptions = kind.keyboardOptions.copy(imeAction = imeAction),
-            keyboardActions = if (onImeAction == null) KeyboardActions.Default else KeyboardActions(onAny = { onImeAction() }),
-            modifier = Modifier
-                .weight(1f)
-                .padding(vertical = 14.dp)
-                .testTag(testTag),
-            decorationBox = { innerTextField ->
-                Box(contentAlignment = Alignment.CenterStart) {
-                    if (value.isEmpty()) Text(placeholder, style = style, color = HisarTheme.colors.placeholder)
-                    innerTextField()
-                }
-            },
-        )
+        SecretInput(isSecretInput) {
+            BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                singleLine = maxLines == 1,
+                minLines = minLines,
+                maxLines = maxLines,
+                textStyle = style.copy(color = HisarTheme.colors.label),
+                cursorBrush = SolidColor(HisarTheme.colors.tint),
+                visualTransformation = if (isHidden) PasswordVisualTransformation() else VisualTransformation.None,
+                keyboardOptions = kind.keyboardOptions.copy(imeAction = imeAction),
+                keyboardActions = if (onImeAction == null) KeyboardActions.Default else KeyboardActions(onAny = { onImeAction() }),
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(vertical = 14.dp)
+                    .secretInput(isSecretInput)
+                    .testTag(testTag),
+                decorationBox = { innerTextField ->
+                    Box(contentAlignment = Alignment.CenterStart) {
+                        if (value.isEmpty()) Text(placeholder, style = style, color = HisarTheme.colors.placeholder)
+                        innerTextField()
+                    }
+                },
+            )
+        }
         if (trailing != null) trailing()
     }
 }

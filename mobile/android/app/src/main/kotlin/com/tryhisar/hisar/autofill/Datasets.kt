@@ -2,6 +2,7 @@
 
 package com.tryhisar.hisar.autofill
 
+import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.app.slice.Slice
 import android.content.Context
@@ -51,6 +52,8 @@ class Datasets(private val context: Context, private val inlineRequest: InlineSu
         setViewVisibility(R.id.autofill_suggestion_subtitle, if (suggestion.subtitle.isEmpty()) View.GONE else View.VISIBLE)
     }
 
+    // androidx.autofill documents build().slice as how a service gets the inline content; lint marks it library-internal.
+    @SuppressLint("RestrictedApi")
     private fun buildInlinePresentation(suggestion: Suggestion, index: Int, pendingIntent: PendingIntent): InlinePresentation? {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
         val allSpec = inlineRequest?.inlinePresentationSpecs.orEmpty()

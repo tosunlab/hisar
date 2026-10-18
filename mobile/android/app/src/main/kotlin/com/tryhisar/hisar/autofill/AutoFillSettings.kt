@@ -1,5 +1,6 @@
 package com.tryhisar.hisar.autofill
 
+import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -121,6 +122,7 @@ private val systemSettingsFooter: String
         "You can also turn it on in the Settings app: System, Languages & input, Autofill service."
     }
 
+@SuppressLint("InlinedApi")
 private fun openSystemSettings(context: Context) {
     val action = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) Settings.ACTION_CREDENTIAL_PROVIDER else Settings.ACTION_SETTINGS
     context.startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))

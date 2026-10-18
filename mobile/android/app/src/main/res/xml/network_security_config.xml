@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Governs only the app's own Kotlin requests, such as Digital Asset Links; Go reads the trusted certificates it is
+    handed and ignores this file. Release builds refuse http:// servers in the sign-in form, so nothing here allows
+    cleartext; the debug build's copy does. User-installed certificates are trusted on purpose, for servers behind a
+    company's own certificate authority, as Go trusts them too.
+-->
+<network-security-config xmlns:tools="http://schemas.android.com/tools">
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+            <certificates
+                src="user"
+                tools:ignore="AcceptsUserCertificates" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

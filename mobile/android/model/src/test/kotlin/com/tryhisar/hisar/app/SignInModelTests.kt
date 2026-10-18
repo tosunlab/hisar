@@ -157,11 +157,49 @@ class SignInModelTests {
     @Test
     fun testScannedQRCodeFillsInSignInOrExplains() = runTest {
         val model = AppModelHarness(this).startModel()
+        model.signIn.isScannerShown.value = true
         model.signIn.openScannedEmergencyKit("hisar://invite/abc")
+        assertFalse(model.signIn.isScannerShown.value, "the first code closes the scanner")
         assertNull(model.signIn.pendingInviteLink.value, "an invite is no Emergency Kit")
         assertEquals("This QR code is not from a Hisar Emergency Kit.", model.signIn.scannerMessage.value)
         model.signIn.openScannedEmergencyKit("hisar://sign-in?server=https%3A%2F%2Fhisar.example.com&email=alice%40example.com&secretKey=H1-ABC123")
         assertEquals(SignInLink(server = "https://hisar.example.com", email = "alice@example.com", secretKey = "H1-ABC123"), model.signIn.pendingSignInLink.value)
+    }
+
+    @Test
+    fun testReleaseBuildRefusesPlainHttpServersAndInvites() = runTest {
+        val harness = AppModelHarness(this, isPlainHttpAllowed = false)
+        val model = harness.startModel()
+        for (server in listOf("http://127.0.0.1:18080", " HTTP://hisar.example.com ")) {
+            assertFalse(model.signIn.signIn(server, "alice@example.com", FakeBackend.SECRET_KEY, FakeBackend.PASSWORD))
+            assertEquals(SignInModel.PLAIN_HTTP_SERVER_REFUSAL, model.errorMessage.value)
+        }
+        assertFalse(model.signIn.signUp(inviteLink, "bob@example.com", "Bob", FakeBackend.PASSWORD))
+        assertEquals(SignInModel.PLAIN_HTTP_INVITE_REFUSAL, model.errorMessage.value)
+        assertEquals(Screen.SignedOut, model.screen.value)
+        assertFalse("signIn" in harness.backend.allCallName || "signUp" in harness.backend.allCallName, "the backend never saw an http:// address")
+
+        assertTrue(model.signIn.signUp("https://hisar.example.com/invite/abc", "bob@example.com", "Bob", FakeBackend.PASSWORD))
+        assertEquals(Screen.Unlocked, model.screen.value)
+    }
+
+    @Test
+    fun testReleaseBuildSignsInOverHttps() = runTest {
+        for (server in listOf("https://hisar.example.com", "hisar.example.com")) {
+            val model = AppModelHarness(this, isPlainHttpAllowed = false).startModel()
+            assertTrue(model.signIn.signIn(server, "alice@example.com", FakeBackend.SECRET_KEY, FakeBackend.PASSWORD), "$server is not refused")
+            assertEquals(Screen.Unlocked, model.screen.value)
+        }
+    }
+
+    @Test
+    fun testDebugBuildSignsInAndSignsUpOverPlainHttp() = runTest {
+        val model = AppModelHarness(this, isPlainHttpAllowed = true).startModel()
+        assertTrue(model.signIn.signUp(inviteLink, "bob@example.com", "Bob", FakeBackend.PASSWORD))
+        val otherModel = AppModelHarness(this, isPlainHttpAllowed = true).startModel()
+        assertTrue(otherModel.signIn.signIn("http://127.0.0.1:18080", "alice@example.com", FakeBackend.SECRET_KEY, FakeBackend.PASSWORD))
+        assertNull(otherModel.errorMessage.value)
+        assertEquals(Screen.Unlocked, otherModel.screen.value)
     }
 
     @Test
