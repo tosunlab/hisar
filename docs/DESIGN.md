@@ -790,6 +790,23 @@ The app updates itself with [Sparkle 2](https://sparkle-project.org) through the
 - **Quitting** is explicit: Hisar → Quit Hisar (⌘Q) or **Quit Hisar** in the menu bar item. Both stop the sockets. Sparkle's install-and-relaunch goes through the same terminate path (§9.1.1), and the relaunched app opens its window as after any normal launch.
 - Linux desktops without a tray (GNOME without the AppIndicator extension) show no menu bar item; Hisar still keeps running, and starting it again shows the window.
 
+#### 9.1.3 Linux
+
+The Linux app is the same Wails app on GTK 4 and WebKitGTK 6.0, packaged as `.deb` and `.rpm` for amd64 and arm64 (`scripts/package-desktop-linux.sh`, `desktop/build/linux/nfpm/nfpm.yaml`; Ubuntu 24.04+, Debian 13+, Fedora 40+): `/usr/bin/Hisar`, `/usr/bin/hisar`, `/usr/lib/hisar/hisar-browser-host`, a desktop entry and its icon. CI installs the `.deb`, starts it hidden on Xvfb and checks that `hisar` and `ssh-add` reach it (`scripts/test-desktop-linux-package.sh`).
+
+Works as on the Mac: the vault, the SSH agent on `~/.hisar/agent.sock` with approvals, `hisar` through the app (peer credentials with `SO_PEERCRED`, terminal sessions from `/proc`), `hisar run` and `hisar mcp`, the browser extension in Chromium-based browsers (manifests under `~/.config`; the host starts the app when it is not running), passkeys through the extension, phone approvals, open at login (XDG autostart, §9.1.2) and auto-lock on the session's idle time (§9.1, from GNOME's or the freedesktop idle monitor over D-Bus).
+
+Differs:
+
+- **No biometric unlock.** `desktop/biometric` has no Linux backend, so Hisar unlocks with the master password, and Settings says so. fprintd or polkit is a later option.
+- **The Secret Key needs a Secret Service** on the session bus (GNOME Keyring, KWallet). Without one, signing in fails with `localstate.ErrNoSecretService`, which says to start one or set `HISAR_SECRET_KEY`.
+- **Updates are announced, not installed** (§9.1.1, "Update notices"): the user installs the new package.
+- **Approvals name programs, not apps.** Linux has no Dock apps or code signatures, so an approval shows the process chain (`ssh ← zsh`), an SSH session or `tmux`, without an app name or icon (§9.6).
+- **The approval window is placed by the desktop**: GTK 4 has no way for an app to move its own window (and Wayland forbids it), so `windowplacement` does nothing on Linux.
+- **No tray icon on GNOME without the AppIndicator extension** (§9.1.2): Hisar keeps running, and starting it again shows the window.
+- **Not covered:** browsers installed as a Flatpak or a Snap (their sandbox cannot run a host from outside it), Firefox (the extension has no Firefox build), and AppImage or Flatpak packages of Hisar.
+- The UI says "this computer" and "system tray" where the Mac's says "this Mac" and "menu bar".
+
 ### 9.2 Browser extension — TypeScript, MV3
 
 - No crypto and no keys in the extension. It talks to the desktop app through the browser's native messaging API; the desktop app must be running (the host starts it when it is not).

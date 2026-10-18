@@ -36,7 +36,7 @@ Five Go modules joined by `go.work`, plus four non-Go apps.
 | `item` | The plaintext item model and its categories (`schema.go`: types kept as named fields; `card.go`, `identity.go`, `apicredential.go`, `license.go`, `server.go`, `database.go`, `address.go`, whose fields identities and cards share), the chosen icon and its presets (`icon.go`), `LookupField`, the password generator |
 | `itemicon` | Icon images: normalizing uploads and website icons into small PNGs, and fetching website icons from public https sites only |
 | `cache` | The offline SQLite copy of the server's encrypted records, and the device's sealed website icons |
-| `localstate` | `state.json` (session state plus embedded device `Settings`) and the Secret Key in the keychain |
+| `localstate` | `state.json` (session state plus embedded device `Settings`) and the Secret Key in the keychain (`ErrNoSecretService` when Linux has no keyring) |
 | `app` | The backend of the Mac and iPhone apps, bound to the UI (see below) |
 | `app/apptest` | An unlocked `app.Service` on an in-memory API, for tests outside `core/app` |
 | `cliprotocol` | The CLI ↔ app protocol on `~/.hisar/cli.sock`: messages, results, framing, `Client` |
@@ -95,7 +95,7 @@ Shared test fixtures are in `helpers_test.go`, the in-memory API in `fakeapi_tes
 | `browser` | Native host, socket server and manifests for the extension |
 | `commandline` | Installing `hisar`, Settings → Command-line tool and its approved launchers, and the signed app behind a caller without a terminal (`identity.go`) |
 | `loginitem`, `background` | Open at login; login item, Dock icon, appearance |
-| `biometric`, `systemidle`, `windowplacement`, `updater`, `pasteboard` | Touch ID and keychain, idle time, window placement, Sparkle, the clipboard (copies concealed from clipboard managers) |
+| `biometric`, `systemidle`, `windowplacement`, `updater`, `pasteboard` | Touch ID and keychain, idle time (D-Bus on Linux), window placement, Sparkle (`Notifier` announces versions on Linux), the clipboard (copies concealed from clipboard managers) |
 | `cmd/hisar-browser-host`, `cmd/hisar-update-key` | Helper binaries |
 
 ### mobile
@@ -185,7 +185,7 @@ make test-desktop-frontend
 make test-raycast        # the Raycast extension's typecheck, tests, lint and build; it never installs into Raycast
 make test-admin          # the admin dashboard's typecheck and unit tests; make build-admin builds it alone
 make test-admin-end-to-end # the dashboard in Chromium; needs HISAR_DATABASE_URL and Playwright's Chromium
-make build-desktop       # or package-desktop for Hisar.app; package-desktop-linux VERSION=… for the .deb and .rpm (on Linux)
+make build-desktop       # or package-desktop for Hisar.app; package-desktop-linux VERSION=… for the .deb and .rpm (on Linux); scripts/test-desktop-linux-package.sh installs one and checks the app starts
 make build-ios-framework test-ios
 gofmt -l $(git ls-files '*.go')
 ```

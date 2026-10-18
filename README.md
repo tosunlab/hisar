@@ -18,6 +18,20 @@ The server stores only ciphertext. Keys are derived on your devices from your ma
 
 Where each package is and where new code goes: [CLAUDE.md](CLAUDE.md).
 
+## Desktop app on Linux
+
+Each `desktop-<version>` GitHub Release has `Hisar-<version>-linux-<arch>.deb` and `.rpm` for amd64 and arm64, built for
+GTK 4 and WebKitGTK 6.0 (Ubuntu 24.04+, Debian 13+, Fedora 40+). Check them against `SHA256SUMS-linux-<arch>`, then:
+
+```sh
+sudo apt install ./Hisar-0.3.0-linux-amd64.deb     # Fedora: sudo dnf install ./Hisar-0.3.0-linux-amd64.rpm
+```
+
+The package installs the app (`/usr/bin/Hisar`, in the app menu), `hisar` at `/usr/bin/hisar`, and the browser
+extension's host. The Secret Key goes into the desktop's keyring, so a Secret Service has to run (GNOME Keyring or
+KWallet); without one, set `HISAR_SECRET_KEY`. What works as on the Mac and what differs (no Touch ID, update notices
+instead of installing updates, no app names in approvals): [docs/DESIGN.md §9.1.3](docs/DESIGN.md).
+
 ## Command-line tool
 
 `hisar` lists, reads and edits your items from a terminal or a script (`hisar --help`).
