@@ -15,5 +15,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["src/**/*", "vitest.config.ts", "raycast-env.d.ts"]
+  "include": ["src/**/*", "vitest.config.mts", "raycast-env.d.ts"]
 }

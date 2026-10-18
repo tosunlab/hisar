@@ -25,7 +25,7 @@ const timeoutMillisecondsByType: Record<RequestType, number> = {
   "launcher.lock": 10_000,
 };
 
-/** Connection is one cli.sock connection that said hello and launcher.hello; requests go one at a time. */
+/** Connection is one cli.sock connection that said hello and launcher.hello; its owner sends one request at a time. */
 export class Connection {
   readonly isApproved: boolean;
   private readonly channel: RequestChannel;
@@ -77,7 +77,10 @@ export class Connection {
 
 function requireFeature(allFeature: string[], type: LauncherRequestType): void {
   if (!allFeature.includes(type)) {
-    throw new HisarError("update-required", "This version of Hisar cannot answer this command. Update Hisar and try again.");
+    throw new HisarError(
+      "update-required",
+      "This version of Hisar cannot answer this command. Update Hisar and try again.",
+    );
   }
 }
 
@@ -88,19 +91,20 @@ interface Exchange {
   timer: NodeJS.Timeout;
 }
 
-/** RequestChannel owns the socket: request IDs, the one exchange in flight, timeouts and the end of the connection. */
+/** RequestChannel owns the socket: request IDs, the exchange in flight, timeouts and the end of the connection. */
 class RequestChannel {
   private readonly socket: Socket;
   private readonly reader = new FrameReader();
   private lastID = 0;
-  private queue: Promise<unknown> = Promise.resolve();
   private exchange: Exchange | undefined;
   private endError: HisarError | undefined;
 
   constructor(socket: Socket) {
     this.socket = socket;
     socket.on("data", (chunk: Buffer) => this.receive(chunk));
-    socket.on("error", (error) => this.end(new HisarError("connection-lost", `Lost the connection to Hisar: ${error.message}`)));
+    socket.on("error", (error) =>
+      this.end(new HisarError("connection-lost", `Lost the connection to Hisar: ${error.message}`)),
+    );
     socket.on("close", () => this.end(new HisarError("connection-lost", "Hisar closed the connection.")));
   }
 
@@ -108,10 +112,11 @@ class RequestChannel {
     return this.endError !== undefined;
   }
 
-  send<Type extends RequestType>(type: Type, parameters: RequestMap[Type]["parameters"]): Promise<RequestMap[Type]["result"]> {
-    const sent = this.queue.then(async () => parseResultByType[type](await this.exchangeOne(type, parameters)));
-    this.queue = sent.catch(() => undefined);
-    return sent;
+  async send<Type extends RequestType>(
+    type: Type,
+    parameters: RequestMap[Type]["parameters"],
+  ): Promise<RequestMap[Type]["result"]> {
+    return parseResultByType[type](await this.exchangeOne(type, parameters));
   }
 
   close(): void {

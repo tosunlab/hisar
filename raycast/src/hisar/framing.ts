@@ -19,7 +19,7 @@ export function encodeFrame(message: unknown): Buffer {
 
 /** FrameReader collects socket chunks and returns each complete message; a broken stream throws connection-lost. */
 export class FrameReader {
-  private buffered = Buffer.alloc(0);
+  private buffered: Buffer = Buffer.alloc(0);
 
   push(chunk: Buffer): unknown[] {
     this.buffered = this.buffered.length === 0 ? chunk : Buffer.concat([this.buffered, chunk]);

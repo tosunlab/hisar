@@ -1,13 +1,5 @@
 import { HisarError, isAppErrorCode } from "./errors";
-import type {
-  CopyReceipt,
-  CopyableField,
-  Item,
-  ItemList,
-  ItemReference,
-  OneTimeCode,
-  PasswordOptions,
-} from "./model";
+import type { CopyReceipt, CopyableField, Item, ItemList, ItemReference, OneTimeCode, PasswordOptions } from "./model";
 
 export const protocolVersion = 1;
 export const clientPlatform = "darwin/raycast";
@@ -71,7 +63,10 @@ export const parseResultByType: { [Type in RequestType]: (result: unknown) => Re
   "launcher.items.list": (result) => {
     const list = readObject(result, "the item list");
     return {
-      allVault: readObjectList(list, "vaults").map((vault) => ({ id: readString(vault, "id"), name: readString(vault, "name") })),
+      allVault: readObjectList(list, "vaults").map((vault) => ({
+        id: readString(vault, "id"),
+        name: readString(vault, "name"),
+      })),
       allItem: readObjectList(list, "items").map(parseItem),
     };
   },

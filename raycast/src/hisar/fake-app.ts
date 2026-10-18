@@ -7,12 +7,13 @@ import { allLauncherRequestType } from "./protocol";
 
 export type ReceivedRequest = { id: string; type: string } & Record<string, unknown>;
 
-/** Answer returns the whole response frame for a request, or undefined to never answer it. */
+/** Answer returns the whole response frame for a request, now or later, or undefined to never answer it. */
 export type Answer = (request: ReceivedRequest) => unknown;
 
 /** FakeApp is a Unix-socket server that speaks cli.sock framing, records every request and answers as told. */
 export interface FakeApp {
   allRequest: ReceivedRequest[];
+  getRequestTypes(): string[];
   close(): Promise<void>;
 }
 
@@ -27,8 +28,13 @@ export function answerHandshake(answer: Answer, allFeature: readonly string[] = 
   };
 }
 
+export interface SocketDirectory {
+  socketPath: string;
+  remove(): void;
+}
+
 /** createSocketDirectory makes a private temporary folder for a socket and removes it after the test. */
-export function createSocketDirectory(): { socketPath: string; remove: () => void } {
+export function createSocketDirectory(): SocketDirectory {
   const directory = mkdtempSync(join(tmpdir(), "hisar-raycast-"));
   return { socketPath: join(directory, "cli.sock"), remove: () => rmSync(directory, { recursive: true, force: true }) };
 }
@@ -44,8 +50,9 @@ export async function startFakeApp(socketPath: string, answer: Answer): Promise<
       for (const message of reader.push(chunk)) {
         const request = message as ReceivedRequest;
         allRequest.push(request);
-        const response = answer(request);
-        if (response !== undefined) socket.write(encodeFrame(response));
+        void Promise.resolve(answer(request)).then((response) => {
+          if (response !== undefined && !socket.destroyed) socket.write(encodeFrame(response));
+        });
       }
     });
   });
@@ -55,6 +62,7 @@ export async function startFakeApp(socketPath: string, answer: Answer): Promise<
   await listening;
   return {
     allRequest,
+    getRequestTypes: () => allRequest.map((request) => request.type),
     close: async () => {
       for (const socket of allSocket) socket.destroy();
       const { promise: closed, resolve: resolveClosed } = Promise.withResolvers<void>();
