@@ -16,6 +16,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 
 /** The Settings tab: the theme, devices, the Emergency Kit and Help. */
@@ -115,6 +116,58 @@ class SettingsModelTests {
             purpose = "use Hisar", commandLine = "hisar read",
         )
         assertEquals("hisar read", commandLine.detailLine)
+    }
+
+    private fun createApproval(harness: AppModelHarness, requestID: String) = PhoneApproval(
+        requestID = requestID, requesterDeviceName = "MacBook Pro", expiresAt = harness.currentDate.plusSeconds(60).toString(),
+        kind = PhoneApproval.KIND_SSH, appName = "Terminal", purpose = "push to github.com", keyName = "GitHub deploy key",
+    )
+
+    @Test
+    fun testTurningOffMacApprovalsHidesTheRequests() = runTest {
+        val harness = AppModelHarness(this)
+        harness.backend.allPendingApproval = mutableListOf(createApproval(harness, "first"))
+        val model = harness.startUnlockedModel()
+        model.approvals.refreshPendingApproval()
+        assertEquals(1, model.approvals.allPendingApproval.value.size)
+        assertTrue(model.settings.setMacApprovalAllowed(false))
+        runCurrent()
+        assertFalse(model.isMacApprovalAllowed.value)
+        assertFalse(harness.backend.isMacApprovalAllowedValue)
+        assertEquals(emptyList(), model.approvals.allPendingApproval.value)
+        model.approvals.refreshPendingApproval()
+        assertEquals(emptyList(), model.approvals.allPendingApproval.value, "no polling while turned off")
+        assertTrue(model.settings.setMacApprovalAllowed(true))
+        assertTrue(model.isMacApprovalAllowed.value)
+    }
+
+    @Test
+    fun testApproveFromTheCardWithoutOpeningTheSheet() = runTest {
+        val harness = AppModelHarness(this)
+        harness.backend.allPendingApproval = mutableListOf(createApproval(harness, "first"), createApproval(harness, "second"))
+        val model = harness.startUnlockedModel()
+        model.approvals.refreshPendingApproval()
+        model.approvals.approve(model.approvals.allPendingApproval.value[0])
+        assertEquals(listOf("approve first"), harness.backend.allApprovalAnswer)
+        assertNull(model.approvals.presentedApproval.value)
+        model.approvals.deny(model.approvals.allPendingApproval.value[0])
+        assertEquals(listOf("approve first", "deny second"), harness.backend.allApprovalAnswer)
+        assertEquals(emptyList(), model.approvals.allPendingApproval.value)
+    }
+
+    @Test
+    fun testApproveFromTheCardOpensTheSheetForTheMasterPassword() = runTest {
+        val harness = AppModelHarness(this)
+        harness.backend.isBiometricAvailable = false
+        harness.backend.allPendingApproval = mutableListOf(createApproval(harness, "first"))
+        val model = harness.startUnlockedModel()
+        model.approvals.refreshPendingApproval()
+        model.approvals.approve(model.approvals.allPendingApproval.value[0])
+        assertEquals("first", model.approvals.presentedApproval.value?.requestID)
+        assertTrue(model.approvals.isApprovalPasswordRequired.value)
+        model.approvals.approvePendingApproval(password = FakeBackend.PASSWORD, isRemembered = false)
+        assertEquals(listOf("approve first"), harness.backend.allApprovalAnswer)
+        assertNull(model.approvals.presentedApproval.value)
     }
 
     @Test
