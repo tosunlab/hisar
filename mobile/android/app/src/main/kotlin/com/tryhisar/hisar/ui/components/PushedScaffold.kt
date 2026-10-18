@@ -2,7 +2,6 @@ package com.tryhisar.hisar.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -23,6 +22,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -30,36 +30,36 @@ import androidx.compose.ui.unit.dp
 import com.tryhisar.hisar.ui.theme.HisarTheme
 import com.tryhisar.hisar.ui.theme.HisarType
 
-/** The navigation bar of a pushed screen, as the iPhone app's inline title: a back button, the title, then [actions]. */
+private val TitleGap = 8.dp
+
+/**
+ * The navigation bar of a pushed screen, as the iPhone app's inline title: a back button, the title centred on the screen,
+ * then [actions]. The title takes all the width the buttons leave it on the wider side.
+ */
 @Composable
 fun PushedTopBar(title: String, onBack: () -> Unit, actions: @Composable RowScope.() -> Unit = {}) {
-    Box(
-        Modifier
+    Layout(
+        content = {
+            ToolbarIconButton(Icons.AutoMirrored.Filled.ArrowBackIos, "Back", testTag = "back", onClick = onBack)
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically, content = actions)
+            Text(title, style = HisarType.headline, color = HisarTheme.colors.label, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        },
+        modifier = Modifier
             .fillMaxWidth()
             .windowInsetsPadding(WindowInsets.statusBars)
             .height(52.dp)
             .padding(horizontal = ScreenMargin),
-    ) {
-        Box(Modifier.align(Alignment.CenterStart)) {
-            ToolbarIconButton(Icons.AutoMirrored.Filled.ArrowBackIos, "Back", testTag = "back", onClick = onBack)
+    ) { measurables, constraints ->
+        val looseConstraints = constraints.copy(minWidth = 0, minHeight = 0)
+        val back = measurables[0].measure(looseConstraints)
+        val actionRow = measurables[1].measure(looseConstraints)
+        val side = maxOf(back.width, actionRow.width) + TitleGap.roundToPx()
+        val titleText = measurables[2].measure(looseConstraints.copy(maxWidth = (constraints.maxWidth - 2 * side).coerceAtLeast(0)))
+        layout(constraints.maxWidth, constraints.maxHeight) {
+            back.placeRelative(0, (constraints.maxHeight - back.height) / 2)
+            actionRow.placeRelative(constraints.maxWidth - actionRow.width, (constraints.maxHeight - actionRow.height) / 2)
+            titleText.placeRelative((constraints.maxWidth - titleText.width) / 2, (constraints.maxHeight - titleText.height) / 2)
         }
-        Text(
-            title,
-            style = HisarType.headline,
-            color = HisarTheme.colors.label,
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .align(Alignment.Center)
-                .padding(horizontal = 112.dp),
-        )
-        Row(
-            Modifier.align(Alignment.CenterEnd),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            content = actions,
-        )
     }
 }
 
