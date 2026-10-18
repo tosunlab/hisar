@@ -55,7 +55,8 @@ export interface ApprovalEvent {
     "moreSecretCount": number;
 
     /**
-     * Agent requests (Kind ApprovalKindAgent) name the agent; Purpose is connect, run, code or reveal.
+     * Agent requests (Kind ApprovalKindAgent) name the agent; Purpose is connect, run, code or reveal. A launcher's share
+     * link request has Purpose share-link.
      */
     "agentName": string;
     "workingDirectory": string;
