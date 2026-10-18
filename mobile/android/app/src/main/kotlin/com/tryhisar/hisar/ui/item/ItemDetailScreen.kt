@@ -5,11 +5,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -20,6 +23,7 @@ import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -49,7 +53,6 @@ import com.tryhisar.hisar.ui.components.ContentUnavailable
 import com.tryhisar.hisar.ui.components.PlainButton
 import com.tryhisar.hisar.ui.components.PushedTopBar
 import com.tryhisar.hisar.ui.components.ScreenMargin
-import com.tryhisar.hisar.ui.components.ToolbarIconButton
 import com.tryhisar.hisar.ui.root.TabBarHeight
 import com.tryhisar.hisar.ui.theme.HisarTheme
 import com.tryhisar.hisar.ui.theme.HisarType
@@ -106,15 +109,16 @@ fun ItemDetailScreen(model: AppModel, vaultID: String, itemID: String, onEdit: (
             onBack = onBack,
             actions = {
                 if (shownItem != null) {
-                    FavoriteButton(shownItem.isFavorite) {
-                        scope.launch {
-                            val isFavorite = !shownItem.isFavorite
-                            if (model.favorites.setItemFavorite(vaultID, shownItem.id, isFavorite)) item = item?.copy(isFavorite = isFavorite)
-                        }
-                    }
-                }
-                if (isWritable && shownItem != null) {
-                    ToolbarTextButton("Edit", "edit-item") { onEdit(EditorRequest.Edit(vaultID, itemID)) }
+                    ItemToolbar(
+                        isFavorite = shownItem.isFavorite,
+                        toggleFavorite = {
+                            scope.launch {
+                                val isFavorite = !shownItem.isFavorite
+                                if (model.favorites.setItemFavorite(vaultID, shownItem.id, isFavorite)) item = item?.copy(isFavorite = isFavorite)
+                            }
+                        },
+                        edit = if (isWritable) ({ onEdit(EditorRequest.Edit(vaultID, itemID)) }) else null,
+                    )
                 }
             },
         )
@@ -209,32 +213,43 @@ internal class ItemFieldActions(
     val toggleReveal: (fieldName: String) -> Unit,
 )
 
+/** The star and, for those who may change the item, "Edit", on one glass capsule as the iPhone app groups them. */
 @Composable
-private fun FavoriteButton(isFavorite: Boolean, toggle: () -> Unit) {
-    Box(Modifier.semantics { stateDescription = if (isFavorite) "Favorite" else "" }) {
-        ToolbarIconButton(
-            if (isFavorite) Icons.Filled.Star else Icons.Outlined.StarOutline,
-            if (isFavorite) "Remove from Favorites" else "Add to Favorites",
-            testTag = "favorite-item",
-            onClick = toggle,
-        )
-    }
-}
-
-/** A toolbar button with a title, as the iPhone app's glass "Edit" button. */
-@Composable
-private fun ToolbarTextButton(title: String, testTag: String, onClick: () -> Unit) {
-    Box(
+private fun ItemToolbar(isFavorite: Boolean, toggleFavorite: () -> Unit, edit: (() -> Unit)?) {
+    Row(
         Modifier
             .height(44.dp)
             .shadow(6.dp, CircleShape)
             .clip(CircleShape)
-            .background(HisarTheme.colors.cellBackground)
-            .clickable(role = Role.Button, onClick = onClick)
-            .testTag(testTag)
-            .padding(horizontal = 16.dp),
-        contentAlignment = Alignment.Center,
+            .background(HisarTheme.colors.cellBackground),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(title, style = HisarType.body, color = HisarTheme.colors.label)
+        Box(
+            Modifier
+                .size(44.dp)
+                .clickable(role = Role.Button, onClick = toggleFavorite)
+                .semantics { stateDescription = if (isFavorite) "Favorite" else "" }
+                .testTag("favorite-item"),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                if (isFavorite) Icons.Filled.Star else Icons.Outlined.StarOutline,
+                contentDescription = if (isFavorite) "Remove from Favorites" else "Add to Favorites",
+                tint = HisarTheme.colors.label,
+                modifier = Modifier.size(22.dp),
+            )
+        }
+        if (edit != null) {
+            Box(
+                Modifier
+                    .fillMaxHeight()
+                    .clickable(role = Role.Button, onClick = edit)
+                    .testTag("edit-item")
+                    .padding(start = 4.dp, end = 16.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("Edit", style = HisarType.body, color = HisarTheme.colors.label)
+            }
+        }
     }
 }

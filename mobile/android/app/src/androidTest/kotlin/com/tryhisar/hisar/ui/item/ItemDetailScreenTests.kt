@@ -3,8 +3,11 @@ package com.tryhisar.hisar.ui.item
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.tryhisar.hisar.app.FakeTextClipboard
 import com.tryhisar.hisar.model.FakeBackend
@@ -43,7 +46,9 @@ class ItemDetailScreenTests {
     }
     private var host: ItemDetailHost? = null
 
-    private fun openHost(): ItemDetailHost = ItemDetailHost(backend, FakeTextClipboard()).also { host = it }
+    private val clipboard = FakeTextClipboard()
+
+    private fun openHost(): ItemDetailHost = ItemDetailHost(backend, clipboard).also { host = it }
 
     @After
     fun closeHost() {
@@ -99,5 +104,20 @@ class ItemDetailScreenTests {
         backend.deleteItem("personal", "bank")
         host.refresh()
         composeRule.waitUntil(5_000) { host.backCount == 1 }
+    }
+
+    @Test
+    fun testTouchAndHoldCopiesAReferenceAndAWebsite() {
+        val host = openHost()
+        host.show("personal", "github")
+        composeRule.waitForTag("username-value")
+        composeRule.onNodeWithTag("username-value").performTouchInput { longClick() }
+        composeRule.onNode(hasText("Copy Secret Reference")).performClick()
+        composeRule.waitUntil(5_000) { backend.allCopiedReference == listOf("hisar://Personal/GitHub/username") }
+
+        composeRule.onNodeWithTag("open-website").performScrollTo().performTouchInput { longClick() }
+        composeRule.onNode(hasText("Copy")).performClick()
+        composeRule.waitUntil(5_000) { clipboard.allCopiedSecret == listOf("https://github.com") }
+        assertEquals("Website copied. It clears in about 2 minutes.", host.model.notice.value)
     }
 }

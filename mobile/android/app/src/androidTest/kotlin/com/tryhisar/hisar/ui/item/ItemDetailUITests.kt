@@ -1,6 +1,7 @@
 package com.tryhisar.hisar.ui.item
 
 import android.content.ClipboardManager
+import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -84,9 +85,13 @@ class ItemDetailUITests : HisarUITestCase() {
         waitFor(hasText("Password copied. It clears in about 2 minutes."))
         saveScreenshot("item-detail-login-copied")
 
+        // The test's frame clock drives the row's timers, so a code may show a moment after its window starts.
         val startedAt = Instant.now().minusSeconds(1)
-        val code = readText("one-time-code-value").replace(" ", "")
-        assertTrue("$code is not the current code", code in listOf(computeCode(startedAt), computeCode(Instant.now())))
+        waitFor("one-time-code-value")
+        composeRule.waitUntil("the current code shows", 10_000) {
+            val shown = composeRule.onNode(hasTestTag("one-time-code-value")).fetchSemanticsNode().config[SemanticsProperties.Text].joinToString("")
+            shown.replace(" ", "") in listOf(computeCode(Instant.now().minusSeconds(1)), computeCode(Instant.now()))
+        }
         assertTrue(exists(hasTestTag("one-time-code-seconds")))
         tap("copy-one-time-code")
         waitUntil(10_000, "the clipboard holds the code") { clipboardText?.length == 6 }

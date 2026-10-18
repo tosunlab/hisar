@@ -43,6 +43,7 @@ import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.tryhisar.hisar.ui.theme.HisarTheme
 import com.tryhisar.hisar.ui.theme.HisarType
 
@@ -133,7 +134,12 @@ internal fun SecretFieldRow(
                     Text(label, style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel)
                     Text(
                         if (isHidden) HIDDEN_VALUE else value,
-                        style = if (isConcealed) HisarType.bodyMonospaced else HisarType.body,
+                        style = when {
+                            // SF Mono's dot is a heavy one; the Android monospace font's is small, so the dots use the body font.
+                            isHidden -> HiddenValueStyle
+                            isConcealed -> HisarType.bodyMonospaced
+                            else -> HisarType.body
+                        },
                         color = HisarTheme.colors.label,
                         maxLines = if (isConcealed) 3 else 5,
                         overflow = TextOverflow.Ellipsis,
@@ -176,3 +182,4 @@ internal fun RowIconButton(icon: ImageVector, contentDescription: String, testTa
 }
 
 private const val HIDDEN_VALUE = "••••••••••••"
+private val HiddenValueStyle = HisarType.body.copy(fontSize = 20.sp, letterSpacing = 1.sp)
