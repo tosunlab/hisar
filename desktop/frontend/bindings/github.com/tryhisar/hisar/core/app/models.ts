@@ -220,6 +220,15 @@ export interface ItemAddress {
 }
 
 /**
+ * ItemAndroidApp is an Android app a login fills into. CertificateSHA256 is its signing certificate's SHA-256 as
+ * apksigner and assetlinks.json show it: upper-case hex bytes joined by colons.
+ */
+export interface ItemAndroidApp {
+    "packageName": string;
+    "certificateSha256": string;
+}
+
+/**
  * ItemCard is a card's values. Type is the brand saved with the card, which the user may choose; Brand is the one its
  * number points to. Lists show Type, or Brand when the card has no type.
  * Its billing address is in the embedded ItemAddress; BillingAddress is a one-line address saved before cards had one, kept
@@ -285,6 +294,12 @@ export interface ItemDetail {
     "oneTimePassword": string;
     "hasOneTimePassword": boolean;
     "passkeys": ItemPasskey[] | null;
+
+    /**
+     * AndroidApps are the Android apps a login fills into, which the item stores among its URLs; URLs holds only its
+     * websites. SaveItem keeps the stored ones; AddAndroidApp and RemoveAndroidApp change them.
+     */
+    "androidApps": ItemAndroidApp[] | null;
 
     /**
      * CanConvertToSecureNote: a login with only notes and custom fields, which ConvertToSecureNote turns into a secure note.

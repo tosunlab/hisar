@@ -32,6 +32,7 @@ export type {
     ImportSkippedEntry,
     ItemAPICredential,
     ItemAddress,
+    ItemAndroidApp,
     ItemCard,
     ItemDatabase,
     ItemDetail,

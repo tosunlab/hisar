@@ -24,6 +24,15 @@ export function AcceptShareInvitation(invitationID: string): $CancellablePromise
 }
 
 /**
+ * AddAndroidApp links a login to an Android app the user chose to always fill it into, named by its package name and
+ * the hex SHA-256 of its signing certificate; ListLoginsForAndroidApp then offers the login in that app. Adding a link
+ * the login already has changes nothing.
+ */
+export function AddAndroidApp(vaultID: string, itemID: string, packageName: string, certificateSHA256: string): $CancellablePromise<$models.ItemDetail> {
+    return $Call.ByID(2124397642, vaultID, itemID, packageName, certificateSHA256);
+}
+
+/**
  * AddTeamMember gives a member of the organization the team's vaults; an owner's app delivers their keys.
  */
 export function AddTeamMember(organizationID: string, teamID: string, accountID: string): $CancellablePromise<void> {
@@ -480,6 +489,13 @@ export function PreviewAccountDeletion(): $CancellablePromise<$models.AccountDel
  */
 export function PreviewImport(vaultID: string): $CancellablePromise<$models.ImportPreview> {
     return $Call.ByID(194971954, vaultID);
+}
+
+/**
+ * RemoveAndroidApp unlinks a login from an Android app; removing a link the login does not have changes nothing.
+ */
+export function RemoveAndroidApp(vaultID: string, itemID: string, packageName: string, certificateSHA256: string): $CancellablePromise<$models.ItemDetail> {
+    return $Call.ByID(4240383115, vaultID, itemID, packageName, certificateSHA256);
 }
 
 /**

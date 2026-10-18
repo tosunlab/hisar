@@ -49,6 +49,7 @@ export function createItem(overrides: Partial<ItemDetail> = {}): ItemDetail {
     oneTimePassword: "",
     hasOneTimePassword: false,
     passkeys: [],
+    androidApps: [],
     canConvertToSecureNote: false,
     isFavorite: false,
     ...overrides,
