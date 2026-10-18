@@ -219,7 +219,7 @@ func (s *Service) ConfirmSecretsBackup(ctx context.Context, actor Actor) (apityp
 	if err != nil {
 		return apitypes.InstanceCheck{}, err
 	}
-	s.recordAudit(ctx, actor, "admin_secrets_backup_confirmed", nil)
+	s.recordAudit(ctx, actor, auditAdminSecretsBackupConfirmed, nil)
 	check := newSecretsBackupCheck(func() time.Time { return effective.SecretsBackupConfirmedAt })
 	return describeCheck(check, check.run(ctx, CheckRequest{})), nil
 }

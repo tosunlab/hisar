@@ -53,7 +53,7 @@ func (s *Service) CreateInvite(ctx context.Context, actor Actor, request *apityp
 	if !s.allowInvitation(actor, s.Limiters.InviteAccount, s.Limiters.InviteIP) {
 		return errTooManyInvitation
 	}
-	s.recordAudit(ctx, actor, "invite", map[string]string{"email": email})
+	s.recordAudit(ctx, actor, auditInvite, map[string]string{"email": email})
 	inviterID := actor.AccountID
 	s.runInBackground(func(ctx context.Context) {
 		if _, err := s.store.GetAccountByEmail(ctx, email); !errors.Is(err, store.ErrNotFound) {
@@ -93,7 +93,7 @@ func (s *Service) CreateOperatorInvite(ctx context.Context, email, role string, 
 	if err != nil {
 		return nil, err
 	}
-	s.recordAudit(ctx, Actor{}, "operator_invite", map[string]string{"email": email, "role": role})
+	s.recordAudit(ctx, Actor{}, auditOperatorInvite, map[string]string{"email": email, "role": role})
 	return &apitypes.InviteResponse{Token: token, URL: s.buildInviteLink(token)}, nil
 }
 
@@ -176,7 +176,7 @@ func (s *Service) CreateShareInvitation(ctx context.Context, actor Actor, vaultI
 	if err != nil {
 		return err
 	}
-	s.recordAudit(ctx, actor, "share_invitation_sent", map[string]string{"vault": vaultID, "invitation": invitationID, "email": email, "role": request.Role})
+	s.recordAudit(ctx, actor, auditShareInvitationSent, map[string]string{"vault": vaultID, "invitation": invitationID, "email": email, "role": request.Role})
 	s.runInBackground(func(ctx context.Context) { s.notifyShareInvitation(ctx, inviter, email, request.Role) })
 	return nil
 }
@@ -263,9 +263,9 @@ func (s *Service) AnswerShareInvitation(ctx context.Context, actor Actor, invita
 	}
 	var vaultID string
 	var acceptedAt time.Time
-	eventType := "share_invitation_declined"
+	eventType := auditShareInvitationDeclined
 	if isAccepted {
-		eventType = "share_invitation_accepted"
+		eventType = auditShareInvitationAccepted
 		vaultID, acceptedAt, err = s.store.AcceptShareInvitation(ctx, invitationID, account.ID, account.Email)
 	} else {
 		vaultID, err = s.store.DeclineShareInvitation(ctx, invitationID, account.Email)
@@ -321,7 +321,7 @@ func (s *Service) CancelShareInvitation(ctx context.Context, actor Actor, invita
 	if err != nil {
 		return err
 	}
-	s.recordAudit(ctx, actor, "share_invitation_cancelled", map[string]string{"vault": vaultID, "invitation": invitationID})
+	s.recordAudit(ctx, actor, auditShareInvitationCancelled, map[string]string{"vault": vaultID, "invitation": invitationID})
 	accountIDs := []string{}
 	if recipient, err := s.store.GetAccountByEmail(ctx, email); err == nil {
 		accountIDs = append(accountIDs, recipient.ID)

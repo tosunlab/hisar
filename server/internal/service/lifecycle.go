@@ -74,7 +74,7 @@ func (s *Service) finishReauthentication(ctx context.Context, actor Actor, reaut
 	}
 	keyExchange3, err := s.keys.OpaqueServer.Deserialize.KE3(encodedKeyExchange3)
 	if err != nil || s.keys.OpaqueServer.LoginFinish(keyExchange3, pending.clientMAC) != nil {
-		s.recordAudit(ctx, actor, "reauthentication_failed", nil)
+		s.recordAudit(ctx, actor, auditReauthenticationFailed, nil)
 		return nil, errReauthenticationFailed
 	}
 	return pending, nil
@@ -115,7 +115,7 @@ func (s *Service) ChangeCredentials(ctx context.Context, actor Actor, request *a
 		return apitypes.ChangeCredentialsResponse{}, err
 	}
 	s.events.EndStreams(actor.AccountID, actor.TokenHash)
-	s.recordAudit(ctx, actor, "credentials_changed", map[string]any{"change": request.Change, "signedOutDevices": signedOutDeviceCount})
+	s.recordAudit(ctx, actor, auditCredentialsChanged, map[string]any{"change": request.Change, "signedOutDevices": signedOutDeviceCount})
 	if s.isEmailConfigured() {
 		if account, err := s.store.GetAccountByID(ctx, actor.AccountID); err == nil {
 			message := composeCredentialsChangedEmail(account.Email, request.Change, signedOutDeviceCount, time.Now())
@@ -175,7 +175,7 @@ func (s *Service) DeleteAccount(ctx context.Context, actor Actor, request *apity
 	case err != nil:
 		return err
 	}
-	s.recordAudit(ctx, Actor{AccountID: actor.AccountID, IP: actor.IP}, "account_deleted", map[string]int{"deletedVaults": deleted.DeletedVaultCount})
+	s.recordAudit(ctx, Actor{AccountID: actor.AccountID, IP: actor.IP}, auditAccountDeleted, map[string]int{"deletedVaults": deleted.DeletedVaultCount})
 	s.announceAccountDeletion(actor.AccountID, deleted, false)
 	return nil
 }

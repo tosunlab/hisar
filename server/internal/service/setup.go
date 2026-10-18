@@ -115,7 +115,7 @@ func (s *Service) FinishInvitePolicyStep(ctx context.Context, actor Actor, reque
 		return err
 	}
 	s.recordSettingsChange(ctx, actor, changedFields)
-	s.recordAudit(ctx, actor, "setup_completed", nil)
+	s.recordAudit(ctx, actor, auditSetupCompleted, nil)
 	return nil
 }
 

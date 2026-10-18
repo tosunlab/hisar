@@ -133,7 +133,7 @@ func (s *Service) CreateOrganization(ctx context.Context, actor Actor, request *
 	if err := s.store.CreateOrganization(ctx, organizationID, name, actor.AccountID); err != nil {
 		return apitypes.OrganizationSummary{}, err
 	}
-	s.recordAudit(ctx, actor, "organization_created", map[string]string{"organization": organizationID})
+	s.recordAudit(ctx, actor, auditOrganizationCreated, map[string]string{"organization": organizationID})
 	s.publishOrganizationsChanged(actor.AccountID)
 	return apitypes.OrganizationSummary{ID: organizationID, Name: name, Role: apitypes.OrganizationRoleAdmin, MemberCount: 1}, nil
 }
@@ -189,7 +189,7 @@ func (s *Service) RenameOrganization(ctx context.Context, actor Actor, organizat
 	if err != nil {
 		return convertOrganizationError(err)
 	}
-	s.recordAudit(ctx, actor, "organization_renamed", map[string]string{"organization": organizationID})
+	s.recordAudit(ctx, actor, auditOrganizationRenamed, map[string]string{"organization": organizationID})
 	s.publishOrganizationChange(change)
 	return nil
 }
@@ -203,7 +203,7 @@ func (s *Service) DeleteOrganization(ctx context.Context, actor Actor, organizat
 	if err != nil {
 		return convertOrganizationError(err)
 	}
-	s.recordAudit(ctx, actor, "organization_deleted", map[string]string{"organization": organizationID})
+	s.recordAudit(ctx, actor, auditOrganizationDeleted, map[string]string{"organization": organizationID})
 	s.publishOrganizationChange(change)
 	return nil
 }
@@ -247,7 +247,7 @@ func (s *Service) CreateOrganizationInvitation(ctx context.Context, actor Actor,
 	if err != nil {
 		return convertOrganizationError(err)
 	}
-	s.recordAudit(ctx, actor, "organization_invitation_sent", map[string]string{
+	s.recordAudit(ctx, actor, auditOrganizationInvitationSent, map[string]string{
 		"organization": organizationID, "invitation": invitationID, "email": email, "role": request.Role,
 	})
 	s.publishOrganizationChange(change)
@@ -295,7 +295,7 @@ func (s *Service) CancelOrganizationInvitation(ctx context.Context, actor Actor,
 	if err != nil {
 		return convertOrganizationError(err)
 	}
-	s.recordAudit(ctx, actor, "organization_invitation_cancelled", map[string]string{"organization": organizationID, "invitation": invitationID})
+	s.recordAudit(ctx, actor, auditOrganizationInvitationCancelled, map[string]string{"organization": organizationID, "invitation": invitationID})
 	s.publishOrganizationChange(change)
 	return nil
 }
@@ -310,9 +310,9 @@ func (s *Service) AnswerOrganizationInvitation(ctx context.Context, actor Actor,
 	if err != nil {
 		return err
 	}
-	answer, eventType := s.store.DeclineOrganizationInvitation, "organization_invitation_declined"
+	answer, eventType := s.store.DeclineOrganizationInvitation, auditOrganizationInvitationDeclined
 	if isAccepted {
-		answer, eventType = s.store.AcceptOrganizationInvitation, "organization_invitation_accepted"
+		answer, eventType = s.store.AcceptOrganizationInvitation, auditOrganizationInvitationAccepted
 	}
 	organizationID, change, err := answer(ctx, invitationID, account.ID, account.Email)
 	if errors.Is(err, store.ErrNotFound) {
@@ -341,7 +341,7 @@ func (s *Service) SetOrganizationRole(ctx context.Context, actor Actor, organiza
 	if err != nil {
 		return convertOrganizationError(err)
 	}
-	s.recordAudit(ctx, actor, "organization_member_role_changed", map[string]string{"organization": organizationID, "account": accountID, "role": request.Role})
+	s.recordAudit(ctx, actor, auditOrganizationMemberRoleChanged, map[string]string{"organization": organizationID, "account": accountID, "role": request.Role})
 	s.publishOrganizationChange(change)
 	return nil
 }
@@ -364,9 +364,9 @@ func (s *Service) RemoveOrganizationMember(ctx context.Context, actor Actor, org
 		return convertOrganizationError(err)
 	}
 	if isLeaving {
-		s.recordAudit(ctx, actor, "organization_left", map[string]string{"organization": organizationID})
+		s.recordAudit(ctx, actor, auditOrganizationLeft, map[string]string{"organization": organizationID})
 	} else {
-		s.recordAudit(ctx, actor, "organization_member_removed", map[string]string{"organization": organizationID, "account": accountID})
+		s.recordAudit(ctx, actor, auditOrganizationMemberRemoved, map[string]string{"organization": organizationID, "account": accountID})
 	}
 	s.publishOrganizationChange(change)
 	return nil
@@ -388,7 +388,7 @@ func (s *Service) CreateTeam(ctx context.Context, actor Actor, organizationID st
 	if err != nil {
 		return apitypes.Team{}, convertOrganizationError(err)
 	}
-	s.recordAudit(ctx, actor, "team_created", map[string]string{"organization": organizationID, "team": teamID})
+	s.recordAudit(ctx, actor, auditTeamCreated, map[string]string{"organization": organizationID, "team": teamID})
 	s.publishOrganizationChange(change)
 	return apitypes.Team{ID: teamID, Name: name, MemberIDs: []string{}, Vaults: []apitypes.TeamVault{}}, nil
 }
@@ -411,13 +411,13 @@ func (s *Service) RenameTeam(ctx context.Context, actor Actor, organizationID, t
 	if err != nil {
 		return convertOrganizationError(err)
 	}
-	s.recordAudit(ctx, actor, "team_renamed", map[string]string{"organization": organizationID, "team": teamID})
+	s.recordAudit(ctx, actor, auditTeamRenamed, map[string]string{"organization": organizationID, "team": teamID})
 	s.publishOrganizationChange(change)
 	return nil
 }
 
 // changeTeam runs an admin's change to a team, its members or its vaults and records it as eventType with detail.
-func (s *Service) changeTeam(ctx context.Context, actor Actor, organizationID, teamID, accountID, eventType string, detail map[string]string,
+func (s *Service) changeTeam(ctx context.Context, actor Actor, organizationID, teamID, accountID string, eventType auditType, detail map[string]string,
 	change func() (*store.OrganizationChange, error)) error {
 	if _, err := s.requireOrganizationAdmin(ctx, actor, organizationID); err != nil {
 		return err
@@ -437,28 +437,28 @@ func (s *Service) changeTeam(ctx context.Context, actor Actor, organizationID, t
 
 // DeleteTeam deletes a team; its members lose the vaults no other team gives them.
 func (s *Service) DeleteTeam(ctx context.Context, actor Actor, organizationID, teamID string) error {
-	return s.changeTeam(ctx, actor, organizationID, teamID, "", "team_deleted", map[string]string{}, func() (*store.OrganizationChange, error) {
+	return s.changeTeam(ctx, actor, organizationID, teamID, "", auditTeamDeleted, map[string]string{}, func() (*store.OrganizationChange, error) {
 		return s.store.DeleteTeam(ctx, organizationID, actor.AccountID, teamID)
 	})
 }
 
 // AddTeamMember adds a member of the organization to a team; owners' apps then deliver the team's vault keys.
 func (s *Service) AddTeamMember(ctx context.Context, actor Actor, organizationID, teamID, accountID string) error {
-	return s.changeTeam(ctx, actor, organizationID, teamID, accountID, "team_member_added", map[string]string{"account": accountID}, func() (*store.OrganizationChange, error) {
+	return s.changeTeam(ctx, actor, organizationID, teamID, accountID, auditTeamMemberAdded, map[string]string{"account": accountID}, func() (*store.OrganizationChange, error) {
 		return s.store.AddTeamMember(ctx, organizationID, actor.AccountID, teamID, accountID)
 	})
 }
 
 // RemoveTeamMember removes someone from a team; they lose the vaults no other team gives them at once.
 func (s *Service) RemoveTeamMember(ctx context.Context, actor Actor, organizationID, teamID, accountID string) error {
-	return s.changeTeam(ctx, actor, organizationID, teamID, accountID, "team_member_removed", map[string]string{"account": accountID}, func() (*store.OrganizationChange, error) {
+	return s.changeTeam(ctx, actor, organizationID, teamID, accountID, auditTeamMemberRemoved, map[string]string{"account": accountID}, func() (*store.OrganizationChange, error) {
 		return s.store.RemoveTeamMember(ctx, organizationID, actor.AccountID, teamID, accountID)
 	})
 }
 
 // GrantTeamVault gives one of the organization's vaults to a team with a role, or changes the role.
 func (s *Service) GrantTeamVault(ctx context.Context, actor Actor, organizationID, teamID, vaultID string, request *apitypes.GrantTeamVaultRequest) error {
-	return s.changeTeam(ctx, actor, organizationID, teamID, "", "team_vault_granted", map[string]string{"vault": vaultID, "role": request.Role}, func() (*store.OrganizationChange, error) {
+	return s.changeTeam(ctx, actor, organizationID, teamID, "", auditTeamVaultGranted, map[string]string{"vault": vaultID, "role": request.Role}, func() (*store.OrganizationChange, error) {
 		if !IsValidUUID(vaultID) {
 			return nil, ErrNotFound
 		}
@@ -471,7 +471,7 @@ func (s *Service) GrantTeamVault(ctx context.Context, actor Actor, organizationI
 
 // RevokeTeamVault takes a vault back from a team; its members lose it unless another team gives it to them.
 func (s *Service) RevokeTeamVault(ctx context.Context, actor Actor, organizationID, teamID, vaultID string) error {
-	return s.changeTeam(ctx, actor, organizationID, teamID, "", "team_vault_revoked", map[string]string{"vault": vaultID}, func() (*store.OrganizationChange, error) {
+	return s.changeTeam(ctx, actor, organizationID, teamID, "", auditTeamVaultRevoked, map[string]string{"vault": vaultID}, func() (*store.OrganizationChange, error) {
 		if !IsValidUUID(vaultID) {
 			return nil, ErrNotFound
 		}

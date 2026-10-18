@@ -94,7 +94,7 @@ func (s *Service) CreateShareLink(ctx context.Context, actor Actor, request *api
 	if err != nil {
 		return apitypes.ShareLink{}, err
 	}
-	s.recordAudit(ctx, actor, "share-link-create", map[string]string{"shareLinkID": link.ID})
+	s.recordAudit(ctx, actor, auditShareLinkCreated, map[string]string{"shareLinkID": link.ID})
 	s.publishShareLinksChanged(actor.AccountID)
 	response := convertToProtoShareLink(link)
 	response.EncryptedLabel = nil
@@ -122,7 +122,7 @@ func (s *Service) RevokeShareLink(ctx context.Context, actor Actor, linkID strin
 	} else if err != nil {
 		return err
 	}
-	s.recordAudit(ctx, actor, "share-link-revoke", map[string]string{"shareLinkID": linkID})
+	s.recordAudit(ctx, actor, auditShareLinkRevoked, map[string]string{"shareLinkID": linkID})
 	s.publishShareLinksChanged(actor.AccountID)
 	return nil
 }

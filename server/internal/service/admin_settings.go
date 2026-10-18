@@ -74,7 +74,7 @@ func (s *Service) applySettingChanges(stored []byte, changes map[string]json.Raw
 
 func (s *Service) recordSettingsChange(ctx context.Context, actor Actor, changedFields []string) {
 	if len(changedFields) > 0 {
-		s.recordAudit(ctx, actor, "admin_settings_changed", map[string][]string{"fields": changedFields})
+		s.recordAudit(ctx, actor, auditAdminSettingsChanged, map[string][]string{"fields": changedFields})
 	}
 }
 

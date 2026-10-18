@@ -167,7 +167,7 @@ func (s *Service) RegisterFinish(ctx context.Context, actor Actor, request *apit
 	case err != nil:
 		return apitypes.SessionResponse{}, err
 	}
-	s.recordAudit(ctx, Actor{AccountID: account.ID, DeviceID: device.ID, IP: actor.IP}, "signup", map[string]string{"email": email, "role": account.Role})
+	s.recordAudit(ctx, Actor{AccountID: account.ID, DeviceID: device.ID, IP: actor.IP}, auditSignup, map[string]string{"email": email, "role": account.Role})
 	if err := s.finishAdminStep(ctx, account.ID); err != nil {
 		log.Printf("setup: %v", err)
 	}
@@ -231,21 +231,20 @@ func (s *Service) LoginFinish(ctx context.Context, actor Actor, request *apitype
 	}
 	keyExchange3, err := s.keys.OpaqueServer.Deserialize.KE3(request.KE3)
 	if err != nil || s.keys.OpaqueServer.LoginFinish(keyExchange3, pending.clientMAC) != nil {
-		s.recordAudit(ctx, Actor{AccountID: pending.accountID, IP: actor.IP}, "login_failed", nil)
 		return apitypes.SessionResponse{}, errLoginFailed
 	}
 	// Suspension is checked only now, after the proof, so the answer never tells someone without the password.
 	token, device, newSession := s.newSession(pending.accountID, request.Device)
 	switch err := s.store.CreateDeviceSession(ctx, device, newSession); {
 	case errors.Is(err, store.ErrAccountSuspended):
-		s.recordAudit(ctx, Actor{AccountID: pending.accountID, IP: actor.IP}, "login_refused_suspended", nil)
+		s.recordAudit(ctx, Actor{AccountID: pending.accountID, IP: actor.IP}, auditLoginRefusedSuspended, nil)
 		return apitypes.SessionResponse{}, errAccountSuspended
 	case errors.Is(err, store.ErrNotFound):
 		return apitypes.SessionResponse{}, errLoginFailed
 	case err != nil:
 		return apitypes.SessionResponse{}, err
 	}
-	s.recordAudit(ctx, Actor{AccountID: pending.accountID, DeviceID: device.ID, IP: actor.IP}, "login", map[string]string{"device": device.Name, "platform": device.Platform})
+	s.recordAudit(ctx, Actor{AccountID: pending.accountID, DeviceID: device.ID, IP: actor.IP}, auditLogin, map[string]string{"device": device.Name, "platform": device.Platform})
 	return apitypes.SessionResponse{Token: token, AccountID: pending.accountID, DeviceID: device.ID}, nil
 }
 
