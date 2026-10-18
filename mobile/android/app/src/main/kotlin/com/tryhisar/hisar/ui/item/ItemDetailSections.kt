@@ -483,7 +483,7 @@ private fun LinkLabel(title: String, icon: ImageVector) {
 private fun AndroidAppRow(androidApp: ItemAndroidApp, isWritable: Boolean, remove: () -> Unit) {
     IconRow(Icons.Outlined.PhoneAndroid, "android-app-${androidApp.packageName}", trailing = {
         if (isWritable) {
-            RowIconButton(Icons.Outlined.Delete, "Remove ${androidApp.packageName}", "remove-android-app-${androidApp.packageName}", remove, tint = HisarTheme.colors.destructive)
+            FieldIconButton(Icons.Outlined.Delete, "Remove ${androidApp.packageName}", "remove-android-app-${androidApp.packageName}", remove, tint = HisarTheme.colors.destructive)
         }
     }) {
         Text(androidApp.packageName, style = HisarType.body, color = HisarTheme.colors.label)
@@ -499,7 +499,7 @@ private fun AndroidAppRow(androidApp: ItemAndroidApp, isWritable: Boolean, remov
 private fun PasskeyRow(passkey: ItemPasskey, isWritable: Boolean, delete: () -> Unit) {
     IconRow(Icons.Outlined.Key, "passkey-${passkey.relyingPartyID}", trailing = {
         if (isWritable) {
-            RowIconButton(Icons.Outlined.Delete, "Delete passkey for ${passkey.relyingPartyID}", "delete-passkey-${passkey.relyingPartyID}", delete, tint = HisarTheme.colors.destructive)
+            FieldIconButton(Icons.Outlined.Delete, "Delete passkey for ${passkey.relyingPartyID}", "delete-passkey-${passkey.relyingPartyID}", delete, tint = HisarTheme.colors.destructive)
         }
     }) {
         Text(passkey.relyingPartyID, style = HisarType.body, color = HisarTheme.colors.label)

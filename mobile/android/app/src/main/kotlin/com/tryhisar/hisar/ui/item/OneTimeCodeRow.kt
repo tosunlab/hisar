@@ -94,7 +94,7 @@ internal fun OneTimeCodeRow(model: AppModel, vaultID: String, itemID: String, co
             }
             oneTimeCode?.let { code ->
                 CountdownRing(secondsLeft = code.countSecondsLeft(now), period = code.period)
-                RowIconButton(Icons.Outlined.ContentCopy, "Copy one-time code", "copy-one-time-code", copy)
+                FieldIconButton(Icons.Outlined.ContentCopy, "Copy one-time code", "copy-one-time-code", copy)
             }
         }
     }

@@ -149,7 +149,7 @@ internal fun SecretFieldRow(
                     )
                 }
                 if (toggleReveal != null) {
-                    RowIconButton(
+                    FieldIconButton(
                         if (isRevealed) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
                         if (isRevealed) "Hide $label" else "Reveal $label",
                         "reveal-$tagName",
@@ -157,7 +157,7 @@ internal fun SecretFieldRow(
                         tint = HisarTheme.colors.label,
                     )
                 }
-                RowIconButton(Icons.Outlined.ContentCopy, "Copy $label", "copy-$tagName", copy, tint = HisarTheme.colors.label)
+                FieldIconButton(Icons.Outlined.ContentCopy, "Copy $label", "copy-$tagName", copy, tint = HisarTheme.colors.label)
             }
             if (warning.isNotEmpty()) {
                 Spacer(Modifier.size(4.dp))
@@ -169,7 +169,7 @@ internal fun SecretFieldRow(
 
 /** A borderless symbol button inside a row, tinted with the theme. */
 @Composable
-internal fun RowIconButton(icon: ImageVector, contentDescription: String, testTag: String, onClick: () -> Unit, tint: Color = HisarTheme.colors.tint) {
+internal fun FieldIconButton(icon: ImageVector, contentDescription: String, testTag: String, onClick: () -> Unit, tint: Color = HisarTheme.colors.tint) {
     Box(
         Modifier
             .size(36.dp)
