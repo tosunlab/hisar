@@ -13,6 +13,7 @@ export type Answer = (request: ReceivedRequest) => unknown;
 /** FakeApp is a Unix-socket server that speaks cli.sock framing, records every request and answers as told. */
 export interface FakeApp {
   allRequest: ReceivedRequest[];
+  getConnectionCount(): number;
   getRequestTypes(): string[];
   close(): Promise<void>;
 }
@@ -42,7 +43,9 @@ export function createSocketDirectory(): SocketDirectory {
 export async function startFakeApp(socketPath: string, answer: Answer): Promise<FakeApp> {
   const allRequest: ReceivedRequest[] = [];
   const allSocket = new Set<Socket>();
+  let connectionCount = 0;
   const server = createServer((socket) => {
+    connectionCount += 1;
     allSocket.add(socket);
     socket.on("close", () => allSocket.delete(socket));
     const reader = new FrameReader();
@@ -62,6 +65,7 @@ export async function startFakeApp(socketPath: string, answer: Answer): Promise<
   await listening;
   return {
     allRequest,
+    getConnectionCount: () => connectionCount,
     getRequestTypes: () => allRequest.map((request) => request.type),
     close: async () => {
       for (const socket of allSocket) socket.destroy();

@@ -103,7 +103,7 @@ export class Hisar {
     return this.run(false, (connection) => connection.call("launcher.lock", {}));
   }
 
-  /** close ends the connection and fails the request in flight; a later request connects again. */
+  /** close ends the connection and fails in-flight and queued requests; a later request connects again. */
   close(): void {
     this.closeCount += 1;
     this.connection?.close();
@@ -112,7 +112,13 @@ export class Hisar {
 
   // One request at a time: a connection pairs an answer with the only request in flight.
   private run<Result>(isLaunchAllowed: boolean, send: (connection: Connection) => Promise<Result>): Promise<Result> {
-    const result = this.queue.then(async () => send(await this.connect(isLaunchAllowed)));
+    const closeCount = this.closeCount;
+    const result = this.queue.then(async () => {
+      if (closeCount !== this.closeCount) {
+        throw new HisarError("connection-lost", "The connection to Hisar is closed.");
+      }
+      return send(await this.connect(isLaunchAllowed));
+    });
     this.queue = result.catch(() => undefined);
     return result;
   }

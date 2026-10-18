@@ -122,6 +122,51 @@ describe("errors Hisar answers with", () => {
 });
 
 describe("one connection", () => {
+  it("cancels in-flight and queued codes on close without reconnecting, then reconnects for a later request", async () => {
+    const code = { code: "492039", expiresAt: "2026-10-17T09:00:30Z", period: 30 };
+    let codeCount = 0;
+    const fakeApp = await startApp((request) => {
+      codeCount += 1;
+      return codeCount === 1 ? undefined : { id: request.id, ok: true, result: code };
+    });
+    const client = connect();
+
+    const allError = Promise.all(
+      [github, { ...github, itemID: "i-email" }, { ...github, itemID: "i-work" }].map((item) =>
+        catchError(client.getCode(item)),
+      ),
+    );
+    await vi.waitFor(() => expect(fakeApp.getRequestTypes()).toContain("launcher.items.code"));
+    expect(fakeApp.getConnectionCount()).toBe(1);
+
+    client.close();
+
+    for (const error of await allError) {
+      expect(error.code).toBe("connection-lost");
+      expect(error.message).toBe("The connection to Hisar is closed.");
+    }
+    expect(fakeApp.getConnectionCount()).toBe(1);
+    expect(fakeApp.getRequestTypes()).toEqual(["hello", "launcher.hello", "launcher.items.code"]);
+
+    expect(await client.getCode(github)).toEqual({ ...code, expiresAt: new Date(code.expiresAt) });
+    expect(fakeApp.getConnectionCount()).toBe(2);
+    expect(fakeApp.getRequestTypes().slice(3)).toEqual(["hello", "launcher.hello", "launcher.items.code"]);
+  });
+
+  it("cancels a request closed before it starts and accepts one made immediately after close", async () => {
+    const fakeApp = await startApp((request) => ({ id: request.id, ok: true, result: emptyList }));
+    const client = connect();
+
+    const canceled = catchError(client.listItems());
+    client.close();
+    const listing = client.listItems();
+
+    expect((await canceled).code).toBe("connection-lost");
+    expect(await listing).toEqual({ allVault: [], allItem: [] });
+    expect(fakeApp.getConnectionCount()).toBe(1);
+    expect(fakeApp.getRequestTypes()).toEqual(["hello", "launcher.hello", "launcher.items.list"]);
+  });
+
   it("sends the next request only after Hisar answered the one before", async () => {
     const { promise: release, resolve: answerList } = Promise.withResolvers<void>();
     const fakeApp = await startApp(async (request) => {
