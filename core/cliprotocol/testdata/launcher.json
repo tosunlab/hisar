@@ -32,7 +32,7 @@
         "email": "alice@example.com",
         "server": "https://hisar.example.com",
         "isApproved": false,
-        "features": ["favorites", "launcher.hello", "launcher.items.list", "launcher.items.code", "launcher.items.password", "launcher.items.copy", "launcher.passwords.generate", "launcher.lock"]
+        "features": ["favorites", "launcher.hello", "launcher.items.list", "launcher.items.code", "launcher.items.password", "launcher.items.copy", "launcher.items.open", "launcher.items.share", "launcher.passwords.generate", "launcher.lock"]
       }
     },
     {
