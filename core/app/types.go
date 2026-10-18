@@ -477,6 +477,9 @@ type Config struct {
 	WebsiteIconFetcher WebsiteIconFetcher
 	// OnUpdateRequired runs on its own goroutine when the server starts refusing this version.
 	OnUpdateRequired func(requirement UpdateRequirement)
+	// ShowItem shows an item, or its editor, in the app's window for launcher.items.open; nil, as on the iPhone, refuses
+	// that request.
+	ShowItem func(location ItemLocation)
 }
 
 type WebsiteIconFetcher interface {
