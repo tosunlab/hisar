@@ -76,6 +76,8 @@ open class FakeBackend : VaultBackend {
         synchronized(callLock) { allCallName += name }
     }
 
+    fun countCall(name: String): Int = synchronized(callLock) { allCallName.count { it == name } }
+
     fun seedSignedIn(state: String = VaultStatus.STATE_UNLOCKED) {
         status = VaultStatus(
             state = state, server = "http://127.0.0.1:18080", email = "alice@example.com", name = "Alice",
