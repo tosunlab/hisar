@@ -39,7 +39,12 @@ function broadcast(key: InlineMenuBroadcast["key"], sessionID = "session-1"): vo
   for (const listener of allBroadcastListener) listener({ target: "inline-menu", type: "inlineMenu.pressKey", sessionID, key });
 }
 
+let scrollIntoView: ReturnType<typeof vi.fn<Element["scrollIntoView"]>>;
+
 beforeEach(() => {
+  // jsdom does not lay out, so it has no scrollIntoView.
+  scrollIntoView = vi.fn<Element["scrollIntoView"]>();
+  Element.prototype.scrollIntoView = scrollIntoView;
   allMessage = [];
   allBroadcastListener = [];
   vi.stubGlobal("chrome", {
@@ -247,6 +252,8 @@ describe("inline menu page", () => {
     broadcast("ArrowDown");
     await flushPromises();
     expect(wrapper.findAll('[data-testid="inline-login"]')[1].classes()).toContain("selected");
+    // A menu cut to fit the window scrolls the chosen entry into view.
+    expect(scrollIntoView).toHaveBeenLastCalledWith({ block: "nearest" });
     broadcast("ArrowDown");
     broadcast("ArrowDown");
     broadcast("ArrowUp");
