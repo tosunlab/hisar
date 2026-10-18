@@ -182,7 +182,7 @@ jobs:
           cache-dependency-path: desktop/frontend/package-lock.json
       - run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH" && git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - run: make install-wails
-      - name: Build the .deb and .rpm and check their layout
+      - name: Build the .deb, .rpm and AppImage and check their layout
         shell: bash
         run: |
           bash scripts/package-desktop-linux.sh 0.0.0-ci
@@ -191,8 +191,11 @@ jobs:
             grep -q " $path\$" <<<"$contents" || { echo "the .deb has no $path"; exit 1; }
           done
           test -s desktop/bin/Hisar-0.0.0-ci-linux-amd64.rpm
+          test -x desktop/bin/Hisar-0.0.0-ci-linux-amd64.AppImage
       - name: Install the .deb, start Hisar hidden and reach it from hisar and ssh-add
         run: bash scripts/test-desktop-linux-package.sh desktop/bin/Hisar-0.0.0-ci-linux-amd64.deb
+      - name: Start the AppImage hidden and reach it from the hisar it copies out
+        run: bash scripts/test-desktop-linux-package.sh desktop/bin/Hisar-0.0.0-ci-linux-amd64.AppImage
       - name: Check that the generated bindings are committed
         run: git diff --exit-code -- desktop/frontend/bindings
 

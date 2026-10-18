@@ -1,7 +1,7 @@
 name: Release desktop
 
-# Builds the DMG and, for release versions, the Sparkle-signed update into a GitHub prerelease, plus the Linux .deb and
-# .rpm. Each job uploads its own files; whichever finishes first creates the prerelease.
+# Builds the DMG and, for release versions, the Sparkle-signed update into a GitHub prerelease, plus the Linux .deb,
+# .rpm and AppImage. Each job uploads its own files; whichever finishes first creates the prerelease.
 # update.json is uploaded as update-unpublished.json; the Publish workflow renames it, which offers the version to apps.
 on:
   push:
@@ -113,7 +113,7 @@ jobs:
         run: rm -f "$RUNNER_TEMP/sparkle-private-key"
 
   desktop-linux:
-    name: Build the Linux .deb and .rpm (${{ matrix.architecture }})
+    name: Build the Linux .deb, .rpm and AppImage (${{ matrix.architecture }})
     strategy:
       matrix:
         include:
@@ -153,7 +153,7 @@ jobs:
         run: |
           version=${TAG#desktop-}
           cd desktop/bin
-          allFile=("Hisar-$version-linux-${{ matrix.architecture }}.deb" "Hisar-$version-linux-${{ matrix.architecture }}.rpm")
+          allFile=("Hisar-$version-linux-${{ matrix.architecture }}".{deb,rpm,AppImage})
           sha256sum "${allFile[@]}" > "SHA256SUMS-linux-${{ matrix.architecture }}"
           bash "$GITHUB_WORKSPACE/scripts/upload-desktop-release.sh" "$TAG" "${allFile[@]}" "SHA256SUMS-linux-${{ matrix.architecture }}"
 
