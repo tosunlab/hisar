@@ -2,6 +2,7 @@ package com.tryhisar.hisar.ui.sharing
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -25,6 +26,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,9 +36,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.tryhisar.hisar.ui.components.LargeTitle
 import com.tryhisar.hisar.ui.components.ScreenMargin
 import com.tryhisar.hisar.ui.theme.HisarTheme
 import com.tryhisar.hisar.ui.theme.HisarType
@@ -44,17 +48,22 @@ import kotlinx.coroutines.launch
 
 /**
  * A page of grouped sections under [bar] that scrolls above the keyboard and reloads on a pull, as a List with
- * `.refreshable` in the iPhone app. [bottomInset] keeps the last section clear of the floating tab bar.
+ * `.refreshable` in the iPhone app. A [largeTitle] heads the sections; [bar] learns when it has scrolled away, to show
+ * the title inline as iOS does. [bottomInset] keeps the last section clear of the floating tab bar.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun RefreshablePage(
-    bar: @Composable () -> Unit,
-    onRefresh: suspend () -> Unit,
+    bar: @Composable (isLargeTitleScrolledAway: Boolean) -> Unit,
+    onRefresh: (suspend () -> Unit)?,
+    largeTitle: String? = null,
     bottomInset: Dp = 0.dp,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    val scrollState = rememberScrollState()
+    val titleHeight = with(LocalDensity.current) { 48.dp.roundToPx() }
+    val isLargeTitleScrolledAway by remember { derivedStateOf { scrollState.value > titleHeight } }
     var isRefreshing by remember { mutableStateOf(false) }
     Column(
         Modifier
@@ -62,27 +71,33 @@ fun RefreshablePage(
             .background(HisarTheme.colors.groupedBackground)
             .imePadding(),
     ) {
-        bar()
-        PullToRefreshBox(
-            isRefreshing = isRefreshing,
-            onRefresh = {
-                scope.launch {
-                    isRefreshing = true
-                    onRefresh()
-                    isRefreshing = false
-                }
-            },
-            modifier = Modifier.weight(1f),
-        ) {
+        bar(largeTitle != null && isLargeTitleScrolledAway)
+        val sections = @Composable {
             Column(
                 Modifier
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(scrollState)
                     .padding(horizontal = ScreenMargin),
             ) {
+                if (largeTitle != null) LargeTitle(largeTitle, topPadding = 0.dp)
                 content()
                 Spacer(Modifier.height(bottomInset + 32.dp))
             }
+        }
+        if (onRefresh == null) {
+            Box(Modifier.weight(1f)) { sections() }
+        } else {
+            PullToRefreshBox(
+                isRefreshing = isRefreshing,
+                onRefresh = {
+                    scope.launch {
+                        isRefreshing = true
+                        onRefresh()
+                        isRefreshing = false
+                    }
+                },
+                modifier = Modifier.weight(1f),
+            ) { sections() }
         }
     }
 }

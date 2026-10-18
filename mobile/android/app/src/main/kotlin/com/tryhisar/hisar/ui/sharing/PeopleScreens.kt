@@ -36,7 +36,6 @@ import com.tryhisar.hisar.ui.components.ErrorBanner
 import com.tryhisar.hisar.ui.components.FormButtonRow
 import com.tryhisar.hisar.ui.components.FormSection
 import com.tryhisar.hisar.ui.components.FormTextField
-import com.tryhisar.hisar.ui.components.LargeTitle
 import com.tryhisar.hisar.ui.components.PushedTopBar
 import com.tryhisar.hisar.ui.root.TabBarHeight
 import com.tryhisar.hisar.ui.settings.ConfirmationDialog
@@ -76,8 +75,7 @@ fun PeopleScreen(model: AppModel, onBack: () -> Unit) {
         return
     }
 
-    RefreshablePage(bar = { PushedTopBar("", onBack) }, onRefresh = { load() }, bottomInset = TabBarHeight) {
-        LargeTitle("People", topPadding = 0.dp)
+    RefreshablePage(bar = { PushedTopBar(if (it) "People" else "", onBack) }, onRefresh = { load() }, largeTitle = "People", bottomInset = TabBarHeight) {
         errorMessage?.let { FormSection { ErrorBanner(it) } }
         if (shareInvitations.allReceived.isNotEmpty()) {
             FormSection(header = "Invitations for you") {
@@ -177,7 +175,7 @@ fun PeopleScreen(model: AppModel, onBack: () -> Unit) {
 /** Someone the user shares vaults with: their security code, to compare once. */
 @Composable
 private fun PersonScreen(person: Member, onBack: () -> Unit) {
-    RefreshablePage(bar = { PushedTopBar(person.name, onBack) }, onRefresh = {}, bottomInset = TabBarHeight) {
+    RefreshablePage(bar = { PushedTopBar(person.name, onBack) }, onRefresh = null, bottomInset = TabBarHeight) {
         PersonHeader(person)
         if (person.isKeyChanged) {
             FormSection {

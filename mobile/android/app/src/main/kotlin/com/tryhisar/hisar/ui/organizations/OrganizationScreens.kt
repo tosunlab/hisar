@@ -154,8 +154,7 @@ fun OrganizationsScreen(model: AppModel, onBack: () -> Unit) {
         }
     }
 
-    RefreshablePage(bar = { PushedTopBar("", onBack) }, onRefresh = { load() }, bottomInset = TabBarHeight) {
-        LargeTitle("Organizations", topPadding = 0.dp)
+    RefreshablePage(bar = { PushedTopBar(if (it) "Organizations" else "", onBack) }, onRefresh = { load() }, largeTitle = "Organizations", bottomInset = TabBarHeight) {
         if (data.allOrganizationInvitation.isNotEmpty()) {
             FormSection(header = "Invitations for you") {
                 data.allOrganizationInvitation.forEachIndexed { index, invitation ->
@@ -383,8 +382,8 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
     }
 
     RefreshablePage(
-        bar = {
-            PushedTopBar("", onBack) {
+        bar = { isLargeTitleScrolledAway ->
+            PushedTopBar(if (isLargeTitleScrolledAway) name else "", onBack) {
                 if (isAdmin) {
                     Box {
                         ToolbarIconButton(Icons.Outlined.MoreHoriz, "Organization actions", testTag = "organization-actions") { rowMenu = RowMenu.OrganizationActions }
@@ -404,8 +403,8 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
         },
         onRefresh = { load() },
         bottomInset = TabBarHeight,
+        largeTitle = name,
     ) {
-        LargeTitle(name, topPadding = 0.dp)
         val loaded = organization
         if (loaded == null) {
             FormSection { LoadingRow("Loading $name…") }
