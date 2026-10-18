@@ -1,5 +1,5 @@
 import { reactive } from "vue";
-import { bridge } from "./bridge/bridge";
+import { bridge, type SignUpResult } from "./bridge/bridge";
 
 export interface AdminSession {
   token: string;
@@ -90,6 +90,13 @@ export async function signIn(email: string, secretKey: string, password: string)
     throw new Error(notAdminMessage);
   }
   saveSession({ token: signedIn.token, accountId: signedIn.accountId, deviceId: signedIn.deviceId, name: signedIn.name });
+}
+
+// signUp creates the first admin with the setup invite and signs the dashboard in as that admin.
+export async function signUp(inviteToken: string, email: string, name: string, password: string): Promise<SignUpResult> {
+  const signedUp = await bridge.signUp(inviteToken, email, name, password);
+  saveSession({ token: signedUp.token, accountId: signedUp.accountId, deviceId: signedUp.deviceId, name: name.trim() });
+  return signedUp;
 }
 
 export async function signOut(): Promise<void> {

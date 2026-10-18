@@ -132,6 +132,13 @@ The web page at `/admin` where admins of the Hisar server manage it. The apps ne
 | Mac app, iPhone app, Command-line tool, Browser extension · No minimum | macOS client, CLI | Settings → App versions |
 | Session lifetime, Auth burst, Keep item history, Keep the audit log, Keep expired invitations · Days, "Days, at least 30" (the audit log) | Session TTL, Rate limit, Retention policy | Settings → Security |
 | Set by HISAR_SMTP_HOST (a field the server's environment sets; read-only) · "Email is set by HISAR_SMTP_* variables on the server. Change them there and restart the server." (all of Email) | Locked, Managed by environment | Under the field; under the Email description |
+| "Hisar · Set up the server" · Step 1 of 4 · Create the first admin · "This account manages the Hisar server from this dashboard. It is also a normal Hisar account for the apps." · Name, Email, Master password, Repeat master password · Create account, Creating account… | Register admin, Bootstrap, Onboarding wizard | `/admin/setup`, the first step |
+| "This setup link is no longer valid. Use the link in the latest server log." | Invalid token, Invite expired | `/admin/setup`, for a used or replaced setup invite or a URL without one |
+| "Open <url>/admin/setup#<token> to create the first admin." | Setup token, Bootstrap URL | The server log on a server without accounts |
+| Save your Secret Key · Copy · Download Emergency Kit · I saved my Emergency Kit · Continue · "The Emergency Kit could not be created (…). Write down the Secret Key above." · I wrote down my Secret Key | Download PDF, Recovery kit | `/admin/setup`, the second step |
+| "Your account was created, but the Personal vault could not be created (…). You can create a vault later from the Hisar apps. Save your Secret Key now." | Sign-up failed, Vault error | `/admin/setup`, the second step, when the Personal vault failed after the account exists |
+| Check the server · "Fix every failed check before you continue. A warning can wait, and Overview keeps showing it." · Check again · "Fix <check> first, then check again." | Health check, Preflight | `/admin/setup`, the third step |
+| Choose who can invite people · Finish setup, Finishing… | Invite settings | `/admin/setup`, the last step |
 | an admin on the Hisar server, admin, member (account roles) | administrator, superuser, root | Copy about server roles; say "on the Hisar server" where an organization admin could be meant |
 
 ## Help

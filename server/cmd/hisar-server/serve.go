@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"time"
 
@@ -23,6 +24,14 @@ func serve(ctx context.Context, args []string) error {
 		return err
 	}
 	defer database.Close()
+
+	setupURL, err := server.PrepareSetup(ctx)
+	if err != nil {
+		return fmt.Errorf("setup: %w", err)
+	}
+	if setupURL != "" {
+		log.Printf("Open %s to create the first admin.", setupURL)
+	}
 
 	go pruneOldRecords(ctx, database, server)
 	go deleteExpiredShareLinks(ctx, database, shareLinkSweepInterval)

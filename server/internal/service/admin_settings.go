@@ -37,48 +37,73 @@ func (s *Service) UpdateSettings(ctx context.Context, actor Actor, request *apit
 	if len(request.Settings) == 0 {
 		return apitypes.AdminSettings{}, newError(KindInvalid, "Change at least one setting.")
 	}
+	var changedFields []string
+	effective, sources, err := s.updateStoredSettings(ctx, actor.AccountID, func(stored []byte) (updated []byte, err error) {
+		updated, changedFields, err = s.applySettingChanges(stored, request.Settings)
+		return updated, err
+	})
+	if err != nil {
+		return apitypes.AdminSettings{}, err
+	}
+	s.recordSettingsChange(ctx, actor, changedFields)
+	return describeSettings(effective, sources)
+}
+
+// applySettingChanges is what a save from Settings makes of the stored document, and the fields it changes.
+func (s *Service) applySettingChanges(stored []byte, changes map[string]json.RawMessage) ([]byte, []string, error) {
+	_, storedSources, err := settings.Resolve(s.instanceSettings.Defaults, stored, s.instanceSettings.Environment)
+	if err != nil {
+		return nil, nil, err
+	}
+	for _, field := range settings.ListFields() {
+		if _, isChanged := changes[field.Name]; !isChanged || storedSources[field.Name] != settings.SourceEnvironment {
+			continue
+		}
+		if field.IsEmail() {
+			return nil, nil, errEmailSetByEnvironment
+		}
+		return nil, nil, newError(KindInvalid, fmt.Sprintf("%s is set by %s on the server, so it cannot be changed here.", field.Name, field.Environment))
+	}
+	updated, err := settings.Apply(stored, changes)
+	if err != nil {
+		return nil, nil, newError(KindInvalid, err.Error())
+	}
+	changedFields, err := settings.ListChangedFields(stored, updated)
+	return updated, changedFields, err
+}
+
+func (s *Service) recordSettingsChange(ctx context.Context, actor Actor, changedFields []string) {
+	if len(changedFields) > 0 {
+		s.recordAudit(ctx, actor, "admin_settings_changed", map[string][]string{"fields": changedFields})
+	}
+}
+
+// updateStoredSettings stores what update makes of the stored document, holding the row locked, then swaps the
+// snapshot. A result that fails Validate leaves the stored settings unchanged.
+func (s *Service) updateStoredSettings(ctx context.Context, updatedBy string, update func(stored []byte) ([]byte, error)) (settings.Settings, settings.Sources, error) {
 	s.settingsMutex.Lock()
 	defer s.settingsMutex.Unlock()
 	var effective settings.Settings
 	var sources settings.Sources
-	var changedFields []string
-	err := s.store.UpdateInstanceSettings(ctx, actor.AccountID, func(stored []byte) ([]byte, error) {
-		_, storedSources, err := settings.Resolve(s.instanceSettings.Defaults, stored, s.instanceSettings.Environment)
+	err := s.store.UpdateInstanceSettings(ctx, updatedBy, func(stored []byte) ([]byte, error) {
+		updated, err := update(stored)
 		if err != nil {
 			return nil, err
 		}
-		for _, field := range settings.ListFields() {
-			if _, isChanged := request.Settings[field.Name]; !isChanged || storedSources[field.Name] != settings.SourceEnvironment {
-				continue
-			}
-			if field.IsEmail() {
-				return nil, errEmailSetByEnvironment
-			}
-			return nil, newError(KindInvalid, fmt.Sprintf("%s is set by %s on the server, so it cannot be changed here.", field.Name, field.Environment))
-		}
-		updated, err := settings.Apply(stored, request.Settings)
-		if err != nil {
-			return nil, newError(KindInvalid, err.Error())
-		}
+
 		if effective, sources, err = settings.Resolve(s.instanceSettings.Defaults, updated, s.instanceSettings.Environment); err != nil {
 			return nil, newError(KindInvalid, err.Error())
 		}
 		if err := effective.Validate(); err != nil {
 			return nil, newError(KindInvalid, err.Error())
 		}
-		if changedFields, err = settings.ListChangedFields(stored, updated); err != nil {
-			return nil, err
-		}
 		return updated, nil
 	})
 	if err != nil {
-		return apitypes.AdminSettings{}, err
+		return settings.Settings{}, nil, err
 	}
 	s.applySettings(effective)
-	if len(changedFields) > 0 {
-		s.recordAudit(ctx, actor, "admin_settings_changed", map[string][]string{"fields": changedFields})
-	}
-	return describeSettings(effective, sources)
+	return effective, sources, nil
 }
 
 // applySettings swaps the snapshot every request reads for newly stored settings.

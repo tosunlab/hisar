@@ -30,6 +30,9 @@ type Settings struct {
 	// SecretsBackupConfirmedAt is when an admin confirmed on Overview that hisar-secrets.json is backed up; zero until
 	// then. It is not in ListFields: the server records it, and Settings neither shows nor edits it.
 	SecretsBackupConfirmedAt time.Time `json:"secretsBackupConfirmedAt,omitzero"`
+	// SetupState is how far the first admin got in setting up the server from the dashboard. The dashboard cannot
+	// edit it: each setup step moves it on.
+	SetupState SetupState `json:"setupState"`
 }
 
 // SMTP is how the server sends email; an empty Host turns email off.
@@ -79,6 +82,16 @@ func (policy InvitePolicy) AllowsInvite(role string) bool {
 	return policy == InvitePolicyAnyone || role == apitypes.RoleAdmin
 }
 
+// SetupState is a step of setting up a fresh server from the dashboard; SetupDone is final.
+type SetupState string
+
+const (
+	SetupNeedsAdmin        SetupState = "needsAdmin"
+	SetupNeedsChecks       SetupState = "needsChecks"
+	SetupNeedsInvitePolicy SetupState = "needsInvitePolicy"
+	SetupDone              SetupState = "done"
+)
+
 // Retention is how long the server keeps item history, the audit log and expired invitations.
 type Retention struct {
 	History        Days `json:"historyDays"`
@@ -104,6 +117,7 @@ func Defaults() Settings {
 		SessionLifetime: 30,
 		AuthBurst:       10,
 		Retention:       Retention{History: 90, Audit: 365, ExpiredInvites: 30},
+		SetupState:      SetupDone,
 	}
 }
 
@@ -151,6 +165,11 @@ func (settings Settings) Validate() error {
 		if retention.days < retention.minimum || retention.days > maximumRetention {
 			return fmt.Errorf("%s must be kept between %d and %d days.", retention.name, retention.minimum, maximumRetention)
 		}
+	}
+	switch settings.SetupState {
+	case SetupNeedsAdmin, SetupNeedsChecks, SetupNeedsInvitePolicy, SetupDone:
+	default:
+		return fmt.Errorf("settings: unknown setup state %q", settings.SetupState)
 	}
 	return nil
 }

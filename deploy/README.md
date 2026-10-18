@@ -53,14 +53,26 @@ sudo nginx -t && sudo systemctl reload nginx
 curl https://<domain>/healthz       # ok
 ```
 
-## Invite yourself (admin)
+## Open the setup URL from the log
+
+On an empty database, `hisar-server serve` logs one line with a one-time setup URL:
 
 ```sh
-docker compose exec hisar hisar-server invite
+docker compose logs hisar | grep 'to create the first admin'
+# Open https://<domain>/admin/setup#<token> to create the first admin.
 ```
 
-It asks for the email address; the first invite defaults to the admin role. Open the printed link in the desktop app,
-the iPhone app, or the CLI (`hisar signup https://<domain>/invite/<token>`). The operator command needs no email setup.
+Open it in a browser. The dashboard creates the first admin in the browser (name, email and master password), shows the
+Secret Key and the **Download Emergency Kit** button, runs the server's checks (it continues past warnings, never past a
+failed check), and asks who can invite people. It ends on **Overview**, signed in as the new admin. The token sits in the
+URL fragment, so it never reaches nginx's access log or a `Referer` header. Each restart replaces it with a new one until
+the first account exists; a link from an earlier start answers "This setup link is no longer valid. Use the link in the
+latest server log."
+
+To start from the command line instead, run `docker compose exec hisar hisar-server invite`. It asks for the email
+address; the first invite defaults to the admin role. Open the printed link in the desktop app, the iPhone app, or the
+CLI (`hisar signup https://<domain>/invite/<token>`). Once that account exists the setup URL stops working, and opening
+`/admin/setup` while signed in as that admin finishes the remaining steps. Neither way needs email setup.
 
 ## Email (invites and sharing)
 
