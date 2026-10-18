@@ -62,7 +62,8 @@ jobs:
           allAssetName=$(gh release view "$TAG" --json assets --jq '.assets[].name')
           for fileName in "Hisar-$VERSION.dmg" "Hisar-$VERSION.zip" \
             "Hisar-$VERSION-linux-amd64.deb" "Hisar-$VERSION-linux-amd64.rpm" "Hisar-$VERSION-linux-amd64.AppImage" \
-            "Hisar-$VERSION-linux-arm64.deb" "Hisar-$VERSION-linux-arm64.rpm" "Hisar-$VERSION-linux-arm64.AppImage"; do
+            "Hisar-$VERSION-linux-arm64.deb" "Hisar-$VERSION-linux-arm64.rpm" "Hisar-$VERSION-linux-arm64.AppImage" \
+            "Hisar-$VERSION-linux-amd64.flatpak" "Hisar-$VERSION-linux-arm64.flatpak"; do
             grep -qx "$fileName" <<< "$allAssetName" || { echo "the release $TAG has no $fileName; run Release desktop for $TAG first"; exit 1; }
           done
           if ! grep -qx update.json <<< "$allAssetName"; then

@@ -1,0 +1,84 @@
+# The Hisar Flatpak (scripts/package-desktop-flatpak.sh fills in @VERSION@ and @SOURCE@, the repository's path).
+# The app is built in the GNOME SDK, whose runtime has GTK 4 and WebKitGTK 6.0; Go comes from go.dev, checked below.
+id: com.tryhisar.hisar
+runtime: org.gnome.Platform
+runtime-version: "51"
+sdk: org.gnome.Sdk
+command: Hisar
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # The sockets ssh, git and hisar reach Hisar through, outside the sandbox.
+  - --filesystem=~/.hisar:create
+  # "Use Hisar for SSH" adds its section to ~/.ssh/config.
+  - --filesystem=~/.ssh:create
+  # The helpers and the launcher the rest of the system runs (desktop/portable), and where Settings links hisar.
+  - --filesystem=~/.local/share/hisar:create
+  - --filesystem=~/.local/bin:create
+  # Open at login.
+  - --filesystem=xdg-config/autostart:create
+  # The browser extension's host manifests, one directory per Chromium browser (desktop/browser/manifest.go).
+  - --filesystem=xdg-config/google-chrome:create
+  - --filesystem=xdg-config/google-chrome-beta:create
+  - --filesystem=xdg-config/google-chrome-unstable:create
+  - --filesystem=xdg-config/chromium:create
+  - --filesystem=xdg-config/BraveSoftware:create
+  - --filesystem=xdg-config/microsoft-edge:create
+  - --filesystem=xdg-config/microsoft-edge-beta:create
+  - --filesystem=xdg-config/microsoft-edge-dev:create
+  - --filesystem=xdg-config/vivaldi:create
+  - --filesystem=xdg-config/vivaldi-snapshot:create
+  - --filesystem=xdg-config/opera:create
+  # The Secret Key in the keyring, idle time for auto-lock, the tray icon and notifications.
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.gnome.Mutter.IdleMonitor
+  - --talk-name=org.freedesktop.ScreenSaver
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --own-name=org.kde.*
+  - --talk-name=org.freedesktop.Notifications
+modules:
+  - name: hisar
+    buildsystem: simple
+    build-options:
+      # Go downloads the modules go.sum pins.
+      build-args:
+        - --share=network
+      env:
+        # Each module builds with its own go.mod and replace lines, so the skipped modules of go.work are not needed.
+        GOWORK: "off"
+        GOTOOLCHAIN: local
+        GOFLAGS: -trimpath -buildvcs=false
+    build-commands:
+      - cd desktop && CGO_ENABLED=1 ../go/bin/go build -tags production -ldflags="-w -s -X github.com/tryhisar/hisar/desktop/updater.stampedVersion=@VERSION@" -o /app/bin/Hisar .
+      - cd desktop && CGO_ENABLED=0 ../go/bin/go build -ldflags="-w -s" -o /app/lib/hisar/hisar-browser-host ./cmd/hisar-browser-host
+      - cd cli && CGO_ENABLED=0 ../go/bin/go build -ldflags="-w -s -X main.version=@VERSION@" -o /app/bin/hisar ./cmd/hisar
+      - sed 's|^Exec=/usr/bin/Hisar$|Exec=Hisar|' desktop/build/linux/com.tryhisar.hisar.desktop > com.tryhisar.hisar.desktop
+      - install -Dm644 com.tryhisar.hisar.desktop /app/share/applications/com.tryhisar.hisar.desktop
+      - install -Dm644 desktop/build/linux/appicon-512.png /app/share/icons/hicolor/512x512/apps/com.tryhisar.hisar.png
+    sources:
+      # The checkout with the frontend already built (desktop/frontend/dist, which the app embeds).
+      - type: dir
+        path: "@SOURCE@"
+        skip:
+          - .git
+          - desktop/bin
+          - desktop/frontend/node_modules
+          - desktop/build/linux/appimage/build
+          - desktop/build/linux/flatpak/build
+          - extension
+          - admin
+          - mobile
+          - raycast
+      - type: archive
+        url: https://go.dev/dl/go1.26.3.linux-amd64.tar.gz
+        sha256: 2b2cfc7148493da5e73981bffbf3353af381d5f93e789c82c79aff64962eb556
+        only-arches: [x86_64]
+        dest: go
+      - type: archive
+        url: https://go.dev/dl/go1.26.3.linux-arm64.tar.gz
+        sha256: 9d89a3ea57d141c2b22d70083f2c8459ba3890f2d9e818e7e933b75614936565
+        only-arches: [aarch64]
+        dest: go

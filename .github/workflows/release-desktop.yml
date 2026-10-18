@@ -1,7 +1,7 @@
 name: Release desktop
 
 # Builds the DMG and, for release versions, the Sparkle-signed update into a GitHub prerelease, plus the Linux .deb,
-# .rpm and AppImage. Each job uploads its own files; whichever finishes first creates the prerelease.
+# .rpm, AppImage and Flatpak. Each job uploads its own files; whichever finishes first creates the prerelease.
 # update.json is uploaded as update-unpublished.json; the Publish workflow renames it, which offers the version to apps.
 on:
   push:
@@ -157,3 +157,37 @@ jobs:
           sha256sum "${allFile[@]}" > "SHA256SUMS-linux-${{ matrix.architecture }}"
           bash "$GITHUB_WORKSPACE/scripts/upload-desktop-release.sh" "$TAG" "${allFile[@]}" "SHA256SUMS-linux-${{ matrix.architecture }}"
 
+  desktop-flatpak:
+    name: Build the Linux Flatpak (${{ matrix.architecture }})
+    strategy:
+      matrix:
+        include:
+          - architecture: amd64
+            runner: ubuntu-24.04
+          - architecture: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
+      options: --privileged
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      # The image has git, gh, Node and flatpak-builder.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: refs/tags/${{ env.TAG }}
+      - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Build the Flatpak
+        run: bash scripts/package-desktop-flatpak.sh "${TAG#desktop-}"
+      - name: Upload it to the GitHub prerelease
+        shell: bash
+        run: |
+          version=${TAG#desktop-}
+          cd desktop/bin
+          file="Hisar-$version-linux-${{ matrix.architecture }}.flatpak"
+          sha256sum "$file" > "SHA256SUMS-flatpak-${{ matrix.architecture }}"
+          bash "$GITHUB_WORKSPACE/scripts/upload-desktop-release.sh" "$TAG" "$file" "SHA256SUMS-flatpak-${{ matrix.architecture }}"
