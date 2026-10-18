@@ -65,7 +65,7 @@ import kotlinx.coroutines.launch
 
 /** A sheet's page: its bar, then grouped sections that scroll above the keyboard. */
 @Composable
-private fun SheetPage(bar: @Composable () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+fun SheetPage(bar: @Composable () -> Unit, content: @Composable ColumnScope.() -> Unit) {
     Column(
         Modifier
             .fillMaxSize()
@@ -87,7 +87,7 @@ private fun SheetPage(bar: @Composable () -> Unit, content: @Composable ColumnSc
 
 /** A row that picks one of [allOption] from a menu, as an inline-labelled Picker. */
 @Composable
-private fun <Option> PickerRow(label: String, selected: Option?, allOption: List<Option>, optionLabel: (Option) -> String, onSelect: (Option) -> Unit, testTag: String) {
+fun <Option> PickerRow(label: String, selected: Option?, allOption: List<Option>, optionLabel: (Option) -> String, onSelect: (Option) -> Unit, testTag: String) {
     var isExpanded by remember { mutableStateOf(false) }
     Box {
         Row(

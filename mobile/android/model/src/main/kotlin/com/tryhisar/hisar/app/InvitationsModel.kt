@@ -43,8 +43,11 @@ class InvitationsModel(private val context: ModelContext) {
         return organizations
     }
 
-    // Listing the share invitations also completes the shares this user accepted, so a vault shows up as soon as it can.
-    private suspend fun refreshInvitations() {
+    /**
+     * Reloads both invitation lists, for the Settings badges. Listing the share invitations also completes the shares this
+     * user accepted, so a vault shows up as soon as it can.
+     */
+    suspend fun refreshInvitations() {
         loadShareInvitations() ?: return
         val organizations = context.attempt { it.listAllOrganization() } ?: return
         if (context.status.value.isUnlocked) applyOrganizations(organizations)

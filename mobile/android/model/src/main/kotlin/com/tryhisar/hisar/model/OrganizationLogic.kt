@@ -17,6 +17,36 @@ data class VaultLocation(val organizationID: String, val organizationName: Strin
     }
 }
 
+/** A team that has an organization vault, with its role for that vault. */
+data class TeamAccess(val team: Team, val role: String) {
+    val id: String get() = team.id
+}
+
+/** What an organization vault's sharing sheet shows: the teams that have the vault and what the user may change. */
+data class OrganizationVaultSharing(
+    val organizationID: String,
+    val organizationName: String,
+    val allTeamAccess: List<TeamAccess>,
+    /** Admins give the vault to more teams and take it back; everyone else reads [askAdminNote]. */
+    val canChangeTeams: Boolean,
+    val allTeamWithoutVault: List<Team>,
+) {
+    val askAdminNote: String? get() = if (canChangeTeams) null else "Ask an admin of $organizationName to change who has this vault."
+}
+
+enum class OrganizationMemberAction { MAKE_ADMIN, MAKE_MEMBER, REMOVE }
+
+/** What the organization screen does after loading the organization. */
+sealed interface OrganizationLoad {
+    data class Loaded(val organization: Organization) : OrganizationLoad
+
+    /** The organizations no longer list it: it was deleted, or the user is no longer in it. */
+    data object Gone : OrganizationLoad
+
+    /** It could not be loaded, and the user may still be in it; the error message says why. */
+    data object Failed : OrganizationLoad
+}
+
 object OrganizationLogic {
     const val MAX_NAME_LENGTH = 100
 
@@ -75,4 +105,57 @@ object OrganizationLogic {
      * and when the chosen team is no longer listed: a failed lookup never falls back to a shared vault.
      */
     fun findVaultLocation(id: String, allLocation: List<VaultLocation>?): VaultLocation? = allLocation?.firstOrNull { it.id == id }
+
+    fun describeVaultSharing(organization: Organization, vaultID: String): OrganizationVaultSharing {
+        val (allTeamWithVault, allTeamWithoutVault) = organization.allTeam.partition { team -> team.allVault.any { it.vaultID == vaultID } }
+        return OrganizationVaultSharing(
+            organizationID = organization.id,
+            organizationName = organization.name,
+            allTeamAccess = allTeamWithVault.map { team -> TeamAccess(team, team.allVault.first { it.vaultID == vaultID }.role) },
+            canChangeTeams = organization.isAdmin,
+            allTeamWithoutVault = if (organization.isAdmin) allTeamWithoutVault else emptyList(),
+        )
+    }
+
+    /** The organization's members an admin can add to the team; nobody for anyone else. */
+    fun listAllAddableMember(organization: Organization, team: Team): List<Member> {
+        if (!organization.isAdmin) return emptyList()
+        val allTeamMemberID = team.allMember.map { it.accountID }.toSet()
+        return organization.allMember.filter { it.accountID !in allTeamMemberID }
+    }
+
+    /**
+     * The organization's vaults an admin can give the team: the vaults of its other teams and those of the organization
+     * this device has, by name where this device can open them.
+     */
+    fun listAllGivableVault(organization: Organization, team: Team, allVault: List<VaultSummary>): List<TeamVault> {
+        if (!organization.isAdmin) return emptyList()
+        val vaultByID = linkedMapOf<String, TeamVault>()
+        for (vault in allVault) {
+            if (vault.isOrganization && vault.organizationID == organization.id) {
+                vaultByID[vault.id] = TeamVault(vaultID = vault.id, name = vault.name, role = "", canOpen = true)
+            }
+        }
+        for (otherTeam in organization.allTeam) {
+            for (vault in otherTeam.allVault) {
+                if (vaultByID[vault.vaultID]?.canOpen != true) vaultByID[vault.vaultID] = vault
+            }
+        }
+        val allTeamVaultID = team.allVault.map { it.vaultID }.toSet()
+        return vaultByID.values.filter { it.vaultID !in allTeamVaultID }.sortedWith(
+            compareByDescending<TeamVault> { it.canOpen }
+                .thenComparator { first, second ->
+                    if (first.canOpen) String.CASE_INSENSITIVE_ORDER.compare(first.name, second.name) else first.vaultID.compareTo(second.vaultID)
+                },
+        )
+    }
+
+    /** What an admin can do to a member from the organization screen; the user leaves instead of removing themselves. */
+    fun listAllMemberAction(organization: Organization, member: Member): List<OrganizationMemberAction> {
+        if (!organization.isAdmin) return emptyList()
+        val roleAction = if (member.role == OrganizationRole.ADMIN) OrganizationMemberAction.MAKE_MEMBER else OrganizationMemberAction.MAKE_ADMIN
+        return if (member.isCurrentUser) listOf(roleAction) else listOf(roleAction, OrganizationMemberAction.REMOVE)
+    }
+
+    fun describeMemberCount(count: Int): String = if (count == 1) "1 member" else "$count members"
 }

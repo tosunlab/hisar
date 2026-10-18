@@ -62,8 +62,10 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tryhisar.hisar.app.AppModel
 import com.tryhisar.hisar.app.EditorRequest
+import com.tryhisar.hisar.app.Refusal
 import com.tryhisar.hisar.app.UnlockedData
 import com.tryhisar.hisar.app.VaultsDestination
+import com.tryhisar.hisar.app.takeRefusal
 import com.tryhisar.hisar.model.ItemCategory
 import com.tryhisar.hisar.model.ItemDetail
 import com.tryhisar.hisar.model.OrganizationInvitation
@@ -84,16 +86,6 @@ import com.tryhisar.hisar.ui.theme.HisarTheme
 import com.tryhisar.hisar.ui.theme.HisarType
 import java.time.Instant
 import kotlinx.coroutines.launch
-
-/** A refused change: the alert names the action, and its message is the server's sentence. */
-data class Refusal(val title: String, val message: String)
-
-/** Takes the sentence of the change that just failed for an alert, instead of leaving it for a screen's error banner. */
-fun AppModel.takeRefusal(title: String): Refusal? {
-    val message = errorMessage.value ?: return null
-    errorMessage.value = null
-    return Refusal(title, message)
-}
 
 @Composable
 fun RefusalAlert(refusal: Refusal?, onDismiss: () -> Unit) {
@@ -366,7 +358,7 @@ private fun RemovedVaultNoticeRow(id: String, message: String, onDismiss: () -> 
 
 /** An invitation with who sent it and Decline and Accept, as the iPhone's ReceivedInvitationRow and OrganizationInvitationRow. */
 @Composable
-private fun InvitationRow(
+fun InvitationRow(
     text: String,
     email: String,
     icon: ImageVector,

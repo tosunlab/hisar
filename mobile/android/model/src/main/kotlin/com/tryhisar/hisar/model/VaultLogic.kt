@@ -103,6 +103,13 @@ object VaultLogic {
         else -> role.replaceFirstChar { it.uppercase() }
     }
 
+    fun describeVaultRoleAbility(role: String): String = when (role) {
+        Member.VAULT_ROLE_OWNER -> "Owners open and change items, share the vault, change roles and remove people."
+        Member.VAULT_ROLE_EDITOR -> "Editors open and change items."
+        Member.VAULT_ROLE_READER -> "Readers open items but cannot change them."
+        else -> ""
+    }
+
     fun describeItemCount(count: Int): String = if (count == 1) "1 item" else "$count items"
 
     /** The Secret Key as the backend reads it: upper case, without the spaces and line breaks a paste brings. */
