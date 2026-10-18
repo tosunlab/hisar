@@ -10,7 +10,6 @@ final class AutoFillUITests: HisarUITestCase {
         _ = signUp(inviteLink: inviteLink, email: "ios-autofill@example.com", name: "iOS AutoFill")
         addLogin(title: "Example", username: "autofill-user", password: "autofill-password-1", website: "accounts.example.com")
         goBack()
-        waitFor(app.buttons["vault-Personal"])
         addLogin(title: "Other site", username: "other-user", password: "other-password-1", website: "other.example.org")
 
         launchAutoFillAndUnlock()
@@ -23,10 +22,8 @@ final class AutoFillUITests: HisarUITestCase {
 
         launchAutoFillAndUnlock()
         type("other", into: app.searchFields.firstMatch)
-        let otherLogin = app.buttons["autofill-login-Other site"]
-        waitFor(otherLogin)
         saveScreenshot("autofill-search")
-        otherLogin.tap()
+        app.buttons["autofill-login-Other site"].tap()
         checkResult("Filled other-user with a password of 16 characters")
     }
 

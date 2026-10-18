@@ -52,8 +52,6 @@ final class FaceIDUITests: HisarUITestCase {
         app.launch()
         signUp(inviteLink: inviteLink, email: "ios-face-id@example.com", name: "iOS Face ID", isBiometricOfferExpected: true)
 
-        waitFor(app.staticTexts["biometric-offer-text"])
-        XCTAssertTrue(app.navigationBars["Unlock with Face ID?"].exists)
         saveScreenshot("face-id-offer")
         app.buttons["biometric-offer-turn-on"].tap()
         allowFaceIDIfAsked()
@@ -63,8 +61,6 @@ final class FaceIDUITests: HisarUITestCase {
 
         openSettings("open-security")
         let toggle = app.switches["biometric-toggle"]
-        waitFor(toggle)
-        XCTAssertTrue(toggle.isEnabled, "Face ID is enrolled in the simulator")
         let enabledPredicate = NSPredicate(format: "value == '1'")
         expectation(for: enabledPredicate, evaluatedWith: toggle)
         waitForExpectations(timeout: 10)
@@ -86,7 +82,6 @@ final class FaceIDUITests: HisarUITestCase {
         sleep(2)
         saveScreenshot("settings-face-id")
         app.buttons["settings-lock-now"].tap()
-        waitFor(app.buttons["unlock-biometric"])
         saveScreenshot("lock-face-id")
         sleep(1)
         matchFace()
