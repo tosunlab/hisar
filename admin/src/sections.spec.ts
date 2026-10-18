@@ -14,4 +14,10 @@ describe("sections", () => {
       expect(findSection(path).id).toBe("overview");
     }
   });
+
+  it("keeps an account's page in Accounts", () => {
+    for (const path of ["/admin/accounts", "/admin/accounts/", "/admin/accounts/ABC123"]) {
+      expect(findSection(path).id).toBe("accounts");
+    }
+  });
 });

@@ -26,7 +26,7 @@ export interface AdminHealth {
   // latestVersion is empty unless a newer server release exists.
   latestVersion: string;
   database: { ok: boolean; migrations: { name: string; appliedAt: string | null }[] };
-  counts: { accounts: number; vaults: number; items: number; shareLinks: number; pendingInvites: number };
+  counts: { accounts: number; suspendedAccounts: number; vaults: number; items: number; shareLinks: number; pendingInvites: number };
   storageBytes: number;
   checks: InstanceCheck[];
 }

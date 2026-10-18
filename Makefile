@@ -20,6 +20,7 @@ test-admin:
 # Needs Playwright's Chromium: cd admin && npx playwright install chromium
 test-admin-end-to-end: build-admin
 	go build -o bin/hisar-admin-page-fixture ./server/cmd/hisar-admin-page-fixture
+	go build -o bin/hisar ./cli/cmd/hisar
 	cd admin && npm run test:end-to-end
 
 build-cli-all:

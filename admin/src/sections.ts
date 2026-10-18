@@ -1,4 +1,5 @@
 import type { Component } from "vue";
+import AccountsView from "./sections/accounts/AccountsView.vue";
 import InvitesView from "./sections/invites/InvitesView.vue";
 import OverviewView from "./sections/overview/OverviewView.vue";
 import SettingsView from "./sections/settings/SettingsView.vue";
@@ -14,6 +15,7 @@ const overview: Section = { id: "overview", title: "Overview", path: "/admin", c
 
 export const sections: readonly Section[] = [
   overview,
+  { id: "accounts", title: "Accounts", path: "/admin/accounts", component: AccountsView },
   { id: "invites", title: "Invites", path: "/admin/invites", component: InvitesView },
   { id: "settings", title: "Settings", path: "/admin/settings", component: SettingsView },
 ];
