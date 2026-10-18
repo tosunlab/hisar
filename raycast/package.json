@@ -22,6 +22,12 @@
       "mode": "view"
     },
     {
+      "name": "my-vaults",
+      "title": "My Vaults",
+      "description": "Browse your vaults, then the items in one.",
+      "mode": "view"
+    },
+    {
       "name": "one-time-codes",
       "title": "One-Time Codes",
       "description": "Show live one-time codes, then copy or paste one.",
