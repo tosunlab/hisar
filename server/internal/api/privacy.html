@@ -25,7 +25,7 @@
 <body>
 <main>
 <h1>Hisar privacy policy</h1>
-<p class="muted">Effective 11 October 2026. Applies to the hosted Hisar service at <code>api.tryhisar.com</code> and to the Hisar apps for macOS and iPhone, the <code>hisar</code> command-line tool and the Hisar browser extension.</p>
+<p class="muted">Effective 11 October 2026. Applies to the hosted Hisar service at <code>api.tryhisar.com</code> and to the Hisar apps for macOS, iPhone and Android, the <code>hisar</code> command-line tool and the Hisar browser extension.</p>
 
 <h2>Summary</h2>
 <ul>
@@ -44,7 +44,7 @@
   <li>the contents of your items: titles, usernames, passwords, websites, notes, custom fields, one-time-password secrets, passkeys and SSH private keys;</li>
   <li>vault names, including those of organization vaults;</li>
   <li>what a share link contains, and the key or passphrase that opens it;</li>
-  <li>what an approval request from your Mac to your iPhone describes, and your answer.</li>
+  <li>what an approval request from your Mac to your smart device describes, and your answer.</li>
 </ul>
 <p>Because we never have your master password or Secret Key, we cannot reset your password or recover your data. If you lose both your master password and every signed-in device and your Emergency Kit, your data is lost.</p>
 
@@ -65,7 +65,7 @@
 <h3>Kept only in memory</h3>
 <ul>
   <li><strong>Rate limits.</strong> To slow down password guessing and spam, the server counts requests per IP address and per account in memory. These counters are never written to disk and are lost when the server restarts.</li>
-  <li><strong>Approvals from your iPhone.</strong> When your Mac asks your iPhone to approve an SSH or command-line request, the server relays an encrypted request and an encrypted answer. It sees your account, which device asked, an ID, the sizes and the times, for at most a few minutes, in memory only.</li>
+  <li><strong>Approvals from your smart device.</strong> When your Mac asks your smart device to approve an SSH or command-line request, the server relays an encrypted request and an encrypted answer. It sees your account, which device asked, an ID, the sizes and the times, for at most a few minutes, in memory only.</li>
   <li><strong>Live updates.</strong> While your apps are open, the server keeps a connection to tell them that something changed, without content.</li>
 </ul>
 
@@ -90,7 +90,7 @@
 
 <h2>The apps</h2>
 <ul>
-  <li>The macOS and iPhone apps keep an encrypted copy of your vaults on the device so they work offline. Touch ID and Face ID are handled by Apple's operating system; Hisar never receives your fingerprint or face data.</li>
+  <li>The macOS, iPhone and Android apps keep an encrypted copy of your vaults on the device so they work offline. Touch ID, Face ID and Android's fingerprint and face unlock are handled by the device's operating system; Hisar never receives your fingerprint or face data.</li>
   <li>The apps contact only the Hisar server you sign in to. The macOS app checks that server for updates while you are signed in.</li>
   <li>The Hisar browser extension talks only to the Hisar app on the same computer, through the browser's native messaging, and sends nothing to the internet. It reads the address of the page you are on and the login forms on it, to offer matching logins and to offer saving a login after you sign in. Page contents are not stored or sent anywhere except to the Hisar app on your computer. It stores a random installation ID, the pairing token for your Hisar app, its settings, and the sites you chose "Never for this site" for, in the browser's local extension storage. Logins are filled only on the site they were saved for.</li>
 </ul>

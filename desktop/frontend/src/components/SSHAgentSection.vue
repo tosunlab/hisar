@@ -104,8 +104,8 @@ const allSigningRememberOption = [
         </label>
         <label v-show="isRowVisible('phone-approval')" class="setting">
           <div class="setting-text">
-            <strong>Approve requests on my iPhone</strong>
-            <p class="muted">While Hisar is unlocked here, SSH and command-line requests also appear in Hisar on your iPhone when it is open and unlocked. Approving there never unlocks this Mac.</p>
+            <strong>Approve requests on my smart device</strong>
+            <p class="muted">While Hisar is unlocked here, SSH and command-line requests also appear in Hisar on your smart device when it is open and unlocked. Approving there never unlocks this Mac.</p>
           </div>
           <input
             class="switch"

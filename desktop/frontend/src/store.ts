@@ -1602,7 +1602,7 @@ export async function setCompactSSHApproval(isCompact: boolean): Promise<void> {
 }
 
 export async function setPhoneApproval(isEnabled: boolean): Promise<void> {
-  await changeSSHConfig(() => api.setPhoneApproval(isEnabled), isEnabled ? "Your iPhone can now approve requests" : "Requests are approved only on this Mac");
+  await changeSSHConfig(() => api.setPhoneApproval(isEnabled), isEnabled ? "Your smart device can now approve requests" : "Requests are approved only on this Mac");
 }
 
 export async function setSigningRemember(seconds: number): Promise<void> {

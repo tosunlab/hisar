@@ -368,7 +368,7 @@ onBeforeUnmount(() => {
             <p v-if="appWarning" class="compact-subtitle app-warning-line" data-testid="approval-app-warning">
               <AppIcon name="warning" :size="12" /> {{ approval.appSigner }} — check this is the app you expect
             </p>
-            <p v-if="approval.isPhoneApproval" class="compact-subtitle phone-note" data-testid="approval-phone">or approve on your iPhone</p>
+            <p v-if="approval.isPhoneApproval" class="compact-subtitle phone-note" data-testid="approval-phone">or approve on your smart device</p>
             <p v-if="approvalStore.failureMessage" class="failure" role="alert">{{ approvalStore.failureMessage }}</p>
             <div class="compact-actions">
               <div v-if="isWaitingForTouchID" class="compact-touch-id" data-testid="approval-touch-id">
@@ -486,7 +486,7 @@ onBeforeUnmount(() => {
               <div class="touch-id-text">
                 <span>{{ touchIDLabel }}</span>
                 <button class="link" data-testid="use-password" @click="usePassword">or use your master password</button>
-                <span v-if="approval.isPhoneApproval" class="phone-note" data-testid="approval-phone">or approve on your iPhone</span>
+                <span v-if="approval.isPhoneApproval" class="phone-note" data-testid="approval-phone">or approve on your smart device</span>
               </div>
             </div>
             <div v-else-if="!isPasswordShown" class="touch-id manual">
@@ -500,9 +500,9 @@ onBeforeUnmount(() => {
                 {{ approvalStore.failureMessage && !isForwarded ? "Try again" : approveButtonLabel }}
               </button>
               <button v-if="canChoosePassword" class="link" data-testid="use-password" @click="usePassword">or use your master password</button>
-              <span v-if="approval.isPhoneApproval" class="phone-note" data-testid="approval-phone">or approve on your iPhone</span>
+              <span v-if="approval.isPhoneApproval" class="phone-note" data-testid="approval-phone">or approve on your smart device</span>
             </div>
-            <span v-else-if="approval.isPhoneApproval" class="phone-note footer-spacer" data-testid="approval-phone">or approve on your iPhone</span>
+            <span v-else-if="approval.isPhoneApproval" class="phone-note footer-spacer" data-testid="approval-phone">or approve on your smart device</span>
             <span v-else class="footer-spacer"></span>
             <span v-if="approvalStore.allApproval.length > 1" class="muted waiting">{{ approvalStore.allApproval.length - 1 }} more waiting</span>
             <button ref="denyButton" :class="{ primary: isForwarded }" data-testid="deny-approval" @click="deny">Deny</button>

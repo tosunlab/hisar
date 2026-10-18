@@ -1,6 +1,6 @@
 # Hisar copy glossary
 
-One name for each thing, the same on the Mac, the iPhone, the browser extension, the CLI and the server's pages and emails. Check here before adding or renaming user-facing text.
+One name for each thing, the same on the Mac, the iPhone, the Android app, the browser extension, the CLI and the server's pages and emails. Check here before adding or renaming user-facing text.
 
 ## Product
 
@@ -95,7 +95,7 @@ One name for each thing, the same on the Mac, the iPhone, the browser extension,
 |---|---|
 | the hisar command-line tool (`hisar`) | the CLI (in app copy), the binary |
 | SSH agent, Use Hisar for SSH | key agent |
-| Approve requests on my iPhone (Mac) / Approve requests from my Mac (iPhone) | Allow approvals from my iPhone, Allow approving Mac requests |
+| Approve requests on my smart device (Mac) / Approve requests from my Mac (iPhone, Android) · or approve on your smart device (Mac approval window) · Your smart device can now approve requests | Approve requests on my iPhone, Allow approvals from my iPhone, Allow approving Mac requests |
 | Approve, Deny | Allow, Reject |
 | Coding agents, Available to agents | AI, MCP (except in the `hisar mcp` command) |
 

@@ -930,7 +930,7 @@ function createPreviewAgentApproval(kind: string): ApprovalEvent {
 // =run (hisar run with secrets), =launcher (Raycast as a launcher; &cliLocked=1 or &cliPassword=1 lock Hisar first),
 // =launcher-share (a share link Raycast asks for),
 // plus &approvalLocked=1 (Touch ID unlocks), &approvalPassword=1 (master password unlocks), &compact=1, &forwarded=1, &noTouchID=1,
-// &phone=1 (the account's iPhone can approve too).
+// &phone=1 (the account's smart device can approve too).
 function listAllPreviewApproval(): ApprovalEvent[] {
   return listAllPreviewApprovalWithoutApp().map(applyPreviewApp);
 }
