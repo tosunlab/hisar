@@ -42,6 +42,13 @@ data class VaultTheme(
     val appearance: ThemeAppearanceName = ThemeAppearanceName.SYSTEM,
     val color: ThemeColorName = ThemeColorName.NEUTRAL,
 ) {
+    /** Whether screens draw dark: System follows the device. */
+    fun isDark(isSystemDark: Boolean): Boolean = when (appearance) {
+        ThemeAppearanceName.SYSTEM -> isSystemDark
+        ThemeAppearanceName.LIGHT -> false
+        ThemeAppearanceName.DARK -> true
+    }
+
     companion object {
         val standard = VaultTheme()
     }
@@ -976,7 +983,18 @@ data class Device(
                 else -> if (client.isEmpty()) system else "$system, $client"
             }
         }
+
+    val icon: DeviceIcon
+        get() = when {
+            client == "cli" -> DeviceIcon.TERMINAL
+            client == "extension" || client == "browser" -> DeviceIcon.EXTENSION
+            operatingSystem == "ios" || operatingSystem == "android" -> DeviceIcon.PHONE
+            operatingSystem == "darwin" || operatingSystem == "macos" -> DeviceIcon.LAPTOP
+            else -> DeviceIcon.DESKTOP
+        }
 }
+
+enum class DeviceIcon { PHONE, LAPTOP, DESKTOP, TERMINAL, EXTENSION }
 
 @Serializable
 data class EmergencyKitExport(val secretKey: String, val emergencyKitPath: String)

@@ -86,6 +86,7 @@ class AppModel(
 
     val signIn = SignInModel(this)
     val lock = LockModel(this)
+    val settings = SettingsModel(this)
 
     val autoLockInterval: Duration get() = Duration.ofSeconds(status.value.autoLockSeconds.toLong())
 
