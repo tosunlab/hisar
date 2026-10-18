@@ -187,3 +187,25 @@ func TestPasskeyClientDataForAnAndroidApp(t *testing.T) {
 		t.Error("a 20-byte digest was accepted")
 	}
 }
+
+func TestPasskeyRelyingPartyOfABrowserOrigin(t *testing.T) {
+	for _, test := range []struct{ origin, relyingPartyID, want string }{
+		{"https://webauthn.io/", "webauthn.io", "webauthn.io"},
+		{"https://login.example.com", "example.com", "example.com"},
+		{"https://example.com/", "", "example.com"},
+	} {
+		if got, err := ResolvePasskeyRelyingPartyID(test.origin, test.relyingPartyID); err != nil || got != test.want {
+			t.Errorf("ResolvePasskeyRelyingPartyID(%q, %q) = %q, %v", test.origin, test.relyingPartyID, got, err)
+		}
+	}
+	for _, test := range []struct{ origin, relyingPartyID string }{
+		{"https://evil.example/", "example.com"},
+		{"https://example.co.uk/", "co.uk"},
+		{"http://example.com/", "example.com"},
+		{"android:apk-key-hash:o-gkSHjX7zxYu_zWPMvrWP6BUmpphy57-aF_UA8n0Sw", "example.com"},
+	} {
+		if got, err := ResolvePasskeyRelyingPartyID(test.origin, test.relyingPartyID); err == nil {
+			t.Errorf("ResolvePasskeyRelyingPartyID(%q, %q) = %q, want an error", test.origin, test.relyingPartyID, got)
+		}
+	}
+}
