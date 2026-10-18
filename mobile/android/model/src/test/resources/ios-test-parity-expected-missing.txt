@@ -1,6 +1,5 @@
 # iPhone tests not ported to Android yet, one Class.testName per line. IosTestParityTest fails when a listed test
 # is ported (remove its line) and when an unlisted iPhone test has no Android test. This list only shrinks; it ends empty.
-AccountLifecycleUITests.testChangePasswordReplaceSecretKeyAndDeleteAccount
 AppModelTests.testAPICredentialDecodesFromTheBackendAndSummarizes
 AppModelTests.testAPICredentialEditorWarningFollowsTheEditedExpiry
 AppModelTests.testAPICredentialExpiryWarnsFromTheDayAfterOnTheDevicesCalendar
@@ -72,7 +71,6 @@ AutoFillModelTests.testSignedOutShowsMessage
 AutoFillModelTests.testWithoutInteractionNeedsAnUnlockedProcess
 AutoFillModelTests.testWrongPasswordStaysLocked
 AutoFillUITests.testAutoFillListsMatchingLoginsAndFills
-FaceIDUITests.testFaceIDUnlockAfterTurningItOn
 FavoritesTests.testADeletedFavoriteLeavesTheList
 FavoritesTests.testAFailedStarKeepsTheListAndShowsTheError
 FavoritesTests.testAStarFromAnotherDeviceShowsAfterTheRemoteChange
