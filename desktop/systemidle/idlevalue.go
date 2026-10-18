@@ -15,3 +15,12 @@ func readIdleValue(body []any, unit time.Duration) (time.Duration, bool) {
 	}
 	return 0, false
 }
+
+// getScreenSaverUnit: the freedesktop GetSessionIdleTime answers seconds, but KDE's screen locker answers
+// KIdleTime's milliseconds. KDE is told apart by owning org.kde.screensaver on the same connection.
+func getScreenSaverUnit(screenSaverOwner, kdeScreenSaverOwner string) time.Duration {
+	if screenSaverOwner != "" && screenSaverOwner == kdeScreenSaverOwner {
+		return time.Millisecond
+	}
+	return time.Second
+}

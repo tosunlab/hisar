@@ -18,3 +18,14 @@ func TestReadIdleValue(t *testing.T) {
 		}
 	}
 }
+
+func TestGetScreenSaverUnit(t *testing.T) {
+	if unit := getScreenSaverUnit(":1.20", ":1.20"); unit != time.Millisecond {
+		t.Errorf("KDE's screen locker answers milliseconds, got %v", unit)
+	}
+	for _, owners := range [][2]string{{":1.20", ""}, {":1.20", ":1.31"}, {"", ""}} {
+		if unit := getScreenSaverUnit(owners[0], owners[1]); unit != time.Second {
+			t.Errorf("owners %q: want seconds, got %v", owners, unit)
+		}
+	}
+}
