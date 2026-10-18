@@ -39,6 +39,7 @@ import kotlinx.coroutines.withContext
 class AppModel(
     override val scope: CoroutineScope,
     private val ioDispatcher: CoroutineDispatcher,
+    private val clipboard: TextClipboard,
     override val backendEvents: Flow<BackendEvent> = emptyFlow(),
     private val now: () -> Instant = Instant::now,
 ) : ModelContext {
@@ -87,6 +88,7 @@ class AppModel(
 
     val signIn = SignInModel(this)
     val lock = LockModel(this)
+    val settings = SettingsModel(this)
 
     val autoLockInterval: Duration get() = Duration.ofSeconds(status.value.autoLockSeconds.toLong())
 
@@ -309,7 +311,7 @@ class AppModel(
     suspend fun copyField(vaultID: String, itemID: String, fieldName: String, label: String) {
         perform(isBusyShown = false) { it.copyField(vaultID, itemID, fieldName) } ?: return
         mutableCopyCount.update { it + 1 }
-        showNotice("$label copied. It clears in 90 seconds.")
+        showNotice("$label copied. $CLEARING_NOTICE")
     }
 
     suspend fun copySecretReference(vaultID: String, itemID: String, fieldName: String) {
@@ -318,8 +320,25 @@ class AppModel(
         showNotice("Secret reference copied.")
     }
 
+    /** Copies a secret the app holds itself, such as a website or a generated password, as Go copies fields. */
+    fun copyText(text: String, label: String) {
+        if (!clipboard.copySecret(text)) return
+        mutableCopyCount.update { it + 1 }
+        showNotice("$label copied. $CLEARING_NOTICE")
+    }
+
+    // Not secret, so it stays on the clipboard: support details and diagnostics.
+    fun copyPlainText(text: String, label: String) {
+        if (!clipboard.copyPlain(text)) return
+        mutableCopyCount.update { it + 1 }
+        showNotice("$label copied")
+    }
+
     companion object {
         const val NOTICE_DURATION_MILLISECONDS = 2_500L
+
+        /** Android clears a copy with an inexact alarm, which lands between 90 seconds and about 2.5 minutes. */
+        private const val CLEARING_NOTICE = "It clears in about 2 minutes."
 
         /** The Personal vault first, then the others by name. */
         val vaultOrder: Comparator<VaultSummary> = compareByDescending<VaultSummary> { it.type == VaultSummary.TYPE_PERSONAL }

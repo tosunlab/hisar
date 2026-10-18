@@ -3,6 +3,13 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.APPLICATION_PREFERENCES" />
+            <category android:name="android.intent.category.APP_BROWSER" />
+        </intent>
+    </queries>
+
     <application
         android:name=".HisarApplication"
         android:allowBackup="false"
