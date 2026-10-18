@@ -103,6 +103,9 @@ Shared test fixtures are in `helpers_test.go`, the in-memory API in `fakeapi_tes
 `hisarkit` wraps `core/app` for gomobile: only strings, numbers, bools, `[]byte`, errors and interfaces cross into Swift,
 so rich values are JSON strings.
 
+`cmd/hisar-ui-test-mac` plays the user's Mac in the Android phone approval UI test, which `scripts/test-android-ui.sh`
+starts it for: it signs up, sends the phone real approval requests, and saves each answer it verified in the Personal vault.
+
 ### admin
 
 | Path | What it holds |
