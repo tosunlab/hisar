@@ -253,7 +253,8 @@ the desktop and admin `themes.css`, from `assets/themes/themes.json`.
   name, a row in its `renamed` table, or a reason in `notApplicable`. `model/src/test/resources/ios-test-parity-expected-missing.txt`
   lists the iPhone tests not ported yet and only shrinks: a ported test fails the check until its line is deleted.
 - `make test-android-ui` (`scripts/test-android-ui.sh`) starts `hisar-server`, the SMTP sink and the sharing partner
-  through `scripts/ui-test-partner.sh`, which `make test-ios-ui` shares, plus `hisar-ui-test-mac`. Each test reads its
+  through `scripts/ui-test-partner.sh`, which `make test-ios-ui` shares, plus `hisar-ui-test-mac` and
+  `answer_as_other_device`, the `hisar` CLI as the user's other device in `CrossDeviceSyncUITests`. Each test reads its
   account as `HISAR_UI_TEST_<NAME>_INVITE_LINK` and `_EMAIL`, the iPhone's names; invites are single-use, so a new
   server test adds a `ui_test_add_account` line. The test orchestrator runs each test in a new process with the app's
   data cleared. `ANDROID_UI_TESTS=<class or test names>` or `ANDROID_UI_TESTS=smoke` runs a subset.
