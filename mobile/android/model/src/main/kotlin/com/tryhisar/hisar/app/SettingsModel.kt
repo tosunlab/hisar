@@ -17,11 +17,11 @@ import kotlinx.coroutines.launch
  * Settings and the account's lifecycle: the theme, Mac approvals, devices, the Emergency Kit, changing the master
  * password, replacing the Secret Key, deleting the account and exporting data.
  *
- * Files the backend writes (Emergency Kits, exports) go into a folder of their own in the temporary directory, which on
- * Android is the app's cache, and leaving their screen deletes that folder.
+ * Files the backend writes (Emergency Kits, exports) go into a folder of their own under [HANDOFF_FOLDER_NAME] in the
+ * temporary directory, which on Android is the app's cache, and leaving their screen deletes that folder.
  */
 class SettingsModel(private val context: ModelContext) {
-    private val temporaryDirectory = File(System.getProperty("java.io.tmpdir"))
+    private val temporaryDirectory = File(System.getProperty("java.io.tmpdir"), HANDOFF_FOLDER_NAME)
 
     private fun createFolder(prefix: String) = File(temporaryDirectory, "$prefix-${UUID.randomUUID()}")
 
@@ -94,4 +94,8 @@ class SettingsModel(private val context: ModelContext) {
     }
 
     fun removeExport(result: ExportResult) = removeFolder(result.path)
+
+    companion object {
+        const val HANDOFF_FOLDER_NAME = "handoff"
+    }
 }

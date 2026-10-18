@@ -2,6 +2,7 @@ package com.tryhisar.hisar
 
 import android.app.Application
 import android.util.Log
+import com.tryhisar.hisar.app.SettingsModel
 import com.tryhisar.hisar.autofill.HttpAssetLinksVerifier
 import com.tryhisar.hisar.backend.HisarKitBackend
 import com.tryhisar.hisar.model.BackendEvent
@@ -14,6 +15,8 @@ import com.tryhisar.hisar.platform.ForegroundActivity
 import com.tryhisar.hisar.platform.KeystoreSecretKeyStore
 import com.tryhisar.hisar.platform.StateDirectory
 import com.tryhisar.hisar.platform.TrustedCertificates
+import com.tryhisar.hisar.ui.settings.SHARED_FOLDER_NAME
+import java.io.File
 import kotlin.concurrent.thread
 import kotlinx.coroutines.flow.SharedFlow
 
@@ -41,9 +44,19 @@ open class HisarApplication : Application(), BackendProvider {
 
     override fun onCreate() {
         super.onCreate()
+        deleteLeftoverHandoffFiles()
         clipboard = ClipboardAdapter(this)
         foregroundActivity = ForegroundActivity(this, onWindowFocus = clipboard::clearExpiredCopy)
         startBackend()
+    }
+
+    /**
+     * Emergency Kits, exports and their share copies live only while their screen is open, and no screen outlives the
+     * process, so whatever a killed process left behind is deleted before anything else runs.
+     */
+    private fun deleteLeftoverHandoffFiles() {
+        File(cacheDir, SettingsModel.HANDOFF_FOLDER_NAME).deleteRecursively()
+        File(cacheDir, SHARED_FOLDER_NAME).deleteRecursively()
     }
 
     protected open fun startBackend() {

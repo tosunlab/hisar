@@ -64,6 +64,9 @@ fun rememberFileSaver(mimeType: String, onFinish: (isSaved: Boolean) -> Unit): (
 
 const val SHARE_FAILED_MESSAGE = "Hisar could not prepare the file to share. Try again."
 
+/** The cache folder Hisar's FileProvider serves (`res/xml/shared_files.xml`). */
+const val SHARED_FOLDER_NAME = "shared"
+
 /**
  * Sends a file Hisar wrote to another app through the system's share sheet, as the iPhone's ShareLink. Only a copy in
  * the folder Hisar's FileProvider serves goes out, made for the share; it is deleted when the screen leaves, as the
@@ -73,7 +76,7 @@ const val SHARE_FAILED_MESSAGE = "Hisar could not prepare the file to share. Try
 fun rememberFileSharer(mimeType: String, onFailure: () -> Unit): (File) -> Unit {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val folder = remember { File(context.cacheDir, "shared/${UUID.randomUUID()}") }
+    val folder = remember { File(context.cacheDir, "$SHARED_FOLDER_NAME/${UUID.randomUUID()}") }
     DisposableEffect(folder) {
         onDispose { folder.deleteRecursively() }
     }
