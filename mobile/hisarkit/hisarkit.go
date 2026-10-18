@@ -3,6 +3,7 @@
 package hisarkit
 
 import (
+	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
@@ -16,6 +17,7 @@ import (
 	"github.com/tryhisar/hisar/core/browserprotocol"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/item"
+	"github.com/tryhisar/hisar/core/passkey"
 )
 
 // SecretKeyStore keeps the Secret Key in the iOS Keychain, shared with the AutoFill extension.
@@ -398,6 +400,36 @@ func (hisar *Hisar) CreatePasskey(registrationJSON string) (string, error) {
 // AssertPasskey signs authenticatorData || clientDataHash and returns a app.PasskeyAssertion as JSON; IDs and the hash are base64url.
 func (hisar *Hisar) AssertPasskey(relyingPartyID, credentialID, clientDataHash string) (string, error) {
 	return encodePasskeyJSON(app.SignPasskeyForRelyingParty(hisar.service, relyingPartyID, credentialID, clientDataHash))
+}
+
+// BuildAndroidAppOrigin returns the passkey origin of a native Android app from the SHA-256 of its signing certificate.
+func BuildAndroidAppOrigin(signingCertificateSHA256 []byte) (string, error) {
+	return passkey.BuildAndroidAppOrigin(signingCertificateSHA256)
+}
+
+type passkeyClientData struct {
+	ClientDataJSON string `json:"clientDataJSON"`
+	ClientDataHash string `json:"clientDataHash"`
+}
+
+// BuildPasskeyClientData is for a caller that sends no client data hash: a native Android app, with the origin from
+// BuildAndroidAppOrigin and its package name, or a privileged browser's web origin without one. It takes
+// "webauthn.create" or "webauthn.get" and the request's base64url challenge, and returns {"clientDataJSON",
+// "clientDataHash"}, both base64url, as JSON.
+func BuildPasskeyClientData(clientDataType, challenge, origin, androidPackageName string) (string, error) {
+	challengeBytes, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(challenge, "="))
+	if err != nil {
+		return "", errors.New("hisarkit: the passkey challenge is not base64url")
+	}
+	clientDataJSON, err := passkey.BuildClientDataJSON(passkey.ClientData{Type: clientDataType, Challenge: challengeBytes, Origin: origin, AndroidPackageName: androidPackageName})
+	if err != nil {
+		return "", err
+	}
+	clientDataHash := sha256.Sum256(clientDataJSON)
+	return encodeJSON(passkeyClientData{
+		ClientDataJSON: base64.RawURLEncoding.EncodeToString(clientDataJSON),
+		ClientDataHash: base64.RawURLEncoding.EncodeToString(clientDataHash[:]),
+	}, nil)
 }
 
 // DeletePasskey returns the item without the passkey as app.ItemDetail JSON.

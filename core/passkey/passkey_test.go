@@ -90,14 +90,43 @@ func TestBuildClientDataJSON(t *testing.T) {
 	if strings.Contains(string(clientData), "topOrigin") {
 		t.Errorf("top origin without crossOrigin: %s", clientData)
 	}
+	clientData, err = BuildClientDataJSON(ClientData{Type: TypeGet, Challenge: []byte{0xfb, 0xff, 0x01}, Origin: testAndroidAppOrigin, AndroidPackageName: "com.example.app"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if expected := `{"type":"webauthn.get","challenge":"-_8B","origin":"android:apk-key-hash:FG3pg8VzBlDY7rmVLzT8ZBagg0LmHb6oigSWsj_PROU","crossOrigin":false,"androidPackageName":"com.example.app"}`; string(clientData) != expected {
+		t.Errorf("Android app client data = %s", clientData)
+	}
 	for _, invalid := range []ClientData{
 		{Type: "payment.get", Challenge: []byte{1}, Origin: "https://a.example"},
 		{Type: TypeGet, Origin: "https://a.example"},
 		{Type: TypeGet, Challenge: make([]byte, 1025), Origin: "https://a.example"},
+		{Type: TypeGet, Challenge: []byte{1}, Origin: "chrome-extension://abc"},
+		{Type: TypeGet, Challenge: []byte{1}, Origin: "https://a.example", AndroidPackageName: "com.example.app"},
+		{Type: TypeGet, Challenge: []byte{1}, Origin: testAndroidAppOrigin},
+		{Type: TypeGet, Challenge: []byte{1}, Origin: testAndroidAppOrigin, AndroidPackageName: "com.example.app", IsCrossOrigin: true, TopOrigin: "https://a.example"},
+		{Type: TypeGet, Challenge: []byte{1}, Origin: testAndroidAppOrigin + "=", AndroidPackageName: "com.example.app"},
+		{Type: TypeGet, Challenge: []byte{1}, Origin: "android:apk-key-hash:FG3pg8VzBlDY7rmVLzT8ZBagg0LmHb6oigSWsj_PRO", AndroidPackageName: "com.example.app"},
+		{Type: TypeGet, Challenge: []byte{1}, Origin: "android:apk-key-hash:FG3pg8VzBlDY7rmVLzT8ZBagg0LmHb6oigSWsj/PROU", AndroidPackageName: "com.example.app"},
 	} {
 		if _, err := BuildClientDataJSON(invalid); err == nil {
 			t.Errorf("%+v accepted", invalid)
 		}
+	}
+}
+
+// testAndroidAppOrigin is the origin of an app signed by the certificate whose SHA-256 fingerprint is
+// 14:6D:E9:83:C5:73:06:50:D8:EE:B9:95:2F:34:FC:64:16:A0:83:42:E6:1D:BE:A8:8A:04:96:B2:3F:CF:44:E5, the example in
+// Android's App Links documentation.
+const testAndroidAppOrigin = "android:apk-key-hash:FG3pg8VzBlDY7rmVLzT8ZBagg0LmHb6oigSWsj_PROU"
+
+func TestBuildAndroidAppOrigin(t *testing.T) {
+	digest, _ := hex.DecodeString("146de983c5730650d8eeb9952f34fc6416a08342e61dbea88a0496b23fcf44e5")
+	if origin, err := BuildAndroidAppOrigin(digest); err != nil || origin != testAndroidAppOrigin {
+		t.Errorf("origin = %q, %v", origin, err)
+	}
+	if _, err := BuildAndroidAppOrigin(digest[:20]); !errors.Is(err, ErrInvalidOrigin) {
+		t.Errorf("a SHA-1 digest: %v", err)
 	}
 }
 
@@ -420,68 +449,104 @@ func buildPlatformClientDataJSON(t *testing.T, ceremonyType protocol.CeremonyTyp
 	return clientDataJSON, clientDataHash[:]
 }
 
-func TestClientDataHashCeremoniesVerifiedByWebAuthnLibrary(t *testing.T) {
-	relyingParty := createTestRelyingParty(t, "example.com", "https://login.example.com")
-	user := &testUser{userHandle: []byte("ios-user-handle"), userName: "alex@example.com"}
-	options, session, err := relyingParty.BeginRegistration(user)
+func buildAndroidAppClientDataJSON(t *testing.T, ceremonyType protocol.CeremonyType, challenge protocol.URLEncodedBase64) ([]byte, []byte) {
+	t.Helper()
+	clientDataJSON, err := BuildClientDataJSON(ClientData{Type: string(ceremonyType), Challenge: challenge, Origin: testAndroidAppOrigin, AndroidPackageName: "com.example.app"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	clientDataJSON, clientDataHash := buildPlatformClientDataJSON(t, protocol.CreateCeremony, options.Response.Challenge, "https://login.example.com")
-	creation, err := CreateCredentialWithClientDataHash("Example.com", clientDataHash)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if creation.ClientDataJSON != nil || len(creation.CredentialID) != CredentialIDLength {
-		t.Errorf("creation = %+v", creation)
-	}
-	body, _ := json.Marshal(map[string]any{
-		"id": encodeBase64URL(creation.CredentialID), "rawId": encodeBase64URL(creation.CredentialID), "type": "public-key", "clientExtensionResults": map[string]any{},
-		"response": map[string]any{"clientDataJSON": encodeBase64URL(clientDataJSON), "attestationObject": encodeBase64URL(creation.AttestationObject)},
-	})
-	parsedCreation, err := protocol.ParseCredentialCreationResponseBody(bytes.NewReader(body))
-	if err != nil {
-		t.Fatal(err)
-	}
-	credential, err := relyingParty.CreateCredential(user, *session, parsedCreation)
-	if err != nil {
-		t.Fatalf("registration from a client data hash rejected: %v", err)
-	}
-	if credential.AttestationFormat != "none" || !credential.Flags.UserPresent || !credential.Flags.UserVerified || !credential.Flags.BackupEligible || !credential.Flags.BackupState || credential.Authenticator.SignCount != 0 {
-		t.Errorf("credential = %+v", credential)
-	}
-	user.credentials = []webauthn.Credential{*credential}
+	clientDataHash := sha256.Sum256(clientDataJSON)
+	return clientDataJSON, clientDataHash[:]
+}
 
-	assertionOptions, assertionSession, err := relyingParty.BeginDiscoverableLogin()
-	if err != nil {
-		t.Fatal(err)
-	}
-	assertionClientDataJSON, assertionClientDataHash := buildPlatformClientDataJSON(t, protocol.AssertCeremony, assertionOptions.Response.Challenge, "https://login.example.com")
-	assertion, err := SignAssertionWithClientDataHash("example.com", "example.com", assertionClientDataHash, creation.PrivateKey)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if assertion.ClientDataJSON != nil {
-		t.Errorf("assertion carries client data %s", assertion.ClientDataJSON)
-	}
-	assertionBody, _ := json.Marshal(map[string]any{
-		"id": encodeBase64URL(creation.CredentialID), "rawId": encodeBase64URL(creation.CredentialID), "type": "public-key", "clientExtensionResults": map[string]any{},
-		"response": map[string]any{
-			"clientDataJSON": encodeBase64URL(assertionClientDataJSON), "authenticatorData": encodeBase64URL(assertion.AuthenticatorData),
-			"signature": encodeBase64URL(assertion.Signature), "userHandle": encodeBase64URL(user.userHandle),
+func TestClientDataHashCeremoniesVerifiedByWebAuthnLibrary(t *testing.T) {
+	for _, testCase := range []struct {
+		name            string
+		config          webauthn.Config
+		buildClientData func(*testing.T, protocol.CeremonyType, protocol.URLEncodedBase64) ([]byte, []byte)
+	}{
+		{
+			name:   "client data the platform built (iOS, Android browsers)",
+			config: webauthn.Config{RPOrigins: []string{"https://login.example.com"}},
+			buildClientData: func(t *testing.T, ceremonyType protocol.CeremonyType, challenge protocol.URLEncodedBase64) ([]byte, []byte) {
+				return buildPlatformClientDataJSON(t, ceremonyType, challenge, "https://login.example.com")
+			},
 		},
-	})
-	parsedAssertion, err := protocol.ParseCredentialRequestResponseBody(bytes.NewReader(assertionBody))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := relyingParty.ValidateDiscoverableLogin(func(_, userHandle []byte) (webauthn.User, error) {
-		if !bytes.Equal(userHandle, user.userHandle) {
-			return nil, errors.New("unknown user")
-		}
-		return user, nil
-	}, *assertionSession, parsedAssertion); err != nil {
-		t.Fatalf("assertion from a client data hash rejected: %v", err)
+		{
+			name:            "client data Hisar built for an Android app",
+			config:          webauthn.Config{RPOrigins: []string{"https://login.example.com"}, RPOpaqueOrigins: []string{testAndroidAppOrigin}},
+			buildClientData: buildAndroidAppClientDataJSON,
+		},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			config := testCase.config
+			config.RPID, config.RPDisplayName = "example.com", "Example"
+			relyingParty, err := webauthn.New(&config)
+			if err != nil {
+				t.Fatal(err)
+			}
+			user := &testUser{userHandle: []byte("phone-user-handle"), userName: "alex@example.com"}
+			options, session, err := relyingParty.BeginRegistration(user)
+			if err != nil {
+				t.Fatal(err)
+			}
+			clientDataJSON, clientDataHash := testCase.buildClientData(t, protocol.CreateCeremony, options.Response.Challenge)
+			creation, err := CreateCredentialWithClientDataHash("Example.com", clientDataHash)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if creation.ClientDataJSON != nil || len(creation.CredentialID) != CredentialIDLength {
+				t.Errorf("creation = %+v", creation)
+			}
+			body, _ := json.Marshal(map[string]any{
+				"id": encodeBase64URL(creation.CredentialID), "rawId": encodeBase64URL(creation.CredentialID), "type": "public-key", "clientExtensionResults": map[string]any{},
+				"response": map[string]any{"clientDataJSON": encodeBase64URL(clientDataJSON), "attestationObject": encodeBase64URL(creation.AttestationObject)},
+			})
+			parsedCreation, err := protocol.ParseCredentialCreationResponseBody(bytes.NewReader(body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			credential, err := relyingParty.CreateCredential(user, *session, parsedCreation)
+			if err != nil {
+				t.Fatalf("registration from a client data hash rejected: %v", err)
+			}
+			if credential.AttestationFormat != "none" || !credential.Flags.UserPresent || !credential.Flags.UserVerified || !credential.Flags.BackupEligible || !credential.Flags.BackupState || credential.Authenticator.SignCount != 0 {
+				t.Errorf("credential = %+v", credential)
+			}
+			user.credentials = []webauthn.Credential{*credential}
+
+			assertionOptions, assertionSession, err := relyingParty.BeginDiscoverableLogin()
+			if err != nil {
+				t.Fatal(err)
+			}
+			assertionClientDataJSON, assertionClientDataHash := testCase.buildClientData(t, protocol.AssertCeremony, assertionOptions.Response.Challenge)
+			assertion, err := SignAssertionWithClientDataHash("example.com", "example.com", assertionClientDataHash, creation.PrivateKey)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if assertion.ClientDataJSON != nil {
+				t.Errorf("assertion carries client data %s", assertion.ClientDataJSON)
+			}
+			assertionBody, _ := json.Marshal(map[string]any{
+				"id": encodeBase64URL(creation.CredentialID), "rawId": encodeBase64URL(creation.CredentialID), "type": "public-key", "clientExtensionResults": map[string]any{},
+				"response": map[string]any{
+					"clientDataJSON": encodeBase64URL(assertionClientDataJSON), "authenticatorData": encodeBase64URL(assertion.AuthenticatorData),
+					"signature": encodeBase64URL(assertion.Signature), "userHandle": encodeBase64URL(user.userHandle),
+				},
+			})
+			parsedAssertion, err := protocol.ParseCredentialRequestResponseBody(bytes.NewReader(assertionBody))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := relyingParty.ValidateDiscoverableLogin(func(_, userHandle []byte) (webauthn.User, error) {
+				if !bytes.Equal(userHandle, user.userHandle) {
+					return nil, errors.New("unknown user")
+				}
+				return user, nil
+			}, *assertionSession, parsedAssertion); err != nil {
+				t.Fatalf("assertion from a client data hash rejected: %v", err)
+			}
+		})
 	}
 }
 

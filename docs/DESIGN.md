@@ -1253,6 +1253,7 @@ Hisar is a passkey provider for Chromium browsers: the extension takes over `nav
 - The RP ID defaults to the origin's host. An explicit RP ID must equal the host or be a suffix of it at a label boundary, and must not be a public suffix (`golang.org/x/net/publicsuffix`, as for URL matching in §9.2); for IP addresses it must equal the host. The desktop checks this on every passkey request, so the extension never decides it alone.
 - Frames: in the top frame and in frames with the top frame's origin (the frame rule of §9.2), `crossOrigin` is false. A cross-origin frame is served only when its permissions policy allows `publickey-credentials-get` (or `-create`), which the isolated content script checks with `document.featurePolicy.allowsFeature`; then `crossOrigin` is true and `topOrigin` is the tab's origin. Otherwise the browser decides.
 - The desktop builds `clientDataJSON` as `{"type","challenge","origin","crossOrigin"[,"topOrigin"]}` in this order, with the challenge in base64url without padding.
+- On Android, browsers send their own client data hash; a native app calling through Credential Manager sends none, so hisarkit's `BuildPasskeyClientData` builds `clientDataJSON` with the origin `android:apk-key-hash:` and the unpadded base64url SHA-256 of the app's signing certificate (`BuildAndroidAppOrigin`), and adds `"androidPackageName"` after `crossOrigin`, as Android's sample provider does. Checking that the app may speak for the RP ID is the Android app's job (Digital Asset Links).
 
 **Creating a passkey**
 
